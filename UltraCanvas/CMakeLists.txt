@@ -1,7 +1,8 @@
 # UltraCanvas/CMakeLists.txt
 # UltraCanvas Core Library - Builds as separate static library with optional plugins
+# Version: 1.4.8 - the static link cycle between the core and UltraRTC is declared, so a static build links
 # Version: 1.4.7
-# Last Modified: 2026-07-22
+# Last Modified: 2026-11-01
 # Author: UltraCanvas Framework
 
 cmake_minimum_required(VERSION 3.16)
@@ -492,6 +493,24 @@ elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
     # storage, USB and Bluetooth, and the CF property readers around it.
     find_library(IOKIT_FRAMEWORK IOKit REQUIRED)
     find_library(COREFOUNDATION_FRAMEWORK CoreFoundation REQUIRED)
+    # ImageCaptureCore backs the portable devices on macOS - an iPhone's
+    # photos, a camera's card (OS/MacOS/UltraCanvasMacOSPortableDevices.mm).
+    find_library(IMAGECAPTURECORE_FRAMEWORK ImageCaptureCore REQUIRED)
+    # CoreServices carries FSEvents, behind the folder watch
+    # (OS/MacOS/UltraCanvasMacOSFolderWatcher.cpp).
+    find_library(CORESERVICES_FRAMEWORK CoreServices REQUIRED)
+    # CoreWLAN, IOBluetooth and CoreLocation back UltraCanvasWireless
+    # (OS/MacOS/UltraCanvasMacOSWireless.mm): the Wi-Fi networks, the
+    # Bluetooth devices, and the Location Services permission macOS 14 asks
+    # before it names a network. Not REQUIRED: the backend compiles each part
+    # out (__has_include) and says so where an SDK lacks it.
+    find_library(COREWLAN_FRAMEWORK CoreWLAN)
+    find_library(IOBLUETOOTH_FRAMEWORK IOBluetooth)
+    find_library(CORELOCATION_FRAMEWORK CoreLocation)
+    # DiskArbitration groups a removable drive's volumes by their disk
+    # (OS/MacOS/UltraCanvasMacOSRemovableDrives.mm); without it each volume
+    # is an entry of its own.
+    find_library(DISKARBITRATION_FRAMEWORK DiskArbitration)
     # OpenGL (CGL) backs only the GL surface. Apple has deprecated it since
     # macOS 10.14, so it is looked up only when that surface is wanted, and an
     # SDK without it turns the surface off instead of failing the configure -
@@ -623,6 +642,7 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPasswordStrengthMeter.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPasswordRuleLegend.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasToolbar.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasToolbarLayout.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasToolGroupButton.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasScrollbar.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSmoothScroll.cpp
@@ -647,6 +667,13 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasBadge.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasWaveSeparator.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasDesktopShell.cpp
+        # Wi-Fi and Bluetooth operated from a panel (join, pair, connect).
+        # The backends are OS/<Platform>/UltraCanvas*Wireless.*, picked up by
+        # the platform glob below; this is the shared half and the fallback.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasWireless.cpp
+        # The drives a person plugs in and "Safely remove" for them; backends
+        # OS/<Platform>/UltraCanvas*RemovableDrives.*, by the platform glob.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasRemovableDrives.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasBusyIndicator.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasColorPicker.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasColorSwatchBar.cpp
@@ -703,6 +730,7 @@ set(ULTRACANVAS_CORE_SOURCES
         # entries opened last, the open action, the app's own new-thing fields.
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasStartPage.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAppSettings.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSettingsPageKit.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSettingsFolder.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFileDialogSettings.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasEmojiSettings.cpp
@@ -719,6 +747,7 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFileDragIcon.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasProgressDialog.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFolderWatcher.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPortableDevices.cpp
         # "Is this file in use by another program" - the question behind
         # every failed overwrite. Platform backend under OS/<Platform>/.
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFileLock.cpp
@@ -1105,6 +1134,8 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasUCDContainer.cpp
         # OLE2 compound files (the legacy Office containers: .doc, .xls)
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasCompoundFile.cpp
+        # Outlook .msg (a compound file): the media viewer shows one as a message.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasOutlookMessage.cpp
         # Password-protected .xlsx / .docx (ECMA-376 agile encryption), on
         # UltraCrypt - linked below, after the module is defined
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasOfficeEncryption.cpp
@@ -2231,6 +2262,11 @@ if(ULTRACANVAS_HAS_NATIVE_FOLDER_WATCH)
 endif()
 # File-lock probing: the same arrangement for UltraCanvasFileLock. PUBLIC so an
 # app can leave the "in use" display out entirely where nothing can answer.
+# Portable devices (phones, cameras over MTP / PTP): the same arrangement.
+# PUBLIC so an app can leave its device rows out where nothing can list them.
+if(ULTRACANVAS_HAS_PORTABLE_DEVICES)
+    target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC ULTRACANVAS_HAS_PORTABLE_DEVICES)
+endif()
 if(ULTRACANVAS_HAS_NATIVE_FILE_LOCK)
     target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC ULTRACANVAS_HAS_NATIVE_FILE_LOCK)
 endif()
@@ -2389,6 +2425,9 @@ elseif(ULTRACANVAS_PLATFORM STREQUAL "Windows")
             iphlpapi
             wlanapi
             setupapi
+            # CM_Request_Device_Eject, CM_Locate_DevNode (the removable
+            # drives' "Safely remove", OS/MSWindows/UltraCanvasWindowsRemovableDrives.cpp)
+            cfgmgr32
             bthprops
             ${FONTCONFIG_LIBRARIES}
     )
@@ -2450,12 +2489,19 @@ elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
             ${CORETEXT_FRAMEWORK}
             ${IOKIT_FRAMEWORK}
             ${COREFOUNDATION_FRAMEWORK}
+            ${CORESERVICES_FRAMEWORK}
+            ${IMAGECAPTURECORE_FRAMEWORK}
             #        ${OPENGL_FRAMEWORK}
     )
     if(UNIFORMTYPEIDENTIFIERS_FRAMEWORK)
         target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC
                 ${UNIFORMTYPEIDENTIFIERS_FRAMEWORK})
     endif()
+    foreach(_uc_wireless_fw COREWLAN_FRAMEWORK IOBLUETOOTH_FRAMEWORK CORELOCATION_FRAMEWORK DISKARBITRATION_FRAMEWORK)
+        if(${_uc_wireless_fw})
+            target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC ${${_uc_wireless_fw}})
+        endif()
+    endforeach()
     if(ULTRACANVAS_ENABLE_GL)
         target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC
             ${OPENGL_FRAMEWORK}
@@ -4001,6 +4047,13 @@ if(ULTRACANVAS_ENABLE_ULTRARTC)
     _ultracanvas_module_home(UltraRTC uc-rtc)
     if(NOT ULTRACANVAS_BUILD_SHARED)
         target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC UltraRTC)
+        # The engine calls back into the device glue compiled into the core
+        # (UltraRtcInternal::OpenCamera, OpenMicrophone, OpenSpeaker): a cycle
+        # between two static archives. Declared, so CMake repeats them on the
+        # link line; without it GNU ld's single pass left those three
+        # undefined in ChatCube and chatcube-peer, the executables that link
+        # UltraRTC, in every static build (CI builds shared and never saw it).
+        target_link_libraries(uc-rtc PRIVATE ${ULTRACANVAS_LIB_NAME})
     endif()
     if(_ultrartc_engine)
         if(UC_RTC_OPUS_FOUND)

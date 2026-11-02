@@ -51,6 +51,8 @@
 //     (UltraCanvasWindowsTrayHost.cpp).
 //   - The end of the session: ExitWindowsEx; the lock: LockWorkStation.
 //   - The loudspeaker: the default render endpoint's IAudioEndpointVolume.
+// Version: 1.6.0 - CaptureScreenArea: one rectangle of the virtual screen (a BitBlt of
+//                  that much); DesktopScreenImage::x / y carry the virtual screen's origin
 // Version: 1.5.0 - LockSession; the loudspeaker's volume (ReadAudioOutput,
 //                  SetAudioOutputVolume, SetAudioOutputMuted)
 // Version: 1.4.0 - no desktop switch from an MSIX package: its registry
@@ -1246,6 +1248,7 @@ std::vector<DesktopWindowInfo> ListWindows() {
         info.title = WindowTitle(hwnd);
         info.skipTaskbar = IsShellWindow(hwnd, className) || !BelongsInTaskbar(hwnd, exStyle);
         info.minimized = IsIconic(hwnd) != FALSE;
+        info.maximized = !info.minimized && IsZoomed(hwnd) != FALSE;
         info.active = hwnd == foreground;
 
         DWORD pid = 0;
@@ -1311,6 +1314,87 @@ bool CloseWindow(uint64_t id) {
     return PostMessageW(hwnd, WM_SYSCOMMAND, SC_CLOSE, 0) != FALSE;
 }
 
+bool GetWindowBounds(uint64_t id, int& x, int& y, int& width, int& height) {
+    const HWND hwnd = ToHwnd(id);
+    if (id == 0 || !IsWindow(hwnd)) return false;
+    RECT rect = {};
+    if (IsIconic(hwnd)) {
+        // Where it will be when restored: the placement, in workspace
+        // coordinates - shifted by the work area's offset on its monitor.
+        WINDOWPLACEMENT placement = {};
+        placement.length = sizeof(placement);
+        if (!GetWindowPlacement(hwnd, &placement)) return false;
+        rect = placement.rcNormalPosition;
+        MONITORINFO info = {};
+        info.cbSize = sizeof(info);
+        if (GetMonitorInfoW(MonitorFromRect(&rect, MONITOR_DEFAULTTONEAREST), &info)) {
+            OffsetRect(&rect, info.rcWork.left - info.rcMonitor.left, info.rcWork.top - info.rcMonitor.top);
+        }
+    } else if (!GetWindowRect(hwnd, &rect)) {
+        return false;
+    }
+    x = rect.left;
+    y = rect.top;
+    width = rect.right - rect.left;
+    height = rect.bottom - rect.top;
+    return true;
+}
+
+bool MoveWindowTo(uint64_t id, int x, int y) {
+    const HWND hwnd = ToHwnd(id);
+    if (id == 0 || !IsWindow(hwnd)) return false;
+    // A maximized window is maximized on its monitor already; a minimized
+    // one is moved where it will be restored.
+    if (IsZoomed(hwnd)) return true;
+    if (IsIconic(hwnd)) {
+        WINDOWPLACEMENT placement = {};
+        placement.length = sizeof(placement);
+        if (!GetWindowPlacement(hwnd, &placement)) return false;
+        const int w = placement.rcNormalPosition.right - placement.rcNormalPosition.left;
+        const int h = placement.rcNormalPosition.bottom - placement.rcNormalPosition.top;
+        RECT target = {x, y, x + w, y + h};
+        MONITORINFO info = {};
+        info.cbSize = sizeof(info);
+        if (GetMonitorInfoW(MonitorFromRect(&target, MONITOR_DEFAULTTONEAREST), &info)) {
+            OffsetRect(&target, info.rcMonitor.left - info.rcWork.left, info.rcMonitor.top - info.rcWork.top);
+        }
+        placement.rcNormalPosition = target;
+        return SetWindowPlacement(hwnd, &placement) != FALSE;
+    }
+    // Asynchronous, as the rest: a hung program cannot hang the desktop.
+    return SetWindowPos(hwnd, nullptr, x, y, 0, 0,
+                        SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_ASYNCWINDOWPOS) != FALSE;
+}
+
+bool KillProcess(int processId, std::string& error) {
+    if (processId <= 4) {
+        error = processId <= 0 ? "The window does not say which program it belongs to."
+                               : "That is a part of Windows itself.";
+        return false;
+    }
+    if (static_cast<DWORD>(processId) == GetCurrentProcessId()) {
+        error = "That is the desktop itself.";
+        return false;
+    }
+    HANDLE process = OpenProcess(PROCESS_TERMINATE, FALSE, static_cast<DWORD>(processId));
+    if (!process) {
+        const DWORD code = GetLastError();
+        error = code == ERROR_ACCESS_DENIED
+                    ? "The program runs as administrator (or as another user); the desktop may not end it."
+                    : code == ERROR_INVALID_PARAMETER ? "The program has already ended."
+                                                      : "The program could not be ended (error " + std::to_string(code) + ").";
+        return false;
+    }
+    const BOOL ended = ::TerminateProcess(process, 1);
+    const DWORD code = ended ? 0 : GetLastError();
+    CloseHandle(process);
+    if (!ended) {
+        error = "The program could not be ended (error " + std::to_string(code) + ").";
+        return false;
+    }
+    return true;
+}
+
 // ===== VIRTUAL DESKTOPS =====
 
 int GetVirtualDesktopCount() {
@@ -1370,15 +1454,20 @@ bool GetScreenSize(int& width, int& height) {
 
 namespace {
     BOOL CALLBACK CollectMonitor(HMONITOR monitor, HDC, LPRECT, LPARAM param) {
-        MONITORINFO info = {};
+        MONITORINFOEXW info = {};
         info.cbSize = sizeof(info);
-        if (!GetMonitorInfoW(monitor, &info)) return TRUE;
+        if (!GetMonitorInfoW(monitor, reinterpret_cast<MONITORINFO*>(&info))) return TRUE;
         DesktopScreenInfo screen;
         screen.x = info.rcMonitor.left;
         screen.y = info.rcMonitor.top;
         screen.width = info.rcMonitor.right - info.rcMonitor.left;
         screen.height = info.rcMonitor.bottom - info.rcMonitor.top;
         screen.primary = (info.dwFlags & MONITORINFOF_PRIMARY) != 0;
+        // "\\.\DISPLAY2" -> 2: the number Windows' display settings show.
+        const std::wstring device = info.szDevice;
+        size_t digits = device.size();
+        while (digits > 0 && iswdigit(device[digits - 1])) --digits;
+        if (digits < device.size()) screen.number = std::stoi(device.substr(digits));
         reinterpret_cast<std::vector<DesktopScreenInfo>*>(param)->push_back(screen);
         return TRUE;
     }
@@ -1437,16 +1526,33 @@ bool ReserveScreenEdges(uint64_t id, int left, int right, int top, int bottom) {
     return all;
 }
 
-bool CaptureScreenImage(DesktopScreenImage& out, std::string& error) {
+// `area` nullptr: the whole virtual screen, every monitor, as X11's root
+// window is; else that rectangle of it (screen coordinates, as ListScreens
+// gives them), clipped to the virtual screen.
+bool CaptureScreenPixels(DesktopScreenImage& out, std::string& error, const int* area) {
     out = DesktopScreenImage();
-    // The whole virtual screen, every monitor, as X11's root window is.
-    const int left = GetSystemMetrics(SM_XVIRTUALSCREEN);
-    const int top = GetSystemMetrics(SM_YVIRTUALSCREEN);
-    const int width = GetSystemMetrics(SM_CXVIRTUALSCREEN);
-    const int height = GetSystemMetrics(SM_CYVIRTUALSCREEN);
-    if (width <= 0 || height <= 0) {
+    const int screenLeft = GetSystemMetrics(SM_XVIRTUALSCREEN);
+    const int screenTop = GetSystemMetrics(SM_YVIRTUALSCREEN);
+    const int screenWidth = GetSystemMetrics(SM_CXVIRTUALSCREEN);
+    const int screenHeight = GetSystemMetrics(SM_CYVIRTUALSCREEN);
+    if (screenWidth <= 0 || screenHeight <= 0) {
         error = "Windows reports an empty screen.";
         return false;
+    }
+    int left = screenLeft, top = screenTop, width = screenWidth, height = screenHeight;
+    if (area) {
+        const int l = std::max(screenLeft, area[0]);
+        const int t = std::max(screenTop, area[1]);
+        const int r = std::min(screenLeft + screenWidth, area[0] + area[2]);
+        const int b = std::min(screenTop + screenHeight, area[1] + area[3]);
+        if (r <= l || b <= t) {
+            error = "The area to capture lies off the screen.";
+            return false;
+        }
+        left = l;
+        top = t;
+        width = r - l;
+        height = b - t;
     }
     HDC screen = GetDC(nullptr);
     if (!screen) {
@@ -1480,6 +1586,8 @@ bool CaptureScreenImage(DesktopScreenImage& out, std::string& error) {
             try {
                 out.pixels.assign(static_cast<const uint8_t*>(bits),
                                   static_cast<const uint8_t*>(bits) + static_cast<size_t>(stride) * height);
+                out.x = left;
+                out.y = top;
                 out.width = width;
                 out.height = height;
                 out.stride = stride;
@@ -1496,6 +1604,15 @@ bool CaptureScreenImage(DesktopScreenImage& out, std::string& error) {
     if (dib) DeleteObject(dib);
     ReleaseDC(nullptr, screen);
     return ok;
+}
+
+bool CaptureScreenImage(DesktopScreenImage& out, std::string& error) {
+    return CaptureScreenPixels(out, error, nullptr);
+}
+
+bool CaptureScreenArea(int x, int y, int width, int height, DesktopScreenImage& out, std::string& error) {
+    const int area[4] = {x, y, width, height};
+    return CaptureScreenPixels(out, error, area);
 }
 
 bool CaptureScreen(const std::string& pngPath, std::string& error) {

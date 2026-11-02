@@ -1,5 +1,8 @@
 // include/UltraCanvasToolbar.cpp
 // Implementation of comprehensive toolbar component
+// Version: 1.10.0 - AddWidget, RefreshCommandStates
+// Version: 1.9.0 - groupSpacing sets a separator's margins; ToolbarOverflowMode::Menu
+//                  (Arrange takes what does not fit off the end, behind a chevron button)
 // Version: 1.8.1 - a label is as wide as its text; a dropdown button shows its
 //                  initial text (it opened empty)
 // Version: 1.8.0 - ToolbarAppearance::FromTheme
@@ -10,12 +13,15 @@
 //                  coordinates, with the mouse captured, and stays where it
 //                  is dropped (its CSS position moves, not just its bounds)
 // Version: 1.6.0
-// Last Modified: 2026-10-12
+// Last Modified: 2026-10-30
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasToolbar.h"
 #include "UltraCanvasApplication.h"
+#include "UltraCanvasMenuRegistry.h"
 #include "UltraCanvasWindow.h"
+#include "UltraCanvasConfig.h"
+#include "UltraCanvasUtils.h"
 #include <algorithm>
 #include <cmath>
 #include <sstream>
@@ -100,6 +106,10 @@ namespace UltraCanvas {
         if (toolbarOrientation != orient) {
             toolbarOrientation = orient;
             CreateLayout(); // Recreate layout with new orientation
+            // The separators' margins run along the bar, and the chevron
+            // points the way the overflow menu opens.
+            ApplyAppearanceToChildren();
+            UpdateOverflowButton();
             InvalidateLayout();
         }
     }
@@ -134,6 +144,15 @@ namespace UltraCanvas {
 
     void UltraCanvasToolbar::SetOverflowMode(ToolbarOverflowMode mode) {
         overflowMode = mode;
+        if (mode == ToolbarOverflowMode::Menu) {
+            CreateOverflowMenu();
+        } else if (overflowButton) {
+            // Every item back on the bar, and no chevron.
+            RestoreOverflowItems();
+            if (overflowMenu) overflowMenu->CloseMenu();
+            RemoveChild(overflowButton);
+            overflowButton.reset();
+        }
         for (auto& c : Children()) {
             ApplyOverflowToChild(std::static_pointer_cast<UltraCanvasUIElement>(c));
         }
@@ -154,8 +173,9 @@ namespace UltraCanvas {
         // A flex item shrinks to fit by default, which is right for every mode
         // but one: a scrolling toolbar keeps its items at their size and lets
         // the ones past the edge scroll into view instead of squeezing all of
-        // them into the box.
-        if (overflowMode == ToolbarOverflowMode::Scroll) {
+        // them into the box. One with an overflow menu keeps them at their
+        // size as well, and moves the ones that do not fit into the menu.
+        if (overflowMode == ToolbarOverflowMode::Scroll || overflowMode == ToolbarOverflowMode::Menu) {
             child->layoutItem.SetFlexShrink(0.0f);
         }
     }
@@ -178,6 +198,7 @@ namespace UltraCanvas {
         }
         AddChild(w);
         ApplyOverflowToChild(w);
+        KeepOverflowButtonLast();
         if (!id.empty() && onItemAdded) {
             onItemAdded(id);
         }
@@ -227,12 +248,20 @@ namespace UltraCanvas {
         widgetMap.clear();
         badgeMap.clear();
         badgeSet.clear();
+        overflowItems.clear();
+        overflowBadges.clear();
+        if (overflowMenu) overflowMenu->CloseMenu();
+        overflowButton.reset();
         ClearChildren();
+        // The chevron is not an item, and stays for the items to come.
+        if (overflowMode == ToolbarOverflowMode::Menu) CreateOverflowMenu();
         InvalidateLayout();
     }
 
     bool UltraCanvasToolbar::IsItem(const CSSLayout::Element* child) const {
-        return child && badgeSet.count(static_cast<const UltraCanvasUIElement*>(child)) == 0;
+        if (!child) return false;
+        if (overflowButton && child == static_cast<const CSSLayout::Element*>(overflowButton.get())) return false;
+        return badgeSet.count(static_cast<const UltraCanvasUIElement*>(child)) == 0;
     }
 
     int UltraCanvasToolbar::GetItemCount() const {
@@ -479,6 +508,7 @@ namespace UltraCanvas {
         bool vertical = (toolbarOrientation == ToolbarOrientation::Horizontal);
         auto sep = std::make_shared<UltraCanvasSeparator>(
                 vertical, 1, 24, toolbarAppearance.separatorColor);
+        ApplySeparatorSpacing(sep);
         RegisterWidget(id, sep);
         return sep;
     }
@@ -525,6 +555,51 @@ namespace UltraCanvas {
         return autoComplete;
     }
 
+    std::shared_ptr<UltraCanvasUIElement> UltraCanvasToolbar::AddWidget(
+            const std::string& id, std::shared_ptr<UltraCanvasUIElement> widget) {
+        return RegisterWidget(id, std::move(widget));
+    }
+
+// ===== COMMANDS =====
+
+    void UltraCanvasToolbar::RefreshCommandStates() {
+        if (!commandRegistry) return;
+        for (const auto& entry : widgetMap) {
+            const std::string& id = entry.first;
+            const auto& widget = entry.second;
+            if (auto group = std::dynamic_pointer_cast<UltraCanvasToolGroupButton>(widget)) {
+                // A folded group: its tools are the commands.
+                bool anyEnabled = false, anyCommand = false;
+                for (const auto& tool : group->GetItems()) {
+                    const MenuCommand* cmd = commandRegistry->Find(tool.id);
+                    if (!cmd) continue;
+                    anyCommand = true;
+                    if (cmd->IsEnabledNow()) anyEnabled = true;
+                }
+                if (anyCommand && group->IsDisabled() == anyEnabled) group->SetDisabled(!anyEnabled);
+                continue;
+            }
+            const MenuCommand* cmd = commandRegistry->Find(id);
+            if (!cmd) continue;
+            const bool enabled = cmd->IsEnabledNow();
+            if (widget->IsDisabled() == enabled) widget->SetDisabled(!enabled);
+            if (auto button = std::dynamic_pointer_cast<UltraCanvasButton>(widget)) {
+                const std::string tip = cmd->TooltipText();
+                if (button->GetTooltip() != tip) button->SetTooltip(tip);
+                if (button->CanToggle() && cmd->isChecked) {
+                    const bool checked = cmd->isChecked();
+                    if (button->IsPressed() != checked) button->SetPressed(checked);
+                }
+                // A button that shows its label shows the current one.
+                if (toolbarAppearance.showIconLabels && cmd->dynamicLabel) {
+                    const std::string label = cmd->dynamicLabel();
+                    if (button->GetText() != label) button->SetText(label);
+                }
+            }
+        }
+        RequestRedraw();
+    }
+
 // ===== APPEARANCE =====
 
     void UltraCanvasToolbar::ApplyButtonAppearance(const std::shared_ptr<UltraCanvasButton>& button) {
@@ -565,14 +640,263 @@ namespace UltraCanvas {
                 ApplyButtonAppearance(button);
             } else if (auto sep = std::dynamic_pointer_cast<UltraCanvasSeparator>(w)) {
                 sep->SetColor(toolbarAppearance.separatorColor);
+                ApplySeparatorSpacing(sep);
             }
+        }
+    }
+
+    void UltraCanvasToolbar::ApplySeparatorSpacing(const std::shared_ptr<UltraCanvasSeparator>& separator) {
+        if (!separator) return;
+        // The flex gap already puts itemSpacing on either side of the line;
+        // the margins make up the rest of groupSpacing, split evenly. Never
+        // less than the gaps: a groupSpacing under 2 x itemSpacing leaves the
+        // separator as it was, so a bar that tightened its items but never
+        // set groupSpacing does not change.
+        const float extra = std::max(0.0f,
+                (toolbarAppearance.groupSpacing - 2.0f * toolbarAppearance.itemSpacing) / 2.0f);
+        if (toolbarOrientation == ToolbarOrientation::Horizontal) {
+            separator->SetMargin(0, extra, 0, extra);
+        } else {
+            separator->SetMargin(extra, 0, extra, 0);
         }
     }
 
 // ===== LAYOUT =====
 
     void UltraCanvasToolbar::HandleOverflow() {
-        // TODO: Implement overflow handling based on overflowMode
+        // What fits is worked out where the bar is laid out (Arrange).
+        InvalidateLayout();
+    }
+
+    void UltraCanvasToolbar::Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) {
+        if (overflowMode == ToolbarOverflowMode::Menu && overflowButton) {
+            ArrangeWithOverflowMenu(finalRect, ctx);
+            return;
+        }
+        UltraCanvasContainer::Arrange(finalRect, ctx);
+    }
+
+    void UltraCanvasToolbar::ArrangeWithOverflowMenu(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) {
+        // Up to three passes, as the container makes a second one for its
+        // scrollbar: the items alone, to see whether they fit; with the
+        // chevron, to know its size; and without the items that do not fit
+        // before it. Display is switched on the layout directly - SetVisible
+        // would ask for a new layout from inside this one, every time - so the
+        // flex lines this bar keeps for its size are dropped before each pass,
+        // or the pass would place the items that were shown before.
+        const auto layOut = [this, &finalRect, &ctx]() {
+            if (layoutComputed) layoutComputed->valid = false;
+            UltraCanvasContainer::Arrange(finalRect, ctx);
+        };
+        RestoreOverflowItems();
+        KeepOverflowButtonLast();
+        overflowButton->layout.Hide();
+        layOut();
+
+        const bool vertical = (toolbarOrientation == ToolbarOrientation::Vertical);
+        const Rect2Df content = GetLocalContentRect();
+        const float end = vertical ? content.y + content.height : content.x + content.width;
+        const auto farEdge = [vertical](const UltraCanvasUIElement* e) {
+            const Rect2Df b = e->GetBounds();
+            return vertical ? b.y + b.height : b.x + b.width;
+        };
+        // Only what is shown: an item the program hid is none of this.
+        std::vector<UltraCanvasUIElement*> shown;
+        for (auto& c : Children()) {
+            if (!IsItem(c.get())) continue;
+            auto* e = static_cast<UltraCanvasUIElement*>(c.get());
+            if (e->IsVisible()) shown.push_back(e);
+        }
+        if (shown.empty() || farEdge(shown.back()) <= end + 0.5f) return;
+
+        overflowButton->layout.Show();
+        layOut();
+        const Rect2Df chevron = overflowButton->GetBounds();
+        const float limit = end - (vertical ? chevron.height : chevron.width) - toolbarAppearance.itemSpacing;
+
+        size_t cut = shown.size();
+        for (size_t i = 0; i < shown.size(); ++i) {
+            if (farEdge(shown[i]) > limit + 0.5f) { cut = i; break; }
+        }
+        // A separator or spacer left at the end of the bar divides nothing.
+        while (cut > 0 && (dynamic_cast<UltraCanvasSeparator*>(shown[cut - 1]) ||
+                           dynamic_cast<UltraCanvasSpacer*>(shown[cut - 1]))) {
+            --cut;
+        }
+        for (size_t i = cut; i < shown.size(); ++i) {
+            shown[i]->layout.Hide();
+            overflowItems.push_back(shown[i]);
+        }
+        // A badge follows its item off the bar (it would stay where the item was).
+        for (auto& entry : badgeMap) {
+            auto item = widgetMap.find(entry.first);
+            if (item == widgetMap.end() || !entry.second->IsVisible()) continue;
+            if (std::find(overflowItems.begin(), overflowItems.end(), item->second.get()) == overflowItems.end()) continue;
+            entry.second->layout.Hide();
+            overflowBadges.push_back(entry.second.get());
+        }
+        layOut();
+    }
+
+    void UltraCanvasToolbar::RestoreOverflowItems() {
+        // Only what this bar took off: an item the program hid stays hidden.
+        for (auto* item : overflowItems) item->layout.Show();
+        for (auto* badge : overflowBadges) badge->layout.Show();
+        overflowItems.clear();
+        overflowBadges.clear();
+    }
+
+    void UltraCanvasToolbar::KeepOverflowButtonLast() {
+        if (!overflowButton) return;
+        const auto& children = Children();
+        // The chevron among the items that flow; the badges after it are
+        // anchored, not in the flow, so it is enough to follow every item.
+        bool itemAfter = false, seen = false;
+        for (auto& c : children) {
+            if (c.get() == static_cast<CSSLayout::Element*>(overflowButton.get())) { seen = true; continue; }
+            if (seen && IsItem(c.get())) { itemAfter = true; break; }
+        }
+        if (!seen || !itemAfter) return;
+        const CSSLayout::Element* chevron = overflowButton.get();
+        SortChildren([chevron](const std::shared_ptr<CSSLayout::Element>& a,
+                               const std::shared_ptr<CSSLayout::Element>& b) {
+            return a.get() != chevron && b.get() == chevron;
+        });
+    }
+
+    std::vector<std::string> UltraCanvasToolbar::GetOverflowItemIds() const {
+        std::vector<std::string> ids;
+        for (auto* item : overflowItems) {
+            std::string id;
+            for (const auto& entry : widgetMap) {
+                if (entry.second.get() == item) { id = entry.first; break; }
+            }
+            ids.push_back(id);
+        }
+        return ids;
+    }
+
+    bool UltraCanvasToolbar::IsItemInOverflowMenu(const std::string& identifier) const {
+        auto it = widgetMap.find(identifier);
+        if (it == widgetMap.end()) return false;
+        return std::find(overflowItems.begin(), overflowItems.end(), it->second.get()) != overflowItems.end();
+    }
+
+    namespace {
+        // A toolbar button's tooltip as a menu entry: "Undo Move (Ctrl+Z)" is
+        // the label "Undo Move" and the shortcut "Ctrl+Z".
+        void SplitTooltip(const std::string& tooltip, std::string& label, std::string& shortcut) {
+            label = tooltip;
+            shortcut.clear();
+            const size_t open = tooltip.rfind(" (");
+            if (open == std::string::npos || tooltip.empty() || tooltip.back() != ')') return;
+            label = tooltip.substr(0, open);
+            shortcut = tooltip.substr(open + 2, tooltip.size() - open - 3);
+        }
+
+        // What a menu entry calls an item: its text, else its tooltip, else its id.
+        std::string EntryName(const std::string& text, const std::string& tooltip, const std::string& id) {
+            if (!text.empty()) return text;
+            if (!tooltip.empty()) return tooltip;
+            return id;
+        }
+    }
+
+    std::vector<MenuItemData> UltraCanvasToolbar::GetOverflowMenuItems() {
+        std::vector<MenuItemData> entries;
+        const auto addSeparator = [&entries]() {
+            // Never first, never two in a row; a trailing one is dropped below.
+            if (!entries.empty() && entries.back().type != MenuItemType::Separator) {
+                entries.push_back(MenuItemData::Separator());
+            }
+        };
+        for (auto* item : overflowItems) {
+            // Weak references: the entries may outlive an item the program
+            // removes while the menu is open.
+            std::weak_ptr<UltraCanvasUIElement> weak =
+                    std::static_pointer_cast<UltraCanvasUIElement>(item->shared_from_this());
+            if (dynamic_cast<UltraCanvasSeparator*>(item)) {
+                addSeparator();
+            } else if (auto* group = dynamic_cast<UltraCanvasToolGroupButton*>(item)) {
+                std::vector<MenuItemData> tools;
+                const std::string current = group->GetCurrentItem();
+                for (const auto& tool : group->GetItems()) {
+                    std::string label, shortcut;
+                    SplitTooltip(tool.tooltip.empty() ? tool.id : tool.tooltip, label, shortcut);
+                    const std::string toolId = tool.id;
+                    MenuItemData entry = MenuItemData::ActionWithShortcut(label, shortcut, tool.iconPath, [weak, toolId]() {
+                        if (auto g = std::dynamic_pointer_cast<UltraCanvasToolGroupButton>(weak.lock())) g->SelectItem(toolId);
+                    });
+                    entry.checked = group->IsPressed() && tool.id == current;
+                    entry.enabled = !group->IsDisabled();
+                    tools.push_back(std::move(entry));
+                }
+                std::string label, shortcut;
+                SplitTooltip(EntryName("", group->GetTooltip(), group->GetIdentifier()), label, shortcut);
+                MenuItemData sub = MenuItemData::Submenu(label, tools);
+                sub.iconImage = group->GetIconImage();
+                entries.push_back(std::move(sub));
+            } else if (auto* button = dynamic_cast<UltraCanvasButton*>(item)) {
+                std::string label, shortcut;
+                SplitTooltip(EntryName(button->GetText(), button->GetTooltip(), button->GetIdentifier()), label, shortcut);
+                MenuItemData entry;
+                if (button->CanToggle()) {
+                    entry = MenuItemData::Checkbox(label, button->IsPressed(), [weak](bool on) {
+                        auto b = std::dynamic_pointer_cast<UltraCanvasButton>(weak.lock());
+                        if (!b) return;
+                        b->SetPressed(on);
+                        if (b->onToggle) b->onToggle(on);
+                    });
+                    entry.shortcut = shortcut;
+                } else {
+                    entry = MenuItemData::ActionWithShortcut(label, shortcut, [weak]() {
+                        auto b = std::dynamic_pointer_cast<UltraCanvasButton>(weak.lock());
+                        if (b && b->onClick) b->onClick();
+                    });
+                }
+                entry.iconImage = button->GetIconImage();
+                entry.enabled = !button->IsDisabled();
+                entries.push_back(std::move(entry));
+            } else if (auto* dropdown = dynamic_cast<UltraCanvasDropdown*>(item)) {
+                std::vector<MenuItemData> choices;
+                const auto& options = dropdown->GetItems();
+                for (size_t i = 0; i < options.size(); ++i) {
+                    const int index = static_cast<int>(i);
+                    choices.push_back(MenuItemData::Radio(options[i].text, 1, index == dropdown->GetSelectedIndex(), [weak, index]() {
+                        if (auto d = std::dynamic_pointer_cast<UltraCanvasDropdown>(weak.lock())) d->SetSelectedIndex(index);
+                    }));
+                }
+                const int selected = dropdown->GetSelectedIndex();
+                const std::string shownText = (selected >= 0 && selected < static_cast<int>(options.size()))
+                        ? options[selected].text : std::string();
+                MenuItemData sub = MenuItemData::Submenu(
+                        EntryName(dropdown->GetTooltip(), shownText, dropdown->GetIdentifier()), choices);
+                sub.enabled = !dropdown->IsDisabled();
+                entries.push_back(std::move(sub));
+            }
+            // A spacer, a label, a slider, a text field: nothing a menu entry
+            // can stand in for.
+        }
+        while (!entries.empty() && entries.back().type == MenuItemType::Separator) entries.pop_back();
+        return entries;
+    }
+
+    void UltraCanvasToolbar::OpenOverflowMenu() {
+        if (!overflowButton || overflowItems.empty()) return;
+        auto* win = GetWindow();
+        if (!win) return;
+        if (overflowMenu) overflowMenu->CloseMenu();
+        overflowMenu = std::make_shared<UltraCanvasMenu>(GetIdentifier() + ".overflow-menu", 0, 0, 220, 0);
+        overflowMenu->SetMenuType(MenuType::PopupMenu);
+        for (auto& entry : GetOverflowMenuItems()) overflowMenu->AddItem(entry);
+        PopupElementSettings settings;
+        settings.popupOwner = weak_from_this();
+        const Rect2Df b = overflowButton->GetBoundsInWindow();
+        const Rect2Di anchor(static_cast<int>(b.x), static_cast<int>(b.y),
+                             static_cast<int>(b.width), static_cast<int>(b.height));
+        // Under the chevron, its right edge on the button's: the button sits
+        // at the end of the bar, so the menu opens inward, not past the window.
+        overflowMenu->OpenMenuAnchored(anchor, *win, settings, 1, MenuAnchorAlign::Right);
     }
 
 // ===== RENDERING =====
@@ -954,11 +1278,28 @@ namespace UltraCanvas {
 // ===== INTERNAL HELPERS =====
 
     void UltraCanvasToolbar::CreateOverflowMenu() {
-        // TODO: Implement overflow menu creation
+        // The chevron at the end of the bar; the menu itself is made each
+        // time it opens, from the items in it then (OpenOverflowMenu).
+        if (overflowButton) return;
+        overflowButton = std::make_shared<UltraCanvasButton>(GetIdentifier() + ".overflow", 0, 0, 0, 32, "");
+        overflowButton->SetTooltip("More");
+        overflowButton->onClick = [this]() { OpenOverflowMenu(); };
+        overflowButton->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        // Shown by Arrange only while something does not fit.
+        overflowButton->layout.Hide();
+        AddChild(overflowButton);
+        UpdateOverflowButton();
+        InvalidateLayout();
     }
 
     void UltraCanvasToolbar::UpdateOverflowButton() {
-        // TODO: Implement overflow button update
+        if (!overflowButton) return;
+        // Down in a horizontal bar, whose menu opens below; right in a
+        // vertical one, beside it.
+        const bool vertical = (toolbarOrientation == ToolbarOrientation::Vertical);
+        overflowButton->SetIcon(NormalizePath(GetResourcesDir() + "media/icons/menu/" +
+                                              (vertical ? "chevron-right.svg" : "chevron-down.svg")));
+        ApplyButtonAppearance(overflowButton);
     }
 
     void UltraCanvasToolbar::CalculateMagnification() {

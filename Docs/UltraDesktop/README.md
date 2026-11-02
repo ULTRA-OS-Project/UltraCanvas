@@ -50,10 +50,13 @@ system.
 
 On the left by default; the settings move it to the top or bottom edge, and
 `--edge top` does so for one run. Three groups, joined by the S-curve wave
-separators:
+separators. The two waves mirror each other, so the dark band of running
+applications narrows the same way at both ends, and each wave starts 4 px
+from the icon next to it - as the right bar's wave does below the
+organiser.
 
-1. **System** — *ULTRA OS settings* and the *app starter*. *ULTRA OS
-   settings* starts **UOS-Settings**, the system's settings application
+1. **System** — *ULTRA OS settings*, shown as the ULTRA OS logo, and the
+   *app starter*. *ULTRA OS settings* starts **UOS-Settings**, the system's settings application
    (`Docs/UOSSettings/README.md`), which opens on its *Desktop* page.
 2. **Running applications** — one button per open window on the current
    desktop, with the application's own icon (resolved from its desktop
@@ -110,9 +113,15 @@ the right-hand monitor the primary.
   as the window manager has (read at start-up and followed when it changes),
   the settings' count only where there is no window manager to ask; choosing
   a count in the settings asks the window manager for that many — the
-  *Sticker board* (the pinboard) and the *notes* toggles, the *clipboard* and *screenshot* (the whole screen to
-  `~/Pictures/Screenshots/Screenshot <date> <time>.png`; the button shows a
-  green dot for three seconds and its tooltip names the file).
+  *Sticker board* (the pinboard) and the *notes* toggles, the *clipboard* and *screenshot*. A click
+  on the screenshot button opens [UltraSnip](../UltraSnip/README.md) to snip
+  an area; its right-click menu offers a window, the whole screen, a video
+  recording of each, *Screenshot now, to Pictures* (the whole screen to
+  `~/Pictures/Screenshots/Screenshot <date> <time>.png` without UltraSnip; the
+  button shows a green dot for three seconds and its tooltip names the file)
+  and *Open UltraSnip*; `Super+Shift+S` from any window snips an area. Where
+  UltraSnip is not installed beside the desktop, the click takes the plain
+  screenshot.
 - **Clipboard**: the desktop records every copy into the clipboard history
   ([UltraCanvasClipboardHistory](../UltraCanvas/UltraCanvasClipboardHistory.md)),
   on disk and encrypted, leaving out copies a password manager marks as
@@ -134,7 +143,11 @@ the right-hand monitor the primary.
   copies, as before.
 - **Info panel**, anchored to the bottom: Email, Upload, Download,
   Internet/LAN, VPN, Bluetooth, Wi-Fi, USB, Keyboard, Webcam, Microphone,
-  Loudspeaker, Battery and Task Manager. The markers:
+  Loudspeaker, Battery and Task Manager. On a screen less than 960 pixels
+  high the icons are smaller, and those that still do not fit fold into a
+  chevron menu at the bar's foot, least used first - keyboard, VPN, USB,
+  upload, Task Manager, download, LAN, email - so the webcam's and
+  microphone's in-use dots stay in sight. The markers:
 
   | Marker | Meaning | On |
   |---|---|---|
@@ -144,9 +157,43 @@ the right-hand monitor the primary.
 
   The tooltip of every icon says it in words ("Wi-Fi: HomeNet", "Download:
   1.2 MB/s", "Battery: 84%, charging", "Loudspeaker: 63%, playing"). Clicking
-  opens what the icon is about: Email starts UltraMail, the network icons
-  UltraNetMonitor, USB, keyboard and webcam DeviceExplorer, the loudspeaker
-  its volume panel, the rest the Task Manager.
+  opens what the icon is about: Email starts UltraMail, the traffic, LAN and
+  VPN icons UltraNetMonitor, Wi-Fi and Bluetooth their panels (below), USB,
+  keyboard, webcam, microphone and battery a panel saying what is attached
+  or in use with a button on to Device Explorer or the Task Manager, the
+  loudspeaker its volume panel, and the last icon the Task Manager.
+- **USB**: the USB panel lists the drives plugged in (USB sticks, external
+  disks, memory cards - never the system's own) with their size and where
+  they are mounted, each with *Safely remove*: its volumes are unmounted once
+  everything is written out and the drive is powered off, after which the
+  panel says it can be pulled out - or that a program still has a file open
+  on it. Below them, the other USB devices. The list follows what is
+  plugged in while the panel is open. Through UDisks2 on Linux,
+  Windows' "Safely Remove Hardware", and Finder's Eject on macOS.
+- **Wi-Fi**: the Wi-Fi panel beside the bar - Wi-Fi on a switch, the network
+  joined, and the networks in reach with their signal and security. *Connect*
+  joins a saved or open network at once and asks for the password of a new
+  one (kept only once the network has been joined, so a mistyped password is
+  not saved); *Disconnect* leaves the network, *Forget* deletes its saved
+  password, *Scan* looks again, *Traffic* opens UltraNetMonitor. The list is
+  read again every five seconds while the panel is open. Through
+  NetworkManager on Linux, Windows' Wi-Fi service, and CoreWLAN on macOS,
+  which shows network names only once Location Services allows UltraDesktop
+  (the panel says so until then). On Windows and macOS *System settings*
+  opens the system's own page.
+- **Bluetooth**: the Bluetooth panel - Bluetooth on a switch, *My devices*
+  with *Connect* / *Disconnect* and *Remove* (unpair), the device's kind and,
+  where it reports it, its battery, and *Add device*, which looks for devices
+  in pairing mode for a minute and lists them with *Pair* (pair, trust,
+  connect). Through BlueZ on Linux, the Bluetooth API on Windows, IOBluetooth
+  on macOS. Windows switches Bluetooth on and off only in its own settings,
+  which *System settings* opens, and shows its own prompt when a device wants
+  a code. On Linux and macOS the panel shows the code itself: the six digits
+  to type on a keyboard (then Enter), *Yes, pair* / *No* when a phone shows a
+  number to compare, or a field for a PIN. On Linux UltraDesktop is the
+  system's pairing agent from the start, so when a phone starts pairing
+  with the computer, or a device that is not trusted asks to connect, the
+  panel opens by itself and asks.
 - **Loudspeaker**: the volume panel beside the bar - the output's name, its
   volume on a slider, its mute on a switch - through the sound server
   (PulseAudio or PipeWire on Linux, Core Audio on Windows; the panel says so
@@ -168,14 +215,62 @@ the right-hand monitor the primary.
 ### Windows the desktop opens
 
 - **Applications** (app starter): every installed application from its
-  desktop entry as an icon tile, a filter box above them, one click to
-  start; a right click pins it to the taskbar or unpins it. What the
-  application menu of any other desktop shows, so an application installed
-  by its package appears without being told about ULTRA OS. A tap of the
-  Super key opens it from any window - on Linux, and on Windows as the
-  shell (beside Explorer the key is the Start menu's).
-- **Task Manager**: the open windows with *Activate* and *Close* on the
-  first tab, the machine — CPU load and temperature, memory, storage, the
+  desktop entry, one click to start; a right click pins it to the taskbar
+  or unpins it. What the application menu of any other desktop shows, so an
+  application installed by its package appears without being told about
+  ULTRA OS. A tap of the Super key opens it from any window - on Linux, and
+  on Windows as the shell (beside Explorer the key is the Start menu's).
+  - **Categories.** *Recent* (the last applications started - from this
+    window or a taskbar pin - eight by default), then *Office*, *Internet*,
+    *Graphics*, *Video*, *Audio*, *CAD*, *Games*, *Tools* and *System*;
+    an empty one is left out. The category is the one the application's
+    desktop entry declares (`Categories=Network;WebBrowser` is Internet). A
+    Windows Start-menu shortcut declares none, so its name, its program and
+    its Start-menu folder are matched against well-known applications and
+    words in English and German (Excel, Outlook, *Datenträgerbereinigung*,
+    a shortcut under *Windows Tools*); what matches nothing is in Tools.
+    The names come from a catalogue of about 2,400 well-known Windows,
+    macOS and Linux applications (`UltraDesktopAppCatalogue.cpp`); on macOS
+    a bundle's `LSApplicationCategoryType` is read as its category.
+  - **Folders.** On Windows a Start-menu folder holding five or more
+    applications - a maker's folder such as MAGIX, Lenovo or LAV Filters - is
+    a category of its own, after the others, named after the folder; on
+    macOS so is such a folder under `/Applications` (not `/Applications` or
+    `Utilities` themselves).
+    Windows' own folders (Windows Tools, Accessories, System Tools) are not:
+    their applications are in System.
+  - **Moving an application.** Drag a tile onto another category's heading
+    or tiles, or a row of the list onto a category in the tree; or choose
+    *Move to* on its right-click menu. It stays there (`appMoves` in the
+    desktop's settings); *Back to …* - or dragging it back - returns it to
+    the category its own name gives it.
+  - **Sub-categories.** A category with more than eight applications (UOS-
+    Settings > Desktop > *Sub-categories*) is split into its kinds - Web
+    browsers, Email, Painting, Photos, Text editors; for Games 3D, Retro,
+    Board games, Adventure, Strategy and Simulation - with *Other* last.
+  - **Two views**, switched by the two icons at the window's top left and
+    remembered: *Tiles*, each category a heading over a grid of tiles as on
+    Windows' Start, the name under the icon on as many lines as it needs
+    (four, then "…"; the tooltip has the whole name); and *Categories and a
+    list*, the categories as a tree, their sub-categories under them, beside
+    a list of the chosen one's applications.
+  - **Opens at once.** The window opens first and says it is loading; the
+    applications come after it, read on a thread of their own. The desktop
+    reads them once ahead of time, five seconds after it starts, so the
+    window usually shows them straight away and reads them again behind
+    them.
+- **Task Manager**: the open windows on the first tab, under a header -
+  each with its application's icon, its state as an icon and a word (open,
+  maximized or minimized; blue for the window in front), the display
+  (monitor) it is on as a number in a bordered box - on Windows the number
+  its display settings show, elsewhere 1 for the primary and the others left
+  to right; "?" for a window on no display - and, where there
+  is more than one virtual desktop, its desktop the same way. *Show* brings
+  the window to the front and, when it is off every display, centres it on
+  one; *Close* brings it to the front first, so a program that asks "Save
+  the changes?" asks where it is seen; *Kill task* ends the program at once
+  after asking, for one that does not close. The desktop's own windows (the
+  Task Manager itself, its dialogs, the Sticker board) are not listed - the machine — CPU load and temperature, memory, storage, the
   interfaces — on the framework's hardware panel on the second.
 - **Settings**: the desktop's settings - the taskbar's edge, the wallpaper,
   the RAM disc path, the file manager program, the number of virtual
@@ -183,7 +278,14 @@ the right-hand monitor the primary.
   desktop's settings file; the desktop checks it once a second and rebuilds
   the bars in place when UOS-Settings changed one of them.
 - **Sticker board** (the pinboard button): files and notes sorted into
-  categories on a Kanban board over the wallpaper. It starts with *Docs*,
+  categories on a Kanban board that fills the whole space between the bars.
+  It shows only when the pinboard button is clicked, and then just below the
+  application that was in front - that application stays visible on top of
+  it; *✕* in the board's bar (or the button again) hides it. A file's card
+  shows a small thumbnail as UltraFiler's tiles do: the picture itself for a
+  photo or a drawing, a PDF's first page, a book's cover, a small page of a
+  text document's first lines (Word, LibreOffice, Markdown, a spreadsheet),
+  and the system's icon for anything else (a folder, an archive). It starts with *Docs*,
   *Work* and *Home*. Drop files from the file manager onto a category and
   they are added to it straight away, without a question; a file already on
   the board moves to the category it was dropped on. A double-click opens a
@@ -192,9 +294,7 @@ the right-hand monitor the primary.
   scrolls to it when the board is too wide to show them all, and lets you
   type its name (double-click a category's title to rename it later). The
   picker in the bar switches the display style: *Sticky notes*, *Poster*,
-  *Schematic* or *Dark*. Drag the panel by its title and resize it by the
-  grip in its bottom-right corner; the board, its style, its place and its
-  size are kept.
+  *Schematic* or *Dark*. The board and its style are kept.
 - **Notes** (the note button below it): free sticky notes over the
   wallpaper. *+* in the corner adds one; each note is edited in place,
   dragged by its top bar, cycled through six paper colours and closed with
@@ -272,21 +372,38 @@ earlier versions kept under `~/.config` is moved on the first start):
   "stickers": [ { "id": "note1", "text": "…", "x": 60, "y": 60, "width": 220, "height": 160, "color": "#FFF59D" } ],
   "categoryBoard": { "visible": false, "design": "stickynotes", "x": 320, "y": 60, "width": 780, "height": 460,
                      "board": { "type": "kanban-board", "version": 1, "columns": [ … ], "cards": [ … ] } },
-  "pinnedApps": [ "/usr/bin/gimp", "/usr/bin/kate" ]
+  "pinnedApps": [ "/usr/bin/gimp", "/usr/bin/kate" ],
+  "startWithDesktop": [ "ChatCube", "UltraMail" ]
 }
 ```
 
-An empty wallpaper shows ULTRA OS's own picture, `media/desktop/ULTRA_OS_A.jpg`
-(the framework's `media/images/landscape.jpg` where a package has no
-`media/desktop`). An
+An empty wallpaper shows ULTRA OS's own picture, `media/images/desktop/ULTRA OS A.avif`
+(the framework's `media/images/landscape.jpg` where a package lacks it or
+cannot read AVIF). An
 empty `ramDiscPath` leaves the RAM disc button out; on Windows, which has no
 RAM disc of its own, that is the default.
 `categoryBoard.board` is the Kanban element's own JSON document
 ([UltraCanvasKanbanBoard](../UltraCanvas/UltraCanvasKanbanBoard.md)); without
 it the Sticker board starts with Docs, Work and Home. `design` is one of
-`stickynotes`, `poster`, `schematic`, `dark`. `pinnedApps` are the pinned
+`stickynotes`, `poster`, `schematic`, `dark`. `visible`, `x`, `y`, `width`
+and `height` are kept for older versions and no longer used: the board fills
+the work area and starts hidden. `pinnedApps` are the pinned
 applications' keys in the order they were pinned: the program's path, or on
 Windows the shortcut's path or `store:<AppUserModelID>`.
+`startWithDesktop` names the programs started with the desktop - `ChatCube`
+and `UltraMail` are the ones it offers; empty (the default), none.
+
+## Programs that start with the desktop
+
+ChatCube and UltraMail can start with the desktop, so messages arrive and
+mail is counted on the mail icon without opening them first. Tick them in
+UOS-Settings > Desktop > *Start with the desktop*, or on the settings
+button's right-click menu (*Start with the desktop*). Three seconds after the
+desktop starts - so it shows first - each ticked program that is not
+running yet is started with `--minimized`: its window goes to the taskbar
+and it works in the background. One that is running already is left alone,
+since a second start of these single-copy programs would only bring their
+window forward. Ticking one in the menu starts it at once as well.
 
 ## How the mail count gets there
 

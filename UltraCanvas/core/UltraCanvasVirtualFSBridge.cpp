@@ -1,7 +1,10 @@
 // UltraCanvas/core/UltraCanvasVirtualFSBridge.cpp
 // Implementation of VirtualFS bridge for UltraCanvas
+// Version: 1.2.0 - CreateArchive hands options.archive.method on as the archive's
+//                  compressionMethod (refusing a type no archive can be written in)
+// Version: 1.1.0 - CreateArchive hands options.archive on to VirtualFS
 // Version: 1.0.0
-// Last Modified: 2026-01-10
+// Last Modified: 2026-10-31
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasVirtualFSBridge.h"
@@ -796,6 +799,44 @@ bool UltraCanvasVirtualFSBridge::CreateArchive(
             break;
     }
     
+    const UCVFSArchiveWriteOptions& write = options.archive;
+    if (write.method) {
+        using M = VirtualFS::VirtualFSCompressionMethod;
+        switch (*write.method) {
+            case UCVFSCompressionType::Uncompressed: vfsOptions.compressionMethod = M::Store;   break;
+            case UCVFSCompressionType::Deflate:
+            case UCVFSCompressionType::GZIP:         vfsOptions.compressionMethod = M::Deflate; break;
+            case UCVFSCompressionType::LZMA:         vfsOptions.compressionMethod = M::LZMA;    break;
+            case UCVFSCompressionType::LZMA2:        vfsOptions.compressionMethod = M::LZMA2;   break;
+            case UCVFSCompressionType::BZip2:        vfsOptions.compressionMethod = M::BZip2;   break;
+            case UCVFSCompressionType::XZ:           vfsOptions.compressionMethod = M::XZ;      break;
+            case UCVFSCompressionType::Zstd:         vfsOptions.compressionMethod = M::Zstd;    break;
+            case UCVFSCompressionType::LZ4:          vfsOptions.compressionMethod = M::LZ4;     break;
+            case UCVFSCompressionType::Brotli:       vfsOptions.compressionMethod = M::Brotli;  break;
+            case UCVFSCompressionType::LZX:
+            case UCVFSCompressionType::MSZip:
+            case UCVFSCompressionType::Quantum:
+                // Cabinet codecs: read through libmspack, written by nothing.
+                SetError("No archive can be written with a cabinet (LZX / MS-ZIP / "
+                         "Quantum) method");
+                return false;
+        }
+    }
+    VirtualFS::VirtualFSArchiveWriteOptions& vfsWrite = vfsOptions.archiveWrite;
+    vfsWrite.filterLevel = write.filterLevel;
+    vfsWrite.threads = write.threads;
+    vfsWrite.zstdLongWindowLog = write.zstdLongWindowLog;
+    switch (write.tarFormat) {
+        case UCVFSTarFormat::Pax:   vfsWrite.tarFormat = VirtualFS::VirtualFSTarFormat::Pax;   break;
+        case UCVFSTarFormat::Gnu:   vfsWrite.tarFormat = VirtualFS::VirtualFSTarFormat::Gnu;   break;
+        case UCVFSTarFormat::Ustar: vfsWrite.tarFormat = VirtualFS::VirtualFSTarFormat::Ustar; break;
+    }
+    vfsWrite.keepTimestamps = write.keepTimestamps;
+    vfsWrite.keepPermissions = write.keepPermissions;
+    vfsWrite.keepOwner = write.keepOwner;
+    vfsWrite.storeSymlinks = write.storeSymlinks;
+    vfsWrite.excludePatterns = write.excludePatterns;
+
     VirtualFS::VirtualFSProgressCallback vfsCallback = nullptr;
     if (progressCallback) {
         vfsCallback = [&progressCallback](const VirtualFS::VirtualFSProgress& progress) -> bool {

@@ -7,8 +7,9 @@
 // they were pinned in. Persisted next to the settings
 // (UltraFilerSettings::GetConfigDirectory()) as a tab separated text file,
 // so paths keep their '=' and spaces.
+// Version: 1.2.0 - Reclassify: moves pins that were filed under the wrong kind
 // Version: 1.1.1 - a name outside the Windows code page is no longer forgotten
-// Last Modified: 2026-10-07
+// Last Modified: 2026-10-30
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -21,6 +22,7 @@
 #include <ctime>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -79,6 +81,32 @@ public:
         list.erase(it);
         Save();
         return true;
+    }
+
+    // Moves every `from` pin that `belongsElsewhere` claims into `to`, keeping
+    // its pin time and its order among the moved ones, and saves once. A pin
+    // `to` already holds is dropped from `from` rather than doubled. For a
+    // rule that changed which tab a path belongs to: the pin then has to move
+    // with it, or Unpin - which asks the new rule - can no longer find it.
+    // Returns how many pins left `from`.
+    size_t Reclassify(FilerFavoriteKind from, FilerFavoriteKind to,
+                      const std::function<bool(const std::string&)>& belongsElsewhere) {
+        if (from == to || !belongsElsewhere) return 0;
+        std::vector<FilerFavoriteItem>& source = ListOf(from);
+        std::vector<FilerFavoriteItem>& target = ListOf(to);
+        size_t moved = 0;
+        for (size_t i = 0; i < source.size();) {
+            if (!belongsElsewhere(source[i].path)) {
+                ++i;
+                continue;
+            }
+            if (!Contains(target, source[i].path) && target.size() < kMaxItemsPerKind)
+                target.push_back(source[i]);
+            source.erase(source.begin() + i);
+            ++moved;
+        }
+        if (moved > 0) Save();
+        return moved;
     }
 
     bool IsPinned(FilerFavoriteKind kind, const std::string& path) const {

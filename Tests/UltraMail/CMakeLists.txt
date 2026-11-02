@@ -86,6 +86,25 @@ if(ULTRACANVAS_LIBRARY)
     add_test(NAME UltraMailAccountBar COMMAND UltraMailAccountBarTest)
 endif()
 
+# Import's conversion of message files (.eml, .emlx, Outlook .msg) into the
+# RFC 5322 message it uploads. Headless; linked like the app (the .msg reader
+# is in the core library).
+if(ULTRACANVAS_LIBRARY)
+    add_executable(UltraMailMessageImportTest
+        MessageImportTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../Apps/UltraMail/ui/UltraMailMessageImport.cpp
+    )
+    target_compile_features(UltraMailMessageImportTest PRIVATE cxx_std_20)
+    target_include_directories(UltraMailMessageImportTest PRIVATE
+                               ${ULTRACANVAS_INCLUDE_DIRS}
+                               ${CMAKE_CURRENT_SOURCE_DIR}/../../Apps/UltraMail/ui)
+    target_link_libraries(UltraMailMessageImportTest PRIVATE UltraMailEngine ${ULTRACANVAS_LIBRARY})
+    if(TARGET fmt::fmt)
+        target_link_libraries(UltraMailMessageImportTest PRIVATE fmt::fmt)
+    endif()
+    add_test(NAME UltraMailMessageImport COMMAND UltraMailMessageImportTest)
+endif()
+
 # The folder tree's right-click menu (Add folder, Delete folder) and its
 # content setting (the current account or all): the mail view on an in-memory
 # store in a real window, so it runs under Xvfb and skips itself without a

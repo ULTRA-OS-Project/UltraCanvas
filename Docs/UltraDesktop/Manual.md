@@ -185,14 +185,25 @@ On Windows, while Explorer runs, Win+V belongs to Windows' own clipboard
 history. Use the clipboard button instead. When UltraDesktop runs instead of
 Explorer, Win+V opens UltraDesktop's panel.
 
-### 4.5 Screenshots
+### 4.5 Screenshots and screen recordings
 
-Click the screenshot button (📷). The whole screen is saved to
-`Pictures/Screenshots/Screenshot <date> <time>.png` in your home folder. The
+Click the screenshot button (📷), or press `Super+Shift+S` in any window:
+UltraSnip freezes the screen and you drag out the area you want. The picture
+goes to the clipboard and to `Pictures/Screenshots/Screenshot <date>
+<time>.png` in your home folder, and UltraSnip's window shows it with *Save
+as*, *Copy*, *Open folder* and *Edit in UltraPaint*. See the
+[UltraSnip manual](../UltraSnip/README.md) for the window and whole-screen
+shapes, the delay, and the video recording with its Pause and Stop bar.
+
+Right-click the button for the other shapes - *Snip a window*, *Snip the
+whole screen* - and for *Record an area*, *Record a window* and *Record the
+whole screen* (a video to `Videos/Screen Recordings`). *Screenshot now, to
+Pictures* saves the whole screen at once without opening anything: the
 button shows a green dot for three seconds, and its tooltip names the file.
+That is also what the click does on a desktop without UltraSnip beside it.
 
-From a prompt, `UltraDesktop --screenshot` does the same, and
-`UltraDesktop --screenshot <file>` saves to the file you name.
+From a prompt, `UltraDesktop --screenshot` takes the whole screen the same
+way, and `UltraDesktop --screenshot <file>` saves to the file you name.
 
 ### 4.6 Notes on the wallpaper
 
@@ -453,6 +464,7 @@ at sign-in.
 | Any window | Super+V (Win+V) | opens the clipboard history (on Windows only instead of Explorer) |
 | Any window | Super key (Win key) alone | opens Applications (on Linux; on Windows only instead of Explorer) |
 | Any window, Linux | Super+L | locks the screen (on Windows Win+L is Windows' own) |
+| Any window | Super+Shift+S (Win+Shift+S) | UltraSnip snips an area (on Windows only instead of Explorer; Win+Shift+S is Windows' own beside it) |
 | Clock | click | the clock panel |
 | Loudspeaker icon | click | the volume panel |
 | Pinned program | click / right-click | start it / open, unpin |
@@ -460,6 +472,7 @@ at sign-in.
 | Taskbar window button | click / right-click / drag / wheel | activate or minimise / window menu / reorder / scroll the row |
 | ⚙ button | click / right-click | UOS-Settings / desktop menu (switching, sign out …) |
 | Clipboard button | click / right-click | the panel / pause, open UltraClipboard, clear |
+| Screenshot button | click / right-click | UltraSnip snips an area / a window, the whole screen, a recording, the plain screenshot, open UltraSnip |
 | Clipboard panel | Up, Down, Enter, Delete, F2, Escape | choose, copy, delete, edit, close |
 | Sticker board | drop files / double-click a card / double-click a category title | add / open / rename |
 | A notification | click / × | its default action / dismiss |

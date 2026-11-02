@@ -70,7 +70,20 @@ but the watch is alive and a rescan covers it.
 |---|---|
 | Linux, BSD | `inotify` — one watch on the directory, a thread waiting on the queue and a self-pipe so `Stop()` wakes it immediately |
 | Windows | `ReadDirectoryChangesW` — overlapped, on a directory handle opened with `FILE_SHARE_DELETE` so watching a folder never blocks renaming or deleting it |
-| macOS, Android, WebAssembly | none yet — `Watch()` returns false and the caller polls |
+| macOS | FSEvents — a stream on the folder, delivered on a private serial dispatch queue; events for subfolders are dropped, so it answers for this folder only like the others |
+| Android, WebAssembly | none yet — `Watch()` returns false and the caller polls |
+
+Every backend is already listening when `Watch()` returns — inotify adds its
+watch, Windows issues its first read and FSEvents registers its stream before
+it returns — so a change made right after is reported. That is what lets a
+caller start the watch first and list the folder second without a gap between
+the two.
+
+On macOS the watch ends when FSEvents reports `RootChanged` (the folder was
+deleted, moved away or replaced) or `Unmount` for the volume it is on. Events
+FSEvents could not keep apart — `MustScanSubDirs`, or dropped by the kernel or
+the user-space daemon — count as a change, never as a failure: the stream is
+alive and a rescan covers them.
 
 Platform code lives under `UltraCanvas/OS/<Platform>/`; the core file holds no
 operating system calls at all. A platform is wired up by dropping its backend

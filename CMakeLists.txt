@@ -356,6 +356,7 @@ if(EMSCRIPTEN)
     set(BUILD_ULTRAWEB OFF CACHE BOOL "Build the UltraWeb browser")
     set(BUILD_ULTRADESKTOP OFF CACHE BOOL "Build the UltraDesktop application")
     set(BUILD_ULTRACLIPBOARD OFF CACHE BOOL "Build the UltraClipboard application")
+    set(BUILD_ULTRASNIP OFF CACHE BOOL "Build the UltraSnip application")
     set(BUILD_ULTRAVIDEO OFF CACHE BOOL "Build the UltraVideo application")
     set(BUILD_DEVICEEXPLORER OFF CACHE BOOL "Build the DeviceExplorer application")
     set(BUILD_ULTRAAUTHENTICATOR OFF CACHE BOOL "Build the UltraAuthenticator application")
@@ -438,13 +439,13 @@ if(BUILD_DEMO_APP)
 endif()
 
 # Which platforms ship a native folder-watch backend (UltraCanvasFolderWatcher:
-# inotify / ReadDirectoryChangesW). Decided HERE, above every add_subdirectory,
+# inotify / ReadDirectoryChangesW / FSEvents). Decided HERE, above every add_subdirectory,
 # because the library and Tests/ are sibling scopes and both must agree: the
 # core file compiles a null-returning fallback unless this is set, so a
 # disagreement is either a duplicate symbol or a missing one at link time.
 # Adding a platform means dropping its backend under OS/<Platform>/ and adding
 # it to the condition below.
-if(WIN32 OR (UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN))
+if(WIN32 OR APPLE OR (UNIX AND NOT ANDROID AND NOT EMSCRIPTEN))
     set(ULTRACANVAS_HAS_NATIVE_FOLDER_WATCH ON)
 endif()
 
@@ -455,6 +456,15 @@ endif()
 # and Tests/ must agree about which side defines the backend.
 if(WIN32 OR (UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN))
     set(ULTRACANVAS_HAS_NATIVE_FILE_LOCK ON)
+endif()
+
+# Which platforms can reach phones, cameras and players that are not a drive
+# (UltraCanvasPortableDevices: Windows Portable Devices - MTP / PTP; on macOS
+# Image Capture - an iPhone's photos and a camera's card, read-only). Same
+# reason as above: the core file compiles a null-returning fallback unless this
+# is set. Linux desktops mount such devices themselves (gvfs).
+if(WIN32 OR APPLE)
+    set(ULTRACANVAS_HAS_PORTABLE_DEVICES ON)
 endif()
 
 # Which platforms can hold a single-instance lock (UltraCanvasInstanceLock:
@@ -743,6 +753,16 @@ endif()
 option(BUILD_ULTRACLIPBOARD "Build the UltraClipboard application" ON)
 if(BUILD_ULTRACLIPBOARD)
     add_subdirectory(Apps/UltraClipboard)
+endif()
+
+# ===== ULTRASNIP =====
+# The screenshot and screen-recording tool of ULTRA OS: a rectangle, a window
+# or the whole screen as a picture (clipboard, Pictures/Screenshots) or as a
+# video (Videos/Screen Recordings, through VideoFX's frame recorder).
+# UltraDesktop's screenshot button and Super+Shift+S start it.
+option(BUILD_ULTRASNIP "Build the UltraSnip application" ON)
+if(BUILD_ULTRASNIP)
+    add_subdirectory(Apps/UltraSnip)
 endif()
 
 # ===== ULTRAVIDEO =====
@@ -1259,7 +1279,7 @@ if(BUILD_DEMO_APP)
             ${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvas)
         set(_uc_demo_preload
             media/fonts media/icons media/appicon media/images media/vector
-            media/desktop media/flags media/textsamples media/ebooks media/diagrams
+            media/flags media/textsamples media/ebooks media/diagrams
             media/docs
             media/3D/3DS media/3D/Alembic media/3D/COLLADA media/3D/DWG
             media/3D/DXF media/3D/FBX media/3D/MS3D media/3D/OBJ media/3D/STEP
@@ -1804,6 +1824,7 @@ if (BUILD_ULTRAFILER_APP)
             Apps/UltraFiler/UltraFilerPropertiesDialogs.cpp
             Apps/UltraFiler/UltraFilerShare.cpp
             Apps/UltraFiler/UltraFilerRemoteDrives.cpp
+            Apps/UltraFiler/UltraFilerDeviceProvider.cpp
             Apps/UltraFiler/UltraFilerConnectionLogWindow.cpp
             Apps/UltraFiler/UltraFilerRamDisks.cpp
             Apps/UltraFiler/UltraFilerRamDiskDialog.cpp
@@ -2817,7 +2838,7 @@ if(WIN32 AND CMAKE_BUILD_TYPE STREQUAL "Release")
     foreach(_uc_gui_app
             UltraCanvasDemo Texter UltraFiler UltraViewer UltraPaint ArtCreator
             UCFileManager UltraAIApp EmailCleaner UltraSocial UOSSettings
-            UltraClipboard UltraAuthenticator UltraPassword UltraVideo UltraDBAdmin)
+            UltraClipboard UltraSnip UltraAuthenticator UltraPassword UltraVideo UltraDBAdmin)
         if(TARGET ${_uc_gui_app})
             ultracanvas_windows_gui_app(${_uc_gui_app})
         endif()

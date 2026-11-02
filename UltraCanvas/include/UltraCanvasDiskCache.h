@@ -5,7 +5,8 @@
 // (%LOCALAPPDATA%\UltraCanvas\openwith-icons, see
 // UltraCanvasFileAssociationsBackend.h) and the file thumbnails the Filer
 // shows (…\UltraCanvas\thumbnails, see UltraCanvasThumbnailDiskCache.h).
-// Both share one problem and therefore one answer.
+// Both share one problem and therefore one answer. (A third keeps a folder
+// per entry: the attachments the media viewer opens - SweepFolders.)
 //
 // The problem is that a disk cache is keyed by where its content came from —
 // an executable's path, a picture's path and tile size — and the user is free
@@ -35,8 +36,9 @@
 // Everything here is plain std::filesystem and getenv — no platform API — so
 // it compiles on every platform whether or not that platform has a backend
 // that uses it.
+// Version: 1.1.0 - SweepFolders: caches that keep a folder per entry
 // Version: 1.0.0
-// Last Modified: 2026-09-15
+// Last Modified: 2026-10-30
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -92,6 +94,16 @@ namespace UltraCanvas {
                      std::chrono::seconds maxAge =
                              std::chrono::duration_cast<std::chrono::seconds>(
                                      kDefaultMaxAge));
+
+        // The same for a cache that keeps one folder per entry - a file kept
+        // under its own name, as the media viewer does with an attachment it
+        // opens: delete every subfolder of `directory`, with what it holds,
+        // whose own modification time (when it was made, or a file was last
+        // added) is older than `maxAge`. Files directly in `directory` are
+        // not touched. A folder whose files another program still holds
+        // open (Windows refuses to delete them) stays for the next sweep.
+        // Returns how many folders went.
+        size_t SweepFolders(const std::string& directory, std::chrono::seconds maxAge);
 
         // What a cache directory currently occupies. For a settings page that
         // wants to show it, and for tests.

@@ -1,9 +1,10 @@
 // Plugins/UltraIM/direct/DirectProvider.cpp
 // ChatCube Direct - the ULTRA OS native messenger as an UltraIM provider
+// Version: 0.1.3 - a file that is a picture (an SVG drawing) goes with a preview picture, as a photo does
 // Version: 0.1.2 - pictures, videos and files sent and received in parts; DownloadAttachment
 // Version: 0.1.1 - FetchSharedCredentials: the Telegram application's keys from the relay
 // Version: 0.1.0
-// Last Modified: 2026-10-25
+// Last Modified: 2026-10-31
 // Author: UltraCanvas Framework
 
 #include "DirectProvider.h"
@@ -1046,6 +1047,7 @@ std::string MimeFor(const std::string& path) {
     static const std::pair<const char*, const char*> kTypes[] = {
         {".jpg", "image/jpeg"}, {".jpeg", "image/jpeg"}, {".png", "image/png"},   {".gif", "image/gif"},
         {".webp", "image/webp"}, {".bmp", "image/bmp"},  {".heic", "image/heic"},
+        {".svg", "image/svg+xml"}, {".svgz", "image/svg+xml"},
         {".mp4", "video/mp4"},  {".m4v", "video/mp4"},   {".mov", "video/quicktime"}, {".webm", "video/webm"},
         {".mkv", "video/x-matroska"}, {".avi", "video/x-msvideo"},
         {".mp3", "audio/mpeg"}, {".ogg", "audio/ogg"},   {".opus", "audio/ogg"},   {".wav", "audio/wav"},
@@ -1144,8 +1146,10 @@ UltraIMResult DirectProvider::SendMedia(const std::string& conversationId, const
     message.attachment.fileName = name;
     message.attachment.mimeType = mime;
     message.attachment.fileSizeBytes = static_cast<int64_t>(bytes.size());
+    // A file that is a picture (an SVG drawing goes as a file) gets one too,
+    // so the other side sees the drawing before the file is here.
     std::string previewBase64;
-    if (type == UltraIMMessageType::Image || type == UltraIMMessageType::Video) {
+    if (type == UltraIMMessageType::Image || type == UltraIMMessageType::Video || mime.rfind("image/", 0) == 0) {
         int w = 0, h = 0;
         const std::string preview = UltraIM_MakePreview(localPath, mime, kPreviewSide, w, h);
         std::vector<uint8_t> previewBytes;

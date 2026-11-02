@@ -7,6 +7,11 @@
 // every UltraCanvas application keeps its settings. The history, favorites,
 // folder views, folder icons and the remote drive list live beside it.
 // Settings are applied live by the settings dialog and saved on every change.
+// Version: 1.21.0 - Display > New tab: newTabStart (current folder / Home / Computer)
+//                  replaces newTabOpensHome
+// Version: 1.20.0 - Archives > TAR: tar, how Compress packs a TAR (the
+//                   compressor levels, threads, zstd long mode, header format,
+//                   what each file keeps, links, exclusions)
 // Version: 1.19.0 - Extras > Open location: recentLocations, the locations typed there
 // Version: 1.18.0 - previewAutoBackground (preview.transparent.auto): the viewer's Auto backdrop,
 //                  on unless a colour or the checkerboard was picked
@@ -15,7 +20,7 @@
 //                   passwords Unlock was given
 // Version: 1.16.0 - the shared settings folder, and the move of the old one into it
 // Version: 1.15.0
-// Last Modified: 2026-10-12
+// Last Modified: 2026-10-30
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -37,6 +42,13 @@
 #include <vector>
 
 namespace UltraCanvas {
+
+// Display > New tab: what the "+" at the end of the folder tab strip shows.
+enum class FilerNewTabStart {
+    CurrentFolder, // another view of the folder the active tab is showing
+    Home,          // the Home folder
+    Computer       // the Computer page (drives, Home, Cloud Storage)
+};
 
 // Display > Tab style: the three looks of the window's tab strip.
 enum class FilerTabStripStyle {
@@ -160,6 +172,16 @@ public:
     // which is the display every earlier release had.
     bool showFileExtensions = true;
     FilerExtensionBadge extensionBadge = FilerExtensionBadge::NoneBadge;
+
+    // Display > File names: how many lines a name may take under a thumbnail
+    // tile (and in a treemap cell) - 0 for the full name however many lines
+    // it needs, otherwise 2, 3 or 4, past which the head of the last line
+    // gives way to "…" so the extension stays readable. Two by default, the
+    // caption every earlier release drew. The column views keep one line.
+    static constexpr int kFileNameLinesFull = 0;
+    static constexpr int kMinFileNameLines  = 2;
+    static constexpr int kMaxFileNameLines  = 4;
+    int fileNameMaxLines = 2;
 
     // Display > File icons: whose icons an entry with no picture of its own
     // is drawn with - UltraFiler's own drawn folder shape and coloured sheet,
@@ -301,14 +323,18 @@ public:
     FilerProblemPolicy problemPolicy = FilerProblemPolicy::Ask;
     int progressDelaySeconds = kDefaultProgressDelaySeconds;
 
-    // Handling > Tabs: what the "+" at the end of the folder tab strip opens -
-    // another view of the folder the active tab is showing (the default, and
-    // what every earlier release did: the new tab continues where the work is)
-    // or the Home folder (a clean starting point, the way a browser opens a
-    // new tab on its start page). Everything else that opens a tab - "Open
-    // containing folder" from a search result, a folder opened in a new tab
-    // from the History view - names its own folder and is not affected.
-    bool newTabOpensHome = false;
+    // Display > New tab: what the "+" at the end of the folder tab strip opens
+    // - another view of the folder the active tab is showing (the default, and
+    // what every earlier release did: the new tab continues where the work is),
+    // the Home folder (a clean starting point, the way a browser opens a new
+    // tab on its start page), or the Computer page (the drives, Home and the
+    // cloud folders, with the Home folder behind it in the tab). Everything
+    // else that opens a tab - "Open containing folder" from a search result, a
+    // folder opened in a new tab from the History view - names its own folder
+    // and is not affected. Stored under its old key, handling.tabs.new.tab,
+    // so the choice made on the former Handling > Tabs page carries over; a
+    // build that predates "computer" reads it as the current folder.
+    FilerNewTabStart newTabStart = FilerNewTabStart::CurrentFolder;
 
     // Handling > Opening files: what a double-click (or Enter) on a file does
     // when this system has a program registered for that file type - start
@@ -328,6 +354,13 @@ public:
     bool doubleClickOpensRegisteredApp = false;
 #endif
 
+    // Handling > Opening files: a double-click (or Enter) on a picture, an
+    // audio file or a video starts UltraViewer with it - ahead of the choice
+    // above, because UltraViewer is the family's own viewer for exactly these.
+    // Where UltraViewer cannot be found or started, the choice above applies
+    // as if this were off.
+    bool mediaOpensInUltraViewer = true;
+
     // View > Split view: whether the window shows two folder displays side by
     // side (the navigation row's split-screen toggle), and the folder the
     // right-hand display last showed, so the next start opens the pair the
@@ -335,6 +368,14 @@ public:
     // no remembering of its own here.
     bool splitView = false;
     std::string splitSecondFolder;
+
+    // Archives > TAR: how the file display's Compress packs a .tar and a
+    // .tar.gz / .bz2 / .xz / .zst - each compressor's level, the threads of
+    // xz and Zstandard, Zstandard's long mode, the header format, what is
+    // kept of each file, symbolic links and the entries left out. The
+    // defaults are the compressors' own levels on every core, and each
+    // file's own time and permissions without its owner.
+    FilerTarSettings tar;
 
     // Extras > Open prompt: the command line program the "Open prompt" menu
     // entry starts. Empty means "whatever this OS provides" - the platform
@@ -472,6 +513,8 @@ public:
                     (it->second == "true" || it->second == "1" || it->second == "yes");
         it = kv.find("display.extensions.badge");
         if (it != kv.end()) extensionBadge = ParseExtensionBadge(it->second);
+        it = kv.find("display.file.names.lines");
+        if (it != kv.end()) fileNameMaxLines = ParseFileNameLines(it->second);
         // Not "display.file.icons", the key UltraFiler 1.66.1 and earlier
         // wrote: every save put "simple" there whether or not anyone chose
         // it, so it cannot tell a choice from the old default, and reading
@@ -534,10 +577,44 @@ public:
             ParseInt(it->second, progressDelaySeconds,
                      kMinProgressDelaySeconds, kMaxProgressDelaySeconds);
         it = kv.find("handling.tabs.new.tab");
-        if (it != kv.end()) newTabOpensHome = (it->second == "home");
+        if (it != kv.end()) {
+            const std::string start = Trim(it->second);
+            newTabStart = start == "home"     ? FilerNewTabStart::Home
+                        : start == "computer" ? FilerNewTabStart::Computer
+                                              : FilerNewTabStart::CurrentFolder;
+        }
         it = kv.find("handling.files.double.click");
         if (it != kv.end())
             doubleClickOpensRegisteredApp = (it->second == "application");
+        it = kv.find("archives.tar.level.gzip");
+        if (it != kv.end())
+            ParseInt(it->second, tar.gzipLevel, 1, FilerTarSettings::kMaxGzipLevel);
+        it = kv.find("archives.tar.level.bzip2");
+        if (it != kv.end())
+            ParseInt(it->second, tar.bzip2Level, 1, FilerTarSettings::kMaxBzip2Level);
+        it = kv.find("archives.tar.level.xz");
+        if (it != kv.end())
+            ParseInt(it->second, tar.xzLevel, 0, FilerTarSettings::kMaxXzLevel);
+        it = kv.find("archives.tar.level.zstd");
+        if (it != kv.end())
+            ParseInt(it->second, tar.zstdLevel, 1, FilerTarSettings::kMaxZstdLevel);
+        it = kv.find("archives.tar.threads");
+        if (it != kv.end())
+            ParseInt(it->second, tar.threads, 0, FilerTarSettings::kMaxThreads);
+        it = kv.find("archives.tar.zstd.long");
+        if (it != kv.end()) tar.zstdLongMode = ParseFlag(it->second);
+        it = kv.find("archives.tar.format");
+        if (it != kv.end()) tar.headerFormat = ParseTarHeaderFormat(it->second);
+        it = kv.find("archives.tar.keep.times");
+        if (it != kv.end()) tar.keepTimestamps = ParseFlag(it->second);
+        it = kv.find("archives.tar.keep.permissions");
+        if (it != kv.end()) tar.keepPermissions = ParseFlag(it->second);
+        it = kv.find("archives.tar.keep.owner");
+        if (it != kv.end()) tar.keepOwner = ParseFlag(it->second);
+        it = kv.find("archives.tar.links");
+        if (it != kv.end()) tar.storeSymlinks = (Trim(it->second) != "target");
+        it = kv.find("archives.tar.exclude");
+        if (it != kv.end()) tar.excludePatterns = ParseList(it->second);
         it = kv.find("extras.history.max.entries");
         if (it != kv.end())
             ParseInt(it->second, historyMaxEntries,
@@ -555,6 +632,10 @@ public:
             splitView = (it->second == "true" || it->second == "1" || it->second == "yes");
         it = kv.find("view.split.second.folder");
         if (it != kv.end()) splitSecondFolder = it->second;
+        it = kv.find("handling.files.media.ultraviewer");
+        if (it != kv.end())
+            mediaOpensInUltraViewer =
+                    (it->second == "true" || it->second == "1" || it->second == "yes");
         return true;
     }
 
@@ -600,6 +681,8 @@ public:
              << (showFileExtensions ? "true" : "false") << "\n";
         file << "display.extensions.badge = "
              << FormatExtensionBadge(extensionBadge) << "\n";
+        file << "display.file.names.lines = "
+             << FormatFileNameLines(fileNameMaxLines) << "\n";
         file << "display.file.icons.style = "
              << FormatFileIconStyle(fileIconStyle) << "\n";
         file << "display.tabs.style = "
@@ -638,16 +721,39 @@ public:
              << "\n";
         file << "handling.fileops.progress.delay = " << progressDelaySeconds << "\n";
         file << "handling.tabs.new.tab = "
-             << (newTabOpensHome ? "home" : "current") << "\n";
+             << (newTabStart == FilerNewTabStart::Home     ? "home"
+               : newTabStart == FilerNewTabStart::Computer ? "computer"
+                                                           : "current")
+             << "\n";
         file << "handling.files.double.click = "
              << (doubleClickOpensRegisteredApp ? "application" : "preview")
              << "\n";
+        file << "archives.tar.level.gzip = " << tar.gzipLevel << "\n";
+        file << "archives.tar.level.bzip2 = " << tar.bzip2Level << "\n";
+        file << "archives.tar.level.xz = " << tar.xzLevel << "\n";
+        file << "archives.tar.level.zstd = " << tar.zstdLevel << "\n";
+        file << "archives.tar.threads = " << tar.threads << "\n";
+        file << "archives.tar.zstd.long = "
+             << (tar.zstdLongMode ? "true" : "false") << "\n";
+        file << "archives.tar.format = "
+             << FormatTarHeaderFormat(tar.headerFormat) << "\n";
+        file << "archives.tar.keep.times = "
+             << (tar.keepTimestamps ? "true" : "false") << "\n";
+        file << "archives.tar.keep.permissions = "
+             << (tar.keepPermissions ? "true" : "false") << "\n";
+        file << "archives.tar.keep.owner = "
+             << (tar.keepOwner ? "true" : "false") << "\n";
+        file << "archives.tar.links = "
+             << (tar.storeSymlinks ? "link" : "target") << "\n";
+        file << "archives.tar.exclude = " << FormatList(tar.excludePatterns) << "\n";
         file << "extras.history.max.entries = " << historyMaxEntries << "\n";
         file << "extras.prompt.application = " << promptApplication << "\n";
         for (size_t i = 0; i < recentLocations.size() && i < kMaxRecentLocations; ++i)
             file << "extras.locations.recent." << (i + 1) << " = " << recentLocations[i] << "\n";
         file << "view.split = " << (splitView ? "true" : "false") << "\n";
         file << "view.split.second.folder = " << splitSecondFolder << "\n";
+        file << "handling.files.media.ultraviewer = "
+             << (mediaOpensInUltraViewer ? "true" : "false") << "\n";
         return true;
     }
 
@@ -668,6 +774,23 @@ public:
         if (value == "bar")  return FilerExtensionBadge::Bar;
         if (value == "icon") return FilerExtensionBadge::Icon;
         return FilerExtensionBadge::NoneBadge;
+    }
+
+    // ===== HOW MANY LINES A NAME MAY TAKE =====
+    // "full" or the line count. A value outside 2..4 - a hand edit, or a file
+    // from a release with more choices - is pulled into the range rather
+    // than dropped, so "6" still means "long names, please".
+    static std::string FormatFileNameLines(int lines) {
+        if (lines <= kFileNameLinesFull) return "full";
+        return std::to_string(lines);
+    }
+
+    static int ParseFileNameLines(const std::string& text) {
+        const std::string value = Trim(text);
+        if (value == "full") return kFileNameLinesFull;
+        int lines = 2;   // stays when the value is not a number
+        ParseInt(value, lines, kMinFileNameLines, kMaxFileNameLines);
+        return lines;
     }
 
     // ===== WHOSE FILE ICONS THE DISPLAY DRAWS =====
@@ -703,6 +826,24 @@ public:
         if (value == "simple-modern") return FilerTabStripStyle::SimpleModern;
         if (value == "classic")       return FilerTabStripStyle::Classic;
         return FilerTabStripStyle::Modern;
+    }
+
+    // ===== THE TAR HEADER FORMAT =====
+    // Named, like every other choice in the file. An unknown value reads
+    // back as pax, the default.
+    static std::string FormatTarHeaderFormat(FilerTarHeaderFormat format) {
+        switch (format) {
+            case FilerTarHeaderFormat::Gnu:   return "gnu";
+            case FilerTarHeaderFormat::Ustar: return "ustar";
+            default:                          return "pax";
+        }
+    }
+
+    static FilerTarHeaderFormat ParseTarHeaderFormat(const std::string& text) {
+        const std::string value = Trim(text);
+        if (value == "gnu")   return FilerTarHeaderFormat::Gnu;
+        if (value == "ustar") return FilerTarHeaderFormat::Ustar;
+        return FilerTarHeaderFormat::Pax;
     }
 
     // ===== THE DROP CONFIRMATION =====
@@ -830,6 +971,11 @@ public:
     }
 
 private:
+    static bool ParseFlag(const std::string& text) {
+        const std::string value = Trim(text);
+        return value == "true" || value == "1" || value == "yes";
+    }
+
     static std::string Trim(const std::string& s) {
         size_t start = s.find_first_not_of(" \t");
         if (start == std::string::npos) return "";

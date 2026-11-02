@@ -3,9 +3,11 @@
 // magnetic track's derived starts with transitions, cuts, splitting, trimming
 // (limits, ripple, free-track neighbours), moving (reorder on a magnetic
 // track, placement against neighbours on a free one), deleting with and
-// without ripple, duplicating, the ruler's steps, timecode and snapping.
+// without ripple, duplicating, a free track's gaps and closing them, the
+// ruler's steps, timecode and snapping.
+// Version: 1.1.0 - gaps
 // Version: 1.0.0
-// Last Modified: 2026-10-11
+// Last Modified: 2026-11-01
 // Author: UltraCanvas Framework
 #include "UltraCanvasVideoTimelineModel.h"
 
@@ -225,6 +227,51 @@ static void TestRulerTimecodeSnap() {
           "empty, letters, an empty group");
 }
 
+static void TestGaps() {
+    std::printf("gaps\n");
+    // x 1..3, y 5..7, z 7..9: gaps 0..1 before x and 3..5 before y, none before z
+    TimelineTrack t = FreeTrack();
+    t.clips.push_back(Clip("z", 2.0));
+    t.clips.back().start = 7.0;
+    std::vector<TimelineGap> gaps = TimelineGaps(t, 0.04);
+    CHECK(gaps.size() == 2, "two gaps: the leading one and the one between x and y");
+    CHECK(gaps.size() == 2 && Near(gaps[0].start, 0.0) && Near(gaps[0].end, 1.0) && gaps[0].clipId == "x",
+          "the leading gap ends at x");
+    CHECK(gaps.size() == 2 && Near(gaps[1].start, 3.0) && Near(gaps[1].end, 5.0) && gaps[1].clipId == "y",
+          "the inner gap runs from x's end to y's start");
+    CHECK(TimelineGaps(t, 2.5).empty(), "gaps shorter than the minimum are left out");
+    CHECK(TimelineGaps(MainTrack(), 0.04).empty(), "a magnetic track has no gaps");
+
+    // overlapping clips leave no gap between them
+    TimelineTrack o = t;
+    o.clips[0].duration = 5.0;   // x 1..6 covers y's start
+    CHECK(TimelineGaps(o, 0.04).size() == 1, "an overlap closes the gap it covers");
+
+    // close the inner gap: y moves to x's end, z stays
+    TimelineTrack a = t;
+    std::vector<TimelineClip> moved;
+    CHECK(TimelineCloseGap(a, "y", false, 0.04, &moved), "close the gap before y");
+    CHECK(Near(a.FindClip("y")->start, 3.0) && Near(a.FindClip("z")->start, 7.0), "y meets x, z stays put");
+    CHECK(moved.size() == 1 && moved[0].id == "y" && Near(moved[0].start, 3.0), "only y is reported as moved");
+
+    // with ripple z follows by the same 2 s
+    TimelineTrack b = t;
+    CHECK(TimelineCloseGap(b, "y", true, 0.04, &moved), "close the gap before y, rippling");
+    CHECK(Near(b.FindClip("y")->start, 3.0) && Near(b.FindClip("z")->start, 5.0) && Near(b.FindClip("x")->start, 1.0),
+          "y and z move left 2 s, x stays");
+    CHECK(moved.size() == 2 && moved[0].id == "y" && moved[1].id == "z", "the closing clip first, then the rest by time");
+
+    // the leading gap closes to 0
+    TimelineTrack c = t;
+    CHECK(TimelineCloseGap(c, "x", false, 0.04), "close the leading gap");
+    CHECK(Near(c.FindClip("x")->start, 0.0), "x moves to the start");
+
+    TimelineTrack d = t;
+    CHECK(!TimelineCloseGap(d, "z", false, 0.04, &moved) && moved.empty(), "no gap before z: nothing to close");
+    TimelineTrack m = MainTrack();
+    CHECK(!TimelineCloseGap(m, "b", false, 0.04), "a magnetic track refuses");
+}
+
 int main() {
     std::printf("UltraCanvasVideoTimeline model\n");
     TestDerivedStarts();
@@ -233,6 +280,7 @@ int main() {
     TestMove();
     TestDeleteAndDuplicate();
     TestRulerTimecodeSnap();
+    TestGaps();
     if (failures) {
         std::printf("%d check(s) FAILED\n", failures);
         return 1;

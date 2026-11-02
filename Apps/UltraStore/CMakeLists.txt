@@ -53,7 +53,7 @@ endif()
 # file, 64 hex digits) and the catalog servers named in ULTRASTORE_SERVERS,
 # as initializer lists in a generated header. Both are empty until the admin
 # backend publishes the first catalog; the window says so.
-set(ULTRASTORE_SERVERS "" CACHE STRING
+set(ULTRASTORE_SERVERS "https://store.ultraos.eu/v1" CACHE STRING
     "Catalog base URLs compiled into ultrastore, semicolon-separated (empty: the user enters one)")
 file(GLOB _ultrastore_key_files CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/keys/*.pub")
 list(SORT _ultrastore_key_files)

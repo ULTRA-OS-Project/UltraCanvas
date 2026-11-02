@@ -45,6 +45,16 @@
 // none exists every query answers empty with IsAvailable() false, the
 // monitor polls nothing, and the platform-neutral parts - the application
 // list from desktop entries, the notices, the launcher - still work.
+// Version: 1.13.0 - CaptureScreenArea (one rectangle of the screen, for a
+//                   screenshot tool and a screen recorder), DesktopScreenImage::x / y,
+//                   DefaultRecordingPath
+// Version: 1.12.0 - DesktopScreenInfo::number (Windows' own display numbers)
+// Version: 1.11.0 - DesktopWindowInfo::maximized
+// Version: 1.10.0 - GetWindowBounds, MoveWindow, BringWindowOnScreen,
+//                   KillWindowProcess; CloseWindow brings the window to the front
+// Version: 1.9.0 - CloseWindow shows a minimized window before asking it to close
+// Version: 1.8.0 - FindProgram / LaunchProgram find a sibling application's
+//                  bundle on macOS
 // Version: 1.7.0 - LockSession; the loudspeaker's volume (ReadAudioOutput,
 //                  SetAudioOutputVolume, SetAudioOutputMuted); a tray icon's
 //                  menu as data (DesktopTrayMenuItem, ActivateMenuItem);
@@ -87,6 +97,7 @@ namespace UltraCanvas {
         int  processId = 0;             // _NET_WM_PID, 0 when the window does not say
         bool active = false;            // the focused window
         bool minimized = false;
+        bool maximized = false;         // both ways (_NET_WM_STATE_MAXIMIZED_VERT and _HORZ; IsZoomed)
         bool skipTaskbar = false;       // asked to stay out of taskbars: panels, docks,
                                         // the desktop itself, tooltips
     };
@@ -101,6 +112,10 @@ namespace UltraCanvas {
         int  width = 0;
         int  height = 0;
         bool primary = false;
+        // The system's own number for the monitor where it gives one -
+        // Windows: n of its \\.\DISPLAYn device, which its display settings
+        // show in the same way - else 0 (X11 numbers none).
+        int number = 0;
         bool operator==(const DesktopScreenInfo& other) const {
             return x == other.x && y == other.y && width == other.width && height == other.height &&
                    primary == other.primary;
@@ -112,6 +127,8 @@ namespace UltraCanvas {
     // memory order B, G, R, unused - the layout cairo calls RGB24 and the QR
     // scanner calls BGRA32 - so a row can be handed to either without a copy.
     struct DesktopScreenImage {
+        int x = 0;                      // where the image's top-left corner lies on the
+        int y = 0;                      // screen, in the pixels of ListScreens (0,0 for the whole screen on X11)
         int width  = 0;
         int height = 0;
         int stride = 0;                 // bytes between row starts, >= width * 4
@@ -247,7 +264,28 @@ namespace UltraCanvas {
         static bool ActivateWindow(uint64_t id);
         static bool MinimizeWindow(uint64_t id);
         // Ask the window to close (WM_DELETE_WINDOW through the manager), never kill.
+        // The window is brought to the front - and onto a screen - first: a
+        // program that asks before closing ("Save the changes?") would
+        // otherwise ask behind other windows, or unseen.
         static bool CloseWindow(uint64_t id);
+        // The window's outer rectangle in screen pixels - those of
+        // ListScreens. False when the window is gone.
+        static bool GetWindowBounds(uint64_t id, int& x, int& y, int& width, int& height);
+        // Move the window's top-left corner to (x, y) in screen pixels, its
+        // size kept (through the window manager on X11).
+        static bool MoveWindow(uint64_t id, int x, int y);
+        // A window that is off every screen - its title bar not on one, so
+        // it cannot be taken and moved back - is centred on the screen it
+        // is mostly over, else the primary one. Nothing happens to a window
+        // that is on a screen. True when the window is (now) on one.
+        static bool BringWindowOnScreen(uint64_t id);
+        // End the program the window belongs to, at once - unsaved work in
+        // it is lost - as a task manager's "End task": on Linux SIGTERM,
+        // then SIGKILL after two seconds; on Windows TerminateProcess.
+        // False with the reason (a program of another user or run as
+        // administrator, a window that names no process, the desktop
+        // itself).
+        static bool KillWindowProcess(uint64_t id, std::string* error = nullptr);
 
         // ===== VIRTUAL DESKTOPS =====
         static int  GetVirtualDesktopCount();
@@ -282,11 +320,24 @@ namespace UltraCanvas {
         // be the account's seed in the clear. Nothing is written anywhere.
         // False with the reason in `error`; `out` is then empty.
         static bool CaptureScreenImage(DesktopScreenImage& out, std::string* error = nullptr);
+        // One rectangle of the screen - `x`, `y`, `width`, `height` in the
+        // pixels of ListScreens - as pixels in memory, the same layout as
+        // CaptureScreenImage. The rectangle is clipped to the screen; `out.x`
+        // and `out.y` say where the pixels came from. Cheaper than the whole
+        // screen and a crop, which is what a screen recorder taking twenty
+        // frames a second of one window needs. False with the reason (a
+        // rectangle wholly off the screen among them); `out` is then empty.
+        static bool CaptureScreenArea(int x, int y, int width, int height, DesktopScreenImage& out,
+                                      std::string* error = nullptr);
         // "<Pictures>/Screenshots/Screenshot 2026-09-29 14.05.31.png" - the
         // user's Pictures folder through GetWellKnownUserFolders, the home
         // directory when there is none. Only names the file; CaptureScreen
         // creates the directory.
         static std::string DefaultScreenshotPath();
+        // "<Videos>/Screen Recordings/Screen recording 2026-09-29 14.05.31.mp4"
+        // - the user's Videos folder, the home directory when there is none.
+        // Only names the file; the recorder creates the directory.
+        static std::string DefaultRecordingPath();
 
         // ===== DEVICES =====
         // Cheap enough to poll once a second: procfs and sysfs reads, and one
@@ -316,7 +367,10 @@ namespace UltraCanvas {
                                       const std::vector<std::string>& files = {},
                                       std::string* error = nullptr);
         // Start a program by name - "UltraFiler" - looked up next to this
-        // executable first (a build tree, a bundle), then on PATH.
+        // executable first (a build tree, a bundle), then on PATH. On macOS,
+        // where every application is a bundle of its own, the <name>.app
+        // beside this application's bundle and in ~/Applications and
+        // /Applications are tried before PATH.
         static bool LaunchProgram(const std::string& program,
                                   const std::vector<std::string>& arguments = {},
                                   std::string* error = nullptr);

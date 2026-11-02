@@ -33,6 +33,14 @@
 // settings button offers sign out, restart and shut down, which Explorer's
 // Start menu would otherwise, and a tap of the Win key opens the
 // Applications window.
+// Version: 0.5.2 - the screenshot button opens UltraSnip (OpenSnip, its menu of
+//                  shapes and the recording, Super+Shift+S), the plain capture as the fallback
+// Version: 0.6.0 - the Wi-Fi and Bluetooth panels (join, pair, connect),
+//                  and the USB, keyboard, webcam, microphone and battery
+//                  panels behind the info panel's icons; the USB drives'
+//                  "Safely remove"; on a short screen the info panel's items
+//                  shrink and the least used fold into a menu (FitInfoPanel);
+//                  programs that start with the desktop (StartStartupPrograms)
 // Version: 0.5.1 - on X11 the desktop covers the primary monitor and puts
 //                  wallpaper windows on the others, as it does as the
 //                  Windows shell; panels and toasts follow it, and so does
@@ -64,6 +72,7 @@
 
 #include <memory>
 #include <mutex>
+#include <set>
 #include <string>
 #include <thread>
 #include <vector>
@@ -74,6 +83,7 @@ namespace UltraCanvas {
     class UltraCanvasClipboardRecorder;
     class UltraCanvasContainer;
     class UltraCanvasToolbar;
+    class UltraCanvasWaveSeparator;
     class UltraCanvasImageElement;
     class UltraCanvasMenu;
     class UltraCanvasButton;
@@ -87,6 +97,9 @@ class UltraDesktopAppStarter;
 class UltraDesktopClipboardPanel;
 class UltraDesktopClockPanel;
 class UltraDesktopVolumePanel;
+class UltraDesktopWifiPanel;
+class UltraDesktopBluetoothPanel;
+class UltraDesktopDevicePanel;
 class UltraDesktopStickerboard;
 class UltraDesktopCategoryBoard;
 class UltraDesktopTasksWindow;
@@ -122,17 +135,43 @@ public:
     // RAM disc, file manager, virtual desktops).
     void OpenSystemSettings();
     void OpenAppStarter();
+    // An application was started from the Apps window or a taskbar pin:
+    // first in the Apps window's Recent (DesktopSettings::recentApps).
+    void NoteAppStarted(const UltraCanvas::UCDesktopEntry& entry);
     void OpenTasks();
     void OpenRamDisc();
     void OpenFiler(const std::string& path = "");
     void TakeScreenshot();
+    // UltraSnip with these arguments (--rectangle, --window, --screen,
+    // --video); the plain whole-screen capture (TakeScreenshot) when the
+    // program is not installed
+    void OpenSnip(const std::vector<std::string>& arguments);
+    void ShowScreenshotMenu(int windowX, int windowY);
+    void StartSnipShortcut();
     void ToggleStickerboard(bool visible);
     void ToggleCategoryBoard(bool visible);
+    // The Sticker board's window: over the work area, below the application
+    // that was in front.
+    void ShowCategoryBoard();
+    // settings_.startWithDesktop: started minimized unless running already.
+    void StartStartupPrograms();
+    void PlaceCategoryBoard();
     void SwitchToDesktop(int index);
     // The clock's panel (a click on the clock) and the loudspeaker's (a
     // click on the speaker icon).
     void OpenClockPanel();
     void OpenVolumePanel();
+    // The info panel's radios: Wi-Fi and Bluetooth, operated from a panel
+    // (UltraCanvasWireless).
+    void OpenWifiPanel();
+    void OpenBluetoothPanel();
+    // Opens it (never closes it) - for a pairing a device starts.
+    void ShowBluetoothPanel();
+    void EnsureBluetoothPanel();
+    // The info panel's devices: "usb", "keyboard", "webcam", "mic",
+    // "battery" - what is attached or in use, with a way on to
+    // DeviceExplorer or the Task Manager.
+    void OpenDevicePanel(const std::string& device);
     // Lock the screen - the settings menu's "Lock screen" and Super+L.
     void LockScreen();
     // The taskbar's pinned applications, kept in the settings by key: the
@@ -182,8 +221,19 @@ private:
             const std::string& tooltip, const std::string& icon, const std::string& text,
             std::function<void(bool)> onToggle);
     void StyleBarButton(const std::shared_ptr<UltraCanvas::UltraCanvasButton>& button);
+    // Brings a bar's wave to kWaveGap from the icon of `group` next to it:
+    // no padding on that side of the group, the wave over the button's margin.
+    void TuckAgainstWave(const std::shared_ptr<UltraCanvas::UltraCanvasToolbar>& group,
+                         const std::shared_ptr<UltraCanvas::UltraCanvasWaveSeparator>& wave,
+                         bool vertical, bool waveAfterGroup);
     std::string IconPath(const std::string& name) const;
+    // The settings' wallpaper, else DefaultWallpaperPath.
     std::string WallpaperPath() const;
+    // ULTRA OS's own picture (media/images/desktop/ULTRA OS A.avif), else
+    // the framework's landscape.
+    static std::string DefaultWallpaperPath();
+    // WallpaperPath into `wallpaper`; the landscape when it cannot be read.
+    void LoadWallpaper(UltraCanvas::UltraCanvasImageElement& wallpaper) const;
 
     // ===== LIVE DATA =====
     void OnTimer();
@@ -212,6 +262,12 @@ private:
     // marker: read on the device poll's thread now and then, and here after
     // the volume panel changed it.
     void ReadSpeaker();
+    // The info panel on a short screen: smaller items, and the least-used
+    // services folded into the chevron's menu (kInfoFoldOrder).
+    bool CompactInfoPanel() const;
+    int InfoButtonSize() const;
+    int InfoIconSize() const;
+    void FitInfoPanel();
     void ApplySpeaker();
     // Once a second: a session desktop whose switch was turned off closes.
     void CheckDesktopSwitch();
@@ -282,6 +338,8 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasMenu> popupMenu_;
     std::shared_ptr<UltraDesktopStickerboard> stickerboard_;
     std::shared_ptr<UltraDesktopCategoryBoard> categoryBoard_;
+    std::shared_ptr<UltraCanvas::UltraCanvasWindow> boardWindow_;
+    UltraCanvas::Rect2Di boardRect_;    // where PlaceCategoryBoard last put it
     std::shared_ptr<UltraDesktopAppStarter> appStarter_;
     std::shared_ptr<UltraDesktopTasksWindow> tasks_;
     std::unique_ptr<UltraCanvas::UltraCanvasNotificationToastHost> toasts_;
@@ -292,7 +350,16 @@ private:
     int clockMinute_ = -1;
     std::shared_ptr<UltraDesktopClockPanel> clockPanel_;
     std::shared_ptr<UltraDesktopVolumePanel> volumePanel_;
+    // The services FitInfoPanel last moved to the end of the info panel.
+    std::set<std::string> infoFolded_;
+    // The overflow chevron last given the bar's look (it is the toolbar's).
+    const UltraCanvas::UltraCanvasButton* styledChevron_ = nullptr;
+    std::shared_ptr<UltraDesktopWifiPanel> wifiPanel_;
+    std::shared_ptr<UltraDesktopBluetoothPanel> bluetoothPanel_;
+    // One per device icon, by its item id; made on the first click.
+    std::map<std::string, std::shared_ptr<UltraDesktopDevicePanel>> devicePanels_;
     UltraCanvas::UltraCanvasGlobalShortcut lockShortcut_;
+    UltraCanvas::UltraCanvasGlobalShortcut snipShortcut_;       // Super+Shift+S: UltraSnip
     // The pinned applications as resolved against the installed ones at the
     // last rebuild; a pin whose application is gone is kept, and shows again
     // when it is back.

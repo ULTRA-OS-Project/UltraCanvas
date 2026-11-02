@@ -1,7 +1,15 @@
 // VirtualFS/include/VirtualFSTypes.h
 // Core types, enumerations, and structures for VirtualFS
+// Version: 1.2.0 - compressionMethod (ZIP / 7-Zip method; refused when it cannot
+//                  be written) and followSymlinks (links inside an archive are
+//                  followed when reading) are honoured
+// Version: 1.1.1 - compressionLevel is honoured when creating: the level
+//                  preset of ZIP / 7-Zip and of a stream compressor
+// Version: 1.1.0 - VirtualFSArchiveWriteOptions (VirtualFSOpenOptions::archiveWrite):
+//                  compressor level, threads, zstd long mode, TAR header
+//                  format, what of a file is kept, symlinks, exclusions
 // Version: 1.0.0
-// Last Modified: 2026-01-10
+// Last Modified: 2026-10-31
 // Author: ULTRA OS Framework
 #pragma once
 
@@ -251,19 +259,125 @@ struct VirtualFSEntry {
 };
 
 // ============================================================================
+// ARCHIVE WRITE OPTIONS
+// ============================================================================
+
+// The header layout of a TAR archive, the plain one and every .tar.* one.
+enum class VirtualFSTarFormat {
+    Pax = 0,    // POSIX.1-2001 (pax extensions only where needed) - default
+    Gnu = 1,    // GNU tar's own: long names and large files, read everywhere
+    Ustar = 2   // POSIX.1-1988: the oldest readers, but names up to 255
+                // bytes and files up to 8 GB
+};
+
+// How CreateArchive stores what it packs. The defaults keep what the files
+// carry (modification time, permission bits, symbolic links) and leave the
+// compressor at its library default, single-threaded.
+struct VirtualFSArchiveWriteOptions {
+    // The compressor's own level, applied to a compressed TAR (.tar.gz,
+    // .tar.bz2, .tar.xz, .tar.zst, .tar.lz4) and to a single compressed
+    // stream: gzip, bzip2 and lz4 1-9, xz 0-9, zstd 1-22. -1 takes
+    // VirtualFSOpenOptions::compressionLevel instead, whose Normal leaves the
+    // library default (gzip 6, bzip2 9, xz 6, zstd 3).
+    int filterLevel = -1;
+    // Worker threads of the xz and zstd compressors; 0 = one per core. The
+    // others always run on one.
+    int threads = 1;
+    // Zstandard long-distance matching: the window as a power of two
+    // (27 = 128 MB, zstd --long=27); 0 = off. A window above 27 must be
+    // given to zstd on decompression too (--long=N or --memory=).
+    int zstdLongWindowLog = 0;
+    VirtualFSTarFormat tarFormat = VirtualFSTarFormat::Pax;
+    // Off, a file is stored with the time it was packed / with 0644 (0755
+    // for folders) / as owned by user and group 0 without names.
+    bool keepTimestamps = true;
+    bool keepPermissions = true;
+    bool keepOwner = false;
+    // A symbolic link is stored as a link (true), or as the file or folder
+    // it points to (false; a link pointing nowhere is still stored as one).
+    bool storeSymlinks = true;
+    // Entries left out while a folder is packed: '*' and '?' wildcards,
+    // ASCII case-insensitive, matched against the entry's name - or, when
+    // the pattern holds a '/', against its path below the packed folder. A
+    // folder that matches is left out with all it holds. An item handed to
+    // CreateArchive itself is always packed.
+    std::vector<std::string> excludePatterns;
+};
+
+// True when `pattern` ('*' and '?' wildcards, ASCII case-insensitive)
+// matches all of `text`.
+inline bool VirtualFSWildcardMatch(const std::string& pattern, const std::string& text) {
+    auto lower = [](char c) {
+        return (c >= 'A' && c <= 'Z') ? static_cast<char>(c - 'A' + 'a') : c;
+    };
+    size_t p = 0, t = 0, starP = std::string::npos, starT = 0;
+    while (t < text.size()) {
+        if (p < pattern.size() && pattern[p] == '*') {
+            starP = p++;
+            starT = t;
+        } else if (p < pattern.size() &&
+                   (pattern[p] == '?' || lower(pattern[p]) == lower(text[t]))) {
+            ++p;
+            ++t;
+        } else if (starP != std::string::npos) {
+            p = starP + 1;
+            t = ++starT;
+        } else {
+            return false;
+        }
+    }
+    while (p < pattern.size() && pattern[p] == '*') ++p;
+    return p == pattern.size();
+}
+
+// True when an entry met while packing a folder is one of
+// options.excludePatterns: `name` is its own name, `relativePath` its path
+// below the packed folder, '/'-separated.
+inline bool VirtualFSIsExcluded(const VirtualFSArchiveWriteOptions& options,
+                                const std::string& name,
+                                const std::string& relativePath) {
+    for (const std::string& pattern : options.excludePatterns) {
+        if (pattern.empty()) continue;
+        const bool byPath = pattern.find('/') != std::string::npos;
+        if (VirtualFSWildcardMatch(pattern, byPath ? relativePath : name)) return true;
+    }
+    return false;
+}
+
+// ============================================================================
 // OPEN OPTIONS STRUCTURE
 // ============================================================================
 
 struct VirtualFSOpenOptions {
     VirtualFSOpenMode mode = VirtualFSOpenMode::Read;
     std::string password;
+    // Creating an archive: how hard ZIP / 7-Zip and the stream compressor of
+    // a .tar.gz / .xz / ... work (Store: ZIP and 7-Zip store uncompressed).
+    // Normal leaves each library at its own default; archiveWrite.filterLevel
+    // overrides it for the stream compressor.
     VirtualFSCompressionLevel compressionLevel = VirtualFSCompressionLevel::Normal;
+    // Creating an archive: what ZIP and 7-Zip compress with (Auto: the
+    // library's default - Deflate, LZMA). ZIP takes Store and Deflate (and,
+    // from libarchive 3.8, BZip2, LZMA, XZ / LZMA2 and Zstd); 7-Zip takes
+    // Store, Deflate, BZip2, LZMA, LZMA2 / XZ and PPMd. A TAR or a single
+    // compressed stream is compressed by what its extension names, and only
+    // that method (Store for a plain .tar) is accepted. Anything else makes
+    // CreateArchive answer NotSupported rather than write something else.
     VirtualFSCompressionMethod compressionMethod = VirtualFSCompressionMethod::Auto;
+    // Reading an archive: a symbolic link inside it leads to what it points
+    // to, as one on a disk does - reading a link reads its target, listing a
+    // link to a folder lists that folder, and a path may pass through linked
+    // folders. A link out of the archive (an absolute target, or one above
+    // its root), a dangling one and a circle are not followed. Off, a link is
+    // only an entry of its own (read as empty). Creating an archive uses
+    // archiveWrite.storeSymlinks instead.
     bool followSymlinks = true;
     bool caseSensitive = true;
     size_t cacheSize = 64 * 1024 * 1024;  // 64MB metadata cache
     bool validateCRC = false;
     std::string encoding = "UTF-8";
+    // Creating an archive: compressor tuning and what is stored of each file.
+    VirtualFSArchiveWriteOptions archiveWrite;
     
     // Factory methods
     static VirtualFSOpenOptions Default() { 

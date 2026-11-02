@@ -14,10 +14,10 @@
   first and stores its pixmap there as a QOI blob after the first decode,
   stamped against the file as it was before; the next run inflates the
   blob instead of decoding the file and resizing it. Measured on the
-  2752 × 1536 desktop wallpaper: 40 ms (JPEG decode and fit to 1280 × 800)
+  2752 × 1536 desktop wallpaper as a JPEG: 40 ms (decode and fit to 1280 × 800)
   against 10 ms from the blob, 155 ms against 75 at 3840 × 2160; the first
   run pays once for the blob's compression and write. The QOI
-  *file* format was measured for the wallpaper and not taken: libjpeg-turbo
+  *file* format was measured for that wallpaper and not taken: libjpeg-turbo
   reads the 4-megapixel JPEG in 31 ms and fits it in 40, the QOI reference
   decoder 41 and 54 (it has no reduced-size decode), and the file is six
   times the size - QOI pays only without a decode and a resize, which is

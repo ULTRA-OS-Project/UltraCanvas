@@ -1,3 +1,148 @@
+#### 2026-11-01 *1.103.0*
+- **The settings window is built on the framework's settings page kit**
+  (`UltraCanvasSettingsPageKit`, framework changelog `settings-page-kit`):
+  the window, the page skeleton and the controls come from it, where they
+  were this window's own. Nothing changes on screen.
+
+#### 2026-11-01 *1.102.0*
+- **A folder of programs no longer shows one program's icon on all of them
+  when it is first opened.** On Windows the programs that were still
+  loading their icon, and the console tools that have none, drew the icon of
+  whichever program came first (ArtCreator's, in the report) instead of the
+  generic application icon. Fixed in the framework (see its changelog,
+  `HostFileIconProbeName`).
+
+#### 2026-11-01 *1.101.0*
+- **Phones and cameras show up under Computer.** A phone, camera or media
+  player plugged in over USB (MTP / PTP) has no drive letter, so UltraFiler
+  never listed it while Explorer did. On Windows it now appears under
+  Computer in the tree and as a card on the Computer page - with its used
+  and free space, internal storage and SD card together, like a drive's card
+  - as soon as it is plugged in, and goes when it is pulled out (a display showing it goes Home).
+  It is browsed through the remote-drive machinery - folders from a cache
+  filled by a worker, previews, copying off and onto the phone, rename,
+  delete, new folder - and its account is never saved. A locked phone, or
+  one on "charging only", says to unlock it and choose File transfer instead
+  of showing an empty folder. On macOS an iPhone, iPad or camera appears the
+  same way through Image Capture, read-only: its photos and videos open,
+  preview and copy off. On Linux the phones, cameras and shares the
+  desktop mounted through GVFS are listed with the drives under readable
+  names. Both rest on framework changes - see the UltraCanvas changelog
+  entries "UltraCanvasPortableDevices" and "Linux: the phones, cameras and
+  shares the desktop mounted are volumes".
+
+#### 2026-11-01 *1.100.0*
+- **Settings > Display > New tab** decides what the "+" at the end of the tab
+  strip opens: **Show current folder** (the default, as before), **Show Home
+  folder**, or the new **Show Computer** - the Computer page with the drives
+  and their free space, Home and the cloud folders, with the Home folder
+  behind it in the new tab. The choice used to sit under Handling > Tabs with
+  only the first two; a choice made there carries over.
+
+#### 2026-10-31 *1.99.0*
+- **macOS: an application could be pinned into the folder tree, and the
+  tree pinned it to the wrong Favorites tab.** The tree lists every
+  directory, an `.app` included. Its "Pin > To Treeview" put the application
+  into the tree's Pinned section as a folder row whose click opened the
+  inside of the bundle, and its "Pin > To Favorites" filed it under Folders
+  rather than Apps. An application now never goes into the Pinned section -
+  not from the tree's menu, the file display's Pin menu, or a drop on the
+  section - and the tree pins it under Favorites > Apps like the file display
+  does. Applications pinned into the tree before move to Favorites > Apps at
+  the next start, with the date they were pinned.
+- **macOS: the folder tree listed every application as a folder.** An `.app`
+  is a directory on disk, so `/Applications` opened onto a column of
+  expandable folder rows that led into the inside of each bundle - where the
+  Finder's sidebar and column view show none. The tree now leaves application
+  bundles out, as it leaves hidden folders out; the file display still shows
+  them and starts them on a double-click. A folder that only ends in ".app"
+  (no `Contents/Info.plist`) and other bundle kinds stay in the tree.
+
+#### 2026-10-30 *1.98.0*
+- **On macOS a saved file now appears at once** instead of on the next poll of
+  the folder, and on every platform a file saved while a folder was being
+  opened is no longer missed. Both are framework changes - see the UltraCanvas
+  changelog entries "macOS gets a native folder watch (FSEvents)" and "A file
+  saved into a folder just opened in the Filer was missed".
+- **A file saved into the open folder by another program (a Firefox "Save
+  Image As", for one) did not appear** until the folder was refreshed by hand.
+  Fixed in the framework's Filer widget - see the UltraCanvas changelog entry
+  "The Filer missed a file saved into the open folder".
+- **macOS: a double-click on an application in the folder display did
+  nothing.** An `.app` is a folder on disk that the file display launches
+  instead of entering, and UltraFiler's double-click handler skipped every
+  folder before looking at what it was. The application now starts, as it does
+  in the Finder and already did in the preview pane's folder peek, and the
+  History lists it under Apps rather than Folders.
+- **macOS: a pinned application went to the Favorites' Folders tab.** Pinning
+  now files an `.app` under Apps, beside the other applications, and its heart
+  mark and Unpin find it there. Applications pinned earlier are moved from
+  Folders to Apps at the next start, keeping the date they were pinned - left
+  where they were, they could no longer have been unpinned
+  (`UltraFilerFavorites::Reclassify`).
+- **A double-click on a picture, an audio file or a video starts UltraViewer
+  with it.** It comes first - before the registered program and before the
+  preview pane - in every folder display, the split view's right-hand one and
+  the folder peek in the preview pane included; a running UltraViewer shows the
+  file in place of what it showed. When UltraViewer cannot be found or started,
+  or the file is inside an archive or on a remote drive, the file opens the way
+  it did before and the status bar says why, so a double-click never comes to
+  nothing. *Settings > Handling > Opening files* has the new checkbox "Open
+  pictures, audio and video in UltraViewer" (on by default;
+  `handling.files.media.ultraviewer` in the settings file). Finding UltraViewer
+  inside its own app bundle on macOS is a framework change - see the
+  UltraCanvas changelog entry "`FindProgram` / `LaunchProgram` find a sibling
+  application on macOS".
+
+#### 2026-10-30 *1.97.0*
+- **Settings > Archives > TAR** sets how Compress packs a `.tar`,
+  `.tar.gz`, `.tar.bz2`, `.tar.xz` and `.tar.zst`: the compression level of
+  gzip, bzip2, xz and Zstandard (their own defaults - 6, 9, 6, 3 - until
+  changed), the threads of xz and Zstandard (every core by default),
+  Zstandard's long mode (`--long=27`), the header format (PAX, GNU tar or
+  ustar), whether each file keeps its modification time, permissions and
+  owner, whether a symbolic link is stored as a link or as what it points
+  to, and patterns of names to leave out (`.git`, `*.tmp`, `build/*.o`).
+  *Restore defaults* puts them all back.
+- **Pointing at an entry of the Compress menu shows what it packs with** -
+  the equivalent command line, e.g.
+  `tar --format=pax --owner=0 --group=0 --numeric-owner -cf - <files> | xz -6 -T0`,
+  and what is kept of each file - so the TAR settings can be read off the
+  menu itself.
+- Packed files keep their own modification time and permissions (they used
+  to carry the time they were packed and 0644) - see the framework
+  changelog.
+- **7-Zip and TAR archives get an archive icon on Windows.** Without 7-Zip
+  or another program registered for them, `.7z`, `.tar`, `.tar.gz`,
+  `.tar.bz2`, `.tar.xz` and `.tar.zst` files were drawn as a blank page;
+  they now show UltraFiler's own archive icon with the extension on it,
+  while `.zip` and every other registered type keep Explorer's icon - see
+  the framework changelog.
+
+#### 2026-10-30 *1.96.0*
+- **Widening a column in the Details view moves the columns after it**
+  instead of taking the width from the column on its right - dragging the
+  divider at a column's right edge in the header resizes that column alone,
+  and a table that grows past the window scrolls sideways (Shift+wheel, a
+  sideways wheel or the scrollbar under the rows). This is the default now;
+  it comes from the framework's `UltraCanvasFilerWidget` (see
+  `Docs/UltraCanvas/changelog.d/filer-details-push-columns.md`).
+- **The "Drive" button sits at the right end of the toolbar**, just left of
+  the Settings gear, instead of between the Favorites heart and the path bar.
+- **Settings > Display > File names.** How much of a long name a thumbnail
+  tile shows is now a choice: *Full name* (as many rows as the name needs),
+  or at most *2*, *3* or *4 rows*. With a limit, a name that needs more rows
+  keeps its end - the start of the last row gives way to "…" so the extension
+  stays readable - and hovering the tile shows the whole name. Every tile of a
+  grid row is as tall as its longest caption, so the rows grow and shrink with
+  the choice; the Details, List and Size bars views keep one line per file. The
+  treemap's cells follow the same limit within the room a cell has. The
+  default stays at 2 rows, the caption earlier releases drew; the choice is
+  saved to `config.ini` (`display.file.names.lines` = `full`, `2`, `3` or `4`)
+  and applied to every file display of the window. Needs the framework's
+  `UltraCanvasFilerWidget::SetCaptionMaxLines` (see
+  `Docs/UltraCanvas/changelog.d/filer-caption-max-lines.md`).
+
 #### 2026-10-28 *1.95.0*
 - **Home and Computer lead the navigation row.** The Home button moved from
   after Refresh to the first place, and a new **Computer** button beside it

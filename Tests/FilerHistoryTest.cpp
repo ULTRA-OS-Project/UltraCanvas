@@ -19,9 +19,12 @@
 // through the code page names a different file: every path here goes through
 // PathToUtf8 / PathFromUtf8, and the config folder is redirected through the
 // wide environment API that GetEnvUtf8 reads.
+// Version: 1.5.0 - Display > New tab: newTabStart round trip
+// Version: 1.4.0 - Favorites: Reclassify out of the tree's Pinned section
+// Version: 1.3.0 - Favorites: Reclassify moves misfiled pins
 // Version: 1.2.0 - Handling > Protected files: the minutes before passwords are forgotten
 // Version: 1.1.0
-// Last Modified: 2026-10-19
+// Last Modified: 2026-10-30
 // Author: UltraCanvas Framework
 
 // The config directory is read from the environment, so it is pointed at a
@@ -30,6 +33,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <ctime>
 #include <string>
 #include <vector>
 
@@ -244,6 +248,49 @@ void TestLimitClamped() {
 // ===== THE SETTING =====
 // Extras > History & Favorites' "Limit of entries" is written to the config
 // file and read back, and a hand-edited value out of range is brought inside it.
+// Display > New tab: the three choices survive a restart under the key the
+// former Handling > Tabs page used, so a choice made there carries over.
+void TestNewTabStartSetting() {
+    std::printf("\n-- Display > New tab --\n");
+    {
+        UltraFilerSettings settings;
+        Check(settings.newTabStart == FilerNewTabStart::CurrentFolder,
+              "a new tab shows the current folder by default");
+    }
+    const FilerNewTabStart all[] = {FilerNewTabStart::Home, FilerNewTabStart::Computer,
+                                    FilerNewTabStart::CurrentFolder};
+    const char* names[] = {"Home", "Computer", "the current folder"};
+    for (int i = 0; i < 3; ++i) {
+        {
+            UltraFilerSettings settings;
+            settings.Load();
+            settings.newTabStart = all[i];
+            settings.Save();
+        }
+        UltraFilerSettings reloaded;
+        reloaded.Load();
+        Check(reloaded.newTabStart == all[i],
+              std::string("\"") + names[i] + "\" comes back after a restart");
+    }
+    // What the former Handling > Tabs page wrote: "home" stays Home.
+    {
+        std::ofstream file(PathFromUtf8(UltraFilerSettings::GetConfigPath()), std::ios::app);
+        file << "handling.tabs.new.tab = home\n";
+    }
+    {
+        UltraFilerSettings settings;
+        settings.Load();
+        Check(settings.newTabStart == FilerNewTabStart::Home,
+              "the former Handling > Tabs choice carries over");
+    }
+    {
+        UltraFilerSettings settings;
+        settings.Load();
+        settings.newTabStart = FilerNewTabStart::CurrentFolder;
+        settings.Save();
+    }
+}
+
 void TestSettingRoundTrip() {
     std::printf("\n-- the setting --\n");
 
@@ -393,6 +440,64 @@ void TestNonAsciiNameStays() {
             "and the pin is still there after a restart");
 }
 
+// A pin filed under the wrong kind - a macOS application pinned under Folders
+// before FavoriteKindOf knew bundles - moves to the right one with its pin
+// time, is not doubled where it is already pinned, and stays moved.
+void TestReclassifyMovesPins() {
+    std::printf("\n-- Favorites: Reclassify --\n");
+    UltraFilerFavorites favorites;
+    favorites.ClearAll();
+    favorites.Pin(FilerFavoriteKind::Folder, "/Applications/Calculator.app");
+    favorites.Pin(FilerFavoriteKind::Folder, "/Users/someone/Documents");
+    favorites.Pin(FilerFavoriteKind::Folder, "/Applications/Safari.app");
+    favorites.Pin(FilerFavoriteKind::App, "/Applications/Safari.app");
+    const std::time_t pinnedAt =
+            favorites.Items(FilerFavoriteKind::Folder).front().pinnedAt;
+
+    const size_t moved = favorites.Reclassify(
+            FilerFavoriteKind::Folder, FilerFavoriteKind::App,
+            [](const std::string& path) {
+                return path.size() > 4 && path.compare(path.size() - 4, 4, ".app") == 0;
+            });
+    CheckEq(moved, 2u, "both applications leave Folders");
+    CheckEq(favorites.Items(FilerFavoriteKind::Folder).size(), 1u,
+            "the real folder stays under Folders");
+    CheckEq(favorites.Items(FilerFavoriteKind::App).size(), 2u,
+            "Apps holds each application once");
+    Check(favorites.IsPinned(FilerFavoriteKind::App, "/Applications/Calculator.app"),
+          "the moved application is pinned under Apps");
+    std::time_t movedAt = 0;
+    for (const FilerFavoriteItem& item : favorites.Items(FilerFavoriteKind::App))
+        if (item.path == "/Applications/Calculator.app") movedAt = item.pinnedAt;
+    Check(movedAt == pinnedAt, "and keeps the time it was pinned");
+
+    UltraFilerFavorites reloaded;
+    reloaded.Load();
+    Check(reloaded.IsPinned(FilerFavoriteKind::App, "/Applications/Calculator.app") &&
+          !reloaded.IsPinned(FilerFavoriteKind::Folder, "/Applications/Calculator.app"),
+          "the move is saved");
+    CheckEq(reloaded.Reclassify(FilerFavoriteKind::Folder, FilerFavoriteKind::App,
+                                [](const std::string&) { return false; }),
+            0u, "nothing to move moves nothing");
+
+    // The folder tree's Pinned section holds folders only: an application
+    // pinned there moves to Apps too, and one already under Apps is not doubled.
+    reloaded.Pin(FilerFavoriteKind::Tree, "/Applications/Calculator.app");
+    reloaded.Pin(FilerFavoriteKind::Tree, "/Applications/Preview.app");
+    reloaded.Pin(FilerFavoriteKind::Tree, "/Users/someone/Projects");
+    CheckEq(reloaded.Reclassify(FilerFavoriteKind::Tree, FilerFavoriteKind::App,
+                                [](const std::string& path) {
+                                    return path.size() > 4 &&
+                                           path.compare(path.size() - 4, 4, ".app") == 0;
+                                }),
+            2u, "applications leave the tree's Pinned section");
+    CheckEq(reloaded.Items(FilerFavoriteKind::Tree).size(), 1u,
+            "the pinned folder stays in the tree");
+    CheckEq(reloaded.Items(FilerFavoriteKind::App).size(), 3u,
+            "Apps gains the new application only once");
+    favorites.ClearAll();
+}
+
 } // namespace
 
 int main() {
@@ -417,9 +522,11 @@ int main() {
     TestLoadTrimsAndRewrites();
     TestLimitClamped();
     TestSettingRoundTrip();
+    TestNewTabStartSetting();
     TestProtectedFilesSetting();
     TestMissingPathsDropOut();
     TestNonAsciiNameStays();
+    TestReclassifyMovesPins();
 
     std::filesystem::remove_all(root, ec);
 

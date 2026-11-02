@@ -7,6 +7,12 @@
 // must not tint the drawing browsed to next - with the sliders hidden there
 // would be no way to take it off.
 //
+// An HTML page, and an .xml that holds XHTML, is rendered in the page view
+// (MV_Web) rather than shown as its source; data XML stays text. An .eml is
+// shown there as the message: header, body, its pictures, attachments listed;
+// an .emlx and an Outlook .msg the same, and a saved web page (.mht) as the
+// page it saved.
+//
 // A layered UltraCanvas document (*.ucd, UCBitmap) is shown whole - its
 // layers composited at full size, not the 256 px thumbnail it carries - and
 // zooms like a picture; a password-protected one shows only its thumbnail,
@@ -27,6 +33,11 @@
 //
 // Runs headless: the viewer, its toolbars and the image surface are built
 // and loaded without a window; only what decides visibility is checked.
+// Version: 1.12.0 - FileAssociations::RunsCodeWhenOpened, what an attachment link will not open
+// Version: 1.11.0 - Outlook .msg messages, attachments listed with Open and Save
+// Version: 1.10.0 - Apple Mail .emlx; saved web pages (.mht) from their own parts
+// Version: 1.9.0 - e-mail messages (.eml) shown as the message
+// Version: 1.8.0 - HTML / XHTML pages rendered (MV_Web, IsHtmlFile); data XML stays text
 // Version: 1.7.0 - the Auto backdrop (ContrastingBackdropFor, the default, the strip's
 //                  auto swatch); the zoom box shows the zoom
 // Version: 1.6.0 - SetSettingsAction: the gear in the info bar
@@ -39,7 +50,7 @@
 // Version: 1.2.0 - layered *.ucd images: full size; protected: the thumbnail
 // Version: 1.1.0 - one toolbar row; Details is in the info bar only
 // Version: 1.0.0
-// Last Modified: 2026-10-19
+// Last Modified: 2026-10-30
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasMediaViewer.h"
@@ -51,9 +62,16 @@
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasSlider.h"
 #include "UltraCanvasToolbar.h"
+#include "UltraCanvasWebView.h"
+#include "UltraCanvasImageElement.h"
+#include "UltraCanvasCompoundFile.h"
+#include "UltraCanvasFileAssociations.h"
+#include "UltraCanvasTextUtils.h"
 #include "UltraCanvasPathUtf8.h"
 
 #include <chrono>
+#include <deque>
+#include <functional>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -86,6 +104,22 @@ std::string InfoText(UltraCanvasMediaViewer& viewer) {
 
 bool Has(const std::string& text, const std::string& part) {
     return text.find(part) != std::string::npos;
+}
+
+// The page view's label holding `text`, or one of its pictures.
+UltraCanvasLabel* PageLabel(UltraCanvasUIElement* root, const std::string& text) {
+    if (auto* label = dynamic_cast<UltraCanvasLabel*>(root))
+        if (label->GetText().find(text) != std::string::npos) return label;
+    if (auto* box = dynamic_cast<UltraCanvasContainer*>(root))
+        for (auto& child : box->GetChildren())
+            if (auto* found = PageLabel(child.get(), text)) return found;
+    return nullptr;
+}
+int PagePictures(UltraCanvasUIElement* root) {
+    int count = dynamic_cast<UltraCanvasImageElement*>(root) ? 1 : 0;
+    if (auto* box = dynamic_cast<UltraCanvasContainer*>(root))
+        for (auto& child : box->GetChildren()) count += PagePictures(child.get());
+    return count;
 }
 
 bool Shown(UltraCanvasMediaViewer& viewer, const std::string& id) {
@@ -201,6 +235,224 @@ int main() {
     Expect(*viewer, text,  false, false, false, false);
     Check(Shown(*viewer, "MV_Text") && !Shown(*viewer, "MV_Note"),
           "notes.txt: a text file is on the text page, not in a note");
+
+    // An HTML page - and XML that holds XHTML - is shown rendered, not as
+    // its source; other XML is text. None of them takes an image tool.
+    const fs::path page  = dir / "page.html";
+    const fs::path xpage = dir / "page.xml";
+    const fs::path data  = dir / "data.xml";
+    WriteFile(dir / "style.css", "p { color: #204080; }");
+    WriteFile(page, "<!DOCTYPE html><html><head><title>A page</title>"
+                    "<link rel=\"stylesheet\" href=\"style.css\"></head>"
+                    "<body><p>Rendered, not source.</p></body></html>");
+    WriteFile(xpage, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+                     "<!-- an XHTML page saved as .xml -->\n"
+                     "<html xmlns=\"http://www.w3.org/1999/xhtml\"><head><title>An XML page</title></head>"
+                     "<body><p>Also rendered.</p></body></html>");
+    WriteFile(data, "<?xml version=\"1.0\"?>\n<catalog><book id=\"1\">Title</book></catalog>");
+    Check(UltraCanvasMediaViewer::IsHtmlFile(PathToUtf8(page)) &&
+          UltraCanvasMediaViewer::IsHtmlFile(PathToUtf8(xpage)) &&
+          !UltraCanvasMediaViewer::IsHtmlFile(PathToUtf8(data)) &&
+          !UltraCanvasMediaViewer::IsHtmlFile(PathToUtf8(text)),
+          "IsHtmlFile: .html and XHTML in .xml are pages; data XML and .txt are not");
+    auto* web = dynamic_cast<UltraCanvasWebView*>(viewer->FindChildById("MV_Web"));
+    Expect(*viewer, page, false, false, false, false);
+    Check(Shown(*viewer, "MV_Web") && !Shown(*viewer, "MV_Text"),
+          "page.html: rendered in the page view, not shown as source text");
+    Check(web && web->GetTitle() == "A page", "page.html: the page itself is loaded (its title)");
+    Check(Has(InfoText(*viewer), "HTML"), "page.html: the info bar calls it HTML (" + InfoText(*viewer) + ")");
+    Expect(*viewer, xpage, false, false, false, false);
+    Check(Shown(*viewer, "MV_Web") && !Shown(*viewer, "MV_Text"),
+          "page.xml: XHTML in an .xml file is rendered too");
+    Check(web && web->GetTitle() == "An XML page", "page.xml: the page itself is loaded (its title)");
+    Expect(*viewer, data, false, false, false, false);
+    Check(Shown(*viewer, "MV_Text") && !Shown(*viewer, "MV_Web"),
+          "data.xml: XML that is not a page stays text");
+    Check(web && web->GetPage() == nullptr, "data.xml: the last page was let go");
+
+    // An e-mail message is shown as the message: its header, its HTML body
+    // with the picture it carries (cid:), its attachment listed - and no
+    // remote picture fetched. A build without UltraNet's MIME reader shows
+    // the message's text.
+    const fs::path mail = dir / "message.eml";
+    WriteFile(mail,
+        "From: Alice Example <alice@example.org>\r\n"
+        "To: Bob <bob@example.org>\r\n"
+        "Subject: =?UTF-8?Q?Quarterly_r=C3=A9sum=C3=A9?=\r\n"
+        "Date: Thu, 29 Oct 2026 10:00:00 +0100\r\n"
+        "MIME-Version: 1.0\r\n"
+        "Content-Type: multipart/mixed; boundary=\"outer\"\r\n\r\n"
+        "--outer\r\n"
+        "Content-Type: multipart/related; boundary=\"inner\"\r\n\r\n"
+        "--inner\r\n"
+        "Content-Type: text/html; charset=utf-8\r\n\r\n"
+        "<html><head><style>p { color: #333; }</style></head><body>"
+        "<p>Hello Bob, the chart is below.</p><img src=\"cid:chart@example\">"
+        "<img src=\"https://tracker.example.com/pixel.gif\"></body></html>\r\n"
+        "--inner\r\n"
+        "Content-Type: image/png\r\n"
+        "Content-ID: <chart@example>\r\n"
+        "Content-Transfer-Encoding: base64\r\n\r\n"
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==\r\n"
+        "--inner--\r\n"
+        "--outer\r\n"
+        "Content-Type: application/pdf; name=\"report.pdf\"\r\n"
+        "Content-Disposition: attachment; filename=\"report.pdf\"\r\n"
+        "Content-Transfer-Encoding: base64\r\n\r\n"
+        "JVBERi0xLjQK\r\n"
+        "--outer--\r\n");
+    Expect(*viewer, mail, false, false, false, false);
+#ifdef ULTRACANVAS_HAS_NET
+    Check(UltraCanvasMediaViewer::IsMailMessageFile(PathToUtf8(mail)), "IsMailMessageFile: .eml is a message");
+    Check(Shown(*viewer, "MV_Web") && !Shown(*viewer, "MV_Text"),
+          "message.eml: shown as the message, not as its source");
+    Check(web && web->GetTitle() == "Quarterly r\xC3\xA9sum\xC3\xA9", "message.eml: its subject, decoded");
+    Check(web && PageLabel(web, "Alice Example") && PageLabel(web, "bob@example.org"),
+          "message.eml: the header shows From and To");
+    Check(web && PageLabel(web, "Hello Bob, the chart is below."), "message.eml: the HTML body is rendered");
+    Check(web && PageLabel(web, "report.pdf"), "message.eml: the attachment is listed");
+    Check(web && PagePictures(web) >= 1, "message.eml: the picture it carries (cid:) is shown");
+    Check(web && web->GetPage() && web->GetPage()->kind == HTML::PageKind::Html,
+          "message.eml: built as a page");
+    Check(Has(InfoText(*viewer), "EMAIL"), "message.eml: the info bar calls it EMAIL (" + InfoText(*viewer) + ")");
+
+    // Apple Mail's .emlx: the message's length, the message, Mail's plist.
+    {
+        const std::string message =
+            "From: Carol <carol@example.org>\r\nTo: Dan <dan@example.org>\r\n"
+            "Subject: From Apple Mail\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n"
+            "Plain words from an emlx.\r\n";
+        const fs::path emlx = dir / "12345.emlx";
+        WriteFile(emlx, std::to_string(message.size()) + "\n" + message +
+                        "<?xml version=\"1.0\"?>\n<plist version=\"1.0\"><dict><key>flags</key>"
+                        "<integer>8590195713</integer></dict></plist>\n");
+        Expect(*viewer, emlx, false, false, false, false);
+        Check(Shown(*viewer, "MV_Web") && web && web->GetTitle() == "From Apple Mail",
+              "12345.emlx: shown as the message");
+        Check(web && PageLabel(web, "Plain words from an emlx.") && !PageLabel(web, "plist"),
+              "12345.emlx: its body, without Mail's property list");
+        Check(Has(InfoText(*viewer), "EMAIL"), "12345.emlx: the info bar calls it EMAIL");
+    }
+
+    // A saved web page (.mht): the page, its style sheet and pictures read
+    // from the archive's parts under the address it was saved from (a
+    // relative link reads against that), a cid: picture too. The page view
+    // runs its rebuilds on a queue here - a window's next UI turn.
+    {
+        std::deque<std::function<void()>> turn;
+        if (web) web->SetScheduler([&turn](std::function<void()> task) { turn.push_back(std::move(task)); });
+        auto settle = [&] {
+            for (int i = 0; i < 10 && !turn.empty(); ++i) {
+                auto tasks = std::move(turn);
+                turn.clear();
+                for (auto& task : tasks) task();
+            }
+        };
+        const std::string png =
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+        const fs::path mht = dir / "saved.mht";
+        WriteFile(mht,
+            "From: <Saved by a browser>\r\nSubject: Saved article\r\nMIME-Version: 1.0\r\n"
+            "Content-Type: multipart/related; type=\"text/html\"; boundary=\"mht\"\r\n\r\n"
+            "--mht\r\nContent-Type: text/html; charset=\"utf-8\"\r\n"
+            "Content-Location: https://example.org/articles/page.html\r\n\r\n"
+            "<html><head><title>Saved article</title><link rel=\"stylesheet\" href=\"../css/site.css\"></head>"
+            "<body><p>Saved text.</p><p class=\"gone\">Hidden by the saved style sheet</p>"
+            "<img src=\"images/photo.png\"><img src=\"cid:logo@mht\"></body></html>\r\n"
+            "--mht\r\nContent-Type: text/css\r\nContent-Location: https://example.org/css/site.css\r\n\r\n"
+            ".gone { display: none; }\r\n"
+            "--mht\r\nContent-Type: image/png\r\nContent-Transfer-Encoding: base64\r\n"
+            "Content-Location: https://example.org/articles/images/photo.png\r\n\r\n" + png + "\r\n"
+            "--mht\r\nContent-Type: image/png\r\nContent-Transfer-Encoding: base64\r\n"
+            "Content-ID: <logo@mht>\r\n\r\n" + png + "\r\n--mht--\r\n");
+        Expect(*viewer, mht, false, false, false, false);
+        settle();
+        Check(UltraCanvasMediaViewer::IsWebArchiveFile(PathToUtf8(mht)), "IsWebArchiveFile: .mht is a saved page");
+        Check(Shown(*viewer, "MV_Web") && web && web->GetTitle() == "Saved article",
+              "saved.mht: shown as the page it saved");
+        Check(web && PageLabel(web, "Saved text."), "saved.mht: its text");
+        Check(web && !PageLabel(web, "Hidden by the saved style sheet"),
+              "saved.mht: its style sheet, from the archive (a relative link read against where it was saved)");
+        Check(web && PagePictures(web) == 2, "saved.mht: both pictures, by Content-Location and by cid:");
+        Check(web && web->GetPage() && web->GetPage()->baseUrl == "https://example.org/articles/page.html",
+              "saved.mht: its links read against the address it was saved from");
+        Check(Has(InfoText(*viewer), "WEB ARCHIVE"), "saved.mht: the info bar calls it WEB ARCHIVE");
+        if (web) web->SetScheduler(nullptr);
+    }
+#else
+    Check(Shown(*viewer, "MV_Text"), "message.eml: without a MIME reader, its text");
+#endif
+
+    // An Outlook .msg (a compound file, read by UCOutlookMessage - no MIME
+    // reader needed): the message, its HTML body with its hidden cid:
+    // picture, its attachment listed with Open and Save. A .msg that is
+    // not one (a message catalogue) is text.
+    {
+        auto utf16 = [](const std::string& ascii) {
+            std::vector<uint8_t> out;
+            for (unsigned char c : ascii) { out.push_back(c); out.push_back(0); }
+            out.push_back(0); out.push_back(0);
+            return out;
+        };
+        auto bytes = [](const std::string& text) { return std::vector<uint8_t>(text.begin(), text.end()); };
+        UCCompoundFileWriter msg;
+        msg.AddStream("__properties_version1.0", std::vector<uint8_t>(32, 0));
+        msg.AddStream("__substg1.0_0037001F", utf16("Outlook notes"));
+        msg.AddStream("__substg1.0_0C1A001F", utf16("Erin Example"));
+        msg.AddStream("__substg1.0_5D01001F", utf16("erin@example.org"));
+        msg.AddStream("__substg1.0_0E04001F", utf16("Frank"));
+        msg.AddStream("__substg1.0_10130102",
+                      bytes("<html><body><p>Notes from Outlook.</p><img src=\"cid:sig@x\"></body></html>"));
+        msg.AddStream("__attach_version1.0_#00000000/__properties_version1.0", std::vector<uint8_t>(8, 0));
+        msg.AddStream("__attach_version1.0_#00000000/__substg1.0_3707001F", utf16("minutes.txt"));
+        msg.AddStream("__attach_version1.0_#00000000/__substg1.0_37010102", bytes("Minutes.\n"));
+        msg.AddStream("__attach_version1.0_#00000001/__properties_version1.0", std::vector<uint8_t>(8, 0));
+        msg.AddStream("__attach_version1.0_#00000001/__substg1.0_370E001F", utf16("image/png"));
+        msg.AddStream("__attach_version1.0_#00000001/__substg1.0_3712001F", utf16("sig@x"));
+        msg.AddStream("__attach_version1.0_#00000001/__substg1.0_37010102", [] {
+            const std::string b64 =
+                "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+            return Base64Decode(b64);
+        }());
+        const std::vector<uint8_t> built = msg.Build();
+        const fs::path outlook = dir / "notes.msg";
+        WriteFile(outlook, std::string(built.begin(), built.end()));
+        Expect(*viewer, outlook, false, false, false, false);
+        Check(UltraCanvasMediaViewer::IsMailMessageFile(PathToUtf8(outlook)), "IsMailMessageFile: an Outlook .msg");
+        Check(Shown(*viewer, "MV_Web") && web && web->GetTitle() == "Outlook notes",
+              "notes.msg: shown as the message");
+        Check(web && PageLabel(web, "Erin Example") && PageLabel(web, "Frank"), "notes.msg: From and To");
+        Check(web && PageLabel(web, "Notes from Outlook."), "notes.msg: its HTML body");
+        Check(web && PagePictures(web) == 1, "notes.msg: the picture its body names by cid:");
+        Check(web && PageLabel(web, "minutes.txt") && PageLabel(web, "Save"),
+              "notes.msg: the attachment, with its Open and Save links");
+        Check(Has(InfoText(*viewer), "EMAIL"), "notes.msg: the info bar calls it EMAIL");
+
+        // What an attachment link refuses to open: programs and scripts,
+        // by name, whatever the case, however the name ends.
+        Check(FileAssociations::RunsCodeWhenOpened("setup.exe") &&
+              FileAssociations::RunsCodeWhenOpened("Invoice.PDF.JS") &&
+              FileAssociations::RunsCodeWhenOpened("run.sh") &&
+              FileAssociations::RunsCodeWhenOpened("Report.lnk") &&
+              FileAssociations::RunsCodeWhenOpened("update.desktop") &&
+              FileAssociations::RunsCodeWhenOpened("Tool.app") &&
+              FileAssociations::RunsCodeWhenOpened("tricky.exe. ") &&
+              FileAssociations::RunsCodeWhenOpened("C:\\Temp\\x.bat"),
+              "RunsCodeWhenOpened: programs, scripts, shortcuts, an .exe hiding behind dots and spaces");
+        Check(!FileAssociations::RunsCodeWhenOpened("minutes.txt") &&
+              !FileAssociations::RunsCodeWhenOpened("report.pdf") &&
+              !FileAssociations::RunsCodeWhenOpened("photo.jpeg") &&
+              !FileAssociations::RunsCodeWhenOpened("exe") &&
+              !FileAssociations::RunsCodeWhenOpened("archive.exe.zip"),
+              "RunsCodeWhenOpened: documents, pictures, a bare word, an archive are not");
+
+        const fs::path catalogue = dir / "strings.msg";
+        WriteFile(catalogue, "$set 1\n1 Hello\n");
+        Expect(*viewer, catalogue, false, false, false, false);
+        Check(!UltraCanvasMediaViewer::IsMailMessageFile(PathToUtf8(catalogue)) && Shown(*viewer, "MV_Text"),
+              "strings.msg: not a compound file - a text file, shown as text");
+    }
+
     Expect(*viewer, sheet, false, false, false, false);
     Expect(*viewer, model, false, false, false, false);
     Expect(*viewer, video, false, false, false, false);

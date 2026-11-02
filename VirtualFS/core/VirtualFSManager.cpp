@@ -1,7 +1,9 @@
 // VirtualFS/core/VirtualFSManager.cpp
 // Core manager implementation for VirtualFS
+// Version: 1.2.0 - CreateArchive: the progress total leaves out what
+//                  options.archiveWrite.excludePatterns exclude
 // Version: 1.1.0
-// Last Modified: 2026-08-23
+// Last Modified: 2026-10-30
 // Author: ULTRA OS Framework
 
 #include "VirtualFSManager.h"
@@ -780,9 +782,20 @@ VirtualFSResult VirtualFSManager::CreateArchive(
         std::error_code ec;
         for (const auto& sourcePath : sourcePaths) {
             if (std::filesystem::is_directory(sourcePath, ec)) {
+                const std::filesystem::path root = PathFromUtf8(sourcePath);
                 for (std::filesystem::recursive_directory_iterator
-                             it(sourcePath, ec), end; it != end; it.increment(ec)) {
+                             it(root, ec), end; it != end; it.increment(ec)) {
                     if (ec) break;
+                    // What the exclusions leave out is not part of the total.
+                    std::string relative =
+                            PathToUtf8(it->path().lexically_relative(root));
+                    std::replace(relative.begin(), relative.end(), '\\', '/');
+                    if (VirtualFSIsExcluded(options.archiveWrite,
+                                            PathToUtf8(it->path().filename()),
+                                            relative)) {
+                        it.disable_recursion_pending();
+                        continue;
+                    }
                     std::error_code sizeEc;
                     if (it->is_regular_file(sizeEc))
                         grandTotal += std::filesystem::file_size(it->path(), sizeEc);

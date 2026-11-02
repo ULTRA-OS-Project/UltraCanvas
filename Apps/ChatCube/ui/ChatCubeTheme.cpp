@@ -1,14 +1,17 @@
 // Apps/ChatCube/ui/ChatCubeTheme.cpp
 // See ChatCubeTheme.h.
+// Version: 0.1.2 - PaintTicks: the ticks as strokes, for the fonts that have no check mark
 // Version: 0.1.1 - an avatar from the person's picture; a picture in a rounded box; a play mark
 // Version: 0.1.0
-// Last Modified: 2026-10-29
+// Last Modified: 2026-10-31
 // Author: UltraCanvas Framework / ULTRA OS
 #include "ChatCubeTheme.h"
 
 #include "UltraCanvasUtils.h"
 
+#include <algorithm>
 #include <cctype>
+#include <cmath>
 
 using namespace UltraCanvas;
 
@@ -219,6 +222,39 @@ void PaintPlayMark(IRenderContext* ctx, const Point2Dd& centre, double radius) {
     ctx->SetFillPaint(kWhite);
     ctx->FillPathPreserve();
     ctx->ClearPath();
+    ctx->PopState();
+}
+
+int TicksWidth(int count, double height) {
+    if (count <= 0) return 0;
+    // A tick is about as wide as it is tall; the second one overlaps the
+    // first by half, as the messengers draw them.
+    const int tick = static_cast<int>(std::lround(height * 0.9));
+    return tick + (count > 1 ? tick / 2 : 0);
+}
+
+void PaintTicks(IRenderContext* ctx, const Rect2Dd& area, int count, const Color& color) {
+    if (!ctx || count <= 0 || area.height <= 0) return;
+    const double h = area.height * 0.62;                // the mark's height
+    const double w = h * 1.3;                            // and width
+    const double top = area.y + (area.height - h) / 2.0;
+    const int width = TicksWidth(count, area.height);
+    double x = area.x + area.width - width;
+    ctx->PushState();
+    ctx->SetStrokePaint(color);
+    ctx->SetStrokeWidth(std::max(1.2, area.height * 0.11));
+    ctx->SetLineCap(LineCap::Round);
+    ctx->SetLineJoin(LineJoin::Round);
+    for (int i = 0; i < count; ++i) {
+        // Short stroke down to the foot, long stroke up to the top right.
+        ctx->ClearPath();
+        ctx->MoveTo(x, top + h * 0.55);
+        ctx->LineTo(x + w * 0.36, top + h);
+        ctx->LineTo(x + w, top);
+        ctx->StrokePathPreserve();
+        ctx->ClearPath();
+        x += std::lround(area.height * 0.9) / 2.0;
+    }
     ctx->PopState();
 }
 

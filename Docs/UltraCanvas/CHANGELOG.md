@@ -1,3 +1,581 @@
+#### 2026-11-01 *0.9.458*
+- **A picture from pixels in memory.** `UCImage::FromBgra(pixels, width,
+  height, stride, opaque)` and `UCImage::FromRgba(pixels, width, height)`
+  make an image from rows already in memory - a screen capture, a frame a
+  program made - with no encoder or decoder on the way: it is drawn, scaled
+  to any fit, saved through libvips and asked for its transparency like a
+  loaded one. UltraSnip shows the frozen screen and the snip taken from it
+  this way, where before each went through a PNG and back
+  (`ImageFromPixelsTest`).
+- **UltraCanvasDesktopShell: one rectangle of the screen.** `CaptureScreenArea(x, y,
+  width, height, image)` captures that much of the screen as pixels in memory -
+  `XGetImage` of the rectangle on X11, a `BitBlt` of it on Windows - clipped to
+  the screen, instead of the whole screen and a crop: what UltraSnip's snips
+  and its screen recording (twenty frames a second of one window) take.
+  `DesktopScreenImage` carries `x` / `y`, where its pixels came from (the
+  virtual screen's origin on Windows, which is negative with a monitor left
+  of the primary). `DefaultRecordingPath()` names
+  `<Videos>/Screen Recordings/Screen recording <date> <time>.mp4`, as
+  `DefaultScreenshotPath()` names a screenshot.
+- **A settings window in one kit.** `UltraCanvasSettingsPageKit`
+  (`UltraCanvasSettingsPageKit.h`) holds the look of an application's
+  settings window once: `UltraCanvasSettingsWindow` - the tree of pages on
+  the left, the page on the right, the page's *Restore defaults* and *Close*
+  at the foot - and a page's skeleton (title, caption, controls, the notes
+  block) with the controls in the window's one type scale (radios,
+  checkboxes, sliders with their value, buttons, colour boxes, rows).
+  UltraFiler's settings window set the style and is built on the kit now,
+  with nothing changed on screen; UltraSnip's is the second; the next
+  application's gets the same look without a copy.
+- **`UltraCanvasAppSettings`: a note on older files and on renaming a key.**
+  A key an older file does not have reads as the fallback and `Set` makes
+  the objects on the way, so a rename is read-old, set-new, remove-old,
+  save; the header and the doc show it.
+- **VideoFX 0.17.0: a recorder for a live source.** `VideoFXFrameRecorder`
+  takes frames one by one with the moment each was taken - RGBA or BGRA, any
+  stride - and encodes them into the file as they come, so the file grows
+  while the recording runs: a frame lands on the nearest tick of the file's
+  rate, a duplicate is dropped, a gap shows the last frame longer, and the
+  recording keeps real time however many frames the source managed. The
+  export's codec, quality and hardware rules apply; the preset is
+  `veryfast` with `zerolatency`, and an MP4 is fragmented so a recording cut
+  short still plays. `VideoFXRecorderSettings`, `VideoFXPixelLayout`; the
+  stub answers NotAvailable. UltraSnip records the screen with it
+  (`VideoFXTest`: red then blue frames read back at their times, a BGRA
+  frame read in its own order, 321 x 241 recorded as 320 x 240).
+- **`WindowConfig::alwaysOnTop` works on X11 and macOS.** Only the Windows
+  backend honoured it; X11 now sets `_NET_WM_STATE_ABOVE` on the window
+  before it is mapped (any type but a notification, which has it, and a
+  desktop, which is kept below), and macOS puts the window at the floating
+  level, as it now does a notification too.
+
+#### 2026-11-01 *0.9.457*
+- **Every program in a folder showed one program's icon until its own
+  loaded - and programs without an icon kept it.** On Windows, under
+  Display > File icons = Host OS, the type icon for `.exe` was asked of the
+  shell with the path of whichever program was drawn first. For the types
+  whose registered icon is `%1` (`.exe`, `.ico`, `.cur`, `.lnk`) the shell
+  reads that file even with `SHGFI_USEFILEATTRIBUTES`, so it answered with
+  that program's own icon, and the filer held it as *the* `.exe` icon: every
+  program drew it while its own icon was still being extracted, and the
+  console tools, which carry no icon, drew it for good - until the slot was
+  evicted and happened to be asked again by an icon-less program.
+  `HostFileIconProbeName` (`UltraCanvasHostFileIcons.h`) gives the made-up
+  name the key stands for (`ultracanvas-host-icon-probe.exe`), and the
+  Windows backend asks the shell with it, never with the file's path - which
+  also stops a special folder's icon from standing in for every folder.
+  `FilerHostIconsTest` checks that two programs, a Windows and a POSIX path,
+  and any two folders are asked about under one name that carries nothing of
+  the file.
+- **macOS host file icons are the type's icon, never one file's.** The
+  content-type branch of `UltraCanvasMacOSHostFileIcons.mm` was compiled out
+  (its `ULTRACANVAS_HAS_UTTYPE` was only defined in the "Open with" backend),
+  so every lookup called `iconForFile:` with the real path: one file's custom
+  icon was cached as the icon of its whole type, and a folder was drawn with
+  the startup disk's icon. The backend now detects the SDK itself and asks by
+  `HostFileIconProbeName` only - `iconForContentType:` (folder, the type of
+  the extension, or plain data), or `iconForFileType:` before macOS 11.
+- **An image that arrives as bytes can no longer draw another one's
+  picture.** In a build without libvips `UCImageRaster::LoadFromMemory` still
+  named the image after the buffer's address, and so did
+  `UCImageRaster::GetFromMemory` in every build: a freed buffer's address
+  reused for another picture of the same size found the first picture in the
+  pixmap or image cache. In-memory images are named by a counter in both
+  builds now, and `GetFromMemory` keys by a hash of the bytes and checks a
+  hit against the bytes the cached image kept. `ImageCacheFreshnessTest`
+  reuses one buffer for two pictures and checks each is drawn as itself.
+
+#### 2026-11-01 *0.9.456*
+- **UltraCanvasPortableDevices: phones, cameras and players over MTP / PTP.**
+  A device plugged in over USB that is not a drive gets no drive letter or
+  mount point, so nothing in the framework could see it. New
+  `UltraCanvasPortableDevices.h`: `List` (name, manufacturer, phone / camera /
+  player), `ListFolder`, `Download`, `Upload`, `MakeFolder`, `Delete` and
+  `Rename` by path (`"/"` is the device, its folders its storages),
+  `GetSpace` (capacity and free space, storages added up), and
+  `UltraCanvasPortableDeviceMonitor` for plug-in and pull-out. The Windows
+  backend is Windows Portable Devices - built in, no new library - running
+  every call on one COM thread of its own, so the devices it opened stay open
+  between calls. The macOS backend is Image Capture (`ImageCaptureCore`): an
+  iPhone's or iPad's photos and videos and a camera's card, read-only
+  (`PortableDeviceInfo::readOnly`), the work handed to the main thread that
+  Image Capture answers on. Elsewhere `Available()` is false. `PortableDevicesTest`
+  checks the path rules and the backend-less answers.
+- **Linux: the phones, cameras and shares the desktop mounted are volumes.**
+  GNOME mounts a phone through GVFS as a directory of one FUSE file system
+  (`$XDG_RUNTIME_DIR/gvfs/mtp:host=...`), which is no mount point, so
+  `ListMountedVolumes` never listed it. `ListGvfsVolumes` adds those places -
+  MTP, gphoto2, AFC (iPhone), SMB, SFTP, FTP, WebDAV, NFS, AFP - with readable
+  labels ("Google Pixel 8", "photos on nas"); cloud accounts stay with
+  `UltraCanvasCloudStorage`. The Linux volume monitor looks at them every two
+  seconds, since they change without the mount table changing.
+  `VolumeMonitorTest` covers the labels and the listing.
+
+#### 2026-11-01 *0.9.455*
+- **UltraCanvasTreeView: the +/- box takes the theme's colours.**
+  `SetExpandButtonColors(fill, border, symbol)` sets the expand button's
+  fill, its 1 px border and the `+` / `-` together. The border was always
+  gray and the glyph always black, so on a dark theme the box could only be
+  a light square with a black mark in it; ChatCube's Settings window is the
+  first to use it, in its dark look. `SetExpandButtonColor` (the fill
+  alone) is unchanged.
+
+#### 2026-11-01 *0.9.454*
+- **macOS: `UltraCanvasDesktopShell::ListApplications` lists the
+  installed applications.** It read freedesktop desktop entries there,
+  which macOS does not have, so UltraDesktop's Apps window was empty. It now
+  reads the application bundles in `~/Applications`, `/Applications`,
+  `/System/Applications` (their `Utilities` too) and one level of subfolders
+  below them: named as Finder names them, with the icon Finder shows (a PNG
+  in the disk cache's `desktop-icons` folder) and the bundle's
+  `LSApplicationCategoryType` as its category; agents and background-only
+  bundles are left out. `LaunchApplication` starts such an entry through
+  `NSWorkspace`, as Finder does. New file
+  `OS/MacOS/UltraCanvasMacOSApplications.mm`; the rest of the macOS desktop
+  shell is unchanged. Doc: `Docs/UltraCanvas/UltraCanvasDesktopShell.md`.
+- UltraDesktop's Apps window: on macOS a maker's folder under
+  `/Applications` holding five or more applications is a category of its
+  own, as a Start-menu folder is on Windows; `/Applications` and `Utilities`
+  are not.
+
+#### 2026-11-01 *0.9.453*
+- **UltraCanvasButton: the text on several lines.** `ButtonStyle::wrap` /
+  `SetWrap(TextWrap::WrapWord)` breaks a button's text onto as many lines as
+  its text area holds, from the top of the area, the last one shortened with
+  "…" when more is left - an application's name under its icon on a tile.
+  `WrapNone`, the default, keeps the text on one line as before. Doc:
+  `Docs/UltraCanvas/UltraCanvasButtonExamples.md`.
+- **UltraCanvasTreeView: `GetNodeAtY` is public.** The row at an
+  element-local y, for a drop that starts in another element - UltraDesktop's
+  Apps window drops a list row on a category in its tree. Doc:
+  `Docs/UltraCanvas/UltraCanvasTreeViewExamples.md`.
+
+#### 2026-11-01 *0.9.452*
+- **UltraCanvasWireless on macOS: the Wi-Fi list says what to do while
+  macOS asks for Location Services.** Until the person answered macOS's
+  question, an empty network list pointed them to System Settings; now it
+  says to allow it when macOS asks, and System Settings only once it has
+  been refused.
+
+#### 2026-11-01 *0.9.451*
+- **`UltraCanvasVideoTimeline` 1.4.0: a close-gap button in every gap of a
+  free track.** Each empty stretch before a clip on a non-magnetic lane
+  shows a `|<-` button, centred in the part of the gap on screen; a click
+  reports a `Move` of the clip after it to the end of the clip before (or
+  to 0), `Shift`+click a rippled `Move` of every clip after the gap.
+  `SetShowGapButtons(false)` turns them off; a locked lane has none. The
+  model gains `TimelineGap`, `TimelineGaps` and `TimelineCloseGap`.
+
+#### 2026-11-01 *0.9.450*
+- **The vendored libcurl had no `sftp://`, so UltraStoreAdmin's SFTP upload
+  was refused with `Protocol "sftp" is disabled` even with libssh2
+  installed and linked.** The vendored `third_party/curl` carried the
+  output of an in-tree autotools `./configure` - `lib/curl_config.h`, the
+  Makefiles, `.deps/`, `config.status`, `libtool` and the rest - and
+  `curl_setup.h` includes `"curl_config.h"` with quotes, so the compiler
+  took that stale file beside it instead of the one CMake generates, and
+  every option CMake had decided (libssh2 among them) was lost while the
+  library still linked what CMake found. The generated files are removed;
+  `VendoredCurl.cmake` refuses to configure while such a `curl_config.h`
+  exists in the source tree, asks curl's CMake for libssh2 explicitly and
+  prints which SSH backend it got, warning when there is none; the Linux CI
+  leg installs `libssh2-1-dev` and fails when the vendored libcurl has no
+  SSH backend.
+
+#### 2026-11-01 *0.9.449*
+- **Closing a window that asks first no longer looks like nothing
+  happened.** `UltraCanvasDesktopShell::CloseWindow` brings the window to the
+  front - and onto a screen - before asking it to close, and an UltraCanvas
+  window whose `onWindowClosing` keeps it open (to ask "Save the changes?")
+  restores itself if it was minimized - so ArtCreator's question about an
+  unsaved drawing is seen when UltraDesktop's Task Manager or taskbar closes
+  it.
+- **Windows off every screen, and ending a program.**
+  `UltraCanvasDesktopShell::GetWindowBounds` and `MoveWindow` read and move a
+  window; `BringWindowOnScreen` centres a window whose title bar is on no
+  screen (one left on a monitor that was unplugged) on the screen it is
+  mostly over; `KillWindowProcess` ends a window's program at once, as a task
+  manager's "End task" (Linux `SIGTERM`, then `SIGKILL`; Windows
+  `TerminateProcess`), refusing the desktop itself and programs it may not
+  end.
+- `DesktopWindowInfo::maximized`: a window maximized both ways
+  (`_NET_WM_STATE_MAXIMIZED_VERT` and `_HORZ` on X11, `IsZoomed` on Windows).
+- **Kanban cards can show a picture.** `UltraCanvasKanbanBoardElement::cardImageProvider`
+  hands over a picture for a card - a file's thumbnail, a photo - drawn above
+  its title in a band `KanbanBoardStyle::cardImageHeight` high. The board
+  never loads anything itself: the provider answers with what is ready, and
+  the caller invalidates the layout when a thumbnail made elsewhere arrives.
+- **UltraCanvasRemovableDrives: "Safely remove".** A new module
+  (`UltraCanvasRemovableDrives.h`) lists the drives a person plugs in - USB
+  sticks, external disks, memory cards, never the system's own drive - with
+  their mount points, and removes one safely: every volume unmounted after
+  the system has written out what it still held, then the drive powered off
+  or ejected. A file still open on it is reported in words. Linux through
+  UDisks2, Windows through SetupAPI and `CM_Request_Device_Eject` (Windows'
+  own "Safely Remove Hardware"; the framework now links `cfgmgr32`), macOS
+  through NSWorkspace's eject. Doc: `Docs/UltraCanvas/UltraCanvasRemovableDrives.md`.
+- The Linux system-bus helpers the wireless backend used are shared now
+  (`OS/Linux/UltraCanvasLinuxSystemBus.h`), one connection for NetworkManager,
+  BlueZ and UDisks2.
+- On macOS the volumes of one drive are one entry, grouped by
+  DiskArbitration's whole disk and named by the drive's vendor and model,
+  with its size and bus, as on Linux and Windows (the framework links
+  DiskArbitration where the SDK has it).
+- The volumes of an APFS drive are grouped by the physical disk under their
+  container (found in the IOKit registry), so a drive with two containers
+  is one entry too, named and sized by the drive itself.
+- **`RenderFileThumbnail`: a file's picture outside the Filer.** A free
+  function in `UltraCanvasFilerWidget.h` makes the picture a Filer tile
+  shows - the image, a PDF's first page, a book's cover, a 3D model, a font
+  specimen, a video's poster frame - and for a text document a small page of
+  its first lines. The thumbnail workers' decode switch is now this one
+  function, so the Filer and its other callers (UltraDesktop's Sticker board)
+  agree on every format.
+- `DesktopScreenInfo::number`: Windows' own number for a monitor (n of
+  `\\.\DISPLAYn`, as its display settings show it); 0 where the system numbers
+  none.
+- **UltraCanvasWireless: Wi-Fi and Bluetooth operated from a program.** A
+  new module (`UltraCanvasWireless.h`) lists the Wi-Fi networks in reach and
+  joins one (asking for the password only when the system has none saved,
+  and keeping a new profile only once the network has been joined), leaves
+  and forgets networks, and switches the radio; it lists the paired
+  Bluetooth devices and the ones in pairing mode nearby, pairs, connects,
+  disconnects and removes them, and switches the Bluetooth radio where the
+  system allows. Linux through NetworkManager and BlueZ on the system bus,
+  Windows through the Native Wifi and Bluetooth APIs, macOS through
+  CoreWLAN and IOBluetooth (with the Location Services permission macOS 14
+  asks before it names a network); other platforms answer that they have
+  none. UltraDesktop's new Wi-Fi and Bluetooth panels are built on it. Doc:
+  `Docs/UltraCanvas/UltraCanvasWireless.md`.
+- `package-macos.sh` writes `NSBluetoothAlwaysUsageDescription` and
+  `NSLocationWhenInUseUsageDescription` (and the location entitlement) for
+  the applications that list Bluetooth devices or Wi-Fi networks -
+  UltraDesktop.
+- **Pairing codes.** `UltraCanvasWireless::SetPairingHandler` takes the codes
+  a device shows or asks for while it pairs - a code to type on a keyboard,
+  one to compare with a phone, a PIN, a yes to pair. On Linux the module
+  registers a BlueZ agent for them on a GLib loop of its own; on macOS
+  IOBluetoothDevicePair's requests go to the handler; Windows keeps its own
+  prompt.
+- **The default pairing agent on Linux.** Setting a pairing handler now
+  registers the module's BlueZ agent straight away and as the default, so a
+  pairing the device starts - a phone pairing with the computer - reaches
+  the handler as well, and so does a connection from a device that is not
+  trusted (`WirelessPairingStep::AllowConnection`); a service of a device
+  being paired from here, or of a trusted one, is allowed without asking.
+  When BlueZ was not running yet, the agent is registered on a later read.
+- The Linux pairing agent follows BlueZ: its thread watches `org.bluez` on
+  the system bus and registers the agent again - as the default - whenever
+  BlueZ appears, so a `bluetoothd` restart or a late start no longer leaves
+  the desktop without one.
+
+#### 2026-11-01 *0.9.448*
+- **A static build links ChatCube and chatcube-peer again.** UltraRTC's
+  engine calls back into the device glue compiled into the core library
+  (`UltraRtcInternal::OpenCamera`, `OpenMicrophone`, `OpenSpeaker`), and the
+  core links UltraRTC: a cycle between two static archives that was declared
+  in one direction only, so GNU ld's single pass left those three undefined
+  in every executable that links UltraRTC (`ULTRACANVAS_BUILD_SHARED` off,
+  the default; CI builds shared and never saw it). `UltraCanvas/CMakeLists.txt`
+  now declares the back edge too, and CMake repeats the two archives on the
+  link line.
+
+#### 2026-10-31 *0.9.447*
+- **UltraIM: a file that is a picture goes with a preview picture.** ChatCube
+  Direct now makes one (through the application's preview maker) for a file
+  whose type is an image - an SVG drawing, which goes as a file - as it does
+  for a photo or a video, and names `.svg` / `.svgz` as `image/svg+xml`; the
+  Telegram provider sends such a document with its preview (inputThumbnail)
+  too, so the other side's bubble shows the drawing before the file is fetched.
+
+#### 2026-10-31 *0.9.446*
+- **`VirtualFSOpenOptions::compressionMethod` and `followSymlinks` do what
+  they say.** Neither was read anywhere.
+  - `compressionMethod` now chooses what a ZIP or 7-Zip is written with:
+    Store, Deflate, BZip2, LZMA, LZMA2 / XZ and PPMd for 7-Zip; Store and
+    Deflate for ZIP (and BZip2, LZMA, XZ and Zstandard where libarchive is
+    3.8 or newer). A method this build cannot write - and, for a TAR, any
+    method other than the one its extension names - makes `CreateArchive`
+    answer `NotSupported` without leaving a file, instead of writing
+    something else under the name. `Auto`, the default, is unchanged.
+  - `followSymlinks` (on by default) makes reading an archive follow the
+    symbolic links inside it, the way a disk does: reading a link reads its
+    target instead of nothing, listing a link to a folder lists that folder,
+    and a path may pass through linked folders. A link pointing out of the
+    archive (absolute, or above its root), a dangling one and a circle are
+    never followed. Writing keeps `archiveWrite.storeSymlinks`.
+  - `VirtualFSArchiveWriteOptionsTest` covers every method on ZIP, 7-Zip
+    and TAR and each kind of link.
+- **`UCVFSBridge::CreateArchive` takes the archive's method from
+  `UCVFSCompressionOptions::archive.method`** (`UCVFSArchiveWriteOptions`;
+  empty: the library's default). `UCVFSCompressionOptions::type` stays the
+  buffer compressors' choice and is said to be: passed on to an archive,
+  its default (Zstd) would have made every ZIP created through the bridge
+  fail before libarchive 3.8. A cabinet method (LZX, MS-ZIP, Quantum), which
+  nothing writes, fails with a reason in `GetLastError()`. New test
+  `VirtualFSBridgeArchiveTest`.
+
+#### 2026-10-30 *0.9.445*
+- **The Filer missed a file saved into the open folder and never showed it.**
+  A save is several steps - Firefox writes an empty placeholder, then a
+  `.part` file, then renames it to the real name. The first step made the
+  folder watch ask for a rescan, and every rescan then stopped and restarted
+  the native watch (`ReadDirectoryChangesW` / inotify) and cleared the
+  "changed" flag. The steps that happened during the scan or during the
+  restart were thrown away, so the listing stayed on the half-saved state
+  until the user refreshed by hand. A rescan of the folder already watched now
+  keeps its watch running, and a change reported while the scan ran is kept
+  and triggers one more rescan; only moving to another folder discards
+  pending news (`UltraCanvasFilerWidget::WatchFolder`).
+- **`FindProgram` / `LaunchProgram` find a sibling application on macOS.**
+  Every macOS application is a bundle of its own, so "next to this
+  executable" (`<App>.app/Contents/MacOS`) never held another application and
+  `LaunchProgram("UltraViewer")` failed unless it was on `PATH`. Before `PATH`
+  they now try `<name>.app/Contents/MacOS/<name>` beside this application's
+  bundle, then in `~/Applications` and `/Applications`
+  (`UltraCanvasDesktopShell`).
+- **macOS gets a native folder watch (FSEvents).** `UltraCanvasFolderWatcher`
+  had backends only for Linux/BSD (inotify) and Windows
+  (`ReadDirectoryChangesW`), so on macOS the Filer re-read the open folder on
+  a timer and showed a saved file only on the next poll. The new backend
+  (`OS/MacOS/UltraCanvasMacOSFolderWatcher.cpp`) runs an FSEvents stream on the
+  folder on a private dispatch queue, drops events for subfolders so it answers
+  for this folder only like the other backends, counts events FSEvents
+  coalesced or dropped as a change, and reports the folder being deleted, moved
+  away or unmounted (`RootChanged` / `Unmount`) through the failure callback.
+  `Stop()` drains the queue, so no callback arrives after it returns. The
+  library and `FolderWatcherTest` link CoreServices for it.
+- **A file saved into a folder just opened in the Filer was missed.** The
+  widget read the folder first and started the watch afterwards, so whatever
+  happened during the read was never reported. It now starts the watch first
+  and reads second; a change during the read lists the folder once more. On
+  Windows the backend also issued its first `ReadDirectoryChangesW` on its
+  thread after `Watch()` had returned, and the system only collects changes
+  from that first call on; `Start()` now issues it, so every backend is
+  listening by the time `Watch()` returns. `FolderWatcherTest` checks a change
+  made right after `Watch()`.
+
+#### 2026-10-30 *0.9.444*
+- **`VirtualFSOpenOptions::compressionLevel` is honoured when an archive is
+  written.** It was ignored: every ZIP, 7-Zip and compressed TAR was written
+  at the library's default level whatever was asked (and so was
+  `UCVFSCompressionOptions::level` through `UCVFSBridge::CreateArchive`).
+  ZIP and 7-Zip now take it as their 0-9 level - `Store` stores them
+  uncompressed - and the stream compressor of a `.tar.gz` / `.bz2` / `.xz` /
+  `.zst` / `.lz4` on its own scale (Zstandard 1 / 2 / 9 / 19 / 22 for
+  Fastest / Fast / Good / Best / Ultra). `Normal`, the default, still leaves
+  every library at its own default, so no archive written today changes;
+  `archiveWrite.filterLevel` still overrides it for the stream compressor.
+  `VirtualFSArchiveWriteOptionsTest` checks Fastest against Best for each
+  format, a stored ZIP, and that Normal matches the default level.
+- **How a TAR is packed can be set, and every Compress entry says how it
+  packs.** `UltraCanvasFilerWidget::SetTarSettings(FilerTarSettings)` gives
+  the TAR entries of the context menu's Compress the level of each
+  compressor (gzip, bzip2, xz, Zstandard), the threads of xz and Zstandard
+  (`-T0` by default), Zstandard's long mode, the header format (pax, GNU,
+  ustar), what is stored of each file, symbolic links, and names to leave
+  out of a packed folder. Each entry of the Compress submenu shows the
+  parameters it packs with as a tooltip - the equivalent command line, e.g.
+  `tar --format=pax --owner=0 --group=0 --numeric-owner -cf - <files> | xz -6 -T0`
+  (`DescribeCompressParameters`). Underneath, VirtualFS takes the same
+  choices as `VirtualFSOpenOptions::archiveWrite`
+  (`VirtualFSArchiveWriteOptions`), and `UCVFSBridge::CreateArchive` as
+  `UCVFSCompressionOptions::archive`.
+- **Packed files keep their own modification time and permissions.** Every
+  entry VirtualFS packed carried the time it was packed and 0644 (folders
+  0755), whatever the file had - an unpacked script was no longer
+  executable, and every file looked new. A file now keeps its own time and
+  permission bits (the owner is still left out unless asked for), a symbolic
+  link in a TAR is stored as a link instead of a copy of its target, and
+  file content is streamed into the archive instead of being read into
+  memory whole. ZIP and 7-Zip store what a link points to, as `zip -r` and
+  `7z a` do.
+- New test `VirtualFSArchiveWriteOptionsTest`: compressor levels and
+  threads, Zstandard long mode, the three header formats, kept and
+  normalised times / permissions / owner, links stored and followed, and
+  the exclusions.
+- **A `.7z` or `.tar.xz` showed a blank page on Windows.** With host icons
+  on (`FilerFileIconStyle::HostOperatingSystem`), a type no program is
+  registered for - `.7z`, `.tar`, `.tar.gz`, `.tar.bz2`, `.tar.xz`,
+  `.tar.zst` on a Windows without 7-Zip - was drawn with the shell's blank
+  "no program" page, which says nothing about the file. The Windows backend
+  of `LoadHostFileIconPixmap` now answers such a type with no icon, and the
+  file display draws its own archive icon with the extension on it; a
+  registered type keeps Explorer's icon. `FilerHostIconsTest` checks it on
+  Windows.
+
+#### 2026-10-30 *0.9.443*
+- **UltraFiler crashed while making thumbnails of folders with HTML or SVG
+  files.** The HTML parser put inline `<svg>` / `<math>` names back in their
+  vocabulary's case (`viewBox`, `linearGradient`) from lookup maps it filled
+  on first use, unguarded; UltraFiler's thumbnail workers extract text
+  previews on several threads at once, and two of them meeting foreign
+  content together corrupted the hash table - an access violation in
+  `AdjustedForeignName` (`ExtractTextPreview` → `HTML::ExtractPlainText` →
+  `Parser::ParseAttributes`). The maps are now built in one static
+  initializer, which C++ runs exactly once however many threads parse.
+  `HTMLReaderTest` parses SVG and MathML on eight threads; ThreadSanitizer
+  reported 51 races in the old parser there and none now.
+
+#### 2026-10-30 *0.9.442*
+- **The attachments the media viewer opens no longer pile up.** Each was
+  written to a folder of its own in the shared temporary folder and never
+  removed. They are now kept in the per-user cache
+  (`opened-attachments` under `~/.cache/UltraCanvas`,
+  `~/Library/Caches/UltraCanvas` or `%LOCALAPPDATA%\UltraCanvas`), where other
+  users of the machine cannot read them, and a folder is swept a day after it
+  was made - once a process, when the first viewer is made and when the first
+  attachment is opened; one whose file another program still holds open goes
+  on a later sweep.
+- **`DiskCache::SweepFolders` (UltraCanvasDiskCache 1.1.0):** the retention
+  sweep for a cache that keeps a folder per entry: every subfolder older than
+  the age given goes with what it holds; files beside them, links and
+  folders stamped in the future are left alone.
+- **`FileAssociations::RunsCodeWhenOpened` is header-only**
+  (`UltraCanvasRunsCodeWhenOpened.h`, included by
+  `UltraCanvasFileAssociations.h`, so callers change nothing): a headless
+  module that does not link the UltraCanvas library asks the same question
+  as the UI. UltraMail's threat scanner now does.
+
+#### 2026-10-30 *0.9.441*
+- **The media viewer shows an HTML page rendered, not its source.** An
+  `.html`, `.htm`, `.xhtml`, `.xht` or `.shtml` file - and an `.xml` whose
+  content is XHTML (an `<html>` root or an HTML DOCTYPE) - is now shown as a
+  browser shows it, through `UltraCanvasWebView`, in UltraFiler's preview
+  pane, its View window and every other host of `UltraCanvasMediaViewer`.
+  Before, it opened in the read-only text view as highlighted markup, which
+  is the Texter's job. The preview reads only local files: the page's style
+  sheets and pictures come from the disk beside it, a link to another local
+  page opens in place, and a web or `mailto:` link opens in the system's
+  browser or mail client; forms send nothing and media shows its fallback.
+  XML that is not a page (data, configuration, feeds) stays in the text view.
+  `UltraCanvasMediaViewer::IsHtmlFile` says which files are pages; the info
+  bar calls them `HTML`.
+- **The media viewer shows an e-mail message (`.eml`) as the message.**
+  Before, the viewer did not open an `.eml` at all, so UltraFiler's preview
+  pane stayed empty. It now shows a header block (subject, From, To, Cc,
+  Date - encoded words decoded - and the attachments by name and size)
+  above the body: the HTML one rendered with its own styles, else the text.
+  Pictures the message carries (`cid:`) are shown; remote pictures are never
+  fetched, so a tracking pixel learns nothing. Read through UltraNet's MIME
+  reader (`UltraCanvasMediaViewer::IsMailMessageFile`); a build without
+  UltraNet shows the message's text.
+- **Saved web pages (`.mht` / `.mhtml`) are shown as the page, Apple Mail
+  messages (`.emlx`) as messages.** An MHTML archive - Chromium's, Edge's or
+  Internet Explorer's *save as single file* - shows the page it saved: its
+  links read against the address it was saved from, and its style sheets
+  and pictures answered from the archive's own parts (by
+  `Content-Location` or `cid:`), never from the network; a link to a place
+  in the page scrolls there (`UltraCanvasMediaViewer::IsWebArchiveFile`).
+  An `.emlx` is the message inside it, shown as an `.eml` is.
+- **Outlook messages (`.msg`) are shown as messages, and a message's
+  attachments open and save from the preview.** The new
+  `UltraCanvasOutlookMessage` reads a `.msg` - subject, sender, recipients,
+  date, body, attachments - and gets its HTML body back even when Outlook
+  kept it only inside the compressed RTF (`UCDecompressRtf`, LZFu;
+  `UCHtmlFromEncapsulatedRtf`, `\fromhtml1`). A `.msg` that is not a
+  compound file stays text. In every message (`.eml`, `.emlx`, `.msg`) an
+  attachment's name opens it - in a viewer window when the viewer shows its
+  kind, else in the system's application - and *Save* writes it where the
+  Save dialog says. A program or script (`.exe`, `.js`, `.lnk`, `.sh`, ...)
+  is never opened from the preview; it is offered to be saved instead.
+- **`FileAssociations::RunsCodeWhenOpened`:** whether opening a file of that
+  name would run code - a program, script, installer, shortcut or disk image
+  on Windows, macOS or Linux - by name alone, for the attachments and
+  downloads that have no execute permission to look at. The media viewer's
+  message attachments and UltraMail's attachments ask it.
+- **`UCOutlookMessage` keeps the message's `messageId` and `inReplyTo`**, so a
+  `.msg` built again as MIME (UltraMail's Import) keeps its identity and its
+  place in a conversation.
+- **UltraCanvasCompoundFile 1.2.0: streams and storages below the root**
+  (`ReadStreamAt`, `HasStreamAt`, `StreamNamesAt`, `StorageNamesAt`), for the
+  `.msg` reader's recipients and attachments.
+- **`DecodeWindowsCodePage` (UltraCanvasTextUtils):** the `.xls` reader's
+  Windows code-page tables (1250, 1251, 1252), moved to be shared with the
+  `.msg` reader, and UTF-8 (65001).
+- **UltraCanvasWebView 1.6.0: `SetOpensWebLinks`, `ScrollBy`, `Clear`.** A
+  viewer of local files can send `http` / `https` links to `onExternalLink`
+  instead of following them, scroll the page from its own keys, and let a
+  page, its players and the history go when it moves on.
+
+#### 2026-10-30 *0.9.440*
+- **Toolbars built from commands (`UltraCanvasToolbarLayout.h`).** A
+  `ToolbarLayout` is a toolbar as data: groups of command ids, each group one
+  function of the program, which the user can show, hide, reorder and fold,
+  with single commands turned off. `MaterializeToolbar` builds the toolbar
+  from a layout and the command registry menus are built from - a separator
+  between two shown groups and nowhere else, a toggle for a check command, a
+  widget for a widget command, one fold-out slot for a folded group, each
+  item under its command id. `SaveToolbarLayout` keeps only what the user
+  changed in the application's `settings.json`; `LoadToolbarLayout` merges it
+  over the next release's defaults (new commands and groups appear at their
+  place, dropped ones go); `ForgetToolbarLayout` is Reset. Phase 1 of the
+  toolbar configuration investigation; the editor is phase 2. Doc:
+  `Docs/UltraCanvas/UltraCanvasToolbarLayout.md`.
+- **The command registry serves toolbars and live state.** `MenuCommand`
+  gains `iconName` (resolved per size by `SetIconResolver` / `ResolveIcon`, as
+  a line icon is sharp only at its own size), `tooltip`, `isEnabled`,
+  `isChecked`, `dynamicLabel` and `makeToolbarWidget`. `Materialize` reads
+  the state into the menu entry; `RefreshMenuStates(menu)` and the toolbar's
+  `RefreshCommandStates()` read it again wherever the program's state
+  changes, so it keeps no pointers to buttons the user may remove.
+  `FindShortcutConflicts()` lists shortcuts given to two commands, however
+  each spells them. `UltraCanvasToolbar::AddWidget` adds any widget as a
+  named item.
+
+#### 2026-10-30 *0.9.439*
+- **A toolbar's `groupSpacing` is read.** It is the gap between two groups,
+  across a separator, with the line in the middle; it was declared, set by
+  `ToolbarAppearance::Ribbon()` and never used. The default (8 = two 4 px item
+  gaps) is a separator as it always looked, and a bar that only tightens its
+  items does not change.
+- **`ToolbarOverflowMode::Menu` works.** It did nothing: its two functions
+  were empty `TODO` stubs. The items that do not fit are taken off the end of
+  the bar into a menu behind a chevron button, and come back when there is
+  room: a button is an entry with its icon and its tooltip's shortcut, a
+  toggle button a check, a tool group or a dropdown a submenu
+  (`GetOverflowItemIds`, `GetOverflowMenuItems`, `OpenOverflowMenu`).
+  `UltraCanvasToolGroupButton::SelectItem` picks a tool as a click in its bar
+  does; `UltraCanvasButton::GetIconImage` returns the icon a button shows.
+- **Tree rows can be dragged onto other rows.** `UltraCanvasTreeView`'s
+  `onNodeDragDrop` was declared from the first version but never fired.
+  `SetNodeDragEnabled(true)` turns dragging on (off by default): past a
+  six-pixel threshold the row under the pointer that `onNodeDragAccept` takes
+  is highlighted, the tree scrolls past its edges, and the release fires
+  `onNodeDragDrop(dragged, target)`. Escape cancels. Without
+  `onNodeDragAccept`, a row cannot be dropped on itself or into its own
+  subtree.
+
+#### 2026-10-30 *0.9.438*
+- **`UltraCanvasFilerWidget::SetCaptionMaxLines` / `GetCaptionMaxLines`.** A
+  host can change how many lines a thumbnail tile's or treemap cell's name may
+  wrap over without replacing the whole `FilerStyle`; the grid is relaid out
+  with the new limit. `FilerStyle::captionMaxLines = 0` now means *no limit* -
+  the full name is shown over as many lines as it needs - where it used to be
+  read as 1. UltraFiler's *Settings > Display > File names* drives it.
+- **Widening a Details column no longer narrows the next one.** Dragging the
+  splitter on a column's right edge in `UltraCanvasFilerWidget`'s Details view
+  now resizes that column alone: the columns after it move along with their
+  widths intact (`FilerColumnResizeMode::PushFollowing`, the new default).
+  A table pushed wider than the view gets a horizontal scrollbar under the
+  rows - the header scrolls with them, Shift+wheel or a sideways wheel scrolls
+  it, and the hover icon menu stays at the visible right edge - and the last
+  column gets a splitter of its own. The Name column still fills the view
+  until the first drag pins it; `ResetDetailsColumnWidths()` frees it again.
+  The old split-pane behaviour, where the width a column gains is taken from
+  its neighbour, is `SetDetailsColumnResizeMode(FilerColumnResizeMode::SplitWithNeighbour)`.
+
+#### 2026-10-30 *0.9.437*
+- **SmartHome linked the UltraDatabase archive next to the shared core.**
+  `SmartHome/CMakeLists.txt` linked `uc-database` directly while also linking
+  `libUltraCanvas`, which on a shared core already carries the whole archive
+  (see *MODULE HOMES* in `UltraCanvas/CMakeLists.txt`). SmartHome Center and
+  the SmartHome tests therefore got a second copy of UltraDatabase's code and
+  global state - two driver registries, two connection tables - and on
+  Windows risked "multiple definition" link errors. SmartHome now links the
+  `UltraDatabase` home, which resolves to the shared core (or to the archive
+  on a static core), like every other consumer.
+
 #### 2026-10-30 *0.9.436*
 - **UltraCanvasDesktopShell hosts the notification area on Linux.**
   `UltraCanvasTrayHost::Start` was refused on X11 ("not available on X11

@@ -7,23 +7,34 @@
 // "+ Add card" still makes plain notes, which open its editor.
 //
 // The board is the framework's UltraCanvasKanbanBoardElement; the bar above
-// it is a label to drag the panel by, an UltraCanvasDropdown for the display
-// style (Sticky notes, Poster, Schematic, Dark) and an "Add category" button.
-// A grip label in the bottom-right corner resizes the panel. The board, its
-// style and the panel's place and size live in the desktop settings.
+// it carries the title, an UltraCanvasDropdown for the display style (Sticky
+// notes, Poster, Schematic, Dark), an "Add category" button and a close
+// button. It fills a window of its own over the whole work area, which the
+// desktop shows below the application that was in front (see
+// UltraDesktopWindow::ShowCategoryBoard). A file's card shows a thumbnail -
+// the picture itself, else the system's icon for its type - made on a worker
+// thread. The board and its style live in the desktop settings.
+// Version: 0.2.0 - fills its own window; a close button; thumbnails; smaller
+//                  card text; no more panel to drag or resize
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
 #include "UltraDesktopSettings.h"
 
-#include "UltraCanvasContainer.h"
+#include "UltraDesktopPanelWork.h"
 
+#include "UltraCanvasContainer.h"
+#include "UltraCanvasImage.h"
+
+#include <map>
 #include <memory>
+#include <set>
 #include <string>
 #include <vector>
 
 namespace UltraCanvas {
+    struct KanbanCard;
     class UltraCanvasLabel;
     class UltraCanvasDropdown;
     class UltraCanvasKanbanBoardElement;
@@ -50,31 +61,28 @@ public:
     // Sticky notes.
     void SetDesign(const std::string& design);
 
-    bool OnEvent(const UltraCanvas::UCEvent& event) override;
-    // The board only answers on its panel: the rest of the wallpaper
-    // belongs to the Stickerboard and the windows above.
-    bool Contains(const UltraCanvas::Point2Df& point) override;
-
     // The categories every new board starts with.
     static const std::vector<std::string>& DefaultCategories();
 
 private:
-    void PlacePanel();
     void SaveBoard();
     void OpenCardFile(int cardId);
+    // A file card's thumbnail, when it is ready; asks for one otherwise.
+    std::shared_ptr<UltraCanvas::UCPixmap> Thumbnail(const UltraCanvas::KanbanCard& card);
 
-    UltraDesktopWindow* desktop_;   // owns this board through the window tree
-    std::shared_ptr<UltraCanvasContainer> panel_;
-    std::shared_ptr<UltraCanvas::UltraCanvasLabel> grip_;
-    std::shared_ptr<UltraCanvas::UltraCanvasLabel> resizeGrip_;
+    UltraDesktopWindow* desktop_;   // owns this board through its window
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel> title_;
     std::shared_ptr<UltraCanvas::UltraCanvasDropdown> designPicker_;
     std::shared_ptr<UltraCanvas::UltraCanvasKanbanBoardElement> board_;
     std::shared_ptr<UltraCanvas::KanbanDataSource> data_;
 
-    // Dragging the panel by its title, or resizing it by the corner grip.
-    bool dragging_ = false;
-    bool resizing_ = false;
-    UltraCanvas::Point2Df dragOffset_;   // pointer to the panel's corner it holds
+    // Thumbnails by file path: made on worker threads, kept for the
+    // session; `pending_` are those under way, `missing_` those there are
+    // none for (a note, a file without picture or icon).
+    UltraDesktopPanelWork work_;
+    std::map<std::string, std::shared_ptr<UltraCanvas::UCPixmap>> thumbnails_;
+    std::set<std::string> pending_;
+    std::set<std::string> missing_;
 };
 
 } // namespace UltraDesktop

@@ -1,6 +1,8 @@
 // core/UltraCanvasWebView.cpp
 // A web page as an element: PageLoader + ElementBuilder + history.
 // See include/UltraCanvasWebView.h.
+// Version: 1.6.0 - SetOpensWebLinks: http(s) links to onExternalLink when off;
+//                  ScrollBy; Clear
 // Version: 1.5.0 - <video> and <audio> in the framework's video player, kept
 //                  across rebuilds of one page (MakeMedia)
 // Version: 1.4.0 - onOpenInNewWindow: target="_blank" links go to the host
@@ -10,7 +12,7 @@
 //                  SubmitForm (GET as a navigation, POST through LoadPost); what
 //                  was typed survives a rebuild
 // Version: 1.0.0
-// Last Modified: 2026-10-22
+// Last Modified: 2026-10-30
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasWebView.h"
@@ -153,6 +155,24 @@ void UltraCanvasWebView::Reload() {
 void UltraCanvasWebView::Stop() {
     if (loader) loader->Cancel();
     SetLoading(false);
+}
+
+void UltraCanvasWebView::Clear() {
+    Stop();
+    DropMedia();
+    page.reset();
+    content->ClearChildren();
+    anchors.clear();
+    forms.clear();
+    formsDocument = nullptr;
+    history.clear();
+    historyIndex = -1;
+    loadPushedHistory = false;
+    builtWidth = -1.f;
+    pendingFragment.clear();
+    pendingScrollY = -1;
+    content->ScrollToVertical(0);
+    RequestRedraw();
 }
 
 bool UltraCanvasWebView::CanGoBack() const { return historyIndex > 0; }
@@ -403,6 +423,10 @@ bool UltraCanvasWebView::ScrollToFragment(const std::string& fragment) {
     return true;
 }
 
+bool UltraCanvasWebView::ScrollBy(int dy) {
+    return content->ScrollByVertical(dy);
+}
+
 // ===== LINKS =================================================================
 
 std::string UltraCanvasWebView::ResolveLink(const std::string& href) const {
@@ -415,7 +439,11 @@ void UltraCanvasWebView::OnLink(const std::string& href) {
     const std::string target = ResolveLink(href);
     if (target.empty()) return;
     const std::string scheme = SchemeOf(target);
-    if (scheme == "http" || scheme == "https") { Navigate(target); return; }
+    if (scheme == "http" || scheme == "https") {
+        if (opensWebLinks) Navigate(target);
+        else if (onExternalLink) onExternalLink(target);
+        return;
+    }
     if (scheme == "file") {
         // Only a local page may open local files.
         if (page && SchemeOf(page->url) == "file") Navigate(target);
@@ -431,7 +459,7 @@ void UltraCanvasWebView::OnNewWindowLink(const std::string& href) {
     const std::string scheme = SchemeOf(target);
     // What this view would open itself opens in the other window instead;
     // anything else (mailto:, ...) is the same either way.
-    const bool opens = scheme == "http" || scheme == "https" ||
+    const bool opens = ((scheme == "http" || scheme == "https") && opensWebLinks) ||
                        (scheme == "file" && page && SchemeOf(page->url) == "file");
     if (opens && onOpenInNewWindow) onOpenInNewWindow(target);
     else OnLink(href);

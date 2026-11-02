@@ -81,6 +81,9 @@
 // that finds it changed reopens it, at most every couple of seconds - a video
 // or sound only once its file has settled and it is not playing
 // (ReloadChangedPreview).
+// Version: 1.31.0 - a double-click on a picture, audio file or video starts
+//                  UltraViewer with it (OpenInUltraViewer, Settings >
+//                  Handling > Opening files)
 // Version: 1.30.0 - the navigation row starts with flat Home and Computer buttons
 // Version: 1.30.0 - Extras > Open location: the UltraCanvas and system folders
 //                  (crash dumps, settings, application data, logs, ...), and
@@ -124,6 +127,7 @@
 #include "UltraCanvasTimer.h"
 #include "UltraCanvasCloudStorage.h"   // CloudStorageInfo (the Cloud Storage section)
 #include "UltraCanvasVolumeMonitor.h" // mounted volumes + mount/unmount notification
+#include "UltraCanvasPortableDevices.h" // phones and cameras over MTP / PTP
 #include "Plugins/Charts/UltraCanvasPieChart.h"  // the drive cards' used / free pie
 #include "UltraFilerFavorites.h"
 #include "UltraFilerFolderIcons.h"
@@ -381,6 +385,22 @@ private:
     // and hides the section while there are none - like "Pinned" and
     // "Cloud Storage" above it.
     void RefreshRemoteDriveNodes();
+    // ===== PHONES AND CAMERAS (MTP / PTP) =====
+    // Asks which portable devices are connected, on a worker thread (a device
+    // seen for the first time is opened once to learn whether it is a phone
+    // or a camera), and brings their rows and cards in line on the UI thread
+    // (ApplyDevices). A request while one is running is served by it.
+    void RefreshDevices();
+    // Hands the devices to the drives (UltraFilerRemoteDrives::SetDevices),
+    // rebuilds their rows under Computer and their cards on the Computer page,
+    // and moves a display that was showing a device that is gone to Home.
+    void ApplyDevices(const std::vector<PortableDeviceInfo>& devices);
+    // One row under Computer per connected device, after the drives - the
+    // place Explorer shows a phone. Browsed like a remote drive.
+    void RefreshDeviceNodes();
+    void AddTreeDeviceNode(const RemoteDrive& drive);
+    // Starts watching for devices being plugged in and pulled out.
+    void StartDeviceMonitor();
     // ===== RAM DISCS =====
     // Asks the system, on a worker thread, whether it can make RAM discs and
     // which discs are mounted now, then brings the "+ Drive" button and the
@@ -1055,6 +1075,14 @@ private:
     // over this one. The window is reused, so a second double-click replaces
     // what is in it rather than opening another.
     void OpenInMediaWindow(const std::string& path);
+    // Settings > Handling > Opening files: a picture, an audio file or a
+    // video on the disk is opened by starting UltraViewer with it (a running
+    // UltraViewer shows it in place of what it showed). False - and nothing
+    // started - when the setting is off, the entry is anything else (a
+    // folder, a shortcut, an entry inside an archive or on a remote drive),
+    // or UltraViewer cannot be found or started; the caller then opens the
+    // file the way it would have.
+    bool OpenInUltraViewer(const FilerEntry& entry);
     // The tail the file display hangs under Display > Thumbnails and
     // Display > Detail view: "File formats...", which opens the matching
     // settings page.
@@ -1307,6 +1335,9 @@ private:
     // Node ids (the drives' root paths) of the "Remote Drives" rows, so the
     // section can be rebuilt without walking the whole tree.
     std::vector<std::string> treeRemoteDriveNodeIds;
+    // The rows under Computer that are connected phones and cameras
+    // (RefreshDeviceNodes): their remote root paths.
+    std::vector<std::string> treeDeviceNodeIds;
     // Node ids (the mount paths) of the "RAM Discs" rows.
     std::vector<std::string> treeRamDiskNodeIds;
     // The start-up probe (StartRamDiskProbe) and what it answered. Both
@@ -1326,6 +1357,10 @@ private:
     std::thread driveListWorker;
     std::atomic<bool> driveListBusy{false};
     std::atomic<bool> driveListPending{false};
+    // RefreshDevices' worker, the same arrangement.
+    std::thread deviceListWorker;
+    std::atomic<bool> deviceListBusy{false};
+    std::atomic<bool> deviceListPending{false};
     std::vector<MountedVolume> knownVolumes;
     // The last failure reported for a drive operation. Deleting five entries
     // queues five operations, and five identical "permission denied" dialogs
@@ -1394,6 +1429,8 @@ private:
     // flag its callback touches, so even the implicit Stop() in its own
     // destructor runs while that flag is still alive.
     UltraCanvasVolumeMonitor volumeMonitor;
+    // Phones and cameras plugged in and pulled out (StartDeviceMonitor).
+    UltraCanvasPortableDeviceMonitor deviceMonitor;
     // Cleared on destruction so results still in flight drop instead of
     // reaching a half-destroyed window.
     std::shared_ptr<std::atomic<bool>> probeAlive =

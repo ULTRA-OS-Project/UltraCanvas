@@ -1,3 +1,11 @@
+#### 2026-11-01 *0.7.3*
+- **A gap left by a cut closes with one click.** Split a clip on the
+  overlay, title or sound lane, delete one part, and the empty stretch it
+  leaves shows a `|<-` button in its middle: a click moves the clip after
+  the gap back against the one before it (or to the start), `Shift`+click
+  moves everything after the gap with it, and either is one undo step
+  (`UltraCanvasVideoTimeline` 1.4.0, the close-gap button).
+
 #### 2026-10-22 *0.7.2*
 - **The bin's notes read whole.** The sentence at the top of the *Titles*
   and *Effects* tabs and each title style's hint wrap to the bin's width,

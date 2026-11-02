@@ -1,3 +1,55 @@
+#### 2026-11-01 *0.1.13*
+- **A Settings window.** The gear beside the copy button, at the top of the
+  sidebar, opens it - laid out as UltraFiler's: the sections on the left,
+  each with its pages, the chosen page on the right with what it is about
+  at its foot, and *Restore defaults* and *Close* in the bar below. Every
+  change applies at once and is saved
+  (`<settings folder>/ChatCube/settings.json`).
+  - *Appearance > Look*: light or dark, from the next start (`--dark`
+    still wins).
+  - *Appearance > Time & date*: a 24- or 12-hour clock (`14:05` or
+    `2:05 PM`), and the date as `31.10.2026`, `2026-10-31` or `10/31/2026`,
+    in the open conversation too.
+  - *Messages > Sending*: Enter sends, or Ctrl+Enter sends and Enter starts
+    a new line - for long messages of several paragraphs.
+  - *Messages > Typing*: whether the other side is told you are typing,
+    and whether you see when they are.
+  - *Networks > Accounts*: where ChatCube Direct, Matrix and Telegram each
+    stand, your ChatCube ID to copy, and signing out of Matrix or Telegram
+    (their conversations leave the list).
+  - *Networks > Local network*: whether the people found on this network
+    are listed in the sidebar.
+  - *Extras > Data folder*: where your identity, contacts and history are
+    kept, to open or copy; *Extras > About*.
+- **The Matrix and Telegram buttons keep their names.** Signed in, they
+  read "Matrix: @you:matrix.org" and "Telegram: signed in", and signed out
+  "Matrix account" / "Telegram account" - all longer than the third of the
+  sidebar each has. They now always say *Matrix* and *Telegram*; where the
+  account stands is their tooltip.
+
+#### 2026-11-01 *0.1.12*
+- **`ChatCube --minimized`** starts with the window minimized, so messages
+  arrive in the background - what UltraDesktop's *Start with the desktop*
+  asks for.
+
+#### 2026-10-31 *0.1.11*
+- **A picture or a file waits in the composer until you send it.** The
+  paperclip, or Ctrl+V with a picture or a file on the clipboard, no longer
+  sends at once: what you chose or pasted sits in a strip above the message
+  field - a picture as its thumbnail, a file as its name and size - each with
+  a × to take it out again when it was the wrong one, and goes with Enter or
+  the send button, what you typed as the caption of the first picture or
+  video. A pasted picture (a screenshot, a copy from a browser or a drawing
+  program) is kept as a file in ChatCube's cache and deleted when dropped.
+- **An SVG drawing shows as a picture.** Sent or received as a file - the
+  networks take no SVG as a photo - it is drawn in the bubble as a photo is,
+  over its name and size, in the composer's strip too; and it goes with a
+  preview picture so the other side sees it before the file is here.
+- **The ticks show on Windows.** The `✓` and `✓✓` of a sent, delivered and
+  read message were a glyph that the fonts of a Windows installation do not
+  all have, and showed as a box there; they are now drawn as strokes, like
+  the play mark, in every look.
+
 #### 2026-10-29 *0.1.10*
 - **Pictures, videos and files between ChatCubes.** The paperclip works in
   ChatCube Direct chats and groups too: a file goes end-to-end encrypted,

@@ -8,6 +8,8 @@
 // opens the colour picker in a popup window, and the tree's width - fitted
 // to its rows or fixed), Display > Home folder (what the
 // Home folder shows), Display > Files (whether hidden files are listed),
+// Display > File names (how many lines a name may take under a thumbnail
+// tile - the full name, or at most 2, 3 or 4 lines),
 // Display > File extensions (whether a displayed name
 // still ends in its extension, and whether a thumbnail tile carries that
 // extension as a bar or a small tag), Display > Files in use (whether held
@@ -22,15 +24,18 @@
 // the system has a program registered for it - start that program, the way
 // Explorer and the Finder do, or show the file in UltraFiler's preview),
 // Handling > Protected files (how long UltraFiler may go without input before
-// the preview forgets the passwords its Unlock was given), Handling > Tabs (what the "+" of the folder tab strip opens - the
-// current folder again or the Home folder), Extras > Open prompt (the command
+// the preview forgets the passwords its Unlock was given), Display > New tab (what the "+" of the folder tab strip opens - the
+// current folder again, the Home folder or the Computer page), Extras > Open prompt (the command
 // line program UltraFiler opens, picked with the file dialog and stored with
 // "Save app"), Extras > History & Favorites (how many entries each of the
 // History view's three lists keeps, and clearing the recently-used
 // lists and the pinned entries) and Extras > Cache (whether finished
 // thumbnails are kept on disk between runs and compressed in memory, what
-// each cache is holding against what it may hold, and emptying them). Changes apply live and are saved
-// immediately.
+// each cache is holding against what it may hold, and emptying them), and
+// Archives > TAR (how Compress packs a TAR: each compressor's level, the
+// threads of xz and Zstandard, Zstandard's long mode, the header format,
+// what each file keeps, symbolic links, and the names left out). Changes
+// apply live and are saved immediately.
 //
 // Every page is built the same way (MakePage): a bold title, the one-line
 // caption that says what the choice is about, the controls, and - set apart
@@ -40,11 +45,14 @@
 // where the same spot serves every page that has one. The backdrop behind
 // transparent images is no longer a page here: the media viewer's own colour
 // strip under the picture chooses it, and the choice is saved from there.
+// Version: 1.19.0 - built on the framework's UltraCanvasSettingsPageKit: the window, the
+//                   page skeleton and the controls come from it, nothing changes on screen
+// Version: 1.18.0 - Archives > TAR: how Compress packs a TAR
 // Version: 1.17.0 - Handling > Protected files: the minutes without input before the
 //                   preview forgets Unlock's passwords (0: never)
 // Version: 1.16.1 - the colour popup's picker is the framework's ColorPickerStyle::Light
 // Version: 1.16.0
-// Last Modified: 2026-10-15
+// Last Modified: 2026-10-30
 // Author: UltraCanvas Framework
 
 #include "UltraFilerSettingsDialog.h"
@@ -63,6 +71,7 @@
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasMediaViewer.h"
 #include "UltraCanvasRadio.h"
+#include "UltraCanvasSettingsPageKit.h"
 #include "UltraCanvasSlider.h"
 #include "UltraCanvasSpinner.h"
 #include "UltraCanvasSwitch.h"
@@ -79,43 +88,31 @@
 #include <memory>
 #include <string>
 #include <system_error>
+#include <thread>
+#include <tuple>
 #include <utility>
+#include <vector>
 
 namespace UltraCanvas {
 
 namespace {
 
-    // ----- one type scale for the whole window -----
-    // Titles above the text, the text and every control at one size, and the
-    // notes a step below it and greyed: what is read first is the largest.
-    constexpr float kTitleFontSize = 15.0f;   // page title (bold)
-    constexpr float kTextFontSize  = 10.0f;   // captions, choices, buttons, fields
-    constexpr float kNoteFontSize  = 9.0f;    // the notes under the controls
-    constexpr float kTreeFontSize  = 9.0f;    // matches the main window's UI font
-
-    const Color kTextColor        = Color(40, 40, 44, 255);
-    const Color kNoteTextColor    = Color(96, 96, 104, 255);
-    const Color kNoteBackground   = Color(244, 245, 248, 255);
-    const Color kNoteAccent       = Color(160, 176, 200, 255);
-
-    // Page geometry: the window is 700 wide, the tree takes 180, so a page
-    // has 520; with its padding that leaves ~480 for content. Every text is
-    // wrapped at a fixed width because content measuring needs a render
-    // context, which the dialog does not have while it is first laid out.
-    constexpr int kPagePadding  = 20;
-    constexpr int kTextWidth    = 440;   // wrapped texts and choice rows
-    constexpr int kNoteWidth    = 430;   // wrapped notes inside their block
-    constexpr int kControlHeight = 22;   // one checkbox / radio row
+    // The look - the type scale, the page skeleton, the controls and the
+    // window with its tree of pages - is the framework's settings page kit,
+    // which this window set the style of before it was shared.
+    using namespace SettingsPageKit;
 
     // Page ids double as tree node ids.
     constexpr const char* kPageDisplay = "display";
     constexpr const char* kPageTreeview = "display/treeview";
     constexpr const char* kPageTabStyle = "display/tab-style";
+    constexpr const char* kPageNewTab = "display/new-tab";
     constexpr const char* kPageHomeFolder = "display/home";
     constexpr const char* kPageFiles = "display/files";
     constexpr const char* kPageIgnoredFiles = "display/ignored-files";
     constexpr const char* kPagePdfInventory = "display/pdf-inventory";
     constexpr const char* kPageThumbnails = "display/thumbnails";
+    constexpr const char* kPageFileNames = "display/file-names";
     constexpr const char* kPageFileExtensions = "display/file-extensions";
     constexpr const char* kPageFileIcons = "display/file-icons";
     constexpr const char* kPageFilesInUse = "display/files-in-use";
@@ -123,39 +120,24 @@ namespace {
     constexpr const char* kPageHandling = "handling";
     constexpr const char* kPageDragDrop = "handling/drag-drop";
     constexpr const char* kPageFileOperations = "handling/file-operations";
-    constexpr const char* kPageTabs = "handling/tabs";
     constexpr const char* kPageOpeningFiles = "handling/opening-files";
     constexpr const char* kPageProtectedFiles = "handling/protected-files";
     constexpr const char* kPageExtras = "extras";
     constexpr const char* kPageOpenPrompt = "extras/open-prompt";
     constexpr const char* kPageLists = "extras/history-favorites";
     constexpr const char* kPageCache = "extras/cache";
+    constexpr const char* kPageArchives = "archives";
+    constexpr const char* kPageTar = "archives/tar";
     // The page shown while nothing is selected - the window opens with every
     // section closed, so there is no page to show yet.
     constexpr const char* kPageStart = "start";
 
-    // A page's "Restore default ..." action, shown in the bottom bar while
-    // that page is up.
-    struct PageReset {
-        std::string           label;
-        int                   width = 170;
-        std::function<void()> action;
-    };
-
     // The one open settings window (or the last closed one, until reopened).
-    struct DialogState {
-        std::shared_ptr<UltraCanvasWindow>    window;
-        bool                                  closed = false;
+    struct DialogState : public UltraCanvasSettingsWindow {
         // Set while SyncControlsFromSettings pushes the settings onto the
         // controls: the change handlers that fires write the same values
         // back, and must not save or re-apply them once more.
         bool                                  syncing = false;
-        std::shared_ptr<UltraCanvasTreeView>  tree;
-        std::shared_ptr<UltraCanvasContainer> pageArea;
-        std::map<std::string, std::shared_ptr<UltraCanvasContainer>> pages;
-        std::map<std::string, PageReset>      resets;
-        std::shared_ptr<UltraCanvasButton>    restoreButton;   // bottom bar, left
-        std::string                           shownPage;
 
         // Display > Treeview: the colour boxes that open the picker popup.
         std::shared_ptr<UltraCanvasButton> driveColorBox;
@@ -170,6 +152,11 @@ namespace {
         std::shared_ptr<UltraCanvasRadio>  homeAllRadio;
         std::shared_ptr<UltraCanvasRadio>  homePredefinedRadio;
         UltraCanvasRadioGroup              homeContentGroup;
+
+        // Display > File names: one radio per choice (full name, 2, 3, 4
+        // lines), paired with the line count it stands for (0 = full name).
+        std::vector<std::pair<int, std::shared_ptr<UltraCanvasRadio>>> fileNameRadios;
+        UltraCanvasRadioGroup                                         fileNameGroup;
 
         // Display > File extensions: the "keep them in the name" checkbox and
         // one radio per thumbnail tag mode (None / Bar / Icon), in the order
@@ -251,9 +238,10 @@ namespace {
         std::shared_ptr<UltraCanvasSlider>      progressDelaySlider;
         std::shared_ptr<UltraCanvasLabel>       progressDelayValue;
 
-        // Handling > Tabs: what the tab strip's "+" opens.
+        // Display > New tab: what the tab strip's "+" opens.
         std::shared_ptr<UltraCanvasRadio>       newTabCurrentRadio;
         std::shared_ptr<UltraCanvasRadio>       newTabHomeRadio;
+        std::shared_ptr<UltraCanvasRadio>       newTabComputerRadio;
         UltraCanvasRadioGroup                   newTabGroup;
 
         // Handling > Opening files: what a double-click on a file does when
@@ -261,6 +249,8 @@ namespace {
         std::shared_ptr<UltraCanvasRadio>       openAppRadio;
         std::shared_ptr<UltraCanvasRadio>       openPreviewRadio;
         UltraCanvasRadioGroup                   openActivationGroup;
+        // ... and whether pictures, audio and video go to UltraViewer first.
+        std::shared_ptr<UltraCanvasCheckbox>    mediaUltraViewerBox;
 
         // Handling > Protected files: minutes without input before the
         // preview forgets Unlock's passwords.
@@ -291,6 +281,26 @@ namespace {
         std::shared_ptr<UltraCanvasLabel>  cacheLocationLine;
         std::shared_ptr<UltraCanvasLabel>  cacheStatus;
 
+        // Archives > TAR: a slider and its value per compressor level and
+        // for the threads, the switches, the header format and link radios,
+        // and the field the exclusions are typed into.
+        struct TarSliderRow {
+            std::shared_ptr<UltraCanvasSlider> slider;
+            std::shared_ptr<UltraCanvasLabel>  value;
+        };
+        TarSliderRow tarGzip, tarBzip2, tarXz, tarZstd, tarThreads;
+        std::shared_ptr<UltraCanvasCheckbox> tarLongBox;
+        std::shared_ptr<UltraCanvasCheckbox> tarTimesBox;
+        std::shared_ptr<UltraCanvasCheckbox> tarPermissionsBox;
+        std::shared_ptr<UltraCanvasCheckbox> tarOwnerBox;
+        std::vector<std::pair<FilerTarHeaderFormat,
+                              std::shared_ptr<UltraCanvasRadio>>> tarFormatRadios;
+        UltraCanvasRadioGroup                tarFormatGroup;
+        std::shared_ptr<UltraCanvasRadio>    tarLinkRadio;
+        std::shared_ptr<UltraCanvasRadio>    tarTargetRadio;
+        UltraCanvasRadioGroup                tarLinksGroup;
+        std::shared_ptr<UltraCanvasTagInput> tarExcludeInput;
+
         UltraFilerSettings*   settings = nullptr;
         std::function<void()> onChanged;
         UltraFilerSettingsDialog::CacheHooks cacheHooks;
@@ -312,247 +322,7 @@ namespace {
         if (d->settings) d->settings->Save();
     }
 
-    // ===== TEXT =====
-
-    // A single-line label that hugs its text.
-    std::shared_ptr<UltraCanvasLabel> MakeLabel(const std::string& id,
-                                                const std::string& text,
-                                                float fontSize = kTextFontSize,
-                                                const Color& color = kTextColor) {
-        auto l = std::make_shared<UltraCanvasLabel>(id, 0, 0, 0, 20);
-        l->SetText(text);
-        l->SetFontSize(fontSize);
-        l->SetTextColor(color);
-        l->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        l->size.width  = CSSLayout::Dimension::Auto();
-        l->size.height = CSSLayout::Dimension::Auto();
-        return l;
-    }
-
-    // A paragraph: word-wrapped at `width`, as tall as its lines.
-    std::shared_ptr<UltraCanvasLabel> MakeText(const std::string& id,
-                                               const std::string& text,
-                                               int width = kTextWidth,
-                                               float fontSize = kTextFontSize,
-                                               const Color& color = kTextColor) {
-        auto l = MakeLabel(id, text, fontSize, color);
-        l->SetWrap(TextWrap::WrapWord);
-        l->size.width = CSSLayout::Dimension::Px(width);
-        return l;
-    }
-
-    // ===== PAGE SKELETON =====
-    // Title, caption, the controls, and the notes block at the foot - the
-    // same order and the same spacing on every page, so the eye finds the
-    // control where it found it on the last page.
-    struct PageParts {
-        std::shared_ptr<UltraCanvasContainer> page;    // the whole page
-        std::shared_ptr<UltraCanvasContainer> body;    // the controls
-        std::shared_ptr<UltraCanvasContainer> notes;   // the explanations
-    };
-
-    std::shared_ptr<UltraCanvasContainer> MakeNotesBlock(const std::string& id) {
-        auto notes = std::make_shared<UltraCanvasContainer>(id);
-        notes->layout.SetFlexColumn().SetFlexGap(6)
-                     .SetFlexAlignItems(CSSLayout::AlignItems::Start);
-        notes->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
-                         .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-        notes->SetBackgroundColor(kNoteBackground);
-        notes->SetBorderLeft(3, kNoteAccent);
-        notes->SetPadding(10, 12, 10, 12);
-        return notes;
-    }
-
-    // `scrolls`: a page longer than the window (the lists of formats) scrolls,
-    // and there the notes sit right under the caption, before the list, so
-    // they are read before the hundred checkboxes rather than found after
-    // them. Every other page keeps its notes at the foot, clear of the
-    // controls.
-    PageParts MakePage(const std::string& id, const std::string& title,
-                       const std::string& caption, bool scrolls = false) {
-        PageParts parts;
-        parts.page = std::make_shared<UltraCanvasContainer>(id);
-        parts.page->layout.SetFlexColumn().SetFlexGap(0)
-                          .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-        parts.page->SetPadding(kPagePadding, kPagePadding, kPagePadding, kPagePadding);
-        if (scrolls) {
-            // A scroll view has to opt in - containers do not scroll unless
-            // asked (autoShowScrollbars defaults off since 0.9.x). Without
-            // this the Thumbnails and Detail view pages were cut off at the
-            // window's foot with no scrollbar and no wheel scrolling, so
-            // every kind below Vector graphics (3D, PDF, Text, ...) could
-            // not be reached. Vertically only: the vertical bar narrows the
-            // viewport, which would otherwise fabricate a horizontal overflow
-            // of its own width.
-            ContainerStyle cs;
-            cs.autoShowScrollbars = true;
-            cs.autoShowHorizontalScrollbar = false;
-            parts.page->SetContainerStyle(cs);
-        }
-
-        auto titleLabel = MakeLabel(id + "-title", title, kTitleFontSize);
-        titleLabel->SetFontWeight(FontWeight::Bold);
-        parts.page->AddChild(titleLabel);
-
-        auto captionLabel = MakeText(id + "-caption", caption);
-        captionLabel->SetMargin(6, 0, 0, 0);
-        parts.page->AddChild(captionLabel);
-
-        parts.body = std::make_shared<UltraCanvasContainer>(id + "-body");
-        parts.body->layout.SetFlexColumn().SetFlexGap(8)
-                          .SetFlexAlignItems(CSSLayout::AlignItems::Start);
-        parts.body->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
-                              .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-        parts.body->SetMargin(14, 0, 0, 0);
-
-        parts.notes = MakeNotesBlock(id + "-notes");
-
-        if (scrolls) {
-            parts.notes->SetMargin(12, 0, 0, 0);
-            parts.page->AddChild(parts.notes);
-            parts.page->AddChild(parts.body);
-        } else {
-            parts.page->AddChild(parts.body);
-            // The spacer pushes the notes to the foot of the page, away from
-            // the controls, and gives way when the window is made small.
-            auto spacer = std::make_shared<UltraCanvasContainer>(id + "-spacer");
-            spacer->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
-                              .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-            spacer->size.height = CSSLayout::Dimension::Px(24);
-            parts.page->AddChild(spacer);
-            parts.page->AddChild(parts.notes);
-        }
-        return parts;
-    }
-
-    // One paragraph of a page's notes.
-    void AddNote(PageParts& parts, const std::string& id, const std::string& text) {
-        parts.notes->AddChild(MakeText(id, text, kNoteWidth, kNoteFontSize,
-                                       kNoteTextColor));
-    }
-
-    // A caption inside the body, introducing a second group of controls.
-    void AddBodyCaption(PageParts& parts, const std::string& id,
-                        const std::string& text) {
-        auto l = MakeText(id, text);
-        l->SetMargin(10, 0, 0, 0);
-        parts.body->AddChild(l);
-    }
-
-    // ===== CONTROLS =====
-
-    std::string IconPath(const std::string& fileName) {
-        return NormalizePath(GetResourcesDir() + "media/icons/" + fileName);
-    }
-
-    // Standard dialog button (the Close button and the ones on the pages).
-    // `iconFile` may be empty; an empty `label` gives an icon-only button.
-    std::shared_ptr<UltraCanvasButton> MakeButton(const std::string& id,
-                                                  const std::string& label,
-                                                  int width,
-                                                  std::function<void()> onClick,
-                                                  const std::string& iconFile = "") {
-        auto b = std::make_shared<UltraCanvasButton>(id, 0, 0, width, 28, label);
-        b->SetFontSize(kTextFontSize);
-        b->SetCornerRadius(4.0f);
-        b->SetColors(Color(255, 255, 255, 255), Color(233, 238, 244, 255));
-        b->SetTextColors(kTextColor);
-        b->SetBorder(1.0f, Color(0, 0, 0, 60));
-        if (!iconFile.empty()) {
-            b->SetIcon(IconPath(iconFile));
-            b->SetIconSize(15, 15);
-            b->SetIconPosition(ButtonIconPosition::Left);
-            b->SetIconSpacing(label.empty() ? 0 : 5);
-            b->SetUseIconAsMask(true);
-            b->SetIconMaskColor(Color(55, 55, 60, 255));
-        }
-        if (onClick) b->SetOnClick(std::move(onClick));
-        b->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        return b;
-    }
-
-    // A row of buttons inside a page body.
-    std::shared_ptr<UltraCanvasContainer> MakeButtonRow(const std::string& id) {
-        auto row = std::make_shared<UltraCanvasContainer>(id);
-        row->layout.SetFlexRow().SetFlexGap(8)
-                   .SetFlexAlignItems(CSSLayout::AlignItems::Center);
-        row->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        row->size.width  = CSSLayout::Dimension::Px(kTextWidth);
-        row->size.height = CSSLayout::Dimension::Px(34);
-        return row;
-    }
-
-    // One choice of a radio group, in the window's text size. Explicit
-    // sizes: content measuring needs a render context, which the dialog does
-    // not have while it is first laid out.
-    std::shared_ptr<UltraCanvasRadio> MakeChoice(const std::string& id,
-                                                 const std::string& text,
-                                                 bool checked,
-                                                 int width = kTextWidth) {
-        auto radio = UltraCanvasRadio::Create(id, -1, -1, text, checked);
-        RadioVisualStyle style = radio->GetVisualStyle();
-        style.base.fontSize       = kTextFontSize;
-        style.base.textColor      = kTextColor;
-        style.base.textHoverColor = kTextColor;
-        radio->SetVisualStyle(style);
-        radio->size.width  = CSSLayout::Dimension::Px(width);
-        radio->size.height = CSSLayout::Dimension::Px(kControlHeight);
-        radio->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        return radio;
-    }
-
-    std::shared_ptr<UltraCanvasCheckbox> MakeCheckbox(
-            const std::string& id, const std::string& text, int width,
-            bool checked, std::function<void(bool)> onChange) {
-        auto box = std::make_shared<UltraCanvasCheckbox>(id, 0, 0,
-                static_cast<float>(width), static_cast<float>(kControlHeight),
-                text);
-        box->SetFontSize(kTextFontSize);
-        CheckboxVisualStyle style = box->GetVisualStyle();
-        style.base.textColor      = kTextColor;
-        style.base.textHoverColor = kTextColor;
-        box->SetVisualStyle(style);
-        box->SetChecked(checked);
-        // Explicit sizes: content measuring needs a render context, which the
-        // dialog does not have while it is first laid out.
-        box->size.width  = CSSLayout::Dimension::Px(width);
-        box->size.height = CSSLayout::Dimension::Px(kControlHeight);
-        box->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        box->onStateChanged = [onChange](CheckedState, CheckedState now) {
-            if (onChange) onChange(now == CheckedState::Checked);
-        };
-        return box;
-    }
-
-    // ===== COLOUR BOX + PICKER POPUP =====
-
-    // The box showing a configured colour. It is a button filled with that
-    // colour, so it hovers, focuses and reports its click like any other
-    // control - clicking it opens the picker popup below.
-    std::shared_ptr<UltraCanvasButton> MakeColorBox(const std::string& id,
-                                                    const Color& color,
-                                                    const std::string& tooltip,
-                                                    std::function<void()> onClick) {
-        auto b = std::make_shared<UltraCanvasButton>(id, 0, 0, 56, 24, "");
-        b->SetCornerRadius(3.0f);
-        // Same colour in every state: a colour box that changes shade under
-        // the pointer no longer shows the colour it stands for.
-        b->SetColors(color, color, color, color);
-        b->SetBorder(1.0f, Color(120, 120, 128, 255));
-        b->SetTooltip(tooltip);
-        if (onClick) b->SetOnClick(std::move(onClick));
-        b->size.width  = CSSLayout::Dimension::Px(56);
-        b->size.height = CSSLayout::Dimension::Px(24);
-        b->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        return b;
-    }
-
-    void SetColorBoxColor(const std::shared_ptr<UltraCanvasButton>& box,
-                          const Color& color) {
-        if (!box) return;
-        box->SetColors(color, color, color, color);
-        box->RequestRedraw();
-    }
+    // ===== COLOUR PICKER POPUP =====
 
     // The open colour-picker popup (kept alive while its window is up).
     struct ColorPopupState {
@@ -671,19 +441,7 @@ namespace {
     std::shared_ptr<UltraCanvasContainer> MakeColorRow(
             const std::string& id, const std::string& caption,
             const std::shared_ptr<UltraCanvasButton>& box) {
-        auto row = std::make_shared<UltraCanvasContainer>(id);
-        row->layout.SetFlexRow().SetFlexGap(10)
-                   .SetFlexAlignItems(CSSLayout::AlignItems::Center);
-        row->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        row->size.width  = CSSLayout::Dimension::Px(kTextWidth);
-        row->size.height = CSSLayout::Dimension::Px(30);
-
-        auto label = MakeLabel(id + "-label", caption);
-        label->size.width  = CSSLayout::Dimension::Px(190);
-        label->size.height = CSSLayout::Dimension::Px(20);
-        row->AddChild(label);
-        row->AddChild(box);
-        return row;
+        return MakeLabelledRow(id, caption, box);
     }
 
     std::shared_ptr<UltraCanvasContainer> BuildTreeviewPage(DialogState* d) {
@@ -820,60 +578,6 @@ namespace {
     // One "[caption] [slider] [value]" row. `indent` is what the caption
     // starts at - the PDF widths sit under the radio button they belong to,
     // a row that answers to nothing above it starts at the margin.
-    std::shared_ptr<UltraCanvasContainer> MakeSliderRow(
-            const std::string& id, const std::string& caption,
-            const std::shared_ptr<UltraCanvasSlider>& slider,
-            const std::shared_ptr<UltraCanvasLabel>& value,
-            int indent = 24, int labelWidth = 130) {
-        auto row = std::make_shared<UltraCanvasContainer>(id);
-        row->layout.SetFlexRow().SetFlexGap(10)
-                   .SetFlexAlignItems(CSSLayout::AlignItems::Center);
-        row->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        row->size.width  = CSSLayout::Dimension::Px(kTextWidth);
-        row->size.height = CSSLayout::Dimension::Px(32);
-        row->SetPadding(0, 0, 0, indent);
-
-        auto label = MakeLabel(id + "-label", caption);
-        label->size.width  = CSSLayout::Dimension::Px(labelWidth);
-        label->size.height = CSSLayout::Dimension::Px(20);
-        row->AddChild(label);
-        row->AddChild(slider);
-        row->AddChild(value);
-        return row;
-    }
-
-    // A whole-number slider over [minValue, maxValue].
-    std::shared_ptr<UltraCanvasSlider> MakeIntSlider(
-            const std::string& id, int minValue, int maxValue, int value,
-            std::function<void(int)> onChange) {
-        auto slider = CreateSlider(id, 0, 0, 200, 24);
-        slider->SetRange(static_cast<float>(minValue),
-                         static_cast<float>(maxValue));
-        slider->SetStep(1.0f);
-        slider->SetValue(static_cast<float>(value));
-        slider->size.width  = CSSLayout::Dimension::Px(200);
-        slider->size.height = CSSLayout::Dimension::Px(24);
-        slider->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        // Reported both while the handle is dragged and when it is let go, so
-        // what it sets follows the slider instead of jumping at the end.
-        slider->onValueChanging = [onChange](float v) {
-            if (onChange) onChange(static_cast<int>(v + 0.5f));
-        };
-        slider->onValueChanged = [onChange](float v) {
-            if (onChange) onChange(static_cast<int>(v + 0.5f));
-        };
-        return slider;
-    }
-
-    // The value label beside such a slider - "56 px", "300 entries".
-    std::shared_ptr<UltraCanvasLabel> MakeSliderValueLabel(
-            const std::string& id, int width = 50) {
-        auto label = MakeLabel(id, "");
-        label->size.width  = CSSLayout::Dimension::Px(width);
-        label->size.height = CSSLayout::Dimension::Px(20);
-        return label;
-    }
-
     // ===== DISPLAY > PDF INVENTORY =====
 
     // "56 px" / "25 %" next to the slider it belongs to.
@@ -1190,6 +894,57 @@ namespace {
                 ++inRow;
             }
         }
+        return parts.page;
+    }
+
+    // ===== DISPLAY > FILE NAMES =====
+    // How much of a long name a thumbnail tile shows: all of it, wrapped over
+    // as many lines as it takes, or at most 2 / 3 / 4 lines, past which the
+    // head of the last line gives way to "…" so the extension stays in view.
+    std::shared_ptr<UltraCanvasContainer> BuildFileNamesPage(DialogState* d) {
+        PageParts parts = MakePage("ufl-set-page-file-names", "File names",
+                "How long names are shown under the tiles of the thumbnail "
+                "views:");
+
+        const std::pair<int, const char*> choices[] = {
+            {UltraFilerSettings::kFileNameLinesFull,
+                    "Full name - as many lines as the name needs"},
+            {2, "Maximum 2 rows"},
+            {3, "Maximum 3 rows"},
+            {4, "Maximum 4 rows"},
+        };
+        d->fileNameRadios.clear();
+        for (const auto& [lines, text] : choices) {
+            std::string id = "ufl-set-file-names-" +
+                    (lines == UltraFilerSettings::kFileNameLinesFull
+                             ? std::string("full") : std::to_string(lines));
+            auto radio = MakeChoice(id, text,
+                    d->settings && d->settings->fileNameMaxLines == lines);
+            d->fileNameGroup.AddRadioButton(radio);
+            d->fileNameRadios.emplace_back(lines, radio);
+            parts.body->AddChild(radio);
+        }
+        d->fileNameGroup.onSelectionChanged =
+                [d](std::shared_ptr<UltraCanvasRadio> selected) {
+            if (!selected || !d->settings) return;
+            for (const auto& [lines, radio] : d->fileNameRadios) {
+                if (radio != selected) continue;
+                d->settings->fileNameMaxLines = lines;
+                ApplyAndSave(d);
+                return;
+            }
+        };
+
+        AddNote(parts, "ufl-set-file-names-note1",
+                "A name is broken between words where it can. When it needs "
+                "more rows than allowed, the start of the last row is left "
+                "out and replaced by \"…\", so the end of the name and its "
+                "extension stay readable; hovering the tile shows the whole "
+                "name.");
+        AddNote(parts, "ufl-set-file-names-note2",
+                "Every tile of a row is as tall as its longest caption, so "
+                "more rows per name means fewer tiles on the screen. The "
+                "Details, List and Size bars views keep one line per file.");
         return parts.page;
     }
 
@@ -1676,15 +1431,6 @@ namespace {
     // ===== HANDLING > FILE OPERATIONS =====
 
     // A row of radio buttons for one of the page's choices.
-    std::shared_ptr<UltraCanvasContainer> MakeChoiceRow(const std::string& id) {
-        auto row = std::make_shared<UltraCanvasContainer>(id);
-        row->layout.SetFlexRow().SetFlexGap(6).SetFlexWrap(CSSLayout::FlexWrap::Wrap)
-                   .SetFlexAlignItems(CSSLayout::AlignItems::Center);
-        row->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        row->size.width = CSSLayout::Dimension::Px(kTextWidth);
-        return row;
-    }
-
     void UpdateProgressDelayLabel(DialogState* d) {
         if (!d->progressDelayValue || !d->settings) return;
         const int s = d->settings->progressDelaySeconds;
@@ -1839,8 +1585,20 @@ namespace {
     // ===== HANDLING > OPENING FILES =====
     std::shared_ptr<UltraCanvasContainer> BuildOpeningFilesPage(DialogState* d) {
         PageParts parts = MakePage("ufl-set-page-opening", "Opening files",
-                "Double-click (or Enter) on a file - what it does when this "
-                "system has a program registered for that kind of file:");
+                "Double-click (or Enter) on a file - what it does:");
+
+        d->mediaUltraViewerBox = MakeCheckbox("ufl-set-open-ultraviewer",
+                "Open pictures, audio and video in UltraViewer", kTextWidth,
+                d->settings->mediaOpensInUltraViewer, [d](bool on) {
+            if (!d->settings) return;
+            d->settings->mediaOpensInUltraViewer = on;
+            ApplyAndSave(d);
+        });
+        parts.body->AddChild(d->mediaUltraViewerBox);
+
+        AddBodyCaption(parts, "ufl-set-open-other-caption",
+                "Any other file, when this system has a program registered for "
+                "that kind of file:");
 
         const bool app = d->settings->doubleClickOpensRegisteredApp;
 
@@ -1860,6 +1618,11 @@ namespace {
         parts.body->AddChild(d->openAppRadio);
         parts.body->AddChild(d->openPreviewRadio);
 
+        AddNote(parts, "ufl-set-open-note0",
+                "UltraViewer shows the picture, audio file or video full size, "
+                "with the rest of its folder a key press away. When UltraViewer "
+                "is not installed, or this is switched off, such a file is "
+                "handled like any other, by the choice below it.");
         AddNote(parts, "ufl-set-open-note1",
                 "\"Start the registered program\" is what a double-click does "
                 "in Explorer and the Finder: the file opens in the program its "
@@ -1935,33 +1698,44 @@ namespace {
         return parts.page;
     }
 
-    // ===== HANDLING > TABS =====
-    std::shared_ptr<UltraCanvasContainer> BuildTabsPage(DialogState* d) {
-        PageParts parts = MakePage("ufl-set-page-tabs", "Tabs",
-                "New tab - what the \"+\" at the end of the tab strip opens:");
+    // ===== DISPLAY > NEW TAB =====
+    std::shared_ptr<UltraCanvasContainer> BuildNewTabPage(DialogState* d) {
+        PageParts parts = MakePage("ufl-set-page-new-tab", "New tab",
+                "What the \"+\" at the end of the tab strip opens:");
 
-        const bool home = d->settings->newTabOpensHome;
+        AddBodyCaption(parts, "ufl-set-tab-options-caption", "Display options");
 
+        const FilerNewTabStart start = d->settings->newTabStart;
         d->newTabCurrentRadio = MakeChoice("ufl-set-tab-current",
-                "New view of the current folder", !home);
+                "Show current folder", start == FilerNewTabStart::CurrentFolder);
         d->newTabHomeRadio = MakeChoice("ufl-set-tab-home",
-                "Open the Home folder", home);
+                "Show Home folder", start == FilerNewTabStart::Home);
+        d->newTabComputerRadio = MakeChoice("ufl-set-tab-computer",
+                "Show Computer", start == FilerNewTabStart::Computer);
         d->newTabGroup.AddRadioButton(d->newTabCurrentRadio);
         d->newTabGroup.AddRadioButton(d->newTabHomeRadio);
+        d->newTabGroup.AddRadioButton(d->newTabComputerRadio);
         d->newTabGroup.onSelectionChanged =
                 [d](std::shared_ptr<UltraCanvasRadio> selected) {
             if (!selected || !d->settings) return;
-            d->settings->newTabOpensHome = (selected == d->newTabHomeRadio);
+            d->settings->newTabStart =
+                    selected == d->newTabHomeRadio     ? FilerNewTabStart::Home
+                  : selected == d->newTabComputerRadio ? FilerNewTabStart::Computer
+                                                       : FilerNewTabStart::CurrentFolder;
             ApplyAndSave(d);
         };
         parts.body->AddChild(d->newTabCurrentRadio);
         parts.body->AddChild(d->newTabHomeRadio);
+        parts.body->AddChild(d->newTabComputerRadio);
 
         AddNote(parts, "ufl-set-tab-note1",
-                "A new view of the current folder opens the tab on the folder "
-                "the active tab is showing, so the work carries on where it "
-                "is; the Home folder opens every new tab on the same starting "
-                "point instead.");
+                "The current folder opens the tab on the folder the active tab "
+                "is showing, so the work carries on where it is; the Home "
+                "folder opens every new tab on the same starting point "
+                "instead. Computer opens the Computer page - the drives with "
+                "their free space, Home and the cloud folders - with the Home "
+                "folder behind it, so a tab opened that way still has a folder "
+                "to show once a drive or folder is picked.");
         AddNote(parts, "ufl-set-tab-note2",
                 "Only the \"+\" follows this. A tab opened on a named folder - "
                 "the containing folder of a search result, an entry of the "
@@ -2479,6 +2253,240 @@ namespace {
     // ===== THE PAGE SHOWN WHILE NOTHING IS SELECTED =====
     // The window opens with the three sections closed, so it opens on this
     // rather than on whichever page happened to be first.
+    // ===== ARCHIVES > TAR =====
+
+    // "6 (default)" / "every core" beside the page's sliders.
+    void UpdateTarLabels(DialogState* d) {
+        if (!d->settings) return;
+        const FilerTarSettings& tar = d->settings->tar;
+        const FilerTarSettings defaults;
+        auto level = [](DialogState::TarSliderRow& row, int value, int byDefault) {
+            if (!row.value) return;
+            row.value->SetText(std::to_string(value) +
+                               (value == byDefault ? " (default)" : ""));
+            row.value->RequestRedraw();
+        };
+        level(d->tarGzip, tar.gzipLevel, defaults.gzipLevel);
+        level(d->tarBzip2, tar.bzip2Level, defaults.bzip2Level);
+        level(d->tarXz, tar.xzLevel, defaults.xzLevel);
+        level(d->tarZstd, tar.zstdLevel, defaults.zstdLevel);
+        if (d->tarThreads.value) {
+            const int n = tar.threads;
+            d->tarThreads.value->SetText(n == 0 ? std::string("every core")
+                    : std::to_string(n) + (n == 1 ? " thread" : " threads"));
+            d->tarThreads.value->RequestRedraw();
+        }
+    }
+
+    // One "[caption] [slider] [value]" row setting the int `field` of the
+    // TAR settings.
+    DialogState::TarSliderRow AddTarSlider(DialogState* d, PageParts& parts,
+                                           const std::string& key,
+                                           const std::string& caption,
+                                           int minValue, int maxValue,
+                                           int FilerTarSettings::* field) {
+        DialogState::TarSliderRow row;
+        row.value = MakeSliderValueLabel("ufl-set-tar-" + key + "-value", 90);
+        row.slider = MakeIntSlider("ufl-set-tar-" + key, minValue, maxValue,
+                d->settings->tar.*field, [d, field](int value) {
+            if (!d->settings || d->settings->tar.*field == value) return;
+            d->settings->tar.*field = value;
+            UpdateTarLabels(d);
+            ApplyAndSave(d);
+        });
+        parts.body->AddChild(MakeSliderRow("ufl-set-tar-" + key + "-row", caption,
+                row.slider, row.value, 0, 100));
+        return row;
+    }
+
+    // Puts the TAR settings onto the page's controls (Restore defaults).
+    void SyncTarControls(DialogState* d) {
+        if (!d->settings) return;
+        const FilerTarSettings& tar = d->settings->tar;
+        d->syncing = true;
+        auto slide = [](DialogState::TarSliderRow& row, int value) {
+            if (row.slider) row.slider->SetValue(static_cast<float>(value));
+        };
+        slide(d->tarGzip, tar.gzipLevel);
+        slide(d->tarBzip2, tar.bzip2Level);
+        slide(d->tarXz, tar.xzLevel);
+        slide(d->tarZstd, tar.zstdLevel);
+        slide(d->tarThreads, tar.threads);
+        if (d->tarLongBox) d->tarLongBox->SetChecked(tar.zstdLongMode);
+        for (const auto& [format, radio] : d->tarFormatRadios)
+            if (format == tar.headerFormat) d->tarFormatGroup.SelectButton(radio);
+        if (d->tarTimesBox) d->tarTimesBox->SetChecked(tar.keepTimestamps);
+        if (d->tarPermissionsBox) d->tarPermissionsBox->SetChecked(tar.keepPermissions);
+        if (d->tarOwnerBox) d->tarOwnerBox->SetChecked(tar.keepOwner);
+        d->tarLinksGroup.SelectButton(tar.storeSymlinks ? d->tarLinkRadio
+                                                        : d->tarTargetRadio);
+        if (d->tarExcludeInput) d->tarExcludeInput->SetTags(tar.excludePatterns);
+        d->syncing = false;
+        UpdateTarLabels(d);
+    }
+
+    std::shared_ptr<UltraCanvasContainer> BuildTarPage(DialogState* d) {
+        PageParts parts = MakePage("ufl-set-page-tar", "TAR",
+                "How Compress packs a .tar, .tar.gz, .tar.bz2, .tar.xz and "
+                ".tar.zst:", /*scrolls=*/true);
+        FilerTarSettings& tar = d->settings->tar;
+
+        // ----- the compressors -----
+        AddBodyCaption(parts, "ufl-set-tar-level-caption",
+                       "Compression level - higher packs smaller, and slower:");
+        d->tarGzip = AddTarSlider(d, parts, "gzip", "gzip", 1,
+                FilerTarSettings::kMaxGzipLevel, &FilerTarSettings::gzipLevel);
+        d->tarBzip2 = AddTarSlider(d, parts, "bzip2", "bzip2", 1,
+                FilerTarSettings::kMaxBzip2Level, &FilerTarSettings::bzip2Level);
+        d->tarXz = AddTarSlider(d, parts, "xz", "xz", 0,
+                FilerTarSettings::kMaxXzLevel, &FilerTarSettings::xzLevel);
+        d->tarZstd = AddTarSlider(d, parts, "zstd", "Zstandard", 1,
+                FilerTarSettings::kMaxZstdLevel, &FilerTarSettings::zstdLevel);
+
+        AddBodyCaption(parts, "ufl-set-tar-threads-caption",
+                       "Threads of xz and Zstandard (0: one per core):");
+        // As many as this machine has cores - or more, when the setting was
+        // made on a bigger one.
+        const int cores = std::max(1, static_cast<int>(std::thread::hardware_concurrency()));
+        const int maxThreads = std::min(FilerTarSettings::kMaxThreads,
+                                        std::max(cores, tar.threads));
+        d->tarThreads = AddTarSlider(d, parts, "threads", "Threads", 0, maxThreads,
+                                     &FilerTarSettings::threads);
+
+        d->tarLongBox = MakeCheckbox("ufl-set-tar-long",
+                "Zstandard long mode: matches across 128 MB (zstd --long=27)",
+                kTextWidth, tar.zstdLongMode, [d](bool on) {
+            if (!d->settings) return;
+            d->settings->tar.zstdLongMode = on;
+            ApplyAndSave(d);
+        });
+        parts.body->AddChild(d->tarLongBox);
+
+        // ----- the header format -----
+        AddBodyCaption(parts, "ufl-set-tar-format-caption", "Header format:");
+        {
+            auto row = MakeChoiceRow("ufl-set-tar-format-row");
+            const std::vector<std::tuple<FilerTarHeaderFormat, const char*, int>> choices = {
+                {FilerTarHeaderFormat::Pax,   "PAX (POSIX.1-2001)", 160},
+                {FilerTarHeaderFormat::Gnu,   "GNU tar",            90},
+                {FilerTarHeaderFormat::Ustar, "ustar (POSIX.1-1988)", 170},
+            };
+            d->tarFormatRadios.clear();
+            for (const auto& [format, label, width] : choices) {
+                auto radio = MakeChoice("ufl-set-tar-format-" +
+                                        UltraFilerSettings::FormatTarHeaderFormat(format),
+                                        label, tar.headerFormat == format, width);
+                d->tarFormatRadios.emplace_back(format, radio);
+                d->tarFormatGroup.AddRadioButton(radio);
+                row->AddChild(radio);
+            }
+            d->tarFormatGroup.onSelectionChanged =
+                    [d](std::shared_ptr<UltraCanvasRadio> selected) {
+                if (!selected || !d->settings) return;
+                for (const auto& [format, radio] : d->tarFormatRadios)
+                    if (radio == selected) d->settings->tar.headerFormat = format;
+                ApplyAndSave(d);
+            };
+            parts.body->AddChild(row);
+        }
+
+        // ----- what each file keeps -----
+        AddBodyCaption(parts, "ufl-set-tar-keep-caption", "Store with each file:");
+        d->tarTimesBox = MakeCheckbox("ufl-set-tar-times",
+                "Its modification time (else the time it was packed)",
+                kTextWidth, tar.keepTimestamps, [d](bool on) {
+            if (!d->settings) return;
+            d->settings->tar.keepTimestamps = on;
+            ApplyAndSave(d);
+        });
+        d->tarPermissionsBox = MakeCheckbox("ufl-set-tar-permissions",
+                "Its permissions (else 0644, folders 0755)",
+                kTextWidth, tar.keepPermissions, [d](bool on) {
+            if (!d->settings) return;
+            d->settings->tar.keepPermissions = on;
+            ApplyAndSave(d);
+        });
+        d->tarOwnerBox = MakeCheckbox("ufl-set-tar-owner",
+                "Its owner and group (else 0, without names)",
+                kTextWidth, tar.keepOwner, [d](bool on) {
+            if (!d->settings) return;
+            d->settings->tar.keepOwner = on;
+            ApplyAndSave(d);
+        });
+        parts.body->AddChild(d->tarTimesBox);
+        parts.body->AddChild(d->tarPermissionsBox);
+        parts.body->AddChild(d->tarOwnerBox);
+
+        // ----- symbolic links -----
+        AddBodyCaption(parts, "ufl-set-tar-links-caption", "A symbolic link:");
+        d->tarLinkRadio = MakeChoice("ufl-set-tar-links-link",
+                "Store the link", tar.storeSymlinks);
+        d->tarTargetRadio = MakeChoice("ufl-set-tar-links-target",
+                "Store the file or folder it points to (tar -h)", !tar.storeSymlinks);
+        d->tarLinksGroup.AddRadioButton(d->tarLinkRadio);
+        d->tarLinksGroup.AddRadioButton(d->tarTargetRadio);
+        d->tarLinksGroup.onSelectionChanged =
+                [d](std::shared_ptr<UltraCanvasRadio> selected) {
+            if (!selected || !d->settings) return;
+            d->settings->tar.storeSymlinks = (selected == d->tarLinkRadio);
+            ApplyAndSave(d);
+        };
+        parts.body->AddChild(d->tarLinkRadio);
+        parts.body->AddChild(d->tarTargetRadio);
+
+        // ----- the exclusions -----
+        AddBodyCaption(parts, "ufl-set-tar-exclude-caption",
+                       "Leave out - type a pattern and press Enter:");
+        d->tarExcludeInput = CreateTagInput("ufl-set-tar-exclude", -1, -1,
+                                            static_cast<float>(kTextWidth));
+        d->tarExcludeInput->SetPlaceholder("e.g. .git or *.tmp");
+        d->tarExcludeInput->SetTags(tar.excludePatterns);
+        d->tarExcludeInput->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        d->tarExcludeInput->size.width = CSSLayout::Dimension::Px(kTextWidth);
+        d->tarExcludeInput->onTagsChanged =
+                [d](const std::vector<std::string>& patterns) {
+            if (!d->settings) return;
+            d->settings->tar.excludePatterns = patterns;
+            ApplyAndSave(d);
+        };
+        parts.body->AddChild(d->tarExcludeInput);
+
+        UpdateTarLabels(d);
+
+        d->resets[kPageTar] = PageReset{"Restore defaults", 170, [d]() {
+            if (!d->settings) return;
+            d->settings->tar = FilerTarSettings();
+            SyncTarControls(d);
+            ApplyAndSave(d);
+        }};
+
+        AddNote(parts, "ufl-set-tar-note1",
+                "Point at an entry of the Compress menu to see the command "
+                "line it packs with. The defaults are the compressors' own "
+                "levels - gzip 6, bzip2 9, xz 6, Zstandard 3 - on every core.");
+        AddNote(parts, "ufl-set-tar-note2",
+                "Threads make xz and Zstandard many times faster on a "
+                "multi-core machine; xz then cuts the data into blocks, which "
+                "costs a little size, and needs more memory at level 9. xz's "
+                "extreme mode (-e) is not available. Long mode makes big, "
+                "repetitive data pack smaller; zstd 1.3.2 or later unpacks it "
+                "without options.");
+        AddNote(parts, "ufl-set-tar-note3",
+                "PAX is today's standard: long names, large files, names in "
+                "any script. GNU tar's own format does the same its own way. "
+                "ustar is for the oldest tar programs and takes names of at "
+                "most 255 bytes and files of at most 8 GB.");
+        AddNote(parts, "ufl-set-tar-note4",
+                "A pattern is matched against each name inside a packed "
+                "folder, ignoring case: \"*\" stands for any run of "
+                "characters, \"?\" for one; with a \"/\" it is matched "
+                "against the path inside the folder (\"src/*.o\"). A "
+                "matching folder is left out with all it holds; what you "
+                "selected is always packed. ZIP and 7-Zip are not affected "
+                "by this page.");
+        return parts.page;
+    }
+
     std::shared_ptr<UltraCanvasContainer> BuildStartPage(DialogState* /*d*/) {
         PageParts parts = MakePage("ufl-set-page-start", "Settings",
                 "Open a section on the left and choose the page to set:");
@@ -2486,12 +2494,16 @@ namespace {
         AddNote(parts, "ufl-set-start-note1",
                 "Display - what the folder tree, the file display and the "
                 "preview beside it show: colours, the Home folder, hidden "
-                "files, file extensions, files in use, and which file kinds "
-                "get a thumbnail or a preview.");
+                "files, file names, file extensions, files in use, and which "
+                "file kinds get a thumbnail or a preview.");
         AddNote(parts, "ufl-set-start-note2",
                 "Handling - what an action does: dropping dragged files onto "
                 "a folder, opening a file, how long the passwords of protected "
                 "files are kept, and what the \"+\" of the tab strip opens.");
+        AddNote(parts, "ufl-set-start-note-archives",
+                "Archives - how Compress packs a TAR: each compressor's level "
+                "and threads, the header format, what is stored of each file, "
+                "and the names left out.");
         AddNote(parts, "ufl-set-start-note3",
                 "Extras - the command line program \"Open prompt\" starts, "
                 "clearing the recently-used lists, the pinned entries and the "
@@ -2504,134 +2516,38 @@ namespace {
     }
 
     // ===== PAGE SWITCHING =====
-
-    // The bottom bar's "Restore default ..." button stands for the shown
-    // page: labelled and wired for that page, or hidden while the page has
-    // nothing to restore.
-    void UpdateRestoreButton(DialogState* d) {
-        if (!d->restoreButton) return;
-        auto it = d->resets.find(d->shownPage);
-        if (it == d->resets.end()) {
-            d->restoreButton->SetVisible(false);
-            d->restoreButton->RequestRedraw();
-            return;
-        }
-        const PageReset& reset = it->second;
-        d->restoreButton->SetText(reset.label);
-        d->restoreButton->size.width = CSSLayout::Dimension::Px(reset.width);
-        d->restoreButton->SetVisible(true);
-        d->restoreButton->RequestRedraw();
-    }
-
-    // Show the page of `nodeId`; a main page without its own panel falls
-    // through to its first sub page.
-    void ShowPage(DialogState* d, const std::string& nodeId) {
-        std::string target = nodeId;
-        if (!d->pages.count(target)) {
-            // Fall back to the first page below this node in tree order.
-            TreeNode* node = d->tree ? d->tree->FindNode(nodeId) : nullptr;
-            std::function<TreeNode*(TreeNode*)> firstPage =
-                    [&](TreeNode* n) -> TreeNode* {
-                if (!n) return nullptr;
-                if (d->pages.count(n->data.nodeId)) return n;
-                for (auto& child : n->children)
-                    if (TreeNode* hit = firstPage(child.get())) return hit;
-                return nullptr;
-            };
-            TreeNode* hit = firstPage(node);
-            if (!hit) return;
-            target = hit->data.nodeId;
-        }
-        d->shownPage = target;
-        for (auto& [id, pageContainer] : d->pages)
-            pageContainer->SetVisible(id == target);
-        // The Cache page shows live figures, so it is re-read on the way in
-        // rather than left showing what was true when the window was built.
-        if (target == kPageCache) RefreshCacheUsage(d);
-        UpdateRestoreButton(d);
-    }
-
-    // Selects the tree row of `pageId` - and shows its page, through the
-    // tree's selection callback.
-    void SelectPage(DialogState* d, const std::string& pageId) {
-        TreeNode* node = d->tree ? d->tree->FindNode(pageId) : nullptr;
-        if (node) {
-            // The sections start closed, so the one holding this page has to
-            // be opened for its row to be on screen at all.
-            for (TreeNode* parent = node->parent; parent; parent = parent->parent)
-                d->tree->ExpandNode(parent);
-            d->tree->SelectNode(node);
-        }
-        ShowPage(d, pageId);
-    }
-
+    // The kit's, under the names the pages below were written with.
+    void UpdateRestoreButton(DialogState* d) { d->UpdateRestoreButton(); }
+    void ShowPage(DialogState* d, const std::string& nodeId) { d->ShowPage(nodeId); }
+    void SelectPage(DialogState* d, const std::string& pageId) { d->SelectPage(pageId); }
     void AddPage(DialogState* d, const char* pageId,
                  const std::shared_ptr<UltraCanvasContainer>& page) {
-        page->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
-                        .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-        d->pages[pageId] = page;
-        d->pageArea->AddChild(page);
+        d->AddPage(pageId, page);
     }
-
     void AddTreeNode(DialogState* d, const char* parentId, const char* id,
                      const char* text) {
-        TreeNodeData data;
-        data.nodeId = id;
-        data.text = text;
-        d->tree->AddNode(parentId, data);
+        d->AddTreeNode(parentId, id, text);
     }
 
     void BuildDialog(DialogState* d, UltraCanvasWindowBase* parent) {
-        WindowConfig wc;
-        wc.title = "UltraFiler - Settings";
-        wc.width = 700;
-        wc.height = 560;
-        wc.resizable = true;
-        wc.type = WindowType::Dialog;
-        wc.parentWindow = parent;
-        d->window = CreateWindow(wc);
-        if (!d->window || !d->window->IsCreated()) { d->window.reset(); return; }
-
-        d->window->layout.SetFlexColumn()
-                         .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-        d->window->SetBackgroundColor(Color(249, 249, 251, 255));
-
-        // ----- settings-page tree | page area -----
-        auto content = std::make_shared<UltraCanvasContainer>("ufl-set-content");
-        content->layout.SetFlexRow()
-                       .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-        content->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
-                           .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-
-        d->tree = std::make_shared<UltraCanvasTreeView>("ufl-set-tree");
-        d->tree->SetFontSize(kTreeFontSize);
-        d->tree->SetRowHeight(24);
-        d->tree->SetSelectionMode(TreeSelectionMode::Single);
-        d->tree->SetLineStyle(TreeLineStyle::NoLine);
-        d->tree->SetBackgroundColor(Color(243, 243, 246, 255));
-        // A heading (Display, Handling, ...) has no page of its own - it shows
-        // its first sub page - so selecting one moves straight on to that
-        // first entry rather than leaving two rows that show the same thing.
-        d->tree->SetShowFirstChildOnExpand(true);
-        d->tree->SetAutoExpandSelectedNode(true);
-        d->tree->size.width = CSSLayout::Dimension::Px(180);
-        d->tree->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
-                           .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-
-        // The root row itself is not shown: its children - Display, Handling,
-        // Extras - are the top level of the list, so the tree opens on the
-        // sections instead of on one row that holds them.
-        TreeNodeData rootData;
-        rootData.nodeId = "settings";
-        rootData.text = "Settings";
-        d->tree->SetRootNode(rootData);
+        if (!d->Create(parent, "UltraFiler - Settings")) return;
+        // The Cache page shows live figures, so it is re-read on the way in
+        // rather than left showing what was true when the window was built.
+        d->onPageShown = [d](const std::string& pageId) {
+            if (pageId == kPageCache) RefreshCacheUsage(d);
+        };
+        // The popup's callbacks reach back into this dialog state, so it
+        // must not outlive the window it was opened from.
+        d->onClosed = []() { CloseColorPopup(false); };
 
         AddTreeNode(d, "settings", kPageDisplay, "Display");
         AddTreeNode(d, kPageDisplay, kPageTreeview, "Treeview");
         AddTreeNode(d, kPageDisplay, kPageTabStyle, "Tab style");
+        AddTreeNode(d, kPageDisplay, kPageNewTab, "New tab");
         AddTreeNode(d, kPageDisplay, kPageHomeFolder, "Home folder");
         AddTreeNode(d, kPageDisplay, kPageFiles, "Files");
         AddTreeNode(d, kPageDisplay, kPageIgnoredFiles, "Ignored files");
+        AddTreeNode(d, kPageDisplay, kPageFileNames, "File names");
         AddTreeNode(d, kPageDisplay, kPageFileExtensions, "File extensions");
         AddTreeNode(d, kPageDisplay, kPageFileIcons, "File icons");
         AddTreeNode(d, kPageDisplay, kPageFilesInUse, "Files in use");
@@ -2643,26 +2559,12 @@ namespace {
         AddTreeNode(d, kPageHandling, kPageFileOperations, "File operations");
         AddTreeNode(d, kPageHandling, kPageOpeningFiles, "Opening files");
         AddTreeNode(d, kPageHandling, kPageProtectedFiles, "Protected files");
-        AddTreeNode(d, kPageHandling, kPageTabs, "Tabs");
+        AddTreeNode(d, "settings", kPageArchives, "Archives");
+        AddTreeNode(d, kPageArchives, kPageTar, "TAR");
         AddTreeNode(d, "settings", kPageExtras, "Extras");
         AddTreeNode(d, kPageExtras, kPageOpenPrompt, "Open prompt");
         AddTreeNode(d, kPageExtras, kPageLists, "History & Favorites");
         AddTreeNode(d, kPageExtras, kPageCache, "Cache");
-
-        // After the nodes: hiding the root promotes its children to the top
-        // level, which it can only do once they exist. The sections themselves
-        // stay closed - the window opens on the list of sections, and opening
-        // one is the first step of finding a setting.
-        d->tree->SetRootVisible(false);
-        content->AddChild(d->tree);
-
-        d->pageArea = std::make_shared<UltraCanvasContainer>("ufl-set-pages");
-        d->pageArea->layout.SetFlexColumn()
-                           .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-        d->pageArea->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
-                               .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-        d->pageArea->SetBackgroundColor(Color(255, 255, 255, 255));
-        content->AddChild(d->pageArea);
 
         // ----- pages -----
         AddPage(d, kPageTreeview, BuildTreeviewPage(d));
@@ -2670,6 +2572,7 @@ namespace {
         AddPage(d, kPageHomeFolder, BuildHomeFolderPage(d));
         AddPage(d, kPageFiles, BuildFilesPage(d));
         AddPage(d, kPageIgnoredFiles, BuildIgnoredFilesPage(d));
+        AddPage(d, kPageFileNames, BuildFileNamesPage(d));
         AddPage(d, kPageFileExtensions, BuildFileExtensionsPage(d));
         AddPage(d, kPageFileIcons, BuildFileIconsPage(d));
         AddPage(d, kPageFilesInUse, BuildFilesInUsePage(d));
@@ -2682,80 +2585,17 @@ namespace {
         AddPage(d, kPageFileOperations, BuildFileOperationsPage(d));
         AddPage(d, kPageOpeningFiles, BuildOpeningFilesPage(d));
         AddPage(d, kPageProtectedFiles, BuildProtectedFilesPage(d));
-        AddPage(d, kPageTabs, BuildTabsPage(d));
+        AddPage(d, kPageNewTab, BuildNewTabPage(d));
         AddPage(d, kPageOpenPrompt, BuildOpenPromptPage(d));
         AddPage(d, kPageLists, BuildListsPage(d));
+        AddPage(d, kPageTar, BuildTarPage(d));
         AddPage(d, kPageCache, BuildCachePage(d));
         AddPage(d, kPageStart, BuildStartPage(d));
 
-        d->window->AddChild(content);
-
-        // ----- bottom bar: [Restore default ...]            [Close] -----
-        auto bottom = std::make_shared<UltraCanvasContainer>("ufl-set-bottom");
-        bottom->layout.SetFlexRow().SetFlexGap(8)
-                      .SetFlexAlignItems(CSSLayout::AlignItems::Center);
-        bottom->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
-                          .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-        bottom->SetPadding(8, 12, 8, 12);
-        bottom->SetBorderTop(1, Color(225, 225, 230, 255));
-
-        // The left half holds the page's restore button and takes the width
-        // the Close button leaves, so Close keeps its right-hand place whether
-        // or not a restore button is showing.
-        auto bottomLeft = std::make_shared<UltraCanvasContainer>("ufl-set-bottom-left");
-        bottomLeft->layout.SetFlexRow()
-                          .SetFlexAlignItems(CSSLayout::AlignItems::Center);
-        bottomLeft->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
-                              .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-        d->restoreButton = MakeButton("ufl-set-restore", "Restore defaults", 170,
-                [d]() {
-            auto it = d->resets.find(d->shownPage);
-            if (it != d->resets.end() && it->second.action) it->second.action();
-        });
-        d->restoreButton->SetVisible(false);
-        bottomLeft->AddChild(d->restoreButton);
-        bottom->AddChild(bottomLeft);
-
-        bottom->AddChild(MakeButton("ufl-set-close", "Close", 90,
-                [d]() { if (d->window) d->window->Close(); }));
-        d->window->AddChild(bottom);
-
-        d->tree->onNodeSelected = [d](TreeNode* node) {
-            if (!node) return;
-            // A section (Display, Handling, Extras) has no page of its own:
-            // selecting one moves on to its first page. The tree jumps one
-            // level per selection, so this takes the remaining steps.
-            TreeNode* leaf = node;
-            while (leaf && leaf->HasChildren()) leaf = leaf->FirstChild();
-            if (leaf && leaf != node) {
-                d->tree->SelectNode(leaf);
-                return;
-            }
-            ShowPage(d, node->data.nodeId);
-        };
         // Nothing is selected while every section is closed, so the page
         // area opens on the start page. Show() selects a page from here when
         // the caller asked for one.
-        ShowPage(d, kPageStart);
-
-        // Escape closes, matching the framework's dialog convention.
-        d->window->SetEventCallback([](const UCEvent& event) {
-            if (event.type == UCEventType::KeyUp &&
-                event.virtualKey == UCKeys::Escape) {
-                if (auto tw = event.targetWindow.lock())
-                    static_cast<UltraCanvasWindow*>(tw.get())->Close();
-                return true;
-            }
-            return false;
-        });
-        d->window->onWindowClosed = [d]() {
-            // The popup's callbacks reach back into this dialog state, so it
-            // must not outlive the window it was opened from.
-            CloseColorPopup(false);
-            d->closed = true;
-        };
-
-        d->window->Show();
+        d->Finish(kPageStart);
     }
 
 } // namespace

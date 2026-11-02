@@ -1,5 +1,12 @@
 // include/UltraCanvasTreeView.h
 // Hierarchical tree view with icons and text for each row
+// Version: 1.11.0 - 2026-11-01 - SetExpandButtonColors: the +/- box's fill, border and symbol,
+//                  so a dark theme gets a box it can read (the symbol was always black)
+// Version: 1.10.0 - 2026-11-01 - GetNodeAtY is public: the row under a point, for a drop
+//                  from another element
+// Version: 1.9.0 - 2026-10-30 - SetNodeDragEnabled: rows dragged onto other rows, the target
+//                  highlighted, onNodeDragAccept / onNodeDragDrop (declared since 1.0.0,
+//                  never fired until now); Escape cancels the drag
 // Version: 1.8.0 - 2026-10-22 - SetExpanderStyle: the expand button as an arrow (Chevron)
 //                  instead of a +/- box, in SetExpanderArrowColor
 // Version: 1.7.0 - 2026-10-19 - TreeNodeData::loading: a row whose children are being fetched
@@ -22,7 +29,7 @@
 //                  into the removed subtree
 // Version: 1.0.0 - the tree view: rows with icons and text, expanders, check flags, lines
 //                  (the numbers before 1.6.0 were given afterwards, from the framework changelog)
-// Last Modified: 2026-10-22
+// Last Modified: 2026-11-01
 #pragma once
 
 #include "UltraCanvasCommonTypes.h"
@@ -304,6 +311,8 @@ private:
     Color lineColor;            // Connecting line color
     Color textColor;            // Default text color
     Color expandButtonColor = Color(0xE0, 0xE0, 0xE0); // +/- node icon background
+    Color expandButtonBorderColor = Colors::Gray;       // its 1 px border
+    Color expandButtonSymbolColor = Colors::Black;      // the + / - itself
     TreeExpanderStyle expanderStyle = TreeExpanderStyle::Box;
     Color expanderArrowColor = Color(0x70, 0x70, 0x78);        // the Chevron style's arrow
     Color checkboxBackgroundColor = Colors::White;             // check flag box fill
@@ -354,10 +363,16 @@ private:
     bool showScrollToSelectionButton = true;   // feature is on by default
     bool scrollToSelectionHovered = false;     // pointer currently over the button
 
-    // Interaction state
-//    bool isDragging;               // Currently dragging scrollbar
-//    TreeNode* draggedNode;         // Node being dragged (for drag & drop)
-//    Point2Di lastMousePos;          // Last mouse position
+    // Dragging a row onto another (SetNodeDragEnabled). A press on a row is
+    // a candidate; once the pointer travels NodeDragThreshold px with the
+    // button down it is a drag, the row under the pointer that
+    // onNodeDragAccept takes is drawn as the drop target (dropTargetNode),
+    // and the release over it fires onNodeDragDrop.
+    static constexpr int NodeDragThreshold = 6;
+    bool nodeDragEnabled = false;
+    TreeNode* dragCandidateNode = nullptr;   // the row pressed, null = none
+    bool nodeDragActive = false;
+    Point2Di nodeDragStart;
     
 public:
     // ===== ACCESSIBILITY =====
@@ -373,7 +388,15 @@ public:
     // of the Set*Checked calls. Fires once per node whose state actually moved,
     // propagated parents and children included.
     std::function<void(TreeNode*, TreeCheckState)> onNodeCheckChanged;
+    // A row dragged onto another and released there (SetNodeDragEnabled):
+    // the row dragged, then the row it was dropped on. Fired after the drag
+    // has ended, so the handler may rebuild the tree.
     std::function<void(TreeNode*, TreeNode*)> onNodeDragDrop; // dragged, target
+    // Whether `dragged` may be dropped on `target`: only a row it accepts is
+    // drawn as the drop target and fires onNodeDragDrop. Unset, every row is
+    // accepted but the dragged one and those inside it - a node cannot be
+    // put into itself.
+    std::function<bool(TreeNode* dragged, TreeNode* target)> onNodeDragAccept;
     // Files dragged in from elsewhere (the file list, another app) and dropped
     // on a node. `onFilesDragAccept` decides whether a node is a valid drop
     // target - only accepted nodes get the drop highlight. `onFilesDroppedOnNode`
@@ -386,6 +409,23 @@ public:
     // that carries no files and so ends without a Drop (the file dialog's
     // Save icon, UltraCanvasFileDragIcon): its owner asks here on release.
     TreeNode* GetDropTargetNode() const { return dropTargetNode; }
+
+    // ===== DRAGGING ROWS =====
+    // Let the user drag a row onto another one (off by default, so a press
+    // and a small slip of the mouse in a tree that does not reorder is still
+    // only a click). The press selects the row as always; once the pointer
+    // has travelled a few pixels with the button down, the row under it that
+    // onNodeDragAccept takes is drawn as the drop target, a pointer past the
+    // top or bottom edge scrolls a row at a time, and releasing over a target
+    // fires onNodeDragDrop. Escape, or a release anywhere else, ends the drag
+    // with nothing dropped. What a drop means - a move, a copy, a link - is
+    // the handler's to do: the tree itself changes nothing.
+    void SetNodeDragEnabled(bool enabled);
+    bool IsNodeDragEnabled() const { return nodeDragEnabled; }
+    // True from the moment a press became a drag until it ends.
+    bool IsDraggingNode() const { return nodeDragActive; }
+    // The row being dragged, or null when no drag is under way.
+    TreeNode* GetDraggedNode() const { return nodeDragActive ? dragCandidateNode : nullptr; }
     // The local folder `node` stands for, or "" when it stands for none. Asked
     // when a Save dialog's file icon from another window or program is
     // dropped on a node onFilesDragAccept accepts (a Drop carrying
@@ -427,6 +467,10 @@ public:
     // from under the tree.
     void RemoveNode(const std::string& nodeId);
     TreeNode* FindNode(const std::string& nodeId);
+    // The row at element-local y (as scrolled: MapToLocal of a window
+    // point), null below the last row - where something dragged from
+    // another element (a list's row) is dropped.
+    TreeNode* GetNodeAtY(int y);
     
     // ===== SELECTION MANAGEMENT =====
     void SelectNode(TreeNode* node, bool addToSelection = false);
@@ -574,6 +618,13 @@ public:
     void SetLineColor(const Color &color) { lineColor = color; }
     void SetTextColor(const Color &color) { textColor = color; }
     void SetExpandButtonColor(const Color &color) { expandButtonColor = color; }
+    // The +/- box whole: its fill, its border and the + / - (TreeExpanderStyle::Box).
+    void SetExpandButtonColors(const Color& fill, const Color& border, const Color& symbol) {
+        expandButtonColor = fill;
+        expandButtonBorderColor = border;
+        expandButtonSymbolColor = symbol;
+        RequestRedraw();
+    }
     void SetCheckboxColors(const Color& background, const Color& border, const Color& check) {
         checkboxBackgroundColor = background;
         checkboxBorderColor = border;
@@ -729,6 +780,8 @@ protected:
     int   GetTextPadding() const { return textPadding; }
     Color GetTextColor()   const { return textColor; }
     Color GetExpandButtonColor() const { return expandButtonColor; }
+    Color GetExpandButtonBorderColor() const { return expandButtonBorderColor; }
+    Color GetExpandButtonSymbolColor() const { return expandButtonSymbolColor; }
     // Width reserved on the right for the vertical scrollbar (0 when hidden).
     int   GetVerticalScrollbarWidth() const {
         return (verticalScrollbar && verticalScrollbar->IsVisible()) ? verticalScrollbar->GetWidth() : 0;
@@ -773,8 +826,6 @@ private:
     int FindShownNodeY(const TreeNode* node) const;
 
     int GetNodeDisplayY(TreeNode* node);
-    
-    TreeNode* GetNodeAtY(int y);
     
     // `pipes` carries one flag per drawn level down to this row, the top level
     // included: pipes[k] is true when the row's ancestor at display level k still
@@ -837,6 +888,12 @@ private:
     bool HandleKeyDown(const UCEvent& event);
     bool HandleDragOver(const UCEvent& event);
     bool HandleDrop(const UCEvent& event);
+    // Dragging rows: whether `target` takes `dragged` (onNodeDragAccept, or
+    // any row outside the dragged one's subtree), the target under the
+    // pointer while dragging, and the end of a drag - dropped or not.
+    bool NodeDragAccepts(TreeNode* dragged, TreeNode* target) const;
+    void UpdateNodeDragTarget(const UCEvent& event);
+    void EndNodeDrag();
     
     void NavigateUp();
     void NavigateDown();

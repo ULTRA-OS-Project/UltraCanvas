@@ -259,7 +259,13 @@ A separate window (`CreateWindow`) per draft, Texter-style:
   account and insert the share link — see `Docs/Modules/UltraCloud/README.md`);
   shown as a chip strip with sizes and a total-size warning - under the
   message, or in a column at its right (*Settings > Reading > Attachments*,
-  for reading and writing alike).
+  for reading and writing alike). *Open* shows an attachment in the media
+  viewer or the system's application - but never a program or script
+  (`FileAssociations::RunsCodeWhenOpened`): that is offered to be saved.
+- **Import** — `.eml`, Apple Mail `.emlx` and Outlook `.msg` files into the
+  folder on show: uploaded to the server (`AppendMessage`, as the Drafts and
+  Sent copies are) and synced back, so they live where the account's mail
+  lives (`ui/UltraMailMessageImport`).
 - **Signatures** — per account, in *Account Settings > Signature*: none,
   plain text (below a `-- ` line) or HTML, designed in a WYSIWYG editor
   (`UltraCanvasRichTextEdit`: character formatting, font, size, colour,

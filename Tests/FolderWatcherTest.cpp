@@ -9,8 +9,9 @@
 // On a platform with no native backend every Watch() fails by design; the
 // change-reporting checks are then skipped rather than failed, because the
 // caller's documented answer there is to poll instead.
+// Version: 1.1.0 - a change right after Watch() returns is reported
 // Version: 1.0.0
-// Last Modified: 2026-08-25
+// Last Modified: 2026-10-30
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasFolderWatcher.h"
@@ -139,6 +140,21 @@ int main() {
         const int otherBefore = otherHits.load();
         { std::ofstream(other / "here.txt") << "x"; }
         CHECK(WaitForHit(otherHits, otherBefore), "the new folder is reported");
+
+        // ===== LISTENING WHEN WATCH() RETURNS =====
+        // A caller starts the watch and then lists the folder, so a change in
+        // between must be reported - no settling sleep here. Windows used to
+        // issue its first read on the backend's thread, after Watch() had
+        // returned, and lost exactly this change.
+        const fs::path eager = dir / "eager";
+        fs::create_directories(eager, ec);
+        std::atomic<int> eagerHits{0};
+        CHECK(watcher.Watch(eager.string(), [&eagerHits]() { ++eagerHits; }),
+              "a fresh folder is watched");
+        { std::ofstream(eager / "at-once.txt") << "x"; }
+        CHECK(WaitForHit(eagerHits, 0),
+              "a change made right after Watch() returns is reported");
+        watcher.Stop();
 
         // ===== STOP IS NOT A FAILURE =====
         // The failure callback exists so a caller can fall back to polling

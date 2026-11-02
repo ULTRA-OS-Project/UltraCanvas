@@ -68,6 +68,14 @@ recent.prototype = [this]() { return BuildRecentFilesSubmenu(); };
 reg.Register(recent);
 ```
 
+The same registry builds toolbars ([Toolbar Layout](UltraCanvasToolbarLayout.md)),
+and a command carries what a toolbar needs as well: `iconName`, resolved per
+size by `SetIconResolver` / `ResolveIcon`; a `tooltip`; live state -
+`isEnabled`, `isChecked`, `dynamicLabel` - which `Materialize` reads into the
+entry it builds and `RefreshMenuStates(menu)` reads again into a menu built
+earlier; and `makeToolbarWidget` for a command that is a widget on a toolbar.
+`FindShortcutConflicts()` lists the shortcuts given to more than one command.
+
 ## 2. Describe the default layout
 
 A `MenuLayout` is a tree of `MenuLayoutNode`s (`Command`, `Group`, or `Separator`).

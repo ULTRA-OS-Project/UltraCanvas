@@ -1,5 +1,9 @@
 // Apps/ChatCube/ui/ChatCubeWindow.cpp
 // The ChatCube window: sign-in page, conversations, messages
+// Version: 0.2.4 - the Settings window (the gear beside the copy button): the send key, typing either
+//                  way, the nearby list, 12-hour times and other date orders, signing out of a network
+// Version: 0.2.3 - a picture or a file waits in a strip above the field, with a x to drop it, and
+//                  goes with Enter or the send button; Ctrl+V pastes a picture or a file into it
 // Version: 0.2.2 - pictures: avatars from the person's photo, photos and videos in the bubbles and a
 //                  viewer for them, a paperclip that sends a picture, a video or a file
 // Version: 0.2.1 - Telegram signs in by a QR code too, scanned from the phone's Telegram app
@@ -9,7 +13,7 @@
 // Version: 0.1.2 - the status line shows every network's state, one entry each, beside the last action
 // Version: 0.1.1 - the Telegram application's keys from the relay; TDLib's connection on the status line
 // Version: 0.1.0
-// Last Modified: 2026-10-29
+// Last Modified: 2026-11-01
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "ChatCubeWindow.h"
@@ -20,6 +24,7 @@
 #include "UltraCanvasCheckbox.h"
 #include "UltraCanvasClipboard.h"
 #include "UltraCanvasContainer.h"
+#include "UltraCanvasDataFolder.h"
 #include "UltraCanvasFileLoader.h"
 #include "UltraCanvasImage.h"
 #include "UltraCanvasImageElement.h"
@@ -38,9 +43,11 @@
 #include <cctype>
 #include <chrono>
 #include <cstdio>
+#include <ctime>
 #include <filesystem>
 #include <sstream>
 #include <system_error>
+#include <vector>
 
 using namespace UltraCanvas;
 
@@ -55,6 +62,9 @@ constexpr int   kInputHeight = 48;
 constexpr float kFormWidth = 340.0f;
 constexpr float kControlRadius = 8.0f;
 constexpr int   kIconButton = 34;       // a round icon button's side
+constexpr int   kTileSide = 64;         // a staged picture's tile in the composer
+constexpr int   kFileTileWidth = 180;   // a staged file's tile: its name and size
+constexpr int   kTileClose = 20;        // the x on a tile
 constexpr int64_t kTypingShownMs = 5000;
 constexpr int64_t kTypingResendMs = 3000;
 
@@ -145,6 +155,15 @@ std::shared_ptr<UltraCanvasButton> MakeIconButton(const std::string& id, const s
     return b;
 }
 
+// A network's button in the sidebar (Matrix, Telegram): always the network's
+// name, which is what fits the third of the sidebar it has - where the
+// account stands ("Matrix: signed in as @alice:matrix.org") is its tooltip.
+void SetNetworkButton(const std::shared_ptr<UltraCanvasButton>& button, const std::string& name,
+                      const std::string& tooltip) {
+    button->SetText(name);
+    button->SetTooltip(tooltip);
+}
+
 std::shared_ptr<UltraCanvasTextInput> MakeInput(const std::string& id, const std::string& placeholder, int width,
                                                 bool pill = false) {
     auto t = std::make_shared<UltraCanvasTextInput>(id, 0, 0, width, kControlHeight);
@@ -201,6 +220,39 @@ UltraIMMessageType AttachmentKind(const std::string& path) {
     return UltraIMMessageType::File;
 }
 
+// Whether a file shows as a picture: a photo, or a drawing (SVG), which
+// goes as a file - Telegram and Matrix take no SVG as a photo - but is
+// shown as its picture, in the strip as in the bubble.
+bool IsPictureFile(const std::string& path) {
+    if (AttachmentKind(path) == UltraIMMessageType::Image) return true;
+    std::string ext = PathToUtf8(PathFromUtf8(path).extension());
+    for (char& c : ext) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return ext == ".svg" || ext == ".svgz" || ext == ".gif";
+}
+
+// Whether what the clipboard calls text is text: UTF-8 without a NUL. A
+// program that serves one picture under every target (xclip) hands the
+// picture's bytes out as the text too, and they are not to be typed.
+bool LooksLikeText(const std::string& s) {
+    size_t i = 0;
+    while (i < s.size()) {
+        const unsigned char c = static_cast<unsigned char>(s[i]);
+        if (c == 0) return false;
+        size_t more = 0;
+        if (c < 0x80) more = 0;
+        else if ((c & 0xE0) == 0xC0) more = 1;
+        else if ((c & 0xF0) == 0xE0) more = 2;
+        else if ((c & 0xF8) == 0xF0) more = 3;
+        else return false;
+        if (i + more >= s.size() + (more ? 0 : 1)) return false;
+        for (size_t k = 1; k <= more; ++k) {
+            if ((static_cast<unsigned char>(s[i + k]) & 0xC0) != 0x80) return false;
+        }
+        i += more + 1;
+    }
+    return true;
+}
+
 std::string PresenceText(UltraIMPresence presence) {
     switch (presence) {
         case UltraIMPresence::Online:       return "online";
@@ -214,8 +266,11 @@ std::string PresenceText(UltraIMPresence presence) {
 
 } // namespace
 
-ChatCubeWindow::ChatCubeWindow(std::string version, std::string providerId)
-    : version_(std::move(version)), providerId_(std::move(providerId)) {}
+ChatCubeWindow::ChatCubeWindow(std::string version, std::string providerId, Settings settings)
+    : version_(std::move(version)), providerId_(std::move(providerId)), settings_(settings),
+      dataFolder_(PathToUtf8(UltraCanvasDataFolder("ChatCube"))) {
+    SetDateTimeStyle(settings_.clock24, settings_.dateStyle);
+}
 
 ChatCubeWindow::~ChatCubeWindow() {
     // The tiles go with the window: no picture may be pushed into them after.
@@ -241,6 +296,7 @@ bool ChatCubeWindow::Create() {
     window_->SetBackgroundColor(L().ground);
     window_->AddChild(BuildSignInPage());
     window_->AddChild(BuildChatView());
+    ApplySettings();
     window_->onWindowClosed = [this]() { if (onClosed) onClosed(); };
 
     subscription_ = UltraIM_Subscribe([this](const UltraIMEvent& e) { OnEvent(e); });
@@ -262,6 +318,10 @@ bool ChatCubeWindow::Create() {
 
 void ChatCubeWindow::Show() {
     if (window_) window_->Show();
+}
+
+void ChatCubeWindow::Minimize() {
+    if (window_) window_->Minimize();
 }
 
 // ===================================================================== views
@@ -361,6 +421,11 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildSidebar() {
     copy->SetTooltip("Copy my ChatCube ID");
     copy->SetOnClick([this]() { CopyMyId(); });
     idRow->AddChild(copy);
+    // The gear opens the Settings window, as UltraFiler's does.
+    auto gear = MakeIconButton("cc-settings", "settings");
+    gear->SetTooltip("Settings");
+    gear->SetOnClick([this]() { OpenSettings(); });
+    idRow->AddChild(gear);
     sidebar->AddChild(idRow);
 
     // Adding someone: a pill, and a round plus.
@@ -647,23 +712,35 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildConversationPane() {
     inputRow->SetPadding(10, 14, 10, 14);
     inputRow->SetBackgroundColor(L().panel);
     inputRow->SetBorderTop(1, L().line);
+    // The rounded field: the strip of what goes with the next message
+    // (hidden while empty) over the row with the paperclip, the text and
+    // the send button.
     auto composer = std::make_shared<UltraCanvasContainer>("cc-composer");
-    composer->layout.SetFlexRow().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::End);
+    composer->layout.SetFlexColumn().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     composer->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
     composer->SetBackgroundColor(L().well);
     composer->SetBorders(1.0f, L().line, 22.0f);
     composer->SetPadding(5, 6, 5, 6);
+    attachmentStrip_ = std::make_shared<UltraCanvasContainer>("cc-attachments");
+    attachmentStrip_->layout.SetFlexRow().SetFlexWrap(CSSLayout::FlexWrap::Wrap).SetFlexGap(6)
+        .SetFlexAlignItems(CSSLayout::AlignItems::Start);
+    attachmentStrip_->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    attachmentStrip_->SetPadding(4, 8, 0, 8);
+    attachmentStrip_->SetVisible(false);
+    composer->AddChild(attachmentStrip_);
+    auto composerRow = std::make_shared<UltraCanvasContainer>("cc-composer-row");
+    composerRow->layout.SetFlexRow().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::End);
+    composerRow->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     attach_ = MakeIconButton("cc-attach", "attach", "", kIconButton);
     attach_->SetTooltip("Send a picture, a video or a file");
     attach_->SetDisabled(true);
     attach_->SetOnClick([this]() { AttachFile(); });
-    composer->AddChild(attach_);
+    composerRow->AddChild(attach_);
     input_ = std::make_shared<UltraCanvasTextArea>("cc-input", 0, 0, 300, kInputHeight);
     input_->SetEditingMode(TextAreaEditingMode::PlainText);
     input_->SetWordWrap(true);
     input_->SetShowLineNumbers(false);
     input_->SetFontSize(11.0f);
-    input_->SetPlaceholder("Message\xE2\x80\xA6  (Enter sends, Shift+Enter for a new line)");
     input_->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
     {
         TextAreaStyle st = input_->GetStyle();
@@ -679,25 +756,33 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildConversationPane() {
     }
     input_->SetBackgroundColor(L().well);
     input_->SetBorders(0, Colors::Transparent);
-    // Enter sends; Shift+Enter is left to the text area, which breaks the line.
+    // Enter sends; Shift+Enter is left to the text area, which breaks the
+    // line - or, as the Settings window may say, Ctrl+Enter sends and Enter
+    // is the text area's. Ctrl+V (Shift+Insert) with a picture or a file on
+    // the clipboard puts it in the strip; with text, the area pastes it as usual.
     input_->onBeforeKeyDown = [this](const UCEvent& e) {
         const bool enter = e.virtualKey == UCKeys::Return || e.virtualKey == UCKeys::NumPadEnter;
-        if (!enter || e.shift) return false;
-        SendCurrentMessage();
-        return true;
+        const bool sends = settings_.ctrlEnterSends ? (e.ctrl && !e.shift && !e.alt) : !e.shift;
+        if (enter && sends) {
+            SendCurrentMessage();
+            return true;
+        }
+        const bool paste = (e.virtualKey == UCKeys::V && e.ctrl && !e.shift && !e.alt) ||
+                           (e.virtualKey == UCKeys::Insert && e.shift && !e.ctrl && !e.alt);
+        return paste && PasteAttachment();
     };
     input_->SetOnTextChanged([this](const std::string& text) {
-        if (activeConversation_.empty() || text.empty()) return;
+        if (activeConversation_.empty() || text.empty() || !settings_.sendTyping) return;
         const int64_t now = NowMs();
         if (now - lastTypingSentMs_ < kTypingResendMs) return;
         lastTypingSentMs_ = now;
         UltraIM_SetTyping(activeProvider_, activeConversation_, true);
     });
-    composer->AddChild(input_);
+    composerRow->AddChild(input_);
     send_ = MakeIconButton("cc-send", "send", "", kIconButton, true);
-    send_->SetTooltip("Send (Enter)");
     send_->SetOnClick([this]() { SendCurrentMessage(); });
-    composer->AddChild(send_);
+    composerRow->AddChild(send_);
+    composer->AddChild(composerRow);
     inputRow->AddChild(composer);
     pane->AddChild(inputRow);
     return pane;
@@ -1170,7 +1255,7 @@ void ChatCubeWindow::RefreshNearby() {
             row->AddChild(add);
             nearbyBox_->AddChild(row);
         }
-        nearbyBox_->SetVisible(!list.empty());
+        nearbyBox_->SetVisible(!list.empty() && settings_.showNearby);
         if (window_) window_->RequestRedraw();
     });
 }
@@ -1280,10 +1365,7 @@ void ChatCubeWindow::UpdateHeader() {
     headerAvatar_->SetVisible(!photo);
     headerPhoto_->SetVisible(photo);
     // The paperclip, for a network that takes pictures or files.
-    UltraIMProviderInfo info;
-    const bool attachments = UltraIM_GetProviderInfo(activeProvider_, info) &&
-                             (UltraIM_HasCapability(info.capabilities, UltraIMCapabilityFlags::ImageMessages) ||
-                              UltraIM_HasCapability(info.capabilities, UltraIMCapabilityFlags::FileTransfer));
+    const bool attachments = AttachmentsPossible();
     attach_->SetDisabled(!attachments);
     attach_->SetTooltip(attachments ? "Send a picture, a video or a file"
                                     : "This network does not take pictures or files yet");
@@ -1309,10 +1391,43 @@ void ChatCubeWindow::ScrollToEnd() {
     if (messages_->GetRowCount() > 0) messageList_->EnsureRowVisible(messages_->GetRowCount() - 1);
 }
 
+bool ChatCubeWindow::AttachmentsPossible() const {
+    UltraIMProviderInfo info;
+    return !activeConversation_.empty() && UltraIM_GetProviderInfo(activeProvider_, info) &&
+           (UltraIM_HasCapability(info.capabilities, UltraIMCapabilityFlags::ImageMessages) ||
+            UltraIM_HasCapability(info.capabilities, UltraIMCapabilityFlags::FileTransfer));
+}
+
 void ChatCubeWindow::SendCurrentMessage() {
     if (activeConversation_.empty()) return;
     const std::string text = Trim(input_->GetText());
-    if (text.empty()) return;
+    if (staged_.empty()) {
+        if (!text.empty()) SendText(text);
+        return;
+    }
+    // What waits in the strip, each as a message of its own, the text as the
+    // caption of the first picture or video; a strip of files alone sends
+    // the text after them.
+    std::vector<StagedAttachment> items;
+    items.swap(staged_);
+    for (const StagedAttachment& item : items) {
+        if (item.tile) attachmentStrip_->RemoveChild(item.tile);
+    }
+    UpdateAttachmentStrip();
+    bool captionSent = text.empty();
+    for (const StagedAttachment& item : items) {
+        const bool takesCaption = !captionSent && AttachmentKind(item.path) != UltraIMMessageType::File;
+        SendAttachment(item.path, takesCaption ? text : std::string());
+        if (takesCaption) captionSent = true;
+    }
+    if (!captionSent) SendText(text);
+    input_->SetText("");
+    lastTypingSentMs_ = 0;
+    UltraIM_SetTyping(activeProvider_, activeConversation_, false);
+}
+
+void ChatCubeWindow::SendText(const std::string& text) {
+    if (activeConversation_.empty() || text.empty()) return;
 
     // Optimistic: the bubble is shown now, its ticks follow the events.
     UltraIMProviderInfo info;
@@ -1351,11 +1466,187 @@ void ChatCubeWindow::AttachFile() {
     opts.AddFilter("All files", std::vector<std::string>{"*"});
     UltraCanvasFileLoader::OpenFileDialog(opts, [this](DialogResult result, const std::string& path) {
         if (result != DialogResult::OK || path.empty()) return;
-        SendAttachment(path);
+        StageAttachment(path, false);
     });
 }
 
-void ChatCubeWindow::SendAttachment(const std::string& path) {
+bool ChatCubeWindow::PasteAttachment() {
+    if (activeConversation_.empty()) return false;
+    auto* clipboard = GetClipboard();
+    if (!clipboard) return false;
+    // Files copied in a file manager first - they come with their path as
+    // text, which is not what to paste - then text, which the field takes,
+    // then a picture: a screenshot, a copy from a browser or a drawing program.
+    std::vector<std::string> files;
+    if (clipboard->GetFiles(files) && !files.empty()) {
+        int staged = 0;
+        std::error_code ec;
+        for (const std::string& file : files) {
+            if (!std::filesystem::is_regular_file(PathFromUtf8(file), ec)) continue;
+            StageAttachment(file, false);
+            ++staged;
+        }
+        if (staged) return true;
+    }
+    std::string text;
+    if (clipboard->GetText(text) && !text.empty() && LooksLikeText(text)) return false;
+    std::vector<uint8_t> bytes;
+    std::string format;
+    if (!clipboard->GetImage(bytes, format) || bytes.empty()) return false;
+    if (!AttachmentsPossible()) {
+        SetStatus("This network does not take pictures yet.");
+        return true;
+    }
+
+    // Into a file of ChatCube's own, in its cache: the provider reads the
+    // file, and the bubble shows it from there. PNG and JPEG as they came;
+    // anything else (a bitmap, say) decoded and written as PNG.
+    std::error_code ec;
+    const std::filesystem::path folder = UltraCanvasDataFolder("ChatCube") / "cache" / "pasted";
+    std::filesystem::create_directories(folder, ec);
+    const std::time_t now = std::time(nullptr);
+    std::tm local{};
+#if defined(_WIN32) || defined(_WIN64)
+    localtime_s(&local, &now);
+#else
+    localtime_r(&now, &local);
+#endif
+    char stamp[32];
+    std::strftime(stamp, sizeof(stamp), "%Y%m%d-%H%M%S", &local);
+    std::string name = std::string("Pasted-") + stamp;
+    for (int n = 1; std::filesystem::exists(folder / PathFromUtf8(name + ".png"), ec) ||
+                    std::filesystem::exists(folder / PathFromUtf8(name + ".jpg"), ec); ++n)
+        name = std::string("Pasted-") + stamp + "-" + std::to_string(n);
+    std::string path;
+    if (format == "image/png" || format == "image/jpeg") {
+        path = PathToUtf8(folder / PathFromUtf8(name + (format == "image/png" ? ".png" : ".jpg")));
+        std::FILE* out = OpenFileUtf8(path, "wb");
+        const bool written = out && std::fwrite(bytes.data(), 1, bytes.size(), out) == bytes.size();
+        if (out) std::fclose(out);
+        if (!written) path.clear();
+    } else {
+        UCImagePtr image = UCImage::LoadFromMemory(bytes);
+        if (image && image->IsValid()) {
+            path = PathToUtf8(folder / PathFromUtf8(name + ".png"));
+            UCImageSave::ImageExportOptions options;
+            options.format = UCImageSaveFormat::PNG;
+            if (!image->Save(path, options).empty()) path.clear();
+        }
+    }
+    if (path.empty()) {
+        SetStatus("The picture on the clipboard could not be read.");
+        return true;
+    }
+    StageAttachment(path, true);
+    return true;
+}
+
+void ChatCubeWindow::StageAttachment(const std::string& path, bool ownFile) {
+    if (activeConversation_.empty() || path.empty()) return;
+    std::error_code ec;
+    if (!std::filesystem::is_regular_file(PathFromUtf8(path), ec)) {
+        SetStatus("There is no file " + path);
+        return;
+    }
+    if (!AttachmentsPossible()) {
+        SetStatus("This network does not take pictures or files yet.");
+        if (ownFile) std::filesystem::remove(PathFromUtf8(path), ec);
+        return;
+    }
+    for (const StagedAttachment& item : staged_) {
+        if (item.path == path) return;      // already waiting
+    }
+
+    // The tile: the picture, or the file's name and size, with the x at its
+    // top right corner.
+    const std::string id = "cc-staged-" + std::to_string(++stagedCount_);
+    const bool picture = IsPictureFile(path);
+    const int width = picture ? kTileSide : kFileTileWidth;
+    auto tile = std::make_shared<UltraCanvasContainer>(id);
+    tile->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    tile->size.width = CSSLayout::Dimension::Px(static_cast<float>(width));
+    tile->size.height = CSSLayout::Dimension::Px(static_cast<float>(kTileSide));
+    tile->SetBackgroundColor(L().panel);
+    tile->SetBorders(1.0f, L().line, 10.0f);
+    const std::string fileName = PathToUtf8(PathFromUtf8(path).filename());
+    if (picture) {
+        auto image = std::make_shared<UltraCanvasImageElement>(id + "-picture", 0, 0, kTileSide, kTileSide);
+        image->SetFitMode(ImageFitMode::Cover);
+        image->SetBorderRadius(10.0f);
+        image->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        image->size.width = CSSLayout::Dimension::Px(static_cast<float>(kTileSide));
+        image->size.height = CSSLayout::Dimension::Px(static_cast<float>(kTileSide));
+        image->SetTooltip(fileName);
+        image->LoadFromFile(path, true);
+        tile->AddChild(image);
+    } else {
+        // The name over the size, each at its place (a non-zero offset keeps
+        // a child out of the flow, which is what leaves the x its corner).
+        const int textWidth = width - kTileClose - 20;
+        auto name = std::make_shared<UltraCanvasLabel>(id + "-name", 10, 12, textWidth, 18);
+        name->SetText(fileName);
+        name->SetFontSize(kTextFont);
+        name->SetFontWeight(FontWeight::Bold);
+        name->SetTextColor(L().ink);
+        name->SetWrap(TextWrap::WrapNone);
+        name->SetTooltip(fileName);
+        tile->AddChild(name);
+        const int64_t bytes = static_cast<int64_t>(std::filesystem::file_size(PathFromUtf8(path), ec));
+        auto size = std::make_shared<UltraCanvasLabel>(id + "-size", 10, 34, textWidth, 16);
+        size->SetText(bytes > 0 ? FormatSize(bytes) : std::string());
+        size->SetFontSize(kTextFont - 1.0f);
+        size->SetTextColor(L().inkMuted);
+        tile->AddChild(size);
+    }
+    // The x, over the tile's top right corner (a non-zero offset places it
+    // there, outside the flow).
+    auto remove = std::make_shared<UltraCanvasButton>(id + "-remove", width - kTileClose - 3, 3, kTileClose, kTileClose, "");
+    ButtonStyle st = remove->GetStyle();
+    st.cornerRadius = kTileClose / 2.0f;
+    st.borderWidth = 0.0f;
+    st.normalColor = Color(0, 0, 0, 150);
+    st.hoverColor = L().danger;
+    st.pressedColor = Darker(L().danger, 24);
+    st.normalTextColor = st.hoverTextColor = st.pressedTextColor = Color(255, 255, 255, 255);
+    remove->SetStyle(st);
+    remove->SetIcon(IconPath("close"));
+    remove->SetIconSize(12, 12);
+    remove->SetUseIconAsMask(true);
+    remove->SetTooltip("Remove");
+    remove->SetOnClick([this, tile = tile.get()]() { RemoveStagedAttachment(tile); });
+    tile->AddChild(remove);
+
+    staged_.push_back({path, ownFile, tile});
+    attachmentStrip_->AddChild(tile);
+    UpdateAttachmentStrip();
+    input_->SetFocus(true);
+}
+
+void ChatCubeWindow::RemoveStagedAttachment(const UltraCanvasContainer* tile) {
+    for (auto it = staged_.begin(); it != staged_.end(); ++it) {
+        if (it->tile.get() != tile) continue;
+        if (it->ownFile) {
+            std::error_code ec;
+            std::filesystem::remove(PathFromUtf8(it->path), ec);
+        }
+        attachmentStrip_->RemoveChild(it->tile);
+        staged_.erase(it);
+        break;
+    }
+    UpdateAttachmentStrip();
+    // The click on the x took the focus: back to the field, so Enter sends.
+    input_->SetFocus(true);
+}
+
+void ChatCubeWindow::UpdateAttachmentStrip() {
+    attachmentStrip_->SetVisible(!staged_.empty());
+    const std::string key = settings_.ctrlEnterSends ? "Ctrl+Enter" : "Enter";
+    send_->SetTooltip(staged_.empty() ? "Send (" + key + ")"
+                                      : (staged_.size() == 1 ? "Send the file (" : "Send the files (") + key + ")");
+    if (window_) window_->RequestRedraw();
+}
+
+void ChatCubeWindow::SendAttachment(const std::string& path, const std::string& caption) {
     if (activeConversation_.empty() || path.empty()) return;
     std::error_code ec;
     if (!std::filesystem::is_regular_file(PathFromUtf8(path), ec)) {
@@ -1363,8 +1654,6 @@ void ChatCubeWindow::SendAttachment(const std::string& path) {
         return;
     }
     const UltraIMMessageType kind = AttachmentKind(path);
-    // The composer's text goes as the caption of a picture or a video.
-    const std::string caption = kind == UltraIMMessageType::File ? std::string() : Trim(input_->GetText());
 
     // Optimistic, like a text: the bubble shows the file at once.
     UltraIMProviderInfo info;
@@ -1376,12 +1665,14 @@ void ChatCubeWindow::SendAttachment(const std::string& path) {
     message.messageId = message.clientMessageId;
     message.senderId = info.localUserId;
     message.type = kind;
-    message.text = caption;
+    message.text = kind == UltraIMMessageType::File ? std::string() : caption;
     message.attachment.localPath = path;
     message.attachment.isDownloaded = true;
     message.attachment.fileName = PathToUtf8(PathFromUtf8(path).filename());
     message.attachment.fileSizeBytes = static_cast<int64_t>(std::filesystem::file_size(PathFromUtf8(path), ec));
-    if (kind == UltraIMMessageType::Image) {
+    if (IsPictureFile(path)) {
+        // A photo's size, and a drawing's (an SVG goes as a file but shows
+        // as its picture): the bubble lays the picture out from it.
         UCImagePtr image = UCImage::Get(path);
         if (image && image->IsValid()) {
             message.attachment.width = image->GetWidth();
@@ -1393,9 +1684,6 @@ void ChatCubeWindow::SendAttachment(const std::string& path) {
     message.deliveryStatus = UltraIMDeliveryStatus::Sending;
     messages_->Upsert(message);
     ScrollToEnd();
-    if (!caption.empty()) input_->SetText("");
-    lastTypingSentMs_ = 0;
-    UltraIM_SetTyping(activeProvider_, activeConversation_, false);
 
     UltraIMSendOptions options;
     options.clientMessageId = message.clientMessageId;
@@ -1633,6 +1921,138 @@ void ChatCubeWindow::OnCallEvent(const UltraIMEvent& e) {
     UpdateHeader();
 }
 
+// ================================================================== settings
+
+void ChatCubeWindow::OpenSettings() {
+    if (!settingsWindow_) {
+        ChatCubeSettingsWindow::Hooks hooks;
+        hooks.applied = [this]() { ApplySettings(); };
+        hooks.accounts = [this]() { return Accounts(); };
+        hooks.myId = [this]() {
+            UltraIMProviderInfo info;
+            return UltraIM_GetProviderInfo(providerId_, info) ? info.localUserId : std::string();
+        };
+        hooks.copyMyId = [this]() { CopyMyId(); };
+        hooks.signOut = [this](const std::string& providerId) { SignOutOf(providerId); };
+        settingsWindow_ = std::make_unique<ChatCubeSettingsWindow>(settings_, version_, dataFolder_, std::move(hooks));
+    }
+    settingsWindow_->Show(window_.get());
+}
+
+void ChatCubeWindow::ApplySettings() {
+    // The send key, in the field's hint and on the send button.
+    if (input_) {
+        input_->SetPlaceholder(settings_.ctrlEnterSends
+                                   ? "Message\xE2\x80\xA6  (Ctrl+Enter sends, Enter for a new line)"
+                                   : "Message\xE2\x80\xA6  (Enter sends, Shift+Enter for a new line)");
+    }
+    if (send_) UpdateAttachmentStrip();     // the button's tooltip names the key
+    // Typing: nothing more goes out, and what was shown goes.
+    if (!settings_.sendTyping && !activeConversation_.empty() && lastTypingSentMs_ != 0) {
+        lastTypingSentMs_ = 0;
+        UltraIM_SetTyping(activeProvider_, activeConversation_, false);
+    }
+    if (!settings_.showTyping && !typingContact_.empty()) {
+        typingContact_.clear();
+        UpdateHeader();
+    }
+    // The people on this network: listed again, or put away.
+    if (nearbyBox_) {
+        if (settings_.showNearby) {
+            if (!nearbyBox_->IsVisible() && chatView_ && chatView_->IsVisible()) RefreshNearby();
+        } else {
+            nearbyBox_->SetVisible(false);
+        }
+    }
+    // Times and dates: the lists written again, the date lines of the open
+    // conversation with them.
+    SetDateTimeStyle(settings_.clock24, settings_.dateStyle);
+    if (messages_ && !activeConversation_.empty()) {
+        std::vector<UltraIMMessage> shown;
+        for (const MessageRow& row : messages_->Rows()) {
+            if (row.kind == MessageRow::Kind::Message) shown.push_back(row.message);
+        }
+        messages_->SetMessages(shown);
+        if (messageList_) {
+            messageList_->InvalidateRowHeights();
+            messageList_->RequestRedraw();
+        }
+    }
+    if (conversationList_) conversationList_->RequestRedraw();
+    if (window_) window_->RequestRedraw();
+}
+
+std::vector<ChatCubeSettingsWindow::Account> ChatCubeWindow::Accounts() const {
+    std::vector<ChatCubeSettingsWindow::Account> accounts;
+    const std::pair<std::string, const char*> networks[] = {
+        {providerId_, "ChatCube Direct"}, {matrixProviderId_, "Matrix"}, {telegramProviderId_, "Telegram"}};
+    for (const auto& [id, name] : networks) {
+        ChatCubeSettingsWindow::Account account;
+        account.providerId = id;
+        account.name = name;
+        UltraIMProviderInfo info;
+        if (!UltraIM_GetProviderInfo(id, info)) {
+            account.state = "Not in this ChatCube: its module was not found (Plugins/UltraIM).";
+            accounts.push_back(account);
+            continue;
+        }
+        const bool direct = id == providerId_;
+        switch (info.connectionState) {
+            case UltraIMConnectionState::Connected:
+                account.state = direct ? "Connected." : "Signed in as " + info.localUserId + ".";
+                account.canSignOut = !direct;
+                break;
+            case UltraIMConnectionState::Connecting:
+                account.state = "Signing in\xE2\x80\xA6";
+                account.canSignOut = !direct;
+                break;
+            case UltraIMConnectionState::Reconnecting:
+                account.state = "The connection was lost - reconnecting\xE2\x80\xA6";
+                account.canSignOut = !direct && !info.localUserId.empty();
+                break;
+            case UltraIMConnectionState::Error:
+                account.state = "Not connected: the last attempt failed.";
+                account.canSignOut = !direct && info.hasStoredSession;
+                break;
+            case UltraIMConnectionState::Disconnected:
+                account.state = direct ? "Not connected." : "Not signed in.";
+                break;
+        }
+        if (!info.version.empty()) account.state += "  Module " + info.version + ".";
+        accounts.push_back(account);
+    }
+    return accounts;
+}
+
+void ChatCubeWindow::SignOutOf(const std::string& providerId) {
+    if (providerId == providerId_) return;      // a ChatCube ID has nothing to sign out of
+    UltraIM_SignOut(providerId);
+    // Its conversations leave the list, the open one with them.
+    std::vector<std::string> gone;
+    for (const UltraIMConversation& c : conversations_->Conversations()) {
+        if (c.providerId == providerId) gone.push_back(c.conversationId);
+    }
+    for (const std::string& id : gone) conversations_->Remove(id);
+    if (activeProvider_ == providerId && !activeConversation_.empty()) {
+        activeConversation_.clear();
+        messages_->Clear();
+        messageList_->SetVisible(false);
+        emptyHint_->SetVisible(true);
+        UpdateHeader();
+    }
+    if (providerId == matrixProviderId_) {
+        SetNetworkButton(matrixToggle_, "Matrix", "Matrix account");
+        matrixKeysForm_->SetVisible(false);
+        SetProviderStatus(matrixProviderId_, "signed out");
+    } else if (providerId == telegramProviderId_) {
+        SetNetworkButton(telegramToggle_, "Telegram", "Telegram account");
+        telegramForm_->SetVisible(false);
+        SetProviderStatus(telegramProviderId_, "signed out");
+    }
+    if (conversationList_) conversationList_->RequestRedraw();
+    if (window_) window_->RequestRedraw();
+}
+
 // =================================================================== UltraIM
 
 void ChatCubeWindow::OnEvent(const UltraIMEvent& e) {
@@ -1680,7 +2100,7 @@ void ChatCubeWindow::OnEvent(const UltraIMEvent& e) {
             if (e.conversationId == activeConversation_) UpdateHeader();
             break;
         case UltraIMEventType::TypingChange:
-            if (e.conversationId != activeConversation_) break;
+            if (e.conversationId != activeConversation_ || !settings_.showTyping) break;
             typingContact_ = e.isTyping ? e.contactId : std::string();
             typingUntilMs_ = NowMs() + kTypingShownMs;
             UpdateHeader();
@@ -1700,10 +2120,11 @@ void ChatCubeWindow::OnEvent(const UltraIMEvent& e) {
             if (e.conversationId == activeConversation_) messages_->Remove(e.message.messageId);
             break;
         case UltraIMEventType::ConnectionStateChange:
+            if (settingsWindow_) settingsWindow_->RefreshAccounts();
             if (telegram) {
                 if (e.connectionState == UltraIMConnectionState::Connected) {
                     SetProviderStatus(telegramProviderId_, "signed in");
-                    telegramToggle_->SetText("Telegram: signed in");
+                    SetNetworkButton(telegramToggle_, "Telegram", "Telegram: signed in");
                     RefreshConversations();
                 } else if (e.connectionState == UltraIMConnectionState::Error) {
                     SetProviderStatus(telegramProviderId_, e.errorText);
@@ -1716,7 +2137,7 @@ void ChatCubeWindow::OnEvent(const UltraIMEvent& e) {
                     SetProviderStatus(telegramProviderId_, (e.errorText.empty() ? std::string("signing in") : e.errorText) + "\xE2\x80\xA6");
                 } else if (e.connectionState == UltraIMConnectionState::Disconnected) {
                     SetProviderStatus(telegramProviderId_, "signed out");
-                    telegramToggle_->SetText("Telegram account");
+                    SetNetworkButton(telegramToggle_, "Telegram", "Telegram account");
                 }
                 break;
             }
@@ -1726,7 +2147,7 @@ void ChatCubeWindow::OnEvent(const UltraIMEvent& e) {
                     UltraIMProviderInfo info;
                     UltraIM_GetProviderInfo(matrixProviderId_, info);
                     SetProviderStatus(matrixProviderId_, "signed in as " + info.localUserId);
-                    matrixToggle_->SetText("Matrix: " + info.localUserId);
+                    SetNetworkButton(matrixToggle_, "Matrix", "Matrix: signed in as " + info.localUserId);
                     RefreshConversations();
                 } else if (e.connectionState == UltraIMConnectionState::Error) {
                     SetProviderStatus(matrixProviderId_, e.errorText);
@@ -1766,14 +2187,14 @@ void ChatCubeWindow::OnEvent(const UltraIMEvent& e) {
             if (telegram) {
                 SetProviderStatus(telegramProviderId_, "the session ended - sign in again");
                 telegramForm_->SetVisible(true);
-                telegramToggle_->SetText("Telegram account");
+                SetNetworkButton(telegramToggle_, "Telegram", "Telegram account");
                 UpdateTelegramForm();
                 break;
             }
             if (matrix) {
                 SetProviderStatus(matrixProviderId_, "the session ended - sign in again");
                 matrixForm_->SetVisible(true);
-                matrixToggle_->SetText("Matrix account");
+                SetNetworkButton(matrixToggle_, "Matrix", "Matrix account");
                 break;
             }
             ShowSignInPage();

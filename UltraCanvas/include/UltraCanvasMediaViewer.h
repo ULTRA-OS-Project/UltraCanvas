@@ -15,7 +15,11 @@
 // spreadsheets (ODS / CSV / TSV) through UltraCanvasSpreadsheet, STL 3D models
 // through the OpenGL model viewer (UltraCanvasSTLElement), text / source /
 // markdown files through a read-only UltraCanvasTextArea (syntax highlighting
-// + markdown rendering), e-books (EPUB / FB2 / MOBI / AZW) through
+// + markdown rendering), HTML / XHTML pages - and XML files that hold XHTML -
+// rendered as a browser shows them through UltraCanvasWebView (their source
+// is the Texter's to show, not the viewer's), e-mail messages (.eml, .emlx) as
+// the message - header, body, attachments - and saved web pages (.mht /
+// .mhtml) as the page, from their own parts, in the same view, e-books (EPUB / FB2 / MOBI / AZW) through
 // UltraCanvasEBookViewer (engine registry), vector drawings through
 // UltraCanvasVectorElement (SVG, XAR, EMF, WMF, DXF and the DWG family, read
 // by whichever Vector plugin the application registered - see
@@ -83,6 +87,11 @@
 // size, and writes with the type's save settings at the size chosen; a drawing
 // is drawn again at that size, sharp, rather than stretched.
 //
+// Version: 1.22.0 - Outlook .msg messages; a message's attachments open and save
+// Version: 1.21.0 - saved web pages (.mht / .mhtml, IsWebArchiveFile) and Apple Mail .emlx
+// Version: 1.20.0 - e-mail messages (.eml) shown as the message (IsMailMessageFile)
+// Version: 1.19.0 - HTML / XHTML files, and XML that holds XHTML, are shown rendered
+//                   (webView, IsHtmlFile) instead of as source text
 // Version: 1.18.0 - TransparentImageBackground::Auto, the default: a backdrop picked per
 //                   file to contrast with its content, under a transparent picture and
 //                   behind a drawing in the vector view (which takes the strip's colours
@@ -102,7 +111,7 @@
 // Version: 1.13.0 - one compact toolbar row (flat, 16 px icons, scrolls when
 //                   narrow); Details only in the info bar
 // Version: 1.12.0
-// Last Modified: 2026-10-19
+// Last Modified: 2026-10-30
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -675,6 +684,21 @@ public:
     // picture, a vector drawing or a 3D model from a remote drive to preview
     // it, and not a two-hour video.
     static MediaKind ClassifyFile(const std::string& path);
+    // Whether a file the viewer shows as Text is a page it renders rather
+    // than its source: .html / .htm / .xhtml / .xht / .shtml, and an .xml
+    // whose content is XHTML (an <html> root or the XHTML DOCTYPE - the
+    // start of the file is read for that). Other XML stays source text.
+    static bool IsHtmlFile(const std::string& path);
+    // An e-mail message (.eml, Apple Mail's .emlx, an Outlook .msg) shown as
+    // the message - header, body rendered, attachments listed with Open and
+    // Save - in the same page view. A .msg must be a compound file (another
+    // program's .msg is text). An .eml / .emlx needs UltraNet's MIME reader
+    // (ULTRACANVAS_HAS_NET); without it they are text.
+    static bool IsMailMessageFile(const std::string& path);
+    // A saved web page (.mht / .mhtml) shown as the page it saved, its style
+    // sheets and pictures read from the archive's own parts. False without
+    // UltraNet's MIME reader, as IsMailMessageFile.
+    static bool IsWebArchiveFile(const std::string& path);
 
     // ===== DETAILS PANEL =====
     // The panel the "Details" button opens over the display area: file facts
@@ -798,6 +822,8 @@ private:
     UltraCanvasUIElement* ActiveViewElement() const;
     // True when `element` is one of the display views (not a toolbar control).
     bool IsDisplayView(const UltraCanvasUIElement* element) const;
+    // The HTML page view, or any element of the page built inside it.
+    bool IsInWebView(const UltraCanvasUIElement* element) const;
     // Visible with every ancestor visible (IsVisible() is per-element only).
     bool IsEffectivelyVisible() const;
     // The active view uses the bare arrow keys itself (spreadsheet cells), so
@@ -839,6 +865,21 @@ private:
     // the text view's place (activeKind Text) by ShowNote; `noteShown` says so.
     std::shared_ptr<UltraCanvasUIElement>    noteView;
     bool noteShown = false;
+    // An HTML page (IsHtmlFile) rendered as a browser shows it, local files
+    // only (UltraCanvasWebView). Shown in the text view's place (activeKind
+    // Text); `webShown` says so.
+    std::shared_ptr<UltraCanvasUIElement>    webView;
+    bool webShown = false;
+    // The parts of the saved web page (.mht) on show, which its style sheets
+    // and pictures are answered from (cleared with the page).
+    std::shared_ptr<struct MediaViewerWebArchive> webArchive;
+    // A message's attachment links: Open writes it to a temporary folder and
+    // shows it in attachmentWindow when the viewer shows its kind, else in
+    // the system's application - never a program or script, which is only
+    // offered to be saved; Save asks where (UltraCanvasFileLoader).
+    void OpenAttachment(size_t index);
+    void SaveAttachment(size_t index);
+    std::shared_ptr<class UltraCanvasMediaViewerWindow> attachmentWindow;
     std::shared_ptr<UltraCanvasUIElement>    bookView;      // UltraCanvasEBookViewer
     std::shared_ptr<UltraCanvasUIElement>    fontView;      // UltraCanvasFontViewer
     std::shared_ptr<UltraCanvasUIElement>    vectorView;    // UltraCanvasVectorElement

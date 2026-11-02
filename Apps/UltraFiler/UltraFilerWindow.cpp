@@ -65,6 +65,20 @@
 // display and the switch itself are remembered in the settings.
 // A previewed file that changes on disk is reopened in the preview pane
 // (ReloadChangedPreview): throttled, and never restarting a playing video.
+// Version: 1.40.0 - the tab strip's "+" can open the Computer page
+//                  (Settings > Display > New tab: newTabStart)
+// Version: 1.39.0 - the folder tree no longer lists macOS applications as
+//                  folders (IsTreeHiddenAppBundle), as the Finder does not
+// Version: 1.38.0 - a macOS application is never pinned into the folder tree's
+//                  Pinned section (it was a folder row that opened the bundle);
+//                  the tree's own "Pin > To Favorites" files it under Apps, and
+//                  earlier tree pins of applications move to Favorites > Apps
+// Version: 1.37.0 - a double-click on a macOS application in the folder display
+//                  launches it (it did nothing); History lists it under Apps;
+//                  pinning one files it under the Favorites' Apps tab, and
+//                  earlier pins under Folders are moved there
+// Version: 1.36.0 - pictures, audio and video open in UltraViewer
+//                  (OpenInUltraViewer)
 // Version: 1.35.0 - a drive's folder being fetched or updated says so on the
 //                  status bar (the display only slides a thin bar along its
 //                  foot); a drop is asked about at once during a transfer,
@@ -86,7 +100,7 @@
 // Version: 1.30.1 - the New and Add-drive menus open anchored to their buttons
 //                  (OpenMenuAnchored): above them when there is no room below
 // Version: 1.30.0
-// Last Modified: 2026-10-19
+// Last Modified: 2026-10-30
 // Author: UltraCanvas Framework
 
 #include "UltraFilerWindow.h"
@@ -99,9 +113,11 @@
 #include "UltraCanvasClipboard.h"
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasDebug.h"
+#include "UltraCanvasDesktopShell.h"   // LaunchProgram: UltraViewer for media files
 #include "UltraCanvasDiskCache.h"         // the cache entry of Extras > Open location
 #include "UltraCanvasFileAssociations.h"
 #include "UltraCanvasFileLoader.h"      // the image dialog of Extras > Set folder icon
+#include "UltraCanvasMacBundle.h"      // a pinned application bundle, by path
 #include "UltraCanvasFontFile.h"        // IsFontFileExtension, for the double-click rule
 #include "UltraCanvasNativeDialogs.h"
 #include "UltraCanvasSupportedFormats.h"  // its image formats
@@ -459,6 +475,25 @@ namespace {
         return !rel.empty() && *rel.begin() != "..";
     }
 
+    // A macOS application bundle: a directory the Finder shows as one object,
+    // never as a folder in its sidebar or column view - and one the file
+    // display launches rather than enters. The tree left it as an expandable
+    // folder row, which opened the inside of the bundle. Asked for every entry
+    // of every folder the tree probes, so it is the cheap form of the file
+    // display's test (UltraCanvasMacBundle: the ".app" name and an
+    // Info.plist where a bundle keeps one) rather than a plist parse; a folder
+    // that merely ends in ".app" has no Info.plist and stays a folder.
+    bool IsTreeHiddenAppBundle(const fs::path& dir) {
+#ifdef __APPLE__
+        if (!IsApplicationBundlePath(PathToUtf8(dir))) return false;
+        std::error_code ec;
+        return fs::is_regular_file(dir / "Contents" / "Info.plist", ec) && !ec;
+#else
+        (void)dir;
+        return false;
+#endif
+    }
+
     // Does `path` contain at least one visible subfolder? (Cheap check that
     // decides whether a tree node gets an expand button.)
     // "Hidden" is the platform's own notion (IsHiddenFileSystemEntry): dot
@@ -474,7 +509,8 @@ namespace {
         for (fs::directory_iterator it(UltraCanvas::PathFromUtf8(path), fs::directory_options::skip_permission_denied, ec),
                  end; !ec && it != end; it.increment(ec)) {
             std::error_code dec;
-            if (it->is_directory(dec) && !dec && !IsHiddenFileSystemEntry(it->path()))
+            if (it->is_directory(dec) && !dec && !IsHiddenFileSystemEntry(it->path()) &&
+                !IsTreeHiddenAppBundle(it->path()))
                 return true;
         }
         return false;
@@ -501,14 +537,16 @@ namespace {
         return HasSubdirectories(path);
     }
 
-    // Visible subfolders of `path`, sorted case-insensitively by name.
+    // Visible subfolders of `path`, sorted case-insensitively by name - an
+    // application bundle on macOS is not one (IsTreeHiddenAppBundle).
     std::vector<fs::path> ListSubdirectories(const std::string& path) {
         std::vector<fs::path> dirs;
         std::error_code ec;
         for (fs::directory_iterator it(UltraCanvas::PathFromUtf8(path), fs::directory_options::skip_permission_denied, ec),
                  end; !ec && it != end; it.increment(ec)) {
             std::error_code dec;
-            if (it->is_directory(dec) && !dec && !IsHiddenFileSystemEntry(it->path()))
+            if (it->is_directory(dec) && !dec && !IsHiddenFileSystemEntry(it->path()) &&
+                !IsTreeHiddenAppBundle(it->path()))
                 dirs.push_back(it->path());
         }
         std::sort(dirs.begin(), dirs.end(), [](const fs::path& a, const fs::path& b) {
@@ -863,7 +901,37 @@ namespace {
     // The list below is what it cannot answer: formats the widget's table
     // does not carry (.com, .bat, .apk, .snap) and, on the Unixes, a plain
     // executable with no extension at all, where the execute bit decides.
+    // A macOS application bundle: a directory on disk that the file display
+    // launches rather than enters - the same rule the widget applies on
+    // activation (UltraCanvasFilerWidget, isBundle + Executable). macOS only,
+    // as there: everywhere else a Mac application is a folder to look into.
+    bool IsLaunchableBundle(const FilerEntry& e) {
+#ifdef __APPLE__
+        return e.isDirectory && e.isBundle &&
+               e.category == FilerFileCategory::Executable;
+#else
+        (void)e;
+        return false;
+#endif
+    }
+
+    // The same question for a path alone - a pin read back from the
+    // favorites file, with no FilerEntry behind it. Answered the way the
+    // widget answers it: the name says ".app" and its Info.plist says
+    // application.
+    bool IsLaunchableBundlePath(const std::string& path) {
+#ifdef __APPLE__
+        if (!IsApplicationBundlePath(path)) return false;
+        UCAppBundle bundle;
+        return ReadApplicationBundle(path, bundle) && bundle.isApplication;
+#else
+        (void)path;
+        return false;
+#endif
+    }
+
     bool IsApplicationEntry(const FilerEntry& e) {
+        if (IsLaunchableBundle(e)) return true;
         if (e.isDirectory) return false;
         // A Windows shortcut is whatever it points at: one to a program
         // belongs in the Applications list (that is what a Start-Menu entry
@@ -884,10 +952,30 @@ namespace {
     }
 
     // The favorites list (= Favorites tab) an entry belongs to when pinned.
+    // An application bundle is an application here, not the folder it is on
+    // disk - it was pinned under Folders, and its tile there opened the
+    // folder holding it instead of being one of the user's apps.
     FilerFavoriteKind FavoriteKindOf(const FilerEntry& e) {
-        return e.isDirectory ? FilerFavoriteKind::Folder
+        return IsLaunchableBundle(e) ? FilerFavoriteKind::App
+                : e.isDirectory ? FilerFavoriteKind::Folder
                 : IsApplicationEntry(e) ? FilerFavoriteKind::App
                                         : FilerFavoriteKind::File;
+    }
+
+    // The same for a folder tree row, which knows only its path. The tree
+    // lists every directory - an application bundle on macOS included - and
+    // its "Pin > To Favorites" filed that one under Folders, where the file
+    // display's Pin now looks for it under Apps.
+    FilerFavoriteKind FavoriteKindOfFolderPath(const std::string& path) {
+        return IsLaunchableBundlePath(path) ? FilerFavoriteKind::App
+                                            : FilerFavoriteKind::Folder;
+    }
+
+    // Whether an entry can go into the folder tree's "Pinned" section. Only a
+    // folder can - and an application bundle is not one there: as a tree row
+    // it was a brown folder whose click opened the inside of the bundle.
+    bool CanPinToTree(const FilerEntry& e) {
+        return e.isDirectory && !IsLaunchableBundle(e);
     }
 
     // Is `path` equal to `folder` or somewhere below it?
@@ -987,6 +1075,7 @@ UltraFilerWindow::~UltraFilerWindow() {
     // First: its callback captures the window, and Stop() joins, so after this
     // no mount notification can reach a window that is being destroyed.
     volumeMonitor.Stop();
+    deviceMonitor.Stop();       // the same, for phones and cameras
     probeAlive->store(false);   // neutralize queued cross-thread tree updates
     CancelFolderPreviewTimer(); // its callback captures `this`
     CancelPreviewReloadTimer(); // and so does this one's
@@ -1000,6 +1089,7 @@ UltraFilerWindow::~UltraFilerWindow() {
     if (ramDiskProbeWorker.joinable()) ramDiskProbeWorker.join();
     if (ramDiskFactsWorker.joinable()) ramDiskFactsWorker.join();
     if (driveListWorker.joinable()) driveListWorker.join();
+    if (deviceListWorker.joinable()) deviceListWorker.join();
     StopCloudStorageDiscovery();
     // Its worker posts into this window, so it has to be joined here like the
     // others - and before the widgets its callback touches are destroyed. The
@@ -1201,6 +1291,16 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
     // folder is disk work the user rarely follows up on.
     folderPreview->SetFolderPrefetchEnabled(false);
     folderPreview->SetActivateOpensWithDefaultApp(true);
+    // A double-click in the pane opens the file with the system's program -
+    // except a picture, audio file or video, which goes to UltraViewer the
+    // way it does in the main display (Settings > Handling > Opening files).
+    // An installed onFileActivated takes over from the widget's own launch,
+    // so the rest is handed back to it - a macOS application bundle (a
+    // directory the widget activates rather than enters) included.
+    folderPreview->onFileActivated = [this](const FilerEntry& entry) {
+        if (OpenInUltraViewer(entry)) return;
+        if (folderPreview) folderPreview->OpenEntryWithOS(entry);
+    };
     // Work done through the pane's context menu (a paste, a delete, ...) is
     // work done in that folder, exactly as in the main folder display - the
     // History and the folder tree follow it the same way.
@@ -1247,6 +1347,16 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
     // rather than after the first entry is recorded into it.
     history.Load();
     favorites.Load();
+    // Applications pinned before FavoriteKindOf knew them are filed under
+    // Folders: move them to Apps, where the heart toggle now looks for them
+    // (left where they were, they could no longer be unpinned).
+    favorites.Reclassify(FilerFavoriteKind::Folder, FilerFavoriteKind::App,
+                         IsLaunchableBundlePath);
+    // ... and those pinned into the folder tree's "Pinned" section, which
+    // holds folders only: they become Favorites > Apps rather than being
+    // dropped, so nothing the user pinned is lost.
+    favorites.Reclassify(FilerFavoriteKind::Tree, FilerFavoriteKind::App,
+                         IsLaunchableBundlePath);
     folderViews.Load();
     // Loaded before the tree is built, so a folder the user gave an icon
     // carries it from the first frame rather than after the first repaint.
@@ -1579,6 +1689,35 @@ bool UltraFilerWindow::HasRegisteredApplication(const std::string& path) {
     return FileAssociations::HasDefaultApplication(path);
 }
 
+bool UltraFilerWindow::OpenInUltraViewer(const FilerEntry& entry) {
+    if (!settings.mediaOpensInUltraViewer) return false;
+    if (entry.isDirectory || entry.isShortcut) return false;
+    switch (entry.category) {
+        case FilerFileCategory::Image:
+        case FilerFileCategory::Vector:
+        case FilerFileCategory::Audio:
+        case FilerFileCategory::Video:
+            break;
+        default:
+            return false;
+    }
+    // Only a file on the disk: an entry inside an archive or on a remote
+    // drive is a path no other program can open - those stay with the
+    // preview, which reads them itself.
+    std::error_code ec;
+    if (!fs::is_regular_file(UltraCanvas::PathFromUtf8(entry.path), ec) || ec)
+        return false;
+
+    std::string error;
+    if (!UltraCanvasDesktopShell::LaunchProgram("UltraViewer", {entry.path}, &error)) {
+        // Said once per double-click, and the file still opens the usual way,
+        // so a missing UltraViewer never turns a double-click into nothing.
+        if (statusLabel) statusLabel->SetText("UltraViewer could not be started: " + error);
+        return false;
+    }
+    return true;
+}
+
 void UltraFilerWindow::OpenInMediaWindow(const std::string& path) {
     if (path.empty()) return;
     // The pane and the window would otherwise both hold the file open, which
@@ -1637,6 +1776,8 @@ void UltraFilerWindow::ApplyDisplaySettingsTo(UltraCanvasFilerWidget* target) {
     // the tag the thumbnail tiles carry.
     target->SetFileExtensionsInNames(settings.showFileExtensions);
     target->SetExtensionBadge(settings.extensionBadge);
+    // Display > File names: how many lines a tile caption may wrap over.
+    target->SetCaptionMaxLines(settings.fileNameMaxLines);
     // Display > File icons: UltraFiler's own drawn icons, or the ones this
     // desktop draws for the type.
     target->SetFileIconStyle(settings.fileIconStyle);
@@ -1653,6 +1794,9 @@ void UltraFilerWindow::ApplyFileOperationSettings(UltraCanvasFilerWidget& target
     target.SetProblemPolicy(settings.problemPolicy);
     target.SetProgressWindowDelay(
             static_cast<unsigned>(std::max(0, settings.progressDelaySeconds)) * 1000u);
+    // Archives > TAR: how Compress packs a TAR, and what its menu's
+    // tooltips say it packs with.
+    target.SetTarSettings(settings.tar);
 }
 
 void UltraFilerWindow::ApplySettings() {
@@ -1942,8 +2086,7 @@ std::vector<FilerEntry> UltraFilerWindow::PinTargets() const {
 std::vector<MenuItemData> UltraFilerWindow::BuildExtrasMenuItems() {
     const std::vector<FilerEntry> targets = PinTargets();
     const bool allFolders = !targets.empty() &&
-            std::all_of(targets.begin(), targets.end(),
-                        [](const FilerEntry& e) { return e.isDirectory; });
+            std::all_of(targets.begin(), targets.end(), CanPinToTree);
 
     // The flags show where the selection is pinned right now: checked when
     // every target is pinned there. Pin stays enabled while something is
@@ -1957,13 +2100,14 @@ std::vector<MenuItemData> UltraFilerWindow::BuildExtrasMenuItems() {
     }
     bool allInTree = allFolders, anyInTree = false;
     for (const FilerEntry& e : targets) {
-        if (!e.isDirectory) continue;
+        if (!CanPinToTree(e)) continue;
         const bool pinned = favorites.IsPinned(FilerFavoriteKind::Tree, e.path);
         allInTree = allInTree && pinned;
         anyInTree = anyInTree || pinned;
     }
 
-    // Only a folder can live in the folder tree.
+    // Only a folder can live in the folder tree - not an application bundle,
+    // which goes to Favorites > Apps instead (CanPinToTree).
     MenuItemData pinTree = MenuItemData::Checkbox("To Treeview", allInTree,
             [this](bool) { PinTargetsToTree(); });
     pinTree.enabled = allFolders && !allInTree;
@@ -2316,7 +2460,7 @@ void UltraFilerWindow::PinTargetsToFavorites() {
 void UltraFilerWindow::PinTargetsToTree() {
     bool changed = false;
     for (const FilerEntry& e : PinTargets()) {
-        if (!e.isDirectory) continue;
+        if (!CanPinToTree(e)) continue;
         changed |= favorites.Pin(FilerFavoriteKind::Tree, e.path);
     }
     if (!changed) return;
@@ -2344,7 +2488,7 @@ void UltraFilerWindow::UnpinTargetsFromTree() {
     if (changed) RefreshPinnedTreeNodes();
 }
 
-// ===== NAVIGATION ROW (Home / Computer / Back / Forward / Up / Refresh + breadcrumb + settings) =====
+// ===== NAVIGATION ROW (Home / Computer / Back / Forward / Up / Refresh + breadcrumb + Drive + settings) =====
 
 std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildNavigationRow() {
     auto row = MakeToolRow("ufl-nav-row");
@@ -2428,17 +2572,6 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildNavigationRow() {
     StyleToggleButton(favoritesButton.get(), favoritesShown);
     row->AddChild(favoritesButton);
 
-    // "+ Drive": adds an FTP / SFTP server or a cloud account as a place you
-    // can browse. It sits with the other buttons that change what the window
-    // can reach rather than in the file commands row below, which acts on the
-    // entries of one folder.
-    addDriveButton = MakeToolButton("ufl-add-drive", "Drive", "add-folder.svg", 0,
-            [this]() { ShowAddDriveMenu(); });
-    // From what the build has: the system has not been asked yet, and is
-    // not asked here (see StartRamDiskProbe). Set again when it answers.
-    UpdateAddDriveButton();
-    row->AddChild(addDriveButton);
-
     breadcrumb = std::make_shared<UltraCanvasBreadcrumb>("ufl-breadcrumb", 0, 0, 0, 28);
     breadcrumb->SetStyle(MakePathBreadcrumbStyle());
     breadcrumb->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
@@ -2450,6 +2583,17 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildNavigationRow() {
     navPathSpacer->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
     navPathSpacer->SetVisible(false);
     row->AddChild(navPathSpacer);
+
+    // "+ Drive": adds an FTP / SFTP server or a cloud account as a place you
+    // can browse. It sits at the right end of the row, just left of the
+    // gear, with the window-level commands rather than in the file commands
+    // row below, which acts on the entries of one folder.
+    addDriveButton = MakeToolButton("ufl-add-drive", "Drive", "add-folder.svg", 0,
+            [this]() { ShowAddDriveMenu(); });
+    // From what the build has: the system has not been asked yet, and is
+    // not asked here (see StartRamDiskProbe). Set again when it answers.
+    UpdateAddDriveButton();
+    row->AddChild(addDriveButton);
 
     // The gear at the far right opens the settings window.
     auto settingsButton = MakeToolButton("ufl-settings", "", "settings.svg", 30,
@@ -3011,8 +3155,10 @@ void UltraFilerWindow::RefreshRemoteDriveNodes() {
         DropTreeSubtree(id);
     treeRemoteDriveNodeIds.clear();
 
+    // A connected phone is not a configured drive: it has its row under
+    // Computer (RefreshDeviceNodes).
     for (const RemoteDrive& d : remoteDrives->Drives())
-        AddTreeRemoteDriveNode(d);
+        if (!d.isDevice) AddTreeRemoteDriveNode(d);
 
     // Empty stays hidden, like "Pinned" and "Cloud Storage": a section that
     // is only ever a header is noise.
@@ -4035,6 +4181,10 @@ void UltraFilerWindow::BuildFolderTree() {
     // optical disc, a network share or a disk image appearing or going away
     // updates them without a restart (RefreshDriveNodes).
     StartVolumeMonitor();
+    // And the phones and cameras, which are no volume: listed once now, then
+    // whenever one is plugged in or pulled out.
+    StartDeviceMonitor();
+    RefreshDevices();
 
     folderTree->onNodeExpanded = [this](TreeNode* node) {
         EnsureTreeChildren(node);
@@ -4113,7 +4263,9 @@ bool UltraFilerWindow::DropFilesOnTreeNode(TreeNode* target,
         bool changed = false;
         for (const std::string& f : files) {
             std::error_code ec;
-            if (fs::is_directory(PathFromUtf8(f), ec) && !ec)
+            // A folder only; an application bundle dropped here is not one
+            // (CanPinToTree).
+            if (fs::is_directory(PathFromUtf8(f), ec) && !ec && !IsLaunchableBundlePath(f))
                 changed = favorites.Pin(FilerFavoriteKind::Tree, f) || changed;
         }
         if (changed) {
@@ -4681,6 +4833,125 @@ void UltraFilerWindow::StartVolumeMonitor() {
     });
 }
 
+// ===== PHONES AND CAMERAS (MTP / PTP) =====
+
+namespace {
+    // The icon of a device's row and card.
+    const char* DeviceIconFile(PortableDeviceKind kind) {
+        switch (kind) {
+            case PortableDeviceKind::Camera: return "DeviceExplorer/camera.svg";
+            case PortableDeviceKind::Phone:  return "menu/phone.svg";
+            default:                         return "drive.png";
+        }
+    }
+
+    // What the Computer page says a device is, under its name.
+    const char* DeviceKindWord(PortableDeviceKind kind) {
+        switch (kind) {
+            case PortableDeviceKind::Phone:       return "Phone";
+            case PortableDeviceKind::Camera:      return "Camera";
+            case PortableDeviceKind::MediaPlayer: return "Media player";
+            default:                              return "Portable device";
+        }
+    }
+}
+
+void UltraFilerWindow::StartDeviceMonitor() {
+    if (!UltraCanvasPortableDevices::Available()) return;
+    auto alive = probeAlive;
+    deviceMonitor.Start([this, alive]() {
+        // The monitor's thread: hand the news over and return.
+        UltraCanvasApplicationBase* app = UltraCanvasApplicationBase::GetCurrent();
+        if (!app) return;
+        app->PostToUIThread([this, alive]() {
+            if (!alive->load()) return;   // window destroyed meanwhile
+            RefreshDevices();
+        });
+    });
+}
+
+void UltraFilerWindow::RefreshDevices() {
+    if (!remoteDrives || !UltraCanvasPortableDevices::Available()) return;
+    // One listing at a time; a request during one is served by its end, so
+    // the newest set of devices is what the tree ends up showing.
+    if (deviceListBusy.exchange(true)) {
+        deviceListPending.store(true);
+        return;
+    }
+    if (deviceListWorker.joinable()) deviceListWorker.join();
+    auto alive = probeAlive;
+    deviceListWorker = std::thread([this, alive]() {
+        std::vector<PortableDeviceInfo> devices;
+        try {
+            devices = UltraCanvasPortableDevices::List();
+        } catch (const std::exception&) {
+            // An exception leaving a std::thread ends the process.
+            devices.clear();
+        }
+        UltraCanvasApplicationBase* app = UltraCanvasApplicationBase::GetCurrent();
+        if (!app || !alive->load()) {
+            deviceListBusy.store(false);
+            return;
+        }
+        app->PostToUIThread([this, alive, devices = std::move(devices)]() {
+            if (!alive->load()) return;
+            deviceListBusy.store(false);
+            ApplyDevices(devices);
+            if (deviceListPending.exchange(false)) RefreshDevices();
+        });
+    });
+}
+
+void UltraFilerWindow::ApplyDevices(const std::vector<PortableDeviceInfo>& devices) {
+    if (!remoteDrives) return;
+    std::vector<std::string> before;
+    for (const RemoteDrive& d : remoteDrives->Drives())
+        if (d.isDevice) before.push_back(d.rootPath);
+    remoteDrives->SetDevices(devices);
+    std::vector<std::string> after;
+    for (const RemoteDrive& d : remoteDrives->Drives())
+        if (d.isDevice) after.push_back(d.rootPath);
+
+    // A display left on a phone that was pulled out would show a folder
+    // nothing can list any more: it goes Home, as one on an ejected RAM
+    // disc does.
+    const std::string home = UserHomeDir();
+    for (const std::string& root : before) {
+        if (std::find(after.begin(), after.end(), root) != after.end()) continue;
+        for (FilerTabState* state : FolderDisplayStates()) {
+            if (!state->filer || !IsPathInside(state->filer->GetPath(), root)) continue;
+            if (!home.empty()) state->filer->SetPath(home);
+        }
+    }
+    if (before == after) return;
+    RefreshDeviceNodes();
+    if (computerShown) RefreshComputerPage();
+    UpdateStatusBar();
+}
+
+void UltraFilerWindow::AddTreeDeviceNode(const RemoteDrive& drive) {
+    if (!folderTree) return;
+    TreeNodeData data = MakeFolderNodeData(drive.rootPath, drive.displayName,
+                                           DeviceIconFile(drive.deviceKind));
+    if (!folderTree->AddNode(kComputerNodeId, data)) return;
+    treeDeviceNodeIds.push_back(drive.rootPath);
+    // Opened like a remote drive: what is on the device is listed when the
+    // row is expanded, through the drive's own listing.
+    AddRemoteTreePlaceholder(drive.rootPath);
+}
+
+void UltraFilerWindow::RefreshDeviceNodes() {
+    if (!folderTree || !remoteDrives) return;
+    for (const std::string& id : treeDeviceNodeIds)
+        DropTreeSubtree(id);
+    treeDeviceNodeIds.clear();
+    for (const RemoteDrive& d : remoteDrives->Drives())
+        if (d.isDevice) AddTreeDeviceNode(d);
+    ApplyTreeColors();
+    folderTree->RequestRedraw();
+    ScheduleTreeFit();
+}
+
 void UltraFilerWindow::ApplyTreeColors() {
     if (!folderTree) return;
     folderTree->SetSelectionColor(settings.treeSelectedFolderColor);
@@ -4690,10 +4961,14 @@ void UltraFilerWindow::ApplyTreeColors() {
     const Color& drive = settings.treeDriveBackgroundColor;
     const int luminance = (drive.r * 299 + drive.g * 587 + drive.b * 114) / 1000;
     const Color driveTextColor = luminance < 128 ? Colors::White : Colors::Black;
-    for (const std::string& nodeId : treeDriveNodeIds) {
-        if (TreeNode* node = folderTree->FindNode(nodeId)) {
-            node->data.backgroundColor = drive;
-            node->data.textColor = driveTextColor;
+    // A connected phone is shown as the drive it is to the user, as Explorer
+    // shows it among the drives of "This PC".
+    for (const std::vector<std::string>* ids : {&treeDriveNodeIds, &treeDeviceNodeIds}) {
+        for (const std::string& nodeId : *ids) {
+            if (TreeNode* node = folderTree->FindNode(nodeId)) {
+                node->data.backgroundColor = drive;
+                node->data.textColor = driveTextColor;
+            }
         }
     }
     folderTree->RequestRedraw();
@@ -5264,7 +5539,12 @@ void UltraFilerWindow::ShowTreeContextMenu(TreeNode* node, const UCEvent& event)
     pasteItem.enabled = isFolder && !clipboardFiles.empty();
 
     // Pin: the flags show where this folder is pinned right now; toggling a
-    // flag pins it there / unpins it from there.
+    // flag pins it there / unpins it from there. An application bundle (the
+    // tree lists those too on macOS) is pinned as the file display pins it:
+    // under Favorites > Apps, and never into the tree's Pinned section.
+    const FilerFavoriteKind favoriteKind =
+            isFolder ? FavoriteKindOfFolderPath(target) : FilerFavoriteKind::Folder;
+    const bool isApp = favoriteKind == FilerFavoriteKind::App;
     MenuItemData pinToTree = MenuItemData::Checkbox("To Treeview",
             isFolder && favorites.IsPinned(FilerFavoriteKind::Tree, target),
             [this, target](bool checked) {
@@ -5277,13 +5557,13 @@ void UltraFilerWindow::ShowTreeContextMenu(TreeNode* node, const UCEvent& event)
             RefreshPinnedTreeNodes();
         }
     });
-    pinToTree.enabled = isFolder;
+    pinToTree.enabled = isFolder && !isApp;
 
     MenuItemData pinToFavorites = MenuItemData::Checkbox("To Favorites",
-            isFolder && favorites.IsPinned(FilerFavoriteKind::Folder, target),
-            [this, target](bool checked) {
-        if (checked) favorites.Pin(FilerFavoriteKind::Folder, target);
-        else favorites.Unpin(FilerFavoriteKind::Folder, target);
+            isFolder && favorites.IsPinned(favoriteKind, target),
+            [this, target, favoriteKind](bool checked) {
+        if (checked) favorites.Pin(favoriteKind, target);
+        else favorites.Unpin(favoriteKind, target);
         RepaintFavoriteMarks();
         if (favoritesShown) {
             RefreshFavoritesTabs();
@@ -5400,8 +5680,9 @@ void UltraFilerWindow::BuildTabbedContainer() {
     tabbedContainer->SetContentHost(tabContentHost);
 
     // "+" at the end of the tab list opens another tab - on the folder the
-    // active tab is showing, or on the Home folder, per Settings > Handling >
-    // Tabs. The current folder is what it always was and stays the default.
+    // active tab is showing, on the Home folder, or on the Computer page, per
+    // Settings > Display > New tab. The current folder is what it always was
+    // and stays the default.
     tabbedContainer->SetNewTabButtonPosition(NewTabButtonPosition::AfterTabs);
     tabbedContainer->SetShowNewTabButton(true);
     // Idle it is just the "+" on the strip; its shape and hover colour only
@@ -5412,9 +5693,16 @@ void UltraFilerWindow::BuildTabbedContainer() {
     ApplyTabStripStyle();
     tabbedContainer->onNewTabRequest = [this]() {
         std::string path;
-        if (!settings.newTabOpensHome && filer) path = filer->GetPath();
+        if (settings.newTabStart == FilerNewTabStart::CurrentFolder && filer)
+            path = filer->GetPath();
         if (path.empty()) path = UserHomeDir();
         AddNewTab(path, true);
+        // Computer is a page, not a folder: the new tab holds the Home folder
+        // and the page goes up over it - as the tree's "Computer" entry does
+        // for a tab that is already open - so picking a drive or a folder on
+        // it, Esc, or Back leaves the tab with a folder to show.
+        if (settings.newTabStart == FilerNewTabStart::Computer)
+            SetComputerPageVisible(true);
     };
 
     tabbedContainer->onTabClose = [this](int index) {
@@ -5635,12 +5923,23 @@ void UltraFilerWindow::WireFilerCallbacks(FilerTabState* tab) {
         UpdatePreviewPane();
     };
     tab->filer->onFileActivated = [this, tab](const FilerEntry& entry) {
-        if (entry.isDirectory) return;
+        // A folder is entered by the widget and never arrives here - except a
+        // macOS application bundle, which the widget activates instead of
+        // entering (the Finder's rule). Skipping every directory made a
+        // double-click on an application in the folder display do nothing.
+        if (entry.isDirectory && !IsLaunchableBundle(entry)) return;
         // Opening a file (or launching an application) puts it at the top of
         // the matching History list, and counts as work done in its folder.
         RecordEntryInHistory(entry);
         RecordFolderInHistory(PathToUtf8(PathFromUtf8(entry.path).parent_path()));
         if (!IsActiveTab(tab)) return;
+        // The bundle is launched, the way the Finder does and the preview
+        // pane's folder peek already did; none of the file rules below - the
+        // registered program, UltraViewer, the preview - apply to it.
+        if (entry.isDirectory) {
+            if (tab->filer) tab->filer->OpenEntryWithOS(entry);
+            return;
+        }
 #ifdef ULTRACANVAS_HAS_ULTRAWIN
         // Windows executables, installers and program shortcuts go to the
         // UltraWin emulation layer, not to the host's file associations
@@ -5672,6 +5971,11 @@ void UltraFilerWindow::WireFilerCallbacks(FilerTabState* tab) {
         // Only for a file that is on the disk: an entry inside an archive is
         // a virtual path, which no other program can open - the preview reads
         // those through VirtualFS, and is the only thing that can show them.
+        // Settings > Handling > Opening files: pictures, audio and video go to
+        // UltraViewer first - ahead of the registered program and of the
+        // preview. Falls through when UltraViewer is off, missing, or the
+        // entry is not a media file on the disk.
+        if (OpenInUltraViewer(entry)) return;
         if (settings.doubleClickOpensRegisteredApp) {
             std::error_code ec;
             if (fs::is_regular_file(UltraCanvas::PathFromUtf8(entry.path), ec) && !ec &&
@@ -6126,7 +6430,9 @@ void UltraFilerWindow::RefreshHistoryTabs() {
 }
 
 void UltraFilerWindow::RecordEntryInHistory(const FilerEntry& entry) {
-    if (entry.isDirectory) {
+    // An application bundle is a directory, but launching one is using an
+    // application: it goes to the Apps list, not the Folders list.
+    if (entry.isDirectory && !IsLaunchableBundle(entry)) {
         RecordFolderInHistory(entry.path);
         return;
     }
@@ -6583,11 +6889,32 @@ void UltraFilerWindow::RebuildComputerDriveCards(const std::vector<MountedVolume
     computerDriveRow->ClearChildren();
     computerDriveCards.clear();
 
+    // One card per volume, then one per connected phone or camera - the same
+    // card, so a phone shows its used and free space like a drive does (the
+    // sizes come in from QueueVolumeSpaceQuery, which asks the device).
+    struct CardSource {
+        std::string path, label, icon;
+        std::string under;   // the line at the foot of the card
+    };
+    std::vector<CardSource> sources;
+    for (const MountedVolume& volume : volumes)
+        sources.push_back({volume.path, DriveNodeLabel(volume), "drive.png", volume.path});
+    if (remoteDrives) {
+        for (const RemoteDrive& d : remoteDrives->Drives()) {
+            if (!d.isDevice) continue;
+            // What it is and who made it, where a volume says where it is
+            // mounted: a phone has no path worth reading.
+            std::string under = DeviceKindWord(d.deviceKind);
+            if (!d.serverUrl.empty()) under += " - " + d.serverUrl;   // the manufacturer
+            sources.push_back({d.rootPath, d.displayName, DeviceIconFile(d.deviceKind), under});
+        }
+    }
+
     int index = 0;
-    for (const MountedVolume& volume : volumes) {
+    for (const CardSource& source : sources) {
         const std::string id = "ufl-computer-drive-" + std::to_string(index++);
-        const std::string path = volume.path;
-        const std::string label = DriveNodeLabel(volume);
+        const std::string path = source.path;
+        const std::string label = source.label;
 
         auto card = MakeLayoutBox(id, kComputerCardWidth, kComputerCardHeight);
         card->layout.SetFlexColumn().SetFlexGap(2)
@@ -6619,7 +6946,7 @@ void UltraFilerWindow::RebuildComputerDriveCards(const std::vector<MountedVolume
         card->AddChild(pie);
 
         // The drive's name is the button that opens it.
-        card->AddChild(MakeToolButton(id + "-open", label, "drive.png", 0,
+        card->AddChild(MakeToolButton(id + "-open", label, source.icon, 0,
                                       [this, path]() { NavigateTo(path); }));
 
         auto usage = CreateLabel(id + "-usage", 0, 0, kComputerCardWidth, 18, "");
@@ -6636,8 +6963,9 @@ void UltraFilerWindow::RebuildComputerDriveCards(const std::vector<MountedVolume
         card->AddChild(space);
 
         // Where it is mounted: "/" under "File System", the /media path under
-        // a stick's volume name, the root under a drive letter.
-        auto mount = CreateLabel(id + "-mount", 0, 0, kComputerCardWidth, 18, path);
+        // a stick's volume name, the root under a drive letter - and for a
+        // phone, what it is and who made it.
+        auto mount = CreateLabel(id + "-mount", 0, 0, kComputerCardWidth, 18, source.under);
         mount->SetFontSize(kUiFontSize);
         mount->SetAlignment(TextAlignment::Center);
         mount->SetTextColor(Color(150, 150, 156, 255));
@@ -6655,6 +6983,7 @@ void UltraFilerWindow::RebuildComputerDriveCards(const std::vector<MountedVolume
         unknown.path = path;
         ApplyVolumeSpaceToCard(known != volumeSpaces.end() ? known->second : unknown);
     }
+
     computerDriveRow->RequestRedraw();
 }
 
@@ -6699,15 +7028,36 @@ void UltraFilerWindow::QueueVolumeSpaceQuery() {
         return;
     }
     if (spaceWorker.joinable()) spaceWorker.join();
-    std::vector<std::string> paths;
-    for (const ComputerDriveCard& card : computerDriveCards) paths.push_back(card.path);
+    // Each card's path, and for a connected phone or camera the device to
+    // ask: a device over MTP is no volume std::filesystem can measure.
+    std::vector<std::pair<std::string, std::string>> paths;
+    std::map<std::string, std::string> deviceIds;
+    if (remoteDrives)
+        for (const RemoteDrive& d : remoteDrives->Drives())
+            if (d.isDevice) deviceIds[d.rootPath] = d.deviceId;
+    for (const ComputerDriveCard& card : computerDriveCards) {
+        auto device = deviceIds.find(card.path);
+        paths.emplace_back(card.path, device != deviceIds.end() ? device->second : std::string());
+    }
     auto alive = probeAlive;
     spaceWorker = std::thread([this, alive, paths = std::move(paths)]() {
         // std::filesystem::space with an error_code never throws; this is
-        // where a share that stopped answering spends its timeout.
+        // where a share that stopped answering spends its timeout - and a
+        // phone the time it takes to answer over USB.
         std::vector<VolumeSpace> spaces;
         spaces.reserve(paths.size());
-        for (const std::string& path : paths) spaces.push_back(QueryVolumeSpace(path));
+        for (const auto& [path, deviceId] : paths) {
+            if (deviceId.empty()) {
+                spaces.push_back(QueryVolumeSpace(path));
+                continue;
+            }
+            VolumeSpace space;
+            space.path = path;
+            std::string ignored;
+            space.known = UltraCanvasPortableDevices::GetSpace(deviceId, space.totalBytes,
+                                                               space.freeBytes, ignored);
+            spaces.push_back(space);
+        }
         UltraCanvasApplicationBase* app = UltraCanvasApplicationBase::GetCurrent();
         if (!app || !alive->load()) {
             spaceWorkerBusy.store(false);

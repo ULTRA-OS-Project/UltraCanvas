@@ -410,7 +410,9 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
 - **UltraCanvasWebView** (`UltraCanvasWebView.h`) - the element that shows a
   page from a URL: `SetServices`, `SetScheduler`, `SetBuildOptions`,
   `Navigate`, `Reload`, `Stop`, `GoBack` / `GoForward` (scroll positions kept),
-  `ScrollToFragment`, `GetUrl`, `GetTitle`, `ResolveLink`; `onUrlChanged`,
+  `ScrollToFragment`, `ScrollBy`, `Clear`, `SetOpensWebLinks` (off: web
+  links to `onExternalLink`, for a viewer of local files), `GetUrl`,
+  `GetTitle`, `ResolveLink`; `onUrlChanged`,
   `onTitleChanged`, `onLoadingChanged`, `onLinkHovered`, `onExternalLink`,
   `onNonHtml`. Rebuilds on a new width or arriving pictures; error pages; no
   JavaScript (`<noscript>` shown). Forms the reader fills in and sends
@@ -453,6 +455,11 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
     `OpenWithApplicationPath` — detached launches (default handler /
     enumerated app / user-picked executable; on Linux/BSD that path may also
     be a `.desktop` file, whose own command is what then runs).
+  - `RunsCodeWhenOpened` — whether opening a file of this name would run
+    code (a program, script, installer, shortcut, disk image), by name
+    alone: what a mail attachment or a preview must never open. UltraMail,
+    its threat scanner and the media viewer ask it. Header-only
+    (`UltraCanvasRunsCodeWhenOpened.h`), so headless modules can.
   - `GetMimeType` / `GetMimeGenericIcon` — the freedesktop MIME name of a
     file (matched by name, never by reading it) and the generic icon name
     that type falls back to (`application/pdf` → `x-office-document`). Both
@@ -528,6 +535,20 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   unset). `Tests/InstanceLockTest.cpp`. Used by UltraCanvasSingleInstance. See
   `Docs/UltraCanvas/UltraCanvasInstanceLock.md`.
 
+- **UltraCanvasSettingsPageKit** (`UltraCanvasSettingsPageKit.h`, namespace
+  `SettingsPageKit`) — the look of an application's settings window, once:
+  `UltraCanvasSettingsWindow` (`Create`, `AddSection`, `AddTreeNode`,
+  `AddPage`, `resets`, `Finish`, `ShowPage`, `SelectPage`, `onPageShown`,
+  `onClosed`) - the tree of pages on the left, the page on the right, the
+  page's Restore defaults and Close at the foot; a page's skeleton
+  (`MakePage` → `PageParts`, `AddNote`, `AddBodyCaption`) and the controls in
+  the window's one type scale (`MakeChoice`, `MakeCheckbox`, `MakeIntSlider`
+  / `MakeSliderRow`, `MakeButton` / `MakeButtonRow`, `MakeChoiceRow`,
+  `MakeLabelledRow`, `MakeColorBox`, `MakeLabel` / `MakeText`). UltraFiler's
+  settings window set the style; it and UltraSnip's are built on the kit.
+  Core in `core/UltraCanvasSettingsPageKit.cpp`. See
+  `Docs/UltraCanvas/UltraCanvasSettingsPageKit.md`.
+
 - **UltraCanvasSingleInstance** (`UltraCanvasSingleInstance.h`) — one running
   copy of an application per user, built on UltraCanvasInstanceLock: a second
   start asks the running copy over UltraMessage (`<appId>.show`) to come
@@ -539,7 +560,7 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   (`cmake/UltraCanvasSingleInstance.cmake`) compiles
   `core/AppEntry/UltraCanvasSingleInstance.cpp` into the application and links
   UltraMessage where present. Used by the single-window applications (UltraMail,
-  UltraClipboard, DeviceExplorer, UOS-Settings, UltraNetMonitor, UltraDBAdmin, UltraPassword,
+  UltraClipboard, UltraSnip, DeviceExplorer, UOS-Settings, UltraNetMonitor, UltraDBAdmin, UltraPassword,
   UltraAuthenticator, UltraCleaner, EmailCleaner, UltraClaude, UltraAI,
   UltraSocial, UltraFIBU, UltraWin Manager) and, with their files handed over,
   the document applications (Texter, UltraFiler, UltraViewer, UltraPaint,
@@ -652,12 +673,27 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   (`.doc`, `.xls`, `.ppt`, `.msg`). In `core/UltraCanvasCompoundFile.cpp`;
   every chain and offset is bounded. `UCCompoundFileReader::HasSignature`,
   `Open` (UTF-8 path) / `OpenFromMemory`, `ReadStream` / `HasStream` (root
-  storage, ASCII case-insensitive), `StreamNames`, `GetLastError`. Used by the
-  `.doc` importer, the `.xls` reader and UltraCanvasOfficeEncryption.
+  storage, ASCII case-insensitive), `StreamNames`, `GetLastError`; below the
+  root by '/'-separated path: `ReadStreamAt` / `HasStreamAt`,
+  `StreamNamesAt` / `StorageNamesAt`. Used by the `.doc` importer, the `.xls`
+  reader, UltraCanvasOfficeEncryption and UltraCanvasOutlookMessage.
   `UCCompoundFileWriter` builds one in memory (`AddStream` with '/'-separated
   storages, `Build`: version 3, mini stream, DIFAT, valid red-black trees), for
   the password-protected Office files.
   See `Docs/UltraCanvas/UltraCanvasCompoundFile.md`.
+
+- **UltraCanvasOutlookMessage** (`UltraCanvasOutlookMessage.h`) — Outlook
+  `.msg` messages ([MS-OXMSG]) read through the compound-file reader:
+  `UCOutlookMessage::Load` / `LoadFromMemory` → `subject`, `messageId`,
+  `inReplyTo`, `from`, `to`,
+  `cc`, `date` (UTC, RFC 5322 form), `bodyText`, `bodyHtml` (`PR_HTML`, else
+  the HTML encapsulated in the compressed RTF), `attachments`
+  (`UCOutlookAttachment`: `filename`, `mediaType`, `contentId`, `hidden`,
+  `embeddedMessage`, `data`). `UCDecompressRtf` ([MS-OXRTFCP] LZFu / MELA) and
+  `UCHtmlFromEncapsulatedRtf` ([MS-OXRTFEX] `\fromhtml1`). 8-bit text in the
+  message's code page (`DecodeWindowsCodePage`). In
+  `core/UltraCanvasOutlookMessage.cpp`; used by the media viewer.
+  See `Docs/UltraCanvas/UltraCanvasOutlookMessage.md`.
 
 - **UltraCanvasOfficeEncryption** (`UltraCanvasOfficeEncryption.h`) —
   password-protected `.xlsx` / `.docx` / `.pptx` (ECMA-376 agile encryption:
@@ -895,8 +931,13 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
     `ReserveScreenEdges` (a window's strips along the
     screen's edges, `_NET_WM_STRUT_PARTIAL` on X11 and appbars on Windows,
     so maximised windows stop short of a desktop's bars), `CaptureScreen`
-    (PNG), `CaptureScreenImage` (pixels in memory), `DefaultScreenshotPath`
-    (`<Pictures>/Screenshots/Screenshot <date> <time>.png`).
+    (PNG), `CaptureScreenImage` (pixels in memory), `CaptureScreenArea` (one
+    rectangle of the screen as pixels, clipped to it - a screenshot tool's
+    snip, a screen recorder's frames; `DesktopScreenImage::x` / `y` say
+    where the pixels came from), `DefaultScreenshotPath`
+    (`<Pictures>/Screenshots/Screenshot <date> <time>.png`),
+    `DefaultRecordingPath`
+    (`<Videos>/Screen Recordings/Screen recording <date> <time>.mp4`).
   - `ReadDeviceActivity` → `DesktopDeviceActivity`: webcam / microphone /
     speaker in use, Bluetooth, Wi-Fi with SSID, LAN, VPN, traffic totals,
     USB device count, battery, keyboard layout, plus `warnings`.
@@ -947,6 +988,47 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
     Linux the StatusNotifierWatcher and host on the session bus with the
     items' dbusmenus, refused while another watcher owns the name).
   See `Docs/UltraCanvas/UltraCanvasDesktopShell.md`.
+
+- **UltraCanvasWireless** (`UltraCanvasWireless.h`) — Wi-Fi and Bluetooth
+  operated from a panel, as UltraDesktop's Wi-Fi and Bluetooth panels do.
+  Core in `core/UltraCanvasWireless.cpp` (argument checks, the lists' order,
+  the fallback backend); backends `OS/Linux/UltraCanvasLinuxWireless.cpp`
+  (NetworkManager and BlueZ over GDBus),
+  `OS/MSWindows/UltraCanvasWindowsWireless.cpp` (`wlanapi`, `bthprops`) and
+  `OS/MacOS/UltraCanvasMacOSWireless.mm` (CoreWLAN, IOBluetooth,
+  CoreLocation); internal `UltraCanvasWirelessBackend.h`. Synchronous calls
+  that take seconds: call them from a worker thread.
+  - `ReadWifi` → `WirelessWifiStatus` (`WirelessNetwork` per name: signal,
+    security, known, connected), `RequestWifiScan`, `SetWifiEnabled`,
+    `ConnectWifi(ssid, password)` (a new profile is kept only once joined),
+    `DisconnectWifi`, `ForgetWifi`.
+  - `ReadBluetooth` → `WirelessBluetoothStatus` (`WirelessBluetoothDevice`:
+    address, name, kind, paired, connected, battery), `CanSetBluetoothPower`
+    / `SetBluetoothPowered`, `StartBluetoothDiscovery` /
+    `StopBluetoothDiscovery`, `PairBluetoothDevice`,
+    `ConnectBluetoothDevice`, `DisconnectBluetoothDevice`,
+    `RemoveBluetoothDevice`; `SetPairingHandler` (`WirelessPairingRequest`
+    ShowCode / ConfirmCode / EnterCode / EnterPin / Authorize / Finished →
+    `WirelessPairingAnswer`), served by a BlueZ agent on Linux and
+    IOBluetoothDevicePair's requests on macOS.
+  - `HasSystemSettings` / `OpenSystemSettings(WirelessRadio)` - the
+    platform's own page (Windows, macOS).
+  See `Docs/UltraCanvas/UltraCanvasWireless.md`.
+
+- **UltraCanvasRemovableDrives** (`UltraCanvasRemovableDrives.h`) — the drives
+  a person plugs in and "Safely remove" for them. `List` →
+  `RemovableDrive { id, name, bus, sizeBytes, mountPoints, labels }` (the
+  system's own drive never listed); `SafelyRemove(id)` unmounts every volume
+  and powers the drive off or ejects it, failing with a sentence when a file
+  is still open. Core in `core/UltraCanvasRemovableDrives.cpp` (order,
+  fallback); backends `OS/Linux/UltraCanvasLinuxRemovableDrives.cpp`
+  (UDisks2 over GDBus, sharing `OS/Linux/UltraCanvasLinuxSystemBus.h` with
+  the wireless backend), `OS/MSWindows/UltraCanvasWindowsRemovableDrives.cpp`
+  (SetupAPI, storage ioctls, `CM_Request_Device_Eject`),
+  `OS/MacOS/UltraCanvasMacOSRemovableDrives.mm` (volume resource values
+  grouped by DiskArbitration's whole disk, `NSWorkspace
+  unmountAndEjectDeviceAtURL`). See
+  `Docs/UltraCanvas/UltraCanvasRemovableDrives.md`.
 
 - **UltraCanvasClipboardHistory** (`UltraCanvasClipboardHistory.h`,
   `UltraCanvasClipboardHistoryView.h`; library `UltraClipboardHistory`) — the
@@ -1030,10 +1112,30 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
     `GetPollIntervalMs`, static `NativeBackendAvailable`. The callback runs on
     the monitor's thread and must only hand the news over; one insertion
     produces several callbacks, so the receiver coalesces.
+  - `ListGvfsVolumes` / `GvfsVolumeLabel` — on Linux, the places the desktop
+    mounted through GVFS (a phone over MTP, a camera, an iPhone, an SMB / SFTP
+    / WebDAV share) as labelled volumes; part of `ListMountedVolumes`, watched
+    by the Linux monitor every two seconds.
   Wired up per platform by the `ULTRACANVAS_HAS_NATIVE_VOLUME_MONITOR`
   condition in the **top-level** `CMakeLists.txt`; without it the core file
   compiles null-returning fallbacks and the monitor polls.
   See `Docs/UltraCanvas/UltraCanvasVolumeMonitor.md`.
+
+- **UltraCanvasPortableDevices** (`UltraCanvasPortableDevices.h`) — phones,
+  cameras and media players plugged in over USB that are not a drive (MTP /
+  PTP). `List` (`PortableDeviceInfo`: id, name, manufacturer, kind),
+  `ListFolder`, `Download`, `Upload`, `MakeFolder`, `Delete`, `Rename` by path
+  (`"/"` is the device, its folders its storages); every call blocks, safe
+  from any thread. `UltraCanvasPortableDeviceMonitor` reports plug-in and
+  pull-out. Backends: Windows Portable Devices on one COM thread of its own
+  (`OS/MSWindows/UltraCanvasWindowsPortableDevices.cpp`); macOS Image
+  Capture, read-only (`OS/MacOS/UltraCanvasMacOSPortableDevices.mm`: an
+  iPhone's photos, a camera's card); none on Linux (the desktop mounts
+  devices through GVFS - see above). Wired up by the
+  `ULTRACANVAS_HAS_PORTABLE_DEVICES` condition in the top-level
+  `CMakeLists.txt`. UltraFiler carries devices as remote drives
+  (`UltraFilerDeviceProvider.h`). See
+  `Docs/UltraCanvas/UltraCanvasPortableDevices.md`.
 
 - **UltraCanvasSessionLock** (`UltraCanvasSessionLock.h`) — a call when the
   desktop session locks and when it unlocks, so a program forgets what should
@@ -1813,7 +1915,9 @@ backing library is never visible in a public header.
   secure buffer). The general RFC 4648 codecs — `Base32Encode`, `Base32Decode`,
   `Base64Encode`, `Base64Decode` — live in UltraCanvasUtils
   (`UltraCanvasTextUtils.h`, the platform-free text helpers compiled into the
-  `UltraCanvasTextUtils` library that both the framework and UltraCrypt link);
+  `UltraCanvasTextUtils` library that both the framework and UltraCrypt link;
+  it also holds `DecodeWindowsCodePage`, the Windows code pages 1250 / 1251 /
+  1252 / UTF-8 as UTF-8, for the `.xls` and `.msg` readers);
   UltraCrypt's former copies were removed.
 
 Streaming classes: `UltraCryptHasher`, `UltraCryptHmacHasher`.
@@ -2416,7 +2520,7 @@ command-line tool. Planned: keyframed parameters.
   `VideoFXProject`, `VideoFXProjectKind`, `VideoFXProxySettings`,
   `VideoFXAcceleration` (`VideoFXExportSettings::acceleration`), `VideoFXEncoderInfo`
   (`VideoFXExportSettings::keyframeInterval`), `VideoFXFileFormat`, `VideoFXFileKind`,
-  `VideoFXPictureReader`
+  `VideoFXPictureReader`, `VideoFXRecorderSettings`, `VideoFXPixelLayout`
 - Module: `VideoFX_GetVersion`, `VideoFX_GetBackendVersion`,
   `VideoFX_IsAvailable`, `VideoFX_GetLastError`, `VideoFX_ResultToString`,
   `VideoFX_IsVideoEncoderAvailable`, `VideoFX_IsAudioEncoderAvailable`,
@@ -2435,6 +2539,12 @@ command-line tool. Planned: keyframed parameters.
   and, inside an overlap, the transition), `VideoFX_RenderFrame` (one frame
   in one call), `VideoFX_PlanSlideshow` (a slideshow's segments and
   settings before it is rendered)
+- Recording: `VideoFXFrameRecorder` (`Open`, `PushFrame` - pixels with
+  their stride and layout, RGBA or BGRA, and the frame's time - `Close`,
+  `IsOpen`, `GetFrameCount`, `GetDuration`, `GetWidth` / `GetHeight`,
+  `GetEncoderName`): a live source's frames, pushed one by one as they
+  happen, encoded into a file as they come - what UltraSnip records the
+  screen with. No timeline, no sound, the fastest preset, fragmented MP4.
 - Editing and export: `VideoFX_Export` (the general call), `VideoFX_Transcode`,
   `VideoFX_Trim`, `VideoFX_ApplyEffects`, `VideoFX_Concatenate`,
   `VideoFX_ExtractAudio`, `VideoFX_TrimLossless`, `VideoFX_CreateSlideshow`,
