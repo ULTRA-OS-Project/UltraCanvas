@@ -7,6 +7,8 @@
 // whose shortcut a key press is; and the menus and toolbars read each
 // command's state - Undo with its step, what needs a selection, the active
 // tool - from the command itself (RefreshCommandStates).
+// Version: 1.1.0 - the menus are saved with ArtCreator's and merged with a newer version's
+//                  (a command it adds appears); the toolbar's commands have their own 24 px icons
 // Version: 1.0.0
 // Last Modified: 2026-11-02
 // Author: UltraCanvas Framework
@@ -508,10 +510,12 @@ namespace {
 }
 
 void ArtCreatorWindow::LoadLayouts() {
-    menuLayout = DefaultMenuLayout();
+    // The user's menus brought forward to this version's: a command added
+    // since they were saved appears at its place, one they removed does not.
     const std::string menuFile = MenuLayoutFile();
-    MenuLayoutSet kept;
-    if (!menuFile.empty() && LoadMenuLayoutSet(kept, menuFile) && !kept.menus.empty()) menuLayout = kept;
+    if (menuFile.empty() || !LoadMenuLayoutSet(menuLayout, menuFile, DefaultMenuLayout(), &commands)) {
+        menuLayout = DefaultMenuLayout();
+    }
 
     UltraCanvasAppSettings layouts("ArtCreator");
     layouts.Load();
@@ -524,7 +528,7 @@ void ArtCreatorWindow::SaveLayouts() {
     if (!menuFile.empty()) {
         std::error_code ec;
         std::filesystem::create_directories(PathFromUtf8(menuFile).parent_path(), ec);
-        if (!SaveMenuLayoutSet(menuLayout, menuFile))
+        if (!SaveMenuLayoutSet(menuLayout, menuFile, DefaultMenuLayout()))
             debugOutput << "ArtCreator: could not write " << menuFile << std::endl;
     }
     // Read first: the file holds the settings of every toolbar, and of

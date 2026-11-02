@@ -564,11 +564,10 @@ from layouts (steps 2-4), the keyboard runs `FindByShortcut` (step 5), and
 View > Toolbars and the right-click menus offer the groups (step 7). Undo /
 Redo carry their step, what needs a selection is greyed without one, and the
 palette follows the active tool through `RefreshCommandStates`. The menus are
-kept with `SaveMenuLayoutSet`, the toolbars with `SaveToolbarLayout`. Left
-over: step 6 - the 25 icons have no 24 px drawing yet, and the resolver shows
-their 16 px one larger instead; and a saved menu layout does not gain a
-command a later release adds to a menu (menus have no merge, unlike
-toolbars).
+kept with `SaveMenuLayoutSet`, the toolbars with `SaveToolbarLayout`. The 24
+command icons that had no 24 px drawing (step 6) are drawn, and a saved menu
+layout gains a command a later release adds, as a toolbar's does
+(`MergeMenuLayoutSet`, with the program's commands recorded in the file).
 
 **Phase 4: the other programs.** UltraPaint and Texter first, because they
 share ArtCreator's *File / History / Zoom* groups. Texter's existing *Main

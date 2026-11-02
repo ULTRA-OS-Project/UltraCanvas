@@ -12,3 +12,11 @@
   editor. The arrangement is kept in the settings folder (`menus.txt`,
   `settings.json`). A toolbar wider than the window puts what does not fit
   into a chevron's menu.
+- **24 more toolbar icons**, drawn on the 24 px grid: Save As, Export,
+  Document Setup, New Icon, Quit, About, Rulers, Guides, Clear Guides, the
+  four snaps and Snap to Pixels, Show / Hide Layer, Remove ClipView, and the
+  line widths. A command's icon on the toolbar was its 16 px menu drawing
+  scaled up, which blurs.
+- A version that adds a menu command shows it to a user who customised the
+  menus too: `menus.txt` records ArtCreator's commands and is merged with the
+  next version's menus.
