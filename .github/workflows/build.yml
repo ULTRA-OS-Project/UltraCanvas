@@ -694,6 +694,10 @@ jobs:
           for p in libheif-plugin-libde265 libheif-plugin-aomdec; do
             apt-cache show "$p" >/dev/null 2>&1 && scripts/ci-apt.sh install "$p"
           done
+          # JPEG XL: ubuntu-22.04 has no libjxl package (its libvips is built
+          # without one). libjxl is built from source below and the
+          # framework's own jxlload / jxlsave (VipsJxlPlugin) stand in for
+          # libvips', so JPEG XL reads and writes here as on every other row.
           scripts/ci-apt.sh install libtinyxml2-dev libfmt-dev
           scripts/ci-apt.sh install libx11-dev libxcursor-dev libxi-dev libgl1-mesa-dev libgtk-3-dev
           scripts/ci-apt.sh install libcdr-dev librevenge-dev zlib1g-dev
@@ -902,6 +906,58 @@ jobs:
       # installed through their maintained llvm.sh so the suite name for this
       # distribution is chosen by upstream rather than hard-coded here.
       #
+      # ===== Linux: libjxl from source (ubuntu-22.04 packages none) =====
+      # Built once per version and runner and cached; installed under
+      # /usr/local, where pkg-config and the loader find it, so the configure
+      # step below sees libjxl and the package-linux.sh closure carries it.
+      - name: Restore the libjxl build (Linux)
+        if: runner.os == 'Linux'
+        id: libjxl-cache
+        uses: actions/cache@v5
+        with:
+          path: .libjxl
+          key: libjxl-v1-${{ matrix.os }}-0.10.3
+      - name: Build libjxl from source (Linux)
+        if: runner.os == 'Linux' && steps.libjxl-cache.outputs.cache-hit != 'true'
+        timeout-minutes: 40
+        env:
+          LIBJXL_VERSION: 0.10.3
+        run: |
+          set -euo pipefail
+          src="$RUNNER_TEMP/libjxl-src"
+          rm -rf "$src"
+          git clone --depth 1 --branch "v${LIBJXL_VERSION}" --recurse-submodules --shallow-submodules \
+            https://github.com/libjxl/libjxl.git "$src"
+          # The library and its threads runner only: no tools, no tests, no
+          # plug-ins, no benchmark, the bundled highway, brotli and skcms.
+          cmake -S "$src" -B "$src/build" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_SHARED_LIBS=ON \
+            -DBUILD_TESTING=OFF \
+            -DJPEGXL_ENABLE_TOOLS=OFF \
+            -DJPEGXL_ENABLE_DOXYGEN=OFF \
+            -DJPEGXL_ENABLE_MANPAGES=OFF \
+            -DJPEGXL_ENABLE_BENCHMARK=OFF \
+            -DJPEGXL_ENABLE_EXAMPLES=OFF \
+            -DJPEGXL_ENABLE_JNI=OFF \
+            -DJPEGXL_ENABLE_SJPEG=OFF \
+            -DJPEGXL_ENABLE_OPENEXR=OFF \
+            -DJPEGXL_ENABLE_JPEGLI=OFF \
+            -DJPEGXL_ENABLE_PLUGINS=OFF \
+            -DJPEGXL_ENABLE_DEVTOOLS=OFF \
+            -DJPEGXL_ENABLE_SKCMS=ON \
+            -DCMAKE_INSTALL_PREFIX="$PWD/.libjxl"
+          cmake --build "$src/build" -j"$(nproc)"
+          cmake --install "$src/build"
+          test -f .libjxl/lib/pkgconfig/libjxl.pc || test -f .libjxl/lib/*/pkgconfig/libjxl.pc
+      - name: Install the libjxl build (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          sudo cp -a .libjxl/. /usr/local/
+          sudo ldconfig
+          pkg-config --modversion libjxl
+
       # The runner is deliberately NOT moved to ubuntu-24.04, which does ship
       # Clang 16: this leg is pinned to 22.04 for glibc 2.35, which is what
       # makes the portable Linux bundle portable, and 24.04 would raise that
@@ -1631,13 +1687,12 @@ jobs:
 
       # JPEG XL in the libvips each package ships: vcpkg's, built with its
       # jpeg-xl feature, on macOS, and MSYS2's on Windows, which has JPEG XL
-      # only through its vips-jxl module and libjxl. ImageJxlTest exits 0 when
-      # libvips has neither jxlload nor jxlsave, so the step fails unless the
-      # checks really ran. ULTRACANVAS_BUILD_JXL_TESTS builds it without
-      # BUILD_TESTS; Linux runs it in image-codecs.yml, on Ubuntu 24.04 -
-      # 22.04's libvips has no libjxl.
-      - name: Run JPEG XL test (macOS/Windows)
-        if: runner.os != 'Linux'
+      # only through its vips-jxl module and libjxl; on ubuntu-22.04, whose
+      # libvips has none, through the framework's own jxlload / jxlsave on
+      # the libjxl built above. ImageJxlTest exits 0 when libvips has neither
+      # jxlload nor jxlsave, so the step fails unless the checks really ran.
+      # ULTRACANVAS_BUILD_JXL_TESTS builds it without BUILD_TESTS.
+      - name: Run JPEG XL test
         working-directory: build
         run: |
           ctest --output-on-failure --no-tests=error -V -R "^ImageJxlTest$" 2>&1 | tee jxl-test.log
@@ -1944,12 +1999,6 @@ jobs:
           # tunnel tests"; the rest comes from that step via GITHUB_ENV.
           ULTRANET_TEST_SSH_REQUIRED: 1
           ULTRADB_TEST_TUNNEL_REQUIRED: 1
-          # ImageFormatsTest insists on every picture format - except JPEG
-          # XL here: ubuntu-22.04's libvips is built without libjxl (jammy
-          # has no libjxl package), the one codec this runner cannot have.
-          # JPEG XL is checked on Ubuntu 24.04 in image-codecs.yml and on the
-          # macOS and Windows rows ("Run JPEG XL test").
-          UC_IMAGE_FORMATS_OPTIONAL: jxl
         run: ctest --output-on-failure 2>&1 | tee ctest.log
 
       # "Run unit tests" runs DesktopShellTest with no display, where the X11
