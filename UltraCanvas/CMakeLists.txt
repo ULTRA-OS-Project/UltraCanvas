@@ -1885,6 +1885,32 @@ if(ULTRACANVAS_BUILD_SHARED)
 else()
     add_library(${ULTRACANVAS_LIB_NAME} STATIC ${ULTRACANVAS_ALL_SOURCES})
 endif()
+# ===== FRAMEWORK HEADERS ID =====
+# Which framework headers this build is: a hash of every header under
+# include/, libspecific/ and OS/, as the DLL build id hashes a module's
+# (cmake/UltraCanvasLibraryBuildId.cmake). An element plug-in derives its
+# classes from UltraCanvasUIElement and the host calls into them - every
+# virtual function's place and every member's offset are fixed by these
+# headers, and they have no ABI version a person bumps. So a plug-in carries
+# the id of the headers it was compiled against (ULTRACANVAS_DEFINE_ELEMENT_PLUGIN
+# exports it) and the loader refuses one whose id is not this build's
+# (UltraCanvasElementPlugins.cpp). Generated into generated/include, which
+# the library's interface carries and the install puts beside the headers.
+include("${CMAKE_CURRENT_SOURCE_DIR}/../cmake/UltraCanvasLibraryBuildId.cmake")
+ultracanvas_hash_headers(_uc_headers_hash "${CMAKE_CURRENT_SOURCE_DIR}" include libspecific OS)
+string(SUBSTRING "${_uc_headers_hash}" 0 16 _uc_headers_id)
+set(ULTRACANVAS_GENERATED_INCLUDE_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated/include"
+    CACHE INTERNAL "UltraCanvasFrameworkHeadersId.h and the other generated public headers")
+set(_uc_headers_id_header "${ULTRACANVAS_GENERATED_INCLUDE_DIR}/UltraCanvasFrameworkHeadersId.h")
+file(WRITE "${_uc_headers_id_header}.tmp"
+     "// Written by UltraCanvas/CMakeLists.txt when CMake configures: a hash of every\n"
+     "// framework header (include/, libspecific/, OS/). See UltraCanvasElementPlugins.h.\n"
+     "#pragma once\n"
+     "#define ULTRACANVAS_FRAMEWORK_HEADERS_ID \"${_uc_headers_id}\"\n")
+# Rewritten only when the id changes, so only its few includers recompile then.
+configure_file("${_uc_headers_id_header}.tmp" "${_uc_headers_id_header}" COPYONLY)
+message(STATUS "  Framework headers id: ${_uc_headers_id}")
+
 # Shared build: the engine's objects are pulled into the DSO (PRIVATE);
 # static build: consumers must link the archive themselves (PUBLIC), after
 # both libultracanvas and UltraWin on the line so single-pass linkers
@@ -2111,6 +2137,9 @@ target_include_directories(${ULTRACANVAS_LIB_NAME}
 )
 # Public headers reference cairo, glib, tinyxml2 — consumers need these include paths.
 # Wrap in BUILD_INTERFACE to avoid CMake errors when paths are inside the source tree (vcpkg on CI).
+# The generated public headers (UltraCanvasFrameworkHeadersId.h), installed
+# into the same include directory as the rest.
+target_include_directories(${ULTRACANVAS_LIB_NAME} PUBLIC $<BUILD_INTERFACE:${ULTRACANVAS_GENERATED_INCLUDE_DIR}>)
 foreach(_inc_dir ${CAIRO_INCLUDE_DIRS} ${PANGO_INCLUDE_DIRS} ${GLIB_INCLUDE_DIRS} ${TINYXML2_INCLUDE_DIRS})
     target_include_directories(${ULTRACANVAS_LIB_NAME} PUBLIC $<BUILD_INTERFACE:${_inc_dir}>)
 endforeach()
@@ -2876,7 +2905,11 @@ set_target_properties(UltraCanvasBase32 PROPERTIES POSITION_INDEPENDENT_CODE ON)
 # The archive is uc-crypt; UltraCrypt is its home (see "MODULE HOMES").
 add_library(uc-crypt STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCrypt/UltraCryptCore.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCrypt/UltraCryptAes.cpp)
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCrypt/UltraCryptAes.cpp
+    # HOTP / TOTP (RFC 4226 / 6238) and the otpauth:// URI: UltraAuthenticator
+    # shows the codes, ChatCube Direct checks them at sign-in.
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCrypt/UltraOtp.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCrypt/OtpAuthUri.cpp)
 set_target_properties(uc-crypt PROPERTIES OUTPUT_NAME "UltraCrypt")
 target_include_directories(uc-crypt PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -4792,6 +4825,9 @@ set(ULTRACANVAS_INCLUDE_DIRS
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/
     DESTINATION include/ultracanvas/include
     FILES_MATCHING PATTERN "*.h"
+)
+install(FILES ${ULTRACANVAS_GENERATED_INCLUDE_DIR}/UltraCanvasFrameworkHeadersId.h
+    DESTINATION include/ultracanvas/include
 )
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/
     DESTINATION include/ultracanvas/Plugins

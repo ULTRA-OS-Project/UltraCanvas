@@ -1920,6 +1920,14 @@ backing library is never visible in a public header.
   1252 / UTF-8 as UTF-8, for the `.xls` and `.msg` readers);
   UltraCrypt's former copies were removed.
 
+- One-time passwords (`UltraCrypt/UltraOtp.h`, `UltraCrypt/OtpAuthUri.h`,
+  namespace `UltraCanvas::Otp`): `GenerateHotp`, `GenerateTotp`,
+  `VerifyTotp` (a step either side, each code once, constant-time),
+  `NewTotpSecret`, `TimeStepCounter`, `SecondsRemaining`,
+  `ParseOtpAuthUri`, `BuildOtpAuthUri` - UltraAuthenticator shows the
+  codes, ChatCube Direct's sign-in checks them (until 2026-11 in
+  `Apps/UltraAuthenticator/otp/`)
+
 Streaming classes: `UltraCryptHasher`, `UltraCryptHmacHasher`.
 
 UltraCrypt is the required cryptographic module for the UCD v2 file format,
@@ -1965,7 +1973,9 @@ the per-application vault on top of that: one encrypted vault file in the
 application's directory, unlocked without a prompt by an owner-only
 `device.key` beside it (`TryAutoUnlock`, with `GetLastUnlockStatus` /
 `DescribeUnlockStatus` saying why it stayed closed) or by a master password
-(`Unlock` -> `UnlockStatus`, `PersistDeviceKey`), per-account
+(`Unlock` -> `UnlockStatus`, `PersistDeviceKey`), a Primary Password
+(`ChangePassphrase`, `NeedsPassphrase`, `ForgetDeviceKey`, and
+`UseWithPassphrase` - one turn of the process lock with a typed one), per-account
 `Store`/`Retrieve`/`Has`/`Remove`, an OAuth2 token set beside the password
 slot (`StoreOAuthTokens`…, `MethodFor` -> `SignInMethod`), and migration of
 the 0.1 XOR-sidecar format on the first unlock. A `DeviceKeyVaultProfile`
@@ -2702,6 +2712,11 @@ UltraIM elements must comply with the following rules:
 - `UltraIM_FetchNearbyContacts` (people on the local network)
 - `UltraIM_ExportEncryptionKeys`, `UltraIM_ImportEncryptionKeys` (the keys
   to encrypted conversations as a passphrase-protected file)
+- `UltraIM_FetchAccountProfile`, `UltraIM_UpdateAccountProfile` (the
+  account's name, and the e-mail and phone kept for its owner alone to
+  recover it), `UltraIM_GetSignInProtection`,
+  `UltraIM_StartAuthenticatorSetup`, `UltraIM_SetSignInProtection` (a
+  password and/or an authenticator code to sign in on the device)
 
 **Implementation status:** Phase 1 core implemented — target `UltraIM`
 (`UltraCanvas/{include,core}/UltraIM/`, umbrella `<UltraIM/UltraIM.h>`): the

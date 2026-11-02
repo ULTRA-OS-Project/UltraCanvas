@@ -14,8 +14,8 @@
 #   --keep        leave the relay, Bob and the data folders running and in
 #                 place afterwards (to drive the app further by hand)
 #
-# Writes signin.png, empty.png (signed in, no conversation open) and
-# chat.png (the conversation with Bob). Needs: a built ChatCube and
+# Writes signin.png, empty.png (signed in, no conversation open),
+# chat.png (the conversation with Bob) and profile.png (Edit profile). Needs: a built ChatCube and
 # chatcube-peer, the relay's virtual environment
 # (Server/ChatCubeRelay/.venv, see Apps/ChatCube/README.md), xvfb-run,
 # ImageMagick's `import`, and a C compiler with libX11 and libXtst
@@ -25,6 +25,7 @@
 # (ChatCubeWindow.cpp: Build*): a change to the sign-in card or the sidebar
 # moves them, and the pictures then show where the clicks landed.
 #
+# Version: 0.1.1 - the e-mail and phone on the sign-in card; profile.png, the Edit profile window
 # Version: 0.1.0
 # Last Modified: 2026-10-28
 set -euo pipefail
@@ -104,8 +105,9 @@ xvfb-run -a -s "-screen 0 1200x850x24" bash -c '
     app=$!
     sleep 5
     import -window root "$OUT/signin.png"
-    # The sign-in card: the name, the relay, the button.
-    "$XINPUT" click 499 327 type "Alice Park" click 499 369 type "http://127.0.0.1:$PORT" click 499 443 sleep 4000
+    # The sign-in card: the name, the e-mail, the phone, the relay, the button.
+    "$XINPUT" click 499 254 type "Alice Park" click 499 296 type "alice@example.org" \
+        click 499 338 type "+49 151 2345 6789" click 499 380 type "http://127.0.0.1:$PORT" click 499 513 sleep 4000
     import -window root "$OUT/empty.png"
     # The sidebar: the add-a-contact pill, then the first conversation row,
     # then the composer at the bottom of the window.
@@ -114,7 +116,10 @@ xvfb-run -a -s "-screen 0 1200x850x24" bash -c '
     "$XINPUT" click 600 625 type "Hi Bob, is the new look on your side too?" key Return sleep 3500
     "$XINPUT" type "It has avatars and a dark theme now." key Return sleep 3500
     import -window root "$OUT/chat.png"
+    # The person button beside the ID: the Edit profile window.
+    "$XINPUT" click 292 25 sleep 2500
+    import -window root "$OUT/profile.png"
     kill $app
     sleep 1
 '
-echo "screenshot.sh: $out/signin.png, empty.png, chat.png (logs in $work)"
+echo "screenshot.sh: $out/signin.png, empty.png, chat.png, profile.png (logs in $work)"

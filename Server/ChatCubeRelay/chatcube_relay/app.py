@@ -12,6 +12,7 @@ import asyncio
 import base64
 import hashlib
 import hmac
+import re
 import secrets
 import time
 from contextlib import asynccontextmanager
@@ -19,12 +20,18 @@ from typing import Any
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from . import __version__
 from .config import Settings
 from .identity import decode_b64, login_message, register_message, user_id_for, verify
 from .store import GROUP_PREFIX, Store
+
+# Plausible, not proven: an address is proven by the mail that reaches it.
+EMAIL_PATTERN = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
+# International form: "+" and 7 to 15 digits (E.164), spaces, dashes and
+# brackets as people write them.
+PHONE_PATTERN = re.compile(r"\+[0-9 ()\-]{7,24}")
 
 SIGNAL_KINDS = {"offer", "answer", "ice", "hangup", "call-invite", "call-accept", "call-reject",
                 "call-update"}
@@ -91,7 +98,33 @@ class LoginBody(BaseModel):
 
 
 class ProfileBody(BaseModel):
-    display_name: str = Field(min_length=1, max_length=64)
+    # Each left out stays as it is; "" removes the e-mail or the phone. The
+    # e-mail and the phone are kept to recover the account with, for its
+    # owner alone (GET /v1/profile), never in what others see of the user.
+    display_name: str | None = Field(default=None, min_length=1, max_length=64)
+    email: str | None = Field(default=None, max_length=254)
+    phone: str | None = Field(default=None, max_length=32)
+
+    @field_validator("email")
+    @classmethod
+    def _email(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        if value and not EMAIL_PATTERN.fullmatch(value):
+            raise ValueError("not an e-mail address")
+        return value
+
+    @field_validator("phone")
+    @classmethod
+    def _phone(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        digits = sum(c.isdigit() for c in value)
+        if value and (not PHONE_PATTERN.fullmatch(value) or not 7 <= digits <= 15):
+            raise ValueError("not a phone number in international form (+ and the digits)")
+        return value
 
 
 class OutgoingMessage(BaseModel):
@@ -240,10 +273,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         store.remove_session(authorization[7:])
         return {"status": "ok", "user_id": user_id}
 
+    def own_profile(user_id: str) -> dict[str, Any]:
+        email, phone = store.get_recovery(user_id)
+        return {**user_json(store.get_user(user_id)), "email": email, "phone": phone}
+
+    @app.get("/v1/profile")
+    async def get_profile(user_id: str = Depends(current_user)):
+        return own_profile(user_id)
+
     @app.put("/v1/profile")
     async def set_profile(body: ProfileBody, user_id: str = Depends(current_user)):
-        store.set_display_name(user_id, body.display_name)
-        return user_json(store.get_user(user_id))
+        if body.display_name is not None:
+            store.set_display_name(user_id, body.display_name)
+        if body.email is not None or body.phone is not None:
+            store.set_recovery(user_id, body.email, body.phone)
+        return own_profile(user_id)
 
     @app.get("/v1/users/{other}")
     async def get_user(other: str, user_id: str = Depends(current_user)):

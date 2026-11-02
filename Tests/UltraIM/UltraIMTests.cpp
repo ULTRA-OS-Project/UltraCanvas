@@ -238,9 +238,13 @@ void TestModuleLoading() {
     UltraIMConfig config;
     config.pluginDirectory = ULTRAIM_TEST_MODULE_DIR;
     UltraIM_Initialize(config);
+    // The module built for this version, and not the two beside it that
+    // were not (an ABI 1 module, one of another version): their vtables
+    // would not match the interface.
     CHECK(UltraIM_RefreshProviders() == 1);
     UltraIMProviderInfo info;
     CHECK(UltraIM_GetProviderInfo("moduletest", info));
+    CHECK(!UltraIM_GetProviderInfo("stale", info));
     CHECK(UltraIM_RefreshProviders() == 0);     // already loaded
     bool signedIn = false;
     UltraIM_SignIn("moduletest", UltraIMCredentials(), [&](const UltraIMResult& r) { signedIn = r.success; });

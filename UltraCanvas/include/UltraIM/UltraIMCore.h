@@ -1,5 +1,7 @@
 // include/UltraIM/UltraIMCore.h
 // UltraIM - the public instant-messaging API (UltraIM_* functions)
+// Version: 0.1.6 - the account's profile (UltraIM_FetchAccountProfile, UltraIM_UpdateAccountProfile) and its
+//                  sign-in protection (UltraIM_GetSignInProtection, _StartAuthenticatorSetup, _SetSignInProtection)
 // Version: 0.1.5 - UltraIM_SetPreviewMaker, UltraIM_MakePreview
 // Version: 0.1.4 - UltraIM_SendVideo, UltraIM_DownloadAttachment
 // Version: 0.1.3 - a sign-in by a QR code (credentials.loginType QRCode, UltraIMAuthStep::OtherDevice)
@@ -154,6 +156,28 @@ void UltraIM_ImportEncryptionKeys(const std::string& providerId, const std::stri
 // provider has no such service; providerId must be signed in.
 void UltraIM_FetchSharedCredentials(const std::string& providerId, const std::string& forProviderId,
                                     UltraIMSharedCredentialsCallback onResult);
+
+// ---- The account's own profile ----------------------------------------------------
+// Name, e-mail address and phone number of providerId's signed-in account
+// (UltraIMAccountProfile). The name goes to the contacts; the e-mail and the
+// phone number to the provider's service, for the owner alone (recovering
+// the account). CapabilityMissing for a provider without one.
+void UltraIM_FetchAccountProfile(const std::string& providerId, UltraIMAccountProfileCallback onResult);
+void UltraIM_UpdateAccountProfile(const std::string& providerId, const UltraIMAccountProfile& profile,
+                                  UltraIMResultCallback onResult);
+
+// ---- How signing in on this device is protected -------------------------------------
+// The protection now (DeviceKey for a provider without the capability).
+UltraIMSignInProtection UltraIM_GetSignInProtection(const std::string& providerId);
+// A new authenticator secret as an otpauth:// link, to show as a QR code
+// for UltraAuthenticator (or any authenticator app) to scan.
+UltraIMResult UltraIM_StartAuthenticatorSetup(const std::string& providerId, std::string& outOtpAuthUri);
+// The protection changed: proven with the current password and code, the
+// new password set, a new authenticator proven with its first code. AuthFailed
+// when a current factor is wrong, InvalidArgument when something the new one
+// needs is missing.
+void UltraIM_SetSignInProtection(const std::string& providerId, const UltraIMProtectionChange& change,
+                                 UltraIMResultCallback onResult);
 
 // ---- Preview pictures -----------------------------------------------------------
 // The application's way of making a preview picture (UltraIMPreviewMaker):

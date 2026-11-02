@@ -8,6 +8,16 @@
 // numbered parts (32 KiB each, one envelope per part), peer to peer over
 // the link when it is up, else through the relay's queue - so a file reaches
 // someone offline, and a group, with nothing added to the relay.
+//
+// The identity's key vault opens by itself with the device key, or - as its
+// owner chooses (SetSignInProtection) - only with a password (the vault
+// encrypted under it: Argon2id, XChaCha20-Poly1305), and/or once the code
+// of an authenticator app (UltraAuthenticator; TOTP, RFC 6238) is typed.
+// SignIn then goes in steps, as Telegram's does: NeedsInput with the auth
+// step Password, then Code. The e-mail address and phone number the owner
+// gives (to recover the account) are kept in the vault and on the relay,
+// for the owner alone.
+// Version: 0.1.3 - the account's profile (name, e-mail, phone); a password and/or an authenticator code to sign in
 // Version: 0.1.2 - pictures, videos and files sent and received in parts; DownloadAttachment
 // Version: 0.1.1 - FetchSharedCredentials: the Telegram application's keys from the relay
 // Version: 0.1.0
@@ -74,6 +84,19 @@ public:
     UltraIMConnectionState GetConnectionState() const override { return state_.load(); }
     std::string GetLocalUserId() const override;
     bool HasStoredSession() const override;
+    // Password, then Code, while a protected sign-in waits for them.
+    UltraIMAuthStep GetAuthStep() const override { return authStep_.load(); }
+    std::string GetAuthHint() const override;
+
+    // ---- the account's profile and its sign-in protection -------------------------
+    void FetchAccountProfile(UltraIMAccountProfileCallback onResult) override;
+    // The name to the relay and the local network's next announcement, the
+    // e-mail and phone into the vault and to the relay (PUT /v1/profile).
+    void UpdateAccountProfile(const UltraIMAccountProfile& profile, UltraIMResultCallback onResult) override;
+    UltraIMSignInProtection GetSignInProtection() const override;
+    UltraIMResult StartAuthenticatorSetup(std::string& outOtpAuthUri) override;
+    // On the worker thread (the password is stretched, twice when it changes).
+    void SetSignInProtection(const UltraIMProtectionChange& change, UltraIMResultCallback onResult) override;
 
     // ---- data ---------------------------------------------------------------
     void FetchConversations(UltraIMConversationsCallback onResult) override;
@@ -149,8 +172,25 @@ private:
     // Signs a signalling message and sends it through the relay.
     bool SendSignal(const std::string& to, const std::string& kind, const std::string& session,
                     const std::string& data);
-    bool LoadIdentity(std::string& error);
+    // What opening the identity's vault came to.
+    enum class VaultOpen { Opened, Empty, NeedsPassword, WrongPassword, Failed };
+    // The vault opened (with `password` when it has one), the identity, the
+    // authenticator secret and the profile read from it.
+    VaultOpen OpenVault(const std::string& password, std::string& error);
     bool SaveIdentity();
+    bool SaveProfile();
+    // The vault used with the password it was opened with ("" : the device key).
+    bool WithVault(const std::function<void(UltraVault::DeviceKeyVault& vault)>& use);
+    // `code` checked against `secret`: once per code, after a pause when too
+    // many were wrong (kept across starts). `lastStep` the step accepted
+    // last (0: none); the one accepted now in `outStep`.
+    bool CheckCode(const UltraCryptSecureBuffer& secret, const std::string& code, uint64_t lastStep,
+                   uint64_t& outStep, std::string& error);
+    void SignInNow(const UltraIMCredentials& credentials, UltraIMResultCallback onResult);
+    void ChangeProtection(const UltraIMProtectionChange& change, UltraIMResultCallback onResult);
+    void SendProfileToRelay(std::function<void(const UltraIMResult&)> onDone);
+    // Runs `job` on the worker thread, between two pumps.
+    void Enqueue(std::function<void()> job);
     void AfterLogin();
     void FetchUser(const std::string& userId, std::function<void(bool known)> onDone);
     std::vector<uint8_t> KeyOf(const std::string& userId);
@@ -209,6 +249,19 @@ private:
     bool            vaultOpen_ = false;
     Identity        identity_;
     std::string     displayName_;
+    // The account (accountMutex_): what was read from the vault, the
+    // password it was opened with ("" : the device key), the authenticator's
+    // secret (empty: no code asked) and one being set up.
+    mutable std::mutex accountMutex_;
+    std::string     vaultPassword_;
+    UltraCryptSecureBuffer totpSecret_;
+    UltraCryptSecureBuffer pendingTotp_;
+    bool            codeAccepted_ = false;      // this start's code was right
+    std::string     email_;
+    std::string     phone_;
+    std::string     authHint_;
+    std::atomic<UltraIMAuthStep> authStep_{UltraIMAuthStep::Idle};
+    std::vector<std::function<void()>> jobs_;   // under mutex_
     KeyRing         keyRing_;
     LinkManager     links_;
     CallManager     calls_;

@@ -1,12 +1,12 @@
-// Apps/UltraAuthenticator/otp/UltraOtp.cpp
+// core/UltraCrypt/UltraOtp.cpp
 // HOTP / TOTP implementation. See the header for design notes.
 //
+// Version: 0.2.0 - VerifyTotp, NewTotpSecret; in UltraCrypt
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
-#include "UltraOtp.h"
+#include "UltraCrypt/UltraOtp.h"
 
 #include <cstring>
-#include <strings.h>
 
 namespace UltraCanvas {
 namespace Otp {
@@ -32,8 +32,17 @@ UltraCryptHashAlgorithm ToHashAlgorithm(Algorithm algorithm) {
     return UltraCryptHashAlgorithm::SHA1;
 }
 
+// ASCII case folding: the names compared here are ASCII, and <strings.h>'s
+// strcasecmp is POSIX - the core library builds on Windows too.
+char AsciiLower(char c) {
+    return (c >= 'A' && c <= 'Z') ? static_cast<char>(c - 'A' + 'a') : c;
+}
+
 bool EqualsIgnoreCase(const std::string& a, const char* b) {
-    return strcasecmp(a.c_str(), b) == 0;
+    size_t i = 0;
+    for (; i < a.size() && b[i]; ++i)
+        if (AsciiLower(a[i]) != AsciiLower(b[i])) return false;
+    return i == a.size() && b[i] == '\0';
 }
 
 // Left-pads with '0' to exactly `digits` characters. RFC 4226 §5.3 requires
@@ -163,6 +172,71 @@ Result GenerateTotp(const UltraCryptSecureBuffer& secret,
     Parameters hotpParams = params;
     hotpParams.type = Type::Hotp;
     return GenerateHotp(secret, hotpParams, counter, outCode);
+}
+
+Result VerifyTotp(const UltraCryptSecureBuffer& secret,
+                  const Parameters& params,
+                  int64_t unixTimeUtc,
+                  const std::string& code,
+                  uint32_t windowSteps,
+                  uint64_t lastAcceptedStep,
+                  uint64_t& outAcceptedStep) {
+    outAcceptedStep = 0;
+    if (params.type != Type::Totp) return Result::Error("not a time-based code");
+    if (windowSteps > kMaxVerifyWindowSteps) return Result::Error("verification window is too wide");
+    auto paramCheck = ValidateParameters(params);
+    if (!paramCheck) return paramCheck;
+    auto secretCheck = ValidateSecret(secret);
+    if (!secretCheck) return secretCheck;
+
+    // The digits alone; spaces are how a code is often read out ("123 456").
+    std::string typed;
+    for (const char c : code) {
+        if (c == ' ') continue;
+        if (c < '0' || c > '9') return Result::Error("that is not the code");
+        typed.push_back(c);
+    }
+    if (typed.size() != params.digits) return Result::Error("that is not the code");
+
+    uint64_t now = 0;
+    if (!TimeStepCounter(unixTimeUtc, params.periodSeconds, now))
+        return Result::Error("invalid time or period for a time-based code");
+
+    // Every candidate is computed and compared, whichever matches, so the
+    // time taken says nothing about which step (if any) it was.
+    Parameters hotpParams = params;
+    hotpParams.type = Type::Hotp;
+    uint64_t matched = 0;
+    bool found = false;
+    const uint64_t first = now >= windowSteps ? now - windowSteps : 0;
+    for (uint64_t step = first; step <= now + windowSteps; ++step) {
+        std::string expected;
+        auto generated = GenerateHotp(secret, hotpParams, step, expected);
+        if (!generated) return generated;
+        const bool same = UltraCrypt_ConstantTimeEquals(expected.data(), expected.size(),
+                                                        typed.data(), typed.size());
+        UltraCrypt_SecureZero(expected.data(), expected.size());
+        // The latest step that matches and has not been used: an earlier
+        // match of the same code is the same code.
+        if (same && step > lastAcceptedStep) {
+            matched = step;
+            found = true;
+        }
+    }
+    UltraCrypt_SecureZero(typed.data(), typed.size());
+    if (!found) return Result::Error("that is not the code");
+    outAcceptedStep = matched;
+    return Result::Ok();
+}
+
+Result NewTotpSecret(UltraCryptSecureBuffer& outSecret, size_t bytes) {
+    outSecret.Clear();
+    if (bytes < kMinSecretBytes || bytes > kMaxSecretBytes)
+        return Result::Error("the secret's length is outside the accepted bounds");
+    if (!UltraCrypt_IsAvailable())
+        return Result::Error("no cryptography backend is available, so no secret can be made");
+    if (!UltraCrypt_RandomSecureBuffer(bytes, outSecret)) return Result::Error("no random bytes");
+    return Result::Ok();
 }
 
 bool TimeStepCounter(int64_t unixTimeUtc, uint32_t periodSeconds,

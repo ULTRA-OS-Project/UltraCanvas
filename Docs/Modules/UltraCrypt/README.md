@@ -154,9 +154,11 @@ world defined, X.509 certificates and CMS (§5.11): what S/MIME is made of.
   message's signer, a recipient's key (§5.11).
 - **Credential storage and policy.** That is UltraVault's job; UltraVault
   *consumes* UltraCrypt for its file-backed fallback backend.
-- **Protocol-level constructions** (TOTP, the UCD envelope, SuperVault's
-  request flow). Those live in their consumers and are built *from* these
-  primitives.
+- **Protocol-level constructions** (the UCD envelope, SuperVault's request
+  flow). Those live in their consumers and are built *from* these
+  primitives. The one exception is one-time passwords (§5.13): HOTP / TOTP
+  and the `otpauth://` link moved in from UltraAuthenticator once a second
+  program - ChatCube's sign-in - had to check the codes the first one shows.
 
 ---
 
@@ -1201,6 +1203,45 @@ OpenSSL itself. Tested against vectors made by Python's `cryptography`: both
 signatures holding, a changed byte of the data or the signature, another
 modulus, a 1024-bit modulus, an even exponent, a point off the curve, short
 coordinates and signatures.
+
+### 5.13 One-time passwords — HOTP, TOTP and `otpauth://`
+
+`include/UltraCrypt/UltraOtp.h` and `include/UltraCrypt/OtpAuthUri.h`
+(namespace `UltraCanvas::Otp`), `core/UltraCrypt/UltraOtp.cpp` and
+`OtpAuthUri.cpp`: RFC 4226 / RFC 6238 on `UltraCrypt_Hmac`, and the
+de-facto `otpauth://` key URI an authenticator scans from a QR code. Until
+2026-11 the files were UltraAuthenticator's (`Apps/UltraAuthenticator/otp/`).
+
+```cpp
+namespace Otp = UltraCanvas::Otp;
+Otp::Parameters params;                         // TOTP, SHA-1, 6 digits, 30 s
+UltraCryptSecureBuffer secret;
+Otp::NewTotpSecret(secret);                     // 20 random bytes
+params.issuer = "ChatCube";
+params.accountName = "Erin";
+std::string link;
+Otp::BuildOtpAuthUri(params, secret, link);     // show as a QR code; it holds the secret
+
+std::string code;
+Otp::GenerateTotp(secret, params, unixTime, code);                 // the showing side
+
+uint64_t accepted = 0;                                             // the checking side
+Otp::Result ok = Otp::VerifyTotp(secret, params, unixTime, typed,
+                                 1 /* steps either side */, lastAcceptedStep, accepted);
+```
+
+`VerifyTotp` accepts the code of the current time step or of up to
+`windowSteps` (at most 2) either side, and only a step later than the one
+accepted last: a code is good once, so the caller keeps `accepted` and hands
+it back. Every candidate is computed and compared in constant time, whichever
+matched; spaces in the typed code are ignored, anything else but its digits
+fails, and the message never says which part was wrong. Rate limiting is the
+caller's: ChatCube Direct pauses after five wrong codes.
+
+*Serves:* UltraAuthenticator (generation, the URI parser it scans with),
+ChatCube Direct's sign-in (`NewTotpSecret`, `BuildOtpAuthUri`, `VerifyTotp`).
+Tested by `Tests/UltraOtpTests.cpp`: the RFC vectors, the window, single
+use, the digit count, a short secret.
 
 ## 6. Usage sketches
 

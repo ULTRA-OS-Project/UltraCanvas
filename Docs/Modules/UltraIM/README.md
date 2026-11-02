@@ -153,6 +153,34 @@ the cache directory, or `""` - and sends it along (Telegram's
 Direct's inline preview), so the other side sees something before the file
 has arrived. Without a maker, files go without one.
 
+The signed-in account's own details are `UltraIMAccountProfile` - the name
+its contacts see, and the e-mail address and phone number its service keeps
+for the owner alone, to recover the account with:
+`UltraIM_FetchAccountProfile(provider, cb)` and
+`UltraIM_UpdateAccountProfile(provider, profile, cb)` (the
+`AccountProfile` capability; `InvalidArgument` for an address or a number
+that is plainly not one - the phone with `+` and the country code). A new
+account's are `credentials.email` and `credentials.phoneNumber` with
+`createAccount`.
+
+How signing in on the device is protected is `UltraIMSignInProtection`
+(the `SignInProtection` capability): `DeviceKey` (nothing to type),
+`Password`, `AuthenticatorCode` (a TOTP code from an authenticator app -
+UltraAuthenticator or any other) or `PasswordAndAuthenticatorCode`.
+`UltraIM_GetSignInProtection(provider)` says which;
+`UltraIM_StartAuthenticatorSetup(provider, link)` makes a new authenticator
+secret and answers it as an `otpauth://` link to show as a QR code (it holds
+the secret: show it, never log it); and
+`UltraIM_SetSignInProtection(provider, change, cb)` changes it -
+`UltraIMProtectionChange` carries the new protection, the current password
+and code that prove the change (`AuthFailed` when one is wrong), the new
+password (`""` keeps the current one) and the first code of a new
+authenticator, which proves it was added. A protected sign-in goes in steps
+as Telegram's does: `SignIn` answers `NeedsInput` (or `AuthFailed` for a
+wrong one) with the provider's `authStep` `Password`
+(`credentials.password`), then `Code` (`credentials.otpCode`), an
+`AuthStepChange` event each, the hint in `authHint`.
+
 End-to-end encrypted conversations say so (`UltraIMConversation::isEncrypted`).
 Their keys travel as a passphrase-protected text:
 `UltraIM_ExportEncryptionKeys(provider, passphrase, cb)` hands it back, to
@@ -169,11 +197,14 @@ session, `FetchConversations`, `FetchMessages` and `SendText` are required;
 everything else has a default that answers `CapabilityMissing`. Raise events
 through the sink `Initialize` hands you; every method must return at once.
 
-A provider ships as a module that links the core and exports one function:
+A provider ships as a module that links the core and exports two
+functions - the version it was built for, and its entry point:
 
 ```cpp
+ULTRAIM_DEFINE_PLUGIN_ABI_VERSION()     // UltraIM_PluginAbiVersion()
+
 extern "C" ULTRAIM_PLUGIN_EXPORT void UltraIM_PluginInit(const UltraIMPluginHost* host) {
-    if (!host || host->abiVersion < 1 || !host->RegisterProvider) return;
+    if (!host || host->abiVersion != ULTRAIM_PLUGIN_HOST_ABI_VERSION || !host->RegisterProvider) return;
     host->RegisterProvider(std::make_shared<MyProvider>());
 }
 ```
@@ -181,6 +212,27 @@ extern "C" ULTRAIM_PLUGIN_EXPORT void UltraIM_PluginInit(const UltraIMPluginHost
 `UltraIM_RefreshProviders` loads each module in `pluginDirectory` once and
 never unloads it (queued callbacks may still point into it). A provider
 compiled into the application uses `UltraIM_RegisterProvider` instead.
+
+**The module ABI.** `ULTRAIM_PLUGIN_HOST_ABI_VERSION` covers everything a
+module and the host share in binary form: the host table, the
+`IUltraIMProviderPlugin` interface (its virtual functions and their order)
+and every type in `UltraIMTypes.h`. The host asks a module for
+`UltraIM_PluginAbiVersion()` before it calls anything else in it, and skips
+one that answers another version - or does not answer, as modules built
+before version 2 do (they also accepted any host) - saying on stderr to
+rebuild it; the module refuses a host of another version too. So a stale
+module in a plug-in folder is skipped instead of being called through a
+vtable that no longer matches. Changing the interface or a type in
+`UltraIMTypes.h` therefore bumps the version (with a word on what changed
+in the comment above it), and `python3 scripts/check_plugin_abi.py
+--update` records the new fingerprint in `scripts/plugin_abi.txt`; CI
+(`plugin-abi.yml`) fails a change to those headers that leaves the version
+as it was. A change that is not part of the contract - a free inline
+function, a constant, the text of a default body's message - is recorded
+with `--update --no-abi-change "why"`. Version 1 was the first modules;
+version 2 (2026-11) added the account profile and the sign-in protection,
+`UltraIMCredentials::email`, and the check itself - versions 1 had grown
+three interface methods with no bump.
 
 ## Provider: ChatCube Direct
 
@@ -194,7 +246,8 @@ server: [`Server/ChatCubeRelay`](../../../Server/ChatCubeRelay/README.md).
   `createAccount = true` and a `displayName` makes an Ed25519 key pair on the
   device, kept in the provider's `DeviceKeyVault` under
   `<dataDirectory>/direct/`; later sign-ins reuse it (`server` may then be
-  empty: the relay URL is remembered). The user id is 32 hex characters,
+  empty: the relay URL is remembered). `email` and `phoneNumber` go with a
+  new identity (both optional to the provider; ChatCube asks for both). The user id is 32 hex characters,
   derived from the public key - it is what a contact types into
   `UltraIM_AddContact`.
 - **Messages** are end-to-end encrypted envelopes (X25519 + HKDF +
@@ -237,6 +290,22 @@ server: [`Server/ChatCubeRelay`](../../../Server/ChatCubeRelay/README.md).
   relay a message waits in the outbox until the other side is back, and
   groups (which the relay keeps) are refused. `AddLanAddress(host, port)`
   reaches a ChatCube by address where multicast does not get through.
+- **Profile and sign-in protection.** The e-mail address and the phone
+  number are kept in the identity's vault and sent to the relay
+  (`PUT /v1/profile`) at every sign-in, which keeps them for the owner alone
+  (`GET /v1/profile`; no other answer carries them). A password re-encrypts
+  the vault under it (`DeviceKeyVault::ChangePassphrase`: Argon2id,
+  XChaCha20-Poly1305) and drops the device key, so the identity's key
+  cannot be read without it; the provider then opens the vault with
+  `UseWithPassphrase` and keeps the password in memory while it runs, as it
+  keeps the key. A typed password is stretched on the provider's worker
+  thread. The authenticator's secret is kept in the vault too and checked
+  with UltraCrypt's `VerifyTotp`: a step either side, each code once (the
+  step accepted last is remembered), and after five wrong codes a pause of
+  30 s that doubles with each further one up to 15 minutes, kept across
+  starts. The code is a gate ChatCube keeps, not encryption: without a
+  password, whoever can read the files and the device key can read the
+  identity - so the strongest choice is both.
 - **For the Telegram provider:** `FetchSharedCredentials("telegram")` asks
   the relay for the Telegram application's API ID and hash
   (`GET /v1/telegram-credentials`, from the relay's

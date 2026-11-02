@@ -52,7 +52,8 @@ too, in its upgrade request).
 | `POST /v1/login/challenge` | `{user_id}` → `{nonce, expires_in}` |
 | `POST /v1/login` | `{user_id, nonce, signature}` → `{token, expires_at, user_id, display_name}` |
 | `POST /v1/logout` | ends this session |
-| `PUT /v1/profile` | `{display_name}` |
+| `PUT /v1/profile` | `{display_name?, email?, phone?}` → the caller's profile. Each left out stays; `""` removes the e-mail or the phone. The e-mail address and the phone number (`+` and the digits) are kept to recover the account with, for the owner alone: no other answer carries them |
+| `GET /v1/profile` | `{user_id, public_key, display_name, email, phone}` — the caller's own |
 | `GET /v1/users/{id}` | `{user_id, public_key, display_name}` — contact discovery by id |
 | `GET /v1/contacts` | `{contacts: [{user_id, public_key, display_name, presence}]}` |
 | `PUT` / `DELETE /v1/contacts/{id}` | add / remove |

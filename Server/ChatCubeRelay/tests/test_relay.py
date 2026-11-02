@@ -111,6 +111,34 @@ def test_contacts_and_presence(client):
         assert a.receive_json() == {"type": "presence", "from": bob.user_id, "status": "offline"}
 
 
+def test_recovery_email_and_phone_are_the_owners_alone(client):
+    alice = Person(client, "Alice").join()
+    bob = Person(client, "Bob").join()
+    r = client.put("/v1/profile", headers=alice.auth,
+                   json={"email": "alice@example.org", "phone": "+49 151 2345 6789"})
+    assert r.status_code == 200, r.text
+    assert r.json()["email"] == "alice@example.org" and r.json()["phone"] == "+49 151 2345 6789"
+    assert r.json()["display_name"] == "Alice"          # left out: unchanged
+    mine = client.get("/v1/profile", headers=alice.auth).json()
+    assert mine["email"] == "alice@example.org" and mine["user_id"] == alice.user_id
+    # Nobody else is told: not by id, not as a contact.
+    seen = client.get("/v1/users/" + alice.user_id, headers=bob.auth).json()
+    assert "email" not in seen and "phone" not in seen
+    client.put("/v1/contacts/" + alice.user_id, headers=bob.auth)
+    contact = client.get("/v1/contacts", headers=bob.auth).json()["contacts"][0]
+    assert "email" not in contact and "phone" not in contact
+    # A name alone leaves them; "" removes one.
+    r = client.put("/v1/profile", headers=alice.auth, json={"display_name": "Alice B."})
+    assert r.json()["email"] == "alice@example.org" and r.json()["display_name"] == "Alice B."
+    r = client.put("/v1/profile", headers=alice.auth, json={"phone": ""})
+    assert r.json()["phone"] == "" and r.json()["email"] == "alice@example.org"
+    # What is plainly not one is refused.
+    assert client.put("/v1/profile", headers=alice.auth, json={"email": "alice"}).status_code == 422
+    assert client.put("/v1/profile", headers=alice.auth, json={"phone": "0151 2345"}).status_code == 422
+    assert client.put("/v1/profile", headers=alice.auth, json={"phone": "+1 2"}).status_code == 422
+    assert client.get("/v1/profile").status_code == 401
+
+
 def test_offline_queue_is_store_and_forward(client):
     alice = Person(client, "Alice").join()
     bob = Person(client, "Bob").join()

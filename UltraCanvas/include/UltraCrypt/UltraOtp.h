@@ -1,5 +1,7 @@
-// Apps/UltraAuthenticator/otp/UltraOtp.h
-// HOTP (RFC 4226) and TOTP (RFC 6238) one-time password generation.
+// include/UltraCrypt/UltraOtp.h
+// HOTP (RFC 4226) and TOTP (RFC 6238) one-time passwords: generated (an
+// authenticator - UltraAuthenticator) and checked (a sign-in that asks for
+// one - ChatCube's "authenticator code").
 //
 // Protocol-level construction built on UltraCrypt's primitives, per the scope
 // split in Docs/Modules/UltraCrypt/README.md §2: UltraCrypt owns the
@@ -7,7 +9,8 @@
 // UltraCrypt and the standard library — no UI, no storage, no document model —
 // so it compiles and is unit-tested on its own
 // (Tests/UltraOtpTests.cpp, against the RFC 4226 App. D and RFC 6238 App. B
-// vectors).
+// vectors). It sat in Apps/UltraAuthenticator/otp until a second program
+// needed it; it is part of the UltraCrypt module now.
 //
 // Design notes:
 //  - Secrets travel in UltraCryptSecureBuffer, never std::string.
@@ -17,12 +20,13 @@
 //  - Time is UTC seconds since the Unix epoch. There is no local-time path and
 //    no clock-skew compensation: skew produces wrong codes, which is a
 //    usability problem to surface, not a correctness knob to widen.
-//  - There is deliberately NO verification function. An authenticator only
-//    displays codes; it never checks them. A verifier would need a look-ahead
-//    window, single-use enforcement per time step (RFC 6238 §5.2) and a
-//    constant-time comparison — a materially different security surface that
-//    should not be added speculatively.
+//  - VerifyTotp is the checking side, for a program that asks for a code:
+//    a window of a time step either side (RFC 6238 §5.2's "one step
+//    backward"), single use per time step (the caller keeps the last step
+//    accepted and hands it back) and a constant-time comparison of every
+//    candidate, so neither the timing nor the step that matched leaks.
 //
+// Version: 0.2.0 - in UltraCrypt (from Apps/UltraAuthenticator/otp); VerifyTotp, NewTotpSecret
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -109,6 +113,30 @@ Result GenerateTotp(const UltraCryptSecureBuffer& secret,
                     const Parameters& params,
                     int64_t unixTimeUtc,
                     std::string& outCode);
+
+// The checking side, for a sign-in that asks for an authenticator code.
+// Accepts `code` when it is the code of the time step at `unixTimeUtc` or of
+// up to `windowSteps` steps either side of it (1: the clock of the phone may
+// be up to one period off), and that step is later than `lastAcceptedStep`
+// (a code is good once: pass the step a previous call accepted, 0 for
+// none). On success `outAcceptedStep` is the step that matched - keep it and
+// pass it next time. Every candidate is compared in constant time, and all
+// of them are computed, whichever matched. `code` may hold spaces ("123
+// 456"); anything else but its digits fails. False, with a message, when it
+// is not one of the codes - the message never says which part was wrong.
+constexpr uint32_t kMaxVerifyWindowSteps = 2;
+Result VerifyTotp(const UltraCryptSecureBuffer& secret,
+                  const Parameters& params,
+                  int64_t unixTimeUtc,
+                  const std::string& code,
+                  uint32_t windowSteps,
+                  uint64_t lastAcceptedStep,
+                  uint64_t& outAcceptedStep);
+
+// A new random shared secret of `bytes` bytes (20 - 160 bits - is what RFC
+// 4226 recommends and what every authenticator app takes), for a sign-in
+// that sets up an authenticator. False without a crypto backend.
+Result NewTotpSecret(UltraCryptSecureBuffer& outSecret, size_t bytes = 20);
 
 // floor(unixTimeUtc / periodSeconds) — the RFC 6238 time-step counter T.
 // Returns false for a negative time or a zero period.

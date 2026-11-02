@@ -1,4 +1,4 @@
-// Apps/UltraAuthenticator/otp/OtpAuthUri.h
+// include/UltraCrypt/OtpAuthUri.h
 // Parsing and building of the de-facto `otpauth://` Key URI format.
 //
 // This is the app's primary untrusted-input boundary: a provisioning URI
@@ -12,13 +12,14 @@
 //   PARAMETERS secret (required, Base32), issuer, algorithm, digits,
 //              period (totp), counter (required for hotp)
 //
+// Version: 0.2.0 - moved into UltraCrypt from Apps/UltraAuthenticator/otp, for ChatCube's sign-in too
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 #ifndef OTPAUTHURI_H
 #define OTPAUTHURI_H
 
-#include "UltraOtp.h"
+#include "UltraCrypt/UltraOtp.h"
 
 #include <string>
 

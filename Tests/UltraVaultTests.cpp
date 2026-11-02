@@ -576,6 +576,18 @@ static void TestDeviceKeyVaultPrimaryPassword(const fs::path& dir) {
         UltraVault::SecretValue other;
         Check(UltraVault::Get("cloud.acct.token", other).IsOk() && other.AsString() == "tok",
               "the other prefix's secret survived");
+        // Use() with the typed passphrase: opened, used and closed in one turn.
+        vault.Lock();
+        std::string through;
+        Check(vault.UseWithPassphrase("wrong", [&](DeviceKeyVault& v) { v.Retrieve("erika", through); }) ==
+                  UnlockStatus::WrongPassphrase && through.empty(),
+              "UseWithPassphrase refuses a wrong passphrase and runs nothing");
+        Check(vault.UseWithPassphrase("Korrekt Pferd Batterie", [&](DeviceKeyVault& v) { v.Retrieve("erika", through); }) ==
+                  UnlockStatus::Ok && through == "pw-1",
+              "UseWithPassphrase opens it with the passphrase and reads");
+        Check(!vault.IsUnlocked(), "and closes it again");
+        Check(!vault.Use([](DeviceKeyVault&) {}), "Use() without the passphrase cannot open it");
+        Check(vault.Unlock("Korrekt Pferd Batterie") == UnlockStatus::Ok, "the Primary Password opens it again");
         Check(vault.ChangePassphrase("not it", "x", false) == UnlockStatus::WrongPassphrase,
               "changing needs the current passphrase");
         Check(vault.Unlock("Korrekt Pferd Batterie") == UnlockStatus::Ok, "which still opens it");
