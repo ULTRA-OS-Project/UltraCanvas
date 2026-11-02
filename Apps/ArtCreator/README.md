@@ -115,6 +115,30 @@ sizes) and their size, a width profile (taper to either end, both, bulge)
 and a brush (dots, dashes, hearts stamped along the path). It applies to
 the selection and to every line drawn afterwards.
 
+## Customising the menus and toolbars
+
+Every command - the menu entries, the toolbar's buttons, the tools and the
+keys - is registered once, so a command has one label, one icon, one
+shortcut and one state wherever it appears: Undo names the step it undoes and
+is greyed with nothing to undo, a command that needs a selection is greyed
+without one, and the active tool's slot is pressed.
+
+- **Right-click the toolbar or the tool palette** for its groups: tick a
+  group to show it (the toolbar offers Edit, Align, Distribute, Combine,
+  Layer, Line, Guides and Snap besides the six it shows), *Fold* the group
+  under the pointer into one button whose others fold out, *Hide* the
+  command under it, or *Customise Toolbars*. View > Toolbars offers the same.
+- **View > Customise Menus and Toolbars** opens the editor for the menu bar,
+  the toolbar and the palette together: add any command to a menu or a
+  toolbar group, remove, reorder, make groups and submenus of your own, fold
+  groups, choose the toolbar's icon size and labels; Apply shows the result,
+  Save keeps it, Reset goes back to ArtCreator's arrangement. The palette
+  takes tools only.
+- What you change is kept in the settings folder: the menus in `menus.txt`,
+  the toolbars in `settings.json` (only what differs from ArtCreator's, so a
+  command a new version adds to a group still appears). A toolbar wider than
+  the window puts what does not fit into a chevron's menu at its end.
+
 ## Menus and shortcuts
 
 - **File**: New (Ctrl+N; page presets - opening on the one the page
@@ -246,7 +270,8 @@ brings ArtCreator forward (`UltraCanvasSingleInstance`). `--help` and
 | File | Contents |
 |---|---|
 | `main.cpp` | Bootstrap, arguments, plugin registration, the first window |
-| `ArtCreatorWindow.{h,cpp}` | Window composition, the open-window registry, menus, panels, status bar, shortcuts, file open / save, every command |
+| `ArtCreatorWindow.{h,cpp}` | Window composition, the open-window registry, panels, status bar, file open / save, every command's work |
+| `ArtCreatorCommands.cpp` | Every command registered once (menus, toolbar, palette, keys, live state), the default menu, toolbar and palette layouts, the icon sizes, the user's layouts kept, the Customise editor |
 | `ArtCreatorTools.{h,cpp}` | The `ArtTool` base, the 15 tools, the line gallery's named choices, the option-widget helpers |
 | `ArtCreatorDialogs.{h,cpp}` | New Drawing / Document Setup and Text |
 | `ArtCreatorIcon.{h,cpp}` | Icon mode's sizes, the page drawn at the icon's size with its soft pixels, and the preview element |

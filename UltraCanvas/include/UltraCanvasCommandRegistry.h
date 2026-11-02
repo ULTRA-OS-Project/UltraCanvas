@@ -16,6 +16,7 @@
 // toolbar - and its state is read live (isEnabled, isChecked, dynamicLabel)
 // whenever the menu or toolbar built from it is refreshed.
 //
+// Version: 2.1.0 - FindByShortcut: the command a key press names
 // Version: 2.0.0 - renamed from UltraCanvasMenuRegistry (the old name is an alias); one
 //                  registry per window is the rule for a program with several windows,
 //                  Default() for one with a single window
@@ -142,6 +143,12 @@ namespace UltraCanvas {
             std::vector<std::string> commandIds;
         };
         std::vector<ShortcutConflict> FindShortcutConflicts() const;
+        // The command whose shortcut is `shortcut` ("Ctrl+Shift+S", spelt
+        // any way FindShortcutConflicts takes as the same), the first
+        // registered when two share it; null for none. A program's key
+        // handler turns the key it got into such a text and runs what this
+        // finds, so the shortcut the menu shows is the one that works.
+        const MenuCommand* FindByShortcut(const std::string& shortcut) const;
 
         // ===== MATERIALIZE =====
         // Build one live menu item from a command id. If the id is unknown, returns

@@ -29,6 +29,8 @@
 // fills it from a ToolbarLayout - groups of command ids - and a command
 // registry, and RefreshCommandStates re-reads each command's enabled, checked
 // and label state into its button.
+// Version: 1.14.0 - RefreshCommandStates: a folded group of check commands shows the
+//                   checked one, pressed
 // Version: 1.13.0 - SetOnContextMenu: a right click on the bar or an item, with the item's id
 // Version: 1.12.0 - AddWidget; SetCommandRegistry / RefreshCommandStates for a bar built
 //                   from commands (MaterializeToolbar)
@@ -450,7 +452,8 @@ namespace UltraCanvas {
         // Re-reads every command's isEnabled, isChecked and dynamicLabel into
         // its item: a disabled command greys its button, a checked one presses
         // its toggle, and the tooltip follows the label ("Undo Move (Ctrl+Z)").
-        // A tool group is enabled while any of its tools is. The program calls
+        // A tool group is enabled while any of its tools is, and a group of
+        // check commands (a palette's tools) shows the checked one, pressed. The program calls
         // this where its state changes - after an edit, a selection - instead
         // of keeping pointers to the buttons, which the user may have removed.
         void RefreshCommandStates();

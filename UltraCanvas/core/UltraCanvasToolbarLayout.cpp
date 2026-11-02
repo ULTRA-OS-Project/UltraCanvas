@@ -2,6 +2,7 @@
 // A toolbar as groups of command ids: building the toolbar from one, merging
 // the user's changes over the program's defaults, and keeping them in the
 // application's settings.
+// Version: 1.2.0 - separateGroups
 // Version: 1.1.0 - a program's group keeps the user's order and additions; the
 //                  toolbar's context menu (InstallToolbarContextMenu)
 // Version: 1.0.0
@@ -102,7 +103,7 @@ namespace UltraCanvas {
                 if (cmd && placed.insert(id).second) cmds.push_back(cmd);
             }
             if (cmds.empty()) continue;
-            if (!firstGroup) toolbar.AddSeparator("sep." + group.id);
+            if (!firstGroup && layout.separateGroups) toolbar.AddSeparator("sep." + group.id);
             firstGroup = false;
 
             // A folded group: one slot with a fold-out bar. A widget cannot
@@ -174,6 +175,7 @@ namespace UltraCanvas {
 
         ToolbarLayout result;
         result.name = defaults.name;
+        result.separateGroups = defaults.separateGroups;
         result.iconSize = saved.iconSize;
         result.showLabels = saved.showLabels;
 

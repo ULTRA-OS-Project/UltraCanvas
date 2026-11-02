@@ -2106,6 +2106,7 @@ if (BUILD_ARTCREATOR_APP)
     add_executable(ArtCreator
             Apps/ArtCreator/main.cpp
             Apps/ArtCreator/ArtCreatorWindow.cpp
+            Apps/ArtCreator/ArtCreatorCommands.cpp
             Apps/ArtCreator/ArtCreatorTools.cpp
             Apps/ArtCreator/ArtCreatorDialogs.cpp
             Apps/ArtCreator/ArtCreatorIcon.cpp

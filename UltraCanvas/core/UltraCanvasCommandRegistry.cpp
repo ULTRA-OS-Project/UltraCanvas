@@ -1,5 +1,6 @@
 // core/UltraCanvasCommandRegistry.cpp
 // Implementation of the id-addressable command catalog.
+// Version: 2.1.0 - FindByShortcut
 // Version: 2.0.0 - renamed from UltraCanvasMenuRegistry
 // Version: 1.1.0 - icons resolved by size, live state, shortcut conflicts, RefreshMenuStates
 // Version: 1.0.1 - the commented-out Input callback copy is gone
@@ -153,6 +154,15 @@ namespace UltraCanvas {
                                        [](const ShortcutConflict& c) { return c.commandIds.size() < 2; }),
                         conflicts.end());
         return conflicts;
+    }
+
+    const MenuCommand* UltraCanvasCommandRegistry::FindByShortcut(const std::string& shortcut) const {
+        const std::string key = NormalizeShortcut(shortcut);
+        if (key.empty()) return nullptr;
+        for (const auto& cmd : commands) {
+            if (NormalizeShortcut(cmd->shortcut) == key) return cmd.get();
+        }
+        return nullptr;
     }
 
     namespace {
