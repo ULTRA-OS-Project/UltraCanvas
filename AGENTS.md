@@ -354,9 +354,11 @@ enforces this and runs in CI; a genuine exception opts out with
 ## Building and testing
 
 ```bash
-# Ubuntu/Debian deps
+# Ubuntu/Debian deps (the two libheif plug-ins exist from Ubuntu 24.04 on:
+# HEIC and AVIF decode only with them, and ImageFormatsTest insists)
 sudo apt install build-essential cmake libcairo2-dev libpango1.0-dev \
-    libfreetype6-dev libvips-dev libharfbuzz-dev clang
+    libfreetype6-dev libvips-dev libharfbuzz-dev clang \
+    libheif-plugin-libde265 libheif-plugin-aomdec
 # macOS deps
 brew install cmake cairo pango freetype vips harfbuzz
 

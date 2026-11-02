@@ -8,8 +8,9 @@
 // through untouched. c3 is Cairo's alpha byte on little-endian, which makes
 // the "c3 unchanged" fast ops (DIFF/LUMA/RGB) hit exactly like standard
 // QOI's alpha-unchanged ops.
+// Version: 1.1.0 - an opaque (RGB24) pixmap keeps its format through the blob ("QCPO")
 // Version: 1.0.0
-// Last Modified: 2026-07-19
+// Last Modified: 2026-11-02
 // Author: UltraCanvas Framework
 #include "QoiPixmapCodec.h"
 #include <cstring>
@@ -17,7 +18,8 @@
 namespace UltraCanvas {
 
     namespace {
-        constexpr uint32_t kMagic = 0x58504351;   // "QCPX" little-endian
+        constexpr uint32_t kMagic = 0x58504351;   // "QCPX" little-endian: an ARGB32 pixmap
+        constexpr uint32_t kMagicOpaque = 0x4F504351;   // "QCPO": an RGB24 one (UCPixmapCairo::IsOpaque)
 
         struct BlobHeader {
             uint32_t magic;
@@ -68,7 +70,7 @@ namespace UltraCanvas {
         // Worst case: every pixel a 5-byte RGBA op.
         std::vector<uint8_t> out(sizeof(BlobHeader)
                                  + static_cast<size_t>(w) * h * 5 + 1);
-        BlobHeader hdr{kMagic, static_cast<uint32_t>(w),
+        BlobHeader hdr{pixmap.IsOpaque() ? kMagicOpaque : kMagic, static_cast<uint32_t>(w),
                        static_cast<uint32_t>(h),
                        static_cast<float>(pixmap.GetDeviceScale())};
         std::memcpy(out.data(), &hdr, sizeof hdr);
@@ -145,14 +147,14 @@ namespace UltraCanvas {
         if (!data || size < sizeof(BlobHeader)) return nullptr;
         BlobHeader hdr;
         std::memcpy(&hdr, data, sizeof hdr);
-        if (hdr.magic != kMagic || hdr.rawWidth == 0 || hdr.rawHeight == 0 ||
+        if ((hdr.magic != kMagic && hdr.magic != kMagicOpaque) || hdr.rawWidth == 0 || hdr.rawHeight == 0 ||
             hdr.rawWidth > 0x40000 || hdr.rawHeight > 0x40000) {
             return nullptr;
         }
         const int w = static_cast<int>(hdr.rawWidth);
         const int h = static_cast<int>(hdr.rawHeight);
 
-        auto pm = std::make_shared<UCPixmapCairo>(w, h);
+        auto pm = std::make_shared<UCPixmapCairo>(w, h, hdr.magic == kMagicOpaque);
         cairo_surface_t* surf = pm->GetSurface();
         if (!surf || !pm->IsValid()) return nullptr;
         cairo_surface_flush(surf);

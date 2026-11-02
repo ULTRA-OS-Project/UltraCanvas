@@ -43,7 +43,7 @@ UltraCanvas is a modular framework designed to simplify the development of rich 
 -   Vector graphics with SVG parsing and transformations
 -   Gradients (linear, radial, conic)
 -   Path filling with multiple modes
--   Bitmap formats: PNG, JPG, BMP, GIF, AVIF, WebP, QOI
+-   Bitmap formats in every build: PNG, JPEG, BMP, TIFF, GIF, WebP, AVIF, HEIC, JPEG XL, QOI, icons
 -   Double buffering for smooth rendering
 
 **Extensible Plugin System**
@@ -127,7 +127,8 @@ Install the required dependencies for your platform:
 ```bash
 # Ubuntu/Debian
 sudo apt install build-essential cmake libcairo2-dev libpango1.0-dev \
-    libfreetype6-dev libvips-dev libharfbuzz-dev clang
+    libfreetype6-dev libvips-dev libharfbuzz-dev \
+    libheif-plugin-libde265 libheif-plugin-aomdec   # Ubuntu 24.04 on: HEIC and AVIF clang
 
 # macOS
 brew install cmake cairo pango freetype vips harfbuzz

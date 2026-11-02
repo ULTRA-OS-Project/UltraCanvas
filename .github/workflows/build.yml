@@ -687,6 +687,13 @@ jobs:
           echo "Building Linux dependencies for $MULTIARCH ($(uname -m))"
           scripts/ci-apt.sh install libcairo2-dev libpango1.0-dev libharfbuzz-dev
           scripts/ci-apt.sh install libvips-dev libglib2.0-dev libfreetype6-dev dbus
+          # libheif's HEVC and AV1 decoders: linked into libheif on
+          # ubuntu-22.04, separate plug-in packages from 24.04 on - installed
+          # wherever apt knows them, so HEIC and AVIF decode on every runner
+          # (ImageFormatsTest insists on it).
+          for p in libheif-plugin-libde265 libheif-plugin-aomdec; do
+            apt-cache show "$p" >/dev/null 2>&1 && scripts/ci-apt.sh install "$p"
+          done
           scripts/ci-apt.sh install libtinyxml2-dev libfmt-dev
           scripts/ci-apt.sh install libx11-dev libxcursor-dev libxi-dev libgl1-mesa-dev libgtk-3-dev
           scripts/ci-apt.sh install libcdr-dev librevenge-dev zlib1g-dev

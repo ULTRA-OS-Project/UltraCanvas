@@ -1,5 +1,7 @@
 // libspecific/Cairo/ImageCairo.h
 // Base interface for cross-platform image handling in UltraCanvas
+// Version: 1.8.0 - UCPixmapCairo::IsOpaque, Init(w, h, opaque): a picture without
+//                  an alpha channel is an RGB24 pixmap
 // Version: 1.7.0 - VipsCanDecode: a loader that can decode here (HEIC / AVIF need
 //                  libheif's decoder)
 // Version: 1.6.0 - VipsCanEncode: a saver that can encode here (AVIF / HEIC need
@@ -52,10 +54,20 @@ namespace VectorStorage { class VectorDocument; }
     public:
         UCPixmapCairo() = default;
         explicit UCPixmapCairo(int w, int h);
+        // `opaque`: a picture with no alpha channel, kept as CAIRO_FORMAT_RGB24
+        // - the same four bytes per pixel (cairo has no packed 24-bit image
+        // format), with the top byte 0xFF and ignored, so cairo composites it
+        // as a copy instead of blending every pixel, and the QOI blob of it
+        // says so. ARGB32 otherwise.
+        UCPixmapCairo(int w, int h, bool opaque);
         explicit UCPixmapCairo(cairo_surface_t * surf);
         ~UCPixmapCairo();
 
         bool Init(int w, int h) override;
+        bool Init(int w, int h, bool opaque);
+        // True for an RGB24 surface: no alpha channel; every pixel's top byte
+        // is 0xFF, so a reader that takes it for alpha sees it opaque.
+        bool IsOpaque() const;
         cairo_surface_t * GetSurface() const { return surface; };
         void SetPixel(int x, int y, uint32_t pixel) override;
         uint32_t GetPixel(int x, int y) const override;

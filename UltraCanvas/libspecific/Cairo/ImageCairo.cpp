@@ -1,5 +1,8 @@
 // libspecific/Cairo/ImageCairo.cpp
 // Cross-platform image loader implementation using PIMPL idiom
+// Version: 2.9.0 - a picture without an alpha channel decodes to an RGB24 pixmap
+//                  (no alpha, a copy when composited); GetPixmap keeps a large
+//                  fitted pixmap on disk as a QOI blob between runs
 // Version: 2.8.0 - GIF through libvips everywhere: its gifsave, else the
 //                  framework's encoder registered as ucgifsave (VipsGifPlugin)
 // Version: 2.7.0 - VipsCanDecode asks libheif whether it decodes HEIC (HEVC) and
@@ -26,6 +29,8 @@
 #include "StbRasterDecode.h"
 #include "UltraCanvasCoderModuleRepair.h"
 #include "UltraCanvasFileStamp.h"
+#include "UltraCanvasThumbnailDiskCache.h"          // GetPixmap: large fitted pixmaps kept on disk
+#include "QoiPixmapCodec.h"
 #include "UltraCanvasVectorPreview.h"              // LoadVectorPreviewDocument, RenderVectorDocumentPixmap
 #include "DataFormats/UltraCanvasVectorStorage.h"  // VectorDocument::Size, GetBoundingBox
 // The bundled QOI file-format codec (always compiled) - see
@@ -63,6 +68,9 @@
 #include "UltraCanvasDebug.h"
 
 #define HAS_PIXMAPS_CACHE 1
+// Raw pixels (width x height x scale^2) from which a fitted pixmap is kept
+// on disk between runs (GetPixmap): a window-sized picture, not an icon.
+static constexpr double kPersistedPixmapMinPixels = 640.0 * 480.0;
 
 namespace UltraCanvas {
     struct UCPixmapCairoCacheEntry {
@@ -104,6 +112,14 @@ namespace UltraCanvas {
         Init(w, h);
     }
 
+    UCPixmapCairo::UCPixmapCairo(int w, int h, bool opaque) {
+        Init(w, h, opaque);
+    }
+
+    bool UCPixmapCairo::IsOpaque() const {
+        return surface && cairo_image_surface_get_format(surface) == CAIRO_FORMAT_RGB24;
+    }
+
     UCPixmapCairo::~UCPixmapCairo() {
         if (surface) {
             cairo_surface_destroy(surface);
@@ -111,7 +127,11 @@ namespace UltraCanvas {
     }
 
     bool UCPixmapCairo::Init(int w, int h) {
-        if (pixelsPtr && w == width && h == height) {
+        return Init(w, h, false);
+    }
+
+    bool UCPixmapCairo::Init(int w, int h, bool opaque) {
+        if (pixelsPtr && w == width && h == height && IsOpaque() == opaque) {
             Clear();
             return true;
         }
@@ -122,7 +142,7 @@ namespace UltraCanvas {
             cairo_surface_destroy(surface);
             surface = nullptr;
         }
-        surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, width, height);
+        surface = cairo_image_surface_create(opaque ? CAIRO_FORMAT_RGB24 : CAIRO_FORMAT_ARGB32, width, height);
         if (cairo_surface_status(surface) != CAIRO_STATUS_SUCCESS) {
             debugOutput << "UCPixmapCairo: Cant create surface" << std::endl;
             return false;
@@ -145,7 +165,10 @@ namespace UltraCanvas {
     }
     void UCPixmapCairo::Clear() {
         if (pixelsPtr) {
-            memset(pixelsPtr, 0, width * height * 4);
+            // Transparent, or for an opaque pixmap black with the unused top
+            // byte 0xFF (see IsOpaque)
+            if (IsOpaque()) std::fill_n(pixelsPtr, static_cast<size_t>(width) * height, 0xFF000000u);
+            else memset(pixelsPtr, 0, width * height * 4);
             cairo_surface_mark_dirty(surface);
         }
     }
@@ -916,7 +939,34 @@ namespace UltraCanvas {
         std::string key = MakePixmapCacheKey(w, h, fitMode, scale);
         std::shared_ptr<UCPixmapCairo> pm = g_PixmapsCache.GetFromCache(key);
         if (!pm) {
-            pm = CreatePixmap(w, h, fitMode, scale);
+            // A large picture fitted to a box - a desktop's wallpaper, a
+            // viewer's photo - keeps its fitted pixmap on disk as a QOI blob
+            // (the thumbnail cache's own form), so the next run inflates it
+            // in a fraction of the decode: no file decode, no resize. Only
+            // for a raster file on disk; small boxes (icons, thumbnails of
+            // the Filer, which has its own entries) are not worth a file.
+            const bool persist = ThumbnailDiskCache::IsEnabled() && !vectorDocument &&
+                                 fileName.compare(0, 5, ":mem:") != 0 &&
+                                 static_cast<double>(w) * h * scale * scale >= kPersistedPixmapMinPixels;
+            ThumbnailDiskCache::Request request;
+            ThumbnailDiskCache::SourceStamp madeFrom;
+            if (persist) {
+                request.sourcePath = fileName;
+                request.width = w;
+                request.height = h;
+                request.fit = static_cast<int>(fitMode);
+                request.scale = scale;
+                madeFrom = ThumbnailDiskCache::StampSource(fileName);
+                const std::vector<uint8_t> blob = ThumbnailDiskCache::Load(request);
+                if (!blob.empty()) pm = QoiDecompressPixmap(blob);
+            }
+            if (!pm) {
+                pm = CreatePixmap(w, h, fitMode, scale);
+                if (pm && persist && madeFrom.valid) {
+                    const std::vector<uint8_t> blob = QoiCompressPixmap(*pm);
+                    if (!blob.empty()) ThumbnailDiskCache::Store(request, blob, madeFrom);
+                }
+            }
             if (pm) {
                 g_PixmapsCache.AddToCache(key, pm);
             }
@@ -1003,6 +1053,15 @@ namespace UltraCanvas {
         return nullptr;
     }
 
+    // RGBx bytes to cairo's native-endian xRGB words with the top byte 0xFF:
+    // no alpha, so nothing to premultiply.
+    void rgbx2bgrx(const uint32_t *src, uint32_t *dst, int n) {
+        for (int x = 0; x < n; x++) {
+            const uint32_t rgbx = GUINT32_FROM_BE(src[x]);
+            dst[x] = 0xFF000000u | ((rgbx >> 8) & 0x00FFFFFFu);
+        }
+    }
+
     void rgba2bgra_premultiplied(uint32_t *src, uint32_t *dst, int n) {
         for (int x = 0; x < n; x++) {
             uint32_t rgba = GUINT32_FROM_BE(src[x]);
@@ -1040,7 +1099,10 @@ namespace UltraCanvas {
 
         vipsImage = vipsImage.cast(VIPS_FORMAT_UCHAR);
 
-        // Add alpha channel if missing
+        // A picture without an alpha band stays without one: an RGB24
+        // pixmap (IsOpaque). The band is still joined so the decoded rows
+        // are four bytes a pixel, but the pixmap is a copy, not a blend.
+        const bool opaque = vipsImage.bands() == 3;
         if (vipsImage.bands() == 3) {
             vipsImage = vipsImage.bandjoin(255);
         } else {
@@ -1061,7 +1123,7 @@ namespace UltraCanvas {
             vips_error_clear();
             throw vips::VError("Failed to decode image pixels: " + why);
         }
-        cairo_surface_t* surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, w,h);
+        cairo_surface_t* surface = cairo_image_surface_create(opaque ? CAIRO_FORMAT_RGB24 : CAIRO_FORMAT_ARGB32, w,h);
         if (cairo_surface_status(surface) != CAIRO_STATUS_SUCCESS) {
             cairo_surface_destroy(surface);
             throw vips::VError("Failed to create Cairo surface");
@@ -1072,7 +1134,19 @@ namespace UltraCanvas {
             throw vips::VError("Failed to get surface data");
         }
 
-        rgba2bgra_premultiplied(src, dst, w * h);
+        // cairo's rows are padded to its stride; libvips' are not
+        const int stride = cairo_image_surface_get_stride(surface);
+        if (opaque) {
+            for (int y = 0; y < h; ++y) {
+                rgbx2bgrx(src + static_cast<size_t>(y) * w,
+                          reinterpret_cast<uint32_t*>(reinterpret_cast<uint8_t*>(dst) + static_cast<size_t>(y) * stride), w);
+            }
+        } else {
+            for (int y = 0; y < h; ++y) {
+                rgba2bgra_premultiplied(src + static_cast<size_t>(y) * w,
+                                        reinterpret_cast<uint32_t*>(reinterpret_cast<uint8_t*>(dst) + static_cast<size_t>(y) * stride), w);
+            }
+        }
 
         cairo_surface_mark_dirty(surface);
 
@@ -1139,7 +1213,7 @@ namespace UltraCanvas {
         }
         const int tw = std::max(1, static_cast<int>(std::lround(sw * fx * scale)));
         const int th = std::max(1, static_cast<int>(std::lround(sh * fy * scale)));
-        auto pm = std::make_shared<UCPixmapCairo>(tw, th);
+        auto pm = std::make_shared<UCPixmapCairo>(tw, th, cairo_image_surface_get_format(source) == CAIRO_FORMAT_RGB24);
         if (!pm->IsValid()) {
             cairo_surface_destroy(source);
             return nullptr;
@@ -1160,7 +1234,7 @@ namespace UltraCanvas {
             // Centre crop to the box, in device pixels.
             const int bw = std::max(1, static_cast<int>(std::lround(w * scale)));
             const int bh = std::max(1, static_cast<int>(std::lround(h * scale)));
-            auto cropped = std::make_shared<UCPixmapCairo>(bw, bh);
+            auto cropped = std::make_shared<UCPixmapCairo>(bw, bh, pm->IsOpaque());
             if (!cropped->IsValid()) return nullptr;
             cairo_t* cr = cairo_create(cropped->GetSurface());
             cairo_set_source_surface(cr, pm->GetSurface(), -(tw - bw) / 2.0, -(th - bh) / 2.0);
