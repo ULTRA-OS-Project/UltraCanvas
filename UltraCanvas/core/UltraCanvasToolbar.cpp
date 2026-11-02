@@ -1,5 +1,6 @@
 // include/UltraCanvasToolbar.cpp
 // Implementation of comprehensive toolbar component
+// Version: 1.12.0 - RefreshCommandStates presses a folded group of check commands on the checked one
 // Version: 1.11.0 - SetOnContextMenu (a right click, watched at the window)
 // Version: 1.10.0 - AddWidget, RefreshCommandStates
 // Version: 1.9.0 - groupSpacing sets a separator's margins; ToolbarOverflowMode::Menu
@@ -569,15 +570,24 @@ namespace UltraCanvas {
             const std::string& id = entry.first;
             const auto& widget = entry.second;
             if (auto group = std::dynamic_pointer_cast<UltraCanvasToolGroupButton>(widget)) {
-                // A folded group: its tools are the commands.
-                bool anyEnabled = false, anyCommand = false;
+                // A folded group: its tools are the commands. A group of
+                // check commands (a palette's tools) shows the checked one,
+                // pressed, and is released when none of its tools is.
+                bool anyEnabled = false, anyCommand = false, anyChecked = false, allChecks = true;
+                std::string checkedTool;
                 for (const auto& tool : group->GetItems()) {
                     const MenuCommand* cmd = commandRegistry->Find(tool.id);
                     if (!cmd) continue;
                     anyCommand = true;
                     if (cmd->IsEnabledNow()) anyEnabled = true;
+                    if (!cmd->isChecked) { allChecks = false; continue; }
+                    if (!anyChecked && cmd->isChecked()) { anyChecked = true; checkedTool = tool.id; }
                 }
                 if (anyCommand && group->IsDisabled() == anyEnabled) group->SetDisabled(!anyEnabled);
+                if (anyCommand && allChecks) {
+                    if (anyChecked) group->SetCurrentItem(checkedTool);
+                    if (group->IsPressed() != anyChecked) group->SetPressed(anyChecked);
+                }
                 continue;
             }
             const MenuCommand* cmd = commandRegistry->Find(id);

@@ -118,6 +118,9 @@ registry.Register(quality);
 `FindShortcutConflicts()` lists the shortcuts given to more than one
 command, with their ids; `"Ctrl+Shift+S"` and `"shift+ctrl+s"` are one
 shortcut. A program can check it once at start in a debug build.
+`FindByShortcut("Ctrl+Shift+S")` finds the command a key press names: a key
+handler that spells the key it got that way and runs what this finds keeps
+the shortcut the menu shows and the one that works the same.
 
 ## 2. Describe the default groups
 
@@ -140,7 +143,14 @@ A group's fields: `id`, `label`, `iconName` (the slot's icon when folded),
 `visible`, `folded`, `userMade`. `SetCommandShown`, `IsCommandShown` and
 `ShownCommands` work on `hidden`; a hidden command stays in its group and
 comes back in its place. `ToolbarLayout::FindGroup` and `MoveGroup` find and
-reorder groups.
+reorder groups. `separateGroups` (on by default) puts a separator between two
+shown groups; a tool palette of folded groups turns it off. It is the
+program's choice: loading takes it from the defaults.
+
+A tool palette is a layout of Radio commands with `isChecked` (the active
+tool), each group folded: `RefreshCommandStates` presses the slot of the
+group that holds the active tool, shows that tool in it, and releases the
+others.
 
 ## 3. Build the toolbar
 

@@ -49,6 +49,7 @@
 //   UltraCanvas::MaterializeToolbar(*toolbar, layout, registry);
 //   UltraCanvas::SaveToolbarLayout(settings, layout, defaults);
 //
+// Version: 1.2.0 - separateGroups
 // Version: 1.1.0 - a program group keeps the user's order and additions;
 //                  InstallToolbarContextMenu, ToolbarContextMenuItems, ToolbarGroupOfItem
 // Version: 1.0.0
@@ -99,6 +100,10 @@ namespace UltraCanvas {
         std::vector<ToolbarLayoutGroup> groups;   // in display order
         ToolbarIconSize iconSize = ToolbarIconSize::Medium;
         bool showLabels = false;
+        // A separator between two shown groups (a tool palette of folded
+        // groups goes without). The program's choice: taken from the
+        // defaults on loading, never saved.
+        bool separateGroups = true;
 
         ToolbarLayoutGroup* FindGroup(const std::string& groupId);
         const ToolbarLayoutGroup* FindGroup(const std::string& groupId) const;

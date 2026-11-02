@@ -1,6 +1,6 @@
 # A Toolbar Configuration Widget — Investigation
 
-Status: **Investigation — phases 1 and 2 built.** The command catalogue,
+Status: **Investigation — phases 1, 2 and 3 built.** The command catalogue,
 the group model, building a toolbar from it and keeping the user's
 arrangement (§4.1–§4.5, §6 phase 1) are documented in
 [`UltraCanvasToolbarLayout.md`](UltraCanvasToolbarLayout.md); the editor and
@@ -12,8 +12,8 @@ menus and toolbars have **one** editor, `UltraCanvasCommandConfigWidget` (the
 menu editor grown, `UltraCanvasMenuConfigWidget` an alias) - so §4.4's
 `UltraCanvasToolbarConfigWidget` and `ShowToolbarConfigDialog` became
 `UltraCanvasCommandConfigWidget` and `ShowCommandConfigDialog`. The
-group-aware drag on the bar itself (§4.6, item 6 of §5) and ArtCreator
-(phase 3) are not built. The names in the code blocks that do not exist are
+group-aware drag on the bar itself (§4.6, item 6 of §5) is not built.
+ArtCreator (phase 3) runs on it - see §6 for what is left of that phase. The names in the code blocks that do not exist are
 recorded in `scripts/doc_examples_baseline.txt`.
 
 **Since written (2026-10-30):** three of the gaps it found are fixed —
@@ -554,6 +554,20 @@ Filer model's menu and toolbar together; `Tests/CommandConfigWidgetTest.cpp`.
    registry. The single-letter tool keys remain as they are.
 6. Draw the 25 missing 24 px icons (§3.3).
 7. *View → Toolbars* lists the groups and ends with *Customise Toolbars…*.
+
+*Built:* `Apps/ArtCreator/ArtCreatorCommands.cpp` registers
+every command once per window - the menus' ~80, the 19 tools as Radio commands
+with their letters, Quality as a widget command, Customise, and View >
+Toolbars and the two size submenus as `prototype` commands; the menu headings
+are commands of their own. The menu bar, the toolbar and the palette are built
+from layouts (steps 2-4), the keyboard runs `FindByShortcut` (step 5), and
+View > Toolbars and the right-click menus offer the groups (step 7). Undo /
+Redo carry their step, what needs a selection is greyed without one, and the
+palette follows the active tool through `RefreshCommandStates`. The menus are
+kept with `SaveMenuLayoutSet`, the toolbars with `SaveToolbarLayout`. The 24
+command icons that had no 24 px drawing (step 6) are drawn, and a saved menu
+layout gains a command a later release adds, as a toolbar's does
+(`MergeMenuLayoutSet`, with the program's commands recorded in the file).
 
 **Phase 4: the other programs.** UltraPaint and Texter first, because they
 share ArtCreator's *File / History / Zoom* groups. Texter's existing *Main

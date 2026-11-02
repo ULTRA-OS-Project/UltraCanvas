@@ -11,6 +11,16 @@
 // mirroring the style used by the applications' own config files. The caller
 // supplies the file path so this module stays free of any config-directory policy.
 //
+// A layout the user arranged is brought forward to a newer program the way a
+// toolbar's is: saved with the program's defaults (SaveMenuLayoutSet with
+// them), it records the commands those defaults held, and loaded with the
+// newer program's defaults (LoadMenuLayoutSet with them, MergeMenuLayoutSet)
+// it gains each command the program has added since, at its default place -
+// while a command the user removed stays removed.
+//
+// Version: 1.1.0 - MenuLayoutSet::knownCommands, SaveMenuLayoutSet / LoadMenuLayoutSet with the
+//                  program's defaults, MergeMenuLayoutSet: a command a newer program adds
+//                  to its menus appears in a menu the user arranged
 // Version: 1.0.0
 // Author: UltraCanvas Framework
 #pragma once
@@ -71,6 +81,11 @@ namespace UltraCanvas {
 // saved to one file.
     struct MenuLayoutSet {
         std::vector<MenuLayout> menus;
+        // The command ids the program's own menus held when this arrangement
+        // was saved; empty when not known (a file saved without defaults).
+        // Merging tells a command the program added since from one the user
+        // removed by it.
+        std::vector<std::string> knownCommands;
 
         MenuLayout* Find(const std::string& name);
         const MenuLayout* Find(const std::string& name) const;
@@ -80,6 +95,34 @@ namespace UltraCanvas {
 // ===== PERSISTENCE (line/section text format) =====
     bool SaveMenuLayoutSet(const MenuLayoutSet& set, const std::string& filePath);
     bool LoadMenuLayoutSet(MenuLayoutSet& out, const std::string& filePath);
+
+    // Every command id in `set`, each once, in menu order.
+    std::vector<std::string> MenuLayoutCommandIds(const MenuLayoutSet& set);
+    // `saved` brought forward to the program's current `defaults`:
+    //   * a command of the defaults that the program did not have when
+    //     `saved` was saved (not in its knownCommands - with none recorded,
+    //     every command `saved` holds counts as known) goes in at its place
+    //     in the defaults: after the entry it follows there, in the submenu
+    //     of the same label; a submenu that is new as a whole goes in with
+    //     its new commands;
+    //   * a command that is anywhere in `saved` - the user moved it - is not
+    //     added again, and one the user removed stays removed;
+    //   * a menu of the defaults that `saved` has no menu of that name for
+    //     goes in whole;
+    //   * with `registry`, a command it does not know is dropped.
+    // The result's knownCommands are the defaults'.
+    MenuLayoutSet MergeMenuLayoutSet(const MenuLayoutSet& defaults, const MenuLayoutSet& saved,
+                                     const UltraCanvasCommandRegistry* registry = nullptr);
+    // Saves `set` with the commands `defaults` hold as its knownCommands, for
+    // a later MergeMenuLayoutSet.
+    bool SaveMenuLayoutSet(const MenuLayoutSet& set, const std::string& filePath,
+                           const MenuLayoutSet& defaults);
+    // Loads the set kept in `filePath` merged with `defaults`
+    // (MergeMenuLayoutSet). False, with `out` set to the defaults, when there
+    // is no such file or it holds no menu.
+    bool LoadMenuLayoutSet(MenuLayoutSet& out, const std::string& filePath,
+                           const MenuLayoutSet& defaults,
+                           const UltraCanvasCommandRegistry* registry = nullptr);
 
     // Single-layout convenience wrappers (one menu per file).
     bool SaveMenuLayout(const MenuLayout& layout, const std::string& filePath);

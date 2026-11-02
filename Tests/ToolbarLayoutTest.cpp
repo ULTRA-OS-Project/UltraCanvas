@@ -25,6 +25,10 @@
 //   the user added, and still gains a command the next release adds.
 // - The context menu: a check per group, Fold / Unfold and Hide for the group
 //   and command under the pointer, Customise; each rebuilds the toolbar.
+// - FindByShortcut finds the command a key press names, however spelt; a
+//   palette layout puts no separators between its groups; a folded group of
+//   check commands (a palette's tools) shows and presses the checked one.
+// Version: 1.2.0 - FindByShortcut, separateGroups, a folded group of checks refreshed
 // Version: 1.1.0 - a program group's order and additions kept; the context menu
 // Version: 1.0.0
 // Last Modified: 2026-11-02
@@ -35,6 +39,7 @@
 #include "UltraCanvasSlider.h"
 #include "UltraCanvasToolbarLayout.h"
 
+#include <cctype>
 #include <cstdio>
 #include <filesystem>
 #include <memory>
@@ -358,12 +363,60 @@ void TestContextMenu() {
     Check(toolbar->HasContextMenu(), "InstallToolbarContextMenu gives the toolbar the menu");
 }
 
+void TestPaletteAndShortcuts() {
+    std::printf("Shortcuts, and a palette of tools\n");
+    UltraCanvasCommandRegistry registry;
+    registry.RegisterAction("file.save-as", "File", "Save As", "", "Ctrl+Shift+S", []() {});
+    std::string active = "tool.pen";
+    for (const char* id : { "tool.select", "tool.pen", "tool.line", "tool.text" }) {
+        MenuCommand tool(id, "Tools", id);
+        tool.type = MenuItemType::Radio;
+        tool.shortcut = std::string(1, static_cast<char>(std::toupper(static_cast<unsigned char>(id[5]))));
+        tool.isChecked = [&active, id]() { return active == id; };
+        tool.onToggle = [&active, id](bool) { active = id; };
+        registry.Register(tool);
+    }
+    const MenuCommand* byKey = registry.FindByShortcut("shift+ctrl+s");
+    Check(byKey && byKey->id == "file.save-as", "FindByShortcut finds a command however its shortcut is spelt");
+    Check(registry.FindByShortcut("T") && registry.FindByShortcut("T")->id == "tool.text" &&
+                  !registry.FindByShortcut("Ctrl+T") && !registry.FindByShortcut(""),
+          "a single letter is a shortcut of its own, and an unknown one finds nothing");
+
+    ToolbarLayout palette;
+    palette.name = "palette";
+    palette.separateGroups = false;
+    ToolbarLayoutGroup draw = ToolbarLayoutGroup::Make("draw", "Draw", { "tool.pen", "tool.line" });
+    draw.folded = true;
+    palette.groups = { ToolbarLayoutGroup::Make("select", "Select", { "tool.select" }), draw,
+                       ToolbarLayoutGroup::Make("text", "Text", { "tool.text" }) };
+    auto bar = std::make_shared<UltraCanvasToolbar>("palette", 0, 0, 46, 0);
+    bar->SetOrientation(ToolbarOrientation::Vertical);
+    MaterializeToolbar(*bar, palette, registry);
+    Check(Join(bar->GetItemOrder()) == "tool.select,draw,tool.text", "a palette layout puts no separators between its groups");
+
+    auto slot = std::dynamic_pointer_cast<UltraCanvasToolGroupButton>(bar->GetWidget("draw"));
+    auto text = std::dynamic_pointer_cast<UltraCanvasButton>(bar->GetWidget("tool.text"));
+    Check(slot && slot->IsPressed() && slot->GetCurrentItem() == "tool.pen" && text && !text->IsPressed(),
+          "a folded group of tools is pressed on the active one");
+    active = "tool.line";
+    bar->RefreshCommandStates();
+    Check(slot && slot->IsPressed() && slot->GetCurrentItem() == "tool.line", "and follows it within the group");
+    active = "tool.text";
+    bar->RefreshCommandStates();
+    Check(slot && !slot->IsPressed() && text && text->IsPressed(), "and is released when a tool elsewhere is active");
+
+    ToolbarLayout kept = palette;
+    kept.separateGroups = true;   // not the user's to change: the defaults' wins
+    Check(!MergeToolbarLayout(palette, kept).separateGroups, "separateGroups comes from the program's defaults");
+}
+
 int main() {
     TestRegistry();
     TestGroupHelpers();
     TestMaterialize();
     TestPersist();
     TestContextMenu();
+    TestPaletteAndShortcuts();
     if (g_failures == 0) {
         std::printf("All toolbar layout checks passed.\n");
         return 0;

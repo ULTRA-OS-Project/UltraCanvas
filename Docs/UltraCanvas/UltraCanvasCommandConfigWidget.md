@@ -1,6 +1,6 @@
 # Menus and Toolbars Editor
 
-<!-- doc-check: void OnOpen(); void SetWordWrap(bool on); MenuItemData BuildRecentFilesSubmenu(); std::string ConfigDir(); std::shared_ptr<UltraCanvasMenu> menuBar; std::shared_ptr<UltraCanvasToolbar> toolbar; UltraCanvasCommandRegistry* registry; UltraCanvasAppSettings settings{"MyApp"}; ToolbarLayout toolbarDefaults; ToolbarLayout toolbarLayout; std::shared_ptr<UltraCanvasWindowBase> window; -->
+<!-- doc-check: void OnOpen(); void SetWordWrap(bool on); MenuItemData BuildRecentFilesSubmenu(); std::string ConfigDir(); std::shared_ptr<UltraCanvasMenu> menuBar; std::shared_ptr<UltraCanvasToolbar> toolbar; UltraCanvasCommandRegistry* registry; UltraCanvasAppSettings settings{"MyApp"}; ToolbarLayout toolbarDefaults; ToolbarLayout toolbarLayout; std::shared_ptr<UltraCanvasWindowBase> window; MenuLayoutSet defaultMenus; -->
 
 `UltraCanvasCommandConfigWidget` lets end users customise an application's menus
 **and toolbars** at runtime, in one editor: reorder entries, add or remove
@@ -232,7 +232,26 @@ ID=file.new
 ```
 
 Only ids are stored; labels, icons and shortcuts are resolved from the registry when
-the layout is materialized, so they never drift out of sync. An optional per-node
+the layout is materialized, so they never drift out of sync.
+
+Save with the program's default menus and load with them, and a layout the user
+arranged is brought forward to each newer program:
+
+```cpp
+SaveMenuLayoutSet(s.menus, ConfigDir() + "/menu_layout.txt", defaultMenus);   // + [KNOWN]
+MenuLayoutSet menus;
+LoadMenuLayoutSet(menus, ConfigDir() + "/menu_layout.txt", defaultMenus, registry);
+```
+
+The file then starts with a `[KNOWN]` section - the command ids the program's
+menus held when it was saved (`MenuLayoutSet::knownCommands`; a reader without
+it passes over the section). `MergeMenuLayoutSet` puts each command the newer
+defaults hold that the saved program did not know at its place: after the entry
+it follows there, in the submenu of the same label; a submenu new as a whole, and
+a menu the saved set has no menu of that name for, go in whole. A command the user
+removed stays removed, one the user already has elsewhere is not added again, and
+with the registry given an id it does not know is dropped. A file saved without
+the record counts what it holds as what its program had. An optional per-node
 `LABEL` records a user rename. Unknown ids materialize as a disabled `<id>`
 placeholder so a stale layout degrades visibly rather than silently dropping
 entries.

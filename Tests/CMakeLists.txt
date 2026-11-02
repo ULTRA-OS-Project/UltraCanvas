@@ -6013,6 +6013,27 @@ else()
     message(STATUS "  CommandConfigWidgetTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== MENU LAYOUT MERGE TEST =====
+# A menu layout the user arranged, brought forward to a newer program's
+# defaults: new commands at their place, removed ones still removed. Headless.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building MenuLayoutMergeTest...")
+    add_executable(MenuLayoutMergeTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/MenuLayoutMergeTest.cpp
+    )
+    target_include_directories(MenuLayoutMergeTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(MenuLayoutMergeTest PRIVATE cxx_std_20)
+    target_link_libraries(MenuLayoutMergeTest PRIVATE UltraCanvas)
+    set_target_properties(MenuLayoutMergeTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME MenuLayoutMergeTest COMMAND MenuLayoutMergeTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: MenuLayoutMergeTest")
+else()
+    message(STATUS "  MenuLayoutMergeTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== CSS LAYOUT FORM GRID TEST =====
 # The two-column [auto, 1fr] form grid every dialog is built from: captions
 # share a column, controls line up under each other, a full-width row does not
