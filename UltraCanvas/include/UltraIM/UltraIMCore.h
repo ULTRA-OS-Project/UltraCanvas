@@ -1,5 +1,6 @@
 // include/UltraIM/UltraIMCore.h
 // UltraIM - the public instant-messaging API (UltraIM_* functions)
+// Version: 0.1.7 - UltraIM_VerifyContact, _ResendContactCode, _SetRecoveryEnabled, _StartRecovery, _FinishRecovery
 // Version: 0.1.6 - the account's profile (UltraIM_FetchAccountProfile, UltraIM_UpdateAccountProfile) and its
 //                  sign-in protection (UltraIM_GetSignInProtection, _StartAuthenticatorSetup, _SetSignInProtection)
 // Version: 0.1.5 - UltraIM_SetPreviewMaker, UltraIM_MakePreview
@@ -178,6 +179,26 @@ UltraIMResult UltraIM_StartAuthenticatorSetup(const std::string& providerId, std
 // needs is missing.
 void UltraIM_SetSignInProtection(const std::string& providerId, const UltraIMProtectionChange& change,
                                  UltraIMResultCallback onResult);
+
+// ---- Confirming the e-mail and phone; account recovery ---------------------------
+// A changed e-mail address or phone number gets a code from the service
+// (emailVerified / phoneVerified in the profile say when it came back):
+// UltraIM_VerifyContact sends it back, UltraIM_ResendContactCode asks for a
+// new one. UltraIM_SetRecoveryEnabled turns recovery on - both confirmed - or
+// off. On a computer without the account, UltraIM_StartRecovery(provider,
+// server, the e-mail address or the phone number) has a code sent to each,
+// and UltraIM_FinishRecovery with both puts the account on this computer;
+// UltraIM_SignIn then signs in with what it stored. The challenge looks the
+// same for an address the service does not know; only the codes tell.
+void UltraIM_VerifyContact(const std::string& providerId, UltraIMContactChannel channel, const std::string& code,
+                           UltraIMResultCallback onResult);
+void UltraIM_ResendContactCode(const std::string& providerId, UltraIMContactChannel channel,
+                               UltraIMResultCallback onResult);
+void UltraIM_SetRecoveryEnabled(const std::string& providerId, bool enabled, UltraIMResultCallback onResult);
+void UltraIM_StartRecovery(const std::string& providerId, const std::string& server, const std::string& address,
+                           UltraIMRecoveryChallengeCallback onResult);
+void UltraIM_FinishRecovery(const std::string& providerId, const UltraIMRecoveryAnswer& answer,
+                            UltraIMResultCallback onResult);
 
 // ---- Preview pictures -----------------------------------------------------------
 // The application's way of making a preview picture (UltraIMPreviewMaker):

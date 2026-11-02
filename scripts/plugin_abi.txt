@@ -1,9 +1,9 @@
 # The plug-in ABIs as last recorded - see scripts/check_plugin_abi.py.
 # Written by `check_plugin_abi.py --update`; never edit by hand.
 
-# ultraim: recorded at abi 2
-ultraim abi 2
-ultraim fingerprint 1d270905fbbaa431fd38342a44fc40a3c63911bc726f4ffc6b0e507b11cd435d
+# ultraim: recorded at abi 3
+ultraim abi 3
+ultraim fingerprint afa899f644cf4eb2918a1e177eecc46c7d4ad84da2827ed3c8664d851f5d55d0
 
 # element: no ABI change at table 1, uc 1: the plugin's new export UltraCanvas_PluginHeadersId, which the loader requires before it calls anything - a plugin without it is refused, so no number has to move
 element table 1

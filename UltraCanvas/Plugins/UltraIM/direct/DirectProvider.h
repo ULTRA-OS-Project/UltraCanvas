@@ -17,6 +17,8 @@
 // step Password, then Code. The e-mail address and phone number the owner
 // gives (to recover the account) are kept in the vault and on the relay,
 // for the owner alone.
+// Version: 0.1.4 - confirming the e-mail and phone with the relay's codes; account recovery (the relay
+//                  keeps a copy of the key while it is on, and gives it back for codes sent to both)
 // Version: 0.1.3 - the account's profile (name, e-mail, phone); a password and/or an authenticator code to sign in
 // Version: 0.1.2 - pictures, videos and files sent and received in parts; DownloadAttachment
 // Version: 0.1.1 - FetchSharedCredentials: the Telegram application's keys from the relay
@@ -97,6 +99,20 @@ public:
     UltraIMResult StartAuthenticatorSetup(std::string& outOtpAuthUri) override;
     // On the worker thread (the password is stretched, twice when it changes).
     void SetSignInProtection(const UltraIMProtectionChange& change, UltraIMResultCallback onResult) override;
+
+    // ---- confirming the e-mail and phone; account recovery ----------------------------
+    // The relay sends the codes and checks them (POST /v1/profile/verify,
+    // /verify/resend). Recovery on: the relay gets a copy of this ID's key,
+    // which it keeps encrypted with its recovery key (PUT /v1/recovery/escrow);
+    // off: it deletes it. On a computer without an ID, StartRecovery and
+    // FinishRecovery (POST /v1/recovery/start, /finish) bring the key back,
+    // and the ID is stored here as if it had been made here.
+    void VerifyContact(UltraIMContactChannel channel, const std::string& code, UltraIMResultCallback onResult) override;
+    void ResendContactCode(UltraIMContactChannel channel, UltraIMResultCallback onResult) override;
+    void SetRecoveryEnabled(bool enabled, UltraIMResultCallback onResult) override;
+    void StartRecovery(const std::string& server, const std::string& address,
+                       UltraIMRecoveryChallengeCallback onResult) override;
+    void FinishRecovery(const UltraIMRecoveryAnswer& answer, UltraIMResultCallback onResult) override;
 
     // ---- data ---------------------------------------------------------------
     void FetchConversations(UltraIMConversationsCallback onResult) override;
@@ -189,6 +205,10 @@ private:
     void SignInNow(const UltraIMCredentials& credentials, UltraIMResultCallback onResult);
     void ChangeProtection(const UltraIMProtectionChange& change, UltraIMResultCallback onResult);
     void SendProfileToRelay(std::function<void(const UltraIMResult&)> onDone);
+    // Whether this computer holds an ID already (in the vault, behind a password or not).
+    bool HasIdentityHere();
+    // The relay a recovery talks to, before there is a session (one at a time).
+    std::shared_ptr<RelayClient> recoveryRelay_;
     // Runs `job` on the worker thread, between two pumps.
     void Enqueue(std::function<void()> job);
     void AfterLogin();

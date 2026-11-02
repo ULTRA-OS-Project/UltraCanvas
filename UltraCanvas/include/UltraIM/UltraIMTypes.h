@@ -4,6 +4,8 @@
 // Version: 0.1.4 - UltraIMAttachment::thumbnailPath (a video's or a file's preview picture); UltraIMAttachmentCallback
 // Version: 0.1.3 - UltraIMAuthStep::OtherDevice: a sign-in confirmed on another device (a QR code scanned there)
 // Version: 0.1.2 - UltraIMProviderInfo::authResendHint: a sign-in code can be asked for another way
+// Version: 0.1.3 - the profile's verified flags and recovery state; UltraIMContactChannel, UltraIMRecoveryChallenge,
+//                  UltraIMRecoveryAnswer: account recovery by codes to the e-mail and the phone
 // Version: 0.1.2 - UltraIMAccountProfile (name, e-mail, phone), UltraIMSignInProtection, credentials.email
 // Version: 0.1.1 - UltraIMSharedCredentialsCallback: credentials one provider's service keeps for another
 // Version: 0.1.0
@@ -157,7 +159,8 @@ enum class UltraIMCapabilityFlags : uint32_t {
     AddContact      = 1u << 24,  // UltraIM_AddContact
     CreateGroup     = 1u << 25,  // UltraIM_CreateGroup
     AccountProfile  = 1u << 26,  // UltraIM_FetchAccountProfile / UltraIM_UpdateAccountProfile
-    SignInProtection = 1u << 27  // UltraIM_SetSignInProtection: a password, an authenticator code
+    SignInProtection = 1u << 27, // UltraIM_SetSignInProtection: a password, an authenticator code
+    AccountRecovery = 1u << 28   // UltraIM_StartRecovery / FinishRecovery: back with codes to the e-mail and phone
 };
 
 inline UltraIMCapabilityFlags operator|(UltraIMCapabilityFlags a, UltraIMCapabilityFlags b) {
@@ -231,6 +234,33 @@ struct UltraIMAccountProfile {
     std::string displayName;
     std::string email;
     std::string phoneNumber;        // international form, "+49 151 ..." as typed
+    // What the service says, read by FetchAccountProfile (an update ignores
+    // them): whether a code sent to the address or the number came back
+    // (UltraIM_VerifyContact), whether the service offers recovery at all,
+    // and whether this account has it on (UltraIM_SetRecoveryEnabled).
+    bool emailVerified = false;
+    bool phoneVerified = false;
+    bool recoveryAvailable = false;
+    bool recoveryEnabled = false;
+};
+
+// The two ways a code reaches the owner.
+enum class UltraIMContactChannel { Email, Phone };
+
+// ---- Account recovery ------------------------------------------------------
+// A new computer gets an account back without the old one: the service sends
+// a code to the account's verified e-mail address and one to its verified
+// phone, and both typed back return the account (ChatCube Direct: the
+// relay hands back the copy of the key it keeps while recovery is on).
+struct UltraIMRecoveryChallenge {
+    std::string recoveryId;         // what FinishRecovery names
+    int         expiresInSeconds = 0;
+};
+struct UltraIMRecoveryAnswer {
+    std::string server;             // the same service StartRecovery asked
+    std::string recoveryId;
+    std::string emailCode;
+    std::string phoneCode;
 };
 
 // What signing in asks of the user on this device (ChatCube Direct, whose
@@ -445,6 +475,8 @@ using UltraIMAttachmentCallback   = std::function<void(const UltraIMResult& resu
 // Returns false when it cannot read the file.
 using UltraIMPreviewMaker = std::function<bool(const std::string& path, const std::string& mimeType, int maxSide,
                                                const std::string& outJpegPath, int& outWidth, int& outHeight)>;
+using UltraIMRecoveryChallengeCallback = std::function<void(const UltraIMResult& result,
+                                                            const UltraIMRecoveryChallenge& challenge)>;
 using UltraIMAccountProfileCallback = std::function<void(const UltraIMResult& result,
                                                          const UltraIMAccountProfile& profile)>;
 // Credentials a provider's service keeps for another provider (the ChatCube
