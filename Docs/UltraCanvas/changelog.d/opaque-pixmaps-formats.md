@@ -17,11 +17,11 @@
   2752 × 1536 desktop wallpaper: 40 ms (JPEG decode and fit to 1280 × 800)
   against 10 ms from the blob, 155 ms against 75 at 3840 × 2160; the first
   run pays once for the blob's compression and write. The QOI
-  *file* format was tried for the wallpaper and dropped: libjpeg-turbo with
-  shrink-on-load decodes the JPEG faster than the QOI reference decoder
-  reads 4 megapixels (24 ms against 180), and the file is six times the
-  size - QOI pays only without a decode and a resize, which is what the
-  cached blob is.
+  *file* format was measured for the wallpaper and not taken: libjpeg-turbo
+  reads the 4-megapixel JPEG in 31 ms and fits it in 40, the QOI reference
+  decoder 41 and 54 (it has no reduced-size decode), and the file is six
+  times the size - QOI pays only without a decode and a resize, which is
+  what the cached blob is.
 - **Every modern picture format in every build.** `ImageFormatsTest` (under
   `BUILD_TESTS`, so every CI row) reads a JPEG, PNG, GIF, BMP, TIFF, WebP,
   AVIF, HEIC, JPEG XL, QOI and Windows icon from `media/images` and fails
