@@ -21,6 +21,12 @@
 // nothing at all - not even the PONG - for two intervals is taken as gone:
 // onError once, the state Closed, so its owner reconnects instead of waiting
 // on a dead connection.
+//
+// A message is assembled from however many reads it takes, up to
+// options.maxMessageBytes (64 MB unless set): past it the connection ends
+// with close 1009 before the memory is spent. Reconnecting is the owner's.
+// Version: 0.4.1 - options.maxMessageBytes: a message past it ends the connection (1009) before it is
+//                  assembled; the reconnect options, which nothing read, removed
 // Version: 0.4.0 - PINGs answered; pingIntervalMs pings and notices a silent peer; reads and writes
 //                  of the one easy handle under one mutex; a frame larger than a read is delivered
 //                  whole, not as one message per read
@@ -52,6 +58,7 @@ struct WsConnection {
     curl_slist* slist = nullptr;
     std::mutex ioMutex;                 // every curl_ws_recv and curl_ws_send
     int pingIntervalMs = 0;             // 0: the client does not ping
+    std::size_t maxMessageBytes = 0;    // 0: no limit
     std::atomic<UltraNetWebSocketState> state{UltraNetWebSocketState::Closed};
     std::atomic<bool> running{false};
     // The receiver holds a shared_ptr to its connection, so the last
@@ -208,6 +215,23 @@ void ReceiverLoop(std::shared_ptr<WsConnection> c) {
         // hands a frame larger than the buffer over in parts (bytesleft) -
         // and no fragment follows it (CURLWS_CONT).
         const bool messageDone = meta->bytesleft == 0 && !(flags & CURLWS_CONT);
+        // A message past the limit is not assembled: the connection ends
+        // (1009, message too big) before the memory is spent - checked by
+        // what is already here plus what this frame still announces.
+        if ((flags & (CURLWS_TEXT | CURLWS_BINARY)) && c->maxMessageBytes > 0) {
+            const std::size_t held = (flags & CURLWS_TEXT) ? textAcc.size() : binaryAcc.size();
+            const curl_off_t left = meta->bytesleft > 0 ? meta->bytesleft : 0;
+            if (held + nread + static_cast<std::size_t>(left) > c->maxMessageBytes) {
+                static const unsigned char tooBig[] = {0x03, 0xF1, 'm', 'e', 's', 's', 'a', 'g', 'e',
+                                                       ' ', 't', 'o', 'o', ' ', 'b', 'i', 'g'};   // 1009
+                SendLocked(*c, tooBig, sizeof tooBig, CURLWS_CLOSE);
+                c->state.store(UltraNetWebSocketState::Closed, std::memory_order_release);
+                if (cbs.onError)
+                    cbs.onError(c->handle, "a message larger than " + std::to_string(c->maxMessageBytes) +
+                                               " bytes (UltraNetWebSocketOptions::maxMessageBytes)");
+                break;
+            }
+        }
         if (flags & CURLWS_TEXT) {
             if (!inText) { textAcc.clear(); inText = true; }
             textAcc.insert(textAcc.end(), buf, buf + nread);
@@ -289,6 +313,7 @@ UltraNetHandle UltraNet_WebSocketConnect(
     curl_easy_setopt(c->easy, CURLOPT_WS_OPTIONS, static_cast<long>(CURLWS_NOAUTOPONG));
 #endif
     c->pingIntervalMs = options.pingIntervalMs > 0 ? options.pingIntervalMs : 0;
+    c->maxMessageBytes = options.maxMessageBytes;
 
     UltraNetHttpHeaders headers = options.headers;
     if (!options.subprotocols.empty()) {

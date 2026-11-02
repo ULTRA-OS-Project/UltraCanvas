@@ -575,3 +575,33 @@ TEST(ws_delivers_a_large_frame_whole) {
     watch.Uninstall();
 #endif
 }
+
+TEST(ws_refuses_a_message_over_its_limit) {
+#if defined(_WIN32)
+    SKIP("loopback WS server is POSIX-only");
+#else
+    if (!StartWsServer()) SKIP("python3 + websockets package not available");
+    WsWatch watch;
+    watch.Install();
+    UltraNetWebSocketOptions options;
+    options.maxMessageBytes = 10000;
+    watch.handle = UltraNet_WebSocketConnect(EchoUrl(), options);
+    if (watch.handle == UltraNetInvalidHandle) {
+        watch.Uninstall();
+        SKIP("libcurl built without --enable-websockets");
+    }
+    // Under the limit: delivered.
+    CHECK(bool(UltraNet_WebSocketSendText(watch.handle, std::string(5000, 'a'))));
+    CHECK(WaitFor([&]() { return watch.Count() == 1; }, 2000));
+    // Over it: not assembled - the connection ends (1009, message too big),
+    // said once, and the message never reaches onText.
+    CHECK(bool(UltraNet_WebSocketSendText(watch.handle, std::string(50000, 'b'))));
+    CHECK(WaitFor([&]() { return watch.errors.load() > 0; }, 3000));
+    CHECK(!UltraNet_WebSocketIsOpen(watch.handle));
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+    CHECK(watch.errors.load() == 1);
+    CHECK(watch.Count() == 1);
+    UltraNet_WebSocketClose(watch.handle, 1000);
+    watch.Uninstall();
+#endif
+}

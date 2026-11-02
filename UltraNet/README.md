@@ -247,7 +247,10 @@ does, every 20 s - no longer drops an idle one), and with `pingIntervalMs`
 the client pings too and takes a peer that sends nothing at all for two
 intervals as gone - `onError` once, so the owner can reconnect rather than
 wait on a dead connection. A message reaches `onText` / `onBinary` whole,
-however many reads it took. Sends from any thread are safe while the
+however many reads it took, up to `maxMessageBytes` (64 MB unless set, 0 for
+no limit): a larger one ends the connection with close 1009 before it is
+assembled. Reconnecting is the owner's - a handle is one connection - on
+`onClose` / `onError`. Sends from any thread are safe while the
 receiver reads: one mutex covers every read and write of the connection.
 
 ```cpp

@@ -14,6 +14,15 @@
     envelope arrived as five broken messages. Until now the drops hid it,
     since each reconnect fetched the queue over HTTP.
   Reads and writes of the one libcurl handle also share one mutex now (the
-  receiver read while other threads sent). `test_websocket.cpp` covers each:
+  receiver read while other threads sent).
+- **`UltraNetWebSocketOptions`: every member does what it says.** Four did
+  nothing. `maxFrameSize` ("0 = libcurl default (~64KB)" - there is none) is
+  now `maxMessageBytes`: the largest incoming message, 64 MB unless set, 0
+  for no limit; a larger one ends the connection (close 1009) before it is
+  assembled, where a server could otherwise grow one without end.
+  `autoReconnect`, `maxReconnectAttempts` and `reconnectDelayMs` are gone:
+  reconnecting is the owner's, on `onClose` / `onError` (a handle is one
+  connection), as ChatCube's relay client does. Nothing in the repository
+  set any of the four. `test_websocket.cpp` covers each:
   a server pinging every half second, the client's pings, a silent peer,
-  four threads sending while pinged, a 50 KB message.
+  four threads sending while pinged, a 50 KB message, one past its limit.
