@@ -18,8 +18,10 @@
 //     ... draw the chart into plotArea ...
 //     legend.Render(ctx, consumed);
 //
-// Version: 1.2.0
-// Last Modified: 2026-10-20
+// Version: 1.2.1
+// Last Modified: 2026-10-24
+// V1.2.1: ChartLegendStyle::fontFamily defaults to the default face (empty),
+//   the chart's own, instead of "Arial" and whatever the system put for it.
 // V1.2.0: LegendSizeScale::areaScaled and explicit sample values, so the size
 //   key of an area-proportional bubble chart matches its bubbles.
 // V1.1.0: Paint-mirroring swatches (Outline, Hatched, Image + a real Gradient
@@ -171,7 +173,8 @@ namespace UltraCanvas {
 
     struct ChartLegendStyle {
         // Text
-        std::string fontFamily = "Arial";
+        // Empty: the default face, the one the chart's own text is in.
+        std::string fontFamily;
         float       fontSize = 11.0f;
         Color       textColor = Color(40, 40, 40, 255);
         Color       disabledTextColor = Color(160, 160, 160, 255);

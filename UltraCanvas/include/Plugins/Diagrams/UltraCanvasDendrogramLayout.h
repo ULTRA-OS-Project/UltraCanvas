@@ -24,7 +24,6 @@
 #include <algorithm>
 #include <memory>
 
-#undef None
 namespace UltraCanvas {
 
 // =============================================================================
@@ -59,7 +58,7 @@ namespace UltraCanvas {
     };
 
     enum class GroupLabelPlacement {
-        None,           // Group labels not shown
+        NoLabels,           // Group labels not shown
         SidebarBracket, // Vertical bracket beside tree (horizontal layouts)
         FloatingBadge,  // Text badge centered over clade bounding box
         ArcText,        // Rotated text on circular layout perimeter
@@ -67,14 +66,14 @@ namespace UltraCanvas {
     };
 
     enum class GroupFillMode {
-        None,       // No background fill
+        NoFill,       // No background fill
         BandFill,   // Semi-transparent rect band (horizontal/vertical layouts)
         SectorFill, // Pie-slice sector (radial/circular layouts)
         ConvexHull  // Convex hull polygon around all group nodes
     };
 
     enum class ConfidenceDisplayMode {
-        None,                // Not shown
+        Hidden,                // Not shown
         LineThickness,       // Stroke width mapped from confidence value
         LineDash,            // Dashed line below threshold
         NodeDot,             // Filled/hollow dot on internal nodes

@@ -24,7 +24,7 @@ Docs: [`Docs/UltraCanvas/UltraCanvasVectorCanvas.md`](../../Docs/UltraCanvas/Ult
 ```
 ┌ menu bar ─────────────────────────────────────────────────────────────┐
 ├ toolbar: new open save | undo redo | zoom- zoom+ page 100% | group … | mirror | quality ┤
-├ transform bar: reference point | X Y | W H | W% H% | lock | rotation shear ┤
+├ transform bar: reference point | X Y | W H | W% H% | lock | rotation shear | (Rotate) centre ┤
 ├──────┬────────────────────────────────────────────┬────────────────────┤
 │ tool │  rulers                                     │ Icon (icon mode)   │
 │ pal- │ ┌──────────────────────────────────────┐    │ Colour (fill/line) │
@@ -45,6 +45,14 @@ Options* (captioned with the tool's name, and left out for a tool without
 options), *Gradient* (the fill's ramp) with the Fill tool, and *Line* with
 Pen, Freehand and Straight Line, or with the Selector or Shape Editor while
 a line (a straight line, polyline or open path) is selected.
+
+The Selector's options are four small framed sections: a *Handles* switch
+(Scale | Rotate - the rotate handles' edges skew - which follows a second
+click on the selection) with the *Rotation handle* switch under it (Dial |
+Stem, kept as `handles.rotation` in the settings file), and three rows of flat icon buttons with tooltips: *Arrange* (to front, forward, backward, to back),
+*Align* (left, centre, right | top, middle, bottom | centre on page) and
+*Distribute* (centres evenly | equal gaps). Each row is greyed until the
+selection holds enough objects for it - one, two, three.
 
 The colour picker has a list of designs in its corner - colour circle,
 slider and square, colour rectangle, or colour and brightness sliders - and
@@ -107,9 +115,34 @@ sizes) and their size, a width profile (taper to either end, both, bulge)
 and a brush (dots, dashes, hearts stamped along the path). It applies to
 the selection and to every line drawn afterwards.
 
+## Customising the menus and toolbars
+
+Every command - the menu entries, the toolbar's buttons, the tools and the
+keys - is registered once, so a command has one label, one icon, one
+shortcut and one state wherever it appears: Undo names the step it undoes and
+is greyed with nothing to undo, a command that needs a selection is greyed
+without one, and the active tool's slot is pressed.
+
+- **Right-click the toolbar or the tool palette** for its groups: tick a
+  group to show it (the toolbar offers Edit, Align, Distribute, Combine,
+  Layer, Line, Guides and Snap besides the six it shows), *Fold* the group
+  under the pointer into one button whose others fold out, *Hide* the
+  command under it, or *Customise Toolbars*. View > Toolbars offers the same.
+- **View > Customise Menus and Toolbars** opens the editor for the menu bar,
+  the toolbar and the palette together: add any command to a menu or a
+  toolbar group, remove, reorder, make groups and submenus of your own, fold
+  groups, choose the toolbar's icon size and labels; Apply shows the result,
+  Save keeps it, Reset goes back to ArtCreator's arrangement. The palette
+  takes tools only.
+- What you change is kept in the settings folder: the menus in `menus.txt`,
+  the toolbars in `settings.json` (only what differs from ArtCreator's, so a
+  command a new version adds to a group still appears). A toolbar wider than
+  the window puts what does not fit into a chevron's menu at its end.
+
 ## Menus and shortcuts
 
-- **File**: New (Ctrl+N; page presets, mm / cm / in / pt / px, orientation),
+- **File**: New (Ctrl+N; page presets - opening on the one the page
+  matches - width x height, mm / cm / in / pt / px, orientation),
   New Window (Ctrl+Alt+N), New Icon (16 to 256 px, see *Icon mode*), Open (Ctrl+O), Save (Ctrl+S), Save As
   (Ctrl+Shift+S), Export (Ctrl+E), Document Setup, Quit (Ctrl+Q).
 - **Edit**: Undo / Redo (Ctrl+Z / Ctrl+Y), Cut / Copy / Paste (in-app
@@ -123,7 +156,7 @@ the selection and to every line drawn afterwards.
   others and is removed; Add and Intersect keep the back shape's style),
   Apply ClipView (Ctrl+K: the front shape becomes the keyhole the others
   show through), Remove ClipView, Blend or Mould, Convert to Editable
-  Shapes, Snap to Pixels (Ctrl+Shift+P, in icon mode).
+  Shapes (Ctrl+Shift+C), Snap to Pixels (Ctrl+Shift+P, in icon mode).
 - **Transform bar** (under the toolbar): the selection's X / Y, W / H,
   scale in percent, rotation and shear, typed or stepped. The 3 x 3
   *reference point* picker on its left says which point of the selection
@@ -132,8 +165,25 @@ the selection and to every line drawn afterwards.
   the selector's handles alike (shift frees a corner handle). The
   percentage fields have no arrows; every field steps by 1. One object shows its own
   angles; several show 0 and turn or shear by what is typed. Lengths are in
-  the page's unit, or icon pixels in icon mode. A held arrow key or a turn
-  of the wheel is one undo step.
+  the page's unit, or icon pixels in icon mode. Every field is the same
+  width. A held arrow button repeats its step; a held arrow button or key,
+  or a turn of the wheel, is one undo step.
+  While the Selector shows its Rotate handles the bar ends in the *rotation
+  centre*: its X / Y, a second reference point picker that puts it on a
+  corner, the middle of an edge or the middle of the frame (a centre dragged
+  anywhere else shows as a ring pointing its way), and a button in front
+  that switches the fields between the centre's place on the page and how
+  far it lies from the middle of the selection (`transform.centre`). Typed
+  rotation and shear turn about that centre then.
+- **Rotate handles** (a second click on the selection): one object's frame
+  turns with it; round corner handles rotate, diamond edge handles skew
+  along the object's own edges (top and bottom along its top, the sides
+  along its sides, about the centre), the
+  cross-hair centre can be dragged, and the rotation handle starts at the
+  centre and points along the object's angle - a dial of 15° ticks (default)
+  or a stem to just beyond the frame. Dragging its knob turns the selection
+  to where the pointer is (Ctrl: 15° angles); while it turns, the frame and
+  the other handles are hidden and the status line shows the angle.
 - **Object**: No Fill, No Line, line widths in points (hairline to 8 pt)
   and in pixels (1 to 4 px: the icon's pixels in icon mode, 96 DPI pixels
   otherwise).
@@ -220,7 +270,8 @@ brings ArtCreator forward (`UltraCanvasSingleInstance`). `--help` and
 | File | Contents |
 |---|---|
 | `main.cpp` | Bootstrap, arguments, plugin registration, the first window |
-| `ArtCreatorWindow.{h,cpp}` | Window composition, the open-window registry, menus, panels, status bar, shortcuts, file open / save, every command |
+| `ArtCreatorWindow.{h,cpp}` | Window composition, the open-window registry, panels, status bar, file open / save, every command's work |
+| `ArtCreatorCommands.cpp` | Every command registered once (menus, toolbar, palette, keys, live state), the default menu, toolbar and palette layouts, the icon sizes, the user's layouts kept, the Customise editor |
 | `ArtCreatorTools.{h,cpp}` | The `ArtTool` base, the 15 tools, the line gallery's named choices, the option-widget helpers |
 | `ArtCreatorDialogs.{h,cpp}` | New Drawing / Document Setup and Text |
 | `ArtCreatorIcon.{h,cpp}` | Icon mode's sizes, the page drawn at the icon's size with its soft pixels, and the preview element |

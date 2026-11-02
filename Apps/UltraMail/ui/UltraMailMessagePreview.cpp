@@ -1,4 +1,16 @@
 // Apps/UltraMail/ui/UltraMailMessagePreview.cpp
+// Version: 0.21.0 - signed and encrypted mail: opened off the UI thread, its
+//                  signatures and encryption as pills that say what was found
+// Version: 0.20.4 - the body opened with the mailbox's body key (sealed at rest)
+// Version: 0.20.3 - the warning strip's footnote is marked "*" (it was a superscript 2)
+// Version: 0.20.2 - an attached web page (attachment-web-page / -active-page) is named
+//                   in the warning strip as phishing, with advice not to open it
+// Version: 0.20.1 - Copy link over a linked picture too (a newsletter's button)
+// Version: 0.20.0 - "Copy link" in the right-click menu over a link of the body
+//                  (HTML and plain text), above Copy and Select All
+// Version: 0.19.0 - the attachments in a column at the right of the body
+//                  (SetAttachmentsRight), or a row under it as before
+// Version: 0.18.3 - loan scams (loan-offer-fraud) are named in the warning strip
 // Version: 0.18.2 - the More menu is anchored to its button: above it when there is
 //                   no room below
 // Version: 0.18.1 - a blocked sender's mail: the strip says "You blocked this sender"
@@ -53,9 +65,10 @@
 // Version: 0.4.3 - From/To are auto-height labels (never cropped); the HTML body
 //                  fills the pane width (reflows) and gets a horizontal scrollbar
 //                  when content cannot reflow, instead of being clipped.
-// Last Modified: 2026-10-10
+// Last Modified: 2026-10-24
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailMessagePreview.h"
+#include "UltraMailStorage.h"
 #include "UltraMailHeaderText.h"
 #include "UltraMailTrace.h"
 #include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
@@ -83,6 +96,7 @@
 #include <fstream>
 #include <optional>
 #include <string>
+#include <algorithm>
 #include <thread>
 
 namespace fs = std::filesystem;
@@ -212,10 +226,7 @@ public:
         return hovered_.empty() ? UltraCanvasTextArea::GetMouseCursor() : UCMouseCursor::Hand;
     }
 
-private:
-    std::string hovered_;
-    std::string pressedLink_;
-
+    // The link at a point of the area (as event.pointer gives it), or "".
     std::string LinkUnder(const Point2Di& pointer) {
         const LineColumnIndex hit = PosToLineColumn(pointer);
         if (!hit.IsValid()) return std::string();
@@ -230,6 +241,10 @@ private:
         if (byte >= line.size()) return std::string();
         return PlainLinkAt(line, byte);
     }
+
+private:
+    std::string hovered_;
+    std::string pressedLink_;
 
     void Hover(const std::string& href, const Point2Di& pointerWindow) {
         if (href == hovered_) {
@@ -258,6 +273,23 @@ void CollectLabels(UltraCanvasContainer& box, std::vector<UltraCanvasLabel*>& la
         if (auto* label = dynamic_cast<UltraCanvasLabel*>(child.get())) labels.push_back(label);
         else if (auto* inner = dynamic_cast<UltraCanvasContainer*>(child.get())) CollectLabels(*inner, labels);
     }
+}
+
+// The link of a built HTML body at a window point, or "": the label under the
+// point is asked for the link at that place of its text.
+std::string LinkAtWindowPoint(UltraCanvasContainer& box, const Point2Di& windowPoint) {
+    std::vector<UltraCanvasLabel*> labels;
+    CollectLabels(box, labels);
+    const Point2Df at(static_cast<float>(windowPoint.x), static_cast<float>(windowPoint.y));
+    for (UltraCanvasLabel* label : labels) {
+        if (!label->IsVisible() || label->GetTextLinks().empty()) continue;
+        const Rect2Df b = label->GetBoundsInWindow();
+        if (!b.Contains(at)) continue;
+        const int link = label->LinkIndexAtPoint(Point2Di(windowPoint.x - static_cast<int>(b.x),
+                                                          windowPoint.y - static_cast<int>(b.y)));
+        if (link >= 0) return label->GetTextLinks()[static_cast<std::size_t>(link)].href;
+    }
+    return std::string();
 }
 
 std::string SanitizeFolder(const std::string& folder) {
@@ -588,12 +620,34 @@ std::shared_ptr<UltraCanvasContainer> MessagePreview::Build() {
         s.scrollbarStyle = ScrollbarStyle::Modern();   // thin and round, as the list's
         bodyHost_->SetContainerStyle(s);
     }
-    root_->AddChild(bodyHost_);
+    // The body, and the attachments' column beside it when they are shown
+    // at the right.
+    bodyRow_ = CreateContainer("prevBodyRow", 0, 0, 0, 0);
+    bodyRow_->layout.SetFlexRow()
+                    .SetFlexGap(Theme::kInnerGap)
+                    .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    if (auto s = bodyRow_->GetContainerStyle(); true) {
+        s.autoShowScrollbars = false;   // the body host scrolls, not the row
+        bodyRow_->SetContainerStyle(s);
+    }
+    root_->AddChild(bodyRow_);
+    bodyRow_->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    bodyRow_->AddChild(bodyHost_);
     bodyHost_->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
-    // Attachment chips below the body (fixed height, hidden while empty).
-    auto strip = attachmentStrip_.Build();
-    root_->AddChild(strip);
+    // Attachment chips below the body (fixed height, hidden while empty), or
+    // in a column at its right that scrolls when they do not fit.
+    attachColumn_ = CreateContainer("prevAttachColumn", 0, 0, AttachmentStrip::ColumnWidth(), 0);
+    if (auto s = attachColumn_->GetContainerStyle(); true) {
+        s.autoShowScrollbars = true;
+        s.autoShowHorizontalScrollbar = false;
+        s.scrollbarStyle = ScrollbarStyle::Modern();
+        attachColumn_->SetContainerStyle(s);
+    }
+    attachColumn_->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
+                             .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    attachmentStrip_.Build();
+    PlaceAttachments();
     attachmentStrip_.onSaveAs = [this](const Attachment& a) {
         if (onSaveAttachment) onSaveAttachment(a);
     };
@@ -603,6 +657,36 @@ std::shared_ptr<UltraCanvasContainer> MessagePreview::Build() {
 
     Clear();
     return root_;
+}
+
+void MessagePreview::SetAttachmentsRight(bool right) {
+    if (right == attachmentsRight_) return;
+    attachmentsRight_ = right;
+    PlaceAttachments();
+}
+
+void MessagePreview::PlaceAttachments() {
+    auto strip = attachmentStrip_.Container();
+    if (!strip || !root_ || !bodyRow_ || !attachColumn_) return;
+    if (UltraCanvasContainer* holder = strip->GetParentContainer()) holder->RemoveChild(strip);
+    if (UltraCanvasContainer* holder = attachColumn_->GetParentContainer())
+        holder->RemoveChild(attachColumn_);
+    attachmentStrip_.SetVertical(attachmentsRight_);
+    if (attachmentsRight_) {
+        attachColumn_->AddChild(strip);
+        bodyRow_->AddChild(attachColumn_);
+    } else {
+        root_->AddChild(strip);   // under the body row, the last row
+    }
+    SyncAttachmentColumn();
+    root_->InvalidateLayout();
+    root_->RequestRedraw();
+}
+
+void MessagePreview::SyncAttachmentColumn() {
+    // The column goes with the chips: hidden while there are none.
+    auto strip = attachmentStrip_.Container();
+    if (attachColumn_ && strip) attachColumn_->SetVisible(attachmentsRight_ && strip->IsVisible());
 }
 
 void MessagePreview::ReRender() {
@@ -646,6 +730,14 @@ void MessagePreview::RenderBody(const std::string& body, bool isHtml) {
             if (onLinkHovered) onLinkHovered(href);
         };
         opts.linkTooltips = linkTooltips;
+        // A right-click on a linked picture (a newsletter's button): the text
+        // menu with Copy link, Copy and Select All acting on the body's text.
+        opts.onLinkedImageContextMenu = [this](const std::string& href, const UCEvent& event) {
+            std::weak_ptr<UltraCanvasTextSelection> weak = bodySelection_;
+            ShowTextMenu(event, bodySelection_ && bodySelection_->HasSelection(),
+                         [weak]() { if (auto s = weak.lock()) s->CopyToClipboard(); },
+                         [weak]() { if (auto s = weak.lock()) s->SelectAll(); }, href);
+        };
         // The text can be selected across the whole body and copied.
         opts.selectableText = true;
         HTML::ElementBuilder builder;
@@ -727,7 +819,8 @@ void MessagePreview::RenderBody(const std::string& body, bool isHtml) {
         };
         ShowTextMenu(event, area->HasSelection(),
                      withArea([](UltraCanvasTextArea& a) { a.CopySelection(); }),
-                     withArea([](UltraCanvasTextArea& a) { a.SelectAll(); }));
+                     withArea([](UltraCanvasTextArea& a) { a.SelectAll(); }),
+                     area->LinkUnder(event.pointer));
         return true;
     };
     text->SetReadOnly(true);
@@ -762,11 +855,17 @@ void MessagePreview::RenderBody(const std::string& body, bool isHtml) {
 }
 
 void MessagePreview::ShowTextMenu(const UCEvent& event, bool canCopy,
-                                  std::function<void()> copy, std::function<void()> selectAll) {
+                                  std::function<void()> copy, std::function<void()> selectAll,
+                                  const std::string& link) {
     UltraCanvasWindowBase* window = root_ ? root_->GetWindow() : nullptr;
     if (!window) return;
     textMenu_ = std::make_shared<UltraCanvasMenu>("prevTextMenu", 0, 0, 180, 0);
     textMenu_->SetMenuType(MenuType::PopupMenu);
+    // Over a link: its address, as the message wrote it, for pasting elsewhere.
+    if (!link.empty()) {
+        textMenu_->AddItem(MenuItemData::Action("Copy link", [link]() { SetClipboardText(link); }));
+        textMenu_->AddItem(MenuItemData::Separator());
+    }
     MenuItemData copyItem = MenuItemData::ActionWithShortcut("Copy", "Ctrl+C", std::move(copy));
     copyItem.enabled = canCopy;
     textMenu_->AddItem(copyItem);
@@ -819,6 +918,9 @@ void MessagePreview::WireTextSelection(const std::shared_ptr<UltraCanvasTextSele
         // On the sender's name: the sender's menu, Copy and Select All in it.
         if (raw == headerSelection_.get() && hasMessage_ && PointerOnSender(event.pointerWindow))
             ShowSenderMenu(event, /*withText=*/true, raw->HasSelection(), copy, selectAll);
+        else if (raw == bodySelection_.get() && bodyHost_)
+            ShowTextMenu(event, raw->HasSelection(), copy, selectAll,
+                         LinkAtWindowPoint(*bodyHost_, event.pointerWindow));
         else
             ShowTextMenu(event, raw->HasSelection(), copy, selectAll);
     };
@@ -1080,8 +1182,12 @@ void MessagePreview::ShowSecurityWarning(const SenderStatus& status,
     if (!warning_ || !warningTitle_ || !warningText_) return;
 
     const bool romance = security.HasFinding("romance-scam");
+    const bool loan = security.HasFinding("loan-offer-fraud");
     const bool lookalike = security.HasFinding("sender-domain-lookalike") ||
                            security.HasFinding("government-impersonation");
+    // An .html "invoice": the page opens in the browser, outside the reader.
+    const bool webPage = security.HasFinding("attachment-web-page") ||
+                         security.HasFinding("attachment-active-page");
     const bool cryptoScam = security.HasFinding("crypto-wallet-secret") ||
                             security.HasFinding("crypto-payment-demand") ||
                             security.HasFinding("crypto-investment-lure");
@@ -1131,12 +1237,13 @@ void MessagePreview::ShowSecurityWarning(const SenderStatus& status,
     warning_->SetBorders(1.0f, accent, Theme::kControlRadius);
     warningTitle_->SetTextColor(accent);
     const char* what = romance                ? "romance scam"
-                     : phishing || lookalike  ? "phishing"
+                     : phishing || lookalike || webPage ? "phishing"
                      : cryptoScam ? "cryptocurrency scam"
+                     : loan       ? "loan scam"
                      : nullptr;
     warningTitle_->SetText(std::string("\xE2\x9A\xA0 ") +
         (what ? std::string(scam ? "Warning: This is likely a " : "Warning: This may be a ") +
-                    what + "\xC2\xB2 email!"
+                    what + "* email!"
          : status.cls == SenderClass::Scam
               ? std::string("This message looks like a scam or phishing attempt")
          : blocked ? std::string("You blocked this sender")
@@ -1158,6 +1265,14 @@ void MessagePreview::ShowSecurityWarning(const SenderStatus& status,
     if (onlyBlocked)
         text += "\nRight-click the sender to unblock them. \"Mark as spam\" moves the "
                 "message to the junk folder.";
+    else if (loan)
+        text += "\nDo not pay any fee, insurance or charge to receive a loan, and do not "
+                "send copies of your passport or bank details. Ask your own bank if you need "
+                "credit.";
+    else if (webPage && !romance)
+        text += "\nDo not open the attached web page, and do not sign in or pay on a page it "
+                "opens. If you are unsure whether you owe something, contact the company at an "
+                "address you already know.";
     else if (romance)
         text += "\nDo not send money, gift cards or crypto to someone you only know from "
                 "email or the internet, and do not sign up or give card details on a site "
@@ -1167,16 +1282,21 @@ void MessagePreview::ShowSecurityWarning(const SenderStatus& status,
                 "you are sure who sent it.";
     if (crypto && !romance) text += std::string("\n") + cryptoAdvice;
     if (romance)
-        text += "\n\n\xC2\xB2 Romance scams are love letters from strangers - a made-up "
+        text += "\n\n* Romance scams are love letters from strangers - a made-up "
                 "profile, someone else's photos, \"destiny\" - written to win your trust "
                 "and then your money: for a ticket, a visa, the rent, a hospital bill, a "
                 "laptop for the webcam, or an \"investment\" in crypto. A reverse image "
                 "search of the photo often finds it under another name.";
-    else if (phishing || lookalike)
-        text += "\n\n\xC2\xB2 Phishing emails are emails that try to get your credentials "
+    else if (phishing || lookalike || webPage)
+        text += "\n\n* Phishing emails are emails that try to get your credentials "
                 "to hack your accounts on other websites.";
+    else if (loan && !cryptoScam)
+        text += "\n\n* Loan scams offer credit or \"project funding\" - often "
+                "millions at a few percent - to strangers by email. Only a bank may lend, and "
+                "banks do not write to people out of the blue: the \"lender\" collects a "
+                "processing fee, an insurance or a transfer charge, and the loan never comes.";
     else if (cryptoScam)
-        text += "\n\n\xC2\xB2 Cryptocurrency scams ask for a wallet's recovery phrase, "
+        text += "\n\n* Cryptocurrency scams ask for a wallet's recovery phrase, "
                 "demand payment to a wallet address (blackmail, fake invoices) or promise "
                 "profits on an \"investment platform\" that shows made-up gains and keeps "
                 "what is paid in.";
@@ -1235,6 +1355,119 @@ void MessagePreview::Clear() {
     codes_.clear();
     if (codeBar_) codeBar_->SetVisible(false);
     attachmentStrip_.SetAttachments({});
+    SyncAttachmentColumn();
+}
+
+namespace {
+
+std::string SecureCacheKey(const MessageEnvelope& env) {
+    return env.accountId + "\n" + env.folder + "\n" + std::to_string(env.uid);
+}
+
+std::shared_ptr<const SecureMessage> CachedSecure(
+        const std::map<std::string, std::shared_ptr<const SecureMessage>>& cache, const MessageEnvelope& env) {
+    auto it = cache.find(SecureCacheKey(env));
+    return it == cache.end() ? nullptr : it->second;
+}
+
+// The pills for a signed or encrypted message: what was found (`secure`), or
+// that it is being checked (null).
+std::vector<AuthCheck> SecureChecks(const std::string& received, const SecureMessage* secure,
+                                    const std::string& fromAddr) {
+    std::vector<AuthCheck> out;
+    bool encrypted = false;
+    const SecureMethod form = SecureFormOf(received, &encrypted);
+    const std::string method = SecureMethodName(form);
+    if (!secure) {
+        AuthCheck c;
+        c.label = method;
+        c.tooltip = encrypted ? "Encrypted with " + method + ": being decrypted."
+                              : "Signed with " + method + ": the signature is being checked.";
+        out.push_back(c);
+        return out;
+    }
+    if (secure->encrypted) {
+        AuthCheck c;
+        c.label = "Encrypted";
+        const std::string by = SecureMethodName(secure->encryption);
+        c.state = secure->decrypted ? AuthCheckState::Passed : AuthCheckState::Failed;
+        c.tooltip = secure->decrypted
+            ? "Encrypted with " + by + ": it travelled and is stored as ciphertext that only "
+              "its recipients' keys open. Opened here with yours."
+            : secure->problem;
+        out.push_back(c);
+    }
+    for (const SignatureCheck& sig : secure->signatures) {
+        AuthCheck c;
+        c.label = SecureMethodName(sig.method);
+        switch (sig.verdict) {
+            case SignatureVerdict::Valid:   c.state = sig.matchesFrom ? AuthCheckState::Passed : AuthCheckState::Neutral; break;
+            case SignatureVerdict::Invalid:
+            case SignatureVerdict::Revoked: c.state = AuthCheckState::Failed; break;
+            default:                        c.state = AuthCheckState::Neutral; break;
+        }
+        std::string who = sig.signerName;
+        if (!sig.signerEmail.empty()) who += (who.empty() ? "" : " ") + std::string("<") + sig.signerEmail + ">";
+        c.tooltip = (who.empty() ? std::string("Signed") : "Signed by " + who) + "\n" + sig.detail;
+        if (sig.verdict != SignatureVerdict::Invalid && !sig.matchesFrom && !sig.signerEmail.empty())
+            c.tooltip += "\nNot the sender's address: the message says it is from " + fromAddr + ".";
+        if (!sig.issuer.empty()) c.tooltip += "\nCertificate issued by " + sig.issuer + ".";
+        if (!sig.fingerprint.empty()) c.tooltip += "\nFingerprint " + sig.fingerprint;
+        out.push_back(c);
+    }
+    if (!secure->encrypted && secure->signatures.empty() && !secure->problem.empty()) {
+        AuthCheck c;
+        c.label = method;
+        c.tooltip = secure->problem;
+        out.push_back(c);
+    }
+    return out;
+}
+
+} // namespace
+
+void MessagePreview::SetSecureKeys(SecureKeys keys) {
+    secureKeys_ = std::move(keys);
+    bool shownForgotten = false;
+    const std::string shown = hasMessage_ ? SecureCacheKey(curEnv_) : std::string();
+    for (auto it = secureOrder_.begin(); it != secureOrder_.end();) {
+        auto entry = secureCache_.find(*it);
+        if (entry != secureCache_.end() && entry->second->encrypted && !entry->second->decrypted) {
+            shownForgotten = shownForgotten || *it == shown;
+            secureCache_.erase(entry);
+            it = secureOrder_.erase(it);
+        } else {
+            ++it;
+        }
+    }
+    if (shownForgotten) Show(curEnv_);
+}
+
+void MessagePreview::OpenSecure(const MessageEnvelope& env, const std::string& raw) {
+    const std::string key = SecureCacheKey(env);
+    if (!securePending_.insert(key).second) return;   // already being opened
+    std::thread([this, alive = alive_, key, raw, keys = secureKeys_, env]() {
+        Trace::Stage open("Open a signed or encrypted message", 0);
+        auto opened = std::make_shared<const SecureMessage>(OpenSecureMessage(raw, keys));
+        auto* app = UltraCanvasApplicationBase::GetCurrent();
+        if (!app) return;
+        app->PostToUIThread([this, alive, key, opened, env]() {
+            if (!alive->load()) return;
+            securePending_.erase(key);
+            if (!secureCache_.count(key)) secureOrder_.push_back(key);
+            secureCache_[key] = opened;
+            while (secureOrder_.size() > 32) {
+                secureCache_.erase(secureOrder_.front());
+                secureOrder_.pop_front();
+            }
+            if (onCertificateLearnt)
+                for (const SignatureCheck& sig : opened->signatures)
+                    if (sig.method == SecureMethod::Smime && sig.verdict == SignatureVerdict::Valid &&
+                        sig.matchesFrom && !sig.certificatePem.empty())
+                        onCertificateLearnt(sig.signerEmail, sig.certificatePem);
+            if (Shows(env.accountId, env.folder, env.uid)) Show(curEnv_);
+        });
+    }).detach();
 }
 
 void MessagePreview::IconCached(const std::string& key) {
@@ -1299,6 +1532,11 @@ void MessagePreview::Show(const MessageEnvelope& env) {
     std::string raw;
     std::string pendingBody;
     bool pendingHtml = false, havePending = false;
+    // Signed or encrypted: `received` is the message as it came, `raw` what
+    // it reads as once opened; `secure` what was found, null until then.
+    std::string received;
+    std::shared_ptr<const SecureMessage> secure;
+    bool securePending = false;
 
     // Load the cached body (.eml) and decode it.
     step.emplace("Load and decode the body (.eml)", 0);
@@ -1307,11 +1545,13 @@ void MessagePreview::Show(const MessageEnvelope& env) {
     // Read through the framework's file loader: a cached body is never
     // compressed, but unlike a bare ifstream it reports why a read failed, so an
     // unreadable file says so instead of looking as if it were never downloaded.
+    // Then opened with the mailbox's body key: stored mail is sealed at rest.
     std::error_code ec;
     bodyMissing_ = !fs::exists(path, ec);
     if (bodyMissing_) {
         RenderBody("(message body not downloaded yet)", false);
         attachmentStrip_.SetAttachments({});
+        SyncAttachmentColumn();
         current_.body.clear();
         current_.attachments.clear();
         curRaw_.clear();
@@ -1320,24 +1560,67 @@ void MessagePreview::Show(const MessageEnvelope& env) {
         RenderBody("(this message's body could not be read)\n\n"
                    + (loaded.error.empty() ? PathToUtf8(path) : loaded.error), false);
         attachmentStrip_.SetAttachments({});
+        SyncAttachmentColumn();
         current_.body.clear();
         current_.attachments.clear();
         curRaw_.clear();
+    } else if (!OpenBody(GetBodyKey(), std::string(loaded.bytes.begin(), loaded.bytes.end()), raw)) {
+        // Sealed with a key this mailbox does not have (UltraMailStorage.h):
+        // a file from another installation, or a damaged one.
+        RenderBody("(this message's body could not be decrypted)\n\n" + PathToUtf8(path), false);
+        attachmentStrip_.SetAttachments({});
+        SyncAttachmentColumn();
+        current_.body.clear();
+        current_.attachments.clear();
+        curRaw_.clear();
+    } else if (bool encryptedForm = false; SecureFormOf(raw, &encryptedForm) != SecureMethod::Plain
+               && !(secure = CachedSecure(secureCache_, env)) && (OpenSecure(env, raw), securePending = true)
+               && encryptedForm) {
+        // Encrypted and not opened yet: nothing to show until it is.
+        curRaw_ = raw;
+        received = raw;
+        RenderBody("Decrypting this message\xE2\x80\xA6", false);
+        attachmentStrip_.SetAttachments({});
+        SyncAttachmentColumn();
+        current_.body.clear();
+        current_.attachments.clear();
+    } else if (secure && secure->encrypted && !secure->decrypted) {
+        // Encrypted to a key that is not here: said instead of a blank body
+        // and a .p7m or .asc attachment nobody can open.
+        curRaw_ = raw;
+        received = raw;
+        RenderBody("This message is encrypted (" + std::string(SecureMethodName(secure->encryption)) +
+                   "), and it cannot be opened here.\n\n" + secure->problem +
+                   (secure->encryption == SecureMethod::Smime
+                        ? "\n\nIf it was sent to your certificate, import it in Account Settings (S/MIME)."
+                        : "\n\nIt needs the secret key it was encrypted to in your GnuPG keyring."),
+                   false);
+        attachmentStrip_.SetAttachments({});
+        SyncAttachmentColumn();
+        current_.body.clear();
+        current_.attachments.clear();
     } else {
-        raw.assign(loaded.bytes.begin(), loaded.bytes.end());
         curRaw_ = raw;   // kept for "View source"
+        if (secure) {
+            received = raw;
+            raw = secure->raw;
+        } else if (securePending) {
+            received = raw;   // signed: readable now, checked meanwhile
+        }
         ParsedMessage pm = MimeCodec::Parse(raw);
         // Rendered below, once the verdict says whether remote images may load.
         pendingBody = pm.body;
         pendingHtml = pm.bodyIsHtml;
         havePending = true;
         attachmentStrip_.SetAttachments(pm.attachments);
+        SyncAttachmentColumn();
         // The text for a plain reply, and the HTML a formatted one is built
         // from (UltraMailRichComposer).
         current_.body = pm.bodyIsHtml ? HTML::ExtractPlainText(pm.body, HTML::PlainTextLayout::Lines)
                                       : pm.body;
         current_.bodyHtml = pm.bodyIsHtml ? pm.body : std::string();
         current_.attachments = pm.attachments;
+        current_.encryptedWith = secure && secure->encrypted ? SecureMethodName(secure->encryption) : "";
     }
 
     // Who the message is from, in the same badge the list row wears, and the
@@ -1369,7 +1652,16 @@ void MessagePreview::Show(const MessageEnvelope& env) {
         authRow_->ClearChildren();
         if (!raw.empty()) {
             int n = 0;
-            for (const AuthCheck& check : DescribeMessageAuthentication(raw))
+            std::vector<AuthCheck> checks = DescribeMessageAuthentication(received.empty() ? raw : received);
+            if (!received.empty()) {
+                // The signature in words of what was checked, not the neutral
+                // "signed" pill the headers alone give.
+                checks.erase(std::remove_if(checks.begin(), checks.end(), [](const AuthCheck& c) {
+                                 return c.label == "S/MIME" || c.label == "OpenPGP";
+                             }), checks.end());
+                for (AuthCheck& c : SecureChecks(received, secure.get(), env.fromAddr)) checks.push_back(std::move(c));
+            }
+            for (const AuthCheck& check : checks)
                 authRow_->AddChild(MakeAuthTag("prevAuth" + std::to_string(n++), check));
         }
     }

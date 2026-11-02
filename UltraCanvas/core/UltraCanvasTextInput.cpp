@@ -1,5 +1,6 @@
 // UltraCanvasTextInput.cpp
 // Advanced text input component with validation, formatting, and feedback systems
+// Version: 1.12.0 - the text and the placeholder are shaped once and kept
 // Version: 1.11.1 - OnEvent's switch says the events it ignores (default; -Wswitch)
 // Version: 1.11.0 - SetClearButtonText: a clear button with a word on it;
 //                  SetInputType(Search) shows the clear button
@@ -799,7 +800,13 @@ namespace UltraCanvas {
 
         Rect2Dd lineBox = GetTextLineBox(area, ctx);
         Point2Dd textPos(area.x - scrollOffset, lineBox.y);
-        ctx->DrawText(renderText, textPos);
+        // The text is shaped once and kept while it, the font and the
+        // alignment stay; a caret blink or a scroll only moves it.
+        TextLayoutKey key;
+        key.text = renderText;
+        key.font = style.fontStyle;
+        key.align = style.textAlignment;
+        if (ITextLayout* layout = textLayout_.Get(ctx, key)) ctx->DrawTextLayout(*layout, textPos);
 
         // The composition is drawn as part of the line (so it shapes with the
         // text around it) and underlined, the way input methods mark text
@@ -821,7 +828,17 @@ namespace UltraCanvas {
         ctx->SetFontStyle(style.fontStyle);
         ctx->SetTextPaint(style.placeholderColor);
 
-        ctx->DrawTextInRect(placeholderText, area);
+        // As DrawTextInRect lays it out - in the area, centred, cut at the
+        // end - but kept between draws.
+        TextLayoutKey key;
+        key.text = placeholderText;
+        key.font = style.fontStyle;
+        key.align = style.textAlignment;
+        key.valign = VerticalAlignment::Middle;
+        key.ellipsize = EllipsizeMode::EllipsizeEnd;
+        key.width = area.width;
+        key.height = area.height;
+        if (ITextLayout* layout = placeholderLayout_.Get(ctx, key)) ctx->DrawTextLayout(*layout, area.TopLeft());
     }
 
     void UltraCanvasTextInput::RenderSelection(const Rect2Dd &area, IRenderContext* ctx) {

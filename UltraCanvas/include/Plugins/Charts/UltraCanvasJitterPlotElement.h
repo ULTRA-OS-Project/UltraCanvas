@@ -39,7 +39,6 @@
 #include <algorithm>
 #include <limits>
 
-#undef None
 namespace UltraCanvas {
 
 // =============================================================================
@@ -113,7 +112,7 @@ enum class BeeswarmPriority {
 };
 
 enum class BeeswarmCorral {
-    NoneCorral,        // No constraint (default; renamed from None to avoid X11 macro collision)
+    NoneCorral,        // No constraint (default; not named None: X11's macro)
     Open,              // Allow escape with warning
     Wrap,              // Wrap points to opposite side
     Clamp              // Force within bounds

@@ -12,6 +12,9 @@
 // streams ended. A stream that ran short is padded before the next segment -
 // video by holding its last frame, audio with silence - so picture and sound
 // stay in sync across any number of joins.
+// Version: 0.16.2 - the face cache keyed by the file's size and write time too: a clip re-exported under the same name is looked at afresh
+// Version: 0.16.1 - a clip's faces from three frames of its range, the union kept;
+//                  a photo scaled to RGBA no longer overruns its buffer (kSwsSlack)
 // Version: 0.16.0 - an image or video overlay's effects, its alpha kept round them
 // Version: 0.15.1 - encoders through FindEncoderByName; none opened as experimental
 // Version: 0.15.0 - a video segment's keepInView / keepFacesInView place the Fill crop
@@ -697,22 +700,37 @@ private:
 // planning
 // ---------------------------------------------------------------------------
 
-// The faces in a video clip, from one frame in the middle of its used range;
-// found once per clip and range, since the preview plans the same segments
-// for every frame it shows
+// The faces in a video clip: those of three frames, a quarter, half and
+// three quarters of the way through its used range, all kept - people
+// move across a picture, and one frame can miss them or hold them at one
+// side only. Found once per clip and range, since the preview plans the
+// same segments for every frame it shows; the file's size and write time
+// are part of the key, so a clip re-exported under the same name is looked
+// at afresh. A range with no known end gives the one frame at its start.
 std::vector<VideoFXRect> FacesInClip(const std::string& path, double start, double end) {
     static std::mutex mutex;
     static std::map<std::string, std::vector<VideoFXRect>> found;
-    const std::string key = path + "|" + FormatNumber(start) + "|" + FormatNumber(end);
+    std::error_code ec;
+    const std::filesystem::path file = UltraCanvas::PathFromUtf8(path);
+    // The write time's tick count is whatever the file clock's rep is (a
+    // 128-bit integer on libc++, which std::to_string has no overload for)
+    const auto written = static_cast<long long>(std::filesystem::last_write_time(file, ec).time_since_epoch().count());
+    const auto size = static_cast<unsigned long long>(std::filesystem::file_size(file, ec));
+    const std::string key = path + "|" + std::to_string(written) + "|" + std::to_string(size) + "|" +
+                            FormatNumber(start) + "|" + FormatNumber(end);
     {
         std::lock_guard<std::mutex> lock(mutex);
         auto it = found.find(key);
         if (it != found.end()) return it->second;
     }
     std::vector<VideoFXRect> faces;
-    VideoFXFrame sample;
-    const double at = end > start ? (start + end) / 2.0 : start;
-    if (VideoFX_ExtractFrame(path, at, sample, 800, 800) == VideoFXResult::Ok && sample.IsValid()) faces = DetectFaces(sample);
+    const double span = end > start ? end - start : 0.0;
+    for (const double share : {0.25, 0.5, 0.75}) {
+        VideoFXFrame sample;
+        if (VideoFX_ExtractFrame(path, start + span * share, sample, 800, 800) == VideoFXResult::Ok && sample.IsValid())
+            for (const VideoFXRect& face : DetectFaces(sample)) faces.push_back(face);
+        if (span <= 0.0) break;
+    }
     std::lock_guard<std::mutex> lock(mutex);
     found[key] = faces;
     return faces;
@@ -2213,12 +2231,13 @@ VideoFXResult ScaleRgba(const VideoFXFrame& src, int w, int h, VideoFXFrame& dst
     dst.width = w;
     dst.height = h;
     dst.timestamp = src.timestamp;
-    dst.pixels.assign(static_cast<size_t>(w) * h * 4, 0);
+    dst.pixels.assign(static_cast<size_t>(w) * h * 4 + kSwsSlack, 0);
     const uint8_t* srcData[4] = {src.pixels.data(), nullptr, nullptr, nullptr};
     const int srcLines[4] = {src.width * 4, 0, 0, 0};
     uint8_t* dstData[4] = {dst.pixels.data(), nullptr, nullptr, nullptr};
     const int dstLines[4] = {w * 4, 0, 0, 0};
     sws_scale(sws.get(), srcData, srcLines, 0, src.height, dstData, dstLines);
+    dst.pixels.resize(static_cast<size_t>(w) * h * 4);
     return VideoFXResult::Ok;
 }
 

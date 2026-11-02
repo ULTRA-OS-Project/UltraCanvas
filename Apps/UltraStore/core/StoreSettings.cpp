@@ -1,0 +1,163 @@
+// Apps/UltraStore/core/StoreSettings.cpp
+// Version: 0.3.0 - the open order
+// Version: 0.2.0 - the code in force
+// Version: 0.1.0
+// Author: UltraCanvas Framework / ULTRA OS
+#include "StoreSettings.h"
+
+#include "StoreQuery.h"
+#include "UltraStoreBuiltin.h"
+
+#include "UltraCanvasAppSettings.h"
+
+#include <algorithm>
+#include <cstdlib>
+#include <cctype>
+
+namespace UltraStore {
+
+namespace {
+constexpr const char* kAppName = "UltraStore";
+
+std::string Trim(const std::string& s) {
+    size_t b = 0, e = s.size();
+    while (b < e && std::isspace(static_cast<unsigned char>(s[b]))) ++b;
+    while (e > b && std::isspace(static_cast<unsigned char>(s[e - 1]))) --e;
+    return s.substr(b, e - b);
+}
+} // namespace
+
+std::vector<std::string> BuiltinServers() {
+    return std::vector<std::string>{ULTRASTORE_BUILTIN_SERVERS};
+}
+
+std::vector<std::string> BuiltinKeysHex() {
+    return std::vector<std::string>{ULTRASTORE_BUILTIN_KEYS};
+}
+
+std::vector<std::string> Lines(const std::string& text) {
+    std::vector<std::string> out;
+    size_t pos = 0;
+    while (pos <= text.size()) {
+        const size_t end = text.find('\n', pos);
+        std::string line = Trim(text.substr(pos, end == std::string::npos ? std::string::npos : end - pos));
+        if (!line.empty() && line[0] != '#') out.push_back(line);
+        if (end == std::string::npos) break;
+        pos = end + 1;
+    }
+    return out;
+}
+
+bool IsPublicKeyHex(const std::string& hex) {
+    std::vector<uint8_t> bytes;
+    return FromHex(hex, bytes) && bytes.size() == 32;
+}
+
+std::string StoreSettings::Language() const {
+    return language.empty() ? SystemLanguage() : language;
+}
+
+std::vector<std::string> StoreSettings::Servers() const {
+    return servers.empty() ? BuiltinServers() : servers;
+}
+
+PublicKeys StoreSettings::TrustedKeys() const {
+    PublicKeys keys;
+    auto add = [&keys](const std::string& hex) {
+        std::vector<uint8_t> key;
+        if (!FromHex(Trim(hex), key) || key.size() != 32) return;
+        if (std::find(keys.begin(), keys.end(), key) == keys.end()) keys.push_back(std::move(key));
+    };
+    for (const std::string& hex : BuiltinKeysHex()) add(hex);
+    for (const std::string& hex : extraKeys) add(hex);
+    return keys;
+}
+
+StoreSettings StoreSettings::From(const UltraCanvas::UltraCanvasAppSettings& file) {
+    StoreSettings s;
+    s.channel = file.GetString("catalog.channel", s.channel);
+    if (s.channel != "beta") s.channel = "stable";
+    s.language = file.GetString("texts.language", s.language);
+    s.servers = file.GetList("catalog.servers");
+    s.extraKeys = file.GetList("catalog.trustedKeys");
+    s.refreshOnStart = file.GetBool("catalog.refreshOnStart", s.refreshOnStart);
+    s.windowWidth = file.GetInt("window.width", s.windowWidth);
+    s.windowHeight = file.GetInt("window.height", s.windowHeight);
+    s.downloadsExpanded = file.GetBool("window.downloadsExpanded", s.downloadsExpanded);
+    s.downloadsHeight = file.GetInt("window.downloadsHeight", s.downloadsHeight);
+    s.code = file.GetString("code.value", s.code);
+    s.codeEnteredAt = file.GetString("code.enteredAt", s.codeEnteredAt);
+    s.openOrder.orderId = file.GetString("order.id", "");
+    s.openOrder.secret = file.GetString("order.secret", "");
+    s.openOrder.app = file.GetString("order.app", "");
+    s.openOrder.amount = file.GetString("order.amount", "");
+    s.openOrder.currency = file.GetString("order.currency", "");
+    s.openOrder.checkoutUrl = file.GetString("order.checkoutUrl", "");
+    s.openOrder.startedAt = file.GetString("order.startedAt", "");
+    return s;
+}
+
+void StoreSettings::WriteTo(UltraCanvas::UltraCanvasAppSettings& file) const {
+    file.Set("catalog.channel", channel);
+    file.Set("texts.language", language);
+    file.Set("catalog.servers", servers);
+    file.Set("catalog.trustedKeys", extraKeys);
+    file.Set("catalog.refreshOnStart", refreshOnStart);
+    file.Set("window.width", windowWidth);
+    file.Set("window.height", windowHeight);
+    file.Set("window.downloadsExpanded", downloadsExpanded);
+    file.Set("window.downloadsHeight", downloadsHeight);
+    file.Set("code.value", code);
+    file.Set("code.enteredAt", codeEnteredAt);
+    file.Set("order.id", openOrder.orderId);
+    file.Set("order.secret", openOrder.secret);
+    file.Set("order.app", openOrder.app);
+    file.Set("order.amount", openOrder.amount);
+    file.Set("order.currency", openOrder.currency);
+    file.Set("order.checkoutUrl", openOrder.checkoutUrl);
+    file.Set("order.startedAt", openOrder.startedAt);
+}
+
+namespace {
+
+// Days from an ISO date, through the days-from-civil count.
+int DaysOf(const std::string& d) {
+    const int y0 = std::atoi(d.substr(0, 4).c_str()), m = std::atoi(d.substr(5, 2).c_str()), day = std::atoi(d.substr(8, 2).c_str());   // locale-ok: digits only
+    const int y = y0 - (m <= 2);
+    const int era = (y >= 0 ? y : y - 399) / 400;
+    const int yoe = y - era * 400;
+    const int doy = (153 * (m + (m > 2 ? -3 : 9)) + 2) / 5 + day - 1;
+    const int doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    return era * 146097 + doe - 719468;
+}
+
+} // namespace
+
+std::string StoreSettings::CodeInForce(const std::string& today) const {
+    if (code.empty() || codeEnteredAt.size() != 10 || today.size() != 10) return {};
+    const int elapsed = DaysOf(today) - DaysOf(codeEnteredAt);
+    if (elapsed < 0 || elapsed > kCodeDays) return {};
+    return code;
+}
+
+StoreSettings::OpenOrder StoreSettings::OrderToResume(const std::string& today) const {
+    if (openOrder.Empty() || openOrder.startedAt.size() != 10 || today.size() != 10) return {};
+    const int elapsed = DaysOf(today) - DaysOf(openOrder.startedAt);
+    if (elapsed < 0 || elapsed > kOrderDays) return {};
+    return openOrder;
+}
+
+StoreSettings StoreSettings::Load() {
+    UltraCanvas::UltraCanvasAppSettings file(kAppName);
+    file.Load();
+    return From(file);
+}
+
+bool StoreSettings::Save() const {
+    UltraCanvas::UltraCanvasAppSettings file(kAppName);
+    file.Load();
+    WriteTo(file);
+    return file.Save();
+}
+
+} // namespace UltraStore

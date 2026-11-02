@@ -1,10 +1,13 @@
 // Apps/UltraMail/ui/UltraMailWaitDialog.cpp
+// Version: 0.3.0 - the title in a header with an icon tile, a busy bar under
+//                  the text
 // Version: 0.2.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailWaitDialog.h"
 
 #include "UltraMailTheme.h"
 
+#include "UltraCanvasBusyIndicator.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasLabel.h"
@@ -15,11 +18,12 @@ namespace UltraMail {
 
 std::shared_ptr<UltraCanvasModalDialog> WaitDialog::Show(
         UltraCanvasWindowBase* parent, const std::string& title,
-        const std::string& text, std::function<void()> onCancel) {
+        const std::string& text, std::function<void()> onCancel,
+        const std::string& icon) {
     DialogConfig config;
     config.title      = title;
     config.width      = 420;
-    config.height     = 200;
+    config.height     = 210;
     config.dialogType = DialogType::Custom;
     config.buttons    = DialogButtons::NoButtons;  // Custom dialog builds its own.
 
@@ -34,12 +38,25 @@ std::shared_ptr<UltraCanvasModalDialog> WaitDialog::Show(
     dialog->SetPadding(20);
     dialog->SetBackgroundColor(Theme::kCardBackground);
 
-    auto label = CreateLabel("waitText", 0, 0, 380, 80, text);
-    label->SetWrap(TextWrap::WrapWord);
-    label->SetFontSize(Theme::kSizeBody);
-    label->SetTextColor(Theme::kTextSecondary);
-    dialog->AddChild(label);
-    label->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    dialog->AddChild(Theme::MakeDialogHeader("waitHeader", icon, title, text, 64.0f));
+
+    // Something is happening, even while nothing changes on screen. It turns
+    // until the dialog closes, and goes with it.
+    auto busy = CreateBusyIndicator("waitBusy", 0, 0, 0, 4, BusyIndicatorKind::Bar);
+    {
+        BusyIndicatorStyle style = busy->GetStyle();
+        style.arcColor   = Theme::kAccent;
+        style.trackColor = Theme::kAccentSoft;
+        busy->SetStyle(style);
+    }
+    busy->SetMargin(0, 0, 0, 52);   // under the text, past the header's icon
+    dialog->AddChild(busy);
+    busy->layoutItem.SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    busy->Start();
+
+    auto spacer = CreateContainer("waitSpace", 0, 0, 0, 0);
+    dialog->AddChild(spacer);
+    spacer->layoutItem.SetFlexGrow(1);
 
     auto buttonRow = CreateContainer("waitButtons", 0, 0, 0, Theme::kToolbarHeight);
     buttonRow->layout.SetFlexRow()
@@ -75,7 +92,7 @@ std::shared_ptr<UltraCanvasModalDialog> OAuthWaitDialog::Show(
         "Your browser has opened " + providerName + "'s sign-in page. Sign in as "
         + email + " and allow UltraMail to read and send your mail, then come back "
         "here — this window closes by itself once the sign-in is done.",
-        std::move(onCancel));
+        std::move(onCancel), "globe");
 }
 
 } // namespace UltraMail

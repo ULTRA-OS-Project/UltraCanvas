@@ -153,7 +153,7 @@ inline std::string ExpandUrlTemplate(const std::string& tmpl,
 // \Deleted (deletion is move-to-Trash / Email/set destroy).
 // ============================================================================
 inline UltraNetMailFlags KeywordsToFlags(const json& keywords) {
-    UltraNetMailFlags f = UltraNetMailFlags::None;
+    UltraNetMailFlags f = UltraNetMailFlags::NoFlags;
     if (!keywords.is_object()) return f;
     for (auto it = keywords.begin(); it != keywords.end(); ++it) {
         if (!it.value().is_boolean() || !it.value().get<bool>()) continue;

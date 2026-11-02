@@ -435,9 +435,11 @@ A **video clip** keeps its people the same way when the export's `fitMode`
 is `Fill` (a portrait phone clip filling a 16:9 frame loses its sides, a
 landscape clip in a portrait frame its top and bottom): `keepInView` on a
 file segment places the crop window around the regions instead of the
-picture's centre, and `keepFacesInView` finds them itself in one frame from
-the middle of the clip's used range (found once per clip, whatever the
-preview asks later). A clip with no face found keeps the centred crop. The
+picture's centre, and `keepFacesInView` finds them itself in three frames
+of the clip's used range - a quarter, half and three quarters of the way
+through, every face of the three kept, since people move across a picture
+and one frame can miss them (found once per clip, whatever the preview
+asks later). A clip with no face in any of them keeps the centred crop. The
 regions are fractions of the picture as the file shows it, before the
 segment's effects. Under `Letterbox` and `Stretch` nothing is cropped and
 both are ignored.
@@ -910,6 +912,45 @@ reach them too. Proxies can be made on the hardware as well
 
 ---
 
+## Recording a live source
+
+An export reads files; a recording takes frames as they happen. A screen
+recorder, a window capture or a camera hands `VideoFXFrameRecorder` one
+frame at a time with the moment it was taken, and the recorder encodes it
+into the file at once - the file grows while the recording runs and is
+complete after `Close()`. No sound: the microphone and loudspeaker capture
+stay the application's for now.
+
+```cpp
+VideoFXFrameRecorder recorder;
+VideoFXRecorderSettings settings;
+settings.frameRate = 20.0;                 // the file's rate
+if (recorder.Open("recording.mp4", settings) != VideoFXResult::Ok)
+    std::cerr << VideoFX_GetLastError() << "\n";
+while (recording) {
+    // the screen's pixels, four bytes each, B G R x - as every platform's
+    // screen capture gives them (UltraCanvasDesktopShell::CaptureScreenArea)
+    recorder.PushFrame(pixels, width, height, stride, SecondsSinceStart(), VideoFXPixelLayout::BGRA);
+}
+recorder.Close();
+```
+
+The frame's time places it: it lands on the nearest tick of the file's
+rate, a frame on a tick already written is dropped, and a gap (a slow
+capture) shows the last frame longer - so the recording keeps real time
+however many frames were caught. The size is the settings' or the first
+frame's, made even (H.264's 4:2:0 needs it), and every frame is scaled to
+it, so a source that changes size still records. `VideoFXRecorderSettings`
+takes the export's `container`, `videoCodec`, `quality`, `videoBitRate`,
+`keyframeInterval` and `acceleration`; its `encoderPreset` defaults to
+`"veryfast"` and the x264 / x265 encoders run with `zerolatency`, so a
+frame leaves the encoder as it comes in rather than after a look-ahead. An
+MP4 or MOV is written fragmented (`frag_keyframe`), so a recording cut
+short - the program killed, the machine off - still plays up to its last
+keyframe. `GetFrameCount`, `GetDuration`, `GetWidth` / `GetHeight` and
+`GetEncoderName` describe the recording so far. UltraSnip (`Apps/UltraSnip`)
+records the screen with it.
+
 ## One-line helpers
 
 All of these are single-segment timelines over `VideoFX_Export`:
@@ -1127,6 +1168,15 @@ version is part of the library's name (`libVideoFX.so.0.7`).
 on Android).
 The test suite is `Tests/VideoFXTest.cpp` (`VideoFXTest` under ctest); it
 generates its own clips, so it needs no media files.
+
+The Windows builds compile the module against **libc++** (MSYS2's CLANG64
+toolchain), Linux against libstdc++, and the two disagree on details a Linux
+build never shows - libc++ gives `std::filesystem::file_time_type` a 128-bit
+tick count, which `std::to_string` has no overload for. Before pushing a
+change to the module, run `scripts/check_libcxx_syntax.sh`: it type-checks
+the engine's sources, the tool and the test with `clang++ -stdlib=libc++
+-fsyntax-only` in a few seconds (`apt install clang libc++-dev
+libc++abi-dev` on Ubuntu) and prints only the errors.
 
 ---
 

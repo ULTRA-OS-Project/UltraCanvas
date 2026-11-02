@@ -252,7 +252,7 @@ namespace UltraCanvas {
 
     void UltraCanvasChordChart::SetShowLabels(bool show) {
         SetLabelPlacement(show ? ChordLabelPlacement::Outside
-                               : ChordLabelPlacement::None);
+                               : ChordLabelPlacement::NoLabels);
     }
 
     void UltraCanvasChordChart::SetLabelDistance(float pixels) {
@@ -320,7 +320,7 @@ namespace UltraCanvas {
         // label is clipped. Text cannot be measured here (no render context),
         // so the widest name is estimated from its character count.
         float labelRoom = 0.0f;
-        if (labelPlacement != ChordLabelPlacement::None) {
+        if (labelPlacement != ChordLabelPlacement::NoLabels) {
             size_t longest = 0;
             for (const auto& c : chordMatrix.categories) {
                 longest = std::max(longest, c.name.size());
@@ -612,7 +612,7 @@ namespace UltraCanvas {
         RenderTitle(ctx);
         DrawRibbons(ctx);
         DrawCategories(ctx);
-        if (labelPlacement != ChordLabelPlacement::None) {
+        if (labelPlacement != ChordLabelPlacement::NoLabels) {
             DrawLabels(ctx);
         }
     }

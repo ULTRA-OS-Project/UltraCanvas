@@ -176,7 +176,7 @@ std::optional<NetworkParameters> ReadNetworkParameters(const std::vector<uint8_t
 
 // getNetworkParameters response: status, node type, parameters.
 struct NetworkParametersResponse {
-    uint8_t Status = 0;
+    uint8_t StatusCode = 0;
     uint8_t NodeType = 0;           // EmberNodeType: 1 coordinator
     NetworkParameters Parameters;
 };
@@ -198,7 +198,7 @@ std::vector<uint8_t> EncodeInitialSecurityStateParams(const InitialSecurityState
 struct TrustCenterJoin {
     uint16_t NodeId = 0;
     uint64_t Eui64 = 0;
-    uint8_t Status = 0;             // EmberDeviceUpdate: 2 = device left
+    uint8_t StatusCode = 0;             // EmberDeviceUpdate: 2 = device left
     uint8_t Decision = 0;
     uint16_t ParentNodeId = 0;
 };
@@ -284,7 +284,7 @@ struct MessageSent {
     uint16_t IndexOrDestination = 0;
     ApsFrame Aps;
     uint8_t MessageTag = 0;
-    uint8_t Status = 0;             // EmberStatus; 0x00 delivered
+    uint8_t StatusCode = 0;             // EmberStatus; 0x00 delivered
     std::vector<uint8_t> Contents;
 };
 std::optional<MessageSent> DecodeMessageSent(const std::vector<uint8_t>& params);
@@ -335,19 +335,19 @@ std::vector<uint8_t> EncodeMgmtNwkUpdateChannelChange(uint8_t tsn, uint32_t chan
 
 // Responses. The status byte follows the TSN in every one; the decoders return
 // nothing when the frame is too short to hold what its cluster promises.
-struct ActiveEpRsp { uint8_t Tsn; uint8_t Status; uint16_t Nwk; std::vector<uint8_t> Endpoints; };
+struct ActiveEpRsp { uint8_t Tsn; uint8_t StatusCode; uint16_t Nwk; std::vector<uint8_t> Endpoints; };
 struct SimpleDescRsp {
-    uint8_t Tsn; uint8_t Status; uint16_t Nwk;
+    uint8_t Tsn; uint8_t StatusCode; uint16_t Nwk;
     uint8_t Endpoint; uint16_t ProfileId; uint16_t DeviceId; uint8_t DeviceVersion;
     std::vector<uint16_t> InputClusters; std::vector<uint16_t> OutputClusters;
 };
 struct NodeDescRsp {
-    uint8_t Tsn; uint8_t Status; uint16_t Nwk;
+    uint8_t Tsn; uint8_t StatusCode; uint16_t Nwk;
     uint8_t LogicalType;        // 0 coordinator, 1 router, 2 end device
     uint16_t ManufacturerCode;
 };
-struct IeeeAddrRsp { uint8_t Tsn; uint8_t Status; uint64_t Ieee; uint16_t Nwk; };
-struct StatusRsp { uint8_t Tsn; uint8_t Status; };   // bind / unbind / leave
+struct IeeeAddrRsp { uint8_t Tsn; uint8_t StatusCode; uint64_t Ieee; uint16_t Nwk; };
+struct StatusRsp { uint8_t Tsn; uint8_t StatusCode; };   // bind / unbind / leave
 struct DeviceAnnce { uint8_t Tsn; uint16_t Nwk; uint64_t Ieee; uint8_t Capability; };
 
 std::optional<ActiveEpRsp> DecodeActiveEpRsp(const std::vector<uint8_t>& f);
@@ -386,7 +386,7 @@ std::optional<Header> DecodeHeader(const std::vector<uint8_t>& frame);
 struct Attribute {
     uint16_t Id = 0;
     uint8_t DataType = 0;
-    uint8_t Status = 0;            // Read Attributes Response only
+    uint8_t StatusCode = 0;            // Read Attributes Response only
     std::vector<uint8_t> Value;    // raw, in the data type's own encoding
 };
 

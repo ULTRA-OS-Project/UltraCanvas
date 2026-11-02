@@ -50,6 +50,12 @@
 // itself is never touched, so renaming and every file operation still work on
 // the real one. A name that is not UTF-8 — written in a legacy code page by an
 // old tool or an unconverting unzip — is drawn decoded rather than as U+FFFD.
+// Version: 1.43.0 - RenderFileThumbnail; the workers' decode switch is
+//                  DecodeContentThumbnail, shared with it; RenderTextPagePixmap
+// Version: 1.42.0 - Compress packs a TAR with the host's FilerTarSettings
+//                  (CompressOptionsFor), ZIP and 7-Zip storing what a link
+//                  points to; each Compress menu entry's tooltip is the
+//                  command line it packs with (DescribeCompressParameters)
 // Version: 1.41.0 - a remote folder being fetched or updated shows a thin blue
 //                  bar sliding along the foot of the file area, not a
 //                  "Loading folder" notice over it; its status line goes to
@@ -86,12 +92,9 @@
 //                  (HTML::DecodeEntities): every named and numeric reference, where
 //                  a numeric one was a blank before
 // Version: 1.36.0 - an icon on every entry of the context menu and its Display submenu
-// Last Modified: 2026-10-19
+// Last Modified: 2026-10-30
 // Author: UltraCanvas Framework
 
-// VirtualFS + bridge must be included before the UI headers: X11 (pulled in
-// via UltraCanvasApplication.h) #defines None/Success, which collide with the
-// None enumerators in VirtualFS and UCVFSCompressionType.
 #ifdef ULTRACANVAS_HAS_VIRTUALFS
 #include "VirtualFS/VirtualFS.h"
 #include "UltraCanvasVirtualFSBridge.h"
@@ -182,15 +185,6 @@
 #endif
 #endif
 
-// X11 (pulled in via UltraCanvasApplication.h) #defines Success and None,
-// which collide with the VirtualFS::VirtualFSResult enumerators used below.
-#ifdef Success
-#undef Success
-#endif
-#ifdef None
-#undef None
-#endif
-
 namespace fs = std::filesystem;
 
 namespace UltraCanvas {
@@ -265,6 +259,9 @@ namespace UltraCanvas {
         // never collapses to the icon.
         constexpr int kMinColumnWidth = 44;
         constexpr int kMinNameColumnWidth = 120;
+        // A pushed Details column stops here: wide enough for any path, and
+        // the sideways scroll stays something a scrollbar can still handle.
+        constexpr int kMaxDetailsColumnWidth = 4000;
         constexpr int kMinListColumnWidth = 80;
         constexpr int kMinBarWidth = 60;             // BarSize: shortest bar area
         constexpr int kScrollbarGutter = 10;         // reserved on the right edge
@@ -1736,6 +1733,142 @@ namespace UltraCanvas {
             return true;
         }
 
+        // A page of a text document's first lines, as a picture - what a
+        // tile draws for Text / Docs / Spreadsheets, rasterized so a caller
+        // that wants a picture (the desktop's Sticker board) gets one: a
+        // white portrait page in the box, the lines in a small font.
+        std::shared_ptr<UCPixmap> RenderTextPagePixmap(const std::string& path, int width, int height,
+                                                       float scale) {
+            std::vector<std::string> previewLines;
+            bool tabular = false;
+            if (!ExtractTextPreview(path, previewLines, tabular) || previewLines.empty()) return nullptr;
+            const float s = std::max(1.0f, scale);
+            const int pw = std::max(16, static_cast<int>(std::lround(width * s)));
+            const int ph = std::max(16, static_cast<int>(std::lround(height * s)));
+            auto pixmap = std::make_shared<UCPixmap>();
+            if (!pixmap->Init(pw, ph)) return nullptr;
+            std::unique_ptr<IRenderContext> ctx = CreateRenderContext(Size2Di(pw, ph), nullptr);
+            if (!ctx) return nullptr;
+            ctx->Clear(Colors::Transparent);
+            // A page three quarters as wide as it is tall, centred.
+            const double pageH = ph - 2.0;
+            const double pageW = std::min(static_cast<double>(pw) - 2.0, pageH * 0.75);
+            const Rect2Dd page((pw - pageW) / 2.0, 1.0, pageW, pageH);
+            ctx->DrawFilledRectangle(page, Colors::White, 1.0f, Color(170, 170, 170, 255));
+            const double margin = std::max(2.0, pageW * 0.08);
+            const double fontSize = std::max(4.0, pageH / 16.0);
+            const double lineHeight = fontSize * 1.3;
+            ctx->ClipRect(Rect2Dd(page.x + margin, page.y + margin, page.width - 2 * margin,
+                                  page.height - 2 * margin));
+            ctx->SetFontSize(fontSize);
+            ctx->SetTextPaint(Color(60, 60, 60, 255));
+            double y = page.y + margin;
+            for (const std::string& line : previewLines) {
+                if (y + lineHeight > page.y + page.height - margin) break;
+                if (!line.empty()) ctx->DrawText(line, Point2Dd(page.x + margin, y));
+                y += lineHeight;
+            }
+            ctx->ClearClipRect();
+            ctx->FlushToSurface(pixmap->GetSurface(), Point2Dd(0, 0));
+            pixmap->MarkDirty();
+            return pixmap;
+        }
+
+        // A file's content as a picture `w` x `h` (logical pixels at `scale`):
+        // the switch the thumbnail workers run, shared with
+        // RenderFileThumbnail. With `textPages`, a text document gets a page
+        // of its first lines; the Filer's own tiles draw those as text.
+        std::shared_ptr<UCPixmap> DecodeContentThumbnail(const std::string& path, int w, int h,
+                                                         ImageFitMode fit, float scale, bool textPages) {
+            std::shared_ptr<UCPixmap> pm;
+            switch (PreviewTypeForPath(path)) {
+                case FilerPreviewType::Videos: {
+                    // Poster frame of a video (may block for a few seconds on
+                    // a cold file — that is exactly what these workers are
+                    // for).
+                    VideoThumbnailRequest vreq;
+                    vreq.maxWidth = std::max(
+                            1, static_cast<int>(std::lround(w * scale)));
+                    vreq.maxHeight = std::max(
+                            1, static_cast<int>(std::lround(h * scale)));
+                    pm = CaptureVideoThumbnailPixmap(path, vreq);
+                    break;
+                }
+                case FilerPreviewType::PDF:
+                    pm = RenderPdfPreviewPixmap(path, w, h, scale);
+                    break;
+                case FilerPreviewType::Models3D:
+                    pm = RenderModelPreviewPixmap(path, w, h, scale);
+                    break;
+                case FilerPreviewType::Fonts:
+                    pm = RenderFontSpecimenPixmap(path, w, h, scale);
+                    break;
+                // A book shows its cover. (The Filer's workers see a document
+                // only as a book whose cover ThumbSourceFor asked for; its tiles
+                // draw the other documents' text themselves.)
+                case FilerPreviewType::Docs:
+                    if (EBookCoverReadable(LowerExtension(path))) {
+                        pm = RenderEBookCoverPixmap(path, w, h, fit, scale);
+                    } else if (textPages) {
+                        pm = RenderTextPagePixmap(path, w, h, scale);
+                    }
+                    break;
+                case FilerPreviewType::Text:
+                case FilerPreviewType::Spreadsheets:
+                    if (textPages) pm = RenderTextPagePixmap(path, w, h, scale);
+                    break;
+                case FilerPreviewType::VectorGraphics: {
+                    // The image pipeline first (svg/svgz, and eps/ps on a
+                    // libvips build with a PostScript loader); a format it
+                    // does not rasterize - or one it fails on - falls back to
+                    // the preview bitmap the document carries.
+                    const std::string ext = LowerExtension(path);
+                    if (ImagePipelineLoadsExtension(ext)) {
+                        auto img = UCImage::GetFresh(path);
+                        if (img && img->GetWidth() > 0 && img->GetHeight() > 0)
+                            pm = img->GetPixmap(w, h, fit, scale);
+                    }
+                    // The drawing itself, where a registered Vector plugin
+                    // reads the format: rendered from the document at the
+                    // tile's size rather than scaled from whatever bitmap
+                    // the authoring program happened to store.
+                    if (!pm && CanPreviewVectorExtension(path)) {
+                        pm = RenderVectorDrawingPixmap(path, w, h,
+                                                       scale);
+                    }
+                    if (!pm && FormatCarriesEmbeddedPreview(ext)) {
+                        pm = RenderEmbeddedPreviewPixmap(path, w, h,
+                                                         fit, scale);
+                    }
+                    // PDF-compatible Illustrator files (CS2 and newer) carry
+                    // no EPS preview but are a PDF from the first byte, so
+                    // the page renderer draws them like any document.
+                    if (!pm && PdfPreviewAvailable() &&
+                        FileStartsWithPdfSignature(path)) {
+                        pm = RenderPdfPreviewPixmap(path, w, h,
+                                                    scale);
+                    }
+                    break;
+                }
+                default: {
+                    const std::string ext = LowerExtension(path);
+                    if (ImagePipelineLoadsExtension(ext) || !FormatCarriesEmbeddedPreview(ext)) {
+                        auto img = UCImage::GetFresh(path);
+                        if (img && img->GetWidth() > 0 && img->GetHeight() > 0) {
+                            pm = img->GetPixmap(w, h, fit, scale);
+                        }
+                    }
+                    // A layered image (*.ucd): the thumbnail it carries.
+                    if (!pm && FormatCarriesEmbeddedPreview(ext)) {
+                        pm = RenderEmbeddedPreviewPixmap(path, w, h,
+                                                         fit, scale);
+                    }
+                    break;
+                }
+            }
+            return pm;
+        }
+
         bool IsBrowsableArchiveExt(const std::string& ext) {
             static const char* exts[] = {"zip", "7z", "rar", "tar", "gz", "tgz",
                                          "bz2", "xz", "zst", "jar"};
@@ -2428,6 +2561,19 @@ namespace UltraCanvas {
         }
     }
 
+    // ===== A FILE'S PICTURE, FOR ANYONE =====
+    std::shared_ptr<UCPixmap> RenderFileThumbnail(const std::string& path, int width, int height, float scale) {
+        if (path.empty() || width <= 0 || height <= 0) return nullptr;
+        std::shared_ptr<UCPixmap> pixmap;
+        try {
+            pixmap = DecodeContentThumbnail(path, width, height, ImageFitMode::Contain, scale, /*textPages=*/true);
+        } catch (const std::exception& e) {
+            debugOutput << "RenderFileThumbnail: " << path << ": " << e.what() << std::endl;
+            pixmap = nullptr;
+        }
+        return pixmap;
+    }
+
     // ===== CONSTRUCTION =====
     UltraCanvasFilerWidget::UltraCanvasFilerWidget(const std::string& identifier,
                                                    float x, float y, float w, float h)
@@ -2462,6 +2608,7 @@ namespace UltraCanvas {
     UltraCanvasFilerWidget::~UltraCanvasFilerWidget() {
         CancelPendingRename();      // the timer callback captures `this`
         StopListingPendingTicks();  // so does this one
+        StopIconMenuFeedback();     // and this one
         // Detach the rename editor now: its callbacks capture `this`, and the
         // container teardown dropping its focus must not commit into a
         // half-destroyed widget.
@@ -2536,6 +2683,7 @@ namespace UltraCanvas {
         // callbacks capture `this` and could start a worker again.
         CancelPendingRename();
         StopListingPendingTicks();
+        StopIconMenuFeedback();
         StopFolderWatchTimer();
         thumbAlive->store(false);   // results still in flight redraw nothing
         {
@@ -3006,6 +3154,7 @@ namespace UltraCanvas {
     void UltraCanvasFilerWidget::UpdateHiddenNoticeButton() {
         if (!HiddenNoticeVisible()) {
             if (hiddenNoticeButton) hiddenNoticeButton->SetVisible(false);
+            if (hiddenNoticeSettingsButton) hiddenNoticeSettingsButton->SetVisible(false);
             return;
         }
         if (!hiddenNoticeButton) {
@@ -3035,35 +3184,80 @@ namespace UltraCanvas {
             AddChild(hiddenNoticeButton);
         }
         hiddenNoticeButton->SetVisible(true);
+        // The gear beside it: only for a host that has settings deciding what
+        // is held back (onHiddenNoticeSettings), and it opens those.
+        if (onHiddenNoticeSettings && !hiddenNoticeSettingsButton) {
+            hiddenNoticeSettingsButton = CreateButton(
+                    GetIdentifier() + "-hidden-notice-settings", 0, 0, 24, 24, "");
+            ButtonStyle gs;
+            gs.normalColor  = Colors::Transparent;
+            gs.hoverColor   = Color(232, 232, 236, 255);
+            gs.pressedColor = Color(218, 218, 224, 255);
+            gs.borderWidth = 0.0f;
+            gs.cornerRadius = 4.0f;
+            gs.useIconAsMask = true;
+            gs.iconMaskColor = Color(85, 85, 92, 255);
+            hiddenNoticeSettingsButton->SetStyle(gs);
+            hiddenNoticeSettingsButton->SetIcon(
+                    NormalizePath(GetResourcesDir() + "media/icons/settings.svg"));
+            hiddenNoticeSettingsButton->SetIconSize(15, 15);
+            hiddenNoticeSettingsButton->SetIconSpacing(0);
+            hiddenNoticeSettingsButton->SetTooltip("Settings for what is hidden here");
+            hiddenNoticeSettingsButton->SetAcceptsFocus(false);
+            hiddenNoticeSettingsButton->SetOnClick([this]() {
+                if (onHiddenNoticeSettings) onHiddenNoticeSettings();
+            });
+            AddChild(hiddenNoticeSettingsButton);
+        }
+        if (hiddenNoticeSettingsButton)
+            hiddenNoticeSettingsButton->SetVisible(
+                    static_cast<bool>(onHiddenNoticeSettings));
         RequestRedraw();
     }
 
     void UltraCanvasFilerWidget::PositionHiddenNoticeButton(IRenderContext* ctx) {
         if (!hiddenNoticeButton || !hiddenNoticeButton->IsVisible()) return;
         const Rect2Di bar = HiddenNoticeBar();
+        const bool gear = hiddenNoticeSettingsButton &&
+                          hiddenNoticeSettingsButton->IsVisible();
         FontStyle fsty;
         fsty.fontFamily = style.fontFamily;
         fsty.fontSize = style.smallFontSize;
+        fsty.fontWeight = FontWeight::Normal;
+        ctx->SetFontStyle(fsty);
+        const int countW = ctx->GetTextLineDimensions(HiddenNoticeText()).width;
         fsty.fontWeight = FontWeight::Bold;
         ctx->SetFontStyle(fsty);
         Size2Di ts = ctx->GetTextLineDimensions(hiddenNoticeButton->GetText());
         const int h = std::max(18, bar.height - 6);
         const int w = std::min(std::max(60, bar.width / 2), ts.width + 24);
+        const int gearW = gear ? h : 0;
+        const int gap = 10, gearGap = gear ? 4 : 0;
+        // Count, button and gear make one group centred in the file area;
+        // in a pane too narrow for the group it keeps to the right edge and
+        // the count is ellipsized.
+        const int buttonsW = w + gearGap + gearW;
+        const int left = bar.x + (bar.width - (countW + gap + buttonsW)) / 2;
+        const int buttonX = std::max(bar.x + 8,
+                std::min(left + countW + gap, bar.x + bar.width - 8 - buttonsW));
+        const int y = bar.y + (bar.height - h) / 2;
         PlaceChildAt(hiddenNoticeButton,
-                     Rect2Df(static_cast<float>(bar.x + bar.width - w - 8),
-                             static_cast<float>(bar.y + (bar.height - h) / 2),
+                     Rect2Df(static_cast<float>(buttonX), static_cast<float>(y),
                              static_cast<float>(w), static_cast<float>(h)));
+        if (gear)
+            PlaceChildAt(hiddenNoticeSettingsButton,
+                         Rect2Df(static_cast<float>(buttonX + w + gearGap),
+                                 static_cast<float>(y),
+                                 static_cast<float>(gearW), static_cast<float>(h)));
     }
 
     void UltraCanvasFilerWidget::DrawHiddenItemsNotice(IRenderContext* ctx) {
         const Rect2Di bar = HiddenNoticeBar();
         if (bar.height <= 0 || bar.width <= 0) return;
-        ctx->SetFillPaint(style.infoBarBackground);
+        // Part of the folder display, not a strip of its own: the display's
+        // background, no rule above it.
+        ctx->SetFillPaint(style.backgroundColor);
         ctx->FillRectangle(Rect2Dd(bar));
-        ctx->SetStrokePaint(style.gridLineColor);
-        ctx->SetStrokeWidth(1.0f);
-        ctx->DrawLine(Point2Dd(bar.x, bar.y),
-                      Point2Dd(bar.x + bar.width, bar.y));
 
         FontStyle fsty;
         fsty.fontFamily = style.fontFamily;
@@ -3071,17 +3265,21 @@ namespace UltraCanvas {
         fsty.fontWeight = FontWeight::Normal;
         ctx->SetFontStyle(fsty);
         const int pad = 8;
-        // Whatever the button leaves: the count is the less important half of
-        // the strip, and is ellipsized rather than drawn under the button.
-        int avail = bar.width - 2 * pad;
-        if (hiddenNoticeButton && hiddenNoticeButton->IsVisible())
-            avail = static_cast<int>(hiddenNoticeButton->GetBounds().x)
-                    - bar.x - 2 * pad;
+        // The count ends just left of the button; it is the less important
+        // half of the line, and is ellipsized rather than drawn under it.
+        const bool button = hiddenNoticeButton && hiddenNoticeButton->IsVisible();
+        const std::string text = HiddenNoticeText();
+        int right = bar.x + bar.width - pad;
+        if (button) right = static_cast<int>(hiddenNoticeButton->GetBounds().x) - 10;
+        Size2Di full = ctx->GetTextLineDimensions(text);
+        int avail = right - bar.x - pad;
         if (avail <= 12) return;
-        std::string shown = EllipsizeText(ctx, HiddenNoticeText(), avail);
+        std::string shown = EllipsizeText(ctx, text, avail);
         Size2Di ts = ctx->GetTextLineDimensions(shown);
+        const int x = button ? right - ts.width
+                             : bar.x + (bar.width - full.width) / 2;
         ctx->SetTextPaint(style.secondaryTextColor);
-        ctx->DrawText(shown, Point2Dd(bar.x + pad,
+        ctx->DrawText(shown, Point2Dd(std::max(bar.x + pad, x),
                                       bar.y + (bar.height - ts.height) / 2.0));
     }
 
@@ -3473,6 +3671,14 @@ namespace UltraCanvas {
                isRemotePath && isRemotePath(currentPath);
     }
 
+    bool UltraCanvasFilerWidget::CanRenameHere() const {
+        return !ShowingRemoteFolder() || static_cast<bool>(remoteRename);
+    }
+
+    bool UltraCanvasFilerWidget::CanDeleteHere() const {
+        return !ShowingRemoteFolder() || static_cast<bool>(remoteDelete);
+    }
+
     bool UltraCanvasFilerWidget::IsRemoteEntryPath(const std::string& path) const {
         return !path.empty() && isRemotePath && isRemotePath(path);
     }
@@ -3718,6 +3924,14 @@ namespace UltraCanvas {
         // previews, the lock column - reads the local filesystem per entry,
         // which is exactly what a remote drive cannot serve.
         listingIsRealDirectory = fileListMode || isRealDir;
+
+        // Watch first, read second. Started after the read, the watch missed
+        // whatever the folder did while it was being read - a file saved into
+        // a folder just opened stayed invisible until something else changed.
+        // Started here, such a change is reported and lists the folder once
+        // more. A rescan of the folder already watched keeps its watch, so this
+        // costs nothing on a Refresh().
+        if (!fileListMode && isRealDir) WatchFolder(currentPath);
 
         // What this listing leaves out, for the hidden-items notice: the
         // hidden entries filtered below, plus the subfolders a curated home
@@ -3997,9 +4211,9 @@ namespace UltraCanvas {
                         {distinct.begin(), distinct.end()});
         }
 
-        // Point the folder watch at what is now on screen. Done after the scan
-        // so the fingerprint the worker takes describes the listing the user
-        // is looking at, not the one that was there a moment ago.
+        // Point the folder watch at what is now on screen. A real folder is
+        // already watched (see above) and this keeps that watch; anything else
+        // - a file list, an archive interior, a remote drive - stops it.
         WatchFolder((fileListMode || !isRealDir) ? std::string() : currentPath);
 
         if (listingPendingStatus != pendingBefore && onListingPendingChanged)
@@ -4378,6 +4592,16 @@ namespace UltraCanvas {
         NotifyDisplayFormatsChanged();
     }
 
+    void UltraCanvasFilerWidget::SetCaptionMaxLines(int lines) {
+        lines = std::max(0, lines);
+        if (style.captionMaxLines == lines) return;
+        style.captionMaxLines = lines;
+        // The caption band of a row is its deepest wrapped name, so the grid
+        // is laid out again with the new limit.
+        InvalidateFilerLayout();
+        RequestRedraw();
+    }
+
     void UltraCanvasFilerWidget::SetFavoriteMarkProvider(
             std::function<bool(const FilerEntry&)> provider) {
         const bool hadGutter = FavoriteMarkGutter() > 0;
@@ -4448,6 +4672,10 @@ namespace UltraCanvas {
         RefreshHostFileIcons();
         DropHostIconCache();
         RequestRedraw();
+    }
+
+    std::string UltraCanvasFilerWidget::FormatSizeText(uint64_t bytes) {
+        return FormatSize(bytes);
     }
 
     std::string UltraCanvasFilerWidget::ExtensionTagOf(const FilerEntry& e) {
@@ -4604,6 +4832,16 @@ namespace UltraCanvas {
     }
 
     // ===== RESIZABLE COLUMNS =====
+    void UltraCanvasFilerWidget::SetDetailsColumnResizeMode(FilerColumnResizeMode mode) {
+        if (detailsResizeMode == mode) return;
+        detailsResizeMode = mode;
+        // Split-pane resizing needs the flexible Name column that keeps the
+        // table at the view's width.
+        if (mode == FilerColumnResizeMode::SplitWithNeighbour) detailsNameFlexible = true;
+        InvalidateFilerLayout();
+        RequestRedraw();
+    }
+
     void UltraCanvasFilerWidget::SetColumnResizeEnabled(bool enabled) {
         if (columnResizeEnabled == enabled) return;
         columnResizeEnabled = enabled;
@@ -4642,9 +4880,14 @@ namespace UltraCanvas {
                                                             : kMinColumnWidth;
         int width = std::max(minWidth, pixels);
         if (detailsColumnWidths[index] == width) return;
-        // Name is derived from what the others leave, so widening it means
-        // taking that width from the visible column next to it.
-        if (column == FilerDetailsColumn::Name) {
+        // Under PushFollowing a Name width set from code is kept as given;
+        // under SplitWithNeighbour Name is derived from what the others leave,
+        // so widening it means taking that width from the visible column next
+        // to it.
+        if (column == FilerDetailsColumn::Name &&
+            detailsResizeMode == FilerColumnResizeMode::PushFollowing) {
+            detailsNameFlexible = false;
+        } else if (column == FilerDetailsColumn::Name) {
             int delta = width - detailsColumnWidths[0];
             const std::vector<size_t> vis = VisibleDetailsSpecIndices();
             size_t next = vis.size() > 1 ? vis[1]
@@ -4666,6 +4909,7 @@ namespace UltraCanvas {
     void UltraCanvasFilerWidget::ResetDetailsColumnWidths() {
         detailsColumnWidths.clear();
         EnsureDetailsColumnWidths();
+        detailsNameFlexible = true;   // Name fills the view again
         InvalidateFilerLayout();
         NotifyColumnWidthsChanged();
         RequestRedraw();
@@ -6963,7 +7207,7 @@ namespace UltraCanvas {
         for (const std::string& archive : archiveOrder) {
             auto result = VirtualFS::VirtualFS_DeleteFromArchive(
                     archive, archiveVictims[archive]);
-            if (result != VirtualFS::VirtualFSResult::Success) {
+            if (result != VirtualFS::VirtualFSResult::Ok) {
                 ReportError("Delete failed in " + archive + ": " +
                             VirtualFS::VirtualFSResultToString(result));
                 continue;
@@ -7848,7 +8092,7 @@ namespace UltraCanvas {
         // carry the rename out; otherwise refuse now rather than let someone
         // type a new name that goes nowhere.
         if (ShowingRemoteFolder()) {
-            if (!remoteRename) {
+            if (!CanRenameHere()) {
                 ReportError("Cannot rename on this drive.");
                 return;
             }
@@ -8710,6 +8954,105 @@ namespace UltraCanvas {
         if (job->onFinished) job->onFinished(ok, cancelled);
     }
 
+    namespace {
+        // The TAR formats of Compress: a plain .tar and every .tar.<filter>.
+        bool IsTarExtension(const std::string& extension) {
+            return extension == "tar" || extension.rfind("tar.", 0) == 0;
+        }
+
+        // The level FilerTarSettings gives the compressor of `extension`,
+        // clamped to that compressor's range; -1 for a plain .tar.
+        int TarCompressorLevel(const std::string& extension,
+                               const FilerTarSettings& tar) {
+            using T = FilerTarSettings;
+            if (extension == "tar.gz")  return std::clamp(tar.gzipLevel, 1, T::kMaxGzipLevel);
+            if (extension == "tar.bz2") return std::clamp(tar.bzip2Level, 1, T::kMaxBzip2Level);
+            if (extension == "tar.xz")  return std::clamp(tar.xzLevel, 0, T::kMaxXzLevel);
+            if (extension == "tar.zst") return std::clamp(tar.zstdLevel, 1, T::kMaxZstdLevel);
+            return -1;
+        }
+
+        int TarThreads(const FilerTarSettings& tar) {
+            return std::clamp(tar.threads, 0, FilerTarSettings::kMaxThreads);
+        }
+
+#ifdef ULTRACANVAS_HAS_VIRTUALFS
+        // What CreateArchive is handed for an archive of `extension`: the TAR
+        // settings for a TAR; for ZIP and 7-Zip the library defaults, storing
+        // what a link points to, as zip -r and 7z a do.
+        UCVFSCompressionOptions CompressOptionsFor(const std::string& extension,
+                                                   const FilerTarSettings& tar) {
+            UCVFSCompressionOptions options = UCVFSCompressionOptions::Default();
+            UCVFSArchiveWriteOptions& write = options.archive;
+            if (!IsTarExtension(extension)) {
+                write.storeSymlinks = false;
+                return options;
+            }
+            write.filterLevel = TarCompressorLevel(extension, tar);
+            write.threads = TarThreads(tar);
+            write.zstdLongWindowLog = (extension == "tar.zst" && tar.zstdLongMode) ? 27 : 0;
+            switch (tar.headerFormat) {
+                case FilerTarHeaderFormat::Pax:   write.tarFormat = UCVFSTarFormat::Pax;   break;
+                case FilerTarHeaderFormat::Gnu:   write.tarFormat = UCVFSTarFormat::Gnu;   break;
+                case FilerTarHeaderFormat::Ustar: write.tarFormat = UCVFSTarFormat::Ustar; break;
+            }
+            write.keepTimestamps = tar.keepTimestamps;
+            write.keepPermissions = tar.keepPermissions;
+            write.keepOwner = tar.keepOwner;
+            write.storeSymlinks = tar.storeSymlinks;
+            write.excludePatterns = tar.excludePatterns;
+            return options;
+        }
+#endif
+    }
+
+    std::string UltraCanvasFilerWidget::DescribeCompressParameters(
+            const std::string& extension, const FilerTarSettings& tar) {
+        // ZIP and 7-Zip pack at libarchive's defaults.
+        if (extension == "zip")
+            return "zip -r -6 <files>   (Deflate, level 6)\n"
+                   "Each file: own modification time, own permissions; "
+                   "links as the files they point to";
+        if (extension == "7z")
+            return "7z a -m0=LZMA -mx=6 <files>   (LZMA, level 6)\n"
+                   "Each file: own modification time; "
+                   "links as the files they point to";
+        if (!IsTarExtension(extension)) return std::string();
+
+        std::string command = "tar";
+        switch (tar.headerFormat) {
+            case FilerTarHeaderFormat::Pax:   command += " --format=pax";   break;
+            case FilerTarHeaderFormat::Gnu:   command += " --format=gnu";   break;
+            case FilerTarHeaderFormat::Ustar: command += " --format=ustar"; break;
+        }
+        if (!tar.storeSymlinks) command += " -h";
+        if (!tar.keepOwner) command += " --owner=0 --group=0 --numeric-owner";
+        if (!tar.keepTimestamps) command += " --mtime=now";
+        for (const std::string& pattern : tar.excludePatterns)
+            if (!pattern.empty()) command += " --exclude='" + pattern + "'";
+
+        const int level = TarCompressorLevel(extension, tar);
+        const std::string threads = " -T" + std::to_string(TarThreads(tar));
+        std::string compressor;
+        if (extension == "tar.gz")  compressor = "gzip -" + std::to_string(level);
+        if (extension == "tar.bz2") compressor = "bzip2 -" + std::to_string(level);
+        if (extension == "tar.xz")  compressor = "xz -" + std::to_string(level) + threads;
+        if (extension == "tar.zst")
+            compressor = "zstd -" + std::to_string(level) + threads +
+                         (tar.zstdLongMode ? " --long=27" : "");
+        if (compressor.empty())
+            command += " -cf archive." + extension + " <files>";
+        else
+            command += " -cf - <files> | " + compressor;
+
+        std::string kept = "Each file: ";
+        kept += tar.keepTimestamps ? "own modification time" : "the packing time";
+        kept += tar.keepPermissions ? ", own permissions" : ", permissions 0644 (folders 0755)";
+        kept += tar.keepOwner ? ", owner and group" : ", no owner";
+        kept += tar.storeSymlinks ? "; links as links" : "; links as the files they point to";
+        return command + "\n" + kept;
+    }
+
     void UltraCanvasFilerWidget::CompressSelection(const std::string& extension) {
 #ifdef ULTRACANVAS_HAS_VIRTUALFS
         std::vector<FilerEntry> targets = SelectionOrAll();
@@ -8729,11 +9072,11 @@ namespace UltraCanvas {
         // to build the VirtualFS provider registry.
         UCVFSBridge::Initialize();
         const std::string archiveName = PathToUtf8(PathFromUtf8(dest).filename());
+        const UCVFSCompressionOptions options = CompressOptionsFor(ext, tarSettings);
         StartArchiveJob("Compressing", "Creating \"" + archiveName + "\"",
                         dest, /*packing=*/true,
-                        [dest, paths](const ArchiveProgressReporter& report) {
-            return UCVFSBridge::CreateArchive(dest, paths,
-                    UCVFSCompressionOptions::Default(),
+                        [dest, paths, options](const ArchiveProgressReporter& report) {
+            return UCVFSBridge::CreateArchive(dest, paths, options,
                     [&report](uint64_t done, uint64_t total,
                               const std::string& file) {
                 return report(done, total, file);
@@ -9249,12 +9592,12 @@ namespace UltraCanvas {
         // to build the VirtualFS provider registry.
         UCVFSBridge::Initialize();
         const std::vector<std::string> sources = d.sourcePaths;
+        const UCVFSCompressionOptions options = CompressOptionsFor(ext, tarSettings);
         StartArchiveJob("Compressing",
                         "Creating \"" + PathToUtf8(candidate.filename()) + "\"",
                         dest, /*packing=*/true,
-                        [dest, sources](const ArchiveProgressReporter& report) {
-            return UCVFSBridge::CreateArchive(dest, sources,
-                    UCVFSCompressionOptions::Default(),
+                        [dest, sources, options](const ArchiveProgressReporter& report) {
+            return UCVFSBridge::CreateArchive(dest, sources, options,
                     [&report](uint64_t done, uint64_t total,
                               const std::string& file) {
                 return report(done, total, file);
@@ -9936,8 +10279,13 @@ namespace UltraCanvas {
         // The hidden-items strip stands down in a display too short to hold
         // both it and the files, so its button follows the display's height -
         // which changes with no rescan to hang the update on.
-        if (HiddenNoticeVisible() !=
-            (hiddenNoticeButton && hiddenNoticeButton->IsVisible()))
+        // The gear follows onHiddenNoticeSettings, which a host may set after
+        // the notice is already up.
+        const bool noticeUp = HiddenNoticeVisible();
+        const bool gearWanted = noticeUp && static_cast<bool>(onHiddenNoticeSettings);
+        if (noticeUp != (hiddenNoticeButton && hiddenNoticeButton->IsVisible()) ||
+            gearWanted != (hiddenNoticeSettingsButton &&
+                           hiddenNoticeSettingsButton->IsVisible()))
             UpdateHiddenNoticeButton();
         // A reveal requested while a resize was still in flight (see
         // EnsureSelectionVisible) is applied here, against the settled layout.
@@ -10014,14 +10362,17 @@ namespace UltraCanvas {
     void UltraCanvasFilerWidget::LayoutDetails(const Rect2Di& area) {
         EnsureDetailsColumnWidths();
         const std::vector<size_t> vis = VisibleDetailsSpecIndices();
-        // The name column absorbs whatever the (splitter-resized) rest leaves,
-        // so the table always spans the widget and dragging a splitter moves
-        // width between two neighbours instead of scrolling the table sideways.
-        int othersTotal = 0;
-        for (size_t k = 1; k < vis.size(); ++k)
-            othersTotal += detailsColumnWidths[vis[k]];
-        detailsColumnWidths[0] = std::max(kMinNameColumnWidth,
-                                          area.width - othersTotal - kScrollbarGutter);
+        // While it is flexible, the name column absorbs whatever the
+        // (splitter-resized) rest leaves, so the table spans the widget. Once
+        // a PushFollowing drag has pinned it, every column keeps its own
+        // width and a table wider than the view scrolls sideways.
+        if (detailsNameFlexible) {
+            int othersTotal = 0;
+            for (size_t k = 1; k < vis.size(); ++k)
+                othersTotal += detailsColumnWidths[vis[k]];
+            detailsColumnWidths[0] = std::max(kMinNameColumnWidth,
+                                              area.width - othersTotal - kScrollbarGutter);
+        }
 
         int x = area.x;
         for (size_t k = 0; k < vis.size(); ++k) {
@@ -10038,18 +10389,26 @@ namespace UltraCanvas {
             x += c.width;
         }
 
+        // A row spans the table, and at least the view: the strip right of
+        // a table narrower than the widget still selects and opens the entry.
+        const int tableWidth = x - area.x;
+        const int rowWidth = std::max(tableWidth, area.width - kScrollbarGutter);
         int rowH = style.detailsRowHeight;
         int y = area.y + detailsHeaderHeight;
         for (size_t i = 0; i < entries.size(); ++i) {
             ItemLayout it;
             it.entryIndex = i;
-            it.rect = Rect2Di(area.x, y, x - area.x, rowH);
+            it.rect = Rect2Di(area.x, y, rowWidth, rowH);
             it.imageRect = Rect2Di(area.x + 4 + FavoriteMarkGutter(), y + 3,
                                    rowH - 6, rowH - 6);
             items.push_back(it);
             y += rowH;
         }
-        contentWidth = area.width;
+        // Wide enough that the last scroll position puts the table's right
+        // edge where an exactly fitting table has it; no wider than the view
+        // (no sideways scrolling) while the table fits.
+        contentWidth = std::max(area.width,
+                                tableWidth + kScrollbarGutter + 2 * style.outerPadding);
         contentHeight = y + style.outerPadding;
     }
 
@@ -10101,7 +10460,7 @@ namespace UltraCanvas {
         // Wrapping needs text metrics. Outside a render pass the widget may not
         // be on a window yet: captions then stay single-line and the first
         // Render() rebuilds the layout with real measurements.
-        int maxNameLines = std::max(1, style.captionMaxLines);
+        int maxNameLines = CaptionLineLimit();
         IRenderContext* mctx = measureContext ? measureContext : GetRenderContext();
         captionLinesMeasured = (mctx != nullptr);
         if (mctx && maxNameLines > 1) {
@@ -10333,22 +10692,37 @@ namespace UltraCanvas {
         scrollAnimY.Cancel();
     }
 
-    UltraCanvasFilerWidget::ScrollbarGeom UltraCanvasFilerWidget::ScrollbarGeometry() const {
+    bool UltraCanvasFilerWidget::ScrollsHorizontally() const {
+        return IsHorizontal() || viewType == FilerViewType::Details;
+    }
+
+    bool UltraCanvasFilerWidget::ScrollsVertically() const {
+        return !IsHorizontal();
+    }
+
+    UltraCanvasFilerWidget::ScrollbarGeom
+    UltraCanvasFilerWidget::ScrollbarGeometry(bool horizontal) const {
         ScrollbarGeom g;
+        if (horizontal ? !ScrollsHorizontally() : !ScrollsVertically()) return g;
         auto b = GetLocalBounds();
         constexpr int kBarThickness = 6;
         constexpr int kMinThumb = 30;
-        if (IsHorizontal()) {
+        if (horizontal) {
             int maxX = MaxScrollX();
             if (maxX <= 0) return g;
             int y = static_cast<int>(b.y + b.height) - InfoBarHeight()
                     - kBarThickness - 2;
+            // Stops short of the vertical bar's column when there is one, so
+            // the two thumbs never overlap in the corner.
+            int trackW = static_cast<int>(b.width);
+            if (ScrollsVertically() && MaxScrollY() > 0) trackW -= kBarThickness + 4;
+            trackW = std::max(1, trackW);
             double frac = static_cast<double>(b.width) / std::max(1, contentWidth);
-            int thumbW = std::max(kMinThumb, static_cast<int>(b.width * frac));
-            int travel = std::max(0, static_cast<int>(b.width) - thumbW);
+            int thumbW = std::min(trackW, std::max(kMinThumb, static_cast<int>(trackW * frac)));
+            int travel = std::max(0, trackW - thumbW);
             int tx = static_cast<int>(b.x) + (maxX > 0 ? travel * scrollOffsetX / maxX : 0);
             g.active = true; g.horizontal = true; g.travel = travel; g.maxScroll = maxX;
-            g.track = Rect2Di(static_cast<int>(b.x), y, static_cast<int>(b.width), kBarThickness);
+            g.track = Rect2Di(static_cast<int>(b.x), y, trackW, kBarThickness);
             g.thumb = Rect2Di(tx, y, thumbW, kBarThickness);
         } else {
             int maxY = MaxScrollY();
@@ -10366,8 +10740,8 @@ namespace UltraCanvas {
         return g;
     }
 
-    void UltraCanvasFilerWidget::ScrollThumbTo(int thumbLeadPx) {
-        ScrollbarGeom g = ScrollbarGeometry();
+    void UltraCanvasFilerWidget::ScrollThumbTo(int thumbLeadPx, bool horizontal) {
+        ScrollbarGeom g = ScrollbarGeometry(horizontal);
         if (!g.active || g.travel <= 0) return;
         // Dragging the thumb positions the view directly: a glide chasing the
         // pointer would lag behind the grabbed thumb.
@@ -10510,6 +10884,7 @@ namespace UltraCanvas {
                        static_cast<int>(lb.width), static_cast<int>(lb.height));
 
         DrawViewContent(ctx, bounds);
+        ReportSelectionInfoChange();
 
         // The name filter's "no matches" action button is a real child
         // element this self-rendered view must draw itself; placed fresh each
@@ -10524,17 +10899,20 @@ namespace UltraCanvas {
             ctx->PopState();
         }
 
-        // The hidden-items strip along the foot: its own chrome, drawn like
-        // the info bar, plus a real button child placed and drawn here.
+        // The hidden-items line along the foot of the file area: the count as
+        // text, plus the real button children (Show hidden files, and the
+        // gear when the host has settings for it) placed and drawn here.
         if (HiddenNoticeVisible()) {
             PositionHiddenNoticeButton(ctx);
             DrawHiddenItemsNotice(ctx);
-            if (hiddenNoticeButton && hiddenNoticeButton->IsVisible()) {
-                Rect2Df hb = hiddenNoticeButton->GetBounds();
+            for (UltraCanvasButton* nb : { hiddenNoticeButton.get(),
+                                           hiddenNoticeSettingsButton.get() }) {
+                if (!nb || !nb->IsVisible()) continue;
+                Rect2Df hb = nb->GetBounds();
                 ctx->PushState();
                 ctx->ClipRect(Rect2Dd(lb.x, lb.y, lb.width, lb.height));
                 ctx->Translate(Point2Df(hb.x, hb.y));
-                hiddenNoticeButton->Render(ctx, Rect2Df(0, 0, hb.width, hb.height));
+                nb->Render(ctx, Rect2Df(0, 0, hb.width, hb.height));
                 ctx->PopState();
             }
         }
@@ -11009,6 +11387,13 @@ namespace UltraCanvas {
     // come out near equal — "CoderBox" / "compiler.png" rather than the
     // greedy "CoderBox compiler" / ".png" (see UltraCanvasTextWrapping.h).
 
+    int UltraCanvasFilerWidget::CaptionLineLimit() const {
+        // No limit is a limit nothing reaches: the wrap stops at the end of
+        // the name, long before the line counter would.
+        if (style.captionMaxLines <= 0) return std::numeric_limits<int>::max();
+        return style.captionMaxLines;
+    }
+
     int UltraCanvasFilerWidget::CaptionOverflowSlack() const {
         if (style.captionOverflowSlack > 0) return style.captionOverflowSlack;
         // Auto: about half a character of the caption font — enough for the
@@ -11062,7 +11447,7 @@ namespace UltraCanvas {
     int UltraCanvasFilerWidget::CaptionLinesFor(IRenderContext* ctx,
                                                 const std::string& name,
                                                 int maxWidth) const {
-        int maxLines = std::max(1, style.captionMaxLines);
+        int maxLines = CaptionLineLimit();
         if (!ctx || maxLines == 1 || maxWidth <= 0) return 1;
         return TextWrapping::LineCount(ContextMeasure{ctx}, name,
                                        CaptionWrapOptions(maxWidth, maxLines));
@@ -12364,82 +12749,8 @@ namespace UltraCanvas {
                 const int edge = std::max(1, static_cast<int>(std::lround(
                         std::max(req.w, req.h) * req.scale)));
                 pm = LoadNativeFileIconPixmap(req.path, edge);
-            } else switch (PreviewTypeForPath(req.path)) {
-                case FilerPreviewType::Videos: {
-                    // Poster frame of a video (may block for a few seconds on
-                    // a cold file — that is exactly what these workers are
-                    // for).
-                    VideoThumbnailRequest vreq;
-                    vreq.maxWidth = std::max(
-                            1, static_cast<int>(std::lround(req.w * req.scale)));
-                    vreq.maxHeight = std::max(
-                            1, static_cast<int>(std::lround(req.h * req.scale)));
-                    pm = CaptureVideoThumbnailPixmap(req.path, vreq);
-                    break;
-                }
-                case FilerPreviewType::PDF:
-                    pm = RenderPdfPreviewPixmap(req.path, req.w, req.h, req.scale);
-                    break;
-                case FilerPreviewType::Models3D:
-                    pm = RenderModelPreviewPixmap(req.path, req.w, req.h, req.scale);
-                    break;
-                case FilerPreviewType::Fonts:
-                    pm = RenderFontSpecimenPixmap(req.path, req.w, req.h, req.scale);
-                    break;
-                // A document reaches the image workers only as a book whose
-                // cover ThumbSourceFor asked for.
-                case FilerPreviewType::Docs:
-                    pm = RenderEBookCoverPixmap(req.path, req.w, req.h, req.fit,
-                                                req.scale);
-                    break;
-                case FilerPreviewType::VectorGraphics: {
-                    // The image pipeline first (svg/svgz, and eps/ps on a
-                    // libvips build with a PostScript loader); a format it
-                    // does not rasterize - or one it fails on - falls back to
-                    // the preview bitmap the document carries.
-                    const std::string ext = LowerExtension(req.path);
-                    if (ImagePipelineLoadsExtension(ext)) {
-                        auto img = UCImage::GetFresh(req.path);
-                        if (img && img->GetWidth() > 0 && img->GetHeight() > 0)
-                            pm = img->GetPixmap(req.w, req.h, req.fit, req.scale);
-                    }
-                    // The drawing itself, where a registered Vector plugin
-                    // reads the format: rendered from the document at the
-                    // tile's size rather than scaled from whatever bitmap
-                    // the authoring program happened to store.
-                    if (!pm && CanPreviewVectorExtension(req.path)) {
-                        pm = RenderVectorDrawingPixmap(req.path, req.w, req.h,
-                                                       req.scale);
-                    }
-                    if (!pm && FormatCarriesEmbeddedPreview(ext)) {
-                        pm = RenderEmbeddedPreviewPixmap(req.path, req.w, req.h,
-                                                         req.fit, req.scale);
-                    }
-                    // PDF-compatible Illustrator files (CS2 and newer) carry
-                    // no EPS preview but are a PDF from the first byte, so
-                    // the page renderer draws them like any document.
-                    if (!pm && PdfPreviewAvailable() &&
-                        FileStartsWithPdfSignature(req.path)) {
-                        pm = RenderPdfPreviewPixmap(req.path, req.w, req.h,
-                                                    req.scale);
-                    }
-                    break;
-                }
-                default: {
-                    const std::string ext = LowerExtension(req.path);
-                    if (ImagePipelineLoadsExtension(ext) || !FormatCarriesEmbeddedPreview(ext)) {
-                        auto img = UCImage::GetFresh(req.path);
-                        if (img && img->GetWidth() > 0 && img->GetHeight() > 0) {
-                            pm = img->GetPixmap(req.w, req.h, req.fit, req.scale);
-                        }
-                    }
-                    // A layered image (*.ucd): the thumbnail it carries.
-                    if (!pm && FormatCarriesEmbeddedPreview(ext)) {
-                        pm = RenderEmbeddedPreviewPixmap(req.path, req.w, req.h,
-                                                         req.fit, req.scale);
-                    }
-                    break;
-                }
+            } else {
+                pm = DecodeContentThumbnail(req.path, req.w, req.h, req.fit, req.scale, /*textPages=*/false);
             }
             });
 
@@ -13241,6 +13552,9 @@ namespace UltraCanvas {
         fsty.fontSize = style.fontSize;
         fsty.fontWeight = FontWeight::Bold;
         ctx->SetFontStyle(fsty);
+        // Titles of columns scrolled off to the left stay inside the strip.
+        ctx->PushState();
+        ctx->ClipRect(Rect2Dd(header));
         for (const DetailsColumn& c : detailsColumns) {
             // The sort direction is a triangle drawn after the title: the
             // bundled UI font has no "▲" or "▼", and where no fallback font
@@ -13250,7 +13564,10 @@ namespace UltraCanvas {
             std::string title = EllipsizeText(ctx, c.title, c.width - 12 - markWidth);
             ctx->SetTextPaint(style.headerTextColor);
             Size2Di ts = ctx->GetTextLineDimensions(title);
-            int tx = c.rightAligned ? c.x + c.width - ts.width - markWidth - 8 : c.x + 6;
+            // The header stays put vertically but scrolls sideways with the
+            // rows.
+            const int cx = c.x - scrollOffsetX;
+            int tx = c.rightAligned ? cx + c.width - ts.width - markWidth - 8 : cx + 6;
             int ty = area.y + (detailsHeaderHeight - ts.height) / 2;
             ctx->DrawText(title, Point2Dd(tx, ty));
             if (sorted) {
@@ -13258,6 +13575,7 @@ namespace UltraCanvas {
                                  sortAscending, style.headerTextColor);
             }
         }
+        ctx->PopState();
     }
 
     void UltraCanvasFilerWidget::DrawDetailsRow(IRenderContext* ctx,
@@ -13519,7 +13837,7 @@ namespace UltraCanvas {
             bool showSize = item.rect.height >= 42;
             int nameRoom = item.rect.height - 6 - (showSize ? lineH : 0);
             int maxLines = clampi(nameRoom / std::max(1, lineH), 1,
-                                  std::max(1, style.captionMaxLines));
+                                  CaptionLineLimit());
             std::vector<std::string> nameLines = WrapEntryName(
                     ctx, item.entryIndex, DisplayNameOf(e),
                     item.rect.width - 8, maxLines);
@@ -13557,27 +13875,132 @@ namespace UltraCanvas {
         // Right-align the strip inside the item, but never let it spill past the
         // item's left edge: on narrow thumbnail tiles the four buttons are wider
         // than the tile, so clamp the start to the left edge instead.
-        int x = item.rect.x + item.rect.width - total - 4;
+        int right = item.rect.x + item.rect.width;
+        // A Details row wider than the view (its columns pushed past it) keeps
+        // the strip at the visible right edge rather than off-screen.
+        if (viewType == FilerViewType::Details) {
+            const Rect2Di area = ContentBounds();
+            right = std::min(right, area.x + area.width - kScrollbarGutter + scrollOffsetX);
+        }
+        int x = right - total - 4;
         if (x < item.rect.x) x = item.rect.x;
         int y = item.rect.y + 2;
         for (IconMenuAction a : actions) {
             Rect2Di button(x, y, sz, sz);
-            ctx->SetFillPaint(style.iconMenuBackground);
-            ctx->FillRoundedRectangle(Rect2Dd(button), 4);
-            DrawIconMenuGlyph(ctx, a, button);
+            const double phase = IconMenuFeedbackPhase(a, item.entryIndex);
+            if (phase < 0) {
+                ctx->SetFillPaint(style.iconMenuBackground);
+                ctx->FillRoundedRectangle(Rect2Dd(button), 4);
+                DrawIconMenuGlyph(ctx, a, button, IconMenuActionEnabled(a));
+            } else {
+                // The done colour holds for the first 60 %, then blends back.
+                const double k = phase < 0.6 ? 1.0 : 1.0 - (phase - 0.6) / 0.4;
+                auto mix = [k](uint8_t from, uint8_t to) {
+                    return static_cast<uint8_t>(from + (to - from) * k + 0.5);
+                };
+                const Color& b0 = style.iconMenuBackground;
+                const Color& b1 = style.iconMenuDoneColor;
+                ctx->SetFillPaint(Color(mix(b0.r, b1.r), mix(b0.g, b1.g),
+                                        mix(b0.b, b1.b), mix(b0.a, b1.a)));
+                ctx->FillRoundedRectangle(Rect2Dd(button), 4);
+                if (phase < 0.75) {
+                    // A checkmark that pops: up to 1.3x over the first 30 %,
+                    // settling back to its size.
+                    const double pop = 1.0 + 0.3 * std::sin(
+                            3.14159265358979 * std::min(1.0, phase / 0.3));
+                    const double cx = button.x + button.width / 2.0;
+                    const double cy = button.y + button.height / 2.0;
+                    const double r = button.width * 0.26 * pop;
+                    ctx->SetStrokePaint(style.iconMenuGlyphColor);
+                    ctx->SetStrokeWidth(1.8f);
+                    ctx->DrawLine(Point2Dd(cx - r, cy), Point2Dd(cx - r * 0.3, cy + r * 0.7));
+                    ctx->DrawLine(Point2Dd(cx - r * 0.3, cy + r * 0.7),
+                                  Point2Dd(cx + r, cy - r * 0.7));
+                } else {
+                    DrawIconMenuGlyph(ctx, a, button, IconMenuActionEnabled(a));
+                }
+            }
+            // A greyed button keeps its hit rect, so pressing it is swallowed
+            // rather than falling through to the item, and its tooltip can
+            // say why it is off.
             iconMenuHits.push_back({button, item.entryIndex, a});
             x += sz + gap;
         }
     }
 
+    // ===== HOVER ICON-MENU FEEDBACK =====
+    // Copy and Cut change nothing on screen (a cut ghosts the entries, but a
+    // copy shows nothing at all), so the pressed button answers instead: it
+    // flashes the done colour with a checkmark and fades back to its glyph.
+    namespace { constexpr int kIconMenuFeedbackMs = 700; }
+
+    void UltraCanvasFilerWidget::StartIconMenuFeedback(IconMenuAction action,
+                                                       size_t entryIndex,
+                                                       const Rect2Di& button) {
+        if (entryIndex >= entries.size()) return;
+        auto* app = UltraCanvasApplication::GetInstance();
+        if (!app) return;
+        StopIconMenuFeedback();
+        iconFeedbackAction = static_cast<int>(action);
+        iconFeedbackPath   = entries[entryIndex].path;
+        iconFeedbackRect   = button;
+        iconFeedbackStart  = std::chrono::steady_clock::now();
+        // 30 ms ticks repaint only the button (its rect is in content
+        // coordinates, like every icon-menu hit rect).
+        iconFeedbackTimer = app->StartTimer(30, true, [this](TimerId) {
+            const Rect2Df dirty(static_cast<float>(iconFeedbackRect.x - scrollOffsetX),
+                                static_cast<float>(iconFeedbackRect.y - scrollOffsetY),
+                                static_cast<float>(iconFeedbackRect.width),
+                                static_cast<float>(iconFeedbackRect.height));
+            if (std::chrono::steady_clock::now() - iconFeedbackStart >=
+                std::chrono::milliseconds(kIconMenuFeedbackMs)) {
+                StopIconMenuFeedback();
+            }
+            InvalidateRect(dirty);
+        });
+        RequestRedraw();
+    }
+
+    void UltraCanvasFilerWidget::StopIconMenuFeedback() {
+        iconFeedbackAction = -1;
+        iconFeedbackPath.clear();
+        if (iconFeedbackTimer == InvalidTimerId) return;
+        if (auto* app = UltraCanvasApplication::GetInstance())
+            app->StopTimer(iconFeedbackTimer);
+        iconFeedbackTimer = InvalidTimerId;
+    }
+
+    double UltraCanvasFilerWidget::IconMenuFeedbackPhase(IconMenuAction action,
+                                                         size_t entryIndex) const {
+        if (iconFeedbackAction != static_cast<int>(action) ||
+            entryIndex >= entries.size() ||
+            entries[entryIndex].path != iconFeedbackPath) return -1.0;
+        const double ms = std::chrono::duration<double, std::milli>(
+                std::chrono::steady_clock::now() - iconFeedbackStart).count();
+        if (ms >= kIconMenuFeedbackMs) return -1.0;
+        return ms / kIconMenuFeedbackMs;
+    }
+
+    bool UltraCanvasFilerWidget::IconMenuActionEnabled(IconMenuAction action) const {
+        switch (action) {
+            case IconMenuAction::Cut:    return !ShowingRemoteFolder();
+            case IconMenuAction::Rename: return CanRenameHere();
+            case IconMenuAction::Delete: return CanDeleteHere();
+            default:                     return true;
+        }
+    }
+
     void UltraCanvasFilerWidget::DrawIconMenuGlyph(IRenderContext* ctx,
                                                    IconMenuAction action,
-                                                   const Rect2Di& button) {
+                                                   const Rect2Di& button,
+                                                   bool enabled) {
         // Small vector glyphs so no icon assets are required.
         double cx = button.x + button.width / 2.0;
         double cy = button.y + button.height / 2.0;
         double r = button.width * 0.26;
-        ctx->SetStrokePaint(style.iconMenuGlyphColor);
+        Color glyph = style.iconMenuGlyphColor;
+        if (!enabled) glyph.a = static_cast<uint8_t>(glyph.a * 0.35);
+        ctx->SetStrokePaint(glyph);
         ctx->SetStrokeWidth(1.4f);
         switch (action) {
             case IconMenuAction::Copy: {
@@ -13595,10 +14018,16 @@ namespace UltraCanvas {
                 break;
             }
             case IconMenuAction::Rename: {
-                // Pencil over a baseline.
-                ctx->DrawLine(Point2Dd(cx - r, cy + r), Point2Dd(cx + r * 0.9, cy - r * 0.9));
-                ctx->DrawLine(Point2Dd(cx - r, cy + r), Point2Dd(cx - r * 0.5, cy + r));
-                ctx->DrawLine(Point2Dd(cx - r, cy + r), Point2Dd(cx - r, cy + r * 0.5));
+                // A serif "T" beside a text caret: it edits the NAME, so it
+                // reads as "type text" rather than a pencil, which looked like
+                // "edit the file's contents".
+                double tx = cx - r * 0.3;
+                ctx->DrawLine(Point2Dd(tx - r * 0.9, cy - r), Point2Dd(tx + r * 0.9, cy - r));
+                ctx->DrawLine(Point2Dd(tx - r * 0.9, cy - r), Point2Dd(tx - r * 0.9, cy - r * 0.7));
+                ctx->DrawLine(Point2Dd(tx + r * 0.9, cy - r), Point2Dd(tx + r * 0.9, cy - r * 0.7));
+                ctx->DrawLine(Point2Dd(tx, cy - r), Point2Dd(tx, cy + r));
+                ctx->DrawLine(Point2Dd(tx - r * 0.35, cy + r), Point2Dd(tx + r * 0.35, cy + r));
+                ctx->DrawLine(Point2Dd(cx + r * 1.15, cy - r * 0.6), Point2Dd(cx + r * 1.15, cy + r));
                 break;
             }
             case IconMenuAction::Delete: {
@@ -13630,21 +14059,26 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasFilerWidget::DrawScrollbar(IRenderContext* ctx) {
-        ScrollbarGeom g = ScrollbarGeometry();
-        if (!g.active) return;
-        Color thumbColor = draggingScrollbar ? Color(70, 70, 78, 220)
-                                             : Color(90, 90, 96, 180);
-        if (g.horizontal) {
-            ctx->SetFillPaint(Color(0, 0, 0, 30));
-            ctx->FillRoundedRectangle(Rect2Dd(g.track.x + 2, g.track.y,
-                                              g.track.width - 4, g.track.height), 3);
-        } else {
-            ctx->SetFillPaint(Color(0, 0, 0, 30));
-            ctx->FillRoundedRectangle(Rect2Dd(g.track.x, g.track.y + 2,
-                                              g.track.width, g.track.height - 4), 3);
+        // Details can carry both bars: the vertical one for the rows and the
+        // horizontal one once its columns are pushed past the view.
+        for (bool horizontal : {false, true}) {
+            ScrollbarGeom g = ScrollbarGeometry(horizontal);
+            if (!g.active) continue;
+            const bool held = draggingScrollbar && draggingScrollbarHorizontal == horizontal;
+            Color thumbColor = held ? Color(70, 70, 78, 220)
+                                    : Color(90, 90, 96, 180);
+            if (g.horizontal) {
+                ctx->SetFillPaint(Color(0, 0, 0, 30));
+                ctx->FillRoundedRectangle(Rect2Dd(g.track.x + 2, g.track.y,
+                                                  g.track.width - 4, g.track.height), 3);
+            } else {
+                ctx->SetFillPaint(Color(0, 0, 0, 30));
+                ctx->FillRoundedRectangle(Rect2Dd(g.track.x, g.track.y + 2,
+                                                  g.track.width, g.track.height - 4), 3);
+            }
+            ctx->SetFillPaint(thumbColor);
+            ctx->FillRoundedRectangle(Rect2Dd(g.thumb), 3);
         }
-        ctx->SetFillPaint(thumbColor);
-        ctx->FillRoundedRectangle(Rect2Dd(g.thumb), 3);
     }
 
     // ===== COLUMN SPLITTERS =====
@@ -13676,11 +14110,16 @@ namespace UltraCanvas {
 
         switch (viewType) {
             case FilerViewType::Details: {
-                // One splitter on the right edge of every column but the last;
-                // inside the header strip only.
-                for (size_t i = 0; i + 1 < detailsColumns.size(); ++i) {
+                // One splitter on the right edge of every column, inside the
+                // header strip only. Splitting with the neighbour leaves the
+                // last one out - that edge is the view's - while pushing the
+                // following columns makes the last column resizable too.
+                const bool push = detailsResizeMode == FilerColumnResizeMode::PushFollowing;
+                const size_t n = push ? detailsColumns.size()
+                                      : (detailsColumns.empty() ? 0 : detailsColumns.size() - 1);
+                for (size_t i = 0; i < n; ++i) {
                     const DetailsColumn& c = detailsColumns[i];
-                    strips.push_back({c.x + c.width, area.y,
+                    strips.push_back({c.x + c.width - scrollOffsetX, area.y,
                                       area.y + detailsHeaderHeight});
                 }
                 break;
@@ -13776,12 +14215,14 @@ namespace UltraCanvas {
                 // The splitter index counts visible columns; the widths stay
                 // indexed by FilerDetailsColumn (Path may be hidden).
                 const std::vector<size_t> vis = VisibleDetailsSpecIndices();
-                if (index + 1 >= (int)vis.size()) {
+                const bool push = detailsResizeMode == FilerColumnResizeMode::PushFollowing;
+                if (index >= (int)vis.size() || (!push && index + 1 >= (int)vis.size())) {
                     draggingSplitter = -1;
                     return;
                 }
                 splitterDragStartA = detailsColumnWidths[vis[index]];
-                splitterDragStartB = detailsColumnWidths[vis[index + 1]];
+                splitterDragStartB = (index + 1 < (int)vis.size())
+                        ? detailsColumnWidths[vis[index + 1]] : 0;
                 break;
             }
             case FilerViewType::List:
@@ -13814,12 +14255,25 @@ namespace UltraCanvas {
 
         switch (viewType) {
             case FilerViewType::Details: {
+                const std::vector<size_t> vis = VisibleDetailsSpecIndices();
+                if (index >= (int)vis.size()) return;
+                if (detailsResizeMode == FilerColumnResizeMode::PushFollowing) {
+                    // Only the dragged column changes; the ones after it move
+                    // along with their widths intact. The flexible Name column
+                    // is pinned at the width it is drawn with first, or it
+                    // would give way to the column being widened.
+                    if (delta == 0) return;
+                    detailsNameFlexible = false;
+                    int minWidth = (index == 0) ? kMinNameColumnWidth : kMinColumnWidth;
+                    detailsColumnWidths[vis[index]] =
+                            clampi(splitterDragStartA + delta, minWidth, kMaxDetailsColumnWidth);
+                    break;
+                }
                 // Split-pane semantics: the width the left column gains is
                 // taken from the column on the right, so the table keeps
                 // spanning the widget. The Name column is derived from what
                 // the others leave, which makes dragging the first splitter
                 // resize Name by the same amount in the opposite direction.
-                const std::vector<size_t> vis = VisibleDetailsSpecIndices();
                 if (index + 1 >= (int)vis.size()) return;
                 int pairTotal = splitterDragStartA + splitterDragStartB;
                 int minLeft = (index == 0) ? kMinNameColumnWidth : kMinColumnWidth;
@@ -14327,18 +14781,42 @@ namespace UltraCanvas {
                  fs::is_directory(PathFromUtf8(path), ec))
                         ? path : std::string();
 
+        // Every scan ends here, so most calls are a Refresh() of the folder
+        // already watched - most often one the watch itself asked for. Read
+        // before anything changes; folderWatchPath is only written on this
+        // thread, so reading it without the lock is safe.
+        const std::string previous =
+                nativeWatchActive ? folderWatcher.WatchedPath() : folderWatchPath;
+        const bool sameTarget = !target.empty() && target == previous;
+
         // The operating system can usually tell us the moment something
         // changes - inotify, ReadDirectoryChangesW - which beats re-reading
         // the folder on a timer on both latency and cost. The callback runs on
         // the watcher's thread and does nothing but raise the flag the UI timer
         // already polls, so the rest of the machinery is unchanged.
-        folderWatcher.Stop();
-        nativeWatchActive = false;
-        // Stop() joined the previous backend, so nothing can still be about to
-        // report the folder we just left: whatever sets this from here on
-        // belongs to the watch started below.
-        nativeWatchLost.store(false);
-        if (!target.empty()) {
+        //
+        // A live watch on this same folder is kept. Restarting it after every
+        // scan dropped whatever the folder did in between - and a save is
+        // several steps (Firefox writes a placeholder, then a .part file, then
+        // renames it): the first step triggered the scan, the rest landed
+        // while it ran or while the watch was being replaced, and the listing
+        // stayed on the half-saved state for good.
+        const bool keepNativeWatch =
+                sameTarget && nativeWatchActive && !nativeWatchLost.load();
+        if (!keepNativeWatch) {
+            folderWatcher.Stop();
+            nativeWatchActive = false;
+            // Stop() joined the previous backend, so nothing can still be
+            // about to report the folder we just left: whatever sets these
+            // from here on belongs to the watch started below.
+            nativeWatchLost.store(false);
+            // News pending about another folder means nothing here. News
+            // about this one is kept: the timer clears the flag before it
+            // refreshes, so a flag raised since came from a change the scan
+            // that just ran may not have seen.
+            if (!sameTarget) folderWatchDirty.store(false);
+        }
+        if (!target.empty() && !keepNativeWatch) {
             nativeWatchActive = folderWatcher.Watch(target,
                     [this]() { folderWatchDirty.store(true); },
                     // A native watch can die on its own - the volume it is on
@@ -14369,7 +14847,6 @@ namespace UltraCanvas {
             if (target.empty()) return;
             if (!nativeWatchActive) StartFolderWatchWorkerLocked();
         }
-        folderWatchDirty.store(false);   // whatever was pending described the old folder
         folderWatchCond.notify_all();
         ArmFolderWatchTimer();
     }
@@ -14830,6 +15307,29 @@ namespace UltraCanvas {
         }
     }
 
+    void UltraCanvasFilerWidget::GetSelectionInfo(std::string& primary,
+                                                  std::string& secondary) {
+        BuildSelectionInfoText(primary, secondary);
+    }
+
+    void UltraCanvasFilerWidget::ReportSelectionInfoChange() {
+        if (!onSelectionInfoChanged) return;
+        std::string primary, secondary;
+        BuildSelectionInfoText(primary, secondary);
+        std::string key = primary + '\x1f' + secondary;
+        if (key == reportedSelectionInfo) return;
+        reportedSelectionInfo = std::move(key);
+        // Posted, not called: this runs inside the paint, and a host that
+        // answers by setting a label's text should not do it mid-frame.
+        UltraCanvasApplicationBase* app = UltraCanvasApplicationBase::GetCurrent();
+        if (!app) return;
+        auto alive = thumbAlive;
+        app->PostToUIThread([this, alive]() {
+            if (!alive->load()) return;   // widget destroyed meanwhile
+            if (onSelectionInfoChanged) onSelectionInfoChanged();
+        });
+    }
+
     bool UltraCanvasFilerWidget::IsInInfoBar(const Point2Di& localPoint) const {
         int h = InfoBarHeight();
         if (h <= 0) return false;
@@ -14915,9 +15415,10 @@ namespace UltraCanvas {
         Rect2Di area = ContentBounds();
         if (localPoint.y < area.y || localPoint.y > area.y + detailsHeaderHeight)
             return -1;
+        const int x = localPoint.x + scrollOffsetX;   // the header scrolls sideways
         for (size_t i = 0; i < detailsColumns.size(); ++i) {
             const DetailsColumn& c = detailsColumns[i];
-            if (c.sortable && localPoint.x >= c.x && localPoint.x < c.x + c.width)
+            if (c.sortable && x >= c.x && x < c.x + c.width)
                 return static_cast<int>(i);
         }
         return -1;
@@ -14940,11 +15441,27 @@ namespace UltraCanvas {
         size_t iconEntry = 0;
         int iconAction = IconMenuActionAt(localPoint, iconEntry);
         if (iconAction >= 0) {
-            static const char* kIconMenuTips[] = { "Copy", "Cut", "Rename", "Delete" };
+            // Say what each button does to the file and give its keyboard
+            // shortcut, so the strip also teaches the keys.
+            static const char* kIconMenuTips[] = {
+                "Copy to clipboard (Ctrl+C)",
+                "Cut to clipboard (Ctrl+X)",
+                "Rename (F2)",
+                "Delete (Del)",
+            };
             target = TooltipTarget::IconButton;
             entry  = iconEntry;
             action = iconAction;
             text   = kIconMenuTips[iconAction];
+            if (!IconMenuActionEnabled(static_cast<IconMenuAction>(iconAction))) {
+                static const char* kIconMenuOffTips[] = {
+                    "",
+                    "Cut is not available on a drive - copy, then delete",
+                    "Rename is not available on this drive",
+                    "Delete is not available on this drive",
+                };
+                text = kIconMenuOffTips[iconAction];
+            }
         } else if (renamingIndex < 0 && !IsInInfoBar(localPoint) &&
                    hoveredSplitter < 0) {
             Point2Di content = ToContentPoint(localPoint);
@@ -15436,17 +15953,20 @@ namespace UltraCanvas {
                   [this]() { CutSelection(); }, "Ctrl+X");
         addAction("Paste", "paste.svg", ClipboardHasContent(),
                   [this]() { Paste(); }, "Ctrl+V");
-        addAction("Delete", "delete.svg", hasSel, [this]() {
+        // Rename and the deletes are greyed out on a drive the host cannot
+        // carry them out on, rather than offered and then refused.
+        addAction("Delete", "delete.svg", hasSel && CanDeleteHere(), [this]() {
             DeleteSelection(FilerDeleteMode::MoveToTrash);
         }, "Del");
-        addAction("Delete Permanently", "delete-permanently.svg", hasSel, [this]() {
+        addAction("Delete Permanently", "delete-permanently.svg",
+                  hasSel && CanDeleteHere(), [this]() {
             DeleteSelection(FilerDeleteMode::Permanently);
         }, "Shift+Del");
         addAction("Duplicate", "duplicate.svg", hasSel && !ShowingRemoteFolder(),
                   [this]() { DuplicateSelection(); }, "Ctrl+D");
         {
             size_t renameIdx = singleSel ? selection.front() : 0;
-            addAction("Rename", "rename.svg", singleSel,
+            addAction("Rename", "rename.svg", singleSel && CanRenameHere(),
                       [this, renameIdx]() { StartRename(renameIdx); }, "F2");
         }
         menu.AddItem(MenuItemData::Separator());
@@ -15489,6 +16009,9 @@ namespace UltraCanvas {
                         f.label,
                         [this, ext, label]() { OpenCompressDialog(ext, label); });
                 item.enabled = canCompress;
+                // What the entry packs with, as a command line - so the TAR
+                // settings the host offers can be read off the menu itself.
+                item.tooltip = DescribeCompressParameters(ext, tarSettings);
                 compressItems.push_back(item);
             }
             MenuItemData compressSub = MenuItemData::Submenu(
@@ -15702,8 +16225,12 @@ namespace UltraCanvas {
             // The first pictures inside a folder peeking out of its icon.
             addSwitch("Folder previews", "folder-previews.svg", folderPreviews,
                       [this](bool on) { SetFolderPreviewsEnabled(on); });
-            addSwitch("Info-Bar", "info-bar.svg", showSelectionInfo,
-                      [this](bool on) { SetSelectionInfoVisible(on); });
+            // Left out where the host shows the same line in its own status
+            // bar (SetInfoBarMenuItemVisible) - switching the bar back on
+            // there would only say it twice.
+            if (showInfoBarMenuItem)
+                addSwitch("Info-Bar", "info-bar.svg", showSelectionInfo,
+                          [this](bool on) { SetSelectionInfoVisible(on); });
             // "Show me everything": hidden entries, and the full physical
             // listing of a curated home folder (SetCuratedHomeFolder).
             addSwitch("Hidden files", "hidden-files.svg", showHiddenFiles,
@@ -15904,7 +16431,8 @@ namespace UltraCanvas {
                 // a drag reaches another window) must not interrupt it.
                 return true;
             }
-            case UCEventType::MouseWheel: {
+            case UCEventType::MouseWheel:
+            case UCEventType::MouseWheelHorizontal: {
                 RememberPointer(event);
                 // Glide to the new position instead of jumping (see
                 // UltraCanvasSmoothScroll.h); each eased step repaints, and the
@@ -15912,10 +16440,17 @@ namespace UltraCanvas {
                 // hover, its icon menu and its tooltip on every one of those
                 // paints (RefreshHoverState) rather than staying on the old
                 // file.
-                if (IsHorizontal()) {
+                // A sideways wheel - or Shift with the normal one - scrolls a
+                // Details table that is wider than the view; the List view
+                // scrolls sideways with the normal wheel.
+                const bool tilt = event.type == UCEventType::MouseWheelHorizontal;
+                if (tilt && !ScrollsHorizontally()) return false;
+                if (tilt || IsHorizontal() || (event.shift && ScrollsHorizontally())) {
                     if (MaxScrollX() <= 0) return false;
-                    scrollAnimX.AnimateBy(-event.wheelDelta * kWheelStep,
-                                          0, MaxScrollX());
+                    // A tilt to the right reports +1 (see the platform layers),
+                    // a notch away from the user on the normal wheel +1 too.
+                    const int step = tilt ? event.wheelDelta : -event.wheelDelta;
+                    scrollAnimX.AnimateBy(step * kWheelStep, 0, MaxScrollX());
                 } else {
                     if (MaxScrollY() <= 0) return false;
                     scrollAnimY.AnimateBy(-event.wheelDelta * kWheelStep,
@@ -15972,8 +16507,8 @@ namespace UltraCanvas {
                     }
                 }
                 if (draggingScrollbar) {
-                    ScrollThumbTo((IsHorizontal() ? local.x : local.y)
-                                  - scrollbarGrabOffset);
+                    ScrollThumbTo((draggingScrollbarHorizontal ? local.x : local.y)
+                                  - scrollbarGrabOffset, draggingScrollbarHorizontal);
                     RequestRedraw();
                     return true;
                 }
@@ -16059,9 +16594,10 @@ namespace UltraCanvas {
 
                 if (renamingIndex >= 0) CommitRename();
 
-                // Scrollbar first: it sits above the content.
-                {
-                    ScrollbarGeom g = ScrollbarGeometry();
+                // Scrollbars first: they sit above the content (Details can
+                // have one along each axis).
+                for (bool horizontal : {false, true}) {
+                    ScrollbarGeom g = ScrollbarGeometry(horizontal);
                     if (g.active) {
                         Rect2Di hit = g.track;
                         if (g.horizontal) { hit.y -= 6; hit.height += 8; }
@@ -16074,9 +16610,10 @@ namespace UltraCanvas {
                                 scrollbarGrabOffset =
                                         (g.horizontal ? g.thumb.width : g.thumb.height) / 2;
                                 ScrollThumbTo((g.horizontal ? local.x : local.y)
-                                              - scrollbarGrabOffset);
+                                              - scrollbarGrabOffset, g.horizontal);
                             }
                             draggingScrollbar = true;
+                            draggingScrollbarHorizontal = g.horizontal;
                             // The pointer is parked on the bar for the whole
                             // drag, not on a file: drop the hover so its icon
                             // menu does not sit under the thumb the user is
@@ -16102,6 +16639,10 @@ namespace UltraCanvas {
                     size_t entryIdx = 0;
                     int action = IconMenuActionAt(local, entryIdx);
                     if (action >= 0) {
+                        // A greyed button (Cut on a drive) swallows the press
+                        // and does nothing, like a greyed menu item.
+                        if (!IconMenuActionEnabled(static_cast<IconMenuAction>(action)))
+                            return true;
                         // The buttons act on the hovered entry — or on the
                         // whole selection when that entry is part of it — and
                         // never change the selection themselves: pressing one
@@ -16111,9 +16652,17 @@ namespace UltraCanvas {
                         std::vector<FilerEntry> targets = SelectionOrEntry(entryIdx);
                         switch (static_cast<IconMenuAction>(action)) {
                             case IconMenuAction::Copy:
-                                EntriesToClipboard(targets, false); break;
-                            case IconMenuAction::Cut:
-                                EntriesToClipboard(targets, true); break;
+                            case IconMenuAction::Cut: {
+                                const auto a = static_cast<IconMenuAction>(action);
+                                EntriesToClipboard(targets, a == IconMenuAction::Cut);
+                                for (const IconMenuHit& h : iconMenuHits) {
+                                    if (h.entryIndex == entryIdx && h.action == a) {
+                                        StartIconMenuFeedback(a, entryIdx, h.rect);
+                                        break;
+                                    }
+                                }
+                                break;
+                            }
                             case IconMenuAction::Rename:
                                 StartRename(entryIdx); break;
                             case IconMenuAction::Delete:

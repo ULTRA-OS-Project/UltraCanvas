@@ -10,9 +10,15 @@
 // "Alien Caterpillar" point cloud are drawn as native 2D GL geometry rather
 // than fragment shaders). The generating source for each effect is shown
 // in a GLSL-syntax-highlighted text area below.
+// Version: 1.1.0 - the shared page look (UltraCanvasDemoPageKit): the title spans the tab
+//                  and wraps, the source viewer and the control panel are columns
+//                  of labels and controls sized to their text; the surface keeps its
+//                  absolute placement
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "UltraCanvasGLDemoSupport.h"
 
 #ifdef ULTRACANVAS_ENABLE_GL
@@ -760,14 +766,55 @@ inline void RenderCaterpillar(ShaderGLResources& g, int W, int H, float t){
 
 } // namespace
 
+namespace {
+
+// The tab keeps absolute placement: the GL surface's bounds are where the
+// maximize toggle restores it to. A text over it is placed at (left, top) and
+// spans the tab less `right`, as tall as its wrapped lines, so a longer text
+// (a translation) wraps instead of being cut at a fixed width.
+void PlaceAcross(UltraCanvasUIElement& element, float left, float top, float right) {
+    CSSLayout::Position position;
+    position.left = CSSLayout::Dimension::Px(left);
+    position.top = CSSLayout::Dimension::Px(top);
+    position.right = CSSLayout::Dimension::Px(right);
+    element.layoutItem.position = position;
+    element.layoutItem.SetPositionType(CSSLayout::PositionType::AbsoluteUI);
+}
+
+std::shared_ptr<UltraCanvasLabel> MakeTabText(const std::string& id, const std::string& text,
+                                              float fontSize, bool bold,
+                                              const Color& color = DemoKit::BodyText()) {
+    auto label = DemoKit::CreateText(id, text);
+    label->SetFontSize(fontSize);
+    if (bold) label->SetFontWeight(FontWeight::Bold);
+    label->SetTextColor(color);
+    return label;
+}
+
+// The control panel keeps its place and size beside the surface; inside it
+// is a column, so a label or button that grows pushes the rest down and the
+// info text below takes what is left (and scrolls).
+void MakePanelColumn(UltraCanvasContainer& panel) {
+    panel.layout.SetFlexColumn().SetFlexGap(8)
+                .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+}
+
+void AddFillingRest(const std::shared_ptr<UltraCanvasContainer>& column,
+                    const std::shared_ptr<UltraCanvasUIElement>& element) {
+    element->size.height = CSSLayout::Dimension::Auto();
+    DemoKit::AddStretched(column, element);
+    element->layoutItem.SetFlex(1, 1, CSSLayout::Dimension::Px(0));
+}
+
+} // namespace
+
 std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
     auto root = std::make_shared<UltraCanvasContainer>("GLShaderTab", 0, 0, 1004, 692);
 
-    auto title = std::make_shared<UltraCanvasLabel>("GLShaderTitle", 16, 8, 700, 24);
-    title->SetText("Shader Playground — full-screen procedural fragment shaders");
-    title->SetFontSize(14);
-    title->SetFontWeight(FontWeight::Bold);
-    title->SetTextColor(Color(40, 40, 120, 255));
+    auto title = MakeTabText("GLShaderTitle",
+            "Shader Playground — full-screen procedural fragment shaders",
+            14, true, Color(40, 40, 120, 255));
+    PlaceAcross(*title, 16, 8, 16);
     root->AddChild(title);
 
     auto effects = std::make_shared<std::vector<ShaderEffect>>(BuildEffects());
@@ -879,14 +926,18 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
         return head.empty() ? fx.body : head + "\n" + fx.body;
     };
 
-    auto codeTitle = std::make_shared<UltraCanvasLabel>("ShaderSrcTitle", 16, 400, 660, 18);
-    codeTitle->SetText("Generating source (read-only) — original formula + live GLSL");
-    codeTitle->SetFontSize(12);
-    codeTitle->SetFontWeight(FontWeight::Bold);
-    codeTitle->SetTextColor(Color(40, 40, 120, 255));
-    root->AddChild(codeTitle);
+    // The heading and the viewer share the box under the surface: a heading
+    // that wraps to a second line takes its height from the viewer.
+    auto codeColumn = std::make_shared<UltraCanvasContainer>("ShaderSrcColumn", 16, 400, 660, 286);
+    codeColumn->layout.SetFlexColumn().SetFlexGap(2)
+                      .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    root->AddChild(codeColumn);
 
-    auto codeArea = std::make_shared<UltraCanvasTextArea>("ShaderSource", 16, 420, 660, 266);
+    DemoKit::Add(codeColumn, MakeTabText("ShaderSrcTitle",
+            "Generating source (read-only) — original formula + live GLSL",
+            12, true, Color(40, 40, 120, 255)));
+
+    auto codeArea = std::make_shared<UltraCanvasTextArea>("ShaderSource", 0, 0, 660, 266);
     codeArea->SetHighlightSyntax(true);
     codeArea->SetProgrammingLanguage("GLSL");    // dedicated GLSL grammar
     codeArea->ApplyDarkTheme();
@@ -895,36 +946,30 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
     codeArea->SetWordWrap(false);
     codeArea->SetFontSize(12.0f);
     codeArea->SetText(sourceFor(0));
-    root->AddChild(codeArea);
+    AddFillingRest(codeColumn, codeArea);
 
     // ---------------------------------------------------------- control panel
     auto panel = std::make_shared<UltraCanvasContainer>("ShaderControls", 690, 36, 310, 650);
     panel->SetBackgroundColor(Color(246, 246, 248, 255));
     panel->SetBorders(1.0f);
     panel->SetPadding(10.0f);
+    MakePanelColumn(*panel);
 
-    auto pTitle = std::make_shared<UltraCanvasLabel>("ShaderCtrlTitle", 10, 8, 270, 22);
-    pTitle->SetText("Effect");
-    pTitle->SetFontWeight(FontWeight::Bold);
-    pTitle->SetFontSize(13);
-    panel->AddChild(pTitle);
+    DemoKit::Add(panel, MakeTabText("ShaderCtrlTitle", "Effect", 13, true));
 
-    auto fxDrop = std::make_shared<UltraCanvasDropdown>("ShaderDropdown", 10, 36, 270, 28);
+    auto fxDrop = std::make_shared<UltraCanvasDropdown>("ShaderDropdown", 0, 0, 270, 28);
     for (const auto& fx : *effects) fxDrop->AddItem(fx.label);
     fxDrop->SetSelectedIndex(0, false);
-    panel->AddChild(fxDrop);   // onSelectionChanged is wired up once the slider
-                               // groups below exist (it toggles their visibility).
+    DemoKit::AddStretched(panel, fxDrop);   // onSelectionChanged is wired up once the slider
+                                            // groups below exist (it toggles their visibility).
 
-    auto speedLabel = std::make_shared<UltraCanvasLabel>("ShaderSpeedLabel", 10, 78, 270, 18);
-    speedLabel->SetText("Animation Speed");
-    speedLabel->SetFontSize(11);
-    panel->AddChild(speedLabel);
+    DemoKit::Add(panel, MakeTabText("ShaderSpeedLabel", "Animation Speed", 11, false));
 
-    auto speedSlider = std::make_shared<UltraCanvasSlider>("ShaderSpeedSlider", 10, 98, 270, 24);
+    auto speedSlider = std::make_shared<UltraCanvasSlider>("ShaderSpeedSlider", 0, 0, 270, 24);
     speedSlider->SetRange(0.0f, 3.0f);
     speedSlider->SetValue(1.0f);
     speedSlider->onValueChanged = [state](float v) { state->speed = v; };
-    panel->AddChild(speedSlider);
+    DemoKit::AddStretched(panel, speedSlider);
 
     // ----------------------------------------- per-effect parameter sliders
     // Locate the effects that carry live uniforms so the matching slider group
@@ -937,8 +982,10 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
         if ((*effects)[i].label == "Circles (openFrameworks)")   circlesIdx = i;
     }
 
+    // Each group is a column in the panel: a hidden group takes no room, so
+    // the shown one sits under the speed slider, and its captions wrap.
     auto addSlider = [](std::shared_ptr<UltraCanvasContainer>& group, const char* id,
-                        int y, float lo, float hi, float val,
+                        float lo, float hi, float val,
                         std::function<void(float)> cb,
                         float step = 0.0f, const char* fmt = "%.2f") {
         // Height must leave room for the always-on Number value display: the slider
@@ -947,73 +994,67 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
         // above the slider's top edge and lands on the caption placed above it. 36px
         // = handle (16) + a value-text row (~16) + margin keeps the number inside the
         // slider, below the caption. Do not shrink this without re-checking the overlap.
-        auto s = std::make_shared<UltraCanvasSlider>(id, 0, y, 270, 36);
+        auto s = std::make_shared<UltraCanvasSlider>(id, 0, 0, 270, 36);
         s->SetRange(lo, hi);
         if (step > 0.0f) s->SetStep(step);
         s->SetValue(val);
         s->SetValueDisplay(SliderValueDisplay::Number);
         s->SetValueFormat(fmt);
         s->onValueChanged = std::move(cb);
-        group->AddChild(s);
+        DemoKit::AddStretched(group, s);
     };
     auto addCaption = [](std::shared_ptr<UltraCanvasContainer>& group, const char* id,
-                         const char* text, int y, bool bold = false) {
-        auto l = std::make_shared<UltraCanvasLabel>(id, 0, y, 270, 16);
-        l->SetText(text);
-        l->SetFontSize(bold ? 12 : 11);
-        if (bold) l->SetFontWeight(FontWeight::Bold);
-        group->AddChild(l);
+                         const char* text, bool bold = false) {
+        DemoKit::Add(group, MakeTabText(id, text, bold ? 12.0f : 11.0f, bold));
+    };
+    auto makeGroup = [&panel](const char* id) {
+        auto group = DemoKit::CreateColumn(id, 2);
+        group->SetBackgroundColor(Color(246, 246, 248, 255));
+        DemoKit::Add(panel, group);
+        return group;
     };
 
     // Ball Surface — brightness and splat radius shape the dotted rings.
-    auto ballGroup = std::make_shared<UltraCanvasContainer>("BallParams", 10, 128, 276, 132);
-    ballGroup->SetBackgroundColor(Color(246, 246, 248, 255));
-    addCaption(ballGroup, "BS_title", "Ball Surface controls", 0, true);
-    addCaption(ballGroup, "BS_bL", "Brightness", 20);
-    addSlider(ballGroup, "BS_b", 36, 0.05f, 1.5f, 0.4f, [state](float v){ state->ballBright = v; });
-    addCaption(ballGroup, "BS_sL", "Splat radius (px)", 76);
-    addSlider(ballGroup, "BS_s", 92, 0.5f, 5.0f, 1.7f, [state](float v){ state->ballSplat = v; });
+    auto ballGroup = makeGroup("BallParams");
+    addCaption(ballGroup, "BS_title", "Ball Surface controls", true);
+    addCaption(ballGroup, "BS_bL", "Brightness");
+    addSlider(ballGroup, "BS_b", 0.05f, 1.5f, 0.4f, [state](float v){ state->ballBright = v; });
+    addCaption(ballGroup, "BS_sL", "Splat radius (px)");
+    addSlider(ballGroup, "BS_s", 0.5f, 5.0f, 1.7f, [state](float v){ state->ballSplat = v; });
     ballGroup->SetVisible(false);
-    panel->AddChild(ballGroup);
 
     // Pulse — step scale (march density) and fold-axis phase shape the motion.
-    auto pulseGroup = std::make_shared<UltraCanvasContainer>("PulseParams", 10, 128, 276, 132);
-    pulseGroup->SetBackgroundColor(Color(246, 246, 248, 255));
-    addCaption(pulseGroup, "PU_title", "Pulse controls", 0, true);
-    addCaption(pulseGroup, "PU_stepL", "Step scale", 20);
-    addSlider(pulseGroup, "PU_step", 36, 0.05f, 0.6f, 0.2f, [state](float v){ state->pulseStep = v; });
-    addCaption(pulseGroup, "PU_phL", "Fold phase", 76);
-    addSlider(pulseGroup, "PU_ph", 92, 0.0f, 6.2832f, 0.0f, [state](float v){ state->pulsePhase = v; });
+    auto pulseGroup = makeGroup("PulseParams");
+    addCaption(pulseGroup, "PU_title", "Pulse controls", true);
+    addCaption(pulseGroup, "PU_stepL", "Step scale");
+    addSlider(pulseGroup, "PU_step", 0.05f, 0.6f, 0.2f, [state](float v){ state->pulseStep = v; });
+    addCaption(pulseGroup, "PU_phL", "Fold phase");
+    addSlider(pulseGroup, "PU_ph", 0.0f, 6.2832f, 0.0f, [state](float v){ state->pulsePhase = v; });
     pulseGroup->SetVisible(false);
-    panel->AddChild(pulseGroup);
 
     // Fragments — inner fold count and tube radius shape the crystalline burst.
-    auto fragGroup = std::make_shared<UltraCanvasContainer>("FragmentsParams", 10, 128, 276, 132);
-    fragGroup->SetBackgroundColor(Color(246, 246, 248, 255));
-    addCaption(fragGroup, "FR_title", "Fragments controls", 0, true);
-    addCaption(fragGroup, "FR_foldL", "Fold count (turbulence)", 20);
-    addSlider(fragGroup, "FR_fold", 36, 2.0f, 10.0f, 6.0f,
+    auto fragGroup = makeGroup("FragmentsParams");
+    addCaption(fragGroup, "FR_title", "Fragments controls", true);
+    addCaption(fragGroup, "FR_foldL", "Fold count (turbulence)");
+    addSlider(fragGroup, "FR_fold", 2.0f, 10.0f, 6.0f,
               [state](float v){ state->fragFold = v; }, 1.0f, "%.0f");
-    addCaption(fragGroup, "FR_radL", "Tube radius (core size)", 76);
-    addSlider(fragGroup, "FR_rad", 92, 1.0f, 12.0f, 5.0f, [state](float v){ state->fragRadius = v; });
+    addCaption(fragGroup, "FR_radL", "Tube radius (core size)");
+    addSlider(fragGroup, "FR_rad", 1.0f, 12.0f, 5.0f, [state](float v){ state->fragRadius = v; });
     fragGroup->SetVisible(false);
-    panel->AddChild(fragGroup);
 
     // Circles — node count, link distance and ring growth shape the network.
-    auto circlesGroup = std::make_shared<UltraCanvasContainer>("CirclesParams", 10, 128, 276, 188);
-    circlesGroup->SetBackgroundColor(Color(246, 246, 248, 255));
-    addCaption(circlesGroup, "CI_title", "Circles controls", 0, true);
-    addCaption(circlesGroup, "CI_nL", "Node count", 20);
-    addSlider(circlesGroup, "CI_n", 36, 30.0f, 400.0f, 180.0f,
+    auto circlesGroup = makeGroup("CirclesParams");
+    addCaption(circlesGroup, "CI_title", "Circles controls", true);
+    addCaption(circlesGroup, "CI_nL", "Node count");
+    addSlider(circlesGroup, "CI_n", 30.0f, 400.0f, 180.0f,
               [state](float v){ state->circlesNodes = v; }, 1.0f, "%.0f");
-    addCaption(circlesGroup, "CI_dL", "Link distance", 76);
-    addSlider(circlesGroup, "CI_d", 92, 20.0f, 100.0f, 50.0f,
+    addCaption(circlesGroup, "CI_dL", "Link distance");
+    addSlider(circlesGroup, "CI_d", 20.0f, 100.0f, 50.0f,
               [state](float v){ state->circlesLink = v; }, 0.0f, "%.0f");
-    addCaption(circlesGroup, "CI_gL", "Ring growth (pow base)", 132);
-    addSlider(circlesGroup, "CI_g", 148, 1.1f, 1.6f, 1.4f,
+    addCaption(circlesGroup, "CI_gL", "Ring growth (pow base)");
+    addSlider(circlesGroup, "CI_g", 1.1f, 1.6f, 1.4f,
               [state](float v){ state->circlesGrowth = v; });
     circlesGroup->SetVisible(false);
-    panel->AddChild(circlesGroup);
 
     // Now that the groups exist, wire dropdown selection to reveal the right one.
     fxDrop->onSelectionChanged =
@@ -1029,11 +1070,11 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
             surface->RequestRender();
         };
 
-    // The panel's content box ends at y=628, so the info text has ~310px here —
-    // an earlier version listed every effect (the dropdown already does) and
+    // The info text takes what the panel has left under the controls — an
+    // earlier version listed every effect (the dropdown already does) and
     // ran off the bottom of the panel, taking the interaction hints with it.
     // It scrolls now, so text that outgrows the panel can still be read.
-    auto info = demoui::MakeScrollingText("ShaderInfo", 10, 318, 270, 310, 11.0f,
+    auto info = demoui::MakeScrollingText("ShaderInfo", 0, 0, 270, 310, 11.0f,
                                           Color(60, 60, 60, 255));
     info.SetText(
         "Most effects are a single fragment\n"
@@ -1051,7 +1092,7 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
         "double-click the canvas to maximize it;\n"
         "Esc or another double-click restores."
     );
-    panel->AddChild(info.View);
+    AddFillingRest(panel, info.View);
 
     root->AddChild(panel);
 
@@ -1060,7 +1101,7 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
     // button / double-click / Esc toggle that grows the canvas over the whole
     // tab, hiding the title, the source viewer and the control panel.
     AddMaximizeControl(root, surface,
-                       {title.get(), codeTitle.get(), codeArea.get(), panel.get()},
+                       {title.get(), codeColumn.get(), panel.get()},
                        "ShaderZoomBtn");
 
     return root;

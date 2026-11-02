@@ -86,7 +86,7 @@ for (const auto& app : NetworkMonitor_SummarizeByProcess(connections)) { /* … 
 
 | Type | Holds |
 |---|---|
-| `NetworkConnection` | transport, address family, local/remote address and port, `state`, `ownerUid`, `socketInode`, `process` (optional), `bytesSent` / `bytesReceived` (optional), `remoteName` / `nameSource` (empty / `None` until a source has named the peer) |
+| `NetworkConnection` | transport, address family, local/remote address and port, `state`, `ownerUid`, `socketInode`, `process` (optional), `bytesSent` / `bytesReceived` (optional), `remoteName` / `nameSource` (empty / `NoSource` until a source has named the peer) |
 | `ProcessIdentity` | `pid`, `executablePath`, `displayName` (the kernel's comm), `userName` |
 | `NetworkConnectionState` | the TCP state machine, plus `Unconnected` for a UDP socket without a fixed peer |
 | `NetworkMonitorCapabilities` | `socketTable`, `processAttribution`, `allUsers`, `connectionEvents`, `perConnectionBytes`, `dnsWithProcess`, `backendName`, `notes` |

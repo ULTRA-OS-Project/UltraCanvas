@@ -100,7 +100,7 @@ inline bool BoolOption(const OptionsMap& providerOptions,
 // the numeric code in Error::providerCode.
 inline ErrorCode MapBaseRespCode(int64_t status) {
     switch (status) {
-        case 0:    return ErrorCode::None;
+        case 0:    return ErrorCode::Ok;
         case 1000: return ErrorCode::ProviderError;        // unknown error
         case 1001: return ErrorCode::Timeout;
         case 1002: return ErrorCode::RateLimited;

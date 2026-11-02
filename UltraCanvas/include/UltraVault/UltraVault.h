@@ -33,20 +33,13 @@
 #include <string>
 #include <vector>
 
-// When included after X11 headers, Xlib's `Success` macro (0) collides with
-// ResultCode::Success — the same collision UltraAICommon.h neutralizes for
-// X11's `None`. Undefine it before our declarations.
-#ifdef Success
-#undef Success
-#endif
-
 namespace UltraVault {
 
 // ============================================================================
 // Results
 // ============================================================================
 enum class ResultCode : uint8_t {
-    Success,
+    Ok,
     NotFound,            // no secret stored under this key
     AccessDenied,        // wrong passphrase, or the vault file was altered
     Locked,              // Initialize() has not run (or Shutdown() has)
@@ -61,10 +54,10 @@ struct Result {
     ResultCode code = ResultCode::Unknown;
     std::string message;
 
-    bool IsOk() const { return code == ResultCode::Success; }
+    bool IsOk() const { return code == ResultCode::Ok; }
     operator bool() const { return IsOk(); }
 
-    static Result Ok() { return Result{ResultCode::Success, {}}; }
+    static Result Ok() { return Result{ResultCode::Ok, {}}; }
     static Result Error(ResultCode code, const std::string& message) {
         return Result{code, message};
     }

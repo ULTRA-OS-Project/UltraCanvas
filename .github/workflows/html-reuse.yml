@@ -13,7 +13,7 @@ name: HTML reuse
 # only additions fail. A site that must stay says so with
 # `// html-reuse-exempt: <why>`.
 
-# Trigger policy matches build.yml / win32-names.yml: `pull_request` covers
+# Trigger policy matches build.yml / platform-names.yml: `pull_request` covers
 # feature branches, so listing them under `push` too would run this check
 # twice per commit.
 on:
@@ -45,7 +45,7 @@ concurrency:
 
 jobs:
   check:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04   # the pool the build legs use; the ubuntu-latest (24.04) one held jobs for hours on 2026-10-21
     steps:
       - uses: actions/checkout@v5
       - name: Check for HTML, CSS or entity handling outside the HTMLReader module

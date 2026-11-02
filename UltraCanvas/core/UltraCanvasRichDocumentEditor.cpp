@@ -115,6 +115,7 @@ void RichCharFormatDelta::ApplyTo(RichTextRun& run) const {
     if (setFontFamily) run.fontFamily = fontFamily;
     if (setFontSize)   run.fontSizePt = fontSizePt;
     if (setColor)      run.color = color;
+    if (setHighlight)  run.highlightColor = highlightColor;
     if (setLink)       run.linkTarget = linkTarget;
     if (addComment >= 0 && std::find(run.commentIds.begin(), run.commentIds.end(), addComment) == run.commentIds.end()) {
         run.commentIds.push_back(addComment);
@@ -1105,6 +1106,7 @@ RichCharFormatDelta DeltaFromRun(const RichTextRun& run) {
     delta.setFontFamily = true;    delta.fontFamily = run.fontFamily;
     delta.setFontSize = true;      delta.fontSizePt = run.fontSizePt;
     delta.setColor = true;         delta.color = run.color;
+    delta.setHighlight = true;     delta.highlightColor = run.highlightColor;
     delta.setLink = true;          delta.linkTarget = run.linkTarget;
     return delta;
 }
@@ -1767,6 +1769,7 @@ RichCharFormatState UCRichDocumentEditor::GetFormatState() const {
         state.superscript = fold(state.superscript, run.superscript, first);
         foldString(state.fontFamily, state.fontFamilyMixed, run.fontFamily, first);
         foldString(state.color, state.colorMixed, run.color, first);
+        foldString(state.highlightColor, state.highlightMixed, run.highlightColor, first);
         foldString(state.linkTarget, state.linkMixed, run.linkTarget, first);
         if (first) {
             state.fontSizePt = run.fontSizePt;
@@ -1912,6 +1915,13 @@ void UCRichDocumentEditor::SetTextColor(const std::string& hexColor) {
     ApplyCharFormat(delta);
 }
 
+void UCRichDocumentEditor::SetHighlightColor(const std::string& hexColor) {
+    RichCharFormatDelta delta;
+    delta.setHighlight = true;
+    delta.highlightColor = hexColor;
+    ApplyCharFormat(delta);
+}
+
 void UCRichDocumentEditor::SetLink(const std::string& target) {
     RichCharFormatDelta delta;
     delta.setLink = true;
@@ -1924,7 +1934,7 @@ void UCRichDocumentEditor::ClearFormatting() {
     delta.setBold = delta.setItalic = delta.setUnderline = true;
     delta.setStrikethrough = delta.setCode = true;
     delta.setSubscript = delta.setSuperscript = true;
-    delta.setFontFamily = delta.setFontSize = delta.setColor = true;
+    delta.setFontFamily = delta.setFontSize = delta.setColor = delta.setHighlight = true;
     delta.bold = delta.italic = delta.underline = false;
     delta.strikethrough = delta.code = false;
     delta.subscript = delta.superscript = false;

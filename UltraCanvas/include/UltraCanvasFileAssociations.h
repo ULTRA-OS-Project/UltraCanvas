@@ -10,10 +10,14 @@
 // handlers Explorer's own "Open with" lists) and macOS (NSWorkspace /
 // Launch Services, macOS 12+). WebAssembly has no application registry and
 // reports no candidates.
+// Version: 1.4.1 - RunsCodeWhenOpened is header-only (UltraCanvasRunsCodeWhenOpened.h)
+// Version: 1.4.0 - RunsCodeWhenOpened: files an attachment or a preview must not open
 // Version: 1.3.0
-// Last Modified: 2026-09-17
+// Last Modified: 2026-10-30
 // Author: UltraCanvas Framework
 #pragma once
+
+#include "UltraCanvasRunsCodeWhenOpened.h"   // FileAssociations::RunsCodeWhenOpened
 
 #include <string>
 #include <vector>
@@ -128,6 +132,12 @@ namespace UltraCanvas {
         };
         ApplicationFilter GetApplicationFilter();
         std::string GetApplicationsDirectory();
+
+        // ===== FILES FROM ELSEWHERE =====
+        // RunsCodeWhenOpened(fileName): whether opening a file of this name
+        // would run code (a program, script, installer, shortcut, disk
+        // image), by name alone - in UltraCanvasRunsCodeWhenOpened.h,
+        // header-only so headless modules ask it too; included above.
 
         // ===== PREWARM (see UltraCanvasFileAssociationsProposal.md §7) =====
         // Parse the platform association database on the background worker so

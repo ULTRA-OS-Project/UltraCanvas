@@ -1,8 +1,10 @@
 // Apps/UltraAuthenticator/AddAccountDialog.cpp
+// Version: 0.2.0 - styled from Theme.h like the other dialogs
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "AddAccountDialog.h"
+#include "Theme.h"
 
 #include "UltraCanvasButton.h"
 #include "UltraCrypt/UltraCryptCore.h"
@@ -78,52 +80,70 @@ void AddAccountDialog::CreateAddAccountDialog() {
         "add-intro", kMargin, y, fieldWidth, 36,
         "Enter the setup key exactly as the service showed it. "
         "Spaces and lower case are fine.");
+    intro->SetFont(Theme::kUiFont, Theme::kSizeSecondary);
+    intro->SetTextColor(Theme::kTextSecondary);
+    intro->SetWrap(TextWrap::WrapWord);
     AddChild(intro);
     y += 44;
 
     auto issuerLabel = std::make_shared<UltraCanvasLabel>(
         "add-issuer-lbl", kMargin, y, fieldWidth, 18, "Service (issuer)");
+    issuerLabel->SetFont(Theme::kUiFont, Theme::kSizeSecondary);
+    issuerLabel->SetTextColor(Theme::kTextSecondary);
     AddChild(issuerLabel);
     y += 20;
     issuerInput_ = std::make_shared<UltraCanvasTextInput>(
         "add-issuer", kMargin, y, fieldWidth, 28);
     issuerInput_->SetPlaceholder("Example");
+    Theme::StyleInput(issuerInput_);
     AddChild(issuerInput_);
     y += 38;
 
     auto accountLabel = std::make_shared<UltraCanvasLabel>(
         "add-account-lbl", kMargin, y, fieldWidth, 18, "Account name");
+    accountLabel->SetFont(Theme::kUiFont, Theme::kSizeSecondary);
+    accountLabel->SetTextColor(Theme::kTextSecondary);
     AddChild(accountLabel);
     y += 20;
     accountInput_ = std::make_shared<UltraCanvasTextInput>(
         "add-account", kMargin, y, fieldWidth, 28);
     accountInput_->SetPlaceholder("you@example.com");
+    Theme::StyleInput(accountInput_);
     AddChild(accountInput_);
     y += 38;
 
     auto secretLabel = std::make_shared<UltraCanvasLabel>(
         "add-secret-lbl", kMargin, y, fieldWidth, 18, "Setup key");
+    secretLabel->SetFont(Theme::kUiFont, Theme::kSizeSecondary);
+    secretLabel->SetTextColor(Theme::kTextSecondary);
     AddChild(secretLabel);
     y += 20;
     // Password mode: the setup key is the second factor itself, so it is
     // masked exactly like a password would be.
     secretInput_ = CreatePasswordInput("add-secret", kMargin, y, fieldWidth, 28);
+    Theme::StyleInput(secretInput_);
     AddChild(secretInput_);
     y += 34;
 
     errorLabel_ = std::make_shared<UltraCanvasLabel>(
         "add-error", kMargin, y, fieldWidth, 20, "");
+    errorLabel_->SetFont(Theme::kUiFont, Theme::kSizeSecondary);
+    errorLabel_->SetTextColor(Theme::kDanger);
     AddChild(errorLabel_);
 
     auto addBtn = std::make_shared<UltraCanvasButton>(
-        "add-ok", kDialogWidth - kMargin - 210, kDialogHeight - 52, 100, 30);
+        "add-ok", kDialogWidth - kMargin - 2 * Theme::kButtonDialog - Theme::kButtonGap,
+        kDialogHeight - 52, Theme::kButtonDialog, Theme::kButtonHeight);
     addBtn->SetText("Add");
+    Theme::StylePrimary(addBtn);
     addBtn->onClick = [this]() { Accept(); };
     AddChild(addBtn);
 
     auto cancelBtn = std::make_shared<UltraCanvasButton>(
-        "add-cancel", kDialogWidth - kMargin - 100, kDialogHeight - 52, 100, 30);
+        "add-cancel", kDialogWidth - kMargin - Theme::kButtonDialog, kDialogHeight - 52,
+        Theme::kButtonDialog, Theme::kButtonHeight);
     cancelBtn->SetText("Cancel");
+    Theme::StyleSecondary(cancelBtn);
     cancelBtn->onClick = [this]() { CloseDialog(DialogResult::Cancel); };
     AddChild(cancelBtn);
 }

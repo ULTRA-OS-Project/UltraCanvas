@@ -115,7 +115,7 @@ ULTRANET_PROBE(kArea, UltraNet_SseStreamAsync) {
     PROBE_EXPECT_MSG(static_cast<bool>(finalResult), finalResult.message);
 
     const Outcome parsed = CheckStreamEvents(events);
-    if (parsed.status != Status::Working) return parsed;
+    if (parsed.status != ApiState::Working) return parsed;
     return Working("3 events parsed on the worker thread; onComplete reported "
                    "success with httpStatus " + std::to_string(finalResult.httpStatus));
 }

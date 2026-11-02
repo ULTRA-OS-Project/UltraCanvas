@@ -4,11 +4,15 @@
 // OpenGL-rendered 3D bubble chart. The matrix and scatter tabs recreate two
 // classic reference charts: the CBS News "Mrs. President" survey graphic and
 // the "Concerns when traveling" cost/safety/health/food chart.
+// Version: 1.1.0 - the shared page look (UltraCanvasDemoPageKit): a page title
+//                  and description, the tabs in a card that fills the area,
+//                  every tab a flex page whose notes wrap beside or under the chart
 // Version: 1.0.0
-// Last Modified: 2026-07-26
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "Plugins/Charts/UltraCanvasBubbleChart.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasLabel.h"
@@ -31,8 +35,42 @@ namespace UltraCanvas {
 
 namespace {
 
-constexpr int kTabContentW = 1240;
-constexpr int kTabContentH = 700;
+// A tab's page: the chart's title (and description) over a row holding the
+// chart and its notes. The notes sit beside the chart while both fit and move
+// under it when not. The tab gives the page its exact size; content taller
+// than that scrolls.
+struct TabPage {
+    std::shared_ptr<UltraCanvasContainer> tab;
+    std::shared_ptr<UltraCanvasContainer> content;   // the chart + notes row
+};
+
+TabPage MakeTabPage(const std::string& id, const std::string& titleId,
+                    const std::string& title, float titleSize) {
+    TabPage page;
+    page.tab = std::make_shared<UltraCanvasContainer>(id);
+    // A tab shorter than its chart and notes scrolls rather than cutting them.
+    ContainerStyle scrolling = page.tab->GetContainerStyle();
+    scrolling.autoShowScrollbars = true;
+    page.tab->SetContainerStyle(scrolling);
+    page.tab->SetPadding(10, 14, 10, 14);
+    page.tab->layout.SetFlexColumn().SetFlexGap(8)
+                    .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    // The chart title keeps the size of the reference chart it recreates.
+    DemoKit::AddHeading(page.tab, titleId, title)->SetFontSize(titleSize);
+    page.content = DemoKit::CreateRow(id + "Content", 30);
+    page.content->layout.SetFlexAlignItems(CSSLayout::AlignItems::Start);
+    return page;
+}
+
+// The chart's notes: a column that takes the row's spare width (at least
+// 300 px, or it wraps under the chart).
+std::shared_ptr<UltraCanvasLabel> AddInfo(const std::shared_ptr<UltraCanvasContainer>& content,
+                                          const std::string& id, const std::string& text) {
+    auto column = DemoKit::CreateColumn(id + "Column");
+    DemoKit::Add(content, column, 1);
+    column->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(300));
+    return DemoKit::AddText(column, id, text);
+}
 
 // =============================================================================
 // TAB 1: "MRS. PRESIDENT" — BUBBLE MATRIX (survey style)
@@ -42,26 +80,15 @@ constexpr int kTabContentH = 700;
 // split by age group and gender, with Yes/No bubble columns.
 
 std::shared_ptr<UltraCanvasUIElement> BuildMatrixTab() {
-    auto tab = std::make_shared<UltraCanvasContainer>("BubbleMatrixTab", 0, 0,
-                                                      kTabContentW, kTabContentH);
-
-    auto title = std::make_shared<UltraCanvasLabel>("MrsTitle", 50, 14, 500, 26);
-    title->SetText("MRS. PRESIDENT");
-    title->SetFontSize(18);
-    title->SetFontWeight(FontWeight::Bold);
-    title->SetTextColor(Color(30, 30, 30, 255));
-    tab->AddChild(title);
-
-    auto subtitle = std::make_shared<UltraCanvasLabel>("MrsSubtitle", 50, 42, 460, 40);
-    subtitle->SetText("Percentage of respondents who say it is likely that\n"
-                      "a woman will be president in their lifetime.");
-    subtitle->SetFontSize(11);
-    subtitle->SetTextColor(Color(90, 90, 90, 255));
-    tab->AddChild(subtitle);
+    auto page = MakeTabPage("BubbleMatrixTab", "MrsTitle", "MRS. PRESIDENT", 18);
+    DemoKit::AddCaption(page.tab, "MrsSubtitle",
+                        "Percentage of respondents who say it is likely that "
+                        "a woman will be president in their lifetime.")->SetFontSize(11);
+    DemoKit::Add(page.tab, page.content);
 
     std::vector<std::string> rows = {"Under 45", "45-64", "65+", "Men", "Women"};
     std::vector<std::string> cols = {"Yes", "No"};
-    auto matrix = CreateBubbleMatrixChart("mrsPresident", 50, 90, 440, 560, rows, cols);
+    auto matrix = CreateBubbleMatrixChart("mrsPresident", 0, 0, 440, 560, rows, cols);
 
     matrix->AddMatrixBubble("Under 45", "Yes", 79);
     matrix->AddMatrixBubble("Under 45", "No", 16);
@@ -91,30 +118,25 @@ std::shared_ptr<UltraCanvasUIElement> BuildMatrixTab() {
     matrix->SetMatrixRowLabelStyle(13.0f, Color(50, 50, 50, 255));
     matrix->SetFootnote("Source: CBS News, June 2008");
     matrix->SetEnableTooltips(true);
-    tab->AddChild(matrix);
+    DemoKit::AddFixed(page.content, matrix);
 
-    auto info = std::make_shared<UltraCanvasLabel>("MrsInfo", 560, 90, 620, 480);
-    info->SetText(
+    AddInfo(page.content, "MrsInfo",
         "Bubble Matrix (BubbleChartMode::BubbleMatrix)\n\n"
-        "A categorical rows x columns grid where each cell holds a bubble whose\n"
-        "AREA is proportional to its value — the classic infographic/survey\n"
+        "A categorical rows x columns grid where each cell holds a bubble whose "
+        "AREA is proportional to its value — the classic infographic/survey "
         "presentation of a small table of percentages.\n\n"
         "API used here:\n"
         "  • CreateBubbleMatrixChart(id, x, y, w, h, rows, columns)\n"
         "  • AddMatrixBubble(row, column, value)\n"
         "  • SetRowColorMap() — colour per row (Men purple, Women orange)\n"
-        "  • SetValueLabelMode(Inside) — values centred in the bubbles with\n"
-        "    automatic contrast (white on dark, dark on light)\n"
+        "  • SetValueLabelMode(Inside) — values centred in the bubbles with "
+        "automatic contrast (white on dark, dark on light)\n"
         "  • SetFootnote() — small source caption\n\n"
-        "The size scale is zero-anchored and area-true in this mode, so the\n"
-        "\"79\" bubble really covers ~5x the area of the \"16\" bubble.\n"
+        "The size scale is zero-anchored and area-true in this mode, so the "
+        "\"79\" bubble really covers ~5x the area of the \"16\" bubble. "
         "Hover any bubble for a tooltip.");
-    info->SetFontSize(11.5f);
-    info->SetTextColor(Color(70, 70, 70, 255));
-    info->SetAlignment(TextAlignment::Left);
-    tab->AddChild(info);
 
-    return tab;
+    return page.tab;
 }
 
 // =============================================================================
@@ -124,16 +146,10 @@ std::shared_ptr<UltraCanvasUIElement> BuildMatrixTab() {
 // Y = safety concern, bubble size = health concern, darkness = food concern.
 
 std::shared_ptr<UltraCanvasUIElement> BuildScatterTab() {
-    auto tab = std::make_shared<UltraCanvasContainer>("BubbleScatterTab", 0, 0,
-                                                      kTabContentW, kTabContentH);
+    auto page = MakeTabPage("BubbleScatterTab", "TravelTitle", "Concerns when traveling", 17);
+    DemoKit::Add(page.tab, page.content);
 
-    auto title = std::make_shared<UltraCanvasLabel>("TravelTitle", 50, 14, 600, 26);
-    title->SetText("Concerns when traveling");
-    title->SetFontSize(17);
-    title->SetTextColor(Color(50, 50, 50, 255));
-    tab->AddChild(title);
-
-    auto chart = CreateBubbleChartElement("travelConcerns", 50, 50, 680, 560);
+    auto chart = CreateBubbleChartElement("travelConcerns", 0, 0, 680, 560);
 
     //          cost  safety health food
     chart->AddBubble( 9,  79, 46.1, 82, "Mexico");
@@ -165,16 +181,25 @@ std::shared_ptr<UltraCanvasUIElement> BuildScatterTab() {
     chart->SetGridColor(Color(225, 225, 225, 255));
     chart->SetPlotAreaColor(Color(255, 255, 255, 255));
     chart->SetEnableTooltips(true);
-    tab->AddChild(chart);
 
-    auto xAxis = std::make_shared<UltraCanvasLabel>("TravelXAxis", 330, 615, 100, 18);
-    xAxis->SetText("Cost");
-    xAxis->SetFontSize(12);
+    // The axis titles around the chart: "Safety" left of it, "Cost" centred
+    // under it.
+    auto chartBlock = DemoKit::CreateColumn("TravelChartBlock", 4);
+    DemoKit::Add(page.content, chartBlock);
+    auto chartRow = DemoKit::CreateRow("TravelChartRow", 8, false);
+    chartRow->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    DemoKit::Add(chartBlock, chartRow);
+
+    auto yAxis = DemoKit::CreateText("TravelYAxis", "Safety");
+    yAxis->SetTextColor(Color(80, 80, 80, 255));
+    DemoKit::Add(chartRow, yAxis);
+    DemoKit::AddFixed(chartRow, chart);
+
+    auto xAxis = DemoKit::AddText(chartBlock, "TravelXAxis", "Cost");
     xAxis->SetTextColor(Color(80, 80, 80, 255));
-    tab->AddChild(xAxis);
+    xAxis->SetAlignment(TextAlignment::Center, VerticalAlignment::Top);
 
-    auto info = std::make_shared<UltraCanvasLabel>("TravelInfo", 780, 60, 430, 520);
-    info->SetText(
+    AddInfo(page.content, "TravelInfo",
         "Scatter Bubbles (BubbleChartMode::ScatterBubbles)\n\n"
         "A scatter plot whose marks encode four dimensions:\n"
         "  • X position — cost concern\n"
@@ -183,28 +208,18 @@ std::shared_ptr<UltraCanvasUIElement> BuildScatterTab() {
         "  • darkness — food concern (4th dimension)\n\n"
         "API used here:\n"
         "  • AddBubble(x, y, size, colorValue, name)\n"
-        "  • SetColorMode(ColormapByValue) +\n"
-        "    SetCustomColormap({pale blue, ..., dark gray})\n"
+        "  • SetColorMode(ColormapByValue) + "
+        "SetCustomColormap({pale blue, ..., dark gray})\n"
         "  • SetSizeScale(Area) — perceptually honest sizing\n"
-        "  • SetShowSizeLegend(true) — the nested-circles\n"
-        "    \"Health 46.1 / 20.5 / 5.1\" legend\n"
-        "  • SetNameLabelMode(Auto) — names go inside big\n"
-        "    bubbles (Mexico) and under small ones (France)\n"
+        "  • SetShowSizeLegend(true) — the nested-circles "
+        "\"Health 46.1 / 20.5 / 5.1\" legend\n"
+        "  • SetNameLabelMode(Auto) — names go inside big "
+        "bubbles (Mexico) and under small ones (France)\n"
         "  • SetFootnote() — the colour-meaning caption\n\n"
-        "Any continuous HeatmapColormap (Viridis, Blues,\n"
+        "Any continuous HeatmapColormap (Viridis, Blues, "
         "Turbo, ...) can replace the custom gray ramp.");
-    info->SetFontSize(11.5f);
-    info->SetTextColor(Color(70, 70, 70, 255));
-    info->SetAlignment(TextAlignment::Left);
-    tab->AddChild(info);
 
-    auto yAxis = std::make_shared<UltraCanvasLabel>("TravelYAxis", 8, 300, 40, 18);
-    yAxis->SetText("Safety");
-    yAxis->SetFontSize(12);
-    yAxis->SetTextColor(Color(80, 80, 80, 255));
-    tab->AddChild(yAxis);
-
-    return tab;
+    return page.tab;
 }
 
 // =============================================================================
@@ -212,16 +227,11 @@ std::shared_ptr<UltraCanvasUIElement> BuildScatterTab() {
 // =============================================================================
 
 std::shared_ptr<UltraCanvasUIElement> BuildPackedTab() {
-    auto tab = std::make_shared<UltraCanvasContainer>("BubblePackedTab", 0, 0,
-                                                      kTabContentW, kTabContentH);
+    auto page = MakeTabPage("BubblePackedTab", "PackedTitle",
+                            "Music Streaming Subscribers (millions) — Packed Bubble Chart", 16);
+    DemoKit::Add(page.tab, page.content);
 
-    auto title = std::make_shared<UltraCanvasLabel>("PackedTitle", 50, 14, 700, 26);
-    title->SetText("Music Streaming Subscribers (millions) — Packed Bubble Chart");
-    title->SetFontSize(16);
-    title->SetTextColor(Color(50, 50, 50, 255));
-    tab->AddChild(title);
-
-    auto packed = CreatePackedBubbleChart("streamingShare", 50, 50, 640, 600);
+    auto packed = CreatePackedBubbleChart("streamingShare", 0, 0, 640, 600);
 
     struct Entry { const char* name; double value; };
     const std::vector<Entry> entries = {
@@ -243,18 +253,23 @@ std::shared_ptr<UltraCanvasUIElement> BuildPackedTab() {
     packed->SetValueLabelMode(BubbleValueLabelMode::Auto);
     packed->SetLabelFontSize(11.0f);
     packed->SetEnableTooltips(true);
-    tab->AddChild(packed);
+    DemoKit::AddFixed(page.content, packed);
 
     // ---- interactive controls ----
-    int ctrlX = 760, ctrlY = 70;
+    // A column beside the chart: label + dropdown rows, the button, the notes.
+    auto controls = DemoKit::CreateColumn("PackedControls", 12);
+    DemoKit::Add(page.content, controls, 1);
+    controls->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(300));
+    auto addControlRow = [&](const std::string& labelId, const std::string& text,
+                             const std::shared_ptr<UltraCanvasDropdown>& dropdown) {
+        auto row = DemoKit::AddRow(controls, labelId + "Row", 10);
+        row->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
+        DemoKit::Add(row, DemoKit::CreateText(labelId, text));
+        DemoKit::AddFixed(row, dropdown);
+        dropdown->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Center);
+    };
 
-    auto styleLabel = std::make_shared<UltraCanvasLabel>("PackedStyleLbl", ctrlX, ctrlY, 90, 30);
-    styleLabel->SetText("Bubble style:");
-    styleLabel->SetFontSize(12);
-    styleLabel->SetAlignment(TextAlignment::Left, VerticalAlignment::Middle);
-    tab->AddChild(styleLabel);
-
-    auto styleDrop = std::make_shared<UltraCanvasDropdown>("PackedStyleDD", ctrlX + 100, ctrlY, 150, 30);
+    auto styleDrop = std::make_shared<UltraCanvasDropdown>("PackedStyleDD", 0, 0, 150, 30);
     styleDrop->AddItem("Shaded");
     styleDrop->AddItem("Flat");
     styleDrop->AddItem("Glossy");
@@ -265,15 +280,9 @@ std::shared_ptr<UltraCanvasUIElement> BuildPackedTab() {
         else if (index == 2) s = BubbleRenderStyle::Glossy;
         packed->SetBubbleStyle(s);
     };
-    tab->AddChild(styleDrop);
+    addControlRow("PackedStyleLbl", "Bubble style:", styleDrop);
 
-    auto sortLabel = std::make_shared<UltraCanvasLabel>("PackedSortLbl", ctrlX, ctrlY + 42, 90, 30);
-    sortLabel->SetText("Placement:");
-    sortLabel->SetFontSize(12);
-    sortLabel->SetAlignment(TextAlignment::Left, VerticalAlignment::Middle);
-    tab->AddChild(sortLabel);
-
-    auto sortDrop = std::make_shared<UltraCanvasDropdown>("PackedSortDD", ctrlX + 100, ctrlY + 42, 150, 30);
+    auto sortDrop = std::make_shared<UltraCanvasDropdown>("PackedSortDD", 0, 0, 150, 30);
     sortDrop->AddItem("Biggest first");
     sortDrop->AddItem("Smallest first");
     sortDrop->AddItem("Data order");
@@ -284,15 +293,9 @@ std::shared_ptr<UltraCanvasUIElement> BuildPackedTab() {
         else if (index == 2) o = PackedSortOrder::DataOrder;
         packed->SetPackedSortOrder(o);
     };
-    tab->AddChild(sortDrop);
+    addControlRow("PackedSortLbl", "Placement:", sortDrop);
 
-    auto colorLabel = std::make_shared<UltraCanvasLabel>("PackedColorLbl", ctrlX, ctrlY + 84, 90, 30);
-    colorLabel->SetText("Colour by:");
-    colorLabel->SetFontSize(12);
-    colorLabel->SetAlignment(TextAlignment::Left, VerticalAlignment::Middle);
-    tab->AddChild(colorLabel);
-
-    auto colorDrop = std::make_shared<UltraCanvasDropdown>("PackedColorDD", ctrlX + 100, ctrlY + 84, 150, 30);
+    auto colorDrop = std::make_shared<UltraCanvasDropdown>("PackedColorDD", 0, 0, 150, 30);
     colorDrop->AddItem("Palette");
     colorDrop->AddItem("Value (Viridis)");
     colorDrop->AddItem("Value (Blues)");
@@ -307,9 +310,10 @@ std::shared_ptr<UltraCanvasUIElement> BuildPackedTab() {
                                 index == 2 /* light-to-dark for Blues */);
         }
     };
-    tab->AddChild(colorDrop);
+    addControlRow("PackedColorLbl", "Colour by:", colorDrop);
 
-    auto encBtn = std::make_shared<UltraCanvasButton>("PackedEncBtn", ctrlX, ctrlY + 126, 250, 30);
+    // As wide as its text, which changes when it is clicked.
+    auto encBtn = std::make_shared<UltraCanvasButton>("PackedEncBtn", 0, 0, 0, 30);
     encBtn->SetText("Show Enclosure Circle");
     encBtn->onClick = [encBtn = encBtn.get(), packed]() {
         static bool enclosed = false;
@@ -317,34 +321,30 @@ std::shared_ptr<UltraCanvasUIElement> BuildPackedTab() {
         packed->SetPackedEnclosure(enclosed, Color(45, 55, 85, 255), 1.5f);
         encBtn->SetText(enclosed ? "Hide Enclosure Circle" : "Show Enclosure Circle");
     };
-    tab->AddChild(encBtn);
+    DemoKit::Add(controls, encBtn);
+    encBtn->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Start);
 
-    auto info = std::make_shared<UltraCanvasLabel>("PackedInfo", ctrlX, ctrlY + 170, 440, 400);
-    info->SetText(
+    DemoKit::AddText(controls, "PackedInfo",
         "Packed Bubbles (BubbleChartMode::PackedBubbles)\n\n"
-        "The Tableau-style \"bubble cloud\" / circle packing:\n"
-        "position carries no meaning — relative size (and\n"
-        "optionally colour) carries the whole message. Best for\n"
-        "quick part-to-whole impressions across many\n"
+        "The Tableau-style \"bubble cloud\" / circle packing: "
+        "position carries no meaning — relative size (and "
+        "optionally colour) carries the whole message. Best for "
+        "quick part-to-whole impressions across many "
         "categories, not for precise comparisons.\n\n"
-        "The layout is a greedy tangent packing: circles are\n"
-        "placed one at a time at the tightest spot touching two\n"
-        "already-placed circles, then the whole cluster is\n"
+        "The layout is a greedy tangent packing: circles are "
+        "placed one at a time at the tightest spot touching two "
+        "already-placed circles, then the whole cluster is "
         "scaled to fit the plot area.\n\n"
         "API used here:\n"
         "  • CreatePackedBubbleChart(...)\n"
         "  • SetPackedSortOrder() / SetPackedPadding()\n"
         "  • SetBubbleStyle(Flat | Shaded | Glossy)\n"
         "  • SetColorMode(Palette or ColormapBySize)\n"
-        "  • SetPackedEnclosure() — outlined boundary circle,\n"
-        "    packing scaled to fill it (toggle above)\n"
+        "  • SetPackedEnclosure() — outlined boundary circle, "
+        "packing scaled to fill it (toggle above)\n"
         "  • Auto labels: names + values inside when they fit");
-    info->SetFontSize(11.5f);
-    info->SetTextColor(Color(70, 70, 70, 255));
-    info->SetAlignment(TextAlignment::Left);
-    tab->AddChild(info);
 
-    return tab;
+    return page.tab;
 }
 
 // =============================================================================
@@ -354,16 +354,11 @@ std::shared_ptr<UltraCanvasUIElement> BuildPackedTab() {
 // grouped into labelled country/region parent circles.
 
 std::shared_ptr<UltraCanvasUIElement> BuildHierarchicalTab() {
-    auto tab = std::make_shared<UltraCanvasContainer>("BubbleHierTab", 0, 0,
-                                                      kTabContentW, kTabContentH);
+    auto page = MakeTabPage("BubbleHierTab", "HierTitle",
+                            "Orbital Launches by Rocket Family — Hierarchical Packed Bubbles", 16);
+    DemoKit::Add(page.tab, page.content);
 
-    auto title = std::make_shared<UltraCanvasLabel>("HierTitle", 50, 14, 700, 26);
-    title->SetText("Orbital Launches by Rocket Family — Hierarchical Packed Bubbles");
-    title->SetFontSize(16);
-    title->SetTextColor(Color(50, 50, 50, 255));
-    tab->AddChild(title);
-
-    auto hier = CreateHierarchicalBubbleChart("launchFamilies", 30, 50, 720, 620);
+    auto hier = CreateHierarchicalBubbleChart("launchFamilies", 0, 0, 720, 620);
 
     struct Entry { const char* group; const char* name; double value; };
     const std::vector<Entry> entries = {
@@ -413,36 +408,31 @@ std::shared_ptr<UltraCanvasUIElement> BuildHierarchicalTab() {
     hier->SetValueLabelMode(BubbleValueLabelMode::Hidden);
     hier->SetLabelFontSize(10.0f);
     hier->SetEnableTooltips(true);
-    tab->AddChild(hier);
+    DemoKit::AddFixed(page.content, hier);
 
-    auto info = std::make_shared<UltraCanvasLabel>("HierInfo", 800, 60, 420, 520);
-    info->SetText(
+    AddInfo(page.content, "HierInfo",
         "Hierarchical Packing\n"
         "(BubbleChartMode::HierarchicalPacked)\n\n"
-        "Two-level circle packing: bubbles sharing a\n"
-        "category are packed inside a parent circle, and\n"
-        "the parent circles are packed against each other\n"
+        "Two-level circle packing: bubbles sharing a "
+        "category are packed inside a parent circle, and "
+        "the parent circles are packed against each other "
         "(the d3.pack() hierarchy look).\n\n"
-        "  • Parent fill = group colour lightened by\n"
-        "    SetGroupTint(); children keep the saturated\n"
-        "    colour, so groups read at a glance\n"
-        "  • The group name sits in the headroom ring\n"
-        "    between the children and the parent rim\n"
-        "  • Parent size derives automatically from the\n"
-        "    packed children plus SetGroupPadding()\n\n"
+        "  • Parent fill = group colour lightened by "
+        "SetGroupTint(); children keep the saturated "
+        "colour, so groups read at a glance\n"
+        "  • The group name sits in the headroom ring "
+        "between the children and the parent rim\n"
+        "  • Parent size derives automatically from the "
+        "packed children plus SetGroupPadding()\n\n"
         "API used here:\n"
         "  • CreateHierarchicalBubbleChart(...)\n"
         "  • AddBubble(0, 0, value, 0, name, group)\n"
         "  • SetCategoryColorMap() — colour per group\n"
-        "  • SetGroupTint() / SetGroupPadding() /\n"
-        "    SetGroupLabelStyle()\n\n"
+        "  • SetGroupTint() / SetGroupPadding() / "
+        "SetGroupLabelStyle()\n\n"
         "Hover any child bubble for name, group and value.");
-    info->SetFontSize(11.5f);
-    info->SetTextColor(Color(70, 70, 70, 255));
-    info->SetAlignment(TextAlignment::Left);
-    tab->AddChild(info);
 
-    return tab;
+    return page.tab;
 }
 
 // =============================================================================
@@ -452,26 +442,17 @@ std::shared_ptr<UltraCanvasUIElement> BuildHierarchicalTab() {
 // chart: region rows, monthly X axis, bubble area = order count.
 
 std::shared_ptr<UltraCanvasUIElement> BuildTimelineTab() {
-    auto tab = std::make_shared<UltraCanvasContainer>("BubbleTimelineTab", 0, 0,
-                                                      kTabContentW, kTabContentH);
-
-    auto title = std::make_shared<UltraCanvasLabel>("TlTitle", 50, 12, 800, 24);
-    title->SetText("Which months had the highest number of orders?");
-    title->SetFontSize(16);
-    title->SetTextColor(Color(50, 50, 50, 255));
-    tab->AddChild(title);
-
-    auto subtitle = std::make_shared<UltraCanvasLabel>("TlSubtitle", 50, 38, 800, 18);
-    subtitle->SetText("Bubble size represents number of orders");
-    subtitle->SetFontSize(11);
-    subtitle->SetTextColor(Color(110, 110, 110, 255));
-    tab->AddChild(subtitle);
+    auto page = MakeTabPage("BubbleTimelineTab", "TlTitle",
+                            "Which months had the highest number of orders?", 16);
+    DemoKit::AddCaption(page.tab, "TlSubtitle", "Bubble size represents number of orders")
+            ->SetFontSize(11);
+    DemoKit::Add(page.tab, page.content);
 
     std::vector<std::string> regions = {
         "Africa", "Canada", "Caribbean", "Central Asia",
         "EMEA", "North Asia", "Oceania", "Southeast Asia"
     };
-    auto timeline = CreateTimelineBubbleChart("monthlyOrders", 30, 62, 900, 600, regions);
+    auto timeline = CreateTimelineBubbleChart("monthlyOrders", 0, 0, 900, 600, regions);
 
     // Month index 0 = November 2011 ... 48 = November 2015.
     auto monthLabel = [](double v) {
@@ -520,40 +501,24 @@ std::shared_ptr<UltraCanvasUIElement> BuildTimelineTab() {
                    std::to_string(static_cast<long>(b.size)) +
                    " order(s) in " + monthLabel(b.x);
         });
-    tab->AddChild(timeline);
+    DemoKit::AddFixed(page.content, timeline);
 
-    auto info = std::make_shared<UltraCanvasLabel>("TlInfo", 960, 70, 270, 520);
-    info->SetText(
-        "Timeline Bubbles\n"
-        "(BubbleChartMode::\n"
-        " TimelineBubbles)\n\n"
-        "Named categorical rows on\n"
-        "the Y axis, a continuous\n"
-        "(time) value on X, bubble\n"
-        "AREA = the measure. Zero-\n"
-        "anchored area scale, so a\n"
-        "month with twice the orders\n"
+    AddInfo(page.content, "TlInfo",
+        "Timeline Bubbles (BubbleChartMode::TimelineBubbles)\n\n"
+        "Named categorical rows on the Y axis, a continuous "
+        "(time) value on X, bubble AREA = the measure. Zero-anchored "
+        "area scale, so a month with twice the orders "
         "shows twice the ink.\n\n"
         "API used here:\n"
-        " • CreateTimelineBubble-\n"
-        "   Chart(id, ..., rows)\n"
-        " • AddTimelineBubble(row,\n"
-        "   monthIndex, orders)\n"
-        " • SetXAxisLabelFormatter\n"
-        "   — month index to\n"
-        "   \"June 2014\" labels\n"
-        " • SetCustomTooltip-\n"
-        "   Generator — Tableau-\n"
-        "   style order tooltips\n\n"
-        "392 bubbles (8 regions x\n"
-        "49 months). Hover any\n"
+        " • CreateTimelineBubbleChart(id, ..., rows)\n"
+        " • AddTimelineBubble(row, monthIndex, orders)\n"
+        " • SetXAxisLabelFormatter — month index to "
+        "\"June 2014\" labels\n"
+        " • SetCustomTooltipGenerator — Tableau-style order tooltips\n\n"
+        "392 bubbles (8 regions x 49 months). Hover any "
         "bubble for its exact count.");
-    info->SetFontSize(11.0f);
-    info->SetTextColor(Color(70, 70, 70, 255));
-    info->SetAlignment(TextAlignment::Left);
-    tab->AddChild(info);
 
-    return tab;
+    return page.tab;
 }
 
 // =============================================================================
@@ -697,14 +662,9 @@ private:
 };
 
 std::shared_ptr<UltraCanvasUIElement> Build3DTab() {
-    auto tab = std::make_shared<UltraCanvasContainer>("Bubble3DTab", 0, 0,
-                                                      kTabContentW, kTabContentH);
-
-    auto title = std::make_shared<UltraCanvasLabel>("B3DTitle", 50, 14, 800, 26);
-    title->SetText("3D Bubble Chart — R&D portfolio: risk / reward / time-to-market, size = investment");
-    title->SetFontSize(15);
-    title->SetTextColor(Color(50, 50, 50, 255));
-    tab->AddChild(title);
+    auto page = MakeTabPage("Bubble3DTab", "B3DTitle",
+                            "3D Bubble Chart — R&D portfolio: risk / reward / time-to-market, size = investment", 15);
+    DemoKit::Add(page.tab, page.content);
 
     auto state = std::make_shared<Bubble3DState>();
     // x = risk, y = reward, z = time-to-market (normalized to [-1, 1]),
@@ -736,7 +696,7 @@ std::shared_ptr<UltraCanvasUIElement> Build3DTab() {
     cfg.depthBits = 24; cfg.samples = 4;
 
     auto surface = std::make_shared<Bubble3DSurface>(cfg, "Bubble3DSurface",
-                                                     50, 50, 760, 600, state);
+                                                     0, 0, 760, 600, state);
     surface->SetRenderMode(RenderMode::Continuous);
 
     surface->SetInitCallback([glRes]() {
@@ -888,21 +848,26 @@ std::shared_ptr<UltraCanvasUIElement> Build3DTab() {
         *glRes = Bubble3DGL{};
     });
 
-    tab->AddChild(surface);
+    DemoKit::AddFixed(page.content, surface);
 
-    auto spinBtn = std::make_shared<UltraCanvasButton>("B3DSpinBtn", 840, 60, 140, 32);
+    // Beside the surface: the spin toggle (as wide as its text), then the notes.
+    auto side = DemoKit::CreateColumn("B3DSide", 12);
+    DemoKit::Add(page.content, side, 1);
+    side->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(300));
+
+    auto spinBtn = std::make_shared<UltraCanvasButton>("B3DSpinBtn", 0, 0, 0, 32);
     spinBtn->SetText("Pause Spin");
     spinBtn->onClick = [spinBtn = spinBtn.get(), state]() {
         state->autoRotate = !state->autoRotate;
         spinBtn->SetText(state->autoRotate ? "Pause Spin" : "Resume Spin");
     };
-    tab->AddChild(spinBtn);
+    DemoKit::Add(side, spinBtn);
+    spinBtn->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Start);
 
-    auto info = std::make_shared<UltraCanvasLabel>("B3DInfo", 840, 110, 380, 480);
-    info->SetText(
+    DemoKit::AddText(side, "B3DInfo",
         "3D Bubble Chart on UltraCanvasGLSurface\n\n"
-        "Each bubble is a real sphere in a 3-axis data\n"
-        "space, rendered with OpenGL 3.3 through the\n"
+        "Each bubble is a real sphere in a 3-axis data "
+        "space, rendered with OpenGL 3.3 through the "
         "framework's GL surface element:\n"
         "  • X — project risk\n"
         "  • Y — expected reward\n"
@@ -910,38 +875,32 @@ std::shared_ptr<UltraCanvasUIElement> Build3DTab() {
         "  • sphere VOLUME — investment\n"
         "  • colour — business unit\n\n"
         "Rendering notes:\n"
-        "  • One shared icosphere mesh, per-bubble\n"
-        "    model matrix (translate + scale)\n"
+        "  • One shared icosphere mesh, per-bubble "
+        "model matrix (translate + scale)\n"
         "  • Blinn-Phong shading + rim light\n"
-        "  • Semi-transparent spheres sorted\n"
-        "    back-to-front each frame\n"
+        "  • Semi-transparent spheres sorted "
+        "back-to-front each frame\n"
         "  • Axis cube + floor grid line pass\n\n"
         "Interaction:\n"
         "  • Drag to orbit the camera\n"
         "  • Mouse wheel to zoom\n"
         "  • Auto-rotation toggle above");
-    info->SetFontSize(11.5f);
-    info->SetTextColor(Color(70, 70, 70, 255));
-    info->SetAlignment(TextAlignment::Left);
-    tab->AddChild(info);
 
-    return tab;
+    return page.tab;
 }
 
 #else // !ULTRACANVAS_ENABLE_GL
 
 std::shared_ptr<UltraCanvasUIElement> Build3DTab() {
-    auto tab = std::make_shared<UltraCanvasContainer>("Bubble3DTab", 0, 0,
-                                                      kTabContentW, kTabContentH);
-    auto placeholder = std::make_shared<UltraCanvasLabel>("B3DPlaceholder", 50, 50, 900, 200);
-    placeholder->SetText(
+    auto tab = std::make_shared<UltraCanvasContainer>("Bubble3DTab");
+    tab->SetPadding(10, 14, 10, 14);
+    tab->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    auto placeholder = DemoKit::AddText(tab, "B3DPlaceholder",
         "3D Bubble Chart - NOT AVAILABLE\n\n"
-        "This build was compiled without OpenGL support.\n"
-        "Rebuild with -DULTRACANVAS_ENABLE_GL=ON to see the OpenGL\n"
+        "This build was compiled without OpenGL support. "
+        "Rebuild with -DULTRACANVAS_ENABLE_GL=ON to see the OpenGL "
         "3D bubble chart (spheres with risk/reward/time axes).");
-    placeholder->SetFontSize(12);
     placeholder->SetTextColor(Color(120, 60, 60, 255));
-    tab->AddChild(placeholder);
     return tab;
 }
 
@@ -954,11 +913,20 @@ std::shared_ptr<UltraCanvasUIElement> Build3DTab() {
 // =============================================================================
 
 std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateBubbleChartExamples() {
-    auto container = std::make_shared<UltraCanvasContainer>(
-        "BubbleChartExamples", 0, 0, kTabContentW + 20, kTabContentH + 60);
+    auto page = DemoKit::CreatePage("BubbleChartExamples", "Bubble Chart Examples",
+        "Bubble matrix, scatter bubbles with a 4th colour dimension, packed and "
+        "hierarchical packed bubbles, a bubble timeline, and an OpenGL-rendered 3D "
+        "bubble chart. Hover any bubble for its tooltip.");
+    // The page is the display area's height and the tabs take what the title
+    // and description leave; a tab whose chart does not fit scrolls.
+    page->SetFillsArea(true);
 
-    auto tabs = std::make_shared<UltraCanvasTabbedContainer>(
-        "BubbleChartTabs", 0, 10, kTabContentW + 10, kTabContentH + 40);
+    auto card = DemoKit::CreateCard("BubbleChartTabsCard");
+    card->SetPadding(4);
+    DemoKit::Add(page, card, 1);
+
+    auto tabs = std::make_shared<UltraCanvasTabbedContainer>("BubbleChartTabs", 0, 0, 0, 0);
+    tabs->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
     tabs->SetTabStyle(TabStyle::Rounded);
     tabs->SetTabHeight(32);
 
@@ -970,8 +938,8 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateBubbleCh
     tabs->AddTab("3D Bubbles (OpenGL)", Build3DTab());
     tabs->SetActiveTab(0);
 
-    container->AddChild(tabs);
-    return container;
+    DemoKit::Add(card, tabs, 1);
+    return page;
 }
 
 } // namespace UltraCanvas

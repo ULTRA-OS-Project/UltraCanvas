@@ -5,6 +5,8 @@
 // journal calls forwarded to the broker as control RPCs.
 // Version: 0.1.1 - a delivery queued for the UI thread is dropped once its
 //   subscription ends (UltraMsg_Unsubscribe / UltraMsg_Disconnect)
+// Version: 0.1.1 - the at-exit shutdown does nothing while Windows ends the process
+//                  (a DLL's handler then runs with every other thread killed)
 // Version: 0.1.0 (Phase 1)
 // Author: UltraCanvas Framework / ULTRA OS
 
@@ -42,7 +44,7 @@ int64_t Int(const JSONValue& json, const char* key, int64_t fallback = 0) {
     const JSONValue* v = json.Find(key);
     return v ? v->GetInteger(fallback) : fallback;
 }
-bool Bool(const JSONValue& json, const char* key, bool fallback = false) {
+bool JsonBool(const JSONValue& json, const char* key, bool fallback = false) {
     const JSONValue* v = json.Find(key);
     return v ? v->GetBoolean(fallback) : fallback;
 }
@@ -134,7 +136,22 @@ Module& GetModule() {
         // destroyed, and the broker's journal closes on a live manager.
         UltraDb_HasConnection("ultramessage.bootstrap");
         auto* m = new Module();
-        std::atexit([] { UltraMsg_Shutdown(); });
+        // Resolved now, while the process is healthy, not inside the handler.
+        (void)ProcessIsTerminating();
+        std::atexit([] {
+            // In the shared core on Windows this is a DLL's at-exit handler,
+            // which runs at DLL_PROCESS_DETACH: every other thread is gone,
+            // killed wherever it was. Stopping the broker there locked
+            // mutexes those threads may have held, joined them and tore
+            // down the toast presenter's COM apartment under the loader
+            // lock - and could wait for ever, leaving a process with no
+            // window that kept the single-instance lock, so the next start
+            // said "already running". The system closes the pipe, the
+            // sockets and the journal (SQLite recovers its own) with the
+            // process.
+            if (ProcessIsTerminating()) return;
+            UltraMsg_Shutdown();
+        });
         return m;
     }();
     return *module;
@@ -302,11 +319,11 @@ void HandleControlReply(const EndpointPtr& endpoint, const JSONValue& frame) {
 void HandleWelcome(const EndpointPtr& endpoint, const JSONValue& frame) {
     {
         std::lock_guard<std::mutex> lock(endpoint->welcomeMutex);
-        endpoint->welcomeOk = Bool(frame, "ok", false);
+        endpoint->welcomeOk = JsonBool(frame, "ok", false);
         endpoint->welcomeError = Str(frame, "error");
         endpoint->info.instanceId = Str(frame, "instance");
         endpoint->info.processId = static_cast<int>(Int(frame, "pid"));
-        endpoint->info.verified = Bool(frame, "verified");
+        endpoint->info.verified = JsonBool(frame, "verified");
         endpoint->info.connectedAtMs = NowMs();
         BrokerInfoFromJson(Obj(frame, "broker"), endpoint->broker);
         endpoint->welcomed = true;
@@ -448,7 +465,7 @@ JSONValue Control(const EndpointPtr& endpoint, const char* op, JSONValue args, U
             return JSONValue::MakeObject();
         }
     }
-    if (!Bool(pending->reply, "ok", false)) {
+    if (!JsonBool(pending->reply, "ok", false)) {
         result = ResultFromJson(Obj(pending->reply, "error"));
         if (result.ok) result = UltraMsgResult::Error(UltraMsgResultCode::Internal, "control call failed");
         return JSONValue::MakeObject();
@@ -948,7 +965,7 @@ UltraMsgHandle UltraMsg_Subscribe(UltraMsgHandle handle, const std::string& topi
     UltraMsgResult result;
     Control(endpoint, Op::Subscribe, std::move(args), result, [&](const JSONValue& reply) {
         // On the reader thread, before any delivery for this subscription.
-        if (!Bool(reply, "ok", false)) return;
+        if (!JsonBool(reply, "ok", false)) return;
         subscription->brokerId = static_cast<uint64_t>(Int(Obj(reply, "result"), "sub"));
         std::lock_guard<std::mutex> lock(endpoint->mutex);
         endpoint->subscriptions[subscription->brokerId] = subscription;

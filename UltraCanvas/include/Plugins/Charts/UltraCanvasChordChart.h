@@ -13,10 +13,6 @@
 #include <string>
 #include <vector>
 
-// X11 defines `None` as a macro that clobbers our enumerators.
-#ifdef None
-#undef None
-#endif
 
 namespace UltraCanvas {
 
@@ -86,7 +82,7 @@ namespace UltraCanvas {
     };
 
     enum class ChordLabelPlacement {
-        None,        // No labels
+        NoLabels,        // No labels
         Outside,     // Horizontal text just beyond the ring
         Radial       // Text runs along the radius, flipped on the left half
     };

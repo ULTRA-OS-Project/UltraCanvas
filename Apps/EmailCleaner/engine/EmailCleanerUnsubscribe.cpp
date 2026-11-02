@@ -74,7 +74,7 @@ std::string ToString(UnsubscribeMethod method) {
         case UnsubscribeMethod::OneClickPost: return "one-click";
         case UnsubscribeMethod::MailTo:       return "email";
         case UnsubscribeMethod::HttpLink:     return "link";
-        case UnsubscribeMethod::None:         break;
+        case UnsubscribeMethod::NoMethod:         break;
     }
     return "none";
 }
@@ -156,7 +156,7 @@ UnsubscribeMethod ChooseMethod(const UnsubscribeInfo& info) {
     if (!info.mailto.empty()) return UnsubscribeMethod::MailTo;
     // A bare link needs a browser and a person.
     if (!info.httpUrl.empty()) return UnsubscribeMethod::HttpLink;
-    return UnsubscribeMethod::None;
+    return UnsubscribeMethod::NoMethod;
 }
 
 UnsubscribeAdvice AdviseUnsubscribe(MessageCategory category, const UnsubscribeInfo& info) {
@@ -172,7 +172,7 @@ UnsubscribeAdvice AdviseUnsubscribe(MessageCategory category, const UnsubscribeI
             return UnsubscribeAdvice::Recommended;
         case UnsubscribeMethod::HttpLink:
             return UnsubscribeAdvice::NeedsBrowser;
-        case UnsubscribeMethod::None:
+        case UnsubscribeMethod::NoMethod:
             break;
     }
     return UnsubscribeAdvice::NoOffer;

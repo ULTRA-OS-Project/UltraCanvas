@@ -1,4 +1,22 @@
 // Apps/UltraMail/ui/UltraMailApp.cpp
+// Version: 0.9.42 - Import: .eml, .emlx and Outlook .msg files into the folder on show
+//                  (uploaded to the server, synced back); an attachment that is a
+//                  program or script is never opened, only offered to be saved
+// Version: 0.9.41 - Mail security per account (the security dialog: Account Settings and
+//                  after adding an account); new messages start as it says
+// Version: 0.9.40 - the account bar's counters filter the list (New today, all
+//                  unread mail, Waiting for reply); a click on the rest of the
+//                  card, or "Show all emails" under it, shows all mail again
+// Version: 0.9.39 - the compose window opens wide enough for its toolbar in
+//                  one row; Settings > Reading > Attachments reaches the reading
+//                  pane and the compose windows
+// Version: 0.9.38 - a recipient suggestion's menu: Edit contact, Delete address,
+//                  Set as SPAM; blocked senders are not suggested; Edit contact
+//                  (here and for a message's sender) edits that address; a
+//                  deleted address is forgotten; a known service is collected
+//                  only with its domain proven; Contacts > Other > Remove
+//                  collected contacts; services collected also from bodies
+//                  downloaded later (CollectServices, CollectServiceOf)
 // Version: 0.9.37 - the new-mail notification carries where its click leads
 //                   (launch), and UltraMail is the activator of its Windows
 //                   toasts, so a click opens the mail after the broker host
@@ -77,6 +95,8 @@
 #include "UltraMailHeaderText.h"
 
 #include "UltraMailAlerts.h"
+#include "UltraMailStorage.h"
+#include "UltraMailSecureKeys.h"
 #include "UltraMailSettingsDialog.h"
 #include "UltraMailTheme.h"
 
@@ -86,6 +106,7 @@
 #include "UltraMailCredentialVault.h"
 #include "UltraMailComposer.h"
 #include "UltraMailRichComposer.h"
+#include "UltraMailSecurityDialog.h"
 #include "UltraMailSignatureDialog.h"
 #include "UltraMailSender.h"
 #include "UltraMailContactCollector.h"
@@ -96,6 +117,7 @@
 #include "UltraMailWaitDialog.h"
 #include "UltraMailOAuthCodeDialog.h"
 #include "UltraMailTrace.h"
+#include "UltraMailMessageImport.h"
 
 #include <UltraCloud/UltraCloudMemory.h>
 
@@ -109,6 +131,7 @@
 #include "UltraCanvasModalDialog.h"
 #include "UltraCanvasTextArea.h"
 #include "UltraCanvasUtils.h"
+#include "UltraCanvasDataFolder.h"     // DataFolderHome
 
 #include <UltraNet/UltraNetCore.h>
 #include <UltraNet/UltraNetHttp.h>
@@ -185,6 +208,7 @@ std::string UltraMailApp::SlugFromEmail(const std::string& email) {
 UltraMailApp::~UltraMailApp() {
     feed_.SetOnNotificationAction(nullptr);   // a late click finds no app
     pushAlive_->store(false);                 // a late push callback finds no app
+    bodiesAlive_->store(false);               // the message files' encryption stops
     if (IMailboxProtocolPlugin* jmap = JmapPlugin())
         for (const auto& [accountId, watch] : pushWatches_) jmap->StopWatching(watch.handle);
     pushWatches_.clear();
@@ -205,9 +229,40 @@ bool UltraMailApp::Initialize(const std::string& dataDir, std::string* outError)
     if (ec && outError) *outError = ec.message();
     const std::string dbPath = dataDir + "/mail.db";
 
+    // The mail kept here is encrypted at rest with the storage key in the
+    // vault (UltraMailStorage.h), so the vault comes first: opened by main()
+    // (OpenVault, with the Primary Password when one is set), or here with
+    // the device key. A plain database from an earlier version is encrypted
+    // in place, once; the message files follow in the background
+    // (FinishStartup). Without a vault (a build with no crypto backend) the
+    // mail stays as it is.
+    step.emplace("Storage key; encrypt an earlier version's databases", 0);
+    if (vault_.GetDirectory().empty()) vault_ = CredentialVault(dataDir + "/vault");
+    if (!vault_.IsUnlocked()) vault_.TryAutoUnlock();
+    if (vault_.IsUnlocked()) {
+        std::string why;
+        storageKey_ = LoadStorageKey(vault_, /*create=*/true, why);
+        if (!storageKey_) Trace::Line("The stored mail stays unencrypted: " + why);
+    } else {
+        Trace::Line("The vault is locked: the stored mail is opened unencrypted");
+    }
+    SetBodyKey(BodyKey(storageKey_));
+    if (storageKey_) {
+        for (const char* file : { "mail.db", "contacts.db", "outbox.db", "cloud.db" }) {
+            const UltraDbResult converted = EncryptDatabaseFile(dataDir + "/" + file, DatabaseKey(storageKey_, file));
+            if (converted)
+                continue;
+            Trace::Line(std::string("Could not encrypt ") + file + ": " + DetailLine(converted));
+            if (std::string(file) == "mail.db") {
+                if (outError) *outError = "The mailbox could not be encrypted: " + DetailLine(converted);
+                return false;
+            }
+        }
+    }
+
     step.emplace("Open the mail database (mail.db, two connections)", 0);
-    UltraDbResult opened = store_.Open("ultramail", dbPath);
-    if (opened) opened = workerStore_.Open("ultramail-worker", dbPath);
+    UltraDbResult opened = store_.Open("ultramail", dbPath, DatabaseKey(storageKey_, "mail.db"));
+    if (opened) opened = workerStore_.Open("ultramail-worker", dbPath, DatabaseKey(storageKey_, "mail.db"));
     if (!opened) {
         if (outError) *outError = DetailLine(opened);
         return false;
@@ -237,10 +292,11 @@ bool UltraMailApp::Initialize(const std::string& dataDir, std::string* outError)
     // the cache directory; it is safe to point at it before the folder exists.
     step.emplace("Sender icon cache", 0);
     ConfigureSenderIcons();
-    // The credential vault stays locked until FinishStartup unlocks it;
-    // nothing reads or writes a secret before then.
+    // The credential vault was opened by main() before this (OpenVault, with
+    // the Primary Password when one is set); a caller that did not gets one
+    // that stays locked until FinishStartup tries the device key.
     step.emplace("Credential vault and OAuth clients", 0);
-    vault_ = CredentialVault(dataDir + "/vault");
+    if (vault_.GetDirectory().empty()) vault_ = CredentialVault(dataDir + "/vault");
     // The browser sign-in runs through the ULTRA OS sign-in service by default
     // (README, "OAuth2 sign-in"); oauth.ini in the data folder may name another
     // service ([service] url) or a client of this installation's own.
@@ -251,9 +307,11 @@ bool UltraMailApp::Initialize(const std::string& dataDir, std::string* outError)
     // must not be silent: remember it so the feature that needs the store can
     // say what went wrong instead of doing nothing.
     step.emplace("Open the address book and the outbox (contacts.db, outbox.db)", 0);
-    if (UltraDbResult c = contacts_.Open("ultramail-contacts", dataDir + "/contacts.db"); !c)
+    if (UltraDbResult c = contacts_.Open("ultramail-contacts", dataDir + "/contacts.db",
+                                         DatabaseKey(storageKey_, "contacts.db")); !c)
         contactsError_ = DetailLine(c);
-    if (UltraDbResult o = outbox_.Open("ultramail-outbox", dataDir + "/outbox.db"); !o)
+    if (UltraDbResult o = outbox_.Open("ultramail-outbox", dataDir + "/outbox.db",
+                                       DatabaseKey(storageKey_, "outbox.db")); !o)
         outboxError_ = DetailLine(o);
 
     // The networking library itself (curl's global setup), not its plug-ins:
@@ -261,6 +319,14 @@ bool UltraMailApp::Initialize(const std::string& dataDir, std::string* outError)
     // icon cache's threads. The mail plug-ins load in FinishStartup.
     step.emplace("Networking library (UltraNet)", 0);
     if (!UltraNet_IsInitialized()) UltraNet_Initialize();
+    // A mailbox sync over JMAP is a long run of calls to one server: keep the
+    // connection between them (UltraNetConfig::reuseHttpConnections, off by
+    // default for the devices a pooled connection surprises).
+    {
+        UltraNetConfig net = UltraNet_GetConfig();
+        net.reuseHttpConnections = true;
+        UltraNet_SetConfig(net);
+    }
 
     step.emplace("Accounts", 0);
     LoadAccounts();
@@ -358,17 +424,32 @@ void UltraMailApp::FinishStartup() {
     // keeps files (the sender icons have a folder of their own); those loose
     // files are cleared once. Files only, on a thread of its own: a large
     // cache on a slow disk does not hold the window.
-    std::thread([cacheDir = cacheDir_, attachmentDir = attachmentDir_]() {
+    // With the stored mail encrypted (UltraMailStorage.h) these copies are
+    // the one place an attachment lies on disk in the clear - the viewer it
+    // was handed to needs a plain file - so they do not outlive the run they
+    // were opened in: emptied at every start.
+    std::thread([cacheDir = cacheDir_, attachmentDir = attachmentDir_, sealed = GetBodyKey() != nullptr]() {
         Trace::Stage prune("Prune the attachment cache", 0);
         AttachmentCache(cacheDir).Prune(/*maxAgeSeconds=*/-1, /*maxBytes=*/0);
-        AttachmentCache(attachmentDir).Prune(/*maxAgeSeconds=*/7 * 24 * 3600,
+        AttachmentCache(attachmentDir).Prune(/*maxAgeSeconds=*/sealed ? -1 : 7 * 24 * 3600,
                                              /*maxBytes=*/256ull * 1024 * 1024);
     }).detach();
+
+    // Messages downloaded by an earlier version are plain files: sealed with
+    // the body key on a thread of their own, a file at a time, until UltraMail
+    // closes. Reading takes either kind meanwhile (and after an interruption).
+    if (GetBodyKey()) {
+        std::thread([mailDir = mailDir_, alive = bodiesAlive_]() {
+            Trace::Stage seal("Encrypt the message files of an earlier version", 0);
+            const size_t sealed = EncryptStoredBodies(mailDir, [alive]() { return !alive->load(); });
+            if (sealed > 0) Trace::Line(std::to_string(sealed) + " message file(s) encrypted");
+        }).detach();
+    }
 
     // Cloud storage accounts (UltraCloud) for "Attach cloud link".
     step.emplace("Cloud storage accounts (cloud.db)", 0);
     UltraCloud::RegisterBuiltInProviders();
-    cloudAccounts_->Open("ultramail-cloud", dataDir_ + "/cloud.db");
+    cloudAccounts_->Open("ultramail-cloud", dataDir_ + "/cloud.db", DatabaseKey(storageKey_, "cloud.db"));
     cloudSecrets_ = std::make_shared<UltraCloud::VaultSecretStore>();   // in vault_
     cloud_ = std::make_shared<UltraCloud::CloudService>(cloudAccounts_, cloudSecrets_);
 
@@ -381,10 +462,10 @@ void UltraMailApp::FinishStartup() {
     UltraNet_SetPluginDirectory(pluginDir_);
     UltraNet_RefreshPlugins();
 
-    // Unlock the credential vault with the local device key so the user is not
-    // prompted (Thunderbird-style; see CredentialVault). A brand-new vault is
-    // created here; an old master-password vault stays locked until the first
-    // action prompts once (then the key is persisted).
+    // The credential vault is open since the start (OpenVault, before the
+    // stored mail was read): this only confirms it, and opens it with the
+    // device key for a caller that did not open it first. A vault with a
+    // Primary Password nobody typed stays locked until an action asks.
     step.emplace("Unlock the credential vault with the device key", 0);
     if (vault_.TryAutoUnlock()) MigrateCloudSecrets();
     step.reset();
@@ -404,10 +485,8 @@ void UltraMailApp::FinishStartup() {
         outboxRetry_.RetryAt(NowMonotonicSec() + 20);
     step.reset();
 
-    // Migration: an existing vault made with a master password (before device
-    // keys) stays locked after the silent attempt above. Prompt once now so
-    // mail syncs; EnsureVaultUnlocked persists the entered password as the
-    // device key, so this is the only time it is asked.
+    // A vault with a Primary Password that is still locked here (main() was
+    // not the one that started this app): ask for it now, so mail syncs.
     if (!accounts_.empty() && !vault_.IsUnlocked()) {
         EnsureVaultUnlocked([this]() { RunSyncs(/*force=*/false); Refresh(); });
     } else if (!accounts_.empty() && AnyMailboxPlugin()) {
@@ -485,6 +564,53 @@ void UltraMailApp::FinishStartup() {
         src.date = "Tue, 14 Jan 2026 14:02:00 +0000";
         OpenComposer(Composer::Reply(src, "Erika Example", "erika@example.com", false));
     }
+    // Demo path: one dialog on its own, to look at it (wizard, password,
+    // password-new, oauth, wait, account - the last one on the demo account
+    // seeded by ULTRAMAIL_DEMO_MAIL=1 - security and security-new, that
+    // account's Mail security as from Account Settings and as at the end of
+    // adding an account, outbox, settings, and compose: a formatted message with two
+    // attachments).
+    if (const char* dd = std::getenv("ULTRAMAIL_DEMO_DIALOG"); dd && *dd) {
+        const std::string which = dd;
+        UltraCanvas::UltraCanvasWindowBase* parent = window_.get();
+        if (which == "wizard") AccountWizard::Show(parent, [](const AccountDraft&) {});
+        else if (which == "password" || which == "password-new")
+            PassphraseDialog::Show(parent, which == "password-new", "",
+                                   [](const std::string&) {});
+        else if (which == "oauth")
+            OAuthCodeDialog::Show(parent, "Google", "erika@gmail.com",
+                                  [](const std::string&) {});
+        else if (which == "wait")
+            WaitDialog::Show(parent, "Looking up server settings",
+                "UltraMail is asking example.com and the Thunderbird provider database "
+                "for the mail servers of erika@example.com\xE2\x80\xA6", nullptr, "server");
+        else if (which == "account" && !accounts_.empty())
+            HandleAccountSettings(accounts_.front().accountId);
+        else if (which == "security" && !accounts_.empty())
+            ShowSecurityDialog(accounts_.front().accountId, parent, std::string(), "Cancel", nullptr);
+        else if (which == "security-new" && !accounts_.empty())   // as at the end of adding an account
+            ShowSecurityDialog(accounts_.front().accountId, parent,
+                               "Optional: sign and encrypt mail from this account. You can do this later in "
+                               "Account Settings \xE2\x80\xBA Security.",
+                               "Skip", nullptr);
+        else if (which == "outbox") OpenOutbox();
+        else if (which == "settings") OpenSettings();
+        else if (which == "compose") {
+            // A formatted message with two attachments: where they are shown.
+            Draft d = Composer::NewMessage("Erika Example", "erika@example.com");
+            d.to = {"anna@example.com"};
+            d.subject = "Quarterly figures";
+            d.richBody = PlainBodyToRichDocument("Hi Anna,\n\nthe figures are attached.\n\nErika");
+            for (const char* name : {"Q3-figures.pdf", "Notes.txt"}) {
+                Attachment a;
+                a.filename = name;
+                a.mediaType = "application/octet-stream";
+                a.data.assign(2048, 'x');
+                d.attachments.push_back(std::move(a));
+            }
+            OpenComposer(d);
+        }
+    }
     // Demo path: the account signature. =1 opens the signature editor on a
     // designed HTML signature; =2 a new message from the demo account (seeded
     // by ULTRAMAIL_DEMO_MAIL=1) signed with it.
@@ -557,6 +683,9 @@ std::shared_ptr<UltraCanvasContainer> UltraMailApp::BuildAccountView(float width
     outboxButton_ = makeAction("umOutbox", "Outbox", 76, "", false, [this]() { OpenOutbox(); });
     outboxButton_->SetTooltip("Messages waiting to be sent");
     outboxButton_->SetVisible(false);
+    // Import: .eml / .emlx / Outlook .msg files into the folder on show.
+    makeAction("umImport", "Import", 70, "", false, [this]() { ImportMessages(); })
+        ->SetTooltip("Add messages saved as .eml, .emlx or Outlook .msg files to the folder on show");
     toolbar->AddStretchSpacer(1);
     makeAction("umSettings", "Account Settings", 0, "", false, [this]() {
         if (!selectedAccount_.empty()) HandleAccountSettings(selectedAccount_);
@@ -578,9 +707,15 @@ std::shared_ptr<UltraCanvasContainer> UltraMailApp::BuildAccountView(float width
     // ----- Account bar: one summary card, or a tile per account -----
     step.emplace("Account bar", 0);
     auto bar = accountBar_.Build();
+    // A click on an account's card: all of its mail - the filter goes.
     accountBar_.onSelectAccount = [this](const std::string& accountId) {
-        SwitchToAccount(accountId);
+        SwitchToAccount(accountId, MessageFilter{});
     };
+    // A click on one of its counters: its inbox, only what the counter counts.
+    accountBar_.onFilterAccount = [this](const std::string& accountId, MessageFilterKind kind) {
+        SwitchToAccount(accountId, MessageFilter{kind, ""});
+    };
+    accountBar_.onShowAll = [this]() { mailView_.SetFilter(MessageFilter{}); };
     accountBar_.onReorderAccounts = [this](const std::vector<std::string>& order) {
         HandleReorderAccounts(order);
     };
@@ -603,6 +738,9 @@ std::shared_ptr<UltraCanvasContainer> UltraMailApp::BuildAccountView(float width
     mailView_.SetStore(&store_);
     mailView_.SetMailDir(mailDir_);
     mailView_.onOpenAttachment = [this](const Attachment& a) { OpenAttachment(a); };
+    mailView_.onCertificateLearnt = [this](const std::string& address, const std::string& pem) {
+        LearnCertificate(address, pem);
+    };
     mailView_.onSaveAttachment = [this](const Attachment& a) { SaveAttachment(a); };
     // An HTML message is answered and forwarded with its formatting; a
     // plain-text one with "> "-quoted text.
@@ -708,6 +846,11 @@ std::shared_ptr<UltraCanvasContainer> UltraMailApp::BuildAccountView(float width
     // The folder tree switched to a folder under a different account: adopt that
     // account (and highlight its tile) without re-showing its inbox, so the
     // tree's chosen folder stays open.
+    // However the list's filter changed - a counter, the list's own menu, a
+    // switch of folder - the account bar's filter card follows it.
+    mailView_.onFilterChanged = [this](const std::string& accountId, const MessageFilter& filter) {
+        accountBar_.ShowFilter(accountId, filter);
+    };
     mailView_.onSelectAccount = [this](const std::string& accountId) {
         selectedAccount_ = accountId;
         ShowAccountStatus();
@@ -738,6 +881,7 @@ std::shared_ptr<UltraCanvasContainer> UltraMailApp::BuildAccountView(float width
     // Apply the remembered reading-pane choice (default on; a rebuild only when off).
     mailView_.SetReadingPane(prefs_.showReadingPane);
     mailView_.SetBodyOptions(prefs_.showHtml, static_cast<float>(prefs_.messageTextSize));
+    mailView_.SetAttachmentsRight(prefs_.AttachmentsRight());
     mailView_.SetFolderTreeWidth(prefs_.folderTreeWidthMode == FolderTreeWidthMode::FitToText,
                                  prefs_.folderTreeWidth);
 
@@ -1055,42 +1199,13 @@ void UltraMailApp::HandleReload() {
 }
 
 std::string UltraMailApp::ResolvePluginDirectory() {
-    namespace fs = std::filesystem;
-    if (const char* pd = std::getenv("ULTRAMAIL_PLUGIN_DIR"); pd && *pd) return pd;
-
-    // A directory counts when it holds at least one plug-in DSO, so an empty
-    // Plugins/UltraNet next to the executable does not shadow the real one.
-    auto holdsPlugin = [](const fs::path& dir) {
-        std::error_code ec;
-        if (!fs::is_directory(dir, ec) || ec) return false;
-        for (const auto& entry : fs::directory_iterator(dir, ec)) {
-            if (ec) return false;
-            const std::string ext = PathToUtf8(entry.path().extension());
-            if (ext == ".so" || ext == ".dll" || ext == ".dylib") return true;
-        }
-        return false;
-    };
-
-    const fs::path relative = PathFromUtf8("Plugins") / "UltraNet";
-    std::vector<fs::path> candidates;
-    const std::string exeDir = UltraCanvas::GetExecutableDir();
-    if (!exeDir.empty()) {
-        // The build tree puts the executable at <build>/ and the DSOs at
-        // <build>/Plugins/UltraNet; an installed or copied app may sit one
-        // or two levels deeper (bin/, Apps/UltraMail/).
-        fs::path base = UltraCanvas::PathFromUtf8(exeDir);
-        for (int up = 0; up < 3; ++up) {
-            candidates.push_back(base / relative);
-            base = base.parent_path();
-        }
-    }
-    candidates.push_back(relative);   // the registry's own default (cwd)
-
-    for (const auto& c : candidates)
-        if (holdsPlugin(c)) return PathToUtf8(c.lexically_normal());
-    // Nothing found: keep the first executable-relative path so the diagnostic
-    // names a concrete place to put the DSOs.
-    return PathToUtf8(candidates.front().lexically_normal());
+    // ULTRAMAIL_PLUGIN_DIR names another folder. Otherwise UltraNet's own
+    // default, which this function used to work out itself: Plugins/UltraNet
+    // beside the executable or one or two folders above it, whichever holds a
+    // plug-in, and the one beside the executable when none does - a concrete
+    // place for the diagnostic to name.
+    if (const std::string dir = GetEnvUtf8("ULTRAMAIL_PLUGIN_DIR"); !dir.empty()) return dir;
+    return UltraNet_GetPluginDirectory();
 }
 
 IMailboxProtocolPlugin* UltraMailApp::ImapPlugin() const {
@@ -1150,8 +1265,9 @@ ComposeView* UltraMailApp::OpenComposer(const Draft& draft, int64_t replacesOutb
     FinishStartup();   // the cloud accounts and the vault, before the first frame was done
     WindowConfig cfg;
     cfg.title  = draft.subject.empty() ? "New message" : draft.subject;
-    cfg.width  = 640;
-    cfg.height = 560;   // two toolbar rows above the body
+    // Wide enough for every formatting tool in one row.
+    cfg.width  = ComposeView::kPreferredWidth;
+    cfg.height = 600;
     cfg.backgroundColor = Theme::kCardBackground;
     auto win = CreateWindow(cfg);
     GuardQuitDuringTransfers(win);
@@ -1159,9 +1275,33 @@ ComposeView* UltraMailApp::OpenComposer(const Draft& draft, int64_t replacesOutb
     // Its own view: the buttons, the toolbar and Send act on this window's
     // message, whatever other compose windows are open.
     auto view = std::make_shared<ComposeView>();
-    view->SetDraft(draft);
+    // Signing and encrypting: S/MIME once the account has a certificate,
+    // OpenPGP wherever GnuPG is. A new message, reply or forward starts as
+    // the account's Mail security says, where that method is offered; one
+    // that already chose (a reply to encrypted mail, a draft resumed) keeps
+    // its own.
+    std::vector<std::string> methods;
+    const Account* from = nullptr;
+    for (const Account& a : accounts_)
+        if (ToLowerCase(a.email) == ToLowerCase(draft.fromAddr)) from = &a;
+    {
+        SmimeIdentity identity;
+        if (SmimeAvailable() && from && LoadSmimeIdentity(vault_, from->accountId, identity))
+            methods.push_back("S/MIME");
+        if (OpenPgpAvailable()) methods.push_back("OpenPGP");
+    }
+    Draft starting = draft;
+    if (from && starting.secureMethod.empty() && replacesOutboxId <= 0 && !from->security.method.empty() &&
+        std::find(methods.begin(), methods.end(), from->security.method) != methods.end()) {
+        starting.secureMethod = from->security.method;
+        starting.sign = from->security.sign;
+        starting.encrypt = from->security.encrypt;
+    }
+    view->SetDraft(starting);
     view->SetParentWindow(win.get());
     view->SetCloud(cloud_);
+    view->SetAttachmentsRight(prefs_.AttachmentsRight());
+    view->SetSecureMethods(std::move(methods));
     // To / Cc / Bcc complete from the address book as it is when the window
     // opens (one read, then matched in memory as the writer types), the
     // addresses written to most - by the mail in the Sent folders, recent
@@ -1170,11 +1310,89 @@ ComposeView* UltraMailApp::OpenComposer(const Draft& draft, int64_t replacesOutb
     if (contacts_.IsOpen()) contacts_.ListAll(*book);
     auto written = std::make_shared<std::map<std::string, double>>();
     store_.WeighSentRecipients(*written, static_cast<int64_t>(std::time(nullptr)));
+    // A blocked sender ("Set as SPAM", "Block this sender") is not offered:
+    // the lists as they are at each keystroke.
     view->suggestRecipients = [book, written](const std::string& query,
                                               const std::string& fieldText) {
-        return SuggestRecipients(*book, query, fieldText, 8, written.get());
+        const SenderLists lists = GetSenderLists();
+        return SuggestRecipients(*book, query, fieldText, 8, written.get(),
+                                 [&lists](const std::string& address) {
+                                     return !lists.BlockedBy(address).empty();
+                                 });
     };
     UltraCanvasWindow* raw = win.get();
+    // A suggestion's right-click menu. Each change re-reads the address book
+    // into `book`, so the field's next suggestions follow it.
+    view->editRecipientContact = [this, raw, book](const std::string& address,
+                                                   std::function<void()> done) {
+        Contact contact;
+        bool found = false;
+        if (!contacts_.IsOpen() || !contacts_.FindByEmail(address, contact, found) || !found)
+            return;
+        contactsView_.SetStore(&contacts_);
+        contactsView_.EditContact(contact, /*isNew=*/false, raw,
+            [this, book, done](const Contact&) {
+                book->clear();
+                contacts_.ListAll(*book);
+                RefreshContactIndex();
+                Refresh();   // badges
+                done();
+            },
+            address);   // the address right-clicked, whichever of the contact's it is
+    };
+    view->deleteRecipientAddress = [this, raw, book](const std::string& address,
+                                                     std::function<void()> done) {
+        Contact contact;
+        bool found = false;
+        if (!contacts_.IsOpen() || !contacts_.FindByEmail(address, contact, found) || !found)
+            return;
+        // Only this address: a contact with others keeps them, one without is
+        // deleted.
+        const std::string lower = ToLowerCase(address);
+        const bool others = std::any_of(contact.emails.begin(), contact.emails.end(),
+            [&lower](const ContactEmail& e) { return ToLowerCase(e.address) != lower; });
+        const std::string name = contact.displayName.empty() ? address : contact.displayName;
+        const std::string question = others
+            ? "Delete " + address + " from the contact \"" + name + "\"?"
+            : "Delete \"" + name + "\" <" + address + "> from the address book?";
+        UltraCanvasAlert::Confirm(question, "Delete address",
+            [this, raw, book, contact, lower, others, done](bool yes) mutable {
+                if (!yes) return;
+                UltraDbResult r;
+                if (others) {
+                    auto& emails = contact.emails;
+                    emails.erase(std::remove_if(emails.begin(), emails.end(),
+                        [&lower](const ContactEmail& e) { return ToLowerCase(e.address) == lower; }),
+                        emails.end());
+                    if (std::none_of(emails.begin(), emails.end(),
+                                     [](const ContactEmail& e) { return e.primary; }))
+                        emails.front().primary = true;
+                    r = contacts_.Save(contact);
+                } else {
+                    r = contacts_.Remove(contact.id);
+                }
+                if (!r) {
+                    AlertError(raw, "The address could not be deleted.", DetailLine(r));
+                    return;
+                }
+                contacts_.Forget({lower});   // incoming mail does not add it back
+                book->clear();
+                contacts_.ListAll(*book);
+                RefreshContactIndex();
+                contactsView_.Refresh();   // no-op unless the Contacts window is open
+                Refresh();                 // badges
+                done();
+            },
+            raw);
+    };
+    // Spam: the sender goes on the blocked list, as the sender menu's "Block
+    // this sender" does - its mail is judged again, and it is not suggested.
+    view->markRecipientSpam = [this](const std::string& address, std::function<void()> done) {
+        const std::string entry = SenderLists::Entry(address, /*blockList=*/true);
+        if (entry.empty()) return;
+        HandleSenderListChange(entry, /*blockList=*/true, /*add=*/true);
+        done();
+    };
     // Sent, or safely queued in the outbox: the window has done its job. It
     // stays open when the message was not queued (no recipient, no outbox),
     // so nothing typed is lost. The send's own result (sent / waiting in the
@@ -1365,7 +1583,7 @@ void UltraMailApp::RunMailboxAction(
                          "No incoming mail server is known for this account.");
             return;
         }
-        if (vault_.MethodFor(accountId) == SignInMethod::None) {
+        if (vault_.MethodFor(accountId) == SignInMethod::NoSignIn) {
             AlertWarning(parent, actionName + " could not be completed.",
                          "No password or sign-in is stored for this account in the "
                          "credential vault.");
@@ -1392,7 +1610,7 @@ void UltraMailApp::RunMailboxAction(
             // Default Success: only a credential failure carries an auth code the
             // UI thread can turn into a re-sign-in offer; a mailbox-op failure
             // keeps Success here and falls through to the plain error alert.
-            UltraNetResultCode credCode = UltraNetResultCode::Success;
+            UltraNetResultCode credCode = UltraNetResultCode::Ok;
             if (!cred) {
                 outcome = SyncOutcome::Fail(cred);
                 credCode = cred.code;
@@ -1439,7 +1657,7 @@ void UltraMailApp::RunMailboxActionQuiet(
     if (serverUrl.empty() || !settings.found) return;
     IMailboxProtocolPlugin* mailbox = MailboxPluginFor(settings.imap.protocol);
     if (!mailbox) return;                    // quiet: no plug-in, nothing to push
-    if (vault_.MethodFor(accountId) == SignInMethod::None) return;
+    if (vault_.MethodFor(accountId) == SignInMethod::NoSignIn) return;
 
     UltraNetMailOptions opts;
     ApplyConnection(settings.imap, opts);
@@ -1485,6 +1703,7 @@ void UltraMailApp::FetchMissingBody(const MessageEnvelope& env) {
         [this, env, key](const SyncOutcome& outcome) {
             bodyFetchInFlight_.erase(key);
             if (outcome) {
+                CollectServiceOf(env);        // its sender's domain may be proven now
                 mailView_.BodyArrived(env);   // shown, if it is still the one being read
                 return;
             }
@@ -1508,12 +1727,13 @@ void UltraMailApp::RefreshFolderSoon(const std::string& accountId, const std::st
     SyncFolder(accountId, folder, /*userInitiated=*/false);
 }
 
-void UltraMailApp::SwitchToAccount(std::string accountId) {
+void UltraMailApp::SwitchToAccount(std::string accountId, std::optional<MessageFilter> filter) {
     // The timing trace: every step below, then the frames that put it on
     // screen and the inbox update, each timed from this click.
     Trace::Stage trace("Switch to account " + accountId);
     TraceNextFrames("the click on account " + accountId, Trace::NowSeconds());
     std::optional<Trace::Stage> step;
+    const std::string selectedAccountBefore = selectedAccount_;
     selectedAccount_ = accountId;
     // Its last failure, if any - replaced by "Opening …" while its inbox is
     // fetched below.
@@ -1527,7 +1747,18 @@ void UltraMailApp::SwitchToAccount(std::string accountId) {
     accountBar_.SetSelected(selectedAccount_);
     // The stored mail now; the reading pane fills in after the list is painted.
     step.emplace("Show its stored mail (MailView::ShowAccount)");
-    mailView_.ShowAccount(accountId);
+    if (!filter) {
+        mailView_.ShowAccount(accountId);
+    } else if (filter->Active() || accountId != selectedAccountBefore) {
+        // A counter: the inbox under its filter. Another account's card: its
+        // inbox, all of it.
+        mailView_.ShowInbox(accountId, *filter);
+    } else {
+        // The card of the account on screen: the folder open stays, its
+        // filter goes (a no-op without one).
+        if (mailView_.Filter().Active()) mailView_.SetFilter(MessageFilter{});
+        else mailView_.ShowAccount(accountId);
+    }
     // The update from the server runs in the background; when it brings
     // something, the list takes it in place (Refresh -> the list's diff).
     step.emplace("Start the inbox update from the server", 0);
@@ -1687,6 +1918,224 @@ void UltraMailApp::HandleDeleteFolder(const std::string& accountId, const std::s
 void UltraMailApp::LoadAccounts() {
     store_.ListAccounts(accounts_);
     prefs_.OrderAccounts(accounts_);
+    // The keys for signed and encrypted mail follow the accounts: an
+    // account's S/MIME identity is found by its address.
+    mailView_.SetSecureKeys(MakeSecureKeys());
+}
+
+std::string UltraMailApp::SecuritySummary(const std::string& accountId) const {
+    for (const Account& a : accounts_)
+        if (a.accountId == accountId) {
+            SmimeIdentity identity;
+            return SecurityDialog::Describe(a.security, LoadSmimeIdentity(vault_, accountId, identity));
+        }
+    return std::string();
+}
+
+void UltraMailApp::SaveSecurity(const std::string& accountId, const AccountSecurity& security) {
+    if (UltraDbResult up = store_.SetAccountSecurity(accountId, security); !up) {
+        AlertError(window_ ? window_.get() : nullptr,
+                   "The mail security settings could not be saved.", DetailLine(up));
+        return;
+    }
+    for (Account& account : accounts_)
+        if (account.accountId == accountId) account.security = security;
+    // The OpenPGP key an account signs with is in the keys' snapshot.
+    mailView_.SetSecureKeys(MakeSecureKeys());
+}
+
+void UltraMailApp::ShowSecurityDialog(const std::string& accountId, UltraCanvas::UltraCanvasWindowBase* parent,
+                                      const std::string& intro, const std::string& cancelLabel,
+                                      std::function<void(const std::string& summary)> done,
+                                      std::function<void()> closed) {
+    const Account* account = nullptr;
+    for (const Account& a : accounts_)
+        if (a.accountId == accountId) account = &a;
+    if (!account) {
+        if (closed) closed();
+        return;
+    }
+    SecurityDialog::Options options;
+    options.email = account->email;
+    options.current = account->security;
+    options.intro = intro;
+    options.cancelLabel = cancelLabel;
+    options.smimeBuilt = SmimeAvailable();
+    if (options.smimeBuilt) {
+        options.smimeSummary = SmimeSummary(accountId);
+        options.onImportSmime = [this, accountId](UltraCanvas::UltraCanvasWindowBase* page,
+                                                  std::function<void(const std::string&)> imported) {
+            ImportSmimeCertificate(accountId, page, std::move(imported));
+        };
+        options.onRemoveSmime = [this, accountId]() {
+            RemoveSmimeIdentity(vault_, accountId);
+            mailView_.SetSecureKeys(MakeSecureKeys());
+            return SmimeSummary(accountId);
+        };
+    }
+    options.openPgpBuilt = OpenPgpAvailable();
+    if (options.openPgpBuilt) {
+        // How a key reads in the list: its name and address, and the end of
+        // its fingerprint in groups of four, as GnuPG shows it.
+        for (const OpenPgpKey& key : OpenPgpSecretKeys()) {
+            std::string label = key.name.empty() ? std::string("Key") : key.name;
+            if (!key.emails.empty()) label += " <" + key.emails.front() + ">";
+            const std::string tail = key.fingerprint.size() > 16 ? key.fingerprint.substr(key.fingerprint.size() - 16)
+                                                                 : key.fingerprint;
+            label += " \xC2\xB7";
+            for (size_t i = 0; i < tail.size(); i += 4) label += " " + tail.substr(i, 4);
+            options.openPgpKeys.emplace_back(key.fingerprint, label);
+        }
+    }
+    options.onSave = [this, accountId, done](const AccountSecurity& security) {
+        SaveSecurity(accountId, security);
+        if (done) done(SecuritySummary(accountId));
+    };
+    options.onClosed = std::move(closed);
+    SecurityDialog::Show(parent, std::move(options));
+}
+
+std::string UltraMailApp::SmimeSummary(const std::string& accountId) const {
+    SmimeIdentity identity;
+    CertificateInfo info;
+    if (!LoadSmimeIdentity(vault_, accountId, identity) || !ReadCertificate(identity.certificatePem, info))
+        return std::string();
+    std::string text = info.name.empty() ? std::string("Certificate") : info.name;
+    if (!info.issuer.empty()) text += ", from " + info.issuer;
+    if (info.validUntil > 0) {
+        const std::time_t until = static_cast<std::time_t>(info.validUntil);
+        char date[32] = {};
+        std::tm parts{};
+#if defined(_WIN32)
+        gmtime_s(&parts, &until);
+#else
+        gmtime_r(&until, &parts);
+#endif
+        std::strftime(date, sizeof date, "%Y-%m-%d", &parts);
+        text += std::string(", valid until ") + date;
+    }
+    return text;
+}
+
+void UltraMailApp::ImportSmimeCertificate(const std::string& accountId, UltraCanvas::UltraCanvasWindowBase* parent,
+                                          std::function<void(const std::string&)> done) {
+    std::string email;
+    for (const Account& a : accounts_)
+        if (a.accountId == accountId) email = ToLowerCase(a.email);
+    UltraCanvas::FileDialogOptions options;
+    options.title = "Import your S/MIME certificate";
+    options.parentWindow = parent;
+    options.filters = { UltraCanvas::FileFilter("Certificate with its key (PKCS #12)",
+                                               std::vector<std::string>{ "p12", "pfx" }) };
+    UltraCanvas::UltraCanvasFileLoader::OpenFileDialog(options,
+        [this, accountId, email, parent, done](UltraCanvas::DialogResult result, const std::string& path) {
+            if (result != UltraCanvas::DialogResult::OK || path.empty()) return;
+            auto loaded = UltraCanvas::UltraCanvasFileLoader::LoadFile(path);
+            if (!loaded.success) {
+                AlertError(parent, "The certificate file could not be read.", loaded.error);
+                return;
+            }
+            auto bytes = std::make_shared<std::vector<uint8_t>>(loaded.bytes.begin(), loaded.bytes.end());
+            // Its password, asked for in place again when it is wrong.
+            auto ask = std::make_shared<std::function<void(const std::string&)>>();
+            *ask = [this, accountId, email, parent, done, bytes, ask](const std::string& errorText) {
+                PassphrasePrompt prompt;
+                prompt.title       = "Import your S/MIME certificate";
+                prompt.heading     = "The certificate file's password";
+                prompt.text        = "The password the .p12 file was saved with. The certificate and "
+                                     "its key are kept in UltraMail's vault; the file is not needed again.";
+                prompt.placeholder = "Password of the file";
+                prompt.okLabel     = "Import";
+                prompt.okIcon      = "check";
+                prompt.errorText   = errorText;
+                prompt.onCancel    = [ask]() { *ask = nullptr; };
+                PassphraseDialog::Show(parent, std::move(prompt),
+                    [this, accountId, email, parent, done, bytes, ask](const std::string& password) {
+                        SmimeIdentity identity;
+                        std::string error;
+                        if (!ImportPkcs12(*bytes, password, identity, error)) {
+                            if (error.find("password") != std::string::npos) {
+                                (*ask)("That password does not open the file.");
+                                return;
+                            }
+                            *ask = nullptr;
+                            AlertError(parent, "The certificate could not be imported.", error);
+                            return;
+                        }
+                        *ask = nullptr;
+                        CertificateInfo info;
+                        ReadCertificate(identity.certificatePem, info);
+                        if (!email.empty() &&
+                            std::find(info.emails.begin(), info.emails.end(), email) == info.emails.end()) {
+                            AlertWarning(parent, "This certificate is not for " + email + ".",
+                                         "It is for " + (info.emails.empty() ? std::string("no address")
+                                                                              : info.emails.front()) +
+                                         ". Mail from " + email + " cannot be signed with it, and readers "
+                                         "would see a signature by someone else. It was not imported.");
+                            return;
+                        }
+                        if (!vault_.IsUnlocked() || !StoreSmimeIdentity(vault_, accountId, identity)) {
+                            AlertError(parent, "The certificate could not be kept.",
+                                       "UltraMail's vault could not be written.");
+                            return;
+                        }
+                        Trace::Line("S/MIME certificate imported for " + accountId);
+                        mailView_.SetSecureKeys(MakeSecureKeys());
+                        if (done) done(SmimeSummary(accountId));
+                    });
+            };
+            (*ask)("");
+        });
+}
+
+SecureKeys UltraMailApp::MakeSecureKeys() {
+    // A snapshot of the accounts: the hooks run on the reading pane's thread.
+    std::vector<std::pair<std::string, std::string>> accounts;
+    for (const Account& a : accounts_) {
+        std::string email = a.email;
+        std::transform(email.begin(), email.end(), email.begin(),
+                       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        accounts.emplace_back(a.accountId, email);
+    }
+    SecureKeys keys;
+    keys.smimeIdentities = [this, accounts]() {
+        std::vector<SmimeIdentity> out;
+        for (const auto& [id, email] : accounts) {
+            SmimeIdentity identity;
+            if (LoadSmimeIdentity(vault_, id, identity)) out.push_back(std::move(identity));
+        }
+        return out;
+    };
+    keys.smimeIdentityFor = [this, accounts](const std::string& address, SmimeIdentity& out) {
+        for (const auto& [id, email] : accounts)
+            if (email == address && LoadSmimeIdentity(vault_, id, out)) return true;
+        return false;
+    };
+    keys.smimeCertificateFor = [this](const std::string& address, std::string& pem) {
+        bool found = false;
+        return contacts_.IsOpen() && contacts_.FindCertificate(address, pem, found) && found;
+    };
+    // The OpenPGP key each account chose to sign with (Mail security).
+    std::map<std::string, std::string> pgpKeys;
+    for (const Account& a : accounts_) {
+        if (a.security.openPgpKey.empty()) continue;
+        std::string email = a.email;
+        std::transform(email.begin(), email.end(), email.begin(),
+                       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        pgpKeys[email] = a.security.openPgpKey;
+    }
+    keys.openPgpSigningKeyFor = [pgpKeys](const std::string& address) {
+        const auto found = pgpKeys.find(address);
+        return found == pgpKeys.end() ? std::string() : found->second;
+    };
+    return keys;
+}
+
+void UltraMailApp::LearnCertificate(const std::string& address, const std::string& certificatePem) {
+    CertificateInfo info;
+    if (!contacts_.IsOpen() || !ReadCertificate(certificatePem, info)) return;
+    if (UltraDbResult saved = contacts_.SaveCertificate(address, certificatePem, info.fingerprint, info.validUntil); !saved)
+        Trace::Line("S/MIME certificate of " + address + " not kept: " + DetailLine(saved));
 }
 
 void UltraMailApp::HandleReorderAccounts(const std::vector<std::string>& order) {
@@ -1767,9 +2216,9 @@ void UltraMailApp::HandleUnsubscribe(const MessageEnvelope& env) {
     const std::string path = CachedBodyPath(mailDir_, env.accountId, env.folder, env.uid);
     std::error_code ec;
     if (std::filesystem::exists(PathFromUtf8(path), ec)) {
-        auto loaded = UltraCanvas::UltraCanvasFileLoader::LoadFile(path);
-        if (loaded.success) {
-            UnsubscribeWith(env, std::string(loaded.bytes.begin(), loaded.bytes.end()));
+        std::string raw;
+        if (ReadBodyFile(path, raw)) {
+            UnsubscribeWith(env, raw);
             return;
         }
     }
@@ -1781,9 +2230,9 @@ void UltraMailApp::HandleUnsubscribe(const MessageEnvelope& env) {
         },
         "Unsubscribe",
         [this, env, path]() {
-            auto loaded = UltraCanvas::UltraCanvasFileLoader::LoadFile(path);
-            UnsubscribeWith(env, loaded.success
-                ? std::string(loaded.bytes.begin(), loaded.bytes.end()) : std::string());
+            CollectServiceOf(env);   // its sender's domain may be proven now
+            std::string raw;
+            UnsubscribeWith(env, ReadBodyFile(path, raw) ? raw : std::string());
         });
 }
 
@@ -1946,6 +2395,41 @@ bool UltraMailApp::HandleSendDraft(const Draft& draft, int64_t replacesOutboxId)
                        ? "UltraMail's outbox database is not available."
                        : outboxError_);
         return false;
+    }
+
+    // Signed or encrypted: whether it can be made, said now - before it is
+    // queued - rather than as a failed send later.
+    if (IsSecureDraft(draft)) {
+        const SecureMethod method = draft.secureMethod == "OpenPGP" ? SecureMethod::OpenPgp : SecureMethod::Smime;
+        const SecureKeys keys = MakeSecureKeys();
+        if (draft.sign && !CanSignAs(method, draft.fromAddr, keys)) {
+            AlertWarning(parent, "This message cannot be signed.",
+                         method == SecureMethod::Smime
+                             ? "There is no S/MIME certificate for " + draft.fromAddr +
+                               ". Import yours in Account Settings, or switch Sign off."
+                             : "There is no OpenPGP secret key for " + draft.fromAddr +
+                               " in your GnuPG keyring. Create or import one there, or switch Sign off.");
+            return false;
+        }
+        if (draft.encrypt) {
+            SecureSendOptions options;
+            options.method = method;
+            options.from = draft.fromAddr;
+            for (const auto* list : { &draft.to, &draft.cc, &draft.bcc })
+                options.recipients.insert(options.recipients.end(), list->begin(), list->end());
+            const std::vector<std::string> missing = MissingRecipientKeys(options, keys);
+            if (!missing.empty()) {
+                AlertWarning(parent, "This message cannot be encrypted to everyone.",
+                             std::string(method == SecureMethod::Smime ? "No S/MIME certificate is known for "
+                                                                       : "Your GnuPG keyring has no OpenPGP key for ") +
+                             join(missing) + "." +
+                             (method == SecureMethod::Smime
+                                  ? " UltraMail learns a certificate from a signed message its owner sends you."
+                                  : " Import their public key into GnuPG.") +
+                             " Remove them, or switch Encrypt off.");
+                return false;
+            }
+        }
     }
 
     DiscoveryResult disc = SettingsForEmail(draft.fromAddr);
@@ -2241,8 +2725,11 @@ void UltraMailApp::RunOutboxJob(OutboxJob job, const std::string& status,
     RefreshOutbox();   // the Outbox window says it is busy
     // Copied here, on the UI thread: the worker must not read accounts_.
     auto copies = std::make_shared<ServerCopies>(MakeServerCopies());
-    std::thread([this, job = std::move(job), copies, onDone = std::move(onDone)]() {
+    SecureKeys secureKeys = MakeSecureKeys();   // its account snapshot, taken here too
+    std::thread([this, job = std::move(job), copies, onDone = std::move(onDone),
+                 secureKeys = std::move(secureKeys)]() {
         Outbox ob(outbox_);
+        ob.SetSecureKeys(secureKeys);
         job(ob, copies->imap ? copies.get() : nullptr);
         auto* app = UltraCanvas::UltraCanvasApplicationBase::GetCurrent();
         if (!app) return;
@@ -2300,8 +2787,7 @@ void UltraMailApp::SeedDemoMail() {
 
         fs::path p = PathFromUtf8(mailDir_) / "erika" / "INBOX" / (std::to_string(uid) + ".eml");
         std::error_code ec; fs::create_directories(p.parent_path(), ec);
-        std::ofstream(p, std::ios::binary).write(raw.data(),
-                                                 static_cast<std::streamsize>(raw.size()));
+        WriteBodyFile(PathToUtf8(p), raw);   // sealed as downloaded mail is
 
         MessageEnvelope m;
         m.accountId = "erika"; m.folder = "INBOX"; m.uid = uid;
@@ -2361,11 +2847,34 @@ void UltraMailApp::CollectContacts(const std::string& accountId, const std::stri
     if (!contacts_.IsOpen()) return;
     std::vector<MessageEnvelope> msgs;
     store_.ListMessages(accountId, folder, 0, msgs);
-    // CollectSender, not Collect: a sender in the known-sender registry is
-    // filed under Services as a business contact (with the service's name as
-    // the organization), everything else lands in Other as before.
-    for (const auto& m : msgs)
-        ContactCollector::CollectSender(contacts_, m.fromName, m.fromAddr);
+    // Only the known services whose domain the scan proved, as after a sync.
+    CollectServices(accountId, folder, msgs);
+}
+
+void UltraMailApp::CollectServices(const std::string& accountId, const std::string& folder,
+                                   const std::vector<MessageEnvelope>& mail) {
+    if (!contacts_.IsOpen() || mail.empty()) return;
+    // A known service is filed only when the server proved its domain: the
+    // verdict stored with the body when it was downloaded and scanned.
+    std::map<int64_t, MessageSecurity> verdicts;
+    store_.ListSecurity(accountId, folder, verdicts);
+    std::vector<SenderSeen> senders;
+    senders.reserve(mail.size());
+    for (const MessageEnvelope& m : mail) {
+        const auto v = verdicts.find(m.uid);
+        if (v == verdicts.end() || v->second.verifiedDomain.empty()) continue;
+        senders.push_back({m.fromName, m.fromAddr, v->second.verifiedDomain});
+    }
+    ContactCollector::CollectSenders(contacts_, senders);
+}
+
+void UltraMailApp::CollectServiceOf(const MessageEnvelope& m) {
+    if (!contacts_.IsOpen() || m.folder != "INBOX") return;
+    MessageSecurity sec;
+    if (!store_.GetSecurity(m.accountId, m.folder, m.uid, sec) || sec.verifiedDomain.empty())
+        return;
+    if (ContactCollector::CollectSender(contacts_, m.fromName, m.fromAddr, sec.verifiedDomain))
+        RefreshContactIndex();
 }
 
 void UltraMailApp::StartBackgroundSync() {
@@ -2467,7 +2976,7 @@ void UltraMailApp::MaintainPushWatches() {
         if (!jmap) break;
         const DiscoveryResult d = SettingsFor(a);
         if (!d.found || d.imap.protocol != MailProtocol::Jmap) continue;
-        if (vault_.MethodFor(a.accountId) == SignInMethod::None) continue;
+        if (vault_.MethodFor(a.accountId) == SignInMethod::NoSignIn) continue;
         const std::string url = AutoDiscovery::IncomingServerUrl(d.imap);
         if (url.empty()) continue;
         wanted.insert(a.accountId);
@@ -2703,7 +3212,7 @@ void UltraMailApp::SyncFolder(const std::string& accountId, const std::string& f
     if (serverUrl.empty() || !settings.found) return;
     IMailboxProtocolPlugin* mailbox = MailboxPluginFor(settings.imap.protocol);
     if (!mailbox) return;
-    if (vault_.MethodFor(accountId) == SignInMethod::None) return;
+    if (vault_.MethodFor(accountId) == SignInMethod::NoSignIn) return;
 
     UltraNetMailOptions opts;
     ApplyConnection(settings.imap, opts);
@@ -2861,7 +3370,7 @@ void UltraMailApp::SyncAccounts(const std::vector<ScheduledAccount>& targets,
         // The password — or the Google sign-in — lives in the vault. Without
         // either the login would be rejected anyway, so report the real reason
         // instead of a bad-password error from the server.
-        if (vault_.MethodFor(acc.accountId) == SignInMethod::None) {
+        if (vault_.MethodFor(acc.accountId) == SignInMethod::NoSignIn) {
             if (userInitiated)
                 AlertWarning(parent, "New mail cannot be fetched for " + who + ".",
                              "No password or sign-in is stored for this account "
@@ -2909,10 +3418,12 @@ void UltraMailApp::SyncAccounts(const std::vector<ScheduledAccount>& targets,
         // The senders of the mail this sync brought, for the address book's
         // collector on the UI thread afterwards. Filled on the worker, read
         // once it has finished (onDone runs after the last progress call).
-        auto arrived = std::make_shared<std::vector<std::pair<std::string, std::string>>>();
+        // Only their identity: what the scan proved of each sender is read from
+        // the store then, once its body has been downloaded and scanned.
+        auto arrived = std::make_shared<std::vector<MessageEnvelope>>();
         // Stash the credential-resolve code so the UI thread can tell an expired
         // OAuth sign-in (offer re-sign-in) from an ordinary sync failure.
-        auto credCode = std::make_shared<UltraNetResultCode>(UltraNetResultCode::Success);
+        auto credCode = std::make_shared<UltraNetResultCode>(UltraNetResultCode::Ok);
         svc->SyncInBackground(aid, acc.serverUrl, opts,
                               [this, aid, username, provider, credCode](UltraNetMailOptions& o) {
                                   UltraNetResult r = ResolveCredentials(aid, username, provider,
@@ -3001,7 +3512,15 @@ void UltraMailApp::SyncAccounts(const std::vector<ScheduledAccount>& targets,
                 if (contacts_.IsOpen()) {
                     Trace::Stage step("Address book: the senders of " +
                                       std::to_string(arrived->size()) + " new message(s)", 0);
-                    ContactCollector::CollectSenders(contacts_, *arrived);
+                    // With the newest mail held already: a body an earlier
+                    // sync did not get may have come now (the sync fetches
+                    // those for the newest 100), and with it the proof of
+                    // its sender's domain.
+                    std::vector<MessageEnvelope> mail = *arrived;
+                    std::vector<MessageEnvelope> newest;
+                    store_.ListMessages(aid, "INBOX", kCollectNewest, newest);
+                    mail.insert(mail.end(), newest.begin(), newest.end());
+                    CollectServices(aid, "INBOX", mail);
                 }
                 Refresh();   // authoritative, correctly sorted final list
             });
@@ -3013,7 +3532,7 @@ void UltraMailApp::SyncAccounts(const std::vector<ScheduledAccount>& targets,
             // Sender icons are not fetched here: a download held the sync
             // for its whole round trip. The list asks for the icons of the
             // rows it paints, and the icon cache's own threads fetch them.
-            if (m.folder == "INBOX") arrived->emplace_back(m.fromName, m.fromAddr);
+            if (m.folder == "INBOX") arrived->push_back(m);
             feed_.Publish(m);   // the desktop feed learns of new mail as it arrives
             newMail_.Note(m);   // and the notification on screen, when the sync ends
             progressBuf->push_back(m);
@@ -3124,7 +3643,7 @@ void UltraMailApp::EditSenderContact(const MessageEnvelope& m, bool isNew) {
     contactsView_.EditContact(contact, /*isNew=*/!found, parent, [this](const Contact&) {
         RefreshContactIndex();
         Refresh();   // badges: the sender is (still) in the address book
-    });
+    }, m.fromAddr);   // the sender's address, whichever of the contact's it is
 }
 
 void UltraMailApp::AddSenderToContactGroup(const MessageEnvelope& m,
@@ -3183,6 +3702,13 @@ void UltraMailApp::OpenContacts() {
 
     contactsView_.SetStore(&contacts_);
     contactsView_.onChanged = [this]() { RefreshContactIndex(); Refresh(); };
+    // Who the user writes to (the Sent folders), for "Remove collected
+    // contacts…": read when asked, so it is as current as the mail.
+    contactsView_.writtenTo = [this]() {
+        std::map<std::string, double> written;
+        store_.WeighSentRecipients(written, static_cast<int64_t>(std::time(nullptr)));
+        return written;
+    };
     win->AddChild(contactsView_.Build());
     contactsView_.Resize(static_cast<float>(cfg.width), static_cast<float>(cfg.height));
     win->onWindowResize = [this](int cw, int ch) {
@@ -3407,8 +3933,130 @@ void UltraMailApp::SeedDemoContacts() {
     add("Electricity",  ContactSection::Services, "billing@power.example", "",             "PowerCo");
 }
 
+void UltraMailApp::ImportMessages() {
+    UltraCanvas::UltraCanvasWindowBase* parent = window_ ? window_.get() : nullptr;
+    if (selectedAccount_.empty()) {
+        AlertError(parent, "There is no account to import into.", "Add an account first.");
+        return;
+    }
+    const std::string accountId = selectedAccount_;
+    std::string folder = mailView_.CurrentFolder();
+    if (folder.empty()) folder = "INBOX";
+
+    UltraCanvas::FileDialogOptions options;
+    options.title = "Import messages into " + FolderLabel(accountId, folder);
+    options.parentWindow = parent;
+    options.filters = { UltraCanvas::FileFilter("E-mail messages (.eml, .emlx, Outlook .msg)",
+                                                ImportableMessageExtensions()) };
+    UltraCanvas::UltraCanvasFileLoader::OpenMultipleFilesDialog(
+        options, [this, accountId, folder](UltraCanvas::DialogResult result, const std::vector<std::string>& paths) {
+            if (result != UltraCanvas::DialogResult::OK || paths.empty()) return;
+            ImportMessageFiles(accountId, folder, paths);
+        });
+}
+
+void UltraMailApp::ImportMessageFiles(const std::string& accountId, const std::string& folder,
+                                      const std::vector<std::string>& paths) {
+    UltraCanvas::UltraCanvasWindowBase* parent = window_ ? window_.get() : nullptr;
+    // The account's server, sign-in and plug-in - the ones its Drafts and
+    // Sent copies go through - taken here, on the UI thread.
+    auto copies = std::make_shared<ServerCopies>(MakeServerCopies());
+    if (!copies->imap || !copies->prepare) {
+        AlertError(parent, "The messages could not be imported.", "No mail plug-in is loaded.");
+        return;
+    }
+    const std::string label = FolderLabel(accountId, folder);
+    SetStatus("Importing " + std::to_string(paths.size()) + (paths.size() == 1 ? " message" : " messages") +
+              " into " + label + "…");
+    std::thread([this, copies, accountId, folder, paths, label, parent]() {
+        int imported = 0;
+        std::vector<std::string> failures;
+        ServerFolders where;
+        const UltraNetResult ready = copies->prepare(accountId, where);
+        for (const auto& path : paths) {
+            const std::string name = PathToUtf8(PathFromUtf8(path).filename());
+            if (!ready) { failures.push_back(name + ": " + ready.message); continue; }
+            // Read through the file loader, as every file the user picks is.
+            auto loaded = UltraCanvas::UltraCanvasFileLoader::LoadFile(path, /*autoDecompress=*/false);
+            if (!loaded.success) { failures.push_back(name + ": " + loaded.error); continue; }
+            std::string raw, why;
+            if (!MessageFileToRfc822(name, loaded.bytes, raw, why)) { failures.push_back(name + ": " + why); continue; }
+            // Uploaded as read: it was read where it came from.
+            const UltraNetResult added = copies->MailboxFor(where).AppendMessage(
+                where.serverUrl, folder, raw, UltraNetMailFlags::Seen, where.options);
+            if (added) ++imported;
+            else failures.push_back(name + ": " + added.message);
+        }
+        auto* app = UltraCanvas::UltraCanvasApplicationBase::GetCurrent();
+        if (!app) return;
+        app->PostToUIThread([this, accountId, folder, label, parent, imported, failures]() {
+            if (imported > 0) {
+                SetStatus(std::to_string(imported) + (imported == 1 ? " message" : " messages") +
+                          " imported into " + label);
+                // The folder's next sync brings them into the list.
+                SyncFolder(accountId, folder, /*userInitiated=*/true);
+            } else {
+                SetStatus("");
+            }
+            if (!failures.empty()) {
+                std::string details;
+                for (const auto& f : failures) details += (details.empty() ? "" : "\n") + f;
+                AlertError(parent,
+                           failures.size() == 1 ? "A message could not be imported."
+                                                : std::to_string(failures.size()) + " messages could not be imported.",
+                           details);
+            }
+        });
+    }).detach();
+}
+
 void UltraMailApp::OpenAttachment(const Attachment& attachment) {
     UltraCanvas::UltraCanvasWindowBase* parent = window_ ? window_.get() : nullptr;
+
+    // Someone's OpenPGP public key (application/pgp-keys, or a .asc that
+    // holds one): offered to GnuPG, where encrypting to them looks for it.
+    const std::string text(attachment.data.begin(), attachment.data.end());
+    const bool isKey = text.find("-----BEGIN PGP PUBLIC KEY BLOCK-----") != std::string::npos &&
+                       (ToLowerCase(attachment.mediaType) == "application/pgp-keys" ||
+                        ToLowerCase(attachment.filename).find(".asc") != std::string::npos ||
+                        ToLowerCase(attachment.filename).find(".gpg") != std::string::npos ||
+                        ToLowerCase(attachment.filename).find(".pgp") != std::string::npos);
+    if (isKey && OpenPgpAvailable()) {
+        UltraCanvasDialogManager::ShowConfirmation(
+            "\"" + attachment.filename + "\" is an OpenPGP public key. Add it to your GnuPG keyring, so "
+            "mail to its owner can be encrypted? Compare its fingerprint with them before you rely on it.",
+            "Import OpenPGP key",
+            [this, text, parent](bool confirmed) {
+                if (!confirmed) return;
+                std::string error;
+                const int imported = ImportOpenPgpKeys(text, error);
+                if (imported > 0)
+                    AlertSuccess(parent, imported == 1 ? "The key is in your GnuPG keyring."
+                                                       : std::to_string(imported) + " keys are in your GnuPG keyring.");
+                else
+                    AlertError(parent, "The key could not be imported.", error);
+            },
+            parent);
+        return;
+    }
+
+    // A program, script, installer, shortcut or disk image would run if it
+    // were opened - the commonest way mail carries malware. It is never
+    // opened from here, not even written to the cache; it can be saved and
+    // looked at on purpose. Its own name decides, and so does the name the
+    // cache would give it (an unnamed part gets one from its media type).
+    const std::string cacheName = AttachmentCache::SanitizeFilename(attachment.filename, attachment.mediaType);
+    if (UltraCanvas::FileAssociations::RunsCodeWhenOpened(attachment.filename) ||
+        UltraCanvas::FileAssociations::RunsCodeWhenOpened(cacheName)) {
+        const std::string name = attachment.filename.empty() ? cacheName : attachment.filename;
+        UltraCanvasAlert::Confirm(
+            "\"" + name + "\" is a program or a script, which would run if it were opened. "
+            "UltraMail does not open it.\n\nWould you like to save it instead?",
+            "Open attachment",
+            [this, attachment](bool save) { if (save) SaveAttachment(attachment); },
+            parent);
+        return;
+    }
 
     AttachmentCache cache(attachmentDir_);
     const std::string path = cache.Write(attachment);
@@ -3498,13 +4146,14 @@ void UltraMailApp::SaveAttachment(const Attachment& attachment) {
 
 std::string UltraMailApp::DefaultSaveDirectory() {
     // The user's Downloads folder when it exists, else their home, else the
-    // working directory — the same order a browser's save dialog uses.
-    if (const char* home = std::getenv("HOME"); home && *home) {
-        std::error_code ec;
-        const std::filesystem::path downloads = PathFromUtf8(home) / "Downloads";
-        if (std::filesystem::is_directory(downloads, ec)) return PathToUtf8(downloads);
-        return home;
-    }
+    // working directory — the same order a browser's save dialog uses. The
+    // Downloads folder as the platform names it (on Windows the known folder,
+    // wherever it was moved or redirected to), the home from HOME or, on
+    // Windows, where HOME is not set, USERPROFILE - all as UTF-8. Reading
+    // HOME alone, narrowly, found neither on Windows.
+    for (const UserFolderInfo& folder : GetWellKnownUserFolders())
+        if (folder.kind == UserFolderKind::Downloads) return folder.path;
+    if (const std::string home = DataFolderHome(); !home.empty()) return home;
     return ".";
 }
 
@@ -3680,8 +4329,8 @@ void UltraMailApp::EnsureVaultUnlocked(std::function<void()> onUnlocked,
     if (vault_.IsUnlocked()) { if (onUnlocked) onUnlocked(); return; }
 
     // Default path: unlock silently with the local device key (no prompt). This
-    // also creates a fresh vault on first run. Only an old master-password vault
-    // (device key not yet written) falls through to the dialog below.
+    // also creates a fresh vault on first run. A vault with a Primary Password
+    // (no device key) falls through to the dialog below.
     if (errorText.empty() && vault_.TryAutoUnlock()) {
         MigrateCloudSecrets();
         if (onUnlocked) onUnlocked();
@@ -3689,17 +4338,18 @@ void UltraMailApp::EnsureVaultUnlocked(std::function<void()> onUnlocked,
     }
 
     UltraCanvas::UltraCanvasWindowBase* parent = window_ ? window_.get() : nullptr;
-    // Reaching the dialog means an existing vault must be opened with the master
-    // password it was made with; ask the user to recall it (not choose one).
+    // Reaching the dialog means the vault must be opened with its Primary
+    // Password; ask the user to recall it (not choose one).
     const bool firstRun = false;
 
     PassphraseDialog::Show(parent, firstRun, errorText,
         [this, onUnlocked, parent](const std::string& passphrase) {
             switch (vault_.Unlock(passphrase)) {
                 case VaultStatus::Ok:
-                    // Persist the working passphrase as the device key so this
-                    // is the last time the user is asked (Thunderbird-style).
-                    vault_.PersistDeviceKey(passphrase);
+                    // The Primary Password stays the only key: a device key
+                    // still beside the vault is a stale one (a change that was
+                    // interrupted), and goes.
+                    if (!vault_.NeedsPassphrase()) vault_.ForgetDeviceKey();
                     MigrateCloudSecrets();
                     if (onUnlocked) onUnlocked();
                     return;
@@ -3708,7 +4358,7 @@ void UltraMailApp::EnsureVaultUnlocked(std::function<void()> onUnlocked,
                     // vault reports a wrong password and a tampered file
                     // identically, so the text covers both without guessing.
                     EnsureVaultUnlocked(onUnlocked,
-                        "That master password did not open the vault. If it is "
+                        "That Primary Password did not open the vault. If it is "
                         "correct, the vault file may have been altered.");
                     return;
                 case VaultStatus::Unavailable:
@@ -3730,6 +4380,148 @@ void UltraMailApp::EnsureVaultUnlocked(std::function<void()> onUnlocked,
                     return;
             }
         });
+}
+
+VaultStatus UltraMailApp::OpenVault(const std::string& dataDir) {
+    vault_ = CredentialVault(dataDir + "/vault");
+    if (vault_.TryAutoUnlock()) return VaultStatus::Ok;
+    const VaultStatus why = vault_.GetLastUnlockStatus();
+    Trace::Line("Credential vault not opened with the device key: " +
+                CredentialVault::DescribeUnlockStatus(why));
+    return why;
+}
+
+VaultStatus UltraMailApp::UnlockVault(const std::string& passphrase) {
+    const VaultStatus status = vault_.Unlock(passphrase);
+    // Opened by the typed password, so a device key beside it is a stale one.
+    if (status == VaultStatus::Ok && !vault_.NeedsPassphrase()) vault_.ForgetDeviceKey();
+    return status;
+}
+
+bool UltraMailApp::HasPrimaryPassword() const { return vault_.NeedsPassphrase(); }
+
+namespace {
+
+// What ChangePassphrase's answer means for the one who asked.
+void SayVaultFailure(UltraCanvas::UltraCanvasWindowBase* parent, VaultStatus status,
+                     const std::string& what, const std::string& vaultPath) {
+    AlertError(parent, what,
+               status == VaultStatus::IoError
+                   ? "UltraMail could not write " + vaultPath +
+                     ". Nothing was changed: the password that opened the vault still does."
+                   : "Nothing was changed: " + CredentialVault::DescribeUnlockStatus(status) + ".");
+}
+
+} // namespace
+
+void UltraMailApp::SetPrimaryPassword(UltraCanvas::UltraCanvasWindowBase* parent, std::function<void()> done) {
+    if (!vault_.IsUnlocked() && !vault_.TryAutoUnlock()) {
+        SayVaultFailure(parent, vault_.GetLastUnlockStatus(), "The Primary Password could not be set.",
+                        vault_.VaultPath());
+        if (done) done();
+        return;
+    }
+    PassphrasePrompt prompt;
+    prompt.title       = "Set a Primary Password";
+    prompt.heading     = "Set a Primary Password";
+    prompt.text        = "UltraMail will ask for it at every start. It protects your mail "
+                         "passwords and the key your stored mail is encrypted with. It is "
+                         "not stored anywhere: forgotten, the mail kept on this computer "
+                         "has to be downloaded again and your mail passwords entered again.";
+    prompt.fieldLabel  = "New password";
+    prompt.placeholder = "Choose a Primary Password";
+    prompt.okLabel     = "Set password";
+    prompt.okIcon      = "check";
+    prompt.confirm     = true;
+    prompt.onCancel    = done;
+    PassphraseDialog::Show(parent, std::move(prompt), [this, parent, done](const std::string& chosen) {
+        const VaultStatus status = vault_.ChangePassphrase("", chosen, /*keepAsDeviceKey=*/false);
+        if (status == VaultStatus::Ok) {
+            Trace::Line("Primary Password set");
+            AlertSuccess(parent, "The Primary Password is set.",
+                      "UltraMail asks for it from the next start on.");
+        } else {
+            SayVaultFailure(parent, status, "The Primary Password could not be set.", vault_.VaultPath());
+        }
+        if (done) done();
+    });
+}
+
+void UltraMailApp::ChangePrimaryPassword(UltraCanvas::UltraCanvasWindowBase* parent, std::function<void()> done) {
+    // The current one first; asked again in place when it is wrong.
+    auto askCurrent = std::make_shared<std::function<void(const std::string&)>>();
+    *askCurrent = [this, parent, done, askCurrent](const std::string& errorText) {
+        PassphrasePrompt prompt;
+        prompt.title     = "Change the Primary Password";
+        prompt.heading   = "Change the Primary Password";
+        prompt.text      = "Enter the Primary Password you use now.";
+        prompt.okLabel   = "Next";
+        prompt.okIcon    = "unlock";
+        prompt.errorText = errorText;
+        prompt.onCancel  = [askCurrent, done]() { *askCurrent = nullptr; if (done) done(); };
+        PassphraseDialog::Show(parent, std::move(prompt), [this, parent, done, askCurrent](const std::string& current) {
+            if (vault_.Unlock(current) != VaultStatus::Ok) {
+                (*askCurrent)("That is not the Primary Password.");
+                return;
+            }
+            *askCurrent = nullptr;
+            PassphrasePrompt next;
+            next.title       = "Change the Primary Password";
+            next.heading     = "Choose the new Primary Password";
+            next.text        = "From the next start on UltraMail asks for this one.";
+            next.fieldLabel  = "New password";
+            next.placeholder = "Choose a Primary Password";
+            next.okLabel     = "Change password";
+            next.okIcon      = "check";
+            next.confirm     = true;
+            next.onCancel    = done;
+            PassphraseDialog::Show(parent, std::move(next), [this, parent, done, current](const std::string& chosen) {
+                const VaultStatus status = vault_.ChangePassphrase(current, chosen, /*keepAsDeviceKey=*/false);
+                if (status == VaultStatus::Ok) {
+                    Trace::Line("Primary Password changed");
+                    AlertSuccess(parent, "The Primary Password is changed.", "UltraMail asks for the new one from the next start on.");
+                } else {
+                    SayVaultFailure(parent, status, "The Primary Password could not be changed.", vault_.VaultPath());
+                }
+                if (done) done();
+            });
+        });
+    };
+    (*askCurrent)("");
+}
+
+void UltraMailApp::RemovePrimaryPassword(UltraCanvas::UltraCanvasWindowBase* parent, std::function<void()> done) {
+    auto ask = std::make_shared<std::function<void(const std::string&)>>();
+    *ask = [this, parent, done, ask](const std::string& errorText) {
+        PassphrasePrompt prompt;
+        prompt.title     = "Remove the Primary Password";
+        prompt.heading   = "Remove the Primary Password";
+        prompt.text      = "UltraMail will start without asking. The vault is then opened with "
+                           "a key kept beside it, so anyone using this computer account can "
+                           "read your mail and your mail passwords. Enter the Primary Password "
+                           "to remove it.";
+        prompt.okLabel   = "Remove password";
+        prompt.okIcon    = "unlock";
+        prompt.errorText = errorText;
+        prompt.onCancel  = [ask, done]() { *ask = nullptr; if (done) done(); };
+        PassphraseDialog::Show(parent, std::move(prompt), [this, parent, done, ask](const std::string& current) {
+            const VaultStatus status =
+                vault_.ChangePassphrase(current, CredentialVault::NewDeviceKey(), /*keepAsDeviceKey=*/true);
+            if (status == VaultStatus::WrongPassphrase) {
+                (*ask)("That is not the Primary Password.");
+                return;
+            }
+            *ask = nullptr;
+            if (status == VaultStatus::Ok) {
+                Trace::Line("Primary Password removed");
+                AlertSuccess(parent, "The Primary Password is removed.", "UltraMail starts without asking for it.");
+            } else {
+                SayVaultFailure(parent, status, "The Primary Password could not be removed.", vault_.VaultPath());
+            }
+            if (done) done();
+        });
+    };
+    (*ask)("");
 }
 
 void UltraMailApp::HandleAddAccount() {
@@ -3825,7 +4617,7 @@ void UltraMailApp::LookupServerSettings(const AccountDraft& draft) {
         "Looking up server settings",
         "UltraMail is asking " + domain + " and the Thunderbird provider database "
         "for the mail servers of " + draft.email + "…",
-        [cancelled]() { cancelled->store(true); });
+        [cancelled]() { cancelled->store(true); }, "server");
 
     std::thread([this, draft, parent, cancelled, waiting]() {
         AutoDiscovery discovery;
@@ -3840,29 +4632,35 @@ void UltraMailApp::LookupServerSettings(const AccountDraft& draft) {
 
             // Nothing published for the domain: the manual page, seeded with
             // the conventional host names so most of it is already right. The
-            // typed password checks the sign-in before the page closes; with
-            // no password there is nothing to check.
-            const std::string password = draft.password;
-            ServerSettingsDialog::Verifier verify;
-            if (!password.empty()) {
-                verify = LoginVerifier([password](const ServerSettingsDialog::Result&,
-                                                  const std::string& username,
-                                                  UltraNetCredentials& c) {
+            // password typed in the wizard prefills an editable Password field
+            // on the page, so a wrong one can be fixed in place instead of
+            // leaving the user stuck on a failed sign-in; the check runs with
+            // whatever the field holds before the page closes.
+            ServerSettingsDialog::AccountFields fields;
+            fields.acceptsPassword = true;
+            fields.askPassword     = true;
+            fields.initialPassword = draft.password;
+            ServerSettingsDialog::Verifier verify = LoginVerifier(
+                [](const ServerSettingsDialog::Result& candidate,
+                   const std::string& username, UltraNetCredentials& c) {
                     c.type = UltraNetAuthType::Basic;
                     c.username = username;
-                    c.password = password;
+                    c.password = candidate.newPassword;
                     return UltraNetResult::Ok();
                 });
-            }
             ServerSettingsDialog::Show(parent, draft.email,
                 "No mail settings are published for " + EmailDomain(draft.email)
                 + ". Enter the servers from your provider's help page; the "
                   "sign-in is checked and the account added once they are saved.",
                 AutoDiscovery::GuessForDomain(draft.email),
                 [this, draft](const ServerSettingsDialog::Result& r) {
-                    CompleteAccountSetup(draft, r.settings);
+                    // The Password field is the source of truth now: it was
+                    // prefilled with the wizard password and may have been fixed.
+                    AccountDraft d = draft;
+                    d.password = r.newPassword;
+                    CompleteAccountSetup(d, r.settings);
                 },
-                verify);
+                verify, fields);
         });
     }).detach();
 }
@@ -3882,12 +4680,31 @@ void UltraMailApp::EditServerSettings(const std::string& accountId) {
     // resolved on the worker like a sync would.
     EnsureVaultUnlocked([this, account, current, parent]() {
         const std::string accountId = account.accountId;
+        const std::string provider  = OAuthProviderFor(current);
+        const bool hasStored = vault_.MethodFor(accountId) != SignInMethod::NoSignIn;
+
+        // Show an editable password field so a wrong stored password can be
+        // fixed here too (empty - the stored one is not revealed; "leave blank
+        // to keep" when one is stored). Hidden for an OAuth-only provider.
+        ServerSettingsDialog::AccountFields fields;
+        fields.acceptsPassword   = ProviderAcceptsPassword(current);
+        fields.askPassword       = fields.acceptsPassword;
+        fields.keepExisting      = hasStored;
+        fields.signedInWithOAuth = vault_.HasOAuthTokens(accountId);
+
         ServerSettingsDialog::Verifier verify;
-        if (vault_.MethodFor(accountId) != SignInMethod::None) {
-            verify = LoginVerifier([this, accountId, current](
-                    const ServerSettingsDialog::Result&,
+        if (hasStored || fields.acceptsPassword) {
+            verify = LoginVerifier([this, accountId, provider](
+                    const ServerSettingsDialog::Result& r,
                     const std::string& username, UltraNetCredentials& c) {
-                return ResolveCredentials(accountId, username, OAuthProviderFor(current), c);
+                // A freshly typed password wins; otherwise the stored sign-in.
+                if (!r.newPassword.empty()) {
+                    c.type = UltraNetAuthType::Basic;
+                    c.username = username;
+                    c.password = r.newPassword;
+                    return UltraNetResult::Ok();
+                }
+                return ResolveCredentials(accountId, username, provider, c);
             });
         }
         ServerSettingsDialog::Show(parent, account.email,
@@ -3905,21 +4722,40 @@ void UltraMailApp::EditServerSettings(const std::string& accountId) {
                                "The server settings could not be saved.", DetailLine(up));
                     return;
                 }
+                // A password typed here to fix the sign-in is stored in the vault.
+                if (!r.newPassword.empty()) vault_.Store(account.accountId, r.newPassword);
                 if (otherMailbox) ForgetDownloadedMail(account.accountId);
                 Refresh();
                 StartBackgroundSync();
                 SyncAccount(account.accountId);
             },
-            verify);
+            verify, fields);
     });
 }
 
 void UltraMailApp::OpenSettings() {
+    SettingsDialog::SecurityHooks security;
+    security.hasPrimaryPassword = [this]() { return HasPrimaryPassword(); };
+    security.setPrimaryPassword = [this](UltraCanvas::UltraCanvasWindowBase* parent, std::function<void()> done) {
+        SetPrimaryPassword(parent, std::move(done));
+    };
+    security.changePrimaryPassword = [this](UltraCanvas::UltraCanvasWindowBase* parent, std::function<void()> done) {
+        ChangePrimaryPassword(parent, std::move(done));
+    };
+    security.removePrimaryPassword = [this](UltraCanvas::UltraCanvasWindowBase* parent, std::function<void()> done) {
+        RemovePrimaryPassword(parent, std::move(done));
+    };
+    SettingsDialog::SetSecurityHooks(std::move(security));
     SettingsDialog::Show(window_ ? window_.get() : nullptr, &prefs_, [this]() {
         // Every change is saved and applied at once.
         prefs_.Save(prefsPath_);
         mailView_.SetReadingPane(prefs_.showReadingPane);
         mailView_.SetBodyOptions(prefs_.showHtml, static_cast<float>(prefs_.messageTextSize));
+        // Settings > Reading > Attachments: the reading pane and every open
+        // compose window.
+        mailView_.SetAttachmentsRight(prefs_.AttachmentsRight());
+        for (auto& c : composers_)
+            if (c.view) c.view->SetAttachmentsRight(prefs_.AttachmentsRight());
         mailView_.SetFolderTreeWidth(prefs_.folderTreeWidthMode == FolderTreeWidthMode::FitToText,
                                      prefs_.folderTreeWidth);
         mailView_.SetTreeCurrentAccountOnly(prefs_.folderTreeContent ==
@@ -3980,6 +4816,9 @@ void UltraMailApp::HandleAccountSettings(const std::string& accountId) {
         fields.canOAuth        = !provider.empty();
         fields.providerName    = provider.empty() ? std::string()
                                                    : OAuthProviderDisplayName(provider);
+        // A password account must retype its password when the protocol
+        // changes; one on OAuth2 tokens keeps signing in with them.
+        fields.signedInWithOAuth = vault_.HasOAuthTokens(accountId);
         // The red "Delete account" button in the settings dialog's bottom row.
         // It closes the page, then HandleDeleteAccount runs the confirm-and-remove.
         fields.onDelete = [this, accountId]() { HandleDeleteAccount(accountId); };
@@ -3987,6 +4826,16 @@ void UltraMailApp::HandleAccountSettings(const std::string& accountId) {
         fields.signature       = account.signature;
         fields.onSaveSignature = [this, accountId](const Signature& signature) {
             SaveSignature(accountId, signature);
+        };
+        // The Security row: the S/MIME certificate, the OpenPGP key, how new
+        // messages start - in the security dialog, which saves on its own Save.
+        fields.securitySummary = SecuritySummary(accountId);
+        fields.onEditSecurity = [this, accountId](UltraCanvas::UltraCanvasWindowBase* page,
+                                                  std::function<void(const std::string&)> done) {
+            // The certificate is imported and removed at once, so the row
+            // reads it again however the dialog closes.
+            ShowSecurityDialog(accountId, page, std::string(), "Cancel", nullptr,
+                               [this, accountId, done]() { if (done) done(SecuritySummary(accountId)); });
         };
 
         // The login check uses the typed new password when present, else the
@@ -4220,6 +5069,19 @@ void UltraMailApp::CompleteAccountSetup(const AccountDraft& draft, const Discove
                 + " needs an app password for mail programs (generated in "
                   "your account's security settings); the normal sign-in "
                   "password is rejected.";
+    // Then, where this build signs or encrypts at all, the account's mail
+    // security - optional ("Skip"), and changeable later in Account Settings -
+    // before the password is stored or the browser sign-in starts, so one
+    // dialog is open at a time.
+    if (SmimeAvailable() || OpenPgpAvailable()) {
+        AlertSuccess(parent, summary, detail, [this, accountId, parent, storePassword]() {
+            ShowSecurityDialog(accountId, parent,
+                               "Optional: sign and encrypt mail from this account. You can do this later in "
+                               "Account Settings \xE2\x80\xBA Security.",
+                               "Skip", nullptr, storePassword);
+        });
+        return;
+    }
     AlertSuccess(parent, summary, detail, storePassword);
 }
 

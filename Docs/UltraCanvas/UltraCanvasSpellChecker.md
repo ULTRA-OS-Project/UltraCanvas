@@ -224,7 +224,9 @@ options.shouldSkipRange = [snapshot](size_t startByte, size_t byteLength) -> boo
 | `SpellErrorMarkStyle` | `WavyUnderline`, `DottedUnderline`, `SolidUnderline`, `Highlight` |
 | `SpellError` | One flagged word: byte, codepoint **and** line/column offsets, plus `word`, `kind`, `suggestions` |
 | `SpellCheckOptions` | Skip rules, suggestion policy, and the `shouldSkipRange` veto hook |
-| `SpellCheckResult` | Async result: `contextId`, `jobId`, `languageCode`, `errors` |
+| `SpellCheckResult` | Async result: `contextId`, `jobId`, `languageCode`, `errors`, `checkedWordCount`, `misspelledCount`, and `suggestedLanguage` when automatic detection found a better dictionary |
+| `SpellLanguageDetectionOptions` | Automatic language detection: `enabled` (off by default), `triggerErrorRate` (0.70), `acceptErrorRate` (0.15), `minimumWords`, `maximumSampleWords` |
+| `SpellLanguageGuess` | What `DetectLanguage()` found: `languageCode`, `errorRate`, `sampledWords` |
 | `SpellCheckStyle` | Mark style, colours, wave geometry, stroke width |
 | `SpellMenuOptions` | Labels and section toggles for `BuildSpellCheckMenu()` |
 | `SpellLanguageInfo` | Dictionary descriptor: `code`, `displayName`, `nativeName`, `isAvailable` |
@@ -279,6 +281,47 @@ settings is what the backend enumerated.
 locale from `GetUserDefaultLocaleName`, since the POSIX variables are normally
 unset there); then the same base language with any region; then the first
 available dictionary.
+
+### Automatic language detection
+```cpp
+SpellLanguageGuess DetectLanguage(const std::string& text,
+                                  const SpellCheckOptions& options = SpellCheckOptions(),
+                                  int maximumSampleWords = 300) const;
+void SetLanguageDetectionOptions(const SpellLanguageDetectionOptions& options);
+SpellLanguageDetectionOptions GetLanguageDetectionOptions() const;
+```
+
+When most words of a text are flagged, it is almost certainly written in
+another language than the dictionary in use. `DetectLanguage()` checks a sample
+of the text's checkable words (the same ones `CheckText()` would look up,
+spread over the whole text) against each installed language and returns the
+one that flags the fewest. One dictionary is tried per base language, so
+`en-US` and `en-GB` are not both loaded; the current language is tried first
+and keeps a tie. The active language is left as it was. It loads every
+candidate dictionary, so it is slow: call it off the UI thread.
+
+With `SpellLanguageDetectionOptions::enabled`, the worker does this by itself:
+a check that flags more than `triggerErrorRate` (70%) of at least
+`minimumWords` checked words runs a detection, and when another dictionary
+flags fewer than `acceptErrorRate` (15%) of the sample, the result carries it
+as `suggestedLanguage`. The service never switches on its own - the language
+is shared by every element - so the host decides:
+
+```cpp
+SpellLanguageDetectionOptions detection = UltraCanvasSpellChecker::Instance().GetLanguageDetectionOptions();
+detection.enabled = true;
+UltraCanvasSpellChecker::Instance().SetLanguageDetectionOptions(detection);
+
+textArea->onSpellLanguageSuggested = [](const std::string& languageCode) {
+    UltraCanvasSpellChecker::Instance().SetLanguage(languageCode);
+};
+```
+
+A detection is not repeated at every keystroke: per element, its finding is
+remembered until the text has grown by half or the language changes. Switch
+only for the element the user is working in - two open documents in two
+languages would otherwise take turns switching the shared dictionary back and
+forth. UltraTexter acts only on the active tab.
 
 ### Mode and style
 ```cpp
@@ -349,8 +392,17 @@ bool IsMixedCase(const std::string& word);
 bool LooksLikeUrlOrEmail(const std::string& word);
 std::string ToLowerAscii(const std::string& word);
 const SpellError* FindErrorAtByteOffset(const std::vector<SpellError>& errors, size_t byteOffset);
+bool RebaseErrors(std::vector<SpellError>& errors, const std::string& before, const std::string& after);
 }
 ```
+
+`RebaseErrors()` moves errors found in `before` onto `after`, the same text
+after one edit: the errors following the edit shift with it (byte, codepoint,
+line and column), the ones it touched are removed, and one merely adjacent to
+it stays unless the edit extended its word. A text element calls it on every
+edit, so the marks below the caret stay put until the next result arrives
+instead of blinking off and on at each keystroke. It returns `true` when an
+error was removed.
 
 ### Rendering — `namespace SpellCheckRendering`
 ```cpp
@@ -378,7 +430,10 @@ textArea->SetSpellCheckEnabled(true);
 ```
 
 That is the whole integration: the element queues on every edit, drains and
-draws while rendering, and offers suggestions on right-click.
+draws while rendering, and offers suggestions on right-click. Between an edit
+and the result for it, the marks it already has are carried across the edit
+with `SpellCheckText::RebaseErrors()`; a result for an older job than the last
+one queued is ignored. `UltraCanvasRichTextEdit` does the same.
 
 ### Taking over the right-click menu
 
@@ -447,7 +502,7 @@ HTML, math and YAML front matter.
 
 | Test | What it covers |
 |---|---|
-| `Tests/SpellCheckerTest.cpp` | Tokenizer, skip rules, language names, dictionary, async queue, shutdown. Framework-independent |
+| `Tests/SpellCheckerTest.cpp` | Tokenizer, skip rules, language names, dictionary, async queue, rebasing errors across an edit, language detection (against a word-list backend, so no dictionary is needed), shutdown. Framework-independent |
 | `Tests/TextAreaSpellCheckTest.cpp` | The element: results reaching it, byte-offset → screen-rectangle mapping, applying a suggestion. Needs a display; runs under Xvfb |
 | `Tests/TexterMarkdownSpellRangesTest.cpp` | UltraTexter's markdown skip scanner: what counts as code, a link target, math or front matter. No dictionary or display needed |
 

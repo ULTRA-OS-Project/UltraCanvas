@@ -15,8 +15,9 @@
 //
 // Axis indices: 0 = value axis, 1 = domain axis (categories or numeric x).
 //
+// Version: 1.1.0 - SetValueAtLeast
 // Version: 1.0.0
-// Last Modified: 2026-10-20
+// Last Modified: 2026-10-24
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -103,6 +104,10 @@ public:
                         bool compact = false, int decimals = -1);
     // Line mode only: keep zero on the value axis (area modes always do).
     void SetIncludeZero(bool include);
+    // The value axis reaches at least `value` whatever the data (NaN: no
+    // floor). A live chart of small counts or rates - a server monitor at
+    // rest - keeps a readable axis instead of one fitted to a flat zero.
+    void SetValueAtLeast(double value);
     // Slot padding of a categorical domain, in slots (0 = the first and last
     // points sit on the plot edges). Ignored under Polar, which spreads the
     // categories evenly round the circle.
@@ -148,6 +153,7 @@ private:
     bool showEdgeLines = true;
     bool showValueLabels = false;
     bool includeZero = false;
+    double valueAtLeast = std::nan("");
     bool reverseStack = false;
     double categoryPadding = 0.0;
     std::string valuePrefix, valueSuffix;

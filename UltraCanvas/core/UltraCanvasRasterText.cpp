@@ -1,8 +1,9 @@
 // core/UltraCanvasRasterText.cpp
 // Draws a text layer's words into its pixels through UltraCanvasRichTextEdit,
 // the element that edits them on the canvas, so the two agree to the pixel.
+// Version: 1.0.1 - the canvas editor and the renderer show no font notice
 // Version: 1.0.0
-// Last Modified: 2026-10-15
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasRasterText.h"
@@ -74,6 +75,8 @@ void PrepareTextLayerEditor(UltraCanvasRichTextEdit& editor, const RasterTextCon
     editor.SetStyle(TextLayerEditStyle(content));
     editor.SetSpellCheckEnabled(false);
     editor.SetShowComments(false);
+    // On the canvas it draws exactly the layer's pixels: no notice over them.
+    editor.SetShowFontNotice(false);
     editor.SetZoomRange(1.0f / 64.0f, 64.0f);
     editor.SetZoom(static_cast<float>(zoom));
 }
@@ -112,6 +115,7 @@ std::shared_ptr<UCRasterLayer> RenderTextLayer(const RasterTextContent& content,
     element->SetStyle(style);
     element->SetSpellCheckEnabled(false);
     element->SetShowComments(false);
+    element->SetShowFontNotice(false);
     element->SetReadOnly(true);
     element->SetDocument(std::make_shared<UCRichDocument>(*stated));
 

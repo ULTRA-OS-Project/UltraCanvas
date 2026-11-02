@@ -12,19 +12,26 @@
 // context paint, clipping, inheritance, a self-referencing marker); line-
 // gallery arrowheads go out as markers and come back as arrowheads, and
 // width profiles and brushes go out as what they draw and come back as
-// strokes.
+// strokes. Export() to a file is staged: saving over a file replaces it
+// only once the new one is written, leaves no temporary file, and a save that
+// fails says why and keeps what was there.
 //
 // Usage: SVGConverterTest [output.svg]
 // Exit code is the number of failed checks.
-// Version: 1.5.0
-// Last Modified: 2026-10-07
+// Version: 1.6.0
+// Last Modified: 2026-10-22
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasVectorConverter.h"
 #include "DataFormats/UltraCanvasVectorStorage.h"
 #include "UltraCanvasImage.h"
+#include "UltraCanvasPathUtf8.h"
 
+#include <chrono>
 #include <cmath>
+#include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <functional>
 #include <cstdio>
 #include <string>
@@ -791,6 +798,55 @@ int main(int argc, char** argv) {
         } else {
             Check(false, "the export with a profile and a brush rasterizes");
         }
+    }
+
+    // ===== SAVING TO A FILE: STAGED, AND A FAILURE SAYS WHY =====
+    {
+        namespace fs = std::filesystem;
+        const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
+        const fs::path dir = fs::temp_directory_path() / PathFromUtf8("svgconverter-staged-" + std::to_string(stamp));
+        std::error_code ec;
+        fs::create_directories(dir, ec);
+
+        auto readAll = [](const fs::path& path) {
+            std::ifstream in(path, std::ios::binary);
+            return std::string(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+        };
+        auto hasStagedLeftovers = [&dir]() {
+            std::error_code walkEc;
+            for (const auto& entry : fs::directory_iterator(dir, walkEc)) {
+                if (PathToUtf8(entry.path().filename()).rfind(".ucsave", 0) == 0) return true;
+            }
+            return false;
+        };
+        std::vector<std::string> notes;
+        VectorConverter::ConversionOptions noting;
+        noting.WarningCallback = [&notes](const std::string& msg) { notes.push_back(msg); };
+
+        const fs::path existing = dir / "drawing.svg";
+        { std::ofstream(existing, std::ios::binary) << "the drawing that was there"; }
+        Check(converter.Export(*doc, PathToUtf8(existing), noting), "Export() saves over an existing file");
+        Check(readAll(existing).find("<svg") != std::string::npos, "the file saved over holds the new drawing");
+        Check(!hasStagedLeftovers(), "a save leaves no temporary file");
+
+        notes.clear();
+        const std::string missing = PathToUtf8(dir / "no-such-folder" / "drawing.svg");
+        Check(!converter.Export(*doc, missing, noting), "Export() into a missing folder fails");
+        const std::string why = notes.empty() ? std::string() : notes.back();
+        std::printf("      reason: %s\n", why.c_str());
+        Check(why.find("does not exist") != std::string::npos, "the failure says the folder does not exist");
+        Check(why.find(".ucsave") == std::string::npos, "the failure names the file asked for, not the temporary one");
+
+        notes.clear();
+        const fs::path taken = dir / "taken.svg";
+        fs::create_directories(taken / "inside", ec);
+        Check(!converter.Export(*doc, PathToUtf8(taken), noting), "Export() over a folder of that name fails");
+        std::printf("      reason: %s\n", notes.empty() ? "" : notes.back().c_str());
+        Check(!notes.empty() && notes.back().find("folder") != std::string::npos, "the failure says a folder has that name");
+        Check(fs::is_directory(taken / "inside", ec), "the folder in the way is untouched");
+        Check(!hasStagedLeftovers(), "a failed save leaves no temporary file");
+
+        fs::remove_all(dir, ec);
     }
 
     std::printf("%s: %d failure(s)\n", failures ? "FAILED" : "PASSED", failures);

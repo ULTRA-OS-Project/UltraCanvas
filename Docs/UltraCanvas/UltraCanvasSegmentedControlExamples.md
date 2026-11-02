@@ -162,6 +162,11 @@ enum class SegmentWidthMode {
 };
 ```
 
+A caption stays on one line, its capitals centred on the segment's middle.
+In a segment too narrow for it (Equal or Custom widths) it is shortened
+with an ellipsis rather than wrapped: give the control the width its
+longest caption needs, or use FitContent.
+
 ### SegmentSelectionMode
 
 ```cpp
@@ -212,6 +217,7 @@ struct SegmentedControlStyle {
 
     // Icons
     int iconSize = 16;
+    bool iconAsMask = false;   // tint one-colour icons with the segment's text colour
 
     // Presets
     static SegmentedControlStyle Default();

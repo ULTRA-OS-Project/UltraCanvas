@@ -234,6 +234,7 @@ bool ReadPresentedContent(const UltraMsgMessage& notification, int presenterProc
     out.body = n.body;
     if (from.processId > 0 && from.processId != presenterProcessId && out.appName != out.title)
         out.subtitle = out.appName;
+    out.senderProcessId = from.verified && from.processId > 0 ? from.processId : 0;
     out.iconFile = IconFilePath(n.icon);
     out.launch = n.launch;
     out.urgency = (n.urgency == "low" || n.urgency == "critical") ? n.urgency : "normal";

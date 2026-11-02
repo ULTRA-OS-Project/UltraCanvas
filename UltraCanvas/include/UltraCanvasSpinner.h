@@ -13,12 +13,13 @@
 //   * SidesHorizontal - [dec] field [inc] with buttons flanking the field
 //   * FieldOnly      - the field alone; the arrow keys and the wheel still step
 //
+// Version: 1.6.0 - a held arrow button repeats its step (SetButtonRepeat)
 // Version: 1.5.0 - SpinnerLayout::FieldOnly: a field without step buttons
 // Version: 1.4.0 - onStepsFinished: once when a run of steps ends (button or key
 //                  released, the wheel at rest), not on every step
 // Version: 1.3.0 - SetSnapToStep: a Decimal value off the step grid
 // Version: 1.2.0
-// Last Modified: 2026-10-17
+// Last Modified: 2026-10-28
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -158,6 +159,12 @@ namespace UltraCanvas {
         bool    stepRunOpen  = false;
         TimerId stepRunTimer = InvalidTimerId;
 
+        // A held arrow button steps again after repeatDelayMs, then every
+        // repeatIntervalMs while the pointer stays on it (0: no repeat).
+        unsigned int repeatDelayMs    = 400;
+        unsigned int repeatIntervalMs = 60;
+        TimerId      repeatTimer      = InvalidTimerId;
+
     public:
         // ===== CONSTRUCTORS (REQUIRED PATTERN) =====
         UltraCanvasSpinner(const std::string& identifier, float x, float y, float w, float h);
@@ -208,6 +215,16 @@ namespace UltraCanvas {
         // `step` from it: a measurement field showing 8.61 that steps by 0.1.
         void SetSnapToStep(bool enabled) { snapToStep = enabled; }
         bool IsSnapToStep() const { return snapToStep; }
+
+        // Holding an arrow button down repeats its step, as a held arrow key
+        // does: the first repeat after `delayMs`, then one every
+        // `intervalMs` while the pointer stays on the button. On by default
+        // (400 ms, 60 ms); 0 for either turns it off. The repeats are steps
+        // of one run, so onStepsFinished still fires once, on release.
+        void SetButtonRepeat(unsigned int delayMs, unsigned int intervalMs) {
+            repeatDelayMs = delayMs;
+            repeatIntervalMs = intervalMs;
+        }
 
         // Step the value up/down by one step (or a caller-supplied multiple).
         void StepUp(double steps = 1.0)   { StepBy(steps); }
@@ -340,6 +357,10 @@ namespace UltraCanvas {
         void EndStepRun();                        // fires onStepsFinished once
         void EndStepRunAfter(unsigned int ms);    // unless another step comes first
         void CancelStepRunTimer();
+        // The held arrow button's repeat.
+        void StartButtonRepeat();
+        void StopButtonRepeat();
+        void RepeatHeldButton();
     };
 
 // ===== FACTORY FUNCTIONS =====

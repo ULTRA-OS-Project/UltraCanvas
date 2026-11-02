@@ -23,8 +23,8 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
 - **Tabs:** the tab strip is the topmost bar of the window — above the
   toolbars, browser style — and its tabs name the folder each one shows. The
   **"+" at the end of the tab list** opens an additional tab — on the folder
-  the active tab is showing, or on the Home folder, whichever *Settings >
-  Handling > Tabs* is set to. Every tab has its own folder view, Back /
+  the active tab is showing, on the Home folder, or on the Computer page,
+  whichever *Settings > Display > New tab* is set to. Every tab has its own folder view, Back /
   Forward history, sort and view settings; tabs can be reordered by dragging
   and closed (the last one stays open). The strip stays visible while the
   History or Favorites view replaces the folder display, so clicking a tab
@@ -41,7 +41,9 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
   view settings; tabs can be reordered by dragging and closed (the last one
   stays open). The strip stays visible while the History or Favorites view
   replaces the folder display, so clicking a tab returns to browsing it.
-- **Navigation:** Back / Forward history (per tab), Up, Refresh, the Split
+- **Navigation:** the row starts with two flat buttons, **Home** (the home
+  folder) and **Computer** (the Computer page: the main folders and a card
+  per drive). Then come Back / Forward history (per tab), Up, Refresh, the Split
   view toggle (see below), clickable breadcrumb path (each segment's dropdown
   lists sibling folders), folder tree with lazy expansion, and the History
   toggle (see below).
@@ -243,6 +245,38 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
     and `/Volumes` is where every removable volume on macOS lands — neither
     used to be looked at, so on those systems a stick was missing from the
     tree even after a restart.
+  - **Linux and Network (Windows).** Two sections after **Computer**, where
+    Explorer has them. **Linux** lists the installed WSL distributions
+    (`\\wsl$\Ubuntu`); a row is not probed — touching a distribution starts
+    it — and its folders are listed when it is opened. **Network** lists the
+    computers the Windows network knows for the workgroup or domain, the
+    ones that announce themselves through WS-Discovery (as Explorer shows
+    them: current Windows, NAS boxes running wsdd) and the servers of your
+    own connections; opening a computer lists its shared
+    folders (hidden and administrative shares left out) under its row and in
+    the folder display, each then an ordinary folder. Typing `\\NAS` into the
+    path bar opens that computer the same way, and it is kept in the section
+    for next time — a computer on another subnet, which no announcement
+    reaches, is always reachable by name. Clicking **Network** looks for computers again.
+  - **Phones and cameras.** A phone, camera or media player plugged in over
+    USB (MTP / PTP) gets no drive letter, so it was never listed. On Windows
+    it now appears under **Computer** — in the tree, with a phone or camera
+    icon, and as a card on the Computer page with its used and free space
+    (internal storage and SD card together) like a drive's — the moment it
+    is plugged in,
+    and goes when it is pulled out (a display showing it goes Home). It is
+    browsed like a remote drive: folders open from a cache filled by a worker,
+    pictures and videos preview, files copy off the phone and onto it by
+    dragging them out or in, and rename, delete and new folder work. A locked phone,
+    or one left on "charging only", shows a note saying to unlock it and pick
+    *File transfer* rather than an empty folder. On Linux, what the desktop
+    mounted through GVFS — a phone, a camera, an iPhone, an SMB or SFTP share
+    opened in the desktop's file manager — is listed with the drives under a
+    readable name (`Google Pixel 8`, `photos on nas`). On macOS an iPhone,
+    an iPad or a camera appears the same way through Image Capture —
+    read-only: its photos and videos open, preview and copy off, but nothing
+    is put on it, and its card shows no free space. macOS has no MTP of its
+    own; there an Android phone needs a third-party tool.
   - **Remote drive rows say what they are.** An FTP-family drive's row in
     the tree starts with its protocol, taken from the server address:
     `FTP: Backup NAS`, `FTPS: …`, `FTPES: …` or `SFTP: …`.
@@ -416,7 +450,7 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
   listing instead of a file preview, so a folder can be peeked into without
   leaving the one on display. The peek is live: double-clicking a subfolder
   in it descends further, a file activated in it opens with its OS default
-  application, files can be dropped into it, and its context menu offers
+  application (a picture, audio file or video with UltraViewer), files can be dropped into it, and its context menu offers
   the usual file commands (only the hover icon menu stays off). Selecting
   more files with **Ctrl** held (Ctrl+click, a Ctrl marquee, Ctrl+A) leaves
   the pane as it is, so the window does not rearrange itself while a
@@ -448,6 +482,13 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
   sound, the default), *5 s clip* (a five-second muted preview in the
   `UltraCanvasAlbum` hover style, then pause) or *Still image* (paused
   first frame).
+- **Pictures, audio and video open in UltraViewer:** double-click / Enter on
+  one of them starts UltraViewer with it (a running UltraViewer shows it in
+  place of what it showed), ahead of everything below. UltraViewer is looked
+  for next to UltraFiler, beside its app bundle on macOS, and on `PATH`; when
+  it is not there - or the file is inside an archive or on a remote drive -
+  the file opens the way any other file does, and the status bar says why.
+  *Settings > Handling > Opening files* switches it off.
 - **Open files:** double-click / Enter either starts the program this system
   has registered for the file, exactly as a double-click in Explorer or the
   Finder does, or shows the file in the preview pane —
@@ -546,6 +587,38 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
   manager leaves the terminal running). Without configuration it uses the
   platform default — `%COMSPEC%` (cmd.exe) on Windows, Terminal.app on macOS,
   `$TERMINAL` or the first installed terminal emulator on Linux.
+- **Extras > Open location** (in the file context menu's Extras submenu):
+  opens, in the active tab, the folders a user is sent to and cannot easily
+  find. The list is built per platform (`UltraFilerLocations.h`), in two
+  blocks:
+  - *UltraCanvas*: **Crash dumps** (`%LOCALAPPDATA%\UltraCanvas\CrashDumps`,
+    or `ULTRACANVAS_CRASH_DUMP_DIR`; Windows only, where the crash reporter
+    writes minidumps), **Settings**, **UltraFiler settings** and **Cache**.
+  - *System*: application data, temporary files, the system's crash reports,
+    logs, startup programs, programs, fonts and the network configuration.
+    On Windows that includes `%LOCALAPPDATA%\CrashDumps`, the WER report
+    archive and the Start menu's Startup folder; on macOS
+    `~/Library/Logs/DiagnosticReports` and `~/Library/LaunchAgents`; on Linux
+    the XDG folders, `/var/crash`, `/var/lib/systemd/coredump` and
+    `~/.config/autostart`.
+
+  A folder that does not exist is listed disabled: "no crash dumps yet" is
+  an answer too. Hovering an entry shows the full path it opens, disabled
+  ones included; a *Recent* entry shows what its variables expand to.
+  **Enter location…** (also **Ctrl+L**, wherever the focus is) asks for a
+  folder or file:
+  - It expands `%VAR%` on Windows (`%LOCALAPPDATA%\UltraCanvas\CrashDumps`),
+    `$VAR` / `${VAR}` on macOS and Linux (`$XDG_CONFIG_HOME/autostart`), and
+    a leading `~`. Each convention applies only on its own system: `$` is
+    part of a Windows name (`\\server\C$`), `%` of a Linux one.
+  - It strips the quotes "Copy as path" puts around a path. A relative path
+    is read from the folder on screen, and a file opens its folder with the
+    file selected.
+  - When nothing is there, the message shows the path the text expanded to,
+    so a variable that is not set stands out.
+  - The last ten locations that opened are kept as typed (variables
+    unexpanded) in the submenu's *Recent* block, with **Clear recent
+    locations**. The dialog starts with the newest.
 
 ## Settings
 
@@ -570,6 +643,7 @@ the first time the new version runs.
 |---|---|
 | Display > Treeview | The folder tree's colours: the row background of the drive entries and the highlight of the selected folder, each picked with `UltraCanvasColorPicker`. And its width: **Auto** (the default) fits the tree to the rows it shows, 10 px wider than the longest, and fits it again as branches open and close and drives come and go - up to 600 px, never squeezing the file display below its minimum, and following the window as it is resized; **Fixed width** keeps it at the pixels set beside it (100–600, 280 to start with). Dragging the divider still resizes the tree for the moment |
 | Display > Tab style | How the window's tab strip draws its tabs: **Modern** (the default since 1.71.0), each tab a capsule floating in a blue-grey strip, the open one white with a blue outline and the others plain text until the pointer is over them; **Simple modern**, flat tabs with a blue line under the open one; or **Classic**, the rounded tabs joined to the page that every release before 1.71.0 drew. The choice dresses every tab strip UltraFiler shows - the window's own, the History and Favorites views' and the Connection log window's - and shows at once on the open window; the tabs behave the same under all three |
+| Display > New tab | **Display options** — what the **"+"** at the end of the tab strip opens: **Show current folder** (the default), **Show Home folder**, or **Show Computer** (the Computer page, with the Home folder behind it in the tab). Only the "+" follows this; a tab opened on a named folder — the containing folder of a search result, an entry of the History or Favorites view — still opens on that folder |
 | Display > Home folder | What the Home folder shows, in the folder tree and the file display alike: **Show all content**, or **Show only predefined folders** (Desktop, Documents, Downloads, Music, Pictures, Videos, resolved through the platform). Defaults: curated on Windows — a profile there carries a dozen system folders — show all on Linux and macOS |
 | Display > Files | **Show hidden files** — whether the file displays list what the platform calls hidden: a dot name everywhere, the hidden attribute on Windows (`NTUSER.DAT`, the profile junctions), the hidden flag on macOS. Off by default, as every file manager ships. It is what each folder display *starts* with: one display can still be switched on its own (its **Display > Hidden files** context-menu entry, or the Home folder's **Show hidden files** button) without changing the setting. Showing hidden files also shows the Home folder whole, whatever *Display > Home folder* says; the folder tree leaves hidden folders out either way |
 | Display > Ignored files | **Hide known clutter files** — the built-in pattern list (`Sti_Trace.log`, `desktop.ini`, `Thumbs.db`, `ehthumbs.db`, `ntuser.dat*`, `ntuser.ini`, `.DS_Store`, `._*`, `.Trash-*`, `.directory`), each switchable on its own — plus **own patterns** typed into the field below it (globs: `*` any run, `?` one character, matched ignoring case), and whether they apply **only in the Home folder** (the default) or **in every folder**. This is what leaves out the clutter no hidden-file setting can reach, because the system gave it an ordinary unhidden name. Nothing is moved or deleted: an ignored file is only left out of the display, a search still finds it, and *Show hidden files* brings it back |
@@ -578,7 +652,6 @@ the first time the new version runs.
 | Handling > Drag & Drop | **Drop on folder** — whether dragging files onto a folder of the file display moves them (the default) or copies them. Ctrl at the drop always copies, Shift always moves. **Confirmation** — whether the drop asks before it is carried out: **Always**, **Only when files are moved** (the default) or **None**. The question names how many entries are about to be moved or copied and into which folder; files dragged in from another program are copies, so only *Always* asks about those |
 | Handling > Opening files | **Double-click (or Enter) on a file** — **Start the registered program**, the way Explorer and the Finder do (the default on Windows), or **Show it in the preview**, keeping the file inside UltraFiler (the default on Linux and macOS). A file type this system has no program for is previewed either way, so the setting never turns a double-click into nothing happening; a file that cannot be previewed always goes to the system, and the context menu's *Open with* starts a program whichever is set |
 | Handling > Protected files | **Forget passwords after** — how long UltraFiler may go without a key press, click or mouse movement before the preview forgets the passwords its **Unlock** was given and shows a file it unlocked locked again: a slider from *Never* to 120 minutes, 10 by default. Locking the screen forgets them at once whatever is set; *Never* leaves only that |
-| Handling > Tabs | **New tab** — what the **"+"** at the end of the tab strip opens: a **new view of the current folder** (the default) or the **Home folder**. Only the "+" follows this; a tab opened on a named folder — the containing folder of a search result, an entry of the History or Favorites view — still opens on that folder |
 | Extras > Open prompt | The command line application started by **Extras > Open prompt** |
 | Extras > History & Favorites | **Limit of entries** — how many entries each of the History view's three lists keeps: a slider from 10 to 1000, 300 by default. The limit counts *per section*, so Files, Folders and Apps each keep that many and a day of opening documents cannot push the remembered applications out. Lowering it takes effect at once — the oldest entries past the new limit are dropped and `history.txt` rewritten, not left on disk until some later restart. Also clears the recently-used lists, the pinned entries, and the per-folder view settings |
 

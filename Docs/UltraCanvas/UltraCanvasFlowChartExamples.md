@@ -56,7 +56,7 @@ UltraCanvasUIElement
 
 - **Rich shape vocabulary:** Rectangle, RoundedRectangle, Diamond, Oval, Circle, Parallelogram, Hexagon, Triangle, Star, Ellipse, Process, Decision, ManualInput, Document, Database, Cloud, StickyNote, Actor.
 - **Connection styles:** `Straight`, `Orthogonal` (A* obstacle-aware), `Curved`.
-- **Arrow heads:** `None`, `Arrow`, `ArrowFilled`, `Diamond`.
+- **Arrow heads:** `NoArrow`, `Arrow`, `ArrowFilled`, `Diamond`.
 - **Line styles:** `Solid`, `Dashed`, `Dotted`, `DashDot`.
 - **Themes:** `Default`, `Professional`, `Colorful`, `Minimal`, `Dark`.
 - **Edit modes:** Select / move / connect / create / pan with built-in mode switching.
@@ -272,7 +272,7 @@ enum class FlowChartShape {
 };
 
 enum class FlowChartConnectionStyle { Straight, Orthogonal, Curved };
-enum class FlowChartArrowStyle      { None, Arrow, ArrowFilled, Diamond };
+enum class FlowChartArrowStyle      { NoArrow, Arrow, ArrowFilled, Diamond };
 enum class FlowChartLineStyle       { Solid, Dashed, Dotted, DashDot };
 enum class FlowChartTheme           { Default, Professional, Colorful, Minimal, Dark };
 ```
@@ -329,7 +329,7 @@ chart->SetConnectionColor("c5", Color(220, 120, 80, 255));
 
 chart->AddConnection("c6", "process3", "note1",
                      FlowChartConnectionStyle::Straight,
-                     FlowChartArrowStyle::None);
+                     FlowChartArrowStyle::NoArrow);
 chart->SetConnectionLineStyle("c6", FlowChartLineStyle::Dotted);
 chart->SetConnectionColor("c6", Color(180, 180, 180, 255));
 chart->SetConnectionWidth("c6", 1.5f);

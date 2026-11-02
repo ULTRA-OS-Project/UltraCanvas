@@ -2,6 +2,7 @@
 // Core data types for the UltraMail engine: accounts, folders, message
 // envelopes, message flags, and the per-account status rollup that drives the
 // account bar (unread today · unread before · waiting for reply).
+// Version: 0.7.0 - AccountSecurity: how an account's new messages start out signed and encrypted
 // Version: 0.6.1 - HasServers: a JMAP account needs no outgoing server
 // Version: 0.6.0 - the protocol of the incoming server (IMAP or JMAP)
 // Version: 0.5.0 - a signature per account (plain text or HTML)
@@ -141,6 +142,23 @@ struct Signature {
     }
 };
 
+// How the account's new messages start out signed and encrypted
+// (UltraMailSecureMime.h) - the compose window's Security row is set from it,
+// and stays the writer's to change per message.
+struct AccountSecurity {
+    std::string method;          // "S/MIME", "OpenPGP", "" (off)
+    bool        sign = true;     // with a method: signed
+    bool        encrypt = false; // with a method: encrypted (every recipient then needs a key)
+    // OpenPGP: the fingerprint of the secret key to sign with; "" takes the
+    // one whose user id is the account's address.
+    std::string openPgpKey;
+
+    bool operator==(const AccountSecurity& other) const {
+        return method == other.method && sign == other.sign && encrypt == other.encrypt
+            && openPgpKey == other.openPgpKey;
+    }
+};
+
 // A configured account as the local store knows it (no secrets here —
 // credentials live in the OS keychain via the credential vault).
 struct Account {
@@ -162,6 +180,11 @@ struct Account {
     // leaves it alone (a re-added address keeps its signature); it is saved
     // with LocalStore::SetAccountSignature.
     Signature          signature;
+
+    // How its new messages start out signed and encrypted. Like the
+    // signature, UpsertAccount leaves it alone; LocalStore::SetAccountSecurity
+    // saves it.
+    AccountSecurity    security;
 
     // Whether the account can sync and send: an incoming server, and an
     // outgoing one unless the incoming one is JMAP, which sends by itself

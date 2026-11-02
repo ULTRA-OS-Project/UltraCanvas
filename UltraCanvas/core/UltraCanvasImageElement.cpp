@@ -1,5 +1,6 @@
 // core/UltraCanvasImageElement.cpp
 // Image display component with loading, caching, and transformation support
+// Version: 1.10.0 - a right-click goes to onContextMenu, never to onClick
 // Version: 1.9.1 - OnEvent's switch says the events it ignores (default; -Wswitch)
 // Version: 1.9.0 - SetBoxAspectRatio: a following height keeps the box's shape
 // Version: 1.8.0 - the error placeholder shows after a failed load (it read the message
@@ -14,7 +15,7 @@
 //                 tiled area; drawn tile by tile where a backend has no patterns
 // Version: 1.2.0 - an image positioned off-centre (SetImagePosition) is drawn into
 //                 ImageDrawRect, clipped to the content box
-// Last Modified: 2026-10-15
+// Last Modified: 2026-10-24
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasImageElement.h"
@@ -429,6 +430,11 @@ namespace UltraCanvas {
 
     void UltraCanvasImageElement::HandleMouseDown(const UCEvent &event) {
         if (!Contains(event.pointer)) return;
+        // A right-click asks for the menu: a linked picture does not open.
+        if (event.button == UCMouseButton::Right) {
+            if (onContextMenu) onContextMenu(event);
+            return;
+        }
 
         if (clickable && onClick) {
             onClick();

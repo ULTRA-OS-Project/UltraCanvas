@@ -2,11 +2,15 @@
 // Audio Player & Recorder demo page: playback, recording, save-with-format
 // selection (driven by the runtime supported-format inventory) and a live
 // horizontal VU strip fed by the recorder input or the playback output.
+// Version: 1.2.0 - the shared page look (UltraCanvasDemoPageKit): playback and
+//                  recording as cards side by side, the VU strip in a card as wide
+//                  as the page, every text sized to fit
 // Version: 1.1.0
-// Last Modified: 2026-08-06
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "UltraCanvasAudioPlayerElement.h"
 #include "UltraCanvasAudioRecorderElement.h"
 #include "UltraCanvasAudioDevices.h"
@@ -48,17 +52,15 @@ namespace UltraCanvas {
     } // namespace
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateAudioExamples() {
-        auto container = std::make_shared<UltraCanvasContainer>("AudioExamples", 0, 0, 1000, 600);
+        auto page = DemoKit::CreatePage("AudioExamples", "Audio Player & Recorder",
+                "Playback, recording, saving in a format this build can encode, and a live "
+                "level strip fed by the recorder input or the playback output.");
 
         auto st = std::make_shared<AudioDemoState>();
 
-        auto title = std::make_shared<UltraCanvasLabel>("AudioTitle", 10, 10, 600, 30);
-        title->SetText("Audio Player & Recorder");
-        title->SetFontSize(16);
-        title->SetFontWeight(FontWeight::Bold);
-        container->AddChild(title);
-
-        auto status = std::make_shared<UltraCanvasLabel>("AudioStatus", 10, 45, 980, 25);
+        // Green when a backend is there, red when not; later the result of
+        // the last action.
+        auto status = DemoKit::AddText(page, "AudioStatus", "");
         if (UltraCanvasAudioDevices::IsAvailable()) {
             status->SetText("Backend: " + UltraCanvasAudioDevices::GetBackendName() +
                             " — ready");
@@ -69,24 +71,21 @@ namespace UltraCanvas {
             status->SetTextColor(Color(180, 60, 60));
         }
         status->SetFontSize(11);
-        container->AddChild(status);
+
+        auto sections = DemoKit::AddRow(page, "AudioSections");
 
         // ----- Playback section -----
-        auto playbackLabel = std::make_shared<UltraCanvasLabel>("PlaybackLabel", 10, 90, 400, 22);
-        playbackLabel->SetText("Playback");
-        playbackLabel->SetFontWeight(FontWeight::Bold);
-        playbackLabel->SetTextColor(Color(0, 100, 200));
-        container->AddChild(playbackLabel);
+        auto playbackCard = DemoKit::AddCard(sections, "PlaybackLabel", "Playback");
 
-        auto player = CreateAudioPlayer("DemoPlayer", 10, 120, 600, 56);
-        container->AddChild(player);
+        auto player = CreateAudioPlayer("DemoPlayer", 0, 0, 600, 56);
+        DemoKit::AddStretched(playbackCard, player);
+
+        auto playbackRow = DemoKit::AddRow(playbackCard, "PlaybackRow", 8);
+        playbackRow->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
 
         // Shows the name of the file currently loaded into the player.
-        auto fileLabel = std::make_shared<UltraCanvasLabel>("PlaybackFile", 10, 180, 720, 18);
-        fileLabel->SetText("No file loaded.");
+        auto fileLabel = DemoKit::CreateCaption("PlaybackFile", "No file loaded.");
         fileLabel->SetFontSize(11);
-        fileLabel->SetTextColor(Color(90, 90, 90));
-        container->AddChild(fileLabel);
 
         // Strip any directory part so we display just the file name.
         auto baseName = [](const std::string& p) -> std::string {
@@ -94,7 +93,7 @@ namespace UltraCanvas {
             return slash == std::string::npos ? p : p.substr(slash + 1);
         };
 
-        auto loadBtn = CreateButton("LoadAudio", 620, 130, 110, 36, "Open");
+        auto loadBtn = CreateButton("LoadAudio", 0, 0, 110, 36, "Open");
         auto playerWeak = std::weak_ptr<UltraCanvasAudioPlayerElement>(player);
         // Open through the shared FileLoader facade: it shows the native dialog
         // (with default audio filters) and hands back a decoded UCAudio buffer,
@@ -133,32 +132,27 @@ namespace UltraCanvas {
                     st->rate = audio->GetSampleRate();
                 });
         };
-        container->AddChild(loadBtn);
+        DemoKit::Add(playbackRow, loadBtn);
+        DemoKit::Add(playbackRow, fileLabel, 1);
 
         // ----- Recording section -----
-        auto recLabel = std::make_shared<UltraCanvasLabel>("RecLabel", 10, 200, 400, 22);
-        recLabel->SetText("Recording");
-        recLabel->SetFontWeight(FontWeight::Bold);
-        recLabel->SetTextColor(Color(200, 60, 60));
-        container->AddChild(recLabel);
+        auto recCard = DemoKit::AddCard(sections, "RecLabel", "Recording");
 
-        auto recorder = CreateAudioRecorder("DemoRecorder", 10, 230, 600, 72);
+        auto recorder = CreateAudioRecorder("DemoRecorder", 0, 0, 600, 72);
         recorder->onRecordStarted = [status]() { status->SetText("Recording..."); };
         recorder->onRecordStopped = [status]() { status->SetText("Recording stopped."); };
-        container->AddChild(recorder);
+        DemoKit::AddStretched(recCard, recorder);
         auto recWeak = std::weak_ptr<UltraCanvasAudioRecorderElement>(recorder);
 
         // ----- Save with format selection -----
         // The dropdown lists every audio format THIS build can encode, straight
         // from the runtime supported-format inventory — new encoder plugins show
         // up here automatically.
-        auto saveFmtLabel = std::make_shared<UltraCanvasLabel>("SaveFmtLabel", 620, 224, 200, 16);
-        saveFmtLabel->SetText("Save format:");
-        saveFmtLabel->SetFontSize(11);
-        saveFmtLabel->SetTextColor(Color(90, 90, 90));
-        container->AddChild(saveFmtLabel);
+        auto saveRow = DemoKit::AddRow(recCard, "SaveRow", 8);
+        saveRow->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
+        DemoKit::AddCaption(saveRow, "SaveFmtLabel", "Save format:")->SetFontSize(11);
 
-        auto formatDd = std::make_shared<UltraCanvasDropdown>("SaveFormat", 620, 244, 150, 26);
+        auto formatDd = std::make_shared<UltraCanvasDropdown>("SaveFormat", 0, 0, 150, 26);
         {
             bool any = false;
             auto formats = UltraCanvasSupportedFormats::GetByCategory(MediaFormatCategory::Audio);
@@ -175,7 +169,7 @@ namespace UltraCanvas {
             if (!any) formatDd->AddItem("WAV (*.wav)", "wav");
             formatDd->SetSelectedIndex(0, false);
         }
-        container->AddChild(formatDd);
+        DemoKit::AddFixed(saveRow, formatDd);
 
         recorder->onSaved = [status](const std::string& path) {
             status->SetText("Saved to " + path);
@@ -184,7 +178,7 @@ namespace UltraCanvas {
             status->SetText("Save cancelled or no recording available.");
         };
 
-        auto saveBtn = CreateButton("SaveAudio", 780, 239, 95, 36, "Save");
+        auto saveBtn = CreateButton("SaveAudio", 0, 0, 95, 36, "Save");
         auto formatDdWeak = std::weak_ptr<UltraCanvasDropdown>(formatDd);
         // Saves whatever audio the page currently holds — the captured recording
         // when one is available, otherwise the loaded file — encoding it in the
@@ -245,9 +239,9 @@ namespace UltraCanvas {
                                             " encoder available in this build.");
                 });
         };
-        container->AddChild(saveBtn);
+        DemoKit::Add(saveRow, saveBtn);
 
-        auto playRecBtn = CreateButton("PlayRec", 885, 239, 105, 36, "Play back");
+        auto playRecBtn = CreateButton("PlayRec", 0, 0, 105, 36, "Play back");
         playRecBtn->onClick = [player, recorder, status, fileLabel, st]() {
             auto audio = recorder->TakeBuffer();
             if (audio && audio->IsValid()) {
@@ -264,30 +258,22 @@ namespace UltraCanvas {
                 status->SetText("No recording captured yet.");
             }
         };
-        container->AddChild(playRecBtn);
+        DemoKit::Add(saveRow, playRecBtn);
 
         // ----- Horizontal VU strip (bottom) -----
-        auto vuLabel = std::make_shared<UltraCanvasLabel>("VuLabel", 10, 520, 400, 22);
-        vuLabel->SetText("Level (VU)");
-        vuLabel->SetFontWeight(FontWeight::Bold);
-        vuLabel->SetTextColor(Color(90, 90, 90));
-        container->AddChild(vuLabel);
+        auto vuCard = DemoKit::AddCard(page, "VuLabel", "Level (VU)");
 
         auto vuStrip = std::make_shared<UltraCanvasLevelMeter>("AudioVuStrip", 980, 24);
-        vuStrip->SetElementAbsolutePosition(Point2Df(10, 548));
-        container->AddChild(vuStrip);
+        DemoKit::AddStretched(vuCard, vuStrip);
 
-        auto vuCaption = std::make_shared<UltraCanvasLabel>("VuCaption", 10, 578, 980, 16);
-        vuCaption->SetText("Live level: microphone input while recording, playback output "
-                           "while playing. Fill = peak, dark tick = RMS.");
-        vuCaption->SetFontSize(10);
-        vuCaption->SetTextColor(Color(130, 138, 152));
-        container->AddChild(vuCaption);
+        DemoKit::AddCaption(vuCard, "VuCaption",
+                "Live level: microphone input while recording, playback output "
+                "while playing. Fill = peak, dark tick = RMS.");
 
         // Drive the strip at ~30 fps: recorder levels win while capturing;
         // otherwise compute peak/RMS of the audible 40 ms window from the
         // decoded PCM at the playhead; else let the bar decay gently.
-        std::weak_ptr<UltraCanvasContainer> rootWeak = container;
+        std::weak_ptr<UltraCanvasContainer> rootWeak = page;
         std::weak_ptr<UltraCanvasLevelMeter> vuWeak = vuStrip;
         if (auto* app = UltraCanvasApplication::GetInstance()) {
             app->StartTimer(33, true, [rootWeak, vuWeak, recWeak, playerWeak, st](TimerId id) {
@@ -335,7 +321,7 @@ namespace UltraCanvas {
             });
         }
 
-        return container;
+        return page;
     }
 
 } // namespace UltraCanvas

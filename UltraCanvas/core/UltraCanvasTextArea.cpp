@@ -1,5 +1,10 @@
 // core/UltraCanvasTextArea.cpp
 // Advanced text area component with syntax highlighting and full UTF-8 support
+// Version: 3.12.0 - hidden characters: spaces, tabs, no-break and zero-width
+//                 characters and line ends marked over the text (SetShowHiddenCharacters);
+//                 a tooltip over a mark gives the character's name and code
+// Version: 3.11.0 - auto-completion: a list of suggestions at the caret, chosen with the keys
+//                 or a click, replacing the word before the caret
 // Version: 3.10.0 - search matches marked in the line layouts and on the scrollbar,
 //                 re-found after edits (deferred in large documents)
 // Version: 3.9.1 - onFocusGained / onFocusLost fired after the area's own focus handling
@@ -28,11 +33,20 @@
 #include "UltraCanvasClipboard.h"
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasUtilsUtf8.h"
+#include "UltraCanvasListView.h"
+#include "UltraCanvasListModel.h"
+#include "UltraCanvasListDelegate.h"
+#include "UltraCanvasListSelection.h"
+#include "UltraCanvasTheme.h"
+#include "UltraCanvasWindow.h"
+#include "UltraCanvasTooltipManager.h"
 #include <algorithm>
 #include <sstream>
 #include <cmath>
 #include <cstring>
 #include <filesystem>
+#include <cctype>
+#include <cstdlib>
 #include "UltraCanvasPathUtf8.h"
 
 namespace UltraCanvas {
@@ -1138,6 +1152,7 @@ namespace UltraCanvas {
                 if (lineTop    >= viewportBottom) break;
 
                 RenderLineLayout(ctx, ll);
+                if (showHiddenCharacters) DrawHiddenCharacters(ctx, ll, i);
             }
             // Inside the text clip so marks never bleed over the gutter or the
             // scrollbars, and after the glyphs so they sit on top of them.
@@ -1477,7 +1492,9 @@ namespace UltraCanvas {
         if (event.type == UCEventType::KeyDown && !preeditText.empty() && !event.text.empty())
             ClearComposition();
 
-        // The host sees the key first (onBeforeKeyDown in the header).
+        // An open completion list takes its keys first, then the host sees
+        // the key (onBeforeKeyDown in the header).
+        if (HandleAutoCompleteKey(event)) return true;
         if (event.type == UCEventType::KeyDown && onBeforeKeyDown && onBeforeKeyDown(event))
             return true;
 
@@ -1526,6 +1543,12 @@ namespace UltraCanvas {
                 return HandleMouseUp(event);
             case UCEventType::MouseMove:
                 return HandleMouseMove(event);
+            case UCEventType::MouseLeave:
+                if (hiddenCharacterTooltipShown) {
+                    UltraCanvasTooltipManager::HideTooltip();
+                    hiddenCharacterTooltipShown = false;
+                }
+                return false;
             case UCEventType::MouseDoubleClick:
                 return HandleMouseDoubleClick(event);
             case UCEventType::KeyDown:
@@ -1844,6 +1867,9 @@ namespace UltraCanvas {
             return true;
         }
 
+        // --- Hidden characters: the code of the one under the pointer ---
+        const bool overHiddenCharacter = !isSelectingText && UpdateHiddenCharacterTooltip(event);
+
         // --- Scrollbar hover cursor --- (element-local coordinates)
         if (!isSelectingText) {
             auto bounds = GetLocalBounds();
@@ -1863,8 +1889,8 @@ namespace UltraCanvas {
         }
 
         // --- Markdown hover: update cursor for links/images ---
-        if (editingMode == TextAreaEditingMode::MarkdownHybrid && !isSelectingText) {
-            if (!HandleMarkdownHover(event.pointer.x, event.pointer.y)) {
+        if (editingMode == TextAreaEditingMode::MarkdownHybrid && !isSelectingText && !overHiddenCharacter) {
+            if (!HandleMarkdownHover(event)) {
                 SetMouseCursor(UCMouseCursor::Text);
             }
         }
@@ -2814,6 +2840,7 @@ namespace UltraCanvas {
         style.lineNumbersBackgroundColor = {35, 35, 35, 255}; // Dark gutter background
         style.selectionColor = {60, 90, 150, 100};
         style.searchHighlightColor = {160, 120, 0, 140};
+        style.hiddenCharacterColor = {120, 120, 120, 200};
         style.cursorColor = {255, 255, 255, 255};
         style.scrollbarTrackColor = {50, 50, 50, 255};
         style.scrollbarColor = {100, 100, 100, 255};
@@ -2842,6 +2869,7 @@ namespace UltraCanvas {
         style.borderColor = {200, 200, 200, 255};
         style.selectionColor = {51, 153, 255, 100};
         style.searchHighlightColor = {255, 200, 0, 110};
+        style.hiddenCharacterColor = {150, 150, 150, 200};
         style.cursorColor = {0, 0, 0, 255};
         style.currentLineColor = {240, 240, 240, 255};
         style.lineNumbersColor = {128, 128, 128, 255};
@@ -3266,16 +3294,168 @@ namespace UltraCanvas {
 
 // ===== AUTO-COMPLETE =====
 
+    namespace {
+        // Part of a word a suggestion replaces: an identifier's characters,
+        // and any codepoint beyond ASCII (a name in another script).
+        bool IsCompletionWordChar(uint32_t c) {
+            return c >= 0x80 || std::isalnum(static_cast<int>(c)) || c == '_' || c == '$';
+        }
+
+        // The codepoints of a UTF-8 line (a malformed byte is taken alone).
+        std::vector<uint32_t> LineCodepoints(const std::string& text) {
+            std::vector<uint32_t> out;
+            for (size_t i = 0; i < text.size();) {
+                const unsigned char b = static_cast<unsigned char>(text[i]);
+                const int length = b < 0x80 ? 1 : (b >> 5) == 0x6 ? 2 : (b >> 4) == 0xE ? 3 : (b >> 3) == 0x1E ? 4 : 1;
+                uint32_t c = length == 1 ? b : b & (0xFF >> (length + 1));
+                for (int k = 1; k < length && i + k < text.size(); ++k)
+                    c = (c << 6) | (static_cast<unsigned char>(text[i + k]) & 0x3F);
+                out.push_back(c);
+                i += static_cast<size_t>(length);
+            }
+            return out;
+        }
+    } // namespace
+
+    int UltraCanvasTextArea::AutoCompleteWordStart() const {
+        if (cursorPosition.lineIndex < 0 || cursorPosition.lineIndex >= static_cast<int>(lines.size())) return -1;
+        const std::vector<uint32_t> points = LineCodepoints(lines[cursorPosition.lineIndex]);
+        int start = std::min(cursorPosition.columnIndex, static_cast<int>(points.size()));
+        while (start > 0 && IsCompletionWordChar(points[start - 1])) --start;
+        return start;
+    }
+
+    std::string UltraCanvasTextArea::GetAutoCompletePrefix() const {
+        const int start = AutoCompleteWordStart();
+        if (start < 0) return std::string();
+        const std::string& line = lines[cursorPosition.lineIndex];
+        const std::vector<uint32_t> points = LineCodepoints(line);
+        // Byte offsets of the word's first codepoint and of the caret.
+        size_t from = 0, to = 0, at = 0;
+        for (int i = 0; i <= static_cast<int>(points.size()) && at <= line.size(); ++i) {
+            if (i == start) from = at;
+            if (i == cursorPosition.columnIndex) { to = at; break; }
+            if (i == static_cast<int>(points.size())) { to = at; break; }
+            const unsigned char b = static_cast<unsigned char>(line[at]);
+            at += b < 0x80 ? 1 : (b >> 5) == 0x6 ? 2 : (b >> 4) == 0xE ? 3 : (b >> 3) == 0x1E ? 4 : 1;
+        }
+        return to > from ? line.substr(from, to - from) : std::string();
+    }
+
     void UltraCanvasTextArea::ShowAutoComplete(const std::vector<std::string>& suggestions) {
-        // Implementation placeholder
+        if (suggestions.empty() || isReadOnly || !GetWindow()) {
+            HideAutoComplete();
+            return;
+        }
+        const UltraCanvasTheme& theme = UltraCanvasTheme::Current();
+        if (!autoCompleteList) {
+            autoCompleteModel = std::make_shared<UltraCanvasSimpleListModel>();
+            autoCompleteList = std::make_shared<UltraCanvasListView>(GetIdentifier() + "_completion", 0, 0, 240, 100);
+            autoCompleteList->SetModel(autoCompleteModel);
+            autoCompleteList->SetShowHeader(false);
+            auto delegate = std::make_shared<UltraCanvasDefaultListDelegate>();
+            delegate->SetTextPadding(8);
+            delegate->SetFontSize(style.fontStyle.fontSize);
+            delegate->SetTextColor(theme.roles.ink);
+            delegate->SetSelectedTextColor(theme.roles.ink);
+            autoCompleteList->SetDelegate(delegate);
+            autoCompleteList->SetSelection(std::make_shared<UltraCanvasSingleSelection>());
+            ListViewStyle listStyle;
+            listStyle.backgroundColor = theme.roles.raised;
+            listStyle.rowHeight = static_cast<int>(std::ceil(style.fontStyle.fontSize * 1.9f));
+            listStyle.selectionBackgroundColor = theme.roles.accentSoft;
+            listStyle.hoverBackgroundColor = theme.roles.hover;
+            autoCompleteList->SetStyle(listStyle);
+            autoCompleteList->SetBorders(1, theme.roles.lineStrong);
+            autoCompleteList->onItemClicked = [this](int row) { AcceptAutoCompleteRow(row); };
+            autoCompleteList->onItemActivated = [this](int row) { AcceptAutoCompleteRow(row); };
+            autoCompleteList->onPopupClosed = [this](ClosePopupReason) { autoCompleteOpen = false; };
+        }
+        autoCompleteList->SetWindow(GetWindow());
+        autoCompleteItems = suggestions;
+        std::vector<ListItem> rows;
+        rows.reserve(suggestions.size());
+        for (const std::string& suggestion : suggestions) rows.emplace_back(suggestion);
+        autoCompleteModel->SetItems(rows);
+
+        // As wide as the longest suggestion (an estimate from its length), at
+        // most ten rows tall; under the caret's line, or above it near the
+        // window's bottom.
+        size_t longest = 0;
+        for (const std::string& suggestion : suggestions) longest = std::max(longest, suggestion.size());
+        const int rowHeight = autoCompleteList->GetStyle().rowHeight;
+        const int width = std::clamp(static_cast<int>(longest * style.fontStyle.fontSize * 0.62f) + 24, 160, 420);
+        const int height = static_cast<int>(std::min<size_t>(suggestions.size(), 10)) * rowHeight + 2;
+        autoCompleteList->SetElementSize(Size2Df(static_cast<float>(width), static_cast<float>(height)));
+        const Rect2Di caret = LineColumnToCursorPos(cursorPosition);
+        const Point2Df origin = GetPositionInWindow();
+        auto* window = GetWindow();
+        int x = static_cast<int>(origin.x) + std::max(0, caret.x);
+        int y = static_cast<int>(origin.y) + caret.y + std::max(caret.height, 1) + 2;
+        if (y + height > static_cast<int>(window->GetHeight())) y = std::max(0, static_cast<int>(origin.y) + caret.y - height - 2);
+        x = std::max(0, std::min(x, static_cast<int>(window->GetWidth()) - width));
+
+        if (autoCompleteOpen) window->ClosePopup(*autoCompleteList);
+        PopupElementSettings settings;
+        settings.popupOwner = shared_from_this();
+        settings.closeByEscapeKey = true;
+        settings.closeByClickOutside = true;
+        window->OpenPopup(Point2Di(x, y), *autoCompleteList, settings);
+        autoCompleteOpen = true;
+        autoCompleteList->ResetSelection();
+        UCEvent down;
+        down.type = UCEventType::KeyDown;
+        down.virtualKey = UCKeys::Down;
+        autoCompleteList->OnEvent(down);       // the first suggestion highlighted
+        RequestRedraw();
     }
 
     void UltraCanvasTextArea::HideAutoComplete() {
-        // Implementation placeholder
+        if (!autoCompleteOpen) return;
+        autoCompleteOpen = false;
+        if (autoCompleteList && GetWindow()) GetWindow()->ClosePopup(*autoCompleteList);
     }
 
     void UltraCanvasTextArea::AcceptAutoComplete() {
-        // Implementation placeholder
+        if (!autoCompleteOpen || !autoCompleteList) return;
+        const IListSelection* selection = autoCompleteList->GetSelection();
+        const std::vector<int> rows = selection ? selection->GetSelectedRows() : std::vector<int>();
+        AcceptAutoCompleteRow(rows.empty() ? 0 : rows.front());
+    }
+
+    void UltraCanvasTextArea::AcceptAutoCompleteRow(int row) {
+        if (row < 0 || row >= static_cast<int>(autoCompleteItems.size())) return;
+        // A copy: the edit below calls onTextChanged, which may show a new list.
+        const std::string chosen = autoCompleteItems[static_cast<size_t>(row)];
+        HideAutoComplete();
+        const int start = AutoCompleteWordStart();
+        if (start < 0) return;
+        SetSelection(LineColumnIndex{cursorPosition.lineIndex, start}, cursorPosition);
+        InsertText(chosen);
+        SetFocus(true);
+        RequestRedraw();
+    }
+
+    bool UltraCanvasTextArea::HandleAutoCompleteKey(const UCEvent& event) {
+        if (!autoCompleteOpen || event.type != UCEventType::KeyDown || event.ctrl || event.alt) return false;
+        switch (event.virtualKey) {
+            case UCKeys::Up:
+            case UCKeys::Down:
+            case UCKeys::PageUp:
+            case UCKeys::PageDown:
+                if (autoCompleteList) autoCompleteList->OnEvent(event);
+                return true;
+            case UCKeys::Return:
+            case UCKeys::Tab:
+                if (event.shift) return false;
+                AcceptAutoComplete();
+                return true;
+            case UCKeys::Escape:
+                HideAutoComplete();
+                return true;
+            default:
+                return false;
+        }
     }
 
 // ===== BRACKET MATCHING =====
@@ -3898,6 +4078,239 @@ namespace UltraCanvas {
         return MakePlainLineLayout(ctx, lineIndex);
     }
 
+    std::vector<UltraCanvasTextArea::HiddenCharacterMark>
+    UltraCanvasTextArea::FindHiddenCharacters(LineLayoutBase* line, int lineIndex) const {
+        std::vector<HiddenCharacterMark> marks;
+        if (!line || !line->layout) return marks;
+        // Only the layouts that hold the line's own text: a table's cells, a
+        // rule, a formula or a picture have no spaces of the source to mark.
+        switch (line->layoutType) {
+            case LineLayoutType::PlainLine:
+            case LineLayoutType::MarkDownLine:
+            case LineLayoutType::Blockquote:
+            case LineLayoutType::CodeblockStart:
+            case LineLayoutType::CodeblockEnd:
+            case LineLayoutType::CodeblockContent:
+            case LineLayoutType::UnorderedListItem:
+            case LineLayoutType::OrderedListItem:
+                break;
+            default:
+                return marks;
+        }
+
+        const ITextLayout& layout = *line->layout;
+        const std::string text = layout.GetText();
+        const float originX = visibleTextArea.x + line->bounds.x + line->layoutShift.x - horizontalScrollOffset;
+        const float originY = visibleTextArea.y + line->bounds.y + line->layoutShift.y - verticalScrollOffset;
+
+        for (size_t i = 0; i < text.size(); i++) {
+            const unsigned char b0 = static_cast<unsigned char>(text[i]);
+            const unsigned char b1 = i + 1 < text.size() ? static_cast<unsigned char>(text[i + 1]) : 0;
+            const unsigned char b2 = i + 2 < text.size() ? static_cast<unsigned char>(text[i + 2]) : 0;
+            HiddenCharacterMark mark;
+            size_t length = 1;
+            if (b0 == ' ') {
+                mark = {HiddenCharacterMark::Kind::Space, 0x20};
+            } else if (b0 == '\t') {
+                mark = {HiddenCharacterMark::Kind::Tab, 0x09};
+            } else if (b0 == 0xC2 && (b1 == 0xA0 || b1 == 0xAD)) {      // U+00A0 no-break space, U+00AD soft hyphen
+                mark = {b1 == 0xA0 ? HiddenCharacterMark::Kind::NoBreakSpace : HiddenCharacterMark::Kind::ZeroWidth,
+                        static_cast<char32_t>(b1)};
+                length = 2;
+            } else if (b0 == 0xE2 && b1 == 0x80 && b2 == 0xAF) {        // U+202F narrow no-break space
+                mark = {HiddenCharacterMark::Kind::NoBreakSpace, 0x202F}; length = 3;
+            } else if (b0 == 0xE2 && b1 == 0x80 && b2 >= 0x8B && b2 <= 0x8D) {   // U+200B..U+200D
+                mark = {HiddenCharacterMark::Kind::ZeroWidth, static_cast<char32_t>(0x2000 + (b2 - 0x80))}; length = 3;
+            } else if (b0 == 0xE2 && b1 == 0x81 && b2 == 0xA0) {        // U+2060 word joiner
+                mark = {HiddenCharacterMark::Kind::ZeroWidth, 0x2060}; length = 3;
+            } else if (b0 == 0xEF && b1 == 0xBB && b2 == 0xBF) {        // U+FEFF byte order mark
+                mark = {HiddenCharacterMark::Kind::ZeroWidth, 0xFEFF}; length = 3;
+            } else if (b0 == 0xE3 && b1 == 0x80 && b2 == 0x80) {        // U+3000 ideographic space
+                mark = {HiddenCharacterMark::Kind::Space, 0x3000}; length = 3;
+            } else {
+                continue;
+            }
+            // A right-to-left run reports a negative width.
+            const Rect2Di pos = layout.IndexToPos(static_cast<int>(i));
+            mark.bounds = Rect2Df(originX + std::min(pos.x, pos.x + pos.width), originY + pos.y,
+                                  static_cast<float>(std::abs(pos.width)), static_cast<float>(pos.height));
+            marks.push_back(mark);
+            i += length - 1;
+        }
+
+        // The line break itself, after the line's last character. A shard of
+        // a long line (no '\n') and the last line of the text have none.
+        if (LineHasNewline(lineIndex)) {
+            const Rect2Di end = layout.IndexToPos(static_cast<int>(text.size()));
+            HiddenCharacterMark mark{HiddenCharacterMark::Kind::LineEnd, 0x0A};
+            // Where the pilcrow is drawn: just after the text, about as wide as a letter.
+            mark.bounds = Rect2Df(originX + end.x + 2.0f, originY + end.y,
+                                  std::max(4.0f, end.height * 0.6f), static_cast<float>(end.height));
+            marks.push_back(mark);
+        }
+        return marks;
+    }
+
+    void UltraCanvasTextArea::DrawHiddenCharacters(IRenderContext* ctx, LineLayoutBase* line, int lineIndex) {
+        const std::vector<HiddenCharacterMark> marks = FindHiddenCharacters(line, lineIndex);
+        if (marks.empty()) return;
+        const Color& color = style.hiddenCharacterColor;
+
+        ctx->PushState();
+        ctx->SetStrokeWidth(1.0);
+        for (const HiddenCharacterMark& mark : marks) {
+            const double left = mark.bounds.x;
+            const double width = mark.bounds.width;
+            const double top = mark.bounds.y;
+            const double height = mark.bounds.height;
+            const double centerX = left + width / 2.0;
+            // 1px lines on a pixel's centre, or they blur across two.
+            const double centerY = std::floor(top + height / 2.0) + 0.5;
+            const double dot = std::max(1.0, height * 0.08);
+
+            switch (mark.kind) {
+                case HiddenCharacterMark::Kind::Space:
+                    ctx->DrawFilledCircle(Point2Dd(centerX, centerY), static_cast<float>(dot), color);
+                    break;
+                case HiddenCharacterMark::Kind::NoBreakSpace:
+                    ctx->DrawFilledCircle(Point2Dd(centerX, centerY), static_cast<float>(std::max(2.5, height * 0.2)),
+                                          Colors::Transparent, color, 1.0f);
+                    break;
+                case HiddenCharacterMark::Kind::Tab: {
+                    // An arrow across the tab's whole advance.
+                    const double head = std::min(height * 0.2, width / 3.0);
+                    const double x0 = left + 2.0;
+                    const double x1 = left + width - 2.0;
+                    if (x1 <= x0) break;
+                    ctx->DrawLine(Point2Dd(x0, centerY), Point2Dd(x1, centerY), color);
+                    ctx->DrawLine(Point2Dd(x1 - head, centerY - head), Point2Dd(x1, centerY), color);
+                    ctx->DrawLine(Point2Dd(x1 - head, centerY + head), Point2Dd(x1, centerY), color);
+                    break;
+                }
+                case HiddenCharacterMark::Kind::ZeroWidth: {
+                    // A tick with a dot on top on a narrow band, so it shows
+                    // even against the stem of the letter that follows.
+                    const double x = std::floor(left) + 0.5;
+                    const double inset = height * 0.15;
+                    ctx->DrawFilledRectangle(Rect2Dd(x - 2.0, top, 4.0, height),
+                                             color.WithAlpha(static_cast<uint8_t>(color.a / 3)), 0.0f, Colors::Transparent);
+                    ctx->DrawLine(Point2Dd(x, top + inset), Point2Dd(x, top + height - inset), color);
+                    ctx->DrawFilledCircle(Point2Dd(x, top + inset), static_cast<float>(dot * 1.5), color);
+                    break;
+                }
+                case HiddenCharacterMark::Kind::LineEnd:
+                    ctx->SetFontStyle(style.fontStyle);
+                    ctx->SetTextPaint(color);
+                    ctx->SetTextVerticalAlignment(VerticalAlignment::Top);
+                    ctx->DrawText("\u00B6", Point2Dd(left, top));
+                    break;
+            }
+        }
+        ctx->PopState();
+    }
+
+    // The name and code of a marked character, for its tooltip.
+    static TooltipContent DescribeHiddenCharacter(char32_t codepoint, bool lineEnd, LineEndingType lineEnding) {
+        auto hex = [](unsigned value, int digits) {
+            char buffer[16];
+            std::snprintf(buffer, sizeof(buffer), "%0*X", digits, value);
+            return std::string(buffer);
+        };
+        TooltipContent content;
+        if (lineEnd) {
+            // Lines are held with '\n'; the file gets the document's line ending.
+            content.AddTitle("Line end");
+            content.AddRow("Type", UltraCanvasTextArea::LineEndingToString(lineEnding));
+            switch (lineEnding) {
+                case LineEndingType::CRLF:
+                    content.AddRow("Code", "U+000D U+000A");
+                    content.AddRow("UTF-8", "0D 0A");
+                    break;
+                case LineEndingType::CR:
+                    content.AddRow("Code", "U+000D");
+                    content.AddRow("UTF-8", "0D");
+                    break;
+                default:
+                    content.AddRow("Code", "U+000A");
+                    content.AddRow("UTF-8", "0A");
+                    break;
+            }
+            return content;
+        }
+
+        const char* name = "";
+        switch (codepoint) {
+            case 0x0009: name = "CHARACTER TABULATION (TAB)"; break;
+            case 0x0020: name = "SPACE"; break;
+            case 0x00A0: name = "NO-BREAK SPACE"; break;
+            case 0x00AD: name = "SOFT HYPHEN"; break;
+            case 0x200B: name = "ZERO WIDTH SPACE"; break;
+            case 0x200C: name = "ZERO WIDTH NON-JOINER"; break;
+            case 0x200D: name = "ZERO WIDTH JOINER"; break;
+            case 0x202F: name = "NARROW NO-BREAK SPACE"; break;
+            case 0x2060: name = "WORD JOINER"; break;
+            case 0x3000: name = "IDEOGRAPHIC SPACE"; break;
+            case 0xFEFF: name = "ZERO WIDTH NO-BREAK SPACE (BYTE ORDER MARK)"; break;
+            default: break;
+        }
+        std::string utf8;
+        if (codepoint < 0x80) {
+            utf8 = hex(codepoint, 2);
+        } else if (codepoint < 0x800) {
+            utf8 = hex(0xC0 | (codepoint >> 6), 2) + " " + hex(0x80 | (codepoint & 0x3F), 2);
+        } else {
+            utf8 = hex(0xE0 | (codepoint >> 12), 2) + " " + hex(0x80 | ((codepoint >> 6) & 0x3F), 2)
+                   + " " + hex(0x80 | (codepoint & 0x3F), 2);
+        }
+        content.AddTitle(name);
+        content.AddRow("Code", "U+" + hex(static_cast<unsigned>(codepoint), 4));
+        content.AddRow("Decimal", std::to_string(static_cast<unsigned>(codepoint)));
+        content.AddRow("UTF-8", utf8);
+        return content;
+    }
+
+    bool UltraCanvasTextArea::UpdateHiddenCharacterTooltip(const UCEvent& event) {
+        const HiddenCharacterMark* hit = nullptr;
+        std::vector<HiddenCharacterMark> marks;
+        const Point2Df pointer(static_cast<float>(event.pointer.x), static_cast<float>(event.pointer.y));
+        if (showHiddenCharacters && editingMode != TextAreaEditingMode::Hex
+            && visibleTextArea.Contains(pointer)) {
+            const float contentY = pointer.y - visibleTextArea.y + verticalScrollOffset;
+            for (int i = 0; i < static_cast<int>(lineLayouts.size()) && !hit; i++) {
+                LineLayoutBase* ll = GetActualLineLayout(i);
+                if (!ll) continue;
+                if (ll->bounds.y > contentY) break;
+                if (contentY >= ll->bounds.y + ll->bounds.height) continue;
+                marks = FindHiddenCharacters(ll, i);
+                // A zero-width character is found within a few pixels of it,
+                // and before the letters either side of it.
+                for (int pass = 0; pass < 2 && !hit; pass++) {
+                    for (const HiddenCharacterMark& mark : marks) {
+                        const bool zeroWidth = mark.kind == HiddenCharacterMark::Kind::ZeroWidth;
+                        if (zeroWidth != (pass == 0)) continue;
+                        Rect2Df area = mark.bounds;
+                        if (zeroWidth) area = Rect2Df(area.x - 3.0f, area.y, area.width + 6.0f, area.height);
+                        if (area.Contains(pointer)) { hit = &mark; break; }
+                    }
+                }
+            }
+        }
+
+        auto* win = GetWindow();
+        if (!hit || !win) {
+            if (hiddenCharacterTooltipShown) {
+                UltraCanvasTooltipManager::HideTooltip();
+                hiddenCharacterTooltipShown = false;
+            }
+            return false;
+        }
+        UltraCanvasTooltipManager::UpdateAndShowTooltip(win,
+            DescribeHiddenCharacter(hit->codepoint, hit->kind == HiddenCharacterMark::Kind::LineEnd, lineEndingType),
+            event.pointerWindow);
+        hiddenCharacterTooltipShown = true;
+        return true;
+    }
+
     void UltraCanvasTextArea::RenderLineLayout(IRenderContext *ctx, LineLayoutBase* line) {
         if (!line) return;
 
@@ -4208,6 +4621,7 @@ namespace UltraCanvas {
         style.selectionColor = r.accent.WithAlpha(100);
         style.cursorColor = r.ink;
         style.placeholderColor = r.inkFaint;
+        style.hiddenCharacterColor = r.inkFaint;
         style.scrollbarTrackColor = r.panel;
         style.scrollbarColor = r.lineStrong;
         style.tokenStyles.defaultStyle.color = r.ink;

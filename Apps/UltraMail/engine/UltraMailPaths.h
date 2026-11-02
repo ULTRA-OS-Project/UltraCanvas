@@ -19,7 +19,13 @@
 // AdoptLegacyDataDir moves such a folder into place once, whole, so the
 // accounts, the mail and the vault open as before.
 //
+// The folder is the user's alone: SecureDataDir makes it (and the files and
+// folders directly in it) owner-only, so the mail, the databases and the vault
+// are not readable by other users of the computer whatever the home folder's
+// own permissions are.
+//
 // All strings are UTF-8 (UltraCanvasPathUtf8.h).
+// Version: 0.2.0 - SecureDataDir: the folder owner-only
 // Version: 0.1.1 - the rule and the move come from the framework's UltraCanvasDataFolder.h
 // Version: 0.1.0 - the per-platform application data folder
 // Last Modified: 2026-10-13
@@ -73,5 +79,15 @@ std::vector<std::string> LegacyDataDirs(DataDirPlatform platform,
 std::string AdoptLegacyDataDir(const std::string& dataDir,
                                const std::vector<std::string>& candidates,
                                std::string& error);
+
+// Creates `dataDir` when it is missing and makes it the user's alone: on
+// POSIX systems the folder becomes rwx------ and every file directly in it
+// rw------- , every folder in it rwx------ (vault/, mail/, cache/ - what is
+// below them is then out of other users' reach through the folder itself).
+// An earlier version's folder, created with the system's default (often
+// readable by everyone), is tightened the first time this runs. Windows: the
+// per-user %APPDATA% is already the user's; nothing is changed. False, with
+// `error`, when the folder cannot be created or its permissions not set.
+bool SecureDataDir(const std::string& dataDir, std::string& error);
 
 } // namespace UltraMail

@@ -12,21 +12,30 @@
 // CDR page crashed on detailed.cdr, which has ten of them. Each page is
 // drawn here well after its parse, the way the DemoApp draws it.
 //
+// ExportToSVG writes each page staged: saving over a file replaces it only
+// once the new one is complete and leaves no temporary file, and a save that
+// fails says why.
+//
 // Exit code is the number of failed checks.
-// Version: 1.0.0
-// Last Modified: 2026-10-11
+// Version: 1.1.0
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 
 #include "../UltraCanvas/Plugins/Vector/CDR/UltraCanvasCDRPlugin.h"
 #include "UltraCanvasImage.h"
 #include "UltraCanvasRenderContext.h"
+#include "UltraCanvasPathUtf8.h"
 
 #ifdef CDRRENDER_HAVE_CAIRO
 #include <cairo.h>
 #endif
 
+#include <chrono>
 #include <cstdint>
 #include <cstdio>
+#include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <set>
 #include <string>
 #include <vector>
@@ -154,6 +163,44 @@ int main(int /*argc*/, char* argv[]) {
         { "dubai-atlantis.cdr", false },
     };
     for (const auto& sample : samples) DrawSample(sample);
+
+    // ===== EXPORT TO SVG: STAGED, AND A FAILURE SAYS WHY =====
+    {
+        namespace fs = std::filesystem;
+        const std::string cdr = std::string(CDRRENDER_SAMPLES_DIR) + "/door-panel.cdr";
+        const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
+        const fs::path dir = fs::temp_directory_path() / PathFromUtf8("cdr-export-staged-" + std::to_string(stamp));
+        std::error_code ec;
+        fs::create_directories(dir, ec);
+        auto hasStagedLeftovers = [&dir]() {
+            std::error_code walkEc;
+            for (const auto& entry : fs::directory_iterator(dir, walkEc)) {
+                if (PathToUtf8(entry.path().filename()).rfind(".ucsave", 0) == 0) return true;
+            }
+            return false;
+        };
+
+        const fs::path existing = dir / "door-panel.svg";
+        { std::ofstream(existing, std::ios::binary) << "the drawing that was there"; }
+        CDRExportResult over = UltraCanvasCDRPlugin::ExportToSVG(cdr, PathToUtf8(existing), 0);
+        if (!over.success) std::printf("      error: %s\n", over.error.c_str());
+        Check(over.success, "ExportToSVG saves over an existing file");
+        std::ifstream in(existing, std::ios::binary);
+        const std::string written((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        Check(written.find("<svg") != std::string::npos, "the file saved over holds the new drawing");
+        Check(!hasStagedLeftovers(), "an export leaves no temporary file");
+
+        const std::string missing = PathToUtf8(dir / "no-such-folder" / "door-panel.svg");
+        CDRExportResult lost = UltraCanvasCDRPlugin::ExportToSVG(cdr, missing, 0);
+        std::printf("      reason: %s\n", lost.error.c_str());
+        Check(!lost.success, "ExportToSVG into a missing folder fails");
+        Check(lost.error.find("does not exist") != std::string::npos, "the failure says the folder does not exist");
+        Check(lost.error.find(".ucsave") == std::string::npos,
+              "the failure names the file asked for, not the temporary one");
+        Check(!hasStagedLeftovers(), "a failed export leaves no temporary file");
+
+        fs::remove_all(dir, ec);
+    }
 
     std::printf("%s: %d failure(s)\n", failures ? "FAILED" : "PASSED", failures);
     return failures;

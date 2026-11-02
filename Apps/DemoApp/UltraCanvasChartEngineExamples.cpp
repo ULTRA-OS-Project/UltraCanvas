@@ -6,8 +6,14 @@
 // grid source, limiters, legend swatches, the label plan, hit regions and
 // tooltips, the animation driver, the dirty model, named properties) is a
 // service of UltraCanvasChartEngineElement, not of this chart.
-// Version: 2.1.0
-// Last Modified: 2026-08-22
+// Version: 2.2.0
+// Last Modified: 2026-10-23
+// V2.2.0: The shared page look (UltraCanvasDemoPageKit): the chart and its
+//   status line in a card that fills the page, the options in a card below.
+//   The tab strip shows its pages in a host beneath it that is as tall as the
+//   open page, and every option row wraps - a group of options moves onto the
+//   next line instead of being cut off - so the fixed per-tab panel heights
+//   are gone.
 // V2.1.0: The option rows are grouped into an UltraCanvasTabbedContainer (Plot /
 //   Axes / Data / Annotations / Legend / Theme), the legend tab covers the whole
 //   shared ChartLegend surface (all 16 placements, orientation, title, entry
@@ -21,6 +27,7 @@
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "Plugins/Charts/Engine/UltraCanvasChartEngineElement.h"
 #include "Plugins/Charts/Engine/UltraCanvasChartSeries.h"
 #include "UltraCanvasButton.h"
@@ -971,17 +978,9 @@ private:
 
 const int kBtnH = 24;
 const int kRowGap = 4;
+const int kGroupGap = 20;
 const int kTabBarH = 28;
 const int kTabPagePadV = 16;
-
-// The option panel is exactly as tall as the tab in front of it: its tab bar,
-// that page's padding, and that page's rows. Tabs carry different row counts,
-// so a fixed panel sized for the tallest one would leave dead space under
-// every other tab - and that space belongs to the chart.
-inline float OptionPanelHeight(int rows) {
-    return static_cast<float>(kTabBarH + kTabPagePadV + rows * kBtnH +
-                              (rows - 1) * kRowGap);
-}
 
 // A plain flex layout wrapper that must never scroll itself.
 std::shared_ptr<UltraCanvasContainer> MakeLayoutBox(const std::string& id) {
@@ -994,10 +993,13 @@ std::shared_ptr<UltraCanvasContainer> MakeLayoutBox(const std::string& id) {
     return c;
 }
 
-// A horizontal control line: shrink:0, stretched on the cross axis.
+// A horizontal control line: shrink:0, stretched on the cross axis. It wraps,
+// so with long captions or a narrow window a group of options moves onto the
+// next line; kGroupGap separates the groups.
 std::shared_ptr<UltraCanvasContainer> MakeRow(const std::string& id) {
     auto row = MakeLayoutBox(id);
-    row->layout.SetFlexRow().SetFlexGap(6)
+    row->layout.SetFlexRow().SetFlexWrap(CSSLayout::FlexWrap::Wrap)
+               .SetFlexGap(kRowGap, kGroupGap)
                .SetFlexAlignItems(CSSLayout::AlignItems::Center);
     row->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
                    .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
@@ -1052,21 +1054,26 @@ inline void SizeToText(const std::shared_ptr<UltraCanvasUIElement>& element,
     element->boxConstraints->minWidth = CSSLayout::Dimension::Px(minimumWidth);
 }
 
-// Append a bold label followed by a radio row of text-sized buttons into `row`.
-// onPick(i) fires for button i; clicking a button highlights it and clears its
-// siblings. `selectedIndex` marks the initially-active button (-1 = none).
+// Append a bold label followed by a radio row of text-sized buttons into `row`,
+// as one group that wraps as a whole (and within itself when it alone is wider
+// than the row). onPick(i) fires for button i; clicking a button highlights it
+// and clears its siblings. `selectedIndex` marks the initially-active button
+// (-1 = none).
 template <typename Fn>
 OptionButtons AppendLabeledButtons(const std::shared_ptr<UltraCanvasContainer>& row,
                                    const std::string& idPrefix, const char* labelText,
                                    const std::vector<const char*>& labels, Fn onPick,
                                    int selectedIndex = -1) {
-    auto lbl = std::make_shared<UltraCanvasLabel>(idPrefix + "lbl", 0, 0, 0, kBtnH);
-    lbl->SetText(labelText);
-    lbl->SetFontSize(12);
+    auto groupBox = DemoKit::CreateRow(idPrefix + "group", 6);
+    groupBox->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    groupBox->layoutItem.SetFlexGrow(0).SetFlexShrink(1);
+    row->AddChild(groupBox);
+
+    auto lbl = DemoKit::CreateText(idPrefix + "lbl", labelText);
     lbl->SetFontWeight(FontWeight::Bold);
     lbl->SetAlignment(TextAlignment::Left, VerticalAlignment::Middle);
     SizeToText(lbl, 0.0f);                 // the caption sizes the label too
-    row->AddChild(lbl);
+    groupBox->AddChild(lbl);
 
     auto group = std::make_shared<OptionButtons>();
     OptionButtons buttons;
@@ -1083,7 +1090,7 @@ OptionButtons AppendLabeledButtons(const std::shared_ptr<UltraCanvasContainer>& 
             onPick(idx);
         });
         SizeToText(b, 30.0f);
-        row->AddChild(b);
+        groupBox->AddChild(b);
         group->push_back(raw);
         buttons.push_back(raw);
     }
@@ -1116,86 +1123,57 @@ std::shared_ptr<UltraCanvasUIElement>
 UltraCanvasDemoApplication::CreateChartEngineExamples() {
     const std::vector<EngineDataset> datasets = MakeDatasets();
 
-    auto root = MakeLayoutBox("ChartEngineExamples");
-    root->layout.SetFlexColumn().SetFlexGap(8)
-                .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-    root->SetPadding(10, 12, 10, 12);
+    auto page = DemoKit::CreatePage("ChartEngineExamples",
+            "Chart Engine — one chart definition, every engine service, switchable live",
+            "The chart below is ONE bar-chart class implementing only the engine's content contract: "
+            "DescribeAxes, RenderChartContent and a label collector. "
+            "Every option switches an engine service, not a chart-type feature; the tabs group them "
+            "by service. Hover a bar for the engine's hit-region tooltip.");
+    // The chart takes whatever height the options leave: the page is the
+    // area's height, not its content's.
+    page->SetFillsArea(true);
 
-    // ===== Header (pinned) =====
-    auto header = MakeLayoutBox("EngineHeader");
-    header->layout.SetFlexColumn().SetFlexGap(4)
-                  .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-    header->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
-                      .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    // ===== The chart (grows to fill) and its status line =====
+    auto chartCard = DemoKit::CreateCard("EngineChartCard");
+    DemoKit::Add(page, chartCard, 1);
 
-    auto title = std::make_shared<UltraCanvasLabel>("EngineTitle", 0, 0, 0, 28);
-    title->SetText("Chart Engine — one chart definition, every engine service, "
-                   "switchable live");
-    title->SetFontSize(16);
-    title->SetFontWeight(FontWeight::Bold);
-    title->SetTextColor(Color(50, 50, 150, 255));
-    title->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-    header->AddChild(title);
-
-    // Two single-line labels rather than one wrapped block: the header is
-    // pinned at a fixed height, so a re-wrap must never hide the second line.
-    const char* subtitleLines[] = {
-        "The chart below is ONE bar-chart class implementing only the engine's content contract: "
-        "DescribeAxes, RenderChartContent and a label collector.",
-        "Every option switches an engine service, not a chart-type feature; the tabs group them "
-        "by service. Hover a bar for the engine's hit-region tooltip."
-    };
-    for (int i = 0; i < 2; ++i) {
-        auto line = std::make_shared<UltraCanvasLabel>(
-                "EngineSubtitle" + std::to_string(i), 0, 0, 0, 16);
-        line->SetText(subtitleLines[i]);
-        line->SetFontSize(11);
-        line->SetTextColor(Color(110, 110, 110, 255));
-        line->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        header->AddChild(line);
-    }
-    root->AddChild(header);
-
-    // ===== The chart (grows to fill) =====
     auto chart = std::make_shared<EngineFeatureChart>("engineChart", 0, 0, 0, 0);
-    chart->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
-                     .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     chart->SetDataset(datasets[0]);          // also titles the chart
     chart->SetValueLabelMode(EngineFeatureChart::ValueLabelMode::Declutter);
     chart->SetTheme("Pastel");               // the showcase's default look
     auto* chartPtr = chart.get();
-    root->AddChild(chart);
+    DemoKit::Add(chartCard, chart, 1);
 
-    // ===== Status (pinned) =====
-    auto status = std::make_shared<UltraCanvasLabel>("EngineStatus", 0, 0, 0, 22);
-    status->SetText("Vertical projection · linear axis · grouped bars · grid from the "
-                    "value ticks · average + target limiters");
+    auto status = DemoKit::AddCaption(chartCard, "EngineStatus",
+            "Vertical projection · linear axis · grouped bars · grid from the "
+            "value ticks · average + target limiters");
     status->SetFontSize(11);
-    status->SetTextColor(Color(120, 120, 120, 255));
-    status->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
-                      .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-    root->AddChild(status);
     auto* statusPtr = status.get();
 
     auto say = [statusPtr](const std::string& text) { statusPtr->SetText(text); };
 
     // =========================================================================
-    // Controls (pinned): one tab per engine service family, so a row only ever
-    // sits beside the rows it belongs with, and the chart gets back most of the
-    // height the nine stacked rows used to take.
+    // Controls: one tab per engine service family, so a row only ever sits
+    // beside the rows it belongs with, and the chart gets back most of the
+    // height the nine stacked rows used to take. The strip is only the tab
+    // bar; the open tab's page is shown in the host below it, which is as tall
+    // as that page - so each tab takes only the rows it has, and a row that
+    // wraps makes the panel taller instead of being cut.
     // =========================================================================
-    // Rows per tab, in the order they are added below: the panel resizes to the
-    // page in front so the chart gets every row the current tab does not need.
-    static const int kRowsPerTab[] = {2, 2, 2, 2, 4, 2};
+    auto optionsCard = DemoKit::AddCard(page, "EngineOptionsCard");
+    optionsCard->layout.SetFlexGap(0);
 
     auto optionTabs = std::make_shared<UltraCanvasTabbedContainer>(
-            "EngineOptionTabs", 0, 0, 0, OptionPanelHeight(kRowsPerTab[0]));
+            "EngineOptionTabs", 0, 0, 0, kTabBarH);
     optionTabs->SetTabStyle(TabStyle::Rounded);
     optionTabs->SetTabHeight(kTabBarH);
     optionTabs->SetTabMinWidth(78);
     optionTabs->SetCloseMode(TabCloseMode::NoClose);
-    optionTabs->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
-                          .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    DemoKit::Add(optionsCard, optionTabs);
+
+    auto optionPages = DemoKit::CreateColumn("EngineOptionPages", 0);
+    DemoKit::Add(optionsCard, optionPages);
+    optionTabs->SetContentHost(optionPages);
 
     // -------------------------------------------------------------------------
     // TAB: Plot — how the content is shaped and painted
@@ -1217,7 +1195,6 @@ UltraCanvasDemoApplication::CreateChartEngineExamples() {
                           "Polar projection — the same bars as ring sectors, no chart-side change"};
                       say(what[i]);
                   }, 0);
-    rowProjection->AddSpacer(20);
     const ChartBarArrangement arrangements[] = {
         ChartBarArrangement::Grouped, ChartBarArrangement::Stacked,
         ChartBarArrangement::PercentStacked
@@ -1232,7 +1209,6 @@ UltraCanvasDemoApplication::CreateChartEngineExamples() {
                           "100% stacked — every category shares out its absolute total"};
                       say(what[i]);
                   }, 0);
-    rowProjection->AddSpacer(20);
     AppendLabeledButtons(rowProjection, "engine_corner_", "Corners",
                   {"Square", "Rounded"},
                   [chartPtr, say](int i) {
@@ -1257,7 +1233,6 @@ UltraCanvasDemoApplication::CreateChartEngineExamples() {
                           "(LegendSwatch), so a non-solid series is never represented by a "
                           "colour square that matches nothing");
                   }, 0);
-    rowPaint->AddSpacer(20);
     AppendLabeledButtons(rowPaint, "engine_fill_", "Slot fill",
                   {"Narrow", "Default", "Wide"},
                   [chartPtr, say](int i) {
@@ -1268,7 +1243,6 @@ UltraCanvasDemoApplication::CreateChartEngineExamples() {
                         << " — the fraction of a category slot the bars occupy";
                       say(o.str());
                   }, 1);
-    rowPaint->AddSpacer(20);
     AppendLabeledButtons(rowPaint, "engine_pad_", "Slot pad",
                   {"0", "0.5"},
                   [chartPtr, say](int i) {
@@ -1304,7 +1278,6 @@ UltraCanvasDemoApplication::CreateChartEngineExamples() {
                           "ChartAxis also carries Z-score and robust z-score"};
                       say(what[i]);
                   }, 0);
-    rowScale->AddSpacer(20);
     AppendLabeledButtons(rowScale, "engine_invert_", "Direction",
                   {"Normal", "Inverted"},
                   [chartPtr, say](int i) {
@@ -1312,7 +1285,6 @@ UltraCanvasDemoApplication::CreateChartEngineExamples() {
                       say(i == 1 ? "Value axis inverted — ChartAxis::inverted flips which end is high"
                                  : "Value axis in its natural direction");
                   }, 0);
-    rowScale->AddSpacer(20);
     AppendLabeledButtons(rowScale, "engine_side_", "Axis side",
                   {"Near", "Far"},
                   [chartPtr, say](int i) {
@@ -1338,7 +1310,6 @@ UltraCanvasDemoApplication::CreateChartEngineExamples() {
                           "No gridlines — SetGridAxis(SIZE_MAX)"};
                       say(what[i]);
                   }, 0);
-    rowGrid->AddSpacer(20);
     AppendLabeledButtons(rowGrid, "engine_ticks_", "Ticks",
                   {"4", "6", "10"},
                   [chartPtr, say](int i) {
@@ -1349,7 +1320,6 @@ UltraCanvasDemoApplication::CreateChartEngineExamples() {
                         << " — the 1-D declutter keeps the ends and zero longest";
                       say(o.str());
                   }, 1);
-    rowGrid->AddSpacer(20);
     AppendLabeledButtons(rowGrid, "engine_fmt_", "Numbers",
                   {"Compact $", "Plain", "2 decimals", "Suffix %", "Custom fn"},
                   [chartPtr, say](int i) {
@@ -1405,7 +1375,6 @@ UltraCanvasDemoApplication::CreateChartEngineExamples() {
                       say("StartEngineAnimation — frame.animationProgress runs 0..1 (ease-out cubic) "
                           "off a 60fps engine timer, with no chart-side timer of its own");
                   });
-    rowAnimation->AddSpacer(20);
     AppendLabeledButtons(rowAnimation, "engine_tips_", "Tooltips",
                   {"On", "Off"},
                   [chartPtr, say](int i) {
@@ -1439,7 +1408,6 @@ UltraCanvasDemoApplication::CreateChartEngineExamples() {
                           "No value labels collected"};
                       say(what[i]);
                   }, 1);
-    rowLabels->AddSpacer(20);
     AppendLabeledButtons(rowLabels, "engine_title_", "Title",
                   {"SetChartTitle", "SetProperty", "None"},
                   [chartPtr, say](int i) {
@@ -1457,7 +1425,6 @@ UltraCanvasDemoApplication::CreateChartEngineExamples() {
                           "No title — the reserved band returns to the plot area"};
                       say(what[i]);
                   }, 0);
-    rowLabels->AddSpacer(20);
     AppendLabeledButtons(rowLabels, "engine_bg_", "Chart bg",
                   {"On", "Off"},
                   [chartPtr, say](int i) {
@@ -1485,7 +1452,6 @@ UltraCanvasDemoApplication::CreateChartEngineExamples() {
                           "Three threshold lines — low / watch / critical"};
                       say(what[i]);
                   }, 2);
-    rowOverlays->AddSpacer(20);
     AppendLabeledButtons(rowOverlays, "engine_hl_", "Highlight",
                   {"Off", "Band", "Ellipse", "Blob"},
                   [chartPtr, say](int i) {
@@ -1551,7 +1517,6 @@ UltraCanvasDemoApplication::CreateChartEngineExamples() {
                           "Legend on the right edge — the engine's default placement"};
                       say(what[i - 1]);
                   }, 4);                                  // Right - the default
-    rowLegendPlace->AddSpacer(20);
     AppendLabeledButtons(rowLegendPlace, "engine_legend_align_", "Align",
                   {"Start", "Center", "End"},
                   [chartPtr, say, sideButtons, insetButtons](int i) {
@@ -1594,7 +1559,6 @@ UltraCanvasDemoApplication::CreateChartEngineExamples() {
                           "nothing, so the plot keeps the full area; it still rides the label "
                           "plan as an obstacle the solved value labels steer around");
                   }, 0);
-    rowLegendInset->AddSpacer(20);
     AppendLabeledButtons(rowLegendInset, "engine_legend_orient_", "Flow",
                   {"Auto", "Rows", "Column"},
                   [chartPtr, say](int i) {
@@ -1630,7 +1594,6 @@ UltraCanvasDemoApplication::CreateChartEngineExamples() {
                           "size scale, largest first (Legend().SetSizeScale)"};
                       say(what[i]);
                   }, 0);
-    rowLegendContent->AddSpacer(20);
     AppendLabeledButtons(rowLegendContent, "engine_legend_title_", "Heading",
                   {"Off", "On"},
                   [chartPtr, say](int i) {
@@ -1639,7 +1602,6 @@ UltraCanvasDemoApplication::CreateChartEngineExamples() {
                                    "measured into the legend box like everything else"
                                  : "No legend heading");
                   }, 0);
-    rowLegendContent->AddSpacer(20);
     AppendLabeledButtons(rowLegendContent, "engine_legend_values_", "Values",
                   {"Off", "On"},
                   [chartPtr, say](int i) {
@@ -1662,7 +1624,6 @@ UltraCanvasDemoApplication::CreateChartEngineExamples() {
                                  : "An unboxed list — the component's plainer default, for a "
                                    "legend that sits outside the plot anyway");
                   }, 0);
-    rowLegendStyle->AddSpacer(20);
     AppendLabeledButtons(rowLegendStyle, "engine_legend_max_", "Max rows",
                   {"All", "2"},
                   [chartPtr, say](int i) {
@@ -1671,7 +1632,6 @@ UltraCanvasDemoApplication::CreateChartEngineExamples() {
                                  : "SetMaxEntries(2) — the remaining entries collapse into a "
                                    "final \"...and N more\" row instead of growing the box");
                   }, 0);
-    rowLegendStyle->AddSpacer(20);
     AppendLabeledButtons(rowLegendStyle, "engine_legend_custom_", "Custom key",
                   {"Off", "Limiters"},
                   [chartPtr, say](int i) {
@@ -1727,19 +1687,8 @@ UltraCanvasDemoApplication::CreateChartEngineExamples() {
     themePage->AddChild(rowPalette);
     optionTabs->AddTab("Theme", themePage);
 
-    auto* optionTabsPtr = optionTabs.get();
-    optionTabs->onTabChange = [optionTabsPtr](int /*oldIndex*/, int newIndex) {
-        const int tabCount = static_cast<int>(std::size(kRowsPerTab));
-        if (newIndex < 0 || newIndex >= tabCount) return;
-        // Width stays auto so the panel keeps stretching to the page.
-        optionTabsPtr->SetElementSize(
-                CSSLayout::Dimension::Auto(),
-                CSSLayout::Dimension::Px(OptionPanelHeight(kRowsPerTab[newIndex])));
-    };
-
     optionTabs->SetActiveTab(0);
-    root->AddChild(optionTabs);
-    return root;
+    return page;
 }
 
 } // namespace UltraCanvas

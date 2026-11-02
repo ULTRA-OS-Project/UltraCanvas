@@ -83,11 +83,11 @@ TEST(accounts_store_their_server_settings) {
     REQUIRE(b.imap.protocol == MailProtocol::Imap);  // never set: IMAP
 
     a.imap.auth = UltraNetMailAuth::Password;
-    a.smtp.auth = UltraNetMailAuth::None;
+    a.smtp.auth = UltraNetMailAuth::NoAuth;
     REQUIRE(s.UpsertAccount(a).success);
     REQUIRE(s.ListAccounts(accs).success);
     REQUIRE(accs[0].imap.auth == UltraNetMailAuth::Password);
-    REQUIRE(accs[0].smtp.auth == UltraNetMailAuth::None);
+    REQUIRE(accs[0].smtp.auth == UltraNetMailAuth::NoAuth);
 
     // The incoming server switched to JMAP: the protocol is stored with the
     // other server settings and comes back with them.

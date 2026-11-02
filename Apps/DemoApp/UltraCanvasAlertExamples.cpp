@@ -2,12 +2,16 @@
 // Demonstration of UltraCanvasAlert - modal, floating, can't-be-missed message
 // boxes built on the UltraCanvas dialog system. Each button below raises an
 // alert of a given severity; the result is echoed into the status label.
+// Version: 1.1.0 - the shared page look (UltraCanvasDemoPageKit): the buttons and the
+//                  result in one card, the usage notes in another beside it; every
+//                  text wraps and grows
 // Version: 1.0.1 - points at the Notification Toast page for what must not interrupt
 // Version: 1.0.0
-// Last Modified: 2026-10-05
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "UltraCanvasAlert.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasLabel.h"
@@ -16,45 +20,35 @@
 namespace UltraCanvas {
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateAlertExamples() {
-        auto container = std::make_shared<UltraCanvasContainer>("AlertExamples", 0, 0, 1000, 560);
-        container->SetPadding(0, 0, 10, 0);
+        auto page = DemoKit::CreatePage("AlertExamples", "Alert Dialog Examples",
+                "An Alert is a modal, always-on-top message box the user cannot miss - it blocks "
+                "the app until dismissed. Each severity has its own colour and icon.");
 
-        auto title = CreateLabel("AlertTitle", 20, 10, 0, 30);
-        title->SetText("Alert Dialog Examples");
-        title->SetFontSize(18);
-        title->SetFontWeight(FontWeight::Bold);
-        container->AddChild(title);
-
-        auto subtitle = CreateLabel("AlertSubtitle", 20, 42, 940, 40);
-        subtitle->SetText("An Alert is a modal, always-on-top message box the user cannot miss - it blocks "
-                          "the app until dismissed. Each severity has its own colour and icon.");
-        subtitle->SetFontSize(12);
-        container->AddChild(subtitle);
+        auto row = DemoKit::AddRow(page, "AlertRow");
+        auto buttonsCard = DemoKit::AddCard(row, "AlertButtonsCard", "Raise an alert",
+                "Each button opens an alert; its result is shown below.");
+        auto buttons = DemoKit::CreateColumn("AlertButtons", 12);
+        DemoKit::Add(buttonsCard, buttons);
 
         // Status readout, updated from the alert callbacks.
-        auto status = CreateLabel("AlertStatus", 20, 500, 940, 26);
-        status->SetText("Result: (press a button)");
+        auto status = DemoKit::CreateText("AlertStatus", "Result: (press a button)");
         status->SetBackgroundColor(Color(240, 240, 240));
         status->SetPadding(4);
-        container->AddChild(status);
+        DemoKit::Add(buttonsCard, status);
 
         auto describe = [](DialogResult r) -> std::string {
             return UltraCanvasDialogManager::DialogResultToString(r);
         };
 
-        const float bx = 20, bw = 200, bh = 34, gapY = 12;
-        float y = 100;
-
         auto addButton = [&](const std::string& id, const std::string& text) {
-            auto btn = CreateButton(id, bx, y, bw, bh, text);
-            container->AddChild(btn);
-            y += bh + gapY;
+            auto btn = CreateButton(id, 0, 0, 200, 34, text);
+            DemoKit::Add(buttons, btn);
             return btn;
         };
 
-        // Weak pointer to the container so callbacks can reach the live window
+        // Weak pointer to the page so callbacks can reach the live window
         // without extending its lifetime.
-        std::weak_ptr<UltraCanvasContainer> weakContainer = container;
+        std::weak_ptr<UltraCanvasContainer> weakContainer = page;
         auto parentWin = [weakContainer]() -> UltraCanvasWindowBase* {
             auto c = weakContainer.lock();
             return c ? c->GetWindow() : nullptr;
@@ -168,9 +162,9 @@ namespace UltraCanvas {
         };
 
         // ===== INSTRUCTIONS =====
-        auto instructions = CreateLabel("AlertInstructions", 260, 100, 700, 392);
-        instructions->SetText(
-                "UltraCanvasAlert (include/UltraCanvasAlert.h)\n\n"
+        auto usageCard = DemoKit::AddCard(row, "AlertInstructions",
+                "UltraCanvasAlert (include/UltraCanvasAlert.h)");
+        DemoKit::AddText(usageCard, "AlertInstructionsText",
                 "One-liners (non-blocking, result via callback):\n"
                 "  UltraCanvasAlert::Info(msg);\n"
                 "  UltraCanvasAlert::Successful(msg);\n"
@@ -182,23 +176,19 @@ namespace UltraCanvas {
                 "  AlertOptions o; o.severity = AlertSeverity::Warning;\n"
                 "  o.message = ...; o.details = ...; o.buttons = DialogButtons::OKCancel;\n"
                 "  UltraCanvasAlert::Show(o);\n\n"
-                "The message supports Markdown (**bold**, *italic*, `code`,\n"
-                "headers, lists). The dialog height auto-fits the text and shows\n"
+                "The message supports Markdown (**bold**, *italic*, `code`, "
+                "headers, lists). The dialog height auto-fits the text and shows "
                 "a vertical scrollbar once the content grows past the screen.\n\n"
-                "Every alert is modal and always-on-top; the parent window's input\n"
-                "is blocked until the user answers. Severity picks the icon + colour\n"
+                "Every alert is modal and always-on-top; the parent window's input "
+                "is blocked until the user answers. Severity picks the icon + colour "
                 "(Info/Question blue, Success green, Warning amber, Error red).\n\n"
-                "showIcon = false (or Plain()) drops the icon column entirely, so\n"
-                "the content spans the full width - use it when the alert body\n"
+                "showIcon = false (or Plain()) drops the icon column entirely, so "
+                "the content spans the full width - use it when the alert body "
                 "carries its own graphic that has to sit in the middle.\n\n"
-                "For a message that must not interrupt: a toast - see the\n"
-                "Notification Toast page (UltraCanvasNotificationToast).");
-        instructions->SetFontSize(11);
-        instructions->SetBackgroundColor(Color(255, 255, 240));
-        instructions->SetPadding(8);
-        container->AddChild(instructions);
+                "For a message that must not interrupt: a toast - see the "
+                "Notification Toast page (UltraCanvasNotificationToast).")->SetFontSize(11);
 
-        return container;
+        return page;
     }
 
 } // namespace UltraCanvas

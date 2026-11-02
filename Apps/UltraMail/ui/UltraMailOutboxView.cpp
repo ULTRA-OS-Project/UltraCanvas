@@ -1,4 +1,5 @@
 // Apps/UltraMail/ui/UltraMailOutboxView.cpp
+// Version: 0.3.0 - Send now, Edit and Delete carry icons
 // Version: 0.2.0 - SetNote; Edit and Delete while a send runs
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -99,24 +100,27 @@ std::shared_ptr<UltraCanvasContainer> OutboxView::Build() {
                    .SetFlexGap(Theme::kInnerGap)
                    .SetFlexAlignItems(CSSLayout::AlignItems::Center);
     auto make = [&buttons](const std::string& id, const std::string& text, float width,
-                           const std::string& tooltip, bool primary) {
+                           const std::string& tooltip, bool primary,
+                           const std::string& icon = "") {
         auto b = CreateButton(id, 0, 0, width, Theme::kControlHeight, text);
         Theme::FitToLabel(b, width);
         if (primary) Theme::StylePrimary(b); else Theme::StyleSecondary(b);
+        if (!icon.empty()) Theme::SetButtonIcon(b, icon);
         b->SetTooltip(tooltip);
         buttons->AddChild(b);
         return b;
     };
     sendNow_ = make("outboxSendNow", "Send now", 90,
-                    "Try to send every waiting message now", true);
+                    "Try to send every waiting message now", true, "send");
     sendNow_->onClick = [this]() { if (onSendNow) onSendNow(); };
     edit_ = make("outboxEdit", "Edit\xE2\x80\xA6", 70,
                  "Open the message to correct it; it leaves the outbox when you send it again",
-                 false);
+                 false, "edit");
     edit_->onClick = [this]() { if (const int64_t id = SelectedId(); id && onEdit) onEdit(id); };
     delete_ = make("outboxDelete", "Delete", 70,
                    "Do not send this message; its copy in Drafts is deleted too", false);
     Theme::StyleDanger(delete_);
+    Theme::SetButtonIcon(delete_, "trash");   // after the style, which holds the icon's mask
     delete_->onClick = [this]() { if (const int64_t id = SelectedId(); id && onDelete) onDelete(id); };
     buttons->AddStretchSpacer(1);
     auto close = make("outboxClose", "Close", 80, "", false);

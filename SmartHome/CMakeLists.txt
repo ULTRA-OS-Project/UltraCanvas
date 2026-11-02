@@ -196,8 +196,12 @@ endif()
 
 # smarthome.db is an UltraDatabase (SQLite) store. Without SQLite the store
 # compiles to one that refuses to open, and everything else still works.
-if(TARGET uc-database)
-    target_link_libraries(SmartHome PRIVATE uc-database)
+# Linked through the module's home, never the uc-database archive: on a shared
+# core the archive is already inside libUltraCanvas, and linking it here too
+# gave the app a second copy of UltraDatabase's code and global state (see
+# "MODULE HOMES" in UltraCanvas/CMakeLists.txt).
+if(TARGET UltraDatabase)
+    target_link_libraries(SmartHome PRIVATE UltraDatabase)
     target_compile_definitions(SmartHome PRIVATE ULTRACANVAS_SMARTHOME_HAS_STORE=1)
     message(STATUS "  [✓] SmartHome store - smarthome.db over UltraDatabase")
 else()
@@ -337,7 +341,8 @@ add_library(SmartHomeUI STATIC
     ui/UltraCanvasSmartHomeDeviceControl.cpp
     ui/UltraCanvasSmartHomeDialogs.cpp
     ui/UltraCanvasSmartHomeEditors.cpp
-    ui/UltraCanvasSmartHomeAdvanced.cpp)
+    ui/UltraCanvasSmartHomeAdvanced.cpp
+    ui/UltraCanvasSmartHomeIcons.cpp)
 set_target_properties(SmartHomeUI PROPERTIES
     POSITION_INDEPENDENT_CODE ON
     OUTPUT_NAME "smarthome_ui")
@@ -356,6 +361,11 @@ if(ULTRACANVAS_BUILD_SMARTHOME_TESTS)
     add_executable(SmartHomeFacadeTest tests/FacadeTest.cpp)
     target_link_libraries(SmartHomeFacadeTest PRIVATE SmartHome)
 
+    # Several listeners per notification, and safe removal.
+    add_executable(SmartHomeListenerTest tests/ListenerTest.cpp)
+    target_link_libraries(SmartHomeListenerTest PRIVATE SmartHome)
+    add_test(NAME SmartHomeListener COMMAND SmartHomeListenerTest)
+
     # The demo home, on a clock the test drives, through the facade.
     add_executable(SmartHomeSimulatedTest tests/SimulatedTest.cpp)
     target_link_libraries(SmartHomeSimulatedTest PRIVATE SmartHome)
@@ -369,10 +379,21 @@ if(ULTRACANVAS_BUILD_SMARTHOME_TESTS)
     target_include_directories(SmartHomeAutomationTest PRIVATE
                                ${CMAKE_CURRENT_SOURCE_DIR}/core
                                ${CMAKE_CURRENT_SOURCE_DIR}/protocols/Simulated)
-    if(TARGET uc-database)
+    if(TARGET UltraDatabase)
         target_compile_definitions(SmartHomeAutomationTest PRIVATE ULTRACANVAS_SMARTHOME_HAS_STORE=1)
     endif()
     add_test(NAME SmartHomeAutomation COMMAND SmartHomeAutomationTest)
+
+    # The home's rooms, with and without smarthome.db.
+    add_executable(SmartHomeHomeModelTest tests/HomeModelTest.cpp)
+    target_link_libraries(SmartHomeHomeModelTest PRIVATE SmartHome)
+    target_include_directories(SmartHomeHomeModelTest PRIVATE
+                               ${CMAKE_CURRENT_SOURCE_DIR}/core
+                               ${CMAKE_CURRENT_SOURCE_DIR}/protocols/Simulated)
+    if(TARGET UltraDatabase)
+        target_compile_definitions(SmartHomeHomeModelTest PRIVATE ULTRACANVAS_SMARTHOME_HAS_STORE=1)
+    endif()
+    add_test(NAME SmartHomeHomeModel COMMAND SmartHomeHomeModelTest)
 
     # Pure framing, so it builds whether or not the Zigbee backend is on.
     add_executable(SmartHomeAshCodecTest tests/AshCodecTest.cpp

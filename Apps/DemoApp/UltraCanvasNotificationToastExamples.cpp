@@ -5,11 +5,15 @@
 // UltraCanvasNotificationToastHost (the one the ULTRA OS desktop runs on the
 // UltraMessage bus; fed directly here, so the page needs no bus). What the
 // toasts' buttons and close boxes do is echoed into the status line.
+// Version: 1.1.0 - the shared page look (UltraCanvasDemoPageKit): a card for the
+//                  element, the screen toasts and the notes, buttons and status
+//                  sized to their text
 // Version: 1.0.0
-// Last Modified: 2026-10-05
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasContainer.h"
@@ -90,16 +94,6 @@ struct ToastDemoState {
     std::string NextId() { return "demo-toast-" + std::to_string(++serial); }
 };
 
-std::shared_ptr<UltraCanvasLabel> Caption(const std::string& id, const std::string& text) {
-    auto label = CreateLabel(id, 0, 0, 0, 24);
-    label->SetText(text);
-    label->SetFontSize(13);
-    label->SetFontWeight(FontWeight::Bold);
-    label->SetMargin(10, 0, 4, 0);
-    label->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-    return label;
-}
-
 // One step of the download: the same id each time, so the toast updates in
 // place; a one-shot timer schedules the next.
 void StepDownload(const std::shared_ptr<ToastDemoState>& state) {
@@ -123,37 +117,28 @@ void StepDownload(const std::shared_ptr<ToastDemoState>& state) {
 #endif // ULTRACANVAS_HAS_MESSAGECENTER
 
 std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateNotificationToastExamples() {
-    auto container = std::make_shared<UltraCanvasContainer>("ToastExamples", 0, 0, 1000, 700);
-    container->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Start);
-    container->SetPadding(10, 20);
-
-    auto title = CreateLabel("ToastTitle", 0, 0, 0, 30);
-    title->SetText("Notification Toast");
-    title->SetFontSize(18);
-    title->SetFontWeight(FontWeight::Bold);
-    title->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-    container->AddChild(title);
-
-    auto subtitle = CreateLabel("ToastSubtitle", 0, 0, 940, 0);
-    subtitle->SetWrap(TextWrap::WrapWord);
-    subtitle->SetFontSize(12);
-    subtitle->size.height = CSSLayout::Dimension::Auto();
-    subtitle->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-    container->AddChild(subtitle);
+#ifdef ULTRACANVAS_HAS_MESSAGECENTER
+    const std::string subtitleText =
+        "How ULTRA OS shows a notification. Every application's notification - a chat, new mail, "
+        "a finished download - arrives on the UltraMessage bus, and the ULTRA OS desktop draws it "
+        "as a toast in the top-right corner. A toast never blocks and never takes the keyboard "
+        "focus; it goes by itself after a few seconds, or when it is clicked or closed.";
+#else
+    const std::string subtitleText =
+        "This build has no UltraMessage module (ULTRACANVAS_ENABLE_ULTRAMESSAGE needs UltraDatabase), "
+        "so the notification toast is not available.";
+#endif
+    auto container = DemoKit::CreatePage("ToastExamples", "Notification Toast", subtitleText);
 
 #ifdef ULTRACANVAS_HAS_MESSAGECENTER
-    subtitle->SetText("How ULTRA OS shows a notification. Every application's notification - a chat, new mail, "
-                      "a finished download - arrives on the UltraMessage bus, and the ULTRA OS desktop draws it "
-                      "as a toast in the top-right corner. A toast never blocks and never takes the keyboard "
-                      "focus; it goes by itself after a few seconds, or when it is clicked or closed.");
-
     // ----- the element, on the page -----
-    container->AddChild(Caption("ToastElementCaption", "The element: UltraCanvasNotificationToast"));
-    auto status = CreateLabel("ToastStatus", 0, 0, 940, 26);
+    auto elementCard = DemoKit::AddCard(container, "ToastElementCaption",
+                                        "The element: UltraCanvasNotificationToast");
+    // Both cards report here; it sits under the buttons.
+    auto status = DemoKit::CreateText("ToastStatus", "");
 
-    auto previews = CreateContainer("ToastPreviews", 0, 0, 0, 0);
-    previews->layout.SetFlexRow().SetFlexGap(16).SetFlexAlignItems(CSSLayout::AlignItems::Start);
-    previews->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    // The previews wrap under each other when the window is narrow.
+    auto previews = DemoKit::AddRow(elementCard, "ToastPreviews", 16);
     NotificationToastStyle previewStyle;
     previewStyle.width = 300;
     int index = 0;
@@ -161,7 +146,6 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateNotifica
         auto toast = CreateNotificationToast("ToastPreview" + std::to_string(index++), 0, 0, 300, 0);
         toast->SetStyle(previewStyle);
         toast->SetContent(ContentOf(n, "preview"));
-        toast->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
         const std::string app = n.appName;
         toast->onAction = [status = status.get(), app](const std::string& action) {
             status->SetText("Preview: \"" + action + "\" on " + app + "'s toast - on the bus this is a "
@@ -171,12 +155,12 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateNotifica
             status->SetText("Preview: " + app + "'s toast closed - on the bus this is a "
                             "system.notification.dismissed");
         };
-        previews->AddChild(toast);
+        DemoKit::AddFixed(previews, toast);
     }
-    container->AddChild(previews);
 
     // ----- real toasts at the corner of the screen -----
-    container->AddChild(Caption("ToastScreenCaption", "On the screen: UltraCanvasNotificationToastHost"));
+    auto screenCard = DemoKit::AddCard(container, "ToastScreenCaption",
+                                       "On the screen: UltraCanvasNotificationToastHost");
     auto state = std::make_shared<ToastDemoState>();
     state->host.onAction = [status = status.get()](const NotificationToastContent& c, const std::string& action) {
         status->SetText("\"" + action + "\" on \"" + c.summary + "\" (" + c.appName +
@@ -187,13 +171,15 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateNotifica
                         ") - the application is told through system.notification.dismissed");
     };
 
-    auto buttons = CreateContainer("ToastButtons", 0, 0, 0, 0);
-    buttons->layout.SetFlexRow().SetFlexGap(8).SetFlexAlignItems(CSSLayout::AlignItems::Center);
-    buttons->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    auto buttons = DemoKit::AddRow(screenCard, "ToastButtons", 8);
+    // As wide as its text, at least the width it had.
     auto addButton = [&buttons](const std::string& id, const std::string& text, float width) {
-        auto button = CreateButton(id, 0, 0, width, 28, text);
-        button->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        buttons->AddChild(button);
+        auto button = std::make_shared<UltraCanvasButton>(id, text);
+        CSSLayout::BoxConstraints limits;
+        limits.minWidth = CSSLayout::Dimension::Px(width);
+        limits.minHeight = CSSLayout::Dimension::Px(28);
+        button->boxConstraints = limits;
+        DemoKit::Add(buttons, button);
         return button;
     };
     addButton("ToastMailBtn", "New mail", 100)->onClick = [state]() {
@@ -221,23 +207,17 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateNotifica
     addButton("ToastClearBtn", "Clear", 80)->onClick = [state]() {
         for (const auto& toast : state->host.GetToasts()) state->host.Withdraw(toast.notificationId);
     };
-    container->AddChild(buttons);
     // The state lives as long as the page: the buttons above hold it.
 
     status->SetText("Status: (press a button, then click a toast, its buttons or its close box)");
-    status->SetFontSize(12);
     status->SetBackgroundColor(Color(240, 240, 240));
     status->SetPadding(4);
-    status->SetMargin(10, 0, 0, 0);
-    status->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-    container->AddChild(status);
+    status->SetMargin(4, 0, 0, 0);
+    DemoKit::Add(screenCard, status);
 
     // ----- toast or alert -----
-    auto notes = CreateLabel("ToastNotes", 0, 0, 940, 0);
-    notes->SetWrap(TextWrap::WrapWord);
-    notes->size.height = CSSLayout::Dimension::Auto();
-    notes->SetText(
-        "Toast or Alert?\n"
+    auto notesCard = DemoKit::AddCard(container, "ToastNotes", "Toast or Alert?");
+    DemoKit::AddText(notesCard, "ToastNotesText",
         "An Alert (the Alert / Message Box page) is for what must be answered before the user goes on: it is "
         "modal, centred on its window and keeps the keyboard focus until a button is pressed. A toast is for "
         "what the user should see but need not answer now: it sits in a corner, never takes the focus, and "
@@ -253,15 +233,6 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateNotifica
         "  UltraCanvas::RegisterNotificationActivator(\"org.example.myapp\", [](const auto& click) { Open(click.launch); });\n\n"
         "A desktop shell runs the host itself: UltraCanvasNotificationToastHost toasts; "
         "toasts.SetScreenMargins(0, 0, barWidth, 0); toasts.Connect();");
-    notes->SetFontSize(11);
-    notes->SetBackgroundColor(Color(255, 255, 240));
-    notes->SetPadding(8);
-    notes->SetMargin(12, 0, 0, 0);
-    notes->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-    container->AddChild(notes);
-#else
-    subtitle->SetText("This build has no UltraMessage module (ULTRACANVAS_ENABLE_ULTRAMESSAGE needs UltraDatabase), "
-                      "so the notification toast is not available.");
 #endif
     return container;
 }

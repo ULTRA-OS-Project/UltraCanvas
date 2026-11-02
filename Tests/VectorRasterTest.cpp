@@ -113,6 +113,42 @@ void TestElements() {
     Check(stroked && IsColour(stroked->GetPixel(0, 0), 0, 0, 0) && IsColour(stroked->GetPixel(15, 15), 0, 0, 255),
           "the stroke is black and the fill blue");
 
+    // A line far wider than the object it runs along: a 100-point line 10
+    // points long, round-capped, is 110 x 100 - more than any fixed margin
+    // round its 10 x 0 middle.
+    auto fat = std::make_shared<VectorLine>();
+    fat->Id = "fat";
+    fat->Start = Point2Dd(150, 50);
+    fat->End = Point2Dd(160, 50);
+    StrokeData fatLine;
+    fatLine.Fill = Color(0, 0, 0, 255);
+    fatLine.Width = 100;
+    fatLine.LineCap = StrokeLineCap::Round;
+    fat->Style.Stroke = fatLine;
+    layer->AddChild(fat);
+    auto wide = RasterizeVectorElements(doc, {fat}, 1.0, error, &area);
+    Check(wide && wide->GetWidth() == 110 && wide->GetHeight() == 100,
+          "a 100-point line is kept whole: 110 x 100 (got " +
+          (wide ? std::to_string(wide->GetWidth()) + " x " + std::to_string(wide->GetHeight()) : error) + ")");
+    layer->RemoveChild("fat");
+
+    // A shadow thrown far from a small object is kept too.
+    auto cast = std::make_shared<VectorRect>();
+    cast->Id = "cast";
+    cast->Bounds = Rect2Dd(10, 10, 10, 10);
+    cast->Style.Fill = Color(255, 0, 0, 255);
+    ShadowEffect shadow;
+    shadow.Offset = Point2Dd(120, 0);
+    shadow.Blur = 0;
+    shadow.Darkness = 1.0f;
+    cast->Effects.Shadow = shadow;
+    layer->AddChild(cast);
+    auto shadowed = RasterizeVectorElements(doc, {cast}, 1.0, error);
+    Check(shadowed && shadowed->GetWidth() == 130,
+          "a shadow 120 points away is kept: 10 + 120 wide (got " +
+          (shadowed ? std::to_string(shadowed->GetWidth()) : error) + ")");
+    layer->RemoveChild("cast");
+
     auto both = RasterizeVectorElements(doc, {red, blue}, 1.0, error, &area);
     Check(both && both->GetWidth() == 115 && both->GetHeight() == 35,
           "two elements span from the first's left to the second's stroke (got " +

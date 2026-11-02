@@ -62,14 +62,14 @@ ULTRA OS native builds land, without changing the public surface.
 namespace UltraVault {
 
 enum class ResultCode {
-    Success, NotFound, AccessDenied, Locked,
+    Ok, NotFound, AccessDenied, Locked,
     BackendUnavailable, InvalidKey, IoError, Unknown
 };
 
 struct Result {
-    ResultCode code = ResultCode::Success;
+    ResultCode code = ResultCode::Ok;
     std::string message;
-    bool IsOk() const { return code == ResultCode::Success; }
+    bool IsOk() const { return code == ResultCode::Ok; }
 };
 
 struct SecretValue {

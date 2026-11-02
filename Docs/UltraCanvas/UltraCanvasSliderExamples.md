@@ -98,6 +98,12 @@ enum class SliderValueDisplay {
 };
 ```
 
+A slider that shows a value keeps its bar at the far edge of its box - the
+foot of a horizontal one, the left of a vertical one - so the value has room
+above or beside it. With `NoDisplay` (the default) the bar is centred across
+the box instead, so a slider in a row of labels sits on their line whatever
+height it is given.
+
 ### SliderOrientation
 Defines the slider orientation:
 ```cpp

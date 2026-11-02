@@ -1,4 +1,17 @@
 // Apps/UltraMail/engine/UltraMailThreatScan.cpp
+// Version: 0.11.2 - an attachment is a program when FileAssociations::RunsCodeWhenOpened
+//   says so - the question UltraMail asks before opening one - not by a list of its own:
+//   scripts (.sh, .py), shortcuts (.url, .desktop), installers (.pkg, .deb, .msix), disk
+//   images (.dmg, .vhd) and macOS / Linux programs too, and a name ending in dots or spaces
+// Version: 0.11.1 - the S/MIME / OpenPGP pill no longer says UltraMail cannot check
+//   signatures: the reading pane checks them (UltraMailSecureMime.h)
+// Version: 0.11.0 - fake invoices: attachment-web-page (40 when the mail speaks of an
+//                   invoice or a payment), attachment-active-page (the attached page
+//                   loads a script, sends a form, moves the browser on), and
+//                   sender-company-mismatch (the display name's company has its own
+//                   domain, given in the mail, and the mail came from another)
+// Version: 0.10.0 - loan-offer-fraud: a loan, credit or project funding offered
+//                   by anyone but a proven bank; LargeMoneySum reads "USD/EURO 10M"
 // Version: 0.9.0 - SenderLists: trusted senders keep only the findings that catch a
 //                  lie or a forgery; blocked senders get blocked-sender
 // Version: 0.8.0 - link-domain-lookalike: link targets dressed up as a brand's;
@@ -30,6 +43,7 @@
 #include "UltraMailThreatScan.h"
 
 #include "UltraMailSenderBrands.h"
+#include "UltraCanvasRunsCodeWhenOpened.h"   // which attachments are programs
 
 #include "HTMLReader/HTMLDocument.h"       // HTML::ExtractPlainText
 #include "HTMLReader/HTMLParser.h"         // HTML::Parser (the links of a page)
@@ -145,16 +159,6 @@ const std::set<std::string>& Shorteners() {
     return s;
 }
 
-// Extensions that execute (or that Windows hides the second half of).
-const std::set<std::string>& RiskyExtensions() {
-    static const std::set<std::string> s = {
-        "exe", "scr", "pif", "com", "bat", "cmd", "msi", "jar", "js", "jse",
-        "vbs", "vbe", "wsf", "wsh", "ps1", "hta", "lnk", "reg", "apk", "iso",
-        "img", "cpl", "dll", "chm", "scf",
-    };
-    return s;
-}
-
 std::string ExtensionOf(const std::string& filename) {
     const std::size_t dot = filename.rfind('.');
     return dot == std::string::npos ? std::string() : Lower(filename.substr(dot + 1));
@@ -245,15 +249,68 @@ const std::vector<std::string>& AdvanceFeeStoryPhrases() {
     return v;
 }
 
+// ---------------------------------------------------------------------------
+// Loan and credit offers
+// ---------------------------------------------------------------------------
+// "My group renders loan facilities at 3% yearly", "LOAN FUNDING / FINANCING
+// OFFER from $5 Million to $10 Billion", "an investor ready to fund viable
+// projects at 3% ROI". A bank does not write to strangers offering millions;
+// the "lender" asks for a processing fee, an insurance or a transfer charge
+// first - and the loan never comes. Matched as words over subject and text.
+const std::vector<std::string>& LoanOfferPhrases() {
+    static const std::vector<std::string> v = {
+        "loan facility", "loan facilities", "loan offer", "loan offers", "loan funding",
+        "loan program", "loan programme", "loan programs", "loan services",
+        "loan service", "loan lender", "loan lenders", "loan company", "loan firm",
+        "credit facility", "credit facilities", "credit loan", "credit loans",
+        "credit offer", "financing offer", "funding offer", "finance offer",
+        "financial offer", "business loan", "business loans", "personal loan",
+        "personal loans", "private loan", "private loans", "private lender",
+        "private lenders", "quick loan", "instant loan", "urgent loan", "fast loan",
+        "easy loan", "cheap loan", "offer loans",
+        "offers loans", "offering loans", "give out loans", "grant loans",
+        "need a loan", "need financing", "need funding", "need a credit",
+        "financial services and loan", "investment/loan", "loan/investment",
+        "fund your project", "fund your business", "finance your project",
+        "funding for your project", "funding for your business", "project funding",
+        "project financing", "project finance", "debt financing", "equity financing",
+        "viable project", "viable projects", "viable business",
+        "kreditangebot", "kredit angebot", "privatkredit", "darlehen",
+        "finanzierungsangebot", "offre de pr\xC3\xAAt", "pr\xC3\xAAt entre particuliers",
+        "pr\xC3\xA9stamo",
+    };
+    return v;
+}
+
+// What the offer promises: a rate, a repayment, a return, no checks.
+const std::vector<std::string>& LoanTermsPhrases() {
+    static const std::vector<std::string> v = {
+        "interest rate", "low interest", "low rate", "reasonable rate", "affordable rate",
+        "fixed rate", "per annum", "p.a.", "repayment", "repay", "return on investment",
+        "roi", "annual return", "collateral", "no collateral", "guarantor", "no credit check",
+        "bad credit", "poor credit", "tenure", "loan term", "duration of the loan",
+        "zinssatz", "zinsen", "tilgung", "taux d'int\xC3\xA9r\xC3\xAAt",
+    };
+    return v;
+}
+
+// A rate as these letters quote it: "3% yearly", "2% interest", "3% annual".
+std::string LoanRate(const std::string& textLower) {
+    static const std::regex rate(
+        R"(\d+(?:[.,]\d+)?\s?%\s?(?:yearly|per year|a year|annual\w*|per annum|p\.a\.|interest|apr|rate|repayment|return|roi|j\xC3\xA4hrlich|zins\w*))");
+    std::smatch m;
+    return std::regex_search(textLower, m, rate) ? m.str() : std::string();
+}
+
 // A sum in the millions, as the scam writes it: "$12,500,000", "US$ 4.5
-// million", "10.5 million united states dollars", "USD 7,000,000". Returns the
+// million", "10.5 million united states dollars", "USD 7,000,000", "USD/EURO 10M". Returns the
 // phrase as found (for the reason), or "" when there is none.
 std::string LargeMoneySum(const std::string& textLower) {
     static const std::regex digits(
         R"((?:us\s?\$|\$|usd|eur|euro|€|£|gbp)\s?\d{1,3}(?:[,.' ]\d{3}){2,}(?:\.\d+)?)"
         R"(|\d{1,3}(?:[,.' ]\d{3}){2,}(?:\.\d+)?\s?(?:us\s?dollars|usd|dollars|euros?|pounds|\$|€))");
     static const std::regex words(
-        R"((?:(?:us\s?\$|\$|usd|eur|€|£)\s?)?\d+(?:[.,]\d+)?\s?(?:million|billion|m\b|mio)\s?)"
+        R"((?:(?:us\s?\$|\$|usd|euros?|eur|€|£)(?:\s?/\s?(?:usd|euros?|eur))?\s?)?\d+(?:[.,]\d+)?\s?(?:million|billion|m\b|mio)\s?)"
         R"((?:(?:united states |us |u\.s\. |american )?dollars|usd|euros?|pounds|\(?\s?(?:us\s?\$|usd)\)?)?)");
     std::smatch m;
     if (std::regex_search(textLower, m, digits)) return m.str();
@@ -706,6 +763,156 @@ std::string CryptoWalletAddress(const std::string& text) {
     return std::string();
 }
 
+// ---------------------------------------------------------------------------
+// Fake invoices
+// ---------------------------------------------------------------------------
+// "Mahnung 2608144 - the attached invoice is overdue", with the "invoice" an
+// .html file: opened, it is a page in the browser - a sign-in form dressed as
+// the invoice viewer, or a script fetched from a hacked site - outside
+// everything the mail reader guards. Invoices come as PDFs.
+const std::vector<std::string>& InvoicePhrases() {
+    static const std::vector<std::string> v = {
+        "invoice", "invoices", "payment reminder", "reminder of payment", "overdue",
+        "past due", "payment due", "outstanding balance", "outstanding amount",
+        "outstanding invoice", "outstanding payment", "remittance", "payment advice",
+        "proof of payment", "payment confirmation", "payment receipt", "receipt",
+        "purchase order", "statement of account", "rechnung", "rechnungen",
+        "mahnung", "zahlungserinnerung", "zahlungsaufforderung", "letzte mahnung",
+        "zur zahlung f\xC3\xA4llig", "offene rechnung", "offenen betrag", "zahlungsavis",
+        "facture", "factura", "fattura", "faktura",
+    };
+    return v;
+}
+
+// Web pages, by file name: what opens in the browser rather than a viewer.
+bool IsWebPageName(const std::string& filename) {
+    static const std::set<std::string> ext = {
+        "htm", "html", "shtml", "xhtml", "xht", "mht", "mhtml",
+    };
+    return ext.count(ExtensionOf(filename)) > 0;
+}
+
+// What an attached page does once opened that a document never needs to:
+// load a program from a website, send what is typed into it somewhere, move
+// the browser on, show another site inside it, or run a script that decodes
+// or writes a hidden page. The first such thing, said for the reason; ""
+// when it does none of them.
+std::string ActivePageBehaviour(const std::string& page) {
+    auto where = [](const std::string& target) {
+        std::string url = Trim(target);
+        if (url.compare(0, 2, "//") == 0) url = "https:" + url;
+        const std::string host = HostOf(url);
+        return host.empty() ? std::string("another site") : host;
+    };
+    auto web = [](const std::string& target) {
+        const std::string t = Lower(Trim(target));
+        return t.compare(0, 7, "http://") == 0 || t.compare(0, 8, "https://") == 0 ||
+               t.compare(0, 2, "//") == 0;
+    };
+    // The calls that turn a page into a program: where it sends the browser,
+    // what it decodes, what it writes, what it fetches.
+    auto scripted = [](const std::string& codeIn) -> const char* {
+        const std::string code = Lower(codeIn);
+        for (const char* call : { "location", "atob(", "unescape(", "eval(", "fromcharcode",
+                                  "document.write", "fetch(", "xmlhttprequest", ".submit(",
+                                  "window.open(" })
+            if (Contains(code, call)) return call;
+        return nullptr;
+    };
+    UltraCanvas::HTML::Parser parser;
+    UltraCanvas::HTML::Document document = parser.Parse(page);
+    if (!document.root) return std::string();
+    std::string found;
+    document.root->ForEachElement([&](UltraCanvas::HTML::Node& e) {
+        const std::string tag = Lower(e.tag);
+        if (tag == "script") {
+            const std::string src = e.GetAttribute("src");
+            if (!Trim(src).empty())
+                found = "loads a program (a script) from " + where(src) + " when it is opened";
+            else if (const char* call = scripted(e.TextContent()))
+                found = std::string("runs a script that rewrites the page or sends the browser "
+                                    "elsewhere (\"") + call + "\")";
+        } else if (tag == "form") {
+            const std::string action = e.GetAttribute("action");
+            found = web(action) ? "has a form that sends what is typed into it to " + where(action)
+                                : std::string("has a form to type into");
+        } else if (tag == "meta" && Lower(Trim(e.GetAttribute("http-equiv"))) == "refresh" &&
+                   Contains(Lower(e.GetAttribute("content")), "url=")) {
+            const std::string content = e.GetAttribute("content");
+            found = "sends the browser on to " +
+                    where(content.substr(Lower(content).find("url=") + 4));
+        } else if ((tag == "iframe" || tag == "frame" || tag == "embed") &&
+                   web(e.GetAttribute("src"))) {
+            found = "shows a page of " + where(e.GetAttribute("src")) + " inside it";
+        } else if (tag == "object" && web(e.GetAttribute("data"))) {
+            found = "shows a page of " + where(e.GetAttribute("data")) + " inside it";
+        } else {
+            // onload="location.href=…" and the like.
+            for (const auto& attribute : e.attributes)
+                if (Lower(attribute.first).compare(0, 2, "on") == 0)
+                    if (const char* call = scripted(attribute.second)) {
+                        found = std::string("runs a script that rewrites the page or sends the "
+                                            "browser elsewhere (\"") + call + "\")";
+                        break;
+                    }
+        }
+        return found.empty();
+    });
+    return found;
+}
+
+// The display name's words, lowercased: "Luka Deveric | BUG Rohrreinigung
+// <x@example.com>" -> luka, deveric, bug, rohrreinigung.
+std::vector<std::string> DisplayNameWords(const std::string& fromName) {
+    std::string name = fromName;
+    if (const std::size_t lt = name.find('<'); lt != std::string::npos) name = name.substr(0, lt);
+    std::vector<std::string> words;
+    std::string word;
+    for (std::size_t i = 0; i <= name.size(); ++i) {
+        const unsigned char c = i < name.size() ? static_cast<unsigned char>(name[i]) : ' ';
+        if (std::isalnum(c)) {
+            word += static_cast<char>(std::tolower(c));
+        } else {
+            if (word.size() >= 2) words.push_back(word);
+            word.clear();
+        }
+    }
+    return words;
+}
+
+// Whether a domain's name (`label`: "bug-rohrreinigung" of
+// bug-rohrreinigung.de) is the company in the display name: each part of it
+// one of the name's words, or the name's words run together
+// ("bugrohrreinigung"), or one long word of it ("rohrreinigung").
+bool LabelIsDisplayName(const std::string& label, const std::vector<std::string>& words) {
+    if (label.size() < 5 || words.empty()) return false;
+    std::vector<std::string> parts;
+    std::string part;
+    for (std::size_t i = 0; i <= label.size(); ++i) {
+        if (i == label.size() || label[i] == '-') {
+            if (!part.empty()) parts.push_back(part);
+            part.clear();
+        } else {
+            part += label[i];
+        }
+    }
+    auto isWord = [&words](const std::string& p) {
+        return std::find(words.begin(), words.end(), p) != words.end();
+    };
+    if (parts.size() >= 2 && std::all_of(parts.begin(), parts.end(), isWord)) return true;
+    std::string squashed;
+    for (const auto& p : parts) squashed += p;
+    if (squashed.size() >= 6 && isWord(squashed)) return true;
+    for (std::size_t i = 0; i < words.size(); ++i) {
+        std::string run = words[i];
+        for (std::size_t j = i + 1; j < words.size() && j < i + 3; ++j) {
+            run += words[j];
+            if (run == squashed) return true;
+        }
+    }
+    return false;
+}
+
 } // namespace
 
 // ---------------------------------------------------------------------------
@@ -759,6 +966,7 @@ bool FindingEnabled(const ThreatScanOptions& o, const std::string& code) {
     if (code == "romance-scam")             return o.romance;
     if (code == "government-impersonation") return o.government;
     if (code == "advance-fee-fraud" || code == "reply-elsewhere") return o.advanceFee;
+    if (code == "loan-offer-fraud")         return o.loanOffers;
     if (code == "crypto-content")           return o.cryptoCaution;
     if (code.compare(0, 7, "crypto-") == 0) return o.cryptoScams;
     if (code.compare(0, 11, "attachment-") == 0) return o.attachments;
@@ -770,6 +978,7 @@ bool FindingEnabled(const ThreatScanOptions& o, const std::string& code) {
         "link-brand-mismatch", "link-brand-lookalike", "link-domain-lookalike",
         "insecure-login-link",
         "many-foreign-domains", "credential-request", "reply-to-mismatch",
+        "sender-company-mismatch",
     };
     if (phishing.count(code)) return o.phishing;
     return true;
@@ -846,7 +1055,8 @@ bool FindingKeptForTrustedSender(const std::string& code) {
         "auth-failure", "link-target-mismatch", "link-userinfo", "link-ip-host",
         "link-punycode", "link-nonascii-host", "link-brand-mismatch",
         "link-brand-lookalike", "link-domain-lookalike",
-        "attachment-disguised-executable", "crypto-wallet-secret",
+        "attachment-disguised-executable", "attachment-active-page",
+        "crypto-wallet-secret",
     };
     return kept.count(code) > 0;
 }
@@ -1308,6 +1518,50 @@ ThreatReport ScanMessage(const ScanInput& input) {
         }
     }
 
+    // ---- Loan and credit offers ---------------------------------------------
+    // A loan, a credit line or "funding for your project" offered out of the
+    // blue: unless a bank proved it wrote the mail, it is advance-fee fraud
+    // dressed as a lender. With a rate, a repayment or a sum named it is the
+    // scam itself; the bare offer from an unproven sender is worth a second
+    // look. A sender that proved its own domain (a lender's newsletter, a
+    // colleague) is only asked a second look, and its bulk mail not at all;
+    // so is a bank's own address that nothing proved (the server may not
+    // have checked).
+    {
+        const std::string offerText = StraightQuotes(Lower(input.subject) + "\n" + bodyLower);
+        const bool bankDomain = senderBrand && senderBrand->category == BrandCategory::Banking;
+        const bool provenBank = verifiedBrand && bankDomain;
+        const bool freeSender = IsPersonalMailboxDomain(senderDomain);
+        const bool ownDomain = (authenticated && !freeSender) || bankDomain;
+        const std::string* offer = FirstWordPhraseIn(offerText, LoanOfferPhrases());
+        if (offer && !provenBank && !IsGovernmentDomain(senderDomain) &&
+            !(report.bulk && ownDomain)) {
+            std::string terms = LoanRate(offerText);
+            if (terms.empty())
+                if (const std::string* t = FirstWordPhraseIn(offerText, LoanTermsPhrases())) terms = *t;
+            const std::string sum = LargeMoneySum(offerText);
+            const std::string* fee = FirstPhraseIn(offerText, FeePhrases());
+            const bool specific = !terms.empty() || !sum.empty();
+            const int weight = ownDomain ? (specific ? 25 : 0) : (specific ? 50 : 30);
+            if (weight > 0) {
+                std::string why = "The message offers a loan, credit or funding (\"" + *offer + "\")";
+                std::vector<std::string> extras;
+                if (!sum.empty())   extras.push_back("a large sum (\"" + sum + "\")");
+                if (!terms.empty()) extras.push_back("its terms (\"" + terms + "\")");
+                if (fee)            extras.push_back("a fee (\"" + *fee + "\")");
+                for (std::size_t i = 0; i < extras.size(); ++i)
+                    why += (i == 0 ? " and names " : (i + 1 == extras.size() ? " and " : ", ")) + extras[i];
+                why += ", but it was not sent by a bank";
+                if (freeSender) why += " - it came from a free mailbox (" + senderDomain + ")";
+                else if (!senderDomain.empty()) why += " (" + senderDomain + ")";
+                why += ". Banks do not offer loans to strangers by email; the \"lender\" asks "
+                       "for a processing fee, an insurance or a transfer charge first, and the "
+                       "loan never comes.";
+                Add(report, weight, "loan-offer-fraud", why);
+            }
+        }
+    }
+
     // ---- Government agencies and international organisations -------------
     // A letter in the FBI's, Interpol's or the IMF's name from an address that
     // is not theirs. In the sender's name or domain it is a claim on its own
@@ -1361,6 +1615,52 @@ ThreatReport ScanMessage(const ScanInput& input) {
         }
     }
 
+    // ---- The display name's company has a domain of its own ----------------
+    // "Luka Deveric | BUG Rohrreinigung <no-reply@danpetersonmusic.net>" whose
+    // text says "write to fibu@bug-rohrreinigung.de": the company the name
+    // gives has its own domain - the mail says so itself - yet the mail came
+    // from an unrelated one, a hijacked mailbox or a throwaway domain. Not for
+    // a free mailbox (someone writing from home about their firm), not for
+    // "ACME via Stripe", and not when the sender's domain carries the
+    // company's name. A proven sender domain only adds a hint: an invoicing
+    // service sends in its customers' names from its own.
+    std::string senderName = input.fromName;
+    if (const std::size_t lt = senderName.find('<'); lt != std::string::npos)
+        senderName = senderName.substr(0, lt);
+    senderName = Trim(senderName);
+    if (senderName.size() >= 2 && senderName.front() == '"' && senderName.back() == '"')
+        senderName = Trim(senderName.substr(1, senderName.size() - 2));
+    if (!senderReg.empty() && !IsPersonalMailboxDomain(senderDomain) && !verifiedBrand &&
+        senderName.find('@') == std::string::npos && !ContainsPhrase(Lower(senderName), "via")) {
+        const std::vector<std::string> nameWords = DisplayNameWords(senderName);
+        std::vector<std::pair<std::string, std::string>> named;   // registrable domain, as shown
+        for (const auto& link : links) {
+            if (!link.host.empty()) named.emplace_back(RegistrableDomain(link.host), link.host);
+            else if (Lower(link.href).compare(0, 7, "mailto:") == 0)
+                named.emplace_back(RegistrableDomain(DomainOfAddress(link.href.substr(7))),
+                                   Trim(link.href.substr(7)));
+        }
+        for (std::size_t at = bodyLower.find('@'); at != std::string::npos;
+             at = bodyLower.find('@', at + 1)) {
+            std::size_t a = 0, b = 0;
+            if (!MailAddressAt(bodyLower, at, a, b)) continue;
+            const std::string address = bodyLower.substr(a, b - a);
+            named.emplace_back(RegistrableDomain(DomainOfAddress(address)), address);
+        }
+        const std::string senderLabel = senderReg.substr(0, senderReg.find('.'));
+        for (const auto& [reg, shown] : named) {
+            if (reg.empty() || reg == senderReg) continue;
+            const std::string label = reg.substr(0, reg.find('.'));
+            if (Contains(senderLabel, label) || Contains(label, senderLabel)) continue;
+            if (!LabelIsDisplayName(label, nameWords)) continue;
+            Add(report, authenticated ? 12 : 25, "sender-company-mismatch",
+                "The sender calls itself \"" + senderName + "\", whose own domain the message gives (" +
+                shown + "), but it was sent from " + senderDomain + ", which has nothing to do "
+                "with it - a stolen or made-up mailbox writing in a company's name.");
+            break;
+        }
+    }
+
     // ---- Answers asked for at another address ------------------------------
     // "Please find my contact email address for us to proceed: (x@yahoo.com)"
     // - the advance-fee and romance letters move the conversation to a free
@@ -1406,7 +1706,9 @@ ThreatReport ScanMessage(const ScanInput& input) {
             inner == "xlsx" || inner == "jpg" || inner == "png" || inner == "txt" ||
             inner == "zip" || inner == "rtf" || inner == "csv";
 
-        if (RiskyExtensions().count(ext)) {
+        // A program, script, installer, shortcut or disk image - the same
+        // question UltraMail asks before it will open an attachment.
+        if (UltraCanvas::FileAssociations::RunsCodeWhenOpened(name)) {
             // A program sent as a program is a reason to be careful; a program
             // dressed as an invoice is the attack itself, so only the disguise
             // is weighted as one. (A colleague really does send the odd .jar.)
@@ -1425,6 +1727,52 @@ ThreatReport ScanMessage(const ScanInput& input) {
             Add(report, 25, "attachment-double-extension",
                 "The attachment \"" + name + "\" carries two extensions, which is how a "
                 "program is made to look like a document.");
+        }
+    }
+
+    // ---- Web pages attached ------------------------------------------------
+    // An .html "invoice" opens in the browser, outside the mail reader: the
+    // fake sign-in page or the script it fetches is the attack. A web page
+    // sent as an attachment is worth a second look; one sent as the invoice,
+    // the reminder or the receipt a mail speaks of is how the fake invoice
+    // works; and a page that loads a program, sends a form or moves the
+    // browser on is the attack itself (an SVG picture can do the same).
+    {
+        std::string pageName;
+        for (const auto& name : input.attachmentNames)
+            if (IsWebPageName(name)) { pageName = name; break; }
+        for (const auto& page : input.attachedPages)
+            if (pageName.empty() && !IsPictureName(page.name) &&
+                ExtensionOf(page.name) != "svg")
+                pageName = page.name.empty() ? std::string("(no name)") : page.name;
+        if (!pageName.empty()) {
+            const std::string about = StraightQuotes(Lower(input.subject + "\n" + pageName) +
+                                                     "\n" + bodyLower);
+            const std::string* invoice = FirstWordPhraseIn(about, InvoicePhrases());
+            if (!invoice) {
+                // "Rg-2608144", "Inv_4471.html": an invoice's number as the file name.
+                static const std::regex number(R"(\b(?:rg|re|inv|rech)[-_ .]?\d{4,})");
+                std::smatch m;
+                const std::string nameLower = Lower(pageName);
+                if (std::regex_search(nameLower, m, number)) invoice = &pageName;
+            }
+            Add(report, invoice ? 40 : 25, "attachment-web-page",
+                "The attachment \"" + pageName + "\" is a web page: it opens in your browser, "
+                "outside the mail program, where it can show a fake sign-in form or load "
+                "anything from the internet." +
+                (invoice ? std::string(" The message presents it as an invoice or a payment "
+                                       "demand (\"") + (invoice == &pageName ? pageName : *invoice) +
+                               "\") - real invoices come as PDF documents, not as web pages."
+                         : std::string()));
+        }
+        for (const auto& page : input.attachedPages) {
+            const std::string behaviour = ActivePageBehaviour(page.content);
+            if (behaviour.empty()) continue;
+            Add(report, 50, "attachment-active-page",
+                "The attached page \"" + (page.name.empty() ? std::string("(no name)") : page.name) +
+                "\" " + behaviour + ". A document has no reason to; a page that does is "
+                "built to steal what you type or to install something.");
+            break;
         }
     }
 
@@ -1631,10 +1979,20 @@ bool BuildScanInput(const std::string& rawMessage, ScanInput& in) {
     std::vector<UltraNetMimeAttachmentView> atts;
     UltraNet_MimeCollectAttachments(msg, atts, /*includeInline=*/true);
     for (const auto& a : atts) {
-        const bool image = a.mediaType.rfind("image/", 0) == 0;
+        const std::string type = Lower(a.mediaType);
+        const bool image = type.rfind("image/", 0) == 0;
         if (!a.isInline) in.attachmentNames.push_back(a.filename);
         if (image && (a.isInline || !IsPictureName(a.filename)))
             in.pictureNames.push_back(a.filename);
+        // A web page, by name or by type, and an SVG picture (which can carry
+        // a script as well): what it would do once opened is read, up to a
+        // size no genuine page in a mail reaches.
+        const bool page = IsWebPageName(a.filename) || ExtensionOf(a.filename) == "svg" ||
+                          type == "text/html" || type == "application/xhtml+xml" ||
+                          type == "image/svg+xml";
+        constexpr std::size_t kMaxPageBytes = 4 * 1024 * 1024;
+        if (page && !a.isInline && a.data.size() <= kMaxPageBytes)
+            in.attachedPages.push_back({ a.filename, std::string(a.data.begin(), a.data.end()) });
     }
     return true;
 }
@@ -1933,8 +2291,9 @@ std::vector<AuthCheck> DescribeMessageAuthentication(const std::string& rawMessa
         c.tooltip = kind + ": the author signed this message with " +
                     (kind == "S/MIME" ? std::string("a personal certificate")
                                       : std::string("an OpenPGP key")) +
-                    ".\nUltraMail does not check such signatures yet, so the signature "
-                    "says nothing on its own - anyone can attach one.";
+                    ".\nThis is what the headers say, not yet a check: until the signature is "
+                    "checked against the message (the reading pane does that when it opens "
+                    "it), it says nothing on its own - anyone can attach one.";
         checks.push_back(c);
     }
     return checks;

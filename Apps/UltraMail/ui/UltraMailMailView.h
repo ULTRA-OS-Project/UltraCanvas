@@ -4,6 +4,10 @@
 // mailboxes beneath) and, on the right, the content area — either the message
 // list beside the message preview (reading pane on) or the list alone with the
 // clicked message opening in its place (reading pane off). Driven by LocalStore.
+// Version: 0.19.0 - ShowInbox (an account's inbox under a filter: the account bar's
+//                  counters) and onFilterChanged
+// Version: 0.18.0 - SetAttachmentsRight (Settings > Reading > Attachments)
+// Version: 0.17.1 - CellTooltip: a list cell's tooltip only when it cut its text off
 // Version: 0.17.0 - the folder tree's right-click menu (onAddFolder,
 //                  onDeleteFolder) and SetTreeCurrentAccountOnly
 // Version: 0.16.0 - trusted and blocked senders in both menus (SenderListItems,
@@ -71,6 +75,8 @@ class MailView {
 public:
     void SetStore(LocalStore* store) { store_ = store; preview_.SetStore(store); }
     void SetMailDir(std::string dir) { mailDir_ = dir; preview_.SetMailDir(std::move(dir)); }
+    // Signed and encrypted mail in the reading pane (MessagePreview::SetSecureKeys).
+    void SetSecureKeys(SecureKeys keys) { preview_.SetSecureKeys(std::move(keys)); }
     // Keep the account list (drives the folder tree) and forward it to the
     // preview (which resolves the "self" address for replies).
     void SetAccounts(std::vector<Account> accounts);
@@ -113,6 +119,9 @@ public:
     // Show a specific folder of an account (a folder-tree click). Rebuilds the
     // list and raises onOpenFolder so the app can lazily fetch it.
     void ShowFolder(const std::string& accountId, const std::string& folder);
+    // Show an account's inbox narrowed by `filter` (kind All: all of it) - a
+    // click on a counter of the account bar. One rebuild of the list.
+    void ShowInbox(const std::string& accountId, MessageFilter filter);
     // Re-query the current account/folder (after a sync or a flag change).
     void Reload();
     // One message on screen as a click on its row would put it: its account
@@ -147,6 +156,9 @@ public:
     // Settings > Reading > Messages: HTML mail formatted or as plain text, and
     // the body text size (CSS px). The message on screen is shown again.
     void SetBodyOptions(bool showHtml, float textSizePx);
+    // Settings > Reading > Attachments: the reading pane's attachments in a
+    // column at the right of the message (true) or a row under it.
+    void SetAttachmentsRight(bool right) { preview_.SetAttachmentsRight(right); }
     // Settings > Display > Links: a link's address as a tooltip over the link
     // (false: only reported through onLinkHovered, for the status line). The
     // message on screen is shown again.
@@ -183,14 +195,21 @@ public:
     // account clears it.
     void SetFilter(MessageFilter filter);
     const MessageFilter& Filter() const { return filter_; }
+    // The filter changed - set from the menu or the account bar, or cleared
+    // by a switch of folder or account. The account bar shows it.
+    std::function<void(const std::string& accountId, const MessageFilter&)> onFilterChanged;
 
     // The folder currently shown (for Reload, which fetches it too).
     const std::string& CurrentFolder() const { return curFolder_; }
+    // The messages the list shows, in list order (after the filter).
+    const std::vector<MessageEnvelope>& ShownMessages() const { return messages_; }
 
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> Container() const { return root_; }
 
     // Forwarded to the preview.
     std::function<void(const Attachment&)> onOpenAttachment;
+    // An S/MIME certificate learnt from a good signature (MessagePreview::onCertificateLearnt).
+    std::function<void(const std::string& address, const std::string& certificatePem)> onCertificateLearnt;
     std::function<void(const Attachment&)> onSaveAttachment;
     std::function<void(const SourceMessage&, const std::string& selfName,
                        const std::string& selfAddr)> onReply;
@@ -299,6 +318,9 @@ private:
     // Re-draw one row's cell-0 text (sender + ●/↩ glyphs) from its current state.
     void RefreshRowText(int row);
     // The row `m` belongs at in the list as it is sorted (sort_).
+    // The whole text of a list cell that cut it off - the sender's name and
+    // address, the subject or the date - for its tooltip; empty for others.
+    std::string CellTooltip(int row, int column) const;
     int SortedInsertPos(const MessageEnvelope& m) const;
     // What the order is worked out from: the sender and subject as the row
     // shows them, the badge's kind.
@@ -366,6 +388,9 @@ private:
     // list rather than one per row.
     std::map<int64_t, MessageSecurity> security_;
     MessageFilter                filter_;
+    MessageFilter                reportedFilter_;   // the last onFilterChanged gave,
+    std::string                  reportedAccount_;  // and for which account
+    void ReportFilter();
     MessageSort                  sort_;
     // True while the list's selection is set by code (a rebuild, a re-sort):
     // the selection callback then neither shows the row nor marks it read -
@@ -378,7 +403,8 @@ private:
     std::string                  searchText_;
     bool SearchMatches(const MessageEnvelope& m) const;
     // What the filter needs to know about a message beyond its envelope.
-    MessageFacts FactsFor(const MessageEnvelope& m, const std::set<int64_t>& waitingUids) const;
+    MessageFacts FactsFor(const MessageEnvelope& m, const std::set<int64_t>& waitingUids,
+                          int64_t todayStart) const;
     // Drop the messages the filter does not keep (no-op without a filter).
     void ApplyFilter(std::vector<MessageEnvelope>& messages,
                      const std::set<int64_t>& waitingUids) const;

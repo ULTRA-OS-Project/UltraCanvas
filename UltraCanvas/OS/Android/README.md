@@ -11,9 +11,12 @@ APK asset extraction.
 dependency sysroot builds in CI for `arm64-v8a` and `x86_64`, the core library
 compiles against it, DemoApp links against that into `libUltraCanvasDemo.so`,
 and `scripts/android-package-apk.sh` packages that into a debug-signed APK,
-uploaded by every run of `.github/workflows/android-build.yml`. But nothing has
-installed one yet, so none of this has run on a device — it is compiled,
-linked and packaged continuously in CI, not observed. See
+uploaded by every run of `.github/workflows/android-build.yml`, whose emulator
+job installs the x86_64 one and requires a first frame with something drawn
+in it (`scripts/android-emulator-smoke.sh`). That is the whole of what is
+observed so far: the first frame on an emulator. Input, dialogs, the IME,
+rotation and everything past start-up are still designed and reviewed, not
+seen working. See
 [`packaging/`](packaging/README.md), and
 [`AndroidOnLinuxInvestigation.md`](../../../Docs/UltraCanvas/AndroidOnLinuxInvestigation.md)
 for how to run the first APK on a Linux box rather than a phone (and what to

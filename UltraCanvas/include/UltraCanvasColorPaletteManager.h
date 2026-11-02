@@ -5,12 +5,21 @@
 //  - With one palette its row ends in a "+" button. With several, every row
 //    ends in a "-" that takes that palette away, and the last row has the
 //    "+" under its "-".
-//  - "+" opens the palette gallery: a popup of ready-made schemes - a row of
-//    basic colours up to a whole 256-colour GIF palette - grouped by kind,
-//    each with a preview and its own "+" that adds it as a new row.
+//  - "+" opens the palette manager: a popup with a title bar ("Palette
+//    manager") it is dragged about by, listing ready-made schemes - a row
+//    of basic colours up to a whole 256-colour GIF palette - grouped by
+//    kind, each with a preview and its own "+" that adds it as a new row.
+//  - "Add palette" at its foot opens the palette creator, a second such
+//    window: a name, a picker and the colours added so far. Create keeps the
+//    palette among the user's own (the manager's "My palettes" section, with
+//    a button to delete it) and adds it as a row.
 //  - A left click on a swatch picks its colour (onColorSelected). A right
 //    click opens a small foreground-only colour picker next to it that sets
 //    that one entry of the palette, live; Revert puts it back.
+//  - The pointer on a swatch floods the rows' background with its colour
+//    and reports it (onColorHovered), so the host can flood its colour
+//    picker too (UltraCanvasColorPicker::SetSurfacePreview) - as hovering
+//    the picker's own swatches does.
 //
 // Large palettes wrap (UltraCanvasColorSwatchBar::SetWrap), so a GIF palette
 // is a block of small swatches rather than a hairline. The element sets its
@@ -18,15 +27,22 @@
 // flex column - a toolbox card - what is below it moves as rows come and go.
 //
 // The palettes are the host's to keep: onPalettesChanged fires after every
-// change, and SerializePalettes / ParsePalettes turn them into one line of a
+// change of the rows and onUserPalettesChanged after one of the user's own,
+// and SerializePalettes / ParsePalettes turn either into one line of a
 // settings file and back.
 //
 // Built from framework elements only: the rows are UltraCanvasColorSwatchBar,
-// the buttons UltraCanvasButton, the captions UltraCanvasLabel, the entry
-// editor an UltraCanvasColorPicker (SetShowBackgroundColor(false)).
+// the buttons UltraCanvasButton, the captions UltraCanvasLabel, the name an
+// UltraCanvasTextInput, the pickers UltraCanvasColorPicker
+// (SetShowBackgroundColor(false)).
 //
+// Version: 1.1.0 - the gallery is the "Palette manager" with a title bar to
+//                  drag it by; "Add palette" and the user's own palettes;
+//                  the hovered swatch floods the rows (onColorHovered); the
+//                  small presets have 16 colours, a full row; Game Boy,
+//                  PICO-8 and VGA 16 are gone
 // Version: 1.0.0
-// Last Modified: 2026-10-19
+// Last Modified: 2026-10-24
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -45,6 +61,7 @@ namespace UltraCanvas {
 class UltraCanvasButton;
 class UltraCanvasColorPaletteGallery;
 class UltraCanvasColorPaletteEntryEditor;
+class UltraCanvasColorPaletteCreator;
 
 // ===== A PALETTE =====
 struct NamedColorPalette {
@@ -111,6 +128,22 @@ public:
     // Sets one entry; `notify` fires onPalettesChanged.
     void SetEntryColor(int palette, int entry, const Color& c, bool notify = true);
 
+    // ===== THE USER'S OWN PALETTES =====
+    // Made with the palette creator ("Add palette"), offered in the palette
+    // manager under "My palettes" and kept by the host as the rows are. No
+    // callback from SetUserPalettes.
+    void SetUserPalettes(const std::vector<NamedColorPalette>& palettes);
+    const std::vector<NamedColorPalette>& GetUserPalettes() const { return userPalettes_; }
+    // Keeps `palette` among the user's own under a name nothing else has
+    // (UniquePaletteName) and adds it as a row; the name it was kept under.
+    // Fires onUserPalettesChanged and onPalettesChanged.
+    std::string AddUserPalette(const NamedColorPalette& palette);
+    // Forgets one of the user's own; a row of it stays. Fires onUserPalettesChanged.
+    void RemoveUserPalette(const std::string& name);
+    // `wanted` (or "Palette" when it is blank), else "wanted 2", "wanted 3"
+    // ... - the first that no preset, row or palette of the user's has.
+    std::string UniquePaletteName(const std::string& wanted) const;
+
     // ===== SELECTION =====
     // Marks the first swatch holding `c` (alpha ignored), in whichever row it
     // is; a colour in none of them clears the mark. No callback.
@@ -120,9 +153,12 @@ public:
     // ===== POPUPS =====
     // What the "+" button and a right click open; a host can open them too.
     // `anchorWindow` is the rectangle (window coordinates) the popup is put
-    // next to: below it where there is room, above it otherwise.
+    // next to: below it where there is room, above it otherwise. Each has a
+    // title bar the user drags it about the window by.
     void OpenPaletteGallery(const Rect2Df& anchorWindow);
     void OpenEntryEditor(int palette, int entry, const Point2Di& windowPos);
+    // The palette creator - what the palette manager's "Add palette" opens.
+    void OpenPaletteCreator(const Rect2Df& anchorWindow);
     void ClosePopups();
 
     // ===== APPEARANCE =====
@@ -135,6 +171,11 @@ public:
     // ===== CALLBACKS =====
     std::function<void(const Color&)> onColorSelected;   // a swatch was clicked
     std::function<void()>             onPalettesChanged; // added, removed, an entry set
+    std::function<void()>             onUserPalettesChanged; // one made or deleted
+    // The pointer came onto a swatch of a row (its colour), and later left
+    // the rows: for a host flooding its picker with the colour meanwhile.
+    std::function<void(const Color&)> onColorHovered;
+    std::function<void()>             onColorHoverEnded;
 
     // ===== READY-MADE PALETTES =====
     // The row a manager starts with: six greys and twelve colours.
@@ -142,12 +183,16 @@ public:
     // What the gallery offers, in its order: basics, moods, design systems,
     // retro machines and the indexed (GIF) palettes up to 256 colours.
     static const std::vector<NamedColorPalette>& PresetPalettes();
+    // The category of the user's own palettes, the gallery's first section.
+    static const char* UserPaletteCategory() { return "My palettes"; }
 
     // ===== PERSISTENCE =====
     // One line for a settings file: "Name|RRGGBB,RRGGBB,...;Name|...". A
     // '|' or ';' in a name is dropped.
     static std::string SerializePalettes(const std::vector<NamedColorPalette>& palettes);
-    // False, and `out` left alone, when the text holds no palette.
+    // False, and `out` left alone, when the text holds no palette. A preset
+    // saved with fewer colours than it has now (the presets grew to fill
+    // their rows) comes back whole, unless an entry of it was changed.
     static bool ParsePalettes(const std::string& text, std::vector<NamedColorPalette>& out);
 
     // ===== OVERRIDES =====
@@ -156,6 +201,7 @@ public:
 private:
     friend class UltraCanvasColorPaletteGallery;
     friend class UltraCanvasColorPaletteEntryEditor;
+    friend class UltraCanvasColorPaletteCreator;
 
     struct Row {
         std::shared_ptr<UltraCanvasContainer>      row;
@@ -172,7 +218,9 @@ private:
                                                        const std::string& tooltip);
     float BarWidth(float width) const;
     void  SelectInRow(int row, int entry);
+    void  HoverInRow(int row, int entry);
     void  NotifyChanged();
+    void  OpenCreatorAt(const Point2Di& windowPos);
 
     std::vector<NamedColorPalette> palettes_;
     std::vector<Row> rows_;
@@ -184,9 +232,15 @@ private:
     float builtWidth_ = -1.0f;
     int selectedRow_ = -1;
     int selectedEntry_ = -1;
+    // The swatch under the pointer: its row (-1: none) and colour, which
+    // floods the rows' background.
+    int hoverRow_ = -1;
+    Color hoverColor_;
+    std::vector<NamedColorPalette> userPalettes_;
 
     std::shared_ptr<UltraCanvasColorPaletteGallery> gallery_;
     std::shared_ptr<UltraCanvasColorPaletteEntryEditor> editor_;
+    std::shared_ptr<UltraCanvasColorPaletteCreator> creator_;
 };
 
 // ===== FACTORY =====

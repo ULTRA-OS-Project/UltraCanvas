@@ -2,6 +2,7 @@
 // The WordPress importer. TinyXML2 reads the export (privately: no XML
 // type reaches the header); the HTML reader's parser and ExtractPlainText
 // read the bodies; the JSON module reads the block editor's attributes.
+// Version: 0.4.2 - the export's site address checked (IsSiteAddress), a warning when it is not one
 // Version: 0.4.1 - attachments land flat in media/ under the library's clean names
 // Version: 0.4.0
 // Last Modified: 2026-10-13
@@ -512,6 +513,10 @@ bool ImportWordPress(const std::string& wxrXml, const ImportOptions& options, Si
     site.tagline = Trim(ChildText(channel, "description"));
     site.url = Trim(ChildText(channel, "link"));
     while (!site.url.empty() && site.url.back() == '/') site.url.pop_back();
+    // The address the pages, the sitemap and the feed are built from: said
+    // here when the export's is not one, rather than found in every page.
+    if (site.url.empty()) report.warnings.push_back("the export names no site address (<channel><link>): set it in Site settings");
+    else if (!IsSiteAddress(site.url)) report.warnings.push_back("the export's site address is not an address (https://host): " + site.url);
     site.language = LanguageCode(Trim(ChildText(channel, "language")));
     site.languages = {site.language};
     if (const tinyxml2::XMLElement* author = channel->FirstChildElement("wp:author")) {

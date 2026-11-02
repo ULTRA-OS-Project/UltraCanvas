@@ -48,12 +48,14 @@ auto filer = CreateFilerWidget("my-filer", "/home/user/Documents", 0, 0, 900, 60
   - [Native application icons](#native-application-icons)
   - [Thumbnail memory](#thumbnail-memory)
   - [Thumbnails between runs](#thumbnails-between-runs)
+  - [A file's picture outside the Filer](#a-files-picture-outside-the-filer)
 - [Shortcuts](#shortcuts)
   - [Windows shortcuts (.lnk)](#windows-shortcuts-lnk)
   - [Desktop entries (.desktop)](#desktop-entries-desktop)
   - [macOS shortcuts and application bundles](#macos-shortcuts-and-application-bundles)
   - [What the host sees](#what-the-host-sees)
 - [Selection info bar](#selection-info-bar)
+  - [Showing the line in the host's status bar](#showing-the-line-in-the-hosts-status-bar)
 - [Files in use](#files-in-use)
 - [Remote folders](#remote-folders)
   - [Showing that a folder is on its way](#showing-that-a-folder-is-on-its-way)
@@ -87,6 +89,7 @@ auto filer = CreateFilerWidget("my-filer", "/home/user/Documents", 0, 0, 900, 60
   - [Selection after a delete](#selection-after-a-delete)
 - [Watching the shown folder](#watching-the-shown-folder)
 - [Compressing and extracting](#compressing-and-extracting)
+  - [How a TAR is packed](#how-a-tar-is-packed)
 - [Clipboard interop with other programs](#clipboard-interop-with-other-programs)
   - [The operation dialog](#the-operation-dialog)
   - [Name conflicts](#name-conflicts)
@@ -183,14 +186,13 @@ The three column-based views carry draggable splitters between their columns.
 They are `UltraCanvasSplitPane` dividers in look and feel — the style is a
 `SplitPaneStyle` (`FilerStyle::columnSplitter`), the hovered and dragged
 divider highlight the same way, the cursor turns into the `SizeWE` resize
-cursor, and a drag re-splits the two neighbouring columns instead of moving the
-whole table. They are painted by the widget itself (like the rows, the hover
+cursor. They are painted by the widget itself (like the rows, the hover
 icon menu and the scrollbar) rather than being child elements, so a folder with
 thousands of entries stays as cheap as before.
 
 | View | Splitters | Dragging one |
 |---|---|---|
-| `Details` | On the right edge of every column, inside the header strip (the rows stay fully clickable). A guide line follows the drag down the entries. | Moves width between that column and the one after it, so the table keeps spanning the widget. The Name column is the flexible one: it absorbs whatever the others leave, so dragging the first splitter widens or narrows the name. |
+| `Details` | On the right edge of every column, inside the header strip (the rows stay fully clickable). A guide line follows the drag down the entries. | By default (`FilerColumnResizeMode::PushFollowing`) resizes that column alone: the columns after it move along and keep their widths, and a table wider than the view gets a horizontal scrollbar (Shift+wheel or a sideways wheel scrolls it; the header scrolls with the rows). The Name column starts out flexible — it fills what the others leave — and is pinned at its width by the first drag; `ResetDetailsColumnWidths()` makes it flexible again. `SplitWithNeighbour` moves width between the column and the one after it instead, so the table keeps spanning the widget; the last column then has no splitter. |
 | `List` | In every gap between the flowing columns, full height. | Re-widths **all** columns (the list columns are uniform) and reflows the entries. |
 | `BarSize` | Between the name column and the bar, and between the bar and the size label, full height. | Resizes the name / label column; the bar takes what is left between them. |
 
@@ -209,6 +211,9 @@ filer->SetBarSizeValueColumnWidth(0);    // 0 = auto (fits the widest size)
 
 filer->onColumnWidthsChanged = [] { /* persist the layout */ };
 filer->SetColumnResizeEnabled(false);    // fixed columns
+
+// Details: split-pane resizing instead of pushing the following columns.
+filer->SetDetailsColumnResizeMode(FilerColumnResizeMode::SplitWithNeighbour);
 ```
 
 `FilerDetailsColumn` names the Details columns left to right: `Name`, `Path`,
@@ -256,7 +261,10 @@ being cut off after one:
   the name off the caption, the name is re-broken with mid-word breaks allowed
   (and the case rule off) and the version showing more of it wins.
 - At most `FilerStyle::captionMaxLines` lines are used (**2** by default; `1`
-  restores the old single-line caption).
+  restores the old single-line caption; `0` lifts the limit, so the full name
+  is always shown over as many lines as it needs). `SetCaptionMaxLines(n)`
+  changes just that value and relays the grid out — UltraFiler's
+  *Settings > Display > File names* drives it.
 - A name that fits its lines completely is broken **balanced**, not greedily:
   the break points are chosen so the lines come out near equal instead of the
   first line taking everything that fits and leaving a stub behind:
@@ -369,6 +377,14 @@ file: a folder of four thousand `.txt` files performs one lookup and holds one
 pixmap. Until an answer lands — and on a system that has no icon for the type,
 or no desktop to ask at all — the simple icon is drawn, so the display never
 waits on a lookup and never shows an empty box.
+
+On Windows a type no program is registered for counts as one the system has
+no icon for. Explorer draws such a file - a `.7z`, `.tar`, `.tar.xz` or
+`.tar.zst` on a machine without 7-Zip - as a blank page that says nothing
+about it, so the display draws its own icon for the type instead: the archive
+sheet with `7Z`, `TAR`, `XZ` or `ZST` on it. A type that is registered keeps
+Explorer's icon, and installing a program for it switches it over the next
+time the display resolves its icons (`RefreshHostIcons()`, or a restart).
 
 `AreHostFileIconsAvailable()` reports whether there is a desktop to ask
 (false on WebAssembly and Android): a settings page should say so rather than
@@ -534,6 +550,9 @@ Notes:
   drag retargets the destination exactly like compressing. Both go through
   `UCVFSBridge` and are available when the VirtualFS module is built
   (`ULTRACANVAS_HAS_VIRTUALFS`); without it they report an error through `onError`.
+  Each format's entry has a tooltip with the parameters it packs with, as
+  the equivalent command line - see
+  [How a TAR is packed](#how-a-tar-is-packed).
   `CompressSelection(extension)` / `ExtractSelection()` perform the immediate
   operations for programmatic use — `ExtractSelection()` asks (Keep both /
   Extract into the existing folder / Skip) when the destination folder name
@@ -955,6 +974,14 @@ showed the old picture. The decode itself reads images with
 a file that changed since it was cached again; plain `UCImage::Get()` never
 looks at the disk.
 
+**Not only the Filer's thumbnails live there.** `UCImage::GetPixmap` keeps a
+raster file's fitted pixmap in the same cache when the box is at least
+640 × 480 raw pixels - a desktop's wallpaper, a viewer's photo - stored as
+the same QOI blob after the first decode and inflated on the next run
+instead of decoding and resizing the file; a picture without an alpha
+channel is stored and inflated opaque (RGB24). The same stamp and the same
+sweep apply.
+
 **The renderer that drew it counts too.** Every entry also records the
 renderer generation of the build that wrote it
 (`ThumbnailDiskCache::kRendererGeneration`), and an entry of another
@@ -997,6 +1024,25 @@ shown, or it looks like a fault.
 A disk cache is an optimisation and never a requirement: a full disk, a
 read-only cache directory or a platform with nowhere to write costs a
 re-decode, never a missing thumbnail.
+
+### A file's picture outside the Filer
+
+`RenderFileThumbnail(path, width, height, scale)` (a free function in
+`UltraCanvasFilerWidget.h`) makes the picture a tile would show, for a caller
+that has no Filer: the image itself, a PDF's first page, a book's cover, a 3D
+model, a font specimen, a video's poster frame, an embedded preview - and for
+a text document (Word, LibreOffice, Markdown, a spreadsheet, plain text) a
+small page with its first lines, which the tiles draw as text themselves. It
+is the switch the thumbnail workers run, so the two never disagree about
+what a format looks like. It blocks - call it from a worker thread - and
+answers nullptr where this build can make no picture (an archive, a
+program, audio); the caller then shows the type's icon. UltraDesktop's
+Sticker board draws its cards' thumbnails with it.
+
+<!-- doc-check: std::string path; -->
+```cpp
+std::shared_ptr<UCPixmap> picture = RenderFileThumbnail(path, 116, 58, 2.0f);
+```
 
 ## Shortcuts
 
@@ -1113,6 +1159,44 @@ also toggled by Display > Info-Bar) describes the current selection:
 - **Multiple items** — item counts and the summed size of the selection
   (folders counted recursively).
 - **No selection** — a summary of the displayed folder (entry counts + size).
+
+Sizes are written with one decimal below a gigabyte and two from there on
+(`103.6 KB`, `2.41 GB`). A host that describes the same entries elsewhere - a
+status bar, a tooltip of its own - formats them with the static
+`UltraCanvasFilerWidget::FormatSizeText(bytes)`, so the two never round one
+selection two ways:
+
+<!-- doc-check: std::shared_ptr<UltraCanvas::UltraCanvasLabel> statusLabel; uint64_t bytes = 0; -->
+```cpp
+statusLabel->SetText("1 item selected (" +
+                     UltraCanvasFilerWidget::FormatSizeText(bytes) + ")");
+```
+
+### Showing the line in the host's status bar
+
+A host with a status bar of its own can show the info bar's line there and
+turn the bar off, so the window does not say the same thing twice. The display
+keeps working the line out: `GetSelectionInfo(primary, secondary)` returns it
+whether or not the bar is up - `primary` is the bold lead (the selected
+entry's name, or *"3 items selected"*; empty when nothing is selected),
+`secondary` the details or the folder summary. Folder sizes and media details
+arrive from the background worker after the selection, so the line grows on
+its own; `onSelectionInfoChanged` says when (posted to the UI thread after the
+paint that noticed it, so setting a label from it is safe).
+`SetInfoBarMenuItemVisible(false)` takes the Display > Info-Bar switch out of
+the context menu, where turning the bar back on would only repeat the status
+bar. UltraFiler does this for every file display of the window.
+
+<!-- doc-check: std::shared_ptr<UltraCanvas::UltraCanvasFilerWidget> filer; std::shared_ptr<UltraCanvas::UltraCanvasLabel> statusLabel; -->
+```cpp
+filer->SetSelectionInfoVisible(false);
+filer->SetInfoBarMenuItemVisible(false);
+filer->onSelectionInfoChanged = [filer, statusLabel] {
+    std::string primary, secondary;
+    filer->GetSelectionInfo(primary, secondary);
+    statusLabel->SetText(primary.empty() ? secondary : primary + "  ·  " + secondary);
+};
+```
 
 Recursive folder statistics are computed **asynchronously** on a background
 worker: selecting a folder shows `…` (or a `≥` lower bound for multi
@@ -1459,12 +1543,24 @@ silently. (`None` and `Always` are X11 macros, hence the spelled-out
 enumerators — the same reason `FilerExtensionBadge::NoneBadge` is spelled that
 way.)
 
-While something IS held back, a strip across the foot of the display reads
-*"3 items are hidden here"* and carries a **Show hidden files** button that
-does exactly what the `Display > Hidden files` context-menu entry does — for
-this display, leaving `SetShowHiddenFiles` elsewhere alone. The strip
-disappears as soon as nothing is held back (including the moment its own
-button is pressed).
+While something IS held back, one centred line at the foot of the file area
+reads *"3 items are hidden here"* next to a blue **Show hidden files** button.
+It sits on the display's own background with no rule or fill of its own, so it
+reads as part of the folder, not as another status bar. The button does
+exactly what the `Display > Hidden files` context-menu entry does — for this
+display, leaving `SetShowHiddenFiles` elsewhere alone. The line disappears as
+soon as nothing is held back (including the moment its own button is
+pressed).
+
+A host whose settings decide what is held back sets `onHiddenNoticeSettings`;
+a gear button then sits right of **Show hidden files** and a click on it runs
+the callback. Unset, there is no gear. It may be set at any time - the gear
+follows on the next paint:
+
+<!-- doc-check: std::shared_ptr<UltraCanvas::UltraCanvasFilerWidget> filer; void OpenHomeFolderSettings(); -->
+```cpp
+filer->onHiddenNoticeSettings = [] { OpenHomeFolderSettings(); };
+```
 
 `GetHiddenItemCount()` counts what the current listing leaves out: the hidden
 entries, the names the ignore patterns drop, and the subfolders a curated home
@@ -1476,9 +1572,8 @@ listing is built — after it, the dropped entries are gone.
 The strip takes its height out of the file area, exactly as the selection info
 bar does (it sits directly above it), so no entry is ever drawn under it, and
 it is left out of the whole-area views (`GourceTree`, `View3D`) and of a pane
-too short to hold both files and strip. Its colours come from the same
-`FilerStyle` fields as the info bar (`infoBarBackground`, `gridLineColor`,
-`secondaryTextColor`).
+too short to hold both files and strip. The count is drawn in
+`secondaryTextColor` on `backgroundColor`.
 
 Hosts pick the mode per folder. The UltraFiler uses `WhenAnyHidden` in the home
 folder — the one folder where every filter bites at once: the profile's hidden
@@ -1874,7 +1969,17 @@ Display > Icon-Menu), a small icon strip appears at the top-right of the hovered
 item with Copy, Cut, Rename and Delete buttons. The framework's file dialog
 turns it off in its listing ([UltraCanvasFileDialog.md](UltraCanvasFileDialog.md),
 `FileDialogConfig::hoverIconMenu`). The glyphs are drawn as vectors,
-so no icon assets are required.
+so no icon assets are required; Rename is a serif *T* beside a text caret, as
+it edits the name rather than the file. Each button's tooltip says what it does
+and gives its shortcut - *Copy to clipboard (Ctrl+C)*, *Cut to clipboard
+(Ctrl+X)*, *Rename (F2)*, *Delete (Del)*. Pressing Copy or Cut answers on the button: it
+flashes green (`FilerStyle::iconMenuDoneColor`) with a checkmark that pops in,
+then fades back to its glyph within 0.7 s - a copy changes nothing else on
+screen. On a drive Cut is greyed out and does nothing,
+as it is in the context menu - its tooltip says to copy, then delete. On a drive
+whose host did not wire `remoteRename` / `remoteDelete`, Rename / Delete are
+greyed out the same way, in the hover strip and in the context menu (F2 and Del
+still report why).
 
 A button acts on the hovered entry — or on the **whole selection** when the
 hovered entry is part of it — and, like a drag, **never changes the selection**:
@@ -2241,11 +2346,11 @@ filer->SetFolderWatchIntervalMs(3000);    // default 1500, minimum 250
 ```
 
 Where the operating system can report changes itself the widget uses that —
-inotify on Linux, `ReadDirectoryChangesW` on Windows, through
+inotify on Linux, `ReadDirectoryChangesW` on Windows, FSEvents on macOS, through
 [`UltraCanvasFolderWatcher`](UltraCanvasFolderWatcher.md). A change is then seen
 the moment it happens, and an idle folder costs nothing at all.
 
-Where no backend exists (macOS, Android, WebAssembly) it falls back to polling:
+Where no backend exists (Android, WebAssembly) it falls back to polling:
 a background worker re-fingerprints the folder every interval — its own
 modification time folded together with each entry's name, size and modification
 time — and raises a flag when the number moves. The scan never runs on the UI
@@ -2255,6 +2360,12 @@ Either way only a real directory is watched: an archive interior or a file list
 has no folder whose changes would mean anything. The interval governs detection
 only while polling; with a native watcher it bounds just how quickly the UI
 applies what the watcher already reported.
+
+A rescan of the folder already being watched keeps its watch running, and a
+change reported while the rescan was running is not discarded - it triggers one
+more rescan. A save is usually several steps (a browser writes a placeholder,
+then a `.part` file, then renames it), and the first step's rescan must not
+swallow the rest.
 
 A native watch can also die after it started — the volume the folder is on is
 unmounted, the share drops, the handle goes bad. The widget is told (the
@@ -2306,6 +2417,52 @@ at all still reports `Extraction failed for <archive>` there, now followed by
 the reason. The text comes from `UCVFSBridge::ExtractArchive`'s `outError`
 parameter, not the bridge's shared `GetLastError()`, because extractions run on
 worker threads.
+
+### How a TAR is packed
+
+The TAR entries of Compress - `.tar`, `.tar.gz`, `.tar.bz2`, `.tar.xz`,
+`.tar.zst` - pack with the host's `FilerTarSettings` (UltraFiler: Settings >
+Archives > TAR); ZIP and 7-Zip pack at libarchive's defaults. The defaults
+are the compressors' own levels on every core, each file's own modification
+time and permission bits without its owner, and symbolic links stored as
+links:
+
+<!-- doc-check: UltraCanvasFilerWidget* filer; -->
+```cpp
+FilerTarSettings tar;
+tar.xzLevel = 9;                     // xz -9 (0-9)
+tar.zstdLevel = 19;                  // zstd -19 (1-19)
+tar.threads = 0;                     // xz / zstd -T0: one thread per core
+tar.zstdLongMode = true;             // zstd --long=27
+tar.headerFormat = FilerTarHeaderFormat::Gnu;
+tar.keepOwner = true;                // owner and group, with their names
+tar.storeSymlinks = false;           // tar -h: what a link points to
+tar.excludePatterns = {".git", "node_modules", "*.tmp", "build/*.o"};
+filer->SetTarSettings(tar);
+
+// The tooltip of the Compress menu's "TAR + xz (.tar.xz)":
+std::string text = UltraCanvasFilerWidget::DescribeCompressParameters("tar.xz", tar);
+// tar --format=gnu -h --exclude='.git' ... -cf - <files> | xz -9 -T0
+// Each file: own modification time, own permissions, owner and group;
+//            links as the files they point to
+```
+
+| Field | Default | Meaning |
+|---|---|---|
+| `gzipLevel` / `bzip2Level` / `xzLevel` / `zstdLevel` | 6 / 9 / 6 / 3 | The compressor's own level: gzip and bzip2 1-9, xz 0-9, Zstandard 1-19 |
+| `threads` | 0 | Worker threads of xz and Zstandard; 0 is one per core (`-T0`) |
+| `zstdLongMode` | off | Zstandard long-distance matching over 128 MB (`--long=27`); any zstd from 1.3.2 unpacks it without options |
+| `headerFormat` | `Pax` | `Pax` (POSIX.1-2001, extensions only where needed), `Gnu`, or `Ustar` (names to 255 bytes, files to 8 GB) |
+| `keepTimestamps` | on | Off: every entry carries the time it was packed |
+| `keepPermissions` | on | Off: files 0644, folders 0755 |
+| `keepOwner` | off | On: the owner and group, by number and name; off: 0 without names |
+| `storeSymlinks` | on | Off: the file or folder a link points to is stored instead (a link pointing nowhere stays a link) |
+| `excludePatterns` | none | `*` / `?` patterns, case ignored, matched against each name inside a packed folder - or, holding a `/`, against its path there. A matching folder goes with all it holds; a selected item is always packed |
+
+xz's extreme mode (`-e`) is not available: libarchive does not offer it. The
+settings are handed to `UCVFSBridge::CreateArchive` as
+`UCVFSCompressionOptions::archive`, which is VirtualFS's
+`VirtualFSOpenOptions::archiveWrite`.
 
 ## Clipboard interop with other programs
 

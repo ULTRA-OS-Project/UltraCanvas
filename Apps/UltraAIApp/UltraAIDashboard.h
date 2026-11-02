@@ -7,6 +7,7 @@
 // Author: UltraAI Module
 #pragma once
 
+#include "UltraAISettingsWindow.h"
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasApplication.h"
 
@@ -25,11 +26,16 @@ public:
     // Cleanly request the application to exit.
     void OnWindowClosing();
 
+    // Open the settings window (default providers, local models, cloud
+    // fallback, endpoints), on `page` when one is named - the Settings
+    // tile, and the --settings command line.
+    void OpenSettingsDialog(UltraAISettingsWindow::Page page = UltraAISettingsWindow::Page::Default);
+    // Open the "Get a local model" dialog for Chat, as the chat dialog does
+    // when its model is not installed (the --get-local-model command line).
+    void OpenLocalModelDialog();
+
 private:
     void CreateButtons();
-
-    // Open the settings window (default providers, cloud fallback, endpoints).
-    void OpenSettingsDialog();
 
     // Open a modal dialog for the chosen capability.
     void OpenChatDialog();

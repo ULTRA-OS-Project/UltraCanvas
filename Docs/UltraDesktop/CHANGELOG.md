@@ -1,3 +1,226 @@
+#### 2026-11-02 *0.4.9*
+- **The wallpaper comes up from the disk cache.** The desktop's wallpaper
+  is decoded and fitted to the monitor once; the fitted picture is kept in
+  the framework's thumbnail disk cache as a QOI blob (framework changelog:
+  `opaque-pixmaps-formats`), and the next start inflates it in 10 ms on a
+  1280 × 800 monitor (75 ms at 3840 × 2160) instead of decoding and
+  resizing the picture. A picture without an alpha channel is held
+  without one (RGB24).
+
+#### 2026-11-01 *0.4.8*
+- **The screenshot button opens UltraSnip.** A click snips an area: UltraSnip
+  freezes the screen, the area is dragged out, and the picture goes to the
+  clipboard and to `Pictures/Screenshots`. The button's right-click menu
+  offers *Snip a window*, *Snip the whole screen*, *Record an area* /
+  *a window* / *the whole screen* (a video to `Videos/Screen Recordings`),
+  *Screenshot now, to Pictures* - the plain whole-screen capture of before,
+  green dot and all - and *Open UltraSnip*. `Super+Shift+S` from any window
+  snips an area, as on Windows. Where UltraSnip is not installed beside the
+  desktop, the click takes the plain screenshot as it did.
+
+#### 2026-11-01 *0.4.7*
+- **The desktop's default wallpaper is ULTRA OS's own picture,**
+  `media/images/desktop/ULTRA OS A.avif`, where it was the framework's
+  landscape. The landscape is still shown where a package lacks the picture
+  or a build cannot read AVIF. A wallpaper chosen in the settings is kept.
+
+#### 2026-11-01 *0.4.6*
+- **The Apps window sorts the applications into categories, in two
+  views, and opens at once.**
+  - *Recent* first - the last applications started from the window or a
+    taskbar pin, eight by default - then Office, Internet, Graphics, Video,
+    Audio, CAD, Games, Tools and System, each from the application's
+    freedesktop `Categories=`. Windows' Start-menu shortcuts, which declare
+    none, are placed by their name, program and Start-menu folder, in
+    English and German.
+  - A category with more than eight applications (configurable) is split
+    into its kinds: Web browsers, Email, Painting, Text editors …; Games
+    into 3D, Retro, Board games, Adventure, Strategy and Simulation.
+  - Two views, switched by the icons at the window's top left and
+    remembered: tiles under category headings, as on Windows' Start, with
+    long names wrapped onto up to four lines; or the categories as a tree
+    beside a list of the chosen one's applications.
+  - The window opens first and fills when the list has been read, on a
+    thread of its own; the desktop reads the list ahead of time five seconds
+    after it starts, so the window usually shows it at once.
+  - About 2,400 well-known Windows, macOS and Linux applications are known
+    by name (`UltraDesktopAppCatalogue`), a German Windows 11 Start menu's
+    175 among them; on macOS a bundle's `LSApplicationCategoryType` counts.
+  - A Windows Start-menu folder with five or more applications (MAGIX,
+    Lenovo, LAV Filters) is a category of its own; Windows' own folders are
+    not.
+  - An application dragged onto another category - a tile onto a heading
+    or the tiles under it, a list row onto a category in the tree - or
+    moved with *Move to* on its menu stays there; *Back to …* returns it.
+  - A click on a row of the list starts the application on the release, so
+    a press can begin a drag.
+  - The desktop's settings keep the history (`recentApps`), the view
+    (`appsView`), the threshold (`appsSplitAbove`), Recent's count
+    (`recentAppsShown`) and the moved applications (`appMoves`).
+
+#### 2026-11-01 *0.4.5*
+- **The bars' waves mirror each other and sit closer to the icons.** The
+  taskbar's wave between the system group and the running applications is
+  mirrored, so the dark band of running applications narrows the same way
+  at both ends. Every wave now starts 4 px from the icon next to it, where
+  it was 14 px away:
+  - on the taskbar, from the system group's last icon and from the pinned
+    group's first;
+  - on the right bar, from the organiser's last icon (the screenshot
+    button).
+- **The ULTRA OS logo on the settings button.** The taskbar's first button
+  showed a white "U" in a circle; it now shows the ULTRA OS logo in its own
+  colours, and, the logo being twice as wide as high, its button is wider
+  than the other items. The logo comes in two versions in
+  `media/icons/desktop/`: `ultraos-logo-dark.png` for a dark ground (the one
+  the bar uses) and `ultraos-logo-light.png` for a light ground.
+
+#### 2026-11-01 *0.4.4*
+- **Running applications show their own icons, in their own colours.** The
+  taskbar's running-windows buttons drew every application's icon through the
+  bar's white icon mask, so Firefox, Teams or a folder window showed as a flat
+  white silhouette. They now draw the icon as the application ships it - as
+  the pinned applications and the tray icons already did; only the bar's own
+  monochrome glyphs and the letter shown for a window without an icon are
+  still tinted.
+- **A Wi-Fi panel.** A click on the Wi-Fi icon opens a panel beside the bar:
+  Wi-Fi on a switch, the network joined, and the networks in reach with
+  their signal and security. *Connect* joins a saved or open network at
+  once and asks for the password of a new one; *Disconnect* leaves the
+  network, *Forget* deletes its saved password, *Scan* looks again, and
+  *Traffic* opens UltraNetMonitor. On Windows and macOS a button opens the
+  system's own Wi-Fi settings.
+- **A Bluetooth panel.** A click on the Bluetooth icon opens a panel with
+  Bluetooth on a switch, *My devices* - each with *Connect* or *Disconnect*,
+  *Remove*, its kind and, where the device reports it, its battery - and
+  *Add device*, which looks for devices in pairing mode for a minute and
+  lists them with *Pair*. A device that needs a code pairs from the panel:
+  it shows the code to type on a keyboard, asks whether a phone shows the
+  same number, or takes a PIN (Linux and macOS; Windows shows its own
+  prompt). Windows switches Bluetooth only in its own settings, which a
+  button there opens.
+- **USB, keyboard, webcam, microphone and battery panels.** Their icons now
+  open a small panel saying what is attached or in use - the USB devices,
+  the keyboard layout and the keyboards, the cameras (from USB where this
+  build lists no cameras, so a webcam shows on Windows too), the
+  microphones with the default marked, the battery's charge - with a
+  button on to Device Explorer or the Task Manager, instead of opening
+  those programs straight away.
+- **The right bar fits a short screen.** Below 960 pixels of height the
+  info panel's icons are smaller, and what still does not fit folds into a
+  chevron menu at the bar's foot - the least-used first (keyboard, VPN, USB,
+  upload, Task Manager, ...), so the webcam's and microphone's in-use dots,
+  the loudspeaker and the battery stay on the bar. The menu lists each
+  folded icon with its state ("USB: 2 devices") and opens it as the icon
+  would. It used to scroll, hiding the last icons until the bar was
+  scrolled.
+- **Safely remove a USB drive.** The USB panel lists the drives plugged in
+  - stick, external disk or memory card, with its size and where it is
+  mounted - each with *Safely remove*: the drive is unmounted once
+  everything is written to it and powered off, and the panel says when it
+  can be pulled out, or that a program still has a file open on it. The
+  panel follows what is plugged in while it is open: a stick shows the
+  moment it mounts, any other USB device within three seconds.
+- **A phone that pairs with the computer is answered on Linux.** UltraDesktop
+  is the system's Bluetooth pairing agent from the start: when a phone (or
+  any device) starts a pairing, the Bluetooth panel opens by itself and asks
+  whether the number matches - and a device that is not trusted and asks to
+  connect is asked about too.
+- **The Task Manager's window list** has a column header and shows each
+  window's application icon first, its state as an icon and a word (open,
+  maximized or minimized, in blue for the window in front), the display
+  (monitor) it is on as a
+  number in a bordered box - the column said "desktop 1" for every window,
+  which was the virtual desktop, not the monitor - and the virtual desktop
+  only where there is more than one. *Activate* is now *Show*, and brings a
+  window that is off every display back, centred on one. *Close* brings the
+  window to the front first, so a program that asks to save - ArtCreator
+  with an unsaved drawing - asks where it can be seen; before, the question
+  stayed behind and the close seemed to do nothing. A new *Kill task* ends a
+  program at once, after asking.
+- **The Sticker board fills the desktop and shows on request.** It is a
+  window of its own covering the whole space between the bars, shown only
+  when the pinboard button is clicked - and then just below the application
+  that was in front, which stays visible above it. A close button in its
+  bar hides it again. Each file's card shows a small thumbnail (the picture
+  itself, or the icon for its type), and the cards' text is smaller, so a
+  category holds more at a glance. It no longer has a panel to drag or
+  resize, and it no longer opens by itself when the desktop starts.
+- **Sticker board thumbnails as UltraFiler shows them**: a PDF's first page,
+  a book's cover and a small page of a text document's first lines (Word,
+  LibreOffice, Markdown, spreadsheets) instead of a type icon.
+- **The Task Manager** no longer lists the desktop's own windows (itself, its
+  dialogs, the Sticker board), and on Windows numbers the displays the way
+  Windows' display settings do.
+- **Programs that start with the desktop.** ChatCube and UltraMail can be
+  ticked under *Start with the desktop* - on the settings button's
+  right-click menu or in UOS-Settings > Desktop. Three seconds after the
+  desktop starts, each ticked one that is not running yet starts minimized
+  and works in the background: messages arrive, mail is counted on the mail
+  icon. Kept in the settings file as `startWithDesktop`.
+
+#### 2026-10-30 *0.4.3*
+- **A clock on the right bar.** The framework's gauge element in its analog
+  clock mode sits at the top of the right bar, the date under it and the
+  whole date and time in its tooltip. A click opens the clock panel: the time
+  large as an analog face and in figures, today in words, and the month on
+  the calendar view with today marked. Escape or a click elsewhere closes it.
+- **Pinned applications.** Right-click a running window's taskbar button, or
+  a tile in the Applications window, and choose *Pin to taskbar*: the
+  application joins the pinned group after the RAM disc and UltraFiler, with
+  its own icon, one click to start, and *Unpin from taskbar* on its right-click
+  menu. The pins are kept in the settings file (`pinnedApps`) by the
+  program's path - the shortcut or the Store application's id on Windows -
+  so they survive the application being renamed, and a pin whose application
+  is gone shows again when it is back.
+- **The loudspeaker's volume.** A click on the speaker icon opens the volume
+  panel: the output's name, its volume on a slider and its mute on a switch,
+  through the sound server (PulseAudio or PipeWire on Linux, Core Audio on
+  Windows); where none answers the panel says so. The icon's tooltip names
+  the volume ("Loudspeaker: 63%, playing"), a red dot marks it muted, and a
+  change made elsewhere - the keyboard's volume keys - shows within ten
+  seconds. The Task Manager is still one click away on its own icon.
+- **Lock screen, and sign out, restart and shut down on Linux.** The settings
+  button's right-click menu offers *Lock screen* (also Super+L) and, on
+  Linux through logind as on Windows as the shell, *Sign out*, *Restart* and
+  *Shut down*, each asked first. (Framework changelog:
+  `desktopshell-session-audio-super-tap`.)
+- **A tap of the Super key opens Applications on Linux too**, where the
+  session has no other desktop to own the key; beside Explorer on Windows it
+  stays the Start menu's.
+- **The desktop sits on the primary monitor on Linux too.** One window
+  across the whole X11 screen put the bars on the far edges of two monitors
+  and, with monitors of different sizes, into the dead area where the
+  shorter one ended, with the info panel out of sight. The desktop window
+  now covers the primary monitor (as it did as the Windows shell) and every
+  other monitor gets a wallpaper window; the clipboard, clock and volume
+  panels and the notification toasts stay on the primary, and a primary
+  that moves while the desktop runs is followed within seconds (the desktop
+  window is made anew there and the old one closed). The bars are
+  reserved with the window manager only along the edges of the whole screen
+  the primary lies on (framework changelog:
+  `desktopshell-session-audio-super-tap`).
+- **Tray icons' menus on Linux.** With the framework's new StatusNotifierItem
+  tray host (framework changelog: `desktopshell-linux-tray-host`), the
+  programs' tray icons appear on the info panel on Linux as they do instead
+  of Explorer on Windows, and a right click draws the icon's own menu, with
+  its submenus and check marks, as a desktop menu.
+
+#### 2026-10-22 *0.4.2*
+- **The Microsoft Store copy says why it cannot become the Windows desktop.**
+  Both of UltraDesktop's switches are values under `HKEY_CURRENT_USER`. A
+  program running from its MSIX package writes into the package's own
+  registry, which sign-in never reads, so the switch would have reported
+  success and changed nothing. Run from a package, the settings menu now
+  offers *Use as the Windows desktop...*, which explains this and points to
+  the UltraCanvas installer. It also keeps *Close UltraDesktop*, since a
+  packaged copy is always a trial run with no title bar to close.
+  `--use-as-desktop` fails with the same explanation. The framework change
+  behind it, `UltraCanvasDesktopShell::GetSystemDesktopSwitchUnavailableReason`,
+  is in the framework changelog. The
+  MSIX package now gives UltraDesktop a Start menu entry, as the installer
+  does.
+
 #### 2026-10-15 *0.4.1*
 - **No console window flashes up when UltraDesktop starts on Windows.**
   `UltraDesktop.exe` is a GUI program now, so starting it beside Explorer at

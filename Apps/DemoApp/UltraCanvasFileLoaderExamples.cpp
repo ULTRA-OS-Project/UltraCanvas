@@ -16,11 +16,16 @@
 //                 and dropped onto the display area; the family dropdown switches
 //                 automatically when the dropped file belongs to another family.
 //                 The Save dialog defaults to the loaded file's name.
+// Version: 1.4.0 - the shared page look (UltraCanvasDemoPageKit): title and
+//                  description above the tabs, which fill the rest of the area
+//                  in a card; the playground's title, toolbar and status line
+//                  sized to their text, the toolbar wraps
 // Version: 1.3.0
-// Last Modified: 2026-07-12
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasTabbedContainer.h"
 #include "UltraCanvasLabel.h"
@@ -135,11 +140,9 @@ namespace {
     }
 
     std::shared_ptr<UltraCanvasLabel> CenteredHint(const std::string& id, const std::string& text) {
-        auto label = std::make_shared<UltraCanvasLabel>(id, 0, 0, 0, 0);
-        label->SetText(text);
+        auto label = DemoKit::CreateText(id, text);
         label->SetFontSize(13);
         label->SetTextColor(Color(120, 120, 120, 255));
-        label->SetWrap(TextWrap::WrapWord);
         label->SetAlignment(TextAlignment::Center, VerticalAlignment::Middle);
         label->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                          .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
@@ -299,44 +302,30 @@ namespace {
         root->SetPadding(10, 12, 10, 12);
         root->SetBackgroundColor(Colors::White);
 
-        auto title = std::make_shared<UltraCanvasLabel>("FileLoaderDemoTitle", 0, 0, 0, 26);
-        title->SetText("FileLoader playground");
-        title->SetFontSize(16);
-        title->SetFontWeight(FontWeight::Bold);
-        title->SetTextColor(Color(50, 50, 150, 255));
-        title->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        root->AddChild(title);
+        DemoKit::AddHeading(root, "FileLoaderDemoTitle", "FileLoader playground");
 
         // ----- Toolbar row: family dropdown + Open + Save -----
-        auto toolbar = std::make_shared<UltraCanvasContainer>("FileLoaderToolbar", 0, 0, 0, 36);
-        toolbar->layout.SetFlexRow().SetFlexGap(10)
-                       .SetFlexAlignItems(CSSLayout::AlignItems::Center);
-        toolbar->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        // Wraps onto a second line when the tab is narrower than the controls.
+        auto toolbar = DemoKit::AddRow(root, "FileLoaderToolbar", 10);
+        toolbar->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
 
         auto dropdown = std::make_shared<UltraCanvasDropdown>("FileLoaderGroup", 0, 0, 220, 30);
         for (const auto& g : groups) dropdown->AddItem(g.name);
         dropdown->SetSelectedIndex(0);
-        dropdown->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        toolbar->AddChild(dropdown);
+        DemoKit::AddFixed(toolbar, dropdown);
 
         auto openBtn = std::make_shared<UltraCanvasButton>("FileLoaderOpen", 0, 0, 120, 30, "Open file");
-        openBtn->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        toolbar->AddChild(openBtn);
+        DemoKit::Add(toolbar, openBtn);
 
         auto saveBtn = std::make_shared<UltraCanvasButton>("FileLoaderSave", 0, 0, 90, 30, "Save");
-        saveBtn->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        toolbar->AddChild(saveBtn);
-
-        root->AddChild(toolbar);
+        DemoKit::Add(toolbar, saveBtn);
 
         // Advertises the currently available file types for the chosen family and
-        // reports Open/Save results.
-        auto status = std::make_shared<UltraCanvasLabel>("FileLoaderStatus", 0, 0, 0, 34);
+        // reports Open/Save results. As tall as its wrapped lines: the
+        // extension lists are long.
+        auto status = DemoKit::AddText(root, "FileLoaderStatus", "");
         status->SetFontSize(11);
         status->SetTextColor(Color(90, 90, 90, 255));
-        status->SetWrap(TextWrap::WrapWord);
-        status->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        root->AddChild(status);
 
         // ----- Display area (swapped per family / loaded file) -----
         auto displayArea = std::make_shared<UltraCanvasContainer>("FileLoaderDisplay", 0, 0, 0, 0);
@@ -516,25 +505,31 @@ namespace {
 
 // ===== FILELOADER MODULE DEMO =====
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateFileLoaderExamples() {
-        auto root = std::make_shared<UltraCanvasContainer>("FileLoaderExamples", 0, 0, 1000, 720);
-        root->size.width  = CSSLayout::Dimension::Pct(100);
-        root->size.height = CSSLayout::Dimension::Pct(100);
-        root->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+        auto root = DemoKit::CreatePage("FileLoaderExamples", "File Loader",
+                "Every file a program loads or saves goes through UltraCanvasFileLoader: the "
+                "supported formats per family, the module's documentation, and a playground "
+                "that opens and saves files of each family.");
+        // The tabs' text areas and the playground scroll themselves: the page
+        // is the area's height and the tabs' card takes what the title leaves.
+        root->SetFillsArea(true);
+
+        auto card = DemoKit::CreateCard("FileLoaderCard");
+        card->SetPadding(4);
+        DemoKit::Add(root, card, 1);
 
         auto tabs = std::make_shared<UltraCanvasTabbedContainer>("FileLoaderTabs", 0, 0, 0, 0);
         tabs->SetTabPosition(TabPosition::Top);
         tabs->SetTabStyle(TabStyle::Modern);
         tabs->SetCloseMode(TabCloseMode::NoClose);
         tabs->SetTabHeight(30);
-        tabs->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
-                        .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
         tabs->AddTab("Overview", BuildOverviewTab());
         tabs->AddTab("Details",  BuildDetailsTab());
         tabs->AddTab("Examples", BuildExamplesTab());
         tabs->SetActiveTab(0);
 
-        root->AddChild(tabs);
+        DemoKit::Add(card, tabs, 1);
+        tabs->layoutItem.SetFlexShrink(1);
         return root;
     }
 

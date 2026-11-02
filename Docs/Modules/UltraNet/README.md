@@ -24,6 +24,7 @@ else (SMTP, IMAP, MQTT, SSH, LDAP, RTSP, gRPC, …).
 - [Architecture](#architecture)
 - [Quick examples](#quick-examples)
 - [Module layout](#module-layout)
+- [SSH tunnels](#ssh-tunnels)
 - [Debugging a mail connection](#debugging-a-mail-connection)
 - [The FTP session log](#the-ftp-session-log)
 - [Integration with sibling modules](#integration-with-sibling-modules)
@@ -76,6 +77,7 @@ planned (see the status table below).
 | Security | TLS 1.2 / 1.3, custom CA bundles | `UltraNet/UltraNetTls.h` |
 | Resolution | DNS (A, AAAA, MX, TXT, SRV, PTR, …); per-call name servers and deadline (`UltraNetDnsOptions`) | `UltraNet/UltraNetDns.h` |
 | Sessions | Cookies, connection reuse - safe from several threads at once (the cookies are shared; each connection is used by one request at a time) | `UltraNet/UltraNetCookies.h` |
+| Cookies | A browser's cookie jar with the rules in the open (RFC 6265bis): what `Set-Cookie` stores and the `Cookie` header a request carries, `Domain` / `Path` / `Secure` / `SameSite` / prefixes, expiry, no third-party cookies, kept in a text file - for a client that follows redirects itself and must apply each hop's cookies (UltraWeb) | `UltraNet/UltraNetCookieJar.h` |
 | Auth | OAuth 2.0 authorization-code + PKCE, loopback redirect, token refresh | `UltraNet/UltraNetOAuth2.h` |
 | Auth | The process-wide OAuth2 *app registry*: the client id / secret / redirect URI per provider, from code, the environment, an INI file or a baked-in default, with aliases — and the sign-in service's address through the same tiers, built in as `ULTRANET_OAUTH_SERVICE_URL`; shared by UltraMail and UltraCloud | `UltraNet/UltraNetOAuth2Apps.h` |
 | Auth | The client of an OAuth2 *sign-in service* (Server/OAuthCallback): a web service that holds the client registrations and receives the providers' redirects, so the application ships no secret and a provider that refuses loopback redirects (Yahoo) redirects like any other; PKCE end to end | `UltraNet/UltraNetOAuth2Service.h` |
@@ -92,12 +94,18 @@ planned (see the status table below).
 `UltraNet/UltraNetPlugins.h`.
 
 A plug-in is a DSO (`Plugins/UltraNet/*.so|.dll`) loaded by
-`UltraNet_RefreshPlugins()`, and it reaches the core **only through the host
+`UltraNet_RefreshPlugins()` from `UltraNet_GetPluginDirectory()`. Until an
+application sets another with `UltraNet_SetPluginDirectory()`, that is
+`Plugins/UltraNet` beside the executable, or one or two folders above it,
+whichever holds a plug-in. It is never the working directory, unless the
+executable's own path is unknown: a packaged Windows application starts in
+System32. A plug-in reaches the core **only through the host
 table** (`UltraNetPluginHost`, ABI 3) handed to its `UltraNet_PluginInit`:
 registering itself, and the few core functions it calls — `UltraNet_ParseUrl`,
 `UltraNet_UrlEncode` / `UrlDecode`, `UltraNet_ResolveCaBundlePath`,
 `UltraNet_MimeBuild` and `UltraNet_MimeBuildMailMessage` (the one wire
-format of every mail plug-in that sends), `UltraNet_HttpGet` / `HttpRequest`,
+format of every mail plug-in that sends; a message whose `rawMessage` is set -
+one already signed or encrypted - is sent as those bytes, unchanged), `UltraNet_HttpGet` / `HttpRequest`,
 `UltraNet_SseStreamAsync` / `CancelRequest` / `IsRequestActive` (the JMAP
 plug-in's push), ... Plug-in sources
 call those functions as usual;
@@ -318,11 +326,13 @@ UltraCanvas/                      (or wherever the build places it)
 │   ├── UltraNetTls.h
 │   ├── UltraNetDns.h
 │   ├── UltraNetCookies.h
+│   ├── UltraNetCookieJar.h
 │   ├── UltraNetOAuth2.h
 │   ├── UltraNetOAuth2Apps.h
 │   ├── UltraNetOAuth2Service.h
 │   ├── UltraNetProxy.h
 │   ├── UltraNetUrl.h
+│   ├── UltraNetSsh.h             (SSH tunnels, through the ssh plug-in)
 │   ├── UltraNetMailAddr.h        (header-only, shared by the mail plug-ins)
 │   ├── UltraNetCurlDebug.h       (header-only, opt-in protocol trace)
 │   └── UltraNetPlugins.h
@@ -338,6 +348,53 @@ UltraCanvas/                      (or wherever the build places it)
 CMake target: `UltraNet`. Header include style: `<UltraNet/UltraNet*.h>`.
 
 ---
+
+## SSH tunnels
+
+`UltraNet_OpenSshTunnel` (`UltraNet/UltraNetSsh.h`) forwards a local port:
+it signs in at an SSH server, listens on a free port of 127.0.0.1, and
+carries every connection made to that port, each on a channel of its own, to
+a host and port the SSH server reaches - a database behind a bastion, the
+case UltraDatabase uses it for (`UltraDatabaseSshTunnel.h`). The `ssh`
+plug-in (libssh) does the work and is loaded on first use; without it the
+call fails with `PluginNotFound`.
+
+```cpp
+#include <UltraNet/UltraNetSsh.h>
+
+UltraNetSshTunnelOptions tunnel;
+tunnel.url = "ssh://deploy@bastion.example.com";
+tunnel.remote.privateKeyPem = key;     // or remote.credentials.password; neither: the agent, the default keys
+tunnel.remote.hostKeyFingerprint = trusted;   // "SHA256:..."
+tunnel.targetHost = "db.internal";
+tunnel.targetPort = 5432;
+UltraNetHandle handle = UltraNetInvalidHandle;
+UltraNetSshTunnelInfo info;
+if (UltraNet_OpenSshTunnel(tunnel, handle, info)) {
+    // connect to 127.0.0.1:info.localPort
+    UltraNet_CloseSshTunnel(handle);
+}
+```
+
+**The host key is checked before anything is sent**, by the shell
+(`OpenShell`) and the tunnel alike: it must be the fingerprint the caller
+trusted, or - when none is given - the key `known_hosts` holds for the host.
+A key nobody knows fails with `SshHostKeyUnknown`, its fingerprint in
+`UltraNetSshTunnelInfo`, for the application to show and, once the user
+agrees, to pass back as `hostKeyFingerprint`; one that differs from the key
+known fails with `SshHostKeyChanged` and is never accepted. Until 0.2.0 the
+plug-in checked no host key at all.
+
+The tunnel's SSH session belongs to one thread, which accepts, opens the
+channels and copies bytes both ways; a channel the SSH server cannot open
+(the far end refuses, forwarding is not allowed) ends that one connection,
+and the tunnel stays up for the next. Closing the tunnel ends every
+connection through it.
+
+Tested against a real sshd (`Tests/UltraNet/test_extra_plugins.cpp`,
+`ULTRANET_TEST_SSH_URL` / `_KEY`, required in CI): an unknown key, a changed
+one and a failed sign-in refused, three connections of half a megabyte each
+way at once, a far end that is not there, and a closed tunnel.
 
 ## Debugging a mail connection
 
@@ -471,19 +528,25 @@ closes them when it falls idle: before libcurl 8.10 the QUIT of a connection
 whose network has since gone away waits up to two minutes for its reply.
 (One pool per thread: libcurl does not support sharing connections between
 threads that transfer at the same time.) A change - delete, rename, create or
-remove a folder - is the exception on FTP: it always logs in on a connection
-of its own and closes it, because libcurl sends those commands before it
-changes folder, and they name the entry from the folder a login lands in; on
-a kept connection that a listing left in a subfolder they would name another
-file. A server that takes one connection per address or user (vsftpd's
-`max_per_ip`, ProFTPD's `MaxClientsPerHost`) turns that second connection
-away - *421 There are too many connections from your internet address.*,
-or a 530 saying the maximum number of clients is reached - while the
-thread's kept one is open. Turned away so before any of its commands was
-sent, the change closes the kept connection and is sent again: at once, and
-after 0.3 s and 1 s more if the server is still counting the closed one
-(the waits end early when the call is called off). The log says *The server
-takes one connection at a time: closing the one kept open and trying again*.
+remove a folder - takes up the kept connection too. Its commands (`DELE`,
+`RNFR` / `RNTO`, `MKD`, `RMD`) go once libcurl has changed into the entry's
+folder (`CURLOPT_POSTQUOTE`) and name the entry within it; libcurl goes back
+to the folder that connection's login landed in first, so it does not matter
+where the last listing left it. (Sent before the change of folder, as they
+once were, they ran wherever the connection was, and a change needed a
+connection of its own: a second login each time.)
+
+A server that takes one connection per address (vsftpd's `max_per_ip`,
+ProFTPD's `MaxClientsPerHost`) still turns away a call that needs a new one
+while the thread keeps another open - one as another account on that server,
+which libcurl does not take up for this one: *421 There are too many
+connections from your internet address.*, or a 530 saying the maximum number
+of clients is reached. Turned away so at the greeting or the login, before
+anything was asked and with no byte moved, any FTP call closes the thread's
+kept connection and is made again: at once, and after 0.3 s and 1 s more if
+the server is still counting the closed one (the waits end early when the
+call is called off). The log says *The server takes one connection at a
+time: closing the one kept open and trying again*.
 
 `Tests/UltraNet/test_ftp_log.cpp` drives all of it against a scripted FTP
 server on loopback.

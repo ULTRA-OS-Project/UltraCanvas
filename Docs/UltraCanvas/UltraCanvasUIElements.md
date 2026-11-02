@@ -68,6 +68,7 @@ from an external "Show password" checkbox. See
 | On-off switch | `UltraCanvasSwitch` | `UltraCanvasSwitch.h` |
 | Pick one of a list | `UltraCanvasDropdown` | `UltraCanvasDropdown.h` |
 | Pick one of a few, shown side by side | `UltraCanvasSegmentedControl` | `UltraCanvasSegmentedControl.h` |
+| Pick one (or several) of a row of chips - categories, filters, tags ([doc](UltraCanvasChipGroup.md)) | `UltraCanvasChipGroup` | `UltraCanvasChipGroup.h` |
 | A value on a range | `UltraCanvasSlider` | `UltraCanvasSlider.h` |
 | Which point of a box stays put - a 3 x 3 grid of corners, edge midpoints and centre, for a transform bar's scale / rotate / move ([doc](UltraCanvasReferencePointPicker.md)) | `UltraCanvasReferencePointPicker` | `UltraCanvasReferencePointPicker.h` |
 | A tone / mapping curve (Curves) | `UltraCanvasCurveEditor` | `UltraCanvasCurveEditor.h` |
@@ -90,6 +91,7 @@ from an external "Show password" checkbox. See
 | Any media file — image, video, audio, PDF, text, spreadsheet, eBook, font | `UltraCanvasMediaViewer` | `UltraCanvasMediaViewer.h` |
 | Video / audio playback | `UltraCanvasVideoPlayerElement`, `UltraCanvasAudioPlayerElement` | matching `*.h` |
 | Video / audio capture | `UltraCanvasVideoRecorderElement`, `UltraCanvasAudioRecorderElement` | matching `*.h` |
+| Live pictures pushed frame by frame from any thread - a call's video, a self view (mirrored), a decoded stream; the newest frame shown, fitted (contain / cover), a caption without one | `UltraCanvasVideoTile` | `UltraCanvasVideoTile.h` |
 | Audio waveform, input level | `UltraCanvasWaveformElement`, `UltraCanvasLevelMeter` | `UltraCanvasWaveformElement.h`, `UltraCanvasAudioRecorderElement.h` |
 | A media timeline to edit: clips on tracks under a time ruler, trim, reorder, split, transitions, markers, beat marks, a playhead; every edit reported to the app, never applied | `UltraCanvasVideoTimeline` | `UltraCanvasVideoTimeline.h` (model and operations: `UltraCanvasVideoTimelineModel.h`) |
 | A timecode `HH:MM:SS:FF` to enter or show: segments stepped by the arrow keys, digits filling from the right, `+`/`-` offsets, a large read-only readout for a transport bar | `UltraCanvasTimecodeField` | `UltraCanvasTimecodeField.h` |
@@ -112,12 +114,14 @@ formats, and does not re-decode on every frame the way an ad-hoc
 
 | You need | Element | Header |
 |---|---|---|
+| A card: header with icon, title, subtitle and a trailing badge, a content area, a row of real buttons at the foot, a clickable surface ([doc](UltraCanvasCard.md)) | `UltraCanvasCard` | `UltraCanvasCard.h` |
+| A panel that folds to its header - a download queue, a log, a problems list docked at the bottom, with a chevron, a detail text, header buttons and a resizable top edge ([doc](UltraCanvasCollapsiblePanel.md)) | `UltraCanvasCollapsiblePanel` | `UltraCanvasCollapsiblePanel.h` |
 | Group children, scroll them | `UltraCanvasContainer` (scrolling is built in) | `UltraCanvasContainer.h` |
 | A standalone scrollbar | `UltraCanvasScrollbar` | `UltraCanvasScrollbar.h` |
 | Resizable panes | `UltraCanvasSplitPane`, `UltraCanvasSplitter` | `UltraCanvasSplitPane.h` |
 | Tabs | `UltraCanvasTabbedContainer` | `UltraCanvasTabbedContainer.h` |
 | A titled frame | `UltraCanvasGroupBox` | `UltraCanvasGroupBox.h` |
-| A toolbar | `UltraCanvasToolbar` — the height (width, when vertical) you construct it with is a *minimum*: it grows to fit its items rather than clipping them. Items carry badges (`SetItemBadge` / `SetItemBadgeCount` / `SetItemBadgeDot`), can be dragged into a new order (`EnableItemReordering`), and `ToolbarOverflowMode::Scroll` scrolls a full bar with the wheel, a chevron over the edge the items continue past (click: a page) | `UltraCanvasToolbar.h` |
+| A toolbar | `UltraCanvasToolbar` — the height (width, when vertical) you construct it with is a *minimum*: it grows to fit its items rather than clipping them. Items carry badges (`SetItemBadge` / `SetItemBadgeCount` / `SetItemBadgeDot`), can be dragged into a new order (`EnableItemReordering`), `ToolbarOverflowMode::Scroll` scrolls a full bar with the wheel, a chevron over the edge the items continue past (click: a page), and `ToolbarOverflowMode::Menu` moves what does not fit into a chevron button's menu. A separator divides the bar into groups, `groupSpacing` apart. Built from groups of commands the user can show, hide and reorder, kept in the settings: `MaterializeToolbar` ([doc](UltraCanvasToolbarLayout.md)) | `UltraCanvasToolbar.h`, `UltraCanvasToolbarLayout.h` |
 | Several tools sharing one slot of a palette or toolbar - the slot shows one, a bar of the whole group folds out while the pointer rests on it, the slot then shows the tool last picked (or always the main one) ([doc](UltraCanvasToolGroupButton.md)) | `UltraCanvasToolGroupButton` (`UltraCanvasToolbar::AddToolGroup`) | `UltraCanvasToolGroupButton.h` |
 | A rule or a gap | `UltraCanvasSeparator`, `UltraCanvasSpacer` | matching `*.h` |
 | The S-curve between two groups on one bar (a taskbar's system group flowing into its running apps) — one group's colour up to the curve, the next group's after it ([doc](UltraCanvasWaveSeparator.md)) | `UltraCanvasWaveSeparator` | `UltraCanvasWaveSeparator.h` |
@@ -130,8 +134,9 @@ Positioning inside a container is the CSS layout engine's job (`layout` /
 
 | You need | Element | Header |
 |---|---|---|
+| The navigation column of a window: sections of items with icon, label and badge, one selected, keyboard and wheel, a compact icons-only mode ([doc](UltraCanvasSidebarNavigation.md)) | `UltraCanvasSidebarNavigation` | `UltraCanvasSidebarNavigation.h` |
 | Menu bar, popup and context menus | `UltraCanvasMenu` (+ `MenuBuilder`, `MenuItemData`) | `UltraCanvasMenu.h` |
-| Editable menu configuration | `UltraCanvasMenuConfigWidget` | `UltraCanvasMenuConfigWidget.h` |
+| Editable menus and toolbars - one editor for a program's menus and its toolbars' groups, from one command catalogue ([doc](UltraCanvasCommandConfigWidget.md)); `ShowCommandConfigDialog` opens it in a window | `UltraCanvasCommandConfigWidget` (was `UltraCanvasMenuConfigWidget`, an alias) | `UltraCanvasCommandConfigWidget.h` |
 | Path bar | `UltraCanvasBreadcrumb` | `UltraCanvasBreadcrumb.h` |
 | Page selector | `UltraCanvasPagination` | `UltraCanvasPagination.h` |
 | List **or table** — `UltraCanvasListView` is the multi-column, virtualised, model-driven one (`IListModel` + `ListColumnDef` + delegates; `SetShowHeader(true)` gives resizable columns, header tooltips and a sort indicator; sort and filter it with [`UltraCanvasListSortFilterProxy`](UltraCanvasListSortFilterProxy.md)); tree; multi-column tree; sheet | `UltraCanvasListView`, `UltraCanvasTreeView`, `UltraCanvasColumnsTreeView`, `UltraCanvasSpreadsheet` | matching `*.h` |
@@ -145,12 +150,14 @@ Positioning inside a container is the CSS layout engine's job (`layout` /
 |---|---|---|
 | Colour (wheel, SV area, hue × lightness field or colour + intensity sliders; optional design selector) | `UltraCanvasColorPicker` | `UltraCanvasColorPicker.h` |
 | A colour out of a small palette (a strip of swatches, sized to the space it gets) | `UltraCanvasColorSwatchBar` | `UltraCanvasColorSwatchBar.h` |
-| Palette rows under a colour picker - add schemes from a gallery (up to 256-colour GIF palettes), remove rows, set an entry with a right click | `UltraCanvasColorPaletteManager` ([doc](UltraCanvasColorPaletteManager.md)) | `UltraCanvasColorPaletteManager.h` |
+| Palette rows under a colour picker - add schemes from the Palette manager (a draggable popup; up to 256-colour GIF palettes), make palettes of your own, remove rows, set an entry with a right click, flood the picker with a hovered swatch | `UltraCanvasColorPaletteManager` ([doc](UltraCanvasColorPaletteManager.md)) | `UltraCanvasColorPaletteManager.h` |
 | Date, date range, month grid | `UltraCanvasDatePicker`, `UltraCanvasDateRangePicker`, `UltraCanvasCalendarView` | `UltraCanvasDatePicker.h` |
 | Time, clock face | `UltraCanvasTimePicker`, `UltraCanvasTimeClockView` | `UltraCanvasTimePicker.h` |
 | Modal dialog — message + Markdown details, role-styled footer buttons, `AddDialogElement` / `AddFooterElement` for elements of your own; the window fits its height to the text and widens to a footer row (a checkbox and four labelled buttons) that needs more than the configured width; `ModalDialogStyle` carries the message, details and button font sizes so a host at one UI size gets dialogs at that size; `SetFollowTheme(true)` colours the dialog from the framework theme (`UltraCanvasTheme`) | `UltraCanvasModalDialog` | `UltraCanvasModalDialog.h` |
+| The page an application shows with nothing open yet - title, why this page, the entries opened last as buttons, the open action, a section of the app's own fields for a new thing, a status line; `PreferredHeight()` sizes the window ([doc](UltraCanvasStartPage.md)) | `UltraCanvasStartPage` | `UltraCanvasStartPage.h` |
 | Pick a file type to create, from a filterable list | `UltraCanvasNewDocumentDialog` (`CreateNewDocumentDialog`; call `Initialize()` after constructing) | `UltraCanvasNewDocumentDialog.h` |
 | Progress of a long operation (ring + percentage + Cancel) | `UltraCanvasProgressDialog` | `UltraCanvasProgressDialog.h` |
+| A service needs an AI model that is not on this computer: offer the local runtime's models that fit, download the chosen one with its engine, progress, then carry on (the UltraAI module's dialog; link `UltraAI_UI`) | `UltraAI::UltraAILocalModelDialog` (`Show`, `NeedsInstall`) | `UltraAI/ui/include/UltraAILocalModelDialog.h` |
 | "Working on it" with no percentage — a turning ring, two counter-turning rings, swelling dots, a sliding bar, a pulsing circle or a ring of circling dots (`BusyIndicatorKind`) for a status line, a row or a button (not a spin box: that is `UltraCanvasSpinner`) | `UltraCanvasBusyIndicator` (`CreateBusyIndicator`) | `UltraCanvasBusyIndicator.h` |
 | A gauge: speedometer, ring, battery, thermometer, LED/segmented bar — and `GaugeMode::LinearBar`, the progress bar for a status line, a row or a panel footer | `UltraCanvasGaugeDiagramElement` (`CreateGaugeDiagramElement`) | `Plugins/Diagrams/UltraCanvasGaugeDiagramElement.h` |
 | Open / save a file or pick a folder (filters as a dropdown or as toggle buttons), prompt for a value | `UltraCanvasFileDialog` ([doc](UltraCanvasFileDialog.md)), `UltraCanvasInputDialog` — the ULTRA OS system dialogs ([doc](UltraCanvasSystemDialogs.md)) | `UltraCanvasModalDialog.h` |
@@ -232,6 +239,7 @@ Each takes its data through setters and renders itself; most have a
 | Words sized by frequency, optionally inside a shape or image mask | `UltraCanvasWordCloudElement` | `Plugins/Diagrams/UltraCanvasWordCloudDiagram.h` |
 | Seats by party: hemicycle, circle, Westminster benches, grid | `UltraCanvasParliamentDiagram` | `Plugins/Diagrams/UltraCanvasParliamentDiagram.h` |
 | The four-panel SWOT infographic | `UltraCanvasSWOTDiagram` | `Plugins/Diagrams/UltraCanvasSWOTDiagram.h` |
+| A grid of named categories where two rated axes cross: a 9-box talent grid, performance vs potential, a performance management matrix, skill / will | `UltraCanvasPerformanceMatrix` | `Plugins/Diagrams/UltraCanvasPerformanceMatrix.h` |
 | Cause and effect (Ishikawa / fishbone) | `UltraCanvasFishboneDiagram` | `Plugins/Diagrams/UltraCanvasFishboneDiagram.h` |
 | A hub with a ring of labelled nodes and satellites | `UltraCanvasCircleDiagram` | `Plugins/Diagrams/UltraCanvasCircleDiagram.h` |
 | A narrative timeline along a decorative path (**not** date-accurate — that is `UltraCanvasTimelineChart`) | `UltraCanvasTimelineDiagram` | `Plugins/Diagrams/UltraCanvasTimelineDiagram.h` |
@@ -255,6 +263,32 @@ are what an application reaches for. An SVG has no element of its own either:
 `UltraCanvasImageElement` shows it (through librsvg, or the Vector plugin's
 reader where libvips has no SVG loader). Same for
 the LaTeX and STL elements, listed under *Text, images and media* above.
+
+## Module widgets — Smart Home
+
+The Smart Home module's widgets (`SmartHome/ui`, library `SmartHomeUI`) are
+not framework elements - they are built **out of** the elements above, and
+are listed here so nobody writes a second light switch or thermostat panel.
+Each drives its device through `SmartHomeAPI` and reports through its own
+callback; each has getters for the elements inside it. More
+in [the module's overview](../Modules/Smarthome/README.md).
+
+| You need | Widget | Built from | Header |
+|---|---|---|---|
+| A dashboard of the home's devices: grid, rooms, list, scenes, automations, network | `SmartHomePanel` | segmented control, text input, button, the cards below, list view, `SmartHomeNetworkTopology` | `UltraCanvasSmartHomePanel.h` |
+| One device or scene as a press target | `SmartHomeDeviceCard`, `SmartHomeSceneCard` | drawn tiles | `UltraCanvasSmartHomePanel.h` |
+| A light's on/off, brightness, colour temperature, colour and presets | `SmartHomeLightControl` | switch, sliders, colour picker, colour swatch bar | `UltraCanvasSmartHomeDeviceControl.h` |
+| A thermostat's target and mode | `SmartHomeThermostatControl` | ring gauge, spinner, segmented control | same |
+| A lock with its battery and activity | `SmartHomeLockControl` | button, gauge bar, list view | same |
+| A blind's position, tilt and presets | `SmartHomeBlindControl` | buttons, sliders, a drawn preview | same |
+| A sensor's reading and its recent history | `SmartHomeSensorDisplay` | labels, line chart (`SensorHistoryMinimumSpan` floors its axis) | same |
+| A device's details with its control | `SmartHomeDeviceDialog` | labels, buttons, the control above | same |
+| Adding a device | `SmartHomePairingWizard` | buttons, gauge bar | same |
+| Editing a scene or an automation | `SmartHomeSceneEditor`, `SmartHomeAutomationEditor` | text input, list views, dropdown, switch, buttons | `UltraCanvasSmartHomeAdvancedWidgets.h` |
+| The radio network as a graph | `SmartHomeNetworkTopology` | `UltraCanvasNodeDiagram`, segmented control, dropdown | same |
+| Power and energy use | `SmartHomeEnergyMonitor` | line chart, segmented control, labels | same |
+| Timed events by day, week or as a list | `SmartHomeScheduler` | segmented controls, list view, buttons, a drawn week grid | same |
+| A group of devices switched together | `SmartHomeGroupControl` | buttons, sliders, list view, dropdown | same |
 
 ## Creating them
 

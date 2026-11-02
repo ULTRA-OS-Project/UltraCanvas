@@ -1,0 +1,22 @@
+[Unit]
+Description=ChatCube relay (accounts, presence, signalling, offline queue)
+After=network.target
+
+[Service]
+Type=simple
+User=chatcube-relay
+Group=chatcube-relay
+WorkingDirectory=/opt/chatcube-relay
+EnvironmentFile=/etc/chatcube-relay.env
+ExecStart=/opt/chatcube-relay/.venv/bin/chatcube-relay
+Restart=on-failure
+RestartSec=3
+StateDirectory=chatcube-relay
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/chatcube-relay
+
+[Install]
+WantedBy=multi-user.target

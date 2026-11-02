@@ -99,7 +99,7 @@ bool RamDiskDetail::SecureWipeDirectory(const std::string& path) {
 
 const char* VirtualFSRamDiskBackingToString(VirtualFSRamDiskBacking backing) {
     switch (backing) {
-        case VirtualFSRamDiskBacking::None:         return "None";
+        case VirtualFSRamDiskBacking::NotCreated:         return "None";
         case VirtualFSRamDiskBacking::Tmpfs:        return "tmpfs (/dev/shm)";
         case VirtualFSRamDiskBacking::HdiUtil:      return "hdiutil ram://";
         case VirtualFSRamDiskBacking::ImDisk:       return "ImDisk";
@@ -127,7 +127,7 @@ VirtualFSRamDiskBacking VirtualFS_GetPreferredRamDiskBacking() {
 
 bool VirtualFS_IsTrueRamDiskAvailable() {
     const VirtualFSRamDiskBacking backing = VirtualFS_GetPreferredRamDiskBacking();
-    return backing != VirtualFSRamDiskBacking::None &&
+    return backing != VirtualFSRamDiskBacking::NotCreated &&
            backing != VirtualFSRamDiskBacking::DiskFallback;
 }
 
@@ -146,12 +146,12 @@ VirtualFSResult VirtualFS_CreateRamDisk(const std::string& name,
     disk.requestedBytes = sizeBytes;
 
     const VirtualFSResult result = RamDiskDetail::PlatformCreate(name, sizeBytes, disk);
-    if (result != VirtualFSResult::Success) {
+    if (result != VirtualFSResult::Ok) {
         return result;
     }
 
     outDisk = disk;
-    return VirtualFSResult::Success;
+    return VirtualFSResult::Ok;
 }
 
 VirtualFSResult VirtualFS_DestroyRamDisk(VirtualFSRamDisk& disk) {
@@ -168,7 +168,7 @@ VirtualFSResult VirtualFS_DestroyRamDisk(VirtualFSRamDisk& disk) {
     }
 
     const VirtualFSResult result = RamDiskDetail::PlatformDestroy(disk);
-    if (result == VirtualFSResult::Success) {
+    if (result == VirtualFSResult::Ok) {
         disk = VirtualFSRamDisk{};
     }
     return result;
@@ -187,7 +187,7 @@ VirtualFSResult VirtualFS_UseRamDiskForTemp(const VirtualFSRamDisk& disk) {
         return VirtualFSResult::NotFound;
     }
     VirtualFS_SetTempDirectory(disk.mountPath);
-    return VirtualFSResult::Success;
+    return VirtualFSResult::Ok;
 }
 
 } // namespace VirtualFS

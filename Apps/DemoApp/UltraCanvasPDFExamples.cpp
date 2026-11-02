@@ -2,11 +2,15 @@
 // PDF viewer demo for the UltraCanvas demo app: loads a bundled sample document
 // into an UltraCanvasPDFView with a navigation / zoom / search toolbar.
 // Programmer's guide: Docs/UltraCanvas/UltraCanvasPDFExamples.md
+// Version: 1.7.0 - the shared page look (UltraCanvasDemoPageKit): the viewer in a
+//                  card that fills the page area, a wrapping toolbar, buttons and
+//                  labels sized to their text
 // Version: 1.6.0
-// Last Modified: 2026-08-25
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 
 #ifdef ULTRACANVAS_PLUGIN_PDF
 
@@ -25,74 +29,56 @@
 namespace UltraCanvas {
 
 std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreatePDFExamples() {
-    // Root: a flex column that fills the display area.
-    auto root = std::make_shared<UltraCanvasContainer>("PDFExamples", 0, 0, 1000, 600);
-    root->layout.SetFlexColumn().SetFlexGap(8)
-                .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-    root->SetPadding(10, 12, 10, 12);
-
-    // ----- Title -----
-    auto title = std::make_shared<UltraCanvasLabel>("PDFTitle", 0, 0, 0, 28);
-    title->SetText("PDF Document Viewer");
-    title->SetFontSize(16);
-    title->SetFontWeight(FontWeight::Bold);
-    title->SetTextColor(Color(50, 50, 150, 255));
-    title->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-    root->AddChild(title);
+    // The viewer scrolls its pages itself: the page is the display area's
+    // height and the viewer takes what the title, toolbar and status leave.
+    auto root = DemoKit::CreatePage("PDFExamples", "PDF Document Viewer", "");
+    root->SetFillsArea(true);
 
     // ----- Attribution / info line (with a clickable MuPDF link) -----
-    auto infoRow = std::make_shared<UltraCanvasContainer>("PDFInfoRow", 0, 0, 0, 18);
-    infoRow->layout.SetFlexRow().SetFlexGap(4)
-                   .SetFlexAlignItems(CSSLayout::AlignItems::Center);
-    infoRow->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    auto infoRow = DemoKit::AddRow(root, "PDFInfoRow", 4);
 
-    auto info = std::make_shared<UltraCanvasLabel>("PDFInfo", 0, 0, 0, 18);
-    info->SetText("UltraCanvas support for PDF files is based on the MuPDF "
-                  "library \xE2\x80\x94");
+    auto info = DemoKit::CreateText("PDFInfo",
+                                    "UltraCanvas support for PDF files is based on the MuPDF "
+                                    "library \xE2\x80\x94");
     info->SetFontSize(11);
-    info->SetTextColor(Color(110, 110, 110, 255));
-    info->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-    infoRow->AddChild(info);
+    info->SetTextColor(DemoKit::SubtitleText());
+    DemoKit::Add(infoRow, info);
+    info->layoutItem.SetFlexShrink(1);   // wraps rather than pushing the link out
 
-    auto link = std::make_shared<UltraCanvasLabel>("PDFMuPDFLink", 0, 0, 0, 18);
+    auto link = DemoKit::CreateText("PDFMuPDFLink", "");
     link->SetTextIsMarkup(true);
     link->SetText("<span color=\"blue\" underline=\"single\">https://mupdf.com/</span>");
     link->SetFontSize(11);
     link->SetMouseCursor(UCMouseCursor::Hand);
-    link->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     link->onClick = []() { OpenURL("https://mupdf.com/"); };
-    infoRow->AddChild(link);
+    DemoKit::Add(infoRow, link);
 
-    root->AddChild(infoRow);
+    // ----- The card: toolbar, viewer, status -----
+    auto card = DemoKit::CreateCard("PDFCard");
+    card->SetPadding(8);
+    DemoKit::Add(root, card, 1);
 
     // ----- The viewer (created first so the toolbar can capture it) -----
     auto view = CreatePDFView("DemoPDFView", 0, 0, 0, 0);
-    view->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
-                    .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    view->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
     std::weak_ptr<UltraCanvasPDFView> viewWeak = view;
 
     // Page indicator (lives in the toolbar) and a status line (below the view).
-    auto pageLabel = std::make_shared<UltraCanvasLabel>("PDFPageLabel", 0, 0, 120, 30);
-    pageLabel->SetText("Page - / -");
-    pageLabel->SetFontSize(12);
-    pageLabel->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    auto pageLabel = DemoKit::CreateText("PDFPageLabel", "Page - / -");
 
-    auto statusLabel = std::make_shared<UltraCanvasLabel>("PDFStatusLabel", 0, 0, 0, 22);
-    statusLabel->SetText("Mouse-wheel scrolls, Ctrl+wheel zooms (+ / - / 0 / 1 "
+    auto statusLabel = DemoKit::CreateText("PDFStatusLabel",
+                         "Mouse-wheel scrolls, Ctrl+wheel zooms (+ / - / 0 / 1 "
                          "on the keyboard), F3 finds next, \"Select\" then drag "
                          "to select text, right-click to copy/export or extract "
                          "an image.");
     statusLabel->SetFontSize(11);
     statusLabel->SetTextColor(Color(110, 110, 110, 255));
-    statusLabel->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
 
     // Zoom level read-out, shown below the view at the right edge.
-    auto zoomLabel = std::make_shared<UltraCanvasLabel>("PDFZoomLabel", 0, 0, 80, 22);
-    zoomLabel->SetText("100%");
+    auto zoomLabel = DemoKit::CreateText("PDFZoomLabel", "100%");
     zoomLabel->SetFontSize(11);
     zoomLabel->SetTextColor(Color(110, 110, 110, 255));
     zoomLabel->SetAlignment(TextAlignment::Right, VerticalAlignment::Middle);
-    zoomLabel->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
 
     // Wire callbacks before loading so the initial page is reflected immediately.
     view->onPageChanged = [pageLabel](int cur, int total) {
@@ -141,17 +127,24 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreatePDFExamp
     view->LoadFromPath(pdfPath);
 
     // ----- Toolbar -----
-    auto toolbar = std::make_shared<UltraCanvasContainer>("PDFToolbar", 0, 0, 0, 40);
-    toolbar->layout.SetFlexRow().SetFlexGap(6)
-                   .SetFlexAlignItems(CSSLayout::AlignItems::Center);
-    toolbar->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    // Wraps onto a second line when the window is narrow.
+    auto toolbar = DemoKit::AddRow(card, "PDFToolbar", 6);
+    toolbar->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
 
+    // A button as wide as its text, at least the width it had, 30 px high.
+    auto makeToolbarButton = [](const std::string& id, const std::string& text, int w) {
+        auto btn = std::make_shared<UltraCanvasButton>(id, text);
+        CSSLayout::BoxConstraints limits;
+        limits.minWidth = CSSLayout::Dimension::Px(static_cast<float>(w));
+        limits.minHeight = CSSLayout::Dimension::Px(30);
+        btn->boxConstraints = limits;
+        return btn;
+    };
     auto addToolbarButton = [&](const std::string& id, const std::string& text,
                                 int w, std::function<void()> onClick) -> UltraCanvasButton& {
-        auto btn = CreateButton(id, 0, 0, w, 30, text);
+        auto btn = makeToolbarButton(id, text, w);
         btn->onClick = std::move(onClick);
-        btn->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        toolbar->AddChild(btn);
+        DemoKit::Add(toolbar, btn);
         return *btn;
     };
 
@@ -180,7 +173,6 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreatePDFExamp
     zoomDropdown->AddItem("150%");
     zoomDropdown->AddItem("200%");
     zoomDropdown->SetSelectedIndex(0, false);   // Fit Page (the view's default)
-    zoomDropdown->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     zoomDropdown->onSelectionChanged =
         [viewWeak](int index, const DropdownItem&) {
             auto v = viewWeak.lock();
@@ -198,11 +190,10 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreatePDFExamp
                 default: break;
             }
         };
-    toolbar->AddChild(zoomDropdown);
+    DemoKit::Add(toolbar, zoomDropdown);
 
     auto searchInput = CreateTextInput("PDFSearch", 0, 0, 180, 30);
     searchInput->SetPlaceholder("Search...");
-    searchInput->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     std::weak_ptr<UltraCanvasTextInput> searchWeak = searchInput;
 
     auto doSearch = [viewWeak, searchWeak]() {
@@ -211,7 +202,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreatePDFExamp
         if (v && s) v->SetSearchQuery(s->GetText());
     };
     searchInput->onEnterPressed = [doSearch](const std::string&) { doSearch(); return true; };
-    toolbar->AddChild(searchInput);
+    DemoKit::Add(toolbar, searchInput);
 
     addToolbarButton("PDFSearchBtn", "Search", 70, doSearch);
     // Up / down arrows step through the search results. They are icons, not
@@ -228,8 +219,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreatePDFExamp
     nextHit.SetTooltip("Next result");
 
     // Text-selection mode toggle (Pan <-> Select) and a Copy button.
-    auto modeBtn = CreateButton("PDFSelectMode", 0, 0, 80, 30, "Select");
-    modeBtn->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    auto modeBtn = makeToolbarButton("PDFSelectMode", "Select", 80);
     std::weak_ptr<UltraCanvasButton> modeWeak = modeBtn;
     modeBtn->onClick = [viewWeak, modeWeak]() {
         auto v = viewWeak.lock();
@@ -241,7 +231,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreatePDFExamp
                                  : UltraCanvasPDFView::MouseMode::Pan);
         b->SetText(toSelect ? "Pan" : "Select");
     };
-    toolbar->AddChild(modeBtn);
+    DemoKit::Add(toolbar, modeBtn);
 
     addToolbarButton("PDFCopy", "Copy", 60, [viewWeak, statusLabel]() {
         if (auto v = viewWeak.lock()) {
@@ -254,8 +244,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreatePDFExamp
     });
 
     // Toggle thumbnail page-number style (caption beneath <-> big overlay).
-    auto numBtn = CreateButton("PDFThumbNum", 0, 0, 100, 30, "#: Under");
-    numBtn->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    auto numBtn = makeToolbarButton("PDFThumbNum", "#: Under", 100);
     std::weak_ptr<UltraCanvasButton> numWeak = numBtn;
     numBtn->onClick = [viewWeak, numWeak]() {
         auto v = viewWeak.lock();
@@ -266,12 +255,11 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreatePDFExamp
         v->SetThumbnailNumberStyle(toOverlay ? TNS::Overlay : TNS::Caption);
         b->SetText(toOverlay ? "#: On Page" : "#: Under");
     };
-    toolbar->AddChild(numBtn);
+    DemoKit::Add(toolbar, numBtn);
 
     // Toggle the page inventory's width mode: a share of the view's width
     // (the default) <-> a fixed thumbnail width in pixels.
-    auto widthBtn = CreateButton("PDFThumbWidth", 0, 0, 110, 30, "Strip: 25%");
-    widthBtn->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    auto widthBtn = makeToolbarButton("PDFThumbWidth", "Strip: 25%", 110);
     std::weak_ptr<UltraCanvasButton> widthWeak = widthBtn;
     widthBtn->onClick = [viewWeak, widthWeak]() {
         auto v = viewWeak.lock();
@@ -283,24 +271,18 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreatePDFExamp
         else            v->SetThumbnailWidthFraction(0.25f);
         b->SetText(toAbsolute ? "Strip: 56px" : "Strip: 25%");
     };
-    toolbar->AddChild(widthBtn);
+    DemoKit::Add(toolbar, widthBtn);
 
     pageLabel->SetAlignment(TextAlignment::Right, VerticalAlignment::Middle);
-    pageLabel->layoutItem.SetFlexGrow(1).SetFlexShrink(0);
-    toolbar->AddChild(pageLabel);
+    DemoKit::Add(toolbar, pageLabel, 1);
 
-    // ----- Status row below the view: hint text (left) + zoom level (right) -----
-    auto statusRow = std::make_shared<UltraCanvasContainer>("PDFStatusRow", 0, 0, 0, 22);
-    statusRow->layout.SetFlexRow().SetFlexGap(8)
-                     .SetFlexAlignItems(CSSLayout::AlignItems::Center);
-    statusRow->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-    statusRow->AddChild(statusLabel);
-    statusRow->AddChild(zoomLabel);
+    // ----- Viewer, then the status row below it: hint text (left) + zoom level (right) -----
+    DemoKit::Add(card, view, 1);
 
-    // ----- Assemble in visual order: title, toolbar, viewer, status -----
-    root->AddChild(toolbar);
-    root->AddChild(view);
-    root->AddChild(statusRow);
+    auto statusRow = DemoKit::AddRow(card, "PDFStatusRow", 8);
+    statusRow->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    DemoKit::Add(statusRow, statusLabel, 1);
+    DemoKit::Add(statusRow, zoomLabel);
 
     return root;
 }

@@ -11,6 +11,7 @@ even when the application itself is not running. Header:
 - [Registering the activator](#registering-the-activator)
 - [The launch string](#the-launch-string)
 - [What is written, and how it is removed](#what-is-written-and-how-it-is-removed)
+- [From the MSIX package](#from-the-msix-package)
 - [API](#api)
 
 ## Why it is needed
@@ -104,6 +105,43 @@ is offered three more ways:
 An application registers again the next time it starts (its activator) or
 shows a notification (its name and icon), so a removal does no harm to one
 that stays.
+
+## From the MSIX package
+
+A program running from an MSIX package (`package-win-msix.sh`,
+[UltraCanvasWindowsMSIX](UltraCanvasWindowsMSIX.md)) works differently in
+three ways:
+
+- **Its `HKEY_CURRENT_USER` writes stay inside the package.** The registry
+  above would be invisible to Windows, so nothing is written.
+- **The activator comes from the package manifest.** Each application that
+  registers one has a `windows.comServer` extension, which names its
+  executable with `-ToastActivated` and the CLSID, and a
+  `windows.toastNotificationActivation` extension, which names the same CLSID.
+  `RegisterNotificationActivator` only serves the class. It writes a line to
+  the debug log when the manifest does not name that CLSID.
+- **Its toasts belong to the package's applications.** Windows shows a toast
+  only under `<package family name>!<Application Id>`, headed with that
+  application's name and icon from the manifest. So the presenter asks Windows
+  for the posting process's own AppUserModelID (`GetApplicationUserModelId`,
+  with the process the broker saw on the connection) and shows the toast
+  under it. A click after the broker host quit then reaches that
+  application's activator. A notification from a process outside the package
+  goes under the presenting application's own ID, with the poster's name as
+  its subtitle.
+
+The manifest's declarations come from `NOTIFICATION_ACTIVATORS` in
+`scripts/make_msix_layout.py`: each application's executable and the ID it
+registers under. The CLSID is derived as `NotificationActivatorClassId`
+derives it. `scripts/check_notification_activators.py` fails CI in three
+cases:
+
+- an application registers an activator but has no row there;
+- a row names an ID its sources do not contain;
+- the Python derivation no longer gives the CLSID that the C++ test pins.
+
+None of this has run on Windows yet: toasts from the package, and clicks on
+them after the program has quit, are still to be tried.
 
 ## API
 

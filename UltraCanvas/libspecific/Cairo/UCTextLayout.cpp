@@ -1,11 +1,13 @@
 // libspecific/Cairo/UCTextLayout.cpp
 // Pango text layout wrapper for UltraCanvas Framework
+// Version: 1.1.7 - GetCapHeight measures the font the text starts in, font
+//                  attributes included, not the layout's own font alone
 // Version: 1.1.6 - FontStyle::ToFontDesc names the Normal slant and weight (-Wswitch)
 // Version: 1.1.5 - a new layout wraps a word too long for its line between
 //                  characters (Pango's own default left it whole, running
 //                  past the width it was given)
 // Version: 1.1.4
-// Last Modified: 2026-10-15
+// Last Modified: 2026-10-24
 // V1.1.4: text that is not valid UTF-8 is repaired before it reaches Pango,
 //   which would otherwise log "Invalid UTF-8 string passed to
 //   pango_layout_set_text()" and drop the string.
@@ -884,9 +886,20 @@ namespace UltraCanvas {
         // font from the ink of a capital H and kept: every layout in that
         // font asks for the same number, and a menu or list asks per row.
         PangoContext* ctx = pango_layout_get_context(layout);
-        const PangoFontDescription* desc = pango_layout_get_font_description(layout);
-        if (!desc) desc = pango_context_get_font_description(ctx);
-        if (!desc) return 0;
+        const PangoFontDescription* baseDesc = pango_layout_get_font_description(layout);
+        if (!baseDesc) baseDesc = pango_context_get_font_description(ctx);
+        if (!baseDesc) return 0;
+
+        // The font the text starts in: the layout's own, overridden by any
+        // family, size, weight or style attribute over its first character
+        // (ChangeAttribute). Measuring the layout's font alone gave a layout
+        // sized by an attribute the default size's capitals.
+        PangoFontDescription* desc = pango_font_description_copy(baseDesc);
+        if (PangoAttrList* attrs = pango_layout_get_attributes(layout)) {
+            PangoAttrIterator* it = pango_attr_list_get_iterator(attrs);
+            pango_attr_iterator_get_font(it, desc, nullptr, nullptr);
+            pango_attr_iterator_destroy(it);
+        }
 
         std::string key;
         {
@@ -897,7 +910,10 @@ namespace UltraCanvas {
 
         CapHeightCache* cache = GetCapHeightCache(ctx);
         auto found = cache->find(key);
-        if (found != cache->end()) return found->second;
+        if (found != cache->end()) {
+            pango_font_description_free(desc);
+            return found->second;
+        }
 
         double capHeight = 0;
         PangoLayout* probe = pango_layout_new(ctx);
@@ -912,6 +928,7 @@ namespace UltraCanvas {
             g_object_unref(probe);
         }
 
+        pango_font_description_free(desc);
         cache->emplace(key, capHeight);
         return capHeight;
     }

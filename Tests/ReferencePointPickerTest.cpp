@@ -2,12 +2,14 @@
 // UltraCanvasReferencePointPicker (the nine points and where they lie in a
 // box, SetPoint and its callback) and UltraCanvasSpinner::SetSnapToStep
 // (a Decimal value kept off the step grid, stepping from it) and
-// onStepsFinished (once per run of steps, not per step).
+// onStepsFinished (once per run of steps, not per step), and the picker's
+// free point.
 //
 // Usage: ReferencePointPickerTest
 // Exit code is the number of failed checks.
+// Version: 1.1.0 - the free point
 // Version: 1.0.0
-// Last Modified: 2026-10-17
+// Last Modified: 2026-10-28
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasReferencePointPicker.h"
@@ -65,6 +67,17 @@ int main() {
         picker->SetPoint(ReferencePoint::BottomRight, true);
         Check(calls == 1, "picking the same point again reports nothing");
         Check(picker->GetAccessibleValueText() == "Bottom right", "its accessible value is the point's name");
+
+        // A point off the nine: shown on its own, none of the nine lit.
+        picker->SetFreePoint(Point2Dd(1.4, -0.2));
+        Check(picker->HasFreePoint() && Near(picker->GetFreePoint()->x, 1.4) && calls == 1,
+              "SetFreePoint keeps the fractions as given and reports nothing");
+        Check(picker->GetAccessibleValueText() == "Free point", "its accessible value says so");
+        picker->SetPoint(ReferencePoint::BottomRight, true);
+        Check(!picker->HasFreePoint() && calls == 2, "picking the point it was on before clears the free point and reports it");
+        picker->SetFreePoint(Point2Dd(0.3, 0.3));
+        picker->SetFreePoint(std::nullopt);
+        Check(!picker->HasFreePoint() && picker->GetPoint() == ReferencePoint::BottomRight, "nullopt clears it back to the point");
     }
 
     // ===== Spinner: a value off the step grid =====

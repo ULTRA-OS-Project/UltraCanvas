@@ -202,6 +202,12 @@ NumberFormat         GetActiveCellNumberFormat() const;
 bool                 GetActiveCellWrapText() const;
 ```
 
+A cell's text is drawn centred in its row, on the middle of its capitals,
+whatever the font. `VerticalAlignment::Top` draws it at the top of the row
+instead. `Bottom` is every cell's default (as in .xlsx and .ods, which store
+no alignment for it), so a cell set to it cannot be told from an untouched
+one and is drawn centred like `Middle`.
+
 ### Rows, Columns, Merge, and Freeze
 
 ```cpp
@@ -317,6 +323,17 @@ std::string ExportCSVToString(const CSVExportOptions& options, int sheetIndex = 
 
 // After any Load*/Save* that returns false, this holds a human-readable reason.
 const std::string& GetLastError() const;
+```
+
+The CSV writer's quoting is public in `UltraCanvasCSVImport.h`, for a writer
+that streams rows it never holds at once (UltraDBAdmin's table export), so it
+quotes exactly as the spreadsheet does:
+
+```cpp
+// One record: fields quoted as the options say (all, or those holding the
+// separator, the quote or a line break; a quote inside doubled), then the
+// options' line ending. UTF-8; CSVEncodeFromUtf8 turns it into the charset.
+std::string CSVFormatRecord(const std::vector<std::string>& fields, const CSVExportOptions& opt);
 ```
 
 ### View Settings

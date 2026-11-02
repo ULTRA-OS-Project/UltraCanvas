@@ -13,6 +13,7 @@
   - [Compact (sliders-only) variant](#compact-sliders-only-variant)
 - [Colour Space Helpers](#colour-space-helpers)
 - [Foreground-only picker](#foreground-only-picker)
+- [Previewing a colour from elsewhere](#previewing-a-colour-from-elsewhere)
 - [Interaction Summary](#interaction-summary)
 - [Screen colour picker (eyedropper)](#screen-colour-picker-eyedropper)
 
@@ -357,6 +358,23 @@ entryPicker->SetAutoHeight(true);
 
 `UltraCanvasColorPaletteManager` ([doc](UltraCanvasColorPaletteManager.md))
 opens one in a popup when a palette swatch is right-clicked.
+
+## Previewing a colour from elsewhere
+
+Hovering the foreground or background swatch floods the whole picker with
+that colour, so it can be judged on a large area. A colour hovered outside
+the picker - a palette swatch under it - gets the same flood with
+`SetSurfacePreview`, until `ClearSurfacePreview`; a swatch of the picker's own
+under the pointer still shows that one.
+
+```cpp
+picker->SetSurfacePreview(Color(0, 119, 182, 255));   // the swatch under the pointer
+bool previewing = picker->HasSurfacePreview();
+picker->ClearSurfacePreview();                        // the pointer left it
+```
+
+`UltraCanvasColorPaletteManager` reports its hovered swatch through
+`onColorHovered` / `onColorHoverEnded` for exactly this.
 
 ## Interaction Summary
 

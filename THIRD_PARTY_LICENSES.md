@@ -20,6 +20,25 @@ its own license; the full license texts ship alongside the respective files.
 
 ---
 
+## OpenSSL 3 libcrypto (UltraCrypt's X.509, CMS, RSA and ECDSA)
+
+- **Used by:** UltraCrypt's X.509 and CMS (`UltraCanvas/core/UltraCrypt/UltraCryptX509.cpp`,
+  `UltraCryptX509.h`) and its RSA / ECDSA checks (`UltraCryptPublicKey.h`),
+  and through them UltraMail's S/MIME and the UltraDBAdmin relay's ID-token
+  signature. Optional: without
+  OpenSSL 3 those calls answer `BackendUnavailable`. (UltraNet links OpenSSL
+  for TLS on Linux and Android, UltraRTC for DTLS; those are listed with them.)
+- **Upstream:** https://github.com/openssl/openssl
+- **Linked, not vendored:** the system package (`libssl-dev`; MSYS2's
+  `openssl`), on macOS vcpkg's build for macOS 14 (`MacOS/deps/vcpkg.json`),
+  bundled as a dylib in the suite's shared `Frameworks/`. No OpenSSL source is
+  carried in this repository, and no OpenSSL type appears in any UltraCanvas
+  public header.
+- **License:** Apache License 2.0 (OpenSSL 3.0 and later). A binary
+  distribution that carries the library carries its licence text.
+
+---
+
 ## wasmtime (WebAssembly engine)
 
 - **Used by:** the WasmHost module (`UltraCanvas/core/WasmHost/`), and through
@@ -34,6 +53,28 @@ its own license; the full license texts ship alongside the respective files.
 - **License:** Apache License 2.0 with the LLVM exception
   (`Apache-2.0 WITH LLVM-exception`) — Copyright the Bytecode Alliance
   contributors.
+
+---
+
+## TDLib (Telegram Database Library)
+
+- **Used by:** the UltraIM Telegram provider
+  (`UltraCanvas/Plugins/UltraIM/telegram/`), and through it ChatCube's
+  Telegram account.
+- **Upstream:** https://github.com/tdlib/td
+- **Downloaded, not vendored, and loaded at run time, not linked:**
+  `cmake/UltraCanvasTdlib.cmake` fetches the prebuilt libtdjson 1.8.69 for
+  the build platform from the `tdjson` wheel on PyPI
+  (https://pypi.org/project/tdjson/), checks its SHA-256, and puts it in
+  `Plugins/UltraIM/tdlib/`, which the packages ship next to the provider
+  modules; the provider dlopens it through its JSON interface. No TDLib
+  source is carried in this repository, and no TDLib type appears in any
+  UltraCanvas public header. On macOS and Windows the wheel's OpenSSL 1.1
+  (Apache License 2.0 / OpenSSL License) and zlib (zlib License) libraries
+  ship beside it; the Windows wheel also carries the MSVC runtime
+  `msvcp140.dll` (Microsoft's redistribution terms).
+- **License:** Boost Software License 1.0 (`BSL-1.0`) — Copyright Aliaksei
+  Levin and Arseny Smirnov.
 
 ---
 
@@ -71,7 +112,7 @@ its own license; the full license texts ship alongside the respective files.
   `libopenzwave.so`, so CMake asks for the shared object by name rather than
   passing `-lopenzwave` and letting the linker choose. Configuration fails if
   only the static library is found.
-- **License:** **LGPL 2.1** — the only copyleft component listed here. A static
+- **License:** **LGPL 2.1**. A static
   link would carry the LGPL's relinking obligation into the resulting binary;
   `SmartHome/tests/ZWaveLinkTest.cpp` documents the two commands that verify it
   did not happen.
@@ -243,6 +284,33 @@ The vendored copy is unmodified upstream source (`yyjson.h` / `yyjson.c`).
 
 ---
 
+## libdatachannel (WebRTC engine) with libjuice, usrsctp, libsrtp and plog
+
+- **Used by:** the UltraRTC module (`UltraCanvas/core/UltraRTC/`), which wraps
+  it completely — no libdatachannel type appears in a public UltraCanvas
+  header — and through it ChatCube's peer-to-peer chat and calls.
+- **Upstream:** https://github.com/paullouisageneau/libdatachannel (v0.24.6),
+  https://github.com/paullouisageneau/libjuice, https://github.com/sctplab/usrsctp,
+  https://github.com/cisco/libsrtp, https://github.com/SergiusTheBest/plog.
+- **Vendored at:** `UltraCanvas/third_party/libdatachannel` (submodules under
+  `deps/`); versions and the directories removed are in `VENDORED.md` there.
+  Sources are unmodified.
+- **Licenses:**
+  - libdatachannel — Mozilla Public License 2.0, Copyright (c) 2019 Paul-Louis
+    Ageneau and contributors. Full text: `UltraCanvas/third_party/libdatachannel/LICENSE`.
+  - libjuice — Mozilla Public License 2.0, Copyright (c) 2020 Paul-Louis
+    Ageneau. Full text: `.../deps/libjuice/LICENSE`.
+  - usrsctp — BSD 3-Clause. Full text: `.../deps/usrsctp/LICENSE.md`.
+  - libsrtp — BSD 3-Clause, Copyright (c) 2001-2017 Cisco Systems, Inc.
+    Full text: `.../deps/libsrtp/LICENSE`.
+  - plog — MIT License, Copyright (c) 2022 Sergey Podobry. Full text:
+    `.../deps/plog/LICENSE`.
+
+MPL-2.0 is file-level copyleft: the vendored files stay under MPL-2.0 and
+their source is published here; UltraCanvas's own files are unaffected.
+
+---
+
 ## OpenCV frontal-face Haar cascade (face model data)
 
 - **Used by:** VideoFX's built-in face detector (`VideoFX/core/VideoFXFaces.*`,
@@ -328,6 +396,54 @@ The vendored copy is unmodified upstream source (`yyjson.h` / `yyjson.c`).
   product. UltraCanvas ships no AAC codec of its own.
 
 ---
+
+## MariaDB Connector/C (libmariadb — the MySQL / MariaDB driver)
+
+- **Used by:** UltraDatabase's MySQL / MariaDB driver
+  (`UltraCanvas/core/UltraDatabase/UltraDatabaseMysqlDriver.cpp`), and so by
+  every program that opens a `mysql` connection (UltraDBAdmin). Optional: a
+  build without it has no MySQL driver and says so.
+- **Upstream:** https://github.com/mariadb-corporation/mariadb-connector-c
+- **Linked, not vendored, and dynamically:** the system package is used
+  (`libmariadb-dev`; Homebrew's `mariadb-connector-c`, vcpkg's `libmariadb`,
+  MSYS2's `libmariadbclient`). The packages ship `libmariadb.a` beside the
+  shared library, so CMake asks for the shared object by name and leaves the
+  driver out when only the archive is found. No Connector/C source is carried
+  in this repository, and the driver that calls it is not a modification of
+  it: it stays MIT.
+- **License:** **LGPL-2.1-or-later.** A distributor of a binary that links it
+  ships the licence text and this notice, makes the exact Connector/C source
+  shipped available (pointing to its upstream release tag does, when it is
+  unmodified), keeps the library a separate file the user could replace, and
+  does not forbid reverse engineering for debugging such a replacement. What
+  that obliges, and what it does not, is set out in
+  `Docs/Research/UltraDBAdminDesignProposal.md` §9.1. Chosen over MySQL's own
+  client library, which is GPL-2.0 with Oracle's FOSS exception; Connector/C
+  speaks to MySQL servers as well.
+
+---
+
+## GPGME (GnuPG Made Easy — UltraMail's OpenPGP)
+
+- **Used by:** UltraMail's OpenPGP support
+  (`Apps/UltraMail/engine/UltraMailOpenPgp.cpp`): checking and making
+  signatures, encrypting and decrypting, with the user's own GnuPG keyring.
+  Optional: a build without it has no OpenPGP and says so.
+- **Upstream:** https://dev.gnupg.org/source/gpgme/
+- **Linked, not vendored, and dynamically:** the system package is used
+  (`libgpgme-dev`; MSYS2's `gpgme`); on macOS vcpkg builds it
+  (`MacOS/deps/vcpkg.json`) and the suite bundles it as a dylib in its shared
+  `Frameworks/`, with its two libraries **libassuan** and **libgpg-error**
+  (both LGPL-2.1-or-later, the same terms). GPGME runs GnuPG's own programs (`gpg`,
+  `gpg-agent`, `pinentry`) as separate processes; none of GnuPG is linked.
+  No GPGME source is carried in this repository, and the code that calls it is
+  not a modification of it: it stays MIT.
+- **License:** **LGPL-2.1-or-later** (GnuPG itself, run as a program, is
+  GPL-3.0-or-later). A distributor of a binary that links GPGME ships the
+  licence text and this notice, makes the exact GPGME source shipped
+  available, keeps the library a separate file the user could replace, and
+  does not forbid reverse engineering for debugging such a replacement - as
+  for MariaDB Connector/C above.
 
 ## FFmpeg (optional — VideoFX's engine; LGPL or GPL depending on the build)
 

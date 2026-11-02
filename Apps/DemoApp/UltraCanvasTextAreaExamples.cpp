@@ -1,10 +1,14 @@
-// Apps/DemoApp/UltraCanvasDemoExamples.cpp
+// Apps/DemoApp/UltraCanvasTextAreaExamples.cpp
 // Implementation of all component example creators
+// Version: 1.1.0 - the shared page look (UltraCanvasDemoPageKit): one card per
+//                  editor, the editors as wide as the page, the controls in a
+//                  card, buttons sized to their text
 // Version: 1.0.0
-// Last Modified: 2024-12-19
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "UltraCanvasTextArea.h"
 #include <sstream>
 #include <random>
@@ -14,36 +18,15 @@ namespace UltraCanvas {
 
     // Create TextArea Examples for Extended Functionality category
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateTextAreaExamples() {
-        // Create main container with fixed size
-        auto container = std::make_shared<UltraCanvasContainer>("TextAreaContainer", 0, 0, 1000, 780);
-
-//        // Title Label - centered at top
-//        auto titleLabel = std::make_shared<UltraCanvasLabel>("TitleLabel", 20, 10, 760, 30);
-//        titleLabel->SetText("UltraCanvas TextArea - Syntax Highlighting Demo");
-//        titleLabel->SetFontSize(18);
-//        titleLabel->SetFontWeight(FontWeight::Bold);
-//        titleLabel->SetAlignment(TextAlignment::Center);
-//        container->AddChild(titleLabel);
-
-        // Description Label - below title
-        auto descLabel = std::make_shared<UltraCanvasLabel>("DescLabel", 20, 5, 760, 20);
-        descLabel->SetText("Advanced text editing with syntax highlighting, line numbers, and theme support");
-        descLabel->SetFontSize(12);
-        descLabel->SetTextColor(Color(100, 100, 100));
-        descLabel->SetAlignment(TextAlignment::Center);
-        container->AddChild(descLabel);
+        auto container = DemoKit::CreatePage("TextAreaContainer",
+                "UltraCanvas TextArea - Syntax Highlighting Demo",
+                "Advanced text editing with syntax highlighting, line numbers, and theme support");
 
         // ===== TEXTAREA 1: C++ Code with Dark Theme =====
-        // Left column
-        auto cppLabel = std::make_shared<UltraCanvasLabel>("CppLabel", 20, 30, 245, 20);
-        cppLabel->SetText("C++ Syntax (Dark Theme)");
-        cppLabel->SetFontSize(12);
-        cppLabel->SetFontWeight(FontWeight::Bold);
-        cppLabel->SetAlignment(TextAlignment::Left);
-        container->AddChild(cppLabel);
+        auto cppCard = DemoKit::AddCard(container, "CppLabel", "C++ Syntax (Dark Theme)");
 
         // C++ TextArea
-        auto cppTextArea = std::make_shared<UltraCanvasTextArea>("CppTextArea", 20, 53, 950, 200);
+        auto cppTextArea = std::make_shared<UltraCanvasTextArea>("CppTextArea", 0, 0, 950, 200);
         cppTextArea->ApplyDarkCodeStyle("C++");
         cppTextArea->SetShowLineNumbers(true);
         cppTextArea->SetHighlightCurrentLine(true);
@@ -95,19 +78,13 @@ int main() {
 })";
 
         cppTextArea->SetText(cppCode);
-        container->AddChild(cppTextArea);
+        DemoKit::AddStretched(cppCard, cppTextArea);
 
         // ===== TEXTAREA 2: Python Code with Light Theme =====
-        // Middle column
-        auto pythonLabel = std::make_shared<UltraCanvasLabel>("PythonLabel", 20, 257, 345, 20);
-        pythonLabel->SetText("Python Syntax (Light Theme)");
-        pythonLabel->SetFontSize(12);
-        pythonLabel->SetFontWeight(FontWeight::Bold);
-        pythonLabel->SetAlignment(TextAlignment::Left);
-        container->AddChild(pythonLabel);
+        auto pythonCard = DemoKit::AddCard(container, "PythonLabel", "Python Syntax (Light Theme)");
 
         // Python TextArea
-        auto pythonTextArea = std::make_shared<UltraCanvasTextArea>("PythonTextArea", 20, 280, 950, 200);
+        auto pythonTextArea = std::make_shared<UltraCanvasTextArea>("PythonTextArea", 0, 0, 950, 200);
         pythonTextArea->ApplyCodeStyle("Python");
         pythonTextArea->SetShowLineNumbers(true);
         pythonTextArea->SetHighlightCurrentLine(true);
@@ -166,19 +143,13 @@ if __name__ == "__main__":
     main())";
 
         pythonTextArea->SetText(pythonCode);
-        container->AddChild(pythonTextArea);
+        DemoKit::AddStretched(pythonCard, pythonTextArea);
 
         // ===== TEXTAREA 3: Pascal Code with Custom Settings =====
-        // Right column
-        auto pascalLabel = std::make_shared<UltraCanvasLabel>("PascalLabel", 20, 484, 365, 20);
-        pascalLabel->SetText("Pascal Syntax (Custom Theme)");
-        pascalLabel->SetFontSize(12);
-        pascalLabel->SetFontWeight(FontWeight::Bold);
-        pascalLabel->SetAlignment(TextAlignment::Left);
-        container->AddChild(pascalLabel);
+        auto pascalCard = DemoKit::AddCard(container, "PascalLabel", "Pascal Syntax (Custom Theme)");
 
         // Pascal TextArea with custom settings
-        auto pascalTextArea = std::make_shared<UltraCanvasTextArea>("PascalTextArea", 20, 507, 950, 200);
+        auto pascalTextArea = std::make_shared<UltraCanvasTextArea>("PascalTextArea", 0, 0, 950, 200);
 
         // Apply custom style for Pascal
         pascalTextArea->ApplyCodeStyle("Pascal");
@@ -301,10 +272,22 @@ begin
 end.)";
 
         pascalTextArea->SetText(pascalCode);
-        container->AddChild(pascalTextArea);
+        DemoKit::AddStretched(pascalCard, pascalTextArea);
 
         // ===== CONTROLS SECTION =====
-        // Controls positioned at bottom of the window
+        // The controls in a card under the editors; each button is as wide as
+        // its text, at least the width it had.
+        auto controlsCard = DemoKit::AddCard(container, "TextAreaControls");
+        auto controlsRow = DemoKit::AddRow(controlsCard, "TextAreaControlsRow", 8);
+        controlsRow->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
+        auto addButton = [&controlsRow](const std::string& id, const std::string& text, float minWidth) {
+            auto button = std::make_shared<UltraCanvasButton>(id, 0, 0, 0, 25, text);
+            CSSLayout::BoxConstraints limits;
+            limits.minWidth = CSSLayout::Dimension::Px(minWidth);
+            button->boxConstraints = limits;
+            DemoKit::Add(controlsRow, button);
+            return button;
+        };
 
         // Read-only checkbox
 //        auto readOnlyCheckbox = std::make_shared<UltraCanvasCheckBox>("ReadOnlyCheckbox", 20, 540, 120, 25);
@@ -348,14 +331,10 @@ end.)";
 //        container->AddChild(themeDropdown);
 
         // Font size label
-        auto fontSizeLabel = std::make_shared<UltraCanvasLabel>("FontSizeLabel", 420, 724, 90, 20);
-        fontSizeLabel->SetText("Font Size:");
-        fontSizeLabel->SetAlignment(TextAlignment::Right);
-        container->AddChild(fontSizeLabel);
+        DemoKit::AddText(controlsRow, "FontSizeLabel", "Font Size:");
 
         // Decrease font button
-        auto decreaseFontBtn = std::make_shared<UltraCanvasButton>("DecreaseFontBtn", 515, 720, 30, 25);
-        decreaseFontBtn->SetText("-");
+        auto decreaseFontBtn = addButton("DecreaseFontBtn", "-", 30);
         decreaseFontBtn->onClick = [cppTextArea, pythonTextArea, pascalTextArea]() {
             int newSize = cppTextArea->GetFontSize() - 1;
             if (newSize >= 8) {
@@ -364,11 +343,9 @@ end.)";
                 pascalTextArea->SetFontSize(newSize);
             }
         };
-        container->AddChild(decreaseFontBtn);
 
         // Increase font button
-        auto increaseFontBtn = std::make_shared<UltraCanvasButton>("IncreaseFontBtn", 550, 720, 30, 25);
-        increaseFontBtn->SetText("+");
+        auto increaseFontBtn = addButton("IncreaseFontBtn", "+", 30);
         increaseFontBtn->onClick = [cppTextArea, pythonTextArea, pascalTextArea]() {
             int newSize = cppTextArea->GetFontSize() + 1;
             if (newSize <= 20) {
@@ -377,22 +354,18 @@ end.)";
                 pascalTextArea->SetFontSize(newSize);
             }
         };
-        container->AddChild(increaseFontBtn);
 
         // Clear all button
-        auto clearAllBtn = std::make_shared<UltraCanvasButton>("ClearAllBtn", 600, 720, 90, 25);
-        clearAllBtn->SetText("Clear All");
+        auto clearAllBtn = addButton("ClearAllBtn", "Clear All", 90);
 //        clearAllBtn->SetButtonStyle(ButtonStyle::Danger);
         clearAllBtn->onClick = [cppTextArea, pythonTextArea, pascalTextArea]() {
             cppTextArea->Clear();
             pythonTextArea->Clear();
             pascalTextArea->Clear();
         };
-        container->AddChild(clearAllBtn);
 
         // Line numbers toggle button
-        auto lineNumBtn = std::make_shared<UltraCanvasButton>("LineNumBtn", 700, 720, 120, 25);
-        lineNumBtn->SetText("Toggle Lines");
+        auto lineNumBtn = addButton("LineNumBtn", "Toggle Lines", 120);
 //        lineNumBtn->SetButtonStyle(ButtonStyle::Secondary);
         lineNumBtn->onClick = [cppTextArea, pythonTextArea, pascalTextArea]() {
             bool showLines = !cppTextArea->GetShowLineNumbers();
@@ -400,10 +373,8 @@ end.)";
             pythonTextArea->SetShowLineNumbers(showLines);
             pascalTextArea->SetShowLineNumbers(showLines);
         };
-        container->AddChild(lineNumBtn);
 
-        auto syntaxToggleBtn = std::make_shared<UltraCanvasButton>("syntaxToggleBtn", 830, 720, 140, 25);
-        syntaxToggleBtn->SetText("Toggle syntax");
+        auto syntaxToggleBtn = addButton("syntaxToggleBtn", "Toggle syntax", 140);
 //        lineNumBtn->SetButtonStyle(ButtonStyle::Secondary);
         syntaxToggleBtn->onClick = [cppTextArea, pythonTextArea, pascalTextArea]() {
             bool showSyntax = !cppTextArea->GetHighlightSyntax();
@@ -411,15 +382,11 @@ end.)";
             pythonTextArea->SetHighlightSyntax(showSyntax);
             pascalTextArea->SetHighlightSyntax(showSyntax);
         };
-        container->AddChild(syntaxToggleBtn);
 
         // Info labels at bottom
-        auto infoLabel = std::make_shared<UltraCanvasLabel>("InfoLabel", 20, 750, 760, 10);
-        infoLabel->SetText("Try typing in any text area - supports full editing, selection, copy/paste, and undo/redo");
-        infoLabel->SetFontSize(10);
-        infoLabel->SetTextColor(Color(128, 128, 128));
-        infoLabel->SetAlignment(TextAlignment::Center);
-        container->AddChild(infoLabel);
+        auto infoLabel = DemoKit::AddCaption(controlsCard, "InfoLabel",
+                "Try typing in any text area - supports full editing, selection, copy/paste, and undo/redo");
+        infoLabel->SetAlignment(TextAlignment::Center, VerticalAlignment::Top);
 
         return container;
     }

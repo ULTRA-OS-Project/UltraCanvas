@@ -5,8 +5,10 @@
 // UltraCanvasEnginePieChart, UltraCanvasEnginePolarChart). Every example of
 // the legacy chart's own demo page is offered; picking one rebuilds BOTH
 // charts from the same data, so the two sides always show the same thing.
+// Version: 1.1.0 - the shared page look (UltraCanvasDemoPageKit): checkboxes and
+//                  buttons as wide as their text, the old width as a minimum
 // Version: 1.0.0
-// Last Modified: 2026-10-20
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasEngineComparison.h"
@@ -52,6 +54,14 @@ void PutInHolder(UltraCanvasContainer& holder, std::shared_ptr<UltraCanvasUIElem
     holder.AddChild(chart);
 }
 
+// Controls are as wide as their text, at least the width they were given:
+// a longer caption (a translation) widens the control instead of being cut.
+void SetMinimumWidth(UltraCanvasUIElement& element, int minWidth) {
+    CSSLayout::BoxConstraints limits = element.boxConstraints.value_or(CSSLayout::BoxConstraints{});
+    limits.minWidth = CSSLayout::Dimension::Px(static_cast<float>(minWidth));
+    element.boxConstraints = limits;
+}
+
 std::shared_ptr<UltraCanvasDropdown> MakeDropdown(const std::string& id, int width,
                                                   const std::vector<std::string>& items,
                                                   int selected = 0) {
@@ -63,7 +73,8 @@ std::shared_ptr<UltraCanvasDropdown> MakeDropdown(const std::string& id, int wid
 
 std::shared_ptr<UltraCanvasCheckbox> MakeCheckbox(const std::string& id, const std::string& text,
                                                   bool checked, int width) {
-    auto checkbox = std::make_shared<UltraCanvasCheckbox>(id, width, 24);
+    auto checkbox = std::make_shared<UltraCanvasCheckbox>(id, 0, 24);
+    SetMinimumWidth(*checkbox, width);
     checkbox->SetText(text);
     checkbox->SetChecked(checked);
     return checkbox;
@@ -71,7 +82,8 @@ std::shared_ptr<UltraCanvasCheckbox> MakeCheckbox(const std::string& id, const s
 
 std::shared_ptr<UltraCanvasButton> MakeButton(const std::string& id, const std::string& text,
                                               int width) {
-    auto button = std::make_shared<UltraCanvasButton>(id, 0, 0, width, 24);
+    auto button = std::make_shared<UltraCanvasButton>(id, 0, 0, 0, 24);
+    SetMinimumWidth(*button, width);
     button->SetText(text);
     return button;
 }
@@ -607,7 +619,7 @@ EnginePieLabelContent EngineContentOf(LabelContent content) {
 
 // Dropdown order: Auto, Inside, Outside, Hidden.
 const LabelPosition kLegacyPositions[] = {LabelPosition::Auto, LabelPosition::Inside,
-                                          LabelPosition::Outside, LabelPosition::None};
+                                          LabelPosition::Outside, LabelPosition::NoLabels};
 const EnginePieLabelPosition kEnginePositions[] = {
     EnginePieLabelPosition::Auto, EnginePieLabelPosition::Inside,
     EnginePieLabelPosition::Outside, EnginePieLabelPosition::Hidden};

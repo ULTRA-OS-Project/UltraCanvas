@@ -22,8 +22,10 @@
 # N is measured here and compared with the reply's, so a remembered figure is
 # refused the same way a missing line is.
 #
+# Version: 1.4.0 - a single-branch clone's branch is fetched once, so a pushed
+#                  branch no longer reads as unpushed
 # Version: 1.3.0
-# Last Modified: 2026-10-21
+# Last Modified: 2026-10-25
 # Author: UltraCanvas Framework
 set -u
 
@@ -50,15 +52,35 @@ git rev-parse --is-inside-work-tree >/dev/null 2>&1 || exit 0
 
 dirty="$(git status --porcelain 2>/dev/null)"
 
-# Commits that exist only in this clone. A branch with no upstream is checked
-# against every remote ref instead: a fresh branch cut from origin/main holds
-# only commits the remote already has, and listing them as unpushed sent
-# sessions chasing work that was never at risk. Commits on no remote ref at
-# all are as lost as an uncommitted file.
+# Commits that exist only in this clone: the branch against its copy on
+# origin (refs/remotes/origin/<branch>). A shallow clone is single-branch:
+# its fetch refspec covers the default branch alone, so a branch pushed with
+# `git push -u` never gets that copy, '@{u}' resolves to nothing, and every
+# commit on the branch read as unpushed although the remote held them all -
+# a session was told twice to push what it had already pushed. So when the
+# copy is missing the branch is fetched once, bounded, and on success joins
+# the fetch refspec (one line of config, so later pushes and fetches keep the
+# copy current). A branch origin does not have, or an origin that cannot be
+# reached, is checked against every remote ref, as before: a fresh branch cut
+# from origin/main holds only commits the remote already has, and listing them
+# as unpushed sent sessions chasing work that was never at risk. Commits on no
+# remote ref at all are as lost as an uncommitted file.
 unpushed=""
 branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null)"
 if [ -n "$branch" ] && [ "$branch" != "HEAD" ]; then
-    if git rev-parse --abbrev-ref '@{u}' >/dev/null 2>&1; then
+    copy="refs/remotes/origin/$branch"
+    if ! git rev-parse --verify -q "$copy" >/dev/null 2>&1 &&
+       git config --get remote.origin.url >/dev/null 2>&1 && command -v timeout >/dev/null 2>&1; then
+        spec="+refs/heads/$branch:$copy"
+        if GIT_TERMINAL_PROMPT=0 timeout 12 git fetch --quiet --no-tags origin "$spec" >/dev/null 2>&1; then
+            git config --get-all remote.origin.fetch 2>/dev/null |
+                grep -qxF -e "$spec" -e '+refs/heads/*:refs/remotes/origin/*' ||
+                git config --add remote.origin.fetch "$spec"
+        fi
+    fi
+    if git rev-parse --verify -q "$copy" >/dev/null 2>&1; then
+        unpushed="$(git log --oneline "$copy..HEAD" 2>/dev/null)"
+    elif git rev-parse --abbrev-ref '@{u}' >/dev/null 2>&1; then
         unpushed="$(git log --oneline '@{u}..HEAD' 2>/dev/null)"
     else
         unpushed="$(git log --oneline -n 20 HEAD --not --remotes 2>/dev/null)"

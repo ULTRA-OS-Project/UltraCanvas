@@ -2,6 +2,20 @@
 // The desktop window: bars, wallpaper, and the live data behind the items.
 // See the header for the shape; the comments here say why each piece is
 // wired the way it is.
+// Version: 0.5.2 - the screenshot button opens UltraSnip: a click snips an area, the
+//                  right click offers a window, the screen and a recording;
+//                  Super+Shift+S from any window; TakeScreenshot stays the fallback
+// Version: 0.5.1 - the desktop on the primary monitor (area_), the others
+//                  covered on X11 too; panels and toasts placed from it; a
+//                  primary that moves is followed (FollowPrimaryScreen)
+// Version: 0.5.0 - the clock (BuildClock, UpdateClock, the clock panel);
+//                  pinned applications (PinKey, ShowPinnedMenu); the volume
+//                  panel and the speaker's words (ReadSpeaker); the lock
+//                  (LockScreen); sign out, restart and shut down wherever
+//                  the platform can; the Super tap and Super+L on Linux
+//                  (StartDesktopShortcuts); tray icons' menus (ShowTrayMenu)
+// Version: 0.4.1 - from an MSIX package: the desktop switch says why it is not
+//                  there, and "Close UltraDesktop" stays
 // Version: 0.4.0 - Windows: instead of Explorer - the tray icons (StartTray,
 //                  RefreshTray), sign out / restart / shut down, the Win key
 //                  (appsShortcut_); the other screens' wallpaper
@@ -17,10 +31,20 @@
 #include "UltraDesktopAppStarter.h"
 #include "UltraDesktopCategoryBoard.h"
 #include "UltraDesktopClipboardPanel.h"
+#include "UltraDesktopClockPanel.h"
 #include "UltraDesktopStickerboard.h"
 #include "UltraDesktopTasksWindow.h"
+#include "UltraDesktopVolumePanel.h"
+#include "UltraDesktopWifiPanel.h"
+#include "UltraDesktopBluetoothPanel.h"
+#include "UltraDesktopDevicePanel.h"
 
 #include "UltraCanvasAlert.h"
+#include "UltraCanvasAudioDevices.h"
+#include "UltraCanvasHardwareInfo.h"
+#include "UltraCanvasRemovableDrives.h"
+#include "UltraCanvasVideoDevices.h"
+#include "UltraCanvasWireless.h"
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasClipboard.h"
@@ -29,10 +53,12 @@
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasDebug.h"
 #include "UltraCanvasImageElement.h"
+#include "UltraCanvasLabel.h"
 #include "UltraCanvasMenu.h"
 #include "UltraCanvasModalDialog.h"
 #include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasToolbar.h"
+#include "Plugins/Diagrams/UltraCanvasGaugeDiagramElement.h"
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasWaveSeparator.h"
 #include "UltraCanvasWindow.h"
@@ -42,6 +68,8 @@
 #endif
 
 #include <algorithm>
+#include <cctype>
+#include <cstdio>
 #include <chrono>
 #include <cstdint>
 #include <filesystem>
@@ -63,13 +91,36 @@ constexpr int   kBarThickness   = 52;   // the taskbar's width (height when hori
 constexpr int   kInfoPanelWidth = 48;   // the right bar: icons only, labels are tooltips
 constexpr int   kBarButton      = 40;   // one item's box
 constexpr int   kBarIcon        = 24;
+// The settings button shows the ULTRA OS logo (384 x 200), wider than an icon.
+constexpr int   kLogoButtonWide = 64;
+constexpr int   kLogoWidth      = 384;
+constexpr int   kLogoHeight     = 200;
+const char* const kLogoForDarkBar = "ultraos-logo-dark.png";   // UOS-Settings shows ultraos-logo-light.png
 constexpr int   kInfoButton     = 36;   // the info panel's items, fourteen of them
 constexpr int   kInfoIcon       = 20;
+// Below this height the info panel's items are smaller, and what still does
+// not fit folds into the chevron's menu at the bar's foot - least used first.
+constexpr int   kCompactScreenHeight = 960;
+constexpr int   kInfoButtonCompact = 30;
+constexpr int   kInfoIconCompact   = 18;
+// The services that fold first, least used first. Webcam and microphone
+// come late: their red dot says a device is on, and that must stay seen.
+const char* const kInfoFoldOrder[] = {"keyboard", "vpn", "usb", "upload", "tasks", "download", "lan",
+                                      "mail", "battery", "bluetooth", "webcam", "mic", "speaker", "wifi"};
+constexpr int   kClockHeight    = 68;   // the face (48) over the date line
+constexpr int   kClockFaceBox   = 66;   // the gauge's box: its face lands at the top, 48 px across
+constexpr int   kPollsPerSpeakerRead = 5;   // the loudspeaker every 10 s
+// The desktop's own picture, and the framework's for a package without it.
+const char* const kDefaultWallpaper  = "media/images/desktop/ULTRA OS A.avif";
+const char* const kFallbackWallpaper = "media/images/landscape.jpg";
 constexpr float kWaveLength     = 36;
+constexpr float kWaveGap        = 4;    // from the icon next to a bar's wave to the wave
 constexpr unsigned kUiTimerMs   = 250;
 constexpr int   kNoticeTicks    = 20;   // notices re-read every 5 s
 constexpr int   kScreenshotTicks = 12;  // the "saved" marker stays 3 s
 constexpr int   kDevicePollSeconds = 2;
+constexpr unsigned kStartupProgramsDelayMs = 3000;   // "start with the desktop", after the desktop
+constexpr unsigned kAppListPreloadDelayMs = 5000;    // the Apps window's list, read ahead
 constexpr uint64_t kActivityBytesPerPoll = 4096;   // below this a link is idle
 
 const Color kBarColor      (74, 74, 74, 255);
@@ -80,6 +131,7 @@ const Color kMarkerOn      (220, 30, 30, 255);   // red: a device is on
 const Color kMarkerActive  (240, 200, 0, 255);   // yellow: activity
 const Color kMarkerCount   (90, 90, 90, 255);    // grey pill for counts
 const Color kMarkerSaved   (60, 170, 90, 255);   // green: the screenshot landed
+const Color kClockFace     (236, 236, 240, 255); // the gauge draws dark hands: a light face
 
 const char* const kRunningPrefix = "win:";
 const char* const kTrayPrefix = "tray:";
@@ -116,8 +168,21 @@ UltraDesktopWindow::~UltraDesktopWindow() {
     shellMonitor_.Stop();
     trayHost_.Stop();
     appsShortcut_.Stop();
+    lockShortcut_.Stop();
+    snipShortcut_.Stop();
     clipboardShortcut_.Stop();
     clipboardPanel_.reset();
+    clockPanel_.reset();
+    volumePanel_.reset();
+    wifiPanel_.reset();
+    if (boardWindow_) {
+        boardWindow_->onWindowClosed = nullptr;
+        boardWindow_->Close();
+    }
+    categoryBoard_.reset();
+    boardWindow_.reset();
+    bluetoothPanel_.reset();
+    devicePanels_.clear();
     if (recorder_) recorder_->Detach();
     if (uiTimer_ != 0) {
         if (auto* app = UltraCanvasApplication::GetInstance()) app->StopTimer(uiTimer_);
@@ -137,13 +202,14 @@ bool UltraDesktopWindow::Initialize(const std::string& settingsPath, const Taskb
     }
     iconsDir_ = NormalizePath(GetResourcesDir() + "media/icons/desktop/");
 
-    WindowConfig config;
-    config.title = std::string("UltraDesktop ") + ULTRADESKTOP_VERSION;
-    config.type = WindowType::Desktop;
-    config.width = 1280;    // replaced by the screen size for a desktop window
-    config.height = 800;
-    config.backgroundColor = kBarInsetColor;
-    window_ = CreateWindow(config);
+    // Several monitors: the primary carries the bars, and the others get
+    // wallpaper windows (CoverOtherScreens). One window across the whole
+    // X11 root put the bars on the far edges of the two monitors, and into
+    // the dead area where the shorter one ended. One monitor, or a platform
+    // that tells none apart: the screen as it is.
+    bool oneOfSeveral = false;
+    area_ = DesktopAreaNow(oneOfSeveral);
+    window_ = CreateDesktopWindow(area_, oneOfSeveral);
     if (!window_) return false;
 
     BuildLayout();
@@ -158,7 +224,19 @@ bool UltraDesktopWindow::Initialize(const std::string& settingsPath, const Taskb
     // applies both.
     shellMonitor_.Start([this]() { windowsDirty_.store(true); });
     if (shellSession_) StartTray();
+    StartDesktopShortcuts();
+    StartSnipShortcut();
     StartDevicePoll();
+    // The pairing handler, from the start (see EnsureBluetoothPanel).
+    EnsureBluetoothPanel();
+    // The programs that start with the desktop: once the desktop is up, so
+    // they do not slow the first picture.
+    if (auto* app = UltraCanvasApplication::GetInstance()) {
+        app->StartTimer(kStartupProgramsDelayMs, false, [this](TimerId) { StartStartupPrograms(); });
+        // The Apps window's list, read ahead on a thread of its own, so the
+        // window has it to show the first time it opens.
+        app->StartTimer(kAppListPreloadDelayMs, false, [](TimerId) { UltraDesktopAppStarter::Preload(); });
+    }
     if (auto* app = UltraCanvasApplication::GetInstance()) {
         uiTimer_ = app->StartTimer(kUiTimerMs, /*periodic=*/true, [this](TimerId) { OnTimer(); });
     }
@@ -182,7 +260,26 @@ std::string UltraDesktopWindow::WallpaperPath() const {
         debugOutput << "UltraDesktop: wallpaper \"" << settings_.wallpaper
                     << "\" is not there, showing the default" << std::endl;
     }
-    return NormalizePath(GetResourcesDir() + "media/images/landscape.jpg");
+    return DefaultWallpaperPath();
+}
+
+std::string UltraDesktopWindow::DefaultWallpaperPath() {
+    // ULTRA OS's own picture; the framework's landscape where it is missing.
+    const std::string own = NormalizePath(GetResourcesDir() + kDefaultWallpaper);
+    std::error_code ec;
+    if (fs::is_regular_file(PathFromUtf8(own), ec)) return own;
+    return NormalizePath(GetResourcesDir() + kFallbackWallpaper);
+}
+
+void UltraDesktopWindow::LoadWallpaper(UltraCanvasImageElement& wallpaper) const {
+    const std::string path = WallpaperPath();
+    if (wallpaper.LoadFromFile(path)) return;
+    // A picture this build cannot read (an AVIF without libheif): the
+    // framework's landscape rather than an empty desktop.
+    const std::string fallback = NormalizePath(GetResourcesDir() + kFallbackWallpaper);
+    debugOutput << "UltraDesktop: the wallpaper \"" << path << "\" could not be read, showing " << fallback
+                << std::endl;
+    if (path != fallback) wallpaper.LoadFromFile(fallback);
 }
 
 void UltraDesktopWindow::BuildLayout() {
@@ -195,12 +292,27 @@ void UltraDesktopWindow::BuildLayout() {
     // The tray icons live on the info panel, which is built anew.
     trayIcons_.clear();
     trayTooltips_.clear();
+    trayMenus_.clear();
     if (trayHost_.IsRunning()) trayDirty_.store(true);
     running_.reset();
     organiser_.reset();
     info_.reset();
+    clock_.reset();
+    clockDate_.reset();
+    clockMinute_ = -1;
     windowsDirty_.store(true);
     haveLastActivity_ = false;
+
+    // The pins, against what is installed now.
+    pinnedEntries_.clear();
+    for (const std::string& key : settings_.pinnedApps) {
+        for (const UCDesktopEntry& entry : Applications()) {
+            if (PinKey(entry) == key) {
+                pinnedEntries_.push_back(entry);
+                break;
+            }
+        }
+    }
 
     root_ = CreateContainer("Desktop", 0, 0, 0, 0);
     root_->SetBackgroundColor(kBarInsetColor);
@@ -292,6 +404,34 @@ std::shared_ptr<UltraCanvasToolbar> UltraDesktopWindow::MakeGroup(const std::str
     return group;
 }
 
+void UltraDesktopWindow::TuckAgainstWave(const std::shared_ptr<UltraCanvasToolbar>& group,
+                                         const std::shared_ptr<UltraCanvasWaveSeparator>& wave,
+                                         bool vertical, bool waveAfterGroup) {
+    // The group loses its padding on the wave's side, and the wave reaches
+    // over the inner margin of the group's nearest button (half the box
+    // less the icon, for the kBarButton / kBarIcon items StyleBarButton
+    // makes) to kWaveGap from its icon.
+    const float reach = static_cast<float>(kBarButton - kBarIcon) / 2.0f - kWaveGap;
+    const float pad = 6.0f;   // MakeGroup's: 6 across the bar's ends, 4 along its sides
+    if (vertical) {
+        if (waveAfterGroup) {
+            group->SetPadding(pad, 4, 0, 4);
+            wave->SetMargin(-reach, 0, 0, 0);
+        } else {
+            group->SetPadding(0, 4, pad, 4);
+            wave->SetMargin(0, 0, -reach, 0);
+        }
+    } else {
+        if (waveAfterGroup) {
+            group->SetPadding(pad, 0, pad, 4);
+            wave->SetMargin(0, 0, 0, -reach);
+        } else {
+            group->SetPadding(pad, 4, pad, 0);
+            wave->SetMargin(0, -reach, 0, 0);
+        }
+    }
+}
+
 void UltraDesktopWindow::StyleBarButton(const std::shared_ptr<UltraCanvasButton>& button) {
     if (!button) return;
     ButtonStyle style = button->GetStyle();
@@ -344,14 +484,28 @@ std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildTaskbar(bool vert
 
     // 1. System: ULTRA OS settings and the app starter.
     auto system = MakeGroup("Taskbar.System", vertical, false);
-    auto settingsButton = AddBarButton(system, "settings", "ULTRA OS settings", IconPath("ultraos.svg"),
+    // The ULTRA OS logo in its own colours, wider than the other items: it
+    // is twice as wide as it is high. The variant drawn for a dark ground
+    // (the bar is dark grey).
+    auto settingsButton = AddBarButton(system, "settings", "ULTRA OS settings", IconPath(kLogoForDarkBar),
                                        [this]() { OpenSystemSettings(); });
+    settingsButton->SetUseIconAsMask(false);
+    const int logoBox = vertical ? kBarThickness - 4 : kLogoButtonWide;
+    const int logoWidth = logoBox - 4;
+    settingsButton->SetElementSize(Size2Df(static_cast<float>(logoBox), static_cast<float>(kBarButton)));
+    settingsButton->SetIconSize(logoWidth, logoWidth * kLogoHeight / kLogoWidth);
     settingsButton->onContextMenu = [this](int x, int y) { ShowSettingsButtonMenu(x, y); };
     AddBarButton(system, "apps", "Applications", IconPath("apps.svg"),
                  [this]() { OpenAppStarter(); });
     bar->AddChild(system);
 
-    bar->AddChild(CreateWaveSeparator("Taskbar.Wave1", vertical, kBarColor, kBarInsetColor, kWaveLength));
+    // The two waves mirror each other, so the running apps sit in a band
+    // that narrows the same way at both ends; each wave starts 4 px past
+    // the icon before it (TuckAgainstWave).
+    auto wave1 = CreateWaveSeparator("Taskbar.Wave1", vertical, kBarColor, kBarInsetColor, kWaveLength);
+    wave1->SetFlipped(true);
+    TuckAgainstWave(system, wave1, vertical, true);
+    bar->AddChild(wave1);
 
     // 2. Running apps: fills the bar, scrolls when full, drag to reorder.
     running_ = MakeGroup("Taskbar.Running", vertical, true);
@@ -360,19 +514,534 @@ std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildTaskbar(bool vert
     running_->EnableItemReordering(true);
     bar->AddChild(running_);
 
-    bar->AddChild(CreateWaveSeparator("Taskbar.Wave2", vertical, kBarInsetColor, kBarColor, kWaveLength));
+    auto wave2 = CreateWaveSeparator("Taskbar.Wave2", vertical, kBarInsetColor, kBarColor, kWaveLength);
+    bar->AddChild(wave2);
 
     // 3. Pinned: the RAM disc (when there is one - Windows has none of its
     // own) and UltraFiler.
     auto pinned = MakeGroup("Taskbar.Pinned", vertical, false);
+    TuckAgainstWave(pinned, wave2, vertical, false);
     if (!settings_.ramDiscPath.empty()) {
         AddBarButton(pinned, "ramdisc", "RAM disc (" + settings_.ramDiscPath + ")", IconPath("ramdisc.svg"),
                      [this]() { OpenRamDisc(); });
     }
     AddBarButton(pinned, "filer", "UltraFiler", IconPath("ultrafiler.svg"),
                  [this]() { OpenFiler(); });
+    // The user's own pins, in the order they were pinned, with the
+    // applications' icons in their own colours.
+    for (const UCDesktopEntry& entry : pinnedEntries_) {
+        std::string text;
+        if (entry.iconFile.empty() && !entry.name.empty()) {
+            text = entry.name.substr(0, 1);
+            std::transform(text.begin(), text.end(), text.begin(),
+                           [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
+        }
+        const UCDesktopEntry launched = entry;
+        auto button = pinned->AddButton("pin:" + PinKey(entry), text, entry.iconFile, [this, launched]() {
+            std::string error;
+            if (!UltraCanvasDesktopShell::LaunchApplication(launched, {}, &error)) {
+                debugOutput << "UltraDesktop: could not start " << launched.name << ": " << error << std::endl;
+                UltraCanvasAlert::Error("Could not start " + launched.name + ": " + error, "UltraDesktop", nullptr,
+                                        window_.get());
+                return;
+            }
+            NoteAppStarted(launched);
+        });
+        StyleBarButton(button);
+        ButtonStyle style = button->GetStyle();
+        style.useIconAsMask = entry.iconFile.empty();
+        button->SetStyle(style);
+        button->SetTooltip(entry.name);
+        button->onContextMenu = [this, launched](int x, int y) { ShowPinnedMenu(launched, x, y); };
+    }
     bar->AddChild(pinned);
     return bar;
+}
+
+// ===== THE CLOCK =====
+
+std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildClock() {
+    auto clock = CreateContainer("Clock", 0, 0, 0, 0);
+    clock->SetBackgroundColor(kBarColor);
+    clock->SetElementSize(CSSLayout::Dimension::Px(kInfoPanelWidth), CSSLayout::Dimension::Px(kClockHeight));
+    clock->layoutItem.SetFlexShrink(0.0f);
+    clock->SetTooltip(TodayInWords());
+
+    // The gauge element's analog clock, which ticks on a timer of its own.
+    // Its face sits at the top of its box, the value zone below it empty:
+    // the date goes there. A click opens the clock panel.
+    clock_ = CreateGaugeDiagramElement("ClockFace", 0, 0, static_cast<float>(kInfoPanelWidth),
+                                       static_cast<float>(kClockFaceBox));
+    clock_->SetMode(GaugeMode::AnalogClock);
+    clock_->SetShowLabels(false);
+    clock_->SetBackgroundColor(kClockFace);
+    if (!clock_->layoutItem.position) clock_->layoutItem.position = CSSLayout::Position();
+    clock_->layoutItem.position->left = CSSLayout::Dimension::Px(0);
+    clock_->layoutItem.position->top = CSSLayout::Dimension::Px(0);
+    clock_->layoutItem.SetPositionType(CSSLayout::PositionType::AbsoluteUI);
+    clock_->SetElementSize(Size2Df(static_cast<float>(kInfoPanelWidth), static_cast<float>(kClockFaceBox)));
+    const auto openPanel = [this](const UCEvent& event) {
+        if (event.type == UCEventType::MouseDown && event.button == UCMouseButton::Left) {
+            OpenClockPanel();
+            return true;
+        }
+        return false;
+    };
+    clock_->SetEventCallback(openPanel);
+    clock->AddChild(clock_);
+
+    clockDate_ = CreateLabel("ClockDate", 0, 0, static_cast<float>(kInfoPanelWidth), 16, TodayShort());
+    clockDate_->SetFontSize(9.0f);
+    clockDate_->SetTextColor(Colors::White);
+    clockDate_->SetAlignment(TextAlignment::Center);
+    if (!clockDate_->layoutItem.position) clockDate_->layoutItem.position = CSSLayout::Position();
+    clockDate_->layoutItem.position->left = CSSLayout::Dimension::Px(0);
+    clockDate_->layoutItem.position->top = CSSLayout::Dimension::Px(50);
+    clockDate_->layoutItem.SetPositionType(CSSLayout::PositionType::AbsoluteUI);
+    clockDate_->SetElementSize(Size2Df(static_cast<float>(kInfoPanelWidth), 16));
+    clockDate_->SetEventCallback(openPanel);
+    clock->AddChild(clockDate_);
+    UpdateClock();
+    return clock;
+}
+
+// The words change once a minute; the face redraws itself every second.
+void UltraDesktopWindow::UpdateClock() {
+    if (!clock_ || !clockDate_) return;
+    const std::string time = TimeNow();
+    const int minute = std::stoi(time.substr(0, 2)) * 60 + std::stoi(time.substr(3, 2));
+    if (minute == clockMinute_) return;
+    clockMinute_ = minute;
+    const std::string words = TodayInWords() + ", " + time;
+    clock_->SetTooltip(words);
+    clockDate_->SetTooltip(words);
+    clockDate_->SetText(TodayShort());
+}
+
+void UltraDesktopWindow::OpenClockPanel() {
+    if (!window_) return;
+    if (!clockPanel_) clockPanel_ = std::make_shared<UltraDesktopClockPanel>();
+    if (clockPanel_->IsOpen()) {
+        clockPanel_->Close();
+        return;
+    }
+    // Beside the right bar, level with the clock.
+    const Rect2Df bounds = clock_ ? clock_->GetBoundsInWindow() : Rect2Df(0, 0, 0, 0);
+    clockPanel_->SetScreenArea(area_.x, area_.y, area_.width, area_.height);
+    clockPanel_->Open(ScreenX(bounds.x - 10), ScreenY(bounds.y));
+}
+
+// ===== THE LOUDSPEAKER =====
+
+void UltraDesktopWindow::OpenVolumePanel() {
+    if (!window_ || !info_) return;
+    if (!volumePanel_) {
+        volumePanel_ = std::make_shared<UltraDesktopVolumePanel>([this]() { ReadSpeaker(); });
+    }
+    if (volumePanel_->IsOpen()) {
+        volumePanel_->Close();
+        return;
+    }
+    auto speaker = std::dynamic_pointer_cast<UltraCanvasButton>(info_->GetWidget("speaker"));
+    const Rect2Df bounds = speaker ? speaker->GetBoundsInWindow() : Rect2Df(0, 0, 0, 0);
+    volumePanel_->SetScreenArea(area_.x, area_.y, area_.width, area_.height);
+    volumePanel_->Open(ScreenX(bounds.x - 10), ScreenY(bounds.y - 60));
+}
+
+// ===== THE PROGRAMS THAT START WITH THE DESKTOP =====
+
+// Each one listed in settings_.startWithDesktop, minimized, unless it runs
+// already: both keep a window while they run (UltraMail's password prompt
+// too), and a second start would only bring that window forward.
+void UltraDesktopWindow::StartStartupPrograms() {
+    const std::vector<DesktopWindowInfo> windows = UltraCanvasDesktopShell::ListWindows();
+    const auto lower = [](std::string text) {
+        std::transform(text.begin(), text.end(), text.begin(),
+                       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        return text;
+    };
+    for (const StartupProgram& program : DesktopSettings::StartupPrograms()) {
+        if (!settings_.StartsWithDesktop(program.program)) continue;
+        const std::string name = lower(program.program);
+        bool running = false;
+        for (const DesktopWindowInfo& w : windows) {
+            if (lower(w.appClass) == name || lower(w.appName) == name) running = true;
+        }
+        if (running) continue;
+        std::string error;
+        if (!UltraCanvasDesktopShell::LaunchProgram(program.program, {"--minimized"}, &error)) {
+            debugOutput << "UltraDesktop: " << program.program << " did not start with the desktop: " << error
+                        << std::endl;
+        }
+    }
+}
+
+// ===== THE RADIOS AND THE DEVICES =====
+
+namespace {
+
+std::string Lowered(std::string text) {
+    std::transform(text.begin(), text.end(), text.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return text;
+}
+
+std::string JoinParts(const std::vector<std::string>& parts) {
+    std::string out;
+    for (const std::string& part : parts) {
+        if (part.empty()) continue;
+        if (!out.empty()) out += " · ";
+        out += part;
+    }
+    return out;
+}
+
+std::string UsbTitle(const USBDeviceInfo& device) {
+    if (!device.productName.empty()) return device.productName;
+    char ids[24];
+    std::snprintf(ids, sizeof(ids), "%04x:%04x", device.vendorId, device.productId);
+    return "USB device " + std::string(ids);
+}
+
+// "15.6 GB", "512 MB" - whole numbers and a tenth, without the locale's
+// decimal point standing in for a dot it never needed.
+std::string SizeText(uint64_t bytes) {
+    if (bytes == 0) return "";
+    const char* units[] = {"KB", "MB", "GB", "TB"};
+    uint64_t scaled = bytes / 100;   // tenths of a kilobyte
+    int unit = 0;
+    while (scaled >= 10000 && unit < 3) {
+        scaled /= 1000;
+        ++unit;
+    }
+    const uint64_t whole = scaled / 10;
+    const uint64_t tenth = scaled % 10;
+    return std::to_string(whole) + (whole < 100 && tenth ? "." + std::to_string(tenth) : "") + " " + units[unit];
+}
+
+DevicePanelContent ReadUsbPanel() {
+    DevicePanelContent content;
+    std::string driveError;
+    const std::vector<RemovableDrive> drives = UltraCanvasRemovableDrives::List(&driveError);
+    if (!drives.empty()) {
+        DevicePanelEntry heading;
+        heading.title = "Drives";
+        heading.heading = true;
+        content.entries.push_back(heading);
+    }
+    for (const RemovableDrive& drive : drives) {
+        DevicePanelEntry entry;
+        entry.title = drive.name;
+        std::vector<std::string> where;
+        for (size_t i = 0; i < drive.mountPoints.size(); ++i) {
+            where.push_back(drive.labels[i].empty() ? drive.mountPoints[i]
+                                                    : drive.labels[i] + " (" + drive.mountPoints[i] + ")");
+        }
+        entry.detail = JoinParts({drive.bus, SizeText(drive.sizeBytes),
+                                  where.empty() ? "nothing mounted" : JoinParts(where)});
+        entry.highlighted = !drive.mountPoints.empty();
+        entry.actionLabel = "Safely remove";
+        entry.busyText = "Writing out what is left and unmounting " + drive.name + "...";
+        entry.doneText = drive.name + " can be pulled out now.";
+        const std::string id = drive.id;
+        entry.action = [id]() {
+            std::string error;
+            UltraCanvasRemovableDrives::SafelyRemove(id, &error);
+            return error;
+        };
+        content.entries.push_back(entry);
+    }
+    size_t devices = 0;
+    for (const USBDeviceInfo& device : UltraCanvasHardwareInfo::ListUSBDevices()) {
+        if (device.isHub) continue;
+        if (devices++ == 0 && !drives.empty()) {
+            DevicePanelEntry heading;
+            heading.title = "Devices";
+            heading.heading = true;
+            content.entries.push_back(heading);
+        }
+        DevicePanelEntry entry;
+        entry.title = UsbTitle(device);
+        entry.detail = JoinParts({device.vendorName, device.deviceClass, device.speed});
+        content.entries.push_back(entry);
+    }
+    content.summary = devices == 0 ? "" : std::to_string(devices) + (devices == 1 ? " device attached" : " devices attached");
+    if (!drives.empty()) {
+        content.summary += std::string(content.summary.empty() ? "" : ", ") + std::to_string(drives.size()) +
+                           (drives.size() == 1 ? " drive" : " drives");
+    }
+    content.empty = "No USB devices are attached (hubs are not counted).";
+    return content;
+}
+
+DevicePanelContent ReadKeyboardPanel(const std::string& layout) {
+    DevicePanelContent content;
+    content.summary = layout.empty() ? "The keyboard layout in use is not known."
+                                     : "Keyboard layout in use: " + layout;
+    for (const USBDeviceInfo& device : UltraCanvasHardwareInfo::ListUSBDevices()) {
+        if (device.isHub) continue;
+        const std::string words = Lowered(device.productName + " " + device.deviceClass);
+        if (words.find("keyboard") == std::string::npos && words.find("keyb") == std::string::npos) continue;
+        DevicePanelEntry entry;
+        entry.title = UsbTitle(device);
+        entry.detail = JoinParts({"USB", device.vendorName});
+        content.entries.push_back(entry);
+    }
+    for (const WirelessBluetoothDevice& device : UltraCanvasWireless::ReadBluetooth().devices) {
+        if (device.kind != "Keyboard" || !device.paired) continue;
+        DevicePanelEntry entry;
+        entry.title = device.name;
+        entry.detail = JoinParts({"Bluetooth", device.connected ? "connected" : "not connected",
+                                  device.batteryPercent ? "battery " + std::to_string(*device.batteryPercent) + "%"
+                                                        : ""});
+        entry.highlighted = device.connected;
+        content.entries.push_back(entry);
+    }
+    content.empty = "No separate keyboard was recognised. A laptop's built-in keyboard, and a wireless "
+                    "receiver that does not name itself a keyboard, are not listed.";
+    return content;
+}
+
+DevicePanelContent ReadWebcamPanel(bool inUse) {
+    DevicePanelContent content;
+    content.summary = inUse ? "A program is using a camera now." : "No program is using a camera.";
+    for (const VideoDeviceInfo& camera : UltraCanvasVideoDevices::ListCameras()) {
+        DevicePanelEntry entry;
+        entry.title = camera.name.empty() ? camera.id : camera.name;
+        int best = 0, bestW = 0, bestH = 0;
+        for (const CameraMode& mode : camera.supportedModes) {
+            if (mode.width * mode.height > best) {
+                best = mode.width * mode.height;
+                bestW = mode.width;
+                bestH = mode.height;
+            }
+        }
+        entry.detail = JoinParts({camera.isDefault ? "default" : "",
+                                  best > 0 ? "up to " + std::to_string(bestW) + " x " + std::to_string(bestH) : ""});
+        entry.highlighted = camera.isDefault;
+        content.entries.push_back(entry);
+    }
+    // Without a video backend in this build the cameras still show as USB
+    // video devices.
+    if (content.entries.empty()) {
+        for (const USBDeviceInfo& device : UltraCanvasHardwareInfo::ListUSBDevices()) {
+            const std::string words = Lowered(device.productName + " " + device.deviceClass);
+            if (words.find("video") == std::string::npos && words.find("camera") == std::string::npos &&
+                words.find("webcam") == std::string::npos) {
+                continue;
+            }
+            DevicePanelEntry entry;
+            entry.title = UsbTitle(device);
+            entry.detail = JoinParts({"USB", device.vendorName});
+            content.entries.push_back(entry);
+        }
+    }
+    content.empty = UltraCanvasVideoDevices::IsAvailable()
+                        ? "No camera was found."
+                        : "No camera was found. (This build lists cameras through USB only.)";
+    return content;
+}
+
+DevicePanelContent ReadMicrophonePanel(bool inUse) {
+    DevicePanelContent content;
+    content.summary = inUse ? "A program is recording from a microphone now." : "No program is recording.";
+    for (const AudioDeviceInfo& input : UltraCanvasAudioDevices::ListInputDevices()) {
+        DevicePanelEntry entry;
+        entry.title = input.name.empty() ? input.id : input.name;
+        entry.detail = JoinParts({input.isDefault ? "default input" : "",
+                                  input.maxChannels == 1 ? "mono" : input.maxChannels == 2 ? "stereo" : ""});
+        entry.highlighted = input.isDefault;
+        content.entries.push_back(entry);
+    }
+    content.empty = UltraCanvasAudioDevices::IsAvailable() ? "No microphone was found."
+                                                           : "This build has no audio support to list microphones.";
+    return content;
+}
+
+DevicePanelContent ReadBatteryPanel(const DesktopDeviceActivity& activity) {
+    DevicePanelContent content;
+    if (!activity.batteryPresent) {
+        content.summary = "This computer runs on mains power: it has no battery.";
+        return content;
+    }
+    DevicePanelEntry entry;
+    entry.title = activity.batteryPercent >= 0 ? std::to_string(activity.batteryPercent) + "%" : "Battery";
+    entry.detail = activity.batteryCharging ? "charging" : "on battery";
+    entry.highlighted = activity.batteryCharging;
+    content.entries.push_back(entry);
+    content.summary = activity.batteryCharging ? "Plugged in and charging." : "Running on the battery.";
+    return content;
+}
+
+} // namespace
+
+void UltraDesktopWindow::OpenWifiPanel() {
+    if (!window_ || !info_) return;
+    if (!wifiPanel_) {
+        wifiPanel_ = std::make_shared<UltraDesktopWifiPanel>(
+            nullptr, []() { UltraCanvasDesktopShell::LaunchProgram("UltraNetMonitor"); });
+    }
+    if (wifiPanel_->IsOpen()) {
+        wifiPanel_->Close();
+        return;
+    }
+    const Rect2Df bounds = info_->GetWidget("wifi") ? info_->GetWidget("wifi")->GetBoundsInWindow() : Rect2Df(0, 0, 0, 0);
+    wifiPanel_->SetScreenArea(area_.x, area_.y, area_.width, area_.height);
+    wifiPanel_->Open(ScreenX(bounds.x - 10), ScreenY(bounds.y - 200));
+}
+
+void UltraDesktopWindow::EnsureBluetoothPanel() {
+    if (bluetoothPanel_) return;
+    // Made at start, not on the first click: it is the process's pairing
+    // handler, so a phone that starts pairing finds someone to ask - the
+    // panel then opens itself (ShowBluetoothPanel).
+    bluetoothPanel_ = std::make_shared<UltraDesktopBluetoothPanel>(nullptr, [this]() { ShowBluetoothPanel(); });
+}
+
+void UltraDesktopWindow::OpenBluetoothPanel() {
+    if (!window_ || !info_) return;
+    EnsureBluetoothPanel();
+    if (bluetoothPanel_->IsOpen()) {
+        bluetoothPanel_->Close();
+        return;
+    }
+    ShowBluetoothPanel();
+}
+
+void UltraDesktopWindow::ShowBluetoothPanel() {
+    if (!window_ || !info_ || !bluetoothPanel_ || bluetoothPanel_->IsOpen()) return;
+    const Rect2Df bounds =
+        info_->GetWidget("bluetooth") ? info_->GetWidget("bluetooth")->GetBoundsInWindow() : Rect2Df(0, 0, 0, 0);
+    bluetoothPanel_->SetScreenArea(area_.x, area_.y, area_.width, area_.height);
+    bluetoothPanel_->Open(ScreenX(bounds.x - 10), ScreenY(bounds.y - 200));
+}
+
+void UltraDesktopWindow::OpenDevicePanel(const std::string& device) {
+    if (!window_ || !info_) return;
+    auto& panel = devicePanels_[device];
+    if (panel && panel->IsOpen()) {
+        panel->Close();
+        return;
+    }
+    // Read afresh each time: the panel is made again with what the device
+    // poll saw last.
+    const DesktopDeviceActivity activity = lastActivity_;
+    const DevicePanelAction explorer{"Device Explorer", "Printers, scanners and cameras in detail",
+                                     []() { UltraCanvasDesktopShell::LaunchProgram("DeviceExplorer"); }};
+    const DevicePanelAction tasks{"Task Manager", "The hardware page lists every device",
+                                  [this]() { OpenTasks(); }};
+    if (device == "usb") {
+        panel = std::make_shared<UltraDesktopDevicePanel>("USB", ReadUsbPanel,
+                                                          std::vector<DevicePanelAction>{explorer, tasks});
+        // A stick plugged in or pulled out shows at once; a mouse, which
+        // mounts nothing, within three seconds.
+        panel->SetLiveRefresh(3000, true);
+    } else if (device == "keyboard") {
+        const std::string layout = activity.keyboardLayout;
+        panel = std::make_shared<UltraDesktopDevicePanel>(
+            "Keyboard", [layout]() { return ReadKeyboardPanel(layout); },
+            std::vector<DevicePanelAction>{
+                {"Bluetooth", "Pair a wireless keyboard", [this]() { OpenBluetoothPanel(); }}, tasks});
+    } else if (device == "webcam") {
+        const bool inUse = activity.webcamInUse;
+        panel = std::make_shared<UltraDesktopDevicePanel>(
+            "Webcam", [inUse]() { return ReadWebcamPanel(inUse); }, std::vector<DevicePanelAction>{explorer, tasks});
+    } else if (device == "mic") {
+        const bool inUse = activity.microphoneInUse;
+        panel = std::make_shared<UltraDesktopDevicePanel>(
+            "Microphone", [inUse]() { return ReadMicrophonePanel(inUse); },
+            std::vector<DevicePanelAction>{{"Loudspeaker", "The output's volume", [this]() { OpenVolumePanel(); }},
+                                           tasks});
+    } else if (device == "battery") {
+        panel = std::make_shared<UltraDesktopDevicePanel>(
+            "Battery", [activity]() { return ReadBatteryPanel(activity); }, std::vector<DevicePanelAction>{tasks});
+    } else {
+        return;
+    }
+    const Rect2Df bounds =
+        info_->GetWidget(device) ? info_->GetWidget(device)->GetBoundsInWindow() : Rect2Df(0, 0, 0, 0);
+    panel->SetScreenArea(area_.x, area_.y, area_.width, area_.height);
+    panel->Open(ScreenX(bounds.x - 10), ScreenY(bounds.y - 120));
+}
+
+void UltraDesktopWindow::ReadSpeaker() {
+    speaker_ = UltraCanvasDesktopShell::ReadAudioOutput();
+    haveSpeaker_ = true;
+    ApplySpeaker();
+}
+
+// The speaker icon: red while muted (on top of the yellow for playing), the
+// volume in the words. Playing or not is the device poll's.
+void UltraDesktopWindow::ApplySpeaker() {
+    if (!info_) return;
+    std::string words = "Loudspeaker";
+    if (haveSpeaker_ && speaker_.available) {
+        words += speaker_.muted ? ": muted" : ": " + std::to_string(speaker_.volumePercent) + "%";
+    }
+    if (haveLastActivity_ && lastActivity_.speakerPlaying) words += ", playing";
+    if (haveSpeaker_ && speaker_.available && speaker_.muted) {
+        info_->SetItemBadgeDot("speaker", kMarkerOn);
+    } else if (haveLastActivity_ && lastActivity_.speakerPlaying) {
+        info_->SetItemBadgeDot("speaker", kMarkerActive);
+    } else {
+        info_->ClearItemBadge("speaker");
+    }
+    if (auto button = std::dynamic_pointer_cast<UltraCanvasButton>(info_->GetWidget("speaker"))) {
+        button->SetTooltip(words);
+    }
+}
+
+// ===== THE LOCK =====
+
+void UltraDesktopWindow::LockScreen() {
+    std::string error;
+    if (UltraCanvasDesktopShell::LockSession(&error)) return;
+    debugOutput << "UltraDesktop: the screen was not locked: " << error << std::endl;
+    UltraCanvasDialogManager::ShowWarning("The screen could not be locked.\n\n" + error, "UltraDesktop", nullptr,
+                                          window_.get());
+}
+
+// ===== PINNED APPLICATIONS =====
+
+std::string UltraDesktopWindow::PinKey(const UCDesktopEntry& entry) {
+    if (!entry.shortcutPath.empty()) return entry.shortcutPath;
+    if (!entry.appUserModelId.empty()) return "store:" + entry.appUserModelId;
+    if (!entry.program.empty()) return entry.program;
+    return entry.exec;
+}
+
+bool UltraDesktopWindow::IsPinned(const UCDesktopEntry& entry) const {
+    return settings_.IsPinned(PinKey(entry));
+}
+
+void UltraDesktopWindow::SetPinned(const UCDesktopEntry& entry, bool pinned) {
+    const std::string key = PinKey(entry);
+    if (key.empty() || settings_.IsPinned(key) == pinned) return;
+    settings_.SetPinned(key, pinned);
+    SaveSettings();
+    BuildLayout();
+    RefreshDesktops();
+}
+
+const std::vector<UCDesktopEntry>& UltraDesktopWindow::Applications() {
+    const auto now = std::chrono::steady_clock::now();
+    if (applications_.empty() || now - applicationsRead_ > std::chrono::minutes(5)) {
+        applications_ = UltraCanvasDesktopShell::ListApplications(kBarIcon);
+        applicationsRead_ = now;
+    }
+    return applications_;
+}
+
+void UltraDesktopWindow::ShowPinnedMenu(const UCDesktopEntry& entry, int windowX, int windowY) {
+    if (!window_) return;
+    popupMenu_ = std::make_shared<UltraCanvasMenu>("PinnedMenu", 0, 0, 220, 0);
+    popupMenu_->SetMenuType(MenuType::PopupMenu);
+    popupMenu_->AddItem(MenuItemData::Header(Shorten(entry.name, 40)));
+    popupMenu_->AddItem(MenuItemData::Action("Open", [entry]() { UltraCanvasDesktopShell::LaunchApplication(entry); }));
+    popupMenu_->AddItem(MenuItemData::Separator());
+    popupMenu_->AddItem(MenuItemData::Action("Unpin from taskbar", [this, entry]() { SetPinned(entry, false); }));
+    PopupElementSettings settings;
+    popupMenu_->OpenMenu(Point2Di(windowX, windowY), *window_, settings);
 }
 
 std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildRightBar() {
@@ -381,6 +1050,9 @@ std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildRightBar() {
     bar->SetElementSize(CSSLayout::Dimension::Px(kInfoPanelWidth), CSSLayout::Dimension::Auto());
     bar->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     bar->layoutItem.SetFlexShrink(0.0f);
+
+    // The clock first, where the eye looks for it.
+    bar->AddChild(BuildClock());
 
     // The desktop organiser: virtual desktops, then the board, clipboard, screenshot.
     organiser_ = MakeGroup("Organiser", true, true);
@@ -412,18 +1084,33 @@ std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildRightBar() {
         if (history_) ShowClipboardButtonMenu(windowX, windowY);
     };
     UpdateClipboardButton();
-    AddBarButton(organiser_, "screenshot", "Screenshot of the screen", IconPath("screenshot.svg"),
-                 [this]() { TakeScreenshot(); });
+    // A click snips an area in UltraSnip; the right click offers the other
+    // shapes, a recording and the plain whole-screen capture.
+    auto screenshot = AddBarButton(organiser_, "screenshot",
+                                   "Snip: a picture or a video of the screen (Super+Shift+S)",
+                                   IconPath("screenshot.svg"), [this]() { OpenSnip({"--rectangle"}); });
+    screenshot->onContextMenu = [this](int windowX, int windowY) { ShowScreenshotMenu(windowX, windowY); };
     bar->AddChild(organiser_);
 
-    bar->AddChild(CreateWaveSeparator("RightBar.Wave", true, kBarInsetColor, kBarColor, kWaveLength));
+    // As on the taskbar, the wave starts 4 px past the organiser's last
+    // icon; the info panel below is anchored to the bar's foot, so the
+    // space on that side is its own stretch.
+    auto wave = CreateWaveSeparator("RightBar.Wave", true, kBarInsetColor, kBarColor, kWaveLength);
+    TuckAgainstWave(organiser_, wave, true, true);
+    bar->AddChild(wave);
 
     // The info panel, anchored to the bottom by the stretch at its top.
     info_ = MakeGroup("InfoPanel", true, false);
     info_->layoutItem.SetFlexGrow(1.0f).SetFlexShrink(1.0f).SetFlexBasis(CSSLayout::Dimension::Px(0));
-    info_->SetOverflowMode(ToolbarOverflowMode::Scroll);
-    // Fourteen services have to fit under the organiser on a 768 px screen:
-    // tighter than the taskbar's items, still a 36 px target.
+    // Fourteen services and the tray icons do not fit under the organiser
+    // on a short screen even at the compact size: what is left over goes
+    // into the chevron's menu at the foot of the bar, and FitInfoPanel
+    // sees to it that the least-used services are the ones that go.
+    info_->SetOverflowMode(ToolbarOverflowMode::Menu);
+    infoFolded_.clear();
+    styledChevron_ = nullptr;
+    // Tighter than the taskbar's items, still a 36 px target (30 px on a
+    // short screen).
     ToolbarAppearance tight = info_->GetAppearance();
     tight.itemSpacing = 2.0f;
     info_->SetAppearance(tight);
@@ -434,22 +1121,23 @@ std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildRightBar() {
     AddBarButton(info_, "download",  "Download",     IconPath("download.svg"),  [this]() { UltraCanvasDesktopShell::LaunchProgram("UltraNetMonitor"); });
     AddBarButton(info_, "lan",       "Internet / LAN", IconPath("lan.svg"),     [this]() { UltraCanvasDesktopShell::LaunchProgram("UltraNetMonitor"); });
     AddBarButton(info_, "vpn",       "VPN",          IconPath("vpn.svg"),       [this]() { UltraCanvasDesktopShell::LaunchProgram("UltraNetMonitor"); });
-    AddBarButton(info_, "bluetooth", "Bluetooth",    IconPath("bluetooth.svg"), [this]() { OpenTasks(); });
-    AddBarButton(info_, "wifi",      "Wi-Fi",        IconPath("wifi.svg"),      [this]() { UltraCanvasDesktopShell::LaunchProgram("UltraNetMonitor"); });
-    AddBarButton(info_, "usb",       "USB",          IconPath("usb.svg"),       [this]() { UltraCanvasDesktopShell::LaunchProgram("DeviceExplorer"); });
-    AddBarButton(info_, "keyboard",  "Keyboard",     IconPath("keyboard.svg"),  [this]() { UltraCanvasDesktopShell::LaunchProgram("DeviceExplorer"); });
-    AddBarButton(info_, "webcam",    "Webcam",       IconPath("webcam.svg"),    [this]() { UltraCanvasDesktopShell::LaunchProgram("DeviceExplorer"); });
-    AddBarButton(info_, "mic",       "Microphone",   IconPath("mic.svg"),       [this]() { OpenTasks(); });
-    AddBarButton(info_, "speaker",   "Loudspeaker",  IconPath("speaker.svg"),   [this]() { OpenTasks(); });
-    AddBarButton(info_, "battery",   "Battery",      IconPath("battery.svg"),   [this]() { OpenTasks(); });
+    AddBarButton(info_, "bluetooth", "Bluetooth",    IconPath("bluetooth.svg"), [this]() { OpenBluetoothPanel(); });
+    AddBarButton(info_, "wifi",      "Wi-Fi",        IconPath("wifi.svg"),      [this]() { OpenWifiPanel(); });
+    AddBarButton(info_, "usb",       "USB",          IconPath("usb.svg"),       [this]() { OpenDevicePanel("usb"); });
+    AddBarButton(info_, "keyboard",  "Keyboard",     IconPath("keyboard.svg"),  [this]() { OpenDevicePanel("keyboard"); });
+    AddBarButton(info_, "webcam",    "Webcam",       IconPath("webcam.svg"),    [this]() { OpenDevicePanel("webcam"); });
+    AddBarButton(info_, "mic",       "Microphone",   IconPath("mic.svg"),       [this]() { OpenDevicePanel("mic"); });
+    AddBarButton(info_, "speaker",   "Loudspeaker",  IconPath("speaker.svg"),   [this]() { OpenVolumePanel(); });
+    AddBarButton(info_, "battery",   "Battery",      IconPath("battery.svg"),   [this]() { OpenDevicePanel("battery"); });
     AddBarButton(info_, "tasks",     "Task Manager", IconPath("tasks.svg"),     [this]() { OpenTasks(); });
     for (const auto& item : info_->GetItems()) {
         if (auto button = std::dynamic_pointer_cast<UltraCanvasButton>(item)) {
-            button->SetElementSize(Size2Df(static_cast<float>(kInfoButton), static_cast<float>(kInfoButton)));
-            button->SetIconSize(kInfoIcon, kInfoIcon);
+            button->SetElementSize(Size2Df(static_cast<float>(InfoButtonSize()), static_cast<float>(InfoButtonSize())));
+            button->SetIconSize(InfoIconSize(), InfoIconSize());
         }
     }
     bar->AddChild(info_);
+    ApplySpeaker();
     return bar;
 }
 
@@ -462,7 +1150,7 @@ std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildWorkArea() {
     // desktop window itself, so nothing else lives here but the board.
     wallpaper_ = std::make_shared<UltraCanvasImageElement>("Wallpaper", 0, 0, 0, 0);
     wallpaper_->SetFitMode(ImageFitMode::Cover);
-    wallpaper_->LoadFromFile(WallpaperPath());
+    LoadWallpaper(*wallpaper_);
     wallpaper_->layoutItem.SetFlexGrow(1.0f).SetFlexShrink(1.0f).SetFlexBasis(CSSLayout::Dimension::Px(0));
     wallpaper_->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     area->AddChild(wallpaper_);
@@ -480,24 +1168,14 @@ std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildWorkArea() {
     stickerboard_->LoadFrom(settings_);
     area->AddChild(stickerboard_);
 
-    // The Sticker board too, above the notes: its panel is the one place it
-    // answers, so the notes stay reachable around it.
-    categoryBoard_ = std::make_shared<UltraDesktopCategoryBoard>("CategoryBoard", this);
-    if (!categoryBoard_->layoutItem.position) categoryBoard_->layoutItem.position = CSSLayout::Position();
-    categoryBoard_->layoutItem.position->left = CSSLayout::Dimension::Px(0);
-    categoryBoard_->layoutItem.position->top = CSSLayout::Dimension::Px(0);
-    categoryBoard_->layoutItem.position->right = CSSLayout::Dimension::Px(0);
-    categoryBoard_->layoutItem.position->bottom = CSSLayout::Dimension::Px(0);
-    categoryBoard_->layoutItem.SetPositionType(CSSLayout::PositionType::AbsoluteUI);
-    categoryBoard_->SetVisible(settings_.categoryBoard.visible);
-    categoryBoard_->LoadFrom(settings_);
-    area->AddChild(categoryBoard_);
+    // The Sticker board is a window of its own over this area (see
+    // ShowCategoryBoard): only the pinboard button shows it.
     if (organiser_) {
         if (auto toggle = std::dynamic_pointer_cast<UltraCanvasButton>(organiser_->GetWidget("stickerboard"))) {
             toggle->SetPressed(settings_.stickerboardVisible);
         }
         if (auto toggle = std::dynamic_pointer_cast<UltraCanvasButton>(organiser_->GetWidget("categoryboard"))) {
-            toggle->SetPressed(settings_.categoryBoard.visible);
+            toggle->SetPressed(boardWindow_ && settings_.categoryBoard.visible);
         }
     }
     return area;
@@ -521,8 +1199,36 @@ void UltraDesktopWindow::OpenAppStarter() {
         appStarter_->Raise();
         return;
     }
-    appStarter_ = std::make_shared<UltraDesktopAppStarter>();
+    UltraDesktopAppStarter::Hooks hooks;
+    hooks.isPinned = [this](const UCDesktopEntry& entry) { return IsPinned(entry); };
+    hooks.setPinned = [this](const UCDesktopEntry& entry, bool pinned) { SetPinned(entry, pinned); };
+    hooks.keyOf = [](const UCDesktopEntry& entry) { return PinKey(entry); };
+    hooks.started = [this](const UCDesktopEntry& entry) { NoteAppStarted(entry); };
+    hooks.recent = [this]() { return settings_.recentApps; };
+    hooks.recentShown = static_cast<size_t>(settings_.recentAppsShown);
+    hooks.splitAbove = static_cast<size_t>(settings_.appsSplitAbove);
+    hooks.view = settings_.appsView;
+    hooks.setView = [this](const std::string& view) {
+        settings_.appsView = view;
+        SaveSettings();
+    };
+    hooks.moved = [this]() { return settings_.appMoves; };
+    hooks.setMoved = [this](const std::string& key, const std::string& groupKey) {
+        if (key.empty()) return;
+        if (groupKey.empty()) {
+            settings_.appMoves.erase(key);
+        } else {
+            settings_.appMoves[key] = groupKey;
+        }
+        SaveSettings();
+    };
+    appStarter_ = std::make_shared<UltraDesktopAppStarter>(std::move(hooks));
     appStarter_->Open();
+}
+
+void UltraDesktopWindow::NoteAppStarted(const UCDesktopEntry& entry) {
+    settings_.NoteAppStarted(PinKey(entry));
+    SaveSettings();
 }
 
 void UltraDesktopWindow::OpenTasks() {
@@ -545,6 +1251,37 @@ void UltraDesktopWindow::OpenFiler(const std::string& path) {
     if (!UltraCanvasDesktopShell::LaunchProgram(settings_.filerProgram, arguments, &error)) {
         debugOutput << "UltraDesktop: " << error << std::endl;
     }
+}
+
+void UltraDesktopWindow::OpenSnip(const std::vector<std::string>& arguments) {
+    std::string error;
+    if (UltraCanvasDesktopShell::FindProgram("UltraSnip").empty()) {
+        // No UltraSnip beside the desktop: the whole screen to Pictures, as before
+        TakeScreenshot();
+        return;
+    }
+    if (UltraCanvasDesktopShell::LaunchProgram("UltraSnip", arguments, &error)) return;
+    debugOutput << "UltraDesktop: UltraSnip could not be started: " << error << std::endl;
+    UltraCanvasAlert::Error("UltraSnip could not be started: " + error, "Screenshot", nullptr, window_.get());
+}
+
+void UltraDesktopWindow::ShowScreenshotMenu(int windowX, int windowY) {
+    if (!window_) return;
+    popupMenu_ = std::make_shared<UltraCanvasMenu>("ScreenshotButtonMenu", 0, 0, 260, 0);
+    popupMenu_->SetMenuType(MenuType::PopupMenu);
+    popupMenu_->AddItem(MenuItemData::Header("Snip"));
+    popupMenu_->AddItem(MenuItemData::Action("Snip an area", [this]() { OpenSnip({"--rectangle"}); }));
+    popupMenu_->AddItem(MenuItemData::Action("Snip a window", [this]() { OpenSnip({"--window"}); }));
+    popupMenu_->AddItem(MenuItemData::Action("Snip the whole screen", [this]() { OpenSnip({"--screen"}); }));
+    popupMenu_->AddItem(MenuItemData::Separator());
+    popupMenu_->AddItem(MenuItemData::Action("Record an area", [this]() { OpenSnip({"--rectangle", "--video"}); }));
+    popupMenu_->AddItem(MenuItemData::Action("Record a window", [this]() { OpenSnip({"--window", "--video"}); }));
+    popupMenu_->AddItem(MenuItemData::Action("Record the whole screen", [this]() { OpenSnip({"--screen", "--video"}); }));
+    popupMenu_->AddItem(MenuItemData::Separator());
+    popupMenu_->AddItem(MenuItemData::Action("Screenshot now, to Pictures", [this]() { TakeScreenshot(); }));
+    popupMenu_->AddItem(MenuItemData::Action("Open UltraSnip", [this]() { OpenSnip({}); }));
+    PopupElementSettings settings;
+    popupMenu_->OpenMenu(Point2Di(windowX - 270, windowY), *window_, settings);
 }
 
 void UltraDesktopWindow::TakeScreenshot() {
@@ -575,12 +1312,87 @@ void UltraDesktopWindow::ToggleStickerboard(bool visible) {
 
 void UltraDesktopWindow::ToggleCategoryBoard(bool visible) {
     settings_.categoryBoard.visible = visible;
-    if (categoryBoard_) {
-        categoryBoard_->SetVisible(visible);
-        if (workArea_) workArea_->InvalidateLayout();
-        window_->RequestRedraw();
+    if (visible) ShowCategoryBoard();
+    else if (boardWindow_) boardWindow_->Hide();
+    if (organiser_) {
+        if (auto toggle = std::dynamic_pointer_cast<UltraCanvasButton>(organiser_->GetWidget("categoryboard"))) {
+            toggle->SetPressed(visible);
+        }
     }
     SaveSettings();
+}
+
+// The Sticker board fills the work area - the space between the bars - in a
+// window of its own, so it can sit in the stack of windows rather than under
+// all of them: shown, then the application that was in front is brought
+// back above it, so the board is second from the top and the application
+// stays where the person was working.
+void UltraDesktopWindow::ShowCategoryBoard() {
+    if (!window_ || !workArea_) return;
+    if (!boardWindow_) {
+        WindowConfig config;
+        config.title = "Sticker board";
+        config.type = WindowType::Borderless;
+        const Rect2Df bounds = workArea_->GetBoundsInWindow();
+        config.width = std::max(400, static_cast<int>(bounds.width));
+        config.height = std::max(300, static_cast<int>(bounds.height));
+        config.resizable = false;
+        config.minimizable = false;
+        config.maximizable = false;
+        config.minWidth = 200;
+        config.minHeight = 150;
+        config.backgroundColor = Color(250, 250, 250, 255);
+        boardWindow_ = CreateWindow(config);
+        if (!boardWindow_) return;
+        boardRect_ = Rect2Di(0, 0, 0, 0);
+        categoryBoard_ = std::make_shared<UltraDesktopCategoryBoard>("CategoryBoard", this);
+        categoryBoard_->LoadFrom(settings_);
+        boardWindow_->AddChild(categoryBoard_);
+        auto fit = [board = categoryBoard_.get(), win = boardWindow_.get()](int w, int h) {
+            board->SetElementAbsolutePosition(Point2Df(0, 0));
+            board->SetElementSize(Size2Df(static_cast<float>(std::max(1, w)), static_cast<float>(std::max(1, h))));
+            board->InvalidateLayout();
+            win->AddDirtyRectangle(Rect2Di(0, 0, w, h));
+        };
+        int w = 0, h = 0;
+        boardWindow_->GetWindowSize(w, h);
+        fit(w, h);
+        boardWindow_->onWindowResize = fit;
+        // Closed from outside (the window manager, a task manager): gone,
+        // and the button says so.
+        boardWindow_->onWindowClosed = [this]() {
+            categoryBoard_.reset();
+            boardWindow_.reset();
+            settings_.categoryBoard.visible = false;
+            if (organiser_) {
+                if (auto toggle = std::dynamic_pointer_cast<UltraCanvasButton>(organiser_->GetWidget("categoryboard"))) {
+                    toggle->SetPressed(false);
+                }
+            }
+        };
+    }
+    PlaceCategoryBoard();
+    boardWindow_->Show();
+    boardWindow_->RaiseAndFocus();
+    // The application in front before the click goes back above the board.
+    if (lastPasteWindow_ != 0) UltraCanvasDesktopShell::ActivateWindow(lastPasteWindow_);
+}
+
+// Over the work area, in screen pixels; again whenever the bars move (a
+// monitor change, the taskbar's edge) - the UI timer asks.
+void UltraDesktopWindow::PlaceCategoryBoard() {
+    if (!boardWindow_ || !workArea_) return;
+    const Rect2Df bounds = workArea_->GetBoundsInWindow();
+    if (bounds.width < 10 || bounds.height < 10) return;
+    const Rect2Di wanted(ScreenX(bounds.x), ScreenY(bounds.y), static_cast<int>(bounds.width),
+                         static_cast<int>(bounds.height));
+    if (wanted.x == boardRect_.x && wanted.y == boardRect_.y && wanted.width == boardRect_.width &&
+        wanted.height == boardRect_.height) {
+        return;
+    }
+    boardRect_ = wanted;
+    boardWindow_->SetWindowSize(wanted.width, wanted.height);
+    boardWindow_->SetWindowPosition(wanted.x, wanted.y);
 }
 
 int UltraDesktopWindow::DesiredDesktopCount() const {
@@ -622,7 +1434,7 @@ void UltraDesktopWindow::ApplySettings() {
     PlaceNotifications();   // the taskbar may have moved
     // The other screens show the same picture.
     for (const auto& wallpaper : screenWallpapers_) {
-        if (wallpaper) wallpaper->LoadFromFile(WallpaperPath());
+        if (wallpaper) LoadWallpaper(*wallpaper);
     }
 }
 
@@ -644,14 +1456,23 @@ void UltraDesktopWindow::StartNotifications() {
 void UltraDesktopWindow::PlaceNotifications() {
 #ifdef ULTRADESKTOP_HAVE_NOTIFICATIONS
     if (!toasts_) return;
-    // Top right, beside the right bar, and below the taskbar when it runs
-    // along the top.
+    // Top right of the desktop's own monitor, beside the right bar, and
+    // below the taskbar when it runs along the top. The toasts measure from
+    // the whole screen's edges, so the monitors beyond the desktop's are
+    // part of the margins.
     const TaskbarEdge edge = settings_.taskbarEdge;
+    int screenW = 0, screenH = 0;
+    UltraCanvasDesktopShell::GetScreenSize(screenW, screenH);
+    const auto logical = [this](int physical) { return window_ ? window_->PhysicalToLogical(physical) : physical; };
+    const int beyondLeft = logical(std::max(0, area_.x));
+    const int beyondTop = logical(std::max(0, area_.y));
+    const int beyondRight = logical(std::max(0, screenW - (area_.x + area_.width)));
+    const int beyondBottom = logical(std::max(0, screenH - (area_.y + area_.height)));
     toasts_->SetCorner(NotificationToastCorner::TopRight);
-    toasts_->SetScreenMargins(edge == TaskbarEdge::Left ? kBarThickness : 0,
-                              edge == TaskbarEdge::Top ? kBarThickness : 0,
-                              kInfoPanelWidth,
-                              edge == TaskbarEdge::Bottom ? kBarThickness : 0);
+    toasts_->SetScreenMargins(beyondLeft + (edge == TaskbarEdge::Left ? kBarThickness : 0),
+                              beyondTop + (edge == TaskbarEdge::Top ? kBarThickness : 0),
+                              beyondRight + kInfoPanelWidth,
+                              beyondBottom + (edge == TaskbarEdge::Bottom ? kBarThickness : 0));
 #endif
 }
 
@@ -703,6 +1524,55 @@ void UltraDesktopWindow::CheckSettingsFile() {
 
 // ===== LIVE DATA =====
 
+// ===== THE INFO PANEL ON A SHORT SCREEN =====
+
+bool UltraDesktopWindow::CompactInfoPanel() const {
+    return area_.height > 0 && area_.height < kCompactScreenHeight;
+}
+
+int UltraDesktopWindow::InfoButtonSize() const {
+    return CompactInfoPanel() ? kInfoButtonCompact : kInfoButton;
+}
+
+int UltraDesktopWindow::InfoIconSize() const {
+    return CompactInfoPanel() ? kInfoIconCompact : kInfoIcon;
+}
+
+// The toolbar's Menu mode takes the items off the end of the bar; this
+// makes those the least-used services. It moves the `n` least-used ones to
+// the end - in their usual order - where `n` is how many the menu holds,
+// and is done once the menu holds exactly them. A bar that no longer
+// overflows (a taller screen) keeps the order until the bars are built again.
+void UltraDesktopWindow::FitInfoPanel() {
+    if (!info_) return;
+    // The chevron is the toolbar's own button: dress it like the bar's.
+    if (auto chevron = info_->GetOverflowButton(); chevron && chevron.get() != styledChevron_) {
+        styledChevron_ = chevron.get();
+        StyleBarButton(chevron);
+        chevron->SetElementSize(Size2Df(static_cast<float>(InfoButtonSize()), static_cast<float>(InfoButtonSize())));
+        chevron->SetIconSize(InfoIconSize(), InfoIconSize());
+        chevron->SetTooltip("More");
+    }
+    const std::vector<std::string> overflow = info_->GetOverflowItemIds();
+    if (overflow.empty()) return;
+    std::set<std::string> wanted;
+    for (const char* id : kInfoFoldOrder) {
+        if (wanted.size() >= overflow.size()) break;
+        if (info_->GetItemIndex(id) >= 0) wanted.insert(id);
+    }
+    if (std::set<std::string>(overflow.begin(), overflow.end()) == wanted || wanted == infoFolded_) return;
+    infoFolded_ = wanted;
+    const std::vector<std::string> order = info_->GetItemOrder();
+    const int last = static_cast<int>(order.size()) - 1;
+    for (const std::string& id : order) {
+        if (wanted.count(id) == 0) continue;
+        const int from = info_->GetItemIndex(id);
+        if (from >= 0 && from != last) info_->MoveItem(from, last);
+    }
+    info_->InvalidateLayout();
+    info_->RequestRedraw();
+}
+
 void UltraDesktopWindow::OnTimer() {
     CheckSettingsFile();
     CheckDesktopSwitch();
@@ -711,6 +1581,7 @@ void UltraDesktopWindow::OnTimer() {
         const auto now = std::chrono::steady_clock::now();
         if (now >= nextScreenCheck_) {
             nextScreenCheck_ = now + std::chrono::seconds(3);
+            FollowPrimaryScreen();
             CoverOtherScreens();
         }
     }
@@ -719,8 +1590,12 @@ void UltraDesktopWindow::OnTimer() {
         RefreshWindows();
     }
     if (trayDirty_.exchange(false)) RefreshTray();
+    FitInfoPanel();
+    if (boardWindow_ && settings_.categoryBoard.visible) PlaceCategoryBoard();
+    UpdateClock();
 
     bool apply = false;
+    bool applySpeaker = false;
     DesktopDeviceActivity now;
     {
         std::lock_guard<std::mutex> lock(deviceMutex_);
@@ -729,12 +1604,20 @@ void UltraDesktopWindow::OnTimer() {
             devicePending_ = false;
             apply = true;
         }
+        if (speakerPending_) {
+            speaker_ = pendingSpeaker_;
+            haveSpeaker_ = true;
+            speakerPending_ = false;
+            applySpeaker = true;
+        }
     }
     if (apply) {
         ApplyDeviceActivity(now, lastActivity_, haveLastActivity_);
         lastActivity_ = now;
         haveLastActivity_ = true;
+        applySpeaker = true;
     }
+    if (applySpeaker) ApplySpeaker();
 
     if (++ticksSinceNotices_ >= kNoticeTicks) {
         ticksSinceNotices_ = 0;
@@ -816,6 +1699,10 @@ void UltraDesktopWindow::RefreshWindows() {
                 if (on) UltraCanvasDesktopShell::ActivateWindow(id);
                 else UltraCanvasDesktopShell::MinimizeWindow(id);
             });
+            // The application's own icon in its own colours, as the pins
+            // and the tray show it; only the bar's glyphs and the letter
+            // fallback are tinted through the mask.
+            button->SetUseIconAsMask(w.iconFile.empty());
             button->onContextMenu = [this, id](int x, int y) { ShowWindowMenu(id, x, y); };
             runningItems_[w.id] = itemId;
 
@@ -870,9 +1757,8 @@ void UltraDesktopWindow::ApplyDeviceActivity(const DesktopDeviceActivity& now,
             : now.bluetoothPowered ? "Bluetooth: on, " + std::to_string(now.bluetoothConnectedDevices) + " connected"
                                    : "Bluetooth: off");
 
-    // Yellow: activity.
-    marker("speaker", now.speakerPlaying, kMarkerActive);
-    tooltip("speaker", now.speakerPlaying ? "Loudspeaker: playing" : "Loudspeaker");
+    // Yellow: activity. (The speaker's marker and words are ApplySpeaker's,
+    // which adds the volume.)
     const bool downloading = haveBefore && now.bytesReceived > before.bytesReceived + kActivityBytesPerPoll;
     const bool uploading = haveBefore && now.bytesSent > before.bytesSent + kActivityBytesPerPoll;
     marker("download", downloading, kMarkerActive);
@@ -944,10 +1830,20 @@ void UltraDesktopWindow::StartDevicePoll() {
         while (devicePollRunning_) {
             lock.unlock();
             DesktopDeviceActivity reading = UltraCanvasDesktopShell::ReadDeviceActivity();
+            // The loudspeaker now and then: a change made elsewhere (a
+            // keyboard's volume keys, another program) shows within seconds.
+            const bool readSpeaker = pollsSinceSpeaker_ == 0;
+            DesktopAudioOutput speaker;
+            if (readSpeaker) speaker = UltraCanvasDesktopShell::ReadAudioOutput();
             lock.lock();
             if (!devicePollRunning_) break;
             pending_ = std::move(reading);
             devicePending_ = true;
+            if (readSpeaker) {
+                pendingSpeaker_ = std::move(speaker);
+                speakerPending_ = true;
+            }
+            pollsSinceSpeaker_ = (pollsSinceSpeaker_ + 1) % kPollsPerSpeakerRead;
             deviceWake_.wait_for(lock, std::chrono::seconds(kDevicePollSeconds),
                                  [this]() { return !devicePollRunning_; });
         }
@@ -990,6 +1886,18 @@ void UltraDesktopWindow::ShowWindowMenu(uint64_t windowId, int windowX, int wind
         }));
         popupMenu_->AddItem(MenuItemData::Submenu("Move to", desktops));
     }
+    // Its application, when one is installed under its class: pinned from here.
+    for (const DesktopWindowInfo& w : UltraCanvasDesktopShell::ListWindows()) {
+        if (w.id != windowId) continue;
+        if (const UCDesktopEntry* entry = UltraCanvasDesktopShell::MatchApplication(w, Applications())) {
+            const UCDesktopEntry application = *entry;
+            const bool pinned = IsPinned(application);
+            popupMenu_->AddItem(MenuItemData::Separator());
+            popupMenu_->AddItem(MenuItemData::Action(pinned ? "Unpin from taskbar" : "Pin to taskbar",
+                                                     [this, application, pinned]() { SetPinned(application, !pinned); }));
+        }
+        break;
+    }
     popupMenu_->AddItem(MenuItemData::Separator());
     popupMenu_->AddItem(MenuItemData::Action("Close window", [windowId]() { UltraCanvasDesktopShell::CloseWindow(windowId); }));
     PopupElementSettings settings;
@@ -1001,6 +1909,18 @@ void UltraDesktopWindow::ShowSettingsButtonMenu(int windowX, int windowY) {
     popupMenu_ = std::make_shared<UltraCanvasMenu>("SettingsButtonMenu", 0, 0, 300, 0);
     popupMenu_->SetMenuType(MenuType::PopupMenu);
     popupMenu_->AddItem(MenuItemData::Action("ULTRA OS settings", [this]() { OpenSystemSettings(); }));
+    // The programs that start with the desktop, in the background.
+    std::vector<MenuItemData> startup;
+    for (const StartupProgram& program : DesktopSettings::StartupPrograms()) {
+        const std::string name = program.program;
+        startup.push_back(MenuItemData::Checkbox(name, settings_.StartsWithDesktop(name), [this, name](bool on) {
+            settings_.SetStartsWithDesktop(name, on);
+            SaveSettings();
+            // Now as well, not only from the next start.
+            if (on) StartStartupPrograms();
+        }));
+    }
+    popupMenu_->AddItem(MenuItemData::Submenu("Start with the desktop", startup));
     // Only Windows has a desktop of its own to switch from, and back to.
     if (UltraCanvasDesktopShell::CanReplaceSystemDesktop()) {
         popupMenu_->AddItem(MenuItemData::Separator());
@@ -1027,9 +1947,29 @@ void UltraDesktopWindow::ShowSettingsButtonMenu(int windowX, int windowY) {
                 if (auto* app = UltraCanvasApplicationBase::GetCurrent()) app->RequestExit();
             }));
         }
+    } else if (const std::string why = UltraCanvasDesktopShell::GetSystemDesktopSwitchUnavailableReason();
+               !why.empty()) {
+        // Windows, but a copy that cannot switch - the Microsoft Store one,
+        // whose registry changes sign-in never sees. Say so where the switch
+        // would be, rather than leave it out without a word; and this is
+        // always a trial run, with no title bar to close.
+        popupMenu_->AddItem(MenuItemData::Separator());
+        popupMenu_->AddItem(MenuItemData::Action("Use as the Windows desktop...", [this, why]() {
+            UltraCanvasDialogManager::ShowInformation(why, "UltraDesktop", nullptr, window_.get());
+        }));
+        popupMenu_->AddItem(MenuItemData::Action("Close UltraDesktop", []() {
+            if (auto* app = UltraCanvasApplicationBase::GetCurrent()) app->RequestExit();
+        }));
     }
-    // As the shell, nothing else offers the end of the session.
-    if (shellSession_ && UltraCanvasDesktopShell::CanEndSession()) {
+    // The lock and the end of the session: wherever this desktop is the
+    // one that offers them - as the shell on Windows, and on Linux, where
+    // the session has no other desktop to switch to.
+    const bool ownsSession = shellSession_ || !UltraCanvasDesktopShell::CanReplaceSystemDesktop();
+    if (ownsSession && UltraCanvasDesktopShell::CanLockSession()) {
+        popupMenu_->AddItem(MenuItemData::Separator());
+        popupMenu_->AddItem(MenuItemData::ActionWithShortcut("Lock screen", "Super+L", [this]() { LockScreen(); }));
+    }
+    if (ownsSession && UltraCanvasDesktopShell::CanEndSession()) {
         popupMenu_->AddItem(MenuItemData::Separator());
         popupMenu_->AddItem(MenuItemData::Action("Sign out...", [this]() { ConfirmEndSession(SessionEnd::SignOut); }));
         popupMenu_->AddItem(MenuItemData::Action("Restart...", [this]() { ConfirmEndSession(SessionEnd::Restart); }));
@@ -1041,17 +1981,96 @@ void UltraDesktopWindow::ShowSettingsButtonMenu(int windowX, int windowY) {
 
 // ===== EVERY SCREEN =====
 
+// The monitor the desktop belongs on right now: the primary of several (the
+// one the session marks, else the one listed first - at the origin), the
+// whole screen of one or where the platform tells none apart.
+DesktopScreenInfo UltraDesktopWindow::DesktopAreaNow(bool& oneOfSeveral) {
+    const std::vector<DesktopScreenInfo> screens = UltraCanvasDesktopShell::ListScreens();
+    const DesktopScreenInfo* primary = nullptr;
+    for (const DesktopScreenInfo& screen : screens) {
+        if (screen.primary && !primary) primary = &screen;
+    }
+    if (!primary && !screens.empty()) primary = &screens.front();
+    oneOfSeveral = primary && screens.size() > 1;
+    DesktopScreenInfo area;
+    if (oneOfSeveral) {
+        area = *primary;
+    } else {
+        UltraCanvasDesktopShell::GetScreenSize(area.width, area.height);
+    }
+    area.primary = true;
+    return area;
+}
+
+std::shared_ptr<UltraCanvasWindow> UltraDesktopWindow::CreateDesktopWindow(const DesktopScreenInfo& area,
+                                                                           bool oneOfSeveral) {
+    WindowConfig config;
+    config.title = std::string("UltraDesktop ") + ULTRADESKTOP_VERSION;
+    config.type = WindowType::Desktop;
+    config.width = 1280;    // replaced by the screen size for a desktop window
+    config.height = 800;
+    config.backgroundColor = kBarInsetColor;
+    if (oneOfSeveral) config.desktopArea = Rect2Di(area.x, area.y, area.width, area.height);
+    return CreateWindow(config);
+}
+
+// The primary moved (xrandr --output ... --primary, the display settings),
+// or the monitors changed so that the desktop's own is no longer the
+// primary's place: a desktop window cannot be moved to another monitor in
+// place, so a new one is made there, the bars built into it, and the old one
+// closed - the new one first, so the application never sees itself without
+// a window. The panels and the toasts follow through area_.
+void UltraDesktopWindow::FollowPrimaryScreen() {
+    bool oneOfSeveral = false;
+    const DesktopScreenInfo area = DesktopAreaNow(oneOfSeveral);
+    if (area.width <= 0 || area.height <= 0) return;
+    if (area.x == area_.x && area.y == area_.y && area.width == area_.width && area.height == area_.height) return;
+    auto fresh = CreateDesktopWindow(area, oneOfSeveral);
+    if (!fresh) {
+        debugOutput << "UltraDesktop: no window for the primary monitor at " << area.x << "," << area.y << std::endl;
+        return;
+    }
+    debugOutput << "UltraDesktop: the primary monitor is now " << area.width << "x" << area.height << " at "
+                << area.x << "," << area.y << "; moving the desktop there" << std::endl;
+    auto old = window_;
+    // The old window's tree goes with it; the bars are built anew for the
+    // new one (BuildLayout removes root_ from window_, which is the new one
+    // by then, so it is taken off the old one here).
+    if (old && root_) old->RemoveChild(root_);
+    root_.reset();
+    window_ = fresh;
+    area_ = area;
+    BuildLayout();
+    RefreshDesktops();
+    window_->Show();
+    PlaceNotifications();
+    if (old) {
+        old->onWindowResize = nullptr;
+        old->Close();
+    }
+}
+
+int UltraDesktopWindow::ScreenX(float logicalX) const {
+    return area_.x + (window_ ? window_->LogicalToPhysical(static_cast<int>(logicalX)) : static_cast<int>(logicalX));
+}
+
+int UltraDesktopWindow::ScreenY(float logicalY) const {
+    return area_.y + (window_ ? window_->LogicalToPhysical(static_cast<int>(logicalY)) : static_cast<int>(logicalY));
+}
+
 void UltraDesktopWindow::CoverOtherScreens() {
-    // What the desktop window covers, from 0,0: the primary monitor on
-    // Windows, the whole screen on X11.
-    // Beside Explorer, Explorer's desktop shows on the others, with its icons.
-    int coveredWidth = 0, coveredHeight = 0;
-    UltraCanvasDesktopShell::GetScreenSize(coveredWidth, coveredHeight);
+    // The monitors outside what the desktop window covers (area_). Beside
+    // Explorer, Explorer's desktop shows on them, with its icons; as the
+    // shell on Windows, and on X11, where the session has no other desktop,
+    // each gets a wallpaper window.
+    const bool systemCovers = UltraCanvasDesktopShell::CanReplaceSystemDesktop() &&
+                              UltraCanvasDesktopShell::IsSystemDesktopRunning();
     std::vector<DesktopScreenInfo> others;
-    if (!UltraCanvasDesktopShell::IsSystemDesktopRunning()) {
+    if (!systemCovers) {
         for (const DesktopScreenInfo& screen : UltraCanvasDesktopShell::ListScreens()) {
-            const bool inside = screen.x >= 0 && screen.y >= 0 && screen.x + screen.width <= coveredWidth &&
-                                screen.y + screen.height <= coveredHeight;
+            const bool inside = screen.x >= area_.x && screen.y >= area_.y &&
+                                screen.x + screen.width <= area_.x + area_.width &&
+                                screen.y + screen.height <= area_.y + area_.height;
             if (!inside) others.push_back(screen);
         }
     }
@@ -1089,7 +2108,7 @@ void UltraDesktopWindow::OpenScreenWindow(size_t index, bool report) {
     }
     auto wallpaper = std::make_shared<UltraCanvasImageElement>("ScreenWallpaper" + std::to_string(index), 0, 0, 0, 0);
     wallpaper->SetFitMode(ImageFitMode::Cover);
-    wallpaper->LoadFromFile(WallpaperPath());
+    LoadWallpaper(*wallpaper);
     int width = 0, height = 0;
     window->GetWindowSize(width, height);
     wallpaper->SetElementAbsolutePosition(Point2Df(0, 0));
@@ -1149,7 +2168,7 @@ void UltraDesktopWindow::ConfirmEndSession(SessionEnd how) {
         if (!confirmed) return;
         std::string error;
         if (UltraCanvasDesktopShell::EndSession(how, &error)) return;
-        UltraCanvasDialogManager::ShowWarning("Windows did not end the session.\n\n" + error, "UltraDesktop", nullptr,
+        UltraCanvasDialogManager::ShowWarning("The session did not end.\n\n" + error, "UltraDesktop", nullptr,
                                               window_.get());
     }, window_.get());
 }
@@ -1161,14 +2180,40 @@ void UltraDesktopWindow::StartTray() {
     if (!trayHost_.Start([this]() { trayDirty_.store(true); }, &error)) {
         debugOutput << "UltraDesktop: the tray icons are not shown: " << error << std::endl;
     }
-    // No Start menu without Explorer: the Win key's tap opens ours.
-    error.clear();
-    const bool started = appsShortcut_.Start("Super", [this]() {
+}
+
+void UltraDesktopWindow::StartDesktopShortcuts() {
+    // Beside Explorer the Win key is the Start menu's and Win+L is Windows'
+    // own; as the shell, and on Linux, they are this desktop's.
+    const bool ownsSession = shellSession_ || !UltraCanvasDesktopShell::CanReplaceSystemDesktop();
+    if (!ownsSession) return;
+    std::string error;
+    const bool apps = appsShortcut_.Start("Super", [this]() {
         if (auto* app = UltraCanvasApplicationBase::GetCurrent()) {
             app->PostToUIThread([this]() { OpenAppStarter(); });
         }
     }, &error);
-    if (!started) debugOutput << "UltraDesktop: the Win key does not open the applications: " << error << std::endl;
+    if (!apps) debugOutput << "UltraDesktop: the Super key does not open the applications: " << error << std::endl;
+    if (!UltraCanvasDesktopShell::CanLockSession()) return;
+    error.clear();
+    const bool lock = lockShortcut_.Start("Super+L", [this]() {
+        if (auto* app = UltraCanvasApplicationBase::GetCurrent()) {
+            app->PostToUIThread([this]() { LockScreen(); });
+        }
+    }, &error);
+    if (!lock) debugOutput << "UltraDesktop: Super+L does not lock the screen: " << error << std::endl;
+}
+
+void UltraDesktopWindow::StartSnipShortcut() {
+    // Super+Shift+S from any window, as the Windows snipping tool: an area
+    // in UltraSnip. The shortcut's thread hands the press to the UI thread.
+    std::string error;
+    const bool started = snipShortcut_.Start("Super+Shift+S", [this]() {
+        if (auto* app = UltraCanvasApplicationBase::GetCurrent()) {
+            app->PostToUIThread([this]() { OpenSnip({"--rectangle"}); });
+        }
+    }, &error);
+    if (!started) debugOutput << "UltraDesktop: Super+Shift+S does not open UltraSnip: " << error << std::endl;
 }
 
 void UltraDesktopWindow::RefreshTray() {
@@ -1182,6 +2227,7 @@ void UltraDesktopWindow::RefreshTray() {
         if (wanted.count(it->first) == 0) {
             info_->RemoveItem(it->first);
             trayTooltips_.erase(it->first);
+            trayMenus_.erase(it->first);
             it = trayIcons_.erase(it);
         } else {
             ++it;
@@ -1210,9 +2256,15 @@ void UltraDesktopWindow::RefreshTray() {
             ButtonStyle style = button->GetStyle();
             style.useIconAsMask = false;
             button->SetStyle(style);
-            button->SetElementSize(Size2Df(static_cast<float>(kInfoButton), static_cast<float>(kInfoButton)));
-            button->SetIconSize(kInfoIcon, kInfoIcon);
-            button->onContextMenu = [this, id](int, int) { trayHost_.Click(id, TrayClick::Right); };
+            button->SetElementSize(Size2Df(static_cast<float>(InfoButtonSize()), static_cast<float>(InfoButtonSize())));
+            button->SetIconSize(InfoIconSize(), InfoIconSize());
+            // A program that hands its menu over as data gets it drawn here;
+            // the others open their own on the click.
+            button->onContextMenu = [this, id, itemId](int x, int y) {
+                const auto menu = trayMenus_.find(itemId);
+                if (menu != trayMenus_.end() && !menu->second.empty()) ShowTrayMenu(id, itemId, x, y);
+                else trayHost_.Click(id, TrayClick::Right);
+            };
             // Above the services, in the order the programs added them.
             const int from = info_->GetItemIndex(itemId);
             const int to = info_->GetItemIndex("mail");
@@ -1226,6 +2278,7 @@ void UltraDesktopWindow::RefreshTray() {
             }
         }
         if (!button) continue;
+        trayMenus_[itemId] = icon.menu;
         const std::string tooltip = icon.tooltip.empty() ? icon.appClass : icon.tooltip;
         if (trayTooltips_[itemId] != tooltip) {
             trayTooltips_[itemId] = tooltip;
@@ -1238,6 +2291,51 @@ void UltraDesktopWindow::RefreshTray() {
     }
     info_->InvalidateLayout();
     info_->RequestRedraw();
+}
+
+namespace {
+
+// A tray icon's menu as the framework's menu items, submenus and all: a
+// choice goes back to the program by the entry's id.
+std::vector<MenuItemData> TrayMenuItems(const std::vector<DesktopTrayMenuItem>& items,
+                                        const std::function<void(int32_t)>& activate) {
+    std::vector<MenuItemData> out;
+    for (const DesktopTrayMenuItem& item : items) {
+        if (item.separator) {
+            out.push_back(MenuItemData::Separator());
+            continue;
+        }
+        const int32_t id = item.id;
+        MenuItemData data;
+        if (!item.children.empty()) {
+            data = MenuItemData::Submenu(item.label, item.iconFile, TrayMenuItems(item.children, activate));
+        } else if (item.checkable) {
+            data = MenuItemData::Checkbox(item.label, item.checked, [activate, id](bool) { activate(id); });
+        } else {
+            data = MenuItemData::Action(item.label, item.iconFile, [activate, id]() { activate(id); });
+        }
+        data.enabled = item.enabled;
+        out.push_back(std::move(data));
+    }
+    return out;
+}
+
+} // namespace
+
+void UltraDesktopWindow::ShowTrayMenu(const std::string& iconId, const std::string& itemId, int windowX, int windowY) {
+    if (!window_) return;
+    const auto menu = trayMenus_.find(itemId);
+    if (menu == trayMenus_.end() || menu->second.empty()) return;
+    popupMenu_ = std::make_shared<UltraCanvasMenu>("TrayMenu", 0, 0, 240, 0);
+    popupMenu_->SetMenuType(MenuType::PopupMenu);
+    const std::string id = iconId;
+    for (MenuItemData& item : TrayMenuItems(menu->second, [this, id](int32_t entry) {
+             trayHost_.ActivateMenuItem(id, entry);
+         })) {
+        popupMenu_->AddItem(std::move(item));
+    }
+    PopupElementSettings settings;
+    popupMenu_->OpenMenu(Point2Di(windowX - 250, windowY), *window_, settings);
 }
 
 void UltraDesktopWindow::ShowTrayBalloon(const DesktopTrayIcon& icon) {
@@ -1438,19 +2536,13 @@ void UltraDesktopWindow::ToggleClipboardPanel(bool besideButton) {
     }
     if (pasteWindow) {
         lastPasteWindow_ = pasteWindow->id;
-        const auto now = std::chrono::steady_clock::now();
-        if (applications_.empty() || now - applicationsRead_ > std::chrono::minutes(5)) {
-            applications_ = UltraCanvasDesktopShell::ListApplications(16);
-            applicationsRead_ = now;
-        }
-        target = PasteTargetFor(*pasteWindow, applications_);
+        target = PasteTargetFor(*pasteWindow, Applications());
     }
+    // On the desktop's own monitor: beside the button, or centred for Super+V.
+    clipboardPanel_->SetScreenArea(area_.x, area_.y, area_.width, area_.height);
     if (besideButton && clipboardButton_) {
-        // The desktop window covers the screen from its top left corner, so
-        // its coordinates are the screen's, scaled to physical pixels.
         const Rect2Df bounds = clipboardButton_->GetBoundsInWindow();
-        clipboardPanel_->Open(window_->LogicalToPhysical(static_cast<int>(bounds.x) - 10),
-                              window_->LogicalToPhysical(static_cast<int>(bounds.y) - 8), std::move(target));
+        clipboardPanel_->Open(ScreenX(bounds.x - 10), ScreenY(bounds.y - 8), std::move(target));
     } else {
         clipboardPanel_->Open(-1, -1, std::move(target));
     }

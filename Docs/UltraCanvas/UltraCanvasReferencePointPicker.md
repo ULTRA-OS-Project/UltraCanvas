@@ -66,6 +66,12 @@ const char* ReferencePointName(ReferencePoint point);       // "Top left", ...
 class UltraCanvasReferencePointPicker : public UltraCanvasUIElement {
     void SetPoint(ReferencePoint p, bool runCallback = false);
     ReferencePoint GetPoint() const;
+    // A point that is none of the nine, as fractions of the box: no point
+    // lit, a ring in its direction kept inside the frame. Clicking one of
+    // the nine (or SetPoint) clears it.
+    void SetFreePoint(const std::optional<Point2Dd>& fraction);
+    const std::optional<Point2Dd>& GetFreePoint() const;
+    bool HasFreePoint() const;
     ReferencePointPickerStyle& GetStyle();
     void SetStyle(const ReferencePointPickerStyle& s);
     std::function<void(ReferencePoint)> onPointChanged;   // the user picked a point
@@ -86,5 +92,9 @@ the side of a point and of the picked point.
   48 px suits a two-row toolbar.
 - To assistive technology it is a group whose value is the picked point's
   name.
+- A free point stands for a point the user put somewhere else - ArtCreator's
+  rotation centre dragged off the nine points. Its fractions may lie outside
+  0..1; the ring is clamped to the frame, so it still shows which way the
+  point lies. To assistive technology its value is then "Free point".
 - ArtCreator's transform bar is the reference user
   (`Apps/ArtCreator/ArtCreatorWindow.cpp`, `BuildTransformBar`).

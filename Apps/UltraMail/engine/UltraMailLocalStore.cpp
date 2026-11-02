@@ -1,5 +1,6 @@
 // Apps/UltraMail/engine/UltraMailLocalStore.cpp
 // LocalStore implementation on top of UltraDatabase.
+// Version: 0.7.0 - schema 13 (security_method, security_sign, security_encrypt, pgp_key): SetAccountSecurity
 // Version: 0.6.0 - schema 12 (incoming_protocol: IMAP or JMAP)
 // Version: 0.5.0 - schema 11 (findings: the codes of a verdict's findings)
 // Version: 0.4.0 - schema 10 (verified_domain, verified_by); ListStaleVerdicts
@@ -100,11 +101,13 @@ struct LocalStore::WrittenToCache {
 // ---- Open / schema ---------------------------------------------------------
 
 UltraDbResult LocalStore::Open(const std::string& connectionName,
-                               const std::string& databasePath) {
+                               const std::string& databasePath,
+                               std::shared_ptr<const UltraCryptSecureBuffer> encryptionKey) {
     UltraDbConnectionConfig cfg;
     cfg.name     = connectionName;
     cfg.driver   = "sqlite";
     cfg.database = databasePath;
+    cfg.encryptionKey = std::move(encryptionKey);
     UltraDbResult reg = UltraDb_RegisterConnection(cfg);
     if (!reg) return reg;
     writtenTo_ = std::make_shared<WrittenToCache>();
@@ -220,6 +223,13 @@ UltraDbResult LocalStore::Open(const std::string& connectionName,
           // 'imap' keeps what existing accounts did; 'jmap' reads the same
           // imap_* columns as a JMAP server (host, port, username, auth).
           "ALTER TABLE accounts ADD COLUMN incoming_protocol TEXT DEFAULT 'imap';" },
+        { 13, "account mail security defaults",
+          // '' keeps what existing accounts did: new messages start unsigned
+          // and unencrypted. pgp_key '' = the key for the account's address.
+          "ALTER TABLE accounts ADD COLUMN security_method TEXT DEFAULT '';"
+          "ALTER TABLE accounts ADD COLUMN security_sign INTEGER DEFAULT 1;"
+          "ALTER TABLE accounts ADD COLUMN security_encrypt INTEGER DEFAULT 0;"
+          "ALTER TABLE accounts ADD COLUMN pgp_key TEXT DEFAULT '';" },
     };
     return UltraDb_Migrate(connection_, steps);
 }
@@ -264,7 +274,8 @@ UltraDbResult LocalStore::ListAccounts(std::vector<Account>& out) const {
         "  imap_host, imap_port, imap_security, imap_username, imap_oauth, "
         "  smtp_host, smtp_port, smtp_security, smtp_username, smtp_oauth, "
         "  provider_name, imap_auth, smtp_auth, incoming_protocol, "
-        "  signature_kind, signature_text, signature_html, signature_replies FROM accounts "
+        "  signature_kind, signature_text, signature_html, signature_replies, "
+        "  security_method, security_sign, security_encrypt, pgp_key FROM accounts "
         "ORDER BY short_name", rs);
     if (!q) return q;
     for (const auto& row : rs) {
@@ -291,6 +302,10 @@ UltraDbResult LocalStore::ListAccounts(std::vector<Account>& out) const {
         a.signature.text      = row["signature_text"].AsString();
         a.signature.html      = row["signature_html"].AsString();
         a.signature.onReplies = row["signature_replies"].AsInt() != 0;
+        a.security.method     = row["security_method"].AsString();
+        a.security.sign       = row["security_sign"].AsInt() != 0;
+        a.security.encrypt    = row["security_encrypt"].AsInt() != 0;
+        a.security.openPgpKey = row["pgp_key"].AsString();
         out.push_back(std::move(a));
     }
     return UltraDbResult::Ok();
@@ -306,6 +321,18 @@ UltraDbResult LocalStore::SetAccountSignature(const std::string& accountId,
         "signature_replies=? WHERE account_id=?",
         { ToString(signature.kind), signature.text, signature.html,
           static_cast<int64_t>(signature.onReplies ? 1 : 0), accountId });
+}
+
+UltraDbResult LocalStore::SetAccountSecurity(const std::string& accountId,
+                                             const AccountSecurity& security) {
+    if (accountId.empty())
+        return UltraDbResult::Error(UltraDbResultCode::InvalidArgument,
+                                    "account id must not be empty");
+    return UltraDb_Exec(connection_,
+        "UPDATE accounts SET security_method=?, security_sign=?, security_encrypt=?, "
+        "pgp_key=? WHERE account_id=?",
+        { security.method, static_cast<int64_t>(security.sign ? 1 : 0),
+          static_cast<int64_t>(security.encrypt ? 1 : 0), security.openPgpKey, accountId });
 }
 
 UltraDbResult LocalStore::RemoveAccount(const std::string& accountId) {

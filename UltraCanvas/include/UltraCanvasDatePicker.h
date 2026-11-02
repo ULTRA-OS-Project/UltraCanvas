@@ -19,7 +19,20 @@
 //                                "dropdown" philosophy). Combines fast keyboard
 //                                entry with point-and-click browsing.
 //
-// Last Modified: 2026-08-09
+// Version: 1.4.0 - 2026-10-20 - SetPlaceholder reaches the field after it was built (it kept
+//                  "Select a date" whatever was set later); GetPlaceholder reads it back
+// Version: 1.3.2 - 2026-10-11 - the range field's separator is an en dash: the bundled UI
+//                  font has no arrow glyph
+// Version: 1.3.1 - 2026-09-25 - the calendar is kept inside the window vertically too
+//                  (CalculatePopupPosition): pinned to the top edge where it fits neither
+//                  below nor above the field, so its header stays reachable
+// Version: 1.3.0 - 2026-08-09 - the typed field is a real UltraCanvasTextInput child and both
+//                  widgets derive from UltraCanvasContainer; the popup takes the keyboard off
+//                  the field while open; range, week and multiple modes are read-only
+// Version: 1.1.0 - 2026-06-17 - several months per view, stacked or side by side (SetMonthsPerView,
+//                  CalendarOrientation)
+// Version: 1.0.0 - 2026-06-14 - UltraCanvasCalendarView and UltraCanvasDatePicker
+// Last Modified: 2026-10-20
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -491,7 +504,10 @@ namespace UltraCanvas {
 
         void SetDateFormat(const std::string& fmt) { dateFormat = fmt; SyncTextFromValue(); RequestRedraw(); }
         const std::string& GetDateFormat() const { return dateFormat; }
-        void SetPlaceholder(const std::string& text) { placeholder = text; RequestRedraw(); }
+        // The hint shown while no date is in: reaches the field, whenever it
+        // is set (until 2026-10 the field kept the hint it was made with).
+        void SetPlaceholder(const std::string& text);
+        const std::string& GetPlaceholder() const { return placeholder; }
 
         // Whether the user may type the date directly into the field.
         void SetAllowTextInput(bool allow);

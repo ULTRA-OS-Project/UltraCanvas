@@ -315,7 +315,7 @@ Progress pie — same element, one ring, sector style:
 auto progress = UltraCanvas::CreateProgressPieChart("done", 20, 20, 200, 200);
 progress->AddRing("Complete", 65.0, Color(40, 140, 230, 255));
 progress->SetSubStyle(UltraCanvas::CircularProgressStyle::ProgressPie);
-progress->SetTipLabelContent(UltraCanvas::RingTipLabel::None);
+progress->SetTipLabelContent(UltraCanvas::RingTipLabel::NoLabel);
 progress->SetCenterText("65%");
 ```
 

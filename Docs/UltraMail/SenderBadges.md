@@ -40,12 +40,12 @@ class, the service, the reason and the scan's findings in words, and a
 suspicious or scam message also carries a warning strip above its body in the
 reading pane. When the scan's verdict is suspicious or worse and a button (or,
 failing that, a bare link) leads off the sender's domain, the strip is titled
-*"Warning: This is likely a phishing² email!"*, quotes both domains —
+*"Warning: This is likely a phishing\* email!"*, quotes both domains —
 `Mismatch of domains` / `Sender domain: …` / `Button domain: …` — and explains
 the footnote: phishing emails try to get your credentials to hack your
 accounts on other websites (`FindDomainMismatch` in the scan). A message the
 scan reads as a **romance scam** is titled *"Warning: This is likely a romance
-scam² email!"* instead ("may be" when the verdict is only suspicious), even
+scam\* email!"* instead ("may be" when the verdict is only suspicious), even
 when it also links elsewhere, and its footnote says what a romance scam is and
 that a reverse image search often finds the photo under another name; a
 **cryptocurrency scam** (a recovery phrase asked for, a wallet address to pay
@@ -208,14 +208,26 @@ used twice:
 * **In the badge.** A registry sender that is not (yet) in the address book
   reads as a **business contact** — blue — rather than as an unknown sender,
   with the tooltip naming the service and what kind of service it is.
-* **In the address book.** `ContactCollector::CollectSender()` — which the app
-  runs over each synced folder — files a registry sender under **Services**,
-  carrying the service's name as the contact's `organization` and a note
+* **In the address book.** `ContactCollector::CollectSenders()` — which the
+  app runs over each sync's new inbox mail — files a registry sender under
+  **Services**, but only when the receiving server proved its domain (DKIM or
+  DMARC: the scan's `verifiedDomain`, `DomainProven`): the registry knows a
+  service by its address, and anyone can write that address in a From line.
+  It files it carrying the service's name as the contact's `organization` and a note
   saying what it is and that UltraMail added it. A robot display name is
   replaced by the service's own name only when the header carries none
-  ("Kickstarter" beats an empty From name). Everything else still lands in
-  Other, exactly as before, and a personal mailbox address never counts as a
-  service however large its provider.
+  ("Kickstarter" beats an empty From name). Any other sender is **not**
+  added: a stranger who writes - and every spammer whose mail reaches the
+  inbox - would otherwise read as someone in the address book and lose the
+  "New sender" badge. People join the address book when the user writes to
+  them (`ContactCollector::Collect`). A personal mailbox address never counts
+  as a service however large its provider, and a blocked sender, an address
+  the user deleted from the address book (`ContactStore::Forget`) and a
+  no-reply address (`IsNoReplyAddress`) are never collected - some services
+  send from a new `no-reply-<code>@...` address in every message, which
+  filed a contact per message. Services' right-click menu, *Remove no-reply
+  contacts…*, clears what the older rule filed
+  (`ContactCollector::CollectedNoReply`).
 
 One rule guards it: **an existing contact is never modified or reclassified.**
 An address the user has filed under Friends themselves stays there, whatever
@@ -257,10 +269,14 @@ cascade. The rules, with their weights:
 | `romance-scam` | 22 / 35 / 50 | A stranger's love letter — see *Romance scams* below. 50 with five signs or more, 35 with four, 22 with three |
 | `crypto-wallet-secret` | 50 | A sentence asking for a wallet's recovery (seed) phrase or private key — "verify your 12-word recovery phrase" — and not one warning never to give it |
 | `advance-fee-fraud` | 25 / 50 | A sum in the millions ("US$ 15,500,000", "10.5 million dollars") plus a dead relative / estate / money nobody claimed ("abandoned baggage"), taxes or fees to pay first, or the 419 setting (barrister, Nigeria, "strictly confidential", "your own share", "God fearing", an "ATM card" from the FBI) — 50 when two of those appear |
+| `loan-offer-fraud` | 50 / 30 / 25 | A loan, credit or project funding offered ("loan facilities", "LOAN FUNDING / FINANCING OFFER", "fund viable projects") by anyone but a bank whose own domain is proven (a registry bank with DKIM/DMARC passing): 50 with a rate, a repayment, a return or a sum ("3% yearly repayment", "USD/EURO 10M - 500M"), 30 for the bare offer; 25 when the sender proved its own (not free-mailbox) domain, or writes from a registry bank's domain nothing proved, and names terms; nothing for a proven domain's bulk mail |
 | `crypto-payment-demand` | 40 | A crypto wallet address in the text (Bitcoin `bc1…`/`1…`/`3…`, Ethereum `0x…`, TRON `T…`) — blackmail and fake invoices; not from a proven exchange, not a token inside a link |
 | `crypto-investment-lure` | 35 | Crypto plus promised profit: "guaranteed returns", "30% daily", a "trading platform", "withdraw your balance"; not from a proven exchange |
 | `credential-request` | 30 | "Your account will be suspended" + a link off the sender's domain |
 | `attachment-double-extension` | 25 | `invoice.pdf.zip` |
+| `attachment-active-page` | 50 | An attached web page (or SVG picture) that, once opened, loads a script from a website, has a form, sends the browser on (`<meta http-equiv="refresh">`, `location=…`), shows another site in a frame, or runs a script that decodes or writes a hidden page (`atob(`, `eval(`, `document.write`) — read from the page itself, as it would run in the browser |
+| `attachment-web-page` | 25 / 40 | An `.html` / `.htm` / `.xhtml` / `.mht` file attached: it opens in the browser, outside the mail program. 40 when the mail or the file name speaks of an invoice, a reminder or a payment ("Mahnung", "Rechnung", "invoice", "overdue", `Rg-2608144.html`) — the fake invoice; real invoices come as PDFs |
+| `sender-company-mismatch` | 25 (12 from a proven domain) | The display name names a company whose own domain the message itself gives — `Luka Deveric \| BUG Rohrreinigung <no-reply@danpetersonmusic.net>` writing "questions to fibu@bug-rohrreinigung.de" — and the mail came from an unrelated domain. Matched when the domain's name is the display name's words (`bug-rohrreinigung`, `bugrohrreinigung`, or one long word of it); not from a free mailbox, not "… via …", not when the sender's domain carries the company's name; from a domain DKIM or DMARC proves (an invoicing service sending in a customer's name) only 12 |
 | `link-punycode`, `link-nonascii-host` | 25 | Hosts drawn to look like familiar names |
 | `insecure-login-link` | 20 | A sign-in link over plain `http://` |
 | `link-brand-mismatch` | 20 | A button labelled with a brand that goes somewhere else |
@@ -400,9 +416,10 @@ from a domain of its own. Where the brand table already reported the claim
 
 | Switch | Findings |
 |---|---|
-| Phishing | `link-*`, `brand-impersonation`, `sender-domain-lookalike`, `borrowed-brand-pictures`, `credential-request`, `insecure-login-link`, `auth-failure`, `reply-to-mismatch`, `many-foreign-domains` |
+| Phishing | `link-*`, `brand-impersonation`, `sender-domain-lookalike`, `sender-company-mismatch`, `borrowed-brand-pictures`, `credential-request`, `insecure-login-link`, `auth-failure`, `reply-to-mismatch`, `many-foreign-domains` |
 | Romance scams | `romance-scam` |
 | Advance-fee letters | `advance-fee-fraud`, `reply-elsewhere` |
+| Loan and credit offers | `loan-offer-fraud` |
 | Letters in an agency's name | `government-impersonation` |
 | Cryptocurrency scams | `crypto-wallet-secret`, `crypto-payment-demand`, `crypto-investment-lure` |
 | Any mail about cryptocurrency | `crypto-content` (the caution strip) |
@@ -446,7 +463,8 @@ address under a blocked domain stays trusted — the exception to the block.
   trusted address), the lying-link rules (`link-target-mismatch`,
   `link-userinfo`, `link-ip-host`, `link-punycode`, `link-nonascii-host`,
   `link-brand-mismatch`, `link-brand-lookalike`, `link-domain-lookalike`),
-  `attachment-disguised-executable` and `crypto-wallet-secret`. The guessed
+  `attachment-disguised-executable`, `attachment-active-page` (a hijacked
+  mailbox's fake invoice) and `crypto-wallet-secret`. The guessed
   kinds — a romance or advance-fee letter, the crypto caution, spam markers,
   a brand's name in a domain — are the reader's call, and they made it. A
   trusted sender's pictures on the web also load like a contact's
@@ -508,7 +526,58 @@ link on the sender's own domain and a genuine brand newsletter all come out
 clean, and each of those is a test in
 `Tests/UltraMail/test_threatscan.cpp`.
 
-## 6. Where the code lives
+## 6. Filtering the list
+
+The verdicts and the registry also narrow the message list. Two places set
+the filter, and it is the same filter whichever set it (`MessageFilter`,
+`MailView::SetFilter`); switching folder or account clears it.
+
+### The account bar's counters
+
+Each account's card in the account bar — a tile per account, or the summary
+card when there is only one — carries three counters, and each is a filter:
+
+| Counter | Counts | A click shows |
+|---|---|---|
+| **New today** (blue) | Unread inbox mail dated since local midnight | That account's inbox, only its unread mail from today (`NewToday`) |
+| **Unread** (green) | Unread inbox mail dated before today | That account's inbox, **all** of its unread mail — today's too (`Unread`) |
+| **Waiting for reply** (orange) | Mail waiting for an answer, by the needs-answer rules | That account's inbox, only the mail waiting for an answer (`NeedsAnswer`) |
+
+A click on a counter of another account switches to that account as well
+(`MailView::ShowInbox`, one rebuild of the list). A click anywhere else on the
+card — the avatar, the name, the padding — shows all of the account's mail
+again. Each counter has its own tooltip saying what a click shows; the
+card's tooltip still names all three.
+
+While a filter is on, the counter it came from is framed in its own colour,
+and a second row appears under the account bar: a card in the look of the
+account tiles, placed under the account's own card (it follows the tile when
+the tile is dragged to another place), naming the filter — *"Showing: New
+today"* — with the account's address and a **Show all emails** button. The
+card is there for any filter the list is under, also one chosen from the
+list's menu below, and goes when the filter is cleared
+(`MailView::onFilterChanged`, `AccountBar::ShowFilter`).
+
+### "Show emails ▸" in the list's menu
+
+The message list's right-click menu offers the same filters and a few that
+read the badge and the registry (`FilterMatches` in
+`UltraMailMessageFilter.cpp`):
+
+| Filter | Keeps |
+|---|---|
+| Same sender (*address*) | Mail from that address (case-insensitive) |
+| Unread | Unread mail |
+| Needs an answer | Mail waiting for an answer |
+| Spam | Mail whose badge says spam or scam (orange or red outline) |
+| Social media | Mail from a social network or messaging service in the registry, or a notification that reads like one ("commented on your post", a Mastodon server) |
+| Payments & invoices | Mail from a payment service, bank or crypto exchange in the registry, or a subject that reads like an invoice, a receipt or a payment notice |
+
+The list's title names the filter ("Inbox · Spam — 3 messages"); with a
+filter on, an empty list says *no messages* rather than looking like an empty
+folder.
+
+## 7. Where the code lives
 
 | Piece | File |
 |---|---|
@@ -525,4 +594,6 @@ clean, and each of those is a test in
 | Colours | `Apps/UltraMail/ui/UltraMailTheme.h` (`kTrust*`) |
 | The warning switches | `Apps/UltraMail/ui/UltraMailSettingsDialog.cpp` (Warnings > Spam/scam warnings), `UltraMailPreferences.{h,cpp}` (`scamWarnings`), applied in `UltraMailApp.cpp` |
 | Trusted and blocked senders | `SenderLists` in `Apps/UltraMail/engine/UltraMailThreatScan.{h,cpp}`; the menu items in `Apps/UltraMail/ui/UltraMailMailView.cpp` (`SenderListItems`, `RescanSender`); `UltraMailSettingsDialog.cpp` (Warnings > Trusted & blocked); `UltraMailPreferences.{h,cpp}` (`senderLists`); `UltraMailApp.cpp` (`HandleSenderListChange`, `ApplySenderLists`) |
-| Tests | `Tests/UltraMail/test_senderidentity.cpp`, `test_threatscan.cpp`, `test_contacts.cpp`, `test_localstore.cpp`, `test_preferences.cpp` |
+| The list's filters | `Apps/UltraMail/engine/UltraMailMessageFilter.{h,cpp}` (`MessageFilter`, `FilterMatches`, `Describe`); `Apps/UltraMail/ui/UltraMailMailView.cpp` (`SetFilter`, `ShowInbox`, `onFilterChanged`, the *Show emails ▸* menu) |
+| The account bar's counters and filter card | `Apps/UltraMail/ui/UltraMailAccountBar.{h,cpp}` (`onFilterAccount`, `ShowFilter`, `onShowAll`); wired in `UltraMailApp.cpp` (`SwitchToAccount`) |
+| Tests | `Tests/UltraMail/test_senderidentity.cpp`, `test_threatscan.cpp`, `test_contacts.cpp`, `test_localstore.cpp`, `test_preferences.cpp`, `test_messagefilter.cpp`; `AccountBarClickTest.cpp` and `FolderTreeTest.cpp` (the counters as filters, in a window) |

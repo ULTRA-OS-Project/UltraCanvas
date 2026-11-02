@@ -11,7 +11,10 @@
 // buttons — a fixed row of buttons cannot adapt, and a palette that overflows
 // its pane is a palette with colours nobody can reach.
 //
-// An optional leading "checkered" swatch stands for the transparency pattern
+// An optional leading "auto" swatch (half light, half dark) stands for "pick
+// a colour to suit what is shown" - the host decides which (SetShowAutoEntry).
+//
+// An optional "checkered" swatch stands for the transparency pattern
 // instead of a colour, for the common case of choosing what shows through a
 // transparent image: a colour, or the checkerboard that means "no colour".
 //
@@ -20,11 +23,16 @@
 // 256-colour GIF palette is a block rather than a hairline. The host sizes
 // such a bar with HeightForWidth().
 //
+// Version: 1.4.0 - SetShowAutoEntry / SelectAuto / onAutoSelected: a leading
+//                  "automatic" swatch, before the checkered one
+// Version: 1.3.0 - onColorHovered: the entry under the pointer, for a host
+//                  that previews it; a wrapping bar picks a line length that
+//                  leaves no short last line when one fits (256 = 8 x 32)
 // Version: 1.2.0 - SetWrap / HeightForWidth: a palette on several lines;
 //                  SetColorAt; onColorContextClicked: a right click with the
 //                  entry's index and where it happened (to edit the entry)
 // Version: 1.1.0
-// Last Modified: 2026-10-19
+// Last Modified: 2026-10-27
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -49,6 +57,9 @@ struct ColorSwatchBarStyle {
     // The checkerboard drawn in the "checkered" swatch (see SetShowCheckeredEntry).
     Color checkerLight   = Color(255, 255, 255, 255);
     Color checkerDark    = Color(203, 203, 203, 255);
+    // The two halves of the "auto" swatch (see SetShowAutoEntry).
+    Color autoLight      = Color(255, 255, 255, 255);
+    Color autoDark       = Color(51, 51, 51, 255);
 
     float swatchSize     = 20.0f;   // preferred edge length of one swatch
     // The floor the swatches shrink to while the row still fits. A strip too
@@ -89,12 +100,19 @@ public:
     // onCheckeredSelected, so a host can switch to "no backdrop colour".
     void SetShowCheckeredEntry(bool show);
     bool GetShowCheckeredEntry() const { return showCheckered_; }
+    // A swatch before all others, drawn half light and half dark, standing
+    // for "choose a colour that suits what is shown". It selects like any
+    // other swatch and reports through onAutoSelected; which colour that is
+    // is the host's business.
+    void SetShowAutoEntry(bool show);
+    bool GetShowAutoEntry() const { return showAuto_; }
 
     // ===== WRAPPING =====
     // Off (the default): one row, the swatches shrinking to fit and centred.
     // On: as many lines as needed to keep every swatch at least minSwatchSize,
     // with the colours shared out evenly over the lines, left-aligned from the
-    // top-left corner.
+    // top-left corner. Where a line count up to two more than the fewest
+    // divides the colours exactly, that one is used, so every line is full.
     void SetWrap(bool wrap);
     bool GetWrap() const { return wrap_; }
     // The height the bar needs at `width` to show every swatch: in wrap mode
@@ -115,11 +133,13 @@ public:
     // onColorSelected, as a click does.
     void SelectColor(const Color& c, bool runCallback = false);
     void SelectCheckered(bool runCallback = false);
+    void SelectAuto(bool runCallback = false);
     void ClearSelection();
     bool  IsCheckeredSelected() const { return checkeredSelected_; }
+    bool  IsAutoSelected() const { return autoSelected_; }
     bool  HasColorSelected() const { return selectedIndex_ >= 0; }
     int   GetSelectedIndex() const { return selectedIndex_; }   // -1 == none
-    // The selected colour; black when nothing (or the checkerboard) is selected —
+    // The selected colour; black when nothing (or the checkerboard, or auto) is selected —
     // ask HasColorSelected() first.
     Color GetSelectedColor() const;
 
@@ -142,11 +162,16 @@ public:
     // ignored.
     std::function<void(const Color&)> onColorAdjustSelected;
     std::function<void()>             onCheckeredSelected;
+    std::function<void()>             onAutoSelected;
     // A colour swatch was clicked with the right button: the entry's index
     // and the click in window coordinates, for a host that edits the entry in
     // a popup there. When set it takes the right click instead of
     // onColorAdjustSelected.
     std::function<void(int index, const Point2Di& windowPos)> onColorContextClicked;
+    // The pointer came onto a colour swatch (its index into GetColors()), or
+    // left the bar (-1). Crossing the gap between two swatches reports
+    // nothing, so a host previewing the colour does not flicker.
+    std::function<void(int index)> onColorHovered;
 
     // ===== OVERRIDES =====
     // A pointer control: it never takes the keyboard, so hosts that use the
@@ -171,26 +196,33 @@ private:
     void WrapMetrics(float width, int n, float& size, int& perLine, int& lines) const;
     Rect2Df SwatchRect(int slot, const Geometry& g) const;
 
-    // Slots are the drawn cells: slot 0 is the checkerboard when it is shown,
-    // and the colours follow. ColorIndexOfSlot() maps back to `colors_`.
+    // Slots are the drawn cells: the auto swatch first and the checkerboard
+    // next, each when it is shown, and the colours follow. ColorIndexOfSlot()
+    // maps back to `colors_`.
+    int   LeadingSlots() const { return (showAuto_ ? 1 : 0) + (showCheckered_ ? 1 : 0); }
     int   SlotCount() const;
     int   ColorIndexOfSlot(int slot) const;
-    bool  IsCheckeredSlot(int slot) const { return showCheckered_ && slot == 0; }
+    bool  IsAutoSlot(int slot) const { return showAuto_ && slot == 0; }
+    bool  IsCheckeredSlot(int slot) const { return showCheckered_ && slot == (showAuto_ ? 1 : 0); }
     float SpacingForBounds() const;
     float SwatchSizeForBounds() const;
     Rect2Df SwatchRect(int slot) const;          // element-local
     int   SlotAt(const Point2Di& local) const;   // -1 when between/outside
     void  DrawCheckerboard(IRenderContext* ctx, const Rect2Df& r) const;
+    void  DrawAutoSwatch(IRenderContext* ctx, const Rect2Df& r) const;
     // "#RRGGBB" for the swatch under the pointer, shown as the tooltip.
     static std::string HexOf(const Color& c);
 
     std::vector<Color>  colors_;
     ColorSwatchBarStyle style_;
     bool showCheckered_    = false;
+    bool showAuto_         = false;
     bool wrap_             = false;
     int  selectedIndex_    = -1;      // into colors_, -1 == none
     bool checkeredSelected_ = false;
+    bool autoSelected_     = false;
     int  hoverSlot_        = -1;
+    int  hoverReported_    = -1;      // what onColorHovered last said
 };
 
 // ===== FACTORY FUNCTIONS =====

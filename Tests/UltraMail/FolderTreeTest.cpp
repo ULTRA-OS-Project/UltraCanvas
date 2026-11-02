@@ -9,8 +9,14 @@
 // of the account. With the current account only, the tree lists that one and
 // follows the account bar to the next.
 //
+// The account bar's counters: the inbox under New today or Waiting for reply
+// shows exactly the messages the counter counts, under Unread all unread mail
+// (the counter counts the part from before today), and the
+// filter is reported (onFilterChanged) until a folder switch clears it.
+//
 // Builds the mail view on an in-memory store in a real window, so it runs
 // under Xvfb (xvfb-run -a) and skips itself without a DISPLAY.
+// Version: 1.1.0 - the account bar's counters as filters (ShowInbox, onFilterChanged)
 // Version: 1.0.1 - UltraMail::Folder qualified (Windows' shldisp.h has a Folder)
 // Last Modified: 2026-10-09
 // Author: UltraCanvas Framework / ULTRA OS
@@ -204,6 +210,70 @@ int main() {
     TEST("Add folder on the account row adds at the top of that account",
          added.size() == 1 && added[0].first == "work" && added[0].second.empty());
     TEST("a row that is no folder has no menu", view.FolderMenuItems("nothing").empty());
+
+    // ----- the account bar's counters as filters -----
+    // erika's inbox: 2 unread from today, 3 unread from before, 1 read from
+    // today, and 1 read from before that waits for a reply.
+    const int64_t midnight = LocalStore::StartOfToday();
+    int64_t uid = 100;
+    auto put = [&](int64_t date, bool read, bool waiting) {
+        MessageEnvelope m;
+        m.accountId = "erika";
+        m.folder = "INBOX";
+        m.uid = ++uid;
+        m.subject = "Message " + std::to_string(uid);
+        m.fromAddr = "anna@friends.example";
+        m.to = {"erika@example.com"};
+        m.date = date;
+        m.flags = read ? Flag_Seen : Flag_None;
+        store.UpsertMessage(m);
+        store.SetNeedsAnswer("erika", "INBOX", m.uid, waiting);
+    };
+    put(midnight + 60, false, false);
+    put(midnight + 120, false, false);
+    put(midnight - 3600, false, false);
+    put(midnight - 86400, false, false);
+    put(midnight - 2 * 86400, false, false);
+    put(midnight + 180, true, false);
+    put(midnight - 3 * 86400, true, true);
+    std::vector<AccountStatus> counts;
+    store.GetAccountStatus(counts);
+    AccountStatus erika;
+    for (const auto& c : counts) if (c.accountId == "erika") erika = c;
+
+    std::vector<std::pair<std::string, MessageFilter>> reported;
+    view.onFilterChanged = [&](const std::string& acc, const MessageFilter& f) {
+        reported.emplace_back(acc, f);
+    };
+    view.ShowFolder("erika", "Projects");   // the inbox is not on screen
+    frames();
+    reported.clear();
+    view.ShowInbox("erika", {MessageFilterKind::NewToday, ""});
+    frames();
+    TEST("a counter opens the inbox", view.CurrentFolder() == "INBOX");
+    TEST("New today: the counter's messages",
+         static_cast<int>(view.ShownMessages().size()) == erika.unreadToday &&
+         erika.unreadToday == 2);
+    TEST("the filter is reported for the account",
+         reported.size() == 1 && reported[0].first == "erika" &&
+         reported[0].second.kind == MessageFilterKind::NewToday);
+    view.ShowInbox("erika", {MessageFilterKind::Unread, ""});
+    TEST("Unread: all unread mail, today's too",
+         static_cast<int>(view.ShownMessages().size()) == erika.unread &&
+         erika.unread == 5 && erika.unreadOlder == 3);
+    view.ShowInbox("erika", {MessageFilterKind::NeedsAnswer, ""});
+    TEST("Waiting for reply: the counter's messages",
+         static_cast<int>(view.ShownMessages().size()) == erika.needsAnswer &&
+         erika.needsAnswer == 1);
+    TEST("each change is reported once", reported.size() == 3);
+    view.SetFilter(MessageFilter{});
+    TEST("Show all emails: the whole inbox", view.ShownMessages().size() == 7);
+    TEST("and no filter is reported",
+         reported.size() == 4 && !reported.back().second.Active());
+    view.ShowInbox("erika", {MessageFilterKind::NewToday, ""});
+    view.ShowFolder("erika", "Sent");
+    TEST("another folder clears the filter, and says so",
+         !view.Filter().Active() && !reported.back().second.Active());
 
     std::cerr << std::endl << (testCount - failCount) << "/" << testCount << " passed" << std::endl;
     return failCount == 0 ? 0 : 1;

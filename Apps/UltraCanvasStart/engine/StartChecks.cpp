@@ -124,7 +124,7 @@ std::vector<CheckResult> RunChecks(const SystemProfile& profile, const Choices& 
             case CheckKind::PkgConfig:
                 result = CheckPkgConfigModule(dependency->checkName, pkgConfig);
                 break;
-            case CheckKind::None:
+            case CheckKind::NoCheck:
                 result.checked = false;
                 result.detail = "no check; the package manager decides";
                 break;

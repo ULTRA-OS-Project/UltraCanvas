@@ -2,27 +2,35 @@
 // The macOS backend of UltraCanvasHostFileIcons: the icon Finder draws for a
 // file of this type, from NSWorkspace.
 //
-// The type is decided from the file NAME - the icon for the content type the
-// extension names, never the icon of the file itself - so one lookup serves
-// every file of a kind and a path on an unmounted volume still gets an icon.
-// Where the content-type API is not available (an SDK older than macOS 11,
-// or a name with no extension) the path itself is asked instead; that reads
-// the file's own custom icon when it has one, which is what Finder shows
-// there too.
+// The type is decided from HostFileIconProbeName - the key's type and nothing
+// of the file - so one lookup serves every file of a kind, a path on an
+// unmounted volume still gets an icon, and the answer cannot be one file's
+// own custom icon standing in for every file of its kind. On macOS 11 and
+// later that is the icon for the content type the extension names; before
+// that, the same question through the older file-type call. The path itself
+// is never handed to NSWorkspace: iconForFile: reads a file's custom icon,
+// and the caller holds the answer under a per-type key.
 //
 // Rendering an NSImage into a bitmap is the one piece of AppKit drawing that
 // is safe off the main thread, which is where a file display calls this from
 // - the same reason the "Open with" backend extracts its handler icons that
 // way (OS/MacOS/UltraCanvasMacOSFileAssociations.mm).
+// Version: 1.1.0 - asked by type only (HostFileIconProbeName), never with the
+//                  file's path; the content-type branch is compiled in (its
+//                  macro was never defined here, so every lookup read the
+//                  file itself and a folder drew the startup disk's icon)
 // Version: 1.0.0
-// Last Modified: 2026-09-17
+// Last Modified: 2026-11-01
 // Author: UltraCanvas Framework
 #include "UltraCanvasHostFileIcons.h"
 
 #import <AppKit/AppKit.h>
 #import <Foundation/Foundation.h>
-#if defined(ULTRACANVAS_HAS_UTTYPE)
-#import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
+// The same detection as the "Open with" backend: the macro is this file's
+// own, and without it the content-type branch below is compiled out.
+#if __has_include(<UniformTypeIdentifiers/UniformTypeIdentifiers.h>)
+#  import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
+#  define ULTRACANVAS_HAS_UTTYPE 1
 #endif
 
 #include <cairo/cairo.h>
@@ -50,30 +58,41 @@ namespace UltraCanvas {
             return name.substr(dot + 1);
         }
 
-        // The type icon, asked for by kind rather than for this one file.
+        // The type icon, asked for by kind rather than for this one file:
+        // from the name HostFileIconProbeName makes, so two files that share
+        // a key cannot get two answers.
         NSImage* TypeIcon(const std::string& path, bool isDirectory) {
             NSWorkspace* workspace = [NSWorkspace sharedWorkspace];
-            if (isDirectory) {
-#if defined(ULTRACANVAS_HAS_UTTYPE)
-                if (@available(macOS 11.0, *))
-                    return [workspace iconForContentType:UTTypeFolder];
-#endif
-                return [workspace iconForFile:@"/"];
-            }
+            const std::string extension =
+                    isDirectory ? std::string()
+                                : ExtensionOf(HostFileIconProbeName(path, false));
+            // Nil for bytes that are not UTF-8; then there is no type to ask.
+            NSString* extensionText =
+                    extension.empty()
+                            ? nil
+                            : [NSString stringWithUTF8String:extension.c_str()];
 #if defined(ULTRACANVAS_HAS_UTTYPE)
             if (@available(macOS 11.0, *)) {
-                const std::string extension = ExtensionOf(path);
-                if (!extension.empty()) {
-                    UTType* type = [UTType typeWithFilenameExtension:
-                            [NSString stringWithUTF8String:extension.c_str()]];
+                if (isDirectory) return [workspace iconForContentType:UTTypeFolder];
+                if (extensionText) {
+                    UTType* type = [UTType typeWithFilenameExtension:extensionText];
                     if (type) return [workspace iconForContentType:type];
                 }
+                // No extension: the plain document Finder draws for it.
+                return [workspace iconForContentType:UTTypeData];
             }
 #endif
-            // No content type to ask about: the file's own icon, which for
-            // anything without a custom one is its type's icon anyway.
-            return [workspace iconForFile:
-                    [NSString stringWithUTF8String:path.c_str()]];
+            // Before macOS 11 (or an SDK without the content types): the
+            // file-type call, which takes an extension or a type identifier
+            // and, like the call above, never looks at a file.
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+            NSString* fileType = isDirectory      ? @"public.folder"
+                                 : extensionText ? extensionText
+                                                 : @"public.data";
+            NSImage* icon = [workspace iconForFileType:fileType];
+#pragma clang diagnostic pop
+            return icon;
         }
 
         // NSImage → a premultiplied ARGB32 pixmap, by drawing it into a

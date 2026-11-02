@@ -264,7 +264,7 @@ IODeviceResult GutenPrintRenderer::Render(const IODeviceInfo& printer,
     // the header, because a raw stream is opaque to the spooler and only
     // GutenPrint can emit the commands for it.
     raster.copies = 1;
-    raster.duplex = job.options.duplex != IODuplexMode::None;
+    raster.duplex = job.options.duplex != IODuplexMode::OneSided;
     raster.tumble = job.options.duplex == IODuplexMode::ShortEdge;
 
     // The whole document is built before the filter runs, because the filter

@@ -12,9 +12,14 @@
 // For what each format actually carried - scene graph, materials, units,
 // exact solids - see the "3D Model Formats" page in the same 3D section; this
 // tab is about drawing the geometry, not about surveying the readers.
+// Version: 1.1.0 - the shared page look (UltraCanvasDemoPageKit): the title spans the tab
+//                  and wraps, the control panel is a column of labels and controls
+//                  sized to their text; surfaces keep their absolute placement
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "UltraCanvasGLDemoSupport.h"
 
 #ifdef ULTRACANVAS_ENABLE_GL
@@ -274,14 +279,65 @@ void UploadMesh(ModelGLResources& gl, const Mesh& mesh) {
 
 } // namespace
 
+namespace {
+
+// The tab keeps absolute placement: the GL surface's bounds are where the
+// maximize toggle restores it to. A text over it is placed at (left, top) and
+// spans the tab less `right`, as tall as its wrapped lines, so a longer text
+// (a translation) wraps instead of being cut at a fixed width.
+void PlaceAcross(UltraCanvasUIElement& element, float left, float top, float right) {
+    CSSLayout::Position position;
+    position.left = CSSLayout::Dimension::Px(left);
+    position.top = CSSLayout::Dimension::Px(top);
+    position.right = CSSLayout::Dimension::Px(right);
+    element.layoutItem.position = position;
+    element.layoutItem.SetPositionType(CSSLayout::PositionType::AbsoluteUI);
+}
+
+std::shared_ptr<UltraCanvasLabel> MakeTabText(const std::string& id, const std::string& text,
+                                              float fontSize, bool bold,
+                                              const Color& color = DemoKit::BodyText()) {
+    auto label = DemoKit::CreateText(id, text);
+    label->SetFontSize(fontSize);
+    if (bold) label->SetFontWeight(FontWeight::Bold);
+    label->SetTextColor(color);
+    return label;
+}
+
+// The control panel keeps its place and size beside the surface; inside it
+// is a column, so a label or button that grows pushes the rest down and the
+// info text below takes what is left (and scrolls).
+void MakePanelColumn(UltraCanvasContainer& panel) {
+    panel.layout.SetFlexColumn().SetFlexGap(8)
+                .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+}
+
+void AddFillingRest(const std::shared_ptr<UltraCanvasContainer>& column,
+                    const std::shared_ptr<UltraCanvasUIElement>& element) {
+    element->size.height = CSSLayout::Dimension::Auto();
+    DemoKit::AddStretched(column, element);
+    element->layoutItem.SetFlex(1, 1, CSSLayout::Dimension::Px(0));
+}
+
+// A button as wide as its text, at least the width it had.
+std::shared_ptr<UltraCanvasButton> MakeTextButton(const std::string& id, const std::string& text,
+                                                  float minWidth, float height) {
+    auto button = std::make_shared<UltraCanvasButton>(id, 0.0f, 0.0f, 0.0f, height, text);
+    CSSLayout::BoxConstraints limits;
+    limits.minWidth = CSSLayout::Dimension::Px(minWidth);
+    button->boxConstraints = limits;
+    return button;
+}
+
+} // namespace
+
 std::shared_ptr<UltraCanvasUIElement> CreateGLModelsTab() {
     auto root = std::make_shared<UltraCanvasContainer>("GLModelsTab", 0, 0, 1004, 692);
 
-    auto title = std::make_shared<UltraCanvasLabel>("GLModelsTitle", 16, 8, 760, 24);
-    title->SetText("Complex 3D Models — every format the framework reads, in the GL surface");
-    title->SetFontSize(14);
-    title->SetFontWeight(FontWeight::Bold);
-    title->SetTextColor(Color(40, 40, 120, 255));
+    auto title = MakeTabText("GLModelsTitle",
+            "Complex 3D Models — every format the framework reads, in the GL surface",
+            14, true, Color(40, 40, 120, 255));
+    PlaceAcross(*title, 16, 8, 16);
     root->AddChild(title);
 
     auto state = std::make_shared<ModelDemoState>();
@@ -423,14 +479,11 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLModelsTab() {
     panel->SetBackgroundColor(Color(246, 246, 248, 255));
     panel->SetBorders(1.0f);
     panel->SetPadding(10.0f);
+    MakePanelColumn(*panel);
 
-    auto pTitle = std::make_shared<UltraCanvasLabel>("ModelCtrlTitle", 10, 8, 270, 22);
-    pTitle->SetText("Model");
-    pTitle->SetFontWeight(FontWeight::Bold);
-    pTitle->SetFontSize(13);
-    panel->AddChild(pTitle);
+    DemoKit::Add(panel, MakeTabText("ModelCtrlTitle", "Model", 13, true));
 
-    auto modelDrop = std::make_shared<UltraCanvasDropdown>("ModelDropdown", 10, 36, 270, 28);
+    auto modelDrop = std::make_shared<UltraCanvasDropdown>("ModelDropdown", 0, 0, 270, 28);
     for (const auto& e : state->catalog) modelDrop->AddItem(e.label);
     modelDrop->SetSelectedIndex(0, false);
     modelDrop->onSelectionChanged = [state, surface](int idx, const DropdownItem&) {
@@ -439,40 +492,38 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLModelsTab() {
             surface->RequestRender();
         }
     };
-    panel->AddChild(modelDrop);
+    DemoKit::AddStretched(panel, modelDrop);
 
-    auto rotBtn = std::make_shared<UltraCanvasButton>("AutoRotateBtn", 10, 80, 130, 30);
-    rotBtn->SetText("Pause Spin");
+    // The two toggles side by side; the second wraps under the first when
+    // their texts no longer fit the panel's width.
+    auto buttonRow = DemoKit::AddRow(panel, "ModelButtons", 10);
+    auto rotBtn = MakeTextButton("AutoRotateBtn", "Pause Spin", 130, 30);
     rotBtn->onClick = [rotBtn = rotBtn.get(), state]() {
         state->autoRotate = !state->autoRotate;
         rotBtn->SetText(state->autoRotate ? "Pause Spin" : "Resume Spin");
     };
-    panel->AddChild(rotBtn);
+    DemoKit::Add(buttonRow, rotBtn);
 
-    auto wireBtn = std::make_shared<UltraCanvasButton>("WireframeBtn", 150, 80, 130, 30);
-    wireBtn->SetText("Wireframe");
+    auto wireBtn = MakeTextButton("WireframeBtn", "Wireframe", 130, 30);
     wireBtn->onClick = [wireBtn = wireBtn.get(), state, surface]() {
         state->wireframe = !state->wireframe;
         wireBtn->SetText(state->wireframe ? "Solid" : "Wireframe");
         surface->RequestRender();
     };
-    panel->AddChild(wireBtn);
+    DemoKit::Add(buttonRow, wireBtn);
 
-    auto speedLabel = std::make_shared<UltraCanvasLabel>("SpinSpeedLabel", 10, 124, 270, 18);
-    speedLabel->SetText("Spin Speed");
-    speedLabel->SetFontSize(11);
-    panel->AddChild(speedLabel);
+    DemoKit::Add(panel, MakeTabText("SpinSpeedLabel", "Spin Speed", 11, false));
 
-    auto speedSlider = std::make_shared<UltraCanvasSlider>("SpinSpeedSlider", 10, 144, 270, 24);
+    auto speedSlider = std::make_shared<UltraCanvasSlider>("SpinSpeedSlider", 0, 0, 270, 24);
     speedSlider->SetRange(0.0f, 2.5f);
     speedSlider->SetValue(state->autoSpeed);
     speedSlider->onValueChanged = [state](float v) { state->autoSpeed = v; };
-    panel->AddChild(speedSlider);
+    DemoKit::AddStretched(panel, speedSlider);
 
-    // Scrolled: this note is longer than the 360px the panel has for it, and
-    // the lines it used to lose off the bottom are the ones pointing at the
-    // 3D Model Formats page and the maximize control.
-    auto info = demoui::MakeScrollingText("ModelInfo", 10, 186, 270, 360, 11.0f,
+    // Scrolled: this note is longer than the room the panel has left for it,
+    // and the lines it used to lose off the bottom are the ones pointing at
+    // the 3D Model Formats page and the maximize control.
+    auto info = demoui::MakeScrollingText("ModelInfo", 0, 0, 270, 360, 11.0f,
                                           Color(60, 60, 60, 255));
     info.SetText(
         "Real meshes are streamed from\n"
@@ -499,7 +550,7 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLModelsTab() {
         "double-click the canvas to maximize it;\n"
         "Esc or another double-click restores."
     );
-    panel->AddChild(info.View);
+    AddFillingRest(panel, info.View);
 
     root->AddChild(panel);
 

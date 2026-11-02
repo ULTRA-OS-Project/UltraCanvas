@@ -2,6 +2,8 @@
 // ArtCreator main window: menus, toolbars, palette, canvas, panels, status
 // bar, shortcuts, file open / save through the Vector plugin's converters,
 // and every command.
+// Version: 1.10.1 - Convert to Editable Shapes is Ctrl+Shift+C: the menu showed Ctrl+Shift+S,
+//                  which is Save As
 // Version: 1.10.0 - the right panel's sections are SectionCard group boxes on the
 //                  section page, as UltraPaint's, with a smaller caption; Tool Options,
 //                  Gradient (was Fill) and Line show only while their tool is active; the transform
@@ -35,7 +37,7 @@
 //                 and edit commands (was the black Texter set), and an icon on
 //                 most menu items
 // Version: 1.3.0
-// Last Modified: 2026-10-19
+// Last Modified: 2026-10-30
 // Author: UltraCanvas Framework
 
 #include "ArtCreatorWindow.h"
@@ -80,17 +82,10 @@ using namespace VectorStorage;
 using namespace VectorEdit;
 
 namespace {
-    // A menu entry with an icon beside its check box.
-    MenuItemData WithIcon(MenuItemData item, const std::string& iconPath) {
-        item.iconPath = iconPath;
-        return item;
-    }
-
     constexpr float kMenuHeight = 28.0f;
     constexpr float kToolbarHeight = 38.0f;
     constexpr float kPaletteWidth = 48.0f;
-    constexpr float kToolButton = 36.0f;   // a tool's button, square, 4 px around its 28 px icon
-    constexpr float kToolIcon = 28.0f;
+    constexpr float kToolIcon = 28.0f;     // the palette's icons (its buttons: ArtCreatorCommands.cpp)
     constexpr float kRightWidth = 300.0f;
     constexpr float kRightInner = 268.0f;   // what is visible next to the scrollbar, less its gap
     constexpr float kStatusHeight = 24.0f;
@@ -243,6 +238,10 @@ bool ArtCreatorWindow::Initialize(const std::vector<std::string>& paths) {
 
     settings.Load();   // no file yet: the defaults stand
     tools = CreateArtTools();
+    // Every command once; the menus, toolbars and keys are built from them,
+    // in the arrangement the user left (or the program's).
+    RegisterCommands();
+    LoadLayouts();
 
     BuildMenuBar();
     BuildToolbar();
@@ -291,10 +290,17 @@ bool ArtCreatorWindow::Initialize(const std::vector<std::string>& paths) {
             PlaceText(x, y, r);
         };
         ShowDialog(dlg);
+        dlg->FocusText();
     };
     toolContext.selectTool = [this](ArtToolId id) { SelectTool(id); };
     toolContext.refreshOptions = [this]() { RebuildToolOptions(); };
     toolContext.lockAspectRatio = lockAspectRatio;
+    toolContext.iconPath = [this](const std::string& file) { return IconPath(file); };
+    toolContext.setRotationHandleStyle = [this](VectorRotationHandleStyle style) {
+        canvas->SetRotationHandleStyle(style);
+        settings.Update([style](ArtCreatorSettings& s) { s.rotationHandle = style; });
+    };
+    canvas->SetRotationHandleStyle(settings.rotationHandle);
 
     // ----- canvas -> tool -----
     // In icon mode the pointer goes to the icon's pixel grid first (IconEvent).
@@ -318,6 +324,8 @@ bool ArtCreatorWindow::Initialize(const std::vector<std::string>& paths) {
         if (auto* t = ActiveTool()) t->DrawOverlay(toolContext, ctx, v);
     };
     canvas->onViewChanged = [this]() { UpdateStatus(); };
+    canvas->onHandleModeChanged = [this](VectorHandleMode) { ShowCentreGroup(); };
+    canvas->onRotationCenterChanged = [this]() { RefreshTransformBar(); };
     canvas->onFilesDropped = [this](const std::vector<std::string>& files) {
         if (files.empty()) return;
         auto go = [this, files]() { OpenFile(files.front()); for (size_t i = 1; i < files.size(); ++i) OpenWindow({files[i]}); };
@@ -347,6 +355,7 @@ bool ArtCreatorWindow::Initialize(const std::vector<std::string>& paths) {
         NewDrawing(lastPage);
     }
     SelectTool(ArtToolId::Selector);
+    RefreshCommandStates();   // the checks of View, now the canvas is there
     return true;
 }
 
@@ -400,142 +409,11 @@ void ArtCreatorWindow::RetireWindow(ArtCreatorWindow* closed) {
 // ===========================================================================
 
 void ArtCreatorWindow::BuildMenuBar() {
-    using M = MenuItemData;
-    menuBar = MenuBuilder("ac-menubar", 0, 0, 0, kMenuHeight)
-        .SetType(MenuType::Menubar)
-        .AddSubmenu("File", {
-            M::ActionWithShortcut("New...", "Ctrl+N", MenuIconPath("new.svg"), [this]() { CmdNew(); }),
-            M::ActionWithShortcut("New Window", "Ctrl+Alt+N", MenuIconPath("new-window.svg"), [this]() { CmdNewWindow(); }),
-            M::Submenu("New Icon", MenuIconPath("new-icon.svg"), [this]() {
-                std::vector<MenuItemData> sizes;
-                for (int n : ArtIconSizes())
-                    sizes.push_back(M::Action(std::to_string(n) + " x " + std::to_string(n) + " px", [this, n]() { CmdNewIcon(n); }));
-                return sizes;
-            }),
-            M::ActionWithShortcut("Open...", "Ctrl+O", MenuIconPath("open.svg"), [this]() { CmdOpen(); }),
-            M::Separator(),
-            M::ActionWithShortcut("Save", "Ctrl+S", MenuIconPath("save.svg"), [this]() { CmdSave(); }),
-            M::ActionWithShortcut("Save As...", "Ctrl+Shift+S", MenuIconPath("save-as.svg"), [this]() { CmdSaveAs(); }),
-            M::ActionWithShortcut("Export...", "Ctrl+E", MenuIconPath("export.svg"), [this]() { CmdExport(); }),
-            M::Separator(),
-            M::Action("Document Setup...", MenuIconPath("document-setup.svg"), [this]() { CmdDocumentSetup(); }),
-            M::Separator(),
-            M::ActionWithShortcut("Quit", "Ctrl+Q", MenuIconPath("quit.svg"), [this]() { CmdQuit(); }),
-        })
-        .AddSubmenu("Edit", {
-            M::ActionWithShortcut("Undo", "Ctrl+Z", MenuIconPath("undo.svg"), [this]() { CmdUndo(); }),
-            M::ActionWithShortcut("Redo", "Ctrl+Y", MenuIconPath("redo.svg"), [this]() { CmdRedo(); }),
-            M::Separator(),
-            M::ActionWithShortcut("Cut", "Ctrl+X", MenuIconPath("cut.svg"), [this]() { CmdCut(); }),
-            M::ActionWithShortcut("Copy", "Ctrl+C", MenuIconPath("copy.svg"), [this]() { CmdCopy(); }),
-            M::ActionWithShortcut("Paste", "Ctrl+V", MenuIconPath("paste.svg"), [this]() { CmdPaste(); }),
-            M::ActionWithShortcut("Duplicate", "Ctrl+D", MenuIconPath("duplicate.svg"), [this]() { CmdDuplicate(); }),
-            M::ActionWithShortcut("Delete", "Del", MenuIconPath("delete.svg"), [this]() { CmdDelete(); }),
-            M::Separator(),
-            M::ActionWithShortcut("Select All", "Ctrl+A", MenuIconPath("select-all.svg"), [this]() { CmdSelectAll(); }),
-            M::ActionWithShortcut("Select None", "Ctrl+Shift+A", MenuIconPath("select-none.svg"), [this]() { CmdSelectNone(); }),
-        })
-        .AddSubmenu("Arrange", {
-            M::ActionWithShortcut("Bring to Front", "Ctrl+F", MenuIconPath("to-front.svg"), [this]() { CmdReorder(ZOrderMove::ToFront); }),
-            M::ActionWithShortcut("Bring Forward", "Ctrl+Shift+F", MenuIconPath("forward.svg"), [this]() { CmdReorder(ZOrderMove::Forward); }),
-            M::ActionWithShortcut("Send Backward", "Ctrl+Shift+B", MenuIconPath("backward.svg"), [this]() { CmdReorder(ZOrderMove::Backward); }),
-            M::ActionWithShortcut("Send to Back", "Ctrl+B", MenuIconPath("to-back.svg"), [this]() { CmdReorder(ZOrderMove::ToBack); }),
-            M::Separator(),
-            M::ActionWithShortcut("Group", "Ctrl+G", MenuIconPath("group.svg"), [this]() { CmdGroup(); }),
-            M::ActionWithShortcut("Ungroup", "Ctrl+U", MenuIconPath("ungroup.svg"), [this]() { CmdUngroup(); }),
-            M::Separator(),
-            M::Action("Mirror Horizontally", MenuIconPath("mirror-h.svg"), [this]() { CmdMirror(true); }),
-            M::Action("Mirror Vertically", MenuIconPath("mirror-v.svg"), [this]() { CmdMirror(false); }),
-            M::Separator(),
-            M::Header("Align to selection"),
-            M::Action("Left Edges", MenuIconPath("align-left.svg"), [this]() { CmdAlign(AlignMode::Left, false); }),
-            M::Action("Horizontal Centres", MenuIconPath("align-hcentre.svg"), [this]() { CmdAlign(AlignMode::HorizontalCenter, false); }),
-            M::Action("Right Edges", MenuIconPath("align-right.svg"), [this]() { CmdAlign(AlignMode::Right, false); }),
-            M::Action("Top Edges", MenuIconPath("align-top.svg"), [this]() { CmdAlign(AlignMode::Top, false); }),
-            M::Action("Vertical Centres", MenuIconPath("align-vcentre.svg"), [this]() { CmdAlign(AlignMode::VerticalCenter, false); }),
-            M::Action("Bottom Edges", MenuIconPath("align-bottom.svg"), [this]() { CmdAlign(AlignMode::Bottom, false); }),
-            M::Separator(),
-            M::Header("Align to page"),
-            M::Action("Centre on Page", MenuIconPath("align-page.svg"), [this]() { CmdAlign(AlignMode::HorizontalCenter, true); CmdAlign(AlignMode::VerticalCenter, true); }),
-            M::Separator(),
-            M::Header("Distribute"),
-            M::Action("Horizontal Centres Evenly", MenuIconPath("distribute-h.svg"), [this]() { CmdDistribute(DistributeMode::HorizontalCenters); }),
-            M::Action("Vertical Centres Evenly", MenuIconPath("distribute-v.svg"), [this]() { CmdDistribute(DistributeMode::VerticalCenters); }),
-            M::Action("Equal Horizontal Gaps", MenuIconPath("space-h.svg"), [this]() { CmdDistribute(DistributeMode::HorizontalGaps); }),
-            M::Action("Equal Vertical Gaps", MenuIconPath("space-v.svg"), [this]() { CmdDistribute(DistributeMode::VerticalGaps); }),
-            M::Separator(),
-            M::Header("Combine shapes"),
-            M::Action("Add Shapes", MenuIconPath("combine-add.svg"), [this]() { CmdCombine(CombineOp::Add); }),
-            M::Action("Subtract Shapes", MenuIconPath("combine-subtract.svg"), [this]() { CmdCombine(CombineOp::Subtract); }),
-            M::Action("Intersect Shapes", MenuIconPath("combine-intersect.svg"), [this]() { CmdCombine(CombineOp::Intersect); }),
-            M::Action("Slice Shapes", MenuIconPath("combine-slice.svg"), [this]() { CmdCombine(CombineOp::Slice); }),
-            M::Separator(),
-            M::ActionWithShortcut("Apply ClipView", "Ctrl+K", MenuIconPath("clipview.svg"), [this]() { CmdApplyClipView(); }),
-            M::Action("Remove ClipView, Blend or Mould", MenuIconPath("release.svg"), [this]() { CmdRemoveContainer(); }),
-            M::Separator(),
-            M::ActionWithShortcut("Convert to Editable Shapes", "Ctrl+Shift+S", MenuIconPath("shape-editor.svg"), [this]() { CmdConvertToPath(); }),
-            M::ActionWithShortcut("Snap to Pixels", "Ctrl+Shift+P", MenuIconPath("snap-pixels.svg"), [this]() { CmdSnapToPixels(); }),
-        })
-        .AddSubmenu("Object", {
-            M::Action("No Fill", MenuIconPath("no-fill.svg"), [this]() { CmdRemoveFill(); }),
-            M::Action("No Line", MenuIconPath("no-line.svg"), [this]() { CmdRemoveLine(); }),
-            M::Separator(),
-            M::Header("Line width in points"),
-            M::Action("Hairline (0.25 pt)", MenuIconPath("line-hairline.svg"), [this]() { CmdLineWidth(0.25f); }),
-            M::Action("0.5 pt", MenuIconPath("line-05.svg"), [this]() { CmdLineWidth(0.5f); }),
-            M::Action("1 pt", MenuIconPath("line-1.svg"), [this]() { CmdLineWidth(1.0f); }),
-            M::Action("2 pt", MenuIconPath("line-2.svg"), [this]() { CmdLineWidth(2.0f); }),
-            M::Action("4 pt", MenuIconPath("line-4.svg"), [this]() { CmdLineWidth(4.0f); }),
-            M::Action("8 pt", MenuIconPath("line-8.svg"), [this]() { CmdLineWidth(8.0f); }),
-            M::Header("Line width in pixels"),
-            M::Action("1 px", MenuIconPath("line-1.svg"), [this]() { CmdLineWidthPixels(1); }),
-            M::Action("2 px", MenuIconPath("line-2.svg"), [this]() { CmdLineWidthPixels(2); }),
-            M::Action("3 px", MenuIconPath("line-3.svg"), [this]() { CmdLineWidthPixels(3); }),
-            M::Action("4 px", MenuIconPath("line-4.svg"), [this]() { CmdLineWidthPixels(4); }),
-        })
-        .AddSubmenu("Layer", {
-            M::ActionWithShortcut("New Layer", "Ctrl+Shift+N", MenuIconPath("layer-add.svg"), [this]() { CmdLayerAdd(); }),
-            M::Action("Delete Layer", MenuIconPath("layer-delete.svg"), [this]() { CmdLayerDelete(); }),
-            M::Separator(),
-            M::Action("Move Layer Up", MenuIconPath("layer-up.svg"), [this]() { CmdLayerMove(1); }),
-            M::Action("Move Layer Down", MenuIconPath("layer-down.svg"), [this]() { CmdLayerMove(-1); }),
-            M::Separator(),
-            M::Action("Show Layer", MenuIconPath("layer-show.svg"), [this]() { CmdLayerToggle(true); }),
-            M::Action("Hide Layer", MenuIconPath("layer-hide.svg"), [this]() { CmdLayerToggle(false); }),
-        })
-        .AddSubmenu("View", {
-            M::ActionWithShortcut("Zoom In", "+", MenuIconPath("zoom-in.svg"), [this]() { canvas->ZoomIn(); }),
-            M::ActionWithShortcut("Zoom Out", "-", MenuIconPath("zoom-out.svg"), [this]() { canvas->ZoomOut(); }),
-            M::ActionWithShortcut("Fit Page", "Ctrl+0", MenuIconPath("zoom-page.svg"), [this]() { canvas->ZoomToPage(); }),
-            M::Action("Fit Drawing", MenuIconPath("fit-drawing.svg"), [this]() { canvas->ZoomToDrawing(); }),
-            M::Action("Fit Selection", MenuIconPath("fit-selection.svg"), [this]() { canvas->ZoomToSelection(); }),
-            M::ActionWithShortcut("Actual Size", "Ctrl+1", MenuIconPath("zoom-100.svg"), [this]() { canvas->ZoomToActual(); }),
-            M::Separator(),
-            WithIcon(M::Checkbox("Rulers", true, [this](bool on) { canvas->SetShowRulers(on); }), MenuIconPath("rulers.svg")),
-            WithIcon(M::Checkbox("Grid", false, [this](bool on) { VectorGridSpec g = canvas->GetGrid(); g.visible = on; canvas->SetGrid(g); }), MenuIconPath("grid.svg")),
-            WithIcon(M::Checkbox("Guides", true, [this](bool on) { canvas->SetShowGuides(on); }), MenuIconPath("guides.svg")),
-            M::Separator(),
-            WithIcon(M::Checkbox("Snap to Grid", false, [this](bool on) { VectorSnapOptions s = canvas->GetSnapOptions(); s.toGrid = on; canvas->SetSnapOptions(s); }), MenuIconPath("snap-grid.svg")),
-            WithIcon(M::Checkbox("Snap to Guides", true, [this](bool on) { VectorSnapOptions s = canvas->GetSnapOptions(); s.toGuides = on; canvas->SetSnapOptions(s); }), MenuIconPath("snap-guides.svg")),
-            WithIcon(M::Checkbox("Snap to Objects", true, [this](bool on) { VectorSnapOptions s = canvas->GetSnapOptions(); s.toObjects = on; canvas->SetSnapOptions(s); }), MenuIconPath("snap-objects.svg")),
-            WithIcon(M::Checkbox("Snap to Page", true, [this](bool on) { VectorSnapOptions s = canvas->GetSnapOptions(); s.toPage = on; canvas->SetSnapOptions(s); }), MenuIconPath("snap-page.svg")),
-            M::Action("Clear Guides", MenuIconPath("clear-guides.svg"), [this]() { canvas->ClearGuides(); }),
-            M::Separator(),
-            M::Submenu("Icon Size", MenuIconPath("new-icon.svg"), [this]() {
-                std::vector<MenuItemData> items;
-                items.push_back(M::Action(iconSize > 0 ? "Off" : "Off (now)", [this]() { SetIconSize(0); }));
-                for (int n : ArtIconSizes()) {
-                    std::string label = std::to_string(n) + " x " + std::to_string(n) + " px";
-                    if (n == iconSize) label += " (now)";
-                    items.push_back(M::Action(label, [this, n]() { SetIconSize(n); }));
-                }
-                return items;
-            }),
-        })
-        .AddSubmenu("Help", {
-            M::Action("About ArtCreator", MenuIconPath("about.svg"), [this]() { CmdAbout(); }),
-        })
-        .Build();
+    // The entries come from the commands, in the menu layout
+    // (ArtCreatorCommands.cpp).
+    menuBar = std::make_shared<UltraCanvasMenu>("ac-menubar", 0, 0, 0, kMenuHeight);
+    menuBar->SetMenuType(MenuType::Menubar);
+    ApplyMenuLayout();
     menuBar->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     window->AddChild(menuBar);
 }
@@ -548,52 +426,14 @@ void ArtCreatorWindow::BuildToolbar() {
     app.style = ToolbarStyle::Flat;
     app.hoverBackgroundColor = Color(0, 0, 0, 18);
     toolbar->SetAppearance(app);
-    toolbar->AddButton("ac-tb-new", "", SharedIconPath("new.svg"), [this]() { CmdNew(); })->SetTooltip("New drawing (Ctrl+N)");
-    toolbar->AddButton("ac-tb-open", "", SharedIconPath("folder.svg"), [this]() { CmdOpen(); })->SetTooltip("Open (Ctrl+O)");
-    toolbar->AddButton("ac-tb-save", "", SharedIconPath("save.svg"), [this]() { CmdSave(); })->SetTooltip("Save (Ctrl+S)");
-    toolbar->AddSeparator("ac-tb-s1");
-    undoButton = toolbar->AddButton("ac-tb-undo", "", SharedIconPath("undo.svg"), [this]() { CmdUndo(); });
-    undoButton->SetTooltip("Undo (Ctrl+Z)");
-    redoButton = toolbar->AddButton("ac-tb-redo", "", SharedIconPath("redo.svg"), [this]() { CmdRedo(); });
-    redoButton->SetTooltip("Redo (Ctrl+Y)");
-    toolbar->AddSeparator("ac-tb-s2");
-    toolbar->AddButton("ac-tb-zoomout", "", SharedIconPath("zoom-out.svg"), [this]() { canvas->ZoomOut(); })->SetTooltip("Zoom out (-)");
-    toolbar->AddButton("ac-tb-zoomin", "", SharedIconPath("zoom-in.svg"), [this]() { canvas->ZoomIn(); })->SetTooltip("Zoom in (+)");
-    toolbar->AddButton("ac-tb-fit", "", IconPath("zoom-page.svg"), [this]() { canvas->ZoomToPage(); })->SetTooltip("Fit page (Ctrl+0)");
-    toolbar->AddButton("ac-tb-100", "", IconPath("zoom-100.svg"), [this]() { canvas->ZoomToActual(); })->SetTooltip("Actual size (Ctrl+1)");
-    toolbar->AddSeparator("ac-tb-s3");
-    toolbar->AddButton("ac-tb-group", "", IconPath("group.svg"), [this]() { CmdGroup(); })->SetTooltip("Group (Ctrl+G)");
-    toolbar->AddButton("ac-tb-ungroup", "", IconPath("ungroup.svg"), [this]() { CmdUngroup(); })->SetTooltip("Ungroup (Ctrl+U)");
-    toolbar->AddButton("ac-tb-front", "", IconPath("to-front.svg"), [this]() { CmdReorder(ZOrderMove::ToFront); })->SetTooltip("Bring to front (Ctrl+F)");
-    toolbar->AddButton("ac-tb-back", "", IconPath("to-back.svg"), [this]() { CmdReorder(ZOrderMove::ToBack); })->SetTooltip("Send to back (Ctrl+B)");
-    toolbar->AddSeparator("ac-tb-s4");
-    toolbar->AddButton("ac-tb-mirror-h", "", IconPath("mirror-h.svg"), [this]() { CmdMirror(true); })->SetTooltip("Mirror horizontally");
-    toolbar->AddButton("ac-tb-mirror-v", "", IconPath("mirror-v.svg"), [this]() { CmdMirror(false); })->SetTooltip("Mirror vertically");
-    for (auto& c : toolbar->Children()) {
-        if (auto b = std::dynamic_pointer_cast<UltraCanvasButton>(c)) {
-            ButtonStyle flat = b->GetStyle();
-            flat.cornerRadius = 6.0f;
-            flat.pressedColor = Color(0, 0, 0, 30);
-            b->SetStyle(flat);
-        }
-    }
-    toolbar->AddSeparator("ac-tb-s5");
-    // Display quality: outlines only, fills and lines, or antialiased.
-    auto qualityCaption = toolbar->AddLabel("ac-tb-quality-caption", "Quality");
-    qualityCaption->SetFontSize(11);
-    qualityCaption->SetElementSize(Size2Df(48, 24));
-    qualitySlider = CreateHorizontalSlider("ac-tb-quality", 0, 0, 90, 24, 0, 2);
-    qualitySlider->SetStep(1);
-    qualitySlider->SetValue(static_cast<float>(VectorDisplayQuality::Normal));
-    qualitySlider->SetValueDisplay(SliderValueDisplay::NoDisplay);
-    qualitySlider->SetTooltip("Display quality: outlines / fills and lines / antialiased");
-    qualitySlider->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-    qualitySlider->onValueChanging = [this](float v) { SetDisplayQuality(static_cast<int>(std::lround(v))); };
-    qualitySlider->onValueChanged = [this](float v) { SetDisplayQuality(static_cast<int>(std::lround(v))); };
-    toolbar->AddChild(qualitySlider);
-    qualityLabel = toolbar->AddLabel("ac-tb-quality-value", DisplayQualityName(VectorDisplayQuality::Normal));
-    qualityLabel->SetFontSize(11);
-    qualityLabel->SetElementSize(Size2Df(84, 24));
+    // What does not fit a narrow window goes into the chevron's menu.
+    toolbar->SetOverflowMode(ToolbarOverflowMode::Menu);
+    // The buttons come from the commands, in the toolbar's groups; a right
+    // click shows, hides and folds the groups.
+    ApplyToolbarLayout();
+    InstallToolbarContextMenu(*toolbar, toolbarLayout, commands,
+                              [this]() { ApplyToolbarLayout(); SaveLayouts(); },
+                              [this]() { OpenCustomise("t0"); });
     window->AddChild(toolbar);
 }
 
@@ -618,6 +458,8 @@ void ArtCreatorWindow::SetDisplayQuality(int level) {
 namespace {
     constexpr float kTransformBarHeight = 50.0f;
     constexpr float kTransformRowHeight = 21.0f;
+    // Every field of the bar is this wide, in both rows.
+    constexpr float kTransformFieldWidth = 96.0f;
     constexpr double kDegrees = 180.0 / 3.14159265358979323846;
 }
 
@@ -692,37 +534,39 @@ void ArtCreatorWindow::BuildTransformBar() {
     };
 
     constexpr double kFar = 1.0e6;
-    auto position = column("pos", 113);
+    // A column of a caption (or an icon) and a field: 14 + 3 + the field.
+    constexpr float kColumn = 17 + kTransformFieldWidth;
+    auto position = column("pos", kColumn);
     auto posX = row(position, "x");
     caption(posX, "x", "X");
-    posXBox = field(posX, "x", 96, -kFar, kFar, 2, 1, "Horizontal position of the reference point",
+    posXBox = field(posX, "x", kTransformFieldWidth, -kFar, kFar, 2, 1, "Horizontal position of the reference point",
                     [this](double v, bool merge) { ApplyPosition(true, v, merge); });
     auto posY = row(position, "y");
     caption(posY, "y", "Y");
-    posYBox = field(posY, "y", 96, -kFar, kFar, 2, 1, "Vertical position of the reference point",
+    posYBox = field(posY, "y", kTransformFieldWidth, -kFar, kFar, 2, 1, "Vertical position of the reference point",
                     [this](double v, bool merge) { ApplyPosition(false, v, merge); });
 
-    auto size = column("size", 113);
+    auto size = column("size", kColumn);
     auto sizeW = row(size, "w");
     caption(sizeW, "w", "W");
-    sizeWBox = field(sizeW, "w", 96, 0, kFar, 2, 1, "Width of the selection",
+    sizeWBox = field(sizeW, "w", kTransformFieldWidth, 0, kFar, 2, 1, "Width of the selection",
                      [this](double v, bool merge) { ApplySize(true, v, merge); });
     auto sizeH = row(size, "h");
     caption(sizeH, "h", "H");
-    sizeHBox = field(sizeH, "h", 96, 0, kFar, 2, 1, "Height of the selection",
+    sizeHBox = field(sizeH, "h", kTransformFieldWidth, 0, kFar, 2, 1, "Height of the selection",
                      [this](double v, bool merge) { ApplySize(false, v, merge); });
 
-    auto scale = column("scale", 91);
+    auto scale = column("scale", kColumn);
     auto scaleW = row(scale, "sw");
     caption(scaleW, "sw", "W");
-    scaleWBox = field(scaleW, "sw", 74, 0.1, 100000, 1, 1, "Scale the width by a percentage",
+    scaleWBox = field(scaleW, "sw", kTransformFieldWidth, 0.1, 100000, 1, 1, "Scale the width by a percentage",
                       [this](double v, bool merge) { ApplyScalePercent(true, v, merge); });
     scaleWBox->SetSuffix(" %");
     // Typed, not stepped: no arrows (the keys and the wheel still step by 1).
     scaleWBox->SetLayout(SpinnerLayout::FieldOnly);
     auto scaleH = row(scale, "sh");
     caption(scaleH, "sh", "H");
-    scaleHBox = field(scaleH, "sh", 74, 0.1, 100000, 1, 1, "Scale the height by a percentage",
+    scaleHBox = field(scaleH, "sh", kTransformFieldWidth, 0.1, 100000, 1, 1, "Scale the height by a percentage",
                       [this](double v, bool merge) { ApplyScalePercent(false, v, merge); });
     scaleHBox->SetSuffix(" %");
     scaleHBox->SetLayout(SpinnerLayout::FieldOnly);
@@ -742,19 +586,124 @@ void ArtCreatorWindow::BuildTransformBar() {
     ratioLockButton->onToggle = [this](bool on) { lockAspectRatio = on; toolContext.lockAspectRatio = on; };
     transformBar->AddChild(ratioLockButton);
 
-    auto angles = column("angles", 93);
+    auto angles = column("angles", 19 + kTransformFieldWidth);
     auto rotation = row(angles, "rot");
     icon(rotation, "rot", "rotate.svg");
-    rotationBox = field(rotation, "rot", 74, -3600, 3600, 1, 1, "Rotation, counter-clockwise, about the reference point",
+    rotationBox = field(rotation, "rot", kTransformFieldWidth, -3600, 3600, 1, 1,
+                        "Rotation, counter-clockwise, about the reference point (with the Rotate handles, about the rotation centre)",
                         [this](double v, bool merge) { ApplyRotation(v, merge); });
     rotationBox->SetSuffix("\xC2\xB0");
     auto shear = row(angles, "shear");
     icon(shear, "shear", "shear.svg");
-    shearBox = field(shear, "shear", 74, -89, 89, 1, 1, "Shear: how far the top leans to the right",
+    shearBox = field(shear, "shear", kTransformFieldWidth, -89, 89, 1, 1, "Shear: how far the top leans to the right",
                      [this](double v, bool merge) { ApplyShear(v, merge); });
     shearBox->SetSuffix("\xC2\xB0");
 
+    // The rotation centre, while the Selector shows its Rotate handles: a
+    // button that switches the fields between the centre's place on the
+    // page and how far it lies from the middle of the selection, the two
+    // fields, and a reference point picker that puts it on a corner, an
+    // edge's middle or the middle of the frame. A centre dragged anywhere
+    // else shows there as a ring pointing its way.
+    centreGroup = std::make_shared<UltraCanvasContainer>("ac-tf-centre", 0, 0, 0, kTransformBarHeight - 4);
+    centreGroup->layout.SetFlexRow().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    centreGroup->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    transformBar->AddChild(centreGroup);
+    centreModeButton = std::make_shared<UltraCanvasButton>("ac-tf-centre-mode", 0, 0, 30, 30, "");
+    centreModeButton->SetIconSize(22, 22);
+    ButtonStyle modeStyle = centreModeButton->GetStyle();
+    modeStyle.cornerRadius = 6.0f;
+    centreModeButton->SetStyle(modeStyle);
+    centreModeButton->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    centreModeButton->onClick = [this]() {
+        const bool relative = !settings.centreRelative;
+        settings.Update([relative](ArtCreatorSettings& s) { s.centreRelative = relative; });
+        ShowCentreMode();
+        RefreshTransformBar();
+    };
+    centreGroup->AddChild(centreModeButton);
+    auto centreColumn = std::make_shared<UltraCanvasContainer>("ac-tf-col-centre", 0, 0, 27 + kTransformFieldWidth, kTransformBarHeight - 4);
+    centreColumn->layout.SetFlexColumn().SetFlexGap(4).SetFlexJustifyContent(CSSLayout::JustifyContent::Center);
+    centreColumn->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    centreGroup->AddChild(centreColumn);
+    const std::pair<std::shared_ptr<UltraCanvasContainer>, float> centreCol(centreColumn, 27 + kTransformFieldWidth);
+    auto centreCaption = [&](const std::shared_ptr<UltraCanvasContainer>& r, const std::string& id) {
+        // Wide enough for "ΔX" in the relative mode.
+        auto l = CreateLabel("ac-tf-cap-" + id, 0, 0, 24, kTransformRowHeight, "");
+        l->SetFontSize(11);
+        l->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        r->AddChild(l);
+        return l;
+    };
+    auto centreX = row(centreCol, "cx");
+    centreXCaption = centreCaption(centreX, "cx");
+    centreXBox = field(centreX, "cx", kTransformFieldWidth, -kFar, kFar, 2, 1, "",
+                       [this](double v, bool) { ApplyCentre(true, v); });
+    auto centreY = row(centreCol, "cy");
+    centreYCaption = centreCaption(centreY, "cy");
+    centreYBox = field(centreY, "cy", kTransformFieldWidth, -kFar, kFar, 2, 1, "",
+                       [this](double v, bool) { ApplyCentre(false, v); });
+    centrePicker = CreateReferencePointPicker("ac-tf-centre-point", 0, 0, 40, 40);
+    centrePicker->SetTooltip("Put the rotation centre on a corner, the middle of an edge or the middle of the selection");
+    centrePicker->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    centrePicker->onPointChanged = [this](ReferencePoint point) {
+        if (!canvas || selection->Empty()) return;
+        // The middle is the centre's own place: no centre of its own then.
+        if (point == ReferencePoint::Centre) canvas->SetRotationCenter(std::nullopt);
+        else {
+            const Point2Dd f = ReferencePointFraction(point);
+            canvas->SetRotationCenter(canvas->SelectionFramePoint(f.x, f.y));
+        }
+    };
+    centreGroup->AddChild(centrePicker);
+    centreGroup->SetVisible(false);
+    ShowCentreMode();
+
     window->AddChild(transformBar);
+}
+
+void ArtCreatorWindow::ShowCentreMode() {
+    if (!centreModeButton) return;
+    const bool relative = settings.centreRelative;
+    centreModeButton->SetIcon(IconPath(relative ? "rotation-centre-relative.svg" : "rotation-centre.svg"));
+    centreModeButton->SetTooltip(relative
+        ? "Rotation centre from the middle of the selection - click for its place on the page"
+        : "Rotation centre on the page - click for how far it lies from the middle of the selection");
+    centreXCaption->SetText(relative ? "\xCE\x94X" : "X");
+    centreYCaption->SetText(relative ? "\xCE\x94Y" : "Y");
+    centreXBox->SetTooltip(relative ? "How far the rotation centre lies right of the middle of the selection"
+                                    : "Horizontal position of the rotation centre");
+    centreYBox->SetTooltip(relative ? "How far the rotation centre lies below the middle of the selection"
+                                    : "Vertical position of the rotation centre");
+}
+
+void ArtCreatorWindow::ShowCentreGroup() {
+    if (!centreGroup || !canvas) return;
+    const bool on = canvas->GetHandleMode() == VectorHandleMode::Rotate;
+    if (centreGroup->IsVisible() == on) return;
+    centreGroup->SetVisible(on);
+    transformBar->InvalidateLayout();
+    RefreshTransformBar();
+}
+
+bool ArtCreatorWindow::RotateHandlesShown() const {
+    return canvas && canvas->GetHandleMode() == VectorHandleMode::Rotate;
+}
+
+Point2Dd ArtCreatorWindow::TurnPivot() const {
+    return RotateHandlesShown() ? canvas->GetRotationCenter() : TransformPivot();
+}
+
+void ArtCreatorWindow::ApplyCentre(bool horizontal, double value) {
+    if (!canvas || selection->Empty()) return;
+    double k = 1;
+    std::string unit;
+    TransformUnit(k, unit);
+    Point2Dd c = canvas->GetRotationCenter();
+    const Point2Dd origin = settings.centreRelative ? canvas->SelectionFramePoint(0.5, 0.5) : Point2Dd(0, 0);
+    if (horizontal) c.x = origin.x + value * k;
+    else c.y = origin.y + value * k;
+    canvas->SetRotationCenter(c);
 }
 
 void ArtCreatorWindow::TransformUnit(double& pointsPerUnit, std::string& symbol) const {
@@ -799,12 +748,12 @@ void ArtCreatorWindow::RefreshTransformBar() {
     const bool any = !selection->Empty();
     for (UltraCanvasUIElement* e : std::initializer_list<UltraCanvasUIElement*>{
              posXBox.get(), posYBox.get(), sizeWBox.get(), sizeHBox.get(), scaleWBox.get(), scaleHBox.get(),
-             rotationBox.get(), shearBox.get()})
+             rotationBox.get(), shearBox.get(), centreXBox.get(), centreYBox.get(), centrePicker.get()})
         if (e->IsDisabled() == any) e->SetDisabled(!any);
     double k = 1;
     std::string unit;
     TransformUnit(k, unit);
-    for (auto* s : {posXBox.get(), posYBox.get(), sizeWBox.get(), sizeHBox.get()}) {
+    for (auto* s : {posXBox.get(), posYBox.get(), sizeWBox.get(), sizeHBox.get(), centreXBox.get(), centreYBox.get()}) {
         if (s->GetSuffix() != unit) s->SetSuffix(unit);
     }
     const auto ids = selection->Ids();
@@ -825,9 +774,25 @@ void ArtCreatorWindow::RefreshTransformBar() {
         if (sameSelection) rotation += 360.0 * std::round((rotationBox->GetValue() - rotation) / 360.0);
         rotationBox->SetValue(rotation);
         shearBox->SetValue(shear);
+        // The rotation centre, on the page or from the middle of the frame;
+        // on the picker, one of its nine points or a ring pointing its way.
+        const Point2Dd c = canvas->GetRotationCenter();
+        const Point2Dd origin = settings.centreRelative ? canvas->SelectionFramePoint(0.5, 0.5) : Point2Dd(0, 0);
+        centreXBox->SetValue((c.x - origin.x) / k);
+        centreYBox->SetValue((c.y - origin.y) / k);
+        const Point2Dd f = canvas->SelectionFrameFraction(c);
+        std::optional<ReferencePoint> onPoint;
+        for (int i = 0; i < 9 && !onPoint; ++i) {
+            const Point2Dd p = ReferencePointFraction(static_cast<ReferencePoint>(i));
+            if (std::fabs(p.x - f.x) < 1e-6 && std::fabs(p.y - f.y) < 1e-6) onPoint = static_cast<ReferencePoint>(i);
+        }
+        if (onPoint) centrePicker->SetPoint(*onPoint);
+        else centrePicker->SetFreePoint(f);
     } else {
-        for (auto* s : {posXBox.get(), posYBox.get(), sizeWBox.get(), sizeHBox.get(), rotationBox.get(), shearBox.get()})
+        for (auto* s : {posXBox.get(), posYBox.get(), sizeWBox.get(), sizeHBox.get(), rotationBox.get(), shearBox.get(),
+                        centreXBox.get(), centreYBox.get()})
             s->SetValue(0);
+        centrePicker->SetPoint(ReferencePoint::Centre);
     }
     scaleWBox->SetValue(100);
     scaleHBox->SetValue(100);
@@ -846,6 +811,11 @@ void ArtCreatorWindow::ApplyPosition(bool horizontal, double value, bool merge) 
     auto ids = selection->Ids();
     history.Record("Move", [&]() { TranslateElements(selection->Elements(), dx, dy); }, merge);
     Reselect(ids);
+    // A rotation centre of the selection's own goes with it.
+    if (canvas->HasRotationCenter()) {
+        const Point2Dd c = canvas->GetRotationCenter();
+        canvas->SetRotationCenter(Point2Dd(c.x + dx, c.y + dy));
+    }
 }
 
 void ArtCreatorWindow::ApplySize(bool horizontal, double value, bool merge) {
@@ -880,7 +850,7 @@ void ArtCreatorWindow::ApplyRotation(double degrees, bool merge) {
     // The shortest turn there: 375 typed over 0 turns by 15.
     const double turn = std::remainder(degrees - rotation, 360.0);
     if (std::fabs(turn) < 1e-9) { RefreshTransformBar(); return; }
-    const Point2Dd pivot = TransformPivot();
+    const Point2Dd pivot = TurnPivot();
     auto ids = selection->Ids();
     history.Record("Rotate", [&]() { RotateElements(selection->Elements(), -turn / kDegrees, pivot); }, merge);
     Reselect(ids);
@@ -896,7 +866,7 @@ void ArtCreatorWindow::ApplyShear(double degrees, bool merge) {
     const double delta = std::atan(std::tan(-target / kDegrees) - std::tan(-shear / kDegrees));
     if (std::fabs(delta) < 1e-9) return;
     const double theta = -rotation / kDegrees;
-    const Point2Dd pivot = TransformPivot();
+    const Point2Dd pivot = TurnPivot();
     const Matrix3x3 m = Matrix3x3::Translate(pivot.x, pivot.y) * Matrix3x3::Rotate(theta) *
                         Matrix3x3::SkewX(delta) * Matrix3x3::Rotate(-theta) *
                         Matrix3x3::Translate(-pivot.x, -pivot.y);
@@ -905,105 +875,31 @@ void ArtCreatorWindow::ApplyShear(double degrees, bool merge) {
     Reselect(ids);
 }
 
-namespace {
-    // The palette's groups, top to bottom, as UltraPaint's: tools of a kind
-    // share one slot, the group's main tool first. The slot shows the tool
-    // last picked from its group, and resting the pointer on it folds out a
-    // bar with the whole group. A group of one tool is a plain button. A
-    // tool missing here still gets a slot of its own, after these, so a tool
-    // added to CreateArtTools() never goes missing.
-    struct PaletteGroup {
-        const char* id;
-        std::vector<ArtToolId> tools;
-    };
-    const std::vector<PaletteGroup>& PaletteGroups() {
-        using T = ArtToolId;
-        static const std::vector<PaletteGroup> groups = {
-            { "select",  { T::Selector, T::ShapeEditor } },
-            { "draw",    { T::Pen, T::Freehand, T::Line } },
-            { "shapes",  { T::Rectangle, T::Ellipse, T::QuickShape } },
-            { "text",    { T::Text } },
-            { "fill",    { T::Fill, T::Transparency } },
-            { "effects", { T::Shadow, T::Feather, T::Contour, T::Bevel } },   // drawn around a shape
-            { "combine", { T::Blend, T::Mould } },                             // shapes into new ones
-            { "view",    { T::Zoom, T::Push } },
-        };
-        return groups;
-    }
-
-    // A tool's id among the palette's group items.
-    std::string ToolItemId(ArtToolId id) {
-        return "tool-" + std::to_string(static_cast<int>(id));
-    }
-}
-
 void ArtCreatorWindow::BuildToolPalette() {
     palette = std::make_shared<UltraCanvasToolbar>("ac-palette", 0, 0, kPaletteWidth, 0);
     palette->SetOrientation(ToolbarOrientation::Vertical);
     ToolbarAppearance app = palette->GetAppearance();
     app.showIconLabels = false;
     app.itemSpacing = 1.0f;
+    // The palette's icons are drawn on a 28 px grid (media/icons/artcreator/
+    // 28) with 2 px strokes on whole units: shown at 28 px they land on whole
+    // pixels and stay sharp; at any other size every line falls between two
+    // pixels and blurs.
+    app.iconSize = ToolbarIconSize::Custom;
+    app.customIconWidth = static_cast<int>(kToolIcon);
+    app.customIconHeight = static_cast<int>(kToolIcon);
     palette->SetAppearance(app);
     // The buttons keep their size: where the window is too short for all of
     // them the column scrolls (wheel, or the hints at its ends) rather than
     // squeezing every icon into a button too small for it.
     palette->SetOverflowMode(ToolbarOverflowMode::Scroll);
     palette->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-
-    auto findTool = [this](ArtToolId id) -> const ArtTool* {
-        for (const auto& t : tools) if (t->id == id) return t.get();
-        return nullptr;
-    };
-    auto itemOf = [this](const ArtTool& t) {
-        ToolGroupItem item;
-        item.id = ToolItemId(t.id);
-        item.iconPath = ToolIconPath(t.iconFile);
-        item.tooltip = t.name;
-        if (t.shortcutKey) item.tooltip += std::string(" (") + t.shortcutKey + ")";
-        return item;
-    };
-
-    std::vector<std::pair<std::string, std::vector<ToolGroupItem>>> slots;
-    std::vector<ArtToolId> placed;
-    for (const auto& g : PaletteGroups()) {
-        std::vector<ToolGroupItem> items;
-        for (ArtToolId id : g.tools) {
-            if (const ArtTool* t = findTool(id)) { items.push_back(itemOf(*t)); placed.push_back(id); }
-        }
-        if (!items.empty()) slots.emplace_back(g.id, std::move(items));
-    }
-    for (const auto& t : tools) {
-        if (std::find(placed.begin(), placed.end(), t->id) != placed.end()) continue;
-        slots.emplace_back(ToolItemId(t->id), std::vector<ToolGroupItem>{ itemOf(*t) });
-    }
-
-    toolSlots.clear();
-    for (auto& [groupId, items] : slots) {
-        auto b = palette->AddToolGroup("ac-tools-" + groupId, items, [this](const std::string& itemId) {
-            for (const auto& t : tools) {
-                if (ToolItemId(t->id) == itemId) { SelectTool(t->id); return; }
-            }
-        });
-        b->SetSlotShowsLastPicked(true);
-        // The palette's icons are drawn on a 28 px grid (media/icons/
-        // artcreator/28) with 2 px strokes on whole units: shown at 28 px
-        // they land on whole pixels and stay sharp. Shown at any other size
-        // every line falls between two pixels and blurs, as the 24 px icons
-        // did at 22 px. The fold-out bar's buttons take the slot's size, icon
-        // size and style.
-        b->SetIconSize(kToolIcon, kToolIcon);
-        b->SetElementSize(Size2Df(kToolButton, kToolButton));
-        // Flat: no box around a tool; a soft grey under the pointer and the
-        // active tool on a light blue, both rounded.
-        ButtonStyle flat = b->GetStyle();
-        flat.normalColor = Colors::Transparent;
-        flat.borderWidth = 0;
-        flat.cornerRadius = 6.0f;
-        flat.hoverColor = Color(0, 0, 0, 18);
-        flat.pressedColor = Color(0, 103, 192, 46);
-        b->SetStyle(flat);
-        toolSlots.push_back(b);
-    }
+    // A slot per group of tools, the others in its fold-out bar
+    // (ArtCreatorCommands.cpp); a right click shows, hides and folds them.
+    ApplyPaletteLayout();
+    InstallToolbarContextMenu(*palette, paletteLayout, commands,
+                              [this]() { ApplyPaletteLayout(); SaveLayouts(); },
+                              [this]() { OpenCustomise("t1"); });
     body->AddChild(palette);
 }
 
@@ -1071,16 +967,26 @@ void ArtCreatorWindow::BuildRightPanel() {
     palettes->SetManagerStyle(paletteStyle);
     std::vector<NamedColorPalette> saved;
     if (UltraCanvasColorPaletteManager::ParsePalettes(settings.palettes, saved)) palettes->SetPalettes(saved);
+    std::vector<NamedColorPalette> own;
+    if (UltraCanvasColorPaletteManager::ParsePalettes(settings.userPalettes, own)) palettes->SetUserPalettes(own);
     palettes->onColorSelected = [this](const Color& c) {
         fillColour = c;
         colorPicker->SetForegroundColor(c, false);
         ApplyFillColour(c, true);
     };
     palettes->onPalettesChanged = [this]() {
-        // The file holds what this window has, as RememberColourPicker.
-        settings.palettes = UltraCanvasColorPaletteManager::SerializePalettes(palettes->GetPalettes());
-        settings.Save();
+        // Only the rows go to the file; another window's other settings stay.
+        const std::string rows = UltraCanvasColorPaletteManager::SerializePalettes(palettes->GetPalettes());
+        settings.Update([&rows](ArtCreatorSettings& s) { s.palettes = rows; });
     };
+    palettes->onUserPalettesChanged = [this]() {
+        const std::string own = UltraCanvasColorPaletteManager::SerializePalettes(palettes->GetUserPalettes());
+        settings.Update([&own](ArtCreatorSettings& s) { s.userPalettes = own; });
+    };
+    // A swatch under the pointer floods the picker too, as the rows, so the
+    // colour is seen on the whole of the card.
+    palettes->onColorHovered = [this](const Color& c) { colorPicker->SetSurfacePreview(c); };
+    palettes->onColorHoverEnded = [this]() { colorPicker->ClearSurfacePreview(); };
     colourPanel->AddChild(palettes);
     rightPanel->AddChild(colourPanel);
 
@@ -1113,33 +1019,13 @@ void ArtCreatorWindow::BuildRightPanel() {
     // ----- layers -----
     layersPanel = PanelCard("ac-layers", "Layers");
 
-    auto buttons = std::make_shared<UltraCanvasToolbar>("ac-layer-buttons", 0, 0, 0, 30);
-    ToolbarAppearance app = buttons->GetAppearance();
-    app.showIconLabels = false;
-    app.style = ToolbarStyle::Flat;
-    app.itemSpacing = 4.0f;
-    app.backgroundColor = layersPanel->GetVisualStyle().backgroundColor;
-    app.hoverBackgroundColor = Colors::ListRowHover;
-    app.activeBackgroundColor = Colors::ListRowSelected;
-    buttons->SetAppearance(app);
-    buttons->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-    buttons->AddButton("ac-l-add", "", IconPath("layer-add.svg"), [this]() { CmdLayerAdd(); })->SetTooltip("New layer");
-    buttons->AddButton("ac-l-del", "", IconPath("layer-delete.svg"), [this]() { CmdLayerDelete(); })->SetTooltip("Delete layer");
-    buttons->AddButton("ac-l-up", "", IconPath("layer-up.svg"), [this]() { CmdLayerMove(1); })->SetTooltip("Move up");
-    buttons->AddButton("ac-l-down", "", IconPath("layer-down.svg"), [this]() { CmdLayerMove(-1); })->SetTooltip("Move down");
-    // Flat, as UltraPaint's, and just round their 24 px icons.
-    for (auto& c : buttons->Children()) {
-        if (auto b = std::dynamic_pointer_cast<UltraCanvasButton>(c)) {
-            b->SetPadding(3);
-            b->SetElementSize(Size2Df(30, 30));
-            b->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-            ButtonStyle flat = b->GetStyle();
-            flat.cornerRadius = 6.0f;
-            flat.pressedColor = Colors::ListRowSelected;
-            b->SetStyle(flat);
-        }
-    }
-    layersPanel->AddChild(buttons);
+    // Flat icon buttons, as UltraPaint's and the Selector's Arrange / Align bars.
+    ArtOptionWidgets::AddIconBar(*layersPanel, "ac-layer-buttons", {
+        { IconPath("layer-add.svg"), "New layer", [this]() { CmdLayerAdd(); } },
+        { IconPath("layer-delete.svg"), "Delete layer", [this]() { CmdLayerDelete(); } },
+        { IconPath("layer-up.svg"), "Move up", [this]() { CmdLayerMove(1); } },
+        { IconPath("layer-down.svg"), "Move down", [this]() { CmdLayerMove(-1); } },
+    });
 
     layerRows = std::make_shared<UltraCanvasContainer>("ac-layer-rows", 0, 0, 0, 0);
     layerRows->layout.SetFlexColumn().SetFlexGap(2).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
@@ -1151,11 +1037,15 @@ void ArtCreatorWindow::BuildRightPanel() {
 }
 
 void ArtCreatorWindow::RememberColourPicker() {
-    // The file holds only the picker, so this window's state is the whole of
-    // it: whichever window changed its picker last is the one remembered.
-    settings.pickerDesign = colorPicker->GetWheelStyle();
-    settings.pickerChannelsOpen = colorPicker->GetSlidersExpanded();
-    settings.Save();
+    // Whichever window changed its picker last is the one remembered; the
+    // other settings stay as the file has them (another window may have
+    // changed them since this one opened).
+    const ColorPickerWheelStyle design = colorPicker->GetWheelStyle();
+    const bool open = colorPicker->GetSlidersExpanded();
+    settings.Update([design, open](ArtCreatorSettings& s) {
+        s.pickerDesign = design;
+        s.pickerChannelsOpen = open;
+    });
 }
 
 void ArtCreatorWindow::BuildStatusBar() {
@@ -1183,41 +1073,16 @@ void ArtCreatorWindow::InstallShortcuts() {
         if (e.type != UCEventType::KeyDown) return false;
         if (window->GetActivePopupElement()) return false;
         if (FocusIsTextEntry(window.get())) return false;
-        const UCKeys k = e.virtualKey;
-        if (e.ctrl) {
-            switch (k) {
-                case UCKeys::N:
-                    if (e.alt) CmdNewWindow(); else if (e.shift) CmdLayerAdd(); else CmdNew();
-                    return true;
-                case UCKeys::O: CmdOpen(); return true;
-                case UCKeys::S: if (e.shift) CmdSaveAs(); else CmdSave(); return true;
-                case UCKeys::E: CmdExport(); return true;
-                case UCKeys::Q: CmdQuit(); return true;
-                case UCKeys::Z: if (e.shift) CmdRedo(); else CmdUndo(); return true;
-                case UCKeys::Y: CmdRedo(); return true;
-                case UCKeys::X: CmdCut(); return true;
-                case UCKeys::C: CmdCopy(); return true;
-                case UCKeys::V: CmdPaste(); return true;
-                case UCKeys::D: CmdDuplicate(); return true;
-                case UCKeys::A: if (e.shift) CmdSelectNone(); else CmdSelectAll(); return true;
-                case UCKeys::G: CmdGroup(); return true;
-                case UCKeys::U: CmdUngroup(); return true;
-                case UCKeys::F: CmdReorder(e.shift ? ZOrderMove::Forward : ZOrderMove::ToFront); return true;
-                case UCKeys::B: CmdReorder(e.shift ? ZOrderMove::Backward : ZOrderMove::ToBack); return true;
-                case UCKeys::Key0: canvas->ZoomToPage(); return true;
-                case UCKeys::Key1: canvas->ZoomToActual(); return true;
-                case UCKeys::P: if (!e.shift) break; CmdSnapToPixels(); return true;
-                default: break;
-            }
-            return false;
+        // Delete is the Shape Editor's own while it is active (its nodes).
+        if (!e.ctrl && !e.alt && e.virtualKey == UCKeys::Delete) {
+            if (activeTool == ArtToolId::ShapeEditor) return false;
+            CmdDelete();
+            return true;
         }
-        if (k == UCKeys::Delete && activeTool != ArtToolId::ShapeEditor) { CmdDelete(); return true; }
-        // single-letter tool keys
-        if (!e.alt && !e.shift && k >= UCKeys::A && k <= UCKeys::Z) {
-            for (const auto& t : tools)
-                if (t->shortcutKey && t->shortcutKey == static_cast<char>(k)) { SelectTool(t->id); return true; }
-        }
-        return false;
+        // Ctrl with a letter or digit, and a tool's letter alone: the
+        // command whose shortcut that is - the one its menu entry shows.
+        if (!e.ctrl && (e.alt || e.shift)) return false;
+        return RunShortcut(e);
     }, { UCEventType::KeyDown });
 }
 
@@ -1252,7 +1117,7 @@ void ArtCreatorWindow::SetDocument(std::shared_ptr<VectorDocument> doc, const st
         document->ViewBox = Rect2Dd{0, 0, document->Size.width, document->Size.height};
     canvas->ZoomToPage();
     RebuildLayerPanel();
-    UpdateUndoButtons();
+    RefreshCommandStates();
     UpdateTitle();
     UpdateStatus();
     RefreshTransformBar();
@@ -1349,7 +1214,7 @@ void ArtCreatorWindow::OnDocumentChanged() {
     if (activeLayerIndex >= static_cast<int>(document->Layers.size())) activeLayerIndex = std::max(0, static_cast<int>(document->Layers.size()) - 1);
     canvas->Refresh();
     RebuildLayerPanel();
-    UpdateUndoButtons();
+    RefreshCommandStates();
     UpdateTitle();
     UpdateStatus();
     RefreshIconPreview();
@@ -1364,6 +1229,7 @@ void ArtCreatorWindow::OnSelectionChanged() {
     if (auto* t = ActiveTool()) t->OnSelectionChanged(toolContext);
     UpdateToolCards();   // the Line card follows a selected line
     UpdateStatus();
+    RefreshCommandStates();   // what needs a selection follows it
 }
 
 void ArtCreatorWindow::UpdateTitle() {
@@ -1391,17 +1257,6 @@ void ArtCreatorWindow::UpdateStatus() {
         std::snprintf(buf, sizeof(buf), "1 %s  %.1f x %.1f %s", ElementKindName(*selection->First()), b.width / k, b.height / k, unit);
     } else std::snprintf(buf, sizeof(buf), "%zu objects selected", selection->Count());
     statusSelection->SetText(buf);
-}
-
-void ArtCreatorWindow::UpdateUndoButtons() {
-    if (undoButton) {
-        undoButton->SetDisabled(!history.CanUndo());
-        undoButton->SetTooltip(history.CanUndo() ? "Undo " + history.UndoLabel() + " (Ctrl+Z)" : "Undo (Ctrl+Z)");
-    }
-    if (redoButton) {
-        redoButton->SetDisabled(!history.CanRedo());
-        redoButton->SetTooltip(history.CanRedo() ? "Redo " + history.RedoLabel() + " (Ctrl+Y)" : "Redo (Ctrl+Y)");
-    }
 }
 
 std::shared_ptr<VectorLayer> ArtCreatorWindow::ActiveLayer() const {
@@ -1978,10 +1833,7 @@ void ArtCreatorWindow::SelectTool(ArtToolId id) {
     activeTool = id;
     ArtTool* t = ActiveTool();
     // The slot of the tool's group shows it and is pressed; the others not.
-    for (const auto& slot : toolSlots) {
-        const bool on = slot->SetCurrentItem(ToolItemId(id));
-        if (slot->IsPressed() != on) slot->SetPressed(on);
-    }
+    if (palette) palette->RefreshCommandStates();
     if (!t) return;
     t->Activate(toolContext);
     canvas->SetToolCursor(t->Cursor());

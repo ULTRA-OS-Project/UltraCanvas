@@ -3,6 +3,8 @@
 // into sections — Friends, Work, Leisure, Services (plus Other for the
 // uncategorised) — and each carries any number of email addresses and phone
 // numbers.
+// Version: 0.2.0 - EditableEmailIndex, ReplaceContactEmail: the contact editor
+//                  edits one address of several
 // Version: 0.1.0 (Phase 2)
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -79,6 +81,20 @@ struct ContactPlace {
         return isGroup == o.isGroup && (isGroup ? group == o.group : section == o.section);
     }
 };
+
+// The address the contact editor edits: the one equal to `address`
+// (case-insensitive) when there is one, else the primary (marked primary,
+// else the first); npos when there are none.
+std::size_t EditableEmailIndex(const std::vector<ContactEmail>& emails,
+                               const std::string& address);
+
+// Put `address` in place of emails[index], keeping its label, primary mark
+// and position; the other addresses stay. An empty `address` removes it; one
+// equal to another of the addresses merges with that one (the primary mark
+// kept when either had it). With `index` out of range a non-empty `address`
+// is added. Afterwards one address is primary whenever there are any.
+void ReplaceContactEmail(std::vector<ContactEmail>& emails, std::size_t index,
+                         const std::string& address);
 
 // Count of contacts in one section, for the sidebar.
 struct SectionCount {

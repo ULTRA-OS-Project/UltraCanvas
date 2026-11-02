@@ -1,7 +1,10 @@
 // Apps/DemoApp/UltraCanvasMekkoChartExamples.cpp
 // Mekko (Marimekko) chart demo for the UltraCanvas Demo App
+// Version: 1.1.0 - the shared page look (UltraCanvasDemoPageKit): one card per
+//                  chart, the controls and features in a card beside the
+//                  Bar-Mekko chart, buttons as wide as their text
 // Version: 1.0.0
-// Last Modified: 2026-07-28
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 
 #include "Plugins/Charts/UltraCanvasMekkoChart.h"
@@ -10,27 +13,37 @@
 #include "UltraCanvasButton.h"
 #include "UltraCanvasSwitch.h"
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include <memory>
 #include <random>
 
 namespace UltraCanvas {
+
+namespace {
+
+    // A card in a row asks for its chart's width (plus the card's padding and
+    // border) before it wraps under its neighbour.
+    constexpr float kChartCardChrome = 2 * DemoKit::kCardPadding + 2;
+
+    // A button as wide as its text, at least the 220 px it had.
+    std::shared_ptr<UltraCanvasButton> MakeMekkoButton(const std::string& id, const std::string& text) {
+        auto button = std::make_shared<UltraCanvasButton>(id, 0, 0, 0, 36, text);
+        CSSLayout::BoxConstraints limits;
+        limits.minWidth = CSSLayout::Dimension::Px(220);
+        button->boxConstraints = limits;
+        return button;
+    }
+
+} // namespace
 
 // =============================================================================
 // DEMO: CREATE MEKKO CHART EXAMPLES
 // =============================================================================
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateMekkoChartExamples() {
-        auto container = std::make_shared<UltraCanvasContainer>(
-                "MekkoChartDemo", 0, 0, 1040, 780
-        );
-
-        auto titleLabel = std::make_shared<UltraCanvasLabel>(
-                "MekkoTitle", 20, 10, 960, 30
-        );
-        titleLabel->SetText("Mekko (Marimekko) Chart Examples");
-        titleLabel->SetFontSize(16);
-        titleLabel->SetFontWeight(FontWeight::Bold);
-        container->AddChild(titleLabel);
+        auto container = DemoKit::CreatePage("MekkoChartDemo", "Mekko (Marimekko) Chart Examples", "");
+        auto topRow = DemoKit::AddRow(container, "MekkoTopRow");
+        auto bottomRow = DemoKit::AddRow(container, "MekkoBottomRow");
 
         // =============================================================================
         // EXAMPLE 1: MARKET SHARE BY SECTOR (CLASSIC MARIMEKKO)
@@ -49,8 +62,11 @@ namespace UltraCanvas {
         marketData->AddColumn("Finance",        {95, 55, 48, 22});
         marketData->AddColumn("Tourism",        {41, 25, 51, 18});
 
+        auto marketCard = DemoKit::AddCard(topRow, "MekkoMarketCard", "Classic Marimekko",
+                "Column width is the sector's total, each column stacked to 100%",
+                520 + kChartCardChrome);
         auto marketChart = CreateMekkoChartWithData(
-                "mekko_market_chart", 10, 50, 520, 320,
+                "mekko_market_chart", 0, 0, 520, 320,
                 marketData, "Market Share by Sector ($B)"
         );
         marketChart->SetMekkoMode(UltraCanvasMekkoChartElement::MekkoMode::Marimekko);
@@ -59,7 +75,7 @@ namespace UltraCanvas {
         marketChart->SetLegendPosition(UltraCanvasMekkoChartElement::LegendPosition::Right);
         marketChart->SetLegendWidth(90);
         marketChart->SetValueUnits("$", "B");
-        container->AddChild(marketChart);
+        DemoKit::AddFixed(marketCard, marketChart);
 
         // =============================================================================
         // EXAMPLE 2: PRODUCT vs REGION SALES MIX (PERCENT LABELS, SORTED)
@@ -79,8 +95,11 @@ namespace UltraCanvas {
         salesData->AddColumn("Product C", {45, 54, 18, 24, 84, 36});
         salesData->AddColumn("Product D", {61, 32, 66, 47, 23, 50});
 
+        auto salesCard = DemoKit::AddCard(topRow, "MekkoSalesCard", "Percent labels, sorted columns",
+                "Default palette, columns sorted by total, cumulative % axis",
+                490 + kChartCardChrome);
         auto salesChart = CreateMekkoChartWithData(
-                "mekko_sales_chart", 540, 50, 490, 320,
+                "mekko_sales_chart", 0, 0, 490, 320,
                 salesData, "Sales Mix: Product vs Region"
         );
         salesChart->SetMekkoMode(UltraCanvasMekkoChartElement::MekkoMode::Marimekko);
@@ -90,7 +109,7 @@ namespace UltraCanvas {
         salesChart->SetLegendPosition(UltraCanvasMekkoChartElement::LegendPosition::Right);
         salesChart->SetLegendWidth(90);
         salesChart->SetShowCumulativeXAxis(true);
-        container->AddChild(salesChart);
+        DemoKit::AddFixed(salesCard, salesChart);
 
         // =============================================================================
         // EXAMPLE 3: CLOUD PROVIDER REVENUE (BAR-MEKKO, ABSOLUTE HEIGHTS)
@@ -108,8 +127,11 @@ namespace UltraCanvas {
         cloudData->AddColumn("Provider 4", {9, 6, 4, 3});
         cloudData->AddColumn("Provider 5", {5, 4, 3, 2});
 
+        auto cloudCard = DemoKit::AddCard(bottomRow, "MekkoCloudCard", "Bar-Mekko",
+                "Absolute column heights, the legend below the chart",
+                520 + kChartCardChrome);
         auto cloudChart = CreateMekkoChartWithData(
-                "mekko_cloud_chart", 10, 390, 520, 320,
+                "mekko_cloud_chart", 0, 0, 520, 320,
                 cloudData, "Cloud Revenue by Provider ($B)"
         );
         cloudChart->SetMekkoMode(UltraCanvasMekkoChartElement::MekkoMode::BarMekko);
@@ -118,15 +140,17 @@ namespace UltraCanvas {
         cloudChart->SetColumnSortMode(UltraCanvasMekkoChartElement::ColumnSortMode::TotalDescending);
         cloudChart->SetLegendPosition(UltraCanvasMekkoChartElement::LegendPosition::Bottom);
         cloudChart->SetValueUnits("$", "B");
-        container->AddChild(cloudChart);
+        DemoKit::AddFixed(cloudCard, cloudChart);
 
         // =============================================================================
         // INTERACTIVE CONTROLS
         // =============================================================================
 
+        auto controlsCard = DemoKit::AddCard(bottomRow, "MekkoControlsCard", "Interactive controls");
+
         // Mode switch for the two Marimekko charts (the cloud chart stays Bar-Mekko)
         auto swMode = UltraCanvasSwitch::CreateWithSideLabels(
-                "swMekkoMode", 560, 397, "Marimekko", "Bar-Mekko", false
+                "swMekkoMode", 0, 0, "Marimekko", "Bar-Mekko", false
         );
         swMode->onStateChanged = [marketChart, salesChart](CheckedState, CheckedState newState) {
             auto newMode = (newState == CheckedState::Checked)
@@ -135,12 +159,9 @@ namespace UltraCanvas {
             marketChart->SetMekkoMode(newMode);
             salesChart->SetMekkoMode(newMode);
         };
-        container->AddChild(swMode);
+        DemoKit::AddFixed(controlsCard, swMode);
 
-        auto btnToggleLabels = std::make_shared<UltraCanvasButton>(
-                "btnMekkoToggleLabels", 560, 434, 220, 36
-        );
-        btnToggleLabels->SetText("Cycle Segment Labels");
+        auto btnToggleLabels = MakeMekkoButton("btnMekkoToggleLabels", "Cycle Segment Labels");
         btnToggleLabels->onClick = [marketChart, salesChart, cloudChart]() {
             static int labelIndex = 0;
             labelIndex = (labelIndex + 1) % 4;
@@ -155,12 +176,9 @@ namespace UltraCanvas {
             salesChart->SetSegmentLabelMode(mode);
             cloudChart->SetSegmentLabelMode(mode);
         };
-        container->AddChild(btnToggleLabels);
+        DemoKit::AddFixed(controlsCard, btnToggleLabels);
 
-        auto btnToggleSort = std::make_shared<UltraCanvasButton>(
-                "btnMekkoToggleSort", 560, 478, 220, 36
-        );
-        btnToggleSort->SetText("Cycle Column Sorting");
+        auto btnToggleSort = MakeMekkoButton("btnMekkoToggleSort", "Cycle Column Sorting");
         btnToggleSort->onClick = [marketChart]() {
             static int sortIndex = 0;
             sortIndex = (sortIndex + 1) % 4;
@@ -173,12 +191,9 @@ namespace UltraCanvas {
             }
             marketChart->SetColumnSortMode(mode);
         };
-        container->AddChild(btnToggleSort);
+        DemoKit::AddFixed(controlsCard, btnToggleSort);
 
-        auto btnRandomData = std::make_shared<UltraCanvasButton>(
-                "btnMekkoRandomData", 560, 522, 220, 36
-        );
-        btnRandomData->SetText("Generate Random Data");
+        auto btnRandomData = MakeMekkoButton("btnMekkoRandomData", "Generate Random Data");
         btnRandomData->onClick = [marketData, marketChart]() {
             std::random_device rd;
             std::mt19937 gen(rd());
@@ -197,16 +212,12 @@ namespace UltraCanvas {
             // Data changed behind the element's back: force a layout rebuild
             marketChart->SetMekkoDataSource(marketData);
         };
-        container->AddChild(btnRandomData);
+        DemoKit::AddFixed(controlsCard, btnRandomData);
 
         // Segment click feedback
-        auto clickLabel = std::make_shared<UltraCanvasLabel>(
-                "MekkoClickLabel", 560, 566, 460, 24
-        );
-        clickLabel->SetText("Click a segment to inspect it...");
+        auto clickLabel = DemoKit::AddText(controlsCard, "MekkoClickLabel", "Click a segment to inspect it...");
         clickLabel->SetFontSize(11);
         clickLabel->SetTextColor(Color(90, 90, 90, 255));
-        container->AddChild(clickLabel);
 
         auto onSegmentClick = [clickLabel](std::shared_ptr<MekkoChartDataVector> data) {
             return [clickLabel, data](size_t columnIndex, size_t seriesIndex) {
@@ -221,25 +232,15 @@ namespace UltraCanvas {
         salesChart->SetOnSegmentClick(onSegmentClick(salesData));
         cloudChart->SetOnSegmentClick(onSegmentClick(cloudData));
 
-        // Info label
-        auto infoLabel = std::make_shared<UltraCanvasLabel>(
-                "MekkoInfo", 560, 600, 460, 110
-        );
-        infoLabel->SetText(
-                "Mekko Chart Features:\n"
-                "• Column width proportional to column total, 100% stacked height\n"
-                "• Marimekko (percent) and Bar-Mekko (absolute) modes\n"
-                "• Column sorting, headers, cumulative % axis, legends\n"
-                "• Value/percent segment labels with auto-contrast text\n"
-                "• Interactive tooltips, hover highlight and click callbacks\n\n"
-                "Hover over segments and legend entries!"
-        );
-        infoLabel->SetFontSize(11);
-        infoLabel->SetTextColor(Color(60, 60, 60, 255));
-        infoLabel->SetBackgroundColor(Color(245, 245, 245, 255));
-        infoLabel->SetBorders(1.0f, Color(200, 200, 200, 255));
-        infoLabel->SetPadding(10.0f);
-        container->AddChild(infoLabel);
+        // Info
+        DemoKit::AddHeading(controlsCard, "MekkoInfoTitle", "Mekko Chart Features:");
+        DemoKit::Add(controlsCard, DemoKit::CreateBullets("MekkoInfo", {
+                "Column width proportional to column total, 100% stacked height",
+                "Marimekko (percent) and Bar-Mekko (absolute) modes",
+                "Column sorting, headers, cumulative % axis, legends",
+                "Value/percent segment labels with auto-contrast text",
+                "Interactive tooltips, hover highlight and click callbacks"}));
+        DemoKit::AddCaption(controlsCard, "MekkoInfoHint", "Hover over segments and legend entries!");
 
         return container;
     }

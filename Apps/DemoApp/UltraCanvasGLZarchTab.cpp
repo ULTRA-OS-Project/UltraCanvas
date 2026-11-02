@@ -3,9 +3,14 @@
 // David Braben's Zarch (Acorn Archimedes, 1987). A checkerboarded biome terrain
 // scrolls toward the camera while a low-poly hover-ship bobs above it, dropping a
 // shadow, surrounded by cone "trees" and a particle exhaust trail.
+// Version: 1.1.0 - the shared page look (UltraCanvasDemoPageKit): the title spans the tab
+//                  and wraps, the control panel is a column of labels and controls
+//                  sized to their text; surfaces keep their absolute placement
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "UltraCanvasGLDemoSupport.h"
 
 #ifdef ULTRACANVAS_ENABLE_GL
@@ -309,14 +314,65 @@ private:
 
 } // namespace
 
+namespace {
+
+// The tab keeps absolute placement: the GL surface's bounds are where the
+// maximize toggle restores it to. A text over it is placed at (left, top) and
+// spans the tab less `right`, as tall as its wrapped lines, so a longer text
+// (a translation) wraps instead of being cut at a fixed width.
+void PlaceAcross(UltraCanvasUIElement& element, float left, float top, float right) {
+    CSSLayout::Position position;
+    position.left = CSSLayout::Dimension::Px(left);
+    position.top = CSSLayout::Dimension::Px(top);
+    position.right = CSSLayout::Dimension::Px(right);
+    element.layoutItem.position = position;
+    element.layoutItem.SetPositionType(CSSLayout::PositionType::AbsoluteUI);
+}
+
+std::shared_ptr<UltraCanvasLabel> MakeTabText(const std::string& id, const std::string& text,
+                                              float fontSize, bool bold,
+                                              const Color& color = DemoKit::BodyText()) {
+    auto label = DemoKit::CreateText(id, text);
+    label->SetFontSize(fontSize);
+    if (bold) label->SetFontWeight(FontWeight::Bold);
+    label->SetTextColor(color);
+    return label;
+}
+
+// The control panel keeps its place and size beside the surface; inside it
+// is a column, so a label or button that grows pushes the rest down and the
+// info text below takes what is left (and scrolls).
+void MakePanelColumn(UltraCanvasContainer& panel) {
+    panel.layout.SetFlexColumn().SetFlexGap(8)
+                .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+}
+
+void AddFillingRest(const std::shared_ptr<UltraCanvasContainer>& column,
+                    const std::shared_ptr<UltraCanvasUIElement>& element) {
+    element->size.height = CSSLayout::Dimension::Auto();
+    DemoKit::AddStretched(column, element);
+    element->layoutItem.SetFlex(1, 1, CSSLayout::Dimension::Px(0));
+}
+
+// A button as wide as its text, at least the width it had.
+std::shared_ptr<UltraCanvasButton> MakeTextButton(const std::string& id, const std::string& text,
+                                                  float minWidth, float height) {
+    auto button = std::make_shared<UltraCanvasButton>(id, 0.0f, 0.0f, 0.0f, height, text);
+    CSSLayout::BoxConstraints limits;
+    limits.minWidth = CSSLayout::Dimension::Px(minWidth);
+    button->boxConstraints = limits;
+    return button;
+}
+
+} // namespace
+
 std::shared_ptr<UltraCanvasUIElement> CreateGLZarchTab() {
     auto root = std::make_shared<UltraCanvasContainer>("GLZarchTab", 0, 0, 1004, 692);
 
-    auto title = std::make_shared<UltraCanvasLabel>("GLZarchTitle", 16, 8, 760, 24);
-    title->SetText("Zarch — a low-poly hover-ship simulation over scrolling biome terrain");
-    title->SetFontSize(14);
-    title->SetFontWeight(FontWeight::Bold);
-    title->SetTextColor(Color(40, 40, 120, 255));
+    auto title = MakeTabText("GLZarchTitle",
+            "Zarch — a low-poly hover-ship simulation over scrolling biome terrain",
+            14, true, Color(40, 40, 120, 255));
+    PlaceAcross(*title, 16, 8, 16);
     root->AddChild(title);
 
     auto state = std::make_shared<ZarchState>();
@@ -585,33 +641,27 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLZarchTab() {
     panel->SetBackgroundColor(Color(246, 246, 248, 255));
     panel->SetBorders(1.0f);
     panel->SetPadding(10.0f);
+    MakePanelColumn(*panel);
 
-    auto pTitle = std::make_shared<UltraCanvasLabel>("ZarchCtrlTitle", 10, 8, 270, 22);
-    pTitle->SetText("Flight");
-    pTitle->SetFontWeight(FontWeight::Bold);
-    pTitle->SetFontSize(13);
-    panel->AddChild(pTitle);
+    DemoKit::Add(panel, MakeTabText("ZarchCtrlTitle", "Flight", 13, true));
 
-    auto runBtn = std::make_shared<UltraCanvasButton>("ZarchRunBtn", 10, 36, 130, 30);
-    runBtn->SetText("Pause");
+    auto runBtn = MakeTextButton("ZarchRunBtn", "Pause", 130, 30);
     runBtn->onClick = [runBtn = runBtn.get(), state]() {
         state->running = !state->running;
         runBtn->SetText(state->running ? "Pause" : "Resume");
     };
-    panel->AddChild(runBtn);
+    DemoKit::Add(panel, runBtn);
+    runBtn->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Start);
 
-    auto speedLabel = std::make_shared<UltraCanvasLabel>("ZarchSpeedLabel", 10, 80, 270, 18);
-    speedLabel->SetText("Flight Speed");
-    speedLabel->SetFontSize(11);
-    panel->AddChild(speedLabel);
+    DemoKit::Add(panel, MakeTabText("ZarchSpeedLabel", "Flight Speed", 11, false));
 
-    auto speedSlider = std::make_shared<UltraCanvasSlider>("ZarchSpeedSlider", 10, 100, 270, 24);
+    auto speedSlider = std::make_shared<UltraCanvasSlider>("ZarchSpeedSlider", 0, 0, 270, 24);
     speedSlider->SetRange(0.0f, 12.0f);
     speedSlider->SetValue(state->speed);
     speedSlider->onValueChanged = [state](float v) { state->speed = v; };
-    panel->AddChild(speedSlider);
+    DemoKit::AddStretched(panel, speedSlider);
 
-    auto info = demoui::MakeScrollingText("ZarchInfo", 10, 142, 270, 400, 11.0f,
+    auto info = demoui::MakeScrollingText("ZarchInfo", 0, 0, 270, 400, 11.0f,
                                           Color(60, 60, 60, 255));
     info.SetText(
         "A miniature homage to Zarch (1987).\n\n"
@@ -634,7 +684,7 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLZarchTab() {
         "double-click the canvas to maximize it;\n"
         "Esc or another double-click restores."
     );
-    panel->AddChild(info.View);
+    AddFillingRest(panel, info.View);
 
     root->AddChild(panel);
 

@@ -157,7 +157,7 @@ private:
     void PositionCellEditor();
     Rect2Df EditorRect() const;   // cell rect or formula-bar text rect
     
-    ClipboardOperation clipboardOp_ = ClipboardOperation::None;
+    ClipboardOperation clipboardOp_ = ClipboardOperation::NoOperation;
     CellRange clipboardRange_;
     std::string clipboardSheetName_;
     std::vector<std::vector<SpreadsheetCell>> clipboardData_;
@@ -472,7 +472,7 @@ public:
     void Copy();
     void Paste();
     void PasteSpecial(const PasteOptions& options);
-    bool HasClipboardData() const { return clipboardOp_ != ClipboardOperation::None; }
+    bool HasClipboardData() const { return clipboardOp_ != ClipboardOperation::NoOperation; }
     void ClearClipboard();
     
     // ===== UNDO/REDO =====
@@ -681,11 +681,11 @@ private:
     void HandleKeyDown(const UCEvent& event);
     void HandleKeyPress(const UCEvent& event);
     
-    enum class HitArea { None, FormulaBar, ColumnHeader, RowHeader, CornerHeader, 
+    enum class HitArea { Nowhere, FormulaBar, ColumnHeader, RowHeader, CornerHeader, 
                          Cell, ColumnResizer, RowResizer, SheetTab, 
                          HorizontalScrollbar, VerticalScrollbar, AutoFillHandle,
                          ColumnSortButton };
-    struct HitTestResult { HitArea area = HitArea::None; int row = -1; int col = -1; int tabIndex = -1;
+    struct HitTestResult { HitArea area = HitArea::Nowhere; int row = -1; int col = -1; int tabIndex = -1;
                            bool addSheetButton = false; int tabScroll = 0;
                            bool functionMenuButton = false; };
     // The "fx" button at the right end of the formula bar (empty when off).

@@ -12,8 +12,10 @@
 //  - DeviceKeyVault (same skip rule): locked until unlocked, device-key
 //    auto-unlock creates key + vault and a second instance reopens them,
 //    profile-prefixed keys, no plaintext on disk, wrong / empty passphrase,
-//    OAuth token sets beside the password slot, 0.1-format migration, and
-//    the "vault exists but no device key" case that must prompt
+//    OAuth token sets beside the password slot, 0.1-format migration, the
+//    "vault exists but no device key" case that must prompt, two vaults
+//    taking turns, and four vaults used at once from four threads - one of
+//    them the direct way - each reading back only its own
 //
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraVault/UltraVault.h"
@@ -21,12 +23,14 @@
 #include "UltraCrypt/UltraCryptCore.h"
 #include "UltraCanvasPathUtf8.h"
 
+#include <atomic>
 #include <cstdint>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
 #include <string>
+#include <thread>
 #include <vector>
 
 static int g_failures = 0;
@@ -228,6 +232,118 @@ static std::string TestBase64(const std::string& in) {
 
 static const UltraVault::DeviceKeyVaultProfile kTestProfile{"test.vault", "test.app."};
 
+// Two vaults in one process (two messenger providers, say): the process has
+// one open UltraVault store, and Use() lets them take turns without either
+// reading the other's.
+static void TestDeviceKeyVaultTurns(const fs::path& dir) {
+    using UltraVault::DeviceKeyVault;
+    std::printf("device-key vaults taking turns\n");
+    std::error_code ec;
+    fs::remove_all(dir, ec);
+    DeviceKeyVault first(UltraCanvas::PathToUtf8(dir / "first"), {"first.vault", "test.first."});
+    DeviceKeyVault second(UltraCanvas::PathToUtf8(dir / "second"), {"second.vault", "test.second."});
+    bool stored = false;
+    Check(first.Use([&](DeviceKeyVault& v) { stored = v.Store("session", "one"); }) && stored, "Use stores in the first");
+    Check(second.Use([&](DeviceKeyVault& v) { stored = v.Store("session", "two"); }) && stored, "Use stores in the second");
+    Check(!first.IsUnlocked() && !second.IsUnlocked(), "Use closes the vault again");
+    std::string a, b;
+    Check(first.Use([&](DeviceKeyVault& v) { v.Retrieve("session", a); }) && a == "one", "the first reads its own");
+    Check(second.Use([&](DeviceKeyVault& v) { v.Retrieve("session", b); }) && b == "two", "the second reads its own");
+    // One left open the old way is opened afresh by Use, not trusted.
+    Check(second.TryAutoUnlock(), "the second opened directly");
+    a.clear();
+    Check(first.Use([&](DeviceKeyVault& v) { v.Retrieve("session", a); }) && a == "one",
+          "Use reopens the first even while the second is open");
+    DeviceKeyVault nowhere;
+    bool ran = false;
+    Check(!nowhere.Use([&](DeviceKeyVault&) { ran = true; }) && !ran, "a vault that cannot open does not run the use");
+    fs::remove_all(dir, ec);
+}
+
+// Several vaults used at once from several threads - ChatCube's three
+// messenger providers, each with its own vault, each on its own network
+// thread - and one of them used the old direct way (unlocked once, then
+// Store / Retrieve) while the others take Use() turns. Every vault must read
+// back only what it wrote, and nothing of one vault may land in another's
+// file: the process has one open UltraVault store, so without an owner check
+// a direct user's writes went into whichever vault had the store at that
+// moment.
+static void TestDeviceKeyVaultConcurrent(const fs::path& dir) {
+    using UltraVault::DeviceKeyVault;
+    std::printf("device-key vaults used at once\n");
+    std::error_code ec;
+    fs::remove_all(dir, ec);
+    constexpr int kRounds = 40;
+    const char* names[] = {"a", "b", "c"};
+    std::atomic<int> wrongReads{0}, failedWrites{0}, failedUses{0};
+    std::vector<std::thread> threads;
+    for (const char* name : names) {
+        threads.emplace_back([&, name]() {
+            DeviceKeyVault vault(UltraCanvas::PathToUtf8(dir / name),
+                                 {std::string(name) + ".vault", "test." + std::string(name) + "."});
+            for (int i = 0; i < kRounds; ++i) {
+                const std::string value = std::string(name) + std::to_string(i);
+                bool stored = false;
+                std::string back;
+                const bool used = vault.Use([&](DeviceKeyVault& v) {
+                    stored = v.Store("session", value);
+                    v.Retrieve("session", back);
+                });
+                if (!used) ++failedUses;
+                else if (!stored) ++failedWrites;
+                else if (back != value) ++wrongReads;
+                // And read again in a turn of its own, after the others had theirs.
+                back.clear();
+                if (vault.Use([&](DeviceKeyVault& v) { v.Retrieve("session", back); }) && back != value) ++wrongReads;
+            }
+        });
+    }
+    // The direct user: opened once, then used as UltraMail uses its vault.
+    std::atomic<int> directWrongReads{0}, directFailedWrites{0};
+    threads.emplace_back([&]() {
+        DeviceKeyVault vault(UltraCanvas::PathToUtf8(dir / "d"), {"d.vault", "test.d."});
+        if (!vault.TryAutoUnlock()) {
+            ++directFailedWrites;
+            return;
+        }
+        for (int i = 0; i < kRounds; ++i) {
+            const std::string value = "d" + std::to_string(i);
+            if (!vault.Store("session", value)) { ++directFailedWrites; continue; }
+            std::string back;
+            if (!vault.Retrieve("session", back) || back != value) ++directWrongReads;
+            std::this_thread::yield();
+        }
+        vault.Lock();
+    });
+    for (auto& t : threads) t.join();
+    Check(failedUses == 0, "every Use() turn opened its vault (" + std::to_string(failedUses) + " did not)");
+    Check(failedWrites == 0, "every Store() in a turn succeeded (" + std::to_string(failedWrites) + " failed)");
+    Check(wrongReads == 0, "every turn read back its own value (" + std::to_string(wrongReads) + " wrong)");
+    Check(directFailedWrites == 0, "the direct user's every Store() succeeded (" +
+                                       std::to_string(directFailedWrites) + " failed)");
+    Check(directWrongReads == 0, "the direct user read back its own value every time (" +
+                                     std::to_string(directWrongReads) + " wrong)");
+
+    // Afterwards, each file holds its own last value and nothing of the others.
+    const std::string last = std::to_string(kRounds - 1);
+    for (const char* name : {"a", "b", "c", "d"}) {
+        DeviceKeyVault vault(UltraCanvas::PathToUtf8(dir / name),
+                             {std::string(name) + ".vault", "test." + std::string(name) + "."});
+        std::string back;
+        std::vector<std::string> keys;
+        Check(vault.Use([&](DeviceKeyVault& v) {
+                  v.Retrieve("session", back);
+                  keys = UltraVault::List("test.");
+              }), std::string("vault ") + name + " opens afterwards");
+        Check(back == name + last, std::string("vault ") + name + " kept its last value (got \"" + back + "\")");
+        bool onlyOwn = true;
+        for (const auto& key : keys) onlyOwn = onlyOwn && key.rfind("test." + std::string(name) + ".", 0) == 0;
+        Check(onlyOwn && keys.size() == 1,
+              std::string("vault ") + name + " holds only its own secret (" + std::to_string(keys.size()) + " keys)");
+    }
+    fs::remove_all(dir, ec);
+}
+
 static void TestDeviceKeyVault(const fs::path& dir) {
     using UltraVault::DeviceKeyVault;
     using UltraVault::UnlockStatus;
@@ -315,7 +431,7 @@ static void TestDeviceKeyVault(const fs::path& dir) {
         Check(vault.Store("erika", "pw2"), "Store password again");
         Check(!vault.HasOAuthTokens("erika"), "password drops the token set");
         Check(vault.StoreOAuthTokens("erika", t) && vault.RemoveOAuthTokens("erika") &&
-                  vault.MethodFor("erika") == UltraVault::SignInMethod::None,
+                  vault.MethodFor("erika") == UltraVault::SignInMethod::NoSignIn,
               "RemoveOAuthTokens");
         Check(!vault.RemoveOAuthTokens("erika"), "removing absent tokens reports false");
 
@@ -428,6 +544,85 @@ static void TestDeviceKeyVaultInUtf8Folder(const fs::path& base) {
     fs::remove_all(base, ec);
 }
 
+static void TestDeviceKeyVaultPrimaryPassword(const fs::path& dir) {
+    using UltraVault::DeviceKeyVault;
+    using UltraVault::UnlockStatus;
+    std::printf("device-key vault with a Primary Password\n");
+    std::error_code ec;
+    fs::remove_all(dir, ec);
+    const std::string folder = UltraCanvas::PathToUtf8(dir);
+    {
+        DeviceKeyVault vault(folder, kTestProfile);
+        Check(vault.TryAutoUnlock(), "a new vault opens with its device key");
+        Check(!vault.NeedsPassphrase(), "and needs no passphrase");
+        Check(vault.Store("erika", "pw-1"), "a secret stored");
+        // Another module's entry in the same file is carried over too.
+        Check(UltraVault::Put("cloud.acct.token", UltraVault::SecretValue::FromString("tok")).IsOk(),
+              "another prefix's secret stored");
+        Check(vault.ChangePassphrase("", "Korrekt Pferd Batterie", false) == UnlockStatus::Ok,
+              "a Primary Password set (from the device key)");
+        Check(!fs::exists(dir / "device.key", ec), "the device key is gone");
+        Check(vault.NeedsPassphrase(), "the vault now needs its passphrase");
+        std::string got;
+        Check(vault.Retrieve("erika", got) && got == "pw-1", "the secret is still there");
+        vault.Lock();
+    }
+    {
+        DeviceKeyVault vault(folder, kTestProfile);
+        Check(!vault.TryAutoUnlock() && vault.GetLastUnlockStatus() == UnlockStatus::Locked,
+              "without the passphrase it stays locked");
+        Check(vault.Unlock("wrong") == UnlockStatus::WrongPassphrase, "a wrong one is refused");
+        Check(vault.Unlock("Korrekt Pferd Batterie") == UnlockStatus::Ok, "the Primary Password opens it");
+        UltraVault::SecretValue other;
+        Check(UltraVault::Get("cloud.acct.token", other).IsOk() && other.AsString() == "tok",
+              "the other prefix's secret survived");
+        // Use() with the typed passphrase: opened, used and closed in one turn.
+        vault.Lock();
+        std::string through;
+        Check(vault.UseWithPassphrase("wrong", [&](DeviceKeyVault& v) { v.Retrieve("erika", through); }) ==
+                  UnlockStatus::WrongPassphrase && through.empty(),
+              "UseWithPassphrase refuses a wrong passphrase and runs nothing");
+        Check(vault.UseWithPassphrase("Korrekt Pferd Batterie", [&](DeviceKeyVault& v) { v.Retrieve("erika", through); }) ==
+                  UnlockStatus::Ok && through == "pw-1",
+              "UseWithPassphrase opens it with the passphrase and reads");
+        Check(!vault.IsUnlocked(), "and closes it again");
+        Check(!vault.Use([](DeviceKeyVault&) {}), "Use() without the passphrase cannot open it");
+        Check(vault.Unlock("Korrekt Pferd Batterie") == UnlockStatus::Ok, "the Primary Password opens it again");
+        Check(vault.ChangePassphrase("not it", "x", false) == UnlockStatus::WrongPassphrase,
+              "changing needs the current passphrase");
+        Check(vault.Unlock("Korrekt Pferd Batterie") == UnlockStatus::Ok, "which still opens it");
+        Check(vault.ChangePassphrase("Korrekt Pferd Batterie", "zweites Passwort", false) == UnlockStatus::Ok,
+              "the Primary Password changed");
+        vault.Lock();
+        Check(vault.Unlock("Korrekt Pferd Batterie") == UnlockStatus::WrongPassphrase, "the old one no longer opens it");
+        Check(vault.Unlock("zweites Passwort") == UnlockStatus::Ok, "the new one does");
+        // Removed: a fresh device key, and the vault opens silently again.
+        Check(vault.ChangePassphrase("zweites Passwort", DeviceKeyVault::NewDeviceKey(), true) == UnlockStatus::Ok,
+              "the Primary Password removed");
+        Check(fs::exists(dir / "device.key", ec) && !fs::exists(dir / "device.key.next", ec),
+              "a device key is back");
+        vault.Lock();
+    }
+    {
+        DeviceKeyVault vault(folder, kTestProfile);
+        Check(vault.TryAutoUnlock(), "it opens silently again");
+        std::string got;
+        Check(vault.Retrieve("erika", got) && got == "pw-1", "with its secret");
+        // A swap interrupted after the new file was in place: the new key
+        // waits in device.key.next and still opens it.
+        const std::string next = DeviceKeyVault::NewDeviceKey();
+        Check(vault.ChangePassphrase("", next, true) == UnlockStatus::Ok, "a new device key");
+        vault.Lock();
+        fs::rename(dir / "device.key", dir / "device.key.next", ec);
+        Check(vault.TryAutoUnlock(), "a device.key.next left by an interrupted change opens it");
+        Check(fs::exists(dir / "device.key", ec), "and becomes the device key");
+        // A stale device key after an interrupted Primary Password: forgotten.
+        Check(vault.ForgetDeviceKey() && !fs::exists(dir / "device.key", ec), "a device key forgotten");
+        vault.Lock();
+    }
+    fs::remove_all(dir, ec);
+}
+
 int main() {
     std::printf("UltraVault tests\n");
 
@@ -437,7 +632,10 @@ int main() {
     if (UltraCrypt_IsAvailable()) {
         TestFileBackend("ultravault_test.vault");
         TestDeviceKeyVault(fs::temp_directory_path() / "ultravault_devicekey_test");
+        TestDeviceKeyVaultTurns(fs::temp_directory_path() / "ultravault_devicekey_turns");
+        TestDeviceKeyVaultConcurrent(fs::temp_directory_path() / "ultravault_devicekey_concurrent");
         TestDeviceKeyVaultInUtf8Folder(fs::temp_directory_path() / "ultravault_utf8_test");
+        TestDeviceKeyVaultPrimaryPassword(fs::temp_directory_path() / "ultravault_primary_password");
     } else {
         std::printf("file backend: SKIPPED (UltraCrypt backend "
                     "unavailable — built without libsodium)\n");

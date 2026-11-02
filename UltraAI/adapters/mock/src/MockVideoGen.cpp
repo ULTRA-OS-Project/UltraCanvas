@@ -169,7 +169,7 @@ StreamHandle MockVideoGen::GenerateJob(const VideoGenRequest& request,
         }
         if (onEvent && !handle->IsCancelled()) {
             VideoJobEvent done;
-            if (response.error.code != ErrorCode::None) {
+            if (response.error.code != ErrorCode::Ok) {
                 done.kind = VideoJobEventKind::Error;
                 done.error = response.error;
             } else {

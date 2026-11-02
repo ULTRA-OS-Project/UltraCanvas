@@ -1,5 +1,6 @@
 // Tests/EmailCleaner/test_classifier.cpp
 // Text normalisation, keyword matching and the structural spam signals.
+// Version: 0.1.1 - loan and credit offers
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "test_framework.h"
@@ -153,6 +154,30 @@ TEST(Classify_FinancialScam) {
         "You are the beneficiary of the sum of ten million dollars from an "
         "unclaimed inheritance; I need your bank account details."));
     REQUIRE(verdict.category == MessageCategory::FinancialScam);
+}
+
+TEST(Classify_LoanOfferIsAFinancialScam) {
+    Classifier classifier;
+    const Classification facility = classifier.Classify(Message(
+        "Re: Credit Loan Facility",
+        "My group renders financial services and loan facilities at a very reasonable "
+        "rate of 3% yearly repayment. We currently have USD/EURO 10M - 500M available.",
+        "Hyun Lee", "hyun.lee@gmail.com"));
+    REQUIRE(facility.category == MessageCategory::FinancialScam);
+    const Classification funding = classifier.Classify(Message(
+        "LOAN FUNDING / FINANCING OFFER for your project",
+        "He is ready to invest in viable projects that can generate at least 3% "
+        "Annual Return on Investment (ROI).",
+        "Leonard Bernstein", "info@investing.com"));
+    REQUIRE(funding.category == MessageCategory::FinancialScam);
+}
+
+TEST(Classify_ABanksOwnLoanOfferAloneIsNotAScam) {
+    Classifier classifier;
+    const Classification verdict = classifier.Classify(Message(
+        "Your statement", "Your loan offer from last month has expired.",
+        "Bank", "service@bank.example"));
+    REQUIRE(verdict.category != MessageCategory::FinancialScam);
 }
 
 TEST(Classify_MalwareRiskFromAttachment) {

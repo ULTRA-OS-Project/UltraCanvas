@@ -1,0 +1,17 @@
+[Desktop Entry]
+# The freedesktop shortcut for ChatCube. The install rules put
+# media/appicon/ChatCube.{png,svg} into the hicolor theme, which is where
+# `Icon=ChatCube` is looked up.
+Type=Application
+Version=1.5
+Name=ChatCube
+GenericName=Messenger
+Comment=Chat directly with the people you know - end-to-end encrypted, no account
+Exec=ChatCube
+TryExec=ChatCube
+Icon=ChatCube
+Terminal=false
+StartupNotify=true
+StartupWMClass=ChatCube
+Categories=Network;InstantMessaging;Chat;
+Keywords=chat;messenger;p2p;encrypted;ULTRA OS;

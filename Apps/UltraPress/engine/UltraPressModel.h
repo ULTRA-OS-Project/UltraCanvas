@@ -4,6 +4,7 @@
 // ordered tree of blocks. Everything here is data; the renderers (the HTML
 // emitter, later the element renderer) read it and never change it.
 // Design: Docs/Research/UltraPressDesignProposal.md §5.1.
+// Version: 0.8.3 - IsSiteAddress: what the site's url has to be
 // Version: 0.8.2 - SitePathText: '\' becomes '/' on Windows only
 // Version: 0.7.1 - Hosting's comment names the data folder the hosts live in
 // Version: 0.7.0 - SplitParagraphs, TextLocation / SetBlockText, ResolveBlockPath: text edited in place
@@ -89,10 +90,16 @@ struct Hosting {
     std::string path = "/";
 };
 
+// Whether `url` is a site's address: https:// or http://, then a host with a
+// dot in it or localhost, no spaces, no trailing slash - what every page's
+// canonical link, the sitemap and the feed are built from. "example.org"
+// and "https://example.org/" are not.
+bool IsSiteAddress(const std::string& url);
+
 struct Site {
     std::string name;
     std::string tagline;
-    std::string url;                      // "https://example.org", no trailing slash
+    std::string url;                      // "https://example.org", no trailing slash (IsSiteAddress)
     std::string language = "en";
     std::vector<std::string> languages;   // every language the site has pages in; empty: just `language`
     std::string owner;                    // the organisation named in the feed and the structured data

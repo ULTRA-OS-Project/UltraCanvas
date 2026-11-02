@@ -379,7 +379,7 @@ inline CellErrorType SpreadsheetCell::GetError() const {
     if (auto* err = std::get_if<CellErrorType>(&value_)) {
         return *err;
     }
-    return CellErrorType::None;
+    return CellErrorType::NoError;
 }
 
 inline DateTimeValue SpreadsheetCell::GetDateTime() const {

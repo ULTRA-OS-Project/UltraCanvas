@@ -32,7 +32,7 @@ int64_t Int(const JSONValue& json, const char* key, int64_t fallback = 0) {
     const JSONValue* v = json.Find(key);
     return v ? v->GetInteger(fallback) : fallback;
 }
-bool Bool(const JSONValue& json, const char* key, bool fallback = false) {
+bool JsonBool(const JSONValue& json, const char* key, bool fallback = false) {
     const JSONValue* v = json.Find(key);
     return v ? v->GetBoolean(fallback) : fallback;
 }
@@ -468,8 +468,8 @@ JSONValue Broker::RunControl(const SessionPtr& session, const std::string& op, c
         }
         Subscription subscription;
         subscription.pattern = pattern;
-        subscription.includeOwn = Bool(args, "includeOwn");
-        subscription.manualAck = Bool(args, "manualAck");
+        subscription.includeOwn = JsonBool(args, "includeOwn");
+        subscription.manualAck = JsonBool(args, "manualAck");
         {
             std::lock_guard<std::mutex> lock(mutex_);
             subscription.id = nextSubscriptionId_++;
@@ -602,7 +602,7 @@ JSONValue Broker::RunControl(const SessionPtr& session, const std::string& op, c
         return out;
     }
     if (op == Op::AdaptersEnable) {
-        result = EnableAdapter(Str(args, "name"), Bool(args, "enabled", true));
+        result = EnableAdapter(Str(args, "name"), JsonBool(args, "enabled", true));
         return out;
     }
     if (op == Op::AdaptersState) {

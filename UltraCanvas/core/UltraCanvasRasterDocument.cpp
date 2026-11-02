@@ -48,6 +48,8 @@
 #include <filesystem>
 #include <fstream>
 #include "UltraCanvasPathUtf8.h"
+#include "UltraCanvasFileError.h"   // FileWriteFailureReason
+#include <cerrno>
 
 namespace UltraCanvas {
 
@@ -1051,7 +1053,8 @@ bool UCRasterDocument::SaveToFile(const std::string& path, std::string& error,
 bool UCRasterDocument::SaveProject(const std::string& path, std::string& error) {
 #ifdef HAS_LIBVIPS
     UCZipPackageWriter zip;
-    if (!zip.Open(path)) { error = "Could not create " + path; return false; }
+    errno = 0;
+    if (!zip.Open(path)) { error = "Could not create the file. " + FileWriteFailureReason(path, errno); return false; }
     JSONValue doc = JSONValue::MakeObject();
     doc.Set("format", "ucraster");
     doc.Set("version", 1);
@@ -1107,8 +1110,9 @@ bool UCRasterDocument::SaveProject(const std::string& path, std::string& error) 
         }
     }
     doc.Set("layers", arr);
+    errno = 0;
     if (!zip.AddEntry("document.json", JSON::Serialize(doc)) || !zip.Finalize()) {
-        error = "Could not write " + path;
+        error = "Could not write the file. " + FileWriteFailureReason(path, errno);
         return false;
     }
     filePath = path;

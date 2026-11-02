@@ -8,8 +8,10 @@
 //
 // Pages: Services > Default providers (which provider each service's
 // "(default route)" uses — "Automatic — local first" unless one is picked),
-// Services > Local & cloud (whether the default route may fall back to a
-// paid cloud service when nothing local is available; off by default), and
+// Services > Local models (the models the local runtime runs on this
+// computer: install, remove, the engine, the download policy), Services >
+// Local & cloud (whether the default route may fall back to a paid cloud
+// service when nothing local is available; off by default), and
 // Accounts > Endpoints (opens the endpoint editor: providers, base URLs,
 // models and API keys).
 // Version: 0.1.0
@@ -27,7 +29,7 @@ class UltraAISettingsWindow {
 public:
     // Which page the window opens on. Default opens on the start page, which
     // says what the sections hold.
-    enum class Page { Default, DefaultProviders, LocalAndCloud, Endpoints };
+    enum class Page { Default, DefaultProviders, LocalModels, LocalAndCloud, Endpoints };
 
     // Opens the settings window (or raises it, on `page`, when already open).
     static void Show(UltraCanvas::UltraCanvasWindowBase* parent,

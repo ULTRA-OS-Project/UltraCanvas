@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- The navigation row's Computer button: a monitor on its stand in the 2 px
+     line style of home.svg beside it (the coloured computer.png is the tree's
+     Computer row). -->
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+  <rect x="3" y="4" width="18" height="12" rx="1.5" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M12 16V20M8 20H16" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

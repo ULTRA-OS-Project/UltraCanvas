@@ -265,6 +265,22 @@ microphone_usage() {
     esac
 }
 
+# Bluetooth and the Wi-Fi network names (UltraCanvasWireless): TCC ends an
+# app that touches IOBluetooth without NSBluetoothAlwaysUsageDescription,
+# and from macOS 14 CoreWLAN names the networks in reach only to an app that
+# Location Services allows, which asks with NSLocationWhenInUseUsageDescription.
+bluetooth_usage() {
+    case "$1" in
+        UltraDesktop) echo "UltraDesktop lists, pairs and connects your Bluetooth devices from its Bluetooth panel." ;;
+    esac
+}
+
+location_usage() {
+    case "$1" in
+        UltraDesktop) echo "macOS shows the names of the Wi-Fi networks in reach only to apps allowed to use Location Services. UltraDesktop uses it for that list and nothing else." ;;
+    esac
+}
+
 # The local network is every app's: an app that prints looks for IPP printers
 # on it (IODeviceManager's printer enumeration browses Bonjour), and
 # DeviceExplorer looks for eSCL scanners as well. NSBonjourServices lists each
@@ -300,6 +316,18 @@ privacy_plist_entries() {
         printf '    <key>NSMicrophoneUsageDescription</key>\n'
         printf '    <string>%s</string>\n' "$(xml_escape "$reason")"
     fi
+    reason="$(bluetooth_usage "$exe_name")"
+    if [ -n "$reason" ]; then
+        printf '    <key>NSBluetoothAlwaysUsageDescription</key>\n'
+        printf '    <string>%s</string>\n' "$(xml_escape "$reason")"
+    fi
+    reason="$(location_usage "$exe_name")"
+    if [ -n "$reason" ]; then
+        printf '    <key>NSLocationWhenInUseUsageDescription</key>\n'
+        printf '    <string>%s</string>\n' "$(xml_escape "$reason")"
+        printf '    <key>NSLocationUsageDescription</key>\n'
+        printf '    <string>%s</string>\n' "$(xml_escape "$reason")"
+    fi
 }
 
 # Where write_app_entitlements leaves each app's entitlements for
@@ -322,6 +350,10 @@ write_app_entitlements() {
     if [ -n "$(microphone_usage "$exe_name")" ]; then
         /usr/libexec/PlistBuddy -c "Add :com.apple.security.device.audio-input bool true" "$out"
         devices+=" microphone"
+    fi
+    if [ -n "$(location_usage "$exe_name")" ]; then
+        /usr/libexec/PlistBuddy -c "Add :com.apple.security.personal-information.location bool true" "$out"
+        devices+=" location"
     fi
     plutil -lint "$out"
     echo "  Entitlements written (devices:${devices:- none})"
@@ -780,24 +812,34 @@ codesign_bundle() {
 # 0.9.253 to 0.9.265 - thirteen in a row, each after a notarization Apple
 # had already accepted; in each run some bundles stapled and a later one did
 # not, and in 0.9.265 a staple went through and the validate right after it
-# did not. So each is tried up to STAPLE_ATTEMPTS times (default 5) with a
-# pause between: a staple that worked is not repeated, only its validate.
-# Only a lookup that fails every time ends the run.
+# did not. The five tries twenty seconds apart that followed were not
+# enough either: 0.9.307 (the Intel leg) got UltraFiler.app stapled on the
+# fifth try and then had no try left for its validate, and 0.9.348 lost all
+# five on the demo image inside two minutes. So the staple and the validate
+# each have a budget of their own, STAPLE_ATTEMPTS tries (default 8), and
+# the pause grows from 20 s by 15 s a try to 60 s - about six minutes for
+# each. A staple that worked is not repeated, only its validate; only a
+# lookup that fails every time ends the run.
 staple_bundle() {
-    local target="$1" attempt stapled=false
-    for attempt in $(seq 1 "${STAPLE_ATTEMPTS:-5}"); do
-        if [ "$stapled" = false ] && xcrun stapler staple "$target"; then
-            stapled=true
-        fi
-        if [ "$stapled" = true ] && xcrun stapler validate "$target"; then
+    local target="$1"
+    retry_stapler staple "$target" && retry_stapler validate "$target"
+}
+
+retry_stapler() {
+    local action="$1" target="$2" attempt wait
+    local attempts="${STAPLE_ATTEMPTS:-8}"
+    for attempt in $(seq 1 "$attempts"); do
+        if xcrun stapler "$action" "$target"; then
             return 0
         fi
-        if [ "$attempt" -lt "${STAPLE_ATTEMPTS:-5}" ]; then
-            echo "  The $([ "$stapled" = true ] && echo validate || echo staple) of $(basename "$target") failed (attempt $attempt of ${STAPLE_ATTEMPTS:-5}); trying again in 20 s"
-            sleep 20
+        if [ "$attempt" -lt "$attempts" ]; then
+            wait=$((20 + (attempt - 1) * 15))
+            [ "$wait" -gt 60 ] && wait=60
+            echo "  The $action of $(basename "$target") failed (attempt $attempt of $attempts); trying again in $wait s"
+            sleep "$wait"
         fi
     done
-    echo "  ERROR: the notarization ticket could not be $([ "$stapled" = true ] && echo validated on || echo "stapled to") $(basename "$target") after ${STAPLE_ATTEMPTS:-5} attempts"
+    echo "  ERROR: the notarization ticket could not be $([ "$action" = validate ] && echo "validated on" || echo "stapled to") $(basename "$target") after $attempts attempts"
     return 1
 }
 
@@ -1593,6 +1635,16 @@ package_if_built "UltraClipboard" build_app_bundle \
     "UltraClipboard" \
     "com.cloverleaf.UltraClipboard" \
     "media/appicon/UltraClipboard.png" \
+    "public.app-category.utilities" \
+    ""
+
+# Package UltraSnip, the screenshot and screen-recording tool (libVideoFX and
+# FFmpeg go to the shared Frameworks/ with the rest)
+package_if_built "UltraSnip" build_app_bundle \
+    "UltraSnip" \
+    "UltraSnip" \
+    "com.cloverleaf.UltraSnip" \
+    "media/appicon/UltraSnip.png" \
     "public.app-category.utilities" \
     ""
 

@@ -1,3 +1,29 @@
+#### 2026-11-01 *0.7.3*
+- **A gap left by a cut closes with one click.** Split a clip on the
+  overlay, title or sound lane, delete one part, and the empty stretch it
+  leaves shows a `|<-` button in its middle: a click moves the clip after
+  the gap back against the one before it (or to the start), `Shift`+click
+  moves everything after the gap with it, and either is one undo step
+  (`UltraCanvasVideoTimeline` 1.4.0, the close-gap button).
+
+#### 2026-10-22 *0.7.2*
+- **The bin's notes read whole.** The sentence at the top of the *Titles*
+  and *Effects* tabs and each title style's hint wrap to the bin's width,
+  as tall as their text, instead of ending in an ellipsis.
+- A tile's drag from the bin goes the way an effect's and a title's do: the
+  press arms it, moving away starts it, `Esc` lets go (`UltraCanvasAlbum`
+  1.11.0, `onItemPressed`).
+
+#### 2026-10-21 *0.7.1*
+- **Titles dragged onto their lane.** A title style in the bin's *Titles*
+  tab is dragged from its button onto the title lane at a time: the lane
+  shows the insertion marker with the style's name (`UltraCanvasVideoTimeline`
+  1.3.0, `SetDropFeedback`), snapped as a file drop is, and the drop puts the
+  title there. A drop on another lane says titles go on the title lane,
+  `Esc` lets go, and the click still puts the style at the playhead. The
+  window carries its three drags - a file from a tile, an effect preset and
+  a title style from their buttons - through one path now.
+
 #### 2026-10-16 *0.7.0*
 - **Effects on overlay clips.** The bin's effect presets now also work on
   a clip on the overlay lane, by a click with it selected or by dragging

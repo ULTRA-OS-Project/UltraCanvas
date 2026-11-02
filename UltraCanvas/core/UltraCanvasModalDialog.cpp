@@ -1391,6 +1391,36 @@ namespace UltraCanvas {
 #endif
         }
 
+        // Is `folder` (absolute) a place no user keeps files, so a dialog with
+        // nothing remembered should not open there? The working directory is
+        // a good first folder - for a program started from a terminal it is
+        // where the user was asked to work - but not the root of the file
+        // system, where Finder starts a macOS application, nor the Windows
+        // folder, where a packaged Windows application (MSIX) starts
+        // (System32), as does one started by a service.
+        bool IsSystemStartFolder(const std::filesystem::path& folder) {
+            if (folder.empty() || folder == folder.root_path()) return true;
+#if defined(_WIN32) || defined(_WIN64)
+            std::string windowsFolder = GetEnvUtf8("SystemRoot");
+            if (windowsFolder.empty()) windowsFolder = GetEnvUtf8("windir");
+            if (windowsFolder.empty()) return false;
+            auto lowerAscii = [](std::string text) {
+                for (char& c : text)
+                    if (c >= 'A' && c <= 'Z') c = static_cast<char>(c - 'A' + 'a');
+                return text;
+            };
+            const std::string inside = lowerAscii(PathToUtf8(folder.lexically_normal()));
+            std::string windows = lowerAscii(PathToUtf8(PathFromUtf8(windowsFolder).lexically_normal()));
+            while (!windows.empty() && (windows.back() == '\\' || windows.back() == '/')) windows.pop_back();
+            if (windows.empty()) return false;
+            return inside == windows ||
+                   (inside.size() > windows.size() && inside.compare(0, windows.size(), windows) == 0 &&
+                    (inside[windows.size()] == '\\' || inside[windows.size()] == '/'));
+#else
+            return false;
+#endif
+        }
+
         bool IsHiddenName(const std::string& name) {
             return !name.empty() && name[0] == '.';
         }
@@ -1547,11 +1577,22 @@ namespace UltraCanvas {
         }
 
         {
+            // No folder given, one that is gone, or a relative one (UltraMail
+            // passes "." when it finds no home): the working directory decides
+            // - unless that is a system folder (IsSystemStartFolder), where
+            // the home folder is the better start.
             std::error_code ec;
-            if (currentDirectory.empty() ||
-                !std::filesystem::is_directory(PathFromUtf8(currentDirectory), ec)) {
-                std::filesystem::path cwd = std::filesystem::current_path(ec);
-                currentDirectory = ec ? std::string(".") : PathToUtf8(cwd);
+            const std::filesystem::path given = PathFromUtf8(currentDirectory);
+            const bool exists = !currentDirectory.empty() && std::filesystem::is_directory(given, ec);
+            if (!exists || given.is_relative()) {
+                const std::filesystem::path start =
+                        exists ? std::filesystem::absolute(given, ec) : std::filesystem::current_path(ec);
+                const std::string home = UserHomeDirectory();
+                if ((ec || IsSystemStartFolder(start.lexically_normal())) && !home.empty() &&
+                    std::filesystem::is_directory(PathFromUtf8(home), ec))
+                    currentDirectory = home;
+                else
+                    currentDirectory = start.empty() ? std::string(".") : PathToUtf8(start);
             }
             std::filesystem::path canonical =
                     std::filesystem::canonical(PathFromUtf8(currentDirectory), ec);

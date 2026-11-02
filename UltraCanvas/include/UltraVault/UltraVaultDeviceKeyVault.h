@@ -19,14 +19,28 @@
 // sidecar, one base64 line per account in `creds.dat`) are migrated on the
 // first successful unlock and the old files removed.
 //
-// UltraVault itself is one store per process: Unlock() closes whatever
-// UltraVault had open and opens this vault instead, so a process works with
-// one DeviceKeyVault at a time (a second instance on the same directory is
-// fine — it re-opens the same file).
+// UltraVault itself is one store per process, so several DeviceKeyVaults in
+// one program - ChatCube's three messenger providers, each on its own
+// thread - take turns in it: every call takes one lock the whole process
+// shares, the vault whose file the store holds is remembered, and a vault
+// that finds another's file open re-opens its own (with its device key)
+// before it reads or writes. So Store() never lands in another vault's file
+// and Retrieve() never answers from one, whether the vault is used through
+// Use() or unlocked once and used directly - until 0.3.0 a direct user's
+// secrets went into whichever vault held the store at that moment, and its
+// Lock() closed that other vault under its user. A vault unlocked with a
+// passphrase of its own (no device key) cannot re-open silently: its calls
+// then fail with Locked instead of touching the wrong file. A second
+// instance on the same directory is fine - it re-opens the same file.
 //
 // The directory is a UTF-8 path on every platform (UltraCanvasPathUtf8.h): a
 // profile folder named in Thai or Cyrillic opens the same as an ASCII one.
 //
+// Version: 0.5.0 - UseWithPassphrase: Use() for a vault behind a Primary Password
+// Version: 0.4.0 - ChangePassphrase, NeedsPassphrase, ForgetDeviceKey: a Primary Password
+// Version: 0.3.0 - several vaults in one process, from any thread: one lock,
+//                  the store's owner remembered, a vault re-opens its own file
+//                  before every access
 // Version: 0.2.0 - GetLastUnlockStatus / DescribeUnlockStatus: why the vault
 //                  stayed closed; UTF-8 paths throughout
 // Previous: 0.1.0 - moved here from UltraMail's CredentialVault 0.6.0
@@ -38,14 +52,8 @@
 #include <UltraVault/UltraVault.h>
 
 #include <cstdint>
+#include <functional>
 #include <string>
-
-// When included after X11 headers, Xlib's `None` macro (0L) collides with
-// SignInMethod::None — the same collision UltraVault.h neutralizes for X11's
-// `Success`, and UltraAICommon.h for this one. Undefine it before ours.
-#ifdef None
-#undef None
-#endif
 
 namespace UltraVault {
 
@@ -63,7 +71,7 @@ struct OAuthTokens {
 };
 
 // How an account signs in, decided by what the vault holds for it.
-enum class SignInMethod { None, Password, OAuth2 };
+enum class SignInMethod { NoSignIn, Password, OAuth2 };
 
 // Why an unlock attempt failed, so the UI can tell "wrong password" (ask
 // again) from "this build cannot open a vault at all" (say so and stop).
@@ -118,11 +126,60 @@ public:
     //    -> returns false so the caller prompts once, then PersistDeviceKey().
     bool TryAutoUnlock();
 
+    // The process holds one open UltraVault store, so several vaults - one per
+    // module, say two messenger providers - take turns: this opens this
+    // vault's own file (with the device key, as TryAutoUnlock), runs `use`,
+    // and closes it again, under the lock every DeviceKeyVault in the
+    // process shares (every other call takes it too, and a vault used
+    // directly re-opens its own file when a Use() took the store meanwhile).
+    // False (and `use` not run) when the vault cannot be opened.
+    bool Use(const std::function<void(DeviceKeyVault& vault)>& use);
+
+    // Use() for a vault behind a Primary Password: opens this vault's file
+    // with `passphrase` (the one the user typed), runs `use` and closes it
+    // again - all under the process's one lock, so no other vault takes the
+    // store between the unlock and `use` (an Unlock() followed by a
+    // Retrieve() could find it gone, and a vault with no device key cannot
+    // re-open by itself). "" is Use(): the device key. What Unlock()
+    // answered, and `use` run only on Ok.
+    UnlockStatus UseWithPassphrase(const std::string& passphrase,
+                                   const std::function<void(DeviceKeyVault& vault)>& use);
+
     // Write `passphrase` as the device key (owner-only perms), so the next
     // launch unlocks silently. Call after a manual Unlock() succeeds.
     bool PersistDeviceKey(const std::string& passphrase);
 
-    // True once Unlock() has succeeded.
+    // A Primary Password: the vault opens only with a passphrase the user
+    // types, and no device key is kept. True when the vault file exists and
+    // there is no device key beside it.
+    bool NeedsPassphrase() const;
+
+    // The passphrase the vault file is encrypted with, changed from
+    // `currentPassphrase` ("" : the device key) to `newPassphrase`. Every
+    // secret in the file is carried over - whatever its prefix, another
+    // module's too - into a new file under a new salt, which then replaces
+    // the old one: interrupted, the old file and its passphrase stay.
+    //  - keepAsDeviceKey false: the device key is removed, and from now on
+    //    only `newPassphrase` opens the vault (setting a Primary Password);
+    //  - keepAsDeviceKey true: `newPassphrase` is written as the device key
+    //    (removing one: pass NewDeviceKey()).
+    // The vault is open with the new passphrase afterwards. WrongPassphrase
+    // when `currentPassphrase` does not open it; the old passphrase still
+    // opens it after any failure.
+    UnlockStatus ChangePassphrase(const std::string& currentPassphrase,
+                                  const std::string& newPassphrase,
+                                  bool keepAsDeviceKey);
+
+    // A random passphrase fit to be a device key; "" without a crypto backend.
+    static std::string NewDeviceKey();
+
+    // Remove the device key, so the vault opens only with its passphrase -
+    // after a typed passphrase opened a vault whose stale device key did
+    // not. True when there was one.
+    bool ForgetDeviceKey();
+
+    // True once Unlock() has succeeded (and until Lock()): the vault has its
+    // key, whether or not the process's one store holds its file right now.
     bool IsUnlocked() const { return unlocked_; }
 
     // Why the last Unlock() or TryAutoUnlock() left the vault closed; Ok
@@ -178,11 +235,16 @@ private:
 
     // Path of the device key file (the random passphrase, owner-only).
     std::string DeviceKeyPath() const;
+    // Before a read or write: the vault is unlocked and the process's store
+    // holds its file - re-opened with the device key when another vault took
+    // the store since. False, with lastStatus_ saying why, otherwise.
+    bool HoldTheStore() const;
+    bool ReopenWithDeviceKey();
 
     std::string           dir_;
     DeviceKeyVaultProfile profile_;
     bool                  unlocked_ = false;
-    UnlockStatus          lastStatus_ = UnlockStatus::Locked;
+    mutable UnlockStatus  lastStatus_ = UnlockStatus::Locked;   // a read may re-open, and say why it could not
 };
 
 } // namespace UltraVault

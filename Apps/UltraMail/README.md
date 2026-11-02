@@ -104,6 +104,23 @@ Apps/UltraMail/
                                   framework's UltraVault::DeviceKeyVault with
                                   UltraMail's profile (ultramail.vault,
                                   device.key, keys mail.ultramail.<account>)
+    UltraMailStorage.{h,cpp}      the stored mail encrypted at rest: the storage
+                                  key in the vault, a key per database file
+                                  (UltraDatabase's encrypted SQLite) and one for
+                                  the message files (sealed .eml); converting an
+                                  earlier version's plain files
+    UltraMailSecureMime.{h,cpp}   signed and encrypted mail: OpenSecureMessage
+                                  (decrypt, check signatures, S/MIME and
+                                  OpenPGP, nested), SecureOutgoingMessage
+                                  (sign / encrypt to recipients and sender),
+                                  PKCS #12 import, the raw-MIME helpers
+    UltraMailSecureBackends.h     the byte work behind it, one file per library:
+    UltraMailSmime.cpp              S/MIME on UltraCrypt's X.509 and CMS
+                                    (UltraCryptX509.h); the verdicts in words
+    UltraMailOpenPgp.cpp            OpenPGP on GPGME (ULTRAMAIL_HAVE_OPENPGP);
+                                    stubs where the library is not found
+    UltraMailSecureKeys.{h,cpp}   the account's S/MIME identity in the vault
+                                  (<account>.smime.cert / .smime.key)
     UltraMailOAuth.{h,cpp}        OAuth2 sign-in (Gmail, Outlook, Yahoo): provider
                                   table, the sign-in service, app registration
                                   (env / oauth.ini), sign-in +
@@ -169,7 +186,8 @@ Apps/UltraMail/
                                   HTMLReader/CSSLayout, text in a read-only area),
                                   attachment strip; the text selectable and
                                   copyable (header and body, right-click Copy /
-                                  Select All), a copy button on a one-time code
+                                  Select All, and Copy link over a link), a copy
+                                  button on a one-time code
     UltraMailAccountWizard.{h,cpp} setup wizard dialog (identity step)
     UltraMailAttachmentStrip.{h,cpp} attachment chips (paperclip, name, size); a click
                                   opens the Open / Save As… menu, a double-click
@@ -191,7 +209,13 @@ Apps/UltraMail/
                                   settings lookup): text + Cancel; closed by the app
     UltraMailServerSettingsDialog.{h,cpp} manual IMAP/SMTP settings page: host,
                                   port, security, username; validates in place;
-                                  as Account Settings also name, password, Signature
+                                  as Account Settings also name, password, Signature,
+                                  Security
+    UltraMailSecurityDialog.{h,cpp} an account's mail security: the S/MIME
+                                  certificate (Import / Remove), the OpenPGP key
+                                  it signs with, how new messages start (Off /
+                                  S/MIME / OpenPGP, Sign, Encrypt); from Account
+                                  Settings and after adding an account (Skip)
     UltraMailSignatureDialog.{h,cpp} the signature editor: None / Plain text /
                                   HTML (WYSIWYG RichTextEdit + FormatBar, or
                                   HTML source); also on replies and forwards
@@ -260,6 +284,18 @@ accounts, a tile of the account bar dragged sideways takes another place;
 the order is kept (`account_order` in `preferences.ini`) and the folder tree
 follows it.
 
+**The account bar's counters are filters.** A click on *New today* shows the
+account's inbox with only its unread mail from today, *Unread* all of its
+unread mail (today's too, though the number counts only what came before
+today), *Waiting for reply* only the mail waiting for an answer
+(`MessageFilterKind::NewToday`, `Unread`, `NeedsAnswer`; `MailView::ShowInbox`).
+The counter in use is framed in its colour, and a second row under the
+account's card - a card of the same look, under the tile it belongs to -
+names the filter ("Showing: Unread") with a **Show all emails** button. A
+click anywhere else on the account's card shows all of its mail again. The card also shows a
+filter chosen from the message list's *Show emails ▸* menu, and goes when a
+folder switch clears the filter (`MailView::onFilterChanged`).
+
 **Attachments:** a message's MIME parts are decoded by `MimeCodec` (over
 `UltraNet_MimeParse`); the attachment strip under the message body shows one
 chip per part: the paperclip, the file name and its size. A click on a chip
@@ -314,6 +350,10 @@ are unknown. The password (or OAuth token set) is stored in the
 `CredentialVault`, never in the config. Try it: run with
 `ULTRAMAIL_DEMO_ADD=you@gmail.com` to exercise discovery + vault + the result
 dialog.
+`ULTRAMAIL_DEMO_DIALOG=<name>` opens one dialog on its own, to look at it:
+`wizard`, `password`, `password-new`, `oauth`, `wait`, `outbox`, `settings`, `compose`
+(a formatted message with two attachments), or `account`
+(the account settings of the demo account `ULTRAMAIL_DEMO_MAIL=1` seeds).
 
 **OAuth2 sign-in (Gmail, Outlook / Microsoft 365, Yahoo):** Google and
 Microsoft reject the account password over IMAP and SMTP, so those accounts
@@ -413,6 +453,10 @@ process started and the thread (`ui`, or `w<n>` for a worker):
   reported too.
 
 `ULTRAMAIL_TRACE=0` turns it off.
+
+`UltraMail --minimized` starts with the window minimized: mail is fetched
+and the unread count published to the desktop's mail icon as with the
+window open. UltraDesktop's *Start with the desktop* starts it so.
 
 ## What the engine provides now
 

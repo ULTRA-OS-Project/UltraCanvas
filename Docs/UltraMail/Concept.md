@@ -246,16 +246,26 @@ A separate window (`CreateWindow`) per draft, Texter-style:
 
 - **To/Cc/Bcc** rows using `CreateEmailInput` with autocomplete fed by
   the collected-addresses book (3.2); recipients render as removable
-  chips; Cc/Bcc rows hidden until requested.
+  chips; Cc/Bcc rows hidden until requested. No-reply and blocked
+  addresses are never offered; a suggestion's right-click menu edits its
+  contact, deletes the address or sets the sender as spam (blocked).
 - **Body** — `UltraCanvasTextArea` in `MarkdownHybrid` mode: the user
   writes comfortable rich text (bold, lists, links, quoting) and
   UltraMail sends `multipart/alternative` with a generated HTML part
   (via the existing Markdown→HTML serializer of `UCRichDocument`) plus
   the plain-text source. A "plain text only" toggle is one click.
 - **Attachments** — "Attach file…" (file dialog; drag & drop later) and
-  "Attach cloud link…" (UltraCloud picker: upload to, or pick from, a cloud
+  "Cloud link…" (UltraCloud picker: upload to, or pick from, a cloud
   account and insert the share link — see `Docs/Modules/UltraCloud/README.md`);
-  shown as a chip strip with sizes and a total-size warning.
+  shown as a chip strip with sizes and a total-size warning - under the
+  message, or in a column at its right (*Settings > Reading > Attachments*,
+  for reading and writing alike). *Open* shows an attachment in the media
+  viewer or the system's application - but never a program or script
+  (`FileAssociations::RunsCodeWhenOpened`): that is offered to be saved.
+- **Import** — `.eml`, Apple Mail `.emlx` and Outlook `.msg` files into the
+  folder on show: uploaded to the server (`AppendMessage`, as the Drafts and
+  Sent copies are) and synced back, so they live where the account's mail
+  lives (`ui/UltraMailMessageImport`).
 - **Signatures** — per account, in *Account Settings > Signature*: none,
   plain text (below a `-- ` line) or HTML, designed in a WYSIWYG editor
   (`UltraCanvasRichTextEdit`: character formatting, font, size, colour,
@@ -265,7 +275,10 @@ A separate window (`CreateWindow`) per draft, Texter-style:
   the message a formatted one. *(Implemented in UltraMail 0.10.11.)*
 - **Formatting** — a *Plain text | Formatted* switch on every message, and in
   formatted mode the same toolbar as the signature editor (character
-  formatting, font, size, colour, alignment, lists, a rule, links, pictures).
+  formatting, font, size, text or background colour, alignment, lists, a
+  rule, links, pictures), as icons on a strip framed together with the body -
+  in one row in the compose window, whose Send row is on top; each tool's
+  tooltip names it, and Font and Size show the text at the cursor.
   *(Implemented in UltraMail 0.10.12.)*
 - **Drafts** — autosaved to the local store every few seconds and on
   close; **Send** puts the message into the **Outbox** queue, which the
@@ -292,8 +305,11 @@ A separate window (`CreateWindow`) per draft, Texter-style:
 - Mark read/unread, star/flag, move to folder (drag & drop onto tree)
 - Junk folder support; delete-to-Trash with empty-trash command
 - Fast local search (from/subject/body) over the message index
-- Collected address book: every address the user writes to or receives
-  from is remembered for autocomplete (explicit contacts app and
+- Collected address book: every address the user writes to is
+  remembered for autocomplete; from incoming mail only senders in the
+  known-sender registry whose domain the server proved are added (under
+  Services) - never a stranger, a no-reply address, a
+  blocked sender or an address the user deleted (explicit contacts app and
   LDAP/CardDAV integration come later, see roadmap)
 - Multiple accounts + unified inbox
 - New-mail notifications (window badge + system notification) and
@@ -378,11 +394,41 @@ point the store at a networked engine without changing UltraMail's
 query code. The raw messages stay as `.eml` files on disk; only the
 index/metadata lives in the database.
 
+**At rest everything is encrypted** (`UltraMailStorage.h`): one random
+storage key in the vault, and keys derived from it with HKDF - one per
+database file, which UltraDatabase opens as encrypted SQLite
+(`UltraDatabaseEncryption.h`: every page of the file and its WAL sealed with
+XChaCha20-Poly1305), and one for the message files, each sealed whole
+(`UltraMail:eml:1` | nonce | ciphertext | tag). A Primary Password guards
+that key, since it guards the vault; changing it re-encrypts only the vault.
+An earlier version's plain files are converted at the first start.
+
+**Signed and encrypted mail** (`UltraMailSecureMime.h`) is S/MIME (RFC 8551,
+on UltraCrypt's X.509 and CMS - `UltraCryptX509.h`, OpenSSL 3 underneath -
+with `UltraMailSmime.cpp` saying what each finding means) and OpenPGP (RFC 3156 PGP/MIME and
+inline PGP, GPGME over the user's GnuPG keyring, `UltraMailOpenPgp.cpp`), each
+built where its library is found. The stored message stays as it travelled:
+`OpenSecureMessage` decrypts and checks it on a thread when the reading pane
+shows it (a few results kept in memory), and nothing decrypted is written. On
+sending, `SecureOutgoingMessage` signs and/or encrypts the message UltraNet
+built - to every recipient and to the sender - and the outbox sends exactly
+those bytes (`UltraNetMailMessage::rawMessage`), filing the same ones in
+Drafts and Sent. Each account says how its new messages start (Off,
+S/MIME or OpenPGP, signed, encrypted) and which OpenPGP key it signs with
+(`AccountSecurity`, the accounts table's security columns), set in the Mail
+security dialog. The user's S/MIME identity is kept in the vault
+(`UltraMailSecureKeys.h`); correspondents' certificates are learnt from their
+vouched-for signatures into the address book (`ContactStore`'s
+`certificates`).
+
 **Credentials** go into UltraMail's vault: the framework's
 `UltraVault::DeviceKeyVault` (`Docs/Modules/UltraVault/README.md`) with
 UltraMail's profile — an encrypted file (`ultramail.vault`, Argon2id +
 XChaCha20-Poly1305 via UltraCrypt) unlocked without a prompt by an owner-only
-`device.key` beside it, the posture of Thunderbird with no Primary Password.
+`device.key` beside it, the posture of Thunderbird with no Primary Password -
+or, once the user sets one (*Settings > Privacy > Primary Password*), opened
+only with a Primary Password typed at every start, before anything stored is
+read (`DeviceKeyVault::ChangePassphrase`; the device key is then gone).
 `UltraMailCredentialVault.h` only names that profile. The OS keychains
 (libsecret, Windows Credential Manager, macOS Keychain) are planned as
 UltraVault backends behind the same surface, not as a seam of UltraMail's

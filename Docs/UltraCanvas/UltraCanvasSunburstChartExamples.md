@@ -86,7 +86,7 @@ The root node itself is not drawn — its children form the innermost ring.
 ### SunburstLabelContent
 ```cpp
 enum class SunburstLabelContent {
-    None, Name, Value, Percentage, NameValue, NamePercentage
+    NoLabel, Name, Value, Percentage, NameValue, NamePercentage
 };
 ```
 
@@ -102,7 +102,7 @@ enum class SunburstLabelOrientation {
 ### SunburstShadeMode
 ```cpp
 enum class SunburstShadeMode {
-    None, LightenByDepth, DarkenByDepth
+    NoShade, LightenByDepth, DarkenByDepth
 };
 ```
 

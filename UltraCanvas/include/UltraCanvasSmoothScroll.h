@@ -34,6 +34,8 @@
 // a zoom that steps *additively* (UltraCanvasVectorElement), where the write
 // callback re-solves the pan from an anchor captured at the start of the
 // gesture.
+// Version: 1.0.0 - the history starts here; earlier changes are in the framework changelog
+// Last Modified: 2026-10-29
 #pragma once
 
 #include "UltraCanvasTimer.h"

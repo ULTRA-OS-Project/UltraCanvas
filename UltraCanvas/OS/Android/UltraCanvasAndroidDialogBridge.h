@@ -33,7 +33,7 @@ namespace AndroidDialogs {
     };
 
     // Keep in sync with the ICON_* constants in UltraCanvasActivity.java.
-    enum class JavaIcon { None = 0, Info = 1, Alert = 2 };
+    enum class JavaIcon { NoIcon = 0, Info = 1, Alert = 2 };
 
     struct JavaDialogOutcome {
         // false: this app runs a plain NativeActivity (no UltraCanvasActivity),

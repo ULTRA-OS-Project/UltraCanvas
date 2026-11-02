@@ -12,23 +12,6 @@
 #include <string>
 #include <vector>
 
-// Defensive: X11/Xlib.h defines `Success` and `None` as macros, which would
-// turn our enum-class members into literal integers (same guard as
-// UltraNetCore.h — UltraCanvas's Linux platform glue pulls X11 in
-// transitively).
-#ifdef Success
-#undef Success
-#endif
-#ifdef None
-#undef None
-#endif
-#ifdef Bool
-#undef Bool
-#endif
-#ifdef Status
-#undef Status
-#endif
-
 // ============================================================================
 // Opaque handle. Zero is reserved for "invalid handle". Returned for running
 // application instances (Stage 1) and, later, VM lifecycle operations.
@@ -41,7 +24,7 @@ constexpr UltraWinHandle UltraWinInvalidHandle = 0;
 // reserved up front so the surface is stable for downstream callers.
 // ============================================================================
 enum class UltraWinResultCode {
-    Success,
+    Ok,
     NotInitialized,
     NotSupported,          // wrong platform, or tier not available on host
     InvalidArgument,
@@ -86,7 +69,7 @@ struct UltraWinResult {
 
     static UltraWinResult Ok() {
         UltraWinResult r;
-        r.code = UltraWinResultCode::Success;
+        r.code = UltraWinResultCode::Ok;
         r.success = true;
         return r;
     }

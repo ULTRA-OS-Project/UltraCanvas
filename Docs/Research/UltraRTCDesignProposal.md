@@ -1,7 +1,11 @@
 # UltraRTC — Real-Time Communication Module (Design Proposal)
 
 **Date:** 2026-10-01
-**Status:** Proposal — for review; no implementation yet
+**Status:** Phase 1 implemented on the tier 2 engine. On 2026-10-21 the
+engine decision was taken for ChatCube: **libdatachannel first** (no Rust in
+the core); the Rust tier can still follow behind the same API. See
+[`ChatCubeDirectPlan.md`](ChatCubeDirectPlan.md) and
+[`../Modules/UltraRTC/README.md`](../Modules/UltraRTC/README.md).
 **Companion:** [`BrowserWebRTCInvestigation.md`](BrowserWebRTCInvestigation.md)
 (the survey of what WebRTC is, where Ladybird stands, and which engines
 exist; this document assumes it)

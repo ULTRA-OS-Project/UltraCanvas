@@ -1,6 +1,6 @@
 # UltraCanvasHTMLReader — HTML, CSS and entities, once
 
-<!-- doc-check: void Log(const std::string& line); void Remember(const std::string& href); std::vector<uint8_t> LoadBytes(const std::string& href); void Open(const std::string& href); bool LoadCidPart(const std::string& src, std::string& mimeType, std::vector<uint8_t>& data); struct MyElement; struct Message { std::string htmlBody; }; Message message; -->
+<!-- doc-check: void Log(const std::string& line); void Remember(const std::string& href); std::vector<uint8_t> LoadBytes(const std::string& href); void Open(const std::string& href); void ShowLinkMenu(const std::string& href, const UltraCanvas::UCEvent& event); bool LoadCidPart(const std::string& src, std::string& mimeType, std::vector<uint8_t>& data); struct MyElement; struct Message { std::string htmlBody; }; Message message; -->
 
 The **HTMLReader** module (`UltraCanvas/{include,core}/HTMLReader/`) is the
 framework's one implementation of reading HTML and CSS: a tolerant parser, a
@@ -338,6 +338,9 @@ opts.resourceLoader = [&](const std::string& href) { return LoadBytes(href); }; 
 opts.onLinkActivated = [&](const std::string& href) { Open(href); };
 opts.onLinkActivatedNewWindow = [&](const std::string& href) { Open(href); };   // target="_blank": a new tab
 opts.onLinkHovered = [&](const std::string& href) { status->SetText(href); };
+opts.onLinkedImageContextMenu = [&](const std::string& href, const UCEvent& event) {
+    ShowLinkMenu(href, event);                // right-click on <a><img></a>: Copy link
+};
 opts.linkTooltips = false;                    // the status line shows the address instead
 opts.selectableText = true;                   // the text selects and copies, as in a browser
 
@@ -357,7 +360,11 @@ paragraph to paragraph, a double-click takes a word, Ctrl+C / Ctrl+A work
 once the text has been clicked, and a text link opens when it is released
 without a drag. Keep `r.textSelection` to offer Copy and Select All in a
 menu (its `onContextMenu` is asked on a right-click); see
-`UltraCanvasLabelExamples.md`, *Selectable text*.
+`UltraCanvasLabelExamples.md`, *Selectable text*. The link under that
+right-click is the label's: `LinkIndexAtPoint` on the label under the
+pointer. A linked picture (`<a><img></a>`, a newsletter's button) is not text:
+its right-click goes to `onLinkedImageContextMenu` with the link's href. A
+right-click never opens a link.
 
 Pictures are sized as a browser sizes a replaced element: `width` alone or
 `height` alone gives the other in the picture's shape, both give a box of
@@ -463,6 +470,13 @@ passes UltraNet's), so it is framework-independent and runs offline in tests.
   its address and its history.
 - **Rules:** an http(s) page loads http(s) and `data:` resources, an https
   page no http ones, and only a `file:` page loads `file:` resources.
+  `AllowsResource(url, why)` answers the same question for an address the
+  page loads outside the loader - a `<video>`'s stream.
+- **Whose page:** a style sheet or a picture is fetched through
+  `PageLoaderServices::fetchResource` with the address of the page it is
+  for, when the host sets it (else through `fetch`). A browser keeps its
+  cookie rules there: UltraWeb sends a page's cookies only to the page's own
+  site.
 - **Limits:** 16 MB per document, 32 style sheets, 512 resources a page.
 - **Threading:** the loader is used from one thread, and `fetch` calls its
   `done` back on it. A newer `Load` or `Cancel` drops the answers of the
@@ -504,6 +518,13 @@ goes to `BuildOptions::onLinkActivatedNewWindow` when that is set, else to
 `onLinkActivated` like any other. (Two links to the same address in one
 run of text, one with and one without a new-window target, both open the
 other window.) `<script>` is not run, and `<noscript>` and its content are shown.
+A viewer of local files turns the web off: `SetOpensWebLinks(false)` sends
+`http` / `https` links to `onExternalLink` as `mailto:` goes (file links
+still open in the view), `ScrollBy(dy)` scrolls the page for a host that
+keeps the keyboard, and `Clear()` leaves nothing on show - the page, its
+players and the history let go. The media viewer's HTML preview is built
+that way ([UltraCanvasMediaViewer.md](UltraCanvasMediaViewer.md), *HTML
+pages*).
 `Tests/HTMLPageLoaderTest.cpp` and `Tests/WebViewTest.cpp` cover both
 against a fake web. UltraWeb is the browser around it
 (`Docs/UltraWeb/UltraWeb.md`).
@@ -586,6 +607,51 @@ width, pictures arriving) keeps what was typed and the focus. Mail keeps
 as text on a line of its own. The view passes its own `onChooseFiles` on to
 file inputs; UltraWeb answers it with the file dialog.
 
+### Video and audio
+
+`<video>` and `<audio>` are players the host makes: the builder asks
+`BuildOptions::mediaFactory` with an `HTML::MediaRequest` - the element
+(`node`, the same pointer on every build of one parsed document), its
+addresses in order (`src=""`, then each `<source>` with its `type`), the
+`poster`, `controls`, `autoplay`, `loop` and `muted` - and places what comes
+back as a picture is placed: on a line of its own, by the text-align it
+inherits, never wider than the line. The size is a browser's: CSS `width` /
+`height` (a percentage of the box it is in), else the `width` and `height`
+attributes, else 640 x 360 for a video (one side given, the other at 16:9)
+and 300 x 40 for an audio player. A player inside an inline element breaks
+its line, as a block does, and in a flex or grid container it is an item.
+
+Without a factory, when the factory answers null (it cannot play any of the
+addresses), and for a `<video>` without a source, the element's fallback
+content - the text and links between its tags - is shown, as a browser that
+cannot play it shows it. An `<audio>` without `controls` that does not play
+by itself shows nothing.
+
+```cpp
+HTML::BuildOptions options;
+options.mediaFactory = [](const HTML::MediaRequest& request) -> std::shared_ptr<UltraCanvasUIElement> {
+    if (request.sources.empty()) return nullptr;
+    auto player = CreateVideoPlayer("player", 0, 0, static_cast<long>(request.width),
+                                    static_cast<long>(request.height));
+    if (!player->LoadFromUrl(request.sources.front().src)) return nullptr;   // the fallback, then
+    return player;
+};
+```
+
+`UltraCanvasWebView` sets the factory itself (`SetMediaPlayback`, on by
+default): each `<video>` and `<audio>` is an `UltraCanvasVideoPlayerElement`
+(which plays sound too) on the first address the page may load - http(s)
+streamed by the platform's media framework, mixed content refused, a local
+file from a local page, no `data:` - at most 16 a page. The view keeps a
+player for as long as its page: a rebuild (a new width, pictures arriving)
+hands the same one back, so playback goes on, and another page stops it.
+`autoplay` plays only a muted element, as browsers allow; a sound waits for
+the reader's click. A video without `controls` that cannot play by itself
+shows them anyway. `GetMediaPlayers()` lists the page's players.
+`Tests/HTMLMediaTest.cpp` covers the builder against a fake factory and the
+view with a WAV it writes (played when the build has a media backend and
+GStreamer's base plugins, else its fallback).
+
 ## HTML into an editable document
 
 `ImportHTMLToRichDocument(html, options)` and `AppendHTMLToRichDocument`
@@ -661,13 +727,13 @@ blocks new ones.
 | `include/HTMLReader/HTMLParser.h` | `Parser`, `ParseOptions` |
 | `include/HTMLReader/CSSStyleSheet.h` | `CssColor`, `CssLength`, `Declaration`, `Selector`, `Rule`, `StyleSheet`, the matcher templates |
 | `include/HTMLReader/HTMLStyleResolver.h` | `ComputedStyle`, `ResolverOptions`, `StyleResolver`, `NodeSelectorTraits`, `Matches` |
-| `include/HTMLReader/HTMLElementBuilder.h` | `BuildOptions`, `BuildResult`, `ElementBuilder`, `BuildElementsFromHTML` |
+| `include/HTMLReader/HTMLElementBuilder.h` | `BuildOptions`, `BuildResult`, `ElementBuilder`, `BuildElementsFromHTML`, `MediaRequest`, `MediaSource` |
 | `include/HTMLReader/HTMLRichDocumentImporter.h` | `ImportHTMLToRichDocument`, `AppendHTMLToRichDocument`, `HTMLRichImportOptions` |
 | `include/HTMLReader/HTMLPageLoader.h` | `PageLoader`, `PageLoaderServices`, `PageLoaderLimits`, `FetchResult`, `LoadedPage`, `PageKind` |
 | `include/HTMLReader/HTMLForms.h` | `FormSubmission`, `FormController` (forms with real widgets) |
 | `include/UltraCanvasWebView.h` | `UltraCanvasWebView`, the element that shows pages from URLs |
 | `Tests/HTMLReaderTest.cpp` | parser, CSS, matcher and resolver, without the UI library |
-| `Tests/HTMLRichImportTest.cpp`, `HTMLTableLayoutTest.cpp`, `HTMLImageAlignTest.cpp`, `HTMLFlexGridLayoutTest.cpp`, `HTMLInlineBoxTest.cpp`, `HTMLFormsTest.cpp`, `EBookViewerTest.cpp` | importer, tables, images, flex and grid, inline boxes, forms, the viewer |
+| `Tests/HTMLRichImportTest.cpp`, `HTMLTableLayoutTest.cpp`, `HTMLImageAlignTest.cpp`, `HTMLFlexGridLayoutTest.cpp`, `HTMLInlineBoxTest.cpp`, `HTMLFormsTest.cpp`, `HTMLMediaTest.cpp`, `EBookViewerTest.cpp` | importer, tables, images, flex and grid, inline boxes, forms, video and audio, the viewer |
 | `Tests/Fuzz/` | fuzz targets for the parser, the CSS, and the builder with the layout ([README](../../Tests/Fuzz/README.md)) |
 
 ## Fuzzing

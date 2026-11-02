@@ -9,7 +9,9 @@ name: Android build
 # libUltraCanvasDemo.so and packaged with scripts/android-package-apk.sh into
 # a debug-signed APK, uploaded as the run's UltraCanvasDemo-<abi> artifact.
 # Two ABIs: arm64-v8a is what phones run, x86_64 what an emulator on a Linux
-# host or a CI runner runs at full speed (AndroidOnLinuxInvestigation.md). The Build
+# host or a CI runner runs at full speed (AndroidOnLinuxInvestigation.md).
+# The x86_64 APK is then installed on an emulator and must present a first
+# frame with something drawn in it (the emulator job below). The Build
 # workflow's "Android backend check" only syntax-checks OS/Android with host
 # headers standing in; this is the build those headers stand in for.
 #
@@ -34,6 +36,7 @@ on:
       - '.github/workflows/android-build.yml'
       - 'scripts/android-bootstrap-sysroot.sh'
       - 'scripts/android-package-apk.sh'
+      - 'scripts/android-emulator-smoke.sh'
       - 'UltraCanvas/OS/Android/**'
       - 'Apps/DemoApp/**'
       - 'MacOS/deps/ports/libvips/**'
@@ -45,6 +48,7 @@ on:
       - '.github/workflows/android-build.yml'
       - 'scripts/android-bootstrap-sysroot.sh'
       - 'scripts/android-package-apk.sh'
+      - 'scripts/android-emulator-smoke.sh'
       - 'UltraCanvas/OS/Android/**'
       - 'Apps/DemoApp/**'
       - 'MacOS/deps/ports/libvips/**'
@@ -303,3 +307,55 @@ jobs:
             build-android/CMakeFiles/CMakeError.log
             build-android/CMakeFiles/CMakeConfigureLog.yaml
           if-no-files-found: ignore
+
+  # The demo, run: the x86_64 APK installed on an API 30 emulator on the
+  # runner's KVM, started, and required to present a first frame with content
+  # (scripts/android-emulator-smoke.sh, which waits for the window backend's
+  # "first frame presented" logcat line). It fails when the app dies first,
+  # draws nothing, or shows nothing in four minutes. The screenshot and the
+  # logcat are kept whatever the outcome. arm64 is not run: GitHub's arm64
+  # runners have no KVM, and emulating the whole CPU is too slow for a UI.
+  emulator:
+    name: android emulator (x86_64)
+    needs: android
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Download the x86_64 APK
+        uses: actions/download-artifact@v6
+        with:
+          name: UltraCanvasDemo-x86_64
+          path: apk
+
+      # The runner has /dev/kvm, readable only by its group; the emulator
+      # without KVM is the whole-CPU emulation the x86_64 build exists to avoid.
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      # API 30 sits between the minSdk (28) and the targetSdk (34). The
+      # backend draws into the window buffer on the CPU, so SwiftShader's
+      # GL is only there for the system UI.
+      - name: Run the demo on the emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          arch: x86_64
+          target: default
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot
+          script: scripts/android-emulator-smoke.sh apk/UltraCanvasDemo-x86_64.apk emulator-smoke
+
+      - name: Upload the screenshot and logcat
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: android-emulator-smoke
+          path: emulator-smoke/
+          if-no-files-found: ignore
+          retention-days: 14

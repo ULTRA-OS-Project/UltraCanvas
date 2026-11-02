@@ -10,7 +10,11 @@
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSmartHomePanel.h"
+#include "UltraCanvasSmartHomeIcons.h"
 
+#include "UltraCanvasImage.h"
+
+#include <algorithm>
 #include <chrono>
 
 namespace UltraCanvas {
@@ -28,20 +32,6 @@ uint64_t NowMs() {
 // uses it to open device settings without a second control on the card.
 constexpr uint64_t kLongPressMs = 500;
 
-// Category colours, as the module README describes them: lights amber, locks
-// green, sensors blue, everything else the neutral accent.
-Color CategoryColor(SmartHomeDeviceCategory category) {
-    switch (category) {
-        case SmartHomeDeviceCategory::Light:      return Color(255, 193, 7);
-        case SmartHomeDeviceCategory::Lock:       return Color(76, 175, 80);
-        case SmartHomeDeviceCategory::Sensor:     return Color(33, 150, 243);
-        case SmartHomeDeviceCategory::Thermostat: return Color(255, 112, 67);
-        case SmartHomeDeviceCategory::Camera:     return Color(156, 39, 176);
-        case SmartHomeDeviceCategory::Blind:      return Color(121, 85, 72);
-        default:                                  return Color(96, 125, 139);
-    }
-}
-
 }  // namespace
 
 // ===== SmartHomeDeviceCard =====
@@ -53,6 +43,9 @@ SmartHomeDeviceCard::SmartHomeDeviceCard(const std::string& identifier,
 SmartHomeDeviceCard::~SmartHomeDeviceCard() = default;
 
 void SmartHomeDeviceCard::SetDevice(const SmartHomeDeviceInfo& d) {
+    if (d.DeviceId != device.DeviceId || d.Category != device.Category || d.Name != device.Name || iconPath.empty()) {
+        iconPath = SmartHomeDeviceIconPath(d);   // asks the module once, not every frame
+    }
     device = d;
     RequestRedraw();
 }
@@ -113,11 +106,20 @@ void SmartHomeDeviceCard::Render(IRenderContext* ctx, const Rect2Df& /*dirtyRect
         ctx->DrawRoundedRectangle(Rect2Dd(bounds), radius);
     }
 
-    // Category swatch.
-    const double pad = compact ? 6.0 : 10.0;
-    const double swatch = compact ? 14.0 : 22.0;
-    ctx->SetFillPaint(CategoryColor(device.Category));
-    ctx->FillEllipse(Rect2Dd(bounds.x + pad, bounds.y + pad, swatch, swatch));
+    // The device's icon on a disc of its category's colour.
+    const double pad = 10.0;
+    const double swatch = 30.0;
+    // A list row centres it; a tile puts it top left.
+    const Rect2Dd disc(bounds.x + pad, compact ? bounds.y + (bounds.height - swatch) / 2.0 : bounds.y + pad,
+                       swatch, swatch);
+    ctx->SetFillPaint(device.State == SmartHomeDeviceState::Online ? SmartHomeCategoryColor(device.Category)
+                                                                   : Color(0xB0, 0xBE, 0xC5));
+    ctx->FillEllipse(disc);
+    if (auto icon = UCImage::Get(iconPath); icon && icon->IsValid()) {
+        const double inset = swatch * 0.2;
+        ctx->DrawImage(*icon, Rect2Dd(disc.x + inset, disc.y + inset, swatch - 2 * inset, swatch - 2 * inset),
+                       ImageFitMode::Contain);
+    }
 
     // Online/offline dot, top right.
     if (showStatus) {
@@ -125,6 +127,19 @@ void SmartHomeDeviceCard::Render(IRenderContext* ctx, const Rect2Df& /*dirtyRect
         ctx->SetFillPaint(GetStateColor());
         ctx->FillEllipse(Rect2Dd(bounds.x + bounds.width - pad - dot,
                                  bounds.y + pad, dot, dot));
+    }
+
+    // A list row: the name beside the icon, the state after it.
+    if (showName && compact) {
+        ctx->SetTextPaint(Color(0x21, 0x21, 0x21));
+        ctx->SetFontSize(12.0);
+        const double textX = disc.x + swatch + 10.0;
+        ctx->DrawTextInRect(device.Name, Rect2Dd(textX, bounds.y + (bounds.height - 16.0) / 2.0,
+                                                 std::max(0.0, bounds.width - (textX - bounds.x) - 120.0), 16.0));
+        ctx->SetTextPaint(Color(0x75, 0x75, 0x75));
+        ctx->SetFontSize(10.0);
+        ctx->DrawTextInRect(DeviceStateToString(device.State),
+                            Rect2Dd(bounds.x + bounds.width - 110.0, bounds.y + (bounds.height - 14.0) / 2.0, 80.0, 14.0));
     }
 
     if (showName && !compact) {

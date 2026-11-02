@@ -1,7 +1,9 @@
 // UltraCanvasSmartHomeAdvancedWidgets.h
 // Smart Home Advanced UI Widgets
-// Version: 1.0.0
-// Last Modified: 2025-12-08
+// Version: 2.0.0 - containers of framework elements: the topology is a node
+//                  diagram, the energy history a line chart, the editors,
+//                  scheduler list and group control inputs and list views
+// Last Modified: 2026-10-21
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -10,13 +12,28 @@
 #include "UltraCanvasEvent.h"
 #include "UltraCanvasCommonTypes.h"
 #include "UltraCanvasSmartHome.h"
+#include "UltraCanvasButton.h"
+#include "UltraCanvasContainer.h"
+#include "UltraCanvasDropdown.h"
+#include "UltraCanvasLabel.h"
+#include "UltraCanvasListView.h"
+#include "UltraCanvasSegmentedControl.h"
+#include "UltraCanvasSlider.h"
+#include "UltraCanvasSwitch.h"
+#include "UltraCanvasTextInput.h"
 #include <memory>
 #include <functional>
 #include <vector>
 #include <map>
 
 namespace UltraCanvas {
+class UltraCanvasNodeDiagram;
+class UltraCanvasLineChartElement;
+class ChartDataVector;
+
 namespace SmartHome {
+
+namespace Kit { class RowsModel; }
 
 // ============================================================================
 // SCENE EDITOR
@@ -24,91 +41,81 @@ namespace SmartHome {
 
 /**
  * @brief Scene editor widget
- * 
- * Allows creating and editing scenes with multiple device actions.
+ *
+ * A name, the scene's actions in a list (remove the selected one), a device
+ * dropdown and "Add" to add one, Save and Cancel. Save creates the scene or
+ * updates it through SmartHomeAPI and reports through onSave.
  */
-class SmartHomeSceneEditor : public UltraCanvasUIElement {
+class SmartHomeSceneEditor : public UltraCanvasContainer {
 public:
-    // UltraCanvasUIElement has no default constructor: every widget is
-    // built with an id and its bounds, like the rest of the framework.
     SmartHomeSceneEditor(const std::string& identifier, float x, float y, float w, float h);
     SmartHomeSceneEditor(const std::string& identifier, float w, float h)
         : SmartHomeSceneEditor(identifier, -1, -1, w, h) {}
     explicit SmartHomeSceneEditor(const std::string& identifier)
         : SmartHomeSceneEditor(identifier, -1, -1, -1, -1) {}
     virtual ~SmartHomeSceneEditor();
-    
+
     /**
      * @brief Create new scene
      */
     void NewScene();
-    
+
     /**
      * @brief Edit existing scene
      * @param sceneId Scene ID
      */
     void EditScene(const std::string& sceneId);
-    
+
     /**
-     * @brief Get edited scene
-     * @return Scene data
+     * @brief Get edited scene (with the name as typed)
      */
-    SmartHomeScene GetScene() const { return scene; }
-    
-    /**
-     * @brief Set scene name
-     * @param name Scene name
-     */
+    SmartHomeScene GetScene() const;
+
     void SetSceneName(const std::string& name);
-    
+
     /**
      * @brief Add device action to scene
-     * @param deviceId Device ID
-     * @param action Action name
-     * @param params Action parameters
      */
     void AddAction(const std::string& deviceId, const std::string& action,
                    const std::map<std::string, std::string>& params);
-    
+
     /**
-     * @brief Remove action from scene
-     * @param index Action index
+     * @brief Remove action from scene; an index past the end does nothing
      */
     void RemoveAction(size_t index);
-    
-    /**
-     * @brief Set scene icon
-     * @param icon Icon name
-     */
+
     void SetIcon(const std::string& icon);
-    
+
     void SetOnSave(std::function<void(const SmartHomeScene&)> callback) { onSave = callback; }
     void SetOnCancel(std::function<void()> callback) { onCancel = callback; }
-    
-    void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
-    bool OnEvent(const UCEvent& event) override;
+
+    UltraCanvasTextInput* GetNameInput() const { return nameInput.get(); }
+    UltraCanvasListView* GetActionsList() const { return actionsList.get(); }
+    UltraCanvasDropdown* GetDeviceChoice() const { return deviceChoice.get(); }
+    UltraCanvasButton* GetAddButton() const { return addButton.get(); }
+    UltraCanvasButton* GetRemoveButton() const { return removeButton.get(); }
+    UltraCanvasButton* GetSaveButton() const { return saveButton.get(); }
+    UltraCanvasButton* GetCancelButton() const { return cancelButton.get(); }
 
 private:
-    void RenderHeader(IRenderContext* context);
-    void RenderNameInput(IRenderContext* context);
-    void RenderActionsList(IRenderContext* context);
-    void RenderDeviceSelector(IRenderContext* context);
-    void RenderActionButtons(IRenderContext* context);
-    
-    void ShowDeviceSelector();
-    void AddDeviceToScene(const std::string& deviceId);
+    void Refresh();          // the scene into the elements
+    void FillDevices();
+    void AddChosenDevice();
     void SaveScene();
-    
+
     SmartHomeScene scene;
     std::vector<SmartHomeDeviceInfo> availableDevices;
-    
-    bool showingDeviceSelector = false;
-    int selectedActionIndex = -1;
-    std::string editingName;
-    bool editingNameActive = false;
-    
-    float scrollOffset = 0;
-    
+
+    std::shared_ptr<UltraCanvasLabel> title;
+    std::shared_ptr<UltraCanvasTextInput> nameInput;
+    std::shared_ptr<Kit::RowsModel> actionsModel;
+    std::shared_ptr<UltraCanvasListView> actionsList;
+    std::shared_ptr<UltraCanvasDropdown> deviceChoice;
+    std::shared_ptr<UltraCanvasButton> addButton;
+    std::shared_ptr<UltraCanvasButton> removeButton;
+    std::shared_ptr<UltraCanvasButton> saveButton;
+    std::shared_ptr<UltraCanvasButton> cancelButton;
+
     std::function<void(const SmartHomeScene&)> onSave;
     std::function<void()> onCancel;
 };
@@ -168,88 +175,66 @@ struct AutomationCondition {
 
 /**
  * @brief Automation editor widget
- * 
- * Visual editor for creating automation rules with triggers, 
- * conditions, and actions.
+ *
+ * A name, what starts the automation (WHEN), what must hold (AND IF), what
+ * it does (THEN) - each a list - a switch for whether it is enabled, Save
+ * and Cancel. The trigger is kept as SmartHomeAutomation's type and JSON
+ * config, written with the JSON writer so any value survives.
  */
-class SmartHomeAutomationEditor : public UltraCanvasUIElement {
+class SmartHomeAutomationEditor : public UltraCanvasContainer {
 public:
-    // UltraCanvasUIElement has no default constructor: every widget is
-    // built with an id and its bounds, like the rest of the framework.
     SmartHomeAutomationEditor(const std::string& identifier, float x, float y, float w, float h);
     SmartHomeAutomationEditor(const std::string& identifier, float w, float h)
         : SmartHomeAutomationEditor(identifier, -1, -1, w, h) {}
     explicit SmartHomeAutomationEditor(const std::string& identifier)
         : SmartHomeAutomationEditor(identifier, -1, -1, -1, -1) {}
     virtual ~SmartHomeAutomationEditor();
-    
-    /**
-     * @brief Create new automation
-     */
+
     void NewAutomation();
-    
-    /**
-     * @brief Edit existing automation
-     * @param automationId Automation ID
-     */
     void EditAutomation(const std::string& automationId);
-    
+
     /**
-     * @brief Get edited automation
-     * @return Automation data
+     * @brief Get edited automation (with the name as typed)
      */
-    SmartHomeAutomation GetAutomation() const { return automation; }
-    
-    /**
-     * @brief Set automation name
-     * @param name Name
-     */
+    SmartHomeAutomation GetAutomation() const;
+
     void SetName(const std::string& name);
-    
-    /**
-     * @brief Add trigger
-     * @param trigger Trigger definition
-     */
     void AddTrigger(const AutomationTrigger& trigger);
-    
-    /**
-     * @brief Add condition
-     * @param condition Condition definition
-     */
     void AddCondition(const AutomationCondition& condition);
-    
-    /**
-     * @brief Add action
-     * @param action Scene action
-     */
     void AddAction(const SmartHomeCommand& action);
-    
+
     void SetOnSave(std::function<void(const SmartHomeAutomation&)> callback) { onSave = callback; }
     void SetOnCancel(std::function<void()> callback) { onCancel = callback; }
-    
-    void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
-    bool OnEvent(const UCEvent& event) override;
+
+    UltraCanvasTextInput* GetNameInput() const { return nameInput.get(); }
+    UltraCanvasSwitch* GetEnabledSwitch() const { return enabledSwitch.get(); }
+    UltraCanvasListView* GetTriggerList() const { return triggerList.get(); }
+    UltraCanvasListView* GetConditionList() const { return conditionList.get(); }
+    UltraCanvasListView* GetActionList() const { return actionList.get(); }
+    UltraCanvasButton* GetSaveButton() const { return saveButton.get(); }
+    UltraCanvasButton* GetCancelButton() const { return cancelButton.get(); }
 
 private:
-    void RenderHeader(IRenderContext* context);
-    void RenderTriggerSection(IRenderContext* context);
-    void RenderConditionSection(IRenderContext* context);
-    void RenderActionSection(IRenderContext* context);
-    void RenderButtons(IRenderContext* context);
-    
-    void RenderTriggerEditor(IRenderContext* context);
-    void RenderConditionEditor(IRenderContext* context);
-    void RenderActionEditor(IRenderContext* context);
-    
+    void Refresh();
+    void Save();
+
     SmartHomeAutomation automation;
     std::vector<AutomationTrigger> triggers;
     std::vector<AutomationCondition> conditions;
-    
-    int editingSection = 0;  // 0=none, 1=trigger, 2=condition, 3=action
-    int editingIndex = -1;
-    
-    float scrollOffset = 0;
-    
+    bool syncing = false;
+
+    std::shared_ptr<UltraCanvasLabel> title;
+    std::shared_ptr<UltraCanvasTextInput> nameInput;
+    std::shared_ptr<Kit::RowsModel> triggerModel;
+    std::shared_ptr<UltraCanvasListView> triggerList;
+    std::shared_ptr<Kit::RowsModel> conditionModel;
+    std::shared_ptr<UltraCanvasListView> conditionList;
+    std::shared_ptr<Kit::RowsModel> actionModel;
+    std::shared_ptr<UltraCanvasListView> actionList;
+    std::shared_ptr<UltraCanvasSwitch> enabledSwitch;
+    std::shared_ptr<UltraCanvasButton> saveButton;
+    std::shared_ptr<UltraCanvasButton> cancelButton;
+
     std::function<void(const SmartHomeAutomation&)> onSave;
     std::function<void()> onCancel;
 };
@@ -295,88 +280,82 @@ struct NetworkLink {
  * Displays smart home network as interactive graph showing
  * devices, connections, and signal quality.
  */
-class SmartHomeNetworkTopology : public UltraCanvasUIElement {
+class SmartHomeNetworkTopology : public UltraCanvasContainer {
 public:
-    // UltraCanvasUIElement has no default constructor: every widget is
-    // built with an id and its bounds, like the rest of the framework.
     SmartHomeNetworkTopology(const std::string& identifier, float x, float y, float w, float h);
     SmartHomeNetworkTopology(const std::string& identifier, float w, float h)
         : SmartHomeNetworkTopology(identifier, -1, -1, w, h) {}
     explicit SmartHomeNetworkTopology(const std::string& identifier)
         : SmartHomeNetworkTopology(identifier, -1, -1, -1, -1) {}
     virtual ~SmartHomeNetworkTopology();
-    
+
     /**
-     * @brief Refresh network data
+     * @brief Reload the devices and draw the network again
      */
     void RefreshTopology();
-    
+
     /**
-     * @brief Set protocol filter
-     * @param protocol Protocol to show (Unknown = all)
+     * @brief Show one protocol's devices only (Unknown = all)
      */
     void SetProtocolFilter(SmartHomeProtocolType protocol);
-    
+
     /**
-     * @brief Set layout algorithm
-     * @param algorithm Layout name ("force", "radial", "tree")
+     * @brief "force", "radial" (routers in the middle) or "tree" (routers on top)
      */
     void SetLayout(const std::string& algorithm);
-    
+
     /**
-     * @brief Enable/disable auto-refresh
-     * @param enable Enable flag
-     * @param intervalMs Refresh interval in milliseconds
+     * @brief Reload on an application timer every intervalMs (at least 250)
      */
     void SetAutoRefresh(bool enable, int intervalMs = 5000);
-    
-    /**
-     * @brief Get selected node
-     * @return Device ID of selected node (empty if none)
-     */
+
     std::string GetSelectedNode() const { return selectedNodeId; }
-    
-    void SetOnNodeSelected(std::function<void(const std::string&)> callback) { 
-        onNodeSelected = callback; 
+
+    void SetOnNodeSelected(std::function<void(const std::string&)> callback) {
+        onNodeSelected = callback;
     }
-    
+    // A double-click on a device: the host opens it.
+    void SetOnNodeActivated(std::function<void(const std::string&)> callback) {
+        onNodeActivated = callback;
+    }
+
+    const std::vector<TopologyViewNode>& GetNodes() const { return nodes; }
+    const std::vector<NetworkLink>& GetLinks() const { return links; }
+    UltraCanvasNodeDiagram* GetDiagram() const { return diagram.get(); }
+    UltraCanvasSegmentedControl* GetLayoutSelector() const { return layoutSelector.get(); }
+    UltraCanvasDropdown* GetProtocolChoice() const { return protocolChoice.get(); }
+
+    // Fits the diagram to its size the first time it is drawn after a
+    // refresh: laid out while hidden, it had no size to fit.
     void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
-    bool OnEvent(const UCEvent& event) override;
 
 private:
     void LoadNetworkData();
-    void CalculateLayout();
-    void ApplyForceLayout();
-    void ApplyRadialLayout();
-    void ApplyTreeLayout();
-    
-    void RenderLinks(IRenderContext* context);
-    void RenderNodes(IRenderContext* context);
-    void RenderLegend(IRenderContext* context);
-    void RenderNodeInfo(IRenderContext* context);
-    
+    void FillDiagram();
+    void FillProtocolChoice();
+    void ShowSelection();
+
     Color GetProtocolColor(SmartHomeProtocolType protocol) const;
     Color GetSignalColor(int signal) const;
-    
+
     std::vector<TopologyViewNode> nodes;
     std::vector<NetworkLink> links;
-    
+
     SmartHomeProtocolType protocolFilter = SmartHomeProtocolType::Unknown;
+    std::vector<SmartHomeProtocolType> protocolChoices;   // by dropdown index; [0] = all
     std::string layoutAlgorithm = "force";
-    
     std::string selectedNodeId;
-    std::string hoveredNodeId;
-    std::string draggingNodeId;
-    
-    float viewScale = 1.0f;
-    float viewOffsetX = 0;
-    float viewOffsetY = 0;
-    
-    bool autoRefresh = false;
-    int refreshInterval = 5000;
-    uint64_t lastRefresh = 0;
-    
+    bool syncing = false;
+    bool needsFit = false;
+    uint32_t refreshTimer = 0;
+
+    std::shared_ptr<UltraCanvasSegmentedControl> layoutSelector;
+    std::shared_ptr<UltraCanvasDropdown> protocolChoice;
+    std::shared_ptr<UltraCanvasNodeDiagram> diagram;
+    std::shared_ptr<UltraCanvasLabel> summary;
+
     std::function<void(const std::string&)> onNodeSelected;
+    std::function<void(const std::string&)> onNodeActivated;
 };
 
 // ============================================================================
@@ -411,68 +390,54 @@ struct EnergyStats {
  * Displays power consumption and energy usage with charts
  * and statistics.
  */
-class SmartHomeEnergyMonitor : public UltraCanvasUIElement {
+class SmartHomeEnergyMonitor : public UltraCanvasContainer {
 public:
-    // UltraCanvasUIElement has no default constructor: every widget is
-    // built with an id and its bounds, like the rest of the framework.
     SmartHomeEnergyMonitor(const std::string& identifier, float x, float y, float w, float h);
     SmartHomeEnergyMonitor(const std::string& identifier, float w, float h)
         : SmartHomeEnergyMonitor(identifier, -1, -1, w, h) {}
     explicit SmartHomeEnergyMonitor(const std::string& identifier)
         : SmartHomeEnergyMonitor(identifier, -1, -1, -1, -1) {}
     virtual ~SmartHomeEnergyMonitor();
-    
+
     /**
-     * @brief Set device to monitor
-     * @param deviceId Device ID (empty for whole-home)
+     * @brief The meter shown (empty = the whole home); clears the readings
      */
     void SetDevice(const std::string& deviceId);
-    
+
     /**
-     * @brief Set time range for chart
-     * @param hours Hours of history to show
+     * @brief Hours of readings the chart shows (at least 1)
      */
     void SetTimeRange(int hours);
-    
-    /**
-     * @brief Set electricity cost rate
-     * @param costPerKwh Cost per kWh
-     * @param currency Currency symbol
-     */
+
     void SetCostRate(float costPerKwh, const std::string& currency = "$");
-    
-    /**
-     * @brief Add energy reading
-     * @param reading Energy data point
-     */
+
     void AddReading(const EnergyReading& reading);
-    
-    /**
-     * @brief Get current statistics
-     * @return Energy stats
-     */
+
     EnergyStats GetStats() const { return stats; }
-    
-    void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
-    bool OnEvent(const UCEvent& event) override;
+
+    UltraCanvasSegmentedControl* GetModeSelector() const { return modeSelector.get(); }
+    UltraCanvasLineChartElement* GetChart() const { return chart.get(); }
 
 private:
-    void RenderCurrentPower(IRenderContext* context);
-    void RenderEnergyChart(IRenderContext* context);
-    void RenderStatistics(IRenderContext* context);
-    void RenderDeviceBreakdown(IRenderContext* context);
-    
     void CalculateStats();
-    
+    void Refresh();
+
     std::string deviceId;
     std::vector<EnergyReading> readings;
-    EnergyStats stats;
-    
+    EnergyStats stats{};
+
     int timeRangeHours = 24;
     float costPerKwh = 0.12f;
     std::string currency = "$";
-    
+
     int chartMode = 0;  // 0=power, 1=energy, 2=cost
+
+    std::shared_ptr<UltraCanvasLabel> powerLabel;
+    std::shared_ptr<UltraCanvasLabel> sourceLabel;
+    std::shared_ptr<UltraCanvasSegmentedControl> modeSelector;
+    std::shared_ptr<ChartDataVector> chartData;
+    std::shared_ptr<UltraCanvasLineChartElement> chart;
+    std::vector<std::shared_ptr<UltraCanvasLabel>> statValues;   // today, average, peak, cost
 };
 
 // ============================================================================
@@ -500,71 +465,71 @@ struct ScheduledEvent {
  * 
  * Calendar-style view for managing scheduled events.
  */
-class SmartHomeScheduler : public UltraCanvasUIElement {
+class SmartHomeSchedulerGrid;
+
+class SmartHomeScheduler : public UltraCanvasContainer {
 public:
-    // UltraCanvasUIElement has no default constructor: every widget is
-    // built with an id and its bounds, like the rest of the framework.
     SmartHomeScheduler(const std::string& identifier, float x, float y, float w, float h);
     SmartHomeScheduler(const std::string& identifier, float w, float h)
         : SmartHomeScheduler(identifier, -1, -1, w, h) {}
     explicit SmartHomeScheduler(const std::string& identifier)
         : SmartHomeScheduler(identifier, -1, -1, -1, -1) {}
     virtual ~SmartHomeScheduler();
-    
-    /**
-     * @brief Refresh scheduled events
-     */
+
     void RefreshSchedule();
-    
+
     /**
-     * @brief Add scheduled event
-     * @param event Event data
+     * @brief Add an event; the same EventId again is an edit
      */
     void AddEvent(const ScheduledEvent& event);
-    
-    /**
-     * @brief Remove scheduled event
-     * @param eventId Event ID
-     */
+
     void RemoveEvent(const std::string& eventId);
-    
-    /**
-     * @brief Toggle event enabled state
-     * @param eventId Event ID
-     */
+
     void ToggleEvent(const std::string& eventId);
-    
+
     /**
-     * @brief Set view mode
-     * @param mode View mode ("day", "week", "list")
+     * @brief "day", "week" or "list"; anything else is ignored
      */
     void SetViewMode(const std::string& mode);
-    
+    const std::string& GetViewMode() const { return viewMode; }
+
+    const std::vector<ScheduledEvent>& GetEvents() const { return events; }
+    const std::string& GetSelectedEvent() const { return selectedEventId; }
+
     void SetOnEventSelected(std::function<void(const std::string&)> callback) {
         onEventSelected = callback;
     }
+    // A press on an empty slot of the day or week grid: "HH:00" and the day (0 = Sunday).
     void SetOnEventCreate(std::function<void(const std::string&, int)> callback) {
         onEventCreate = callback;
     }
-    
-    void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
-    bool OnEvent(const UCEvent& event) override;
+
+    UltraCanvasSegmentedControl* GetViewSelector() const { return viewSelector.get(); }
+    UltraCanvasSegmentedControl* GetDaySelector() const { return daySelector.get(); }
+    UltraCanvasListView* GetEventList() const { return eventList.get(); }
+    UltraCanvasButton* GetToggleButton() const { return toggleButton.get(); }
+    UltraCanvasButton* GetRemoveButton() const { return removeButton.get(); }
 
 private:
-    void RenderDayView(IRenderContext* context);
-    void RenderWeekView(IRenderContext* context);
-    void RenderListView(IRenderContext* context);
-    void RenderTimeGrid(IRenderContext* context);
-    void RenderEvents(IRenderContext* context);
-    
+    friend class SmartHomeSchedulerGrid;
+    void Refresh();
+    void Select(const std::string& eventId);
+
     std::vector<ScheduledEvent> events;
     std::string viewMode = "week";
-    
-    int selectedDay = 0;        ///< 0-6 for week view
+
+    int selectedDay = 0;        ///< 0-6, the day the day view shows
     std::string selectedEventId;
-    
-    float scrollOffset = 0;
-    
+    bool syncing = false;
+
+    std::shared_ptr<UltraCanvasSegmentedControl> viewSelector;
+    std::shared_ptr<UltraCanvasSegmentedControl> daySelector;
+    std::shared_ptr<SmartHomeSchedulerGrid> grid;
+    std::shared_ptr<Kit::RowsModel> eventModel;
+    std::shared_ptr<UltraCanvasListView> eventList;
+    std::shared_ptr<UltraCanvasButton> toggleButton;
+    std::shared_ptr<UltraCanvasButton> removeButton;
+
     std::function<void(const std::string&)> onEventSelected;
     std::function<void(const std::string&, int)> onEventCreate;
 };
@@ -589,91 +554,81 @@ struct DeviceGroup {
  * 
  * Controls multiple devices simultaneously as a group.
  */
-class SmartHomeGroupControl : public UltraCanvasUIElement {
+class SmartHomeGroupControl : public UltraCanvasContainer {
 public:
-    // UltraCanvasUIElement has no default constructor: every widget is
-    // built with an id and its bounds, like the rest of the framework.
     SmartHomeGroupControl(const std::string& identifier, float x, float y, float w, float h);
     SmartHomeGroupControl(const std::string& identifier, float w, float h)
         : SmartHomeGroupControl(identifier, -1, -1, w, h) {}
     explicit SmartHomeGroupControl(const std::string& identifier)
         : SmartHomeGroupControl(identifier, -1, -1, -1, -1) {}
     virtual ~SmartHomeGroupControl();
-    
-    /**
-     * @brief Set group to control
-     * @param groupId Group ID
-     */
+
     void SetGroup(const std::string& groupId);
-    
-    /**
-     * @brief Create new group
-     * @param name Group name
-     * @param deviceIds Device IDs to include
-     */
+
     void CreateGroup(const std::string& name, const std::vector<std::string>& deviceIds);
-    
+
     /**
-     * @brief Add device to group
-     * @param deviceId Device ID
+     * @brief Add a device; one already in the group is not added twice
      */
     void AddDevice(const std::string& deviceId);
-    
-    /**
-     * @brief Remove device from group
-     * @param deviceId Device ID
-     */
+
     void RemoveDevice(const std::string& deviceId);
-    
-    /**
-     * @brief Turn all devices on
-     */
+
     void AllOn();
-    
-    /**
-     * @brief Turn all devices off
-     */
+
     void AllOff();
-    
+
     /**
-     * @brief Set brightness for all lights in group
-     * @param brightness Brightness 0-100
+     * @brief Brightness 0-100 for every device in the group
      */
     void SetGroupBrightness(uint8_t brightness);
-    
-    /**
-     * @brief Set color temperature for all lights
-     * @param colorTemp Color temperature in Kelvin
-     */
+
     void SetGroupColorTemp(uint16_t colorTemp);
-    
+
+    const DeviceGroup& GetGroup() const { return group; }
+
     void SetOnGroupChanged(std::function<void(const DeviceGroup&)> callback) {
         onGroupChanged = callback;
     }
-    
-    void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
-    bool OnEvent(const UCEvent& event) override;
+
+    UltraCanvasButton* GetAllOnButton() const { return allOnButton.get(); }
+    UltraCanvasButton* GetAllOffButton() const { return allOffButton.get(); }
+    UltraCanvasSlider* GetBrightnessSlider() const { return brightness.get(); }
+    UltraCanvasSlider* GetColorTempSlider() const { return colorTemp.get(); }
+    UltraCanvasListView* GetDeviceList() const { return deviceList.get(); }
+    UltraCanvasDropdown* GetDeviceChoice() const { return deviceChoice.get(); }
+    UltraCanvasButton* GetAddButton() const { return addButton.get(); }
+    UltraCanvasButton* GetRemoveButton() const { return removeButton.get(); }
 
 private:
-    void RenderGroupHeader(IRenderContext* context);
-    void RenderMasterControls(IRenderContext* context);
-    void RenderDeviceList(IRenderContext* context);
-    void RenderAddDeviceButton(IRenderContext* context);
-    
     void UpdateGroupState();
-    void SendGroupCommand(const std::string& command, 
+    void FillDeviceChoice();
+    void SendGroupCommand(const std::string& command,
                          const std::map<std::string, std::string>& params);
-    
+
     DeviceGroup group;
     std::vector<SmartHomeDeviceInfo> devices;
-    
+    std::vector<SmartHomeDeviceInfo> candidates;   // the dropdown's devices, by index
+
     uint8_t masterBrightness = 100;
     uint16_t masterColorTemp = 4000;
     bool masterOn = false;
-    
-    int dragging = 0;
-    float scrollOffset = 0;
-    
+    bool syncing = false;
+
+    std::shared_ptr<UltraCanvasLabel> title;
+    std::shared_ptr<UltraCanvasLabel> countLabel;
+    std::shared_ptr<UltraCanvasButton> allOnButton;
+    std::shared_ptr<UltraCanvasButton> allOffButton;
+    std::shared_ptr<UltraCanvasLabel> brightnessValue;
+    std::shared_ptr<UltraCanvasSlider> brightness;
+    std::shared_ptr<UltraCanvasLabel> colorTempValue;
+    std::shared_ptr<UltraCanvasSlider> colorTemp;
+    std::shared_ptr<Kit::RowsModel> deviceModel;
+    std::shared_ptr<UltraCanvasListView> deviceList;
+    std::shared_ptr<UltraCanvasDropdown> deviceChoice;
+    std::shared_ptr<UltraCanvasButton> addButton;
+    std::shared_ptr<UltraCanvasButton> removeButton;
+
     std::function<void(const DeviceGroup&)> onGroupChanged;
 };
 

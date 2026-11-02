@@ -69,7 +69,7 @@ std::size_t ReadCallback(char* buffer, std::size_t size, std::size_t nmemb,
 
 UltraNetResultCode MapCurlError(CURLcode rc) {
     switch (rc) {
-        case CURLE_OK:                      return UltraNetResultCode::Success;
+        case CURLE_OK:                      return UltraNetResultCode::Ok;
         case CURLE_URL_MALFORMAT:           return UltraNetResultCode::InvalidUrl;
         case CURLE_COULDNT_RESOLVE_HOST:    return UltraNetResultCode::HostNotFound;
         case CURLE_COULDNT_CONNECT:         return UltraNetResultCode::ConnectionRefused;

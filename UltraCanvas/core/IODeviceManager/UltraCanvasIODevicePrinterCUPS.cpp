@@ -62,7 +62,7 @@ IOSupplyType SupplyTypeFromMarker(const std::string& markerType) {
 // vendor-specific.
 IOSupplyColor SupplyColorFromHex(const std::string& hex) {
     if (hex.size() < 7 || hex[0] != '#') {
-        return IOSupplyColor::None;
+        return IOSupplyColor::NoColor;
     }
     const long rgb = std::strtol(hex.c_str() + 1, nullptr, 16);
     switch (rgb) {
@@ -77,7 +77,7 @@ IOSupplyColor SupplyColorFromHex(const std::string& hex) {
         case 0x0000FF: return IOSupplyColor::Blue;
         default: break;
     }
-    return IOSupplyColor::None;
+    return IOSupplyColor::NoColor;
 }
 
 // Splits the comma-separated lists CUPS uses for the marker-* attributes.
@@ -130,7 +130,7 @@ public:
         }
 
         switch (options.duplex) {
-            case IODuplexMode::None:
+            case IODuplexMode::OneSided:
                 Add(CUPS_SIDES, CUPS_SIDES_ONE_SIDED);
                 break;
             case IODuplexMode::LongEdge:

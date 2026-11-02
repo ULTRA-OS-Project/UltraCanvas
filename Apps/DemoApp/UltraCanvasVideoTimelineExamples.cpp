@@ -5,10 +5,14 @@
 // part: it installs providers that paint thumbnails and peaks on the spot,
 // and it answers every reported change by applying it to its own model and
 // feeding the model back - the loop a real editor runs against its engine.
+// Version: 1.1.0 - the shared page look (UltraCanvasDemoPageKit): the timeline and
+//                  its controls in a card, the controls in wrapping rows, every
+//                  label, checkbox and button sized to its text
 // Version: 1.0.0
-// Last Modified: 2026-10-11
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "UltraCanvasVideoTimeline.h"
 #include "UltraCanvasTimecodeField.h"
 #include "UltraCanvasButton.h"
@@ -251,27 +255,38 @@ bool ApplyChange(TimelineModel& model, const TimelineChange& c) {
     return false;
 }
 
+// A row of controls, centred on one line, wrapping when the card is narrow
+std::shared_ptr<UltraCanvasContainer> AddControlRow(const std::shared_ptr<UltraCanvasContainer>& parent,
+                                                    const std::string& id) {
+    auto row = DemoKit::AddRow(parent, id, 10);
+    row->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    return row;
+}
+
+// A button as wide as its text, at least the width it had
+std::shared_ptr<UltraCanvasButton> MakeTimelineButton(const std::string& id, const std::string& text) {
+    auto button = CreateButton(id, 0, 0, 0, 30, text);
+    CSSLayout::BoxConstraints limits;
+    limits.minWidth = CSSLayout::Dimension::Px(100);
+    button->boxConstraints = limits;
+    return button;
+}
+
 } // namespace
 
 std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateVideoTimelineExamples() {
-    auto container = std::make_shared<UltraCanvasContainer>("VideoTimelineExamples", 0, 0, 1000, 620);
-
-    auto title = CreateLabel("VideoTimelineTitle", 20, 12, 900, 28, "Video Timeline");
-    title->SetFontSize(18);
-    container->AddChild(title);
-    auto subtitle = CreateLabel("VideoTimelineSubtitle", 20, 40, 960, 40,
-                                "Drag clips to reorder the magnetic main track, drag their edges to trim, drag the overlay clip to any "
-                                "time, drag a transition's edge for its length. B is the blade, S splits at the playhead, Del deletes, "
-                                "M adds a marker, I and O set the work area, the wheel zooms and Shift+wheel scrolls.");
-    container->AddChild(subtitle);
+    auto page = DemoKit::CreatePage("VideoTimelineExamples", "Video Timeline",
+                                    "Drag clips to reorder the magnetic main track, drag their edges to trim, drag the overlay clip to any "
+                                    "time, drag a transition's edge for its length. B is the blade, S splits at the playhead, Del deletes, "
+                                    "M adds a marker, I and O set the work area, the wheel zooms and Shift+wheel scrolls.");
+    auto card = DemoKit::AddCard(page, "VideoTimelineCard");
 
     auto state = std::make_shared<TimelineDemoState>();
     state->model = BuildDemoModel();
 
-    auto status = CreateLabel("VideoTimelineStatus", 20, 88, 960, 22, "No change reported yet.");
-    container->AddChild(status);
+    auto status = DemoKit::AddText(card, "VideoTimelineStatus", "No change reported yet.");
 
-    auto timeline = CreateVideoTimeline("VideoTimeline", 20, 116, 960, 300);
+    auto timeline = CreateVideoTimeline("VideoTimeline", 0, 0, 960, 300);
     timeline->SetModel(state->model);
     timeline->SetShowBeats(true);
     timeline->thumbnailProvider = [](const std::string& source, double in, double out, int frames, int height,
@@ -322,12 +337,12 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateVideoTim
         status->SetText(text);
     };
     timeline->onClipActivated = [status = status.get()](const std::string& id) { status->SetText("Open the inspector for " + id); };
-    container->AddChild(timeline);
+    DemoKit::AddStretched(card, timeline);
 
     // controls under the timeline
-    auto toolLabel = CreateLabel("VideoTimelineToolLabel", 20, 432, 60, 30, "Tool");
-    container->AddChild(toolLabel);
-    auto toolDrop = CreateDropdown("VideoTimelineTool", 70, 432, 140, 30);
+    auto toolRow = AddControlRow(card, "VideoTimelineToolRow");
+    DemoKit::AddText(toolRow, "VideoTimelineToolLabel", "Tool");
+    auto toolDrop = CreateDropdown("VideoTimelineTool", 0, 0, 140, 30);
     toolDrop->AddItem("Select  V");
     toolDrop->AddItem("Blade  B");
     toolDrop->AddItem("Trim  T");
@@ -336,63 +351,61 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateVideoTim
     toolDrop->onSelectionChanged = [timeline = timeline.get()](int index, const DropdownItem&) {
         timeline->SetTool(index == 1 ? TimelineTool::Blade : index == 2 ? TimelineTool::Trim : index == 3 ? TimelineTool::Slip : TimelineTool::Select);
     };
-    container->AddChild(toolDrop);
+    DemoKit::AddFixed(toolRow, toolDrop);
     timeline->onToolChanged = [toolDrop = toolDrop.get()](TimelineTool tool) {
         toolDrop->SetSelectedIndex(tool == TimelineTool::Blade ? 1 : tool == TimelineTool::Trim ? 2 : tool == TimelineTool::Slip ? 3 : 0);
     };
 
-    auto snapBox = UltraCanvasCheckbox::CreateCheckbox("VideoTimelineSnap", 230, 432, 120, 30, "Snapping  N");
+    auto snapBox = UltraCanvasCheckbox::CreateCheckbox("VideoTimelineSnap", 0, 0, 0, 30, "Snapping  N");
     snapBox->SetChecked(true);
     snapBox->onStateChanged = [timeline = timeline.get()](CheckedState, CheckedState state) { timeline->SetSnapping(state == CheckedState::Checked); };
-    container->AddChild(snapBox);
-    auto beatsBox = UltraCanvasCheckbox::CreateCheckbox("VideoTimelineBeats", 360, 432, 120, 30, "Beat marks");
+    DemoKit::Add(toolRow, snapBox);
+    auto beatsBox = UltraCanvasCheckbox::CreateCheckbox("VideoTimelineBeats", 0, 0, 0, 30, "Beat marks");
     beatsBox->SetChecked(true);
     beatsBox->onStateChanged = [timeline = timeline.get()](CheckedState, CheckedState state) { timeline->SetShowBeats(state == CheckedState::Checked); };
-    container->AddChild(beatsBox);
-    auto darkBox = UltraCanvasCheckbox::CreateCheckbox("VideoTimelineDark", 490, 432, 130, 30, "Dark palette");
+    DemoKit::Add(toolRow, beatsBox);
+    auto darkBox = UltraCanvasCheckbox::CreateCheckbox("VideoTimelineDark", 0, 0, 0, 30, "Dark palette");
     darkBox->onStateChanged = [timeline = timeline.get()](CheckedState, CheckedState state) {
         timeline->SetStyle(state == CheckedState::Checked ? VideoTimelineStyle::DarkPalette() : VideoTimelineStyle::LightPalette());
     };
-    container->AddChild(darkBox);
+    DemoKit::Add(toolRow, darkBox);
 
-    auto fitButton = CreateButton("VideoTimelineFit", 640, 432, 100, 30, "Fit  Shift+Z");
+    auto fitButton = MakeTimelineButton("VideoTimelineFit", "Fit  Shift+Z");
     fitButton->onClick = [timeline = timeline.get()]() { timeline->ZoomToFit(); };
-    container->AddChild(fitButton);
-    auto resetButton = CreateButton("VideoTimelineReset", 750, 432, 100, 30, "Reset");
+    DemoKit::Add(toolRow, fitButton);
+    auto resetButton = MakeTimelineButton("VideoTimelineReset", "Reset");
     resetButton->onClick = [timeline = timeline.get(), state, status = status.get()]() {
         state->model = BuildDemoModel();
         state->changes = 0;
         timeline->SetModel(state->model);
         status->SetText("Reset.");
     };
-    container->AddChild(resetButton);
+    DemoKit::Add(toolRow, resetButton);
 
     // the playhead as a timecode field (type a time, Enter) and as the transport's readout
-    auto playheadLabel = CreateLabel("VideoTimelinePlayheadLabel", 20, 470, 70, 28, "Playhead");
-    container->AddChild(playheadLabel);
-    auto playheadField = CreateTimecodeField("VideoTimelinePlayhead", 90, 470, 120, 28);
+    auto playheadRow = AddControlRow(card, "VideoTimelinePlayheadRow");
+    DemoKit::AddText(playheadRow, "VideoTimelinePlayheadLabel", "Playhead");
+    auto playheadField = CreateTimecodeField("VideoTimelinePlayhead", 0, 0, 120, 28);
     playheadField->SetFrameRate(25.0);
     playheadField->SetMaximumFrames(static_cast<long long>(state->model.Length() * 25.0));
     playheadField->onCommit = [timeline = timeline.get()](long long frames) { timeline->SetPlayhead(frames / 25.0); };
-    container->AddChild(playheadField);
-    auto readout = CreateTimecodeField("VideoTimelineReadout", 230, 470, 170, 28);
+    DemoKit::AddFixed(playheadRow, playheadField);
+    auto readout = CreateTimecodeField("VideoTimelineReadout", 0, 0, 170, 28);
     readout->SetFrameRate(25.0);
     readout->SetReadout(true);
-    container->AddChild(readout);
-    auto hint = CreateLabel("VideoTimelinePlayheadHint", 410, 470, 560, 28,
-                            "Click a segment and press the arrow keys, or type digits and Enter; +12 is twelve frames later.");
-    container->AddChild(hint);
+    DemoKit::AddFixed(playheadRow, readout);
+    DemoKit::AddCaption(card, "VideoTimelinePlayheadHint",
+                        "Click a segment and press the arrow keys, or type digits and Enter; +12 is twelve frames later.");
     timeline->onPlayheadChanged = [playheadField = playheadField.get(), readout = readout.get()](double seconds) {
         playheadField->SetSeconds(seconds);
         readout->SetSeconds(seconds);
     };
 
-    auto notes = CreateLabel("VideoTimelineNotes", 20, 498, 960, 60,
-                             "The element never applies an edit: it reports it with the clips before and after, and this demo, "
-                             "standing in for the application, applies it to its model and calls SetModel. Thumbnails and the "
-                             "waveform are painted by the demo's providers; a real app decodes them with VideoFX.");
-    container->AddChild(notes);
-    return container;
+    DemoKit::AddCaption(card, "VideoTimelineNotes",
+                        "The element never applies an edit: it reports it with the clips before and after, and this demo, "
+                        "standing in for the application, applies it to its model and calls SetModel. Thumbnails and the "
+                        "waveform are painted by the demo's providers; a real app decodes them with VideoFX.");
+    return page;
 }
 
 } // namespace UltraCanvas

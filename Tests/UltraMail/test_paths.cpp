@@ -2,7 +2,8 @@
 // The application data folder (UltraMailPaths.h): each platform's rule,
 // where earlier versions left the data on macOS, and moving that data into
 // place once - the whole folder, vault included - without touching a folder
-// that already holds a mailbox.
+// that already holds a mailbox; and the folder made owner-only.
+// Version: 0.2.0 - SecureDataDir
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "test_framework.h"
@@ -184,3 +185,32 @@ TEST(paths_adopt_replaces_an_empty_folder_in_the_way) {
     std::error_code ec;
     fs::remove_all(root, ec);
 }
+
+#if !defined(_WIN32)
+TEST(paths_secure_data_dir_is_owner_only) {
+    const fs::path root = fs::temp_directory_path() / "ultramail-secure-dir";
+    std::error_code ec;
+    fs::remove_all(root, ec);
+    // As an earlier version left it: readable by everyone.
+    fs::create_directories(root / "vault");
+    { std::ofstream(root / "mail.db") << "x"; }
+    { std::ofstream(root / "vault" / "ultramail.vault") << "x"; }
+    fs::permissions(root, fs::perms::owner_all | fs::perms::group_read | fs::perms::group_exec
+                              | fs::perms::others_read | fs::perms::others_exec, fs::perm_options::replace);
+    fs::permissions(root / "mail.db", fs::perms::owner_read | fs::perms::owner_write | fs::perms::group_read
+                                          | fs::perms::others_read, fs::perm_options::replace);
+    std::string error;
+    REQUIRE(SecureDataDir(PathToUtf8(root), error));
+    REQUIRE(error.empty());
+    REQUIRE((fs::status(root).permissions() & fs::perms::all) == fs::perms::owner_all);
+    REQUIRE((fs::status(root / "vault").permissions() & fs::perms::all) == fs::perms::owner_all);
+    REQUIRE((fs::status(root / "mail.db").permissions() & fs::perms::all)
+            == (fs::perms::owner_read | fs::perms::owner_write));
+
+    // A new folder is created owner-only.
+    const fs::path fresh = root / "new" / "UltraMail";
+    REQUIRE(SecureDataDir(PathToUtf8(fresh), error));
+    REQUIRE((fs::status(fresh).permissions() & fs::perms::all) == fs::perms::owner_all);
+    fs::remove_all(root, ec);
+}
+#endif

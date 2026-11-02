@@ -1,4 +1,6 @@
 // Apps/UltraMail/ui/UltraMailPreferences.cpp
+// Version: 0.15.0 - attachments (bottom / right)
+// Version: 0.14.0 - warn_loan_offers
 // Version: 0.13.0 - switch_on_quiet_sec (alerts wait after the computer was switched on)
 // Version: 0.12.0 - folder_tree_content (current / all), account_order
 // Version: 0.11.0 - trusted_senders, blocked_senders
@@ -65,6 +67,7 @@ bool Preferences::Load(const std::string& path) {
         if (key == "warn_phishing")       scamWarnings.phishing      = ParseBool(value);
         if (key == "warn_romance")        scamWarnings.romance       = ParseBool(value);
         if (key == "warn_advance_fee")    scamWarnings.advanceFee    = ParseBool(value);
+        if (key == "warn_loan_offers")    scamWarnings.loanOffers    = ParseBool(value);
         if (key == "warn_government")     scamWarnings.government    = ParseBool(value);
         if (key == "warn_crypto_scams")   scamWarnings.cryptoScams   = ParseBool(value);
         if (key == "warn_crypto_caution") scamWarnings.cryptoCaution = ParseBool(value);
@@ -107,6 +110,9 @@ bool Preferences::Load(const std::string& path) {
             }
             catch (...) { /* keeps the default */ }
         }
+        if (key == "attachments")
+            attachmentPlacement = Trim(value) == "right" ? AttachmentPlacement::Right
+                                                         : AttachmentPlacement::Bottom;
         if (key == "folder_tree_content")
             folderTreeContent = Trim(value) == "current" ? FolderTreeContent::CurrentAccount
                                                          : FolderTreeContent::AllAccounts;
@@ -205,6 +211,8 @@ bool Preferences::Save(const std::string& path) const {
     file << "folder_tree_width_mode = "
          << (folderTreeWidthMode == FolderTreeWidthMode::FixedWidth ? "fixed" : "auto") << "\n";
     file << "folder_tree_width = " << folderTreeWidth << "\n";
+    file << "attachments = "
+         << (attachmentPlacement == AttachmentPlacement::Right ? "right" : "bottom") << "\n";
     file << "folder_tree_content = "
          << (folderTreeContent == FolderTreeContent::CurrentAccount ? "current" : "all") << "\n";
     file << "account_order = ";
@@ -225,6 +233,7 @@ bool Preferences::Save(const std::string& path) const {
     flag("warn_phishing",       scamWarnings.phishing);
     flag("warn_romance",        scamWarnings.romance);
     flag("warn_advance_fee",    scamWarnings.advanceFee);
+    flag("warn_loan_offers",    scamWarnings.loanOffers);
     flag("warn_government",     scamWarnings.government);
     flag("warn_crypto_scams",   scamWarnings.cryptoScams);
     flag("warn_crypto_caution", scamWarnings.cryptoCaution);

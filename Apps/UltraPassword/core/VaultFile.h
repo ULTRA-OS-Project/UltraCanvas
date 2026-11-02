@@ -54,7 +54,7 @@ namespace UltraPassword {
 inline const char* const kVaultExtension = "upwvault";
 
 enum class VaultError {
-    None,
+    NoError,
     BackendUnavailable,   // built without libsodium
     InvalidArgument,      // empty password, no vault open, ...
     AlreadyExists,        // Create() over an existing file
@@ -67,12 +67,12 @@ enum class VaultError {
 };
 
 struct VaultResult {
-    VaultError  code = VaultError::None;
+    VaultError  code = VaultError::NoError;
     std::string message;
-    bool Ok() const { return code == VaultError::None; }
+    bool Ok() const { return code == VaultError::NoError; }
     explicit operator bool() const { return Ok(); }
 
-    static VaultResult Success() { return {}; }
+    static VaultResult NoError() { return {}; }
     static VaultResult Fail(VaultError code, const std::string& message) { return {code, message}; }
 };
 

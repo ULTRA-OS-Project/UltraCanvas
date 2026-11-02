@@ -5,14 +5,18 @@
 // source: real playback levels of the bundled sample track (the default), two
 // synthetic generators, or manual peak/RMS sliders — plus a dBFS readout and
 // Reset().
+// Version: 1.2.0 - the shared page look (UltraCanvasDemoPageKit), which this
+//                  page's look became: no label has a fixed height any more,
+//                  the meters are as wide as their card, the cards wrap
 // Version: 1.1.0
-// Last Modified: 2026-08-09
+// Last Modified: 2026-10-23
 // V1.1.0: "Sample track playback" is now the pre-selected source, and the
 //   embedded player carries the Pixabay artist credit for the bundled track
 //   (clicking it opens the artist page in the system browser).
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "UltraCanvasAudioRecorderElement.h"   // UltraCanvasLevelMeter
 #include "UltraCanvasAudioPlayerElement.h"
 #include "UltraCanvasAudioDevices.h"
@@ -149,79 +153,22 @@ namespace UltraCanvas {
 // =============================================================================
     std::shared_ptr<UltraCanvasUIElement>
     UltraCanvasDemoApplication::CreateLevelMeterExamples() {
-        const int CONTAINER_W = 1180;
-        const int CONTAINER_H = 800;
-        const int PAD = 16;
-
-        auto root = std::make_shared<UltraCanvasContainer>("LvlRoot", 0, 0, CONTAINER_W, CONTAINER_H);
-        root->SetBackgroundColor(Color(248, 249, 252, 255));
-        root->SetPadding(PAD);
-        root->layout.SetFlexColumn().SetFlexGap(10)
-                    .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-
-        auto addFlex = [](const std::shared_ptr<UltraCanvasContainer>& parent,
-                          const std::shared_ptr<UltraCanvasUIElement>& child, float grow) {
-            child->layoutItem.SetFlexGrow(grow).SetFlexShrink(grow > 0 ? 1.f : 0.f)
-                             .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-            parent->AddChild(child);
-        };
-        auto fixedHeight = [](const std::shared_ptr<UltraCanvasUIElement>& el, float h) {
-            el->size.height = CSSLayout::Dimension::Px(h);
-        };
-
-        auto title = std::make_shared<UltraCanvasLabel>("LvlTitle", 0, 0, 0, 30);
-        title->SetText("Level Meter & VU Strip");
-        title->SetFontSize(18);
-        title->SetFontWeight(FontWeight::Bold);
-        title->SetTextColor(Color(30, 41, 59, 255));
-        addFlex(root, title, 0);
-
-        auto subtitle = std::make_shared<UltraCanvasLabel>("LvlSubtitle", 0, 0, 0, 34);
-        subtitle->SetText("UltraCanvasLevelMeter in both render modes: the three-zone VU bar "
-                          "(green / yellow / red peak fill with an RMS tick) and the scrolling "
-                          "waveform strip. Colours are fully themeable via SetColors(). Drive the "
-                          "meters from real playback levels of the sample track, a synthetic "
-                          "generator, or the manual sliders.");
-        subtitle->SetFontSize(11);
-        subtitle->SetWrap(TextWrap::WrapWord);
-        subtitle->SetTextColor(Color(100, 110, 125, 255));
-        addFlex(root, subtitle, 0);
+        auto root = DemoKit::CreatePage("LvlRoot", "Level Meter & VU Strip",
+                "UltraCanvasLevelMeter in both render modes: the three-zone VU bar "
+                "(green / yellow / red peak fill with an RMS tick) and the scrolling "
+                "waveform strip. Colours are fully themeable via SetColors(). Drive the "
+                "meters from real playback levels of the sample track, a synthetic "
+                "generator, or the manual sliders.");
 
         auto st = std::make_shared<LevelMeterDemoState>();
 
-        // ----- Card helpers -----
-        auto makeCard = [](const std::string& id) {
-            auto card = std::make_shared<UltraCanvasContainer>(id, 0, 0, 560, 300);
-            card->SetBackgroundColor(Color(255, 255, 255, 255));
-            card->SetBorders(1.0f, Color(224, 227, 235, 255), 10.0f);
-            card->SetPadding(14);
-            card->layout.SetFlexColumn().SetFlexGap(6)
-                        .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-            return card;
-        };
-        auto makeCardTitle = [&](const std::string& id, const std::string& text) {
-            auto l = std::make_shared<UltraCanvasLabel>(id, 0, 0, 0, 20);
-            l->SetText(text);
-            l->SetFontSize(13);
-            l->SetFontWeight(FontWeight::Bold);
-            l->SetTextColor(Color(30, 41, 59, 255));
-            return l;
-        };
-        auto makeCaption = [&](const std::string& id, const std::string& text) {
-            auto l = std::make_shared<UltraCanvasLabel>(id, 0, 0, 0, 16);
-            l->SetText(text);
-            l->SetFontSize(10);
-            l->SetTextColor(Color(130, 138, 152, 255));
-            return l;
-        };
+        // The two meter cards side by side; they wrap under each other in a
+        // narrow window.
+        auto cardsRow = DemoKit::AddRow(root, "LvlCards");
 
         // ----- Card A: three-zone VU meters in four themes -----
-        auto vuCard = makeCard("LvlVuCard");
+        auto vuCard = DemoKit::AddCard(cardsRow, "LvlVuCard", "Three-zone VU meter");
         {
-            auto cardTitle = makeCardTitle("LvlVuTitle", "Three-zone VU meter");
-            fixedHeight(cardTitle, 20);
-            addFlex(vuCard, cardTitle, 0);
-
             struct VuTheme {
                 const char* name;
                 float height;
@@ -239,96 +186,59 @@ namespace UltraCanvas {
             };
             int idx = 0;
             for (const auto& theme : themes) {
-                auto caption = makeCaption("LvlVuCap" + std::to_string(idx), theme.name);
-                fixedHeight(caption, 16);
-                addFlex(vuCard, caption, 0);
+                DemoKit::AddCaption(vuCard, "LvlVuCap" + std::to_string(idx), theme.name);
 
                 auto meter = std::make_shared<UltraCanvasLevelMeter>(
                         "LvlVu" + std::to_string(idx), 500, theme.height);
                 if (theme.custom)
                     meter->SetColors(theme.bg, theme.low, theme.mid, theme.high);
-                fixedHeight(meter, theme.height);
-                addFlex(vuCard, meter, 0);
+                // A bar as wide as the card; its height is the theme's.
+                DemoKit::AddStretched(vuCard, meter);
                 st->meters.push_back(meter);
                 ++idx;
             }
 
-            auto note = makeCaption("LvlVuNote",
+            DemoKit::AddCaption(vuCard, "LvlVuNote",
                     "Fill = peak level across the green / yellow / red zones "
                     "(60% / 85% thresholds); the dark tick marks the RMS level.");
-            fixedHeight(note, 30);
-            note->SetWrap(TextWrap::WrapWord);
-            addFlex(vuCard, note, 1);
         }
 
         // ----- Card B: scrolling waveform strips in two themes -----
-        auto stripCard = makeCard("LvlStripCard");
+        auto stripCard = DemoKit::AddCard(cardsRow, "LvlStripCard", "Scrolling waveform strip");
         {
-            auto cardTitle = makeCardTitle("LvlStripTitle", "Scrolling waveform strip");
-            fixedHeight(cardTitle, 20);
-            addFlex(stripCard, cardTitle, 0);
-
-            auto cap1 = makeCaption("LvlStripCap0", "Classic (default colours)");
-            fixedHeight(cap1, 16);
-            addFlex(stripCard, cap1, 0);
+            DemoKit::AddCaption(stripCard, "LvlStripCap0", "Classic (default colours)");
             auto strip1 = std::make_shared<UltraCanvasLevelMeter>("LvlStrip0", 500, 66);
             strip1->SetWaveformMode(true);
-            fixedHeight(strip1, 66);
-            addFlex(stripCard, strip1, 0);
+            DemoKit::AddStretched(stripCard, strip1);
             st->strips.push_back(strip1);
 
-            auto cap2 = makeCaption("LvlStripCap1", "Violet on dark");
-            fixedHeight(cap2, 16);
-            addFlex(stripCard, cap2, 0);
+            DemoKit::AddCaption(stripCard, "LvlStripCap1", "Violet on dark");
             auto strip2 = std::make_shared<UltraCanvasLevelMeter>("LvlStrip1", 500, 66);
             strip2->SetWaveformMode(true);
             strip2->SetColors(Color(24, 24, 32), Color(167, 139, 250),
                               Color(196, 181, 253), Color(233, 213, 255));
-            fixedHeight(strip2, 66);
-            addFlex(stripCard, strip2, 0);
+            DemoKit::AddStretched(stripCard, strip2);
             st->strips.push_back(strip2);
 
-            auto note = makeCaption("LvlStripNote",
+            DemoKit::AddCaption(stripCard, "LvlStripNote",
                     "Each tick pushes the current peak into a 200-sample history "
                     "(PushWaveformSample), drawn as mirrored bars around the centre line.");
-            fixedHeight(note, 30);
-            note->SetWrap(TextWrap::WrapWord);
-            addFlex(stripCard, note, 1);
         }
 
-        auto cardsRow = std::make_shared<UltraCanvasContainer>("LvlCards", 0, 0, CONTAINER_W - 2 * PAD, 310);
-        cardsRow->layout.SetFlexRow().SetFlexGap(12)
-                        .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-        fixedHeight(cardsRow, 310);
-        addFlex(cardsRow, vuCard, 1);
-        addFlex(cardsRow, stripCard, 1);
-        addFlex(root, cardsRow, 0);
-
         // ----- Source / control card -----
-        auto srcCard = makeCard("LvlSrcCard");
+        auto srcCard = DemoKit::AddCard(root, "LvlSrcCard", "Signal source");
         {
-            auto cardTitle = makeCardTitle("LvlSrcTitle", "Signal source");
-            fixedHeight(cardTitle, 20);
-            addFlex(srcCard, cardTitle, 0);
+            // One row: source dropdown | manual sliders | reset. It wraps when
+            // the captions grow.
+            auto ctrlRow = DemoKit::AddRow(srcCard, "LvlCtrlRow", 16);
 
-            // One row: source dropdown | manual sliders | reset | dBFS readout.
-            auto ctrlRow = std::make_shared<UltraCanvasContainer>("LvlCtrlRow", 0, 0, 0, 56);
-            ctrlRow->layout.SetFlexRow().SetFlexGap(16)
-                           .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-            fixedHeight(ctrlRow, 56);
-
-            auto makeStack = [&](const std::string& id, const std::string& labelText,
-                                 const std::shared_ptr<UltraCanvasUIElement>& control,
-                                 float width) {
-                auto stack = std::make_shared<UltraCanvasContainer>(id, 0, 0, width, 56);
-                stack->layout.SetFlexColumn().SetFlexGap(4)
-                             .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-                stack->size.width = CSSLayout::Dimension::Px(width);
-                auto l = makeCaption(id + "Lbl", labelText);
-                fixedHeight(l, 14);
-                addFlex(stack, l, 0);
-                fixedHeight(control, 26);
-                addFlex(stack, control, 0);
+            // A caption over its control; the stack is as wide as the wider
+            // of the two.
+            auto makeStack = [](const std::string& id, const std::string& labelText,
+                                const std::shared_ptr<UltraCanvasUIElement>& control) {
+                auto stack = DemoKit::CreateColumn(id, 4);
+                DemoKit::AddCaption(stack, id + "Lbl", labelText);
+                DemoKit::AddFixed(stack, control);
                 return stack;
             };
 
@@ -346,74 +256,62 @@ namespace UltraCanvas {
                     if (auto p = st->player.lock()) p->Play();
                 }
             };
-            addFlex(ctrlRow, makeStack("LvlSrcStack", "Source:", srcDd, 230), 0);
+            DemoKit::Add(ctrlRow, makeStack("LvlSrcStack", "Source:", srcDd));
 
             auto peakSlider = std::make_shared<UltraCanvasSlider>("LvlManPeak", 0, 0, 200, 26);
             peakSlider->SetRange(0.0f, 1.0f);
             peakSlider->SetStep(0.01f);
             peakSlider->SetValue(st->manualPeak);
             peakSlider->onValueChanged = [st](float v) { st->manualPeak = v; };
-            addFlex(ctrlRow, makeStack("LvlPeakStack", "Manual peak:", peakSlider, 200), 0);
+            DemoKit::Add(ctrlRow, makeStack("LvlPeakStack", "Manual peak:", peakSlider));
 
             auto rmsSlider = std::make_shared<UltraCanvasSlider>("LvlManRms", 0, 0, 200, 26);
             rmsSlider->SetRange(0.0f, 1.0f);
             rmsSlider->SetStep(0.01f);
             rmsSlider->SetValue(st->manualRms);
             rmsSlider->onValueChanged = [st](float v) { st->manualRms = v; };
-            addFlex(ctrlRow, makeStack("LvlRmsStack", "Manual RMS:", rmsSlider, 200), 0);
+            DemoKit::Add(ctrlRow, makeStack("LvlRmsStack", "Manual RMS:", rmsSlider));
 
-            auto resetBtn = std::make_shared<UltraCanvasButton>("LvlReset", 0, 0, 110, 26, "Reset meters");
+            // As wide as its text, at least the old 110 px.
+            auto resetBtn = std::make_shared<UltraCanvasButton>("LvlReset", 0, 0, 0, 26, "Reset meters");
+            CSSLayout::BoxConstraints resetLimits;
+            resetLimits.minWidth = CSSLayout::Dimension::Px(110);
+            resetBtn->boxConstraints = resetLimits;
             resetBtn->SetOnClick([st] {
                 for (auto& w : st->meters) if (auto m = w.lock()) m->Reset();
                 for (auto& w : st->strips) if (auto m = w.lock()) m->Reset();
                 st->lastPeak = st->lastRms = 0.0f;
             });
-            addFlex(ctrlRow, makeStack("LvlResetStack", "Reset() clears levels & history:",
-                                       resetBtn, 200), 0);
-
-            addFlex(srcCard, ctrlRow, 0);
+            DemoKit::Add(ctrlRow, makeStack("LvlResetStack", "Reset() clears levels & history:",
+                                            resetBtn));
 
             // dBFS readout, updated every tick.
-            auto readout = std::make_shared<UltraCanvasLabel>("LvlReadout", 0, 0, 0, 20);
-            readout->SetFontSize(12);
+            auto readout = DemoKit::AddText(srcCard, "LvlReadout", "Peak  -inf dBFS      RMS  -inf dBFS");
             readout->SetFontWeight(FontWeight::Bold);
-            readout->SetTextColor(Color(30, 41, 59, 255));
-            readout->SetText("Peak  -inf dBFS      RMS  -inf dBFS");
-            fixedHeight(readout, 20);
-            addFlex(srcCard, readout, 0);
+            readout->SetTextColor(DemoKit::TitleText());
             st->readout = readout;
 
             // Embedded audio player with the bundled sample track pre-loaded.
-            auto playerLabel = makeCaption("LvlPlayerLbl",
+            DemoKit::AddCaption(srcCard, "LvlPlayerLbl",
                     "Sample track for the pre-selected playback source — press Play to drive "
                     "the meters (levels are computed from the decoded PCM at the playhead):");
-            fixedHeight(playerLabel, 16);
-            addFlex(srcCard, playerLabel, 0);
 
             auto player = CreateAudioPlayer("LvlPlayer", 0, 0, 640, 56);
-            fixedHeight(player, 56);
-            addFlex(srcCard, player, 0);
+            DemoKit::AddFixed(srcCard, player);
             st->player = player;
 
             // Artist credit for the bundled track, directly under the player.
             // The row keeps the clickable area hugging the link text instead of
             // stretching it across the whole card.
-            auto creditRow = std::make_shared<UltraCanvasContainer>("LvlCreditRow", 0, 0, 0, 16);
-            creditRow->layout.SetFlexRow().SetFlexGap(0)
-                             .SetFlexAlignItems(CSSLayout::AlignItems::Center);
-            fixedHeight(creditRow, 16);
-            auto credit = makeCaption("LvlCredit", kSampleTrackCreditText);
-            credit->SetTextColor(Color(37, 99, 235, 255));           // link blue
-            credit->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+            auto creditRow = DemoKit::AddRow(srcCard, "LvlCreditRow", 0);
+            auto credit = DemoKit::CreateCaption("LvlCredit", kSampleTrackCreditText);
+            credit->SetTextColor(DemoKit::LinkText());
             // Hand cursor comes with onClick; OpenURL hands the artist page to
             // the system browser.
             credit->onClick = [] { OpenURL(kSampleTrackCreditUrl); };
-            creditRow->AddChild(credit);
-            addFlex(srcCard, creditRow, 0);
+            DemoKit::Add(creditRow, credit);
 
-            auto status = makeCaption("LvlStatus", "");
-            fixedHeight(status, 16);
-            addFlex(srcCard, status, 0);
+            auto status = DemoKit::AddCaption(srcCard, "LvlStatus", "");
 
             const std::string audioPath = NormalizePath(
                     GetResourcesDir() + "media/audios/the_mountain-cinematic-489998.mp3");
@@ -436,7 +334,6 @@ namespace UltraCanvas {
                 status->SetTextColor(Color(180, 60, 60, 255));
             }
         }
-        addFlex(root, srcCard, 0);
 
         // ----- Animation timer (~30 fps). Stops itself once the page is gone. -----
         const double dt = 0.033;

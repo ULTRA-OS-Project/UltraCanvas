@@ -118,11 +118,44 @@ ULTRACANVAS_DEFINE_ELEMENT_PLUGIN(Init)
 ```
 
 The macro defines the one exported symbol, `UltraCanvas_PluginInit`, with the
-handshake already in place: it verifies the host's `abiVersion`, compares the
-host's `frameworkAbiTag` (compiler + standard library + C++ standard +
-descriptor version, e.g. `gcc-libstdc++-cxx20-uc1`) against the plugin's own,
-and fences exceptions. A mismatched or unhappy plugin is skipped with a log
-line — never half-registered. One DSO may register many descriptors.
+handshake already in place: it requires the host's table (`abiVersion`) to be
+at least the one the plugin was built for - the table only grows at its end,
+so a newer host still loads an older plugin, while a plugin built for a newer
+table than the host's refuses instead of calling members that are not there -
+compares the host's `frameworkAbiTag` (compiler + standard library + C++
+standard + descriptor version, e.g. `gcc-libstdc++-cxx20-uc1`) against the
+plugin's own, and fences exceptions. A mismatched or unhappy plugin is skipped
+with a log line — never half-registered. One DSO may register many
+descriptors.
+
+Changing the header is changing that contract: append a member to
+`UltraCanvasPluginHost` and bump `ULTRACANVAS_PLUGIN_HOST_ABI_VERSION`, or
+change a type that crosses to the plug-ins (`UCElementDescriptor` and friends)
+and bump the `ucN` of `ULTRACANVAS_FRAMEWORK_ABI_TAG`, then run
+`python3 scripts/check_plugin_abi.py --update`. CI (`plugin-abi.yml`) fails
+a change to the header that moves neither; a change that is not part of the
+contract is recorded with `--update --no-abi-change "why"`.
+
+**The classes themselves.** What a plugin's `create` returns is a class
+derived from `UltraCanvasUIElement` - often from a deeper framework class,
+as the charts derive from the chart engine's element - and the host calls
+its virtual functions and reads its members at places and offsets the
+framework's headers fix. Those headers change all the time and carry no
+version anybody bumps, so neither number above covers them. Instead CMake
+writes `UltraCanvasFrameworkHeadersId.h` when it configures: a hash of every
+header under `include/`, `libspecific/` and `OS/` (the way a framework DLL's
+build id is taken, `cmake/UltraCanvasLibraryBuildId.cmake`), in the build's
+`generated/include`, which the library's interface carries and the install
+puts beside the other headers. The macro exports it as a second symbol,
+`UltraCanvas_PluginHeadersId`, and the loader reads that before anything
+else: a plugin that answers another id, `"unknown"` (compiled without the
+generated header), or nothing (built before the symbol existed) is skipped -
+`UltraCanvas_PluginInit` is never called - with a log line naming both ids and
+saying to rebuild it. A plugin built separately from the framework therefore
+works with exactly the framework build whose headers it was compiled
+against, and is rebuilt for any other; one built in the same tree always
+matches. Like the DLL build id the hash is taken at configure time, so a
+header edited without a reconfigure leaves the id as it was on both sides.
 
 ## Loader behaviour
 
