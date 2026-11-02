@@ -694,6 +694,14 @@ jobs:
           for p in libheif-plugin-libde265 libheif-plugin-aomdec; do
             apt-cache show "$p" >/dev/null 2>&1 && scripts/ci-apt.sh install "$p"
           done
+          # The codecs the libheif built from source below links (see that
+          # step): HEVC and AV1 decoding, AV1 encoding, JPEG and JPEG 2000;
+          # kvazaar for HEIC encoding where apt packages it (jammy's universe
+          # does; the step builds it from source otherwise), never x265.
+          scripts/ci-apt.sh install libde265-dev libaom-dev libdav1d-dev libjpeg-dev libopenjp2-7-dev
+          if apt-cache show libkvazaar-dev >/dev/null 2>&1; then
+            scripts/ci-apt.sh install libkvazaar-dev
+          fi
           # JPEG XL: ubuntu-22.04 has no libjxl package (its libvips is built
           # without one). libjxl is built from source below and the
           # framework's own jxlload / jxlsave (VipsJxlPlugin) stand in for
@@ -957,6 +965,84 @@ jobs:
           sudo cp -a .libjxl/. /usr/local/
           sudo ldconfig
           pkg-config --modversion libjxl
+
+      # ===== Linux: libheif from source (ubuntu-22.04 packages 1.12, with x265) =====
+      # The same arrangement as the Windows row's rebuild: a current libheif
+      # with its codecs linked in (no plug-in loading), HEIC encoded by
+      # kvazaar (BSD-3-Clause) and never by x265 (GPL), so the core every
+      # application links carries no GPL encoder. Installed under /usr/local,
+      # ahead of the distro's libheif.so.1 on the loader's path, so libvips'
+      # heifload uses it too and the package closure carries it.
+      - name: Restore the libheif build (Linux)
+        if: runner.os == 'Linux'
+        id: libheif-linux-cache
+        uses: actions/cache@v5
+        with:
+          path: .libheif
+          key: libheif-nogpl-v1-${{ matrix.os }}-1.19.8-kvazaar-2.3.1
+      - name: Build libheif from source without x265 (Linux)
+        if: runner.os == 'Linux' && steps.libheif-linux-cache.outputs.cache-hit != 'true'
+        timeout-minutes: 30
+        env:
+          LIBHEIF_VERSION: 1.19.8
+          KVAZAAR_VERSION: 2.3.1
+        run: |
+          set -euo pipefail
+          prefix="$PWD/.libheif"
+          src="$RUNNER_TEMP/libheif-src"
+          rm -rf "$src" && mkdir -p "$src"
+          # kvazaar from source where apt has no package for it
+          if ! pkg-config --exists kvazaar; then
+            curl -fsSL --retry 5 --retry-all-errors \
+              "https://github.com/ultravideo/kvazaar/releases/download/v${KVAZAAR_VERSION}/kvazaar-${KVAZAAR_VERSION}.tar.xz" |
+              tar -xJ -C "$src"
+            ( cd "$src/kvazaar-${KVAZAAR_VERSION}" && ./configure --prefix="$prefix" --disable-static && make -j"$(nproc)" && make install )
+          fi
+          curl -fsSL --retry 5 --retry-all-errors \
+            "https://github.com/strukturag/libheif/releases/download/v${LIBHEIF_VERSION}/libheif-${LIBHEIF_VERSION}.tar.gz" |
+            tar -xz -C "$src"
+          PKG_CONFIG_PATH="$prefix/lib/pkgconfig:${PKG_CONFIG_PATH:-}" \
+          cmake -S "$src/libheif-${LIBHEIF_VERSION}" -B "$src/build" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_SHARED_LIBS=ON \
+            -DBUILD_TESTING=OFF \
+            -DENABLE_PLUGIN_LOADING=OFF \
+            -DWITH_HEADER_COMPRESSION=ON \
+            -DWITH_LIBDE265=ON \
+            -DWITH_X265=OFF \
+            -DWITH_AOM_DECODER=ON \
+            -DWITH_AOM_ENCODER=ON \
+            -DWITH_DAV1D=ON \
+            -DWITH_RAV1E=OFF \
+            -DWITH_SvtEnc=OFF \
+            -DWITH_KVAZAAR=ON \
+            -DWITH_JPEG_DECODER=ON \
+            -DWITH_JPEG_ENCODER=ON \
+            -DWITH_OpenJPEG_DECODER=ON \
+            -DWITH_OpenJPEG_ENCODER=ON \
+            -DWITH_OPENJPH_ENCODER=OFF \
+            -DWITH_LIBSHARPYUV=OFF \
+            -DWITH_EXAMPLES=OFF \
+            -DWITH_GDK_PIXBUF=OFF \
+            -DCMAKE_INSTALL_PREFIX="$prefix"
+          cmake --build "$src/build" -j"$(nproc)"
+          cmake --install "$src/build"
+      - name: Install the libheif build (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          sudo cp -a .libheif/. /usr/local/
+          sudo ldconfig
+          echo "libheif $(pkg-config --modversion libheif) from $(pkg-config --variable=libdir libheif)"
+          lib=$(ldconfig -p | awk '/libheif\.so\.1 /{print $NF; exit}')
+          echo "the loader resolves libheif.so.1 to $lib"
+          case "$lib" in /usr/local/*) ;; *) echo "::error::the distro's libheif still shadows the one built here"; exit 1 ;; esac
+          if ldd "$lib" | grep -qi 'x26[45]'; then
+            echo "::error::libheif still links a GPL encoder (x264 / x265)"; exit 1
+          fi
+          if ! ldd "$lib" | grep -qi kvazaar; then
+            echo "::error::libheif does not link kvazaar - no HEIC encoder"; exit 1
+          fi
 
       # The runner is deliberately NOT moved to ubuntu-24.04, which does ship
       # Clang 16: this leg is pinned to 22.04 for glibc 2.35, which is what
@@ -1709,10 +1795,11 @@ jobs:
       # app links; the step fails if one turns up. Windows: MSYS2's codecs
       # with libheif rebuilt without x265 (above), so kvazaar writes HEIC and
       # both formats read and write.
-      # ULTRACANVAS_BUILD_HEIF_TESTS builds it without BUILD_TESTS; Linux runs
-      # it in image-codecs.yml, with every libheif plug-in installed.
-      - name: Run HEIF/AVIF test (macOS/Windows)
-        if: runner.os != 'Linux'
+      # Linux: the libheif built from source above, held to the same as
+      # Windows (kvazaar, no x265). ULTRACANVAS_BUILD_HEIF_TESTS builds it
+      # without BUILD_TESTS; image-codecs.yml runs it on Ubuntu 24.04's own
+      # libheif with every plug-in installed.
+      - name: Run HEIF/AVIF test
         working-directory: build
         env:
           UC_HEIF_EXPECT: ${{ runner.os == 'macOS' && 'decode=heic,avif encode=avif no-encode=heic no-encoder=x265,x264' || 'decode=heic,avif encode=heic,avif encoder=kvazaar no-encoder=x265,x264' }}
