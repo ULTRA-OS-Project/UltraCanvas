@@ -12,6 +12,7 @@
   - [NodeDiagramNode](#nodediagramnode)
   - [NodeDiagramLink](#nodediagramlink)
   - [NodeDiagramSizing (2.2.0)](#nodediagramsizing-220)
+  - [NodeDiagramLabelFit (2.4.0)](#nodediagramlabelfit-240)
   - [NodeDiagramGroup (2.2.0)](#nodediagramgroup-220)
   - [NodeDiagramLegendConfig (2.2.0)](#nodediagramlegendconfig-220)
 - [Class Reference](#class-reference)
@@ -22,6 +23,7 @@
   - [Link Management](#link-management)
   - [Layout](#layout)
   - [Data-driven node sizing (2.2.0)](#data-driven-node-sizing-220)
+  - [Label fit (2.4.0)](#label-fit-240)
   - [Cluster containers (2.2.0)](#cluster-containers-220)
   - [Color legend (2.2.0)](#color-legend-220)
   - [Styling & Theme](#styling--theme)
@@ -52,7 +54,15 @@
 **Namespace:** `UltraCanvas`
 **Header:** `include/Plugins/Diagrams/UltraCanvasNodeDiagram.h`
 **Base Class:** `UltraCanvasUIElement`
-**Version:** 2.2.0
+**Version:** 2.4.0
+
+> **Since 2.4.0** a label never runs out of its node. The **label fit**
+> (`NodeLabelFit`) shrinks the font to a minimum and grows the node for what
+> still does not fit, per shape - a circle grows to the chord its name needs,
+> a diamond to twice that. A node that grows pushes its neighbours apart. The
+> data-driven sizing keeps every node at least as large as its label, and
+> every layout ends with no two nodes overlapping. See
+> [Label fit](#label-fit-240).
 
 > **Since 2.2.0** the component covers organizational-network work: data-driven
 > node sizing (`NodeSizeMode::ByDegree` / `ByValue`), cluster containers
@@ -99,6 +109,7 @@ UltraCanvasUIElement
 - **Cluster containers** (2.2.0): auto-fitted, titled boundary boxes around node sets
 - **Group cohesion** (2.2.0): pulls cluster members together during force-directed layout
 - **Color legend overlay** (2.2.0), placeable in any corner
+- **Label fit** (2.4.0): the font shrinks or the node grows, so a label never runs out of its node; no layout leaves nodes overlapping
 
 ## Data Structures
 
@@ -136,6 +147,14 @@ enum class NodeDegreeMode {
     Total,      // incoming + outgoing (default)
     Incoming,
     Outgoing
+};
+
+// NEW in 2.4.0: what happens when a label does not fit its node
+enum class NodeLabelFit {
+    Overflow,        // 2.3 behaviour: drawn at its font size, whatever the node
+    ShrinkFont,      // the font shrinks until the label fits, to minFontSize; then an ellipsis
+    GrowNode,        // the node grows until the label fits at its font size
+    ShrinkThenGrow   // the font shrinks to minFontSize first; what still does not fit grows the node (default)
 };
 
 // NOTE: no enumerator may be named "None" - X11's Xlib.h defines None as a macro.
@@ -251,6 +270,27 @@ degree-9 hub look nine times more important than a degree-1 leaf instead of thre
 `NodeDiagramNode` gained a `value` field (default `1.0`) that drives
 `NodeSizeMode::ByValue`, plus `baseWidth` / `baseHeight`, which capture the size a
 node was authored with so switching back to `NodeSizeMode::Fixed` restores it exactly.
+
+Since 2.4.0 the computed size is a floor, not the size: a node whose label
+needs more room under the [label fit](#label-fit-240) is larger than the data
+says. A degree-1 leaf named "Analyst 5" in a 9 pt font is not a 26 px square.
+
+### NodeDiagramLabelFit (2.4.0)
+
+```cpp
+struct NodeDiagramLabelFit {
+    NodeLabelFit mode = NodeLabelFit::ShrinkThenGrow;
+    double minFontSize = 7.0;    // ShrinkFont / ShrinkThenGrow stop here
+    double paddingX = 6.0;       // Each side of the text, in world units
+    double paddingY = 3.0;       // Above and below the text
+};
+```
+
+A label sits in the widest horizontal band of its shape at the label's own
+height: the full width of a rectangle or square, the chord of a circle, the
+narrowing middle of a diamond or a hexagon, the upper edge of the band in a
+triangle. The paddings are the gap between the text and that band's edge, so
+the same text makes a diamond about twice as wide as a square.
 
 ### NodeDiagramGroup (2.2.0)
 
@@ -445,6 +485,7 @@ int GetNodeDegree(const std::string& id, NodeDegreeMode mode) const;
 
 // Force a sizing pass now. Normally unnecessary - sizes are recomputed when
 // links or values change - but useful after bulk edits made through GetNode().
+// Since 2.4.0 it also separates the nodes that then overlap.
 void ApplyNodeSizing();
 ```
 
@@ -452,6 +493,50 @@ Degree counts are cached and invalidated by any node or link mutation, so
 bulk-loading a graph costs one rebuild rather than one per `AddLink` call.
 `RunLayout()` re-runs sizing before laying out, so the anti-overlap pass
 separates nodes by their final sizes.
+
+### Label fit (2.4.0)
+
+```cpp
+void                SetLabelFit(NodeLabelFit mode);
+NodeLabelFit        GetLabelFit() const;
+void                SetLabelFitConfig(const NodeDiagramLabelFit& cfg);
+NodeDiagramLabelFit GetLabelFitConfig() const;
+
+// The smallest node of `shape` that holds `label` at `fontSize` with the
+// fit's paddings. Width and height are equal for every shape but Rectangle.
+void MinimumNodeSizeForLabel(const std::string& label, double fontSize, NodeShape shape,
+                             double& outWidth, double& outHeight) const;
+
+// Grows every node smaller than its label needs (at its font size in
+// GrowNode, at minFontSize in ShrinkThenGrow), separates the nodes that then
+// overlap and refits the view when auto-fit is on. Returns how many grew.
+int FitNodesToLabels();
+
+// The font size a node's label is drawn at under the fit; 0 for an unknown id.
+double GetNodeLabelFontSize(const std::string& id) const;
+```
+
+The default, `ShrinkThenGrow`, means a diagram needs nothing from its host: a
+name wider than its node is drawn smaller, down to `minFontSize`, and a node
+that cannot hold its name even at that size grows until it can. `GrowNode`
+keeps every font size and grows the nodes instead, which is the right choice
+when the font sizes carry meaning (a hub in 10 pt, its people in 9 pt).
+`ShrinkFont` keeps every node size and shortens with an ellipsis what the
+minimum font still cannot fit, for diagrams whose geometry is authored.
+`Overflow` is the 2.3 behaviour.
+
+A node grows about its centre, and whatever grows pushes its neighbours apart
+(`ResolveOverlaps`). The growth runs inside `RunLayout()` and the sizing pass,
+so a layout is computed with the final sizes; changing the fit, a label, a
+shape or the font marks the labels and the next frame measures them with the
+window's font, grows what must grow and separates what then touches. A layout
+run before the element has a window (the usual case - the diagram is built,
+laid out and then added to a page) measures by an estimate and is corrected
+on the first frame the same way. Card nodes (an icon or a sublabel) keep
+their authored width and shorten their text, as before.
+
+Group boxes follow their members, so a department whose people grew is drawn
+larger. Nothing here moves a pinned node.
 
 ### Cluster containers (2.2.0)
 
@@ -587,6 +672,12 @@ void SuggestNodeSizeForLabel(const std::string& label, double fontSize,
                               double minSize, double& outWidth,
                               double& outHeight) const;
 ```
+
+Since 2.4.0 `MeasureLabel` measures with the window's font (bold, the
+diagram's family) when the element has a window, and estimates 0.70 x the
+font size per character before that. `SuggestNodeSizeForLabel` adds generous
+padding for a circle; `MinimumNodeSizeForLabel` (above) gives the exact
+minimum for any shape.
 
 ### Serialization
 
@@ -824,6 +915,7 @@ for (const auto& dept : departments) {
     hub.borderColor = Color(40, 40, 40, 255);
     hub.textColor   = Color(255, 255, 255, 255);
     hub.width = hub.height = 46.0;
+    hub.fontSize = 10.0;
     hub.value = 6.0;                     // Headcount - drives NodeSizeMode::ByValue
     diagram->AddNode(hub);
 
@@ -834,6 +926,7 @@ for (const auto& dept : departments) {
         node.shape       = NodeShape::Square;
         node.borderColor = dept.color;
         node.width = node.height = 34.0;
+        node.fontSize = 9.0;
         diagram->AddNode(node);
         members.push_back(id);
 
@@ -859,12 +952,17 @@ diagram->AddLink(NodeDiagramLink("x1", "sales_hub", "biz_hub"));
 diagram->AddLink(NodeDiagramLink("x2", "biz_hub",   "cli_hub"));
 diagram->AddLink(NodeDiagramLink("x3", "cli_hub",   "care_hub"));
 
+// The names stay at their sizes (10 pt hubs, 9 pt members) and the nodes
+// grow to hold them; the range below starts above what a member's name
+// needs, so the degree still shows.
+diagram->SetLabelFit(NodeLabelFit::GrowNode);
+
 // Hubs read as hubs: area proportional to connection count.
 NodeDiagramSizing sizing;
 sizing.mode     = NodeSizeMode::ByDegree;
-sizing.baseSize = 20.0;
-sizing.minSize  = 26.0;
-sizing.maxSize  = 74.0;
+sizing.baseSize = 36.0;
+sizing.minSize  = 40.0;
+sizing.maxSize  = 130.0;
 diagram->SetNodeSizing(sizing);
 
 // Keep each department's members together while the layout runs.
@@ -883,7 +981,8 @@ diagram->RunLayout();
 
 Switching `sizing.mode` to `NodeSizeMode::ByValue` sizes each node from its
 `value` field instead — headcount, budget, revenue, whatever the graph is about.
-`NodeSizeMode::Fixed` restores the authored sizes exactly.
+`NodeSizeMode::Fixed` restores the authored sizes exactly - and then, like the
+other modes, grows whichever node its name does not fit.
 
 
 ### Card nodes with icons, without overlaps (2.3.0)

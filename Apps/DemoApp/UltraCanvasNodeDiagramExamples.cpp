@@ -1,10 +1,14 @@
 // Apps/Demo/Items/UltraCanvasNodeDiagramExamples.cpp
-// Comprehensive examples for UltraCanvasNodeDiagram v2.2.0
+// Comprehensive examples for UltraCanvasNodeDiagram v2.4.0
+// Version: 2.4.0 - the Organization tab's names fit their nodes: the diagram
+//                  uses NodeLabelFit::GrowNode (the nodes grow for their
+//                  names, the degree sizing starts above what a name needs)
+//                  and the sidebar has a LABEL FIT dropdown for all four modes
 // Version: 2.3.0 - the shared page look (UltraCanvasDemoPageKit): the tabs in a
 //                  card that fills the page area, each diagram filling its tab,
 //                  the Organization sidebar and the edit popup laid out by flex,
 //                  every label and button sized to its text
-// Last Modified: 2026-10-23
+// Last Modified: 2026-11-03
 //
 // Demonstrates all features of NodeDiagram 2.x:
 //  - Simple API (graph visualization)
@@ -257,6 +261,7 @@ std::shared_ptr<UltraCanvasNodeDiagram> CreateOrgNetworkDiagram(
         hub.borderColor = Color(40, 40, 40, 255);
         hub.textColor = Color(255, 255, 255, 255);
         hub.width = hub.height = 46.0;
+        hub.fontSize = 10.0;
         hub.value = 6.0;   // Headcount-ish magnitude, for NodeSizeMode::ByValue
         diagram->AddNode(hub);
 
@@ -326,13 +331,19 @@ std::shared_ptr<UltraCanvasNodeDiagram> CreateOrgNetworkDiagram(
         diagram->AddLink(link);
     }
 
+    // --- 2.4.0: the names keep their sizes (10 pt hubs, 9 pt members) and
+    // the nodes grow to hold them. The degree range below starts above what
+    // a member's name needs at 9 pt, so a hub still outgrows a leaf by its
+    // connections and not only by the length of its name.
+    diagram->SetLabelFit(NodeLabelFit::GrowNode);
+
     // --- 2.2.0 features on by default so the tab opens on the good view ---
     NodeDiagramSizing sizing;
     sizing.mode = NodeSizeMode::ByDegree;
     sizing.degreeMode = NodeDegreeMode::Total;
-    sizing.baseSize = 20.0;
-    sizing.minSize = 26.0;
-    sizing.maxSize = 74.0;
+    sizing.baseSize = 36.0;
+    sizing.minSize = 40.0;
+    sizing.maxSize = 130.0;
     diagram->SetNodeSizing(sizing);
 
     diagram->SetGroupCohesion(0.14);
@@ -445,8 +456,9 @@ static std::shared_ptr<UltraCanvasContainer> CreateOrgShowcaseTab(
                     break;
                 case 2:
                     diagram->SetNodeSizeMode(NodeSizeMode::Fixed);
-                    setStatus("Fixed size - every node renders at its authored size, "
-                              "and the hubs become impossible to spot.");
+                    setStatus("Fixed size - every node renders at its authored size "
+                              "(grown where its name needs more), and the hubs "
+                              "become hard to spot.");
                     break;
                 default:
                     diagram->SetNodeSizeMode(NodeSizeMode::ByDegree);
@@ -457,6 +469,43 @@ static std::shared_ptr<UltraCanvasContainer> CreateOrgShowcaseTab(
             diagram->FitView();
         };
     DemoKit::AddStretched(sidebar, sizeDD);
+
+    // ---- Label fit (2.4.0) ----
+    addCaption("ndOrgFitCap", "LABEL FIT (2.4.0)");
+    auto fitDD = makeDropdown("ndOrgFit");
+    fitDD->AddItem("Grow node", "grow");
+    fitDD->AddItem("Shrink font", "shrink");
+    fitDD->AddItem("Shrink, then grow", "both");
+    fitDD->AddItem("Overflow (2.3)", "overflow");
+    fitDD->SetSelectedIndex(0);
+    fitDD->onSelectionChanged =
+        [diagram, setStatus](int index, const DropdownItem&) {
+            switch (index) {
+                case 1:
+                    diagram->SetLabelFit(NodeLabelFit::ShrinkFont);
+                    setStatus("Shrink font - the nodes keep the size the data gives "
+                              "them and a name is drawn smaller, down to 7 pt; what "
+                              "still does not fit ends in an ellipsis.");
+                    break;
+                case 2:
+                    diagram->SetLabelFit(NodeLabelFit::ShrinkThenGrow);
+                    setStatus("Shrink, then grow (the component's default) - a name "
+                              "shrinks to 7 pt first, and a node that still cannot "
+                              "hold it grows.");
+                    break;
+                case 3:
+                    diagram->SetLabelFit(NodeLabelFit::Overflow);
+                    setStatus("Overflow - the 2.3 behaviour: names run out of their "
+                              "nodes and over their neighbours.");
+                    break;
+                default:
+                    diagram->SetLabelFit(NodeLabelFit::GrowNode);
+                    setStatus("Grow node - every name keeps its size and its node "
+                              "grows to hold it; neighbours move aside.");
+                    break;
+            }
+        };
+    DemoKit::AddStretched(sidebar, fitDD);
 
     // ---- Degree counting mode ----
     addCaption("ndOrgDegreeCap", "DEGREE COUNTS");
@@ -548,7 +597,11 @@ static std::shared_ptr<UltraCanvasContainer> CreateOrgShowcaseTab(
             for (const auto& nodeId : diagram->GetAllNodeIds()) {
                 diagram->SetNodeShape(nodeId, shape);
             }
-            setStatus("Node shape changed for all nodes.");
+            // 2.4.0: a diamond holds less text than a square, so the nodes
+            // grow to fit their names and the layout spreads to fit them.
+            diagram->FitNodesToLabels();
+            setStatus("Node shape changed for all nodes - the ones whose names "
+                      "need more room in the new shape grew.");
         };
     DemoKit::AddStretched(sidebar, shapeDD);
 
