@@ -333,7 +333,7 @@ std::shared_ptr<UltraCanvasTabbedContainer> Inspector::Build(const Palette& p) {
             // Typed here, the text is plain again: the words typed on the
             // frame with their own styles give way to it.
             d.titles[static_cast<size_t>(index)].look.text = text;
-            d.titles[static_cast<size_t>(index)].words.clear();
+            d.titles[static_cast<size_t>(index)].look.richText.clear();
         });
         return true;
     };

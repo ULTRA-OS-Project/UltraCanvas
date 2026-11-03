@@ -772,6 +772,30 @@ if(BUILD_ULTRASNIP)
     add_subdirectory(Apps/UltraSnip)
 endif()
 
+# ===== VIDEOFX TEXT THROUGH ULTRACANVAS =====
+# UltraCanvas's text engine as VideoFX's text renderer
+# (VideoFX/ultracanvas/VideoFXUltraCanvasText.h): a text overlay naming a font
+# family - an UltraVideo title, with its bold words, font, alignment and
+# spacing - is drawn by the UltraCanvasRichTextEdit that types it. A library
+# of its own beside VideoFX, which stays free of UltraCanvas, defined here
+# where both targets exist (VideoFX is added before the framework). The
+# `videofx` tool links it, so `videofx render` draws a project's titles as
+# UltraVideo shows them; a VideoFX built on its own draws them plain.
+if(TARGET VideoFX AND ULTRACANVAS_LIBRARY AND TARGET ${ULTRACANVAS_LIBRARY})
+    add_library(VideoFXUltraCanvasText STATIC VideoFX/ultracanvas/VideoFXUltraCanvasText.cpp)
+    set_target_properties(VideoFXUltraCanvasText PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    target_include_directories(VideoFXUltraCanvasText PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/VideoFX/ultracanvas
+        ${ULTRACANVAS_INCLUDE_DIRS})
+    target_link_libraries(VideoFXUltraCanvasText PUBLIC ${ULTRACANVAS_LIBRARY} VideoFX::VideoFX)
+    target_compile_features(VideoFXUltraCanvasText PUBLIC cxx_std_20)
+    if(TARGET videofx_cli)
+        target_link_libraries(videofx_cli PRIVATE VideoFXUltraCanvasText)
+        target_compile_definitions(videofx_cli PRIVATE VIDEOFX_WITH_ULTRACANVAS_TEXT=1)
+    endif()
+    message(STATUS "  [✓] VideoFX text through UltraCanvas (the videofx tool draws titles as UltraVideo does)")
+endif()
+
 # ===== ULTRAVIDEO =====
 # The video editor on the VideoFX engine and the UltraCanvasVideoTimeline
 # element: media bin, viewer with scrubbing, inspector, timeline, undo,

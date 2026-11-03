@@ -138,11 +138,13 @@ with no title being typed, of the selected title as one undo step. Escape,
 Ctrl+Enter or a click outside puts the words in the video.
 
 A title is drawn by UltraCanvas's text engine - the editor that types it -
-into a picture the engine lays over the frame, so the viewer, the export and
-the words being typed agree, and the shadow and band are drawn into it. The
-picture is drawn for the export's own height. The project file keeps the
-spans with their words, and still writes plain text overlays beside them for
-`videofx render`, which draws them with the engine's own text filter.
+as the engine's text renderer (`VideoFXUltraCanvasText`), into a picture laid
+over the frame, so the viewer, the export and the words being typed agree;
+the shadow and band are drawn into it, for the export's own height. The
+project file keeps the spans with their words, and the engine's project in
+it carries each title's formatting on its text overlay: `videofx render
+trip.ultravideo` draws the titles the same way, being built with
+UltraCanvas.
 
 ### Overlay video
 

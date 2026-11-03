@@ -1,5 +1,6 @@
 // include/UltraCanvasBaseApplication.h
 // Main UltraCanvas Framework Entry Point - Unified System
+// Version: 1.15.0 - RegisterBundledFontsWithoutApplication: a tool that draws text uses the bundled fonts
 // Version: 1.14.0 - UltraCanvasApplication is the Wayland backend under ULTRACANVAS_DISPLAY_WAYLAND
 // Version: 1.13.0 - RunAfterMainLoop(): the platform's step once the main loop has ended
 // Version: 1.12.0 - GenerateBitmapScalingConfig: fontconfig's bitmap-font scaling rules
@@ -10,7 +11,7 @@
 // Version: 1.8.0 - keys aimed at a blocked window go to the modal
 // Version: 1.7.0 - a theme change reaches every window
 // Version: 1.6.0
-// Last Modified: 2026-10-17
+// Last Modified: 2026-11-03
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -143,6 +144,17 @@ namespace UltraCanvas {
     // you by UltraCanvasApplicationBase::RegisterFontFile(); call it directly
     // only after registering a font behind the framework's back.
     void RefreshFontConfiguration();
+
+    // The bundled fonts (kEmbeddedAllFonts in GetBundledFontsDir) made
+    // available to the text engine in a program that has no
+    // UltraCanvasApplication - a command-line tool that draws text, as the
+    // `videofx` tool draws titles - so it sets text in the fonts the
+    // applications do. An application does this as it starts
+    // (LoadBundledFontsNative): call it only without one. On the fontconfig
+    // platforms (Linux, BSD, Windows) each file is added to the current
+    // configuration; on macOS a tool sees the installed fonts and this does
+    // nothing. Returns how many files were added.
+    int RegisterBundledFontsWithoutApplication();
 
     // Watches a file descriptor from within the UltraCanvas event loop. Added so a
     // host integration (e.g. Ladybird's IPC to its WebContent process) can have its

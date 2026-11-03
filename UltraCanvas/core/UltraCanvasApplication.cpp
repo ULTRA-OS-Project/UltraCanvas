@@ -1,5 +1,6 @@
 // UltraCanvasApplication.cpp
 // Main UltraCanvas App
+// Version: 1.15.0 - RegisterBundledFontsWithoutApplication (the fontconfig platforms)
 // Version: 1.14.0 - RunAfterMainLoop() at the end of Run()
 // Version: 1.13.1 - the generated fonts.conf (Windows, Android) scales bitmap fonts to the
 //                  size asked for, as fontconfig's 10-scale-bitmap-fonts.conf does: the
@@ -32,7 +33,7 @@
 //                  the bundled fonts when the scan takes long (AdoptSystemFontsWithin);
 //                  Initialize() times each of its steps (GetStartupTimings)
 // Version: 1.5.2 - modal fixes: close transient children with parent, ignore unmapped modals, raise modal on outside click
-// Last Modified: 2026-10-20
+// Last Modified: 2026-11-03
 // Author: UltraCanvas Framework
 
 #include <algorithm>
@@ -826,6 +827,25 @@ namespace UltraCanvas {
 
 
     // ===== RUNTIME FONT REGISTRATION =====
+
+    int RegisterBundledFontsWithoutApplication() {
+#if !defined(__APPLE__)
+        FcConfig* cfg = FcConfigGetCurrent();
+        if (!cfg) return 0;
+        const std::string dir = GetBundledFontsDir();
+        int added = 0;
+        for (size_t i = 0; i < kEmbeddedAllFontsCount; ++i) {
+            const std::string path = dir + kEmbeddedAllFonts[i];
+            std::error_code ec;
+            if (!std::filesystem::exists(PathFromUtf8(path), ec)) continue;
+            if (FcConfigAppFontAddFile(cfg, reinterpret_cast<const FcChar8*>(path.c_str()))) ++added;
+        }
+        if (added > 0) RefreshFontConfiguration();
+        return added;
+#else
+        return 0;
+#endif
+    }
 
     void RefreshFontConfiguration() {
 #if !defined(__APPLE__)

@@ -10,7 +10,6 @@
 // Author: UltraCanvas Framework
 #include "UltraVideoDocument.h"
 #include "UltraVideoFormats.h"
-#include "UltraVideoTitles.h"
 
 #include "DataFormats/UltraCanvasJSON.h"
 #include "UltraCanvasPathUtf8.h"
@@ -473,21 +472,15 @@ std::vector<double> Document::SegmentStarts() const {
     return starts;
 }
 
-std::vector<VideoFXSegment> Document::SegmentsForEngine() const {
-    return BuildSegments(0, "");
+VideoFXOverlay TitleSpan::Look() const {
+    VideoFXOverlay o = look;
+    if (o.fontFamily.empty()) o.fontFamily = "Ubuntu";
+    if (o.lineSpacing <= 0.0) o.lineSpacing = 120.0;
+    return o;
 }
 
-std::vector<VideoFXSegment> Document::SegmentsToRender(int frameHeight, const std::string& hiddenTitle) const {
-    return BuildSegments(std::max(16, frameHeight), hiddenTitle);
-}
-
-// frameHeight 0: the titles as the engine's text overlays (a saved project);
-// else as their pictures for a frame that high
-std::vector<VideoFXSegment> Document::BuildSegments(int frameHeight, const std::string& hiddenTitle) const {
+std::vector<VideoFXSegment> Document::SegmentsForEngine(const std::string& hiddenTitle) const {
     std::vector<VideoFXSegment> segments = project.segments;
-    // Each title drawn once, for every segment it crosses
-    std::vector<TitlePicture> pictures(frameHeight > 0 ? titles.size() : 0);
-    std::vector<bool> drawn(pictures.size(), false);
     if (titles.empty() && overlays.empty()) return segments;
     const std::vector<double> starts = SegmentStarts();
     for (size_t i = 0; i < segments.size(); ++i) {
@@ -524,17 +517,8 @@ std::vector<VideoFXSegment> Document::BuildSegments(int frameHeight, const std::
             const double a = std::max(s, t.start);
             const double b = std::min(e, t.End());
             if (b - a < 0.04) continue;
-            VideoFXOverlay o = t.look;
+            VideoFXOverlay o = t.Look();
             o.kind = VideoFXOverlayKind::Text;
-            if (frameHeight > 0) {
-                // Drawn by UltraCanvas: a picture, sized as a share of the frame
-                if (!drawn[ti]) { pictures[ti] = CachedTitlePicture(t, frameHeight); drawn[ti] = true; }
-                if (!pictures[ti].image.IsValid()) continue;
-                o.kind = VideoFXOverlayKind::Image;
-                o.image = pictures[ti].image;
-                o.imageHeight = static_cast<double>(pictures[ti].image.height) / frameHeight;
-                o.text.clear();
-            }
             o.start = a - s;
             o.end = b - s;
             if (o.end >= SegmentSeconds(i) - 1e-6) o.end = 0.0;   // to the segment's end
@@ -764,11 +748,11 @@ bool Document::Save(const std::string& toPath, std::string& error) {
         o.Set("opacity", t.look.opacity);
         o.Set("fontPath", Relative(t.look.fontPath, base));
         // The text bar's: the words as typed, the font, the alignment, the spacings
-        if (!t.words.empty()) { o.Set("words", t.words); o.Set("wordsHeight", t.wordsHeight); }
-        o.Set("font", t.fontFamily);
-        o.Set("align", t.align);
-        o.Set("lineSpacing", t.lineSpacing);
-        o.Set("letterSpacing", t.letterSpacing);
+        if (!t.look.richText.empty()) { o.Set("words", t.look.richText); o.Set("wordsHeight", t.look.richTextHeight); }
+        o.Set("font", t.Look().fontFamily);
+        o.Set("align", t.look.textAlign);
+        o.Set("lineSpacing", t.Look().lineSpacing);
+        o.Set("letterSpacing", t.look.letterSpacing);
         spans.Append(o);
     }
     root.Set("titles", spans);
@@ -930,12 +914,12 @@ bool Document::Load(const std::string& fromPath, Document& doc, std::string& err
             t.look.margin = o.Get("margin").GetNumber(0.05);
             t.look.opacity = o.Get("opacity").GetNumber(1.0);
             t.look.fontPath = Absolute(o.Get("fontPath").GetString(), base);
-            t.words = o.Get("words").GetString();
-            t.wordsHeight = static_cast<int>(std::clamp<int64_t>(o.Get("wordsHeight").GetInteger(1080), 16, 100000));
-            t.fontFamily = o.Get("font").GetString("Ubuntu");
-            t.align = static_cast<int>(std::clamp<int64_t>(o.Get("align").GetInteger(1), 0, 2));
-            t.lineSpacing = std::clamp(o.Get("lineSpacing").GetNumber(120.0), 10.0, 1000.0);
-            t.letterSpacing = std::clamp(o.Get("letterSpacing").GetNumber(0.0), -1.0, 1.0);
+            t.look.richText = o.Get("words").GetString();
+            t.look.richTextHeight = static_cast<int>(std::clamp<int64_t>(o.Get("wordsHeight").GetInteger(1080), 16, 100000));
+            t.look.fontFamily = o.Get("font").GetString("Ubuntu");
+            t.look.textAlign = static_cast<int>(std::clamp<int64_t>(o.Get("align").GetInteger(1), 0, 2));
+            t.look.lineSpacing = std::clamp(o.Get("lineSpacing").GetNumber(120.0), 10.0, 1000.0);
+            t.look.letterSpacing = std::clamp(o.Get("letterSpacing").GetNumber(0.0), -1.0, 1.0);
             if (t.id.empty()) t.id = loaded.NewTitleId();
             loaded.titles.push_back(t);
         }

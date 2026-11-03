@@ -8,7 +8,8 @@
 // strength, on main-track clips and overlay clips. Needs the VideoFX engine
 // (FFmpeg) for the probes and the clips it generates; without it the suite
 // skips itself.
-// Version: 0.9.0 - titles typed with the text bar: kept by the file, drawn by UltraCanvas
+// Version: 0.9.0 - titles typed with the text bar: kept by the file and by the engine's project the
+//                  videofx tool reads, drawn by UltraCanvas as the engine's text renderer
 // Version: 0.8.0 - effects on overlay clips; a slider's drag as one undo step
 // Version: 0.6.1 - runs on Windows too: the file holds '/' between a path's parts
 // Version: 0.7.0 - the palettes' contrast, as the tokens promise it
@@ -23,7 +24,7 @@
 #include "UltraVideoInspector.h"
 #include "UltraVideoMapping.h"
 #include "UltraVideoProxies.h"
-#include "UltraVideoTitles.h"
+#include "VideoFXUltraCanvasText.h"
 #include "UltraVideoTokens.h"
 
 #include "UltraCanvasFileLoader.h"
@@ -403,34 +404,60 @@ int main() {
         {
             Document styled = td;
             TitleSpan& t = styled.titles[0];
-            t.words = "<p><b>Summer</b> <i>trip</i></p>";
-            t.wordsHeight = 720;
-            t.fontFamily = "Serif";
-            t.align = 2;
-            t.lineSpacing = 150.0;
-            t.letterSpacing = 0.004;
+            t.look.richText = "<p><b>Summer</b> <i>trip</i></p>";
+            t.look.richTextHeight = 720;
+            t.look.fontFamily = "Serif";
+            t.look.textAlign = 2;
+            t.look.lineSpacing = 150.0;
+            t.look.letterSpacing = 0.004;
             const std::string sfile = TempPath("styled.ultravideo");
             CHECK(styled.Save(sfile, terror), ("save a styled title: " + terror).c_str());
             Document again;
             CHECK(Document::Load(sfile, again, terror, nullptr), ("load a styled title: " + terror).c_str());
-            const TitleSpan& a = again.titles[0];
-            CHECK(a.words == t.words && a.wordsHeight == 720 && a.fontFamily == "Serif" && a.align == 2 &&
+            const VideoFXOverlay a = again.titles[0].Look();
+            CHECK(a.richText == t.look.richText && a.richTextHeight == 720 && a.fontFamily == "Serif" && a.textAlign == 2 &&
                   Near(a.lineSpacing, 150.0, 1e-9) && Near(a.letterSpacing, 0.004, 1e-12),
                   "a styled title's words, font, alignment and spacings come back");
-            // Drawn by UltraCanvas for the viewer and the export: a picture
-            // over the frame, a share of its height, where the text overlay was
-            const auto rendered = again.SegmentsToRender(720);
+            CHECK(Document().titles.empty() && TitleSpan().Look().fontFamily == "Ubuntu" && Near(TitleSpan().Look().lineSpacing, 120.0, 1e-9),
+                  "a title states the bundled font and 120 % lines where it states none");
+
+            // The engine's overlay carries the formatting - in the saved
+            // project too, where the videofx tool reads it
+            const auto segments = again.SegmentsForEngine();
+            const VideoFXOverlay* text = nullptr;
+            for (const auto& o : segments[0].overlays) if (o.kind == VideoFXOverlayKind::Text) text = &o;
+            CHECK(text && text->fontFamily == "Serif" && text->richText == t.look.richText && text->textAlign == 2,
+                  "SegmentsForEngine: the title's text overlay carries its formatting");
+            VideoFXProject onDisk;
+            CHECK(VideoFX_LoadProject(sfile, onDisk, nullptr) == VideoFXResult::Ok,
+                  ("the .ultravideo reads as the engine's project, as `videofx render` reads it: " + VideoFX_GetLastError()).c_str());
+            const VideoFXOverlay* saved = nullptr;
+            if (!onDisk.segments.empty())
+                for (const auto& o : onDisk.segments[0].overlays) if (o.kind == VideoFXOverlayKind::Text) saved = &o;
+            CHECK(saved && saved->fontFamily == "Serif" && saved->richText == t.look.richText &&
+                  saved->richTextHeight == 720 && Near(saved->lineSpacing, 150.0, 1e-9) && Near(saved->letterSpacing, 0.004, 1e-12),
+                  "the videofx tool reads the title's formatting from the saved project");
+
+            // Drawn by UltraCanvas, the engine's text renderer: a picture over
+            // the frame, a share of its height, where the text overlay was
+            VideoFX_UseUltraCanvasText();
+            CHECK(VideoFX_HasTextRenderer(), "UltraCanvas is the engine's text renderer");
+            std::vector<VideoFXSegment> drawn = segments;
+            VideoFX_DrawTextOverlays(drawn, 720);
             bool picture = false;
-            for (const auto& o : rendered[0].overlays) {
+            for (const auto& o : drawn[0].overlays) {
                 if (o.kind != VideoFXOverlayKind::Image || !o.image.IsValid()) continue;
-                picture = Near(o.imageHeight, static_cast<double>(o.image.height) / 720.0, 1e-9) && o.anchor == t.look.anchor;
+                const TextOverlayPicture same = DrawTextOverlay(a, 720);
+                picture = Near(o.imageHeight, static_cast<double>(o.image.height) / 720.0, 1e-9) && o.anchor == a.anchor &&
+                          o.image.pixels == same.image.pixels;
             }
-            CHECK(picture, "SegmentsToRender: the title is a picture, sized as a share of the frame, at its anchor");
-            CHECK(again.SegmentsToRender(720, a.id)[0].overlays.size() + 1 == rendered[0].overlays.size(),
+            CHECK(picture, "the engine lays the title's picture over the frame - the picture the program draws");
+            CHECK(again.SegmentsForEngine(again.titles[0].id)[0].overlays.size() + 1 == segments[0].overlays.size(),
                   "a title being typed on the frame is left out");
-            const TitlePicture big = CachedTitlePicture(a, 1440), small = CachedTitlePicture(a, 720);
+            const TextOverlayPicture big = DrawTextOverlay(a, 1440), small = DrawTextOverlay(a, 720);
             CHECK(big.image.IsValid() && small.image.IsValid() && big.image.height > small.image.height * 1.7,
                   "drawn for a taller frame, the title is drawn larger");
+            VideoFX_SetTextRenderer(nullptr);
         }
         CHECK(back.project.segments[0].overlays.empty() && back.project.segments[1].overlays.empty(), "the derived overlays are dropped on load");
         CHECK(back.nextTitleId == td.nextTitleId && back.SegmentsForEngine()[1].overlays.size() == td.SegmentsForEngine()[1].overlays.size(), "and derive the same again");

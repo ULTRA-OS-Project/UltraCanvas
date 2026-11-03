@@ -3530,13 +3530,12 @@ if(TARGET VideoFX AND ULTRACANVAS_LIBRARY)
         ${ULTRACANVAS_ROOT}/Apps/UltraVideo/UltraVideoMapping.cpp
         ${ULTRACANVAS_ROOT}/Apps/UltraVideo/UltraVideoHistory.cpp
         ${ULTRACANVAS_ROOT}/Apps/UltraVideo/UltraVideoProxies.cpp
-        ${ULTRACANVAS_ROOT}/Apps/UltraVideo/UltraVideoTitles.cpp
     )
     target_include_directories(UltraVideoDraftTest PRIVATE
         ${ULTRACANVAS_ROOT}/Apps/UltraVideo
         ${ULTRACANVAS_INCLUDE_DIR}
     )
-    target_link_libraries(UltraVideoDraftTest PRIVATE ${ULTRACANVAS_LIBRARY} VideoFX::VideoFX)
+    target_link_libraries(UltraVideoDraftTest PRIVATE ${ULTRACANVAS_LIBRARY} VideoFX::VideoFX VideoFXUltraCanvasText)
     target_compile_features(UltraVideoDraftTest PRIVATE cxx_std_20)
     set_target_properties(UltraVideoDraftTest PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY ${VIDEOFX_RUNTIME_DIR}

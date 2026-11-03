@@ -1,10 +1,13 @@
-// Apps/UltraVideo/UltraVideoTitles.cpp
-// Titles drawn by UltraCanvas's text engine: see UltraVideoTitles.h.
-// Version: 0.1.0
+// VideoFX/ultracanvas/VideoFXUltraCanvasText.cpp
+// UltraCanvas's text engine as VideoFX's text renderer: see
+// VideoFXUltraCanvasText.h.
+// Version: 0.1.0 - from UltraVideo's titles (UltraVideoTitles 0.1.0)
 // Last Modified: 2026-11-03
 // Author: UltraCanvas Framework
 
-#include "UltraVideoTitles.h"
+#include "VideoFXUltraCanvasText.h"
+
+#include "UltraCanvasApplication.h"   // RegisterBundledFontsWithoutApplication
 
 #include "HTMLReader/HTMLRichDocumentImporter.h"
 #include "UltraCanvasRasterText.h"
@@ -13,22 +16,22 @@
 #include <cmath>
 #include <functional>
 #include <list>
+#include <locale>
 #include <mutex>
 #include <sstream>
 #include <unordered_map>
 
-namespace UltraVideo {
+namespace VideoFX {
 
 using namespace UltraCanvas;
-using namespace VideoFX;
 
 namespace {
     RichTextAlign AlignOf(int align) {
         return align == 0 ? RichTextAlign::Left : align == 2 ? RichTextAlign::Right : RichTextAlign::Center;
     }
 
-    double SizePx(const TitleSpan& t, int frameHeight) {
-        return std::max(4.0, t.look.fontSize * frameHeight);
+    double SizePx(const VideoFXOverlay& o, int frameHeight) {
+        return std::max(4.0, o.fontSize * frameHeight);
     }
 
     // `src` over `dst` (straight alpha), `src` placed at (ox, oy)
@@ -66,13 +69,13 @@ namespace {
     }
 }
 
-std::shared_ptr<UCRichDocument> TitleWords(const TitleSpan& title, int frameHeight) {
+std::shared_ptr<UCRichDocument> TextOverlayWords(const VideoFXOverlay& title, int frameHeight) {
     auto words = std::make_shared<UCRichDocument>();
-    if (!title.words.empty()) {
-        *words = ImportHTMLToRichDocument(title.words);
+    if (!title.richText.empty()) {
+        *words = ImportHTMLToRichDocument(title.richText);
         // A word's own size was set for the frame the words were typed on:
         // it scales with the frame, as the title's size does.
-        const double scale = static_cast<double>(std::max(16, frameHeight)) / std::max(16, title.wordsHeight);
+        const double scale = static_cast<double>(std::max(16, frameHeight)) / (title.richTextHeight > 0 ? std::max(16, title.richTextHeight) : 1080);
         if (std::fabs(scale - 1.0) > 1e-9) {
             for (auto& block : words->blocks)
                 for (auto& run : block.runs)
@@ -82,7 +85,7 @@ std::shared_ptr<UCRichDocument> TitleWords(const TitleSpan& title, int frameHeig
     if (words->blocks.empty()) {
         // Plain text: a paragraph a line
         words->blocks.clear();
-        std::istringstream lines(title.look.text);
+        std::istringstream lines(title.text);
         std::string line;
         while (std::getline(lines, line)) {
             RichDocBlock block;
@@ -92,42 +95,43 @@ std::shared_ptr<UCRichDocument> TitleWords(const TitleSpan& title, int frameHeig
         if (words->blocks.empty()) words->blocks.emplace_back();
     }
     for (auto& block : words->blocks) {
-        block.align = AlignOf(title.align);
+        block.align = AlignOf(title.textAlign);
         block.spaceBeforePt = 0.0f;
         block.spaceAfterPt = 0.0f;
     }
     SetTextLineSpacing(*words, static_cast<float>(SizePx(title, frameHeight)),
-                       static_cast<float>(std::max(10.0, title.lineSpacing)));
+                       static_cast<float>(title.lineSpacing > 0.0 ? std::max(10.0, title.lineSpacing) : 120.0));
     return words;
 }
 
-std::string TitleWordsToHtml(const UCRichDocument& words) {
+std::string TextOverlayWordsToHtml(const UCRichDocument& words) {
     return words.ToHTML();
 }
 
-RasterTextContent TitleContent(const TitleSpan& title, int frameHeight, double boxWidth) {
+RasterTextContent TextOverlayContent(const VideoFXOverlay& title, int frameHeight, double boxWidth) {
     RasterTextContent c;
-    c.document = TitleWords(title, frameHeight);
+    c.document = TextOverlayWords(title, frameHeight);
     c.x = 0.0;
     c.y = 0.0;
     c.width = std::max(8.0, boxWidth);
     c.fontFamily = title.fontFamily.empty() ? std::string("Sans") : title.fontFamily;
     c.fontSizePx = static_cast<float>(SizePx(title, frameHeight));
-    const uint32_t rgb = title.look.textColor;
+    const uint32_t rgb = title.textColor;
     c.colour = RasterPixel(static_cast<uint8_t>((rgb >> 16) & 0xFF), static_cast<uint8_t>((rgb >> 8) & 0xFF),
                            static_cast<uint8_t>(rgb & 0xFF), 255);
     c.letterSpacingPx = static_cast<float>(title.letterSpacing * frameHeight);
     return c;
 }
 
-TitlePicture RenderTitle(const TitleSpan& title, int frameHeight) {
-    TitlePicture out;
+// Drawn now (DrawTextOverlay keeps what it drew)
+static TextOverlayPicture DrawTextOverlayNow(const VideoFXOverlay& title, int frameHeight) {
+    TextOverlayPicture out;
     const int height = std::max(16, frameHeight);
     const double size = SizePx(title, height);
     std::string error;
 
     // The widest line, laid out with room to spare: the text's own width.
-    RasterTextContent measure = TitleContent(title, height, size * 200.0 + 64.0);
+    RasterTextContent measure = TextOverlayContent(title, height, size * 200.0 + 64.0);
     auto leftAligned = std::make_shared<UCRichDocument>(*measure.document);
     for (auto& block : leftAligned->blocks) block.align = RichTextAlign::Left;
     measure.document = leftAligned;
@@ -138,24 +142,24 @@ TitlePicture RenderTitle(const TitleSpan& title, int frameHeight) {
     const int textW = std::max(1, InkRight(*probe) + static_cast<int>(std::ceil(size * 0.1)));
 
     // The text in a box that wide, aligned as the title says
-    RasterTextContent content = TitleContent(title, height, textW);
+    RasterTextContent content = TextOverlayContent(title, height, textW);
     auto text = RenderTextLayer(content, textW, textH, error);
     if (!text) return out;
 
     // The band behind it and the shadow under it, as the text filter drew them
-    const int band = title.look.box ? std::max(2, static_cast<int>(std::lround(size / 3.0))) : 0;
-    const int drop = title.look.shadow ? std::max(1, static_cast<int>(std::lround(size / 18.0))) : 0;
+    const int band = title.box ? std::max(2, static_cast<int>(std::lround(size / 3.0))) : 0;
+    const int drop = title.shadow ? std::max(1, static_cast<int>(std::lround(size / 18.0))) : 0;
     const int pad = std::max(band, drop);
     const int w = textW + 2 * pad, h = textH + 2 * pad;
     UCRasterLayer picture(w, h, RasterPixel(0, 0, 0, 0));
-    if (title.look.box) {
-        const uint32_t rgb = title.look.boxColor;
-        const auto alpha = static_cast<uint8_t>(std::lround(std::clamp(title.look.boxOpacity, 0.0, 1.0) * 255.0));
+    if (title.box) {
+        const uint32_t rgb = title.boxColor;
+        const auto alpha = static_cast<uint8_t>(std::lround(std::clamp(title.boxOpacity, 0.0, 1.0) * 255.0));
         picture.FillRect(Rect2Di(pad - band, pad - band, textW + 2 * band, textH + 2 * band),
                          RasterPixel(static_cast<uint8_t>((rgb >> 16) & 0xFF), static_cast<uint8_t>((rgb >> 8) & 0xFF),
                                      static_cast<uint8_t>(rgb & 0xFF), alpha));
     }
-    if (title.look.shadow) {
+    if (title.shadow) {
         RasterTextContent dark = content;
         dark.colour = RasterPixel(0, 0, 0, 153);   // black at 0.6
         if (auto shadow = RenderTextLayer(dark, textW, textH, error)) Over(picture, *shadow, pad + drop, pad + drop);
@@ -172,16 +176,16 @@ TitlePicture RenderTitle(const TitleSpan& title, int frameHeight) {
     return out;
 }
 
-TitlePicture CachedTitlePicture(const TitleSpan& title, int frameHeight) {
+TextOverlayPicture DrawTextOverlay(const VideoFXOverlay& title, int frameHeight) {
     // Everything that changes the picture makes the key
     std::ostringstream key;
-    key << frameHeight << '|' << title.look.text << '|' << title.words << '|' << title.wordsHeight << '|'
-        << title.fontFamily << '|'
-        << title.align << '|' << title.lineSpacing << '|' << title.letterSpacing << '|' << title.look.fontSize << '|'
-        << title.look.textColor << '|' << title.look.shadow << '|' << title.look.box << '|' << title.look.boxColor
-        << '|' << title.look.boxOpacity;
+    key.imbue(std::locale::classic());
+    key << frameHeight << '|' << title.text << '|' << title.richText << '|' << title.richTextHeight << '|'
+        << title.fontFamily << '|' << title.textAlign << '|' << title.lineSpacing << '|' << title.letterSpacing
+        << '|' << title.fontSize << '|' << title.textColor << '|' << title.shadow << '|' << title.box << '|'
+        << title.boxColor << '|' << title.boxOpacity;
     static std::mutex mutex;
-    static std::list<std::pair<std::string, TitlePicture>> kept;   // most recent first
+    static std::list<std::pair<std::string, TextOverlayPicture>> kept;   // most recent first
     static const size_t kKeep = 48;
     const std::string k = key.str();
     {
@@ -192,15 +196,14 @@ TitlePicture CachedTitlePicture(const TitleSpan& title, int frameHeight) {
             return kept.front().second;
         }
     }
-    TitlePicture picture = RenderTitle(title, frameHeight);
+    TextOverlayPicture picture = DrawTextOverlayNow(title, frameHeight);
     std::lock_guard<std::mutex> lock(mutex);
     kept.emplace_front(k, picture);
     if (kept.size() > kKeep) kept.pop_back();
     return picture;
 }
 
-Rect2Dd TitlePictureRect(const TitleSpan& title, int frameW, int frameH, int pictureW, int pictureH) {
-    const VideoFXOverlay& o = title.look;
+Rect2Dd OverlayPictureRect(const VideoFXOverlay& o, int frameW, int frameH, int pictureW, int pictureH) {
     if (o.anchor == VideoFXAnchor::Custom)
         return Rect2Dd(o.x * frameW, o.y * frameH, pictureW, pictureH);
     const double m = std::lround(o.margin * frameH);
@@ -222,4 +225,21 @@ Rect2Dd TitlePictureRect(const TitleSpan& title, int frameW, int frameH, int pic
     return Rect2Dd(std::floor(x), std::floor(y), pictureW, pictureH);
 }
 
-} // namespace UltraVideo
+bool IsUltraCanvasTextOverlay(const VideoFXOverlay& overlay) {
+    return overlay.kind == VideoFXOverlayKind::Text && !overlay.fontFamily.empty() && !overlay.text.empty();
+}
+
+void VideoFX_UseUltraCanvasText() {
+    // A tool has no application to register the bundled fonts as it starts
+    if (!UltraCanvasApplicationBase::GetCurrent()) RegisterBundledFontsWithoutApplication();
+    VideoFX_SetTextRenderer([](const VideoFXOverlay& overlay, int frameHeight, VideoFXFrame& picture) {
+        // The overlays it does not draw are left before UltraCanvas is touched
+        if (!IsUltraCanvasTextOverlay(overlay)) return false;
+        TextOverlayPicture drawn = DrawTextOverlay(overlay, frameHeight);
+        if (!drawn.image.IsValid()) return false;
+        picture = std::move(drawn.image);
+        return true;
+    });
+}
+
+} // namespace VideoFX

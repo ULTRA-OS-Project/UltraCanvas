@@ -16,4 +16,8 @@
   none of the above. Their shadow and band are drawn into the picture as the
   filter drew them. Typing a title's text in the inspector makes it plain
   again. A saved project keeps the words, the font, the alignment and the
-  spacings, and still carries plain text overlays for `videofx render`.
+  spacings.
+- The titles are drawn as the engine's text renderer
+  (`VideoFXUltraCanvasText`, shared with the `videofx` tool): the project's
+  text overlays carry each title's formatting, so `videofx render
+  trip.ultravideo` draws the titles exactly as UltraVideo shows them.
