@@ -362,6 +362,21 @@ else()
     set(ULTRACANVAS_HAS_LIBHEIF FALSE)
 endif()
 
+# libjxl - the framework's own JPEG XL loader and saver for a libvips built
+# without one (Ubuntu 22.04's; CI builds libjxl from source there). Registered
+# as jxlload / jxlsave only where libvips has none, so a libvips with its own
+# keeps it (libspecific/Cairo/VipsJxlPlugin.cpp).
+if(ULTRACANVAS_HAS_VIPS)
+    pkg_check_modules(LIBJXL libjxl)
+endif()
+if(ULTRACANVAS_HAS_VIPS AND LIBJXL_FOUND)
+    set(ULTRACANVAS_HAS_LIBJXL TRUE)
+    message(STATUS "  libjxl: ${LIBJXL_VERSION} (JPEG XL through the framework's own loader where libvips lacks one)")
+else()
+    set(ULTRACANVAS_HAS_LIBJXL FALSE)
+    message(STATUS "  libjxl: not found - JPEG XL reads only where libvips has its own loader")
+endif()
+
 # poppler-glib - a password-protected PDF on a libvips older than 8.13
 # (Ubuntu 22.04 ships 8.12). libvips added pdfload's "password" in 8.13; an
 # older one ignores it (GObject warns of an unknown property) and opens every
@@ -1649,6 +1664,11 @@ if(ULTRACANVAS_HAS_VIPS)
         ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/VipsIcoPlugin.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/VipsGifPlugin.cpp
     )
+    if(ULTRACANVAS_HAS_LIBJXL)
+        list(APPEND ULTRACANVAS_LIBSPECIFIC_SOURCES
+            ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/VipsJxlPlugin.cpp
+        )
+    endif()
 endif()
 if(LIBRSVG_FOUND)
     # Parse-once SVG document cache (retained RsvgHandle).
@@ -2166,6 +2186,26 @@ if(LIBRSVG_FOUND)
     foreach(_inc_dir ${LIBRSVG_INCLUDE_DIRS})
         target_include_directories(${ULTRACANVAS_LIB_NAME} PRIVATE ${_inc_dir})
     endforeach()
+endif()
+if(ULTRACANVAS_HAS_LIBJXL)
+    # The plug-in and ImageCairo.cpp (which registers it) see libjxl; the
+    # define stays off the target for the same reason as libheif's below.
+    set(_uc_jxl_includes ${LIBJXL_INCLUDE_DIRS})
+    if(_uc_jxl_includes AND CMAKE_CXX_IMPLICIT_INCLUDE_DIRECTORIES)
+        list(REMOVE_ITEM _uc_jxl_includes ${CMAKE_CXX_IMPLICIT_INCLUDE_DIRECTORIES})
+    endif()
+    foreach(_uc_jxl_src
+            ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/ImageCairo.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/VipsJxlPlugin.cpp)
+        set_property(SOURCE ${_uc_jxl_src} APPEND PROPERTY COMPILE_DEFINITIONS HAS_LIBJXL=1)
+        if(_uc_jxl_includes)
+            set_property(SOURCE ${_uc_jxl_src} APPEND PROPERTY INCLUDE_DIRECTORIES ${_uc_jxl_includes})
+        endif()
+    endforeach()
+    # The library by its full path (no link directory: one under the
+    # checkout, as a staged install's .pc would give, is refused by CMake in
+    # a link interface).
+    target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC ${LIBJXL_LINK_LIBRARIES})
 endif()
 if(ULTRACANVAS_HAS_LIBHEIF)
     # Only libspecific/Cairo/ImageCairo.cpp includes libheif's header, so the

@@ -128,7 +128,8 @@ Install the required dependencies for your platform:
 # Ubuntu/Debian
 sudo apt install build-essential cmake libcairo2-dev libpango1.0-dev \
     libfreetype6-dev libvips-dev libharfbuzz-dev \
-    libheif-plugin-libde265 libheif-plugin-aomdec   # Ubuntu 24.04 on: HEIC and AVIF clang
+    libheif-plugin-libde265 libheif-plugin-aomdec \
+    libjxl-dev   # Ubuntu 24.04 on: HEIC and AVIF decoders, JPEG XL where libvips lacks it clang
 
 # macOS
 brew install cmake cairo pango freetype vips harfbuzz

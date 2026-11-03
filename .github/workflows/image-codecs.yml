@@ -4,8 +4,10 @@ name: Image codecs
 # offers, and the chart-free core linked by something.
 #
 # JPEG XL: build.yml's Linux rows run on ubuntu-22.04 (the glibc floor of the
-# packages they make), whose libvips is built without libjxl, so there
-# ImageJxlTest can only report SKIP and the format went untested - it was
+# packages they make), whose libvips is built without libjxl; there the
+# framework's own jxlload / jxlsave (VipsJxlPlugin, on a libjxl built from
+# source) stand in, and ImageJxlTest runs through them. libvips' OWN JPEG XL
+# loader, the one every 24.04 system uses, went untested that way - it was
 # taken out of DemoApp's performance page in 0.1.35 for that reason. Ubuntu
 # 24.04's libvips 8.15 has it (libjxl 0.7). This job builds the core and the
 # headless image tests there, runs them, and fails when ImageJxlTest skipped
