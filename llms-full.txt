@@ -180,9 +180,11 @@ The following features are planned for future releases:
 -   **3D model support** - Loading and rendering .3ds, .3dm formats
 -   **SmartHome drivers** - Device drivers for the protocols the module specifies:
     Matter, Thread, Zigbee, Z-Wave, WiFi and Bluetooth (see `Docs/Modules/Smarthome/README.md`)
--   **Wayland desktop shell** - the windowing backend is in (`-DULTRACANVAS_WAYLAND=ON`);
-    the layer-shell, foreign-toplevel and portal pieces the desktop shell needs
-    come next (see `Docs/UltraCanvas/WaylandDesktopShellProposal.md`)
+-   **Wayland desktop shell** - the windowing backend and the desktop shell's
+    protocols are in (`-DULTRACANVAS_WAYLAND=ON`): the layer shell, foreign
+    toplevels, ext-workspace, the portals for screenshots and shortcuts,
+    xdg-activation; popups with a positioner, drags, the session lock and GL
+    surfaces come next (see `Docs/UltraCanvas/WaylandDesktopShellProposal.md`)
 
 ----------
 
@@ -1120,10 +1122,15 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   its network, USB and Bluetooth lists) and **IODeviceManager** (operates
   peripherals). Core in `core/UltraCanvasDesktopShell.cpp`; the X11 backend
   (EWMH properties and client messages, `XGetImage`, procfs/sysfs) in
-  `OS/Linux/UltraCanvasLinuxDesktopShell.cpp`, the Wayland backend's first
-  phase (the outputs, the devices; the shell protocols are the next step,
+  `OS/Linux/UltraCanvasLinuxDesktopShell.cpp`, the Wayland backend (the
+  outputs, the devices; the window list and the monitor on
+  wlr-foreign-toplevel-management and the virtual desktops on
+  ext-workspace over a connection of its own, the reserved edges as
+  layer-shell exclusive zones -
   `Docs/UltraCanvas/WaylandDesktopShellProposal.md`) in
-  `OS/Linux/Wayland/UltraCanvasWaylandDesktopShell.cpp`, and the Win32 backend
+  `OS/Linux/Wayland/UltraCanvasWaylandDesktopShell.cpp`, its screenshots and
+  global shortcuts through the freedesktop portals in
+  `OS/Linux/Wayland/UltraCanvasWaylandPortals.cpp`, and the Win32 backend
   (`EnumWindows` filtered as Explorer's taskbar, appbars, `BitBlt`, WinEvent
   hooks, `RegisterHotKey`, the Start menu) in
   `OS/MSWindows/UltraCanvasWindowsDesktopShell.cpp` and
@@ -52540,6 +52547,7 @@ FILE: Docs/UltraCanvas/UltraCanvasNodeDiagramExamples.md
   - [NodeDiagramNode](#nodediagramnode)
   - [NodeDiagramLink](#nodediagramlink)
   - [NodeDiagramSizing (2.2.0)](#nodediagramsizing-220)
+  - [NodeDiagramLabelFit (2.4.0)](#nodediagramlabelfit-240)
   - [NodeDiagramGroup (2.2.0)](#nodediagramgroup-220)
   - [NodeDiagramLegendConfig (2.2.0)](#nodediagramlegendconfig-220)
 - [Class Reference](#class-reference)
@@ -52550,6 +52558,7 @@ FILE: Docs/UltraCanvas/UltraCanvasNodeDiagramExamples.md
   - [Link Management](#link-management)
   - [Layout](#layout)
   - [Data-driven node sizing (2.2.0)](#data-driven-node-sizing-220)
+  - [Label fit (2.4.0)](#label-fit-240)
   - [Cluster containers (2.2.0)](#cluster-containers-220)
   - [Color legend (2.2.0)](#color-legend-220)
   - [Styling & Theme](#styling--theme)
@@ -52561,7 +52570,7 @@ FILE: Docs/UltraCanvas/UltraCanvasNodeDiagramExamples.md
   - [Serialization](#serialization)
   - [Callbacks](#callbacks)
 - [Usage Examples](#usage-examples)
-  - [Simple API — Friends network with force-directed layout](#simple-api-—-friends-network-with-force-directed-layout)
+  - [Simple API — five nodes, six links, one layout](#simple-api-—-five-nodes-six-links-one-layout)
   - [Verbose API — Workflow editor with handles](#verbose-api-—-workflow-editor-with-handles)
   - [Link styles showcase](#link-styles-showcase)
   - [Multi-select with keyboard](#multi-select-with-keyboard)
@@ -52569,6 +52578,7 @@ FILE: Docs/UltraCanvas/UltraCanvasNodeDiagramExamples.md
   - [Right-click-to-create with auto-sized nodes](#right-click-to-create-with-auto-sized-nodes)
   - [Hierarchical org chart layout](#hierarchical-org-chart-layout)
   - [Cluster containers, sizing and legend](#cluster-containers-sizing-and-legend)
+  - [A personal network of card nodes (the demo's Friends tab)](#a-personal-network-of-card-nodes-the-demos-friends-tab)
   - [Card nodes with icons, without overlaps (2.3.0)](#card-nodes-with-icons-without-overlaps-230)
 - [Keyboard Shortcuts](#keyboard-shortcuts)
 - [See Also](#see-also)
@@ -52580,7 +52590,15 @@ FILE: Docs/UltraCanvas/UltraCanvasNodeDiagramExamples.md
 **Namespace:** `UltraCanvas`
 **Header:** `include/Plugins/Diagrams/UltraCanvasNodeDiagram.h`
 **Base Class:** `UltraCanvasUIElement`
-**Version:** 2.2.0
+**Version:** 2.4.0
+
+> **Since 2.4.0** a label never runs out of its node. The **label fit**
+> (`NodeLabelFit`) shrinks the font to a minimum and grows the node for what
+> still does not fit, per shape - a circle grows to the chord its name needs,
+> a diamond to twice that. A node that grows pushes its neighbours apart. The
+> data-driven sizing keeps every node at least as large as its label, and
+> every layout ends with no two nodes overlapping. See
+> [Label fit](#label-fit-240).
 
 > **Since 2.2.0** the component covers organizational-network work: data-driven
 > node sizing (`NodeSizeMode::ByDegree` / `ByValue`), cluster containers
@@ -52627,6 +52645,7 @@ UltraCanvasUIElement
 - **Cluster containers** (2.2.0): auto-fitted, titled boundary boxes around node sets
 - **Group cohesion** (2.2.0): pulls cluster members together during force-directed layout
 - **Color legend overlay** (2.2.0), placeable in any corner
+- **Label fit** (2.4.0): the font shrinks or the node grows, so a label never runs out of its node; no layout leaves nodes overlapping
 
 ## Data Structures
 
@@ -52664,6 +52683,14 @@ enum class NodeDegreeMode {
     Total,      // incoming + outgoing (default)
     Incoming,
     Outgoing
+};
+
+// NEW in 2.4.0: what happens when a label does not fit its node
+enum class NodeLabelFit {
+    Overflow,        // 2.3 behaviour: drawn at its font size, whatever the node
+    ShrinkFont,      // the font shrinks until the label fits, to minFontSize; then an ellipsis
+    GrowNode,        // the node grows until the label fits at its font size
+    ShrinkThenGrow   // the font shrinks to minFontSize first; what still does not fit grows the node (default)
 };
 
 // NOTE: no enumerator may be named "None" - X11's Xlib.h defines None as a macro.
@@ -52779,6 +52806,27 @@ degree-9 hub look nine times more important than a degree-1 leaf instead of thre
 `NodeDiagramNode` gained a `value` field (default `1.0`) that drives
 `NodeSizeMode::ByValue`, plus `baseWidth` / `baseHeight`, which capture the size a
 node was authored with so switching back to `NodeSizeMode::Fixed` restores it exactly.
+
+Since 2.4.0 the computed size is a floor, not the size: a node whose label
+needs more room under the [label fit](#label-fit-240) is larger than the data
+says. A degree-1 leaf named "Analyst 5" in a 9 pt font is not a 26 px square.
+
+### NodeDiagramLabelFit (2.4.0)
+
+```cpp
+struct NodeDiagramLabelFit {
+    NodeLabelFit mode = NodeLabelFit::ShrinkThenGrow;
+    double minFontSize = 7.0;    // ShrinkFont / ShrinkThenGrow stop here
+    double paddingX = 6.0;       // Each side of the text, in world units
+    double paddingY = 3.0;       // Above and below the text
+};
+```
+
+A label sits in the widest horizontal band of its shape at the label's own
+height: the full width of a rectangle or square, the chord of a circle, the
+narrowing middle of a diamond or a hexagon, the upper edge of the band in a
+triangle. The paddings are the gap between the text and that band's edge, so
+the same text makes a diamond about twice as wide as a square.
 
 ### NodeDiagramGroup (2.2.0)
 
@@ -52973,6 +53021,7 @@ int GetNodeDegree(const std::string& id, NodeDegreeMode mode) const;
 
 // Force a sizing pass now. Normally unnecessary - sizes are recomputed when
 // links or values change - but useful after bulk edits made through GetNode().
+// Since 2.4.0 it also separates the nodes that then overlap.
 void ApplyNodeSizing();
 ```
 
@@ -52980,6 +53029,67 @@ Degree counts are cached and invalidated by any node or link mutation, so
 bulk-loading a graph costs one rebuild rather than one per `AddLink` call.
 `RunLayout()` re-runs sizing before laying out, so the anti-overlap pass
 separates nodes by their final sizes.
+
+### Label fit (2.4.0)
+
+```cpp
+void                SetLabelFit(NodeLabelFit mode);
+NodeLabelFit        GetLabelFit() const;
+void                SetLabelFitConfig(const NodeDiagramLabelFit& cfg);
+NodeDiagramLabelFit GetLabelFitConfig() const;
+
+// The smallest node of `shape` that holds `label` at `fontSize` with the
+// fit's paddings. Width and height are equal for every shape but Rectangle.
+void MinimumNodeSizeForLabel(const std::string& label, double fontSize, NodeShape shape,
+                             double& outWidth, double& outHeight) const;
+
+// Grows every node smaller than its label needs (at its font size in
+// GrowNode, at minFontSize in ShrinkThenGrow), separates the nodes that then
+// overlap and refits the view when auto-fit is on. Returns how many grew.
+int FitNodesToLabels();
+
+// The font size a node's label is drawn at under the fit; 0 for an unknown id.
+double GetNodeLabelFontSize(const std::string& id) const;
+```
+
+The default, `ShrinkThenGrow`, means a diagram needs nothing from its host: a
+name wider than its node is drawn smaller, down to `minFontSize`, and a node
+that cannot hold its name even at that size grows until it can. `GrowNode`
+keeps every font size and grows the nodes instead, which is the right choice
+when the font sizes carry meaning (a hub in 10 pt, its people in 9 pt).
+`ShrinkFont` keeps every node size and shortens with an ellipsis what the
+minimum font still cannot fit, for diagrams whose geometry is authored.
+`Overflow` is the 2.3 behaviour.
+
+A node grows about its centre, and whatever grows pushes its neighbours apart
+(`ResolveOverlaps`). The growth runs inside `RunLayout()` and the sizing pass,
+so a layout is computed with the final sizes; changing the fit, a label, a
+shape or the font marks the labels and the next frame measures them with the
+window's font, grows what must grow and separates what then touches. A layout
+run before the element has a window (the usual case - the diagram is built,
+laid out and then added to a page) measures by an estimate and is corrected
+on the first frame the same way. A card node (an icon or a sublabel) grows
+for its label over its sublabel beside the icon disc, and in the shrinking
+modes its two fonts shrink together; what still does not fit keeps the 2.3
+ellipsis.
+
+Group boxes follow their members, so a department whose people grew is drawn
+larger, and since 2.4.0 the boxes are kept apart from each other too: after
+every layout (and after the fit, since a box reserves room for its title at
+the current zoom) each pair of overlapping boxes moves apart, half each, a
+group's members as one; what does not settle is placed box by box at the
+nearest free spot. Two groups that share a member overlap on purpose - the
+member sits in both - and move as one unit. A node in no group is pushed out
+of any box it sits in. A box with a pinned member stays. Nothing here moves a
+pinned node.
+
+The force-directed layout itself changed with 2.4.0 so that larger nodes
+still cluster: its area grows with the nodes in it instead of holding them
+inside the element, the repulsion and the link springs act between the
+nodes' borders rather than their centres (two touching hubs a hundred pixels
+across repel as hard as two touching dots), and a group's members start next
+to each other on the initial ring, so the cohesion gathers them where they
+are instead of dragging them through the other clusters.
 
 ### Cluster containers (2.2.0)
 
@@ -53116,6 +53226,12 @@ void SuggestNodeSizeForLabel(const std::string& label, double fontSize,
                               double& outHeight) const;
 ```
 
+Since 2.4.0 `MeasureLabel` measures with the window's font (bold, the
+diagram's family) when the element has a window, and estimates 0.70 x the
+font size per character before that. `SuggestNodeSizeForLabel` adds generous
+padding for a circle; `MinimumNodeSizeForLabel` (above) gives the exact
+minimum for any shape.
+
 ### Serialization
 
 ```cpp
@@ -53142,10 +53258,15 @@ std::function<void(double worldX, double worldY)> onCanvasRightClick;
 
 All examples are drawn from `Apps/DemoApp/UltraCanvasNodeDiagramExamples.cpp`.
 
-### Simple API — Friends network with force-directed layout
+### Simple API — five nodes, six links, one layout
+
+The least code that draws a graph: nodes by id, label and position, links
+between ids, a layout. (The demo's Friends tab is the card-node network
+[further down](#a-personal-network-of-card-nodes-the-demos-friends-tab);
+this is the API at its shortest.)
 
 ```cpp
-auto diagram = CreateNodeDiagram("nd_friends", x, y, w, h);
+auto diagram = CreateNodeDiagram("nd_simple", x, y, w, h);
 
 diagram->SetTheme(NodeDiagramTheme::Colorful);
 diagram->SetGridVisible(true, 25.0);
@@ -53352,6 +53473,7 @@ for (const auto& dept : departments) {
     hub.borderColor = Color(40, 40, 40, 255);
     hub.textColor   = Color(255, 255, 255, 255);
     hub.width = hub.height = 46.0;
+    hub.fontSize = 10.0;
     hub.value = 6.0;                     // Headcount - drives NodeSizeMode::ByValue
     diagram->AddNode(hub);
 
@@ -53362,6 +53484,7 @@ for (const auto& dept : departments) {
         node.shape       = NodeShape::Square;
         node.borderColor = dept.color;
         node.width = node.height = 34.0;
+        node.fontSize = 9.0;
         diagram->AddNode(node);
         members.push_back(id);
 
@@ -53387,12 +53510,17 @@ diagram->AddLink(NodeDiagramLink("x1", "sales_hub", "biz_hub"));
 diagram->AddLink(NodeDiagramLink("x2", "biz_hub",   "cli_hub"));
 diagram->AddLink(NodeDiagramLink("x3", "cli_hub",   "care_hub"));
 
+// The names stay at their sizes (10 pt hubs, 9 pt members) and the nodes
+// grow to hold them; the range below starts above what a member's name
+// needs, so the degree still shows.
+diagram->SetLabelFit(NodeLabelFit::GrowNode);
+
 // Hubs read as hubs: area proportional to connection count.
 NodeDiagramSizing sizing;
 sizing.mode     = NodeSizeMode::ByDegree;
-sizing.baseSize = 20.0;
-sizing.minSize  = 26.0;
-sizing.maxSize  = 74.0;
+sizing.baseSize = 36.0;
+sizing.minSize  = 40.0;
+sizing.maxSize  = 130.0;
 diagram->SetNodeSizing(sizing);
 
 // Keep each department's members together while the layout runs.
@@ -53411,8 +53539,102 @@ diagram->RunLayout();
 
 Switching `sizing.mode` to `NodeSizeMode::ByValue` sizes each node from its
 `value` field instead — headcount, budget, revenue, whatever the graph is about.
-`NodeSizeMode::Fixed` restores the authored sizes exactly.
+`NodeSizeMode::Fixed` restores the authored sizes exactly - and then, like the
+other modes, grows whichever node its name does not fit.
 
+
+### A personal network of card nodes (the demo's Friends tab)
+
+What the demo's first tab shows, in outline: one person's friends as cards -
+an icon disc for what they are into, their name, their interest, each card
+as wide as its text needs - in
+five circles drawn as soft boxes, a friend who belongs to two circles sitting
+in both boxes, the ties coloured by circle and widened by strength, a legend,
+and the cards collapsing to their icon discs when the view is zoomed out. The
+layout keeps the cards apart, the circles apart (two circles that share a
+member overlap on purpose, as one unit) and the person at the centre out of
+every box.
+
+```cpp
+auto diagram = CreateNodeDiagram("friends", 0, 0, 1000, 620);
+diagram->SetTheme(NodeDiagramTheme::Minimal);
+diagram->SetBackgroundColor(Color(247, 248, 251, 255));
+diagram->SetDefaultLinkStyle(LinkStyle::Bezier);
+
+const Color college(79, 70, 229, 255), climbing(22, 163, 74, 255);
+
+// GrowNode: the cards take the width their names need, no ellipsis.
+diagram->SetLabelFit(NodeLabelFit::GrowNode);
+
+auto card = [&](const char* id, const char* name, const char* interest,
+                const char* icon, const Color& circle) {
+    NodeDiagramNode n(id, name);
+    n.shape = NodeShape::Rectangle;
+    n.width = 96.0;     // a floor; the fit widens a card for a long name
+    n.height = 40.0;
+    n.fillColor = Color(255, 255, 255, 255);
+    n.borderColor = circle;
+    n.borderWidth = 1.2;
+    n.textColor = Color(31, 41, 55, 255);
+    n.sublabel = interest;
+    n.iconPath = std::string("media/icons/") + icon;
+    n.iconBackground = Color(std::min(255, circle.r + 150), std::min(255, circle.g + 150),
+                             std::min(255, circle.b + 150), 255);
+    n.cornerRadius = 10.0;
+    n.shadow = true;
+    diagram->AddNode(n);
+};
+card("alice", "Alice Weber",   "Guitar",      "folder-music.svg", college);
+card("ben",   "Ben Okafor",    "Photography", "smarthome/camera.svg", college);
+card("maya",  "Maya Schulz",   "Bouldering",  "menu/run.svg", college);   // in both circles
+card("finn",  "Finn Berg",     "Alpine routes", "menu/sun.svg", climbing);
+
+NodeDiagramNode me("me", "You");
+me.shape = NodeShape::Rectangle;
+me.width = 146.0;
+me.height = 46.0;
+me.fillColor = Color(31, 41, 55, 255);
+me.borderColor = Color(250, 204, 21, 255);
+me.textColor = Color(255, 255, 255, 255);
+me.sublabel = "Your network";
+me.iconPath = "media/icons/chatcube/profile.svg";
+me.iconBackground = Color(250, 204, 21, 255);
+me.cornerRadius = 12.0;
+me.shadow = true;
+diagram->AddNode(me);
+
+diagram->AddGroup("college",  "College",       {"alice", "ben", "maya"}, college,
+                  Color(229, 220, 255, 60));
+diagram->AddGroup("climbing", "Climbing club", {"maya", "finn"}, climbing,
+                  Color(172, 255, 224, 60));
+
+// A tie: the circle's colour inside a circle, grey across, wider when closer.
+auto tie = [&](const char* id, const char* a, const char* b, int strength, const Color& c) {
+    NodeDiagramLink l(id, a, b);
+    l.directed = false;
+    l.lineWidth = 0.8 + 0.9 * strength;
+    l.lineColor = Color(c.r, c.g, c.b, 120 + 30 * strength);
+    diagram->AddLink(l);
+};
+tie("t1", "me", "alice", 3, Color(148, 163, 184, 255));
+tie("t2", "alice", "ben", 3, college);
+tie("t3", "maya", "finn", 3, climbing);
+
+diagram->SetLinkDistance(28.0);
+diagram->SetChargeStrength(-360.0);
+diagram->SetGroupCohesion(0.12);
+diagram->BuildLegendFromGroups();
+diagram->SetLegendVisible(true);
+diagram->SetDetailZoom(0.5);          // below it, the cards are their icon discs
+diagram->SetLayout(NodeDiagramLayout::ForceDirected);
+diagram->RunLayout();
+
+// A click describes the person in the host's own status line.
+diagram->onNodeClick = [d = diagram.get()](const std::string& id) {
+    const int ties = d->GetNodeDegree(id);
+    (void)ties;   // "<name> - <interest>. <ties> ties, in <circle>."
+};
+```
 
 ### Card nodes with icons, without overlaps (2.3.0)
 
