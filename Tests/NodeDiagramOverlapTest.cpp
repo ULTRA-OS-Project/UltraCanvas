@@ -195,6 +195,22 @@ static std::vector<std::string> BuildOrg(UltraCanvasNodeDiagram& d) {
     return ids;
 }
 
+// The pairs of cluster boxes that intersect.
+static int GroupOverlaps(const UltraCanvasNodeDiagram& d) {
+    const std::vector<std::string> ids = d.GetAllGroupIds();
+    int count = 0;
+    for (size_t i = 0; i < ids.size(); ++i) {
+        for (size_t j = i + 1; j < ids.size(); ++j) {
+            const Rect2Dd a = d.GetGroupBounds(ids[i]);
+            const Rect2Dd b = d.GetGroupBounds(ids[j]);
+            const bool apartX = a.x + a.width <= b.x + 0.01 || b.x + b.width <= a.x + 0.01;
+            const bool apartY = a.y + a.height <= b.y + 0.01 || b.y + b.height <= a.y + 0.01;
+            if (!apartX && !apartY) ++count;
+        }
+    }
+    return count;
+}
+
 // Every node at least as large as its label needs at `fontSize`.
 static int TooSmallForLabel(const UltraCanvasNodeDiagram& d, const std::vector<std::string>& ids,
                             double fontSizeOrZero) {
@@ -248,6 +264,7 @@ static void TestGrowNode() {
     d.RunLayout();
     CHECK(TooSmallForLabel(d, ids, 0.0) == 0, "after the layout every node holds its label at its own font size");
     CHECK(Overlaps(d, ids) == 0, "and no two overlap");
+    CHECK(GroupOverlaps(d) == 0, "nor do two cluster boxes");
     const NodeDiagramNode* hub = d.GetNode("sales");
     const NodeDiagramNode* leaf = d.GetNode("sales_m1");
     CHECK(hub->width > leaf->width, "a hub is still larger than a leaf");
@@ -299,6 +316,7 @@ static void TestShrinkThenGrowDefault() {
     d.RunLayout();
     CHECK(TooSmallForLabel(d, ids, 7.0) == 0, "every node holds its label at the minimum font size");
     CHECK(Overlaps(d, ids) == 0, "no two overlap");
+    CHECK(GroupOverlaps(d) == 0, "nor do two cluster boxes");
     const double leafFont = d.GetNodeLabelFontSize("sales_m1");
     CHECK(leafFont >= 7.0 && leafFont <= 9.0, "a leaf's name is drawn between the minimum and its own size");
 

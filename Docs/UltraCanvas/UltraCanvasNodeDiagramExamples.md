@@ -536,7 +536,20 @@ on the first frame the same way. Card nodes (an icon or a sublabel) keep
 their authored width and shorten their text, as before.
 
 Group boxes follow their members, so a department whose people grew is drawn
-larger. Nothing here moves a pinned node.
+larger, and since 2.4.0 the boxes are kept apart from each other too: after
+every layout (and after the fit, since a box reserves room for its title at
+the current zoom) each pair of overlapping boxes moves apart, half each, a
+group's members as one; what does not settle is placed box by box at the
+nearest free spot. A box with a pinned member stays. Nothing here moves a
+pinned node.
+
+The force-directed layout itself changed with 2.4.0 so that larger nodes
+still cluster: its area grows with the nodes in it instead of holding them
+inside the element, the repulsion and the link springs act between the
+nodes' borders rather than their centres (two touching hubs a hundred pixels
+across repel as hard as two touching dots), and a group's members start next
+to each other on the initial ring, so the cohesion gathers them where they
+are instead of dragging them through the other clusters.
 
 ### Cluster containers (2.2.0)
 

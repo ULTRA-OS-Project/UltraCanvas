@@ -26,7 +26,16 @@
 //         at least as large as its label needs, so a degree-1 leaf no longer
 //         comes out as a 26 px square under a 50 px name.
 //  - CHANGED: Every layout (Circular, Grid, Hierarchical too) ends with
-//         ResolveOverlaps(), not only the force-directed one.
+//         ResolveOverlaps(), not only the force-directed one, and with the
+//         cluster boxes moved apart from each other.
+//  - FIXED: The force-directed layout held every node inside the element
+//         (forty 100 px nodes in 800 x 600 cannot be), repelled by the
+//         distance between centres (two touching hubs barely repelled) and
+//         started a group's members all round the ring. Its area now grows
+//         with the nodes, the charge and the springs act between borders,
+//         and a group's members start together.
+//  - FIXED: A cluster title at a low zoom sat on the first member; the box
+//         makes room for it.
 //
 // CHANGELOG 2.3.0 (minor - card nodes, no overlaps):
 //  - NEW: A node can carry an icon (iconPath, drawn in a disc of
@@ -996,6 +1005,9 @@ private:
     int GrowNodesForLabels(IRenderContext* ctx);
     // Marks the labels for re-measurement on the next Render().
     void InvalidateLabelFit() { labelFitDirty = true; }
+    // Moves overlapping cluster boxes apart (the later group's members as
+    // one) and re-separates the nodes, pass after pass. Returns the passes.
+    int SeparateGroups(double margin, int maxPasses = 50);
 
     // NEW in 2.2.0: degree cache + sizing + group geometry
     void RebuildDegreeCache() const;

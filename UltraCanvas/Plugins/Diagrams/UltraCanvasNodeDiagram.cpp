@@ -404,13 +404,18 @@ void UltraCanvasNodeDiagram::RunLayout() {
         default:
             break;
     }
+    // 2.4.0: cluster boxes apart from each other, like the nodes.
+    SeparateGroups(8.0);
     // 2.0.1: Auto-fit so the user never sees a stranded cluster in the corner.
     // FitView is safe even with bounds==0 (early returns) and respects user pan
     // afterwards via SetPanOffset.
     if (autoFitOnLayout && !nodes.empty()) {
         FitView();
-        // 2.4.0: sizes from the estimate (no window yet) are corrected on the
-        // first frame; the view is fitted again then.
+        // 2.4.0: a cluster box makes room for its title at the zoom the fit
+        // just chose, so the boxes are separated once more at that zoom.
+        for (int round = 0; round < 3 && SeparateGroups(8.0) > 0; ++round) FitView();
+        // Sizes from the estimate (no window yet) are corrected on the first
+        // frame; the view is fitted again then.
         if (labelFitDirty) refitViewAfterMeasure = true;
     }
     RequestRedraw();
@@ -428,26 +433,62 @@ void UltraCanvasNodeDiagram::RunForceDirectedLayout(int iterations) {
     if (height < 100.0f) height = 600.0f;
     double centerX = width  / 2.0f;
     double centerY = height / 2.0f;
+
+    // 2.4.0: the simulation's area grows with what is in it. Forty nodes of
+    // a hundred pixels do not fit an 800 x 600 element, and holding them in
+    // it (the old clamp) left them piled up for the overlap pass to scatter
+    // through each other's clusters. The area is at least three times the
+    // nodes' own, about the element's centre; the view fits it afterwards.
+    {
+        double area = 0.0;
+        for (const auto& pair : nodes) area += (pair.second.width + 12.0) * (pair.second.height + 12.0);
+        const double side = std::sqrt(area * 3.0);
+        width  = std::max(width, side);
+        height = std::max(height, side);
+    }
+    const double minX = centerX - width  / 2.0 + 30.0, maxX = centerX + width  / 2.0 - 30.0;
+    const double minY = centerY - height / 2.0 + 30.0, maxY = centerY + height / 2.0 - 30.0;
+
+    // The half-size a node keeps others out of: springs rest beyond it and
+    // the repulsion counts from it, so a wide node is as far from its
+    // neighbours as a narrow one, border to border.
+    auto radiusOf = [](const NodeDiagramNode& n) { return 0.5 * std::max(n.width, n.height); };
     
     // 2.0.4: DETERMINISTIC circular initialization. The previous version used
     // rand() (never seeded -> first call always gave the same arrangement, but
     // the algorithm sometimes settled into a local minimum with overlapping
     // nodes). Placing nodes evenly on a ring gives the repulsion forces a
     // symmetric starting point so they fan out reliably.
+    // 2.4.0: the members of a group go on the ring together, so the cohesion
+    // gathers them where they are instead of dragging them through the
+    // other clusters.
     {
-        size_t n = nodes.size();
+        std::vector<NodeDiagramNode*> ring;
+        ring.reserve(nodes.size());
+        std::set<std::string> onRing;
+        for (const auto& group : groups) {
+            for (const auto& nodeId : group.nodeIds) {
+                auto it = nodes.find(nodeId);
+                if (it == nodes.end() || onRing.count(nodeId)) continue;
+                ring.push_back(&it->second);
+                onRing.insert(nodeId);
+            }
+        }
+        for (auto& pair : nodes) {
+            if (!onRing.count(pair.first)) ring.push_back(&pair.second);
+        }
+        const size_t n = ring.size();
         if (n == 0) return;
         double initRadius = std::min(width, height) * 0.30f;
         if (initRadius < 50.0f) initRadius = 50.0f;
         const double TWO_PI = 6.28318530717958647692f;
-        size_t idx = 0;
-        for (auto& pair : nodes) {
-            if (!pair.second.isPinned) {
+        for (size_t idx = 0; idx < n; ++idx) {
+            NodeDiagramNode& node = *ring[idx];
+            if (!node.isPinned) {
                 double angle = (static_cast<double>(idx) / static_cast<double>(n)) * TWO_PI;
-                pair.second.x = centerX + initRadius * std::cos(angle);
-                pair.second.y = centerY + initRadius * std::sin(angle);
+                node.x = centerX + initRadius * std::cos(angle) - node.width * 0.5;
+                node.y = centerY + initRadius * std::sin(angle) - node.height * 0.5;
             }
-            idx++;
         }
     }
     
@@ -478,12 +519,15 @@ void UltraCanvasNodeDiagram::RunForceDirectedLayout(int iterations) {
             auto* target = GetNode(link.targetNodeId);
             if (!source || !target) continue;
             
-            double dx = target->x - source->x;
-            double dy = target->y - source->y;
+            double dx = (target->x + target->width * 0.5) - (source->x + source->width * 0.5);
+            double dy = (target->y + target->height * 0.5) - (source->y + source->height * 0.5);
             double dist = std::sqrt(dx * dx + dy * dy);
             if (dist < 0.1f) dist = 0.1f;
-            
-            double force = (dist - style.linkDistance) * style.linkStrength;
+
+            // 2.4.0: the link's rest length is between the borders, so two
+            // wide nodes are linked as closely as two small ones.
+            const double rest = style.linkDistance + radiusOf(*source) + radiusOf(*target);
+            double force = (dist - rest) * style.linkStrength;
             double fx = (dx / dist) * force;
             double fy = (dy / dist) * force;
             
@@ -504,13 +548,18 @@ void UltraCanvasNodeDiagram::RunForceDirectedLayout(int iterations) {
             for (auto it2 = nodes.begin(); it2 != nodes.end(); ++it2) {
                 if (it1 == it2) continue;
                 
-                double dx = it2->second.x - it1->second.x;
-                double dy = it2->second.y - it1->second.y;
+                double dx = (it2->second.x + it2->second.width * 0.5) - (it1->second.x + it1->second.width * 0.5);
+                double dy = (it2->second.y + it2->second.height * 0.5) - (it1->second.y + it1->second.height * 0.5);
                 double distSq = dx * dx + dy * dy;
                 if (distSq < 1.0f) distSq = 1.0f;
-                
-                double force = style.chargeStrength / distSq;
-                double invDist = 1.0f / std::sqrt(distSq);
+                const double dist = std::sqrt(distSq);
+
+                // 2.4.0: the charge acts over the gap between the borders,
+                // not between the centres: two touching hubs a hundred pixels
+                // across repel as hard as two touching dots.
+                const double gap = std::max(1.0, dist - radiusOf(it1->second) - radiusOf(it2->second));
+                double force = style.chargeStrength / (gap * gap);
+                double invDist = 1.0f / dist;
                 it1->second.vx += dx * invDist * force;
                 it1->second.vy += dy * invDist * force;
             }
@@ -574,8 +623,8 @@ void UltraCanvasNodeDiagram::RunForceDirectedLayout(int iterations) {
             pair.second.x += vx;
             pair.second.y += vy;
             
-            pair.second.x = std::max(30.0, std::min(width - 30.0, pair.second.x));
-            pair.second.y = std::max(30.0, std::min(height - 30.0, pair.second.y));
+            pair.second.x = std::max(minX, std::min(maxX - pair.second.width, pair.second.x));
+            pair.second.y = std::max(minY, std::min(maxY - pair.second.height, pair.second.y));
         }
     }
     
@@ -928,6 +977,126 @@ std::string UltraCanvasNodeDiagram::GetNodeGroupId(const std::string& nodeId) co
     return std::string();
 }
 
+// 2.4.0: cluster boxes do not overlap either. Each overlapping pair of boxes
+// (with no member in common) moves apart along the axis it overlaps least,
+// half each - a group's members as one, so the cluster keeps its shape - and
+// the nodes a moved cluster then lands on are separated again, pass after
+// pass. A box squeezed between two others can be pushed back and forth; when
+// the passes run out, the boxes are placed one at a time instead, each at
+// the nearest free spot beside what it touches, which cannot cycle. A group
+// with a pinned member does not move.
+int UltraCanvasNodeDiagram::SeparateGroups(double margin, int maxPasses) {
+    if (groups.size() < 2) return 0;
+
+    auto shareMembers = [](const NodeDiagramGroup& a, const NodeDiagramGroup& b) {
+        for (const auto& id : b.nodeIds) {
+            if (std::find(a.nodeIds.begin(), a.nodeIds.end(), id) != a.nodeIds.end()) return true;
+        }
+        return false;
+    };
+    auto hasPinned = [this](const NodeDiagramGroup& g) {
+        for (const auto& id : g.nodeIds) {
+            auto it = nodes.find(id);
+            if (it != nodes.end() && it->second.isPinned) return true;
+        }
+        return false;
+    };
+    auto shift = [this](const NodeDiagramGroup& g, double dx, double dy) {
+        for (const auto& id : g.nodeIds) {
+            auto it = nodes.find(id);
+            if (it == nodes.end()) continue;
+            it->second.x += dx;
+            it->second.y += dy;
+        }
+    };
+    constexpr double kSlack = 0.5;
+
+    int pass = 0;
+    for (; pass < maxPasses; ++pass) {
+        bool moved = false;
+        for (size_t i = 0; i < groups.size(); ++i) {
+            for (size_t j = i + 1; j < groups.size(); ++j) {
+                const NodeDiagramGroup& a = groups[i];
+                const NodeDiagramGroup& b = groups[j];
+                const bool aFixed = hasPinned(a), bFixed = hasPinned(b);
+                if ((aFixed && bFixed) || shareMembers(a, b)) continue;
+                const Rect2Dd ra = ComputeGroupBounds(a);
+                const Rect2Dd rb = ComputeGroupBounds(b);
+                if (ra.width <= 0.0 || rb.width <= 0.0) continue;
+                const double dx = (rb.x + rb.width * 0.5) - (ra.x + ra.width * 0.5);
+                const double dy = (rb.y + rb.height * 0.5) - (ra.y + ra.height * 0.5);
+                const double px = (ra.width + rb.width) * 0.5 + margin - std::abs(dx);
+                const double py = (ra.height + rb.height) * 0.5 + margin - std::abs(dy);
+                if (px <= 0.01 || py <= 0.01) continue;
+                const double aShare = aFixed ? 0.0 : (bFixed ? 1.0 : 0.5);
+                const double bShare = 1.0 - aShare;
+                if (px < py) {
+                    const double dir = dx != 0.0 ? (dx > 0.0 ? 1.0 : -1.0) : 1.0;
+                    shift(a, -dir * (px + kSlack) * aShare, 0.0);
+                    shift(b,  dir * (px + kSlack) * bShare, 0.0);
+                } else {
+                    const double dir = dy != 0.0 ? (dy > 0.0 ? 1.0 : -1.0) : 1.0;
+                    shift(a, 0.0, -dir * (py + kSlack) * aShare);
+                    shift(b, 0.0,  dir * (py + kSlack) * bShare);
+                }
+                moved = true;
+            }
+        }
+        if (!moved) break;
+    }
+
+    if (pass == maxPasses) {
+        // Did not settle: place the boxes one at a time, the fixed ones
+        // first, each where it is if that is free, else at the nearest free
+        // spot beside one of the boxes it touches.
+        std::vector<const NodeDiagramGroup*> order;
+        for (const auto& g : groups) order.push_back(&g);
+        std::stable_sort(order.begin(), order.end(), [&](const NodeDiagramGroup* a, const NodeDiagramGroup* b) {
+            return hasPinned(*a) && !hasPinned(*b);
+        });
+        std::vector<std::pair<const NodeDiagramGroup*, Rect2Dd>> placed;
+        for (const NodeDiagramGroup* g : order) {
+            const Rect2Dd box = ComputeGroupBounds(*g);
+            if (box.width <= 0.0) continue;
+            auto freeAt = [&](double x, double y) {
+                for (const auto& p : placed) {
+                    if (shareMembers(*g, *p.first)) continue;
+                    const Rect2Dd& o = p.second;
+                    if (x < o.x + o.width + margin - 0.01 && o.x < x + box.width + margin - 0.01 &&
+                        y < o.y + o.height + margin - 0.01 && o.y < y + box.height + margin - 0.01) return false;
+                }
+                return true;
+            };
+            double bestX = box.x, bestY = box.y;
+            if (!hasPinned(*g) && !freeAt(box.x, box.y)) {
+                double best = -1.0;
+                for (const auto& p : placed) {
+                    const Rect2Dd& o = p.second;
+                    const double cx[4] = {o.x - box.width - margin, o.x + o.width + margin, box.x, box.x};
+                    const double cy[4] = {box.y, box.y, o.y - box.height - margin, o.y + o.height + margin};
+                    for (int k = 0; k < 4; ++k) {
+                        const double d = (cx[k] - box.x) * (cx[k] - box.x) + (cy[k] - box.y) * (cy[k] - box.y);
+                        if ((best < 0.0 || d < best) && freeAt(cx[k], cy[k])) { best = d; bestX = cx[k]; bestY = cy[k]; }
+                    }
+                }
+                if (best < 0.0) {
+                    double bottom = box.y;
+                    for (const auto& p : placed) bottom = std::max(bottom, p.second.y + p.second.height + margin);
+                    bestY = bottom;
+                }
+                shift(*g, bestX - box.x, bestY - box.y);
+            }
+            placed.emplace_back(g, Rect2Dd(bestX, bestY, box.width, box.height));
+        }
+    }
+    if (pass > 0) {
+        // A moved cluster may have landed on a node outside any box.
+        ResolveOverlaps(6.0);
+        RequestRedraw();
+    }
+    return pass;
+}
+
 Rect2Dd UltraCanvasNodeDiagram::ComputeGroupBounds(const NodeDiagramGroup& group) const {
     bool any = false;
     double minX = 0.0, minY = 0.0, maxX = 0.0, maxY = 0.0;
@@ -952,10 +1121,25 @@ Rect2Dd UltraCanvasNodeDiagram::ComputeGroupBounds(const NodeDiagramGroup& group
 
     if (!any) return Rect2Dd(0.0, 0.0, 0.0, 0.0);
 
+    // 2.4.0: room for the title. It is drawn at a screen size (labelFontSize
+    // over the zoom) inside the padding, and at a low zoom it is taller than
+    // the padding and sat on the first member: the edge that carries it
+    // moves out by what the title needs beyond the padding.
+    double titleRoom = 0.0;
+    if (!group.label.empty() && group.labelPosition != GroupLabelPosition::NoLabel) {
+        double zoom = viewport.GetZoomLevel();
+        if (zoom < 0.001) zoom = 1.0;
+        const double titleHeight = (group.labelFontSize * 1.3 + group.labelMargin * 2.0) / zoom;
+        titleRoom = std::max(0.0, titleHeight - group.padding);
+    }
+    const bool titleAtTop = group.labelPosition == GroupLabelPosition::TopLeft ||
+                            group.labelPosition == GroupLabelPosition::TopCenter ||
+                            group.labelPosition == GroupLabelPosition::TopRight;
+
     return Rect2Dd(minX - group.padding,
-                   minY - group.padding,
+                   minY - group.padding - (titleAtTop ? titleRoom : 0.0),
                    (maxX - minX) + group.padding * 2.0,
-                   (maxY - minY) + group.padding * 2.0);
+                   (maxY - minY) + group.padding * 2.0 + titleRoom);
 }
 
 Rect2Dd UltraCanvasNodeDiagram::GetGroupBounds(const std::string& id) const {
@@ -2041,8 +2225,13 @@ void UltraCanvasNodeDiagram::Render(IRenderContext* ctx, const Rect2Df& dirtyRec
         labelFitDirty = false;
         const int grew = GrowNodesForLabels(ctx);
         if (grew > 0) ResolveOverlaps(6.0);
-        if (refitViewAfterMeasure && autoFitOnLayout && !nodes.empty()) FitView();
+        const bool refit = refitViewAfterMeasure && autoFitOnLayout && !nodes.empty();
         refitViewAfterMeasure = false;
+        if (refit) FitView();
+        // The boxes' title room depends on the zoom the fit chose.
+        for (int round = 0; round < 3 && SeparateGroups(8.0) > 0; ++round) {
+            if (refit) FitView();
+        }
     }
     
     // Background (in screen space, no transform)

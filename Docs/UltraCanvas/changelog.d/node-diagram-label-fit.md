@@ -12,7 +12,17 @@
   apart (`ResolveOverlaps`) and the view is refitted. The data-driven sizing
   (by degree or value) keeps every node at least as large as its label, and
   the circular, grid and hierarchical layouts end without overlaps, as the
-  force-directed one already did. `MinimumNodeSizeForLabel()`,
+  force-directed one already did. The cluster boxes are kept apart from each
+  other as well, after every layout and again after the fit (a box reserves
+  room for its title at the current zoom, so a title no longer sits on the
+  first member), half a move each or, when a box squeezed between two keeps
+  bouncing, placed one by one at the nearest free spot. The force-directed
+  layout held every node inside the element (forty nodes of a hundred pixels
+  do not fit 800 x 600, and the overlap pass then scattered the clusters
+  through each other), repelled by the distance between centres and started
+  a group's members all round the ring: its area now grows with the nodes,
+  the charge and the springs act between borders, and a group's members start
+  together. `MinimumNodeSizeForLabel()`,
   `FitNodesToLabels()` and `GetNodeLabelFontSize()` expose the pieces;
   `MeasureLabel()` measures with the window's font once the element has one,
   and a layout run before that is corrected with the real metrics on the
