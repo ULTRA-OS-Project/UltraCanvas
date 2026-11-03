@@ -924,7 +924,7 @@ jobs:
         uses: actions/cache@v5
         with:
           path: .libjxl
-          key: libjxl-v1-${{ matrix.os }}-0.10.3
+          key: libjxl-v2-${{ matrix.os }}-0.10.3
       - name: Build libjxl from source (Linux)
         if: runner.os == 'Linux' && steps.libjxl-cache.outputs.cache-hit != 'true'
         timeout-minutes: 40
@@ -954,15 +954,25 @@ jobs:
             -DJPEGXL_ENABLE_PLUGINS=OFF \
             -DJPEGXL_ENABLE_DEVTOOLS=OFF \
             -DJPEGXL_ENABLE_SKCMS=ON \
-            -DCMAKE_INSTALL_PREFIX="$PWD/.libjxl"
+            -DCMAKE_INSTALL_PREFIX=/usr/local
           cmake --build "$src/build" -j"$(nproc)"
-          cmake --install "$src/build"
-          test -f .libjxl/lib/pkgconfig/libjxl.pc || test -f .libjxl/lib/*/pkgconfig/libjxl.pc
+          # Staged under .libjxl (the cache) with the real prefix inside the
+          # .pc and CMake files: a prefix under the checkout would put a
+          # source-tree path into the library's link interface, which CMake
+          # refuses.
+          DESTDIR="$PWD/.libjxl" cmake --install "$src/build"
+          test -f .libjxl/usr/local/lib/pkgconfig/libjxl.pc
       - name: Install the libjxl build (Linux)
         if: runner.os == 'Linux'
         run: |
           set -euo pipefail
-          sudo cp -a .libjxl/. /usr/local/
+          sudo cp -a .libjxl/usr/local/. /usr/local/
+          # /usr/local/lib ahead of the distro's libraries for the loader:
+          # ld.so.conf.d is read in name order, and on arm64
+          # aarch64-linux-gnu.conf sorts before libc.conf (which names
+          # /usr/local/lib), so without this the distro's libheif.so.1 and
+          # libjxl.so.0.x would still be the ones loaded.
+          echo /usr/local/lib | sudo tee /etc/ld.so.conf.d/00-usr-local.conf >/dev/null
           sudo ldconfig
           pkg-config --modversion libjxl
 
@@ -979,7 +989,7 @@ jobs:
         uses: actions/cache@v5
         with:
           path: .libheif
-          key: libheif-nogpl-v1-${{ matrix.os }}-1.19.8-kvazaar-2.3.1
+          key: libheif-nogpl-v2-${{ matrix.os }}-1.19.8-kvazaar-2.3.1
       - name: Build libheif from source without x265 (Linux)
         if: runner.os == 'Linux' && steps.libheif-linux-cache.outputs.cache-hit != 'true'
         timeout-minutes: 30
@@ -988,7 +998,11 @@ jobs:
           KVAZAAR_VERSION: 2.3.1
         run: |
           set -euo pipefail
-          prefix="$PWD/.libheif"
+          # Staged under .libheif (the cache) with the real prefix /usr/local
+          # inside the .pc and CMake files (see the libjxl step); what is
+          # staged is put in place at once, so libheif's configure finds the
+          # kvazaar built just before it where its .pc says it is.
+          stage="$PWD/.libheif"
           src="$RUNNER_TEMP/libheif-src"
           rm -rf "$src" && mkdir -p "$src"
           # kvazaar from source where apt has no package for it
@@ -996,12 +1010,13 @@ jobs:
             curl -fsSL --retry 5 --retry-all-errors \
               "https://github.com/ultravideo/kvazaar/releases/download/v${KVAZAAR_VERSION}/kvazaar-${KVAZAAR_VERSION}.tar.xz" |
               tar -xJ -C "$src"
-            ( cd "$src/kvazaar-${KVAZAAR_VERSION}" && ./configure --prefix="$prefix" --disable-static && make -j"$(nproc)" && make install )
+            ( cd "$src/kvazaar-${KVAZAAR_VERSION}" && ./configure --prefix=/usr/local --disable-static && make -j"$(nproc)" && make install DESTDIR="$stage" )
+            sudo cp -a "$stage/usr/local/." /usr/local/
+            sudo ldconfig
           fi
           curl -fsSL --retry 5 --retry-all-errors \
             "https://github.com/strukturag/libheif/releases/download/v${LIBHEIF_VERSION}/libheif-${LIBHEIF_VERSION}.tar.gz" |
             tar -xz -C "$src"
-          PKG_CONFIG_PATH="$prefix/lib/pkgconfig:${PKG_CONFIG_PATH:-}" \
           cmake -S "$src/libheif-${LIBHEIF_VERSION}" -B "$src/build" \
             -DCMAKE_BUILD_TYPE=Release \
             -DBUILD_SHARED_LIBS=ON \
@@ -1024,14 +1039,16 @@ jobs:
             -DWITH_LIBSHARPYUV=OFF \
             -DWITH_EXAMPLES=OFF \
             -DWITH_GDK_PIXBUF=OFF \
-            -DCMAKE_INSTALL_PREFIX="$prefix"
+            -DCMAKE_INSTALL_PREFIX=/usr/local
           cmake --build "$src/build" -j"$(nproc)"
-          cmake --install "$src/build"
+          DESTDIR="$stage" cmake --install "$src/build"
+          test -f .libheif/usr/local/lib/pkgconfig/libheif.pc
       - name: Install the libheif build (Linux)
         if: runner.os == 'Linux'
         run: |
           set -euo pipefail
-          sudo cp -a .libheif/. /usr/local/
+          sudo cp -a .libheif/usr/local/. /usr/local/
+          echo /usr/local/lib | sudo tee /etc/ld.so.conf.d/00-usr-local.conf >/dev/null
           sudo ldconfig
           echo "libheif $(pkg-config --modversion libheif) from $(pkg-config --variable=libdir libheif)"
           lib=$(ldconfig -p | awk '/libheif\.so\.1 /{print $NF; exit}')

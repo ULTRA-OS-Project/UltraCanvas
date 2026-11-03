@@ -2201,8 +2201,10 @@ if(ULTRACANVAS_HAS_LIBJXL)
             set_property(SOURCE ${_uc_jxl_src} APPEND PROPERTY INCLUDE_DIRECTORIES ${_uc_jxl_includes})
         endif()
     endforeach()
-    target_link_directories(${ULTRACANVAS_LIB_NAME} PUBLIC ${LIBJXL_LIBRARY_DIRS})
-    target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC ${LIBJXL_LIBRARIES})
+    # The library by its full path (no link directory: one under the
+    # checkout, as a staged install's .pc would give, is refused by CMake in
+    # a link interface).
+    target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC ${LIBJXL_LINK_LIBRARIES})
 endif()
 if(ULTRACANVAS_HAS_LIBHEIF)
     # Only libspecific/Cairo/ImageCairo.cpp includes libheif's header, so the
