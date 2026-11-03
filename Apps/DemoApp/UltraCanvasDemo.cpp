@@ -1,5 +1,6 @@
 // Apps/DemoApp/UltraCanvasDemo.cpp
 // Comprehensive demonstration program implementation
+// Version: 1.0.17 - Info Graphics > Performance Matrix: the Calibration variant
 // Version: 1.0.16 - Bitmap Elements > JPEG XL Images (sample: media/images/jxl_art2.jxl)
 // Version: 1.0.15 - Info Graphics > Performance Matrix: the element replaces the placeholder
 // Version: 1.0.14 - Charts > Importance-Performance Chart (UltraCanvasImportancePerformanceChart)
@@ -1835,6 +1836,7 @@ namespace UltraCanvas {
                             [this]() { return CreatePerformanceMatrixExamples(); },
                             "DemoApp/UltraCanvasPerformanceMatrixExamples.cpp",
                             "Docs/UltraCanvas/UltraCanvasPerformanceMatrix.md")
+                .AddVariant("performancematrix", "Calibration (a team in the boxes)")
                 .AddVariant("performancematrix", "9-Box (Grid)")
                 .AddVariant("performancematrix", "Performance vs Potential (Tiles)")
                 .AddVariant("performancematrix", "Performance Management (Header Tabs)")

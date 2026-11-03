@@ -14,6 +14,7 @@
 // Author: UltraCanvas Framework
 #include "UltraCanvasGroupBox.h"
 #include "UltraCanvasTooltipManager.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 #include <algorithm>
 #include <cmath>
 
@@ -712,10 +713,10 @@ namespace UltraCanvas {
                 }
                 if (overClose != closeHovered) {
                     closeHovered = overClose;
-                    if (overClose && !closeTooltip.empty() && GetWindow()) {
+                    if (overClose && GetWindow()) {
                         Point2Df winPos = GetPositionInWindow();
                         UltraCanvasTooltipManager::UpdateAndShowTooltip(
-                                GetWindow(), closeTooltip,
+                                GetWindow(), closeTooltip.empty() ? Tr("Close") : closeTooltip,
                                 Point2Di(static_cast<int>(winPos.x + p.x),
                                          static_cast<int>(winPos.y + p.y)));
                     } else if (!overClose) {

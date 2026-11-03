@@ -1,5 +1,6 @@
 // OS/Linux/UltraCanvasLinuxApplication.cpp
 // Complete Linux application implementation with all methods
+// Version: 1.12.0 - the system fonts are the desktop's (UltraCanvasLinuxSystemFont.cpp), not Ubuntu 12
 // Version: 1.11.0 - the fonts and the keysym table shared with the Wayland backend (UltraCanvasLinuxFonts, UltraCanvasLinuxKeys)
 // Version: 1.10.0 - a held key is one press, its repeats, and one release: detectable
 //                   auto-repeat, and the fake releases dropped where the server lacks it

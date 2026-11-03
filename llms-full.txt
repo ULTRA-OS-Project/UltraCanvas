@@ -138,7 +138,8 @@ Install the required dependencies for your platform:
 # Ubuntu/Debian
 sudo apt install build-essential cmake libcairo2-dev libpango1.0-dev \
     libfreetype6-dev libvips-dev libharfbuzz-dev \
-    libheif-plugin-libde265 libheif-plugin-aomdec   # Ubuntu 24.04 on: HEIC and AVIF clang
+    libheif-plugin-libde265 libheif-plugin-aomdec \
+    libjxl-dev   # Ubuntu 24.04 on: HEIC and AVIF decoders, JPEG XL where libvips lacks it clang
 
 # macOS
 brew install cmake cairo pango freetype vips harfbuzz
@@ -1019,6 +1020,19 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   notice use them (`FontCoverageTest`, `RichTextEditElementTest`).
   See `Docs/UltraCanvas/UltraCanvasFontFile.md`.
 
+  The desktop's interface and monospace fonts are
+  `UltraCanvasApplication::GetSystemFontStyle()` /
+  `GetDefaultMonospacedFontStyle()` (what an empty `fontFamily` resolves to),
+  filled by each platform's `DetectSystemFontStyleNative`: the message font
+  of the non-client metrics and Consolas on Windows
+  (`OS/MSWindows/UltraCanvasWindowsSystemFont.cpp`), `[NSFont systemFontOfSize:]`
+  and the system monospace on macOS, GSettings / `kdeglobals` /
+  `settings.ini` on Linux and the BSDs (`OS/Linux/UltraCanvasLinuxSystemFont.cpp`),
+  the bundled Ubuntu / Ubuntu Mono at 12 pt where none answers. The parsers
+  of those forms are the header-only `UltraCanvasSystemFont.h`
+  (`ParseGtkFontName`, `ParseKdeFontEntry`, `ReadIniValue`), tested without
+  a desktop. See `Docs/UltraCanvas/UltraCanvasSystemFont.md`.
+
   Emoji come from a bundled font the emoji setting picks
   (`UltraCanvasEmojiSettings.h`: `EmojiStyle` Colour / Monochrome / System,
   `EmojiSettings::Load` / `Save` on `Emoji.conf` in the UltraCanvas settings
@@ -1508,9 +1522,9 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   - Lifecycle and backend: `Initialize` / `Shutdown` / `IsInitialized`,
     `SetBackend`, `GetBackendName`.
   - Language: `GetAvailableLanguages` / `SetLanguage` / `GetLanguage` /
-    `GetLanguageInfo` / `DetectPreferredLanguage` (from `LC_ALL` / `LANG`, then
-    the backend's own `GetPreferredLanguageHint` — the OS locale on Windows,
-    where those variables are normally unset) / `ResolveAvailableLanguageCode`.
+    `GetLanguageInfo` / `DetectPreferredLanguage` (the desktop's languages
+    from `UltraCanvasSystemLanguage.h`, then the backend's own
+    `GetPreferredLanguageHint` as a tie-breaker) / `ResolveAvailableLanguageCode`.
     Codes are matched separator- and case-insensitively, so `en_US` from a
     settings file selects the `en-US` a Windows or macOS backend enumerates.
   - Checking: `IsCorrect`, `GetSuggestions`, `CheckText` (synchronous), and the
@@ -1549,6 +1563,19 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
 `UltraCanvasBrushEngine.{h,cpp}`, `UltraCanvasPaintSurface.{h,cpp}`; doc:
 `Docs/UltraCanvas/UltraCanvasPaintSurface.md`). PixelFX stays the whole-image
 engine; these classes hold the pixels being edited and hand them to it.
+
+- **UltraCanvasSystemLanguage** (`UltraCanvasSystemLanguage.h`) — the
+  languages the person's desktop is set to, best first, as BCP 47 tags: the
+  POSIX variables as gettext reads them (`LC_ALL` / `LC_MESSAGES` / `LANG`,
+  the `LANGUAGE` list first when the locale is a real one), then the
+  platform's own list (`SystemLanguageTagsNative` under `OS/<Platform>/`:
+  the preferred UI languages and default locale on Windows, Language &
+  Region on macOS, `navigator.languages` in a browser, the device
+  configuration on Android). One detector for the spell checker today and
+  the localisation module next. Public surface: `SystemLanguageTags`,
+  `SystemLanguage`, and the pure `LanguageTagFromPosixLocale`,
+  `LanguageTagsFromEnvironment`, `LanguageTagBase`, `LanguageTagsEqual`.
+  See `Docs/UltraCanvas/UltraCanvasSystemLanguage.md`.
 
 - **UCRasterLayer** — straight-RGBA 8-bit layer with name / visible / locked /
   opacity / `RasterBlendMode`; `GetPixel/SetPixel/Fill/FillRect/CopyFrom/
@@ -3008,6 +3035,58 @@ payload handlers, key-frame recovery by PLI) with the camera through
 `UltraCanvasVideoRecorder`'s live preview. Opus needs libopus (pkg-config
 `opus`), VP8 FFmpeg; without them `caps.audio` / `caps.video` are false.
 Tests in `Tests/UltraRTC`. See `Docs/Modules/UltraRTC/README.md`.
+
+---
+
+### **20. UltraLocalisation**
+
+The text of every application in the person's language. `Tr("Save")`
+gives the translation of the English text written at the site from three
+layers of JSON catalogues - the application's own set
+(`media/locale/<lang>/<App>.json`), the base sets of its kind
+(`media/locale/<lang>/base/<Base>.json`: video editing, banking, shopping,
+...) and the standard set (`media/locale/<lang>/Standard.json`) - looked
+up in that order, the English itself when none has it; a file of the same
+name under the UltraCanvas settings folder's `locale/` is read first; a
+regional tag walks down (`zh-Hant-TW` → `zh-Hant` → `zh`). UI-free and
+free of the core (the vendored yyjson engine and the header-only path
+helpers only), built as the `uc-localisation` archive and absorbed whole
+into the shared core; linked by the public name `UltraLocalisation`.
+Sources `UltraCanvas/{include,core}/UltraLocalisation/`; wired into
+`UltraCanvasApplicationBase::Initialize`. The design is
+`Docs/UltraCanvas/UltraCanvasLocalisationProposal.md`; this is its phase
+L1. Public surface:
+
+- `Tr`, `TrC` (a context: `"button|Open"`), `TrN` (plural by the
+  language's CLDR rule, `{n}` the count), `TrF` (`{0}`, `{1}`, ... filled).
+- `LocalisationCatalogue` - the file: `Parse` / `Serialize`, entries,
+  plural forms, and the metadata `@language`, `@name`, `@source-language`,
+  `@translated-by`, `@bases`, `@inherited`.
+- `LanguageSettings` - `Language.conf` in the settings folder
+  (`language=de` or `system`, `translator=`): `Parse` / `Serialize` /
+  `FilePath` / `Load` / `Save`.
+- `UltraLocalisation` - `SetFolders` (the shipped tree and the settings
+  folder, handed in because the module knows neither), `SetLanguageOverride`
+  (`--lang`), `ChooseLanguage` (override, `ULTRACANVAS_LANG`, `Language.conf`,
+  the first desktop language with a catalogue, `en`), `Initialize`, `Load`,
+  `SetLanguage` with `AddChangeHandler` / `RemoveChangeHandler`,
+  `CurrentLanguage`, `CurrentApplication`, `AvailableLanguages`, `NativeName`,
+  `UseBaseSets` / `BaseSets`, `AddSet` / `LibrarySets` (a plugin's own set),
+  `OriginOf` / `StandardKeys` / `EntryCount` (which layer answered),
+  `PluralCategory` (pure), `ReadCatalogue`, `Reset` (for tests).
+
+The English catalogues are `media/locale/en/Standard.json` (the
+framework's `Tr` keys and the curated application vocabulary) and
+`media/locale/en/base/<Base>.json` (the sixteen base sets);
+`scripts/extract_ui_strings.py` rewrites them from the sources,
+`scripts/check_locale_catalogues.py` is the CI gate over every
+translation (`locale-catalogues.yml`, `scripts/locale_catalogues_baseline.txt`),
+and `scripts/wrap_ui_strings.py` wraps a file's interface strings in
+`Tr` for review. `ultralocalisation-draft` (`Apps/UltraLocalisationDraft`,
+on UltraAI's translator) drafts a language's catalogue, driven per set by
+`scripts/translate_catalogue.py`; the first drafts ship in eight
+languages under `media/locale/<lang>/`. See
+`Docs/Modules/UltraLocalisation/README.md`.
 
 ==============================================================================
 FILE: Docs/AI-Agent-Integration.md
@@ -5638,13 +5717,19 @@ as a `.tar.xz` on Linux, a `.tar.gz` on macOS and a `.zip` on Windows. The
 version in the name is the framework's, from the first line of
 `Docs/UltraCanvas/CHANGELOG.md`.
 
-**Where to get one.** The download page is
-[ultraos.eu/download-file](https://ultraos.eu/download-file/): pick the archive
-for your platform and architecture there. The `publish-sdk-website` job of
-`.github/workflows/build.yml` puts each release's six archives on the server
-behind that page, over SFTP, as `<ULTRAOS_SFTP_DIR>/<version>/<archive>` with a
-`SHA256SUMS` beside them (`scripts/upload-sdk-website.sh`). It runs once the
-GitHub release below has them. It uploads nothing until `ULTRAOS_SFTP_HOST`
+**Where to get one.** Every release is on the UltraOS server, with a
+`SHA256SUMS` beside the six archives:
+
+```
+https://start.ultraos.eu/pub/<version>/<archive>
+https://start.ultraos.eu/pub/<version>/SHA256SUMS
+https://start.ultraos.eu/pub/0.9.465/UltraCanvas-SDK-Windows-0.9.465-x86_64.zip
+```
+
+The `publish-sdk-website` job of `.github/workflows/build.yml` uploads them
+there over SFTP, into `<ULTRAOS_SFTP_DIR>/<version>/`, which the web server
+serves as `https://start.ultraos.eu/pub/` (`scripts/upload-sdk-website.sh`).
+It runs once the GitHub release below has them. It uploads nothing until `ULTRAOS_SFTP_HOST`
 is set, as a repository variable or a secret; the script's head lists the
 other settings. The *SDK website check* workflow
 (`.github/workflows/sdk-website-check.yml`, *Run workflow* in the Actions tab)
@@ -5661,9 +5746,11 @@ https://github.com/ULTRA-OS-Project/UltraCanvas/releases/download/v0.9.211/Ultra
 ```
 
 UltraCanvasStart's Framework step names the archive for the platform and
-architecture it runs on and the version it was built from, opens the download
-page in the browser with *Download page*, and unpacks the downloaded archive
-with *Unpack...*. UltraCanvasStart itself is on the same release, on its own, as
+architecture it runs on and the version it was built from. *Download* fetches
+it from `https://start.ultraos.eu/pub/` into a folder you pick, checks it
+against the version's `SHA256SUMS` and unpacks it there; *Unpack...* does the
+same for an archive downloaded by hand (`Apps/UltraCanvasStart/engine/StartSdk.h`,
+`DownloadSdk`). UltraCanvasStart itself is on the same release, on its own, as
 `UltraCanvasStart-<OS>-<version>-<arch>` (a `.tar.xz` on Linux, a `.zip` on
 Windows, a signed and notarized `.dmg` on macOS): the application, the
 libraries it loads and nothing else, for a computer that has neither the
@@ -5772,6 +5859,17 @@ glib, tinyxml2 and libvips through pkg-config:
   directory, or is empty.
 - **The Linux SDK does not**: the distribution's `-dev` packages are the
   right source there (Ubuntu 22.04's for the SDK's ABI), as step 1 lists them.
+  Only the ones an application compiles against are needed. The core also
+  records some of its own dependencies by the full path CI found them at,
+  such as `/usr/lib/x86_64-linux-gnu/libmp3lame.so`, which exists only
+  where `libmp3lame-dev` is installed, and `/usr/lib/libmupdf.a`, which CI
+  builds from source. The core is a shared library, so those are already
+  inside it or loaded with it at run time, and an application does not need
+  them on its link line. `UltraCanvasConfig.cmake` therefore leaves out any
+  such path the consuming machine does not have, and lists them in the
+  configure output (`UltraCanvas: not on this machine, left off the link
+  line ...`), instead of letting the build stop with *No rule to make
+  target*.
 
 ## Compatibility
 
@@ -8529,7 +8627,8 @@ Install the required dependencies for your platform:
 # Ubuntu/Debian
 sudo apt install build-essential cmake libcairo2-dev libpango1.0-dev \
     libfreetype6-dev libvips-dev libharfbuzz-dev \
-    libheif-plugin-libde265 libheif-plugin-aomdec   # Ubuntu 24.04 on: HEIC and AVIF
+    libheif-plugin-libde265 libheif-plugin-aomdec \
+    libjxl-dev   # Ubuntu 24.04 on: HEIC and AVIF decoders, JPEG XL where libvips lacks it
 
 # macOS
 brew install cmake cairo pango freetype vips harfbuzz
@@ -25180,7 +25279,7 @@ Selection callbacks:
 Appearance: `SetStyle(CalendarStyle)` with predefined `CalendarStyles::Default()`,
 `CalendarStyles::Compact()` and `CalendarStyles::Dark()`; or tweak any colour /
 metric on `CalendarStyle` directly. `SetShowFooter`, `SetShowAdjacentMonthDays`,
-`SetWeekdayNames`, `SetMonthNames`, `SetWeekendDays` cover the rest.
+`SetWeekdayNames`, `SetMonthNames`, `SetWeekendDays` cover the rest. Without them the names are the standard set's `weekday|Mo`, `month|May` and `month-short|May` entries in the current language (UltraLocalisation), and a language switched at run time re-reads them in every open picker; names the application set stay through a switch; `GetWeekdayNames`, `GetMonthNamesLong` and `GetMonthNamesShort` read the names in use (`Tests/DatePickerLanguageTest.cpp` holds the rule).
 
 ## 6. Date range picking & blocked dates
 
@@ -41720,11 +41819,6 @@ FILE: Docs/UltraCanvas/UltraCanvasImagePerformanceTest.md
 
 <!-- doc-check:
 double NowMs();
-UCImageSave::ImageExportOptions DefaultOptionsFor(UCImageSaveFormat f);
-std::string EncodeQOIFromVImage(vips::VImage vImg, const std::string& outPath);
-bool DecodeQOIFile(const std::string& path);
-std::string EncodeBMPFromVImage(vips::VImage vImg, const std::string& outPath);
-bool DecodeBMPFile(const std::string& path);
 using Step = std::function<void()>;
 Step cleanupTempFiles; Step resetThumbnails; Step runBenchmark;
 CodecResult r; CodecEntry entry; UCImageSave::ImageExportOptions opts; vips::VImage vImg;
@@ -41732,6 +41826,7 @@ std::string outPath; std::string stablePath; int globalIdx; int slot; int active
 double t0; double t1; double d0; double d1;
 UltraCanvasWindowBase* win; IRenderContext* ctx;
 std::shared_ptr<UltraCanvasImageElement> imageElement;
+void StoreFormatChoice(const std::vector<std::pair<std::string, bool>>& choice);
 -->
 
 ## Contents
@@ -41742,7 +41837,8 @@ std::shared_ptr<UltraCanvasImageElement> imageElement;
   - [UCImage (loading and saving the source image)](#ucimage-loading-and-saving-the-source-image)
   - [UCImageSave::ImageExportOptions](#ucimagesaveimageexportoptions)
   - [UltraCanvasImageElement (used for thumbnails)](#ultracanvasimageelement-used-for-thumbnails)
-  - [Codec table (file-local)](#codec-table-file-local)
+  - [Codec list (file-local)](#codec-list-file-local)
+  - [Choosing the formats (Settings)](#choosing-the-formats-settings)
   - [CodecResult (per-codec output row)](#codecresult-per-codec-output-row)
   - [Helpers (file-local)](#helpers-file-local)
   - [CodecComparisonChartElement (the grouped bar chart, file-local)](#codeccomparisonchartelement-the-grouped-bar-chart-file-local)
@@ -41755,8 +41851,6 @@ std::shared_ptr<UltraCanvasImageElement> imageElement;
 - [Usage Examples](#usage-examples)
   - [Driving the benchmark from a "Choose Image" handler](#driving-the-benchmark-from-a-choose-image-handler)
   - [Encoding one codec and timing the round-trip](#encoding-one-codec-and-timing-the-round-trip)
-  - [Encoding with the bundled QOI path](#encoding-with-the-bundled-qoi-path)
-  - [Encoding with the bundled BMP path](#encoding-with-the-bundled-bmp-path)
   - [Hooking thumbnail clicks to the 1:1 viewer](#hooking-thumbnail-clicks-to-the-11-viewer)
   - [Live status updates per codec](#live-status-updates-per-codec)
 - [Why "Force Eager Decode" Matters](#why-force-eager-decode-matters)
@@ -41766,7 +41860,7 @@ std::shared_ptr<UltraCanvasImageElement> imageElement;
 
 ## Overview
 
-The **Image Performance Test** is a built-in DemoApp benchmark that compares every bitmap codec UltraCanvas can drive (PNG, JPG, JPEG2000, WebP, AVIF, HEIF, GIF, TIFF, JPEG XL, QOI, and optionally BMP) on the **same source image**. For each codec it measures three numbers:
+The **Image Performance Test** is a built-in DemoApp benchmark that compares the bitmap formats this build writes and reads - FileLoader's inventory, see [Choosing the formats (Settings)](#choosing-the-formats-settings) - on the **same source image**. By default it times PNG, QOI, JPG, WebP, AVIF, HEIF, GIF, TIFF and JPEG XL; JPEG 2000, BMP and the rest (TGA, PPM, ICO, HDR, ...) are switched on in the settings. For each codec it measures three numbers:
 
 1. **Encoded file size** — bytes on disk after `UCImage::Save()`
 2. **Encode time** — milliseconds spent in `UCImage::Save()`
@@ -41784,7 +41878,9 @@ The demo is registered in `UltraCanvasDemo.cpp` under three navigation variants 
 
 In the v2.x codebase all three variants present the same benchmark UI; the differing labels remain to expose the underlying conceptual breakdown of the image pipeline.
 
-**Version:** 2.5.9
+Opening the page shows a popup, *"Upload an image to start the test."*: nothing is timed until an image is chosen.
+
+**Version:** 2.8.0
 **Source file:** `Apps/DemoApp/UltraCanvasImagePerformanceTest.cpp`
 
 ## Header Includes
@@ -41793,20 +41889,17 @@ In the v2.x codebase all three variants present the same benchmark UI; the diffe
 #include "UltraCanvasDemo.h"
 #include "UltraCanvasImageElement.h"
 #include "UltraCanvasButton.h"
-#include "UltraCanvasCheckbox.h"
+#include "UltraCanvasSwitch.h"         // the settings dialog's format switches
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasPathUtf8.h"      // PathFromUtf8 / PathToUtf8 / GetEnvUtf8
 #include "CSSLayout/CSSLayout.h"
 #include "UltraCanvasImage.h"
 #include "UltraCanvasNativeDialogs.h"
-#include "UltraCanvasModalDialog.h"   // FileFilter
+#include "UltraCanvasModalDialog.h"   // FileFilter, the settings dialog, the popup
+#include "UltraCanvasFileLoader.h"    // the format inventory and each format's options
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasApplication.h"
-
-// QOI third-party header — provides qoi_write / qoi_read; do NOT define
-// QOI_IMPLEMENTATION here, it is defined in the standalone libspecific/Cairo/qoi.cpp.
-#include "../../UltraCanvas/libspecific/Cairo/qoi.h"
 ```
 
 ## Class Reference
@@ -41822,7 +41915,8 @@ public:
     static std::shared_ptr<UCImageRaster> Load(const std::string& path,
                                                bool loadOnlyHeader = true);
 
-    // Eager save through libvips (or built-in QOI/BMP path).
+    // Eager save through the image writer (libvips and the framework's own
+    // savers, such as QOI and ICO).
     std::string Save(const std::string& imagePath,
                      const UCImageSave::ImageExportOptions& options);
 
@@ -41840,7 +41934,10 @@ typedef std::shared_ptr<UCImage> UCImagePtr;
 
 ### UCImageSave::ImageExportOptions
 
-Used to drive `Save()` per codec. The benchmark builds one with `DefaultOptionsFor(format)`:
+Used to drive `Save()` per codec. The benchmark asks FileLoader for them -
+`UltraCanvasFileLoader::GetImageExportOptions(outPath, opts)`: the format from
+the extension and that format's Save settings, as every application saves it -
+and turns `preserveMetadata` off:
 
 ```cpp
 struct ImageExportOptions {
@@ -41891,43 +41988,68 @@ public:
 };
 ```
 
-### Codec table (file-local)
+### Codec list (file-local)
 
-The benchmark drives this fixed codec list in display order. `EncoderBackend` selects which encode/decode path runs:
+The page builds its list once, when it opens, from FileLoader's inventory.
+Every entry is written with `UCImage::Save` and read with `UCImage::Load`,
+the image writer and reader behind FileLoader - QOI and BMP included, which
+the page encoded with its own code until version 2.9.0:
 
 ```cpp
-enum class EncoderBackend { Libvips, QOI, BMP };
-
 struct CodecEntry {
-    UCImageSaveFormat format;     // ignored when backend != Libvips
-    const char* name;
-    const char* extension;
-    EncoderBackend backend;
-    bool isOptional;
-};
-
-const CodecEntry kAllCodecs[] = {
-    { UCImageSaveFormat::PNG,      "PNG",  "png",  EncoderBackend::Libvips, false },
-    { UCImageSaveFormat::PNG,      "QOI",  "qoi",  EncoderBackend::QOI,     false },
-    { UCImageSaveFormat::JPEG,     "JPG",  "jpg",  EncoderBackend::Libvips, false },
-    { UCImageSaveFormat::JPEG2000, "JP2K", "jp2",  EncoderBackend::Libvips, false },
-    { UCImageSaveFormat::WEBP,     "WebP", "webp", EncoderBackend::Libvips, false },
-    { UCImageSaveFormat::AVIF,     "AVIF", "avif", EncoderBackend::Libvips, false },
-    { UCImageSaveFormat::HEIF,     "HEIF", "heif", EncoderBackend::Libvips, false },
-    { UCImageSaveFormat::GIF,      "GIF",  "gif",  EncoderBackend::Libvips, false },
-    { UCImageSaveFormat::TIFF,     "TIFF", "tiff", EncoderBackend::Libvips, false },
-    { UCImageSaveFormat::JXL,      "JXL",  "jxl",  EncoderBackend::Libvips, false },
-    { UCImageSaveFormat::BMP,      "BMP",  "bmp",  EncoderBackend::BMP,     true  },
+    UCImageSaveFormat format = UCImageSaveFormat::PNG;
+    std::string name;          // chart label: "PNG", "JP2K", ...
+    std::string extension;     // FileLoader's canonical extension
+    std::string description;   // FileLoader's name for the format
+    bool enabledByDefault = false;
 };
 ```
 
-JPEG XL, HEIF and AVIF are charted only where this build can both encode and
-load them (`VipsCanEncode(ext) && VipsCanLoad(ext)`; `VipsCanEncode` tries a
-2 x 2 encode once per codec). JPEG XL needs a libvips built with libjxl, which
-Ubuntu 22.04's is not; HEIF and AVIF need libheif with an encoder for each -
-the macOS build reads HEIC but cannot write it, since its HEVC encoder, x265,
-is GPL and is kept out of the core. Elsewhere the column is left out rather
-than shown as a failure.
+`BuildCodecList` keeps every entry of
+`UltraCanvasFileLoader::GetSupportedFormats(MediaFormatCategory::Bitmap)` with
+`canSave && canLoad` whose options the image writer takes
+(`GetImageExportOptions` answers for it). The X axis, and the settings
+dialog, put the formats it always charted first, the JPEG family together -
+PNG, QOI, JPG, JP2K, JXL, WebP, AVIF, HEIF, GIF, TIFF, BMP - and the rest
+after them in the inventory's order.
+
+A format this build cannot encode is not in the inventory, so it is not
+offered at all: JPEG XL needs a libvips built with libjxl, which Ubuntu
+22.04's is not; HEIF and AVIF need libheif with an encoder for each - the
+macOS build reads HEIC but cannot write it, since its HEVC encoder, x265, is
+GPL and is kept out of the core.
+
+### Choosing the formats (Settings)
+
+The gear button at the right end of the toolbar opens a dialog with one
+`UltraCanvasSwitch` per entry of the list, in two columns, labelled with the
+chart name and FileLoader's description (`JP2K - JPEG 2000`). **Apply**
+stores the choice (`StoreFormatChoice(choice)`), rebuilds the chart's groups
+and the thumbnails under them, and re-runs the benchmark when an image is
+loaded.
+
+The choice is kept between runs, in the demo's own settings file - an
+`UltraCanvasAppSettings("UltraCanvasDemo")`, so
+`<settings folder>/UltraCanvasDemo/settings.json` (on Linux
+`~/.config/UltraCanvas/UltraCanvasDemo/settings.json`) - one value per
+extension:
+
+```json
+{ "imagePerformance": { "formats": { "png": true, "jp2": true, "gif": false } } }
+```
+
+The file is read once, the first time the page asks, and written whole on
+every Apply. A format the file does not name follows its default
+(`IsCodecEnabled` answers for one), and so does every format when there is
+no file yet:
+
+| On by default | Off by default |
+|---|---|
+| PNG, QOI, JPG, WebP, AVIF, HEIF, GIF, TIFF, JXL | JP2K (its encoder is several times slower than any other and flattens every other time bar), BMP (uncompressed, it flattens the size bars), every other format |
+
+The switched-on formats, in display order, become the chart's groups
+(`codecNames`) and `activeCodecIndices`, the indices into `codecs` the
+benchmark loop walks.
 
 ### CodecResult (per-codec output row)
 
@@ -41947,30 +42069,14 @@ struct CodecResult {
 
 ### Helpers (file-local)
 
-Every timed region reads one monotonic millisecond clock, and every libvips
-codec is saved with the same options builder - the struct defaults already
-carry each codec's quality (85 / 80 / 65 / 50 / ...):
+Every timed region reads one monotonic millisecond clock:
 
 ```cpp
 double NowMs() {
     using namespace std::chrono;
     return duration<double, std::milli>(steady_clock::now().time_since_epoch()).count();
 }
-
-UCImageSave::ImageExportOptions DefaultOptionsFor(UCImageSaveFormat f) {
-    UCImageSave::ImageExportOptions opt;
-    opt.format = f;
-    opt.preserveMetadata = false;
-    opt.preserveTransparency = true;
-    return opt;
-}
 ```
-
-The bundled QOI and BMP paths have four more: `EncodeQOIFromVImage(vImg, path)`
-and `EncodeBMPFromVImage(vImg, path)` return an error string (empty on
-success), `DecodeQOIFile(path)` and `DecodeBMPFile(path)` decode every pixel
-and return whether that worked. All of them live in an anonymous namespace
-in the source file; none is part of the framework.
 
 ### CodecComparisonChartElement (the grouped bar chart, file-local)
 
@@ -42005,9 +42111,10 @@ struct PanelState {
     int         sourceWidth = 0;
     int         sourceHeight = 0;
     std::vector<CodecResult> results;
+    std::vector<CodecEntry>  codecs;       // BuildCodecList(); thumbs is parallel to it
 
     std::shared_ptr<UltraCanvasButton>   chooseBtn;
-    std::shared_ptr<UltraCanvasCheckbox> includeBmpCheckbox;
+    std::shared_ptr<UltraCanvasButton>   settingsBtn;   // the gear
     std::shared_ptr<UltraCanvasLabel>    infoLabel;
     std::shared_ptr<UltraCanvasLabel>    statusLabel;
     std::shared_ptr<CodecComparisonChartElement> chartElem;
@@ -42015,7 +42122,7 @@ struct PanelState {
     std::vector<std::shared_ptr<UltraCanvasImageElement>> thumbs;
 
     std::vector<std::string> codecNames;   // chart groups, in display order
-    std::vector<int> activeCodecIndices;   // indices into kAllCodecs[], same order
+    std::vector<int> activeCodecIndices;   // indices into codecs, same order
     bool benchmarkRunning = false;         // re-entry guard while a run is in flight
     std::string runStamp;                  // temp-file prefix, new for every run
 };
@@ -42028,8 +42135,9 @@ The benchmark wires up the following user-facing actions:
 
 | Control              | Callback            | Behavior                                                          |
 |----------------------|---------------------|-------------------------------------------------------------------|
-| `chooseBtn`          | `SetOnClick`        | Opens native file dialog, calls `loadSourceImage`, auto-runs      |
-| `includeBmpCheckbox` | `onStateChanged`    | Rebuilds active codec set, re-runs benchmark                      |
+| `chooseBtn`          | `SetOnClick`        | Opens FileLoader's Open dialog, calls `loadSourceImage`, auto-runs |
+| `settingsBtn`        | `SetOnClick`        | Opens the format switches; Apply rebuilds the set and re-runs     |
+| Page opened          | `PostToUIThread`    | Popup "Upload an image to start the test."                        |
 | Thumbnail per codec  | `onClick`           | Opens `ShowInMediaViewer(path)` at 1:1 zoom                       |
 | `chartElem`          | `onGeometryChanged` | Repositions thumbnails under their bar groups when bounds shift   |
 
@@ -42119,10 +42227,12 @@ auto loadSourceImage = [state, cleanupTempFiles, resetThumbnails,
 
 ### Encoding one codec and timing the round-trip
 
-This is the inner loop of `runBenchmark` for a libvips-backed codec:
+This is the inner loop of `runBenchmark`, the same for every format:
 
 ```cpp
-auto opts = DefaultOptionsFor(entry.format);
+UCImageSave::ImageExportOptions opts;
+if (!UltraCanvasFileLoader::GetImageExportOptions(outPath, opts)) opts.format = entry.format;
+opts.preserveMetadata = false;
 double t0 = NowMs();
 std::string err = state->sourceImage->Save(outPath, opts);
 double t1 = NowMs();
@@ -42151,39 +42261,6 @@ if (err.empty()) {
     if (ok) { r.decodeTimeMs = d1 - d0; r.succeeded = true; }
     else    { r.errorMessage = "decode failed"; }
 }
-```
-
-### Encoding with the bundled QOI path
-
-QOI is decoded directly via the bundled `qoi.h` (no libvips round-trip on the decode side):
-
-```cpp
-vips::VImage vImg = state->sourceImage->GetVImage();
-double t0 = NowMs();
-std::string err = EncodeQOIFromVImage(vImg, outPath);
-double t1 = NowMs();
-r.encodeTimeMs = t1 - t0;
-
-double d0 = NowMs();
-bool ok = DecodeQOIFile(outPath);   // qoi_read + free
-double d1 = NowMs();
-r.decodeTimeMs = d1 - d0;
-```
-
-### Encoding with the bundled BMP path
-
-libvips has no BMP writer, so the demo ships a standalone 24bpp BI_RGB encoder/decoder. The encode/decode timing pattern is symmetric with QOI:
-
-```cpp
-double t0 = NowMs();
-std::string err = EncodeBMPFromVImage(vImg, outPath);
-double t1 = NowMs();
-r.encodeTimeMs = t1 - t0;
-
-double d0 = NowMs();
-bool ok = DecodeBMPFile(outPath);   // header parse + row walk + free
-double d1 = NowMs();
-r.decodeTimeMs = d1 - d0;
 ```
 
 ### Hooking thumbnail clicks to the 1:1 viewer
@@ -42225,7 +42302,7 @@ if (win && ctx) {
 
 ## Why "Force Eager Decode" Matters
 
-libvips uses lazy evaluation: `UCImage::Load()` typically only parses the file header and defers pixel decompression until pixels are actually read. Without `vImage.copy_memory()`, the timed region would only measure header parsing — drastically understating real-world decode cost for PNG, JPG, WebP, AVIF, HEIF, TIFF, and JP2K, while making them look unfairly fast next to QOI (which always fully decompresses in `qoi_read`).
+libvips uses lazy evaluation: `UCImage::Load()` typically only parses the file header and defers pixel decompression until pixels are actually read. Without `vImage.copy_memory()`, the timed region would only measure header parsing — drastically understating real-world decode cost for PNG, JPG, WebP, AVIF, HEIF, TIFF, and JP2K, and the timings would compare how quickly each format's header is parsed rather than how quickly its pixels are decoded.
 
 Calling `copy_memory()` walks the full libvips pipeline (decompress, color convert, optional alpha premultiply) and writes every pixel into a contiguous RAM buffer. Decode times then reflect real file→RAM decompression work for every codec.
 
@@ -42233,7 +42310,7 @@ Calling `copy_memory()` walks the full libvips pipeline (decompress, color conve
 
 1. **Always regenerate per-run temp paths.** UCImage's path-keyed cache will short-circuit identical paths and silently serve stale pixels into your thumbnails. The benchmark uses a nanosecond timestamp (`runStamp`) for this.
 2. **Force eager decode for any libvips load you intend to time.** Bare `Load()` only parses the header.
-3. **Disable BMP by default** when charting size — uncompressed RGB at 24bpp dominates the size axis and crushes the scale of every other codec.
+3. **Leave BMP and JPEG 2000 off by default** — uncompressed RGB at 24bpp dominates the size axis, and the JPEG 2000 encoder the time axis, crushing the scale of every other codec.
 4. **Re-encode through `UCImage::Save()` (not raw libvips)** so your benchmark numbers reflect what UltraCanvas apps will actually see.
 5. **Use `UpdateAndRender()` per codec** for streaming-style chart updates — without it the whole benchmark batches into a single repaint at the end.
 
@@ -42242,22 +42319,26 @@ Calling `copy_memory()` walks the full libvips pipeline (decompress, color conve
 | Codec | Backend  | Notes                                                                  |
 |-------|----------|------------------------------------------------------------------------|
 | PNG   | libvips  | Lossless; default reference                                            |
-| QOI   | bundled  | Lossless; reference encoder/decoder from `qoi.h`                       |
+| QOI   | UltraCanvas | Lossless; the framework's VipsQoiLoader / saver                     |
 | JPG   | libvips  | Lossy; quality 85 default                                              |
-| JP2K  | libvips  | JPEG 2000; quality 75                                                  |
+| JP2K  | libvips  | JPEG 2000; quality 75. Off by default                                  |
 | WebP  | libvips  | Lossy by default; quality 80                                           |
 | AVIF  | libvips  | Quality 65; speed 6                                                    |
 | HEIF  | libvips  | Quality 50                                                             |
 | GIF   | libvips  | 8-bit indexed                                                          |
 | TIFF  | libvips  | LZW compression default                                                |
-| BMP   | bundled  | Optional. Uncompressed 24bpp BI_RGB                                    |
+| BMP   | libvips  | Off by default. Uncompressed                                           |
+| other | libvips  | Every further format FileLoader writes and reads (TGA, PPM, ICO, HDR, EXR, PSD, ...). Off by default |
+
+Each format is written with its Save settings
+(`GetImageExportOptions`); the qualities above are the defaults.
 
 ## See Also
 
 - [UltraCanvasImageElement](UltraCanvasImageElement.md) — Image display widget used for the thumbnails
 - [UltraCanvasLabel](UltraCanvasLabelExamples.md) — Status/info text labels
 - [UltraCanvasButton](UltraCanvasButtonExamples.md) — "Choose Image..." button
-- [UltraCanvasCheckbox](UltraCanvasCheckbox.md) — "Include BMP" toggle
+- [UltraCanvasSwitch](UltraCanvasSwitch.md) — the format switches of the settings dialog
 - [UltraCanvasContainer](UltraCanvasContainer.md) — Layout root for the benchmark
 
 ==============================================================================
@@ -56317,6 +56398,10 @@ designs and one of four palettes.
 - [Text fitting](#text-fitting)
 - [Interaction](#interaction)
 - [Samples](#samples)
+- [The population](#the-population)
+  - [How a cell shows it](#how-a-cell-shows-it)
+  - [The legend, totals and level bars](#the-legend-totals-and-level-bars)
+  - [Showing it to a wider room](#showing-it-to-a-wider-room)
 - [What is not built yet](#what-is-not-built-yet)
 
 ## Which element do I want?
@@ -56434,6 +56519,7 @@ palette's panel colour.
 | `Explicit` | Each cell's own `fill` |
 | `DiagonalBands` | The palette's `rankColors`, sampled by the cell's rank from the best corner |
 | `ByRow` / `ByColumn` | The row's or column's level colour, tinted |
+| `ByCount` | How many people the cell holds, through `SetCountColormap` (Blues by default): the fullest cell is the darkest |
 
 In the `Cards` design, the colour goes to the card's border and badge, and
 the face stays white.
@@ -56490,21 +56576,101 @@ std::string text = matrix->BuildCellTooltip(PerformanceCellRef(2, 2));
 | `PerformanceVsPotential()` | 3×3 | Codes 1A–3C counted from the best corner, and a two-line description per tile |
 | `TalentReview()` | 3×3 | Potential levels with action captions; badges and three bullets per card |
 | `SkillWill()` | 2×2 | Guide, Delegate, Direct, Excite |
+| `SampleTeam()` | — | 36 invented people in three departments for `NineBox()`: most placed by 1–5 review scores, six by a calibrated cell |
+| `SampleTargetDistribution()` | — | A forced distribution for a 3×3 grid: 10 % top box, 30 % core box |
 
 The demo page shows each one in the design it was made for, with the design,
 colouring and palette switchable.
 
+## The population
+
+`model.items` holds the people (or products, or teams) being placed. Each
+`PerformanceMatrixItem` has a `label`, a `group` (a team or department), an
+optional `color` (by default the group's colour), a `note` for the tooltip,
+and a placement:
+
+- **An explicit cell** (`row`, `col`), or
+- **two scores** (`xScore`, `yScore`) on the axes' score ranges
+  (`PerformanceAxis::minScore` / `maxScore`). Each axis maps a score to a
+  level through its levels' `upperBound`s, or splits the range evenly when
+  every bound is left at NaN. A score on a bound belongs to the level above.
+
+An explicit cell wins over the scores. That is the calibration rule: the
+meeting overrides the formula, and the scores stay in the data beside the
+override.
+
+```cpp
+PerformanceMatrixModel model = PerformanceMatrixSamples::NineBox();   // both axes score 1-5
+model.items = {
+    PerformanceMatrixItem("A. Rivera", "Sales", 4.6, 4.2),    // placed by scores
+    PerformanceMatrixItem("B. Okoye", "Support", 1, 2),       // placed in row 1, column 2
+};
+model.xAxis.levels[0].upperBound = 2.5;                   // "Low" performance ends at 2.5
+PerformanceCellRef where = model.CellOf(model.items[0]);
+std::vector<int> perCell = model.CountsPerCell();         // row-major
+std::vector<int> perRow = model.CountsPerRow();
+std::vector<std::string> departments = model.Groups();    // in order of first appearance
+```
+
+### How a cell shows it
+
+`SetPopulationDisplay` picks one form for every cell:
+
+| Display | Shows |
+|---|---|
+| `Count` (default) | The number, in a chip in the cell's top corner. It is honest at any size and shows no names |
+| `Percent` | The cell's share of the population, and `/ target` when the model has a `targetDistribution` |
+| `Dots` | One dot per person in a fixed grid, in the group's colour; `+N` when they do not fit |
+| `Names` | The labels in columns, each with its group's colour; `+N more` when they do not fit |
+| `Hidden` | Nothing |
+
+Dots and names take the lower part of the cell, and the cell's own text is
+fitted into what is left. Hovering a dot or a name shows that person's
+tooltip (name, group, box, levels, scores, note). A click calls
+`onItemClick` and does not select the cell. `ItemAt(point)` and
+`GetItemRect(index)` map between people and the element's coordinates.
+
+`targetDistribution` is optional. It holds one share per cell, row-major from
+row 0, and the shares sum to 1. `Validate()` checks its length and its sum.
+
+### The legend, totals and level bars
+
+When the people have named groups, a legend of them stands at the right,
+with each group's size. A click on an entry hides that group: its people
+leave the cells, the counts, the shares and `ByCount`, and a second click
+brings them back. `SetGroupVisible` / `IsGroupVisible` do the same from
+code, and `SetShowLegend(false)` removes the legend.
+
+`SetShowTotals(true)` adds "n = 12" under each row and column label.
+`SetShowLevelBars(true)` draws a strip in the level colours between the
+grid and its labels on both axes.
+
+```cpp
+matrix->SetModel(model);
+matrix->SetPopulationDisplay(PerformancePopulationDisplay::Dots);
+matrix->SetShowTotals(true);
+matrix->SetGroupVisible("Support", false);
+matrix->onItemClick = [](const PerformanceMatrixItem& person) {
+    // person.label, person.group ...
+};
+```
+
+### Showing it to a wider room
+
+A populated matrix puts people's names next to ratings of their potential.
+The element stores nothing and sends nothing; it only draws. When the room
+should not see names, call `SetAnonymised(true)`. `Names` then shows as
+counts, and no person answers the pointer or a click, so no tooltip gives a
+name away. The demo's sample team is invented.
+
 ## What is not built yet
 
-This is the reference-card part of the proposal, with all four designs. Still
-to come:
+The reference cards and the population are built. Still to come, as the
+proposal's Phase 3:
 
-- **The population:** people placed into the boxes by cell or by score, with
-  counts, percentages, names or dots, a target distribution, an anonymised
-  mode and a group legend.
 - **Calibration:** dragging a person to another box, with a veto callback;
-  keyboard navigation; JSON and CSV interchange through
-  `UltraCanvasFileLoader`.
+  keyboard navigation; a scrollable list behind a cell's "+N more".
+- **Interchange:** JSON and CSV through `UltraCanvasFileLoader`.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasPertChartExamples.md
@@ -68751,11 +68917,13 @@ its argument through `ResolveAvailableLanguageCode()` first and reports the
 resolved spelling through `onSpellLanguageChange`, so what a host stores in its
 settings is what the backend enumerated.
 
-`DetectPreferredLanguage()` asks, in order: `LC_ALL`, `LC_MESSAGES`, `LANG`,
-`LANGUAGE`; then the backend's `GetPreferredLanguageHint()` (on Windows the
-locale from `GetUserDefaultLocaleName`, since the POSIX variables are normally
-unset there); then the same base language with any region; then the first
-available dictionary.
+`DetectPreferredLanguage()` asks, in order: the desktop's languages, best
+first, from [`UltraCanvasSystemLanguage.md`](UltraCanvasSystemLanguage.md)
+(the POSIX variables as gettext reads them, then the platform's own list -
+Windows' preferred UI languages and default locale, macOS's Language &
+Region); then the backend's `GetPreferredLanguageHint()` as a tie-breaker;
+for each, the same base language with any region; then the first available
+dictionary.
 
 ### Automatic language detection
 ```cpp
@@ -71846,6 +72014,150 @@ the callback before returning; the framework's do not block.
 - `UltraCanvasFileLoader.h` — file dialogs and typed loaders (`OpenImage`, `OpenAudio`, ...)
 - `IODeviceManager/UltraCanvasIODevicePrintDialog.h` — printing what a print dialog chose
 - [UltraCanvasDialogKeyboard.md](UltraCanvasDialogKeyboard.md) — keyboard handling inside dialogs
+
+==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasSystemFont.md
+==============================================================================
+
+# UltraCanvasSystemFont
+
+<!-- doc-check: UltraCanvasApplication* app; -->
+
+**The desktop's interface font, found rather than assumed.** An element
+whose `FontStyle::fontFamily` is empty is drawn in the system font, which
+is `UltraCanvasApplication::GetSystemFontStyle()`; code, hex and timecodes
+take `GetDefaultMonospacedFontStyle()`. Until 0.9.362 both were the literal
+Ubuntu 12 on Linux and on Windows, so a Windows desktop's Segoe UI and a
+GNOME desktop's Cantarell never reached a window. Each platform now asks
+its desktop, and this header holds the parsers of the forms the desktops
+write a font in, so a test covers every rule without a desktop.
+
+- Header: `UltraCanvas/include/UltraCanvasSystemFont.h` (header-only, pure)
+- Platform code: `OS/Linux/UltraCanvasLinuxSystemFont.cpp`,
+  `OS/MSWindows/UltraCanvasWindowsSystemFont.cpp`,
+  `OS/MacOS/UltraCanvasMacOSApplication.mm` (`DetectSystemFontStyleNative`)
+- Tests: `Tests/SystemFontTest.cpp` (target `SystemFontTest`, no display)
+
+```cpp
+FontStyle ui = app->GetSystemFontStyle();                 // Segoe UI 9, Cantarell 11, SF 13 ...
+FontStyle code = app->GetDefaultMonospacedFontStyle();    // Consolas, the GNOME monospace font, Menlo ...
+```
+
+Sizes are in points, as the text engine takes them. Both are read once
+and cached for the process.
+
+## What each platform reads
+
+| Platform | Interface font | Monospace font |
+|---|---|---|
+| Windows | The message font of the non-client metrics (`SPI_GETNONCLIENTMETRICS`, `lfMessageFont`), asked at 96 dpi through `SystemParametersInfoForDpi` where it exists (Windows 10 1607), else at the system dpi and converted to points: Segoe UI 9 on a stock install, whatever the person set under Accessibility | Consolas, at the same size |
+| macOS | `[NSFont systemFontOfSize:0]`, 13 pt; the family `Helvetica Neue` when AppKit names a private font Pango cannot resolve | The system monospace (`monospacedSystemFontOfSize:`), which is SF Mono and private, so Menlo at the interface size |
+| Linux, BSD | On a KDE session (`XDG_CURRENT_DESKTOP`), `~/.config/kdeglobals` `[General] font=` first; otherwise GSettings `org.gnome.desktop.interface font-name` first, read through GIO (a machine without the schema answers nothing); then the other; then `~/.config/gtk-4.0/settings.ini` and `gtk-3.0/settings.ini` `gtk-font-name`. GSettings is asked only inside a desktop session (`XDG_CURRENT_DESKTOP` or `DESKTOP_SESSION` set): with no desktop running - a bare window manager, an SSH session, a test under Xvfb - the schema would answer its compiled default, Cantarell 11, which nobody chose, so only the files are read | `monospace-font-name` and `[General] fixed=` the same way; the GTK file has no monospace key |
+| Everywhere | The bundled Ubuntu at 12 pt when nothing answers | Ubuntu Mono at 12 pt |
+
+## The parsers
+
+```cpp
+std::string family;
+double points = 0;
+bool gtk = ParseGtkFontName("Noto Sans Bold 10.5", family, points);                 // "Noto Sans", 10.5
+bool book = ParseGtkFontName("DejaVu Sans Mono Book 9", family, points);            // "DejaVu Sans Mono", 9: Book is a style
+bool px = ParseGtkFontName("Sans 12px", family, points);                            // "Sans", 9: pixels become points
+bool kde = ParseKdeFontEntry("Noto Sans,10,-1,5,50,0,0,0,0,0", family, points);     // "Noto Sans", 10
+std::string value = ReadIniValue("[Settings]\ngtk-font-name=Cantarell 11\n", "Settings", "gtk-font-name");   // "Cantarell 11"
+```
+
+`ParseGtkFontName` reads the GTK and Pango form - the family, then any
+style words (Bold, Italic, Book, Condensed, ...), then the size, in points
+or as `12px` - and leaves its outputs untouched when there is no size.
+`ParseKdeFontEntry` reads the `kdeglobals` form, the family then the point
+size then fields it ignores. `ReadIniValue` reads a `key=value` under a
+`[section]` (any section when the name is empty), comments with `#` or
+`;`, quotes around a value removed, so the GTK 2 `.gtkrc-2.0` reads too.
+A size is parsed dot-decimal whatever the locale, never through `strtod`:
+`Cantarell 1,5` is not a size.
+
+## Related
+
+- [`UltraCanvasFontFile.md`](UltraCanvasFontFile.md) - registering a font the application brings
+- [`UltraCanvasEmojiSettings.md`](UltraCanvasEmojiSettings.md) - the emoji font, a setting rather than the desktop's
+- [`UltraCanvasHostThemeProposal.md`](UltraCanvasHostThemeProposal.md) - the rest of following the host: colours, text scale, high contrast, and the change events
+
+==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasSystemLanguage.md
+==============================================================================
+
+# UltraCanvasSystemLanguage
+
+**The languages the person's desktop is set to, best first, as BCP 47
+tags.** One detector for every caller: the spell checker picks a
+dictionary by it today; the localisation module of
+[`UltraCanvasLocalisationProposal.md`](UltraCanvasLocalisationProposal.md)
+will pick a catalogue by it, and a date or number format follows the same
+answer, so a German desktop is German in every window.
+
+- Header: `UltraCanvas/include/UltraCanvasSystemLanguage.h`
+- Implementation: `UltraCanvas/core/UltraCanvasSystemLanguage.cpp`, the
+  platform's own answer in `OS/<Platform>/UltraCanvas<Platform>SystemLanguage.*`
+- Tests: `Tests/SystemLanguageTest.cpp` (target `SystemLanguageTest`, no display)
+- Used by: `UltraCanvasSpellChecker::DetectPreferredLanguage`
+  ([`UltraCanvasSpellChecker.md`](UltraCanvasSpellChecker.md))
+
+```cpp
+// Best first, each once: {"de-AT", "de", "en"} on a desktop with LANGUAGE=de_AT:de:en
+std::vector<std::string> wanted = SystemLanguageTags();
+// The first of them, or "en" when nothing names a language
+std::string language = SystemLanguage();
+// A first run picks the dictionary, catalogue or format that matches
+for (const std::string& tag : wanted) {
+    if (LanguageTagsEqual(tag, "de-AT") || LanguageTagBase(tag) == "de") break;
+}
+```
+
+## Where the answer comes from
+
+Two sources, in this order, each tag once:
+
+1. **The POSIX variables, as gettext reads them.** `LC_ALL`, else
+   `LC_MESSAGES`, else `LANG` names the locale; when that locale is a real
+   one (not `C`, `POSIX` or empty), the `LANGUAGE` list - a colon-separated
+   priority list, `de_AT:de:en` - comes first, then the locale. Under the
+   C locale `LANGUAGE` is ignored, as gettext ignores it: a list with no
+   locale behind it is a shell's leftover, not a choice.
+2. **The platform's own list**, `SystemLanguageTagsNative()`, defined under
+   `OS/<Platform>/`:
+
+| Platform | Source |
+|---|---|
+| Windows | `GetUserPreferredUILanguages` (Settings > Language, in the person's order), then `GetUserDefaultLocaleName`. The POSIX variables are normally unset on Windows, so this is usually the whole answer |
+| macOS | `NSLocale.preferredLanguages` (Language & Region, in order), then the current locale's identifier |
+| Linux, BSD | Nothing beyond the variables, which the display manager and the desktop set for the session from the language the person chose |
+| WebAssembly | `navigator.languages`, else `navigator.language` |
+| Android | The language and country of the device configuration the activity started with; nothing before the activity exists |
+
+Every spelling is folded to one: `de_DE.UTF-8@euro`, `de-de` and `DE_DE`
+are `de-DE`; a four-letter script is title case (`zh-Hant-TW`), a region
+upper case, a numeric region kept (`es-419`).
+
+## The pure helpers
+
+The rules are plain functions of their inputs, so `SystemLanguageTest`
+holds every platform's rule on the CI machine with no desktop:
+
+```cpp
+std::string tag = LanguageTagFromPosixLocale("de_DE.UTF-8@euro");             // "de-DE"
+std::string none = LanguageTagFromPosixLocale("C.UTF-8");                       // "" - names no language
+std::vector<std::string> tags = LanguageTagsFromEnvironment("de_AT:de", "", "", "de_DE.UTF-8");   // {"de-AT", "de", "de-DE"}
+std::string base = LanguageTagBase("zh-Hant-TW");                              // "zh"
+bool same = LanguageTagsEqual("de_AT", "de-at");                               // true
+bool region = LanguageTagsEqual("de", "de-AT");                                // false: a language is not its region
+```
+
+## Related
+
+- [`UltraCanvasSpellChecker.md`](UltraCanvasSpellChecker.md) - the first caller; its backend's `GetPreferredLanguageHint` is a tie-breaker after this
+- [`UltraCanvasLocalisationProposal.md`](UltraCanvasLocalisationProposal.md) - the language a catalogue is chosen by
+- [`UltraCanvasDesktopEntry.md`](UltraCanvasDesktopEntry.md) - reads the raw POSIX locale itself, because a `.desktop` file's `Name[de_DE@euro]` keys want the modifier the tag drops
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasTabExamples.md
@@ -80559,7 +80871,7 @@ Positioning inside a container is the CSS layout engine's job (`layout` /
 | Editable menus and toolbars - one editor for a program's menus and its toolbars' groups, from one command catalogue ([doc](UltraCanvasCommandConfigWidget.md)); `ShowCommandConfigDialog` opens it in a window | `UltraCanvasCommandConfigWidget` (was `UltraCanvasMenuConfigWidget`, an alias) | `UltraCanvasCommandConfigWidget.h` |
 | Path bar | `UltraCanvasBreadcrumb` | `UltraCanvasBreadcrumb.h` |
 | Page selector | `UltraCanvasPagination` | `UltraCanvasPagination.h` |
-| List **or table** — `UltraCanvasListView` is the multi-column, virtualised, model-driven one (`IListModel` + `ListColumnDef` + delegates; `SetShowHeader(true)` gives resizable columns, header tooltips and a sort indicator; sort and filter it with [`UltraCanvasListSortFilterProxy`](UltraCanvasListSortFilterProxy.md)); tree; multi-column tree; sheet | `UltraCanvasListView`, `UltraCanvasTreeView`, `UltraCanvasColumnsTreeView`, `UltraCanvasSpreadsheet` | matching `*.h` |
+| List **or table** — `UltraCanvasListView` is the multi-column, virtualised, model-driven one (`IListModel` + `ListColumnDef` + delegates; `SetShowHeader(true)` gives resizable columns, header tooltips and a sort indicator; sort and filter it with [`UltraCanvasListSortFilterProxy`](UltraCanvasListSortFilterProxy.md)); tree; multi-column tree ([`UltraCanvasColumnsTreeView`](UltraCanvasTreeViewExamples.md#columnar-layout-ultracanvascolumnstreeview): aligned Name / Type / Value columns with a header band, resizable boundaries and section-header rows); sheet | `UltraCanvasListView`, `UltraCanvasTreeView`, `UltraCanvasColumnsTreeView`, `UltraCanvasSpreadsheet` | matching `*.h` |
 | Folder contents / file browsing | `UltraCanvasFilerWidget` | `UltraCanvasFilerWidget.h` |
 | System information (CPU, GPU, NPU, memory, drives, network, USB, Bluetooth) | `UltraCanvasHardwareInfoPanel` | `UltraCanvasHardwareInfoPanel.h` |
 | The desktop message centre: every chat, mail and notification on the UltraMessage feed, with sources, filters, search and the notification's actions ([doc](UltraCanvasMessageCenter.md)) | `UltraCanvasMessageCenter` | `Plugins/UltraMessage/UltraCanvasMessageCenter.h` |
@@ -81404,8 +81716,8 @@ What the element does by itself:
 
 - **View.** Wheel zooms about the cursor (shift + wheel pans), space or the
   middle button pans, `+` / `-`, Ctrl+0 (page), Ctrl+1 (100 %).
-  `SetZoom` / `SetZoomAt` / `ZoomStep` / `ZoomToPage` / `ZoomToDrawing` /
-  `ZoomToSelection` / `ZoomToRect` / `CenterOn` / `PanBy`; `DocToView` / `ViewToDoc` /
+  `SetZoom` / `SetZoomAt` / `ZoomStep` / `ZoomToPage` / `ZoomToPageWidth` /
+  `ZoomToDrawing` / `ZoomToSelection` / `ZoomToRect` / `CenterOn` / `PanBy`; `DocToView` / `ViewToDoc` /
   `PixelsToDoc`; `VisibleDocRect`, `CanvasArea`.
 - **Page** on a pasteboard with a shadow; **grid** with subdivisions that
   hide when too dense; **rulers** in any unit with the pointer marked;
@@ -95722,6 +96034,210 @@ the merged conversation fetch and every forwarding call; the ChatCube
 Direct, Matrix and Telegram providers (above). Next: XMPP and others.
 
 ==============================================================================
+FILE: Docs/Modules/UltraLocalisation/README.md
+==============================================================================
+
+# UltraLocalisation — The Text of Every Application in the Person's Language
+
+<!-- doc-check: int count = 3; int done = 1; std::vector<std::string> systemLanguages; -->
+
+**Status:** Phases L1 to L3 of [`UltraCanvasLocalisationProposal.md`](../../UltraCanvas/UltraCanvasLocalisationProposal.md) implemented: the module, the three layers of catalogues, the override folder, the fallback walk, plurals, `Language.conf`, the language choice, the start-up wiring (L1); the English standard set and the sixteen base sets under `media/locale/en/`, the framework's own dialogs wrapped in `Tr`, and the three scripts with their CI check (L2); the drafting tool over UltraAI with its script, the first drafts of the standard and base sets in German, French, Spanish, Italian, Dutch, Portuguese, Japanese and Simplified Chinese, and the UOS-Settings Language page (L3). The editor (L4), the applications (L5) and locale formatting (L6) follow.
+**Version:** 1.2.0
+**Author:** UltraCanvas Framework / ULTRA OS
+**Last Modified:** 2026-11-02
+
+`Tr("Save")` gives the translation of the English text written at the
+site, in the language the person's desktop is set to, from three layers of
+catalogues that the application's start-up loads for it. Nothing changes
+in how an element stores text: `Tr` is a hash lookup when a label is
+built, and the element keeps the string it is given.
+
+- Header: `UltraCanvas/include/UltraLocalisation/UltraLocalisation.h`
+- Implementation: `UltraCanvas/core/UltraLocalisation/UltraLocalisation.cpp`
+- Build: the `uc-localisation` archive, absorbed whole into the shared core;
+  linked by its public name `UltraLocalisation` (a headless engine links it
+  alone, as it links UltraVault)
+- Tests: `Tests/UltraLocalisationTest.cpp` (target `UltraLocalisationTest`, no display)
+- Registry: `Masterfile_modules.md` §20
+- Wired in: `UltraCanvasApplicationBase::Initialize` (the step "translation catalogues")
+
+```cpp
+std::string save = Tr("Save");                                    // "Speichern" on a German desktop
+std::string open = TrC("button", "Open");                         // the "button|Open" entry: "Öffnen"
+std::string files = TrN("{n} file", "{n} files", count);          // "3 Dateien": the language's plural rule
+std::string progress = TrF("Deleted {0} of {1}", done, count);    // "1 von 3 gelöscht"
+```
+
+## The three layers
+
+| Layer | File | Holds |
+|---|---|---|
+| The application's own set | `media/locale/<lang>/<App>.json` (`<App>` is the name given to `Initialize`) | what only this application says, and amendments of the layers below |
+| The base sets of its kind | `media/locale/<lang>/base/<Base>.json` | the vocabulary of video editing, banking, shopping, ... (the proposal's Appendix B); the application names the ones it takes |
+| The standard set | `media/locale/<lang>/Standard.json` | the framework's own dialogs and the words every application needs (Appendix A) |
+
+A key is looked up in that order and the English itself is the answer
+when no layer has it, so an untranslated string is always shown. A file
+of the same name under `<settings>/locale/<lang>/` - the UltraCanvas
+settings folder, `~/.config/UltraCanvas` on Linux - is read before the
+shipped one for the same layer: that is where a translator drops a draft
+and sees it on the next start, and where the editor will save on a
+packaged build. A regional tag walks down, `zh-Hant-TW` → `zh-Hant` →
+`zh`, and the more specific file wins per key.
+
+An application names its base sets in its catalogue's metadata, most
+specific first, or in code when it has no catalogue yet; a plugin with
+strings of its own adds a library set, looked up after the application's
+and before the bases:
+
+```json
+{ "@language": "en", "@bases": ["Video", "Audio", "Image"], "Fade out the audio": "Fade out the audio" }
+```
+
+```cpp
+UltraLocalisation::UseBaseSets({"Video", "Audio"});     // instead of the catalogue's "@bases"
+UltraLocalisation::AddSet("UltraCanvasCharts");          // a library's own set
+std::vector<std::string> bases = UltraLocalisation::BaseSets();
+LocalisationOrigin origin = UltraLocalisation::OriginOf("Trim");   // Application, Library, Base, Standard or Source
+```
+
+## The catalogue file
+
+One JSON object per language and set. Keys are the source text, with a
+context prefix when there is one; values are the translation; a plural
+entry is an object keyed by CLDR category; entries starting with `@` are
+metadata. `LocalisationCatalogue` reads and writes it:
+
+```json
+{
+  "@language": "de",
+  "@name": "Deutsch",
+  "@translated-by": "UltraAI draft 2026-11-02, reviewed by -",
+  "Save": "Speichern",
+  "button|Open": "Öffnen",
+  "Deleted {0} of {1}": "{0} von {1} gelöscht",
+  "{n} file": { "one": "{n} Datei", "other": "{n} Dateien" }
+}
+```
+
+```cpp
+LocalisationCatalogue catalogue;
+std::string error;
+bool ok = UltraLocalisation::ReadCatalogue("media/locale/de/Standard.json", catalogue, error);
+std::string text = catalogue.Serialize();                          // pretty, metadata first, keys in order
+bool parsed = LocalisationCatalogue::Parse(text, catalogue, error);
+```
+
+`TrN` picks the category from the count with the language's rule -
+`UltraLocalisation::PluralCategory("ru", 22)` is `"few"` - from a table of
+the CLDR rules for some forty languages (the one-form East Asian
+languages, French's zero-as-singular, the Slavic three and four forms,
+Arabic's six, Irish, Welsh, Maltese, Latvian, Lithuanian, Romanian,
+Slovenian, Hebrew). A language with one form keeps a plain string entry.
+Placeholders are `{0}`, `{1}`, ... and `{n}`; a translation may reorder
+them or leave one out. `TrF` formats integers as digits and floating
+point dot-decimal; the locale's own number and date formatting is phase
+L6.
+
+## The language
+
+`Initialize` chooses the language in this order, first answer wins, and
+loads it:
+
+1. `UltraLocalisation::SetLanguageOverride` - what an application parsed
+   from `--lang=de`.
+2. The `ULTRACANVAS_LANG` environment variable, for a script or a CI
+   screenshot.
+3. `Language.conf` in the UltraCanvas settings folder (`language=de`;
+   `language=system` or no file means the next step), which UOS-Settings
+   will write; `LanguageSettings` reads and writes it, with the
+   `translator=` line the editor puts into a catalogue's `@translated-by`.
+4. The desktop's languages, best first
+   ([`UltraCanvasSystemLanguage.md`](../../UltraCanvas/UltraCanvasSystemLanguage.md)):
+   the first one a catalogue exists for, each walked down (`de-CH` finds
+   `de`).
+5. `en`, which needs no catalogue.
+
+```cpp
+UltraLocalisation::SetFolders("/usr/share/ultracanvas/media/locale/", "/home/erika/.config/UltraCanvas");
+UltraLocalisation::Initialize("UltraMail", systemLanguages);         // what the application base does
+std::string language = UltraLocalisation::CurrentLanguage();          // "de"
+std::vector<std::string> available = UltraLocalisation::AvailableLanguages();   // {"de", "en", "fr", ...}
+std::string name = UltraLocalisation::NativeName("de");               // "Deutsch", from the standard set's "@name"
+int handler = UltraLocalisation::AddChangeHandler([](const std::string& now) { (void)now; });
+UltraLocalisation::SetLanguage("fr");                                 // reloads, then every handler runs
+UltraLocalisation::RemoveChangeHandler(handler);
+LanguageSettings settings = LanguageSettings::Load("/home/erika/.config/UltraCanvas");
+settings.language = "de";
+settings.Save("/home/erika/.config/UltraCanvas");
+```
+
+A language change reaches applications started after it; a running one
+that wants to follow rebuilds what it built from strings in a change
+handler, as the proposal's §7 says, since elements store text, not keys.
+
+## The catalogues and the scripts
+
+`media/locale/en/Standard.json` is the English standard set: the
+framework's own strings, collected from the `Tr` sites in
+`UltraCanvas/`, and the application vocabulary of the proposal's
+Appendix A, curated by hand. `media/locale/en/base/<Base>.json` are the
+sixteen base sets of Appendix B: Computer, Web, Audio, Image, Video, Text,
+Spreadsheet, Presentation, Planning, CAD, Banking, Games, Shopping,
+Fashion, Communication and Security. An English file's value is its key;
+a translation (`de/Standard.json`, `de/base/Video.json`) is the same file
+with the values in its language.
+
+| Script | Does |
+|---|---|
+| `scripts/extract_ui_strings.py` | rewrites the English catalogues from the sources: adds the framework's `Tr` keys to `Standard.json` (never removes one, so the vocabulary stays) and rewrites each application's `en/<Name>.json` from its sites, keeping its metadata and listing what it inherits under `@inherited`; `--check` is the CI sync test |
+| `scripts/check_locale_catalogues.py` | the CI gate (`locale-catalogues.yml`): every translation parses, has no stale key, keeps the source's placeholders, has the plural forms its language needs, repeats no entry of a set below it, names only base sets that exist; and the English files are in sync. Findings that predate it are in `scripts/locale_catalogues_baseline.txt` |
+| `scripts/wrap_ui_strings.py` | the migration tool: wraps the literal in the text-taking parameter of every known entry point in `Tr(...)` and writes the file (or, with `--diff`, prints the change) for a person to review; a sentence built from pieces is rewritten as `TrF` by hand |
+
+## Drafting a language
+
+`ultralocalisation-draft` (`Apps/UltraLocalisationDraft`, built when the
+UltraAI module is) reads an English source catalogue, translates every
+entry the target lacks through UltraAI's translator - any text-LLM
+provider the person has configured, or a translation provider - and
+writes the target marked `"@translated-by": "UltraAI draft <date> ...,
+reviewed by -"` until a person changes it. A context key sends its text
+alone; a plural entry sends its singular for the `one` form and its
+plural for every other form the language's rule needs; a translation
+that lost a placeholder is left untranslated and reported, so the
+catalogue check never sees it. `scripts/translate_catalogue.py` runs the
+tool over a language's sets - the standard set first, then the base
+sets, then the applications' - with a one-line context per set:
+
+```
+python3 scripts/translate_catalogue.py de fr --provider anthropic --api-key-env ANTHROPIC_API_KEY
+python3 scripts/translate_catalogue.py ja --sets Standard base/Video --dry-run
+```
+
+The editor's drafting button (L4) is this same step. The first drafts of
+the standard and base sets ship in eight languages - `de`, `fr`, `es`,
+`it`, `nl`, `pt`, `ja`, `zh-Hans` - each file marked as a machine draft
+in `@translated-by` until reviewed; the UOS-Settings Language page lists
+a language as soon as its `Standard.json` is there.
+
+The framework's own dialogs - the modal dialogs' buttons and titles, the
+file dialog, the filer widget's menus and messages, the colour, date,
+time and new-document dialogs, the progress dialog, the spell-check
+menu, the media viewer - are wrapped, so they show in the person's
+language as soon as a translation of `Standard.json` exists. The date
+picker's weekday and month names are the standard set's context entries
+(`"weekday|Mo"`, `"month|May"`, `"month-short|May"`), re-read when the
+language changes while a picker is open, and they are what phase L6's
+date formatting will take the names from: the platform gives a date's
+shape, the chosen language its words.
+
+## Related
+
+- [`UltraCanvasLocalisationProposal.md`](../../UltraCanvas/UltraCanvasLocalisationProposal.md) - the design, the standard set (Appendix A) and the base sets (Appendix B)
+- [`UltraCanvasSystemLanguage.md`](../../UltraCanvas/UltraCanvasSystemLanguage.md) - the desktop's languages
+- [`UltraCanvasEmojiSettings.md`](../../UltraCanvas/UltraCanvasEmojiSettings.md) - the shared-setting pattern `Language.conf` follows
+
+==============================================================================
 FILE: Docs/Modules/UltraMessage/README.md
 ==============================================================================
 
@@ -103219,7 +103735,7 @@ as `code`, and each numbered step of a guide is one action.
 | **1 Your computer** | What was detected, as key/value rows: OS, architecture, distribution, the package manager (a found / not-found badge and its path), the MSYS2 root on Windows (a link to install it when missing), home, the AI assistants found, git, the framework version. Under it the guide: Linux, macOS or Windows in a segmented control, preselected to the detected one, and that platform's way in as a numbered guide with the SDK archive named for this version and linked to its release. | Nothing; it is where the reader starts. |
 | **2 Features** | The feature groups (toolchain and framework core always; CDR, PDF, OCR, Vectorizer, audio, barcode, networking extras as options). The AI assistant: *None* first, in red, for a local IDE or the compiler alone (no instruction file, no first prompt), then Claude Code, Codex, Copilot, Gemini or another in a segmented control; whether its instruction file goes into the project and the first prompt is prepared; whether the work goes through GitHub alone. For the chosen assistant: whether its command-line tool is installed and how to install and sign in, how it picks up the repository's guidance (`CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, or pasted instructions and `llms-full.txt` for a chat), how an assistant works on an UltraCanvas application, and the no-local-compiler workflow of [`GettingStarted-Cloud.md`](../GettingStarted-Cloud.md). | Which packages step 3 checks; which file the project gets. |
 | **3 Tools** | The checks run on entering: every tool (`--version`) and library (`pkg-config --modversion`) the chosen groups need, each on a row with a switch: an installed one is on and locked; a missing or not checkable one that a package provides can be flipped - on (the default) installs it with the rest, off leaves it out of the install, the command and the report; the row shows the version found and, when missing, the package that provides it; a badge says *not checked yet*, *N missing* (*N missing, M off* with switches off) or *everything installed*, and the line under the buttons says what *Install what is missing* will do - the package manager, how many and the exact command - or why it cannot run. *Install what is missing* (enabled only while something is missing) runs the package manager after a confirmation that shows the command again: `apt-get` / `dnf` / `pacman` / `zypper` behind pkexec or sudo, `brew` as the user, MSYS2's `pacman` into the MSYS2 tree, after `pacman -Syuu` (twice, in a login shell) brings an installed MSYS2's package lists and core up to date. On Windows without MSYS2 the rows still name MSYS2's packages and Install sets MSYS2 up first: `winget install --id MSYS2.MSYS2` into `C:\msys64`, a first login shell (pacman's keyring) running `pacman -Syuu` twice (a core update ends the first run), then its `pacman` installs the rest and MSYS2 is detected again before the checks. The output is shown in a console as it comes, line by line, and the checks run again. Next goes on even with something missing; the step keeps the error marker until the checks pass. | Whether the toolchain and libraries are there. |
-| **4 Framework** | *The prebuilt SDK* or *A clone, built from source*. For the SDK: the version, the matching archive, the download page ([ultraos.eu/download-file](https://ultraos.eu/download-file/)) and the same archive on the GitHub release; *Download page* opens the page in the browser, where you download the archive; *Unpack...* unpacks the archive you pick beside it and fills the prefix in; *Find...* looks for `lib/cmake/UltraCanvas/UltraCanvasConfig.cmake` under a chosen folder. For the clone: the clone command and how the project finds the checkout. The step carries the error marker while the SDK is chosen and no prefix is set. | Where `find_package(UltraCanvas)` will look. |
+| **4 Framework** | *The prebuilt SDK* or *A clone, built from source*. For the SDK: the version, the matching archive, its address on [start.ultraos.eu/pub](https://start.ultraos.eu/pub/) and the same archive on the GitHub release; *Download* fetches the archive into a folder you pick, checks it against the version's `SHA256SUMS`, unpacks it there and fills the prefix in (a build without the network library opens the address in the browser instead); *Unpack...* does the same for an archive you downloaded yourself; *Find...* looks for `lib/cmake/UltraCanvas/UltraCanvasConfig.cmake` under a chosen folder. For the clone: the clone command and how the project finds the checkout. The step carries the error marker while the SDK is chosen and no prefix is set. | Where `find_package(UltraCanvas)` will look. |
 | **5 Project** | Application name and folder, the files previewed, *Create the project*, which writes `CMakeLists.txt`, `main.cpp`, `CMakePresets.json`, `README.md` and the chosen assistant's instruction file. Then what was written. The step carries the error marker while no project exists. | The application. |
 | **6 Build** | The proof that the installation works: the two commands a programmer runs (`cmake --preset default`, `cmake --build --preset default`) shown for the project folder, *Build the project* runs them (`engine/StartBuild`: cmake with `-S` and the preset, then the preset's `build/` directory; on Windows the MSYS2 bin directories on the child's PATH), cmake's output in a console, a badge that says *not built yet*, *building...*, *built* or *failed*; the step carries the error marker after a failed build. Under it the hand-over: the first prompt to give the assistant with *Copy the first prompt*, and *Copy the report*. | Whether the application compiles here. |
 
@@ -103271,7 +103787,7 @@ static library the GUI, the CLI modes and the tests share:
 | `StartPackages` | the dependency table with the package per manager (apt, dnf, pacman, zypper, Homebrew, MSYS2), `InstallStep`, `Msys2SetupSteps` (winget, first start, update), MSYS2 architecture prefixes |
 | `StartChecks` | `CheckTool`, `CheckPkgConfigModule`, `RunChecks` |
 | `StartPlan` | `BuildPlan`, `RenderReport`, `PlatformNotes`, `DisplayCommand` |
-| `StartSdk` | artifact names matching the CI workflow, the download page and the release page, `UnpackStep`, `SdkUnpackedFolder`, `FindSdkPrefix` |
+| `StartSdk` | artifact names matching the CI workflow, the archive's address on start.ultraos.eu and the release page, `DownloadSdk` (the archive, checked against `SHA256SUMS` with `ChecksumFor`), `UnpackStep`, `SdkUnpackedFolder`, `FindSdkPrefix` |
 | `StartProject` | the scaffold files and `ScaffoldProject`, `CloneStep` |
 | `StartAi` | `DetectAi` (claude, codex, copilot, gemini), `AssistantInstallInstructions`, `AssistantGuidanceNotes`, `FirstPrompt`, `CloudChecklist` |
 | `StartGuide` | the pages' prose as Markdown: `PlatformGuide` (one action per step, the SDK named and linked), `AiGuide`; `CheckDetail` and `InstallPreview` for the Tools step's rows and what Install will do; `PlainText` for the report, `Linkify` |

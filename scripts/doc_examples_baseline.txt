@@ -180,6 +180,19 @@ Docs/UltraCanvas/UltraCanvasGitGraphProposal.md::signature differs: `std::shared
 Docs/UltraCanvas/UltraCanvasGitGraphProposal.md::signature differs: `std::string CherryPick(const std::string& sha)` - the header has: std::string CherryPick(const std::string& sha, const std::string& subject = "");
 Docs/UltraCanvas/UltraCanvasGitGraphProposal.md::signature differs: `void SetDataSource(std::shared_ptr<IGitGraphDataSource> source)` - the header has: void   SetDataSource(std::shared_ptr<IGitGraphDataSource> source, size_t chunkSize = 500);
 Docs/UltraCanvas/UltraCanvasGitGraphProposal.md::signature differs: `void ZoomToFit()` - the header has: void  ZoomToFit(double padding = 24.0);
+Docs/UltraCanvas/UltraCanvasHostThemeProposal.md::'AddHostAppearanceHandler' is not a member of UltraCanvasApplicationBase
+Docs/UltraCanvas/UltraCanvasHostThemeProposal.md::'DetectHostAppearanceNative' is not a member of UltraCanvasApplicationBase
+Docs/UltraCanvas/UltraCanvasHostThemeProposal.md::'Font' is not a member of UltraCanvasTheme
+Docs/UltraCanvas/UltraCanvasHostThemeProposal.md::'FontSize' is not a member of UltraCanvasTheme
+Docs/UltraCanvas/UltraCanvasHostThemeProposal.md::'FromHost' is not a member of UltraCanvasTheme
+Docs/UltraCanvas/UltraCanvasHostThemeProposal.md::'GetHostAppearance' is not a member of UltraCanvasApplicationBase
+Docs/UltraCanvas/UltraCanvasHostThemeProposal.md::'RemoveHostAppearanceHandler' is not a member of UltraCanvasApplicationBase
+Docs/UltraCanvas/UltraCanvasHostThemeProposal.md::'SetThemePolicy' is not a member of UltraCanvasApplicationBase
+Docs/UltraCanvas/UltraCanvasHostThemeProposal.md::'SetThemeProvider' is not a member of UltraCanvasApplicationBase
+Docs/UltraCanvas/UltraCanvasHostThemeProposal.md::'UltraCanvasTheme::fonts' does not exist (no member named 'fonts' in 'UltraCanvasTheme')
+Docs/UltraCanvas/UltraCanvasHostThemeProposal.md::prose names `DarkHighContrast(`, which no header declares
+Docs/UltraCanvas/UltraCanvasHostThemeProposal.md::prose names `LightHighContrast(`, which no header declares
+Docs/UltraCanvas/UltraCanvasHostThemeProposal.md::prose names `SetFollowThemeByDefault(`, which no header declares
 Docs/UltraCanvas/UltraCanvasImportancePerformanceChartProposal.md::'DiagonalIsoPriority' is not a member of UltraCanvasImportancePerformanceChart, UltraCanvasEngineScatterChart, UltraCanvasFileLoader, IRenderContext, nor a free function
 Docs/UltraCanvas/UltraCanvasImportancePerformanceChartProposal.md::'ExportImportancePerformanceJson' is not a member of UltraCanvasImportancePerformanceChart, UltraCanvasEngineScatterChart, UltraCanvasFileLoader, IRenderContext, nor a free function
 Docs/UltraCanvas/UltraCanvasImportancePerformanceChartProposal.md::'ImportImportancePerformanceFactorsCsv' is not a member of UltraCanvasImportancePerformanceChart, UltraCanvasEngineScatterChart, UltraCanvasFileLoader, IRenderContext, nor a free function
@@ -197,6 +210,13 @@ Docs/UltraCanvas/UltraCanvasImportancePerformanceChartProposal.md::prose names `
 Docs/UltraCanvas/UltraCanvasKanbanBoardProposal.md::prose names `FitColumns(`, which no header declares
 Docs/UltraCanvas/UltraCanvasKanbanBoardProposal.md::prose names `GetStageCounts(`, which no header declares
 Docs/UltraCanvas/UltraCanvasLaTeXEngineProposal.md::prose names `FT_Load_Glyph(`, which no header declares
+Docs/UltraCanvas/UltraCanvasLocalisationProposal.md::'DecimalSeparator' is not a member of UltraLocalisation
+Docs/UltraCanvas/UltraCanvasLocalisationProposal.md::'FormatDate' is not a member of UltraLocalisation
+Docs/UltraCanvas/UltraCanvasLocalisationProposal.md::'FormatFileSize' is not a member of UltraLocalisation
+Docs/UltraCanvas/UltraCanvasLocalisationProposal.md::'FormatInteger' is not a member of UltraLocalisation
+Docs/UltraCanvas/UltraCanvasLocalisationProposal.md::'FormatNumber' is not a member of UltraLocalisation
+Docs/UltraCanvas/UltraCanvasLocalisationProposal.md::'FormatPercent' is not a member of UltraLocalisation
+Docs/UltraCanvas/UltraCanvasLocalisationProposal.md::'FormatTime' is not a member of UltraLocalisation
 Docs/UltraCanvas/UltraCanvasMatrixDiagramProposal.md::prose names `BuildAdjacencyMatrix(`, which no header declares
 Docs/UltraCanvas/UltraCanvasMatrixDiagramProposal.md::prose names `BuildAdjacencyMatrix(`, which no header declares
 Docs/UltraCanvas/UltraCanvasMatrixDiagramProposal.md::signature differs: `bool ImportMatrixCsv(const std::string& csv, MatrixModel& out)` - the header has: bool ImportMatrixCsv(const std::string& csv, MatrixModel& model, int panel = 0);
@@ -299,26 +319,13 @@ Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::no member named 
 Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::prose names `AddComputedDimension(`, which no header declares
 Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::prose names `AutoOrderAxes(`, which no header declares
 Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::use of undeclared identifier 'UpdateStatusBar'
-Docs/UltraCanvas/UltraCanvasPerformanceMatrixProposal.md::'CellOf' is not a member of PerformanceMatrixModel
-Docs/UltraCanvas/UltraCanvasPerformanceMatrixProposal.md::'CountsPerCell' is not a member of PerformanceMatrixModel
 Docs/UltraCanvas/UltraCanvasPerformanceMatrixProposal.md::'ExportPerformanceItemsCsv' is not a member of UltraCanvasPerformanceMatrix, UltraCanvasSWOTDiagram, UltraCanvasChartElementBase, UltraCanvasFileLoader, nor a free function
 Docs/UltraCanvas/UltraCanvasPerformanceMatrixProposal.md::'ExportPerformanceMatrixJson' is not a member of UltraCanvasPerformanceMatrix, UltraCanvasSWOTDiagram, UltraCanvasChartElementBase, UltraCanvasFileLoader, nor a free function
 Docs/UltraCanvas/UltraCanvasPerformanceMatrixProposal.md::'ImportPerformanceItemsCsv' is not a member of UltraCanvasPerformanceMatrix, UltraCanvasSWOTDiagram, UltraCanvasChartElementBase, UltraCanvasFileLoader, nor a free function
 Docs/UltraCanvas/UltraCanvasPerformanceMatrixProposal.md::'ImportPerformanceMatrixJson' is not a member of UltraCanvasPerformanceMatrix, UltraCanvasSWOTDiagram, UltraCanvasChartElementBase, UltraCanvasFileLoader, nor a free function
-Docs/UltraCanvas/UltraCanvasPerformanceMatrixProposal.md::'PerformanceAxis::maxScore' does not exist (no member named 'maxScore' in 'PerformanceAxis')
-Docs/UltraCanvas/UltraCanvasPerformanceMatrixProposal.md::'PerformanceAxis::minScore' does not exist (no member named 'minScore' in 'PerformanceAxis')
-Docs/UltraCanvas/UltraCanvasPerformanceMatrixProposal.md::'PerformanceCellColoring::ByCount' does not exist (no member named 'ByCount' in 'PerformanceCellColoring')
-Docs/UltraCanvas/UltraCanvasPerformanceMatrixProposal.md::'PerformanceLevel::upperBound' does not exist (no member named 'upperBound' in 'PerformanceLevel')
-Docs/UltraCanvas/UltraCanvasPerformanceMatrixProposal.md::'PerformanceMatrixModel::items' does not exist (no member named 'items' in 'PerformanceMatrixModel')
-Docs/UltraCanvas/UltraCanvasPerformanceMatrixProposal.md::'PerformanceMatrixModel::targetDistribution' does not exist (no member named 'targetDistribution' in 'PerformanceMatrixModel')
 Docs/UltraCanvas/UltraCanvasPerformanceMatrixProposal.md::'PerformanceMatrixToJson' is not a member of UltraCanvasPerformanceMatrix, UltraCanvasSWOTDiagram, UltraCanvasChartElementBase, UltraCanvasFileLoader, nor a free function
 Docs/UltraCanvas/UltraCanvasPerformanceMatrixProposal.md::'SetAllowItemDrag' is not a member of UltraCanvasPerformanceMatrix
-Docs/UltraCanvas/UltraCanvasPerformanceMatrixProposal.md::'SetAnonymised' is not a member of UltraCanvasPerformanceMatrix
-Docs/UltraCanvas/UltraCanvasPerformanceMatrixProposal.md::'SetPopulationDisplay' is not a member of UltraCanvasPerformanceMatrix
-Docs/UltraCanvas/UltraCanvasPerformanceMatrixProposal.md::'SetShowLegend' is not a member of UltraCanvasPerformanceMatrix
-Docs/UltraCanvas/UltraCanvasPerformanceMatrixProposal.md::'UltraCanvasPerformanceMatrix::onItemClick' does not exist (no member named 'onItemClick' in 'UltraCanvasPerformanceMatrix')
 Docs/UltraCanvas/UltraCanvasPerformanceMatrixProposal.md::'UltraCanvasPerformanceMatrix::onItemMove' does not exist (no member named 'onItemMove' in 'UltraCanvasPerformanceMatrix')
-Docs/UltraCanvas/UltraCanvasPerformanceMatrixProposal.md::prose names `SetAnonymised(`, which no header declares
 Docs/UltraCanvas/UltraCanvasRequirementDiagramProposal.md::cannot initialize a parameter of type 'RequirementTraceDirection' with an rvalue of type 'int'
 Docs/UltraCanvas/UltraCanvasRequirementDiagramProposal.md::no member named 'SetLayout' in 'UltraCanvasRequirementDiagram'
 Docs/UltraCanvas/UltraCanvasRequirementDiagramProposal.md::prose names `SetStrictSemantics(`, which no header declares

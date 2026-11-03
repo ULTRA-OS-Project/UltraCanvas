@@ -189,6 +189,8 @@ namespace UltraCanvas {
         // decides what closing means.
         void SetCloseButton(bool show);
         bool HasCloseButton() const { return showCloseButton; }
+        // The close button's tooltip; empty (the default) is "Close" in the
+        // user's language.
         void SetCloseButtonTooltip(const std::string& text) { closeTooltip = text; }
 
         // ===== COLLAPSIBLE =====
@@ -226,7 +228,7 @@ namespace UltraCanvas {
 
         bool showCloseButton = false;
         bool closeHovered    = false;
-        std::string closeTooltip = "Close";
+        std::string closeTooltip;   // empty: "Close", in the user's language
 
         bool collapsible = false;
         bool collapsed   = false;

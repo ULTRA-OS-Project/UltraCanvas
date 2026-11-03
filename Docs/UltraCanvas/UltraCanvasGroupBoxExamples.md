@@ -113,7 +113,7 @@ void SetHelpText(const std::string& text);              // shows the info icon
 
 void SetCloseButton(bool show);                         // an "x" at the right end of the caption
 bool HasCloseButton() const;
-void SetCloseButtonTooltip(const std::string& text);    // "Close" by default
+void SetCloseButtonTooltip(const std::string& text);    // "Close" (in the user's language) by default
 
 void SetCollapsible(bool collapsible);
 void SetCollapsed(bool collapsed);

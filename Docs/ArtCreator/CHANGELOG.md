@@ -1,3 +1,11 @@
+#### 2026-11-03 *0.8.10*
+- **Fit Page Width** on the toolbar's Zoom group, between Fit Page and
+  Actual Size, in the View menu and on Ctrl+2: the page's width fills the
+  window, and the part of the page in the middle of the view stays there,
+  so a tall page can be worked on at a readable size. A new icon,
+  `zoom-width.svg`, drawn on the 24 px and 16 px grids. A toolbar the user
+  customised gets the button too, after Fit Page.
+
 #### 2026-11-02 *0.8.9*
 - **Customise the menus and toolbars.** Every command is registered once
   (`ArtCreatorCommands.cpp`) and the menu bar, the toolbar, the tool palette

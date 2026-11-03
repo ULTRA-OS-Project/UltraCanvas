@@ -9,6 +9,7 @@
 
 #include "UltraCanvasMediaViewerWindow.h"
 #include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <algorithm>
 #include <filesystem>
@@ -44,7 +45,7 @@ namespace UltraCanvas {
         cfg.title = options.title.empty()
                             ? PathToUtf8(PathFromUtf8(filePath).filename())
                             : options.title;
-        if (cfg.title.empty()) cfg.title = "Media";
+        if (cfg.title.empty()) cfg.title = Tr("Media");
         cfg.type = WindowType::Standard;
         cfg.resizable = true;
         cfg.backgroundColor = options.background;

@@ -1,4 +1,5 @@
 // include/UltraCanvasDatePicker.h
+// Version: 1.1.0 - the calendar names follow a language switched at run time
 // Calendar / date-selection widgets for UltraCanvas.
 //
 // This header provides two complementary widgets that cover the common
@@ -204,7 +205,7 @@ namespace UltraCanvas {
             : UltraCanvasCalendarView(identifier, -1, -1, w, h) {}
         explicit UltraCanvasCalendarView(const std::string& identifier)
             : UltraCanvasCalendarView(identifier, -1, -1, -1, -1) {}
-        ~UltraCanvasCalendarView() override = default;
+        ~UltraCanvasCalendarView() override;
 
         // ===== SELECTION MODE =====
         void SetSelectionMode(DateSelectionMode mode);
@@ -254,9 +255,17 @@ namespace UltraCanvas {
         // firstDayOfWeek: 0 = Sunday (default), 1 = Monday, ...
         void SetFirstDayOfWeek(int dow) { firstDayOfWeek = ((dow % 7) + 7) % 7; RequestRedraw(); }
         int GetFirstDayOfWeek() const { return firstDayOfWeek; }
+        // The names come from the standard set's "weekday|Mo", "month|May"
+        // and "month-short|May" entries in the current language, and follow
+        // a language switched at run time (UltraLocalisation::SetLanguage)
+        // without the picker being rebuilt. Names set here replace them and
+        // stay through a switch; a size other than 7 / 12 is ignored.
         void SetWeekdayNames(const std::vector<std::string>& shortNames); // size 7, Sunday-first
         void SetMonthNames(const std::vector<std::string>& longNames,
                            const std::vector<std::string>& shortNames);   // size 12
+        const std::vector<std::string>& GetWeekdayNames() const { return weekdayNames; }
+        const std::vector<std::string>& GetMonthNamesLong() const { return monthNamesLong; }
+        const std::vector<std::string>& GetMonthNamesShort() const { return monthNamesShort; }
         void SetShowWeekNumbers(bool show);
         void SetShowAdjacentMonthDays(bool show) { showAdjacentDays = show; RequestRedraw(); }
         void SetShowFooter(bool show) { showFooter = show; RequestRedraw(); }
@@ -437,6 +446,9 @@ namespace UltraCanvas {
         std::vector<std::string> weekdayNames;   // Sunday-first, short
         std::vector<std::string> monthNamesLong;
         std::vector<std::string> monthNamesShort;
+        bool customCalendarNames = false;        // set through SetWeekdayNames / SetMonthNames: kept through a language switch
+        int languageHandler = 0;                 // UltraLocalisation change handler, removed in the destructor
+        void ResolveCalendarNames();             // the current language's names into the three vectors
 
         // hover tracking (for hover highlight + range preview)
         UCDate hoverDate;
