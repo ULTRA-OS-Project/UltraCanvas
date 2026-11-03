@@ -1,3 +1,9 @@
+#### 2026-11-03 *1.105.0*
+- **A file opened in its own viewer window shows a loading ring and its name
+  until it is open**, not *No media*, and the window title follows the file
+  as the arrow keys browse the folder (it was fixed to the first file). See
+  the framework changelog (`OpenFileWhenShown`, `onCurrentFileChanged`).
+
 #### 2026-11-02 *1.104.0*
 - **Windows: "Linux" and "Network" in the folder tree.** Two sections after
   Computer, where Explorer has them. *Linux* lists the WSL distributions
