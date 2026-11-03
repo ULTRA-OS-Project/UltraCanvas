@@ -43,6 +43,7 @@
   - [Right-click-to-create with auto-sized nodes](#right-click-to-create-with-auto-sized-nodes)
   - [Hierarchical org chart layout](#hierarchical-org-chart-layout)
   - [Cluster containers, sizing and legend](#cluster-containers-sizing-and-legend)
+  - [A personal network of card nodes (the demo's Friends tab)](#a-personal-network-of-card-nodes-the-demos-friends-tab)
   - [Card nodes with icons, without overlaps (2.3.0)](#card-nodes-with-icons-without-overlaps-230)
 - [Keyboard Shortcuts](#keyboard-shortcuts)
 - [See Also](#see-also)
@@ -540,7 +541,9 @@ larger, and since 2.4.0 the boxes are kept apart from each other too: after
 every layout (and after the fit, since a box reserves room for its title at
 the current zoom) each pair of overlapping boxes moves apart, half each, a
 group's members as one; what does not settle is placed box by box at the
-nearest free spot. A box with a pinned member stays. Nothing here moves a
+nearest free spot. Two groups that share a member overlap on purpose - the
+member sits in both - and move as one unit. A node in no group is pushed out
+of any box it sits in. A box with a pinned member stays. Nothing here moves a
 pinned node.
 
 The force-directed layout itself changed with 2.4.0 so that larger nodes
@@ -997,6 +1000,95 @@ Switching `sizing.mode` to `NodeSizeMode::ByValue` sizes each node from its
 `NodeSizeMode::Fixed` restores the authored sizes exactly - and then, like the
 other modes, grows whichever node its name does not fit.
 
+
+### A personal network of card nodes (the demo's Friends tab)
+
+What the demo's first tab shows, in outline: one person's friends as cards -
+an icon disc for what they are into, their first name, their interest - in
+five circles drawn as soft boxes, a friend who belongs to two circles sitting
+in both boxes, the ties coloured by circle and widened by strength, a legend,
+and the cards collapsing to their icon discs when the view is zoomed out. The
+layout keeps the cards apart, the circles apart (two circles that share a
+member overlap on purpose, as one unit) and the person at the centre out of
+every box.
+
+```cpp
+auto diagram = CreateNodeDiagram("friends", 0, 0, 1000, 620);
+diagram->SetTheme(NodeDiagramTheme::Minimal);
+diagram->SetBackgroundColor(Color(247, 248, 251, 255));
+diagram->SetDefaultLinkStyle(LinkStyle::Bezier);
+
+const Color college(79, 70, 229, 255), climbing(22, 163, 74, 255);
+
+auto card = [&](const char* id, const char* name, const char* interest,
+                const char* icon, const Color& circle) {
+    NodeDiagramNode n(id, name);
+    n.shape = NodeShape::Rectangle;
+    n.width = 112.0;
+    n.height = 40.0;
+    n.fillColor = Color(255, 255, 255, 255);
+    n.borderColor = circle;
+    n.borderWidth = 1.2;
+    n.textColor = Color(31, 41, 55, 255);
+    n.sublabel = interest;
+    n.iconPath = std::string("media/icons/") + icon;
+    n.iconBackground = Color(std::min(255, circle.r + 150), std::min(255, circle.g + 150),
+                             std::min(255, circle.b + 150), 255);
+    n.cornerRadius = 10.0;
+    n.shadow = true;
+    diagram->AddNode(n);
+};
+card("alice", "Alice", "Guitar",     "folder-music.svg", college);
+card("ben",   "Ben",   "Photos",     "smarthome/camera.svg", college);
+card("maya",  "Maya",  "Bouldering", "menu/run.svg", college);   // in both circles
+card("finn",  "Finn",  "Alpine",     "menu/sun.svg", climbing);
+
+NodeDiagramNode me("me", "You");
+me.shape = NodeShape::Rectangle;
+me.width = 146.0;
+me.height = 46.0;
+me.fillColor = Color(31, 41, 55, 255);
+me.borderColor = Color(250, 204, 21, 255);
+me.textColor = Color(255, 255, 255, 255);
+me.sublabel = "Your network";
+me.iconPath = "media/icons/chatcube/profile.svg";
+me.iconBackground = Color(250, 204, 21, 255);
+me.cornerRadius = 12.0;
+me.shadow = true;
+diagram->AddNode(me);
+
+diagram->AddGroup("college",  "College",       {"alice", "ben", "maya"}, college,
+                  Color(229, 220, 255, 60));
+diagram->AddGroup("climbing", "Climbing club", {"maya", "finn"}, climbing,
+                  Color(172, 255, 224, 60));
+
+// A tie: the circle's colour inside a circle, grey across, wider when closer.
+auto tie = [&](const char* id, const char* a, const char* b, int strength, const Color& c) {
+    NodeDiagramLink l(id, a, b);
+    l.directed = false;
+    l.lineWidth = 0.8 + 0.9 * strength;
+    l.lineColor = Color(c.r, c.g, c.b, 120 + 30 * strength);
+    diagram->AddLink(l);
+};
+tie("t1", "me", "alice", 3, Color(148, 163, 184, 255));
+tie("t2", "alice", "ben", 3, college);
+tie("t3", "maya", "finn", 3, climbing);
+
+diagram->SetLinkDistance(28.0);
+diagram->SetChargeStrength(-360.0);
+diagram->SetGroupCohesion(0.12);
+diagram->BuildLegendFromGroups();
+diagram->SetLegendVisible(true);
+diagram->SetDetailZoom(0.5);          // below it, the cards are their icon discs
+diagram->SetLayout(NodeDiagramLayout::ForceDirected);
+diagram->RunLayout();
+
+// A click describes the person in the host's own status line.
+diagram->onNodeClick = [d = diagram.get()](const std::string& id) {
+    const int ties = d->GetNodeDegree(id);
+    (void)ties;   // "<name> - <interest>. <ties> ties, in <circle>."
+};
+```
 
 ### Card nodes with icons, without overlaps (2.3.0)
 

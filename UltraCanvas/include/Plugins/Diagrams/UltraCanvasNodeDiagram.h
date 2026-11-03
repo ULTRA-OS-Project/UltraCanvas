@@ -1005,9 +1005,12 @@ private:
     int GrowNodesForLabels(IRenderContext* ctx);
     // Marks the labels for re-measurement on the next Render().
     void InvalidateLabelFit() { labelFitDirty = true; }
-    // Moves overlapping cluster boxes apart (the later group's members as
-    // one) and re-separates the nodes, pass after pass. Returns the passes.
+    // Moves overlapping cluster boxes apart (groups sharing a member as one
+    // unit, a unit's members as one), pushes a node in no group out of the
+    // boxes and re-separates the nodes. Returns the passes (0 = nothing).
     int SeparateGroups(double margin, int maxPasses = 50);
+    // SeparateGroups and (when `fit`) FitView in turn, ending apart.
+    void SettleGroups(bool fit);
 
     // NEW in 2.2.0: degree cache + sizing + group geometry
     void RebuildDegreeCache() const;

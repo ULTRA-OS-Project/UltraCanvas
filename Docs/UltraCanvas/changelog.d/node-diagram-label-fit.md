@@ -31,3 +31,15 @@
   needs, and its sidebar has a LABEL FIT dropdown for all four modes.
   `Tests/NodeDiagramOverlapTest.cpp` covers the minimum sizes per shape, the
   growth, the shrink, the default, the three other layouts and the JSON.
+- **The node diagram demo's Friends tab is a personal social network.** In
+  place of five circles on a grid: twenty-four friends as card nodes, each
+  with an icon for what they are into, their first name and their interest,
+  in five circles (college, the climbing club, work, the neighbours, family)
+  drawn as soft boxes with a legend, two friends who belong to two circles at
+  once and sit in both boxes, "You" at the centre with every tie, the ties in
+  their circle's colour inside a circle and grey across, wider the closer the
+  tie, the cards collapsing to their icon discs when zoomed out, and a click
+  on a person that says who they are, how many ties they have and which
+  circles they are in. For it, two groups that share a member now move as one
+  unit when the cluster boxes are separated (they overlap on purpose), and a
+  node in no group is pushed out of every box.

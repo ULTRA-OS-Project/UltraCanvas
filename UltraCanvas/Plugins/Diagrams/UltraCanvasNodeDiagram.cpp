@@ -413,7 +413,7 @@ void UltraCanvasNodeDiagram::RunLayout() {
         FitView();
         // 2.4.0: a cluster box makes room for its title at the zoom the fit
         // just chose, so the boxes are separated once more at that zoom.
-        for (int round = 0; round < 3 && SeparateGroups(8.0) > 0; ++round) FitView();
+        SettleGroups(true);
         // Sizes from the estimate (no window yet) are corrected on the first
         // frame; the view is fitted again then.
         if (labelFitDirty) refitViewAfterMeasure = true;
@@ -977,124 +977,197 @@ std::string UltraCanvasNodeDiagram::GetNodeGroupId(const std::string& nodeId) co
     return std::string();
 }
 
-// 2.4.0: cluster boxes do not overlap either. Each overlapping pair of boxes
-// (with no member in common) moves apart along the axis it overlaps least,
-// half each - a group's members as one, so the cluster keeps its shape - and
-// the nodes a moved cluster then lands on are separated again, pass after
-// pass. A box squeezed between two others can be pushed back and forth; when
-// the passes run out, the boxes are placed one at a time instead, each at
-// the nearest free spot beside what it touches, which cannot cycle. A group
-// with a pinned member does not move.
+// 2.4.0: cluster boxes do not overlap either. Groups that share a member
+// overlap on purpose (the member sits in both), so they move as one unit:
+// the units are the connected components of "shares a member", each with
+// the union of its boxes and of its members. Each overlapping pair of units
+// moves apart along the axis it overlaps least, half each, a unit's members
+// as one so the clusters keep their shape, pass after pass. A unit squeezed
+// between two others can be pushed back and forth; when the passes run out,
+// the units are placed one at a time instead, each at the nearest free spot
+// beside what it touches, which cannot cycle. A node in no group is then
+// pushed out of any box it sits in, and the nodes are separated again. A
+// unit with a pinned member does not move.
 int UltraCanvasNodeDiagram::SeparateGroups(double margin, int maxPasses) {
-    if (groups.size() < 2) return 0;
+    if (groups.empty()) return 0;
 
-    auto shareMembers = [](const NodeDiagramGroup& a, const NodeDiagramGroup& b) {
-        for (const auto& id : b.nodeIds) {
-            if (std::find(a.nodeIds.begin(), a.nodeIds.end(), id) != a.nodeIds.end()) return true;
-        }
-        return false;
+    // The units.
+    struct Unit {
+        std::vector<size_t> groupIds;
+        std::set<std::string> nodeIds;
+        bool pinned = false;
     };
-    auto hasPinned = [this](const NodeDiagramGroup& g) {
-        for (const auto& id : g.nodeIds) {
-            auto it = nodes.find(id);
-            if (it != nodes.end() && it->second.isPinned) return true;
+    std::vector<Unit> units;
+    {
+        std::vector<size_t> owner(groups.size(), groups.size());
+        for (size_t i = 0; i < groups.size(); ++i) {
+            if (owner[i] != groups.size()) continue;
+            Unit u;
+            std::vector<size_t> stack{i};
+            owner[i] = units.size();
+            while (!stack.empty()) {
+                const size_t g = stack.back();
+                stack.pop_back();
+                u.groupIds.push_back(g);
+                for (const auto& id : groups[g].nodeIds) {
+                    if (nodes.find(id) != nodes.end()) u.nodeIds.insert(id);
+                }
+                for (size_t k = 0; k < groups.size(); ++k) {
+                    if (owner[k] != groups.size()) continue;
+                    bool shares = false;
+                    for (const auto& id : groups[k].nodeIds) {
+                        if (std::find(groups[g].nodeIds.begin(), groups[g].nodeIds.end(), id) != groups[g].nodeIds.end()) { shares = true; break; }
+                    }
+                    if (shares) { owner[k] = units.size(); stack.push_back(k); }
+                }
+            }
+            for (const auto& id : u.nodeIds) if (nodes.find(id)->second.isPinned) u.pinned = true;
+            units.push_back(std::move(u));
         }
-        return false;
+    }
+    auto boundsOf = [this](const Unit& u) {
+        Rect2Dd r(0.0, 0.0, 0.0, 0.0);
+        for (size_t g : u.groupIds) {
+            const Rect2Dd b = ComputeGroupBounds(groups[g]);
+            if (b.width <= 0.0) continue;
+            if (r.width <= 0.0) { r = b; continue; }
+            const double x0 = std::min(r.x, b.x), y0 = std::min(r.y, b.y);
+            const double x1 = std::max(r.x + r.width, b.x + b.width), y1 = std::max(r.y + r.height, b.y + b.height);
+            r = Rect2Dd(x0, y0, x1 - x0, y1 - y0);
+        }
+        return r;
     };
-    auto shift = [this](const NodeDiagramGroup& g, double dx, double dy) {
-        for (const auto& id : g.nodeIds) {
-            auto it = nodes.find(id);
-            if (it == nodes.end()) continue;
-            it->second.x += dx;
-            it->second.y += dy;
+    auto shift = [this](const Unit& u, double dx, double dy) {
+        for (const auto& id : u.nodeIds) {
+            NodeDiagramNode& n = nodes.find(id)->second;
+            n.x += dx;
+            n.y += dy;
         }
     };
     constexpr double kSlack = 0.5;
 
     int pass = 0;
-    for (; pass < maxPasses; ++pass) {
-        bool moved = false;
-        for (size_t i = 0; i < groups.size(); ++i) {
-            for (size_t j = i + 1; j < groups.size(); ++j) {
-                const NodeDiagramGroup& a = groups[i];
-                const NodeDiagramGroup& b = groups[j];
-                const bool aFixed = hasPinned(a), bFixed = hasPinned(b);
-                if ((aFixed && bFixed) || shareMembers(a, b)) continue;
-                const Rect2Dd ra = ComputeGroupBounds(a);
-                const Rect2Dd rb = ComputeGroupBounds(b);
-                if (ra.width <= 0.0 || rb.width <= 0.0) continue;
-                const double dx = (rb.x + rb.width * 0.5) - (ra.x + ra.width * 0.5);
-                const double dy = (rb.y + rb.height * 0.5) - (ra.y + ra.height * 0.5);
-                const double px = (ra.width + rb.width) * 0.5 + margin - std::abs(dx);
-                const double py = (ra.height + rb.height) * 0.5 + margin - std::abs(dy);
-                if (px <= 0.01 || py <= 0.01) continue;
-                const double aShare = aFixed ? 0.0 : (bFixed ? 1.0 : 0.5);
-                const double bShare = 1.0 - aShare;
-                if (px < py) {
-                    const double dir = dx != 0.0 ? (dx > 0.0 ? 1.0 : -1.0) : 1.0;
-                    shift(a, -dir * (px + kSlack) * aShare, 0.0);
-                    shift(b,  dir * (px + kSlack) * bShare, 0.0);
-                } else {
-                    const double dir = dy != 0.0 ? (dy > 0.0 ? 1.0 : -1.0) : 1.0;
-                    shift(a, 0.0, -dir * (py + kSlack) * aShare);
-                    shift(b, 0.0,  dir * (py + kSlack) * bShare);
+    if (units.size() >= 2) {
+        for (; pass < maxPasses; ++pass) {
+            bool moved = false;
+            for (size_t i = 0; i < units.size(); ++i) {
+                for (size_t j = i + 1; j < units.size(); ++j) {
+                    const Unit& a = units[i];
+                    const Unit& b = units[j];
+                    if (a.pinned && b.pinned) continue;
+                    const Rect2Dd ra = boundsOf(a), rb = boundsOf(b);
+                    if (ra.width <= 0.0 || rb.width <= 0.0) continue;
+                    const double dx = (rb.x + rb.width * 0.5) - (ra.x + ra.width * 0.5);
+                    const double dy = (rb.y + rb.height * 0.5) - (ra.y + ra.height * 0.5);
+                    const double px = (ra.width + rb.width) * 0.5 + margin - std::abs(dx);
+                    const double py = (ra.height + rb.height) * 0.5 + margin - std::abs(dy);
+                    if (px <= 0.01 || py <= 0.01) continue;
+                    const double aShare = a.pinned ? 0.0 : (b.pinned ? 1.0 : 0.5);
+                    const double bShare = 1.0 - aShare;
+                    if (px < py) {
+                        const double dir = dx != 0.0 ? (dx > 0.0 ? 1.0 : -1.0) : 1.0;
+                        shift(a, -dir * (px + kSlack) * aShare, 0.0);
+                        shift(b,  dir * (px + kSlack) * bShare, 0.0);
+                    } else {
+                        const double dir = dy != 0.0 ? (dy > 0.0 ? 1.0 : -1.0) : 1.0;
+                        shift(a, 0.0, -dir * (py + kSlack) * aShare);
+                        shift(b, 0.0,  dir * (py + kSlack) * bShare);
+                    }
+                    moved = true;
                 }
-                moved = true;
+            }
+            if (!moved) break;
+        }
+
+        if (pass == maxPasses) {
+            // Did not settle: place the units one at a time, the pinned ones
+            // first, each where it is if that is free, else at the nearest
+            // free spot beside one of the units it touches.
+            std::vector<const Unit*> order;
+            for (const auto& u : units) order.push_back(&u);
+            std::stable_sort(order.begin(), order.end(),
+                             [](const Unit* a, const Unit* b) { return a->pinned && !b->pinned; });
+            std::vector<Rect2Dd> placed;
+            for (const Unit* u : order) {
+                const Rect2Dd box = boundsOf(*u);
+                if (box.width <= 0.0) continue;
+                auto freeAt = [&](double x, double y) {
+                    for (const Rect2Dd& o : placed) {
+                        if (x < o.x + o.width + margin - 0.01 && o.x < x + box.width + margin - 0.01 &&
+                            y < o.y + o.height + margin - 0.01 && o.y < y + box.height + margin - 0.01) return false;
+                    }
+                    return true;
+                };
+                double bestX = box.x, bestY = box.y;
+                if (!u->pinned && !freeAt(box.x, box.y)) {
+                    double best = -1.0;
+                    for (const Rect2Dd& o : placed) {
+                        const double cx[4] = {o.x - box.width - margin, o.x + o.width + margin, box.x, box.x};
+                        const double cy[4] = {box.y, box.y, o.y - box.height - margin, o.y + o.height + margin};
+                        for (int k = 0; k < 4; ++k) {
+                            const double d = (cx[k] - box.x) * (cx[k] - box.x) + (cy[k] - box.y) * (cy[k] - box.y);
+                            if ((best < 0.0 || d < best) && freeAt(cx[k], cy[k])) { best = d; bestX = cx[k]; bestY = cy[k]; }
+                        }
+                    }
+                    if (best < 0.0) {
+                        double bottom = box.y;
+                        for (const Rect2Dd& o : placed) bottom = std::max(bottom, o.y + o.height + margin);
+                        bestY = bottom;
+                    }
+                    shift(*u, bestX - box.x, bestY - box.y);
+                }
+                placed.emplace_back(bestX, bestY, box.width, box.height);
             }
         }
-        if (!moved) break;
     }
 
-    if (pass == maxPasses) {
-        // Did not settle: place the boxes one at a time, the fixed ones
-        // first, each where it is if that is free, else at the nearest free
-        // spot beside one of the boxes it touches.
-        std::vector<const NodeDiagramGroup*> order;
-        for (const auto& g : groups) order.push_back(&g);
-        std::stable_sort(order.begin(), order.end(), [&](const NodeDiagramGroup* a, const NodeDiagramGroup* b) {
-            return hasPinned(*a) && !hasPinned(*b);
-        });
-        std::vector<std::pair<const NodeDiagramGroup*, Rect2Dd>> placed;
-        for (const NodeDiagramGroup* g : order) {
-            const Rect2Dd box = ComputeGroupBounds(*g);
-            if (box.width <= 0.0) continue;
-            auto freeAt = [&](double x, double y) {
-                for (const auto& p : placed) {
-                    if (shareMembers(*g, *p.first)) continue;
-                    const Rect2Dd& o = p.second;
-                    if (x < o.x + o.width + margin - 0.01 && o.x < x + box.width + margin - 0.01 &&
-                        y < o.y + o.height + margin - 0.01 && o.y < y + box.height + margin - 0.01) return false;
+    // A node in no group out of every box: along the axis it is least
+    // inside, a few passes, since leaving one box can mean entering another.
+    bool pushed = false;
+    {
+        std::set<std::string> grouped;
+        for (const auto& u : units) grouped.insert(u.nodeIds.begin(), u.nodeIds.end());
+        for (int round = 0; round < 8; ++round) {
+            bool any = false;
+            for (auto& pair : nodes) {
+                NodeDiagramNode& n = pair.second;
+                if (n.isPinned || grouped.count(n.id)) continue;
+                for (const auto& u : units) {
+                    const Rect2Dd b = boundsOf(u);
+                    if (b.width <= 0.0) continue;
+                    const double dx = (n.x + n.width * 0.5) - (b.x + b.width * 0.5);
+                    const double dy = (n.y + n.height * 0.5) - (b.y + b.height * 0.5);
+                    const double px = (n.width + b.width) * 0.5 + margin - std::abs(dx);
+                    const double py = (n.height + b.height) * 0.5 + margin - std::abs(dy);
+                    if (px <= 0.01 || py <= 0.01) continue;
+                    if (px < py) n.x += (dx != 0.0 ? (dx > 0.0 ? 1.0 : -1.0) : 1.0) * (px + kSlack);
+                    else         n.y += (dy != 0.0 ? (dy > 0.0 ? 1.0 : -1.0) : 1.0) * (py + kSlack);
+                    any = pushed = true;
                 }
-                return true;
-            };
-            double bestX = box.x, bestY = box.y;
-            if (!hasPinned(*g) && !freeAt(box.x, box.y)) {
-                double best = -1.0;
-                for (const auto& p : placed) {
-                    const Rect2Dd& o = p.second;
-                    const double cx[4] = {o.x - box.width - margin, o.x + o.width + margin, box.x, box.x};
-                    const double cy[4] = {box.y, box.y, o.y - box.height - margin, o.y + o.height + margin};
-                    for (int k = 0; k < 4; ++k) {
-                        const double d = (cx[k] - box.x) * (cx[k] - box.x) + (cy[k] - box.y) * (cy[k] - box.y);
-                        if ((best < 0.0 || d < best) && freeAt(cx[k], cy[k])) { best = d; bestX = cx[k]; bestY = cy[k]; }
-                    }
-                }
-                if (best < 0.0) {
-                    double bottom = box.y;
-                    for (const auto& p : placed) bottom = std::max(bottom, p.second.y + p.second.height + margin);
-                    bestY = bottom;
-                }
-                shift(*g, bestX - box.x, bestY - box.y);
             }
-            placed.emplace_back(g, Rect2Dd(bestX, bestY, box.width, box.height));
+            if (!any) break;
         }
     }
-    if (pass > 0) {
+    if (pass > 0 || pushed) {
         // A moved cluster may have landed on a node outside any box.
         ResolveOverlaps(6.0);
         RequestRedraw();
     }
-    return pass;
+    return pass > 0 ? pass : (pushed ? 1 : 0);
+}
+
+// The boxes apart at the zoom the view ends on: a box reserves room for its
+// title at the current zoom, and fitting the view changes the zoom, so the
+// two alternate, and the last word is the separation's - the view may then
+// be a few pixels short of the content, never a box on another.
+void UltraCanvasNodeDiagram::SettleGroups(bool fit) {
+    if (groups.empty()) return;
+    for (int round = 0; round < 3; ++round) {
+        if (SeparateGroups(8.0) == 0) return;
+        if (!fit) return;
+        FitView();
+    }
+    SeparateGroups(8.0);
 }
 
 Rect2Dd UltraCanvasNodeDiagram::ComputeGroupBounds(const NodeDiagramGroup& group) const {
@@ -2229,9 +2302,7 @@ void UltraCanvasNodeDiagram::Render(IRenderContext* ctx, const Rect2Df& dirtyRec
         refitViewAfterMeasure = false;
         if (refit) FitView();
         // The boxes' title room depends on the zoom the fit chose.
-        for (int round = 0; round < 3 && SeparateGroups(8.0) > 0; ++round) {
-            if (refit) FitView();
-        }
+        SettleGroups(refit);
     }
     
     // Background (in screen space, no transform)
