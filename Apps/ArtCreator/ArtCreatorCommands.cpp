@@ -263,6 +263,7 @@ void ArtCreatorWindow::RegisterCommands() {
     action("view.zoom-in", "View", "Zoom In", "zoom-in.svg", "+", [this]() { if (canvas) canvas->ZoomIn(); });
     action("view.zoom-out", "View", "Zoom Out", "zoom-out.svg", "-", [this]() { if (canvas) canvas->ZoomOut(); });
     action("view.fit-page", "View", "Fit Page", "zoom-page.svg", "Ctrl+0", [this]() { if (canvas) canvas->ZoomToPage(); });
+    action("view.fit-width", "View", "Fit Page Width", "zoom-width.svg", "Ctrl+2", [this]() { if (canvas) canvas->ZoomToPageWidth(); });
     action("view.fit-drawing", "View", "Fit Drawing", "fit-drawing.svg", "", [this]() { if (canvas) canvas->ZoomToDrawing(); });
     action("view.fit-selection", "View", "Fit Selection", "fit-selection.svg", "", [this]() { if (canvas) canvas->ZoomToSelection(); }, hasSelection);
     action("view.actual", "View", "Actual Size", "zoom-100.svg", "Ctrl+1", [this]() { if (canvas) canvas->ZoomToActual(); });
@@ -408,7 +409,8 @@ MenuLayoutSet ArtCreatorWindow::DefaultMenuLayout() {
                          Item("heading.line-pixels"), Item("line.px-1"), Item("line.px-2"), Item("line.px-3"), Item("line.px-4") }),
         Submenu("Layer", { Item("layer.new"), Item("layer.delete"), Sep(), Item("layer.up"), Item("layer.down"), Sep(),
                         Item("layer.show"), Item("layer.hide") }),
-        Submenu("View", { Item("view.zoom-in"), Item("view.zoom-out"), Item("view.fit-page"), Item("view.fit-drawing"),
+        Submenu("View", { Item("view.zoom-in"), Item("view.zoom-out"), Item("view.fit-page"), Item("view.fit-width"),
+                       Item("view.fit-drawing"),
                        Item("view.fit-selection"), Item("view.actual"), Sep(),
                        Item("view.rulers"), Item("view.grid"), Item("view.guides"), Sep(),
                        Item("snap.grid"), Item("snap.guides"), Item("snap.objects"), Item("snap.page"), Item("view.clear-guides"), Sep(),
@@ -426,7 +428,7 @@ ToolbarLayout ArtCreatorWindow::DefaultToolbarLayout() {
         Group("file", "File", { "file.new", "file.open", "file.save", "file.save-as", "file.export" },
               { "file.save-as", "file.export" }),
         Group("history", "History", { "edit.undo", "edit.redo" }),
-        Group("zoom", "Zoom", { "view.zoom-out", "view.zoom-in", "view.fit-page", "view.actual",
+        Group("zoom", "Zoom", { "view.zoom-out", "view.zoom-in", "view.fit-page", "view.fit-width", "view.actual",
                                 "view.fit-drawing", "view.fit-selection" },
               { "view.fit-drawing", "view.fit-selection" }),
         Group("arrange", "Arrange", { "arrange.group", "arrange.ungroup", "arrange.to-front", "arrange.to-back",
