@@ -3,11 +3,13 @@
 // device configuration the activity was started with, as "de-AT". Empty
 // before the native activity exists (a headless engine), when the POSIX
 // variables - which Android does not set either - leave the caller at "en".
+// Version: 1.0.1 - the application base is included before the platform header
 // Version: 1.0.0
 // Last Modified: 2026-11-02
 // Author: UltraCanvas Framework
 #include "UltraCanvasSystemLanguage.h"
 
+#include "UltraCanvasApplication.h"          // before the platform header, which completes the base it derives from
 #include "UltraCanvasAndroidApplication.h"
 
 #include <android/configuration.h>
