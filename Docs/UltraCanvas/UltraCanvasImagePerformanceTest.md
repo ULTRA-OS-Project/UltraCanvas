@@ -191,9 +191,10 @@ struct CodecEntry {
 `BuildCodecList` keeps every entry of
 `UltraCanvasFileLoader::GetSupportedFormats(MediaFormatCategory::Bitmap)` with
 `canSave && canLoad` whose options the image writer takes
-(`GetImageExportOptions` answers for it). The X axis keeps the old order
-for the formats it always charted - PNG, QOI, JPG, JP2K, WebP, AVIF, HEIF,
-GIF, TIFF, JXL, BMP - and puts the rest after them in the inventory's order.
+(`GetImageExportOptions` answers for it). The X axis, and the settings
+dialog, put the formats it always charted first, the JPEG family together -
+PNG, QOI, JPG, JP2K, JXL, WebP, AVIF, HEIF, GIF, TIFF, BMP - and the rest
+after them in the inventory's order.
 
 A format this build cannot encode is not in the inventory, so it is not
 offered at all: JPEG XL needs a libvips built with libjxl, which Ubuntu

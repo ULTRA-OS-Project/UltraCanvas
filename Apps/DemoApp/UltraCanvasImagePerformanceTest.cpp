@@ -12,6 +12,7 @@
 //                  other format; the page's own encoders and decoders are gone
 // Version: 2.9.1 - the format choice is kept between runs, in the demo's
 //                  settings file (UltraCanvasAppSettings "UltraCanvasDemo")
+// Version: 2.9.2 - JXL sits with JPG and JP2K, on the chart and in the settings
 // Last Modified: 2026-11-03
 // Author: UltraCanvas Framework
 //
@@ -407,13 +408,14 @@ namespace UltraCanvas {
             bool enabledByDefault = false;
         };
 
-        // The formats the page always charted, in their X-axis order: the
-        // lossless pair first (PNG, QOI), then JPG and its successor JP2K,
-        // then the modern lossy / animated / legacy ones. Anything else
-        // FileLoader writes follows in its inventory's order.
+        // The formats the page always charted, in their X-axis order (and
+        // the settings dialog's): the lossless pair first (PNG, QOI), then
+        // the JPEG family together - JPG and its successors JPEG 2000 and
+        // JPEG XL - then the modern lossy / animated / legacy ones. Anything
+        // else FileLoader writes follows in its inventory's order.
         const std::vector<std::string>& PreferredOrder() {
             static const std::vector<std::string> order = {
-                    "png", "qoi", "jpg", "jp2", "webp", "avif", "heic", "gif", "tiff", "jxl", "bmp"};
+                    "png", "qoi", "jpg", "jp2", "jxl", "webp", "avif", "heic", "gif", "tiff", "bmp"};
             return order;
         }
 
