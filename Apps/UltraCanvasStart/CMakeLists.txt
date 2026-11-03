@@ -1,16 +1,20 @@
 # Apps/UltraCanvasStart/CMakeLists.txt
 # UltraCanvasStart — sets a machine up for UltraCanvas development: finds out
-# what is installed, installs what is missing, unpacks the prebuilt SDK,
-# writes a project skeleton and explains how to work with an AI assistant.
+# what is installed, installs what is missing, downloads and unpacks the
+# prebuilt SDK, writes a project skeleton and explains how to work with an AI
+# assistant.
 #
 # Two targets:
 #   UltraCanvasStartEngine  a static library: detection, the dependency table,
 #                           the checks, the plan, the scaffold. Links the
-#                           UltraCanvas core for RunProcessCaptured and the
-#                           hardware snapshot but opens no window,
-#                           so the CLI modes and the test suite use it headless.
+#                           UltraCanvas core for RunProcessCaptured, the
+#                           hardware snapshot and the SDK download (UltraNet
+#                           and UltraCrypt are part of the core) but opens no
+#                           window, so the CLI modes and the test suite use it
+#                           headless.
 #   UltraCanvasStart        the GUI application on top of it.
 #
+# Version: 0.1.4 - the SDK downloaded again, through the core's UltraNet: nothing more linked
 # Version: 0.1.3 - no UltraNet: the SDK is downloaded in the browser
 # Version: 0.1.2 - StartBuild (the skeleton compiled, for the Build step and the tests)
 # Version: 0.1.1 - StartGuide (the pages' prose as Markdown)
