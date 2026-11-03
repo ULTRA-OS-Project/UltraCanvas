@@ -124,8 +124,11 @@ private:
     void StartInstall();
     void ChooseProjectFolder();
     void FindSdk();
-    // Opens the SDK download page in the browser.
-    void OpenSdkDownloadPage();
+    // Downloads this version's SDK archive for this platform from
+    // start.ultraos.eu into a folder the user picks, checks it against
+    // SHA256SUMS and unpacks it there (StartUnpack). A build without the
+    // network library opens the archive's address in the browser instead.
+    void DownloadSdkArchive();
     // Unpacks an SDK archive the user downloaded, beside it, and fills in
     // the SDK prefix.
     void UnpackSdk();
