@@ -7,6 +7,11 @@
   save into the source tree where the catalogues are writable or into the
   UltraCanvas settings folder otherwise (`Docs/UltraCanvas/UltraCanvasLocalisationEditor.md`).
   The translator's name from the Language page goes into the files it saves.
+- **The Language and Translations pages, the page tree and the window's
+  buttons go through `Tr`**, so they follow the chosen language; the
+  extraction writes UOS-Settings' own English set
+  (`media/locale/en/UOS-Settings.json`). The other pages follow in their
+  own pass.
 
 #### 2026-11-02 *0.13.0*
 - **Language: the language every application shows.** A new top-level page

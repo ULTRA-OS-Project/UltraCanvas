@@ -1,6 +1,8 @@
 // Apps/UOSSettings/ui/UOSSettingsWindow.cpp
 // The UOS-Settings window: page tree | page, Close at the foot - the layout
 // of UltraFiler's settings window. See UOSSettingsWindow.h.
+// Version: 0.8.1 - the Language and Translations pages, the page tree and the window's buttons go through Tr
+// Version: 0.8.0 - Language > Translations: the localisation editor (UltraCanvasLocalisationEditor)
 // Version: 0.7.0 - the Language page: the language every application shows, Language.conf
 // Version: 0.6.1 - the ULTRA OS logo over the page tree
 // Version: 0.6.0 - Desktop: "Start with the desktop" (ChatCube, UltraMail)
@@ -323,17 +325,17 @@ bool UOSSettingsWindow::Create() {
 
     TreeNodeData rootData("settings", "Settings");
     tree_->SetRootNode(rootData);
-    tree_->AddNode("settings", TreeNodeData(kPageDesktop, "Desktop"));
-    tree_->AddNode("settings", TreeNodeData(kPageLanguage, "Language"));
-    tree_->AddNode(kPageLanguage, TreeNodeData(kPageTranslations, "Translations"));
-    tree_->AddNode("settings", TreeNodeData(kSectionFileDialogs, "File dialogs"));
-    tree_->AddNode(kSectionFileDialogs, TreeNodeData(kPageLastFolder, "Last used folder"));
-    tree_->AddNode("settings", TreeNodeData(kSectionAppearance, "Appearance"));
-    tree_->AddNode(kSectionAppearance, TreeNodeData(kPageEmoji, "Emoji"));
-    tree_->AddNode("settings", TreeNodeData(kSectionNotifications, "Notifications"));
-    tree_->AddNode(kSectionNotifications, TreeNodeData(kPageRegistrations, "Registrations"));
-    tree_->AddNode("settings", TreeNodeData(kSectionDevices, "Devices"));
-    tree_->AddNode(kSectionDevices, TreeNodeData(kPageCertificates, "Trusted certificates"));
+    tree_->AddNode("settings", TreeNodeData(kPageDesktop, Tr("Desktop")));
+    tree_->AddNode("settings", TreeNodeData(kPageLanguage, Tr("Language")));
+    tree_->AddNode(kPageLanguage, TreeNodeData(kPageTranslations, Tr("Translations")));
+    tree_->AddNode("settings", TreeNodeData(kSectionFileDialogs, Tr("File dialogs")));
+    tree_->AddNode(kSectionFileDialogs, TreeNodeData(kPageLastFolder, Tr("Last used folder")));
+    tree_->AddNode("settings", TreeNodeData(kSectionAppearance, Tr("Appearance")));
+    tree_->AddNode(kSectionAppearance, TreeNodeData(kPageEmoji, Tr("Emoji")));
+    tree_->AddNode("settings", TreeNodeData(kSectionNotifications, Tr("Notifications")));
+    tree_->AddNode(kSectionNotifications, TreeNodeData(kPageRegistrations, Tr("Registrations")));
+    tree_->AddNode("settings", TreeNodeData(kSectionDevices, Tr("Devices")));
+    tree_->AddNode(kSectionDevices, TreeNodeData(kPageCertificates, Tr("Trusted certificates")));
     tree_->SetRootVisible(false);
     sidebar->AddChild(tree_);
     content->AddChild(sidebar);
@@ -363,7 +365,7 @@ bool UOSSettingsWindow::Create() {
                       .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     bottom->SetPadding(8, 12, 8, 12);
     bottom->SetBorderTop(1, kRuleColor);
-    auto close = std::make_shared<UltraCanvasButton>("uos-close", 0, 0, 90, 28, "Close");
+    auto close = std::make_shared<UltraCanvasButton>("uos-close", 0, 0, 90, 28, Tr("Close"));
     close->SetFontSize(kTextFontSize);
     close->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     close->SetOnClick([win = window_.get()]() { win->Close(); });
@@ -482,15 +484,15 @@ void UOSSettingsWindow::BuildDesktopPage() {
     addRow("uos-dt-edge-row", "Taskbar", edge_);
 
     wallpaper_ = std::make_shared<UltraCanvasTextInput>("uos-dt-wallpaper", 0, 0, 260, 28);
-    wallpaper_->SetPlaceholder("ULTRA OS A (the default picture)");
+    wallpaper_->SetPlaceholder(Tr("ULTRA OS A (the default picture)"));
     wireText(wallpaper_);
-    auto browse = std::make_shared<UltraCanvasButton>("uos-dt-browse", 0, 0, 90, 28, "Browse...");
+    auto browse = std::make_shared<UltraCanvasButton>("uos-dt-browse", 0, 0, 90, 28, Tr("Browse..."));
     browse->SetFontSize(kTextFontSize);
     browse->SetOnClick([this]() { BrowseWallpaper(); });
     addRow("uos-dt-wallpaper-row", "Wallpaper", wallpaper_, browse);
 
     ramDisc_ = std::make_shared<UltraCanvasTextInput>("uos-dt-ramdisc", 0, 0, 260, 28);
-    ramDisc_->SetPlaceholder("None: no RAM disc button");
+    ramDisc_->SetPlaceholder(Tr("None: no RAM disc button"));
     wireText(ramDisc_);
     addRow("uos-dt-ramdisc-row", "RAM disc", ramDisc_);
 
@@ -735,7 +737,7 @@ void UOSSettingsWindow::SetSystemDesktop(DesktopReplacement how) {
 
 void UOSSettingsWindow::BrowseWallpaper() {
     FileDialogOptions options;
-    options.title = "Choose a wallpaper";
+    options.title = Tr("Choose a wallpaper");
     options.parentWindow = window_.get();
     options.AddFilter("Pictures", std::vector<std::string>{"jpg", "jpeg", "png", "webp",
                                                            "avif", "heic", "bmp"});
@@ -1031,7 +1033,7 @@ void UOSSettingsWindow::BuildNotificationsPage() {
     actions->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     actions->size.height = CSSLayout::Dimension::Px(36);
     actions->SetMargin(10, 0, 0, 0);
-    removeRegistrations_ = std::make_shared<UltraCanvasButton>("uos-nr-remove", 0, 0, 120, 28, "Remove all");
+    removeRegistrations_ = std::make_shared<UltraCanvasButton>("uos-nr-remove", 0, 0, 120, 28, Tr("Remove all"));
     removeRegistrations_->SetFontSize(kTextFontSize);
     removeRegistrations_->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     removeRegistrations_->SetOnClick([this]() { RemoveNotificationRegistrations(); });
@@ -1109,13 +1111,13 @@ void UOSSettingsWindow::BuildLanguagePage() {
     page->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                     .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
-    auto title = MakeLabel("uos-lang-title", "Language", kTitleFontSize);
+    auto title = MakeLabel("uos-lang-title", Tr("Language"), kTitleFontSize);
     title->SetFontWeight(FontWeight::Bold);
     page->AddChild(title);
     auto caption = MakeText("uos-lang-caption",
-            "The language every application shows its menus, buttons and messages "
-            "in. \"System\" follows the computer's own language setting; a language "
-            "is offered here when a translation of the standard set ships for it.");
+            Tr("The language every application shows its menus, buttons and messages "
+               "in. \"System\" follows the computer's own language setting; a language "
+               "is offered here when a translation of the standard set ships for it."));
     caption->SetMargin(6, 0, 0, 0);
     page->AddChild(caption);
 
@@ -1125,7 +1127,7 @@ void UOSSettingsWindow::BuildLanguagePage() {
     row->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     row->size.height = CSSLayout::Dimension::Px(32);
     row->SetMargin(14, 0, 0, 0);
-    row->AddChild(MakeLabel("uos-lang-label", "Language:"));
+    row->AddChild(MakeLabel("uos-lang-label", Tr("Language:")));
     language_ = std::make_shared<UltraCanvasDropdown>("uos-lang-dropdown", 0, 0, 300, 28);
     language_->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     language_->onSelectionChanged = [this](int index, const DropdownItem&) {
@@ -1134,8 +1136,8 @@ void UOSSettingsWindow::BuildLanguagePage() {
         settings.language = languageTags_[static_cast<size_t>(index)];
         if (languageStatus_) {
             languageStatus_->SetText(settings.Save(PathToUtf8(UltraCanvasSettingsFolder()))
-                    ? "Saved. Applications started from now on use this language."
-                    : "Could not write " + LanguageSettings::FilePath(PathToUtf8(UltraCanvasSettingsFolder())) + ".");
+                    ? Tr("Saved. Applications started from now on use this language.")
+                    : TrF("Could not write {0}.", LanguageSettings::FilePath(PathToUtf8(UltraCanvasSettingsFolder()))));
         }
     };
     row->AddChild(language_);
@@ -1147,9 +1149,9 @@ void UOSSettingsWindow::BuildLanguagePage() {
     translatorRow->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     translatorRow->size.height = CSSLayout::Dimension::Px(32);
     translatorRow->SetMargin(10, 0, 0, 0);
-    translatorRow->AddChild(MakeLabel("uos-lang-translator-label", "Translator:"));
+    translatorRow->AddChild(MakeLabel("uos-lang-translator-label", Tr("Translator:")));
     translator_ = std::make_shared<UltraCanvasTextInput>("uos-lang-translator", 0, 0, 300, 28);
-    translator_->SetPlaceholder("Your name, for the catalogues you edit");
+    translator_->SetPlaceholder(Tr("Your name, for the catalogues you edit"));
     translator_->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     translator_->onFocusLost = [this]() {
         if (refreshing_ || !translator_) return;
@@ -1158,8 +1160,8 @@ void UOSSettingsWindow::BuildLanguagePage() {
         settings.translator = translator_->GetText();
         if (languageStatus_) {
             languageStatus_->SetText(settings.Save(PathToUtf8(UltraCanvasSettingsFolder()))
-                    ? "Saved."
-                    : "Could not write " + LanguageSettings::FilePath(PathToUtf8(UltraCanvasSettingsFolder())) + ".");
+                    ? Tr("Saved.")
+                    : TrF("Could not write {0}.", LanguageSettings::FilePath(PathToUtf8(UltraCanvasSettingsFolder()))));
         }
     };
     translatorRow->AddChild(translator_);
@@ -1174,14 +1176,14 @@ void UOSSettingsWindow::BuildLanguagePage() {
     page->AddChild(spacer);
 
     auto notes = MakeNotes("uos-lang-note", {
-            "The languages come from media/locale/ in the applications' resources "
-            "and from locale/ in the UltraCanvas settings folder, where a translator "
-            "puts a draft to see it in the real window.",
-            "An application uses a change the next time it starts. The command line "
-            "(--lang) and the ULTRACANVAS_LANG variable override this setting for "
-            "one start.",
-            "The translator's name goes into the catalogues the localisation editor "
-            "saves, so a draft says who reviewed it."});
+            Tr("The languages come from media/locale/ in the applications' resources "
+               "and from locale/ in the UltraCanvas settings folder, where a translator "
+               "puts a draft to see it in the real window."),
+            Tr("An application uses a change the next time it starts. The command line "
+               "(--lang) and the ULTRACANVAS_LANG variable override this setting for "
+               "one start."),
+            Tr("The translator's name goes into the catalogues the localisation editor "
+               "saves, so a draft says who reviewed it.")});
     notes->SetMargin(14, 0, 0, 0);
     page->AddChild(notes);
 
@@ -1197,14 +1199,14 @@ void UOSSettingsWindow::BuildTranslationsPage() {
     page->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                     .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
-    auto title = MakeLabel("uos-translations-title", "Translations", kTitleFontSize);
+    auto title = MakeLabel("uos-translations-title", Tr("Translations"), kTitleFontSize);
     title->SetFontWeight(FontWeight::Bold);
     page->AddChild(title);
     auto caption = MakeText("uos-translations-caption",
-            "Every set an application's texts come from in one grid - its own set, the base sets "
-            "it takes and the standard set - for any application and any language. A save goes "
-            "into the source tree when the catalogues are writable, else into the UltraCanvas "
-            "settings folder, where a running application picks it up; the status line says where.");
+            Tr("Every set an application's texts come from in one grid - its own set, the base sets "
+               "it takes and the standard set - for any application and any language. A save goes "
+               "into the source tree when the catalogues are writable, else into the UltraCanvas "
+               "settings folder, where a running application picks it up; the status line says where."));
     caption->SetMargin(6, 0, 0, 0);
     page->AddChild(caption);
 
@@ -1240,7 +1242,7 @@ void UOSSettingsWindow::RefreshLanguagePage() {
     refreshing_ = true;
     language_->ClearItems();
     languageTags_.clear();
-    language_->AddItem("System", "system");
+    language_->AddItem(Tr("System"), "system");
     languageTags_.push_back("system");
     int selected = 0;
     for (const std::string& tag : UltraLocalisation::AvailableLanguages()) {
@@ -1327,7 +1329,7 @@ void UOSSettingsWindow::AddCertificateRow(const std::string& address) {
     entry.row->AddChild(entry.key);
 
     auto forget = std::make_shared<UltraCanvasButton>(id + "-forget", 0, 0,
-                                                      kForgetColumnWidth, 24, "Forget");
+                                                      kForgetColumnWidth, 24, Tr("Forget"));
     forget->SetFontSize(kTextFontSize);
     forget->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     forget->SetOnClick([this, address]() { ForgetCertificate(address); });

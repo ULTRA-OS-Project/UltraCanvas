@@ -31,6 +31,7 @@
 //       Forget button for a device that was reset or replaced and now
 //       presents a new certificate.
 //
+// Version: 0.9.0 - Language > Translations: the localisation editor (UltraCanvasLocalisationEditor)
 // Version: 0.8.0 - the Language page
 // Version: 0.7.0 - Desktop: the Apps window (view, sub-categories, Recent)
 // Version: 0.6.0 - Desktop: the programs that start with the desktop
