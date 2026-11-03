@@ -3,11 +3,15 @@
 // Dots, Bar, Pulse, DotRing), each at a small and a large size and in a second
 // colour, DotRing's three fades side by side, a status line as an app would
 // use one, and Start / Stop for all of them.
+// Version: 1.2.0 - the shared page look (UltraCanvasDemoPageKit): the kinds as a
+//                  table of rows in a card, fades / status line / buttons in
+//                  cards, every text sized to fit, buttons as wide as their text
 // Version: 1.1.0
-// Last Modified: 2026-10-04
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "UltraCanvasBusyIndicator.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasLabel.h"
@@ -19,44 +23,66 @@
 namespace UltraCanvas {
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateBusyIndicatorExamples() {
-        auto container = std::make_shared<UltraCanvasContainer>("BusyIndicatorExamples", 0, 0, 1000, 920);
-        container->SetPadding(0, 0, 10, 0);
-
-        auto title = CreateLabel("BusyTitle", 20, 10, 0, 30);
-        title->SetText("Busy Indicator Examples");
-        title->SetFontSize(18);
-        title->SetFontWeight(FontWeight::Bold);
-        container->AddChild(title);
-
-        auto subtitle = CreateLabel("BusySubtitle", 20, 42, 940, 40);
-        subtitle->SetText("\"Working on it\" when there is no percentage to show. Six kinds "
-                          "(BusyIndicatorKind), all driven by Start() / Stop(); the timer runs "
-                          "only while an indicator is turning.");
-        subtitle->SetFontSize(12);
-        subtitle->SetWrap(TextWrap::WrapWord);
-        container->AddChild(subtitle);
+        auto page = DemoKit::CreatePage("BusyIndicatorExamples", "Busy Indicator Examples",
+                "\"Working on it\" when there is no percentage to show. Six kinds "
+                "(BusyIndicatorKind), all driven by Start() / Stop(); the timer runs "
+                "only while an indicator is turning.");
 
         // Every indicator on the page, for Start all / Stop all. Raw pointers:
-        // the container owns the elements and the buttons live in it too.
+        // the page owns the elements and the buttons live in it too.
         auto indicators = std::make_shared<std::vector<UltraCanvasBusyIndicator*>>();
-        auto add = [&](const std::shared_ptr<UltraCanvasBusyIndicator>& indicator) {
-            container->AddChild(indicator);
+        auto add = [&](const std::shared_ptr<UltraCanvasContainer>& parent,
+                       const std::shared_ptr<UltraCanvasBusyIndicator>& indicator) {
+            DemoKit::AddFixed(parent, indicator);
             indicators->push_back(indicator.get());
             indicator->Start();
         };
 
-        auto columnHeader = [&](const std::string& id, const std::string& text, float x) {
-            auto l = CreateLabel(id, x, 92, 180, 20);
-            l->SetText(text);
-            l->SetFontWeight(FontWeight::Bold);
-            l->SetFontSize(12);
-            container->AddChild(l);
+        // A table column: a fixed width so the columns line up from row to
+        // row, and the height of its content (or `height`, which centres an
+        // indicator in its row). Text in it wraps instead of widening it.
+        auto cell = [](const std::string& id, float width, float height = 0) {
+            auto c = DemoKit::CreateColumn(id, 2);
+            c->SetElementSize(CSSLayout::Dimension::Px(width),
+                              height > 0 ? CSSLayout::Dimension::Px(height) : CSSLayout::Dimension::Auto());
+            c->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center)
+                     .SetFlexJustifyContent(CSSLayout::JustifyContent::Center);
+            return c;
         };
-        columnHeader("BusyColKind",  "Kind",          20);
-        columnHeader("BusyColSmall", "Small",         180);
-        columnHeader("BusyColLarge", "Large",         340);
-        columnHeader("BusyColColor", "Other colour",  540);
-        columnHeader("BusyColNote",  "Box",           740);
+        // An indicator centred in its cell (AddFixed puts it at the start).
+        auto addCentred = [&](const std::shared_ptr<UltraCanvasContainer>& parent,
+                              const std::shared_ptr<UltraCanvasBusyIndicator>& indicator) {
+            add(parent, indicator);
+            indicator->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Center);
+        };
+        const float smallColumn = 130, largeColumn = 190, rowHeight = 56;
+
+        // ===== THE SIX KINDS =====
+        auto kindsCard = DemoKit::AddCard(page, "BusyKindsCard", "The six kinds",
+                "Each at a small and a large size and in a second colour");
+
+        auto headerRow = DemoKit::AddRow(kindsCard, "BusyHeaderRow");
+        auto columnHeader = [&](const std::shared_ptr<UltraCanvasContainer>& parent,
+                                const std::string& id, const std::string& text, bool centred) {
+            auto l = DemoKit::CreateText(id, text);
+            l->SetFontWeight(FontWeight::Bold);
+            // Over an indicator column centred, as the indicators are.
+            if (centred) l->SetAlignment(TextAlignment::Center, VerticalAlignment::Top);
+            DemoKit::Add(parent, l);
+        };
+        auto headSmall = cell("BusyColSmallCell", smallColumn);
+        auto headLarge = cell("BusyColLargeCell", largeColumn);
+        auto headColor = cell("BusyColColorCell", largeColumn);
+        columnHeader(headSmall, "BusyColSmall", "Small", true);
+        columnHeader(headLarge, "BusyColLarge", "Large", true);
+        columnHeader(headColor, "BusyColColor", "Other colour", true);
+        DemoKit::AddFixed(headerRow, headSmall);
+        DemoKit::AddFixed(headerRow, headLarge);
+        DemoKit::AddFixed(headerRow, headColor);
+        auto headText = DemoKit::CreateColumn("BusyColText", 2);
+        columnHeader(headText, "BusyColKind", "Kind", false);
+        columnHeader(headText, "BusyColNote", "Box", false);
+        DemoKit::Add(headerRow, headText, 1);
 
         struct Row {
             const char* name;
@@ -75,24 +101,22 @@ namespace UltraCanvas {
         const int rowCount = static_cast<int>(std::size(rows));
         const Color otherColour(230, 120, 20, 255);   // orange
 
-        float y = 120;
-        const float rowHeight = 70;
         for (int i = 0; i < rowCount; ++i) {
             const Row& row = rows[i];
             const std::string n = std::to_string(i);
-            const float mid = y + rowHeight / 2;
+            auto tableRow = DemoKit::AddRow(kindsCard, "BusyRow" + n);
 
-            auto name = CreateLabel("BusyName" + n, 20, mid - 10, 150, 20);
-            name->SetText(row.name);
-            name->SetFontSize(12);
-            container->AddChild(name);
+            auto smallCell = cell("BusySmallCell" + n, smallColumn, rowHeight);
+            addCentred(smallCell, CreateBusyIndicator("BusySmall" + n, 0, 0,
+                                                      row.smallW, row.smallH, row.kind));
+            DemoKit::AddFixed(tableRow, smallCell);
 
-            add(CreateBusyIndicator("BusySmall" + n, 180, mid - row.smallH / 2,
-                                    row.smallW, row.smallH, row.kind));
-            add(CreateBusyIndicator("BusyLarge" + n, 340, mid - row.largeH / 2,
-                                    row.largeW, row.largeH, row.kind));
+            auto largeCell = cell("BusyLargeCell" + n, largeColumn, rowHeight);
+            addCentred(largeCell, CreateBusyIndicator("BusyLarge" + n, 0, 0,
+                                                      row.largeW, row.largeH, row.kind));
+            DemoKit::AddFixed(tableRow, largeCell);
 
-            auto coloured = CreateBusyIndicator("BusyColour" + n, 540, mid - row.largeH / 2,
+            auto coloured = CreateBusyIndicator("BusyColour" + n, 0, 0,
                                                 row.largeW, row.largeH, row.kind);
             // Orange, with a purple inner ring for DualRing; Bar instead gets a
             // green segment of a fixed 40 px.
@@ -107,89 +131,89 @@ namespace UltraCanvas {
                 style.barLength = 40.0f;
             }
             coloured->SetStyle(style);
-            add(coloured);
+            auto colourCell = cell("BusyColourCell" + n, largeColumn, rowHeight);
+            addCentred(colourCell, coloured);
+            DemoKit::AddFixed(tableRow, colourCell);
 
-            auto note = CreateLabel("BusyNote" + n, 740, mid - 10, 250, 20);
-            note->SetText(row.note);
-            note->SetFontSize(11);
-            container->AddChild(note);
-
-            y += rowHeight;
+            // The kind's name over the box it is drawn in.
+            auto text = DemoKit::CreateColumn("BusyText" + n, 2);
+            text->layout.SetFlexJustifyContent(CSSLayout::JustifyContent::Center);
+            DemoKit::AddText(text, "BusyName" + n, row.name);
+            DemoKit::AddCaption(text, "BusyNote" + n, row.note);
+            DemoKit::Add(tableRow, text, 1);
         }
 
         // ===== DOTRING: THE THREE FADES =====
-        auto fadeHeader = CreateLabel("BusyFadeHeader", 20, y + 10, 700, 20);
-        fadeHeader->SetText("DotRing, three ways (dotRingFade):");
-        fadeHeader->SetFontWeight(FontWeight::Bold);
-        fadeHeader->SetFontSize(12);
-        container->AddChild(fadeHeader);
+        auto fadeCard = DemoKit::AddCard(page, "BusyFadeCard", "DotRing, three ways (dotRingFade):");
+        auto fadeRow = DemoKit::AddRow(fadeCard, "BusyFadeRow", 24);
 
         struct FadeDemo {
             BusyDotRingFade fade;
-            float x, captionWidth;   // the caption stops short of the next column
             const char* caption;
         };
         const FadeDemo fades[] = {
-            {BusyDotRingFade::Fade,            180, 150, "Fade: dots fade out behind the head"},
-            {BusyDotRingFade::NoFade,          340, 190, "NoFade: solid dots, the head shows by size"},
-            {BusyDotRingFade::FadeRandomColor, 540, 250, "FadeRandomColor: a new random colour at every fade-in"},
+            {BusyDotRingFade::Fade,            "Fade: dots fade out behind the head"},
+            {BusyDotRingFade::NoFade,          "NoFade: solid dots, the head shows by size"},
+            {BusyDotRingFade::FadeRandomColor, "FadeRandomColor: a new random colour at every fade-in"},
         };
         for (int i = 0; i < static_cast<int>(std::size(fades)); ++i) {
             const FadeDemo& demo = fades[i];
             const std::string n = std::to_string(i);
-            auto ring = CreateBusyIndicator("BusyFade" + n, demo.x, y + 40, 64, 64,
+            // The three share the row's width; the caption wraps under its ring.
+            auto column = DemoKit::CreateColumn("BusyFadeColumn" + n, 8);
+            DemoKit::Add(fadeRow, column, 1);
+            column->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(180));
+
+            auto ring = CreateBusyIndicator("BusyFade" + n, 0, 0, 64, 64,
                                             BusyIndicatorKind::DotRing);
             BusyIndicatorStyle style = ring->GetStyle();
             style.dotRingFade = demo.fade;
             ring->SetStyle(style);
-            add(ring);
+            add(column, ring);
 
-            auto caption = CreateLabel("BusyFadeCaption" + n, demo.x, y + 110, demo.captionWidth, 32);
-            caption->SetText(demo.caption);
-            caption->SetFontSize(11);
-            caption->SetWrap(TextWrap::WrapWord);
-            container->AddChild(caption);
+            DemoKit::AddCaption(column, "BusyFadeCaption" + n, demo.caption);
         }
-        y += 150;
 
         // ===== A STATUS LINE, AS AN APP USES ONE =====
-        auto statusHeader = CreateLabel("BusyStatusHeader", 20, y + 10, 500, 20);
-        statusHeader->SetText("In a status line (indicator, then the text):");
-        statusHeader->SetFontWeight(FontWeight::Bold);
-        statusHeader->SetFontSize(12);
-        container->AddChild(statusHeader);
-        y += 40;
+        auto statusCard = DemoKit::AddCard(page, "BusyStatusCard",
+                                           "In a status line (indicator, then the text):");
+        auto statusRow = DemoKit::AddRow(statusCard, "BusyStatusRow", 24);
+        statusRow->layout.SetFlexGap(10, 32);
 
         const char* statusTexts[] = {"Checking mail…", "Syncing folders…", "Receiving messages… (42)",
                                      "Loading images…", "Contacting the server…", "Indexing attachments…"};
         for (int i = 0; i < rowCount; ++i) {
             const std::string n = std::to_string(i);
-            const float x = 20 + (i % 3) * 320.0f;
-            const float rowY = y + (i / 3) * 30.0f;
             const Row& row = rows[i];
             // Square kinds at the text height (DotRing a little larger, so its
             // dots stay dots), wide kinds a little wider.
             const float square = row.kind == BusyIndicatorKind::DotRing ? 18.0f : 14.0f;
             const float w = row.smallW > row.smallH ? std::min(row.smallW, 40.0f) : square;
             const float h = row.smallW > row.smallH ? std::min(row.smallH, 8.0f) : square;
-            add(CreateBusyIndicator("BusyStatus" + n, x, rowY + 10 - h / 2, w, h, row.kind));
-            auto text = CreateLabel("BusyStatusText" + n, x + w + 8, rowY, 260, 20);
-            text->SetText(statusTexts[i]);
-            text->SetFontSize(12);
-            container->AddChild(text);
+
+            auto line = DemoKit::CreateRow("BusyStatusLine" + n, 8, false);
+            line->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
+            DemoKit::Add(statusRow, line);
+            auto indicator = CreateBusyIndicator("BusyStatus" + n, 0, 0, w, h, row.kind);
+            add(line, indicator);
+            indicator->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Center);
+            DemoKit::AddText(line, "BusyStatusText" + n, statusTexts[i]);
         }
-        y += 70;
 
         // ===== START / STOP =====
-        auto startBtn = std::make_shared<UltraCanvasButton>("BusyStart", 20, y, 100.0f, 30.0f, "Start all");
+        auto controlCard = DemoKit::AddCard(page, "BusyControlCard", "Start / Stop");
+        auto buttonRow = DemoKit::AddRow(controlCard, "BusyButtonRow", 10);
+
+        // Buttons as wide as their text.
+        auto startBtn = std::make_shared<UltraCanvasButton>("BusyStart", 0, 0, 0, 30.0f, "Start all");
         startBtn->onClick = [indicators]() { for (auto* b : *indicators) b->Start(); };
-        container->AddChild(startBtn);
+        DemoKit::Add(buttonRow, startBtn);
 
-        auto stopBtn = std::make_shared<UltraCanvasButton>("BusyStop", 130, y, 100.0f, 30.0f, "Stop all");
+        auto stopBtn = std::make_shared<UltraCanvasButton>("BusyStop", 0, 0, 0, 30.0f, "Stop all");
         stopBtn->onClick = [indicators]() { for (auto* b : *indicators) b->Stop(); };
-        container->AddChild(stopBtn);
+        DemoKit::Add(buttonRow, stopBtn);
 
-        auto idleBtn = std::make_shared<UltraCanvasButton>("BusyIdle", 240, y, 190.0f, 30.0f,
+        auto idleBtn = std::make_shared<UltraCanvasButton>("BusyIdle", 0, 0, 0, 30.0f,
                                                            "Show when stopped");
         idleBtn->onClick = [indicators]() {
             for (auto* b : *indicators) {
@@ -198,19 +222,14 @@ namespace UltraCanvas {
                 b->SetStyle(style);
             }
         };
-        container->AddChild(idleBtn);
-        y += 44;
+        DemoKit::Add(buttonRow, idleBtn);
 
-        auto instructions = CreateLabel("BusyInstructions", 20, y, 940, 60);
-        instructions->SetText(
+        DemoKit::AddCaption(controlCard, "BusyInstructions",
             "Stop all halts every timer; a stopped indicator draws nothing unless "
             "hideWhenStopped is false (\"Show when stopped\" toggles it), and then rests "
             "where it stopped. Start all resumes from there.");
-        instructions->SetFontSize(11);
-        instructions->SetWrap(TextWrap::WrapWord);
-        container->AddChild(instructions);
 
-        return container;
+        return page;
     }
 
 } // namespace UltraCanvas

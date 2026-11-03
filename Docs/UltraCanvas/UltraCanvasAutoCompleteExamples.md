@@ -18,6 +18,7 @@
 - [Events and Callbacks](#events-and-callbacks)
 - [Usage Examples](#usage-examples)
   - [Basic Static AutoComplete](#basic-static-autocomplete)
+  - [A Menu on a Suggestion](#a-menu-on-a-suggestion)
   - [Display Text vs. Programmatic Value (Country Codes)](#display-text-vs-programmatic-value-country-codes)
   - [Dynamic Suggestion Provider](#dynamic-suggestion-provider)
   - [Large List with Automatic Scrollbar](#large-list-with-automatic-scrollbar)
@@ -172,6 +173,10 @@ std::function<void()> onAutocompletePopupClosed;
 // Dynamic suggestion provider: called with current text,
 // should return filtered suggestions for the popup
 std::function<std::vector<AutoCompleteItem>(const std::string&)> onRequestSuggestions;
+
+// A right press on a suggestion: its index, the item and the event.
+// Unset, a right press picks the row like a left one.
+std::function<void(int, const AutoCompleteItem&, const UCEvent&)> onItemContextMenu;
 ```
 
 In addition, callbacks inherited from `UltraCanvasTextInput` (such as `onTextChanged`) remain available.
@@ -207,6 +212,33 @@ fruitAC->onItemSelected = [](int index, const AutoCompleteItem& item) {
 };
 
 container->AddChild(fruitAC);
+```
+
+### A Menu on a Suggestion
+
+`onItemContextMenu` lets the user act on a suggestion without picking it -
+UltraMail's recipient fields offer *Edit contact* and *Delete address* this
+way. The popup closes as the press takes the focus; when the handler changes
+what would be suggested, call `RefreshSuggestions()` afterwards.
+
+<!-- doc-check: UltraCanvasWindowBase* MainWindow(); -->
+```cpp
+auto peopleAC = CreateAutoComplete("PeopleAC", 30, 160, 280);
+peopleAC->AddItem("Anna Schmidt", "anna@example.com");
+peopleAC->AddItem("Hans Annaberg", "hans@example.com");
+
+// Held by the handler, so it outlives the call that opens it.
+auto menu = std::make_shared<UltraCanvasMenu>("PeopleMenu", 0, 0, 180, 0);
+menu->SetMenuType(MenuType::PopupMenu);
+peopleAC->onItemContextMenu = [menu](int index, const AutoCompleteItem& item, const UCEvent& event) {
+    menu->Clear();
+    const std::string address = item.value;
+    menu->AddItem(MenuItemData::Action("Forget " + address, [address]() {
+        std::cerr << "Forget " << address << std::endl;
+    }));
+    PopupElementSettings settings;
+    menu->OpenMenu(event.pointerWindow, *MainWindow(), settings);
+};
 ```
 
 ### Display Text vs. Programmatic Value (Country Codes)

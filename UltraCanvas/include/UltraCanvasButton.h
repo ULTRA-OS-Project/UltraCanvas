@@ -1,21 +1,28 @@
 // include/UltraCanvasButton.h
 // Interactive button component with styling options
+// Version: 2.12.0 - ButtonStyle::wrap / SetWrap: the text on several lines (a tile's name under its icon)
+// Version: 2.11.0 - GetIconImage: the icon the button shows, for a menu entry standing in for it
+// Version: 2.10.2 - that layout is an UltraCanvasTextLayoutCache, the label's pattern too
+// Version: 2.10.1 - the shortened text's layout is kept from draw to draw and rebuilt when its inputs change
+// Version: 2.10.0 - ButtonStyle::ellipsize / SetEllipsize: a text that does not fit shortened in the middle or at the start
 // Version: 2.9.0 - ButtonVariant (Standard, Ghost, Primary, Selected): FromTheme maps the
 //                 theme onto a button's part; SetThemeVariant on the element
 // Version: 2.8.0 - ButtonStyle::FromTheme, ApplyTheme
 // Version: 2.7.1 - GetIconWidth / GetIconHeight
 // Version: 2.7.0 - onDoubleClick
 // Version: 2.6.0
-// Last Modified: 2026-10-12
+// Last Modified: 2026-11-01
 // Author: UltraCanvas Framework
 #pragma once
 
 #include "UltraCanvasCommonTypes.h"
 #include "UltraCanvasUIElement.h"
 #include "UltraCanvasRenderContext.h"
+#include "UltraCanvasTextLayoutCache.h"
 #include "UltraCanvasEvent.h"
 #include <string>
 #include <functional>
+#include <memory>
 #include <vector>
 
 namespace UltraCanvas {
@@ -109,6 +116,15 @@ namespace UltraCanvas {
         float fontSize = 12.0f;
         FontWeight fontWeight = FontWeight::Normal;
         TextAlignment textAlign = TextAlignment::Center;
+        // How a text that does not fit is shortened: from the right (the
+        // default), from the left, or in the middle - a path's first and
+        // last parts stay readable then.
+        EllipsizeMode ellipsize = EllipsizeMode::EllipsizeEnd;
+        // Word wrap: the text breaks onto as many lines as its area holds,
+        // from the area's top, and the last line that fits ends in "…" when
+        // more is left (an application's name under its icon on a tile).
+        // WrapNone (the default) keeps it on one line.
+        TextWrap wrap = TextWrap::WrapNone;
 
         int iconSpacing = 4;  // Space between icon and text
         float cornerRadius = 3.0f;
@@ -176,6 +192,12 @@ namespace UltraCanvas {
         // Cached layout calculations
         Rect2Df iconRect;
         Rect2Df textRect;
+        // The text layout a middle- or start-shortened text is drawn with,
+        // kept from draw to draw and rebuilt only when what it was built
+        // from changes (UltraCanvasTextLayoutCache, as the label keeps its
+        // own). Built on the first draw that needs it; a button shortened at
+        // the end has none.
+        UltraCanvasTextLayoutCache shortenedLayout;
         Rect2Df secondaryTextRect;  // For split button secondary section
         Rect2Df secondaryIconRect;  // For split button secondary icon (new)
         Rect2Df primarySectionRect;  // Primary section bounds
@@ -280,6 +302,9 @@ namespace UltraCanvas {
         void SetUseIconAsMask(bool useAsMask);
         void SetIconMaskColor(const Color& c);
         bool HasIcon() const { return icon != nullptr; }
+        // The icon the button shows, null without one: a toolbar's overflow
+        // menu draws the entry that stands in for the button with it.
+        std::shared_ptr<UCImage> GetIconImage() const { return icon; }
 
         // ===== STYLING METHODS =====
         void SetColors(const Color& normal, const Color& hover,
@@ -295,6 +320,8 @@ namespace UltraCanvas {
                      FontWeight weight = FontWeight::Normal);
         void SetFontSize(float size);
         void SetTextAlign(TextAlignment align);
+        void SetEllipsize(EllipsizeMode mode);   // ButtonStyle::ellipsize
+        void SetWrap(TextWrap wrap);             // ButtonStyle::wrap
         void SetIconSpacing(int spacing);
         void SetCornerRadius(float radius);
         void SetShadow(bool enabled, const Color& color = Color(0, 0, 0, 64),

@@ -19,7 +19,10 @@ void RegisterCompiledBackends(IODeviceManager& manager) {
     RegisterWindowsPrinterBackend(manager);
 #endif
 
-#if defined(__linux__)
+// Desktop Linux: the V4L2 backend is OS/Linux's, which Android (bionic
+// defines __linux__ too) does not compile; an Android camera is Camera2,
+// through the video backend.
+#if defined(__linux__) && !defined(__ANDROID__)
     RegisterV4L2CameraBackend(manager);
 #endif
 

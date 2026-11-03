@@ -3,15 +3,18 @@
 // the system rather than to one application - starting with where the
 // file dialogs of all applications open. One UOS-Settings per user: a second
 // start brings the running one forward and quits (UltraCanvasSingleInstance.h).
+// Version: 0.3.0 - --remove-notification-registrations: what the uninstaller
+//                  removes, for a folder unpacked from the ZIP package
 // Version: 0.2.0 - one UOS-Settings per user: a second start brings the first
 //                  one's window forward instead of opening another copy
 // Version: 0.1.0
-// Last Modified: 2026-10-12
+// Last Modified: 2026-10-21
 // Author: UltraCanvas Framework / ULTRA OS
 #include "ui/UOSSettingsWindow.h"
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasConfig.h"
+#include "UltraCanvasNotificationActivation.h"
 #include "UltraCanvasSingleInstance.h"
 #include "UltraCanvasUtils.h"
 
@@ -27,6 +30,13 @@ int main(int argc, char** argv) {
     for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--version") == 0) {
             std::printf("UOS-Settings %s\n", UOSSETTINGS_VERSION);
+            return EXIT_SUCCESS;
+        }
+        // What the uninstaller does, for a folder unpacked from the ZIP
+        // package (uc-remove-registrations.cmd): no window.
+        if (std::strcmp(argv[i], "--remove-notification-registrations") == 0) {
+            const size_t removed = UltraCanvas::RemoveNotificationRegistrations();
+            std::printf("UOS-Settings: removed %zu notification registration(s)\n", removed);
             return EXIT_SUCCESS;
         }
     }

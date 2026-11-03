@@ -22,7 +22,13 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLZarchTab();
 
 #ifdef ULTRACANVAS_ENABLE_GL
 
-#if defined(__APPLE__)
+#if defined(__ANDROID__)
+// Android's GL surfaces are OpenGL ES 3 (OS/Android/GLContextManagerEGL_Android.cpp).
+// Everything these pages call exists there but glPolygonMode, glPointSize and
+// GL_PROGRAM_POINT_SIZE, which their call sites leave out on Android, and the
+// shaders are translated as they are compiled (CompileShader below).
+#include <GLES3/gl3.h>
+#elif defined(__APPLE__)
 #include <OpenGL/gl3.h>
 #elif defined(_WIN32)
 // Windows: modern GL entry points are provided by GLEW (opengl32 is GL 1.1 only).
@@ -186,8 +192,28 @@ inline std::array<float, 9> NormalMatrix(const Mat4& mv) {
 }
 
 // ============================================================= shader utils
+#ifdef __ANDROID__
+// The pages' shaders are written as GLSL 3.30 core, which an OpenGL ES driver
+// refuses. What they use is in GLSL ES 3.00 as well, so swapping the version
+// line is the translation, plus the default float precision that ES requires
+// in a fragment shader (and allows in a vertex shader).
+inline std::string ToGlslEs(const char* source) {
+    static const std::string desktop = "#version 330 core";
+    std::string text(source);
+    if (text.compare(0, desktop.size(), desktop) == 0) {
+        text.replace(0, desktop.size(),
+                     "#version 300 es\nprecision highp float;\nprecision highp int;");
+    }
+    return text;
+}
+#endif
+
 inline GLuint CompileShader(GLenum type, const char* source) {
     GLuint shader = glCreateShader(type);
+#ifdef __ANDROID__
+    const std::string esSource = ToGlslEs(source);
+    source = esSource.c_str();
+#endif
     glShaderSource(shader, 1, &source, nullptr);
     glCompileShader(shader);
     GLint ok = 0;

@@ -1,11 +1,16 @@
 // Plugins/Vector/CDR/UltraCanvasCDRPlugin.h
 // CorelDRAW CDR/CMX file format plugin using libcdr and librevenge
+// Version: 1.3.0 - UltraCanvasCDRElement::LoadFromFileAsync / IsLoading: the file is parsed
+//                  on a worker thread, so a large drawing does not freeze the window;
+//                  the element draws in its own coordinates (it clipped and placed the
+//                  drawing by its position in the parent); an outline is at least one
+//                  device pixel wide (hairlines faded to pale grey)
 // Version: 1.2.2 - CDRDocument is not copyable (its draw commands point back at it)
 // Version: 1.2.1 - ExportToXAR names the way to XAR (the Vector plugin's
 //                  CDRConverter + XARConverter) instead of a reason that
 //                  stopped being true
 // Version: 1.2.0
-// Last Modified: 2026-10-11
+// Last Modified: 2026-10-27
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -23,6 +28,7 @@
 #include <stack>
 #include <map>
 #include <functional>
+#include <thread>
 
 namespace UltraCanvas {
 // ===== ULTRACANVAS CDR ELEMENT =====
@@ -173,6 +179,9 @@ namespace UltraCanvas {
         CDRFitMode GetFitMode() const { return fitMode; }
         bool IsLoaded() const { return document && document->IsValid(); }
         int GetPageCount() const { return document ? document->GetPageCount() : 0; }
+        // A document parsed elsewhere (UltraCanvasCDRPlugin::ParseCDRFile on
+        // a worker thread); null unloads.
+        void SetDocument(std::shared_ptr<CDRDocument> doc) { document = std::move(doc); }
         void SetViewport(float w, float h);
         void SetScale(float scale);
         float GetScale() const { return scaleLevel; }
@@ -197,12 +206,22 @@ namespace UltraCanvas {
         UltraCanvasCDRRenderer cdrRenderer;
         int currentPageIndex = 0;
         std::string lastError;
+        // LoadFromFileAsync: the worker parsing the file, which load is the
+        // latest (an older one's result is dropped), and whether it runs.
+        std::thread loadThread;
+        unsigned loadGeneration = 0;
+        bool loading = false;
         void RenderPlaceholder(IRenderContext* ctx, const std::string& message);
+        void FinishAsyncLoad(unsigned generation, std::shared_ptr<CDRDocument> doc,
+                             const std::string& filePath);
+        void ReportLoadFailure(const std::string& filePath);
 
     public:
         UltraCanvasCDRElement(const std::string& identifier,
                               int x, int y, int width, int height);
-        ~UltraCanvasCDRElement() override = default;
+        // Waits for a parse still running (it touches nothing of the element,
+        // but must not outlive the program's teardown).
+        ~UltraCanvasCDRElement() override;
 
         // Reason for the most recent failed load (locked / missing / not a valid
         // CDR file). Empty after a successful load.
@@ -211,6 +230,16 @@ namespace UltraCanvas {
         // Load CDR file
         bool LoadFromFile(const std::string& filePath);
         bool LoadFromMemory(const std::vector<uint8_t>& data);
+        // Parses the file on a worker thread and shows it when it is done, so
+        // a drawing that takes a second to read (embedded photos) does not
+        // freeze the window meanwhile. IsLoading() is true until then;
+        // onLoadComplete / onLoadError fire on the UI thread, as after
+        // LoadFromFile. The element must be owned by a shared_ptr. A load
+        // started while another runs waits for that one to finish, and only
+        // the last one's result is shown. Without a running application it
+        // is LoadFromFile.
+        void LoadFromFileAsync(const std::string& filePath);
+        bool IsLoading() const { return loading; }
 
         // Document access
         bool IsLoaded() const { return cdrRenderer.IsLoaded(); }

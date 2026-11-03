@@ -10,15 +10,10 @@
 #include <functional>
 #include <unordered_map>
 
-// X11 defines `None` and `True`/`False` as macros that clobber our enumerators.
-#ifdef None
-#undef None
-#endif
-
 namespace UltraCanvas {
 
     enum class LabelPosition {
-        None,
+        NoLabels,
         Inside,
         Outside,
         Edge,

@@ -7,6 +7,19 @@
 // The editor is multi-window: the class also holds the registry of open
 // windows, so File > New Window and a second file on the command line add
 // to it and the application exits with the last of them.
+// Version: 1.14.0 - menus, toolbar, palette and shortcuts built from one command registry
+//                   per window (ArtCreatorCommands.cpp): the menu and the toolbars follow
+//                   the commands' state, the toolbar and palette are groups the user shows,
+//                   hides, reorders and folds (a right click, or View > Customise Menus
+//                   and Toolbars), kept in ArtCreator's settings folder
+// Version: 1.13.1 - settings are changed through ArtCreatorSettings::Update, so one window
+//                   no longer writes back another's changes
+// Version: 1.13.0 - the transform bar's rotation centre (fields on the page or from the middle,
+//                   a picker for its nine points or a ring for a dragged one) while the Rotate
+//                   handles show; typed rotation and shear turn about that centre then; every
+//                   field of the bar one width
+// Version: 1.12.0 - the user's own palettes kept (picker.userpalettes); a hovered palette
+//                  swatch floods the picker
 // Version: 1.11.0 - the palette rows under the picker (UltraCanvasColorPaletteManager):
 //                   palettes added from a gallery, an entry set with a right click
 // Version: 1.10.0 - the right panel in SectionCard group boxes with small captions, as
@@ -23,7 +36,7 @@
 // Version: 1.5.0 - SaveToPath takes the bitmap size: Export saves every type through FileLoader
 // Version: 1.4.0 - ToolIconPath / SharedIconPath; MenuIconPath is the app's 16 px menu set
 // Version: 1.3.0
-// Last Modified: 2026-10-19
+// Last Modified: 2026-11-02
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -46,6 +59,10 @@
 #include "DataFormats/UltraCanvasVectorStorage.h"
 #include "DataFormats/UltraCanvasVectorEdit.h"
 #include "UltraCanvasFileSaveSettings.h"   // FileSaveImageSize
+#include "UltraCanvasCommandRegistry.h"
+#include "UltraCanvasMenuLayout.h"
+#include "UltraCanvasToolbarLayout.h"
+#include "UltraCanvasAppSettings.h"
 
 #include "ArtCreatorTools.h"
 #include "ArtCreatorDialogs.h"
@@ -107,6 +124,34 @@ private:
     // The framework's shared line icons (media/icons/menu/, 24 px): the
     // toolbar's New, Open, Save, Undo, Redo and zoom buttons.
     std::string SharedIconPath(const std::string& file) const;
+
+    // ----- commands (ArtCreatorCommands.cpp) -----
+    // Every command once, in this window's registry: the menu bar, the
+    // toolbar, the palette and the keyboard are all built from it, so a
+    // label, an icon, a shortcut or a state is written in one place.
+    void RegisterCommands();
+    // The program's arrangements - what Reset in the editor returns to.
+    static MenuLayoutSet DefaultMenuLayout();
+    static ToolbarLayout DefaultToolbarLayout();
+    static ToolbarLayout DefaultPaletteLayout();
+    // A command icon's file at `pixels`: the app's set drawn for that size,
+    // else the shared one, else the nearest size there is.
+    std::string ResolveCommandIcon(const std::string& name, int pixels) const;
+    // The user's arrangement: the menus in menus.txt and the toolbars in
+    // settings.json, both in ArtCreator's settings folder.
+    void LoadLayouts();
+    void SaveLayouts();
+    void ApplyMenuLayout();
+    void ApplyToolbarLayout();
+    void ApplyPaletteLayout();
+    // The menu, the toolbar and the palette follow the commands' state
+    // (Undo with its step, what needs a selection, the active tool).
+    void RefreshCommandStates();
+    // The editor for the menus and both toolbars, in a window of its own;
+    // `selectNode` picks what it opens on ("t0" the toolbar, "t1" the palette).
+    void OpenCustomise(const std::string& selectNode = std::string());
+    // A key press to the command whose shortcut it is; false for none.
+    bool RunShortcut(const UCEvent& e);
 
     // ----- document -----
     void NewDrawing(const ArtCreatorPageResult& page);
@@ -191,6 +236,16 @@ private:
     void ApplyScalePercent(bool horizontal, double percent, bool merge = false);
     void ApplyRotation(double degrees, bool merge = false);
     void ApplyShear(double degrees, bool merge = false);
+    // The rotation centre group at the bar's right end, shown while the
+    // Selector's Rotate handles are: its fields read the centre on the page
+    // or from the middle of the selection (settings.centreRelative).
+    void ShowCentreGroup();
+    void ShowCentreMode();
+    void ApplyCentre(bool horizontal, double value);
+    bool RotateHandlesShown() const;
+    // What typed rotation and shear turn about: the rotation centre while
+    // the Rotate handles show, else the reference point.
+    Point2Dd TurnPivot() const;
 
     // ----- icon mode -----
     // An icon is drawn for the size it is shown at (16 to 256 px). Icon mode
@@ -242,6 +297,13 @@ private:
     void Reselect(const std::vector<std::string>& ids);
 
     // ----- members -----
+    // The window's commands; declared first, so it outlives everything
+    // built from it.
+    UltraCanvasCommandRegistry                  commands;
+    MenuLayoutSet                               menuLayout;
+    std::shared_ptr<ToolbarLayout>              toolbarLayout;
+    std::shared_ptr<ToolbarLayout>              paletteLayout;
+    std::shared_ptr<UltraCanvasWindowBase>      customiseWindow;
     std::shared_ptr<UltraCanvasWindow>          window;
     std::shared_ptr<UltraCanvasMenu>            menuBar;
     std::shared_ptr<UltraCanvasToolbar>         toolbar;
@@ -261,7 +323,6 @@ private:
     std::shared_ptr<UltraCanvasContainer>       layerRows;
     std::shared_ptr<UltraCanvasContainer>       statusBar;
     std::shared_ptr<UltraCanvasLabel>           statusPos, statusZoom, statusSelection, statusHint;
-    std::shared_ptr<UltraCanvasButton>          undoButton, redoButton;
     std::shared_ptr<UltraCanvasSlider>          qualitySlider;
     std::shared_ptr<UltraCanvasLabel>           qualityLabel;
     std::shared_ptr<UltraCanvasContainer>       transformBar;
@@ -269,8 +330,11 @@ private:
     std::shared_ptr<UltraCanvasSpinner>         posXBox, posYBox, sizeWBox, sizeHBox, scaleWBox, scaleHBox;
     std::shared_ptr<UltraCanvasSpinner>         rotationBox, shearBox;
     std::shared_ptr<UltraCanvasButton>          ratioLockButton;
-    // The palette's slots: one per group of tools (see PaletteGroups()).
-    std::vector<std::shared_ptr<UltraCanvasToolGroupButton>> toolSlots;
+    std::shared_ptr<UltraCanvasContainer>       centreGroup;
+    std::shared_ptr<UltraCanvasButton>          centreModeButton;
+    std::shared_ptr<UltraCanvasLabel>           centreXCaption, centreYCaption;
+    std::shared_ptr<UltraCanvasSpinner>         centreXBox, centreYBox;
+    std::shared_ptr<UltraCanvasReferencePointPicker> centrePicker;
     std::shared_ptr<UltraCanvasGroupBox>        iconPanel;
     std::shared_ptr<UltraCanvasDropdown>        iconSizeBox;
     std::shared_ptr<ArtIconPreview>             iconPreview;

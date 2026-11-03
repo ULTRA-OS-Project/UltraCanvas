@@ -13,6 +13,7 @@
 //   Analyze()            - pure: raw message -> AnalyzedMessage, no I/O
 //   IngestRaw() / File() - analyse and store one message
 //   IngestMailCache()    - analyse and store everything UltraMail has cached
+// Version: 0.2.0 - outgoing mail: recipients recorded, not analysed
 // Version: 0.1.0 (Phase 1)
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -38,6 +39,7 @@ struct IngestStats {
     int attachments = 0;
     int movedAway   = 0;   // left out: EmailCleaner moved them to Trash
     int foldersLeftOut = 0; // Trash folders not analysed
+    int sent        = 0;   // outgoing messages: recipients recorded, not analysed
 
     void Add(const IngestStats& other);
 };
@@ -69,6 +71,17 @@ struct IngestOptions {
     // Trash is mail already dealt with: counting it would bring what the
     // actions moved there straight back onto the map.
     bool skipTrash = false;
+
+    // Folders holding the owner's sent mail, by their directory name - the
+    // account's Sent folder as its server names it (SPECIAL-USE role). Every
+    // message in them is outgoing, whoever the From line names; elsewhere a
+    // message is outgoing when it is from `ownerAddress`. Outgoing mail is not
+    // analysed: only its recipients are recorded (AnalysisStore::
+    // RecordSentMessages), for the contacts review.
+    std::set<std::string> sentFolders;
+    // Also treat every folder whose name says it is the Sent folder ("Sent",
+    // "Sent Items", "[Gmail]/Sent Mail", "Gesendet", ...) as one.
+    bool sentByName = false;
 };
 
 // True when a cache folder directory is a Trash folder by name. The cache
@@ -129,6 +142,10 @@ private:
 
 // Read a whole file into a string. Returns false when it cannot be opened.
 bool ReadFileBytes(const std::string& path, std::string& out);
+
+// True when a cache folder directory is a Sent folder by name ("Sent",
+// "Sent Items", "[Gmail]_Sent Mail", "Gesendete Objekte", ...).
+bool LooksLikeSentDirectory(const std::string& directoryName);
 
 // The uid encoded in an UltraMail cache file name ("1234.eml" -> 1234; 0 when
 // the name is not numeric).

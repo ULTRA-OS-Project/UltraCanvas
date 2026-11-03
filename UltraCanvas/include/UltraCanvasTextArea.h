@@ -1,5 +1,12 @@
 // UltraCanvasTextArea.h
 // Advanced text area component with syntax highlighting and full UTF-8 support
+// Version: 3.16.0 - SetShowHiddenCharacters: spaces, tabs, no-break and zero-width
+//                 characters and line ends drawn as faint marks (hiddenCharacterColor),
+//                 their name and code in a tooltip over each. HandleMarkdownHover takes the
+//                 event, so its tooltips are placed in window coordinates (they were
+//                 drawn up and left of the pointer by the element's offset in the window)
+// Version: 3.15.0 - auto-completion: ShowAutoComplete opens a list of suggestions at the
+//                 caret (it was a placeholder); IsAutoCompleteOpen, GetAutoCompletePrefix
 // Version: 3.14.0 - every search match is marked in the text views and on the scrollbar
 //                 (searchHighlightColor, HighlightMatches(text, caseSensitive))
 // Version: 3.13.0 - MarkdownHeadingSlug: GitHub-style heading anchors in markdown mode
@@ -11,7 +18,7 @@
 // Version: 3.9.2 - SetCursorPosition(pos, true) extends the selection from its anchor
 //                 (the flag was ignored); GetCursorPosition() is const
 // Version: 3.9.1 - TextAreaStyle: scrollbarWidth, scrollbarCornerRadius, scrollbarThumbInset
-// Last Modified: 2026-10-18
+// Last Modified: 2026-10-28
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -48,6 +55,9 @@ namespace UltraCanvas {
     // (UltraCanvasImageViewer, defined in UltraCanvasImageViewer.h). Held by
     // shared_ptr so a forward declaration suffices here.
     class UltraCanvasImageViewer;
+    // The auto-completion list (UltraCanvasListView.h, UltraCanvasListModel.h).
+    class UltraCanvasListView;
+    class UltraCanvasSimpleListModel;
 
     // ===== HIT RECT FOR CLICKABLE ELEMENTS =====
     // Tracks clickable regions for links and images
@@ -255,6 +265,9 @@ namespace UltraCanvas {
 
         // Placeholder hint shown when the document is empty
         Color placeholderColor = Color(150, 150, 150, 255);
+
+        // Marks drawn over spaces, tabs and line ends (SetShowHiddenCharacters)
+        Color hiddenCharacterColor = Color(150, 150, 150, 200);
 
         // Line numbers
         bool showLineNumbers;
@@ -735,6 +748,14 @@ namespace UltraCanvas {
         void SetShowLineNumbers(bool show) { style.showLineNumbers = show; isNeedRecalculateVisibleArea = true; RequestRedraw(); }
         bool GetShowLineNumbers() const { return style.showLineNumbers; }
 
+        // Draws the characters that print nothing as faint marks in
+        // style.hiddenCharacterColor: a dot for a space, an arrow for a tab, a
+        // ring for a no-break space, a tick for a zero-width character and a
+        // pilcrow at the end of every line. Display only - the text is unchanged.
+        // Hovering a mark shows the character's name and code in a tooltip.
+        void SetShowHiddenCharacters(bool show) { showHiddenCharacters = show; RequestRedraw(); }
+        bool GetShowHiddenCharacters() const { return showHiddenCharacters; }
+
         void SetTabSize(int size) { tabSize = size; isNeedRecalculateVisibleArea = true; RequestRedraw(); }
         int GetTabSize() const { return tabSize; }
 
@@ -814,10 +835,21 @@ namespace UltraCanvas {
         void SetOnCursorPositionChanged(CursorPositionChangedCallback callback) { onCursorPositionChanged = callback; }
         void SetOnSelectionChanged(SelectionChangedCallback callback) { onSelectionChanged = callback; }
 
-        // Auto-completion support
+        // Auto-completion: a list of suggestions just under the caret, the
+        // first one highlighted. While it is open Up, Down, Page Up and Page
+        // Down move in it; Enter or Tab puts the highlighted suggestion in
+        // place of the word before the caret (GetAutoCompletePrefix) and
+        // closes it, as a click on a suggestion does; Escape closes it. Any
+        // other key edits as usual and leaves the list as it is: the host
+        // shows a new one from onTextChanged - narrowed to what is typed - or
+        // hides it. An empty list hides it.
         void ShowAutoComplete(const std::vector<std::string>& suggestions);
         void HideAutoComplete();
         void AcceptAutoComplete();
+        bool IsAutoCompleteOpen() const { return autoCompleteOpen; }
+        // The word that ends at the caret - letters, digits, '_' and '$' and
+        // any character beyond ASCII - which a suggestion replaces.
+        std::string GetAutoCompletePrefix() const;
 
         // Bracket matching
         void HighlightMatchingBrackets();
@@ -927,6 +959,15 @@ namespace UltraCanvas {
         // first edit. The options passed in are a copy of GetSpellCheckOptions()
         // and are used for this check only. Runs on the UI thread.
         std::function<void(SpellCheckOptions&, const std::string&)> onPrepareSpellCheck;
+
+        // Called when a finished check carries a language suggestion - the
+        // service's automatic detection found that another installed dictionary
+        // fits this text far better (see SpellLanguageDetectionOptions). The
+        // area does not switch by itself: the language is shared by every
+        // checked element, so the host decides, normally with
+        // UltraCanvasSpellChecker::Instance().SetLanguage(code). Runs on the UI
+        // thread, outside the render pass.
+        std::function<void(const std::string& /*languageCode*/)> onSpellLanguageSuggested;
 
     protected:
         // ----- Gutter / decoration extension points -----
@@ -1100,9 +1141,11 @@ namespace UltraCanvas {
         bool LineColumnToByteOffset(const LineColumnIndex& idx, size_t& out) const;
         void DrawSpellErrorMarks(IRenderContext* ctx);
         void QueueSpellCheck();
-        // Drops the errors whose span no longer holds the word they were raised
-        // for, so an edit never leaves a mark on the wrong text.
-        void DropStaleSpellErrors();
+        // Moves the errors on hand onto the edited text: the ones after the edit
+        // shift with it, the ones it touched are dropped. Without this every
+        // mark below the caret vanished at each keystroke and came back with
+        // the next result - the squiggles under the text flickered as one typed.
+        void RebaseSpellErrors();
         // Asks the service to request a repaint when a result lands, so a check
         // finishing after the edit's frame still gets drawn.
         void RegisterSpellResultNotifier();
@@ -1118,8 +1161,33 @@ namespace UltraCanvas {
         LineLayoutBase *GetActualLineLayout(int idx);
 
         void RenderLineLayout(IRenderContext *ctx, LineLayoutBase* line);
+        // A character SetShowHiddenCharacters marks, with where it is on screen
+        // (element coordinates; for a line end, where its pilcrow is drawn).
+        struct HiddenCharacterMark {
+            enum class Kind { Space, Tab, NoBreakSpace, ZeroWidth, LineEnd };
+            Kind kind = Kind::Space;
+            char32_t codepoint = 0;
+            Rect2Df bounds;
+        };
+        std::vector<HiddenCharacterMark> FindHiddenCharacters(LineLayoutBase* line, int lineIndex) const;
+        // The SetShowHiddenCharacters marks over one line, drawn after its text.
+        void DrawHiddenCharacters(IRenderContext* ctx, LineLayoutBase* line, int lineIndex);
+        // Shows the name and code of the marked character under the pointer in
+        // a tooltip; true when there is one.
+        bool UpdateHiddenCharacterTooltip(const UCEvent& event);
 
     private:
+        // Auto-completion (ShowAutoComplete)
+        std::shared_ptr<UltraCanvasListView> autoCompleteList;
+        std::shared_ptr<UltraCanvasSimpleListModel> autoCompleteModel;
+        std::vector<std::string> autoCompleteItems;
+        bool autoCompleteOpen = false;
+        // The codepoint column the word before the caret starts at.
+        int AutoCompleteWordStart() const;
+        void AcceptAutoCompleteRow(int row);
+        // Up / Down / Enter / Tab / Escape while the list is open; true when used.
+        bool HandleAutoCompleteKey(const UCEvent& event);
+
         // Text data - std::string with GLib g_utf8_* for UTF-8 handling
         std::string textContent;
         std::vector<std::string> lines;
@@ -1185,6 +1253,12 @@ namespace UltraCanvas {
         // of the element and released in the destructor via CancelContext.
         bool spellCheckEnabled = false;
         std::vector<SpellError> spellErrors;
+        // The text spellErrors' offsets refer to; RebaseSpellErrors diffs it
+        // against textContent. Only held while there are errors to move.
+        std::string spellErrorsText;
+        // The job whose result describes the current text. A result for any
+        // other job was computed for text that has since changed.
+        uint64_t spellPendingJobId = 0;
         uint64_t spellContextId = 0;
         SpellCheckOptions spellOptions;
         // Held so the popup outlives the click that opened it.
@@ -1215,6 +1289,8 @@ namespace UltraCanvas {
         std::string placeholderText; // grey hint drawn when the document is empty
         bool wordWrap;
         bool highlightCurrentLine;
+        bool showHiddenCharacters = false;
+        bool hiddenCharacterTooltipShown = false;   // UpdateHiddenCharacterTooltip's, to hide only its own
         // needFirstVisibleLineFixup removed in Step 8b (pixel scroll has no analogous fixup).
         int tabSize = 4;
  
@@ -1335,12 +1411,13 @@ namespace UltraCanvas {
         bool HandleMarkdownClick(int mouseX, int mouseY);
 
         /**
-         * @brief Handle hover over markdown elements (updates cursor)
-         * @param mouseX Mouse X coordinate
-         * @param mouseY Mouse Y coordinate
+         * @brief Handle hover over markdown elements (updates cursor, shows
+         *        footnote / abbreviation / anchor tooltips)
+         * @param event The mouse move: its pointer (element coordinates) finds
+         *        the element, its pointerWindow places the tooltip
          * @return true if hovering over a clickable element
          */
-        bool HandleMarkdownHover(int mouseX, int mouseY);
+        bool HandleMarkdownHover(const UCEvent& event);
 
         void SetDocumentFilePath(const std::string& path) { documentFilePath = path; }
         std::string GetDocumentFilePath() const { return documentFilePath; }

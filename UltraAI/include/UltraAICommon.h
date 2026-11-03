@@ -12,15 +12,6 @@
 #include <variant>
 #include <vector>
 
-// When this module is used alongside UltraCanvas on Linux, the framework pulls
-// in X11/Xlib.h, whose `None` macro (0L) collides with the `None` enumerator
-// used across the UltraAI interfaces. Neutralise it before our declarations —
-// same approach as UltraCanvasEBookTypes.h. This is the umbrella-included
-// header, so the #undef covers every UltraAI capability header in the TU.
-#ifdef None
-#undef None
-#endif
-
 namespace UltraAI {
 
 // =====================================================================
@@ -28,7 +19,7 @@ namespace UltraAI {
 // =====================================================================
 
 enum class ErrorCode {
-    None = 0,
+    Ok = 0,            // no error (no enumerator is named None: X11's macro)
     InvalidRequest,
     AuthenticationFailed,
     RateLimited,
@@ -45,10 +36,10 @@ enum class ErrorCode {
 };
 
 struct Error {
-    ErrorCode code = ErrorCode::None;
+    ErrorCode code = ErrorCode::Ok;
     std::string message;
     std::string providerCode;
-    bool IsOk() const { return code == ErrorCode::None; }
+    bool IsOk() const { return code == ErrorCode::Ok; }
     explicit operator bool() const { return IsOk(); }
 };
 

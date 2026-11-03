@@ -289,7 +289,7 @@ namespace UltraCanvas {
         Pin,        // map-pin / teardrop
         Flag,       // pennant on a short pole
         Chevron,    // arrowhead pointing along the path
-        None
+        Hidden      // no node marker
     };
 
     struct TimelineItem {

@@ -103,7 +103,7 @@ struct ZigbeeAttributeValue {
     uint16_t AttributeId = 0;
     uint8_t DataType = 0;
     std::vector<uint8_t> Value;
-    uint8_t Status = 0;
+    uint8_t StatusCode = 0;
 };
 
 /**

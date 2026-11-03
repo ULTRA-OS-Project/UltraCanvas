@@ -1,10 +1,13 @@
 // Apps/DemoApp/UltraCanvasSunburstChartExamples.cpp
 // Comprehensive sunburst chart demonstration with all features
+// Version: 1.1.0 - the shared page look (UltraCanvasDemoPageKit): the controls in a
+//                  card above the charts, one card per chart, checkboxes sized to their text
 // Version: 1.0.0
-// Last Modified: 2026-07-28
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "Plugins/Charts/UltraCanvasSunburstChart.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasSlider.h"
@@ -120,22 +123,28 @@ namespace UltraCanvas {
 
 // ===== CONTROL PANEL =====
 
+    // The groups sit side by side and wrap under each other when narrow;
+    // dropdowns and sliders keep their 180 px, checkboxes fit their text.
     static void CreateSunburstControlPanel(
         std::shared_ptr<UltraCanvasContainer> container,
-        std::vector<std::shared_ptr<UltraCanvasSunburstChart>> charts,
-        int x, int y)
+        std::vector<std::shared_ptr<UltraCanvasSunburstChart>> charts)
     {
-        int yOffset = y;
-        int controlHeight = 25;
-        int spacing = 8;
+        const int controlWidth = 180;
+        const int controlHeight = 25;
 
-        auto labelsHeader = std::make_shared<UltraCanvasLabel>("SbLabelsHeader", x, yOffset, 200, 20);
-        labelsHeader->SetText("Labels:");
-        labelsHeader->SetFontWeight(FontWeight::Bold);
-        container->AddChild(labelsHeader);
-        yOffset += 25;
+        auto groups = DemoKit::AddRow(container, "SbControlGroups", 32);
+        auto addGroup = [&groups](const std::string& id, const std::string& headerId,
+                                  const std::string& header) {
+            auto group = DemoKit::CreateColumn(id, 8);
+            DemoKit::Add(groups, group);
+            auto label = DemoKit::AddText(group, headerId, header);
+            label->SetFontWeight(FontWeight::Bold);
+            return group;
+        };
 
-        auto contentDropdown = std::make_shared<UltraCanvasDropdown>("SbLabelContent", x, yOffset, 180, controlHeight);
+        auto labelsGroup = addGroup("SbLabelsGroup", "SbLabelsHeader", "Labels:");
+
+        auto contentDropdown = std::make_shared<UltraCanvasDropdown>("SbLabelContent", 0, 0, controlWidth, controlHeight);
         contentDropdown->AddItem("Name");
         contentDropdown->AddItem("Name + Value");
         contentDropdown->AddItem("Name + Percentage");
@@ -150,15 +159,14 @@ namespace UltraCanvas {
                 case 2:  content = SunburstLabelContent::NamePercentage; break;
                 case 3:  content = SunburstLabelContent::Value; break;
                 case 4:  content = SunburstLabelContent::Percentage; break;
-                case 5:  content = SunburstLabelContent::None; break;
+                case 5:  content = SunburstLabelContent::NoLabel; break;
                 default: content = SunburstLabelContent::Name; break;
             }
             for (auto& c : charts) c->SetLabelContent(content);
         };
-        container->AddChild(contentDropdown);
-        yOffset += controlHeight + spacing;
+        DemoKit::AddFixed(labelsGroup, contentDropdown);
 
-        auto orientationDropdown = std::make_shared<UltraCanvasDropdown>("SbLabelOrientation", x, yOffset, 180, controlHeight);
+        auto orientationDropdown = std::make_shared<UltraCanvasDropdown>("SbLabelOrientation", 0, 0, controlWidth, controlHeight);
         orientationDropdown->AddItem("Auto");
         orientationDropdown->AddItem("Horizontal");
         orientationDropdown->AddItem("Radial");
@@ -172,16 +180,11 @@ namespace UltraCanvas {
             }
             for (auto& c : charts) c->SetLabelOrientation(orientation);
         };
-        container->AddChild(orientationDropdown);
-        yOffset += controlHeight + spacing * 2;
+        DemoKit::AddFixed(labelsGroup, orientationDropdown);
 
-        auto shadeHeader = std::make_shared<UltraCanvasLabel>("SbShadeHeader", x, yOffset, 200, 20);
-        shadeHeader->SetText("Depth Shading:");
-        shadeHeader->SetFontWeight(FontWeight::Bold);
-        container->AddChild(shadeHeader);
-        yOffset += 25;
+        auto shadeGroup = addGroup("SbShadeGroup", "SbShadeHeader", "Depth Shading:");
 
-        auto shadeDropdown = std::make_shared<UltraCanvasDropdown>("SbShadeMode", x, yOffset, 180, controlHeight);
+        auto shadeDropdown = std::make_shared<UltraCanvasDropdown>("SbShadeMode", 0, 0, controlWidth, controlHeight);
         shadeDropdown->AddItem("Lighten By Depth");
         shadeDropdown->AddItem("Darken By Depth");
         shadeDropdown->AddItem("None");
@@ -190,126 +193,87 @@ namespace UltraCanvas {
             SunburstShadeMode mode;
             switch (index) {
                 case 1:  mode = SunburstShadeMode::DarkenByDepth; break;
-                case 2:  mode = SunburstShadeMode::None; break;
+                case 2:  mode = SunburstShadeMode::NoShade; break;
                 default: mode = SunburstShadeMode::LightenByDepth; break;
             }
             for (auto& c : charts) c->SetShadeMode(mode);
         };
-        container->AddChild(shadeDropdown);
-        yOffset += controlHeight + spacing * 2;
+        DemoKit::AddFixed(shadeGroup, shadeDropdown);
 
-        auto geometryHeader = std::make_shared<UltraCanvasLabel>("SbGeometryHeader", x, yOffset, 200, 20);
-        geometryHeader->SetText("Center Hole Size:");
-        geometryHeader->SetFontWeight(FontWeight::Bold);
-        container->AddChild(geometryHeader);
-        yOffset += 25;
+        auto geometryGroup = addGroup("SbGeometryGroup", "SbGeometryHeader", "Center Hole Size:");
 
-        auto innerSlider = std::make_shared<UltraCanvasSlider>("SbInnerRadius", x, yOffset, 180, controlHeight);
+        auto innerSlider = std::make_shared<UltraCanvasSlider>("SbInnerRadius", 0, 0, controlWidth, controlHeight);
         innerSlider->SetRange(0.05, 0.6);
         innerSlider->SetStep(0.01);
         innerSlider->SetValue(0.25);
         innerSlider->onValueChanged = [charts](double value) {
             for (auto& c : charts) c->SetInnerRadiusFraction(static_cast<float>(value));
         };
-        container->AddChild(innerSlider);
-        yOffset += controlHeight + spacing;
+        DemoKit::AddFixed(geometryGroup, innerSlider);
 
-        auto gapHeader = std::make_shared<UltraCanvasLabel>("SbGapHeader", x, yOffset, 200, 20);
-        gapHeader->SetText("Segment Gap (degrees):");
+        auto gapHeader = DemoKit::AddText(geometryGroup, "SbGapHeader", "Segment Gap (degrees):");
         gapHeader->SetFontWeight(FontWeight::Bold);
-        container->AddChild(gapHeader);
-        yOffset += 25;
 
-        auto gapSlider = std::make_shared<UltraCanvasSlider>("SbSegmentGap", x, yOffset, 180, controlHeight);
+        auto gapSlider = std::make_shared<UltraCanvasSlider>("SbSegmentGap", 0, 0, controlWidth, controlHeight);
         gapSlider->SetRange(0.0, 4.0);
         gapSlider->SetStep(0.1);
         gapSlider->SetValue(0.4);
         gapSlider->onValueChanged = [charts](double value) {
             for (auto& c : charts) c->SetSegmentSpacingAngle(static_cast<float>(value));
         };
-        container->AddChild(gapSlider);
-        yOffset += controlHeight + spacing;
+        DemoKit::AddFixed(geometryGroup, gapSlider);
 
-        auto borderHeader = std::make_shared<UltraCanvasLabel>("SbBorderHeader", x, yOffset, 200, 20);
-        borderHeader->SetText("Border Width:");
+        auto borderHeader = DemoKit::AddText(geometryGroup, "SbBorderHeader", "Border Width:");
         borderHeader->SetFontWeight(FontWeight::Bold);
-        container->AddChild(borderHeader);
-        yOffset += 25;
 
-        auto borderSlider = std::make_shared<UltraCanvasSlider>("SbBorderWidth", x, yOffset, 180, controlHeight);
+        auto borderSlider = std::make_shared<UltraCanvasSlider>("SbBorderWidth", 0, 0, controlWidth, controlHeight);
         borderSlider->SetRange(0.0, 5.0);
         borderSlider->SetStep(0.5);
         borderSlider->SetValue(1.5);
         borderSlider->onValueChanged = [charts](double value) {
             for (auto& c : charts) c->SetBorderWidth(static_cast<float>(value));
         };
-        container->AddChild(borderSlider);
-        yOffset += controlHeight + spacing * 2;
+        DemoKit::AddFixed(geometryGroup, borderSlider);
 
-        auto interactionHeader = std::make_shared<UltraCanvasLabel>("SbInteractionHeader", x, yOffset, 200, 20);
-        interactionHeader->SetText("Interaction:");
-        interactionHeader->SetFontWeight(FontWeight::Bold);
-        container->AddChild(interactionHeader);
-        yOffset += 25;
+        auto interactionGroup = addGroup("SbInteractionGroup", "SbInteractionHeader", "Interaction:");
 
-        auto hoverCheckbox = std::make_shared<UltraCanvasCheckbox>("SbHover", x, yOffset, 180, controlHeight);
-        hoverCheckbox->SetText("Hover Highlight");
+        auto hoverCheckbox = std::make_shared<UltraCanvasCheckbox>("SbHover", "Hover Highlight");
         hoverCheckbox->SetChecked(true);
         hoverCheckbox->onStateChanged = [charts](CheckedState, CheckedState newState) {
             for (auto& c : charts) c->SetHoverHighlightEnabled(newState == CheckedState::Checked);
         };
-        container->AddChild(hoverCheckbox);
-        yOffset += controlHeight + spacing;
+        DemoKit::Add(interactionGroup, hoverCheckbox);
 
-        auto drillCheckbox = std::make_shared<UltraCanvasCheckbox>("SbDrill", x, yOffset, 180, controlHeight);
-        drillCheckbox->SetText("Drill-Down On Click");
+        auto drillCheckbox = std::make_shared<UltraCanvasCheckbox>("SbDrill", "Drill-Down On Click");
         drillCheckbox->SetChecked(true);
         drillCheckbox->onStateChanged = [charts](CheckedState, CheckedState newState) {
             for (auto& c : charts) c->SetDrillDownEnabled(newState == CheckedState::Checked);
         };
-        container->AddChild(drillCheckbox);
-        yOffset += controlHeight + spacing;
+        DemoKit::Add(interactionGroup, drillCheckbox);
 
-        auto hintLabel = std::make_shared<UltraCanvasLabel>("SbHint", x, yOffset, 200, 60);
-        hintLabel->SetText("Click a branch segment to zoom\ninto it; click the center to go\nback up one level.");
-        hintLabel->SetFontSize(10);
-        hintLabel->SetTextColor(Color(110, 110, 110, 255));
-        container->AddChild(hintLabel);
+        DemoKit::AddCaption(interactionGroup, "SbHint",
+            "Click a branch segment to zoom into it; click the center to go back up one level.");
     }
 
 // ===== MAIN SUNBURST CHART EXAMPLES CREATOR =====
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateSunburstChartExamples() {
-        auto container = std::make_shared<UltraCanvasContainer>("SunburstChartContainer", 0, 0, 1200, 810);
-
-        // === TITLE ===
-        auto titleLabel = std::make_shared<UltraCanvasLabel>("SbTitleLabel", 20, 10, 1160, 35);
-        titleLabel->SetText("Sunburst Chart Examples - Hierarchical Insights in a Single View");
-        titleLabel->SetFontSize(18);
-        titleLabel->SetFontWeight(FontWeight::Bold);
-        titleLabel->SetAlignment(TextAlignment::Center);
-        titleLabel->SetBackgroundColor(Color(240, 240, 250, 255));
-        container->AddChild(titleLabel);
-
-        // === DESCRIPTION ===
-        auto descLabel = std::make_shared<UltraCanvasLabel>("SbDescLabel", 20, 55, 1160, 60);
-        descLabel->SetText(
-            "Multi-level radial partition charts: angular spans are proportional to aggregated values, rings represent\n"
-            "hierarchy depth. Features drill-down zoom, depth shading, per-node colors, tooltips with breadcrumb paths,\n"
+        auto page = DemoKit::CreatePage("SunburstChartContainer",
+            "Sunburst Chart Examples - Hierarchical Insights in a Single View",
+            "Multi-level radial partition charts: angular spans are proportional to aggregated values, rings represent "
+            "hierarchy depth. Features drill-down zoom, depth shading, per-node colors, tooltips with breadcrumb paths, "
             "auto-fitting radial/horizontal labels, partial sweeps and configurable geometry."
         );
-        descLabel->SetFontSize(11);
-        descLabel->SetWrap(TextWrap::WrapWord);
-        container->AddChild(descLabel);
+
+        auto controlsCard = DemoKit::AddCard(page, "SbControls");
+        // A card holds a 460 px chart without squeezing it.
+        constexpr float chartCardWidth = 460 + 2 * DemoKit::kCardPadding + 2;
+        auto charts = DemoKit::AddRow(page, "SbCharts");
 
         // ===== EXAMPLE 1: THREE-LEVEL SALES HIERARCHY WITH DRILL-DOWN =====
-        auto salesLabel = std::make_shared<UltraCanvasLabel>("SbSalesLabel", 240, 130, 460, 25);
-        salesLabel->SetText("Regional Sales (Region › Category › Sub-Category)");
-        salesLabel->SetFontSize(13);
-        salesLabel->SetFontWeight(FontWeight::Bold);
-        container->AddChild(salesLabel);
+        auto salesCard = DemoKit::AddCard(charts, "SbSalesLabel", "Regional Sales (Region › Category › Sub-Category)", "", chartCardWidth);
 
-        auto salesChart = CreateSunburstChart("SalesSunburst", 240, 160, 460, 320);
+        auto salesChart = CreateSunburstChart("SalesSunburst", 0, 0, 460, 320);
         salesChart->SetRootNode(BuildSalesHierarchy());
         salesChart->SetCenterText("Total Sales");
         salesChart->SetValueFormatter([](double v) {
@@ -323,16 +287,12 @@ namespace UltraCanvas {
         salesChart->SetTooltipsEnabled(true);
         salesChart->SetLabelContent(SunburstLabelContent::Name);
         salesChart->SetLabelOrientation(SunburstLabelOrientation::Auto);
-        container->AddChild(salesChart);
+        DemoKit::AddFixed(salesCard, salesChart);
 
         // ===== EXAMPLE 2: DEMOGRAPHIC TWO-LEVEL SUNBURST =====
-        auto geoLabel = std::make_shared<UltraCanvasLabel>("SbGeoLabel", 720, 130, 460, 25);
-        geoLabel->SetText("Median Age of Population (Continent › Country)");
-        geoLabel->SetFontSize(13);
-        geoLabel->SetFontWeight(FontWeight::Bold);
-        container->AddChild(geoLabel);
+        auto geoCard = DemoKit::AddCard(charts, "SbGeoLabel", "Median Age of Population (Continent › Country)", "", chartCardWidth);
 
-        auto geoChart = BuildMedianAgeChart("GeoSunburst", 720, 160, 460, 320);
+        auto geoChart = BuildMedianAgeChart("GeoSunburst", 0, 0, 460, 320);
         geoChart->SetColorPalette({
             Color( 33, 150, 243, 255),   // Blue - North America
             Color(255, 193,   7, 255),   // Amber - South America
@@ -352,16 +312,12 @@ namespace UltraCanvas {
             std::snprintf(buf, sizeof(buf), "%.1f yrs", v);
             return std::string(buf);
         });
-        container->AddChild(geoChart);
+        DemoKit::AddFixed(geoCard, geoChart);
 
         // ===== EXAMPLE 3: PARTIAL-SWEEP (FAN) SUNBURST =====
-        auto fanLabel = std::make_shared<UltraCanvasLabel>("SbFanLabel", 240, 490, 460, 25);
-        fanLabel->SetText("Approval Workflow (240° Fan, Explicit Branch Colors)");
-        fanLabel->SetFontSize(13);
-        fanLabel->SetFontWeight(FontWeight::Bold);
-        container->AddChild(fanLabel);
+        auto fanCard = DemoKit::AddCard(charts, "SbFanLabel", "Approval Workflow (240° Fan, Explicit Branch Colors)", "", chartCardWidth);
 
-        auto fanChart = CreateSunburstChart("FanSunburst", 240, 520, 460, 280);
+        auto fanChart = CreateSunburstChart("FanSunburst", 0, 0, 460, 280);
         fanChart->SetRootNode(BuildApprovalHierarchy());
         fanChart->SetSweepAngle(240.0f);
         fanChart->SetStartAngle(-210.0f);
@@ -370,16 +326,12 @@ namespace UltraCanvas {
         fanChart->SetCenterText("Requests");
         fanChart->SetTooltipsEnabled(true);
         fanChart->SetLabelContent(SunburstLabelContent::NamePercentage);
-        container->AddChild(fanChart);
+        DemoKit::AddFixed(fanCard, fanChart);
 
         // ===== EXAMPLE 4: DEPTH-LIMITED OVERVIEW =====
-        auto overviewLabel = std::make_shared<UltraCanvasLabel>("SbOverviewLabel", 720, 490, 460, 25);
-        overviewLabel->SetText("Overview Mode (Depth Limited To 2, Darken Shading)");
-        overviewLabel->SetFontSize(13);
-        overviewLabel->SetFontWeight(FontWeight::Bold);
-        container->AddChild(overviewLabel);
+        auto overviewCard = DemoKit::AddCard(charts, "SbOverviewLabel", "Overview Mode (Depth Limited To 2, Darken Shading)", "", chartCardWidth);
 
-        auto overviewChart = CreateSunburstChart("OverviewSunburst", 720, 520, 460, 280);
+        auto overviewChart = CreateSunburstChart("OverviewSunburst", 0, 0, 460, 280);
         overviewChart->SetRootNode(BuildSalesHierarchy());
         overviewChart->SetMaxVisibleDepth(2);
         overviewChart->SetShadeMode(SunburstShadeMode::DarkenByDepth);
@@ -394,14 +346,13 @@ namespace UltraCanvas {
             std::snprintf(buf, sizeof(buf), "$%.0fK", v);
             return std::string(buf);
         });
-        container->AddChild(overviewChart);
+        DemoKit::AddFixed(overviewCard, overviewChart);
 
-        // === CONTROL PANEL (left column) ===
-        CreateSunburstControlPanel(container,
-                                   {salesChart, geoChart, fanChart, overviewChart},
-                                   20, 130);
+        // === CONTROL PANEL (above the charts) ===
+        CreateSunburstControlPanel(controlsCard,
+                                   {salesChart, geoChart, fanChart, overviewChart});
 
-        return container;
+        return page;
     }
 
 } // namespace UltraCanvas

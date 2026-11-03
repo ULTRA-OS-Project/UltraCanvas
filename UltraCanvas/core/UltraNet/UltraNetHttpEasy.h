@@ -1,6 +1,8 @@
 // core/UltraNet/UltraNetHttpEasy.h
 // Private helpers shared by UltraNetHttp.cpp (sync) and
 // UltraNetHttpAsync.cpp (async). Not part of the public include surface.
+// Version: 0.5.0 - ThreadHttpShare / CloseKeptHttpPools: a per-thread HTTP
+//                  connection pool for the synchronous verbs
 // Version: 0.4.0 - BodyFileSource: a request body read from a file
 // Version: 0.3.0 (Stage 2)
 // Author: UltraCanvas Framework / ULTRA OS
@@ -129,5 +131,21 @@ namespace ultranet_internal {
     // Reads transfer stats (bytes / duration / speed / redirects) from
     // a libcurl easy handle. Safe to call mid-transfer.
     UltraNetTransferStats ReadTransferStats(CURL* easy);
+
+    // This thread's HTTP connection pool, as a libcurl share object to attach
+    // with CURLOPT_SHARE (null when libcurl cannot make one — reuse is lost,
+    // nothing else). The synchronous verbs make a fresh easy handle per call
+    // and free it, taking its pooled connection with it; a share holds the
+    // connection cache (plus DNS and TLS-session cache) so the next call on the
+    // same thread reuses the connection instead of a full TCP+TLS handshake.
+    // One per thread because libcurl does not support one connection pool
+    // across threads running transfers at once — and a worker making call after
+    // call (a mailbox sync, a cloud-drive listing) is exactly the case worth
+    // speeding up. See the FTP plug-in's KeptPools for the same pattern.
+    CURLSH* ThreadHttpShare();
+
+    // Closes every thread's HTTP pool. Called by UltraNet_Shutdown before
+    // curl_global_cleanup so no kept connection outlives libcurl.
+    void CloseKeptHttpPools();
 
 } // namespace ultranet_internal

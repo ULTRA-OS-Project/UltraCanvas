@@ -1,0 +1,61 @@
+name: Plug-in ABIs
+
+# A change to a binary contract between the host and its run-time plug-ins
+# must move that contract's version (scripts/check_plugin_abi.py):
+#
+#   ultraim   UltraIM's provider modules (ChatCube Direct, Matrix, Telegram),
+#             called through IUltraIMProviderPlugin's vtable and
+#             UltraIMTypes.h's structs; the host loads only a module that
+#             says it was built for ULTRAIM_PLUGIN_HOST_ABI_VERSION. Three
+#             interface methods were added under version 1 before this was
+#             checked.
+#   element   the element plug-ins (UltraCanvasElementPlugins.h): the host
+#             table's ULTRACANVAS_PLUGIN_HOST_ABI_VERSION (append-only; a
+#             plugin requires a table as new as its own) and the "ucN" of
+#             ULTRACANVAS_FRAMEWORK_ABI_TAG for the types that cross. (The
+#             classes a plug-in creates are covered by the build itself: the
+#             hash of every framework header, UltraCanvasFrameworkHeadersId.h,
+#             which a plug-in exports and the loader compares.)
+#
+# scripts/plugin_abi.txt records each version and a fingerprint of the
+# headers (comments, string texts and spacing left out); `--update` refuses to
+# record a new fingerprint under an old version unless told it is no ABI
+# change (`--no-abi-change "why"`).
+
+# Trigger policy matches platform-names.yml: `pull_request` covers feature
+# branches, so listing them under `push` too would run this check twice.
+on:
+  push:
+    branches: [main]
+    paths: &paths
+      - 'UltraCanvas/include/UltraIM/UltraIMPlugins.h'
+      - 'UltraCanvas/include/UltraIM/UltraIMTypes.h'
+      - 'UltraCanvas/include/UltraCanvasElementPlugins.h'
+      - 'scripts/check_plugin_abi.py'
+      - 'scripts/plugin_abi.txt'
+      - '.github/workflows/plugin-abi.yml'
+  pull_request:
+    # `branches` filters the BASE branch; see locale-numbers.yml for why
+    # `claude/**` is listed too.
+    branches:
+      - main
+      - 'claude/**'
+    paths: *paths
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  check:
+    runs-on: ubuntu-22.04   # the pool the build legs use (see platform-names.yml)
+    steps:
+      - uses: actions/checkout@v5
+      # The normalisation and the version markers first, against examples and
+      # the real headers - a marker that stopped matching, or a normalisation
+      # that stopped seeing a new virtual, would otherwise pass everything.
+      - name: Self-test the check
+        run: python3 scripts/check_plugin_abi.py --self-test
+      - name: Check that each contract's version moved with it
+        run: python3 scripts/check_plugin_abi.py

@@ -50,7 +50,7 @@ UltraNetFtpEntry MakeEntry(const std::string& name, UltraNetFtpEntryType type,
 
 UltraNetResult NetOk() {
     UltraNetResult r;
-    r.code = UltraNetResultCode::Success;
+    r.code = UltraNetResultCode::Ok;
     r.success = true;
     return r;
 }

@@ -47,6 +47,7 @@ shape (a cube of three sets). Every shape in the proposal is built. See
 | Continuous numeric cell values, a colour map, a colour bar | `UltraCanvasHeatmapChartElement` |
 | Items positioned at continuous (x, y) in a 2×2 space (BCG, Eisenhower, risk) | `UltraCanvasQuadrantChart` |
 | Rooms and their required adjacencies | `UltraCanvasAdjacencyDiagram` — it owns that data and draws its own matrix view |
+| Named categories where two rated axes cross: a 9-box, performance vs potential, skill / will | `UltraCanvasPerformanceMatrix` ([guide](UltraCanvasPerformanceMatrix.md)) |
 | Named relationship levels between two to four ordered lists, with totals | **this element** |
 
 The distinction that matters is the cell datum. A heatmap cell holds a *number*

@@ -36,7 +36,7 @@ std::vector<Dependency> BuildTable() {
           "pkg-config", "pkgconf-pkg-config", "pkgconf", "pkg-config", "pkg-config", M("pkgconf") });
     add({ "git", "git", G::Toolchain, K::Tool, "git", "",
           "git", "git", "git", "git", "git", "git" });
-    add({ "cppwinrt", "C++/WinRT projection headers", G::Toolchain, K::None, "", "",
+    add({ "cppwinrt", "C++/WinRT projection headers", G::Toolchain, K::NoCheck, "", "",
           "", "", "", "", "", M("cppwinrt") });
     add({ "zip", "zip (packaging on Windows)", G::Toolchain, K::Tool, "zip", "",
           "", "", "", "", "", "zip" });
@@ -68,11 +68,11 @@ std::vector<Dependency> BuildTable() {
           "libgl1-mesa-dev", "mesa-libGL-devel", "mesa", "Mesa-libGL-devel", "", "" });
     add({ "gtk3", "GTK 3 (native file dialogs)", G::Core, K::PkgConfig, "gtk+-3.0", "",
           "libgtk-3-dev", "gtk3-devel", "gtk3", "gtk3-devel", "", "" });
-    add({ "iconv", "libiconv", G::Core, K::None, "", "",
+    add({ "iconv", "libiconv", G::Core, K::NoCheck, "", "",
           "", "", "", "", "", M("libiconv") });
     add({ "zlib", "zlib", G::Core, K::PkgConfig, "zlib", "",
           "zlib1g-dev", "zlib-devel", "zlib", "zlib-devel", "", M("zlib") });
-    add({ "glew", "GLEW (OpenGL loader on Windows)", G::Core, K::None, "", "",
+    add({ "glew", "GLEW (OpenGL loader on Windows)", G::Core, K::NoCheck, "", "",
           "", "", "", "", "", M("glew") });
     // libcurl: macOS uses Apple's system libcurl, which has no .pc file, so
     // no Homebrew package is named and nothing is checked there.
@@ -84,7 +84,7 @@ std::vector<Dependency> BuildTable() {
           "libcdr-dev", "libcdr-devel", "libcdr", "libcdr-devel", "libcdr", M("libcdr") });
     add({ "librevenge", "librevenge", G::Cdr, K::PkgConfig, "librevenge-0.0", "",
           "librevenge-dev", "librevenge-devel", "librevenge", "librevenge-devel", "librevenge", M("librevenge") });
-    add({ "boost", "Boost headers", G::Cdr, K::None, "", "",
+    add({ "boost", "Boost headers", G::Cdr, K::NoCheck, "", "",
           "libboost-dev", "boost-devel", "boost", "boost-devel", "boost", M("boost") });
     add({ "lcms2", "Little CMS 2", G::Cdr, K::PkgConfig, "lcms2", "",
           "liblcms2-dev", "lcms2-devel", "lcms2", "liblcms2-devel", "little-cms2", M("lcms2") });
@@ -92,7 +92,7 @@ std::vector<Dependency> BuildTable() {
           "libicu-dev", "libicu-devel", "icu", "libicu-devel", "icu4c", M("icu") });
 
     // ---- PDF ----------------------------------------------------------------
-    add({ "mupdf", "MuPDF", G::Pdf, K::None, "", "",
+    add({ "mupdf", "MuPDF", G::Pdf, K::NoCheck, "", "",
           "libmupdf-dev", "mupdf-devel", "libmupdf", "mupdf-devel", "mupdf", M("mupdf") });
 
     // ---- OCR ----------------------------------------------------------------
@@ -114,7 +114,7 @@ std::vector<Dependency> BuildTable() {
           "libopus-dev", "opus-devel", "opus", "libopus-devel", "opus", M("opus") });
     add({ "opusfile", "opusfile", G::Audio, K::PkgConfig, "opusfile", "",
           "libopusfile-dev", "opusfile-devel", "opusfile", "opusfile-devel", "opusfile", M("opusfile") });
-    add({ "lame", "LAME MP3 encoder", G::Audio, K::None, "", "",
+    add({ "lame", "LAME MP3 encoder", G::Audio, K::NoCheck, "", "",
           "libmp3lame-dev", "lame-devel", "lame", "libmp3lame-devel", "lame", M("lame") });
 
     // ---- Barcode ------------------------------------------------------------
@@ -141,7 +141,7 @@ std::vector<const Dependency*> DependenciesFor(const Choices& choices,
     std::vector<const Dependency*> result;
     for (const auto& dependency : AllDependencies()) {
         if (!choices.Has(dependency.group)) continue;
-        if (manager != PackageManager::None && dependency.PackageFor(manager).empty()) continue;
+        if (manager != PackageManager::NoPackageManager && dependency.PackageFor(manager).empty()) continue;
         result.push_back(&dependency);
     }
     return result;

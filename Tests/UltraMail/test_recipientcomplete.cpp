@@ -1,5 +1,6 @@
 // Tests/UltraMail/test_recipientcomplete.cpp
 // Address completion for the compose window's To / Cc / Bcc fields.
+// Version: 0.3.0 - no-reply addresses are left out; RecipientAddress
 // Version: 0.2.0 - ranked by how often - and how lately - each address is written to
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -94,4 +95,45 @@ TEST(suggest_recipients_puts_the_most_written_to_first) {
     REQUIRE_EQ(s[2].address, std::string("anna@example.com"));   // never written to
     // The limit keeps the most written-to.
     REQUIRE(SuggestRecipients(contacts, "ann", "", 1, &written)[0].address == "jo@example.com");
+}
+
+TEST(no_reply_addresses_are_recognised) {
+    REQUIRE(IsNoReplyAddress("noreply@hetzner.com"));
+    REQUIRE(IsNoReplyAddress("No-Reply@example.com"));
+    REQUIRE(IsNoReplyAddress("do-not-reply@ses.binance.com"));
+    REQUIRE(IsNoReplyAddress("donotreply@example.com"));
+    REQUIRE(IsNoReplyAddress("no_reply@example.com"));
+    REQUIRE(IsNoReplyAddress("noreply.billing@hetzner.com"));
+    REQUIRE(IsNoReplyAddress("Billing <noreply.billing@hetzner.com>"));
+    REQUIRE(!IsNoReplyAddress("billing@hetzner.com"));
+    REQUIRE(!IsNoReplyAddress("reply@example.com"));
+    REQUIRE(!IsNoReplyAddress("anna@noreply.example"));   // the domain does not count
+}
+
+TEST(suggest_recipients_leaves_out_no_reply_addresses) {
+    const std::vector<Contact> contacts = {
+        MakeContact("Accounting - Hetzner", {"billing@hetzner.com"}),
+        MakeContact("Noreply Billing - Hetzner", {"noreply.billing@hetzner.com"}),
+        MakeContact("Binance", {"do-not-reply@ses.binance.com"}),
+    };
+    auto s = SuggestRecipients(contacts, "bi", "");
+    REQUIRE(s.size() == 1);
+    REQUIRE_EQ(s[0].address, std::string("billing@hetzner.com"));
+    REQUIRE(SuggestRecipients(contacts, "binance", "").empty());
+}
+
+TEST(suggest_recipients_leaves_out_what_the_caller_says) {
+    const std::vector<Contact> contacts = {
+        MakeContact("Anna Schmidt", {"anna@example.com"}),
+        MakeContact("Hans Annaberg", {"Hans@Spam.example"}),
+    };
+    const auto s = SuggestRecipients(contacts, "ann", "", 8, nullptr,
+        [](const std::string& address) { return address == "hans@spam.example"; });
+    REQUIRE(s.size() == 1);
+    REQUIRE_EQ(s[0].address, std::string("anna@example.com"));
+}
+
+TEST(recipient_address_is_the_part_in_angle_brackets) {
+    REQUIRE_EQ(RecipientAddress("Anna Schmidt <anna@example.com>"), std::string("anna@example.com"));
+    REQUIRE_EQ(RecipientAddress("  anna@example.com "), std::string("anna@example.com"));
 }

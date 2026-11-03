@@ -46,6 +46,9 @@ void libcdr::CDRParserState::setColorTransform(const std::vector<unsigned char> 
 {
   if (profile.empty())
     return;
+  // UltraCanvas: colours converted through the old transforms are stale.
+  m_bmpColorCache.clear();
+  m_lastBmpColorKey = ~0ULL;
   cmsHPROFILE tmpProfile = cmsOpenProfileFromMem(&profile[0], cmsUInt32Number(profile.size()));
   if (!tmpProfile)
     return;
@@ -88,6 +91,33 @@ void libcdr::CDRParserState::setColorTransform(librevenge::RVNGInputStream *inpu
 }
 
 unsigned libcdr::CDRParserState::getBMPColor(const CDRColor &color)
+{
+  // UltraCanvas: a bitmap converts every pixel here, one lcms call each - most
+  // of the time it takes to open a drawing with a few embedded photos. Its
+  // pixels repeat their colours, so each conversion is kept (up to a million
+  // colours, then the cache starts again).
+  const unsigned long long key = ((unsigned long long)color.m_colorModel << 32) | color.m_colorValue;
+  if (key == m_lastBmpColorKey)
+    return m_lastBmpColor;
+  unsigned rgb;
+  const std::unordered_map<unsigned long long, unsigned>::const_iterator it = m_bmpColorCache.find(key);
+  if (it != m_bmpColorCache.end())
+  {
+    rgb = it->second;
+  }
+  else
+  {
+    rgb = _getBMPColor(color);
+    if (m_bmpColorCache.size() >= (1u << 20))
+      m_bmpColorCache.clear();
+    m_bmpColorCache[key] = rgb;
+  }
+  m_lastBmpColorKey = key;
+  m_lastBmpColor = rgb;
+  return rgb;
+}
+
+unsigned libcdr::CDRParserState::_getBMPColor(const CDRColor &color)
 {
   switch (color.m_colorModel)
   {

@@ -14,9 +14,14 @@
 // Connections are kept open between calls on one thread
 // (UltraNet_FtpCloseIdleConnections), and a server that refused MLSD is
 // listed with LIST from then on. A change (delete, rename, make or remove a
-// folder) runs on an FTP connection of its own; a server that turns that one
-// away for "too many connections" while the thread keeps another open has
-// the kept one closed and the change sent again.
+// folder) takes up the kept connection like a transfer: its commands go once
+// libcurl has changed into the entry's folder. A call that needs a new
+// connection all the same, turned away at the login for "too many
+// connections" while the thread keeps another open, has the kept one closed
+// and is made again.
+// Version: 0.9.0 - an FTP change uses the kept connection (its commands after
+//                  libcurl's change of folder); every FTP call turned away for
+//                  "too many connections" closes the kept one and goes again
 // Version: 0.8.1 - a change turned away for "too many connections" closes the
 //                  thread's kept connection and is sent again
 // Version: 0.8.0 - UltraNet_SetThreadFtpCancel is gone: the thread's one check
@@ -24,7 +29,7 @@
 // Version: 0.7.0 - isCancelled / UltraNet_SetThreadFtpCancel: a call can be called off
 // Version: 0.6.0 - SFTP with a private key: sshPrivateKeyFile, sshPublicKeyFile, sshKeyPassphrase
 // Version: 0.5.0 - connections kept open between calls, MLSD refusal remembered
-// Last Modified: 2026-10-19
+// Last Modified: 2026-10-20
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 

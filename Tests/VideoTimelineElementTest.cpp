@@ -4,12 +4,15 @@
 // with ripple, a reorder on the magnetic track, a free-track move, a split
 // with the blade, a marker, a delete, a drop with its insertion point, a
 // fade knob's drag (reported once, when let go, so it is one undo step), the
-// ruler and the wheel. The test plays the application: it applies each
+// ruler and the wheel, and the close-gap button of a free track (a click,
+// and Shift+click carrying the clips after the gap). The test plays the application: it applies each
 // change to its model and feeds it back. With ULTRACANVAS_SCREENSHOT_DIR set
 // it also writes the window as video-timeline.ppm. Needs a display; skips
 // itself without one (runs under Xvfb).
+// Version: 1.0.3 - the close-gap button
+// Version: 1.0.2 - the carried drop's feedback
 // Version: 1.0.1
-// Last Modified: 2026-10-16
+// Last Modified: 2026-11-01
 // Author: UltraCanvas Framework
 #include "DisplayTestSupport.h"
 #include "UltraCanvasApplication.h"
@@ -275,6 +278,25 @@ int main() {
     TEST("a drop-target clip is kept until cleared", timeline->GetDropTargetClip() == "b");
     timeline->SetDropTargetClip("");
     TEST("and cleared with an empty id", timeline->GetDropTargetClip().empty());
+    UltraCanvasVideoTimeline::DropFeedback feedback;
+    feedback.trackId = "V2"; feedback.seconds = 4.4; feedback.label = "Lower third";
+    const double marked = timeline->SetDropFeedback(feedback);
+    DisplayTest::Frame(window, {timeline});
+    TEST("a carried drop's marker lands near where it was asked for", timeline->HasDropFeedback() && marked >= 4.1 && marked <= 4.7);
+    feedback.trackId = "V1"; feedback.seconds = 2.8;
+    TEST("the magnetic track puts it on the nearest cut", Near(timeline->SetDropFeedback(feedback), 3.0, 1e-6));
+    feedback.trackId = "T9";
+    TEST("an unknown track shows no marker", timeline->SetDropFeedback(feedback) < 0.0 && !timeline->HasDropFeedback());
+    feedback.trackId.clear(); feedback.clipId = "b";
+    TEST("the clip alone is ringed, with no marker", timeline->SetDropFeedback(feedback) < 0.0 && timeline->GetDropTargetClip() == "b" && timeline->HasDropFeedback());
+    UCEvent leave;
+    leave.type = UCEventType::DragLeave;
+    timeline->OnEvent(leave);
+    TEST("and a DragLeave takes it all away", !timeline->HasDropFeedback() && timeline->GetDropTargetClip().empty());
+    feedback.trackId = "V2"; feedback.seconds = 1.0;
+    timeline->SetDropFeedback(feedback);
+    timeline->ClearDropFeedback();
+    TEST("as ClearDropFeedback does", !timeline->HasDropFeedback());
 
     std::cerr << "\n--- Selection ---" << std::endl;
     timeline->OnEvent(MouseEvent(UCEventType::MouseDown, headerW + 80.0f * 4.0f, mainY));
@@ -364,6 +386,64 @@ int main() {
         TEST("a free-track move was reported", move);
         const TimelineClip* o = model.FindTrack("V2")->FindClip("o");
         TEST("o moved five seconds later", o && Near(o->start, 6.0, 0.05));
+    }
+
+    std::cerr << "\n--- Close a gap ---" << std::endl;
+    {
+        // the application adds p at 1..2 and q at 9..10 around o (6..8): gaps 0..1, 2..6 and 8..9
+        const size_t seen = changes.size();
+        TimelineTrack* v2 = model.FindTrack("V2");
+        v2->clips.push_back(Clip("p", TimelineClipKind::Video, 1.0, 20.0));
+        v2->clips.back().start = 1.0;
+        v2->clips.push_back(Clip("q", TimelineClipKind::Video, 1.0, 20.0));
+        v2->clips.back().start = 9.0;
+        std::stable_sort(v2->clips.begin(), v2->clips.end(),
+                         [](const TimelineClip& a, const TimelineClip& b) { return a.start < b.start; });
+        timeline->SetModel(model);
+        DisplayTest::Frame(window, {timeline});
+        // the button sits in the middle of the gap, halfway up the lane
+        const float laneMidY = style.rulerHeight + 32.0f;
+        const float gapX = timeline->SecondsToX(4.0);
+        timeline->OnEvent(MouseEvent(UCEventType::MouseMove, gapX, laneMidY));
+        TEST("hovering the button names what it does", timeline->GetTooltip().find("move o to the end of p") != std::string::npos);
+        TEST("with the hand cursor", timeline->GetMouseCursor() == UCMouseCursor::Hand);
+        TEST("a gap's button is no clip", timeline->ClipAt(gapX, laneMidY).empty());
+        DisplayTest::Frame(window, {timeline});
+        timeline->OnEvent(MouseEvent(UCEventType::MouseDown, gapX, laneMidY));
+        timeline->OnEvent(MouseEvent(UCEventType::MouseUp, gapX, laneMidY));
+        const bool move = changes.size() == seen + 1 && changes.back().kind == TimelineChangeKind::Move &&
+                          changes.back().trackId == "V2";
+        TEST("a click on the button reports one move on V2", move);
+        TEST("of o alone, to the end of p", move && changes.back().after.size() == 1 && changes.back().after[0].id == "o" &&
+                                                 Near(changes.back().after[0].start, 2.0) && !changes.back().ripple);
+        TEST("o meets p, q stays", Near(v2->FindClip("o")->start, 2.0) && Near(v2->FindClip("q")->start, 9.0));
+        TEST("the tooltip is gone with the gap", timeline->GetTooltip().empty());
+
+        // Shift+click the leading gap: p goes to 0, and o and q come along by a second
+        const float leadX = timeline->SecondsToX(0.5);
+        UCEvent down = MouseEvent(UCEventType::MouseDown, leadX, laneMidY);
+        down.shift = true;
+        timeline->OnEvent(down);
+        timeline->OnEvent(MouseEvent(UCEventType::MouseUp, leadX, laneMidY));
+        const bool ripple = changes.size() == seen + 2 && changes.back().kind == TimelineChangeKind::Move && changes.back().ripple;
+        TEST("Shift+click reports a rippled move", ripple && changes.back().after.size() == 3 && changes.back().before.size() == 3);
+        TEST("p at the start, o and q a second earlier",
+             Near(v2->FindClip("p")->start, 0.0) && Near(v2->FindClip("o")->start, 1.0) && Near(v2->FindClip("q")->start, 8.0));
+
+        // a locked lane has no buttons: a click in the gap (3..8) only clears the selection
+        v2->locked = true;
+        timeline->SetModel(model);
+        timeline->OnEvent(MouseEvent(UCEventType::MouseDown, timeline->SecondsToX(5.5), laneMidY));
+        timeline->OnEvent(MouseEvent(UCEventType::MouseUp, timeline->SecondsToX(5.5), laneMidY));
+        TEST("a locked lane closes no gap", changes.size() == seen + 2);
+        v2->locked = false;
+        timeline->SetShowGapButtons(false);
+        timeline->SetModel(model);
+        timeline->OnEvent(MouseEvent(UCEventType::MouseDown, timeline->SecondsToX(5.5), laneMidY));
+        timeline->OnEvent(MouseEvent(UCEventType::MouseUp, timeline->SecondsToX(5.5), laneMidY));
+        TEST("nor does a timeline with the buttons turned off", changes.size() == seen + 2);
+        timeline->SetShowGapButtons(true);
+        changes.resize(seen);   // the checks below count changes from the start
     }
 
     std::cerr << "\n--- Playhead, blade, keys ---" << std::endl;

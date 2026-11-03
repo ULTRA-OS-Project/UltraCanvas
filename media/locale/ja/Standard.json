@@ -328,6 +328,7 @@
   "Zoom In": "拡大",
   "Zoom level": "ズームレベル",
   "Zoom Out": "縮小",
+  "{0} - no preview stored in this vector document": "{0} - このベクター文書にはプレビューが保存されていません",
   "{0} could not be opened": "{0} を開けませんでした",
   "{n} byte": {
     "other": "{n} バイト"

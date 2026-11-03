@@ -1,7 +1,8 @@
 // Plugins/Vector/XAR/UltraCanvasXARPlugin.h
 // Xara XAR vector graphics format plugin for UltraCanvas
+// Version: 2.3.1 - the element draws at its own origin, not at its position in the parent
 // Version: 2.3.0
-// Last Modified: 2026-09-18
+// Last Modified: 2026-10-27
 // Author: UltraCanvas Framework
 //
 // Tag values are taken verbatim from the Xar Format Specification, Appendix A

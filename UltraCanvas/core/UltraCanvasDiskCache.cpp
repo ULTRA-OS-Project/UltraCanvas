@@ -1,6 +1,7 @@
 // core/UltraCanvasDiskCache.cpp
 // The retention policy shared by every cache UltraCanvas keeps on disk.
 // See UltraCanvasDiskCache.h for why it lives in one place.
+// Version: 1.1.0 - SweepFolders
 // Version: 1.0.1 - the cache folder's variables (LOCALAPPDATA, HOME, XDG_CACHE_HOME,
 //                  TMPDIR) read as UTF-8 (GetEnvUtf8)
 // Version: 1.0.0
@@ -160,6 +161,32 @@ size_t Sweep(const std::string& directory,
         expired.push_back(entry.path());
     }
     return RemoveAll(expired);
+}
+
+size_t SweepFolders(const std::string& directory, std::chrono::seconds maxAge) {
+    if (directory.empty()) return 0;
+    const auto now = fs::file_time_type::clock::now();
+    std::vector<fs::path> expired;
+    std::error_code ec;
+    for (fs::directory_iterator it(PathFromUtf8(directory), ec), end; !ec && it != end; it.increment(ec)) {
+        std::error_code entryError;
+        // A link is not followed out of the cache: only real folders go.
+        if (it->is_symlink(entryError) || !it->is_directory(entryError)) continue;
+        const auto stamp = it->last_write_time(entryError);
+        if (entryError) continue;           // unreadable stamp: leave it alone
+        if (now < stamp) continue;          // clock set back: reads as fresh
+        if (now - stamp <= maxAge) continue;
+        expired.push_back(it->path());
+    }
+    size_t removed = 0;
+    for (const fs::path& folder : expired) {
+        // In use by another process: what could not go stays for the next
+        // sweep (the folder with it).
+        std::error_code removeError;
+        fs::remove_all(folder, removeError);
+        if (!removeError && !fs::exists(folder, removeError)) ++removed;
+    }
+    return removed;
 }
 
 Usage Measure(const std::string& directory,

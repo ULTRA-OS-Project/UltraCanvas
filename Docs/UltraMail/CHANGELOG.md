@@ -1,3 +1,470 @@
+#### 2026-11-01 *0.10.83*
+- **`UltraMail --minimized`** starts with the window minimized: mail is
+  fetched and the unread count reaches the desktop's mail icon as with the
+  window open - what UltraDesktop's *Start with the desktop* asks for. On
+  Windows the command line now reaches the program (`WinMain` passes it on).
+
+#### 2026-10-30 *0.10.82*
+- **The threat scanner names the same attachments UltraMail refuses to
+  open.** Whether an attachment is a program is now
+  `FileAssociations::RunsCodeWhenOpened`, the question *Open* asks, instead of
+  the scanner's own shorter, Windows-only list. Scripts (`.sh`, `.py`,
+  `.ps1`), shortcuts (`.url`, `.desktop`), installers (`.pkg`, `.deb`,
+  `.msix`), disk images (`.dmg`, `.vhd`) and macOS and Linux programs
+  (`.app`, `.AppImage`) are now called programs too, and so is a name that
+  hides its extension behind trailing dots or spaces (`setup.exe.`). As
+  before, a program sent as a program is *attachment-executable*
+  (suspicious) and one dressed as a document *attachment-disguised-executable*.
+
+#### 2026-10-30 *0.10.81*
+- **Import: messages saved as files come into UltraMail.** A new *Import*
+  button on the toolbar picks `.eml`, Apple Mail `.emlx` and Outlook `.msg`
+  files (several at once) and puts them into the folder on show of the
+  account on screen. They are uploaded to the account's server, as the
+  Drafts and Sent copies are, so the folder's sync brings them into the list
+  and every other device sees them too. An Outlook message is built again as
+  a standard message: sender, recipients, subject, date, Message-ID and
+  In-Reply-To, the HTML body with its plain text, the pictures it shows and
+  its attachments (an attached Outlook item is not carried over). The
+  imported messages arrive marked as read. A file that is not a message is
+  named in one alert with the reason, and the others are still imported.
+  Reads the `.msg` through the framework's new `UltraCanvasOutlookMessage`
+  (`Docs/UltraCanvas/UltraCanvasOutlookMessage.md`).
+- **An attachment that is a program or a script is never opened.** *Open*
+  on an `.exe`, `.bat`, `.js`, `.ps1`, `.lnk`, `.msi`, `.iso`, `.sh`,
+  `.desktop`, `.appimage` and the rest
+  (`FileAssociations::RunsCodeWhenOpened`) no longer hands it to the system,
+  which would run it - the commonest way mail carries malware. UltraMail says
+  so and offers to save it instead; it is not even written to the
+  attachment cache. An unnamed part is judged by the name its media type
+  gives it too.
+
+#### 2026-10-28 *0.10.80*
+- **Mail security per account.** *Account Settings > Security > Mail
+  security…* - and, with *Skip*, right after an account is added - sets how
+  the account signs and encrypts: its S/MIME certificate (Import / Remove,
+  moved here from their own row), the OpenPGP key it signs with (the
+  keyring's secret keys by name, address and fingerprint; by default the one
+  whose user id is the account's address), and how its new messages, replies
+  and forwards start - *Off*, *S/MIME* or *OpenPGP*, *Sign*, *Encrypt*. The
+  compose window's Security row starts from that and stays changeable per
+  message; a reply to encrypted mail still starts encrypted.
+  - Stored with the account (`AccountSecurity`, mail.db schema 13,
+    `LocalStore::SetAccountSecurity`); `OpenPgpSecretKeys`, and
+    `SecureKeys::openPgpSigningKeyFor` signing with the chosen key.
+  - `test_securemime`: the defaults stored and kept across a re-added
+    account; the secret keys listed, a chosen key signing, an unknown
+    fingerprint refused.
+- **S/MIME signatures from real authorities are vouched for on Windows and
+  macOS too.** The certificate check uses the operating system's trusted
+  roots there (Windows' certificate stores, macOS's keychains), as it used
+  Linux's; until now a signature from a public certificate authority read
+  "not vouched for here" on those two systems.
+
+#### 2026-10-28 *0.10.79*
+- **S/MIME runs on UltraCrypt.** Certificates, their trust check, signing,
+  checking, encrypting, decrypting and PKCS #12 import are UltraCrypt's X.509
+  and CMS (`UltraCryptX509.h`); `UltraMailSmime.cpp` keeps only what each
+  finding means to the reader, and UltraMail links no OpenSSL of its own. A
+  certificate that holds but is not one for signing mail now says so.
+
+#### 2026-10-28 *0.10.78*
+- **The mail on the computer is encrypted.** The mailbox index (`mail.db`),
+  the address book, the outbox, the cloud accounts and every downloaded
+  message are ciphertext on disk, under a random storage key kept in the
+  vault (`UltraMailStorage.h`): each database is an encrypted SQLite file
+  with a key of its own derived from it, each message file is sealed whole
+  with XChaCha20-Poly1305. Copied off the computer, or opened with the sqlite3
+  shell or UltraDBAdmin, they show nothing; with a Primary Password nothing
+  on the computer opens them without it.
+  - An earlier version's mailbox is converted at the first start: the
+    databases before the window opens (17 ms for the demo mailbox), the
+    message files on a thread of their own. Reading takes a plain file as
+    it is meanwhile.
+  - Attachments opened for viewing are plain copies for the viewer, so they
+    are deleted at every start now (they were kept for a week).
+  - EmailCleaner reads UltraMail's mailbox with the same key, taken from the
+    vault with the device key; with a Primary Password set it says it cannot.
+  - `test_storage` checks the storage key, the derived keys, sealing and
+    opening (a changed byte and another key refused, a plain file read),
+    converting plain message files and the mailbox database in place.
+- **The data folder is yours alone.** UltraMail makes its data folder
+  owner-only at every start (`SecureDataDir`), before the instance lock is
+  written into it: the folder and the folders in it `rwx------`, the files
+  directly in it `rw-------`. An earlier version created it with the
+  system's default, which on many Linux systems let every other user of the
+  computer read the mail, the databases and the vault; that folder is
+  tightened the first time. Windows' per-user `%APPDATA%` was already
+  private and is left as it is.
+- **A Primary Password.** *Settings > Privacy > Primary Password* sets one,
+  changes it and removes it (each asks for the current one first). Once set,
+  UltraMail asks for it when it starts, before it reads anything stored: a
+  wrong one is asked for again in the same dialog, Cancel ends the start. It
+  protects the account passwords and sign-ins in the vault, whose device key
+  is then gone, so nothing on the computer opens the vault without it.
+  - The vault now opens at the start, before the mailbox (about 0.1 s, the
+    Argon2id key derivation), instead of after the window is up.
+  - A vault from an early version that was made with a master password and
+    never got a device key is now treated as having a Primary Password: it
+    is asked for at the start, and *Remove* turns it off. Before, typing it
+    once turned it into a device key without a word.
+  - The password dialog says *Primary Password* throughout; two passwords
+    that do not match, or none typed, ask again in place instead of closing
+    the dialog.
+- **Signed and encrypted mail: S/MIME and OpenPGP.** Mail on the computer is
+  now exactly as readable as it was on its way to the server: encrypted mail
+  stays encrypted on disk and is decrypted only for the reading pane.
+  - Reading: S/MIME (signed, opaque-signed, encrypted) and OpenPGP (PGP/MIME
+    signed and encrypted, inline and clear-signed PGP) are decrypted where a
+    key here opens them and their signatures checked; pills say what holds -
+    *Encrypted*, *S/MIME* / *OpenPGP* green (vouched for), amber (holds,
+    nobody vouches), red (changed after signing). An encrypted message no key
+    opens says why instead of showing ciphertext.
+  - Sending: the compose window's *Security* row (Off, S/MIME, OpenPGP; Sign,
+    Encrypt). Encrypted to every recipient and to the sender; Drafts, the send
+    and Sent use the same secured bytes; a missing recipient certificate or
+    key is named before anything is queued, and a message that cannot be
+    secured is never sent in plain text. Replies to encrypted mail start
+    encrypted.
+  - Keys: an S/MIME certificate and key imported from a `.p12` / `.pfx` in
+    *Account Settings* (kept in the vault; only for the account's address);
+    correspondents' certificates learnt from their vouched-for signatures
+    (address book schema 4); OpenPGP through the user's GnuPG keyring, with
+    `application/pgp-keys` attachments offered for import.
+  - Built with OpenSSL 3 (S/MIME) and GPGME (OpenPGP) where found; the
+    outbox gains schema 5 (the draft's security choice).
+  - `test_securemime` checks the MIME pieces, S/MIME signing (untrusted,
+    tampered, LF line ends), encrypting to recipient and sender, PKCS #12
+    import, the outbox filing only ciphertext, and OpenPGP signing,
+    encrypting and inline messages against a throw-away keyring.
+- The *S/MIME* / *OpenPGP* pill no longer says UltraMail does not check such
+  signatures.
+- **OpenPGP on macOS.** The macOS suite bundles GPGME (built by vcpkg for
+  macOS 14, with libassuan and libgpg-error); GnuPG is the user's, from
+  Homebrew (`brew install gnupg pinentry-mac`) or GPG Suite, and UltraMail
+  finds it in their folders although a Finder-started app's `PATH` lacks them.
+- OpenPGP is not built on Windows on Arm: there GPGME's first operation ended
+  the process (CI's windows-11-arm, MSYS2 CLANGARM64), which in the app would
+  quit it on opening an OpenPGP message. S/MIME is unaffected.
+
+#### 2026-10-27 *0.10.77*
+- **A JMAP sync keeps its connection.** UltraMail asks UltraNet to pool
+  HTTP connections per thread (`UltraNetConfig::reuseHttpConnections`), so
+  a mailbox sync reuses one connection to the server instead of a fresh
+  TCP and TLS handshake for every call - what "Fix email dates in the JMAP"
+  set out to do, now switched on by UltraMail alone rather than for every
+  program.
+
+#### 2026-10-27 *0.10.76*
+- **The account bar's counters filter the message list.** A click on
+  *New today* shows the account's inbox with only its unread mail from today,
+  *Unread* all of its unread mail (today's too, though the number counts
+  only the mail from before today), and *Waiting for reply* only the mail
+  waiting for an answer. A click anywhere else on the account's card (tile or summary card)
+  shows all of its mail again. Each counter has its own tooltip, and the one
+  in use is outlined in its colour.
+- **A filter card under the account.** While the list is filtered, a second
+  row under the account bar holds a card in the look of the account tiles,
+  placed under the account's own tile (it follows the tile when it is dragged
+  to another place). It names the filter ("Showing: New today") and has a
+  **Show all emails** button. It also shows a filter chosen from the list's
+  *Show emails ▸* menu, and goes when switching folders clears the filter.
+- `UltraMailAccountBarTest` clicks every counter and checks the filter card's
+  place; `UltraMailFolderTreeTest` checks what each counter's filter shows;
+  `test_messagefilter` checks the new filter.
+- **A payment reminder whose "invoice" is a web page is marked as a scam.**
+  A "Mahnung" with the invoice attached as `Rg-2608144_(563804).html`, sent
+  in a plumbing firm's name from a music site's address, was not flagged:
+  no rule looked at an `.html` attachment or at a company name over a
+  foreign domain. Three new findings:
+  - `attachment-web-page` - a web page attached (`.html`, `.htm`, `.xhtml`,
+    `.mht`) opens in the browser, outside the mail program: Suspicious, and
+    40 points when the mail or the file name speaks of an invoice, a reminder
+    or a payment, since real invoices come as PDFs.
+  - `attachment-active-page` - the attached page (or an SVG picture) is read
+    as the browser would run it: one that loads a script from a website, has
+    a form, sends the browser on or decodes a hidden page is a Scam on its
+    own. The reminder's page loaded a script from a hacked site. It still
+    counts for a sender you trust (their mailbox may be the one hijacked).
+  - `sender-company-mismatch` - the display name names a company whose own
+    domain the mail itself gives ("questions to fibu@bug-rohrreinigung.de")
+    while it came from an unrelated domain. Not for a free mailbox, "… via
+    …", or a sender domain carrying the company's name; a domain DKIM or
+    DMARC proves (an invoicing service) gets only a hint.
+- The reading pane names such a mail *phishing* and advises not to open the
+  attached page. The rules revision moves to 2026-10-27, so stored mail is
+  scanned again.
+- **The warning strip's footnote is marked with "*".** *"Warning: This is
+  likely a phishing\* email!"* and the explanation under it start with "*"
+  instead of "²" - each warning has a single footnote, so a "2" read like a
+  second one.
+
+#### 2026-10-25 *0.10.75*
+- **Copy link over a linked picture.** A right-click on a picture that is a
+  link - a newsletter's "Buy now" or "Read more" button - offers *Copy link*
+  as a text link does, above *Copy* and *Select All*, and no longer opens the
+  link in the browser. `UltraMailMessagePreviewTest` checks it.
+
+#### 2026-10-25 *0.10.74*
+- **Incoming mail never adds a no-reply address to the contacts.** A known
+  service was filed under Services for whatever address it wrote from, and
+  some services send from a new `no-reply-<code>@...` address in every
+  message - Anthropic's mail had put 77 "Anthropic" contacts in Services,
+  one per message. Nobody writes to a no-reply address (it was already never
+  offered as a recipient suggestion), so the collector now skips it, known
+  service or not; the service still reads as a business sender without a
+  contact. Writing to such an address yourself still adds it.
+- **Services > right-click > *Remove no-reply contacts…*** removes what the
+  old rule left behind: the no-reply contacts UltraMail filed by itself -
+  one address, no phone, no group, and the "collected automatically" note -
+  after a confirmation that lists the first few. A no-reply contact you
+  filed yourself is kept.
+- `test_contacts` checks that a no-reply sender is not collected and what
+  `ContactCollector::CollectedNoReply` finds.
+
+#### 2026-10-24 *0.10.73*
+- **Copy link.** A right-click on a link in a message - formatted (HTML) or
+  plain text - offers *Copy link* at the top of the menu, above *Copy* and
+  *Select All*: it puts the link's address on the clipboard as the message
+  wrote it, without opening it.
+
+#### 2026-10-24 *0.10.72*
+- **The compose window's toolbar is one row, with Send on top.** The window
+  opens wide enough (1140 px) for every formatting tool in a single row
+  above the text, and the action row - *Send*, *Attach file…*,
+  *Cloud link…* and, apart on the right, *Cancel* - moved from the bottom to
+  the top of the window, above the address fields.
+- **Font and Size name the text at the cursor.** In place of the words
+  "Font" and "Size" they show the font and the size of the text the cursor
+  is in, or of the selected text: *Default* for text without a font or size
+  of its own (the reader's program picks it), and a font or size the lists
+  do not offer - a reply quoting Calibri 10.5 - is added to the list and
+  shown. Over a selection in several fonts they keep what they showed.
+- **Text or background colour.** A switch with two icons in front of the
+  colour swatches picks what a swatch colours: the letters, or the
+  background behind them, like a highlighter, with a palette of light
+  colours (white takes the background away). It is sent as the HTML's
+  `background-color`.
+- **Settings > Reading > Attachments: at the bottom or on the right side.**
+  A message's attachments are shown in a row under it, as before, or in a
+  column at its right, which keeps the message its whole height. The
+  choice is for reading (the reading pane) and for writing: the compose
+  window puts the files attached in the same place, inside the editor's
+  frame under the toolbar. It applies at once, to compose windows already
+  open too.
+- `UltraMailFormatBarTest` checks the formatting bar in a real window: one
+  row, the font and size shown at the cursor, and the two colour targets.
+- **The compose window looks like a mail program's.** The formatting tools
+  are icons now - bold, italic, underline, strikethrough; left, centre,
+  right; bulleted and numbered lists, quote in and out; a line, a link, a
+  picture - flat, in groups with thin separators, each named by its tooltip.
+  They sit on a tinted strip framed together with the message body, so the
+  body is a clear place to write rather than an open white area. *Plain text |
+  Formatted* shows a mark for each. *Send*, *Attach file…* and
+  *Cloud link…* (was *Attach cloud link…*) carry icons. The signature
+  editor has the same toolbar and frame.
+- **Dialogs open with a header**: an icon tile, a title and the line that
+  says what the dialog is for - Add an email account, the master password,
+  the browser sign-in code, the wait while server settings are looked up or
+  a sign-in completes (with a moving busy bar), Account settings and the
+  signature editor. Their action buttons carry icons (Continue, Save,
+  Unlock, Delete account, Edit signature…, Show info, Send now, Edit…,
+  Add contact, Add group), and the settings window's sections (Mail,
+  Reading, Privacy, Display, Warnings) have icons in its tree. The icons
+  are UltraMail's own set, `media/icons/ultramail/`.
+- **The signature editor's Save and Cancel are shown again.** Its button
+  row was sized with a width of 0, which kept the dialog's column from
+  stretching it, so the row - *HTML source*, *Cancel* and *Save* - was laid
+  out zero pixels wide and never drawn.
+- Demo: `ULTRAMAIL_DEMO_DIALOG=<name>` opens one dialog on its own to look
+  at it (`wizard`, `password`, `password-new`, `oauth`, `wait`, `outbox`,
+  `settings`, `account`).
+
+#### 2026-10-23 *0.10.71*
+- **No missing-fonts notice when writing mail.** The new notice in the
+  framework's WYSIWYG editor lists the fonts a document names that the
+  computer lacks. It is turned off in the compose window and in the signature
+  editor. A mail often names its sender's fonts (Calibri, Arial), the text
+  shows fine in a substitute, and a notice above the message being written
+  would only be in the way.
+
+#### 2026-10-23 *0.10.70*
+- **Deleting a contact reports a failure instead of half-doing it.**
+  `ContactStore::Remove` ran its three deletes (emails, phones, the contact)
+  without looking at their results and committed anyway, so a delete that
+  failed part-way could leave the contact's phones or emails behind and still
+  report success. It now goes through `RemoveAll`: a failed statement rolls
+  the whole delete back and is returned.
+
+#### 2026-10-23 *0.10.69*
+- **No-reply addresses are no longer suggested.** The To / Cc / Bcc fields
+  offered every address in the address book, so a collected
+  `noreply@...`, `no-reply@...`, `do-not-reply@...` or `noreply.billing@...`
+  sender came up beside the people one writes to. An address whose local
+  part reads "noreply" or "donotreply" (ignoring `-`, `_` and `.`) is now
+  left out; it stays in the address book.
+- **A right click on a suggestion has a menu.** *Edit contact…* opens the
+  contact editor for that address; *Delete address* removes it from its
+  contact, after asking (a contact left with no address is deleted); *Set as
+  SPAM* puts the sender on the blocked list, as the sender menu's *Block this
+  sender* does, so its mail is judged again. The field then shows its
+  suggestions as they now are.
+- **Blocked senders are not suggested**, whether blocked from that menu, the
+  sender menu or *Settings > Warnings > Trusted & blocked*.
+- **Edit contact edits the address it was opened for.** The contact editor
+  always showed - and saved over - a contact's primary address, so *Edit
+  contact…* on a contact's second address, from a suggestion or from a
+  message that address sent, showed another one. It now shows that address
+  and changes only it, keeping its label and the contact's other addresses;
+  emptied, the address is removed, and changed to another of the contact's
+  addresses, the two become one.
+- **Incoming mail no longer fills the address book with strangers.** Every
+  sender of new mail in the inbox was added, spam included - so spammers
+  were offered as recipients, and their next mail read as from someone in
+  the address book instead of a *New sender*. Now only senders in the
+  known-sender registry (shops, platforms, services) are added from incoming
+  mail, under Services; a person joins the address book when you write to
+  them, or add them. Contacts collected before stay until deleted.
+- **A deleted address stays deleted.** Deleting a contact, or an address
+  from the suggestion menu, remembers it, and incoming mail does not add it
+  back; neither is a blocked sender added. Writing to it still adds it.
+- **Writing to a picked suggestion no longer makes a broken contact.** A
+  recipient written as "Anna Schmidt <anna@example.com>" was remembered with
+  that whole text as its address - a second contact beside the real one. Its
+  name and address are now read apart.
+- **A forged service is not filed as one.** A sender in the known-sender
+  registry (a shop, a platform) went under Services on its From address
+  alone, which anyone can write. It is added now only when the receiving
+  server proved the sender's domain (DKIM or DMARC).
+- **Remove what the old collector left behind.** *Contacts*, right-click
+  *Other* > *Remove collected contacts…* lists the contacts there that are a
+  name and an address and nothing else, never written to (no mail in the
+  Sent folders went to them), and removes them all at once after asking.
+- **A service's mail downloaded later still files it.** The proof of a
+  sender's domain comes with the message's body, so a known service whose
+  mail was first held without its body was never collected. It is now, once
+  the body arrives: when the next update fetches the bodies an earlier one
+  missed, when the message is opened, or when its body is fetched to
+  unsubscribe.
+
+#### 2026-10-22 *0.10.68*
+- **The message list shows a tooltip only where a cell cuts its text off.**
+  Resting the pointer on any row showed "sender <address> - unread" with the
+  date on a second line, wherever the pointer was and however much of the row
+  was readable, in a box two lines high. Now only a cell whose text did not
+  fit gets one, on one line and holding what the cell lacked: the sender's
+  name and address in *From*, the whole subject in *Subject*, the full date
+  in *Date*. A sender, subject or date shown in full gets none. The badge
+  column keeps its own tooltip (what the sender is, and why).
+- **Switching an account between IMAP and JMAP asks for the password again.**
+  The account settings page kept the stored password when the *Protocol*
+  changed, so an account switched to JMAP - whose server often wants its own
+  app password or API token - could be saved but not connect. Choosing the
+  other protocol on a password account now shows a warning under the fields
+  and makes the password field *Required*; *Save* and *Save anyway* wait for
+  it and put the cursor there. Switching back to the saved protocol lifts the
+  demand; an account signed in with OAuth2 keeps its tokens and is not asked.
+
+#### 2026-10-22 *0.10.67*
+- **Saving an attachment opens in the Downloads folder on Windows.** The save
+  dialog's first folder looked for `Downloads` under `HOME`, which Windows does
+  not set, and read it through the narrow `getenv`. So on Windows it fell back
+  to `.` - the folder UltraMail was started from, which is System32 from the
+  MSIX package. It now takes the Downloads folder Windows names, wherever it
+  was moved or redirected (`GetWellKnownUserFolders`), and the home folder
+  (`HOME`, or `USERPROFILE` on Windows) as UTF-8 when there is none.
+- **The UltraNet plug-in folder comes from UltraNet.** UltraMail looked for
+  `Plugins/UltraNet` beside its executable itself. UltraNet now does that by
+  default, so UltraMail keeps only its `ULTRAMAIL_PLUGIN_DIR` override, which
+  it now reads as UTF-8.
+
+#### 2026-10-21 *0.10.66*
+- **Loan and credit offers from anyone but a bank are marked as scams.**
+  "My group renders loan facilities at 3% yearly", "LOAN FUNDING / FINANCING
+  OFFER from $5 Million", an investor ready to "fund viable projects" - the
+  new finding `loan-offer-fraud` reads the subject and text for a loan,
+  credit or project funding being offered. With a rate, a repayment, a
+  return or a sum named ("USD/EURO 10M - 500M", which the money check now
+  reads too) it is a Scam on its own; the bare offer from an unproven sender
+  is Suspicious. A bank in the brand table whose domain the receiving server
+  proved (DKIM or DMARC) is never flagged; a bank's address nothing proved,
+  or another sender that proved its own domain, gets only a second look, and
+  such a sender's newsletters none. The reading pane names it a *loan scam*
+  and says what the "lender" is after. The rules revision moves to
+  2026-10-21, so stored mail is scanned again.
+- **A switch of its own for it.** *Settings > Spam/scam warnings* has *A loan
+  or credit offered by anyone but your bank* (`warn_loan_offers` in
+  `preferences.ini`, on by default), apart from the advance-fee letters.
+
+#### 2026-10-21 *0.10.65*
+- **A click on a new-mail toast opens the mail even after the program that
+  showed it has quit.** On Windows the toast is put up by whichever program
+  hosts the message bus (UltraFiler, say). Once that program had quit, the
+  toast still waited in the Action Center, and a click on it did nothing.
+  UltraMail is now the activator of its own toasts: Windows hands the click
+  to it, or starts UltraMail for it when it is closed, and the toast says
+  which mail it was about - the account, and the folder and message when it
+  announced one - so that mail opens. A click that reaches UltraMail both
+  ways opens it once (framework changelog: `notification-activator`).
+
+#### 2026-10-21 *0.10.64*
+- **A JMAP account is checked the moment its server reports new mail.**
+  UltraMail keeps a watch open on every JMAP account (the server's event
+  source, through the UltraNet JMAP plug-in's new push - framework
+  changelog: `jmap-push`) and checks the account at once when the server
+  announces a change to its mail or folders, instead of waiting for the
+  interval chosen in *Settings > Mail*, which stays as the safety net. The
+  watch opens once the vault is usable, is reopened a minute after the
+  server or the network ended it, follows a changed server, and ends with
+  the account; `trace.log` says when one opens, ends and fires.
+
+#### 2026-10-21 *0.10.63*
+- **A JMAP account is found by itself, and sends, marks, moves and deletes
+  through JMAP.** Adding an account at a domain the provider table does not
+  know now asks the domain for its JMAP server before the autoconfig
+  documents: the DNS SRV record `_jmap._tcp.<domain>`, else
+  `https://<domain>/.well-known/jmap`; a server that answers with its
+  session resource, or asks for a sign-in first (Fastmail, Stalwart), is
+  taken - as the host the answer came from, after redirects - and the
+  wizard says *a JMAP server was found for <domain>*. Such an account has
+  no SMTP server and sends through JMAP (the UltraNet JMAP plug-in's new
+  write path - framework changelog: `jmap-write-path`): the message is
+  uploaded, submitted as the account's identity for the From address and
+  filed in Sent by the server. On the settings page the *Outgoing (SMTP)*
+  rows are optional for a JMAP account - *empty sends through JMAP* - and
+  an SMTP server entered there is used instead. Marking read or flagged,
+  moving to a folder, Junk and Delete (to the Trash mailbox, or gone for
+  good when there is none), the reconcile of reads and deletions made
+  elsewhere, and the copies in Drafts and Sent now work for a JMAP
+  account; the *phase 1 is read-only* answers are gone. A message queued
+  for an account whose plug-in is not loaded stays in the outbox with that
+  reason while the others are sent. Also: on the settings page, typing a
+  port for a JMAP server no longer flips the (disabled) security dropdown
+  to STARTTLS.
+
+#### 2026-10-21 *0.10.62*
+- **An account's incoming server can be JMAP instead of IMAP.** The server
+  settings page - the account's Settings, and the manual page when nothing
+  is published for a domain - starts with a *Protocol* row: **IMAP**, as
+  every account was, or **JMAP**, the JSON-over-HTTPS mail protocol of
+  Fastmail, Stalwart, Cyrus and Apache James. Choosing JMAP renames the
+  incoming rows, sets the port to 443 (an unusual port you typed stays),
+  fixes the security to SSL/TLS - a JMAP server is HTTPS - and offers the
+  sign-in methods JMAP has (Automatic, Normal password, OAuth2). The sign-in
+  check on Save, every sync, the message actions and the Drafts and Sent
+  copies of such an account go through UltraNet's JMAP plug-in
+  (`ultranet_jmap`), and a missing plug-in is reported by name - *the JMAP
+  plug-in was not found* - as the IMAP one was. Sending still goes through
+  the outgoing (SMTP) server; what the JMAP plug-in does not yet do (flag
+  changes, moves, copies) says so when tried. The choice is stored with the
+  account (`incoming_protocol` in `mail.db`, schema 12) and switching an
+  account between the protocols fetches its mail anew. Engine:
+  `MailProtocol` on `MailServerSettings` (`UltraMailTypes.h`),
+  `AutoDiscovery::IncomingServerUrl` (replaces `ImapServerUrl`: `jmap://`
+  for a JMAP server), `LoginCheck::Incoming` (was `Imap`),
+  `ServerFolders::mailbox` for the outbox copies; `Docs/UltraMail/AccountSetup.md`
+  section 5 describes the page.
+
 #### 2026-10-19 *0.10.61*
 - **An *Attach cloud link* upload that was complete when the connection
   went is put in place, not thrown away.** To an FTP or SFTP account the

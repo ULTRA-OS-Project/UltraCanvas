@@ -5,8 +5,9 @@
 // is written to "<name>.part" and renamed when it is complete, so a broken
 // download never leaves a file that looks whole. A download is as long as
 // the file is large: it has no time limit, only a stall limit.
+// Version: 0.3.0 - StartDownload sends a Cookie header
 // Version: 0.2.0
-// Last Modified: 2026-10-13
+// Last Modified: 2026-10-22
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -31,11 +32,13 @@ public:
 
 // Fetch `url` to the UTF-8 `path`. `onProgress` (bytes so far, the total or
 // -1) and `onDone` (true, or false with why) arrive through `post`, on the
-// UI thread; onDone once, also after Cancel.
+// UI thread; onDone once, also after Cancel. `cookie` is the Cookie header
+// the request carries ("" none).
 std::shared_ptr<Download> StartDownload(const std::string& url, const std::string& path,
                                         std::function<void(std::function<void()>)> post,
                                         std::function<void(int64_t received, int64_t total)> onProgress,
-                                        std::function<void(bool ok, const std::string& error)> onDone);
+                                        std::function<void(bool ok, const std::string& error)> onDone,
+                                        const std::string& cookie = std::string());
 
 // A download fails when no byte has arrived for this long (30 s by
 // default; tests shorten it). A whole-transfer limit there is none.

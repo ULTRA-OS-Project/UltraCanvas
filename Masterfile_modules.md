@@ -410,7 +410,9 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
 - **UltraCanvasWebView** (`UltraCanvasWebView.h`) - the element that shows a
   page from a URL: `SetServices`, `SetScheduler`, `SetBuildOptions`,
   `Navigate`, `Reload`, `Stop`, `GoBack` / `GoForward` (scroll positions kept),
-  `ScrollToFragment`, `GetUrl`, `GetTitle`, `ResolveLink`; `onUrlChanged`,
+  `ScrollToFragment`, `ScrollBy`, `Clear`, `SetOpensWebLinks` (off: web
+  links to `onExternalLink`, for a viewer of local files), `GetUrl`,
+  `GetTitle`, `ResolveLink`; `onUrlChanged`,
   `onTitleChanged`, `onLoadingChanged`, `onLinkHovered`, `onExternalLink`,
   `onNonHtml`. Rebuilds on a new width or arriving pictures; error pages; no
   JavaScript (`<noscript>` shown). Forms the reader fills in and sends
@@ -453,6 +455,11 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
     `OpenWithApplicationPath` — detached launches (default handler /
     enumerated app / user-picked executable; on Linux/BSD that path may also
     be a `.desktop` file, whose own command is what then runs).
+  - `RunsCodeWhenOpened` — whether opening a file of this name would run
+    code (a program, script, installer, shortcut, disk image), by name
+    alone: what a mail attachment or a preview must never open. UltraMail,
+    its threat scanner and the media viewer ask it. Header-only
+    (`UltraCanvasRunsCodeWhenOpened.h`), so headless modules can.
   - `GetMimeType` / `GetMimeGenericIcon` — the freedesktop MIME name of a
     file (matched by name, never by reading it) and the generic icon name
     that type falls back to (`application/pdf` → `x-office-document`). Both
@@ -528,6 +535,20 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   unset). `Tests/InstanceLockTest.cpp`. Used by UltraCanvasSingleInstance. See
   `Docs/UltraCanvas/UltraCanvasInstanceLock.md`.
 
+- **UltraCanvasSettingsPageKit** (`UltraCanvasSettingsPageKit.h`, namespace
+  `SettingsPageKit`) — the look of an application's settings window, once:
+  `UltraCanvasSettingsWindow` (`Create`, `AddSection`, `AddTreeNode`,
+  `AddPage`, `resets`, `Finish`, `ShowPage`, `SelectPage`, `onPageShown`,
+  `onClosed`) - the tree of pages on the left, the page on the right, the
+  page's Restore defaults and Close at the foot; a page's skeleton
+  (`MakePage` → `PageParts`, `AddNote`, `AddBodyCaption`) and the controls in
+  the window's one type scale (`MakeChoice`, `MakeCheckbox`, `MakeIntSlider`
+  / `MakeSliderRow`, `MakeButton` / `MakeButtonRow`, `MakeChoiceRow`,
+  `MakeLabelledRow`, `MakeColorBox`, `MakeLabel` / `MakeText`). UltraFiler's
+  settings window set the style; it and UltraSnip's are built on the kit.
+  Core in `core/UltraCanvasSettingsPageKit.cpp`. See
+  `Docs/UltraCanvas/UltraCanvasSettingsPageKit.md`.
+
 - **UltraCanvasSingleInstance** (`UltraCanvasSingleInstance.h`) — one running
   copy of an application per user, built on UltraCanvasInstanceLock: a second
   start asks the running copy over UltraMessage (`<appId>.show`) to come
@@ -539,7 +560,7 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   (`cmake/UltraCanvasSingleInstance.cmake`) compiles
   `core/AppEntry/UltraCanvasSingleInstance.cpp` into the application and links
   UltraMessage where present. Used by the single-window applications (UltraMail,
-  UltraClipboard, DeviceExplorer, UOS-Settings, UltraNetMonitor, UltraPassword,
+  UltraClipboard, UltraSnip, DeviceExplorer, UOS-Settings, UltraNetMonitor, UltraDBAdmin, UltraPassword,
   UltraAuthenticator, UltraCleaner, EmailCleaner, UltraClaude, UltraAI,
   UltraSocial, UltraFIBU, UltraWin Manager) and, with their files handed over,
   the document applications (Texter, UltraFiler, UltraViewer, UltraPaint,
@@ -652,12 +673,27 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   (`.doc`, `.xls`, `.ppt`, `.msg`). In `core/UltraCanvasCompoundFile.cpp`;
   every chain and offset is bounded. `UCCompoundFileReader::HasSignature`,
   `Open` (UTF-8 path) / `OpenFromMemory`, `ReadStream` / `HasStream` (root
-  storage, ASCII case-insensitive), `StreamNames`, `GetLastError`. Used by the
-  `.doc` importer, the `.xls` reader and UltraCanvasOfficeEncryption.
+  storage, ASCII case-insensitive), `StreamNames`, `GetLastError`; below the
+  root by '/'-separated path: `ReadStreamAt` / `HasStreamAt`,
+  `StreamNamesAt` / `StorageNamesAt`. Used by the `.doc` importer, the `.xls`
+  reader, UltraCanvasOfficeEncryption and UltraCanvasOutlookMessage.
   `UCCompoundFileWriter` builds one in memory (`AddStream` with '/'-separated
   storages, `Build`: version 3, mini stream, DIFAT, valid red-black trees), for
   the password-protected Office files.
   See `Docs/UltraCanvas/UltraCanvasCompoundFile.md`.
+
+- **UltraCanvasOutlookMessage** (`UltraCanvasOutlookMessage.h`) — Outlook
+  `.msg` messages ([MS-OXMSG]) read through the compound-file reader:
+  `UCOutlookMessage::Load` / `LoadFromMemory` → `subject`, `messageId`,
+  `inReplyTo`, `from`, `to`,
+  `cc`, `date` (UTC, RFC 5322 form), `bodyText`, `bodyHtml` (`PR_HTML`, else
+  the HTML encapsulated in the compressed RTF), `attachments`
+  (`UCOutlookAttachment`: `filename`, `mediaType`, `contentId`, `hidden`,
+  `embeddedMessage`, `data`). `UCDecompressRtf` ([MS-OXRTFCP] LZFu / MELA) and
+  `UCHtmlFromEncapsulatedRtf` ([MS-OXRTFEX] `\fromhtml1`). 8-bit text in the
+  message's code page (`DecodeWindowsCodePage`). In
+  `core/UltraCanvasOutlookMessage.cpp`; used by the media viewer.
+  See `Docs/UltraCanvas/UltraCanvasOutlookMessage.md`.
 
 - **UltraCanvasOfficeEncryption** (`UltraCanvasOfficeEncryption.h`) —
   password-protected `.xlsx` / `.docx` / `.pptx` (ECMA-376 agile encryption:
@@ -776,7 +812,12 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   and `UltraCanvasWindowBase::RefreshAfterFontChange()` on every window (a new
   layout and a full repaint, popups too; also run when the Windows system
   fonts arrive after a cold start). Process-private and permanent: there is
-  no unregister.
+  no unregister. `UltraCanvasFontCoverage.h` (`core/UltraCanvasFontCoverage.cpp`):
+  `CountCharactersWithoutFont` / `FindScriptsWithoutFont` - the characters of
+  a text no font covers (drawn as hex boxes), by script, each with a free Noto
+  font and its download page - plus `FontDownloadUrl` and
+  `IsFontFamilyAvailable`. `UltraCanvasRichTextEdit::GetFontReport` and its
+  notice use them (`FontCoverageTest`, `RichTextEditElementTest`).
   See `Docs/UltraCanvas/UltraCanvasFontFile.md`.
 
   The desktop's interface and monospace fonts are
@@ -800,6 +841,24 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   fontconfig platform's `LoadBundledFontsNative`, adds that one font and the
   rule that makes Pango's `emoji` runs use it.
   See `Docs/UltraCanvas/UltraCanvasEmojiSettings.md`.
+
+  A click on an application's notification that reaches it outside the bus
+  - on Windows a toast clicked in the Action Center after the broker host
+  quit, or with the application closed, which Windows then starts - comes to
+  `RegisterNotificationActivator(appId, handler)`
+  (`UltraCanvasNotificationActivation.h`: the program as the COM activator of
+  its AppUserModelID, a CLSID derived from the ID by
+  `NotificationActivatorClassId`) as a `NotificationActivation` (the action,
+  the notification's id and its `launch` string). `RemoveNotificationRegistrations()`
+  and the installer's uninstaller remove every identity listed under
+  `HKCU\Software\UltraCanvas\Notifications` (`ListNotificationRegistrations()`
+  lists them; UOS-Settings > Notifications > Registrations, its
+  `--remove-notification-registrations` and the ZIP's
+  `uc-remove-registrations.cmd` remove them where there is no uninstaller);
+  `scripts/check_notification_activators.py` (CI) reports an application that
+  posts a notification without registering an activator; the argument format is shared,
+  header-only (`FormatNotificationArguments` / `ParseNotificationArguments`).
+  No-ops elsewhere. See `Docs/UltraCanvas/UltraCanvasNotificationActivation.md`.
 
 - **UltraCanvasFontViewer** (`UltraCanvasFontViewer.h`) — the glyph browser: a
   scrolling grid of a font file's own glyphs, a picker for the ranges it
@@ -856,12 +915,19 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   its network, USB and Bluetooth lists) and **IODeviceManager** (operates
   peripherals). Core in `core/UltraCanvasDesktopShell.cpp`; the X11 backend
   (EWMH properties and client messages, `XGetImage`, procfs/sysfs) in
-  `OS/Linux/UltraCanvasLinuxDesktopShell.cpp` and the Win32 backend
+  `OS/Linux/UltraCanvasLinuxDesktopShell.cpp`, the Wayland backend's first
+  phase (the outputs, the devices; the shell protocols are the next step,
+  `Docs/UltraCanvas/WaylandDesktopShellProposal.md`) in
+  `OS/Linux/Wayland/UltraCanvasWaylandDesktopShell.cpp`, and the Win32 backend
   (`EnumWindows` filtered as Explorer's taskbar, appbars, `BitBlt`, WinEvent
   hooks, `RegisterHotKey`, the Start menu) in
   `OS/MSWindows/UltraCanvasWindowsDesktopShell.cpp` and
   `UltraCanvasWindowsTrayHost.cpp` (the notification area), both behind the
-  internal `UltraCanvasDesktopShellBackend.h`; a null backend elsewhere. On
+  internal `UltraCanvasDesktopShellBackend.h`; the Linux session end and
+  lock (logind), loudspeaker (libpulse) and tray (StatusNotifierItem) in
+  `OS/Linux/UltraCanvasLinuxDesktopShellSession.cpp`,
+  `UltraCanvasLinuxDesktopShellAudio.cpp` and `UltraCanvasLinuxTrayHost.cpp`;
+  a null backend elsewhere. On
   Windows also the standalone **UltraCanvasShellGuard** program
   (`OS/MSWindows/ShellGuard/`), what the sign-in starts when a desktop runs
   instead of Explorer. Public surface:
@@ -878,8 +944,13 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
     `ReserveScreenEdges` (a window's strips along the
     screen's edges, `_NET_WM_STRUT_PARTIAL` on X11 and appbars on Windows,
     so maximised windows stop short of a desktop's bars), `CaptureScreen`
-    (PNG), `CaptureScreenImage` (pixels in memory), `DefaultScreenshotPath`
-    (`<Pictures>/Screenshots/Screenshot <date> <time>.png`).
+    (PNG), `CaptureScreenImage` (pixels in memory), `CaptureScreenArea` (one
+    rectangle of the screen as pixels, clipped to it - a screenshot tool's
+    snip, a screen recorder's frames; `DesktopScreenImage::x` / `y` say
+    where the pixels came from), `DefaultScreenshotPath`
+    (`<Pictures>/Screenshots/Screenshot <date> <time>.png`),
+    `DefaultRecordingPath`
+    (`<Videos>/Screen Recordings/Screen recording <date> <time>.mp4`).
   - `ReadDeviceActivity` → `DesktopDeviceActivity`: webcam / microphone /
     speaker in use, Bluetooth, Wi-Fi with SSID, LAN, VPN, traffic totals,
     USB device count, battery, keyboard layout, plus `warnings`.
@@ -898,8 +969,16 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
     Winlogon shell setting naming UltraCanvasShellGuard, which restarts a
     crashing desktop and starts Explorer for the session when it cannot run;
     elsewhere the session decides and the calls say so).
+    `GetSystemDesktopSwitchUnavailableReason` - why the switch is off where
+    the platform has one (a Windows copy running from its MSIX package).
   - `CanEndSession` / `EndSession(SessionEnd)` - sign out, restart, shut down
-    (Windows `ExitWindowsEx`).
+    (Windows `ExitWindowsEx`; Linux logind over the system bus);
+    `CanLockSession` / `LockSession` - the screen lock (`LockWorkStation`;
+    logind's `Session.Lock`, else `org.freedesktop.ScreenSaver.Lock`).
+  - `ReadAudioOutput` → `DesktopAudioOutput` (the default output's name,
+    volume and mute), `SetAudioOutputVolume`, `SetAudioOutputMuted` - the
+    loudspeaker through the sound server (libpulse loaded at run time:
+    PulseAudio or PipeWire; Core Audio's `IAudioEndpointVolume` on Windows).
   - `PublishNotice` / `RemoveNotice` / `ReadNotices` / `ReadNotice` /
     `NoticesDirectory` - one atomically written JSON file per application
     under `$XDG_RUNTIME_DIR/ultraos/notices`.
@@ -911,13 +990,58 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
     program from any window (X11 `XGrabKey` on its own connection and
     thread, Windows `RegisterHotKey` on its own thread; fails with a reason
     elsewhere and when another program holds it). `"Super"` alone is a tap
-    of the Win key on Windows (a low-level keyboard hook), refused on X11.
+    of the Super key - a low-level keyboard hook on Windows, XInput2's raw
+    key events on X11 - which neither grabs.
   - `UltraCanvasTrayHost` - `Start(onChanged, &error)` / `Stop()` (joins) /
-    `ListIcons()` (`DesktopTrayIcon`: tooltip, PNG, program, balloon) /
-    `Click(id, TrayClick)`: the notification area for a desktop that is the
-    shell (Windows `Shell_TrayWnd` on its own thread; refused while Explorer's
-    taskbar runs, and on X11).
+    `ListIcons()` (`DesktopTrayIcon`: tooltip, PNG, program, balloon, and
+    `menu` as `DesktopTrayMenuItem`s where the program hands it over as
+    data) / `Click(id, TrayClick)` / `ActivateMenuItem(id, itemId)`: the
+    notification area for a desktop that is the shell (Windows
+    `Shell_TrayWnd` on its own thread, refused while Explorer's taskbar runs;
+    Linux the StatusNotifierWatcher and host on the session bus with the
+    items' dbusmenus, refused while another watcher owns the name).
   See `Docs/UltraCanvas/UltraCanvasDesktopShell.md`.
+
+- **UltraCanvasWireless** (`UltraCanvasWireless.h`) — Wi-Fi and Bluetooth
+  operated from a panel, as UltraDesktop's Wi-Fi and Bluetooth panels do.
+  Core in `core/UltraCanvasWireless.cpp` (argument checks, the lists' order,
+  the fallback backend); backends `OS/Linux/UltraCanvasLinuxWireless.cpp`
+  (NetworkManager and BlueZ over GDBus),
+  `OS/MSWindows/UltraCanvasWindowsWireless.cpp` (`wlanapi`, `bthprops`) and
+  `OS/MacOS/UltraCanvasMacOSWireless.mm` (CoreWLAN, IOBluetooth,
+  CoreLocation); internal `UltraCanvasWirelessBackend.h`. Synchronous calls
+  that take seconds: call them from a worker thread.
+  - `ReadWifi` → `WirelessWifiStatus` (`WirelessNetwork` per name: signal,
+    security, known, connected), `RequestWifiScan`, `SetWifiEnabled`,
+    `ConnectWifi(ssid, password)` (a new profile is kept only once joined),
+    `DisconnectWifi`, `ForgetWifi`.
+  - `ReadBluetooth` → `WirelessBluetoothStatus` (`WirelessBluetoothDevice`:
+    address, name, kind, paired, connected, battery), `CanSetBluetoothPower`
+    / `SetBluetoothPowered`, `StartBluetoothDiscovery` /
+    `StopBluetoothDiscovery`, `PairBluetoothDevice`,
+    `ConnectBluetoothDevice`, `DisconnectBluetoothDevice`,
+    `RemoveBluetoothDevice`; `SetPairingHandler` (`WirelessPairingRequest`
+    ShowCode / ConfirmCode / EnterCode / EnterPin / Authorize / Finished →
+    `WirelessPairingAnswer`), served by a BlueZ agent on Linux and
+    IOBluetoothDevicePair's requests on macOS.
+  - `HasSystemSettings` / `OpenSystemSettings(WirelessRadio)` - the
+    platform's own page (Windows, macOS).
+  See `Docs/UltraCanvas/UltraCanvasWireless.md`.
+
+- **UltraCanvasRemovableDrives** (`UltraCanvasRemovableDrives.h`) — the drives
+  a person plugs in and "Safely remove" for them. `List` →
+  `RemovableDrive { id, name, bus, sizeBytes, mountPoints, labels }` (the
+  system's own drive never listed); `SafelyRemove(id)` unmounts every volume
+  and powers the drive off or ejects it, failing with a sentence when a file
+  is still open. Core in `core/UltraCanvasRemovableDrives.cpp` (order,
+  fallback); backends `OS/Linux/UltraCanvasLinuxRemovableDrives.cpp`
+  (UDisks2 over GDBus, sharing `OS/Linux/UltraCanvasLinuxSystemBus.h` with
+  the wireless backend), `OS/MSWindows/UltraCanvasWindowsRemovableDrives.cpp`
+  (SetupAPI, storage ioctls, `CM_Request_Device_Eject`),
+  `OS/MacOS/UltraCanvasMacOSRemovableDrives.mm` (volume resource values
+  grouped by DiskArbitration's whole disk, `NSWorkspace
+  unmountAndEjectDeviceAtURL`). See
+  `Docs/UltraCanvas/UltraCanvasRemovableDrives.md`.
 
 - **UltraCanvasClipboardHistory** (`UltraCanvasClipboardHistory.h`,
   `UltraCanvasClipboardHistoryView.h`; library `UltraClipboardHistory`) — the
@@ -1001,10 +1125,43 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
     `GetPollIntervalMs`, static `NativeBackendAvailable`. The callback runs on
     the monitor's thread and must only hand the news over; one insertion
     produces several callbacks, so the receiver coalesces.
+  - `ListGvfsVolumes` / `GvfsVolumeLabel` — on Linux, the places the desktop
+    mounted through GVFS (a phone over MTP, a camera, an iPhone, an SMB / SFTP
+    / WebDAV share) as labelled volumes; part of `ListMountedVolumes`, watched
+    by the Linux monitor every two seconds.
   Wired up per platform by the `ULTRACANVAS_HAS_NATIVE_VOLUME_MONITOR`
   condition in the **top-level** `CMakeLists.txt`; without it the core file
   compiles null-returning fallbacks and the monitor polls.
   See `Docs/UltraCanvas/UltraCanvasVolumeMonitor.md`.
+
+- **UltraCanvasNetworkPlaces** (`UltraCanvasNetworkPlaces.h`) — the places
+  Explorer lists outside *This PC*: `ListNetworkComputers` (the Windows
+  network's workgroup / domain and the servers of the user's connections),
+  `ListNetworkShares` (a computer's folders, hidden and admin shares left
+  out), `ListWslDistributions` (the WSL distributions from the registry,
+  `\\wsl$\<name>`), and the path rules `IsNetworkServerPath` /
+  `NetworkServerName` / `NetworkServerPath`. The two network calls block.
+  Windows backend `OS/MSWindows/UltraCanvasWindowsNetworkPlaces.cpp`, which
+  loads `mpr.dll` / `netapi32.dll` from System32 at first use rather than
+  importing them; empty lists elsewhere (`ULTRACANVAS_HAS_NETWORK_PLACES`).
+  UltraFiler shows them as its *Linux* and *Network* sections. See
+  `Docs/UltraCanvas/UltraCanvasNetworkPlaces.md`.
+
+- **UltraCanvasPortableDevices** (`UltraCanvasPortableDevices.h`) — phones,
+  cameras and media players plugged in over USB that are not a drive (MTP /
+  PTP). `List` (`PortableDeviceInfo`: id, name, manufacturer, kind),
+  `ListFolder`, `Download`, `Upload`, `MakeFolder`, `Delete`, `Rename` by path
+  (`"/"` is the device, its folders its storages); every call blocks, safe
+  from any thread. `UltraCanvasPortableDeviceMonitor` reports plug-in and
+  pull-out. Backends: Windows Portable Devices on one COM thread of its own
+  (`OS/MSWindows/UltraCanvasWindowsPortableDevices.cpp`); macOS Image
+  Capture, read-only (`OS/MacOS/UltraCanvasMacOSPortableDevices.mm`: an
+  iPhone's photos, a camera's card); none on Linux (the desktop mounts
+  devices through GVFS - see above). Wired up by the
+  `ULTRACANVAS_HAS_PORTABLE_DEVICES` condition in the top-level
+  `CMakeLists.txt`. UltraFiler carries devices as remote drives
+  (`UltraFilerDeviceProvider.h`). See
+  `Docs/UltraCanvas/UltraCanvasPortableDevices.md`.
 
 - **UltraCanvasSessionLock** (`UltraCanvasSessionLock.h`) — a call when the
   desktop session locks and when it unlocks, so a program forgets what should
@@ -1395,7 +1552,11 @@ through any text LLM (`UltraAITextLLMTranslator.h`: `CreateTextLLMTranslator`,
 engine and a model on demand and supervises the engine as a loopback
 process shared between applications; the `local` provider
 (`UltraAILocal.h`: `CreateLocalTextLLM`, `CreateLocalEmbeddings`) serves
-chat and embeddings through it. `Docs/Modules/UltraAI/LocalRuntime.md`.
+chat and embeddings through it; the module's one library that draws,
+`UltraAI_UI` (`UltraAI/ui/`, `UltraAILocalModelDialog.h`:
+`UltraAILocalModelDialog::Show`, `NeedsInstall`), is the "Get a local model"
+dialog an application shows when a service needs a model that is not on
+this computer. `Docs/Modules/UltraAI/LocalRuntime.md`.
 
 ### **3. FileLoader**
 
@@ -1547,7 +1708,9 @@ future.
 **Plugin Categories (Tier 2 / Tier 3, located under `Plugins/UltraNet/`):**
 - Mail: SMTP, IMAP, POP3
 - Messaging: MQTT, AMQP
-- Remote Access: SSH, Telnet
+- Remote Access: SSH (shell, commands, and local port forwarding -
+  `UltraNet_OpenSshTunnel` in `UltraNetSsh.h`, the host key checked against
+  known_hosts or a trusted fingerprint), Telnet
 - Directory: LDAP, LDAPS
 - Streaming: RTSP, RTMP, RTP, SIP
 - IoT: CoAP, MQTT-SN, SNMP
@@ -1567,7 +1730,10 @@ worker (`UltraNet_HttpRequestAsync` with chunked `onDataChunk` streaming,
 `UltraNet_ResumeRequest`), SSE (`UltraNet_SseStream[Async]` +
 `UltraNetSseParser`), WebSocket (on libcurl ≥ 7.86 with ws support),
 sessions/cookies, TLS layering, DNS, and the URL utilities are implemented
-on libcurl. Remaining gaps are per-function and environment-dependent —
+on libcurl. `UltraNetCookieJar` (`UltraNet/UltraNetCookieJar.h`) is a
+browser's cookie jar with the rules in the open (RFC 6265bis: `Store`,
+`HeaderFor`, `Classify`, `SiteOf`, `ParseCookieDate`, kept in a text file),
+for a client that follows redirects itself; UltraWeb uses it. Remaining gaps are per-function and environment-dependent —
 build and run the `UltraNetApiStatus` probe tool for ground truth on a
 given machine. See `Docs/Modules/UltraNet/README.md`.
 
@@ -1605,12 +1771,26 @@ extended or replaced without changing callers.
   a time; server-side cursors on PostgreSQL)
 - `UltraDb_ExecBatch` (every statement of a script with its own result)
 - `UltraDb_Migrate`, `UltraDb_CancelQuery(connection)` (from any thread)
+- `UltraDb_AddStatementObserver`, `UltraDb_RemoveStatementObserver` (every
+  statement reported as it ends: text, bound-value count, rows, time, outcome)
 - `UltraDb_RegisterDriver`, `UltraDb_GetSupportedDrivers`
 - `UltraDb_ListConnections`, `UltraDb_ListSchemas`, `UltraDb_ListObjects`,
   `UltraDb_DescribeTable` (`UltraDatabaseSchema.h`: tables, columns, keys,
   indexes, triggers), `UltraDb_QuoteIdentifier`, `UltraDb_QuoteQualifiedName`
   (the one way a name goes into SQL text), `UltraDbResultSet::ColumnInfo`
   (declared type and source table / column per result column)
+- `UltraDb_SetTunnelOpener`, `UltraDb_UsesTunnel` (`UltraDatabaseTunnel.h`: a
+  server reached through an SSH bastion, named by the connection's `ssh_*`
+  options; `UltraDb_UseUltraNetSshTunnels()` in `UltraDatabaseSshTunnel.h`
+  opens the tunnels through UltraNet's SSH plug-in)
+- The `relay` driver, `UltraDb_SetRelayConnector`, `UltraDb_RelayConnections`,
+  `UltraDbRelayServer` (`UltraDatabaseRelay.h`: a connection whose every call
+  goes as JSON to a relay on the database's side, which offers connections by
+  name to users known by their tokens' hashes - or by a sign-in of the
+  program's own (`SetSignIn`, `UltraDb_RelaySignInOffer`) - read or write
+  each, within its limits and a statement time-out, every statement audited; `UltraDb_UseUltraNetRelay()` in
+  `UltraDatabaseRelayUltraNet.h` is a transport over UltraNet's WebSocket -
+  how UltraDBAdmin's browser build reaches its databases)
 
 **Driver Categories (Tier 2 / Tier 3, located under `Plugins/UltraDatabase/`):**
 - Relational (SQL): PostgreSQL, MySQL / MariaDB, Microsoft SQL Server
@@ -1624,16 +1804,21 @@ networked storage. It depends on UltraVault for credentials and,
 optionally, on UltraNet for TLS transport to networked engines.
 
 **Implementation status (this branch):** Stage 1 implemented, and the
-PostgreSQL driver from Stage 2. The SQLite core, the connection registry,
-parameterized queries, prepared statements, transactions and versioned
-migrations are built and tested (`UltraCanvas/{include,core}/UltraDatabase/`,
-`Tests/UltraDatabase`); the PostgreSQL driver
-(`UltraDatabasePostgresDriver.cpp`, over libpq) is built wherever libpq is
-found, verifies TLS by default and reads its password from UltraVault, and
-UltraFIBU's multi-user mode runs on it. Also built: schema introspection,
+PostgreSQL and MySQL / MariaDB drivers from Stage 2. The SQLite core, the
+connection registry, parameterized queries, prepared statements,
+transactions and versioned migrations are built and tested
+(`UltraCanvas/{include,core}/UltraDatabase/`, `Tests/UltraDatabase`); the
+PostgreSQL driver (`UltraDatabasePostgresDriver.cpp`, over libpq) is built
+wherever libpq is found, the MySQL / MariaDB driver
+(`UltraDatabaseMysqlDriver.cpp`, over MariaDB Connector/C, LGPL-2.1, linked
+dynamically) wherever libmariadb is; both verify TLS by default and read
+their password from UltraVault, and UltraFIBU's multi-user mode runs on
+PostgreSQL. Also built: schema introspection, server administration
+(`UltraDatabaseServer.h`: sessions, settings, sizes, stopping a session,
+the status a monitor samples), SSH tunnels, the relay,
 streaming cursors, per-statement scripts and cancelling. Still the Stage 2/3
-plan: the other networked drivers (MySQL / MariaDB, MSSQL, Redis, MongoDB,
-DuckDB), async queries, pooling and at-rest encryption. Details in
+plan: the other drivers (MSSQL, Redis, MongoDB, DuckDB), async queries,
+pooling and at-rest encryption. Details in
 `Docs/Modules/UltraDatabase/README.md`.
 
 ### **7. UltraWin**
@@ -1713,10 +1898,12 @@ and secure random generation are implemented, so no application, plugin or
 sibling module has to write its own. Sources under `UltraCanvas/{include,core}/UltraCrypt/`;
 see `Docs/Modules/UltraCrypt/README.md`.
 
-Scope is **data at rest and data integrity**. Transport security stays in
-UltraNet (per-platform and OS-native); credential *storage and policy* stay
-in UltraVault, which consumes UltraCrypt for its file-backed fallback
-backend.
+Scope is **data at rest and data integrity**, and the **X.509 certificates
+and CMS** of formats the world defined (S/MIME: `UltraCryptX509.h`, on a
+second, optional backend, OpenSSL 3, since libsodium has no public-key
+infrastructure). Transport security stays in UltraNet (per-platform and
+OS-native); credential *storage and policy* stay in UltraVault, which
+consumes UltraCrypt for its file-backed fallback backend.
 
 UltraCrypt elements must comply with the same rules as UltraNet and
 UltraDatabase:
@@ -1747,12 +1934,19 @@ backing library is never visible in a public header.
 - `UltraCrypt_AesCbcEncrypt`, `UltraCrypt_AesCbcDecrypt`,
   `UltraCrypt_GetAesBlockSize` (AES-128/192/256-CBC, interop only;
   constant-time portable software, independent of libsodium)
+- `UltraCrypt_AesCtrEncrypt`, `UltraCrypt_AesCtrDecrypt` (AES-CTR, interop
+  only - Matrix key exports and attachments, WebCrypto)
 - `UltraCrypt_DeriveKeyFromPassword`, `UltraCrypt_DeriveKeyHkdf`,
-  `UltraCrypt_RecommendedKdfParams`
+  `UltraCrypt_RecommendedKdfParams`, `UltraCrypt_DeriveKeyPbkdf2`
+  (PBKDF2-HMAC-SHA-256/512, interop only)
 - `UltraCrypt_Sign`, `UltraCrypt_Verify`, `UltraCrypt_SignFile`,
   `UltraCrypt_VerifyFile`, `UltraCrypt_GenerateSignatureKeyPair`,
   `UltraCrypt_SignatureKeyPairFromSeed`, `UltraCrypt_GetSignaturePublicKey`
   and the `UltraCrypt_GetSignature*Size` family (Ed25519, RFC 8032)
+- `UltraCrypt_KeyExchange`, `UltraCrypt_GenerateKeyExchangeKeyPair`,
+  `UltraCrypt_SignaturePublicKeyToKeyExchange`,
+  `UltraCrypt_SignatureSecretKeyToKeyExchange`,
+  `UltraCrypt_GetKeyExchangeKeySize` / `…SecretSize` (X25519, RFC 7748)
 - `UltraCrypt_RandomBytes`, `UltraCrypt_RandomSecureBuffer`,
   `UltraCrypt_RandomUInt32`, `UltraCrypt_GenerateUuidV4`
 - `UltraCrypt_SecureZero`, `UltraCrypt_ConstantTimeEquals`
@@ -1760,8 +1954,18 @@ backing library is never visible in a public header.
   secure buffer). The general RFC 4648 codecs — `Base32Encode`, `Base32Decode`,
   `Base64Encode`, `Base64Decode` — live in UltraCanvasUtils
   (`UltraCanvasTextUtils.h`, the platform-free text helpers compiled into the
-  `UltraCanvasTextUtils` library that both the framework and UltraCrypt link);
+  `UltraCanvasTextUtils` library that both the framework and UltraCrypt link;
+  it also holds `DecodeWindowsCodePage`, the Windows code pages 1250 / 1251 /
+  1252 / UTF-8 as UTF-8, for the `.xls` and `.msg` readers);
   UltraCrypt's former copies were removed.
+
+- One-time passwords (`UltraCrypt/UltraOtp.h`, `UltraCrypt/OtpAuthUri.h`,
+  namespace `UltraCanvas::Otp`): `GenerateHotp`, `GenerateTotp`,
+  `VerifyTotp` (a step either side, each code once, constant-time),
+  `NewTotpSecret`, `TimeStepCounter`, `SecondsRemaining`,
+  `ParseOtpAuthUri`, `BuildOtpAuthUri` - UltraAuthenticator shows the
+  codes, ChatCube Direct's sign-in checks them (until 2026-11 in
+  `Apps/UltraAuthenticator/otp/`)
 
 Streaming classes: `UltraCryptHasher`, `UltraCryptHmacHasher`.
 
@@ -1775,7 +1979,8 @@ defects, not shortcuts.
 **XChaCha20-Poly1305** and keyed with **Argon2id**; no algorithm menu is
 offered, because the formats are ours and a second choice would only be a
 second code path in every reader. AES-256-GCM is present solely for reading
-foreign data and is hardware-gated. Algorithm agility lives in format
+foreign data and is hardware-gated; AES-CBC, AES-CTR and PBKDF2 solely for
+formats defined elsewhere. Algorithm agility lives in format
 version numbers, not in per-file algorithm identifiers.
 
 **Implementation status (this branch):** Implemented on libsodium
@@ -1807,7 +2012,9 @@ the per-application vault on top of that: one encrypted vault file in the
 application's directory, unlocked without a prompt by an owner-only
 `device.key` beside it (`TryAutoUnlock`, with `GetLastUnlockStatus` /
 `DescribeUnlockStatus` saying why it stayed closed) or by a master password
-(`Unlock` -> `UnlockStatus`, `PersistDeviceKey`), per-account
+(`Unlock` -> `UnlockStatus`, `PersistDeviceKey`), a Primary Password
+(`ChangePassphrase`, `NeedsPassphrase`, `ForgetDeviceKey`, and
+`UseWithPassphrase` - one turn of the process lock with a typed one), per-account
 `Store`/`Retrieve`/`Has`/`Remove`, an OAuth2 token set beside the password
 slot (`StoreOAuthTokens`…, `MethodFor` -> `SignInMethod`), and migration of
 the 0.1 XOR-sidecar format on the first unlock. A `DeviceKeyVaultProfile`
@@ -2362,7 +2569,7 @@ command-line tool. Planned: keyframed parameters.
   `VideoFXProject`, `VideoFXProjectKind`, `VideoFXProxySettings`,
   `VideoFXAcceleration` (`VideoFXExportSettings::acceleration`), `VideoFXEncoderInfo`
   (`VideoFXExportSettings::keyframeInterval`), `VideoFXFileFormat`, `VideoFXFileKind`,
-  `VideoFXPictureReader`
+  `VideoFXPictureReader`, `VideoFXRecorderSettings`, `VideoFXPixelLayout`
 - Module: `VideoFX_GetVersion`, `VideoFX_GetBackendVersion`,
   `VideoFX_IsAvailable`, `VideoFX_GetLastError`, `VideoFX_ResultToString`,
   `VideoFX_IsVideoEncoderAvailable`, `VideoFX_IsAudioEncoderAvailable`,
@@ -2381,6 +2588,12 @@ command-line tool. Planned: keyframed parameters.
   and, inside an overlap, the transition), `VideoFX_RenderFrame` (one frame
   in one call), `VideoFX_PlanSlideshow` (a slideshow's segments and
   settings before it is rendered)
+- Recording: `VideoFXFrameRecorder` (`Open`, `PushFrame` - pixels with
+  their stride and layout, RGBA or BGRA, and the frame's time - `Close`,
+  `IsOpen`, `GetFrameCount`, `GetDuration`, `GetWidth` / `GetHeight`,
+  `GetEncoderName`): a live source's frames, pushed one by one as they
+  happen, encoded into a file as they come - what UltraSnip records the
+  screen with. No timeline, no sound, the fastest preset, fragmented MP4.
 - Editing and export: `VideoFX_Export` (the general call), `VideoFX_Transcode`,
   `VideoFX_Trim`, `VideoFX_ApplyEffects`, `VideoFX_Concatenate`,
   `VideoFX_ExtractAudio`, `VideoFX_TrimLossless`, `VideoFX_CreateSlideshow`,
@@ -2459,7 +2672,11 @@ API (`cmake/UltraCanvasWasmtime.cmake` downloads and hash-checks it, or takes
 `ULTRACANVAS_WASMTIME_DIR`), linked privately: no wasmtime header or type
 reaches a caller, so the engine can be replaced (WAMR is the measured
 fallback). UI-free and thread-agnostic; an instance belongs to the thread
-that created it.
+that created it. **In a browser** (Emscripten) the engine is the browser's
+own WebAssembly, through `UltraCanvas/OS/WASM/UltraCanvasWASMWasmHost.cpp`:
+the same header and rules, minus the per-call time limit (a browser cannot
+interrupt a call) and WebAssembly text. It is what runs UltraWeb apps in
+Chrome (`Docs/UltraWeb/UltraWebInTheBrowser.md`).
 
 **Implementation status:** Phase 1 started. On by default on Linux and on
 Windows (`ULTRACANVAS_ENABLE_WASM_HOST`). The MSYS2 CLANG64 / CLANGARM64
@@ -2483,9 +2700,145 @@ call running past its limit, malformed input - ends in a `WasmStatus`, never
 a crash or a hang of the host; after a trap or an interruption an instance
 refuses further calls; host functions are registered through the unchecked
 host-function API (measured at 7 ns per empty call against 82 ns for the
-checked one). Tests: `Tests/WasmHostTest.cpp`, `Tests/UltraWebGuestTest.cpp`.
+checked one). Tests: `Tests/WasmHostTest.cpp`, `Tests/UltraWebGuestTest.cpp`;
+the browser engine: `Apps/UltraWeb/browser/test/wasmhost-browser-test.cpp`
+(under Node).
 
-### **18. UltraLocalisation**
+---
+
+### **18. UltraIM**
+
+The instant-messaging framework: one UI-free API through which an
+application signs in to messengers, lists conversations, sends and receives
+messages and places calls, whatever the network. Every network is a provider
+plug-in — ChatCube Direct (the ULTRA OS native peer-to-peer messenger) first,
+then Matrix, Telegram, XMPP and other services with an open API. The first
+consumer is the ChatCube application (`Apps/ChatCube/`). Plan:
+`Docs/Research/ChatCubeDirectPlan.md`.
+
+UltraIM elements must comply with the following rules:
+- Clear structure; function and call names must be easily understandable
+- No UltraCanvas UI dependency: no element, window, list model or render
+  context in the module or its plug-ins
+- Networking only through UltraNet and UltraRTC; no socket, no libcurl call
+- Synchronous rejections (not connected, capability missing, bad argument)
+  return `UltraIMResult`; network outcomes arrive as `UltraIMEvent`s
+- Every event and every result callback is delivered through the dispatcher
+  the application installs (`UltraIM_SetEventDispatcher`); without one they
+  run on the calling thread
+- Providers are loadable modules exporting `UltraIM_PluginInit` and checked
+  against `ULTRAIM_PLUGIN_HOST_ABI_VERSION`
+- Credentials and private keys at rest go through UltraVault
+
+**Proposed Functions (Phase 1):**
+- `UltraIM_Initialize`, `UltraIM_Shutdown`
+- `UltraIM_RegisterProvider`, `UltraIM_UnregisterProvider`,
+  `UltraIM_RefreshProviders`, `UltraIM_ListProviders`
+- `UltraIM_SetEventDispatcher`, `UltraIM_Subscribe`, `UltraIM_Unsubscribe`
+- `UltraIM_SignIn`, `UltraIM_SignOut`, `UltraIM_GetConnectionState`
+- `UltraIM_FetchConversations`, `UltraIM_FetchMessages`
+- `UltraIM_SendText`, `UltraIM_SendFile`, `UltraIM_SendImage`,
+  `UltraIM_SendVideo`, `UltraIM_SendSticker`, `UltraIM_SendVoiceNote`,
+  `UltraIM_DeleteMessage`, `UltraIM_EditMessage`, `UltraIM_MarkRead`,
+  `UltraIM_SetTyping`
+- `UltraIM_DownloadAttachment` (a video, a file or a voice note fetched to
+  disk when asked for; pictures the provider fetches by itself)
+- `UltraIM_SetPreviewMaker`, `UltraIM_MakePreview` (the application's way
+  of making the preview picture a provider sends with a file)
+- `UltraIM_CanCall`, `UltraIM_StartCall`, `UltraIM_AcceptCall`,
+  `UltraIM_EndCall`, `UltraIM_SetCallMuted`, `UltraIM_SetCallCamera`,
+  `UltraIM_SetCallVideoSinks`
+- `UltraIM_FetchNearbyContacts` (people on the local network)
+- `UltraIM_ExportEncryptionKeys`, `UltraIM_ImportEncryptionKeys` (the keys
+  to encrypted conversations as a passphrase-protected file)
+- `UltraIM_FetchAccountProfile`, `UltraIM_UpdateAccountProfile` (the
+  account's name, and the e-mail and phone kept for its owner alone to
+  recover it), `UltraIM_GetSignInProtection`,
+  `UltraIM_StartAuthenticatorSetup`, `UltraIM_SetSignInProtection` (a
+  password and/or an authenticator code to sign in on the device)
+
+**Implementation status:** Phase 1 core implemented — target `UltraIM`
+(`UltraCanvas/{include,core}/UltraIM/`, umbrella `<UltraIM/UltraIM.h>`): the
+provider registry, the module loader (`UltraIM_PluginInit`, ABI 1), the event
+bus with the injected dispatcher, the merged conversation fetch and every
+forwarding call above. Provider: ChatCube Direct
+(`UltraCanvas/Plugins/UltraIM/direct/`, module `ultraim_direct`): key-pair
+identity, end-to-end encrypted messages peer to peer over UltraRTC data
+channels, the relay (`Server/ChatCubeRelay`) for rendezvous, the offline
+queue and groups, delivery and read receipts, local history, and 1:1 voice
+and video calls (signed invite / accept / reject / camera / hang-up over the
+relay, Opus and VP8 over an UltraRTC peer per call), and the local network
+with or without a relay (mDNS announcement and discovery, a TCP connection
+both ends authenticate with their identity keys carrying the signalling).
+Provider: Matrix (`UltraCanvas/Plugins/UltraIM/matrix/`, module
+`ultraim_matrix`): password or token sign-in with .well-known discovery,
+`/sync`, direct chats and groups, invitations, replies, edits, redactions,
+receipts, typing, presence, paged history, and end-to-end encryption -
+Olm and Megolm through vodozemac (Rust, behind a C ABI shim built with
+Corrosion), device keys trusted on first use, room keys shared per device,
+new rooms created encrypted, Element-compatible key export. Provider:
+Telegram (`UltraCanvas/Plugins/UltraIM/telegram/`, module `ultraim_telegram`)
+on TDLib's JSON interface, loaded at run time (not linked): sign-in in steps
+(`UltraIMAuthStep`, result `NeedsInput`), the main chat list, private chats
+and groups, replies, edits, deletion, read marks, typing, presence, history,
+people by username or phone number. Tests in `Tests/UltraIM`. See
+`Docs/Modules/UltraIM/README.md`.
+
+---
+
+### **19. UltraRTC**
+
+Real-time communication: WebRTC peer connections, data channels, and audio
+and video calls behind one UltraCanvas-owned API, `UltraRtc_*` free
+functions with opaque `UltraRtcHandle`s and `UltraRtcResult` from every
+blocking call. Design: `Docs/Research/UltraRTCDesignProposal.md`.
+
+**A wrapped engine.** libdatachannel (with libjuice, usrsctp, libsrtp),
+vendored under `UltraCanvas/third_party/libdatachannel/`, linked privately: no
+engine type reaches a caller. SDP passes through untouched; DTLS is
+mandatory. Built when OpenSSL is found; otherwise every call answers
+`Unsupported`.
+
+**Proposed Functions (Phase 1 — peers and data channels):**
+- `UltraRtc_Initialize`, `UltraRtc_Shutdown`, `UltraRtc_GetCapabilities`,
+  `UltraRtc_SetEventDispatcher`
+- `UltraRtc_CreatePeer`, `UltraRtc_ClosePeer`, `UltraRtc_SetPeerEventCallback`
+- `UltraRtc_CreateOffer`, `UltraRtc_CreateAnswer`,
+  `UltraRtc_SetLocalDescription`, `UltraRtc_SetRemoteDescription`,
+  `UltraRtc_AddIceCandidate`, `UltraRtc_GetConnectionState`
+- `UltraRtc_CreateDataChannel`, `UltraRtc_DataChannelClose`, `UltraRtc_GetDataChannelState`
+
+Also: `UltraRtc_IsAvailable`, `UltraRtc_GetLocalDescription`,
+`UltraRtc_GetRemoteDescription`, `UltraRtc_GetIceGatheringState`,
+`UltraRtc_GetSignalingState`, `UltraRtc_DataChannelSendText` /
+`UltraRtc_DataChannelSendBinary`, `UltraRtc_GetDataChannelLabel`,
+`UltraRtc_GetDataChannelPeer`, `UltraRtc_GetDataChannelBufferedAmount`.
+
+**Phase 2 — audio:** `UltraRtc_AddAudioTrack`, `UltraRtc_SendAudioFrame`,
+`UltraRtc_SetAudioFrameCallback`, `UltraRtc_SetTrackEnabled`,
+`UltraRtc_IsTrackOpen`, `UltraRtc_StartMicrophone` / `UltraRtc_StopMicrophone`,
+`UltraRtc_StartPlayback` / `UltraRtc_StopPlayback`.
+
+**Phase 3 — video:** `UltraRtc_AddVideoTrack`, `UltraRtc_SendVideoFrame`,
+`UltraRtc_SetVideoFrameCallback`, `UltraRtc_RequestKeyFrame`,
+`UltraRtc_StartCamera` / `UltraRtc_StopCamera`; pictures shown with the
+`UltraCanvasVideoTile` element.
+
+**Implementation status:** Phases 1 to 3 implemented — target `UltraRTC`
+(`UltraCanvas/{include,core}/UltraRTC/`, umbrella `<UltraRTC/UltraRTC.h>`):
+peers, ICE configuration, events through an injectable dispatcher, data
+channels with text and binary messages; Opus audio tracks (48 kHz mono,
+in-band FEC, loss concealment) with the microphone and speaker through
+`UltraCanvasAudioRecorder` (live mode) and `UltraCanvasAudioPlayer` (push
+sink); VP8 video tracks (libvpx through FFmpeg's libavcodec, our own RFC 7741
+payload handlers, key-frame recovery by PLI) with the camera through
+`UltraCanvasVideoRecorder`'s live preview. Opus needs libopus (pkg-config
+`opus`), VP8 FFmpeg; without them `caps.audio` / `caps.video` are false.
+Tests in `Tests/UltraRTC`. See `Docs/Modules/UltraRTC/README.md`.
+
+---
+
+### **20. UltraLocalisation**
 
 The text of every application in the person's language. `Tr("Save")`
 gives the translation of the English text written at the site from three

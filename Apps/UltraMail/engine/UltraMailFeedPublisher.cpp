@@ -184,13 +184,14 @@ std::string FeedPublisher::Notify(const MailNotification& notification) {
     std::lock_guard<std::mutex> lock(mutex_);
     if (!EnsureConnectedLocked()) return std::string();
     UltraMessage::SystemNotification n;
-    n.appId = "org.ultraos.ultramail";
+    n.appId = kUltraMailAppId;
     n.appName = "UltraMail";
     n.category = "email.arrived";
     n.summary = notification.summary;
     n.body = notification.body;
     n.icon = notification.iconPath;
     n.actions = {{"default", "Open"}};
+    n.launch = notification.launch;
     UltraCanvas::JSONValue body = UltraMessage::MakeSystemNotification(n);
     body.Set("accountId", notification.accountId);
     // The desktop entry (UltraMail.desktop) lets the notification server

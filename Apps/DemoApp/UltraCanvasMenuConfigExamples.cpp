@@ -1,20 +1,32 @@
 // Apps/DemoApp/UltraCanvasMenuConfigExamples.cpp
-// Demonstrates the menu configuration widget by letting the user customise the
-// UltraCanvasFilerWidget's file context menu (the right-click menu described in
-// PR #119). The command registry and default layout below mirror that menu:
-// Cut/Copy/Paste, Rename/Delete, New >, Compress/Extract, Display >, Open With >,
-// Print/Share/Attributes/Access and Settings.
+// Demonstrates the menus-and-toolbars editor (UltraCanvasCommandConfigWidget)
+// on a model of the UltraCanvasFilerWidget: its file context menu (Cut/Copy/
+// Paste, Rename/Delete, New >, Compress/Extract, Display >, Open With >,
+// Print/Share/Attributes/Access and Settings) and a toolbar of the same
+// commands in groups. One command registry builds both, and one editor edits
+// both.
 //
-// This example is self-contained: it models the Filer menu without depending on
-// the Filer widget itself, so the configurator can be demonstrated on a real,
-// meaningful menu. "Apply" rebuilds a live preview of the right-click menu.
+// This example is self-contained: it models the Filer without depending on the
+// Filer widget itself. "Apply" rebuilds the preview menu and the toolbar; a
+// right click on the toolbar shows its groups, folds the group under the
+// pointer, hides a command, and "Customise Toolbars" selects it in the editor.
+// Version: 2.0.0 - one editor for the menu and a toolbar (UltraCanvasCommandConfigWidget):
+//                  the Filer toolbar built from groups (MaterializeToolbar) with its
+//                  right-click menu (InstallToolbarContextMenu)
+// Version: 1.2.0 - the shared page look (UltraCanvasDemoPageKit): the preview
+//                  menu, status and configurator in one card that fills the area
 // Version: 1.1.0
+// Last Modified: 2026-11-02
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
-#include "UltraCanvasMenuConfigWidget.h"
-#include "UltraCanvasMenuRegistry.h"
+#include "UltraCanvasDemoPageKit.h"
+#include "UltraCanvasCommandConfigWidget.h"
+#include "UltraCanvasCommandRegistry.h"
 #include "UltraCanvasMenuLayout.h"
+#include "UltraCanvasToolbarLayout.h"
+#include "UltraCanvasAppSettings.h"
+#include "UltraCanvasConfig.h"
 #include "UltraCanvasMenu.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasContainer.h"
@@ -28,7 +40,7 @@ namespace {
     // Populate a registry that mirrors the UltraCanvasFilerWidget context menu.
     // Callbacks just log — in the real Filer these invoke CopySelection(),
     // DeleteSelection(), CreateNewDocument(), SetViewType(), etc.
-    void SeedFilerRegistry(UltraCanvasMenuRegistry& reg) {
+    void SeedFilerRegistry(UltraCanvasCommandRegistry& reg) {
         reg.Clear();
 
         auto log = [](const std::string& what) {
@@ -130,6 +142,49 @@ namespace {
         reg.RegisterAction("filer.attributes", "Extras", "Attributes", log("Attributes"));
         reg.RegisterAction("filer.access",     "Extras", "Access",     log("Access"));
         reg.RegisterAction("filer.settings",   "Extras", "Settings",   log("Settings"));
+
+        // The icons, by name: the shared line set has one size, so the
+        // resolver gives the same file to the menu and the toolbar.
+        const std::pair<const char*, const char*> icons[] = {
+            { "filer.cut", "cut.svg" }, { "filer.copy", "copy.svg" }, { "filer.paste", "paste.svg" },
+            { "filer.duplicate", "duplicate.svg" }, { "filer.rename", "rename.svg" },
+            { "filer.delete", "delete.svg" }, { "filer.compress", "compress.svg" },
+            { "filer.extract", "extract.svg" }, { "filer.view.details", "detail-view.svg" },
+            { "filer.view.list", "view-type.svg" }, { "filer.view.thumbs", "thumbnails.svg" },
+            { "filer.showhidden", "hidden-files.svg" }, { "filer.print", "print.svg" },
+            { "filer.settings", "settings.svg" }, { "filer.openwith", "open-with.svg" },
+        };
+        for (const auto& [id, file] : icons) {
+            if (const MenuCommand* found = reg.Find(id)) {
+                MenuCommand withIcon = *found;
+                withIcon.iconName = file;
+                reg.Register(withIcon);
+            }
+        }
+        reg.SetIconResolver([](const std::string& name, int) {
+            return NormalizePath(GetResourcesDir() + "media/icons/menu/" + name);
+        });
+    }
+
+    // The default toolbar: the same commands, a group per function.
+    ToolbarLayout BuildFilerToolbarDefaults() {
+        ToolbarLayout bar;
+        bar.name = "filer-toolbar";
+        ToolbarLayoutGroup view = ToolbarLayoutGroup::Make("view", "View",
+                { "filer.view.details", "filer.view.list", "filer.view.thumbs" });
+        view.folded = true;
+        ToolbarLayoutGroup extras = ToolbarLayoutGroup::Make("extras", "Extras", { "filer.print", "filer.settings" });
+        extras.visible = false;   // offered, off until the user turns it on
+        bar.groups = {
+            ToolbarLayoutGroup::Make("clipboard", "Clipboard",
+                                     { "filer.cut", "filer.copy", "filer.paste", "filer.duplicate" }),
+            ToolbarLayoutGroup::Make("file", "File", { "filer.rename", "filer.delete" }),
+            ToolbarLayoutGroup::Make("archive", "Archive", { "filer.compress", "filer.extract" }),
+            view,
+            ToolbarLayoutGroup::Make("display", "Display", { "filer.showhidden" }),
+            extras,
+        };
+        return bar;
     }
 
     // The default arrangement — a faithful model of the Filer's right-click menu.
@@ -200,92 +255,127 @@ namespace {
         return set;
     }
 
-    std::string DescribeLayout(const MenuLayoutSet& set) {
+    std::string DescribeLayout(const CommandLayoutSet& set) {
         size_t items = 0;
-        for (const auto& m : set.menus) {
+        for (const auto& m : set.menus.menus) {
             for (const auto& n : m.topLevel) items += 1 + n.children.size();
         }
-        return std::to_string(set.menus.size()) + " menu(s), "
-               + std::to_string(items) + " entries";
+        size_t groups = 0;
+        for (const auto& t : set.toolbars) {
+            for (const auto& g : t.groups) if (g.visible) ++groups;
+        }
+        return std::to_string(set.menus.menus.size()) + " menu(s), " + std::to_string(items) +
+               " entries; " + std::to_string(set.toolbars.size()) + " toolbar(s), " +
+               std::to_string(groups) + " group(s) shown";
     }
 } // namespace
 
 std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateMenuConfigExamples() {
-    auto container = std::make_shared<UltraCanvasContainer>("MenuConfigExamples", 0, 0, 1000, 640);
-    container->layout.SetFlexColumn().SetFlexGap(8)
-             .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-    container->SetPadding(12.0f);
+    auto container = DemoKit::CreatePage("MenuConfigExamples",
+        "Menus and Toolbars - one editor for the Filer's menu and toolbar",
+        "Left: the Filer's right-click menu and its toolbar, the toolbar's groups and commands "
+        "with a box each - shown or not. Middle: add, remove, reorder, a new group, fold a "
+        "group into one button. Right: every Filer command by category. Apply rebuilds the menu "
+        "and the toolbar below now; Save also keeps them. Right-click the toolbar for its "
+        "groups.");
+    // The editor's lists scroll themselves: the page is the area's height and
+    // the editor takes what the texts leave.
+    container->SetFillsArea(true);
 
-    auto title = std::make_shared<UltraCanvasLabel>("MenuConfigTitle",
-        "Menu Configurator — customise the Filer file menu");
-    title->SetFontSize(16);
-    title->SetFontWeight(FontWeight::Bold);
-    container->AddChild(title);
+    auto card = DemoKit::CreateCard("MenuConfigCard");
+    DemoKit::Add(container, card, 1);
+    card->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0)).SetFlexShrink(1);
 
-    auto desc = std::make_shared<UltraCanvasLabel>("MenuConfigDesc",
-        "Left: the Filer's right-click menu (under the Program root). Middle: add / remove / "
-        "reorder. Right: every available Filer command by category. Apply rebuilds the preview "
-        "menu now (temporary); Save also writes the layout to disk. Open the 'Filer menu' button "
-        "above to try the configured menu.");
-    desc->SetWrap(TextWrap::WrapWord);
-    container->AddChild(desc);
+    // ----- live previews: a menubar whose single entry opens the configured
+    // context menu, and the Filer toolbar -----
+    auto previewMenu = std::make_shared<UltraCanvasMenu>("MenuConfigPreviewBar");
+    previewMenu->SetMenuType(MenuType::Menubar);
+    previewMenu->size.height = CSSLayout::Dimension::Px(28);
+    DemoKit::Add(card, previewMenu);
 
-    // ----- live preview: a menubar whose single entry opens the configured
-    // context menu, so Apply is visible and clickable -----
-    auto preview = std::make_shared<UltraCanvasMenu>("MenuConfigPreviewBar");
-    preview->SetMenuType(MenuType::Menubar);
-    preview->size.height = CSSLayout::Dimension::Px(28);
-    preview->layoutItem.SetFlexShrink(0);
-    container->AddChild(preview);
+    auto toolbar = std::make_shared<UltraCanvasToolbar>("MenuConfigFilerToolbar", 0, 0, 0, 38);
+    toolbar->SetOverflowMode(ToolbarOverflowMode::Menu);
+    DemoKit::Add(card, toolbar);
 
-    auto status = std::make_shared<UltraCanvasLabel>("MenuConfigStatus", "Ready.");
+    auto status = DemoKit::AddText(card, "MenuConfigStatus", "Ready.");
     status->SetTextColor(Color(90, 90, 90, 255));
-    container->AddChild(status);
 
-    // ----- registry + default layout (demo-local so the sample commands don't
+    // ----- registry + defaults (demo-local so the sample commands don't
     // leak into any real application registry) -----
-    static UltraCanvasMenuRegistry filerRegistry;
+    static UltraCanvasCommandRegistry filerRegistry;
     SeedFilerRegistry(filerRegistry);
-    MenuLayoutSet defaults = BuildFilerContextLayout();
+    const MenuLayoutSet menuDefaults = BuildFilerContextLayout();
+    const ToolbarLayout toolbarDefaults = BuildFilerToolbarDefaults();
+    auto toolbarLayout = std::make_shared<ToolbarLayout>(toolbarDefaults);
 
-    auto applyToPreview = [preview, status](const MenuLayoutSet& set) {
-        preview->Clear();
+    auto applyMenu = [previewMenu](const MenuLayoutSet& set) {
+        previewMenu->Clear();
         if (!set.menus.empty()) {
             MenuItemData rootItem;
             rootItem.type = MenuItemType::Submenu;
             rootItem.label = "Filer menu";
             rootItem.subItems = MaterializeLayout(set.menus.front(), filerRegistry);
-            preview->AddItem(rootItem);
+            previewMenu->AddItem(rootItem);
         }
-        status->SetText("Applied (preview menu updated): " + DescribeLayout(set));
     };
 
-    // ----- the configuration widget -----
-    auto widget = std::make_shared<UltraCanvasMenuConfigWidget>("MenuConfigWidget");
-    widget->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    // ----- the editor -----
+    auto widget = std::make_shared<UltraCanvasCommandConfigWidget>("MenuConfigWidget");
     widget->SetRegistry(&filerRegistry);
-    widget->SetLayoutSet(defaults);
+    widget->SetLayoutSet(menuDefaults);
+    widget->AddToolbar(*toolbarLayout, toolbarDefaults, "Filer toolbar");
+    UltraCanvasCommandConfigWidget* editor = widget.get();
 
-    widget->onApply = [applyToPreview](const MenuLayoutSet& set) {
-        applyToPreview(set);
+    // The toolbar, rebuilt from its layout; its right-click menu edits that
+    // layout, and the editor then shows the change.
+    auto refreshEditor = [editor, toolbarLayout, toolbarDefaults]() {
+        editor->ClearToolbars();
+        editor->AddToolbar(*toolbarLayout, toolbarDefaults, "Filer toolbar");
     };
-    widget->onSave = [applyToPreview, status](const MenuLayoutSet& set) {
-        applyToPreview(set);
-        std::string path = PathToUtf8(std::filesystem::temp_directory_path() / "ultracanvas_filer_menu.txt");
-        bool ok = SaveMenuLayoutSet(set, path);
-        status->SetText(ok ? ("Saved to " + path) : "Save failed.");
+    MaterializeToolbar(*toolbar, *toolbarLayout, filerRegistry);
+    InstallToolbarContextMenu(*toolbar, toolbarLayout, filerRegistry,
+        [refreshEditor, status]() {
+            refreshEditor();
+            status->SetText("Toolbar changed from its right-click menu.");
+        },
+        [editor, status]() {
+            editor->SelectLayoutNode("t0");
+            status->SetText("The Filer toolbar is selected in the editor below.");
+        });
+
+    auto applyAll = [applyMenu, toolbar, toolbarLayout, status](const CommandLayoutSet& set) {
+        applyMenu(set.menus);
+        if (const ToolbarLayout* bar = set.FindToolbar("filer-toolbar")) {
+            *toolbarLayout = *bar;
+            MaterializeToolbar(*toolbar, *toolbarLayout, filerRegistry);
+        }
+        status->SetText("Applied (menu and toolbar updated): " + DescribeLayout(set));
+    };
+    widget->onApply = applyAll;
+    widget->onSave = [applyAll, status, toolbarDefaults](const CommandLayoutSet& set) {
+        applyAll(set);
+        const std::filesystem::path folder = std::filesystem::temp_directory_path();
+        const std::string menuPath = PathToUtf8(folder / "ultracanvas_filer_menu.txt");
+        auto settings = UltraCanvasAppSettings::AtFile(PathToUtf8(folder / "ultracanvas_filer_settings.json"));
+        settings.Load();
+        bool ok = SaveMenuLayoutSet(set.menus, menuPath);
+        if (const ToolbarLayout* bar = set.FindToolbar("filer-toolbar")) {
+            ok = SaveToolbarLayout(settings, *bar, toolbarDefaults) && ok;
+        }
+        status->SetText(ok ? ("Saved to " + menuPath + " and " + settings.File()) : "Save failed.");
     };
     widget->onReset = [status]() {
-        status->SetText("Reset to the default Filer menu.");
+        status->SetText("Reset to the default Filer menu and toolbar.");
     };
     widget->onCancel = [status]() {
         status->SetText("Cancelled (no changes applied).");
     };
 
-    container->AddChild(widget);
+    DemoKit::Add(card, widget, 1);
+    widget->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0)).SetFlexShrink(1);
 
-    // Seed the preview so it isn't empty on first view.
-    applyToPreview(defaults);
+    // Seed the preview menu so it isn't empty on first view.
+    applyMenu(menuDefaults);
 
     return container;
 }

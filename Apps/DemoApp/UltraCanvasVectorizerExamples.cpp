@@ -6,13 +6,17 @@
 // per-parameter dropdowns and sliders); the resulting SVG is written to a
 // temp file, rendered through the existing image element (which understands
 // SVG) and can be saved anywhere, as any type FileLoader writes.
+// Version: 0.4.0 - the shared page look (UltraCanvasDemoPageKit): input,
+//                  parameters and output as cards that wrap, every text sized
+//                  to fit, buttons as wide as their text
 // Version: 0.3.0 - Save offers every vector and bitmap type FileLoader writes
 //                  (a bitmap drawn at any size); Open its picture types
 // Version: 0.2.0
-// Last Modified: 2026-10-13
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "UltraCanvasPathUtf8.h"
 
 #ifdef ULTRACANVAS_HAS_VECTORIZER_PLUGIN
@@ -47,9 +51,6 @@ namespace {
 constexpr const char* kDefaultVectorizerImage = "media/images/Vectorizer-demo.png";
 
 // ===== PALETTE (shared with the OCR demo screen) =====
-const Color kPageBg      (248, 250, 252, 255);
-const Color kCardBg      (255, 255, 255, 255);
-const Color kCardBorder  (226, 232, 240, 255);
 const Color kFrameBg     (241, 245, 249, 255);
 const Color kOutputBg    (250, 250, 246, 255);
 const Color kFrameBorder (203, 213, 225, 255);
@@ -257,85 +258,62 @@ std::string CaptionText(const std::string& title, float value,
     return title + ": " + FormatNumber(value, decimals) + unit;
 }
 
+// A button as wide as its text, at least the width it had.
+std::shared_ptr<UltraCanvasButton> MakeVectorizerButton(const std::string& id, const std::string& text,
+                                                        float minWidth, float height) {
+    auto button = std::make_shared<UltraCanvasButton>(id, 0, 0, 0, height, text);
+    CSSLayout::BoxConstraints limits;
+    limits.minWidth = CSSLayout::Dimension::Px(minWidth);
+    button->boxConstraints = limits;
+    return button;
+}
+
 } // namespace
 
 std::shared_ptr<UltraCanvasUIElement>
 UltraCanvasDemoApplication::CreateVectorizerExamples() {
-    // ===== PAGE GEOMETRY =====
-    const int pageW = 1020, pageH = 750;
-    const int topY = 74, colH = 660;
-    const int inputX  = 16,  inputW  = 300;   // source bitmap
-    const int paramX  = 328, paramW  = 360;   // tracing parameters
-    const int outputX = 700, outputW = 304;   // resulting SVG
-    const int pad = 14;
-
-    auto container = std::make_shared<UltraCanvasContainer>(
-        "VectorizerDemoPage", 0, 0, pageW, pageH);
-    container->SetBackgroundColor(kPageBg);
+    auto container = DemoKit::CreatePage("VectorizerDemoPage",
+        "Raster to SVG Vectorizer (VTracer backend)",
+        std::string("Load a bitmap, tune the tracing quality, press "
+                    "\"Vectorize\", then save the SVG.  Backend: ")
+        + UltraCanvasVectorizer::BackendVersion());
     UltraCanvasContainer* pageRaw = container.get();
 
-    // ===== HEADER =====
-    auto header = std::make_shared<UltraCanvasLabel>(
-        "VecHeader", 16, 14, pageW - 32, 26);
-    header->SetText("Raster to SVG Vectorizer (VTracer backend)");
-    header->SetFontSize(18);
-    header->SetFontWeight(FontWeight::Bold);
-    header->SetTextColor(kTextStrong);
-    container->AddChild(header);
-
-    auto subhead = std::make_shared<UltraCanvasLabel>(
-        "VecSub", 16, 44, pageW - 32, 20);
-    subhead->SetText(std::string("Load a bitmap, tune the tracing quality, press "
-                                 "\"Vectorize\", then save the SVG.  Backend: ")
-                     + UltraCanvasVectorizer::BackendVersion());
-    subhead->SetFontSize(12);
-    subhead->SetTextColor(kTextMuted);
-    container->AddChild(subhead);
+    // Input | parameters | output; a card that no longer fits beside the
+    // others wraps under them.
+    auto columns = DemoKit::AddRow(container, "VecColumns");
 
     // ===== LEFT: input image + actions =====
-    auto inputCard = std::make_shared<UltraCanvasContainer>(
-        "VecInputCard", inputX, topY, inputW, colH);
-    inputCard->SetBackgroundColor(kCardBg);
-    inputCard->SetBorders(1, kCardBorder);
-    container->AddChild(inputCard);
+    // The card asks for its frame's width (plus padding and border).
+    const int inputFrameW = 272, outputFrameW = 276, frameH = 494;
+    const float cardChrome = 2 * DemoKit::kCardPadding + 2;
+    auto inputCard = DemoKit::AddCard(columns, "VecInputCard", "", "", inputFrameW + cardChrome);
+    DemoKit::AddHeading(inputCard, "VecInputTitle", "Input bitmap");
 
-    const int inputInnerW = inputW - 2 * pad;
-
-    auto inputTitle = std::make_shared<UltraCanvasLabel>(
-        "VecInputTitle", pad, 12, inputInnerW, 20);
-    inputTitle->SetText("Input bitmap");
-    inputTitle->SetFontSize(13);
-    inputTitle->SetFontWeight(FontWeight::Bold);
-    inputTitle->SetTextColor(kTextStrong);
-    inputCard->AddChild(inputTitle);
-
+    // The preview frame keeps its size; the image sits inside it.
     auto inputFrame = std::make_shared<UltraCanvasContainer>(
-        "VecInputFrame", pad, 40, inputInnerW, 494);
+        "VecInputFrame", 0, 0, inputFrameW, frameH);
     inputFrame->SetBackgroundColor(kFrameBg);
     inputFrame->SetBorders(1, kFrameBorder);
-    inputCard->AddChild(inputFrame);
+    DemoKit::AddFixed(inputCard, inputFrame);
 
     auto inputImage = std::make_shared<UltraCanvasImageElement>(
-        "VecInputImage", 4, 4, inputInnerW - 8, 486);
+        "VecInputImage", 4, 4, inputFrameW - 8, frameH - 8);
     const std::string defaultPath =
         NormalizePath(GetResourcesDir() + kDefaultVectorizerImage);
     inputImage->LoadFromFile(defaultPath);
     inputImage->SetFitMode(ImageFitMode::Contain);
     inputFrame->AddChild(inputImage);
 
-    auto inputPathLabel = std::make_shared<UltraCanvasLabel>(
-        "VecInputPath", pad, 542, inputInnerW, 16);
-    inputPathLabel->SetText(BaseName(defaultPath));
+    auto inputPathLabel = DemoKit::AddCaption(inputCard, "VecInputPath", BaseName(defaultPath));
     inputPathLabel->SetTooltip(defaultPath);
-    inputPathLabel->SetFontSize(10);
     inputPathLabel->SetTextColor(kTextMuted);
-    inputCard->AddChild(inputPathLabel);
 
-    auto inputSizeLabel = std::make_shared<UltraCanvasLabel>(
-        "VecInputSize", pad, 560, inputInnerW, 16);
-    inputSizeLabel->SetFontSize(10);
+    auto inputSizeLabel = DemoKit::AddCaption(inputCard, "VecInputSize", "");
     inputSizeLabel->SetTextColor(kTextFaded);
-    inputCard->AddChild(inputSizeLabel);
+
+    // Open and Vectorize, built with their callbacks below.
+    auto inputActions = DemoKit::AddRow(inputCard, "VecInputActions", 8);
 
     // Reports the pixel dimensions of whatever is currently loaded — the
     // single biggest driver of both trace time and SVG size.
@@ -351,43 +329,35 @@ UltraCanvasDemoApplication::CreateVectorizerExamples() {
     describeInput();
 
     // ===== MIDDLE: tracing parameters =====
-    auto paramCard = std::make_shared<UltraCanvasContainer>(
-        "VecParamCard", paramX, topY, paramW, colH);
-    paramCard->SetBackgroundColor(kCardBg);
-    paramCard->SetBorders(1, kCardBorder);
-    container->AddChild(paramCard);
-
-    const int paramInnerW = paramW - 2 * pad;
-    const int ddX = pad + 118, ddW = paramInnerW - 118;
-
-    auto paramTitle = std::make_shared<UltraCanvasLabel>(
-        "VecParamTitle", pad, 12, paramInnerW, 20);
-    paramTitle->SetText("Tracing parameters");
-    paramTitle->SetFontSize(13);
-    paramTitle->SetFontWeight(FontWeight::Bold);
-    paramTitle->SetTextColor(kTextStrong);
-    paramCard->AddChild(paramTitle);
+    auto paramCard = DemoKit::AddCard(columns, "VecParamCard", "", "", 360);
+    DemoKit::AddHeading(paramCard, "VecParamTitle", "Tracing parameters");
 
     // Shared configuration edited by every control on this card.
     auto cfg     = std::make_shared<VectorizerConfig>(Presets().front().cfg);
     auto syncing = std::make_shared<bool>(false);
 
-    // Builds "caption + dropdown" on one row and returns the dropdown.
+    // Builds "caption + dropdown" on one row and returns the dropdown. The
+    // captions are at least 112 px so the dropdowns line up; a longer one
+    // pushes its dropdown onto the next line.
     auto addDropdownRow = [&](const std::string& id, const std::string& caption,
                               const std::vector<std::string>& items,
-                              int selected, int y) {
-        auto lbl = std::make_shared<UltraCanvasLabel>(
-            "VecLbl" + id, pad, y + 4, 112, 18);
-        lbl->SetText(caption);
+                              int selected) {
+        auto row = DemoKit::AddRow(paramCard, "VecRow" + id, 6);
+        auto lbl = DemoKit::CreateText("VecLbl" + id, caption);
         lbl->SetFontSize(11);
         lbl->SetTextColor(kTextStrong);
-        paramCard->AddChild(lbl);
+        lbl->SetAlignment(TextAlignment::Left, VerticalAlignment::Middle);
+        CSSLayout::BoxConstraints limits;
+        limits.minWidth = CSSLayout::Dimension::Px(112);
+        lbl->boxConstraints = limits;
+        DemoKit::Add(row, lbl);
 
         auto dd = std::make_shared<UltraCanvasDropdown>(
-            "VecDD" + id, ddX, y, ddW, 26);
+            "VecDD" + id, 0, 0, 214, 26);
         for (const std::string& item : items) dd->AddItem(item);
         dd->SetSelectedIndex(selected, false);
-        paramCard->AddChild(dd);
+        DemoKit::AddStretched(row, dd);
+        dd->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(160));
         return dd;
     };
 
@@ -395,47 +365,40 @@ UltraCanvasDemoApplication::CreateVectorizerExamples() {
     for (const QualityPreset& p : Presets()) presetItems.push_back(p.label);
     presetItems.push_back(kCustomPresetLabel);
 
-    auto presetDD = addDropdownRow("Preset", "Quality preset", presetItems, 0, 42);
+    auto presetDD = addDropdownRow("Preset", "Quality preset", presetItems, 0);
     auto colorDD  = addDropdownRow("Color", "Colour mode",
                                    {"Colour (clustered)", "Binary (black & white)"},
-                                   IndexOfColorMode(cfg->colorMode), 78);
+                                   IndexOfColorMode(cfg->colorMode));
     auto hierDD   = addDropdownRow("Hier", "Shape hierarchy",
                                    {"Stacked (overlapping)", "Cutout (no overlap)"},
-                                   IndexOfHierarchy(cfg->hierarchy), 114);
+                                   IndexOfHierarchy(cfg->hierarchy));
     auto pathDD   = addDropdownRow("Path", "Path mode",
                                    {"Spline (curves)", "Polygon (straight)", "Pixel (exact)"},
-                                   IndexOfPathMode(cfg->pathMode), 150);
+                                   IndexOfPathMode(cfg->pathMode));
 
-    auto presetHelp = std::make_shared<UltraCanvasLabel>(
-        "VecPresetHelp", pad, 182, paramInnerW, 32);
-    presetHelp->SetText(Presets().front().help);
-    presetHelp->SetFontSize(10);
-    presetHelp->SetWrap(TextWrap::WrapWord);
+    auto presetHelp = DemoKit::AddCaption(paramCard, "VecPresetHelp", Presets().front().help);
     presetHelp->SetTextColor(kTextMuted);
-    paramCard->AddChild(presetHelp);
 
     // ===== Numeric parameters =====
     auto sliders = std::make_shared<std::vector<ParamSlider>>();
 
     auto addSlider = [&](const std::string& id, const std::string& title,
                          const std::string& unit, int decimals,
-                         float minValue, float maxValue, float step, int y,
+                         float minValue, float maxValue, float step,
                          std::function<float(const VectorizerConfig&)> get,
                          std::function<void(VectorizerConfig&, float)> set,
                          std::function<bool(const VectorizerConfig&)> applies) {
-        auto caption = std::make_shared<UltraCanvasLabel>(
-            "VecCap" + id, pad, y, paramInnerW, 16);
-        caption->SetText(CaptionText(title, get(*cfg), decimals, unit));
+        auto caption = DemoKit::AddText(paramCard, "VecCap" + id,
+                                        CaptionText(title, get(*cfg), decimals, unit));
         caption->SetFontSize(11);
         caption->SetTextColor(kTextStrong);
-        paramCard->AddChild(caption);
 
         auto slider = std::make_shared<UltraCanvasSlider>(
-            "VecSld" + id, pad, y + 18, paramInnerW, 20);
+            "VecSld" + id, 0, 0, 332, 20);
         slider->SetRange(minValue, maxValue);
         slider->SetStep(step);
         slider->SetValue(get(*cfg));
-        paramCard->AddChild(slider);
+        DemoKit::AddStretched(paramCard, slider);
 
         sliders->push_back(ParamSlider{slider.get(), caption.get(), title, unit,
                                        decimals, std::move(get), std::move(set),
@@ -453,120 +416,87 @@ UltraCanvasDemoApplication::CreateVectorizerExamples() {
         return c.pathMode == VectorizerPathMode::Spline;
     };
 
-    int sliderY = 220;
-    const int sliderPitch = 42;
-
-    addSlider("Speckle", "Speckle filter", " px", 0, 0, 64, 1, sliderY,
+    addSlider("Speckle", "Speckle filter", " px", 0, 0, 64, 1,
               [](const VectorizerConfig& c) { return static_cast<float>(c.filterSpeckle); },
               [](VectorizerConfig& c, float v) { c.filterSpeckle = static_cast<int>(v); },
               alwaysApplies);
-    sliderY += sliderPitch;
 
-    addSlider("Precision", "Colour precision", " bits", 0, 1, 8, 1, sliderY,
+    addSlider("Precision", "Colour precision", " bits", 0, 1, 8, 1,
               [](const VectorizerConfig& c) { return static_cast<float>(c.colorPrecision); },
               [](VectorizerConfig& c, float v) { c.colorPrecision = static_cast<int>(v); },
               colourOnly);
-    sliderY += sliderPitch;
 
-    addSlider("Layer", "Layer difference", "", 0, 0, 255, 1, sliderY,
+    addSlider("Layer", "Layer difference", "", 0, 0, 255, 1,
               [](const VectorizerConfig& c) { return static_cast<float>(c.layerDifference); },
               [](VectorizerConfig& c, float v) { c.layerDifference = static_cast<int>(v); },
               colourOnly);
-    sliderY += sliderPitch;
 
-    addSlider("Corner", "Corner threshold", "°", 0, 0, 180, 1, sliderY,
+    addSlider("Corner", "Corner threshold", "°", 0, 0, 180, 1,
               [](const VectorizerConfig& c) { return static_cast<float>(c.cornerThreshold); },
               [](VectorizerConfig& c, float v) { c.cornerThreshold = static_cast<int>(v); },
               curveOrPolygon);
-    sliderY += sliderPitch;
 
-    addSlider("Length", "Path length threshold", " px", 1, 0.5f, 10.0f, 0.5f, sliderY,
+    addSlider("Length", "Path length threshold", " px", 1, 0.5f, 10.0f, 0.5f,
               [](const VectorizerConfig& c) { return static_cast<float>(c.lengthThreshold); },
               [](VectorizerConfig& c, float v) { c.lengthThreshold = static_cast<double>(v); },
               curveOrPolygon);
-    sliderY += sliderPitch;
 
-    addSlider("Splice", "Splice threshold", "°", 0, 0, 180, 1, sliderY,
+    addSlider("Splice", "Splice threshold", "°", 0, 0, 180, 1,
               [](const VectorizerConfig& c) { return static_cast<float>(c.spliceThreshold); },
               [](VectorizerConfig& c, float v) { c.spliceThreshold = static_cast<int>(v); },
               splineOnly);
-    sliderY += sliderPitch;
 
-    addSlider("Iterations", "Curve-fitting iterations", "", 0, 1, 30, 1, sliderY,
+    addSlider("Iterations", "Curve-fitting iterations", "", 0, 1, 30, 1,
               [](const VectorizerConfig& c) { return static_cast<float>(c.maxIterations); },
               [](VectorizerConfig& c, float v) { c.maxIterations = static_cast<int>(v); },
               splineOnly);
 
+    // Across the card, as the sliders.
     auto resetBtn = std::make_shared<UltraCanvasButton>(
-        "VecResetBtn", pad, 524, paramInnerW, 32);
-    resetBtn->SetText("Reset to defaults");
+        "VecResetBtn", 0, 0, 0, 32, "Reset to defaults");
     SetFlatButtonIcon(*resetBtn, "menu/reset.svg");
     resetBtn->SetFontSize(12);
     resetBtn->SetColors(kNeutralBtn, kNeutralBtnH);
     resetBtn->SetTextColors(kTextStrong);
     resetBtn->SetCornerRadius(6);
-    paramCard->AddChild(resetBtn);
+    DemoKit::Add(paramCard, resetBtn);
 
-    auto paramNote = std::make_shared<UltraCanvasLabel>(
-        "VecParamNote", pad, 566, paramInnerW, 32);
-    paramNote->SetText("Greyed-out controls have no effect in the selected "
-                       "colour / path mode.");
-    paramNote->SetFontSize(10);
-    paramNote->SetWrap(TextWrap::WrapWord);
+    auto paramNote = DemoKit::AddCaption(paramCard, "VecParamNote",
+        "Greyed-out controls have no effect in the selected colour / path mode.");
     paramNote->SetTextColor(kTextFaded);
-    paramCard->AddChild(paramNote);
 
     // ===== RIGHT: SVG output + status =====
-    auto outputCard = std::make_shared<UltraCanvasContainer>(
-        "VecOutputCard", outputX, topY, outputW, colH);
-    outputCard->SetBackgroundColor(kCardBg);
-    outputCard->SetBorders(1, kCardBorder);
-    container->AddChild(outputCard);
-
-    const int outputInnerW = outputW - 2 * pad;
-
-    auto outputTitle = std::make_shared<UltraCanvasLabel>(
-        "VecOutputTitle", pad, 12, outputInnerW, 20);
-    outputTitle->SetText("SVG output");
-    outputTitle->SetFontSize(13);
-    outputTitle->SetFontWeight(FontWeight::Bold);
-    outputTitle->SetTextColor(kTextStrong);
-    outputCard->AddChild(outputTitle);
+    auto outputCard = DemoKit::AddCard(columns, "VecOutputCard", "", "", outputFrameW + cardChrome);
+    DemoKit::AddHeading(outputCard, "VecOutputTitle", "SVG output");
 
     auto outputFrame = std::make_shared<UltraCanvasContainer>(
-        "VecOutputFrame", pad, 40, outputInnerW, 494);
+        "VecOutputFrame", 0, 0, outputFrameW, frameH);
     outputFrame->SetBackgroundColor(kOutputBg);
     outputFrame->SetBorders(1, kFrameBorder);
-    outputCard->AddChild(outputFrame);
+    DemoKit::AddFixed(outputCard, outputFrame);
 
     auto outputImage = std::make_shared<UltraCanvasImageElement>(
-        "VecOutputImage", 4, 4, outputInnerW - 8, 486);
+        "VecOutputImage", 4, 4, outputFrameW - 8, frameH - 8);
     outputImage->SetFitMode(ImageFitMode::Contain);
     outputFrame->AddChild(outputImage);
 
-    auto statusLabel = std::make_shared<UltraCanvasLabel>(
-        "VecStatus", pad, 542, outputInnerW, 16);
-    statusLabel->SetText("(press \"Vectorize\" to trace the input)");
-    statusLabel->SetFontSize(10);
+    auto statusLabel = DemoKit::AddCaption(outputCard, "VecStatus",
+                                           "(press \"Vectorize\" to trace the input)");
     statusLabel->SetTextColor(kTextMuted);
-    outputCard->AddChild(statusLabel);
 
-    auto detailLabel = std::make_shared<UltraCanvasLabel>(
-        "VecDetail", pad, 560, outputInnerW, 16);
-    detailLabel->SetFontSize(10);
+    auto detailLabel = DemoKit::AddCaption(outputCard, "VecDetail", "");
     detailLabel->SetTextColor(kTextFaded);
-    outputCard->AddChild(detailLabel);
 
+    // Across the card, as the frame above it.
     auto saveBtn = std::make_shared<UltraCanvasButton>(
-        "VecSaveBtn", pad, 590, outputInnerW, 36);
-    saveBtn->SetText("Save SVG");
+        "VecSaveBtn", 0, 0, 0, 36, "Save SVG");
     SetFlatButtonIcon(*saveBtn, "menu/save.svg");
     saveBtn->SetFontSize(12);
     saveBtn->SetColors(kSaveBtn, kSaveBtnH);
     saveBtn->SetTextColors(Color(255, 255, 255, 255));
     saveBtn->SetCornerRadius(6);
     saveBtn->SetDisabled(true);   // enabled once an SVG has been produced
-    outputCard->AddChild(saveBtn);
+    DemoKit::Add(outputCard, saveBtn);
 
     // ===== Shared state =====
     auto currentPath = std::make_shared<std::string>(defaultPath);
@@ -773,10 +703,7 @@ UltraCanvasDemoApplication::CreateVectorizerExamples() {
     };
 
     // ===== INPUT ACTIONS =====
-    const int btnY = 590;
-    auto openBtn = std::make_shared<UltraCanvasButton>(
-        "VecOpenBtn", pad, btnY, 130, 36);
-    openBtn->SetText("Open");
+    auto openBtn = MakeVectorizerButton("VecOpenBtn", "Open", 130, 36);
     SetFlatButtonIcon(*openBtn, "menu/folder.svg");
     openBtn->SetFontSize(12);
     openBtn->SetColors(kNeutralBtn, kNeutralBtnH);
@@ -813,18 +740,16 @@ UltraCanvasDemoApplication::CreateVectorizerExamples() {
                 detailLabel->SetText("");
             });
     };
-    inputCard->AddChild(openBtn);
+    DemoKit::Add(inputActions, openBtn);
 
-    auto runBtn = std::make_shared<UltraCanvasButton>(
-        "VecRunBtn", pad + 138, btnY, 134, 36);
-    runBtn->SetText("Vectorize");
+    auto runBtn = MakeVectorizerButton("VecRunBtn", "Vectorize", 134, 36);
     SetFlatButtonIcon(*runBtn, "menu/wand.svg");
     runBtn->SetFontSize(12);
     runBtn->SetColors(kRunBtn, kRunBtnH);
     runBtn->SetTextColors(Color(255, 255, 255, 255));
     runBtn->SetCornerRadius(6);
     runBtn->onClick = runVectorize;
-    inputCard->AddChild(runBtn);
+    DemoKit::Add(inputActions, runBtn);
 
     return container;
 }

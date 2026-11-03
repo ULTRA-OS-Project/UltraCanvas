@@ -29,6 +29,7 @@ set(EMAILCLEANER_ENGINE_SOURCES
     engine/EmailCleanerMailBackend.cpp
     engine/EmailCleanerAttachments.cpp
     engine/EmailCleanerAccounts.cpp
+    engine/EmailCleanerContacts.cpp
 )
 
 add_library(EmailCleanerEngine STATIC ${EMAILCLEANER_ENGINE_SOURCES})
@@ -63,6 +64,7 @@ set(EMAILCLEANER_UI_SOURCES
     ui/EmailCleanerActionsPanel.cpp
     ui/EmailCleanerRulesDialog.cpp
     ui/EmailCleanerAccountsDialog.cpp
+    ui/EmailCleanerContactsView.cpp
 )
 
 add_executable(EmailCleaner main.cpp ${EMAILCLEANER_UI_SOURCES})

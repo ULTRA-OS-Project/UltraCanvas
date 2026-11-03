@@ -27,11 +27,14 @@
 // as an external executable (never linked).
 //
 // "(bundled)" = vendored in-tree, "(optional)" = built only when present.
+// Version: 5.5.0 - the shared page look (UltraCanvasDemoPageKit): the table in a
+//                  card filling the page area, the description wraps
 // Version: 5.4.0
-// Last Modified: 2026-09-04
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasListView.h"
 #include "UltraCanvasMenu.h"
@@ -68,6 +71,7 @@ namespace UltraCanvas {
         {"GPL 3",       "GNU General Public License v3.0",           "https://spdx.org/licenses/GPL-3.0-or-later.html"},
         {"AGPL 3",      "GNU Affero General Public License v3.0",    "https://spdx.org/licenses/AGPL-3.0-or-later.html"},
         {"MPL 2.0",     "Mozilla Public License 2.0",                 "https://spdx.org/licenses/MPL-2.0.html"},
+        {"BSL 1.0",     "Boost Software License 1.0",                 "https://spdx.org/licenses/BSL-1.0.html"},
         {"FTL",         "FreeType Project License",                   "https://spdx.org/licenses/FTL.html"},
         {"libpng 2",    "PNG Reference Library License v2",           "https://spdx.org/licenses/libpng-2.0.html"},
         {"libtiff",     "libtiff License",                            "https://spdx.org/licenses/libtiff.html"},
@@ -153,11 +157,13 @@ namespace UltraCanvas {
         // --- Vector formats plugin (DWG writing only; reading and every other converter are in-tree) ---
         {"LibreDWG",          "https://www.gnu.org/software/libredwg/",                            "https://github.com/LibreDWG/libredwg",                          "GPL 3"},
         // --- OCR plugin ---
+        {"TDLib (runtime, not linked)", "https://core.telegram.org/tdlib",                        "https://github.com/tdlib/td",                                   "BSL 1.0"},
         {"Tesseract",         "https://tesseract-ocr.github.io/",                                  "https://github.com/tesseract-ocr/tesseract",                    "Apache 2"},
         {"Leptonica",         "http://www.leptonica.org/",                                         "https://github.com/DanBloomberg/leptonica",                     "BSD 2"},
         // --- Vectorizer plugin ---
         {"VTracer",           "https://www.visioncortex.org/vtracer-docs",                         "https://github.com/visioncortex/vtracer",                       "MIT"},
         {"visioncortex",      "https://www.visioncortex.org/",                                     "https://github.com/visioncortex/visioncortex",                  "MIT"},
+        {"vodozemac",         "https://docs.rs/vodozemac",                                         "https://github.com/matrix-org/vodozemac",                       "Apache 2"},
         {"cargo",             "https://doc.rust-lang.org/cargo/",                                  "https://github.com/rust-lang/cargo",                            ""},
         {"rustc",             "https://www.rust-lang.org/",                                        "https://github.com/rust-lang/rust",                             ""},
         {"corrosion-rs",      "https://corrosion-rs.github.io/corrosion/",                         "https://github.com/corrosion-rs/corrosion",                     "MIT"},
@@ -558,24 +564,12 @@ namespace UltraCanvas {
     }
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateDependenciesExamples() {
-        auto container = std::make_shared<UltraCanvasContainer>("DependenciesExamples");
-
-        // Title
-        auto title = std::make_shared<UltraCanvasLabel>("DepTitle", 20, 10, 700, 35);
-        title->SetText("Dependencies & Third-Party Libraries");
-        title->SetFontSize(18);
-        title->SetFontWeight(FontWeight::Bold);
-        title->SetTextColor(Color(50, 50, 150, 255));
-        container->AddChild(title);
-
-        // Subtitle
-        auto subtitle = std::make_shared<UltraCanvasLabel>("DepSubtitle", 20, 45, 940, 25);
-        subtitle->SetText("Grouped per module; (bundled) = vendored, (optional) = feature-gated.  "
-                          "Click a library name for its website & source-code links, "
-                          "click a license tag — e.g. (MIT) — for the license description.");
-        subtitle->SetFontSize(12);
-        subtitle->SetTextColor(Color(120, 120, 120, 255));
-        container->AddChild(subtitle);
+        auto container = DemoKit::CreatePage("DependenciesExamples", "Dependencies & Third-Party Libraries",
+                "Grouped per module; (bundled) = vendored, (optional) = feature-gated.  "
+                "Click a library name for its website & source-code links, "
+                "click a license tag — e.g. (MIT) — for the license description.");
+        // The table scrolls itself: the page is the area's height.
+        container->SetFillsArea(true);
 
         // ============================================================
         // Build the model. A row with empty OS columns is a module section
@@ -722,7 +716,7 @@ namespace UltraCanvas {
         const int maxLines = 4;
         const int rowHeight = lineHeight * maxLines + 8;   // 72 px
 
-        auto listView = std::make_shared<UltraCanvasListView>("DependenciesListView", 20, 80, 920, 730);
+        auto listView = std::make_shared<UltraCanvasListView>("DependenciesListView", 0, 0, 920, 730);
         listView->SetModel(model);
         // Rows are not selectable — the links are the interaction here.
         listView->SetSelection(nullptr);
@@ -815,7 +809,13 @@ namespace UltraCanvas {
                 *win, PopupElementSettings());
         };
 
-        container->AddChild(listView);
+        // As wide as the card and as tall as the page leaves it.
+        auto card = DemoKit::CreateCard("DependenciesCard");
+        card->SetPadding(4);
+        DemoKit::Add(container, card, 1);
+        listView->size.width  = CSSLayout::Dimension::Auto();
+        listView->size.height = CSSLayout::Dimension::Auto();
+        DemoKit::Add(card, listView, 1);
 
         return container;
     }

@@ -4,6 +4,7 @@
 // comma - is matched against the address book. Picking a suggestion replaces
 // that part with "Name <address>, " and leaves the recipients before it.
 // Headless: the compose window feeds it the field text and the contacts.
+// Version: 0.3.0 - no-reply addresses are never suggested; RecipientAddress; leaveOut
 // Version: 0.2.0 - ranked by how often - and how lately - each address is written to
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -11,6 +12,7 @@
 
 #include "UltraMailContacts.h"
 
+#include <functional>
 #include <map>
 #include <string>
 #include <vector>
@@ -22,6 +24,14 @@ struct RecipientSuggestion {
     std::string address;     // the bare address
 };
 
+// Whether `address` is one nobody writes to: its local part, read without
+// '-', '_' and '.', has "noreply" or "donotreply" in it - "noreply@...",
+// "no-reply@...", "do-not-reply@...", "noreply.billing@...".
+bool IsNoReplyAddress(const std::string& address);
+
+// The bare address of a recipient: inside <...>, or the whole text, trimmed.
+std::string RecipientAddress(const std::string& recipient);
+
 // The recipient being typed: the text after the last comma, trimmed.
 std::string RecipientQuery(const std::string& fieldText);
 
@@ -31,7 +41,9 @@ std::string CompleteRecipient(const std::string& fieldText, const std::string& r
 
 // The contacts' addresses that match `query` (case-insensitive): a name or
 // organization word, or the address, that starts with it, or - weaker - that
-// contains it. Addresses already in `fieldText` are left out. Ranked by
+// contains it. Addresses already in `fieldText`, and no-reply addresses
+// (IsNoReplyAddress), are left out, and so is any address `leaveOut` (given
+// the bare address, lower case) says to leave out - a blocked sender. Ranked by
 // `writtenTo` - how much the user writes to each address, recent mail weighing
 // more (keys bare, lower case; see LocalStore::WeighSentRecipients) - most
 // first; among equals a match at a word's start comes before one inside it,
@@ -39,6 +51,7 @@ std::string CompleteRecipient(const std::string& fieldText, const std::string& r
 std::vector<RecipientSuggestion> SuggestRecipients(
     const std::vector<Contact>& contacts, const std::string& query,
     const std::string& fieldText, std::size_t limit = 8,
-    const std::map<std::string, double>* writtenTo = nullptr);
+    const std::map<std::string, double>* writtenTo = nullptr,
+    const std::function<bool(const std::string& address)>& leaveOut = nullptr);
 
 } // namespace UltraMail

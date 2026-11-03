@@ -10,11 +10,16 @@
 //                     -> UltraNet_HttpGet (when ULTRACANVAS_HAS_NET is defined)
 //                     -> UCImageRaster::LoadFromMemory
 //                     -> UltraCanvasImageElement::LoadFromImage
+// Version: 0.3.0 - the shared page look (UltraCanvasDemoPageKit): a page title
+//                  and description, the tabs in a card that fills the area,
+//                  the loader's texts sized to fit and its preview filling the tab
 // Version: 0.2.0
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasFileLoader.h"
@@ -89,70 +94,74 @@ namespace {
 
     // ---- Examples tab: the live remote-resource loader. ----
     std::shared_ptr<UltraCanvasUIElement> BuildExamplesTab() {
+        // The tab gives this column its size; the preview takes the height
+        // the texts and the URL row leave.
         auto container = std::make_shared<UltraCanvasContainer>(
             "NetworkingExamples", 0, 0, 1000, 700);
-        container->SetPadding(0, 0, 10, 0);
+        container->layout.SetFlexColumn().SetFlexGap(8)
+                         .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+        container->SetPadding(10, 12, 10, 12);
 
         // ===== TITLE =====
-        auto title = std::make_shared<UltraCanvasLabel>(
-            "NetTitle", 10, 10, 800, 30);
-        title->SetText("UltraNet — Remote Resource Loader");
-        title->SetFontSize(20);
-        title->SetFontWeight(FontWeight::Bold);
-        title->SetTextColor(Color(50, 50, 150, 255));
-        container->AddChild(title);
+        auto title = DemoKit::AddHeading(container, "NetTitle", "UltraNet — Remote Resource Loader");
+        title->SetFontSize(16);
 
-        auto subtitle = std::make_shared<UltraCanvasLabel>(
-            "NetSubtitle", 10, 45, 900, 25);
-        subtitle->SetText("Loads a remote image through UltraCanvasFileLoader::LoadFile, "
-                          "which dispatches to UltraNet_HttpGet for http:// and https:// URLs.");
-        subtitle->SetFontSize(12);
-        subtitle->SetTextColor(Color(80, 80, 80, 255));
-        container->AddChild(subtitle);
+        DemoKit::AddText(container, "NetSubtitle",
+                         "Loads a remote image through UltraCanvasFileLoader::LoadFile, "
+                         "which dispatches to UltraNet_HttpGet for http:// and https:// URLs.");
 
         // ===== INFO LINE — what's the UltraNet backend doing? =====
-        auto backendLabel = std::make_shared<UltraCanvasLabel>(
-            "NetBackend", 10, 80, 980, 20);
+        auto backendLabel = DemoKit::AddCaption(container, "NetBackend", "");
         backendLabel->SetFontSize(11);
-        backendLabel->SetTextColor(Color(120, 120, 120, 255));
 #ifdef ULTRACANVAS_HAS_NET
         backendLabel->SetText("Backend: " + UltraNet_GetBackendInfo());
 #else
         backendLabel->SetText("Backend: UltraNet not compiled in "
                               "(rebuild with -DULTRACANVAS_ENABLE_NET=ON)");
 #endif
-        container->AddChild(backendLabel);
 
         // ===== URL INPUT + LOAD BUTTON ROW =====
-        auto urlLabel = std::make_shared<UltraCanvasLabel>(
-            "UrlLabel", 10, 120, 60, 30);
-        urlLabel->SetText("URL:");
-        urlLabel->SetAlignment(TextAlignment::Left, VerticalAlignment::Middle);
-        container->AddChild(urlLabel);
+        auto urlRow = DemoKit::AddRow(container, "NetUrlRow", 10);
+        urlRow->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
+        DemoKit::Add(urlRow, DemoKit::CreateText("UrlLabel", "URL:"));
 
+        // The input takes the row's spare width, at least 300 px before the
+        // button wraps under it.
         auto urlInput = std::make_shared<UltraCanvasTextInput>(
-            "NetUrl", 70, 120, 720, 30);
+            "NetUrl", 0, 0, 720, 30);
         urlInput->SetPlaceholder("https://example.com/image.png");
         urlInput->SetText("https://www.gstatic.com/webp/gallery/1.png");
-        container->AddChild(urlInput);
+        DemoKit::AddStretched(urlRow, urlInput);
+        urlInput->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(300));
 
+        // As wide as its text, at least the 100 px it had.
         auto loadButton = std::make_shared<UltraCanvasButton>(
-            "NetLoad", 800, 120, 100, 30);
-        loadButton->SetText("Load");
-        container->AddChild(loadButton);
+            "NetLoad", 0, 0, 0, 30, "Load");
+        {
+            CSSLayout::BoxConstraints limits;
+            limits.minWidth = CSSLayout::Dimension::Px(100);
+            loadButton->boxConstraints = limits;
+        }
+        DemoKit::Add(urlRow, loadButton);
 
         // ===== STATUS LINE =====
-        auto status = std::make_shared<UltraCanvasLabel>(
-            "NetStatus", 10, 160, 980, 25);
-        status->SetText("Ready.");
-        status->SetFontSize(12);
-        container->AddChild(status);
+        auto status = DemoKit::AddText(container, "NetStatus", "Ready.");
 
         // ===== IMAGE PREVIEW =====
+        // Fills the rest of the tab from a zero basis; never squeezed below
+        // 200 px (the tab scrolls instead).
         auto preview = std::make_shared<UltraCanvasImageElement>(
-            "NetPreview", 10, 195, 800, 480);
+            "NetPreview", 0, 0, 800, 480);
         preview->SetFitMode(ImageFitMode::Contain);
-        container->AddChild(preview);
+        preview->size.width = CSSLayout::Dimension::Auto();
+        preview->size.height = CSSLayout::Dimension::Auto();
+        DemoKit::Add(container, preview, 1);
+        preview->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
+        {
+            CSSLayout::BoxConstraints limits;
+            limits.minHeight = CSSLayout::Dimension::Px(200);
+            preview->boxConstraints = limits;
+        }
 
         // ===== LOAD HANDLER =====
         // Fully asynchronous: UltraNet_HttpRequestAsync runs the HTTP fetch on
@@ -239,25 +248,31 @@ namespace {
 // ===== ULTRANET MODULE DEMO =====
 std::shared_ptr<UltraCanvasUIElement>
 UltraCanvasDemoApplication::CreateNetworkingExamples() {
-    auto root = std::make_shared<UltraCanvasContainer>("UltraNetExamples", 0, 0, 1000, 720);
-    root->size.width  = CSSLayout::Dimension::Pct(100);
-    root->size.height = CSSLayout::Dimension::Pct(100);
-    root->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    auto root = DemoKit::CreatePage("UltraNetExamples", "Ultra Net",
+            "The Ultra Net module: an overview, its documentation and a live remote-resource "
+            "loader (UltraCanvasFileLoader::LoadFile + UltraNet_HttpGet + UCImageRaster::LoadFromMemory).");
+    // The tabs' text areas and the loader size and scroll themselves: the
+    // page is the area's height and the tabs' card takes what the title leaves.
+    root->SetFillsArea(true);
+
+    auto card = DemoKit::CreateCard("UltraNetCard");
+    card->SetPadding(4);
+    DemoKit::Add(root, card, 1);
+    card->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0)).SetFlexShrink(1);
 
     auto tabs = std::make_shared<UltraCanvasTabbedContainer>("UltraNetTabs", 0, 0, 0, 0);
     tabs->SetTabPosition(TabPosition::Top);
     tabs->SetTabStyle(TabStyle::Modern);
     tabs->SetCloseMode(TabCloseMode::NoClose);
     tabs->SetTabHeight(30);
-    tabs->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
-                    .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
     tabs->AddTab("Overview", BuildOverviewTab());
     tabs->AddTab("Details",  BuildDetailsTab());
     tabs->AddTab("Examples", BuildExamplesTab());
     tabs->SetActiveTab(0);
 
-    root->AddChild(tabs);
+    DemoKit::Add(card, tabs, 1);
+    tabs->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0)).SetFlexShrink(1);
     return root;
 }
 

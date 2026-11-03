@@ -1,5 +1,12 @@
 // core/UltraCanvasButton.cpp
 // Interactive button component implementation with secondary icon support
+// Version: 2.13.0 - ButtonStyle::wrap: the text wrapped onto the lines its area holds, from the top
+// Version: 2.12.4 - a split button's two captions are centred on their capitals, not their line box
+// Version: 2.12.3 - SetText fits the width to the new text at once, so a parent
+//                  breaking a row into lines reads the new width
+// Version: 2.12.2 - that layout is an UltraCanvasTextLayoutCache
+// Version: 2.12.1 - that layout is kept from draw to draw and rebuilt only when its inputs change
+// Version: 2.12.0 - ButtonStyle::ellipsize: a text shortened in the middle or at the start goes through a layout
 // Version: 2.11.1 - OnEvent's switch says the events it ignores (default; -Wswitch)
 // Version: 2.11.0 - FromTheme by ButtonVariant
 // Version: 2.10.0 - ButtonStyle::FromTheme
@@ -8,7 +15,7 @@
 // Version: 2.8.0 - icons are drawn on whole pixels (SnapToPixelGrid): an icon
 //                  centred half a pixel off was resampled and blurred
 // Version: 2.7.0
-// Last Modified: 2026-10-15
+// Last Modified: 2026-11-01
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasButton.h"
@@ -164,6 +171,12 @@ namespace UltraCanvas {
         // The old index points into the previous string and would underline an
         // unrelated character; owners re-apply the mnemonic after setting text.
         mnemonicIndex = -1;
+        // Fit the width to the new text now, not when the button is next
+        // measured: its parent reads that width to break a wrapping row into
+        // lines before it measures the button, and with the old width it
+        // laid the row out a line short ("Pause" becoming "Resume", a longer
+        // translation).
+        if (renamed) FitWidthToText(GetRenderContext());
         InvalidateLayout();
         RequestRedraw();
     }
@@ -320,6 +333,16 @@ namespace UltraCanvas {
 
     void UltraCanvasButton::SetTextAlign(TextAlignment align) {
         style.textAlign = align;
+        RequestRedraw();
+    }
+
+    void UltraCanvasButton::SetEllipsize(EllipsizeMode mode) {
+        style.ellipsize = mode;
+        RequestRedraw();
+    }
+
+    void UltraCanvasButton::SetWrap(TextWrap wrap) {
+        style.wrap = wrap;
         RequestRedraw();
     }
 
@@ -926,6 +949,46 @@ namespace UltraCanvas {
         ctx->SetTextAlignment(style.textAlign);
 
         const std::string drawnText = useMarkup ? BuildMnemonicMarkup() : text;
+        const double nudge = GetPrimaryState() == ElementState::Pressed ? 1.0 : 0.0;
+        const Rect2Dd rect(textRect.x + nudge, textRect.y + nudge, textRect.width, textRect.height);
+
+        // Wrapped: the lines from the area's top (under a top icon, where a
+        // tile's name starts), as many as the area holds, the last one
+        // shortened at its end. The context's wrap is put back afterwards:
+        // the elements drawn next did not ask for it.
+        if (style.wrap != TextWrap::WrapNone) {
+            const TextWrap previous = ctx->GetTextStyle().wrap;
+            ctx->SetTextWrap(style.wrap);
+            ctx->SetTextVerticalAlignment(VerticalAlignment::Top);
+            ctx->DrawTextInRect(drawnText, rect, useMarkup);
+            ctx->SetTextWrap(previous);
+            return;
+        }
+
+        // Shortened anywhere but at the end: DrawTextInRect cuts from the
+        // right only, so the text goes through a layout of the rectangle's
+        // width that cuts where the style says, placed as the alignment says.
+        if (style.ellipsize != EllipsizeMode::EllipsizeEnd && style.ellipsize != EllipsizeMode::EllipsizeNone) {
+            // The layout is kept between draws: a list of such buttons is
+            // repainted on every hover, and shaping the text each time is
+            // what would make that slow. Rebuilt when any input changed.
+            TextLayoutKey key;
+            key.text = drawnText;
+            key.markup = useMarkup;
+            key.font.fontFamily = style.fontFamily;
+            key.font.fontSize = style.fontSize;
+            key.font.fontWeight = style.fontWeight;
+            key.wrap = TextWrap::WrapNone;
+            key.align = style.textAlign;
+            key.ellipsize = style.ellipsize;
+            key.width = rect.width;
+            ITextLayout* layout = shortenedLayout.Get(ctx, key);
+            if (!layout) return;
+            const double height = layout->GetLayoutHeight();
+            ctx->DrawTextLayout(*layout, Point2Dd(rect.x, rect.y + (rect.height - height) / 2));
+            return;
+        }
+        shortenedLayout.Reset();   // shortened at the end again: nothing to keep
 
         //debugOutput << "btn draw text=" << text << " rect=" << textRect.x << "," << textRect.y << " " << textRect.width << "x" << textRect.height << std::endl;
         if (GetPrimaryState() == ElementState::Pressed) {
@@ -1007,18 +1070,22 @@ namespace UltraCanvas {
         // Draw primary text
         if (!text.empty()) {
             ctx->SetTextPaint(primaryText);
-            ctx->SetFontFace(style.fontFamily, style.fontWeight, FontSlant::Normal);
-            ctx->SetFontSize(style.fontSize);
+            FontStyle primaryFont;
+            primaryFont.fontFamily = style.fontFamily;
+            primaryFont.fontSize = style.fontSize;
+            primaryFont.fontWeight = style.fontWeight;
+            ctx->SetFontStyle(primaryFont);
 
             Size2Di textSize = ctx->GetTextLineDimensions(text);
 
+            // Both captions are centred on their capitals, as the plain
+            // button's is (DrawText), not on their line box.
             Point2Dd primaryTextPos;
+            primaryTextPos.y = ctx->TextTopCentredOnCaps(textRect, primaryFont);
             if (HasIcon() && (iconPosition == ButtonIconPosition::Left || iconPosition == ButtonIconPosition::Right)) {
                 primaryTextPos.x = textRect.x;
-                primaryTextPos.y = textRect.y + (textRect.height - textSize.height) / 2;
             } else {
                 primaryTextPos.x = textRect.x + (textRect.width - textSize.width) / 2;
-                primaryTextPos.y = textRect.y + (textRect.height - textSize.height) / 2;
             }
 
             if (GetPrimaryState() == ElementState::Pressed) {
@@ -1035,22 +1102,24 @@ namespace UltraCanvas {
         // Draw secondary text
         if (!split.secondaryText.empty()) {
             ctx->SetTextPaint(secondaryText);
-            ctx->SetFontFace(style.fontFamily, style.fontWeight, FontSlant::Normal);
-            ctx->SetFontSize(style.fontSize * 0.9f);  // Slightly smaller font
+            FontStyle secondaryFont;
+            secondaryFont.fontFamily = style.fontFamily;
+            secondaryFont.fontSize = style.fontSize * 0.9f;  // Slightly smaller font
+            secondaryFont.fontWeight = style.fontWeight;
+            ctx->SetFontStyle(secondaryFont);
 
             Size2Di textSize = ctx->GetTextLineDimensions(split.secondaryText);
 
             Point2Dd secondaryTextPos;
+            secondaryTextPos.y = ctx->TextTopCentredOnCaps(secondaryTextRect, secondaryFont);
 
             // Position text based on whether there's an icon
             if (HasSecondaryIcon() && split.horizontal) {
                 // Text position already calculated in layout
                 secondaryTextPos.x = secondaryTextRect.x;
-                secondaryTextPos.y = secondaryTextRect.y + (secondaryTextRect.height - textSize.height) / 2;
             } else {
                 // Center text if no icon
                 secondaryTextPos.x = secondaryTextRect.x + (secondaryTextRect.width - textSize.width) / 2;
-                secondaryTextPos.y = secondaryTextRect.y + (secondaryTextRect.height - textSize.height) / 2;
             }
 
             if (GetPrimaryState() == ElementState::Pressed) {

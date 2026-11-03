@@ -4,6 +4,8 @@
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailNewMail.h"
 
+#include "UltraCanvasNotificationActivation.h"   // EncodeNotificationQuery / DecodeNotificationQuery
+
 #include <algorithm>
 
 namespace UltraMail {
@@ -101,6 +103,34 @@ NewMailText FormatNewMail(const NewMailSummary& summary, const std::string& acco
     const int named = static_cast<int>(summary.latest.size());
     if (summary.count > named) text.body += "\nand " + std::to_string(summary.count - named) + " more";
     return text;
+}
+
+std::string NewMailLaunch(const NewMailTarget& target) {
+    std::vector<std::pair<std::string, std::string>> fields = {{"account", target.accountId}};
+    if (!target.folder.empty()) fields.emplace_back("folder", target.folder);
+    if (target.uid > 0) fields.emplace_back("uid", std::to_string(target.uid));
+    return UltraCanvas::EncodeNotificationQuery(fields);
+}
+
+bool ParseNewMailLaunch(const std::string& launch, NewMailTarget& out) {
+    const auto fields = UltraCanvas::DecodeNotificationQuery(launch);
+    auto account = fields.find("account");
+    if (account == fields.end() || account->second.empty()) return false;
+    NewMailTarget target;
+    target.accountId = account->second;
+    if (auto folder = fields.find("folder"); folder != fields.end()) target.folder = folder->second;
+    if (auto uid = fields.find("uid"); uid != fields.end()) {
+        // Digits only: anything else names no message.
+        int64_t value = 0;
+        bool digits = !uid->second.empty() && uid->second.size() <= 18;
+        for (char c : uid->second) {
+            if (c < '0' || c > '9') { digits = false; break; }
+            value = value * 10 + (c - '0');
+        }
+        if (digits) target.uid = value;
+    }
+    out = target;
+    return true;
 }
 
 } // namespace UltraMail

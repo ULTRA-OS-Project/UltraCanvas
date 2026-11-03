@@ -83,7 +83,7 @@ struct ActionPlan {
     // Unsubscribing
     bool              willUnsubscribe = false;
     UnsubscribeInfo   unsubscribe;
-    UnsubscribeMethod method = UnsubscribeMethod::None;
+    UnsubscribeMethod method = UnsubscribeMethod::NoMethod;
     UnsubscribeAdvice advice = UnsubscribeAdvice::NoOffer;
 
     // Deleting

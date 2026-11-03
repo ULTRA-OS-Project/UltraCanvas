@@ -214,8 +214,10 @@ if(TARGET WasmHost AND TARGET UltraCanvas AND TARGET UltraNet)
     add_executable(UltraWebTabTest
         ${CMAKE_CURRENT_SOURCE_DIR}/UltraWebTabTest.cpp
         ${_uw_dir}/host/UltraWebFetch.cpp
+        ${_uw_dir}/host/UltraWebNetworkFetch.cpp
         ${_uw_dir}/host/UltraWebGuest.cpp
         ${_uw_dir}/host/UltraWebLoader.cpp
+        ${_uw_dir}/host/UltraWebCookies.cpp
         ${_uw_dir}/host/UltraWebPages.cpp
         ${_uw_dir}/host/UltraWebStorage.cpp
         ${_uw_dir}/ui/UltraWebTab.cpp)
@@ -229,6 +231,27 @@ if(TARGET WasmHost AND TARGET UltraCanvas AND TARGET UltraNet)
     add_test(NAME UltraWebTabTest COMMAND UltraWebTabTest
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
     message(STATUS "    Test registered: UltraWebTabTest")
+endif()
+
+# ===== ULTRAWEB COOKIES TEST =====
+# UltraWeb's page services with a cookie jar (UltraNetCookieJar, whose rules
+# Tests/UltraNet tests) against a loopback server - a login's redirect sets
+# a cookie and the next hop sends it (POSIX only).
+if(TARGET UltraCanvas AND TARGET UltraNet)
+    set(_uw_dir ${ULTRACANVAS_ROOT}/Apps/UltraWeb)
+    add_executable(UltraWebCookiesTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/UltraWebCookiesTest.cpp
+        ${_uw_dir}/host/UltraWebCookies.cpp
+        ${_uw_dir}/host/UltraWebPages.cpp)
+    target_include_directories(UltraWebCookiesTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR} ${_uw_dir})
+    target_compile_features(UltraWebCookiesTest PRIVATE cxx_std_20)
+    target_link_libraries(UltraWebCookiesTest PRIVATE UltraNet UltraCanvas)
+    set_target_properties(UltraWebCookiesTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME UltraWebCookiesTest COMMAND UltraWebCookiesTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: UltraWebCookiesTest")
 endif()
 
 # ===== ULTRAWEB DOWNLOADS TEST =====
@@ -271,6 +294,9 @@ if(ULTRACANVAS_HAS_NATIVE_FOLDER_WATCH)
     if(WIN32)
         list(APPEND FOLDER_WATCHER_SOURCES
             ${ULTRACANVAS_ROOT}/UltraCanvas/OS/MSWindows/UltraCanvasWindowsFolderWatcher.cpp)
+    elseif(APPLE)
+        list(APPEND FOLDER_WATCHER_SOURCES
+            ${ULTRACANVAS_ROOT}/UltraCanvas/OS/MacOS/UltraCanvasMacOSFolderWatcher.cpp)
     else()
         list(APPEND FOLDER_WATCHER_SOURCES
             ${ULTRACANVAS_ROOT}/UltraCanvas/OS/Linux/UltraCanvasLinuxFolderWatcher.cpp)
@@ -285,6 +311,9 @@ if(ULTRACANVAS_HAS_NATIVE_FOLDER_WATCH)
 endif()
 find_package(Threads REQUIRED)
 target_link_libraries(FolderWatcherTest PRIVATE Threads::Threads)
+if(APPLE AND ULTRACANVAS_HAS_NATIVE_FOLDER_WATCH)
+    target_link_libraries(FolderWatcherTest PRIVATE "-framework CoreServices")
+endif()
 set_target_properties(FolderWatcherTest PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
@@ -396,6 +425,21 @@ add_test(NAME ArchiveRunTest COMMAND ArchiveRunTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: ArchiveRunTest")
 
+# ===== CSV FORMAT RECORD TEST =====
+# CSVFormatRecord, the quoting both CSV writers share (the spreadsheet's export
+# and UltraDBAdmin's streamed one), and a record read back by CSVParse.
+# Header-only, no UI.
+message(STATUS "  Building CSVFormatRecordTest...")
+add_executable(CSVFormatRecordTest ${CMAKE_CURRENT_SOURCE_DIR}/CSVFormatRecordTest.cpp)
+target_include_directories(CSVFormatRecordTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(CSVFormatRecordTest PRIVATE cxx_std_20)
+set_target_properties(CSVFormatRecordTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME CSVFormatRecordTest COMMAND CSVFormatRecordTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: CSVFormatRecordTest")
+
 # ===== CODER MODULE REPAIR TEST =====
 # The repair of an installed Windows package whose ImageMagick coder carries
 # a system DLL's name, on a scratch coder folder: the pseudo-formats deleted,
@@ -443,6 +487,44 @@ if(ULTRACANVAS_HAS_NATIVE_TRASH AND UNIX AND NOT APPLE)
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
     message(STATUS "    Test registered: TrashTest")
 endif()
+
+# ===== PORTABLE DEVICES TEST =====
+# The platform-independent half of UltraCanvasPortableDevices - its path rules
+# and what a build without a backend answers - from the core file alone, with
+# no define, so every row runs the same checks. The Windows WPD backend needs
+# a phone on a USB port and is not exercised in CI.
+message(STATUS "  Building PortableDevicesTest...")
+add_executable(PortableDevicesTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/PortableDevicesTest.cpp
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasPortableDevices.cpp
+)
+target_include_directories(PortableDevicesTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(PortableDevicesTest PRIVATE cxx_std_20)
+target_link_libraries(PortableDevicesTest PRIVATE Threads::Threads)
+set_target_properties(PortableDevicesTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME PortableDevicesTest COMMAND PortableDevicesTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: PortableDevicesTest")
+
+# ===== NETWORK PLACES TEST =====
+# The platform-independent half of UltraCanvasNetworkPlaces - which paths name
+# a computer - from the core file alone, with no define, so every row runs the
+# same checks. The Windows backend needs a network and is not exercised in CI.
+message(STATUS "  Building NetworkPlacesTest...")
+add_executable(NetworkPlacesTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/NetworkPlacesTest.cpp
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasNetworkPlaces.cpp
+)
+target_include_directories(NetworkPlacesTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(NetworkPlacesTest PRIVATE cxx_std_20)
+set_target_properties(NetworkPlacesTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME NetworkPlacesTest COMMAND NetworkPlacesTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: NetworkPlacesTest")
 
 # ===== VOLUME MONITOR TEST =====
 # Same arrangement as the folder watcher above: UltraCanvasVolumeMonitor is
@@ -500,12 +582,18 @@ add_executable(SpellCheckerTest
     ${ULTRACANVAS_CORE_DIR}/SpellCheckLanguageNames.cpp
     ${ULTRACANVAS_CORE_DIR}/SpellCheckBackendHunspell.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/OS/WASM/UltraCanvasSpellCheckSupport.cpp
+    # DetectPreferredLanguage asks UltraCanvasSystemLanguage.h; the Linux
+    # backend answers from the POSIX variables alone, which is what the test
+    # wants on every host.
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasSystemLanguage.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/OS/Linux/UltraCanvasLinuxSystemLanguage.cpp
 )
 target_include_directories(SpellCheckerTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
 target_compile_features(SpellCheckerTest PRIVATE cxx_std_20)
 
 find_package(Threads REQUIRED)
-target_link_libraries(SpellCheckerTest PRIVATE Threads::Threads)
+# The suggestion menu's labels go through Tr; UltraLocalisation is UI-free.
+target_link_libraries(SpellCheckerTest PRIVATE Threads::Threads UltraLocalisation)
 
 # HUNSPELL_FOUND is set in the UltraCanvas subdirectory scope, so it is not
 # visible here - probe again rather than silently building the stub.
@@ -697,6 +785,27 @@ else()
     message(STATUS "  FontChangeRepaintTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== FONT COVERAGE TEST =====
+# CountCharactersWithoutFont(): the characters of a text no font covers,
+# headless.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building FontCoverageTest...")
+    add_executable(FontCoverageTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/FontCoverageTest.cpp
+    )
+    target_include_directories(FontCoverageTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(FontCoverageTest PRIVATE cxx_std_20)
+    target_link_libraries(FontCoverageTest PRIVATE UltraCanvas)
+    set_target_properties(FontCoverageTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME FontCoverageTest COMMAND FontCoverageTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: FontCoverageTest")
+else()
+    message(STATUS "  FontCoverageTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== EMOJI SETTINGS TEST =====
 # Defined in EmojiTests.cmake, which the top level also includes on its own
 # (ULTRACANVAS_BUILD_EMOJI_TESTS) where BUILD_TESTS is off - the Windows row.
@@ -824,7 +933,7 @@ endif()
 # -Wunused-parameter. One file includes them all, in sorted order: the
 # library's own sources include them in every order already, and the
 # Win32 names <windows.h> would rename are kept out of our APIs by
-# scripts/check_win32_names.py, so the order needs no care.
+# scripts/check_platform_names.py, so the order needs no care.
 if(TARGET UltraCanvas AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang" AND NOT MSVC)
     set(_ucHeaderGlobs
         ${ULTRACANVAS_INCLUDE_DIR}/*.h
@@ -985,6 +1094,34 @@ else()
     message(STATUS "  KanbanFileDropTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== ULTRADESKTOP APP CATEGORIES TEST =====
+# Where UltraDesktop's Apps window puts an application: freedesktop
+# Categories=, Windows shortcuts by name and folder (English and German), the
+# Games kinds, the split above the threshold, Recent from the history; and the
+# history, view and threshold kept across a save of the desktop's settings.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building UltraDesktopAppCategoriesTest...")
+    add_executable(UltraDesktopAppCategoriesTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/UltraDesktopAppCategoriesTest.cpp
+        ${CMAKE_SOURCE_DIR}/Apps/UltraDesktop/ui/UltraDesktopAppCatalogue.cpp
+        ${CMAKE_SOURCE_DIR}/Apps/UltraDesktop/ui/UltraDesktopAppCategories.cpp
+        ${CMAKE_SOURCE_DIR}/Apps/UltraDesktop/ui/UltraDesktopSettings.cpp
+    )
+    target_include_directories(UltraDesktopAppCategoriesTest PRIVATE
+        ${ULTRACANVAS_INCLUDE_DIR}
+        ${CMAKE_SOURCE_DIR}/Apps/UltraDesktop/ui)
+    target_compile_features(UltraDesktopAppCategoriesTest PRIVATE cxx_std_20)
+    target_link_libraries(UltraDesktopAppCategoriesTest PRIVATE UltraCanvas)
+    set_target_properties(UltraDesktopAppCategoriesTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME UltraDesktopAppCategoriesTest COMMAND UltraDesktopAppCategoriesTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: UltraDesktopAppCategoriesTest")
+else()
+    message(STATUS "  UltraDesktopAppCategoriesTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== UTF-8 FIND ALL TEST =====
 # utf8_find_all returns the same matches as a utf8_find loop, in one pass: the
 # loop was quadratic and hung UltraTexter's search bar on a large file.
@@ -1027,6 +1164,29 @@ if(TARGET UltraCanvas)
     message(STATUS "    Test registered: LabelSelectionTest")
 else()
     message(STATUS "  LabelSelectionTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== LABEL NATURAL TEXT WIDTH TEST =====
+# UltraCanvasLabel::GetNaturalTextWidth: the text measured rather than its box,
+# in step with the label's own hit test, unchanged by padding, 0 when empty or
+# outside a window. Needs the real framework (the text layout). Skips itself
+# without a DISPLAY.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building LabelNaturalTextWidthTest...")
+    add_executable(LabelNaturalTextWidthTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/LabelNaturalTextWidthTest.cpp
+    )
+    target_include_directories(LabelNaturalTextWidthTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(LabelNaturalTextWidthTest PRIVATE cxx_std_20)
+    target_link_libraries(LabelNaturalTextWidthTest PRIVATE UltraCanvas)
+    set_target_properties(LabelNaturalTextWidthTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME LabelNaturalTextWidthTest COMMAND LabelNaturalTextWidthTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: LabelNaturalTextWidthTest")
+else()
+    message(STATUS "  LabelNaturalTextWidthTest skipped (UltraCanvas target not present)")
 endif()
 
 # ===== CARET STACKING ORDER TEST =====
@@ -1542,6 +1702,38 @@ set_target_properties(SystemFontTest PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE
 add_test(NAME SystemFontTest COMMAND SystemFontTest WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: SystemFontTest")
 
+# ===== LINUX SYSTEM FONT TEST =====
+# LinuxFonts::DetectSystemFontStyle against a made-up config home, without a
+# display: no desktop session and no files gives the bundled Ubuntu 12 (the
+# GNOME schema's compiled default must not reach a CI runner under Xvfb),
+# settings.ini and kdeglobals are read, a KDE session reads kdeglobals first.
+# Compiled from the backend's source with GIO, as the core links it.
+if(UNIX AND NOT APPLE AND NOT EMSCRIPTEN)
+    find_package(PkgConfig QUIET)
+    if(PkgConfig_FOUND)
+        pkg_check_modules(LSF_GIO QUIET gio-2.0)
+    endif()
+    if(LSF_GIO_FOUND)
+        message(STATUS "  Building LinuxSystemFontTest...")
+        add_executable(LinuxSystemFontTest
+            ${CMAKE_CURRENT_SOURCE_DIR}/LinuxSystemFontTest.cpp
+            ${ULTRACANVAS_ROOT}/UltraCanvas/OS/Linux/UltraCanvasLinuxSystemFont.cpp
+        )
+        target_include_directories(LinuxSystemFontTest PRIVATE
+            ${ULTRACANVAS_INCLUDE_DIR}
+            ${ULTRACANVAS_ROOT}/UltraCanvas/OS/Linux
+            ${LSF_GIO_INCLUDE_DIRS})
+        target_link_directories(LinuxSystemFontTest PRIVATE ${LSF_GIO_LIBRARY_DIRS})
+        target_link_libraries(LinuxSystemFontTest PRIVATE ${LSF_GIO_LIBRARIES})
+        target_compile_features(LinuxSystemFontTest PRIVATE cxx_std_20)
+        set_target_properties(LinuxSystemFontTest PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+        add_test(NAME LinuxSystemFontTest COMMAND LinuxSystemFontTest WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+        message(STATUS "    Test registered: LinuxSystemFontTest")
+    else()
+        message(STATUS "  LinuxSystemFontTest skipped (gio-2.0 not found)")
+    endif()
+endif()
+
 # ===== VIDEO TIMELINE ELEMENT TEST =====
 # UltraCanvasVideoTimeline in a real window: geometry, hit testing and the
 # edits that mouse and key events turn into reported changes (trim with
@@ -1651,7 +1843,8 @@ message(STATUS "  Building HTMLReaderTest...")
 add_executable(HTMLReaderTest
     ${CMAKE_CURRENT_SOURCE_DIR}/HTMLReaderTest.cpp
 )
-target_link_libraries(HTMLReaderTest PRIVATE HTMLReaderTestCore)
+find_package(Threads REQUIRED)
+target_link_libraries(HTMLReaderTest PRIVATE HTMLReaderTestCore Threads::Threads)
 set_target_properties(HTMLReaderTest PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
@@ -2145,8 +2338,10 @@ message(STATUS "    Test registered: ListViewTooltipTest")
 # ===== LISTVIEW SCROLL TEST =====
 # EnsureRowVisible before the view's first layout (the row is revealed once it
 # has a size, instead of scrolling it below the top), the multi-column model's
-# SetItems (one notification for every row) and the selection following rows
-# inserted or removed above it. No window, no display.
+# SetItems (one notification for every row), the selection following rows
+# inserted or removed above it, columns wider than the view (the horizontal
+# scrollbar, the sideways scroll and the Left / Right keys) and columns
+# fitted to their text (SetColumnFitting). No window, no display.
 if(TARGET UltraCanvas)
     message(STATUS "  Building ListViewScrollTest...")
     add_executable(ListViewScrollTest
@@ -3322,6 +3517,23 @@ add_test(NAME MatrixModelTest COMMAND MatrixModelTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: MatrixModelTest")
 
+# ===== PERFORMANCE MATRIX MODEL TEST =====
+# The performance matrix model: sparse cells, the rank from the best corner,
+# validation and the shipped samples. UI-free.
+message(STATUS "  Building PerformanceMatrixModelTest...")
+add_executable(PerformanceMatrixModelTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/PerformanceMatrixModelTest.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Diagrams/UltraCanvasPerformanceMatrixModel.cpp
+)
+target_include_directories(PerformanceMatrixModelTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(PerformanceMatrixModelTest PRIVATE cxx_std_20)
+set_target_properties(PerformanceMatrixModelTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME PerformanceMatrixModelTest COMMAND PerformanceMatrixModelTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: PerformanceMatrixModelTest")
+
 # ===== FISHBONE MODEL TEST =====
 # Unit tests for the fishbone (Ishikawa) model: category presets, cause and
 # sub-cause counting, depth, validation, the indented-outline codec and the
@@ -3469,6 +3681,84 @@ if(LIBARCHIVE_TEST_FOUND)
         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
     )
     message(STATUS "    Test registered: VirtualFSDeleteTest")
+
+    # ===== VIRTUALFS ARCHIVE WRITE OPTIONS TEST =====
+    # VirtualFSOpenOptions::archiveWrite (UltraFiler's Settings > Archives >
+    # TAR): compressor level / threads / zstd long mode, the TAR header
+    # format, kept times / permissions / owner, symbolic links, exclusions.
+    message(STATUS "  Building VirtualFSArchiveWriteOptionsTest...")
+    add_executable(VirtualFSArchiveWriteOptionsTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/VirtualFSArchiveWriteOptionsTest.cpp
+        ${ULTRACANVAS_ROOT}/VirtualFS/core/VirtualFSManager.cpp
+        ${ULTRACANVAS_ROOT}/VirtualFS/core/VirtualFSCompression.cpp
+        ${ULTRACANVAS_ROOT}/VirtualFS/providers/VirtualFSLibArchiveProvider.cpp
+        ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/miniz/miniz.c
+    )
+    target_include_directories(VirtualFSArchiveWriteOptionsTest PRIVATE
+        ${ULTRACANVAS_ROOT}/VirtualFS/include
+        ${ULTRACANVAS_ROOT}/VirtualFS/include/VirtualFS
+        ${ULTRACANVAS_ROOT}/VirtualFS/providers
+        ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/miniz
+        ${LIBARCHIVE_TEST_INCLUDE_DIRS}
+    )
+    target_compile_definitions(VirtualFSArchiveWriteOptionsTest PRIVATE
+        VIRTUALFS_HAS_LIBARCHIVE
+        VIRTUALFS_HAS_MINIZ
+    )
+    target_link_libraries(VirtualFSArchiveWriteOptionsTest PRIVATE
+        ${LIBARCHIVE_TEST_LIBRARIES}
+        pthread
+    )
+    target_compile_features(VirtualFSArchiveWriteOptionsTest PRIVATE cxx_std_17)
+    set_target_properties(VirtualFSArchiveWriteOptionsTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(
+        NAME VirtualFSArchiveWriteOptionsTest
+        COMMAND VirtualFSArchiveWriteOptionsTest ${CMAKE_BINARY_DIR}/vfs-archive-write-test-out
+        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    message(STATUS "    Test registered: VirtualFSArchiveWriteOptionsTest")
+
+    # ===== VIRTUALFS BRIDGE ARCHIVE TEST =====
+    # UCVFSBridge::CreateArchive: UCVFSCompressionOptions::type stays the
+    # buffer compressors' choice; archive.method is what a ZIP / 7-Zip is
+    # written with, and a method no archive takes fails without a file.
+    message(STATUS "  Building VirtualFSBridgeArchiveTest...")
+    add_executable(VirtualFSBridgeArchiveTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/VirtualFSBridgeArchiveTest.cpp
+        ${ULTRACANVAS_ROOT}/UltraCanvas/core/UltraCanvasVirtualFSBridge.cpp
+        ${ULTRACANVAS_ROOT}/VirtualFS/core/VirtualFSManager.cpp
+        ${ULTRACANVAS_ROOT}/VirtualFS/core/VirtualFSCompression.cpp
+        ${ULTRACANVAS_ROOT}/VirtualFS/providers/VirtualFSLibArchiveProvider.cpp
+        ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/miniz/miniz.c
+    )
+    target_include_directories(VirtualFSBridgeArchiveTest PRIVATE
+        ${ULTRACANVAS_ROOT}/UltraCanvas/include
+        ${ULTRACANVAS_ROOT}/VirtualFS/include
+        ${ULTRACANVAS_ROOT}/VirtualFS/include/VirtualFS
+        ${ULTRACANVAS_ROOT}/VirtualFS/providers
+        ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/miniz
+        ${LIBARCHIVE_TEST_INCLUDE_DIRS}
+    )
+    target_compile_definitions(VirtualFSBridgeArchiveTest PRIVATE
+        VIRTUALFS_HAS_LIBARCHIVE
+        VIRTUALFS_HAS_MINIZ
+    )
+    target_link_libraries(VirtualFSBridgeArchiveTest PRIVATE
+        ${LIBARCHIVE_TEST_LIBRARIES}
+        pthread
+    )
+    target_compile_features(VirtualFSBridgeArchiveTest PRIVATE cxx_std_17)
+    set_target_properties(VirtualFSBridgeArchiveTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(
+        NAME VirtualFSBridgeArchiveTest
+        COMMAND VirtualFSBridgeArchiveTest ${CMAKE_BINARY_DIR}/vfs-bridge-archive-test-out
+        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    message(STATUS "    Test registered: VirtualFSBridgeArchiveTest")
 
     # ===== VIRTUALFS NAME ENCODING TEST =====
     # ZIP entry names in the DOS code page (no UTF-8 flag, as Windows writes
@@ -3697,6 +3987,7 @@ add_executable(ChartEngineTest
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Charts/Engine/UltraCanvasChartSeries.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Charts/Engine/UltraCanvasChartTheme.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Charts/Engine/UltraCanvasChartHighlights.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Charts/Engine/UltraCanvasChartAnalysis.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Charts/UltraCanvasParallelAxisModel.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Charts/UltraCanvasColormap.cpp
     ${ULTRACANVAS_CORE_DIR}/UltraCanvasLabelPlacement.cpp
@@ -3716,6 +4007,27 @@ add_test(
 )
 message(STATUS "    Test registered: ChartEngineTest")
 
+# ===== IMPORTANCE-PERFORMANCE MODEL TEST =====
+# The importance-performance chart's model: open Chaikin smoothing, point in
+# polygon, the pole of inaccessibility, zone order and classification, levels,
+# validation and the Slack preset in both forms. UI-free.
+message(STATUS "  Building ImportancePerformanceModelTest...")
+add_executable(ImportancePerformanceModelTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/ImportancePerformanceModelTest.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Charts/Engine/Charts/UltraCanvasImportancePerformanceModel.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Charts/Engine/UltraCanvasChartHighlights.cpp
+)
+target_include_directories(ImportancePerformanceModelTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+)
+target_compile_features(ImportancePerformanceModelTest PRIVATE cxx_std_20)
+set_target_properties(ImportancePerformanceModelTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME ImportancePerformanceModelTest COMMAND ImportancePerformanceModelTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: ImportancePerformanceModelTest")
+
 # ===== ELEMENT PLUGIN TEST =====
 # The element plugin registry, create-by-name, keyword text dispatch, the named
 # property surface, the ABI handshake, and a real end-to-end DSO load: two test
@@ -3729,9 +4041,24 @@ add_library(TestElementPlugin MODULE
 add_library(TestRefusingPlugin MODULE
     ${CMAKE_CURRENT_SOURCE_DIR}/TestRefusingPlugin.cpp
 )
-foreach(plugin TestElementPlugin TestRefusingPlugin)
+# Built for a newer host table than this framework's: refused by the handshake.
+add_library(TestNewerPlugin MODULE
+    ${CMAKE_CURRENT_SOURCE_DIR}/TestNewerPlugin.cpp
+)
+# Compiled against other framework headers, and from before plugins said
+# which: the loader calls neither.
+add_library(TestOtherHeadersPlugin MODULE
+    ${CMAKE_CURRENT_SOURCE_DIR}/TestOtherHeadersPlugin.cpp
+)
+target_compile_definitions(TestOtherHeadersPlugin PRIVATE ULTRACANVAS_TEST_OTHER_HEADERS)
+add_library(TestNoHeadersIdPlugin MODULE
+    ${CMAKE_CURRENT_SOURCE_DIR}/TestOtherHeadersPlugin.cpp
+)
+target_compile_definitions(TestNoHeadersIdPlugin PRIVATE ULTRACANVAS_TEST_NO_HEADERS_ID)
+foreach(plugin TestElementPlugin TestRefusingPlugin TestNewerPlugin TestOtherHeadersPlugin TestNoHeadersIdPlugin)
     target_include_directories(${plugin} PRIVATE
         ${ULTRACANVAS_INCLUDE_DIR}
+        ${ULTRACANVAS_GENERATED_INCLUDE_DIR}
         ${CMAKE_CURRENT_SOURCE_DIR}
     )
     target_compile_features(${plugin} PRIVATE cxx_std_20)
@@ -3749,11 +4076,13 @@ add_executable(ElementPluginTest
 )
 target_include_directories(ElementPluginTest PRIVATE
     ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_GENERATED_INCLUDE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
 target_compile_features(ElementPluginTest PRIVATE cxx_std_20)
 target_link_libraries(ElementPluginTest PRIVATE ${CMAKE_DL_LIBS})
-add_dependencies(ElementPluginTest TestElementPlugin TestRefusingPlugin)
+add_dependencies(ElementPluginTest TestElementPlugin TestRefusingPlugin TestNewerPlugin
+                 TestOtherHeadersPlugin TestNoHeadersIdPlugin)
 set_target_properties(ElementPluginTest PROPERTIES
     OUTPUT_NAME "ElementPluginTest"
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
@@ -4061,6 +4390,44 @@ set_target_properties(ButtonIconPixelTest PROPERTIES
 add_test(NAME ButtonIconPixelTest COMMAND ButtonIconPixelTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: ButtonIconPixelTest")
+
+# ===== TEXT CENTRED ON CAPITALS TEST =====
+# A segmented control's captions and a spreadsheet's cells centre their
+# capitals on the segment's or row's middle, as a button does, rather than
+# the text's line box, which sits high or low with the font. Offscreen; needs
+# no display.
+message(STATUS "  Building TextCentredOnCapsTest...")
+add_executable(TextCentredOnCapsTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/TextCentredOnCapsTest.cpp
+)
+target_include_directories(TextCentredOnCapsTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(TextCentredOnCapsTest PRIVATE cxx_std_20)
+target_link_libraries(TextCentredOnCapsTest PRIVATE UltraCanvas)
+set_target_properties(TextCentredOnCapsTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME TextCentredOnCapsTest COMMAND TextCentredOnCapsTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: TextCentredOnCapsTest")
+
+# ===== TEXT LAYOUT CACHE TEST =====
+# The text layout an element draws with is built once and kept: ten draws
+# of a label, or of a button shortened in the middle, make one layout on
+# the render context (TextLayoutsCreated); a changed text, font or width
+# makes one more, a changed colour none. Offscreen; needs no display.
+message(STATUS "  Building TextLayoutCacheTest...")
+add_executable(TextLayoutCacheTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/TextLayoutCacheTest.cpp
+)
+target_include_directories(TextLayoutCacheTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(TextLayoutCacheTest PRIVATE cxx_std_20)
+target_link_libraries(TextLayoutCacheTest PRIVATE UltraCanvas)
+set_target_properties(TextLayoutCacheTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME TextLayoutCacheTest COMMAND TextLayoutCacheTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: TextLayoutCacheTest")
 
 message(STATUS "  Building ButtonGrowToFitTest...")
 add_executable(ButtonGrowToFitTest
@@ -4410,6 +4777,26 @@ add_test(NAME FilerVolumeSpaceTest COMMAND FilerVolumeSpaceTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: FilerVolumeSpaceTest")
 
+# ===== FILER LOCATIONS TEST =====
+# UltraFiler's Extras > Open location (Apps/UltraFiler/UltraFilerLocations.h):
+# each platform's list of UltraCanvas and system folders, and a typed
+# location's %VAR% / $VAR / ~ expansion. Header-only, so it links nothing.
+message(STATUS "  Building FilerLocationsTest...")
+add_executable(FilerLocationsTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/FilerLocationsTest.cpp
+)
+target_include_directories(FilerLocationsTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_ROOT}/Apps/UltraFiler
+)
+target_compile_features(FilerLocationsTest PRIVATE cxx_std_20)
+set_target_properties(FilerLocationsTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME FilerLocationsTest COMMAND FilerLocationsTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: FilerLocationsTest")
+
 message(STATUS "")
 
 # ===== SPREADSHEET FORMULA ENGINE TEST =====
@@ -4673,6 +5060,27 @@ else()
     message(STATUS "  TextAreaSearchHighlightTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== TEXTAREA AUTO-COMPLETE TEST =====
+# ShowAutoComplete's list at the caret: keys move in it and take a
+# suggestion in place of the word before the caret. Skips without DISPLAY.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building TextAreaAutoCompleteTest...")
+    add_executable(TextAreaAutoCompleteTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/TextAreaAutoCompleteTest.cpp
+    )
+    target_include_directories(TextAreaAutoCompleteTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(TextAreaAutoCompleteTest PRIVATE cxx_std_20)
+    target_link_libraries(TextAreaAutoCompleteTest PRIVATE UltraCanvas)
+    set_target_properties(TextAreaAutoCompleteTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME TextAreaAutoCompleteTest COMMAND TextAreaAutoCompleteTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: TextAreaAutoCompleteTest")
+else()
+    message(STATUS "  TextAreaAutoCompleteTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== TEXTAREA DETACHED TEST =====
 # A text area outside any window has no render context: SetText + ScrollTo on
 # it (the media viewer's Details panel) must not build layouts. Skips without
@@ -4699,7 +5107,7 @@ endif()
 # Every format another program offers is seen: the X11 backend read a
 # TARGETS list (format 32, C longs) at 4 bytes an item and saw half of it.
 # Skips without DISPLAY.
-if(TARGET UltraCanvas AND UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN)
+if(TARGET UltraCanvas AND UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN AND NOT ULTRACANVAS_WAYLAND)
     message(STATUS "  Building ClipboardTargetsTest...")
     add_executable(ClipboardTargetsTest
         ${CMAKE_CURRENT_SOURCE_DIR}/ClipboardTargetsTest.cpp
@@ -4721,7 +5129,7 @@ endif()
 # A copy too large for one X request travels in pieces (ICCCM INCR), both
 # ways; checked against xclip as well when it is installed. Skips without
 # DISPLAY.
-if(TARGET UltraCanvas AND UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN)
+if(TARGET UltraCanvas AND UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN AND NOT ULTRACANVAS_WAYLAND)
     message(STATUS "  Building ClipboardIncrTest...")
     add_executable(ClipboardIncrTest
         ${CMAKE_CURRENT_SOURCE_DIR}/ClipboardIncrTest.cpp
@@ -4929,6 +5337,50 @@ if(TARGET UltraCanvas)
     message(STATUS "    Test registered: DesktopEntryTest")
 else()
     message(STATUS "  DesktopEntryTest skipped (UltraCanvas target not present)")
+endif()
+
+message(STATUS "")
+
+# ===== IMAGE FROM PIXELS TEST =====
+# UCImage::FromBgra / FromRgba (libspecific/Cairo/ImageCairo.cpp): a picture
+# made from rows in memory draws, scales, saves and reports transparency.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building ImageFromPixelsTest...")
+    add_executable(ImageFromPixelsTest ${CMAKE_CURRENT_SOURCE_DIR}/ImageFromPixelsTest.cpp)
+    target_include_directories(ImageFromPixelsTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(ImageFromPixelsTest PRIVATE cxx_std_20)
+    target_link_libraries(ImageFromPixelsTest PRIVATE UltraCanvas)
+    set_target_properties(ImageFromPixelsTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME ImageFromPixelsTest COMMAND ImageFromPixelsTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: ImageFromPixelsTest")
+endif()
+
+message(STATUS "")
+
+# ===== ULTRASNIP CAPTURE TEST =====
+# UltraSnip's pure helpers (Apps/UltraSnip/ui/UltraSnipCapture.cpp): the
+# rectangle from a drag, the crop of a BGRx capture into RGBA, the window
+# under a point, the recording bar's place. No display.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building UltraSnipCaptureTest...")
+    add_executable(UltraSnipCaptureTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/UltraSnipCaptureTest.cpp
+        ${ULTRACANVAS_ROOT}/Apps/UltraSnip/ui/UltraSnipCapture.cpp
+    )
+    target_include_directories(UltraSnipCaptureTest PRIVATE
+        ${ULTRACANVAS_INCLUDE_DIR}
+        ${ULTRACANVAS_ROOT}/Apps/UltraSnip/ui)
+    target_compile_features(UltraSnipCaptureTest PRIVATE cxx_std_20)
+    target_link_libraries(UltraSnipCaptureTest PRIVATE UltraCanvas)
+    set_target_properties(UltraSnipCaptureTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME UltraSnipCaptureTest COMMAND UltraSnipCaptureTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: UltraSnipCaptureTest")
 endif()
 
 message(STATUS "")
@@ -5247,6 +5699,54 @@ else()
     message(STATUS "  MatrixDiagramRenderTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== PERFORMANCE MATRIX RENDER TEST =====
+# The performance matrix drawn offscreen in each design: every cell is laid
+# out and hit where it is drawn, the colouring paints each cell its rank or
+# level colour, hover and click select, and a crowded matrix fits its text by
+# dropping content that stays in the tooltip. With ULTRACANVAS_SCREENSHOT_DIR
+# set, each design is written there as a PNG.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building PerformanceMatrixRenderTest...")
+    add_executable(PerformanceMatrixRenderTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/PerformanceMatrixRenderTest.cpp
+    )
+    target_include_directories(PerformanceMatrixRenderTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(PerformanceMatrixRenderTest PRIVATE cxx_std_20)
+    target_link_libraries(PerformanceMatrixRenderTest PRIVATE UltraCanvas)
+    set_target_properties(PerformanceMatrixRenderTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME PerformanceMatrixRenderTest COMMAND PerformanceMatrixRenderTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: PerformanceMatrixRenderTest")
+else()
+    message(STATUS "  PerformanceMatrixRenderTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== IMPORTANCE-PERFORMANCE CHART RENDER TEST =====
+# The importance-performance chart drawn offscreen in both Slack forms: the
+# zones are painted in their colours where the model puts them, every factor
+# is hit where it is drawn with its zone in the tooltip, and the band and
+# zone titles are laid out. With ULTRACANVAS_SCREENSHOT_DIR set, each form is
+# written there as a PNG.
+if(TARGET UltraCanvas AND ULTRACANVAS_ENABLE_CHARTS)
+    message(STATUS "  Building ImportancePerformanceChartRenderTest...")
+    add_executable(ImportancePerformanceChartRenderTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/ImportancePerformanceChartRenderTest.cpp
+    )
+    target_include_directories(ImportancePerformanceChartRenderTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(ImportancePerformanceChartRenderTest PRIVATE cxx_std_20)
+    target_link_libraries(ImportancePerformanceChartRenderTest PRIVATE UltraCanvas)
+    set_target_properties(ImportancePerformanceChartRenderTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME ImportancePerformanceChartRenderTest COMMAND ImportancePerformanceChartRenderTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: ImportancePerformanceChartRenderTest")
+else()
+    message(STATUS "  ImportancePerformanceChartRenderTest skipped (UltraCanvas or charts not present)")
+endif()
+
 # ===== BUSY INDICATOR RENDER TEST =====
 # UltraCanvasBusyIndicator drawn offscreen, at rest: the DualRing's inner arc
 # in secondArcColor and the DotRing's NoFade / Fade / FadeRandomColor dots.
@@ -5539,6 +6039,92 @@ if(TARGET UltraCanvas)
     message(STATUS "    Test registered: ToolbarThicknessTest")
 else()
     message(STATUS "  ToolbarThicknessTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== TOOLBAR OVERFLOW MENU TEST =====
+# groupSpacing is the gap across a separator, and ToolbarOverflowMode::Menu
+# takes what does not fit off the end of the bar into a chevron's menu.
+# Headless.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building ToolbarOverflowMenuTest...")
+    add_executable(ToolbarOverflowMenuTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/ToolbarOverflowMenuTest.cpp
+    )
+    target_include_directories(ToolbarOverflowMenuTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(ToolbarOverflowMenuTest PRIVATE cxx_std_20)
+    target_link_libraries(ToolbarOverflowMenuTest PRIVATE UltraCanvas)
+    set_target_properties(ToolbarOverflowMenuTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME ToolbarOverflowMenuTest COMMAND ToolbarOverflowMenuTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: ToolbarOverflowMenuTest")
+else()
+    message(STATUS "  ToolbarOverflowMenuTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== TOOLBAR LAYOUT TEST =====
+# A toolbar built from groups of command ids (MaterializeToolbar), its state
+# read from the commands, and the user's arrangement kept across releases.
+# Headless.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building ToolbarLayoutTest...")
+    add_executable(ToolbarLayoutTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/ToolbarLayoutTest.cpp
+    )
+    target_include_directories(ToolbarLayoutTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(ToolbarLayoutTest PRIVATE cxx_std_20)
+    target_link_libraries(ToolbarLayoutTest PRIVATE UltraCanvas)
+    set_target_properties(ToolbarLayoutTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME ToolbarLayoutTest COMMAND ToolbarLayoutTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: ToolbarLayoutTest")
+else()
+    message(STATUS "  ToolbarLayoutTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== COMMAND CONFIG WIDGET TEST =====
+# One editor for a program's menus and toolbars: the tree, the toolbar and menu
+# edits, the preview, Apply and Reset. Headless.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building CommandConfigWidgetTest...")
+    add_executable(CommandConfigWidgetTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/CommandConfigWidgetTest.cpp
+    )
+    target_include_directories(CommandConfigWidgetTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(CommandConfigWidgetTest PRIVATE cxx_std_20)
+    target_link_libraries(CommandConfigWidgetTest PRIVATE UltraCanvas)
+    set_target_properties(CommandConfigWidgetTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME CommandConfigWidgetTest COMMAND CommandConfigWidgetTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: CommandConfigWidgetTest")
+else()
+    message(STATUS "  CommandConfigWidgetTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== MENU LAYOUT MERGE TEST =====
+# A menu layout the user arranged, brought forward to a newer program's
+# defaults: new commands at their place, removed ones still removed. Headless.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building MenuLayoutMergeTest...")
+    add_executable(MenuLayoutMergeTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/MenuLayoutMergeTest.cpp
+    )
+    target_include_directories(MenuLayoutMergeTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(MenuLayoutMergeTest PRIVATE cxx_std_20)
+    target_link_libraries(MenuLayoutMergeTest PRIVATE UltraCanvas)
+    set_target_properties(MenuLayoutMergeTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME MenuLayoutMergeTest COMMAND MenuLayoutMergeTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: MenuLayoutMergeTest")
+else()
+    message(STATUS "  MenuLayoutMergeTest skipped (UltraCanvas target not present)")
 endif()
 
 # ===== CSS LAYOUT FORM GRID TEST =====
@@ -5837,6 +6423,24 @@ else()
     message(STATUS "  DemoScrollTextTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== ScrollContainerGutterTest =====
+# A scrolling container lays its children out clear of its vertical
+# scrollbar instead of under it. Headless.
+if(TARGET UltraCanvas)
+    add_executable(ScrollContainerGutterTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/ScrollContainerGutterTest.cpp
+    )
+    target_include_directories(ScrollContainerGutterTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(ScrollContainerGutterTest PRIVATE cxx_std_20)
+    target_link_libraries(ScrollContainerGutterTest PRIVATE UltraCanvas)
+    set_target_properties(ScrollContainerGutterTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME ScrollContainerGutterTest COMMAND ScrollContainerGutterTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: ScrollContainerGutterTest")
+endif()
+
 # ===== ScrollKeepsPositionOnResizeTest =====
 # A scroll view keeps its position across a resize inside a split pane and a
 # tabbed container (they used to run a throwaway block layout first).
@@ -5903,6 +6507,21 @@ if(TARGET UltraCanvas)
     message(STATUS "    Test registered: MediaViewerToolsTest")
 else()
     message(STATUS "  MediaViewerToolsTest skipped (UltraCanvas target not present)")
+endif()
+
+# OutlookMessageTest - the Outlook .msg reader (UltraCanvasOutlookMessage.h):
+# messages built with UCCompoundFileWriter as Outlook lays them out, the
+# compressed RTF body and the HTML it encapsulates, attachments; the compound
+# file's paths below the root; DecodeWindowsCodePage. Headless.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building OutlookMessageTest...")
+    add_executable(OutlookMessageTest ${CMAKE_CURRENT_SOURCE_DIR}/OutlookMessageTest.cpp)
+    target_include_directories(OutlookMessageTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(OutlookMessageTest PRIVATE cxx_std_20)
+    target_link_libraries(OutlookMessageTest PRIVATE UltraCanvas)
+    set_target_properties(OutlookMessageTest PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    add_test(NAME OutlookMessageTest COMMAND OutlookMessageTest WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: OutlookMessageTest")
 endif()
 
 # ===== ULTRAVIEWER SETTINGS TEST =====
@@ -5980,6 +6599,25 @@ else()
     message(STATUS "  MediaViewerSaveTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== NODE DIAGRAM: NO OVERLAPS, CARD NODES =====
+# ResolveOverlaps and the force layout leave no two nodes overlapping, wide
+# card nodes in a small element included; the card fields round-trip
+# through JSON. Headless.
+if(TARGET UltraCanvas)
+    add_executable(NodeDiagramOverlapTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/NodeDiagramOverlapTest.cpp
+    )
+    target_include_directories(NodeDiagramOverlapTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(NodeDiagramOverlapTest PRIVATE cxx_std_20)
+    target_link_libraries(NodeDiagramOverlapTest PRIVATE UltraCanvas)
+    set_target_properties(NodeDiagramOverlapTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME NodeDiagramOverlapTest COMMAND NodeDiagramOverlapTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: NodeDiagramOverlapTest")
+endif()
+
 # ===== DIAGRAM JSON UNDER A COMMA-DECIMAL LOCALE =====
 # The node and compositor diagrams' JSON is the same text under a
 # comma-decimal C++ global locale as under "C" (their streams are pinned to
@@ -6045,6 +6683,43 @@ if(TARGET UltraCanvas)
 else()
     message(STATUS "  ImageIcoQoiTest skipped (UltraCanvas target not present)")
 endif()
+
+# ===== IMAGE FORMATS TEST =====
+# Every modern picture format decodes in this build - JPEG, PNG, GIF, BMP,
+# TIFF, WebP, AVIF, HEIC, JPEG XL, QOI and icons, the samples under
+# media/images - and a picture without an alpha channel is an opaque RGB24
+# pixmap that keeps its format through the QOI pixmap blob. Headless.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building ImageFormatsTest...")
+    add_executable(ImageFormatsTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/ImageFormatsTest.cpp
+    )
+    target_include_directories(ImageFormatsTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(ImageFormatsTest PRIVATE cxx_std_20)
+    target_compile_definitions(ImageFormatsTest PRIVATE
+        UC_MEDIA_DIR="${ULTRACANVAS_ROOT}/media")
+    target_link_libraries(ImageFormatsTest PRIVATE UltraCanvas)
+    set_target_properties(ImageFormatsTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME ImageFormatsTest COMMAND ImageFormatsTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: ImageFormatsTest")
+else()
+    message(STATUS "  ImageFormatsTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== IMAGE JPEG XL TEST =====
+# Defined in ImageJxlTests.cmake, which the top level also includes on its own
+# (ULTRACANVAS_BUILD_JXL_TESTS) where BUILD_TESTS is off - the macOS and
+# Windows rows.
+include(${CMAKE_CURRENT_SOURCE_DIR}/ImageJxlTests.cmake)
+
+# ===== IMAGE HEIF / AVIF TEST =====
+# Defined in ImageHeifTests.cmake, which the top level also includes on its
+# own (ULTRACANVAS_BUILD_HEIF_TESTS) where BUILD_TESTS is off - the macOS and
+# Windows rows.
+include(${CMAKE_CURRENT_SOURCE_DIR}/ImageHeifTests.cmake)
 
 # ===== IMAGE GIF SAVER TEST =====
 # The framework's GIF saver for libvips (VipsGifPlugin): registered, picked
@@ -6167,6 +6842,27 @@ else()
     message(STATUS "  TreeViewKeyboardTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== TREE VIEW NODE DRAG TEST =====
+# Dragging a tree row onto another: the threshold, the targets accepted,
+# onNodeDragDrop, Escape, scrolling past the edge. Headless.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building TreeViewNodeDragTest...")
+    add_executable(TreeViewNodeDragTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/TreeViewNodeDragTest.cpp
+    )
+    target_include_directories(TreeViewNodeDragTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(TreeViewNodeDragTest PRIVATE cxx_std_20)
+    target_link_libraries(TreeViewNodeDragTest PRIVATE UltraCanvas)
+    set_target_properties(TreeViewNodeDragTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME TreeViewNodeDragTest COMMAND TreeViewNodeDragTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: TreeViewNodeDragTest")
+else()
+    message(STATUS "  TreeViewNodeDragTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== TREE VIEW SCROLL BUTTONS TEST =====
 # The tree view's floating "move to the top" and "go to the selected entry"
 # buttons: when each shows, where it sits, and what a click on it does.
@@ -6208,3 +6904,8 @@ if(TARGET UltraCanvas)
 else()
     message(STATUS "  TreeViewFilterTest skipped (UltraCanvas target not present)")
 endif()
+
+# StartPageTest and AppSettingsTest: defined in StartPageTests.cmake, which
+# the top level also includes on its own under
+# ULTRACANVAS_BUILD_STARTPAGE_TESTS (the macOS and Windows CI rows).
+include(${CMAKE_CURRENT_SOURCE_DIR}/StartPageTests.cmake)

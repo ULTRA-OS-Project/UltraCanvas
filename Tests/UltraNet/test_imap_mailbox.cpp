@@ -349,7 +349,7 @@ TEST(imap_reader_takes_literals_whole_however_they_arrive) {
     REQUIRE_EQ(got[1].literals[0], header2);
     REQUIRE(got[2].IsTagged("U3"));
     REQUIRE(!got[2].IsTagged("U30"));
-    REQUIRE_EQ(got[2].Status(), std::string("OK"));
+    REQUIRE_EQ(got[2].StatusWord(), std::string("OK"));
     REQUIRE_EQ(reader.Pending(), (std::size_t)0);
 
     // All at once, and an empty literal.
@@ -365,7 +365,7 @@ TEST(imap_reader_takes_literals_whole_however_they_arrive) {
     REQUIRE_EQ(r.literals.size(), (std::size_t)1);
     REQUIRE(r.literals[0].empty());
     REQUIRE(empty.Next(r));
-    REQUIRE_EQ(r.Status(), std::string("NO"));
+    REQUIRE_EQ(r.StatusWord(), std::string("NO"));
 }
 
 TEST(imap_parse_fetch_response) {

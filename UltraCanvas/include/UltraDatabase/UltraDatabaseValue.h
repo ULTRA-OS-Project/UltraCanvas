@@ -19,7 +19,7 @@
 // (ISO-8601) by convention; there is no separate timestamp tag in Stage 1.
 enum class UltraDbType {
     Null = 0,
-    Bool,
+    Boolean,
     Int,      // 64-bit signed
     Double,
     Text,     // UTF-8
@@ -33,7 +33,7 @@ class UltraDbValue {
 public:
     UltraDbValue() = default;
     UltraDbValue(std::nullptr_t) {}
-    UltraDbValue(bool v)                     : type_(UltraDbType::Bool),   i_(v ? 1 : 0) {}
+    UltraDbValue(bool v)                     : type_(UltraDbType::Boolean),   i_(v ? 1 : 0) {}
     UltraDbValue(int v)                      : type_(UltraDbType::Int),    i_(v) {}
     UltraDbValue(int64_t v)                  : type_(UltraDbType::Int),    i_(v) {}
     UltraDbValue(uint32_t v)                 : type_(UltraDbType::Int),    i_(static_cast<int64_t>(v)) {}

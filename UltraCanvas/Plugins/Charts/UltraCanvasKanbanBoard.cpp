@@ -3,6 +3,7 @@
 // with priorities/due dates/assignees/tags, drag & drop, a built-in card
 // editor, move history for flow metrics, text-definition (Mermaid kanban)
 // and JSON loading, and a preset-based design/palette system.
+// Version: 1.1.0 - card pictures (cardImageProvider)
 // Version: 1.0.1 - a press on the board's background (focus, deselect) is the board's
 // Version: 1.0.0
 // Last Modified: 2026-10-07
@@ -1466,6 +1467,12 @@ std::string UltraCanvasKanbanBoardElement::FormatDate(const GanttDate& date) con
 // ELEMENT — LAYOUT
 // =============================================================================
 
+std::shared_ptr<UCPixmap> UltraCanvasKanbanBoardElement::CardImage(const KanbanCard& card) const {
+    if (!cardImageProvider || style.cardImageHeight <= 0) return nullptr;
+    if (style.cardShape == KanbanCardShape::Pill || style.cardLayout == KanbanCardLayout::Grid) return nullptr;
+    return cardImageProvider(card);
+}
+
 double UltraCanvasKanbanBoardElement::CardHeight(IRenderContext* ctx,
                                                  const KanbanCard& card,
                                                  double cardWidth) const {
@@ -1477,6 +1484,7 @@ double UltraCanvasKanbanBoardElement::CardHeight(IRenderContext* ctx,
 
     double innerWidth = cardWidth - 2 * style.cardPadding;
     double h = style.cardPadding * 2;
+    if (CardImage(card)) h += style.cardImageHeight + 6;
 
     // Mirror RenderCard's reserved corner space for the priority marker.
     double titleReserve = 0;
@@ -2184,6 +2192,13 @@ void UltraCanvasKanbanBoardElement::RenderCard(IRenderContext* ctx,
     ctx->ClipRect(rect);
 
     double cursor = rect.y + pad;
+
+    // The picture, above the title.
+    if (auto picture = CardImage(card)) {
+        ctx->DrawPixmap(*picture, Rect2Dd(rect.x + pad, cursor, innerWidth, style.cardImageHeight),
+                        ImageFitMode::Contain);
+        cursor += style.cardImageHeight + 6;
+    }
 
     // Title.
     ctx->SetTextPaint(CardTitleColor(card, columnIndex));

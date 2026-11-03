@@ -226,6 +226,24 @@ int main() {
              FindError(area->GetSpellErrors(), "sentance") == nullptr);
     }
 
+    // ===== TYPING ABOVE A MARK =====
+    // Regression: every mark after the caret was dropped at each keystroke,
+    // since its bytes had shifted, and came back only with the next result -
+    // the squiggles below the line being typed blinked with every letter.
+    std::cerr << "\n--- Typing above keeps the marks below ---" << std::endl;
+    if (FindError(area->GetSpellErrors(), "thiss")) {
+        area->SetCursorPosition({0, 0});
+        area->InsertText("Truly ");
+        // Checked before any frame is drawn, so no result for the edit can
+        // have been taken: what is there was carried across the edit.
+        const std::string edited = area->GetText();
+        const SpellError* moved = FindError(area->GetSpellErrors(), "thiss");
+        TEST("A mark below the edit survives it", moved != nullptr);
+        TEST("It indexes the edited text",
+             moved && moved->startByte + moved->byteLength <= edited.size() &&
+             edited.substr(moved->startByte, moved->byteLength) == "thiss");
+    }
+
     // ===== ADD TO DICTIONARY =====
     std::cerr << "\n--- User dictionary suppresses a flag ---" << std::endl;
     {

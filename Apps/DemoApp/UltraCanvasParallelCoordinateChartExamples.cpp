@@ -3,11 +3,15 @@
 // client. Three examples mirror the reference images from the proposal: the
 // Iris common-scale z-score look, a dense hyper-parameter sweep with brushes
 // and value colouring, and curved group bundles.
+// Version: 1.1.0 - the shared page look (UltraCanvasDemoPageKit): one card per
+//                  example, the two small charts side by side while they fit,
+//                  the curved chart as wide as the page
 // Version: 1.0.0
-// Last Modified: 2026-08-01
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "Plugins/Charts/UltraCanvasParallelCoordinateChart.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasContainer.h"
@@ -64,34 +68,24 @@ void FillIrisLike(std::shared_ptr<UltraCanvasParallelCoordinateChartElement>& ch
 
 std::shared_ptr<UltraCanvasUIElement>
 UltraCanvasDemoApplication::CreateParallelCoordinateChartExamples() {
-    auto container = std::make_shared<UltraCanvasContainer>("PCPContainer", 0, 0, 1200, 810);
-
-    auto titleLabel = std::make_shared<UltraCanvasLabel>("PCPTitle", 20, 10, 1160, 35);
-    titleLabel->SetText("Parallel Coordinate Chart - Multi-Dimensional Records as Polylines");
-    titleLabel->SetFontSize(18);
-    titleLabel->SetFontWeight(FontWeight::Bold);
-    titleLabel->SetAlignment(TextAlignment::Center);
-    titleLabel->SetBackgroundColor(Color(240, 240, 250, 255));
-    container->AddChild(titleLabel);
-
-    auto descLabel = std::make_shared<UltraCanvasLabel>("PCPDesc", 20, 52, 1160, 46);
-    descLabel->SetText(
+    auto page = DemoKit::CreatePage("PCPContainer",
+        "Parallel Coordinate Chart - Multi-Dimensional Records as Polylines",
         "Each dimension gets its own vertical axis; one record becomes one line. Only neighbouring axes "
         "compare directly, so the axis order is interactive: drag an axis header (just above its top) to "
         "reorder, double-click an axis to invert it, drag along an axis to brush a range (click the axis "
         "to clear), hover a line for its values, click a line to pin it.");
-    descLabel->SetFontSize(11);
-    descLabel->SetWrap(TextWrap::WrapWord);
-    container->AddChild(descLabel);
+
+    // The two small charts share a row; a card is never narrower than its
+    // chart, so on a narrow page the second one moves under the first.
+    auto topRow = DemoKit::AddRow(page, "PCPTopRow");
 
     // ===== EXAMPLE 1: Iris - common scale, z-scored, grouped (top left) =====
-    auto irisLabel = std::make_shared<UltraCanvasLabel>("PCPIrisLabel", 20, 106, 560, 22);
-    irisLabel->SetText("Common scale + z-score per column, coloured by species (Iris look)");
-    irisLabel->SetFontSize(13);
-    irisLabel->SetFontWeight(FontWeight::Bold);
-    container->AddChild(irisLabel);
+    auto irisCard = DemoKit::AddCard(topRow, "PCPIrisCard", "", "",
+                                     560 + 2 * DemoKit::kCardPadding + 2);
+    DemoKit::AddHeading(irisCard, "PCPIrisLabel",
+        "Common scale + z-score per column, coloured by species (Iris look)");
 
-    auto iris = CreateParallelCoordinateChartElement("pcpIris", 20, 132, 560, 320);
+    auto iris = CreateParallelCoordinateChartElement("pcpIris", 0, 0, 560, 320);
     FillIrisLike(iris);
     iris->SetNormalizationMode(PCPNormalization::CommonScale);
     iris->SetStandardize(PCPStandardize::ZScore);
@@ -101,16 +95,15 @@ UltraCanvasDemoApplication::CreateParallelCoordinateChartExamples() {
     iris->SetGroupColors({{"setosa", Color(68, 1, 84, 255)},
                           {"versicolor", Color(33, 145, 140, 255)},
                           {"virginica", Color(253, 231, 37, 255)}});
-    container->AddChild(iris);
+    DemoKit::AddFixed(irisCard, iris);
 
     // ===== EXAMPLE 2: Hyper-parameter sweep - dense, value-coloured, brushed =====
-    auto sweepLabel = std::make_shared<UltraCanvasLabel>("PCPSweepLabel", 600, 106, 580, 22);
-    sweepLabel->SetText("Dense sweep: per-axis ranges, coloured by accuracy, brushed (dimmed context)");
-    sweepLabel->SetFontSize(13);
-    sweepLabel->SetFontWeight(FontWeight::Bold);
-    container->AddChild(sweepLabel);
+    auto sweepCard = DemoKit::AddCard(topRow, "PCPSweepCard", "", "",
+                                      580 + 2 * DemoKit::kCardPadding + 2);
+    DemoKit::AddHeading(sweepCard, "PCPSweepLabel",
+        "Dense sweep: per-axis ranges, coloured by accuracy, brushed (dimmed context)");
 
-    auto sweep = CreateParallelCoordinateChartElement("pcpSweep", 600, 132, 580, 320);
+    auto sweep = CreateParallelCoordinateChartElement("pcpSweep", 0, 0, 580, 320);
     {
         DemoRandom rng;
         std::vector<double> batch, channels, learningRate, dropout, accuracy;
@@ -140,16 +133,14 @@ UltraCanvasDemoApplication::CreateParallelCoordinateChartExamples() {
     sweep->SetContextStyle(Color(185, 185, 192, 45));
     sweep->AddBrush("accuracy", 0.80, 1.00);        // the interesting runs
     sweep->SetChartTitle("260 training runs");
-    container->AddChild(sweep);
+    DemoKit::AddFixed(sweepCard, sweep);
 
     // ===== EXAMPLE 3: Curved group bundles (bottom, wide) =====
-    auto curveLabel = std::make_shared<UltraCanvasLabel>("PCPCurveLabel", 20, 468, 800, 22);
-    curveLabel->SetText("Curved lines (Catmull-Rom), two process regimes, per-axis normalisation");
-    curveLabel->SetFontSize(13);
-    curveLabel->SetFontWeight(FontWeight::Bold);
-    container->AddChild(curveLabel);
+    auto curveCard = DemoKit::AddCard(page, "PCPCurveCard");
+    DemoKit::AddHeading(curveCard, "PCPCurveLabel",
+        "Curved lines (Catmull-Rom), two process regimes, per-axis normalisation");
 
-    auto curved = CreateParallelCoordinateChartElement("pcpCurved", 20, 494, 1160, 300);
+    auto curved = CreateParallelCoordinateChartElement("pcpCurved", 0, 0, 1160, 300);
     {
         DemoRandom rng;
         std::vector<PCPRecord> records;
@@ -180,9 +171,10 @@ UltraCanvasDemoApplication::CreateParallelCoordinateChartExamples() {
     curved->SetGroupColors({{"stable", Color(34, 136, 51, 255)},
                             {"aggressive", Color(238, 119, 51, 255)}});
     curved->SetChartTitle("Process batches");
-    container->AddChild(curved);
+    // Built 1160 wide only to fill the old page: it takes the card's width.
+    DemoKit::AddStretched(curveCard, curved);
 
-    return container;
+    return page;
 }
 
 } // namespace UltraCanvas

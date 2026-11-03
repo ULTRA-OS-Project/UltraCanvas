@@ -8,6 +8,8 @@
 // "Accounts…" are EmailCleaner's own: their own list, vault and body cache
 // under EmailCleaner's data directory, fetched by the same UltraMail
 // SyncEngine (EmailCleanerAccounts.h). Both land in the one analysis database.
+// Version: 0.5.0 - UltraMail's mail read with its storage key (encrypted at rest)
+// Version: 0.4.0 - the Contacts page: the address book against the mail sent
 // Version: 0.3.0 - own accounts beside UltraMail's
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -26,6 +28,7 @@
 #include "EmailCleanerActionsPanel.h"
 #include "EmailCleanerRulesDialog.h"
 #include "EmailCleanerAccountsDialog.h"
+#include "EmailCleanerContactsView.h"
 
 #include "EmailCleanerAccounts.h"
 #include "EmailCleanerAnalytics.h"
@@ -91,6 +94,20 @@ private:
     // (the SPECIAL-USE role in UltraMail's or EmailCleaner's own folder list).
     // The analysis leaves them out; the name heuristic covers the rest.
     std::set<std::string> TrashDirsFor(const std::string& accountId);
+    // The cache directories of an account's Sent folder, the same way: its
+    // mail is read for whom it went to, not analysed.
+    std::set<std::string> SentDirsFor(const std::string& accountId);
+    // The folders of one SPECIAL-USE role in an own account's folder list.
+    std::set<std::string> OwnRoleDirs(const std::string& accountId, UltraMail::FolderRole role);
+
+    // ---- Contacts ----------------------------------------------------------
+    // Hold UltraMail's address book against the mail sent and received, and
+    // show the review on the Contacts page.
+    void RefreshContacts();
+    // Confirm, then delete `selected` from UltraMail's address book.
+    void DeleteContacts(const std::vector<ContactReview>& selected);
+    // <UltraMail data dir>/contacts.db
+    std::string AddressBookPath() const;
     // The saved password of an own account ("" when there is none).
     std::string OwnPassword(const std::string& accountId) const;
     // Open the keyword rule editor, and re-analyse once it has written.
@@ -126,6 +143,12 @@ private:
     std::string dataDir_;
     std::string mailDataDir_;
     std::string mailCacheDir_;
+    // UltraMail's storage key (UltraMailStorage.h): its databases and message
+    // files are encrypted with keys derived from it. nullptr for a mailbox
+    // whose files are plain, or one locked with a Primary Password (then
+    // ultraMailKeyProblem_ says so).
+    std::shared_ptr<const UltraCryptSecureBuffer> ultraMailKey_;
+    std::string ultraMailKeyProblem_;
     std::string rulesPath_;
     std::string pluginDir_;   // where UltraNet's plug-ins were looked for
 
@@ -135,6 +158,8 @@ private:
     std::map<std::string, UltraMail::Account> ultraMailAccounts_;
     // UltraMail's Trash folders per account, read with its account list.
     std::map<std::string, std::set<std::string>> ultraMailTrashDirs_;
+    // And their Sent folders.
+    std::map<std::string, std::set<std::string>> ultraMailSentDirs_;
     OwnAccounts   ownAccounts_;
     bool          fetching_ = false;   // an own-account download is running
     std::string selectedSender_;
@@ -154,6 +179,7 @@ private:
     ActionsPanel  actionsPanel_;
     RulesDialog   rulesDialog_;
     AccountsDialog accountsDialog_;
+    ContactsView  contactsView_;
 
     // Attachment viewers, kept alive for as long as they are on screen.
     std::vector<std::shared_ptr<UltraCanvas::UltraCanvasWindow>> viewerWindows_;

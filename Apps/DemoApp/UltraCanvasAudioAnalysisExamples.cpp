@@ -5,11 +5,15 @@
 // lives on its own tab with a selectable signal source, showing that the
 // standard line / area / bar charts cover audio-derived data with no dedicated
 // chart type needed.
+// Version: 1.1.0 - the shared page look (UltraCanvasDemoPageKit): the tabs in a card
+//                  as wide as the page, descriptions and the signal row wrap, the
+//                  charts take the width and the height the text leaves
 // Version: 1.0.0
-// Last Modified: 2026-07-24
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "Plugins/Charts/UltraCanvasSpecificChartElements.h"
 #include "Plugins/Charts/UltraCanvasChartDataStructures.h"
 #include "Plugins/Charts/UltraCanvasSTFT.h"
@@ -217,39 +221,13 @@ namespace UltraCanvas {
 // =============================================================================
     std::shared_ptr<UltraCanvasUIElement>
     UltraCanvasDemoApplication::CreateAudioAnalysisExamples() {
-        const int CONTAINER_W = 1180;
-        const int CONTAINER_H = 800;
-        const int PAD = 16;
-
-        auto root = std::make_shared<UltraCanvasContainer>("AnaRoot", 0, 0, CONTAINER_W, CONTAINER_H);
-        root->SetBackgroundColor(Color(248, 249, 252, 255));
-        root->SetPadding(PAD);
-        root->layout.SetFlexColumn().SetFlexGap(8)
-                    .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-
-        auto addFlex = [](const std::shared_ptr<UltraCanvasContainer>& parent,
-                          const std::shared_ptr<UltraCanvasUIElement>& child, float grow) {
-            child->layoutItem.SetFlexGrow(grow).SetFlexShrink(grow > 0 ? 1.f : 0.f)
-                             .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-            parent->AddChild(child);
-        };
-
-        auto title = std::make_shared<UltraCanvasLabel>("AnaTitle", 0, 0, 0, 30);
-        title->SetText("Audio Analysis Charts - Spectrum, Envelope & Correlogram");
-        title->SetFontSize(18);
-        title->SetFontWeight(FontWeight::Bold);
-        title->SetTextColor(Color(30, 41, 59, 255));
-        addFlex(root, title, 0);
-
-        auto subtitle = std::make_shared<UltraCanvasLabel>("AnaSubtitle", 0, 0, 0, 34);
-        subtitle->SetText("Three classic audio-derived plots built entirely with the generic "
-                          "chart elements: an averaged FFT magnitude spectrum (area chart), an "
-                          "RMS amplitude envelope over time (area chart), and a normalized "
-                          "autocorrelation correlogram (bar chart). Pick a signal per tab.");
-        subtitle->SetFontSize(11);
-        subtitle->SetWrap(TextWrap::WrapWord);
-        subtitle->SetTextColor(Color(100, 110, 125, 255));
-        addFlex(root, subtitle, 0);
+        auto page = DemoKit::CreatePage("AnaRoot",
+                "Audio Analysis Charts - Spectrum, Envelope & Correlogram",
+                "Three classic audio-derived plots built entirely with the generic "
+                "chart elements: an averaged FFT magnitude spectrum (area chart), an "
+                "RMS amplitude envelope over time (area chart), and a normalized "
+                "autocorrelation correlogram (bar chart). Pick a signal per tab.");
+        auto card = DemoKit::AddCard(page, "AnaCard");
 
         // ----- Decode the bundled sample track once (shared by all tabs) -----
         auto trackMono = std::make_shared<std::vector<float>>();
@@ -272,14 +250,16 @@ namespace UltraCanvas {
         const int defaultSignal = trackMono->empty() ? 1 : 0;
 
         // ----- Tabs -----
+        // The charts' built size; they then take the tab's width and whatever
+        // height the description and the signal row leave.
+        const int INNER_W = 1148;
+        const int INNER_H = 640;
+
         auto tabs = std::make_shared<UltraCanvasTabbedContainer>(
-                "AnaTabs", 0, 0, CONTAINER_W - 2 * PAD, 680);
+                "AnaTabs", 0, 0, INNER_W, 680);
         tabs->SetTabStyle(TabStyle::Rounded);
         tabs->SetTabHeight(30);
         tabs->SetTabCornerRadius(8.0f);
-
-        const int INNER_W = CONTAINER_W - 2 * PAD - 8;
-        const int INNER_H = 640;
 
         auto makeTab = [&](const std::string& id, const std::string& descText,
                            const std::shared_ptr<UltraCanvasUIElement>& chart,
@@ -289,36 +269,31 @@ namespace UltraCanvas {
             tab->layout.SetFlexColumn().SetFlexGap(6)
                        .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 
-            auto desc = std::make_shared<UltraCanvasLabel>(id + "Desc", 0, 0, 0, 34);
-            desc->SetText(descText);
-            desc->SetFontSize(11);
-            desc->SetWrap(TextWrap::WrapWord);
-            desc->SetTextColor(Color(100, 110, 125, 255));
+            auto desc = DemoKit::CreateSubtitle(id + "Desc", descText);
             desc->SetMargin(10, 12, 0, 12);
-            addFlex(tab, desc, 0);
+            DemoKit::Add(tab, desc);
 
             // Signal picker row.
-            auto pickRow = std::make_shared<UltraCanvasContainer>(id + "Pick", 0, 0, INNER_W, 30);
-            pickRow->layout.SetFlexRow().SetFlexGap(8)
-                           .SetFlexAlignItems(CSSLayout::AlignItems::Center);
-            pickRow->size.height = CSSLayout::Dimension::Px(30);
-            auto pickLbl = std::make_shared<UltraCanvasLabel>(id + "PickLbl", 0, 0, 60, 18);
-            pickLbl->SetText("Signal:");
+            auto pickRow = DemoKit::CreateRow(id + "Pick", 8);
+            pickRow->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
+            auto pickLbl = DemoKit::CreateText(id + "PickLbl", "Signal:");
             pickLbl->SetFontSize(11);
             pickLbl->SetMargin(0, 0, 0, 12);
-            pickLbl->size.width = CSSLayout::Dimension::Px(60);
-            pickRow->AddChild(pickLbl);
+            DemoKit::Add(pickRow, pickLbl);
             auto pickDd = std::make_shared<UltraCanvasDropdown>(id + "PickDd", 0, 0, 240, 26);
             for (const auto& it : signalItems) pickDd->AddItem(it);
             pickDd->SetSelectedIndex(defaultSignal);
             pickDd->onSelectionChanged = [onSignal](int index, const DropdownItem&) {
                 onSignal(index);
             };
-            pickDd->size.width = CSSLayout::Dimension::Px(240);
-            pickRow->AddChild(pickDd);
-            addFlex(tab, pickRow, 0);
+            DemoKit::AddFixed(pickRow, pickDd);
+            DemoKit::Add(tab, pickRow);
 
-            addFlex(tab, chart, 1);
+            // The chart gives way (shrink) when a longer description takes
+            // more lines, so the tab never cuts its bottom off.
+            chart->size.width = CSSLayout::Dimension::Auto();
+            DemoKit::Add(tab, chart, 1);
+            chart->layoutItem.SetFlexShrink(1);
             return tab;
         };
 
@@ -410,9 +385,9 @@ namespace UltraCanvas {
         tabs->AddTab("Amplitude Envelope", tab2);
         tabs->AddTab("Correlogram", tab3);
         tabs->SetActiveTab(0);
-        addFlex(root, tabs, 1);
+        DemoKit::AddStretched(card, tabs);
 
-        return root;
+        return page;
     }
 
 } // namespace UltraCanvas

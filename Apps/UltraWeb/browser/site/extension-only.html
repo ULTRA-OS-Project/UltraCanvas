@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>UltraWeb app, extension only</title>
+<style>html, body { margin: 0; height: 100%; font: 15px system-ui, sans-serif; } p { margin: 16px; }</style>
+</head>
+<body>
+<!-- The same app with no runtime on the site: it runs only where the
+     UltraCanvas extension is installed, and says so elsewhere. -->
+<p id="ultraweb-status">Loading the app ...</p>
+<script src="ultraweb-loader.js" data-app="hello.wasm"></script>
+</body>
+</html>

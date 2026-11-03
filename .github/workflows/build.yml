@@ -22,6 +22,10 @@ on:
     branches:
       - main
       - 'claude/**'
+    # The default types plus `labeled`: adding the `ci:intel` label to a pull
+    # request starts a run whose matrix has the macOS Intel row (the gate
+    # reads the labels), without a push to carry it.
+    types: [opened, synchronize, reopened, labeled]
   workflow_dispatch:
     inputs:
       # Set only by changelog-fold.yml. Its "Changelog: x.y.z" commit is pushed
@@ -57,9 +61,10 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
-  # A merge commit that brings in a pending changelog entry does not carry its
-  # version yet: changelog-fold.yml assigns it in the commit that follows, and
-  # line 1 of CHANGELOG.md here is still the PREVIOUS release. Building the
+  # A merge commit that brings in a pending changelog entry - the framework's
+  # or any app's - does not carry its version yet: changelog-fold.yml assigns
+  # it in the commit that follows, and line 1 of that product's CHANGELOG.md
+  # here is still the PREVIOUS release. Building the
   # release from this commit would package new code under an already-published
   # number, so the release build waits for the fold commit - which carries the
   # right one - and this gate skips the commit before it.
@@ -67,9 +72,11 @@ jobs:
   # Only pushes are gated. A pull request always builds: its entry is pending
   # by design, and nothing it produces is published.
   gate:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04   # the pool the build legs use; the ubuntu-latest (24.04) one held jobs for hours on 2026-10-21
     outputs:
       pending: ${{ steps.check.outputs.pending }}
+      os: ${{ steps.matrix.outputs.os }}
+      include: ${{ steps.matrix.outputs.include }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -88,8 +95,13 @@ jobs:
       - id: check
         shell: bash
         run: |
-          count=$(find Docs/UltraCanvas/changelog.d -maxdepth 1 -name '*.md' \
-                       ! -name 'README.md' 2>/dev/null | wc -l)
+          # Every product's pending entries, not only the framework's: the
+          # artifacts carry every app stamped with its own changelog's line 1,
+          # so an app entry left unfolded here would ship that app under its
+          # previous number. The fold commit (framework number unchanged when
+          # only apps were folded) is the one release build for this merge.
+          count=$(find Docs -path '*/changelog.d/*.md' ! -name 'README.md' \
+                       2>/dev/null | wc -l)
           # A release dispatch is gated like a push. It names the fold commit,
           # so nothing is pending there - unless the fold had to rebase onto
           # a merge that landed meanwhile: then that merge's entry is still
@@ -103,51 +115,87 @@ jobs:
             echo "pending=false" >> "$GITHUB_OUTPUT"
           fi
 
+      # The build matrix, as two JSON lists the build job reads: the `os`
+      # rows and the `include` entries that give each its labels. It is made
+      # here rather than written under the build job because one row is
+      # conditional, and a matrix written there cannot drop a row by event:
+      # an `exclude` is applied BEFORE `include`, so the row's include entry
+      # added it back as a job of its own without a build type (2026-10-24).
+      #
+      # The macOS Intel row builds on main only - a push, or a dispatch - and
+      # not on pull requests. Its runner compiles five to ten times slower
+      # than every other row and is the scarcest (16-27 minutes in the queue
+      # on 2026-10-13), so it finished a pull request's matrix 45-100 minutes
+      # after the other five rows had, with nothing of its own to say: the
+      # two macOS rows share one code base and one packaging script, and what
+      # differs between them (the libraries' vcpkg triplet, the deployment
+      # target's x86_64 SDK) is checked on every run on main, before anything
+      # is released. A pull request's matrix is five rows and finishes with
+      # the Windows ARM one.
+      #
+      # A pull request that changes what only the Intel toolchain would
+      # catch - the macOS platform layer, the packaging, a bundled library -
+      # asks for the row with the `ci:intel` label: adding it starts a run
+      # with the full matrix (the `labeled` event above), so the failure
+      # shows on the pull request rather than on main.
+      #
+      # NOTE: GitHub retired macos-13 (the last x86_64 image of the
+      # macos-NN series) in December 2025. `macos-15-intel` is its
+      # designated replacement label for Intel builds, supported until
+      # macOS 15 leaves Apple support (~2027). When that goes too, the
+      # options are: drop Intel builds, use self-hosted runners, or
+      # cross-compile universal binaries.
+      #
+      # Both macOS legs name their macOS version, never macos-latest, so a
+      # new runner image (and its Xcode and SDK) arrives by a change here and
+      # not on GitHub's schedule. While the libraries came from Homebrew the
+      # runner's version was also the oldest macOS the apps ran on: when
+      # macos-latest moved to macOS 26 in July 2026 the arm64 apps started
+      # only on macOS 26, while their Info.plist still said 12.0. The
+      # libraries are now built for MACOSX_DEPLOYMENT_TARGET (build job).
+      #
+      # Linux/aarch64 runs on GitHub-hosted arm64 runners (free for public
+      # repos). Same 22.04 base as the x86_64 row, so both Linux artifacts
+      # carry the same glibc floor, and the dependency install is shared
+      # verbatim between them.
+      - id: matrix
+        shell: bash
+        env:
+          WITH_INTEL: ${{ github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'ci:intel') }}
+        run: |
+          python3 - "$WITH_INTEL" >> "$GITHUB_OUTPUT" <<'PY'
+          import json, sys
+          rows = [
+              {"os": "macos-15",         "arch_label": "arm64"},
+              {"os": "macos-15-intel",   "arch_label": "x86_64"},
+              {"os": "ubuntu-22.04",     "arch_label": "x86_64"},
+              {"os": "ubuntu-22.04-arm", "arch_label": "arm64"},
+              {"os": "windows-latest",   "arch_label": "x86_64",
+               "msystem": "CLANG64", "msys_prefix": "mingw-w64-clang-x86_64",
+               "msys_toolchain": "mingw-w64-clang-x86_64-clang"},
+              {"os": "windows-11-arm",   "arch_label": "arm64",
+               "msystem": "CLANGARM64", "msys_prefix": "mingw-w64-clang-aarch64",
+               "msys_toolchain": "mingw-w64-clang-aarch64-clang"},
+          ]
+          if sys.argv[1] != "true":
+              rows = [r for r in rows if r["os"] != "macos-15-intel"]
+          print("os=" + json.dumps([r["os"] for r in rows]))
+          print("include=" + json.dumps(rows))
+          PY
+
   build:
     needs: gate
     if: needs.gate.outputs.pending == 'false'
     strategy:
       fail-fast: false
+      # The rows and their labels come from the gate (its `matrix` step says
+      # which rows and why); build_type is the one dimension that is fixed.
+      # Keeping `os` and `build_type` as the dimensions keeps the job names
+      # `build (<os>, Release)`, which branch protection knows.
       matrix:
-        # NOTE: GitHub retired macos-13 (the last x86_64 image of the
-        # macos-NN series) in December 2025. `macos-15-intel` is its
-        # designated replacement label for Intel builds, supported until
-        # macOS 15 leaves Apple support (~2027). When that goes too, the
-        # options are: drop Intel builds, use self-hosted runners, or
-        # cross-compile universal binaries.
-        #
-        # Both macOS legs name their macOS version, never macos-latest, so a
-        # new runner image (and its Xcode and SDK) arrives by a change here and
-        # not on GitHub's schedule. While the libraries came from Homebrew the
-        # runner's version was also the oldest macOS the apps ran on: when
-        # macos-latest moved to macOS 26 in July 2026 the arm64 apps started
-        # only on macOS 26, while their Info.plist still said 12.0. The
-        # libraries are now built for MACOSX_DEPLOYMENT_TARGET (below).
-        os: [macos-15, macos-15-intel, ubuntu-22.04, ubuntu-22.04-arm, windows-latest, windows-11-arm]
+        os: ${{ fromJSON(needs.gate.outputs.os) }}
         build_type: [Release]
-        include:
-          - os: macos-15
-            arch_label: arm64
-          - os: macos-15-intel
-            arch_label: x86_64
-          - os: ubuntu-22.04
-            arch_label: x86_64
-          # Linux/aarch64 on GitHub-hosted arm64 runners (free for public
-          # repos). Same 22.04 base as the x86_64 row, so both Linux
-          # artifacts carry the same glibc floor, and the dependency
-          # install below is shared verbatim between them.
-          - os: ubuntu-22.04-arm
-            arch_label: arm64
-          - os: windows-latest
-            arch_label: x86_64
-            msystem: CLANG64
-            msys_prefix: mingw-w64-clang-x86_64
-            msys_toolchain: mingw-w64-clang-x86_64-clang
-          - os: windows-11-arm
-            arch_label: arm64
-            msystem: CLANGARM64
-            msys_prefix: mingw-w64-clang-aarch64
-            msys_toolchain: mingw-w64-clang-aarch64-clang
+        include: ${{ fromJSON(needs.gate.outputs.include) }}
 
     runs-on: ${{ matrix.os }}
 
@@ -299,12 +347,15 @@ jobs:
             ${{ matrix.msys_prefix }}-fmt
             ${{ matrix.msys_prefix }}-imagemagick
             ${{ matrix.msys_prefix }}-libheif
+            ${{ matrix.msys_prefix }}-libjxl
             ${{ matrix.msys_prefix }}-zbar
             ${{ matrix.msys_prefix }}-libsodium
+            ${{ matrix.msys_prefix }}-sqlite3
             ${{ matrix.msys_prefix }}-mupdf
             ${{ matrix.msys_prefix }}-libmupdf
             ${{ matrix.msys_prefix }}-curl-winssl
             ${{ matrix.msys_prefix }}-openssl
+            ${{ matrix.msys_prefix }}-gpgme
             ${{ matrix.msys_prefix }}-c-ares
             ${{ matrix.msys_prefix }}-leptonica
             ${{ matrix.msys_prefix }}-tesseract-ocr
@@ -380,6 +431,91 @@ jobs:
         with:
           path: ${{ steps.msys2.outputs.msys2-location }}\var\cache\pacman\pkg
           key: msys2-pkgs-${{ matrix.msystem }}-${{ steps.msys2-deps.outputs.pkg-hash }}
+
+      # libheif without the GPL encoders. MSYS2 builds libheif with plug-in
+      # loading off, so every codec it has is linked into libheif.dll - x265
+      # (HEVC) and x264 (AVC) among them, both GPL. libvips' vips-heif module
+      # and ImageMagick's HEIC coder load that DLL, so every app on the core
+      # would carry GPL code. Here the same libheif release is rebuilt with
+      # MSYS2's options minus x265 and x264, and its libheif.dll replaces
+      # MSYS2's (same version, same exports). HEIC is still written, by
+      # kvazaar (BSD-3-Clause, already a libheif dependency in MSYS2): 4:2:0
+      # only, so a "lossless" HEIC is exact in luma but not in colour. AVIF
+      # (aom, dav1d, SVT-AV1, rav1e) and HEIC reading (libde265) are as
+      # before. FFmpeg still links x264 / x265 for VideoFX, which is GPL on
+      # its own terms (THIRD_PARTY_LICENSES.md) - the core no longer loads
+      # them. The build is cached per MSYSTEM and libheif version.
+      - name: Which libheif to rebuild (Windows)
+        if: runner.os == 'Windows'
+        id: libheif
+        run: |
+          ver=$(pacman -Q "${MINGW_PACKAGE_PREFIX}-libheif" | awk '{print $2}')
+          echo "pkgver=$ver" >> "$GITHUB_OUTPUT"
+          echo "version=${ver%-*}" >> "$GITHUB_OUTPUT"
+          echo "MSYS2 libheif $ver"
+
+      - name: Restore the libheif rebuild (Windows)
+        if: runner.os == 'Windows'
+        id: libheif-cache
+        uses: actions/cache@v5
+        with:
+          path: .libheif-nogpl
+          key: libheif-nogpl-v1-${{ matrix.msystem }}-${{ steps.libheif.outputs.pkgver }}
+
+      - name: Rebuild libheif without x265 and x264 (Windows)
+        if: runner.os == 'Windows' && steps.libheif-cache.outputs.cache-hit != 'true'
+        timeout-minutes: 30
+        env:
+          LIBHEIF_VERSION: ${{ steps.libheif.outputs.version }}
+        run: |
+          set -euo pipefail
+          src="$(cygpath -u "$RUNNER_TEMP")/libheif-src"
+          rm -rf "$src" && mkdir -p "$src"
+          curl -fsSL --retry 5 --retry-all-errors \
+            "https://github.com/strukturag/libheif/releases/download/v${LIBHEIF_VERSION}/libheif-${LIBHEIF_VERSION}.tar.gz" |
+            tar -xz -C "$src"
+          # MSYS2's PKGBUILD options (mingw-w64-libheif), with x265 and x264
+          # off and nothing but the library built.
+          cmake -S "$src/libheif-${LIBHEIF_VERSION}" -B "$src/build" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_SHARED_LIBS=ON \
+            -DBUILD_TESTING=OFF \
+            -DENABLE_PLUGIN_LOADING=OFF \
+            -DWITH_HEADER_COMPRESSION=ON \
+            -DWITH_X265=OFF \
+            -DWITH_X264=OFF \
+            -DWITH_KVAZAAR=ON \
+            -DWITH_DAV1D=ON \
+            -DWITH_RAV1E=ON \
+            -DWITH_SvtEnc=ON \
+            -DWITH_JPEG_DECODER=ON \
+            -DWITH_JPEG_ENCODER=ON \
+            -DWITH_OpenJPEG_DECODER=ON \
+            -DWITH_OpenJPEG_ENCODER=ON \
+            -DWITH_OPENJPH_ENCODER=ON \
+            -DWITH_EXAMPLES=OFF \
+            -DWITH_GDK_PIXBUF=OFF
+          cmake --build "$src/build" --target heif
+          dll=$(find "$src/build" -name 'libheif.dll')
+          test -n "$dll"
+          mkdir -p .libheif-nogpl
+          cp "$dll" .libheif-nogpl/
+
+      - name: Install the libheif rebuild (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          set -euo pipefail
+          cp -f .libheif-nogpl/libheif.dll "$MINGW_PREFIX/bin/libheif.dll"
+          imports=$(objdump -p "$MINGW_PREFIX/bin/libheif.dll" | awk '/DLL Name:/ {print $3}')
+          echo "$imports"
+          if echo "$imports" | grep -qi 'x26[45]'; then
+            echo "::error::libheif.dll still imports a GPL encoder (x264 / x265)"
+            exit 1
+          fi
+          if ! echo "$imports" | grep -qi 'kvazaar'; then
+            echo "::error::libheif.dll does not import kvazaar - no HEIC encoder"
+            exit 1
+          fi
 
       # ===== macOS: build tools from Homebrew, libraries from vcpkg (shared
       # by the arm64 and x86_64 jobs; Homebrew lives at /opt/homebrew on Apple
@@ -508,6 +644,27 @@ jobs:
           key: ${{ steps.vcpkg-cache.outputs.cache-primary-key }}
 
       # ===== Linux: system package manager =====
+      # The .deb files the last run on main downloaded, restored into apt's
+      # cache before anything is installed, so apt fetches only what changed
+      # since: on 2026-10-23 the mirror served this job so slowly that the
+      # step below ran out of its 45 minutes twice in a row, downloading the
+      # same packages as the run before. Saved by main alone, as ccache is (a
+      # pull request's cache would serve that pull request only and crowd the
+      # repository's 10 GB); pruned to the versions installed, so it stays
+      # near the size of one install. One per runner image and architecture.
+      - name: Restore the apt package cache (Linux)
+        if: runner.os == 'Linux'
+        id: apt-cache
+        uses: actions/cache/restore@v5
+        with:
+          path: ${{ runner.temp }}/apt-debs
+          key: apt-debs-${{ matrix.os }}-
+          restore-keys: apt-debs-${{ matrix.os }}-
+
+      - name: Put the cached packages in apt's cache (Linux)
+        if: runner.os == 'Linux'
+        run: scripts/ci-apt.sh cache-in "${{ runner.temp }}/apt-debs"
+
       - name: Install dependencies (Linux)
         if: runner.os == 'Linux'
         # A mirror that crawls still finishes (15-27 min on 2026-10-07, against
@@ -530,8 +687,15 @@ jobs:
           echo "Building Linux dependencies for $MULTIARCH ($(uname -m))"
           scripts/ci-apt.sh install libcairo2-dev libpango1.0-dev libharfbuzz-dev
           scripts/ci-apt.sh install libvips-dev libglib2.0-dev libfreetype6-dev dbus
+          # libheif's HEVC and AV1 decoders: linked into libheif on
+          # ubuntu-22.04, separate plug-in packages from 24.04 on - installed
+          # wherever apt knows them, so HEIC and AVIF decode on every runner
+          # (ImageFormatsTest insists on it).
+          for p in libheif-plugin-libde265 libheif-plugin-aomdec; do
+            apt-cache show "$p" >/dev/null 2>&1 && scripts/ci-apt.sh install "$p"
+          done
           scripts/ci-apt.sh install libtinyxml2-dev libfmt-dev
-          scripts/ci-apt.sh install libx11-dev libxcursor-dev libgl1-mesa-dev libgtk-3-dev
+          scripts/ci-apt.sh install libx11-dev libxcursor-dev libxi-dev libgl1-mesa-dev libgtk-3-dev
           scripts/ci-apt.sh install libcdr-dev librevenge-dev zlib1g-dev
           # Build dependencies of the patched libcdr in UltraCanvas/third_party/libcdr.
           scripts/ci-apt.sh install libboost-dev liblcms2-dev libicu-dev
@@ -548,6 +712,12 @@ jobs:
           # printer backend (core/IODeviceManager/UltraCanvasIODevicePrinterCUPS.cpp).
           # libsane: the SANE scanner backend (OS/Linux/UltraCanvasLinuxIODeviceScanner.cpp).
           scripts/ci-apt.sh install libudev-dev libcups2-dev libsane-dev
+          # UltraNet's optional protocol plug-ins are compiled only when configure
+          # finds their library too; without these the MQTT, AMQP, CoAP, SNMP and
+          # SSH plug-ins were never built on Linux and a change to them went
+          # unseen (the cloud session hook installs the same five). The check
+          # after configure fails the row if one of them was left out.
+          scripts/ci-apt.sh install libpaho-mqtt-dev librabbitmq-dev libcoap3-dev libsnmp-dev libssh-dev
           # CUPS's reference IPP Everywhere printer, for IODevicePrinterIPPLiveTest -
           # over ipp://, and over ipps:// with the self-signed certificate it makes,
           # which exercises trusting a device on first use (UltraCanvasIODeviceTlsTrust) -
@@ -555,6 +725,9 @@ jobs:
           # The test skips without them, and "Run unit tests" turns that skip
           # into a failure, so it cannot quietly stop running.
           scripts/ci-apt.sh install cups-ipp-utils avahi-daemon
+          # The UltraNet mDNS plug-in (browsing, and advertising for ChatCube's
+          # local network) builds on Avahi's client library.
+          scripts/ci-apt.sh install libavahi-client-dev
           # IODeviceScannerESCLLiveTest scans over https:// from a scanner the
           # test runs itself (Tests/IODeviceScannerESCLLiveScanner.py, so
           # Python 3) with certificates it makes with the openssl command. Both
@@ -662,6 +835,10 @@ jobs:
           # packages". Installing it explicitly lets apt resolve the set.
           scripts/ci-apt.sh install libunwind-dev
           scripts/ci-apt.sh install libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev
+          # GStreamer's playbin and decoders: without them every video player
+          # opens nothing, and HTMLMediaTest checks only the fallback content
+          # instead of playing its WAV.
+          scripts/ci-apt.sh install gstreamer1.0-plugins-base gstreamer1.0-plugins-good
           # VideoFX's engine (FFmpeg 4.4 on 22.04). Without it the module builds
           # from its stub and VideoFXTest checks only the filter-text half.
           scripts/ci-apt.sh install libavformat-dev libavcodec-dev libavfilter-dev libavutil-dev libswscale-dev
@@ -680,16 +857,30 @@ jobs:
           # WebSocket-capability probe. On ubuntu-22.04 that libcurl is 7.81,
           # which predates WebSockets (curl_ws_* arrived in 7.86), so UltraNet
           # falls back to building the vendored third_party/curl (8.21). That
-          # build needs libpsl (curl's CURL_USE_LIBPSL defaults ON).
-          scripts/ci-apt.sh install libcurl4-openssl-dev libpsl-dev
+          # build needs libpsl (curl's CURL_USE_LIBPSL defaults ON), and
+          # libssh2 for SCP / SFTP: UltraStoreAdmin uploads the publish
+          # folder over sftp://, and curl's CMake drops the protocol without
+          # a word when libssh2 is missing (the configure prints which SSH
+          # backend it took; "Verify libcurl selection" insists on one).
+          scripts/ci-apt.sh install libcurl4-openssl-dev libpsl-dev libssh2-1-dev
           # libsodium: cryptographic backend for UltraCrypt
           scripts/ci-apt.sh install libsodium-dev
+          # UltraMail's OpenPGP: GPGME, and GnuPG for its tests (S/MIME uses
+          # libssl-dev, which libcurl4-openssl-dev brings)
+          scripts/ci-apt.sh install libgpgme-dev gnupg libssl-dev
           # UltraDatabase: SQLite is the single-user store, libpq the
-          # multi-user one. Both are named explicitly rather than relied on
-          # from the runner image, because UltraDatabase soft-disables itself
-          # when a header is missing - and a silently disabled database layer
+          # multi-user one, libmariadb (MariaDB Connector/C) the MySQL /
+          # MariaDB driver. All named explicitly rather than relied on from
+          # the runner image, because UltraDatabase soft-disables itself when
+          # a header is missing - and a silently disabled database layer
           # takes the whole UltraFIBU bookkeeping suite out of CI with it.
-          scripts/ci-apt.sh install libsqlite3-dev libpq-dev
+          scripts/ci-apt.sh install libsqlite3-dev libpq-dev libmariadb-dev
+          # libarchive: VirtualFS's archive provider, which UltraFiler's
+          # archive browsing and UltraStore's installer unpack with. Named
+          # rather than relied on from the image for the same reason: without
+          # it VirtualFS builds with no provider and the store's install
+          # tests skip instead of running.
+          scripts/ci-apt.sh install libarchive-dev
           # c-ares: UltraNet's async DNS uses the event-thread API
           # (ARES_OPT_EVENT_THREAD / ares_channel_t / evsys), added in c-ares
           # 1.26. Ubuntu 22.04 ships 1.18, so build a current release from
@@ -740,6 +931,19 @@ jobs:
           # the single place the CI compiler is decided.
           echo "CC=clang-$V"    >> "$GITHUB_ENV"
           echo "CXX=clang++-$V" >> "$GITHUB_ENV"
+
+      # After the last apt install of the job (Clang's, just above).
+      - name: Keep the downloaded packages (Linux, main)
+        if: runner.os == 'Linux' && github.ref == 'refs/heads/main'
+        id: apt-keep
+        run: echo "hash=$(scripts/ci-apt.sh cache-out "${{ runner.temp }}/apt-debs")" >> "$GITHUB_OUTPUT"
+
+      - name: Save the apt package cache (Linux, main)
+        if: runner.os == 'Linux' && github.ref == 'refs/heads/main' && steps.apt-keep.outputs.hash != ''
+        uses: actions/cache/save@v5
+        with:
+          path: ${{ runner.temp }}/apt-debs
+          key: apt-debs-${{ matrix.os }}-${{ steps.apt-keep.outputs.hash }}
 
       # ===== Rust toolchain — Vectorizer plugin (raster→SVG via VTracer) =====
       # Windows installs MSYS2's native rust package above (gnu/gnullvm ABI,
@@ -836,16 +1040,25 @@ jobs:
             -DULTRACANVAS_BUILD_ULTRAAI_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRAMAIL_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRAFIBU_TESTS=ON \
+            -DULTRACANVAS_BUILD_ULTRADBADMIN_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRAPRESS_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRAMESSAGE_TESTS=ON \
+            -DULTRACANVAS_BUILD_ULTRAIM_TESTS=ON \
+            -DULTRACANVAS_BUILD_ULTRARTC_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRACANVASSTART_TESTS=ON \
+            -DULTRACANVAS_BUILD_ULTRASTORE_TESTS=ON \
+            -DULTRACANVAS_BUILD_ULTRASTOREADMIN_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRACLEANER_TESTS=ON \
             -DULTRACANVAS_BUILD_VECTOR_FORMAT_TESTS=ON \
+            -DULTRACANVAS_BUILD_JXL_TESTS=ON \
+            -DULTRACANVAS_BUILD_HEIF_TESTS=ON \
+            -DULTRACANVAS_BUILD_STARTPAGE_TESTS=ON \
             -DULTRACANVAS_BUILD_FILER_TESTS=ON \
             -DULTRACANVAS_BUILD_EMOJI_TESTS=ON \
             -DULTRACANVAS_BUILD_VIDEOFX_TESTS=ON \
             -DULTRACANVAS_BUILD_DESKTOPSHELL_TESTS=ON \
             -DULTRACANVAS_BUILD_VAULT_TESTS=ON \
+            -DULTRACANVAS_BUILD_CRYPT_TESTS=ON \
             -DULTRACANVAS_BUILD_DEVICE_TLS_TESTS=ON \
             -DULTRACANVAS_BUILD_DATABASE_TESTS=ON 2>&1 | tee configure.log
 
@@ -870,12 +1083,21 @@ jobs:
             -DULTRACANVAS_BUILD_ULTRAAI_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRAMAIL_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRAFIBU_TESTS=ON \
+            -DULTRACANVAS_BUILD_ULTRADBADMIN_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRAPRESS_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRAMESSAGE_TESTS=ON \
+            -DULTRACANVAS_BUILD_ULTRAIM_TESTS=ON \
+            -DULTRACANVAS_BUILD_ULTRARTC_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRACANVASSTART_TESTS=ON \
+            -DULTRACANVAS_BUILD_ULTRASTORE_TESTS=ON \
+            -DULTRACANVAS_BUILD_ULTRASTOREADMIN_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRACLEANER_TESTS=ON \
+            -DULTRACANVAS_BUILD_CRYPT_TESTS=ON \
             -DULTRACANVAS_BUILD_DATABASE_TESTS=ON \
             -DULTRACANVAS_BUILD_VECTOR_FORMAT_TESTS=ON \
+            -DULTRACANVAS_BUILD_JXL_TESTS=ON \
+            -DULTRACANVAS_BUILD_HEIF_TESTS=ON \
+            -DULTRACANVAS_BUILD_STARTPAGE_TESTS=ON \
             -DULTRACANVAS_BUILD_DEVICE_TLS_TESTS=ON \
             -DBUILD_TESTS=${{ runner.os == 'Linux' && 'ON' || 'OFF' }} 2>&1 | tee configure.log
 
@@ -905,20 +1127,39 @@ jobs:
       # reasonable for a contributor and neither is acceptable here, because a
       # skipped module takes its tests with it - which is how the multi-user
       # bug below could have shipped. So configure has to say it got both.
+      # SQLite on every row: the UltraFIBU engine suite runs on all three
+      # below, and a row without the library would drop it without a word.
+      - name: Verify UltraDatabase built with SQLite
+        shell: bash
+        run: |
+          set -eu
+          if ! grep -q "UltraDatabase - ENABLED" configure.log; then
+            echo "::error::UltraDatabase was disabled during configure (libsqlite3 missing - libsqlite3-dev, the sqlite3 MSYS2 package, or vcpkg's sqlite3?)"
+            exit 1
+          fi
+          echo "UltraDatabase verified: SQLite"
+
       - name: Verify UltraDatabase built with PostgreSQL (Linux)
         if: runner.os == 'Linux'
         shell: bash
         run: |
           set -eu
-          if ! grep -q "UltraDatabase - ENABLED" configure.log; then
-            echo "::error::UltraDatabase was disabled during configure (libsqlite3-dev missing?)"
-            exit 1
-          fi
           if ! grep -q "UltraDatabase - ENABLED.*PostgreSQL" configure.log; then
             echo "::error::UltraDatabase configured without PostgreSQL (libpq-dev missing?) - the multi-user tests would silently not run"
             exit 1
           fi
           echo "UltraDatabase verified: SQLite + PostgreSQL"
+
+      - name: Verify UltraDatabase built with MySQL / MariaDB (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -eu
+          if ! grep -q "UltraDatabase - ENABLED.*MySQL/MariaDB" configure.log; then
+            echo "::error::UltraDatabase configured without its MySQL / MariaDB driver (libmariadb-dev missing, or only its static archive found?) - the MySQL tests would silently not run"
+            exit 1
+          fi
+          echo "UltraDatabase verified: SQLite + PostgreSQL + MySQL/MariaDB"
 
       # Spell checking also degrades quietly: no Hunspell and every text widget
       # still builds, with no dictionaries and no red underlines. That passed
@@ -933,6 +1174,22 @@ jobs:
             exit 1
           fi
           echo "Spell checking verified: $(grep -oE 'Hunspell: [0-9][^ ]*' configure.log | head -1)"
+
+      # The five UltraNet plug-ins above degrade the same way: CMake leaves one
+      # out without a word when its library is missing, so configure has to
+      # say it enabled each of them.
+      - name: Verify the MQTT, AMQP, CoAP, SNMP and SSH plug-ins are built (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -eu
+          for plugin in MQTT AMQP CoAP SNMP SSH; do
+            if ! grep -q "UltraNet $plugin plug-in - ENABLED" configure.log; then
+              echo "::error::The UltraNet $plugin plug-in was not enabled during configure (its library missing?)"
+              exit 1
+            fi
+          done
+          echo "UltraNet plug-ins verified: MQTT, AMQP, CoAP, SNMP, SSH enabled"
 
       # libcurl selection is asserted per platform so a silent regression is caught:
       #  - Linux (ubuntu-22.04, chosen for glibc portability): its system libcurl is
@@ -952,6 +1209,15 @@ jobs:
               exit 1
             fi
             echo "Confirmed: Linux links the vendored WS-capable libcurl (CURL_OPENSSL_4 version node)."
+            # The vendored libcurl must carry sftp://: UltraStoreAdmin's upload
+            # speaks it, and curl's CMake builds without it silently when
+            # libssh2 is missing (VendoredCurl.cmake prints the backend it took).
+            if ! grep -q "Vendored libcurl: SSH backend = libssh" configure.log; then
+              echo "::error::The vendored third_party/curl was built without an SSH backend (no sftp://); libssh2-1-dev is missing or was not found."
+              grep -i "Vendored libcurl" configure.log || true
+              exit 1
+            fi
+            echo "Confirmed: the vendored libcurl has an SSH backend (sftp://)."
           else
             if grep -q "UltraNet libcurl: VENDORED" configure.log; then
               echo "::error::CI selected the vendored third_party/curl build on ${{ runner.os }}; the platform system libcurl should provide WebSocket support here."
@@ -974,6 +1240,21 @@ jobs:
             exit 1
           fi
           echo "Vectorizer plugin enabled on ${{ runner.os }}"
+
+      # Matrix end-to-end encryption is vodozemac through the same Rust
+      # toolchain (Plugins/UltraIM/matrix/olm-c); without cargo the provider
+      # still configures, and would ship unable to read encrypted rooms.
+      - name: Verify Matrix end-to-end encryption enabled
+        shell: bash
+        run: |
+          set -eu
+          if grep -q "UltraIM provider Matrix - ENABLED" configure.log &&
+             ! grep -q "UltraIM provider Matrix - ENABLED (end-to-end encryption: yes" configure.log; then
+            echo "::error::the Matrix provider was configured without end-to-end encryption"
+            grep -i "provider Matrix" configure.log || true
+            exit 1
+          fi
+          echo "Matrix end-to-end encryption checked on ${{ runner.os }}"
 
       # CorelDRAW import needs the CDR plugin built on the patched libcdr in
       # UltraCanvas/third_party/libcdr (bitmap transparency, PowerClip). Its gate
@@ -1155,6 +1436,24 @@ jobs:
           if command -v cygpath > /dev/null 2>&1; then sdk=$(cygpath -m "$sdk"); fi
           export ULTRACANVAS_SDK_PREFIX="$sdk"
           (cd build && ctest --output-on-failure --no-tests=error -R "^UltraCanvasStartEngine$")
+          # UltraStore's core on the same leg: the catalog, the verifier
+          # (libsodium's Ed25519), the resolver and the client, then the
+          # program's own view of the runner.
+          (cd build && ctest --output-on-failure --no-tests=error -R "^UltraStoreCore$")
+          store=build/ultrastore
+          [ "${{ runner.os }}" = "Windows" ] && store="$store.exe"
+          "$store" --version
+          "$store" platform
+          "$store" installed --root "$RUNNER_TEMP/ultrastore-smoke"
+          # The admin backend's core: the database, the sealed key, the
+          # package store, a catalog published and verified the way the
+          # store verifies it; then the program answers.
+          (cd build && ctest --output-on-failure --no-tests=error -R "^UltraStoreAdminCore$")
+          admin=build/ultrastoreadmin
+          [ "${{ runner.os }}" = "Windows" ] && admin="$admin.exe"
+          "$admin" --version
+          "$admin" --store "$RUNNER_TEMP/ultrastoreadmin-smoke" init
+          "$admin" --store "$RUNNER_TEMP/ultrastoreadmin-smoke" app list
           exe=build/UltraCanvasStart
           [ "${{ runner.os }}" = "Windows" ] && exe="$exe.exe"
           "$exe" --version
@@ -1227,6 +1526,98 @@ jobs:
           # it arrives as one line with no diagnosis.
           psql -h /var/run/postgresql -p 5432 -d ultrafibu_ci -c 'SELECT 1' >/dev/null
 
+      # The MySQL / MariaDB driver's tests (Tests/UltraDatabase: test_mysql,
+      # test_server) against a real server. The x86_64 runner image carries
+      # MySQL 8, which is also what proves Connector/C talks to MySQL as well
+      # as to MariaDB (the proposal's open question); where the image has no
+      # server, Ubuntu's MySQL is installed. The tests log in as the runner's
+      # own user over the server's socket (auth_socket), so no password is
+      # needed or written anywhere. Without the variables the tests SKIP, and
+      # ULTRADB_TEST_MYSQL_REQUIRED below turns that skip into a failure.
+      - name: Start MySQL for the database tests (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          set -eu
+          if ! command -v mysqld >/dev/null 2>&1; then
+            scripts/ci-apt.sh install mysql-server
+          fi
+          sudo systemctl start mysql || sudo service mysql start
+          USER_NAME="$(whoami)"
+          SETUP="CREATE USER IF NOT EXISTS '$USER_NAME'@'localhost' IDENTIFIED WITH auth_socket;
+                 GRANT ALL PRIVILEGES ON *.* TO '$USER_NAME'@'localhost';
+                 CREATE DATABASE IF NOT EXISTS ultradb_ci;"
+          # The image's root has the password root; a fresh install's root
+          # logs in over the socket. auth_socket is loaded where it is not yet
+          # (an image whose root logs in with a password may not load it).
+          root_sql() { sudo mysql -uroot -proot "$@" 2>/dev/null || sudo mysql -uroot "$@"; }
+          if [ -z "$(root_sql -N -e "SELECT PLUGIN_STATUS FROM information_schema.PLUGINS WHERE PLUGIN_NAME = 'auth_socket'")" ]; then
+            root_sql -e "INSTALL PLUGIN auth_socket SONAME 'auth_socket.so'"
+          fi
+          root_sql -e "$SETUP"
+          SOCKET="$(root_sql -N -e 'SELECT @@socket')"
+          echo "ULTRADB_TEST_MYSQL_HOST=$SOCKET" >> "$GITHUB_ENV"
+          echo "ULTRADB_TEST_MYSQL_USER=$USER_NAME" >> "$GITHUB_ENV"
+          # The connection the tests make, made here, where an error names its cause.
+          mysql --protocol=socket -S "$SOCKET" -u "$USER_NAME" ultradb_ci -e 'SELECT VERSION()'
+
+      # SSH tunnels - UltraNet's SSH plug-in forwarding a port, and
+      # UltraDBAdmin's connections reaching PostgreSQL and MySQL through it
+      # (Tests/UltraNet test_extra_plugins, Tests/UltraDBAdmin
+      # UltraDBAdminTunnelTests) - against a real sshd: one of the runner's
+      # own, on 127.0.0.1:2222, with a host key and a client key made here,
+      # key logins only. Not root and no PAM, so it signs in only the user it
+      # runs as - which is the user the tests sign in as. Through the tunnel
+      # the databases are reached over TCP, which takes a password: a login
+      # role for each, with a password made here and masked in the log.
+      - name: Start an SSH server for the tunnel tests (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          set -eu
+          if [ ! -x /usr/sbin/sshd ]; then
+            scripts/ci-apt.sh install openssh-server
+          fi
+          D="$RUNNER_TEMP/sshd"
+          mkdir -p "$D"
+          ssh-keygen -q -t ed25519 -N '' -f "$D/hostkey"
+          ssh-keygen -q -t ed25519 -N '' -f "$D/clientkey"
+          cp "$D/clientkey.pub" "$D/authorized_keys"
+          chmod 600 "$D/authorized_keys"
+          cat > "$D/sshd_config" <<EOF
+          Port 2222
+          ListenAddress 127.0.0.1
+          HostKey $D/hostkey
+          AuthorizedKeysFile $D/authorized_keys
+          PasswordAuthentication no
+          KbdInteractiveAuthentication no
+          PubkeyAuthentication yes
+          AllowTcpForwarding yes
+          StrictModes no
+          UsePAM no
+          PidFile $D/sshd.pid
+          EOF
+          sudo mkdir -p /run/sshd
+          /usr/sbin/sshd -f "$D/sshd_config" -E "$D/sshd.log"
+          USER_NAME="$(whoami)"
+          # The login the tests make, made here, where an error names its cause.
+          ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o BatchMode=yes \
+              -i "$D/clientkey" -p 2222 "$USER_NAME@127.0.0.1" true || { cat "$D/sshd.log"; exit 1; }
+          echo "ULTRANET_TEST_SSH_URL=ssh://$USER_NAME@127.0.0.1:2222" >> "$GITHUB_ENV"
+          echo "ULTRANET_TEST_SSH_KEY=$D/clientkey" >> "$GITHUB_ENV"
+          PW="$(openssl rand -hex 16)"
+          echo "::add-mask::$PW"
+          sudo -u postgres psql -q -c "CREATE ROLE ultradb_tunnel LOGIN PASSWORD '$PW'"
+          root_sql() { sudo mysql -uroot -proot "$@" 2>/dev/null || sudo mysql -uroot "$@"; }
+          root_sql -e "CREATE USER IF NOT EXISTS 'ultradb_tunnel'@'127.0.0.1' IDENTIFIED BY '$PW';
+                       GRANT SELECT ON ultradb_ci.* TO 'ultradb_tunnel'@'127.0.0.1';"
+          {
+            echo "ULTRADB_TEST_TUNNEL_PG_USER=ultradb_tunnel"
+            echo "ULTRADB_TEST_TUNNEL_PG_PASSWORD=$PW"
+            echo "ULTRADB_TEST_TUNNEL_PG_DB=ultrafibu_ci"
+            echo "ULTRADB_TEST_TUNNEL_MYSQL_USER=ultradb_tunnel"
+            echo "ULTRADB_TEST_TUNNEL_MYSQL_PASSWORD=$PW"
+            echo "ULTRADB_TEST_TUNNEL_MYSQL_DB=ultradb_ci"
+          } >> "$GITHUB_ENV"
+
       # macOS and Windows build no full test suite (BUILD_TESTS is Linux-only);
       # ULTRACANVAS_BUILD_VECTOR_FORMAT_TESTS builds these two anyway, so the
       # vendored libcdr is exercised there on real files: detailed.cdr has to
@@ -1237,6 +1628,40 @@ jobs:
         if: runner.os != 'Linux'
         working-directory: build
         run: ctest --output-on-failure --no-tests=error -R "^(VectorFormatsPluginTest|CDRWriterTest)$"
+
+      # JPEG XL in the libvips each package ships: vcpkg's, built with its
+      # jpeg-xl feature, on macOS, and MSYS2's on Windows, which has JPEG XL
+      # only through its vips-jxl module and libjxl. ImageJxlTest exits 0 when
+      # libvips has neither jxlload nor jxlsave, so the step fails unless the
+      # checks really ran. ULTRACANVAS_BUILD_JXL_TESTS builds it without
+      # BUILD_TESTS; Linux runs it in image-codecs.yml, on Ubuntu 24.04 -
+      # 22.04's libvips has no libjxl.
+      - name: Run JPEG XL test (macOS/Windows)
+        if: runner.os != 'Linux'
+        working-directory: build
+        run: |
+          ctest --output-on-failure --no-tests=error -V -R "^ImageJxlTest$" 2>&1 | tee jxl-test.log
+          test "${PIPESTATUS[0]}" -eq 0
+          if ! grep -q 'All JPEG XL checks passed' jxl-test.log; then
+            echo "::error::ImageJxlTest did not run its checks: this libvips has no JPEG XL"
+            exit 1
+          fi
+
+      # HEIF and AVIF in the libheif each package ships, held to what each
+      # must and must not do (UC_HEIF_EXPECT, see Tests/ImageHeifTest.cpp).
+      # macOS: libde265 and aom only - HEIC read, AVIF read and write, and
+      # no HEIC encoder, since x265 is GPL and libvips is in the core every
+      # app links; the step fails if one turns up. Windows: MSYS2's codecs
+      # with libheif rebuilt without x265 (above), so kvazaar writes HEIC and
+      # both formats read and write.
+      # ULTRACANVAS_BUILD_HEIF_TESTS builds it without BUILD_TESTS; Linux runs
+      # it in image-codecs.yml, with every libheif plug-in installed.
+      - name: Run HEIF/AVIF test (macOS/Windows)
+        if: runner.os != 'Linux'
+        working-directory: build
+        env:
+          UC_HEIF_EXPECT: ${{ runner.os == 'macOS' && 'decode=heic,avif encode=avif no-encode=heic no-encoder=x265,x264' || 'decode=heic,avif encode=heic,avif encoder=kvazaar no-encoder=x265,x264' }}
+        run: ctest --output-on-failure --no-tests=error -V -R "^ImageHeifTest$"
 
       # UltraCleaner's engine suite: the path guard, the rule table, the
       # scanner, the remover and the album logic, over temporary trees only
@@ -1250,6 +1675,17 @@ jobs:
         if: runner.os != 'Linux'
         working-directory: build
         run: ctest --output-on-failure --no-tests=error -R "^UltraCleanerEngine$"
+
+      # UltraCrypt on the two systems whose trust store is their own: the
+      # certificate check's system roots are Windows' ROOT store and macOS's
+      # anchors there (UltraCryptSystemRoots.cpp), and the suite checks that a
+      # root shipped with the system - Microsoft's on Windows, which no
+      # OpenSSL bundle carries - is trusted through them. Linux runs the suite
+      # in the full pass, where the store is OpenSSL's own. Headless.
+      - name: Run UltraCryptTests (macOS/Windows)
+        if: runner.os != 'Linux'
+        working-directory: build
+        run: ctest --output-on-failure --no-tests=error -R "^UltraCryptTests$"
 
       # VideoFX's engine on Windows, on MSYS2's FFmpeg - the one the package
       # ships - and through the Windows file names, cache folder and fonts;
@@ -1281,6 +1717,20 @@ jobs:
         if: runner.os != 'Linux'
         working-directory: build
         run: ctest --output-on-failure --no-tests=error -R "^UltraCloud$"
+
+      # The UltraPress engine and renderer, the UltraFIBU engine (the SQLite
+      # store, the invoice PDF, the DATEV and CAMT files) and start window,
+      # and the framework's start page and settings file all handle paths
+      # and the per-user settings folder, which each platform spells its own
+      # way (%APPDATA% and UTF-16 on Windows, Application Support on macOS).
+      # Linux runs them in the full pass below; here they run on the other
+      # two, so a path or locale difference is caught where it lives. Every
+      # one is headless. The multi-user UltraFIBU tests stay on Linux, where
+      # the PostgreSQL server is.
+      - name: Run UltraPress, UltraFIBU and start page tests (macOS/Windows)
+        if: runner.os != 'Linux'
+        working-directory: build
+        run: ctest --output-on-failure --no-tests=error -R "^(UltraPressEngine|UltraPressRender|UltraFIBUEngine|UltraFIBUStart|StartPageTest|AppSettingsTest)$"
 
       # Trusting a device's self-signed certificate on first use rests on
       # libcurl pinning a public key and handing back the server's
@@ -1326,6 +1776,17 @@ jobs:
         if: runner.os == 'Windows'
         working-directory: build
         run: ctest --output-on-failure --no-tests=error -R "^EmojiSettingsTest$"
+
+      # The UltraMessage suite on Windows, which ULTRACANVAS_BUILD_ULTRAMESSAGE_TESTS
+      # builds there but nothing ran: the channel through Windows' named
+      # pipes, and the Windows adapters against the runner's desktop - the
+      # windows-presenter starts in toast mode (Windows 10 1903 and later, in
+      # this C++/WinRT build) or balloon mode, and the notification listener
+      # reports its state. Linux runs it in the full pass.
+      - name: Run UltraMessage tests (Windows)
+        if: runner.os == 'Windows'
+        working-directory: build
+        run: ctest --output-on-failure --no-tests=error --timeout 300 -R "^UltraMessage$"
 
       # The Win32 backend of the desktop shell module (UltraDesktop's window
       # list, monitor, screen edges, hot keys, screenshot and Start menu)
@@ -1420,10 +1881,48 @@ jobs:
           # here if the runner has no IPv6 loopback.
           ip -6 addr show dev lo | grep -q '::1' || echo "::warning::no IPv6 loopback - ippeveprinter will not start"
 
+      # DirectProviderTests runs two ChatCube Direct providers against the
+      # relay (Server/ChatCubeRelay), which is Python: give the test a
+      # python3 that has its packages, and forbid the skip below.
+      - name: Install the ChatCube relay for the end-to-end test (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          python3 -m venv "$RUNNER_TEMP/chatcube-relay"
+          "$RUNNER_TEMP/chatcube-relay/bin/pip" install -q -r Server/ChatCubeRelay/requirements.txt
+          echo "$RUNNER_TEMP/chatcube-relay/bin" >> "$GITHUB_PATH"
+
+      # MatrixProviderTests talks to a real homeserver: Synapse, in a venv of
+      # its own (its dependencies are not the relay's), which the test starts
+      # through Tests/UltraIM/matrix_test_server.py; and to matrix-nio with
+      # end-to-end encryption (matrix_nio_peer.py), the other side of an
+      # encrypted room that is not our code.
+      - name: Install Synapse for the Matrix end-to-end test (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          python3 -m venv "$RUNNER_TEMP/synapse"
+          "$RUNNER_TEMP/synapse/bin/pip" install -q matrix-synapse "matrix-nio[e2e]"
+          echo "ULTRAIM_MATRIX_PYTHON=$RUNNER_TEMP/synapse/bin/python" >> "$GITHUB_ENV"
+
+      # TelegramTdlibTests hands every request the Telegram provider builds to
+      # the real TDLib (no network needed): the libtdjson the configure step
+      # fetched into build/Plugins/UltraIM/tdlib (cmake/UltraCanvasTdlib.cmake,
+      # the pinned tdjson wheel) - the one the packages ship.
       - name: Run unit tests
         if: runner.os == 'Linux'
         working-directory: build
         env:
+          # DirectProviderTests: no relay is a failure, not a skip.
+          ULTRAIM_TEST_RELAY_REQUIRED: 1
+          # Avahi is up (started for the IPP test): DirectProviderTests' two
+          # ChatCubes must find each other over mDNS, not skip.
+          ULTRAIM_TEST_MDNS_REQUIRED: 1
+          # MatrixProviderTests: no Synapse is a failure, not a skip; nor is
+          # no matrix-nio for the encrypted room with another client.
+          ULTRAIM_TEST_MATRIX_REQUIRED: 1
+          ULTRAIM_TEST_MATRIX_NIO_REQUIRED: 1
+          # TelegramTdlibTests: no TDLib (the configure step fetches it) is a
+          # failure, not a skip.
+          ULTRAIM_TEST_TDLIB_REQUIRED: 1
           # IODevicePrinterIPPLiveTest prints to a real ippeveprinter; a skip
           # would look like a pass, so forbid it, as for the database test.
           ULTRACANVAS_TEST_IPP_REQUIRED: 1
@@ -1437,6 +1936,20 @@ jobs:
           ULTRAFIBU_TEST_PG_DB: ultrafibu_ci
           # A skip here is indistinguishable from a pass, so forbid it.
           ULTRAFIBU_TEST_PG_REQUIRED: 1
+          # The MySQL server of "Start MySQL for the database tests";
+          # _HOST and _USER come from that step via GITHUB_ENV.
+          ULTRADB_TEST_MYSQL_DB: ultradb_ci
+          ULTRADB_TEST_MYSQL_REQUIRED: 1
+          # The sshd and the TCP logins of "Start an SSH server for the
+          # tunnel tests"; the rest comes from that step via GITHUB_ENV.
+          ULTRANET_TEST_SSH_REQUIRED: 1
+          ULTRADB_TEST_TUNNEL_REQUIRED: 1
+          # ImageFormatsTest insists on every picture format - except JPEG
+          # XL here: ubuntu-22.04's libvips is built without libjxl (jammy
+          # has no libjxl package), the one codec this runner cannot have.
+          # JPEG XL is checked on Ubuntu 24.04 in image-codecs.yml and on the
+          # macOS and Windows rows ("Run JPEG XL test").
+          UC_IMAGE_FORMATS_OPTIONAL: jxl
         run: ctest --output-on-failure 2>&1 | tee ctest.log
 
       # "Run unit tests" runs DesktopShellTest with no display, where the X11
@@ -1455,6 +1968,38 @@ jobs:
         run: >-
           xvfb-run -a -s "-screen 0 1600x900x24 +extension RANDR"
           ctest --output-on-failure --no-tests=error --timeout 300 -R "^DesktopShellTest$"
+
+      # The Smart Home widget test drives the device controls through a real
+      # window - a press on the switch, the slider, the lock button, at window
+      # coordinates through the application's dispatch. "Run unit tests" has
+      # no display, so there that part skips; here it has to run.
+      - name: Run the Smart Home widget test on a virtual display (Linux)
+        if: runner.os == 'Linux'
+        working-directory: build
+        env:
+          ULTRACANVAS_TEST_DISPLAY_REQUIRED: 1
+        run: >-
+          xvfb-run -a -s "-screen 0 1280x800x24"
+          ctest --output-on-failure --no-tests=error --timeout 300 -R "^SmartHomeWidgets$"
+
+      # The demo's layout audit (Apps/DemoApp/UltraCanvasDemoLayoutAudit.cpp)
+      # opens every page and fails on a label or button narrower than its
+      # text, or content cut off with no scrollbar to reach it. The second run
+      # makes every text ~40% longer first, as a translation is, so a page
+      # that only just fits in English fails here rather than in German. The
+      # log keeps the failing pages and the count, not a line per page that
+      # passed. Run it locally the same way: UltraCanvasDemo --audit-layout
+      # [--pseudo-loc] [--audit-page <id>].
+      - name: Demo layout audit on a virtual display (Linux)
+        if: runner.os == 'Linux'
+        working-directory: build
+        shell: bash
+        run: |
+          for form in "" "--pseudo-loc"; do
+            echo "UltraCanvasDemo --audit-layout $form"
+            timeout 600 xvfb-run -a -s "-screen 0 1600x1000x24" \
+              ./UltraCanvasDemo --audit-layout $form | grep -v '^\[ OK \]'
+          done
 
       # ULTRAFIBU_TEST_PG_REQUIRED above turns a skip into a failure, so ctest
       # already covers "it ran". What it cannot cover is the test not existing
@@ -1492,12 +2037,12 @@ jobs:
           fi
           echo "VideoFX engine built and VideoFXTest ran"
 
-      # AnchorPoint is its own CMake project and not part of the build above,
-      # so nothing here built it: its standalone link broke (UltraCrypt had
-      # started calling the shared Base32 codec) and nobody saw. Build the core
-      # and CLI the way its README says, and run the protocol tests - they
-      # replay hostile file names against the receiver. Needs only libsodium,
-      # which is installed above.
+      # AnchorPoint is also its own CMake project. The build above includes it
+      # (BUILD_ANCHORPOINT), which builds the window against the framework; this step builds the core and CLI *without* the framework,
+      # the way its README says - that standalone link once broke (UltraCrypt
+      # had started calling the shared Base32 codec) and nobody saw - and runs
+      # the protocol tests: hostile file names against the receiver, and
+      # stopping a transfer. Needs only libsodium, which is installed above.
       - name: AnchorPoint core, CLI and protocol tests (Linux)
         if: runner.os == 'Linux'
         shell: bash
@@ -1654,7 +2199,17 @@ jobs:
           if ($p.ExitCode -ne 0) { throw "The uninstaller exited with $($p.ExitCode)" }
           $left = @(Get-ChildItem $dir -Recurse -File | Where-Object Name -ne 'Uninstall.exe')
           if ($left.Count -gt 0) { throw "Left behind: $(($left | Select-Object -First 10 | ForEach-Object FullName) -join ', ')" }
-          if (Test-Path $menu) { throw 'The Start-menu folder was left behind' }
+          # The folder can outlive the uninstaller for a moment: the shell
+          # may still hold it while it drops the removed shortcuts (a pull
+          # request that changes no packaging failed here while main at the
+          # same base passed). Allow it ten seconds before calling it left
+          # behind, and name what is still in it when it really is.
+          $deadline = (Get-Date).AddSeconds(10)
+          while ((Test-Path $menu) -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 500 }
+          if (Test-Path $menu) {
+            $inside = @(Get-ChildItem $menu -Force | ForEach-Object Name)
+            throw "The Start-menu folder was left behind, holding: $(if ($inside) { $inside -join ', ' } else { 'nothing' })"
+          }
           if (Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\App Paths\UltraDesktop.exe' -ErrorAction SilentlyContinue) {
             throw 'The App Paths entry was left behind'
           }
@@ -1906,8 +2461,9 @@ jobs:
   # and the six UltraCanvasStart archives to a GitHub release tagged
   # v<version>, where a fixed URL serves them to anyone:
   # https://github.com/<repo>/releases/download/v<version>/<archive>.
-  # UltraCanvasStart's Project page downloads the SDK for its platform from
-  # there (Apps/UltraCanvasStart/engine/StartSdk.cpp names the URL), and
+  # UltraCanvasStart's Framework step links the release page beside the
+  # UltraOS download page (Apps/UltraCanvasStart/engine/StartSdk.cpp; the
+  # publish-sdk-website job below fills that page's server), and
   # UltraCanvasStart itself is what a computer with nothing on it yet
   # downloads first (Docs/GettingStarted.md). The release is created with
   # the version's changelog section as its notes; a re-run of the same
@@ -1916,9 +2472,13 @@ jobs:
     name: Publish the SDKs and UltraCanvasStart as release assets
     needs: build
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || inputs.release == true)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04   # the pool the build legs use; the ubuntu-latest (24.04) one held jobs for hours on 2026-10-21
     permissions:
       contents: write
+    # The version, for publish-sdk-website below: it reads the same first
+    # line, and the two must not disagree about which archives to send.
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
@@ -2007,6 +2567,74 @@ jobs:
           gh release upload "$tag" sdk-release/* --repo "${{ github.repository }}" --clobber
           echo "https://github.com/${{ github.repository }}/releases/tag/$tag"
 
+  # ===== THE SDKS ON THE ULTRAOS WEBSITE =====
+  # UltraCanvasStart's Framework step opens https://ultraos.eu/download-file/
+  # (Apps/UltraCanvasStart/engine/StartSdk.cpp) and names the archive for
+  # its version; this job puts the same six archives the release above
+  # carries on the server behind that page, so the page can offer a version
+  # the moment it is released instead of when someone copies it over. Over
+  # SFTP, into <ULTRAOS_SFTP_DIR>/<version>/ with a SHA256SUMS beside them
+  # (scripts/upload-sdk-website.sh, which documents every setting). After
+  # publish-sdk, so the website never has a version the release lacks; a job
+  # of its own, so an unreachable server turns this job red, not the
+  # release, and it can be re-run alone.
+  #
+  # Configured in the repository's Settings -> Secrets and variables ->
+  # Actions: ULTRAOS_SFTP_HOST, ULTRAOS_SFTP_USER, ULTRAOS_SFTP_DIR (and
+  # ULTRAOS_SFTP_PORT when not 22), each a variable or a secret, and the
+  # secrets ULTRAOS_SFTP_KEY and ULTRAOS_SFTP_KNOWN_HOSTS. Until
+  # ULTRAOS_SFTP_HOST is set the job uploads nothing and says so; with it
+  # set, a missing setting fails it. The decision is a step's, not the
+  # job's `if`: a job condition cannot read secrets, and a host kept in one
+  # would skip the job for good. sdk-website-check.yml tests the settings
+  # without a release.
+  publish-sdk-website:
+    name: Upload the SDKs to the UltraOS website
+    needs: publish-sdk
+    runs-on: ubuntu-22.04   # the pool the build legs use; the ubuntu-latest (24.04) one held jobs for hours on 2026-10-21
+    # Six archives of a few hundred MB in all; a stalled connection is cut
+    # by ServerAliveInterval, this is the backstop.
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      ULTRAOS_SFTP_HOST: ${{ vars.ULTRAOS_SFTP_HOST || secrets.ULTRAOS_SFTP_HOST }}
+    steps:
+      - name: Is the website configured?
+        id: configured
+        run: |
+          if [ -n "$ULTRAOS_SFTP_HOST" ]; then
+            echo "upload=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "upload=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::ULTRAOS_SFTP_HOST is not set (as a variable or a secret) - the SDKs were not uploaded to the website"
+          fi
+
+      - name: Checkout repository
+        if: steps.configured.outputs.upload == 'true'
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.sha || github.sha }}
+
+      - name: Download the SDK artifacts
+        if: steps.configured.outputs.upload == 'true'
+        uses: actions/download-artifact@v6
+        with:
+          pattern: UltraCanvas-SDK-*
+          path: sdk-release
+          merge-multiple: true
+
+      - name: Upload the SDKs over SFTP
+        if: steps.configured.outputs.upload == 'true'
+        env:
+          VERSION: ${{ needs.publish-sdk.outputs.version }}
+          ULTRAOS_SFTP_PORT: ${{ vars.ULTRAOS_SFTP_PORT || secrets.ULTRAOS_SFTP_PORT }}
+          ULTRAOS_SFTP_USER: ${{ vars.ULTRAOS_SFTP_USER || secrets.ULTRAOS_SFTP_USER }}
+          ULTRAOS_SFTP_DIR: ${{ vars.ULTRAOS_SFTP_DIR || secrets.ULTRAOS_SFTP_DIR }}
+          ULTRAOS_SFTP_KEY: ${{ secrets.ULTRAOS_SFTP_KEY }}
+          ULTRAOS_SFTP_KNOWN_HOSTS: ${{ secrets.ULTRAOS_SFTP_KNOWN_HOSTS }}
+        run: scripts/upload-sdk-website.sh sdk-release "$VERSION"
+
   # ===== ANDROID BACKEND CHECK =====
   # Separate job, not a matrix row (investigation §5): there is no
   # cross-compiled dependency sysroot yet, so a full Android build is not
@@ -2020,7 +2648,7 @@ jobs:
     name: Android backend check
     needs: gate
     if: needs.gate.outputs.pending == 'false'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04   # the pool the build legs use; the ubuntu-latest (24.04) one held jobs for hours on 2026-10-21
     # The whole job, not only its apt step: without one only GitHub's 6-hour
     # default applied, and on 2026-10-07 a hung apt held PR #720's checks for
     # five hours before it was cancelled by hand. Normally 75 s (5.5 min on a

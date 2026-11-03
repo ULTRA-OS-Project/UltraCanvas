@@ -14,7 +14,7 @@ name: HTML fuzz
 # run (HTMLBuilderFuzzSmoke) needs the full library and runs in build.yml's
 # ctest instead.
 
-# Trigger policy matches build.yml / win32-names.yml: `pull_request` covers
+# Trigger policy matches build.yml / platform-names.yml: `pull_request` covers
 # feature branches, so listing them under `push` too would run this twice
 # per commit.
 on:

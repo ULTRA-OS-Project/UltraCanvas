@@ -1,6 +1,8 @@
 // Apps/AnchorPoint/tests/ProtocolTests.cpp
-// AnchorPoint - receiver-side protocol tests: the offered file name is the
-// peer's, so it must never place a file outside the save folder.
+// AnchorPoint - protocol tests: the offered file name is the peer's, so it
+// must never place a file outside the save folder; and a transfer stops when
+// asked, telling the peer, whether it is between chunks or blocked on the
+// network.
 // Version: 0.1.0
 // Author: AnchorPoint
 #include "Protocol.h"
@@ -10,15 +12,17 @@
 
 #include "UltraCrypt/UltraCryptCore.h"
 
+#include <atomic>
 #include <chrono>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <thread>
 #include <vector>
 
-using namespace AnchorPoint;
+using namespace AnchorPointApp;
 namespace fs = std::filesystem;
 using UltraCanvas::PathToUtf8;
 
@@ -50,14 +54,43 @@ public:
         return true;
     }
     void Close() override {}
+    void Interrupt() override {}
     std::string PeerAddress() const override { return "test"; }
 
     std::vector<uint8_t> out;
 
-private:
+protected:
     std::vector<uint8_t> in_;
     size_t pos_ = 0;
 };
+
+// Runs out of script the way an interrupted socket does: Stop is pressed while
+// the transfer is blocked reading, so the read fails with the flag already set.
+class StoppedWhileReading : public ScriptedConnection {
+public:
+    StoppedWhileReading(std::vector<uint8_t> incoming, std::atomic<bool>& cancel)
+        : ScriptedConnection(std::move(incoming)), cancel_(cancel) {}
+    bool RecvAll(void* data, size_t len) override {
+        if (ScriptedConnection::RecvAll(data, len)) return true;
+        cancel_ = true;
+        return false;
+    }
+private:
+    std::atomic<bool>& cancel_;
+};
+
+// The frame types in a recorded stream, in order.
+std::vector<MsgType> FrameTypes(const std::vector<uint8_t>& stream) {
+    std::vector<MsgType> types;
+    size_t pos = 0;
+    while (pos + 5 <= stream.size()) {
+        const uint32_t len = (uint32_t(stream[pos + 1]) << 24) | (uint32_t(stream[pos + 2]) << 16) |
+                             (uint32_t(stream[pos + 3]) << 8) | stream[pos + 4];
+        types.push_back(static_cast<MsgType>(stream[pos]));
+        pos += 5 + len;
+    }
+    return types;
+}
 
 void PutU16(std::vector<uint8_t>& b, uint16_t v) { b.push_back(uint8_t(v >> 8)); b.push_back(uint8_t(v)); }
 void PutU32(std::vector<uint8_t>& b, uint32_t v) {
@@ -171,6 +204,104 @@ void TestUnsafeNameRefused(const fs::path& root, const std::string& wire) {
           "peer told Reject for \"" + wire + "\"");
 }
 
+bool Contains(const std::vector<MsgType>& types, MsgType t) {
+    for (MsgType x : types) if (x == t) return true;
+    return false;
+}
+
+std::vector<uint8_t> AcceptFrom(uint64_t offset) {
+    std::vector<uint8_t> stream, p;
+    PutU64(p, offset);
+    Frame(stream, MsgType::Accept, p);
+    return stream;
+}
+
+// Stop pressed on the receiver once the file is accepted: no chunk is written,
+// the sender is told, and nothing is reported as verified.
+void TestReceiverStops(const fs::path& root) {
+    std::atomic<bool> cancel{false};
+    ScriptedConnection conn(PeerSends("stopped.txt", "payload"));
+    auto res = ReceiveFile(conn, [&](const OfferInfo& offer, const std::string&) {
+        cancel = true;
+        return PathToUtf8(root / UltraCanvas::PathFromUtf8(offer.fileName));
+    }, nullptr, &cancel);
+
+    const auto sent = FrameTypes(conn.out);
+    Check(!res.ok && res.cancelled, "receiver reports the stop: " + res.error);
+    Check(!sent.empty() && sent.back() == MsgType::Error, "receiver tells the sender it stopped");
+    Check(!Contains(sent, MsgType::Verified), "receiver does not claim a verified file");
+    Check(ReadAll(root / "stopped.txt").empty(), "no chunk written after the stop");
+}
+
+// Stop pressed on the sender before the first chunk: no chunk goes out and the
+// receiver is told.
+void TestSenderStops(const fs::path& root) {
+    const fs::path file = root / "outgoing.bin";
+    { std::ofstream(file, std::ios::binary) << std::string(3 * kDefaultChunkSize, 'x'); }
+
+    std::atomic<bool> cancel{true};
+    ScriptedConnection conn(AcceptFrom(0));
+    auto res = SendFile(conn, PathToUtf8(file), "test", nullptr, &cancel);
+
+    const auto sent = FrameTypes(conn.out);
+    Check(!res.ok && res.cancelled, "sender reports the stop: " + res.error);
+    Check(!Contains(sent, MsgType::Chunk), "sender sends no chunk after the stop");
+    Check(!sent.empty() && sent.back() == MsgType::Error, "sender tells the receiver it stopped");
+}
+
+// Stop pressed while the sender waits for the receiver's verdict: the read the
+// stop broke is reported as the stop, not as a lost connection.
+void TestStopWhileBlockedIsReportedAsStop(const fs::path& root) {
+    const fs::path file = root / "small.bin";
+    { std::ofstream(file, std::ios::binary) << "small"; }
+
+    std::atomic<bool> cancel{false};
+    StoppedWhileReading conn(AcceptFrom(0), cancel);
+    auto res = SendFile(conn, PathToUtf8(file), "test", nullptr, &cancel);
+    Check(!res.ok && res.cancelled && res.error == "cancelled",
+          "a read broken by the stop reads as the stop: " + res.error);
+
+    // Without a stop the same failure stays what it is.
+    ScriptedConnection plain(AcceptFrom(0));
+    auto lost = SendFile(plain, PathToUtf8(file), "test");
+    Check(!lost.ok && !lost.cancelled, "a real lost connection is not called a stop");
+}
+
+// Interrupt() wakes a socket read blocked on another thread, and a send to a
+// peer that has gone fails instead of killing the program with SIGPIPE.
+void TestSocketInterruptAndDeadPeer() {
+    std::string err;
+    auto listener = Listen(0, &err);
+    Check(listener != nullptr, "listen on a free loopback port: " + err);
+    if (!listener) return;
+
+    std::unique_ptr<IConnection> server;
+    std::thread acceptor([&] { server = listener->Accept(); });
+    auto client = Connect("127.0.0.1", listener->Port(), &err);
+    acceptor.join();
+    Check(client && server, "loopback connection: " + err);
+    if (!client || !server) return;
+
+    std::atomic<bool> returned{false};
+    bool readOk = true;
+    std::thread reader([&] {
+        uint8_t b;
+        readOk = server->RecvAll(&b, 1);   // nothing is ever sent: blocks
+        returned = true;
+    });
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    Check(!returned, "the read is blocked before the interrupt");
+    server->Interrupt();
+    reader.join();
+    Check(!readOk, "an interrupted read fails");
+
+    server->Close();
+    std::vector<uint8_t> block(64 * 1024, 0);
+    bool anyFailed = false;
+    for (int i = 0; i < 64 && !anyFailed; ++i) anyFailed = !client->SendAll(block.data(), block.size());
+    Check(anyFailed, "sending to a closed peer fails (and the test is still running)");
+}
+
 } // namespace
 
 int main() {
@@ -184,6 +315,10 @@ int main() {
     TestUnsafeNameRefused(root, "..");
     TestUnsafeNameRefused(root, "C:evil.txt");
     TestUnsafeNameRefused(root, "dir/");
+    TestReceiverStops(root);
+    TestSenderStops(root);
+    TestStopWhileBlockedIsReportedAsStop(root);
+    TestSocketInterruptAndDeadPeer();
 
     std::error_code ec;
     fs::remove_all(root, ec);

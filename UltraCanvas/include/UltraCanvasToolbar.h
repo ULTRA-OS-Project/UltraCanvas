@@ -19,11 +19,29 @@
 // AddToolGroup puts several tools in one slot - an UltraCanvasToolGroupButton
 // showing one of them, whose bar of all of them folds out while the pointer
 // rests on it - as a paint program's palette groups its selection tools.
+//
+// A separator divides the bar into groups, and ToolbarAppearance::groupSpacing
+// is the gap between two of them, the separator's line in its middle. With
+// ToolbarOverflowMode::Menu the items that do not fit are taken off the end
+// of the bar and a chevron button there lists them in a popup menu: a button
+// as an entry, a toggle as a check, a tool group or a dropdown as a submenu.
+// A toolbar can be built from data: MaterializeToolbar (UltraCanvasToolbarLayout.h)
+// fills it from a ToolbarLayout - groups of command ids - and a command
+// registry, and RefreshCommandStates re-reads each command's enabled, checked
+// and label state into its button.
+// Version: 1.14.0 - RefreshCommandStates: a folded group of check commands shows the
+//                   checked one, pressed
+// Version: 1.13.0 - SetOnContextMenu: a right click on the bar or an item, with the item's id
+// Version: 1.12.0 - AddWidget; SetCommandRegistry / RefreshCommandStates for a bar built
+//                   from commands (MaterializeToolbar)
+// Version: 1.11.0 - groupSpacing is the gap across a separator (it was never read);
+//                   ToolbarOverflowMode::Menu works (it did nothing): the items past the
+//                   end go into a menu behind a chevron button
 // Version: 1.10.0 - ToolbarAppearance::FromTheme, ApplyTheme
 // Version: 1.9.0 - ToolbarAppearance::IconPixelSize(); buttons use it
 // Version: 1.8.0 - AddToolGroup: several tools sharing one slot, with a fold-out bar
 // Version: 1.7.0
-// Last Modified: 2026-10-12
+// Last Modified: 2026-10-30
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -56,6 +74,7 @@ namespace UltraCanvas {
 
 // ===== FORWARD DECLARATIONS =====
     class UltraCanvasToolbar;
+    class UltraCanvasCommandRegistry;
 
 // ===== TOOLBAR ENUMERATIONS =====
 
@@ -85,7 +104,7 @@ namespace UltraCanvas {
     enum class ToolbarOverflowMode {
         OverflowNone = 0,           // No overflow handling
         Wrap = 1,           // Wrap items to new line
-        Menu = 2,           // Move to overflow menu
+        Menu = 2,           // Items past the end go into a menu behind a chevron button
         Scroll = 3,         // Allow scrolling
         Hide = 4            // Hide overflow items
     };
@@ -139,7 +158,12 @@ namespace UltraCanvas {
 //        Color hoverForegroundColor = Colors::Black;
 //        Color activeForegroundColor = Colors::Black;
 
-        // Spacing
+        // Spacing. itemSpacing is the gap between two items; groupSpacing the
+        // gap between two groups - from the last item before a separator to
+        // the first after it, the separator's line in the middle. It is never
+        // less than the two item gaps on either side of the separator, so the
+        // default (8 = 2 x 4) is the separator as it always looked; a ribbon
+        // (16) sets its groups further apart.
         float itemSpacing = 4.0f;
         float groupSpacing = 8.0f;
 
@@ -294,6 +318,9 @@ namespace UltraCanvas {
         // would see it, so both have to look before the target does.
         bool pointerFilterInstalled = false;
 
+        // The registry the items came from (SetCommandRegistry).
+        const UltraCanvasCommandRegistry* commandRegistry = nullptr;
+
         // Magnification (for dock-style toolbars)
         int hoveredItemIndex = -1;
         Point2Di mousePosition;
@@ -410,9 +437,56 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasAutoComplete> AddAutoComplete(
                 const std::string& id, const std::string& placeholder = "Search...",
                 std::function<void(const std::string&)> onTextChange = nullptr);
+        // Any other widget as an item, registered under `id` like the ones
+        // above (GetWidget, the order, badges): a slider, a progress gauge.
+        std::shared_ptr<UltraCanvasUIElement> AddWidget(
+                const std::string& id, std::shared_ptr<UltraCanvasUIElement> widget);
+
+        // ===== COMMANDS =====
+        // The registry the bar's items came from (MaterializeToolbar sets it;
+        // it must outlive the bar). An item whose id is a command id there -
+        // a button, a toggle, a widget, a tool group's tools - follows that
+        // command's state on RefreshCommandStates.
+        void SetCommandRegistry(const UltraCanvasCommandRegistry* registry) { commandRegistry = registry; }
+        const UltraCanvasCommandRegistry* GetCommandRegistry() const { return commandRegistry; }
+        // Re-reads every command's isEnabled, isChecked and dynamicLabel into
+        // its item: a disabled command greys its button, a checked one presses
+        // its toggle, and the tooltip follows the label ("Undo Move (Ctrl+Z)").
+        // A tool group is enabled while any of its tools is, and a group of
+        // check commands (a palette's tools) shows the checked one, pressed. The program calls
+        // this where its state changes - after an edit, a selection - instead
+        // of keeping pointers to the buttons, which the user may have removed.
+        void RefreshCommandStates();
 
         // ===== LAYOUT =====
+        // Lays the items out again for the overflow mode. The Menu mode works
+        // out what fits whenever the bar is laid out (Arrange), so this only
+        // asks for a layout.
         void HandleOverflow();
+        // ToolbarOverflowMode::Menu: the bar is laid out, then the items that
+        // do not fit before the chevron button are taken off its end.
+        void Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) override;
+
+        // ===== OVERFLOW MENU (ToolbarOverflowMode::Menu) =====
+        // The items taken off the end of the bar, in order: they are hidden
+        // from the bar and listed in the chevron button's menu instead. Their
+        // ids ("" for an unnamed separator) - empty while everything fits.
+        std::vector<std::string> GetOverflowItemIds() const;
+        bool IsItemInOverflowMenu(const std::string& identifier) const;
+        // The chevron button at the end of the bar, shown while something is
+        // in the menu; null until the Menu mode first lays the bar out.
+        std::shared_ptr<UltraCanvasButton> GetOverflowButton() const { return overflowButton; }
+        // The entries the menu shows for the items in it: a button is an
+        // entry with its icon and tooltip (the "(Ctrl+N)" ending as the
+        // shortcut), a toggle button a check, a tool group a submenu of its
+        // tools, a dropdown a submenu of its choices, a separator a
+        // separator. A widget a menu cannot stand in for (a slider, a text
+        // field) is left out.
+        std::vector<MenuItemData> GetOverflowMenuItems();
+        // Opens the menu below the chevron button (beside it, in a vertical
+        // bar), as a click on the button does. Does nothing while the menu is
+        // empty or the bar is in no window.
+        void OpenOverflowMenu();
 
         // ===== RENDERING =====
         void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
@@ -453,7 +527,22 @@ namespace UltraCanvas {
         std::function<void(int, int)> onItemReordered;
         std::function<void(ToolbarPosition)> onPositionChanged;
 
+        // A right click on the bar - on an item or between them - with the
+        // pointer in window coordinates and the id of the item under it ("" for
+        // none, or an unnamed one): where a context menu opens. The press does
+        // not reach the item, and the handler runs on the release, so the menu
+        // it opens does not take that release as a pick.
+        // InstallToolbarContextMenu (UltraCanvasToolbarLayout.h) gives a bar
+        // built from a ToolbarLayout the standard one. A setter, as the toolbar
+        // watches the window's pointer for it only while one is set.
+        using ContextMenuHandler = std::function<void(const Point2Di& posInWindow, const std::string& itemId)>;
+        void SetOnContextMenu(ContextMenuHandler handler);
+        bool HasContextMenu() const { return static_cast<bool>(contextMenuHandler); }
+
     private:
+        ContextMenuHandler contextMenuHandler;
+        bool contextPressPending = false;   // a right press taken, its release to come
+        bool HandleContextMenuEvent(const UCEvent& event);
         // Internal helpers
         void CreateLayout();
         // Whether a press landed on one of the bar's items rather than on the
@@ -489,6 +578,16 @@ namespace UltraCanvas {
         void RenderScrollHints(IRenderContext* ctx);
         bool IsItem(const CSSLayout::Element* child) const;
         void ApplyOverflowToChild(const std::shared_ptr<UltraCanvasUIElement>& child);
+        // groupSpacing: the margins either side of a separator along the bar.
+        void ApplySeparatorSpacing(const std::shared_ptr<UltraCanvasSeparator>& separator);
+        // The Menu mode's layout, and the items it took off the bar (shown
+        // again before each layout, and when the mode changes). Their badges
+        // are hidden with them.
+        void ArrangeWithOverflowMenu(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx);
+        void RestoreOverflowItems();
+        void KeepOverflowButtonLast();
+        std::vector<UltraCanvasUIElement*> overflowItems;
+        std::vector<UltraCanvasBadge*> overflowBadges;
         // Badge placement.
         BadgeCorner badgeCorner = BadgeCorner::TopRight;
         float badgeOffsetX = -7.0f;

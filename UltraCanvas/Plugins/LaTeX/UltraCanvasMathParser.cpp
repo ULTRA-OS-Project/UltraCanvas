@@ -456,12 +456,12 @@ struct UltraCanvasMathParser::Impl {
         return a;
     }
     MathAtomPtr SpaceAtom(float em, bool mu = false) {
-        auto a = MathAtom::Make(MathAtomKind::Space, MathAtomClass::None);
+        auto a = MathAtom::Make(MathAtomKind::Space, MathAtomClass::NoClass);
         if (mu) { a->spaceMu = em; a->spaceIsMu = true; } else a->spaceEm = em;
         return a;
     }
     MathAtomPtr StyleAtom(MathStyle st) {
-        auto a = MathAtom::Make(MathAtomKind::Style, MathAtomClass::None);
+        auto a = MathAtom::Make(MathAtomKind::Style, MathAtomClass::NoClass);
         a->style = st; a->hasStyle = true;
         return a;
     }
@@ -727,7 +727,7 @@ struct UltraCanvasMathParser::Impl {
                 std::string spec; ReadGroupRaw(spec);
                 MathColor col = kMathColorBlack;
                 if (!ParseColorSpec(spec, col)) Report("unknown colour '" + spec + "'", start, pos);
-                auto a = MathAtom::Make(MathAtomKind::Color, MathAtomClass::None);
+                auto a = MathAtom::Make(MathAtomKind::Color, MathAtomClass::NoClass);
                 a->color = col;
                 a->body = ParseTextArg();
                 out.push_back(a);
@@ -737,7 +737,7 @@ struct UltraCanvasMathParser::Impl {
                 std::string spec; ReadGroupRaw(spec);
                 MathColor col = kMathColorBlack;
                 if (!ParseColorSpec(spec, col)) Report("unknown colour '" + spec + "'", start, pos);
-                auto a = MathAtom::Make(MathAtomKind::Color, MathAtomClass::None);
+                auto a = MathAtom::Make(MathAtomKind::Color, MathAtomClass::NoClass);
                 a->color = col;
                 a->body = ParseText();
                 out.push_back(a);
@@ -745,7 +745,7 @@ struct UltraCanvasMathParser::Impl {
             }
             for (size_t i = 0; i < 10; ++i) {
                 if (cmd == kSizeCommands[i]) {
-                    auto a = MathAtom::Make(MathAtomKind::Style, MathAtomClass::None);
+                    auto a = MathAtom::Make(MathAtomKind::Style, MathAtomClass::NoClass);
                     a->sizeScale = kSizeScales[i];
                     a->body = ParseText();
                     out.push_back(a);
@@ -1325,7 +1325,7 @@ struct UltraCanvasMathParser::Impl {
         }
         for (size_t i = 0; i < 10; ++i) {
             if (cmd == kSizeCommands[i]) {
-                auto a = MathAtom::Make(MathAtomKind::Style, MathAtomClass::None);
+                auto a = MathAtom::Make(MathAtomKind::Style, MathAtomClass::NoClass);
                 a->sizeScale = kSizeScales[i];
                 a->body = ParseList(stops);
                 out.push_back(a);
@@ -1761,7 +1761,7 @@ struct UltraCanvasMathParser::Impl {
             std::string spec; ReadGroupRaw(spec);
             MathColor col = kMathColorBlack;
             if (!ParseColorSpec(spec, col)) Report("unknown colour '" + spec + "'", start, pos);
-            auto a = MathAtom::Make(MathAtomKind::Color, MathAtomClass::None);
+            auto a = MathAtom::Make(MathAtomKind::Color, MathAtomClass::NoClass);
             a->color = col;
             if (cmd == "color") a->body = ParseList(stops);
             else a->body = ParseArg();

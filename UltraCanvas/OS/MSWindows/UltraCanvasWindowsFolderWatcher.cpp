@@ -7,8 +7,15 @@
 // included - from renaming or deleting it. The read loop runs on its own
 // thread and waits on two events at once, the overlapped read's and a stop
 // event, so Stop() returns promptly instead of waiting out the next change.
+//
+// The first read is issued by Start() itself, not by the thread: the system
+// only collects changes for a handle from its first ReadDirectoryChangesW
+// call on, and a change made between Start() returning and the thread getting
+// round to that call was lost - the gap a caller listing the folder right
+// after Watch() fell into.
+// Version: 1.1.0 - the first read is issued before Start() returns
 // Version: 1.0.0
-// Last Modified: 2026-08-25
+// Last Modified: 2026-10-30
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasFolderWatcher.h"
@@ -65,6 +72,16 @@ namespace UltraCanvas {
                     return false;
                 }
 
+                // DWORD-aligned, as ReadDirectoryChangesW requires of its
+                // buffer. 64 KiB is the documented ceiling that still works on
+                // a network share; a batch too large to fit simply arrives as
+                // an overflow, which we treat as "something changed" anyway.
+                buffer.assign(64 * 1024 / sizeof(DWORD), 0);
+                if (!IssueRead()) {
+                    CloseHandles();
+                    return false;
+                }
+
                 callback = std::move(onChanged);
                 failedCallback = std::move(onFailed);
                 failureReported = false;
@@ -107,30 +124,28 @@ namespace UltraCanvas {
                 failedCallback();
             }
 
+            // Queue the next overlapped read. The system keeps collecting
+            // changes for the handle between one completion and the next
+            // call, so nothing is lost while a batch is being reported.
+            bool IssueRead() {
+                overlapped = OVERLAPPED{};
+                overlapped.hEvent = readEvent;
+                ::ResetEvent(readEvent);
+                DWORD bytes = 0;
+                return ::ReadDirectoryChangesW(
+                        directory, buffer.data(),
+                        static_cast<DWORD>(buffer.size() * sizeof(DWORD)),
+                        FALSE,          // this folder only, not the subtree
+                        kWatchFilter, &bytes, &overlapped, nullptr) != FALSE;
+            }
+
+            // Starts with a read already pending - Start() issued it. Leaves
+            // only through a path that has none pending any more, so the
+            // buffer is never written after the thread has gone; a Stop() is
+            // seen by the wait, which is what drains the read.
             void Run() {
-                // DWORD-aligned, as ReadDirectoryChangesW requires of its
-                // buffer. 64 KiB is the documented ceiling that still works on
-                // a network share; a batch too large to fit simply arrives as
-                // an overflow, which we treat as "something changed" anyway.
-                std::vector<DWORD> buffer(64 * 1024 / sizeof(DWORD));
-
-                while (!stopping.load()) {
-                    OVERLAPPED overlapped{};
-                    overlapped.hEvent = readEvent;
-                    ::ResetEvent(readEvent);
-
+                for (;;) {
                     DWORD bytes = 0;
-                    if (!::ReadDirectoryChangesW(
-                                directory, buffer.data(),
-                                static_cast<DWORD>(buffer.size() * sizeof(DWORD)),
-                                FALSE,          // this folder only, not the subtree
-                                kWatchFilter, &bytes, &overlapped, nullptr)) {
-                        // The handle went bad under us: the volume was
-                        // removed, the share dropped, the folder deleted.
-                        ReportFailure();
-                        return;
-                    }
-
                     HANDLE waits[2] = {readEvent, stopEvent};
                     const DWORD signalled =
                             ::WaitForMultipleObjects(2, waits, FALSE, INFINITE);
@@ -154,10 +169,22 @@ namespace UltraCanvas {
                     // records, and `transferred == 0` is the overflow case -
                     // the folder changed, we just do not know how.
                     if (callback) callback();
+
+                    if (stopping.load()) return;
+                    if (!IssueRead()) {
+                        // The handle went bad under us: the volume was
+                        // removed, the share dropped, the folder deleted.
+                        ReportFailure();
+                        return;
+                    }
                 }
             }
 
             HANDLE directory = INVALID_HANDLE_VALUE;
+            // The read in flight. Members, not locals, because Start() issues
+            // the first one and the thread picks it up.
+            OVERLAPPED overlapped{};
+            std::vector<DWORD> buffer;
             HANDLE readEvent = nullptr;
             HANDLE stopEvent = nullptr;
             std::atomic<bool> stopping{false};

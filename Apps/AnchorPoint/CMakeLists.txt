@@ -4,8 +4,12 @@
 #
 # Targets:
 #   anchorpoint_core  static lib: transfer protocol + raw-socket transport (UltraCrypt)
-#   anchorpoint       headless CLI (always built)
-#   anchorpoint_tests protocol tests, run by ctest (-DANCHORPOINT_BUILD_TESTS=OFF to skip)
+#   anchorpoint-cli   headless CLI (always built). Not `anchorpoint`: on the
+#                     case-insensitive file systems of macOS and Windows that
+#                     is the same file as the window's `AnchorPoint`.
+#   AnchorPointTests  protocol tests, run by ctest (-DANCHORPOINT_BUILD_TESTS=OFF to skip).
+#                     Named <App>Tests like every suite: the Windows package
+#                     leaves *Tests.exe out, and a test binary in it fails CI.
 #   AnchorPoint       UltraCanvas GUI (built when the framework is available;
 #                     toggle with -DANCHORPOINT_BUILD_GUI=ON/OFF)
 cmake_minimum_required(VERSION 3.16)
@@ -28,6 +32,13 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
+# The Windows manifest every UltraCanvas program carries: the UTF-8 code page
+# (so file names in any script reach the program intact, `argv` included) and
+# long paths. A no-op elsewhere. Included here too for a standalone build,
+# where the root CMakeLists.txt that includes it is not read.
+include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/UltraCanvasWinManifest.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/UltraCanvasAppIcon.cmake")
 
 option(ANCHORPOINT_BUILD_GUI "Build the UltraCanvas GUI (needs the framework toolchain)" ON)
 option(ANCHORPOINT_BUILD_TESTS "Build the protocol tests" ON)
@@ -96,19 +107,20 @@ endif()
 # ===========================================================================
 # Headless CLI (always)
 # ===========================================================================
-add_executable(anchorpoint cli/main.cpp)
-target_link_libraries(anchorpoint PRIVATE anchorpoint_core)
-set_target_properties(anchorpoint PROPERTIES OUTPUT_NAME "anchorpoint")
-install(TARGETS anchorpoint RUNTIME DESTINATION bin)
+add_executable(anchorpoint-cli cli/main.cpp)
+target_link_libraries(anchorpoint-cli PRIVATE anchorpoint_core)
+set_target_properties(anchorpoint-cli PROPERTIES OUTPUT_NAME "anchorpoint-cli")
+ultracanvas_embed_windows_manifest(anchorpoint-cli)
+install(TARGETS anchorpoint-cli RUNTIME DESTINATION bin)
 
 # ===========================================================================
 # Tests (headless, core only)
 # ===========================================================================
 if(ANCHORPOINT_BUILD_TESTS)
     enable_testing()
-    add_executable(anchorpoint_tests tests/ProtocolTests.cpp)
-    target_link_libraries(anchorpoint_tests PRIVATE anchorpoint_core)
-    add_test(NAME AnchorPointProtocol COMMAND anchorpoint_tests)
+    add_executable(AnchorPointTests tests/ProtocolTests.cpp)
+    target_link_libraries(AnchorPointTests PRIVATE anchorpoint_core)
+    add_test(NAME AnchorPointProtocol COMMAND AnchorPointTests)
 endif()
 
 # ===========================================================================
@@ -171,7 +183,7 @@ if(ANCHORPOINT_BUILD_GUI)
                 gui/AnchorPointApp.cpp)
         # One copy per user; a second start brings the running one forward
         # (UltraCanvasSingleInstance.h). The GUI only: the headless
-        # `anchorpoint` runs as many times as it is started. Included here
+        # `anchorpoint-cli` runs as many times as it is started. Included here
         # too for a standalone build, where the root CMakeLists.txt that
         # defines the function is not read.
         include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/UltraCanvasSingleInstance.cmake")
@@ -179,8 +191,10 @@ if(ANCHORPOINT_BUILD_GUI)
 
         target_include_directories(AnchorPoint PRIVATE
                 ${ULTRACANVAS_INCLUDE_DIRS}
-                ${ULTRACANVAS_ROOT}/include
                 ${CMAKE_CURRENT_SOURCE_DIR})
+        if(ULTRACANVAS_ROOT)   # standalone: the framework added above
+            target_include_directories(AnchorPoint PRIVATE ${ULTRACANVAS_ROOT}/include)
+        endif()
 
         target_link_libraries(AnchorPoint PRIVATE
                 anchorpoint_core
@@ -205,11 +219,29 @@ if(ANCHORPOINT_BUILD_GUI)
                 OUTPUT_NAME "AnchorPoint"
                 RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
         # Windows Release builds open no console window beside AnchorPoint's
-        # (cmake/UltraCanvasWindowsGuiApp.cmake). The headless `anchorpoint`
+        # (cmake/UltraCanvasWindowsGuiApp.cmake). The headless `anchorpoint-cli`
         # stays a console program.
         include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/UltraCanvasWindowsGuiApp.cmake")
         ultracanvas_windows_gui_app(AnchorPoint)
+        ultracanvas_embed_windows_manifest(AnchorPoint)
+
+        # The app icon: an anchor with 101011 across its shank, in the
+        # UltraCanvas logo's colours. media/appicon/AnchorPoint.svg is the
+        # source; the PNG beside it is its 256 px render, which main.cpp
+        # hands to the window. Embedded in the .exe for Explorer and the
+        # taskbar (Windows only), and installed as the theme icon the
+        # desktop entry names (Linux).
+        set(ANCHORPOINT_ICON_DIR "${CMAKE_CURRENT_LIST_DIR}/../../media/appicon")
+        ultracanvas_embed_app_icon(AnchorPoint "${ANCHORPOINT_ICON_DIR}/AnchorPoint.png")
         install(TARGETS AnchorPoint RUNTIME DESTINATION bin)
+        if(UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN)
+            install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/AnchorPoint.desktop
+                    DESTINATION share/applications)
+            install(FILES ${ANCHORPOINT_ICON_DIR}/AnchorPoint.png
+                    DESTINATION share/icons/hicolor/256x256/apps)
+            install(FILES ${ANCHORPOINT_ICON_DIR}/AnchorPoint.svg
+                    DESTINATION share/icons/hicolor/scalable/apps)
+        endif()
         message(STATUS "AnchorPoint ${PROJECT_VERSION}: building core + CLI + GUI (${ANCHORPOINT_PLATFORM}).")
     endif()
 else()

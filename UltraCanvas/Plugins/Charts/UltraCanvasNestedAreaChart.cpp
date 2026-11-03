@@ -234,7 +234,7 @@ namespace UltraCanvas {
         RenderShapes(ctx);
 
         if ((showLabels || showValues) &&
-            labelPosition != NestedAreaLabelPosition::None &&
+            labelPosition != NestedAreaLabelPosition::NoLabels &&
             labelPosition != NestedAreaLabelPosition::Tooltip) {
             RenderShapeLabels(ctx);
         }

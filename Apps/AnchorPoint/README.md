@@ -18,7 +18,7 @@ through NAT, after which the file flows directly and end-to-end encrypted.
 
 | Milestone | Scope | State |
 |---|---|---|
-| **M1 — Core + CLI** | Transfer protocol (chunked, SHA-256 verified, resumable) + raw-socket TCP transport + headless `anchorpoint` CLI | ✅ Done, tested |
+| **M1 — Core + CLI** | Transfer protocol (chunked, SHA-256 verified, resumable) + raw-socket TCP transport + headless `anchorpoint-cli` | ✅ Done, tested |
 | **M2 — GUI** | UltraCanvas window: choose a file, enter a peer address, send/receive with live progress | ✅ Done |
 | **M3 — Internet** | Signaling client + STUN/UDP hole-punching + relay fallback + E2E encryption + pairing codes | ⏳ Planned |
 
@@ -80,12 +80,12 @@ cd Apps/AnchorPoint
 # Core + headless CLI only (no UI framework — UltraCrypt, libsodium, sockets):
 cmake -B build -DANCHORPOINT_BUILD_GUI=OFF -DCMAKE_BUILD_TYPE=Release
 cmake --build build --parallel
-# → build/bin/anchorpoint
+# → build/bin/anchorpoint-cli
 
 # Core + CLI + UltraCanvas GUI (needs the framework toolchain):
 cmake -B build -DANCHORPOINT_BUILD_GUI=ON -DCMAKE_BUILD_TYPE=Release
 cmake --build build --parallel
-# → build/bin/AnchorPoint  and  build/bin/anchorpoint
+# → build/bin/AnchorPoint  and  build/bin/anchorpoint-cli
 ```
 
 The core + CLI need **libsodium** (found through pkg-config; `libsodium-dev` on
@@ -95,6 +95,12 @@ compile just UltraCrypt and its Base32 codec from `UltraCanvas/core`, the two
 files the SHA-256 check needs. The protocol tests build with them;
 `ctest --test-dir build` runs them (`-DANCHORPOINT_BUILD_TESTS=OFF` skips them). The GUI links the
 UltraCanvas framework the same way `Apps/Texter` does.
+
+The framework's own build also builds AnchorPoint - window, CLI and tests -
+(`BUILD_ANCHORPOINT`, on by default), so CI builds the window on Linux, macOS
+and Windows. The command line is `anchorpoint-cli` rather than `anchorpoint`
+because macOS and Windows file systems ignore case: `anchorpoint` and the
+window's `AnchorPoint` would be one file in `bin/`.
 
 ---
 
@@ -106,12 +112,12 @@ will use later.
 
 ```bash
 # Receiver waits; sender connects and pushes:
-anchorpoint recv --out ./downloads --listen --port 5040     # machine A
-anchorpoint send ./photo.jpg --to 192.168.1.20:5040         # machine B
+anchorpoint-cli recv --out ./downloads --listen --port 5040     # machine A
+anchorpoint-cli send ./photo.jpg --to 192.168.1.20:5040         # machine B
 
 # Or sender waits; receiver connects and pulls:
-anchorpoint send ./photo.jpg --listen --port 5040           # machine A
-anchorpoint recv --out ./downloads --from 192.168.1.10:5040 # machine B
+anchorpoint-cli send ./photo.jpg --listen --port 5040           # machine A
+anchorpoint-cli recv --out ./downloads --from 192.168.1.10:5040 # machine B
 ```
 
 Transfers show live progress, resume from interrupted partials, and refuse to
@@ -122,22 +128,18 @@ report success unless the received bytes hash-match the source.
 ## GUI usage (M2)
 
 Launch `AnchorPoint`. One copy runs per user: launching it again brings the
-running window forward (the headless `anchorpoint` is not limited). The
+running window forward (the headless `anchorpoint-cli` is not limited). The
 window has two halves:
 
-* **Send a file** — click *Choose File…*, type the peer's address
+* **Send a file** — click *Choose File…* to pick it, type the peer's address
   (`host` or `host:port`, default port 5040), and click *Send*.
-* **Receive** — set a listen port and a save folder, then click *Receive* to
-  wait for an incoming file. *Stop* cancels a pending listen.
+* **Receive** — set a listen port and a save folder (type it, or pick it with
+  *Browse…*), then click *Receive* to wait for an incoming file.
+* **Stop** ends whatever is running: a listen still waiting for a peer, or a
+  send or receive in progress (the peer is told). A stopped receive keeps the
+  partial file; receiving the same file into the same folder again resumes it.
 
 A Unicode progress bar and status line show live transfer state. All networking
 runs on worker threads; widgets are only ever touched from the UI thread via a
 periodic timer that reads the mutex-guarded transfer state — the threading
 contract UltraNet's off-thread callbacks will also require.
-
-> **Build note:** a full GUI *link* currently depends on the UltraCanvas core
-> library building, which in this tree is blocked by the framework's
-> half-scaffolded `Plugins/UltraNet/*` sources (`#include <UltraNet/UltraNetCore.h>`,
-> not yet present). AnchorPoint's own sources compile cleanly against the real
-> framework headers. The M2 GUI does **not** use `UltraCanvasProgressBar.h`,
-> which is an uncompiled/latent-broken header in the current tree.

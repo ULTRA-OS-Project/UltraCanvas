@@ -3,6 +3,9 @@
 // configuration, credentials, proxy descriptor, transfer stats, and the
 // initialize/shutdown/version entrypoints. Full surface defined in the
 // UltraNet Master Registry v1.0.0.
+// Version: 0.2.3 - UltraNetConfig::reuseHttpConnections: the synchronous verbs'
+//                  per-thread connection pool, off unless an application asks
+// Version: 0.2.2 - SshHostKeyUnknown, SshHostKeyChanged (UltraNetSsh.h)
 // Version: 0.2.1 - the abort check is asked by every FTP call, and is the
 //                  thread's only one (UltraNet_SetThreadFtpCancel is gone)
 // Version: 0.2.0 - UltraNet_SetThreadAbortCheck: a running HTTP or FTP
@@ -16,25 +19,6 @@
 #include <map>
 #include <string>
 #include <vector>
-
-// Defensive: X11/Xlib.h defines `Success` and `None` as macros, which would
-// turn our enum-class members into literal integers. UltraCanvas's Linux
-// platform glue pulls X11 in transitively, so any TU that includes both an
-// UltraCanvas header and an UltraNet header would otherwise fail to compile.
-// We can't put X11 headers below UltraNet ones reliably, so just undef the
-// known conflict names here.
-#ifdef Success
-#undef Success
-#endif
-#ifdef None
-#undef None
-#endif
-#ifdef Bool
-#undef Bool
-#endif
-#ifdef Status
-#undef Status
-#endif
 
 // ============================================================================
 // Opaque handle. Zero is reserved for "invalid handle". Returned by
@@ -50,7 +34,7 @@ constexpr UltraNetHandle UltraNetInvalidHandle = 0;
 // up front so the surface is stable for downstream callers.
 // ============================================================================
 enum class UltraNetResultCode {
-    Success,
+    Ok,
     InvalidUrl,
     UnsupportedScheme,
     HostNotFound,
@@ -90,7 +74,14 @@ enum class UltraNetResultCode {
     // A redirect the request was not allowed to follow: with
     // UltraNetHttpOptions::httpsOnlyRedirects, one to a URL that is not
     // https://. UltraNetResult::httpStatus is the 3xx.
-    RedirectRefused
+    RedirectRefused,
+    // An SSH server's host key that neither known_hosts nor the fingerprint
+    // the caller trusted knows: shown to the user, and trusted only if they
+    // agree (UltraNetSsh.h). A key that differs from the one known is
+    // SshHostKeyChanged - another machine, or a reinstalled one - and is
+    // never accepted on its own.
+    SshHostKeyUnknown,
+    SshHostKeyChanged
 };
 
 // ============================================================================
@@ -114,7 +105,7 @@ struct UltraNetResult {
 
     static UltraNetResult Ok() {
         UltraNetResult r;
-        r.code = UltraNetResultCode::Success;
+        r.code = UltraNetResultCode::Ok;
         r.success = true;
         return r;
     }
@@ -133,7 +124,7 @@ struct UltraNetResult {
 // surface. Stage 1 honours Basic / Bearer; the rest are reserved.
 // ============================================================================
 enum class UltraNetAuthType {
-    None,
+    NoAuth,
     Basic,
     Digest,
     Bearer,
@@ -145,7 +136,7 @@ enum class UltraNetAuthType {
 };
 
 struct UltraNetCredentials {
-    UltraNetAuthType type = UltraNetAuthType::None;
+    UltraNetAuthType type = UltraNetAuthType::NoAuth;
     std::string username;
     std::string password;
     std::string token;
@@ -159,7 +150,7 @@ struct UltraNetCredentials {
 // OS/<Platform>/UltraNetSupport.{cpp,mm}.
 // ============================================================================
 enum class UltraNetProxyType {
-    None,
+    NoProxy,
     Http,
     Https,
     Socks4,
@@ -168,13 +159,13 @@ enum class UltraNetProxyType {
 };
 
 struct UltraNetProxyConfig {
-    UltraNetProxyType type = UltraNetProxyType::None;
+    UltraNetProxyType type = UltraNetProxyType::NoProxy;
     std::string host;
     int port = 0;
     UltraNetCredentials credentials;
     std::vector<std::string> noProxyHosts;
 
-    bool IsEnabled() const { return type != UltraNetProxyType::None; }
+    bool IsEnabled() const { return type != UltraNetProxyType::NoProxy; }
 };
 
 // ============================================================================
@@ -231,6 +222,15 @@ struct UltraNetConfig {
     // when HTTP/3 isn't negotiable. Maps to CURL_HTTP_VERSION_3ONLY.
     bool http3Only = false;
     bool enableCompression = true;
+    // The synchronous HTTP verbs keep a connection pool per thread, so a run
+    // of calls to one server (a mailbox sync over JMAP) reuses the connection
+    // instead of a TCP+TLS handshake each. Off by default: a pooled
+    // connection outlives the call that made it, which a device that is
+    // restarted, re-keyed or pinned between two calls (a scanner trusted on
+    // first use, a printer, a relay) does not expect - every such test went
+    // red when the pool was on for all. An application whose traffic is a
+    // long run of calls to one service turns it on (UltraMail does).
+    bool reuseHttpConnections = false;
     std::string pluginDirectory = "Plugins/UltraNet";
 
     static UltraNetConfig Default() { return {}; }

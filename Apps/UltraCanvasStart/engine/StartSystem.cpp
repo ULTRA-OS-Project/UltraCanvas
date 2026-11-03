@@ -57,7 +57,7 @@ PackageManager PackageManagerForDistribution(const std::string& id,
     if (has("fedora") || has("rhel") || has("centos")) return PackageManager::Dnf;
     if (has("arch") || has("manjaro")) return PackageManager::Pacman;
     if (has("suse")) return PackageManager::Zypper;
-    return PackageManager::None;
+    return PackageManager::NoPackageManager;
 }
 
 std::string PackageManagerProgram(PackageManager manager) {
@@ -134,7 +134,7 @@ std::string FindMsys2Root() {
 }
 
 PackageManager InstallingPackageManager(const SystemProfile& profile) {
-    if (profile.packageManager == PackageManager::None && profile.platform == Platform::Windows) {
+    if (profile.packageManager == PackageManager::NoPackageManager && profile.platform == Platform::Windows) {
         return PackageManager::Msys2Pacman;
     }
     return profile.packageManager;
@@ -183,7 +183,7 @@ SystemProfile DetectSystem() {
         }
         profile.packageManager = PackageManagerForDistribution(
             profile.distributionId, profile.distributionLike);
-        if (profile.packageManager == PackageManager::None) {
+        if (profile.packageManager == PackageManager::NoPackageManager) {
             // Not a known family: take whichever manager is on PATH.
             for (auto manager : { PackageManager::Apt, PackageManager::Dnf,
                                   PackageManager::Pacman, PackageManager::Zypper }) {
@@ -198,7 +198,7 @@ SystemProfile DetectSystem() {
     }
 
     if (profile.packageManagerPath.empty() &&
-        profile.packageManager != PackageManager::None) {
+        profile.packageManager != PackageManager::NoPackageManager) {
         profile.packageManagerPath = FindProgram(
             PackageManagerProgram(profile.packageManager),
             { "/opt/homebrew/bin", "/usr/local/bin" });

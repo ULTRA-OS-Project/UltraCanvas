@@ -1,7 +1,11 @@
 // Apps/DemoApp/UltraCanvasPertChartExamples.cpp
 // Interactive PERT chart demo - software project network with live design,
 // palette and connector switching plus schedule statistics.
+// Version: 1.1.0 - the shared page look (UltraCanvasDemoPageKit): the chart
+//                  in a card that fills the area, the control bar a row that
+//                  wraps, every label, checkbox and button sized to its text
 // Version: 1.0.0
+// Last Modified: 2026-10-23
 //
 // Changelog:
 //   1.0.0 - Initial release. One pre-built software project network
@@ -12,6 +16,7 @@
 //           duration, critical path and on-time probability.
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "Plugins/Diagrams/UltraCanvasPertChart.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasLabel.h"
@@ -124,39 +129,50 @@ std::string BuildScheduleSummary(const UltraCanvasPertChart* chart) {
     return oss.str();
 }
 
+// A button as wide as its text, at least `minWidth` (the width it had).
+std::shared_ptr<UltraCanvasButton> MakeButton(const std::string& id, const std::string& text,
+                                              float minWidth) {
+    auto button = std::make_shared<UltraCanvasButton>(id, 0, 0, 0, 28, text);
+    CSSLayout::BoxConstraints limits;
+    limits.minWidth = CSSLayout::Dimension::Px(minWidth);
+    button->boxConstraints = limits;
+    return button;
+}
+
 } // namespace
 
 // =============================================================================
 // MAIN ENTRY POINT
 // =============================================================================
 std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreatePertChartExamples() {
-    auto container = std::make_shared<UltraCanvasContainer>("PertChartDemo", 0, 0, 1400, 970);
-    container->SetBackgroundColor(Color(245, 247, 250, 255));
+    auto container = DemoKit::CreatePage("PertChartDemo",
+        "PERT Chart - Project Network with Critical Path Analysis",
+        "Drag activities, scroll to zoom, drag empty space to pan. "
+        "Switch node design and color palette live; the critical path is computed automatically.");
+    // The chart pans and zooms itself: the page is the area's height and the
+    // chart takes what the controls and the status line leave.
+    container->SetFillsArea(true);
 
-    auto heading = std::make_shared<UltraCanvasLabel>("PertHeading", 30, 12, 1100, 28);
-    heading->SetText("PERT Chart - Project Network with Critical Path Analysis");
-    heading->SetFont("Arial", 18.0f, FontWeight::Bold);
-    heading->SetTextColor(Color(30, 30, 30, 255));
-    container->AddChild(heading);
+    auto card = DemoKit::CreateCard("PertChartCard");
+    card->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
+    DemoKit::Add(container, card, 1);
 
-    auto desc = std::make_shared<UltraCanvasLabel>("PertDesc", 30, 44, 1300, 20);
-    desc->SetText("Drag activities, scroll to zoom, drag empty space to pan. "
-                  "Switch node design and color palette live; the critical path is computed automatically.");
-    desc->SetFontSize(13);
-    desc->SetTextColor(Color(100, 100, 100, 255));
-    container->AddChild(desc);
+    // The control bar: wraps onto a second line when the window is narrow.
+    auto controls = DemoKit::AddRow(card, "PertControls", 8);
+    controls->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
 
-    auto chart = CreatePertChart("pertChart", 30, 120, 1340, 700);
+    auto chart = CreatePertChart("pertChart", 0, 0, 1340, 700);
     PopulateSoftwareProject(chart);
     chart->SetNodeDesign(PertNodeDesign::Card);
     chart->SetPalette(PertChartPaletteKind::Classic);
     chart->SetGridVisible(true, 20.0);
-    container->AddChild(chart);
+    chart->size.width  = CSSLayout::Dimension::Auto();
+    chart->size.height = CSSLayout::Dimension::Auto();
+    chart->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
+    DemoKit::Add(card, chart, 1);
 
-    auto status = std::make_shared<UltraCanvasLabel>("PertStatus", 30, 830, 1340, 22);
-    status->SetFontSize(12);
+    auto status = DemoKit::AddText(card, "PertStatus", "");
     status->SetTextColor(Color(70, 76, 88, 255));
-    container->AddChild(status);
 
     // Keep the status line in sync with every schedule recomputation.
     chart->onScheduleComputed = [chart = chart.get(), statusWeak = std::weak_ptr<UltraCanvasLabel>(status)](double) {
@@ -167,14 +183,9 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreatePertChar
     chart->ComputeSchedule();
 
     // ---------------- Control bar ----------------
-    int ctrlY = 74;
+    DemoKit::Add(controls, DemoKit::CreateText("LblDesign", "Design:"));
 
-    auto designLabel = std::make_shared<UltraCanvasLabel>("LblDesign", 30, ctrlY + 5, 50, 20);
-    designLabel->SetText("Design:");
-    designLabel->SetFontSize(12);
-    container->AddChild(designLabel);
-
-    auto designDrop = std::make_shared<UltraCanvasDropdown>("DropDesign", 84, ctrlY, 130, 28);
+    auto designDrop = std::make_shared<UltraCanvasDropdown>("DropDesign", 0, 0, 130, 28);
     designDrop->AddItem("Card");
     designDrop->AddItem("Detailed Card");
     designDrop->AddItem("Compact");
@@ -189,14 +200,11 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreatePertChar
         };
         if (index >= 0 && index < 5) chart->SetNodeDesign(kDesigns[index]);
     };
-    container->AddChild(designDrop);
+    DemoKit::AddFixed(controls, designDrop);
 
-    auto paletteLabel = std::make_shared<UltraCanvasLabel>("LblPalette", 232, ctrlY + 5, 52, 20);
-    paletteLabel->SetText("Palette:");
-    paletteLabel->SetFontSize(12);
-    container->AddChild(paletteLabel);
+    DemoKit::Add(controls, DemoKit::CreateText("LblPalette", "Palette:"));
 
-    auto paletteDrop = std::make_shared<UltraCanvasDropdown>("DropPalette", 288, ctrlY, 130, 28);
+    auto paletteDrop = std::make_shared<UltraCanvasDropdown>("DropPalette", 0, 0, 130, 28);
     paletteDrop->AddItem("Classic");
     paletteDrop->AddItem("Ocean");
     paletteDrop->AddItem("Vibrant");
@@ -215,14 +223,11 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreatePertChar
         };
         if (index >= 0 && index < 8) chart->SetPalette(kPalettes[index]);
     };
-    container->AddChild(paletteDrop);
+    DemoKit::AddFixed(controls, paletteDrop);
 
-    auto connLabel = std::make_shared<UltraCanvasLabel>("LblConn", 436, ctrlY + 5, 74, 20);
-    connLabel->SetText("Connectors:");
-    connLabel->SetFontSize(12);
-    container->AddChild(connLabel);
+    DemoKit::Add(controls, DemoKit::CreateText("LblConn", "Connectors:"));
 
-    auto connDrop = std::make_shared<UltraCanvasDropdown>("DropConn", 514, ctrlY, 115, 28);
+    auto connDrop = std::make_shared<UltraCanvasDropdown>("DropConn", 0, 0, 115, 28);
     connDrop->AddItem("Orthogonal");
     connDrop->AddItem("Straight");
     connDrop->AddItem("Curved");
@@ -234,58 +239,51 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreatePertChar
         };
         if (index >= 0 && index < 3) chart->SetConnectorStyle(kStyles[index]);
     };
-    container->AddChild(connDrop);
+    DemoKit::AddFixed(controls, connDrop);
 
-    auto chkCritical = std::make_shared<UltraCanvasCheckbox>("ChkCritical", 650, ctrlY + 2, 110, 24);
-    chkCritical->SetText("Critical path");
+    auto chkCritical = std::make_shared<UltraCanvasCheckbox>("ChkCritical", 0, 0, 0, 24, "Critical path");
     chkCritical->SetChecked(true);
     chkCritical->onStateChanged = [chart](CheckedState, CheckedState newState) {
         chart->SetCriticalPathHighlight(newState == CheckedState::Checked);
     };
-    container->AddChild(chkCritical);
+    DemoKit::Add(controls, chkCritical);
 
-    auto chkLegend = std::make_shared<UltraCanvasCheckbox>("ChkLegend", 768, ctrlY + 2, 80, 24);
-    chkLegend->SetText("Legend");
+    auto chkLegend = std::make_shared<UltraCanvasCheckbox>("ChkLegend", 0, 0, 0, 24, "Legend");
     chkLegend->SetChecked(true);
     chkLegend->onStateChanged = [chart](CheckedState, CheckedState newState) {
         chart->SetLegendVisible(newState == CheckedState::Checked);
     };
-    container->AddChild(chkLegend);
+    DemoKit::Add(controls, chkLegend);
 
-    auto chkDates = std::make_shared<UltraCanvasCheckbox>("ChkDates", 856, ctrlY + 2, 70, 24);
-    chkDates->SetText("Dates");
+    auto chkDates = std::make_shared<UltraCanvasCheckbox>("ChkDates", 0, 0, 0, 24, "Dates");
     chkDates->SetChecked(true);
     chkDates->onStateChanged = [chart](CheckedState, CheckedState newState) {
         chart->SetShowDates(newState == CheckedState::Checked);
     };
-    container->AddChild(chkDates);
+    DemoKit::Add(controls, chkDates);
 
-    auto chkSlack = std::make_shared<UltraCanvasCheckbox>("ChkSlack", 934, ctrlY + 2, 70, 24);
-    chkSlack->SetText("Slack");
+    auto chkSlack = std::make_shared<UltraCanvasCheckbox>("ChkSlack", 0, 0, 0, 24, "Slack");
     chkSlack->SetChecked(false);
     chkSlack->onStateChanged = [chart](CheckedState, CheckedState newState) {
         chart->SetShowSlack(newState == CheckedState::Checked);
     };
-    container->AddChild(chkSlack);
+    DemoKit::Add(controls, chkSlack);
 
-    auto chkNameCircle = std::make_shared<UltraCanvasCheckbox>("ChkNameCircle", 1012, ctrlY + 2, 122, 24);
-    chkNameCircle->SetText("Name in circle");
+    auto chkNameCircle = std::make_shared<UltraCanvasCheckbox>("ChkNameCircle", 0, 0, 0, 24, "Name in circle");
     chkNameCircle->SetChecked(false);
     chkNameCircle->onStateChanged = [chart](CheckedState, CheckedState newState) {
         chart->SetCircleLabelMode(newState == CheckedState::Checked
                                       ? PertCircleLabel::Name : PertCircleLabel::Code);
     };
-    container->AddChild(chkNameCircle);
+    DemoKit::Add(controls, chkNameCircle);
 
-    auto btnLayout = std::make_shared<UltraCanvasButton>("BtnLayout", 1146, ctrlY, 105, 28);
-    btnLayout->SetText("Auto Layout");
+    auto btnLayout = MakeButton("BtnLayout", "Auto Layout", 105);
     btnLayout->SetOnClick([chart]() { chart->AutoLayout(true); });
-    container->AddChild(btnLayout);
+    DemoKit::Add(controls, btnLayout);
 
-    auto btnFit = std::make_shared<UltraCanvasButton>("BtnFit", 1263, ctrlY, 100, 28);
-    btnFit->SetText("Fit to View");
+    auto btnFit = MakeButton("BtnFit", "Fit to View", 100);
     btnFit->SetOnClick([chart]() { chart->FitToView(); });
-    container->AddChild(btnFit);
+    DemoKit::Add(controls, btnFit);
 
     return container;
 }

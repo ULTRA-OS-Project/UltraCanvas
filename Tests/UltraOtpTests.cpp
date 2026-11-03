@@ -9,8 +9,8 @@
 // Self-contained: no test framework, no UI stack.
 //
 // Author: UltraCanvas Framework / ULTRA OS
-#include "../Apps/UltraAuthenticator/otp/OtpAuthUri.h"
-#include "../Apps/UltraAuthenticator/otp/UltraOtp.h"
+#include "UltraCrypt/OtpAuthUri.h"
+#include "UltraCrypt/UltraOtp.h"
 
 #include <cstdio>
 #include <cstring>
@@ -390,6 +390,46 @@ static void TestUriRoundTrip() {
           "building refuses a missing account name");
 }
 
+// ===== Verification (the checking side, ChatCube's sign-in) =====
+static void TestVerification() {
+    std::printf("TOTP verification\n");
+    const UltraCryptSecureBuffer secret = SecretFromAscii("12345678901234567890");
+    Parameters params;              // SHA-1, 6 digits, 30 s
+    const int64_t t = 1234567890;   // step 41152263
+    uint64_t step = 0;
+    std::string now, before, after, farBefore;
+    GenerateTotp(secret, params, t, now);
+    GenerateTotp(secret, params, t - 30, before);
+    GenerateTotp(secret, params, t + 30, after);
+    GenerateTotp(secret, params, t - 90, farBefore);
+
+    Check(static_cast<bool>(VerifyTotp(secret, params, t, now, 1, 0, step)), "the current code is accepted");
+    Check(step == 41152263, "the step it matched is the current one");
+    Check(static_cast<bool>(VerifyTotp(secret, params, t, before, 1, 0, step)), "the code of the step before is accepted");
+    Check(static_cast<bool>(VerifyTotp(secret, params, t, after, 1, 0, step)), "the code of the step after is accepted");
+    Check(!VerifyTotp(secret, params, t, farBefore, 1, 0, step), "a code three steps old is refused");
+    Check(!VerifyTotp(secret, params, t, now, 1, 41152263, step), "a code is good once: the same step again is refused");
+    Check(!VerifyTotp(secret, params, t, before, 1, 41152263, step), "and so is an older one after it");
+    Check(static_cast<bool>(VerifyTotp(secret, params, t + 30, after, 1, 41152263, step)) && step == 41152264,
+          "the next step's code is accepted after it");
+    Check(static_cast<bool>(VerifyTotp(secret, params, t, now.substr(0, 3) + " " + now.substr(3), 1, 0, step)),
+          "a code typed with a space in it is accepted");
+    Check(!VerifyTotp(secret, params, t, now.substr(0, 5), 1, 0, step), "five digits are refused");
+    Check(!VerifyTotp(secret, params, t, now + "0", 1, 0, step), "seven digits are refused");
+    Check(!VerifyTotp(secret, params, t, "12a456", 1, 0, step), "a letter is refused");
+    Check(!VerifyTotp(secret, params, t, before, 0, 0, step), "window 0 takes the current step alone");
+    Check(!VerifyTotp(secret, params, t, now, 3, 0, step), "a window wider than two steps is refused");
+    Check(!VerifyTotp(SecretFromAscii("short"), params, t, now, 1, 0, step), "a short secret is refused");
+
+    UltraCryptSecureBuffer made;
+    Check(static_cast<bool>(NewTotpSecret(made)) && made.GetSize() == 20, "a new secret is 20 random bytes");
+    UltraCryptSecureBuffer other;
+    NewTotpSecret(other);
+    Check(!UltraCrypt_ConstantTimeEquals(made.Data(), made.GetSize(), other.Data(), other.GetSize()),
+          "two new secrets differ");
+    Check(!NewTotpSecret(made, 8), "a secret below 128 bits is refused");
+}
+
 int main() {
     std::printf("UltraOtp tests — backend: %s\n\n",
                 UltraCrypt_GetBackendName().c_str());
@@ -406,6 +446,7 @@ int main() {
     TestUriParsing();
     TestUriRejection();
     TestUriRoundTrip();
+    TestVerification();
 
     std::printf("\n%d checks, %d failure(s)\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;

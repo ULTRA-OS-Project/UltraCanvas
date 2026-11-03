@@ -129,7 +129,7 @@ std::unique_ptr<ITextLLM> CreateTextLLM(const TextLLMConfig& config,
             return nullptr;
         }
         auto instance = it->second(config, err);
-        if (!instance && err->code == ErrorCode::None) {
+        if (!instance && err->code == ErrorCode::Ok) {
             err->code    = ErrorCode::ProviderError;
             err->message = "Provider '" + config.providerId +
                            "' factory returned null";
@@ -149,7 +149,7 @@ std::unique_ptr<ITextLLM> CreateTextLLM(const TextLLMConfig& config,
         auto instance = r.providers[id](config, err);
         if (instance) return instance;
     }
-    if (err->code == ErrorCode::None) {
+    if (err->code == ErrorCode::Ok) {
         err->code    = ErrorCode::ModelNotFound;
         err->message = registered.empty()
             ? "No TextLLM provider registered"

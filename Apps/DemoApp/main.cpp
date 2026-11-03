@@ -1,8 +1,12 @@
 // UltraCanvas Framework Demonstration Program Entry Point
+// Version: 1.0.5 - --audit-layout [--pseudo-loc] [--audit-page <id>]
+// Version: 1.0.4 - Builds for Android: the body is ultracanvas_app_main(),
+//                 which OS/Android's android_main() calls, and the X11 and
+//                 signal setup stay on desktop Linux
 // Version: 1.0.3 - Builds for the browser: the application object outlives
 //                 main(), and ?component= / ?about= stand in for the arguments
 // Version: 1.0.2 - --help prints to stdout, a bad argument to stderr
-// Last Modified: 2026-10-13
+// Last Modified: 2026-10-20
 // Author: UltraCanvas Framework
 
 #include <iostream>
@@ -44,7 +48,10 @@
     #include <crtdbg.h>
 #endif
 
-#ifdef __linux__
+// Desktop Linux only: bionic defines __linux__ as well, and an Android app has
+// no X server and is not stopped by SIGINT from a terminal.
+#if defined(__linux__) && !defined(__ANDROID__)
+#define ULTRACANVAS_DEMO_X11 1
 #include <X11/Xlib.h>
 #include <signal.h>
 #include "UltraCanvasDebug.h"
@@ -79,7 +86,7 @@ void HandleFatalError(const std::string& error) {
 }
 
 // ===== SIGNAL HANDLERS =====
-#ifdef __linux__
+#ifdef ULTRACANVAS_DEMO_X11
 // The one call a signal handler may make: it sets a flag the main loop
 // turns into RequestExit, so Run returns and main shuts the app down in
 // order. Logging, Shutdown and std::exit are not async-signal-safe.
@@ -104,6 +111,8 @@ bool InitializeSystem(UltraCanvasApplication& g_app, const std::string& aName) {
             debugOutput << " (Debug Build - Memory Leak Detection Enabled)";
         #endif
 
+#elif defined(__ANDROID__)
+    debugOutput << "Android";
 #elif __linux__
     debugOutput << "Linux";
 
@@ -180,7 +189,15 @@ void ShutdownSystem() {
 }
 
 // ===== MAIN APPLICATION ENTRY POINT =====
+#ifdef __ANDROID__
+// The demo is a shared library loaded by the activity, not a program: the
+// framework's android_main() (OS/Android/UltraCanvasAndroidMain.cpp) prepares
+// the sandbox, unpacks the APK's assets and waits for the first surface, then
+// calls this.
+extern "C" int ultracanvas_app_main(int argc, char* argv[]) {
+#else
 int main(int argc, char* argv[]) {
+#endif
     debugOutput << std::endl;
 #ifdef __EMSCRIPTEN__
     // In the browser app.Run() never returns: emscripten_set_main_loop()
@@ -198,6 +215,9 @@ int main(int argc, char* argv[]) {
         bool testMode = false;
         bool showAbout = true;
         std::string startupComponent = "";
+        bool auditLayout = false;
+        bool auditPseudoLoc = false;
+        std::string auditPage;
 
 #ifdef __EMSCRIPTEN__
         // A page has no command line; its query string carries the same two
@@ -229,6 +249,12 @@ int main(int argc, char* argv[]) {
                 }
             } else if (arg == "--no-about") {
                 showAbout = false;
+            } else if (arg == "--audit-layout") {
+                auditLayout = true;
+            } else if (arg == "--pseudo-loc") {
+                auditPseudoLoc = true;
+            } else if (arg == "--audit-page" && i + 1 < argc) {
+                auditPage = argv[++i];
             } else if (arg == "--help" || arg == "-h") {
                 std::cout << "UltraCanvas Demo Application" << std::endl;
                 std::cout << "Usage: " << argv[0] << " [options]" << std::endl;
@@ -238,6 +264,11 @@ int main(int argc, char* argv[]) {
                 std::cout << "  -c, --component   Start with specific component selected" << std::endl;
                 std::cout << "                    (implies --no-about)" << std::endl;
                 std::cout << "      --no-about    Start without the \"About UltraCanvas\" window" << std::endl;
+                std::cout << "      --audit-layout  Open every page and list text that does not fit" << std::endl;
+                std::cout << "                    and content a parent cuts off; exit 1 when found" << std::endl;
+                std::cout << "      --pseudo-loc  Every text ~40% longer first, as a translation is" << std::endl;
+                std::cout << "                    (with --audit-layout, or --component to look at it)" << std::endl;
+                std::cout << "      --audit-page <id>  With --audit-layout: that page only" << std::endl;
                 std::cout << "  -h, --help        Show this help message" << std::endl;
                 return 0;
             } else {
@@ -272,6 +303,8 @@ int main(int argc, char* argv[]) {
             if (!g_demoApp->SelectDemoItem(startupComponent)) {
                 debugOutput << "Unknown component: " << startupComponent
                             << " (starting on the default page)" << std::endl;
+            } else if (auditPseudoLoc) {
+                g_demoApp->PseudoLocalizeCurrentPage();
             }
         }
 
@@ -287,6 +320,12 @@ int main(int argc, char* argv[]) {
         debugOutput << "  📋 Planned for future release" << std::endl;
         debugOutput << "• Close the window or press Ctrl+C to exit" << std::endl;
         debugOutput << std::endl;
+
+        if (auditLayout) {
+            const int result = g_demoApp->RunLayoutAudit(auditPseudoLoc, auditPage);
+            ShutdownSystem();
+            return result;
+        }
 
         // Run the demo application
         g_demoApp->Run(showAbout);

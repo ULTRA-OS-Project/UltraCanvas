@@ -1,0 +1,354 @@
+// Apps/ChatCube/ui/ChatCubeWindow.h
+// The ChatCube window. Two views, one shown at a time:
+//
+// Sign-in page:
+//                        ChatCube
+//      Chat directly with the people you know - end-to-end encrypted
+//                 [ Your name               ]
+//                 [ E-mail address          ]   to recover the account
+//                 [ Phone number (+...)     ]   with, kept for you alone
+//                 [ Relay server (optional) ]
+//                 [x] Also find people on this network
+//                 Signing in on this computer: [ No password v ]
+//                 [ Password ] [ Repeat ]        (when one is chosen)
+//                 [ Create my ChatCube ID   ]   (or: Sign in)
+//      No relay at all: ChatCube works on the local network only.
+//                       status line
+//
+// An ID behind a password or an authenticator code (UltraIM's sign-in
+// protection) is asked for them at every start, one after the other, on the
+// same page: [ Password ] and then [ The code UltraAuthenticator shows ].
+// The person button beside the ID opens the Edit profile window
+// (ChatCubeProfileWindow): the name, e-mail and phone, and the protection.
+//
+// Chat view:
+//
+//   | My ID 3f2a 9c01 [Copy][Gear] | Bob            ●  online          [Call] [Video] |
+//   | [ Contact's ChatCube ID ][Add]| ---------------- 21.10.2026 ---------------   |
+//   | [New group]                   |  ( hello )                                    |
+//   | On this network               |                                               |
+//   |   Carol            [Add]      |                                               |
+//   | ● Bob              14:05      |                          ( hi, how are you ) |
+//   |   hi, how are you        [2]  |                                    14:06 ✓✓   |
+//   | # Team             13:40      |                                               |
+//   |                               | [+] [ Message...                   ] [Send]   |
+//   | status line                                                                   |
+//
+// A picture or a file chosen with the paperclip, or pasted (Ctrl+V with a
+// picture or a file on the clipboard), is not sent at once: it waits in a
+// strip above the message field, each with a x to take it out again, and
+// goes with Enter or the send button - what was typed as the caption of
+// the first picture or video.
+//
+// Next to ChatCube Direct, a Matrix account (the "matrix" provider) can be
+// added from the sidebar; its rooms join the same list, and everything done
+// in a conversation goes to that conversation's provider.
+//
+// A call shows a bar across the top of the chat view:
+//
+//   | Incoming video call from Bob                        [Accept] [Decline] |
+//   | In call with Bob   01:42                 [Camera off] [Mute] [Hang up] |
+//
+// and a video call the two pictures under it - the other side large, the
+// self view small and mirrored (UltraCanvasVideoTile; the provider pushes
+// the pictures into them from its media threads).
+//
+// Everything comes from UltraIM (provider "direct", ChatCube Direct), through
+// its dispatcher on the UI thread: this window never takes a lock.
+// Sending is optimistic: the bubble appears at once (…), and the provider's
+// MessageDelivered events move its ticks (✓ in the relay's queue, ✓✓ on the
+// other device, green ✓✓ read).
+//
+// Version: 0.2.6 - an e-mail address and a phone number for every ID; a password and/or an
+//                  UltraAuthenticator code to sign in, chosen at the start or in Edit profile
+// Version: 0.2.5 - a gear beside the copy button opens the Settings window (ChatCubeSettingsWindow);
+//                  the send key, typing either way, the nearby list and the clock follow its choices
+// Version: 0.2.4 - Minimize() (ChatCube --minimized)
+// Version: 0.2.3 - a picture or a file waits in the composer, with a x to drop it, until sent; a
+//                  picture on the clipboard pastes into it; an SVG drawing shows as a picture
+// Version: 0.2.2 - pictures: avatars from the person's photo, photos and videos in the bubbles and a
+//                  viewer for them, a paperclip that sends a picture, a video or a file
+// Version: 0.2.1 - Telegram signs in by a QR code too, scanned from the phone's Telegram app
+// Version: 0.2.0 - the look from ChatCubeTheme: avatars, icon buttons, a rounded composer, --dark
+// Version: 0.1.3 - the Telegram form says where the code went and asks for it another way
+// Version: 0.1.2 - the status line shows every network's state, one entry each, beside the last action
+// Version: 0.1.1 - the Telegram application's keys from the relay; TDLib's connection on the status line
+// Version: 0.1.0
+// Last Modified: 2026-11-01
+// Author: UltraCanvas Framework / ULTRA OS
+#pragma once
+
+#include "ChatCubeProfileWindow.h"
+#include "ChatCubeSettings.h"
+#include "ChatCubeSettingsWindow.h"
+#include "ChatCubeViews.h"
+
+#include "UltraCanvasMediaViewerWindow.h"
+#include "UltraCanvasWindow.h"
+#include "UltraIM/UltraIMTypes.h"
+
+#include <functional>
+#include <map>
+#include <memory>
+#include <string>
+#include <vector>
+
+namespace UltraCanvas {
+class UltraCanvasButton;
+class UltraCanvasCheckbox;
+class UltraCanvasContainer;
+class UltraCanvasDropdown;
+class UltraCanvasImageElement;
+class UltraCanvasLabel;
+class UltraCanvasListView;
+class UltraCanvasQRCode;
+class UltraCanvasTextArea;
+class UltraCanvasTextInput;
+class UltraCanvasVideoTile;
+}
+
+namespace ChatCube {
+
+class ChatCubeWindow {
+public:
+    // `settings`: what the Settings window set last (read by main.cpp,
+    // which takes the look from it before the window is built).
+    ChatCubeWindow(std::string version, std::string providerId, Settings settings = Settings());
+    ~ChatCubeWindow();
+
+    bool Create();
+    void Show();
+    // The window to the taskbar (ChatCube --minimized).
+    void Minimize();
+    std::function<void()> onClosed;
+
+private:
+    // ---- views ---------------------------------------------------------------
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildSignInPage();
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildChatView();
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildSidebar();
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildConversationPane();
+    void ShowSignInPage();
+    void ShowChatView();
+
+    // ---- actions -------------------------------------------------------------
+    void SignIn();
+    // The sign-in page's fields for what it does now: create an ID (name,
+    // e-mail, phone, how to sign in), or sign in (the password or the code
+    // the provider asks for).
+    void UpdateSignInForm();
+    // After a new ID: the protection chosen with it set up (a password at
+    // once; an authenticator finished in the Edit profile window).
+    void FinishCreatedProtection(UltraIMSignInProtection chosen, const std::string& password);
+    void EditProfile();
+    void AddContact();
+    void AddContactById(const std::string& id);
+    void RefreshNearby();           // the "On this network" list
+    void ToggleMatrixForm();
+    void SignInToMatrix(bool stored);
+    // The keys to encrypted Matrix rooms to a passphrase-protected file (the
+    // format Element reads), and back from one.
+    void ExportMatrixKeys();
+    void ImportMatrixKeys();
+    // Telegram signs in in steps: the form shows the field the next one needs.
+    void ToggleTelegramForm();
+    void SignInToTelegram(bool stored);
+    // A QR code instead of the number and the code: the form shows one for
+    // the phone's Telegram app to scan.
+    void SignInToTelegramByQrCode();
+    // The credentials to the provider; `stored` when nothing was typed (the
+    // stored session resumed).
+    void SendTelegramSignIn(UltraIMCredentials credentials, bool stored);
+    void UpdateTelegramForm();
+    // The Telegram application's API ID and hash the relay keeps, so nobody
+    // types them; then `then` (the stored Telegram session resumed, say).
+    void FetchTelegramCredentials(std::function<void()> then);
+    // The provider an address belongs to: @name:server Matrix, +phone /
+    // @username / t.me/... Telegram, anything else a ChatCube ID.
+    std::string ProviderOfAddress(const std::string& address) const;
+    // The provider of a conversation (Direct, or Matrix for its rooms).
+    std::string ProviderOf(const std::string& conversationId) const;
+    void ToggleGroupForm();
+    void CreateGroup();
+    void CopyMyId();
+    void OpenConversation(const std::string& conversationId);
+    void SendCurrentMessage();
+    // The paperclip: a picture, a video or any file, chosen through
+    // FileLoader's dialog, into the composer's strip of what goes with the
+    // next message.
+    void AttachFile();
+    // Ctrl+V in the message field with a file or a picture on the clipboard:
+    // the file, or the picture written to a file of ChatCube's own, into the
+    // strip. False when the clipboard holds neither (text pastes as text).
+    bool PasteAttachment();
+    // Into the strip: a tile with the picture, or the file's name and size,
+    // and a x that takes it out again. `ownFile`: a file ChatCube made (a
+    // pasted picture), deleted when dropped.
+    void StageAttachment(const std::string& path, bool ownFile);
+    void RemoveStagedAttachment(const UltraCanvas::UltraCanvasContainer* tile);
+    void UpdateAttachmentStrip();
+    // The text as a message of its own; a file to the open conversation with
+    // `caption` (a picture's or a video's; a file takes none).
+    void SendText(const std::string& text);
+    void SendAttachment(const std::string& path, const std::string& caption);
+    // Whether the open conversation's network takes pictures and files.
+    bool AttachmentsPossible() const;
+    // A click on a bubble's picture or file: shown in the media viewer, fetched
+    // first when the provider has not yet (a video, a file).
+    void OpenAttachment(int row);
+    void ShowAttachment(const std::string& path);
+    void UpdateHeader();
+    // The status line: what the last action said, then every network's own
+    // state - "Added Bob · ChatCube: connected · Telegram: waiting for the
+    // network…" - so one network's news never hides another's.
+    void SetStatus(const std::string& text);                                      // the action's part
+    void SetProviderStatus(const std::string& providerId, const std::string& text);   // "" removes the entry
+    void RenderStatus();
+    void SetSignInStatus(const std::string& text);
+    void RefreshConversations();
+    void ScrollToEnd();
+
+    // ---- settings ------------------------------------------------------------
+    // The gear: the Settings window, opened or raised.
+    void OpenSettings();
+    // The settings as they are now, onto the window: the send key's words,
+    // the nearby list, the typing line, the times and dates in the lists.
+    void ApplySettings();
+    // Every network and where it stands, for the Settings window's Accounts page.
+    std::vector<ChatCubeSettingsWindow::Account> Accounts() const;
+    // Out of Matrix or Telegram: its conversations leave the list.
+    void SignOutOf(const std::string& providerId);
+
+    // ---- calls ---------------------------------------------------------------
+    void StartCall(bool video);
+    void AcceptCall();
+    void EndCall();
+    void ToggleMute();
+    void ToggleCamera();
+    void ConnectVideo();            // the call's pictures into the tiles
+    void OnCallEvent(const UltraIMEvent& event);
+    void UpdateCallBar();
+    std::string ContactName(const std::string& contactId) const;
+
+    // ---- UltraIM -------------------------------------------------------------
+    void OnEvent(const UltraIMEvent& event);
+
+    std::string version_;
+    std::string providerId_;
+    uint64_t    subscription_ = 0;
+
+    std::shared_ptr<UltraCanvas::UltraCanvasWindow> window_;
+    Settings settings_;
+    std::string dataFolder_;
+    std::unique_ptr<ChatCubeSettingsWindow> settingsWindow_;   // made when the gear is first pressed
+
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> signInPage_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> name_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> email_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> phone_;
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> protectionRow_;   // "Signing in on this computer" and the list
+    std::shared_ptr<UltraCanvas::UltraCanvasDropdown>  protection_;
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> newPasswordRow_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> newPassword_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> repeatPassword_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> unlockPassword_;  // asked by the provider
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> unlockCode_;
+    UltraIMAuthStep unlockStep_ = UltraIMAuthStep::Idle;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> relay_;
+    std::shared_ptr<UltraCanvas::UltraCanvasCheckbox>  localNetwork_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton>    signIn_;
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel>     signInStatus_;
+    bool hasIdentity_ = false;
+
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> chatView_;
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel>     myId_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> contactId_;
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> groupForm_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> groupTitle_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> groupMembers_;
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> nearbyBox_;
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> matrixForm_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> matrixServer_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> matrixUser_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> matrixPassword_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton>    matrixSignIn_;
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> matrixKeysForm_;   // once signed in
+    std::shared_ptr<UltraCanvas::UltraCanvasButton>    telegramToggle_;
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> telegramForm_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> telegramPhone_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> telegramApiId_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> telegramApiHash_;
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel>     telegramHint_;     // where the code went, in the form
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> telegramCode_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton>    telegramResend_;   // the code another way, when offered
+    std::shared_ptr<UltraCanvas::UltraCanvasQRCode>    telegramQr_;       // the link to scan, while Telegram waits for that
+    std::shared_ptr<UltraCanvas::UltraCanvasButton>    telegramQrButton_; // asks for the QR code instead
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> telegramPassword_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> telegramName_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton>    telegramNext_;
+    std::string telegramProviderId_ = "telegram";
+    std::string telegramRelayApiId_;        // from the relay; "" = the user types them
+    std::string telegramRelayApiHash_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton>    matrixToggle_;
+    std::string matrixProviderId_ = "matrix";
+    std::string activeProvider_;    // the open conversation's provider
+    std::shared_ptr<UltraCanvas::UltraCanvasListView>  conversationList_;
+    std::shared_ptr<ConversationListModel>             conversations_;
+
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel>     headerAvatar_;   // initials on the person's colour
+    std::shared_ptr<UltraCanvas::UltraCanvasImageElement> headerPhoto_; // or their picture, when there is one
+    std::string headerPhotoPath_;                                       // what headerPhoto_ shows
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel>     title_;
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel>     subtitle_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton>    voiceCall_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton>    videoCall_;
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> emptyHint_;   // the logo and the words before a conversation is open
+    std::shared_ptr<UltraCanvas::UltraCanvasListView>  messageList_;
+    std::shared_ptr<MessageListModel>                  messages_;
+    std::shared_ptr<MessageBubbleDelegate>             bubbles_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextArea>  input_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton>    attach_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton>    send_;
+    // What goes with the next message, in the strip above the field.
+    struct StagedAttachment {
+        std::string path;
+        bool ownFile = false;                                       // deleted when dropped
+        std::shared_ptr<UltraCanvas::UltraCanvasContainer> tile;    // its picture or name, and the x
+    };
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> attachmentStrip_;
+    std::vector<StagedAttachment>                      staged_;
+    int                                                stagedCount_ = 0;   // ids for the tiles
+    UltraCanvas::UltraCanvasMediaViewerWindow          viewer_;         // a picture or a video, full size
+    std::unique_ptr<ChatCubeProfileWindow>             profileWindow_;  // Edit profile
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel>     status_;
+    std::string actionStatus_;
+    std::map<std::string, std::string> providerStatus_;   // provider id -> its state
+
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> callBar_;
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel>     callText_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton>    callAccept_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton>    callMute_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton>    callCamera_;
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> videoPanel_;
+    std::shared_ptr<UltraCanvas::UltraCanvasVideoTile> remoteVideo_;
+    std::shared_ptr<UltraCanvas::UltraCanvasVideoTile> selfVideo_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton>    callEnd_;
+    std::string      callId_;               // empty: no call
+    std::string      callContact_;
+    bool             callIncoming_ = false;
+    bool             callMuted_ = false;
+    bool             callVideo_ = false;
+    bool             cameraOn_ = false;
+    UltraIMCallState callState_ = UltraIMCallState::Ended;
+    int64_t          callActiveSinceMs_ = 0;
+    uint64_t         callTimer_ = 0;        // the duration ticker (0: none)
+
+    std::string activeConversation_;
+    std::string typingContact_;
+    int64_t     typingUntilMs_ = 0;
+    int64_t     lastTypingSentMs_ = 0;
+    bool        relayoutPending_ = false;
+    bool        fillingList_ = false;
+};
+
+} // namespace ChatCube

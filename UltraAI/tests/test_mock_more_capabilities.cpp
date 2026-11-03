@@ -43,7 +43,7 @@ void TestTranslator() {
     req.targetLanguage = "fr";
 
     auto resp = tr->Translate(req);
-    EXPECT_EQ(resp.error.code, ErrorCode::None);
+    EXPECT_EQ(resp.error.code, ErrorCode::Ok);
     EXPECT_EQ(resp.results.size(), size_t{2});
     EXPECT_TRUE(resp.results[0].text.find("[fr]") == 0);
     EXPECT_EQ(resp.results[0].detectedSourceLanguage, std::string("en"));
@@ -92,7 +92,7 @@ void TestVideoGen() {
     req.count = 2;
 
     auto resp = vid->Generate(req);
-    EXPECT_EQ(resp.error.code, ErrorCode::None);
+    EXPECT_EQ(resp.error.code, ErrorCode::Ok);
     EXPECT_EQ(resp.videos.size(), size_t{2});
     EXPECT_EQ(resp.videos[0].width, 1024);
     EXPECT_EQ(resp.videos[0].height, 576);
@@ -147,7 +147,7 @@ void TestMusicGen() {
     req.returnStems = true;
 
     auto resp = mus->Generate(req);
-    EXPECT_EQ(resp.error.code, ErrorCode::None);
+    EXPECT_EQ(resp.error.code, ErrorCode::Ok);
     EXPECT_EQ(resp.tracks.size(), size_t{1});
     const auto& t = resp.tracks[0];
     EXPECT_EQ(t.bpm, 120);
@@ -200,7 +200,7 @@ void TestCodeAssistTasks() {
         r.language = "python";
         r.instruction = "fizzbuzz";
         auto resp = code->Run(r);
-        EXPECT_EQ(resp.error.code, ErrorCode::None);
+        EXPECT_EQ(resp.error.code, ErrorCode::Ok);
         EXPECT_TRUE(resp.code.find("fizzbuzz") != std::string::npos);
     }
     // Explain

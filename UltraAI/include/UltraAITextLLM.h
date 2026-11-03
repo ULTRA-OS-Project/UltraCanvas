@@ -86,7 +86,7 @@ struct ToolDefinition {
 
 enum class ToolChoice {
     Auto,       // model decides
-    None,       // never call a tool
+    NoTool,     // never call a tool
     Required,   // must call some tool
     Specific    // see ChatRequest::forcedToolName
 };

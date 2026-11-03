@@ -1,6 +1,6 @@
 # UltraPress
 
-**Status:** Phase 1 under way. UltraPress 0.8.0 is the headless engine, the
+**Status:** Phase 1 under way. UltraPress 0.8 is the headless engine, the
 `ultrapress` program - the commands and the editor window -, the block
 renderer on real elements, the WordPress importer, the publisher onto
 web hosts and the media library: a site as a folder of JSON files, the
@@ -27,6 +27,7 @@ This app versions itself: [`CHANGELOG.md`](CHANGELOG.md).
 ## The window
 
 ```bash
+ultrapress                    # the start window: open a site folder, or create a new site in one
 ultrapress mysite             # the editor: pages and blocks on the left, the page in the middle, properties on the right
 ultrapress mysite --check     # render every page without a window; element counts and warnings
 ```
@@ -34,7 +35,16 @@ ultrapress mysite --check     # render every page without a window; element coun
 `ultrapress` is one program: a command word first (`new`, `check`, `page`,
 `publish`, `import`, `hosts`, `help`) runs that command without a window, a
 site folder opens the editor. There is no second `UltraPress` binary: two
-names that differ only in case are one name on macOS and Windows.
+names that differ only in case are one name on macOS and Windows. Started
+with no folder - a double-click - or with a folder that holds no site, it
+opens the start window (`Apps/UltraPress/ui/UltraPressStart.h`): it says
+why, *Open a site folder…* goes through the folder dialog onto an existing
+site, and a name with *Create it in a folder…* writes the starter site into
+a folder of your choice; the editor opens from there. The sites opened last
+are offered first, as buttons under *Opened last* (the eight newest, the
+whole path as the button's tooltip). The window is the framework's start
+page (`UltraCanvasStartPage`) with UltraPress's words and its one field. On Windows the installer
+puts *UltraPress* into the Start menu, which starts it this way.
 
 **Publish** writes the static site under `<site>/.ultrapress/publish` and
 uploads it onto the site's host on a worker thread; the status line under
@@ -52,8 +62,12 @@ block's properties, generated from the registry - a text input for a
 line, a text area for paragraphs and HTML, a checkbox for a flag, an
 integer for a number, and links, items and lists as JSON applied as soon
 as it parses - or, with no block selected, the page's title, description,
-status and pinning. Every change re-renders the page in the middle;
-*Save site* writes the folder (`ui/UltraPressWindow.h`).
+status and pinning. *Site settings…* in the side column puts the site
+itself there instead: name, tagline, address, language and owner; the
+address is checked as typed (`IsSiteAddress`: `https://` and a host, no
+trailing slash) and the rule stands under the field, in the error colour,
+until it is met. Every change re-renders the page in the middle; *Save
+site* writes the folder (`ui/UltraPressWindow.h`).
 
 The window has two looks. Its colours are a framework theme
 (`Apps/UltraPress/ui/UltraPressTheme.h`, `ThemeFor(dark)`: the brand's red accent, its
@@ -62,8 +76,10 @@ one), and every element of the columns and the dialogs follows that theme,
 so *Dark look* / *Light look* in the side column switches them all at
 once; the side column keeps its night blue in both, through the theme's
 own `press.*` roles, and the page in the middle keeps the site's colours,
-because it is the site. The choice is remembered in
-`<settings folder>/UltraPress/look` and read before the window opens.
+because it is the site. The choice is remembered with the program's other
+settings - the sites opened last, the editor window's size - in
+`<settings folder>/UltraPress/settings.json` (`ui/UltraPressSettings.h`)
+and read before the window opens.
 
 The page is rendered on real UltraCanvas elements by the block renderer
 (`Apps/UltraPress/render/UltraPressRender.h`, target `UltraPressRender`),

@@ -4,12 +4,13 @@
 // config.ini - ~/.config/UltraCanvas/UltraPaint/config.ini on Linux). The
 // settings window (UltraPaintSettingsDialog) applies a change to the running
 // editor at once and saves it right away, so there is no OK / Cancel.
+// Version: 1.4.0 - the palettes made with "Add palette" (picker.userpalettes)
 // Version: 1.3.0 - the colour palettes under the picker (picker.palettes)
 // Version: 1.2.1 - the designs' names are the framework's (ColorPickerWheelStyleName)
 // Version: 1.2.0 - the colour picker's design and whether its channels are open
 // Version: 1.1.0 - Tool palette: an adaptive or a static toolbar
 // Version: 1.0.0
-// Last Modified: 2026-10-19
+// Last Modified: 2026-10-24
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -89,12 +90,16 @@ public:
     // for the one default row. Changed by the rows' own buttons and saved as
     // they change.
     std::string palettes;
+    // The user's own palettes, made with the palette manager's "Add
+    // palette", in the same form; empty for none.
+    std::string userPalettes;
 
     // Only the palettes go into the file, as SavePicker does.
     bool SavePalettes() const {
         UltraPaintSettings onDisk;
         onDisk.Load();
         onDisk.palettes = palettes;
+        onDisk.userPalettes = userPalettes;
         return onDisk.Save();
     }
 
@@ -146,6 +151,8 @@ public:
         }
         it = kv.find("picker.palettes");
         if (it != kv.end()) palettes = it->second;
+        it = kv.find("picker.userpalettes");
+        if (it != kv.end()) userPalettes = it->second;
         return true;
     }
 
@@ -165,6 +172,7 @@ public:
         file << "picker.design = " << ColorPickerWheelStyleName(pickerDesign) << "\n";
         file << "picker.channels = " << (pickerChannelsOpen ? "open" : "folded") << "\n";
         if (!palettes.empty()) file << "picker.palettes = " << palettes << "\n";
+        if (!userPalettes.empty()) file << "picker.userpalettes = " << userPalettes << "\n";
         return file.good();
     }
 

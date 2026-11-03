@@ -22,8 +22,9 @@
 // first start, both choices across a restart, and the files earlier releases
 // left behind - every one of which says "simple" under the old key, chosen or
 // not, and must take the new default rather than keep the old one forever.
+// Version: 1.4.0 - the probe name a backend asks the host with
 // Version: 1.3.0
-// Last Modified: 2026-10-12
+// Last Modified: 2026-11-01
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasFilerWidget.h"
@@ -252,6 +253,31 @@ int main() {
     Check(FileKey("/a/first.exe") != FileKey("/a/first.dll"),
           "a program and a library key differently");
 
+    std::cout << "\n-- the name the host is asked with --\n";
+    // The key says what the answer depends on; the probe name is what a
+    // backend hands the host, so it must depend on nothing more. The Windows
+    // shell reads a real program's own icon when given its path, and every
+    // ".exe" in a folder then wore the first one's icon.
+    auto probe = [](const std::string& path) {
+        return HostFileIconProbeName(path, /*isDirectory=*/false);
+    };
+    Check(probe("/apps/ArtCreator.exe") == probe("/other/videofx.exe"),
+          "two programs are asked about under one name");
+    Check(probe("C:\\Apps\\ArtCreator.exe") == probe("/apps/ArtCreator.exe"),
+          "a Windows path and a POSIX path give the same name");
+    Check(probe("/apps/ArtCreator.exe").find("ArtCreator") == std::string::npos &&
+                  probe("/apps/ArtCreator.exe").find('/') == std::string::npos,
+          "the name carries neither the file's own name nor its folder");
+    Check(probe("/a/source.tar.gz").size() > 7 &&
+                  probe("/a/source.tar.gz").substr(
+                          probe("/a/source.tar.gz").size() - 7) == ".tar.gz",
+          "the name keeps the key's whole suffix chain");
+    Check(probe("/a/first.exe") != probe("/a/first.dll"),
+          "a program and a library are asked about differently");
+    Check(HostFileIconProbeName("C:\\Users\\me\\Documents", true) ==
+                  HostFileIconProbeName("/etc", true),
+          "every folder is asked about under one name");
+
     std::cout << "\n-- asking the host --\n";
     // Available or not, a lookup answers rather than throws, and an answer of
     // "nothing" is legitimate: the caller then draws its own icon.
@@ -261,6 +287,13 @@ int main() {
     auto icon = LoadHostFileIconPixmap("/a/definitely-not-a-type.zzqq", false, 48);
     Check(icon == nullptr || icon->IsValid(),
           "an unknown type answers with nothing, or with a usable pixmap");
+#if defined(_WIN32)
+    // Explorer draws a blank page for a type no program is registered for;
+    // that says less than the caller's own icon, so it is reported as none.
+    Check(icon == nullptr,
+          "Windows: a type no program is registered for answers nothing, "
+          "not the shell's blank page");
+#endif
     auto folderIcon = LoadHostFileIconPixmap("/", true, 48);
     Check(folderIcon == nullptr || folderIcon->IsValid(),
           "the folder icon is either absent or usable");

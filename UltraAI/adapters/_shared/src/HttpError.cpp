@@ -14,7 +14,7 @@ namespace UltraAI {
 Error MapHttpStatus(int statusCode, const std::string& detail) {
     Error e;
     if (statusCode < 400) {
-        return e;                               // ErrorCode::None
+        return e;                               // ErrorCode::Ok
     }
 
     switch (statusCode) {

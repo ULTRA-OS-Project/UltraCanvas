@@ -338,7 +338,7 @@ IODeviceResult DrawPwgRaster(const IOPrintJob& job, const IppDocumentSupport& do
     header.pageHeightPoints = heightPoints;
     header.pageSizeName = custom ? std::string() : IOPaperSizeToPwgName(options.page.paperSize);
     header.colorSpace = space;
-    header.duplex = options.duplex != IODuplexMode::None;
+    header.duplex = options.duplex != IODuplexMode::OneSided;
     header.tumble = options.duplex == IODuplexMode::ShortEdge;
     header.totalPageCount = static_cast<int>(selected.size());
     switch (options.quality) {

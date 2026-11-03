@@ -59,7 +59,7 @@ namespace UltraCanvas {
         DendrogramLinkStyle linkStyle   = DendrogramLinkStyle::Rectangular;
 
         // --- Confidence display ---
-        ConfidenceDisplayMode confidenceMode  = ConfidenceDisplayMode::None;
+        ConfidenceDisplayMode confidenceMode  = ConfidenceDisplayMode::Hidden;
         double confidenceHighThreshold         = 0.80f; // Above: thick solid line
         double confidenceLowThreshold          = 0.40f; // Below: dashed line
         double branchWidthMin                  = 0.5f;

@@ -30,7 +30,7 @@ if [ ! -x "$cxx" ]; then
     echo "android-syntax-check: $cxx not found/executable" >&2
     exit 2
 fi
-target="--target=aarch64-linux-android26"
+target="--target=aarch64-linux-android28"
 
 # Host headers for the not-yet-cross-compiled dependencies.
 pkgs="cairo pango pangocairo fontconfig glib-2.0 tinyxml2 freetype2"

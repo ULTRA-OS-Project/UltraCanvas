@@ -63,7 +63,7 @@ std::vector<UltraMsgTopicSchema> WellKnownSchemas() {
                 Field("category", "string"), Field("summary", "string", true),
                 Field("body", "string"), Field("icon", "string"),
                 Field("urgency", "string"), Field("actions", "array"),
-                Field("origin", "string")}),
+                Field("origin", "string"), Field("launch", "string")}),
         Schema(UltraMsgTopics::SystemNotificationAction, false,
                "The feed invoking a notification's button",
                {Field("notificationId", "string", true), Field("actionId", "string", true)}),

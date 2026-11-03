@@ -1,7 +1,8 @@
 // include/UltraCanvasSpellChecker.h
 // Cross-platform spell checking service with runtime language switching and menu integration
+// Version: 1.2.0 - automatic language detection (DetectLanguage, SpellLanguageDetectionOptions)
 // Version: 1.1.0
-// Last Modified: 2026-09-15
+// Last Modified: 2026-10-24
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -93,6 +94,43 @@ struct SpellCheckResult {
     uint64_t jobId = 0;          // Monotonic, lets callers discard stale results
     std::string languageCode;    // Language the check actually ran with
     std::vector<SpellError> errors;
+
+    // Words that were looked up in the dictionary (the skipped ones - too
+    // short, URLs, identifiers, ... - are not counted) and how many of those
+    // were misspelled. Their ratio is what automatic detection keys on.
+    int checkedWordCount = 0;
+    int misspelledCount = 0;
+
+    // Set only when automatic language detection is on, this check flagged
+    // more words than SpellLanguageDetectionOptions::triggerErrorRate allows,
+    // and another installed dictionary fits the text well enough. The service
+    // never switches by itself: the host decides, normally by calling
+    // SetLanguage(suggestedLanguage).
+    std::string suggestedLanguage;
+    double suggestedLanguageErrorRate = 0.0;
+};
+
+// ===== AUTOMATIC LANGUAGE DETECTION =====
+// When most words of a text are flagged, the likeliest explanation is that it
+// is written in another language than the dictionary in use. The worker then
+// re-checks a sample of the words against every other installed language and
+// suggests the one that flags the fewest - provided it flags fewer than
+// acceptErrorRate. Off by default.
+struct SpellLanguageDetectionOptions {
+    bool enabled = false;
+    double triggerErrorRate = 0.70;   // more misspelled than this starts a detection
+    // The best dictionary must flag fewer than this. Not lower: names, brands
+    // and technical terms are in no dictionary, so real text in the right
+    // language routinely has a tenth of its words flagged.
+    double acceptErrorRate = 0.15;
+    int minimumWords = 10;            // fewer checked words never start a detection
+    int maximumSampleWords = 300;     // words looked up per candidate dictionary
+};
+
+struct SpellLanguageGuess {
+    std::string languageCode;   // best-fitting dictionary, empty when none could be tried
+    double errorRate = 1.0;     // share of the sampled words it flags
+    int sampledWords = 0;       // words the guess is based on
 };
 
 // ===== VISUAL STYLE =====
@@ -169,6 +207,21 @@ public:
     std::vector<std::string> GetSuggestions(const std::string& word, int maxCount = 8) const;
     std::vector<SpellError> CheckText(const std::string& text,
                                       const SpellCheckOptions& options = SpellCheckOptions()) const;
+
+    // ===== LANGUAGE DETECTION =====
+    // Checks up to maximumSampleWords of the text's checkable words against
+    // each installed language (one dictionary per base language, so en-US and
+    // en-GB are not both tried) and returns the one that flags the fewest. The
+    // current language is tried first and wins ties. The active language is
+    // left as it was. Synchronous and slow - every candidate dictionary is
+    // loaded - so call it off the UI thread; the worker does when automatic
+    // detection is on.
+    SpellLanguageGuess DetectLanguage(const std::string& text,
+                                      const SpellCheckOptions& options = SpellCheckOptions(),
+                                      int maximumSampleWords = 300) const;
+
+    void SetLanguageDetectionOptions(const SpellLanguageDetectionOptions& options);
+    SpellLanguageDetectionOptions GetLanguageDetectionOptions() const;
 
     // ===== ASYNCHRONOUS CHECKING =====
     // Queues text for the worker thread. A pending job for the same contextId
@@ -280,6 +333,12 @@ private:
     void WorkerLoop();
 
     bool IsWordAcceptable(const std::string& word) const;
+    std::vector<SpellError> CheckTextCounted(const std::string& text,
+                                             const SpellCheckOptions& options,
+                                             int& checkedWordCount) const;
+    // Fills result.suggestedLanguage when automatic detection applies to it.
+    void SuggestLanguageForResult(const SpellCheckJob& job, SpellCheckResult& result);
+    std::vector<std::string> LanguageDetectionCandidates() const;
     std::string ResolveDefaultUserDictionaryPath() const;
 
     mutable std::mutex backendMutex;
@@ -293,6 +352,7 @@ private:
     mutable std::mutex stateMutex;
     SpellCheckMode mode = SpellCheckMode::AsYouType;
     SpellCheckStyle style;
+    SpellLanguageDetectionOptions detectionOptions;
     std::vector<SpellLanguageInfo> cachedLanguages;
     std::atomic<bool> initialized{false};
 
@@ -300,6 +360,17 @@ private:
     std::condition_variable jobSignal;
     std::deque<SpellCheckJob> pendingJobs;
     std::unordered_map<uint64_t, uint64_t> latestJobPerContext;
+    // Per context, the last detection: the language it ran against, how many
+    // words the text had and what it found. A detection loads every
+    // dictionary, so it is not repeated at every keystroke - only once the
+    // text has grown by half, or the language has changed. Guarded by jobMutex.
+    struct LanguageDetectionMemo {
+        std::string checkedLanguage;
+        int checkedWordCount = 0;
+        std::string suggestedLanguage;
+        double suggestedErrorRate = 0.0;
+    };
+    std::unordered_map<uint64_t, LanguageDetectionMemo> detectionMemos;
     std::atomic<uint64_t> nextJobId{1};
     std::atomic<bool> workerRunning{false};
     std::thread workerThread;
@@ -338,6 +409,16 @@ namespace SpellCheckText {
     bool IsMixedCase(const std::string& word);
     bool LooksLikeUrlOrEmail(const std::string& word);
     std::string ToLowerAscii(const std::string& word);
+
+    // Moves errors found in `before` onto `after`, the same text after one
+    // edit: the ones following the edit shift with it (byte, codepoint, line
+    // and column), the ones the edit touched are removed. An element calls it
+    // when its text changes, so its marks stay put until the next result
+    // arrives instead of vanishing from the caret down. Returns true when any
+    // error was removed.
+    bool RebaseErrors(std::vector<SpellError>& errors,
+                      const std::string& before,
+                      const std::string& after);
 
     // Returns the error under a byte offset, or nullptr. For context menus.
     const SpellError* FindErrorAtByteOffset(const std::vector<SpellError>& errors,

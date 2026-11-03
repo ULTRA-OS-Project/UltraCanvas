@@ -62,7 +62,15 @@ MULTIARCH="$(dpkg-architecture -qDEB_HOST_MULTIARCH 2>/dev/null \
 APPS=(UltraCanvasDemo Texter UltraFiler UltraMail UltraAIApp UltraViewer UltraPaint ArtCreator
       ultrafibu UltraNetMonitor DeviceExplorer ultramsg UOS-Settings UltraClaude
       UltraAuthenticator UltraPassword UltraClipboard UltraWeb UltraCanvasStart ultrapress
-      SmartHomeCenter)
+      SmartHomeCenter UltraDBAdmin)
+
+# AnchorPoint is peer-to-peer file sharing: the window, and `anchorpoint-cli`,
+# the same transfers from a terminal. Both output to bin/.
+APPS+=(AnchorPoint anchorpoint-cli)
+
+# ChatCube, the messenger; its networks are the UltraIM provider modules
+# copied to bin/Plugins/UltraIM below.
+APPS+=(ChatCube)
 
 # Shared libraries that must come from the host, NOT be bundled: the glibc/loader
 # core, and the GPU/GL/driver + display stack that has to match the running system.
@@ -173,6 +181,29 @@ if compgen -G "$BUILDDIR/Plugins/UltraNet/*.so" > /dev/null; then
     log "  plugins UltraNet ($(ls -1 "$PKG/bin/Plugins/UltraNet"/*.so | wc -l) DSOs)"
 fi
 
+# --- UltraIM provider modules (loaded by ChatCube) ---------------------------
+
+# Likewise MODULE libraries, in $BUILDDIR/Plugins/UltraIM; ChatCube looks in
+# <exe>/Plugins/UltraIM. Without ultraim_direct it can only report "The
+# ChatCube Direct module was not found", so a ChatCube without it fails here.
+if compgen -G "$BUILDDIR/Plugins/UltraIM/*.so" > /dev/null; then
+    mkdir -p "$PKG/bin/Plugins/UltraIM"
+    cp -a "$BUILDDIR"/Plugins/UltraIM/*.so "$PKG/bin/Plugins/UltraIM/"
+    log "  plugins UltraIM ($(ls -1 "$PKG/bin/Plugins/UltraIM"/*.so | wc -l) DSOs)"
+fi
+# TDLib for the Telegram provider (fetched at configure time by
+# cmake/UltraCanvasTdlib.cmake): loaded from <exe>/Plugins/UltraIM/tdlib at
+# run time, not linked, so the bundler below never sees it - copied as is.
+if [ -f "$BUILDDIR/Plugins/UltraIM/tdlib/libtdjson.so" ]; then
+    mkdir -p "$PKG/bin/Plugins/UltraIM/tdlib"
+    cp -a "$BUILDDIR"/Plugins/UltraIM/tdlib/. "$PKG/bin/Plugins/UltraIM/tdlib/"
+    log "  TDLib (Plugins/UltraIM/tdlib/libtdjson.so)"
+fi
+if [ -x "$PKG/bin/ChatCube" ] && [ ! -f "$PKG/bin/Plugins/UltraIM/ultraim_direct.so" ]; then
+    echo "Error: ChatCube is packaged without bin/Plugins/UltraIM/ultraim_direct.so, its ChatCube Direct provider" >&2
+    exit 1
+fi
+
 # --- strip our own binaries --------------------------------------------------
 
 # Only what this build produced: bin/ and the libraries copied from the build
@@ -189,6 +220,29 @@ while IFS= read -r -d '' f; do
         strip --strip-unneeded "$f"
     fi
 done < <(find "$PKG/bin" "$PKG/lib" -type f -print0)
+
+# --- libvips' loader modules and libheif's codec plug-ins ---------------------
+# Both are opened at run time (g_module_open / dlopen), so ldd below never
+# sees them: without this a package built on a system whose libvips keeps
+# HEIF and JPEG XL in modules (8.13 on, Ubuntu 24.04) or whose libheif keeps
+# its decoders in plug-ins would read neither HEIC, AVIF nor JXL. Copied
+# under lib/ with their layout; the launcher points libvips (VIPSHOME) and
+# libheif (LIBHEIF_PLUGIN_PATH) at them, and the closure pass picks up what
+# they link.
+
+log "Bundling libvips modules and libheif plug-ins ..."
+for moddir in "/usr/lib/$MULTIARCH"/vips-modules-*; do
+    if [ -d "$moddir" ]; then
+        mkdir -p "$PKG/lib/$MULTIARCH"
+        cp -a "$moddir" "$PKG/lib/$MULTIARCH/"
+        log "  $(basename "$moddir") ($(ls -1 "$moddir"/*.so 2>/dev/null | wc -l) modules)"
+    fi
+done
+if [ -d "/usr/lib/$MULTIARCH/libheif/plugins" ]; then
+    mkdir -p "$PKG/lib/libheif"
+    cp -a "/usr/lib/$MULTIARCH/libheif/plugins" "$PKG/lib/libheif/"
+    log "  libheif plug-ins ($(ls -1 "$PKG/lib/libheif/plugins"/*.so 2>/dev/null | wc -l))"
+fi
 
 # --- collect dependent .so (transitive closure) ------------------------------
 
@@ -244,6 +298,15 @@ for app in "${FOUND_APPS[@]}"; do
 HERE="$(dirname "$(readlink -f "$0")")"
 export LD_LIBRARY_PATH="$HERE/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 IM_LIB="$(ls -d "$HERE"/lib/ImageMagick-* 2>/dev/null | head -1)"
+# libvips finds its loader modules under $VIPSHOME/lib/<multiarch>/vips-modules-*
+# and libheif its codec plug-ins in LIBHEIF_PLUGIN_PATH (see the bundling
+# step): nothing is set where the package carries none.
+if ls -d "$HERE"/lib/*/vips-modules-* >/dev/null 2>&1; then
+    export VIPSHOME="$HERE"
+fi
+if [ -d "$HERE/lib/libheif/plugins" ]; then
+    export LIBHEIF_PLUGIN_PATH="$HERE/lib/libheif/plugins"
+fi
 if [ -n "$IM_LIB" ]; then
     export MAGICK_HOME="$HERE"
     export MAGICK_CONFIGURE_PATH="$HERE/etc/ImageMagick-6:$IM_LIB/config-Q16"

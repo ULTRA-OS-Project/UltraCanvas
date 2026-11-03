@@ -6,7 +6,9 @@
 //
 // The provider comes from the Settings dialog: the endpoint selector lists
 // every configured endpoint whose modes include Chat.
+// Version: 0.2.0 - a model the local runtime has not installed is offered for download
 // Version: 0.1.0
+// Last Modified: 2026-10-21
 // Author: UltraAI Module
 #pragma once
 
@@ -49,6 +51,13 @@ private:
     // endpoint is chosen (first open, or the selected one was just deleted).
     void RebuildEndpointPicker(const std::string& selectId = "");
     void OnSend();
+    // Stream the conversation so far to `endpoint`: the second half of
+    // OnSend, run again after the "Get a local model" dialog installed what
+    // the endpoint needs.
+    void StartStream(const Endpoint& endpoint);
+    // The `local` provider answered "needs-install": offer the download
+    // (UltraAILocalModelDialog) and resend when it is done.
+    void OnNeedsLocalModel(const Endpoint& endpoint, const std::string& message);
     void OnAttach();
     void OnNewChat();
     void OnOpenSettings();

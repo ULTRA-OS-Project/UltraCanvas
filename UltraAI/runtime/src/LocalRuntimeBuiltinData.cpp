@@ -57,10 +57,14 @@ const char* BuiltinGalleryJson() {
 })json";
 }
 
+// The file names and sizes were checked against the Hugging Face repositories
+// on 2026-10-21 (sizes to the repositories' figure where it was published, the
+// nearest 10 MB otherwise); the hashes are still taken from the tree API at
+// install time.
 const char* BuiltinCatalogueJson() {
     return R"json({
   "formatVersion": 1,
-  "published": "2026-10-20",
+  "published": "2026-10-21",
   "models": [
     {
       "id": "qwen3-4b-q4",
@@ -82,7 +86,7 @@ const char* BuiltinCatalogueJson() {
       "capability": "textllm",
       "engine": "llama-server",
       "license": "Apache-2.0",
-      "files": [{"name": "Qwen3-1.7B-Q8_0.gguf", "url": "https://huggingface.co/Qwen/Qwen3-1.7B-GGUF/resolve/main/Qwen3-1.7B-Q8_0.gguf", "size": 1830000000}],
+      "files": [{"name": "Qwen3-1.7B-Q8_0.gguf", "url": "https://huggingface.co/Qwen/Qwen3-1.7B-GGUF/resolve/main/Qwen3-1.7B-Q8_0.gguf", "size": 2170000000}],
       "requires": {"memoryBytes": 3000000000, "gpuMemoryBytes": 2600000000},
       "features": {"contextWindow": 32768, "tools": true},
       "engineArgs": ["--ctx-size", "8192"],
@@ -95,7 +99,7 @@ const char* BuiltinCatalogueJson() {
       "capability": "textllm",
       "engine": "llama-server",
       "license": "Apache-2.0",
-      "files": [{"name": "Qwen3-8B-Q4_K_M.gguf", "url": "https://huggingface.co/Qwen/Qwen3-8B-GGUF/resolve/main/Qwen3-8B-Q4_K_M.gguf", "size": 5030000000}],
+      "files": [{"name": "Qwen3-8B-Q4_K_M.gguf", "url": "https://huggingface.co/Qwen/Qwen3-8B-GGUF/resolve/main/Qwen3-8B-Q4_K_M.gguf", "size": 5027784384}],
       "requires": {"memoryBytes": 7500000000, "gpuMemoryBytes": 6500000000},
       "features": {"contextWindow": 32768, "tools": true},
       "engineArgs": ["--ctx-size", "8192"],

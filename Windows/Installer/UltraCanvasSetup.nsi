@@ -23,7 +23,10 @@
 ;     no start at sign-in, beside Explorer or instead of it, the taskbar as
 ;     it was - and the account's shell setting cleared here as well, should
 ;     UltraDesktop no longer run), then exactly the files the installer put
-;     there - never anything else in the folder.
+;     there - never anything else in the folder - and the notification
+;     identities the applications registered for the account (their toasts'
+;     AppUserModelIDs and activators, listed under
+;     HKCU\Software\UltraCanvas\Notifications).
 ;
 ; Defines (all given by the build script):
 ;   UC_VERSION    the framework version, "0.9.258"
@@ -34,10 +37,13 @@
 ;   UC_REMOVE     the generated list of what to remove (Delete / RMDir lines)
 ;   UC_LICENSE    the licence text shown before installing
 ;   UC_ICON       optional: the installer's icon (.ico)
+; Version: 0.4.0 - the directory page warns about a folder holding another package's DLLs
+; Version: 0.3.0 - the uninstaller removes the notification identities (the
+;                  AppUserModelId and activator CLSID keys the list names)
 ; Version: 0.2.0 - instead of Explorer: the shell setting cleared on uninstall,
 ;                  the guard waited for; App Paths for UltraDesktop
 ; Version: 0.1.0
-; Last Modified: 2026-10-14
+; Last Modified: 2026-10-25
 ; Author: UltraCanvas Framework / ULTRA OS
 
 Unicode true
@@ -58,6 +64,9 @@ ${UnStrStr}
 !define UNINSTALL_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\UltraCanvas"
 !define SETUP_KEY "Software\UltraCanvas\Setup"
 !define APP_PATHS_KEY "Software\Microsoft\Windows\CurrentVersion\App Paths\UltraDesktop.exe"
+; One value per notification identity: the AppUserModelID, its activator's
+; CLSID as the data (UltraCanvasNotificationActivation.h).
+!define NOTIFY_KEY "Software\UltraCanvas\Notifications"
 !define WINLOGON_KEY "Software\Microsoft\Windows NT\CurrentVersion\Winlogon"
 !define RUN_KEY "Software\Microsoft\Windows\CurrentVersion\Run"
 
@@ -86,6 +95,8 @@ VIAddVersionKey "LegalCopyright" "${PUBLISHER}"
 !define MUI_WELCOMEPAGE_TEXT "This installs the ${PRODUCT} applications ${UC_VERSION} for your account - UltraDesktop, UltraFiler, UltraMail, UOS-Settings and the rest.$\r$\n$\r$\nNo administrator rights are needed, and nothing changes for other accounts on this computer."
 !insertmacro MUI_PAGE_WELCOME
 !insertmacro MUI_PAGE_LICENSE "${UC_LICENSE}"
+; Before anything is copied: a folder that holds another package's DLLs.
+!define MUI_PAGE_CUSTOMFUNCTION_LEAVE CheckInstallFolder
 !insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_INSTFILES
 ; The one choice that changes more than a folder, so it is asked last, off
@@ -133,6 +144,35 @@ Section "${PRODUCT}"
     WriteRegStr HKCU "${APP_PATHS_KEY}" "Path" "$INSTDIR"
 SectionEnd
 
+; The folder chosen on the directory page. Installing into a folder that
+; already holds the framework DLLs of another package or version replaces
+; them, and every program there that is not part of this package then refuses
+; to start ("the UltraCanvas library it loaded is from another build" -
+; UltraCanvasWindowsLibraryCheck.cpp); before that check they crashed. The
+; folder of this installation itself, and one holding this very version, are
+; updates and pass without a question. UltraCanvas-Package.ini, which every
+; package carries (package-win.sh), says what is there; a folder with the DLL
+; but without it holds programs from an older package or from elsewhere.
+Function CheckInstallFolder
+  ReadRegStr $0 HKCU "${SETUP_KEY}" "InstallDir"
+  StrCmp $0 $INSTDIR folderFine
+  IfFileExists "$INSTDIR\libUltraCanvas.dll" folderHasDlls
+  IfFileExists "$INSTDIR\libVideoFX.dll" folderHasDlls folderFine
+folderHasDlls:
+  ReadINIStr $1 "$INSTDIR\UltraCanvas-Package.ini" "Package" "Version"
+  ReadINIStr $2 "$INSTDIR\UltraCanvas-Package.ini" "Package" "Arch"
+  StrCmp "$1|$2" "${UC_VERSION}|${UC_ARCH}" folderFine
+  StrCpy $3 "the DLLs of programs from another package (an older one, or one from elsewhere)"
+  StrCmp $1 "" folderAsk
+  StrCpy $3 "UltraCanvas $1 ($2)"
+folderAsk:
+  MessageBox MB_YESNO|MB_ICONEXCLAMATION|MB_DEFBUTTON2 \
+    "This folder already holds $3:$\r$\n$\r$\n$INSTDIR$\r$\n$\r$\nInstalling ${PRODUCT} ${UC_VERSION} here replaces those DLLs, and any program in the folder that is not part of this package will no longer start. Programs from different packages should each have a folder of their own.$\r$\n$\r$\nInstall into this folder anyway?" \
+    /SD IDYES IDYES folderFine
+  Abort   ; back to the directory page
+folderFine:
+FunctionEnd
+
 ; The finish page's choice: switched over, and the desktop started now.
 Function UseUltraDesktop
   IfFileExists "$INSTDIR\UltraDesktop.exe" 0 +2
@@ -178,6 +218,25 @@ Section "Uninstall"
   !include "${UC_REMOVE}"
   Delete "$INSTDIR\Uninstall.exe"
   RMDir "$INSTDIR"
+
+  ; The notification identities: each application's toast registration
+  ; (Software\Classes\AppUserModelId\<id>) and its activator's class
+  ; (Software\Classes\CLSID\<clsid>), then the list naming them. Read
+  ; whole first: the values are counted by index.
+  StrCpy $3 0
+  notify_loop:
+    ClearErrors
+    EnumRegValue $4 HKCU "${NOTIFY_KEY}" $3
+    IfErrors notify_done
+    StrCmp $4 "" notify_done
+    ReadRegStr $5 HKCU "${NOTIFY_KEY}" $4
+    DeleteRegKey HKCU "Software\Classes\AppUserModelId\$4"
+    StrCmp $5 "" +2
+      DeleteRegKey HKCU "Software\Classes\CLSID\$5"
+    IntOp $3 $3 + 1
+    Goto notify_loop
+  notify_done:
+  DeleteRegKey HKCU "${NOTIFY_KEY}"
 
   DeleteRegKey HKCU "${UNINSTALL_KEY}"
   DeleteRegKey HKCU "${SETUP_KEY}"

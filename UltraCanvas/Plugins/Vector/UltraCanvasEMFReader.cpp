@@ -59,7 +59,7 @@ struct EmfFont {
 };
 
 struct EmfObject {
-    enum Kind { None, Pen, Brush, Font } kind = None;
+    enum Kind { NoObject, Pen, Brush, Font } kind = NoObject;
     EmfPen pen;
     EmfBrush brush;
     EmfFont font;

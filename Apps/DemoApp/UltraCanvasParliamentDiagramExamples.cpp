@@ -1,11 +1,15 @@
 // Apps/DemoApp/UltraCanvasParliamentDiagramExamples.cpp
 // Parliament diagram examples: hemicycle, horseshoe, circle, Westminster
 // benches, seat grid and an interactive coalition builder
+// Version: 1.1.0 - the shared page look (UltraCanvasDemoPageKit): controls,
+//                  diagram tabs and chamber statistics as three cards in a row
+//                  that wraps, every label, panel and button sized to its text
 // Version: 1.0.0
-// Last Modified: 2026-09-10
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "Plugins/Diagrams/UltraCanvasParliamentDiagram.h"
 #include "UltraCanvasTabbedContainer.h"
 #include "UltraCanvasButton.h"
@@ -37,7 +41,7 @@ namespace UltraCanvas {
                 text += "\n\nGovernment: " + std::to_string(gov) + " (" + PercentText(gov, total) + ")";
                 text += diagram.GovernmentHasMajority() ? "\nHas a majority" : "\nShort of a majority";
             }
-            text += "\n\nHover a seat or legend\nentry for its party.";
+            text += "\n\nHover a seat or legend entry for its party.";
             return text;
         }
 
@@ -80,66 +84,63 @@ namespace UltraCanvas {
     }
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateParliamentDiagramExamples() {
-        // Children placed directly inside a sidebar/panel container are inset
-        // explicitly instead of using SetPadding() - the same pattern the
-        // SWOT/Venn/Sankey demos use - so absolutely-positioned children are
-        // not clipped by the container's content area.
-        const int PAD = 15;
+        const int SIDEBAR_W = 170;
+        // The sidebars' card width before they wrap under the diagram: room
+        // for the 170 px controls and the card's padding.
+        const float SIDEBAR_CARD_W = SIDEBAR_W + 2 * DemoKit::kCardPadding + 2;
 
-        auto mainContainer = std::make_shared<UltraCanvasContainer>("parlMainContainer", 0, 0, 1140, 800);
-        mainContainer->SetBackgroundColor(Color(248, 249, 250, 255));
+        auto mainContainer = DemoKit::CreatePage("parlMainContainer", "Parliament Diagram",
+                "Seat charts of legislatures: hemicycle, horseshoe, circle, Westminster benches and grid "
+                "layouts with a majority marker, legend and coalition building");
 
-        auto headerContainer = std::make_shared<UltraCanvasContainer>("parlHeader", 0, 0, 1140, 90);
-        headerContainer->SetBackgroundColor(Color(255, 255, 255, 255));
-        mainContainer->AddChild(headerContainer);
+        // Controls | diagram tabs | chamber statistics. The sidebars keep
+        // their width; on a narrow window the cards wrap under each other.
+        auto contentContainer = DemoKit::AddRow(mainContainer, "parlContent");
 
-        auto mainTitle = std::make_shared<UltraCanvasLabel>("parlMainTitle", 30, 15, 1080, 35);
-        mainTitle->SetText("Parliament Diagram");
-        mainTitle->SetFontSize(22);
-        mainTitle->SetFontWeight(FontWeight::Bold);
-        mainTitle->SetAlignment(TextAlignment::Left);
-        mainTitle->SetTextColor(Color(33, 37, 41, 255));
-        headerContainer->AddChild(mainTitle);
-
-        auto subtitle = std::make_shared<UltraCanvasLabel>("parlSubtitle", 30, 52, 1000, 30);
-        subtitle->SetText("Seat charts of legislatures: hemicycle, horseshoe, circle, Westminster benches and grid layouts with a majority marker, legend and coalition building");
-        subtitle->SetFontSize(13);
-        subtitle->SetAlignment(TextAlignment::Left);
-        subtitle->SetTextColor(Color(108, 117, 125, 255));
-        headerContainer->AddChild(subtitle);
-
-        auto contentContainer = std::make_shared<UltraCanvasContainer>("parlContent", 0, 90, 1140, 710);
-        mainContainer->AddChild(contentContainer);
+        // The small upper-case heading of a sidebar section.
+        auto makeSectionTitle = [](const std::string& id, const std::string& text) {
+            auto title = DemoKit::CreateText(id, text);
+            title->SetFontSize(11);
+            title->SetFontWeight(FontWeight::Bold);
+            title->SetTextColor(Color(73, 80, 87, 255));
+            return title;
+        };
+        // A shaded info panel of a sidebar, as tall as its text.
+        auto makeInfoPanel = [](const std::string& id, float fontSize, const Color& background) {
+            auto panel = DemoKit::CreateText(id, "");
+            panel->SetFontSize(fontSize);
+            panel->SetTextColor(Color(33, 37, 41, 255));
+            panel->SetBackgroundColor(background);
+            panel->SetPadding(12);
+            return panel;
+        };
 
         // ===== LEFT SIDEBAR (controls) =====
-        auto leftSidebar = std::make_shared<UltraCanvasContainer>("parlLeftSidebar", 20, 20, 200, 670);
-        leftSidebar->SetBackgroundColor(Color(255, 255, 255, 255));
-        contentContainer->AddChild(leftSidebar);
+        auto leftSidebar = DemoKit::AddCard(contentContainer, "parlLeftSidebar", "", "", SIDEBAR_CARD_W);
+        leftSidebar->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
 
-        const int SIDEBAR_W = 170;   // usable child width inside the 200px sidebar
+        DemoKit::Add(leftSidebar, makeSectionTitle("parlControlsTitle", "CONTROLS"));
 
-        auto controlsTitle = std::make_shared<UltraCanvasLabel>("parlControlsTitle", PAD, PAD, SIDEBAR_W, 22);
-        controlsTitle->SetText("CONTROLS");
-        controlsTitle->SetFontSize(11);
-        controlsTitle->SetFontWeight(FontWeight::Bold);
-        controlsTitle->SetTextColor(Color(73, 80, 87, 255));
-        controlsTitle->SetAlignment(TextAlignment::Left);
-        leftSidebar->AddChild(controlsTitle);
-
-        int y = 55;
+        // A bold caption over a dropdown that takes the sidebar's width
         auto addCaption = [&](const std::string& id, const std::string& text) {
-            auto label = std::make_shared<UltraCanvasLabel>(id, PAD, y, SIDEBAR_W, 20);
-            label->SetText(text);
+            auto label = DemoKit::CreateText(id, text);
             label->SetFontSize(10);
             label->SetFontWeight(FontWeight::Bold);
-            leftSidebar->AddChild(label);
-            y += 23;
+            DemoKit::Add(leftSidebar, label);
         };
         auto addDropdown = [&](const std::string& id) {
-            auto dropdown = std::make_shared<UltraCanvasDropdown>(id, PAD, y, SIDEBAR_W, 28);
-            leftSidebar->AddChild(dropdown);
-            y += 40;
+            auto dropdown = std::make_shared<UltraCanvasDropdown>(id, 0, 0, SIDEBAR_W, 28);
+            DemoKit::AddStretched(leftSidebar, dropdown);
             return dropdown;
+        };
+        // A button as wide as its text, at least the sidebar's width
+        auto addButton = [&](const std::string& id, const std::string& text) {
+            auto button = std::make_shared<UltraCanvasButton>(id, 0, 0, 0, 32, text);
+            CSSLayout::BoxConstraints limits;
+            limits.minWidth = CSSLayout::Dimension::Px(SIDEBAR_W);
+            button->boxConstraints = limits;
+            DemoKit::Add(leftSidebar, button);
+            return button;
         };
 
         addCaption("parlLayoutLabel", "Layout");
@@ -192,99 +193,78 @@ namespace UltraCanvas {
         themeSelector->AddItem("Dark", "dark");
         themeSelector->SetSelectedIndex(0);
 
-        y += 6;
-        auto btnReset = std::make_shared<UltraCanvasButton>("parlBtnReset", PAD, y, SIDEBAR_W, 32);
-        btnReset->SetText("Reset View");
+        auto btnReset = addButton("parlBtnReset", "Reset View");
         btnReset->SetBackgroundColor(Color(108, 117, 125, 255));
-        leftSidebar->AddChild(btnReset);
-        y += 37;
 
-        auto btnReload = std::make_shared<UltraCanvasButton>("parlBtnReload", PAD, y, SIDEBAR_W, 32);
-        btnReload->SetText("Reload Sample Data");
+        auto btnReload = addButton("parlBtnReload", "Reload Sample Data");
         btnReload->SetBackgroundColor(Color(13, 110, 253, 255));
-        leftSidebar->AddChild(btnReload);
-        y += 45;
 
-        auto helpBox = std::make_shared<UltraCanvasLabel>("parlHelpBox", PAD, y, SIDEBAR_W, 660 - y - PAD);
+        auto helpBox = makeInfoPanel("parlHelpBox", 9, Color(255, 243, 205, 255));
         helpBox->SetText("INTERACTION TIPS\n\n"
-                         "- Hover a seat or legend\n  entry for its party\n"
+                         "- Hover a seat or legend entry for its party\n"
                          "- Click to select a party\n"
-                         "- Coalition tab: click\n  parties to add them");
-        helpBox->SetFontSize(9);
-        helpBox->SetAlignment(TextAlignment::Left);
-        helpBox->SetBackgroundColor(Color(255, 243, 205, 255));
+                         "- Coalition tab: click parties to add them");
         helpBox->SetPadding(10);
-        leftSidebar->AddChild(helpBox);
+        DemoKit::Add(leftSidebar, helpBox);
 
         // ===== TABS =====
-        auto tabbedContainer = std::make_shared<UltraCanvasTabbedContainer>("parlTabs", 240, 20, 660, 580);
+        // The diagrams have a fixed size; the card is at least as wide as the
+        // tabs and takes the width the sidebars leave.
+        auto centerCard = DemoKit::AddCard(contentContainer, "parlCenter", "", "",
+                                           660 + 2 * DemoKit::kCardPadding + 2);
+        auto tabbedContainer = std::make_shared<UltraCanvasTabbedContainer>("parlTabs", 0, 0, 660, 580);
         tabbedContainer->SetTabPosition(TabPosition::Top);
-        contentContainer->AddChild(tabbedContainer);
+        DemoKit::AddFixed(centerCard, tabbedContainer);
 
-        // ===== RIGHT SIDEBAR (stats) =====
-        auto rightSidebar = std::make_shared<UltraCanvasContainer>("parlRightSidebar", 920, 20, 200, 580);
-        rightSidebar->SetBackgroundColor(Color(255, 255, 255, 255));
-        contentContainer->AddChild(rightSidebar);
-
-        auto statsTitle = std::make_shared<UltraCanvasLabel>("parlStatsTitle", PAD, PAD, SIDEBAR_W, 24);
-        statsTitle->SetText("CHAMBER");
-        statsTitle->SetFontSize(11);
-        statsTitle->SetFontWeight(FontWeight::Bold);
-        statsTitle->SetTextColor(Color(73, 80, 87, 255));
-        statsTitle->SetAlignment(TextAlignment::Left);
-        rightSidebar->AddChild(statsTitle);
-
-        auto statsPanel = std::make_shared<UltraCanvasLabel>("parlStatsPanel", PAD, 48, SIDEBAR_W, 210);
-        statsPanel->SetFontSize(10);
-        statsPanel->SetAlignment(TextAlignment::Left);
-        statsPanel->SetBackgroundColor(Color(248, 249, 250, 255));
-        statsPanel->SetPadding(12);
-        rightSidebar->AddChild(statsPanel);
-
-        auto aboutTitle = std::make_shared<UltraCanvasLabel>("parlAboutTitle", PAD, 280, SIDEBAR_W, 24);
-        aboutTitle->SetText("ABOUT THE LAYOUTS");
-        aboutTitle->SetFontSize(11);
-        aboutTitle->SetFontWeight(FontWeight::Bold);
-        aboutTitle->SetTextColor(Color(73, 80, 87, 255));
-        aboutTitle->SetAlignment(TextAlignment::Left);
-        rightSidebar->AddChild(aboutTitle);
-
-        auto aboutPanel = std::make_shared<UltraCanvasLabel>("parlAboutPanel", PAD, 312, SIDEBAR_W, 250);
-        aboutPanel->SetText("Hemicycle: parties left to\nright in concentric arcs,\nseats per arc in proportion\nto its length.\n\n"
-                            "Westminster: governing\nparties on the left benches,\nthe rest opposite, Speaker\nat the head of the aisle.\n\n"
-                            "Grid: a plain waffle of\nseats in party order.");
-        aboutPanel->SetFontSize(9);
-        aboutPanel->SetAlignment(TextAlignment::Left);
-        aboutPanel->SetBackgroundColor(Color(248, 249, 250, 255));
-        aboutPanel->SetPadding(12);
-        rightSidebar->AddChild(aboutPanel);
-
-        auto statusBar = std::make_shared<UltraCanvasLabel>("parlStatusBar", 240, 610, 660, 60);
-        statusBar->SetText("Ready - hover the seats, or open the Coalition Builder tab and click parties");
+        auto statusBar = DemoKit::CreateText("parlStatusBar",
+                "Ready - hover the seats, or open the Coalition Builder tab and click parties");
         statusBar->SetFontSize(11);
-        statusBar->SetAlignment(TextAlignment::Left);
         statusBar->SetBackgroundColor(Color(233, 236, 239, 255));
         statusBar->SetPadding(15);
         statusBar->SetTextColor(Color(73, 80, 87, 255));
-        contentContainer->AddChild(statusBar);
+        DemoKit::Add(centerCard, statusBar);
 
-        // Every tab: a title label above the diagram
-        const int DIAGRAM_X = 20, DIAGRAM_Y = 56, DIAGRAM_W = 620, DIAGRAM_H = 476;
+        // ===== RIGHT SIDEBAR (stats) =====
+        auto rightSidebar = DemoKit::AddCard(contentContainer, "parlRightSidebar", "", "", SIDEBAR_CARD_W);
+        rightSidebar->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+
+        DemoKit::Add(rightSidebar, makeSectionTitle("parlStatsTitle", "CHAMBER"));
+
+        auto statsPanel = makeInfoPanel("parlStatsPanel", 10, Color(248, 249, 250, 255));
+        DemoKit::Add(rightSidebar, statsPanel);
+
+        DemoKit::Add(rightSidebar, makeSectionTitle("parlAboutTitle", "ABOUT THE LAYOUTS"));
+
+        auto aboutPanel = makeInfoPanel("parlAboutPanel", 9, Color(248, 249, 250, 255));
+        aboutPanel->SetText("Hemicycle: parties left to right in concentric arcs, seats per arc in "
+                            "proportion to its length.\n\n"
+                            "Westminster: governing parties on the left benches, the rest opposite, "
+                            "Speaker at the head of the aisle.\n\n"
+                            "Grid: a plain waffle of seats in party order.");
+        DemoKit::Add(rightSidebar, aboutPanel);
+
+        // Every tab: a title above the diagram. The tab has the tabbed
+        // container's size; a title that wraps scrolls the tab instead of
+        // pushing the diagram out of it.
+        const int DIAGRAM_W = 620, DIAGRAM_H = 476;
 
         auto makeTab = [&](const std::string& id, const std::string& title,
                            std::shared_ptr<UltraCanvasContainer>& tab) {
             tab = std::make_shared<UltraCanvasContainer>(id + "Tab", 0, 0, 660, 542);
             tab->SetBackgroundColor(Color(255, 255, 255, 255));
+            tab->SetPadding(16, 20, 10, 20);
+            tab->layout.SetFlexColumn().SetFlexGap(8)
+                       .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+            ContainerStyle style;
+            style.autoShowScrollbars = true;
+            tab->SetContainerStyle(style);
 
-            auto tabTitle = std::make_shared<UltraCanvasLabel>(id + "Title", 20, 16, 620, 32);
-            tabTitle->SetText(title);
+            auto tabTitle = DemoKit::AddHeading(tab, id + "Title", title);
             tabTitle->SetFontSize(17);
-            tabTitle->SetFontWeight(FontWeight::Bold);
-            tabTitle->SetAlignment(TextAlignment::Center);
-            tab->AddChild(tabTitle);
+            tabTitle->SetAlignment(TextAlignment::Center, VerticalAlignment::Top);
 
-            auto diagram = std::make_shared<UltraCanvasParliamentDiagram>(id + "Diagram", DIAGRAM_X, DIAGRAM_Y, DIAGRAM_W, DIAGRAM_H);
-            tab->AddChild(diagram);
+            auto diagram = std::make_shared<UltraCanvasParliamentDiagram>(id + "Diagram", 0, 0, DIAGRAM_W, DIAGRAM_H);
+            DemoKit::AddFixed(tab, diagram);
             return diagram;
         };
 

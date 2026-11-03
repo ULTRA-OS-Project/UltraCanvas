@@ -12,7 +12,7 @@
 #include <vector>
 #include "../../../UltraCanvas/include/UltraCanvasPathUtf8.h"
 
-namespace AnchorPoint {
+namespace AnchorPointApp {
 
 namespace {
 
@@ -117,8 +117,29 @@ bool SafeFileName(const std::string& wireName, std::string& outName) {
 // ===========================================================================
 // Sender
 // ===========================================================================
-TransferResult SendFile(IConnection& conn, const std::string& filePath,
-                        const std::string& displayName, ProgressFn onProgress) {
+namespace {
+
+bool Cancelled(CancelFlag cancel) { return cancel && cancel->load(); }
+
+// Tells the peer the transfer is being stopped (best effort: an interrupted
+// connection cannot carry it) and marks the result.
+TransferResult& Cancel(IConnection& conn, TransferResult& r) {
+    SendError(conn, "cancelled");
+    r.cancelled = true;
+    r.error = "cancelled";
+    return r;
+}
+
+// Whatever failed after a stop request - typically the call the stop woke -
+// is reported as the stop, not as the broken connection it caused.
+TransferResult Finish(TransferResult r, CancelFlag cancel) {
+    if (!r.ok && Cancelled(cancel)) { r.cancelled = true; r.error = "cancelled"; }
+    return r;
+}
+
+TransferResult SendFileImpl(IConnection& conn, const std::string& filePath,
+                            const std::string& displayName, ProgressFn onProgress,
+                            CancelFlag cancel) {
     TransferResult r;
 
     std::ifstream in(UltraCanvas::PathFromUtf8(filePath), std::ios::binary | std::ios::ate);
@@ -176,6 +197,7 @@ TransferResult SendFile(IConnection& conn, const std::string& filePath,
     if (onProgress) onProgress(sent, fileSize);
 
     while (sent < fileSize) {
+        if (Cancelled(cancel)) return Cancel(conn, r);
         uint64_t remaining = fileSize - sent;
         size_t want = static_cast<size_t>(remaining < offer.chunkSize ? remaining : offer.chunkSize);
         in.read(data.data(), static_cast<std::streamsize>(want));
@@ -184,7 +206,7 @@ TransferResult SendFile(IConnection& conn, const std::string& filePath,
         frame.clear();
         PutU64(frame, sent);
         frame.insert(frame.end(), data.begin(), data.begin() + want);
-        if (!WriteFrame(conn, MsgType::Chunk, frame)) { r.error = "send chunk failed"; return r; }
+        if (!WriteFrame(conn, MsgType::Chunk, frame)) { r.error = "connection lost while sending (the receiver stopped or went away)"; return r; }
 
         sent += want;
         if (onProgress) onProgress(sent, fileSize);
@@ -208,11 +230,21 @@ TransferResult SendFile(IConnection& conn, const std::string& filePath,
     return r;
 }
 
+} // namespace
+
+TransferResult SendFile(IConnection& conn, const std::string& filePath,
+                        const std::string& displayName, ProgressFn onProgress,
+                        CancelFlag cancel) {
+    return Finish(SendFileImpl(conn, filePath, displayName, onProgress, cancel), cancel);
+}
+
 // ===========================================================================
 // Receiver
 // ===========================================================================
-TransferResult ReceiveFile(IConnection& conn, const AcceptFn& accept,
-                           ProgressFn onProgress) {
+namespace {
+
+TransferResult ReceiveFileImpl(IConnection& conn, const AcceptFn& accept,
+                               ProgressFn onProgress, CancelFlag cancel) {
     TransferResult r;
     MsgType type;
     std::vector<uint8_t> payload;
@@ -296,6 +328,7 @@ TransferResult ReceiveFile(IConnection& conn, const AcceptFn& accept,
 
     // Receive chunks until Done.
     while (true) {
+        if (Cancelled(cancel)) return Cancel(conn, r);
         if (!ReadFrame(conn, type, payload)) { r.error = "connection lost"; return r; }
         if (type == MsgType::Chunk) {
             if (payload.size() < 8) { r.error = "short chunk"; return r; }
@@ -348,4 +381,11 @@ TransferResult ReceiveFile(IConnection& conn, const AcceptFn& accept,
     return r;
 }
 
-} // namespace AnchorPoint
+} // namespace
+
+TransferResult ReceiveFile(IConnection& conn, const AcceptFn& accept,
+                           ProgressFn onProgress, CancelFlag cancel) {
+    return Finish(ReceiveFileImpl(conn, accept, onProgress, cancel), cancel);
+}
+
+} // namespace AnchorPointApp

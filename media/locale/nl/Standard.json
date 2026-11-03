@@ -329,6 +329,7 @@
   "Zoom In": "Inzoomen",
   "Zoom level": "Zoomniveau",
   "Zoom Out": "Uitzoomen",
+  "{0} - no preview stored in this vector document": "{0} - geen voorbeeld opgeslagen in dit vectordocument",
   "{0} could not be opened": "{0} kon niet worden geopend",
   "{n} byte": {
     "one": "{n} byte",

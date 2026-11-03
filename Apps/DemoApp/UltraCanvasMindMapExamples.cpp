@@ -1,10 +1,14 @@
 // Apps/DemoApp/UltraCanvasMindMapExamples.cpp
 // Demo examples for UltraCanvasMindMap — mind map diagram
+// Version: 1.1.0 - the shared page look (UltraCanvasDemoPageKit): the tabs in a
+//                  card that fills the area, every tab a column whose
+//                  description wraps above the map, buttons as wide as their text
 // Version: 1.0.0
-// Last Modified: 2026-07-30
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "Plugins/Diagrams/UltraCanvasMindMap.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasButton.h"
@@ -16,6 +20,36 @@
 namespace UltraCanvas {
 
 namespace {
+
+// A tab: its description over the map, which takes the rest of the height
+// the tab gives it.
+std::shared_ptr<UltraCanvasContainer> MakeMapTab(const std::string& id, const std::string& descId,
+                                                 const std::string& text) {
+    auto tab = DemoKit::CreateColumn(id, 6);
+    tab->SetPadding(8, 10, 10, 10);
+    DemoKit::AddText(tab, descId, text)->SetFontSize(11);
+    return tab;
+}
+
+// The map was built at a size for its first fit; in the tab it drops that
+// and grows from a zero basis into whatever height is left.
+void AddMap(const std::shared_ptr<UltraCanvasContainer>& tab,
+            const std::shared_ptr<UltraCanvasMindMap>& map) {
+    map->size.width = CSSLayout::Dimension::Auto();
+    map->size.height = CSSLayout::Dimension::Auto();
+    DemoKit::Add(tab, map, 1);
+    map->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0)).SetFlexShrink(1);
+}
+
+// A gallery button as wide as its label, at least the width it had.
+std::shared_ptr<UltraCanvasButton> MakeGalleryButton(const std::string& id, const std::string& label,
+                                                     float minWidth) {
+    auto button = std::make_shared<UltraCanvasButton>(id, 0, 0, 0, 24, label);
+    CSSLayout::BoxConstraints limits;
+    limits.minWidth = CSSLayout::Dimension::Px(minWidth);
+    button->boxConstraints = limits;
+    return button;
+}
 
 // Wires the shared status read-out every tab uses.
 void AttachStatus(const std::shared_ptr<UltraCanvasMindMap>& map,
@@ -44,18 +78,13 @@ void AttachStatus(const std::shared_ptr<UltraCanvasMindMap>& map,
 // ─────────────────────────────────────────────────────────────────────────────
 std::shared_ptr<UltraCanvasContainer> MakeEditableTab(
         std::shared_ptr<UltraCanvasLabel> status) {
-    auto tab = std::make_shared<UltraCanvasContainer>("MindMapEditableTab", 0, 0, 1020, 700);
+    auto tab = MakeMapTab("MindMapEditableTab", "MindMapEditableDesc",
+            "Balanced structure with one branch overridden to an org chart. "
+            "Double-click or F2 to rename, Enter for a sibling, Tab for a child, "
+            "Delete to remove, drag onto another topic to reparent, Ctrl+drag to "
+            "empty canvas to create, Ctrl+C/X/V to copy, Ctrl+Z to undo.");
 
-    auto desc = std::make_shared<UltraCanvasLabel>("MindMapEditableDesc", 10, 8, 990, 22);
-    desc->SetText("Balanced structure with one branch overridden to an org chart. "
-                  "Double-click or F2 to rename, Enter for a sibling, Tab for a child, "
-                  "Delete to remove, drag onto another topic to reparent, Ctrl+drag to "
-                  "empty canvas to create, Ctrl+C/X/V to copy, Ctrl+Z to undo.");
-    desc->SetFontSize(11);
-    desc->SetWrap(TextWrap::WrapWord);
-    tab->AddChild(desc);
-
-    auto map = std::make_shared<UltraCanvasMindMap>("MindMapEditable", 10, 34, 990, 654);
+    auto map = std::make_shared<UltraCanvasMindMap>("MindMapEditable", 0, 0, 990, 654);
     map->SetTheme(MindMapTheme::Colorful);
     map->SetStructure(MindMapStructure::Balanced);
     map->SetBalancePolicy(MindMapBalancePolicy::MinimiseSubtreeWeight);
@@ -97,7 +126,7 @@ std::shared_ptr<UltraCanvasContainer> MakeEditableTab(
     map->Style().layoutAnimationMs = 200.0;
 
     AttachStatus(map, status);
-    tab->AddChild(map);
+    AddMap(tab, map);
     return tab;
 }
 
@@ -106,17 +135,12 @@ std::shared_ptr<UltraCanvasContainer> MakeEditableTab(
 // ─────────────────────────────────────────────────────────────────────────────
 std::shared_ptr<UltraCanvasContainer> MakeLogicChartTab(
         std::shared_ptr<UltraCanvasLabel> status) {
-    auto tab = std::make_shared<UltraCanvasContainer>("MindMapLogicTab", 0, 0, 1020, 700);
+    auto tab = MakeMapTab("MindMapLogicTab", "MindMapLogicDesc",
+            "LogicRight structure: the whole tree grows to one side. Main topics carry "
+            "automatic ordinal badges in their branch hue; leaves use the underline "
+            "shape with no box.");
 
-    auto desc = std::make_shared<UltraCanvasLabel>("MindMapLogicDesc", 10, 8, 990, 22);
-    desc->SetText("LogicRight structure: the whole tree grows to one side. Main topics carry "
-                  "automatic ordinal badges in their branch hue; leaves use the underline "
-                  "shape with no box.");
-    desc->SetFontSize(11);
-    desc->SetWrap(TextWrap::WrapWord);
-    tab->AddChild(desc);
-
-    auto map = std::make_shared<UltraCanvasMindMap>("MindMapLogic", 10, 34, 990, 654);
+    auto map = std::make_shared<UltraCanvasMindMap>("MindMapLogic", 0, 0, 990, 654);
     map->SetTheme(MindMapTheme::Default);
     map->SetStructure(MindMapStructure::LogicRight);
     map->SetNumbering(MindMapNumbering::Badge);
@@ -165,7 +189,7 @@ std::shared_ptr<UltraCanvasContainer> MakeLogicChartTab(
     map->SetTopicStyle(legend, legendStyle);
 
     AttachStatus(map, status);
-    tab->AddChild(map);
+    AddMap(tab, map);
     return tab;
 }
 
@@ -174,17 +198,12 @@ std::shared_ptr<UltraCanvasContainer> MakeLogicChartTab(
 // ─────────────────────────────────────────────────────────────────────────────
 std::shared_ptr<UltraCanvasContainer> MakeRadialTab(
         std::shared_ptr<UltraCanvasLabel> status) {
-    auto tab = std::make_shared<UltraCanvasContainer>("MindMapRadialTab", 0, 0, 1020, 700);
+    auto tab = MakeMapTab("MindMapRadialTab", "MindMapRadialDesc",
+            "Radial structure: branches distributed over a full circle, one ring per "
+            "generation, each wedge sized by its subtree's leaf count. Circular nodes "
+            "with straight spokes and dot terminators.");
 
-    auto desc = std::make_shared<UltraCanvasLabel>("MindMapRadialDesc", 10, 8, 990, 22);
-    desc->SetText("Radial structure: branches distributed over a full circle, one ring per "
-                  "generation, each wedge sized by its subtree's leaf count. Circular nodes "
-                  "with straight spokes and dot terminators.");
-    desc->SetFontSize(11);
-    desc->SetWrap(TextWrap::WrapWord);
-    tab->AddChild(desc);
-
-    auto map = std::make_shared<UltraCanvasMindMap>("MindMapRadial", 10, 34, 990, 654);
+    auto map = std::make_shared<UltraCanvasMindMap>("MindMapRadial", 0, 0, 990, 654);
     map->SetTheme(MindMapTheme::Colorful);
     map->SetStructure(MindMapStructure::Radial);
     map->SetConnectorStyle(MindMapConnectorStyle::Straight);
@@ -219,7 +238,7 @@ std::shared_ptr<UltraCanvasContainer> MakeRadialTab(
     map->SetLayoutOptions(options);
 
     AttachStatus(map, status);
-    tab->AddChild(map);
+    AddMap(tab, map);
     return tab;
 }
 
@@ -228,17 +247,12 @@ std::shared_ptr<UltraCanvasContainer> MakeRadialTab(
 // ─────────────────────────────────────────────────────────────────────────────
 std::shared_ptr<UltraCanvasContainer> MakeRelationshipsTab(
         std::shared_ptr<UltraCanvasLabel> status) {
-    auto tab = std::make_shared<UltraCanvasContainer>("MindMapRelTab", 0, 0, 1020, 700);
+    auto tab = MakeMapTab("MindMapRelTab", "MindMapRelDesc",
+            "Non-hierarchical relationships: dashed labelled arcs linking topics that "
+            "belong to different branches, drawn independently of the branch strokes. "
+            "Rounded-elbow connectors.");
 
-    auto desc = std::make_shared<UltraCanvasLabel>("MindMapRelDesc", 10, 8, 990, 22);
-    desc->SetText("Non-hierarchical relationships: dashed labelled arcs linking topics that "
-                  "belong to different branches, drawn independently of the branch strokes. "
-                  "Rounded-elbow connectors.");
-    desc->SetFontSize(11);
-    desc->SetWrap(TextWrap::WrapWord);
-    tab->AddChild(desc);
-
-    auto map = std::make_shared<UltraCanvasMindMap>("MindMapRel", 10, 34, 990, 654);
+    auto map = std::make_shared<UltraCanvasMindMap>("MindMapRel", 0, 0, 990, 654);
     map->SetTheme(MindMapTheme::Pastel);
     map->SetStructure(MindMapStructure::Balanced);
     map->SetConnectorStyle(MindMapConnectorStyle::RoundedElbow);
@@ -270,7 +284,7 @@ std::shared_ptr<UltraCanvasContainer> MakeRelationshipsTab(
     }
 
     AttachStatus(map, status);
-    tab->AddChild(map);
+    AddMap(tab, map);
     return tab;
 }
 
@@ -279,16 +293,11 @@ std::shared_ptr<UltraCanvasContainer> MakeRelationshipsTab(
 // ─────────────────────────────────────────────────────────────────────────────
 std::shared_ptr<UltraCanvasContainer> MakeGalleryTab(
         std::shared_ptr<UltraCanvasLabel> status) {
-    auto tab = std::make_shared<UltraCanvasContainer>("MindMapGalleryTab", 0, 0, 1020, 700);
+    auto tab = MakeMapTab("MindMapGalleryTab", "MindMapGalleryDesc",
+            "The same map under every theme, structure and connector style. "
+            "Use the buttons to switch; the layout is recomputed and re-fitted each time.");
 
-    auto desc = std::make_shared<UltraCanvasLabel>("MindMapGalleryDesc", 10, 8, 990, 22);
-    desc->SetText("The same map under every theme, structure and connector style. "
-                  "Use the buttons to switch; the layout is recomputed and re-fitted each time.");
-    desc->SetFontSize(11);
-    desc->SetWrap(TextWrap::WrapWord);
-    tab->AddChild(desc);
-
-    auto map = std::make_shared<UltraCanvasMindMap>("MindMapGallery", 10, 96, 990, 592);
+    auto map = std::make_shared<UltraCanvasMindMap>("MindMapGallery", 0, 0, 990, 592);
     map->SetControlsVisible(true);
     map->BuildFromOutline({
         {0, "Product launch"},
@@ -316,10 +325,9 @@ std::shared_ptr<UltraCanvasContainer> MakeGalleryTab(
         {"Dark",         MindMapTheme::Dark},
         {"Hand drawn",   MindMapTheme::HandDrawn},
     };
-    int x = 10;
+    auto themeRow = DemoKit::AddRow(tab, "MindMapThemeRow", 4);
     for (const auto& entry : themes) {
-        auto button = std::make_shared<UltraCanvasButton>(
-            std::string("MindMapTheme_") + entry.label, x, 34, 108, 24, entry.label);
+        auto button = MakeGalleryButton(std::string("MindMapTheme_") + entry.label, entry.label, 108);
         MindMapTheme value = entry.theme;
         std::string label = entry.label;
         button->onClick = [map, status, value, label]() {
@@ -327,8 +335,7 @@ std::shared_ptr<UltraCanvasContainer> MakeGalleryTab(
             map->FitView();
             status->SetText("Theme: " + label);
         };
-        tab->AddChild(button);
-        x += 112;
+        DemoKit::Add(themeRow, button);
     }
 
     struct StructureButton { const char* label; MindMapStructure structure; };
@@ -339,10 +346,12 @@ std::shared_ptr<UltraCanvasContainer> MakeGalleryTab(
         {"Org chart",   MindMapStructure::OrgChartDown},
         {"Radial",      MindMapStructure::Radial},
     };
-    x = 10;
+    // Structures and connectors share a line while it is wide enough.
+    auto styleRow = DemoKit::AddRow(tab, "MindMapStyleRow", 24);
+    auto structureRow = DemoKit::CreateRow("MindMapStructRow", 4);
+    DemoKit::Add(styleRow, structureRow);
     for (const auto& entry : structures) {
-        auto button = std::make_shared<UltraCanvasButton>(
-            std::string("MindMapStruct_") + entry.label, x, 62, 108, 24, entry.label);
+        auto button = MakeGalleryButton(std::string("MindMapStruct_") + entry.label, entry.label, 108);
         MindMapStructure value = entry.structure;
         std::string label = entry.label;
         button->onClick = [map, status, value, label]() {
@@ -350,8 +359,7 @@ std::shared_ptr<UltraCanvasContainer> MakeGalleryTab(
             map->FitView();
             status->SetText("Structure: " + label);
         };
-        tab->AddChild(button);
-        x += 112;
+        DemoKit::Add(structureRow, button);
     }
 
     struct ConnectorButton { const char* label; MindMapConnectorStyle connector; };
@@ -362,21 +370,20 @@ std::shared_ptr<UltraCanvasContainer> MakeGalleryTab(
         {"Rounded",  MindMapConnectorStyle::RoundedElbow},
         {"Tapered",  MindMapConnectorStyle::TaperedBranch},
     };
-    x = 580;
+    auto connectorRow = DemoKit::CreateRow("MindMapConnRow", 4);
+    DemoKit::Add(styleRow, connectorRow);
     for (const auto& entry : connectors) {
-        auto button = std::make_shared<UltraCanvasButton>(
-            std::string("MindMapConn_") + entry.label, x, 62, 82, 24, entry.label);
+        auto button = MakeGalleryButton(std::string("MindMapConn_") + entry.label, entry.label, 82);
         MindMapConnectorStyle value = entry.connector;
         std::string label = entry.label;
         button->onClick = [map, status, value, label]() {
             map->SetConnectorStyle(value);
             status->SetText("Connector: " + label);
         };
-        tab->AddChild(button);
-        x += 86;
+        DemoKit::Add(connectorRow, button);
     }
 
-    tab->AddChild(map);
+    AddMap(tab, map);
     return tab;
 }
 
@@ -387,17 +394,12 @@ std::shared_ptr<UltraCanvasContainer> MakeGalleryTab(
 // ─────────────────────────────────────────────────────────────────────────────
 std::shared_ptr<UltraCanvasContainer> MakePresentationTab(
         std::shared_ptr<UltraCanvasLabel> status) {
-    auto tab = std::make_shared<UltraCanvasContainer>("MindMapPresTab", 0, 0, 1020, 700);
+    auto tab = MakeMapTab("MindMapPresTab", "MindMapPresDesc",
+            "Infographic layout: level columns and side rows aligned, numbered badges "
+            "on the connectors, drop shadows, a dotted background layer, and note / "
+            "link / marker indicators. Click a link glyph to fire the callback.");
 
-    auto desc = std::make_shared<UltraCanvasLabel>("MindMapPresDesc", 10, 8, 990, 22);
-    desc->SetText("Infographic layout: level columns and side rows aligned, numbered badges "
-                  "on the connectors, drop shadows, a dotted background layer, and note / "
-                  "link / marker indicators. Click a link glyph to fire the callback.");
-    desc->SetFontSize(11);
-    desc->SetWrap(TextWrap::WrapWord);
-    tab->AddChild(desc);
-
-    auto map = std::make_shared<UltraCanvasMindMap>("MindMapPres", 10, 34, 990, 654);
+    auto map = std::make_shared<UltraCanvasMindMap>("MindMapPres", 0, 0, 990, 654);
     map->SetTheme(MindMapTheme::Colorful);
     map->SetStructure(MindMapStructure::Balanced);
     map->SetBalancePolicy(MindMapBalancePolicy::SplitInHalf);
@@ -475,7 +477,7 @@ std::shared_ptr<UltraCanvasContainer> MakePresentationTab(
     };
 
     AttachStatus(map, status);
-    tab->AddChild(map);
+    AddMap(tab, map);
     return tab;
 }
 
@@ -486,52 +488,27 @@ std::shared_ptr<UltraCanvasContainer> MakePresentationTab(
 // ─────────────────────────────────────────────────────────────────────────────
 std::shared_ptr<UltraCanvasUIElement>
 UltraCanvasDemoApplication::CreateMindMapExamples() {
-    auto main = std::make_shared<UltraCanvasContainer>("MindMapExamples");
-    main->SetPadding(5, 5, 0, 5);
+    auto main = DemoKit::CreatePage("MindMapExamples", "Mind Map",
+            "Rooted topic tree on a pan/zoom canvas. Balanced, logic, org chart and "
+            "radial structures; per-branch colour cascade; collapse, in-place "
+            "editing and drag-to-reparent.");
+    // Every map pans and zooms itself: the page is the area's height and the
+    // tabs take what the texts leave.
+    main->SetFillsArea(true);
 
-    main->layout.SetGrid()
-            .SetGridColumns({
-                    CSSLayout::GridTrackSize{.kind = CSSLayout::GridTrackSizeKind::Fr,
-                                             .value = CSSLayout::Dimension::Fr(1)},
-                    CSSLayout::GridTrackSize{.kind = CSSLayout::GridTrackSizeKind::Fixed,
-                                             .value = CSSLayout::Dimension::Px(350)}})
-            .SetGridRows({
-                    CSSLayout::GridTrackSize{.kind = CSSLayout::GridTrackSizeKind::Fixed,
-                                             .value = CSSLayout::Dimension::Px(34)},
-                    CSSLayout::GridTrackSize{.kind = CSSLayout::GridTrackSizeKind::Fixed,
-                                             .value = CSSLayout::Dimension::Px(44)},
-                    CSSLayout::GridTrackSize{.kind = CSSLayout::GridTrackSizeKind::Fr,
-                                             .value = CSSLayout::Dimension::Fr(1)}})
-            .SetGridGap(6)
-            .SetGridJustifyItems(CSSLayout::JustifyItems::Stretch)
-            .SetGridAlignItems(CSSLayout::AlignItems::Stretch);
+    auto card = DemoKit::CreateCard("MindMapCard");
+    card->SetPadding(4);
+    DemoKit::Add(main, card, 1);
+    card->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0)).SetFlexShrink(1);
 
-    auto title = std::make_shared<UltraCanvasLabel>("MindMapTitle");
-    title->SetText("Mind Map");
-    title->SetFontSize(18);
-    title->SetFontWeight(FontWeight::Bold);
-    title->SetTextColor(Color(80, 50, 140));
-    main->AddChild(title);
-    title->layoutItem.SetGridRowColSimplified(0, 0);
-
-    auto subtitle = std::make_shared<UltraCanvasLabel>("MindMapSub");
-    subtitle->SetText("Rooted topic tree on a pan/zoom canvas. Balanced, logic, org chart and "
-                      "radial structures; per-branch colour cascade; collapse, in-place "
-                      "editing and drag-to-reparent.");
-    subtitle->SetFontSize(11);
-    subtitle->SetWrap(TextWrap::WrapWord);
-    main->AddChild(subtitle);
-    subtitle->layoutItem.SetGridRowColSimplified(1, 0);
-
-    auto statusLabel = std::make_shared<UltraCanvasLabel>("MindMapStatus");
-    statusLabel->SetText("Click a topic to inspect it.");
+    // The read-out every tab reports to, above the tabs.
+    auto statusLabel = DemoKit::CreateText("MindMapStatus", "Click a topic to inspect it.");
     statusLabel->SetFontSize(10);
     statusLabel->SetBackgroundColor(Color(245, 245, 245));
     statusLabel->SetBorders(1.0f);
     statusLabel->SetPadding(6.0f);
-    statusLabel->SetAlignment(TextAlignment::Center);
-    main->AddChild(statusLabel);
-    statusLabel->layoutItem.SetGridRowColSimplified(0, 1, 2, 1);
+    statusLabel->SetAlignment(TextAlignment::Center, VerticalAlignment::Middle);
+    DemoKit::Add(card, statusLabel);
 
     auto tabs = std::make_shared<UltraCanvasTabbedContainer>("MindMapTabs");
     tabs->SetTabPosition(TabPosition::Top);
@@ -545,8 +522,8 @@ UltraCanvasDemoApplication::CreateMindMapExamples() {
     tabs->AddTab("Presentation",        MakePresentationTab(statusLabel));
     tabs->AddTab("Themes & structures", MakeGalleryTab(statusLabel));
 
-    main->AddChild(tabs);
-    tabs->layoutItem.SetGridRowColSimplified(2, 0, 1, 2);
+    DemoKit::Add(card, tabs, 1);
+    tabs->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0)).SetFlexShrink(1);
     return main;
 }
 

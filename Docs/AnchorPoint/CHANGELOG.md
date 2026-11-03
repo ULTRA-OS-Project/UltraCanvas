@@ -1,3 +1,69 @@
+#### 2026-10-21 *0.2.5*
+- **Stop stops a transfer.** It used to cancel only a Receive still waiting
+  for a peer: once a file was moving, Stop did nothing and the transfer ran to
+  the end - and closing the window waited for it too. Stop now ends a send or a
+  receive at any point, including one stuck waiting on a peer that stopped
+  answering, and so does closing the window.
+  - The peer is told: a stopped sender's receiver reports *"sender:
+    cancelled"*. A stopped receiver's sender reports that the connection was
+    lost while sending.
+  - A stopped receive keeps the partial file, so receiving the same file into
+    the same folder again resumes it from where it stopped.
+  - `SendFile` / `ReceiveFile` (`net/Protocol.h`) take an optional cancel flag,
+    checked between chunks, and report `cancelled` in their result; a call
+    blocked on the network is woken with the new `IConnection::Interrupt()`.
+    The headless CLI passes no flag and is unchanged.
+  - Stop does not interrupt the SHA-256 the sender takes of the whole file
+    before it connects to send; a large file still finishes hashing first.
+- **A send to a peer that has gone no longer ends the program.** On Linux and
+  macOS, writing to a connection the receiver had closed raised SIGPIPE, which
+  quit the sending AnchorPoint (or its CLI) with no message. It is now an
+  ordinary failed send.
+- **The progress bar no longer shows the last transfer next to a new
+  message.** *"Choose a file first."*, a bad peer address or a bad listen port
+  appeared beside the previous transfer's full bar, and choosing a file left
+  the old prompt standing. Those messages now empty the bar, and choosing a
+  file resets the status to *Ready.*
+- The protocol tests (now `AnchorPointTests`, named like every other suite
+  so the Windows package leaves them out) cover stopping on either side, a
+  stop that wakes a blocked read, and sending to a closed socket.
+- **A Browse… button for the save folder.** It used to be typed in, starting
+  from `.` - the folder AnchorPoint happened to be started in. *Browse…* opens
+  a folder dialog there.
+- **Choose File… and Browse… use the framework's file dialogs**
+  (`UltraCanvasFileLoader::OpenFileDialog` / `SelectFolderDialog`), like
+  every other UltraCanvas application, instead of calling the platform dialog
+  directly. A file picked to send is not added to the recent-files list.
+  The received file's path is joined with `PathFromUtf8` / `PathToUtf8`, so
+  a folder or file name in any script works on Windows too.
+- **The command line is `anchorpoint-cli` now, not `anchorpoint`.** On macOS
+  and Windows, whose file systems ignore case, `anchorpoint` and the window's
+  `AnchorPoint` are the same file, so building both in one folder kept only
+  one of them. Scripts that ran `anchorpoint send ...` or `anchorpoint recv
+  ...` need the new name; the arguments are unchanged.
+- **CI builds the window, on Linux, macOS and Windows.** The framework's build
+  now includes AnchorPoint (`BUILD_ANCHORPOINT`), so every CI job builds the
+  window and the CLI; until now CI only built the core and CLI on their own,
+  on Linux.
+- The README no longer says the window's build is blocked by unfinished
+  UltraNet sources; it builds.
+- **Windows: file names in any script reach AnchorPoint intact.** The window
+  and `anchorpoint-cli` carry the Windows manifest every UltraCanvas program
+  has (`ultracanvas_embed_windows_manifest`): the UTF-8 code page, so a Thai,
+  CJK or emoji folder or file name - typed, picked, or given to the CLI on
+  its command line - is not mangled through the ANSI code page, and long
+  paths.
+- **AnchorPoint is in the portable Linux bundle** (`package-linux.sh`): the
+  window and `anchorpoint-cli`, each with its launcher.
+- **AnchorPoint has an icon.** An anchor with the binary `101011` across its
+  shank, in the UltraCanvas logo's black and neon colours (cyan ring, yellow
+  and magenta fluke tips, green digits), on a white tile:
+  `media/appicon/AnchorPoint.svg`, with its 256 px PNG beside it. The window
+  and its taskbar entry show it, the Windows `.exe` carries it, and on Linux
+  the new desktop entry (`Apps/AnchorPoint/AnchorPoint.desktop`) names it as
+  its theme icon, both installed with the program - so menus and file
+  managers show the anchor instead of a generic program icon.
+
 #### 2026-10-14 *0.2.4*
 - **One AnchorPoint at a time.** Starting AnchorPoint while it is already
   running brings the open window forward (restored if minimised; an open

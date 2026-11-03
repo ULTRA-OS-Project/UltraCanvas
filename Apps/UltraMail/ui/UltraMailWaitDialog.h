@@ -3,6 +3,8 @@
 // or on the network (the server-settings lookup): says what is going on and
 // offers Cancel. The app closes it when the step finished (Close), or the user
 // cancels (onCancel runs).
+// Version: 0.3.0 - a header with an icon (`icon`, a media/icons/ultramail name)
+//                  and a busy bar under the text
 // Version: 0.2.0 - generic WaitDialog; OAuthWaitDialog is the sign-in wording
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -17,14 +19,16 @@ namespace UltraMail {
 
 class WaitDialog {
 public:
-    // Show `text` under `title`. Returns the dialog so the caller can close it
+    // Show `text` under `title`, with `icon` (a name in media/icons/ultramail/)
+    // beside them and a busy bar below. Returns the dialog so the caller can close it
     // programmatically once the step finished; keep only a weak_ptr — the
     // dialog manager owns it and it may already be gone by then.
     static std::shared_ptr<UltraCanvas::UltraCanvasModalDialog> Show(
         UltraCanvas::UltraCanvasWindowBase* parent,
         const std::string& title,
         const std::string& text,
-        std::function<void()> onCancel);
+        std::function<void()> onCancel,
+        const std::string& icon = "hourglass");
 
     // Close a dialog returned by Show as "done" (no onCancel).
     static void Close(const std::weak_ptr<UltraCanvas::UltraCanvasModalDialog>& dialog);

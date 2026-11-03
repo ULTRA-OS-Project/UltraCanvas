@@ -375,7 +375,7 @@ enum class NetworkConnectionState {
     Unknown, Listening, SynSent, Established, CloseWait, TimeWait, Closed
 };
 enum class NameSource {
-    None, DnsProxy, EtwDnsClient, PacketCapture, Sni, ReverseDns, Inferred
+    NoSource, DnsProxy, EtwDnsClient, PacketCapture, Sni, ReverseDns, Inferred
 };
 
 struct ProcessIdentity {
@@ -396,7 +396,7 @@ struct NetworkConnection {
 
     std::optional<ProcessIdentity> process;   // empty when not attributable
     std::string                    remoteName;    // resolved host, may be empty
-    NameSource                     nameSource = NameSource::None;
+    NameSource                     nameSource = NameSource::NoSource;
 
     std::optional<uint64_t> bytesSent;        // absent != zero
     std::optional<uint64_t> bytesReceived;
@@ -407,7 +407,7 @@ struct DnsObservation {
     std::string queryName;
     std::vector<std::string> addresses;
     std::optional<ProcessIdentity> process;   // only ETW and eBPF supply this
-    NameSource source = NameSource::None;
+    NameSource source = NameSource::NoSource;
     std::chrono::system_clock::time_point observedAt;
 };
 

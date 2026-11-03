@@ -351,7 +351,7 @@ std::unique_ptr<UltraCanvasWasmInstance> UltraCanvasWasmInstance::Create(const s
         status = self->Call("_initialize", {});
         if (!status.ok) return nullptr;
     }
-    status = WasmStatus::Success();
+    status = WasmStatus::Ok();
     return self;
 }
 
@@ -420,7 +420,7 @@ WasmStatus UltraCanvasWasmInstance::Call(const std::string& exportName, const st
         }
     }
     for (wasmtime_val_t& value : out) wasmtime_val_unroot(&value);
-    return WasmStatus::Success();
+    return WasmStatus::Ok();
 }
 
 bool UltraCanvasWasmInstance::IsUsable() const { return impl->usable; }
@@ -435,7 +435,7 @@ WasmStatus UltraCanvasWasm_WatToWasm(std::string_view wat, std::vector<uint8_t>&
         return WasmStatus::Failure(TakeMessage(error));
     out.assign(reinterpret_cast<const uint8_t*>(bytes.data), reinterpret_cast<const uint8_t*>(bytes.data) + bytes.size);
     wasm_byte_vec_delete(&bytes);
-    return WasmStatus::Success();
+    return WasmStatus::Ok();
 }
 
 #else // !ULTRACANVAS_HAS_WASMTIME

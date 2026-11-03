@@ -4,10 +4,13 @@
 // Author: AnchorPoint
 #include "AnchorPointApp.h"
 
-#include "UltraCanvasNativeDialogs.h"
+#include "UltraCanvasFileLoader.h"
+#include "UltraCanvasPathUtf8.h"
 #include "../net/Protocol.h"
 
 #include <cstdint>
+#include <filesystem>
+#include <system_error>
 
 // ANCHORPOINT_VERSION comes from the build alone: CMake reads the first line of
 // Docs/AnchorPoint/CHANGELOG.md (cmake/UltraCanvasVersion.cmake) and passes it as a
@@ -19,7 +22,7 @@
 
 using namespace UltraCanvas;
 
-namespace AnchorPoint {
+namespace AnchorPointApp {
 
 namespace {
 
@@ -72,11 +75,9 @@ bool ParsePeer(const std::string& in, std::string& host, uint16_t& port) {
 AnchorPointGui::AnchorPointGui(UltraCanvasApplication& app) : app_(app) {}
 
 AnchorPointGui::~AnchorPointGui() {
+    // Closing the window mid-transfer stops it rather than waiting it out.
     cancel_ = true;
-    { // unblock a pending Accept()
-        std::lock_guard<std::mutex> lk(listenerMutex_);
-        if (activeListener_) activeListener_->Close();
-    }
+    WakeWorker();
     if (uiTimer_ != InvalidTimerId) app_.StopTimer(uiTimer_);
     if (worker_.joinable()) worker_.join();
 }
@@ -146,9 +147,13 @@ bool AnchorPointGui::Build() {
     recvPortInput_->SetText(std::to_string(kDefaultPort));
     window_->AddChild(recvPortInput_);
 
-    saveDirInput_ = CreateTextInput("ap_savedir", (int)(pad + 140), (int)y, 200, 32);
+    saveDirInput_ = CreateTextInput("ap_savedir", (int)(pad + 140), (int)y, 120, 32);
     saveDirInput_->SetText(".");
     window_->AddChild(saveDirInput_);
+
+    browseBtn_ = CreateButton("ap_browse", pad + 266, y, 80, 34, "Browse…");
+    browseBtn_->SetOnClick([this]() { OnBrowseSaveDir(); });
+    window_->AddChild(browseBtn_);
 
     recvBtn_ = CreateButton("ap_recv", pad + 352, y, 104, 34, "Receive");
     recvBtn_->SetOnClick([this]() { OnStartReceiving(); });
@@ -181,11 +186,39 @@ void AnchorPointGui::Show() { if (window_) window_->Show(); }
 // UI actions
 // ===========================================================================
 void AnchorPointGui::OnChooseFile() {
-    std::string path = UltraCanvasNativeDialogs::OpenFile(
-        "Choose a file to send", {}, "", window_.get());
-    if (path.empty()) return;
-    chosenFile_ = path;
-    if (fileLabel_) fileLabel_->SetText(BaseName(path));
+    // Any file can be sent, so no type filters; still FileLoader's dialog, as
+    // every file a user picks is (AGENTS.md, Core conventions).
+    FileDialogOptions opts;
+    opts.SetTitle("Choose a file to send")
+        .SetRegisterAsRecent(false)   // sending a file is not opening it
+        .SetParentWindow(window_.get());
+    if (!chosenFile_.empty())
+        opts.SetInitialDirectory(PathToUtf8(PathFromUtf8(chosenFile_).parent_path()));
+    UltraCanvasFileLoader::OpenFileDialog(opts, [this](DialogResult r, const std::string& path) {
+        if (r != DialogResult::OK || path.empty()) return;
+        chosenFile_ = path;
+        if (fileLabel_) fileLabel_->SetText(BaseName(path));
+        // Drop the last transfer's bar and any "Choose a file first." prompt.
+        bool busy;
+        { std::lock_guard<std::mutex> lk(stateMutex_); busy = busy_; }
+        if (!busy) ShowIdleMessage("Ready.");
+    });
+}
+
+void AnchorPointGui::OnBrowseSaveDir() {
+    FileDialogOptions opts;
+    opts.SetTitle("Save received files to")
+        .SetParentWindow(window_.get());
+    // Start where the field points; "." is the folder AnchorPoint started in.
+    std::error_code ec;
+    const std::filesystem::path current = std::filesystem::absolute(
+        PathFromUtf8(saveDirInput_ ? saveDirInput_->GetText() : "."), ec);
+    if (!ec && std::filesystem::is_directory(current, ec))
+        opts.SetInitialDirectory(PathToUtf8(current));
+    UltraCanvasFileLoader::SelectFolderDialog(opts, [this](DialogResult r, const std::string& path) {
+        if (r != DialogResult::OK || path.empty() || !saveDirInput_) return;
+        saveDirInput_->SetText(path);
+    });
 }
 
 void AnchorPointGui::OnSend() {
@@ -193,12 +226,12 @@ void AnchorPointGui::OnSend() {
         std::lock_guard<std::mutex> lk(stateMutex_);
         if (busy_) return;
     }
-    if (chosenFile_.empty()) { SetStatus("Choose a file first."); return; }
+    if (chosenFile_.empty()) { ShowIdleMessage("Choose a file first."); return; }
 
     std::string host;
     uint16_t port = kDefaultPort;
     if (!ParsePeer(peerInput_ ? peerInput_->GetText() : "", host, port)) {
-        SetStatus("Enter a valid peer address (host or host:port).");
+        ShowIdleMessage("Enter a valid peer address (host or host:port).");
         return;
     }
 
@@ -222,7 +255,7 @@ void AnchorPointGui::OnStartReceiving() {
     }
     uint16_t port = kDefaultPort;
     try { port = static_cast<uint16_t>(std::stoi(recvPortInput_ ? recvPortInput_->GetText() : "")); }
-    catch (...) { SetStatus("Enter a valid listen port."); return; }
+    catch (...) { ShowIdleMessage("Enter a valid listen port."); return; }
 
     std::string dir = saveDirInput_ ? saveDirInput_->GetText() : ".";
     if (dir.empty()) dir = ".";
@@ -240,9 +273,28 @@ void AnchorPointGui::OnStartReceiving() {
 }
 
 void AnchorPointGui::OnStop() {
+    {
+        std::lock_guard<std::mutex> lk(stateMutex_);
+        if (!busy_) return;
+        statusText_ = "Stopping …";
+        dirty_ = true;
+    }
     cancel_ = true;
-    std::lock_guard<std::mutex> lk(listenerMutex_);
-    if (activeListener_) activeListener_->Close();  // unblock Accept()
+    WakeWorker();
+}
+
+void AnchorPointGui::WakeWorker() {
+    std::lock_guard<std::mutex> lk(activeMutex_);
+    if (activeListener_) activeListener_->Close();   // unblock Accept()
+    if (activeConn_) activeConn_->Interrupt();       // unblock a send / recv
+}
+
+// A Stop that came before the connection was registered found nothing to wake,
+// so registering checks for one. Same for the listener below.
+void AnchorPointGui::SetActiveConnection(IConnection* conn) {
+    std::lock_guard<std::mutex> lk(activeMutex_);
+    activeConn_ = conn;
+    if (conn && cancel_) conn->Interrupt();
 }
 
 void AnchorPointGui::PollState(TimerId) {
@@ -277,6 +329,13 @@ void AnchorPointGui::SetProgress(uint64_t done, uint64_t total) {
     dirty_ = true;
 }
 
+void AnchorPointGui::ShowIdleMessage(const std::string& text) {
+    std::lock_guard<std::mutex> lk(stateMutex_);
+    statusText_ = text;
+    progressFrac_ = 0.0;
+    dirty_ = true;
+}
+
 void AnchorPointGui::FinishBusy(const std::string& finalText) {
     std::lock_guard<std::mutex> lk(stateMutex_);
     busy_ = false;
@@ -290,13 +349,17 @@ void AnchorPointGui::FinishBusy(const std::string& finalText) {
 void AnchorPointGui::SendWorker(std::string filePath, std::string host, uint16_t port) {
     std::string err;
     auto conn = Connect(host, port, &err);
+    if (cancel_) { FinishBusy("Sending cancelled."); return; }
     if (!conn) { FinishBusy("Connect failed: " + err); return; }
 
     SetStatus("Sending " + BaseName(filePath) + " …");
+    SetActiveConnection(conn.get());
     auto res = SendFile(*conn, filePath, "AnchorPoint",
-                        [this](uint64_t d, uint64_t t) { SetProgress(d, t); });
-    if (res.ok) FinishBusy("Sent " + BaseName(filePath) + " — verified OK.");
-    else        FinishBusy("Send failed: " + res.error);
+                        [this](uint64_t d, uint64_t t) { SetProgress(d, t); }, &cancel_);
+    SetActiveConnection(nullptr);
+    if (res.ok)             FinishBusy("Sent " + BaseName(filePath) + " — verified OK.");
+    else if (res.cancelled) FinishBusy("Sending cancelled.");
+    else                    FinishBusy("Send failed: " + res.error);
 }
 
 void AnchorPointGui::ReceiveWorker(uint16_t port, std::string saveDir) {
@@ -305,12 +368,13 @@ void AnchorPointGui::ReceiveWorker(uint16_t port, std::string saveDir) {
     if (!listener) { FinishBusy("Cannot listen: " + err); return; }
 
     {
-        std::lock_guard<std::mutex> lk(listenerMutex_);
+        std::lock_guard<std::mutex> lk(activeMutex_);
         activeListener_ = listener.get();
+        if (cancel_) listener->Close();
     }
     auto conn = listener->Accept();
     {
-        std::lock_guard<std::mutex> lk(listenerMutex_);
+        std::lock_guard<std::mutex> lk(activeMutex_);
         activeListener_ = nullptr;
     }
 
@@ -318,18 +382,21 @@ void AnchorPointGui::ReceiveWorker(uint16_t port, std::string saveDir) {
     if (!conn) { FinishBusy("No connection."); return; }
 
     SetStatus("Peer connected: " + conn->PeerAddress());
+    SetActiveConnection(conn.get());
+    bool accepted = false;   // a file was started, so a stop leaves a partial one
     auto res = ReceiveFile(*conn,
         [&](const OfferInfo& offer, const std::string& peer) -> std::string {
+            accepted = true;
             SetStatus("Receiving \"" + offer.fileName + "\" from " + peer + " …");
-            std::string out = saveDir;
-            if (!out.empty() && out.back() != '/' && out.back() != '\\') out += '/';
-            out += offer.fileName;
-            return out;
+            return PathToUtf8(PathFromUtf8(saveDir) / PathFromUtf8(offer.fileName));
         },
-        [this](uint64_t d, uint64_t t) { SetProgress(d, t); });
+        [this](uint64_t d, uint64_t t) { SetProgress(d, t); }, &cancel_);
+    SetActiveConnection(nullptr);
 
-    if (res.ok) FinishBusy("Received " + std::to_string(res.bytes) + " bytes — integrity verified.");
-    else        FinishBusy("Receive failed: " + res.error);
+    if (res.ok)             FinishBusy("Received " + std::to_string(res.bytes) + " bytes — integrity verified.");
+    else if (res.cancelled) FinishBusy(accepted ? "Receiving cancelled — the partial file is kept."
+                                                : "Receiving cancelled.");
+    else                    FinishBusy("Receive failed: " + res.error);
 }
 
-} // namespace AnchorPoint
+} // namespace AnchorPointApp

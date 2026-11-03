@@ -180,7 +180,7 @@ std::vector<uint8_t> BuildDevMode(const std::wstring& printerName,
     }
 
     switch (options.duplex) {
-        case IODuplexMode::None:
+        case IODuplexMode::OneSided:
             devMode->dmDuplex = DMDUP_SIMPLEX;
             devMode->dmFields |= DM_DUPLEX;
             break;

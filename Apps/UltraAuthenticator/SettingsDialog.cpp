@@ -82,12 +82,14 @@ void SettingsDialog::CreateSettingsDialog(const Preferences& current) {
     }
     idleDropdown_->SetSelectedIndex(IdleChoiceIndexFor(current.idleLockSeconds),
                                     /*runNotifications=*/false);
+    Theme::StyleDropdown(idleDropdown_);
     AddChild(idleDropdown_);
     y += 42;
 
     minimizeSwitch_ = std::make_shared<UltraCanvasSwitch>(
         "set-minimize", margin, y, fieldWidth, 26, "Lock when the window is minimised");
     minimizeSwitch_->SetChecked(current.lockOnMinimize);
+    Theme::StyleSwitch(minimizeSwitch_);
     AddChild(minimizeSwitch_);
     y += 36;
 
@@ -113,18 +115,21 @@ void SettingsDialog::CreateSettingsDialog(const Preferences& current) {
     hideSwitch_ = std::make_shared<UltraCanvasSwitch>(
         "set-hide", margin, y, fieldWidth, 26, "Hide codes until a card is clicked");
     hideSwitch_->SetChecked(current.hideCodes);
+    Theme::StyleSwitch(hideSwitch_);
     AddChild(hideSwitch_);
     y += 36;
 
     auto saveBtn = std::make_shared<UltraCanvasButton>(
         "set-save", kDialogWidth - margin - 210, kDialogHeight - 54, 100, 32);
     saveBtn->SetText("Save");
+    Theme::StylePrimary(saveBtn);
     saveBtn->onClick = [this]() { Save(); };
     AddChild(saveBtn);
 
     auto cancelBtn = std::make_shared<UltraCanvasButton>(
         "set-cancel", kDialogWidth - margin - 100, kDialogHeight - 54, 100, 32);
     cancelBtn->SetText("Cancel");
+    Theme::StyleSecondary(cancelBtn);
     cancelBtn->onClick = [this]() { CloseDialog(DialogResult::Cancel); };
     AddChild(cancelBtn);
 }

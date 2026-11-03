@@ -1,5 +1,6 @@
 // core/UltraCanvasElementPlugins.cpp
 // Element plugin registry and DSO loader
+// Version: 1.0.1 - a plugin is called only when it was compiled against this build's framework headers
 // Version: 1.0.0
 // Last Modified: 2026-08-01
 // Author: UltraCanvas Framework
@@ -283,6 +284,27 @@ bool UltraCanvas_AddPluginDirectory(const std::string& directory) {
     return std::filesystem::is_directory(UltraCanvas::PathFromUtf8(directory), ec);
 }
 
+// Why a plugin must not be called, from the framework headers id it says it
+// was compiled against ("" when it may): none at all (built before plug-ins
+// said), "unknown" (built without the generated header) or another build's.
+static std::string HeadersRefusal(UCPluginLibHandle handle) {
+    const std::string ours = ULTRACANVAS_FRAMEWORK_HEADERS_ID;
+    auto headersId = reinterpret_cast<UltraCanvas_PluginHeadersIdFn>(
+        UCPluginSymbol(handle, "UltraCanvas_PluginHeadersId"));
+    if (!headersId)
+        return "does not say which framework headers it was compiled against (built before plug-ins "
+               "did) - rebuild it against this framework";
+    const char* theirs = headersId();
+    const std::string id = theirs ? theirs : "";
+    if (ours == "unknown")
+        return "this framework was built without its headers id (UltraCanvasFrameworkHeadersId.h), so no "
+               "plugin can be checked";
+    if (id != ours)
+        return "compiled against other framework headers (" + (id.empty() ? std::string("none") : id) +
+               ", this build is " + ours + ") - rebuild it against this framework";
+    return std::string();
+}
+
 int UltraCanvas_RefreshElementPlugins() {
     // Snapshot the directory list and the already-loaded set under the lock,
     // then load without it: plugin init calls straight back into Register.
@@ -335,10 +357,14 @@ int UltraCanvas_RefreshElementPlugins() {
                 continue;
             }
 
+            // First which framework headers it was compiled against: its
+            // classes derive from UltraCanvasUIElement, laid out by them.
+            // Nothing else in a plugin of other headers is called.
+            const std::string refusal = HeadersRefusal(handle);
             auto init = reinterpret_cast<UltraCanvas_PluginInitFn>(
                 UCPluginSymbol(handle, "UltraCanvas_PluginInit"));
             bool accepted = false;
-            if (init) {
+            if (init && refusal.empty()) {
                 accepted = init(&host);         // plugin's own fence catches throws
             }
 
@@ -350,8 +376,9 @@ int UltraCanvas_RefreshElementPlugins() {
             } else {
                 r.loaded.erase(canonical);
                 r.refused.insert(canonical);
-                r.lastError = canonical + (init ? ": plugin refused to load"
-                                                : ": no UltraCanvas_PluginInit symbol");
+                r.lastError = canonical + (!refusal.empty() ? ": " + refusal
+                                           : init ? std::string(": plugin refused to load")
+                                                  : std::string(": no UltraCanvas_PluginInit symbol"));
                 DefaultLog(1, r.lastError.c_str());
                 // Nothing registered (the contract requires refusal before
                 // registration), so closing is safe.

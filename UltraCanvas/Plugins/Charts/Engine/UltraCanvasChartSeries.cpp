@@ -1,12 +1,14 @@
 // Plugins/Charts/Engine/UltraCanvasChartSeries.cpp
-// Shared series geometry for the bar chart family.
-// Version: 1.1.0
-// Last Modified: 2026-09-27
+// Shared series geometry for the bar and line chart families.
+// Version: 1.3.0 - closed line loops
+// Version: 1.2.0 - line and area series, stacking, marker polygons
+// Last Modified: 2026-10-20
 // Author: UltraCanvas Framework
 
 #include "Plugins/Charts/Engine/UltraCanvasChartSeries.h"
 #include <algorithm>
 #include <cmath>
+#include <functional>
 
 namespace UltraCanvas {
 
@@ -417,6 +419,244 @@ std::vector<ChartBarConnection> BuildBarConnections(const IChartProjection& proj
         }
     }
     return connections;
+}
+
+// =============================================================================
+// LINE AND AREA SERIES
+// =============================================================================
+
+namespace {
+
+bool FinitePoint(const ChartNormalizedPoint& p) {
+    return std::isfinite(p.u) && std::isfinite(p.v);
+}
+
+// The normalised path of one run of knots under the shape: the knots
+// themselves come out at the start of every segment, the samples between
+// them follow the shape. Every vertex is later mapped through the projection.
+std::vector<ChartNormalizedPoint> SampleRun(const std::vector<ChartNormalizedPoint>& run,
+                                            const ChartLineOptions& options) {
+    std::vector<ChartNormalizedPoint> path;
+    if (run.empty()) return path;
+    path.push_back(run.front());
+    if (run.size() < 2) return path;
+
+    const int samples = std::max(1, options.samplesPerSegment);
+    std::vector<double> tangent;
+    if (options.shape == ChartLineShape::Curved) {
+        std::vector<ConnectionKnot> knots;
+        knots.reserve(run.size());
+        for (const ChartNormalizedPoint& p : run) knots.push_back({p.u, p.v});
+        tangent = MonotoneTangents(knots);
+    }
+
+    auto straight = [&](const ChartNormalizedPoint& a, const ChartNormalizedPoint& b) {
+        for (int k = 1; k <= samples; ++k) {
+            const double t = static_cast<double>(k) / samples;
+            path.emplace_back(a.u + (b.u - a.u) * t, a.v + (b.v - a.v) * t);
+        }
+    };
+
+    for (size_t i = 0; i + 1 < run.size(); ++i) {
+        const ChartNormalizedPoint& a = run[i];
+        const ChartNormalizedPoint& b = run[i + 1];
+        switch (options.shape) {
+            case ChartLineShape::Straight:
+                straight(a, b);
+                break;
+            case ChartLineShape::Curved: {
+                const double h = b.u - a.u;
+                if (std::abs(h) <= kKnotEpsilon) { straight(a, b); break; }
+                for (int k = 1; k <= samples; ++k) {
+                    const double t = static_cast<double>(k) / samples;
+                    const double t2 = t * t, t3 = t2 * t;
+                    const double v = (2.0 * t3 - 3.0 * t2 + 1.0) * a.v +
+                                     (t3 - 2.0 * t2 + t) * h * tangent[i] +
+                                     (-2.0 * t3 + 3.0 * t2) * b.v +
+                                     (t3 - t2) * h * tangent[i + 1];
+                    path.emplace_back(a.u + h * t, v);
+                }
+                break;
+            }
+            case ChartLineShape::StepAfter: {
+                const ChartNormalizedPoint corner(b.u, a.v);
+                straight(a, corner);
+                path.push_back(b);
+                break;
+            }
+            case ChartLineShape::StepBefore: {
+                const ChartNormalizedPoint corner(a.u, b.v);
+                path.push_back(corner);
+                straight(corner, b);
+                break;
+            }
+            case ChartLineShape::StepMiddle: {
+                const double mid = (a.u + b.u) * 0.5;
+                const ChartNormalizedPoint c1(mid, a.v), c2(mid, b.v);
+                straight(a, c1);
+                path.push_back(c2);
+                straight(c2, b);
+                break;
+            }
+        }
+    }
+    return path;
+}
+
+// Splits indices into runs of finite points (or one run when bridging).
+std::vector<std::vector<size_t>> FiniteRuns(size_t count,
+                                            const std::function<bool(size_t)>& finite,
+                                            bool bridgeGaps) {
+    std::vector<std::vector<size_t>> runs;
+    std::vector<size_t> current;
+    for (size_t i = 0; i < count; ++i) {
+        if (finite(i)) {
+            current.push_back(i);
+        } else if (!bridgeGaps && !current.empty()) {
+            runs.push_back(std::move(current));
+            current.clear();
+        }
+    }
+    if (!current.empty()) runs.push_back(std::move(current));
+    return runs;
+}
+
+} // namespace
+
+std::vector<ChartLineRun> BuildLineRuns(const IChartProjection& projection,
+                                        const std::vector<ChartNormalizedPoint>& points,
+                                        const ChartLineOptions& options) {
+    std::vector<ChartLineRun> runs;
+    for (const std::vector<size_t>& indices :
+         FiniteRuns(points.size(), [&](size_t i) { return FinitePoint(points[i]); },
+                    options.bridgeGaps)) {
+        ChartLineRun run;
+        run.indices = indices;
+        std::vector<ChartNormalizedPoint> knots;
+        knots.reserve(indices.size() + 1);
+        for (size_t i : indices) {
+            knots.push_back(points[i]);
+            run.knots.push_back(projection.ToScreen(points[i]));
+        }
+        // The seam: one period on, so the last segment travels forward round
+        // the circle to the first point instead of back across it.
+        if (options.closed && indices.size() == points.size() && knots.size() >= 3) {
+            knots.emplace_back(knots.front().u + 1.0, knots.front().v);
+        }
+        run.path = SampleRun(knots, options);
+        if (knots.size() >= 2) {
+            run.points.reserve(run.path.size());
+            for (const ChartNormalizedPoint& p : run.path) {
+                run.points.push_back(projection.ToScreen(p));
+            }
+        }
+        runs.push_back(std::move(run));
+    }
+    return runs;
+}
+
+std::vector<std::vector<Point2Dd>> BuildAreaOutlines(const IChartProjection& projection,
+                                                     const std::vector<ChartNormalizedPoint>& top,
+                                                     const std::vector<ChartNormalizedPoint>& base,
+                                                     const ChartLineOptions& options) {
+    std::vector<std::vector<Point2Dd>> outlines;
+    const size_t count = std::min(top.size(), base.size());
+    for (const std::vector<size_t>& indices :
+         FiniteRuns(count,
+                    [&](size_t i) { return FinitePoint(top[i]) && FinitePoint(base[i]); },
+                    options.bridgeGaps)) {
+        if (indices.size() < 2) continue;
+        std::vector<ChartNormalizedPoint> topKnots, baseKnots;
+        for (size_t i : indices) {
+            topKnots.push_back(top[i]);
+            baseKnots.push_back(base[i]);
+        }
+        if (options.closed && indices.size() == count && topKnots.size() >= 3) {
+            topKnots.emplace_back(topKnots.front().u + 1.0, topKnots.front().v);
+            baseKnots.emplace_back(baseKnots.front().u + 1.0, baseKnots.front().v);
+        }
+        const std::vector<ChartNormalizedPoint> topPath = SampleRun(topKnots, options);
+        const std::vector<ChartNormalizedPoint> basePath = SampleRun(baseKnots, options);
+
+        std::vector<Point2Dd> outline;
+        outline.reserve(topPath.size() + basePath.size());
+        for (const ChartNormalizedPoint& p : topPath) outline.push_back(projection.ToScreen(p));
+        for (auto it = basePath.rbegin(); it != basePath.rend(); ++it) {
+            outline.push_back(projection.ToScreen(*it));
+        }
+        outlines.push_back(std::move(outline));
+    }
+    return outlines;
+}
+
+ChartStackedValues StackSeriesValues(const std::vector<std::vector<double>>& series,
+                                     ChartBarArrangement arrangement) {
+    ChartStackedValues out;
+    const size_t count = CategoryCountOf(series);
+    const double nan = std::nan("");
+    out.base.assign(series.size(), std::vector<double>(count, nan));
+    out.top.assign(series.size(), std::vector<double>(count, nan));
+
+    for (size_t i = 0; i < count; ++i) {
+        if (arrangement == ChartBarArrangement::Grouped) {
+            for (size_t s = 0; s < series.size(); ++s) {
+                if (i >= series[s].size() || !std::isfinite(series[s][i])) continue;
+                out.base[s][i] = 0.0;
+                out.top[s][i] = series[s][i];
+            }
+            continue;
+        }
+
+        double scale = 1.0;
+        if (arrangement == ChartBarArrangement::PercentStacked) {
+            double positive = 0.0, negative = 0.0;
+            CategoryTotals(series, i, positive, negative);
+            const double total = positive - negative;
+            scale = (total > 0.0) ? 100.0 / total : 0.0;
+        }
+        double up = 0.0, down = 0.0;
+        for (size_t s = 0; s < series.size(); ++s) {
+            double v = (i < series[s].size()) ? series[s][i] : 0.0;
+            if (!std::isfinite(v)) v = 0.0;
+            v *= scale;
+            if (v >= 0.0) {
+                out.base[s][i] = up;
+                up += v;
+                out.top[s][i] = up;
+            } else {
+                out.base[s][i] = down;
+                down += v;
+                out.top[s][i] = down;
+            }
+        }
+    }
+    return out;
+}
+
+std::vector<Point2Dd> ChartMarkerPolygon(ChartMarkerShape shape, const Point2Dd& c,
+                                         double r) {
+    switch (shape) {
+        case ChartMarkerShape::Square: {
+            const double h = r * 0.82;      // equal visual weight to the circle
+            return {{c.x - h, c.y - h}, {c.x + h, c.y - h},
+                    {c.x + h, c.y + h}, {c.x - h, c.y + h}};
+        }
+        case ChartMarkerShape::Diamond:
+            return {{c.x, c.y - r * 1.1}, {c.x + r * 1.1, c.y},
+                    {c.x, c.y + r * 1.1}, {c.x - r * 1.1, c.y}};
+        case ChartMarkerShape::TriangleUp:
+            return {{c.x, c.y - r * 1.15}, {c.x + r, c.y + r * 0.75},
+                    {c.x - r, c.y + r * 0.75}};
+        case ChartMarkerShape::TriangleDown:
+            return {{c.x, c.y + r * 1.15}, {c.x - r, c.y - r * 0.75},
+                    {c.x + r, c.y - r * 0.75}};
+        case ChartMarkerShape::NoMarker:
+        case ChartMarkerShape::Circle:
+        case ChartMarkerShape::Cross:
+        case ChartMarkerShape::Plus:
+        default:
+            return {};
+    }
 }
 
 } // namespace UltraCanvas

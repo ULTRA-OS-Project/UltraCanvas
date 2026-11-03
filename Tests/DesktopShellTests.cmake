@@ -5,7 +5,9 @@
 # no full test suite, runs the Win32 backend of UltraCanvasDesktopShell
 # against a real desktop: its window list, monitor, screen edges, hot keys,
 # screenshot, the Start menu, the shell guard and the notification area.
-# Paths are relative to this file, so either includer works.
+# On Linux a second entry, DesktopShellTrayTest, runs the StatusNotifier
+# host under a session bus of its own. Paths are relative to this file, so
+# either includer works.
 #
 # Also ConsoleCompanionTest (Windows Release builds, where console companions
 # exist): the .com an application's command line runs through, on real
@@ -50,6 +52,36 @@ if(TARGET UltraCanvas)
     add_test(NAME DesktopShellTest COMMAND DesktopShellTest
              WORKING_DIRECTORY ${_DST_BIN_DIR})
     message(STATUS "    Test registered: DesktopShellTest")
+
+    # ===== THE NOTIFICATION AREA ON LINUX (DesktopShellTrayTest) =====
+    # The StatusNotifierWatcher and host over D-Bus, driven by a fake
+    # StatusNotifierItem the test exports itself through GDBus - so the test
+    # needs gio, and a session bus of its own from dbus-run-session (without
+    # one the block prints that it is skipped, so the entry is registered
+    # only where dbus-run-session exists).
+    if(UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN)
+        find_package(PkgConfig QUIET)
+        if(PKG_CONFIG_FOUND)
+            pkg_check_modules(DST_GIO QUIET gio-2.0)
+        endif()
+        if(DST_GIO_FOUND)
+            target_compile_definitions(DesktopShellTest PRIVATE DESKTOPSHELLTEST_HAVE_GIO=1)
+            target_include_directories(DesktopShellTest PRIVATE ${DST_GIO_INCLUDE_DIRS})
+            target_link_libraries(DesktopShellTest PRIVATE ${DST_GIO_LINK_LIBRARIES})
+            find_program(_DST_DBUS_RUN_SESSION dbus-run-session)
+            if(_DST_DBUS_RUN_SESSION)
+                add_test(NAME DesktopShellTrayTest
+                         COMMAND ${_DST_DBUS_RUN_SESSION} -- $<TARGET_FILE:DesktopShellTest> --tray
+                         WORKING_DIRECTORY ${_DST_BIN_DIR})
+                set_tests_properties(DesktopShellTrayTest PROPERTIES TIMEOUT 120)
+                message(STATUS "    Test registered: DesktopShellTrayTest")
+            else()
+                message(STATUS "    DesktopShellTrayTest skipped (no dbus-run-session)")
+            endif()
+        else()
+            message(STATUS "    DesktopShellTrayTest skipped (no gio-2.0)")
+        endif()
+    endif()
 
     # ===== CONSOLE COMPANION TEST (Windows Release) =====
     # ConsoleCompanionProbe.exe / .com are made the way the applications'

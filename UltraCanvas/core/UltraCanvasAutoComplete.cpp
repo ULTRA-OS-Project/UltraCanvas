@@ -74,6 +74,19 @@ namespace UltraCanvas {
             PopulateListFromFiltered();
 
             popupListView->SetWidth(GetWidth());
+            // Set (or cleared) each time it opens: an unset handler leaves the
+            // list's right press acting as a left one.
+            if (onItemContextMenu) {
+                popupListView->onContextMenu = [this](int row, const UCEvent& event) {
+                    if (row < 0 || row >= static_cast<int>(filteredItems.size()) || !onItemContextMenu)
+                        return;
+                    // A copy: the handler may change the suggestions.
+                    const AutoCompleteItem item = filteredItems[row];
+                    onItemContextMenu(row, item, event);
+                };
+            } else {
+                popupListView->onContextMenu = nullptr;
+            }
             Point2Di pos = CalculatePopupPosition();
 
             PopupElementSettings settings;

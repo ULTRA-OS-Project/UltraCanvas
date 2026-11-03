@@ -438,7 +438,7 @@ std::shared_ptr<UltraCanvasContainer> UltraCanvasStartWindow::BuildComputerStep(
                                              found ? PackageManagerName(profile_.packageManager) : "none on PATH"));
         row->AddChild(Theme::MakeValue("ucsSysManagerPath",
                                        found ? profile_.packageManagerPath
-                                             : (profile_.packageManager == PackageManager::None
+                                             : (profile_.packageManager == PackageManager::NoPackageManager
                                                     ? "no apt, dnf, pacman, zypper or brew was found"
                                                     : PackageManagerName(profile_.packageManager) + " was not found on PATH"),
                                        found ? Theme::kTextPrimary : Theme::kTextSecondary));
@@ -462,7 +462,7 @@ std::shared_ptr<UltraCanvasContainer> UltraCanvasStartWindow::BuildComputerStep(
         auto row = Theme::MakeKeyRow("ucsSysAssistants", "AI assistants");
         bool any = false;
         for (auto assistant : kAssistants) {
-            const AssistantStatus* status = ai_.Status(assistant);
+            const AssistantStatus* status = ai_.StatusOf(assistant);
             if (!status || !status->installed) continue;
             any = true;
             row->AddChild(Theme::MakeStatusBadge("ucsSysAssistant" + AssistantName(assistant), true,

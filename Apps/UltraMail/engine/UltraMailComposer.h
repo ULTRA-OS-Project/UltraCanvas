@@ -3,6 +3,8 @@
 // logic: subject prefixes (Re:/Fwd:), quoted bodies, In-Reply-To / References
 // threading headers and reply-all recipient derivation. Sending is handled
 // separately by MailSender.
+// Version: 0.3.0 - a draft is signed and/or encrypted (secureMethod, sign, encrypt);
+//                  a reply or forward of encrypted mail starts encrypted
 // Version: 0.2.0 - drafts carry a formatted body (richBody), its text version
 //                  and cid: parts; sources carry the HTML body and its pictures
 // Author: UltraCanvas Framework / ULTRA OS
@@ -44,6 +46,11 @@ struct Draft {
     std::string messageId;
     std::string inReplyTo;            // Message-ID being answered
     std::string references;           // References header chain
+    // Signed and/or encrypted when it is sent (UltraMailSecureMime.h):
+    // secureMethod "S/MIME" or "OpenPGP", "" for neither.
+    std::string secureMethod;
+    bool        sign = false;
+    bool        encrypt = false;
 };
 
 // The message a reply / forward is derived from.
@@ -61,6 +68,10 @@ struct SourceMessage {
     // The HTML body, when the message has one: a reply or forward keeps its
     // formatting (see UltraMailRichComposer.h). Empty = plain text only.
     std::string bodyHtml;
+    // It came encrypted, with this method ("S/MIME", "OpenPGP"): a reply or
+    // forward starts encrypted the same way, so the text it quotes does not
+    // go out in the clear.
+    std::string encryptedWith;
     // The bytes of a picture bodyHtml shows, by its src (cid:, data:, a
     // remote address the reader already loaded). Empty = not available: the
     // picture is left out of the quote. Unset = no pictures.

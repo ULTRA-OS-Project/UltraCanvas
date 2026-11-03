@@ -110,6 +110,11 @@ namespace UltraCanvas {
     ChartDataBounds UltraCanvasChartElementBase::CalculateDataBounds() {
         ChartDataBounds bounds = CalculateRawDataBounds();
         if (!bounds.hasData) return bounds;
+        if (bounds.maxY - bounds.minY < minimumValueSpan) {
+            const double middle = (bounds.minY + bounds.maxY) / 2.0;
+            bounds.minY = middle - minimumValueSpan / 2.0;
+            bounds.maxY = middle + minimumValueSpan / 2.0;
+        }
         PadDataBounds(bounds, true, true, true);
         return bounds;
     }

@@ -48,7 +48,7 @@ std::shared_ptr<UltraCanvasImageElement> imageElement;
 
 ## Overview
 
-The **Image Performance Test** is a built-in DemoApp benchmark that compares every bitmap codec UltraCanvas can drive (PNG, JPG, JPEG2000, WebP, AVIF, HEIF, GIF, TIFF, QOI, and optionally BMP) on the **same source image**. For each codec it measures three numbers:
+The **Image Performance Test** is a built-in DemoApp benchmark that compares every bitmap codec UltraCanvas can drive (PNG, JPG, JPEG2000, WebP, AVIF, HEIF, GIF, TIFF, JPEG XL, QOI, and optionally BMP) on the **same source image**. For each codec it measures three numbers:
 
 1. **Encoded file size** — bytes on disk after `UCImage::Save()`
 2. **Encode time** — milliseconds spent in `UCImage::Save()`
@@ -198,9 +198,18 @@ const CodecEntry kAllCodecs[] = {
     { UCImageSaveFormat::HEIF,     "HEIF", "heif", EncoderBackend::Libvips, false },
     { UCImageSaveFormat::GIF,      "GIF",  "gif",  EncoderBackend::Libvips, false },
     { UCImageSaveFormat::TIFF,     "TIFF", "tiff", EncoderBackend::Libvips, false },
+    { UCImageSaveFormat::JXL,      "JXL",  "jxl",  EncoderBackend::Libvips, false },
     { UCImageSaveFormat::BMP,      "BMP",  "bmp",  EncoderBackend::BMP,     true  },
 };
 ```
+
+JPEG XL, HEIF and AVIF are charted only where this build can both encode and
+load them (`VipsCanEncode(ext) && VipsCanLoad(ext)`; `VipsCanEncode` tries a
+2 x 2 encode once per codec). JPEG XL needs a libvips built with libjxl, which
+Ubuntu 22.04's is not; HEIF and AVIF need libheif with an encoder for each -
+the macOS build reads HEIC but cannot write it, since its HEVC encoder, x265,
+is GPL and is kept out of the core. Elsewhere the column is left out rather
+than shown as a failure.
 
 ### CodecResult (per-codec output row)
 

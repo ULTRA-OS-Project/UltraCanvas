@@ -19,7 +19,7 @@ built, and the element keeps the string it is given.
   linked by its public name `UltraLocalisation` (a headless engine links it
   alone, as it links UltraVault)
 - Tests: `Tests/UltraLocalisationTest.cpp` (target `UltraLocalisationTest`, no display)
-- Registry: `Masterfile_modules.md` §18
+- Registry: `Masterfile_modules.md` §20
 - Wired in: `UltraCanvasApplicationBase::Initialize` (the step "translation catalogues")
 
 ```cpp

@@ -21,7 +21,7 @@
 #include <string>
 #include <thread>
 
-namespace AnchorPoint {
+namespace AnchorPointApp {
 
 // A single-window front end over the M1 transfer core. All networking runs on
 // worker threads; UI widgets are only ever touched from the main thread via a
@@ -37,6 +37,7 @@ public:
 private:
     // ---- UI actions (main thread) ----
     void OnChooseFile();
+    void OnBrowseSaveDir();
     void OnSend();
     void OnStartReceiving();
     void OnStop();
@@ -48,13 +49,14 @@ private:
 
     // ---- shared transfer state (guarded by stateMutex_) ----
     void SetStatus(const std::string& text);
+    void ShowIdleMessage(const std::string& text);   // UI thread, nothing running: also empties the bar
     void SetProgress(uint64_t done, uint64_t total);
     void FinishBusy(const std::string& finalText);
 
     UltraCanvas::UltraCanvasApplication& app_;
     std::shared_ptr<UltraCanvas::UltraCanvasWindow> window_;
 
-    std::shared_ptr<UltraCanvas::UltraCanvasButton>     chooseBtn_, sendBtn_, recvBtn_, stopBtn_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton>     chooseBtn_, sendBtn_, browseBtn_, recvBtn_, stopBtn_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel>      fileLabel_, statusLabel_, barLabel_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput>  peerInput_, recvPortInput_, saveDirInput_;
 
@@ -68,10 +70,15 @@ private:
 
     std::thread worker_;
     std::atomic<bool> cancel_{false};
-    std::mutex listenerMutex_;
-    IListener* activeListener_ = nullptr;   // so OnStop() can unblock Accept()
+    // What the worker is blocked in, so OnStop() and the destructor can wake it:
+    // Accept() on the listener, or a send / recv on the connection.
+    std::mutex activeMutex_;
+    IListener*   activeListener_ = nullptr;
+    IConnection* activeConn_ = nullptr;
+    void SetActiveConnection(IConnection* conn);
+    void WakeWorker();   // close the listener, interrupt the connection
 
     UltraCanvas::TimerId uiTimer_ = UltraCanvas::InvalidTimerId;
 };
 
-} // namespace AnchorPoint
+} // namespace AnchorPointApp

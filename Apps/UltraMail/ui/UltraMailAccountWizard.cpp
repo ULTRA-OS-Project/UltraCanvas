@@ -1,4 +1,6 @@
 // Apps/UltraMail/ui/UltraMailAccountWizard.cpp
+// Version: 0.6.0 - a header (envelope tile, title, the one-line intro); Show
+//                  info, Continue carry icons
 // Version: 0.5.1 - Yahoo asks for an app password first (browser sign-in optional)
 // Version: 0.5.0 - "How to set up an iCloud mail account" with a Show info
 //                  button: the guide opens in an info area under the sign-in
@@ -31,7 +33,7 @@ namespace UltraMail {
 namespace {
 constexpr float kLabelWidth = 90.0f;
 constexpr int   kWidth      = 420;
-constexpr int   kHeight     = 300;   // the form with the guide closed
+constexpr int   kHeight     = 320;   // the form with the guide closed
 // The guide's info area: tall enough for most of it at once, and it scrolls.
 constexpr int   kGuideHeight = 320;
 } // namespace
@@ -64,12 +66,10 @@ void AccountWizard::Show(UltraCanvasWindowBase* parent,
                    .SetFlexGap(Theme::kInnerGap)
                    .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 
-    auto intro = Theme::MakeLine("wizIntro",
-        "Enter your address and password — UltraMail finds the rest.", 28,
-        Theme::kSizeBody, Theme::kTextSecondary);
-    intro->SetWrap(TextWrap::WrapWord);
-    content->AddChild(intro);
-    intro->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    auto header = Theme::MakeDialogHeader("wizHeader", "account-add", "Add an email account",
+        "Enter your address and password — UltraMail finds the rest.", 18.0f);
+    header->SetMargin(0, 0, 6, 0);
+    content->AddChild(header);
 
     // Build a [label + input] flex row and append it to the content column.
     // Returns the row container so callers can hide/show a whole field at once.
@@ -130,6 +130,7 @@ void AccountWizard::Show(UltraCanvasWindowBase* parent,
     auto guideBtn = CreateButton("wizGuideBtn", 0, 0, 90, Theme::kControlHeight, "Show info");
     Theme::FitToLabel(guideBtn, 90);
     Theme::StyleSecondary(guideBtn);
+    Theme::SetButtonIcon(guideBtn, "info");
     guideRow->AddChild(guideBtn);
     content->AddChild(guideRow);
     guideRow->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
@@ -235,6 +236,8 @@ void AccountWizard::Show(UltraCanvasWindowBase* parent,
     auto continueBtn = CreateButton("wizContinue", 0, 0, 110, Theme::kControlHeight, "Continue");
     Theme::FitToLabel(continueBtn, 110);
     Theme::StylePrimary(continueBtn);
+    Theme::SetButtonIcon(continueBtn, "arrow-right");
+    continueBtn->SetIconPosition(ButtonIconPosition::Right);   // it leads on
     continueBtn->onClick = [dlg]() { dlg->CloseDialog(DialogResult::OK); };
     buttonRow->AddChild(continueBtn);
 

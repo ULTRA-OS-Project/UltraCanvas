@@ -12,10 +12,6 @@
 #include <string>
 #include <vector>
 
-// X11 defines `None` as a macro that clobbers our enumerators.
-#ifdef None
-#undef None
-#endif
 
 namespace UltraCanvas {
 
@@ -57,7 +53,7 @@ namespace UltraCanvas {
 // =============================================================================
 
     enum class SunburstLabelContent {
-        None,
+        NoLabel,
         Name,
         Value,
         Percentage,
@@ -72,7 +68,7 @@ namespace UltraCanvas {
     };
 
     enum class SunburstShadeMode {
-        None,           // Children inherit the branch color unchanged
+        NoShade,           // Children inherit the branch color unchanged
         LightenByDepth, // Each deeper ring is progressively lighter
         DarkenByDepth   // Each deeper ring is progressively darker
     };

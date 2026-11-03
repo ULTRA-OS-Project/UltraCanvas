@@ -1,0 +1,22 @@
+[Unit]
+Description=UltraStore payment service (Skrill Quick Checkout, licences, receipts)
+After=network.target
+
+[Service]
+Type=simple
+User=ultrastore-pay
+Group=ultrastore-pay
+WorkingDirectory=/opt/ultrastore-pay
+EnvironmentFile=/etc/ultrastore-pay.env
+ExecStart=/opt/ultrastore-pay/.venv/bin/ultrastore-pay
+Restart=on-failure
+RestartSec=3
+StateDirectory=ultrastore-pay
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/ultrastore-pay
+
+[Install]
+WantedBy=multi-user.target

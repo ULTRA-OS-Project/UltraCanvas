@@ -1,6 +1,9 @@
 // OS/MSWindows/UltraCanvasWindowsApplication.cpp
 // Complete Windows application implementation with all methods
-// Version: 1.8.0 - the system fonts are the desktop's (UltraCanvasWindowsSystemFont.cpp), not Ubuntu 12
+// Version: 1.9.0 - the system fonts are the desktop's (UltraCanvasWindowsSystemFont.cpp), not Ubuntu 12
+// Version: 1.8.0 - the exit watchdog is armed when the main loop has ended
+// Version: 1.7.1 - the inline config for an empty fontconfig scales bitmap fonts
+//                 (GenerateBitmapScalingConfig): colour emoji at the text's size
 // Version: 1.7.0 - the inline config for an empty fontconfig carries the generic aliases
 //                 (GenerateFontAliasConfig), and the emoji setting is applied (ApplyEmojiSettings)
 // Version: 1.6.0 - every thread's Pango font map reads fontconfig (PANGOCAIRO_BACKEND=fc
@@ -73,6 +76,9 @@ namespace UltraCanvas {
         AttachParentConsole();
         InstallWindowsCrashReporter(appName);
         LogWindowsStartupBanner(appName);
+        // Initialised again after a main loop: that loop's end no longer
+        // means the process is ending.
+        DisarmWindowsExitWatchdog();
 
         // A console-subsystem app (one that keeps its command-line modes
         // printing into the prompt) gets here only when it opens its window:
@@ -170,6 +176,12 @@ namespace UltraCanvas {
 
         hInstance = nullptr;
         debugOutput << "UltraCanvas: Windows Application shut down" << std::endl;
+    }
+
+    void UltraCanvasWindowsApplication::RunAfterMainLoop() {
+        // The windows are gone; what is left is the program's own shutdown,
+        // which must not keep the process alive without a window.
+        ArmWindowsExitWatchdog();
     }
 
     bool UltraCanvasWindowsApplication::RegisterWindowClass() {
@@ -1063,6 +1075,15 @@ namespace UltraCanvas {
                         FcFalse)) {
                     debugOutput << "UltraCanvas: failed to add the generic font "
                                    "aliases to fontconfig" << std::endl;
+                }
+                // Bitmap fonts at the size asked for: the colour emoji fonts
+                // are 109 px bitmaps, drawn at that size without it.
+                const std::string scaling = GenerateBitmapScalingConfig();
+                if (!FcConfigParseAndLoadFromMemory(cfg,
+                        reinterpret_cast<const FcChar8*>(scaling.c_str()),
+                        FcFalse)) {
+                    debugOutput << "UltraCanvas: failed to add the bitmap font "
+                                   "scaling to fontconfig" << std::endl;
                 }
             }
         }

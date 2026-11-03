@@ -4,10 +4,14 @@
 //   2. A shader playground of animated full-screen fragment effects
 //   3. "Zarch" — a low-poly hover-ship simulation over scrolling biome terrain
 // The per-tab content is built in the UltraCanvasGL*Tab.cpp files.
+// Version: 2.1.0 - the shared page look (UltraCanvasDemoPageKit): kit title and
+//                  description, the tabs in a card, the no-GL notice as a card
 // Version: 2.0.0
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 
 #ifdef ULTRACANVAS_ENABLE_GL
 
@@ -19,36 +23,27 @@
 namespace UltraCanvas {
 
 std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGLSurfaceExamples() {
-    auto mainContainer = std::make_shared<UltraCanvasContainer>("GLSurfaceExamples", 0, 0, 1024, 800);
-
-    auto title = std::make_shared<UltraCanvasLabel>("GLSurfaceTitle", 16, 8, 900, 28);
-    title->SetText("OpenGL 3D Showcase — Hardware-Accelerated Rendering");
-    title->SetFontSize(16);
-    title->SetFontWeight(FontWeight::Bold);
-    title->SetTextColor(Color(50, 50, 150, 255));
-    mainContainer->AddChild(title);
-
-    auto subtitle = std::make_shared<UltraCanvasLabel>("GLSurfaceSubtitle", 16, 36, 900, 20);
-    subtitle->SetText("Real OpenGL 3.3 Core rendering composited into UltraCanvas — models, shaders, and a Zarch-style simulation");
-    subtitle->SetFontSize(11);
-    subtitle->SetTextColor(Color(100, 100, 100, 255));
-    mainContainer->AddChild(subtitle);
+    auto page = DemoKit::CreatePage("GLSurfaceExamples",
+            "OpenGL 3D Showcase — Hardware-Accelerated Rendering",
+            "Real OpenGL 3.3 Core rendering composited into UltraCanvas — models, shaders, and a Zarch-style simulation");
+    auto card = DemoKit::AddCard(page, "GLSurfaceCard");
 
     // Sized so the per-tab content area (width × height-tabHeight) comfortably
     // contains every tab's children: the control panel reaches x≈986 and the
     // Shaders tab's source viewer reaches y≈680, so the content area must be at
     // least ~986 × ~680. 1004 × (726-34=692) clears both with margin and still
     // fits inside the demo's display column, so no tab ever shows scrollbars.
-    auto tabs = std::make_shared<UltraCanvasTabbedContainer>("GLShowcaseTabs", 12, 62, 1004, 726);
+    // The tabs' children are placed absolutely, so the tabs keep that size.
+    auto tabs = std::make_shared<UltraCanvasTabbedContainer>("GLShowcaseTabs", 0, 0, 1004, 726);
     tabs->SetTabHeight(34);
     tabs->SetTabMinWidth(150);
     tabs->AddTab("3D Models", CreateGLModelsTab());
     tabs->AddTab("Shaders", CreateGLShaderTab());
     tabs->AddTab("Zarch", CreateGLZarchTab());
     tabs->SetActiveTab(0);
-    mainContainer->AddChild(tabs);
+    DemoKit::AddFixed(card, tabs);
 
-    return mainContainer;
+    return page;
 }
 
 } // namespace UltraCanvas
@@ -61,31 +56,20 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGLSurfac
 namespace UltraCanvas {
 
 std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGLSurfaceExamples() {
-    auto container = std::make_shared<UltraCanvasContainer>("GLSurfaceExamples", 0, 0, 1000, 600);
+    auto page = DemoKit::CreatePage("GLSurfaceExamples", "OpenGL Surface Examples", "");
 
-    auto title = std::make_shared<UltraCanvasLabel>("GLSurfaceTitle", 10, 10, 300, 30);
-    title->SetText("OpenGL Surface Examples");
-    title->SetFontSize(16);
-    title->SetFontWeight(FontWeight::Bold);
-    container->AddChild(title);
+    // Tinted red: the feature is missing from this build.
+    auto card = DemoKit::AddCard(page, "GLSurfacePlaceholder", "OpenGL Surface Support - NOT AVAILABLE");
+    card->SetBackgroundColor(Color(255, 200, 200, 100));
+    DemoKit::AddText(card, "GLSurfacePlaceholderText", "This build was compiled without OpenGL support.");
+    DemoKit::AddText(card, "GLSurfacePlaceholderHow", "To enable OpenGL surface support:");
+    DemoKit::Add(card, DemoKit::CreateBullets("GLSurfacePlaceholderSteps", {
+        "Rebuild with -DULTRACANVAS_ENABLE_GL=ON",
+        "Ensure OpenGL development libraries are installed",
+        "On Linux: libgl-dev, libegl-dev",
+        "On macOS: OpenGL framework (included with Xcode)"}));
 
-    auto placeholder = std::make_shared<UltraCanvasLabel>("GLSurfacePlaceholder", 20, 50, 800, 400);
-    placeholder->SetText(
-        "OpenGL Surface Support - NOT AVAILABLE\n\n"
-        "This build was compiled without OpenGL support.\n\n"
-        "To enable OpenGL surface support:\n"
-        "• Rebuild with -DULTRACANVAS_ENABLE_GL=ON\n"
-        "• Ensure OpenGL development libraries are installed\n"
-        "• On Linux: libgl-dev, libegl-dev\n"
-        "• On macOS: OpenGL framework (included with Xcode)\n"
-    );
-    placeholder->SetAlignment(TextAlignment::Left);
-    placeholder->SetBackgroundColor(Color(255, 200, 200, 100));
-    placeholder->SetBorders(2.0f);
-    placeholder->SetPadding(20.0f);
-    container->AddChild(placeholder);
-
-    return container;
+    return page;
 }
 
 } // namespace UltraCanvas

@@ -1,10 +1,13 @@
 // Apps/DemoApp/UltraCanvasAdjacencyDiagramExamples.cpp
 // Demo examples for UltraCanvasAdjacencyDiagram — architectural space-planning
+// Version: 1.2.0 - the shared page look (UltraCanvasDemoPageKit): the tabs in a card
+//                  that fills the area, every tab's description wraps above its diagram
 // Version: 1.1.1
-// Last Modified: 2026-06-04
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "Plugins/Diagrams/UltraCanvasAdjacencyDiagram.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasButton.h"
@@ -13,6 +16,24 @@
 #include <sstream>
 
 namespace UltraCanvas {
+
+    // A tab's page: its description, wrapped, above the diagram. The tab
+    // gives it its exact size; a diagram taller than that scrolls.
+    static std::shared_ptr<UltraCanvasContainer> MakeTabPage(
+            const std::string& id, const std::string& descId, const std::string& text)
+    {
+        auto tab = std::make_shared<UltraCanvasContainer>(id);
+        // The diagram keeps its size; a tab shorter or narrower than it
+        // scrolls rather than cutting the bottom rows off.
+        ContainerStyle scrolling = tab->GetContainerStyle();
+        scrolling.autoShowScrollbars = true;
+        tab->SetContainerStyle(scrolling);
+        tab->SetPadding(8, 10, 8, 10);
+        tab->layout.SetFlexColumn().SetFlexGap(6)
+                   .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+        DemoKit::AddText(tab, descId, text)->SetFontSize(11);
+        return tab;
+    }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TAB 1 — Library branch  (image 1 — DCPL adjacency diagram)
@@ -78,12 +99,8 @@ namespace UltraCanvas {
     static std::shared_ptr<UltraCanvasContainer> MakeLibraryTab(
             std::shared_ptr<UltraCanvasLabel> statusLabel)
     {
-        auto tab = std::make_shared<UltraCanvasContainer>("AdjLibTab", 0, 0, 1020, 700);
-
-        auto desc = std::make_shared<UltraCanvasLabel>("AdjLibDesc", 10, 8, 900, 22);
-        desc->SetText("Library branch adjacency: circles sized by floor area. Solid = direct adjacency, dashed = secondary access.");
-        desc->SetFontSize(11);
-        tab->AddChild(desc);
+        auto tab = MakeTabPage("AdjLibTab", "AdjLibDesc",
+                "Library branch adjacency: circles sized by floor area. Solid = direct adjacency, dashed = secondary access.");
 
         auto diagram = std::make_shared<UltraCanvasAdjacencyDiagram>(
                 "LibDiagram", 10, 34, 990, 654);
@@ -100,7 +117,7 @@ namespace UltraCanvas {
         };
 
         diagram->CenterContent();
-        tab->AddChild(diagram);
+        DemoKit::AddFixed(tab, diagram);
         return tab;
     }
 
@@ -111,14 +128,10 @@ namespace UltraCanvas {
     static std::shared_ptr<UltraCanvasContainer> MakeLibraryMatrixTab(
             std::shared_ptr<UltraCanvasLabel> statusLabel)
     {
-        auto tab = std::make_shared<UltraCanvasContainer>("AdjMatrixTab", 0, 0, 1020, 700);
-
-        auto desc = std::make_shared<UltraCanvasLabel>("AdjMatrixDesc", 10, 8, 980, 22);
-        desc->SetText("The same library programme as an adjacency matrix — identical rooms and links, "
-                      "only the view differs. Each space is crossed against every other; the upper "
-                      "triangle carries the requirement.");
-        desc->SetFontSize(11);
-        tab->AddChild(desc);
+        auto tab = MakeTabPage("AdjMatrixTab", "AdjMatrixDesc",
+                "The same library programme as an adjacency matrix — identical rooms and links, "
+                "only the view differs. Each space is crossed against every other; the upper "
+                "triangle carries the requirement.");
 
         auto diagram = std::make_shared<UltraCanvasAdjacencyDiagram>(
                 "LibMatrix", 10, 34, 990, 654);
@@ -173,7 +186,7 @@ namespace UltraCanvas {
             statusLabel->SetText(ss.str());
         };
 
-        tab->AddChild(diagram);
+        DemoKit::AddFixed(tab, diagram);
         return tab;
     }
 
@@ -187,13 +200,9 @@ namespace UltraCanvas {
     static std::shared_ptr<UltraCanvasContainer> MakeTriangleTab(
             std::shared_ptr<UltraCanvasLabel> statusLabel)
     {
-        auto tab = std::make_shared<UltraCanvasContainer>("AdjTriTab", 0, 0, 1020, 700);
-
-        auto desc = std::make_shared<UltraCanvasLabel>("AdjTriDesc", 10, 8, 980, 22);
-        desc->SetText("The classic rotated triangle: each pair of spaces meets where their 45° "
-                      "diagonals cross. Same data model as the staircase — only the geometry differs.");
-        desc->SetFontSize(11);
-        tab->AddChild(desc);
+        auto tab = MakeTabPage("AdjTriTab", "AdjTriDesc",
+                "The classic rotated triangle: each pair of spaces meets where their 45° "
+                "diagonals cross. Same data model as the staircase — only the geometry differs.");
 
         auto diagram = std::make_shared<UltraCanvasAdjacencyDiagram>(
                 "TriMatrix", 10, 34, 990, 654);
@@ -284,7 +293,7 @@ namespace UltraCanvas {
             statusLabel->SetText(ss.str());
         };
 
-        tab->AddChild(diagram);
+        DemoKit::AddFixed(tab, diagram);
         return tab;
     }
 
@@ -295,12 +304,8 @@ namespace UltraCanvas {
     static std::shared_ptr<UltraCanvasContainer> MakeResidenceTab(
             std::shared_ptr<UltraCanvasLabel> statusLabel)
     {
-        auto tab = std::make_shared<UltraCanvasContainer>("AdjResTab", 0, 0, 1020, 700);
-
-        auto desc = std::make_shared<UltraCanvasLabel>("AdjResDesc", 10, 8, 900, 22);
-        desc->SetText("Multi-floor residence: three floor zones. Arrows show directed circulation routes between floors.");
-        desc->SetFontSize(11);
-        tab->AddChild(desc);
+        auto tab = MakeTabPage("AdjResTab", "AdjResDesc",
+                "Multi-floor residence: three floor zones. Arrows show directed circulation routes between floors.");
 
         auto diagram = std::make_shared<UltraCanvasAdjacencyDiagram>(
                 "ResDiagram", 10, 34, 990, 654);
@@ -366,7 +371,7 @@ namespace UltraCanvas {
         };
 
         diagram->CenterContent();
-        tab->AddChild(diagram);
+        DemoKit::AddFixed(tab, diagram);
         return tab;
     }
 
@@ -377,12 +382,8 @@ namespace UltraCanvas {
     static std::shared_ptr<UltraCanvasContainer> MakeOfficeTab(
             std::shared_ptr<UltraCanvasLabel> statusLabel)
     {
-        auto tab = std::make_shared<UltraCanvasContainer>("AdjOfficeTab", 0, 0, 1020, 700);
-
-        auto desc = std::make_shared<UltraCanvasLabel>("AdjOfficeDesc", 10, 8, 900, 22);
-        desc->SetText("Design studio program: public-facing vs. back-of-house zones. Drag rooms to adjust the layout.");
-        desc->SetFontSize(11);
-        tab->AddChild(desc);
+        auto tab = MakeTabPage("AdjOfficeTab", "AdjOfficeDesc",
+                "Design studio program: public-facing vs. back-of-house zones. Drag rooms to adjust the layout.");
 
         auto diagram = std::make_shared<UltraCanvasAdjacencyDiagram>(
                 "OfficeDiagram", 10, 34, 990, 654);
@@ -446,7 +447,7 @@ namespace UltraCanvas {
         };
 
         diagram->CenterContent();
-        tab->AddChild(diagram);
+        DemoKit::AddFixed(tab, diagram);
         return tab;
     }
 
@@ -456,58 +457,23 @@ namespace UltraCanvas {
     std::shared_ptr<UltraCanvasUIElement>
     UltraCanvasDemoApplication::CreateAdjacencyDiagramExamples()
     {
-        // No fixed size: the host display area stretches `main` (it applies
-        // flex-grow + align-self:stretch), so the Fr content column grows with
-        // the window and the subtitle re-wraps on resize.
-        auto main = std::make_shared<UltraCanvasContainer>("AdjDiagExamples");
-        main->SetPadding(5,5,0,5);
+        auto page = DemoKit::CreatePage("AdjDiagExamples", "Architectural Adjacency Diagram",
+                "Rooms as area-proportional circles, colored by function. Solid = direct adjacency, "
+                "dashed = secondary, dotted = service");
+        // The tabs fill the area, as the diagrams did before.
+        page->SetFillsArea(true);
 
-        // 3-row × 2-column grid: title/subtitle in the left column, status box in
-        // the right column spanning both top rows, tabs filling the bottom row.
-        // Fixed pixel heights on the label rows (Auto rows measure unwrapped text
-        // and would clip the subtitle's second wrapped line).
-        main->layout.SetGrid()
-                .SetGridColumns({
-                        CSSLayout::GridTrackSize{.kind = CSSLayout::GridTrackSizeKind::Fr,
-                                                 .value = CSSLayout::Dimension::Fr(1)},
-                        CSSLayout::GridTrackSize{.kind = CSSLayout::GridTrackSizeKind::Fixed,
-                                                 .value = CSSLayout::Dimension::Px(350)}})
-                .SetGridRows({
-                        CSSLayout::GridTrackSize{.kind = CSSLayout::GridTrackSizeKind::Fixed,
-                                                 .value = CSSLayout::Dimension::Px(34)},  // title row
-                        CSSLayout::GridTrackSize{.kind = CSSLayout::GridTrackSizeKind::Fixed,
-                                                 .value = CSSLayout::Dimension::Px(44)},  // subtitle (room for 2 lines)
-                        CSSLayout::GridTrackSize{.kind = CSSLayout::GridTrackSizeKind::Fr,
-                                                 .value = CSSLayout::Dimension::Fr(1)}})   // tabs fill
-                .SetGridGap(6)
-                .SetGridJustifyItems(CSSLayout::JustifyItems::Stretch)
-                .SetGridAlignItems(CSSLayout::AlignItems::Stretch);
+        auto card = DemoKit::CreateCard("AdjDiagCard");
+        DemoKit::Add(page, card, 1);
+        card->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
 
-        auto title = std::make_shared<UltraCanvasLabel>("AdjDiagTitle");
-        title->SetText("Architectural Adjacency Diagram");
-        title->SetFontSize(18);
-        title->SetFontWeight(FontWeight::Bold);
-        title->SetTextColor(Color(40, 100, 60));
-        main->AddChild(title);
-        title->layoutItem.SetGridRowColSimplified(0, 0);
-
-        auto subtitle = std::make_shared<UltraCanvasLabel>("AdjDiagSub");
-        subtitle->SetText("Rooms as area-proportional circles, colored by function. Solid = direct adjacency, dashed = secondary, dotted = service");
-        subtitle->SetFontSize(11);
-        subtitle->SetWrap(TextWrap::WrapWord);
-        subtitle->SetTextColor(Color(90, 90, 90));
-        main->AddChild(subtitle);
-        subtitle->layoutItem.SetGridRowColSimplified(1, 0);
-
-        auto statusLabel = std::make_shared<UltraCanvasLabel>("AdjDiagStatus");
-        statusLabel->SetText("Click a room to inspect.\nDrag rooms to reposition — pan with empty-space drag.");
-        statusLabel->SetFontSize(10);
+        auto statusLabel = DemoKit::CreateCaption("AdjDiagStatus",
+                "Click a room to inspect.\nDrag rooms to reposition — pan with empty-space drag.");
         statusLabel->SetBackgroundColor(Color(245, 245, 245));
         statusLabel->SetBorders(1.0f);
         statusLabel->SetPadding(6.0f);
-        statusLabel->SetAlignment(TextAlignment::Center);
-        main->AddChild(statusLabel);
-        statusLabel->layoutItem.SetGridRowColSimplified(0, 1, 2, 1);
+        statusLabel->SetAlignment(TextAlignment::Center, VerticalAlignment::Top);
+        DemoKit::Add(card, statusLabel);
 
         auto tabs = std::make_shared<UltraCanvasTabbedContainer>("AdjDiagTabs");
         tabs->SetTabPosition(TabPosition::Top);
@@ -519,9 +485,11 @@ namespace UltraCanvas {
         tabs->AddTab("Multi-floor villa", MakeResidenceTab(statusLabel));
         tabs->AddTab("Design studio",     MakeOfficeTab(statusLabel));
 
-        main->AddChild(tabs);
-        tabs->layoutItem.SetGridRowColSimplified(2, 0, 1, 2);
-        return main;
+        DemoKit::Add(card, tabs, 1);
+        // From nothing, not from the diagrams' height: the tabs take the
+        // card's room and each tab scrolls its diagram.
+        tabs->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
+        return page;
     }
 
 } // namespace UltraCanvas

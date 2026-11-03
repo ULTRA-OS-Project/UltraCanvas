@@ -66,14 +66,14 @@ struct NetworkConnectionEvent {
     std::string            sourceName;          // which source reported it
     // Filled by the registry from the name table (NetworkMonitorNames.h).
     std::string            remoteName;
-    NameSource             nameSource = NameSource::None;
+    NameSource             nameSource = NameSource::NoSource;
     // The loopback chain, as on NetworkConnection: the role and the
     // process on the other end of a loopback connection, and on a proxy's
     // outbound connection whom it is for. A source whose events come
     // from a decoded table fills them and sets chainDecoded; for any
     // other the registry decodes from the socket table, and remembers the
     // chain so the Closed carries it too.
-    LoopbackRole             loopbackRole = LoopbackRole::None;
+    LoopbackRole             loopbackRole = LoopbackRole::NotLoopback;
     std::string              localPeer;        // "AvastSvc (4720)", or empty
     std::vector<std::string> forProcesses;     // "thunderbird (4120)", distinct
     bool                     chainDecoded = false;

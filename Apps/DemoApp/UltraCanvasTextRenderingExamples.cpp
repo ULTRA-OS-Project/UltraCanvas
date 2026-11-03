@@ -1,10 +1,13 @@
 // Apps/DemoApp/UltraCanvasTextRenderingExamples.cpp
 // Text rendering settings demo with configurable antialias, hint style, and hint metrics
+// Version: 1.1.0 - the shared page look (UltraCanvasDemoPageKit): the options and
+//                  each sample group in a card, every text sized to fit and wrapping
 // Version: 1.0.0
-// Last Modified: 2026-04-07
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasContainer.h"
@@ -15,52 +18,39 @@
 namespace UltraCanvas {
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateTextRenderingSettingsExamples() {
-        auto mainContainer = std::make_shared<UltraCanvasContainer>("TextRenderingExamples", 0, 0, 1020, 1400);
-        mainContainer->SetBackgroundColor(Colors::White);
-        mainContainer->SetPadding(0, 0, 10, 0);
+        auto mainContainer = DemoKit::CreatePage("TextRenderingExamples", "Cairo Text Rendering Settings",
+                "Configure Cairo text antialiasing, font hinting style, and hint metrics. Changes apply globally and take effect immediately.");
 
-        long currentY = 10;
-
-        // ===== MAIN TITLE =====
-        auto mainTitle = std::make_shared<UltraCanvasLabel>("TextRenderTitle", 20, currentY, 900, 30);
-        mainTitle->SetText("Cairo Text Rendering Settings");
-        mainTitle->SetFontSize(18);
-        mainTitle->SetFontWeight(FontWeight::Bold);
-        mainContainer->AddChild(mainTitle);
-        currentY += 35;
-
-        auto description = std::make_shared<UltraCanvasLabel>("TextRenderDesc", 20, currentY, 960, 40);
-        description->SetText("Configure Cairo text antialiasing, font hinting style, and hint metrics. Changes apply globally and take effect immediately.");
-        description->SetWrap(TextWrap::WrapWord);
-        description->SetTextColor(Color(80, 80, 80, 255));
-        mainContainer->AddChild(description);
-        currentY += 45;
-
-        // Separator
-        auto sep1 = std::make_shared<UltraCanvasContainer>("TextRenderSep1", 20, currentY, 960, 2);
-        sep1->SetBackgroundColor(Color(200, 200, 200, 255));
-        mainContainer->AddChild(sep1);
-        currentY += 15;
+        // A floor for the first column's width, so the rows line up while a
+        // longer text still widens it.
+        auto setMinWidth = [](const std::shared_ptr<UltraCanvasUIElement>& element, float width) {
+            CSSLayout::BoxConstraints limits;
+            limits.minWidth = CSSLayout::Dimension::Px(width);
+            element->boxConstraints = limits;
+        };
 
         // ===== CONTROLS SECTION =====
-        auto controlsTitle = std::make_shared<UltraCanvasLabel>("ControlsTitle", 20, currentY, 400, 25);
-        controlsTitle->SetText("Rendering Options");
-        controlsTitle->SetFontSize(14);
-        controlsTitle->SetFontWeight(FontWeight::Bold);
-        controlsTitle->SetTextColor(Color(50, 50, 150, 255));
-        mainContainer->AddChild(controlsTitle);
-        currentY += 35;
+        auto controlsCard = DemoKit::AddCard(mainContainer, "ControlsTitle", "Rendering Options");
+
+        // One option: its name, the dropdown, and what it does.
+        auto addOption = [&controlsCard, &setMinWidth](const std::string& rowId, const std::string& labelId,
+                                                       const std::string& labelText,
+                                                       const std::shared_ptr<UltraCanvasDropdown>& dropdown,
+                                                       const std::string& descId, const std::string& descText) {
+            auto row = DemoKit::AddRow(controlsCard, rowId, 20);
+            row->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
+            auto label = DemoKit::AddText(row, labelId, labelText);
+            setMinWidth(label, 120);
+            DemoKit::AddFixed(row, dropdown);
+            dropdown->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Center);
+            DemoKit::AddCaption(row, descId, descText);
+        };
 
         // Collect sample labels for redraw callbacks
         std::vector<std::shared_ptr<UltraCanvasLabel>> sampleLabels;
 
         // --- Antialias Dropdown ---
-        auto aaLabel = std::make_shared<UltraCanvasLabel>("AALabel", 30, currentY + 5, 120, 20);
-        aaLabel->SetText("Antialias:");
-        aaLabel->SetFontSize(12);
-        mainContainer->AddChild(aaLabel);
-
-        auto aaDropdown = std::make_shared<UltraCanvasDropdown>("AADropdown", 160, currentY, 200, 30);
+        auto aaDropdown = std::make_shared<UltraCanvasDropdown>("AADropdown", 0, 0, 200, 30);
         aaDropdown->AddItem("Default", "0");
         aaDropdown->AddItem("None", "1");
         aaDropdown->AddItem("Gray", "2");
@@ -69,71 +59,28 @@ namespace UltraCanvas {
         aaDropdown->AddItem("Good", "5");
         aaDropdown->AddItem("Best", "6");
         aaDropdown->SetSelectedIndex(static_cast<int>(RenderContextCairo::GetTextAntialias()));
-        mainContainer->AddChild(aaDropdown);
-
-        auto aaDesc = std::make_shared<UltraCanvasLabel>("AADesc", 380, currentY + 5, 500, 20);
-        aaDesc->SetText("Controls antialiasing method for text rendering");
-        aaDesc->SetFontSize(11);
-        aaDesc->SetTextColor(Color(120, 120, 120, 255));
-        mainContainer->AddChild(aaDesc);
-        currentY += 45;
+        addOption("AARow", "AALabel", "Antialias:", aaDropdown,
+                  "AADesc", "Controls antialiasing method for text rendering");
 
         // --- Hint Style Dropdown ---
-        auto hsLabel = std::make_shared<UltraCanvasLabel>("HSLabel", 30, currentY + 5, 120, 20);
-        hsLabel->SetText("Hint Style:");
-        hsLabel->SetFontSize(12);
-        mainContainer->AddChild(hsLabel);
-
-        auto hsDropdown = std::make_shared<UltraCanvasDropdown>("HSDropdown", 160, currentY, 200, 30);
+        auto hsDropdown = std::make_shared<UltraCanvasDropdown>("HSDropdown", 0, 0, 200, 30);
         hsDropdown->AddItem("Default", "0");
         hsDropdown->AddItem("None", "1");
         hsDropdown->AddItem("Slight", "2");
         hsDropdown->AddItem("Medium", "3");
         hsDropdown->AddItem("Full", "4");
         hsDropdown->SetSelectedIndex(static_cast<int>(RenderContextCairo::GetTextHintStyle()));
-        mainContainer->AddChild(hsDropdown);
-
-        auto hsDesc = std::make_shared<UltraCanvasLabel>("HSDesc", 380, currentY + 5, 500, 20);
-        hsDesc->SetText("Controls amount of font hinting (grid-fitting)");
-        hsDesc->SetFontSize(11);
-        hsDesc->SetTextColor(Color(120, 120, 120, 255));
-        mainContainer->AddChild(hsDesc);
-        currentY += 45;
+        addOption("HSRow", "HSLabel", "Hint Style:", hsDropdown,
+                  "HSDesc", "Controls amount of font hinting (grid-fitting)");
 
         // --- Hint Metrics Dropdown ---
-        auto hmLabel = std::make_shared<UltraCanvasLabel>("HMLabel", 30, currentY + 5, 120, 20);
-        hmLabel->SetText("Hint Metrics:");
-        hmLabel->SetFontSize(12);
-        mainContainer->AddChild(hmLabel);
-
-        auto hmDropdown = std::make_shared<UltraCanvasDropdown>("HMDropdown", 160, currentY, 200, 30);
+        auto hmDropdown = std::make_shared<UltraCanvasDropdown>("HMDropdown", 0, 0, 200, 30);
         hmDropdown->AddItem("Default", "0");
         hmDropdown->AddItem("Off", "1");
         hmDropdown->AddItem("On", "2");
         hmDropdown->SetSelectedIndex(static_cast<int>(RenderContextCairo::GetTextHintMetrics()));
-        mainContainer->AddChild(hmDropdown);
-
-        auto hmDesc = std::make_shared<UltraCanvasLabel>("HMDesc", 380, currentY + 5, 500, 20);
-        hmDesc->SetText("Controls whether font metrics are quantized to integer values");
-        hmDesc->SetFontSize(11);
-        hmDesc->SetTextColor(Color(120, 120, 120, 255));
-        mainContainer->AddChild(hmDesc);
-        currentY += 50;
-
-        // Separator
-        auto sep2 = std::make_shared<UltraCanvasContainer>("TextRenderSep2", 20, currentY, 960, 2);
-        sep2->SetBackgroundColor(Color(200, 200, 200, 255));
-        mainContainer->AddChild(sep2);
-        currentY += 15;
-
-        // ===== SAMPLE TEXT SECTION =====
-        auto sampleTitle = std::make_shared<UltraCanvasLabel>("SampleTitle", 20, currentY, 400, 25);
-        sampleTitle->SetText("Sample Text Preview");
-        sampleTitle->SetFontSize(14);
-        sampleTitle->SetFontWeight(FontWeight::Bold);
-        sampleTitle->SetTextColor(Color(50, 50, 150, 255));
-        mainContainer->AddChild(sampleTitle);
-        currentY += 35;
+        addOption("HMRow", "HMLabel", "Hint Metrics:", hmDropdown,
+                  "HMDesc", "Controls whether font metrics are quantized to integer values");
 
         // Sample text at various sizes
         struct SampleDef {
@@ -141,6 +88,33 @@ namespace UltraCanvas {
             std::string label;
             std::string text;
         };
+
+        // One sample: its size in grey, then the text, which takes the rest
+        // of the line and wraps.
+        auto addSample = [&sampleLabels, &setMinWidth](const std::shared_ptr<UltraCanvasContainer>& card,
+                                                       const std::string& sizeId, const std::string& textId,
+                                                       const SampleDef& sample, float sizeWidth, bool bold) {
+            auto row = DemoKit::CreateRow(textId + "Row", 10, false);
+            DemoKit::Add(card, row);
+
+            auto sizeLabel = DemoKit::CreateCaption(sizeId, sample.label);
+            sizeLabel->SetTextColor(Color(150, 150, 150, 255));
+            setMinWidth(sizeLabel, sizeWidth);
+            DemoKit::Add(row, sizeLabel);
+
+            auto textLabel = DemoKit::CreateText(textId, sample.text);
+            textLabel->SetFontSize(sample.fontSize);
+            if (bold) textLabel->SetFontWeight(FontWeight::Bold);
+            DemoKit::Add(row, textLabel, 1);
+            textLabel->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
+
+            sampleLabels.push_back(textLabel);
+            sampleLabels.push_back(sizeLabel);
+        };
+
+        // ===== SAMPLE TEXT SECTION =====
+        auto sampleCard = DemoKit::AddCard(mainContainer, "SampleTitle", "Sample Text Preview");
+        sampleCard->layout.SetFlexGap(10);
 
         std::vector<SampleDef> samples = {
             {10, "10pt", "The quick brown fox jumps over the lazy dog. AaBbCcDdEeFfGgHhIiJjKkLlMmNnOoPp 0123456789"},
@@ -151,46 +125,13 @@ namespace UltraCanvas {
             {36, "36pt", "The quick brown fox jumps over the lazy dog."},
         };
 
-        long sampleId = 3620;
         for (const auto& sample : samples) {
-            // Size label
-            auto sizeLabel = std::make_shared<UltraCanvasLabel>(
-                "SizeLabel" + sample.label,  30, currentY + 2, 40, 20);
-            sizeLabel->SetText(sample.label);
-            sizeLabel->SetFontSize(10);
-            sizeLabel->SetTextColor(Color(150, 150, 150, 255));
-            mainContainer->AddChild(sizeLabel);
-
-            // Sample text
-            auto textLabel = std::make_shared<UltraCanvasLabel>(
-                "SampleText" + sample.label,  80, currentY, 900, static_cast<long>(sample.fontSize * 2.5));
-            textLabel->SetText(sample.text);
-            textLabel->SetFontSize(sample.fontSize);
-            textLabel->SetWrap(TextWrap::WrapWord);
-            mainContainer->AddChild(textLabel);
-
-            sampleLabels.push_back(textLabel);
-            sampleLabels.push_back(sizeLabel);
-
-            currentY += static_cast<long>(sample.fontSize * 2.5) + 10;
+            addSample(sampleCard, "SizeLabel" + sample.label, "SampleText" + sample.label, sample, 40, false);
         }
 
-        currentY += 10;
-
-        // Separator
-        auto sep3 = std::make_shared<UltraCanvasContainer>("TextRenderSep3", 20, currentY, 960, 2);
-        sep3->SetBackgroundColor(Color(200, 200, 200, 255));
-        mainContainer->AddChild(sep3);
-        currentY += 15;
-
         // Bold samples
-        auto boldTitle = std::make_shared<UltraCanvasLabel>("BoldSampleTitle", 20, currentY, 400, 25);
-        boldTitle->SetText("Bold Text Samples");
-        boldTitle->SetFontSize(14);
-        boldTitle->SetFontWeight(FontWeight::Bold);
-        boldTitle->SetTextColor(Color(50, 50, 150, 255));
-        mainContainer->AddChild(boldTitle);
-        currentY += 35;
+        auto boldCard = DemoKit::AddCard(mainContainer, "BoldSampleTitle", "Bold Text Samples");
+        boldCard->layout.SetFlexGap(10);
 
         std::vector<SampleDef> boldSamples = {
             {12, "12pt Bold", "The quick brown fox jumps over the lazy dog. AaBbCcDdEeFfGgHhIiJjKkLlMmNnOoPp 0123456789"},
@@ -199,25 +140,7 @@ namespace UltraCanvas {
         };
 
         for (const auto& sample : boldSamples) {
-            auto sizeLabel = std::make_shared<UltraCanvasLabel>(
-                "BoldSizeLabel" + sample.label,  30, currentY + 2, 70, 20);
-            sizeLabel->SetText(sample.label);
-            sizeLabel->SetFontSize(10);
-            sizeLabel->SetTextColor(Color(150, 150, 150, 255));
-            mainContainer->AddChild(sizeLabel);
-
-            auto textLabel = std::make_shared<UltraCanvasLabel>(
-                "BoldSample" + sample.label,  110, currentY, 870, static_cast<long>(sample.fontSize * 2.5));
-            textLabel->SetText(sample.text);
-            textLabel->SetFontSize(sample.fontSize);
-            textLabel->SetFontWeight(FontWeight::Bold);
-            textLabel->SetWrap(TextWrap::WrapWord);
-            mainContainer->AddChild(textLabel);
-
-            sampleLabels.push_back(textLabel);
-            sampleLabels.push_back(sizeLabel);
-
-            currentY += static_cast<long>(sample.fontSize * 2.5) + 10;
+            addSample(boldCard, "BoldSizeLabel" + sample.label, "BoldSample" + sample.label, sample, 70, true);
         }
 
         // ===== EVENT HANDLERS =====

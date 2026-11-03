@@ -7,8 +7,10 @@
 // Threading model: every backend call — from the worker and from cold-path
 // synchronous lookups alike — runs under one backend mutex, so the backends
 // stay lock-free. The cache has its own mutex and is safe from any thread.
+// Version: 1.2.1 - RunsCodeWhenOpened moved to UltraCanvasRunsCodeWhenOpened.h (header-only)
+// Version: 1.2.0 - RunsCodeWhenOpened
 // Version: 1.1.0
-// Last Modified: 2026-09-12
+// Last Modified: 2026-10-30
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasFileAssociations.h"
@@ -407,7 +409,10 @@ namespace FileAssociationsBackend {
 // ===== BACKEND FOR PLATFORMS WITHOUT ONE =====
 // WebAssembly has no application registry to enumerate or launch into; give
 // it inline no-op backends so the core compiles without a platform file.
-#if defined(__EMSCRIPTEN__)
+// Android has no backend yet either: handing a file to another app is an
+// ACTION_VIEW Intent through a content:// URI, not an association database,
+// so until OS/Android does that it reports "not available" here too.
+#if defined(__EMSCRIPTEN__) || defined(__ANDROID__)
 namespace FileAssociationsBackend {
     bool RefreshGlobalIndex() { return false; }
     std::vector<FileAssociationApp> ResolveFile(const std::string&) { return {}; }

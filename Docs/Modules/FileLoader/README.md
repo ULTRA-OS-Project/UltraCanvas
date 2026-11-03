@@ -61,6 +61,18 @@ if (photo.success) {
 }
 ```
 
+Its counterpart writes bytes to a local file as they are, for content no
+format writer stands for - a database blob, a download kept as it came. The
+file is written beside its name and moved there when complete, so a write
+that fails never leaves half a file in place of the one that was there:
+
+```cpp
+std::string error;
+if (!UltraCanvasFileLoader::SaveFile("photo copy.heic", photo.bytes, error)) {
+    // error says why: the folder cannot be written, the disk is full
+}
+```
+
 ### Typed Object Loaders
 
 Beyond raw bytes, FileLoader can open a file straight into the matching

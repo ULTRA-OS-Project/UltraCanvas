@@ -1,7 +1,8 @@
 // OS/Android/UltraCanvasAndroidApplication.cpp
 // Android platform implementation for UltraCanvas Framework.
+// Version: 1.0.1 - InitializeNative marks the application initialized, so Run() runs
 // Version: 1.0.0
-// Last Modified: 2026-10-17
+// Last Modified: 2026-10-21
 // Author: UltraCanvas Framework
 
 // The public headers first: they define the base classes and then pull in the
@@ -188,6 +189,12 @@ namespace UltraCanvas {
         // that text editing started/stopped - drive the soft keyboard off it.
         UltraCanvasCaret::GetInstance().onTextEditingChanged =
                 [this](bool active) { OnTextEditingChanged(active); };
+
+        // What Run() checks, as every other backend sets it here. Without it
+        // the first emulator run initialised the whole demo and then stopped
+        // at "Cannot run - application not initialized", before any frame.
+        initialized = true;
+        running = false;
         return true;
     }
 

@@ -1,7 +1,9 @@
 // Apps/DemoApp/UltraCanvasDendrogramExamples.cpp
 // Demo — UltraCanvasDendrogram showcase, 6 styles
+// Version: 1.7.0 - the shared page look (UltraCanvasDemoPageKit): the tabs in a
+//                  card filling the page area, control bars that wrap
 // Version: 1.6.0
-// Last Modified: 2026-06-05
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 //
 // Changelog:
@@ -25,6 +27,7 @@
 #include "UltraCanvasSpacer.h"
 #include "CSSLayout/CSSLayout.h"
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "Plugins/Diagrams/UltraCanvasDendrogram.h"
 #include "Plugins/Diagrams/UltraCanvasDendrogramLayout.h"
 #include <unordered_map>
@@ -87,40 +90,36 @@ static std::shared_ptr<UltraCanvasContainer> MakeControlBar(
     long& uid, std::shared_ptr<UltraCanvasDendrogram> d, const std::string& info)
 {
     // Two-line flex column: a row of buttons (line 1) and the info label (line 2).
-    // Auto width (stretches to the tab body); fixed height.
-    auto bar = std::make_shared<UltraCanvasContainer>("ctrl_"+d->GetIdentifier(), 0, 0, 0, 62);
+    // Auto width (stretches to the tab body); as tall as its lines - the
+    // buttons wrap and the info wraps when the tab is narrow.
+    auto bar = DemoKit::CreateColumn("ctrl_"+d->GetIdentifier(), 2);
     bar->SetBackgroundColor(Color(247,247,250,255));
-    bar->layout.SetFlexColumn().SetFlexGap(2)
-               .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     bar->SetPadding(6, 4);
 
     // Line 1 — button row.
-    auto btnRow = std::make_shared<UltraCanvasContainer>("ctrlrow_"+d->GetIdentifier(), 0, 0, 0, 30);
-    btnRow->layout.SetFlexRow().SetFlexGap(6)
-                  .SetFlexAlignItems(CSSLayout::AlignItems::Center);
-    btnRow->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-    bar->AddChild(btnRow);
+    auto btnRow = DemoKit::CreateRow("ctrlrow_"+d->GetIdentifier(), 6);
+    btnRow->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    DemoKit::Add(bar, btnRow);
 
+    // bw 0: the button is as wide as its text.
     auto mkBtn = [&](const std::string& sfx, int bw, const std::string& lbl,
                      std::function<void()> cb) {
         auto btn = std::make_shared<UltraCanvasButton>(sfx+"_"+d->GetIdentifier(), 0, 0, bw, 28, lbl);
         btn->onClick = std::move(cb);
-        btnRow->AddChild(btn);
+        DemoKit::Add(btnRow, btn);
     };
 
-    mkBtn("rst",  110, "Reset View",  [d]{ d->ResetView(); });
+    mkBtn("rst",  0,  "Reset View",  [d]{ d->ResetView(); });
     mkBtn("zi",   36, "+",           [d]{ d->SetZoom(d->GetZoom()*1.3f); });
     mkBtn("zo",   36, "−",           [d]{ d->SetZoom(d->GetZoom()/1.3f); });
-    mkBtn("exp",  120, "Expand All",  [d]{ d->ExpandAll(); });
-    mkBtn("col",  120, "Collapse All",[d]{ d->CollapseAll(); });
-    mkBtn("rpos", 120, "Reset Pos",    [d]{ d->ResetNodePositions(); });
+    mkBtn("exp",  0,  "Expand All",  [d]{ d->ExpandAll(); });
+    mkBtn("col",  0,  "Collapse All",[d]{ d->CollapseAll(); });
+    mkBtn("rpos", 0,  "Reset Pos",    [d]{ d->ResetNodePositions(); });
 
     // Line 2 — info label.
-    auto lbl = std::make_shared<UltraCanvasLabel>("inf_"+d->GetIdentifier(), info);
+    auto lbl = DemoKit::AddCaption(bar, "inf_"+d->GetIdentifier(), info);
     lbl->SetTextColor(Color(100,100,110,255));
     lbl->SetFontSize(11.0f);
-    lbl->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-    bar->AddChild(lbl);
     return bar;
 }
 
@@ -650,33 +649,20 @@ static std::shared_ptr<UltraCanvasContainer> MakeDemo6(long& uid)
 
 namespace UltraCanvas {
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateDendrogramExamples() {
-        // Stretchable flex column: title + subtitle (fixed height) and the tabs
-        // (grow to fill). Auto size so the host's flex-grow/stretch sizes us to the
-        // display area and the window resize propagates down via Measure/Arrange.
-        auto container = std::make_shared<UltraCanvasContainer>("DendrogramExamples");
-        container->SetBackgroundColor(Color(255,255,255,255));
-        container->layout.SetFlexColumn().SetFlexGap(6)
-                 .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-        container->SetPadding(10, 8);
-        container->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-
-        auto titleLbl = std::make_shared<UltraCanvasLabel>("DendrogramTitle", 0, 0, 0, 34, "Dendrogram Analysis Suite");
-        titleLbl->SetFontSize(22.0f);
-        titleLbl->SetFontWeight(FontWeight::Bold);
-        titleLbl->SetTextColor(Color(20,20,30,255));
-        titleLbl->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        container->AddChild(titleLbl);
-
-        auto subLbl = std::make_shared<UltraCanvasLabel>("DendrogramSub", 0, 0, 0, 20,
+        auto container = DemoKit::CreatePage("DendrogramExamples", "Dendrogram Analysis Suite",
             "Interactive visualization of hierarchical data - Scroll to zoom, drag to pan, double-click to collapse");
-        subLbl->SetFontSize(12.0f);
-        subLbl->SetTextColor(Color(100,100,110,255));
-        subLbl->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        container->AddChild(subLbl);
+        // The dendrograms zoom and pan themselves and re-fit on resize: the
+        // page is the area's height and the tabs take what the title leaves.
+        container->SetFillsArea(true);
+
+        auto card = DemoKit::CreateCard("DendrogramCard");
+        card->SetPadding(4);
+        DemoKit::Add(container, card, 1);
 
         auto tabs = std::make_shared<UltraCanvasTabbedContainer>("DendrogramTabs", 0, 0, 0, 0);
         tabs->SetTabPosition(TabPosition::Top);
         tabs->SetTabStyle(TabStyle::Modern);
+        DemoKit::Add(card, tabs, 1);
         tabs->layoutItem.SetFlex(1, 1, CSSLayout::Dimension::Px(0))
                         .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
@@ -688,8 +674,6 @@ namespace UltraCanvas {
         tabs->AddTab("Phylogenetic (H)",      MakeDemo4(uid));
         tabs->AddTab("Circular Sectors (L)",  MakeDemo5(uid));
         tabs->AddTab("Rate Gradient",         MakeDemo6(uid));
-
-        container->AddChild(tabs);
 
         return container;
     }

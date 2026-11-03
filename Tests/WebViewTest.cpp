@@ -6,12 +6,15 @@
 // failed load shows an error page, pictures that arrive later rebuild the
 // page, a non-HTML answer goes to the host, mailto: links go to the host,
 // a page left before it answered never replaces the next one, and
-// target="_blank" links go to the host as new windows.
+// target="_blank" links go to the host as new windows. A viewer of local
+// files (SetOpensWebLinks(false)) sends web links to the host, and Clear
+// leaves nothing on show.
 //
 // Headless: the view is laid out by the CSSLayout engine on an offscreen
 // render context; "the next turn of the UI loop" is a queue the test runs.
+// Version: 1.1.0 - SetOpensWebLinks, Clear
 // Version: 1.0.0
-// Last Modified: 2026-10-12
+// Last Modified: 2026-10-30
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasWebView.h"
@@ -574,6 +577,33 @@ static void TestNewWindowLinks() {
     Check(plain.view->GetTitle() == "A", "without onOpenInNewWindow a _blank link opens in the view");
 }
 
+static void TestLocalViewerSwitches() {
+    std::printf("SetOpensWebLinks(false) sends web links to the host; Clear empties the view\n");
+    Fixture f;
+    f.view->SetOpensWebLinks(false);
+    f.web.Add("file:///docs/index.html", "<title>Index</title>"
+                                         "<p><a href='https://x.org/'>web</a> <a href='other.html'>other</a></p>");
+    f.web.Add("file:///docs/other.html", "<title>Other</title><p>the other page</p>");
+    f.view->Navigate("file:///docs/index.html");
+    f.Settle();
+    Check(f.view->GetTitle() == "Index", "the local page is shown");
+    auto* web = f.Label("web");
+    if (web && web->onLinkActivated) web->onLinkActivated("https://x.org/");
+    f.Settle();
+    Check(f.external.size() == 1 && f.external[0] == "https://x.org/", "a web link goes to the host");
+    Check(f.view->GetTitle() == "Index", "and the page stays");
+    auto* other = f.Label("other");
+    if (other && other->onLinkActivated) other->onLinkActivated("other.html");
+    f.Settle();
+    Check(f.view->GetTitle() == "Other", "a local link still opens in the view");
+
+    f.view->Clear();
+    f.Settle();
+    Check(f.view->GetPage() == nullptr && f.view->GetUrl().empty(), "Clear lets the page go");
+    Check(!f.view->CanGoBack() && !f.view->CanGoForward(), "and the history");
+    Check(f.Label("the other page") == nullptr, "nothing of it is built");
+}
+
 int main() {
     UCImage::InitializeImageSubsysterm("WebViewTest");
     TestLoadAndLinks();
@@ -586,6 +616,7 @@ int main() {
     TestFileUpload();
     TestDownloadKeepsPage();
     TestNewWindowLinks();
+    TestLocalViewerSwitches();
     std::printf("\n%s (%d failures)\n", g_failures == 0 ? "PASSED" : "FAILED", g_failures);
     return g_failures == 0 ? 0 : 1;
 }

@@ -154,7 +154,7 @@ json BuildRequestBody(const ChatRequest& request, const TextLLMConfig& config,
         body["tools"] = std::move(tools);
         switch (request.toolChoice) {
             case ToolChoice::Auto:     break;   // API default
-            case ToolChoice::None:     body["tool_choice"] = "none"; break;
+            case ToolChoice::NoTool:     body["tool_choice"] = "none"; break;
             case ToolChoice::Required: body["tool_choice"] = "required"; break;
             case ToolChoice::Specific:
                 body["tool_choice"] = {
@@ -385,7 +385,7 @@ private:
 
         if (j.contains("error") && j["error"].is_object()) {
             state.streamError = MapOpenAIError(0, sse.data);
-            if (state.streamError.code == ErrorCode::None ||
+            if (state.streamError.code == ErrorCode::Ok ||
                 state.streamError.code == ErrorCode::Unknown) {
                 state.streamError.code = ErrorCode::ProviderError;
             }

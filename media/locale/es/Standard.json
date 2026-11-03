@@ -329,6 +329,7 @@
   "Zoom In": "Acercar",
   "Zoom level": "Nivel de zoom",
   "Zoom Out": "Alejar",
+  "{0} - no preview stored in this vector document": "{0} - no hay vista previa guardada en este documento vectorial",
   "{0} could not be opened": "No se pudo abrir {0}",
   "{n} byte": {
     "one": "{n} byte",

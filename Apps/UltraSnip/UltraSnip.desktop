@@ -1,0 +1,37 @@
+[Desktop Entry]
+# The freedesktop shortcut for UltraSnip. `Icon=UltraSnip` is resolved
+# through the icon themes; the install rules put media/appicon/UltraSnip.png
+# and .svg into share/icons/hicolor.
+#
+# UltraDesktop starts it too, with --rectangle / --window / --screen and
+# --video, from its screenshot button and Super+Shift+S.
+Type=Application
+Version=1.5
+Name=UltraSnip
+GenericName=Screenshot and Screen Recording
+Comment=Take a picture or a video of an area, a window or the whole screen
+Exec=UltraSnip
+TryExec=UltraSnip
+Icon=UltraSnip
+Terminal=false
+StartupNotify=true
+StartupWMClass=UltraSnip
+Categories=Utility;Graphics;
+Keywords=screenshot;snip;snipping;screen;capture;record;recording;video;
+Actions=Rectangle;Window;Screen;Record;
+
+[Desktop Action Rectangle]
+Name=Snip an area
+Exec=UltraSnip --rectangle
+
+[Desktop Action Window]
+Name=Snip a window
+Exec=UltraSnip --window
+
+[Desktop Action Screen]
+Name=Snip the whole screen
+Exec=UltraSnip --screen
+
+[Desktop Action Record]
+Name=Record an area
+Exec=UltraSnip --rectangle --video

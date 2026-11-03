@@ -1,5 +1,6 @@
 // core/UltraCanvasTabbedContainer.cpp
 // Enhanced tabbed container component with overflow dropdown and search functionality
+// Version: 2.11.1 - tab titles and the drag ghost's title are centred on their capitals
 // Version: 2.11.0 - ApplyTheme: the tabs from the theme roles
 // Version: 2.10.0 - the overflow list opens anchored to its button: above it when there
 //                  is no room below
@@ -11,7 +12,7 @@
 // Version: 2.2.0 - Arrange takes its box without a block-layout pass over the tab
 //                 contents, which reset the active page's scroll position on a resize
 // Version: 2.1.0
-// Last Modified: 2026-10-10
+// Last Modified: 2026-10-24
 // Author: UltraCanvas Framework
 #include "UltraCanvasTabbedContainer.h"
 #include "UltraCanvasApplication.h"
@@ -2386,7 +2387,9 @@ namespace UltraCanvas {
             ctx->SetTextPaint(textColor);
             ctx->SetFontSize(fontSize);
             Size2Di txtSize = ctx->GetTextLineDimensions(displayText);
-            int textY = tabBounds.y + (tabBounds.height - txtSize.height) / 2;
+            // Centred on its capitals, as a button's caption is, not on the
+            // line box, which sits high or low with the font.
+            int textY = ctx->TextTopCentredOnCaps(Rect2Dd(tabBounds.x, tabBounds.y, tabBounds.width, tabBounds.height));
             ctx->DrawText(displayText, Point2Di(xOffset, textY));
 
             xOffset += txtSize.width + iconPadding;
@@ -2542,7 +2545,7 @@ namespace UltraCanvas {
                                                     std::max(0, pill.width - 2 * tabPadding));
             Size2Di textSize = ctx->GetTextLineDimensions(title);
             ctx->DrawText(title, Point2Di(static_cast<int>(ghost.x) + (pill.width - textSize.width) / 2,
-                                          static_cast<int>(ghost.y) + (pill.height - textSize.height) / 2));
+                                          ctx->TextTopCentredOnCaps(ghost)));
             return;
         }
 
@@ -2577,7 +2580,7 @@ namespace UltraCanvas {
         std::string title = tabs[draggingTabIndex]->title;
         Size2Di textSize = ctx->GetTextLineDimensions(title);
         int textX = ghostX + (tabBounds.width - textSize.width) / 2;
-        int textY = ghostY + (tabBounds.height - textSize.height) / 2;
+        int textY = ctx->TextTopCentredOnCaps(Rect2Dd(ghostX, ghostY, tabBounds.width, tabBounds.height));
         ctx->DrawText(title, Point2Di(textX, textY));
 
         // Restore stroke width

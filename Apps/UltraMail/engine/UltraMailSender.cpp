@@ -1,4 +1,5 @@
 // Apps/UltraMail/engine/UltraMailSender.cpp
+// Version: 0.5.0 - a raw message (signed and/or encrypted) sent as it is
 // Version: 0.4.0 - sends the Message-ID the outbox gave the message
 // Version: 0.3.0 - sends a reply's In-Reply-To and References
 // Version: 0.2.0 - sends the text alternative and inline pictures of an HTML
@@ -9,7 +10,7 @@
 namespace UltraMail {
 
 UltraNetResult MailSender::Send(const Draft& draft, const std::string& serverUrl,
-                                const UltraNetMailOptions& options) {
+                                const UltraNetMailOptions& options, const std::string& rawMessage) {
     UltraNetMailMessage m;
     m.from = draft.fromName.empty()
         ? draft.fromAddr
@@ -32,6 +33,10 @@ UltraNetResult MailSender::Send(const Draft& draft, const std::string& serverUrl
     // A reply stays in its thread at the recipient.
     if (!draft.inReplyTo.empty())  m.headers["In-Reply-To"] = draft.inReplyTo;
     if (!draft.references.empty()) m.headers["References"]  = draft.references;
+
+    // A signed or encrypted message goes out exactly as it was made: the
+    // fields above give the envelope (sender, recipients - Bcc too).
+    m.rawMessage = rawMessage;
 
     UltraNetMailOptions opts = options;
     opts.serverUrl = serverUrl;

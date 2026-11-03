@@ -11,20 +11,25 @@ from anywhere; which engine actually backs that connection (SQLite,
 PostgreSQL, MySQL/MariaDB, …) is a configuration detail, not something
 the app code hard-codes.
 
-> Status: **Stage 1 implemented, the PostgreSQL driver from Stage 2, schema
-> introspection, streaming cursors, per-statement scripts and cancelling.**
+> Status: **Stage 1 implemented, the PostgreSQL and MySQL / MariaDB drivers
+> from Stage 2, schema introspection, server administration, streaming
+> cursors, per-statement scripts, cancelling, statement observers and
+> encryption at rest for SQLite.**
 > The SQLite core, connection registry, parameterized queries, prepared
 > statements, transactions and versioned migrations are built and tested —
 > `UltraCanvas/{include,core}/UltraDatabase/`, library target `UltraDatabase`
 > (`libultradatabase.a`), test suite `Tests/UltraDatabase`
-> (`ULTRACANVAS_BUILD_DATABASE_TESTS=ON`, 56 tests, the PostgreSQL ones
-> against a live server where one is configured). The **PostgreSQL** driver
-> (`UltraDatabasePostgresDriver.cpp`, over libpq) is built whenever libpq is
-> found at configure time; it takes `?` placeholders, verifies TLS by default
-> and reads the password from UltraVault. UltraFIBU's multi-user mode runs on
-> it, and CI tests it against a real server (`Tests/UltraFIBU`). The other
-> networked drivers (MySQL, …), async queries and pooling described below
-> are still the Stage 2/3 plan.
+> (`ULTRACANVAS_BUILD_DATABASE_TESTS=ON`, 103 tests, the PostgreSQL and MySQL
+> ones against a live server where one is configured). The **PostgreSQL**
+> driver (`UltraDatabasePostgresDriver.cpp`, over libpq) is built whenever
+> libpq is found at configure time; it takes `?` placeholders, verifies TLS by
+> default and reads the password from UltraVault. UltraFIBU's multi-user mode
+> runs on it, and CI tests it against a real server (`Tests/UltraFIBU`). The
+> **MySQL / MariaDB** driver (`UltraDatabaseMysqlDriver.cpp`, over MariaDB
+> Connector/C) is built whenever libmariadb is found, and speaks to MariaDB
+> and MySQL servers alike: the same `?` placeholders, as server-side prepared
+> statements, TLS verified by default, the password from UltraVault. Async
+> queries and pooling described below are still the Stage 2/3 plan.
 
 ---
 
@@ -94,6 +99,17 @@ socket; the pool opens and reuses physical connections lazily as
 queries run, and reconnects on drop. `UltraDb_CloseConnection(name)`
 drains and removes a pool.
 
+Re-registering or closing a name never pulls a connection out from under a
+call that is using it, on any thread. Each call holds its connection until it
+returns, and so does every open statement, cursor and transaction handle. The
+old connection closes when the last of them ends; every call that starts after
+the change uses the new registration. Closing a handle (`UltraDb_Finalize`,
+`UltraDb_CloseCursor`) while another thread's call on it runs works the same
+way: the handle is gone for later calls, and the running one finishes.
+`UltraDb_CancelQuery(name)` still reaches a statement that began on the name
+before it was re-registered or closed, so a Stop button keeps working while
+the connection's settings change under it.
+
 ---
 
 ## Engines at a glance
@@ -112,8 +128,8 @@ persistence with no external server and no extra dependency.
 
 | Engine | Category | Backing library |
 |---|---|---|
-| PostgreSQL | Relational (SQL) | `libpq` |
-| MySQL / MariaDB | Relational (SQL) | `libmariadb` |
+| PostgreSQL | Relational (SQL) | `libpq` - built into the module when found |
+| MySQL / MariaDB | Relational (SQL) | `libmariadb` (MariaDB Connector/C, LGPL-2.1, linked dynamically) - built into the module when found |
 | Microsoft SQL Server | Relational (SQL) | ODBC / FreeTDS |
 | DuckDB | Embedded analytics (OLAP) | bundled/optional |
 | Redis / Valkey | Key-value cache | `hiredis` |
@@ -227,9 +243,30 @@ PostgreSQL they are server-side - `WITH HOLD` outside a transaction, so the
 connection is free for other statements between pages, `WITHOUT HOLD`
 inside one, where they end with it. **Scripts** are split as psql splits
 them on PostgreSQL (semicolons outside text, comments and `BEGIN ATOMIC`
-bodies) and by SQLite itself on SQLite; each statement reports its text,
-outcome and rows. **Cancelling** uses `sqlite3_interrupt` and `PQcancel`,
+bodies), by SQLite itself on SQLite, and as the mysql client splits them on
+MySQL / MariaDB (`DELIMITER` lines, `BEGIN ... END` bodies, `#` comments,
+backslash escapes); each statement reports its text, outcome and rows.
+`UltraDb_MysqlScriptStatements(script)` gives the same MySQL split as byte
+offsets - where each statement begins, ends and its terminator ends - for
+an editor that runs the statement under the caret or counts a file's
+statements before it imports them. **Cancelling** uses `sqlite3_interrupt` and `PQcancel`,
 both safe from another thread while the statement holds the connection.
+
+**Watching statements.** `UltraDb_AddStatementObserver` reports every
+statement that runs through the calls above, on any connection, once it has
+ended: its kind (query, exec, transaction, a script's statement, a cursor,
+introspection), its text, how many values were bound - never the values -
+the rows it returned, whether it ran in a transaction, its time and its
+outcome. An admin tool's SQL log is one observer (UltraDBAdmin's); a debug
+trace another. With no observer added nothing is timed or copied.
+
+```cpp
+const int id = UltraDb_AddStatementObserver([](const UltraDbStatementEvent& e) {
+    // On the thread that ran it, outside every lock of the module: quick and thread-safe.
+    std::fprintf(stderr, "%s: %zu rows, %s\n", e.connection.c_str(), e.rows, e.sql.c_str());
+});
+UltraDb_RemoveStatementObserver(id);
+```
 
 **Values.** `UltraDbValue` is a small variant: null, bool, int64,
 double, text (UTF-8), blob (bytes), and timestamp. Typed accessors
@@ -272,6 +309,13 @@ for (const UltraDbColumnInfo& c : rs.ColumnInfo())
     ;  // c.declaredType ("numeric(12,2)"), c.sourceSchema / sourceTable / sourceColumn
 ```
 
+On MySQL and MariaDB a schema is a database: one connection lists every
+database its user may see (but the server's own: `mysql`,
+`information_schema`, `performance_schema`, `sys`), read from
+`information_schema`; a column's default comes back as it would be written
+in the DDL on both servers (`'none'`, `0`, `current_timestamp()`), whatever
+each reports. Names are quoted with backticks.
+
 `UltraDb_ListConnections()` lists the registered connection names. A driver
 that cannot introspect answers `Unsupported`. On PostgreSQL the column
 metadata costs one catalog query per table the first time and nothing after
@@ -285,9 +329,199 @@ has `SQLITE_ENABLE_COLUMN_METADATA` (checked at configure time).
 and `float4` as `Double`. Numbers cross the driver dot-decimal in both
 directions whatever the process's locale, and `AsString()` of a `Double` is
 dot-decimal too: the shortest text that reads back exactly (`3.14`, not
-`3,140000`).
+`3,140000`). MySQL's `DECIMAL` is `Text` too, and so is an unsigned
+`BIGINT` too large for an `Int`; a BIT column is the `Int` its bits make, a
+`BINARY` / `VARBINARY` / `BLOB` column a `Blob`, a date or time its text.
+
+### Server administration
+
+`UltraDatabaseServer.h` is what a server is doing and how it is set up - the
+Server tab of UltraDBAdmin (the proposal's G10). One shape for PostgreSQL
+and MySQL / MariaDB, fixed column names whatever the engine; SQLite has no
+server and answers `Unsupported`.
+
+```cpp
+UltraDbResultSet rows;
+UltraDb_ServerSessions("crm", rows);          // id, user, database, application, client,
+                                              // state, running (s), waiting, query, this_session
+UltraDb_ServerSettings("crm", "mem", rows);   // name, value, unit, category, description, source
+UltraDb_ServerSizes("crm", "public", rows);   // kind, name, bytes, data_bytes, index_bytes
+UltraDb_ServerStatus("crm", rows);            // name, value, counter - for a monitor to sample
+
+std::string sql;                              // what a confirmation shows first:
+UltraDb_StopSessionSql("crm", id, false, sql);  // SELECT pg_cancel_backend(42) / KILL QUERY 42
+bool stopped = false;
+UltraDb_StopSession("crm", id, false, stopped); // false: gone, or not this user's to stop
+```
+
+The asking session is never stopped from itself. A settings filter matches
+the name or the description in any case, `%` and `_` typed in it taken as
+themselves. MySQL's settings come from `performance_schema` (with where each
+value came from), MariaDB's from `information_schema.SYSTEM_VARIABLES` (with
+a description for each).
+
+`UltraDb_ServerStatus` is what a monitor samples every few seconds: a row per
+measure the engine keeps, each a gauge (`connections`, `active` - not
+counting the asking session) or a counter that only grows (`queries`,
+`transactions`, `rows_read`, `rows_written`, `cache_reads`, `disk_reads`,
+`bytes_received`, `bytes_sent`); the differences of two readings are the
+server's load. PostgreSQL's come from `pg_stat_activity` and
+`pg_stat_database` summed over its databases (no statement count or traffic
+there), MySQL's and MariaDB's from `SHOW GLOBAL STATUS` - InnoDB's row
+counts, or on MariaDB 10.6 and later, which keeps none, the handler's.
+
+### SSH tunnels
+
+A server behind a bastion - only the bastion's SSH port open - is reached
+through an SSH tunnel (`UltraDatabaseTunnel.h`, the proposal's G9). The
+connection's options name the bastion; `host` and `port` stay the
+database's, as the bastion reaches it. When the connection opens, the tunnel
+opens first, and the driver connects through it; every session the driver
+opens for the connection (a MySQL cursor's, a cancel's) goes through the same
+tunnel, and the tunnel closes with the connection.
+
+```cpp
+UltraDb_UseUltraNetSshTunnels();                       // once: UltraDatabaseSshTunnel.h
+
+cfg.host = "db.internal";                              // as the bastion reaches it
+cfg.options["ssh_host"] = "bastion.example.com";
+cfg.options["ssh_user"] = "deploy";
+cfg.options["ssh_credentials"] = "vault:crm.ssh";      // a password or a private key, in UltraVault
+cfg.options["ssh_key_passphrase"] = "vault:crm.ssh-passphrase";
+cfg.options["ssh_host_key"] = "SHA256:Rf5Z...";        // trusted; "": known_hosts decides
+```
+
+The module opens no socket itself: the application installs an opener once
+(`UltraDb_SetTunnelOpener`). `UltraDatabaseSshTunnel.h` is one over UltraNet's
+SSH plug-in, header-only, so UltraDatabase links no network library and only
+a program that includes it carries the bridge. The secrets are read from
+UltraVault by the module, handed to the opener and wiped. An unknown bastion
+key fails the connection with `HostKeyUnknown` and the key in
+`UltraDbResult::hostKeyFingerprint` - for the user to compare and trust - and
+a changed one with `HostKeyChanged`; neither is ever accepted on its own.
+
+Through the tunnel the driver connects to 127.0.0.1 (`ThroughTunnel` on the
+driver): PostgreSQL as `hostaddr`, with the certificate still checked against
+`host`; MySQL's Connector/C can check a certificate only against the address
+it connects to, so `VerifyFull` through a tunnel is refused with that reason
+(`Require`, or no TLS, is the choice there - the SSH tunnel itself encrypts
+the way to the bastion). A tunnel to SQLite, or to a socket, is refused.
+
+### Through a relay
+
+An application that cannot reach a database itself - a page in a browser,
+which opens no TCP connection and must hold no password - reaches it
+through a relay on the database's side (`UltraDatabaseRelay.h`): the
+`relay` driver sends every call of a connection there, and the relay runs
+it on a connection configured on its own side and answers. Queries,
+scripts, cursors, cancelling, introspection and server administration all
+go through it unchanged, so an application written against UltraDatabase
+works through a relay as it is.
+
+```cpp
+UltraDb_UseUltraNetRelay();                            // once: UltraDatabaseRelayUltraNet.h
+
+UltraDbConnectionConfig cfg;
+cfg.name = "crm";
+cfg.driver = "relay";
+cfg.host = "wss://db.example.com/relay";               // the relay
+cfg.database = "crm";                                  // a connection it offers, by name
+cfg.options["relay_token"] = token;                    // the user's token
+UltraDb_RegisterConnection(cfg);
+
+std::vector<UltraDbRelayConnection> offered;           // what this token may open
+UltraDb_RelayConnections("wss://db.example.com/relay", token, offered);
+```
+
+The transport is the application's (`UltraDb_SetRelayConnector`):
+`UltraDatabaseRelayUltraNet.h`, header-only, is one over UltraNet's
+WebSocket (it needs a libcurl built with WebSocket support - 7.86 or later,
+`ws` among its protocols); a browser build passes one over Emscripten's
+WebSocket. The wire format is JSON text, one request and one answer per
+message, matched by `id`, so a cancel goes out while a query waits.
+
+The other side is `UltraDbRelayServer`: it is given the connections it
+offers by name - the client cannot name a host, so the relay is no proxy
+into the network - and its users by the SHA-256 of their tokens
+(`UltraDb_RelayTokenHash`), each with *read* or *write* access to each
+connection; *read* opens the connection in the driver's read-only mode, so
+the database refuses a change whatever the client sends. Its limits
+(`UltraDbRelayLimits`) cap the rows of a page and of a result, the requests
+a minute and the sessions of a user, and how long a request may run: a
+query, a script or a cursor's page still running after
+`statementTimeoutSeconds` (300 by default) is stopped - a watchdog thread
+cancels the session's own connection, which works on every engine - and
+answered `Cancelled`, saying why. Every statement it runs reaches the audit
+callback with the user and the address that ran it. It answers requests and
+opens no socket: the listener and TLS around it are the program's
+(`Apps/UltraDBAdmin/relay`).
+
+Besides the tokens, a program may sign its users in its own way:
+`SetSignIn(label, check)` gives the server a callback asked about a token no
+user's hash matches - the relay program's OpenID Connect sign-in hands out
+tickets and knows them - and a label clients show; a client asks
+`UltraDb_RelaySignInOffer(url, label)` what sign-in a relay offers before it
+has any token.
 
 ---
+
+### Encrypted at rest
+
+A SQLite connection with an `encryptionKey` (32 bytes, an
+`UltraCryptSecureBuffer` the application holds - typically random and kept
+in its own UltraVault) reads and writes a file that is ciphertext on disk:
+every page of the database, of its WAL and of its rollback journal is
+sealed with XChaCha20-Poly1305 as it is written
+(`UltraDatabaseEncryption.h`). It is a VFS in front of the platform's, so
+it works on the system's own libsqlite3, on every platform; nothing in the
+queries changes.
+
+<!-- doc-check: std::string dataDir; -->
+```cpp
+UltraCryptSecureBuffer raw;
+UltraCrypt_RandomSecureBuffer(32, raw);          // once; then kept in the app's vault
+auto key = std::make_shared<const UltraCryptSecureBuffer>(std::move(raw));
+
+UltraDbConnectionConfig mail;
+mail.name          = "mail";
+mail.database      = dataDir + "/mail.db";
+mail.encryptionKey = key;
+UltraDb_RegisterConnection(mail);
+UltraDb_Exec("mail", "PRAGMA journal_mode=WAL");
+
+// An existing plain file becomes an encrypted one in place - and back,
+// or from one key to another - with no connection open on it:
+UltraDb_SetSqliteFileEncryption(dataDir + "/contacts.db", nullptr, key.get());
+```
+
+- **Refused as what it is.** A wrong key is `CredentialsUnavailable`; a plain
+  file opened with a key is refused with a pointer to
+  `UltraDb_SetSqliteFileEncryption`; an encrypted file opened without one is
+  "not a database" to SQLite, the sqlite3 shell and UltraDBAdmin.
+  `UltraDb_InspectSqliteFile` says which a file is without opening it, and
+  `UltraDb_SqliteKeyOpens` whether a key opens it.
+- **What it protects:** every page's content - rows, indexes, the schema -
+  and every page's place: each page's tag covers its number, so a changed
+  or moved page fails to read (`SQLITE_IOERR_DATA`).
+- **What it does not hide:** the file's size and number of pages; that WAL
+  frames and journal records carry SQLite's own checksums, computed over the
+  page as SQLite sees it (a guess of a page's whole content could be
+  confirmed); an older copy of the file put back in its place.
+- **On disk:** 4096-byte pages whose last 40 bytes (SQLite's reserved bytes)
+  hold the nonce and tag, so 4056 usable bytes a page; page 1 starts with
+  `UltraDB:XC20P:1` instead of `SQLite format 3`. Temporary data stays in
+  memory (`temp_store=MEMORY`); the encrypting VFS refuses to create a
+  temporary file.
+- **Recovery works through it.** A WAL left by a crash and a hot rollback
+  journal are replayed as SQLite replays them; the suite does both on
+  copies taken mid-write.
+- **The key is the application's.** The module never stores it. Changing
+  the password that protects the application's vault leaves the database
+  as it is; changing the key itself is `UltraDb_SetSqliteFileEncryption`
+  with both keys.
+- Available wherever UltraCrypt has its backend
+  (`UltraDb_SqliteEncryptionAvailable`); elsewhere a key is refused with
+  `Unsupported`, never ignored.
 
 ## Threading
 
@@ -298,6 +532,12 @@ and deliver results via a callback. As in UltraNet, **async callbacks
 run on a UltraDatabase worker thread — callers must marshal to their
 own loop** (`UltraCanvasApplication::PostToUIThread(fn)`) and must not
 block. The UI never waits on the database.
+
+Every call may come from any thread. Calls on one connection are serialised
+by the driver, one statement at a time. `UltraDb_CancelQuery` is the exception:
+it reaches a running statement without waiting. Registering, re-registering
+and closing a name are safe while other threads' calls run on it (see *Core
+idea* above).
 
 ---
 
@@ -313,14 +553,19 @@ block. The UI never waits on the database.
   (`UltraVault::Initialize`, with its own file and passphrase) before it
   connects; the driver only reads from it, and reports "UltraVault is not
   open" rather than quietly opening an empty one. The password is wiped
-  from the driver's memory once libpq has it. Empty `credentials` means
-  libpq's own methods (peer / trust / `.pgpass`).
+  from the driver's memory once the client library has it. Empty
+  `credentials` means the server's own ways of knowing the user: libpq's
+  peer / trust / `.pgpass`, MariaDB's `unix_socket` and MySQL's
+  `auth_socket` over the server's socket file (a `host` that is a path).
+- **No client files for the server.** The MySQL driver turns `LOAD DATA
+  LOCAL` off: with it on, a server could ask for any file the program can
+  read.
 - **TLS for networked engines.** `UltraDbTls::{Disable,Prefer,Require,
   VerifyFull}` with verification on by default; certificate handling
   reuses the platform trust store (and UltraNet's TLS stack where a
   driver tunnels over it).
-- **At-rest encryption** for SQLite via the SQLCipher-compatible path,
-  opt-in per connection.
+- **At-rest encryption** for SQLite, opt-in per connection
+  (`encryptionKey`; see [Encrypted at rest](#encrypted-at-rest)).
 - **Least privilege.** Read-only connections (`readOnly = true`) are
   enforced by the driver where supported.
 
@@ -338,12 +583,22 @@ UltraCanvas/                          (or wherever the build places it)
 │   ├── UltraDatabaseValue.h          UltraDbValue, UltraDbRow, UltraDbResultSet
 │   ├── UltraDatabaseTransaction.h    Begin / Commit / Rollback
 │   ├── UltraDatabaseMigrate.h        versioned schema migrations
+│   ├── UltraDatabaseSchema.h         introspection, quoting names
+│   ├── UltraDatabaseServer.h         sessions, settings, sizes, status, stopping a session
+│   ├── UltraDatabaseTunnel.h         SSH tunnels: the options, the opener seam
+│   ├── UltraDatabaseSshTunnel.h      the opener over UltraNet's SSH plug-in (header-only)
+│   ├── UltraDatabaseRelay.h          the relay driver's seam, UltraDbRelayServer
+│   ├── UltraDatabaseRelayUltraNet.h  the relay's transport over UltraNet's WebSocket (header-only)
+│   ├── UltraDatabaseEncryption.h     SQLite files encrypted at rest
 │   └── UltraDatabasePlugins.h        IDatabaseDriverPlugin
-├── core/UltraDatabase/               (.cpp implementations + bundled SQLite)
+├── core/UltraDatabase/               (.cpp implementations)
+│   ├── UltraDatabaseSqlite*.cpp      the SQLite driver, its introspection, its encrypting VFS
+│   ├── UltraDatabasePostgres*.cpp    the PostgreSQL driver (libpq), its SQL lexing, introspection
+│   ├── UltraDatabaseMysql*.cpp       the MySQL / MariaDB driver (libmariadb), its script splitter, introspection
+│   ├── UltraDatabaseServerViews.cpp  server administration for both server engines
+│   └── UltraDatabaseRelay*.cpp       the relay: its JSON wire format, the client driver, the server
 ├── OS/<Platform>/UltraDatabaseSupport.cpp
-└── Plugins/UltraDatabase/
-    ├── postgresql/
-    ├── mysql/
+└── Plugins/UltraDatabase/            (later drivers as loadable plug-ins)
     ├── mssql/
     ├── redis/
     └── ...
@@ -402,12 +657,17 @@ headless data module usable from any ULTRA OS process.
 | Connection registry (lazy open) | Implemented |
 | Query / Exec / Prepare / values | Implemented |
 | Transactions + versioned migrations | Implemented |
-| Schema introspection, identifier quoting, result-column metadata | Implemented (SQLite, PostgreSQL) |
-| Streaming cursors, per-statement scripts, cancelling | Implemented (SQLite, PostgreSQL) |
-| Test suite (56 tests) | Passing |
+| Schema introspection, identifier quoting, result-column metadata | Implemented (SQLite, PostgreSQL, MySQL / MariaDB) |
+| Streaming cursors, per-statement scripts, cancelling | Implemented (SQLite, PostgreSQL, MySQL / MariaDB) |
+| Server administration (`UltraDatabaseServer.h`) | Implemented (PostgreSQL, MySQL / MariaDB) |
+| Statement observers (`UltraDb_AddStatementObserver`) | Implemented |
+| SSH tunnels (`UltraDatabaseTunnel.h`, `UltraDatabaseSshTunnel.h`) | Implemented (PostgreSQL, MySQL / MariaDB) |
+| Relay (`UltraDatabaseRelay.h`: the `relay` driver, `UltraDbRelayServer` with its limits and statement time-out, a program's own sign-in, `UltraDatabaseRelayUltraNet.h`) | Implemented |
+| Encryption at rest for SQLite (`UltraDatabaseEncryption.h`) | Implemented |
+| Test suite (103 tests) | Passing |
 | Connection pool | Planned (Stage 2) |
 | PostgreSQL driver (libpq) | Implemented — built when libpq is found; TLS `verify-full` by default; password from UltraVault |
-| MySQL / MariaDB driver | Planned (Stage 2) |
+| MySQL / MariaDB driver (libmariadb) | Implemented — built when libmariadb is found; server-side prepared statements; TLS verified by default; password from UltraVault; `LOAD DATA LOCAL` off |
 | Async queries | Planned (Stage 2) |
 | Other drivers (MSSQL, Redis, Mongo, DuckDB) | Tracked separately (Stage 3) |
 
@@ -415,11 +675,11 @@ headless data module usable from any ULTRA OS process.
 1. **Stage 1** — SQLite core, connection registry, `Query`/`Exec`/
    `Prepare`/values/transactions/migrations. Enough for every app's
    local storage (and all of UltraMail).
-2. **Stage 2** — async queries + worker pool, streaming cursors, the
-   driver-plugin manager, the MySQL/MariaDB driver. (The PostgreSQL
-   driver, with its UltraVault and TLS wiring, is done.)
+2. **Stage 2** — async queries + worker pool, the driver-plugin manager.
+   (The PostgreSQL and MySQL / MariaDB drivers, with their UltraVault and
+   TLS wiring, and streaming cursors are done.)
 3. **Stage 3** — remaining drivers (MSSQL, Redis, MongoDB, DuckDB),
-   at-rest encryption, read-replica/failover options.
+   read-replica/failover options. (At-rest encryption for SQLite is done.)
 
 ---
 

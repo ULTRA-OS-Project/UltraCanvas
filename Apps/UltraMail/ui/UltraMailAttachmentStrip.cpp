@@ -158,8 +158,17 @@ void AttachmentChip::ShowMenu(const UCEvent* atPointer) {
 // ---- AttachmentStrip -------------------------------------------------------
 
 std::shared_ptr<UltraCanvasContainer> AttachmentStrip::Build() {
-    strip_ = CreateContainer("attachmentStrip", 0, 0, 0, kChipH + 8);
+    strip_ = CreateContainer("attachmentStrip", 0, 0, 0, RowHeight());
     return strip_;
+}
+
+float AttachmentStrip::ColumnWidth() { return kChipW + 2 * kGap; }
+float AttachmentStrip::RowHeight()   { return kChipH + 8; }
+
+void AttachmentStrip::SetVertical(bool vertical) {
+    if (vertical == vertical_) return;
+    vertical_ = vertical;
+    SetAttachments(*attachments_);   // the chips again, the other way round
 }
 
 void AttachmentStrip::SetAttachments(std::vector<Attachment> attachments) {
@@ -171,15 +180,30 @@ void AttachmentStrip::SetAttachments(std::vector<Attachment> attachments) {
     // the body above it ended that far short of the pane's bottom.
     strip_->SetVisible(!attachments_->empty());
 
-    float x = kGap;
+    // Side by side: a row as tall as a chip, as wide as its column. One under
+    // the other: a column a chip wide, as tall as the chips (it scrolls in
+    // whatever holds it).
+    const float columnHeight =
+        kGap + static_cast<float>(attachments_->size()) * (kChipH + kGap);
+    if (vertical_) {
+        strip_->size.width  = CSSLayout::Dimension::Px(ColumnWidth());
+        strip_->size.height = CSSLayout::Dimension::Px(columnHeight);
+    } else {
+        strip_->size.width  = CSSLayout::Dimension::Auto();
+        strip_->size.height = CSSLayout::Dimension::Px(RowHeight());
+    }
+    strip_->InvalidateLayout();
+
+    float x = kGap, y = vertical_ ? kGap : 4.0f;
     for (std::size_t i = 0; i < attachments_->size(); ++i) {
         auto openCb = [this, i]() { if (onOpen)   onOpen((*attachments_)[i]); };
         auto saveCb = [this, i]() { if (onSaveAs) onSaveAs((*attachments_)[i]); };
         auto chip = std::make_shared<AttachmentChip>(
-            "att_" + std::to_string(i), x, 4, kChipW, kChipH,
+            "att_" + std::to_string(i), x, y, kChipW, kChipH,
             (*attachments_)[i], std::move(openCb), std::move(saveCb));
         strip_->AddChild(chip);
-        x += kChipW + kGap;
+        if (vertical_) y += kChipH + kGap;
+        else           x += kChipW + kGap;
     }
 }
 

@@ -4,11 +4,15 @@
 // dark presentation funnel with badges and annotations, a horizontal sales
 // funnel with a terminal callout, and a playground exposing every shape, scale
 // and colour mode live.
+// Version: 1.1.0 - the shared page look (UltraCanvasDemoPageKit): a page title
+//                  and description, the tabs in a card that fills the area,
+//                  every tab a flex page whose notes wrap beside or under the chart
 // Version: 1.0.0
-// Last Modified: 2026-07-29
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "Plugins/Charts/UltraCanvasFunnelChart.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasTabbedContainer.h"
@@ -28,10 +32,56 @@ namespace UltraCanvas {
 
 namespace {
 
-constexpr int kTabContentW = 1240;
-constexpr int kTabContentH = 700;
-// The demo shell shows roughly this much of a tab without scrolling
+// The presentation slide keeps the size it was designed at
 constexpr int kInfographicW = 1030;
+constexpr int kInfographicH = 690;
+
+// A tab's page: the chart's title and description over a row holding the
+// chart and its notes. The notes sit beside the chart while both fit and move
+// under it when not. The tab gives the page its exact size; content taller or
+// wider than that scrolls.
+struct TabPage {
+    std::shared_ptr<UltraCanvasContainer> tab;
+    std::shared_ptr<UltraCanvasContainer> content;   // the chart + notes row
+};
+
+std::shared_ptr<UltraCanvasContainer> MakeTabContainer(const std::string& id) {
+    auto tab = std::make_shared<UltraCanvasContainer>(id);
+    tab->SetPadding(12, 20, 12, 20);
+    tab->layout.SetFlexColumn().SetFlexGap(6)
+               .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    ContainerStyle style;
+    style.autoShowScrollbars = true;
+    tab->SetContainerStyle(style);
+    return tab;
+}
+
+TabPage MakeTabPage(const std::string& id, const std::string& titleId, const std::string& title,
+                    const std::string& subtitleId, const std::string& subtitle) {
+    TabPage page;
+    page.tab = MakeTabContainer(id);
+    // The chart title keeps its 17 px; the description its 11 px.
+    DemoKit::AddHeading(page.tab, titleId, title)->SetFontSize(17);
+    DemoKit::AddCaption(page.tab, subtitleId, subtitle)->SetFontSize(11);
+    page.content = DemoKit::CreateRow(id + "Content", 20);
+    page.content->layout.SetFlexAlignItems(CSSLayout::AlignItems::Start);
+    DemoKit::Add(page.tab, page.content);
+    return page;
+}
+
+// The chart's notes: a column that takes the row's spare width (at least
+// 300 px, or it wraps under the chart).
+std::shared_ptr<UltraCanvasLabel> AddNotesColumn(const std::shared_ptr<UltraCanvasContainer>& content,
+                                                 const std::string& id, const std::string& text) {
+    auto column = DemoKit::CreateColumn(id + "Column");
+    DemoKit::Add(content, column, 1);
+    column->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(300));
+    column->SetPadding(20, 0, 0, 0);
+    auto notes = DemoKit::AddText(column, id, text);
+    notes->SetFontSize(10.5f);
+    notes->SetTextColor(Color(70, 70, 70, 255));
+    return notes;
+}
 
 // =============================================================================
 // TAB 1: SEGMENTED E-COMMERCE FUNNEL
@@ -40,24 +90,12 @@ constexpr int kInfographicW = 1030;
 // carry the stage-to-stage conversion. The classic analytics funnel.
 
 std::shared_ptr<UltraCanvasUIElement> BuildSegmentedTab() {
-    auto tab = std::make_shared<UltraCanvasContainer>("FunnelSegmentedTab", 0, 0,
-                                                      kTabContentW, kTabContentH);
+    auto page = MakeTabPage("FunnelSegmentedTab", "SegTitle", "E-commerce campaign funnel",
+                            "SegSubtitle",
+                            "Recipients reaching each step, with the conversion into the next step "
+                            "drawn on the neck between the bars");
 
-    auto title = std::make_shared<UltraCanvasLabel>("SegTitle", 30, 12, 700, 26);
-    title->SetText("E-commerce campaign funnel");
-    title->SetFontSize(17);
-    title->SetFontWeight(FontWeight::Bold);
-    title->SetTextColor(Color(30, 30, 30, 255));
-    tab->AddChild(title);
-
-    auto subtitle = std::make_shared<UltraCanvasLabel>("SegSubtitle", 30, 40, 800, 20);
-    subtitle->SetText("Recipients reaching each step, with the conversion into the next step "
-                      "drawn on the neck between the bars");
-    subtitle->SetFontSize(11);
-    subtitle->SetTextColor(Color(100, 100, 100, 255));
-    tab->AddChild(subtitle);
-
-    auto chart = std::make_shared<UltraCanvasFunnelChart>("SegmentedFunnel", 20, 70, 660, 570);
+    auto chart = std::make_shared<UltraCanvasFunnelChart>("SegmentedFunnel", 0, 0, 660, 570);
     chart->SetShapeMode(FunnelShapeMode::SegmentedBars);
     chart->SetScaleMode(FunnelScaleMode::WidthProportional);
     chart->SetTipMode(FunnelTipMode::MinWidthTip);
@@ -78,35 +116,30 @@ std::shared_ptr<UltraCanvasUIElement> BuildSegmentedTab() {
     chart->AddStage("Clicked", 1669);
     chart->AddStage("Add to Cart", 610);
     chart->AddStage("Purchased", 565);
-    tab->AddChild(chart);
+    DemoKit::AddFixed(page.content, chart);
 
-    auto notes = std::make_shared<UltraCanvasLabel>("SegNotes", 700, 90, 330, 480);
-    notes->SetText(
+    AddNotesColumn(page.content, "SegNotes",
         "Reading the chart\n\n"
-        "Each bar's width is its share of the top\n"
+        "Each bar's width is its share of the top "
         "stage, so the taper is the funnel.\n\n"
-        "The pale neck between two bars carries\n"
-        "the conversion from the upper stage into\n"
-        "the lower one - 68.22% of everyone who\n"
+        "The pale neck between two bars carries "
+        "the conversion from the upper stage into "
+        "the lower one - 68.22% of everyone who "
         "was sent the mail opened it.\n\n"
-        "The right-hand column is a different\n"
-        "figure: the share of the very first stage,\n"
+        "The right-hand column is a different "
+        "figure: the share of the very first stage, "
         "so it always falls monotonically.\n\n"
         "Where the funnel leaks\n\n"
-        "  - The worst step is Clicked to Add to\n"
-        "    Cart at 36.57%.\n"
-        "  - Once a basket exists the funnel barely\n"
-        "    leaks at all: 92.62% check out.\n"
+        "  - The worst step is Clicked to Add to "
+        "Cart at 36.57%.\n"
+        "  - Once a basket exists the funnel barely "
+        "leaks at all: 92.62% check out.\n"
         "  - End to end, 9.95% of recipients buy.\n\n"
-        "Hover any bar for the raw count, both\n"
-        "percentages and the number lost at that\n"
+        "Hover any bar for the raw count, both "
+        "percentages and the number lost at that "
         "step.");
-    notes->SetFontSize(10.5f);
-    notes->SetTextColor(Color(70, 70, 70, 255));
-    notes->SetAlignment(TextAlignment::Left, VerticalAlignment::Top);
-    tab->AddChild(notes);
 
-    return tab;
+    return page.tab;
 }
 
 // =============================================================================
@@ -116,24 +149,12 @@ std::shared_ptr<UltraCanvasUIElement> BuildSegmentedTab() {
 // thickness tracks its value, and the stages name themselves on leader lines.
 
 std::shared_ptr<UltraCanvasUIElement> BuildContinuousTab() {
-    auto tab = std::make_shared<UltraCanvasContainer>("FunnelContinuousTab", 0, 0,
-                                                      kTabContentW, kTabContentH);
+    auto page = MakeTabPage("FunnelContinuousTab", "ConTitle", "Marketing funnel",
+                            "ConSubtitle",
+                            "Slab thickness tracks the value, so the area of each band is the "
+                            "population it holds");
 
-    auto title = std::make_shared<UltraCanvasLabel>("ConTitle", 30, 12, 700, 26);
-    title->SetText("Marketing funnel");
-    title->SetFontSize(17);
-    title->SetFontWeight(FontWeight::Bold);
-    title->SetTextColor(Color(30, 30, 30, 255));
-    tab->AddChild(title);
-
-    auto subtitle = std::make_shared<UltraCanvasLabel>("ConSubtitle", 30, 40, 800, 20);
-    subtitle->SetText("Slab thickness tracks the value, so the area of each band is the "
-                      "population it holds");
-    subtitle->SetFontSize(11);
-    subtitle->SetTextColor(Color(100, 100, 100, 255));
-    tab->AddChild(subtitle);
-
-    auto chart = std::make_shared<UltraCanvasFunnelChart>("ContinuousFunnel", 20, 70, 700, 590);
+    auto chart = std::make_shared<UltraCanvasFunnelChart>("ContinuousFunnel", 0, 0, 700, 590);
     chart->SetShapeMode(FunnelShapeMode::ContinuousFunnel);
     chart->SetScaleMode(FunnelScaleMode::HeightProportional);
     chart->SetTipMode(FunnelTipMode::PointTip);
@@ -155,35 +176,30 @@ std::shared_ptr<UltraCanvasUIElement> BuildContinuousTab() {
     chart->AddStage("White Paper Download", 72);
     chart->AddStage("Free Sign Up", 56);
     chart->AddStage("Upgrade", 42);
-    tab->AddChild(chart);
+    DemoKit::AddFixed(page.content, chart);
 
-    auto notes = std::make_shared<UltraCanvasLabel>("ConNotes", 730, 90, 300, 480);
-    notes->SetText(
+    AddNotesColumn(page.content, "ConNotes",
         "HeightProportional scaling\n\n"
-        "In this mode the funnel's outline tapers\n"
-        "evenly from the full width down to a point,\n"
-        "and it is the thickness of each band that\n"
+        "In this mode the funnel's outline tapers "
+        "evenly from the full width down to a point, "
+        "and it is the thickness of each band that "
         "carries the value.\n\n"
-        "That is why Impressions occupies most of\n"
-        "the picture while the four smallest stages\n"
+        "That is why Impressions occupies most of "
+        "the picture while the four smallest stages "
         "are compressed into the tip.\n\n"
         "LeaderLineLabels\n\n"
-        "Each stage is named outside the shape and\n"
-        "joined to it by a leader line. Because the\n"
-        "value labels are also placed in the end\n"
-        "column, the two merge into one string:\n"
+        "Each stage is named outside the shape and "
+        "joined to it by a leader line. Because the "
+        "value labels are also placed in the end "
+        "column, the two merge into one string: "
         "'Clicks (742)'.\n\n"
         "Watch the tip\n\n"
-        "PointTip closes the funnel completely past\n"
-        "the last stage. Use FlatNeck with\n"
-        "SetNeckRatio() when the final step should\n"
+        "PointTip closes the funnel completely past "
+        "the last stage. Use FlatNeck with "
+        "SetNeckRatio() when the final step should "
         "keep a visible width.");
-    notes->SetFontSize(10.5f);
-    notes->SetTextColor(Color(70, 70, 70, 255));
-    notes->SetAlignment(TextAlignment::Left, VerticalAlignment::Top);
-    tab->AddChild(notes);
 
-    return tab;
+    return page.tab;
 }
 
 // =============================================================================
@@ -193,24 +209,12 @@ std::shared_ptr<UltraCanvasUIElement> BuildContinuousTab() {
 // gaps between them, with the name on the left and the percentage on the right.
 
 std::shared_ptr<UltraCanvasUIElement> BuildCardRowsTab() {
-    auto tab = std::make_shared<UltraCanvasContainer>("FunnelCardsTab", 0, 0,
-                                                      kTabContentW, kTabContentH);
+    auto page = MakeTabPage("FunnelCardsTab", "CardTitle", "Card row funnel",
+                            "CardSubtitle",
+                            "The same data laid out as rounded rows - the layout dashboards reach "
+                            "for when the funnel sits beside other cards");
 
-    auto title = std::make_shared<UltraCanvasLabel>("CardTitle", 30, 12, 700, 26);
-    title->SetText("Card row funnel");
-    title->SetFontSize(17);
-    title->SetFontWeight(FontWeight::Bold);
-    title->SetTextColor(Color(30, 30, 30, 255));
-    tab->AddChild(title);
-
-    auto subtitle = std::make_shared<UltraCanvasLabel>("CardSubtitle", 30, 40, 800, 20);
-    subtitle->SetText("The same data laid out as rounded rows - the layout dashboards reach "
-                      "for when the funnel sits beside other cards");
-    subtitle->SetFontSize(11);
-    subtitle->SetTextColor(Color(100, 100, 100, 255));
-    tab->AddChild(subtitle);
-
-    auto chart = std::make_shared<UltraCanvasFunnelChart>("CardFunnel", 20, 70, 700, 580);
+    auto chart = std::make_shared<UltraCanvasFunnelChart>("CardFunnel", 0, 0, 700, 580);
     chart->SetShapeMode(FunnelShapeMode::CardRows);
     chart->SetScaleMode(FunnelScaleMode::WidthProportional);
     chart->SetTipMode(FunnelTipMode::PointTip);
@@ -236,30 +240,25 @@ std::shared_ptr<UltraCanvasUIElement> BuildCardRowsTab() {
     chart->AddStage("Clicked", 1669);
     chart->AddStage("Add to Cart", 610);
     chart->AddStage("Purchased", 565);
-    tab->AddChild(chart);
+    DemoKit::AddFixed(page.content, chart);
 
-    auto notes = std::make_shared<UltraCanvasLabel>("CardNotes", 730, 100, 300, 460);
-    notes->SetText(
+    AddNotesColumn(page.content, "CardNotes",
         "CardRows\n\n"
-        "Each stage is drawn inside a rounded card\n"
-        "that spans the whole element, and the\n"
-        "wedge passes through the card and the gap\n"
+        "Each stage is drawn inside a rounded card "
+        "that spans the whole element, and the "
+        "wedge passes through the card and the gap "
         "below it without breaking.\n\n"
-        "The name column and the percentage column\n"
-        "are the same ones the other shapes use;\n"
+        "The name column and the percentage column "
+        "are the same ones the other shapes use; "
         "here they simply land inside the card.\n\n"
-        "Hovering a row tints its border with the\n"
-        "stage colour, which is why the cards make\n"
+        "Hovering a row tints its border with the "
+        "stage colour, which is why the cards make "
         "good click targets for drill-down.\n\n"
-        "The legend is switched on for this tab.\n"
-        "It lists every stage with its swatch and\n"
+        "The legend is switched on for this tab. "
+        "It lists every stage with its swatch and "
         "can be pinned to any of six positions.");
-    notes->SetFontSize(10.5f);
-    notes->SetTextColor(Color(70, 70, 70, 255));
-    notes->SetAlignment(TextAlignment::Left, VerticalAlignment::Top);
-    tab->AddChild(notes);
 
-    return tab;
+    return page.tab;
 }
 
 // =============================================================================
@@ -269,12 +268,12 @@ std::shared_ptr<UltraCanvasUIElement> BuildCardRowsTab() {
 // callouts on the right - the deck-slide funnel.
 
 std::shared_ptr<UltraCanvasUIElement> BuildInfographicTab() {
-    auto tab = std::make_shared<UltraCanvasContainer>("FunnelInfographicTab", 0, 0,
-                                                      kTabContentW, kTabContentH);
+    auto tab = MakeTabContainer("FunnelInfographicTab");
+    tab->SetPadding(0);
 
-    // The chart fills the tab so its own dark background is the slide background
+    // The chart is the whole tab page so its own dark background is the slide background
     auto chart = std::make_shared<UltraCanvasFunnelChart>("InfographicFunnel", 0, 0,
-                                                          kInfographicW, kTabContentH - 10);
+                                                          kInfographicW, kInfographicH);
     chart->SetChartTitle("PRODUCT ADOPTION PIPELINE");
     chart->SetBackgroundColor(Color(46, 43, 74, 255));
     chart->SetShapeMode(FunnelShapeMode::SkewedInfographic);
@@ -318,7 +317,7 @@ std::shared_ptr<UltraCanvasUIElement> BuildInfographicTab() {
         stage.stageColor = entry.color;
         chart->AddStage(stage);
     }
-    tab->AddChild(chart);
+    DemoKit::AddFixed(tab, chart);
 
     return tab;
 }
@@ -330,24 +329,12 @@ std::shared_ptr<UltraCanvasUIElement> BuildInfographicTab() {
 // itself inside its own slab and the outcome is circled past the tip.
 
 std::shared_ptr<UltraCanvasUIElement> BuildHorizontalTab() {
-    auto tab = std::make_shared<UltraCanvasContainer>("FunnelHorizontalTab", 0, 0,
-                                                      kTabContentW, kTabContentH);
+    auto page = MakeTabPage("FunnelHorizontalTab", "HorTitle", "Sales funnel - conversion rate tracking",
+                            "HorSubtitle",
+                            "HorizontalFunnel flows left to right; the circled figure past the tip "
+                            "is the outcome the pipeline is being judged on");
 
-    auto title = std::make_shared<UltraCanvasLabel>("HorTitle", 30, 12, 700, 26);
-    title->SetText("Sales funnel - conversion rate tracking");
-    title->SetFontSize(17);
-    title->SetFontWeight(FontWeight::Bold);
-    title->SetTextColor(Color(30, 30, 30, 255));
-    tab->AddChild(title);
-
-    auto subtitle = std::make_shared<UltraCanvasLabel>("HorSubtitle", 30, 40, 800, 20);
-    subtitle->SetText("HorizontalFunnel flows left to right; the circled figure past the tip "
-                      "is the outcome the pipeline is being judged on");
-    subtitle->SetFontSize(11);
-    subtitle->SetTextColor(Color(100, 100, 100, 255));
-    tab->AddChild(subtitle);
-
-    auto chart = std::make_shared<UltraCanvasFunnelChart>("HorizontalFunnel", 20, 80, 990, 330);
+    auto chart = std::make_shared<UltraCanvasFunnelChart>("HorizontalFunnel", 0, 0, 990, 330);
     chart->SetOrientation(FunnelOrientation::HorizontalFunnel);
     chart->SetShapeMode(FunnelShapeMode::ContinuousFunnel);
     chart->SetScaleMode(FunnelScaleMode::WidthProportional);
@@ -374,10 +361,10 @@ std::shared_ptr<UltraCanvasUIElement> BuildHorizontalTab() {
         stage.stageColor = entry.color;
         chart->AddStage(stage);
     }
-    tab->AddChild(chart);
+    // The wide chart takes the row; the notes go under it.
+    DemoKit::AddFixed(page.content, chart);
 
-    auto notes = std::make_shared<UltraCanvasLabel>("HorNotes", 30, 430, 990, 240);
-    notes->SetText(
+    auto notes = DemoKit::CreateText("HorNotes",
         "Orientation\n\n"
         "SetOrientation(FunnelOrientation::HorizontalFunnel) swaps the flow axis and the cross axis. "
         "Everything else - the shape modes, the label columns, the connector necks, the hit testing - "
@@ -390,11 +377,9 @@ std::shared_ptr<UltraCanvasUIElement> BuildHorizontalTab() {
         "so the grey, blue, amber and green bands all stay readable.");
     notes->SetFontSize(10.5f);
     notes->SetTextColor(Color(70, 70, 70, 255));
-    notes->SetAlignment(TextAlignment::Left, VerticalAlignment::Top);
-    notes->SetWrap(TextWrap::WrapWord);
-    tab->AddChild(notes);
+    DemoKit::Add(page.tab, notes);
 
-    return tab;
+    return page.tab;
 }
 
 // =============================================================================
@@ -402,24 +387,12 @@ std::shared_ptr<UltraCanvasUIElement> BuildHorizontalTab() {
 // =============================================================================
 
 std::shared_ptr<UltraCanvasUIElement> BuildPlaygroundTab() {
-    auto tab = std::make_shared<UltraCanvasContainer>("FunnelPlaygroundTab", 0, 0,
-                                                      kTabContentW, kTabContentH);
+    auto page = MakeTabPage("FunnelPlaygroundTab", "PlayTitle", "Playground: shape, scale and colour modes",
+                            "PlaySubtitle",
+                            "A recruitment pipeline broken down by source - every switch below "
+                            "restyles the same data");
 
-    auto title = std::make_shared<UltraCanvasLabel>("PlayTitle", 30, 12, 700, 26);
-    title->SetText("Playground: shape, scale and colour modes");
-    title->SetFontSize(17);
-    title->SetFontWeight(FontWeight::Bold);
-    title->SetTextColor(Color(30, 30, 30, 255));
-    tab->AddChild(title);
-
-    auto subtitle = std::make_shared<UltraCanvasLabel>("PlaySubtitle", 30, 40, 800, 20);
-    subtitle->SetText("A recruitment pipeline broken down by source - every switch below "
-                      "restyles the same data");
-    subtitle->SetFontSize(11);
-    subtitle->SetTextColor(Color(100, 100, 100, 255));
-    tab->AddChild(subtitle);
-
-    auto chart = std::make_shared<UltraCanvasFunnelChart>("PlaygroundFunnel", 20, 70, 640, 590);
+    auto chart = std::make_shared<UltraCanvasFunnelChart>("PlaygroundFunnel", 0, 0, 640, 590);
     chart->SetShapeMode(FunnelShapeMode::SegmentedBars);
     chart->SetScaleMode(FunnelScaleMode::WidthProportional);
     chart->SetColorMode(FunnelColorMode::SequentialRamp);
@@ -460,26 +433,21 @@ std::shared_ptr<UltraCanvasUIElement> BuildPlaygroundTab() {
         stage.targetValue = stage.stageValue * 1.15;   // The plan for this stage
         chart->AddStage(stage);
     }
-    tab->AddChild(chart);
+    DemoKit::AddFixed(page.content, chart);
 
     // ===== CONTROL PANEL =====
-    int panelX = 680;
-    int y = 78;
+    // A column beside the chart (under it when the row is too narrow); the
+    // controls take its width.
+    auto panel = DemoKit::CreateColumn("PlayPanel", 4);
+    DemoKit::Add(page.content, panel, 1);
+    panel->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(330));
+    panel->SetPadding(8, 0, 0, 0);
 
-    auto controlsTitle = std::make_shared<UltraCanvasLabel>("PlayControls", panelX, y, 340, 22);
-    controlsTitle->SetText("Chart controls");
-    controlsTitle->SetFontSize(13);
-    controlsTitle->SetFontWeight(FontWeight::Bold);
-    tab->AddChild(controlsTitle);
-    y += 28;
+    DemoKit::AddHeading(panel, "PlayControls", "Chart controls");
 
-    auto shapeLabel = std::make_shared<UltraCanvasLabel>("PlayShapeLabel", panelX, y, 340, 18);
-    shapeLabel->SetText("Shape mode");
-    shapeLabel->SetFontSize(11);
-    tab->AddChild(shapeLabel);
-    y += 20;
+    DemoKit::AddText(panel, "PlayShapeLabel", "Shape mode")->SetFontSize(11);
 
-    auto shapeDrop = std::make_shared<UltraCanvasDropdown>("PlayShape", panelX, y, 330, 26);
+    auto shapeDrop = std::make_shared<UltraCanvasDropdown>("PlayShape", 0, 0, 330, 26);
     shapeDrop->AddItem("Segmented bars + necks");
     shapeDrop->AddItem("Continuous funnel");
     shapeDrop->AddItem("Card rows");
@@ -495,16 +463,11 @@ std::shared_ptr<UltraCanvasUIElement> BuildPlaygroundTab() {
             default: chart->SetShapeMode(FunnelShapeMode::SegmentedBars); break;
         }
     };
-    tab->AddChild(shapeDrop);
-    y += 36;
+    DemoKit::AddStretched(panel, shapeDrop);
 
-    auto scaleLabel = std::make_shared<UltraCanvasLabel>("PlayScaleLabel", panelX, y, 340, 18);
-    scaleLabel->SetText("Scale mode");
-    scaleLabel->SetFontSize(11);
-    tab->AddChild(scaleLabel);
-    y += 20;
+    DemoKit::AddText(panel, "PlayScaleLabel", "Scale mode")->SetFontSize(11);
 
-    auto scaleDrop = std::make_shared<UltraCanvasDropdown>("PlayScale", panelX, y, 330, 26);
+    auto scaleDrop = std::make_shared<UltraCanvasDropdown>("PlayScale", 0, 0, 330, 26);
     scaleDrop->AddItem("Width proportional");
     scaleDrop->AddItem("Height proportional");
     scaleDrop->AddItem("Area proportional");
@@ -518,16 +481,11 @@ std::shared_ptr<UltraCanvasUIElement> BuildPlaygroundTab() {
             default: chart->SetScaleMode(FunnelScaleMode::WidthProportional); break;
         }
     };
-    tab->AddChild(scaleDrop);
-    y += 36;
+    DemoKit::AddStretched(panel, scaleDrop);
 
-    auto colorLabel = std::make_shared<UltraCanvasLabel>("PlayColorLabel", panelX, y, 340, 18);
-    colorLabel->SetText("Colour mode (stages here carry their own segment colours)");
-    colorLabel->SetFontSize(11);
-    tab->AddChild(colorLabel);
-    y += 20;
+    DemoKit::AddText(panel, "PlayColorLabel", "Colour mode (stages here carry their own segment colours)")->SetFontSize(11);
 
-    auto colorDrop = std::make_shared<UltraCanvasDropdown>("PlayColor", panelX, y, 330, 26);
+    auto colorDrop = std::make_shared<UltraCanvasDropdown>("PlayColor", 0, 0, 330, 26);
     colorDrop->AddItem("Sequential ramp");
     colorDrop->AddItem("Categorical palette");
     colorDrop->AddItem("Single hue");
@@ -541,16 +499,11 @@ std::shared_ptr<UltraCanvasUIElement> BuildPlaygroundTab() {
             default: chart->SetColorMode(FunnelColorMode::SequentialRamp); break;
         }
     };
-    tab->AddChild(colorDrop);
-    y += 36;
+    DemoKit::AddStretched(panel, colorDrop);
 
-    auto tipLabel = std::make_shared<UltraCanvasLabel>("PlayTipLabel", panelX, y, 340, 18);
-    tipLabel->SetText("Tip mode");
-    tipLabel->SetFontSize(11);
-    tab->AddChild(tipLabel);
-    y += 20;
+    DemoKit::AddText(panel, "PlayTipLabel", "Tip mode")->SetFontSize(11);
 
-    auto tipDrop = std::make_shared<UltraCanvasDropdown>("PlayTip", panelX, y, 330, 26);
+    auto tipDrop = std::make_shared<UltraCanvasDropdown>("PlayTip", 0, 0, 330, 26);
     tipDrop->AddItem("Last stage keeps its width");
     tipDrop->AddItem("Close to a point");
     tipDrop->AddItem("Close to a flat neck");
@@ -562,88 +515,72 @@ std::shared_ptr<UltraCanvasUIElement> BuildPlaygroundTab() {
             default: chart->SetTipMode(FunnelTipMode::MinWidthTip); break;
         }
     };
-    tab->AddChild(tipDrop);
-    y += 38;
+    DemoKit::AddStretched(panel, tipDrop);
 
-    auto gapLabel = std::make_shared<UltraCanvasLabel>("PlayGapLabel", panelX, y, 340, 18);
-    gapLabel->SetText("Gap between stages");
-    gapLabel->SetFontSize(11);
-    tab->AddChild(gapLabel);
-    y += 20;
+    DemoKit::AddText(panel, "PlayGapLabel", "Gap between stages")->SetFontSize(11);
 
-    auto gapSlider = std::make_shared<UltraCanvasSlider>("PlayGap", panelX, y, 330, 24);
+    auto gapSlider = std::make_shared<UltraCanvasSlider>("PlayGap", 0, 0, 330, 24);
     gapSlider->SetRange(0.0f, 60.0f);
     gapSlider->SetStep(1.0f);
     gapSlider->SetValue(22.0f);
     gapSlider->SetValueDisplay(SliderValueDisplay::Tooltip);
     gapSlider->onValueChanged = [chart](float value) { chart->SetStageGap(value); };
-    tab->AddChild(gapSlider);
-    y += 34;
+    DemoKit::AddStretched(panel, gapSlider);
 
-    auto horizontalCheck = std::make_shared<UltraCanvasCheckbox>("PlayHorizontal", panelX, y,
+    auto horizontalCheck = std::make_shared<UltraCanvasCheckbox>("PlayHorizontal", 0, 0,
                                                                  330, 24, "Horizontal orientation");
     horizontalCheck->onStateChanged = [chart](CheckedState, CheckedState newState) {
         chart->SetOrientation(newState == CheckedState::Checked
                                       ? FunnelOrientation::HorizontalFunnel
                                       : FunnelOrientation::VerticalFunnel);
     };
-    tab->AddChild(horizontalCheck);
-    y += 26;
+    DemoKit::AddStretched(panel, horizontalCheck);
 
-    auto gradientCheck = std::make_shared<UltraCanvasCheckbox>("PlayGradient", panelX, y,
+    auto gradientCheck = std::make_shared<UltraCanvasCheckbox>("PlayGradient", 0, 0,
                                                                330, 24, "Gradient fills");
     gradientCheck->onStateChanged = [chart](CheckedState, CheckedState newState) {
         chart->SetUseGradientFill(newState == CheckedState::Checked, 0.25);
     };
-    tab->AddChild(gradientCheck);
-    y += 26;
+    DemoKit::AddStretched(panel, gradientCheck);
 
-    auto targetCheck = std::make_shared<UltraCanvasCheckbox>("PlayTarget", panelX, y,
+    auto targetCheck = std::make_shared<UltraCanvasCheckbox>("PlayTarget", 0, 0,
                                                              330, 24, "Target overlay (plan + 15%)");
     targetCheck->onStateChanged = [chart](CheckedState, CheckedState newState) {
         chart->SetShowTargetOverlay(newState == CheckedState::Checked);
     };
-    tab->AddChild(targetCheck);
-    y += 26;
+    DemoKit::AddStretched(panel, targetCheck);
 
-    auto bottleneckCheck = std::make_shared<UltraCanvasCheckbox>("PlayBottleneck", panelX, y,
+    auto bottleneckCheck = std::make_shared<UltraCanvasCheckbox>("PlayBottleneck", 0, 0,
                                                                  330, 24, "Highlight the bottleneck");
     bottleneckCheck->onStateChanged = [chart](CheckedState, CheckedState newState) {
         chart->SetHighlightBottleneck(newState == CheckedState::Checked);
     };
-    tab->AddChild(bottleneckCheck);
-    y += 26;
+    DemoKit::AddStretched(panel, bottleneckCheck);
 
-    auto dimCheck = std::make_shared<UltraCanvasCheckbox>("PlayDim", panelX, y,
+    auto dimCheck = std::make_shared<UltraCanvasCheckbox>("PlayDim", 0, 0,
                                                           330, 24, "Dim stages you are not hovering");
     dimCheck->onStateChanged = [chart](CheckedState, CheckedState newState) {
         chart->SetDimUnhoveredStages(newState == CheckedState::Checked);
     };
-    tab->AddChild(dimCheck);
-    y += 26;
+    DemoKit::AddStretched(panel, dimCheck);
 
-    auto dropOffCheck = std::make_shared<UltraCanvasCheckbox>("PlayDropOff", panelX, y,
+    auto dropOffCheck = std::make_shared<UltraCanvasCheckbox>("PlayDropOff", 0, 0,
                                                               330, 24, "Show the loss at each step");
     dropOffCheck->onStateChanged = [chart](CheckedState, CheckedState newState) {
         chart->SetShowDropOffLabels(newState == CheckedState::Checked);
     };
-    tab->AddChild(dropOffCheck);
-    y += 32;
+    DemoKit::AddStretched(panel, dropOffCheck);
 
-    auto selectionTitle = std::make_shared<UltraCanvasLabel>("PlaySelTitle", panelX, y, 340, 20);
-    selectionTitle->SetText("Selected stage");
+    auto selectionTitle = DemoKit::AddHeading(panel, "PlaySelTitle", "Selected stage");
     selectionTitle->SetFontSize(12);
-    selectionTitle->SetFontWeight(FontWeight::Bold);
-    tab->AddChild(selectionTitle);
-    y += 22;
+    selectionTitle->SetMargin(6, 0, 0, 0);
 
-    auto selection = std::make_shared<UltraCanvasLabel>("PlaySelection", panelX, y, 340, 120);
-    selection->SetText("Click a stage to read its figures here.\nClick a neck to report the "
-                       "conversion through it.");
+    // Rewritten by the click callbacks below; it grows with the report.
+    auto selection = DemoKit::AddText(panel, "PlaySelection",
+                                      "Click a stage to read its figures here.\nClick a neck to report the "
+                                      "conversion through it.");
     selection->SetFontSize(11);
     selection->SetTextColor(Color(70, 70, 70, 255));
-    selection->SetAlignment(TextAlignment::Left, VerticalAlignment::Top);
-    tab->AddChild(selection);
 
     // The callbacks report indices into the data source, so sorting cannot shift them
     auto source = chart->GetFunnelDataSource();
@@ -678,7 +615,7 @@ std::shared_ptr<UltraCanvasUIElement> BuildPlaygroundTab() {
         selection->SetText(buffer);
     };
 
-    return tab;
+    return page.tab;
 }
 
 } // anonymous namespace
@@ -688,13 +625,23 @@ std::shared_ptr<UltraCanvasUIElement> BuildPlaygroundTab() {
 // =============================================================================
 
 std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateFunnelChartExamples() {
-    auto container = std::make_shared<UltraCanvasContainer>(
-        "FunnelChartExamples", 0, 0, kTabContentW + 20, kTabContentH + 60);
+    auto page = DemoKit::CreatePage("FunnelChartExamples", "Funnel Chart Examples",
+        "The segmented e-commerce funnel with conversion necks, a solid marketing cone with "
+        "leader-line callouts, the rounded card layout, a dark presentation funnel with badges "
+        "and annotations, a horizontal sales funnel with a terminal callout, and a playground "
+        "exposing every shape, scale and colour mode live");
+    // The page is the display area's height and the tabs take what the title
+    // and description leave; each tab page scrolls inside.
+    page->SetFillsArea(true);
 
-    auto tabs = std::make_shared<UltraCanvasTabbedContainer>(
-        "FunnelChartTabs", 0, 10, kTabContentW + 10, kTabContentH + 40);
+    auto card = DemoKit::CreateCard("FunnelChartCard");
+    card->SetPadding(4);
+    DemoKit::Add(page, card, 1);
+
+    auto tabs = std::make_shared<UltraCanvasTabbedContainer>("FunnelChartTabs", 0, 0, 0, 0);
     tabs->SetTabStyle(TabStyle::Rounded);
     tabs->SetTabHeight(32);
+    tabs->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
 
     tabs->AddTab("Segmented Funnel", BuildSegmentedTab());
     tabs->AddTab("Continuous Cone", BuildContinuousTab());
@@ -704,8 +651,8 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateFunnelCh
     tabs->AddTab("Playground", BuildPlaygroundTab());
     tabs->SetActiveTab(0);
 
-    container->AddChild(tabs);
-    return container;
+    DemoKit::Add(card, tabs, 1);
+    return page;
 }
 
 } // namespace UltraCanvas

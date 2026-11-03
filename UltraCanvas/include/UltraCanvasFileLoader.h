@@ -4,6 +4,7 @@
 // UltraCanvasNativeDialogs. NotifyRecentFile is implemented per-platform.
 // Save settings (SAVE SETTINGS below): what each format's writer can be
 // told, described and kept per format - see UltraCanvasFileSaveSettings.h.
+// Version: 1.9.0 - SaveFile: bytes to a local file, LoadFile's counterpart
 // Version: 1.8.0 - LoadTextDocument / OpenTextDocument read a .pptx as an outline
 // Version: 1.7.0 - RequestNewDocumentPassword; SaveTextDocument saves a
 //                  password-protected .docx
@@ -156,6 +157,14 @@ namespace UltraCanvas {
         // without it the raw bytes are returned.
         static FileBytesResult LoadFile(const std::string& pathOrUrl,
                                         bool autoDecompress = true);
+
+        // Writes `bytes` to a local path as they are - the counterpart of
+        // LoadFile for content no format writer stands for (a database blob,
+        // a download kept as it came). Written beside the path and moved
+        // there when complete, so a failed write never leaves half a file in
+        // place of one that was there. The path is UTF-8. False, with
+        // `error`, when it cannot be written.
+        static bool SaveFile(const std::string& path, const std::vector<uint8_t>& bytes, std::string& error);
 
         // True if `s` starts with a recognised URL scheme (http/https/ftp/ftps/sftp).
         static bool IsUrl(const std::string& s);

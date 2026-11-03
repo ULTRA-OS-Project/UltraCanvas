@@ -83,6 +83,23 @@ history entry. Per-card setters: `SetCardTitle`, `SetCardDescription`,
 (draws a red edge stripe; the reason joins the tooltip), `SetCardTags` /
 `AddCardTag`.
 
+A card can carry a picture - a file's thumbnail, a photo - drawn above its
+title in a band `style.cardImageHeight` high (0 turns pictures off). The
+board does not load it: `cardImageProvider` hands over whatever is ready for
+a card, and is asked while the board lays out and draws, so it must answer
+at once; a caller that makes thumbnails on a worker thread returns nullptr
+until one is done, then calls `InvalidateLayout()` so the card grows to show
+it. Pill and Grid cards have no room for a picture.
+
+<!-- doc-check: std::shared_ptr<UltraCanvasKanbanBoardElement> board; std::map<std::string, std::shared_ptr<UCPixmap>> thumbnails; -->
+```cpp
+board->EditStyle().cardImageHeight = 56.0f;
+board->cardImageProvider = [&thumbnails](const KanbanCard& card) -> std::shared_ptr<UCPixmap> {
+    auto found = thumbnails.find(card.description);   // the card's file
+    return found == thumbnails.end() ? nullptr : found->second;
+};
+```
+
 `MoveCard(cardId, toColumnId, index = -1)` is the single mutation path for
 workflow state: it reorders instantly, records a `KanbanMoveRecord` when the
 column changes, and restamps `KanbanCard::enteredColumn`.

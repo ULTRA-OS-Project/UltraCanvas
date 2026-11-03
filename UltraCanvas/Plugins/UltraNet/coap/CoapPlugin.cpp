@@ -8,12 +8,16 @@
 //
 // Backend: libcoap3 (libcoap-3-openssl or libcoap-3-notls). The plug-in
 // CMakeLists falls back to whichever is installed.
+// Version: 0.1.2 - every entry point is guarded (UltraNetPluginGuard.h): an
+//                  exception becomes a PluginError result or an invalid
+//                  handle, never ends the process
 // Version: 0.1.1
 // Last Modified: 2026-07-05
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include <UltraNet/UltraNetCore.h>
 #include <UltraNet/UltraNetPlugins.h>
+#include "UltraNetPluginGuard.h"
 #include "UltraNetPluginHostShim.h"
 #include <UltraNet/UltraNetUrl.h>
 
@@ -262,82 +266,92 @@ public:
         return {"coap", "coaps"};
     }
     UltraNetResult Initialize(const UltraNetConfig&) override {
-        LibAcquire();
-        return UltraNetResult::Ok();
+        return ultranet_plugin::Guarded("Initialize", [&]() -> UltraNetResult {
+            LibAcquire();
+            return UltraNetResult::Ok();
+        });
     }
     void Shutdown() override {
-        // Stop every worker before the sessions go (and, for CoAP, before the
-        // library is cleaned up under a running coap_io_process).
-        std::unordered_map<UltraNetHandle, std::shared_ptr<Session>> all;
-        {
-            std::lock_guard<std::mutex> lk(G().sessionsMutex);
-            all.swap(G().sessions);
-        }
-        for (auto& [handle, s] : all) s->Stop();
-        all.clear();
-        LibRelease();
+        ultranet_plugin::GuardedVoid([&]() {
+            // Stop every worker before the sessions go (and, for CoAP, before the
+            // library is cleaned up under a running coap_io_process).
+            std::unordered_map<UltraNetHandle, std::shared_ptr<Session>> all;
+            {
+                std::lock_guard<std::mutex> lk(G().sessionsMutex);
+                all.swap(G().sessions);
+            }
+            for (auto& [handle, s] : all) s->Stop();
+            all.clear();
+            LibRelease();
+        });
     }
 
     UltraNetHandle Connect(const std::string& url,
                            const UltraNetMessagingOptions& /*options*/) override {
-        UltraNetUrlComponents c;
-        if (!UltraNet_ParseUrl(url, c)) return UltraNetInvalidHandle;
-        if (c.scheme != "coap" && c.scheme != "coaps") return UltraNetInvalidHandle;
-        const bool tls = (c.scheme == "coaps");
-        const int port = c.port > 0 ? c.port : (tls ? 5684 : 5683);
+        return ultranet_plugin::GuardedHandle([&]() -> UltraNetHandle {
+            UltraNetUrlComponents c;
+            if (!UltraNet_ParseUrl(url, c)) return UltraNetInvalidHandle;
+            if (c.scheme != "coap" && c.scheme != "coaps") return UltraNetInvalidHandle;
+            const bool tls = (c.scheme == "coaps");
+            const int port = c.port > 0 ? c.port : (tls ? 5684 : 5683);
 
-        auto s = std::make_shared<Session>();
-        s->host = c.host;
-        s->port = port;
-        if (!BuildSession(*s, c.host, port, tls)) return UltraNetInvalidHandle;
+            auto s = std::make_shared<Session>();
+            s->host = c.host;
+            s->port = port;
+            if (!BuildSession(*s, c.host, port, tls)) return UltraNetInvalidHandle;
 
-        const UltraNetHandle h =
-            g_nextHandle.fetch_add(1, std::memory_order_relaxed);
-        s->handle = h;
-        s->Start([s]() { WorkerLoop(s); });
-        {
-            std::lock_guard<std::mutex> lk(G().sessionsMutex);
-            G().sessions[h] = s;
-        }
-        return h;
+            const UltraNetHandle h =
+                g_nextHandle.fetch_add(1, std::memory_order_relaxed);
+            s->handle = h;
+            s->Start([s]() { WorkerLoop(s); });
+            {
+                std::lock_guard<std::mutex> lk(G().sessionsMutex);
+                G().sessions[h] = s;
+            }
+            return h;
+        });
     }
 
     // Publish == POST to /topic with payload.
     UltraNetResult Publish(UltraNetHandle handle,
                            const std::string& topic,
                            const std::vector<uint8_t>& payload) override {
-        auto s = Find(handle);
-        if (!s) return UltraNetResult::Error(UltraNetResultCode::InvalidHandle,
-                                             "no such CoAP session");
-        if (!SendRequest(*s, COAP_REQUEST_CODE_POST, topic, payload, false)) {
-            return UltraNetResult::Error(UltraNetResultCode::SendFailed,
-                                         "coap_send failed");
-        }
-        return UltraNetResult::Ok();
+        return ultranet_plugin::Guarded("Publish", [&]() -> UltraNetResult {
+            auto s = Find(handle);
+            if (!s) return UltraNetResult::Error(UltraNetResultCode::InvalidHandle,
+                                                 "no such CoAP session");
+            if (!SendRequest(*s, COAP_REQUEST_CODE_POST, topic, payload, false)) {
+                return UltraNetResult::Error(UltraNetResultCode::SendFailed,
+                                             "coap_send failed");
+            }
+            return UltraNetResult::Ok();
+        });
     }
 
     // Subscribe == GET with Observe option (RFC 7641).
     UltraNetResult Subscribe(UltraNetHandle handle,
                              const std::string& topic,
                              MessageHandler onMessage) override {
-        auto s = Find(handle);
-        if (!s) return UltraNetResult::Error(UltraNetResultCode::InvalidHandle,
-                                             "no such CoAP session");
-        if (!onMessage) {
-            return UltraNetResult::Error(UltraNetResultCode::InvalidState,
-                                         "onMessage callback is required");
-        }
-        {
-            std::lock_guard<std::mutex> lk(s->handlersMutex);
-            s->handlers[topic] = std::move(onMessage);
-        }
-        if (!SendRequest(*s, COAP_REQUEST_CODE_GET, topic, {}, true)) {
-            std::lock_guard<std::mutex> lk(s->handlersMutex);
-            s->handlers.erase(topic);
-            return UltraNetResult::Error(UltraNetResultCode::SendFailed,
-                                         "coap_send (observe) failed");
-        }
-        return UltraNetResult::Ok();
+        return ultranet_plugin::Guarded("Subscribe", [&]() -> UltraNetResult {
+            auto s = Find(handle);
+            if (!s) return UltraNetResult::Error(UltraNetResultCode::InvalidHandle,
+                                                 "no such CoAP session");
+            if (!onMessage) {
+                return UltraNetResult::Error(UltraNetResultCode::InvalidState,
+                                             "onMessage callback is required");
+            }
+            {
+                std::lock_guard<std::mutex> lk(s->handlersMutex);
+                s->handlers[topic] = std::move(onMessage);
+            }
+            if (!SendRequest(*s, COAP_REQUEST_CODE_GET, topic, {}, true)) {
+                std::lock_guard<std::mutex> lk(s->handlersMutex);
+                s->handlers.erase(topic);
+                return UltraNetResult::Error(UltraNetResultCode::SendFailed,
+                                             "coap_send (observe) failed");
+            }
+            return UltraNetResult::Ok();
+        });
     }
 };
 

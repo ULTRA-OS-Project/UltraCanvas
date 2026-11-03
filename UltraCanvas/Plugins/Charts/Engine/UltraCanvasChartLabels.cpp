@@ -1,7 +1,8 @@
 // Plugins/Charts/Engine/UltraCanvasChartLabels.cpp
 // Chart label policy, broker and solved plan
+// Version: 1.1.0 - pinned labels (ChartLabelRequest::pinned)
 // Version: 1.0.0
-// Last Modified: 2026-08-01
+// Last Modified: 2026-10-20
 // Author: UltraCanvas Framework
 
 #include "Plugins/Charts/Engine/UltraCanvasChartLabels.h"
@@ -104,6 +105,63 @@ ChartLabelPlan ChartLabelBroker::Solve(uint64_t generation) {
         plan.labels.push_back(placed);
     }
 
+    // Pass 2a - pinned labels of the solved classes, most important first:
+    // each sits exactly on its side of the anchor, or is dropped. Accepted
+    // ones become obstacles, so the free labels of pass 3 steer around them.
+    std::vector<Rect2Dd> claimed;
+    for (const ChartLabelRequest& r : requests) {
+        if (HasClass(policy.obstacles, r.klass)) claimed.push_back(r.fixedBounds);
+    }
+    std::vector<const ChartLabelRequest*> pinned;
+    for (const ChartLabelRequest& r : requests) {
+        if (r.pinned && HasClass(policy.solved, r.klass)) pinned.push_back(&r);
+    }
+    std::stable_sort(pinned.begin(), pinned.end(),
+                     [](const ChartLabelRequest* a, const ChartLabelRequest* b) {
+                         return a->priority > b->priority;
+                     });
+    const double gap = std::max(options.labelMargin, options.minLabelSeparation);
+    for (const ChartLabelRequest* r : pinned) {
+        const double w = r->textSize.width, h = r->textSize.height;
+        const double reach = r->anchorRadius + 4.0;
+        Rect2Dd box(r->anchor.x - w * 0.5, r->anchor.y - h * 0.5, w, h);
+        switch (r->preferredSide) {
+            case LabelSide::Top:    box.y = r->anchor.y - reach - h; break;
+            case LabelSide::Bottom: box.y = r->anchor.y + reach; break;
+            case LabelSide::Left:   box.x = r->anchor.x - reach - w; break;
+            case LabelSide::Right:  box.x = r->anchor.x + reach; break;
+            default: break;
+        }
+        bool collides = false;
+        for (const Rect2Dd& other : claimed) {
+            if (other.width <= 0.0 && other.height <= 0.0) continue;
+            if (box.x < other.Right() + gap && other.x < box.Right() + gap &&
+                box.y < other.Bottom() + gap && other.y < box.Bottom() + gap) {
+                collides = true;
+                break;
+            }
+        }
+        const Rect2Dd& bounds = options.bounds;
+        if (bounds.width > 0.0 && bounds.height > 0.0 &&
+            (box.x < bounds.x - 0.5 || box.y < bounds.y - 0.5 ||
+             box.Right() > bounds.Right() + 0.5 || box.Bottom() > bounds.Bottom() + 0.5)) {
+            collides = true;
+        }
+
+        PlacedChartLabel placed;
+        placed.text = r->text;
+        placed.bounds = box;
+        placed.klass = r->klass;
+        placed.rotationDegrees = r->rotationDegrees;
+        placed.userData = r->userData;
+        placed.suppressed = collides && r->allowSuppress;
+        if (!placed.suppressed) {
+            claimed.push_back(box);
+            session.AddObstacleRect(box);
+        }
+        plan.labels.push_back(placed);
+    }
+
     // Pass 2 - excluded classes are outside the collision world entirely: they
     // neither move nor block. Axis furniture in the margins lives here.
     for (const ChartLabelRequest& r : requests) {
@@ -130,7 +188,7 @@ ChartLabelPlan ChartLabelBroker::Solve(uint64_t generation) {
     sources.reserve(requests.size());
 
     for (const ChartLabelRequest& r : requests) {
-        if (!HasClass(policy.solved, r.klass)) continue;
+        if (!HasClass(policy.solved, r.klass) || r.pinned) continue;
 
         ShapeLabel l;
         l.text = r.text;

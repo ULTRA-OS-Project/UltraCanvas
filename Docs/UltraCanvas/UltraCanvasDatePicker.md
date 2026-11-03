@@ -7,6 +7,10 @@ design brief was *good usability above all*, so this document first surveys the
 common date-selection philosophies, explains the trade-offs, and then documents
 the API that was chosen.
 
+**File Location**: `include/UltraCanvasDatePicker.h`
+**Version**: 1.4.0 - the version history is in the header's head
+**Author**: UltraCanvas Framework
+
 ## Contents
 
 - [1. Selection philosophies surveyed](#1-selection-philosophies-surveyed)
@@ -116,7 +120,7 @@ Useful methods:
 | `SetSelectionMode(mode)` | `Single` (typeable) / `Range` / `Multiple` / `Week` |
 | `SetDateFormat(fmt)` | Display & parse format (`yyyy MM dd` tokens) |
 | `SetAllowTextInput(bool)` | Toggle free-text entry (default on for `Single`) |
-| `SetPlaceholder(text)` | Empty-state hint |
+| `SetPlaceholder(text)` / `GetPlaceholder()` | Empty-state hint, set at any time |
 | `SetMinDate/SetMaxDate` | Hard bounds |
 | `SetDateEnabledPredicate(fn)` | Arbitrary per-date enable/disable |
 | `SetFirstDayOfWeek(0..6)` | 0=Sunday (default), 1=Monday |

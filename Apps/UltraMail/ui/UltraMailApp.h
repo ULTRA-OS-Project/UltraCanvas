@@ -3,6 +3,18 @@
 // the main window, and wires the start page, the account bar, the mail view
 // (inbox table + message details) and the account-setup wizard together.
 // Texter-style app-composition class.
+// Version: 0.13.0 - the stored mail is encrypted at rest with the storage key in the
+//                  vault (UltraMailStorage.h); the vault opens first (OpenVault / UnlockVault): with a
+//                  Primary Password it is asked for before any stored mail is read;
+//                  Settings > Privacy > Primary Password sets, changes and removes it
+// Version: 0.12.10 - SwitchToAccount with a filter: the account bar's counters
+// Version: 0.12.9 - CollectServices / CollectServiceOf: a known service collected
+//                  once a later-downloaded body proves its domain
+// Version: 0.12.8 - OpenFromActivation: a notification's click that reaches
+//                   UltraMail outside the bus (a Windows toast clicked after the
+//                   broker host quit, or with UltraMail not running) opens the
+//                   mail its launch string names; a click arriving both ways
+//                   opens it once (OpenNotificationTarget)
 // Version: 0.12.7 - GuardQuitDuringTransfers: the last window asks before it
 //                   ends a cloud upload or download
 // Version: 0.12.6 - the cloud stores and service are shared (shared_ptr), so
@@ -68,6 +80,7 @@
 #include "UltraMailSyncScheduler.h"
 #include "UltraMailFeedPublisher.h"
 #include "UltraMailNewMail.h"
+#include "UltraCanvasNotificationActivation.h"
 #include "UltraMailCredentialVault.h"
 #include "UltraMailOAuth.h"
 
@@ -76,6 +89,7 @@
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasButton.h"
+#include <atomic>
 #include "UltraCanvasLabel.h"
 
 #include <chrono>
@@ -99,6 +113,17 @@ public:
     // instead of exiting silently.
     bool Initialize(const std::string& dataDir, std::string* outError = nullptr);
 
+    // The credential vault under `dataDir`, opened before anything stored is
+    // read: with the device key when there is one. Ok when it is open;
+    // Locked (or WrongPassphrase, a device key that no longer opens it) when
+    // it has a Primary Password, which main() then asks for and hands to
+    // UnlockVault; Unavailable / IoError when no vault can be opened here -
+    // UltraMail starts without one and says so when a password is needed.
+    VaultStatus OpenVault(const std::string& dataDir);
+    // The vault opened with the Primary Password typed at the start; a stale
+    // device key beside it (a change interrupted) is forgotten.
+    VaultStatus UnlockVault(const std::string& passphrase);
+
     // Wipes the vault's derived key from memory when the app goes away.
     ~UltraMailApp();
 
@@ -116,7 +141,10 @@ public:
     // every account's mail, re-reading the address book) runs here: nothing
     // it reads changed by looking at another account.
     // By value: the id a tile's click hands over lives in that tile.
-    void SwitchToAccount(std::string accountId);
+    // With `filter`, a counter of the account bar was clicked: the account's
+    // inbox under that filter (an empty filter shows all of it).
+    void SwitchToAccount(std::string accountId,
+                         std::optional<MessageFilter> filter = std::nullopt);
     // The unread total, published for the desktop's mail badge on every Refresh.
     void PublishUnreadNotice();
     // Re-count the account bar (unread, waiting for reply) from the store and
@@ -176,9 +204,17 @@ private:
     void HandleAccountSettings(const std::string& accountId);
     // The Settings window (the toolbar's gear): app-wide options.
     void OpenSettings();
+    // Settings > Privacy > Primary Password: whether one is set, and setting,
+    // changing and removing it - each asks for the current one first, and
+    // runs `done` when it is over, whatever came of it.
+    bool HasPrimaryPassword() const;
+    void SetPrimaryPassword(UltraCanvas::UltraCanvasWindowBase* parent, std::function<void()> done);
+    void ChangePrimaryPassword(UltraCanvas::UltraCanvasWindowBase* parent, std::function<void()> done);
+    void RemovePrimaryPassword(UltraCanvas::UltraCanvasWindowBase* parent, std::function<void()> done);
     // The settings page's login check: resolves the credentials through
     // `credentials` (on the worker) and lists the incoming server once with
-    // the IMAP plug-in; the outcome is delivered on the UI thread. A missing
+    // the plug-in for the protocol the page chose (IMAP or JMAP); the outcome
+    // is delivered on the UI thread. A missing
     // plug-in is a failed check (the page then offers "Save anyway"). The
     // candidate carries a typed new password when the user changed it.
     ServerSettingsDialog::Verifier LoginVerifier(
@@ -196,14 +232,28 @@ private:
     struct SmtpAccount {
         std::string     email;
         DiscoveryResult settings;
+        // The plug-in that sends for it (SendPlugin), kept loaded for the
+        // worker; null when it is not loaded.
+        std::shared_ptr<IUltraNetPlugin> plugin;
     };
     std::map<std::string, SmtpAccount> SmtpAccounts() const;
-    // Fill an SMTP session's options for an account from the snapshot:
-    // username, TLS mode and sign-in method of its outgoing server, and the
+    // Fill a send session's options for an account from the snapshot:
+    // username, TLS mode and sign-in method of its outgoing server - or of
+    // its JMAP server, for an account that sends through JMAP - and the
     // credentials (see ResolveCredentials). Runs on the send worker.
     UltraNetResult PrepareSmtp(const std::map<std::string, SmtpAccount>& accounts,
                                const std::string& accountId, UltraNetMailOptions& options);
-    // A null `plugin` (no SMTP plug-in) only saves the Drafts copies.
+    // The server an account sends through: its outgoing (SMTP) server, or
+    // its JMAP server when it has no outgoing one (Account::SendsThroughJmap);
+    // "" when it has neither.
+    static std::string SendServerUrl(const DiscoveryResult& settings);
+    // The plug-in that sends for those settings: SMTP (plain or implicit
+    // TLS, by the outgoing server's security), or the JMAP plug-in for an
+    // account that sends through JMAP. Null when it is not loaded.
+    static std::shared_ptr<IUltraNetPlugin> SendPlugin(const DiscoveryResult& settings);
+    // A null `plugin` (no plug-in can send) only saves the Drafts copies;
+    // otherwise each account sends through its own plug-in (SmtpAccount),
+    // `plugin` standing in for an account whose own is not loaded.
     // Flush the outbox on a worker and call `onDone` on the UI thread. SMTP to
     // a slow or failing server - connect and operation timeouts per queued
     // message, an OAuth2 token refresh - used to run on the UI thread and hold
@@ -273,7 +323,16 @@ private:
 
     // Materialise an attachment to the cache and hand it to the OS default
     // application; when no application is associated, offer to save it instead.
+    // A program or script (FileAssociations::RunsCodeWhenOpened) is never
+    // opened - not even cached; it is offered to be saved.
     void OpenAttachment(const Attachment& attachment);
+    // Import: pick .eml / .emlx / Outlook .msg files (UltraCanvasFileLoader's
+    // Open dialog) and upload them into the folder on show of the account on
+    // screen (AppendMessage, through the account's ServerCopies), then sync
+    // that folder so they appear. Failures are listed per file.
+    void ImportMessages();
+    void ImportMessageFiles(const std::string& accountId, const std::string& folder,
+                            const std::vector<std::string>& paths);
     // Save an attachment to a location the user picks, through the framework's
     // file dialog (UltraCanvasFileLoader::SaveFileDialog).
     void SaveAttachment(const Attachment& attachment);
@@ -460,14 +519,49 @@ private:
     // UI thread, each account's server, Drafts and Sent folders and sign-in.
     ServerCopies MakeServerCopies();
 
-    // Run `onUnlocked` with the credential vault open, prompting for the master
-    // password first when it is still locked (and re-prompting on a wrong one).
+    // The keys for signed and encrypted mail (UltraMailSecureMime.h): the
+    // accounts' S/MIME identities in the vault, correspondents' certificates
+    // in the address book. OpenPGP's are GnuPG's own.
+    SecureKeys MakeSecureKeys();
+    // The account's S/MIME certificate in a few words ("" for none), and
+    // importing one from a PKCS #12 file (Account Settings).
+    std::string SmimeSummary(const std::string& accountId) const;
+    // The account's mail security: in a few words (Account Settings' row),
+    // saved (and the keys the reading pane and the outbox use refreshed), and
+    // the dialog that edits it - from Account Settings and at the end of
+    // adding an account (`intro`, `cancelLabel`). `done` gets the new summary
+    // after a save; `closed` runs once the dialog is gone, whichever way.
+    std::string SecuritySummary(const std::string& accountId) const;
+    void SaveSecurity(const std::string& accountId, const AccountSecurity& security);
+    void ShowSecurityDialog(const std::string& accountId, UltraCanvas::UltraCanvasWindowBase* parent,
+                            const std::string& intro, const std::string& cancelLabel,
+                            std::function<void(const std::string& summary)> done,
+                            std::function<void()> closed = nullptr);
+    void ImportSmimeCertificate(const std::string& accountId, UltraCanvas::UltraCanvasWindowBase* parent,
+                                std::function<void(const std::string& summary)> done);
+    // A certificate from a good, vouched-for signature of `address`: kept.
+    void LearnCertificate(const std::string& address, const std::string& certificatePem);
+
+    // Run `onUnlocked` with the credential vault open, prompting for the Primary
+    // Password first when it is still locked (and re-prompting on a wrong one).
     // `onUnlocked` does not run if the user cancels or the vault cannot open.
     void EnsureVaultUnlocked(std::function<void()> onUnlocked,
                              const std::string& errorText = {});
 
     // Auto-collect senders of a folder's messages into the address book.
     void CollectContacts(const std::string& accountId, const std::string& folder);
+    // File the known services among `mail`'s senders whose domain the stored
+    // scan verdict proves (ContactCollector::CollectSenders). Run after each
+    // sync over its new mail and the newest held, whose bodies may have come
+    // only now.
+    void CollectServices(const std::string& accountId, const std::string& folder,
+                         const std::vector<MessageEnvelope>& mail);
+    // The same for one message whose body was just downloaded (opened, or
+    // fetched to unsubscribe).
+    void CollectServiceOf(const MessageEnvelope& m);
+    // How many of the newest inbox messages CollectServices looks at after a
+    // sync: the window SyncEngine::FetchMissingBodies fills.
+    static constexpr int kCollectNewest = 100;
     // Register every account with the scheduler and start the periodic
     // background sync timer (only when the IMAP plug-in is available). Safe to
     // call again after an account was added: accounts already registered keep
@@ -541,20 +635,42 @@ private:
     // mail it announced on screen - the message, or the account's inbox when
     // it announced several.
     void OpenFromNotification(const std::string& notificationId);
+    // The same click when Windows hands it to UltraMail's notification
+    // activator (UltraCanvasNotificationActivation.h): the mail the
+    // notification's launch string names, else the one its id is known for.
+    void OpenFromActivation(const UltraCanvas::NotificationActivation& click);
+    // The window to the front and the target on screen; the same target asked
+    // for again within a few seconds (one click by the bus and by the
+    // activator) is shown once.
+    void OpenNotificationTarget(const NewMailTarget& target);
     // The IMAP plug-in as the mailbox interface, or null when it is not loaded.
     IMailboxProtocolPlugin* ImapPlugin() const;
-    // Explain that no mail can be fetched because the IMAP plug-in was not
-    // found, naming the directory that was searched.
-    void ReportMissingImapPlugin();
-    // Where the UltraNet plug-in DSOs are: ULTRAMAIL_PLUGIN_DIR, else the first
-    // Plugins/UltraNet directory next to (or up to two levels above) the
-    // executable, else the working directory's — so the app finds its plug-ins
-    // wherever it is started from, not only from the build directory.
+    // The JMAP plug-in as the mailbox interface, or null when it is not loaded.
+    IMailboxProtocolPlugin* JmapPlugin() const;
+    // The plug-in an incoming server of that protocol is read with: the IMAP
+    // one for IMAP, the JMAP one for JMAP; null when it is not loaded.
+    IMailboxProtocolPlugin* MailboxPluginFor(MailProtocol protocol) const;
+    // Whether any mailbox plug-in is loaded at all (the live sync loop and
+    // the passive body fetch need one; which one is decided per account).
+    bool AnyMailboxPlugin() const;
+    // Explain that no mail can be fetched because the plug-in for that
+    // protocol was not found, naming the directory that was searched.
+    void ReportMissingMailboxPlugin(MailProtocol protocol);
+    // Where the UltraNet plug-in DSOs are: ULTRAMAIL_PLUGIN_DIR, else
+    // UltraNet's own default - the first Plugins/UltraNet directory next to
+    // (or up to two levels above) the executable - so the app finds its
+    // plug-ins wherever it is started from, not only from the build directory.
     static std::string ResolvePluginDirectory();
 
     // Session-lifetime: the master password is entered once, and the derived
     // key lives only while the app runs.
     CredentialVault vault_{""};
+    // The key the stored mail is encrypted with (UltraMailStorage.h); nullptr
+    // while there is no vault to keep it in.
+    std::shared_ptr<const UltraCryptSecureBuffer> storageKey_;
+    // Cleared when the app goes: the thread sealing an earlier version's
+    // message files stops at the next one.
+    std::shared_ptr<std::atomic<bool>> bodiesAlive_ = std::make_shared<std::atomic<bool>>(true);
     // OAuth2 sign-in + token refresh for providers that need it (Gmail).
     MailOAuth       oauth_;
 
@@ -668,6 +784,30 @@ private:
     // True once the periodic sync timer runs, so StartBackgroundSync() can be
     // called again (after an account is added) without starting a second one.
     bool        syncTimerStarted_ = false;
+
+    // ---- Push (a JMAP account's event source) ---------------------------
+    // One watch per JMAP account (IMailboxProtocolPlugin::WatchMailbox): the
+    // server reports a change and the account is checked at once, next to
+    // the regular interval, which stays as the safety net. Kept on the sync
+    // tick (MaintainPushWatches): opened once the vault is usable, reopened a
+    // minute after one ended, ended for an account that is gone or no
+    // longer JMAP. All on the UI thread; the plug-in's callbacks post here.
+    struct PushWatch {
+        UltraNetHandle handle = UltraNetInvalidHandle;
+        std::string    serverUrl;
+    };
+    std::map<std::string, PushWatch>  pushWatches_;
+    std::set<std::string>             pushStarting_;   // a worker is opening one
+    std::map<std::string, int64_t>    pushRetryAt_;    // steady seconds; not before
+    // False once the app is going: a callback that arrives later does nothing.
+    std::shared_ptr<std::atomic<bool>> pushAlive_ = std::make_shared<std::atomic<bool>>(true);
+    void MaintainPushWatches();
+    void StartPushWatch(const Account& account, const DiscoveryResult& settings,
+                        const std::string& serverUrl, IMailboxProtocolPlugin& mailbox);
+    void StopPushWatch(const std::string& accountId);
+    // A change the server announced: the account is checked now, quietly
+    // (a failure goes the way of a timer check, never an alert of its own).
+    void SyncAccountFromPush(const std::string& accountId);
     // Notices a wake from sleep from a short periodic timer (started with the
     // sync timer), so mail is checked right after the computer wakes.
     WakeDetector wake_;
@@ -734,12 +874,12 @@ private:
     NewMailTracker  newMail_;
     // What a click on a notification opens, by the notification's bus id
     // (UI thread only).
-    struct NotificationTarget {
-        std::string accountId;
-        std::string folder;     // empty: the account's inbox
-        int64_t     uid = 0;    // 0: no single message
-    };
+    using NotificationTarget = NewMailTarget;
     std::map<std::string, NotificationTarget> notificationTargets_;
+    // The target last opened from a notification, and when: one click can
+    // arrive by the bus and by the activator.
+    NotificationTarget lastOpenedTarget_;
+    std::chrono::steady_clock::time_point lastOpenedAt_{};
     std::vector<std::shared_ptr<UltraCanvas::UltraCanvasWindow>> viewerWindows_;
     // The Contacts window while it is open (one at a time).
     std::shared_ptr<UltraCanvas::UltraCanvasWindow> contactsWindow_;

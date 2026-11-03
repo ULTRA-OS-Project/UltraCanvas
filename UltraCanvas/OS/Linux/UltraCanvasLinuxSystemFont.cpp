@@ -1,7 +1,8 @@
 // OS/Linux/UltraCanvasLinuxSystemFont.cpp
-// The desktop's interface and monospace fonts on Linux and the BSDs, for
-// UltraCanvasLinuxApplication::DetectSystemFontStyleNative and
-// DetectMonospacedFontStyleNative. Until 0.9.362 both returned the literal
+// The desktop's interface and monospace fonts on Linux and the BSDs:
+// LinuxFonts::DetectSystemFontStyle and DetectMonospacedFontStyle, which the
+// X11 and the Wayland backends answer their DetectSystemFontStyleNative /
+// DetectMonospacedFontStyleNative with. Until 0.9.362 both returned the literal
 // Ubuntu 12, so "the system font" was never the system's. Sources, first
 // answer wins, the parsers in UltraCanvasSystemFont.h:
 //   - a KDE session (XDG_CURRENT_DESKTOP names KDE): ~/.config/kdeglobals
@@ -12,11 +13,17 @@
 //   - ~/.config/gtk-4.0/settings.ini and gtk-3.0/settings.ini gtk-font-name
 //     (no monospace key there)
 //   - the bundled Ubuntu / Ubuntu Mono at 12 pt
+// GSettings is asked only inside a desktop session (XDG_CURRENT_DESKTOP or
+// DESKTOP_SESSION set): with no desktop running - a bare window manager, an
+// SSH session, a CI runner under Xvfb - the schema answers its compiled
+// default, Cantarell 11, which nobody chose; GTK itself reads GSettings
+// only through the desktop's settings daemon and falls back to its files.
+// Version: 1.2.0 - GSettings only inside a desktop session; the layout audit under Xvfb got Cantarell 11
+// Version: 1.1.0 - the detectors are LinuxFonts::DetectSystemFontStyle / DetectMonospacedFontStyle, shared with the Wayland backend
 // Version: 1.0.0
-// Last Modified: 2026-11-02
+// Last Modified: 2026-11-03
 // Author: UltraCanvas Framework
-#include "UltraCanvasApplication.h"
-#include "UltraCanvasLinuxApplication.h"
+#include "UltraCanvasLinuxFonts.h"
 #include "UltraCanvasSystemFont.h"
 #include "UltraCanvasPathUtf8.h"
 
@@ -52,6 +59,12 @@ bool IsKdeSession() {
     return desktop.find("kde") != std::string::npos;
 }
 
+// A desktop environment is running this session - every one of them exports
+// XDG_CURRENT_DESKTOP, and the display managers DESKTOP_SESSION.
+bool IsDesktopSession() {
+    return !GetEnvUtf8("XDG_CURRENT_DESKTOP").empty() || !GetEnvUtf8("DESKTOP_SESSION").empty();
+}
+
 // A string key of a GSettings schema, "" when the schema or the key is not
 // installed. Looked up rather than opened blind: g_settings_new aborts the
 // process on a missing schema.
@@ -75,6 +88,7 @@ std::string GSettingsString(const char* schema, const char* key) {
 }
 
 bool FromGSettings(bool monospace, FontStyle& out) {
+    if (!IsDesktopSession()) return false;
     const std::string value = GSettingsString("org.gnome.desktop.interface",
                                               monospace ? "monospace-font-name" : "font-name");
     return !value.empty() && ParseGtkFontName(value, out.fontFamily, out.fontSize);
@@ -118,11 +132,11 @@ FontStyle DetectDesktopFont(bool monospace) {
 
 }  // namespace
 
-FontStyle UltraCanvasLinuxApplication::DetectSystemFontStyleNative() {
+FontStyle LinuxFonts::DetectSystemFontStyle() {
     return DetectDesktopFont(false);
 }
 
-FontStyle UltraCanvasLinuxApplication::DetectMonospacedFontStyleNative() {
+FontStyle LinuxFonts::DetectMonospacedFontStyle() {
     return DetectDesktopFont(true);
 }
 

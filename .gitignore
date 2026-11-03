@@ -51,5 +51,7 @@ Texter.exe
 *.pdb
 /UltraCanvas/Plugins/Vectorizer/vtracer-c/Cargo.lock
 /UltraCanvas/Plugins/Vectorizer/vtracer-c/target/
+# (the Olm shim keeps its Cargo.lock: the crypto crates stay pinned)
+/UltraCanvas/Plugins/UltraIM/matrix/olm-c/target/
 /media/ocr/tessdata/
 __pycache__/

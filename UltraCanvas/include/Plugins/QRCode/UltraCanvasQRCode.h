@@ -1,3 +1,7 @@
+// include/Plugins/QRCode/UltraCanvasQRCode.h
+// A QR code drawn from its content, and read back from a picture or a camera frame
+// Version: 1.0.0 - the history starts here; earlier changes are in the framework changelog
+// Last Modified: 2026-10-29
 #pragma once
 
 #include "UltraCanvasUIElement.h"
@@ -9,10 +13,6 @@
 #include <memory>
 #include <string>
 #include <vector>
-
-#ifdef None
-#undef None
-#endif
 
 namespace UltraCanvas {
 
@@ -50,7 +50,7 @@ namespace UltraCanvas {
     };
 
     enum class QRLogoStyle {
-        None = 0,
+        NoLogo = 0,
         Center,
         CenterWithBorder,
         CenterRounded,
@@ -58,7 +58,7 @@ namespace UltraCanvas {
     };
 
     enum class QRGradientType {
-        None = 0,
+        NoGradient = 0,
         Linear,
         Radial,
         Diagonal
@@ -74,11 +74,11 @@ namespace UltraCanvas {
         Color backgroundColor = Colors::White;
         Color finderColor     = Color(0, 0, 0, 0);
 
-        QRGradientType gradientType       = QRGradientType::None;
+        QRGradientType gradientType       = QRGradientType::NoGradient;
         Color          gradientStartColor = Colors::Black;
         Color          gradientEndColor   = Color(0, 102, 204);
 
-        QRLogoStyle              logoStyle        = QRLogoStyle::None;
+        QRLogoStyle              logoStyle        = QRLogoStyle::NoLogo;
         std::shared_ptr<UCImage> logoImage;
         float                    logoScale        = 0.20f;
         float                    logoBorderWidth  = 4.0f;
