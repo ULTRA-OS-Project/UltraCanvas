@@ -1,4 +1,5 @@
 // UltraCanvas Framework Demonstration Program Entry Point
+// Version: 1.0.6 - --audit-layout runs in the bundled Ubuntu 12, whatever the desktop's font
 // Version: 1.0.5 - --audit-layout [--pseudo-loc] [--audit-page <id>]
 // Version: 1.0.4 - Builds for Android: the body is ultracanvas_app_main(),
 //                 which OS/Android's android_main() calls, and the X11 and
@@ -281,6 +282,20 @@ int main(int argc, char* argv[]) {
         // Initialize system
         if (!InitializeSystem(g_app, argv[0])) {
             return EXIT_FAILURE;
+        }
+
+        // The layout audit measures text, so it runs in the bundled Ubuntu 12
+        // and Ubuntu Mono 12 whatever the desktop's font is - the pages are
+        // laid out for those, and a runner's font must not move the result.
+        if (auditLayout) {
+            FontStyle ui;
+            ui.fontFamily = "Ubuntu";
+            ui.fontSize = 12.0;
+            g_app.SetSystemFontStyle(ui);
+            FontStyle code;
+            code.fontFamily = "Ubuntu Mono";
+            code.fontSize = 12.0;
+            g_app.SetDefaultMonospacedFontStyle(code);
         }
 
         // Create and initialize demo application

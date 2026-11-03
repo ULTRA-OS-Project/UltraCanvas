@@ -1,5 +1,6 @@
 // UltraCanvasApplication.cpp
 // Main UltraCanvas App
+// Version: 1.16.0 - SetSystemFontStyle / SetDefaultMonospacedFontStyle pin the system fonts
 // Version: 1.15.0 - Initialize loads the translation catalogues (UltraLocalisation)
 // Version: 1.14.0 - RunAfterMainLoop() at the end of Run()
 // Version: 1.13.1 - the generated fonts.conf (Windows, Android) scales bitmap fonts to the
@@ -968,6 +969,16 @@ namespace UltraCanvas {
             cachedMonospacedFontStyle_ = DetectMonospacedFontStyleNative();
         }
         return cachedMonospacedFontStyle_.value();
+    }
+
+    void UltraCanvasApplicationBase::SetSystemFontStyle(const FontStyle& style) {
+        if (style.fontFamily.empty() || style.fontSize <= 0) return;
+        cachedSystemFontStyle_ = style;
+    }
+
+    void UltraCanvasApplicationBase::SetDefaultMonospacedFontStyle(const FontStyle& style) {
+        if (style.fontFamily.empty() || style.fontSize <= 0) return;
+        cachedMonospacedFontStyle_ = style;
     }
 
     bool UltraCanvasApplicationBase::Initialize(const std::string& app) {

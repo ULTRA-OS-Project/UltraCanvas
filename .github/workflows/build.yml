@@ -1088,14 +1088,38 @@ jobs:
       # floor to 2.39 for everyone who installs it.
       - name: Install Clang (Linux)
         if: runner.os == 'Linux'
-        # Normally 20 s; 2.5 min on the slow mirror day of 2026-10-07.
+        # Normally 20 s; 2.5 min on the slow mirror day of 2026-10-07. Three
+        # attempts at that pace, and their pauses, still fit.
         timeout-minutes: 15
         run: |
           set -euo pipefail
           V="${ULTRACANVAS_CLANG_VERSION}"
-          wget -qO /tmp/llvm.sh https://apt.llvm.org/llvm.sh
-          chmod +x /tmp/llvm.sh
-          sudo /tmp/llvm.sh "$V"
+          # apt.llvm.org has short outages: on 2026-11-03 a bare wget of
+          # llvm.sh failed both Linux legs in under a second (exit 4, a
+          # network failure) before anything compiled. So the script is
+          # fetched under curl's own retries, and the whole fetch-and-install
+          # is tried three times - llvm.sh reaches the same host again for
+          # the signing key, the apt index and the packages, and running it a
+          # second time only re-adds the source it already added.
+          installed=false
+          for attempt in 1 2 3; do
+            rm -f /tmp/llvm.sh
+            if curl -fsSL --connect-timeout 20 --retry 5 --retry-all-errors --retry-delay 10 \
+                    -o /tmp/llvm.sh https://apt.llvm.org/llvm.sh &&
+               chmod +x /tmp/llvm.sh &&
+               sudo /tmp/llvm.sh "$V"; then
+              installed=true
+              break
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              echo "::warning::installing Clang $V from apt.llvm.org failed (attempt $attempt of 3); retrying in $((attempt * 30)) s"
+              sleep $((attempt * 30))
+            fi
+          done
+          if [ "$installed" != true ]; then
+            echo "::error::could not install Clang $V from apt.llvm.org in 3 attempts (the host may be down)."
+            exit 1
+          fi
           # Fail here, loudly, rather than twenty minutes into a compile: if the
           # repository did not carry this version for this distribution or
           # architecture, that is the thing to report, not whatever the build

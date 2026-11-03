@@ -65,6 +65,8 @@
 // display and the switch itself are remembered in the settings.
 // A previewed file that changes on disk is reopened in the preview pane
 // (ReloadChangedPreview): throttled, and never restarting a playing video.
+// Version: 1.42.0 - the viewer window is titled by the file on show (no fixed title), so
+//                   the title follows browsing
 // Version: 1.41.0 - "Linux" (WSL distributions) and "Network" (computers and their
 //                  shares) sections in the folder tree; \\NAS opens a computer
 // Version: 1.40.0 - the tab strip's "+" can open the Computer page
@@ -102,7 +104,7 @@
 // Version: 1.30.1 - the New and Add-drive menus open anchored to their buttons
 //                  (OpenMenuAnchored): above them when there is no room below
 // Version: 1.30.0
-// Last Modified: 2026-10-30
+// Last Modified: 2026-11-03
 // Author: UltraCanvas Framework
 
 #include "UltraFilerWindow.h"
@@ -1733,10 +1735,10 @@ void UltraFilerWindow::OpenInMediaWindow(const std::string& path) {
     // The pane and the window would otherwise both hold the file open, which
     // on Windows is what makes a later rename fail.
     if (preview) preview->CloseFile();
-    MediaViewerWindowOptions options;
-    options.title = PathToUtf8(PathFromUtf8(path).filename());
-    if (!mediaWindow.Show(path, window.get(), options)) {
-        UltraCanvasAlert::Error("Could not open a window for " + options.title,
+    // No title of our own: the window is called after the file on show, and
+    // follows it as the arrow keys browse the folder.
+    if (!mediaWindow.Show(path, window.get(), MediaViewerWindowOptions())) {
+        UltraCanvasAlert::Error("Could not open a window for " + PathToUtf8(PathFromUtf8(path).filename()),
                                 "View", nullptr, window.get());
     }
 }

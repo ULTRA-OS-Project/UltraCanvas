@@ -66,6 +66,7 @@ before adding cross-module code.
   CI runs `UltraCanvasDemo --audit-layout` and `--audit-layout --pseudo-loc`
   (every text ~40% longer) on a virtual display and fails on a label or
   button narrower than its text, or content cut off without a scrollbar.
+  The audit measures in the bundled Ubuntu 12, whatever the desktop's font.
   Run both before pushing a page (`--audit-page <id>` for one page).
 
 ## Core conventions
@@ -818,7 +819,11 @@ and never introduce a new literal copy of one:
    are listed in `scripts/doc_examples_baseline.txt` until the API exists;
    a component doc must never be added there. Writing one of those APIs
    makes its entries stop being found, which fails the check until the file
-   is rewritten (`--all --update-baseline`) in the same change.
+   is rewritten in the same change: `--all --update-baseline`, or
+   `--update-baseline <doc>...` for the docs changed, with the others'
+   entries kept. Those are the only ways to write the file - each doc's
+   entries end in a line that signs them, and a block edited by hand fails
+   the check naming the doc to regenerate.
    Changing a header can therefore fail a doc you did not touch: fix that
    doc in the same change. A name a snippet takes from the application - a
    `window`, a callback the reader writes, a version macro - is declared in
