@@ -6439,6 +6439,28 @@ else()
     message(STATUS "  MediaViewerDetailsPanelTest skipped (UltraCanvas target not present)")
 endif()
 
+# MediaViewerLoadingTest - OpenFileWhenShown: a loading ring and the file's
+# name (never "No media") until a frame is drawn, then the file opens. Xvfb.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building MediaViewerLoadingTest...")
+    add_executable(MediaViewerLoadingTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/MediaViewerLoadingTest.cpp
+    )
+    target_include_directories(MediaViewerLoadingTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(MediaViewerLoadingTest PRIVATE cxx_std_20)
+    target_compile_definitions(MediaViewerLoadingTest PRIVATE
+        UC_MEDIA_DIR="${ULTRACANVAS_ROOT}/media")
+    target_link_libraries(MediaViewerLoadingTest PRIVATE UltraCanvas)
+    set_target_properties(MediaViewerLoadingTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME MediaViewerLoadingTest COMMAND MediaViewerLoadingTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: MediaViewerLoadingTest")
+else()
+    message(STATUS "  MediaViewerLoadingTest skipped (UltraCanvas target not present)")
+endif()
+
 # OutlookMessageTest - the Outlook .msg reader (UltraCanvasOutlookMessage.h):
 # messages built with UCCompoundFileWriter as Outlook lays them out, the
 # compressed RTF body and the HTML it encapsulates, attachments; the compound

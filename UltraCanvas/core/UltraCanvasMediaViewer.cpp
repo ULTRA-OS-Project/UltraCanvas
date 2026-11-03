@@ -1,6 +1,9 @@
 // core/UltraCanvasMediaViewer.cpp
 // Implementation of the comprehensive media / photo / document viewer widget.
 // See UltraCanvasMediaViewer.h for the feature overview.
+// Version: 1.22.0 - OpenFileWhenShown and its kin: a turning ring and the file's name
+//                   while a file is on its way, opened after a frame of that is drawn;
+//                   "No media" only when nothing was asked for; onCurrentFileChanged
 // Version: 1.21.0 - the Details panel is a group box (the title as its caption, a close
 //                   button), its text a size smaller, and a GIF's colour table under it
 // Version: 1.20.1 - an opened attachment is kept in the per-user cache (opened-attachments),
@@ -84,6 +87,7 @@
 #include "UltraCanvasSlider.h"
 #include "../dialogs/UltraCanvasCurvesDialog.h"  // Curves (tone curve) editing window
 #include "UltraCanvasColorSwatchBar.h"  // backdrop palette under transparent images
+#include "UltraCanvasBusyIndicator.h"   // the ring while a file is on its way
 #include "UltraCanvasGroupBox.h"        // the Details panel's frame, caption and close button
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasConfig.h"     // GetResourcesDir, for the toolbar icons
@@ -1363,7 +1367,8 @@ void UltraCanvasMediaSurface::DrawCurrent(IRenderContext* ctx, const Rect2Df& b)
     if (!image || !image->IsValid()) {
         // A picture whose pixels would not decode says so; the reason is in
         // the info bar and the Details panel.
-        const char* text = HasDecodeFailure() ? "Cannot decode this picture" : "No media";
+        const std::string text = HasDecodeFailure() ? std::string("Cannot decode this picture") : emptyText;
+        if (text.empty()) return;
         ctx->SetFontSize(16);
         ctx->SetTextPaint(Color(130, 130, 140, 255));
         Point2Dd p = ctx->CalculateCenteredTextPosition(
@@ -2421,6 +2426,23 @@ void UltraCanvasMediaViewer::BuildUI(float w, float h) {
         AddChild(detailsView);
     }
 
+    // ----- LOADING RING (OpenFileWhenShown) -----
+    // Over the middle of the display while a file is on its way; Arrange()
+    // centres it.
+    {
+        auto ring = CreateBusyIndicator("MV_Loading", 0, 0, 44, 44, BusyIndicatorKind::Ring);
+        BusyIndicatorStyle ringStyle = ring->GetStyle();
+        ringStyle.arcColor   = Color(200, 200, 212, 255);
+        ringStyle.trackColor = Color(255, 255, 255, 28);
+        ring->SetStyle(ringStyle);
+        ring->SetAccessibleName("Loading");
+        ring->layoutItem.SetPositionType(CSSLayout::PositionType::Absolute);
+        ring->SetZIndex(OverlayZOrder::Controls);
+        ring->SetVisible(false);
+        loadingIndicator = ring;
+        AddChild(loadingIndicator);
+    }
+
     // Nothing is on show yet, so no view / edit tool applies until a file loads.
     UpdateToolAvailability();
 
@@ -2813,7 +2835,12 @@ void UltraCanvasMediaViewer::SetFiles(const std::vector<std::string>& files, siz
             out.push_back(f);
         }
     }
-    if (out.empty()) return;
+    if (out.empty()) {
+        // Nothing here to show: a loading ring for it would turn forever.
+        EndLoading();
+        if (playlist.empty()) ReportCurrentFile(std::string());
+        return;
+    }
     KeepPasswordsOnlyFor(PathToUtf8(UltraCanvas::PathFromUtf8(out.front()).parent_path()));
     playlist = std::move(out);
     currentIndex = std::min(startIndex, playlist.size() - 1);
@@ -2825,6 +2852,115 @@ void UltraCanvasMediaViewer::SetFiles(const std::vector<std::string>& files, siz
     UpdateBreadcrumb();
     LoadCurrent(false);
     if (slideshowPlaying) { PauseSlideshow(); PlaySlideshow(); }
+}
+
+// ===== OPENING ONCE THE WINDOW SHOWS =====
+
+void UltraCanvasMediaViewer::OpenFileWhenShown(const std::string& filePath) {
+    BeginLoading(filePath, [this, filePath] { OpenFile(filePath); });
+}
+
+void UltraCanvasMediaViewer::OpenFolderWhenShown(const std::string& folderPath,
+                                                 const std::string& selectFile) {
+    BeginLoading(selectFile.empty() ? folderPath : selectFile,
+                 [this, folderPath, selectFile] { OpenFolder(folderPath, selectFile); });
+}
+
+void UltraCanvasMediaViewer::SetFilesWhenShown(const std::vector<std::string>& files,
+                                               size_t startIndex) {
+    if (files.empty()) return;
+    const std::string& shown = files[std::min(startIndex, files.size() - 1)];
+    BeginLoading(shown, [this, files, startIndex] { SetFiles(files, startIndex); });
+}
+
+void UltraCanvasMediaViewer::BeginLoading(const std::string& path, std::function<void()> open) {
+    auto* app = UltraCanvasApplication::GetInstance();
+    if (!app) {
+        // No application, so no event loop to come back from (a test, a
+        // tool): open now. One that is not running yet - a window set up
+        // before Run() - opens on its first turn.
+        EndLoading();
+        open();
+        return;
+    }
+    // Nothing of the previous file stays on show under the ring.
+    StopPlayback();
+    ReleaseViewBackends();
+    playlist.clear();
+    currentIndex = 0;
+    ShowView(MediaKind::Image);
+    loadingPath = path;
+    pendingOpen = std::move(open);
+    pendingOpenScheduled = false;
+    const unsigned generation = ++openGeneration;
+    if (surface) surface->SetEmptyText("");
+    if (loadingIndicator) {
+        loadingIndicator->SetVisible(true);
+        static_cast<UltraCanvasBusyIndicator*>(loadingIndicator.get())->Start();
+    }
+    UpdateToolAvailability();
+    UpdateTransparencyPalette();
+    UpdateInfoBar();
+    if (IsDetailsVisible()) UpdateDetailedInfo();
+    ReportCurrentFile(path);
+    InvalidateLayout();
+    RequestRedraw();
+    // Render() opens it after the first frame; this is for a viewer that is
+    // not drawn (hidden, or its window not up yet), which still gets its file.
+    std::weak_ptr<UltraCanvasUIElement> self = weak_from_this();
+    app->StartTimer(400, false, [self, this, generation](TimerId) {
+        if (self.expired()) return;
+        RunPendingOpen(generation);
+    });
+}
+
+void UltraCanvasMediaViewer::SchedulePendingOpen(unsigned delayMs) {
+    if (!pendingOpen || pendingOpenScheduled) return;
+    auto* app = UltraCanvasApplication::GetInstance();
+    if (!app) return;
+    pendingOpenScheduled = true;
+    const unsigned generation = openGeneration;
+    std::weak_ptr<UltraCanvasUIElement> self = weak_from_this();
+    app->StartTimer(delayMs, false, [self, this, generation](TimerId) {
+        if (self.expired()) return;
+        RunPendingOpen(generation);
+    });
+}
+
+void UltraCanvasMediaViewer::RunPendingOpen(unsigned generation) {
+    // Replaced or already opened meanwhile.
+    if (generation != openGeneration || !pendingOpen) return;
+    auto open = std::move(pendingOpen);
+    pendingOpen = nullptr;
+    open();          // its LoadCurrent ends the loading state
+    EndLoading();    // ... and so does a list with nothing in it to show
+}
+
+void UltraCanvasMediaViewer::EndLoading() {
+    pendingOpen = nullptr;
+    pendingOpenScheduled = false;
+    if (loadingPath.empty()) return;
+    loadingPath.clear();
+    if (surface) surface->SetEmptyText("No media");
+    if (loadingIndicator) {
+        static_cast<UltraCanvasBusyIndicator*>(loadingIndicator.get())->Stop();
+        loadingIndicator->SetVisible(false);
+    }
+    UpdateInfoBar();
+    RequestRedraw();
+}
+
+void UltraCanvasMediaViewer::ReportCurrentFile(const std::string& path) {
+    if (path == lastReportedFile) return;
+    lastReportedFile = path;
+    if (onCurrentFileChanged) onCurrentFileChanged(path);
+}
+
+void UltraCanvasMediaViewer::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
+    UltraCanvasContainer::Render(ctx, dirtyRect);
+    // A frame of the loading state is on screen: now the file can be opened
+    // (on the next turn of the event loop, not inside the paint).
+    if (pendingOpen && !pendingOpenScheduled) SchedulePendingOpen(0);
 }
 
 void UltraCanvasMediaViewer::OpenFile(const std::string& filePath) {
@@ -3188,6 +3324,8 @@ void UltraCanvasMediaViewer::UpdateBreadcrumb() {
 
 void UltraCanvasMediaViewer::LoadCurrent(bool animated) {
     if (!surface) return;
+    // Whatever was on its way is here now - or was replaced by this.
+    EndLoading();
 
     // Stop any media that was playing before we switch away from it.
     StopVideoClipTimer();
@@ -3209,6 +3347,7 @@ void UltraCanvasMediaViewer::LoadCurrent(bool animated) {
         UpdateInfoBar();
         if (IsDetailsVisible()) UpdateDetailedInfo();
         UpdateAbsenceWatch();          // kept passwords may still be held
+        ReportCurrentFile(std::string());
         return;
     }
     if (currentIndex >= playlist.size()) currentIndex = playlist.size() - 1;
@@ -3537,6 +3676,7 @@ void UltraCanvasMediaViewer::LoadCurrent(bool animated) {
     // or one that opened another file here - shows without asking again.
     if (IsLocked()) UnlockFromRememberedPasswords();
     UpdateAbsenceWatch();
+    ReportCurrentFile(GetCurrentPath());
 }
 
 void UltraCanvasMediaViewer::ApplyAdjustments() {
@@ -4264,7 +4404,11 @@ void UltraCanvasMediaViewer::UpdateInfoBar() {
     UpdateZoomBox();
     if (!infoLabel) return;
     if (playlist.empty()) {
-        infoLabel->SetText("No media");
+        // "No media" is for a viewer that was asked for nothing; one with a
+        // file on its way names it.
+        infoLabel->SetText(loadingPath.empty()
+                ? std::string("No media")
+                : BaseName(loadingPath) + "   \xC2\xB7   loading");
         return;
     }
     const std::string& path = playlist[currentIndex];
@@ -4498,7 +4642,9 @@ std::vector<Color> ReadGifPalette(const std::string& path, bool& isGlobal) {
 void UltraCanvasMediaViewer::UpdateDetailedInfo() {
     if (!surface) return;
     if (playlist.empty()) {
-        ShowDetailsText("No media\n");
+        ShowDetailsText(loadingPath.empty()
+                ? std::string("No media\n")
+                : "Loading\n\nFile: " + BaseName(loadingPath) + "\nPath: " + loadingPath + "\n");
         return;
     }
     const std::string& path = playlist[currentIndex];
@@ -4815,6 +4961,13 @@ void UltraCanvasMediaViewer::Arrange(const Rect2Df& finalRect,
             infoBarSurfaceSize = now;
             UpdateInfoBar();
         }
+    }
+    if (loadingIndicator && loadingIndicator->IsVisible() && surface) {
+        const Rect2Df s = surface->GetBounds();
+        constexpr float kRing = 44.0f;
+        loadingIndicator->Arrange(Rect2Df(s.x + std::max(0.0f, (s.width - kRing) * 0.5f),
+                                          s.y + std::max(0.0f, (s.height - kRing) * 0.5f),
+                                          kRing, kRing), ctx);
     }
     if (!IsDetailsVisible()) return;
     // Over the active view, inset a little, and no wider than a table of

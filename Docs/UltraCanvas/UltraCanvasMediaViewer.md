@@ -545,6 +545,10 @@ viewer->OpenFolder("/home/me/Pictures");            // browse a folder
 viewer->OpenFile("/home/me/Pictures/photo.jpg");    // file first, folder around it
 viewer->SetFiles({ "a.png", "b.mp4", "c.pdf" });    // exactly these files
 
+// A window shown first and the file opened after (the window appears at once):
+viewer->OpenFileWhenShown("/home/me/Pictures/photo.jpg");   // also OpenFolderWhenShown, SetFilesWhenShown
+viewer->onCurrentFileChanged = [](const std::string& path) { /* a window title */ };
+
 // Navigation
 viewer->Next();
 viewer->Previous();
@@ -555,6 +559,20 @@ viewer->SetSlideshowIntervalSeconds(5.0);
 viewer->SetTransition(MediaTransition::CrossFade);
 viewer->PlaySlideshow();
 ```
+
+*No media* (on the display and in the info bar) means the viewer was asked
+for nothing. A host that shows its window and then opens a file calls
+`OpenFileWhenShown` (or `OpenFolderWhenShown` / `SetFilesWhenShown`): the
+viewer shows a turning ring (`UltraCanvasBusyIndicator`, `MV_Loading`) in the
+middle of the display and `name · loading` in the info bar, reports the name
+through `onCurrentFileChanged`, and opens the file once a frame of that has
+been drawn - or after 400 ms if the viewer is not drawn at all. `IsLoading()`
+and `GetLoadingPath()` say whether one is on its way; any other open or
+`CloseFile()` replaces it, and a list with nothing to show ends it. Without
+an application (a test) the file opens at once. `onCurrentFileChanged` also
+fires for every file browsed to, and with `""` when nothing is shown;
+`UltraCanvasMediaViewerWindow` and UltraViewer title their windows with it.
+The surface's own empty text is `UltraCanvasMediaSurface::SetEmptyText`.
 
 `IsSupportedMedia(path)` answers whether the viewer can display a path
 (static — the UltraFiler preview uses it to decide whether to open the

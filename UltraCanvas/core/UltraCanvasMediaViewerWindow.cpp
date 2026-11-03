@@ -1,7 +1,10 @@
 // core/UltraCanvasMediaViewerWindow.cpp
 // One file, full size, in its own window.
+// Version: 1.1.0 - the window appears at once with the loading ring and the file's name,
+//                  and the file opens after that (OpenFileWhenShown); the title follows
+//                  the file shown
 // Version: 1.0.0
-// Last Modified: 2026-09-09
+// Last Modified: 2026-11-03
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasMediaViewerWindow.h"
@@ -73,6 +76,16 @@ namespace UltraCanvas {
                           .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
         window->AddChild(viewer);
 
+        // The title is the file on show, browsing included - unless the
+        // caller gave one of its own.
+        if (options.title.empty()) {
+            UltraCanvasWindow* titled = window.get();
+            viewer->onCurrentFileChanged = [titled](const std::string& path) {
+                const std::string name = PathToUtf8(PathFromUtf8(path).filename());
+                titled->SetWindowTitle(name.empty() ? std::string("Media") : name);
+            };
+        }
+
         // Escape closes, the way every other viewer window in the framework
         // behaves. The viewer installs its own key filter for the arrow keys,
         // so this only has to claim the one it does not want.
@@ -90,10 +103,13 @@ namespace UltraCanvas {
         // top-level window, so put it over the host again now that it exists.
         if (host) window->SetWindowPosition(cfg.x, cfg.y);
 
-        // After Show(): the viewer sizes its display to the bounds it has, and
-        // it only has them once the window has laid out.
-        if (options.browseFolder) viewer->OpenFile(filePath);
-        else viewer->SetFiles({filePath}, 0);
+        // Opened once the window has drawn a frame: until then it shows a
+        // loading ring and the file's name, not "No media" - reading a large
+        // folder and decoding a large picture take long enough to see. The
+        // viewer also sizes its display to the bounds it has, and it only has
+        // them once the window has laid out.
+        if (options.browseFolder) viewer->OpenFileWhenShown(filePath);
+        else viewer->SetFilesWhenShown({filePath}, 0);
         return true;
     }
 
