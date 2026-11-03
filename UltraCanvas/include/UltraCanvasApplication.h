@@ -1,7 +1,5 @@
 // include/UltraCanvasBaseApplication.h
 // Main UltraCanvas Framework Entry Point - Unified System
-// Version: 1.15.0 - RegisterPlatformBundledFonts, one per platform, and RegisterBundledFontsWithoutApplication:
-//                  a tool that draws text uses the bundled and the system fonts as the applications do
 // Version: 1.14.0 - UltraCanvasApplication is the Wayland backend under ULTRACANVAS_DISPLAY_WAYLAND
 // Version: 1.13.0 - RunAfterMainLoop(): the platform's step once the main loop has ended
 // Version: 1.12.0 - GenerateBitmapScalingConfig: fontconfig's bitmap-font scaling rules

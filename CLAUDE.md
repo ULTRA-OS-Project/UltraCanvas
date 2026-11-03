@@ -20,6 +20,9 @@ Quick pointers:
   to a bitmap is `SaveVectorDocument` with a size); only a program's own
   internal files (settings, caches, logs) are read and written directly -
   see *Core conventions* in `AGENTS.md`
+- Text a person reads goes through `Tr` (`UltraLocalisation`); after adding
+  one, run `python3 scripts/extract_ui_strings.py` (the English catalogues
+  under `media/locale/en/`) and `python3 scripts/check_locale_catalogues.py`
 - File paths are UTF-8 in every application: convert with `PathToUtf8` /
   `PathFromUtf8` (`UltraCanvasPathUtf8.h`), never `p.string()` or
   `fs::path(str)` — see *Core conventions* in `AGENTS.md`

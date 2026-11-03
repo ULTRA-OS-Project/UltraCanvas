@@ -1,4 +1,5 @@
 // Apps/UltraCanvasStart/engine/StartPlan.cpp
+// Version: 0.1.8 - the SDK step names the archive's address and the Download button
 // Version: 0.1.7 - an installed MSYS2 is updated before pacman installs
 // Version: 0.1.6 - Windows without MSYS2: winget sets it up before pacman installs
 // Version: 0.1.5 - a check switched off on the Tools step is not installed
@@ -129,9 +130,10 @@ Plan BuildPlan(const SystemProfile& profile, const Choices& choices,
         download.kind = StepKind::Download;
         download.title = "Get the UltraCanvas SDK " + SdkArtifactName(target, version, arch);
         download.description = "The framework prebuilt for " + PlatformName(target) + " " + arch +
-                               ": download " + SdkArchiveName(target, version, arch) + " from " +
-                               SdkDownloadPage() + " (also on " + SdkReleasePage(version) +
-                               "), then the Framework step's Unpack button unpacks it";
+                               ": the Framework step's Download button fetches " +
+                               SdkDownloadUrl(target, version, arch) + ", checks it against the " +
+                               "version's SHA256SUMS and unpacks it (also on " +
+                               SdkReleasePage(version) + ")";
         plan.steps.push_back(download);
     }
     if (choices.cloneFramework || !choices.useSdk) {

@@ -1,5 +1,6 @@
 // Tests/UltraCanvasStart/test_plan.cpp
 // The plan, the SDK names and the report.
+// Version: 0.1.5 - the SDK's address on start.ultraos.eu, ChecksumFor, DownloadSdk's failures
 // Version: 0.1.4 - an installed MSYS2 is updated first; RunStep streams its lines
 // Version: 0.1.3 - Windows without MSYS2: winget sets it up before pacman
 // Version: 0.1.2 - a check switched off is left out of the install
@@ -11,10 +12,12 @@
 #include "StartPlan.h"
 
 #include <algorithm>
+#include <filesystem>
 #include "StartGuide.h"
 #include "StartRunner.h"
 #include "StartSdk.h"
 #include "StartSystem.h"
+#include "UltraCanvasPathUtf8.h"
 
 using namespace UltraCanvasStart;
 
@@ -41,7 +44,17 @@ TEST(SdkArtifactName_matches_the_workflow) {
                std::string("UltraCanvas-SDK-Windows-0.9.147-x86_64.zip"));
     REQUIRE_EQ(SdkArchiveName(Platform::Linux, "0.9.147", "x86_64"),
                std::string("UltraCanvas-SDK-Linux-0.9.147-x86_64.tar.xz"));
-    REQUIRE_EQ(SdkDownloadPage(), std::string("https://ultraos.eu/download-file/"));
+    REQUIRE_EQ(SdkDownloadBase(), std::string("https://start.ultraos.eu/pub/"));
+    // The layout publish-sdk-website uploads: <base><version>/<archive>.
+    REQUIRE_EQ(SdkDownloadUrl(Platform::Linux, "0.9.465", "x86_64"),
+               std::string("https://start.ultraos.eu/pub/0.9.465/UltraCanvas-SDK-Linux-0.9.465-x86_64.tar.xz"));
+    REQUIRE_EQ(SdkDownloadUrl(Platform::MacOS, "0.9.465", "arm64"),
+               std::string("https://start.ultraos.eu/pub/0.9.465/UltraCanvas-SDK-MacOS-0.9.465-arm64.tar.gz"));
+    REQUIRE_EQ(SdkDownloadUrl(Platform::Windows, "0.9.465", "arm64"),
+               std::string("https://start.ultraos.eu/pub/0.9.465/UltraCanvas-SDK-Windows-0.9.465-arm64.zip"));
+    REQUIRE_EQ(SdkChecksumsUrl("0.9.465"), std::string("https://start.ultraos.eu/pub/0.9.465/SHA256SUMS"));
+    REQUIRE_EQ(SdkDownloadUrl(Platform::Linux, "1.0.0", "arm64", "http://127.0.0.1:8080/pub/"),
+               std::string("http://127.0.0.1:8080/pub/1.0.0/UltraCanvas-SDK-Linux-1.0.0-arm64.tar.xz"));
     REQUIRE_EQ(SdkUnpackedFolder("/home/me/Downloads/UltraCanvas-SDK-Linux-1.0.0-arm64.tar.xz"),
                std::string("/home/me/Downloads/UltraCanvas-SDK-Linux-1.0.0-arm64"));
     REQUIRE_EQ(SdkUnpackedFolder("C:/dl/UltraCanvas-SDK-Windows-1.0.0-x86_64.zip"),
@@ -234,6 +247,46 @@ TEST(RenderReport_and_DisplayCommand) {
     REQUIRE(report.find("sudo /usr/bin/apt-get install -y") != std::string::npos);
     REQUIRE_EQ(DisplayCommand({ "tar", "-xf", "my archive.tar.gz" }, false),
                std::string("tar -xf \"my archive.tar.gz\""));
+}
+
+TEST(ChecksumFor_reads_sha256sum_output) {
+    // What scripts/upload-sdk-website.sh writes: sha256sum's text mode,
+    // two spaces; binary mode's '*', upper case and CRLF are read as well.
+    const std::string sums =
+        "0f343b0931126a20f133d67c2b018a3b1e9c8e7f4b56d2b8a1c9e0f1d2c3b4a5  UltraCanvas-SDK-Linux-0.9.465-arm64.tar.xz\n"
+        "1111111111111111111111111111111111111111111111111111111111111111  UltraCanvas-SDK-Linux-0.9.465-x86_64.tar.xz\n"
+        "ABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCD *UltraCanvas-SDK-Windows-0.9.465-x86_64.zip\r\n"
+        "not a line at all\n"
+        "2222222222222222222222222222222222222222222222222222222222222222  UltraCanvas-SDK-MacOS-0.9.465-arm64.tar.gz.part\n";
+    REQUIRE_EQ(ChecksumFor(sums, "UltraCanvas-SDK-Linux-0.9.465-x86_64.tar.xz"),
+               std::string("1111111111111111111111111111111111111111111111111111111111111111"));
+    REQUIRE_EQ(ChecksumFor(sums, "UltraCanvas-SDK-Windows-0.9.465-x86_64.zip"),
+               std::string("abcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd"));
+    // A name is matched whole: neither a prefix nor a longer name counts.
+    REQUIRE(ChecksumFor(sums, "UltraCanvas-SDK-Linux-0.9.465-x86_64.tar").empty());
+    REQUIRE(ChecksumFor(sums, "UltraCanvas-SDK-MacOS-0.9.465-arm64.tar.gz").empty());
+    REQUIRE(ChecksumFor("", "anything").empty());
+}
+
+TEST(DownloadSdk_fails_cleanly_without_a_server) {
+    // No network needed: a folder that does not exist, then a port nothing
+    // listens on. Either way ok is false, the error says so, and no file is
+    // left in the folder.
+    const SdkDownloadResult missing = DownloadSdk(Platform::Linux, "0.9.465", "x86_64",
+                                                  "/nonexistent/ultracanvasstart-test");
+    REQUIRE(!missing.ok);
+    REQUIRE(!missing.error.empty());
+    if (!SdkDownloadAvailable()) return;   // a build without UltraNet stops here
+    namespace fs = std::filesystem;
+    const fs::path dir = fs::temp_directory_path() / "ucs-download-test";
+    fs::remove_all(dir);
+    fs::create_directories(dir);
+    const SdkDownloadResult refused = DownloadSdk(Platform::Linux, "0.9.465", "x86_64",
+                                                  UltraCanvas::PathToUtf8(dir), {}, "http://127.0.0.1:1/pub/");
+    REQUIRE(!refused.ok);
+    REQUIRE(refused.error.find("http://127.0.0.1:1/pub/0.9.465/SHA256SUMS") != std::string::npos);
+    REQUIRE(fs::is_empty(dir));
+    fs::remove_all(dir);
 }
 
 TEST(UnpackStep_uses_tar) {

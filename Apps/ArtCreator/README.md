@@ -105,7 +105,8 @@ Mould*, *View* (Zoom, Push).
 | H | Push | Drag the view (space + drag does the same with any tool) |
 
 The wheel zooms about the pointer, shift + wheel pans, `+` / `-`, Ctrl+0
-fits the page, Ctrl+1 is 100 %. Drag a guide out of a ruler; alt-drag a
+fits the page, Ctrl+2 fits the page's width (the toolbar's Fit Page Width
+button), Ctrl+1 is 100 %. Drag a guide out of a ruler; alt-drag a
 guide to move it; drop it back on a ruler to delete it.
 
 The **Line** card on the right (shown with the line tools) holds the line gallery: the width, an

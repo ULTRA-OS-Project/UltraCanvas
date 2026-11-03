@@ -582,12 +582,18 @@ add_executable(SpellCheckerTest
     ${ULTRACANVAS_CORE_DIR}/SpellCheckLanguageNames.cpp
     ${ULTRACANVAS_CORE_DIR}/SpellCheckBackendHunspell.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/OS/WASM/UltraCanvasSpellCheckSupport.cpp
+    # DetectPreferredLanguage asks UltraCanvasSystemLanguage.h; the Linux
+    # backend answers from the POSIX variables alone, which is what the test
+    # wants on every host.
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasSystemLanguage.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/OS/Linux/UltraCanvasLinuxSystemLanguage.cpp
 )
 target_include_directories(SpellCheckerTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
 target_compile_features(SpellCheckerTest PRIVATE cxx_std_20)
 
 find_package(Threads REQUIRED)
-target_link_libraries(SpellCheckerTest PRIVATE Threads::Threads)
+# The suggestion menu's labels go through Tr; UltraLocalisation is UI-free.
+target_link_libraries(SpellCheckerTest PRIVATE Threads::Threads UltraLocalisation)
 
 # HUNSPELL_FOUND is set in the UltraCanvas subdirectory scope, so it is not
 # visible here - probe again rather than silently building the stub.
@@ -1639,6 +1645,93 @@ if(TARGET UltraCanvas)
     set_target_properties(UltraCanvasThemeTest PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
     add_test(NAME UltraCanvasThemeTest COMMAND UltraCanvasThemeTest WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
     message(STATUS "    Test registered: UltraCanvasThemeTest")
+endif()
+
+# ===== ULTRALOCALISATION TEST =====
+# The localisation module over a temporary catalogue tree: the three
+# layers, the override folder, the fallback walk, plurals, Language.conf,
+# the language choice, the handlers. No display.
+if(TARGET UltraLocalisation)
+    message(STATUS "  Building UltraLocalisationTest...")
+    add_executable(UltraLocalisationTest ${CMAKE_CURRENT_SOURCE_DIR}/UltraLocalisationTest.cpp)
+    target_include_directories(UltraLocalisationTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_link_libraries(UltraLocalisationTest PRIVATE UltraLocalisation)
+    target_compile_features(UltraLocalisationTest PRIVATE cxx_std_20)
+    set_target_properties(UltraLocalisationTest PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    add_test(NAME UltraLocalisationTest COMMAND UltraLocalisationTest WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: UltraLocalisationTest")
+endif()
+
+# ===== DATE PICKER LANGUAGE TEST =====
+# The calendar view's weekday and month names follow the language: from
+# the standard set at construction, again on a switch, never once the
+# application set its own. Builds the view without showing it; no display.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building DatePickerLanguageTest...")
+    add_executable(DatePickerLanguageTest ${CMAKE_CURRENT_SOURCE_DIR}/DatePickerLanguageTest.cpp)
+    target_include_directories(DatePickerLanguageTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_link_libraries(DatePickerLanguageTest PRIVATE ${ULTRACANVAS_LIBRARY})
+    target_compile_features(DatePickerLanguageTest PRIVATE cxx_std_20)
+    set_target_properties(DatePickerLanguageTest PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    add_test(NAME DatePickerLanguageTest COMMAND DatePickerLanguageTest WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: DatePickerLanguageTest")
+endif()
+
+# ===== SYSTEM LANGUAGE TEST =====
+# UltraCanvasSystemLanguage.h without a desktop: the POSIX locale and
+# LANGUAGE rules, the canonical spelling of a tag, and the live detector.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building SystemLanguageTest...")
+    add_executable(SystemLanguageTest ${CMAKE_CURRENT_SOURCE_DIR}/SystemLanguageTest.cpp)
+    target_include_directories(SystemLanguageTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_link_libraries(SystemLanguageTest PRIVATE ${ULTRACANVAS_LIBRARY})
+    target_compile_features(SystemLanguageTest PRIVATE cxx_std_20)
+    set_target_properties(SystemLanguageTest PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    add_test(NAME SystemLanguageTest COMMAND SystemLanguageTest WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: SystemLanguageTest")
+endif()
+
+# ===== SYSTEM FONT TEST =====
+# UltraCanvasSystemFont.h's parsers: the GTK / Pango font name, the
+# kdeglobals entry and the .ini reader. Header-only; no display.
+message(STATUS "  Building SystemFontTest...")
+add_executable(SystemFontTest ${CMAKE_CURRENT_SOURCE_DIR}/SystemFontTest.cpp)
+target_include_directories(SystemFontTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(SystemFontTest PRIVATE cxx_std_20)
+set_target_properties(SystemFontTest PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+add_test(NAME SystemFontTest COMMAND SystemFontTest WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: SystemFontTest")
+
+# ===== LINUX SYSTEM FONT TEST =====
+# LinuxFonts::DetectSystemFontStyle against a made-up config home, without a
+# display: no desktop session and no files gives the bundled Ubuntu 12 (the
+# GNOME schema's compiled default must not reach a CI runner under Xvfb),
+# settings.ini and kdeglobals are read, a KDE session reads kdeglobals first.
+# Compiled from the backend's source with GIO, as the core links it.
+if(UNIX AND NOT APPLE AND NOT EMSCRIPTEN)
+    find_package(PkgConfig QUIET)
+    if(PkgConfig_FOUND)
+        pkg_check_modules(LSF_GIO QUIET gio-2.0)
+    endif()
+    if(LSF_GIO_FOUND)
+        message(STATUS "  Building LinuxSystemFontTest...")
+        add_executable(LinuxSystemFontTest
+            ${CMAKE_CURRENT_SOURCE_DIR}/LinuxSystemFontTest.cpp
+            ${ULTRACANVAS_ROOT}/UltraCanvas/OS/Linux/UltraCanvasLinuxSystemFont.cpp
+        )
+        target_include_directories(LinuxSystemFontTest PRIVATE
+            ${ULTRACANVAS_INCLUDE_DIR}
+            ${ULTRACANVAS_ROOT}/UltraCanvas/OS/Linux
+            ${LSF_GIO_INCLUDE_DIRS})
+        target_link_directories(LinuxSystemFontTest PRIVATE ${LSF_GIO_LIBRARY_DIRS})
+        target_link_libraries(LinuxSystemFontTest PRIVATE ${LSF_GIO_LIBRARIES})
+        target_compile_features(LinuxSystemFontTest PRIVATE cxx_std_20)
+        set_target_properties(LinuxSystemFontTest PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+        add_test(NAME LinuxSystemFontTest COMMAND LinuxSystemFontTest WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+        message(STATUS "    Test registered: LinuxSystemFontTest")
+    else()
+        message(STATUS "  LinuxSystemFontTest skipped (gio-2.0 not found)")
+    endif()
 endif()
 
 # ===== VIDEO TIMELINE ELEMENT TEST =====

@@ -1,6 +1,7 @@
 // OS/MSWindows/UltraCanvasWindowsApplication.cpp
 // Complete Windows application implementation with all methods
-// Version: 1.9.0 - RegisterPlatformBundledFonts: the start's font set-up (system font folders, aliases, bundled fonts, FC font map), shared with a tool
+// Version: 1.10.0 - RegisterPlatformBundledFonts: the start's font set-up (system font folders, aliases, bundled fonts, FC font map), shared with a tool
+// Version: 1.9.0 - the system fonts are the desktop's (UltraCanvasWindowsSystemFont.cpp), not Ubuntu 12
 // Version: 1.8.0 - the exit watchdog is armed when the main loop has ended
 // Version: 1.7.1 - the inline config for an empty fontconfig scales bitmap fonts
 //                 (GenerateBitmapScalingConfig): colour emoji at the text's size
@@ -1019,19 +1020,9 @@ namespace UltraCanvas {
         return result;
     }
 
-    FontStyle UltraCanvasWindowsApplication::DetectSystemFontStyleNative() {
-        FontStyle result;
-        result.fontFamily = "Ubuntu";
-        result.fontSize = 12.0f;
-        return result;
-    }
-
-    FontStyle UltraCanvasWindowsApplication::DetectMonospacedFontStyleNative() {
-        FontStyle result;
-        result.fontFamily = "Ubuntu Mono";
-        result.fontSize = 12.0f;
-        return result;
-    }
+    // DetectSystemFontStyleNative / DetectMonospacedFontStyleNative: the
+    // message font of the non-client metrics and Consolas, in
+    // UltraCanvasWindowsSystemFont.cpp.
 
     // The bundled fonts for Pango, the Windows way - the one registration an
     // application's start (LoadBundledFontsNative) and a tool without one

@@ -22,6 +22,7 @@
 #include "UltraCanvasSeparator.h"
 #include "UltraCanvasSlider.h"
 #include "UltraCanvasSpinner.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <algorithm>
 #include <cmath>
@@ -197,7 +198,7 @@ namespace UltraCanvas {
             if (caption) caption->SetFontSize(fontSize);
 
             auto keep = UltraCanvasCheckbox::CreateCheckbox("SaveSizeKeepProportions", 0, 0, -1, kRowHeight,
-                                                            "Keep proportions", chosen->keep);
+                                                            Tr("Keep proportions"), chosen->keep);
             keep->SetFontSize(fontSize);
             keep->layoutItem.SetJustifySelf(CSSLayout::JustifySelf::Start);
             keep->SetTooltip(drawing ? "Change one side and the other follows, as the drawing is shaped"
@@ -344,7 +345,7 @@ namespace UltraCanvas {
         // Back to the format's defaults, in the controls only: OK stores them,
         // Cancel keeps what was there.
         auto defaults = std::make_shared<UltraCanvasButton>("SaveSettingsDefaults", 0, 0, 90, 28);
-        defaults->SetText("Defaults");
+        defaults->SetText(Tr("Defaults"));
         defaults->SetTooltip(offerSize ? "Put every setting back to " + format.name +
                                          "'s default, and the size back to the " +
                                          (drawing ? "drawing's" : "picture's")
