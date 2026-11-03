@@ -6,14 +6,17 @@
 // colouring reads, validation, and the shipped samples - their sizes, their
 // codes counted from the best corner, and their badges.
 //
+// Version: 1.2.0 - interchange: the JSON round trip of every sample, the
+//   reader's refusals, the CSV of the population both ways
 // Version: 1.1.0 - the population: score mapping, explicit cells winning, counts,
 //   hidden groups, validation of items and targets, the sample team
 // Version: 1.0.0
-// Last Modified: 2026-11-02
+// Last Modified: 2026-11-03
 // Author: UltraCanvas Framework
 
 #include "Plugins/Diagrams/UltraCanvasPerformanceMatrixModel.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <numeric>
@@ -231,6 +234,164 @@ static void TestSampleTeam() {
     CHECK(std::abs(std::accumulate(target.begin(), target.end(), 0.0) - 1.0) < 1e-9, "the sample target sums to 1");
 }
 
+// Every field the JSON writes comes back as it went out.
+static bool SameModel(const PerformanceMatrixModel& a, const PerformanceMatrixModel& b) {
+    auto sameColor = [](const Color& x, const Color& y) { return x.r == y.r && x.g == y.g && x.b == y.b && x.a == y.a; };
+    auto sameNumber = [](double x, double y) { return (std::isnan(x) && std::isnan(y)) || std::abs(x - y) < 1e-9; };
+    auto sameAxis = [&](const PerformanceAxis& x, const PerformanceAxis& y) {
+        if (x.title != y.title || x.reversed != y.reversed || x.levels.size() != y.levels.size() ||
+            !sameNumber(x.minScore, y.minScore) || !sameNumber(x.maxScore, y.maxScore)) return false;
+        for (size_t i = 0; i < x.levels.size(); ++i) {
+            const PerformanceLevel& p = x.levels[i];
+            const PerformanceLevel& q = y.levels[i];
+            if (p.id != q.id || p.label != q.label || p.caption != q.caption || p.iconPath != q.iconPath ||
+                !sameColor(p.accent, q.accent) || !sameNumber(p.upperBound, q.upperBound)) return false;
+        }
+        return true;
+    };
+    if (a.title != b.title || a.subtitle != b.subtitle || a.highXIsBest != b.highXIsBest ||
+        a.highYIsBest != b.highYIsBest || !sameAxis(a.xAxis, b.xAxis) || !sameAxis(a.yAxis, b.yAxis) ||
+        a.cells.size() != b.cells.size() || a.items.size() != b.items.size() ||
+        a.targetDistribution.size() != b.targetDistribution.size()) return false;
+    for (size_t i = 0; i < a.cells.size(); ++i) {
+        const PerformanceCell& p = a.cells[i];
+        const PerformanceCell& q = b.cells[i];
+        if (p.row != q.row || p.col != q.col || p.code != q.code || p.badge != q.badge || p.title != q.title ||
+            p.description != q.description || p.bullets != q.bullets || p.action != q.action ||
+            p.iconPath != q.iconPath || !sameColor(p.fill, q.fill) || p.note != q.note) return false;
+    }
+    for (size_t i = 0; i < a.items.size(); ++i) {
+        const PerformanceMatrixItem& p = a.items[i];
+        const PerformanceMatrixItem& q = b.items[i];
+        if (p.id != q.id || p.label != q.label || p.group != q.group || !sameColor(p.color, q.color) ||
+            p.note != q.note || p.row != q.row || p.col != q.col ||
+            !sameNumber(p.xScore, q.xScore) || !sameNumber(p.yScore, q.yScore)) return false;
+    }
+    for (size_t i = 0; i < a.targetDistribution.size(); ++i) {
+        if (!sameNumber(a.targetDistribution[i], b.targetDistribution[i])) return false;
+    }
+    return true;
+}
+
+static void TestJson() {
+    std::printf("\n[JSON round trip]\n");
+    PerformanceMatrixModel calibration = PerformanceMatrixSamples::NineBox();
+    calibration.items = PerformanceMatrixSamples::SampleTeam();
+    calibration.items[0].color = Color(10, 20, 30, 255);
+    calibration.targetDistribution = PerformanceMatrixSamples::SampleTargetDistribution();
+    calibration.highXIsBest = false;
+    calibration.xAxis.reversed = true;
+    calibration.xAxis.levels[0].upperBound = 2.5;
+    calibration.xAxis.levels[0].id = "low";
+    const PerformanceMatrixModel samples[] = {
+        calibration,
+        PerformanceMatrixSamples::PerformanceManagement(),
+        PerformanceMatrixSamples::PerformanceVsPotential(),
+        PerformanceMatrixSamples::TalentReview(),
+        PerformanceMatrixSamples::SkillWill(),
+    };
+    bool all = true;
+    for (const PerformanceMatrixModel& model : samples) {
+        PerformanceMatrixModel back;
+        std::string error;
+        const std::string text = ExportPerformanceMatrixJson(model);
+        all &= ImportPerformanceMatrixJson(text, back, &error) && SameModel(model, back);
+        if (!error.empty()) std::printf("    (%s)\n", error.c_str());
+    }
+    CHECK(all, "every sample, and a calibration with people, targets and bounds, comes back unchanged");
+
+    const std::string compact = ExportPerformanceMatrixJson(PerformanceMatrixSamples::SkillWill(), false);
+    CHECK(compact.find('\n') == std::string::npos, "the compact form is one line");
+    CHECK(compact.find("\"format\":\"ultracanvas-performance-matrix\"") != std::string::npos, "the format is named");
+    CHECK(compact.find("\"accent\"") == std::string::npos && compact.find("\"fill\"") == std::string::npos,
+          "transparent colours are left out");
+
+    // Hand-written: levels by label and id, a cell and an item by name.
+    const std::string hand = R"({
+        "format": "ultracanvas-performance-matrix", "version": 1,
+        "x": { "title": "Performance", "levels": [ { "label": "Low" }, { "id": "hi", "label": "High" } ] },
+        "y": { "levels": [ { "label": "Low" }, { "label": "High" } ] },
+        "cells": [ { "row": "high", "column": "HI", "title": "Star" } ],
+        "items": [ { "label": "A. Person", "row": "Low", "column": 1 }, { "label": "B", "x": 0.9, "y": 0.1 } ]
+    })";
+    PerformanceMatrixModel read;
+    std::string error;
+    CHECK(ImportPerformanceMatrixJson(hand, read, &error), "a hand-written file naming levels by label and id reads");
+    CHECK(read.FindCell(1, 1) && read.FindCell(1, 1)->title == "Star", "a cell named by label and id lands in place");
+    CHECK(read.items.size() == 2 && read.CellOf(read.items[0]) == PerformanceCellRef(0, 1) &&
+          read.CellOf(read.items[1]) == PerformanceCellRef(0, 1), "items by name, index and score land in place");
+
+    auto refuses = [](const std::string& text, const char* expect) {
+        PerformanceMatrixModel model = PerformanceMatrixSamples::SkillWill();
+        const std::string before = ExportPerformanceMatrixJson(model);
+        std::string why;
+        const bool ok = ImportPerformanceMatrixJson(text, model, &why);
+        return !ok && why.find(expect) != std::string::npos && ExportPerformanceMatrixJson(model) == before;
+    };
+    CHECK(refuses("{ not json", "not valid JSON"), "broken JSON is refused, the model untouched");
+    CHECK(refuses(R"({"format":"ultracanvas-matrix","version":1})", "not a performance matrix"), "another format is refused");
+    CHECK(refuses(R"({"format":"ultracanvas-performance-matrix","version":99})", "version 99"), "a newer version is refused");
+    CHECK(refuses(R"({"format":"ultracanvas-performance-matrix","version":1,
+                     "x":{"levels":[{"label":"A"}]},"y":{"levels":[{"label":"B"}]},
+                     "cells":[{"row":"nope","column":0}]})", "cell 0"), "a cell naming no level is refused");
+    CHECK(refuses(R"({"format":"ultracanvas-performance-matrix","version":1,
+                     "x":{"levels":[{"label":"A"}]},"y":{"levels":[{"label":"B"}]},
+                     "items":[{"label":"Nowhere"}]})", "Nowhere"), "a model that does not validate is refused");
+}
+
+static void TestCsv() {
+    std::printf("\n[CSV of the population]\n");
+    PerformanceMatrixModel model = PerformanceMatrixSamples::NineBox();
+    model.items = PerformanceMatrixSamples::SampleTeam();
+    model.items[1].note = "Said \"no\", then yes, twice";
+    const std::string csv = ExportPerformanceItemsCsv(model);
+    CHECK(csv.rfind("id,label,group,row,column,x,y,note\n", 0) == 0, "the header comes first");
+
+    PerformanceMatrixModel back = PerformanceMatrixSamples::NineBox();
+    std::string error;
+    const bool read = ImportPerformanceItemsCsv(csv, back, &error);
+    CHECK(read, "the export reads back");
+    bool same = read && back.items.size() == model.items.size();
+    for (size_t i = 0; same && i < model.items.size(); ++i) {
+        const PerformanceMatrixItem& p = model.items[i];
+        const PerformanceMatrixItem& q = back.items[i];
+        same = p.id == q.id && p.label == q.label && p.group == q.group && p.note == q.note &&
+               p.row == q.row && p.col == q.col &&
+               (std::isnan(p.xScore) ? std::isnan(q.xScore) : std::abs(p.xScore - q.xScore) < 1e-6) &&
+               (std::isnan(p.yScore) ? std::isnan(q.yScore) : std::abs(p.yScore - q.yScore) < 1e-6);
+    }
+    CHECK(same, "every person comes back in the same place, quotes and commas included");
+    CHECK(back.CountsPerCell() == model.CountsPerCell(), "so the counts are the same");
+
+    // A spreadsheet's own file: another column order, letter case, a BOM,
+    // CRLF, levels by label and by index, a column the reader does not know.
+    const std::string sheet = "\xEF\xBB\xBF" "Note,LABEL,Row,Column,Department\r\n"
+                              "first,Ann,High,2,Sales\r\n"
+                              ",Ben,0,low,Support\r\n\r\n";
+    PerformanceMatrixModel target = PerformanceMatrixSamples::NineBox();
+    CHECK(ImportPerformanceItemsCsv(sheet, target, &error), "a spreadsheet's export reads");
+    CHECK(target.items.size() == 2 && target.items[0].label == "Ann" && target.items[0].note == "first" &&
+          target.CellOf(target.items[0]) == PerformanceCellRef(2, 2) &&
+          target.CellOf(target.items[1]) == PerformanceCellRef(0, 0), "by column name, levels by label and index");
+
+    auto refuses = [](const std::string& text, const char* expect) {
+        PerformanceMatrixModel m = PerformanceMatrixSamples::NineBox();
+        m.items = PerformanceMatrixSamples::SampleTeam();
+        const size_t before = m.items.size();
+        std::string why;
+        const bool ok = ImportPerformanceItemsCsv(text, m, &why);
+        if (!ok) std::printf("    (%s)\n", why.c_str());
+        return !ok && why.find(expect) != std::string::npos && m.items.size() == before;
+    };
+    CHECK(refuses("", "empty"), "an empty file is refused, the people untouched");
+    CHECK(refuses("name,x,y\nAnn,1,2\n", "'label' or 'id'"), "a header without a label is refused");
+    CHECK(refuses("label,x,y\nAnn,1\n", "line 2"), "a short line is refused with its number");
+    CHECK(refuses("label,x,y\nAnn,1,2\nBen,3,two\n", "line 3: y score 'two'"), "a score that is not a number is refused");
+    CHECK(refuses("label,x,y\nAnn,\"1,5\",2\n", "x score '1,5'"), "a comma decimal is refused, not misread");
+    CHECK(refuses("label,row,column\nAnn,Stellar,High\n", "row 'Stellar'"), "a level the axis lacks is refused");
+    CHECK(refuses("label,group\nAnn,Sales\n", "neither"), "a person with no place is refused");
+}
+
 int main() {
     std::printf("====================================\n");
     std::printf("  UltraCanvas Performance Matrix Model\n");
@@ -244,6 +405,8 @@ int main() {
     TestCounts();
     TestPopulationValidation();
     TestSampleTeam();
+    TestJson();
+    TestCsv();
 
     std::printf("\n====================================\n");
     if (g_failures == 0) {
