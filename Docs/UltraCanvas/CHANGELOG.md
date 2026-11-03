@@ -1,3 +1,35 @@
+#### 2026-11-03 *0.9.469*
+- **JPEG XL in every build: the framework's own loader and saver on libjxl.**
+  A libvips built without libjxl (Ubuntu 22.04's) read and wrote no `.jxl`,
+  and ImageFormatsTest had to excuse that one runner. `VipsJxlPlugin`
+  (`libspecific/Cairo/`) now registers `jxlload`, `jxlload_buffer`,
+  `jxlload_source`, `jxlsave`, `jxlsave_buffer` and `jxlsave_target` - the
+  names libvips gives its own, so `UCImageRaster`, the export encoder and
+  the format inventory need no other spelling - wherever libvips has none,
+  on the libjxl CMake finds (`HAS_LIBJXL`). The loader takes the still
+  picture at 8 or 16 bits a channel, grey or RGB, with or without alpha;
+  the saver writes 8-bit RGB or RGBA with libvips' `Q`, `distance`,
+  `effort` and `lossless` arguments. A libvips with its own JPEG XL keeps
+  it; `UC_VIPS_JXL_PLUGIN=force` registers the plug-in above it, which is
+  how it is tested on a machine that has both. CI's ubuntu-22.04 rows
+  build libjxl 0.7.0 - Ubuntu 24.04's version, the one the lossy test is
+  calibrated on - from source (cached per runner) and install it under
+  `/usr/local`, so their packages carry JPEG XL for the first time, and
+  the JPEG XL test runs on every row. `libjxl-dev` joins the dependency
+  lists.
+- **The Linux packages carry a current libheif without x265.** CI's
+  ubuntu-22.04 rows, whose libheif is 1.12 with the GPL x265 linked in,
+  build libheif 1.19.8 from source the way the Windows row does: HEVC and
+  AV1 decoding (libde265, dav1d, aom), AV1 encoding (aom), JPEG and JPEG
+  2000, HEIC encoded by kvazaar (BSD-3-Clause; built from source where
+  apt has no package) and never by x265, the codecs linked in rather than
+  loaded as plug-ins. Installed under `/usr/local` ahead of the distro's,
+  so libvips' `heifload` uses it, and the package closure ships it - the
+  first Linux packages that write HEIC, and without a GPL encoder in the
+  core. The install step fails if the distro's libheif still shadows it,
+  if it links x264 or x265, or if kvazaar is missing; the HEIF/AVIF test
+  now runs on the Linux rows with the Windows row's expectations.
+
 #### 2026-11-03 *0.9.468*
 - **Performance matrix, Phase 2: the population.** People can now be placed
   into the boxes: `PerformanceMatrixModel::items`, each in an explicit cell or
