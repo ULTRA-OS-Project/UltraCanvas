@@ -1,8 +1,7 @@
 // OS/Linux/Wayland/UltraCanvasWaylandApplication.cpp
 // The Wayland windowing backend's application. See the header.
-// Version: 0.1.1 - LoadBundledFontsNative calls RegisterPlatformBundledFonts
 // Version: 0.1.0
-// Last Modified: 2026-11-03
+// Last Modified: 2026-10-30
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasWaylandApplication.h"
@@ -804,7 +803,9 @@ namespace UltraCanvas {
         return LinuxFonts::DetectMonospacedFontStyle();
     }
 
-    void UltraCanvasWaylandApplication::LoadBundledFontsNative() { RegisterPlatformBundledFonts(0); }
+    void UltraCanvasWaylandApplication::LoadBundledFontsNative() {
+        LinuxFonts::LoadBundledFonts();
+    }
 
     bool UltraCanvasWaylandApplication::RegisterFontFileNative(const std::string& fontFilePath) {
         return LinuxFonts::RegisterFontFile(fontFilePath);
