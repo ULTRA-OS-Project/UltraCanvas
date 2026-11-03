@@ -6,7 +6,9 @@
   never reached a window. Windows reads the message font of the non-client
   metrics at 96 dpi (`SystemParametersInfoForDpi`, else the system dpi) and
   uses Consolas for code; Linux and the BSDs read GSettings
-  `org.gnome.desktop.interface` (`font-name`, `monospace-font-name`),
+  `org.gnome.desktop.interface` (`font-name`, `monospace-font-name`; only
+  inside a desktop session, since with no desktop running the schema
+  answers its compiled default, which nobody chose),
   `~/.config/kdeglobals` (`font`, `fixed`; first on a KDE session) and the
   GTK `settings.ini`; macOS keeps its system font and now gives the system
   monospace (Menlo for SF Mono, which Pango cannot name) at the interface

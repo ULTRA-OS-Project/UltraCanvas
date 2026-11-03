@@ -1702,6 +1702,38 @@ set_target_properties(SystemFontTest PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE
 add_test(NAME SystemFontTest COMMAND SystemFontTest WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: SystemFontTest")
 
+# ===== LINUX SYSTEM FONT TEST =====
+# LinuxFonts::DetectSystemFontStyle against a made-up config home, without a
+# display: no desktop session and no files gives the bundled Ubuntu 12 (the
+# GNOME schema's compiled default must not reach a CI runner under Xvfb),
+# settings.ini and kdeglobals are read, a KDE session reads kdeglobals first.
+# Compiled from the backend's source with GIO, as the core links it.
+if(UNIX AND NOT APPLE AND NOT EMSCRIPTEN)
+    find_package(PkgConfig QUIET)
+    if(PkgConfig_FOUND)
+        pkg_check_modules(LSF_GIO QUIET gio-2.0)
+    endif()
+    if(LSF_GIO_FOUND)
+        message(STATUS "  Building LinuxSystemFontTest...")
+        add_executable(LinuxSystemFontTest
+            ${CMAKE_CURRENT_SOURCE_DIR}/LinuxSystemFontTest.cpp
+            ${ULTRACANVAS_ROOT}/UltraCanvas/OS/Linux/UltraCanvasLinuxSystemFont.cpp
+        )
+        target_include_directories(LinuxSystemFontTest PRIVATE
+            ${ULTRACANVAS_INCLUDE_DIR}
+            ${ULTRACANVAS_ROOT}/UltraCanvas/OS/Linux
+            ${LSF_GIO_INCLUDE_DIRS})
+        target_link_directories(LinuxSystemFontTest PRIVATE ${LSF_GIO_LIBRARY_DIRS})
+        target_link_libraries(LinuxSystemFontTest PRIVATE ${LSF_GIO_LIBRARIES})
+        target_compile_features(LinuxSystemFontTest PRIVATE cxx_std_20)
+        set_target_properties(LinuxSystemFontTest PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+        add_test(NAME LinuxSystemFontTest COMMAND LinuxSystemFontTest WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+        message(STATUS "    Test registered: LinuxSystemFontTest")
+    else()
+        message(STATUS "  LinuxSystemFontTest skipped (gio-2.0 not found)")
+    endif()
+endif()
+
 # ===== VIDEO TIMELINE ELEMENT TEST =====
 # UltraCanvasVideoTimeline in a real window: geometry, hit testing and the
 # edits that mouse and key events turn into reported changes (trim with
