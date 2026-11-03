@@ -11,6 +11,7 @@
 // shell is bound here, because a Desktop window of this backend is a layer
 // surface (UltraCanvasWaylandWindow); the window list's foreign-toplevel
 // manager lives on the shell backend's own connection.
+// Version: 0.3.0 - xdg-activation (RaiseAndFocus); the keyboard window
 // Version: 0.2.0 - the layer shell global; FindOutputAt
 // Version: 0.1.0
 // Last Modified: 2026-11-03
@@ -42,6 +43,7 @@ namespace UltraCanvas { class UltraCanvasWaylandApplication; }
 struct xdg_wm_base;
 struct zxdg_decoration_manager_v1;
 struct zwlr_layer_shell_v1;
+struct xdg_activation_v1;
 struct wl_cursor_theme;
 
 namespace UltraCanvas {
@@ -85,6 +87,11 @@ namespace UltraCanvas {
         // compositor without one (GNOME's); the version bound, 1 to 4.
         zwlr_layer_shell_v1* GetLayerShell() const { return layerShell; }
         uint32_t GetLayerShellVersion() const { return layerShellVersion; }
+        // xdg-activation-v1, or nullptr: how a window asks for the focus
+        // (UltraCanvasWaylandWindow::RaiseAndFocus).
+        xdg_activation_v1* GetActivation() const { return activation; }
+        // The window the seat's keyboard focus is in, or nullptr.
+        UltraCanvasWaylandWindow* GetKeyboardWindow() const { return keyboardWindow; }
         wl_data_device_manager* GetDataDeviceManager() const { return dataDeviceManager; }
         wl_data_device* GetDataDevice() const { return dataDevice; }
         // The serial of the last key or button the seat gave us: what
@@ -157,6 +164,7 @@ namespace UltraCanvas {
         zxdg_decoration_manager_v1* decorationManager = nullptr;
         zwlr_layer_shell_v1* layerShell = nullptr;
         uint32_t layerShellVersion = 0;
+        xdg_activation_v1* activation = nullptr;
         wl_data_device_manager* dataDeviceManager = nullptr;
         wl_data_device* dataDevice = nullptr;
         std::vector<WaylandOutput> outputs;

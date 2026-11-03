@@ -25,11 +25,21 @@
 // program's Desktop windows, on the layer shell, and the call the UI
 // thread's - which is where UltraDesktop makes it.
 //
-// Still the next step (Docs/UltraCanvas/WaylandDesktopShellProposal.md):
-// the virtual desktops (ext-workspace-v1), screenshots and global
-// shortcuts (the portals), a window's bounds (no protocol tells a
-// taskbar where a window is). They answer "not on Wayland yet", so a
-// program can say so.
+// The virtual desktops are ext-workspace-v1 on the same connection: the
+// workspaces of the group that holds the first output (the primary, as
+// ListScreens names it), in the order of their coordinates, then their
+// names; the active one is the current desktop, activate + commit switches,
+// create_workspace / remove set the count where the compositor allows. A
+// compositor without the manager has one desktop. The protocol ties no
+// toplevel to a workspace, so a window's desktop is unknown (-1) and
+// MoveWindowToVirtualDesktop answers false.
+//
+// Screenshots and global shortcuts go through the freedesktop portals,
+// in UltraCanvasWaylandPortals.cpp. A window's bounds and position are
+// the compositor's alone (no protocol tells a taskbar where a window is):
+// GetWindowBounds and MoveWindowTo answer false.
+// Version: 0.3.0 - the virtual desktops (ext-workspace-v1); the portals in a
+//                  file of their own
 // Version: 0.2.0 - the window list, the monitor and the reserved edges
 //                  (wlr-foreign-toplevel, wlr-layer-shell); the screens from
 //                  the shell connection's outputs where there is no
@@ -47,11 +57,14 @@
 #include "../UltraCanvasLinuxDesktopShellInternal.h"
 
 #include "wlr-foreign-toplevel-management-unstable-v1-client-protocol.h"
+#include "ext-workspace-v1-client-protocol.h"
 
 #include <wayland-client.h>
 
+#include <algorithm>
 #include <cerrno>
 #include <cmath>
+#include <cstdlib>
 #include <cstring>
 #include <memory>
 #include <mutex>
@@ -66,8 +79,6 @@ namespace UltraCanvas {
 namespace DesktopShellBackend {
 
 namespace {
-    const char* kNotYet = "Not available on Wayland yet: the desktop shell's own protocols are the next step.";
-
     UltraCanvasWaylandApplication* App() { return UltraCanvasWaylandApplication::GetInstance(); }
 
     // ===== THE SHELL CONNECTION =====
@@ -95,6 +106,24 @@ namespace {
         int Height() const { return scale > 0 ? pixelHeight / scale : pixelHeight; }
     };
 
+    // ext-workspace-v1: a group (one per set of outputs, usually one) and
+    // its workspaces, as the compositor describes them.
+    struct WorkspaceGroup {
+        ext_workspace_group_handle_v1* handle = nullptr;
+        uint32_t capabilities = 0;
+        std::vector<wl_output*> outputs;
+    };
+    struct Workspace {
+        ext_workspace_handle_v1* handle = nullptr;
+        WorkspaceGroup* group = nullptr;    // from workspace_enter; nullptr before
+        uint64_t arrival = 0;               // the order the compositor announced them in
+        std::string id;
+        std::string name;
+        std::vector<uint32_t> coordinates;
+        uint32_t state = 0;
+        uint32_t capabilities = 0;
+    };
+
     struct ShellConnection {
         wl_display* display = nullptr;
         wl_registry* registry = nullptr;
@@ -102,6 +131,12 @@ namespace {
         uint32_t managerName = 0;
         wl_seat* seat = nullptr;
         std::vector<ShellOutput> outputs;
+        ext_workspace_manager_v1* workspaces = nullptr;
+        uint32_t workspacesName = 0;
+        bool workspacesGone = false;
+        std::vector<std::unique_ptr<WorkspaceGroup>> groups;
+        std::vector<std::unique_ptr<Workspace>> workspaceList;
+        uint64_t nextArrival = 1;
         std::vector<std::unique_ptr<ForeignToplevel>> toplevels;
         uint64_t nextId = 1;
         bool changed = false;        // something the monitor reports happened since it last looked
@@ -213,6 +248,176 @@ namespace {
             ManagerFinished,
     };
 
+    // ----- the workspaces -----
+    WorkspaceGroup* FindGroup(ShellConnection* shell, ext_workspace_group_handle_v1* handle) {
+        for (auto& g : shell->groups) {
+            if (g->handle == handle) return g.get();
+        }
+        return nullptr;
+    }
+    Workspace* FindWorkspace(ShellConnection* shell, ext_workspace_handle_v1* handle) {
+        for (auto& w : shell->workspaceList) {
+            if (w->handle == handle) return w.get();
+        }
+        return nullptr;
+    }
+    void GroupCapabilities(void* data, ext_workspace_group_handle_v1* handle, uint32_t capabilities) {
+        if (auto* g = FindGroup(static_cast<ShellConnection*>(data), handle)) g->capabilities = capabilities;
+    }
+    void GroupOutputEnter(void* data, ext_workspace_group_handle_v1* handle, wl_output* output) {
+        if (auto* g = FindGroup(static_cast<ShellConnection*>(data), handle)) g->outputs.push_back(output);
+    }
+    void GroupOutputLeave(void* data, ext_workspace_group_handle_v1* handle, wl_output* output) {
+        if (auto* g = FindGroup(static_cast<ShellConnection*>(data), handle)) {
+            g->outputs.erase(std::remove(g->outputs.begin(), g->outputs.end(), output), g->outputs.end());
+        }
+    }
+    void GroupWorkspaceEnter(void* data, ext_workspace_group_handle_v1* handle, ext_workspace_handle_v1* workspace) {
+        auto* shell = static_cast<ShellConnection*>(data);
+        if (auto* w = FindWorkspace(shell, workspace)) w->group = FindGroup(shell, handle);
+    }
+    void GroupWorkspaceLeave(void* data, ext_workspace_group_handle_v1* handle, ext_workspace_handle_v1* workspace) {
+        auto* shell = static_cast<ShellConnection*>(data);
+        if (auto* w = FindWorkspace(shell, workspace)) {
+            if (w->group == FindGroup(shell, handle)) w->group = nullptr;
+        }
+    }
+    void GroupRemoved(void* data, ext_workspace_group_handle_v1* handle) {
+        auto* shell = static_cast<ShellConnection*>(data);
+        for (auto& w : shell->workspaceList) {
+            if (w->group && w->group->handle == handle) w->group = nullptr;
+        }
+        for (auto it = shell->groups.begin(); it != shell->groups.end(); ++it) {
+            if ((*it)->handle != handle) continue;
+            ext_workspace_group_handle_v1_destroy(handle);
+            shell->groups.erase(it);
+            break;
+        }
+    }
+    const ext_workspace_group_handle_v1_listener kGroupListener = {
+            GroupCapabilities,
+            GroupOutputEnter,
+            GroupOutputLeave,
+            GroupWorkspaceEnter,
+            GroupWorkspaceLeave,
+            GroupRemoved,
+    };
+
+    void WorkspaceId(void* data, ext_workspace_handle_v1* handle, const char* id) {
+        if (auto* w = FindWorkspace(static_cast<ShellConnection*>(data), handle)) w->id = id ? id : "";
+    }
+    void WorkspaceName(void* data, ext_workspace_handle_v1* handle, const char* name) {
+        if (auto* w = FindWorkspace(static_cast<ShellConnection*>(data), handle)) w->name = name ? name : "";
+    }
+    void WorkspaceCoordinates(void* data, ext_workspace_handle_v1* handle, wl_array* coordinates) {
+        auto* w = FindWorkspace(static_cast<ShellConnection*>(data), handle);
+        if (!w) return;
+        w->coordinates.clear();
+        if (!coordinates || !coordinates->size) return;
+        const auto* begin = static_cast<const uint32_t*>(coordinates->data);
+        w->coordinates.assign(begin, begin + coordinates->size / sizeof(uint32_t));
+    }
+    void WorkspaceState(void* data, ext_workspace_handle_v1* handle, uint32_t state) {
+        if (auto* w = FindWorkspace(static_cast<ShellConnection*>(data), handle)) w->state = state;
+    }
+    void WorkspaceCapabilities(void* data, ext_workspace_handle_v1* handle, uint32_t capabilities) {
+        if (auto* w = FindWorkspace(static_cast<ShellConnection*>(data), handle)) w->capabilities = capabilities;
+    }
+    void WorkspaceRemoved(void* data, ext_workspace_handle_v1* handle) {
+        auto* shell = static_cast<ShellConnection*>(data);
+        for (auto it = shell->workspaceList.begin(); it != shell->workspaceList.end(); ++it) {
+            if ((*it)->handle != handle) continue;
+            ext_workspace_handle_v1_destroy(handle);
+            shell->workspaceList.erase(it);
+            break;
+        }
+    }
+    const ext_workspace_handle_v1_listener kWorkspaceListener = {
+            WorkspaceId,
+            WorkspaceName,
+            WorkspaceCoordinates,
+            WorkspaceState,
+            WorkspaceCapabilities,
+            WorkspaceRemoved,
+    };
+
+    void WorkspacesGroup(void* data, ext_workspace_manager_v1*, ext_workspace_group_handle_v1* handle) {
+        auto* shell = static_cast<ShellConnection*>(data);
+        auto g = std::make_unique<WorkspaceGroup>();
+        g->handle = handle;
+        ext_workspace_group_handle_v1_add_listener(handle, &kGroupListener, shell);
+        shell->groups.push_back(std::move(g));
+    }
+    void WorkspacesWorkspace(void* data, ext_workspace_manager_v1*, ext_workspace_handle_v1* handle) {
+        auto* shell = static_cast<ShellConnection*>(data);
+        auto w = std::make_unique<Workspace>();
+        w->handle = handle;
+        w->arrival = shell->nextArrival++;
+        ext_workspace_handle_v1_add_listener(handle, &kWorkspaceListener, shell);
+        shell->workspaceList.push_back(std::move(w));
+    }
+    void WorkspacesDone(void* data, ext_workspace_manager_v1*) {
+        // Every change since the last done is in; one report for them all.
+        NoteChange(static_cast<ShellConnection*>(data));
+    }
+    void WorkspacesFinished(void* data, ext_workspace_manager_v1*) {
+        auto* shell = static_cast<ShellConnection*>(data);
+        shell->workspacesGone = true;
+        NoteChange(shell);
+    }
+    const ext_workspace_manager_v1_listener kWorkspacesListener = {
+            WorkspacesGroup,
+            WorkspacesWorkspace,
+            WorkspacesDone,
+            WorkspacesFinished,
+    };
+
+    // The virtual desktops: the workspaces of the group on the first
+    // output (the primary), else of the first group, else every workspace
+    // of no group; hidden ones left out; by coordinates, then by name as a
+    // number, then by name, then as announced. The caller holds the mutex.
+    bool Before(const Workspace* a, const Workspace* b) {
+        if (a->coordinates != b->coordinates) {
+            if (a->coordinates.empty() != b->coordinates.empty()) return !a->coordinates.empty();
+            return a->coordinates < b->coordinates;
+        }
+        char* endA = nullptr;
+        char* endB = nullptr;
+        const long numberA = std::strtol(a->name.c_str(), &endA, 10);   // locale-ok: digits only
+        const long numberB = std::strtol(b->name.c_str(), &endB, 10);   // locale-ok: digits only
+        const bool numericA = !a->name.empty() && endA && *endA == 0;
+        const bool numericB = !b->name.empty() && endB && *endB == 0;
+        if (numericA && numericB && numberA != numberB) return numberA < numberB;
+        if (numericA != numericB) return numericA;
+        if (a->name != b->name) return a->name < b->name;
+        return a->arrival < b->arrival;
+    }
+    std::vector<Workspace*> Desktops(ShellConnection* shell) {
+        std::vector<Workspace*> desktops;
+        if (!shell || !shell->workspaces || shell->workspacesGone) return desktops;
+        WorkspaceGroup* primary = nullptr;
+        wl_output* first = shell->outputs.empty() ? nullptr : shell->outputs.front().output;
+        for (auto& g : shell->groups) {
+            if (first && std::find(g->outputs.begin(), g->outputs.end(), first) != g->outputs.end()) {
+                primary = g.get();
+                break;
+            }
+        }
+        if (!primary && !shell->groups.empty()) primary = shell->groups.front().get();
+        for (auto& w : shell->workspaceList) {
+            if (w->state & EXT_WORKSPACE_HANDLE_V1_STATE_HIDDEN) continue;
+            if (w->group != primary) continue;
+            desktops.push_back(w.get());
+        }
+        std::sort(desktops.begin(), desktops.end(), Before);
+        return desktops;
+    }
+    WorkspaceGroup* PrimaryGroup(ShellConnection* shell) {
+        const std::vector<Workspace*> desktops = Desktops(shell);
+        if (!desktops.empty() && desktops.front()->group) return desktops.front()->group;
+        return shell->groups.empty() ? nullptr : shell->groups.front().get();
+    }
+
     // ----- the outputs -----
     ShellOutput* FindOutput(ShellConnection* shell, wl_output* output) {
         for (auto& o : shell->outputs) {
@@ -269,12 +474,21 @@ namespace {
         } else if (what == wl_seat_interface.name && !shell->seat) {
             // The seat an activation names; its devices are not wanted here.
             shell->seat = static_cast<wl_seat*>(wl_registry_bind(registry, name, &wl_seat_interface, 1));
+        } else if (what == ext_workspace_manager_v1_interface.name && !shell->workspaces) {
+            shell->workspaces = static_cast<ext_workspace_manager_v1*>(
+                    wl_registry_bind(registry, name, &ext_workspace_manager_v1_interface, 1));
+            shell->workspacesName = name;
+            ext_workspace_manager_v1_add_listener(shell->workspaces, &kWorkspacesListener, shell);
         }
     }
     void RegistryGlobalRemove(void* data, wl_registry*, uint32_t name) {
         auto* shell = static_cast<ShellConnection*>(data);
         if (shell->manager && name == shell->managerName) {
             shell->managerGone = true;
+            NoteChange(shell);
+        }
+        if (shell->workspaces && name == shell->workspacesName) {
+            shell->workspacesGone = true;
             NoteChange(shell);
         }
         for (auto it = shell->outputs.begin(); it != shell->outputs.end(); ++it) {
@@ -298,6 +512,18 @@ namespace {
         if (shell->manager) {
             if (!shell->managerGone) zwlr_foreign_toplevel_manager_v1_stop(shell->manager);
             zwlr_foreign_toplevel_manager_v1_destroy(shell->manager);
+        }
+        for (auto& w : shell->workspaceList) {
+            if (w->handle) ext_workspace_handle_v1_destroy(w->handle);
+        }
+        shell->workspaceList.clear();
+        for (auto& g : shell->groups) {
+            if (g->handle) ext_workspace_group_handle_v1_destroy(g->handle);
+        }
+        shell->groups.clear();
+        if (shell->workspaces) {
+            if (!shell->workspacesGone) ext_workspace_manager_v1_stop(shell->workspaces);
+            ext_workspace_manager_v1_destroy(shell->workspaces);
         }
         if (shell->seat) wl_seat_destroy(shell->seat);
         for (auto& o : shell->outputs) {
@@ -467,10 +693,73 @@ bool GetWindowBounds(uint64_t, int&, int&, int&, int&) {
 
 bool MoveWindowTo(uint64_t, int, int) { return false; }
 
-int GetVirtualDesktopCount() { return 1; }
-int GetCurrentVirtualDesktop() { return 0; }
-bool SetCurrentVirtualDesktop(int) { return false; }
-bool SetVirtualDesktopCount(int) { return false; }
+int GetVirtualDesktopCount() {
+    std::lock_guard<std::mutex> lock(g_shellMutex);
+    if (!Sync()) return 1;
+    const std::vector<Workspace*> desktops = Desktops(g_shell);
+    return desktops.empty() ? 1 : static_cast<int>(desktops.size());
+}
+
+int GetCurrentVirtualDesktop() {
+    std::lock_guard<std::mutex> lock(g_shellMutex);
+    if (!Sync()) return 0;
+    const std::vector<Workspace*> desktops = Desktops(g_shell);
+    for (size_t i = 0; i < desktops.size(); ++i) {
+        if (desktops[i]->state & EXT_WORKSPACE_HANDLE_V1_STATE_ACTIVE) return static_cast<int>(i);
+    }
+    return 0;
+}
+
+bool SetCurrentVirtualDesktop(int index) {
+    std::lock_guard<std::mutex> lock(g_shellMutex);
+    if (!Sync() || index < 0) return false;
+    const std::vector<Workspace*> desktops = Desktops(g_shell);
+    if (static_cast<size_t>(index) >= desktops.size()) return false;
+    Workspace* target = desktops[static_cast<size_t>(index)];
+    if (!(target->capabilities & EXT_WORKSPACE_HANDLE_V1_WORKSPACE_CAPABILITIES_ACTIVATE)) return false;
+    ext_workspace_handle_v1_activate(target->handle);
+    ext_workspace_manager_v1_commit(g_shell->workspaces);
+    wl_display_flush(g_shell->display);
+    return true;
+}
+
+bool SetVirtualDesktopCount(int count) {
+    std::lock_guard<std::mutex> lock(g_shellMutex);
+    if (!Sync() || count < 1) return false;
+    std::vector<Workspace*> desktops = Desktops(g_shell);
+    const int have = static_cast<int>(desktops.size());
+    if (count == have) return true;
+    bool changed = false;
+    if (count > have) {
+        // New ones named by their number, as the compositors that let a
+        // client create workspaces name theirs.
+        WorkspaceGroup* group = PrimaryGroup(g_shell);
+        if (!group || !(group->capabilities & EXT_WORKSPACE_GROUP_HANDLE_V1_GROUP_CAPABILITIES_CREATE_WORKSPACE)) {
+            return false;
+        }
+        for (int n = have + 1; n <= count; ++n) {
+            ext_workspace_group_handle_v1_create_workspace(group->handle, std::to_string(n).c_str());
+            changed = true;
+        }
+    } else {
+        // The last ones go, the active one never.
+        for (int i = have - 1; i >= count; --i) {
+            Workspace* w = desktops[static_cast<size_t>(i)];
+            if (w->state & EXT_WORKSPACE_HANDLE_V1_STATE_ACTIVE) return false;
+            if (!(w->capabilities & EXT_WORKSPACE_HANDLE_V1_WORKSPACE_CAPABILITIES_REMOVE)) return false;
+            ext_workspace_handle_v1_remove(w->handle);
+            changed = true;
+        }
+    }
+    if (changed) {
+        ext_workspace_manager_v1_commit(g_shell->workspaces);
+        wl_display_flush(g_shell->display);
+    }
+    return changed;
+}
+
+// ext-workspace ties no toplevel to a workspace, and wlr-foreign-toplevel
+// knows none: a window's desktop cannot be set from here.
 bool MoveWindowToVirtualDesktop(uint64_t, int) { return false; }
 
 // The screens: the application's outputs, or the shell connection's for a
@@ -532,21 +821,6 @@ bool ReserveScreenEdges(uint64_t id, int left, int right, int top, int bottom) {
     return window->SetReservedEdges(logical(left), logical(right), logical(top), logical(bottom));
 }
 
-bool CaptureScreenImage(DesktopScreenImage&, std::string& error) {
-    error = kNotYet;
-    return false;
-}
-
-bool CaptureScreenArea(int, int, int, int, DesktopScreenImage&, std::string& error) {
-    error = kNotYet;
-    return false;
-}
-
-bool CaptureScreen(const std::string&, std::string& error) {
-    error = kNotYet;
-    return false;
-}
-
 // Desktop entries are this platform's application list; the core reads them.
 bool ListNativeApplications(int, std::vector<UCDesktopEntry>&) { return false; }
 bool LaunchShortcut(const std::string& shortcutPath, std::string& error) {
@@ -589,7 +863,7 @@ struct MonitorState {
 MonitorState* MonitorOpen() {
     std::lock_guard<std::mutex> lock(g_shellMutex);
     ShellConnection* shell = Shell();
-    if (!shell || !shell->manager) return nullptr;   // nothing to notify about
+    if (!shell || (!shell->manager && !shell->workspaces)) return nullptr;   // nothing to notify about
     auto* state = new MonitorState();
     if (!OpenWakePipe(state->wakePipe)) {
         delete state;
@@ -669,16 +943,6 @@ void MonitorClose(MonitorState* state) {
     if (state->wakePipe[1] >= 0) ::close(state->wakePipe[1]);
     delete state;
 }
-
-// ===== THE SHORTCUTS: THE PORTAL, NEXT =====
-struct ShortcutState {};
-ShortcutState* ShortcutOpen(const std::string&, std::string& error) {
-    error = kNotYet;
-    return nullptr;
-}
-bool ShortcutWait(ShortcutState*) { return false; }
-void ShortcutWake(ShortcutState*) {}
-void ShortcutClose(ShortcutState*) {}
 
 } // namespace DesktopShellBackend
 } // namespace UltraCanvas

@@ -19,6 +19,7 @@
 // exclusive zone on one edge and the desktop's own is anchored to all four.
 // Without the layer shell (GNOME's compositor) a Desktop window stays a
 // maximized toplevel and reserves nothing.
+// Version: 0.3.0 - RaiseAndFocus through xdg-activation
 // Version: 0.2.0 - Desktop windows on the layer shell; the reserved edges
 // Version: 0.1.0
 // Last Modified: 2026-11-03
@@ -48,6 +49,7 @@ struct xdg_surface;
 struct xdg_toplevel;
 struct zxdg_toplevel_decoration_v1;
 struct zwlr_layer_surface_v1;
+struct xdg_activation_token_v1;
 
 namespace UltraCanvas {
 
@@ -99,6 +101,8 @@ namespace UltraCanvas {
         void HandleToplevelConfigure(int32_t width, int32_t height, const std::vector<uint32_t>& states);
         void HandleToplevelClose();
         void HandleLayerConfigure(uint32_t serial, uint32_t width, uint32_t height);
+        // The activation token the compositor issued (RaiseAndFocus).
+        void HandleActivationToken(const char* token);
         void HandleOutputEnter(wl_output* output);
         void HandleOutputLeave(wl_output* output);
         // An output's scale changed, or one went away.
@@ -120,6 +124,7 @@ namespace UltraCanvas {
         xdg_surface* xdgSurface = nullptr;
         xdg_toplevel* toplevel = nullptr;
         zxdg_toplevel_decoration_v1* decoration = nullptr;
+        xdg_activation_token_v1* activationToken = nullptr;   // a RaiseAndFocus in flight
         zwlr_layer_surface_v1* layerSurface = nullptr;   // a Desktop window on the layer shell
         wl_output* layerOutput = nullptr;                // the output it was asked for (may be null: the compositor's choice)
         std::vector<wl_output*> enteredOutputs;

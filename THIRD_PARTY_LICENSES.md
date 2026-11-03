@@ -348,25 +348,31 @@ their source is published here; UltraCanvas's own files are unaffected.
 
 ---
 
-## wlr-protocols (Wayland protocol definitions for the desktop shell)
+## wlr-protocols and ext-workspace (Wayland protocol definitions for the desktop shell)
 
 - **Used by:** the Wayland desktop shell backend
   (`UltraCanvas/OS/Linux/Wayland/`): `wlr-layer-shell-unstable-v1` places
   the desktop window and its bars' reserved edges,
   `wlr-foreign-toplevel-management-unstable-v1` lists and drives the other
-  clients' windows. Only in a build with `ULTRACANVAS_WAYLAND=ON`.
-- **Upstream:** https://gitlab.freedesktop.org/wlroots/wlr-protocols
-- **What is included:** the two protocol XML files under
+  clients' windows, `ext-workspace-v1` reads and switches the virtual
+  desktops. Only in a build with `ULTRACANVAS_WAYLAND=ON`.
+- **Upstream:** https://gitlab.freedesktop.org/wlroots/wlr-protocols (the
+  two wlr files), https://gitlab.freedesktop.org/wayland/wayland-protocols
+  (ext-workspace, from its 1.39).
+- **What is included:** the three protocol XML files under
   `UltraCanvas/OS/Linux/Wayland/protocols/`; `wayland-scanner` generates
   the C bindings from them at build time. They are vendored because
-  `wayland-protocols` does not carry them. One change: the layer shell's
-  `get_layer_surface` argument named `namespace` is named `scope` here,
-  since the generated header is included from C++ and `namespace` is a
-  keyword there (the wire protocol is the same; argument names are not on
-  the wire).
+  `wayland-protocols` does not carry the wlr ones and carries ext-workspace
+  only from 1.39 (Ubuntu 22.04 packages 1.25). One change: the layer
+  shell's `get_layer_surface` argument named `namespace` is named `scope`
+  here, since the generated header is included from C++ and `namespace`
+  is a keyword there (the wire protocol is the same; argument names are
+  not on the wire).
 - **License:** MIT-style (the X11 / HPND wording the Wayland protocols
   use) — Copyright © 2017 Drew DeVault (layer shell), Copyright © 2018 Ilia
-  Bozhinov (foreign toplevel management). Each file carries its notice.
+  Bozhinov (foreign toplevel management), Copyright © 2019 Christopher
+  Billington, 2020 Ilia Bozhinov, 2022 Victoria Brekenfeld (ext-workspace).
+  Each file carries its notice.
 
 ---
 

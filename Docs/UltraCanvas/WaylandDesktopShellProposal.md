@@ -1,10 +1,10 @@
 # Wayland for UltraDesktop — Decision and Plan
 
-**Status:** Decided, phase 1 built (the windowing backend), phase 2 begun:
-the layer shell (the desktop window and its reserved edges) and foreign
-toplevels (the window list, the monitor, activate / minimize / close) are
-in; the virtual desktops, the portals and xdg-activation are the next
-steps.
+**Status:** Decided, phase 1 built (the windowing backend), phase 2 built:
+the layer shell (the desktop window and its reserved edges), foreign
+toplevels (the window list, the monitor, activate / minimize / close), the
+virtual desktops (ext-workspace), screenshots and global shortcuts (the
+portals) and xdg-activation (RaiseAndFocus). What is left is in §4.6.
 **Scope:** the UltraCanvas windowing backend on Linux, the
 `UltraCanvasDesktopShell` backend, and what UltraDesktop needs from both to
 be the shell of a Wayland session.
@@ -28,10 +28,10 @@ What each piece of the shell uses:
 |---|---|---|
 | The bars and the desktop window itself | `wlr-layer-shell-unstable-v1`: the desktop window on the *background* layer of its output, the bars' edges as exclusive zones on the *top* layer (the Wayland form of `ReserveScreenEdges`) | **phase 2, done** (§4.1) |
 | Window list, the active window, activate / minimize / close | `wlr-foreign-toplevel-management-unstable-v1` (and `ext-foreign-toplevel-list-v1` for the list alone where the compositor has only that) | **phase 2, done** for the wlroots protocol (§4.2); the ext list is open |
-| Virtual desktops | `ext-workspace-v1` | phase 2, open |
-| The monitor (something changed) | the events of the foreign-toplevel protocol, folded into `MonitorWait` | **phase 2, done** (§4.2) |
-| Screenshots | the `org.freedesktop.portal.Screenshot` portal; `wlr-screencopy-unstable-v1` directly where the session's portal backend is absent | phase 2 |
-| Global shortcuts, the Super tap | the `org.freedesktop.portal.GlobalShortcuts` portal (the compositor's own key bindings decide; no client may grab a key on Wayland) | phase 2 |
+| Virtual desktops | `ext-workspace-v1` | **phase 2, done** (§4.3) |
+| The monitor (something changed) | the events of the foreign-toplevel and workspace protocols, folded into `MonitorWait` | **phase 2, done** (§4.2) |
+| Screenshots | the `org.freedesktop.portal.Screenshot` portal (`wlr-screencopy-unstable-v1` directly where the session's portal backend is absent is open) | **phase 2, done** (§4.4) |
+| Global shortcuts, the Super tap | the `org.freedesktop.portal.GlobalShortcuts` portal (the compositor's own key bindings decide; no client may grab a key on Wayland) | **phase 2, done** (§4.4) |
 | The screens | `wl_output` (position, size, scale) — `ListScreens`, `GetScreenSize` | **phase 1, done** |
 | The end of the session, the lock | logind on the system bus, as on X11; the locker itself through `ext-session-lock-v1` when UltraDesktop draws the lock screen | phase 1 (logind), phase 2 (the locker) |
 | The loudspeaker | the sound server, as on X11 | **phase 1, done (shared)** |
@@ -97,8 +97,9 @@ All under `UltraCanvas/OS/Linux/Wayland/`:
 | `UltraCanvasWaylandWindow.{h,cpp}` | a `wl_surface` with an `xdg_toplevel`; the frame as a cairo image surface at the physical size (device scale from the outputs the surface is on), copied into a free `wl_shm` buffer on `InvalidateWindowNative`, attached, damaged and committed; configure → `WindowResize`, close → `WindowCloseRequest`; server-side decorations asked for an ordinary window, none for a borderless one; maximize / fullscreen / minimize through xdg-shell |
 | `UltraCanvasWaylandCursor.cpp` | the cursor from the theme (`XCURSOR_THEME`, `XCURSOR_SIZE`) at the output's scale through libwayland-cursor; a cursor from a PNG as an shm buffer |
 | `UltraCanvasWaylandClipboard.{h,cpp}` | `wl_data_device`: offers read through a pipe, a `wl_data_source` serving what this program copied, the same MIME types as the X11 backend (`text/plain;charset=utf-8`, `text/html`, `text/uri-list` with `x-special/gnome-copied-files`, `image/png`, `x-kde-passwordManagerHint`) |
-| `UltraCanvasWaylandDesktopShell.cpp` | the desktop-shell backend: `ListScreens` and `GetScreenSize` from the outputs, the devices, the keyboard layout (phase 1); the window list, the monitor and the reserved edges (phase 2, §4); what is still open answers false with "not available on Wayland yet" |
-| `protocols/` | the wlroots protocol XML the desktop shell speaks (layer shell, foreign toplevels), vendored because wayland-protocols does not carry it |
+| `UltraCanvasWaylandDesktopShell.cpp` | the desktop-shell backend: `ListScreens` and `GetScreenSize` from the outputs, the devices, the keyboard layout (phase 1); the window list, the monitor, the reserved edges and the virtual desktops (phase 2, §4) |
+| `UltraCanvasWaylandPortals.cpp` | screenshots and global shortcuts through the freedesktop portals (§4.4) |
+| `protocols/` | the protocol XML vendored for the backend: the wlroots layer shell and foreign toplevels (wayland-protocols does not carry them), ext-workspace (it carries that only from 1.39) |
 
 The pieces both backends need moved out of the X11 files into shared ones
 under `OS/Linux/`: `UltraCanvasLinuxFonts` (fontconfig, the bundled fonts),
@@ -196,20 +197,76 @@ position: `processId` is 0, `GetWindowBounds` and `MoveWindowTo` answer
 false. A compositor without the manager (weston, GNOME) connects, lists
 nothing, and `UltraCanvasDesktopShellMonitor::IsNative()` is false.
 
-### 4.3 Next
+### 4.3 Virtual desktops (built)
 
-1. **Virtual desktops.** `ext-workspace-v1` (wayland-protocols 1.39; to be
-   vendored like the wlroots ones for the 22.04 runners).
-2. **Portals.** `CaptureScreen` through the Screenshot portal (a file URI
-   back, read into `DesktopScreenImage`); `UltraCanvasGlobalShortcut`
-   through GlobalShortcuts (a session, `BindShortcuts`, the `Activated`
-   signal; the Super tap is a shortcut the compositor binds). Both over
-   GDBus, which the tray host already uses.
-3. **xdg-activation** for `RaiseAndFocus`; `xdg_popup` for menus and the
-   bars' panels; `wl_data_device` drags; `ext-session-lock-v1` for the lock
-   screen UltraDesktop draws itself; EGL on `wl_egl_window` for GL surfaces;
-   `ext-foreign-toplevel-list-v1` for the list alone on a compositor that
-   has only that.
+`ext-workspace-v1` (wayland-protocols 1.39; vendored like the wlroots ones,
+since the 22.04 runners' wayland-protocols is 1.25) on the shell
+connection. The virtual desktops are the workspaces of the group that
+holds the first output (the primary, as `ListScreens` names it), hidden
+ones left out, in the order of their coordinates, then their names as
+numbers, then as announced; the active one is the current desktop.
+`SetCurrentVirtualDesktop` is `activate` + `commit` where the workspace
+has the capability, `SetVirtualDesktopCount` is `create_workspace` on the
+group (named by number) or `remove` of the last ones, never the active
+one, where the capabilities allow. The manager's `done` wakes the monitor.
+A compositor without the manager (sway 1.9, weston) has one desktop. The
+protocol ties no toplevel to a workspace and foreign toplevels name none,
+so a window's `virtualDesktop` is −1 and `MoveWindowToVirtualDesktop`
+answers false. Compositors that speak it: sway 1.11, labwc 0.9, KWin.
+
+### 4.4 Screenshots and global shortcuts (built): the portals
+
+`UltraCanvasWaylandPortals.cpp`, over GDBus (the tray host's arrangement:
+a `GMainContext` of its own per call, so nothing needs the application's
+loop and every call works from any thread). The portal is
+`org.freedesktop.portal.Desktop` on the session bus, served by
+`xdg-desktop-portal` with the session's backend (`xdg-desktop-portal-wlr`
+on a wlroots compositor; it needs PipeWire for its screen capture). Each
+exchange is a Request whose Response is awaited.
+
+- `CaptureScreen` is `Screenshot.Screenshot` (not interactive): the portal
+  writes a PNG and answers with its URI, which is moved to the caller's
+  path. `CaptureScreenImage` reads that PNG into the BGRx rows
+  `DesktopScreenImage` holds and deletes it at once - the portal cannot
+  hand pixels over, so the file exists for the moment between the two,
+  which the QR enrolment that uses it has to live with. `CaptureScreenArea`
+  crops that. A portal that asks the user is waited for, up to a minute.
+- `UltraCanvasGlobalShortcut` is `GlobalShortcuts`: `CreateSession`, one
+  shortcut bound with the accelerator as its preferred trigger in the
+  shortcuts specification's spelling (`Ctrl+Alt+V` → `CTRL+ALT+v`,
+  `Super` alone → `LOGO`), the `Activated` signal when the compositor
+  fires it, `Session.Close` on Stop. The compositor's own bindings decide
+  whether the trigger is honoured. A portal that asks the user is waited
+  for by the shortcut's thread, so `Start` returns at once with the
+  session; one that refuses fails `Start` with the reason.
+
+Without a portal (no `xdg-desktop-portal`, no session bus, a backend
+without the interface - `xdg-desktop-portal-wlr` has no GlobalShortcuts)
+every call fails with the reason. `wlr-screencopy` directly, for a session
+without a portal, stays open.
+
+### 4.5 RaiseAndFocus (built): xdg-activation
+
+`xdg-activation-v1` (wayland-protocols 1.21, so from the system). A
+window asks for the focus with a token the compositor issues against the
+last input this program had - the serial of the last key, button or
+keyboard enter, the seat, the surface that has the focus - then activates
+its own surface with it. The compositor decides: wlroots rejects a token
+whose serial it never gave the client, and sway then marks the window
+urgent instead of focusing it (also its default policy,
+`focus_on_window_activation urgent`); with a serial and
+`focus_on_window_activation focus` it focuses. A compositor without the
+protocol: nothing, as before. The desktop shell's `ActivateWindow` for
+other clients' windows stays the foreign-toplevel request.
+
+### 4.6 Open
+
+`xdg_popup` with a positioner for menus and the bars' panels;
+`wl_data_device` drags; `ext-session-lock-v1` for the lock screen
+UltraDesktop draws itself; EGL on `wl_egl_window` for GL surfaces;
+`ext-foreign-toplevel-list-v1` for the list alone on a compositor that has
+only that; `wlr-screencopy` for a session without a portal; the Wayland
+build in CI.
 
 Each step is a backend change behind the unchanged `UltraCanvasDesktopShell`
 API, so UltraDesktop's code stays what it is; only where it assumed screen
@@ -238,6 +295,29 @@ UTF-8 title and app id, reported by the monitor, active, minimized (where
 the compositor has the state; sway has none), activated again and closed;
 then a Desktop window whose reserved edges it reads back from
 `swaymsg -t get_workspaces` (the workspace loses 40 pixels at the top and
-60 on the right, and gets them back when the desktop ends). The section
+60 on the right, and gets them back when the desktop ends); then two
+windows of one program, the second focused, and the first's
+`RaiseAndFocus` making it the active one - with
+`focus_on_window_activation focus` in sway's configuration and a keyboard
+on the seat (`wtype -s 240000 ""` keeps a virtual one for four minutes;
+`DESKTOPSHELLTEST_WAYLAND_KEYBOARD=1` then makes the check mandatory);
+then the virtual desktops as the compositor reports them. The section
 skips itself without `WAYLAND_DISPLAY`, and the window-list checks under a
-compositor without the manager. The Wayland build is not in CI yet.
+compositor without the manager.
+
+The portals are a CTest entry of their own, `DesktopShellPortalTest`
+(`dbus-run-session -- DesktopShellTest --portals`), against a fake
+`org.freedesktop.portal.Desktop` the test exports itself in a program of
+its own: Screenshot answers with a 4×3 PNG, CreateSession and
+BindShortcuts as the real portal does, Activated fires twice; the
+backend's screenshots in their three forms, a bound shortcut with its
+trigger spelling, its activations and the session's Close are checked.
+That entry needs no compositor and runs wherever the Wayland build does.
+Against the real `xdg-desktop-portal` 1.18 + `xdg-desktop-portal-wlr`
+under the headless sway in this container the screenshot was not
+reachable: the daemon took the wlr backend for ScreenCast but exported no
+Screenshot interface (and the backend needs PipeWire running), so the
+backend's answer in that case - "the screenshot portal did not answer:
+no such interface" - is what was seen; the exchange itself is the one the
+fake mirrors, with the real portal's signatures. The Wayland build is not
+in CI yet.

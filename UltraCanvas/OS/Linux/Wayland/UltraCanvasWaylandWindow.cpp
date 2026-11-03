@@ -1,5 +1,6 @@
 // OS/Linux/Wayland/UltraCanvasWaylandWindow.cpp
 // A window on Wayland. See the header.
+// Version: 0.3.0 - RaiseAndFocus through xdg-activation
 // Version: 0.2.0 - Desktop windows on the layer shell; the reserved edges
 // Version: 0.1.0
 // Last Modified: 2026-11-03
@@ -13,6 +14,7 @@
 #include "xdg-shell-client-protocol.h"
 #include "xdg-decoration-unstable-v1-client-protocol.h"
 #include "wlr-layer-shell-unstable-v1-client-protocol.h"
+#include "xdg-activation-v1-client-protocol.h"
 
 #include <sys/mman.h>
 #include <unistd.h>
@@ -54,6 +56,9 @@ namespace UltraCanvas {
             auto* strut = static_cast<UltraCanvasWaylandWindow::EdgeStrut*>(data);
             strut->window->HandleStrutConfigure(*strut, serial, width, height);
         }
+        static void ActivationTokenDone(void* data, xdg_activation_token_v1*, const char* token) {
+            Win(data)->HandleActivationToken(token);
+        }
         static void StrutClosed(void* data, zwlr_layer_surface_v1*) {
             // The output went away: the strut with it; a new desktop window
             // on the new output reserves its edges anew.
@@ -89,6 +94,9 @@ namespace UltraCanvas {
         const zwlr_layer_surface_v1_listener kStrutListener = {
                 WaylandWindowListeners::StrutConfigure,
                 WaylandWindowListeners::StrutClosed,
+        };
+        const xdg_activation_token_v1_listener kActivationTokenListener = {
+                WaylandWindowListeners::ActivationTokenDone,
         };
 
         UltraCanvasWaylandApplication* App() { return UltraCanvasWaylandApplication::GetInstance(); }
@@ -513,6 +521,7 @@ namespace UltraCanvas {
         DestroyNativeCairoSurface();
         DestroyAllBuffers();
         for (EdgeStrut& strut : struts) DestroyStrut(strut);
+        if (activationToken) { xdg_activation_token_v1_destroy(activationToken); activationToken = nullptr; }
         if (layerSurface) { zwlr_layer_surface_v1_destroy(layerSurface); layerSurface = nullptr; }
         layerOutput = nullptr;
         if (decoration) { zxdg_toplevel_decoration_v1_destroy(decoration); decoration = nullptr; }
@@ -553,9 +562,38 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasWaylandWindow::RaiseAndFocus() {
-        // A client cannot raise or focus itself on Wayland without
-        // xdg-activation, which a later version may add; the compositor
-        // focuses a new toplevel by itself.
+        // A client asks for the focus through xdg-activation: a token the
+        // compositor issues against the last input this program had (its
+        // serial, the seat, the surface that has the focus), then the
+        // activation of this surface with it. The compositor decides: one
+        // that found no recent input behind the token marks the window
+        // urgent instead (sway's default), as a manager would on X11. A
+        // compositor without the protocol: nothing, as before.
+        auto* app = App();
+        if (!app || !app->GetActivation() || !toplevel || !surface) return;
+        if (activationToken) xdg_activation_token_v1_destroy(activationToken);
+        activationToken = xdg_activation_v1_get_activation_token(app->GetActivation());
+        xdg_activation_token_v1_add_listener(activationToken, &kActivationTokenListener, this);
+        xdg_activation_token_v1_set_app_id(activationToken, AppId().c_str());
+        if (app->GetSeat() && app->GetLastInputSerial() != 0) {
+            xdg_activation_token_v1_set_serial(activationToken, app->GetLastInputSerial(), app->GetSeat());
+        }
+        if (UltraCanvasWaylandWindow* focused = app->GetKeyboardWindow()) {
+            if (focused->GetSurface()) xdg_activation_token_v1_set_surface(activationToken, focused->GetSurface());
+        }
+        xdg_activation_token_v1_commit(activationToken);
+        app->Flush();
+    }
+
+    void UltraCanvasWaylandWindow::HandleActivationToken(const char* token) {
+        auto* app = App();
+        if (activationToken) {
+            xdg_activation_token_v1_destroy(activationToken);
+            activationToken = nullptr;
+        }
+        if (!app || !app->GetActivation() || !surface || !token) return;
+        xdg_activation_v1_activate(app->GetActivation(), token, surface);
+        app->Flush();
     }
 
     // ----- what the compositor says -----

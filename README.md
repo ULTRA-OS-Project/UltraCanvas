@@ -170,11 +170,11 @@ The following features are planned for future releases:
 -   **3D model support** - Loading and rendering .3ds, .3dm formats
 -   **SmartHome drivers** - Device drivers for the protocols the module specifies:
     Matter, Thread, Zigbee, Z-Wave, WiFi and Bluetooth (see `Docs/Modules/Smarthome/README.md`)
--   **Wayland desktop shell** - the windowing backend, the layer shell (the
-    desktop window and its bars' edges) and the window list over foreign
-    toplevels are in (`-DULTRACANVAS_WAYLAND=ON`); the virtual desktops, the
-    portals for screenshots and shortcuts and xdg-activation come next (see
-    `Docs/UltraCanvas/WaylandDesktopShellProposal.md`)
+-   **Wayland desktop shell** - the windowing backend and the desktop shell's
+    protocols are in (`-DULTRACANVAS_WAYLAND=ON`): the layer shell, foreign
+    toplevels, ext-workspace, the portals for screenshots and shortcuts,
+    xdg-activation; popups with a positioner, drags, the session lock and GL
+    surfaces come next (see `Docs/UltraCanvas/WaylandDesktopShellProposal.md`)
 
 ----------
 

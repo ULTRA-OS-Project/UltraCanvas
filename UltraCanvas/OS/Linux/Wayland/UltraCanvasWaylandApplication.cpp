@@ -1,5 +1,6 @@
 // OS/Linux/Wayland/UltraCanvasWaylandApplication.cpp
 // The Wayland windowing backend's application. See the header.
+// Version: 0.3.0 - xdg-activation (RaiseAndFocus); the keyboard window
 // Version: 0.2.0 - the layer shell global; FindOutputAt
 // Version: 0.1.0
 // Last Modified: 2026-11-03
@@ -16,6 +17,7 @@
 #include "xdg-shell-client-protocol.h"
 #include "xdg-decoration-unstable-v1-client-protocol.h"
 #include "wlr-layer-shell-unstable-v1-client-protocol.h"
+#include "xdg-activation-v1-client-protocol.h"
 
 #include <wayland-cursor.h>
 #include <linux/input-event-codes.h>
@@ -444,6 +446,8 @@ namespace UltraCanvas {
         } else if (what == zwlr_layer_shell_v1_interface.name) {
             layerShellVersion = std::min<uint32_t>(version, 4);
             layerShell = static_cast<zwlr_layer_shell_v1*>(bind(&zwlr_layer_shell_v1_interface, 4));
+        } else if (what == xdg_activation_v1_interface.name) {
+            activation = static_cast<xdg_activation_v1*>(bind(&xdg_activation_v1_interface, 1));
         } else if (what == wl_data_device_manager_interface.name) {
             dataDeviceManager = static_cast<wl_data_device_manager*>(bind(&wl_data_device_manager_interface, 3));
             UpdateSeatDevices();
@@ -515,6 +519,7 @@ namespace UltraCanvas {
         outputs.clear();
         if (decorationManager) { zxdg_decoration_manager_v1_destroy(decorationManager); decorationManager = nullptr; }
         if (layerShell) { zwlr_layer_shell_v1_destroy(layerShell); layerShell = nullptr; }
+        if (activation) { xdg_activation_v1_destroy(activation); activation = nullptr; }
         if (xdgWmBase) { xdg_wm_base_destroy(xdgWmBase); xdgWmBase = nullptr; }
         if (shm) { wl_shm_destroy(shm); shm = nullptr; }
         if (compositor) { wl_compositor_destroy(compositor); compositor = nullptr; }

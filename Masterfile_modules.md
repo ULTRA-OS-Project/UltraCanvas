@@ -904,11 +904,13 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   (EWMH properties and client messages, `XGetImage`, procfs/sysfs) in
   `OS/Linux/UltraCanvasLinuxDesktopShell.cpp`, the Wayland backend (the
   outputs, the devices; the window list and the monitor on
-  wlr-foreign-toplevel-management over a connection of its own, the
-  reserved edges as layer-shell exclusive zones; the virtual desktops,
-  screenshots and shortcuts are the next step,
+  wlr-foreign-toplevel-management and the virtual desktops on
+  ext-workspace over a connection of its own, the reserved edges as
+  layer-shell exclusive zones -
   `Docs/UltraCanvas/WaylandDesktopShellProposal.md`) in
-  `OS/Linux/Wayland/UltraCanvasWaylandDesktopShell.cpp`, and the Win32 backend
+  `OS/Linux/Wayland/UltraCanvasWaylandDesktopShell.cpp`, its screenshots and
+  global shortcuts through the freedesktop portals in
+  `OS/Linux/Wayland/UltraCanvasWaylandPortals.cpp`, and the Win32 backend
   (`EnumWindows` filtered as Explorer's taskbar, appbars, `BitBlt`, WinEvent
   hooks, `RegisterHotKey`, the Start menu) in
   `OS/MSWindows/UltraCanvasWindowsDesktopShell.cpp` and
