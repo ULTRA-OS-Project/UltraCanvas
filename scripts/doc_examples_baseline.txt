@@ -352,6 +352,19 @@ Docs/UltraCanvas/UltraCanvasRequirementDiagramProposal.md::no member named 'SetL
 Docs/UltraCanvas/UltraCanvasRequirementDiagramProposal.md::prose names `SetStrictSemantics(`, which no header declares
 Docs/UltraCanvas/UltraCanvasRequirementDiagramProposal.md::use of undeclared identifier 'RequirementLayout'
 # signature Docs/UltraCanvas/UltraCanvasRequirementDiagramProposal.md: c646c77dfc5758a2cd5d05f3a74eb0282649d38aea34d272d3a6ce6880f27ae8
+Docs/UltraCanvas/UltraCanvasTernaryChartProposal.md::'ChartProjectionKind::Ternary' does not exist (no member named 'Ternary' in 'ChartProjectionKind')
+Docs/UltraCanvas/UltraCanvasTernaryChartProposal.md::'DeFinetti' is not a member of UltraCanvasChartEngineElement, IRenderContext, UltraCanvasFileLoader, IChartProjection, nor a free function
+Docs/UltraCanvas/UltraCanvasTernaryChartProposal.md::'ExportTernaryCsv' is not a member of UltraCanvasChartEngineElement, IRenderContext, UltraCanvasFileLoader, IChartProjection, nor a free function
+Docs/UltraCanvas/UltraCanvasTernaryChartProposal.md::'ExportTernaryJson' is not a member of UltraCanvasChartEngineElement, IRenderContext, UltraCanvasFileLoader, IChartProjection, nor a free function
+Docs/UltraCanvas/UltraCanvasTernaryChartProposal.md::'ImportTernaryCsv' is not a member of UltraCanvasChartEngineElement, IRenderContext, UltraCanvasFileLoader, IChartProjection, nor a free function
+Docs/UltraCanvas/UltraCanvasTernaryChartProposal.md::'ImportTernaryJson' is not a member of UltraCanvasChartEngineElement, IRenderContext, UltraCanvasFileLoader, IChartProjection, nor a free function
+Docs/UltraCanvas/UltraCanvasTernaryChartProposal.md::'SoilSamples' is not a member of UltraCanvasChartEngineElement, IRenderContext, UltraCanvasFileLoader, IChartProjection, nor a free function
+Docs/UltraCanvas/UltraCanvasTernaryChartProposal.md::'SoilTexture' is not a member of UltraCanvasChartEngineElement, IRenderContext, UltraCanvasFileLoader, IChartProjection, nor a free function
+Docs/UltraCanvas/UltraCanvasTernaryChartProposal.md::'ThreePartyVotes' is not a member of UltraCanvasChartEngineElement, IRenderContext, UltraCanvasFileLoader, IChartProjection, nor a free function
+Docs/UltraCanvas/UltraCanvasTernaryChartProposal.md::no member named 'Ternary' in 'ChartProjectionKind'
+Docs/UltraCanvas/UltraCanvasTernaryChartProposal.md::unknown type name 'TernaryModel'
+Docs/UltraCanvas/UltraCanvasTernaryChartProposal.md::unknown type name 'TernaryModel'
+# signature Docs/UltraCanvas/UltraCanvasTernaryChartProposal.md: d3f6bf64fd395659349ea690e6d69d3b4a9a96cbd194bad7c33776cd4d2dd0e2
 Docs/UltraCanvas/UltraCanvasTimelineDiagramProposal.md::'TimelineEntryKind::Marker' does not exist (no member named 'Marker' in 'TimelineEntryKind')
 Docs/UltraCanvas/UltraCanvasTimelineDiagramProposal.md::'TimelineItem::date' does not exist (no member named 'date' in 'TimelineItem')
 Docs/UltraCanvas/UltraCanvasTimelineDiagramProposal.md::'TimelineItem::iconImage' does not exist (no member named 'iconImage' in 'TimelineItem')
