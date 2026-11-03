@@ -1,12 +1,12 @@
 # Function-like names that <windows.h> (and the headers it pulls in) #define
 # to their A or W variant: `#define CreateFile __MINGW_NAME_AW(CreateFile)`
 # expands to CreateFileW in a UNICODE build. Read by
-# scripts/check_win32_names.py.
+# scripts/check_platform_names.py (win32).
 #
 # Generated from the MinGW-w64 headers (the toolchain behind the MSYS2
 # CLANG64 / CLANGARM64 Windows builds); driver-kit-only (ddk/) names left out.
 # Regenerate with:
-#     python3 scripts/check_win32_names.py --generate-names <mingw-w64 include dir>
+#     python3 scripts/check_platform_names.py --platform win32 --generate-names <mingw-w64 include dir>
 ACCCTRL_DEFAULT_PROVIDER
 ACMDRIVERDETAILS
 ACMFILTERCHOOSE

@@ -229,7 +229,19 @@ void AddBuiltinAudioCodecs() {
 // made the open dialog refuse files the player then played perfectly well.
 void AddBuiltinVideoCodecs() {
 #ifdef ULTRACANVAS_ENABLE_VIDEO
-#if defined(__linux__)
+#if defined(__ANDROID__)
+    // Before __linux__ (bionic defines both). AMediaExtractor demuxes these
+    // (Android's supported media formats); the recorder muxes MP4 only
+    // (libspecific/Video/VideoBackendAndroidCapture.cpp fails Start() for
+    // any other container).
+    const char* p = "MediaCodec";
+    const char* n = "codec availability depends on the device's decoders";
+    RegisterMediaCodec(Video("mp4",  { "m4v" }, "MPEG-4 container",      true, true,  p, n));
+    RegisterMediaCodec(Video("3gp",  { "3g2" }, "3GPP video",            true, false, p, n));
+    RegisterMediaCodec(Video("mkv",  {},        "Matroska video",        true, false, p, n));
+    RegisterMediaCodec(Video("webm", {},        "WebM video",            true, false, p, n));
+    RegisterMediaCodec(Video("m2ts", { "mts" }, "MPEG transport stream", true, false, p, n));
+#elif defined(__linux__)
     const char* p = "GStreamer";
     const char* n = "codec availability depends on installed GStreamer plugins";
     RegisterMediaCodec(Video("mp4",  { "m4v" }, "MPEG-4 container",      true, true,  p, n));

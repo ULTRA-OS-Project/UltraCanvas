@@ -81,15 +81,15 @@ Matrix4x4 TranslationMatrix(const Fbx::Node& model, const char* name, double sig
 // One vertex layer: normals, UVs or colours. FBX lets each declare its own
 // mapping and reference independently, so all eight combinations resolve here.
 struct Layer {
-    enum class Mapping { None, ByCorner, ByVertex, ByPolygon, AllSame };
+    enum class Mapping { NoMapping, ByCorner, ByVertex, ByPolygon, AllSame };
 
-    Mapping Map = Mapping::None;
+    Mapping Map = Mapping::NoMapping;
     bool Indexed = false;
     int Components = 3;
     std::vector<double> Data;
     std::vector<int64_t> Index;
 
-    bool Valid() const { return Map != Mapping::None && !Data.empty(); }
+    bool Valid() const { return Map != Mapping::NoMapping && !Data.empty(); }
 
     // The element this corner reads, or -1 when the file does not say.
     int64_t Element(size_t corner, size_t polygon, int64_t position) const {
@@ -99,7 +99,7 @@ struct Layer {
             case Mapping::ByVertex: raw = position; break;
             case Mapping::ByPolygon: raw = static_cast<int64_t>(polygon); break;
             case Mapping::AllSame: raw = 0; break;
-            case Mapping::None: return -1;
+            case Mapping::NoMapping: return -1;
         }
         if (!Indexed) return raw;
         if (raw < 0 || static_cast<size_t>(raw) >= Index.size()) return -1;
@@ -119,7 +119,7 @@ Layer::Mapping MappingFrom(const std::string& text) {
         return Layer::Mapping::ByVertex;
     if (text == "ByPolygon") return Layer::Mapping::ByPolygon;
     if (text == "AllSame" || text == "ByModel") return Layer::Mapping::AllSame;
-    return Layer::Mapping::None;
+    return Layer::Mapping::NoMapping;
 }
 
 // Everything one Geometry carries, before it becomes primitives.
@@ -650,7 +650,7 @@ private:
                 layer.Indexed = false;
             }
         }
-        if (layer.Map == Layer::Mapping::None) {
+        if (layer.Map == Layer::Mapping::NoMapping) {
             WarnOnce(std::string("mapping.") + layerName,
                      std::string("FBX: a ") + layerName +
                              " declares a mapping this reader does not know; it is dropped");

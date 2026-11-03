@@ -50,7 +50,7 @@ UltraCanvasDocument::UltraCanvasDocument() {
     Metadata.ModifiedDate = Metadata.CreatedDate;
     Metadata.Version = UCD_FORMAT_VERSION;
     
-    SecuritySettings.EncryptionType = UCEncryptionType::None;
+    SecuritySettings.EncryptionType = UCEncryptionType::Unencrypted;
     SecuritySettings.AllowPrint = true;
     SecuritySettings.AllowCopy = true;
     SecuritySettings.AllowEdit = true;
@@ -113,7 +113,7 @@ bool UltraCanvasDocument::LoadFromFile(const std::string& filePath, const std::s
         std::vector<uint8_t> contentData(fileData.begin() + 8, fileData.end());
 
         // Decrypt if needed
-        if (encryption != UCEncryptionType::None) {
+        if (encryption != UCEncryptionType::Unencrypted) {
             if (encryption != UCEncryptionType::XChaCha20Poly1305) {
                 lastError_ = "This document uses an encryption type this version "
                              "of UltraCanvas does not support.";
@@ -131,7 +131,7 @@ bool UltraCanvasDocument::LoadFromFile(const std::string& filePath, const std::s
         }
 
         // Decompress if needed
-        if (compression != UCCompressionType::None) {
+        if (compression != UCCompressionType::Uncompressed) {
             std::vector<uint8_t> decompressedData;
             if (!DecompressData(contentData, decompressedData, compression)) {
                 lastError_ = "The document is corrupt (it could not be decompressed): " + filePath;
@@ -178,7 +178,7 @@ bool UltraCanvasDocument::SaveToFile(const std::string& filePath, UCCompressionT
         std::vector<uint8_t> contentData(contentString.begin(), contentString.end());
 
         // Compress if needed
-        if (compression != UCCompressionType::None) {
+        if (compression != UCCompressionType::Uncompressed) {
             std::vector<uint8_t> compressedData;
             if (!CompressData(contentData, compressedData, compression)) {
                 lastError_ = "Could not compress the document while saving.";
@@ -191,7 +191,7 @@ bool UltraCanvasDocument::SaveToFile(const std::string& filePath, UCCompressionT
         // EncryptData as associated data, so an edit to the compression or
         // encryption byte invalidates the authentication tag.
         const UCEncryptionType encryption = password.empty()
-                                                ? UCEncryptionType::None
+                                                ? UCEncryptionType::Unencrypted
                                                 : UCEncryptionType::XChaCha20Poly1305;
 
         std::vector<uint8_t> fileData;
@@ -204,7 +204,7 @@ bool UltraCanvasDocument::SaveToFile(const std::string& filePath, UCCompressionT
         fileData.push_back(0x00);                                   // reserved
         fileData.push_back(0x00);
 
-        if (encryption != UCEncryptionType::None) {
+        if (encryption != UCEncryptionType::Unencrypted) {
             std::vector<uint8_t> encryptedData;
             if (!EncryptData(contentData, encryptedData, password, fileData)) {
                 // EncryptData sets a specific lastError_; keep it.
@@ -743,7 +743,7 @@ std::vector<std::string> UltraCanvasDocument::GetFormValidationErrors() {
 
 bool UltraCanvasDocument::SetPassword(const std::string& password) {
     if (password.empty()) {
-        SecuritySettings.EncryptionType = UCEncryptionType::None;
+        SecuritySettings.EncryptionType = UCEncryptionType::Unencrypted;
         SecuritySettings.PasswordVerifier.clear();
         SecuritySettings.VerifierSalt.clear();
         SecuritySettings.VerifierIterations = 0;
@@ -778,7 +778,7 @@ bool UltraCanvasDocument::SetPassword(const std::string& password) {
 }
 
 bool UltraCanvasDocument::VerifyPassword(const std::string& password) {
-    if (SecuritySettings.EncryptionType == UCEncryptionType::None) {
+    if (SecuritySettings.EncryptionType == UCEncryptionType::Unencrypted) {
         return password.empty();
     }
     if (SecuritySettings.PasswordVerifier.empty() ||
@@ -1266,7 +1266,7 @@ std::string UltraCanvasDocument::PageDataToXML(const std::shared_ptr<UCPageData>
     return oss.str();
 }
     switch (type) {
-        case UCCompressionType::None:
+        case UCCompressionType::Uncompressed:
             output = input;
             return true;
             
@@ -1292,7 +1292,7 @@ std::string UltraCanvasDocument::PageDataToXML(const std::shared_ptr<UCPageData>
 
 bool UltraCanvasDocument::DecompressData(const std::vector<uint8_t>& input, std::vector<uint8_t>& output, UCCompressionType type) {
     switch (type) {
-        case UCCompressionType::None:
+        case UCCompressionType::Uncompressed:
             output = input;
             return true;
             

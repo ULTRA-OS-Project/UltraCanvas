@@ -583,11 +583,15 @@ bool Writer::WriteToFile(const std::string& path, std::string& error) const {
     std::vector<uint8_t> bytes;
     if (!WriteToBuffer(bytes, error)) return false;
     const std::string failure = WriteFileAtomically(path, [&bytes](const std::string& staged) -> std::string {
+        errno = 0;
         std::FILE* f = OpenFileUtf8(staged, "wb");
-        if (!f) return "Could not create " + staged;
+        if (!f) return "Could not create the file. " + FileWriteFailureReason(staged, errno);
         const bool written = std::fwrite(bytes.data(), 1, bytes.size(), f) == bytes.size();
         const bool closed = std::fclose(f) == 0;
-        return written && closed ? std::string() : "Could not write " + staged;
+        if (written && closed) return std::string();
+        const int err = errno;
+        // The staged file exists now; the probe asks the folder about it.
+        return "Could not write the file. " + FileWriteFailureReason(staged, err);
     });
     if (!failure.empty()) { error = failure; return false; }
     return true;

@@ -70,7 +70,7 @@ struct UltraNetHttpOptions {
     // another scheme.
     bool httpsOnlyRedirects = false;
     bool verifyTls = true;
-    UltraNetAuthType authType = UltraNetAuthType::None;
+    UltraNetAuthType authType = UltraNetAuthType::NoAuth;
     UltraNetCredentials credentials;
     UltraNetProxyConfig proxy;      // type==None → use global
     std::vector<uint8_t> clientCertPem;

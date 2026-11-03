@@ -1,6 +1,7 @@
 // Apps/UltraMail/engine/UltraMailTypes.cpp
-// FolderRole / MailSecurity / authentication method / signature kind <->
-// string mapping.
+// FolderRole / MailSecurity / MailProtocol / authentication method /
+// signature kind <-> string mapping.
+// Version: 0.4.0 - MailProtocol, DefaultPort
 // Version: 0.3.0 - signature kind, Signature::IsActive
 // Version: 0.2.0 - authentication method
 // Author: UltraCanvas Framework / ULTRA OS
@@ -23,6 +24,24 @@ MailSecurity MailSecurityFromString(const std::string& s) {
     return MailSecurity::SslTls;
 }
 
+std::string ToString(MailProtocol protocol) {
+    switch (protocol) {
+        case MailProtocol::Jmap: return "jmap";
+        case MailProtocol::Imap: break;
+    }
+    return "imap";
+}
+
+MailProtocol MailProtocolFromString(const std::string& s) {
+    if (s == "jmap") return MailProtocol::Jmap;
+    return MailProtocol::Imap;
+}
+
+int DefaultPort(MailProtocol protocol, MailSecurity security) {
+    if (protocol == MailProtocol::Jmap) return 443;
+    return security == MailSecurity::SslTls ? 993 : 143;
+}
+
 std::string ToString(FolderRole role) {
     switch (role) {
         case FolderRole::Inbox:   return "inbox";
@@ -43,7 +62,7 @@ std::string ToString(UltraNetMailAuth auth) {
         case UltraNetMailAuth::OAuth2:            return "oauth2";
         case UltraNetMailAuth::Kerberos:          return "kerberos";
         case UltraNetMailAuth::NTLM:              return "ntlm";
-        case UltraNetMailAuth::None:              return "none";
+        case UltraNetMailAuth::NoAuth:              return "none";
         case UltraNetMailAuth::Any:
         default:                                  return "auto";
     }
@@ -55,7 +74,7 @@ UltraNetMailAuth MailAuthFromString(const std::string& s) {
     if (s == "oauth2")    return UltraNetMailAuth::OAuth2;
     if (s == "kerberos")  return UltraNetMailAuth::Kerberos;
     if (s == "ntlm")      return UltraNetMailAuth::NTLM;
-    if (s == "none")      return UltraNetMailAuth::None;
+    if (s == "none")      return UltraNetMailAuth::NoAuth;
     return UltraNetMailAuth::Any;
 }
 
@@ -103,9 +122,12 @@ MailSecurity EffectiveSecurity(int port, MailSecurity chosen) {
 
 void ApplyConnection(const MailServerSettings& server, UltraNetMailOptions& options) {
     // Reconcile against the port so implicit TLS never reaches a STARTTLS port
-    // (and vice versa); see EffectiveSecurity. The scheme in Smtp/ImapServerUrl
-    // is derived the same way, so the flag and the URL always agree.
-    const MailSecurity sec = EffectiveSecurity(server.port, server.security);
+    // (and vice versa); see EffectiveSecurity. The scheme in SmtpServerUrl /
+    // IncomingServerUrl is derived the same way, so the flag and the URL
+    // always agree. A JMAP server is HTTPS whatever the port: the JMAP
+    // plug-in talks TLS from the first byte.
+    const MailSecurity sec = server.protocol == MailProtocol::Jmap
+        ? MailSecurity::SslTls : EffectiveSecurity(server.port, server.security);
     options.useTls      = sec != MailSecurity::Plain;
     options.implicitTls = sec == MailSecurity::SslTls;
     options.auth        = server.auth;

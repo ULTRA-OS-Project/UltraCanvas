@@ -47,7 +47,7 @@ enum class ImageGenMode {
 // =====================================================================
 
 enum class ControlType {
-    None,
+    NoControl,
     CannyEdge,
     Depth,
     Pose,

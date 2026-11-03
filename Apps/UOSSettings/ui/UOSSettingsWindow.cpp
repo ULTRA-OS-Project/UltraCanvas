@@ -1,23 +1,30 @@
 // Apps/UOSSettings/ui/UOSSettingsWindow.cpp
 // The UOS-Settings window: page tree | page, Close at the foot - the layout
 // of UltraFiler's settings window. See UOSSettingsWindow.h.
-// Version: 0.5.0 - the Language page: the language every application shows, Language.conf
+// Version: 0.7.0 - the Language page: the language every application shows, Language.conf
+// Version: 0.6.1 - the ULTRA OS logo over the page tree
+// Version: 0.6.0 - Desktop: "Start with the desktop" (ChatCube, UltraMail)
+// Version: 0.5.1 - Desktop: from an MSIX package, why "At sign-in" is missing
+// Version: 0.5.0 - Notifications > Registrations: listed, and removed with one button
 // Version: 0.4.0 - Appearance > Emoji: colour, black and white, or the system's
 // Version: 0.3.0 - Desktop: the Windows desktop, beside Explorer, or instead of it
 // Version: 0.2.0 - Desktop: UltraDesktop in place of the Windows desktop
 // Version: 0.1.0
-// Last Modified: 2026-10-20
+// Last Modified: 2026-11-01
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UOSSettingsWindow.h"
 
+#include "UltraCanvasCheckbox.h"
 #include "UltraDesktopSettings.h"   // Apps/UltraDesktop: the desktop's settings file
 
 #include "UltraCanvasButton.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasDesktopShell.h"
 #include "UltraCanvasDropdown.h"
+#include "UltraCanvasImageElement.h"
 #include "UltraCanvasEmojiSettings.h"
+#include "UltraCanvasNotificationActivation.h"
 #include "UltraCanvasFileLoader.h"
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasFileDialogSettings.h"
@@ -31,6 +38,7 @@
 #include "UltraCanvasWindow.h"
 
 #include <algorithm>
+#include <cstdlib>
 #include <set>
 #include <utility>
 #include <vector>
@@ -42,6 +50,24 @@ namespace UOSSettings {
 namespace {
     // The look of UltraFiler's settings window, so the two read as one family.
     constexpr float kTitleFontSize = 15.0f;
+    // The Apps window's choices: when a category is split (0 = never) and
+    // how many applications Recent shows.
+    constexpr int kAppsSplitChoices[] = {0, 4, 6, 8, 10, 12, 16, 20};
+    constexpr int kRecentShownChoices[] = {4, 6, 8, 10, 12, 16, 24};
+
+    template <size_t N>
+    int NearestChoice(const int (&choices)[N], int value) {
+        int best = 0;
+        for (size_t i = 0; i < N; ++i) {
+            if (std::abs(choices[i] - value) < std::abs(choices[best] - value)) best = static_cast<int>(i);
+        }
+        return best;
+    }
+
+    template <size_t N>
+    int ChoiceAt(const int (&choices)[N], int index, int fallback) {
+        return index >= 0 && static_cast<size_t>(index) < N ? choices[index] : fallback;
+    }
     constexpr float kTextFontSize  = 10.0f;
     constexpr float kNoteFontSize  = 9.0f;
     constexpr float kTreeFontSize  = 9.0f;
@@ -52,6 +78,11 @@ namespace {
     const Color kNoteAccent     = Color(160, 176, 200, 255);
     const Color kRuleColor      = Color(225, 225, 230, 255);
     const Color kHeaderBackground = Color(243, 243, 246, 255);
+    const Color kSidebarBackground = Color(243, 243, 246, 255);
+    constexpr int kSidebarWidth = 180;
+    // The ULTRA OS logo over the page tree: ultraos-logo-light.png, 384 x 200.
+    constexpr int kLogoWidth = 132;
+    constexpr int kLogoHeight = 132 * 200 / 384;
     constexpr int kPagePadding = 20;
     constexpr int kTextWidth   = 520;
     constexpr int kNoteWidth   = 510;
@@ -72,8 +103,14 @@ namespace {
     constexpr const char* kSectionAppearance  = "appearance";
     constexpr const char* kPageEmoji          = "appearance/emoji";
     constexpr const char* kPageLanguage       = "language";
+    constexpr const char* kSectionNotifications = "notifications";
+    constexpr const char* kPageRegistrations  = "notifications/registrations";
     constexpr const char* kSectionDevices     = "devices";
     constexpr const char* kPageCertificates   = "devices/certificates";
+
+    // Notification registrations table: the application column is fixed, the
+    // click handler takes the rest.
+    constexpr int kRegistrationAppColumnWidth = 230;
 
     // Trusted certificates table: the name, address and button columns are
     // fixed, the key takes the rest.
@@ -251,16 +288,34 @@ bool UOSSettingsWindow::Create() {
     content->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                        .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
+    // The sidebar: the ULTRA OS logo - the version drawn for a light ground,
+    // as the desktop's taskbar shows the one for a dark ground - over the
+    // page tree.
+    auto sidebar = std::make_shared<UltraCanvasContainer>("uos-sidebar");
+    sidebar->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    sidebar->SetBackgroundColor(kSidebarBackground);
+    sidebar->size.width = CSSLayout::Dimension::Px(kSidebarWidth);
+    sidebar->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
+                       .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+
+    auto logo = std::make_shared<UltraCanvasImageElement>("uos-logo", 0, 0, kLogoWidth, kLogoHeight);
+    logo->SetFitMode(ImageFitMode::Contain);
+    logo->LoadFromFile(GetResourcesDir() + "media/icons/desktop/ultraos-logo-light.png");
+    logo->SetElementSize(Size2Df(static_cast<float>(kLogoWidth), static_cast<float>(kLogoHeight)));
+    logo->layoutItem.SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Center);
+    logo->SetMargin(14, 0, 10, 0);
+    logo->SetTooltip("ULTRA OS");
+    sidebar->AddChild(logo);
+
     tree_ = std::make_shared<UltraCanvasTreeView>("uos-tree");
     tree_->SetFontSize(kTreeFontSize);
     tree_->SetRowHeight(24);
     tree_->SetSelectionMode(TreeSelectionMode::Single);
     tree_->SetLineStyle(TreeLineStyle::NoLine);
-    tree_->SetBackgroundColor(Color(243, 243, 246, 255));
+    tree_->SetBackgroundColor(kSidebarBackground);
     tree_->SetShowFirstChildOnExpand(true);
     tree_->SetAutoExpandSelectedNode(true);
-    tree_->size.width = CSSLayout::Dimension::Px(180);
-    tree_->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
+    tree_->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetFlexBasis(CSSLayout::Dimension::Px(0))
                      .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
     TreeNodeData rootData("settings", "Settings");
@@ -271,10 +326,13 @@ bool UOSSettingsWindow::Create() {
     tree_->AddNode(kSectionFileDialogs, TreeNodeData(kPageLastFolder, "Last used folder"));
     tree_->AddNode("settings", TreeNodeData(kSectionAppearance, "Appearance"));
     tree_->AddNode(kSectionAppearance, TreeNodeData(kPageEmoji, "Emoji"));
+    tree_->AddNode("settings", TreeNodeData(kSectionNotifications, "Notifications"));
+    tree_->AddNode(kSectionNotifications, TreeNodeData(kPageRegistrations, "Registrations"));
     tree_->AddNode("settings", TreeNodeData(kSectionDevices, "Devices"));
     tree_->AddNode(kSectionDevices, TreeNodeData(kPageCertificates, "Trusted certificates"));
     tree_->SetRootVisible(false);
-    content->AddChild(tree_);
+    sidebar->AddChild(tree_);
+    content->AddChild(sidebar);
 
     pageArea_ = std::make_shared<UltraCanvasContainer>("uos-pages");
     pageArea_->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
@@ -287,6 +345,7 @@ bool UOSSettingsWindow::Create() {
     BuildLastFolderPage();
     BuildLanguagePage();
     BuildEmojiPage();
+    BuildNotificationsPage();
     BuildCertificatesPage();
     window_->AddChild(content);
 
@@ -348,6 +407,7 @@ void UOSSettingsWindow::ShowPage(const std::string& pageId) {
     if (pageId == kPageCertificates) RefreshCertificatesPage();
     if (pageId == kPageEmoji) RefreshEmojiPage();
     if (pageId == kPageLanguage) RefreshLanguagePage();
+    if (pageId == kPageRegistrations) RefreshNotificationsPage();
 }
 
 // ===== DESKTOP =====
@@ -416,7 +476,7 @@ void UOSSettingsWindow::BuildDesktopPage() {
     addRow("uos-dt-edge-row", "Taskbar", edge_);
 
     wallpaper_ = std::make_shared<UltraCanvasTextInput>("uos-dt-wallpaper", 0, 0, 260, 28);
-    wallpaper_->SetPlaceholder("The framework's picture");
+    wallpaper_->SetPlaceholder("ULTRA OS A (the default picture)");
     wireText(wallpaper_);
     auto browse = std::make_shared<UltraCanvasButton>("uos-dt-browse", 0, 0, 90, 28, "Browse...");
     browse->SetFontSize(kTextFontSize);
@@ -439,6 +499,33 @@ void UOSSettingsWindow::BuildDesktopPage() {
     };
     addRow("uos-dt-desktops-row", "Virtual desktops", desktops_);
 
+    // The Apps window: its view, when a category is split into its
+    // sub-categories, and how many applications Recent shows.
+    appsView_ = std::make_shared<UltraCanvasDropdown>("uos-dt-appsview", 0, 0, 200, 28);
+    appsView_->AddItem("Tiles", "tiles");
+    appsView_->AddItem("Categories and a list", "tree");
+    appsView_->onSelectionChanged = [this](int, const DropdownItem&) {
+        if (!refreshing_) SaveDesktopPage();
+    };
+    addRow("uos-dt-appsview-row", "Apps window", appsView_);
+
+    appsSplit_ = std::make_shared<UltraCanvasDropdown>("uos-dt-appssplit", 0, 0, 200, 28);
+    for (int above : kAppsSplitChoices) {
+        appsSplit_->AddItem(above == 0 ? "Never" : "Above " + std::to_string(above) + " applications",
+                            std::to_string(above));
+    }
+    appsSplit_->onSelectionChanged = [this](int, const DropdownItem&) {
+        if (!refreshing_) SaveDesktopPage();
+    };
+    addRow("uos-dt-appssplit-row", "Sub-categories", appsSplit_);
+
+    recentShown_ = std::make_shared<UltraCanvasDropdown>("uos-dt-recent", 0, 0, 120, 28);
+    for (int shown : kRecentShownChoices) recentShown_->AddItem(std::to_string(shown), std::to_string(shown));
+    recentShown_->onSelectionChanged = [this](int, const DropdownItem&) {
+        if (!refreshing_) SaveDesktopPage();
+    };
+    addRow("uos-dt-recent-row", "Recent shows", recentShown_);
+
     // Only where there is a system desktop to take the place of (Windows).
     if (UltraCanvasDesktopShell::CanReplaceSystemDesktop()) {
         systemDesktop_ = std::make_shared<UltraCanvasDropdown>("uos-dt-replace", 0, 0, 300, 28);
@@ -457,6 +544,34 @@ void UOSSettingsWindow::BuildDesktopPage() {
     }
     page->AddChild(body);
 
+    // The programs that start with the desktop, minimized, in the
+    // background: their messages and mail arrive without opening them.
+    auto startupTitle = MakeLabel("uos-dt-startup-title", "Start with the desktop", kTextFontSize);
+    startupTitle->SetFontWeight(FontWeight::Bold);
+    startupTitle->SetMargin(16, 0, 4, 0);
+    page->AddChild(startupTitle);
+    startup_.clear();
+    for (const UltraDesktop::StartupProgram& program : UltraDesktop::DesktopSettings::StartupPrograms()) {
+        const std::string id = std::string("uos-dt-startup-") + program.program;
+        auto box = std::make_shared<UltraCanvasCheckbox>(id, 0, 0, 520, 26, program.label);
+        box->layoutItem.SetFlexShrink(0);
+        box->onStateChanged = [this](CheckedState, CheckedState) {
+            if (!refreshing_) SaveDesktopPage();
+        };
+        startup_.emplace_back(program.program, box);
+        page->AddChild(box);
+    }
+
+    // Windows, but a copy that cannot switch (the Microsoft Store one, whose
+    // registry changes sign-in never sees): say why the choice is missing.
+    if (const std::string why = UltraCanvasDesktopShell::GetSystemDesktopSwitchUnavailableReason();
+        !why.empty()) {
+        auto note = MakeText("uos-dt-replace-note", "At sign-in: " + why, kTextWidth, kTextFontSize,
+                             kMutedTextColor);
+        note->SetMargin(10, 0, 0, 0);
+        page->AddChild(note);
+    }
+
     desktopStatus_ = MakeLabel("uos-dt-status", "", kTextFontSize, kMutedTextColor);
     desktopStatus_->SetMargin(10, 0, 0, 0);
     page->AddChild(desktopStatus_);
@@ -472,7 +587,18 @@ void UOSSettingsWindow::BuildDesktopPage() {
             "The RAM disc is the folder the desktop's drive button opens - empty, "
             "no button; the file manager is the program its folder buttons start. "
             "Virtual desktops are asked of the window manager, which may offer a "
-            "different number."};
+            "different number.",
+            "The Apps window sorts the applications into Office, Internet, "
+            "Graphics, Video, Audio, CAD, Games, Tools and System, after the "
+            "ones started last (Recent). A category with more applications than "
+            "the Sub-categories choice is split into its kinds - Web browsers, "
+            "Painting, Board games - and the window's two icons at its top left "
+            "switch between the tiles and the categories beside a list.",
+            "A program that starts with the desktop opens minimized a few seconds "
+            "after it - unless it is running already - and keeps working in the "
+            "background: ChatCube receives messages, UltraMail fetches mail and "
+            "shows the unread count on the desktop's mail icon. The desktop's "
+            "settings button offers the same choice on its right-click menu."};
     if (systemDesktop_) {
         noteTexts.push_back(
             "At sign-in, for this account: beside Explorer, UltraDesktop starts "
@@ -513,6 +639,10 @@ void UOSSettingsWindow::RefreshDesktopPage() {
     if (ramDisc_) ramDisc_->SetText(settings.ramDiscPath);
     if (filer_) filer_->SetText(settings.filerProgram);
     if (desktops_) desktops_->SetSelectedIndex(std::clamp(settings.virtualDesktops, 1, 9) - 1, false);
+    if (appsView_) appsView_->SetSelectedIndex(settings.appsView == "tree" ? 1 : 0, false);
+    if (appsSplit_) appsSplit_->SetSelectedIndex(NearestChoice(kAppsSplitChoices, settings.appsSplitAbove), false);
+    if (recentShown_) recentShown_->SetSelectedIndex(NearestChoice(kRecentShownChoices, settings.recentAppsShown), false);
+    for (auto& [program, box] : startup_) box->SetChecked(settings.StartsWithDesktop(program));
     if (systemDesktop_) {
         const DesktopReplacement mode = UltraCanvasDesktopShell::GetSystemDesktopReplacement();
         systemDesktop_->SetSelectedIndex(mode == DesktopReplacement::Instead ? 2
@@ -545,6 +675,10 @@ void UOSSettingsWindow::SaveDesktopPage() {
     if (ramDisc_) settings.ramDiscPath = ramDisc_->GetText();   // "" = no RAM disc button
     if (filer_ && !filer_->GetText().empty()) settings.filerProgram = filer_->GetText();
     if (desktops_) settings.virtualDesktops = std::clamp(desktops_->GetSelectedIndex() + 1, 1, 9);
+    if (appsView_) settings.appsView = appsView_->GetSelectedIndex() == 1 ? "tree" : "tiles";
+    if (appsSplit_) settings.appsSplitAbove = ChoiceAt(kAppsSplitChoices, appsSplit_->GetSelectedIndex(), 8);
+    if (recentShown_) settings.recentAppsShown = ChoiceAt(kRecentShownChoices, recentShown_->GetSelectedIndex(), 8);
+    for (const auto& [program, box] : startup_) settings.SetStartsWithDesktop(program, box->IsChecked());
     if (!settings.Save(path, &error)) {
         if (desktopStatus_) desktopStatus_->SetText("Not saved: " + error);
         return;
@@ -853,6 +987,110 @@ void UOSSettingsWindow::RefreshEmojiPage() {
                                 : style == EmojiStyle::System     ? kSegmentEmojiSystem
                                                                   : kSegmentEmojiColour);
     refreshing_ = false;
+}
+
+// ===== NOTIFICATIONS > REGISTRATIONS =====
+
+void UOSSettingsWindow::BuildNotificationsPage() {
+    auto page = std::make_shared<UltraCanvasContainer>("uos-page-registrations");
+    page->layout.SetFlexColumn().SetFlexGap(0)
+                .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    page->SetPadding(kPagePadding, kPagePadding, kPagePadding, kPagePadding);
+    page->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
+                    .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+
+    auto title = MakeLabel("uos-nr-title", "Notification registrations", kTitleFontSize);
+    title->SetFontWeight(FontWeight::Bold);
+    page->AddChild(title);
+    auto caption = MakeText("uos-nr-caption",
+            "What Windows keeps for each application whose notifications were shown: "
+            "its name and icon, and the program a click on one of its notifications "
+            "starts. The uninstaller removes it; a folder unpacked from the ZIP "
+            "package has no uninstaller, so remove it here before deleting the folder.");
+    caption->SetMargin(6, 0, 0, 0);
+    page->AddChild(caption);
+
+    registrationNote_ = MakeText("uos-nr-table-note", "", kTextWidth, kTextFontSize, kNoteTextColor);
+    registrationNote_->SetMargin(14, 0, 6, 0);
+    page->AddChild(registrationNote_);
+
+    page->AddChild(MakeTable("uos-nr-table",
+                             {{"app", "Application", kRegistrationAppColumnWidth},
+                              {"activator", "Click starts", 0}},
+                             registrationRows_));
+
+    auto actions = std::make_shared<UltraCanvasContainer>("uos-nr-actions");
+    actions->layout.SetFlexRow().SetFlexGap(12)
+                   .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    actions->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    actions->size.height = CSSLayout::Dimension::Px(36);
+    actions->SetMargin(10, 0, 0, 0);
+    removeRegistrations_ = std::make_shared<UltraCanvasButton>("uos-nr-remove", 0, 0, 120, 28, "Remove all");
+    removeRegistrations_->SetFontSize(kTextFontSize);
+    removeRegistrations_->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    removeRegistrations_->SetOnClick([this]() { RemoveNotificationRegistrations(); });
+    actions->AddChild(removeRegistrations_);
+    registrationStatus_ = MakeLabel("uos-nr-status", "", kTextFontSize, kMutedTextColor);
+    actions->AddChild(registrationStatus_);
+    page->AddChild(actions);
+
+    auto notes = MakeNotes("uos-nr-note", {
+            "An application registers again the next time it starts or shows a "
+            "notification, so removing does no harm to one you keep.",
+            "From a command prompt or a script: UOS-Settings "
+            "--remove-notification-registrations - which the ZIP package's "
+            "uc-remove-registrations.cmd runs."});
+    notes->SetMargin(14, 0, 0, 0);
+    page->AddChild(notes);
+
+    pages_[kPageRegistrations] = page;
+    pageArea_->AddChild(page);
+}
+
+void UOSSettingsWindow::RefreshNotificationsPage() {
+    if (!registrationRows_) return;
+    const std::vector<NotificationRegistration> listed = ListNotificationRegistrations();
+    registrationRows_->ClearChildren();
+    for (size_t i = 0; i < listed.size(); ++i) {
+        const std::string id = "uos-nr-row-" + std::to_string(i);
+        auto row = MakeTableRow(id);
+        auto app = MakeLabel(id + "-app", listed[i].appId);
+        app->size.width = CSSLayout::Dimension::Px(kRegistrationAppColumnWidth);
+        app->SetTooltip(listed[i].appId);
+        row->AddChild(app);
+        auto activator = MakeLabel(id + "-activator",
+                listed[i].activatorClassId.empty() ? "(nothing: a click reaches it only while the bus runs)"
+                                                   : "the application itself, " + listed[i].activatorClassId,
+                kTextFontSize, listed[i].activatorClassId.empty() ? kMutedTextColor : kTextColor);
+        activator->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+        activator->size.width = CSSLayout::Dimension::Px(0);
+        activator->SetTooltip(listed[i].activatorClassId);
+        row->AddChild(activator);
+        registrationRows_->AddChild(row);
+    }
+#if defined(_WIN32) || defined(_WIN64)
+    const bool windows = true;
+#else
+    const bool windows = false;
+#endif
+    if (registrationNote_) {
+        registrationNote_->SetText(!windows ? "Only Windows keeps notification registrations; there is nothing here to remove."
+                                   : listed.empty() ? "Nothing is registered: no application has shown a notification yet, "
+                                                      "or the registrations were removed."
+                                                    : "Registered for this Windows account:");
+    }
+    if (removeRegistrations_) removeRegistrations_->SetDisabled(listed.empty());
+    if (pageArea_) pageArea_->InvalidateLayout();
+}
+
+void UOSSettingsWindow::RemoveNotificationRegistrations() {
+    const size_t removed = UltraCanvas::RemoveNotificationRegistrations();
+    RefreshNotificationsPage();
+    if (registrationStatus_) {
+        registrationStatus_->SetText(removed == 0 ? "Nothing to remove."
+                                     : removed == 1 ? "Removed 1 registration."
+                                                    : "Removed " + std::to_string(removed) + " registrations.");
+    }
 }
 
 // ===== LANGUAGE =====

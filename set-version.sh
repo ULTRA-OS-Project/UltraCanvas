@@ -18,8 +18,11 @@
 #
 # What is left are the Windows files that are read from disk by windres/rc.exe
 # rather than generated — the .rc and .manifest of UltraTexter and UltraFiler.
-# Run this script after adding a changelog entry that bumps either of those
-# apps; a CMake configure on any platform warns when they are stale.
+# scripts/fold_changelog.py runs this script when it folds a pending
+# changelog.d/ entry for either app, so the routine case needs nothing by hand.
+# Run it yourself only after writing a top entry straight into either app's
+# changelog (a hotfix); a CMake configure on any platform warns when they are
+# stale, and scripts/check_changelog.py fails the pull request.
 
 set -euo pipefail
 

@@ -3,6 +3,11 @@
 // sections, each with any number of emails / phones. A global store (not
 // per-account) so contacts are shared across accounts, mirroring LocalStore's
 // UltraDatabase-backed design.
+// Version: 0.5.0 - schema 4: correspondents' S/MIME certificates (SaveCertificate,
+//                  FindCertificate, ForgetCertificate)
+// Version: 0.4.0 - Open takes the key contacts.db is encrypted with
+// Version: 0.3.0 - RemoveAll (many contacts in one transaction); Forget / ForgottenAddresses: addresses the user deleted,
+//                  which the collector does not add again
 // Version: 0.2.0 - SaveAll (a batch in one transaction), KnownAddresses; the
 //                  database in WAL mode, as the mail index is
 // Version: 0.1.0 (Phase 2)
@@ -25,7 +30,8 @@ public:
     // Register an UltraDatabase connection and bring the schema up to date.
     // `databasePath` is a file path (created if absent) or ":memory:".
     UltraDbResult Open(const std::string& connectionName,
-                       const std::string& databasePath);
+                       const std::string& databasePath,
+                       std::shared_ptr<const UltraCryptSecureBuffer> encryptionKey = nullptr);
 
     bool IsOpen() const { return !connection_.empty(); }
 
@@ -42,8 +48,16 @@ public:
     // is known, for a whole batch of senders, in one query.
     UltraDbResult KnownAddresses(std::set<std::string>& out) const;
 
+    // Addresses the user deleted from the address book (lower-cased). The
+    // collector does not add them again from incoming mail; writing to one
+    // still does - that is the user's own act.
+    UltraDbResult Forget(const std::vector<std::string>& addresses);
+    UltraDbResult ForgottenAddresses(std::set<std::string>& out) const;
+
     UltraDbResult Get(int64_t id, Contact& out) const;
     UltraDbResult Remove(int64_t id);
+    // Remove every contact in `ids` as Remove does, in ONE transaction.
+    UltraDbResult RemoveAll(const std::vector<int64_t>& ids);
 
     // Contacts filed in a section (not in a group of the user's own), ordered
     // by display name.
@@ -75,6 +89,14 @@ public:
     // emails. `found` is false - and the result still Ok - when no contact has
     // it; a failure is a database error.
     UltraDbResult FindByEmail(const std::string& address, Contact& out, bool& found) const;
+
+    // Correspondents' S/MIME certificates (PEM), by address (schema 4):
+    // learnt from their signed mail, what mail to them is encrypted to. A
+    // certificate ending sooner than the one kept does not replace it.
+    UltraDbResult SaveCertificate(const std::string& address, const std::string& certificatePem,
+                                  const std::string& fingerprint, int64_t validUntil);
+    UltraDbResult FindCertificate(const std::string& address, std::string& certificatePem, bool& found) const;
+    UltraDbResult ForgetCertificate(const std::string& address);
 
     // Per-section counts for the sidebar (every primary section present, even
     // when empty).

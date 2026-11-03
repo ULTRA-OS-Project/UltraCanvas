@@ -22,9 +22,9 @@ Companion documents: [`Concept.md`](Concept.md) (the design),
    conventional host names, and you enter the servers from your provider's
    help page (section 5). Either way UltraMail shows the incoming (IMAP)
    and outgoing (SMTP) servers it will use, and stores them with the account.
-4. The first time, UltraMail asks you to **choose a master password**. It
-   encrypts your account passwords and sign-ins on disk and is never stored
-   itself — if you forget it, you enter your account passwords again.
+4. Your account passwords and sign-ins are stored encrypted in UltraMail's
+   vault; nothing is asked for. To have UltraMail ask for a password at every
+   start, set a **Primary Password** (*Settings > Privacy > Primary Password*).
 5. For Gmail, Outlook and Yahoo the browser opens the provider's sign-in page;
    when it says *Signed in - you can close this tab*, come back to UltraMail.
 6. The inbox is fetched right away. Later, every account is synced every
@@ -250,7 +250,7 @@ point an existing build elsewhere without a rebuild, in decreasing priority
 
 The value `off` (or `none`) at any of these turns the service off. The
 wizard's hint says when a provider cannot be signed in to at all. The same
-setting serves the composer's *Attach cloud link…* sign-ins: Google Drive,
+setting serves the composer's *Cloud link…* sign-ins: Google Drive,
 OneDrive and Dropbox go through the service too (UltraCloud, under the
 service's `google`, `microsoft` and `dropbox`), unless a client of their own
 is configured.
@@ -384,19 +384,85 @@ again to retry.
 
 ## 4. On the machine
 
-- **Master password.** Asked for once per session, the first time a stored
-  password or sign-in is needed (adding an account, Update, sending). Nothing
-  syncs in the background while the vault is still locked; UltraMail says so
-  once, and Update asks for the password.
+- **Primary Password.** Optional (*Settings > Privacy > Primary Password*:
+  set, change, remove). Once set, UltraMail asks for it when it starts, before
+  it reads anything stored - the vault, and the key the stored mail is
+  encrypted with, open only with it; a wrong one is asked for again, Cancel
+  ends the start. It is not stored anywhere: forgotten, the mail kept on the
+  computer is downloaded again and the account passwords entered again.
+  Without one the vault opens with a key kept beside it (`vault/device.key`),
+  so UltraMail never asks.
+- **The data folder is private.** UltraMail makes it owner-only at every start
+  (on Linux and macOS; Windows' `%APPDATA%` already is).
+- **The stored mail is encrypted.** `mail.db`, `contacts.db`, `outbox.db`,
+  `cloud.db` and every downloaded message under `mail/` are ciphertext on
+  disk, encrypted with a key kept in the vault: copied elsewhere, or opened
+  with another program (the sqlite3 shell, UltraDBAdmin), they show nothing.
+  A mailbox from an earlier version is converted at the first start - the
+  databases before the window opens, the messages in the background. With a
+  Primary Password nobody without it can read them; without one, programs
+  running as you can open the vault the way UltraMail does. Attachments you
+  open are handed to their viewer as plain copies in `cache/attachments/`,
+  which are deleted at the next start.
+- **Signed and encrypted mail: S/MIME and OpenPGP.** A message that came
+  signed or encrypted is shown as it was meant to be read: decrypted where a
+  key here opens it, with pills that say what was checked - *Encrypted*, and
+  *S/MIME* or *OpenPGP* in green when the signature holds and the signer is
+  vouched for (a certificate from an authority this computer trusts, a key
+  your keyring trusts), amber when it holds but nobody vouches for the signer,
+  red when the message was changed after it was signed. On disk it stays
+  exactly as it arrived - encrypted mail is decrypted only for the reading
+  pane, never written down decrypted.
+  - **Mail security, per account** - *Account Settings > Security > Mail
+    security…*, and offered (with *Skip*) right after an account is added:
+    the S/MIME certificate, the OpenPGP key to sign with, and how new
+    messages start - *Off*, *S/MIME* or *OpenPGP*, *Sign*, *Encrypt*. The
+    compose window starts from that; a reply to encrypted mail starts
+    encrypted whatever it says.
+  - **S/MIME.** Import your certificate and its private key in *Mail
+    security > S/MIME > Import…* from the `.p12` / `.pfx` file your
+    certificate authority gave you (its password is asked for). It is kept in
+    the vault, and only a certificate for the account's own address is
+    accepted. Your correspondents' certificates are learnt from the signed
+    mail they send you - only from a signature that holds, is vouched for and
+    is from the From address.
+  - **OpenPGP.** UltraMail uses your own GnuPG keyring and `gpg-agent`, which
+    asks for a key's passphrase itself. An account signs with the key whose
+    user id is its address, or with the one chosen in *Mail security*
+    (*OpenPGP key*: the keyring's secret keys, by name, address and the end of
+    the fingerprint); recipients' keys are found by their address. A key that arrives as an attachment (`application/pgp-keys`)
+    is offered for import when you open it.
+  - **Sending.** The compose window's *Security* row: *Off*, or *S/MIME* /
+    *OpenPGP* (each offered when this build has it, and S/MIME once the
+    account has a certificate), with *Sign* and *Encrypt*, set as the
+    account's *Mail security* says. An encrypted
+    message is encrypted to every recipient and to you, so the copies in
+    Drafts and Sent are the same ciphertext and you can still read them;
+    without a certificate or key for a recipient UltraMail says so and does
+    not send. A message that cannot be secured is never sent in plain text
+    instead. Replies and forwards of encrypted mail start encrypted.
+  - S/MIME needs UltraCrypt built with OpenSSL 3 and OpenPGP GPGME (with
+    GnuPG installed to use it); a build without one shows such mail as one
+    it cannot check.
+  - **Not on Windows on Arm yet**: GPGME ended the process there in testing,
+    so that build shows OpenPGP mail as one it cannot check. S/MIME works.
+  - **OpenPGP on macOS**: the app carries GPGME, not GnuPG. Install it with
+    Homebrew - `brew install gnupg pinentry-mac`, then put
+    `pinentry-program /opt/homebrew/bin/pinentry-mac` (`/usr/local/bin/...` on
+    Intel) in `~/.gnupg/gpg-agent.conf` and run `gpgconf --kill gpg-agent`, so
+    the passphrase is asked for in a window rather than a terminal - or with
+    GPG Suite, which sets that up itself. UltraMail finds either without
+    changing `PATH`.
 - **Data folder.** `mail.db` (accounts, folders, message index), `mail/`
   (cached message bodies), `contacts.db`, `outbox.db`, `vault/ultramail.vault`
   (the encrypted vault) and `oauth.ini` live in the data folder named above.
-- **IMAP / SMTP plug-ins.** Mail is fetched and sent through UltraNet's
-  `ultranet_imap` and `ultranet_smtp` plug-ins. UltraMail looks for them in
-  `Plugins/UltraNet` next to the executable (or up to two levels above it,
-  then in the working directory); `ULTRAMAIL_PLUGIN_DIR` overrides. If they
-  are missing, Update and the first sync of a new account say so and name the
-  folder that was searched.
+- **IMAP / JMAP / SMTP plug-ins.** Mail is fetched through UltraNet's
+  `ultranet_imap` plug-in - or `ultranet_jmap` for an account whose incoming
+  server is set to JMAP - and sent through `ultranet_smtp`. UltraMail looks
+  for them in `Plugins/UltraNet` next to the executable (or up to two levels
+  above it, then in the working directory); `ULTRAMAIL_PLUGIN_DIR` overrides.
+  If the one an account needs is missing, Update and the first sync of a new
+  account say so and name the folder that was searched.
 - **Changing the sign-in of an account.** Add the account again with the
   same address: the existing entry is updated, and whatever you provide this
   time (a password, an app password, or the browser sign-in) replaces what
@@ -420,12 +486,14 @@ reports "settings found for <domain>". The lookup runs off the UI thread
 behind a wait dialog and takes a few seconds at most.
 
 **Manual settings page.** When nothing is published, the page opens with
-*Incoming (IMAP)* and *Outgoing (SMTP)* rows — host, port, security
+a *Protocol* row (IMAP or JMAP, see below), *Incoming (IMAP)* and
+*Outgoing (SMTP)* rows — host, port, security
 (SSL/TLS, STARTTLS, None) — and the *Username*, prefilled with
 `imap.<domain>` 993 SSL/TLS, `smtp.<domain>` 587 STARTTLS and the full
 address. Correct them from your provider's "mail program settings" or
 "IMAP/SMTP" help page and **Save**. Save first **checks the sign-in**: UltraMail opens
-one IMAP session to the incoming server with the entered servers and the
+one session to the incoming server (IMAP, or JMAP's session resource) with
+the entered servers and the
 password (or the stored sign-in of an existing account), which proves the
 host, the port, the security mode and the credentials in one go. While it
 runs the page says "Checking the sign-in at …"; on success the page closes,
@@ -436,6 +504,55 @@ offers **Save anyway** for a server that is down right now. The outgoing
 (SMTP) server is not checked — the plug-in has no sign-in-only operation —
 so a wrong SMTP entry shows up on the first send. The page also validates
 in place (a host must be given, ports are 1–65535).
+
+**JMAP instead of IMAP.** The *Protocol* row at the top of the page chooses
+what the incoming server speaks: **IMAP** (every account from before the
+choice existed, and most providers) or **JMAP**, the JSON-over-HTTPS mail
+protocol (RFC 8620/8621) of Fastmail, Stalwart, Cyrus and Apache James.
+Choosing JMAP renames the incoming rows to *Incoming (JMAP)* and *Sign-in
+(JMAP)*, sets the port to **443** (a port that was IMAP's usual 993 or 143;
+an unusual one you typed stays), fixes the security to SSL/TLS - a JMAP
+server is HTTPS - and leaves *Automatic*, *Normal password* and *OAuth2* as
+the sign-in methods, the ones JMAP has. Enter the server as its host name
+only - `api.fastmail.com`, or the mail host of a Stalwart or Cyrus server;
+UltraMail asks it for the JMAP session at `/.well-known/jmap`. The sign-in
+check, every later sync, marking read, moving, deleting (to the Trash
+mailbox) and the copies in Drafts and Sent then go through the JMAP plug-in.
+The *Outgoing (SMTP)* server is **optional** for a JMAP account: left
+empty, mail is sent through the JMAP server too (JMAP submission, as the
+account's own identity; the server files the sent message in Sent); an
+SMTP server entered next to it is used to send instead. Switching an
+existing account between the protocols drops the mail held for it and
+fetches it anew: the same mailbox read over the other protocol numbers its
+messages differently. Switching a password account also asks for its
+password again: the page warns as soon as the other protocol is chosen, the
+password field turns *Required*, and *Save* (and *Save anyway*) wait for it -
+the stored password belonged to the old server, and a JMAP server often wants
+its own app password or API token. An account signed in with OAuth2 keeps its
+tokens and is not asked. The choice is stored with the other server settings
+of the account and shown again on its Settings page.
+
+**JMAP is found by itself.** Before the autoconfig documents (which only
+describe IMAP), the lookup asks the domain for its JMAP server (RFC 8620
+§2.2): the DNS SRV record `_jmap._tcp.<domain>` names it, else the domain
+itself is asked at `https://<domain>/.well-known/jmap`; a server that
+answers with its session resource, or asks for a sign-in first (401, as
+Fastmail and Stalwart do), is taken - as the host the answer came from,
+after redirects (`fastmail.com` leads to `api.fastmail.com`). The wizard
+then reports *a JMAP server was found for <domain>*, and the account is
+added with that JMAP server as its incoming server, the full address as
+its username and no SMTP server: it sends through JMAP. The provider table
+comes first, so Gmail, Outlook and the other known providers are never
+probed.
+
+**New mail arrives at once.** A JMAP account is watched: UltraMail holds
+the server's event source open and checks the account the moment the
+server reports a change to its mail or folders, so new mail shows without
+waiting for the interval in *Settings > Mail > Connection* - which still
+runs, as the safety net for a change the stream missed. The watch opens
+once the account's sign-in is usable, is reopened a minute after the
+server or the network ended it, and `trace.log` in the data folder says
+when it opened, ended and fired.
 
 **Authentication method.** Under the server rows, *Sign-in (IMAP)* and
 *Sign-in (SMTP)* choose how each server is signed in to — the same choice
@@ -479,7 +596,9 @@ Gmail, Outlook and Yahoo.
 | *New mail could not be fetched … authentication failed* | iCloud: you typed the account password; use an app-specific password (section 2). Gmail, Outlook and Yahoo take no password: open the account's Settings and use *Sign in with …*. |
 | *The sign-in service is turned off in this build and no OAuth client is configured* | The build was configured with `-DULTRAMAIL_OAUTH_SERVICE_URL=""`, or `off` was set. Name a service (`[service] url =` in `oauth.ini`, or `ULTRAMAIL_OAUTH_SERVICE_URL`) or a client of your own (section 3). |
 | *The sign-in service did not answer … The sign-in service at … could not be reached* (and the browser never opened) | `oauth-callback.ultraos.eu` could not be reached from this computer: the name does not resolve, a proxy blocks it, or the service is down. Open `https://oauth-callback.ultraos.eu/healthz` in a browser; `trace.log` in the data folder says which way the sign-in went (*through the sign-in service …* or *directly, with this installation's own client*). An installation behind a firewall can run its own service (section 3). |
-| *The IMAP plug-in was not found* | Build the UltraNet IMAP plug-in and keep it in `Plugins/UltraNet` next to the executable, or set `ULTRAMAIL_PLUGIN_DIR`. |
+| *The IMAP plug-in was not found* / *The JMAP plug-in was not found* | Build the UltraNet IMAP (or JMAP) plug-in and keep it in `Plugins/UltraNet` next to the executable, or set `ULTRAMAIL_PLUGIN_DIR`. An account whose *Protocol* is JMAP needs `ultranet_jmap`, every other one `ultranet_imap`. |
+| *The JMAP plug-in is not loaded, so UltraMail cannot reach a mail server* on Send | The account sends through its JMAP server (no SMTP server is entered) and `ultranet_jmap` is missing: see the row above, or enter an outgoing (SMTP) server on the account's Settings page. |
+| *The server refused the submission: forbiddenFrom* on Send from a JMAP account | The JMAP server has no sending identity for the From address. Use the address the account signs in with, or add the identity (an alias) at the provider. |
 | *Looking up server settings* takes long, or finds nothing | The domain publishes no autoconfig document; Cancel opens the manual page, or wait for it to open by itself. Enter the servers from the provider's help page (section 5). |
 | *Server settings for …* opens on Update | The account has no known servers (added before they were stored, or for a domain outside the table). Enter them once; they are kept. |
 | *The sign-in at … did not succeed* on the settings page | The host, port, security or password is wrong, or the server is unreachable. Correct the page and Save again; *Save anyway* keeps the entry for a server that is only down right now. |
@@ -491,4 +610,5 @@ Gmail, Outlook and Yahoo.
 | No alert right after the computer was switched on, though the pill says *Offline* or *Failed* | When UltraMail starts, or the computer wakes, more than ten minutes after it last reached a mail server, the computer was most likely switched off and its network may not be up yet. For two minutes then (*Settings > Mail > Connection*: not at all to 10 minutes) a background check that fails raises no alert, whatever the reason; the account is checked again when the time is up, and an alert follows if it still fails. Update reports at once. |
 | *The sign-in has expired; sign in again* | The refresh token was revoked or expired (Google revokes the tokens of an app in *Testing* after seven days), or it was issued to a different OAuth client than the one this installation now signs in as - an account signed in with a build before the sign-in service cannot be refreshed through it. Add the account again, or use *Sign in with …* on its settings page, to sign in anew. |
 | *Signed in, but the mail session is refused* (Microsoft 365) | Ask the tenant administrator to enable IMAP and Authenticated SMTP for the mailbox. |
-| *Your mail account passwords are locked* | Enter the master password — Update, sending, or adding an account asks for it. |
+| *Your mail account passwords are locked* | Enter the Primary Password — Update, sending, or adding an account asks for it. |
+| *UltraMail is locked* when it starts | A Primary Password is set (*Settings > Privacy > Primary Password*). Enter it; Cancel ends the start. |

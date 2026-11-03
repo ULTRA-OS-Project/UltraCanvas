@@ -137,7 +137,7 @@ int main() {
             0x03, 0x01, 0x07, 0x01};
         auto ms = DecodeMessageSent(params);
         Check(ms && ms->Type == 0 && ms->IndexOrDestination == 0x1234 && ms->Aps.ClusterId == 6 &&
-              ms->MessageTag == 0x2A && ms->Status == 0x66 &&
+              ms->MessageTag == 0x2A && ms->StatusCode == 0x66 &&
               ms->Contents == std::vector<uint8_t>{0x01, 0x07, 0x01},
               "messageSentHandler unpacks destination, APS, tag, status, contents");
         std::vector<uint8_t> noContents(params.begin(), params.begin() + 16);
@@ -191,7 +191,7 @@ int main() {
     // ---- ZDO responses ----
     {
         auto ep = Zdo::DecodeActiveEpRsp({0x10, 0x00, 0x34, 0x12, 0x02, 0x01, 0xF2});
-        Check(ep && ep->Tsn == 0x10 && ep->Status == 0 && ep->Nwk == 0x1234 &&
+        Check(ep && ep->Tsn == 0x10 && ep->StatusCode == 0 && ep->Nwk == 0x1234 &&
               ep->Endpoints == std::vector<uint8_t>{0x01, 0xF2},
               "Active_EP_rsp: tsn, status, nwk, count, endpoints");
         Check(!Zdo::DecodeActiveEpRsp({0x10, 0x00, 0x34, 0x12, 0x05, 0x01}),
@@ -209,7 +209,7 @@ int main() {
               sd->OutputClusters == std::vector<uint16_t>{0x0019},
               "Simple_Desc_rsp: endpoint, profile, device id, input and output cluster lists");
         auto sdFail = Zdo::DecodeSimpleDescRsp({0x11, 0x82, 0x34, 0x12, 0x00});
-        Check(sdFail && sdFail->Status == 0x82 && sdFail->InputClusters.empty(),
+        Check(sdFail && sdFail->StatusCode == 0x82 && sdFail->InputClusters.empty(),
               "Simple_Desc_rsp with a failure status carries no descriptor");
 
         // Node_Desc_rsp: tsn, status, nwk, then the 13-byte descriptor whose
@@ -229,7 +229,7 @@ int main() {
               "IEEE_addr_rsp: ieee little-endian, nwk");
 
         auto st = Zdo::DecodeStatusRsp({0x14, 0x00});
-        Check(st && st->Tsn == 0x14 && st->Status == 0, "status response: tsn, status");
+        Check(st && st->Tsn == 0x14 && st->StatusCode == 0, "status response: tsn, status");
         Check(!Zdo::DecodeStatusRsp({0x14}), "status response needs both bytes");
 
         // Device_annce: tsn, nwk, ieee LE, capability.
@@ -290,9 +290,9 @@ int main() {
         auto rh = Zcl::DecodeHeader(rsp);
         auto rattrs = Zcl::DecodeAttributes(rsp, rh->PayloadOffset, true);
         Check(rattrs.size() == 3 &&
-              rattrs[0].Id == 0x0005 && rattrs[0].Status == 0 && rattrs[0].DataType == 0x42 &&
+              rattrs[0].Id == 0x0005 && rattrs[0].StatusCode == 0 && rattrs[0].DataType == 0x42 &&
               rattrs[0].Value == std::vector<uint8_t>{0x04, 'L', 'a', 'm', 'p'} &&
-              rattrs[1].Id == 0x0099 && rattrs[1].Status == 0x86 && rattrs[1].Value.empty() &&
+              rattrs[1].Id == 0x0099 && rattrs[1].StatusCode == 0x86 && rattrs[1].Value.empty() &&
               rattrs[2].Id == 0x0007 && rattrs[2].DataType == 0x30 &&
               rattrs[2].Value == std::vector<uint8_t>{0x03},
               "Read Attributes Response: string with length prefix, failed record, enum8");
@@ -356,10 +356,10 @@ int main() {
         std::vector<uint8_t> gnp{0x00, 0x01};
         gnp.insert(gnp.end(), np.begin(), np.end());
         auto r = DecodeNetworkParametersResponse(gnp);
-        Check(r && r->Status == 0 && r->NodeType == 1 && r->Parameters.PanId == 0x1A62,
+        Check(r && r->StatusCode == 0 && r->NodeType == 1 && r->Parameters.PanId == 0x1A62,
               "getNetworkParameters response: status, node type, parameters");
         auto rf = DecodeNetworkParametersResponse({0x93, 0x00});
-        Check(rf && rf->Status == 0x93, "getNetworkParameters when not joined carries just the status");
+        Check(rf && rf->StatusCode == 0x93, "getNetworkParameters when not joined carries just the status");
 
         InitialSecurityState st;
         st.Bitmask = 0x0B04;
@@ -376,7 +376,7 @@ int main() {
                                           0x77, 0x66, 0x55, 0x44, 0x33, 0x22, 0x11, 0x00,
                                           0x02, 0x03, 0x00, 0x00});
         Check(tcj && tcj->NodeId == 0x1234 && tcj->Eui64 == 0x0011223344556677ULL &&
-              tcj->Status == kDeviceUpdateLeft && tcj->Decision == 3 && tcj->ParentNodeId == 0,
+              tcj->StatusCode == kDeviceUpdateLeft && tcj->Decision == 3 && tcj->ParentNodeId == 0,
               "trustCenterJoinHandler: node id, EUI64, device update, decision, parent");
         Check(!DecodeTrustCenterJoin({0x34, 0x12, 0x77}), "short trustCenterJoinHandler is rejected");
     }

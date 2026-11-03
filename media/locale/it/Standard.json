@@ -329,6 +329,7 @@
   "Zoom In": "Ingrandisci",
   "Zoom level": "Livello di zoom",
   "Zoom Out": "Riduci",
+  "{0} - no preview stored in this vector document": "{0} - nessuna anteprima salvata in questo documento vettoriale",
   "{0} could not be opened": "Impossibile aprire {0}",
   "{n} byte": {
     "one": "{n} byte",

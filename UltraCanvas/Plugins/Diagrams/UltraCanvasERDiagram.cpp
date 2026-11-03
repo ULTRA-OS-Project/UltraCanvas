@@ -1,7 +1,8 @@
 // Plugins/Diagrams/UltraCanvasERDiagram.cpp
 // Entity-Relationship diagram component implementation
+// Version: 1.0.1 - a crow's-foot self-reference drawn as a loop back into its entity
 // Version: 1.0.0
-// Last Modified: 2026-07-31
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 //
 // See the header for the design note on why relationships are nodes.
@@ -2698,7 +2699,17 @@ void UltraCanvasERDiagram::RenderRelationshipConnectors(IRenderContext* ctx,
 
         std::vector<Point2Dd> path;
         if (a->id == b->id) {
-            BuildSelfLoopPath(*a, rel, 0, path);
+            // No diamond is drawn to end at: the loop leaves the top edge and
+            // comes back into the right one, a marker at each end.
+            const Rect2Dd rect = GetEntityRect(*a);
+            const double reach = 26.0;
+            const double startX = rect.x + rect.width * 0.75;
+            const double endY = rect.y + std::min(rect.height * 0.5, 34.0);
+            path.push_back(Point2Dd(startX, rect.y));
+            path.push_back(Point2Dd(startX, rect.y - reach));
+            path.push_back(Point2Dd(rect.x + rect.width + reach, rect.y - reach));
+            path.push_back(Point2Dd(rect.x + rect.width + reach, endY));
+            path.push_back(Point2Dd(rect.x + rect.width, endY));
         } else {
             Point2Dd from = GetEntityBorderPoint(*a, GetEntityCenter(*b));
             Point2Dd to = GetEntityBorderPoint(*b, GetEntityCenter(*a));

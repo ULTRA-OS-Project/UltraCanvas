@@ -1,5 +1,7 @@
 // UltraCanvasWindowBase.cpp
 // Fixed implementation of cross-platform window management system
+// Version: 1.7.0 - Close() kept back by onWindowClosing restores a minimized
+//                  window, so the question it asks is seen
 // Version: 1.6.0 - RefreshAfterFontChange(): a new layout and a full repaint, popups too
 // Version: 1.5.0 - popups are blended over the window with their alpha (rounded corners
 //                  show what is beneath) and a popup's drop shadow is painted under it
@@ -1200,9 +1202,16 @@ namespace UltraCanvas {
         if (!onWindowClosing || onWindowClosing()) {
             PerformClose();
             return true;
-        } else {
-            return false;
         }
+        // The application kept the window open - most often to ask whether
+        // to save. Asked from a minimized window (another program's "Close",
+        // a taskbar menu) the question would sit unseen and the close look
+        // as if it did nothing: the window comes back to ask it.
+        if (_created && IsMinimized()) {
+            Restore();
+            RaiseAndFocus();
+        }
+        return false;
     }
 
     void UltraCanvasWindowBase::PerformClose() {

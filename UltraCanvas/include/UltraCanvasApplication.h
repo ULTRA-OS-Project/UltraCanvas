@@ -1,5 +1,9 @@
 // include/UltraCanvasBaseApplication.h
 // Main UltraCanvas Framework Entry Point - Unified System
+// Version: 1.14.0 - UltraCanvasApplication is the Wayland backend under ULTRACANVAS_DISPLAY_WAYLAND
+// Version: 1.13.0 - RunAfterMainLoop(): the platform's step once the main loop has ended
+// Version: 1.12.0 - GenerateBitmapScalingConfig: fontconfig's bitmap-font scaling rules
+// Version: 1.11.0 - CloseAllWindows(), and ULTRACANVAS_CLOSE_AFTER_MS for a test that must end
 // Version: 1.10.0 - GenerateFontAliasConfig: the generic family aliases as a fontconfig document
 // Version: 1.9.0 - ClosingEndsApplication: whether a window's close ends Run()
 // Version: 1.8.1 - IsKeyPressed checks the key code against the table (KeyStateCount)
@@ -55,6 +59,12 @@ namespace UltraCanvas {
     // where the system has none carries the same aliases; a configuration
     // made another way loads this into it (FcConfigParseAndLoadFromMemory).
     std::string GenerateFontAliasConfig();
+    // fontconfig's bitmap-font scaling (its 10-scale-bitmap-fonts.conf) as a
+    // <fontconfig> document: a bitmap font - the colour emoji fonts among
+    // them - is scaled to the size asked for instead of drawn at its
+    // bitmaps' size. The generated fonts.conf carries it on Windows and
+    // Android; a config made another way without a conf.d loads this.
+    std::string GenerateBitmapScalingConfig();
 #endif
 
     // Every font family this process can set text in: the fonts installed on
@@ -358,6 +368,16 @@ namespace UltraCanvas {
         UltraCanvasWindow* GetFocusedWindow();  // downcast from weak_ptr, defined in .cpp
         // All windows registered with the application (main windows and dialogs).
         const std::vector<std::shared_ptr<UltraCanvasWindowBase>>& GetWindows() const { return windows; }
+        // Asks every window to close, as the window manager's close button
+        // would (UltraCanvasWindow::Close: a window's onWindowClosing may
+        // refuse, and one that refuses stays); the application ends when
+        // none is left. Run() calls it itself after the milliseconds the
+        // environment variable ULTRACANVAS_CLOSE_AFTER_MS names, so a
+        // start-up and shut-down test under Xvfb needs no client to send
+        // the close: `ULTRACANVAS_CLOSE_AFTER_MS=2000 xvfb-run ./ultrapress`
+        // opens, runs two seconds, closes through the application's own
+        // onWindowClosed and ends. Unset, or 0, it does nothing.
+        void CloseAllWindows();
         UltraCanvasUIElement* GetFocusedElement();
         UltraCanvasUIElement* GetHoveredElement() { return hoveredElement; }
         UltraCanvasUIElement* GetCapturedElement() { return capturedElement; }
@@ -478,6 +498,9 @@ namespace UltraCanvas {
         virtual void ShutdownNative() = 0;
         virtual void RunInEventLoop() {};
         virtual void RunBeforeMainLoop() {};
+        // At the end of Run(), once the main loop has ended and the windows
+        // are gone.
+        virtual void RunAfterMainLoop() {};
         virtual void CaptureMouseNative() = 0;
         virtual void ReleaseMouseNative() = 0;
 
@@ -536,6 +559,11 @@ namespace UltraCanvas { using UltraCanvasApplication = UltraCanvasAndroidApplica
 // Web/WASM (checked before __unix__, which Emscripten also defines)
 #include "../OS/WASM/UltraCanvasWASMApplication.h"
 namespace UltraCanvas { using UltraCanvasApplication = UltraCanvasWASMApplication; }
+#elif defined(ULTRACANVAS_DISPLAY_WAYLAND)
+// Linux on Wayland (the ULTRACANVAS_WAYLAND build option): before the X11
+// branch, which the same compilers would otherwise take.
+#include "../OS/Linux/Wayland/UltraCanvasWaylandApplication.h"
+namespace UltraCanvas { using UltraCanvasApplication = UltraCanvasWaylandApplication; }
 #elif defined(__linux__) || defined(__unix__) || defined(__unix)
 #include "../OS/Linux/UltraCanvasLinuxApplication.h"
 namespace UltraCanvas { using UltraCanvasApplication = UltraCanvasLinuxApplication; }

@@ -3,8 +3,11 @@
 // supported symbology, plus interactive controls for symbology, data,
 // module width, bar height, HRI position, rotation, and colors.
 //
+// Version: 2.2.0 - the shared page look (UltraCanvasDemoPageKit): the editor and
+//   every symbology in kit cards, the controls row wraps, no text with a fixed
+//   height; a gallery card is as tall as its title and note plus the barcode.
 // Version: 2.1.0
-// Last Modified: 2026-06-07
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 // V2.1.0: Single-column layout — Symbology/Data controls on one row with the live
 //   barcode directly beneath, and the gallery as a vertical list (one barcode per
@@ -13,6 +16,7 @@
 //   helper idiom in UltraCanvasGaugeExamples.cpp.
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "Plugins/Barcode/UltraCanvasBarcodeElement.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasLabel.h"
@@ -60,50 +64,16 @@ namespace UltraCanvas {
 
         constexpr int kSampleCount = sizeof(kSamples) / sizeof(kSamples[0]);
 
-        // ===== CSS-layout helpers (mirror UltraCanvasGaugeExamples.cpp) =====
-        inline void SetVBox(const std::shared_ptr<UltraCanvasContainer>& c, float gap) {
-            c->layout.SetFlexColumn().SetFlexGap(gap)
-                     .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-        }
-        inline void SetHBox(const std::shared_ptr<UltraCanvasContainer>& c, float gap) {
-            c->layout.SetFlexRow().SetFlexGap(gap)
-                     .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-        }
-        // Add a flex child with the given grow factor, stretched on the cross axis.
-        inline void AddFlex(const std::shared_ptr<UltraCanvasContainer>& parent,
-                            const std::shared_ptr<UltraCanvasUIElement>& child, float grow) {
-            child->layoutItem.SetFlexGrow(grow).SetFlexShrink(grow > 0 ? 1.f : 0.f)
-                             .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-            parent->AddChild(child);
-        }
-        // Each card is a flex column: title + note + the barcode (which grows to
-        // fill the remaining cell height; autoFitToBounds scales the symbol).
-        // Built entirely at (0,0) so the flex column — not AbsoluteUI — positions it.
+        // Each card is a kit card: title + note + the barcode at a set height
+        // (autoFitToBounds scales the symbol to the width it receives). The
+        // card grows with its texts instead of squeezing the barcode.
         std::shared_ptr<UltraCanvasContainer> BuildCard(const SampleEntry& s) {
-            auto card = std::make_shared<UltraCanvasContainer>(
-                std::string("BarcodeCard_") + s.label, 0, 0, 0, 0);
-            card->SetBackgroundColor(Color(252, 252, 252, 255));
-            card->SetBorders(1, Color(220, 220, 220, 255), 4, UCDashPattern());
-            card->SetPadding(10);
-            SetVBox(card, 6);
+            auto card = DemoKit::CreateCard(std::string("BarcodeCard_") + s.label);
+            DemoKit::AddHeading(card, std::string("Title_") + s.label, s.label);
+            DemoKit::AddCaption(card, std::string("Note_") + s.label, s.note);
 
-            auto title = std::make_shared<UltraCanvasLabel>(
-                std::string("Title_") + s.label, 0, 0, 0, 20);
-            title->SetText(s.label);
-            title->SetFontSize(13);
-            title->SetFontWeight(FontWeight::Bold);
-            title->SetTextColor(Color(40, 40, 60, 255));
-            AddFlex(card, title, 0);
-
-            auto note = std::make_shared<UltraCanvasLabel>(
-                std::string("Note_") + s.label, 0, 0, 0, 16);
-            note->SetText(s.note);
-            note->SetFontSize(10);
-            note->SetTextColor(Color(110, 110, 110, 255));
-            AddFlex(card, note, 0);
-
-            // Built unsized at (0,0) so it stays in flow; the flex column grows it
-            // and autoFitToBounds scales the symbol to whatever cell it receives.
+            // Built unsized at (0,0) so it stays in flow; the column stretches it
+            // across and autoFitToBounds scales the symbol to the cell.
             auto bc = std::make_shared<UltraCanvasBarcodeElement>(
                 std::string("Bc_") + s.label, 0L, 0L, 0L, 0L);
             bc->Set(s.symbology, s.defaultData);
@@ -116,7 +86,8 @@ namespace UltraCanvas {
             bc->SetStyle(st);
             // Force an immediate encode so an error cross shows for invalid samples.
             bc->Reencode();
-            AddFlex(card, bc, 1);
+            bc->size.height = CSSLayout::Dimension::Px(84);
+            DemoKit::Add(card, bc);
 
             return card;
         }
@@ -124,53 +95,20 @@ namespace UltraCanvas {
     } // namespace
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateBarcodeExamples() {
-        // Flex-column root; no fixed page size. DisplayDemoItem stretches it to the
-        // display area and grows it; the host displayContainer scrolls when tall.
-        auto root = std::make_shared<UltraCanvasContainer>("BarcodeExamples", 0, 0, 0, 0);
-        root->SetBackgroundColor(Color(244, 244, 248, 255));
-        root->SetPadding(20);
-        SetVBox(root, 16);
-
-        // ===== HEADER =====
-        auto title = std::make_shared<UltraCanvasLabel>("BarcodeTitle", 0, 0, 0, 30);
-        title->SetText("UltraCanvas Barcode Widget — 1D Symbologies");
-        title->SetFontSize(18);
-        title->SetFontWeight(FontWeight::Bold);
-        title->SetTextColor(Color(40, 40, 80, 255));
-        AddFlex(root, title, 0);
-
-        auto subtitle = std::make_shared<UltraCanvasLabel>("BarcodeSub", 0, 0, 0, 20);
-        subtitle->SetText("From-scratch pure-C++20 1D encoders, rendered via Cairo.");
-        subtitle->SetWrap(TextWrap::WrapWord);
-        subtitle->SetFontSize(11);
-        subtitle->SetTextColor(Color(80, 80, 100, 255));
-        AddFlex(root, subtitle, 0);
+        auto root = DemoKit::CreatePage("BarcodeExamples", "UltraCanvas Barcode Widget — 1D Symbologies",
+                "From-scratch pure-C++20 1D encoders, rendered via Cairo.");
 
         // ===== INTERACTIVE PLAYGROUND =====
-        auto playground = std::make_shared<UltraCanvasContainer>("Playground", 0, 0, 0, 0);
-        playground->SetBackgroundColor(Colors::White);
-        playground->SetBorders(1, Color(210, 210, 210, 255), 6, UCDashPattern());
-        playground->SetPadding(12);
-        SetVBox(playground, 10);
-        AddFlex(root, playground, 0);
+        auto playground = DemoKit::AddCard(root, "Playground",
+                "Live editor — try any symbology with your own data");
 
-        auto playTitle = std::make_shared<UltraCanvasLabel>("PlayTitle", 0, 0, 0, 22);
-        playTitle->SetText("Live editor — try any symbology with your own data");
-        playTitle->SetFontSize(13);
-        playTitle->SetFontWeight(FontWeight::Bold);
-        AddFlex(playground, playTitle, 0);
+        // --- Controls row (symbology + data + HRI/rotate toggles); wraps when narrow ---
+        auto controls = DemoKit::AddRow(playground, "PlayControls", 8);
+        controls->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
 
-        // --- Controls row (symbology + data + HRI/rotate toggles) ---
-        auto controls = std::make_shared<UltraCanvasContainer>("PlayControls", 0, 0, 0, 0);
-        SetHBox(controls, 8);
-        controls->size.height = CSSLayout::Dimension::Px(30);
-        AddFlex(playground, controls, 0);
-
-        auto symLabel = std::make_shared<UltraCanvasLabel>("SymLabel");
-        symLabel->SetText("Symbology:");
+        auto symLabel = DemoKit::CreateText("SymLabel", "Symbology:");
         symLabel->SetFontSize(11);
-        symLabel->SetAlignment(TextAlignment::Left, VerticalAlignment::Middle);
-        AddFlex(controls, symLabel, 0);
+        DemoKit::Add(controls, symLabel);
 
         auto symDropdown = std::make_shared<UltraCanvasDropdown>("SymDropdown", 0, 0, 200, 28);
         for (const auto& s : kSamples) {
@@ -178,27 +116,25 @@ namespace UltraCanvas {
         }
         symDropdown->SetSelectedIndex(3); // Code 128 default
         symDropdown->size.width = CSSLayout::Dimension::Px(170);
-        AddFlex(controls, symDropdown, 0);
+        DemoKit::AddFixed(controls, symDropdown);
 
-        auto dataLabel = std::make_shared<UltraCanvasLabel>("DataLabel");
-        dataLabel->SetText("Data:");
+        auto dataLabel = DemoKit::CreateText("DataLabel", "Data:");
         dataLabel->SetFontSize(11);
-        dataLabel->SetAlignment(TextAlignment::Left, VerticalAlignment::Middle);
-        AddFlex(controls, dataLabel, 0);
+        DemoKit::Add(controls, dataLabel);
 
         auto dataInput = std::make_shared<UltraCanvasTextInput>("DataInput", 0, 0, 200, 28);
         dataInput->SetText("UltraCanvas");
-        AddFlex(controls, dataInput, 1); // absorbs the horizontal slack
+        DemoKit::Add(controls, dataInput, 1); // absorbs the horizontal slack
 
         auto textBtn = std::make_shared<UltraCanvasButton>("TextBtn", 0, 0, 130, 28);
         textBtn->SetText("HRI: Below");
         textBtn->size.width = CSSLayout::Dimension::Px(130);
-        AddFlex(controls, textBtn, 0);
+        DemoKit::AddFixed(controls, textBtn);
 
         auto rotBtn = std::make_shared<UltraCanvasButton>("RotBtn", 0, 0, 130, 28);
         rotBtn->SetText("Rotate: 0°");
         rotBtn->size.width = CSSLayout::Dimension::Px(130);
-        AddFlex(controls, rotBtn, 0);
+        DemoKit::AddFixed(controls, rotBtn);
 
         // --- Live preview barcode, full-width directly under the controls row ---
         auto liveBarcode = std::make_shared<UltraCanvasBarcodeElement>("LiveBc", 0L, 0L, 0L, 0L);
@@ -211,15 +147,11 @@ namespace UltraCanvas {
             liveBarcode->SetStyle(st);
         }
         liveBarcode->size.height = CSSLayout::Dimension::Px(140);
-        AddFlex(playground, liveBarcode, 0);
+        DemoKit::Add(playground, liveBarcode);
 
         // Error label below the preview (shown when the encoder rejects the data).
-        auto liveError = std::make_shared<UltraCanvasLabel>("LiveErr", 0, 0, 0, 20);
-        liveError->SetText("");
-        liveError->SetWrap(TextWrap::WrapWord);
-        liveError->SetFontSize(10);
+        auto liveError = DemoKit::AddCaption(playground, "LiveErr", "");
         liveError->SetTextColor(Color(180, 30, 30, 255));
-        AddFlex(playground, liveError, 0);
 
         liveBarcode->onError = [liveError](const std::string& msg) {
             liveError->SetText(msg);
@@ -277,22 +209,14 @@ namespace UltraCanvas {
         };
 
         // ===== GALLERY (one card per symbology) =====
-        auto galleryTitle = std::make_shared<UltraCanvasLabel>("GalleryTitle", 0, 0, 0, 26);
-        galleryTitle->SetText("All symbologies — same widget, different encoders");
-        galleryTitle->SetFontSize(14);
-        galleryTitle->SetFontWeight(FontWeight::Bold);
-        galleryTitle->SetTextColor(Color(60, 60, 80, 255));
-        AddFlex(root, galleryTitle, 0);
+        DemoKit::AddHeading(root, "GalleryTitle", "All symbologies — same widget, different encoders");
 
-        // Single flex column: each barcode card is full-width, stacked one under another.
-        auto gallery = std::make_shared<UltraCanvasContainer>("Gallery", 0, 0, 0, 0);
-        SetVBox(gallery, 12);
-        AddFlex(root, gallery, 0);
+        // Single column: each barcode card is full-width, stacked one under another.
+        auto gallery = DemoKit::CreateColumn("Gallery", DemoKit::kPageGap);
+        DemoKit::Add(root, gallery);
 
         for (int i = 0; i < kSampleCount; ++i) {
-            auto card = BuildCard(kSamples[i]);
-            card->size.height = CSSLayout::Dimension::Px(150); // uniform card height
-            AddFlex(gallery, card, 0);
+            DemoKit::Add(gallery, BuildCard(kSamples[i]));
         }
 
         return root;

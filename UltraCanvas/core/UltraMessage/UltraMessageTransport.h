@@ -4,6 +4,7 @@
 // framed JSON on both. Blocking calls that a Close() from another thread
 // unblocks; one Connection may be written from several threads and read from
 // one.
+// Version: 0.1.1 - ProcessIsTerminating
 // Version: 0.1.0 (Phase 1)
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -99,6 +100,15 @@ private:
 // Connects to the broker on `busPath`. nullptr with `error` set when nothing
 // listens there (the caller may then host a broker itself).
 ConnectionPtr ConnectToBus(const std::string& busPath, int timeoutMs, std::string& error);
+
+// True while Windows ends the process: ExitProcess has terminated every other
+// thread - wherever it was, holding whatever lock - and is running the DLLs'
+// detach code, at-exit handlers of a DLL included, under the loader lock.
+// Nothing may then be joined, locked or torn down that another thread used.
+// Resolves its ntdll query on first use, so call it once while the process is
+// healthy. Always false elsewhere, where at-exit handlers run before the
+// threads are gone.
+bool ProcessIsTerminating();
 
 } // namespace Internal
 } // namespace UltraMessage

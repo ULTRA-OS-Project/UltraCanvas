@@ -328,6 +328,7 @@
   "Zoom In": "Zoom In",
   "Zoom level": "Zoom level",
   "Zoom Out": "Zoom Out",
+  "{0} - no preview stored in this vector document": "{0} - no preview stored in this vector document",
   "{0} could not be opened": "{0} could not be opened",
   "{n} byte": {
     "one": "{n} byte",

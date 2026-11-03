@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" version="1.1" width="256" height="256" viewBox="0 0 256 256">
+  <title>UltraDBAdmin</title>
+  <desc>A database cylinder with a result grid in front of it: the database admin mark.</desc>
+  <!-- The database: a cylinder of three stacked discs. -->
+  <path d="M 28,56 C 28,34 172,34 172,56 L 172,176 C 172,198 28,198 28,176 Z" fill="#2f6fd6"/>
+  <ellipse cx="100" cy="56" rx="72" ry="20" fill="#5b93ec"/>
+  <path d="M 28,96 C 28,118 172,118 172,96" fill="none" stroke="#1d4fa3" stroke-width="6"/>
+  <path d="M 28,136 C 28,158 172,158 172,136" fill="none" stroke="#1d4fa3" stroke-width="6"/>
+  <!-- The result grid: a header row and three rows of cells. -->
+  <rect x="104" y="112" width="128" height="116" rx="12" fill="#ffffff" stroke="#22324d" stroke-width="6"/>
+  <rect x="107" y="115" width="122" height="26" rx="9" fill="#ff8200"/>
+  <path d="M 104,170 L 232,170 M 104,199 L 232,199 M 147,141 L 147,228 M 190,141 L 190,228"
+        fill="none" stroke="#22324d" stroke-width="5"/>
+</svg>

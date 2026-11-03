@@ -2,8 +2,9 @@
 // OLE2 Compound File Binary reader and writer - see UltraCanvasCompoundFile.h.
 // Moved here from the .doc importer (Plugins/Documents/Word), which was its
 // only user until the .xls reader needed the same container.
+// Version: 1.2.0 - streams and storages below the root, by path (ReadStreamAt, ...)
 // Version: 1.1.0
-// Last Modified: 2026-10-17
+// Last Modified: 2026-10-30
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasCompoundFile.h"
@@ -228,20 +229,84 @@ bool UCCompoundFileReader::LoadDirectory(uint32_t firstSector, uint16_t majorVer
 
 void UCCompoundFileReader::CollectRootChildren() {
     if (dirs_.empty()) return;
+    rootChildren_ = ChildrenOf(0);
+}
+
+std::vector<uint32_t> UCCompoundFileReader::ChildrenOf(uint32_t dirIndex) const {
+    std::vector<uint32_t> children;
+    if (dirIndex >= dirs_.size()) return children;
     // The children of a storage form a (red-black) binary tree; walk it with
     // an explicit stack and a visited set so a looping tree cannot hang us.
     std::vector<bool> visited(dirs_.size(), false);
     std::vector<uint32_t> stack;
-    if (dirs_[0].child != kNoStream) stack.push_back(dirs_[0].child);
+    if (dirs_[dirIndex].child != kNoStream) stack.push_back(dirs_[dirIndex].child);
     while (!stack.empty()) {
         const uint32_t index = stack.back();
         stack.pop_back();
         if (index >= dirs_.size() || visited[index]) continue;
         visited[index] = true;
-        rootChildren_.push_back(index);
+        children.push_back(index);
         if (dirs_[index].left != kNoStream) stack.push_back(dirs_[index].left);
         if (dirs_[index].right != kNoStream) stack.push_back(dirs_[index].right);
     }
+    return children;
+}
+
+const UCCompoundFileReader::DirEntry* UCCompoundFileReader::FindEntryAt(const std::string& path) const {
+    if (!open_ || dirs_.empty()) return nullptr;
+    uint32_t current = 0;
+    size_t start = 0;
+    while (start <= path.size()) {
+        size_t end = path.find('/', start);
+        if (end == std::string::npos) end = path.size();
+        const std::string name = path.substr(start, end - start);
+        start = end + 1;
+        if (name.empty()) {
+            if (end == path.size()) break;
+            continue;
+        }
+        // Only a storage has children to look in.
+        if (current != 0 && dirs_[current].type != 1) return nullptr;
+        uint32_t found = kNoStream;
+        for (uint32_t index : ChildrenOf(current)) {
+            if (NamesEqual(dirs_[index].name, name)) { found = index; break; }
+        }
+        if (found == kNoStream) return nullptr;
+        current = found;
+        if (end == path.size()) break;
+    }
+    return &dirs_[current];
+}
+
+bool UCCompoundFileReader::ReadStreamAt(const std::string& path, std::vector<uint8_t>& out) const {
+    out.clear();
+    const DirEntry* entry = FindEntryAt(path);
+    return entry && entry->type == 2 && ReadEntry(*entry, out);
+}
+
+bool UCCompoundFileReader::HasStreamAt(const std::string& path) const {
+    const DirEntry* entry = FindEntryAt(path);
+    return entry && entry->type == 2;
+}
+
+std::vector<std::string> UCCompoundFileReader::StreamNamesAt(const std::string& storagePath) const {
+    std::vector<std::string> names;
+    const DirEntry* storage = FindEntryAt(storagePath);
+    if (!storage || storage->type == 2) return names;
+    for (uint32_t index : ChildrenOf(static_cast<uint32_t>(storage - dirs_.data()))) {
+        if (dirs_[index].type == 2) names.push_back(dirs_[index].name);
+    }
+    return names;
+}
+
+std::vector<std::string> UCCompoundFileReader::StorageNamesAt(const std::string& storagePath) const {
+    std::vector<std::string> names;
+    const DirEntry* storage = FindEntryAt(storagePath);
+    if (!storage || storage->type == 2) return names;
+    for (uint32_t index : ChildrenOf(static_cast<uint32_t>(storage - dirs_.data()))) {
+        if (dirs_[index].type == 1) names.push_back(dirs_[index].name);
+    }
+    return names;
 }
 
 bool UCCompoundFileReader::ReadChain(uint32_t firstSector, uint64_t maxSize,

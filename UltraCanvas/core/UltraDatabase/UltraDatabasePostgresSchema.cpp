@@ -59,7 +59,7 @@ UltraDbType PostgresValueTypeForOid(unsigned int typeOid) {
     // UltraDatabasePostgresDriver.cpp). numeric is Text on purpose: it is
     // exact, and a double is not.
     switch (typeOid) {
-        case 16:  return UltraDbType::Bool;     // bool
+        case 16:  return UltraDbType::Boolean;     // bool
         case 17:  return UltraDbType::Blob;     // bytea
         case 20:                                // int8
         case 21:                                // int2

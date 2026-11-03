@@ -8,6 +8,8 @@
 // The editor is multi-window: the class also holds the registry of open
 // windows, so File > New Window and "Open new window" on a dropped image add
 // to it and the application exits with the last of them.
+// Version: 1.9.0 - the user's own palettes kept (picker.userpalettes); a hovered palette
+//                  swatch floods the picker
 // Version: 1.8.5 - DropPasswords forgets its passwords when the desktop session locks
 //                  (UltraCanvasSessionLock); a drop's first file then asks again
 // Version: 1.8.4 - DropPasswords: every password given in a drop (up to eight, newest
@@ -40,7 +42,7 @@
 // Version: 1.1.2 - ScheduleLayerPanelRebuild: the layer list is rebuilt after the event that changed it
 // Version: 1.1.1 - ToolIconPath / MenuIconPath: the palette's 28 px and the menus' 16 px icons
 // Version: 1.1.0
-// Last Modified: 2026-10-16
+// Last Modified: 2026-10-24
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -67,6 +69,7 @@
 #include "UltraPaintSettings.h"
 #include "UltraPaintSettingsDialog.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
@@ -376,6 +379,16 @@ private:
     void ShowPreview(const std::function<PixelFX::PFXImage(const PixelFX::PFXImage&)>& op);
     void EndPreview(bool commit, const std::string& label,
                     const std::function<PixelFX::PFXImage(const PixelFX::PFXImage&)>& op);
+    // The layer an open adjustment works on, brought up to date first: the
+    // dialog stays open while the image changes under it - a paste adds a
+    // layer, Paste as New Image swaps the document, a stroke or an undo
+    // repaints the layer - and the preview follows what is there now rather
+    // than putting back the pixels it saw when it opened. Null when the
+    // active layer cannot take it (locked, a text layer, none).
+    std::shared_ptr<UCRasterLayer> SyncPreviewTarget();
+    // Shows the open adjustment again on the image as it is now, once the
+    // current event has been handled.
+    void SchedulePreviewRefresh();
 #endif
 
     // ----- members -----
@@ -452,9 +465,18 @@ private:
     void OfferLastCopiedImage(const std::function<void(std::shared_ptr<UCRasterLayer>)>& use);
 
     // filter preview state
-    std::shared_ptr<UCRasterLayer> previewOriginal;
-    int previewLayerIndex = -1;
+    std::shared_ptr<UCRasterLayer> previewOriginal;    // the target's pixels without the preview
+    std::weak_ptr<UCRasterDocument> previewDocument;   // where the target lives
+    std::weak_ptr<UCRasterLayer> previewLayer;         // the layer the preview is shown on
+    uint64_t previewShownHash = 0;                     // its pixels as the preview left them
+#ifdef HAS_LIBVIPS
+    std::function<PixelFX::PFXImage(const PixelFX::PFXImage&)> previewOp;   // shown now; null: the original
+#endif
+    // The dialog's own view of the target - Curves' histogram - redrawn when
+    // the target changes.
+    std::function<void(const UCRasterLayer&)> previewSourceChanged;
     bool previewActive = false;
+    bool previewRefreshPending = false;
     std::weak_ptr<UltraCanvasWindow> activeDialog;
 
     UltraPaintNewImageResult lastNewImage;

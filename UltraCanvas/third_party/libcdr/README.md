@@ -22,9 +22,10 @@ gets wrong instead of working around it.
 ## UltraCanvas patches
 
 The full diff against the base commit is `ultracanvas.patch`; every changed
-place is marked `UltraCanvas:` in the source. Both fixes were found on
-`media/vector/CDR/detailed.cdr`, where CorelDRAW's own preview shows four
-business cards and libcdr (and LibreOffice) showed an empty white sheet.
+place is marked `UltraCanvas:` in the source. The first two fixes were found
+on `media/vector/CDR/detailed.cdr`, where CorelDRAW's own preview shows four
+business cards and libcdr (and LibreOffice) showed an empty white sheet; the
+third makes that file open three times as fast.
 
 1. **Bitmap transparency** (`CDRParser::readBmp`,
    `CDRStylesCollector::collectBmpAlpha`, `CDRContentCollector::_bitmapMimeType`).
@@ -45,10 +46,20 @@ business cards and libcdr (and LibreOffice) showed an empty white sheet.
    `image/svg+xml` over the contents' box: a small SVG whose `clipPath` is
    the frame's outline, around the vect's own SVG — clipped exactly as
    CorelDRAW draws it, for any SVG consumer.
+3. **Bitmap colour conversion cached** (`CDRParserState::getBMPColor`,
+   `m_bmpColorCache`). Every pixel of an embedded bitmap was converted
+   through one lcms `cmsDoTransform` call - about 70% of the time
+   `detailed.cdr` (six bitmaps) took to parse. The result depends only on
+   the colour model, the value and the transforms, so it is kept: the last
+   colour for runs of equal pixels, a hash map for the rest, emptied when
+   `setColorTransform` installs new transforms and at a million entries.
+   The output is byte for byte the same (the SVG export of all three
+   samples compared with the cache off); the parse of `detailed.cdr` went
+   from 2.3 s to 0.7 s in a debug build.
 
 ## Offering the patches upstream
 
-`upstream/` holds both fixes as `git format-patch` files against the base
+`upstream/` holds the fixes as `git format-patch` files against the base
 commit, one per fix. They contain the same code as `ultracanvas.patch`, but
 with upstream-style commit messages and without the `UltraCanvas:` markers:
 
@@ -56,9 +67,12 @@ with upstream-style commit messages and without the `UltraCanvas:` markers:
   transparency.
 - `0002-draw-the-contents-of-PowerClip-frames.patch`: PowerClip. It builds
   on 0001.
+- `0003-cache-the-colour-conversion-of-bitmap-pixels.patch`: the colour
+  cache. It builds on 0002 (it touches the same header) but does not depend
+  on it otherwise.
 
-Both apply with `git am` on commit `4401de4`, and each step compiles on its
-own. They are authored as "Claude"; the person submitting takes authorship.
+They apply in order with `git am` on commit `4401de4`, and each step
+compiles on its own. They are authored as "Claude"; the person submitting takes authorship.
 
 libcdr takes changes through LibreOffice's Gerrit, not GitHub pull requests.
 To submit:

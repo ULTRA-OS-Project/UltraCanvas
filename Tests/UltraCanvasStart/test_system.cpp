@@ -31,7 +31,7 @@ TEST(PackageManagerForDistribution_knows_the_families) {
     REQUIRE(PackageManagerForDistribution("rocky", "rhel centos fedora") == PackageManager::Dnf);
     REQUIRE(PackageManagerForDistribution("manjaro", "arch") == PackageManager::Pacman);
     REQUIRE(PackageManagerForDistribution("opensuse-tumbleweed", "opensuse suse") == PackageManager::Zypper);
-    REQUIRE(PackageManagerForDistribution("gentoo", "") == PackageManager::None);
+    REQUIRE(PackageManagerForDistribution("gentoo", "") == PackageManager::NoPackageManager);
 }
 
 TEST(DetectSystem_reports_this_platform) {

@@ -2,6 +2,8 @@
 // Version: 0.1.0
 
 #include "UltraAIChatDialog.h"
+
+#include "UltraAILocalModelDialog.h"
 #include "UltraAISettingsDialog.h"
 
 #include "UltraAI.h"
@@ -224,6 +226,16 @@ void UltraAIChatDialog::OnSend() {
         return;
     }
 
+    // A user turn left at the end of the history was never answered: the
+    // stream failed before it produced a reply, or the "Get a local model"
+    // dialog was dismissed. Replace it instead of appending after it, or the
+    // provider sees two user messages in a row - a chat template that
+    // demands alternating roles (Gemma on LocalAI, say) refuses the whole
+    // request with "Conversation roles must alternate user/assistant".
+    if (!messages_.empty() && messages_.back().role == Role::User) {
+        messages_.pop_back();
+    }
+
     // Build the user message (multimodal when attachments are present).
     Message um;
     um.role = Role::User;
@@ -265,19 +277,24 @@ void UltraAIChatDialog::OnSend() {
     RefreshAttachmentChips();
     assistantAccum_.clear();
 
-    sending_ = true;
-    if (sendButton_) sendButton_->SetText("Sending...");
+    StartStream(endpoint);
+}
+
+void UltraAIChatDialog::StartStream(const Endpoint& endpoint) {
+    if (sending_) return;
     // Name the endpoint the user picked (e.g. "ai.ultraos.eu"), not its
     // provider id — the server being contacted is the endpoint, not "openai".
     const std::string epLabel = endpoint.name.empty() ? endpoint.id : endpoint.name;
-    SetStatus("Contacting " + epLabel + "...");
-
     TextLLMConfig chatCfg = ToTextLLMConfig(endpoint);
     ChatRequest req;
     req.messages = messages_;
     req.model = endpoint.defaultModel;   // empty -> adapter default
 
-    std::thread worker([this, alive = uiAlive_, chatCfg, req]() {
+    sending_ = true;
+    if (sendButton_) sendButton_->SetText("Sending...");
+    SetStatus("Contacting " + epLabel + "...");
+
+    std::thread worker([this, alive = uiAlive_, chatCfg, req, endpoint]() {
         auto post = [alive](std::function<void()> fn) {
             auto* app = UltraCanvasApplicationBase::GetCurrent();
             auto guarded = [alive, fn = std::move(fn)]() {
@@ -293,11 +310,15 @@ void UltraAIChatDialog::OnSend() {
             std::string msg = createError.message.empty()
                 ? "Could not create the provider."
                 : createError.message;
+            if (createError.providerCode == "needs-install") {
+                post([this, endpoint, msg]() { OnNeedsLocalModel(endpoint, msg); });
+                return;
+            }
             post([this, msg]() { OnStreamFinished(msg); });
             return;
         }
 
-        auto cb = [this, post](const StreamEvent& ev) {
+        auto cb = [this, post, endpoint](const StreamEvent& ev) {
             switch (ev.kind) {
                 case StreamEventKind::TextDelta: {
                     std::string d = ev.textDelta;
@@ -307,6 +328,10 @@ void UltraAIChatDialog::OnSend() {
                 case StreamEventKind::Error: {
                     std::string m = ev.error.message.empty()
                         ? "Stream error." : ev.error.message;
+                    if (ev.error.providerCode == "needs-install") {
+                        post([this, endpoint, m]() { OnNeedsLocalModel(endpoint, m); });
+                        break;
+                    }
                     post([this, m]() { OnStreamFinished(m); });
                     break;
                 }
@@ -329,6 +354,23 @@ void UltraAIChatDialog::OnSend() {
     worker.detach();
 }
 
+void UltraAIChatDialog::OnNeedsLocalModel(const Endpoint& endpoint, const std::string& message) {
+    // The turn is not over: the transcript keeps its "Assistant" heading and
+    // the conversation its last user message, so a resend continues it.
+    sending_ = false;
+    if (sendButton_) sendButton_->SetText("Send");
+    SetStatus(message);
+    stream_.reset();
+    UltraAILocalModelDialog::Show(this, "Chat", "textllm", endpoint.defaultModel,
+        [this, alive = uiAlive_, endpoint](const std::string& modelId) {
+            if (!alive->load()) return;
+            Endpoint resolved = endpoint;
+            if (resolved.defaultModel.empty()) resolved.defaultModel = modelId;
+            SetStatus("Model installed; sending...");
+            StartStream(resolved);
+        });
+}
+
 void UltraAIChatDialog::OnStreamDelta(const std::string& delta) {
     assistantAccum_ += delta;
     if (transcript_) transcript_->AppendText(delta);   // AppendText auto-scrolls
@@ -344,6 +386,17 @@ void UltraAIChatDialog::OnStreamFinished(const std::string& errorMessage) {
         am.role = Role::Assistant;
         am.text = assistantAccum_;
         messages_.push_back(std::move(am));
+    } else if (!errorMessage.empty() && !messages_.empty() &&
+               messages_.back().role == Role::User) {
+        // The request failed before the model said anything, so the turn
+        // never happened: take the user message back out of the history.
+        // Left in, the next send would follow it with a second user message
+        // and a provider whose chat template requires alternating roles
+        // rejects the conversation (seen with LiteLLM + LocalAI: both the
+        // failed and the new question arrived as consecutive "user" turns).
+        // The transcript keeps the echo and the error so the user sees what
+        // was tried; a partial reply above is kept as the assistant turn.
+        messages_.pop_back();
     }
     AppendTranscript("\n\n---\n\n");
     assistantAccum_.clear();

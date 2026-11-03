@@ -16,6 +16,7 @@
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <functional>
 #include <set>
@@ -647,8 +648,13 @@ TEST(journal_stores_persistent_topics_and_queries) {
     REQUIRE_EQ(conversations[0].messageCount, 1);   // one dismissed
     REQUIRE_EQ(conversations[0].unreadCount, 1);
 
-    // Export.
-    const std::string path = TestBusPath() + ".export.jsonl";
+    // Export. To a file in the temporary folder, not beside the bus: on
+    // Windows the bus path is a named pipe (\\.\pipe\...), and a name
+    // under it is in the pipe namespace, where no file can be made.
+    std::error_code tempError;
+    const std::string path = UltraCanvas::PathToUtf8(
+        std::filesystem::temp_directory_path(tempError) /
+        ("ultramsg-test-export-" + std::to_string(ULTRAMSG_TEST_GETPID()) + ".jsonl"));
     int64_t exported = 0;
     REQUIRE(UltraMsg_Export(a.handle, all, path, &exported).ok);
     REQUIRE_EQ(exported, static_cast<int64_t>(2));   // one dismissed, one deleted
@@ -657,7 +663,8 @@ TEST(journal_stores_persistent_topics_and_queries) {
     std::string line;
     while (std::getline(file, line)) if (!line.empty()) ++lines;
     REQUIRE_EQ(lines, 2);
-    std::remove(path.c_str());
+    file.close();
+    std::filesystem::remove(UltraCanvas::PathFromUtf8(path), tempError);
 
     REQUIRE(UltraMsg_SetRetention(a.handle, "mail.*", 30, 1000).ok);
     REQUIRE(!UltraMsg_SetRetention(a.handle, "bad pattern", 30, 1000).ok);

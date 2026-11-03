@@ -1,11 +1,14 @@
 // Apps/DemoApp/UltraCanvasCircleDiagramExamples.cpp
 // Circle diagram demonstration: hub-and-spoke nodes on a backbone ring with
 // satellite fans, the two P1 designs, and the palette set at varying node counts
+// Version: 1.1.0 - the shared page look (UltraCanvasDemoPageKit): one card per
+//                  diagram, two rows that wrap, every text sized to fit
 // Version: 1.0.0
-// Last Modified: 2026-08-08
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "Plugins/Diagrams/UltraCanvasCircleDiagram.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasContainer.h"
@@ -91,79 +94,57 @@ namespace UltraCanvas {
 // ===== MAIN CIRCLE DIAGRAM EXAMPLES CREATOR =====
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateCircleDiagramExamples() {
-        auto container = std::make_shared<UltraCanvasContainer>("CircleDiagramContainer",
-                                                               0, 0, 1200, 810);
+        auto page = DemoKit::CreatePage("CircleDiagramContainer",
+            "Circle Diagram Examples - Hub, Backbone Ring and Satellite Fans",
+            "Equally sized node discs threaded onto a backbone ring around a central hub, each carrying a fan of "
+            "satellites on leader lines. Structure and colour are independent presets, and both work at any node "
+            "count: palettes are hue ramps sampled at N points, and every layout quantity derives from the per-node "
+            "arc of 360/N. Node radius is one constant per diagram - values never scale a disc.");
 
-        // === TITLE ===
-        auto titleLabel = std::make_shared<UltraCanvasLabel>("CdTitleLabel", 20, 10, 1160, 35);
-        titleLabel->SetText("Circle Diagram Examples - Hub, Backbone Ring and Satellite Fans");
-        titleLabel->SetFontSize(18);
-        titleLabel->SetFontWeight(FontWeight::Bold);
-        titleLabel->SetAlignment(TextAlignment::Center);
-        titleLabel->SetBackgroundColor(Color(240, 240, 250, 255));
-        container->AddChild(titleLabel);
-
-        // === DESCRIPTION ===
-        auto descLabel = std::make_shared<UltraCanvasLabel>("CdDescLabel", 20, 55, 1160, 60);
-        descLabel->SetText(
-            "Equally sized node discs threaded onto a backbone ring around a central hub, each carrying a fan of\n"
-            "satellites on leader lines. Structure and colour are independent presets, and both work at any node\n"
-            "count: palettes are hue ramps sampled at N points, and every layout quantity derives from the per-node\n"
-            "arc of 360/N. Node radius is one constant per diagram - values never scale a disc."
-        );
-        descLabel->SetFontSize(11);
-        descLabel->SetWrap(TextWrap::WrapWord);
-        container->AddChild(descLabel);
+        // A card is at least as wide as its diagram (plus padding and border),
+        // so a narrow window wraps the cards under each other instead of
+        // squeezing a diagram.
+        const float cardChrome = 2 * DemoKit::kCardPadding + 2;
 
         // ===== EXAMPLE 1: SATELLITE WHEEL, 5 NODES x 3 SATELLITES =====
-        auto saasLabel = std::make_shared<UltraCanvasLabel>("CdSaaSLabel", 20, 125, 580, 25);
-        saasLabel->SetText("SatelliteWheel design, Vibrant palette (5 nodes, 3 satellites each)");
-        saasLabel->SetFontSize(13);
-        saasLabel->SetFontWeight(FontWeight::Bold);
-        container->AddChild(saasLabel);
+        auto topRow = DemoKit::AddRow(page, "CdTopRow");
+        auto saasCard = DemoKit::AddCard(topRow, "CdSaaSCard",
+            "SatelliteWheel design, Vibrant palette (5 nodes, 3 satellites each)", "", 580 + cardChrome);
 
-        auto saasDiagram = CreateCircleDiagram("SaaSCircleDiagram", 20, 152, 580, 320);
+        auto saasDiagram = CreateCircleDiagram("SaaSCircleDiagram", 0, 0, 580, 320);
         BuildSaaSWheel(saasDiagram);
         saasDiagram->SetTooltipsEnabled(true);
-        container->AddChild(saasDiagram);
+        DemoKit::AddFixed(saasCard, saasDiagram);
 
         // ===== EXAMPLE 2: BANDED WHEEL, DOTTED LEADERS =====
-        auto policyLabel = std::make_shared<UltraCanvasLabel>("CdPolicyLabel", 610, 125, 570, 25);
-        policyLabel->SetText("BandedWheel design, Mint palette (thick band, dotted leaders)");
-        policyLabel->SetFontSize(13);
-        policyLabel->SetFontWeight(FontWeight::Bold);
-        container->AddChild(policyLabel);
+        auto policyCard = DemoKit::AddCard(topRow, "CdPolicyCard",
+            "BandedWheel design, Mint palette (thick band, dotted leaders)", "", 570 + cardChrome);
 
-        auto policyDiagram = CreateCircleDiagram("PolicyCircleDiagram", 610, 152, 570, 320);
+        auto policyDiagram = CreateCircleDiagram("PolicyCircleDiagram", 0, 0, 570, 320);
         BuildPolicyRing(policyDiagram);
         policyDiagram->SetTooltipsEnabled(true);
-        container->AddChild(policyDiagram);
+        DemoKit::AddFixed(policyCard, policyDiagram);
 
         // ===== EXAMPLE 3: NODE COUNT SWEEP =====
-        auto sweepLabel = std::make_shared<UltraCanvasLabel>("CdSweepLabel", 20, 484, 580, 25);
-        sweepLabel->SetText("Same preset at 8 nodes - layout derives from the per-node arc");
-        sweepLabel->SetFontSize(13);
-        sweepLabel->SetFontWeight(FontWeight::Bold);
-        container->AddChild(sweepLabel);
+        auto bottomRow = DemoKit::AddRow(page, "CdBottomRow");
+        auto sweepCard = DemoKit::AddCard(bottomRow, "CdSweepCard",
+            "Same preset at 8 nodes - layout derives from the per-node arc", "", 580 + cardChrome);
 
-        auto sweepDiagram = CreateCircleDiagram("SweepCircleDiagram", 20, 511, 580, 285);
+        auto sweepDiagram = CreateCircleDiagram("SweepCircleDiagram", 0, 0, 580, 285);
         BuildCountSweep(sweepDiagram, 8);
         sweepDiagram->SetTooltipsEnabled(true);
-        container->AddChild(sweepDiagram);
+        DemoKit::AddFixed(sweepCard, sweepDiagram);
 
         // ===== EXAMPLE 4: OUTSIDE LABELS, NO BACKBONE =====
-        auto pastelLabel = std::make_shared<UltraCanvasLabel>("CdPastelLabel", 610, 484, 570, 25);
-        pastelLabel->SetText("Pastel palette, no backbone ring, labels parked outside the discs");
-        pastelLabel->SetFontSize(13);
-        pastelLabel->SetFontWeight(FontWeight::Bold);
-        container->AddChild(pastelLabel);
+        auto pastelCard = DemoKit::AddCard(bottomRow, "CdPastelCard",
+            "Pastel palette, no backbone ring, labels parked outside the discs", "", 570 + cardChrome);
 
-        auto pastelDiagram = CreateCircleDiagram("PastelCircleDiagram", 610, 511, 570, 285);
+        auto pastelDiagram = CreateCircleDiagram("PastelCircleDiagram", 0, 0, 570, 285);
         BuildPastelOutside(pastelDiagram);
         pastelDiagram->SetTooltipsEnabled(true);
-        container->AddChild(pastelDiagram);
+        DemoKit::AddFixed(pastelCard, pastelDiagram);
 
-        return container;
+        return page;
     }
 
 } // namespace UltraCanvas

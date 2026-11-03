@@ -328,6 +328,7 @@
   "Zoom In": "放大",
   "Zoom level": "缩放级别",
   "Zoom Out": "缩小",
+  "{0} - no preview stored in this vector document": "{0} - 此矢量文档中未存储预览",
   "{0} could not be opened": "无法打开 {0}",
   "{n} byte": {
     "other": "{n} 字节"

@@ -206,7 +206,7 @@ int64_t Int(const JSONValue& json, const char* key, int64_t fallback = 0) {
     const JSONValue* v = json.Find(key);
     return v ? v->GetInteger(fallback) : fallback;
 }
-bool Bool(const JSONValue& json, const char* key, bool fallback = false) {
+bool JsonBool(const JSONValue& json, const char* key, bool fallback = false) {
     const JSONValue* v = json.Find(key);
     return v ? v->GetBoolean(fallback) : fallback;
 }
@@ -228,7 +228,7 @@ bool SenderFromJson(const JSONValue& json, UltraMsgSender& out) {
     out.appId = Str(json, "app");
     out.instanceId = Str(json, "instance");
     out.processId = static_cast<int>(Int(json, "pid"));
-    out.verified = Bool(json, "verified");
+    out.verified = JsonBool(json, "verified");
     out.displayName = Str(json, "name");
     return true;
 }
@@ -333,8 +333,8 @@ bool MessageFromJson(const JSONValue& json, UltraMsgMessage& out) {
             if (AttachmentFromJson(a, attachment)) out.attachments.push_back(std::move(attachment));
         }
     }
-    out.read = Bool(json, "read");
-    out.dismissed = Bool(json, "dismissed");
+    out.read = JsonBool(json, "read");
+    out.dismissed = JsonBool(json, "dismissed");
     return true;
 }
 
@@ -375,8 +375,8 @@ bool QueryFromJson(const JSONValue& json, UltraMsgQuery& out) {
     out.service = Str(json, "service");
     out.sinceMs = Int(json, "since");
     out.untilMs = Int(json, "until");
-    out.unreadOnly = Bool(json, "unreadOnly");
-    out.includeDismissed = Bool(json, "includeDismissed");
+    out.unreadOnly = JsonBool(json, "unreadOnly");
+    out.includeDismissed = JsonBool(json, "includeDismissed");
     out.textContains = Str(json, "text");
     out.limit = static_cast<int>(Int(json, "limit", 100));
     out.offset = static_cast<int>(Int(json, "offset", 0));
@@ -402,7 +402,7 @@ bool EndpointInfoFromJson(const JSONValue& json, UltraMsgEndpointInfo& out) {
     out.displayName = Str(json, "name");
     out.iconPath = Str(json, "icon");
     out.processId = static_cast<int>(Int(json, "pid"));
-    out.verified = Bool(json, "verified");
+    out.verified = JsonBool(json, "verified");
     out.connectedAtMs = Int(json, "connectedAt");
     return true;
 }
@@ -425,7 +425,7 @@ bool ConversationFromJson(const JSONValue& json, UltraMsgConversation& out) {
     out.id = Str(json, "id");
     out.service = Str(json, "service");
     out.title = Str(json, "title");
-    out.isGroup = Bool(json, "isGroup");
+    out.isGroup = JsonBool(json, "isGroup");
     out.lastTimeMs = Int(json, "lastTime");
     out.unreadCount = static_cast<int>(Int(json, "unread"));
     out.messageCount = static_cast<int>(Int(json, "count"));
@@ -466,7 +466,7 @@ JSONValue ResultToJson(const UltraMsgResult& result) {
 
 UltraMsgResult ResultFromJson(const JSONValue& json) {
     if (!json.IsObject()) return UltraMsgResult::Error(UltraMsgResultCode::Internal, "malformed result");
-    if (Bool(json, "ok", false)) return UltraMsgResult::Ok();
+    if (JsonBool(json, "ok", false)) return UltraMsgResult::Ok();
     const std::string code = Str(json, "code");
     UltraMsgResultCode c = UltraMsgResultCode::Unknown;
     static const struct { const char* name; UltraMsgResultCode code; } kCodes[] = {
@@ -519,7 +519,7 @@ bool AdapterInfoFromJson(const JSONValue& json, UltraMsgAdapterInfo& out) {
     out.name = Str(json, "name");
     out.description = Str(json, "description");
     out.platform = Str(json, "platform");
-    out.enabled = Bool(json, "enabled");
+    out.enabled = JsonBool(json, "enabled");
     if (const JSONValue* state = json.Find("state")) AdapterStateFromJson(*state, out.state);
     return !out.name.empty();
 }
@@ -761,7 +761,7 @@ std::string DefaultJournalPath() {
 
 const char* UltraMsg_ResultCodeName(UltraMsgResultCode code) {
     switch (code) {
-        case UltraMsgResultCode::Success: return "Success";
+        case UltraMsgResultCode::Ok: return "Success";
         case UltraMsgResultCode::InvalidArgument: return "InvalidArgument";
         case UltraMsgResultCode::NotConnected: return "NotConnected";
         case UltraMsgResultCode::BrokerUnavailable: return "BrokerUnavailable";

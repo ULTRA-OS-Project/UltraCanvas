@@ -5,12 +5,15 @@
 // slideshow, zoom, rotation, mirroring, colour adjustments, save-as and the
 // info popup. The widget is framed and captioned to separate it from the
 // programmer-facing notes below it.
+// Version: 1.1.0 - the shared page look (UltraCanvasDemoPageKit): the frame and
+//                  caption are a card, the viewer fills the visible area
 // Version: 1.0.2 - ShowInMediaViewer lives here, built in every configuration
 // Version: 1.0.1
-// Last Modified: 2026-10-14
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "UltraCanvasMediaViewer.h"
 #include "UltraCanvasMediaViewerWindow.h"
 #include "UltraCanvasLabel.h"
@@ -38,67 +41,45 @@ namespace UltraCanvas {
     }
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateMediaViewerExamples() {
-        auto root = std::make_shared<UltraCanvasContainer>("MediaViewerExamples", 0, 0, 1000, 916);
-        root->SetPadding(0, 5, 5, 0);
+        auto page = DemoKit::CreatePage("MediaViewerExamples", "UltraCanvas Media Viewer widget",
+                "The framed area below is the live widget, opened on the media/images "
+                "folder. The arrow keys browse the folder right away — no click "
+                "needed (Left = previous, Right = next); clicking the picture does "
+                "the same (left click = next, right click = previous) and works "
+                "while zoomed. Try the slideshow, zoom, rotate, mirror, the Adjust "
+                "panel, Save as and Info.");
+        // The viewer scales and scrolls its picture itself: the page is the
+        // area's height and the viewer takes what the texts leave.
+        page->SetFillsArea(true);
 
-        // Title
-        auto title = std::make_shared<UltraCanvasLabel>("MediaViewerTitle", 20, 10, 900, 30);
-        title->SetText("UltraCanvas Media Viewer widget");
-        title->SetFontSize(16);
-        title->SetFontWeight(FontWeight::Bold);
-        title->SetTextColor(Color(50, 50, 150, 255));
-        root->AddChild(title);
-
-        auto subtitle = std::make_shared<UltraCanvasLabel>("MediaViewerSubtitle", 20, 42, 940, 52);   // three lines at 11 pt
-        subtitle->SetText("The framed area below is the live widget, opened on the media/images "
-                          "folder. The arrow keys browse the folder right away — no click "
-                          "needed (Left = previous, Right = next); clicking the picture does "
-                          "the same (left click = next, right click = previous) and works "
-                          "while zoomed. Try the slideshow, zoom, rotate, mirror, the Adjust "
-                          "panel, Save as and Info.");
-        subtitle->SetFontSize(11);
-        subtitle->SetTextColor(Color(110, 110, 110, 255));
-        subtitle->SetWrap(TextWrap::WrapWord);
-        root->AddChild(subtitle);
-
-        // ---- Frame + caption around the live widget (drawn behind it). ----
-        auto widgetFrame = std::make_shared<UltraCanvasUIElement>(
-                "MediaViewerWidgetFrame", 12, 106, 956, 704);
-        widgetFrame->SetBackgroundColor(Colors::Transparent);
-        widgetFrame->SetBorders(1.5f, Color(120, 120, 130, 255), 6.0f);
-        root->AddChild(widgetFrame);
+        // The card is the frame and caption that separate the live widget
+        // from the programmer-facing note below it.
+        auto card = DemoKit::CreateCard("MediaViewerWidgetFrame", "Media Viewer widget");
+        DemoKit::Add(page, card, 1);
+        card->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0)).SetFlexShrink(1);
 
         // ---- The live media viewer widget. ----
-        auto viewer = CreateMediaViewer("ultracanvas-mediaviewer", 20, 114, 940, 688);
+        auto viewer = CreateMediaViewer("ultracanvas-mediaviewer", 0, 0, 940, 688);
 
         // Point it at the media/images folder; the first (sorted) image shows.
         const std::string imagesDir = NormalizePath(GetResourcesDir() + "media/images");
         viewer->OpenFolder(imagesDir);
 
-        root->AddChild(viewer);
-
-        auto widgetCaption = std::make_shared<UltraCanvasLabel>(
-                "MediaViewerWidgetCaption", 26, 96, 210, 20);
-        widgetCaption->SetText("  Media Viewer widget  ");
-        widgetCaption->SetFontSize(13);
-        widgetCaption->SetFontWeight(FontWeight::Bold);
-        widgetCaption->SetTextColor(Color(40, 40, 60, 255));
-        widgetCaption->SetBackgroundColor(Color(255, 255, 255, 255));
-        root->AddChild(widgetCaption);
+        // A zero flex basis: the viewer takes exactly the card's spare height,
+        // never its 688 px build height, so the note below stays visible.
+        viewer->size.width = CSSLayout::Dimension::Auto();
+        DemoKit::Add(card, viewer, 1);
+        viewer->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0)).SetFlexShrink(1);
 
         // Programmer-facing note.
-        auto note = std::make_shared<UltraCanvasLabel>("MediaViewerNote", 20, 822, 940, 60);
-        note->SetText("Images load/save through UCImage and UltraCanvasFileLoader, with rotation, "
-                      "mirror, gamma, brightness, RGB correction, auto-optimisation and sharpening "
-                      "via PixelFX. PDFs render through UltraCanvasPDFView and audio/video through "
-                      "the player elements. Drag a folder onto the widget to browse it, or drag "
-                      "files (images, PDFs, audio or video) to view them.");
-        note->SetFontSize(11);
-        note->SetTextColor(Color(120, 120, 120, 255));
-        note->SetWrap(TextWrap::WrapWord);
-        root->AddChild(note);
+        DemoKit::AddCaption(page, "MediaViewerNote",
+                "Images load/save through UCImage and UltraCanvasFileLoader, with rotation, "
+                "mirror, gamma, brightness, RGB correction, auto-optimisation and sharpening "
+                "via PixelFX. PDFs render through UltraCanvasPDFView and audio/video through "
+                "the player elements. Drag a folder onto the widget to browse it, or drag "
+                "files (images, PDFs, audio or video) to view them.");
 
-        return root;
+        return page;
     }
 
 } // namespace UltraCanvas

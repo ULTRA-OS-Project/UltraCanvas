@@ -11,7 +11,7 @@
 //
 // Author: UltraCanvas Framework / ULTRA OS
 #include "../Apps/UltraAuthenticator/AccountStore.h"
-#include "../Apps/UltraAuthenticator/otp/OtpAuthUri.h"
+#include "UltraCrypt/OtpAuthUri.h"
 
 #include <cstdio>
 #include <cstring>

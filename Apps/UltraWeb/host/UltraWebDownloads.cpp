@@ -1,7 +1,8 @@
 // Apps/UltraWeb/host/UltraWebDownloads.cpp
 // Saving downloads (UltraWebDownloads.h).
+// Version: 0.3.0 - a Cookie header with the request
 // Version: 0.2.0
-// Last Modified: 2026-10-13
+// Last Modified: 2026-10-22
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraWebDownloads.h"
@@ -50,7 +51,7 @@ bool Finish(const std::string& part, const std::string& path, std::string& error
 
 class HttpDownload : public Download, public std::enable_shared_from_this<HttpDownload> {
 public:
-    std::string url, path, part;
+    std::string url, path, part, cookie;
     std::function<void(std::function<void()>)> post;
     std::function<void(int64_t, int64_t)> onProgress;
     std::function<void(bool, const std::string&)> onDone;
@@ -67,6 +68,7 @@ public:
         auto self = shared_from_this();
         UltraNetHttpRequest request;
         request.url = url;
+        if (!cookie.empty()) request.headers.Set("Cookie", cookie);
         request.options.maxReceiveSize = int64_t(1) << 42;   // 4 TB: no limit worth the name
         // UltraNet streams the body to the part file and closes it before
         // onComplete. A download is as long as the file is large, so it has
@@ -134,7 +136,8 @@ bool SaveBytes(const std::string& path, const std::vector<uint8_t>& bytes, std::
 std::shared_ptr<Download> StartDownload(const std::string& url, const std::string& path,
                                         std::function<void(std::function<void()>)> post,
                                         std::function<void(int64_t, int64_t)> onProgress,
-                                        std::function<void(bool, const std::string&)> onDone) {
+                                        std::function<void(bool, const std::string&)> onDone,
+                                        const std::string& cookie) {
     if (StartsWithLower(url, "file://")) {
         std::string source = url.substr(7);
         source = source.substr(0, source.find_first_of("?#"));
@@ -163,6 +166,7 @@ std::shared_ptr<Download> StartDownload(const std::string& url, const std::strin
     download->url = url;
     download->path = path;
     download->part = path + ".part";
+    download->cookie = cookie;
     download->post = std::move(post);
     download->onProgress = std::move(onProgress);
     download->onDone = std::move(onDone);

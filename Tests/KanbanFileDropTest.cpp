@@ -224,6 +224,27 @@ void TestSettingsKeepTheBoard() {
           "and its file, path and all");
 }
 
+void TestSettingsKeepThePins() {
+    std::cout << "\nThe pinned applications in the desktop settings\n";
+    UltraDesktop::DesktopSettings settings;
+    Check(settings.pinnedApps.empty(), "a new desktop has no pins");
+    settings.SetPinned("/usr/bin/gimp", true);
+    settings.SetPinned("/usr/bin/kate", true);
+    settings.SetPinned("/usr/bin/gimp", true);
+    Check(settings.pinnedApps.size() == 2 && settings.pinnedApps[0] == "/usr/bin/gimp",
+          "a pin is kept once, in the order it was pinned");
+    Check(settings.IsPinned("/usr/bin/kate") && !settings.IsPinned("/usr/bin/inkscape"), "IsPinned answers for each");
+    settings.SetPinned("", true);
+    Check(settings.pinnedApps.size() == 2, "an empty key is no pin");
+
+    UltraDesktop::DesktopSettings read;
+    std::string error;
+    Check(read.FromJson(settings.ToJson(), &error), "a saved desktop reads back" + (error.empty() ? "" : ": " + error));
+    Check(read.pinnedApps == settings.pinnedApps, "with its pins, in order");
+    read.SetPinned("/usr/bin/gimp", false);
+    Check(read.pinnedApps.size() == 1 && read.pinnedApps[0] == "/usr/bin/kate", "and one unpinned leaves the other");
+}
+
 } // namespace
 
 int main() {
@@ -234,6 +255,7 @@ int main() {
     TestRenameFromCode();
     TestScrollToColumn();
     TestSettingsKeepTheBoard();
+    TestSettingsKeepThePins();
     std::cout << "\n" << (g_failures == 0 ? "All passed" : std::to_string(g_failures) + " failed") << "\n";
     return g_failures == 0 ? 0 : 1;
 }

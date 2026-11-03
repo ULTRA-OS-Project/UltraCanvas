@@ -38,7 +38,7 @@ namespace {
 // std::vector may hold the incomplete JsonValue, but a std::pair of it
 // cannot be instantiated inside the class (libstdc++ 12 with clang 19).
 struct JsonValue {
-    enum class Kind { Null, Bool, Number, String, Array, Object };
+    enum class Kind { Null, Boolean, Number, String, Array, Object };
     Kind kind = Kind::Null;
     bool boolean = false;
     double number = 0.0;
@@ -98,9 +98,9 @@ private:
             case '[': return ParseArray(out);
             case '"': out.kind = JsonValue::Kind::String;
                       return ParseString(out.string);
-            case 't': out.kind = JsonValue::Kind::Bool; out.boolean = true;
+            case 't': out.kind = JsonValue::Kind::Boolean; out.boolean = true;
                       return Consume("true");
-            case 'f': out.kind = JsonValue::Kind::Bool; out.boolean = false;
+            case 'f': out.kind = JsonValue::Kind::Boolean; out.boolean = false;
                       return Consume("false");
             case 'n': out.kind = JsonValue::Kind::Null;
                       return Consume("null");

@@ -9,12 +9,16 @@
 //                 choose an effect from the category tree in the middle, tune
 //                 its options on the right and hear / see the processed result
 //                 in the waveform + player on the left.
+// Version: 1.2.0 - the shared page look (UltraCanvasDemoPageKit): title and
+//                  description above the tabs in a card that fills the area;
+//                  the playground's texts wrap and none has a fixed size
 // Version: 1.1.0 - the sample tracks are the sound types FileLoader reads
 // Version: 1.0.0
-// Last Modified: 2026-10-13
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasTabbedContainer.h"
@@ -716,13 +720,7 @@ namespace {
         root->SetPadding(10, 12, 10, 12);
         root->SetBackgroundColor(Colors::White);
 
-        auto title = std::make_shared<UltraCanvasLabel>("AudioFXDemoTitle", 0, 0, 0, 26);
-        title->SetText("AudioFX playground");
-        title->SetFontSize(16);
-        title->SetFontWeight(FontWeight::Bold);
-        title->SetTextColor(Color(50, 50, 150, 255));
-        title->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        root->AddChild(title);
+        DemoKit::Add(root, DemoKit::CreateHeading("AudioFXDemoTitle", "AudioFX playground"));
 
         // ===== Three columns: waveform + player | effect tree | options =====
         auto columns = std::make_shared<UltraCanvasContainer>("AudioFXColumns", 0, 0, 0, 0);
@@ -740,31 +738,20 @@ namespace {
                            .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
         columns->AddChild(leftCol);
 
-        auto sourceRow = std::make_shared<UltraCanvasContainer>("AudioFXSourceRow", 0, 0, 0, 34);
-        sourceRow->layout.SetFlexRow().SetFlexGap(8)
-                         .SetFlexAlignItems(CSSLayout::AlignItems::Center);
-        sourceRow->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        // This is a fixed-height strip holding the sample dropdown and the upload
-        // button; its contents are meant to stay put. Disable scrollbars so a
-        // narrow column never spawns a (horizontal) scrollbar across the block.
-        ContainerStyle sourceRowStyle;
-        sourceRowStyle.autoShowScrollbars = false;
-        sourceRow->SetContainerStyle(sourceRowStyle);
-        leftCol->AddChild(sourceRow);
+        // The sample dropdown and the upload button: a row that wraps, so a
+        // narrow column puts the button under the dropdown instead of
+        // spawning a scrollbar across the block (the kit row has none).
+        auto sourceRow = DemoKit::CreateRow("AudioFXSourceRow", 8);
+        sourceRow->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
+        DemoKit::Add(leftCol, sourceRow);
 
-        auto sourceLabel = std::make_shared<UltraCanvasLabel>("AudioFXSourceLabel", 0, 0, 92, 24);
-        sourceLabel->SetText("Sample track");
-        sourceLabel->SetFontSize(12);
-        sourceLabel->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        sourceRow->AddChild(sourceLabel);
+        DemoKit::AddText(sourceRow, "AudioFXSourceLabel", "Sample track");
 
         auto sampleDropdown = std::make_shared<UltraCanvasDropdown>("AudioFXSample", 0, 0, 260, 30);
-        sampleDropdown->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        sourceRow->AddChild(sampleDropdown);
+        DemoKit::AddFixed(sourceRow, sampleDropdown);
 
         auto uploadBtn = std::make_shared<UltraCanvasButton>("AudioFXUpload", 0, 0, 130, 30, "Upload audio");
-        uploadBtn->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        sourceRow->AddChild(uploadBtn);
+        DemoKit::AddFixed(sourceRow, uploadBtn);
 
         auto waveFrame = std::make_shared<UltraCanvasContainer>("AudioFXWaveFrame", 0, 0, 0, 0);
         waveFrame->layout.SetFlexColumn()
@@ -787,12 +774,10 @@ namespace {
                           .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
         leftCol->AddChild(player);
 
-        auto status = std::make_shared<UltraCanvasLabel>("AudioFXStatus", 0, 0, 0, 32);
+        auto status = DemoKit::CreateText("AudioFXStatus", "");
         status->SetFontSize(11);
         status->SetTextColor(Color(90, 90, 90, 255));
-        status->SetWrap(TextWrap::WrapWord);
-        status->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        leftCol->AddChild(status);
+        DemoKit::Add(leftCol, status);
 
         // ----- Middle column: the effect tree -----
         auto treeCol = std::make_shared<UltraCanvasContainer>("AudioFXTreeCol", 0, 0, 250, 0);
@@ -802,12 +787,7 @@ namespace {
                            .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
         columns->AddChild(treeCol);
 
-        auto treeTitle = std::make_shared<UltraCanvasLabel>("AudioFXTreeTitle", 0, 0, 0, 22);
-        treeTitle->SetText("AudioFX effects");
-        treeTitle->SetFontSize(13);
-        treeTitle->SetFontWeight(FontWeight::Bold);
-        treeTitle->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        treeCol->AddChild(treeTitle);
+        DemoKit::AddHeading(treeCol, "AudioFXTreeTitle", "AudioFX effects");
 
         auto tree = std::make_shared<UltraCanvasTreeView>("AudioFXTree", 0, 0, 250, 0);
         tree->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
@@ -837,12 +817,7 @@ namespace {
                               .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
         columns->AddChild(optionsCol);
 
-        auto optionsTitle = std::make_shared<UltraCanvasLabel>("AudioFXOptionsTitle", 0, 0, 0, 22);
-        optionsTitle->SetText("Options");
-        optionsTitle->SetFontSize(13);
-        optionsTitle->SetFontWeight(FontWeight::Bold);
-        optionsTitle->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        optionsCol->AddChild(optionsTitle);
+        DemoKit::AddHeading(optionsCol, "AudioFXOptionsTitle", "Options");
 
         auto optionsBox = std::make_shared<UltraCanvasContainer>("AudioFXOptionsBox", 0, 0, 0, 0);
         optionsBox->layout.SetFlexColumn().SetFlexGap(8)
@@ -947,40 +922,23 @@ namespace {
             optionsBox->ClearChildren();
 
             if (!state->effect) {
-                auto hint = std::make_shared<UltraCanvasLabel>("AudioFXOptHint", 0, 0, 0, 60);
-                hint->SetText("Select an effect in the tree to see its options.");
-                hint->SetFontSize(12);
+                auto hint = DemoKit::AddText(optionsBox, "AudioFXOptHint",
+                                             "Select an effect in the tree to see its options.");
                 hint->SetTextColor(Color(120, 120, 120, 255));
-                hint->SetWrap(TextWrap::WrapWord);
-                hint->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-                optionsBox->AddChild(hint);
             } else {
                 const Effect& fx = *state->effect;
 
-                auto name = std::make_shared<UltraCanvasLabel>("AudioFXOptName", 0, 0, 0, 22);
-                name->SetText(fx.name);
-                name->SetFontSize(13);
-                name->SetFontWeight(FontWeight::Bold);
-                name->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-                optionsBox->AddChild(name);
+                DemoKit::AddHeading(optionsBox, "AudioFXOptName", fx.name);
 
-                auto desc = std::make_shared<UltraCanvasLabel>("AudioFXOptDesc", 0, 0, 0, 56);
-                desc->SetText(fx.description);
+                auto desc = DemoKit::AddText(optionsBox, "AudioFXOptDesc", fx.description);
                 desc->SetFontSize(11);
                 desc->SetTextColor(Color(110, 110, 110, 255));
-                desc->SetWrap(TextWrap::WrapWord);
-                desc->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-                optionsBox->AddChild(desc);
 
                 for (size_t i = 0; i < fx.params.size(); ++i) {
                     const EffectParam& param = fx.params[i];
 
-                    auto valueLabel = std::make_shared<UltraCanvasLabel>(
-                        "AudioFXOptLabel" + std::to_string(i), 0, 0, 0, 18);
-                    valueLabel->SetText(param.label + ": " + FormatParamValue(state->params[i]));
-                    valueLabel->SetFontSize(12);
-                    valueLabel->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-                    optionsBox->AddChild(valueLabel);
+                    auto valueLabel = DemoKit::AddText(optionsBox, "AudioFXOptLabel" + std::to_string(i),
+                        param.label + ": " + FormatParamValue(state->params[i]));
 
                     auto slider = CreateHorizontalSlider(
                         "AudioFXOptSlider" + std::to_string(i), 0, 0, 0, 24,
@@ -1000,12 +958,10 @@ namespace {
                 }
 
                 if (fx.params.empty()) {
-                    auto none = std::make_shared<UltraCanvasLabel>("AudioFXOptNone", 0, 0, 0, 20);
-                    none->SetText("This effect has no adjustable options.");
+                    auto none = DemoKit::AddText(optionsBox, "AudioFXOptNone",
+                                                 "This effect has no adjustable options.");
                     none->SetFontSize(11);
                     none->SetTextColor(Color(120, 120, 120, 255));
-                    none->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-                    optionsBox->AddChild(none);
                 }
 
                 auto originalBtn = std::make_shared<UltraCanvasButton>(
@@ -1102,25 +1058,29 @@ namespace {
 
 // ===== AUDIOFX MODULE DEMO =====
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateAudioFXExamples() {
-        auto root = std::make_shared<UltraCanvasContainer>("AudioFXExamples", 0, 0, 1000, 720);
-        root->size.width  = CSSLayout::Dimension::Pct(100);
-        root->size.height = CSSLayout::Dimension::Pct(100);
-        root->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+        auto root = DemoKit::CreatePage("AudioFXExamples", "Audio FX",
+                "The AudioFX module: an overview, the full documentation and a live playground - "
+                "pick a track, choose an effect, tune its options and hear the result.");
+        // The documents and the playground scroll and size themselves: the
+        // page is the area's height, not its content's.
+        root->SetFillsArea(true);
+
+        auto card = DemoKit::CreateCard("AudioFXCard");
+        card->SetPadding(4);
+        DemoKit::Add(root, card, 1);
 
         auto tabs = std::make_shared<UltraCanvasTabbedContainer>("AudioFXTabs", 0, 0, 0, 0);
         tabs->SetTabPosition(TabPosition::Top);
         tabs->SetTabStyle(TabStyle::Modern);
         tabs->SetCloseMode(TabCloseMode::NoClose);
         tabs->SetTabHeight(30);
-        tabs->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
-                        .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
         tabs->AddTab("Overview", BuildOverviewTab());
         tabs->AddTab("Details",  BuildDetailsTab());
         tabs->AddTab("Examples", BuildExamplesTab());
         tabs->SetActiveTab(0);
 
-        root->AddChild(tabs);
+        DemoKit::Add(card, tabs, 1);
         return root;
     }
 

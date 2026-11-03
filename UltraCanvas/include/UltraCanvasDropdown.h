@@ -1,11 +1,20 @@
 // include/UltraCanvasDropdown.h
 // Interactive dropdown/combobox component with icon support and multi-selection
+// Version: 1.2.0 - 2026-10-27 - SetPlaceholderText: what the button reads while no item is
+//                  selected (a zoom box showing a zoom that is none of its items)
+// Version: 1.1.0 - 2026-10-21 - the button's text and the rows' are shaped once and kept
+//                  (UltraCanvasTextLayoutCache)
+// Version: 1.0.4 - 2026-10-15 - type-ahead in the dropdown and its open list; takes the keyboard
+//                  focus (SetAcceptsFocus); Return in the list chooses the highlighted item
+//                  (onItemActivated); DropdownItem::tooltip; DropdownStyle::buttonShowsText,
+//                  the icon alone on the button
+// Version: 1.0.3 - 2026-10-14 - DropdownStyle::FromTheme, ApplyTheme: the dropdown follows the theme
+// Version: 1.0.2 - 2026-10-08 - describes itself to screen readers (the ComboBox role, its value)
+// Version: 1.0.1 - 2026-10-06 - the context-menu cursor over the button, on Windows too
+// Version: 1.0.0 - the dropdown: items with icons and values, single or multiple selection,
+//                  the list in a popup (the numbers from 1.0.1 on were given afterwards,
+//                  from the framework changelog)
 // Uses ListView popup for rendering dropdown items
-// Last Modified: 2026-10-15 - type-ahead: letters typed in the open list go to the item starting with them
-// Last Modified: 2026-10-15 - takes the keyboard focus (Tab, a click); SetAcceptsFocus
-// Last Modified: 2026-10-15 - Return in the open list chooses the highlighted item
-// Last Modified: 2026-10-15 - DropdownItem::tooltip: shown over the item in the open list
-// Last Modified: 2026-10-15 - DropdownStyle::buttonShowsText: an icon-only button
 // Last Modified: 2026-10-12 - DropdownStyle::FromTheme, ApplyTheme
 #pragma once
 
@@ -13,6 +22,7 @@
 #include "UltraCanvasEvent.h"
 #include "UltraCanvasCommonTypes.h"
 #include "UltraCanvasRenderContext.h"
+#include "UltraCanvasTextLayoutCache.h"
 #include "UltraCanvasListView.h"
 #include "UltraCanvasListModel.h"
 #include "UltraCanvasListDelegate.h"
@@ -152,6 +162,9 @@ namespace UltraCanvas {
 
         const DropdownStyle* style = nullptr;
         bool multiSelectEnabled = false;
+        // One kept layout per row (UltraCanvasTextLayoutCache): the list is
+        // repainted on every hover, the rows' texts seldom change.
+        std::vector<UltraCanvasTextLayoutCache> rowLayouts;
     };
 
 // ===== DROPDOWN COMPONENT =====
@@ -176,6 +189,8 @@ namespace UltraCanvas {
 
     private:
         std::vector<DropdownItem> items;
+        // The closed button's text, shaped once and kept (UltraCanvasTextLayoutCache).
+        UltraCanvasTextLayoutCache displayLayout_;
         int selectedIndex = -1;
         bool dropdownOpen = false;
         bool buttonPressed = false;
@@ -189,6 +204,7 @@ namespace UltraCanvas {
         // Multi-selection support
         bool multiSelectEnabled = false;
         std::set<int> selectedIndices;
+        std::string placeholderText;   // shown while nothing is selected
 
         // Takes the keyboard focus (Tab, a click), as a button does.
         bool canAcceptFocus = true;
@@ -230,6 +246,12 @@ namespace UltraCanvas {
         }
 
         const DropdownItem* GetSelectedItem() const;
+
+        // What the button reads while no item is selected (single selection):
+        // a value the list does not hold, such as a zoom box's "137%" between
+        // its preset steps. Empty by default - the button is blank.
+        void SetPlaceholderText(const std::string& text);
+        const std::string& GetPlaceholderText() const { return placeholderText; }
 
         // Multi-selection management
         void SetMultiSelectEnabled(bool enabled);

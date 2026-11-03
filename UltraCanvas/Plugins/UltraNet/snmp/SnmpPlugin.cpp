@@ -14,12 +14,16 @@
 //
 // Backend: net-snmp (libsnmp). v3 (authentication / encryption) is out of
 // scope for this v0.1 plug-in.
+// Version: 0.1.2 - every entry point is guarded (UltraNetPluginGuard.h): an
+//                  exception becomes a PluginError result or an invalid
+//                  handle, never ends the process
 // Version: 0.1.1
 // Last Modified: 2026-07-05
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include <UltraNet/UltraNetCore.h>
 #include <UltraNet/UltraNetPlugins.h>
+#include "UltraNetPluginGuard.h"
 #include "UltraNetPluginHostShim.h"
 #include <UltraNet/UltraNetUrl.h>
 
@@ -148,102 +152,106 @@ public:
         return {"snmp"};
     }
     UltraNetResult Initialize(const UltraNetConfig&) override {
-        InitSnmpOnce();
-        return UltraNetResult::Ok();
+        return ultranet_plugin::Guarded("Initialize", [&]() -> UltraNetResult {
+            InitSnmpOnce();
+            return UltraNetResult::Ok();
+        });
     }
     void Shutdown() override {}
 
     UltraNetResult Search(const std::string& url,
                           const UltraNetDirectoryQuery& q,
                           std::vector<UltraNetDirectoryEntry>& out) override {
-        out.clear();
-        InitSnmpOnce();
+        return ultranet_plugin::Guarded("Search", [&]() -> UltraNetResult {
+            out.clear();
+            InitSnmpOnce();
 
-        UltraNetUrlComponents c;
-        if (!UltraNet_ParseUrl(url, c) || c.scheme != "snmp") {
-            return UltraNetResult::Error(UltraNetResultCode::InvalidUrl,
-                                         "expected snmp:// URL");
-        }
-        const int port = c.port > 0 ? c.port : 161;
-        std::ostringstream peer;
-        peer << "udp:" << c.host << ':' << port;
+            UltraNetUrlComponents c;
+            if (!UltraNet_ParseUrl(url, c) || c.scheme != "snmp") {
+                return UltraNetResult::Error(UltraNetResultCode::InvalidUrl,
+                                             "expected snmp:// URL");
+            }
+            const int port = c.port > 0 ? c.port : 161;
+            std::ostringstream peer;
+            peer << "udp:" << c.host << ':' << port;
 
-        const std::string community = q.filter.empty() ? "public" : q.filter;
+            const std::string community = q.filter.empty() ? "public" : q.filter;
 
-        // Build a per-call SNMP session. v2c == reasonable default; v3
-        // wiring is a future extension.
-        netsnmp_session sess{};
-        snmp_sess_init(&sess);
-        sess.peername      = const_cast<char*>(peer.str().c_str());
-        sess.version       = SNMP_VERSION_2c;
-        sess.community     = const_cast<u_char*>(
-            reinterpret_cast<const u_char*>(community.c_str()));
-        sess.community_len = community.size();
-        if (q.timeLimitSeconds > 0) {
-            sess.timeout = static_cast<long>(q.timeLimitSeconds) * 1000000L;
-        }
-        netsnmp_session* live = snmp_open(&sess);
-        if (!live) {
-            return UltraNetResult::Error(UltraNetResultCode::ConnectionRefused,
-                                         "snmp_open failed");
-        }
+            // Build a per-call SNMP session. v2c == reasonable default; v3
+            // wiring is a future extension.
+            netsnmp_session sess{};
+            snmp_sess_init(&sess);
+            sess.peername      = const_cast<char*>(peer.str().c_str());
+            sess.version       = SNMP_VERSION_2c;
+            sess.community     = const_cast<u_char*>(
+                reinterpret_cast<const u_char*>(community.c_str()));
+            sess.community_len = community.size();
+            if (q.timeLimitSeconds > 0) {
+                sess.timeout = static_cast<long>(q.timeLimitSeconds) * 1000000L;
+            }
+            netsnmp_session* live = snmp_open(&sess);
+            if (!live) {
+                return UltraNetResult::Error(UltraNetResultCode::ConnectionRefused,
+                                             "snmp_open failed");
+            }
 
-        oid baseOid[MAX_OID_LEN];
-        std::size_t baseLen = 0;
-        if (!ParseOid(q.baseDn, baseOid, &baseLen) || baseLen == 0) {
+            oid baseOid[MAX_OID_LEN];
+            std::size_t baseLen = 0;
+            if (!ParseOid(q.baseDn, baseOid, &baseLen) || baseLen == 0) {
+                snmp_close(live);
+                return UltraNetResult::Error(UltraNetResultCode::InvalidUrl,
+                                             "baseDn is not a valid OID");
+            }
+
+            const bool walk = (q.scope >= 1);
+            const std::size_t maxResults = q.sizeLimit > 0
+                ? static_cast<std::size_t>(q.sizeLimit)
+                : (walk ? 64 : 1);
+
+            oid cur[MAX_OID_LEN];
+            std::memcpy(cur, baseOid, baseLen * sizeof(oid));
+            std::size_t curLen = baseLen;
+
+            for (std::size_t produced = 0; produced < maxResults; ++produced) {
+                netsnmp_pdu* resp = DoRequest(
+                    live, walk ? SNMP_MSG_GETNEXT : SNMP_MSG_GET,
+                    cur, curLen);
+                if (!resp) break;
+
+                // GET returns one var, GETNEXT returns one var (the next).
+                netsnmp_variable_list* v = resp->variables;
+                if (!v) { snmp_free_pdu(resp); break; }
+
+                // Stop walking when we leave the requested subtree.
+                if (walk && !IsOidPrefix(baseOid, baseLen, v->name, v->name_length)) {
+                    snmp_free_pdu(resp);
+                    break;
+                }
+                // End-of-MIB markers.
+                if (v->type == SNMP_NOSUCHOBJECT ||
+                    v->type == SNMP_NOSUCHINSTANCE ||
+                    v->type == SNMP_ENDOFMIBVIEW) {
+                    snmp_free_pdu(resp);
+                    break;
+                }
+
+                UltraNetDirectoryEntry e;
+                e.dn = OidToString(v->name, v->name_length);
+                e.attributes["value"].push_back(VarValueToString(v));
+                e.attributes["type"].push_back(VarTypeName(v->type));
+                out.push_back(std::move(e));
+
+                if (!walk) { snmp_free_pdu(resp); break; }
+
+                // Advance cur to the next OID for the following GETNEXT.
+                std::memcpy(cur, v->name, v->name_length * sizeof(oid));
+                curLen = v->name_length;
+                snmp_free_pdu(resp);
+            }
+
             snmp_close(live);
-            return UltraNetResult::Error(UltraNetResultCode::InvalidUrl,
-                                         "baseDn is not a valid OID");
-        }
-
-        const bool walk = (q.scope >= 1);
-        const std::size_t maxResults = q.sizeLimit > 0
-            ? static_cast<std::size_t>(q.sizeLimit)
-            : (walk ? 64 : 1);
-
-        oid cur[MAX_OID_LEN];
-        std::memcpy(cur, baseOid, baseLen * sizeof(oid));
-        std::size_t curLen = baseLen;
-
-        for (std::size_t produced = 0; produced < maxResults; ++produced) {
-            netsnmp_pdu* resp = DoRequest(
-                live, walk ? SNMP_MSG_GETNEXT : SNMP_MSG_GET,
-                cur, curLen);
-            if (!resp) break;
-
-            // GET returns one var, GETNEXT returns one var (the next).
-            netsnmp_variable_list* v = resp->variables;
-            if (!v) { snmp_free_pdu(resp); break; }
-
-            // Stop walking when we leave the requested subtree.
-            if (walk && !IsOidPrefix(baseOid, baseLen, v->name, v->name_length)) {
-                snmp_free_pdu(resp);
-                break;
-            }
-            // End-of-MIB markers.
-            if (v->type == SNMP_NOSUCHOBJECT ||
-                v->type == SNMP_NOSUCHINSTANCE ||
-                v->type == SNMP_ENDOFMIBVIEW) {
-                snmp_free_pdu(resp);
-                break;
-            }
-
-            UltraNetDirectoryEntry e;
-            e.dn = OidToString(v->name, v->name_length);
-            e.attributes["value"].push_back(VarValueToString(v));
-            e.attributes["type"].push_back(VarTypeName(v->type));
-            out.push_back(std::move(e));
-
-            if (!walk) { snmp_free_pdu(resp); break; }
-
-            // Advance cur to the next OID for the following GETNEXT.
-            std::memcpy(cur, v->name, v->name_length * sizeof(oid));
-            curLen = v->name_length;
-            snmp_free_pdu(resp);
-        }
-
-        snmp_close(live);
-        return UltraNetResult::Ok();
+            return UltraNetResult::Ok();
+        });
     }
 };
 

@@ -39,7 +39,7 @@ namespace UltraCanvas {
 namespace Authenticator {
 
 enum class StoreResultCode : uint8_t {
-    Success,
+    Ok,
     NotOpen,               // no vault is open
     AlreadyExists,         // Create() against an existing file
     NotFound,              // no entry under that key

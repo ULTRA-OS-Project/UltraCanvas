@@ -197,7 +197,15 @@ const DropdownItem* GetItem(int index) const;
 void SetSelectedIndex(int index, bool runNotifications = true);   // false: no onSelectionChanged
 int GetSelectedIndex() const;
 const DropdownItem* GetSelectedItem() const;
+// What the button reads while nothing is selected (single selection) - a
+// value that is none of the items; empty (a blank button) by default
+void SetPlaceholderText(const std::string& text);
+const std::string& GetPlaceholderText() const;
 ```
+
+`SetSelectedIndex(-1, false)` with a placeholder is how a box shows a value
+between its items: the media viewer's zoom box marks *Fit* or the step it is
+at, and reads `137%` between the steps.
 
 ### Multi-selection
 

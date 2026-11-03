@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <title>UltraSnip</title>
+  <desc>A white selection frame with corner handles around a camera's lens, with a red recording dot, on an indigo tile: the screenshot and screen-recording mark.</desc>
+  <rect x="16" y="16" width="224" height="224" rx="48" ry="48" fill="#4f46e5"/>
+  <g fill="none" stroke="#ffffff" stroke-width="14" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M62 96 V62 H96"/>
+    <path d="M160 62 H194 V96"/>
+    <path d="M194 160 V194 H160"/>
+    <path d="M96 194 H62 V160"/>
+  </g>
+  <circle cx="128" cy="128" r="40" fill="none" stroke="#ffffff" stroke-width="14"/>
+  <circle cx="128" cy="128" r="16" fill="#ffffff"/>
+  <circle cx="186" cy="70" r="20" fill="#ef4444" stroke="#ffffff" stroke-width="8"/>
+</svg>

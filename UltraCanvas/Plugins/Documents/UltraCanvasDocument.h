@@ -32,7 +32,7 @@ enum class UCDocumentType {
 
 // Compression types
 enum class UCCompressionType {
-    None,
+    Uncompressed,
     ZIP,
     GZIP,
     LZMA
@@ -47,7 +47,7 @@ enum class UCCompressionType {
 // produced — the encryption path silently wrote plaintext. See
 // Docs/Modules/UltraCrypt/README.md §1.1.)
 enum class UCEncryptionType {
-    None = 0,
+    Unencrypted = 0,
     XChaCha20Poly1305 = 1
 };
 
@@ -111,7 +111,7 @@ struct UCDocumentNavigation {
 
 // Page transition and animation settings
 enum class UCPageTransition {
-    None,
+    NoTransition,
     Fade,
     Slide,
     Flip,
@@ -120,7 +120,7 @@ enum class UCPageTransition {
 };
 
 struct UCPageTransitionSettings {
-    UCPageTransition TransitionType = UCPageTransition::None;
+    UCPageTransition TransitionType = UCPageTransition::NoTransition;
     int DurationMs = 300;
     std::string EasingFunction = "ease-in-out";
     bool AnimateOnLoad = false;
@@ -176,7 +176,7 @@ struct UCMediaResource {
 // password. Keeping no verifier on disk also means a stolen file offers no
 // cheap offline target beyond the Argon2id-protected body itself.
 struct UCSecuritySettings {
-    UCEncryptionType EncryptionType = UCEncryptionType::None;
+    UCEncryptionType EncryptionType = UCEncryptionType::Unencrypted;
 
     std::vector<uint8_t> PasswordVerifier;   // Argon2id output, empty if unset
     std::vector<uint8_t> VerifierSalt;

@@ -213,7 +213,7 @@ StreamHandle MockTextLLM::ChatStream(const ChatRequest& request,
     auto delay = impl_->streamDelay;
 
     std::thread worker([handle, response, onEvent, delay]() {
-        if (response.error.code != ErrorCode::None) {
+        if (response.error.code != ErrorCode::Ok) {
             StreamEvent ev;
             ev.kind  = StreamEventKind::Error;
             ev.error = response.error;

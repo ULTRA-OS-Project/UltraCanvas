@@ -80,6 +80,8 @@ namespace UltraCanvas {
         std::string defaultLanguage = "Plain Text";
         bool darkTheme = false;
         bool wordWrap = true;
+        // Spaces, tabs and line ends drawn as faint marks in text tabs.
+        bool showHiddenCharacters = false;
         // Word-processing documents shown on their pages (headers, footers,
         // page breaks) rather than as one column.
         bool documentPageLayout = true;
@@ -89,6 +91,10 @@ namespace UltraCanvas {
         // it never pays for loading a backend and a dictionary.
         bool spellCheckEnabled = false;
         std::string spellCheckLanguage = "";   // empty = detect from the locale
+        // Switch the dictionary when most words of the document being edited
+        // are flagged and another installed language fits it (fewer than 15%
+        // flagged) - the text is evidently in that language.
+        bool spellCheckAutoLanguage = true;
 
         const std::vector<int> fontZoomPercents = {50,65,80,90,100,110,125,150,175,200};
         int fontZoomPercent = 100;
@@ -428,6 +434,17 @@ namespace UltraCanvas {
         bool LoadWordIntoDocument(int docIndex, const std::string& filePath);
         bool SaveDocument(int docIndex);
         bool SaveDocumentAs(int docIndex, const std::string& filePath);
+        // Why the last SaveDocument / SaveDocumentAs returned false (the
+        // system's reason when the file could not be opened or written);
+        // empty after a save that worked.
+        std::string lastSaveError;
+        // Saves a document that has a file path. When that fails it says why
+        // and offers the Save dialog for the document, again after each
+        // failed attempt; onDone(true) once it is saved, false when the user
+        // cancels.
+        void SaveOrOfferSaveAs(int docIndex, std::function<void(bool)> onDone);
+        void OfferSaveAsAfterFailure(std::shared_ptr<DocumentTab> doc, const std::string& failedPath,
+                                     std::function<void(bool)> onDone);
         bool IsBinaryFile(const std::vector<uint8_t>& rawBytes, const std::string& extension) const;
 
         std::string FormatFullTabTooltip(int docIndex);
@@ -467,6 +484,12 @@ namespace UltraCanvas {
         void OnEditSearch();
         void OnEditReplace();
         void OnEditGoToLine();
+        // Edit > Translate Selection...: through UltraAI, a model on this
+        // computer first (UltraCanvasTextEditorTranslate.cpp).
+        void OnEditTranslateSelection();
+        void TranslateSelection(const std::string& text, const std::string& language);
+        std::string lastTranslateLanguage = "en";
+        bool translating = false;
 
         void OnViewIncreaseFontSize();
         void OnViewDecreaseFontSize();
@@ -474,6 +497,10 @@ namespace UltraCanvas {
         void OnViewToggleTheme();
         void OnViewToggleLineNumbers(bool checked);
         void OnViewToggleWordWrap(bool checked);
+        void OnViewToggleHiddenCharacters(bool checked);
+        // Ticks the View menu's Line Numbers, Word Wrap and Hidden Characters
+        // to match the config after the editor's context menu changed one.
+        void UpdateViewMenuChecks();
         void OnViewTogglePageLayout(bool checked);
         void OnViewToggleToolbar(bool checked);
         void OnViewToggleMarkdownToolbar(bool checked);
@@ -501,6 +528,10 @@ namespace UltraCanvas {
         void OnSpellLanguageChanged(const std::string& languageCode);
         // Menu handler: switches dictionary, and switches checking on with it.
         void OnSpellDictionarySelected(const std::string& languageCode);
+        // Automatic language detection: the service setting follows the config,
+        // and a suggestion from the document being edited switches dictionary.
+        void ApplySpellLanguageDetection();
+        void OnSpellLanguageSuggested(const DocumentTab* doc, const std::string& languageCode);
         std::vector<MenuItemData> BuildSpellingMenuItems();
         // Rows, columns, merge and split for the table the caret is in.
         std::vector<MenuItemData> BuildTableMenuItems();

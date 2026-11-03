@@ -78,7 +78,7 @@ VirtualFSResult DeflateCompress(const uint8_t* data, size_t size,
     }
 
     output.resize(bound);
-    return VirtualFSResult::Success;
+    return VirtualFSResult::Ok;
 }
 
 VirtualFSResult DeflateDecompress(const uint8_t* data, size_t size,
@@ -119,7 +119,7 @@ VirtualFSResult DeflateDecompress(const uint8_t* data, size_t size,
 
     inflateEnd(&stream);
     output.resize(written);
-    return VirtualFSResult::Success;
+    return VirtualFSResult::Ok;
 }
 
 #endif // VIRTUALFS_HAS_ZLIB
@@ -156,7 +156,7 @@ VirtualFSResult ZstdCompress(const uint8_t* data, size_t size,
     }
 
     output.resize(written);
-    return VirtualFSResult::Success;
+    return VirtualFSResult::Ok;
 }
 
 VirtualFSResult ZstdDecompress(const uint8_t* data, size_t size,
@@ -174,7 +174,7 @@ VirtualFSResult ZstdDecompress(const uint8_t* data, size_t size,
             output.clear();
             return VirtualFSResult::ArchiveCorrupt;
         }
-        return VirtualFSResult::Success;
+        return VirtualFSResult::Ok;
     }
 
     // Content size not recorded: streaming decompression with a growing buffer
@@ -210,7 +210,7 @@ VirtualFSResult ZstdDecompress(const uint8_t* data, size_t size,
 
     ZSTD_freeDStream(stream);
     output.resize(written);
-    return VirtualFSResult::Success;
+    return VirtualFSResult::Ok;
 }
 
 #endif // VIRTUALFS_HAS_ZSTD
@@ -255,7 +255,7 @@ VirtualFSResult LZ4Compress(const uint8_t* data, size_t size,
     }
 
     output.resize(written);
-    return VirtualFSResult::Success;
+    return VirtualFSResult::Ok;
 }
 
 VirtualFSResult LZ4Decompress(const uint8_t* data, size_t size,
@@ -318,7 +318,7 @@ VirtualFSResult LZ4Decompress(const uint8_t* data, size_t size,
 
     LZ4F_freeDecompressionContext(dctx);
     output.resize(written);
-    return VirtualFSResult::Success;
+    return VirtualFSResult::Ok;
 }
 
 #endif // VIRTUALFS_HAS_LZ4
@@ -358,7 +358,7 @@ VirtualFSResult BrotliCompress(const uint8_t* data, size_t size,
     }
 
     output.resize(written);
-    return VirtualFSResult::Success;
+    return VirtualFSResult::Ok;
 }
 
 VirtualFSResult BrotliDecompress(const uint8_t* data, size_t size,
@@ -397,7 +397,7 @@ VirtualFSResult BrotliDecompress(const uint8_t* data, size_t size,
 
     BrotliDecoderDestroyInstance(state);
     output.resize(written);
-    return VirtualFSResult::Success;
+    return VirtualFSResult::Ok;
 }
 
 #endif // VIRTUALFS_HAS_BROTLI
@@ -490,7 +490,7 @@ VirtualFSResult VirtualFS_CompressBuffer(
     switch (method) {
         case VirtualFSCompressionMethod::Store:
             output.assign(data, data + size);
-            return VirtualFSResult::Success;
+            return VirtualFSResult::Ok;
 #ifdef VIRTUALFS_HAS_ZLIB
         case VirtualFSCompressionMethod::Deflate:
             return DeflateCompress(data, size, output, level);
@@ -532,7 +532,7 @@ VirtualFSResult VirtualFS_DecompressBuffer(
     switch (method) {
         case VirtualFSCompressionMethod::Store:
             output.assign(data, data + size);
-            return VirtualFSResult::Success;
+            return VirtualFSResult::Ok;
 #ifdef VIRTUALFS_HAS_ZLIB
         case VirtualFSCompressionMethod::Deflate:
             return DeflateDecompress(data, size, output, sizeHint);

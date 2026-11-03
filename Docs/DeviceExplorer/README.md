@@ -119,7 +119,10 @@ the filter shows), and whether changes are being watched for.
 
 The first scan starts when the window opens and runs on a worker thread —
 SANE and CUPS can each take seconds to answer, and the window never waits for
-them. After it, DeviceExplorer turns on IODeviceManager's hot-plug watcher.
+them. While a scan runs (this one, or one *Rescan* started), a row at the
+bottom of the tree reads *Scanning for devices…* beside a sliding bar; it goes
+away when the devices are in. After the first scan, DeviceExplorer turns on
+IODeviceManager's hot-plug watcher.
 While the watcher runs, a device plugged in or removed appears or disappears by
 itself, and the selection stays on the device you were looking at.
 

@@ -36,7 +36,7 @@ inline const char* LoginOptions(UltraNetMailAuth auth, Protocol protocol) {
         case UltraNetMailAuth::Kerberos: return "AUTH=GSSAPI";
         case UltraNetMailAuth::NTLM:     return "AUTH=NTLM";
         case UltraNetMailAuth::Any:
-        case UltraNetMailAuth::None:
+        case UltraNetMailAuth::NoAuth:
         default:                         return nullptr;
     }
 }
@@ -45,7 +45,7 @@ inline const char* LoginOptions(UltraNetMailAuth auth, Protocol protocol) {
 // anything is sent - when the method and the credentials cannot go together:
 // OAuth2 without a token, or a token with a password-type method.
 inline UltraNetResult Apply(CURL* h, const UltraNetMailOptions& opt, Protocol protocol) {
-    if (opt.auth == UltraNetMailAuth::None) return UltraNetResult::Ok();
+    if (opt.auth == UltraNetMailAuth::NoAuth) return UltraNetResult::Ok();
 
     const auto& cred = opt.credentials;
     const bool bearer = !cred.token.empty() &&
@@ -81,7 +81,7 @@ inline const char* MethodName(UltraNetMailAuth auth) {
         case UltraNetMailAuth::OAuth2:            return "OAuth2";
         case UltraNetMailAuth::Kerberos:          return "Kerberos / GSSAPI";
         case UltraNetMailAuth::NTLM:              return "NTLM";
-        case UltraNetMailAuth::None:              return "No authentication";
+        case UltraNetMailAuth::NoAuth:              return "No authentication";
         case UltraNetMailAuth::Any:
         default:                                  return "Automatic";
     }
@@ -107,7 +107,7 @@ inline void RecordContext(const std::string& component, const UltraNetMailOption
         (cred.type == UltraNetAuthType::OAuth2 || cred.type == UltraNetAuthType::Bearer);
     std::string s = MethodName(opt.auth);
     if (const char* login = LoginOptions(opt.auth, protocol)) s += std::string(" (") + login + ")";
-    if (opt.auth == UltraNetMailAuth::None) {
+    if (opt.auth == UltraNetMailAuth::NoAuth) {
         s += ", no credentials sent";
     } else {
         s += bearer ? ", OAuth2 token" : (cred.password.empty() ? ", no password" : ", password");

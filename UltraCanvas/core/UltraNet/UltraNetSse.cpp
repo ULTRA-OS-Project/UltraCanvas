@@ -175,9 +175,9 @@ UltraNetHandle UltraNet_SseStreamAsync(
             if (onComplete) {
                 UltraNetResult r;
                 r.code        = (resp.statusCode >= 200 && resp.statusCode < 300)
-                                    ? UltraNetResultCode::Success
+                                    ? UltraNetResultCode::Ok
                                     : UltraNetResultCode::HttpError;
-                r.success     = (r.code == UltraNetResultCode::Success);
+                r.success     = (r.code == UltraNetResultCode::Ok);
                 r.httpStatus  = resp.statusCode;
                 r.message     = resp.statusMessage;
                 r.processingTime = resp.elapsedTime;

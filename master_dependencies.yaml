@@ -47,14 +47,43 @@ cryptography:
       vcpkg: "libsodium"
       # 1.0.19+ additionally provides crypto_kdf_hkdf_*; until the floor is
       # raised, HKDF must be built on top of the HMAC primitives.
+    openssl_x509:
+      min_version: "3.0"
+      purpose: "UltraCrypt's second backend: X.509, CMS (S/MIME), PKCS #12 (UltraCryptX509.h) and RSA / ECDSA checks (UltraCryptPublicKey.h, JWS), which libsodium has nothing of"
+      required: false                 # without it the X.509 calls answer BackendUnavailable
+      platforms: ["all"]              # not the browser build
+      cmake_module: "OpenSSL"         # find_package(OpenSSL 3 COMPONENTS Crypto); linked privately by file
+      pkg_config: "libcrypto"
+      apt: "libssl-dev"
+      msys2: "mingw-w64-x86_64-openssl"
+      vcpkg: "openssl"                # macOS (MacOS/deps/vcpkg.json)
+      license: "Apache-2.0"
+  mail:
+    # UltraMail's signed and encrypted mail (Apps/UltraMail/engine/
+    # UltraMailSecureMime.h). Both optional and soft-failing: without one,
+    # mail in that form is shown as one this build cannot check, and never
+    # sent in it. S/MIME is UltraCrypt's X.509 and CMS (openssl_x509 above):
+    # UltraMail links no OpenSSL of its own.
+    gpgme:
+      min_version: "1.16"             # Ubuntu 22.04's; gpgme_op_createkey (the tests) is 1.7+
+      purpose: "OpenPGP in UltraMail: GnuPG Made Easy, the user's own GnuPG keyring and gpg-agent"
+      required: false
+      platforms: ["all"]
+      pkg_config: "gpgme"
+      apt: "libgpgme-dev"             # GnuPG itself (gnupg) at run time
+      msys2: "mingw-w64-x86_64-gpgme"
+      vcpkg: "gpgme"                  # macOS (MacOS/deps/vcpkg.json): with libassuan, libgpg-error
+      brew: "gnupg pinentry-mac"      # macOS: GnuPG at run time, the user's own; not linked
+      license: "LGPL-2.1-or-later"    # linked dynamically: the system's shared library
 
 # ===== DATABASE (UltraDatabase) =====
 #
-# UltraDatabase wraps SQLite as its embedded engine (Stage 1); the networked
-# drivers (PostgreSQL, MySQL / MariaDB) are the Stage 2 plan and are not wired
-# yet. SQLite is taken from the system: the build prefers pkg-config, falls
-# back to a plain find_library, and simply skips the UltraDatabase target when
-# neither finds it — the rest of the tree configures unchanged.
+# UltraDatabase wraps SQLite as its embedded engine (Stage 1), with the
+# PostgreSQL and MySQL / MariaDB drivers built in wherever their client
+# libraries are found. SQLite is taken from the system: the build prefers
+# pkg-config, falls back to a plain find_library, and simply skips the
+# UltraDatabase target when neither finds it — the rest of the tree
+# configures unchanged. The server drivers are optional the same way.
 database:
   core:
     sqlite3:
@@ -68,6 +97,29 @@ database:
       brew: "sqlite"
       msys2: "mingw-w64-x86_64-sqlite3"
       vcpkg: "sqlite3"
+  drivers:
+    libpq:
+      min_version: ""
+      purpose: "The PostgreSQL driver (UltraDatabasePostgresDriver.cpp)"
+      required: false                 # without it "postgresql" reports the driver missing
+      platforms: ["all"]
+      pkg_config: "libpq"
+      apt: "libpq-dev"
+      brew: "libpq"
+      msys2: "mingw-w64-x86_64-postgresql"
+      vcpkg: "libpq"
+      license: "PostgreSQL"
+    libmariadb:
+      min_version: "3.1"              # caching_sha2_password for MySQL 8 servers
+      purpose: "The MySQL / MariaDB driver (UltraDatabaseMysqlDriver.cpp), MariaDB Connector/C"
+      required: false                 # without it "mysql" reports the driver missing
+      platforms: ["all"]
+      pkg_config: "libmariadb"
+      apt: "libmariadb-dev"
+      brew: "mariadb-connector-c"
+      msys2: "mingw-w64-x86_64-libmariadbclient"
+      vcpkg: "libmariadb"
+      license: "LGPL-2.1-or-later"    # linked dynamically only: CMake asks for the shared library by name
 
 networking:
   core:
@@ -167,7 +219,7 @@ networking:
 
     avahi:
       min_version: "0.8"
-      purpose: "mDNS / Zeroconf service discovery (Linux) - Tier 2 plugin"
+      purpose: "mDNS / Zeroconf service discovery and announcement (Linux) - Tier 2 plugin; ChatCube's local network"
       required: false
       priority: "low"
       platforms: ["Linux"]
@@ -294,7 +346,7 @@ media:
     # it - see THIRD_PARTY_LICENSES.md before distributing.
     ffmpeg:
       min_version: "4.4"                # libavformat 58.76 / libavcodec 58.134 (Ubuntu 22.04)
-      purpose: "VideoFX: demux, decode, filter (effects), encode and mux video / audio - optional"
+      purpose: "VideoFX: demux, decode, filter (effects), encode and mux video / audio; UltraRTC: VP8 for video calls (libavcodec with libvpx, libswscale) - optional"
       required: false
       priority: "medium"
       platforms: ["all"]
@@ -554,3 +606,54 @@ webassembly:
       # unpacked one via ULTRACANVAS_WASMTIME_DIR. No prebuilt library for
       # MSYS2 CLANG64 (gnullvm); that needs the c-api crate built with
       # Corrosion. ULTRACANVAS_ENABLE_WASM_HOST switches it.
+
+# ===== INSTANT MESSAGING (UltraIM) =====
+#
+# UltraIM's Telegram provider is a client of TDLib (Telegram Database
+# Library) through its JSON interface, loaded at run time with dlopen /
+# LoadLibrary - nothing of TDLib is linked, so the provider builds
+# everywhere. The library it loads is the
+# prebuilt libtdjson from the tdjson wheel on PyPI, fetched at configure time
+# and checked against a pinned SHA-256 (cmake/UltraCanvasTdlib.cmake) into
+# <build>/Plugins/UltraIM/tdlib, which the packages ship. Absence is
+# tolerated: the provider then signs in wherever a libtdjson is found
+# (ULTRAIM_TDJSON_PATH, the system's) and says so otherwise.
+instant_messaging:
+  core:
+    tdlib:
+      min_version: "1.7"              # td_create_client_id; 1.8.69 is what is fetched
+      purpose: "Telegram Database Library (TDLib), Telegram's client library, for the UltraIM Telegram provider (BSL-1.0), loaded at run time"
+      required: false
+      platforms: ["linux", "macos", "windows"]
+      # Not a system package: the tdjson wheel's libtdjson, downloaded at
+      # configure time (Linux x86_64 / aarch64, macOS arm64, Windows x64), or
+      # a libtdjson of your own via ULTRAIM_TDJSON_FILE. ULTRAIM_FETCH_TDLIB
+      # switches the download.
+
+# ===== REAL-TIME COMMUNICATION (UltraRTC) =====
+#
+# UltraRTC wraps libdatachannel (WebRTC: ICE, DTLS, SCTP data channels,
+# SRTP media) behind the UltraRtc_* API. Vendored with its submodules under
+# UltraCanvas/third_party/libdatachannel (see VENDORED.md there), built
+# statically and linked privately. Its DTLS runs on OpenSSL, so the module
+# is built where OpenSSL is found; elsewhere every call reports Unsupported.
+real_time_communication:
+  core:
+    libdatachannel:
+      min_version: "0.24.6"
+      purpose: "WebRTC engine for UltraRTC / ChatCube calls and P2P chat (MPL-2.0)"
+      required: false
+      vendored: true                  # with libjuice (MPL-2.0), usrsctp, libsrtp (BSD-3), plog (MIT)
+      needs: ["openssl"]
+
+    libopus:
+      min_version: "1.3"
+      purpose: "Opus voice codec for UltraRTC audio tracks (ChatCube voice calls) - without it calls are off"
+      required: false
+      priority: "medium"
+      platforms: ["all"]
+      pkg_config: "opus"
+      apt: "libopus-dev"
+      vcpkg: "opus"
+      brew: "opus"
+      msys2: "mingw-w64-x86_64-opus"

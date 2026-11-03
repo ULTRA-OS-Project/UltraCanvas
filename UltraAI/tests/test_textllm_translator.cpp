@@ -108,7 +108,7 @@ struct Fixture {
         Error err;
         translator = CreateTextLLMTranslator(std::move(owned), cfg, &err);
         EXPECT_TRUE(translator != nullptr);
-        EXPECT_EQ(err.code, ErrorCode::None);
+        EXPECT_EQ(err.code, ErrorCode::Ok);
     }
 };
 
@@ -131,7 +131,7 @@ void TestPromptAndRequestShape() {
     req.options["vendor.knob"] = int64_t{7};
 
     auto resp = f.translator->Translate(req);
-    EXPECT_EQ(resp.error.code, ErrorCode::None);
+    EXPECT_EQ(resp.error.code, ErrorCode::Ok);
     EXPECT_EQ(resp.results.size(), size_t{2});
     EXPECT_EQ(resp.results[0].text, std::string("Bonjour le monde"));
     EXPECT_EQ(resp.results[0].detectedSourceLanguage, std::string("en"));
@@ -199,7 +199,7 @@ void TestReplyOutOfOrderAndFenced() {
     req.texts = { "one", "two" };
     req.targetLanguage = "de";
     auto resp = f.translator->Translate(req);
-    EXPECT_EQ(resp.error.code, ErrorCode::None);
+    EXPECT_EQ(resp.error.code, ErrorCode::Ok);
     EXPECT_EQ(resp.results[0].text, std::string("eins"));
     EXPECT_EQ(resp.results[1].text, std::string("zwei"));
     EXPECT_EQ(resp.results[1].confidence, 0.8);
@@ -260,7 +260,7 @@ void TestBatchesAndSourceFillIn() {
     req.targetLanguage = "es";
     req.sourceLanguage = "en";
     auto resp = f.translator->Translate(req);
-    EXPECT_EQ(resp.error.code, ErrorCode::None);
+    EXPECT_EQ(resp.error.code, ErrorCode::Ok);
     EXPECT_EQ(resp.results.size(), size_t{3});
     EXPECT_EQ(resp.results[2].text, std::string("c'"));
     // The model reported no source; the request's fills in.
@@ -289,7 +289,7 @@ void TestErrors() {
     req.targetLanguage = "fr";
     req.texts.clear();
     resp = f.translator->Translate(req);
-    EXPECT_EQ(resp.error.code, ErrorCode::None);
+    EXPECT_EQ(resp.error.code, ErrorCode::Ok);
     EXPECT_TRUE(resp.results.empty());
     EXPECT_EQ(f.llm->requests.size(), size_t{0});
 
@@ -331,7 +331,7 @@ void TestDetectLanguage() {
     req.texts = { "der schnelle Fuchs", "el coche rojo" };
     req.topN = 2;
     auto resp = f.translator->DetectLanguage(req);
-    EXPECT_EQ(resp.error.code, ErrorCode::None);
+    EXPECT_EQ(resp.error.code, ErrorCode::Ok);
     EXPECT_EQ(resp.guesses.size(), size_t{2});
     EXPECT_EQ(resp.guesses[0].size(), size_t{1});
     EXPECT_EQ(resp.guesses[0][0].language, std::string("de"));
@@ -409,7 +409,7 @@ void TestRegistry() {
     req.texts = { "hello" };
     req.targetLanguage = "it";
     auto resp = tr->Translate(req);
-    EXPECT_EQ(resp.error.code, ErrorCode::None);
+    EXPECT_EQ(resp.error.code, ErrorCode::Ok);
     EXPECT_EQ(resp.results[0].text, std::string("ciao"));
 
     // "textllm.provider" picks the LLM when the translator id differs.

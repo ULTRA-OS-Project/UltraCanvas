@@ -334,7 +334,7 @@ int ToAresType(UltraNetDnsType t) {
 
 UltraNetResultCode MapAresStatus(int s) {
     switch (s) {
-        case ARES_SUCCESS:        return UltraNetResultCode::Success;
+        case ARES_SUCCESS:        return UltraNetResultCode::Ok;
         case ARES_ENOTFOUND:      return UltraNetResultCode::HostNotFound;
         case ARES_ENODATA:        return UltraNetResultCode::HostNotFound;
         case ARES_ETIMEOUT:       return UltraNetResultCode::Timeout;

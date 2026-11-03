@@ -7,6 +7,7 @@
 # without wasmtime it reports that it cannot run apps) and UltraNet, which
 # fetches apps from https:// addresses.
 #
+# Version: 0.8.0 - cookies (host/UltraWebCookies.cpp)
 # Version: 0.7.0 - tabs (ui/UltraWebTab.cpp)
 # Version: 0.6.0 - a downloads list (host/UltraWebDownloadList.cpp, ui/UltraWebDownloadsPanel.cpp)
 # Version: 0.5.0 - downloads (host/UltraWebDownloads.cpp)
@@ -32,8 +33,10 @@ endif()
 add_executable(UltraWeb
     main.cpp
     host/UltraWebFetch.cpp
+    host/UltraWebNetworkFetch.cpp
     host/UltraWebGuest.cpp
     host/UltraWebLoader.cpp
+    host/UltraWebCookies.cpp
     host/UltraWebPages.cpp
     host/UltraWebDownloads.cpp
     host/UltraWebDownloadList.cpp

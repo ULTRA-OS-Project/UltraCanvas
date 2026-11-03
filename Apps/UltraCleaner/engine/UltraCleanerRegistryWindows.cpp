@@ -63,7 +63,7 @@ public:
     Key& operator=(const Key&) = delete;
 
     HKEY Get() const { return key_; }
-    LONG Status() const { return status_; }
+    LONG LastStatus() const { return status_; }
 
 private:
     HKEY key_ = nullptr;
@@ -144,7 +144,7 @@ public:
                      const std::string& name, std::string* error) override {
         Key key(hive, path, KEY_SET_VALUE);
         if (!key.Get()) {
-            if (error) *error = DescribeError(key.Status());
+            if (error) *error = DescribeError(key.LastStatus());
             return false;
         }
         const LONG status = RegDeleteValueW(key.Get(), Wide(name).c_str());
@@ -165,7 +165,7 @@ public:
         Key parent(hive, path.substr(0, slash),
                    DELETE | KEY_ENUMERATE_SUB_KEYS | KEY_QUERY_VALUE | KEY_SET_VALUE);
         if (!parent.Get()) {
-            if (error) *error = DescribeError(parent.Status());
+            if (error) *error = DescribeError(parent.LastStatus());
             return false;
         }
         const LONG status = RegDeleteTreeW(parent.Get(), Wide(path.substr(slash + 1)).c_str());

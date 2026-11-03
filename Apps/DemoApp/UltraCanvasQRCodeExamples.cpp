@@ -1,4 +1,15 @@
+// Apps/DemoApp/UltraCanvasQRCodeExamples.cpp
+// QR code demonstration: an Encode tab (content presets, error correction,
+// point / finder styles and colours, gradients, a logo, saving as an image)
+// and a Decode tab that scans an opened image.
+// Version: 1.1.0 - the shared page look (UltraCanvasDemoPageKit): the tabs in a card
+//                  that fills the area, each tab a flex layout that scrolls when
+//                  taller, every label and button sized to its text
+// Last Modified: 2026-10-23
+// Author: UltraCanvas Framework
+
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "Plugins/QRCode/UltraCanvasQRCode.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasLabel.h"
@@ -54,7 +65,7 @@ namespace UltraCanvas {
             const char* label; QRGradientType type; Color start; Color end;
         };
         const GradientChoice kGradients[] = {
-            { "None",     QRGradientType::None,     Colors::Black,    Colors::Black },
+            { "None",     QRGradientType::NoGradient,     Colors::Black,    Colors::Black },
             { "Linear",   QRGradientType::Linear,   Color(0,102,204), Color(102,204,255) },
             { "Radial",   QRGradientType::Radial,   Color(139,0,139), Color(255,0,128) },
             { "Diagonal", QRGradientType::Diagonal, Color(204,0,0),   Color(255,140,0) },
@@ -91,46 +102,85 @@ namespace UltraCanvas {
             return opts;
         }
 
-        std::shared_ptr<UltraCanvasUIElement> BuildEncodePage() {
-            auto page = std::make_shared<UltraCanvasContainer>("QREncodePage", 0, 0, 1100, 720);
+        // A button that is at least as large as it was built, and grows with
+        // its text.
+        void SetMinSize(UltraCanvasUIElement& element, float width, float height) {
+            CSSLayout::BoxConstraints limits = element.boxConstraints.value_or(CSSLayout::BoxConstraints{});
+            limits.minWidth  = CSSLayout::Dimension::Px(width);
+            limits.minHeight = CSSLayout::Dimension::Px(height);
+            element.boxConstraints = limits;
+        }
 
-            auto title = std::make_shared<UltraCanvasLabel>("QREncodeTitle", 20, 10, 1000, 24);
-            title->SetText("Encode — generate a QR code with custom style, logo, and color");
+        // A tab: a column the tab sizes exactly; content taller or wider than
+        // that scrolls.
+        std::shared_ptr<UltraCanvasContainer> MakeTabPage(const std::string& id) {
+            auto page = std::make_shared<UltraCanvasContainer>(id);
+            page->SetPadding(12, 20, 12, 20);
+            page->layout.SetFlexColumn().SetFlexGap(8)
+                        .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+            ContainerStyle style;
+            style.autoShowScrollbars = true;
+            page->SetContainerStyle(style);
+            return page;
+        }
+
+        // A row whose items sit centred on one line (a label beside its control).
+        std::shared_ptr<UltraCanvasContainer> AddControlRow(const std::shared_ptr<UltraCanvasContainer>& parent,
+                                                            const std::string& id, float gap = 8) {
+            auto row = DemoKit::AddRow(parent, id, gap);
+            row->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
+            return row;
+        }
+
+        // The tab's title: the old 14 px blue bold heading.
+        void AddTabTitle(const std::shared_ptr<UltraCanvasContainer>& page,
+                         const std::string& id, const std::string& text) {
+            auto title = DemoKit::AddHeading(page, id, text);
             title->SetFontSize(14);
-            title->SetFontWeight(FontWeight::Bold);
             title->SetTextColor(Color(50, 50, 150, 255));
-            page->AddChild(title);
+        }
+
+        std::shared_ptr<UltraCanvasUIElement> BuildEncodePage() {
+            auto page = MakeTabPage("QREncodePage");
+
+            AddTabTitle(page, "QREncodeTitle", "Encode — generate a QR code with custom style, logo, and color");
 
             auto baseName = [](const std::string& p) -> std::string {
                 auto pos = p.find_last_of("/\\");
                 return pos == std::string::npos ? p : p.substr(pos + 1);
             };
 
-            auto qr = std::make_shared<UltraCanvasQRCode>("qr-encode", 30, 50, 420, 420);
+            // The code with its content field on the left, the controls beside
+            // it (under it when the tab is narrow).
+            auto columns = DemoKit::CreateRow("QREncodeColumns", 30);
+            columns->layout.SetFlexAlignItems(CSSLayout::AlignItems::Start);
+            DemoKit::Add(page, columns);
+
+            auto codeColumn = DemoKit::CreateColumn("QREncodeCodeColumn", 6);
+            DemoKit::Add(columns, codeColumn);
+
+            auto qr = std::make_shared<UltraCanvasQRCode>("qr-encode", 0, 0, 420, 420);
             qr->SetContent("https://ultraos.eu");
             std::string logoPath = NormalizePath(GetResourcesDir() + "media/images/UOS_logo_white.png");
             auto logoImg = UCImage::Get(logoPath);
             qr->SetLogo(logoImg, 0.25f);
             qr->SetLogoStyle(QRLogoStyle::CenterRounded);
             qr->SetGradient(QRGradientType::Diagonal, Color(0,102,204), Color(102,204,255));
-            page->AddChild(qr);
+            DemoKit::AddFixed(codeColumn, qr);
             auto* qrPtr = qr.get();
 
-            auto contentLbl = std::make_shared<UltraCanvasLabel>("ContentLbl", 30, 490, 200, 22);
-            contentLbl->SetText("Content:");
-            contentLbl->SetFontSize(12);
+            auto contentLbl = DemoKit::AddText(codeColumn, "ContentLbl", "Content:");
             contentLbl->SetFontWeight(FontWeight::Bold);
-            page->AddChild(contentLbl);
+            contentLbl->SetMargin(12, 0, 0, 0);
 
-            auto contentInput = std::make_shared<UltraCanvasTextInput>("ContentInput", 30, 513, 420, 32);
+            auto contentInput = std::make_shared<UltraCanvasTextInput>("ContentInput", 0, 0, 420, 32);
             contentInput->SetText("https://ultraos.eu");
-            page->AddChild(contentInput);
+            DemoKit::AddStretched(codeColumn, contentInput);
 
-            auto status = std::make_shared<UltraCanvasLabel>("EncStatus", 30, 552, 420, 22);
-            status->SetText("");
+            auto status = DemoKit::CreateText("EncStatus", "");
             status->SetFontSize(11);
             status->SetTextColor(Color(120, 120, 120, 255));
-            page->AddChild(status);
+            DemoKit::Add(codeColumn, status);
             auto* statusPtr = status.get();
 
             // Tracks which content preset is currently active so the matching
@@ -157,7 +207,7 @@ namespace UltraCanvas {
                 } else if (!qrPtr->GetErrorMessage().empty()) {
                     ss << "Error: " << qrPtr->GetErrorMessage();
                 } else {
-                    ss << "\u2014";
+                    ss << "—";
                 }
                 statusPtr->SetText(ss.str());
             };
@@ -171,33 +221,32 @@ namespace UltraCanvas {
                 refresh();
             };
 
-            const int ctrlX = 480;
-            int       ctrlY = 50;
-            const int colW  = 600;
+            // The controls take the rest of the width, at least 400 px.
+            auto controls = DemoKit::CreateColumn("QREncodeControls", 6);
+            DemoKit::Add(columns, controls, 1);
+            controls->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(400));
 
             auto header = [&](const std::string& text) {
-                auto lbl = std::make_shared<UltraCanvasLabel>(
-                    "h_" + text, ctrlX, ctrlY, colW, 22);
-                lbl->SetText(text);
-                lbl->SetFontSize(12);
+                auto lbl = DemoKit::AddText(controls, "h_" + text, text);
                 lbl->SetFontWeight(FontWeight::Bold);
-                page->AddChild(lbl);
-                ctrlY += 26;
+                lbl->SetMargin(4, 0, 0, 0);
             };
 
-            // Builds a compact row of colour swatches positioned to the right of
-            // a (narrowed) style dropdown. The selected swatch gets a bold
+            // Builds a compact row of colour swatches to the right of a
+            // (narrowed) style dropdown. The selected swatch gets a bold
             // outline; `apply` performs the actual colour change on the QR code.
-            auto buildSwatchRow = [page, ctrlX](
-                    int yRow, const std::string& idPrefix,
+            auto buildSwatchRow = [](
+                    const std::shared_ptr<UltraCanvasContainer>& row, const std::string& idPrefix,
                     std::function<void(const Color&)> apply,
                     std::shared_ptr<std::function<void(int)>> setActive) {
+                auto swatches = DemoKit::CreateRow(idPrefix + "swatches", 2);
+                swatches->SetMargin(0, 0, 0, 2);
+                DemoKit::Add(row, swatches);
                 auto buttons = std::make_shared<std::vector<UltraCanvasButton*>>();
-                int x = ctrlX + 160;
                 for (int i = 0; i < static_cast<int>(std::size(kSwatches)); ++i) {
                     const auto& s = kSwatches[i];
                     auto b = std::make_shared<UltraCanvasButton>(
-                        idPrefix + s.name, x, yRow, 28, 26, "");
+                        idPrefix + s.name, 0, 0, 28, 26, "");
                     b->SetColors(s.color, s.color, s.color, s.color);
                     b->SetBorder(1.0f, Color(120, 120, 120, 255));
                     b->SetTooltip(s.name);
@@ -209,8 +258,7 @@ namespace UltraCanvas {
                         apply(col);
                         if (*setActive) (*setActive)(idx);
                     });
-                    page->AddChild(b);
-                    x += 30;
+                    DemoKit::AddFixed(swatches, b);
                 }
                 *setActive = [buttons](int active) {
                     for (int j = 0; j < static_cast<int>(buttons->size()); ++j) {
@@ -231,11 +279,13 @@ namespace UltraCanvas {
                 const Color kPresetSelH ( 30,  95, 190, 255);
 
                 auto buttons = std::make_shared<std::vector<UltraCanvasButton*>>();
+                auto presetRow = DemoKit::AddRow(controls, "QRPresetRow", 4);
 
-                int x = ctrlX;
                 for (const auto& p : kPresets) {
+                    // At least the old 88 x 28, wider when the label needs it.
                     auto b = std::make_shared<UltraCanvasButton>(
-                        std::string("preset_") + p.label, x, ctrlY, 88, 28, p.label);
+                        std::string("preset_") + p.label, p.label);
+                    SetMinSize(*b, 88, 28);
                     b->SetFontSize(11);
                     b->SetColors(kPresetIdle, kPresetIdleH);
                     b->SetTextColors(Colors::TextDefault);
@@ -259,8 +309,7 @@ namespace UltraCanvas {
                         *activeSlug = slug;
                         refresh();
                     });
-                    page->AddChild(b);
-                    x += 92;
+                    DemoKit::Add(presetRow, b);
                 }
 
                 *setActivePreset = [buttons, kPresetIdle, kPresetIdleH,
@@ -279,13 +328,11 @@ namespace UltraCanvas {
 
                 // The default content is a URL, so highlight that preset.
                 (*setActivePreset)(0);
-
-                ctrlY += 36;
             }
 
             header("Error correction");
             {
-                auto dd = std::make_shared<UltraCanvasDropdown>("ecl_dd", ctrlX, ctrlY, 220, 28);
+                auto dd = std::make_shared<UltraCanvasDropdown>("ecl_dd", 0, 0, 220, 28);
                 for (const auto& c : kECLs) dd->AddItem(c.label);
                 dd->SetSelectedIndex(1, false);
                 dd->onSelectionChanged = [qrPtr, refresh](int idx, const DropdownItem&) {
@@ -294,15 +341,15 @@ namespace UltraCanvas {
                         refresh();
                     }
                 };
-                page->AddChild(dd);
-                ctrlY += 36;
+                DemoKit::AddFixed(controls, dd);
             }
 
             // Point style + the colour used for the data modules. The dropdown
             // is narrowed so the point-colour swatches fit on the same row.
             header("Point style");
             {
-                auto dd = std::make_shared<UltraCanvasDropdown>("pt_dd", ctrlX, ctrlY, 150, 28);
+                auto row = AddControlRow(controls, "QRPointRow");
+                auto dd = std::make_shared<UltraCanvasDropdown>("pt_dd", 0, 0, 150, 28);
                 for (const auto& c : kPointStyles) dd->AddItem(c.label);
                 dd->SetSelectedIndex(0, false);
                 dd->onSelectionChanged = [qrPtr](int idx, const DropdownItem&) {
@@ -310,9 +357,9 @@ namespace UltraCanvas {
                         qrPtr->SetPointStyle(kPointStyles[idx].style);
                     }
                 };
-                page->AddChild(dd);
+                DemoKit::AddFixed(row, dd);
 
-                buildSwatchRow(ctrlY + 1, "ptcol_",
+                buildSwatchRow(row, "ptcol_",
                     [qrPtr, gradResetToNone](const Color& c) {
                         // A solid module colour overrides any gradient; keep the
                         // gradient dropdown in sync by snapping it back to "None".
@@ -321,13 +368,13 @@ namespace UltraCanvas {
                         if (*gradResetToNone) (*gradResetToNone)();
                     },
                     setActivePoint);
-                ctrlY += 36;
             }
 
             // Finder style + a dedicated colour for the three finder patterns.
             header("Finder style");
             {
-                auto dd = std::make_shared<UltraCanvasDropdown>("fnd_dd", ctrlX, ctrlY, 150, 28);
+                auto row = AddControlRow(controls, "QRFinderRow");
+                auto dd = std::make_shared<UltraCanvasDropdown>("fnd_dd", 0, 0, 150, 28);
                 for (const auto& c : kFinderStyles) dd->AddItem(c.label);
                 dd->SetSelectedIndex(0, false);
                 dd->onSelectionChanged = [qrPtr](int idx, const DropdownItem&) {
@@ -335,17 +382,16 @@ namespace UltraCanvas {
                         qrPtr->SetFinderStyle(kFinderStyles[idx].style);
                     }
                 };
-                page->AddChild(dd);
+                DemoKit::AddFixed(row, dd);
 
-                buildSwatchRow(ctrlY + 1, "fndcol_",
+                buildSwatchRow(row, "fndcol_",
                     [qrPtr](const Color& c) { qrPtr->SetFinderColor(c); },
                     setActiveFinder);
-                ctrlY += 36;
             }
 
             header("Foreground gradient");
             {
-                auto dd = std::make_shared<UltraCanvasDropdown>("grad_dd", ctrlX, ctrlY, 220, 28);
+                auto dd = std::make_shared<UltraCanvasDropdown>("grad_dd", 0, 0, 220, 28);
                 for (const auto& g : kGradients) dd->AddItem(g.label);
                 auto* gradDd = dd.get();
                 *gradResetToNone = [gradDd]() { gradDd->SetSelectedIndex(0, false); };
@@ -358,7 +404,7 @@ namespace UltraCanvas {
                 dd->onSelectionChanged = [qrPtr, setActivePoint](int idx, const DropdownItem&) {
                     if (idx < 0 || idx >= static_cast<int>(std::size(kGradients))) return;
                     const auto& g = kGradients[idx];
-                    if (g.type == QRGradientType::None) {
+                    if (g.type == QRGradientType::NoGradient) {
                         // Revert to a solid black module colour and reflect that
                         // in the point-colour swatches (Black is the first one).
                         qrPtr->ClearGradient();
@@ -370,25 +416,24 @@ namespace UltraCanvas {
                         if (*setActivePoint) (*setActivePoint)(-1);
                     }
                 };
-                page->AddChild(dd);
-                ctrlY += 36;
+                DemoKit::AddFixed(controls, dd);
             }
 
             header("Logo");
             {
-                const int rowY = ctrlY;
-
                 // --- Row 1: upload / remove / placement style --------------
-                auto uploadBtn = std::make_shared<UltraCanvasButton>(
-                    "logo_upload", ctrlX, rowY, 140, 30, "Upload logo");
+                auto row1 = AddControlRow(controls, "QRLogoRow1");
+
+                auto uploadBtn = std::make_shared<UltraCanvasButton>("logo_upload", "Upload logo");
+                SetMinSize(*uploadBtn, 140, 30);
                 uploadBtn->SetFontSize(11);
 
-                auto clearBtn = std::make_shared<UltraCanvasButton>(
-                    "logo_clear", ctrlX + 148, rowY, 100, 30, "Remove logo");
+                auto clearBtn = std::make_shared<UltraCanvasButton>("logo_clear", "Remove logo");
+                SetMinSize(*clearBtn, 100, 30);
                 clearBtn->SetFontSize(11);
 
                 auto styleDD = std::make_shared<UltraCanvasDropdown>(
-                    "logo_style", ctrlX + 256, rowY, 170, 30);
+                    "logo_style", 0, 0, 170, 30);
                 styleDD->AddItem("Center");
                 styleDD->AddItem("Center + Border");
                 styleDD->AddItem("Center Rounded");
@@ -409,57 +454,64 @@ namespace UltraCanvas {
                     qrPtr->SetLogoStyle(styleFromIndex(idx));
                 };
 
-                page->AddChild(uploadBtn);
-                page->AddChild(clearBtn);
-                page->AddChild(styleDD);
+                DemoKit::Add(row1, uploadBtn);
+                DemoKit::Add(row1, clearBtn);
+                DemoKit::AddFixed(row1, styleDD);
 
                 // --- Row 2: thumbnail, file name, Zoom and Margin ----------
-                const int row2 = rowY + 38;
+                auto row2 = DemoKit::AddRow(controls, "QRLogoRow2", 8);
 
                 // Dark backdrop so a (white) logo is visible in the thumbnail.
                 auto thumbBg = std::make_shared<UltraCanvasContainer>(
-                    "logo_thumb_bg", ctrlX, row2, 50, 50);
+                    "logo_thumb_bg", 0, 0, 50, 50);
                 thumbBg->SetBackgroundColor(Color(70, 70, 70, 255));
                 thumbBg->SetBorders(1.0f, Color(120, 120, 120, 255));
-                page->AddChild(thumbBg);
+                thumbBg->layout.SetFlexColumn();
+                DemoKit::AddFixed(row2, thumbBg);
 
                 auto thumb = std::make_shared<UltraCanvasImageElement>(
-                    "logo_thumb", ctrlX + 1, row2 + 1, 48, 48);
+                    "logo_thumb", 0, 0, 48, 48);
                 thumb->SetFitMode(ImageFitMode::Contain);
                 if (logoImg && logoImg->IsValid()) thumb->LoadFromImage(logoImg);
-                page->AddChild(thumb);
+                DemoKit::AddFixed(thumbBg, thumb);
 
-                auto nameLbl = std::make_shared<UltraCanvasLabel>(
-                    "logo_name", ctrlX + 58, row2, 420, 16);
-                nameLbl->SetText(baseName(logoPath));
+                auto logoInfo = DemoKit::CreateColumn("QRLogoInfo", 6);
+                DemoKit::Add(row2, logoInfo, 1);
+
+                auto nameLbl = DemoKit::CreateText("logo_name", baseName(logoPath));
                 nameLbl->SetFontSize(11);
-                page->AddChild(nameLbl);
+                DemoKit::Add(logoInfo, nameLbl);
 
-                auto zoomLbl = std::make_shared<UltraCanvasLabel>(
-                    "logo_zoom_lbl", ctrlX + 58, row2 + 26, 88, 16);
-                zoomLbl->SetText("Zoom 25%");
+                auto sliders = AddControlRow(logoInfo, "QRLogoSliders");
+
+                // The readouts keep their old width as a minimum so the slider
+                // beside them does not shift as the number changes.
+                auto zoomLbl = DemoKit::CreateText("logo_zoom_lbl", "Zoom 25%");
                 zoomLbl->SetFontSize(11);
-                page->AddChild(zoomLbl);
+                zoomLbl->boxConstraints = CSSLayout::BoxConstraints{};
+                zoomLbl->boxConstraints->minWidth = CSSLayout::Dimension::Px(80);
+                DemoKit::Add(sliders, zoomLbl);
 
                 auto zoomSlider = std::make_shared<UltraCanvasSlider>(
-                    "logo_zoom", ctrlX + 148, row2 + 26, 120, 20);
+                    "logo_zoom", 0, 0, 120, 20);
                 zoomSlider->SetRange(5, 40);   // percent of the QR width
                 zoomSlider->SetStep(1);
                 zoomSlider->SetValue(25);      // matches the initial logoScale 0.25
-                page->AddChild(zoomSlider);
+                DemoKit::AddFixed(sliders, zoomSlider);
 
-                auto marginLbl = std::make_shared<UltraCanvasLabel>(
-                    "logo_margin_lbl", ctrlX + 278, row2 + 26, 90, 16);
-                marginLbl->SetText("Margin 4px");
+                auto marginLbl = DemoKit::CreateText("logo_margin_lbl", "Margin 4px");
                 marginLbl->SetFontSize(11);
-                page->AddChild(marginLbl);
+                marginLbl->boxConstraints = CSSLayout::BoxConstraints{};
+                marginLbl->boxConstraints->minWidth = CSSLayout::Dimension::Px(80);
+                marginLbl->SetMargin(0, 0, 0, 8);
+                DemoKit::Add(sliders, marginLbl);
 
                 auto marginSlider = std::make_shared<UltraCanvasSlider>(
-                    "logo_margin", ctrlX + 372, row2 + 26, 120, 20);
+                    "logo_margin", 0, 0, 120, 20);
                 marginSlider->SetRange(0, 20);
                 marginSlider->SetStep(1);
                 marginSlider->SetValue(4);     // matches the default logoBorderWidth
-                page->AddChild(marginSlider);
+                DemoKit::AddFixed(sliders, marginSlider);
 
                 // --- Wire up behaviour now that every element exists -------
                 auto* thumbPtr     = thumb.get();
@@ -514,16 +566,15 @@ namespace UltraCanvas {
                     nameLblPtr->SetText("(no logo)");
                     statusPtr->SetText("Logo removed");
                 });
-
-                ctrlY = row2 + 56;
             }
 
             header("Save as image");
             {
                 // Every picture type this build writes (FileLoader's list), and
                 // SVG through the code's own vector writer
-                auto saveBtn = std::make_shared<UltraCanvasButton>(
-                    "save_btn", ctrlX, ctrlY, 110, 30, "Save");
+                auto saveRow = DemoKit::AddRow(controls, "QRSaveRow");
+                auto saveBtn = std::make_shared<UltraCanvasButton>("save_btn", "Save");
+                SetMinSize(*saveBtn, 110, 30);
                 saveBtn->SetFontSize(11);
                 saveBtn->SetOnClick([qrPtr, statusPtr, activeSlug]() {
                     FileDialogOptions opts;
@@ -544,8 +595,7 @@ namespace UltraCanvas {
                                               : ("Save failed: " + (err.empty() ? std::string("SVG export failed") : err)));
                     });
                 });
-                page->AddChild(saveBtn);
-                ctrlY += 40;
+                DemoKit::Add(saveRow, saveBtn);
             }
 
             refresh();
@@ -553,16 +603,11 @@ namespace UltraCanvas {
         }
 
         std::shared_ptr<UltraCanvasUIElement> BuildDecodePage() {
-            auto page = std::make_shared<UltraCanvasContainer>("QRDecodePage", 0, 0, 1100, 720);
+            auto page = MakeTabPage("QRDecodePage");
 
-            auto title = std::make_shared<UltraCanvasLabel>("DecTitle", 20, 10, 1000, 24);
-            title->SetText("Decode — open an image and scan it for QR codes");
-            title->SetFontSize(14);
-            title->SetFontWeight(FontWeight::Bold);
-            title->SetTextColor(Color(50, 50, 150, 255));
-            page->AddChild(title);
+            AddTabTitle(page, "DecTitle", "Decode — open an image and scan it for QR codes");
 
-            auto hint = std::make_shared<UltraCanvasLabel>("DecHint", 20, 40, 1000, 22);
+            auto hint = DemoKit::CreateText("DecHint", "");
             if (QRCodeUtils::IsDecoderAvailable()) {
                 hint->SetText("Click \"Open image\" to choose a photo or screenshot containing one or more QR codes.");
             } else {
@@ -570,49 +615,55 @@ namespace UltraCanvas {
             }
             hint->SetFontSize(11);
             hint->SetTextColor(Color(110, 110, 110, 255));
-            page->AddChild(hint);
+            DemoKit::Add(page, hint);
 
-            auto openBtn = std::make_shared<UltraCanvasButton>(
-                "DecOpen", 20, 72, 160, 32, "Open image");
+            // The button and, beside it, the status line (which takes the
+            // rest of the width and wraps a long path).
+            auto openRow = AddControlRow(page, "DecOpenRow", 16);
+
+            auto openBtn = std::make_shared<UltraCanvasButton>("DecOpen", "Open image");
+            SetMinSize(*openBtn, 160, 32);
             openBtn->SetFontSize(12);
             // Use SetColors (not SetBackgroundColor) so the button's normal/
-            // hover/pressed style colors are set \u2014 otherwise it keeps the
+            // hover/pressed style colors are set — otherwise it keeps the
             // default light ButtonFace and white text looks disabled.
             openBtn->SetColors(Color(40, 167, 69), Color(34, 142, 59),
                                Color(28, 117, 49), Color(40, 167, 69));
             openBtn->SetTextColors(Colors::White, Colors::White,
                                    Colors::White, Colors::White);
-            page->AddChild(openBtn);
+            DemoKit::Add(openRow, openBtn);
+
+            auto status = DemoKit::CreateText("DecStatus", "");
+            status->SetFontSize(11);
+            status->SetTextColor(Color(120, 120, 120, 255));
+            status->SetWrap(TextWrap::WrapWordChar);
+            DemoKit::Add(openRow, status, 1);
+            status->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(200));
+            auto* statusPtr = status.get();
+
+            // The preview and the results beside it (under it when narrow).
+            auto columns = DemoKit::CreateRow("DecColumns", 20);
+            columns->layout.SetFlexAlignItems(CSSLayout::AlignItems::Start);
+            DemoKit::Add(page, columns);
 
             auto preview = std::make_shared<UltraCanvasImageElement>(
-                "DecPreview", 20, 116, 480, 444);
+                "DecPreview", 0, 0, 480, 444);
             preview->SetFitMode(ImageFitMode::Contain);
-            page->AddChild(preview);
+            DemoKit::AddFixed(columns, preview);
             auto* previewPtr = preview.get();
 
-            auto resultsTitle = std::make_shared<UltraCanvasLabel>(
-                "DecResultsTitle", 520, 100, 560, 22);
-            resultsTitle->SetText("Scan result");
-            resultsTitle->SetFontSize(13);
-            resultsTitle->SetFontWeight(FontWeight::Bold);
-            page->AddChild(resultsTitle);
+            auto results = DemoKit::CreateColumn("DecResults", 8);
+            DemoKit::Add(columns, results, 1);
+            results->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(300));
 
-            auto resultsBody = std::make_shared<UltraCanvasLabel>(
-                "DecResultsBody", 520, 130, 560, 450);
-            resultsBody->SetText("(no image scanned yet)");
+            DemoKit::AddHeading(results, "DecResultsTitle", "Scan result");
+
+            auto resultsBody = DemoKit::CreateText("DecResultsBody", "(no image scanned yet)");
             resultsBody->SetFontSize(11);
             resultsBody->SetTextColor(Color(70, 70, 70, 255));
             resultsBody->SetWrap(TextWrap::WrapWordChar);
-            page->AddChild(resultsBody);
+            DemoKit::Add(results, resultsBody);
             auto* resultsPtr = resultsBody.get();
-
-            auto status = std::make_shared<UltraCanvasLabel>(
-                "DecStatus", 196, 77, 884, 22);
-            status->SetText("");
-            status->SetFontSize(11);
-            status->SetTextColor(Color(120, 120, 120, 255));
-            page->AddChild(status);
-            auto* statusPtr = status.get();
 
             openBtn->SetOnClick([previewPtr, resultsPtr, statusPtr]() {
                 UltraCanvasFileLoader::OpenFileDialog(ImageOpenFilters("Open image to scan"),
@@ -656,12 +707,24 @@ namespace UltraCanvas {
     }
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateQRCodeExamples() {
+        auto page = DemoKit::CreatePage("QRCodeExamples", "QR Code",
+                "Encode a QR code with custom style, logo and colours, and save it as an image; "
+                "decode the QR codes in a photo or screenshot.");
+        // The tabs take the area's height; a tab taller than that scrolls.
+        page->SetFillsArea(true);
+
+        auto card = DemoKit::CreateCard("QRCodeCard");
+        card->SetPadding(4);
+        DemoKit::Add(page, card, 1);
+
         auto tabs = std::make_shared<UltraCanvasTabbedContainer>(
-            "QRCodeTabs", 0, 0, 1100, 760);
+            "QRCodeTabs", 0, 0, 0, 0);
         tabs->AddTab("Encode", BuildEncodePage());
         tabs->AddTab("Decode", BuildDecodePage());
         tabs->SetActiveTab(0);
-        return tabs;
+        DemoKit::Add(card, tabs, 1);
+        tabs->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
+        return page;
     }
 
 } // namespace UltraCanvas

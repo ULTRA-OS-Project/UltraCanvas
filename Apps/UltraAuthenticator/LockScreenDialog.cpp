@@ -72,6 +72,7 @@ void LockScreenDialog::CreateLockScreenDialog(const std::string& message) {
         Attempt();
         return true;
     };
+    Theme::StyleInput(passwordInput_);
     AddChild(passwordInput_);
     y += 38;
 
@@ -85,12 +86,14 @@ void LockScreenDialog::CreateLockScreenDialog(const std::string& message) {
     unlockButton_ = std::make_shared<UltraCanvasButton>(
         "lock-unlock", kDialogWidth - margin - 210, kDialogHeight - 54, 100, 32);
     unlockButton_->SetText("Unlock");
+    Theme::StylePrimary(unlockButton_);
     unlockButton_->onClick = [this]() { Attempt(); };
     AddChild(unlockButton_);
 
     auto quitBtn = std::make_shared<UltraCanvasButton>(
         "lock-quit", kDialogWidth - margin - 100, kDialogHeight - 54, 100, 32);
     quitBtn->SetText("Quit");
+    Theme::StyleSecondary(quitBtn);
     quitBtn->onClick = [this]() {
         quitting_ = true;
         if (passwordInput_) passwordInput_->SetText("");

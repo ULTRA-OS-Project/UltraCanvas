@@ -119,7 +119,7 @@ ScanSource SourceFromSaneName(const std::string& name) {
 
 IODeviceResultCode CodeFromSaneStatus(SANE_Status status) {
     switch (status) {
-        case SANE_STATUS_GOOD:          return IODeviceResultCode::Success;
+        case SANE_STATUS_GOOD:          return IODeviceResultCode::Ok;
         case SANE_STATUS_UNSUPPORTED:   return IODeviceResultCode::NotSupported;
         case SANE_STATUS_CANCELLED:     return IODeviceResultCode::Cancelled;
         case SANE_STATUS_DEVICE_BUSY:   return IODeviceResultCode::DeviceBusy;

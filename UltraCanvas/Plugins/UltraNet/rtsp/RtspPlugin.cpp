@@ -9,12 +9,16 @@
 // Apps can OpenStream to learn what tracks the server offers (the SDP
 // is left in the response body), pick a transport, and hand the actual
 // playback off to a media library.
+// Version: 0.1.2 - every entry point is guarded (UltraNetPluginGuard.h): an
+//                  exception becomes a PluginError result or an invalid
+//                  handle, never ends the process
 // Version: 0.1.1
 // Last Modified: 2026-07-05
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include <UltraNet/UltraNetCore.h>
 #include <UltraNet/UltraNetPlugins.h>
+#include "UltraNetPluginGuard.h"
 #include "UltraNetPluginHostShim.h"
 
 #include <curl/curl.h>
@@ -62,70 +66,78 @@ public:
         return {"rtsp", "rtsps"};
     }
     UltraNetResult Initialize(const UltraNetConfig&) override {
-        return UltraNetResult::Ok();
+        return ultranet_plugin::Guarded("Initialize", [&]() -> UltraNetResult {
+            return UltraNetResult::Ok();
+        });
     }
     void Shutdown() override {
-        std::lock_guard<std::mutex> lk(g_sessionsMutex);
-        g_sessions.clear();
+        ultranet_plugin::GuardedVoid([&]() {
+            std::lock_guard<std::mutex> lk(g_sessionsMutex);
+            g_sessions.clear();
+        });
     }
 
     UltraNetHandle OpenStream(const std::string& url,
                               const UltraNetStreamOptions& options) override {
-        if (url.empty() || (url.rfind("rtsp://",  0) != 0 &&
-                             url.rfind("rtsps://", 0) != 0)) {
-            return UltraNetInvalidHandle;
-        }
-        // Run DESCRIBE to verify the URL is reachable and capture the SDP.
-        std::unique_ptr<CURL, decltype(&curl_easy_cleanup)> h(
-            curl_easy_init(), curl_easy_cleanup);
-        if (!h) return UltraNetInvalidHandle;
+        return ultranet_plugin::GuardedHandle([&]() -> UltraNetHandle {
+            if (url.empty() || (url.rfind("rtsp://",  0) != 0 &&
+                                 url.rfind("rtsps://", 0) != 0)) {
+                return UltraNetInvalidHandle;
+            }
+            // Run DESCRIBE to verify the URL is reachable and capture the SDP.
+            std::unique_ptr<CURL, decltype(&curl_easy_cleanup)> h(
+                curl_easy_init(), curl_easy_cleanup);
+            if (!h) return UltraNetInvalidHandle;
 
-        std::string sdp;
-        curl_easy_setopt(h.get(), CURLOPT_URL, url.c_str());
-        curl_easy_setopt(h.get(), CURLOPT_RTSP_REQUEST, (long)CURL_RTSPREQ_DESCRIBE);
-        curl_easy_setopt(h.get(), CURLOPT_WRITEFUNCTION, &WriteString);
-        curl_easy_setopt(h.get(), CURLOPT_WRITEDATA, &sdp);
-        curl_easy_setopt(h.get(), CURLOPT_NOSIGNAL, 1L);
-        curl_easy_setopt(h.get(), CURLOPT_CONNECTTIMEOUT_MS,
-                         static_cast<long>(options.connectTimeoutMs));
-        if (!options.credentials.username.empty()) {
-            curl_easy_setopt(h.get(), CURLOPT_USERNAME,
-                             options.credentials.username.c_str());
-            curl_easy_setopt(h.get(), CURLOPT_PASSWORD,
-                             options.credentials.password.c_str());
-        }
-        if (curl_easy_perform(h.get()) != CURLE_OK) return UltraNetInvalidHandle;
+            std::string sdp;
+            curl_easy_setopt(h.get(), CURLOPT_URL, url.c_str());
+            curl_easy_setopt(h.get(), CURLOPT_RTSP_REQUEST, (long)CURL_RTSPREQ_DESCRIBE);
+            curl_easy_setopt(h.get(), CURLOPT_WRITEFUNCTION, &WriteString);
+            curl_easy_setopt(h.get(), CURLOPT_WRITEDATA, &sdp);
+            curl_easy_setopt(h.get(), CURLOPT_NOSIGNAL, 1L);
+            curl_easy_setopt(h.get(), CURLOPT_CONNECTTIMEOUT_MS,
+                             static_cast<long>(options.connectTimeoutMs));
+            if (!options.credentials.username.empty()) {
+                curl_easy_setopt(h.get(), CURLOPT_USERNAME,
+                                 options.credentials.username.c_str());
+                curl_easy_setopt(h.get(), CURLOPT_PASSWORD,
+                                 options.credentials.password.c_str());
+            }
+            if (curl_easy_perform(h.get()) != CURLE_OK) return UltraNetInvalidHandle;
 
-        auto s = std::make_shared<Session>();
-        s->url  = url;
-        s->opts = options;
-        s->sdp  = std::move(sdp);
+            auto s = std::make_shared<Session>();
+            s->url  = url;
+            s->opts = options;
+            s->sdp  = std::move(sdp);
 
-        const UltraNetHandle handle =
-            g_nextHandle.fetch_add(1, std::memory_order_relaxed);
-        std::lock_guard<std::mutex> lk(g_sessionsMutex);
-        g_sessions[handle] = std::move(s);
-        return handle;
+            const UltraNetHandle handle =
+                g_nextHandle.fetch_add(1, std::memory_order_relaxed);
+            std::lock_guard<std::mutex> lk(g_sessionsMutex);
+            g_sessions[handle] = std::move(s);
+            return handle;
+        });
     }
 
     UltraNetResult ReadFrame(UltraNetHandle handle,
                              std::vector<uint8_t>& outFrame) override {
-        outFrame.clear();
-        std::lock_guard<std::mutex> lk(g_sessionsMutex);
-        auto it = g_sessions.find(handle);
-        if (it == g_sessions.end()) {
-            return UltraNetResult::Error(UltraNetResultCode::InvalidHandle,
-                                         "no such RTSP session");
-        }
-        // ReadFrame would deliver actual RTP payload bytes — which means
-        // opening a separate UDP socket (or TCP-interleaved channel) and
-        // depacketising H.264 / AAC / etc. That belongs in a media
-        // library, not this plug-in. Return UnsupportedScheme with a clear
-        // pointer so apps don't silently get empty frames.
-        return UltraNetResult::Error(UltraNetResultCode::UnsupportedScheme,
-            "RTSP plug-in provides control-channel only (DESCRIBE/OPTIONS); "
-            "RTP frame demux requires a media library — ffmpeg / live555 / "
-            "GStreamer / VLC are good choices");
+        return ultranet_plugin::Guarded("ReadFrame", [&]() -> UltraNetResult {
+            outFrame.clear();
+            std::lock_guard<std::mutex> lk(g_sessionsMutex);
+            auto it = g_sessions.find(handle);
+            if (it == g_sessions.end()) {
+                return UltraNetResult::Error(UltraNetResultCode::InvalidHandle,
+                                             "no such RTSP session");
+            }
+            // ReadFrame would deliver actual RTP payload bytes — which means
+            // opening a separate UDP socket (or TCP-interleaved channel) and
+            // depacketising H.264 / AAC / etc. That belongs in a media
+            // library, not this plug-in. Return UnsupportedScheme with a clear
+            // pointer so apps don't silently get empty frames.
+            return UltraNetResult::Error(UltraNetResultCode::UnsupportedScheme,
+                "RTSP plug-in provides control-channel only (DESCRIBE/OPTIONS); "
+                "RTP frame demux requires a media library — ffmpeg / live555 / "
+                "GStreamer / VLC are good choices");
+        });
     }
 };
 

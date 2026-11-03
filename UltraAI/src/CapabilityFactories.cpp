@@ -90,7 +90,7 @@ std::unique_ptr<Interface> Create(Registry<Interface, Config>& r,
             return nullptr;
         }
         auto inst = it->second(cfg, err);
-        if (!inst && err->code == ErrorCode::None) {
+        if (!inst && err->code == ErrorCode::Ok) {
             err->code    = ErrorCode::ProviderError;
             err->message = "Provider '" + cfg.providerId +
                            "' factory returned null";
@@ -109,7 +109,7 @@ std::unique_ptr<Interface> Create(Registry<Interface, Config>& r,
         auto inst = r.providers[id](cfg, err);
         if (inst) return inst;
     }
-    if (err->code == ErrorCode::None) {
+    if (err->code == ErrorCode::Ok) {
         err->code    = ErrorCode::ModelNotFound;
         err->message = registered.empty()
             ? "No provider registered"

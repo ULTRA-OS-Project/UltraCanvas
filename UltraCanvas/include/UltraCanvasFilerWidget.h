@@ -36,7 +36,8 @@
 // UltraCanvasSplitPane-style splitters between their columns, and names that
 // do not fit their column show the full name in a tooltip. In the tile-shaped
 // views (thumbnail grids, treemap) a name wider than the tile wraps onto
-// further lines (FilerStyle::captionMaxLines, 2 by default), broken between
+// further lines (FilerStyle::captionMaxLines, 2 by default, 0 = no limit;
+// SetCaptionMaxLines), broken between
 // whole words wherever the width allows one — the words of a PascalCase name
 // included ("UltraCanvas" / "Texter.exe"); what does not fit even then is
 // dropped from the front of the last line, which opens with "…".
@@ -103,6 +104,36 @@
 // thin blue bar sliding along the foot of the file area - its entries, or an
 // empty area, stay as they are - and the words go to the host's status line
 // (GetListingPendingStatus, onListingPendingChanged).
+// Version: 1.46.0 - RenderFileThumbnail: a file's content as a picture, for
+//                  any caller (the thumbnail workers' switch, shared), with
+//                  a page of first lines for text documents
+// Version: 1.45.0 - FilerTarSettings (SetTarSettings): how Compress packs a
+//                  TAR - each compressor's level, threads, zstd long mode, the
+//                  header format, what of a file is kept, links, exclusions;
+//                  every Compress menu entry's tooltip names the parameters it
+//                  packs with (DescribeCompressParameters)
+// Version: 1.44.0 - Details column splitters push the following columns
+//                  (FilerColumnResizeMode::PushFollowing, the new default;
+//                  SetDetailsColumnResizeMode) and the table scrolls sideways
+//                  when it outgrows the view; the last column gets a splitter.
+// Version: 1.43.0 - SetCaptionMaxLines / GetCaptionMaxLines, and
+//                  FilerStyle::captionMaxLines 0 = no limit: a tile caption
+//                  shows the full name over as many lines as it needs.
+// Version: 1.42.0 - FormatSizeText: the display's own size formatting for a
+//                  host's status bar; the hidden-items notice sits on the file
+//                  area's background (no grey strip), its count beside the
+//                  blue "Show hidden files" button, plus a gear for the
+//                  host's settings (onHiddenNoticeSettings).
+//                  GetSelectionInfo / onSelectionInfoChanged /
+//                  SetInfoBarMenuItemVisible: a host can show the info bar's
+//                  line in its own status bar instead.
+// Version: 1.41.1 - the hover icon menu's Copy / Cut buttons flash green with
+//                  a checkmark once done (FilerStyle::iconMenuDoneColor);
+//                  its Cut is greyed out and inert on a
+//                  drive, matching the context menu (IconMenuActionEnabled);
+//                  both menus grey Rename / Delete on a drive whose host did
+//                  not wire remoteRename / remoteDelete (CanRenameHere,
+//                  CanDeleteHere)
 // Version: 1.41.0 - a remote folder being fetched or updated: a thin blue bar
 //                  at the foot of the file area (FilerStyle::loadingBarColor)
 //                  in place of the "Loading folder" notice over it; the status
@@ -113,7 +144,7 @@
 // Version: 1.40.0 - RequestBackgroundStop / BackgroundStopped: a host can let the workers
 //                  end before it destroys the widget
 // Version: 1.39.2
-// Last Modified: 2026-10-19
+// Last Modified: 2026-10-30
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -187,6 +218,51 @@ namespace UltraCanvas {
     // An entry that cannot be copied, moved or deleted: ask Try again / Skip
     // (the default), or skip it and list it in the summary at the end.
     enum class FilerProblemPolicy { Ask, SkipAndReport };
+
+    // ===== HOW COMPRESS PACKS A TAR =====
+    // The host's choices for the TAR formats of the context menu's Compress
+    // (UltraFiler's Settings > Archives > TAR). ZIP and 7-Zip pack at their
+    // library defaults and are not affected.
+    enum class FilerTarHeaderFormat {
+        Pax,    // POSIX.1-2001, pax extensions only where needed (default)
+        Gnu,    // GNU tar's own
+        Ustar   // POSIX.1-1988: names to 255 bytes, files to 8 GB
+    };
+    struct FilerTarSettings {
+        // The level each compressor packs at, in its own range; the defaults
+        // are the compressors' own.
+        static constexpr int kMaxGzipLevel  = 9;    // 1-9
+        static constexpr int kMaxBzip2Level = 9;    // 1-9
+        static constexpr int kMaxXzLevel    = 9;    // 0-9
+        static constexpr int kMaxZstdLevel  = 19;   // 1-19 (20+ needs --ultra memory)
+        static constexpr int kMaxThreads    = 64;
+        int gzipLevel  = 6;
+        int bzip2Level = 9;
+        int xzLevel    = 6;
+        int zstdLevel  = 3;
+        // Worker threads of xz and Zstandard (gzip and bzip2 have none);
+        // 0 = one per core, xz/zstd -T0.
+        int threads = 0;
+        // Zstandard long-distance matching over a 128 MB window
+        // (zstd --long=27): smaller archives of large, repetitive data.
+        bool zstdLongMode = false;
+        FilerTarHeaderFormat headerFormat = FilerTarHeaderFormat::Pax;
+        // What is stored of each file: its own modification time (else the
+        // packing time), its own permission bits (else 0644, folders 0755),
+        // its owner and group (else 0 without names), and a symbolic link
+        // as a link (else the file or folder it points to).
+        bool keepTimestamps  = true;
+        bool keepPermissions = true;
+        bool keepOwner       = false;
+        bool storeSymlinks   = true;
+        // Entries left out of a packed folder: '*' / '?' patterns, ASCII
+        // case-insensitive, matched against the name - or, holding a '/',
+        // against the path below the packed folder. A selected item is
+        // always packed.
+        std::vector<std::string> excludePatterns;
+
+        bool operator==(const FilerTarSettings&) const = default;
+    };
 
     // ===== HOW THE FOLDER CONTENT IS PRESENTED =====
     enum class FilerViewType {
@@ -355,6 +431,21 @@ namespace UltraCanvas {
         NoneBadge,
         Bar,
         Icon
+    };
+
+    // ===== HOW A DETAILS COLUMN SPLITTER RESIZES =====
+    // What dragging the splitter on a Details column's right edge does:
+    //   PushFollowing      — only that column changes width; the columns after
+    //                        it move along, keeping their own widths. A table
+    //                        wider than the view scrolls sideways (the
+    //                        default, as in Explorer and the Finder).
+    //   SplitWithNeighbour — the width the column gains is taken from the
+    //                        column after it, so the table always spans the
+    //                        view exactly (split-pane style, the only
+    //                        behaviour before PushFollowing was added).
+    enum class FilerColumnResizeMode {
+        PushFollowing,
+        SplitWithNeighbour
     };
 
     // ===== WHICH ICONS A FILE DISPLAY DRAWS =====
@@ -576,6 +667,9 @@ namespace UltraCanvas {
         Color loadingBarColor      = Color(37, 99, 235, 255);
         Color iconMenuBackground   = Color(50, 50, 56, 205);
         Color iconMenuGlyphColor   = Color(255, 255, 255, 235);
+        // The hover icon menu's Copy / Cut button flashes this colour, with a
+        // checkmark in place of its glyph, once the files are on the clipboard.
+        Color iconMenuDoneColor    = Color(22, 163, 74, 235);
         Color renameFieldColor     = Color(255, 255, 255, 255);
         Color renameBorderColor    = Color(60, 140, 220, 255);
         // Text (and caret) of the inline rename editor. A dark gray rather
@@ -605,10 +699,11 @@ namespace UltraCanvas {
         // Name wrapping in the caption of a thumbnail tile / treemap cell: a
         // name wider than the tile continues on the next line, up to
         // captionMaxLines lines (1 = the old single-line, tail-ellipsized
-        // caption). What still does not fit is dropped from the *front* of the
-        // last line, which then opens with "…" so the end of the name — its
-        // extension — stays readable. Every line past the first adds
-        // captionLineHeight to the tile.
+        // caption; 0 = no limit, the full name is always shown). What still
+        // does not fit is dropped from the *front* of the last line, which
+        // then opens with "…" so the end of the name — its extension — stays
+        // readable. Every line past the first adds captionLineHeight to the
+        // tile. SetCaptionMaxLines() changes it without a whole SetStyle().
         int captionMaxLines   = 2;
         int captionLineHeight = 0;       // 0 = derived from smallFontSize
 
@@ -659,6 +754,19 @@ namespace UltraCanvas {
             columnSplitter.splitterColor = Color(226, 226, 230, 255);
         }
     };
+
+    // ===== A FILE'S PICTURE =====
+    // A file's content as a small picture, made the way the Filer's tiles
+    // make theirs: a photo or drawing itself, a PDF's first page, a book's
+    // cover, a 3D model, a font specimen, a video's poster frame, the preview
+    // a layered image carries - and for a text document (Word, LibreOffice,
+    // Markdown, a spreadsheet, plain text) a page with its first lines.
+    // `width` x `height` are logical pixels, drawn at `scale` device pixels
+    // each. Blocking - it decodes and renders - so call it from a worker
+    // thread. nullptr when this build can make no picture of the format (a
+    // program, an archive, audio): the caller shows the type's icon.
+    std::shared_ptr<UCPixmap> RenderFileThumbnail(const std::string& path, int width, int height,
+                                                  float scale = 1.0f);
 
     // ===== THE FILER ELEMENT =====
     // Self-rendered (Album pattern): rows, tiles, treemap cells, the hover icon
@@ -817,11 +925,12 @@ namespace UltraCanvas {
         void SetShowHiddenFiles(bool show);
         bool GetShowHiddenFiles() const { return showHiddenFiles; }
 
-        // Hidden-items notice: a strip along the foot of the display naming
-        // how many entries the listing leaves out - the hidden ones, plus
-        // what a curated home folder (SetCuratedHomeFolder) keeps back - with
-        // a "Show hidden files" button that switches this display to showing
-        // everything. It only appears while something IS left out, and takes
+        // Hidden-items notice: a line at the foot of the file area, on its own
+        // background, naming how many entries the listing leaves out - the
+        // hidden ones, plus what a curated home folder (SetCuratedHomeFolder)
+        // keeps back - with a "Show hidden files" button that switches this
+        // display to showing everything, and a gear right of it when the host
+        // sets onHiddenNoticeSettings. It only appears while something IS left out, and takes
         // its height out of the file area, so no entry is drawn under it.
         // NoNotice by default: hosts choose the folders where the display holds
         // something back the user never asked to hide (UltraFiler: WhenAnyHidden
@@ -1161,6 +1270,16 @@ namespace UltraCanvas {
         void SetProgressWindowDelay(unsigned milliseconds) { progressWindowDelayMs = milliseconds; }
         unsigned GetProgressWindowDelay() const { return progressWindowDelayMs; }
 
+        // How Compress packs the TAR formats (FilerTarSettings above).
+        void SetTarSettings(const FilerTarSettings& settings) { tarSettings = settings; }
+        const FilerTarSettings& GetTarSettings() const { return tarSettings; }
+        // What Compress packs an archive of `extension` ("zip", "7z", "tar",
+        // "tar.gz", "tar.bz2", "tar.xz", "tar.zst") with, as the equivalent
+        // command line and a line on what each file keeps - the tooltip of
+        // the Compress menu's entries. Several lines, '\n'-separated.
+        static std::string DescribeCompressParameters(const std::string& extension,
+                                                      const FilerTarSettings& settings);
+
         // The selection info bar shown under the folder display. One line
         // describing the selection: name, type, size, modified date and
         // attributes for a single file, plus pixel dimensions for bitmaps and
@@ -1177,6 +1296,19 @@ namespace UltraCanvas {
         // the Display > Info-Bar switch, so a host floating something over
         // the display's bottom corner asks this each time it places it.
         int GetBottomStripsHeight() const { return InfoBarHeight(); }
+        // The info bar's line, for a host that shows it in its own status
+        // bar instead (SetSelectionInfoVisible(false)): `primary` is the bold
+        // lead - the selected entry's name, or "3 items selected" - empty when
+        // nothing is selected; `secondary` the details after it ("JPEG Image ·
+        // 103.6 KB · 960 × 1704 px · ..."), or the folder summary. Answers
+        // whether or not the bar is shown. Folder sizes and media details are
+        // worked out in the background, so the line grows after a selection:
+        // onSelectionInfoChanged says when it did.
+        void GetSelectionInfo(std::string& primary, std::string& secondary);
+        // Leave the Display > Info-Bar switch out of the context menu - for a
+        // host that shows the line in its own status bar, where switching
+        // the bar back on would only say it twice.
+        void SetInfoBarMenuItemVisible(bool visible) { showInfoBarMenuItem = visible; }
 
         // ===== THUMBNAIL DATASET =====
         // Which extra facts are drawn under the file name in the thumbnail
@@ -1204,6 +1336,15 @@ namespace UltraCanvas {
         bool AreFileExtensionsInNames() const { return fileExtensionsInNames; }
         void SetExtensionBadge(FilerExtensionBadge badge);
         FilerExtensionBadge GetExtensionBadge() const { return extensionBadge; }
+        // ===== FILE NAMES =====
+        // Display > File names: how many lines a name may take in the caption
+        // of a thumbnail tile / treemap cell (FilerStyle::captionMaxLines) -
+        // 0 for the full name however many lines it needs, otherwise the
+        // limit, past which the head of the last line gives way to "…". Rows
+        // grow and shrink with it, so a change relays the grid out. The
+        // column views (Details / List / Size bars) keep one line per entry.
+        void SetCaptionMaxLines(int lines);
+        int  GetCaptionMaxLines() const { return style.captionMaxLines; }
         // ===== FAVORITE MARK =====
         // A small red heart at the outermost left of an entry, vertically
         // centred - on the row of the Details / List / Size bars views, beside
@@ -1267,6 +1408,10 @@ namespace UltraCanvas {
         // The extension a tile tag would show for `e` (lowercase, no dot),
         // empty for folders and for names whose tail is not a file type.
         static std::string ExtensionTagOf(const FilerEntry& e);
+        // A byte count the way the display writes it ("103.6 KB", "2.41 GB")
+        // in its info bar and tooltips. A host that describes the same
+        // entries elsewhere (a status bar) uses this so both say one number.
+        static std::string FormatSizeText(uint64_t bytes);
 
         // ===== FILE TYPE COLOURS =====
         // The colour the display gives an entry: the band across the foot of
@@ -1387,9 +1532,13 @@ namespace UltraCanvas {
         // The column views carry draggable splitters (UltraCanvasSplitPane
         // dividers, styled through FilerStyle::columnSplitter):
         //   Details — one splitter on the right edge of every column, inside
-        //             the header strip; dragging it moves width between that
-        //             column and the one after it, so the table keeps filling
-        //             the widget exactly like split-pane panes do.
+        //             the header strip. By default (PushFollowing) dragging it
+        //             widens or narrows that column alone and the columns
+        //             after it move along; a table wider than the view gets a
+        //             horizontal scrollbar (Shift+wheel or a sideways wheel
+        //             scrolls it). SplitWithNeighbour moves the width between
+        //             the column and the one after it instead, so the table
+        //             keeps filling the widget like split-pane panes do.
         //   List    — one splitter in every gap between the flowing columns;
         //             dragging any of them re-widths all of them (the list
         //             columns are uniform).
@@ -1399,10 +1548,19 @@ namespace UltraCanvas {
         // code to restore a layout saved by the application.
         void SetColumnResizeEnabled(bool enabled);
         bool IsColumnResizeEnabled() const { return columnResizeEnabled; }
+        void SetDetailsColumnResizeMode(FilerColumnResizeMode mode);
+        FilerColumnResizeMode GetDetailsColumnResizeMode() const {
+            return detailsResizeMode;
+        }
 
-        // Details columns. The Name column is the flexible one: it absorbs
-        // whatever the other columns leave, so setting its width is equivalent
-        // to taking that width from the column next to it.
+        // Details columns. The Name column starts out flexible: it absorbs
+        // whatever the other columns leave, so the table spans the widget.
+        // Under SplitWithNeighbour it stays that way, and setting its width
+        // is equivalent to taking that width from the column next to it.
+        // Under PushFollowing the first splitter drag - or setting the Name
+        // width from code - pins it at its width, after which every column
+        // keeps the width it was given; ResetDetailsColumnWidths makes it
+        // flexible again.
         void SetDetailsColumnWidth(FilerDetailsColumn column, int pixels);
         int  GetDetailsColumnWidth(FilerDetailsColumn column) const;
         void ResetDetailsColumnWidths();          // back to the built-in widths
@@ -1795,6 +1953,16 @@ namespace UltraCanvas {
         std::function<void(const std::vector<FilerEntry>&)> onAttributes;
         std::function<void(const std::vector<FilerEntry>&)> onAccess;
         std::function<void()> onSettings;
+        // The gear right of the hidden-items notice's "Show hidden files"
+        // button: set it and the gear appears there, and a click on it runs
+        // this - a host opens the settings that decide what the display holds
+        // back (UltraFiler: Settings > Display > Home folder). Unset, no gear.
+        std::function<void()> onHiddenNoticeSettings;
+        // The info bar's line (GetSelectionInfo) changed: a new selection, a
+        // new listing, or background details (folder sizes, pixel sizes,
+        // play lengths) arriving. Posted to the UI thread after the paint
+        // that noticed it, so the host may set label text from it.
+        std::function<void()> onSelectionInfoChanged;
         std::function<void(const FilerEntry&)> onOpenPath;  // default: SetPath(parent)
         // Host-provided tail of the context menu's Extras submenu, called
         // every time the menu opens (so item flags can follow the host's
@@ -1866,6 +2034,7 @@ namespace UltraCanvas {
         int  hiddenItemCount = 0;
         int  ignoredItemCount = 0;
         std::shared_ptr<UltraCanvasButton> hiddenNoticeButton;
+        std::shared_ptr<UltraCanvasButton> hiddenNoticeSettingsButton;
         // Ignored names (SetIgnoredNamePatterns): the glob patterns, and the
         // one folder they are confined to (empty = every folder).
         std::vector<std::string> ignoredNamePatterns;
@@ -1886,6 +2055,8 @@ namespace UltraCanvas {
         bool showOpenPathItem = false;
         std::string openPathItemLabel = "Open Path";
         bool showSelectionInfo = true;
+        bool showInfoBarMenuItem = true;          // SetInfoBarMenuItemVisible
+        std::string reportedSelectionInfo;        // last line onSelectionInfoChanged saw
         bool shrinkThumbnailRows = true;
         bool flexibleTileWidths = true;
         bool columnResizeEnabled = true;
@@ -2038,9 +2209,11 @@ namespace UltraCanvas {
         // Current width of every Details column, indexed by FilerDetailsColumn
         // — the widths the splitters edit, kept across rescans, sorting and
         // view switches. Index 0 (Name) is derived at layout time from what
-        // the other columns leave, so it always fills the table out to the
-        // widget edge.
+        // the other columns leave, so it fills the table out to the widget
+        // edge - until a PushFollowing drag pins it (detailsNameFlexible off).
         std::vector<int> detailsColumnWidths;
+        FilerColumnResizeMode detailsResizeMode = FilerColumnResizeMode::PushFollowing;
+        bool detailsNameFlexible = true;
         uint32_t hiddenDetailsColumns = 0;   // bit per FilerDetailsColumn
 
         // BarSize columns: the name column on the left, the size label on the
@@ -2080,6 +2253,7 @@ namespace UltraCanvas {
         UltraCanvasSmoothScroll scrollAnimX;
         UltraCanvasSmoothScroll scrollAnimY;
         bool draggingScrollbar = false;
+        bool draggingScrollbarHorizontal = false;   // which bar is held
         int  scrollbarGrabOffset = 0;
 
         // Hover icon-menu hit rects (screen-local), rebuilt each frame.
@@ -2090,6 +2264,21 @@ namespace UltraCanvas {
             IconMenuAction action;
         };
         std::vector<IconMenuHit> iconMenuHits;
+
+        // "Done" feedback on a hover icon-menu button: Copy / Cut flash the
+        // done colour and show a checkmark that pops in, then fade back to the
+        // glyph (kIconMenuFeedbackMs). Keyed by the entry's path, so a rescan
+        // reordering the entries cannot move it onto another file.
+        int iconFeedbackAction = -1;
+        std::string iconFeedbackPath;
+        Rect2Di iconFeedbackRect;
+        std::chrono::steady_clock::time_point iconFeedbackStart{};
+        TimerId iconFeedbackTimer = InvalidTimerId;
+        void StartIconMenuFeedback(IconMenuAction action, size_t entryIndex,
+                                   const Rect2Di& button);
+        void StopIconMenuFeedback();
+        // 0..1 through the running feedback for this button, or -1 when none.
+        double IconMenuFeedbackPhase(IconMenuAction action, size_t entryIndex) const;
 
         // Inline rename editor: a real UltraCanvasTextInput added as a child
         // while a rename runs, overlaid on the item's name, so editing has a
@@ -2213,6 +2402,7 @@ namespace UltraCanvas {
         FilerFolderConflictPolicy folderConflictPolicy = FilerFolderConflictPolicy::Merge;
         FilerProblemPolicy problemPolicy = FilerProblemPolicy::Ask;
         unsigned progressWindowDelayMs = 2000;
+        FilerTarSettings tarSettings;      // how Compress packs a TAR
         bool dragOutArmed = false;         // press may still become a drag
         Point2Di dragOutPressPoint;
         int  dragPressIndex = -1;          // entry the press landed on
@@ -2720,6 +2910,12 @@ namespace UltraCanvas {
 
         // True while the listing on screen is a remote drive's.
         bool ShowingRemoteFolder() const;
+        // Whether a rename / delete can be carried out here: always on this
+        // computer, and on a drive only when the host wired remoteRename /
+        // remoteDelete. The context menu and the hover icon menu grey the
+        // item out when not, rather than offering it and then refusing.
+        bool CanRenameHere() const;
+        bool CanDeleteHere() const;
         // True for a path on a remote drive (the isRemotePath hook). The
         // background readers - thumbnails, text and folder previews, media
         // probes, folder stats - skip such a path: it is not on this disk.
@@ -2854,8 +3050,13 @@ namespace UltraCanvas {
             int travel = 0;
             int maxScroll = 0;
         };
-        ScrollbarGeom ScrollbarGeometry() const;
-        void ScrollThumbTo(int thumbLeadPx);
+        // The bar of one axis; inactive when the view does not scroll that
+        // way. List scrolls sideways only, Details both ways (sideways once
+        // its columns are pushed past the view), the other views vertically.
+        ScrollbarGeom ScrollbarGeometry(bool horizontal) const;
+        bool ScrollsHorizontally() const;
+        bool ScrollsVertically() const;
+        void ScrollThumbTo(int thumbLeadPx, bool horizontal);
         void EnsureVisible(size_t entryIndex);
         // The scroll correction of EnsureVisible against the current layout
         // (assumes EnsureLayout already ran). It glides by default, so keyboard
@@ -2994,7 +3195,11 @@ namespace UltraCanvas {
         bool IsCutEntry(const FilerEntry& e) const;
         void DrawHoverIconMenu(IRenderContext* ctx, const ItemLayout& item);
         void DrawIconMenuGlyph(IRenderContext* ctx, IconMenuAction action,
-                               const Rect2Di& button);
+                               const Rect2Di& button, bool enabled = true);
+        // Whether a hover icon-menu button may act here: Cut is greyed out on
+        // a drive, as the context menu's Cut is (see CutSelection), and
+        // Rename / Delete where CanRenameHere / CanDeleteHere say no.
+        bool IconMenuActionEnabled(IconMenuAction action) const;
         // The selection rectangle of a running rubber-band drag.
         void DrawMarquee(IRenderContext* ctx);
         void DrawCompressDialog(IRenderContext* ctx, const Rect2Di& bounds);
@@ -3022,6 +3227,9 @@ namespace UltraCanvas {
         // (name / "N items selected"), `secondary` the detail run after it.
         void BuildSelectionInfoText(std::string& primary,
                                     std::string& secondary);
+        // Runs onSelectionInfoChanged (posted) when the line differs from the
+        // one it last reported; called from every paint.
+        void ReportSelectionInfoChange();
         // Cached per-file extra info: "1920 × 1080 px" for bitmaps,
         // "3:45 · H.264" for audio / video. Empty when nothing was probed.
         std::string EntryExtraInfo(const FilerEntry& e);
@@ -3083,6 +3291,8 @@ namespace UltraCanvas {
         std::vector<std::string> WrapEntryName(IRenderContext* ctx, size_t entryIndex,
                                                const std::string& name,
                                                int maxWidth, int maxLines);
+        // FilerStyle::captionMaxLines, resolved: 0 (no limit) as INT_MAX.
+        int  CaptionLineLimit() const;
         // Lines a caption needs for `name` at `maxWidth` (1..captionMaxLines).
         int  CaptionLinesFor(IRenderContext* ctx, const std::string& name,
                              int maxWidth) const;

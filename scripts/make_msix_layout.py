@@ -60,6 +60,7 @@ class App:
     icon: str                 # path of the PNG the logos are rendered from
     description: str
     file_types: List[FileTypes] = field(default_factory=list)
+    notification_id: str = ""   # its UltraMessage application ID, when it has a toast activator
 
     @property
     def app_id(self) -> str:
@@ -96,6 +97,45 @@ FILE_TYPES = {
     "UltraViewer": [MEDIA_TYPES],
 }
 
+# The applications that take the clicks on their own toasts
+# (UltraCanvas::RegisterNotificationActivator), by program, with the
+# application ID they register under. Outside a package that call writes the
+# activator under HKEY_CURRENT_USER; a packaged application's activator is
+# read from the manifest instead (windows.comServer for the class,
+# windows.toastNotificationActivation for the toasts), and the call only serves
+# it. The CLSID is derived from the ID exactly as the call derives it
+# (notification_activator_class_id). scripts/check_notification_activators.py
+# fails when an application under Apps/ registers an activator without a row
+# here, so a click on its toast cannot be lost in the package.
+NOTIFICATION_ACTIVATORS = {
+    "UltraMail": "org.ultraos.ultramail",
+}
+# The argument Windows starts the program with for a click; the program sees
+# it (UltraCanvas::IsNotificationActivationArgument) and opens no file for it.
+NOTIFICATION_ACTIVATION_ARGUMENT = "-ToastActivated"
+
+
+def notification_activator_class_id(app_id: str) -> str:
+    """UltraCanvas::NotificationActivatorClassId (UltraCanvasNotificationActivation.h),
+    byte for byte, without the braces: the CLSID the application registers and
+    the manifest has to name. Two FNV-1a 64-bit hashes of one text, laid out
+    as a version 5 UUID."""
+    text = ("UltraCanvas notification activator:" + app_id).encode("utf-8")
+
+    def fnv(seed: int) -> int:
+        value = seed
+        for byte in text:
+            value ^= byte
+            value = (value * 1099511628211) & 0xFFFFFFFFFFFFFFFF
+        return value
+
+    high, low = fnv(1469598103934665603), fnv(0x9E3779B97F4A7C15)
+    raw = bytearray(high.to_bytes(8, "big") + low.to_bytes(8, "big"))
+    raw[6] = (raw[6] & 0x0F) | 0x50   # version 5
+    raw[8] = (raw[8] & 0x3F) | 0x80   # RFC 4122 variant
+    h = raw.hex().upper()
+    return f"{h[0:8]}-{h[8:12]}-{h[12:16]}-{h[16:20]}-{h[20:32]}"
+
 # Who gets a Start menu entry. The rule is build-windows-installer.sh's (its
 # "THE START MENU"), so the installer and the package list the same
 # applications:
@@ -111,16 +151,12 @@ FILE_TYPES = {
 # nothing in the Start menu that starts it.
 #
 # Not applications, as for the installer: UltraCanvasShellGuard is what
-# sign-in starts when UltraDesktop runs instead of Explorer.
+# sign-in starts when UltraDesktop runs instead of Explorer. UltraDesktop
+# itself is one, as in the installer: from the package it cannot take the
+# Windows desktop's place (its switches are HKEY_CURRENT_USER values, which a
+# package keeps to itself), and it says so where the switch would be
+# (UltraCanvasDesktopShell::GetSystemDesktopSwitchUnavailableReason).
 NOT_APPLICATIONS = {"UltraCanvasShellGuard"}
-
-# Listed by the installer, but not in a package. UltraDesktop's Windows modes
-# - beside Explorer (the Run key) and instead of it (Winlogon's Shell) - are
-# registry values under HKEY_CURRENT_USER, and a packaged program's writes
-# there land in the package's own registry, which sign-in never reads: the
-# switch would report success and do nothing. Its desktop entry says
-# NoDisplay too; the installer lists it anyway so it can be tried.
-NOT_IN_PACKAGE = {"UltraDesktop"}
 
 
 def pe_subsystem(path: str) -> int:
@@ -193,9 +229,6 @@ def find_apps(dist: str, repo_root: str) -> List[App]:
         entry = entries.get(exe.lower())
         if entry is None and pe_subsystem(exe_path) != 2:
             continue                # a command-line tool
-        if exe in NOT_IN_PACKAGE:
-            print(f"  No Start menu entry in a package: {exe} (see NOT_IN_PACKAGE)")
-            continue
         name = (entry or {}).get("Name") or exe
         description = (entry or {}).get("Comment") or f"{name}, part of UltraCanvas"
         # The entry's icon, else one named after the program, else the one
@@ -206,7 +239,8 @@ def find_apps(dist: str, repo_root: str) -> List[App]:
         candidates += [exe + ".png", cmake_icons.get(exe.lower(), ""), "UltraCanvas.png"]
         icon = next(os.path.join(appicon_dir, c) for c in candidates
                     if c and os.path.isfile(os.path.join(appicon_dir, c)))
-        apps.append(App(exe, name, icon, description, FILE_TYPES.get(exe, [])))
+        apps.append(App(exe, name, icon, description, FILE_TYPES.get(exe, []),
+                        NOTIFICATION_ACTIVATORS.get(exe, "")))
     return apps
 
 
@@ -351,11 +385,14 @@ def copy_dist(dist: str, layout: str) -> None:
 def build_manifest(apps: List[App], identity_name: str, publisher: str,
                    publisher_display_name: str, display_name: str,
                    description: str, version: str, arch: str,
-                   min_version: str, max_version_tested: str) -> ET.ElementTree:
+                   min_version: str, max_version_tested: str,
+                   allow_elevation: bool = False) -> ET.ElementTree:
     ns = {
         "": "http://schemas.microsoft.com/appx/manifest/foundation/windows10",
         "uap": "http://schemas.microsoft.com/appx/manifest/uap/windows10",
         "uap3": "http://schemas.microsoft.com/appx/manifest/uap/windows10/3",
+        "com": "http://schemas.microsoft.com/appx/manifest/com/windows10",
+        "desktop": "http://schemas.microsoft.com/appx/manifest/desktop/windows10",
         "rescap": "http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities",
     }
     for prefix, uri in ns.items():
@@ -365,7 +402,7 @@ def build_manifest(apps: List[App], identity_name: str, publisher: str,
         prefix, _, local = tag.rpartition(":")
         return f"{{{ns[prefix]}}}{local}"
 
-    package = ET.Element(q("Package"), {"IgnorableNamespaces": "uap uap3 rescap"})
+    package = ET.Element(q("Package"), {"IgnorableNamespaces": "uap uap3 com desktop rescap"})
     ET.SubElement(package, q("Identity"), {
         "Name": identity_name,
         "Publisher": publisher,
@@ -401,8 +438,25 @@ def build_manifest(apps: List[App], identity_name: str, publisher: str,
             "Square150x150Logo": f"Assets\\{app.app_id}\\Square150x150Logo.png",
             "Square44x44Logo": f"Assets\\{app.app_id}\\Square44x44Logo.png",
         })
-        if app.file_types:
+        extensions = None
+        if app.file_types or app.notification_id:
             extensions = ET.SubElement(application, q("Extensions"))
+        if app.notification_id:
+            # The toasts' activator: Windows starts this program with the
+            # argument for a click when it is not running, and hands the click
+            # to the class it serves (UltraCanvasWindowsNotificationActivation.cpp).
+            class_id = notification_activator_class_id(app.notification_id)
+            com = ET.SubElement(extensions, q("com:Extension"), {"Category": "windows.comServer"})
+            server = ET.SubElement(ET.SubElement(com, q("com:ComServer")), q("com:ExeServer"), {
+                "Executable": f"{app.exe}.exe",
+                "Arguments": NOTIFICATION_ACTIVATION_ARGUMENT,
+                "DisplayName": f"{app.display_name} notification activator"})
+            ET.SubElement(server, q("com:Class"), {
+                "Id": class_id, "DisplayName": f"{app.display_name} notification activator"})
+            toast = ET.SubElement(extensions, q("desktop:Extension"), {
+                "Category": "windows.toastNotificationActivation"})
+            ET.SubElement(toast, q("desktop:ToastNotificationActivation"), {"ToastActivatorCLSID": class_id})
+        if app.file_types:
             for types in app.file_types:
                 extension = ET.SubElement(extensions, q("uap:Extension"), {
                     "Category": "windows.fileTypeAssociation"})
@@ -421,6 +475,14 @@ def build_manifest(apps: List[App], identity_name: str, publisher: str,
     # one. runFullTrust is a restricted capability: a Store submission says
     # why it needs it (it is a desktop application).
     ET.SubElement(capabilities, q("rescap:Capability"), {"Name": "runFullTrust"})
+    if allow_elevation:
+        # UltraFiler's "Delete as administrator" restarts the program elevated,
+        # which Windows allows a packaged program only with this capability.
+        # Without it UltraCanvasElevatedFileOperations::IsAvailable() is false
+        # in the package and the command is not offered. The Store grants it
+        # only on request, so it is off unless asked for (sideloaded and
+        # enterprise packages).
+        ET.SubElement(capabilities, q("rescap:Capability"), {"Name": "allowElevation"})
 
     ET.indent(package, space="  ")
     return ET.ElementTree(package)
@@ -461,10 +523,17 @@ def main() -> None:
     parser.add_argument("--description",
                         default="UltraCanvas applications: editors, viewers, mail, "
                                 "file management and utilities")
+    parser.add_argument("--allow-elevation", action="store_true",
+                        help="declare the restricted capability allowElevation, so UltraFiler's "
+                             "'Delete as administrator' works from the package (the Store grants "
+                             "it only on request)")
     parser.add_argument("--unsigned-test", action="store_true",
                         help=f"add {UNSIGNED_PUBLISHER_OID} to the Publisher, so Windows 11 "
                              "installs the unsigned package with Add-AppxPackage -AllowUnsigned")
-    parser.add_argument("--min-version", default="10.0.17763.0")
+    # 1903 (18362): the first Windows that honours the UTF-8 code page the
+    # applications' manifests ask for - before it, a file handed over by the
+    # package's file types arrives in the ANSI code page.
+    parser.add_argument("--min-version", default="10.0.18362.0")
     parser.add_argument("--max-version-tested", default="10.0.26100.0")
     parser.add_argument("--package-icon", default="UltraCanvas.png",
                         help="file in media/appicon/ for the package's StoreLogo")
@@ -505,7 +574,7 @@ def main() -> None:
     manifest = build_manifest(
         apps, args.identity_name, publisher, args.publisher_display_name,
         args.display_name, args.description, version, args.arch,
-        args.min_version, args.max_version_tested)
+        args.min_version, args.max_version_tested, args.allow_elevation)
     manifest_path = os.path.join(args.layout, "AppxManifest.xml")
     manifest.write(manifest_path, encoding="utf-8", xml_declaration=True)
 

@@ -20,12 +20,14 @@
 //
 // Which one applies to a given file — and whether this build can rasterize it
 // at all — is what InspectVectorFile() reports; nothing here throws.
+// Version: 1.3.1 - RasterizeVectorElements keeps every line and effect: the area is
+//                  measured from PaintBounds plus the effects' reach
 // Version: 1.3.0 - password-protected PDFs: VectorRasterOptions::password,
 //                  InspectVectorFile(path, password), VectorSourceInfo::passwordRequired /
 //                  passwordWrong
 // Version: 1.2.0 - RasterizeVectorDocument: a whole page at any size
 // Version: 1.1.0 - RasterizeVectorElements
-// Last Modified: 2026-10-19
+// Last Modified: 2026-10-28
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -122,8 +124,10 @@ std::shared_ptr<UCRasterLayer> RasterizeVectorFile(const std::string& path,
 // element is drawn where it sits in the document, its ancestors' transforms
 // applied, in the order given, over a transparent background; definitions
 // (gradients, clip paths, symbols) resolve against `document`. The layer is
-// cropped to the pixels the elements paint, so a stroke, a shadow or a glow
-// reaching past their bounds is kept and empty margin is not.
+// cropped to the pixels the elements paint: the area drawn holds every line
+// (its width, caps, joins and arrowheads - VectorEdit::PaintBounds) and
+// reaches as far as the shadows, glows, feathers, contours and outer bevels
+// spread, so none of them is cut off, and empty margin is not kept.
 // `documentArea`, when given, receives the document rectangle the layer
 // covers. Null with `error` set when there is nothing visible to draw or the
 // result would be larger than `maxPixels`.

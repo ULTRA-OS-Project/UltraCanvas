@@ -1,7 +1,9 @@
 // SpellCheckerTest.cpp
 // Test suite for the UltraCanvasSpellChecker service, tokenizer and backends
+// Version: 1.2.0 - error rebasing across edits, language detection; the newest-job
+//                  check runs against a gated backend, so it no longer depends on timing
 // Version: 1.1.0
-// Last Modified: 2026-09-15
+// Last Modified: 2026-10-24
 // Author: UltraCanvas Framework
 //
 // Framework-independent: builds straight from the spell sources, with the WASM
@@ -15,6 +17,10 @@
 
 #include <algorithm>
 #include <chrono>
+#include <condition_variable>
+#include <map>
+#include <mutex>
+#include <set>
 #include <cstdlib>
 #include <memory>
 #include <iostream>
@@ -115,6 +121,130 @@ private:
     std::string localeHint;
     std::string current;
 };
+
+
+// Holds the worker inside a check until the test lets it go, so "a newer job
+// was queued while this one ran" happens every time instead of only when the
+// scheduler happens to interleave the threads that way.
+class GatedSpellBackend : public ISpellCheckBackend {
+public:
+    std::string GetBackendName() const override { return "gated"; }
+    bool Initialize() override { return true; }
+    void Shutdown() override {}
+    std::vector<SpellLanguageInfo> EnumerateLanguages() override {
+        SpellLanguageInfo info = ResolveSpellLanguageNames("en-US");
+        info.code = "en-US";
+        info.isAvailable = true;
+        return { info };
+    }
+    bool SetLanguage(const std::string& languageCode) override { return languageCode == "en-US"; }
+    std::string GetLanguage() const override { return "en-US"; }
+    std::vector<std::string> GetSuggestions(const std::string&, int) override { return {}; }
+
+    bool IsWordCorrect(const std::string& word) override {
+        std::unique_lock<std::mutex> lock(mutex);
+        entered = true;
+        changed.notify_all();
+        changed.wait(lock, [this] { return open; });
+        return word != "sentance";
+    }
+
+    // True once the worker is inside a check, within the timeout.
+    bool WaitUntilEntered() {
+        std::unique_lock<std::mutex> lock(mutex);
+        return changed.wait_for(lock, std::chrono::seconds(5), [this] { return entered; });
+    }
+    void Open() {
+        std::lock_guard<std::mutex> lock(mutex);
+        open = true;
+        changed.notify_all();
+    }
+
+private:
+    std::mutex mutex;
+    std::condition_variable changed;
+    bool entered = false;
+    bool open = false;
+};
+
+// A backend with a small word list per language, so language detection can be
+// tested without any dictionary installed. It records every language it was
+// switched to, which is how the tests see which candidates were tried.
+class LexiconSpellBackend : public ISpellCheckBackend {
+public:
+    explicit LexiconSpellBackend(std::map<std::string, std::set<std::string>> lexicons)
+        : words(std::move(lexicons)) {}
+
+    std::string GetBackendName() const override { return "lexicon"; }
+    bool Initialize() override { return true; }
+    void Shutdown() override {}
+
+    std::vector<SpellLanguageInfo> EnumerateLanguages() override {
+        std::vector<SpellLanguageInfo> languages;
+        for (const auto& entry : words) {
+            SpellLanguageInfo info = ResolveSpellLanguageNames(entry.first);
+            info.code = entry.first;
+            info.isAvailable = true;
+            languages.push_back(std::move(info));
+        }
+        return languages;
+    }
+
+    bool SetLanguage(const std::string& languageCode) override {
+        if (words.count(languageCode) == 0) return false;
+        current = languageCode;
+        loaded.push_back(languageCode);
+        return true;
+    }
+
+    std::string GetLanguage() const override { return current; }
+
+    bool IsWordCorrect(const std::string& word) override {
+        auto it = words.find(current);
+        return it != words.end() && it->second.count(SpellCheckText::ToLowerAscii(word)) != 0;
+    }
+    std::vector<std::string> GetSuggestions(const std::string&, int) override { return {}; }
+
+    std::vector<std::string> loaded;
+
+private:
+    std::map<std::string, std::set<std::string>> words;
+    std::string current;
+};
+
+// A SpellError for the `occurrence`-th appearance of `word` in `text`, with
+// every position field filled the way CheckText fills it.
+SpellError MakeError(const std::string& text, const std::string& word, int occurrence = 0) {
+    size_t at = text.find(word);
+    for (int i = 0; i < occurrence && at != std::string::npos; ++i) {
+        at = text.find(word, at + 1);
+    }
+    SpellError error;
+    error.startByte = at;
+    error.byteLength = word.size();
+    error.startChar = SpellCheckText::ByteOffsetToCharIndex(text, at);
+    error.charLength = SpellCheckText::CountCodepoints(word);
+    error.lineIndex = static_cast<int>(std::count(text.begin(), text.begin() + at, '\n'));
+    const size_t lineStart = text.rfind('\n', at == 0 ? 0 : at - 1);
+    const size_t from = (at == 0 || lineStart == std::string::npos) ? 0 : lineStart + 1;
+    error.columnIndex = static_cast<int>(
+        SpellCheckText::CountCodepoints(text.substr(from, at - from)));
+    error.word = word;
+    return error;
+}
+
+bool ErrorsIndex(const std::vector<SpellError>& errors, const std::string& text) {
+    for (const SpellError& error : errors) {
+        if (error.startByte + error.byteLength > text.size()) return false;
+        if (text.compare(error.startByte, error.byteLength, error.word) != 0) return false;
+        const SpellError expected = MakeError(text, error.word);
+        if (error.startChar != expected.startChar || error.lineIndex != expected.lineIndex ||
+            error.columnIndex != expected.columnIndex) {
+            return false;
+        }
+    }
+    return true;
+}
 
 void SetEnvironmentVariable(const char* name, const char* value) {
 #ifdef _WIN32
@@ -433,19 +563,30 @@ int main() {
         TEST("Each queued job gets a distinct id", secondJob != firstJob);
         TEST("Job ids increase monotonically", secondJob > firstJob);
 
-        // Drain: the worker publishes at most one result per context, and it is
-        // the newest job's - a superseded job must never overwrite it.
+        // Drain until the newest job's result arrives. The first job's may be
+        // taken before it, and rightly: when the worker finished it before the
+        // second was queued, it was the newest job at the time. Insisting the
+        // first result taken is the second job's made this fail now and then
+        // on a loaded machine. That a superseded job is never published once a
+        // newer one is queued is tested deterministically with the gated
+        // backend below.
         SpellCheckResult result;
         bool drained = false;
-        for (int attempt = 0; attempt < 200 && !drained; ++attempt) {
-            drained = service.TryTakeResult(contextId, result);
-            if (!drained) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        bool sawOnlyKnownJobs = true;
+        for (int attempt = 0; attempt < 300; ++attempt) {
+            SpellCheckResult taken;
+            if (service.TryTakeResult(contextId, taken)) {
+                drained = true;
+                if (taken.jobId != firstJob && taken.jobId != secondJob) sawOnlyKnownJobs = false;
+                result = std::move(taken);
+                if (result.jobId == secondJob) break;
             }
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
         TEST("A queued check produces a result", drained);
         TEST("Result carries the context id", !drained || result.contextId == contextId);
-        TEST("Only the newest job is published",
+        TEST("Results come only from the jobs queued", sawOnlyKnownJobs);
+        TEST("The newest job's result arrives",
              !drained || result.jobId == secondJob);
         TEST("Result reports the language it ran with",
              !drained || !result.languageCode.empty());
@@ -565,6 +706,228 @@ int main() {
              drained && !HasErrorForWord(result.errors, "checking"));
 
         service.CancelContext(contextId);
+    }
+
+    // ===== A SUPERSEDED JOB IS NEVER PUBLISHED =====
+    // The worker is held inside the first job while the second is queued, so
+    // the first finishes after it was superseded - every run, not only when
+    // the threads happen to interleave that way.
+    std::cerr << "\n--- Superseded jobs (gated backend) ---" << std::endl;
+    {
+        auto gatedBackend = std::make_unique<GatedSpellBackend>();
+        GatedSpellBackend* gate = gatedBackend.get();
+        service.SetBackend(std::move(gatedBackend));
+        service.SetMode(SpellCheckMode::AsYouType);
+
+        const uint64_t contextId = 7878;
+        const uint64_t firstJob = service.QueueCheckText(contextId, "first sentance", SpellCheckOptions());
+        TEST("The worker starts on the first job", gate->WaitUntilEntered());
+        const uint64_t secondJob = service.QueueCheckText(contextId, "second sentance", SpellCheckOptions());
+        gate->Open();
+
+        SpellCheckResult result;
+        bool drained = false;
+        for (int attempt = 0; attempt < 300 && !drained; ++attempt) {
+            drained = service.TryTakeResult(contextId, result);
+            if (!drained) std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+        TEST("Only the newest job is published",
+             drained && result.jobId == secondJob && result.jobId != firstJob);
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        SpellCheckResult late;
+        TEST("The superseded job never turns up afterwards",
+             !service.TryTakeResult(contextId, late));
+        service.CancelContext(contextId);
+    }
+
+    // ===== REBASING ERRORS ACROSS AN EDIT =====
+    // Regression: an element dropped every error whose bytes no longer matched
+    // after an edit, which is all of them below the caret - typing in line 39
+    // made every squiggle further down blink off and back on at each letter.
+    std::cerr << "\n--- Rebasing errors across an edit ---" << std::endl;
+    {
+        const std::string before = "Erste Zeile mit Fehlr\nzweite Zeile hbe ich\ndritte Zeiel \xC3\xBC" "brig";
+        auto errorsFor = [&before]() {
+            return std::vector<SpellError>{ MakeError(before, "Fehlr"), MakeError(before, "hbe"),
+                                            MakeError(before, "Zeiel") };
+        };
+
+        // A letter typed on the first line, ahead of every error.
+        std::string after = before;
+        after.insert(5, "n");
+        std::vector<SpellError> errors = errorsFor();
+        TEST("Typing ahead of the errors removes none",
+             !SpellCheckText::RebaseErrors(errors, before, after) && errors.size() == 3);
+        TEST("The errors after the edit index the edited text", ErrorsIndex(errors, after));
+
+        // A line break inserted above two of them.
+        after = before;
+        after.insert(after.find("zweite"), "neu\n");
+        errors = errorsFor();
+        SpellCheckText::RebaseErrors(errors, before, after);
+        TEST("A new line moves the later errors down a line",
+             errors.size() == 3 && errors[1].lineIndex == 2 && ErrorsIndex(errors, after));
+
+        // A line break splitting the line in front of an error.
+        after = before;
+        after.insert(before.find("Zeile hbe"), "\n");
+        errors = errorsFor();
+        SpellCheckText::RebaseErrors(errors, before, after);
+        TEST("Splitting the line in front of an error gives it a new line and column",
+             errors.size() == 3 && errors[1].columnIndex == 6 && ErrorsIndex(errors, after));
+
+        // An error that does not even fit the old text is dropped, not read past.
+        errors = errorsFor();
+        SpellError bogus = errors[2];
+        bogus.startByte = before.size() + 4;
+        errors.push_back(bogus);
+        TEST("An error outside the old text is dropped",
+             SpellCheckText::RebaseErrors(errors, before, before + "!") && errors.size() == 3);
+
+        // A letter typed onto a misspelled word: its mark goes, the rest stay.
+        after = before;
+        after.insert(before.find("hbe") + 3, "n");
+        errors = errorsFor();
+        TEST("Extending a flagged word drops its error",
+             SpellCheckText::RebaseErrors(errors, before, after) && errors.size() == 2 &&
+             !HasErrorForWord(errors, "hbe") && ErrorsIndex(errors, after));
+
+        // A space typed right after it leaves it alone.
+        after = before;
+        after.insert(before.find("hbe") + 3, " ");
+        errors = errorsFor();
+        TEST("A space after a flagged word keeps its error",
+             !SpellCheckText::RebaseErrors(errors, before, after) && errors.size() == 3 &&
+             ErrorsIndex(errors, after));
+
+        // A letter typed earlier on the same line shifts its column.
+        after = before;
+        after.insert(before.find("Zeile hbe"), "ganz ");
+        errors = errorsFor();
+        SpellCheckText::RebaseErrors(errors, before, after);
+        TEST("An error on the edited line gets its new column",
+             errors.size() == 3 && ErrorsIndex(errors, after));
+
+        // A deletion that joins a flagged word to the next one drops it.
+        after = before;
+        after.erase(before.find("hbe") + 3, 1);
+        errors = errorsFor();
+        TEST("Joining a flagged word to the next drops its error",
+             SpellCheckText::RebaseErrors(errors, before, after) && !HasErrorForWord(errors, "hbe") &&
+             ErrorsIndex(errors, after));
+
+        // A selection replaced across two errors removes both.
+        after = before;
+        const size_t from = before.find("Fehlr");
+        after.replace(from, before.find("ich") - from, "Text");
+        errors = errorsFor();
+        SpellCheckText::RebaseErrors(errors, before, after);
+        TEST("A replaced selection drops the errors inside it",
+             errors.size() == 1 && errors[0].word == "Zeiel" && ErrorsIndex(errors, after));
+
+        // Multi-byte text in the edit keeps codepoint offsets right.
+        after = before;
+        after.insert(0, "\xC3\x84");
+        errors = errorsFor();
+        SpellCheckText::RebaseErrors(errors, before, after);
+        TEST("Codepoint offsets follow a multi-byte insertion",
+             errors.size() == 3 && ErrorsIndex(errors, after));
+    }
+
+    // ===== LANGUAGE DETECTION =====
+    // Text that is mostly flagged is most likely in another language than the
+    // dictionary in use. Detection tries the other installed languages and
+    // names the one that fits.
+    std::cerr << "\n--- Language detection ---" << std::endl;
+    {
+        auto lexicons = std::map<std::string, std::set<std::string>>{
+            { "en-US", { "we", "cannot", "watch", "how", "this", "country", "is", "being",
+                         "ruined", "the", "consequences", "will", "harm", "for", "decades" } },
+            { "en-GB", { "we", "cannot", "watch", "how", "this", "country", "is", "being",
+                         "ruined", "the", "consequences", "will", "harm", "for", "decades" } },
+            { "de-DE", { "wir", "können", "dabei", "nicht", "zusehen", "wie", "deutschland",
+                         "zugrunde", "gerichtet", "wird", "die", "folgen", "werden",
+                         "für", "jahrzehnte", "schaden" } },
+            { "fr-FR", { "nous", "ne", "pouvons", "pas", "regarder", "comment", "le", "pays" } },
+        };
+        auto backend = std::make_unique<LexiconSpellBackend>(lexicons);
+        LexiconSpellBackend* lexicon = backend.get();
+        service.SetBackend(std::move(backend));
+        TEST("The lexicon backend loads English", service.SetLanguage("en-US"));
+        service.SetMode(SpellCheckMode::AsYouType);
+
+        const std::string german =
+            "Wir k\xC3\xB6nnen dabei nicht zusehen, wie Deutschland zugrunde gerichtet wird! "
+            "Die Folgen werden Deutschland f\xC3\xBCr Jahrzehnte schaden!";
+
+        lexicon->loaded.clear();
+        const SpellLanguageGuess guess = service.DetectLanguage(german);
+        TEST("German text is detected as German", guess.languageCode == "de-DE");
+        TEST("The detected dictionary flags nothing", guess.errorRate < 0.01);
+        TEST("Every checkable word was sampled", guess.sampledWords == 17);
+        TEST("The active language is restored afterwards", service.GetLanguage() == "en-US");
+        TEST("Only one dictionary per base language is tried",
+             std::count(lexicon->loaded.begin(), lexicon->loaded.end(), "en-GB") == 0);
+
+        const SpellLanguageGuess english = service.DetectLanguage(
+            "We cannot watch how this country is being ruined");
+        TEST("English text keeps English", english.languageCode == "en-US");
+
+        // The worker: a check that flags most words carries a suggestion.
+        SpellLanguageDetectionOptions detection;
+        detection.enabled = true;
+        detection.minimumWords = 5;
+        service.SetLanguageDetectionOptions(detection);
+
+        auto checkOnWorker = [&service](uint64_t contextId, const std::string& text,
+                                        SpellCheckResult& result) {
+            service.QueueCheckText(contextId, text, SpellCheckOptions());
+            bool drained = false;
+            for (int attempt = 0; attempt < 300 && !drained; ++attempt) {
+                drained = service.TryTakeResult(contextId, result);
+                if (!drained) std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            }
+            return drained;
+        };
+
+        SpellCheckResult result;
+        TEST("A German check against English completes", checkOnWorker(8801, german, result));
+        TEST("The result counts the checked words",
+             result.checkedWordCount == 17 && result.misspelledCount == 17);
+        TEST("The result suggests German", result.suggestedLanguage == "de-DE");
+        TEST("The service does not switch by itself", service.GetLanguage() == "en-US");
+
+        // Asked again for the same text, the remembered finding is repeated
+        // rather than every dictionary being loaded once more.
+        lexicon->loaded.clear();
+        TEST("A repeated check completes", checkOnWorker(8801, german + " Die", result));
+        TEST("The suggestion is repeated", result.suggestedLanguage == "de-DE");
+        TEST("Without trying the dictionaries again", lexicon->loaded.empty());
+        service.CancelContext(8801);
+
+        TEST("A mostly correct text completes",
+             checkOnWorker(8802, "We cannot watch how this country is being ruined, Zeitgeist", result));
+        TEST("A mostly correct text suggests nothing", result.suggestedLanguage.empty());
+        service.CancelContext(8802);
+
+        TEST("Text no dictionary knows completes",
+             checkOnWorker(8803, "Blorf quazzle mimbo trellak voozy sprindle", result));
+        TEST("No dictionary fits, so nothing is suggested", result.suggestedLanguage.empty());
+        service.CancelContext(8803);
+
+        // Real text is never all dictionary words: names and technical terms
+        // are flagged in the right language too. Two of nineteen (10.5%) must
+        // not stop the switch.
+        TEST("German text with names in it completes",
+             checkOnWorker(8805, german + " Merz Habeck", result));
+        TEST("A few names do not stop the suggestion", result.suggestedLanguage == "de-DE");
+        service.CancelContext(8805);
+
+        detection.enabled = false;
+        service.SetLanguageDetectionOptions(detection);
+        TEST("With detection off a German check completes", checkOnWorker(8804, german, result));
+        TEST("With detection off nothing is suggested", result.suggestedLanguage.empty());
+        service.CancelContext(8804);
     }
 
     // ===== SHUTDOWN =====

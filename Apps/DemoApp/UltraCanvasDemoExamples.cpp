@@ -1,10 +1,14 @@
 // Apps/DemoApp/UltraCanvasDemoExamples.cpp
 // Implementation of all component example creators
+// Version: 1.1.0 - the shared page look (UltraCanvasDemoPageKit): the placeholder
+//                  pages as cards of bullets, the document screens (module docs,
+//                  ULTRA OS, Markdown) in a card filling the page area
 // Version: 1.0.1
-// Last Modified: 2026-05-01
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 #include "Plugins/Text/UltraCanvasMarkdown.h"
 //#include "UltraCanvasButton3Sections.h"
@@ -51,89 +55,72 @@ namespace UltraCanvas {
 //    }
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateTableViewExamples() {
-        auto container = std::make_shared<UltraCanvasContainer>("TableViewExamples", 0, 0, 1000, 600);
-
-        auto title = std::make_shared<UltraCanvasLabel>("TableViewTitle", 10, 10, 300, 30);
-        title->SetText("Spreadsheet View Examples");
-        title->SetFontSize(16);
-        title->SetFontWeight(FontWeight::Bold);
-        container->AddChild(title);
-
-        auto placeholder = std::make_shared<UltraCanvasLabel>("TableViewPlaceholder", 20, 50, 800, 400);
-        placeholder->SetText("Table View Component - Not Implemented\n\nPlanned Features:\n• Data grid with rows and columns\n• Sortable column headers\n• Cell editing capabilities\n• Row selection (single/multiple)\n• Virtual scrolling for large datasets\n• Custom cell renderers\n• Column resizing and reordering\n• Filtering and search\n• Export to CSV/Excel");
-        placeholder->SetAlignment(TextAlignment::Left);
-        placeholder->SetBackgroundColor(Color(255, 200, 200, 100));
-//        placeholder->SetBorderStyle(BorderStyle::Dashed);
-        placeholder->SetBorders(2.0f);
-        placeholder->SetPadding(20.0f);
-        container->AddChild(placeholder);
-
-        return container;
+        auto page = DemoKit::CreatePage("TableViewExamples", "Spreadsheet View Examples",
+                "Table View Component - Not Implemented");
+        DemoKit::AddNotes(page, "TableViewPlaceholder", "Planned Features", {
+                "Data grid with rows and columns",
+                "Sortable column headers",
+                "Cell editing capabilities",
+                "Row selection (single/multiple)",
+                "Virtual scrolling for large datasets",
+                "Custom cell renderers",
+                "Column resizing and reordering",
+                "Filtering and search",
+                "Export to CSV/Excel"});
+        return page;
     }
 
     // CreateListViewExamples() moved to UltraCanvasListViewExamples.cpp
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateDialogExamples() {
-        auto container = std::make_shared<UltraCanvasContainer>("DialogExamples", 0, 0, 1000, 600);
-
-        auto title = std::make_shared<UltraCanvasLabel>("DialogTitle", 10, 10, 300, 30);
-        title->SetText("Dialog Examples");
-        title->SetFontSize(16);
-        title->SetFontWeight(FontWeight::Bold);
-        container->AddChild(title);
-
-        auto placeholder = std::make_shared<UltraCanvasLabel>("DialogPlaceholder", 20, 50, 800, 400);
-        placeholder->SetText("Dialog Component - Not Implemented\n\nPlanned Features:\n• Modal and modeless dialogs\n• Message boxes (Info, Warning, Error)\n• File open/save dialogs\n• Color picker dialogs\n• Font selection dialogs\n• Custom dialog layouts\n• Dialog result handling\n• Animation effects\n• Keyboard shortcuts (ESC, Enter)");
-        placeholder->SetAlignment(TextAlignment::Left);
-        placeholder->SetBackgroundColor(Color(255, 200, 200, 100));
-//        placeholder->SetBorderStyle(BorderStyle::Dashed);
-        placeholder->SetBorders(2.0f);
-        placeholder->SetPadding(20.0f);
-        container->AddChild(placeholder);
-
-        return container;
+        auto page = DemoKit::CreatePage("DialogExamples", "Dialog Examples",
+                "Dialog Component - Not Implemented");
+        DemoKit::AddNotes(page, "DialogPlaceholder", "Planned Features", {
+                "Modal and modeless dialogs",
+                "Message boxes (Info, Warning, Error)",
+                "File open/save dialogs",
+                "Color picker dialogs",
+                "Font selection dialogs",
+                "Custom dialog layouts",
+                "Dialog result handling",
+                "Animation effects",
+                "Keyboard shortcuts (ESC, Enter)"});
+        return page;
     }
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateBitmapNotImplementedExamples(const std::string& format) {
-        auto container = std::make_shared<UltraCanvasContainer>("BitmapExamples", 0, 0, 1000, 600);
-
-        auto title = std::make_shared<UltraCanvasLabel>("BitmapTitle", 10, 10, 300, 30);
-        title->SetText("Bitmap Graphics Examples");
-        title->SetFontSize(16);
-        title->SetFontWeight(FontWeight::Bold);
-        container->AddChild(title);
-
-        auto placeholder = std::make_shared<UltraCanvasLabel>("BitmapPlaceholder", 20, 50, 800, 400);
-        placeholder->SetText(format + " Graphics - Partially Implemented yet\n\nSupported Formats:\n• PNG - Full support with transparency\n• JPEG - Standard image display\n\nFeatures:\n• Image scaling and cropping\n• Rotation and transformation\n• Filter effects\n• Multi-frame animation\n• Memory-efficient loading");
-        placeholder->SetAlignment(TextAlignment::Left);
-        placeholder->SetBackgroundColor(Color(255, 255, 200, 100));
-//        placeholder->SetBorderStyle(BorderStyle::Dashed);
-        placeholder->SetBorders(2.0f);
-        placeholder->SetPadding(20.0f);
-        container->AddChild(placeholder);
-
-        return container;
+        auto page = DemoKit::CreatePage("BitmapExamples", "Bitmap Graphics Examples",
+                format + " Graphics - Partially Implemented yet");
+        auto row = DemoKit::AddRow(page, "BitmapPlaceholder");
+        DemoKit::AddNotes(row, "BitmapFormats", "Supported Formats", {
+                "PNG - Full support with transparency",
+                "JPEG - Standard image display"});
+        DemoKit::AddNotes(row, "BitmapFeatures", "Features", {
+                "Image scaling and cropping",
+                "Rotation and transformation",
+                "Filter effects",
+                "Multi-frame animation",
+                "Memory-efficient loading"});
+        return page;
     }
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::Create3DExamples() {
-        auto container = std::make_shared<UltraCanvasContainer>("Graphics3DExamples", 0, 0, 1000, 600);
-
-        auto title = std::make_shared<UltraCanvasLabel>("Graphics3DTitle", 10, 10, 300, 30);
-        title->SetText("3D Graphics Examples");
-        title->SetFontSize(16);
-        title->SetFontWeight(FontWeight::Bold);
-        container->AddChild(title);
-
-        auto placeholder = std::make_shared<UltraCanvasLabel>("Graphics3DPlaceholder", 20, 50, 800, 400);
-        placeholder->SetText("3D Graphics - Partially Implemented\n\nSupported Features:\n• 3DS model loading and display\n• 3DM model support\n• Basic scene graph\n• Camera controls (orbit, pan, zoom)\n• Basic lighting and shading\n• Texture mapping\n\nOpenGL/Vulkan Backend:\n• Hardware accelerated rendering\n• Vertex and fragment shaders\n• Multiple render targets\n• Anti-aliasing support");
-        placeholder->SetAlignment(TextAlignment::Left);
-        placeholder->SetBackgroundColor(Color(255, 255, 200, 100));
-//        placeholder->SetBorderStyle(BorderStyle::Dashed);
-        placeholder->SetBorders(2.0f);
-        placeholder->SetPadding(20.0f);
-        container->AddChild(placeholder);
-
-        return container;
+        auto page = DemoKit::CreatePage("Graphics3DExamples", "3D Graphics Examples",
+                "3D Graphics - Partially Implemented");
+        auto row = DemoKit::AddRow(page, "Graphics3DPlaceholder");
+        DemoKit::AddNotes(row, "Graphics3DFeatures", "Supported Features", {
+                "3DS model loading and display",
+                "3DM model support",
+                "Basic scene graph",
+                "Camera controls (orbit, pan, zoom)",
+                "Basic lighting and shading",
+                "Texture mapping"});
+        DemoKit::AddNotes(row, "Graphics3DBackend", "OpenGL/Vulkan Backend", {
+                "Hardware accelerated rendering",
+                "Vertex and fragment shaders",
+                "Multiple render targets",
+                "Anti-aliasing support"});
+        return page;
     }
 
     // CreateVideoExamples() now lives in UltraCanvasVideoExamples.cpp — a real
@@ -200,14 +187,13 @@ namespace UltraCanvas {
         page->SetPadding(8, 10, 8, 10);
         page->SetBackgroundColor(Colors::White);
 
-        auto header = std::make_shared<UltraCanvasLabel>("TextSampleHeader_" + language, 0, 0, 0, 20);
-        header->SetText(language + " — " + fileName +
-                        " (highlighted live by UltraCanvasTextArea's syntax renderer)");
+        // As tall as its wrapped lines: a long file name or translation wraps.
+        auto header = DemoKit::CreateHeading("TextSampleHeader_" + language,
+                language + " — " + fileName +
+                " (highlighted live by UltraCanvasTextArea's syntax renderer)");
         header->SetFontSize(12);
-        header->SetFontWeight(FontWeight::Bold);
         header->SetTextColor(Color(40, 110, 40, 255));
-        header->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        page->AddChild(header);
+        DemoKit::Add(page, header);
 
         auto codeView = std::make_shared<UltraCanvasTextArea>("TextSampleArea_" + language);
         codeView->ApplyCodeStyle(language);
@@ -226,20 +212,6 @@ namespace UltraCanvas {
     }
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateTextDocumentExamples() {
-        // Root: flex column filling the display area.
-        auto root = std::make_shared<UltraCanvasContainer>("TextDocumentExamples", 0, 0, 1000, 700);
-        root->layout.SetFlexColumn().SetFlexGap(8)
-                    .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-        root->SetPadding(10, 12, 10, 12);
-
-        auto title = std::make_shared<UltraCanvasLabel>("TextDocumentTitle", 0, 0, 0, 28);
-        title->SetText("Text Documents");
-        title->SetFontSize(16);
-        title->SetFontWeight(FontWeight::Bold);
-        title->SetTextColor(Color(50, 50, 150, 255));
-        title->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        root->AddChild(title);
-
         // Query the renderer for every file type it can highlight.
         auto probe = std::make_shared<UltraCanvasTextArea>("TextDocumentProbe", 0, 0, 10, 10);
         std::vector<std::string> languages = probe->GetSupportedLanguages();
@@ -257,16 +229,20 @@ namespace UltraCanvas {
             }
         }
 
-        auto info = std::make_shared<UltraCanvasLabel>("TextDocumentInfo", 0, 0, 0, 34);
-        info->SetText("UltraCanvasTextArea's built-in syntax renderer highlights " +
-                      std::to_string(languages.size()) +
-                      " plain-text and source-code file types. The tabs below open live "
-                      "sample files from " + samplesDir + " — file types with a bundled "
-                      "sample are listed first, the remaining supported types follow.");
-        info->SetFontSize(11);
-        info->SetTextColor(Color(110, 110, 110, 255));
-        info->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        root->AddChild(info);
+        auto root = DemoKit::CreatePage("TextDocumentExamples", "Text Documents",
+                "UltraCanvasTextArea's built-in syntax renderer highlights " +
+                std::to_string(languages.size()) +
+                " plain-text and source-code file types. The tabs below open live "
+                "sample files from " + samplesDir + " — file types with a bundled "
+                "sample are listed first, the remaining supported types follow.");
+        // The tab column and the documents scroll themselves: the page is the
+        // area's height.
+        root->SetFillsArea(true);
+
+        auto card = DemoKit::CreateCard("TextDocumentCard");
+        DemoKit::Add(root, card, 1);
+        // The tab pages are built 800x600; the card may still be shorter.
+        card->layoutItem.SetFlexShrink(1);
 
         // Vertical tab bar on the left: one tab per supported file type.
         auto tabs = std::make_shared<UltraCanvasTabbedContainer>("TextDocumentTabs", 0, 0, 0, 0);
@@ -277,8 +253,6 @@ namespace UltraCanvas {
         // Many file types — the tab column scrolls when it does not fit the
         // window height. The overflow dropdown is intentionally not enabled: it
         // is not supported for vertical (Left/Right) tab layouts.
-        tabs->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
-                        .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
         // 1) File types we can actually show — a live TextArea per sample file.
         std::set<std::string> withSample;
@@ -298,9 +272,9 @@ namespace UltraCanvas {
                         .SetFlexAlignItems(CSSLayout::AlignItems::Center);
             page->SetBackgroundColor(Colors::White);
 
-            auto note = std::make_shared<UltraCanvasLabel>("TextTypeNote_" + lang, 0, 0, 0, 0);
-            note->SetText(lang + "\n\nUltraCanvasTextArea highlights this file type — no bundled\n"
-                                 "sample ships for it yet. Open any matching file to see it rendered.");
+            auto note = DemoKit::CreateText("TextTypeNote_" + lang,
+                    lang + "\n\nUltraCanvasTextArea highlights this file type — no bundled\n"
+                           "sample ships for it yet. Open any matching file to see it rendered.");
             note->SetFontSize(13);
             note->SetTextColor(Color(120, 120, 120, 255));
             note->SetAlignment(TextAlignment::Center, VerticalAlignment::Middle);
@@ -312,7 +286,8 @@ namespace UltraCanvas {
 
         // Open on the first sample tab so a live document greets the user.
         tabs->SetActiveTab(0);
-        root->AddChild(tabs);
+        DemoKit::Add(card, tabs, 1);
+        tabs->layoutItem.SetFlexShrink(1);
 
         return root;
     }
@@ -331,51 +306,67 @@ namespace UltraCanvas {
 //    }
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateDiagramExamples() {
-        auto container = std::make_shared<UltraCanvasContainer>("DiagramExamples", 0, 0, 1000, 600);
-
-        auto title = std::make_shared<UltraCanvasLabel>("DiagramTitle", 10, 10, 300, 30);
-        title->SetText("Diagram Examples");
-        title->SetFontSize(16);
-        title->SetFontWeight(FontWeight::Bold);
-        container->AddChild(title);
-
-        auto placeholder = std::make_shared<UltraCanvasLabel>("DiagramPlaceholder", 20, 50, 800, 400);
-        placeholder->SetText("Diagram Support - Partially Implemented\n\nPlantUML Integration:\n• Class diagrams\n• Sequence diagrams\n• Activity diagrams\n• Use case diagrams\n• Component diagrams\n• State diagrams\n\nNative Diagram Engine:\n• Flowcharts\n• Organizational charts\n• Network diagrams\n• Mind maps\n• Interactive diagram editing\n• Export to SVG/PNG\n• Automatic layout algorithms");
-        placeholder->SetAlignment(TextAlignment::Left);
-        placeholder->SetBackgroundColor(Color(255, 255, 200, 100));
-//        placeholder->SetBorderStyle(BorderStyle::Dashed);
-        placeholder->SetBorders(2.0f);
-        placeholder->SetPadding(20.0f);
-        container->AddChild(placeholder);
-
-        return container;
+        auto page = DemoKit::CreatePage("DiagramExamples", "Diagram Examples",
+                "Diagram Support - Partially Implemented");
+        auto row = DemoKit::AddRow(page, "DiagramPlaceholder");
+        DemoKit::AddNotes(row, "DiagramPlantUML", "PlantUML Integration", {
+                "Class diagrams",
+                "Sequence diagrams",
+                "Activity diagrams",
+                "Use case diagrams",
+                "Component diagrams",
+                "State diagrams"});
+        DemoKit::AddNotes(row, "DiagramNative", "Native Diagram Engine", {
+                "Flowcharts",
+                "Organizational charts",
+                "Network diagrams",
+                "Mind maps",
+                "Interactive diagram editing",
+                "Export to SVG/PNG",
+                "Automatic layout algorithms"});
+        return page;
     }
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateInfoGraphicsExamples() {
-        auto container = std::make_shared<UltraCanvasContainer>("InfoGraphicsExamples", 0, 0, 1000, 600);
-
-        auto title = std::make_shared<UltraCanvasLabel>("InfoGraphicsTitle", 10, 10, 300, 30);
-        title->SetText("Info Graphics Examples");
-        title->SetFontSize(16);
-        title->SetFontWeight(FontWeight::Bold);
-        container->AddChild(title);
-
-        auto placeholder = std::make_shared<UltraCanvasLabel>("InfoGraphicsPlaceholder", 20, 50, 800, 400);
-        placeholder->SetText("Info Graphics Component - Not Implemented\n\nPlanned Widget Types:\n• Dashboard tiles and KPI widgets\n• Gauge and meter displays\n• Progress indicators and health meters\n• Statistical summary panels\n• Interactive data cards\n• Geographic data maps\n• Timeline visualizations\n• Comparison matrices\n\nAdvanced Features:\n• Real-time data updates\n• Responsive layout adaptation\n• Custom color schemes and branding\n• Animation and transition effects\n• Touch and gesture support\n• Export and sharing capabilities\n• Template library");
-        placeholder->SetAlignment(TextAlignment::Left);
-        placeholder->SetBackgroundColor(Color(255, 200, 200, 100));
-//        placeholder->SetBorderStyle(BorderStyle::Dashed);
-        placeholder->SetBorders(2.0f);
-        placeholder->SetPadding(20.0f);
-        container->AddChild(placeholder);
-
-        return container;
+        auto page = DemoKit::CreatePage("InfoGraphicsExamples", "Info Graphics Examples",
+                "Info Graphics Component - Not Implemented");
+        auto row = DemoKit::AddRow(page, "InfoGraphicsPlaceholder");
+        DemoKit::AddNotes(row, "InfoGraphicsWidgets", "Planned Widget Types", {
+                "Dashboard tiles and KPI widgets",
+                "Gauge and meter displays",
+                "Progress indicators and health meters",
+                "Statistical summary panels",
+                "Interactive data cards",
+                "Geographic data maps",
+                "Timeline visualizations",
+                "Comparison matrices"});
+        DemoKit::AddNotes(row, "InfoGraphicsAdvanced", "Advanced Features", {
+                "Real-time data updates",
+                "Responsive layout adaptation",
+                "Custom color schemes and branding",
+                "Animation and transition effects",
+                "Touch and gesture support",
+                "Export and sharing capabilities",
+                "Template library"});
+        return page;
     }
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateMarkdownDocScreen(const std::string& filename) {
+        // Titled after the file, or after its folder for a module's README.md
+        // (Docs/Modules/OCR/README.md -> "OCR").
+        const auto filePath = PathFromUtf8(filename);
+        std::string docTitle = PathToUtf8(filePath.stem());
+        if (docTitle == "README" && filePath.has_parent_path()) {
+            docTitle = PathToUtf8(filePath.parent_path().filename());
+        }
+        auto page = DemoKit::CreatePage("MarkdownDocPage", docTitle,
+                PathToUtf8(filePath.filename()) + ", shown by UltraCanvasTextArea in Markdown mode");
+        // The document scrolls itself: the page is the area's height.
+        page->SetFillsArea(true);
+        auto card = DemoKit::CreateCard("MarkdownDocCard");
+        DemoKit::Add(page, card, 1);
+
         auto text = std::make_shared<UltraCanvasTextArea>("ExamplesText");
-        text->size.width = CSSLayout::Dimension::Pct(100);
-        text->size.height = CSSLayout::Dimension::Pct(100);
         text->SetText(LoadFile(filename));
         text->SetEditingMode(TextAreaEditingMode::MarkdownHybrid);
         text->SetReadOnly(true);
@@ -383,7 +374,8 @@ namespace UltraCanvas {
         text->SetCursorPosition(LineColumnIndex::INVALID);
         text->SetPadding(0,5,0,7);
         //text->SetBorders(3, Colors::Yellow);
-        return text;
+        DemoKit::Add(card, text, 1);
+        return page;
     }
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateModuleDocScreen(const std::string& moduleDir) {
@@ -424,9 +416,14 @@ namespace UltraCanvas {
         // 3) Full documentation.
         combined += LoadFile(readmePath);
 
+        auto page = DemoKit::CreatePage("ModuleDocPage", moduleName,
+                "The " + moduleName + " module: overview and documentation");
+        // The document scrolls itself: the page is the area's height.
+        page->SetFillsArea(true);
+        auto card = DemoKit::CreateCard("ModuleDocCard");
+        DemoKit::Add(page, card, 1);
+
         auto text = std::make_shared<UltraCanvasTextArea>("ModuleDocs");
-        text->size.width  = CSSLayout::Dimension::Pct(100);
-        text->size.height = CSSLayout::Dimension::Pct(100);
         // Resolve the relative diagram path (and any other relative image in the docs)
         // against the module folder.
         text->SetMarkdownBaseDirectory(base);
@@ -436,7 +433,8 @@ namespace UltraCanvas {
         text->SetWordWrap(true);
         text->SetCursorPosition(LineColumnIndex::INVALID);
         text->SetPadding(0, 5, 0, 7);
-        return text;
+        DemoKit::Add(card, text, 1);
+        return page;
     }
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateUltraOSInfoScreen() {
@@ -447,14 +445,14 @@ namespace UltraCanvas {
         // markdown base directory set below, so the shared asset is not duplicated.
         const std::string readmePath = NormalizePath(GetResourcesDir() + "Docs/Modules/ULTRA-OS/README.md");
 
-        auto root = std::make_shared<UltraCanvasContainer>("UltraOSInfoScreen");
-        root->size.width  = CSSLayout::Dimension::Pct(100);
-        root->size.height = CSSLayout::Dimension::Pct(100);
-        root->layout.SetFlexColumn();
+        auto root = DemoKit::CreatePage("UltraOSInfoScreen", "ULTRA OS",
+                "The ULTRA OS modules: an overview and how they fit together");
+        // The document scrolls itself: the page is the area's height.
+        root->SetFillsArea(true);
+        auto card = DemoKit::CreateCard("UltraOSDocsCard");
+        DemoKit::Add(root, card, 1);
 
         auto docs = std::make_shared<UltraCanvasTextArea>("UltraOSDocs");
-        docs->size.width  = CSSLayout::Dimension::Pct(100);
-        docs->size.height = CSSLayout::Dimension::Pct(100);
         // Resolve relative markdown image paths against the resources dir (which holds
         // media/), so ![ULTRA OS](media/diagrams/ULTRA-OS.svg) renders the diagram.
         docs->SetMarkdownBaseDirectory(GetResourcesDir());
@@ -464,49 +462,48 @@ namespace UltraCanvas {
         docs->SetWordWrap(true);
         docs->SetCursorPosition(LineColumnIndex::INVALID);
         docs->SetPadding(0, 5, 0, 7);
-        docs->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
-        root->AddChild(docs);
+        DemoKit::Add(card, docs, 1);
 
         return root;
     }
 
+    namespace {
+        // A page holding one Markdown view in a card. The view scrolls itself,
+        // so the page is the area's height.
+        std::shared_ptr<UltraCanvasUIElement> CreateMarkdownPage(const std::string& pageId,
+                                                                 const std::string& title,
+                                                                 const std::string& subtitle,
+                                                                 const std::string& textId,
+                                                                 const std::string& markdown) {
+            auto page = DemoKit::CreatePage(pageId, title, subtitle);
+            page->SetFillsArea(true);
+            auto card = DemoKit::CreateCard(pageId + "Card");
+            DemoKit::Add(page, card, 1);
+
+            auto text = std::make_shared<UltraCanvasMarkdownDisplay>(textId, 0, 0, 0, 0);
+            text->SetMarkdownText(markdown);
+            MarkdownStyle style = MarkdownStyle::Default();
+            style.fontSize = 12;
+            text->SetStyle(style);
+            DemoKit::Add(card, text, 1);
+            return page;
+        }
+    } // anonymous namespace
+
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGPIOExamples() {
-        auto container = std::make_shared<UltraCanvasContainer>("GPIOExamples", 0, 0, 1020, 780);
-
-        auto text = std::make_shared<UltraCanvasMarkdownDisplay>("GPIOExamplesText", 10, 10, 1000, 750);
-        text->SetMarkdownText("**GPIO**");
-        MarkdownStyle style = MarkdownStyle::Default();
-        style.fontSize = 12;
-        text->SetStyle(style);
-        container->AddChild(text);
-
-        return container;
+        return CreateMarkdownPage("GPIOExamples", "GPIO", "General-purpose input/output support",
+                                  "GPIOExamplesText", "**GPIO**");
     }
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreatePartiallyImplementedExamples(const std::string& descr) {
-        auto container = std::make_shared<UltraCanvasContainer>("PartiallyImplementedExamples", 0, 0, 1020, 780);
-
-        auto text = std::make_shared<UltraCanvasMarkdownDisplay>("PartiallyImplementedExamplesText", 10, 10, 1000, 750);
-        text->SetMarkdownText(descr);
-        MarkdownStyle style = MarkdownStyle::Default();
-        style.fontSize = 12;
-        text->SetStyle(style);
-        container->AddChild(text);
-
-        return container;
+        return CreateMarkdownPage("PartiallyImplementedExamples", "Partially Implemented",
+                                  "This example is still being built",
+                                  "PartiallyImplementedExamplesText", descr);
     }
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateScannerSupportExamples() {
-        auto container = std::make_shared<UltraCanvasContainer>("ScannerExamples", 0, 0, 1020, 780);
-
-        auto text = std::make_shared<UltraCanvasMarkdownDisplay>("ScannerExamplesText", 10, 10, 1000, 750);
-        text->SetMarkdownText("**Scanner support**");
-        MarkdownStyle style = MarkdownStyle::Default();
-        style.fontSize = 12;
-        text->SetStyle(style);
-        container->AddChild(text);
-
-        return container;
+        return CreateMarkdownPage("ScannerExamples", "Scanner Support", "Image acquisition from scanners",
+                                  "ScannerExamplesText", "**Scanner support**");
     }
 
 } // namespace UltraCanvas

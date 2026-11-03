@@ -1,0 +1,41 @@
+# ChatCube AppInfo.txt
+# UOS Application Bundle Metadata
+# Format: key = value
+
+AppName         = ChatCube
+AppVersion      = 2.0.0
+AppDescription  = Multi-protocol instant messenger for ULTRA OS
+AppAuthor       = Cloverleaf
+AppWebsite      = www.RISCOSCloverleaf.com
+AppContact      = support@riscoscloverleaf.com
+AppLicense      = GPLv3
+AppCategory     = Communication
+AppKeywords     = messenger, chat, Matrix, Telegram, XMPP, instant messaging, P2P
+
+# Executable
+RunImage        = ChatCube.app
+
+# Minimum UltraCanvas version required
+MinUltraCanvas  = 1.0.16
+
+# Minimum UOS version required
+MinUOS          = 1.0.0
+
+# Supported platforms
+Platforms       = Linux, Windows, MacOS, RISC OS
+
+# Module plugins (loaded at runtime from Resources/Modules/)
+Modules         = MatrixPlugin.module, TelegramPlugin.module, XMPPPlugin.module, ChatCubeDirect.module
+
+# Required UltraCanvas modules
+RequiredModules = FileLoader, Dialogs, IODeviceManager, PixelFX
+
+# Icon
+AppIcon         = Resources/Media/Images/ChatCube_logo.png
+
+# Splash screen shown at startup
+SplashImage     = Resources/Media/Images/ChatCube_splash.png
+
+# Changelog (latest entry)
+# v2.0.0 - 2026-04-13 - Full rebuild on UltraCanvas API with plugin architecture
+# v1.13  - 2024-xx-xx - Final RISC OS native version

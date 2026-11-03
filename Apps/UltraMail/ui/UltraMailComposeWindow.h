@@ -16,6 +16,12 @@
 // held by a shared_ptr: the answers that can come after its window closed -
 // the file and cloud pickers, the plain-text question, a Link… or Picture…
 // dialog - hold it weakly and find nothing to change.
+// Version: 0.11.0 - the Security row: Off | S/MIME | OpenPGP, Sign, Encrypt
+//                  (SetSecureMethods; the draft's secureMethod, sign, encrypt)
+// Version: 0.10.0 - SetAttachmentsRight, kPreferredWidth; the action row on top
+// Version: 0.9.0 - a right click on a recipient suggestion: Edit contact,
+//                  Delete address, Set as SPAM (editRecipientContact,
+//                  deleteRecipientAddress, markRecipientSpam)
 // Version: 0.8.1 - the cloud service is shared, and handed to the cloud link
 //                  picker as it is, so its uploads and sign-ins can hold it
 // Version: 0.8.0 - To / Cc / Bcc complete from the address book (suggestRecipients);
@@ -33,9 +39,11 @@
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasSegmentedControl.h"
+#include "UltraCanvasCheckbox.h"
 #include "UltraCanvasRichTextEdit.h"
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasAutoComplete.h"
+#include "UltraCanvasMenu.h"
 #include "UltraCanvasTextArea.h"
 
 #include "UltraMailAttachmentStrip.h"
@@ -62,8 +70,19 @@ public:
     // Shared: the cloud link picker hands it to its upload and sign-in
     // threads, which can outlast this window.
     void SetCloud(std::shared_ptr<UltraCloud::CloudService> cloud) { cloud_ = std::move(cloud); }
+    // Signing and encrypting (UltraMailSecureMime.h): the methods this build
+    // offers - "S/MIME", "OpenPGP" - set before Build(). Empty: no Security
+    // row. A draft already signed or encrypted with a method not offered
+    // keeps the row, so the choice is seen and can be undone.
+    void SetSecureMethods(std::vector<std::string> methods) { secureMethods_ = std::move(methods); }
 
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> Build();
+    // The window width at which every formatting tool fits in one row.
+    static constexpr int kPreferredWidth = 1140;
+    // The attachments in a column at the right of the body (true) or in a
+    // row under it (false, the default) - Settings > Reading > Attachments.
+    // Before or after Build().
+    void SetAttachmentsRight(bool right);
     // Size the view to the window's client area (call on window resize).
     void Resize(float width, float height);
 
@@ -71,7 +90,7 @@ public:
     bool AttachFile(const std::string& path);
     // Put a share link into the body: "<name>: <url>" on its own line.
     void InsertLink(const std::string& name, const std::string& url);
-    // Open the cloud link picker (what "Attach cloud link…" does).
+    // Open the cloud link picker (what the "Cloud link…" button does).
     void OpenCloudLinkPicker() { ChooseCloudLink(); }
 
     // Raised when Send is clicked, with the edited draft.
@@ -84,6 +103,16 @@ public:
     std::function<std::vector<RecipientSuggestion>(const std::string& query,
                                                    const std::string& fieldText)>
         suggestRecipients;
+    // The right-click menu of a recipient suggestion, each entry shown only
+    // when its callback is set (before Build()). Given the suggestion's bare
+    // address, and `done` to call once the address book or the blocked list
+    // changed (it may be never, when the user cancels): the field then shows
+    // its suggestions again, as they now are.
+    using RecipientAction = std::function<void(const std::string& address,
+                                               std::function<void()> done)>;
+    RecipientAction editRecipientContact;     // "Edit contact…"
+    RecipientAction deleteRecipientAddress;   // "Delete address"
+    RecipientAction markRecipientSpam;        // "Set as SPAM"
 
 private:
     Draft CollectDraft() const;
@@ -91,6 +120,8 @@ private:
     void ChooseCloudLink();
     // Rebuild the chips and show the attachment row only while there are any.
     void RefreshAttachments();
+    // Puts the attachment row under the body, or its column at the right.
+    void PlaceAttachments();
     // Switches the body between the plain-text area and the rich editor,
     // carrying the text across. Formatted -> plain drops the formatting, so it
     // asks first when there is something to lose (unless `ask` is false).
@@ -99,6 +130,9 @@ private:
     void ShowMode();
     // Formatted -> plain text, without asking.
     void SwitchToPlain();
+    // The menu of the suggestion `address` in `field`, at the pointer.
+    void ShowRecipientMenu(const std::shared_ptr<UltraCanvas::UltraCanvasAutoComplete>& field,
+                           const std::string& address, const UltraCanvas::UCEvent& event);
 
     Draft draft_;
     UltraCanvas::UltraCanvasWindowBase* parent_ = nullptr;
@@ -113,11 +147,19 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasTextArea>  body_;       // plain drafts
     std::shared_ptr<UltraCanvas::UltraCanvasRichTextEdit> rich_;    // formatted drafts
     std::shared_ptr<UltraCanvas::UltraCanvasSegmentedControl> mode_;  // Plain text | Formatted
+    // The Security row: Off and the methods offered; Sign, Encrypt.
+    std::vector<std::string>                                  secureMethods_;
+    std::shared_ptr<UltraCanvas::UltraCanvasSegmentedControl> secureMethod_;
+    std::shared_ptr<UltraCanvas::UltraCanvasCheckbox>         signBox_;
+    std::shared_ptr<UltraCanvas::UltraCanvasCheckbox>         encryptBox_;
     FormatBar formatBar_;
     bool formatted_ = false;        // which of body_ / rich_ holds the message
     bool switchingMode_ = false;    // SetSelectedIndex from code, not a click
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> attachWrap_;
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> bodyRow_;    // the editor (and the column)
+    bool attachmentsRight_ = false;
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> root_;
+    std::shared_ptr<UltraCanvas::UltraCanvasMenu> recipientMenu_;   // a suggestion's right-click menu
 };
 
 } // namespace UltraMail

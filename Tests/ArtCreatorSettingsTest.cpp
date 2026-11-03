@@ -8,10 +8,16 @@
 // UltraPaint's settings use too: each of the four goes to its name and back,
 // and a name that is none of them changes nothing.
 //
+// It also keeps the rotation handle's look (handles.rotation) and the
+// transform bar's centre fields (transform.centre), and two windows that
+// change different settings through Update keep each other's changes.
+//
 // The settings folder is pointed at a scratch folder first, so the user's own
 // settings are never read or written. Headless.
+// Version: 1.1.0 - the rotation keys; Update keeps another window's changes; no
+//                  temporary file is left behind
 // Version: 1.0.0
-// Last Modified: 2026-10-17
+// Last Modified: 2026-10-29
 // Author: UltraCanvas Framework
 
 #include "ArtCreatorSettings.h"
@@ -176,6 +182,46 @@ int main() {
         s.Load();
         TEST("spaces, tabs and Windows line ends around a value are read past",
              s.pickerDesign == ColorPickerWheelStyle::HueLightnessField && !s.pickerChannelsOpen);
+    }
+
+    // ===== The rotation keys round trip =====
+    {
+        std::filesystem::remove(path);
+        ArtCreatorSettings s;
+        TEST("the rotation handle starts as a dial", s.rotationHandle == VectorRotationHandleStyle::Dial);
+        TEST("and the centre fields on the page", !s.centreRelative);
+        s.rotationHandle = VectorRotationHandleStyle::Stem;
+        s.centreRelative = true;
+        s.Save();
+        ArtCreatorSettings loaded;
+        loaded.Load();
+        TEST("a stem and relative centre fields come back",
+             loaded.rotationHandle == VectorRotationHandleStyle::Stem && loaded.centreRelative);
+        std::filesystem::path temporary = path;
+        temporary += ".new";
+        TEST("saving leaves no temporary file behind", !std::filesystem::exists(temporary));
+    }
+
+    // ===== Two windows, each changing its own setting =====
+    {
+        std::filesystem::remove(path);
+        ArtCreatorSettings first, second;   // both opened before either changed anything
+        first.Load();
+        second.Load();
+        first.Update([](ArtCreatorSettings& s) { s.rotationHandle = VectorRotationHandleStyle::Stem; });
+        TEST("Update changes the window's own copy too", first.rotationHandle == VectorRotationHandleStyle::Stem);
+        second.Update([](ArtCreatorSettings& s) { s.pickerDesign = ColorPickerWheelStyle::Bar; });
+        ArtCreatorSettings loaded;
+        loaded.Load();
+        TEST("the second window's change is saved", loaded.pickerDesign == ColorPickerWheelStyle::Bar);
+        TEST("and the first window's stays", loaded.rotationHandle == VectorRotationHandleStyle::Stem);
+        TEST("the second window still shows what it opened with for the rest",
+             second.rotationHandle == VectorRotationHandleStyle::Dial);
+        first.Update([](ArtCreatorSettings& s) { s.centreRelative = true; });
+        loaded.Load();
+        TEST("a later change by the first keeps the second's",
+             loaded.pickerDesign == ColorPickerWheelStyle::Bar && loaded.centreRelative &&
+             loaded.rotationHandle == VectorRotationHandleStyle::Stem);
     }
 
     std::filesystem::remove_all(scratch);

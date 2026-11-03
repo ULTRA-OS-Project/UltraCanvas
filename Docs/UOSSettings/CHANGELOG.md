@@ -1,4 +1,4 @@
-#### 2026-11-02 *0.7.0*
+#### 2026-11-02 *0.13.0*
 - **Language: the language every application shows.** A new top-level page
   chooses the language for all UltraCanvas applications - *System*, or any
   language a translation of the standard set ships for, listed by its own
@@ -6,6 +6,44 @@
   which every application reads when it starts (UltraLocalisation,
   `Docs/Modules/UltraLocalisation/README.md`). A *Translator* field keeps
   the name the localisation editor will write into the catalogues it saves.
+
+#### 2026-11-01 *0.12.0*
+- Desktop: the empty Wallpaper field names the default it stands for,
+  "ULTRA OS A (the default picture)".
+
+#### 2026-11-01 *0.11.0*
+- **Desktop: the Apps window's view, sub-categories and Recent count.**
+  Three new choices on the Desktop page: the Apps window's view (tiles, or
+  the categories and a list), above how many applications a category is
+  split into its sub-categories (or never), and how many applications
+  Recent shows.
+
+#### 2026-11-01 *0.10.0*
+- **The ULTRA OS logo over the page tree.** The sidebar starts with the
+  ULTRA OS logo - the version drawn for a light ground
+  (`media/icons/desktop/ultraos-logo-light.png`), as UltraDesktop's dark
+  taskbar shows the one for a dark ground.
+
+#### 2026-11-01 *0.9.0*
+- **Desktop > Start with the desktop**: ChatCube and UltraMail, each a
+  checkbox. A ticked program starts minimized a few seconds after
+  UltraDesktop, unless it runs already.
+
+#### 2026-10-22 *0.8.0*
+- **Desktop: a packaged copy says why *At sign-in* is missing.** Run from the
+  Microsoft Store (MSIX) package, the Desktop page cannot offer UltraDesktop in
+  place of the Windows desktop, because the package's registry changes never
+  reach sign-in. It now says so, and points to the UltraCanvas installer,
+  instead of leaving the choice out without a word.
+
+#### 2026-10-21 *0.7.0*
+- **Notifications → Registrations lists and removes what Windows keeps for
+  the applications' notifications** - each application's name and icon and
+  the program a click on its toast starts. **Remove all** does what the
+  installer's uninstaller does, for a folder unpacked from the ZIP package,
+  which has none. `UOS-Settings --remove-notification-registrations` does it
+  with no window; the ZIP's `uc-remove-registrations.cmd` runs that (framework
+  changelog: `notification-registrations-cleanup`).
 
 #### 2026-10-20 *0.6.0*
 - **Appearance → Emoji: colour, black and white, or the system's.** A new

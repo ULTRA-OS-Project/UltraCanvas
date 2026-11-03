@@ -694,7 +694,7 @@ private:
     bool ReportNetworkUp() {
         auto rsp = SendEzspAndWait(Ezsp::kGetNetworkParams, {});
         auto np = rsp ? Ezsp::DecodeNetworkParametersResponse(*rsp) : std::nullopt;
-        if (!np || np->Status != Ezsp::kEmberSuccess) {
+        if (!np || np->StatusCode != Ezsp::kEmberSuccess) {
             Log(1, "network is up but getNetworkParameters failed");
             return false;
         }
@@ -907,12 +907,12 @@ private:
     // so the request waiting on it is failed now instead of at its timeout.
     void HandleMessageSent(const std::vector<uint8_t>& params) {
         auto sent = Ezsp::DecodeMessageSent(params);
-        if (!sent || sent->Status == Ezsp::kEmberSuccess) return;
+        if (!sent || sent->StatusCode == Ezsp::kEmberSuccess) return;
         if (sent->Type == Ezsp::kOutgoingBroadcast || sent->Type == Ezsp::kOutgoingMulticast) {
             return;   // nothing waits on those
         }
         Log(1, "delivery to 0x" + Hex16(sent->IndexOrDestination) + " failed, status 0x" +
-               Hex8(sent->Status));
+               Hex8(sent->StatusCode));
         if (sent->Contents.empty()) return;   // tag-only policy: nothing to match on
 
         std::function<void(bool, const std::vector<uint8_t>&)> callback;
@@ -939,7 +939,7 @@ private:
     void HandleTrustCenterJoin(const std::vector<uint8_t>& params) {
         auto join = Ezsp::DecodeTrustCenterJoin(params);
         if (!join || !protocol) return;
-        if (join->Status == Ezsp::kDeviceUpdateLeft) {
+        if (join->StatusCode == Ezsp::kDeviceUpdateLeft) {
             // The device is gone; forget it. No leave request goes back out
             // — this runs on the receive thread and could not wait for the
             // answer anyway.
@@ -1045,13 +1045,13 @@ private:
             const bool withStatus = header->CommandId == Ezsp::Zcl::kReadAttributesResponse;
             for (const auto& attr : Ezsp::Zcl::DecodeAttributes(
                      msg.Contents, header->PayloadOffset, withStatus)) {
-                if (withStatus && attr.Status != 0) continue;
+                if (withStatus && attr.StatusCode != 0) continue;
                 ZigbeeAttributeValue value;
                 value.ClusterId = cluster;
                 value.AttributeId = attr.Id;
                 value.DataType = attr.DataType;
                 value.Value = attr.Value;
-                value.Status = attr.Status;
+                value.StatusCode = attr.StatusCode;
                 if (protocol) protocol->OnAttributeReport(ieee, endpoint, cluster, value);
             }
             return;
@@ -1194,7 +1194,7 @@ private:
             std::this_thread::sleep_for(std::chrono::milliseconds(500));
             auto rsp = SendEzspAndWait(Ezsp::kGetNetworkParams, {});
             auto np = rsp ? Ezsp::DecodeNetworkParametersResponse(*rsp) : std::nullopt;
-            if (np && np->Status == Ezsp::kEmberSuccess &&
+            if (np && np->StatusCode == Ezsp::kEmberSuccess &&
                 np->Parameters.RadioChannel == channel) {
                 return true;
             }
@@ -1306,7 +1306,7 @@ private:
                        [cb](bool ok, const std::vector<uint8_t>& frame) {
                            if (!cb) return;
                            auto rsp = ok ? Ezsp::Zdo::DecodeActiveEpRsp(frame) : std::nullopt;
-                           if (!rsp || rsp->Status != Ezsp::Zdo::kStatusSuccess) {
+                           if (!rsp || rsp->StatusCode != Ezsp::Zdo::kStatusSuccess) {
                                cb(false, {});
                                return;
                            }
@@ -1322,7 +1322,7 @@ private:
                        [cb](bool ok, const std::vector<uint8_t>& frame) {
                            if (!cb) return;
                            auto rsp = ok ? Ezsp::Zdo::DecodeSimpleDescRsp(frame) : std::nullopt;
-                           if (!rsp || rsp->Status != Ezsp::Zdo::kStatusSuccess) {
+                           if (!rsp || rsp->StatusCode != Ezsp::Zdo::kStatusSuccess) {
                                cb(false, ZigbeeEndpoint{});
                                return;
                            }
@@ -1355,7 +1355,7 @@ private:
                        [cb](bool ok, const std::vector<uint8_t>& frame) {
                            if (!cb) return;
                            auto rsp = ok ? Ezsp::Zdo::DecodeNodeDescRsp(frame) : std::nullopt;
-                           if (!rsp || rsp->Status != Ezsp::Zdo::kStatusSuccess) {
+                           if (!rsp || rsp->StatusCode != Ezsp::Zdo::kStatusSuccess) {
                                cb(false, ZigbeeDeviceType::Unknown);
                                return;
                            }
@@ -1377,7 +1377,7 @@ private:
                        [cb](bool ok, const std::vector<uint8_t>& frame) {
                            if (!cb) return;
                            auto rsp = ok ? Ezsp::Zdo::DecodeIeeeAddrRsp(frame) : std::nullopt;
-                           if (!rsp || rsp->Status != Ezsp::Zdo::kStatusSuccess) {
+                           if (!rsp || rsp->StatusCode != Ezsp::Zdo::kStatusSuccess) {
                                cb(false, 0);
                                return;
                            }
@@ -1404,7 +1404,7 @@ private:
             [wait](bool ok, const std::vector<uint8_t>& frame) {
                 auto rsp = ok ? Ezsp::Zdo::DecodeStatusRsp(frame) : std::nullopt;
                 std::lock_guard<std::mutex> lock(wait->m);
-                wait->ok = rsp && rsp->Status == Ezsp::Zdo::kStatusSuccess;
+                wait->ok = rsp && rsp->StatusCode == Ezsp::Zdo::kStatusSuccess;
                 wait->done = true;
                 wait->cv.notify_all();
             });
@@ -2602,12 +2602,12 @@ bool ZigbeeProtocol::ReadAttribute(const std::string& deviceId, uint8_t endpoint
                             if (ok && data.size() >= 3) {
                                 reply->value.ClusterId = clusterId;
                                 reply->value.AttributeId = (data[1] << 8) | data[0];
-                                reply->value.Status = data[2];
-                                if (reply->value.Status == 0 && data.size() > 4) {
+                                reply->value.StatusCode = data[2];
+                                if (reply->value.StatusCode == 0 && data.size() > 4) {
                                     reply->value.DataType = data[3];
                                     reply->value.Value.assign(data.begin() + 4, data.end());
                                 }
-                                reply->success = reply->value.Status == 0;
+                                reply->success = reply->value.StatusCode == 0;
                             }
                             reply->done = true;
                             reply->cv.notify_all();

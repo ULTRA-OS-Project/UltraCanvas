@@ -1,5 +1,7 @@
 // Plugins/Vector/CDR/UltraCanvasCDRPlugin.cpp
 // CorelDRAW CDR/CMX file format plugin implementation
+// Version: 1.2.4 - ExportToSVG writes each page staged (WriteFileAtomically),
+//                  so a failed write keeps the file that was there, and says why
 // Version: 1.2.3 - an object's opacity is applied once, by SetAlpha, now that the
 //                  context fades fills and strokes with it: the colours carry only
 //                  their fill / stroke opacity (they carried both and were faded twice)
@@ -16,11 +18,13 @@
 #include "UltraCanvasCDRPlugin.h"
 #include "UltraCanvasCDRPluginImpl.h"
 #include "UltraCanvasUtils.h"
+#include "UltraCanvasApplication.h"   // PostToUIThread: the result of an async load
 #include "UltraCanvasFileError.h"
 #include "UltraCanvasTextUtils.h"   // TryParseFloat - dot-decimal, non-throwing
 #include <atomic>
 #include <iostream>
 #include <fstream>
+#include <cerrno>
 #include <cmath>
 #include <algorithm>
 #include <sstream>
@@ -171,7 +175,15 @@ float CdrFloat(const std::string& text, float fallback = 0.0f) {
 
         // Apply stroke properties
         if (style.hasStroke) {
-            ctx->SetStrokeWidth(style.strokeWidth);
+            // At least one device pixel, as CorelDRAW draws a hairline: its
+            // thinnest outlines are a quarter of a point, a fifth of a pixel
+            // at a page fitted into a window, which antialiasing faded to a
+            // pale grey whatever their colour. A width of 0 is left alone.
+            float strokeWidth = style.strokeWidth;
+            if (strokeWidth > 0.0f) {
+                strokeWidth = std::max(strokeWidth, static_cast<float>(ctx->DeviceToUserDistance(1.0)));
+            }
+            ctx->SetStrokeWidth(strokeWidth);
             ctx->SetLineCap(style.lineCap);
             ctx->SetLineJoin(style.lineJoin);
             ctx->SetMiterLimit(style.miterLimit);
@@ -1783,25 +1795,81 @@ float CdrFloat(const std::string& text, float fallback = 0.0f) {
             : UltraCanvasUIElement(identifier, x, y, width, height) {
     }
 
+    UltraCanvasCDRElement::~UltraCanvasCDRElement() {
+        if (loadThread.joinable()) loadThread.join();
+    }
+
+    void UltraCanvasCDRElement::ReportLoadFailure(const std::string& filePath) {
+        // Distinguish a file-access problem (missing / locked / no permission)
+        // from a valid-but-unparseable CorelDRAW file.
+        std::string access = DescribeFileReadError(filePath);
+        lastError = !access.empty()
+            ? access
+            : ("The file is not a valid CorelDRAW (.cdr) drawing: " + filePath);
+        if (onLoadError) onLoadError(lastError);
+    }
+
     bool UltraCanvasCDRElement::LoadFromFile(const std::string& filePath) {
         lastError.clear();
+        // An async load still running is overtaken: its result is dropped.
+        ++loadGeneration;
+        loading = false;
         bool result = cdrRenderer.LoadFromFile(filePath);
 
         if (result && onLoadComplete) {
             onLoadComplete();
         }
-        if (!result) {
-            // Distinguish a file-access problem (missing / locked / no permission)
-            // from a valid-but-unparseable CorelDRAW file.
-            std::string access = DescribeFileReadError(filePath);
-            lastError = !access.empty()
-                ? access
-                : ("The file is not a valid CorelDRAW (.cdr) drawing: " + filePath);
-            if (onLoadError) onLoadError(lastError);
-        }
+        if (!result) ReportLoadFailure(filePath);
 
         RequestRedraw();
         return result;
+    }
+
+    void UltraCanvasCDRElement::LoadFromFileAsync(const std::string& filePath) {
+        if (!UltraCanvasApplicationBase::GetCurrent()) {
+            LoadFromFile(filePath);
+            return;
+        }
+        // One worker at a time; the one before has to finish its parse.
+        if (loadThread.joinable()) loadThread.join();
+        const unsigned generation = ++loadGeneration;
+        loading = true;
+        lastError.clear();
+        cdrRenderer.SetDocument(nullptr);
+        currentPageIndex = 0;
+        RequestRedraw();
+        // The worker holds no reference to the element: if it is gone by the
+        // time the parse ends, the result is dropped.
+        std::weak_ptr<UltraCanvasUIElement> self = weak_from_this();
+        loadThread = std::thread([self, generation, filePath]() {
+            std::shared_ptr<CDRDocument> doc;
+            try {
+                doc = UltraCanvasCDRPlugin::ParseCDRFile(filePath);
+            } catch (...) {
+                doc = nullptr;
+            }
+            auto* app = UltraCanvasApplicationBase::GetCurrent();
+            if (!app) return;
+            app->PostToUIThread([self, generation, doc, filePath]() {
+                if (auto element = std::static_pointer_cast<UltraCanvasCDRElement>(self.lock()))
+                    element->FinishAsyncLoad(generation, doc, filePath);
+            });
+        });
+    }
+
+    void UltraCanvasCDRElement::FinishAsyncLoad(unsigned generation, std::shared_ptr<CDRDocument> doc,
+                                                const std::string& filePath) {
+        if (generation != loadGeneration) return;   // a later load overtook this one
+        loading = false;
+        // It posted this and is ending.
+        if (loadThread.joinable()) loadThread.join();
+        if (doc && doc->IsValid()) {
+            cdrRenderer.SetDocument(std::move(doc));
+            if (onLoadComplete) onLoadComplete();
+        } else {
+            ReportLoadFailure(filePath);
+        }
+        RequestRedraw();
     }
 
     bool UltraCanvasCDRElement::LoadFromMemory(const std::vector<uint8_t>& data) {
@@ -1845,7 +1913,8 @@ float CdrFloat(const std::string& text, float fallback = 0.0f) {
     }
 
     void UltraCanvasCDRElement::RenderPlaceholder(IRenderContext* ctx, const std::string& message) {
-        Rect2Di bounds = GetBounds();
+        // The context is at the element's own origin.
+        Rect2Di bounds = GetLocalBounds();
 
         // Background
         ctx->SetFillPaint(Color(240, 240, 240, 255));
@@ -1868,12 +1937,14 @@ float CdrFloat(const std::string& text, float fallback = 0.0f) {
 
         ctx->PushState();
 
-        // Clip to element bounds
-        Rect2Di contentRect = GetContentRect();
+        // Clip to element bounds - its own: the context is at its origin, and
+        // the parent-relative content rect clipped away a strip the width of
+        // the element's offset in its parent.
+        Rect2Di contentRect = GetLocalContentRect();
         ctx->ClipRect(contentRect);
 
         if (!cdrRenderer.IsLoaded()) {
-            RenderPlaceholder(ctx, "No CDR document loaded");
+            RenderPlaceholder(ctx, loading ? "Loading\xE2\x80\xA6" : "No CDR document loaded");
             ctx->PopState();
             return;
         }
@@ -2090,17 +2161,24 @@ float CdrFloat(const std::string& text, float fallback = 0.0f) {
                     ? PageOutputPath(svgPath, page + 1)
                     : svgPath;
 
-            std::ofstream out(UltraCanvas::PathFromUtf8(outPath), std::ios::binary | std::ios::trunc);
-            if (!out) {
-                result.error = "Cannot write file: " + outPath;
-                result.writtenFiles.clear();
-                return result;
-            }
-            out << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
-            out << svgPages[static_cast<unsigned>(page)].cstr();
-            out.close();
-            if (!out) {
-                result.error = "Write failed: " + outPath;
+            // Staged: the page goes to a temporary file beside the target and
+            // replaces it only once complete, so a write that fails partway
+            // (a full disk, a dropped network share) leaves the file that was
+            // there. A failure says why.
+            const char* pageSvg = svgPages[static_cast<unsigned>(page)].cstr();
+            const std::string failure = WriteFileAtomically(
+                    outPath, [pageSvg](const std::string& staged) -> std::string {
+                errno = 0;
+                std::ofstream out(UltraCanvas::PathFromUtf8(staged), std::ios::binary | std::ios::trunc);
+                if (!out) return "Cannot write file. " + FileWriteFailureReason(staged, errno);
+                out << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
+                out << pageSvg;
+                out.close();
+                if (!out) return "Write failed. " + FileWriteFailureReason(staged, errno);
+                return std::string();
+            });
+            if (!failure.empty()) {
+                result.error = failure;
                 result.writtenFiles.clear();
                 return result;
             }

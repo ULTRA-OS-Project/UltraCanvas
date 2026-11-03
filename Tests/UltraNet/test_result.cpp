@@ -10,7 +10,7 @@
 TEST(result_ok_is_truthy) {
     auto r = UltraNetResult::Ok();
     CHECK(bool(r));
-    REQUIRE_EQ(r.code, UltraNetResultCode::Success);
+    REQUIRE_EQ(r.code, UltraNetResultCode::Ok);
     CHECK(r.message.empty());
 }
 

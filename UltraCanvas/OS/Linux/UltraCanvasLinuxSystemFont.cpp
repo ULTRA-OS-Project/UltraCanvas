@@ -1,7 +1,8 @@
 // OS/Linux/UltraCanvasLinuxSystemFont.cpp
-// The desktop's interface and monospace fonts on Linux and the BSDs, for
-// UltraCanvasLinuxApplication::DetectSystemFontStyleNative and
-// DetectMonospacedFontStyleNative. Until 0.9.362 both returned the literal
+// The desktop's interface and monospace fonts on Linux and the BSDs:
+// LinuxFonts::DetectSystemFontStyle and DetectMonospacedFontStyle, which the
+// X11 and the Wayland backends answer their DetectSystemFontStyleNative /
+// DetectMonospacedFontStyleNative with. Until 0.9.362 both returned the literal
 // Ubuntu 12, so "the system font" was never the system's. Sources, first
 // answer wins, the parsers in UltraCanvasSystemFont.h:
 //   - a KDE session (XDG_CURRENT_DESKTOP names KDE): ~/.config/kdeglobals
@@ -12,11 +13,11 @@
 //   - ~/.config/gtk-4.0/settings.ini and gtk-3.0/settings.ini gtk-font-name
 //     (no monospace key there)
 //   - the bundled Ubuntu / Ubuntu Mono at 12 pt
+// Version: 1.1.0 - the detectors are LinuxFonts::DetectSystemFontStyle / DetectMonospacedFontStyle, shared with the Wayland backend
 // Version: 1.0.0
 // Last Modified: 2026-11-02
 // Author: UltraCanvas Framework
-#include "UltraCanvasApplication.h"
-#include "UltraCanvasLinuxApplication.h"
+#include "UltraCanvasLinuxFonts.h"
 #include "UltraCanvasSystemFont.h"
 #include "UltraCanvasPathUtf8.h"
 
@@ -118,11 +119,11 @@ FontStyle DetectDesktopFont(bool monospace) {
 
 }  // namespace
 
-FontStyle UltraCanvasLinuxApplication::DetectSystemFontStyleNative() {
+FontStyle LinuxFonts::DetectSystemFontStyle() {
     return DetectDesktopFont(false);
 }
 
-FontStyle UltraCanvasLinuxApplication::DetectMonospacedFontStyleNative() {
+FontStyle LinuxFonts::DetectMonospacedFontStyle() {
     return DetectDesktopFont(true);
 }
 

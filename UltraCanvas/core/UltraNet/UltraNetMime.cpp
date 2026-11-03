@@ -4,6 +4,7 @@
 // building. Pure C++ / STL — no libcurl or platform dependency; other
 // charsets than UTF-8 and Latin-1 go through iconv where the build has it
 // (ULTRANET_HAS_ICONV).
+// Version: 0.5.1 - UltraNet_MimeBuildMailMessage returns a message's rawMessage unchanged
 // Version: 0.5.0 - UltraNet_ConvertToUtf8 (the body charset conversion, public)
 // Version: 0.4.0 - UltraNet_ImapUtf7Encode (a typed mailbox name for the wire)
 // Version: 0.3.1 - MimeBuild takes a Message-ID passed among the extra headers
@@ -13,6 +14,7 @@
 //                  KOI8-R, windows-125x, ...), and raw ISO-2022-JP header text.
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraNet/UltraNetMime.h"
+#include "UltraNet/UltraNetPlugins.h"   // UltraNetMailMessage
 
 #include <algorithm>
 #include <atomic>
@@ -1191,6 +1193,54 @@ std::string BuildRichBody(const UltraNetMimeBuildInput& in, const std::string& b
 }
 
 } // namespace
+
+std::string UltraNet_MimeBuildMailMessage(const UltraNetMailMessage& m) {
+    // A message made elsewhere (signed, encrypted) goes as it is.
+    if (!m.rawMessage.empty()) return m.rawMessage;
+    UltraNetMimeBuildInput in;
+    in.from    = m.from;
+    in.to      = m.to;
+    in.cc      = m.cc;
+    in.bcc     = m.bcc;
+    in.subject = m.subject;
+    in.body    = m.body;
+    in.extraHeaders = m.headers;
+
+    // Split the caller's content type into media type + charset.
+    if (!m.contentType.empty()) {
+        const std::size_t semi = m.contentType.find(';');
+        in.bodyMediaType = m.contentType.substr(0, semi);
+        while (!in.bodyMediaType.empty() && in.bodyMediaType.back() == ' ')
+            in.bodyMediaType.pop_back();
+        const std::size_t cs = m.contentType.find("charset=");
+        if (cs != std::string::npos) {
+            std::string charset = m.contentType.substr(cs + 8);
+            const std::size_t end = charset.find(';');
+            if (end != std::string::npos) charset = charset.substr(0, end);
+            if (!charset.empty() && charset.front() == '"') charset.erase(0, 1);
+            if (!charset.empty() && charset.back() == '"') charset.pop_back();
+            in.bodyCharset = charset;
+        }
+    }
+
+    in.alternativeText = m.alternativeText;
+    for (const auto& part : m.inlineParts) {
+        UltraNetMimeBuildAttachment a;
+        a.filename = part.filename;
+        if (!part.mediaType.empty()) a.mediaType = part.mediaType;
+        a.data      = part.data;
+        a.isInline  = true;
+        a.contentId = part.contentId;
+        in.attachments.push_back(std::move(a));
+    }
+    for (const auto& [name, bytes] : m.attachments) {
+        UltraNetMimeBuildAttachment a;
+        a.filename = name;
+        a.data     = bytes;
+        in.attachments.push_back(std::move(a));
+    }
+    return UltraNet_MimeBuild(in);
+}
 
 std::string UltraNet_MimeBuild(const UltraNetMimeBuildInput& in) {
     std::ostringstream os;

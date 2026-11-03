@@ -1,7 +1,8 @@
 // core/UltraCanvasPasswordStrengthMeter.cpp
 // Visual password strength indicator component
+// Version: 1.1.1 - the circle's percentage is centred on its capitals, not its line box
 // Version: 1.1.0
-// Last Modified: 2026-05-29
+// Last Modified: 2026-10-24
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasPasswordStrengthMeter.h"
@@ -212,7 +213,9 @@ namespace UltraCanvas {
             ctx->SetFontWeight(FontWeight::Bold);
             std::string percentText = std::to_string(static_cast<int>(currentStrength)) + "%";
             Size2Di textSize = ctx->GetTextLineDimensions(percentText);
-            ctx->DrawText(percentText, Point2Dd(centerX - textSize.width / 2, centerY - textSize.height / 2));
+            // Centred on its capitals (digits stand as tall), not its line box.
+            const int textY = ctx->TextTopCentredOnCaps(Rect2Dd(centerX - radius, centerY - radius, 2 * radius, 2 * radius));
+            ctx->DrawText(percentText, Point2Dd(centerX - textSize.width / 2, textY));
         }
 
         // Draw label below

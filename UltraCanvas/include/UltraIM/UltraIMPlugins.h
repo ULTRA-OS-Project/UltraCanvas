@@ -1,0 +1,341 @@
+// include/UltraIM/UltraIMPlugins.h
+// UltraIM - the provider plug-in interface and the module (DSO) host contract
+// Version: 0.1.6 - ABI 2: the version covers the provider interface and its types, a module says
+//                  which it was built for (UltraIM_PluginAbiVersion) and the host loads only an equal one
+// Version: 0.1.5 - the account's profile (name, e-mail, phone) and its sign-in protection
+// Version: 0.1.4 - SendVideo; DownloadAttachment (a video, a file, a voice note fetched when asked for)
+// Version: 0.1.3 - a sign-in by a QR code (credentials.loginType QRCode, UltraIMAuthStep::OtherDevice)
+// Version: 0.1.2 - GetAuthResendHint / ResendAuthCode: a sign-in code sent another way
+// Version: 0.1.1 - FetchSharedCredentials: what a provider's service keeps for another provider
+// Version: 0.1.0
+// Last Modified: 2026-10-29
+// Author: UltraCanvas Framework
+#pragma once
+
+#include "UltraIMTypes.h"
+
+#include <memory>
+#include <string>
+#include <vector>
+
+// The manager hands each provider one sink; the provider calls it from any
+// thread whenever something happens on the network. The manager forwards the
+// event through the application's dispatcher, so the provider never needs to
+// know about the UI thread.
+using UltraIMEventSink = std::function<void(const UltraIMEvent& event)>;
+
+// ============================================================================
+// IUltraIMProviderPlugin
+// One messenger network. Every method returns at once: network work runs on
+// the provider's own (UltraNet / UltraRTC) threads and finishes through the
+// callback or an event. Callbacks may be called from any thread - the
+// manager re-dispatches them. Returned UltraIMResults are synchronous
+// rejections only (not connected, capability missing, bad argument).
+// ============================================================================
+
+class IUltraIMProviderPlugin {
+public:
+    virtual ~IUltraIMProviderPlugin() = default;
+
+    // ---- Identity ------------------------------------------------------------
+    virtual std::string GetProviderId() const = 0;      // stable: "direct", "matrix", ...
+    virtual std::string GetDisplayName() const = 0;
+    virtual std::string GetVersion() const = 0;
+    virtual std::string GetIconPath() const { return std::string(); }
+    virtual UltraIMCapabilityFlags GetCapabilities() const = 0;
+    virtual UltraIMLoginType GetLoginType() const = 0;
+
+    // ---- Lifecycle -----------------------------------------------------------
+    // Called once by the manager when the provider is registered.
+    virtual UltraIMResult Initialize(const UltraIMConfig& config, UltraIMEventSink sink) = 0;
+    // Called once before the provider is released: stop every thread and
+    // cancel every request; no callback or event may follow.
+    virtual void Shutdown() = 0;
+
+    // ---- Session -------------------------------------------------------------
+    virtual void SignIn(const UltraIMCredentials& credentials, UltraIMResultCallback onResult) = 0;
+    virtual void SignOut() = 0;
+    virtual UltraIMConnectionState GetConnectionState() const = 0;
+    virtual std::string GetLocalUserId() const { return std::string(); }
+    // A saved session the provider can resume without asking the user.
+    virtual bool HasStoredSession() const { return false; }
+
+    // ---- Data ----------------------------------------------------------------
+    // A sign-in in steps (UltraIMResultCode::NeedsInput): which one is next,
+    // and how to answer it (at OtherDevice: the link to show as a QR code).
+    virtual UltraIMAuthStep GetAuthStep() const { return UltraIMAuthStep::Idle; }
+    virtual std::string GetAuthHint() const { return std::string(); }
+    // While a code is awaited: the other way the service can send it, as a
+    // button's text ("Send it by SMS instead"), or "" when it offers none
+    // (Telegram: next_type of the code info). ResendAuthCode asks for it;
+    // the new hint arrives as AuthStepChange, the result through the callback.
+    virtual std::string GetAuthResendHint() const { return std::string(); }
+    virtual void ResendAuthCode(UltraIMResultCallback onResult) {
+        if (onResult) onResult(Unsupported("sending the code another way"));
+    }
+
+    virtual void FetchConversations(UltraIMConversationsCallback onResult) = 0;
+    // beforeMessageId "" = the most recent page. Messages come oldest first.
+    virtual void FetchMessages(const std::string& conversationId,
+                               const std::string& beforeMessageId,
+                               int limit,
+                               UltraIMMessagesCallback onResult) = 0;
+    virtual void FetchContacts(UltraIMContactsCallback onResult) {
+        if (onResult) onResult(UltraIMResult::Ok(), {});
+    }
+    // People on the local network who are not contacts yet (a provider that
+    // finds them there; NearbyChange says when the list changed). Each can be
+    // added with AddContact(contactId).
+    virtual void FetchNearbyContacts(UltraIMContactsCallback onResult) {
+        if (onResult) onResult(UltraIMResult::Ok(), {});
+    }
+
+    // ---- Contacts and groups -------------------------------------------------
+    // address: whatever identifies a person on this network (a ChatCube user
+    // id, @user:server, a phone number).
+    virtual void AddContact(const std::string& address, UltraIMConversationCallback onResult) {
+        (void)address;
+        if (onResult) onResult(Unsupported("adding contacts"), {});
+    }
+    virtual void CreateGroup(const std::string& title,
+                             const std::vector<std::string>& memberIds,
+                             UltraIMConversationCallback onResult) {
+        (void)title; (void)memberIds;
+        if (onResult) onResult(Unsupported("groups"), {});
+    }
+
+    // ---- Sending (the outcome arrives as a MessageDelivered event) ----------
+    virtual UltraIMResult SendText(const std::string& conversationId,
+                                   const std::string& text,
+                                   const UltraIMSendOptions& options) = 0;
+    virtual UltraIMResult SendFile(const std::string& conversationId,
+                                   const std::string& localPath,
+                                   const UltraIMSendOptions& options) {
+        (void)conversationId; (void)localPath; (void)options;
+        return Unsupported("file transfer");
+    }
+    virtual UltraIMResult SendImage(const std::string& conversationId,
+                                    const std::string& localPath,
+                                    const std::string& caption,
+                                    const UltraIMSendOptions& options) {
+        (void)conversationId; (void)localPath; (void)caption; (void)options;
+        return Unsupported("images");
+    }
+    virtual UltraIMResult SendVideo(const std::string& conversationId,
+                                    const std::string& localPath,
+                                    const std::string& caption,
+                                    const UltraIMSendOptions& options) {
+        (void)conversationId; (void)localPath; (void)caption; (void)options;
+        return Unsupported("videos");
+    }
+    virtual UltraIMResult SendSticker(const std::string& conversationId,
+                                      const std::string& packId,
+                                      const std::string& stickerId,
+                                      const UltraIMSendOptions& options) {
+        (void)conversationId; (void)packId; (void)stickerId; (void)options;
+        return Unsupported("stickers");
+    }
+    virtual UltraIMResult SendVoiceNote(const std::string& conversationId,
+                                        const std::string& localPath,
+                                        const UltraIMSendOptions& options) {
+        (void)conversationId; (void)localPath; (void)options;
+        return Unsupported("voice notes");
+    }
+
+    // ---- Attachments -----------------------------------------------------------
+    // Fetches a message's attachment (a video, a file, a voice note: what the
+    // provider does not download by itself) to the cache directory. The
+    // callback brings the attachment with localPath set; a MessageUpdate with
+    // the same follows for everyone listening. One already on disk answers at
+    // once. NotFound for a message without an attachment.
+    virtual void DownloadAttachment(const std::string& conversationId,
+                                    const std::string& messageId,
+                                    UltraIMAttachmentCallback onResult) {
+        (void)conversationId; (void)messageId;
+        if (onResult) onResult(Unsupported("downloading attachments"), UltraIMAttachment());
+    }
+
+    // ---- Message actions -----------------------------------------------------
+    virtual UltraIMResult DeleteMessage(const std::string& conversationId,
+                                        const std::string& messageId) {
+        (void)conversationId; (void)messageId;
+        return Unsupported("deleting messages");
+    }
+    virtual UltraIMResult EditMessage(const std::string& conversationId,
+                                      const std::string& messageId,
+                                      const std::string& newText) {
+        (void)conversationId; (void)messageId; (void)newText;
+        return Unsupported("editing messages");
+    }
+    // upToMessageId "" = everything in the conversation.
+    virtual UltraIMResult MarkRead(const std::string& conversationId,
+                                   const std::string& upToMessageId) {
+        (void)conversationId; (void)upToMessageId;
+        return UltraIMResult::Ok();
+    }
+    virtual UltraIMResult SetTyping(const std::string& conversationId, bool isTyping) {
+        (void)conversationId; (void)isTyping;
+        return UltraIMResult::Ok();
+    }
+
+    // ---- Calls ---------------------------------------------------------------
+    // Whether a call can be placed in this conversation now (Direct: never in
+    // a group in v1). A call reports itself with CallReceive (incoming) and
+    // CallStateChange events; Ended and Failed are final, with errorText
+    // saying why ("declined", "busy", "no answer", ...).
+    virtual bool CanCall(const std::string& conversationId, bool video) const {
+        (void)conversationId; (void)video;
+        return false;
+    }
+    virtual UltraIMResult StartCall(const std::string& conversationId, bool video,
+                                    std::string& outCallId) {
+        (void)conversationId; (void)video; (void)outCallId;
+        return Unsupported("calls");
+    }
+    virtual UltraIMResult AcceptCall(const std::string& callId, bool video) {
+        (void)callId; (void)video;
+        return Unsupported("calls");
+    }
+    virtual UltraIMResult EndCall(const std::string& callId) {
+        (void)callId;
+        return Unsupported("calls");
+    }
+    virtual UltraIMResult SetCallMuted(const std::string& callId, bool muted) {
+        (void)callId; (void)muted;
+        return Unsupported("calls");
+    }
+    // A video call's camera, on or off, during the call.
+    virtual UltraIMResult SetCallCamera(const std::string& callId, bool on) {
+        (void)callId; (void)on;
+        return Unsupported("video calls");
+    }
+    // Where a video call's pictures go: the other side's and our own camera
+    // (the self view). nullptr stops them; once this returns, the callbacks
+    // it replaced are not running and are not called again.
+    virtual UltraIMResult SetCallVideoSinks(const std::string& callId, UltraIMVideoFrameCallback remote,
+                                            UltraIMVideoFrameCallback local) {
+        (void)callId; (void)remote; (void)local;
+        return Unsupported("video calls");
+    }
+
+    // ---- Credentials kept for another provider ---------------------------------
+    // A provider with a service of its own (ChatCube Direct: the relay) may
+    // keep what another provider needs to sign in - the application's
+    // Telegram API ID and hash, say - so they are set on the server once and
+    // neither built into the application nor typed by the user. Answers the
+    // credentials for forProviderId ("telegram": apiId and apiHash), NotFound
+    // when the service keeps none, CapabilityMissing when the provider has no
+    // such service. Needs a signed-in session.
+    virtual void FetchSharedCredentials(const std::string& forProviderId, UltraIMSharedCredentialsCallback onResult) {
+        (void)forProviderId;
+        if (onResult) onResult(Unsupported("credentials for other providers"), UltraIMCredentials());
+    }
+
+    // ---- Stickers ------------------------------------------------------------
+    virtual void FetchStickerPacks(UltraIMStickerPacksCallback onResult) {
+        if (onResult) onResult(Unsupported("stickers"), {});
+    }
+
+    // ---- End-to-end encryption keys ---------------------------------------------
+    // The keys to encrypted conversations as one passphrase-protected text
+    // (Matrix: the room-key export file other clients read and write), to keep
+    // or to carry to another device; and back. The passphrase is stretched on
+    // purpose, so this takes a moment: do it off the caller's thread.
+    virtual void ExportEncryptionKeys(const std::string& passphrase, UltraIMKeyExportCallback onResult) {
+        (void)passphrase;
+        if (onResult) onResult(Unsupported("exporting encryption keys"), std::string());
+    }
+    virtual void ImportEncryptionKeys(const std::string& data, const std::string& passphrase,
+                                      UltraIMKeyImportCallback onResult) {
+        (void)data; (void)passphrase;
+        if (onResult) onResult(Unsupported("importing encryption keys"), 0);
+    }
+
+    // ---- The account's own profile -----------------------------------------------
+    // (Last in the class, so the slots before keep their places in the vtable.)
+    // The signed-in account's name, e-mail address and phone number
+    // (UltraIMAccountProfile; AccountProfile capability). Updating sends
+    // the name to the contacts and the e-mail and phone to the provider's
+    // service, for the owner alone.
+    virtual void FetchAccountProfile(UltraIMAccountProfileCallback onResult) {
+        if (onResult) onResult(Unsupported("an account profile"), UltraIMAccountProfile());
+    }
+    virtual void UpdateAccountProfile(const UltraIMAccountProfile& profile, UltraIMResultCallback onResult) {
+        (void)profile;
+        if (onResult) onResult(Unsupported("an account profile"));
+    }
+
+    // ---- How signing in on this device is protected ---------------------------------
+    // (SignInProtection capability.) A protected sign-in goes in steps, as
+    // Telegram's does: SignIn answers NeedsInput with GetAuthStep() Password
+    // (credentials.password) and then Code (credentials.otpCode, the
+    // authenticator's code).
+    virtual UltraIMSignInProtection GetSignInProtection() const { return UltraIMSignInProtection::DeviceKey; }
+    // A new authenticator secret, as the otpauth:// link an authenticator
+    // app (UltraAuthenticator) takes from a QR code or pasted: kept until
+    // SetSignInProtection proves it with a code, or another set-up replaces
+    // it. The link holds the secret: show it, never log it.
+    virtual UltraIMResult StartAuthenticatorSetup(std::string& outOtpAuthUri) {
+        outOtpAuthUri.clear();
+        return Unsupported("an authenticator code");
+    }
+    virtual void SetSignInProtection(const UltraIMProtectionChange& change, UltraIMResultCallback onResult) {
+        (void)change;
+        if (onResult) onResult(Unsupported("sign-in protection"));
+    }
+
+protected:
+    static UltraIMResult Unsupported(const std::string& what) {
+        return UltraIMResult::Error(UltraIMResultCode::CapabilityMissing,
+                                    "This provider does not support " + what);
+    }
+};
+
+// ============================================================================
+// MODULE (DSO) HOST CONTRACT
+// A provider module exports two functions:
+//
+//     ULTRAIM_DEFINE_PLUGIN_ABI_VERSION()     // UltraIM_PluginAbiVersion: the version it was built for
+//     extern "C" ULTRAIM_PLUGIN_EXPORT void UltraIM_PluginInit(const UltraIMPluginHost* host);
+//
+// and, when host->abiVersion is the version it was built for, calls
+// host->RegisterProvider for each provider it carries. Modules link the
+// shared UltraCanvas core like any other library.
+//
+// The version covers the whole binary contract between the host and a
+// module: this table, the IUltraIMProviderPlugin interface above (its
+// virtual functions and their order) and every type that crosses it - all
+// of UltraIMTypes.h. A module built against another version would call
+// past the end of a vtable or read a struct laid out differently, so both
+// sides refuse a mismatch: the host reads UltraIM_PluginAbiVersion before
+// it calls anything and skips a module that answers another version, or
+// has no answer (one built before version 2); the module checks the host's
+// in UltraIM_PluginInit. Bump the version with any change to those - a new
+// virtual, a new member of a struct, a reordered enum.
+// scripts/check_plugin_abi.py fails CI when they change and the version
+// does not (scripts/plugin_abi.txt records the version and a fingerprint).
+//
+// Version 1: the first modules. Version 2 (2026-11): the account profile and
+// sign-in protection, UltraIMCredentials::email - and the version check.
+// ============================================================================
+
+constexpr int ULTRAIM_PLUGIN_HOST_ABI_VERSION = 2;
+
+struct UltraIMPluginHost {
+    int abiVersion;
+    void (*RegisterProvider)(std::shared_ptr<IUltraIMProviderPlugin> provider);
+};
+
+using UltraIM_PluginInitFn = void (*)(const UltraIMPluginHost* host);
+using UltraIM_PluginAbiVersionFn = int (*)();
+
+#if defined(_WIN32)
+#define ULTRAIM_PLUGIN_EXPORT __declspec(dllexport)
+#else
+#define ULTRAIM_PLUGIN_EXPORT __attribute__((visibility("default")))
+#endif
+
+// The version a module was built for, which the host reads before it calls
+// anything else in it. One line in every provider module, at file scope.
+#define ULTRAIM_DEFINE_PLUGIN_ABI_VERSION() \
+    extern "C" ULTRAIM_PLUGIN_EXPORT int UltraIM_PluginAbiVersion() { return ULTRAIM_PLUGIN_HOST_ABI_VERSION; }

@@ -27,6 +27,7 @@ UOS-Settings opens on this page.
 | **RAM disc** | The folder the desktop's drive button opens; empty, no button (the default on Windows). |
 | **File manager** | The program the desktop's folder buttons start. |
 | **Virtual desktops** | How many the organiser offers (1-9); asked of the window manager, which may offer another number. |
+| **Start with the desktop** | ChatCube and UltraMail, each a checkbox: started minimized a few seconds after the desktop, unless running already, so messages and mail arrive in the background (`startWithDesktop` in the file). |
 | **At sign-in** (Windows only) | What this account's sign-in starts. *The Windows desktop*: Explorer, as Windows has it - the way back from either of the others, at once: the taskbar as it was, and a desktop the sign-in started closes (instead of Explorer, Explorer then starts in its place). *UltraDesktop beside Explorer*: UltraDesktop starts at every sign-in - and now, if it is not running - and Explorer's taskbar hides itself. *UltraDesktop instead of Explorer*: from the next sign-in UltraDesktop is the whole desktop, with the programs' tray icons and sign out, restart and shut down; Explorer does not start, unless UltraDesktop fails. Not a setting in the file: it is the account's start at sign-in, through `UltraCanvasDesktopShell::ReplaceSystemDesktop` / `RestoreSystemDesktop`, so the choice always shows what is true. See [UltraDesktop on Windows](../UltraDesktop/README.md#on-windows). |
 
 A dropdown is saved when it changes, a text field when it is left or Return
@@ -88,6 +89,25 @@ The choice is written to `Emoji.conf` (`style=colour`, `style=monochrome` or
 reads it when it starts, so a change shows in the applications started after
 it - UOS-Settings' own sample line included. On macOS the applications draw
 Apple's emoji whatever the setting says.
+
+### Notifications > Registrations
+
+What Windows keeps for each application whose notifications were shown as
+toasts: its name and icon, and the program a click on one of them starts
+(`UltraCanvasNotificationActivation.h`). The table lists each application's
+ID and its click handler; **Remove all** takes them out, as the installer's
+uninstaller does - for a folder unpacked from the ZIP package, which has no
+uninstaller, before it is deleted. An application registers again the next
+time it starts or shows a notification. Elsewhere than Windows the page says
+there is nothing to remove.
+
+The same from a command prompt or a script, with no window:
+
+```
+UOS-Settings --remove-notification-registrations
+```
+
+which the ZIP package's `uc-remove-registrations.cmd` runs.
 
 ### Devices > Trusted certificates
 

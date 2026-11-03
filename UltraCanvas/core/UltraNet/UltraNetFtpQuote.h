@@ -13,15 +13,21 @@
 //     exist, and every name with a space, a bracket, a '+' or a letter
 //     outside ASCII failed to rename or delete with a 550.
 //
-//   - The folder. libcurl sends quote commands straight after the login,
-//     BEFORE it changes into the folder the URL names - so a bare name was
-//     looked up in the login folder, whatever folder the entry was in. A
-//     rename in a subfolder failed with a 550, a new folder appeared at the
-//     top of the server instead of where it was made, and a delete in a
-//     subfolder took a same-named file at the top instead. The commands now
-//     carry the entry's path from the login folder, which is how libcurl
-//     itself reads the path of an ftp:// URL (RFC 1738: relative to where the
-//     login lands, "%2F" first for an absolute one).
+//   - The folder. libcurl sends quote commands (CURLOPT_QUOTE) straight
+//     after the login, BEFORE it changes into the folder the URL names - so
+//     a bare name was looked up in the login folder, whatever folder the
+//     entry was in: a rename in a subfolder failed with a 550, a new folder
+//     appeared at the top of the server, a delete in a subfolder took a
+//     same-named file at the top instead. On a connection kept open from an
+//     earlier call it is worse: the "login folder" is wherever the last
+//     listing left it. So on FTP the commands go as post-quote commands
+//     (CURLOPT_POSTQUOTE, Plan::afterFolderChange), which libcurl sends once
+//     it has changed into the URL's folder - on a kept connection by way of
+//     the folder that connection's login landed in, which libcurl records
+//     for it - and they name the entry by its bare name there. A change can
+//     then use the connection a listing left open, like any transfer: one
+//     login fewer, and a server that takes one connection at a time is not
+//     asked for a second.
 //
 //   - The dialect. RNFR / RNTO / DELE / RMD / MKD are FTP (and FTPS) commands.
 //     An SFTP server speaks none of them; libcurl's SFTP backend takes its
@@ -33,8 +39,10 @@
 //
 // Header-only and free of libcurl, so Tests/UltraNetFtpQuoteTest.cpp can
 // check it on any build.
+// Version: 1.1.0 - FTP commands run after libcurl's change of folder
+//                  (afterFolderChange) and name the entry within it
 // Version: 1.0.0
-// Last Modified: 2026-09-27
+// Last Modified: 2026-10-20
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -47,9 +55,13 @@ namespace ultranet_internal::ftpquote {
 enum class Verb { Delete, RemoveDirectory, MakeDirectory, Rename };
 
 // What to send: the URL of the folder the command runs in, and the commands.
+// `afterFolderChange`: they are sent after libcurl has changed into that
+// folder (CURLOPT_POSTQUOTE), and name the entry within it - FTP. Otherwise
+// right after the login (CURLOPT_QUOTE), with full paths - SFTP.
 struct Plan {
     std::string parentUrl;
     std::vector<std::string> commands;
+    bool afterFolderChange = false;
 };
 
 // Percent-decoding of one URL path. False for a '%' not followed by two hex
@@ -180,19 +192,18 @@ inline bool Build(const std::string& url, Verb verb, const std::string& newName,
         return true;
     }
 
-    // FTP: the commands run in the login folder (see the top of this file),
-    // so the entry is named by its path from there - the URL's path without
-    // its leading '/'. A URL whose path began "%2F" named an absolute path,
-    // and decodes to "//..."; dropping one '/' leaves it absolute.
-    const std::string path = serverPath.substr(1);
-    const std::string dir = folder.substr(1);
+    // FTP: the commands run in the entry's own folder, once libcurl has
+    // changed into it (see the top of this file) - however the URL spelled
+    // that folder, "%2F" first for an absolute one included - so the entry
+    // is named by its bare name.
+    out.afterFolderChange = true;
     switch (verb) {
-        case Verb::Delete:          out.commands.push_back("DELE " + path); break;
-        case Verb::RemoveDirectory: out.commands.push_back("RMD " + path); break;
-        case Verb::MakeDirectory:   out.commands.push_back("MKD " + path); break;
+        case Verb::Delete:          out.commands.push_back("DELE " + name); break;
+        case Verb::RemoveDirectory: out.commands.push_back("RMD " + name); break;
+        case Verb::MakeDirectory:   out.commands.push_back("MKD " + name); break;
         case Verb::Rename:
-            out.commands.push_back("RNFR " + path);
-            out.commands.push_back("RNTO " + dir + newName);
+            out.commands.push_back("RNFR " + name);
+            out.commands.push_back("RNTO " + newName);
             break;
     }
     return true;

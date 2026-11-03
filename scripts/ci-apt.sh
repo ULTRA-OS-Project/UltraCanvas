@@ -22,11 +22,21 @@
 # it: killing apt while dpkg is unpacking would leave the package database
 # half configured for every later step.
 #
+# The packages themselves are kept between runs as well (cache-in,
+# cache-out): on 2026-10-23 the same mirror served the Ubuntu x86_64 job so
+# slowly that its dependency step ran out of its 45 minutes twice in a row,
+# downloading packages it had downloaded the day before. With the .deb files
+# of the last run on main restored first, apt fetches only what changed.
+#
 # Usage: scripts/ci-apt.sh update
 #        scripts/ci-apt.sh install [apt-get install options] package...
+#        scripts/ci-apt.sh cache-in DIR    the .deb files in DIR into apt's cache
+#        scripts/ci-apt.sh cache-out DIR   apt's cache, as installed, into DIR;
+#                                          prints a hash of the file names
 #
+# Version: 1.1.0 - cache-in, cache-out: the downloaded packages kept between runs
 # Version: 1.0.0
-# Last Modified: 2026-10-08
+# Last Modified: 2026-10-24
 # Author: UltraCanvas Framework
 set -euo pipefail
 
@@ -35,6 +45,8 @@ set -euo pipefail
 if [[ $EUID -ne 0 ]]; then
     exec sudo --preserve-env=CI_APT_IDLE,CI_APT_ATTEMPTS "$0" "$@"
 fi
+
+archives=/var/cache/apt/archives
 
 idle_limit="${CI_APT_IDLE:-120}"
 attempts="${CI_APT_ATTEMPTS:-3}"
@@ -116,8 +128,54 @@ case "$command" in
         fetch install -y --download-only "$@"
         apt-get install -y "$@"
         ;;
+    cache-in)
+        dir="${1:?cache-in needs a folder}"
+        # apt-get keeps what it downloads unless told otherwise, and a runner
+        # image may tell it otherwise (Docker's docker-clean hook): say so
+        # explicitly, so cache-out finds every package this job fetched.
+        rm -f /etc/apt/apt.conf.d/docker-clean
+        printf '%s\n' 'APT::Keep-Downloaded-Packages "true";' \
+                       'Binary::apt::APT::Keep-Downloaded-Packages "true";' \
+            > /etc/apt/apt.conf.d/99ci-keep-downloaded-packages
+        restored=0
+        if [[ -d "$dir" ]]; then
+            for deb in "$dir"/*.deb; do
+                [[ -e "$deb" ]] || continue
+                [[ -e "$archives/${deb##*/}" ]] && continue
+                cp "$deb" "$archives/"
+                restored=$(( restored + 1 ))
+            done
+        fi
+        # apt checks each file against the index before it uses it, so a
+        # stale or damaged one is downloaded again rather than installed.
+        echo "ci-apt: $restored package files restored into $archives"
+        ;;
+    cache-out)
+        dir="${1:?cache-out needs a folder}"
+        mkdir -p "$dir"
+        rm -f "$dir"/*.deb
+        # Only the version of each package now installed: an older one would
+        # never be used again and would only grow the cache.
+        kept=0
+        for deb in "$archives"/*.deb; do
+            [[ -e "$deb" ]] || continue
+            read -r package version arch < <(dpkg-deb --show \
+                --showformat='${Package} ${Version} ${Architecture}\n' "$deb") || continue
+            if dpkg-query -W -f='${Architecture} ${Version} ${db:Status-Status}\n' "$package" 2>/dev/null \
+                    | grep -qxF "$arch $version installed"; then
+                cp "$deb" "$dir/"
+                kept=$(( kept + 1 ))
+            fi
+        done
+        if [[ -n "${SUDO_UID:-}" ]]; then
+            chown -R "$SUDO_UID:${SUDO_GID:-$SUDO_UID}" "$dir"
+        fi
+        echo "ci-apt: $kept package files kept in $dir ($(du -sh "$dir" | cut -f1))" >&2
+        # The same set of files is the same cache: the caller keys it by this.
+        ls "$dir" | sort | sha1sum | cut -c1-16
+        ;;
     *)
-        echo "usage: $0 update | install [apt-get install options] package..." >&2
+        echo "usage: $0 update | install [apt-get install options] package... | cache-in DIR | cache-out DIR" >&2
         exit 2
         ;;
 esac

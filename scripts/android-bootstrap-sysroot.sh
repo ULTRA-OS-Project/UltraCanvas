@@ -118,7 +118,7 @@ Configure the build against it with:
   cmake -G Ninja -B build-android \\
     -DCMAKE_TOOLCHAIN_FILE=$ndk/build/cmake/android.toolchain.cmake \\
     -DANDROID_ABI=$abi \\
-    -DANDROID_PLATFORM=android-26 \\
+    -DANDROID_PLATFORM=android-28 \\
     -DCMAKE_FIND_ROOT_PATH=$installed \\
     -DPKG_CONFIG_ARGN=--static$([ "$with_net" -eq 1 ] && echo " \\
     -DULTRACANVAS_ENABLE_NET=ON")

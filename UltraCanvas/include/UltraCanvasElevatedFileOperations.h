@@ -36,8 +36,9 @@
 // Backends: Windows (ShellExecuteEx "runas" + the process token's elevation
 // state). Everywhere else IsAvailable() is false and DeleteElevated answers
 // Unavailable, so callers keep the plain "Try again / Skip" choice there.
+// Version: 1.1.0 - IsAvailable() false from an MSIX package without allowElevation
 // Version: 1.0.0
-// Last Modified: 2026-09-17
+// Last Modified: 2026-10-21
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -76,9 +77,11 @@ namespace UltraCanvas {
         bool RunHelperIfRequested(int argc, char** argv, int& exitCode);
 
         // Whether a retry with administrator rights can be offered right now:
-        // a backend exists, the host wired RunHelperIfRequested, and this
-        // process is not already elevated (when it is, the system has already
-        // said no to an administrator, and asking again cannot change that).
+        // a backend exists, the host wired RunHelperIfRequested, this process
+        // is not already elevated (when it is, the system has already said no
+        // to an administrator, and asking again cannot change that), and it
+        // may start an elevated process at all - a copy running from an MSIX
+        // package may only when the package declares allowElevation.
         bool IsAvailable();
 
         // Whether this process already runs with administrator rights
@@ -141,6 +144,11 @@ namespace UltraCanvas {
         // OS/MSWindows/UltraCanvasWindowsElevatedFileOperations.cpp; the core
         // file provides the no-backend fallbacks on every other platform.
         bool NativeProcessIsElevated();
+        // Whether this process may start an elevated copy of itself at all.
+        // False for a Windows program running from an MSIX package whose
+        // manifest does not declare the restricted capability allowElevation:
+        // Windows refuses it the elevation, so the retry is not offered.
+        bool NativeCanStartElevatedCopy();
         bool NativeIsPermissionFailure(const std::error_code& ec);
         // This process's own command line as UTF-8 arguments, from the
         // system rather than from a narrow argv the C runtime may have

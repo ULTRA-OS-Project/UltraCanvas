@@ -24,6 +24,8 @@
 #   ULTRACLEANER_VERSION_DOT4   e.g. "0.50.0.0"
 #   ULTRACLEANER_VERSION_COMMA4 e.g. "0,50,0,0"
 #   ULTRACANVASSTART_VERSION    e.g. "0.1.0"   (Docs/UltraCanvasStart/CHANGELOG.md)
+#   ULTRASTORE_VERSION          e.g. "0.1.0"   (Docs/UltraStore/CHANGELOG.md)
+#   ULTRASTOREADMIN_VERSION     e.g. "0.1.0"   (Docs/UltraStoreAdmin/CHANGELOG.md)
 #
 # and one <APP>_VERSION triple per application that keeps its own changelog:
 #
@@ -123,13 +125,18 @@ _ultracanvas_declare_product(ULTRACANVAS         "Docs/UltraCanvas/CHANGELOG.md"
 _ultracanvas_declare_product(ULTRATEXTER         "Docs/Texter/CHANGELOG.md")
 _ultracanvas_declare_product(ULTRACLEANER        "Docs/UltraCleaner/CHANGELOG.md")
 _ultracanvas_declare_product(ULTRACANVASSTART    "Docs/UltraCanvasStart/CHANGELOG.md")
+_ultracanvas_declare_product(ULTRASTORE          "Docs/UltraStore/CHANGELOG.md")
+_ultracanvas_declare_product(ULTRASTOREADMIN     "Docs/UltraStoreAdmin/CHANGELOG.md")
 _ultracanvas_declare_product(UOSSETTINGS         "Docs/UOSSettings/CHANGELOG.md")
 _ultracanvas_declare_product(ULTRACLAUDE         "Docs/UltraClaude/CHANGELOG.md")
+_ultracanvas_declare_product(CHATCUBE            "Docs/ChatCube/CHANGELOG.md")
 _ultracanvas_declare_product(ULTRANETMONITOR     "Docs/UltraNetMonitor/CHANGELOG.md")
+_ultracanvas_declare_product(ULTRADBADMIN        "Docs/UltraDBAdmin/CHANGELOG.md")
 _ultracanvas_declare_product(DEVICEEXPLORER      "Docs/DeviceExplorer/CHANGELOG.md")
 _ultracanvas_declare_product(SMARTHOMECENTER     "Docs/SmartHomeCenter/CHANGELOG.md")
 _ultracanvas_declare_product(ULTRADESKTOP        "Docs/UltraDesktop/CHANGELOG.md")
 _ultracanvas_declare_product(ULTRACLIPBOARD      "Docs/UltraClipboard/CHANGELOG.md")
+_ultracanvas_declare_product(ULTRASNIP           "Docs/UltraSnip/CHANGELOG.md")
 _ultracanvas_declare_product(ANCHORPOINT         "Docs/AnchorPoint/CHANGELOG.md")
 _ultracanvas_declare_product(EMAILCLEANER        "Docs/EmailCleaner/CHANGELOG.md")
 _ultracanvas_declare_product(ULTRAAI             "Docs/UltraAI/CHANGELOG.md")

@@ -11,6 +11,7 @@
 //
 // Call UltraNetPlugin_AttachHost() first thing in UltraNet_PluginInit and
 // register nothing when it refuses the host.
+// Version: 0.2.0 - ABI 3: the mail-message builder, SSE streaming, cancel
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -18,6 +19,6 @@
 struct UltraNetPluginHost;
 
 // Keep `host` for the forwarding functions. False (and nothing kept) for a
-// null host or one older than ABI 2 - such a host cannot serve the calls the
+// null host or one older than ABI 3 - such a host cannot serve the calls the
 // plug-in makes, so the plug-in must not register.
 bool UltraNetPlugin_AttachHost(const UltraNetPluginHost* host);

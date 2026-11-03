@@ -89,6 +89,7 @@
 #include "UltraFilerConnectionLog.h"
 
 #include "UltraCanvasFilerWidget.h"   // FilerEntry
+#include "UltraCanvasPortableDevices.h"   // PortableDeviceInfo, PortableDeviceKind
 
 #include <atomic>
 #include <chrono>
@@ -126,6 +127,14 @@ struct RemoteDrive {
     // stopped part way leaves what it sent, which UltraCloud removes the
     // next time the drive is used (FTP and SFTP).
     bool partialUploadsRemain = false;
+    // A phone, camera or player plugged in over USB (SetDevices): not a
+    // configured account, never saved, shown under Computer rather than
+    // Remote Drives, and gone when the device is pulled out.
+    bool isDevice = false;
+    PortableDeviceKind deviceKind = PortableDeviceKind::Other;
+    // The device's id for UltraCanvasPortableDevices - what its free space
+    // is asked under (GetSpace). Empty for a configured drive.
+    std::string deviceId;
 };
 
 // What the toolbar's "+ Drive" button offers. The two differ only in which
@@ -273,8 +282,17 @@ public:
     // remembered.
     bool Reload(std::string& error);
 
-    // The drives, in the order they are shown.
+    // The drives, in the order they are shown: the configured ones by name,
+    // then the connected devices.
     std::vector<RemoteDrive> Drives() const;
+
+    // The phones, cameras and players connected right now
+    // (UltraCanvasPortableDevices::List), carried as drives of their own: a
+    // device that is new gets a drive, one that is gone loses it and what
+    // was cached of it. Call on the UI thread whenever the device monitor
+    // reports a change. Their accounts live in a store that is never written
+    // to disk. A build without UltraCloud ignores the call.
+    void SetDevices(const std::vector<PortableDeviceInfo>& devices);
 
     // One drive by account id. Returns false when no such drive is configured
     // (an account removed while its folder was still open).
@@ -597,7 +615,9 @@ private:
     std::unique_ptr<Impl> impl_;
 
     mutable std::mutex mutex_;
-    std::vector<RemoteDrive> drives_;
+    std::vector<RemoteDrive> drives_;           // configured, then devices
+    std::vector<RemoteDrive> configuredDrives_; // what Reload read
+    std::vector<RemoteDrive> deviceDrives_;     // what SetDevices was given
     std::unordered_map<std::string, CacheEntry> cache_;
     std::deque<Job> queue_;
     // Preview copies by remote path: in flight (no entry in the map means

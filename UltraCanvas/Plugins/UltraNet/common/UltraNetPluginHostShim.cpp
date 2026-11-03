@@ -4,6 +4,7 @@
 //
 // Built with hidden visibility (the plug-in CMakeLists set it on this file):
 // the definitions are the plug-in's own and never interpose on the host's.
+// Version: 0.2.0 - ABI 3: the mail-message builder, SSE streaming, cancel
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraNetPluginHostShim.h"
@@ -12,6 +13,7 @@
 #include <UltraNet/UltraNetHttp.h>
 #include <UltraNet/UltraNetMime.h>
 #include <UltraNet/UltraNetPlugins.h>
+#include <UltraNet/UltraNetSse.h>
 #include <UltraNet/UltraNetUrl.h>
 
 #include <string>
@@ -26,7 +28,8 @@ UltraNetResult NoHost() {
 } // namespace
 
 bool UltraNetPlugin_AttachHost(const UltraNetPluginHost* host) {
-    if (!host || host->abiVersion < 2 || !host->RegisterPlugin) return false;
+    if (!host || host->abiVersion < ULTRANET_PLUGIN_HOST_ABI_VERSION || !host->RegisterPlugin)
+        return false;
     g_host = host;
     return true;
 }
@@ -75,4 +78,28 @@ UltraNetResult UltraNet_HttpRequest(const UltraNetHttpRequest& request,
 
 void UltraNetHttpHeaders::Set(const std::string& name, const std::string& value) {
     if (g_host) g_host->HttpHeadersSet(*this, name, value);
+}
+
+// ---- ABI 3 ------------------------------------------------------------------
+
+std::string UltraNet_MimeBuildMailMessage(const UltraNetMailMessage& message) {
+    return g_host ? g_host->MimeBuildMailMessage(message) : std::string();
+}
+
+UltraNetHandle UltraNet_SseStreamAsync(const UltraNetHttpRequest& request,
+                                       std::function<void(const UltraNetSseEvent&)> onEvent,
+                                       std::function<void(const UltraNetResult&)> onComplete) {
+    if (!g_host) {
+        if (onComplete) onComplete(NoHost());
+        return UltraNetInvalidHandle;
+    }
+    return g_host->SseStreamAsync(request, std::move(onEvent), std::move(onComplete));
+}
+
+UltraNetResult UltraNet_CancelRequest(UltraNetHandle handle) {
+    return g_host ? g_host->CancelRequest(handle) : NoHost();
+}
+
+bool UltraNet_IsRequestActive(UltraNetHandle handle) {
+    return g_host && g_host->IsRequestActive(handle);
 }

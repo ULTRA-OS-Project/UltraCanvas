@@ -4,8 +4,9 @@
 // every platform), the command-line and report encodings the two processes
 // agree on, and the fallbacks for platforms without a backend. Every
 // operating-system call lives in OS/<Platform>/.
+// Version: 1.1.0 - IsAvailable() asks NativeCanStartElevatedCopy (MSIX packages)
 // Version: 1.0.0
-// Last Modified: 2026-09-17
+// Last Modified: 2026-10-21
 // Author: UltraCanvas Framework
 #include "UltraCanvasElevatedFileOperations.h"
 #include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
@@ -58,6 +59,7 @@ namespace UltraCanvas {
         // ===== NO-BACKEND FALLBACKS =====
 #if !defined(_WIN32) && !defined(_WIN64)
         bool NativeProcessIsElevated() { return false; }
+        bool NativeCanStartElevatedCopy() { return false; }
 
         bool NativeIsPermissionFailure(const std::error_code& ec) {
             return ec == std::errc::permission_denied ||
@@ -106,7 +108,7 @@ namespace UltraCanvas {
 
         bool IsAvailable() {
 #if defined(_WIN32) || defined(_WIN64)
-            return helperInstalled && !NativeProcessIsElevated();
+            return helperInstalled && !NativeProcessIsElevated() && NativeCanStartElevatedCopy();
 #else
             return false;
 #endif

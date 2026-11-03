@@ -1,9 +1,10 @@
 // core/UltraCanvasSlideshow.cpp
 // Timed image slideshow with selectable info-panel layouts and indicator styles.
+// Version: 1.5.1 - the slide counter is centred on its capitals, not its line box
 // Version: 1.5.0 - a picture saved over shows its new content: the drawn
 //                  paths go to an UltraCanvasImageFileWatch, checked on its
 //                  worker, never on the paint path
-// Last Modified: 2026-10-10
+// Last Modified: 2026-10-24
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSlideshow.h"
@@ -903,7 +904,7 @@ namespace UltraCanvas {
                 case TextAlignment::Center:
                 default:                    x = panel.x + (panel.width - textSize.width) / 2; break;
             }
-            y = panel.y + (panel.height - textSize.height) / 2;
+            y = ctx->TextTopCentredOnCaps(Rect2Dd(panel.x, panel.y, panel.width, panel.height), fs);
         }
         ctx->DrawText(txt, Point2Dd(static_cast<float>(x), static_cast<float>(y)));
 

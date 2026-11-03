@@ -21,12 +21,16 @@
 // away, which is exactly what happened when a USB stick was pulled while its
 // folder was open.
 //
-// Backends: Linux/BSD (inotify) and Windows (ReadDirectoryChangesW). Where
-// none exists - macOS, Android, WebAssembly - Watch() returns false and
-// NativeBackendAvailable() is false, so the caller keeps polling; adding a
+// Backends: Linux/BSD (inotify), Windows (ReadDirectoryChangesW) and macOS
+// (FSEvents). Where none exists - Android, WebAssembly - Watch() returns false
+// and NativeBackendAvailable() is false, so the caller keeps polling; adding a
 // backend later needs no change above this header.
+//
+// Every backend is listening by the time Watch() returns: a change made after
+// it is reported, so a caller may start the watch and then list the folder.
+// Version: 1.1.0 - macOS backend (FSEvents); a change right after Watch() is never missed
 // Version: 1.0.0
-// Last Modified: 2026-08-25
+// Last Modified: 2026-10-30
 // Author: UltraCanvas Framework
 #pragma once
 

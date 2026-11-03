@@ -28,6 +28,8 @@
 //     chart's own background (it was a fixed grey with the text placed
 //     60 px left of the middle); an empty message leaves the background.
 //     SetEmptyIcon puts an icon over it, in one colour and on a badge.
+// 14. SetMinimumValueSpan: a value axis at least that wide, centred on the
+//     data, so a steady reading does not fill the plot as a sawtooth.
 // 11. Eleven charts and diagrams defined a private InvalidateLayout() that
 //     only cleared their own cache. It overrode the layout engine's, so a
 //     framework invalidation (a new size, visibility) never reached the
@@ -35,6 +37,7 @@
 //
 // Pictures are drawn into an offscreen surface and read back pixel by pixel;
 // plot areas and ranges are read through a probe subclass.
+// Version: 1.7.0 - a minimum value span
 // Version: 1.6.0 - the empty-state icon
 // Version: 1.5.0 - the empty-state message
 // Version: 1.4.0 - whole-step ticks; bars from zero with a zero value; value range; horizontal bars
@@ -716,6 +719,32 @@ void TestEmptyMessage(const fs::path& dir) {
           "with data the chart is drawn, not the message");
 }
 
+void TestMinimumValueSpan() {
+    std::cout << "14. a minimum value span\n";
+    auto data = std::make_shared<ChartDataVector>();
+    std::vector<ChartDataPoint> points;
+    for (int i = 0; i < 10; ++i) points.emplace_back(i, i % 2 ? 20.7 : 20.6, 0.0, "", 0.0);
+    data->LoadFromArray(points);
+    auto chart = std::make_shared<Probe<UltraCanvasLineChartElement>>("span", 0, 0, 400, 300);
+    chart->SetDataSource(data);
+    const ChartDataBounds fitted = chart->Bounds();
+    Check(fitted.maxY - fitted.minY < 0.2, "without one the axis fits 20.6-20.7 (a sawtooth across the plot)");
+    chart->SetMinimumValueSpan(2.0);
+    const ChartDataBounds wide = chart->Bounds();
+    Check(wide.maxY - wide.minY >= 2.0, "with 2.0 the axis spans at least 2");
+    Check(std::fabs((wide.minY + wide.maxY) / 2.0 - 20.65) < 1e-9, "centred on the data");
+    const double low = chart->ScreenY(20.6), high = chart->ScreenY(20.7);
+    const ChartPlotArea area = chart->PlotArea();
+    Check(std::fabs(low - high) < area.height * 0.1, "so the swing takes under a tenth of the plot");
+    // Data wider than the floor is left alone.
+    for (auto& p : points) p.y *= 10.0;
+    data->LoadFromArray(points);
+    chart->SetDataSource(data);
+    const ChartDataBounds tall = chart->Bounds();
+    Check(tall.minY < 206.0 + 1e-9 && tall.maxY > 207.0 - 1e-9 && tall.maxY - tall.minY < 2.0 + 1e-9 + 0.2,
+          "a span already wider than the floor is not changed");
+}
+
 int main() {
     UCImage::InitializeImageSubsysterm("ChartElementBehaviourTest");   // the empty-state icon
     fs::path dir = fs::temp_directory_path() / "uc_chart_element_test";
@@ -733,6 +762,7 @@ int main() {
     TestInvalidationReachesParent();
     TestAxisTicksAndBars();
     TestEmptyMessage(dir);
+    TestMinimumValueSpan();
 
     std::error_code ec;
     fs::remove_all(dir, ec);

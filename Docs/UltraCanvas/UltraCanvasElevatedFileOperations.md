@@ -70,7 +70,7 @@ page, for example, keeps the plain *Try again / Skip* choice.
 | Function | Purpose |
 |---|---|
 | `RunHelperIfRequested(argc, argv, exitCode)` | Host side, first in `main()`. True: this process was the helper, the work is done, return `exitCode`. False: an ordinary start. Calling it at all installs the retry. |
-| `IsAvailable()` | A backend exists, the helper is installed, and this process is not already elevated. |
+| `IsAvailable()` | A backend exists, the helper is installed, this process is not already elevated, and it may start an elevated process at all: on Windows, a copy running from an MSIX package only when the package declares the restricted capability `allowElevation` ([UltraCanvasWindowsMSIX](UltraCanvasWindowsMSIX.md)). |
 | `ProcessIsElevated()` | The process token's elevation state (Windows); false elsewhere. |
 | `IsPermissionFailure(ec)` | Is this `std::error_code` from a filesystem call the refusal administrator rights may resolve (`ERROR_ACCESS_DENIED` / `EACCES`)? |
 | `DeleteElevated(paths)` | Delete these entries (files, or folders with everything in them) through the helper. **Blocks** until the consent prompt is answered and the helper has exited — run it off the UI thread. One prompt for the whole list. |

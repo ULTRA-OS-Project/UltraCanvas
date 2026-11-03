@@ -4,6 +4,7 @@
 // Images, ...) and the selected page on the right. App-wide options only; an
 // account's servers and sign-in stay in its own Account Settings. Changes
 // apply at once (through onChanged) and are saved at once.
+// Version: 1.2.0 - Privacy > Primary Password (SetSecurityHooks)
 // Version: 1.1.0 - MakeGearButton (toolbar and start page)
 // Last Modified: 2026-09-30
 // Author: UltraCanvas Framework / ULTRA OS
@@ -35,6 +36,19 @@ public:
     // both use it, so it looks the same wherever it is.
     static std::shared_ptr<UltraCanvas::UltraCanvasButton> MakeGearButton(
         const std::string& id, float height, std::function<void()> onClick);
+
+    // Privacy > Primary Password: the application's answers - whether one is
+    // set - and its flows for setting, changing and removing it. Each flow
+    // gets the settings window as its parent and runs `done` when over, and
+    // the page then shows the state again. Without hooks the page says that
+    // this build has no vault to protect.
+    struct SecurityHooks {
+        std::function<bool()> hasPrimaryPassword;
+        std::function<void(UltraCanvas::UltraCanvasWindowBase*, std::function<void()>)> setPrimaryPassword;
+        std::function<void(UltraCanvas::UltraCanvasWindowBase*, std::function<void()>)> changePrimaryPassword;
+        std::function<void(UltraCanvas::UltraCanvasWindowBase*, std::function<void()>)> removePrimaryPassword;
+    };
+    static void SetSecurityHooks(SecurityHooks hooks);
 
     // Re-reads the preferences into an open window - after the reading pane
     // changed one ("Always from <sender>" adds a trusted sender). Does nothing

@@ -24,8 +24,6 @@
 // and run alongside it.
 // Author: UltraCanvas Framework / ULTRA OS
 
-// Before the window header: on Linux that one reaches X11, whose `None`
-// macro would otherwise break HardwareQuery::None in this header.
 #include "UltraCanvasHardwareInfo.h"
 
 #include "ui/UltraNetMonitorPaths.h"

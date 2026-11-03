@@ -1,7 +1,8 @@
 // OS/WASM/UltraCanvasWASMWindow.h
 // WebAssembly (Emscripten) platform window implementation
+// Version: 2.1.0 - a dialog's frame: a title bar above its canvas, dragged to move it
 // Version: 2.0.0
-// Last Modified: 2026-08-12
+// Last Modified: 2026-10-24
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -31,6 +32,12 @@ namespace UltraCanvas {
 // renders into an offscreen cairo image surface (nativeSurface, like the
 // Windows backend); InvalidateWindowNative() presents it by converting the
 // surface pixels to RGBA and putImageData()ing them onto the canvas.
+//
+// A browser draws no window frames, so a dialog (WindowType::Dialog) gets
+// one of the backend's own: a title bar - an HTML element just above the
+// canvas, showing the window's title - that moves the dialog when dragged
+// and reports the new place as a WindowMove. The window's position stays
+// its canvas's (the client area), as on the desktop backends.
     class UltraCanvasWASMWindow : public UltraCanvasWindowBase {
     protected:
         bool CreateNative() override;
@@ -70,6 +77,11 @@ namespace UltraCanvas {
         // ===== WASM-SPECIFIC METHODS =====
         const std::string& GetCanvasId() const { return canvasId; }
 
+        // The height of a dialog's title bar, in CSS px.
+        static constexpr int kTitleBarHeight = 30;
+        // The page's title bar of window `id` was dragged to put its canvas at x, y.
+        static void FrameMoved(unsigned long id, int x, int y);
+
     private:
         std::string canvasId;
         std::string canvasSelector;   // "#" + canvasId, kept alive for emscripten callbacks
@@ -77,6 +89,8 @@ namespace UltraCanvas {
         static unsigned long lastWindowId;
 
         bool canvasCreated = false;
+        // A title bar of the backend's own (a dialog).
+        bool HasFrame() const { return config_.type == WindowType::Dialog; }
 
         // Wheel notch accumulators (trackpads deliver many sub-notch deltas)
         double wheelAccumX = 0.0;
@@ -86,6 +100,7 @@ namespace UltraCanvas {
         std::vector<uint8_t> presentBuffer;
 
         void CreateCanvasElement();
+        void CreateTitleBar();
         void DestroyCanvasElement();
         void UpdateCanvasElementGeometry();
         void RegisterEventCallbacks();

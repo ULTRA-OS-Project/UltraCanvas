@@ -1,3 +1,31 @@
+#### 2026-10-25 *0.2.29*
+- **The Palette manager.** The "+" under the colour palettes opens a window
+  with a title bar to drag it by; *Add palette* at its foot makes a palette
+  of your own - a name and the colours picked for it - kept under *My
+  palettes* between starts (`picker.userpalettes`) and added as a row.
+- **A palette swatch under the pointer floods the colour picker and the
+  palette rows with its colour**, as the picker's own foreground and
+  background swatches do.
+- The small palettes have more colours, so each fills its row; a 256-colour
+  one is eight full lines. Game Boy, PICO-8 and VGA 16 are gone from the
+  list.
+
+#### 2026-10-21 *0.2.28*
+- **An open adjustment follows the image it works on.** An adjustment or
+  filter dialog (Levels, Curves, Colour to Alpha, Blur and the rest) took a
+  copy of the layer when it opened and put that copy back on every change in
+  the dialog: an image pasted while it was open - as a new layer or as a new
+  image - was replaced by the picture from before as soon as a slider moved,
+  and *OK* applied the adjustment to the old pixels. The preview now works on
+  the active layer as it is: a paste moves it to the pasted layer (the layer
+  it leaves gets its own pixels back), *Paste as New Image* or opening an
+  image moves it to the new picture, and a stroke or an undo on the layer is
+  kept and adjusted rather than undone. It refreshes on its own as soon as
+  the image changes, Curves redraws its histogram for the new pixels, and on
+  a locked or text layer the preview waits and says why.
+- **Curves says why on a locked layer.** *Adjust > Curves...* on a locked
+  layer did nothing at all; it now says the active layer is locked, as every
+  other adjustment does.
 #### 2026-10-20 *0.2.27*
 - **Password-protected images.** *File > Password Protection...* gives the
   image a password; saved as an UltraCanvas layered image (`.ucd`) it is then

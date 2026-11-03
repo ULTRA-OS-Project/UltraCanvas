@@ -37,7 +37,7 @@ struct UnsubscribeInfo {
 
 // How an unsubscribe would be carried out.
 enum class UnsubscribeMethod {
-    None = 0,      // nothing on offer
+    NoMethod = 0,      // nothing on offer
     OneClickPost,  // RFC 8058: POST "List-Unsubscribe=One-Click" to httpUrl
     MailTo,        // send a message to `mailto` (the app can do this unattended)
     HttpLink       // an https URL that needs a browser and a human

@@ -1,9 +1,9 @@
 # UltraCrypt — Cryptographic Services for ULTRA OS
 
 **Status:** Stages 1–2 implemented and under test; Stage 3 in progress (§8).
-**Version:** 0.3.0
+**Version:** 0.4.0
 **Author:** UltraCanvas Framework / ULTRA OS
-**Last Modified:** 2026-10-17
+**Last Modified:** 2026-10-21
 
 UltraCrypt is the cryptographic module of the ULTRA OS / UltraCanvas
 framework: the single place where hashing, message authentication,
@@ -26,8 +26,13 @@ libsodium, covered by `Tests/UltraCryptTests.cpp`:
 `UltraCrypt_ConstantTimeEquals`, the random family, SHA-1 (legacy-gated) and
 SHA-256/512 (one-shot, streaming and file), HMAC-SHA-1/256/512, AEAD
 (XChaCha20-Poly1305 plus the hardware-gated AES-256-GCM interop path),
-Argon2id key derivation, HKDF-SHA-256/512, Ed25519 signatures (§5.8) and
-AES-128/192/256-CBC for foreign formats (§5.9).
+Argon2id key derivation, HKDF-SHA-256/512, Ed25519 signatures (§5.8),
+X25519 key agreement (§5.8.1),
+AES-128/192/256-CBC and -CTR and PBKDF2-HMAC-SHA-256/512 for foreign
+formats (§5.9, §5.10), and X.509 certificates with their trust check, CMS
+signed and enveloped data and PKCS #12 (§5.11) - the one part on a second,
+optional backend, OpenSSL 3, since libsodium has nothing of public-key
+infrastructure.
 (The RFC 4648 Base32/Base64
 codecs live in UltraCanvasUtils, §5.7; UltraCrypt keeps only the secure-buffer
 Base32 decoder.) First consumer: the UCD document encryption envelope
@@ -54,7 +59,10 @@ block cipher at all: it is bitsliced and constant-time, so the reasoning that
 kept AES-GCM out of this module's own formats (§3.4) — that a table-driven
 software AES leaks its key through the cache — does not apply to it.
 
-**Not yet implemented:** key agreement and X.509 (§2, no consumer).
+**On a second backend:** X.509 and CMS (§5.11), on OpenSSL 3's libcrypto,
+for S/MIME (UltraMail) and anything else the public-key infrastructure
+reaches. Optional: without OpenSSL 3 those calls answer
+`BackendUnavailable`, the rest of the module is unaffected.
 BLAKE3-256, once listed as optional, has been dropped altogether (§9).
 
 ---
@@ -135,20 +143,22 @@ Two caveats stated plainly:
 **In scope** — data-at-rest and data-integrity primitives: hashing, HMAC,
 authenticated encryption (AEAD), digital signatures (Ed25519), password-based
 and key-derivation functions, cryptographically secure random generation,
-constant-time comparison, and secure (zeroizing) memory.
+constant-time comparison, and secure (zeroizing) memory; and, for formats the
+world defined, X.509 certificates and CMS (§5.11): what S/MIME is made of.
 
 **Out of scope:**
 
 - **Transport security.** TLS stays in UltraNet, per-platform and OS-native.
-  UltraCrypt never opens a socket and never validates a certificate.
+  UltraCrypt never opens a socket, and a TLS connection's certificate is the
+  platform's TLS to check; UltraCrypt checks certificates as data - a signed
+  message's signer, a recipient's key (§5.11).
 - **Credential storage and policy.** That is UltraVault's job; UltraVault
   *consumes* UltraCrypt for its file-backed fallback backend.
-- **Key agreement and X.509.** No consumer needs them. Signatures, the one
-  public-key operation a signed catalog or update needs, are in (§5.8); the
-  rest can be added the same way without disturbing anything here.
-- **Protocol-level constructions** (TOTP, the UCD envelope, SuperVault's
-  request flow). Those live in their consumers and are built *from* these
-  primitives.
+- **Protocol-level constructions** (the UCD envelope, SuperVault's request
+  flow). Those live in their consumers and are built *from* these
+  primitives. The one exception is one-time passwords (§5.13): HOTP / TOTP
+  and the `otpauth://` link moved in from UltraAuthenticator once a second
+  program - ChatCube's sign-in - had to check the codes the first one shows.
 
 ---
 
@@ -488,7 +498,7 @@ so calls stay readable and extensible; **nothing throws**.
 
 ```cpp
 enum class UltraCryptResultCode : uint8_t {
-    Success,
+    Ok,
     NotSupported,          // algorithm not available in this build
     InvalidArgument,
     InvalidKeySize,
@@ -899,6 +909,38 @@ a file with a byte appended.
 
 *Serves:* UltraStore's signed catalog, and any signed manifest or update.
 
+#### 5.8.1 Key agreement (X25519)
+
+Two parties who know each other's public key derive the same secret without
+sending it. An Ed25519 identity converts to an X25519 pair, so one key pair
+both signs and agrees on keys.
+
+```cpp
+size_t UltraCrypt_GetKeyExchangeKeySize();          // 32
+size_t UltraCrypt_GetKeyExchangeSecretSize();       // 32
+UltraCryptResult UltraCrypt_GenerateKeyExchangeKeyPair(std::vector<uint8_t>& outPublicKey,
+                                                       UltraCryptSecureBuffer& outSecretKey);
+UltraCryptResult UltraCrypt_SignaturePublicKeyToKeyExchange(UltraCryptSignatureAlgorithm,
+                                                            const std::vector<uint8_t>& signaturePublicKey,
+                                                            std::vector<uint8_t>& outKeyExchangePublicKey);
+UltraCryptResult UltraCrypt_SignatureSecretKeyToKeyExchange(UltraCryptSignatureAlgorithm,
+                                                            const UltraCryptSecureBuffer& signatureSecretKey,
+                                                            UltraCryptSecureBuffer& outKeyExchangeSecretKey);
+UltraCryptResult UltraCrypt_KeyExchange(const UltraCryptSecureBuffer& mySecretKey,
+                                        const std::vector<uint8_t>& theirPublicKey,
+                                        UltraCryptSecureBuffer& outSharedSecret);
+```
+
+Rules: the raw shared secret is not a key — derive one with
+`UltraCrypt_DeriveKeyHkdf` and an `info` naming its purpose, then use it
+with `UltraCrypt_AeadSeal`. A public key that is a low-order point (it would
+give an all-zero secret) is refused with `InvalidArgument`; wrong lengths
+with `InvalidKeySize`. Covered by the RFC 7748 §6.1 vector, the low-order
+refusal, and converted Ed25519 identities and an ephemeral pair agreeing.
+
+*Serves:* ChatCube Direct's end-to-end message encryption
+(`Docs/Research/ChatCubeDirectPlan.md` §4).
+
 ---
 
 ### 5.9 AES-CBC — interop only
@@ -975,6 +1017,231 @@ of password-protected `.xlsx` and `.docx` files
 (`UltraCanvas/core/UltraCanvasOfficeEncryption.cpp`, ECMA-376 agile
 encryption), which checks the files' `dataIntegrity` HMAC before it decrypts a
 byte — the rule above, applied. See `Docs/UltraCanvas/UltraCanvasOfficeEncryption.md`.
+
+### 5.10 AES-CTR and PBKDF2 — interop only
+
+For the formats defined elsewhere that are built on them: Matrix's room-key
+export files (PBKDF2-HMAC-SHA-512, AES-256-CTR, HMAC-SHA-256 - the format
+Element and every other Matrix client read and write), its encrypted
+attachments and secret-storage passphrases, WebCrypto's AES-CTR.
+
+```cpp
+struct UltraCryptCtrParams {
+    // Encrypt: if empty, a fresh random IV is generated and written back.
+    // A format that wants its own shape of IV (Matrix: random with bit 63
+    // clear) supplies it. Decrypt: the IV used at encryption.
+    std::vector<uint8_t> iv;
+};
+
+// The ciphertext is exactly as long as the plaintext.
+UltraCryptResult UltraCrypt_AesCtrEncrypt(const UltraCryptSecureBuffer& key,
+                                          UltraCryptCtrParams& params,
+                                          const void* plaintext, size_t size,
+                                          std::vector<uint8_t>& outCiphertext);
+UltraCryptResult UltraCrypt_AesCtrDecrypt(const UltraCryptSecureBuffer& key,
+                                          const UltraCryptCtrParams& params,
+                                          const void* ciphertext, size_t size,
+                                          UltraCryptSecureBuffer& outPlaintext);
+
+// SHA256 or SHA512 (SHA1 is refused); iterations >= 1; salt may be empty.
+UltraCryptResult UltraCrypt_DeriveKeyPbkdf2(UltraCryptHashAlgorithm algorithm,
+                                            const UltraCryptSecureBuffer& password,
+                                            const std::vector<uint8_t>& salt,
+                                            uint32_t iterations,
+                                            size_t outputLength,
+                                            UltraCryptSecureBuffer& outKey);
+```
+
+The IV is the first counter block, and each next block adds one to it as a
+128-bit big-endian number (NIST SP 800-38A) — the same bytes as WebCrypto's
+`length: 64` counter for as long as that does not wrap, which Matrix rules
+out by clearing bit 63 of its IVs. CTR runs on the same bitsliced,
+constant-time AES as CBC, four blocks a pass. PBKDF2 keys the password's HMAC
+state once and copies it for every iteration, so a format's 500 000 rounds
+cost what they should and no more.
+
+**Using them safely.** CTR has no integrity either, and needs no padding, so
+there is no padding oracle — but one counter block used twice under one key
+gives away the XOR of two plaintexts, so every message needs its own IV. The
+rule of §5.9 holds: check the format's MAC (or the hash Matrix attachments
+carry) before decrypting. PBKDF2 is not memory-hard; it is here to read and
+write what others defined, never for anything UltraCanvas defines itself —
+that is Argon2id (§5.5).
+
+*Serves:* the Matrix provider's room-key export and import
+(`UltraCanvas/Plugins/UltraIM/matrix/MatrixCrypto.cpp`), which checks the
+file's HMAC before it decrypts a byte. Tested against SP 800-38A F.5 (CTR),
+RFC 7914 §11 (PBKDF2-SHA-256) and SHA-512 values, plus the 128-bit counter
+carry, any message length and the refusals.
+
+### 5.11 X.509 and CMS — on OpenSSL 3
+
+`include/UltraCrypt/UltraCryptX509.h`, `core/UltraCrypt/UltraCryptX509.cpp`.
+What S/MIME (RFC 8551) is made of, and what any other use of the public-key
+infrastructure needs; the mail around it (MIME, which part is signed, whose
+certificate to learn) stays with the caller.
+
+```cpp
+bool UltraCrypt_IsX509Available();          // built with OpenSSL 3
+
+// What a certificate says: common name, addresses (subject and rfc822
+// alternative names, lowercased), issuer, validity, SHA-256 fingerprint.
+UltraCryptResult UltraCrypt_ReadCertificate(const std::string& certificate,
+                                            UltraCryptCertificateInfo& out);
+// Whether it is vouched for: a chain to a trusted root (the system's - see
+// "The system's roots" below - and/or roots given), through the
+// intermediates given, for a purpose (any, mail signing, mail encryption),
+// at a time. Trusted / Untrusted / Expired / NotYetValid / Revoked /
+// WrongPurpose, with OpenSSL's reason.
+UltraCryptResult UltraCrypt_CheckCertificate(const std::string& certificatePem,
+                                             const std::vector<std::string>& intermediatesPem,
+                                             const UltraCryptTrustOptions& options,
+                                             UltraCryptTrustCheck& out);
+// A certificate, its chain and private key (PEM in a secure buffer).
+UltraCryptResult UltraCrypt_ImportPkcs12(const std::vector<uint8_t>& pkcs12,
+                                         const UltraCryptSecureBuffer& password,
+                                         UltraCryptX509Identity& out);
+// CMS: signed data checked (detached, or with its content) and made
+// (detached, SHA-256, the chain carried); enveloped data made (AES-256-CBC)
+// and opened.
+UltraCryptCmsType UltraCrypt_CmsTypeOf(const std::vector<uint8_t>& der);
+UltraCryptResult UltraCrypt_CmsVerifyDetached(content, signatureDer, UltraCryptCmsSignature& out);
+UltraCryptResult UltraCrypt_CmsVerifyAttached(signedDer, outContent, UltraCryptCmsSignature& out);
+UltraCryptResult UltraCrypt_CmsSignDetached(content, const UltraCryptX509Identity& signer, outSignatureDer);
+UltraCryptResult UltraCrypt_CmsEncrypt(content, recipientsPem, outEnvelopedDer);
+UltraCryptResult UltraCrypt_CmsDecrypt(envelopedDer, const UltraCryptX509Identity& recipient,
+                                       UltraCryptSecureBuffer& outContent);
+```
+
+**Why a second backend.** libsodium has no RSA, no ECDSA over the NIST
+curves, no ASN.1 and no certificates, and an S/MIME certificate is RSA or
+P-256 more often than not; writing X.509 path validation or a CMS parser here
+is precisely the hand-rolled cryptography this module exists to prevent.
+OpenSSL 3's libcrypto is the library every system already carries for its
+TLS - Linux's packages, MSYS2 on Windows, vcpkg's build for macOS 14 - so it
+costs no new dependency. It does not displace libsodium (§3.5): everything
+UltraCanvas encrypts of its own stays XChaCha20-Poly1305 with Argon2id; this
+section reads and writes what the world defined, as §5.9 and §5.10 do.
+
+**Wrapped completely.** No OpenSSL type reaches a header; the module links
+libcrypto privately by its file, so the installed package names no OpenSSL
+target for a consumer to find, and a build without OpenSSL 3 (the browser
+build, a system without it) has every call answer `BackendUnavailable`.
+
+**The system's roots** are the operating system's, as a mail program's
+should be (`core/UltraCrypt/UltraCryptSystemRoots.cpp`): OpenSSL's default
+store is the system's only on Linux (`/etc/ssl/certs`); on Windows and macOS
+it is whatever the OpenSSL build carried - Mozilla's set from MSYS2, nothing
+at all from vcpkg - so without more no real authority's certificate was
+trusted there.
+
+| Platform | Roots |
+|---|---|
+| Windows | the ROOT store (the user's view, which includes the machine's) and the machine's AuthRoot store (the third-party roots of Windows' automatic root update), less the Disallowed stores |
+| macOS | the system anchors (`SecTrustCopyAnchorCertificates`), and the certificates the admin and user trust settings mark as trusted roots (Keychain Access); "Never Trust" leaves one out |
+| Linux, elsewhere | OpenSSL's default store |
+
+They are read once and added to OpenSSL's default store; `SSL_CERT_FILE` or
+`SSL_CERT_DIR`, when set, is the whole answer instead. Two limits, stated so
+nobody rediscovers them: Windows fetches a third-party root into AuthRoot
+only the first time its own chain building needs it, so a root this machine
+has never used may be missing; and macOS's per-policy trust settings (a root
+trusted for SSL only) are read as trusted for every purpose.
+
+**The rules it keeps.** Nothing throws. A signature check answers one
+question - does it hold for exactly these bytes (`SignatureInvalid` when not)
+- and leaves whether the signer is vouched for to `UltraCrypt_CheckCertificate`,
+so a caller cannot mistake "holds" for "trusted". Private keys, a PKCS #12
+password and decrypted content pass through OpenSSL's secure-memory BIOs and
+arrive in `UltraCryptSecureBuffer`. An older PKCS #12 file (RC2, 3DES) loads
+OpenSSL's legacy provider, once, alongside the default one.
+
+*Serves:* UltraMail's S/MIME (`Apps/UltraMail/engine/UltraMailSmime.cpp`),
+which links no OpenSSL of its own. Tested against a test authority made for
+the suite: certificate fields (PEM and DER), the six trust verdicts, PKCS #12
+(modern, RC2, wrong password, not PKCS #12), detached signatures (holding, a
+changed content or signature byte, a key that is not the certificate's),
+enveloped data (RSA and EC recipients, another recipient refused), and the
+system's roots - a root shipped with the system (Microsoft's on Windows,
+which no OpenSSL bundle carries; ISRG Root X1 on macOS and Linux) trusted
+through them; Windows and macOS CI run the suite for that
+(`ULTRACANVAS_BUILD_CRYPT_TESTS`).
+
+### 5.12 RSA and ECDSA signature checks — JWS RS256 / ES256
+
+`include/UltraCrypt/UltraCryptPublicKey.h`, `core/UltraCrypt/UltraCryptPublicKey.cpp`,
+on the same OpenSSL 3 backend as §5.11 and as optional. For signatures the
+world makes and hands over with a key by its parts - an OpenID Connect
+provider's ID token and key set (JWKS), JOSE, WebCrypto; everything
+UltraCanvas signs of its own stays Ed25519 (§5.8).
+
+```cpp
+bool UltraCrypt_IsRsaEcdsaAvailable();
+
+// RS256: RSASSA-PKCS1-v1_5 with SHA-256. The key as a JWK's n and e
+// (big-endian bytes); below 2048 bits it is InvalidKeySize.
+UltraCryptResult UltraCrypt_CheckRsaPublicKey(modulus, exponent);
+UltraCryptResult UltraCrypt_VerifyRsaPkcs1Sha256(modulus, exponent, data, size, signature);
+
+// ES256: ECDSA on P-256 with SHA-256. The key as a JWK's x and y (32 bytes
+// each; a point off the curve is InvalidArgument); the signature as r || s,
+// 64 bytes, as JWS gives it - converted to DER inside.
+UltraCryptResult UltraCrypt_CheckP256PublicKey(x, y);
+UltraCryptResult UltraCrypt_VerifyEcdsaP256Sha256(x, y, data, size, signature);
+```
+
+Checks only; a signature that does not hold is `SignatureInvalid`, whichever
+byte is off, as for Ed25519. The P-256 key is read as a SubjectPublicKeyInfo
+assembled from the point, since `OSSL_PARAM_BLD`'s EC import fails on
+OpenSSL 3.0.2 (Ubuntu 22.04) and `d2i_PUBKEY` reads alike everywhere.
+
+*Serves:* the UltraDBAdmin relay's OpenID Connect sign-in
+(`Apps/UltraDBAdmin/relay/RelaySignIn.cpp`), which takes the provider's keys
+whose parts these accept and checks the ID token's signature with them; its
+state and nonce come from `UltraCrypt_RandomBytes`, so the relay calls no
+OpenSSL itself. Tested against vectors made by Python's `cryptography`: both
+signatures holding, a changed byte of the data or the signature, another
+modulus, a 1024-bit modulus, an even exponent, a point off the curve, short
+coordinates and signatures.
+
+### 5.13 One-time passwords — HOTP, TOTP and `otpauth://`
+
+`include/UltraCrypt/UltraOtp.h` and `include/UltraCrypt/OtpAuthUri.h`
+(namespace `UltraCanvas::Otp`), `core/UltraCrypt/UltraOtp.cpp` and
+`OtpAuthUri.cpp`: RFC 4226 / RFC 6238 on `UltraCrypt_Hmac`, and the
+de-facto `otpauth://` key URI an authenticator scans from a QR code. Until
+2026-11 the files were UltraAuthenticator's (`Apps/UltraAuthenticator/otp/`).
+
+```cpp
+namespace Otp = UltraCanvas::Otp;
+Otp::Parameters params;                         // TOTP, SHA-1, 6 digits, 30 s
+UltraCryptSecureBuffer secret;
+Otp::NewTotpSecret(secret);                     // 20 random bytes
+params.issuer = "ChatCube";
+params.accountName = "Erin";
+std::string link;
+Otp::BuildOtpAuthUri(params, secret, link);     // show as a QR code; it holds the secret
+
+std::string code;
+Otp::GenerateTotp(secret, params, unixTime, code);                 // the showing side
+
+uint64_t accepted = 0;                                             // the checking side
+Otp::Result ok = Otp::VerifyTotp(secret, params, unixTime, typed,
+                                 1 /* steps either side */, lastAcceptedStep, accepted);
+```
+
+`VerifyTotp` accepts the code of the current time step or of up to
+`windowSteps` (at most 2) either side, and only a step later than the one
+accepted last: a code is good once, so the caller keeps `accepted` and hands
+it back. Every candidate is computed and compared in constant time, whichever
+matched; spaces in the typed code are ignored, anything else but its digits
+fails, and the message never says which part was wrong. Rate limiting is the
+caller's: ChatCube Direct pauses after five wrong codes.
+
+*Serves:* UltraAuthenticator (generation, the URI parser it scans with),
+ChatCube Direct's sign-in (`NewTotpSecret`, `BuildOtpAuthUri`, `VerifyTotp`).
+Tested by `Tests/UltraOtpTests.cpp`: the RFC vectors, the window, single
+use, the digit count, a short secret.
 
 ## 6. Usage sketches
 
@@ -1055,6 +1322,10 @@ is part of the deliverable, not a follow-up:
 - **Round-trip and cross-platform:** a fixture file sealed on one platform must
   open on the other two in CI — this is the guarantee Option B exists to
   provide, so it must be tested, not assumed.
+- **X.509 and CMS** (§5.11), against a test authority embedded in the
+  suite (valid to 2126): every trust verdict, both PKCS #12 encryptions and
+  a wrong password, and each refusal, with the stub build's
+  `BackendUnavailable` checked where OpenSSL 3 is absent.
 - **Hygiene:** `UltraCryptSecureBuffer` wipe-on-destroy verified; a test
   asserting no public header includes a backend header (the wrapped-engine
   rule, mechanically checked); ASan/UBSan on the `UltraCrypt` target.
@@ -1069,6 +1340,7 @@ is part of the deliverable, not a follow-up:
 | **2** | ✅ **Done** — AEAD (XChaCha20-Poly1305; AES-256-GCM interop path), Argon2id, HKDF. The Base32/64 codecs have since moved to UltraCanvasUtils (§5.7) |
 | **3** | ◐ **Started** — `UltraCanvasDocument`'s encryption is rewritten against UltraCrypt (§1.1), and `AnchorPoint/net/Sha256.h` is retired. Still to do: UCD v2 writer/reader. (UltraVault's file backend has since shipped on its own.) |
 | **4** | ◐ **Started** — Ed25519 signatures (§5.8), for UltraStore's signed catalog; AES-CBC for foreign formats (§5.9). Still optional: XChaCha20-Poly1305 at volume, key agreement |
+| **5** | ✅ **Done** — X.509 and CMS on OpenSSL 3 (§5.11), for UltraMail's S/MIME; RSA / ECDSA checks (§5.12), for the UltraDBAdmin relay's sign-in |
 
 Stage 1 alone unblocks UltraAuthenticator's OTP engine; Stage 2 unblocks its
 storage layer and the UCD v2 format.

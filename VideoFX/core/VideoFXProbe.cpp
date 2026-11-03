@@ -1,6 +1,7 @@
 // VideoFX/core/VideoFXProbe.cpp
 // Media inspection: VideoFX_Probe, frame and thumbnail extraction, saving a
 // frame as PNG / JPEG; the host application's picture reader.
+// Version: 0.14.1 - a frame scaled to RGBA no longer overruns its buffer (kSwsSlack)
 // Version: 0.14.0 - VideoFX_SetPictureReader: picture types the host reads
 //                  go through its reader in Probe, ExtractFrame, ExtractThumbnails
 // Version: 0.10.0
@@ -92,12 +93,13 @@ VideoFXResult FitFrame(VideoFXFrame& frame, int maxWidth, int maxHeight) {
     SwsPtr sws(sws_getContext(frame.width, frame.height, AV_PIX_FMT_RGBA, w, h, AV_PIX_FMT_RGBA, SWS_BICUBIC,
                               nullptr, nullptr, nullptr));
     if (!sws) return Fail(VideoFXResult::DecodeError, "Cannot scale the picture");
-    std::vector<uint8_t> scaled(static_cast<size_t>(w) * h * 4);
+    std::vector<uint8_t> scaled(static_cast<size_t>(w) * h * 4 + kSwsSlack);
     const uint8_t* srcData[4] = {frame.pixels.data(), nullptr, nullptr, nullptr};
     const int srcLines[4] = {frame.width * 4, 0, 0, 0};
     uint8_t* dstData[4] = {scaled.data(), nullptr, nullptr, nullptr};
     const int dstLines[4] = {w * 4, 0, 0, 0};
     sws_scale(sws.get(), srcData, srcLines, 0, frame.height, dstData, dstLines);
+    scaled.resize(static_cast<size_t>(w) * h * 4);
     frame.width = w;
     frame.height = h;
     frame.pixels = std::move(scaled);
@@ -310,10 +312,11 @@ VideoFXResult ConvertToRgba(const AVFrame* src, int rotation, int maxWidth, int 
                               scaledW, scaledH, AV_PIX_FMT_RGBA, SWS_BICUBIC, nullptr, nullptr, nullptr));
     if (!sws) return Fail(VideoFXResult::DecodeError, "Cannot convert the frame's pixel format");
 
-    std::vector<uint8_t> scaled(static_cast<size_t>(scaledW) * scaledH * 4);
+    std::vector<uint8_t> scaled(static_cast<size_t>(scaledW) * scaledH * 4 + kSwsSlack);
     uint8_t* dstData[4] = {scaled.data(), nullptr, nullptr, nullptr};
     int dstLines[4] = {scaledW * 4, 0, 0, 0};
     sws_scale(sws.get(), src->data, src->linesize, 0, src->height, dstData, dstLines);
+    scaled.resize(static_cast<size_t>(scaledW) * scaledH * 4);
 
     dst.width = outW;
     dst.height = outH;

@@ -184,7 +184,7 @@ StreamHandle MockCodeAssist::RunStream(const CodeAssistRequest& request,
     auto delay = impl_->streamDelay;
 
     std::thread worker([handle, response, onEvent, delay]() {
-        if (response.error.code != ErrorCode::None) {
+        if (response.error.code != ErrorCode::Ok) {
             CodeStreamEvent ev;
             ev.kind = CodeStreamEventKind::Error;
             ev.error = response.error;

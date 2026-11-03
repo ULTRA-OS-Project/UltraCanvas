@@ -57,6 +57,15 @@
         "pango"
       ]
     },
+    "heif": {
+      "description": "HEIF / AVIF loader and saver (libheif).",
+      "dependencies": [
+        {
+          "name": "libheif",
+          "default-features": false
+        }
+      ]
+    },
     "highway": {
       "description": "SIMD paths (highway).",
       "dependencies": [
@@ -67,6 +76,12 @@
       "description": "Build with jpeg support.",
       "dependencies": [
         "libjpeg-turbo"
+      ]
+    },
+    "jpeg-xl": {
+      "description": "JPEG XL loader and saver (libjxl).",
+      "dependencies": [
+        "libjxl"
       ]
     },
     "lcms": {
@@ -146,5 +161,5 @@
       ]
     }
   },
-  "port-version": 1
+  "port-version": 3
 }

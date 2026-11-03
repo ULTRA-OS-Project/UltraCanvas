@@ -17,7 +17,7 @@ editor is [`Docs/UltraPaint/FeatureGapAnalysis.md`](../../Docs/UltraPaint/Featur
  toolbar:   new open save | undo redo | zoom- zoom+ fit 100% | new layer export
  ┌────┬──────────────────────────────────────┬──────────────────┐
  │tool│                                      │ Colour           │
- │pal-│         paint surface                │  picker, swatches│
+ │pal-│         paint surface                │  picker, palettes│
  │ette│   (zoom, pan, grid, marching ants)   │ Tool Options     │
  │    │                                      │ Layers           │
  └────┴──────────────────────────────────────┴──────────────────┘
@@ -30,6 +30,15 @@ folds its channels (the HSV / HSL / RGB tabs and sliders) away under
 *Channels*. It is as tall as what it shows, so the panels below move up and
 down with it, and it opens with the design and the channels it was left with
 (`picker.design` and `picker.channels` in the settings file).
+
+Under the picker are the colour palettes, one row of swatches each. A click
+on a swatch picks its colour; a right click opens a small picker that changes
+that one entry (*Revert* puts it back). The **+** at the end of the last row
+opens a gallery of colour schemes - basics, moods, design systems, retro
+machines and indexed palettes up to 256 colours for a GIF - and a scheme's
+own **+** adds it as another row. With several rows each one ends in a **−**
+that takes it away. The rows, edited colours included, are kept in the
+settings file (`picker.palettes`).
 
 ## Tools
 

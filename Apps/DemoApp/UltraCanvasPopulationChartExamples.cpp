@@ -1,10 +1,14 @@
 // Apps/DemoApp/UltraCanvasPopulationChartExamples.cpp
 // Population Chart demonstration examples
+// Version: 1.1.0 - the shared page look (UltraCanvasDemoPageKit): the two
+//                  pyramids in cards side by side while they fit, the
+//                  statistics in a card whose text wraps
 // Version: 1.0.0
-// Last Modified: 2025-01-19
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "Plugins/Charts/UltraCanvasPopulationChart.h"
 #include "UltraCanvasLabel.h"
 #include <memory>
@@ -12,27 +16,19 @@
 namespace UltraCanvas {
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreatePopulationChartExamples() {
-        // Create main container
-        auto container = std::make_shared<UltraCanvasContainer>("PopulationChartContainer", 0, 0, 1000, 780);
+        auto container = DemoKit::CreatePage("PopulationChartContainer",
+                "Population Pyramid Charts - Germany vs Russia Comparison",
+                "Demographic comparison showing age and gender distribution (Data: 2024-2025)");
 
-        // Title Label
-        auto titleLabel = std::make_shared<UltraCanvasLabel>("TitleLabel", 20, 10, 960, 30);
-        titleLabel->SetText("Population Pyramid Charts - Germany vs Russia Comparison");
-        titleLabel->SetFontSize(18);
-        titleLabel->SetFontWeight(FontWeight::Bold);
-        titleLabel->SetAlignment(TextAlignment::Center);
-        container->AddChild(titleLabel);
-
-        // Description Label
-        auto descLabel = std::make_shared<UltraCanvasLabel>("DescLabel", 20, 45, 960, 20);
-        descLabel->SetText("Demographic comparison showing age and gender distribution (Data: 2024-2025)");
-        descLabel->SetFontSize(12);
-        descLabel->SetTextColor(Color(100, 100, 100));
-        descLabel->SetAlignment(TextAlignment::Center);
-        container->AddChild(descLabel);
+        // The two pyramids side by side; a card is never narrower than its
+        // chart, so on a narrow page the second one moves under the first.
+        const float chartCardW = 480 + 2 * DemoKit::kCardPadding + 2;
+        auto chartRow = DemoKit::AddRow(container, "PopulationChartRow");
+        auto germanyCard = DemoKit::AddCard(chartRow, "GermanyCard", "", "", chartCardW);
+        auto russiaCard = DemoKit::AddCard(chartRow, "RussiaCard", "", "", chartCardW);
 
         // ===== GERMANY POPULATION CHART =====
-        auto germanyChart = std::make_shared<UltraCanvasPopulationChart>("GermanyChart", 20, 75, 480, 640);
+        auto germanyChart = std::make_shared<UltraCanvasPopulationChart>("GermanyChart", 0, 0, 480, 640);
         germanyChart->SetTitle("Germany");
         germanyChart->SetSubtitle("2024");
         germanyChart->SetAxisLabel("Population (millions)");
@@ -85,10 +81,10 @@ namespace UltraCanvas {
         germanyChart->EnableLegend(true);
         germanyChart->SetLegendPosition("top-right");
 
-        container->AddChild(germanyChart);
+        DemoKit::AddFixed(germanyCard, germanyChart);
 
         // ===== RUSSIA POPULATION CHART =====
-        auto russiaChart = std::make_shared<UltraCanvasPopulationChart>("RussiaChart", 510, 75, 480, 640);
+        auto russiaChart = std::make_shared<UltraCanvasPopulationChart>("RussiaChart", 0, 0, 480, 640);
         russiaChart->SetTitle("Russia");
         russiaChart->SetSubtitle("2024");
         russiaChart->SetAxisLabel("Population (millions)");
@@ -141,22 +137,19 @@ namespace UltraCanvas {
         russiaChart->EnableLegend(true);
         russiaChart->SetLegendPosition("top-right");
 
-        container->AddChild(russiaChart);
+        DemoKit::AddFixed(russiaCard, russiaChart);
 
         // ===== STATISTICS PANEL =====
-        auto statsLabel = std::make_shared<UltraCanvasLabel>("StatsLabel", 20, 720, 960, 20);
-        statsLabel->SetText("Key Statistics: Germany (83.6M, 49.1% M / 50.9% F, Median Age 45.5) | Russia (144M, 46.4% M / 53.6% F, Median Age 40.3)");
+        auto statsCard = DemoKit::AddCard(container, "PopulationStatsCard");
+        auto statsLabel = DemoKit::AddText(statsCard, "StatsLabel",
+                "Key Statistics: Germany (83.6M, 49.1% M / 50.9% F, Median Age 45.5) | "
+                "Russia (144M, 46.4% M / 53.6% F, Median Age 40.3)");
         statsLabel->SetFontSize(11);
         statsLabel->SetTextColor(Color(60, 60, 60));
-        statsLabel->SetAlignment(TextAlignment::Center);
-        container->AddChild(statsLabel);
 
-        auto insightsLabel = std::make_shared<UltraCanvasLabel>("InsightsLabel", 20, 740, 960, 20);
-        insightsLabel->SetText("Notable: Russia has 72% more population but Germany has older age structure. Russia shows significant female surplus in 30+ age groups.");
-        insightsLabel->SetFontSize(10);
-        insightsLabel->SetTextColor(Color(80, 80, 80));
-        insightsLabel->SetAlignment(TextAlignment::Center);
-        container->AddChild(insightsLabel);
+        DemoKit::AddCaption(statsCard, "InsightsLabel",
+                "Notable: Russia has 72% more population but Germany has older age structure. "
+                "Russia shows significant female surplus in 30+ age groups.");
 
         return container;
     }

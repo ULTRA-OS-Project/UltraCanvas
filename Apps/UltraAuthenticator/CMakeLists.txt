@@ -2,8 +2,9 @@
 # UltraAuthenticator — TOTP/HOTP codes for ULTRA OS.
 #
 # Two targets:
-#   UltraAuthenticatorCore  static lib: OTP engine, otpauth:// parser, encrypted
-#                           vault, the account layer and the default vault
+#   UltraAuthenticatorCore  static lib: the encrypted vault (the OTP engine and
+#                           the otpauth:// parser are UltraCrypt's,
+#                           include/UltraCrypt/UltraOtp.h), the account layer and the default vault
 #                           location. Depends only on
 #                           UltraCrypt, so the whole security-relevant surface
 #                           builds and tests without the UI stack — which is why
@@ -18,8 +19,6 @@ if(NOT TARGET UltraCrypt)
 endif()
 
 set(ULTRAAUTHENTICATOR_CORE_SOURCES
-    otp/UltraOtp.cpp
-    otp/OtpAuthUri.cpp
     store/EncryptedFileStore.cpp
     AccountStore.cpp
     AccountExport.cpp

@@ -544,7 +544,7 @@ static constexpr float kPi = 3.14159265f;
 
         for (size_t gi = 0; gi < dataSource->GetGroupCount(); ++gi) {
             const DendrogramGroup* g = dataSource->GetGroup(gi);
-            if (!g || g->fillMode == GroupFillMode::None) continue;
+            if (!g || g->fillMode == GroupFillMode::NoFill) continue;
 
             // Collect pixel positions of all leaves in this group
             float minPrimary = 1e9f, maxPrimary = -1e9f;
@@ -1895,7 +1895,7 @@ static constexpr float kPi = 3.14159265f;
 
     float UltraCanvasDendrogram::ComputeBranchWidth(float confidence) const
     {
-        if (style.confidenceMode == ConfidenceDisplayMode::None) return style.defaultBranchWidth;
+        if (style.confidenceMode == ConfidenceDisplayMode::Hidden) return style.defaultBranchWidth;
         if (style.confidenceMode == ConfidenceDisplayMode::LineDash ||
             style.confidenceMode == ConfidenceDisplayMode::NodeDot)  return style.defaultBranchWidth;
 

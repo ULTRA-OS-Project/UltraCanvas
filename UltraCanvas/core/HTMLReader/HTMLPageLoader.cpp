@@ -1,11 +1,13 @@
 // core/HTMLReader/HTMLPageLoader.cpp
 // URL -> decoded, parsed page with its style sheets; subresources on demand.
 // See include/HTMLReader/HTMLPageLoader.h.
+// Version: 1.4.0 - fetchResource: sheets and pictures fetched with their page;
+//                  AllowsResource
 // Version: 1.3.0 - downloads (LoadedPage body / fileName, DownloadFileName)
 // Version: 1.2.0 - LoadPost: a form's POST
 // Version: 1.1.0 - @import sheets fetched before the page is ready
 // Version: 1.0.0
-// Last Modified: 2026-10-12
+// Last Modified: 2026-10-22
 // Author: UltraCanvas Framework
 
 #include "HTMLReader/HTMLPageLoader.h"
@@ -362,7 +364,7 @@ void PageLoader::FetchSheet(const std::shared_ptr<Navigation>& nav, const std::s
     }
     std::weak_ptr<uint64_t> alive = generation_;
     const uint64_t id = nav->id;
-    services_.fetch(key, [this, alive, id, nav, key, depth](FetchResult result) {
+    FetchResource(key, pageUrl_, [this, alive, id, nav, key, depth](FetchResult result) {
         auto gen = alive.lock();
         if (!gen || *gen != id) return;
         CacheEntry entry;
@@ -401,7 +403,7 @@ std::vector<uint8_t> PageLoader::GetResource(const std::string& href) {
         return bytes;
     }
     std::string why;
-    if (!Allowed(key, why) || !services_.fetch || requested_ >= limits_.maxResources) {
+    if (!Allowed(key, why) || (!services_.fetch && !services_.fetchResource) || requested_ >= limits_.maxResources) {
         CacheEntry failed;
         failed.state = CacheEntry::State::Failed;
         Store(key, std::move(failed));
@@ -412,7 +414,7 @@ std::vector<uint8_t> PageLoader::GetResource(const std::string& href) {
     Store(key, CacheEntry{});              // pending: asked for once
     std::weak_ptr<uint64_t> alive = generation_;
     const uint64_t id = *generation_;
-    services_.fetch(key, [this, alive, id, key](FetchResult result) {
+    FetchResource(key, pageUrl_, [this, alive, id, key](FetchResult result) {
         auto gen = alive.lock();
         if (!gen || *gen != id) return;
         CacheEntry entry;
@@ -451,6 +453,17 @@ bool PageLoader::Allowed(const std::string& absolute, std::string& why) const {
     }
     why = scheme.empty() ? "not a URL" : "scheme " + scheme;
     return false;
+}
+
+bool PageLoader::AllowsResource(const std::string& url, std::string& why) const {
+    why.clear();
+    return Allowed(url, why);
+}
+
+void PageLoader::FetchResource(const std::string& url, const std::string& pageUrl,
+                               std::function<void(FetchResult)> done) {
+    if (services_.fetchResource) services_.fetchResource(url, pageUrl, std::move(done));
+    else services_.fetch(url, std::move(done));
 }
 
 void PageLoader::Store(const std::string& url, CacheEntry entry) {

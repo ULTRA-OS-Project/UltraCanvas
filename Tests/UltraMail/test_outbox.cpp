@@ -3,6 +3,7 @@
 // flushing through a fake SMTP plug-in — successes are removed, failures are
 // retained with an incremented attempt count. Plus SyncService.SyncNow driving
 // a fake mailbox end to end.
+// Version: 0.2.0 - Flush with a plug-in per account
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "test_framework.h"
@@ -100,6 +101,45 @@ TEST(outbox_flush_success_removes_items) {
 
     int n = 0; store.PendingCount(n);
     REQUIRE_EQ(n, 0);   // sent item removed
+}
+
+TEST(outbox_flush_sends_each_account_through_its_own_plugin) {
+    OutboxStore store = FreshOutbox("perplugin");
+    int64_t id = 0;
+    store.Enqueue("erika", "smtps://smtp.example.com:465/", SampleDraft(), id);
+    Draft viaJmap = SampleDraft();
+    viaJmap.fromAddr = "erika@fastmail.com";
+    store.Enqueue("fastmail", "jmap://api.fastmail.com:443/", viaJmap, id);
+    Draft orphan = SampleDraft();
+    orphan.fromAddr = "nobody@example.net";
+    store.Enqueue("nobody", "smtp://x/", orphan, id);
+
+    FakeSmtp smtp, jmap;   // the JMAP plug-in sends through the same interface
+    Outbox outbox(store);
+    auto stats = outbox.Flush(
+        [&](const std::string& accountId) -> IMailProtocolPlugin* {
+            if (accountId == "erika")    return &smtp;
+            if (accountId == "fastmail") return &jmap;
+            return nullptr;   // no plug-in can send for this one
+        },
+        [](const std::string&, UltraNetMailOptions& o) {
+            o.credentials.password = "pw";
+            return UltraNetResult::Ok();
+        });
+
+    REQUIRE_EQ(stats.sent, 2);
+    REQUIRE_EQ(stats.failed, 1);
+    REQUIRE_EQ(smtp.sends, 1);
+    REQUIRE_EQ(smtp.last.from, std::string("Erika <erika@example.com>"));
+    REQUIRE_EQ(jmap.sends, 1);
+    REQUIRE_EQ(jmap.last.from, std::string("Erika <erika@fastmail.com>"));
+    REQUIRE(stats.lastFailure.code == UltraNetResultCode::PluginNotFound);
+
+    // The one without a plug-in stays, with the reason on it.
+    std::vector<OutboxItem> pending;
+    REQUIRE(store.ListPending(pending).success);
+    REQUIRE_EQ(pending.size(), (size_t)1);
+    REQUIRE_EQ(pending[0].accountId, std::string("nobody"));
 }
 
 TEST(outbox_flush_leaves_a_held_message_alone) {

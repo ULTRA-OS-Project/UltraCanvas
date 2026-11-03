@@ -650,13 +650,20 @@ namespace UltraCanvas {
         // The cross-axis thickness must fit whichever is larger — the handle or
         // the bar plus its border — so a palette-style bar thicker than the
         // handle is not clipped at the element edge.
+        // A value the slider shows is drawn above a horizontal bar and right
+        // of a vertical one, so the bar keeps to the far edge to leave it the
+        // room; with no value to show it is centred across the box, which puts
+        // it on the line of the labels a row centres beside it.
         int thickness = (int)std::ceil(std::max(style.handleSize,
                                                 style.trackHeight + 2.0f * style.borderWidth));
+        bool centred = (valueDisplay == SliderValueDisplay::NoDisplay);
         if (isVertical) {
-            return Rect2Di(bounds.x, bounds.y, thickness, bounds.height);
+            int x = centred ? bounds.x + (bounds.width - thickness) / 2 : bounds.x;
+            return Rect2Di(x, bounds.y, thickness, bounds.height);
         } else {
-            return Rect2Di(bounds.x, bounds.y + bounds.height - thickness,
-                           bounds.width, thickness);
+            int y = centred ? bounds.y + (bounds.height - thickness) / 2
+                            : bounds.y + bounds.height - thickness;
+            return Rect2Di(bounds.x, y, bounds.width, thickness);
         }
     }
 

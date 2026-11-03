@@ -823,7 +823,7 @@ namespace {
                 case ValueVisualizationType::CircularBar:
                     DrawCellCircularBar(ctx, ring, cell, a0, a1); break;
                 case ValueVisualizationType::CircularLine:
-                case ValueVisualizationType::None:
+                case ValueVisualizationType::NoVisualization:
                 default:
                     break;
             }
@@ -1192,7 +1192,7 @@ namespace {
                 break;
             }
 
-            case DecorativeRingType::None:
+            case DecorativeRingType::NoRing:
             default:
                 break;
         }
@@ -1227,7 +1227,7 @@ namespace {
     }
 
     void UltraCanvasCircularInfoGraphic::DrawConnections(IRenderContext* ctx) {
-        if (connectionType == ConnectionLineType::None || connections.empty()) return;
+        if (connectionType == ConnectionLineType::NoLine || connections.empty()) return;
 
         double maxValue = 0.0;
         for (const auto& c : connections) maxValue = std::max(maxValue, c.value);
@@ -1282,7 +1282,7 @@ namespace {
                     break;
                 }
 
-                case ConnectionLineType::None:
+                case ConnectionLineType::NoLine:
                 default:
                     continue;
             }

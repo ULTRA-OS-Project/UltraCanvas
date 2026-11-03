@@ -158,6 +158,11 @@ struct SystemNotification {
     std::string urgency = "normal"; // "low" | "normal" | "critical"
     std::vector<NotificationAction> actions;
     std::string origin = "ultramessage";
+    // The application's own note of what the notification is about, handed
+    // back to it with a click that reaches it outside the bus - a Windows
+    // toast clicked after the broker host quit (UltraCanvasNotificationActivation.h).
+    // Opaque to everyone else; "" when the application needs none.
+    std::string launch;
 };
 
 JSONValue MakeMessagingMessage(const MessagingMessage& m);

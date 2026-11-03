@@ -50,7 +50,7 @@ namespace VirtualFS {
  * @brief What is actually storing the bytes.
  */
 enum class VirtualFSRamDiskBacking {
-    None = 0,       // Not created
+    NotCreated = 0,       // Not created
     Tmpfs = 1,      // Linux: a directory on /dev/shm (true RAM)
     HdiUtil = 2,    // macOS: hdiutil ram:// device (true RAM)
     ImDisk = 3,     // Windows: ImDisk virtual disk (true RAM)
@@ -75,7 +75,7 @@ struct VirtualFSRamDisk {
     std::string mountPath;              // Where it is mounted (a real path)
     uint64_t requestedBytes = 0;        // Size asked for
     uint64_t capacityBytes = 0;         // Size actually available (0 = unknown)
-    VirtualFSRamDiskBacking backing = VirtualFSRamDiskBacking::None;
+    VirtualFSRamDiskBacking backing = VirtualFSRamDiskBacking::NotCreated;
 
     // Platform handle: the /dev/diskN node on macOS, the drive letter on
     // Windows. Empty on Linux, where the directory path is the whole story.
@@ -95,7 +95,7 @@ struct VirtualFSRamDisk {
 
     /** @brief True when this handle refers to a live disc. */
     bool IsValid() const {
-        return backing != VirtualFSRamDiskBacking::None && !mountPath.empty();
+        return backing != VirtualFSRamDiskBacking::NotCreated && !mountPath.empty();
     }
 
     explicit operator bool() const { return IsValid(); }

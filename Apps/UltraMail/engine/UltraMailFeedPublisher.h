@@ -38,7 +38,12 @@ struct MailNotification {
     std::string summary;    // "New mail from Ada Lovelace"
     std::string body;       // the subject, or a line per message
     std::string iconPath;   // UltraMail's icon, for the servers that show one
+    std::string launch;     // where a click leads, for a click outside the bus (NewMailLaunch)
 };
+
+// UltraMail's identity on the bus, in its notifications and, on Windows, as
+// the AppUserModelID its toasts show under and its notification activator serves.
+constexpr const char* kUltraMailAppId = "org.ultraos.ultramail";
 
 class FeedPublisher {
 public:
