@@ -1,3 +1,141 @@
+#### 2026-11-03 *0.9.471*
+- **Two design documents for the next framework-wide jobs.**
+  `Docs/UltraCanvas/UltraCanvasLocalisationProposal.md` proposes the
+  **UltraLocalisation** module: `Tr` / `TrC` / `TrN` / `TrF` with the
+  English text as the key; a **standard set** UltraCanvas ships for every
+  application (the framework's own strings and the common application
+  vocabulary, translated once), **base sets** per kind of application
+  (Computer, Web, Audio, Image, Video, Text, Spreadsheet, Presentation,
+  Planning, CAD, Banking, Games, Shopping, Fashion, and Communication and
+  Security for the applications the tree has) that an application takes
+  by name, drafted in an appendix, and the application's **own set** over
+  them,
+  one JSON per language and set under `media/locale/<lang>/` with a
+  per-user override under the UltraCanvas settings folder; the language
+  chosen once for every application in UOS-Settings (`Language.conf`, the
+  system's language by default); a **localisation editor** element that
+  shows the standard set, the base sets and the application set in one
+  grid - inherited, overridden, own and untranslated rows - and merges
+  them (take a base, promote or demote an entry, merge two bases), hosted
+  in UOS-Settings, in an
+  application's Help menu and in DemoApp, saving into a checkout or into
+  the settings folder; locale number, date and file-size formatting; and
+  the extraction, check, wrapping and UltraAI-draft scripts that make the
+  30 applications' migration mechanical.
+  `Docs/UltraCanvas/UltraCanvasHostThemeProposal.md` proposes following the
+  host's look: `HostAppearance` read from the Windows registry, AppKit,
+  XSETTINGS / GSettings / kdeglobals, the browser's media queries and
+  Android's configuration, with the change events each platform sends;
+  fonts and text sizes in `UltraCanvasTheme` by text role; `FromHost` with
+  the accent derived under the contrast rules the theme test enforces; a
+  theme policy on the application that follows the host by default;
+  `FromTheme` for the 42 style structs that lack one; `Appearance.conf`
+  and a UOS-Settings Appearance > Look page; and a watcher on the settings
+  folder that makes those shared settings live in running applications.
+  Both are recorded in `scripts/doc_examples_baseline.txt` until their
+  APIs exist.
+- **"The system font" is the desktop's font now, on every platform.**
+  `UltraCanvasApplication::GetSystemFontStyle()` and
+  `GetDefaultMonospacedFontStyle()` - what an element with no font family
+  of its own is drawn in - returned the literal Ubuntu 12 on Linux and on
+  Windows, so a Windows desktop's Segoe UI and a GNOME desktop's Cantarell
+  never reached a window. Windows reads the message font of the non-client
+  metrics at 96 dpi (`SystemParametersInfoForDpi`, else the system dpi) and
+  uses Consolas for code; Linux and the BSDs read GSettings
+  `org.gnome.desktop.interface` (`font-name`, `monospace-font-name`; only
+  inside a desktop session, since with no desktop running the schema
+  answers its compiled default, which nobody chose),
+  `~/.config/kdeglobals` (`font`, `fixed`; first on a KDE session) and the
+  GTK `settings.ini`; macOS keeps its system font and now gives the system
+  monospace (Menlo for SF Mono, which Pango cannot name) at the interface
+  size instead of Ubuntu Mono 12. The parsers are the header-only
+  `UltraCanvasSystemFont.h` (`ParseGtkFontName`, `ParseKdeFontEntry`,
+  `ReadIniValue`), `SystemFontTest` holds them, and the bundled Ubuntu
+  families stay the answer where nothing is set.
+- **One detector for the person's language.** `UltraCanvasSystemLanguage.h`:
+  `SystemLanguageTags()` gives the desktop's languages best first as BCP 47
+  tags - the POSIX variables as gettext reads them, then the platform's
+  own list (Windows' preferred UI languages and default locale, macOS's
+  Language & Region, `navigator.languages` in a browser, the configuration
+  on Android). The spell checker's `DetectPreferredLanguage`, which read the
+  variables itself and had no platform answer except the Windows
+  backend's, uses it; the localisation module of
+  `UltraCanvasLocalisationProposal.md` will. `SystemLanguageTest` holds the
+  rules.
+- **The standard set of the localisation proposal is measured.**
+  `scripts/survey_ui_strings.py` lists the UI strings the applications
+  share and the framework's own; its findings are the proposal's new
+  appendix, the draft contents of `Standard.json`.
+- **UltraLocalisation, phase L1: the localisation module.** `Tr("Save")`
+  gives the translation of the English text written at the site, from
+  three layers of JSON catalogues loaded at start-up - the application's
+  own set (`media/locale/<lang>/<App>.json`), the base sets of its kind
+  (`media/locale/<lang>/base/<Base>.json`, named in the catalogue's
+  `@bases` or with `UseBaseSets`) and the standard set
+  (`media/locale/<lang>/Standard.json`) - the English itself when none has
+  it, so nothing is ever blank. A file of the same name under the
+  UltraCanvas settings folder's `locale/` is read first, so a translator's
+  draft shows on the next start; a regional tag walks down (`zh-Hant-TW`,
+  `zh-Hant`, `zh`) and the more specific file wins per key. `TrC` keys on
+  a context (`"button|Open"`), `TrN` picks the plural form by the
+  language's CLDR rule from a table of forty languages, `TrF` fills `{0}`,
+  `{1}`, .... `Language.conf` in the settings folder (`language=de` or
+  `system`, `translator=`) is the one choice for every application;
+  `Initialize` takes `--lang` (`SetLanguageOverride`), `ULTRACANVAS_LANG`,
+  that file, then the first desktop language a catalogue exists for, then
+  English, and `UltraCanvasApplicationBase::Initialize` runs it before the
+  first window. The module is UI-free and free of the core (yyjson and the
+  path helpers only), the `uc-localisation` archive absorbed into the
+  shared core, public name `UltraLocalisation`, `Masterfile_modules.md`
+  §18, `Docs/Modules/UltraLocalisation/README.md`;
+  `UltraLocalisationTest` runs it over a temporary catalogue tree. The
+  catalogues' contents (L2), the scripts, the editor (L4) and locale
+  formatting (L6) follow; until L2 ships a catalogue every application
+  shows its English as before.
+- **UltraLocalisation, phase L2: the catalogues and the scripts.**
+  `media/locale/en/Standard.json` is the English standard set - the
+  framework's own `Tr` keys and the application vocabulary of the
+  proposal's Appendix A, 311 entries - and `media/locale/en/base/` holds
+  the sixteen base sets of Appendix B (Computer, Web, Audio, Image, Video,
+  Text, Spreadsheet, Presentation, Planning, CAD, Banking, Games,
+  Shopping, Fashion, Communication, Security; 1,216 entries), so a
+  translation of a language is those files with the values in that
+  language. The framework's own dialogs are wrapped in `Tr`: the modal
+  dialogs' buttons and titles, the file dialog, the filer widget's menus
+  and messages, the colour, date, time and new-document dialogs, the
+  progress dialog, the spell-check menu, the media viewer; a title built
+  from pieces became a `TrF` with placeholders, and the date picker's
+  weekday and month names are the standard set's context entries
+  (`"month|May"`, `"weekday|Mo"`), re-read when the language changes
+  while a picker is open.
+  `scripts/extract_ui_strings.py` rewrites the English catalogues from the
+  `Tr` sites (adding to the standard set, never removing; an application's
+  file from its own sites with what it inherits listed),
+  `scripts/check_locale_catalogues.py` is the CI gate over every
+  translation (parses, no stale key, placeholders kept, the plural forms
+  the language needs, no entry repeated from a set below, the English in
+  sync; `locale-catalogues.yml`, a baseline that only shrinks), and
+  `scripts/wrap_ui_strings.py` wraps a file's interface strings for
+  review. The plural table gained Breton, Scottish Gaelic, Manx, Cornish,
+  Tachelhit, Tamazight, Filipino, Colognian, the Sami languages, Hebrew's
+  "many" and European Portuguese.
+- **UltraLocalisation, phase L3: the drafts, the drafting tool, the
+  Language page.** `media/locale/` now holds the standard set and the
+  sixteen base sets in German, French, Spanish, Italian, Dutch,
+  Portuguese, Japanese and Simplified Chinese - 1,546 entries each,
+  machine drafts marked `"@translated-by": "machine draft ..., reviewed
+  by -"` until a person reviews them - so the framework's own dialogs show
+  in those languages on a desktop set to one. `ultralocalisation-draft`
+  (`Apps/UltraLocalisationDraft`, built with the UltraAI module) drafts a
+  catalogue through UltraAI's translator with any configured provider,
+  keeps what a target already has, sends every plural form the language
+  needs and refuses a draft that lost a placeholder;
+  `scripts/translate_catalogue.py` runs it over a language's sets with a
+  context per set. UOS-Settings gains a Language page (its 0.7.0): the
+  language for every application, *System* or any with a standard set,
+  written to `Language.conf`, and the translator's name for the catalogues
+  the editor will save.
+
 #### 2026-11-03 *0.9.470*
 - **An application built against the Linux SDK stopped with "No rule to make
   target '/usr/lib/x86_64-linux-gnu/libmp3lame.so'".**
