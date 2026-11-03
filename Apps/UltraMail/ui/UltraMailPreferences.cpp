@@ -1,4 +1,5 @@
 // Apps/UltraMail/ui/UltraMailPreferences.cpp
+// Version: 0.16.0 - send_notification (popup / status-bar)
 // Version: 0.15.0 - attachments (bottom / right)
 // Version: 0.14.0 - warn_loan_offers
 // Version: 0.13.0 - switch_on_quiet_sec (alerts wait after the computer was switched on)
@@ -129,6 +130,9 @@ bool Preferences::Load(const std::string& path) {
                 start = comma + 1;
             }
         }
+        if (key == "send_notification")
+            sendNotification = Trim(value) == "status-bar" ? SendNotification::StatusBar
+                                                           : SendNotification::Popup;
         if (key == "link_display")
             linkDisplay = Trim(value) == "tooltip" ? LinkDisplay::Tooltip
                                                    : LinkDisplay::StatusBar;
@@ -227,6 +231,8 @@ bool Preferences::Save(const std::string& path) const {
     file << "check_mail_every_sec = " << checkMailEverySec << "\n";
     file << "switch_on_quiet_sec = " << switchOnQuietSec << "\n";
     file << "notify_new_mail = " << (notifyNewMail ? "true" : "false") << "\n";
+    file << "send_notification = "
+         << (sendNotification == SendNotification::StatusBar ? "status-bar" : "popup") << "\n";
     auto flag = [&file](const char* key, bool on) {
         file << key << " = " << (on ? "true" : "false") << "\n";
     };

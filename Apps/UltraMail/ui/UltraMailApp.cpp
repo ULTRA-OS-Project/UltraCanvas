@@ -1,4 +1,6 @@
 // Apps/UltraMail/ui/UltraMailApp.cpp
+// Version: 0.9.43 - a sent message is reported in a popup window or in the status
+//                  bar (Settings > Handling > Email send notification)
 // Version: 0.9.42 - Import: .eml, .emlx and Outlook .msg files into the folder on show
 //                  (uploaded to the server, synced back); an attachment that is a
 //                  program or script is never opened, only offered to be saved
@@ -2499,10 +2501,15 @@ void UltraMailApp::SendQueued(const std::string& fromAddr, const std::string& re
         [this, parent, fromAddr, recipients](const Outbox::FlushStats& stats) {
             NoteOutboxPass();
             if (stats.failed == 0) {
-                AlertSuccess(parent, recipients.empty()
+                const std::string sent = recipients.empty()
                     ? "The outbox was sent (" + std::to_string(stats.sent) + " message"
                           + (stats.sent == 1 ? "" : "s") + ")."
-                    : "Message sent to " + recipients + ".");
+                    : "Message sent to " + recipients + ".";
+                // Settings > Handling > Email send notification.
+                if (prefs_.sendNotification == SendNotification::StatusBar)
+                    SetStatus(sent);
+                else
+                    AlertSuccess(parent, sent);
                 return;
             }
             ReportNotSent(fromAddr, recipients, stats.lastFailure, stats);
