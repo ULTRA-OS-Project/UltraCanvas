@@ -1,12 +1,14 @@
 // UltraCanvas/core/UltraCanvasTextArea_Markdown.cpp
 // Markdown hybrid rendering enhancement for TextArea
 // Shows current line as plain text, all other lines as formatted markdown
+// Version: 2.8.2 - a table's separator row is only a small gap when there is no
+//                 line-number gutter (the rule under the header is drawn at its top)
 // Version: 2.8.1 - footnote, abbreviation and anchor tooltips are placed at the pointer
 //                 in the window, not offset by the text area's position in it
 // Version: 2.8.0 - GitHub-style heading anchors: [Section](#section) jumps without {#id}
 // Version: 2.7.1 - MarkdownHybridStyle::linkUnderline is honoured (links were always underlined)
 // Version: 2.7.0
-// Last Modified: 2026-10-16
+// Last Modified: 2026-11-03
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasTextArea.h"
@@ -1262,11 +1264,13 @@ namespace UltraCanvas {
             tbl->tableColumnCount = colCount;
             tbl->bounds.width  = x;
             // Separator row needs enough vertical room that the line-number gutter doesn't
-            // squish two numbers together — 8px is the minimum that stays visually distinct.
+            // squish two numbers together. Without the gutter it is only the rule under
+            // the header (drawn at its top edge) and a small gap before the first row.
             int lh = computedLineHeight > 0
                      ? computedLineHeight
                      : static_cast<int>(style.fontStyle.fontSize * 1.3f);
-            tbl->bounds.height = isSep ? lh : (maxCellHeight + 2 * rowVerticalPad);
+            const int sepHeight = style.showLineNumbers ? lh : rowVerticalPad;
+            tbl->bounds.height = isSep ? sepHeight : (maxCellHeight + 2 * rowVerticalPad);
         }
     }
 

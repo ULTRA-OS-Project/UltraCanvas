@@ -13,8 +13,10 @@
 // models and fonts all open the same way, and the arrow keys walk the rest of
 // the folder. UltraCanvasImageViewer remains the right choice for a picture
 // that wants zoom and pan over a dark lightbox; this is the general one.
+// Version: 1.1.0 - shown at once, the file opened after a frame of its loading state;
+//                  the title follows the file on show
 // Version: 1.0.0
-// Last Modified: 2026-09-09
+// Last Modified: 2026-11-03
 // Author: UltraCanvas Framework
 #pragma once
 #ifndef ULTRACANVASMEDIAVIEWERWINDOW_H
@@ -30,8 +32,8 @@ namespace UltraCanvas {
 
     // ===== HOW THE WINDOW OPENS =====
     struct MediaViewerWindowOptions {
-        // Window title. Empty means the file's own name, which is what a
-        // viewer window is normally called.
+        // Window title. Empty means the name of the file on show (it follows
+        // the arrow keys), which is what a viewer window is normally called.
         std::string title;
         // Browse the rest of the folder (arrow keys, Next / Previous) instead
         // of showing the one file alone. On by default: having opened one font
