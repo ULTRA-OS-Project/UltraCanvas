@@ -9,6 +9,8 @@
 //
 // The raster twin is UltraCanvasPaintSurface; the read-only viewer is
 // UltraCanvasVectorElement. This one edits.
+// Version: 1.2.0 - ZoomToPageWidth: the page's width across the canvas area, the view's
+//                  vertical position kept
 // Version: 1.1.1 - the frame measures the lines' width (VectorEdit::PaintBounds), once per
 //                  paint or hit test
 // Version: 1.1.0 - Rotate mode: one object's own turned frame (SelectionFrame), a rotation
@@ -17,7 +19,7 @@
 //                  onRotationCenterChanged; a moved centre stays while the same objects stay
 //                  selected
 // Version: 1.0.0
-// Last Modified: 2026-10-28
+// Last Modified: 2026-11-03
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -144,6 +146,10 @@ public:
     void ZoomOut() { ZoomStep(-1); }
     void ZoomStep(int direction);                            // through the preset ladder
     void ZoomToPage();
+    // The page's width across the canvas area (less a margin), centred
+    // across; the document point at the middle of the view stays there
+    // vertically, so a long page keeps the part being worked on in view.
+    void ZoomToPageWidth();
     void ZoomToDrawing();
     void ZoomToSelection();
     void ZoomToActual() { SetZoom(1.0); }
