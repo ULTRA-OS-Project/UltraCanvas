@@ -3,7 +3,9 @@
   one switch per bitmap format this build both writes and reads
   (`UltraCanvasFileLoader::GetSupportedFormats(Bitmap)`, `canSave &&
   canLoad`, with options from `GetImageExportOptions`), so TGA, PPM, ICO,
-  HDR, EXR, PSD and the rest can be timed too. The choice is kept while the program runs. JPEG 2000 is now off
+  HDR, EXR, PSD and the rest can be timed too. The choice is kept between
+  runs, in the demo's settings file (`UltraCanvasAppSettings`
+  "UltraCanvasDemo", key `imagePerformance.formats`). JPEG 2000 is now off
   by default - its encoder stretched the time axis until every other bar was
   a sliver - and the *Include BMP* checkbox went into the list (BMP stays off
   by default). Every format is written with its Save settings, as any

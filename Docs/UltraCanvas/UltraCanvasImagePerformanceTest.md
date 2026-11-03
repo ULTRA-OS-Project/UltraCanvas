@@ -9,7 +9,7 @@ std::string outPath; std::string stablePath; int globalIdx; int slot; int active
 double t0; double t1; double d0; double d1;
 UltraCanvasWindowBase* win; IRenderContext* ctx;
 std::shared_ptr<UltraCanvasImageElement> imageElement;
-std::map<std::string, bool>& ChosenFormats();
+void StoreFormatChoice(const std::vector<std::pair<std::string, bool>>& choice);
 -->
 
 ## Contents
@@ -206,11 +206,24 @@ GPL and is kept out of the core.
 The gear button at the right end of the toolbar opens a dialog with one
 `UltraCanvasSwitch` per entry of the list, in two columns, labelled with the
 chart name and FileLoader's description (`JP2K - JPEG 2000`). **Apply**
-stores the choice in `ChosenFormats()` (by extension, for as long as the
-program runs, so leaving the page and coming back keeps it), rebuilds the
-chart's groups and the thumbnails under them, and re-runs the benchmark when
-an image is loaded. A format never switched follows its default
-(`IsCodecEnabled` answers for one):
+stores the choice (`StoreFormatChoice(choice)`), rebuilds the chart's groups
+and the thumbnails under them, and re-runs the benchmark when an image is
+loaded.
+
+The choice is kept between runs, in the demo's own settings file - an
+`UltraCanvasAppSettings("UltraCanvasDemo")`, so
+`<settings folder>/UltraCanvasDemo/settings.json` (on Linux
+`~/.config/UltraCanvas/UltraCanvasDemo/settings.json`) - one value per
+extension:
+
+```json
+{ "imagePerformance": { "formats": { "png": true, "jp2": true, "gif": false } } }
+```
+
+The file is read once, the first time the page asks, and written whole on
+every Apply. A format the file does not name follows its default
+(`IsCodecEnabled` answers for one), and so does every format when there is
+no file yet:
 
 | On by default | Off by default |
 |---|---|

@@ -10,6 +10,8 @@
 //                  off by default; a popup on opening asks for an image
 // Version: 2.9.0 - QOI and BMP are written and read through FileLoader like every
 //                  other format; the page's own encoders and decoders are gone
+// Version: 2.9.1 - the format choice is kept between runs, in the demo's
+//                  settings file (UltraCanvasAppSettings "UltraCanvasDemo")
 // Last Modified: 2026-11-03
 // Author: UltraCanvas Framework
 //
@@ -38,7 +40,8 @@
 // GetImageExportOptions gives - its Save settings - so the numbers are the
 // ones a Save in any application would produce. Which formats are timed is
 // chosen in a dialog of switches behind the gear button at the right end of
-// the toolbar, and remembered while the program runs. The [x] Include BMP
+// the toolbar, and remembered (since 2.9.1 across restarts, in the demo's
+// settings file). The [x] Include BMP
 // checkbox went into that list. On by default: PNG, QOI, JPG, WebP, AVIF,
 // HEIF, GIF, TIFF, JXL - JPEG 2000 is off (it took far longer to encode than
 // any other and stretched the time axis), and so is BMP and every format the
@@ -298,6 +301,7 @@
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasDebug.h"
+#include "UltraCanvasAppSettings.h"   // the format choice, kept between runs
 
 #ifdef HAS_LIBVIPS
 #include <vips/vips8>
@@ -468,19 +472,38 @@ namespace UltraCanvas {
             return found;
         }
 
-        // What the user switched on or off in the settings dialog, by
-        // extension. Kept while the program runs, so leaving the page and
-        // coming back keeps the choice; a format never touched follows its
-        // default.
-        std::map<std::string, bool>& ChosenFormats() {
-            static std::map<std::string, bool> chosen;
-            return chosen;
+        // What the user switched on or off in the settings dialog, one
+        // value per extension under "imagePerformance.formats" in the demo's
+        // settings file (<settings folder>/UltraCanvasDemo/settings.json), so
+        // the choice outlives a restart. Read once, on first use; written on
+        // Apply. A format never switched follows its default, and so does
+        // every format when the file is missing or unreadable.
+        UltraCanvasAppSettings& FormatSettings() {
+            static UltraCanvasAppSettings settings = []() {
+                UltraCanvasAppSettings s("UltraCanvasDemo");
+                s.Load();   // false for a first run: the defaults then
+                return s;
+            }();
+            return settings;
+        }
+
+        std::string FormatKey(const std::string& extension) {
+            return "imagePerformance.formats." + extension;
         }
 
         bool IsCodecEnabled(const CodecEntry& e) {
-            const auto& chosen = ChosenFormats();
-            auto it = chosen.find(e.extension);
-            return it != chosen.end() ? it->second : e.enabledByDefault;
+            const UltraCanvasAppSettings& settings = FormatSettings();
+            const std::string key = FormatKey(e.extension);
+            return settings.Has(key) ? settings.GetBool(key, e.enabledByDefault) : e.enabledByDefault;
+        }
+
+        // Stores the switches' states and writes the file at once, so a
+        // crash or a kill later loses nothing.
+        void StoreFormatChoice(const std::vector<std::pair<std::string, bool>>& choice) {
+            UltraCanvasAppSettings& settings = FormatSettings();
+            for (const auto& [extension, on] : choice) settings.Set(FormatKey(extension), on);
+            if (!settings.Save())
+                debugOutput << "Image Performance Test: could not write " << settings.File() << std::endl;
         }
 
         std::string InitialImageDir() {
@@ -1657,7 +1680,9 @@ namespace UltraCanvas {
             UltraCanvasDialogManager::ShowDialog(dialog,
                 [state, switches, rebuildActiveCodecs, runBenchmark, positionThumbnails](DialogResult result) {
                     if (result != DialogResult::OK || state->benchmarkRunning) return;
-                    for (const auto& [ext, sw] : switches) ChosenFormats()[ext] = sw->IsChecked();
+                    std::vector<std::pair<std::string, bool>> choice;
+                    for (const auto& [ext, sw] : switches) choice.emplace_back(ext, sw->IsChecked());
+                    StoreFormatChoice(choice);
                     rebuildActiveCodecs();
                     state->chartElem->SetCodecNames(state->codecNames);
                     // Reposition thumbnails under the (possibly new) group columns.
