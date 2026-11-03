@@ -50,9 +50,10 @@
 // itself is never touched, so renaming and every file operation still work on
 // the real one. A name that is not UTF-8 — written in a legacy code page by an
 // old tool or an unconverting unzip — is drawn decoded rather than as U+FFFD.
-// Version: 1.43.1 - the delete-problem titles are whole translated sentences
-//                  per kind and trash name, no longer an English "file" /
-//                  "folder" / "Trash" passed into a translated one
+// Version: 1.43.1 - the delete-problem dialog is translated whole: titles,
+//                  questions, facts, notes, scope and buttons, per kind and
+//                  trash name, no longer an English "file" / "folder" /
+//                  "Trash" passed into a translated sentence
 // Version: 1.43.0 - RenderFileThumbnail; the workers' decode switch is
 //                  DecodeContentThumbnail, shared with it; RenderTextPagePixmap
 // Version: 1.42.0 - Compress packs a TAR with the host's FilerTarSettings
@@ -7650,19 +7651,20 @@ namespace UltraCanvas {
                                                          DeleteProblemKind kind,
                                                          const std::string& reason) {
         if (!pendingDelete) return;
-        const std::string kindWord = entry.isDirectory ? "folder" : "file";
-        // The translated titles are whole sentences per kind (and, for the
-        // trash, per the platform's name for it): "file", "folder" and
+        // Every text is translated whole, per kind (and, for the trash, per
+        // the platform's name for it): "file", "folder" and
         // TrashDisplayName() passed in through a placeholder would stay
         // English in every language, and most languages need the noun's
-        // gender or case in the sentence around it anyway.
+        // gender or case in the sentence around it anyway. Names go in as
+        // {0} / {1}, so a translation can put them where its grammar wants.
         const bool isFolder = entry.isDirectory;
+        const std::string kindLabel = isFolder ? Tr("Folder:") : Tr("File:");
         const bool writeProtected = kind == DeleteProblemKind::WriteProtected;
         const bool needsPermission = kind == DeleteProblemKind::NeedsPermission;
         const bool inUse = kind == DeleteProblemKind::InUse;
         const bool toTrash = pendingDelete->toTrash;
         const std::string name = RepairLegacyEncodedName(entry.name);
-        const std::string why = reason.empty() ? std::string("unknown error") : reason;
+        const std::string why = reason.empty() ? Tr("unknown error") : reason;
         // The file inside the folder that refused, when the failure is not
         // the entry's own: the question is about the entry the user chose,
         // the facts name the file that stopped it.
@@ -7672,10 +7674,9 @@ namespace UltraCanvas {
                 : RepairLegacyEncodedName(PathToUtf8(PathFromUtf8(culprit).filename()));
         const std::vector<std::string> holders = pendingDelete->stopHolders;
         auto entryFact = [&]() {
-            std::string facts = "**" + std::string(entry.isDirectory ? "Folder" : "File")
-                              + ":** " + FactPath(entry.path);
+            std::string facts = "**" + kindLabel + "** " + FactPath(entry.path);
             if (!culprit.empty())
-                facts += "\n\n**Stopped at:** " + FactPath(culprit);
+                facts += "\n\n**" + Tr("Stopped at:") + "** " + FactPath(culprit);
             return facts;
         };
         // Whether the file belongs to this very program: the delete is then
@@ -7696,49 +7697,48 @@ namespace UltraCanvas {
         if (writeProtected) {
             spec.title = isFolder ? Tr("Delete: a folder is write-protected")
                                   : Tr("Delete: a file is write-protected");
-            spec.question = "\"" + name + "\" is write-protected.";
-            spec.facts = "**" + std::string(entry.isDirectory ? "Folder" : "File") + ":** "
-                       + FactPath(entry.path)
-                       + "\n\n**Why:** the read-only attribute is set";
-            spec.note = "Delete anyway removes the protection first.";
-            spec.applyToAllLabel = "Apply to all remaining write-protected items";
+            spec.question = TrF("\"{0}\" is write-protected.", name);
+            spec.facts = "**" + kindLabel + "** " + FactPath(entry.path)
+                       + "\n\n**" + Tr("Why:") + "** " + Tr("the read-only attribute is set");
+            spec.note = Tr("Delete anyway removes the protection first.");
+            spec.applyToAllLabel = Tr("Apply to all remaining write-protected items");
             // Skipping is the safe default for a locked entry.
-            spec.buttons = {{"Skip", DialogButtonRole::Default},
-                            {"Delete anyway", DialogButtonRole::Destructive},
-                            {"Stop", DialogButtonRole::Cancel}};
+            spec.buttons = {{Tr("Skip"), DialogButtonRole::Default},
+                            {Tr("Delete anyway"), DialogButtonRole::Destructive},
+                            {Tr("Stop"), DialogButtonRole::Cancel}};
             answers = {Skip, Proceed};
         } else if (inUse) {
             // A program holds the file - a running program's own executable
             // or library, as a rule. Not a permission problem, whatever the
             // system's wording: an administrator cannot delete it either, so
             // the answer is to close that program, and the dialog names it.
-            spec.title = culprit.empty()
-                    ? "Delete: the " + kindWord + " is in use"
-                    : "Delete: a file in the folder is in use";
+            spec.title = !culprit.empty() ? Tr("Delete: a file in the folder is in use")
+                       : isFolder         ? Tr("Delete: the folder is in use")
+                                          : Tr("Delete: the file is in use");
             spec.question = culprit.empty()
-                    ? "\"" + name + "\" is in use by another program."
-                    : "\"" + culpritName + "\" in \"" + name + "\" is in use by another program.";
+                    ? TrF("\"{0}\" is in use by another program.", name)
+                    : TrF("\"{0}\" in \"{1}\" is in use by another program.", culpritName, name);
             std::string facts = entryFact();
             if (!holders.empty()) {
-                facts += "\n\n**In use by:** ";
+                facts += "\n\n**" + Tr("In use by:") + "** ";
                 for (size_t i = 0; i < holders.size(); ++i)
                     facts += (i ? ", " : "") + holders[i];
             }
-            facts += "\n\n**Reason:** " + why;
+            facts += "\n\n**" + Tr("Reason:") + "** " + why;
             spec.facts = facts;
             if (ownFile) {
-                spec.note = "That program is this one: it is running from the folder "
-                            "being deleted. Close it, then delete the folder from "
-                            "another file manager or from a copy started elsewhere.";
+                spec.note = Tr("That program is this one: it is running from the folder "
+                               "being deleted. Close it, then delete the folder from "
+                               "another file manager or from a copy started elsewhere.");
             } else {
-                spec.note = "Close the program that holds it, then try again. "
-                            "Administrator rights do not help: a file a running "
-                            "program has loaded cannot be deleted by anyone.";
+                spec.note = Tr("Close the program that holds it, then try again. "
+                               "Administrator rights do not help: a file a running "
+                               "program has loaded cannot be deleted by anyone.");
             }
-            spec.applyToAllLabel = "Apply to all later files in use";
-            spec.buttons = {{"Skip", DialogButtonRole::Default},
-                            {"Try again", DialogButtonRole::Normal},
-                            {"Stop", DialogButtonRole::Cancel}};
+            spec.applyToAllLabel = Tr("Apply to all later files in use");
+            spec.buttons = {{Tr("Skip"), DialogButtonRole::Default},
+                            {Tr("Try again"), DialogButtonRole::Normal},
+                            {Tr("Stop"), DialogButtonRole::Cancel}};
             answers = {Skip, TryAgain};
         } else if (needsPermission) {
             // Explorer's "You'll need to provide administrator permission to
@@ -7746,51 +7746,53 @@ namespace UltraCanvas {
             // user. Windows asks for consent before the helper runs.
             spec.title = Tr("Delete: administrator permission needed");
             spec.question = culprit.empty()
-                    ? "\"" + name + "\" needs administrator permission to be deleted."
-                    : "\"" + culpritName + "\" in \"" + name
-                              + "\" needs administrator permission to be deleted.";
-            spec.facts = entryFact() + "\n\n**Reason:** " + why;
-            spec.note = "Windows asks you to confirm once, at the end, for every item "
-                        "handed to the administrator.";
-            spec.applyToAllLabel = "Apply to all later permission failures";
-            spec.buttons = {{"Delete as administrator", DialogButtonRole::Default},
-                            {"Try again", DialogButtonRole::Normal},
-                            {"Skip", DialogButtonRole::Normal},
-                            {"Stop", DialogButtonRole::Cancel}};
+                    ? TrF("\"{0}\" needs administrator permission to be deleted.", name)
+                    : TrF("\"{0}\" in \"{1}\" needs administrator permission to be deleted.",
+                          culpritName, name);
+            spec.facts = entryFact() + "\n\n**" + Tr("Reason:") + "** " + why;
+            spec.note = Tr("Windows asks you to confirm once, at the end, for every item "
+                           "handed to the administrator.");
+            spec.applyToAllLabel = Tr("Apply to all later permission failures");
+            spec.buttons = {{Tr("Delete as administrator"), DialogButtonRole::Default},
+                            {Tr("Try again"), DialogButtonRole::Normal},
+                            {Tr("Skip"), DialogButtonRole::Normal},
+                            {Tr("Stop"), DialogButtonRole::Cancel}};
             answers = {Elevate, TryAgain, Skip};
         } else if (toTrash) {
-            const std::string trash = TrashDisplayName();
 #if defined(_WIN32) || defined(_WIN64)
             spec.title = isFolder ? Tr("Delete: a folder could not be moved to the Recycle Bin")
                                   : Tr("Delete: a file could not be moved to the Recycle Bin");
+            spec.question = TrF("\"{0}\" could not be moved to the Recycle Bin.", name);
 #else
             spec.title = isFolder ? Tr("Delete: a folder could not be moved to the Trash")
                                   : Tr("Delete: a file could not be moved to the Trash");
+            spec.question = TrF("\"{0}\" could not be moved to the Trash.", name);
 #endif
-            spec.question = "\"" + name + "\" could not be moved to the " + trash + ".";
-            spec.facts = "**" + std::string(entry.isDirectory ? "Folder" : "File") + ":** "
-                       + FactPath(entry.path) + "\n\n**Reason:** " + why;
-            spec.note = "It is never deleted for good instead. To remove it anyway, "
-                        "stop and delete it with Delete permanently (Shift+Del).";
-            spec.applyToAllLabel = "Apply to all later failures";
-            spec.buttons = {{"Try again", DialogButtonRole::Default},
-                            {"Skip", DialogButtonRole::Normal},
-                            {"Stop", DialogButtonRole::Cancel}};
+            spec.facts = "**" + kindLabel + "** " + FactPath(entry.path)
+                       + "\n\n**" + Tr("Reason:") + "** " + why;
+            spec.note = Tr("It is never deleted for good instead. To remove it anyway, "
+                           "stop and delete it with Delete permanently (Shift+Del).");
+            spec.applyToAllLabel = Tr("Apply to all later failures");
+            spec.buttons = {{Tr("Try again"), DialogButtonRole::Default},
+                            {Tr("Skip"), DialogButtonRole::Normal},
+                            {Tr("Stop"), DialogButtonRole::Cancel}};
             answers = {TryAgain, Skip};
         } else {
             spec.title = isFolder ? Tr("Delete: a folder could not be deleted")
                                   : Tr("Delete: a file could not be deleted");
             spec.question = culprit.empty()
-                    ? "\"" + name + "\" could not be deleted."
-                    : "\"" + culpritName + "\" in \"" + name + "\" could not be deleted.";
-            spec.facts = entryFact() + "\n\n**Reason:** " + why;
-            spec.note = "The " + (culprit.empty() ? kindWord : std::string("file"))
-                        + " may be locked or in use by another program. "
-                        "Close it there, then try again.";
-            spec.applyToAllLabel = "Apply to all later failures";
-            spec.buttons = {{"Try again", DialogButtonRole::Default},
-                            {"Skip", DialogButtonRole::Normal},
-                            {"Stop", DialogButtonRole::Cancel}};
+                    ? TrF("\"{0}\" could not be deleted.", name)
+                    : TrF("\"{0}\" in \"{1}\" could not be deleted.", culpritName, name);
+            spec.facts = entryFact() + "\n\n**" + Tr("Reason:") + "** " + why;
+            spec.note = (culprit.empty() && isFolder)
+                    ? Tr("The folder may be locked or in use by another program. "
+                         "Close it there, then try again.")
+                    : Tr("The file may be locked or in use by another program. "
+                         "Close it there, then try again.");
+            spec.applyToAllLabel = Tr("Apply to all later failures");
+            spec.buttons = {{Tr("Try again"), DialogButtonRole::Default},
+                            {Tr("Skip"), DialogButtonRole::Normal},
+                            {Tr("Stop"), DialogButtonRole::Cancel}};
             answers = {TryAgain, Skip};
         }
 
