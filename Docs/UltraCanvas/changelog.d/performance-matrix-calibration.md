@@ -27,6 +27,8 @@
   The demo's Performance Matrix page gains Open JSON / Save JSON and Import
   CSV / Export CSV buttons through `UltraCanvasFileLoader`, an *Allow moves*
   switch with a veto that holds the top box to its target, and an *In the
-  box* list behind "+N more". Model and render tests cover the round trips,
+  box* list behind "+N more". The demo tree now marks Performance Matrix
+  (Info Graphics) and Importance-Performance Chart (Charts) as fully
+  implemented. Model and render tests cover the round trips,
   the reader's refusals, drag against click, the veto, the keys and the
   overflow list.

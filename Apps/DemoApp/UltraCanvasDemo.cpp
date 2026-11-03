@@ -1,6 +1,6 @@
 // Apps/DemoApp/UltraCanvasDemo.cpp
 // Comprehensive demonstration program implementation
-// Version: 1.0.18 - Info Graphics > Performance Matrix: fully implemented (moving people, JSON and CSV files)
+// Version: 1.0.18 - Info Graphics > Performance Matrix and Charts > Importance-Performance Chart: fully implemented
 // Version: 1.0.17 - Info Graphics > Performance Matrix: the Calibration variant
 // Version: 1.0.16 - Bitmap Elements > JPEG XL Images (sample: media/images/jxl_art2.jxl)
 // Version: 1.0.15 - Info Graphics > Performance Matrix: the element replaces the placeholder
@@ -1452,7 +1452,7 @@ namespace UltraCanvas {
         chartBuilder.AddItem("importanceperformance", "Importance-Performance Chart",
                              "Slack's importance-performance matrix: service factors over "
                              "urgent action / improve / appropriate / excess zones",
-                             ImplementationStatus::PartiallyImplemented,
+                             ImplementationStatus::FullyImplemented,
                              [this]() { return CreateImportancePerformanceChartExamples(); },
                              "DemoApp/UltraCanvasImportancePerformanceChartExamples.cpp",
                              "Docs/UltraCanvas/UltraCanvasImportancePerformanceChart.md")
