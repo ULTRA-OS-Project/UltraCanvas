@@ -18,16 +18,26 @@
 //
 // Every call is synchronous with a short timeout: they are the answer to a
 // click, and a missing logind answers at once. Nothing here opens a display.
+//
+// Also the end of a program (KillProcess: SIGTERM, SIGKILL two seconds
+// later), which no window system is needed for and both the X11 and the
+// Wayland backend share.
+// Version: 1.1.0 - KillProcess, shared by the X11 and Wayland backends
 // Version: 1.0.0
-// Last Modified: 2026-10-30
+// Last Modified: 2026-11-03
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDesktopShellBackend.h"
 
 #include <gio/gio.h>
 
+#include <cerrno>
+#include <chrono>
+#include <csignal>
 #include <cstdlib>
+#include <cstring>
 #include <string>
+#include <thread>
 #include <unistd.h>
 
 namespace UltraCanvas {
@@ -194,6 +204,35 @@ bool LockSession(std::string& error) {
     g_object_unref(bus);
     if (!ok) error = "No screen locker answered (logind: " + logindError + "; screensaver: " + saverError + ").";
     return ok;
+}
+
+// ===== THE END OF A PROGRAM =====
+
+bool KillProcess(int processId, std::string& error) {
+    if (processId <= 1) {
+        error = "The window does not say which program it belongs to.";
+        return false;
+    }
+    if (processId == static_cast<int>(getpid())) {
+        error = "That is the desktop itself.";
+        return false;
+    }
+    if (kill(static_cast<pid_t>(processId), SIGTERM) != 0) {
+        error = errno == EPERM ? "The program runs as another user; the desktop may not end it."
+                               : errno == ESRCH ? "The program has already ended."
+                                                : std::string("The program could not be ended: ") + std::strerror(errno);
+        return false;
+    }
+    // A program that does not end on SIGTERM within two seconds is killed.
+    const pid_t pid = static_cast<pid_t>(processId);
+    std::thread([pid]() {
+        for (int i = 0; i < 20; ++i) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            if (kill(pid, 0) != 0) return;
+        }
+        kill(pid, SIGKILL);
+    }).detach();
+    return true;
 }
 
 } // namespace DesktopShellBackend

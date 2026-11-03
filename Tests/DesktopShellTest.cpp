@@ -26,6 +26,18 @@
 // Stop() must return within seconds (a blocking wake pipe once hung them for
 // good; a hang ends the test with a failure instead of holding it).
 //
+// On Wayland (a build with ULTRACANVAS_WAYLAND, under a compositor that
+// speaks wlr-foreign-toplevel-management and wlr-layer-shell: sway headless,
+// labwc, the one ULTRA OS ships) it drives the Wayland backend: a window
+// this test opens in a program of its own (--wayland-window) is listed with
+// its UTF-8 title and app id, reported by the monitor, active, minimized,
+// activated again and closed; a Desktop window (--wayland-desktop) goes on
+// the layer shell and its reserved edges shrink the compositor's workspace,
+// read back through swaymsg where the compositor is sway. Without a
+// Wayland display the section is skipped (ULTRACANVAS_TEST_DISPLAY_REQUIRED=1
+// fails it instead); the window list's checks are skipped under a
+// compositor without the manager (weston).
+//
 // Two parts of the Windows backend run in programs of their own, safely
 // anywhere:
 //   - UltraCanvasShellGuard, started on this test as the "desktop" that
@@ -44,6 +56,8 @@
 // StatusNotifierItem the test exports itself over GDBus, with a pixmap, a
 // tooltip and a dbusmenu, is listed by UltraCanvasTrayHost with its PNG and
 // its menu as data, clicked, hidden and dropped when its connection closes.
+// Version: 1.9.0 - the Wayland backend under a compositor: the window list, the
+//                  monitor, activation and closing, the layer shell's reserved edges
 // Version: 1.8.1 - the X11 checks are left out of a Wayland build of the framework
 // Version: 1.8.0 - two RandR monitors under Xvfb: ListScreens and the per-monitor struts;
 //                  the lock, session and loudspeaker calls
@@ -52,12 +66,14 @@
 // Version: 1.5.0 - ListScreens, Microsoft Store applications, the Win key's tap
 // Version: 1.4.0 - instead of Explorer, the shell guard, the tray host
 // Version: 1.3.0 - ReplaceSystemDesktop / RestoreSystemDesktop
-// Last Modified: 2026-10-30
+// Last Modified: 2026-11-03
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDesktopShell.h"
 
+#include <algorithm>
 #include <atomic>
+#include <cctype>
 #include <chrono>
 #include <cstdio>
 #include <cmath>
@@ -106,6 +122,18 @@
 #  if defined(DESKTOPSHELLTEST_HAVE_GIO)
 #    include <gio/gio.h>
 #  endif
+#endif
+
+// A Wayland build of the framework: the backend is driven through windows
+// this test opens in programs of its own (UltraCanvasApplication).
+#if defined(__linux__) && defined(ULTRACANVAS_DISPLAY_WAYLAND)
+#  define DESKTOPSHELLTEST_WAYLAND 1
+#  include "UltraCanvasApplication.h"
+#  include "UltraCanvasWindow.h"
+#  include <csignal>
+#  include <fcntl.h>
+#  include <sys/wait.h>
+#  include <unistd.h>
 #endif
 
 namespace fs = std::filesystem;
@@ -525,7 +553,7 @@ int TrayChild() {
 }
 #endif
 
-#if defined(DESKTOPSHELLTEST_X11)
+#if defined(DESKTOPSHELLTEST_X11) || defined(DESKTOPSHELLTEST_WAYLAND)
 // A step that must not hang - a Stop() joining a thread - on a thread of its
 // own. Still running after `ms`, it never returns, and nothing after it could
 // run either (the stuck join holds the process): say so and end the test.
@@ -555,7 +583,118 @@ bool WaitUntil(Done done, int ms) {
     }
     return true;
 }
+#endif
 
+#if defined(DESKTOPSHELLTEST_WAYLAND)
+// ----- a window of this test's own, in a program of its own -----
+// --wayland-window <title>: an ordinary window with that title, open until
+// the compositor closes it (CloseWindow from the parent) or a minute passes.
+// --wayland-desktop <title>: a Desktop window (a layer surface on the
+// compositor's background layer) that reserves 40 pixels at the top and 60
+// on the right, printing "reserved=1" when the backend took them; open until
+// the parent ends it.
+int WaylandWindowChild(const std::string& title, bool desktop) {
+    UltraCanvasApplication app;
+    if (!app.Initialize("DesktopShellTest")) return 2;
+    WindowConfig config;
+    config.title = title;
+    config.width = 320;
+    config.height = 200;
+    if (desktop) config.type = WindowType::Desktop;
+    auto window = CreateWindow(config);
+    if (!window) return 3;
+    window->Show();
+    if (desktop) {
+        const uint64_t id = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(window->GetNativeHandle()));
+        const bool reserved = UltraCanvasDesktopShell::ReserveScreenEdges(id, 0, 60, 40, 0);
+        std::printf("reserved=%d\n", reserved ? 1 : 0);
+        std::fflush(stdout);
+    }
+    // The main loop, until the window is closed (the parent's CloseWindow
+    // through the compositor) or a minute passes; the native loop runs
+    // only inside Run().
+    SetEnv("ULTRACANVAS_CLOSE_AFTER_MS", "60000");
+    app.Run();
+    return 0;
+}
+
+// This test again with `arguments`, its output to `output` (a file). The
+// child's pid, or -1.
+pid_t SpawnSelf(const std::vector<std::string>& arguments, const fs::path& output) {
+    char self[4096];
+    const ssize_t n = readlink("/proc/self/exe", self, sizeof(self) - 1);
+    if (n <= 0) return -1;
+    self[n] = 0;
+    const pid_t pid = fork();
+    if (pid != 0) return pid;
+    const int fd = ::open(output.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);   // path-string-ok: ASCII temp path
+    if (fd >= 0) {
+        dup2(fd, 1);
+        ::close(fd);
+    }
+    std::vector<char*> argv;
+    argv.push_back(self);
+    for (const std::string& a : arguments) argv.push_back(const_cast<char*>(a.c_str()));
+    argv.push_back(nullptr);
+    execv(self, argv.data());
+    _exit(127);
+}
+
+// The child's exit status, waited for up to `ms`; -1 when it is still
+// running then (and left running).
+int WaitChild(pid_t pid, int ms) {
+    const auto until = std::chrono::steady_clock::now() + std::chrono::milliseconds(ms);
+    for (;;) {
+        int status = 0;
+        const pid_t done = waitpid(pid, &status, WNOHANG);
+        if (done == pid) return WIFEXITED(status) ? WEXITSTATUS(status) : 128 + WTERMSIG(status);
+        if (done < 0) return -1;
+        if (std::chrono::steady_clock::now() >= until) return -1;
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
+}
+
+void EndChild(pid_t pid) {
+    if (pid <= 0) return;
+    kill(pid, SIGTERM);
+    if (WaitChild(pid, 3000) < 0) {
+        kill(pid, SIGKILL);
+        WaitChild(pid, 3000);
+    }
+}
+
+// sway's own view of the area its windows get (swaymsg, through the
+// socket sway gives its children in SWAYSOCK): the first "rect" of the
+// reply to `query` (get_outputs: the output; get_workspaces: the output
+// less every exclusive zone). False where this is not sway, or swaymsg
+// is not installed.
+bool SwayRect(const char* query, int& x, int& y, int& width, int& height) {
+    if (!std::getenv("SWAYSOCK")) return false;
+    const std::string command = std::string("swaymsg -r -t ") + query + " 2>/dev/null";
+    FILE* pipe = popen(command.c_str(), "r");
+    if (!pipe) return false;
+    std::string reply;
+    char buffer[4096];
+    size_t got = 0;
+    while ((got = fread(buffer, 1, sizeof(buffer), pipe)) > 0) reply.append(buffer, got);
+    if (pclose(pipe) != 0) return false;
+    // swaymsg pretty-prints even with -r: the spaces go before the search.
+    reply.erase(std::remove_if(reply.begin(), reply.end(), [](unsigned char c) { return std::isspace(c); }), reply.end());
+    const size_t at = reply.find("\"rect\":{");
+    if (at == std::string::npos) return false;
+    auto number = [&reply, at](const char* key) {
+        const size_t k = reply.find(std::string("\"") + key + "\":", at);
+        return k == std::string::npos ? -1 : std::atoi(reply.c_str() + k + std::strlen(key) + 3);
+    };
+    x = number("x");
+    y = number("y");
+    width = number("width");
+    height = number("height");
+    return width > 0 && height > 0;
+}
+#endif
+
+#if defined(DESKTOPSHELLTEST_X11)
 // A root-window property, set or removed the way a window manager would.
 void SetRootCardinal(Display* display, const char* name, long value) {
     XChangeProperty(display, DefaultRootWindow(display), XInternAtom(display, name, False), XA_CARDINAL, 32,
@@ -937,11 +1076,22 @@ int main(int argc, char** argv) {
     // DesktopShellTrayTest runs it through dbus-run-session).
     if (argc == 2 && std::strcmp(argv[1], "--tray") == 0) return TrayTest();
 #endif
+#if defined(DESKTOPSHELLTEST_WAYLAND)
+    // The windows the Wayland section opens in programs of their own.
+    if (argc == 3 && std::strcmp(argv[1], "--wayland-window") == 0) return WaylandWindowChild(argv[2], false);
+    if (argc == 3 && std::strcmp(argv[1], "--wayland-desktop") == 0) return WaylandWindowChild(argv[2], true);
+#endif
     (void)argc;
     (void)argv;
 #endif
     std::srand(12345);
     const fs::path scratch = MakeScratch();
+    // The session's own runtime directory, for the Wayland section at the
+    // end: the compositor's socket is there, and the notices' checks above
+    // it point the variable at the throwaway directory.
+    const char* sessionRuntimeDir = std::getenv("XDG_RUNTIME_DIR");
+    const std::string sessionRuntime = sessionRuntimeDir ? sessionRuntimeDir : "";
+    (void)sessionRuntime;
     SetEnv("XDG_RUNTIME_DIR", scratch.string());   // path-string-ok: temp_directory_path is ASCII here
     SetEnv("XDG_DATA_HOME", (scratch / "data").string());   // path-string-ok: same
     SetEnv("XDG_DATA_DIRS", (scratch / "system").string());   // path-string-ok: same
@@ -1728,6 +1878,122 @@ int main(int argc, char** argv) {
         std::printf("  (devices: microphone %s, speaker %s, webcam %s, keyboard \"%s\")\n",
                     devices.microphoneInUse ? "in use" : "idle", devices.speakerPlaying ? "playing" : "idle",
                     devices.webcamInUse ? "in use" : "idle", devices.keyboardLayout.c_str());
+    }
+#endif
+
+#if defined(DESKTOPSHELLTEST_WAYLAND)
+    // ===== WAYLAND: THE BACKEND ON A COMPOSITOR =====
+    {
+        if (!sessionRuntime.empty()) SetEnv("XDG_RUNTIME_DIR", sessionRuntime);
+        const char* required = std::getenv("ULTRACANVAS_TEST_DISPLAY_REQUIRED");
+        const bool displayRequired = required && std::strcmp(required, "1") == 0;
+        const bool available = std::getenv("WAYLAND_DISPLAY") && UltraCanvasDesktopShell::IsAvailable();
+        if (!available) {
+            Check(!displayRequired, "a display was required (ULTRACANVAS_TEST_DISPLAY_REQUIRED=1), and there is none");
+            if (!displayRequired) std::printf("  (no Wayland display: the Wayland backend's own checks are skipped)\n");
+        } else {
+            Check(UltraCanvasDesktopShell::GetBackendName() == "wayland", "the backend is wayland");
+
+            // The window list and the monitor need the compositor's
+            // foreign-toplevel manager (every wlroots compositor, KWin);
+            // the monitor says whether there is one.
+            UltraCanvasDesktopShellMonitor monitor;
+            std::atomic<int> changes{0};
+            Check(monitor.Start([&changes]() { ++changes; }), "the monitor starts");
+            if (!monitor.IsNative()) {
+                std::printf("  (no foreign-toplevel manager here: the window list's checks are skipped)\n");
+            } else {
+                Check(true, "the monitor watches the compositor's foreign toplevels on a connection of its own");
+                const std::string title = "DesktopShellTest Fenster \xc3\x84\xc3\x96\xc3\x9c " + std::to_string(std::rand());
+                const pid_t child = SpawnSelf({"--wayland-window", title}, scratch / "window.out");
+                Check(child > 0, "a window of this test's own opens in a program of its own");
+                uint64_t id = 0;
+                DesktopWindowInfo listed;
+                auto find = [&]() {
+                    for (const DesktopWindowInfo& w : UltraCanvasDesktopShell::ListWindows()) {
+                        if (w.title == title) {
+                            listed = w;
+                            id = w.id;
+                            return true;
+                        }
+                    }
+                    return false;
+                };
+                Check(WaitUntil(find, 10000), "the window is listed with its UTF-8 title");
+                Check(listed.appClass == "DesktopShellTest", "and its app id, the program's name: " + listed.appClass);
+                Check(WaitUntil([&changes]() { return changes.load() > 0; }, 5000), "the monitor reported it");
+                Check(WaitUntil([id]() { return UltraCanvasDesktopShell::GetActiveWindow() == id; }, 5000),
+                      "a new window is the active one");
+                Check(UltraCanvasDesktopShell::MinimizeWindow(id), "the compositor is asked to minimize it");
+                // sway has no minimized state and leaves the window as it
+                // is; labwc and KWin report it minimized.
+                const bool minimized = WaitUntil([&]() { return find() && listed.minimized; }, 2000);
+                std::printf("  (minimized: %s)\n", minimized ? "reported" : "not reported by this compositor");
+                Check(UltraCanvasDesktopShell::ActivateWindow(id), "and to activate it again");
+                Check(WaitUntil([&]() { return find() && listed.active && !listed.minimized; }, 5000),
+                      "it is active and not minimized");
+                const int before = changes.load();
+                Check(UltraCanvasDesktopShell::CloseWindow(id), "and to close it");
+                Check(WaitUntil([&]() { return !find(); }, 5000), "it is gone from the list");
+                Check(WaitUntil([&changes, before]() { return changes.load() > before; }, 5000),
+                      "the monitor reported that too");
+                const int exit = WaitChild(child, 5000);
+                Check(exit == 0, "the program ended when its window was closed (exit " + std::to_string(exit) + ")");
+                if (exit < 0) EndChild(child);
+
+                // ----- the desktop on the layer shell -----
+                int outX = 0, outY = 0, outW = 0, outH = 0;
+                int areaX = 0, areaY = 0, areaW = 0, areaH = 0;
+                const bool sway = SwayRect("get_outputs", outX, outY, outW, outH) &&
+                                  SwayRect("get_workspaces", areaX, areaY, areaW, areaH);
+                const std::string desktopTitle = "DesktopShellTest Desktop " + std::to_string(std::rand());
+                const pid_t desktop = SpawnSelf({"--wayland-desktop", desktopTitle}, scratch / "desktop.out");
+                Check(desktop > 0, "a Desktop window opens in a program of its own");
+                std::string reserved;
+                Check(WaitUntil([&]() {
+                          std::ifstream in(scratch / "desktop.out");
+                          std::getline(in, reserved);
+                          return reserved == "reserved=1" || reserved == "reserved=0";
+                      }, 10000) && reserved == "reserved=1",
+                      "the backend reserved its edges on the layer shell: " + reserved);
+                if (sway) {
+                    int x = 0, y = 0, w = 0, h = 0;
+                    Check(WaitUntil([&]() {
+                              return SwayRect("get_workspaces", x, y, w, h) && y == outY + 40 && w == outW - 60 &&
+                                     h == outH - 40;
+                          }, 5000),
+                          "sway's workspace makes room for them: 40 at the top, 60 on the right (" +
+                              std::to_string(w) + "x" + std::to_string(h) + " at " + std::to_string(x) + "," +
+                              std::to_string(y) + " of " + std::to_string(outW) + "x" + std::to_string(outH) + ")");
+                } else {
+                    std::printf("  (not sway: the workspace's room for the edges is not read back)\n");
+                }
+                // A layer surface is no toplevel: the desktop is not in the
+                // list a taskbar shows.
+                bool desktopListed = false;
+                for (const DesktopWindowInfo& w : UltraCanvasDesktopShell::ListWindows()) {
+                    if (w.title == desktopTitle) desktopListed = true;
+                }
+                Check(!desktopListed, "the desktop window is not in the window list");
+                EndChild(desktop);
+                if (sway) {
+                    int x = 0, y = 0, w = 0, h = 0;
+                    Check(WaitUntil([&]() {
+                              return SwayRect("get_workspaces", x, y, w, h) && y == areaY && w == areaW && h == areaH;
+                          }, 5000),
+                          "and the workspace is whole again when the desktop is gone");
+                }
+            }
+            FinishesWithin([&monitor]() { monitor.Stop(); }, 5000, "the monitor stops within seconds");
+            Check(!monitor.IsRunning(), "and is stopped");
+
+            const auto screens = UltraCanvasDesktopShell::ListScreens();
+            Check(!screens.empty() && screens[0].primary, "the outputs are the screens, the first the primary: " +
+                                                              std::to_string(screens.size()));
+            std::string why;
+            Check(!UltraCanvasDesktopShell::CaptureScreen((scratch / "shot.png").string(), &why) && !why.empty(),   // path-string-ok: ASCII temp path
+                  "a screenshot says why it is not there yet: " + why);
+        }
     }
 #endif
 

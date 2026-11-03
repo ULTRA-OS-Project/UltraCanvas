@@ -1,7 +1,8 @@
 // OS/Linux/Wayland/UltraCanvasWaylandWindow.cpp
 // A window on Wayland. See the header.
+// Version: 0.2.0 - Desktop windows on the layer shell; the reserved edges
 // Version: 0.1.0
-// Last Modified: 2026-10-30
+// Last Modified: 2026-11-03
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasWaylandWindow.h"
@@ -11,6 +12,7 @@
 
 #include "xdg-shell-client-protocol.h"
 #include "xdg-decoration-unstable-v1-client-protocol.h"
+#include "wlr-layer-shell-unstable-v1-client-protocol.h"
 
 #include <sys/mman.h>
 #include <unistd.h>
@@ -42,6 +44,22 @@ namespace UltraCanvas {
         static void ToplevelConfigureBounds(void*, xdg_toplevel*, int32_t, int32_t) {}
         static void ToplevelWmCapabilities(void*, xdg_toplevel*, wl_array*) {}
         static void DecorationConfigure(void*, zxdg_toplevel_decoration_v1*, uint32_t) {}
+
+        // ----- the layer shell -----
+        static void LayerConfigure(void* data, zwlr_layer_surface_v1*, uint32_t serial, uint32_t width, uint32_t height) {
+            Win(data)->HandleLayerConfigure(serial, width, height);
+        }
+        static void LayerClosed(void* data, zwlr_layer_surface_v1*) { Win(data)->HandleToplevelClose(); }
+        static void StrutConfigure(void* data, zwlr_layer_surface_v1*, uint32_t serial, uint32_t width, uint32_t height) {
+            auto* strut = static_cast<UltraCanvasWaylandWindow::EdgeStrut*>(data);
+            strut->window->HandleStrutConfigure(*strut, serial, width, height);
+        }
+        static void StrutClosed(void* data, zwlr_layer_surface_v1*) {
+            // The output went away: the strut with it; a new desktop window
+            // on the new output reserves its edges anew.
+            auto* strut = static_cast<UltraCanvasWaylandWindow::EdgeStrut*>(data);
+            strut->window->DestroyStrut(*strut);
+        }
     };
 
     namespace {
@@ -63,6 +81,14 @@ namespace UltraCanvas {
         };
         const wl_buffer_listener kBufferListener = {
                 UltraCanvasWaylandWindow::OnBufferRelease,
+        };
+        const zwlr_layer_surface_v1_listener kLayerListener = {
+                WaylandWindowListeners::LayerConfigure,
+                WaylandWindowListeners::LayerClosed,
+        };
+        const zwlr_layer_surface_v1_listener kStrutListener = {
+                WaylandWindowListeners::StrutConfigure,
+                WaylandWindowListeners::StrutClosed,
         };
 
         UltraCanvasWaylandApplication* App() { return UltraCanvasWaylandApplication::GetInstance(); }
@@ -112,25 +138,34 @@ namespace UltraCanvas {
         if (!surface) return false;
         wl_surface_add_listener(surface, &kSurfaceListener, this);
 
-        xdgSurface = xdg_wm_base_get_xdg_surface(app->GetXdgWmBase(), surface);
-        xdg_surface_add_listener(xdgSurface, &kXdgSurfaceListener, this);
-        toplevel = xdg_surface_get_toplevel(xdgSurface);
-        xdg_toplevel_add_listener(toplevel, &kToplevelListener, this);
-        xdg_toplevel_set_title(toplevel, config_.title.c_str());
-        xdg_toplevel_set_app_id(toplevel, AppId().c_str());
-        if (config_.parentWindow) SetTransientParent(config_.parentWindow);
-        ApplySizeLimits();
-        ApplyDecoration();
-        ApplyType();
+        if (config_.type == WindowType::Desktop && app->GetLayerShell()) {
+            // The desktop on the layer shell (see the header).
+            if (!CreateLayerSurface(app)) {
+                DestroyNative();
+                return false;
+            }
+        } else {
+            xdgSurface = xdg_wm_base_get_xdg_surface(app->GetXdgWmBase(), surface);
+            xdg_surface_add_listener(xdgSurface, &kXdgSurfaceListener, this);
+            toplevel = xdg_surface_get_toplevel(xdgSurface);
+            xdg_toplevel_add_listener(toplevel, &kToplevelListener, this);
+            xdg_toplevel_set_title(toplevel, config_.title.c_str());
+            xdg_toplevel_set_app_id(toplevel, AppId().c_str());
+            if (config_.parentWindow) SetTransientParent(config_.parentWindow);
+            ApplySizeLimits();
+            ApplyDecoration();
+            ApplyType();
 
-        // A desktop window takes the screen (the largest output) as its size.
-        if (config_.type == WindowType::Desktop) {
-            int w = 0, h = 0;
-            app->GetScreenSize(w, h);
-            if (w > 0 && h > 0) {
-                config_.width = w;
-                config_.height = h;
-                SetBounds(Rect2Di(0, 0, w, h));
+            // A desktop window without the layer shell takes the screen (the
+            // largest output) as its size.
+            if (config_.type == WindowType::Desktop) {
+                int w = 0, h = 0;
+                app->GetScreenSize(w, h);
+                if (w > 0 && h > 0) {
+                    config_.width = w;
+                    config_.height = h;
+                    SetBounds(Rect2Di(0, 0, w, h));
+                }
             }
         }
 
@@ -141,6 +176,146 @@ namespace UltraCanvas {
         }
         debugOutput << "UltraCanvas Wayland: window created (" << config_.width << "x" << config_.height << ")" << std::endl;
         return true;
+    }
+
+    // ===== THE LAYER SHELL =====
+    bool UltraCanvasWaylandWindow::CreateLayerSurface(UltraCanvasWaylandApplication* app) {
+        // The output: the one desktopArea names (UltraDesktop's choice of
+        // monitor), else the compositor's.
+        const WaylandOutput* info = nullptr;
+        if (config_.desktopArea.width > 0 && config_.desktopArea.height > 0) {
+            info = app->FindOutputAt(config_.desktopArea.x, config_.desktopArea.y);
+        }
+        if (!info && !app->GetOutputs().empty()) info = &app->GetOutputs().front();
+        layerOutput = info ? info->output : nullptr;
+        layerSurface = zwlr_layer_shell_v1_get_layer_surface(app->GetLayerShell(), surface, layerOutput,
+                                                             ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND,
+                                                             "ultracanvas-desktop");
+        if (!layerSurface) return false;
+        zwlr_layer_surface_v1_add_listener(layerSurface, &kLayerListener, this);
+        zwlr_layer_surface_v1_set_anchor(layerSurface, ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP |
+                                                       ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM |
+                                                       ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT |
+                                                       ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT);
+        // Anchored to every edge, the size is the output's; -1 keeps the
+        // desktop under the bars rather than pushed aside by their zones.
+        zwlr_layer_surface_v1_set_size(layerSurface, 0, 0);
+        zwlr_layer_surface_v1_set_exclusive_zone(layerSurface, -1);
+        // Keys when the user clicks the desktop (the launcher's search
+        // field): on-demand focus from version 4; earlier versions have only
+        // none or exclusive, and a desktop must never take the keys for good.
+        zwlr_layer_surface_v1_set_keyboard_interactivity(
+                layerSurface, app->GetLayerShellVersion() >= 4 ? ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_ON_DEMAND
+                                                               : ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE);
+        // The size the compositor will configure, so the first frame is
+        // drawn at it and no resize follows.
+        if (info && info->Width() > 0 && info->Height() > 0) {
+            config_.width = info->Width();
+            config_.height = info->Height();
+            config_.x = info->x;
+            config_.y = info->y;
+            SetBounds(Rect2Di(0, 0, config_.width, config_.height));
+        }
+        return true;
+    }
+
+    void UltraCanvasWaylandWindow::HandleLayerConfigure(uint32_t serial, uint32_t width, uint32_t height) {
+        if (!layerSurface) return;
+        zwlr_layer_surface_v1_ack_configure(layerSurface, serial);
+        lastConfigureSerial = serial;
+        const bool first = !configured;
+        configured = true;
+        if (width > 0 && height > 0) {
+            pendingResize = true;
+            pendingWidth = static_cast<int>(width);
+            pendingHeight = static_cast<int>(height);
+        }
+        FinishConfigure(first);
+    }
+
+    bool UltraCanvasWaylandWindow::SetReservedEdges(int left, int right, int top, int bottom) {
+        if (!layerSurface) return false;
+        const int thickness[4] = { std::max(0, left), std::max(0, right), std::max(0, top), std::max(0, bottom) };
+        bool ok = true;
+        for (int edge = 0; edge < 4; ++edge) {
+            EdgeStrut& strut = struts[edge];
+            if (thickness[edge] == 0) {
+                DestroyStrut(strut);
+            } else if (!strut.layer) {
+                strut.window = this;
+                strut.edge = edge;
+                ok = CreateStrut(strut, thickness[edge]) && ok;
+            } else if (strut.thickness != thickness[edge]) {
+                ApplyStrut(strut, thickness[edge]);
+                wl_surface_commit(strut.surface);
+            }
+        }
+        if (auto* app = App()) app->Flush();
+        return ok;
+    }
+
+    bool UltraCanvasWaylandWindow::CreateStrut(EdgeStrut& strut, int thickness) {
+        auto* app = App();
+        if (!app || !app->GetLayerShell() || !app->GetCompositor()) return false;
+        strut.surface = wl_compositor_create_surface(app->GetCompositor());
+        if (!strut.surface) return false;
+        // No input region: a click on the bar goes through to the desktop
+        // window that draws it, under this surface on the background layer.
+        wl_region* none = wl_compositor_create_region(app->GetCompositor());
+        wl_surface_set_input_region(strut.surface, none);
+        wl_region_destroy(none);
+        strut.layer = zwlr_layer_shell_v1_get_layer_surface(app->GetLayerShell(), strut.surface, layerOutput,
+                                                            ZWLR_LAYER_SHELL_V1_LAYER_TOP, "ultracanvas-desktop-edge");
+        if (!strut.layer) {
+            wl_surface_destroy(strut.surface);
+            strut.surface = nullptr;
+            return false;
+        }
+        zwlr_layer_surface_v1_add_listener(strut.layer, &kStrutListener, &strut);
+        zwlr_layer_surface_v1_set_keyboard_interactivity(strut.layer, ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE);
+        ApplyStrut(strut, thickness);
+        // The first commit, without a buffer, asks for the configure; the
+        // transparent buffer follows it (HandleStrutConfigure).
+        wl_surface_commit(strut.surface);
+        return true;
+    }
+
+    void UltraCanvasWaylandWindow::ApplyStrut(EdgeStrut& strut, int thickness) {
+        strut.thickness = thickness;
+        uint32_t anchor = 0;
+        uint32_t width = 0, height = 0;   // 0 = the whole length of the edge
+        switch (strut.edge) {
+            case 0: anchor = ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT | ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP | ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM; width = thickness; break;
+            case 1: anchor = ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT | ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP | ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM; width = thickness; break;
+            case 2: anchor = ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP | ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT | ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT; height = thickness; break;
+            default: anchor = ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM | ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT | ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT; height = thickness; break;
+        }
+        zwlr_layer_surface_v1_set_anchor(strut.layer, anchor);
+        zwlr_layer_surface_v1_set_size(strut.layer, width, height);
+        zwlr_layer_surface_v1_set_exclusive_zone(strut.layer, thickness);
+    }
+
+    void UltraCanvasWaylandWindow::HandleStrutConfigure(EdgeStrut& strut, uint32_t serial, uint32_t width, uint32_t height) {
+        if (!strut.layer) return;
+        zwlr_layer_surface_v1_ack_configure(strut.layer, serial);
+        const int w = static_cast<int>(width), h = static_cast<int>(height);
+        if (w <= 0 || h <= 0) return;
+        if (strut.buffer.width != w || strut.buffer.height != h) {
+            DestroyShmBuffer(strut.buffer);
+            // A fresh memfd reads as zeros: a fully transparent ARGB buffer.
+            if (!CreateShmBuffer(strut.buffer, w, h)) return;
+        }
+        wl_surface_attach(strut.surface, strut.buffer.buffer, 0, 0);
+        wl_surface_damage_buffer(strut.surface, 0, 0, w, h);
+        wl_surface_commit(strut.surface);
+        if (auto* app = App()) app->Flush();
+    }
+
+    void UltraCanvasWaylandWindow::DestroyStrut(EdgeStrut& strut) {
+        if (strut.layer) { zwlr_layer_surface_v1_destroy(strut.layer); strut.layer = nullptr; }
+        if (strut.surface) { wl_surface_destroy(strut.surface); strut.surface = nullptr; }
+        DestroyShmBuffer(strut.buffer);
+        strut.thickness = 0;
     }
 
     void UltraCanvasWaylandWindow::ApplyDecoration() {
@@ -337,6 +512,9 @@ namespace UltraCanvas {
         renderContext.reset();
         DestroyNativeCairoSurface();
         DestroyAllBuffers();
+        for (EdgeStrut& strut : struts) DestroyStrut(strut);
+        if (layerSurface) { zwlr_layer_surface_v1_destroy(layerSurface); layerSurface = nullptr; }
+        layerOutput = nullptr;
         if (decoration) { zxdg_toplevel_decoration_v1_destroy(decoration); decoration = nullptr; }
         if (toplevel) { xdg_toplevel_destroy(toplevel); toplevel = nullptr; }
         if (xdgSurface) { xdg_surface_destroy(xdgSurface); xdgSurface = nullptr; }
@@ -387,6 +565,10 @@ namespace UltraCanvas {
         lastConfigureSerial = serial;
         const bool first = !configured;
         configured = true;
+        FinishConfigure(first);
+    }
+
+    void UltraCanvasWaylandWindow::FinishConfigure(bool first) {
         if (pendingResize) {
             pendingResize = false;
             if (pendingWidth != config_.width || pendingHeight != config_.height) {
@@ -560,9 +742,11 @@ namespace UltraCanvas {
         x = y = width = height = 0;
         auto* app = App();
         if (!app) return;
-        // The output the window is on; the first output before it is on any.
+        // The output the window is on (a desktop: the one it was asked
+        // for); the first output before it is on any.
         const WaylandOutput* info = nullptr;
         if (!enteredOutputs.empty()) info = app->FindOutput(enteredOutputs.front());
+        if (!info && layerOutput) info = app->FindOutput(layerOutput);
         if (!info && !app->GetOutputs().empty()) info = &app->GetOutputs().front();
         if (!info) return;
         x = info->x;
