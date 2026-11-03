@@ -443,10 +443,10 @@ static int vips_foreign_save_ucjxl_build(VipsObject* object) {
         JxlEncoderSetFrameDistance(settings, 0.0f);
         JxlEncoderSetFrameLossless(settings, JXL_TRUE);
     } else {
-        // A Q the caller set wins over the distance, as libvips' jxlsave
-        // decides it; otherwise the distance (its default 1.0).
+        // Q sets the distance unless the caller gave the distance itself,
+        // as libvips' jxlsave decides it (Q's default is 75).
         double distance = jxl->distance;
-        if (vips_object_argument_isset(object, "Q")) distance = DistanceForQuality(jxl->Q);
+        if (!vips_object_argument_isset(object, "distance")) distance = DistanceForQuality(jxl->Q);
         JxlEncoderSetFrameDistance(settings, static_cast<float>(distance));
     }
     JxlEncoderFrameSettingsSetOption(settings, JXL_ENC_FRAME_SETTING_EFFORT, jxl->effort);

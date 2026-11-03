@@ -703,9 +703,12 @@ jobs:
             scripts/ci-apt.sh install libkvazaar-dev
           fi
           # JPEG XL: ubuntu-22.04 has no libjxl package (its libvips is built
-          # without one). libjxl is built from source below and the
-          # framework's own jxlload / jxlsave (VipsJxlPlugin) stand in for
-          # libvips', so JPEG XL reads and writes here as on every other row.
+          # without one). libjxl is built from source below - on the distro's
+          # brotli and Little-CMS, so nothing of its own shadows them under
+          # /usr/local - and the framework's own jxlload / jxlsave
+          # (VipsJxlPlugin) stand in for libvips', so JPEG XL reads and
+          # writes here as on every other row.
+          scripts/ci-apt.sh install libbrotli-dev liblcms2-dev
           scripts/ci-apt.sh install libtinyxml2-dev libfmt-dev
           scripts/ci-apt.sh install libx11-dev libxcursor-dev libxi-dev libgl1-mesa-dev libgtk-3-dev
           scripts/ci-apt.sh install libcdr-dev librevenge-dev zlib1g-dev
@@ -918,26 +921,34 @@ jobs:
       # Built once per version and runner and cached; installed under
       # /usr/local, where pkg-config and the loader find it, so the configure
       # step below sees libjxl and the package-linux.sh closure carries it.
+      # The version is Ubuntu 24.04's (0.7.0), the one the framework and
+      # ImageJxlTest are written against - as MuPDF below is built at 24.04's
+      # version: a newer libjxl encodes a lossy picture differently (0.10.3
+      # put the test's quality-75 picture 47 off where 0.7 puts it 26, the
+      # tolerance being 40), so the packages behave as 24.04 systems do.
+      # Little-CMS from the system in place of the bundled skcms, whose
+      # mirror is not reachable from everywhere the recipe is run.
       - name: Restore the libjxl build (Linux)
         if: runner.os == 'Linux'
         id: libjxl-cache
         uses: actions/cache@v5
         with:
           path: .libjxl
-          key: libjxl-v2-${{ matrix.os }}-0.10.3
+          key: libjxl-v3-${{ matrix.os }}-0.7.0
       - name: Build libjxl from source (Linux)
         if: runner.os == 'Linux' && steps.libjxl-cache.outputs.cache-hit != 'true'
         timeout-minutes: 40
         env:
-          LIBJXL_VERSION: 0.10.3
+          LIBJXL_VERSION: 0.7.0
         run: |
           set -euo pipefail
           src="$RUNNER_TEMP/libjxl-src"
           rm -rf "$src"
-          git clone --depth 1 --branch "v${LIBJXL_VERSION}" --recurse-submodules --shallow-submodules \
-            https://github.com/libjxl/libjxl.git "$src"
+          git clone --depth 1 --branch "v${LIBJXL_VERSION}" https://github.com/libjxl/libjxl.git "$src"
+          ( cd "$src" && git submodule update --init --depth 1 third_party/highway third_party/brotli )
           # The library and its threads runner only: no tools, no tests, no
-          # plug-ins, no benchmark, the bundled highway, brotli and skcms.
+          # plug-ins, no benchmark; highway bundled (static), brotli and
+          # Little-CMS the system's.
           cmake -S "$src" -B "$src/build" \
             -DCMAKE_BUILD_TYPE=Release \
             -DBUILD_SHARED_LIBS=ON \
@@ -953,7 +964,9 @@ jobs:
             -DJPEGXL_ENABLE_JPEGLI=OFF \
             -DJPEGXL_ENABLE_PLUGINS=OFF \
             -DJPEGXL_ENABLE_DEVTOOLS=OFF \
-            -DJPEGXL_ENABLE_SKCMS=ON \
+            -DJPEGXL_ENABLE_SKCMS=OFF \
+            -DJPEGXL_FORCE_SYSTEM_LCMS2=ON \
+            -DJPEGXL_FORCE_SYSTEM_BROTLI=ON \
             -DCMAKE_INSTALL_PREFIX=/usr/local
           cmake --build "$src/build" -j"$(nproc)"
           # Staged under .libjxl (the cache) with the real prefix inside the
@@ -967,6 +980,13 @@ jobs:
         run: |
           set -euo pipefail
           sudo cp -a .libjxl/usr/local/. /usr/local/
+          # Only libjxl itself and its threads runner may land in
+          # /usr/local/lib: a bundled brotli there would shadow the distro's
+          # for everything else on the runner (see the apt step).
+          if ls /usr/local/lib/libbrotli*.so* /usr/local/lib/liblcms2*.so* >/dev/null 2>&1; then
+            echo "::error::the libjxl build installed a bundled brotli or Little-CMS"
+            exit 1
+          fi
           # /usr/local/lib ahead of the distro's libraries for the loader:
           # ld.so.conf.d is read in name order, and on arm64
           # aarch64-linux-gnu.conf sorts before libc.conf (which names

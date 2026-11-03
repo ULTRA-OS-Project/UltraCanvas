@@ -11,7 +11,8 @@
   `effort` and `lossless` arguments. A libvips with its own JPEG XL keeps
   it; `UC_VIPS_JXL_PLUGIN=force` registers the plug-in above it, which is
   how it is tested on a machine that has both. CI's ubuntu-22.04 rows
-  build libjxl 0.10.3 from source (cached per runner) and install it under
+  build libjxl 0.7.0 - Ubuntu 24.04's version, the one the lossy test is
+  calibrated on - from source (cached per runner) and install it under
   `/usr/local`, so their packages carry JPEG XL for the first time, and
   the JPEG XL test runs on every row. `libjxl-dev` joins the dependency
   lists.
