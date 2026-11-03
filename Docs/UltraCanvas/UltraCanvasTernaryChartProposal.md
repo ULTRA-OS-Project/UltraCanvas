@@ -1,6 +1,38 @@
 # UltraCanvasTernaryChart — Research & Feature Proposal
 
-**Status:** Proposal. Nothing in this document is implemented yet.
+**Status:** **Phase 1 is implemented** as `UltraCanvasTernaryChart` and
+`UltraCanvasTernaryModel` - see [`UltraCanvasTernaryChart.md`](UltraCanvasTernaryChart.md)
+for the guide. Phase 1 delivered `ChartProjectionKind::Ternary` and
+`ChartTernaryProjection` (A1) with their `ChartEngineTest` case, the model
+with normalisation, `Ticks` and `Validate`, A2-A5, S1-S3, I1, the
+`ThreePartyVotes` and `SoilSamples` samples, the demo page
+(**Charts → Ternary Chart**) in both reading directions,
+`Tests/TernaryModelTest.cpp` and `Tests/TernaryChartRenderTest.cpp`.
+
+How Phase 1 departs from the plan below, and why:
+
+* **A point has no `group` and no `size`.** The series are the groups: each
+  has a name, a colour, a marker and a legend entry, so a group field inside
+  it would be a second way to say the same thing. Bubble size is S5, Phase 2.
+* **No `TernarySeriesKind` and no axis `minimum` yet.** Paths and bubbles
+  are Phase 2 and the sub-triangle zoom Phase 3; a field nothing draws would
+  only be a promise in the API.
+* **Tick numbers stay level.** They sit at the end of each tick, along the
+  grid line the tick belongs to, so the direction is already shown;
+  tilted text would only be harder to read. The edge titles are tilted.
+* **Both corner titles and edge titles.** The corner says what the corner is
+  all of; the edge title, with its arrow, says which way that share grows.
+  `SetShowEdgeTitles(false)` keeps just the corners.
+* **The engine draws no ternary furniture.** A triangle's three edge axes
+  are neither sides nor roles, so the chart draws its own. The engine does
+  fill the triangle as the plot area. The chart describes two hidden axes
+  over the shares of B and C, so highlights map through share space.
+* **Point labels are kept clear of the furniture and near their points.**
+  The tick numbers and titles enter the label plan as keep-out rectangles.
+  A label the solver could only park far from its point (40 px or more) is
+  left to the tooltip.
+* **The model has a `subtitle`,** drawn under the title, as the other
+  charts' models do.
 
 A ternary plot draws things made of three parts, such as soil (sand, silt,
 clay), an alloy, a three-party vote or a day split into work, sleep and the
@@ -511,7 +543,7 @@ charts.
 
 | Phase | Delivers | Retires |
 |---|---|---|
-| **1** | `ChartTernaryProjection` (A1) and its engine test; the model with normalisation and `Validate`; A2–A5; S1–S3; I1; the `ThreePartyVotes` sample; the demo page with scatter variants in both reading directions; the guide; model and render tests | Reference shape 1 |
+| **1** *(done)* | `ChartTernaryProjection` (A1) and its engine test; the model with normalisation and `Validate`; A2–A5; S1–S3; I1; the `ThreePartyVotes` sample; the demo page with scatter variants in both reading directions; the guide; model and render tests | Reference shape 1 |
 | **2** | Regions R1–R4 with the USDA soil texture and De Finetti presets; paths, bubbles and reference curves (S4–S6); the reading guide (I2); X1 and X2 with demo Open / Save through `UltraCanvasFileLoader` | Reference shapes 2 and 3 |
 | **3** | Sub-triangle zoom (A6, I3); triangular binning and iso-lines (D1, D2) | Reference shape 4 |
 

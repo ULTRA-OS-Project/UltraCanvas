@@ -1,5 +1,6 @@
 // Apps/DemoApp/UltraCanvasDemo.cpp
 // Comprehensive demonstration program implementation
+// Version: 1.0.19 - Charts > Ternary Chart (UltraCanvasTernaryChart)
 // Version: 1.0.18 - Info Graphics > Performance Matrix and Charts > Importance-Performance Chart: fully implemented
 // Version: 1.0.17 - Info Graphics > Performance Matrix: the Calibration variant
 // Version: 1.0.16 - Bitmap Elements > JPEG XL Images (sample: media/images/jxl_art2.jxl)
@@ -1458,6 +1459,16 @@ namespace UltraCanvas {
                              "Docs/UltraCanvas/UltraCanvasImportancePerformanceChart.md")
                 .AddVariant("importanceperformance", "Slack Zones (smooth)")
                 .AddVariant("importanceperformance", "Slack Zones (stepped)");
+
+        chartBuilder.AddItem("ternarychart", "Ternary Chart",
+                             "Three-part compositions in a triangle: vote shares, soil texture, "
+                             "alloys - every point's three shares add up to 100%",
+                             ImplementationStatus::PartiallyImplemented,
+                             [this]() { return CreateTernaryChartExamples(); },
+                             "DemoApp/UltraCanvasTernaryChartExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasTernaryChart.md")
+                .AddVariant("ternarychart", "Three-Party Votes (anticlockwise)")
+                .AddVariant("ternarychart", "Soil Samples (clockwise)");
 
         // ===== DIAGRAMS =====
         auto diagramBuilder = DemoCategoryBuilder(this, DemoCategory::Diagrams);

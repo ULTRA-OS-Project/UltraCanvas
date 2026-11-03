@@ -158,8 +158,8 @@ Linear / Log / SymLog / Percentile over datasets chosen to suit each.
 
 `SetProjectionKind(...)`: `Vertical` (domain right, value up), `Horizontal`
 (the same content transposed — note the domain runs **downward**, so the first
-category is the top row), `Polar` (domain around the circle, value outward;
-`Space3D` reserved). Content that draws its shapes as subdivided projected
+category is the top row), `Polar` (domain around the circle, value outward),
+`Ternary` (three shares in a triangle, below; `Space3D` reserved). Content that draws its shapes as subdivided projected
 edges renders correctly under all of them — the demo's bars become ring
 sectors under Polar with no chart-side change. Edge-axis furniture follows the
 projection too: the engine derives which end of an edge carries the low value
@@ -187,6 +187,17 @@ o'clock; a radial bar chart sweeps `270`; a donut leaves `0.55` empty) and
 survive projection switches. A radial bar chart runs the value *around* the
 circle: give its value axis `role = ChartAxisRole::Domain` and its category
 axis `ChartAxisRole::Value`.
+
+`Ternary` maps `(u, v)` to a point in the largest equilateral triangle in the
+plot area: `u` and `v` are the shares of the second and third part of a
+three-part composition, and the first is `1 - u - v`. `ChartTernaryProjection`
+gives the corners (`Corner(0)` is the apex A, `1` bottom left B, `2` bottom
+right C; `SetApexDown(true)` turns it over). The map is affine, so polygons,
+hulls, hit regions and the label plan work through it unchanged, and the
+background fills the triangle as the plot area. The engine draws no axis
+furniture for it: a triangle has three edge axes that neither side nor role
+describes, so the chart that uses it draws its own -
+[`UltraCanvasTernaryChart`](UltraCanvasTernaryChart.md) does.
 
 ## Highlights (slot 200 wash / slot 700 overlay)
 

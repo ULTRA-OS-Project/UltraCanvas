@@ -996,6 +996,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasBubbleChartExamples.cpp
             Apps/DemoApp/UltraCanvasQuadrantChartExamples.cpp
             Apps/DemoApp/UltraCanvasImportancePerformanceChartExamples.cpp
+            Apps/DemoApp/UltraCanvasTernaryChartExamples.cpp
             Apps/DemoApp/UltraCanvasSWOTDiagramExamples.cpp
             Apps/DemoApp/UltraCanvasPerformanceMatrixExamples.cpp
             Apps/DemoApp/UltraCanvasParliamentDiagramExamples.cpp
