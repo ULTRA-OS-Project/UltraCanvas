@@ -7344,7 +7344,12 @@ adb shell 'while [ "$(getprop sys.boot_completed)" != 1 ]; do sleep 1; done'
 ```
 
 Create a second AVD with the hardware keyboard **off** for IME testing, and a
-third at a different density for the HiDPI path (§4).
+third at a different density for the HiDPI path (§4). **Status:** CI does
+the density one - the `emulator` job also runs the demo on the `pixel_6`
+profile (1080x2400, 420 dpi), and the smoke test requires the frame to fill
+the window to the pixel at scale density / 160 - which the backend's surface
+failed by a pixel at 2.625 until it took the window's own size (1080 -> 411
+logical -> 1079).
 
 ### 5.2 Install, launch, look
 
@@ -105691,20 +105696,6 @@ folder.
 | The list's filters | `Apps/UltraMail/engine/UltraMailMessageFilter.{h,cpp}` (`MessageFilter`, `FilterMatches`, `Describe`); `Apps/UltraMail/ui/UltraMailMailView.cpp` (`SetFilter`, `ShowInbox`, `onFilterChanged`, the *Show emails ▸* menu) |
 | The account bar's counters and filter card | `Apps/UltraMail/ui/UltraMailAccountBar.{h,cpp}` (`onFilterAccount`, `ShowFilter`, `onShowAll`); wired in `UltraMailApp.cpp` (`SwitchToAccount`) |
 | Tests | `Tests/UltraMail/test_senderidentity.cpp`, `test_threatscan.cpp`, `test_contacts.cpp`, `test_localstore.cpp`, `test_preferences.cpp`, `test_messagefilter.cpp`; `AccountBarClickTest.cpp` and `FolderTreeTest.cpp` (the counters as filters, in a window) |
-
-==============================================================================
-FILE: Docs/UltraMail/changelog.d/send-notification-setting.md
-==============================================================================
-
-- **Settings > Handling > Email send notification: a sent message is
-  reported in a popup window or in the status bar.** Until now every message
-  sent successfully raised a "Message sent to ..." window that had to be
-  closed with OK. The new *Handling* section of the settings window chooses
-  between *Show in popup window* (the default, as before) and *Display
-  success in status bar*, where the same words appear at the foot of the main
-  window and nothing has to be closed. A message that could not be sent is
-  still reported in a window either way, since it offers Retry. Saved as
-  `send_notification = popup | status-bar` in `preferences.ini`.
 
 ==============================================================================
 FILE: Docs/UltraVideo/README.md
