@@ -8,8 +8,24 @@
 // Version: 2.8.0 - the formats come from FileLoader's inventory and are chosen in
 //                  a Settings dialog (gear at the right of the toolbar); JP2K is
 //                  off by default; a popup on opening asks for an image
+// Version: 2.9.0 - QOI and BMP are written and read through FileLoader like every
+//                  other format; the page's own encoders and decoders are gone
 // Last Modified: 2026-11-03
 // Author: UltraCanvas Framework
+//
+// ================================================================================
+// VERSION 2.9.0 - EVERY FORMAT THROUGH FILELOADER
+// ================================================================================
+// QOI and BMP were the last two formats the page wrote with encoders of its
+// own (qoi.h's qoi_write, a 24bpp BI_RGB writer in this file) and read with
+// decoders of its own - against the rule that every file goes through
+// UltraCanvasFileLoader, and timing code no application runs. Both now take
+// the same path as the rest: UCImage::Save with GetImageExportOptions, then
+// UCImage::Load with a forced full decode. They are offered where FileLoader
+// writes and reads them (the framework's VipsQoiLoader for QOI, libvips for
+// BMP), like any other format. QOI and BMP figures are therefore not
+// comparable with runs before this version: they now include libvips' own
+// pipeline, as every other column always did.
 //
 // ================================================================================
 // VERSION 2.8.0 - FORMAT SETTINGS FROM FILELOADER, OPENING HINT
@@ -17,8 +33,8 @@
 // The fixed codec table is gone. The page lists every bitmap format
 // UltraCanvasFileLoader reports as both written and read by this build
 // (GetSupportedFormats(Bitmap): canSave && canLoad) and that the image writer
-// takes options for (GetImageExportOptions), plus the two the page encodes
-// itself (QOI, BMP). Each libvips format is written with the options
+// takes options for (GetImageExportOptions), plus the two the page encoded
+// itself until 2.9.0 (QOI, BMP). Each libvips format is written with the options
 // GetImageExportOptions gives - its Save settings - so the numbers are the
 // ones a Save in any application would produce. Which formats are timed is
 // chosen in a dialog of switches behind the gear button at the right end of
@@ -261,7 +277,8 @@
 //        qoi.cpp, so we only include the header and link against those symbols)
 //
 // Since 2.8.0 the list is FileLoader's bitmap inventory (see the 2.8.0 notes);
-// the formats above are the ones on by default, with JPEG2000 left off.
+// the formats above are the ones on by default, with JPEG2000 left off. Since
+// 2.9.0 QOI goes through UCImage::Save as well; no bundled codec is left.
 // ================================================================================
 
 #include "UltraCanvasContainer.h"
@@ -282,12 +299,6 @@
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasDebug.h"
 
-// QOI third-party header. IMPORTANT: Do NOT define QOI_IMPLEMENTATION here;
-// it is already defined in the standalone libspecific/Cairo/qoi.cpp, which
-// provides the qoi_encode / qoi_decode symbols for the whole program via the
-// linker.
-#include "../../UltraCanvas/libspecific/Cairo/qoi.h"
-
 #ifdef HAS_LIBVIPS
 #include <vips/vips8>
 #endif
@@ -295,10 +306,7 @@
 #include <chrono>
 #include <sstream>
 #include <iomanip>
-#include <cstdio>
-#include <cstdint>
 #include <cstdlib>
-#include <cstring>
 #include <cmath>
 #include <filesystem>
 #include <memory>
@@ -385,19 +393,13 @@ namespace UltraCanvas {
 
         // ============ CODEC LIST ============
         // Every codec the benchmark can drive in this build, in X-axis order.
-        //
-        // EncoderBackend selects which encode/decode path runBenchmark uses:
-        //   Libvips → UCImage::Save / UCImage::Load (most codecs)
-        //   QOI     → bundled qoi.h (qoi_write / qoi_read)
-        //   BMP     → bundled BMP encoder/decoder (this file)
-        enum class EncoderBackend { Libvips, QOI, BMP };
-
+        // Each is written with UCImage::Save and read with UCImage::Load - the
+        // image writer and reader FileLoader stands for.
         struct CodecEntry {
-            UCImageSaveFormat format = UCImageSaveFormat::PNG;   // ignored when backend != Libvips
+            UCImageSaveFormat format = UCImageSaveFormat::PNG;
             std::string name;          // chart label: "PNG", "JP2K", ...
             std::string extension;     // FileLoader's canonical extension
             std::string description;   // FileLoader's name for the format
-            EncoderBackend backend = EncoderBackend::Libvips;
             bool enabledByDefault = false;
         };
 
@@ -438,51 +440,24 @@ namespace UltraCanvas {
 
         // Every bitmap format FileLoader reports this build both writes and
         // reads, and that the image writer takes options for - the same list
-        // a Save dialog offers - plus QOI and BMP, which the page encodes
-        // itself and can therefore always time. A format with no encoder
-        // here (JPEG XL without libjxl, HEIC on macOS without x265) is not in
-        // the inventory, so it is not offered rather than shown as a failure.
+        // a Save dialog offers. A format with no encoder here (JPEG XL without
+        // libjxl, HEIC on macOS without x265) is not in the inventory, so it
+        // is not offered rather than shown as a failure.
         std::vector<CodecEntry> BuildCodecList() {
             std::vector<CodecEntry> found;
-            bool haveQoi = false, haveBmp = false;
             for (const MediaFormatInfo& f :
                     UltraCanvasFileLoader::GetSupportedFormats(MediaFormatCategory::Bitmap)) {
                 if (!f.canSave || !f.canLoad) continue;
+                UCImageSave::ImageExportOptions opts;
+                if (!UltraCanvasFileLoader::GetImageExportOptions("probe." + f.extension, opts)) continue;
                 CodecEntry e;
+                e.format = opts.format;
                 e.extension = f.extension;
                 e.description = f.description;
                 e.name = ChartNameFor(f.extension);
                 e.enabledByDefault = EnabledByDefault(f.extension);
-                if (f.extension == "qoi") {
-                    e.backend = EncoderBackend::QOI;
-                    haveQoi = true;
-                } else if (f.extension == "bmp") {
-                    e.backend = EncoderBackend::BMP;
-                    haveBmp = true;
-                } else {
-                    UCImageSave::ImageExportOptions opts;
-                    if (!UltraCanvasFileLoader::GetImageExportOptions("probe." + f.extension, opts)) continue;
-                    e.format = opts.format;
-                }
                 found.push_back(std::move(e));
             }
-#ifdef HAS_LIBVIPS
-            // The bundled encoders need only the source's pixels.
-            if (!haveQoi) {
-                CodecEntry e;
-                e.extension = "qoi"; e.name = "QOI"; e.description = "Quite OK Image";
-                e.backend = EncoderBackend::QOI; e.enabledByDefault = true;
-                found.push_back(e);
-            }
-            if (!haveBmp) {
-                CodecEntry e;
-                e.extension = "bmp"; e.name = "BMP"; e.description = "Windows Bitmap";
-                e.backend = EncoderBackend::BMP;
-                found.push_back(e);
-            }
-#else
-            (void)haveQoi; (void)haveBmp;
-#endif
             const auto& order = PreferredOrder();
             auto rank = [&order](const CodecEntry& e) {
                 auto it = std::find(order.begin(), order.end(), e.extension);
@@ -506,291 +481,6 @@ namespace UltraCanvas {
             const auto& chosen = ChosenFormats();
             auto it = chosen.find(e.extension);
             return it != chosen.end() ? it->second : e.enabledByDefault;
-        }
-
-        // ============ QOI ENCODE/DECODE VIA BUNDLED qoi.h ============
-        // Encodes a libvips VImage as QOI using the bundled reference encoder.
-        // Returns "" on success or an error message.
-#ifdef HAS_LIBVIPS
-        std::string EncodeQOIFromVImage(vips::VImage vImg, const std::string& outPath) {
-            try {
-                // QOI supports 3 (RGB) or 4 (RGBA) channels, 8-bit unsigned.
-                // Normalize: sRGB colourspace, 8-bit unsigned, exactly 3 or 4 bands.
-                if (vImg.interpretation() != VIPS_INTERPRETATION_sRGB) {
-                    vImg = vImg.colourspace(VIPS_INTERPRETATION_sRGB);
-                }
-                int bands = vImg.bands();
-                if (bands == 1) {
-                    // Grayscale -> RGB
-                    vImg = vImg.bandjoin({ vImg, vImg });
-                    bands = 3;
-                } else if (bands == 2) {
-                    // Gray + alpha -> RGBA (duplicate gray into R, G, B, keep alpha)
-                    vips::VImage gray  = vImg.extract_band(0);
-                    vips::VImage alpha = vImg.extract_band(1);
-                    vImg = gray.bandjoin({ gray, gray, alpha });
-                    bands = 4;
-                } else if (bands > 4) {
-                    vImg = vImg.extract_band(0, vips::VImage::option()->set("n", 4));
-                    bands = 4;
-                }
-                // bands is now 3 or 4. Cast to uchar AFTER band manipulation so
-                // any intermediate float pipelines are fully reduced.
-                if (vImg.format() != VIPS_FORMAT_UCHAR) {
-                    vImg = vImg.cast(VIPS_FORMAT_UCHAR);
-                }
-                // Force materialization so vImg.data() returns a contiguous buffer.
-                vImg = vImg.copy_memory();
-
-                qoi_desc desc;
-                desc.width      = static_cast<unsigned int>(vImg.width());
-                desc.height     = static_cast<unsigned int>(vImg.height());
-                desc.channels   = static_cast<unsigned char>(bands);
-                desc.colorspace = QOI_SRGB;
-
-                // qoi_write returns bytes written, or 0 on failure.
-                int written = qoi_write(outPath.c_str(), vImg.data(), &desc);
-                if (written <= 0) {
-                    return "qoi_write failed";
-                }
-                return "";
-            } catch (vips::VError& err) {
-                return std::string("vips error preparing QOI data: ") + err.what();
-            } catch (std::exception& ex) {
-                return std::string("QOI encode exception: ") + ex.what();
-            }
-        }
-#else
-        std::string EncodeQOIFromVImage(vips::VImage, const std::string&) {
-            return "QOI encoding requires libvips";
-        }
-#endif
-
-        // Decodes a QOI file fully (allocates pixel buffer and frees it).
-        // Returns true on success. Used purely to measure decode time.
-        bool DecodeQOIFile(const std::string& path) {
-            qoi_desc desc;
-            void* pixels = qoi_read(path.c_str(), &desc, 0);
-            if (!pixels) return false;
-            std::free(pixels);
-            return true;
-        }
-
-        // ============ BMP ENCODE/DECODE (BUNDLED, NO EXTERNAL DEPS) ============
-        //
-        // libvips has no BMP writer at all (it can read BMP via magickload only),
-        // so to include BMP in the benchmark we ship a small standalone encoder
-        // and decoder for uncompressed 24-bit RGB BMP — the simplest, most
-        // universally readable BMP variant.
-        //
-        // BMP layout: 14-byte BITMAPFILEHEADER + 40-byte BITMAPINFOHEADER
-        // followed by pixel rows in BGR order, bottom-up, with each row padded
-        // to a 4-byte boundary. Files are written little-endian as required by
-        // the BMP spec.
-        //
-        // Helpers for little-endian writing — the BMP spec is strictly LE
-        // regardless of host endianness, so we serialise byte-by-byte rather
-        // than rely on std::fwrite of a packed struct.
-        inline void WriteLE16(unsigned char* p, uint16_t v) {
-            p[0] = static_cast<unsigned char>(v & 0xFF);
-            p[1] = static_cast<unsigned char>((v >> 8) & 0xFF);
-        }
-        inline void WriteLE32(unsigned char* p, uint32_t v) {
-            p[0] = static_cast<unsigned char>(v & 0xFF);
-            p[1] = static_cast<unsigned char>((v >> 8) & 0xFF);
-            p[2] = static_cast<unsigned char>((v >> 16) & 0xFF);
-            p[3] = static_cast<unsigned char>((v >> 24) & 0xFF);
-        }
-        inline uint16_t ReadLE16(const unsigned char* p) {
-            return static_cast<uint16_t>(p[0]) |
-                   (static_cast<uint16_t>(p[1]) << 8);
-        }
-        inline uint32_t ReadLE32(const unsigned char* p) {
-            return  static_cast<uint32_t>(p[0])        |
-                   (static_cast<uint32_t>(p[1]) << 8)  |
-                   (static_cast<uint32_t>(p[2]) << 16) |
-                   (static_cast<uint32_t>(p[3]) << 24);
-        }
-
-#ifdef HAS_LIBVIPS
-        // Encodes a libvips VImage as 24bpp BI_RGB BMP. Returns "" on success
-        // or a human-readable error message on failure.
-        std::string EncodeBMPFromVImage(vips::VImage vImg, const std::string& outPath) {
-            try {
-                // Normalise to sRGB 8-bit, drop alpha. BI_RGB BMP carries no
-                // alpha channel; if the source has one we discard it (a 32bpp
-                // BMP with BI_BITFIELDS is technically possible but is poorly
-                // supported by older readers — sticking with the universal
-                // 24bpp form).
-                if (vImg.interpretation() != VIPS_INTERPRETATION_sRGB) {
-                    vImg = vImg.colourspace(VIPS_INTERPRETATION_sRGB);
-                }
-                int bands = vImg.bands();
-                if (bands == 1) {
-                    vImg = vImg.bandjoin({ vImg, vImg });
-                    bands = 3;
-                } else if (bands == 2) {
-                    // gray + alpha → drop alpha, expand gray to RGB
-                    vips::VImage gray = vImg.extract_band(0);
-                    vImg = gray.bandjoin({ gray, gray });
-                    bands = 3;
-                } else if (bands >= 4) {
-                    vImg = vImg.extract_band(0, vips::VImage::option()->set("n", 3));
-                    bands = 3;
-                }
-                if (vImg.format() != VIPS_FORMAT_UCHAR) {
-                    vImg = vImg.cast(VIPS_FORMAT_UCHAR);
-                }
-                vImg = vImg.copy_memory();   // ensure contiguous buffer
-
-                const int width  = vImg.width();
-                const int height = vImg.height();
-                if (width <= 0 || height <= 0) {
-                    return "BMP encode: invalid image dimensions";
-                }
-
-                // Row-stride math: 24bpp → 3 bytes/px, padded to 4-byte boundary
-                const size_t rowBytes  = static_cast<size_t>(width) * 3;
-                const size_t rowStride = (rowBytes + 3u) & ~size_t(3);
-                const size_t pixelDataSize = rowStride * static_cast<size_t>(height);
-                const uint32_t fileSize = static_cast<uint32_t>(54 + pixelDataSize);
-
-                // ---- BITMAPFILEHEADER (14 bytes) ----
-                unsigned char fileHdr[14] = {0};
-                fileHdr[0] = 'B';
-                fileHdr[1] = 'M';
-                WriteLE32(fileHdr + 2,  fileSize);     // total file size
-                WriteLE16(fileHdr + 6,  0);             // reserved
-                WriteLE16(fileHdr + 8,  0);             // reserved
-                WriteLE32(fileHdr + 10, 54);            // pixel-data offset
-
-                // ---- BITMAPINFOHEADER (40 bytes) ----
-                unsigned char infoHdr[40] = {0};
-                WriteLE32(infoHdr + 0,  40);                            // header size
-                WriteLE32(infoHdr + 4,  static_cast<uint32_t>(width));  // width
-                WriteLE32(infoHdr + 8,  static_cast<uint32_t>(height)); // height (positive ⇒ bottom-up)
-                WriteLE16(infoHdr + 12, 1);                             // planes
-                WriteLE16(infoHdr + 14, 24);                            // bits per pixel
-                WriteLE32(infoHdr + 16, 0);                             // BI_RGB (no compression)
-                WriteLE32(infoHdr + 20, static_cast<uint32_t>(pixelDataSize));
-                WriteLE32(infoHdr + 24, 2835);   // X pixels per meter (~72 DPI)
-                WriteLE32(infoHdr + 28, 2835);   // Y pixels per meter
-                WriteLE32(infoHdr + 32, 0);      // colours used
-                WriteLE32(infoHdr + 36, 0);      // important colours
-
-                // ---- WRITE FILE ----
-                FILE* fp = UltraCanvas::OpenFileUtf8(outPath, "wb");
-                if (!fp) return "BMP encode: failed to open output file";
-
-                if (std::fwrite(fileHdr, 1, 14, fp) != 14 ||
-                    std::fwrite(infoHdr, 1, 40, fp) != 40) {
-                    std::fclose(fp);
-                    return "BMP encode: header write failed";
-                }
-
-                // Pixel rows: bottom-up, RGB→BGR, padded to 4-byte stride
-                const unsigned char* src = static_cast<const unsigned char*>(vImg.data());
-                std::vector<unsigned char> rowBuf(rowStride, 0);
-                for (int y = height - 1; y >= 0; --y) {
-                    const unsigned char* srcRow = src + static_cast<size_t>(y) * rowBytes;
-                    for (int x = 0; x < width; ++x) {
-                        rowBuf[x * 3 + 0] = srcRow[x * 3 + 2]; // B
-                        rowBuf[x * 3 + 1] = srcRow[x * 3 + 1]; // G
-                        rowBuf[x * 3 + 2] = srcRow[x * 3 + 0]; // R
-                    }
-                    // Padding bytes (already zero from initialisation)
-                    if (std::fwrite(rowBuf.data(), 1, rowStride, fp) != rowStride) {
-                        std::fclose(fp);
-                        return "BMP encode: pixel row write failed";
-                    }
-                }
-
-                std::fclose(fp);
-                return "";
-            } catch (vips::VError& err) {
-                return std::string("vips error preparing BMP data: ") + err.what();
-            } catch (std::exception& ex) {
-                return std::string("BMP encode exception: ") + ex.what();
-            }
-        }
-#else
-        std::string EncodeBMPFromVImage(vips::VImage, const std::string&) {
-            return "BMP encoding requires libvips (for source pixel access)";
-        }
-#endif
-
-        // Decodes a 24bpp BI_RGB BMP file fully — reads headers, allocates the
-        // pixel buffer, walks every row (with stride padding) into a contiguous
-        // RGB buffer, then frees it. Returns true on success. Used purely to
-        // measure decode time symmetrically with the other codecs.
-        //
-        // Only handles the variant we write (24bpp, BI_RGB, bottom-up). Other
-        // BMP flavours (1/4/8/16bpp, RLE, top-down, BITFIELDS, embedded JPEG)
-        // are out of scope — the encoder never produces them, and supporting
-        // arbitrary BMPs would be irrelevant to the timing experiment.
-        bool DecodeBMPFile(const std::string& path) {
-            FILE* fp = UltraCanvas::OpenFileUtf8(path, "rb");
-            if (!fp) return false;
-
-            unsigned char fileHdr[14];
-            unsigned char infoHdr[40];
-            if (std::fread(fileHdr, 1, 14, fp) != 14 ||
-                std::fread(infoHdr, 1, 40, fp) != 40) {
-                std::fclose(fp);
-                return false;
-            }
-
-            if (fileHdr[0] != 'B' || fileHdr[1] != 'M') {
-                std::fclose(fp);
-                return false;
-            }
-
-            uint32_t pixelOffset = ReadLE32(fileHdr + 10);
-            uint32_t headerSize  = ReadLE32(infoHdr + 0);
-            int32_t  width       = static_cast<int32_t>(ReadLE32(infoHdr + 4));
-            int32_t  heightField = static_cast<int32_t>(ReadLE32(infoHdr + 8));
-            uint16_t bitsPerPx   = ReadLE16(infoHdr + 14);
-            uint32_t compression = ReadLE32(infoHdr + 16);
-
-            if (headerSize < 40 || width <= 0 || heightField == 0 ||
-                bitsPerPx != 24 || compression != 0) {
-                std::fclose(fp);
-                return false;
-            }
-            const bool bottomUp = (heightField > 0);
-            const int  height   = std::abs(heightField);
-
-            // Skip any extra header bytes / colour table to reach pixel data
-            if (std::fseek(fp, static_cast<long>(pixelOffset), SEEK_SET) != 0) {
-                std::fclose(fp);
-                return false;
-            }
-
-            const size_t rowBytes  = static_cast<size_t>(width) * 3;
-            const size_t rowStride = (rowBytes + 3u) & ~size_t(3);
-            std::vector<unsigned char> rowBuf(rowStride);
-            std::vector<unsigned char> pixels(static_cast<size_t>(width) *
-                                              static_cast<size_t>(height) * 3);
-
-            for (int row = 0; row < height; ++row) {
-                if (std::fread(rowBuf.data(), 1, rowStride, fp) != rowStride) {
-                    std::fclose(fp);
-                    return false;
-                }
-                int destRow = bottomUp ? (height - 1 - row) : row;
-                unsigned char* dst = pixels.data() +
-                                     static_cast<size_t>(destRow) * rowBytes;
-                for (int x = 0; x < width; ++x) {
-                    dst[x * 3 + 0] = rowBuf[x * 3 + 2]; // R
-                    dst[x * 3 + 1] = rowBuf[x * 3 + 1]; // G
-                    dst[x * 3 + 2] = rowBuf[x * 3 + 0]; // B
-                }
-            }
-
-            std::fclose(fp);
-            // pixels buffer freed here when vector goes out of scope —
-            // mirrors qoi_read + free pattern for symmetric timing.
-            return true;
         }
 
         std::string InitialImageDir() {
@@ -1734,11 +1424,10 @@ namespace UltraCanvas {
                 // -------- ENCODE --------
                 double t0 = 0.0, t1 = 0.0;
 
-                switch (entry.backend) {
-                case EncoderBackend::Libvips: {
-                    // Libvips-backed codec (goes through UCImage::Save), with
-                    // the options FileLoader gives the image writer for this
-                    // type: its Save settings, as any application saves it.
+                // Through the image writer, with the options FileLoader
+                // gives it for this type: its Save settings, as any
+                // application saves it.
+                {
                     UCImageSave::ImageExportOptions opts;
                     if (!UltraCanvasFileLoader::GetImageExportOptions(outPath, opts)) opts.format = entry.format;
                     opts.preserveMetadata = false;
@@ -1760,64 +1449,6 @@ namespace UltraCanvas {
                         r.succeeded = false;
                         r.errorMessage = "unknown exception during encode";
                     }
-                    break;
-                }
-                case EncoderBackend::QOI: {
-                    // QOI via bundled qoi.h
-#ifdef HAS_LIBVIPS
-                    try {
-                        vips::VImage vImg = state->sourceImage->GetVImage();
-                        t0 = NowMs();
-                        std::string err = EncodeQOIFromVImage(vImg, outPath);
-                        t1 = NowMs();
-                        if (!err.empty()) {
-                            r.succeeded = false;
-                            r.errorMessage = err;
-                        } else {
-                            r.encodeTimeMs = t1 - t0;
-                            r.encodedFilePath = outPath;
-                        }
-                    } catch (const std::exception& ex) {
-                        r.succeeded = false;
-                        r.errorMessage = ex.what();
-                    } catch (...) {
-                        r.succeeded = false;
-                        r.errorMessage = "unknown exception during QOI encode";
-                    }
-#else
-                    r.succeeded = false;
-                    r.errorMessage = "libvips not available";
-#endif
-                    break;
-                }
-                case EncoderBackend::BMP: {
-                    // BMP via bundled standalone encoder (this file)
-#ifdef HAS_LIBVIPS
-                    try {
-                        vips::VImage vImg = state->sourceImage->GetVImage();
-                        t0 = NowMs();
-                        std::string err = EncodeBMPFromVImage(vImg, outPath);
-                        t1 = NowMs();
-                        if (!err.empty()) {
-                            r.succeeded = false;
-                            r.errorMessage = err;
-                        } else {
-                            r.encodeTimeMs = t1 - t0;
-                            r.encodedFilePath = outPath;
-                        }
-                    } catch (const std::exception& ex) {
-                        r.succeeded = false;
-                        r.errorMessage = ex.what();
-                    } catch (...) {
-                        r.succeeded = false;
-                        r.errorMessage = "unknown exception during BMP encode";
-                    }
-#else
-                    r.succeeded = false;
-                    r.errorMessage = "libvips not available";
-#endif
-                    break;
-                }
                 }
 
                 // -------- FILE SIZE + DECODE --------
@@ -1830,51 +1461,25 @@ namespace UltraCanvas {
                     double d0 = 0.0, d1 = 0.0;
                     bool decodeOk = false;
                     try {
-                        switch (entry.backend) {
-                        case EncoderBackend::Libvips: {
-                            // Libvips decode path.
-                            //
-                            // IMPORTANT: libvips uses lazy evaluation. A bare
-                            // UCImage::Load() often only opens the file and
-                            // parses the header — actual pixel decompression
-                            // is deferred until someone reads the pixels. To
-                            // make this timing comparable to QOI's (which
-                            // always fully decompresses), we force pixel
-                            // materialization via VImage::copy_memory(),
-                            // which walks the full pipeline and writes every
-                            // decoded pixel into a contiguous RAM buffer.
-                            d0 = NowMs();
-                            auto round = UCImage::Load(outPath, false);
-                            if (round && round->IsValid()) {
+                        // IMPORTANT: libvips uses lazy evaluation. A bare
+                        // UCImage::Load() often only opens the file and parses
+                        // the header — actual pixel decompression is deferred
+                        // until someone reads the pixels. To time the real
+                        // decode, force pixel materialization via
+                        // VImage::copy_memory(), which walks the full pipeline
+                        // and writes every decoded pixel into a contiguous
+                        // RAM buffer.
+                        d0 = NowMs();
+                        auto round = UCImage::Load(outPath, false);
+                        if (round && round->IsValid()) {
 #ifdef HAS_LIBVIPS
-                                // Force eager decode: materialize all pixels now.
-                                vips::VImage v = round->GetVImage();
-                                v = v.copy_memory();
-                                (void)v;
+                            vips::VImage v = round->GetVImage();
+                            v = v.copy_memory();
+                            (void)v;
 #endif
-                                decodeOk = true;
-                            }
-                            d1 = NowMs();
-                            break;
+                            decodeOk = true;
                         }
-                        case EncoderBackend::QOI: {
-                            // QOI decode via bundled library (already eager —
-                            // qoi_read decompresses every pixel before returning).
-                            d0 = NowMs();
-                            decodeOk = DecodeQOIFile(outPath);
-                            d1 = NowMs();
-                            break;
-                        }
-                        case EncoderBackend::BMP: {
-                            // BMP decode via bundled reader — reads headers,
-                            // walks every row into a contiguous RGB buffer,
-                            // releases it. Symmetric with the QOI timing path.
-                            d0 = NowMs();
-                            decodeOk = DecodeBMPFile(outPath);
-                            d1 = NowMs();
-                            break;
-                        }
-                        }
+                        d1 = NowMs();
                     } catch (...) {
                         decodeOk = false;
                     }

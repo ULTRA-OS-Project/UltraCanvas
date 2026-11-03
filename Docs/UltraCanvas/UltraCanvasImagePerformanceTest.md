@@ -2,10 +2,6 @@
 
 <!-- doc-check:
 double NowMs();
-std::string EncodeQOIFromVImage(vips::VImage vImg, const std::string& outPath);
-bool DecodeQOIFile(const std::string& path);
-std::string EncodeBMPFromVImage(vips::VImage vImg, const std::string& outPath);
-bool DecodeBMPFile(const std::string& path);
 using Step = std::function<void()>;
 Step cleanupTempFiles; Step resetThumbnails; Step runBenchmark;
 CodecResult r; CodecEntry entry; UCImageSave::ImageExportOptions opts; vips::VImage vImg;
@@ -38,8 +34,6 @@ std::map<std::string, bool>& ChosenFormats();
 - [Usage Examples](#usage-examples)
   - [Driving the benchmark from a "Choose Image" handler](#driving-the-benchmark-from-a-choose-image-handler)
   - [Encoding one codec and timing the round-trip](#encoding-one-codec-and-timing-the-round-trip)
-  - [Encoding with the bundled QOI path](#encoding-with-the-bundled-qoi-path)
-  - [Encoding with the bundled BMP path](#encoding-with-the-bundled-bmp-path)
   - [Hooking thumbnail clicks to the 1:1 viewer](#hooking-thumbnail-clicks-to-the-11-viewer)
   - [Live status updates per codec](#live-status-updates-per-codec)
 - [Why "Force Eager Decode" Matters](#why-force-eager-decode-matters)
@@ -89,10 +83,6 @@ Opening the page shows a popup, *"Upload an image to start the test."*: nothing 
 #include "UltraCanvasFileLoader.h"    // the format inventory and each format's options
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasApplication.h"
-
-// QOI third-party header — provides qoi_write / qoi_read; do NOT define
-// QOI_IMPLEMENTATION here, it is defined in the standalone libspecific/Cairo/qoi.cpp.
-#include "../../UltraCanvas/libspecific/Cairo/qoi.h"
 ```
 
 ## Class Reference
@@ -108,7 +98,8 @@ public:
     static std::shared_ptr<UCImageRaster> Load(const std::string& path,
                                                bool loadOnlyHeader = true);
 
-    // Eager save through libvips (or built-in QOI/BMP path).
+    // Eager save through the image writer (libvips and the framework's own
+    // savers, such as QOI and ICO).
     std::string Save(const std::string& imagePath,
                      const UCImageSave::ImageExportOptions& options);
 
@@ -183,17 +174,16 @@ public:
 ### Codec list (file-local)
 
 The page builds its list once, when it opens, from FileLoader's inventory.
-`EncoderBackend` selects which encode/decode path runs:
+Every entry is written with `UCImage::Save` and read with `UCImage::Load`,
+the image writer and reader behind FileLoader - QOI and BMP included, which
+the page encoded with its own code until version 2.9.0:
 
 ```cpp
-enum class EncoderBackend { Libvips, QOI, BMP };
-
 struct CodecEntry {
-    UCImageSaveFormat format = UCImageSaveFormat::PNG;   // ignored when backend != Libvips
+    UCImageSaveFormat format = UCImageSaveFormat::PNG;
     std::string name;          // chart label: "PNG", "JP2K", ...
     std::string extension;     // FileLoader's canonical extension
     std::string description;   // FileLoader's name for the format
-    EncoderBackend backend = EncoderBackend::Libvips;
     bool enabledByDefault = false;
 };
 ```
@@ -201,8 +191,7 @@ struct CodecEntry {
 `BuildCodecList` keeps every entry of
 `UltraCanvasFileLoader::GetSupportedFormats(MediaFormatCategory::Bitmap)` with
 `canSave && canLoad` whose options the image writer takes
-(`GetImageExportOptions` answers for it), and adds QOI and BMP, which the page
-encodes itself, when the inventory lacks them. The X axis keeps the old order
+(`GetImageExportOptions` answers for it). The X axis keeps the old order
 for the formats it always charted - PNG, QOI, JPG, JP2K, WebP, AVIF, HEIF,
 GIF, TIFF, JXL, BMP - and puts the rest after them in the inventory's order.
 
@@ -257,12 +246,6 @@ double NowMs() {
     return duration<double, std::milli>(steady_clock::now().time_since_epoch()).count();
 }
 ```
-
-The bundled QOI and BMP paths have four more: `EncodeQOIFromVImage(vImg, path)`
-and `EncodeBMPFromVImage(vImg, path)` return an error string (empty on
-success), `DecodeQOIFile(path)` and `DecodeBMPFile(path)` decode every pixel
-and return whether that worked. All of them live in an anonymous namespace
-in the source file; none is part of the framework.
 
 ### CodecComparisonChartElement (the grouped bar chart, file-local)
 
@@ -413,7 +396,7 @@ auto loadSourceImage = [state, cleanupTempFiles, resetThumbnails,
 
 ### Encoding one codec and timing the round-trip
 
-This is the inner loop of `runBenchmark` for a libvips-backed codec:
+This is the inner loop of `runBenchmark`, the same for every format:
 
 ```cpp
 UCImageSave::ImageExportOptions opts;
@@ -447,39 +430,6 @@ if (err.empty()) {
     if (ok) { r.decodeTimeMs = d1 - d0; r.succeeded = true; }
     else    { r.errorMessage = "decode failed"; }
 }
-```
-
-### Encoding with the bundled QOI path
-
-QOI is decoded directly via the bundled `qoi.h` (no libvips round-trip on the decode side):
-
-```cpp
-vips::VImage vImg = state->sourceImage->GetVImage();
-double t0 = NowMs();
-std::string err = EncodeQOIFromVImage(vImg, outPath);
-double t1 = NowMs();
-r.encodeTimeMs = t1 - t0;
-
-double d0 = NowMs();
-bool ok = DecodeQOIFile(outPath);   // qoi_read + free
-double d1 = NowMs();
-r.decodeTimeMs = d1 - d0;
-```
-
-### Encoding with the bundled BMP path
-
-libvips has no BMP writer, so the demo ships a standalone 24bpp BI_RGB encoder/decoder. The encode/decode timing pattern is symmetric with QOI:
-
-```cpp
-double t0 = NowMs();
-std::string err = EncodeBMPFromVImage(vImg, outPath);
-double t1 = NowMs();
-r.encodeTimeMs = t1 - t0;
-
-double d0 = NowMs();
-bool ok = DecodeBMPFile(outPath);   // header parse + row walk + free
-double d1 = NowMs();
-r.decodeTimeMs = d1 - d0;
 ```
 
 ### Hooking thumbnail clicks to the 1:1 viewer
@@ -521,7 +471,7 @@ if (win && ctx) {
 
 ## Why "Force Eager Decode" Matters
 
-libvips uses lazy evaluation: `UCImage::Load()` typically only parses the file header and defers pixel decompression until pixels are actually read. Without `vImage.copy_memory()`, the timed region would only measure header parsing — drastically understating real-world decode cost for PNG, JPG, WebP, AVIF, HEIF, TIFF, and JP2K, while making them look unfairly fast next to QOI (which always fully decompresses in `qoi_read`).
+libvips uses lazy evaluation: `UCImage::Load()` typically only parses the file header and defers pixel decompression until pixels are actually read. Without `vImage.copy_memory()`, the timed region would only measure header parsing — drastically understating real-world decode cost for PNG, JPG, WebP, AVIF, HEIF, TIFF, and JP2K, and the timings would compare how quickly each format's header is parsed rather than how quickly its pixels are decoded.
 
 Calling `copy_memory()` walks the full libvips pipeline (decompress, color convert, optional alpha premultiply) and writes every pixel into a contiguous RAM buffer. Decode times then reflect real file→RAM decompression work for every codec.
 
@@ -538,7 +488,7 @@ Calling `copy_memory()` walks the full libvips pipeline (decompress, color conve
 | Codec | Backend  | Notes                                                                  |
 |-------|----------|------------------------------------------------------------------------|
 | PNG   | libvips  | Lossless; default reference                                            |
-| QOI   | bundled  | Lossless; reference encoder/decoder from `qoi.h`                       |
+| QOI   | UltraCanvas | Lossless; the framework's VipsQoiLoader / saver                     |
 | JPG   | libvips  | Lossy; quality 85 default                                              |
 | JP2K  | libvips  | JPEG 2000; quality 75. Off by default                                  |
 | WebP  | libvips  | Lossy by default; quality 80                                           |
@@ -546,10 +496,10 @@ Calling `copy_memory()` walks the full libvips pipeline (decompress, color conve
 | HEIF  | libvips  | Quality 50                                                             |
 | GIF   | libvips  | 8-bit indexed                                                          |
 | TIFF  | libvips  | LZW compression default                                                |
-| BMP   | bundled  | Off by default. Uncompressed 24bpp BI_RGB                              |
+| BMP   | libvips  | Off by default. Uncompressed                                           |
 | other | libvips  | Every further format FileLoader writes and reads (TGA, PPM, ICO, HDR, EXR, PSD, ...). Off by default |
 
-Each libvips format is written with its Save settings
+Each format is written with its Save settings
 (`GetImageExportOptions`); the qualities above are the defaults.
 
 ## See Also
