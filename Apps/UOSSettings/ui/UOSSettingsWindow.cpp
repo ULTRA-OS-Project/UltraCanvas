@@ -29,6 +29,8 @@
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasFileDialogSettings.h"
 #include "UltraCanvasSettingsFolder.h"
+#include "UltraCanvasUtils.h"   // NormalizePath
+#include "UltraCanvasConfig.h"  // GetResourcesDir
 #include "UltraLocalisation/UltraLocalisation.h"
 #include "IODeviceManager/UltraCanvasIODeviceTlsTrust.h"
 #include "UltraCanvasLabel.h"
@@ -103,6 +105,7 @@ namespace {
     constexpr const char* kSectionAppearance  = "appearance";
     constexpr const char* kPageEmoji          = "appearance/emoji";
     constexpr const char* kPageLanguage       = "language";
+    constexpr const char* kPageTranslations   = "translations";
     constexpr const char* kSectionNotifications = "notifications";
     constexpr const char* kPageRegistrations  = "notifications/registrations";
     constexpr const char* kSectionDevices     = "devices";
@@ -322,6 +325,7 @@ bool UOSSettingsWindow::Create() {
     tree_->SetRootNode(rootData);
     tree_->AddNode("settings", TreeNodeData(kPageDesktop, "Desktop"));
     tree_->AddNode("settings", TreeNodeData(kPageLanguage, "Language"));
+    tree_->AddNode(kPageLanguage, TreeNodeData(kPageTranslations, "Translations"));
     tree_->AddNode("settings", TreeNodeData(kSectionFileDialogs, "File dialogs"));
     tree_->AddNode(kSectionFileDialogs, TreeNodeData(kPageLastFolder, "Last used folder"));
     tree_->AddNode("settings", TreeNodeData(kSectionAppearance, "Appearance"));
@@ -344,6 +348,7 @@ bool UOSSettingsWindow::Create() {
     BuildDesktopPage();
     BuildLastFolderPage();
     BuildLanguagePage();
+    BuildTranslationsPage();
     BuildEmojiPage();
     BuildNotificationsPage();
     BuildCertificatesPage();
@@ -407,6 +412,7 @@ void UOSSettingsWindow::ShowPage(const std::string& pageId) {
     if (pageId == kPageCertificates) RefreshCertificatesPage();
     if (pageId == kPageEmoji) RefreshEmojiPage();
     if (pageId == kPageLanguage) RefreshLanguagePage();
+    if (pageId == kPageTranslations) RefreshTranslationsPage();
     if (pageId == kPageRegistrations) RefreshNotificationsPage();
 }
 
@@ -1181,6 +1187,50 @@ void UOSSettingsWindow::BuildLanguagePage() {
 
     pages_[kPageLanguage] = page;
     pageArea_->AddChild(page);
+}
+
+void UOSSettingsWindow::BuildTranslationsPage() {
+    auto page = std::make_shared<UltraCanvasContainer>("uos-page-translations");
+    page->layout.SetFlexColumn().SetFlexGap(0)
+                .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    page->SetPadding(kPagePadding, kPagePadding, kPagePadding, kPagePadding);
+    page->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
+                    .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+
+    auto title = MakeLabel("uos-translations-title", "Translations", kTitleFontSize);
+    title->SetFontWeight(FontWeight::Bold);
+    page->AddChild(title);
+    auto caption = MakeText("uos-translations-caption",
+            "Every set an application's texts come from in one grid - its own set, the base sets "
+            "it takes and the standard set - for any application and any language. A save goes "
+            "into the source tree when the catalogues are writable, else into the UltraCanvas "
+            "settings folder, where a running application picks it up; the status line says where.");
+    caption->SetMargin(6, 0, 0, 0);
+    page->AddChild(caption);
+
+    translations_ = std::make_shared<UltraCanvasLocalisationEditor>("uos-translations-editor");
+    translations_->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetFlexBasis(CSSLayout::Dimension::Px(0))
+                             .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    translations_->SetMargin(12, 0, 0, 0);
+    page->AddChild(translations_);
+
+    pages_[kPageTranslations] = page;
+    pageArea_->AddChild(page);
+}
+
+void UOSSettingsWindow::RefreshTranslationsPage() {
+    if (!translations_) return;
+    const std::string settingsFolder = PathToUtf8(UltraCanvasSettingsFolder());
+    const std::string shipped = UltraLocalisation::ShippedFolder().empty()
+            ? NormalizePath(GetResourcesDir() + "media/locale") : UltraLocalisation::ShippedFolder();
+    translations_->SetFolders(shipped, settingsFolder);
+    translations_->SetTranslatorName(LanguageSettings::Load(settingsFolder).translator);
+    if (translations_->GetWorkspace().Application().empty()) {
+        const LanguageSettings settings = LanguageSettings::Load(settingsFolder);
+        const std::string language = settings.language == "system" || settings.language.empty()
+                ? UltraLocalisation::CurrentLanguage() : settings.language;
+        translations_->Open("", language.empty() ? "en" : language);
+    }
 }
 
 void UOSSettingsWindow::RefreshLanguagePage() {

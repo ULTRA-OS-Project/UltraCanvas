@@ -48,6 +48,7 @@
 #include "UltraCanvasWindow.h"   // UltraCanvasWindow is a per-platform typedef
 
 #include <functional>
+#include "UltraCanvasLocalisationEditor.h"
 #include <map>
 #include <vector>
 #include <memory>
@@ -100,6 +101,9 @@ private:
     void SetMode(bool individual);
     void SetAppScope(const std::string& appName, bool individual);
     void BuildLanguagePage();
+    void BuildTranslationsPage();
+    // Re-reads the folders into the editor's pickers and the translator's name.
+    void RefreshTranslationsPage();
     void BuildEmojiPage();
     // Re-reads Emoji.conf into the page's switch.
     void RefreshLanguagePage();
@@ -118,6 +122,9 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasTreeView> tree_;
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> pageArea_;
     std::map<std::string, std::shared_ptr<UltraCanvas::UltraCanvasContainer>> pages_;
+
+    // ----- Translations -----
+    std::shared_ptr<UltraCanvas::UltraCanvasLocalisationEditor> translations_;
 
     // ----- Desktop -----
     std::shared_ptr<UltraCanvas::UltraCanvasDropdown> edge_;
