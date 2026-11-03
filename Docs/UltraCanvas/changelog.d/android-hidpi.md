@@ -15,9 +15,15 @@
 - **Android: rotating the device in place resizes the window.** On a
   configuration change or window resize the backend read the window's size
   with `ANativeWindow_getWidth`, but once it has set a buffer size the window
-  reports that size instead of its own - so the size never seemed to change,
-  and the compositor squeezed the portrait frame into the landscape window.
+  reports that size instead of its own (Android's `Surface` answers with the
+  size the app asked for) - so the size could not seem to change, and the
+  compositor squeezed the portrait frame into the landscape window.
   The backend now restores the window's own geometry before reading it, then
   rebuilds the surface at the new size. The emulator smoke test turns the
   display to landscape and requires a frame at the new size that fills the
   window; the backend logs `resized frame presented: ...` for each new size.
+- **Android: no blank frame on a resize.** The backend presented its rebuilt
+  surface the moment it was made, before the UI had been laid out and drawn
+  into it, so every rotation flashed an empty frame; the emulator's rotation
+  check caught it. The surface is now rebuilt without being presented, and
+  the repaint that follows shows the new frame.

@@ -1,6 +1,7 @@
 // OS/Android/UltraCanvasAndroidWindow.cpp
 // Android window implementation for UltraCanvas Framework.
-// Version: 1.3.0 - in-place rotation: re-read the window's own size, log each new frame size
+// Version: 1.3.0 - in-place rotation: re-read the window's own size, log each new frame size,
+//                 and no blank frame on resize
 // Version: 1.2.0 - surface at the window's real pixel size, not logical x scale
 // Version: 1.1.0 - logs the first frame it presents, for the emulator smoke test
 // Version: 1.0.0
@@ -137,8 +138,13 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasAndroidWindow::DoResizeNative() {
+        // Rebuild only. Presenting here put the new surface on screen while it
+        // was still empty - the core lays out and repaints after this call
+        // (UltraCanvasWindowBase::DoResize marks the whole window dirty) - so
+        // every rotation flashed a blank frame, which the emulator smoke test
+        // caught. The composition the dirty window gets presents the frame.
         RecreateNativeSurface();
-        InvalidateWindowNative();
+        RequestWindowComposition();
     }
 
     float UltraCanvasAndroidWindow::QueryNativeDeviceScale() const {

@@ -85,7 +85,9 @@ letting the handshake fail obscurely; verification is never quietly disabled.
   `WINDOW_RESIZED`): handled as a resize. The window's new size is read after
   restoring its own buffer geometry (`setBuffersGeometry(window, 0, 0, ...)`):
   once the backend has set a buffer size, the window reports that size rather
-  than its own, so a plain read never saw the rotation. The emulator smoke test
+  than its own (Android's `Surface` answers the width query with the size the
+  app asked for), so a plain read could not see the rotation. A resize rebuilds
+  the surface without presenting it; the repaint that follows does. The emulator smoke test
   turns the display to landscape and requires a frame at the new size that
   fills the window. For this path to be used, the app's
   manifest **must** keep the activity alive across configuration changes:
