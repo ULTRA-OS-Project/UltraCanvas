@@ -1597,7 +1597,7 @@ namespace UltraCanvas {
 
         // ========== STATUS LINE ==========
         state->statusLabel = DemoKit::AddText(card, "PerfStatusLabel",
-                "Click [Choose Image...] to pick a bitmap.");
+                "Click Choose Image to pick a bitmap.");
         state->statusLabel->SetFontSize(11);
         state->statusLabel->SetTextColor(Color(60, 60, 60, 255));
 
@@ -2013,7 +2013,7 @@ namespace UltraCanvas {
                              "Save settings.";
             config.dialogType = DialogType::Information;
             config.buttons = DialogButtons::NoButtons;
-            config.width = 640;
+            config.width = 760;
             config.height = 420;
             auto dialog = UltraCanvasDialogManager::CreateDialog(config);
             dialog->SetIconVisible(false);
@@ -2023,12 +2023,12 @@ namespace UltraCanvas {
             const int count = static_cast<int>(state->codecs.size());
             const int rows = (count + 1) / 2;
             auto grid = std::make_shared<UltraCanvasContainer>(
-                    "PerfFormatGrid", 0, 0, 600, rows * kRowHeight);
+                    "PerfFormatGrid", 0, 0, 720, rows * kRowHeight);
             grid->layout.SetFlexRow().SetFlexGap(16);
             std::shared_ptr<UltraCanvasContainer> columns[2];
             for (int c = 0; c < 2; ++c) {
                 columns[c] = std::make_shared<UltraCanvasContainer>(
-                        "PerfFormatColumn" + std::to_string(c), 0, 0, 290, rows * kRowHeight);
+                        "PerfFormatColumn" + std::to_string(c), 0, 0, 350, rows * kRowHeight);
                 columns[c]->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Start);
                 columns[c]->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
                 grid->AddChild(columns[c]);
