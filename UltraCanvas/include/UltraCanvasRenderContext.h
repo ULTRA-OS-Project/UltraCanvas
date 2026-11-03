@@ -1,5 +1,6 @@
 // include/UltraCanvasRenderContext.h
 // Cross-platform rendering interface with improved context management
+// Version: 2.12.0 - TextAttributeFactory::CreateLetterSpacing takes fractional pixels
 // Version: 2.11.0 - GetFontStyle: the font DrawText draws in now; TextTopCentredOnCaps(row) in it;
 //                   ITextLayout::GetCapHeight measures the font the text starts in, font attributes included
 // Version: 2.10.0 - CreateTextLayout counts the layouts it made (TextLayoutsCreated) and calls the
@@ -12,7 +13,7 @@
 // Version: 2.7.0 - FlushToSurfaceWithOpacity: a flush mixed with the destination
 //                  (the window fades popups in with it)
 // Version: 2.6.0
-// Last Modified: 2026-10-24
+// Last Modified: 2026-11-03
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -969,8 +970,10 @@ namespace UltraCanvas {
         std::unique_ptr<ITextAttribute> CreateForegroundAlpha(uint16_t alpha);
         std::unique_ptr<ITextAttribute> CreateBackgroundAlpha(uint16_t alpha);
 
-        // Letter spacing in pixels (internally converted to Pango units)
-        std::unique_ptr<ITextAttribute> CreateLetterSpacing(int spacingInPixels);
+        // Letter spacing in pixels, fractions too (internally converted to
+        // Pango units): kerning a drawing's text is a matter of tenths of
+        // its units
+        std::unique_ptr<ITextAttribute> CreateLetterSpacing(double spacingInPixels);
 
         // Rise (superscript/subscript displacement) in pixels
         std::unique_ptr<ITextAttribute> CreateRise(int riseInPixels);

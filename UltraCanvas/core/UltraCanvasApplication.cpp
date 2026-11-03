@@ -34,7 +34,7 @@
 //                  the bundled fonts when the scan takes long (AdoptSystemFontsWithin);
 //                  Initialize() times each of its steps (GetStartupTimings)
 // Version: 1.5.2 - modal fixes: close transient children with parent, ignore unmapped modals, raise modal on outside click
-// Last Modified: 2026-10-20
+// Last Modified: 2026-11-03
 // Author: UltraCanvas Framework
 
 #include <algorithm>
@@ -831,6 +831,21 @@ namespace UltraCanvas {
 
 
     // ===== RUNTIME FONT REGISTRATION =====
+
+    int RegisterBundledFontsWithoutApplication() {
+        // As an application's Initialize: the generated fonts.conf (where the
+        // system has none) before fontconfig is first read, then the
+        // platform's registration. No windows will switch to the system fonts
+        // when their scan ends (Windows), so the tool waits for it - a cold
+        // font cache takes many seconds, a warm one a moment.
+        SetupBundledFontconfig();
+        constexpr int kToolSystemFontsWaitMs = 10 * 60 * 1000;
+        const int registered = RegisterPlatformBundledFonts(kToolSystemFontsWaitMs);
+        // Pango's default font map sees the fonts registered now (a map made
+        // before them would not)
+        RefreshFontConfiguration();
+        return registered;
+    }
 
     void RefreshFontConfiguration() {
 #if !defined(__APPLE__)

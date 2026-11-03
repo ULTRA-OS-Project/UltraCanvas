@@ -7,10 +7,11 @@
 // whose shortcut a key press is; and the menus and toolbars read each
 // command's state - Undo with its step, what needs a selection, the active
 // tool - from the command itself (RefreshCommandStates).
+// Version: 1.2.0 - a command (but a View one) finishes the text being typed on the page first
 // Version: 1.1.0 - the menus are saved with ArtCreator's and merged with a newer version's
 //                  (a command it adds appears); the toolbar's commands have their own 24 px icons
 // Version: 1.0.0
-// Last Modified: 2026-11-02
+// Last Modified: 2026-11-03
 // Author: UltraCanvas Framework
 
 #include "ArtCreatorWindow.h"
@@ -136,7 +137,18 @@ void ArtCreatorWindow::RegisterCommands() {
         MenuCommand c(id, category, label);
         c.iconName = icon ? icon : "";
         c.shortcut = shortcut ? shortcut : "";
-        c.onClick = std::move(run);
+        // A text being typed is finished first - it is part of the drawing
+        // the command works on - except by the View commands, which only
+        // move the view (the editor follows it) and give the keys back to
+        // the text: the toolbar button pressed for them took them.
+        if (std::string(id).rfind("view.", 0) == 0) {
+            c.onClick = [this, run = std::move(run)]() {
+                if (run) run();
+                if (IsEditingText() && textEditor) textEditor->SetFocus(true);
+            };
+        } else {
+            c.onClick = [this, run = std::move(run)]() { CommitTextEdit(); if (run) run(); };
+        }
         c.isEnabled = std::move(enabled);
         commands.Register(c);
     };

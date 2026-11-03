@@ -92,7 +92,7 @@ Mould*, *View* (Zoom, Push).
 | R | Rectangle | Drag; shift for a square, ctrl from the centre; corner radius option |
 | E | Ellipse | Drag; shift for a circle, ctrl from the centre |
 | Q | Quick Shape | Drag from the centre. Options: Shape (Polygon — a regular n-gon, 8 corners for an octagon — or Star), Corners (3–24), Depth (how far a star's inner corners are pulled in). Shift stands it upright: a star's point up, an even polygon on a flat side |
-| T | Text | Click; a dialog asks for the text, font, size, bold, italic |
+| T | Text | Click on the page and type there, in the text's font, size and colour at the canvas's zoom; click a text (or double-click it with the Selector) to edit it where it lies. Enter starts a new line. The **text bar** (the framework's `UltraCanvasTextFormatBar`) replaces the transform bar while the tool is active: Font (every installed family, each shown in itself; type to find one), Size, Bold, Italic, Underline, Strikethrough, Align left / centre / right, Line spacing (%) and Letter spacing (pt). While typing, Font to Strikethrough apply to the selected words, or to the whole text with none selected; the rest always to the whole text. With no text being typed, the bar applies to the selected texts. Escape, Ctrl+Enter or a click outside finishes |
 | G | Fill | Drag across a shape for a linear (or radial) gradient from the fill colour; drag the gradient's ends to adjust; flat / no fill buttons |
 | Y | Transparency | Click a shape and drag right for a flat level, or drag across it for a linear / radial / conical ramp; the mix (stained glass, bleach, contrast, ...) and the level are in the options |
 | W | Shadow | Click a shape for a wall shadow and drag it into place; kind (wall / floor / glow), blur, darkness and colour in the options |
@@ -274,7 +274,7 @@ brings ArtCreator forward (`UltraCanvasSingleInstance`). `--help` and
 | `ArtCreatorWindow.{h,cpp}` | Window composition, the open-window registry, panels, status bar, file open / save, every command's work |
 | `ArtCreatorCommands.cpp` | Every command registered once (menus, toolbar, palette, keys, live state), the default menu, toolbar and palette layouts, the icon sizes, the user's layouts kept, the Customise editor |
 | `ArtCreatorTools.{h,cpp}` | The `ArtTool` base, the 15 tools, the line gallery's named choices, the option-widget helpers |
-| `ArtCreatorDialogs.{h,cpp}` | New Drawing / Document Setup and Text |
+| `ArtCreatorDialogs.{h,cpp}` | New Drawing / Document Setup |
 | `ArtCreatorIcon.{h,cpp}` | Icon mode's sizes, the page drawn at the icon's size with its soft pixels, and the preview element |
 | `ArtCreator.desktop` | The freedesktop launcher |
 | `../../media/icons/artcreator/` | Tool and command icons in one shade, each set drawn on the pixel grid of the size it is shown at, so its lines land on whole pixels: the 24 px set (toolbar and panel buttons), `28/` (the tool palette, 28 px icons in 36 px buttons) and `16/` (every menu entry). The toolbar's file, edit and zoom buttons use `../../media/icons/menu/`; `../../media/appicon/ArtCreator.{png,svg}` is the app icon |

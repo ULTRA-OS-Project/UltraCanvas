@@ -6,6 +6,7 @@
 // keying (Colour to Alpha), text layers (UltraCanvasRasterText.h), the paint
 // surface's view through a resize, and the PNG and .ucraster round trips (the
 // last three only with libvips).
+// Version: 1.7.0 - TestTextLetterSpacing: a text layer's letter spacing is drawn and kept by *.ucd
 // Version: 1.6.0 - TestProtectedUCD: a password-protected *.ucd, saved, refused, opened, kept
 // Version: 1.5.0 - TestLayeredUCD: *.ucd keeps layers, blend modes and text layers as text
 // Version: 1.4.1 - TestSurfaceFollowsResize: a document change after a resize reports the move
@@ -14,7 +15,7 @@
 //                  text until their pixels change, and survive a project
 // Version: 1.2.0 - TestLinesCurvesArrows: polylines in one pass, curves, arrows
 // Version: 1.1.0 - TestListeners: several observers of one document
-// Last Modified: 2026-10-16
+// Last Modified: 2026-11-03
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasRasterLayer.h"
@@ -1145,6 +1146,38 @@ static bool PngSize(const std::vector<uint8_t>& png, int& w, int& h) {
 // A UCD layered image (spec 4.7) keeps what a project keeps - layers, their
 // attributes, text layers as text - without libvips, and reads at every
 // depth: the thumbnail, the pixels, the words.
+// A text layer's letter spacing: drawn (the letters further apart), and kept
+// by a *.ucd - as a version 2 text frame - and drawn the same again.
+static void TestTextLetterSpacing() {
+    std::string err;
+    RasterTextContent tracked = MakeTextContent();
+    tracked.letterSpacingPx = 4.0f;
+    auto plain = RenderTextLayer(MakeTextContent(), 300, 150, err);
+    auto spaced = RenderTextLayer(tracked, 300, 150, err);
+    CHECK(plain && spaced);
+    if (!plain || !spaced) return;
+    CHECK(!SamePixels(*plain, *spaced));   // the letters moved apart
+
+    const std::filesystem::path dir = std::filesystem::temp_directory_path() / "ultracanvas-raster-tracking";
+    std::filesystem::create_directories(dir);
+    UCRasterDocument doc(300, 150, RasterPixel(255, 255, 255, 255));
+    doc.AddLayer(spaced);
+    const std::string path = PathToUtf8(dir / "tracked.ucd");
+    CHECK(doc.SaveToFile(path, err));
+    UCRasterDocument loaded;
+    CHECK(loaded.LoadFromFile(path, err));
+    CHECK(loaded.GetLayerCount() == 2);
+    if (loaded.GetLayerCount() == 2) {
+        auto back = loaded.GetLayer(1);
+        CHECK(back->IsTextLayer() && back->text && back->text->letterSpacingPx == 4.0f);
+        if (back->text) {
+            auto again = RenderTextLayer(*back->text, 300, 150, err);
+            CHECK(again && SamePixels(*again, *spaced));
+        }
+    }
+    std::filesystem::remove_all(dir);
+}
+
 static void TestLayeredUCD() {
     std::string err;
     const std::filesystem::path dir = std::filesystem::temp_directory_path() / "ultracanvas-raster-ucd";
@@ -1368,6 +1401,7 @@ int main() {
     TestTextLayers();
     TestSurfaceFollowsResize();
     TestLayeredUCD();
+    TestTextLetterSpacing();
     TestProtectedUCD();
 #ifdef HAS_LIBVIPS
     TestTextLayerProject();

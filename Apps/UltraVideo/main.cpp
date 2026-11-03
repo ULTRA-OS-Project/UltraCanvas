@@ -4,14 +4,16 @@
 // named on the command line. When UltraVideo is already running, the files go
 // to it instead - a project opens there, media is imported into its project -
 // and this start quits (UltraCanvasSingleInstance.h).
+// Version: 0.4.0 - installs UltraCanvas as the engine's text renderer (VideoFX_UseUltraCanvasText)
 // Version: 0.3.0 - one copy per user: a second start's files open in the
 //                  running copy
 // Version: 0.2.0 - registers the engine's files with the codec registry (RegisterEngineFormats)
 // Version: 0.1.0
-// Last Modified: 2026-10-14
+// Last Modified: 2026-11-03
 // Author: UltraCanvas Framework
 #include "UltraVideoFormats.h"
 #include "UltraVideoWindow.h"
+#include "VideoFXUltraCanvasText.h"
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasConfig.h"
@@ -99,6 +101,9 @@ int main(int argc, char* argv[]) {
             return UltraCanvasSingleInstance::RunAlreadyRunningAlert(app, "UltraVideo");
         // The engine's files join FileLoader's lists before a dialog asks
         UltraVideo::RegisterEngineFormats();
+        // Titles drawn by UltraCanvas - in the viewer, the draft and the
+        // export, as the videofx tool draws them from a saved project
+        VideoFX::VideoFX_UseUltraCanvasText();
         window = std::make_unique<UltraVideo::UltraVideoWindow>(app);
         // Listening starts before the command line's files are opened: a
         // file that cannot be read shows a native error dialog that holds the

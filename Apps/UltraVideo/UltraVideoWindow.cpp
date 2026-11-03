@@ -1,5 +1,7 @@
 // Apps/UltraVideo/UltraVideoWindow.cpp
 // The editor window (UltraVideoWindow.h).
+// Version: 0.12.0 - titles typed on the frame with the text bar, drawn by UltraCanvas as the engine's
+//                  text renderer (VideoFXUltraCanvasText) for the viewer and the export
 // Version: 0.11.0 - a tile's press arms the file drag as a button's arms the others: one filter, one cancel for all four
 // Version: 0.10.1 - the bin notes and the title styles' hints wrap to their width, as tall as their text
 // Version: 0.10.0 - one carried drag for files, effect presets and title styles; a title dragged onto its lane
@@ -9,16 +11,19 @@
 // Version: 0.6.0 - OpenFiles: files handed over by a second start
 // Version: 0.5.0 - Import, the overlay and a sound on A2 offer FileLoader's types the engine reads
 // Version: 0.4.0
-// Last Modified: 2026-10-14
+// Last Modified: 2026-11-03
 // Author: UltraCanvas Framework
 #include "UltraVideoWindow.h"
 #include "UltraVideoFormats.h"
 #include "UltraVideoMapping.h"
+#include "VideoFXUltraCanvasText.h"
 
 #include "UltraCanvasAlert.h"
 #include "UltraCanvasFileLoader.h"
 #include "UltraCanvasPathUtf8.h"
+#include "UltraCanvasRasterText.h"
 #include "UltraCanvasVideoTimelineModel.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <algorithm>
 #include <functional>
@@ -122,7 +127,16 @@ bool UltraVideoWindow::Create(const std::vector<std::string>& paths) {
     }
     binPanel_ = binPane;
     binPane->AddChild(BuildMediaBin());
+    // The text bar over the viewer, shown with a title
+    BuildTextBar();
+    viewerPane_->AddChild(textBar_);
     viewerPane_->AddChild(viewer_.Build(*palette_));
+    if (auto surface = viewer_.GetSurface()) {
+        surface->onDoubleClick = [this](const Point2Df& p) {
+            const int index = TitleAtViewerPoint(p);
+            if (index >= 0) BeginTitleEdit(index);
+        };
+    }
     inspectorTabs_ = inspector_.Build(*palette_);
     inspector_.onEdit = [this](const std::string& label, std::function<void(Document&)> edit, const std::string& mergeKey) {
         Edit(label, edit, mergeKey);
@@ -636,11 +650,22 @@ std::shared_ptr<UltraCanvasContainer> UltraVideoWindow::BuildTimelineDock() {
         return true;
     };
     timeline_->onSelectionChanged = [this](const std::vector<std::string>& ids) {
+        CommitTitleEdit();
         selectedClip_ = ids.empty() ? "" : ids.back();
         RefreshInspector();
         if (SongOfClip(selectedClip_) >= 0) inspector_.ShowAudioTab();
     };
     timeline_->onClipActivated = [this](const std::string& id) {
+        // A title double-clicked on its lane opens for typing on the frame,
+        // at a time it shows
+        const int title = document_.TitleIndex(id);
+        if (title >= 0) {
+            const TitleSpan& t = document_.titles[static_cast<size_t>(title)];
+            if (document_.view.playhead < t.start || document_.view.playhead >= t.End())
+                SetPlayhead(t.start + std::min(t.duration / 2.0, t.fadeIn + 0.5), false);
+            BeginTitleEdit(title);
+            return;
+        }
         selectedClip_ = id;
         RefreshInspector();
         if (SongOfClip(id) >= 0) inspector_.ShowAudioTab();
@@ -651,7 +676,7 @@ std::shared_ptr<UltraCanvasContainer> UltraVideoWindow::BuildTimelineDock() {
         RefreshInspector();
         inspector_.ShowClipTab();
     };
-    timeline_->onPlayheadChanged = [this](double seconds) { StopPlayback(); SetPlayhead(seconds, true); };
+    timeline_->onPlayheadChanged = [this](double seconds) { CommitTitleEdit(); StopPlayback(); SetPlayhead(seconds, true); };
     timeline_->onRangeChanged = [this](double in, double out) {
         document_.view.rangeIn = in;
         document_.view.rangeOut = out;
@@ -726,6 +751,7 @@ void UltraVideoWindow::ApplyPalette() {
 // ============================================================================
 void UltraVideoWindow::Edit(const std::string& label, const std::function<void(Document&)>& edit,
                             const std::string& mergeKey) {
+    CommitTitleEdit();   // a title typed on the frame goes in first
     Document before = document_;
     edit(document_);
     history_.Push(label, before, document_, mergeKey);
@@ -735,6 +761,8 @@ void UltraVideoWindow::Edit(const std::string& label, const std::function<void(D
 
 void UltraVideoWindow::SetDocument(Document document) {
     StopPlayback();
+    editingTitle_.clear();   // the document goes: its title being typed with it
+    if (titleHost_) titleHost_->SetVisible(false);
     document_ = std::move(document);
     InvalidateDraft();
     dark_ = document_.view.dark;
@@ -859,6 +887,7 @@ void UltraVideoWindow::RefreshTimeline() {
 void UltraVideoWindow::RefreshInspector() {
     inspector_.Show(document_, SegmentOfClip(document_, selectedClip_), document_.TitleIndex(selectedClip_),
                     document_.OverlayIndex(selectedClip_), document_.SoundIndex(selectedClip_));
+    ShowTextBar();
 }
 
 void UltraVideoWindow::RefreshPreview() {
@@ -1241,6 +1270,7 @@ void UltraVideoWindow::StepFrames(long long frames) {
 }
 
 void UltraVideoWindow::TogglePlay() {
+    CommitTitleEdit();
     if (playing_) {
         StopPlayback();
         return;
@@ -1412,7 +1442,9 @@ void UltraVideoWindow::RemoveDraftFile(const std::string& path) {
 }
 
 std::vector<VideoFXSegment> UltraVideoWindow::SegmentsToPlay() const {
-    std::vector<VideoFXSegment> segments = document_.SegmentsForEngine();
+    // The titles as text overlays the engine has UltraCanvas draw; the one
+    // being typed on the frame left out (its words lie over the frame).
+    std::vector<VideoFXSegment> segments = document_.SegmentsForEngine(editingTitle_);
     return document_.view.useProxies ? proxies_.Use(segments) : segments;
 }
 
@@ -2014,12 +2046,14 @@ void UltraVideoWindow::StartExport(const ExportChoice& choice) {
         }
         exported.sounds = lane;
     }
+    VideoFXExportSettings settings = choice.settings;
+    // The titles go as text overlays with their formatting; the engine has
+    // UltraCanvas draw them (VideoFXUltraCanvasText) at the export's height
     std::vector<VideoFXSegment> segments = exported.SegmentsForEngine();
     if (segments.empty()) {
         Message("The work area holds no clip.");
         return;
     }
-    VideoFXExportSettings settings = choice.settings;
     settings.music = document_.project.settings.music;
     PutSounds(exported, settings);
     if (settings.frameRate <= 0.0 && document_.project.settings.frameRate > 0.0) settings.frameRate = document_.project.settings.frameRate;
@@ -2061,11 +2095,404 @@ void UltraVideoWindow::PollExport() {
 }
 
 // ============================================================================
+// titles typed on the frame
+// ============================================================================
+namespace {
+    // The frame of the title editor: as big as the frame surface and over
+    // it, so the editor is cut off at the surface's edge; a press on it -
+    // outside the editor - finishes the title.
+    class TitleEditorHost : public UltraCanvasContainer {
+    public:
+        explicit TitleEditorHost(const std::string& id) : UltraCanvasContainer(id) {}
+        std::function<void()> onPressOutside;
+        bool OnEvent(const UCEvent& event) override {
+            if (event.type == UCEventType::MouseDown || event.type == UCEventType::MouseDoubleClick) {
+                if (onPressOutside) onPressOutside();
+                return true;
+            }
+            return UltraCanvasContainer::OnEvent(event);
+        }
+    };
+
+    TextFormatAlign BarAlign(int align) {
+        return align == 0 ? TextFormatAlign::Left : align == 2 ? TextFormatAlign::Right : TextFormatAlign::Centre;
+    }
+
+    RichTextAlign EditorAlign(int align) {
+        return align == 0 ? RichTextAlign::Left : align == 2 ? RichTextAlign::Right : RichTextAlign::Center;
+    }
+
+    // A whole-title change of a character attribute in rich text: every
+    // run takes it (font and size give up their own, back to the title's).
+    void ApplyToAllRuns(UCRichDocument& words, TextFormatAttribute attribute, const TextFormat& f) {
+        for (auto& block : words.blocks) {
+            for (auto& run : block.runs) {
+                switch (attribute) {
+                    case TextFormatAttribute::Font: run.fontFamily.clear(); break;
+                    case TextFormatAttribute::Size: run.fontSizePt = 0.0f; break;
+                    case TextFormatAttribute::Bold: run.bold = f.bold; break;
+                    case TextFormatAttribute::Italic: run.italic = f.italic; break;
+                    case TextFormatAttribute::Underline: run.underline = f.underline; break;
+                    case TextFormatAttribute::Strikethrough: run.strikethrough = f.strikethrough; break;
+                    default: break;
+                }
+            }
+        }
+    }
+
+    // A title's look from the bar: the title's own fields for the
+    // attributes that are the whole title's.
+    void ApplyToSpan(TitleSpan& t, TextFormatAttribute attribute, const TextFormat& f, int frameHeight) {
+        const double h = std::max(16, frameHeight);
+        switch (attribute) {
+            case TextFormatAttribute::Font: t.look.fontFamily = f.fontFamily; break;
+            case TextFormatAttribute::Size: t.look.fontSize = std::max(1.0, static_cast<double>(f.size)) / h; break;
+            case TextFormatAttribute::Align: t.look.textAlign = static_cast<int>(f.align); break;
+            case TextFormatAttribute::LineSpacing: t.look.lineSpacing = std::clamp(static_cast<double>(f.lineSpacing), 10.0, 1000.0); break;
+            case TextFormatAttribute::LetterSpacing: t.look.letterSpacing = f.letterSpacing / h; break;
+            default: break;
+        }
+    }
+}
+
+void UltraVideoWindow::BuildTextBar() {
+    // The framework's text bar, in pixels of the project's frame; it follows
+    // the theme (the palette) as the panels do.
+    textBar_ = CreateTextFormatBar("uv.textbar", 44.0f);
+    textBar_->SetSizeUnit(" px", 4, 1000, 0, 1);
+    textBar_->SetLetterSpacingUnit(" px", -50, 500, 1, 0.5);
+    textBar_->SetFollowTheme(true);
+    textBar_->onFormatChanged = [this](TextFormatAttribute attribute, const TextFormat& f) {
+        ApplyTitleAttribute(attribute, f);
+    };
+    textBar_->onControlDone = [this]() {
+        if (!editingTitle_.empty() && titleEditor_) titleEditor_->SetFocus(true);
+    };
+    textBar_->SetVisible(false);
+}
+
+void UltraVideoWindow::ShowTextBar() {
+    if (!textBar_) return;
+    const bool show = !editingTitle_.empty() || document_.TitleIndex(selectedClip_) >= 0;
+    if (textBar_->IsVisible() != show) {
+        textBar_->SetVisible(show);
+        if (viewerPane_) viewerPane_->InvalidateLayout();
+        if (window_) window_->RequestRedraw();
+    }
+    if (show) SyncTextBar();
+}
+
+void UltraVideoWindow::SyncTextBar() {
+    if (!textBar_) return;
+    const int h = document_.Height();
+    const TitleSpan* t = nullptr;
+    if (!editingTitle_.empty()) t = &editingSpan_;
+    else {
+        const int index = document_.TitleIndex(selectedClip_);
+        if (index >= 0) t = &document_.titles[static_cast<size_t>(index)];
+    }
+    if (!t) return;
+    const VideoFXOverlay look = t->Look();
+    TextFormat f;
+    f.fontFamily = look.fontFamily;
+    f.size = static_cast<float>(look.fontSize * h);
+    f.align = BarAlign(look.textAlign);
+    f.lineSpacing = static_cast<float>(look.lineSpacing);
+    f.letterSpacing = static_cast<float>(look.letterSpacing * h);
+    if (!editingTitle_.empty() && titleEditor_) {
+        f = TextFormatAtCaret(titleEditor_->GetFormatState(), f, kTextOverlayPointsPerPixel);
+    } else {
+        // Bold, italic, underline, struck through: all along, as the words say
+        auto words = TextOverlayWords(look, h);
+        bool any = false, bold = true, italic = true, under = true, strike = true;
+        for (const auto& block : words->blocks) {
+            for (const auto& run : block.runs) {
+                if (run.text.empty()) continue;
+                any = true;
+                bold = bold && run.bold; italic = italic && run.italic;
+                under = under && run.underline; strike = strike && run.strikethrough;
+            }
+        }
+        f.bold = any && bold; f.italic = any && italic; f.underline = any && under; f.strikethrough = any && strike;
+    }
+    textBar_->SetFormat(f);
+}
+
+int UltraVideoWindow::TitleAtViewerPoint(const Point2Df& p) const {
+    auto surface = viewer_.GetSurface();
+    if (!surface) return -1;
+    const int w = document_.Width(), h = document_.Height();
+    const Rect2Dd picture = surface->PictureRect();
+    if (picture.width <= 0 || picture.height <= 0) return -1;
+    const double scale = picture.height / h;
+    const double now = document_.view.playhead;
+    // The topmost title showing now whose picture holds the point
+    for (int i = static_cast<int>(document_.titles.size()) - 1; i >= 0; --i) {
+        const TitleSpan& t = document_.titles[static_cast<size_t>(i)];
+        if (t.look.text.empty() || now < t.start || now >= t.End()) continue;
+        const VideoFXOverlay look = t.Look();
+        const TextOverlayPicture pic = DrawTextOverlay(look, h);
+        if (!pic.image.IsValid()) continue;
+        const Rect2Dd r = OverlayPictureRect(look, w, h, pic.image.width, pic.image.height);
+        const double x = picture.x + r.x * scale, y = picture.y + r.y * scale;
+        if (p.x >= x && p.x <= x + r.width * scale && p.y >= y && p.y <= y + r.height * scale) return i;
+    }
+    return -1;
+}
+
+void UltraVideoWindow::BeginTitleEdit(int index) {
+    if (index < 0 || static_cast<size_t>(index) >= document_.titles.size()) return;
+    CommitTitleEdit();
+    StopPlayback();
+    auto surface = viewer_.GetSurface();
+    auto panel = viewer_.GetPanel();
+    if (!surface || !panel) return;
+    if (!titleMeasure_) titleMeasure_ = CreateRenderContext(Size2Di(4, 4), nullptr);
+    const TitleSpan& t = document_.titles[static_cast<size_t>(index)];
+    editingTitle_ = t.id;
+    editingSpan_ = t;
+    selectedClip_ = t.id;
+
+    if (!titleHost_) {
+        auto host = std::make_shared<TitleEditorHost>("uv.title-host");
+        host->layoutItem.SetPositionType(CSSLayout::PositionType::AbsoluteUI);
+        if (!host->layoutItem.position) host->layoutItem.position = CSSLayout::Position();
+        host->SetZIndex(OverlayZOrder::Overlays);
+        host->SetBackgroundColor(Colors::Transparent);
+        host->onPressOutside = [this]() { CommitTitleEdit(); };
+        host->SetVisible(false);
+        titleEditor_ = std::make_shared<UltraCanvasRichTextEdit>("uv.title-editor", 0, 0, 10, 10);
+        titleEditor_->layoutItem.SetPositionType(CSSLayout::PositionType::AbsoluteUI);
+        if (!titleEditor_->layoutItem.position) titleEditor_->layoutItem.position = CSSLayout::Position();
+        // A new line is set as the others; the box follows the words.
+        titleEditor_->onDocumentChanged = [this]() {
+            if (editingTitle_.empty() || !titleEditor_) return;
+            if (auto words = titleEditor_->GetDocument()) {
+                const VideoFXOverlay look = editingSpan_.Look();
+                const float size = static_cast<float>(std::max(4.0, look.fontSize * document_.Height()));
+                bool changed = SetTextLineSpacing(*words, size, static_cast<float>(look.lineSpacing));
+                for (auto& block : words->blocks) {
+                    if (block.align != EditorAlign(look.textAlign)) { block.align = EditorAlign(look.textAlign); changed = true; }
+                }
+                if (changed) titleEditor_->InvalidateDocument();
+            }
+            PlaceTitleEditor();
+        };
+        titleEditor_->onSelectionChanged = [this]() { SyncTextBar(); };
+        host->AddChild(titleEditor_);
+        panel->AddChild(host);
+        titleHost_ = host;
+    }
+
+    // The words as the title holds them, for the project's frame
+    const int h = document_.Height();
+    RasterTextContent content = TextOverlayContent(editingSpan_.Look(), h, 100.0);
+    PrepareTextLayerEditor(*titleEditor_, content, 1.0);
+    RichTextEditStyle style = titleEditor_->GetStyle();
+    style.blockSpacing = 0.0f;
+    titleEditor_->SetStyle(style);
+    titleEditor_->SetDocument(std::make_shared<UCRichDocument>(*content.document));
+    titleEditor_->GetEditor().SetCaret(titleEditor_->GetEditor().DocumentEnd());
+    titleHost_->SetVisible(true);
+
+    // The title itself leaves the frame while its words are typed over it
+    RefreshPreview();
+    RequestFrame();
+    PlaceTitleEditor();
+    ShowTextBar();
+    RefreshInspector();
+    titleEditor_->SetFocus(true);
+    Message(Tr("Typing the title on the frame: Escape, Ctrl+Enter or a click outside puts it in the video"));
+}
+
+void UltraVideoWindow::PlaceTitleEditor() {
+    if (editingTitle_.empty() || !titleEditor_ || !titleHost_) return;
+    auto surface = viewer_.GetSurface();
+    if (!surface) return;
+    const int w = document_.Width(), h = document_.Height();
+    const Rect2Df s = surface->GetBounds();
+    titleHost_->layoutItem.position->left = CSSLayout::Dimension::Px(s.x);
+    titleHost_->layoutItem.position->top = CSSLayout::Dimension::Px(s.y);
+    titleHost_->size.width = CSSLayout::Dimension::Px(s.width);
+    titleHost_->size.height = CSSLayout::Dimension::Px(s.height);
+
+    const Rect2Dd picture = surface->PictureRect();
+    const double scale = picture.height > 0 ? picture.height / h : 1.0;
+    if (std::fabs(titleEditor_->GetZoom() - scale) > 1e-6) titleEditor_->SetZoom(static_cast<float>(scale));
+
+    // The words as the title will lay them out: its widest line and its
+    // height, in the project's pixels, give the picture's place by the
+    // title's anchor - and the editor's box lies where the text lies in it.
+    const VideoFXOverlay t = editingSpan_.Look();
+    const double size = std::max(4.0, t.fontSize * h);
+    const double tracking = t.letterSpacing * h;
+    double widest = 0.0;
+    if (auto words = titleEditor_->GetDocument()) {
+        for (const auto& block : words->blocks) {
+            double width = 0.0;
+            for (const auto& run : block.runs) {
+                if (run.text.empty()) continue;
+                FontStyle fs;
+                fs.fontFamily = run.fontFamily.empty() ? t.fontFamily : run.fontFamily;
+                fs.fontSize = run.fontSizePt > 0.0f ? run.fontSizePt : static_cast<float>(size * kTextOverlayPointsPerPixel);
+                fs.fontWeight = run.bold ? FontWeight::Bold : FontWeight::Normal;
+                fs.fontSlant = run.italic ? FontSlant::Italic : FontSlant::Normal;
+                size_t letters = 0;
+                for (unsigned char ch : run.text) if ((ch & 0xC0) != 0x80) ++letters;
+                width += letters * tracking;
+                if (titleMeasure_) {
+                    titleMeasure_->SetFontFace(fs.fontFamily, fs.fontWeight, fs.fontSlant);
+                    titleMeasure_->SetFontSize(fs.fontSize);
+                    width += titleMeasure_->GetTextLineWidth(run.text);
+                }
+            }
+            widest = std::max(widest, width);
+        }
+    }
+    const double textH = std::max<double>(titleEditor_->GetContentHeight(), size * t.lineSpacing / 100.0);
+    const int band = t.box ? std::max(2, static_cast<int>(std::lround(size / 3.0))) : 0;
+    const int drop = t.shadow ? std::max(1, static_cast<int>(std::lround(size / 18.0))) : 0;
+    const int pad = std::max(band, drop);
+    const double textW = widest + size * 0.1;
+    const Rect2Dd r = OverlayPictureRect(t, w, h, static_cast<int>(std::ceil(textW)) + 2 * pad,
+                                       static_cast<int>(std::ceil(textH)) + 2 * pad);
+    // Room for the next letters, on the side the lines grow to
+    const double room = size * 2.0;
+    double left = r.x + pad, boxW = textW + room;
+    if (t.textAlign == 1) left -= room / 2.0;
+    else if (t.textAlign == 2) left -= room;
+    const double top = r.y + pad;
+    titleEditor_->layoutItem.position->left = CSSLayout::Dimension::Px(static_cast<float>(std::floor(picture.x + left * scale)));
+    titleEditor_->layoutItem.position->top = CSSLayout::Dimension::Px(static_cast<float>(std::floor(picture.y + top * scale)));
+    titleEditor_->size.width = CSSLayout::Dimension::Px(static_cast<float>(std::ceil(boxW * scale) + 2.0));
+    titleEditor_->size.height = CSSLayout::Dimension::Px(static_cast<float>(std::ceil(textH * scale) + 2.0));
+    titleHost_->InvalidateLayout();
+    if (auto panel = viewer_.GetPanel()) panel->InvalidateLayout();
+    if (window_) window_->RequestRedraw();
+}
+
+void UltraVideoWindow::RestyleTitleEditor() {
+    if (editingTitle_.empty() || !titleEditor_) return;
+    const int h = document_.Height();
+    const VideoFXOverlay look = editingSpan_.Look();
+    RasterTextContent content = TextOverlayContent(look, h, 100.0);
+    RichTextEditStyle style = TextLayerEditStyle(content);
+    style.blockSpacing = 0.0f;
+    titleEditor_->SetStyle(style);
+    if (auto words = titleEditor_->GetDocument()) {
+        SetTextLineSpacing(*words, content.fontSizePx, static_cast<float>(look.lineSpacing));
+        for (auto& block : words->blocks) block.align = EditorAlign(look.textAlign);
+    }
+    titleEditor_->InvalidateDocument();
+    PlaceTitleEditor();
+}
+
+void UltraVideoWindow::ApplyTitleAttribute(TextFormatAttribute attribute, const TextFormat& f) {
+    const int h = document_.Height();
+    if (!editingTitle_.empty() && titleEditor_) {
+        if (IsCharacterAttribute(attribute) && titleEditor_->HasSelection()) {
+            // The selected words take it, as runs of their own
+            titleEditor_->ApplyCharFormat(TextFormatCharDelta(attribute, f, kTextOverlayPointsPerPixel));
+        } else {
+            // The whole title
+            ApplyToSpan(editingSpan_, attribute, f, h);
+            if (auto words = titleEditor_->GetDocument()) ApplyToAllRuns(*words, attribute, f);
+            if (IsCharacterAttribute(attribute) && attribute != TextFormatAttribute::Font &&
+                attribute != TextFormatAttribute::Size) {
+                titleEditor_->ApplyCharFormat(TextFormatCharDelta(attribute, f, kTextOverlayPointsPerPixel));   // and what is typed next
+            }
+            RestyleTitleEditor();
+        }
+        titleEditor_->SetFocus(true);
+        PlaceTitleEditor();
+        SyncTextBar();
+        return;
+    }
+    // No title being typed: the selected title, as one undo step
+    const int index = document_.TitleIndex(selectedClip_);
+    if (index < 0) return;
+    const std::string labels[] = { Tr("Title Font"), Tr("Title Size"), Tr("Title Bold"), Tr("Title Italic"),
+                                   Tr("Title Underline"), Tr("Title Strikethrough"), Tr("Title Alignment"),
+                                   Tr("Title Line Spacing"), Tr("Title Letter Spacing") };
+    const bool slider = attribute == TextFormatAttribute::Size || attribute == TextFormatAttribute::LineSpacing ||
+                        attribute == TextFormatAttribute::LetterSpacing;
+    Edit(labels[static_cast<int>(attribute)], [index, attribute, f, h](Document& d) {
+        if (index < 0 || static_cast<size_t>(index) >= d.titles.size()) return;
+        TitleSpan& t = d.titles[static_cast<size_t>(index)];
+        ApplyToSpan(t, attribute, f, h);
+        if (IsCharacterAttribute(attribute) && attribute != TextFormatAttribute::Size) {
+            auto words = TextOverlayWords(t.Look(), h);
+            ApplyToAllRuns(*words, attribute, f);
+            t.look.richText = TextOverlayWordsToHtml(*words);
+            t.look.richTextHeight = h;
+        }
+    }, slider ? "title-bar-" + std::to_string(static_cast<int>(attribute)) : std::string());
+    SyncTextBar();
+}
+
+void UltraVideoWindow::CommitTitleEdit() {
+    if (editingTitle_.empty()) return;
+    // Cleared first: the edit below re-enters through the refreshes
+    const std::string id = editingTitle_;
+    editingTitle_.clear();
+    TitleSpan span = editingSpan_;
+    std::shared_ptr<UCRichDocument> words = titleEditor_ ? titleEditor_->GetDocument() : nullptr;
+    if (titleHost_) titleHost_->SetVisible(false);
+    if (window_ && titleEditor_ && window_->GetFocusedElement() == titleEditor_.get()) {
+        if (auto surface = viewer_.GetSurface()) surface->SetFocus(true);
+    }
+    const int index = document_.TitleIndex(id);
+    if (!words || index < 0) { RefreshPreview(); RequestFrame(); ShowTextBar(); return; }
+
+    std::string plain = words->ToPlainText();
+    while (!plain.empty() && (plain.back() == '\n' || plain.back() == '\r')) plain.pop_back();
+    const int h = document_.Height();
+    span.look.text = plain;
+    span.look.richText = TextOverlayWordsToHtml(*words);
+    span.look.richTextHeight = h;
+    const TitleSpan& before = document_.titles[static_cast<size_t>(index)];
+    const VideoFXOverlay a = before.Look(), b = span.Look();
+    const bool unchanged = a.text == b.text && a.fontFamily == b.fontFamily && a.textAlign == b.textAlign &&
+                           a.lineSpacing == b.lineSpacing && a.letterSpacing == b.letterSpacing &&
+                           a.fontSize == b.fontSize && TextOverlayWordsToHtml(*TextOverlayWords(a, h)) == b.richText;
+    if (unchanged) {
+        RefreshPreview();
+        RequestFrame();
+        ShowTextBar();
+        Message(Tr("The title is unchanged"));
+        return;
+    }
+    if (plain.find_first_not_of(" \t\r\n") == std::string::npos) {
+        Message(Tr("The title was emptied: it keeps its text (delete the title on its lane to remove it)"));
+        RefreshPreview();
+        RequestFrame();
+        ShowTextBar();
+        return;
+    }
+    Edit(Tr("Edit Title"), [id, span](Document& d) {
+        const int i = d.TitleIndex(id);
+        if (i < 0) return;
+        TitleSpan& t = d.titles[static_cast<size_t>(i)];
+        t.look.text = span.look.text;
+        t.look.fontSize = span.look.fontSize;
+        t.look.richText = span.look.richText;
+        t.look.richTextHeight = span.look.richTextHeight;
+        t.look.fontFamily = span.look.fontFamily;
+        t.look.textAlign = span.look.textAlign;
+        t.look.lineSpacing = span.look.lineSpacing;
+        t.look.letterSpacing = span.look.letterSpacing;
+    });
+    RequestFrame();
+    Message(Tr("The title is in the video"));
+}
+
+// ============================================================================
 // keys, drops, messages
 // ============================================================================
 bool UltraVideoWindow::TextHasFocus() const {
     UltraCanvasUIElement* focused = window_ ? window_->GetFocusedElement() : nullptr;
-    return focused && (dynamic_cast<UltraCanvasTextInput*>(focused) || dynamic_cast<UltraCanvasTimecodeField*>(focused));
+    return focused && (dynamic_cast<UltraCanvasTextInput*>(focused) || dynamic_cast<UltraCanvasTimecodeField*>(focused) ||
+                       dynamic_cast<UltraCanvasRichTextEdit*>(focused));
 }
 
 bool UltraVideoWindow::OnKey(const UCEvent& event) {
@@ -2076,6 +2503,20 @@ bool UltraVideoWindow::OnKey(const UCEvent& event) {
     }
     if (event.type != UCEventType::KeyDown) return false;
     const bool ctrl = event.ctrl || event.meta;
+    // A title typed on the frame: Escape or Ctrl+Enter puts it in the video
+    // (Enter starts a new line); the file keys still work, after it; every
+    // other key is the title's.
+    if (!editingTitle_.empty()) {
+        if (event.virtualKey == UCKeys::Escape ||
+            (ctrl && (event.virtualKey == UCKeys::Return || event.virtualKey == UCKeys::NumPadEnter))) {
+            CommitTitleEdit();
+            return true;
+        }
+        const bool fileKey = ctrl && (event.virtualKey == UCKeys::S || event.virtualKey == UCKeys::O ||
+                                      event.virtualKey == UCKeys::N || event.virtualKey == UCKeys::E);
+        if (!fileKey && TextHasFocus()) return false;
+        CommitTitleEdit();
+    }
     if (ctrl) {
         switch (event.virtualKey) {
             case UCKeys::Z:

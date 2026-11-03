@@ -819,6 +819,55 @@ std::string font = VideoFX_GetDefaultFontPath();               // what will be u
 Text overlays need an FFmpeg built with libfreetype (the usual Linux, macOS
 and MSYS2 packages are); ask `VideoFX_IsTextOverlayAvailable()`.
 
+### Text drawn by the host: fonts, styles, spacing
+
+FFmpeg's text filter draws one font file, plain, left-aligned. A text
+overlay can carry more - what a word processor sets - and have the host draw
+it:
+
+| Field | Meaning |
+|---|---|
+| `fontFamily` | The font by name. A text overlay that names one is drawn by the host's text renderer, when one is installed |
+| `richText`, `richTextHeight` | The words with their own fonts, sizes and styles - bold, italic, underline, strikethrough on any word - as HTML; `text` stays their plain text. A word's own size was set for a frame `richTextHeight` pixels high and scales with the frame |
+| `textAlign` | The lines: 0 left, 1 centred, 2 right |
+| `lineSpacing` | % of a line's largest letters from one baseline to the next (0: the font's own) |
+| `letterSpacing` | Added between letters, a share of the frame's height, like `fontSize` |
+
+```cpp
+// The host draws: true and an RGBA picture of the text as it lies over the
+// frame (its shadow and band too), or false to leave it to the text filter
+VideoFX_SetTextRenderer([](const VideoFXOverlay& o, int frameHeight, VideoFXFrame& picture) {
+    if (o.fontFamily.empty()) return false;
+    picture = MyTextEngine::Draw(o, frameHeight);
+    return true;
+});
+```
+
+What the renderer draws is laid over the frame as a picture, placed, timed,
+faded and dimmed as the text overlay was, sized as a share of the frame's
+height. `VideoFXExportJob::Start`, `VideoFX_Export`, `VideoFX_RenderProject`
+and `VideoFXPreview::Open` ask it on the **calling thread** - the export's own
+thread never does - so a renderer on a UI toolkit works from the UI thread;
+`VideoFX_DrawTextOverlays(segments, frameHeight)` does the same for a host
+that wants to see the result. Without a renderer such an overlay is drawn
+plain by the text filter, in `fontPath` or the default font. The fields are
+saved in project files.
+
+**UltraCanvas's renderer.** `VideoFX/ultracanvas/VideoFXUltraCanvasText.h`
+(the `VideoFXUltraCanvasText` library, built in the UltraCanvas tree) draws
+such an overlay with the `UltraCanvasRichTextEdit` that types it on a frame,
+its shadow and band as the text filter drew them:
+`VideoFX_UseUltraCanvasText()` installs it. UltraVideo does, and so does the
+`videofx` tool when built with UltraCanvas, so a project renders on the
+command line exactly as UltraVideo shows it (`videofx --version` says which).
+In a program without an `UltraCanvasApplication` - the tool - it first does
+what an application's start does for text
+(`RegisterBundledFontsWithoutApplication`): the bundled fonts and the system's,
+registered by the same per-platform code the applications run
+(`RegisterPlatformBundledFonts` - CoreText on macOS, fontconfig with the
+Windows font folders on Windows). VideoFX itself stays free of
+UltraCanvas: a VideoFX built on its own draws these titles plain.
+
 ---
 
 ## Export settings
@@ -1066,7 +1115,12 @@ videofx slideshow trip.mp4 *.jpg --music song.mp3 --beat-sync --save-project tri
 videofx project trip.vfxproj            # summary; exit status 1 if media are missing
 videofx render trip.vfxproj             # to the output it was saved with
 videofx render trip.vfxproj draft.mp4   # somewhere else
+videofx render trip.ultravideo          # a program's file around the engine's project
 ```
+
+A program's own project file that carries the engine's project under
+`"project"` - UltraVideo's `.ultravideo`, around its bin and its lanes - is
+read for that project, its media paths relative to the same file.
 
 ---
 

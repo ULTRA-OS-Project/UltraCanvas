@@ -8,8 +8,10 @@
 //
 // Usage: VectorModelTest
 // Exit code is the number of failed checks.
+// Version: 1.3.0 - text bounds: every line of a multi-line text, anchored on its own, with
+//                  letter spacing
 // Version: 1.2.0 - width profiles along straight segments
-// Last Modified: 2026-10-07
+// Last Modified: 2026-11-03
 // Author: UltraCanvas Framework
 
 #include "DataFormats/UltraCanvasVectorStorage.h"
@@ -139,10 +141,42 @@ void TestDisplayQuality() {
     Check(edge.a > 0 && edge.r < 128, "outline quality draws the edge in the outline colour");
 }
 
+void TestTextBounds() {
+    // A text over two lines (the second span on its own baseline, 30 lower):
+    // each line counts on its own, the first not stretched by the second's
+    // characters.
+    VectorText t;
+    t.Position = {100, 100};
+    t.BaseStyle.FontSize = 20;
+    TextSpanData first;
+    first.Text = "abcd";                      // 4 x 12 = 48 wide
+    first.Style = t.BaseStyle;
+    TextSpanData second;
+    second.Text = "ab";                       // 24 wide
+    second.Style = t.BaseStyle;
+    second.Position = Point2Dd(100, 130);
+    t.Spans = {first, second};
+    Check(NearRect(t.GetBoundingBox(), 100, 80, 48, 54, 1e-6),
+          "two-line text: as wide as its widest line, from the first ascent to the last line's foot");
+
+    // Middle anchor: each line centres on its own start point.
+    t.BaseStyle.Anchor = TextAnchor::Middle;
+    Check(NearRect(t.GetBoundingBox(), 76, 80, 48, 54, 1e-6),
+          "middle-anchored lines centre each on its own point");
+
+    // Letter spacing widens every character; characters, not UTF-8 bytes.
+    t.BaseStyle.Anchor = TextAnchor::Start;
+    t.Spans[0].Style.LetterSpacing = 2;       // 4 x (12 + 2) = 56
+    t.Spans[1].Text = "\xC3\xA9\xC3\xA9";       // "éé": two characters, four bytes
+    Check(NearRect(t.GetBoundingBox(), 100, 80, 56, 54, 1e-6),
+          "letter spacing widens the line; an accented letter counts once");
+}
+
 } // namespace
 
 int main() {
     TestPathBounds();
+    TestTextBounds();
     TestDisplayQuality();
     // ===== Matrix3x3 =====
     {

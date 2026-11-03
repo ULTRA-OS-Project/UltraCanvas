@@ -608,7 +608,7 @@ A reader meeting a code it does not know composites that layer as Normal.
 The words of a text layer: rich text — runs with their own fonts, sizes,
 colours, weights, slants and underlines; paragraphs with their alignment and
 spacing — laid out in a box the width of which the lines wrap at. After the
-8-byte preamble (`'UCTF'`, version `1`):
+8-byte preamble (`'UCTF'`, version `1` or `2`):
 
 | Offset | Size | Field | Meaning |
 |---|---|---|---|
@@ -620,6 +620,7 @@ spacing — laid out in a box the width of which the lines wrap at. After the
 | 44 | 4 | Font size | float32, pixels: the size of a run that states none |
 | 48 | 2 | Font family length | uint16 |
 | 50 | n | Font family | UTF-8: the font of a run that states none |
+| … | 4 | Letter spacing | version 2 only: float32, pixels added between every two letters of the text (0 = the font's own spacing) |
 | … | 4 | Text encoding | FourCC of what follows: `'ODT '` = an OpenDocument Text package (ODF 1.2, `application/vnd.oasis.opendocument.text`) |
 | … | 4 | Text length | uint32 |
 | … | n | Text | the rich text in that encoding |
@@ -635,6 +636,10 @@ Rules:
   text lays out the same when read back.
 - A reader that cannot decode the text encoding keeps the layer as the
   bitmap layer it shows.
+- Writers write version 1 for a text without letter spacing, so that a
+  reader of version 1 takes it; version 2 only when the letter spacing is not
+  0. A reader that does not know a frame's version keeps the layer as the
+  bitmap it shows.
 
 ## 5. Binary vs. text body encoding
 
