@@ -264,8 +264,8 @@ What the element does by itself:
 
 - **View.** Wheel zooms about the cursor (shift + wheel pans), space or the
   middle button pans, `+` / `-`, Ctrl+0 (page), Ctrl+1 (100 %).
-  `SetZoom` / `SetZoomAt` / `ZoomStep` / `ZoomToPage` / `ZoomToDrawing` /
-  `ZoomToSelection` / `ZoomToRect` / `CenterOn` / `PanBy`; `DocToView` / `ViewToDoc` /
+  `SetZoom` / `SetZoomAt` / `ZoomStep` / `ZoomToPage` / `ZoomToPageWidth` /
+  `ZoomToDrawing` / `ZoomToSelection` / `ZoomToRect` / `CenterOn` / `PanBy`; `DocToView` / `ViewToDoc` /
   `PixelsToDoc`; `VisibleDocRect`, `CanvasArea`.
 - **Page** on a pasteboard with a shadow; **grid** with subdivisions that
   hide when too dense; **rulers** in any unit with the pointer marked;

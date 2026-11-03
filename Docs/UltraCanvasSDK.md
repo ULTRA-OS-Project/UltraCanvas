@@ -27,13 +27,19 @@ as a `.tar.xz` on Linux, a `.tar.gz` on macOS and a `.zip` on Windows. The
 version in the name is the framework's, from the first line of
 `Docs/UltraCanvas/CHANGELOG.md`.
 
-**Where to get one.** The download page is
-[ultraos.eu/download-file](https://ultraos.eu/download-file/): pick the archive
-for your platform and architecture there. The `publish-sdk-website` job of
-`.github/workflows/build.yml` puts each release's six archives on the server
-behind that page, over SFTP, as `<ULTRAOS_SFTP_DIR>/<version>/<archive>` with a
-`SHA256SUMS` beside them (`scripts/upload-sdk-website.sh`). It runs once the
-GitHub release below has them. It uploads nothing until `ULTRAOS_SFTP_HOST`
+**Where to get one.** Every release is on the UltraOS server, with a
+`SHA256SUMS` beside the six archives:
+
+```
+https://start.ultraos.eu/pub/<version>/<archive>
+https://start.ultraos.eu/pub/<version>/SHA256SUMS
+https://start.ultraos.eu/pub/0.9.465/UltraCanvas-SDK-Windows-0.9.465-x86_64.zip
+```
+
+The `publish-sdk-website` job of `.github/workflows/build.yml` uploads them
+there over SFTP, into `<ULTRAOS_SFTP_DIR>/<version>/`, which the web server
+serves as `https://start.ultraos.eu/pub/` (`scripts/upload-sdk-website.sh`).
+It runs once the GitHub release below has them. It uploads nothing until `ULTRAOS_SFTP_HOST`
 is set, as a repository variable or a secret; the script's head lists the
 other settings. The *SDK website check* workflow
 (`.github/workflows/sdk-website-check.yml`, *Run workflow* in the Actions tab)
@@ -50,9 +56,11 @@ https://github.com/ULTRA-OS-Project/UltraCanvas/releases/download/v0.9.211/Ultra
 ```
 
 UltraCanvasStart's Framework step names the archive for the platform and
-architecture it runs on and the version it was built from, opens the download
-page in the browser with *Download page*, and unpacks the downloaded archive
-with *Unpack...*. UltraCanvasStart itself is on the same release, on its own, as
+architecture it runs on and the version it was built from. *Download* fetches
+it from `https://start.ultraos.eu/pub/` into a folder you pick, checks it
+against the version's `SHA256SUMS` and unpacks it there; *Unpack...* does the
+same for an archive downloaded by hand (`Apps/UltraCanvasStart/engine/StartSdk.h`,
+`DownloadSdk`). UltraCanvasStart itself is on the same release, on its own, as
 `UltraCanvasStart-<OS>-<version>-<arch>` (a `.tar.xz` on Linux, a `.zip` on
 Windows, a signed and notarized `.dmg` on macOS): the application, the
 libraries it loads and nothing else, for a computer that has neither the
@@ -161,6 +169,17 @@ glib, tinyxml2 and libvips through pkg-config:
   directory, or is empty.
 - **The Linux SDK does not**: the distribution's `-dev` packages are the
   right source there (Ubuntu 22.04's for the SDK's ABI), as step 1 lists them.
+  Only the ones an application compiles against are needed. The core also
+  records some of its own dependencies by the full path CI found them at,
+  such as `/usr/lib/x86_64-linux-gnu/libmp3lame.so`, which exists only
+  where `libmp3lame-dev` is installed, and `/usr/lib/libmupdf.a`, which CI
+  builds from source. The core is a shared library, so those are already
+  inside it or loaded with it at run time, and an application does not need
+  them on its link line. `UltraCanvasConfig.cmake` therefore leaves out any
+  such path the consuming machine does not have, and lists them in the
+  configure output (`UltraCanvas: not on this machine, left off the link
+  line ...`), instead of letting the build stop with *No rule to make
+  target*.
 
 ## Compatibility
 

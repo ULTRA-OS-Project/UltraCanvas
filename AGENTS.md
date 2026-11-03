@@ -358,7 +358,7 @@ enforces this and runs in CI; a genuine exception opts out with
 # HEIC and AVIF decode only with them, and ImageFormatsTest insists)
 sudo apt install build-essential cmake libcairo2-dev libpango1.0-dev \
     libfreetype6-dev libvips-dev libharfbuzz-dev clang \
-    libheif-plugin-libde265 libheif-plugin-aomdec
+    libheif-plugin-libde265 libheif-plugin-aomdec libjxl-dev
 # macOS deps
 brew install cmake cairo pango freetype vips harfbuzz
 
@@ -794,7 +794,15 @@ and never introduce a new literal copy of one:
    (`UltraCanvasNotificationActivation.h`); and it gets a row in
    `NOTIFICATION_ACTIVATORS` in `scripts/make_msix_layout.py`, which declares
    the activator in the MSIX package's manifest — run
-   `python3 scripts/check_notification_activators.py`; CI runs that too.
+   `python3 scripts/check_notification_activators.py`; CI runs that too. Writing text a person reads in a window? Through `Tr`
+   (`UltraLocalisation/UltraLocalisation.h`: `Tr("Save")`, `TrC`, `TrN`,
+   `TrF`), never a bare literal in a label, a menu or a dialog — then run
+   `python3 scripts/extract_ui_strings.py` so the English catalogues under
+   `media/locale/en/` carry the key, and `python3
+   scripts/check_locale_catalogues.py`; CI runs that too. A word every
+   application has is in `Standard.json` or a base set already (the
+   proposal's appendices): an application's own catalogue holds only what
+   is its own.
 3. Check `Docs/UltraCanvas/<Component>*.md` (or `llms.txt`) before using a
    component; if you add or change public API, update the matching doc in
    the same change. Then run `python3 scripts/check_doc_examples.py <doc>`:

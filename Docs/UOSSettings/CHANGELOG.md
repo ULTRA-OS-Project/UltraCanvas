@@ -1,3 +1,12 @@
+#### 2026-11-02 *0.13.0*
+- **Language: the language every application shows.** A new top-level page
+  chooses the language for all UltraCanvas applications - *System*, or any
+  language a translation of the standard set ships for, listed by its own
+  name - and writes `Language.conf` in the UltraCanvas settings folder,
+  which every application reads when it starts (UltraLocalisation,
+  `Docs/Modules/UltraLocalisation/README.md`). A *Translator* field keeps
+  the name the localisation editor will write into the catalogues it saves.
+
 #### 2026-11-01 *0.12.0*
 - Desktop: the empty Wallpaper field names the default it stands for,
   "ULTRA OS A (the default picture)".
