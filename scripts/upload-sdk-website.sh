@@ -156,6 +156,7 @@ if [ ${#archives[@]} -ne 6 ]; then
 fi
 
 ( cd "$ARCHIVE_DIR" && sha256sum "${archives[@]}" ) > "$WORK/SHA256SUMS"
+chmod og+r "$WORK/SHA256SUMS"
 
 # The batch: a leading '-' lets a command fail without ending the batch
 # (the version directory exists on a re-run; there is no old file to remove

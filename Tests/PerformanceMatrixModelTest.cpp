@@ -6,13 +6,17 @@
 // colouring reads, validation, and the shipped samples - their sizes, their
 // codes counted from the best corner, and their badges.
 //
+// Version: 1.1.0 - the population: score mapping, explicit cells winning, counts,
+//   hidden groups, validation of items and targets, the sample team
 // Version: 1.0.0
-// Last Modified: 2026-10-27
+// Last Modified: 2026-11-02
 // Author: UltraCanvas Framework
 
 #include "Plugins/Diagrams/UltraCanvasPerformanceMatrixModel.h"
 
+#include <cmath>
 #include <cstdio>
+#include <numeric>
 #include <set>
 #include <string>
 
@@ -136,6 +140,97 @@ static void TestSamples() {
     CHECK(PerformanceMatrixSamples::SkillWill().Rows() == 2, "skill / will is a 2x2");
 }
 
+static void TestScoreMapping() {
+    std::printf("\n[Placement by score]\n");
+    PerformanceAxis axis;
+    axis.levels = {{"Low"}, {"Mid"}, {"High"}};
+    axis.minScore = 1.0;
+    axis.maxScore = 4.0;
+    CHECK(PerformanceMatrixModel::LevelForScore(axis, 1.5) == 0, "evenly split: 1.5 of 1-4 is low");
+    CHECK(PerformanceMatrixModel::LevelForScore(axis, 2.0) == 1, "a score on a bound belongs to the level above");
+    CHECK(PerformanceMatrixModel::LevelForScore(axis, 3.99) == 2, "the top third is high");
+    CHECK(PerformanceMatrixModel::LevelForScore(axis, 0.0) == 0 && PerformanceMatrixModel::LevelForScore(axis, 9.0) == 2,
+          "scores outside the range land in the end levels");
+    CHECK(PerformanceMatrixModel::LevelForScore(axis, std::nan("")) == -1, "a missing score has no level");
+    axis.levels[0].upperBound = 3.0;
+    axis.levels[1].upperBound = 3.5;
+    CHECK(PerformanceMatrixModel::LevelForScore(axis, 2.9) == 0 && PerformanceMatrixModel::LevelForScore(axis, 3.2) == 1,
+          "explicit bounds move the levels");
+
+    PerformanceMatrixModel model = ThreeByThree();
+    model.xAxis.minScore = model.yAxis.minScore = 0.0;
+    model.xAxis.maxScore = model.yAxis.maxScore = 3.0;
+    PerformanceMatrixItem scored("Scored", "A", 2.5, 0.5);
+    CHECK(model.CellOf(scored) == PerformanceCellRef(0, 2), "an item's scores map to row by y, column by x");
+    PerformanceMatrixItem moved = scored;
+    moved.row = 1;
+    moved.col = 1;
+    CHECK(model.CellOf(moved) == PerformanceCellRef(1, 1), "an explicit cell wins over the scores");
+    PerformanceMatrixItem nowhere;
+    CHECK(!model.CellOf(nowhere).IsValid(), "an item with no cell and no scores has no place");
+}
+
+static void TestCounts() {
+    std::printf("\n[Counts]\n");
+    PerformanceMatrixModel model = ThreeByThree();
+    model.items = {{"a", "Red", 2, 2}, {"b", "Red", 2, 2}, {"c", "Blue", 0, 0}, {"d", "Blue", 1, 2}, {"e", "", 1, 0}};
+    const std::vector<int> cells = model.CountsPerCell();
+    CHECK(cells.size() == 9 && cells[8] == 2 && cells[0] == 1 && cells[5] == 1 && cells[3] == 1, "counts per cell are row-major");
+    CHECK(std::accumulate(cells.begin(), cells.end(), 0) == 5, "every placed item is counted once");
+    const std::vector<int> rows = model.CountsPerRow(), cols = model.CountsPerColumn();
+    CHECK(rows == std::vector<int>({1, 2, 2}), "counts per row");
+    CHECK(cols == std::vector<int>({2, 0, 3}), "counts per column");
+    const std::vector<int> noRed = model.CountsPerCell({"Red"});
+    CHECK(noRed[8] == 0 && std::accumulate(noRed.begin(), noRed.end(), 0) == 3, "a hidden group is left out");
+    CHECK(model.Groups() == std::vector<std::string>({"Red", "Blue", ""}), "groups in order of first appearance");
+}
+
+static void TestPopulationValidation() {
+    std::printf("\n[Population validation]\n");
+    PerformanceMatrixModel model = PerformanceMatrixSamples::NineBox();
+    model.items = PerformanceMatrixSamples::SampleTeam();
+    model.targetDistribution = PerformanceMatrixSamples::SampleTargetDistribution();
+    CHECK(model.Validate().empty(), "the 9-box with the sample team and targets is valid");
+
+    PerformanceMatrixModel bad = model;
+    bad.items.push_back(PerformanceMatrixItem());
+    CHECK(!bad.Validate().empty(), "an item without a place is reported");
+    bad = model;
+    bad.items.push_back(PerformanceMatrixItem("Off", "", 5, 0));
+    CHECK(!bad.Validate().empty(), "an item outside the grid is reported");
+    bad = model;
+    bad.targetDistribution.pop_back();
+    CHECK(!bad.Validate().empty(), "a target distribution of the wrong length is reported");
+    bad = model;
+    bad.targetDistribution[0] += 0.2;
+    CHECK(!bad.Validate().empty(), "a target distribution not summing to 1 is reported");
+    bad = model;
+    bad.xAxis.levels[1].upperBound = 1.5;
+    bad.xAxis.levels[0].upperBound = 2.0;
+    CHECK(!bad.Validate().empty(), "level bounds out of order are reported");
+    bad = model;
+    bad.yAxis.maxScore = bad.yAxis.minScore;
+    CHECK(!bad.Validate().empty(), "an empty score range is reported");
+}
+
+static void TestSampleTeam() {
+    std::printf("\n[Sample team]\n");
+    PerformanceMatrixModel model = PerformanceMatrixSamples::NineBox();
+    model.items = PerformanceMatrixSamples::SampleTeam();
+    CHECK(model.items.size() == 36, "36 people");
+    CHECK(model.Groups().size() == 3, "in three departments");
+    const std::vector<int> cells = model.CountsPerCell();
+    bool everyCell = true;
+    for (int n : cells) everyCell &= n > 0;
+    CHECK(everyCell, "every box of the 9-box holds someone");
+    CHECK(cells[4] == *std::max_element(cells.begin(), cells.end()), "the core box holds the most, as in a real team");
+    std::set<std::string> ids;
+    for (const PerformanceMatrixItem& item : model.items) ids.insert(item.id);
+    CHECK(ids.size() == model.items.size(), "ids are distinct");
+    const std::vector<double> target = PerformanceMatrixSamples::SampleTargetDistribution();
+    CHECK(std::abs(std::accumulate(target.begin(), target.end(), 0.0) - 1.0) < 1e-9, "the sample target sums to 1");
+}
+
 int main() {
     std::printf("====================================\n");
     std::printf("  UltraCanvas Performance Matrix Model\n");
@@ -145,6 +240,10 @@ int main() {
     TestRank();
     TestValidation();
     TestSamples();
+    TestScoreMapping();
+    TestCounts();
+    TestPopulationValidation();
+    TestSampleTeam();
 
     std::printf("\n====================================\n");
     if (g_failures == 0) {

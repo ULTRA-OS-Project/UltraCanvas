@@ -12,12 +12,12 @@
 //
 // A machine that genuinely cannot have a codec sets UC_IMAGE_FORMATS_OPTIONAL
 // to the formats to report rather than fail, e.g. "heic,avif" on a
-// developer's box without the plug-in package. CI sets it only where the
-// runner's platform has no such codec at all: "jxl" on ubuntu-22.04, whose
-// libvips is built without libjxl (the 24.04 row of image-codecs.yml and
-// the macOS and Windows rows check JPEG XL).
+// developer's box without the plug-in package. CI never sets it: every
+// runner has every codec (JPEG XL on ubuntu-22.04 through the framework's
+// own loader on a libjxl built from source).
 //
 // Headless; needs libvips (reports SKIP without it).
+// Version: 1.0.2 - no CI exception any more: JPEG XL decodes on every runner
 // Version: 1.0.1 - UC_IMAGE_FORMATS_OPTIONAL named for the 22.04 runner (no libjxl)
 // Version: 1.0.0
 // Last Modified: 2026-11-02

@@ -1,9 +1,11 @@
 // Apps/DemoApp/UltraCanvasPerformanceMatrixExamples.cpp
 // Performance matrix examples: the 9-box, performance vs potential tiles,
 // the performance management matrix with header tabs (vivid and in one hue),
-// talent review cards and skill / will
+// talent review cards, skill / will, and a calibration with a team in the boxes
+// Version: 1.1.0 - the Calibration tab: an invented team as counts, shares
+//   against a target, dots or names, a group legend, an anonymised mode
 // Version: 1.0.0
-// Last Modified: 2026-10-27
+// Last Modified: 2026-11-02
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -66,7 +68,14 @@ namespace UltraCanvas {
             management.xAxis.levels[i].iconPath = DemoIconPath(columnIcons[i]);
             management.yAxis.levels[i].iconPath = DemoIconPath(rowIcons[i]);
         }
+        // The calibration: the 9-box with an invented team placed in it.
+        PerformanceMatrixModel calibration = PerformanceMatrixSamples::NineBox();
+        calibration.title = "Calibration: 36 people (invented)";
+        calibration.items = PerformanceMatrixSamples::SampleTeam();
+        calibration.targetDistribution = PerformanceMatrixSamples::SampleTargetDistribution();
         std::vector<Example> examples = {
+            {"Calibration", calibration, PerformanceMatrixDesign::Grid, PerformanceCellColoring::DiagonalBands,
+             PerformanceMatrixPalette::TrafficLight(), false},
             {"9-box", PerformanceMatrixSamples::NineBox(), PerformanceMatrixDesign::Grid,
              PerformanceCellColoring::DiagonalBands, PerformanceMatrixPalette::TrafficLight(), false},
             {"Performance vs potential", PerformanceMatrixSamples::PerformanceVsPotential(),
@@ -91,6 +100,7 @@ namespace UltraCanvas {
             matrix->SetCellColoring(example.coloring);
             matrix->SetPalette(example.palette);
             matrix->SetShowContainerPanel(example.panel);
+            matrix->SetShowTotals(!example.model.items.empty());
 
             auto tabContent = std::make_shared<UltraCanvasContainer>("pmTab" + std::to_string(i), 0, 0, 860, 632);
             tabContent->SetBackgroundColor(Color(255, 255, 255, 255));
@@ -129,6 +139,7 @@ namespace UltraCanvas {
         coloringSelector->AddItem("By rank from the best corner", "rank");
         coloringSelector->AddItem("By row", "row");
         coloringSelector->AddItem("By column", "column");
+        coloringSelector->AddItem("By how many people", "count");
         coloringSelector->AddItem("Plain", "plain");
         coloringSelector->SetSelectedIndex(0);
         sidebar->AddChild(coloringSelector);
@@ -142,16 +153,27 @@ namespace UltraCanvas {
         paletteSelector->SetSelectedIndex(0);
         sidebar->AddChild(paletteSelector);
 
-        addCaption("pmSelectionCaption", "SELECTED CELL", PAD + 196);
-        auto selection = std::make_shared<UltraCanvasLabel>("pmSelection", PAD, PAD + 220, SIDEBAR_W, 250);
+        addCaption("pmPeopleCaption", "People", PAD + 189);
+        auto peopleSelector = std::make_shared<UltraCanvasDropdown>("pmPeopleSelector", PAD, PAD + 212, SIDEBAR_W, 28);
+        peopleSelector->AddItem("Count per box", "count");
+        peopleSelector->AddItem("Share and target", "percent");
+        peopleSelector->AddItem("Dots", "dots");
+        peopleSelector->AddItem("Names", "names");
+        peopleSelector->AddItem("Names, anonymised", "anonymised");
+        peopleSelector->AddItem("Hidden", "hidden");
+        peopleSelector->SetSelectedIndex(0);
+        sidebar->AddChild(peopleSelector);
+
+        addCaption("pmSelectionCaption", "SELECTED", PAD + 259);
+        auto selection = std::make_shared<UltraCanvasLabel>("pmSelection", PAD, PAD + 283, SIDEBAR_W, 250);
         selection->SetFontSize(10);
         selection->SetWrap(TextWrap::WrapWord);   // tooltips and the hint are sentences, not lines
         selection->SetAlignment(TextAlignment::Left);
         selection->SetBackgroundColor(Color(248, 249, 250, 255));
         selection->SetPadding(10);
-        selection->SetText("The controls above change the tab shown. Click a cell to see it here; "
-                           "hover for its full text - a cell too small for its content keeps the "
-                           "rest in its tooltip.");
+        selection->SetText("The controls above change the tab shown. Click a cell or a person to see "
+                           "them here; hover for the full text. On Calibration, click a department "
+                           "in the legend to hide it.");
         sidebar->AddChild(selection);
 
         // ===== CALLBACKS (raw pointers: no cycle through the elements) =====
@@ -171,6 +193,13 @@ namespace UltraCanvas {
                 selectionPtr->SetText(clicked->GetSelectedCell().IsValid() ? clicked->BuildCellTooltip(ref)
                                                                            : std::string("(nothing selected)"));
             };
+            matrices[i]->onItemClick = [matrixPtrs, i, selectionPtr](const PerformanceMatrixItem& item) {
+                const UltraCanvasPerformanceMatrix* clicked = matrixPtrs[i];
+                const std::vector<PerformanceMatrixItem>& items = clicked->GetModel().items;
+                for (size_t k = 0; k < items.size(); ++k) {
+                    if (&items[k] == &item) selectionPtr->SetText(clicked->BuildItemTooltip(k));
+                }
+            };
         }
         designSelector->onSelectionChanged = [active](int, const DropdownItem& item) {
             UltraCanvasPerformanceMatrix* matrix = active();
@@ -186,6 +215,7 @@ namespace UltraCanvas {
             if (item.value == "row") matrix->SetCellColoring(PerformanceCellColoring::ByRow);
             else if (item.value == "column") matrix->SetCellColoring(PerformanceCellColoring::ByColumn);
             else if (item.value == "plain") matrix->SetCellColoring(PerformanceCellColoring::Plain);
+            else if (item.value == "count") matrix->SetCellColoring(PerformanceCellColoring::ByCount);
             else matrix->SetCellColoring(PerformanceCellColoring::DiagonalBands);
         };
         paletteSelector->onSelectionChanged = [active](int, const DropdownItem& item) {
@@ -195,6 +225,18 @@ namespace UltraCanvas {
             else if (item.value == "mono") matrix->SetPalette(PerformanceMatrixPalette::Monochrome(Color(36, 104, 178, 255)));
             else if (item.value == "pastel") matrix->SetPalette(PerformanceMatrixPalette::Pastel());
             else matrix->SetPalette(PerformanceMatrixPalette::TrafficLight());
+        };
+
+        peopleSelector->onSelectionChanged = [active](int, const DropdownItem& item) {
+            UltraCanvasPerformanceMatrix* matrix = active();
+            if (!matrix) return;
+            matrix->SetAnonymised(item.value == "anonymised");
+            if (item.value == "percent") matrix->SetPopulationDisplay(PerformancePopulationDisplay::Percent);
+            else if (item.value == "dots") matrix->SetPopulationDisplay(PerformancePopulationDisplay::Dots);
+            else if (item.value == "names" || item.value == "anonymised") {
+                matrix->SetPopulationDisplay(PerformancePopulationDisplay::Names);
+            } else if (item.value == "hidden") matrix->SetPopulationDisplay(PerformancePopulationDisplay::Hidden);
+            else matrix->SetPopulationDisplay(PerformancePopulationDisplay::Count);
         };
 
         return mainContainer;

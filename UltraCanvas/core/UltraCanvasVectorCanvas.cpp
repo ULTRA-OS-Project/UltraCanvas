@@ -224,6 +224,20 @@ void UltraCanvasVectorCanvas::ZoomToPage() {
     ZoomToRect(Rect2Dd(0, 0, document->Size.width, document->Size.height), 24.0);
 }
 
+void UltraCanvasVectorCanvas::ZoomToPageWidth() {
+    const Rect2Dd area = CanvasArea();
+    if (!document || document->Size.width <= 0 || area.width <= 0 || area.height <= 0) return;
+    const double margin = 24.0;
+    const double middleY = view.ViewToDoc(Point2Dd(0, area.y + area.height * 0.5)).y;
+    view.zoom = std::clamp((area.width - 2 * margin) / document->Size.width, kMinZoom, kMaxZoom);
+    view.originX = area.x + (area.width - document->Size.width * view.zoom) / 2;
+    view.originY = area.y + area.height * 0.5 - middleY * view.zoom;
+    ClampView();
+    fitPending = false;
+    if (onViewChanged) onViewChanged();
+    RequestRedraw();
+}
+
 void UltraCanvasVectorCanvas::ZoomToDrawing() {
     if (!document) return;
     Rect2Dd b = document->GetBoundingBox();

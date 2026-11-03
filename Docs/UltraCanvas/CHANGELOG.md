@@ -1,3 +1,263 @@
+#### 2026-11-03 *0.9.471*
+- **Two design documents for the next framework-wide jobs.**
+  `Docs/UltraCanvas/UltraCanvasLocalisationProposal.md` proposes the
+  **UltraLocalisation** module: `Tr` / `TrC` / `TrN` / `TrF` with the
+  English text as the key; a **standard set** UltraCanvas ships for every
+  application (the framework's own strings and the common application
+  vocabulary, translated once), **base sets** per kind of application
+  (Computer, Web, Audio, Image, Video, Text, Spreadsheet, Presentation,
+  Planning, CAD, Banking, Games, Shopping, Fashion, and Communication and
+  Security for the applications the tree has) that an application takes
+  by name, drafted in an appendix, and the application's **own set** over
+  them,
+  one JSON per language and set under `media/locale/<lang>/` with a
+  per-user override under the UltraCanvas settings folder; the language
+  chosen once for every application in UOS-Settings (`Language.conf`, the
+  system's language by default); a **localisation editor** element that
+  shows the standard set, the base sets and the application set in one
+  grid - inherited, overridden, own and untranslated rows - and merges
+  them (take a base, promote or demote an entry, merge two bases), hosted
+  in UOS-Settings, in an
+  application's Help menu and in DemoApp, saving into a checkout or into
+  the settings folder; locale number, date and file-size formatting; and
+  the extraction, check, wrapping and UltraAI-draft scripts that make the
+  30 applications' migration mechanical.
+  `Docs/UltraCanvas/UltraCanvasHostThemeProposal.md` proposes following the
+  host's look: `HostAppearance` read from the Windows registry, AppKit,
+  XSETTINGS / GSettings / kdeglobals, the browser's media queries and
+  Android's configuration, with the change events each platform sends;
+  fonts and text sizes in `UltraCanvasTheme` by text role; `FromHost` with
+  the accent derived under the contrast rules the theme test enforces; a
+  theme policy on the application that follows the host by default;
+  `FromTheme` for the 42 style structs that lack one; `Appearance.conf`
+  and a UOS-Settings Appearance > Look page; and a watcher on the settings
+  folder that makes those shared settings live in running applications.
+  Both are recorded in `scripts/doc_examples_baseline.txt` until their
+  APIs exist.
+- **"The system font" is the desktop's font now, on every platform.**
+  `UltraCanvasApplication::GetSystemFontStyle()` and
+  `GetDefaultMonospacedFontStyle()` - what an element with no font family
+  of its own is drawn in - returned the literal Ubuntu 12 on Linux and on
+  Windows, so a Windows desktop's Segoe UI and a GNOME desktop's Cantarell
+  never reached a window. Windows reads the message font of the non-client
+  metrics at 96 dpi (`SystemParametersInfoForDpi`, else the system dpi) and
+  uses Consolas for code; Linux and the BSDs read GSettings
+  `org.gnome.desktop.interface` (`font-name`, `monospace-font-name`; only
+  inside a desktop session, since with no desktop running the schema
+  answers its compiled default, which nobody chose),
+  `~/.config/kdeglobals` (`font`, `fixed`; first on a KDE session) and the
+  GTK `settings.ini`; macOS keeps its system font and now gives the system
+  monospace (Menlo for SF Mono, which Pango cannot name) at the interface
+  size instead of Ubuntu Mono 12. The parsers are the header-only
+  `UltraCanvasSystemFont.h` (`ParseGtkFontName`, `ParseKdeFontEntry`,
+  `ReadIniValue`), `SystemFontTest` holds them, and the bundled Ubuntu
+  families stay the answer where nothing is set.
+- **One detector for the person's language.** `UltraCanvasSystemLanguage.h`:
+  `SystemLanguageTags()` gives the desktop's languages best first as BCP 47
+  tags - the POSIX variables as gettext reads them, then the platform's
+  own list (Windows' preferred UI languages and default locale, macOS's
+  Language & Region, `navigator.languages` in a browser, the configuration
+  on Android). The spell checker's `DetectPreferredLanguage`, which read the
+  variables itself and had no platform answer except the Windows
+  backend's, uses it; the localisation module of
+  `UltraCanvasLocalisationProposal.md` will. `SystemLanguageTest` holds the
+  rules.
+- **The standard set of the localisation proposal is measured.**
+  `scripts/survey_ui_strings.py` lists the UI strings the applications
+  share and the framework's own; its findings are the proposal's new
+  appendix, the draft contents of `Standard.json`.
+- **UltraLocalisation, phase L1: the localisation module.** `Tr("Save")`
+  gives the translation of the English text written at the site, from
+  three layers of JSON catalogues loaded at start-up - the application's
+  own set (`media/locale/<lang>/<App>.json`), the base sets of its kind
+  (`media/locale/<lang>/base/<Base>.json`, named in the catalogue's
+  `@bases` or with `UseBaseSets`) and the standard set
+  (`media/locale/<lang>/Standard.json`) - the English itself when none has
+  it, so nothing is ever blank. A file of the same name under the
+  UltraCanvas settings folder's `locale/` is read first, so a translator's
+  draft shows on the next start; a regional tag walks down (`zh-Hant-TW`,
+  `zh-Hant`, `zh`) and the more specific file wins per key. `TrC` keys on
+  a context (`"button|Open"`), `TrN` picks the plural form by the
+  language's CLDR rule from a table of forty languages, `TrF` fills `{0}`,
+  `{1}`, .... `Language.conf` in the settings folder (`language=de` or
+  `system`, `translator=`) is the one choice for every application;
+  `Initialize` takes `--lang` (`SetLanguageOverride`), `ULTRACANVAS_LANG`,
+  that file, then the first desktop language a catalogue exists for, then
+  English, and `UltraCanvasApplicationBase::Initialize` runs it before the
+  first window. The module is UI-free and free of the core (yyjson and the
+  path helpers only), the `uc-localisation` archive absorbed into the
+  shared core, public name `UltraLocalisation`, `Masterfile_modules.md`
+  §18, `Docs/Modules/UltraLocalisation/README.md`;
+  `UltraLocalisationTest` runs it over a temporary catalogue tree. The
+  catalogues' contents (L2), the scripts, the editor (L4) and locale
+  formatting (L6) follow; until L2 ships a catalogue every application
+  shows its English as before.
+- **UltraLocalisation, phase L2: the catalogues and the scripts.**
+  `media/locale/en/Standard.json` is the English standard set - the
+  framework's own `Tr` keys and the application vocabulary of the
+  proposal's Appendix A, 311 entries - and `media/locale/en/base/` holds
+  the sixteen base sets of Appendix B (Computer, Web, Audio, Image, Video,
+  Text, Spreadsheet, Presentation, Planning, CAD, Banking, Games,
+  Shopping, Fashion, Communication, Security; 1,216 entries), so a
+  translation of a language is those files with the values in that
+  language. The framework's own dialogs are wrapped in `Tr`: the modal
+  dialogs' buttons and titles, the file dialog, the filer widget's menus
+  and messages, the colour, date, time and new-document dialogs, the
+  progress dialog, the spell-check menu, the media viewer; a title built
+  from pieces became a `TrF` with placeholders, and the date picker's
+  weekday and month names are the standard set's context entries
+  (`"month|May"`, `"weekday|Mo"`), re-read when the language changes
+  while a picker is open.
+  `scripts/extract_ui_strings.py` rewrites the English catalogues from the
+  `Tr` sites (adding to the standard set, never removing; an application's
+  file from its own sites with what it inherits listed),
+  `scripts/check_locale_catalogues.py` is the CI gate over every
+  translation (parses, no stale key, placeholders kept, the plural forms
+  the language needs, no entry repeated from a set below, the English in
+  sync; `locale-catalogues.yml`, a baseline that only shrinks), and
+  `scripts/wrap_ui_strings.py` wraps a file's interface strings for
+  review. The plural table gained Breton, Scottish Gaelic, Manx, Cornish,
+  Tachelhit, Tamazight, Filipino, Colognian, the Sami languages, Hebrew's
+  "many" and European Portuguese.
+- **UltraLocalisation, phase L3: the drafts, the drafting tool, the
+  Language page.** `media/locale/` now holds the standard set and the
+  sixteen base sets in German, French, Spanish, Italian, Dutch,
+  Portuguese, Japanese and Simplified Chinese - 1,546 entries each,
+  machine drafts marked `"@translated-by": "machine draft ..., reviewed
+  by -"` until a person reviews them - so the framework's own dialogs show
+  in those languages on a desktop set to one. `ultralocalisation-draft`
+  (`Apps/UltraLocalisationDraft`, built with the UltraAI module) drafts a
+  catalogue through UltraAI's translator with any configured provider,
+  keeps what a target already has, sends every plural form the language
+  needs and refuses a draft that lost a placeholder;
+  `scripts/translate_catalogue.py` runs it over a language's sets with a
+  context per set. UOS-Settings gains a Language page (its 0.7.0): the
+  language for every application, *System* or any with a standard set,
+  written to `Language.conf`, and the translator's name for the catalogues
+  the editor will save.
+
+#### 2026-11-03 *0.9.470*
+- **An application built against the Linux SDK stopped with "No rule to make
+  target '/usr/lib/x86_64-linux-gnu/libmp3lame.so'".**
+  - **Cause:** the core links LAME, MuPDF and the libraries MuPDF uses by the
+    full path CI found them at, and the installed package handed those paths
+    on to every application linking `UltraCanvas::UltraCanvas`.
+    `/usr/lib/x86_64-linux-gnu/libmp3lame.so` exists only where
+    `libmp3lame-dev` is installed. `/usr/lib/libmupdf.a` exists only where
+    MuPDF was built from source, as on CI. So a machine with only the runtime
+    libraries could not build UltraCanvasStart's skeleton.
+  - **Fix:** the core is a shared library, so those are already inside it or
+    loaded with it at run time. `UltraCanvasConfig.cmake` now leaves any such
+    path that the consuming machine does not have off a shared core's link
+    line, and names them in the configure output. Paths that exist, and the
+    libraries named by `-l` name, stay as they were. On Windows and macOS the
+    `deps/` remapping still comes first.
+  - **Reproduced** with the 0.9.465 Linux SDK and a skeleton from
+    `UltraCanvasStart --create`, with `libmp3lame.so` and `libmupdf.a`
+    moved aside: the old package stopped with that error.
+  - **Fixed:** the same package with this change configured, named both
+    files, linked, and the skeleton started and showed its window. With both
+    files back in place, nothing is left out and the build is unchanged.
+
+#### 2026-11-03 *0.9.469*
+- **JPEG XL in every build: the framework's own loader and saver on libjxl.**
+  A libvips built without libjxl (Ubuntu 22.04's) read and wrote no `.jxl`,
+  and ImageFormatsTest had to excuse that one runner. `VipsJxlPlugin`
+  (`libspecific/Cairo/`) now registers `jxlload`, `jxlload_buffer`,
+  `jxlload_source`, `jxlsave`, `jxlsave_buffer` and `jxlsave_target` - the
+  names libvips gives its own, so `UCImageRaster`, the export encoder and
+  the format inventory need no other spelling - wherever libvips has none,
+  on the libjxl CMake finds (`HAS_LIBJXL`). The loader takes the still
+  picture at 8 or 16 bits a channel, grey or RGB, with or without alpha;
+  the saver writes 8-bit RGB or RGBA with libvips' `Q`, `distance`,
+  `effort` and `lossless` arguments. A libvips with its own JPEG XL keeps
+  it; `UC_VIPS_JXL_PLUGIN=force` registers the plug-in above it, which is
+  how it is tested on a machine that has both. CI's ubuntu-22.04 rows
+  build libjxl 0.7.0 - Ubuntu 24.04's version, the one the lossy test is
+  calibrated on - from source (cached per runner) and install it under
+  `/usr/local`, so their packages carry JPEG XL for the first time, and
+  the JPEG XL test runs on every row. `libjxl-dev` joins the dependency
+  lists.
+- **The Linux packages carry a current libheif without x265.** CI's
+  ubuntu-22.04 rows, whose libheif is 1.12 with the GPL x265 linked in,
+  build libheif 1.19.8 from source the way the Windows row does: HEVC and
+  AV1 decoding (libde265, dav1d, aom), AV1 encoding (aom), JPEG and JPEG
+  2000, HEIC encoded by kvazaar (BSD-3-Clause; built from source where
+  apt has no package) and never by x265, the codecs linked in rather than
+  loaded as plug-ins. Installed under `/usr/local` ahead of the distro's,
+  so libvips' `heifload` uses it, and the package closure ships it - the
+  first Linux packages that write HEIC, and without a GPL encoder in the
+  core. The install step fails if the distro's libheif still shadows it,
+  if it links x264 or x265, or if kvazaar is missing; the HEIF/AVIF test
+  now runs on the Linux rows with the Windows row's expectations.
+
+#### 2026-11-03 *0.9.468*
+- **Performance matrix, Phase 2: the population.** People can now be placed
+  into the boxes: `PerformanceMatrixModel::items`, each in an explicit cell or
+  placed by two scores mapped through the axes' level bounds (an explicit cell
+  wins, as a calibration override does). There are counts per cell, row and
+  column, groups, and an optional `targetDistribution`.
+  - `SetPopulationDisplay` shows each cell's people as a count chip (the
+    default), a share against the target ("14% / 10%"), dots in the group
+    colours, or names in columns. "+N" / "+N more" stand in for whoever does
+    not fit, and every person is either drawn or counted.
+  - A group legend at the right shows each department's size. A click hides
+    a group from the cells, the counts, the shares and the colouring.
+  - `SetAnonymised(true)` turns names into counts and stops any person
+    answering the pointer, for a room that should not see names.
+  - New `PerformanceCellColoring::ByCount` colouring, and level colour bars
+    along both axes (`SetShowLevelBars`). `SetShowTotals` adds "n = 12"
+    under each level label.
+  - A person's tooltip gives the name, group, box, levels, scores and note,
+    and `onItemClick` reports a click on a dot or a name.
+
+  The model gains `LevelForScore`, `CellOf`, `CountsPerCell` / `Row` /
+  `Column`, `Groups`, item and target validation, and the invented
+  `SampleTeam()` and `SampleTargetDistribution()`. The demo's Performance
+  Matrix page has a Calibration variant with a People control. Model and
+  render tests cover placement, the "+N" accounting, hiding a group and the
+  anonymised mode.
+
+#### 2026-11-03 *0.9.467*
+- **DemoApp: the Image Performance Test chooses its formats from FileLoader.**
+  A gear button at the right end of the page's toolbar opens a dialog with
+  one switch per bitmap format this build both writes and reads
+  (`UltraCanvasFileLoader::GetSupportedFormats(Bitmap)`, `canSave &&
+  canLoad`, with options from `GetImageExportOptions`), so TGA, PPM, ICO,
+  HDR, EXR, PSD and the rest can be timed too. The choice is kept between
+  runs, in the demo's settings file (`UltraCanvasAppSettings`
+  "UltraCanvasDemo", key `imagePerformance.formats`). JPEG 2000 is now off
+  by default - its encoder stretched the time axis until every other bar was
+  a sliver - and the *Include BMP* checkbox went into the list (BMP stays off
+  by default). Every format is written with its Save settings, as any
+  application saves it. Opening the page shows a popup, *"Upload an image to
+  start the test."*
+- **DemoApp: the Image Performance Test writes QOI and BMP through
+  FileLoader.** They were the last two formats the page encoded and decoded
+  with code of its own (`qoi.h`'s `qoi_write` / `qoi_read`, and a 24bpp BMP
+  writer and reader in the page), against the rule that every file goes
+  through `UltraCanvasFileLoader`. Both now take the path every other format
+  does - `UCImage::Save` with `GetImageExportOptions`, then `UCImage::Load`
+  with a full decode - and are offered where FileLoader writes and reads
+  them. Their timings now include libvips' pipeline, as every other column's
+  always did, so they are not comparable with earlier runs. About 420 lines
+  of page-local codec code are gone.
+
+#### 2026-11-03 *0.9.466*
+- **`UltraCanvasVectorCanvas::ZoomToPageWidth`** (header 1.2.0): zooms so the
+  page's width fills the canvas area less a 24 px margin, centred across,
+  keeping the document point at the middle of the view at the same height,
+  and clamps the view as a scroll does. ArtCreator's Fit Page Width uses it.
+
+#### 2026-11-02 *0.9.465*
+- **Android reads SVG.** The Android dependency build now gives libvips its
+  `rsvg` feature, as on macOS: vcpkg's librsvg 2.40, the last C release (no
+  Rust), with gdk-pixbuf, libcroco and libxml2. Without it every `.svg` -
+  the demo's icons among them - failed on the emulator with "is not a known
+  file format". The core also picks librsvg up through pkg-config for its
+  parse-once SVG documents, as on the desktop. The emulator smoke test now
+  fails when any SVG fails to load.
+
 #### 2026-11-02 *0.9.464*
 - **`UltraCanvasCommandRegistry::FindByShortcut`** finds the command a key
   press names ("Ctrl+Shift+S", however spelt), so a program's key handler runs
