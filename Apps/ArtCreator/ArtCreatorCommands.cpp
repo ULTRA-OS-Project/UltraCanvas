@@ -139,9 +139,16 @@ void ArtCreatorWindow::RegisterCommands() {
         c.shortcut = shortcut ? shortcut : "";
         // A text being typed is finished first - it is part of the drawing
         // the command works on - except by the View commands, which only
-        // move the view (the editor follows it).
-        if (std::string(id).rfind("view.", 0) == 0) c.onClick = std::move(run);
-        else c.onClick = [this, run = std::move(run)]() { CommitTextEdit(); if (run) run(); };
+        // move the view (the editor follows it) and give the keys back to
+        // the text: the toolbar button pressed for them took them.
+        if (std::string(id).rfind("view.", 0) == 0) {
+            c.onClick = [this, run = std::move(run)]() {
+                if (run) run();
+                if (IsEditingText() && textEditor) textEditor->SetFocus(true);
+            };
+        } else {
+            c.onClick = [this, run = std::move(run)]() { CommitTextEdit(); if (run) run(); };
+        }
         c.isEnabled = std::move(enabled);
         commands.Register(c);
     };

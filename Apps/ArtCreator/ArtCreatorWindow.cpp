@@ -2326,7 +2326,13 @@ void ArtCreatorWindow::BeginTextEdit(const Point2Dd& docPoint, const std::shared
         // The box grows with what is typed.
         textEditor->onDocumentChanged = [this]() { PlaceTextEditor(); };
         // Ctrl+wheel over the text zooms the canvas, which the editor follows.
-        textEditor->onZoomChanged = [this](float) { PlaceTextEditor(); };
+        textEditor->onZoomChanged = [this](float zoom) {
+            if (!textSession || !canvas) return;
+            const double scale = std::sqrt(std::max(1e-12, std::fabs(textSession->toDocument.Determinant())));
+            const double canvasZoom = zoom / scale;
+            if (std::fabs(canvas->GetZoom() - canvasZoom) > 1e-6) canvas->SetZoom(canvasZoom);
+            PlaceTextEditor();
+        };
         host->AddChild(textEditor);
         body->AddChild(host);
         textEditorHost = host;
