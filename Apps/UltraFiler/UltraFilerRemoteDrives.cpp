@@ -1,4 +1,5 @@
 // Apps/UltraFiler/UltraFilerRemoteDrives.cpp
+// Version: 1.14.1 - the interface strings go through Tr (UltraLocalisation)
 // Version: 1.14.0 - a changed folder is marked Stale, not dropped, so the display
 //                   keeps its files while it is fetched again; listings the
 //                   user looks at go ahead of queued transfers; ListingStatus
@@ -35,6 +36,7 @@
 #include <sstream>
 #include "UltraCanvasPathUtf8.h"
 #include "UltraFilerDeviceProvider.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #ifdef ULTRAFILER_HAS_ULTRACLOUD
 #include <UltraCloud/UltraCloud.h>
@@ -715,7 +717,7 @@ void UltraFilerRemoteDrives::SideListingMain(const std::string& path) {
         outcome.message = std::string("listing failed: ") + e.what();
     } catch (...) {
         outcome.failed = true;
-        outcome.message = "listing failed";
+        outcome.message = Tr("listing failed");
     }
     // The connection this thread opened goes with it - closed here, while
     // the thread still runs: on Windows a thread's last rites run under the
@@ -1860,7 +1862,7 @@ void UltraFilerRemoteDrives::WorkerMain() {
         } catch (...) {
             outcome.failed = true;
             if (job.isListing) {
-                outcome.message = "listing failed";
+                outcome.message = Tr("listing failed");
                 std::lock_guard<std::mutex> lk(mutex_);
                 notifyListing = RecordListingFailureLocked(job.path, job.isPrefetch,
                                                            outcome.message);
@@ -2084,12 +2086,12 @@ uint64_t UltraFilerRemoteDrives::BeginLogSession(const Job& job) {
         return (remotePath == "/" ? std::string() : remotePath) + "/" + name;
     };
     if (job.isListing) {
-        header.operation = job.isPrefetch ? "Read folder ahead" : "Open folder";
+        header.operation = job.isPrefetch ? Tr("Read folder ahead") : Tr("Open folder");
         header.target = remotePath;
     } else {
         switch (job.operation) {
             case RemoteOperation::Delete:
-                header.operation = job.isDirectory ? "Delete folder" : "Delete";
+                header.operation = job.isDirectory ? Tr("Delete folder") : "Delete";
                 header.target = remotePath;
                 break;
             case RemoteOperation::Rename:
@@ -2105,7 +2107,7 @@ uint64_t UltraFilerRemoteDrives::BeginLogSession(const Job& job) {
                 header.target = inFolder(UploadedName(job.argument, job.remoteName));
                 break;
             case RemoteOperation::Download:
-                header.operation = job.isPreview ? "Fetch for preview" : "Download";
+                header.operation = job.isPreview ? Tr("Fetch for preview") : "Download";
                 header.target = remotePath;
                 break;
         }
@@ -2278,7 +2280,7 @@ bool UltraFilerRemoteDrives::FetchListing(const std::string& path, bool isPrefet
     (void)isPrefetch;
     (void)recordFailure;
     outcome.failed = true;
-    outcome.message = "this build of UltraFiler carries no cloud support";
+    outcome.message = Tr("this build of UltraFiler carries no cloud support");
     std::lock_guard<std::mutex> lk(mutex_);
     cache_[path] = CacheEntry{CacheState::Failed, {},
                               "this build of UltraFiler carries no cloud support"};

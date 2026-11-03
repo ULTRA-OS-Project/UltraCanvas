@@ -1,3 +1,15 @@
+#### 2026-11-03 *1.106.0*
+- **UltraFiler speaks the chosen language.** Its own texts - the toolbar's
+  tooltips and drop-downs, the menus, the dialogs (Find text, New RAM disc,
+  Run Windows program, the connection log, the properties), the status
+  line's messages and the whole settings window - go through `Tr`, so they
+  follow the language set in UOS-Settings; `media/locale/en/UltraFiler.json`
+  is its set, over the *Computer* base set and the standard set. The
+  settings window's start page gains **Translate UltraFiler...**, which
+  opens the localisation editor on UltraFiler's own set in the language it
+  runs in. Texts built from pieces in the deeper code paths (the remote
+  drives' and the RAM discs' error reports) stay English until their pass.
+
 #### 2026-11-03 *1.105.0*
 - **A file opened in its own viewer window shows a loading ring and its name
   until it is open**, not *No media*, and the window title follows the file

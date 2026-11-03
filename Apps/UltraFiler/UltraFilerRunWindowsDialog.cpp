@@ -1,6 +1,7 @@
 // Apps/UltraFiler/UltraFilerRunWindowsDialog.cpp
 // Implementation of the environment picker. Construction follows the
 // CSV dialogs (flex-column content, custom OK/Cancel buttons).
+// Version: 1.0.1 - the interface strings go through Tr (UltraLocalisation)
 // Version: 1.0.0
 // Author: UltraCanvas Framework
 
@@ -8,6 +9,7 @@
 
 #include "UltraCanvasButton.h"
 #include "UltraCanvasContainer.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 namespace UltraCanvas {
 
@@ -22,7 +24,7 @@ void UltraFilerRunWindowsDialog::Initialize(
     environments_ = environments;
 
     DialogConfig cfg;
-    cfg.title = "Run Windows program";
+    cfg.title = Tr("Run Windows program");
     cfg.width = 460;
     cfg.height = 250;
     cfg.resizable = false;
@@ -62,13 +64,13 @@ void UltraFilerRunWindowsDialog::Initialize(
 
     newNameInput_ = std::make_shared<UltraCanvasTextInput>(
         "uf-runwin-newname", 0, 0, 428.0f, 30.0f);
-    newNameInput_->SetPlaceholder("name for the new environment");
+    newNameInput_->SetPlaceholder(Tr("name for the new environment"));
     if (preselect == kNewEnvironmentIndex) newNameInput_->SetText(suggestion);
     content->AddChild(newNameInput_);
 
     rememberCheck_ = std::make_shared<UltraCanvasCheckbox>(
         "uf-runwin-remember", 0, 0, 428.0f, 24.0f,
-        "Remember for this program");
+        Tr("Remember for this program"));
     rememberCheck_->SetChecked(true);
     content->AddChild(rememberCheck_);
 
@@ -81,7 +83,7 @@ void UltraFilerRunWindowsDialog::Initialize(
     buttons->layout.SetFlexGap(8);
     auto runBtn = std::make_shared<UltraCanvasButton>(
         "uf-runwin-run", 0, 0, 100, 30);
-    runBtn->SetText("Run");
+    runBtn->SetText(Tr("Run"));
     runBtn->onClick = [this]() {
         const std::string env = ChosenEnvironment();
         if (env.empty()) return;  // nothing chosen/typed — keep the dialog
@@ -90,7 +92,7 @@ void UltraFilerRunWindowsDialog::Initialize(
     };
     auto cancelBtn = std::make_shared<UltraCanvasButton>(
         "uf-runwin-cancel", 0, 0, 100, 30);
-    cancelBtn->SetText("Cancel");
+    cancelBtn->SetText(Tr("Cancel"));
     cancelBtn->onClick = [this]() { CloseDialog(DialogResult::Cancel); };
     buttons->AddChild(runBtn);
     buttons->AddChild(cancelBtn);

@@ -65,6 +65,7 @@
 // display and the switch itself are remembered in the settings.
 // A previewed file that changes on disk is reopened in the preview pane
 // (ReloadChangedPreview): throttled, and never restarting a playing video.
+// Version: 1.42.1 - the interface strings go through Tr (UltraLocalisation)
 // Version: 1.42.0 - the viewer window is titled by the file on show (no fixed title), so
 //                   the title follows browsing
 // Version: 1.41.0 - "Linux" (WSL distributions) and "Network" (computers and their
@@ -162,6 +163,7 @@
 #include <system_error>
 #include <unordered_set>
 #include "UltraCanvasPathUtf8.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 namespace fs = std::filesystem;
 
@@ -613,7 +615,7 @@ namespace {
     // what it has always been called here. Everything else - a drive letter, a
     // stick's volume name - already reads correctly.
     std::string DriveNodeLabel(const MountedVolume& volume) {
-        if (volume.path == "/") return "File System";
+        if (volume.path == "/") return Tr("File System");
         return volume.label.empty() ? volume.path : volume.label;
     }
 
@@ -870,7 +872,7 @@ namespace {
     std::string TabTitleForPath(const std::string& path) {
         if (IsUserHomeDir(path)) return "Home";
         const std::string name = PathToUtf8(PathFromUtf8(path).filename());
-        return name.empty() ? (path.empty() ? "New tab" : path) : name;
+        return name.empty() ? (path.empty() ? Tr("New tab") : path) : name;
     }
 
     // The icon of that tab, "" for a tab that carries none. The home folder
@@ -1320,7 +1322,7 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
         HandleFolderModified(folder, folderPreview.get());
     };
     folderPreview->onError = [this](const std::string& message) {
-        if (statusLabel) statusLabel->SetText("Error: " + message);
+        if (statusLabel) statusLabel->SetText(TrF("Error: {0}", message));
     };
     WireDisplayFormatCallbacks(folderPreview.get());
     WireFolderIconProvider(folderPreview.get());
@@ -1551,8 +1553,8 @@ void UltraFilerWindow::HandlePrint(const std::vector<FilerEntry>& targets) {
     }
     if (printable.empty()) {
         if (statusLabel)
-            statusLabel->SetText("Print: no text files selected - only text "
-                                 "files can be printed yet.");
+            statusLabel->SetText(Tr("Print: no text files selected - only text "
+                                    "files can be printed yet."));
         return;
     }
 
@@ -1561,14 +1563,13 @@ void UltraFilerWindow::HandlePrint(const std::vector<FilerEntry>& targets) {
         const FilerEntry& e = printable[i];
         if (e.size > kMaxPrintBytes) {
             if (statusLabel)
-                statusLabel->SetText("Print: \"" + e.name + "\" is too large ("
-                                     + FormatFileSize(e.size) + ").");
+                statusLabel->SetText(TrF("Print: \"{0}\" is too large ({1}).", e.name, FormatFileSize(e.size)));
             continue;
         }
         std::ifstream in(PathFromUtf8(e.path), std::ios::binary);
         if (!in) {
             if (statusLabel)
-                statusLabel->SetText("Print: cannot read \"" + e.name + "\".");
+                statusLabel->SetText(TrF("Print: cannot read \"{0}\".", e.name));
             continue;
         }
         std::ostringstream buffer;
@@ -1582,11 +1583,10 @@ void UltraFilerWindow::HandlePrint(const std::vector<FilerEntry>& targets) {
 
     if (printed > 0 && statusLabel) {
         std::string text = printed == 1
-                ? "Sent \"" + printable.front().name + "\" to the printer."
-                : "Sent " + std::to_string(printed) + " files to the printer.";
+                ? TrF("Sent \"{0}\" to the printer.", printable.front().name)
+                : TrF("Sent {0} files to the printer.", printed);
         if (printable.size() > kMaxPrintJobs)
-            text += " First " + std::to_string(kMaxPrintJobs) + " of "
-                  + std::to_string(printable.size()) + " only.";
+            text += " " + TrF("First {0} of {1} only.", kMaxPrintJobs, printable.size());
         if (skipped > 0)
             text += " " + std::to_string(skipped) + " non-text item(s) skipped.";
         statusLabel->SetText(text);
@@ -1599,17 +1599,16 @@ void UltraFilerWindow::HandleShare(const std::vector<FilerEntry>& targets) {
         if (!e.isDirectory) paths.push_back(e.path);
     if (paths.empty()) {
         if (statusLabel)
-            statusLabel->SetText("Share: select files - folders cannot be "
-                                 "sent as e-mail attachments.");
+            statusLabel->SetText(Tr("Share: select files - folders cannot be "
+                                 "sent as e-mail attachments."));
         return;
     }
     std::string error;
     if (!UltraFilerShare::ShareByEmail(paths, error))
         UltraCanvasAlert::Error(error, "Share", nullptr, window.get());
     else if (statusLabel)
-        statusLabel->SetText("Share: handed " + std::to_string(paths.size())
-                             + (paths.size() == 1 ? " file" : " files")
-                             + " to the e-mail composer.");
+        statusLabel->SetText(TrN("Share: handed {n} file to the e-mail composer.",
+                                 "Share: handed {n} files to the e-mail composer.", static_cast<long long>(paths.size())));
 }
 
 void UltraFilerWindow::HandleAttributes(const std::vector<FilerEntry>& targets) {
@@ -1724,7 +1723,7 @@ bool UltraFilerWindow::OpenInUltraViewer(const FilerEntry& entry) {
     if (!UltraCanvasDesktopShell::LaunchProgram("UltraViewer", {entry.path}, &error)) {
         // Said once per double-click, and the file still opens the usual way,
         // so a missing UltraViewer never turns a double-click into nothing.
-        if (statusLabel) statusLabel->SetText("UltraViewer could not be started: " + error);
+        if (statusLabel) statusLabel->SetText(TrF("UltraViewer could not be started: {0}", error));
         return false;
     }
     return true;
@@ -1738,8 +1737,8 @@ void UltraFilerWindow::OpenInMediaWindow(const std::string& path) {
     // No title of our own: the window is called after the file on show, and
     // follows it as the arrow keys browse the folder.
     if (!mediaWindow.Show(path, window.get(), MediaViewerWindowOptions())) {
-        UltraCanvasAlert::Error("Could not open a window for " + PathToUtf8(PathFromUtf8(path).filename()),
-                                "View", nullptr, window.get());
+        UltraCanvasAlert::Error(TrF("Could not open a window for {0}", PathToUtf8(PathFromUtf8(path).filename())),
+                                Tr("View"), nullptr, window.get());
     }
 }
 
@@ -1749,7 +1748,7 @@ std::vector<MenuItemData> UltraFilerWindow::BuildFormatListMenuItems(
                               ? UltraFilerSettingsDialog::Page::Thumbnails
                               : UltraFilerSettingsDialog::Page::DetailView;
     std::vector<MenuItemData> items;
-    items.push_back(MenuItemData::Action("File formats…",
+    items.push_back(MenuItemData::Action(Tr("File formats…"),
             [this, page]() { OpenSettingsDialog(page); }));
     return items;
 }
@@ -2034,7 +2033,7 @@ void UltraFilerWindow::OpenSystemPrompt() {
 
     std::string error;
     if (!UltraFilerPrompt::Launch(settings.promptApplication, folder, error))
-        UltraCanvasAlert::Error(error, "Open prompt", nullptr, window.get());
+        UltraCanvasAlert::Error(error, Tr("Open prompt"), nullptr, window.get());
 }
 
 std::string UltraFilerWindow::ExportTargetFolder() const {
@@ -2120,19 +2119,19 @@ std::vector<MenuItemData> UltraFilerWindow::BuildExtrasMenuItems() {
 
     // Only a folder can live in the folder tree - not an application bundle,
     // which goes to Favorites > Apps instead (CanPinToTree).
-    MenuItemData pinTree = MenuItemData::Checkbox("To Treeview", allInTree,
+    MenuItemData pinTree = MenuItemData::Checkbox(Tr("To Treeview"), allInTree,
             [this](bool) { PinTargetsToTree(); });
     pinTree.enabled = allFolders && !allInTree;
 
-    MenuItemData pinFavorites = MenuItemData::Checkbox("To Favorites", allInFavorites,
+    MenuItemData pinFavorites = MenuItemData::Checkbox(Tr("To Favorites"), allInFavorites,
             [this](bool) { PinTargetsToFavorites(); });
     pinFavorites.enabled = !targets.empty() && !allInFavorites;
 
-    MenuItemData unpinTree = MenuItemData::Checkbox("To Treeview", allInTree,
+    MenuItemData unpinTree = MenuItemData::Checkbox(Tr("To Treeview"), allInTree,
             [this](bool) { UnpinTargetsFromTree(); });
     unpinTree.enabled = anyInTree;
 
-    MenuItemData unpinFavorites = MenuItemData::Checkbox("To Favorites", allInFavorites,
+    MenuItemData unpinFavorites = MenuItemData::Checkbox(Tr("To Favorites"), allInFavorites,
             [this](bool) { UnpinTargetsFromFavorites(); });
     unpinFavorites.enabled = anyInFavorites;
 
@@ -2143,10 +2142,10 @@ std::vector<MenuItemData> UltraFilerWindow::BuildExtrasMenuItems() {
     for (const FilerEntry& e : targets)
         if (e.isDirectory && folderIcons.HasIcon(e.path)) anyCustomIcon = true;
 
-    MenuItemData setIcon = MenuItemData::Action("Set folder icon",
+    MenuItemData setIcon = MenuItemData::Action(Tr("Set folder icon"),
             [this]() { SetFolderIconForTargets(); });
     setIcon.enabled = allFolders;
-    MenuItemData removeIcon = MenuItemData::Action("Remove folder icon",
+    MenuItemData removeIcon = MenuItemData::Action(Tr("Remove folder icon"),
             [this]() { RemoveFolderIconForTargets(); });
     removeIcon.enabled = anyCustomIcon;
 
@@ -2155,36 +2154,36 @@ std::vector<MenuItemData> UltraFilerWindow::BuildExtrasMenuItems() {
     // no one folder there to search.
     const std::string findRoot =
             (filer && VisibleFiler() == filer.get()) ? filer->GetPath() : std::string();
-    MenuItemData findText = MenuItemData::Action("Find text…",
+    MenuItemData findText = MenuItemData::Action(Tr("Find text…"),
             [this]() { OpenFindTextDialog(); });
     findText.enabled = !findRoot.empty() && !IsRemoteFilerPath(findRoot);
 
     // Export writes out one folder: the selected one, or the shown one while
     // nothing is selected.
     const bool canExport = !ExportTargetFolder().empty();
-    MenuItemData exportContent = MenuItemData::Action("Folder content",
+    MenuItemData exportContent = MenuItemData::Action(Tr("Folder content"),
             [this]() { ExportFolder(FolderExportKind::Content); });
     exportContent.enabled = canExport;
-    MenuItemData exportTree = MenuItemData::Action("Folder tree content",
+    MenuItemData exportTree = MenuItemData::Action(Tr("Folder tree content"),
             [this]() { ExportFolder(FolderExportKind::Tree); });
     exportTree.enabled = canExport;
-    MenuItemData exportCsv = MenuItemData::Action("Folder tree as CSV",
+    MenuItemData exportCsv = MenuItemData::Action(Tr("Folder tree as CSV"),
             [this]() { ExportFolder(FolderExportKind::Csv); });
     exportCsv.enabled = canExport;
 
     return {
             findText,
-            MenuItemData::Submenu("Export", {exportContent, exportTree, exportCsv}),
-            MenuItemData::Action("Open prompt", [this]() { OpenSystemPrompt(); }),
+            MenuItemData::Submenu(Tr("Export"), {exportContent, exportTree, exportCsv}),
+            MenuItemData::Action(Tr("Open prompt"), [this]() { OpenSystemPrompt(); }),
             // Built on open, so a folder that appeared since (a first crash
             // dump) lights up without a restart.
-            MenuItemData::Submenu("Open location", BuildOpenLocationItems()),
+            MenuItemData::Submenu(Tr("Open location"), BuildOpenLocationItems()),
             MenuItemData::Separator(),
             setIcon,
             removeIcon,
             MenuItemData::Separator(),
-            MenuItemData::Submenu("Pin", {pinTree, pinFavorites}),
-            MenuItemData::Submenu("Unpin", {unpinTree, unpinFavorites}),
+            MenuItemData::Submenu(Tr("Pin"), {pinTree, pinFavorites}),
+            MenuItemData::Submenu(Tr("Unpin"), {unpinTree, unpinFavorites}),
     };
 }
 
@@ -2215,12 +2214,12 @@ std::vector<MenuItemData> UltraFilerWindow::BuildOpenLocationItems() {
     }
 
     items.push_back(MenuItemData::Separator());
-    items.push_back(MenuItemData::ActionWithShortcut("Enter location…", "Ctrl+L",
+    items.push_back(MenuItemData::ActionWithShortcut(Tr("Enter location…"), "Ctrl+L",
             [this]() { PromptForLocation(); }));
 
     if (!settings.recentLocations.empty()) {
         items.push_back(MenuItemData::Separator());
-        items.push_back(MenuItemData::Header("Recent"));
+        items.push_back(MenuItemData::Header(Tr("Recent")));
         for (const std::string& typed : settings.recentLocations) {
             MenuItemData item = MenuItemData::Action(typed,
                     [this, typed]() { OpenTypedLocation(typed); });
@@ -2232,7 +2231,7 @@ std::vector<MenuItemData> UltraFilerWindow::BuildOpenLocationItems() {
             if (expanded != typed) item.tooltip = expanded;
             items.push_back(std::move(item));
         }
-        items.push_back(MenuItemData::Action("Clear recent locations", [this]() {
+        items.push_back(MenuItemData::Action(Tr("Clear recent locations"), [this]() {
             settings.recentLocations.clear();
             settings.Save();
         }));
@@ -2254,10 +2253,10 @@ void UltraFilerWindow::PromptForLocation() {
                                      ? std::string() : settings.recentLocations.front();
     const std::string prompt =
             CurrentDataFolderPlatform() == DataFolderPlatform::Windows
-                    ? "Folder or file to open, e.g. %LOCALAPPDATA%\\UltraCanvas\\CrashDumps:"
-                    : "Folder or file to open, e.g. ~/.config or $XDG_DATA_HOME/fonts:";
+                    ? Tr("Folder or file to open, e.g. %LOCALAPPDATA%\\UltraCanvas\\CrashDumps:")
+                    : Tr("Folder or file to open, e.g. ~/.config or $XDG_DATA_HOME/fonts:");
     UltraCanvasDialogManager::ShowInputDialog(
-            prompt, "Enter location", last, InputType::Text,
+            prompt, Tr("Enter location"), last, InputType::Text,
             [this](DialogResult result, const std::string& typed) {
                 if (result != DialogResult::OK) return;
                 OpenTypedLocation(typed);
@@ -2293,11 +2292,11 @@ void UltraFilerWindow::OpenTypedLocation(const std::string& typed) {
 
     std::error_code ec;
     if (path.empty() || !fs::exists(PathFromUtf8(path), ec) || ec) {
-        std::string message = "The location \"" + entry + "\" was not found.";
+        std::string message = TrF("The location \"{0}\" was not found.", entry);
         // Say what it expanded to: an unset or misspelt variable is the
         // usual reason, and it shows there.
-        if (!path.empty() && path != entry) message += "\n\nIt names: " + path;
-        UltraCanvasAlert::Error(message, "Open location", nullptr, window.get());
+        if (!path.empty() && path != entry) message += "\n\n" + TrF("It names: {0}", path);
+        UltraCanvasAlert::Error(message, Tr("Open location"), nullptr, window.get());
         return;
     }
 
@@ -2388,15 +2387,15 @@ void UltraFilerWindow::SetFolderIconForTargets() {
 
     FileDialogOptions opts;
     opts.SetTitle(folders.size() == 1
-                          ? "Icon for " + PathToUtf8(PathFromUtf8(folders.front()).filename())
-                          : "Icon for " + std::to_string(folders.size()) + " folders")
+                          ? TrF("Icon for {0}", PathToUtf8(PathFromUtf8(folders.front()).filename()))
+                          : TrF("Icon for {0} folders", folders.size()))
         .SetInitialDirectory(folders.front())
         // A picture chosen as an icon is not a document the shell should
         // offer under "recently used".
         .SetRegisterAsRecent(false)
         .SetParentWindow(window.get());
-    if (!extensions.empty()) opts.AddFilter("Image files", extensions);
-    opts.AddFilter("All files", "*");
+    if (!extensions.empty()) opts.AddFilter(Tr("Image files"), extensions);
+    opts.AddFilter(Tr("All files"), "*");
 
     UltraCanvasFileLoader::OpenFileDialog(opts,
             [this, folders](DialogResult result, const std::string& imagePath) {
@@ -2414,7 +2413,7 @@ void UltraFilerWindow::SetFolderIconForTargets() {
         }
         RefreshFolderIcons(changed);
         if (!error.empty()) {
-            UltraCanvasAlert::Error("Cannot use this image as a folder icon.\n" + error,
+            UltraCanvasAlert::Error(TrF("Cannot use this image as a folder icon.\n{0}", error),
                                     "Set folder icon", nullptr, window.get());
         }
     });
@@ -2519,7 +2518,7 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildNavigationRow() {
         const std::string dir = UserHomeDir();
         if (!dir.empty()) NavigateTo(dir);
     });
-    home->SetTooltip("Home folder");
+    home->SetTooltip(Tr("Home folder"));
     StyleFlatToolButton(home.get());
     row->AddChild(home);
 
@@ -2528,7 +2527,7 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildNavigationRow() {
     // leading node open it.
     auto computer = MakeToolButton("ufl-computer", "", "computer.svg", 30,
             [this]() { SetComputerPageVisible(true); });
-    computer->SetTooltip("Computer: drives and main folders");
+    computer->SetTooltip(Tr("Computer: drives and main folders"));
     StyleFlatToolButton(computer.get());
     row->AddChild(computer);
 
@@ -2564,7 +2563,7 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildNavigationRow() {
     // its own (SetSplitViewVisible). Pressed while on.
     splitViewButton = MakeToolButton("ufl-split-view", "", "split-screen.svg", 30,
             [this]() { SetSplitViewVisible(!splitViewShown); });
-    splitViewButton->SetTooltip("Split view: two folder displays side by side");
+    splitViewButton->SetTooltip(Tr("Split view: two folder displays side by side"));
     StyleToggleButton(splitViewButton.get(), splitViewShown);
     row->AddChild(splitViewButton);
 
@@ -2572,7 +2571,7 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildNavigationRow() {
     // the folder tree and folder display, and hides it again.
     historyButton = MakeToolButton("ufl-history", "", "clock-five.svg", 30,
             [this]() { SetHistoryVisible(!historyShown); });
-    historyButton->SetTooltip("History");
+    historyButton->SetTooltip(Tr("History"));
     StyleToggleButton(historyButton.get(), historyShown);
     row->AddChild(historyButton);
 
@@ -2580,7 +2579,7 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildNavigationRow() {
     // place of the folder tree and folder display, and hides it again.
     favoritesButton = MakeToolButton("ufl-favorites", "", "rating-heart-on.svg", 30,
             [this]() { SetFavoritesVisible(!favoritesShown); });
-    favoritesButton->SetTooltip("Favorites");
+    favoritesButton->SetTooltip(Tr("Favorites"));
     StyleToggleButton(favoritesButton.get(), favoritesShown);
     row->AddChild(favoritesButton);
 
@@ -2610,7 +2609,7 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildNavigationRow() {
     // The gear at the far right opens the settings window.
     auto settingsButton = MakeToolButton("ufl-settings", "", "settings.svg", 30,
             [this]() { OpenSettingsDialog(); });
-    settingsButton->SetTooltip("Settings");
+    settingsButton->SetTooltip(Tr("Settings"));
     row->AddChild(settingsButton);
 
     return row;
@@ -2701,10 +2700,10 @@ void UltraFilerWindow::UpdateAddDriveButton() {
     const bool remote = UltraFilerRemoteDrives::Available();
     const bool ram = RamDisksOffered();
     addDriveButton->SetTooltip(
-            remote && ram ? "Add a drive: an FTP / SFTP server, a cloud account or a RAM disc"
-            : remote      ? "Add a drive: an FTP / SFTP server or a cloud account"
-            : ram         ? "Add a drive: a RAM disc (FTP and cloud drives need UltraCloud)"
-                          : "Add a drive - not available in this build");
+            remote && ram ? Tr("Add a drive: an FTP / SFTP server, a cloud account or a RAM disc")
+            : remote      ? Tr("Add a drive: an FTP / SFTP server or a cloud account")
+            : ram         ? Tr("Add a drive: a RAM disc (FTP and cloud drives need UltraCloud)")
+                          : Tr("Add a drive - not available in this build"));
     addDriveButton->SetDisabled(!remote && !ram);
 }
 
@@ -2760,9 +2759,9 @@ void UltraFilerWindow::ShowAddDriveMenu() {
     if (!remote && !ram) {
         // The button is disabled in such a build, so this is belt and braces -
         // but saying why beats a button that does nothing.
-        UltraCanvasAlert::Info("This build of UltraFiler can add no drives: it "
+        UltraCanvasAlert::Info(Tr("This build of UltraFiler can add no drives: it "
                                "was made without UltraCloud (FTP and cloud "
-                               "drives) and this system offers no RAM disc.",
+                               "drives) and this system offers no RAM disc."),
                                "Add a drive", nullptr, window.get());
         return;
     }
@@ -2776,17 +2775,17 @@ void UltraFilerWindow::ShowAddDriveMenu() {
     // Shown disabled rather than left out when the build lacks them, so the
     // menu looks the same on every build and the missing kind is visible.
     MenuItemData ftpItem = MenuItemData::Action(
-            "FTP / SFTP server...",
+            Tr("FTP / SFTP server..."),
             [this]() { AddDriveOfKind(RemoteDriveKind::FtpOrSftp); });
     ftpItem.enabled = remote;
     MenuItemData cloudItem = MenuItemData::Action(
-            "Cloud storage...",
+            Tr("Cloud storage..."),
             [this]() { AddDriveOfKind(RemoteDriveKind::CloudStorage); });
     cloudItem.enabled = remote;
     // A third kind, set up differently again: nothing to sign in to, only a
     // name and a size, and the disc lives in this machine's memory.
     MenuItemData ramItem = MenuItemData::Action(
-            "RAM disc...", [this]() { AddRamDisk(); });
+            Tr("RAM disc..."), [this]() { AddRamDisk(); });
     ramItem.enabled = ram;
     addDriveMenu->AddItem(ftpItem);
     addDriveMenu->AddItem(cloudItem);
@@ -2797,7 +2796,7 @@ void UltraFilerWindow::ShowAddDriveMenu() {
     // display is on a drive. Here it is also reachable after a sign-in that
     // failed, before there is any drive to open.
     MenuItemData logItem = MenuItemData::Action(
-            "Connection log...", [this]() { OpenConnectionLog(); });
+            Tr("Connection log..."), [this]() { OpenConnectionLog(); });
     logItem.enabled = remote;
     addDriveMenu->AddItem(MenuItemData::Separator());
     addDriveMenu->AddItem(logItem);
@@ -2808,8 +2807,8 @@ void UltraFilerWindow::ShowAddDriveMenu() {
 void UltraFilerWindow::AddDriveOfKind(RemoteDriveKind kind) {
 #ifndef ULTRAFILER_HAS_ULTRACLOUD
     (void)kind;
-    UltraCanvasAlert::Info("This build of UltraFiler was made without "
-                           "UltraCloud, so it cannot carry FTP or cloud drives.",
+    UltraCanvasAlert::Info(Tr("This build of UltraFiler was made without "
+                           "UltraCloud, so it cannot carry FTP or cloud drives."),
                            "Add a drive", nullptr, window.get());
 #else
     if (!remoteDrives) return;
@@ -2818,12 +2817,12 @@ void UltraFilerWindow::AddDriveOfKind(RemoteDriveKind kind) {
     // database that cannot be created); say so rather than showing a dialog
     // whose Add button could only fail.
     if (!remoteDrives->Reload(error)) {
-        UltraCanvasAlert::Error(error, "Add a drive", nullptr, window.get());
+        UltraCanvasAlert::Error(error, Tr("Add a drive"), nullptr, window.get());
         return;
     }
     std::shared_ptr<UltraCloud::CloudService> service = remoteDrives->Service();
     if (!service) {
-        UltraCanvasAlert::Error("The drive list is not available.",
+        UltraCanvasAlert::Error(Tr("The drive list is not available."),
                                 "Add a drive", nullptr, window.get());
         return;
     }
@@ -2851,7 +2850,7 @@ void UltraFilerWindow::AddDriveOfKind(RemoteDriveKind kind) {
                 // same id.
                 std::string reloadError;
                 if (!remoteDrives->Reload(reloadError)) {
-                    UltraCanvasAlert::Error(reloadError, "Add a drive",
+                    UltraCanvasAlert::Error(reloadError, Tr("Add a drive"),
                                             nullptr, window.get());
                     return;
                 }
@@ -2863,7 +2862,7 @@ void UltraFilerWindow::AddDriveOfKind(RemoteDriveKind kind) {
                         providerId, ftp ? RemoteDriveKind::FtpOrSftp
                                         : RemoteDriveKind::CloudStorage);
             },
-            ftp ? "Add an FTP / SFTP drive" : "Add a cloud drive", std::move(watch));
+            ftp ? Tr("Add an FTP / SFTP drive") : Tr("Add a cloud drive"), std::move(watch));
 #endif
 }
 
@@ -2905,7 +2904,7 @@ void UltraFilerWindow::AddRamDisk() {
                 UltraFilerRamDisks::RamDisc disc;
                 std::string error;
                 if (!UltraFilerRamDisks::Create(name, sizeBytes, disc, error)) {
-                    UltraCanvasAlert::Error(error, "New RAM disc", nullptr, window.get());
+                    UltraCanvasAlert::Error(error, Tr("New RAM disc"), nullptr, window.get());
                     return;
                 }
                 RefreshRamDiskNodes();
@@ -2913,9 +2912,8 @@ void UltraFilerWindow::AddRamDisk() {
                 // created.
                 NavigateTo(disc.mountPath);
                 if (statusLabel) {
-                    statusLabel->SetText("RAM disc \"" + disc.name + "\" created" +
-                            (disc.trueRam ? std::string()
-                                          : std::string(" - on disk, not in memory")));
+                    statusLabel->SetText(disc.trueRam ? TrF("RAM disc \"{0}\" created", disc.name)
+                                                      : TrF("RAM disc \"{0}\" created - on disk, not in memory", disc.name));
                 }
             }, window.get());
         });
@@ -2984,10 +2982,10 @@ void UltraFilerWindow::ConfirmEjectRamDisk(const std::string& mountPath) {
     // The answer on the button, the way the file display's own questions
     // put it: Eject, red, since everything on the disc goes with it.
     DialogConfig cfg;
-    cfg.title = "Eject RAM disc";
+    cfg.title = Tr("Eject RAM disc");
     cfg.dialogType = DialogType::Warning;
-    cfg.message = "Eject the RAM disc \"" + name + "\"?";
-    cfg.details = "Everything on it is deleted and cannot be recovered.";
+    cfg.message = TrF("Eject the RAM disc \"{0}\"?", name);
+    cfg.details = Tr("Everything on it is deleted and cannot be recovered.");
     cfg.buttons = DialogButtons::NoButtons;   // the answers are added below
     cfg.width = 480;
     cfg.height = 180;
@@ -3008,7 +3006,7 @@ void UltraFilerWindow::ConfirmEjectRamDisk(const std::string& mountPath) {
         }
         std::string error;
         if (!UltraFilerRamDisks::Eject(mountPath, error)) {
-            UltraCanvasAlert::Error(error, "Eject RAM disc", nullptr, window.get());
+            UltraCanvasAlert::Error(error, Tr("Eject RAM disc"), nullptr, window.get());
             RefreshRamDiskNodes();   // it may be half gone
             return;
         }
@@ -3017,7 +3015,7 @@ void UltraFilerWindow::ConfirmEjectRamDisk(const std::string& mountPath) {
         // on the Computer page; the volume monitor would catch up, but only
         // when the platform reports the unmount.
         RefreshDriveNodes();
-        if (statusLabel) statusLabel->SetText("RAM disc \"" + name + "\" ejected");
+        if (statusLabel) statusLabel->SetText(TrF("RAM disc \"{0}\" ejected", name));
     };
     UltraCanvasDialogManager::ShowDialog(dialog, nullptr, window.get());
 }
@@ -3332,7 +3330,7 @@ void UltraFilerWindow::RunSearch(const std::string& query,
             std::transform(needle.begin(), needle.end(), needle.begin(), FoldAsciiCase);
     } else
         std::transform(needle.begin(), needle.end(), needle.begin(), ToLowerChar);
-    filer->SetOpenPathMenuItemVisible(true, "Open path (in new tab)");
+    filer->SetOpenPathMenuItemVisible(true, Tr("Open path (in new tab)"));
     // An empty result display right away: the folder listing the search was
     // typed against is not what the search is about, and the first matches
     // land in this display a moment later.
@@ -3340,7 +3338,7 @@ void UltraFilerWindow::RunSearch(const std::string& query,
 
     searchState = std::make_shared<SubfolderSearchState>();
     const uint64_t generation = ++searchGeneration;
-    searchStatus = (inContents ? "Searching files for the text \"" : "Searching \"")
+    searchStatus = (inContents ? Tr("Searching files for the text \"") : Tr("Searching \""))
             + query + "\"" + searchFindQualifier + " ...";
     UpdateScanButton();
     UpdateStatusBar();
@@ -3364,7 +3362,7 @@ void UltraFilerWindow::OpenFindTextDialog() {
     // The walk reads the local file system; a remote drive's folders are
     // only reachable through its connection.
     if (IsRemoteFilerPath(folder)) {
-        UltraCanvasAlert::Info("Find text searches local folders only.",
+        UltraCanvasAlert::Info(Tr("Find text searches local folders only."),
                                "Find text", nullptr, window.get());
         return;
     }
@@ -3554,11 +3552,9 @@ void UltraFilerWindow::DrainSubfolderSearch(
     if (searchInContents) {
         const size_t files = state->filesRead.load();
         if (!done) {
-            searchStatus = "Searching files for the text \"" + searchQueryText + "\""
-                    + searchFindQualifier + " - "
-                    + std::to_string(matches)
-                    + (matches == 1 ? " file found, " : " files found, ")
-                    + std::to_string(files) + (files == 1 ? " file read" : " files read");
+            searchStatus = TrF("Searching files for the text \"{0}\"{1} - {2}, {3}", searchQueryText, searchFindQualifier,
+                               TrN("{n} file found", "{n} files found", matches),
+                               TrN("{n} file read", "{n} files read", files));
         } else {
             searchStatus = std::to_string(matches)
                     + (matches == 1 ? " file contains \"" : " files contain \"")
@@ -3569,10 +3565,9 @@ void UltraFilerWindow::DrainSubfolderSearch(
                     + (folders == 1 ? " folder" : " folders");
         }
     } else if (!done) {
-        searchStatus = "Searching \"" + searchQueryText + "\" - "
-                + std::to_string(matches)
-                + (matches == 1 ? " result, " : " results, ")
-                + std::to_string(folders) + " folders scanned";
+        searchStatus = TrF("Searching \"{0}\" - {1}, {2}", searchQueryText,
+                           TrN("{n} result", "{n} results", matches),
+                           TrN("{n} folder scanned", "{n} folders scanned", folders));
     } else {
         searchStatus = std::to_string(matches)
                 + (matches == 1 ? " result for \"" : " results for \"")
@@ -3637,7 +3632,7 @@ void UltraFilerWindow::StopSubfolderSearch() {
     // dropped by the generation bump rather than landing in the next search.
     ++searchGeneration;
     if (wasRunning && !searchQueryText.empty()) {
-        searchStatus = (searchInContents ? "Text search for \"" : "Search for \"")
+        searchStatus = (searchInContents ? Tr("Text search for \"") : Tr("Search for \""))
                 + searchQueryText + "\"" + searchFindQualifier + " stopped";
         UpdateStatusBar();
     }
@@ -3678,10 +3673,10 @@ void UltraFilerWindow::UpdateScanButton() {
     // and each set here would invalidate the command bar's layout again.
     if (searching != scanButtonStops) {
         scanButtonStops = searching;
-        scanButton->SetText(searching ? "Stop" : "Scan sub folder");
+        scanButton->SetText(searching ? "Stop" : Tr("Scan sub folder"));
         scanButton->SetTooltip(searching
-                ? "Stop the sub-folder scan"
-                : "Search every sub folder of this folder (Enter)");
+                ? Tr("Stop the sub-folder scan")
+                : Tr("Search every sub folder of this folder (Enter)"));
         // Red while it stops something, the accent blue while it starts it.
         if (searching) {
             scanButton->SetColors(Color(208, 74, 66, 255), Color(224, 92, 84, 255),
@@ -3741,7 +3736,7 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildCommandBar() {
                                   Color(208, 228, 250, 255));
         newButton->SetSplitSeparator(true, Color(0, 0, 0, 60), 1.0f);
         newButton->onSecondaryClick = [this]() { ShowNewEntryMenu(); };
-        newButton->SetTooltip("New folder (Ctrl+F) — the arrow lists more kinds");
+        newButton->SetTooltip(Tr("New folder (Ctrl+F) — the arrow lists more kinds"));
         row->AddChild(newButton);
     }
 
@@ -3821,7 +3816,7 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildCommandBar() {
 
     searchInput = CreateTextInput("ufl-search", 0, 0, 200, 24);
     searchInput->SetFontSize(kUiFontSize);
-    searchInput->SetPlaceholder("Filter / Search");
+    searchInput->SetPlaceholder(Tr("Filter / Search"));
     {
         // Borderless inside the box - the box draws the frame.
         TextInputStyle st = searchInput->GetStyle();
@@ -3846,7 +3841,7 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildCommandBar() {
     // Wide enough for the label at kUiFontSize - a clipped "Scan sub fol…"
     // is worse than the few pixels the field gives up for it.
     scanButton = std::make_shared<UltraCanvasButton>(
-            "ufl-scan-sub", 0, 0, 118, 22, "Scan sub folder");
+            "ufl-scan-sub", 0, 0, 118, 22, Tr("Scan sub folder"));
     scanButton->SetFontSize(kUiFontSize);
     scanButton->SetCornerRadius(3.0f);
     scanButton->SetColors(Color(66, 133, 244, 255), Color(90, 150, 250, 255),
@@ -3872,7 +3867,7 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildCommandBar() {
     // frequent choice, and the icon in each entry makes it findable at a
     // glance.
     auto viewLbl = std::make_shared<UltraCanvasLabel>("ufl-view-lbl", 0, 0, 44, 24);
-    viewLbl->SetText("View");
+    viewLbl->SetText(Tr("View"));
     viewLbl->SetFontSize(kUiFontSize);
     viewLbl->SetAlignment(TextAlignment::Right, VerticalAlignment::Middle);
     row->AddChild(viewLbl);
@@ -3884,14 +3879,14 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildCommandBar() {
     // Each entry carries a glyph of the layout it selects, so the dropdown
     // reads as a set of layouts rather than a list of names. The value stays
     // the entry text - only onSelectionChanged's index is used.
-    viewDropdown->AddItem("Details", "Details", IconPath("view-details.svg"));
-    viewDropdown->AddItem("List", "List", IconPath("view-list.svg"));
-    viewDropdown->AddItem("Small icons", "Small icons", IconPath("view-icons-small.svg"));
-    viewDropdown->AddItem("Medium icons", "Medium icons", IconPath("view-icons-medium.svg"));
-    viewDropdown->AddItem("Large icons", "Large icons", IconPath("view-icons-large.svg"));
-    viewDropdown->AddItem("Extra large icons", "Extra large icons", IconPath("view-icons-xlarge.svg"));
-    viewDropdown->AddItem("Size bars", "Size bars", IconPath("view-size-bars.svg"));
-    viewDropdown->AddItem("Treemap", "Treemap", IconPath("view-treemap.svg"));
+    viewDropdown->AddItem(Tr("Details"), "Details", IconPath("view-details.svg"));
+    viewDropdown->AddItem(Tr("List"), "List", IconPath("view-list.svg"));
+    viewDropdown->AddItem(Tr("Small icons"), "Small icons", IconPath("view-icons-small.svg"));
+    viewDropdown->AddItem(Tr("Medium icons"), "Medium icons", IconPath("view-icons-medium.svg"));
+    viewDropdown->AddItem(Tr("Large icons"), "Large icons", IconPath("view-icons-large.svg"));
+    viewDropdown->AddItem(Tr("Extra large icons"), "Extra large icons", IconPath("view-icons-xlarge.svg"));
+    viewDropdown->AddItem(Tr("Size bars"), "Size bars", IconPath("view-size-bars.svg"));
+    viewDropdown->AddItem(Tr("Treemap"), "Treemap", IconPath("view-treemap.svg"));
     viewDropdown->SetSelectedIndex(3, false);
     viewDropdown->onSelectionChanged = [this](int index, const DropdownItem&) {
         // The display on screen - a History / Favorites page while one is up,
@@ -3910,18 +3905,18 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildCommandBar() {
 
     // Sort field + direction. The dropdown mirrors FilerSortField order.
     auto sortLbl = std::make_shared<UltraCanvasLabel>("ufl-sort-lbl", 0, 0, 42, 24);
-    sortLbl->SetText("Sort");
+    sortLbl->SetText(Tr("Sort"));
     sortLbl->SetFontSize(kUiFontSize);
     sortLbl->SetAlignment(TextAlignment::Right, VerticalAlignment::Middle);
     row->AddChild(sortLbl);
 
     sortDropdown = CreateDropdown("ufl-sort", 0, 0, 128, 26);
     ApplyDropdownFontSize(sortDropdown.get());
-    sortDropdown->AddItem("Name");
-    sortDropdown->AddItem("Size");
-    sortDropdown->AddItem("Type");
-    sortDropdown->AddItem("Date modified");
-    sortDropdown->AddItem("Date created");
+    sortDropdown->AddItem(Tr("Name"));
+    sortDropdown->AddItem(Tr("Size"));
+    sortDropdown->AddItem(Tr("Type"));
+    sortDropdown->AddItem(Tr("Date modified"));
+    sortDropdown->AddItem(Tr("Date created"));
     sortDropdown->SetSelectedIndex(0, false);
     sortDropdown->onSelectionChanged = [this](int index, const DropdownItem&) {
         std::string fixedLabel;
@@ -3958,16 +3953,16 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildCommandBar() {
     // How the preview treats video files: full playback with sound (default),
     // a 5 second muted clip (album hover-preview style) or a still frame.
     auto videoLbl = std::make_shared<UltraCanvasLabel>("ufl-video-lbl", 0, 0, 44, 24);
-    videoLbl->SetText("Video");
+    videoLbl->SetText(Tr("Video"));
     videoLbl->SetFontSize(kUiFontSize);
     videoLbl->SetAlignment(TextAlignment::Right, VerticalAlignment::Middle);
     row->AddChild(videoLbl);
 
     videoModeDropdown = CreateDropdown("ufl-video-mode", 0, 0, 104, 26);
     ApplyDropdownFontSize(videoModeDropdown.get());
-    videoModeDropdown->AddItem("Autoplay");
-    videoModeDropdown->AddItem("5 s clip");
-    videoModeDropdown->AddItem("Still image");
+    videoModeDropdown->AddItem(Tr("Autoplay"));
+    videoModeDropdown->AddItem(Tr("5 s clip"));
+    videoModeDropdown->AddItem(Tr("Still image"));
     videoModeDropdown->SetSelectedIndex(0, false);   // autostart is the default
     videoModeDropdown->onSelectionChanged = [this](int index, const DropdownItem&) {
         if (!preview) return;
@@ -4059,7 +4054,7 @@ void UltraFilerWindow::BuildFolderTree() {
     // exist is answered off the UI thread (QueueCloudStorageDiscovery), and,
     // exactly like the Pinned section, an empty one stays hidden.
     folderTree->AddNode(kComputerNodeId,
-            MakeFolderNodeData(kCloudNodeId, "Cloud Storage", "cloud.svg"));
+            MakeFolderNodeData(kCloudNodeId, Tr("Cloud Storage"), "cloud.svg"));
     treeChildrenLoaded.insert(kCloudNodeId);
     if (TreeNode* cloud = folderTree->FindNode(kCloudNodeId))
         cloud->data.visible = false;
@@ -4069,7 +4064,7 @@ void UltraFilerWindow::BuildFolderTree() {
     // drives: the servers added through "+ Drive". Created here so the
     // section keeps its place in the order; empty stays hidden.
     folderTree->AddNode(kComputerNodeId,
-            MakeFolderNodeData(kRemoteNodeId, "Remote Drives", "cloud.svg"));
+            MakeFolderNodeData(kRemoteNodeId, Tr("Remote Drives"), "cloud.svg"));
     treeChildrenLoaded.insert(kRemoteNodeId);
     if (TreeNode* remote = folderTree->FindNode(kRemoteNodeId))
         remote->data.visible = false;
@@ -4190,12 +4185,12 @@ void UltraFilerWindow::BuildFolderTree() {
         lastRemoteOperationError = message;
         AlertOptions alert;
         alert.severity = AlertSeverity::Error;
-        alert.title = "Remote drive";
+        alert.title = Tr("Remote drive");
         alert.message = message;
         // The message says what failed; the log says how far it got.
-        alert.details = "Every step of the connection, with the error codes, is in "
-                        "the connection log - the round network button in the bottom-left "
-                        "corner of the folder display.";
+        alert.details = Tr("Every step of the connection, with the error codes, is in "
+                           "the connection log - the round network button in the bottom-left "
+                           "corner of the folder display.");
         alert.parent = window.get();
         UltraCanvasAlert::Show(alert);
     };
@@ -4446,7 +4441,7 @@ int UltraFilerWindow::UploadToRemoteFolder(const std::string& folder,
                                     ? drive.displayName : std::string("the drive");
         const std::string sub = RemoteFilerName(folder);
         if (!sub.empty()) where += " / " + sub;
-        statusLabel->SetText("Looking in " + where + " for names already taken...");
+        statusLabel->SetText(TrF("Looking in {0} for names already taken...", where));
     }
     return static_cast<int>(files.size());
 }
@@ -4552,16 +4547,16 @@ void UltraFilerWindow::AskRemoteUploadConflict(const std::shared_ptr<RemoteUploa
             if (!tec) localModified = LocalFileTime(t);
         }
         std::string details;
-        details += isFolder ? "Existing: a folder\n"
-                            : "Existing: " + DescribeForConflict(existing ? existing->size : 0,
-                                                                 existing ? existing->modifiedTime : 0) + "\n";
-        details += "Uploaded: " + DescribeForConflict(ec ? 0 : localSize, localModified) + "\n\n";
-        details += isFolder ? "A file cannot replace a folder. "
-                            : "Replace overwrites the file on the drive. ";
+        details += isFolder ? Tr("Existing: a folder") + "\n"
+                            : TrF("Existing: {0}", DescribeForConflict(existing ? existing->size : 0,
+                                                                        existing ? existing->modifiedTime : 0)) + "\n";
+        details += TrF("Uploaded: {0}", DescribeForConflict(ec ? 0 : localSize, localModified)) + "\n\n";
+        details += isFolder ? Tr("A file cannot replace a folder. ")
+                            : Tr("Replace overwrites the file on the drive. ");
         details += "Keep both uploads this one as \"" + keepBothName + "\".";
 
         DialogConfig cfg;
-        cfg.title = "Upload: the name is already taken";
+        cfg.title = Tr("Upload: the name is already taken");
         cfg.dialogType = DialogType::Question;
         cfg.message = isFolder ? "A folder \"" + name + "\" already exists in \"" + folderName +
                                          "\" on " + driveName + "."
@@ -4576,8 +4571,7 @@ void UltraFilerWindow::AskRemoteUploadConflict(const std::shared_ptr<RemoteUploa
 
         auto applyToAll = std::make_shared<bool>(run->applyToAll);
         if (remaining > 0) {
-            const std::string label = "Apply to all " + std::to_string(remaining) +
-                                      " remaining conflict" + (remaining == 1 ? "" : "s");
+            const std::string label = TrN("Apply to all {n} remaining conflict", "Apply to all {n} remaining conflicts", remaining);
             const float fontSize = dialog->GetStyle().detailsFontSize;
             // An explicit width, as the filer's own question has: the bar is
             // laid out before there is a context to measure the label with.
@@ -4595,7 +4589,7 @@ void UltraFilerWindow::AskRemoteUploadConflict(const std::shared_ptr<RemoteUploa
         // The buttons only record which one was pressed; the answer runs once
         // the dialog has closed, so the next question never stacks on it.
         auto chosen = std::make_shared<std::optional<std::size_t>>();
-        dialog->AddCustomButton("Keep both", DialogResult::Yes, DialogButtonRole::Default,
+        dialog->AddCustomButton(Tr("Keep both"), DialogResult::Yes, DialogButtonRole::Default,
                                 [chosen]() { *chosen = KeepBoth; });
         if (!isFolder)
             dialog->AddCustomButton("Replace", DialogResult::Yes, DialogButtonRole::Normal,
@@ -4644,8 +4638,7 @@ int UltraFilerWindow::QueueRemoteUploads(
         if (!sub.empty()) where += " / " + sub;
         std::string line;
         if (queued > 0)
-            line = "Uploading " + std::to_string(queued) +
-                   (queued == 1 ? " file" : " files") + " to " + where + "...";
+            line = TrF("Uploading {0} to {1}...", TrN("{n} file", "{n} files", queued), where);
         if (skipped > 0)
             line += (line.empty() ? "" : "  ") + std::to_string(skipped) +
                     (skipped == 1 ? " item not uploaded: " : " items not uploaded: ") +
@@ -4688,8 +4681,7 @@ int UltraFilerWindow::DownloadToLocalFolder(const std::string& folder,
         if (where.empty()) where = folder;
         std::string line;
         if (queued > 0) {
-            line = "Downloading " + std::to_string(queued) +
-                   (queued == 1 ? " file" : " files") + " to " + where + "...";
+            line = TrF("Downloading {0} to {1}...", TrN("{n} file", "{n} files", queued), where);
             // A file of that name was already there, so the copy landed
             // beside it. Said now rather than left to be noticed later.
             if (queued == 1 && !renamedTo.empty())
@@ -4851,7 +4843,7 @@ void UltraFilerWindow::DropDriveNode(const std::string& path) {
             treeDriveNodeIds.end());
 
     if (moved && statusLabel)
-        statusLabel->SetText("\"" + path + "\" is no longer connected");
+        statusLabel->SetText(TrF("\"{0}\" is no longer connected", path));
 }
 
 void UltraFilerWindow::StartVolumeMonitor() {
@@ -4885,12 +4877,12 @@ namespace {
     }
 
     // What the Computer page says a device is, under its name.
-    const char* DeviceKindWord(PortableDeviceKind kind) {
+    std::string DeviceKindWord(PortableDeviceKind kind) {
         switch (kind) {
-            case PortableDeviceKind::Phone:       return "Phone";
-            case PortableDeviceKind::Camera:      return "Camera";
-            case PortableDeviceKind::MediaPlayer: return "Media player";
-            default:                              return "Portable device";
+            case PortableDeviceKind::Phone:       return Tr("Phone");
+            case PortableDeviceKind::Camera:      return Tr("Camera");
+            case PortableDeviceKind::MediaPlayer: return Tr("Media player");
+            default:                              return Tr("Portable device");
         }
     }
 }
@@ -5086,8 +5078,7 @@ void UltraFilerWindow::ApplyNetworkShares(const std::string& serverPath,
     for (const NetworkShare& share : shares) paths.push_back(share.path);
     if (filer) filer->ShowFileList(paths);
     if (statusLabel)
-        statusLabel->SetText(serverPath + ": " + std::to_string(shares.size()) +
-                             (shares.size() == 1 ? " shared folder" : " shared folders"));
+        statusLabel->SetText(serverPath + ": " + TrN("{n} shared folder", "{n} shared folders", static_cast<long long>(shares.size())));
     // Kept, so it is in the Network section next time even when the network
     // list does not name it.
     auto& kept = settings.networkServers;
@@ -5117,7 +5108,7 @@ void UltraFilerWindow::OpenNetworkServer(const std::string& serverPath) {
         syncingTree = false;
     }
     networkPendingOpen = server;
-    if (statusLabel) statusLabel->SetText("Listing the shared folders of " + server + "...");
+    if (statusLabel) statusLabel->SetText(TrF("Listing the shared folders of {0}...", server));
     // Always asked afresh: a share added on the computer since shows up.
     QueueNetworkShares(server);
 }
@@ -5738,19 +5729,19 @@ void UltraFilerWindow::ShowTreeContextMenu(TreeNode* node, const UCEvent& event)
     if (UltraCanvasClipboard* cb = GetClipboard())
         cb->GetFiles(clipboardFiles, clipboardCut);
 
-    MenuItemData copyItem = MenuItemData::Action("Copy", [target]() {
+    MenuItemData copyItem = MenuItemData::Action(Tr("Copy"), [target]() {
         if (UltraCanvasClipboard* cb = GetClipboard())
             cb->SetFiles({target}, false);
     });
     copyItem.enabled = isFolder;
 
-    MenuItemData deleteItem = MenuItemData::Action("Delete", [this, target]() {
+    MenuItemData deleteItem = MenuItemData::Action(Tr("Delete"), [this, target]() {
         ConfirmDeleteTreeFolder(target);
     });
     deleteItem.enabled = isFolder && !isTopLevelRoot;
 
     // Paste needs a target folder under the cursor - and files to paste.
-    MenuItemData pasteItem = MenuItemData::Action("Paste", [this, target]() {
+    MenuItemData pasteItem = MenuItemData::Action(Tr("Paste"), [this, target]() {
         PasteIntoFolder(target);
     });
     pasteItem.enabled = isFolder && !clipboardFiles.empty();
@@ -5762,7 +5753,7 @@ void UltraFilerWindow::ShowTreeContextMenu(TreeNode* node, const UCEvent& event)
     const FilerFavoriteKind favoriteKind =
             isFolder ? FavoriteKindOfFolderPath(target) : FilerFavoriteKind::Folder;
     const bool isApp = favoriteKind == FilerFavoriteKind::App;
-    MenuItemData pinToTree = MenuItemData::Checkbox("To Treeview",
+    MenuItemData pinToTree = MenuItemData::Checkbox(Tr("To Treeview"),
             isFolder && favorites.IsPinned(FilerFavoriteKind::Tree, target),
             [this, target](bool checked) {
         if (checked) {
@@ -5776,7 +5767,7 @@ void UltraFilerWindow::ShowTreeContextMenu(TreeNode* node, const UCEvent& event)
     });
     pinToTree.enabled = isFolder && !isApp;
 
-    MenuItemData pinToFavorites = MenuItemData::Checkbox("To Favorites",
+    MenuItemData pinToFavorites = MenuItemData::Checkbox(Tr("To Favorites"),
             isFolder && favorites.IsPinned(favoriteKind, target),
             [this, target, favoriteKind](bool checked) {
         if (checked) favorites.Pin(favoriteKind, target);
@@ -5789,11 +5780,11 @@ void UltraFilerWindow::ShowTreeContextMenu(TreeNode* node, const UCEvent& event)
     });
     pinToFavorites.enabled = isFolder;
 
-    MenuItemData pinSubmenu = MenuItemData::Submenu("Pin",
+    MenuItemData pinSubmenu = MenuItemData::Submenu(Tr("Pin"),
             {pinToTree, pinToFavorites});
     pinSubmenu.enabled = isFolder;
 
-    MenuItemData unpinItem = MenuItemData::Action("Unpin", [this, target]() {
+    MenuItemData unpinItem = MenuItemData::Action(Tr("Unpin"), [this, target]() {
         favorites.Unpin(FilerFavoriteKind::Tree, target);
         RefreshPinnedTreeNodes();
     });
@@ -5802,11 +5793,11 @@ void UltraFilerWindow::ShowTreeContextMenu(TreeNode* node, const UCEvent& event)
     // The drive rows follow the machine on their own (RefreshDriveNodes, run
     // from the volume monitor); this is the manual way to the same pass, for a
     // mount the platform reports through a channel nothing listens on.
-    MenuItemData refreshDrives = MenuItemData::Action("Refresh drives", [this]() {
+    MenuItemData refreshDrives = MenuItemData::Action(Tr("Refresh drives"), [this]() {
         RefreshDriveNodes();
     });
 
-    MenuItemData ejectRamDisk = MenuItemData::Action("Eject RAM disc", [this, target]() {
+    MenuItemData ejectRamDisk = MenuItemData::Action(Tr("Eject RAM disc"), [this, target]() {
         ConfirmEjectRamDisk(target);
     });
 
@@ -6103,7 +6094,7 @@ void UltraFilerWindow::WireFilerCallbacks(FilerTabState* tab) {
     };
     // When the as-you-type filter matches nothing in the folder, the filer
     // centers this escalation: the same recursive search Enter runs.
-    tab->filer->SetFilterEmptyAction("Scan sub folder", [this, tab]() {
+    tab->filer->SetFilterEmptyAction(Tr("Scan sub folder"), [this, tab]() {
         if (!IsActiveTab(tab) || !tab->filer) return;
         // Copied: RunSearch clears the filer's filter, which would otherwise
         // empty the query out from under the search.
@@ -6248,7 +6239,7 @@ void UltraFilerWindow::WireFilerCallbacks(FilerTabState* tab) {
         HandleFolderModified(folder, tab->filer.get());
     };
     tab->filer->onError = [this](const std::string& message) {
-        if (statusLabel) statusLabel->SetText("Error: " + message);
+        if (statusLabel) statusLabel->SetText(TrF("Error: {0}", message));
     };
     tab->filer->chooseArchiveRunRoot = [](uint64_t bytesNeeded) {
         return ChooseArchiveRunRoot(bytesNeeded);
@@ -6336,17 +6327,17 @@ bool UltraFilerWindow::VisibleFixedOrder(std::string& label, bool& ascending) co
     // displays keep them as handed over (SetFileListOrderPreserved) and
     // sorting does nothing there.
     if (historyShown) {
-        label = "Last used";
+        label = Tr("Last used");
         ascending = false;              // most recently used first
         return true;
     }
     if (favoritesShown) {
-        label = "Order pinned";
+        label = Tr("Order pinned");
         ascending = true;               // first pinned first
         return true;
     }
     if (computerShown) {
-        label = "Home first";
+        label = Tr("Home first");
         ascending = true;
         return true;
     }
@@ -6559,7 +6550,7 @@ void UltraFilerWindow::BuildHistoryView() {
         histFiler->SetShowHiddenFiles(true);
         // The entries come from all over the filesystem, so the context menu
         // offers to open the folder an entry lives in.
-        histFiler->SetOpenPathMenuItemVisible(true, "Open path (in new tab)");
+        histFiler->SetOpenPathMenuItemVisible(true, Tr("Open path (in new tab)"));
         histFiler->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                              .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
@@ -6590,7 +6581,7 @@ void UltraFilerWindow::BuildHistoryView() {
             HandleFolderModified(folder, self);
         };
         histFiler->onError = [this](const std::string& message) {
-            if (statusLabel) statusLabel->SetText("Error: " + message);
+            if (statusLabel) statusLabel->SetText(TrF("Error: {0}", message));
         };
         histFiler->onSettings = [this]() { OpenSettingsDialog(); };
         histFiler->onPrint = [this](const std::vector<FilerEntry>& t) { HandlePrint(t); };
@@ -6706,14 +6697,12 @@ void UltraFilerWindow::StartWindowsLaunch(const FilerEntry& entry,
         window->ShowBusyPointer(UltraCanvasWindowBase::kBusyPointerDelayMs,
                                 firstLaunch ? 120000
                                             : UltraCanvasWindowBase::kBusyPointerHoldMs);
-    const char* verb =
-        entry.extension == "msi" ? "Installing " : "Launching ";
+    const bool installing = entry.extension == "msi";
     if (statusLabel)
         statusLabel->SetText(
-            verb + entry.name +
-            (firstLaunch ? " — first launch prepares its Windows environment, "
-                           "this can take a minute…"
-                         : "…"));
+            firstLaunch ? (installing ? TrF("Installing {0} — first launch prepares its Windows environment, this can take a minute…", entry.name)
+                                      : TrF("Launching {0} — first launch prepares its Windows environment, this can take a minute…", entry.name))
+                        : (installing ? TrF("Installing {0}…", entry.name) : TrF("Launching {0}…", entry.name)));
 
     // Launch off the UI thread: a first launch runs wineboot. The thread
     // only touches the window through PostToUIThread, guarded by the same
@@ -6739,9 +6728,8 @@ void UltraFilerWindow::StartWindowsLaunch(const FilerEntry& entry,
             if (!alive->load()) return;
             if (window) window->HideBusyPointer();
             if (!statusLabel) return;
-            statusLabel->SetText(result ? "Launched " + name
-                                        : "Could not launch " + name + ": " +
-                                              result.message);
+            statusLabel->SetText(result ? TrF("Launched {0}", name)
+                                        : TrF("Could not launch {0}: {1}", name, result.message));
         });
     }).detach();
 }
@@ -6823,7 +6811,7 @@ void UltraFilerWindow::BuildFavoritesView() {
         favFiler->SetShowHiddenFiles(true);
         // The entries come from all over the filesystem, so the context menu
         // offers to open the folder an entry lives in.
-        favFiler->SetOpenPathMenuItemVisible(true, "Open path (in new tab)");
+        favFiler->SetOpenPathMenuItemVisible(true, Tr("Open path (in new tab)"));
         favFiler->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                             .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
@@ -6856,7 +6844,7 @@ void UltraFilerWindow::BuildFavoritesView() {
         };
         WireTransferNotice(favFiler.get());
         favFiler->onError = [this](const std::string& message) {
-            if (statusLabel) statusLabel->SetText("Error: " + message);
+            if (statusLabel) statusLabel->SetText(TrF("Error: {0}", message));
         };
         favFiler->onSettings = [this]() { OpenSettingsDialog(); };
         favFiler->onPrint = [this](const std::vector<FilerEntry>& t) { HandlePrint(t); };
@@ -6985,7 +6973,7 @@ void UltraFilerWindow::BuildComputerPage() {
     };
     WireTransferNotice(computerFolders.get());
     computerFolders->onError = [this](const std::string& message) {
-        if (statusLabel) statusLabel->SetText("Error: " + message);
+        if (statusLabel) statusLabel->SetText(TrF("Error: {0}", message));
     };
     computerFolders->onSettings = [this]() { OpenSettingsDialog(); };
     computerFolders->onPrint = [this](const std::vector<FilerEntry>& t) { HandlePrint(t); };
@@ -7355,7 +7343,7 @@ void UltraFilerWindow::FillRemoteBreadcrumb(
     if (!SplitRemoteFilerPath(path, accountId, remote)) return;
 
     BreadcrumbItem computer("__computer__", "Computer");
-    computer.tooltip = "Computer - show all drives";
+    computer.tooltip = Tr("Computer - show all drives");
     computer.onClick = [this]() { SetComputerPageVisible(true); };
     computer.hasDropdown = true;
     computer.sortDropdownItems = true;
@@ -7405,7 +7393,7 @@ void UltraFilerWindow::ShowComputerBreadcrumb() {
 void UltraFilerWindow::FillComputerBreadcrumb(UltraCanvasBreadcrumb* crumb) {
     if (!crumb) return;
     BreadcrumbItem computer("__computer__", "Computer");
-    computer.tooltip = "Computer";
+    computer.tooltip = Tr("Computer");
     // The drives stay one click away, as they are on every other strip.
     computer.hasDropdown = true;
     computer.sortDropdownItems = true;
@@ -7587,8 +7575,8 @@ void UltraFilerWindow::UpdateSortOrderButton() {
     // The tooltip names the order that IS in effect (the icon shows it too) and
     // says what the click does, so neither reading can be mistaken for the other.
     sortOrderButton->SetTooltip(ascending
-            ? "Ascending (A to Z, oldest first) - click to reverse"
-            : "Descending (Z to A, newest first) - click to reverse");
+            ? Tr("Ascending (A to Z, oldest first) - click to reverse")
+            : Tr("Descending (Z to A, newest first) - click to reverse"));
     sortOrderButton->RequestRedraw();
 }
 
@@ -7621,12 +7609,11 @@ std::string UltraFilerWindow::DescribeRemoteActivity() const {
             // "Connecting to 203.0.113.7:21...", "Response: 230 Logged in",
             // "Retrieving directory listing..." - so a wait shows where it
             // waits. A drive whose provider logs no steps says what it can.
-            text = "Opening " + (quoted.empty() ? "the drive" : quoted) + " - " +
-                   (remoteActivity.step.empty() ? std::string("receiving folder data...")
-                                                : remoteActivity.step);
+            text = TrF("Opening {0} - {1}", quoted.empty() ? Tr("the drive") : quoted,
+                       remoteActivity.step.empty() ? Tr("receiving folder data...") : remoteActivity.step);
             break;
         case RemoteActivity::Kind::Uploading: {
-            text = "Uploading " + (quoted.empty() ? "a file" : quoted);
+            text = TrF("Uploading {0}", quoted.empty() ? Tr("a file") : quoted);
             if (remoteActivity.bytesTotal > 0) {
                 text += " - " +
                         FormatFileSize(static_cast<size_t>(remoteActivity.bytesDone)) +
@@ -7653,7 +7640,7 @@ std::string UltraFilerWindow::DescribeRemoteActivity() const {
             break;
         }
         case RemoteActivity::Kind::Downloading: {
-            text = "Downloading " + (quoted.empty() ? "a file" : quoted);
+            text = TrF("Downloading {0}", quoted.empty() ? Tr("a file") : quoted);
             if (remoteActivity.bytesTotal > 0) {
                 text += " - " +
                         FormatFileSize(static_cast<size_t>(remoteActivity.bytesDone)) +
@@ -7671,16 +7658,13 @@ std::string UltraFilerWindow::DescribeRemoteActivity() const {
             break;
         }
         case RemoteActivity::Kind::Deleting:
-            text = "Deleting " + (quoted.empty() ? "an entry" : quoted) +
-                   " on the drive";
+            text = TrF("Deleting {0} on the drive", quoted.empty() ? Tr("an entry") : quoted);
             break;
         case RemoteActivity::Kind::Renaming:
-            text = "Renaming " + (quoted.empty() ? "an entry" : quoted) +
-                   " on the drive";
+            text = TrF("Renaming {0} on the drive", quoted.empty() ? Tr("an entry") : quoted);
             break;
         case RemoteActivity::Kind::MakingDirectory:
-            text = "Creating folder " + (quoted.empty() ? "" : quoted + " ") +
-                   "on the drive";
+            text = quoted.empty() ? Tr("Creating folder on the drive") : TrF("Creating folder {0} on the drive", quoted);
             break;
         case RemoteActivity::Kind::Idle:
             return {};
@@ -7755,7 +7739,7 @@ void UltraFilerWindow::UpdateConnectionLogButton(FilerTabState* display) {
     if (connectionLogSeenErrors > errors) connectionLogSeenErrors = errors;
     const std::size_t unseen = errors - connectionLogSeenErrors;
 
-    std::string tip = "Connection log - every step of the connections to the drives";
+    std::string tip = Tr("Connection log - every step of the connections to the drives");
     if (sessions > 0) {
         tip += " (" + std::to_string(sessions) +
                (sessions == 1 ? " connection" : " connections");
@@ -7817,7 +7801,7 @@ void UltraFilerWindow::AskQuitDuringTransfers(const std::vector<RemoteTransfer>&
     // "4 transfers are still running or waiting".
     std::string what;
     if (transfers.size() == 1) {
-        what = uploads ? "An upload is" : "A download is";
+        what = uploads ? Tr("An upload is") : Tr("A download is");
     } else {
         const char* kind = uploads == transfers.size() ? " uploads"
                          : uploads == 0                ? " downloads"
@@ -7835,7 +7819,7 @@ void UltraFilerWindow::AskQuitDuringTransfers(const std::vector<RemoteTransfer>&
                    (t.upload ? "uploaded to " : "downloaded from ") + t.drive + ".\n";
     }
     if (waiting > 0) {
-        details += running ? "Waiting after it: " : "Waiting: ";
+        details += running ? Tr("Waiting after it: ") : "Waiting: ";
         std::size_t named = 0;
         for (const RemoteTransfer& t : transfers) {
             if (t.running) continue;
@@ -7846,10 +7830,10 @@ void UltraFilerWindow::AskQuitDuringTransfers(const std::vector<RemoteTransfer>&
         if (waiting > named) details += " and " + std::to_string(waiting - named) + " more";
         details += ".\n";
     }
-    details += running == 0  ? "Quitting drops them before they start."
-             : waiting == 0  ? "Quitting stops it part way: the file does not arrive whole."
-                             : "Quitting stops the one running part way, and drops the rest "
-                               "before they start.";
+    details += running == 0  ? Tr("Quitting drops them before they start.")
+             : waiting == 0  ? Tr("Quitting stops it part way: the file does not arrive whole.")
+                             : Tr("Quitting stops the one running part way, and drops the rest "
+                               "before they start.");
     // An upload to an FTP or SFTP drive leaves what it sent on the server,
     // which UltraFiler removes the next time that drive is used; a file it
     // was replacing is left as it was.
@@ -7861,7 +7845,7 @@ void UltraFilerWindow::AskQuitDuringTransfers(const std::vector<RemoteTransfer>&
     }
 
     DialogConfig cfg;
-    cfg.title = "Quit UltraFiler?";
+    cfg.title = Tr("Quit UltraFiler?");
     cfg.dialogType = DialogType::Warning;
     cfg.message = what + state + " — quit anyway?";
     cfg.details = details;
@@ -7871,9 +7855,9 @@ void UltraFilerWindow::AskQuitDuringTransfers(const std::vector<RemoteTransfer>&
     auto dialog = UltraCanvasDialogManager::CreateDialog(cfg);
     if (!dialog) return;   // no dialogs: the window stays, and so do the transfers
     // The safe answer is the one Return gives: UltraFiler stays.
-    dialog->AddCustomButton("Keep UltraFiler open", DialogResult::Cancel,
+    dialog->AddCustomButton(Tr("Keep UltraFiler open"), DialogResult::Cancel,
                             DialogButtonRole::Default);
-    dialog->AddCustomButton("Quit anyway", DialogResult::Yes, DialogButtonRole::Destructive);
+    dialog->AddCustomButton(Tr("Quit anyway"), DialogResult::Yes, DialogButtonRole::Destructive);
     dialog->onResult = [this](DialogResult result) {
         quitQuestionOpen = false;
         if (result != DialogResult::Yes) return;
@@ -8402,9 +8386,8 @@ void UltraFilerWindow::UpdatePreviewPane() {
                 }
                 break;
             case UltraFilerRemoteDrives::PreviewCopy::TooLarge:
-                previewNote = "No preview of " + name + " - it is too large to "
-                              "fetch just to look at; copy it to this computer "
-                              "to open it";
+                previewNote = TrF("No preview of {0} - it is too large to fetch just to look at; "
+                                  "copy it to this computer to open it", name);
                 break;
             case UltraFilerRemoteDrives::PreviewCopy::Failed:
                 previewNote = "No preview of " + name + (why.empty() ? std::string()
@@ -8632,7 +8615,7 @@ void UltraFilerWindow::BuildSplitViewPanes() {
             const bool here = treeDockShown && treeDockSide == side;
             SetTreeDockVisible(!here, side);
         });
-        button->SetTooltip("Folder tree");
+        button->SetTooltip(Tr("Folder tree"));
         StyleToggleButton(button.get(), false);
         header->AddChild(button);
         crumb = std::make_shared<UltraCanvasBreadcrumb>("ufl-pane-breadcrumb-" + suffix,

@@ -3,6 +3,7 @@
 // the error report's headings, tables and code blocks out, and being real
 // text areas they scroll, select and copy without any of that written here.
 // Built the way UltraCanvasMetadataDialog is.
+// Version: 1.0.1 - the interface strings go through Tr (UltraLocalisation)
 // Version: 1.0.0
 // Last Modified: 2026-10-04
 // Author: UltraCanvas Framework
@@ -14,6 +15,7 @@
 #include "UltraCanvasClipboard.h"
 #include "UltraCanvasContainer.h"
 #include "CSSLayout/CSSLayout.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 namespace UltraCanvas {
 
@@ -47,7 +49,7 @@ std::shared_ptr<UltraCanvasTextArea> MakeReadOnlyView(const std::string& id,
 } // namespace
 
 UltraFilerConnectionLogWindow::UltraFilerConnectionLogWindow() : UltraCanvasWindow() {
-    config_.title = "Connection log - remote drives";
+    config_.title = Tr("Connection log - remote drives");
     config_.width = 760;
     config_.height = 560;
     config_.minWidth = 420;
@@ -70,7 +72,7 @@ UltraFilerConnectionLogWindow::UltraFilerConnectionLogWindow() : UltraCanvasWind
     // as code blocks. Wrapped, because a reply from a server can be long.
     errorsView = MakeReadOnlyView("ConnectionLogErrors", TextAreaEditingMode::MarkdownHybrid);
     errorsView->SetWordWrap(true);
-    tabs->AddTab("Errors", errorsView);
+    tabs->AddTab(Tr("Errors"), errorsView);
 
     // The log: one line per step, in a fixed-width face so the kinds line up
     // the way they do in an FTP client, and not wrapped, so a line is a line.
@@ -78,7 +80,7 @@ UltraFilerConnectionLogWindow::UltraFilerConnectionLogWindow() : UltraCanvasWind
     logView->SetWordWrap(false);
     if (auto* app = UltraCanvasApplication::GetInstance())
         logView->SetFontFamily(app->GetDefaultMonospacedFontStyle().fontFamily);
-    tabs->AddTab("Message log", logView);
+    tabs->AddTab(Tr("Message log"), logView);
 
     tabs->onTabChange = [this](int /*oldIndex*/, int /*newIndex*/) { RenderActiveTab(); };
     AddChild(tabs);
@@ -95,9 +97,9 @@ UltraFilerConnectionLogWindow::UltraFilerConnectionLogWindow() : UltraCanvasWind
     footer->AddChild(summaryLabel);
 
     copyButton = std::make_shared<UltraCanvasButton>("ConnectionLogCopy", 0, 0, 96, 30);
-    copyButton->SetText("Copy");
-    copyButton->SetTooltip("Copy the tab on show to the clipboard - the error report or "
-                           "the whole message log");
+    copyButton->SetText(Tr("Copy"));
+    copyButton->SetTooltip(Tr("Copy the tab on show to the clipboard - the error report or "
+                           "the whole message log"));
     copyButton->onClick = [this]() {
         auto* clipboard = GetClipboard();
         if (!clipboard) return;
@@ -107,8 +109,8 @@ UltraFilerConnectionLogWindow::UltraFilerConnectionLogWindow() : UltraCanvasWind
     footer->AddChild(copyButton);
 
     clearButton = std::make_shared<UltraCanvasButton>("ConnectionLogClear", 0, 0, 96, 30);
-    clearButton->SetText("Clear");
-    clearButton->SetTooltip("Forget every connection logged so far");
+    clearButton->SetText(Tr("Clear"));
+    clearButton->SetTooltip(Tr("Forget every connection logged so far"));
     clearButton->onClick = [this]() {
         if (onClear) onClear();
     };
@@ -116,7 +118,7 @@ UltraFilerConnectionLogWindow::UltraFilerConnectionLogWindow() : UltraCanvasWind
     footer->AddChild(clearButton);
 
     closeButton = std::make_shared<UltraCanvasButton>("ConnectionLogClose", 0, 0, 96, 30);
-    closeButton->SetText("Close");
+    closeButton->SetText(Tr("Close"));
     closeButton->SetStyle(ButtonStyles::PrimaryStyle());
     closeButton->onClick = [this]() { PerformClose(); };
     SizeButtonToLabel(closeButton);
