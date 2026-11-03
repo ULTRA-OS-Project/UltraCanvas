@@ -50,6 +50,9 @@
 // itself is never touched, so renaming and every file operation still work on
 // the real one. A name that is not UTF-8 — written in a legacy code page by an
 // old tool or an unconverting unzip — is drawn decoded rather than as U+FFFD.
+// Version: 1.43.1 - the delete-problem titles are whole translated sentences
+//                  per kind and trash name, no longer an English "file" /
+//                  "folder" / "Trash" passed into a translated one
 // Version: 1.43.0 - RenderFileThumbnail; the workers' decode switch is
 //                  DecodeContentThumbnail, shared with it; RenderTextPagePixmap
 // Version: 1.42.0 - Compress packs a TAR with the host's FilerTarSettings
@@ -7648,6 +7651,12 @@ namespace UltraCanvas {
                                                          const std::string& reason) {
         if (!pendingDelete) return;
         const std::string kindWord = entry.isDirectory ? "folder" : "file";
+        // The translated titles are whole sentences per kind (and, for the
+        // trash, per the platform's name for it): "file", "folder" and
+        // TrashDisplayName() passed in through a placeholder would stay
+        // English in every language, and most languages need the noun's
+        // gender or case in the sentence around it anyway.
+        const bool isFolder = entry.isDirectory;
         const bool writeProtected = kind == DeleteProblemKind::WriteProtected;
         const bool needsPermission = kind == DeleteProblemKind::NeedsPermission;
         const bool inUse = kind == DeleteProblemKind::InUse;
@@ -7685,7 +7694,8 @@ namespace UltraCanvas {
         spec.type = DialogType::Warning;
         spec.width = 640;
         if (writeProtected) {
-            spec.title = TrF("Delete: a {0} is write-protected", kindWord);
+            spec.title = isFolder ? Tr("Delete: a folder is write-protected")
+                                  : Tr("Delete: a file is write-protected");
             spec.question = "\"" + name + "\" is write-protected.";
             spec.facts = "**" + std::string(entry.isDirectory ? "Folder" : "File") + ":** "
                        + FactPath(entry.path)
@@ -7750,7 +7760,13 @@ namespace UltraCanvas {
             answers = {Elevate, TryAgain, Skip};
         } else if (toTrash) {
             const std::string trash = TrashDisplayName();
-            spec.title = TrF("Delete: a {0} could not be moved to the {1}", kindWord, trash);
+#if defined(_WIN32) || defined(_WIN64)
+            spec.title = isFolder ? Tr("Delete: a folder could not be moved to the Recycle Bin")
+                                  : Tr("Delete: a file could not be moved to the Recycle Bin");
+#else
+            spec.title = isFolder ? Tr("Delete: a folder could not be moved to the Trash")
+                                  : Tr("Delete: a file could not be moved to the Trash");
+#endif
             spec.question = "\"" + name + "\" could not be moved to the " + trash + ".";
             spec.facts = "**" + std::string(entry.isDirectory ? "Folder" : "File") + ":** "
                        + FactPath(entry.path) + "\n\n**Reason:** " + why;
@@ -7762,7 +7778,8 @@ namespace UltraCanvas {
                             {"Stop", DialogButtonRole::Cancel}};
             answers = {TryAgain, Skip};
         } else {
-            spec.title = TrF("Delete: a {0} could not be deleted", kindWord);
+            spec.title = isFolder ? Tr("Delete: a folder could not be deleted")
+                                  : Tr("Delete: a file could not be deleted");
             spec.question = culprit.empty()
                     ? "\"" + name + "\" could not be deleted."
                     : "\"" + culpritName + "\" in \"" + name + "\" could not be deleted.";
