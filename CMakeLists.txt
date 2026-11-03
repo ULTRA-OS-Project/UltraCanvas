@@ -905,6 +905,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasLabelExamples.cpp
             Apps/DemoApp/UltraCanvasMenuExamples.cpp
             Apps/DemoApp/UltraCanvasMenuConfigExamples.cpp
+            Apps/DemoApp/UltraCanvasLocalisationEditorExamples.cpp
             Apps/DemoApp/UltraCanvasVectorCanvasExamples.cpp
             Apps/DemoApp/UltraCanvasSliderExamples.cpp
             Apps/DemoApp/UltraCanvasSpinnerExamples.cpp

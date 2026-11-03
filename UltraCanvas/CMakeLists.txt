@@ -583,6 +583,7 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasCommandRegistry.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasMenuLayout.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasCommandConfigWidget.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasLocalisationEditor.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasUIElement.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTextInput.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasClipboard.cpp
