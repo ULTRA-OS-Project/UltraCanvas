@@ -204,6 +204,47 @@ if(ULTRACANVAS_DEPS_DIR)
     endif()
 endif()
 
+# A shared core does not need its own dependencies on the application's link
+# line: a static one (libmupdf.a) is already inside libUltraCanvas, and a
+# shared one (libmp3lame.so.0) is loaded with it at run time. The build
+# recorded some of them by the full path it found them at, and that path is
+# the build machine's: /usr/lib/x86_64-linux-gnu/libmp3lame.so exists only
+# where libmp3lame-dev is installed, and /usr/lib/libmupdf.a only where MuPDF
+# was built from source, as on CI. Named on the link line, a path that is not
+# there stops the build with "No rule to make target". So a path this machine
+# does not have is left out, and the configure output says which. The
+# libraries an application calls itself (cairo, pango, glib, ...) are named by
+# -l name and found by pkg-config above; those stay.
+get_target_property(_ultracanvas_core_type UltraCanvas::UltraCanvas TYPE)
+if(_ultracanvas_core_type STREQUAL "SHARED_LIBRARY")
+    get_target_property(_ultracanvas_libs UltraCanvas::UltraCanvas INTERFACE_LINK_LIBRARIES)
+    if(_ultracanvas_libs)
+        set(_ultracanvas_kept "")
+        set(_ultracanvas_dropped "")
+        foreach(_ultracanvas_lib IN LISTS _ultracanvas_libs)
+            if(NOT _ultracanvas_lib MATCHES "\\$<" AND IS_ABSOLUTE "${_ultracanvas_lib}"
+               AND NOT EXISTS "${_ultracanvas_lib}")
+                list(APPEND _ultracanvas_dropped "${_ultracanvas_lib}")
+            else()
+                list(APPEND _ultracanvas_kept "${_ultracanvas_lib}")
+            endif()
+        endforeach()
+        if(_ultracanvas_dropped)
+            list(REMOVE_DUPLICATES _ultracanvas_dropped)
+            list(JOIN _ultracanvas_dropped ", " _ultracanvas_dropped_text)
+            message(STATUS "UltraCanvas: not on this machine, left off the link line "
+                           "(the shared core carries or loads them): ${_ultracanvas_dropped_text}")
+            set_property(TARGET UltraCanvas::UltraCanvas PROPERTY INTERFACE_LINK_LIBRARIES ${_ultracanvas_kept})
+        endif()
+    endif()
+endif()
+unset(_ultracanvas_core_type)
+unset(_ultracanvas_libs)
+unset(_ultracanvas_lib)
+unset(_ultracanvas_kept)
+unset(_ultracanvas_dropped)
+unset(_ultracanvas_dropped_text)
+
 _ultracanvas_native_dirs(_ultracanvas_dep_includes ${_ultracanvas_dep_includes})
 _ultracanvas_native_dirs(_ultracanvas_dep_libdirs  ${_ultracanvas_dep_libdirs})
 if(_ultracanvas_dep_includes)
