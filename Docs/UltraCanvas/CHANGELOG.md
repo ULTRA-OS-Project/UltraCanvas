@@ -1,3 +1,9 @@
+#### 2026-11-03 *0.9.466*
+- **`UltraCanvasVectorCanvas::ZoomToPageWidth`** (header 1.2.0): zooms so the
+  page's width fills the canvas area less a 24 px margin, centred across,
+  keeping the document point at the middle of the view at the same height,
+  and clamps the view as a scroll does. ArtCreator's Fit Page Width uses it.
+
 #### 2026-11-02 *0.9.465*
 - **Android reads SVG.** The Android dependency build now gives libvips its
   `rsvg` feature, as on macOS: vcpkg's librsvg 2.40, the last C release (no
