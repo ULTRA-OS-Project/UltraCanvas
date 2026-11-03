@@ -603,6 +603,7 @@ set(ULTRACANVAS_CORE_SOURCES
         # it lands in the build twice.
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTextArea_SpellCheck.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpellChecker.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSystemLanguage.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/SpellCheckLanguageNames.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/SpellCheckBackendHunspell.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTextArea_Hex.cpp
@@ -3031,6 +3032,26 @@ set_target_properties(uc-vault PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_link_libraries(uc-vault PUBLIC uc-crypt)
 _ultracanvas_module_home(UltraVault uc-vault)
 
+# The text of every application in the person's language
+# (Docs/Modules/UltraLocalisation/README.md): Tr() over the application's
+# set, the base sets of its kind and the standard set, the catalogues as
+# JSON through the vendored yyjson engine (shared with UltraCanvasJSON and
+# UltraWin). UI-free and free of the core, so a headless engine links it as
+# it links UltraVault; the shared core absorbs it whole below.
+add_library(uc-localisation STATIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraLocalisation/UltraLocalisation.cpp)
+set_target_properties(uc-localisation PROPERTIES OUTPUT_NAME "UltraLocalisation")
+target_include_directories(uc-localisation PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include/ultracanvas/include>)
+target_compile_features(uc-localisation PUBLIC cxx_std_20)
+set_target_properties(uc-localisation PROPERTIES POSITION_INDEPENDENT_CODE ON)
+target_link_libraries(uc-localisation PRIVATE uc-yyjson)
+_ultracanvas_module_home(UltraLocalisation uc-localisation)
+if(NOT ULTRACANVAS_BUILD_SHARED)
+    target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC UltraLocalisation)
+endif()
+
 # System-wide network activity (Docs/Modules/NetworkMonitor/README.md): the
 # operating system's socket table with process attribution. UI-free like
 # UltraCrypt, so the command line and the test suite link it headless. The
@@ -4193,7 +4214,7 @@ foreach(_archive uc-im uc-rtc)
 endforeach()
 _ultracanvas_absorb_modules(
     uc-net uc-win ${_ultracanvas_optional_archives} uc-message uc-networkmonitor
-    uc-database uc-vault uc-crypt VirtualFS)
+    uc-database uc-vault uc-crypt uc-localisation VirtualFS)
 
 # ===== ULTRAIM PROVIDER: CHATCUBE DIRECT =====
 # The ULTRA OS native messenger as an UltraIM provider module
@@ -4894,14 +4915,15 @@ set(_uc_export_targets
     UltraCanvasTextUtils
     UltraCanvasBase32
     UltraCrypt
-    UltraVault)
+    UltraVault
+    UltraLocalisation)
 # A static core keeps the JSON engine in its interface (consumers link the
 # archive themselves, see the uc-yyjson link above); a shared one folds it in.
-# The module homes (UltraCrypt, UltraVault, UltraDatabase) are exported either
+# The module homes (UltraCrypt, UltraVault, UltraLocalisation, UltraDatabase) are exported either
 # way; on a static core they name their archives, which then go along, while
 # on a shared core they name the core, which has already absorbed them.
 if(NOT ULTRACANVAS_BUILD_SHARED)
-    list(APPEND _uc_export_targets uc-yyjson uc-crypt uc-vault)
+    list(APPEND _uc_export_targets uc-yyjson uc-crypt uc-vault uc-localisation)
     if(TARGET uc-database)
         list(APPEND _uc_export_targets uc-database)
     endif()

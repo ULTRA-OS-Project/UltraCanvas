@@ -15,6 +15,7 @@
 #include "UltraCanvasConfig.h"        // GetResourcesDir
 #include "UltraCanvasDrawnMarks.h"
 #include "UltraCanvasUtils.h"         // NormalizePath
+#include "UltraLocalisation/UltraLocalisation.h"
 #include <algorithm>
 #include <cctype>
 
@@ -41,7 +42,7 @@ namespace UltraCanvas {
         // Filter input
         filterInput = std::make_shared<UltraCanvasTextInput>(
                 "FilterInput", 0, 0, 100, 28);
-        filterInput->SetPlaceholder("Filter document types...");
+        filterInput->SetPlaceholder(Tr("Filter document types..."));
         filterInput->onTextChanged = [this](const std::string& text) {
             ApplyFilter(text);
         };
@@ -57,7 +58,7 @@ namespace UltraCanvas {
         // Create button
         createButton = std::make_shared<UltraCanvasButton>(
                 "CreateButton", 0, 0, 90, 32);
-        createButton->SetText("Create");
+        createButton->SetText(Tr("Create"));
         createButton->onClick = [this]() {
             OnCreateClicked();
         };
@@ -65,7 +66,7 @@ namespace UltraCanvas {
         // Cancel button
         cancelButton = std::make_shared<UltraCanvasButton>(
                 "CancelButton", 0, 0, 90, 32);
-        cancelButton->SetText("Cancel");
+        cancelButton->SetText(Tr("Cancel"));
         cancelButton->onClick = [this]() {
             OnCancelClicked();
         };

@@ -169,6 +169,17 @@ glib, tinyxml2 and libvips through pkg-config:
   directory, or is empty.
 - **The Linux SDK does not**: the distribution's `-dev` packages are the
   right source there (Ubuntu 22.04's for the SDK's ABI), as step 1 lists them.
+  Only the ones an application compiles against are needed. The core also
+  records some of its own dependencies by the full path CI found them at,
+  such as `/usr/lib/x86_64-linux-gnu/libmp3lame.so`, which exists only
+  where `libmp3lame-dev` is installed, and `/usr/lib/libmupdf.a`, which CI
+  builds from source. The core is a shared library, so those are already
+  inside it or loaded with it at run time, and an application does not need
+  them on its link line. `UltraCanvasConfig.cmake` therefore leaves out any
+  such path the consuming machine does not have, and lists them in the
+  configure output (`UltraCanvas: not on this machine, left off the link
+  line ...`), instead of letting the build stop with *No rule to make
+  target*.
 
 ## Compatibility
 

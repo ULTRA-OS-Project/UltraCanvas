@@ -1,5 +1,6 @@
 // OS/Linux/UltraCanvasLinuxFonts.cpp
 // The font side of a Linux application. See the header.
+// Version: 1.1.0 - the detectors read the desktop (UltraCanvasLinuxSystemFont.cpp), not Ubuntu 12
 // Version: 1.0.0
 // Last Modified: 2026-10-30
 // Author: UltraCanvas Framework
@@ -20,19 +21,9 @@
 namespace UltraCanvas {
 namespace LinuxFonts {
 
-    FontStyle DetectSystemFontStyle() {
-        FontStyle result;
-        result.fontFamily = "Ubuntu";
-        result.fontSize = 12.0;
-        return result;
-    }
-
-    FontStyle DetectMonospacedFontStyle() {
-        FontStyle result;
-        result.fontFamily = "Ubuntu Mono";
-        result.fontSize = 12.0;
-        return result;
-    }
+    // DetectSystemFontStyle / DetectMonospacedFontStyle: the desktop's
+    // fonts from GSettings, kdeglobals and the GTK settings.ini, in
+    // UltraCanvasLinuxSystemFont.cpp.
 
     void LoadBundledFonts() {
         FcConfig* cfg = FcConfigGetCurrent();

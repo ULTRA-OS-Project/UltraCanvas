@@ -1,5 +1,6 @@
 // include/ISpellCheckBackend.h
 // Abstract spell-check backend interface bridging native OS spell services and Hunspell
+// Version: 1.1.1 - GetPreferredLanguageHint is a tie-breaker after the desktop's languages
 // Version: 1.1.0
 // Last Modified: 2026-09-15
 // Author: UltraCanvas Framework
@@ -68,12 +69,14 @@ public:
         return false;
     }
 
-    // The dictionary the platform itself would pick, as a language code in the
-    // same spelling EnumerateLanguages() returns. Backends that can ask the OS
-    // (Windows: GetUserDefaultLocaleName) override this so a first run selects
-    // the user's own language; UltraCanvasSpellChecker::DetectPreferredLanguage
-    // consults it after the POSIX locale variables, which are usually unset on
-    // Windows. An empty string means "no opinion" and is the default.
+    // The dictionary the backend itself would pick, as a language code in the
+    // same spelling EnumerateLanguages() returns - a backend with a notion of
+    // its own (the Windows ISpellChecker's user default locale) overrides
+    // this. UltraCanvasSpellChecker::DetectPreferredLanguage consults it after
+    // the desktop's languages (UltraCanvasSystemLanguage.h: the POSIX
+    // variables and the platform's own list), so it is a tie-breaker now,
+    // not the only answer on Windows. An empty string means "no opinion" and
+    // is the default.
     virtual std::string GetPreferredLanguageHint() { return std::string(); }
 
     virtual bool IsThreadSafe() const { return false; }
