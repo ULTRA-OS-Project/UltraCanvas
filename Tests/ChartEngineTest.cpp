@@ -6,10 +6,12 @@
 // Exercises the real engine sources with no UI stack and no link dependencies
 // beyond the files under test.
 //
+// Version: 1.2.0 - the ternary projection: corners, equal sides, centroid, round trip,
+//   height-limited fit, apex down
 // Version: 1.1.0 - axis bands / symmetric / cyclic, line and area series,
 //   stacking, marker polygons, the analysis helpers
 // Version: 1.0.0
-// Last Modified: 2026-10-20
+// Last Modified: 2026-11-03
 // Author: UltraCanvas Framework
 
 #include "Plugins/Charts/Engine/UltraCanvasChartAxis.h"
@@ -698,6 +700,45 @@ static void TestPolarProjection() {
 
     const std::unique_ptr<IChartProjection> made = CreateChartProjection(ChartProjectionKind::Polar);
     CHECK(made && made->Kind() == ChartProjectionKind::Polar, "the factory returns the right kind");
+}
+
+static void TestTernaryProjection() {
+    std::printf("Ternary projection\n");
+
+    ChartTernaryProjection ternary;
+    ternary.SetPlotArea(Rect2Dd(0, 0, 400, 400));
+    const double side = ternary.SideLength();
+    CHECK(Near(side, 400.0), "a square plot fits a triangle as wide as it is");
+
+    const Point2Dd a = ternary.ToScreen(ChartNormalizedPoint(0.0, 0.0));
+    const Point2Dd b = ternary.ToScreen(ChartNormalizedPoint(1.0, 0.0));
+    const Point2Dd c = ternary.ToScreen(ChartNormalizedPoint(0.0, 1.0));
+    CHECK(Near(a.x, 200.0) && a.y < b.y && Near(b.y, c.y), "A is the apex, B and C the base");
+    CHECK(b.x < c.x && Near(c.x - b.x, side), "B on the left, C on the right, a full side apart");
+    CHECK(Near(std::hypot(a.x - b.x, a.y - b.y), side, 1e-9) &&
+          Near(std::hypot(a.x - c.x, a.y - c.y), side, 1e-9), "the triangle is equilateral");
+
+    // A third of each lands on the centroid.
+    const Point2Dd centre = ternary.ToScreen(ChartNormalizedPoint(1.0 / 3.0, 1.0 / 3.0));
+    CHECK(Near(centre.x, (a.x + b.x + c.x) / 3.0, 1e-9) && Near(centre.y, (a.y + b.y + c.y) / 3.0, 1e-9),
+          "equal shares sit at the centroid");
+
+    const ChartNormalizedPoint p(0.3, 0.5);
+    const ChartNormalizedPoint back = ternary.ToNormalized(ternary.ToScreen(p));
+    CHECK(Near(back.u, p.u, 1e-9) && Near(back.v, p.v, 1e-9), "ternary round-trips");
+
+    // A wide plot: the height limits the triangle, centred across.
+    ternary.SetPlotArea(Rect2Dd(0, 0, 800, 300));
+    CHECK(Near(ternary.SideLength(), 300.0 * 2.0 / std::sqrt(3.0), 1e-9), "a wide plot is limited by its height");
+    CHECK(Near(ternary.Corner(0).x, 400.0) && Near(ternary.Corner(0).y, 0.0, 1e-9), "and the apex is centred");
+
+    ternary.SetApexDown(true);
+    CHECK(ternary.Corner(0).y > ternary.Corner(1).y, "apex down puts A at the bottom");
+    const ChartNormalizedPoint down = ternary.ToNormalized(ternary.ToScreen(p));
+    CHECK(Near(down.u, p.u, 1e-9) && Near(down.v, p.v, 1e-9), "and still round-trips");
+
+    const std::unique_ptr<IChartProjection> made = CreateChartProjection(ChartProjectionKind::Ternary);
+    CHECK(made && made->Kind() == ChartProjectionKind::Ternary, "the factory returns a ternary projection");
 }
 
 // =============================================================================
@@ -1488,6 +1529,7 @@ int main() {
     TestLayoutNegotiation();
     TestVerticalAndHorizontalProjections();
     TestPolarProjection();
+    TestTernaryProjection();
     TestLabelPolicyRoles();
     TestLabelBrokerRouting();
     TestLabelBrokerUserData();
