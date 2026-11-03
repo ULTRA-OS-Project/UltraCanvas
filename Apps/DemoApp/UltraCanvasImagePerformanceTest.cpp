@@ -5,8 +5,29 @@
 //                  to its text, the toolbar wraps
 // Version: 2.7.1 - HEIF and AVIF are charted only where this build can encode them
 // Version: 2.6.1 - JPEG XL is benchmarked again wherever libvips can write it
-// Last Modified: 2026-10-27
+// Version: 2.8.0 - the formats come from FileLoader's inventory and are chosen in
+//                  a Settings dialog (gear at the right of the toolbar); JP2K is
+//                  off by default; a popup on opening asks for an image
+// Last Modified: 2026-11-03
 // Author: UltraCanvas Framework
+//
+// ================================================================================
+// VERSION 2.8.0 - FORMAT SETTINGS FROM FILELOADER, OPENING HINT
+// ================================================================================
+// The fixed codec table is gone. The page lists every bitmap format
+// UltraCanvasFileLoader reports as both written and read by this build
+// (GetSupportedFormats(Bitmap): canSave && canLoad) and that the image writer
+// takes options for (GetImageExportOptions), plus the two the page encodes
+// itself (QOI, BMP). Each libvips format is written with the options
+// GetImageExportOptions gives - its Save settings - so the numbers are the
+// ones a Save in any application would produce. Which formats are timed is
+// chosen in a dialog of switches behind the gear button at the right end of
+// the toolbar, and remembered while the program runs. The [x] Include BMP
+// checkbox went into that list. On by default: PNG, QOI, JPG, WebP, AVIF,
+// HEIF, GIF, TIFF, JXL - JPEG 2000 is off (it took far longer to encode than
+// any other and stretched the time axis), and so is BMP and every format the
+// page did not chart before. Opening the page shows a popup asking for an
+// image to start the test.
 //
 // ================================================================================
 // VERSION 2.7.1 - HEIF AND AVIF ONLY WHERE THEY ENCODE
@@ -239,8 +260,8 @@
 //        QOI_IMPLEMENTATION is provided by the standalone libspecific/Cairo/
 //        qoi.cpp, so we only include the header and link against those symbols)
 //
-// TGA is not benchmarked: neither UCImageSaveFormat::TGA nor a bundled TGA
-// encoder is available, and adding either would require core changes.
+// Since 2.8.0 the list is FileLoader's bitmap inventory (see the 2.8.0 notes);
+// the formats above are the ones on by default, with JPEG2000 left off.
 // ================================================================================
 
 #include "UltraCanvasContainer.h"
@@ -251,12 +272,12 @@
 #include "UltraCanvasDemoPageKit.h"
 #include "UltraCanvasImageElement.h"
 #include "UltraCanvasButton.h"
-#include "UltraCanvasCheckbox.h"
+#include "UltraCanvasSwitch.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasImage.h"
 #include "UltraCanvasFileLoader.h"
-#include "UltraCanvasModalDialog.h"   // for FileFilter
+#include "UltraCanvasModalDialog.h"   // FileFilter, the settings dialog, the opening popup
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasDebug.h"
@@ -285,6 +306,8 @@
 #include <string>
 #include <functional>
 #include <algorithm>
+#include <map>
+#include <cctype>
 
 namespace UltraCanvas {
 
@@ -360,65 +383,129 @@ namespace UltraCanvas {
             return oss.str();
         }
 
-        // ============ CODEC TABLE ============
-        // Unified table of every codec the benchmark knows how to drive.
-        // Order here is the X-axis display order on the chart.
+        // ============ CODEC LIST ============
+        // Every codec the benchmark can drive in this build, in X-axis order.
         //
         // EncoderBackend selects which encode/decode path runBenchmark uses:
         //   Libvips → UCImage::Save / UCImage::Load (most codecs)
         //   QOI     → bundled qoi.h (qoi_write / qoi_read)
         //   BMP     → bundled BMP encoder/decoder (this file)
-        //
-        // isOptional codecs are excluded from the active set unless explicitly
-        // enabled by the user (see [x] Include BMP checkbox in the toolbar).
-        // BMP is optional because uncompressed RGB ≈ width*height*3 bytes,
-        // which dominates the size axis and crushes the chart's scale.
         enum class EncoderBackend { Libvips, QOI, BMP };
 
         struct CodecEntry {
-            UCImageSaveFormat format;     // ignored when backend != Libvips
-            const char* name;
-            const char* extension;
-            EncoderBackend backend;
-            bool isOptional;
+            UCImageSaveFormat format = UCImageSaveFormat::PNG;   // ignored when backend != Libvips
+            std::string name;          // chart label: "PNG", "JP2K", ...
+            std::string extension;     // FileLoader's canonical extension
+            std::string description;   // FileLoader's name for the format
+            EncoderBackend backend = EncoderBackend::Libvips;
+            bool enabledByDefault = false;
         };
 
-        // X-axis display order: lossless cluster first (PNG, QOI), then JPG
-        // and its successor JP2K, then modern lossy/animated/legacy codecs.
-        // BMP is appended last so it sits at the right edge when enabled.
-        const CodecEntry kAllCodecs[] = {
-                { UCImageSaveFormat::PNG,      "PNG",  "png",  EncoderBackend::Libvips, false },
-                { UCImageSaveFormat::PNG,      "QOI",  "qoi",  EncoderBackend::QOI,     false },
-                { UCImageSaveFormat::JPEG,     "JPG",  "jpg",  EncoderBackend::Libvips, false },
-                { UCImageSaveFormat::JPEG2000, "JP2K", "jp2",  EncoderBackend::Libvips, false },
-                { UCImageSaveFormat::WEBP,     "WebP", "webp", EncoderBackend::Libvips, false },
-                { UCImageSaveFormat::AVIF,     "AVIF", "avif", EncoderBackend::Libvips, false },
-                { UCImageSaveFormat::HEIF,     "HEIF", "heif", EncoderBackend::Libvips, false },
-                { UCImageSaveFormat::GIF,      "GIF",  "gif",  EncoderBackend::Libvips, false },
-                { UCImageSaveFormat::TIFF,     "TIFF", "tiff", EncoderBackend::Libvips, false },
-                { UCImageSaveFormat::JXL,      "JXL",  "jxl",  EncoderBackend::Libvips, false },
-                { UCImageSaveFormat::BMP,      "BMP",  "bmp",  EncoderBackend::BMP,     true  },
-        };
-        constexpr int kAllCodecCount =
-                sizeof(kAllCodecs) / sizeof(kAllCodecs[0]);
+        // The formats the page always charted, in their X-axis order: the
+        // lossless pair first (PNG, QOI), then JPG and its successor JP2K,
+        // then the modern lossy / animated / legacy ones. Anything else
+        // FileLoader writes follows in its inventory's order.
+        const std::vector<std::string>& PreferredOrder() {
+            static const std::vector<std::string> order = {
+                    "png", "qoi", "jpg", "jp2", "webp", "avif", "heic", "gif", "tiff", "jxl", "bmp"};
+            return order;
+        }
 
-        // Whether this build can run a codec at all. JPEG XL needs a libvips
-        // built with libjxl (Ubuntu 22.04's is not); HEIF and AVIF need
-        // libheif with an encoder for them - the macOS build has no HEIC
-        // encoder, because x265 is GPL and stays out of the core. Without one
-        // a column would only ever show a failure, so it is left out of the
-        // chart. VipsCanEncode tries a 2 x 2 encode once per codec.
-        bool CodecAvailable(const CodecEntry& e) {
-            const bool optional = e.format == UCImageSaveFormat::JXL ||
-                                  e.format == UCImageSaveFormat::HEIF ||
-                                  e.format == UCImageSaveFormat::AVIF;
-            if (!optional || e.backend != EncoderBackend::Libvips) return true;
+        // The chart's short label for a format.
+        std::string ChartNameFor(const std::string& ext) {
+            static const std::map<std::string, std::string> names = {
+                    {"png", "PNG"}, {"qoi", "QOI"}, {"jpg", "JPG"}, {"jp2", "JP2K"},
+                    {"webp", "WebP"}, {"avif", "AVIF"}, {"heic", "HEIF"}, {"gif", "GIF"},
+                    {"tiff", "TIFF"}, {"jxl", "JXL"}, {"bmp", "BMP"}};
+            auto it = names.find(ext);
+            if (it != names.end()) return it->second;
+            std::string upper = ext;
+            for (char& c : upper) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+            return upper;
+        }
+
+        // On until the user says otherwise. JPEG 2000 is off: its encoder is
+        // several times slower than any other and stretches the time axis
+        // until every other bar is a sliver. BMP is off because uncompressed
+        // RGB (width * height * 3 bytes) does the same to the size axis, and
+        // the formats the page did not chart before are off so that the
+        // default chart stays readable.
+        bool EnabledByDefault(const std::string& ext) {
+            static const std::vector<std::string> on = {
+                    "png", "qoi", "jpg", "webp", "avif", "heic", "gif", "tiff", "jxl"};
+            return std::find(on.begin(), on.end(), ext) != on.end();
+        }
+
+        // Every bitmap format FileLoader reports this build both writes and
+        // reads, and that the image writer takes options for - the same list
+        // a Save dialog offers - plus QOI and BMP, which the page encodes
+        // itself and can therefore always time. A format with no encoder
+        // here (JPEG XL without libjxl, HEIC on macOS without x265) is not in
+        // the inventory, so it is not offered rather than shown as a failure.
+        std::vector<CodecEntry> BuildCodecList() {
+            std::vector<CodecEntry> found;
+            bool haveQoi = false, haveBmp = false;
+            for (const MediaFormatInfo& f :
+                    UltraCanvasFileLoader::GetSupportedFormats(MediaFormatCategory::Bitmap)) {
+                if (!f.canSave || !f.canLoad) continue;
+                CodecEntry e;
+                e.extension = f.extension;
+                e.description = f.description;
+                e.name = ChartNameFor(f.extension);
+                e.enabledByDefault = EnabledByDefault(f.extension);
+                if (f.extension == "qoi") {
+                    e.backend = EncoderBackend::QOI;
+                    haveQoi = true;
+                } else if (f.extension == "bmp") {
+                    e.backend = EncoderBackend::BMP;
+                    haveBmp = true;
+                } else {
+                    UCImageSave::ImageExportOptions opts;
+                    if (!UltraCanvasFileLoader::GetImageExportOptions("probe." + f.extension, opts)) continue;
+                    e.format = opts.format;
+                }
+                found.push_back(std::move(e));
+            }
 #ifdef HAS_LIBVIPS
-            const std::string ext = std::string(".") + e.extension;
-            return VipsCanEncode(ext) && VipsCanLoad(ext);
+            // The bundled encoders need only the source's pixels.
+            if (!haveQoi) {
+                CodecEntry e;
+                e.extension = "qoi"; e.name = "QOI"; e.description = "Quite OK Image";
+                e.backend = EncoderBackend::QOI; e.enabledByDefault = true;
+                found.push_back(e);
+            }
+            if (!haveBmp) {
+                CodecEntry e;
+                e.extension = "bmp"; e.name = "BMP"; e.description = "Windows Bitmap";
+                e.backend = EncoderBackend::BMP;
+                found.push_back(e);
+            }
 #else
-            return false;
+            (void)haveQoi; (void)haveBmp;
 #endif
+            const auto& order = PreferredOrder();
+            auto rank = [&order](const CodecEntry& e) {
+                auto it = std::find(order.begin(), order.end(), e.extension);
+                return static_cast<int>(it - order.begin());   // the rest: order.size()
+            };
+            std::stable_sort(found.begin(), found.end(),
+                             [&rank](const CodecEntry& a, const CodecEntry& b) { return rank(a) < rank(b); });
+            return found;
+        }
+
+        // What the user switched on or off in the settings dialog, by
+        // extension. Kept while the program runs, so leaving the page and
+        // coming back keeps the choice; a format never touched follows its
+        // default.
+        std::map<std::string, bool>& ChosenFormats() {
+            static std::map<std::string, bool> chosen;
+            return chosen;
+        }
+
+        bool IsCodecEnabled(const CodecEntry& e) {
+            const auto& chosen = ChosenFormats();
+            auto it = chosen.find(e.extension);
+            return it != chosen.end() ? it->second : e.enabledByDefault;
         }
 
         // ============ QOI ENCODE/DECODE VIA BUNDLED qoi.h ============
@@ -704,16 +791,6 @@ namespace UltraCanvas {
             // pixels buffer freed here when vector goes out of scope —
             // mirrors qoi_read + free pattern for symmetric timing.
             return true;
-        }
-
-        // ============ DEFAULT EXPORT OPTIONS BUILDER ============
-        UCImageSave::ImageExportOptions DefaultOptionsFor(UCImageSaveFormat f) {
-            UCImageSave::ImageExportOptions opt;
-            opt.format = f;
-            opt.preserveMetadata = false;
-            opt.preserveTransparency = true;
-            // Struct defaults are already sensible (quality 85 / 80 / 65 / 50 / ...).
-            return opt;
         }
 
         std::string InitialImageDir() {
@@ -1344,10 +1421,10 @@ namespace UltraCanvas {
 //
 //   page (DemoKit: title, description; fills the page area)
 //     card (stretch)
-//       toolbar     (wrapping HBox: Choose | Include BMP | Info)
+//       toolbar     (wrapping HBox: Choose | Info | Settings gear)
 //       chart+thumbs VBox (stretch)
 //           CodecComparisonChartElement
-//           thumbsRow (11 thumbnail ImageElements, placed under their bars)
+//           thumbsRow (one thumbnail ImageElement per format, under its bars)
 //       status label
 // ============================================================================
     std::shared_ptr<UltraCanvasUIElement>
@@ -1361,25 +1438,28 @@ namespace UltraCanvas {
             int         sourceHeight = 0;
             std::vector<CodecResult> results;
 
+            // Every format this build can time (BuildCodecList), in X-axis
+            // order. state->thumbs is parallel to it.
+            std::vector<CodecEntry> codecs;
+
             // UI refs
             std::shared_ptr<UltraCanvasButton>   chooseBtn;
-            std::shared_ptr<UltraCanvasCheckbox> includeBmpCheckbox;
+            std::shared_ptr<UltraCanvasButton>   settingsBtn;
             std::shared_ptr<UltraCanvasLabel>    infoLabel;
             std::shared_ptr<UltraCanvasLabel>    statusLabel;
             std::shared_ptr<CodecComparisonChartElement> chartElem;
             std::shared_ptr<UltraCanvasContainer> thumbsRow;
             std::vector<std::shared_ptr<UltraCanvasImageElement>> thumbs;
 
-            // Codec slot names in display order. Built dynamically based on
-            // which optional codecs are currently enabled (e.g. BMP checkbox).
+            // Chart group names of the formats switched on, in display order.
             std::vector<std::string> codecNames;
 
-            // Indices into kAllCodecs[] for the codecs that are currently
-            // active. Length matches codecNames.size() and chart group count.
+            // Indices into codecs for the formats switched on. Length matches
+            // codecNames.size() and the chart's group count.
             std::vector<int> activeCodecIndices;
 
-            // True while a benchmark run is in flight — used to suppress the
-            // checkbox-toggle handler from re-entering Run mid-run.
+            // True while a benchmark run is in flight — keeps the settings
+            // dialog from changing the format set mid-run.
             bool benchmarkRunning = false;
 
             // One temp-file suffix per run (so parallel UltraCanvas instances
@@ -1396,30 +1476,20 @@ namespace UltraCanvas {
             state->runStamp = s.str();
         }
 
-        // Helper to rebuild the active codec set based on optional-codec flags.
+        state->codecs = BuildCodecList();
+
+        // The formats switched on (IsCodecEnabled), in display order.
         // Mutates state->codecNames and state->activeCodecIndices in lockstep.
-        // includeOptional[i] determines whether kAllCodecs[i] is active when
-        // kAllCodecs[i].isOptional == true; mandatory codecs are always active.
-        auto rebuildActiveCodecs = [state](bool includeBmp) {
+        auto rebuildActiveCodecs = [state]() {
             state->codecNames.clear();
             state->activeCodecIndices.clear();
-            state->codecNames.reserve(kAllCodecCount);
-            state->activeCodecIndices.reserve(kAllCodecCount);
-            for (int i = 0; i < kAllCodecCount; ++i) {
-                const CodecEntry& e = kAllCodecs[i];
-                if (!CodecAvailable(e)) continue;
-                if (e.isOptional) {
-                    // Currently only BMP is optional. Extend here if more
-                    // optional codecs are added.
-                    if (std::string(e.name) == "BMP" && !includeBmp) continue;
-                }
-                state->codecNames.push_back(e.name);
+            for (int i = 0; i < static_cast<int>(state->codecs.size()); ++i) {
+                if (!IsCodecEnabled(state->codecs[i])) continue;
+                state->codecNames.push_back(state->codecs[i].name);
                 state->activeCodecIndices.push_back(i);
             }
         };
-
-        // Initial codec set: BMP excluded by default (see VERSION 2.3.0 notes).
-        rebuildActiveCodecs(/*includeBmp=*/false);
+        rebuildActiveCodecs();
 
         // ========== PAGE (title + description) ==========
         auto root = DemoKit::CreatePage("ImagePerfTestMain", "Image Performance Test",
@@ -1451,22 +1521,34 @@ namespace UltraCanvas {
             state->chooseBtn->boxConstraints = limits;
         }
 
-        // [x] Include BMP — opt-in for the BMP codec, which would otherwise
-        // dominate the size axis. Toggling between runs re-runs automatically
-        // (see handler installed below loadSourceImage / runBenchmark).
-        state->includeBmpCheckbox = std::make_shared<UltraCanvasCheckbox>(
-                "PerfIncludeBmp", "Include BMP");
-        state->includeBmpCheckbox->SetChecked(false);
-
         state->infoLabel = DemoKit::CreateText("PerfImageInfo", "No image loaded");
         state->infoLabel->SetFontSize(11);
         state->infoLabel->SetTextColor(Color(60, 60, 60, 255));
 
+        // The gear at the right end: which formats the benchmark times.
+        state->settingsBtn = std::make_shared<UltraCanvasButton>("PerfSettingsBtn", 0, 0, 32, 30, "");
+        {
+            ButtonStyle style = state->settingsBtn->GetStyle();
+            style.normalColor = Colors::Transparent;
+            style.hoverColor = Color(225, 232, 240, 255);
+            style.pressedColor = Color(205, 215, 228, 255);
+            style.borderColor = Colors::Transparent;
+            style.cornerRadius = 6;
+            style.useIconAsMask = true;
+            // A mask icon takes the text colour.
+            style.normalTextColor = Color(70, 80, 95, 255);
+            style.hoverTextColor = Color(20, 30, 45, 255);
+            style.pressedTextColor = Color(20, 30, 45, 255);
+            state->settingsBtn->SetStyle(style);
+        }
+        state->settingsBtn->SetIcon(NormalizePath(GetResourcesDir() + "media/icons/settings.svg"));
+        state->settingsBtn->SetIconSize(18, 18);
+        state->settingsBtn->SetTooltip("Settings: the formats the benchmark encodes and decodes");
+
         DemoKit::Add(toolbar, state->chooseBtn);
         toolbar->AddSpacer(8);
-        DemoKit::Add(toolbar, state->includeBmpCheckbox);
-        toolbar->AddSpacer(8);
         DemoKit::Add(toolbar, state->infoLabel, 1);   // stretches
+        DemoKit::AddFixed(toolbar, state->settingsBtn);
 
         DemoKit::Add(card, toolbar);
 
@@ -1490,8 +1572,8 @@ namespace UltraCanvas {
         state->thumbsRow->SetBackgroundColor(Color(255, 255, 255, 255));
         state->thumbsRow->SetBorders(1.0f, Color(220, 220, 220, 255));
 
-        state->thumbs.reserve(kAllCodecCount);
-        for (int i = 0; i < kAllCodecCount; ++i) {
+        state->thumbs.reserve(state->codecs.size());
+        for (size_t i = 0; i < state->codecs.size(); ++i) {
             auto thumb = std::make_shared<UltraCanvasImageElement>(
                     "PerfThumb_" + std::to_string(i),
                     0, 0, 0, 42);
@@ -1521,7 +1603,7 @@ namespace UltraCanvas {
 
         // Position each active codec's thumbnail horizontally centered under
         // its bar group, and hide thumbnails for codecs that are not in the
-        // current active set (e.g. BMP when the checkbox is off).
+        // current active set (switched off in the settings).
         auto positionThumbnails = [state]() {
             if (!state->chartElem || !state->thumbsRow) return;
 
@@ -1591,12 +1673,18 @@ namespace UltraCanvas {
         // ---- runBenchmark ----
         // Encodes + decodes every active codec on state->sourceImage and
         // streams results into the chart codec-by-codec. Called from:
-        //   * loadSourceImage          — auto-run after [Choose Image...]
-        //   * [x] Include BMP toggle   — re-run after the codec set changes
+        //   * loadSourceImage          — auto-run after [Choose Image]
+        //   * the settings dialog      — re-run after the format set changes
         auto runBenchmark = [state, root, cleanupTempFiles, resetThumbnails]() {
             if (state->benchmarkRunning) return;   // re-entry guard
             if (!state->sourceImage || !state->sourceImage->IsValid()) {
                 state->statusLabel->SetText("Status: No image loaded.");
+                return;
+            }
+
+            if (state->activeCodecIndices.empty()) {
+                state->statusLabel->SetText(
+                        "Status: No format is switched on - choose some in the settings (gear).");
                 return;
             }
 
@@ -1623,7 +1711,7 @@ namespace UltraCanvas {
             resetThumbnails();
 
             state->chooseBtn->SetDisabled(true);
-            state->includeBmpCheckbox->SetDisabled(true);
+            state->settingsBtn->SetDisabled(true);
             state->statusLabel->SetText("Status: Benchmark running...");
 
             auto win = root->GetWindow();
@@ -1632,7 +1720,7 @@ namespace UltraCanvas {
             // Process each active codec synchronously, refreshing UI per codec.
             for (int slot = 0; slot < activeCount; ++slot) {
                 int globalIdx = state->activeCodecIndices[slot];
-                const CodecEntry& entry = kAllCodecs[globalIdx];
+                const CodecEntry& entry = state->codecs[globalIdx];
 
                 CodecResult r;
                 r.name      = entry.name;
@@ -1648,8 +1736,12 @@ namespace UltraCanvas {
 
                 switch (entry.backend) {
                 case EncoderBackend::Libvips: {
-                    // Libvips-backed codec (goes through UCImage::Save)
-                    auto opts = DefaultOptionsFor(entry.format);
+                    // Libvips-backed codec (goes through UCImage::Save), with
+                    // the options FileLoader gives the image writer for this
+                    // type: its Save settings, as any application saves it.
+                    UCImageSave::ImageExportOptions opts;
+                    if (!UltraCanvasFileLoader::GetImageExportOptions(outPath, opts)) opts.format = entry.format;
+                    opts.preserveMetadata = false;
                     try {
                         t0 = NowMs();
                         std::string err = state->sourceImage->Save(outPath, opts);
@@ -1840,14 +1932,14 @@ namespace UltraCanvas {
             state->statusLabel->SetText(finalMsg.str());
 
             state->chooseBtn->SetDisabled(false);
-            state->includeBmpCheckbox->SetDisabled(false);
+            state->settingsBtn->SetDisabled(false);
             state->benchmarkRunning = false;
 
             if (win && ctx) {
                 win->UpdateAndRender();
             }
 
-            debugOutput << "Image Performance Test v2.3.0 complete: "
+            debugOutput << "Image Performance Test complete: "
                       << okCount << "/" << activeCount
                       << " codecs succeeded" << std::endl;
         };
@@ -1890,7 +1982,7 @@ namespace UltraCanvas {
             return true;
         };
 
-        // [Choose Image...] click handler — opens dialog, loads, auto-runs.
+        // [Choose Image] click handler — opens dialog, loads, auto-runs.
         // Every picture type this build reads - FileLoader's list.
         state->chooseBtn->SetOnClick([loadSourceImage, root]() {
             FileDialogOptions opts;
@@ -1906,22 +1998,91 @@ namespace UltraCanvas {
                 });
         });
 
-        // [x] Include BMP toggle handler — rebuild active codec set, sync the
-        // chart's group count and labels, and re-run if an image is loaded.
-        state->includeBmpCheckbox->onStateChanged =
-                [state, rebuildActiveCodecs, runBenchmark, positionThumbnails](
-                        CheckedState /*oldState*/, CheckedState newState) {
-            if (state->benchmarkRunning) return;   // ignore mid-run toggles
-            bool include = (newState == CheckedState::Checked);
-            rebuildActiveCodecs(include);
-            state->chartElem->SetCodecNames(state->codecNames);
-            // Reposition thumbnails under the (possibly new) group columns.
-            positionThumbnails();
-            // Re-run if we already have an image to benchmark.
-            if (state->sourceImage && state->sourceImage->IsValid()) {
-                runBenchmark();
+        // The gear: a dialog with a switch per format this build can time.
+        // Apply rebuilds the active set, re-lays the chart and the
+        // thumbnails, and re-runs the benchmark when an image is loaded.
+        state->settingsBtn->SetOnClick(
+                [state, root = root.get(), rebuildActiveCodecs, runBenchmark, positionThumbnails]() {
+            if (state->benchmarkRunning) return;
+
+            DialogConfig config;
+            config.title = "Image Performance Test - Formats";
+            config.message = "Switch on the formats the benchmark encodes and decodes. "
+                             "The list holds every bitmap format this build both writes "
+                             "and reads (FileLoader's formats); each is written with its "
+                             "Save settings.";
+            config.dialogType = DialogType::Information;
+            config.buttons = DialogButtons::NoButtons;
+            config.width = 640;
+            config.height = 420;
+            auto dialog = UltraCanvasDialogManager::CreateDialog(config);
+            dialog->SetIconVisible(false);
+
+            // Two columns of switches, filled top to bottom.
+            constexpr float kRowHeight = 30.0f;
+            const int count = static_cast<int>(state->codecs.size());
+            const int rows = (count + 1) / 2;
+            auto grid = std::make_shared<UltraCanvasContainer>(
+                    "PerfFormatGrid", 0, 0, 600, rows * kRowHeight);
+            grid->layout.SetFlexRow().SetFlexGap(16);
+            std::shared_ptr<UltraCanvasContainer> columns[2];
+            for (int c = 0; c < 2; ++c) {
+                columns[c] = std::make_shared<UltraCanvasContainer>(
+                        "PerfFormatColumn" + std::to_string(c), 0, 0, 290, rows * kRowHeight);
+                columns[c]->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Start);
+                columns[c]->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+                grid->AddChild(columns[c]);
             }
-        };
+            std::vector<std::pair<std::string, UltraCanvasSwitch*>> switches;
+            for (int i = 0; i < count; ++i) {
+                const CodecEntry& e = state->codecs[i];
+                std::string label = e.name;
+                if (!e.description.empty() && e.description != e.name) label += " - " + e.description;
+                auto sw = UltraCanvasSwitch::Create("PerfFormat_" + e.extension, 0, 0,
+                                                    label, IsCodecEnabled(e));
+                sw->layoutItem.SetFlexShrink(0);
+                columns[i < rows ? 0 : 1]->AddChild(sw);
+                switches.emplace_back(e.extension, sw.get());
+            }
+            dialog->AddDialogElement(grid);
+
+            dialog->AddCustomButton("Cancel", DialogResult::Cancel, DialogButtonRole::Cancel);
+            dialog->AddCustomButton("Apply", DialogResult::OK, DialogButtonRole::Default);
+
+            UltraCanvasDialogManager::ShowDialog(dialog,
+                [state, switches, rebuildActiveCodecs, runBenchmark, positionThumbnails](DialogResult result) {
+                    if (result != DialogResult::OK || state->benchmarkRunning) return;
+                    for (const auto& [ext, sw] : switches) ChosenFormats()[ext] = sw->IsChecked();
+                    rebuildActiveCodecs();
+                    state->chartElem->SetCodecNames(state->codecNames);
+                    // Reposition thumbnails under the (possibly new) group columns.
+                    positionThumbnails();
+                    if (state->sourceImage && state->sourceImage->IsValid()) {
+                        runBenchmark();
+                    } else {
+                        state->chartElem->SetResults({});
+                    }
+                },
+                root->GetWindow());
+        });
+
+        // Opening the page asks for an image. Posted, so that it opens once
+        // the page is in the window, and not for a page already left again;
+        // the layout audit never runs posted tasks, so it opens no popup.
+        if (auto* app = UltraCanvasApplication::GetInstance()) {
+            std::weak_ptr<PanelState> weakState = state;
+            app->PostToUIThread([weakState]() {
+                auto st = weakState.lock();
+                if (!st || !st->chooseBtn || st->sourceImage) return;
+                UltraCanvasWindowBase* window = st->chooseBtn->GetWindow();
+                if (!window) return;   // the page was replaced before this ran
+                UltraCanvasDialogManager::ShowInformation(
+                        "Upload an image to start the test.\n\n"
+                        "Click Choose Image and pick a bitmap: every format switched on "
+                        "in the settings (gear) is then encoded and decoded.",
+                        "Image Performance Test", nullptr, window);
+            });
+        }
 
         return root;
     }
