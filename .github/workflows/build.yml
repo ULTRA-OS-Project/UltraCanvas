@@ -1093,11 +1093,7 @@ jobs:
         run: |
           set -euo pipefail
           V="${ULTRACANVAS_CLANG_VERSION}"
-          # Retried like the other downloads here: on 2026-11-03 one failed
-          # fetch (wget exit 4) failed both Linux rows before any compile.
-          # Five tries 20 s apart ride out a short outage of the host.
-          curl -fsSL --connect-timeout 20 --retry 5 --retry-delay 20 --retry-all-errors \
-            -o /tmp/llvm.sh https://apt.llvm.org/llvm.sh
+          wget -qO /tmp/llvm.sh https://apt.llvm.org/llvm.sh
           chmod +x /tmp/llvm.sh
           sudo /tmp/llvm.sh "$V"
           # Fail here, loudly, rather than twenty minutes into a compile: if the
