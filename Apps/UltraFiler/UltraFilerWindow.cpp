@@ -65,8 +65,6 @@
 // display and the switch itself are remembered in the settings.
 // A previewed file that changes on disk is reopened in the preview pane
 // (ReloadChangedPreview): throttled, and never restarting a playing video.
-// Version: 1.43.0 - the preview pane shows a loading ring and the file's name while a file
-//                   opens (OpenFileWhenShown), compared by PreviewPanePath()
 // Version: 1.42.0 - the viewer window is titled by the file on show (no fixed title), so
 //                   the title follows browsing
 // Version: 1.41.0 - "Linux" (WSL distributions) and "Network" (computers and their
