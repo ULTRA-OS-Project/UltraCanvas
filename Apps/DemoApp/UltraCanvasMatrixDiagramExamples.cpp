@@ -1,5 +1,7 @@
 // Apps/DemoApp/UltraCanvasMatrixDiagramExamples.cpp
 // Matrix diagram examples: L, T, X, Y and House arrangements with live presentation controls
+// Version: 1.7.1 - Save JSON... writes through UltraCanvasFileLoader::SaveFile,
+//                  as every user file is, and names the reason a save failed
 // Version: 1.7.0 - the shared page look (UltraCanvasDemoPageKit): sidebar and
 //                  diagram cards, every caption sized to its text, file
 //                  buttons as wide as their text
@@ -10,7 +12,7 @@
 // Version: 1.2.0 - House of Quality tab; numbers-or-bars roll-up control
 // Version: 1.1.0 - X and Y tabs; hub, header band and cell tint controls
 // Version: 1.0.0
-// Last Modified: 2026-10-23
+// Last Modified: 2026-11-03
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -25,7 +27,6 @@
 #include "UltraCanvasConfig.h"     // GetResourcesDir
 #include "UltraCanvasUtils.h"      // NormalizePath
 #include "UltraCanvasPathUtf8.h"   // PathToUtf8 / PathFromUtf8 for the file name
-#include "DataFormats/UltraCanvasJSON.h"
 #include <memory>
 #include <sstream>
 #include <string>
@@ -557,11 +558,15 @@ namespace UltraCanvas {
             UltraCanvasFileLoader::SaveFileDialog(opts,
                     [model, readoutText](DialogResult result, const std::string& path) {
                 if (result != DialogResult::OK || path.empty()) return;
-                JSONSerializeOptions pretty;
-                pretty.pretty = true;
-                pretty.indentWidth = 2;
-                const bool saved = JSON::SerializeToFile(path, MatrixModelToJson(model), pretty);
-                readoutText->SetText(saved ? "Saved " + path : "Could not write " + path);
+                // Through the loader, as every user file is: the text is
+                // written beside the path and moved there when complete.
+                const std::string text = ExportMatrixJson(model, true);
+                std::string error;
+                if (UltraCanvasFileLoader::SaveFile(path, std::vector<uint8_t>(text.begin(), text.end()), error)) {
+                    readoutText->SetText("Saved " + path);
+                } else {
+                    readoutText->SetText("Could not write " + path + ": " + error);
+                }
             });
         };
 
