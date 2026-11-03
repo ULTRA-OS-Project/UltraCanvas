@@ -582,12 +582,18 @@ add_executable(SpellCheckerTest
     ${ULTRACANVAS_CORE_DIR}/SpellCheckLanguageNames.cpp
     ${ULTRACANVAS_CORE_DIR}/SpellCheckBackendHunspell.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/OS/WASM/UltraCanvasSpellCheckSupport.cpp
+    # DetectPreferredLanguage asks UltraCanvasSystemLanguage.h; the Linux
+    # backend answers from the POSIX variables alone, which is what the test
+    # wants on every host.
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasSystemLanguage.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/OS/Linux/UltraCanvasLinuxSystemLanguage.cpp
 )
 target_include_directories(SpellCheckerTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
 target_compile_features(SpellCheckerTest PRIVATE cxx_std_20)
 
 find_package(Threads REQUIRED)
-target_link_libraries(SpellCheckerTest PRIVATE Threads::Threads)
+# The suggestion menu's labels go through Tr; UltraLocalisation is UI-free.
+target_link_libraries(SpellCheckerTest PRIVATE Threads::Threads UltraLocalisation)
 
 # HUNSPELL_FOUND is set in the UltraCanvas subdirectory scope, so it is not
 # visible here - probe again rather than silently building the stub.
