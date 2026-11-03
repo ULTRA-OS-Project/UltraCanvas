@@ -1,6 +1,7 @@
 // Apps/UltraMail/ui/UltraMailSettingsDialog.cpp
 // UltraMail settings window - the same window as UltraFiler's settings: the
-// settings-page tree on the left, its sections (Mail, Reading, Privacy, Display)
+// settings-page tree on the left, its sections (Mail, Reading, Privacy, Display,
+// Handling, Warnings)
 // closed when the window opens, so it opens on the start page that says what
 // they hold.
 // Pages: Mail > New mail (how often every account is checked for new mail),
@@ -17,7 +18,9 @@
 // Privacy > Sender icons (whether the known senders' icons are downloaded),
 // Display > Links (a link's address in the status bar or in a tooltip) and
 // Display > Notifications (a notification on screen when new mail arrives),
-// Display > Treeview (the folder tree lists the current account or all) and
+// Display > Treeview (the folder tree lists the current account or all),
+// Handling > Email send notification (a sent message reported in a popup
+// window or in the status bar) and
 // Warnings > Spam/scam warnings (which kinds of warning the content scan gives)
 // and Warnings > Trusted & blocked (the sender menu's lists).
 //
@@ -26,6 +29,8 @@
 // at the foot of the page in its own tinted block - the notes that explain
 // the setting. A page's "Restore default ..." button sits at the left end of
 // the bottom bar, opposite Close. Changes apply live and are saved at once.
+// Version: 1.17.0 - Handling > Email send notification: a popup window or the
+//                   status bar
 // Version: 1.16.0 - Privacy > Primary Password: set, change and remove it
 // Version: 1.15.0 - Reading > Attachments: at the bottom or on the right side
 // Version: 1.14.0 - the sections in the tree carry icons (media/icons/ultramail/
@@ -51,7 +56,7 @@
 // Version: 1.2.0 - Reading > Layout: the folder tree's width (fit to the names,
 //                  or fixed pixels)
 // Version: 1.1.0 - MakeGearButton: the one gear, for the toolbar and the start page
-// Last Modified: 2026-10-15
+// Last Modified: 2026-11-03
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraMailSettingsDialog.h"
@@ -120,6 +125,8 @@ namespace {
     constexpr const char* kPageLinks       = "display/links";
     constexpr const char* kPageNotify      = "display/notifications";
     constexpr const char* kPageTreeview    = "display/treeview";
+    constexpr const char* kPageHandling    = "handling";
+    constexpr const char* kPageSendNotify  = "handling/send-notification";
     constexpr const char* kPageWarnings    = "warnings";
     constexpr const char* kPageScamWarnings = "warnings/spam-scam";
     constexpr const char* kPageSenderLists  = "warnings/senders";
@@ -216,6 +223,11 @@ namespace {
         std::shared_ptr<UltraCanvasRadio> treeCurrentRadio;
         std::shared_ptr<UltraCanvasRadio> treeAllRadio;
         UltraCanvasRadioGroup             treeContentGroup;
+
+        // Handling > Email send notification
+        std::shared_ptr<UltraCanvasRadio> sendPopupRadio;
+        std::shared_ptr<UltraCanvasRadio> sendStatusRadio;
+        UltraCanvasRadioGroup             sendNotifyGroup;
 
         // Warnings > Spam/scam warnings: one box per kind, with the option it sets
         std::vector<std::pair<bool ThreatScanOptions::*,
@@ -463,6 +475,9 @@ namespace {
             d->treeContentGroup.SelectButton(
                 p.folderTreeContent == FolderTreeContent::CurrentAccount ? d->treeCurrentRadio
                                                                          : d->treeAllRadio);
+        if (d->sendPopupRadio)
+            d->sendNotifyGroup.SelectButton(p.sendNotification == SendNotification::StatusBar
+                                            ? d->sendStatusRadio : d->sendPopupRadio);
         for (const auto& [option, box] : d->warningBoxes)
             if (box) box->SetChecked(p.scamWarnings.*option);
         if (d->trustedSendersInput)
@@ -1150,6 +1165,49 @@ namespace {
         return parts.page;
     }
 
+    // ===== HANDLING > EMAIL SEND NOTIFICATION =====
+    std::shared_ptr<UltraCanvasContainer> BuildSendNotificationPage(DialogState* d) {
+        PageParts parts = MakePage("um-set-page-send-notify", "Email send notification",
+                "When a message has been sent successfully:");
+
+        const bool statusBar = d->prefs->sendNotification == SendNotification::StatusBar;
+        d->sendPopupRadio = MakeChoice("um-set-send-popup",
+                "Show in popup window", !statusBar);
+        d->sendStatusRadio = MakeChoice("um-set-send-status",
+                "Display success in status bar", statusBar);
+        d->sendNotifyGroup.AddRadioButton(d->sendPopupRadio);
+        d->sendNotifyGroup.AddRadioButton(d->sendStatusRadio);
+        d->sendNotifyGroup.onSelectionChanged = [d](std::shared_ptr<UltraCanvasRadio> selected) {
+            if (!selected || !d->prefs) return;
+            d->prefs->sendNotification = selected == d->sendStatusRadio
+                                         ? SendNotification::StatusBar
+                                         : SendNotification::Popup;
+            ApplyAndSave(d);
+        };
+        parts.body->AddChild(d->sendPopupRadio);
+        parts.body->AddChild(d->sendStatusRadio);
+
+        d->resets[kPageSendNotify] = PageReset{ "Restore default", 140, [d]() {
+            if (!d->prefs) return;
+            d->prefs->sendNotification = SendNotification::Popup;
+            SyncControls(d);
+            ApplyAndSave(d);
+        } };
+
+        AddNote(parts, "um-set-send-notify-note1",
+                "In a popup window, \"Message sent to ...\" names the recipients "
+                "and stays on the screen until you choose OK.");
+        AddNote(parts, "um-set-send-notify-note2",
+                "In the status bar, the same words appear at the bottom of the "
+                "main window and nothing has to be closed - the next thing "
+                "UltraMail does, such as checking for new mail, replaces them.");
+        AddNote(parts, "um-set-send-notify-note3",
+                "A message that could not be sent is always reported in a "
+                "window, whatever is set here: it stays in the outbox, and the "
+                "window offers to try again.");
+        return parts.page;
+    }
+
     // ===== WARNINGS > SPAM/SCAM WARNINGS =====
     std::shared_ptr<UltraCanvasContainer> BuildScamWarningsPage(DialogState* d) {
         PageParts parts = MakePage("um-set-page-scams", "Spam/scam warnings",
@@ -1304,6 +1362,9 @@ namespace {
                 "as a tooltip, whether new mail shows a notification on the "
                 "screen, and whether the folder tree lists the current account "
                 "or all of them.");
+        AddNote(parts, "um-set-start-note6",
+                "Handling - whether a message that has been sent is reported in a "
+                "popup window or in the status bar.");
         AddNote(parts, "um-set-start-note5",
                 "Warnings - which kinds of spam and scam UltraMail warns about: "
                 "phishing, romance scams, advance-fee letters, letters in an "
@@ -1414,6 +1475,8 @@ namespace {
         AddTreeNode(d, kPageDisplay, kPageLinks, "Links");
         AddTreeNode(d, kPageDisplay, kPageNotify, "Notifications");
         AddTreeNode(d, kPageDisplay, kPageTreeview, "Treeview");
+        AddTreeNode(d, "settings", kPageHandling, "Handling", "section-handling");
+        AddTreeNode(d, kPageHandling, kPageSendNotify, "Email send notification");
         AddTreeNode(d, "settings", kPageWarnings, "Warnings", "section-warnings");
         AddTreeNode(d, kPageWarnings, kPageScamWarnings, "Spam/scam warnings");
         // The page's title is "Trusted and blocked senders"; the tree has
@@ -1442,6 +1505,7 @@ namespace {
         AddPage(d, kPageLinks, BuildLinksPage(d));
         AddPage(d, kPageNotify, BuildNotificationsPage(d));
         AddPage(d, kPageTreeview, BuildTreeviewPage(d));
+        AddPage(d, kPageSendNotify, BuildSendNotificationPage(d));
         AddPage(d, kPageScamWarnings, BuildScamWarningsPage(d));
         AddPage(d, kPageSenderLists, BuildSenderListsPage(d));
         AddPage(d, kPageStart, BuildStartPage());

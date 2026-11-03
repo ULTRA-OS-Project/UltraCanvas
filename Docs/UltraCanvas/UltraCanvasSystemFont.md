@@ -25,6 +25,21 @@ FontStyle code = app->GetDefaultMonospacedFontStyle();    // Consolas, the GNOME
 Sizes are in points, as the text engine takes them. Both are read once
 and cached for the process.
 
+```cpp
+FontStyle pinned;
+pinned.fontFamily = "Ubuntu";
+pinned.fontSize = 12.0;
+app->SetSystemFontStyle(pinned);                 // what GetSystemFontStyle() answers from now on
+app->SetDefaultMonospacedFontStyle(pinned);      // an empty family or a size of 0 is ignored
+```
+
+`SetSystemFontStyle` and `SetDefaultMonospacedFontStyle` pin the answers
+instead of the desktop's fonts: for a program that brings its own, or a
+test that measures text and must not depend on whatever font the machine
+has. The demo's layout audit (`UltraCanvasDemo --audit-layout`) pins the
+bundled Ubuntu 12 and Ubuntu Mono 12, so its pages are measured in the
+font they were laid out for, whatever the runner's desktop font is.
+
 ## What each platform reads
 
 | Platform | Interface font | Monospace font |
