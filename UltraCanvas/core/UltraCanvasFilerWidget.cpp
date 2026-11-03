@@ -50,6 +50,10 @@
 // itself is never touched, so renaming and every file operation still work on
 // the real one. A name that is not UTF-8 — written in a legacy code page by an
 // old tool or an unconverting unzip — is drawn decoded rather than as U+FFFD.
+// Version: 1.43.2 - the delete confirmation is translated whole: question,
+//                  facts, the folder's list caption, notes and buttons, per
+//                  platform's trash name; the size facts (DescribeEntries,
+//                  CountedSizeFact) count files and folders through TrN
 // Version: 1.43.1 - the delete-problem dialog is translated whole: titles,
 //                  questions, facts, notes, scope and buttons, per kind and
 //                  trash name, no longer an English "file" / "folder" /
@@ -5669,15 +5673,19 @@ namespace UltraCanvas {
                 if (e.isDirectory) ++folders;
                 else { ++files; bytes += e.size; }
             }
-            std::string text;
-            if (folders) text += std::to_string(folders) + (folders == 1 ? " folder" : " folders");
-            if (folders && files) text += " and ";
-            if (files) text += std::to_string(files) + (files == 1 ? " file" : " files");
+            // Translated, with each count's plural form from the language's
+            // own rule ("3 папки", "5 папок").
+            const std::string folderText = TrN("{n} folder", "{n} folders", static_cast<long long>(folders));
+            const std::string fileText = TrN("{n} file", "{n} files", static_cast<long long>(files));
+            std::string text = (folders && files) ? TrF("{0} and {1}", folderText, fileText)
+                             : folders            ? folderText
+                                                  : fileText;
             if (!folderTally) {
-                if (files) text += " (" + FormatSize(bytes) + (folders ? " in the files)" : ")");
+                if (files) text = folders ? TrF("{0} ({1} in the files)", text, FormatSize(bytes))
+                                          : text + " (" + FormatSize(bytes) + ")";
             } else if (folderTally->pending) {
-                text += " (" + (bytes ? FormatSize(bytes) + " so far, " : std::string())
-                      + "counting…)";
+                text = bytes ? TrF("{0} ({1} so far, counting…)", text, FormatSize(bytes))
+                             : TrF("{0} (counting…)", text);
             } else {
                 text += " (" + std::string(folderTally->capped ? "≥ " : "") + FormatSize(bytes) + ")";
             }
@@ -5707,13 +5715,14 @@ namespace UltraCanvas {
         if (entries.size() > 1) return DescribeEntries(entries, &tally);
         if (entries.empty()) return {};
         if (!entries.front().isDirectory) return FormatSize(entries.front().size);
-        if (tally.pending) return "counting…";
+        if (tally.pending) return Tr("counting…");
         const std::string atLeast = tally.capped ? "≥ " : "";
         std::string size = atLeast + FormatSize(tally.bytes) + " (" + atLeast
-                + std::to_string(walkedFiles) + (walkedFiles == 1 ? " file" : " files");
+                + TrN("{n} file", "{n} files", static_cast<long long>(walkedFiles));
+        // "in 3 folders" whole, so a language can put the noun in the case
+        // its preposition wants ("в 3 папках").
         if (walkedFolders)
-            size += " in " + std::to_string(walkedFolders)
-                  + (walkedFolders == 1 ? " folder" : " folders");
+            size += " " + TrN("in {n} folder", "in {n} folders", static_cast<long long>(walkedFolders));
         return size + ")";
     }
 
@@ -7989,30 +7998,44 @@ namespace UltraCanvas {
                 }
             }
 #endif
-            listCaption = "Folder \"" + RepairLegacyEncodedName(folder.name) + "\" contains "
-                        + Items(listedTotal);
-            if (listedTotal == 0) listCaption = "Folder \"" +
-                    RepairLegacyEncodedName(folder.name) + "\" is empty.";
+            // The count's plural form from the language, the folder's name
+            // put in after it (TrN fills only {n}).
+            const std::string folderName = RepairLegacyEncodedName(folder.name);
+            listCaption = listedTotal == 0
+                    ? TrF("Folder \"{0}\" is empty.", folderName)
+                    : LocalisationDetail::Substitute(
+                          TrN("Folder \"{0}\" contains {n} item", "Folder \"{0}\" contains {n} items",
+                              static_cast<long long>(listedTotal)),
+                          {folderName});
         }
         if (listedTotal > listed.size())
-            listCaption += (listCaption.empty() ? "The first " : " (the first ")
-                         + std::to_string(listed.size())
-                         + (listCaption.empty() ? " of " + std::to_string(listedTotal) + " items:"
-                                                : " shown)");
+            listCaption = listCaption.empty()
+                    ? TrF("The first {0} of {1} items:", listed.size(), listedTotal)
+                    : listCaption + " " + TrF("(the first {0} shown)", listed.size());
 
         // The trash / permanent choice. Where the trash cannot take these
         // entries only the permanent delete is offered, and the note says why
         // rather than leaving a greyed-out button unexplained.
-        const std::string trash = TrashDisplayName();
+        // Whole sentences per platform's name for the trash: a name passed
+        // in through a placeholder would stay English in every language.
         const bool trashPossible = CanMoveToTrash(victims);
         std::string noTrashWhy;
         if (!trashPossible) {
+#if defined(_WIN32) || defined(_WIN64)
             if (!TrashAvailable())
-                noTrashWhy = "This system has no " + trash + ".";
+                noTrashWhy = Tr("This system has no Recycle Bin.");
             else if (ShowingRemoteFolder())
-                noTrashWhy = "Items on a remote drive cannot go to the " + trash + ".";
+                noTrashWhy = Tr("Items on a remote drive cannot go to the Recycle Bin.");
             else
-                noTrashWhy = "Items inside an archive cannot go to the " + trash + ".";
+                noTrashWhy = Tr("Items inside an archive cannot go to the Recycle Bin.");
+#else
+            if (!TrashAvailable())
+                noTrashWhy = Tr("This system has no Trash.");
+            else if (ShowingRemoteFolder())
+                noTrashWhy = Tr("Items on a remote drive cannot go to the Trash.");
+            else
+                noTrashWhy = Tr("Items inside an archive cannot go to the Trash.");
+#endif
         }
         const bool startInTrash =
                 trashPossible && preferred == FilerDeleteMode::MoveToTrash;
@@ -8022,13 +8045,14 @@ namespace UltraCanvas {
         spec.title = Tr("Delete");
         spec.type = DialogType::Warning;
         spec.question = one
-                ? "Delete \"" + RepairLegacyEncodedName(victims.front().name) + "\"?"
-                : "Delete " + std::to_string(victims.size()) + " items?";
+                ? TrF("Delete \"{0}\"?", RepairLegacyEncodedName(victims.front().name))
+                : TrN("Delete {n} item?", "Delete {n} items?", static_cast<long long>(victims.size()));
         std::vector<std::string> paths;
         for (const FilerEntry& v : victims) paths.push_back(v.path);
         const std::string from = CommonParentFolder(paths);
-        spec.facts = "**From:** " + (from.empty() ? std::string("several folders")
-                                                   : FactPath(from));
+        spec.facts = "**" + Tr("From:") + "** " + (from.empty() ? Tr("several folders")
+                                                               : FactPath(from));
+        const std::string sizeLabel = "\n\n**" + Tr("Size:") + "** ";
         // How much goes, as the move / copy question counts it: the folders'
         // contents from the background walk, the line filling in as walks
         // land. Only a folder on this machine's file system can be walked -
@@ -8042,31 +8066,38 @@ namespace UltraCanvas {
         }
         if (walkable) {
             const std::string placeFacts = spec.facts;
-            auto sizeFacts = [this, placeFacts, victims]() {
-                return placeFacts + "\n\n**Size:** " + CountedSizeFact(victims);
+            auto sizeFacts = [this, placeFacts, sizeLabel, victims]() {
+                return placeFacts + sizeLabel + CountedSizeFact(victims);
             };
             spec.facts = sizeFacts();
             spec.liveFacts = sizeFacts;
         } else if (victims.size() > 1) {
-            spec.facts += "\n\n**Size:** " + DescribeEntries(victims);
+            spec.facts += sizeLabel + DescribeEntries(victims);
         } else if (!victims.front().isDirectory) {
-            spec.facts += "\n\n**Size:** " + FormatSize(victims.front().size);
+            spec.facts += sizeLabel + FormatSize(victims.front().size);
         }
         spec.listed = std::move(listed);
         spec.listCaption = listCaption;
         spec.listVisibleRows = 10;
         if (trashPossible) {
-            spec.note = "Move to " + trash + " can be undone from the " + trash
-                      + ". Delete permanently cannot be undone.";
-            spec.buttons = {{"Move to " + trash, startInTrash ? DialogButtonRole::Default
-                                                              : DialogButtonRole::Normal},
-                            {"Delete permanently", startInTrash ? DialogButtonRole::Destructive
-                                                                : DialogButtonRole::DestructiveDefault},
-                            {"Cancel", DialogButtonRole::Cancel}};
+#if defined(_WIN32) || defined(_WIN64)
+            spec.note = Tr("Move to Recycle Bin can be undone from the Recycle Bin. "
+                           "Delete permanently cannot be undone.");
+            const std::string toTrashLabel = Tr("Move to Recycle Bin");
+#else
+            spec.note = Tr("Move to Trash can be undone from the Trash. "
+                           "Delete permanently cannot be undone.");
+            const std::string toTrashLabel = Tr("Move to Trash");
+#endif
+            spec.buttons = {{toTrashLabel, startInTrash ? DialogButtonRole::Default
+                                                        : DialogButtonRole::Normal},
+                            {Tr("Delete permanently"), startInTrash ? DialogButtonRole::Destructive
+                                                                    : DialogButtonRole::DestructiveDefault},
+                            {Tr("Cancel"), DialogButtonRole::Cancel}};
         } else {
-            spec.note = "This cannot be undone. " + noTrashWhy;
-            spec.buttons = {{"Delete permanently", DialogButtonRole::DestructiveDefault},
-                            {"Cancel", DialogButtonRole::Cancel}};
+            spec.note = Tr("This cannot be undone.") + " " + noTrashWhy;
+            spec.buttons = {{Tr("Delete permanently"), DialogButtonRole::DestructiveDefault},
+                            {Tr("Cancel"), DialogButtonRole::Cancel}};
         }
         spec.width = spec.listed.empty() ? 520 : 640;
 
