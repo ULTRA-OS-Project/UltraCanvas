@@ -1,7 +1,8 @@
 // UltraCanvasVectorStorage.cpp
 // Implementation of the Vector Graphics Storage System for UltraCanvas
-// Version: 1.1.2
-// Last Modified: 2026-10-07
+// Version: 1.1.3 - VectorText::GetBoundingBox counts every line of a text set over several
+//                  (a span with a Position of its own starts one), in characters, not bytes
+// Last Modified: 2026-11-03
 // Author: UltraCanvas Framework
 
 #include "DataFormats/UltraCanvasVectorStorage.h"
@@ -746,17 +747,35 @@ std::vector<Point2Dd> VectorPath::Flatten(float tolerance) const {
 
 // VectorText
 Rect2Dd VectorText::GetBoundingBox() const {
-    // Simplified bounding box calculation
-    // In real implementation, this would use font metrics
-    float width = 0;
-    float height = BaseStyle.FontSize * 1.2f;
-    
+    // An estimate (no font engine here): each character is taken as 0.6 of
+    // its span's size wide, each line 1.2 of it tall from an ascent of one
+    // size above the baseline. A span with a Position of its own starts a
+    // line there (a text typed over several lines keeps one span a line
+    // and more), so every line counts, not the first one stretched by the
+    // others' characters.
+    auto glyphs = [](const std::string& s) {
+        size_t n = 0;
+        for (unsigned char c : s) if ((c & 0xC0) != 0x80) ++n;
+        return n;
+    };
+    Point2Dd pen = Position;
+    bool any = false;
+    double x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+    auto add = [&](double x, double y, double w, double h) {
+        if (!any) { x0 = x; y0 = y; x1 = x + w; y1 = y + h; any = true; return; }
+        x0 = std::min(x0, x); y0 = std::min(y0, y);
+        x1 = std::max(x1, x + w); y1 = std::max(y1, y + h);
+    };
     for (const auto& span : Spans) {
-        // Approximate width based on character count
-        width += span.Text.length() * BaseStyle.FontSize * 0.6f;
+        const float size = span.Style.FontSize > 0 ? span.Style.FontSize : BaseStyle.FontSize;
+        if (span.Position.has_value()) pen = *span.Position;
+        const double width = static_cast<double>(glyphs(span.Text)) * size * 0.6;
+        add(pen.x, pen.y - size, width, size * 1.2);
+        pen.x += width;
     }
-    
-    Rect2Dd bbox{Position.x, Position.y - BaseStyle.FontSize, width, height};
+    if (!any) add(Position.x, Position.y - BaseStyle.FontSize, 0, BaseStyle.FontSize * 1.2);
+
+    Rect2Dd bbox{x0, y0, x1 - x0, y1 - y0};
     if (Transform.has_value()) {
         bbox = Transform->Transform(bbox);
     }

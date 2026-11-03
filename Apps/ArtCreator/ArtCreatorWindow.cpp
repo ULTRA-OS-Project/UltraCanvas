@@ -53,6 +53,7 @@
 #include "UltraCanvasVectorRaster.h"
 #include "UltraCanvasModalDialog.h"
 #include "UltraCanvasTextInput.h"
+#include "UltraCanvasRichTextEdit.h"
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasDebug.h"
 
@@ -62,6 +63,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <map>
 #ifdef HAS_LIBVIPS
 #include "PixelFX/PixelFX.h"
 #endif
@@ -133,7 +135,8 @@ namespace {
     bool FocusIsTextEntry(UltraCanvasWindowBase* win) {
         if (!win) return false;
         UltraCanvasUIElement* f = win->GetFocusedElement();
-        return f && dynamic_cast<UltraCanvasTextInput*>(f) != nullptr;
+        return f && (dynamic_cast<UltraCanvasTextInput*>(f) != nullptr ||
+                     dynamic_cast<UltraCanvasRichTextEdit*>(f) != nullptr);
     }
 
     // ui-reuse-exempt: helper that only sizes framework elements; nothing is painted here.
@@ -279,19 +282,10 @@ bool ArtCreatorWindow::Initialize(const std::vector<std::string>& paths) {
     toolContext.fillColor = [this]() { return fillColour; };
     toolContext.lineColor = [this]() { return lineColour; };
     toolContext.setStatus = [this](const std::string& s) { if (statusHint) statusHint->SetText(s); };
-    toolContext.requestText = [this](double x, double y) {
-        ArtCreatorTextResult init = lastText;
-        init.text.clear();
-        init.font = toolOptions.textFont; init.size = toolOptions.textSize; init.bold = toolOptions.textBold;
-        auto dlg = std::make_shared<ArtCreatorTextDialog>(init);
-        dlg->onAccept = [this, x, y](const ArtCreatorTextResult& r) {
-            toolOptions.textFont = r.font; toolOptions.textSize = r.size; toolOptions.textBold = r.bold;
-            lastText = r;
-            PlaceText(x, y, r);
-        };
-        ShowDialog(dlg);
-        dlg->FocusText();
+    toolContext.requestText = [this](const Point2Dd& at, const std::shared_ptr<VectorText>& text) {
+        BeginTextEdit(at, text);
     };
+    toolContext.textOptionChanged = [this](const std::string& option) { ApplyTextOption(option); };
     toolContext.selectTool = [this](ArtToolId id) { SelectTool(id); };
     toolContext.refreshOptions = [this]() { RebuildToolOptions(); };
     toolContext.lockAspectRatio = lockAspectRatio;
@@ -321,9 +315,10 @@ bool ArtCreatorWindow::Initialize(const std::vector<std::string>& paths) {
     canvas->onToolKey = [this](const UCEvent& ev) { auto* t = ActiveTool(); return t && t->OnKey(toolContext, ev); };
     canvas->onDrawOverlay = [this](IRenderContext* ctx, const VectorViewTransform& v) {
         DrawIconOverlay(ctx, v);
+        DrawTextEditFrame(ctx);
         if (auto* t = ActiveTool()) t->DrawOverlay(toolContext, ctx, v);
     };
-    canvas->onViewChanged = [this]() { UpdateStatus(); };
+    canvas->onViewChanged = [this]() { UpdateStatus(); PlaceTextEditor(); };
     canvas->onHandleModeChanged = [this](VectorHandleMode) { ShowCentreGroup(); };
     canvas->onRotationCenterChanged = [this]() { RefreshTransformBar(); };
     canvas->onFilesDropped = [this](const std::vector<std::string>& files) {
@@ -1072,6 +1067,19 @@ void ArtCreatorWindow::InstallShortcuts() {
     window->InstallEventFilter("ac-shortcuts", [this](const UCEvent& e) -> bool {
         if (e.type != UCEventType::KeyDown) return false;
         if (window->GetActivePopupElement()) return false;
+        // Typing on the page: Escape, or Ctrl+Enter, finishes the text
+        // (Enter starts a new line in it).
+        if (IsEditingText() && (e.virtualKey == UCKeys::Escape ||
+                                (e.ctrl && (e.virtualKey == UCKeys::Return || e.virtualKey == UCKeys::NumPadEnter)))) {
+            CommitTextEdit();
+            return true;
+        }
+        // The file commands still work while a text is typed (it is
+        // finished first); every other key is the text's.
+        const bool fileKey = e.ctrl && (e.virtualKey == UCKeys::S || e.virtualKey == UCKeys::O ||
+                                        e.virtualKey == UCKeys::N || e.virtualKey == UCKeys::E ||
+                                        e.virtualKey == UCKeys::Q);
+        if (IsEditingText() && fileKey) return RunShortcut(e);
         if (FocusIsTextEntry(window.get())) return false;
         // Delete is the Shape Editor's own while it is active (its nodes).
         if (!e.ctrl && !e.alt && e.virtualKey == UCKeys::Delete) {
@@ -1105,6 +1113,7 @@ void ArtCreatorWindow::NewDrawing(const ArtCreatorPageResult& page) {
 }
 
 void ArtCreatorWindow::SetDocument(std::shared_ptr<VectorDocument> doc, const std::string& path) {
+    DropTextEdit();
     document = std::move(doc);
     documentPath = path;
     modified = false;
@@ -1406,8 +1415,8 @@ void ArtCreatorWindow::CmdAbout() {
 // EDIT COMMANDS
 // ===========================================================================
 
-void ArtCreatorWindow::CmdUndo() { history.Undo(); }
-void ArtCreatorWindow::CmdRedo() { history.Redo(); }
+void ArtCreatorWindow::CmdUndo() { CommitTextEdit(); history.Undo(); }
+void ArtCreatorWindow::CmdRedo() { CommitTextEdit(); history.Redo(); }
 
 void ArtCreatorWindow::CmdCopy() {
     clipboard.clear();
@@ -1829,6 +1838,7 @@ ArtTool* ArtCreatorWindow::ActiveTool() const {
 }
 
 void ArtCreatorWindow::SelectTool(ArtToolId id) {
+    if (id != ArtToolId::Text) CommitTextEdit();
     if (auto* old = ActiveTool()) { if (old->id != id) old->Deactivate(toolContext); }
     activeTool = id;
     ArtTool* t = ActiveTool();
@@ -2007,7 +2017,17 @@ void ArtCreatorWindow::SyncColourPanelFromSelection() {
 }
 
 void ArtCreatorWindow::ApplyFillColour(const Color& c, bool commit) {
-    if (syncingColours || selection->Empty()) return;
+    if (syncingColours) return;
+    // While a text is typed, the colour is the text's: it goes into the
+    // edit, and the keys go back to the text once the choice is made.
+    if (textSession && textEditor) {
+        textSession->model->Style.Fill = c;
+        textSession->fillChanged = true;
+        textEditor->SetStyle(TextEditorStyle());
+        if (commit) textEditor->SetFocus(true);
+        return;
+    }
+    if (selection->Empty()) return;
     auto ids = selection->Ids();
     auto apply = [&]() {
         for (auto& e : selection->Elements()) {
@@ -2068,20 +2088,499 @@ void ArtCreatorWindow::ApplyRamp(bool commit) {
     else { apply(); canvas->Refresh(); }
 }
 
-void ArtCreatorWindow::PlaceText(double x, double y, const ArtCreatorTextResult& r) {
-    if (r.text.empty() || !document) return;
-    auto text = std::make_shared<VectorText>();
-    text->Position = {x, y};
-    text->BaseStyle.FontFamily = r.font;
-    text->BaseStyle.FontSize = static_cast<float>(r.size);
-    text->BaseStyle.Weight = r.bold ? FontWeight::Bold : FontWeight::Normal;
-    text->BaseStyle.Slant = r.italic ? FontSlant::Italic : FontSlant::Normal;
-    text->SetText(r.text);
-    text->Style.Fill = fillColour;
+// ===========================================================================
+// TYPING TEXT ON THE PAGE
+// ===========================================================================
+
+namespace {
+    // The text engine takes sizes in points at 96 dpi; the drawing's text
+    // sizes are in its own units (VectorRenderer::RenderText).
+    constexpr float kTextPointsPerUnit = 72.0f / 96.0f;
+
+    FontStyle SpanFont(const VectorTextStyle& style, const VectorTextStyle& base) {
+        VectorTextStyle st = style;
+        if (st.FontFamily.empty()) st.FontFamily = base.FontFamily;
+        if (st.FontSize <= 0) st.FontSize = base.FontSize;
+        FontStyle fs = st.ToFontStyle();
+        if (fs.fontFamily.empty()) fs.fontFamily = "Sans";
+        fs.fontSize *= kTextPointsPerUnit;
+        return fs;
+    }
+
+    // How far a line's baseline lies below its top, and how far apart two
+    // lines are, for a font - in document units at the size the font gives.
+    void FontLineMetrics(IRenderContext* ctx, const FontStyle& font, double& baseline, double& lineBox) {
+        const double unitsPerPoint = 1.0 / kTextPointsPerUnit;
+        baseline = font.fontSize * unitsPerPoint * 0.8;
+        lineBox = font.fontSize * unitsPerPoint * 1.2;
+        if (!ctx) return;
+        ctx->PushState();
+        if (auto probe = ctx->CreateTextLayout("Ag", false)) {
+            probe->SetFontStyle(font);
+            if (probe->GetBaseline() > 0) baseline = probe->GetBaseline();
+            if (probe->GetLayoutHeight() > 0) lineBox = probe->GetLayoutHeight();
+        }
+        ctx->PopState();
+    }
+
+    // A run of the editor in a span's style, against the text's base style
+    // (which is the editor's base font).
+    RichTextRun RunFromSpan(const VectorTextStyle& span, const VectorTextStyle& base) {
+        RichTextRun run;
+        const bool baseBold = base.Weight >= FontWeight::Bold;
+        const bool baseItalic = base.Slant != FontSlant::Normal;
+        run.bold = span.Weight >= FontWeight::Bold && !baseBold;
+        run.italic = span.Slant != FontSlant::Normal && !baseItalic;
+        run.underline = span.Underline;
+        run.strikethrough = span.StrikeThrough;
+        if (!span.FontFamily.empty() && span.FontFamily != base.FontFamily) run.fontFamily = span.FontFamily;
+        if (span.FontSize > 0 && std::fabs(span.FontSize - base.FontSize) > 1e-3f)
+            run.fontSizePt = span.FontSize * kTextPointsPerUnit;
+        return run;
+    }
+
+    // A text's words as the editor's document: a paragraph for each line -
+    // a span placed on a lower baseline starts one, so does a line break in
+    // a span's text - and a run for each span.
+    std::shared_ptr<UCRichDocument> WordsOfText(const VectorText& text, double lineAdvance) {
+        auto words = std::make_shared<UCRichDocument>();
+        words->blocks.emplace_back();
+        double lineY = text.Position.y;
+        for (const auto& span : text.Spans) {
+            if (span.Position.has_value() && std::fabs(span.Position->y - lineY) > 1e-6) {
+                // Lines left empty in between stay, as empty paragraphs.
+                const double lines = lineAdvance > 0 ? std::round((span.Position->y - lineY) / lineAdvance) : 1.0;
+                const int count = static_cast<int>(std::clamp(lines, 1.0, 1000.0));
+                for (int i = 0; i < count; ++i) words->blocks.emplace_back();
+                lineY = span.Position->y;
+            }
+            const RichTextRun style = RunFromSpan(span.Style, text.BaseStyle);
+            size_t start = 0;
+            for (;;) {
+                const size_t nl = span.Text.find('\n', start);
+                const std::string piece = span.Text.substr(start, nl == std::string::npos ? std::string::npos : nl - start);
+                if (!piece.empty()) {
+                    RichTextRun run = style;
+                    run.text = piece;
+                    words->blocks.back().runs.push_back(run);
+                }
+                if (nl == std::string::npos) break;
+                words->blocks.emplace_back();
+                lineY += lineAdvance;
+                start = nl + 1;
+            }
+        }
+        return words;
+    }
+
+    // The editor's lines: a paragraph each, and each line break inside one.
+    std::vector<std::vector<const RichTextRun*>> LinesOfWords(const UCRichDocument& words) {
+        std::vector<std::vector<const RichTextRun*>> lines;
+        for (const auto& block : words.blocks) {
+            lines.emplace_back();
+            for (const auto& run : block.runs) {
+                if (run.lineBreakBefore) lines.emplace_back();
+                if (run.mediaIndex >= 0 || run.text.empty()) continue;
+                lines.back().push_back(&run);
+            }
+        }
+        return lines;
+    }
+
+    // The spans of what was typed: one a run, the first of each line after
+    // the first placed on its own baseline `lineAdvance` below the last.
+    std::vector<TextSpanData> SpansOfWords(const UCRichDocument& words, const VectorText& model, double lineAdvance) {
+        std::vector<TextSpanData> spans;
+        const auto lines = LinesOfWords(words);
+        for (size_t k = 0; k < lines.size(); ++k) {
+            bool first = true;
+            for (const RichTextRun* run : lines[k]) {
+                TextSpanData span;
+                span.Style = model.BaseStyle;
+                if (run->bold) span.Style.Weight = FontWeight::Bold;
+                if (run->italic) span.Style.Slant = FontSlant::Italic;
+                if (run->underline) span.Style.Underline = true;
+                if (run->strikethrough) span.Style.StrikeThrough = true;
+                if (!run->fontFamily.empty()) span.Style.FontFamily = run->fontFamily;
+                if (run->fontSizePt > 0) span.Style.FontSize = run->fontSizePt / kTextPointsPerUnit;
+                std::string piece = run->text;
+                piece.erase(std::remove(piece.begin(), piece.end(), '\n'), piece.end());
+                span.Text = piece;
+                if (first && k > 0)
+                    span.Position = Point2Dd(model.Position.x, model.Position.y + static_cast<double>(k) * lineAdvance);
+                first = false;
+                spans.push_back(std::move(span));
+            }
+        }
+        return spans;
+    }
+
+    bool SameSpans(const std::vector<TextSpanData>& a, const std::vector<TextSpanData>& b) {
+        if (a.size() != b.size()) return false;
+        for (size_t i = 0; i < a.size(); ++i) {
+            const auto& x = a[i]; const auto& y = b[i];
+            if (x.Text != y.Text || x.Position.has_value() != y.Position.has_value()) return false;
+            if (x.Position && (std::fabs(x.Position->x - y.Position->x) > 1e-6 || std::fabs(x.Position->y - y.Position->y) > 1e-6)) return false;
+            if (x.Style.FontFamily != y.Style.FontFamily || std::fabs(x.Style.FontSize - y.Style.FontSize) > 1e-4f ||
+                x.Style.Weight != y.Style.Weight || x.Style.Slant != y.Style.Slant ||
+                x.Style.Underline != y.Style.Underline || x.Style.StrikeThrough != y.Style.StrikeThrough) return false;
+        }
+        return true;
+    }
+
+    // The frame of the editor: as big as the canvas and over it, so the
+    // editor is cut off where the text runs past what the canvas shows
+    // instead of drawing over the panels beside it. A press on it - outside
+    // the editor - finishes the text; the pointer's moves and the wheel go
+    // on to the canvas below (same bounds, so the same coordinates).
+    class TextEditorHost : public UltraCanvasContainer {
+    public:
+        explicit TextEditorHost(const std::string& id) : UltraCanvasContainer(id) {}
+        std::function<void()> onPressOutside;
+        UltraCanvasUIElement* passTo = nullptr;
+        bool OnEvent(const UCEvent& event) override {
+            if (event.type == UCEventType::MouseDown || event.type == UCEventType::MouseDoubleClick) {
+                if (onPressOutside) onPressOutside();
+                return true;
+            }
+            if (passTo && (event.type == UCEventType::MouseMove || event.type == UCEventType::MouseWheel))
+                return passTo->OnEvent(event);
+            return UltraCanvasContainer::OnEvent(event);
+        }
+    };
+}
+
+RichTextEditStyle ArtCreatorWindow::TextEditorStyle() const {
+    RichTextEditStyle style;
+    if (!textSession || !textSession->model) return style;
+    const VectorText& t = *textSession->model;
+    style.baseFont = SpanFont(t.BaseStyle, t.BaseStyle);
+    Color colour = Colors::Black;
+    if (t.Style.Fill.has_value())
+        if (const auto* c = std::get_if<Color>(&*t.Style.Fill)) colour = *c;
+    colour.a = static_cast<uint8_t>(std::clamp(colour.a * t.Style.FillOpacity, 0.0f, 255.0f));
+    style.textColor = colour;
+    style.backgroundColor = Colors::Transparent;
+    style.drawBorder = false;
+    style.padding = 0.0f;
+    style.blockSpacing = 0.0f;
+    style.paragraphLeading = 0.0f;
+    style.selectionColor = Color(64, 128, 255, 96);
+    // A caret that shows on any colour: the text's, made opaque, unless it
+    // is nearly white.
+    const int light = (colour.r * 299 + colour.g * 587 + colour.b * 114) / 1000;
+    style.cursorColor = light > 225 ? Color(30, 30, 40, 255) : Color(colour.r, colour.g, colour.b, 255);
+    return style;
+}
+
+void ArtCreatorWindow::BeginTextEdit(const Point2Dd& docPoint, const std::shared_ptr<VectorText>& text) {
+    if (!document || !canvas) return;
+    CommitTextEdit();
+    if (!textMeasure) textMeasure = CreateRenderContext(Size2Di(4, 4), nullptr);
+
+    auto session = std::make_unique<TextEditSession>();
+    if (text) {
+        session->elementId = text->Id;
+        session->model = std::static_pointer_cast<VectorText>(text->Clone());
+        session->toDocument = text->GetGlobalTransform();
+        // The panel shows the text's own font, size and style.
+        const VectorTextStyle& b = text->BaseStyle;
+        if (!b.FontFamily.empty()) toolOptions.textFont = b.FontFamily;
+        toolOptions.textSize = std::max(1, static_cast<int>(std::lround(b.FontSize)));
+        toolOptions.textBold = b.Weight >= FontWeight::Bold;
+        toolOptions.textItalic = b.Slant != FontSlant::Normal;
+        if (activeTool == ArtToolId::Text) RebuildToolOptions();
+    } else {
+        auto model = std::make_shared<VectorText>();
+        model->Position = docPoint;
+        model->BaseStyle.FontFamily = toolOptions.textFont;
+        model->BaseStyle.FontSize = static_cast<float>(std::max(1, toolOptions.textSize));
+        model->BaseStyle.Weight = toolOptions.textBold ? FontWeight::Bold : FontWeight::Normal;
+        model->BaseStyle.Slant = toolOptions.textItalic ? FontSlant::Italic : FontSlant::Normal;
+        model->Style.Fill = fillColour;
+        session->model = model;
+        session->toDocument = Matrix3x3::Identity();
+    }
+
+    double baseline = 0, lineBox = 0;
+    FontLineMetrics(textMeasure.get(), SpanFont(session->model->BaseStyle, session->model->BaseStyle), baseline, lineBox);
+    session->startWords = WordsOfText(*session->model, lineBox);
+
+    if (!textEditorHost) {
+        auto host = std::make_shared<TextEditorHost>("ac-text-host");
+        host->layoutItem.SetPositionType(CSSLayout::PositionType::AbsoluteUI);
+        if (!host->layoutItem.position) host->layoutItem.position = CSSLayout::Position();
+        host->SetZIndex(OverlayZOrder::Overlays);
+        host->SetBackgroundColor(Colors::Transparent);
+        host->SetMouseCursor(UCMouseCursor::Text);
+        host->passTo = canvas.get();
+        host->onPressOutside = [this]() { CommitTextEdit(); };
+        host->SetVisible(false);
+        textEditor = std::make_shared<UltraCanvasRichTextEdit>("ac-text-editor", 0, 0, 10, 10);
+        textEditor->layoutItem.SetPositionType(CSSLayout::PositionType::AbsoluteUI);
+        if (!textEditor->layoutItem.position) textEditor->layoutItem.position = CSSLayout::Position();
+        textEditor->SetSpellCheckEnabled(false);
+        textEditor->SetShowComments(false);
+        textEditor->SetShowFontNotice(false);
+        textEditor->SetZoomRange(1.0f / 64.0f, 256.0f);
+        // The box grows with what is typed.
+        textEditor->onDocumentChanged = [this]() { PlaceTextEditor(); };
+        // Ctrl+wheel over the text zooms the canvas, which the editor follows.
+        textEditor->onZoomChanged = [this](float) { PlaceTextEditor(); };
+        host->AddChild(textEditor);
+        body->AddChild(host);
+        textEditorHost = host;
+    }
+
+    textSession = std::move(session);
+    textEditor->SetStyle(TextEditorStyle());
+    // The editor edits a copy: the session keeps what it opened with.
+    textEditor->SetDocument(std::make_shared<UCRichDocument>(*textSession->startWords));
+    textEditor->GetEditor().SetCaret(textEditor->GetEditor().DocumentEnd());
+    textEditor->SetModified(false);
+
+    // The text itself is left out of the drawing while its words are typed
+    // over it, and out of the selection (its handles would frame nothing).
+    if (text) {
+        text->Style.Visible = false;
+        selection->Clear();
+    }
+    textEditorHost->SetVisible(true);
+    PlaceTextEditor();
+    textEditor->SetFocus(true);
+    if (statusHint) {
+        statusHint->SetText(std::string(text ? "Editing the text" : "Typing a new text") +
+                            ": Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes");
+    }
+    canvas->Refresh();
+}
+
+void ArtCreatorWindow::PlaceTextEditor() {
+    if (!textSession || !textEditor || !textEditorHost || !canvas) return;
+    const VectorText& t = *textSession->model;
+    // The text's own scale (its transform and its groups'), so a text drawn
+    // twice as large is typed twice as large; a turn or a slant is not
+    // followed - the words are typed upright at the text's start.
+    const Matrix3x3& m = textSession->toDocument;
+    const double scale = std::sqrt(std::max(1e-12, std::fabs(m.Determinant())));
+    const double zoom = canvas->GetZoom() * scale;
+    if (std::fabs(textEditor->GetZoom() - zoom) > 1e-6) textEditor->SetZoom(static_cast<float>(zoom));
+
+    const Rect2Df c = canvas->GetBounds();
+    textEditorHost->layoutItem.position->left = CSSLayout::Dimension::Px(c.x);
+    textEditorHost->layoutItem.position->top = CSSLayout::Dimension::Px(c.y);
+    textEditorHost->size.width = CSSLayout::Dimension::Px(c.width);
+    textEditorHost->size.height = CSSLayout::Dimension::Px(c.height);
+
+    // What is typed, as the drawing will hold it: its widest line sets the
+    // editor's width (with room for the next letters, so it never wraps),
+    // its lines its height.
+    double baseline = 0, lineBox = 0;
+    FontLineMetrics(textMeasure.get(), SpanFont(t.BaseStyle, t.BaseStyle), baseline, lineBox);
+    double widest = 0, firstLine = 0;
+    int lineCount = 1;
+    if (auto words = textEditor->GetDocument()) {
+        const auto lines = LinesOfWords(*words);
+        lineCount = std::max<int>(1, static_cast<int>(lines.size()));
+        for (size_t k = 0; k < lines.size(); ++k) {
+            double width = 0;
+            for (const RichTextRun* run : lines[k]) {
+                VectorTextStyle st = t.BaseStyle;
+                if (run->bold) st.Weight = FontWeight::Bold;
+                if (run->italic) st.Slant = FontSlant::Italic;
+                if (!run->fontFamily.empty()) st.FontFamily = run->fontFamily;
+                if (run->fontSizePt > 0) st.FontSize = run->fontSizePt / kTextPointsPerUnit;
+                const FontStyle fs = SpanFont(st, t.BaseStyle);
+                if (textMeasure) {
+                    textMeasure->SetFontFace(fs.fontFamily, fs.fontWeight, fs.fontSlant);
+                    textMeasure->SetFontSize(fs.fontSize);
+                    width += textMeasure->GetTextLineWidth(run->text);
+                } else {
+                    width += run->text.size() * fs.fontSize / kTextPointsPerUnit * 0.6;
+                }
+            }
+            if (k == 0) firstLine = width;
+            widest = std::max(widest, width);
+        }
+    }
+    // A middle or end anchor puts the first line's middle or end on the
+    // text's point, as the renderer does.
+    double shift = 0;
+    if (t.BaseStyle.Anchor == TextAnchor::Middle) shift = -firstLine / 2.0;
+    else if (t.BaseStyle.Anchor == TextAnchor::End) shift = -firstLine;
+
+    const double size = std::max(1.0f, t.BaseStyle.FontSize);
+    const double contentHeight = std::max<double>(textEditor->GetContentHeight(), lineBox * lineCount);
+    const Point2Dd origin = m.Transform(t.Position);
+    const Point2Dd at = canvas->DocToView(origin);
+    const double left = at.x + shift * zoom;
+    const double top = at.y - baseline * zoom;
+    Rect2Dd& r = textSession->viewRect;
+    r = Rect2Dd(std::floor(left), std::floor(top),
+                std::ceil((widest + size * 2.0) * zoom) + 4.0, std::ceil(contentHeight * zoom) + 2.0);
+    textEditor->layoutItem.position->left = CSSLayout::Dimension::Px(static_cast<float>(r.x));
+    textEditor->layoutItem.position->top = CSSLayout::Dimension::Px(static_cast<float>(r.y));
+    textEditor->size.width = CSSLayout::Dimension::Px(static_cast<float>(r.width));
+    textEditor->size.height = CSSLayout::Dimension::Px(static_cast<float>(r.height));
+    textEditorHost->InvalidateLayout();
+    body->InvalidateLayout();
+    body->RequestRedraw();
+    canvas->Refresh();
+}
+
+void ArtCreatorWindow::DrawTextEditFrame(IRenderContext* ctx) {
+    if (!ctx || !textSession) return;
+    // Where the words go: a dashed frame round the editor, in the canvas's
+    // view coordinates (the host lies on the canvas, so the editor's are the same).
+    const Rect2Dd& b = textSession->viewRect;
+    if (b.width <= 0 || b.height <= 0) return;
+    const Rect2Dd r(b.x - 2.5, b.y - 2.5, b.width + 5.0, b.height + 5.0);
+    ctx->SetStrokeWidth(1.0);
+    ctx->SetLineDash(UCDashPattern());
+    ctx->SetStrokePaint(Color(255, 255, 255, 160));
+    ctx->DrawRectangle(r);
+    ctx->SetLineDash(UCDashPattern({4.0, 4.0}));
+    ctx->SetStrokePaint(Color(30, 110, 230, 230));
+    ctx->DrawRectangle(r);
+    ctx->SetLineDash(UCDashPattern());
+}
+
+void ArtCreatorWindow::DropTextEdit() {
+    if (!textSession) return;
+    textSession.reset();
+    if (textEditorHost) textEditorHost->SetVisible(false);
+    if (body) body->RequestRedraw();
+}
+
+void ArtCreatorWindow::CommitTextEdit() {
+    if (!textSession) return;
+    // Null from here on, so a commit that re-enters (a focus change, the
+    // history's notifications) finds nothing to commit twice.
+    std::unique_ptr<TextEditSession> session = std::move(textSession);
+    std::shared_ptr<UCRichDocument> words = textEditor ? textEditor->GetDocument() : nullptr;
+    if (textEditorHost) textEditorHost->SetVisible(false);
+    if (window && textEditor && window->GetFocusedElement() == textEditor.get()) canvas->SetFocus(true);
+    if (body) body->RequestRedraw();
+    if (!document) return;
+
+    ElementPtr existing = session->elementId.empty() ? nullptr : document->FindElementById(session->elementId);
+    auto* edited = existing ? dynamic_cast<VectorText*>(existing.get()) : nullptr;
+    if (edited) edited->Style.Visible = session->model->Style.Visible;
+    canvas->Refresh();
+    if (!words) return;
+
+    VectorText& model = *session->model;
+    double baseline = 0, lineBox = 0;
+    FontLineMetrics(textMeasure.get(), SpanFont(model.BaseStyle, model.BaseStyle), baseline, lineBox);
+    std::vector<TextSpanData> spans = SpansOfWords(*words, model, lineBox);
+    bool blank = true;
+    for (const auto& span : spans) {
+        if (span.Text.find_first_not_of(" \t") != std::string::npos) { blank = false; break; }
+    }
+
+    if (blank) {
+        // Nothing typed: no text. An edited text emptied is deleted.
+        if (edited) {
+            const std::string id = session->elementId;
+            history.Record("Delete Text", [&]() {
+                if (auto e = document->FindElementById(id))
+                    if (auto parent = e->Parent.lock()) parent->RemoveChild(id);
+            });
+            if (statusHint) statusHint->SetText("The text was emptied, so it was deleted");
+        } else if (statusHint) {
+            statusHint->SetText("Nothing was typed");
+        }
+        return;
+    }
+
+    if (edited) {
+        // Looked at, not changed: no undo step.
+        if (SameSpans(edited->Spans, spans) && edited->BaseStyle.FontFamily == model.BaseStyle.FontFamily &&
+            std::fabs(edited->BaseStyle.FontSize - model.BaseStyle.FontSize) < 1e-4f &&
+            edited->BaseStyle.Weight == model.BaseStyle.Weight && edited->BaseStyle.Slant == model.BaseStyle.Slant &&
+            !session->fillChanged) {
+            Reselect({session->elementId});
+            return;
+        }
+        const std::string id = session->elementId;
+        history.Record("Edit Text", [&]() {
+            auto e = document->FindElementById(id);
+            auto* t = e ? dynamic_cast<VectorText*>(e.get()) : nullptr;
+            if (!t) return;
+            t->BaseStyle = model.BaseStyle;
+            if (session->fillChanged) t->Style.Fill = model.Style.Fill;
+            t->Spans = spans;
+        });
+        Reselect({id});
+        if (statusHint) statusHint->SetText("Changed the text");
+        return;
+    }
+
+    auto text = std::static_pointer_cast<VectorText>(model.Clone());
+    text->Spans = spans;
     text->Id = GenerateId("text");
     const std::string id = text->Id;
     history.Record("Text", [&]() { if (auto layer = ActiveLayer()) layer->AddChild(text); });
     Reselect({id});
+    if (statusHint) statusHint->SetText("Added the text: click it with the Text tool, or double-click it, to edit it");
+}
+
+void ArtCreatorWindow::ApplyTextOption(const std::string& option) {
+    if (!document) return;
+    auto applyTo = [&](VectorTextStyle& style) {
+        if (option == "font") style.FontFamily = toolOptions.textFont;
+        else if (option == "size") style.FontSize = static_cast<float>(std::max(1, toolOptions.textSize));
+        else if (option == "bold") style.Weight = toolOptions.textBold ? FontWeight::Bold : FontWeight::Normal;
+        else if (option == "italic") style.Slant = toolOptions.textItalic ? FontSlant::Italic : FontSlant::Normal;
+    };
+
+    if (textSession && textEditor) {
+        // While typing: the whole text takes it - its base style, and every
+        // run gives up its own setting of it.
+        applyTo(textSession->model->BaseStyle);
+        if (auto words = textEditor->GetDocument()) {
+            for (auto& block : words->blocks) {
+                for (auto& run : block.runs) {
+                    if (option == "font") run.fontFamily.clear();
+                    else if (option == "size") run.fontSizePt = 0.0f;
+                    else if (option == "bold") run.bold = false;
+                    else if (option == "italic") run.italic = false;
+                }
+            }
+        }
+        textEditor->SetStyle(TextEditorStyle());
+        textEditor->InvalidateDocument();
+        textEditor->SetFocus(true);
+        PlaceTextEditor();
+        return;
+    }
+
+    // Otherwise the selected texts, as one undo step.
+    std::vector<std::string> ids;
+    for (const auto& e : selection->Elements())
+        if (e && e->Type == VectorElementType::Text) ids.push_back(e->Id);
+    if (ids.empty()) return;
+    static const std::map<std::string, std::string> labels = {
+        { "font", "Text Font" }, { "size", "Text Size" }, { "bold", "Text Bold" }, { "italic", "Text Italic" } };
+    const auto label = labels.find(option);
+    if (label == labels.end()) return;
+    const auto all = selection->Ids();
+    history.Record(label->second, [&]() {
+        for (const auto& id : ids) {
+            auto e = document->FindElementById(id);
+            auto* t = e ? dynamic_cast<VectorText*>(e.get()) : nullptr;
+            if (!t) continue;
+            const float oldSize = t->BaseStyle.FontSize;
+            applyTo(t->BaseStyle);
+            for (auto& span : t->Spans) {
+                applyTo(span.Style);
+                // The lines keep their spacing in proportion to the size.
+                if (option == "size" && span.Position && oldSize > 0)
+                    span.Position->y = t->Position.y + (span.Position->y - t->Position.y) * t->BaseStyle.FontSize / oldSize;
+            }
+        }
+    }, option == "size");
+    Reselect(all);
 }
 
 // ===========================================================================

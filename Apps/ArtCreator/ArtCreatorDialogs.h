@@ -1,14 +1,15 @@
 // Apps/ArtCreator/ArtCreatorDialogs.h
 // ArtCreator's small parameter windows: New Drawing (page size, unit,
-// orientation), the Text tool's entry, and Document Setup. Each is an
+// orientation) and Document Setup. Each is an
 // UltraCanvasWindow built out of framework elements on an
 // UltraCanvasFormLayout grid and reports through callbacks.
+// Version: 1.2.0 - the Text dialog is gone: text is typed on the page (ArtCreatorWindow)
 // Version: 1.1.1 - ArtCreatorTextDialog::FocusText: the text field takes the keyboard on opening
 // Version: 1.1.0 - each dialog's fields on a white SectionCard over the section page, as the
 //                 right panel's; unit and orientation are segmented switches, New Drawing opens
 //                 on the preset its page matches, and the Text dialog previews the text
 // Version: 1.0.0
-// Last Modified: 2026-10-22
+// Last Modified: 2026-11-03
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -17,7 +18,6 @@
 #include "UltraCanvasSpinner.h"
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasCheckbox.h"
-#include "UltraCanvasTextInput.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasGroupBox.h"
@@ -56,31 +56,6 @@ private:
     std::shared_ptr<UltraCanvasDropdown> presetDrop;
     std::shared_ptr<UltraCanvasSegmentedControl> unitSwitch, orientationSwitch;
     std::shared_ptr<UltraCanvasSpinner> widthSpin, heightSpin;
-};
-
-// ===== TEXT =====
-struct ArtCreatorTextResult {
-    std::string text;
-    std::string font = "Sans";
-    int size = 24;
-    bool bold = false;
-    bool italic = false;
-};
-
-class ArtCreatorTextDialog : public UltraCanvasWindow {
-public:
-    explicit ArtCreatorTextDialog(const ArtCreatorTextResult& initial);
-    // Puts the keyboard in the text field; call once the dialog is shown,
-    // so the text can be typed straight away.
-    void FocusText();
-    std::function<void(const ArtCreatorTextResult&)> onAccept;
-private:
-    void UpdatePreview();
-    std::shared_ptr<UltraCanvasTextInput> textInput;
-    std::shared_ptr<UltraCanvasLabel> preview;
-    std::shared_ptr<UltraCanvasDropdown> fontDrop;
-    std::shared_ptr<UltraCanvasSpinner> sizeSpin;
-    std::shared_ptr<UltraCanvasCheckbox> boldBox, italicBox;
 };
 
 // ===== SHARED BUILDING BLOCKS =====

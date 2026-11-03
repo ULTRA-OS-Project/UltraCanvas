@@ -7,6 +7,9 @@
 // The editor is multi-window: the class also holds the registry of open
 // windows, so File > New Window and a second file on the command line add
 // to it and the application exits with the last of them.
+// Version: 1.15.0 - text is typed on the page: an UltraCanvasRichTextEdit over the canvas at
+//                   its zoom, in the text's font and colour, edits a new or a clicked text in
+//                   place (BeginTextEdit / CommitTextEdit); the Text dialog is gone
 // Version: 1.14.0 - menus, toolbar, palette and shortcuts built from one command registry
 //                   per window (ArtCreatorCommands.cpp): the menu and the toolbars follow
 //                   the commands' state, the toolbar and palette are groups the user shows,
@@ -36,7 +39,7 @@
 // Version: 1.5.0 - SaveToPath takes the bitmap size: Export saves every type through FileLoader
 // Version: 1.4.0 - ToolIconPath / SharedIconPath; MenuIconPath is the app's 16 px menu set
 // Version: 1.3.0
-// Last Modified: 2026-11-02
+// Last Modified: 2026-11-03
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -55,6 +58,7 @@
 #include "UltraCanvasGradientEditor.h"
 #include "UltraCanvasSpinner.h"
 #include "UltraCanvasReferencePointPicker.h"
+#include "UltraCanvasRichTextEdit.h"
 #include "UltraCanvasVectorCanvas.h"
 #include "DataFormats/UltraCanvasVectorStorage.h"
 #include "DataFormats/UltraCanvasVectorEdit.h"
@@ -292,7 +296,46 @@ private:
     void ApplyFillColour(const Color& c, bool commit);
     void ApplyLineColour(const Color& c, bool commit);
     void ApplyRamp(bool commit);
-    void PlaceText(double x, double y, const ArtCreatorTextResult& r);
+
+    // ----- typing text on the page -----
+    // A text is typed into an UltraCanvasRichTextEdit lying over the canvas
+    // where the text lies, at the canvas's zoom, in the text's font and
+    // fill colour on a transparent ground - so what is typed looks as the
+    // drawing will show it. Enter starts a new line (a paragraph of the
+    // editor is a line of the text); bold, italic, font and size set on part
+    // of it (the editor's own keys, Ctrl+B / Ctrl+I) become spans of their
+    // own. The text being edited is left out of the drawing meanwhile, and
+    // the edit goes into the document as one undo step when it is
+    // committed: Escape, Ctrl+Enter, a click outside, another tool or any
+    // command that changes the drawing.
+    struct TextEditSession {
+        std::string elementId;                               // the text edited; empty for a new one
+        std::shared_ptr<VectorStorage::VectorText> model;    // its position, styles and colour
+        std::shared_ptr<UCRichDocument> startWords;          // what the editor opened with
+        VectorStorage::Matrix3x3 toDocument;                 // the text's own space to the page's
+        bool fillChanged = false;                            // a colour was picked while typing
+        Rect2Dd viewRect;                                    // the editor, in the canvas's view coordinates
+    };
+    // Starts typing: into `text` when given, else a new text whose first
+    // baseline starts at the document point.
+    void BeginTextEdit(const Point2Dd& docPoint, const std::shared_ptr<VectorStorage::VectorText>& text);
+    // Puts what was typed into the document and closes the editor. A new
+    // text left empty adds nothing; an edited text emptied is deleted.
+    void CommitTextEdit();
+    // Closes the editor without touching the document (it is being replaced).
+    void DropTextEdit();
+    bool IsEditingText() const { return textSession != nullptr; }
+    // Keeps the editor on the text as the view zooms and pans, and as wide
+    // and tall as what is typed.
+    void PlaceTextEditor();
+    // The editor's look for the session's text: its base font at the
+    // engine's points, its colour, no frame, padding or paragraph gaps.
+    RichTextEditStyle TextEditorStyle() const;
+    // A dashed frame round the words being typed, over the canvas.
+    void DrawTextEditFrame(IRenderContext* ctx);
+    // A Text option changed: applied to the whole of the text being typed,
+    // else to the selected texts as one undo step.
+    void ApplyTextOption(const std::string& option);
     // Re-selects elements by Id after a history edit replaced them.
     void Reselect(const std::vector<std::string>& ids);
 
@@ -369,7 +412,12 @@ private:
     VectorGridSpec gridBeforeIcon;
     VectorSnapOptions snapBeforeIcon;
     std::shared_ptr<const ArtIconRaster> iconRaster;
-    ArtCreatorTextResult lastText;
+    std::unique_ptr<TextEditSession>            textSession;
+    std::shared_ptr<UltraCanvasContainer>       textEditorHost;   // over the canvas while typing
+    std::shared_ptr<UltraCanvasRichTextEdit>    textEditor;
+    // Measures text as the drawing's renderer does (baselines, line boxes,
+    // widths), so the editor sits where the text will.
+    std::unique_ptr<IRenderContext>             textMeasure;
 
     // in-app clipboard: clones of the copied elements
     std::vector<std::shared_ptr<VectorStorage::VectorElement>> clipboard;

@@ -9,13 +9,15 @@
 // user-editable state (line width, shape sides, text font, ...) that
 // survives tool switches, and ArtToolContext is what the window lets a
 // tool reach.
+// Version: 1.7.0 - text is typed on the page: ArtToolContext::requestText starts typing at a
+//                  point or in a text, textOptionChanged; ArtToolOptions::textItalic
 // Version: 1.6.0 - ArtToolContext::setRotationHandleStyle
 // Version: 1.5.0 - ArtOptionWidgets::AddSection; AddSwitch takes icons
 // Version: 1.4.0 - ArtToolContext::iconPath; ArtOptionWidgets::AddIconBar and AddSwitch
 // Version: 1.3.0 - ArtToolContext::lockAspectRatio
 // Version: 1.2.0 - ArtToolContext::iconPixel
 // Version: 1.1.0
-// Last Modified: 2026-10-28
+// Last Modified: 2026-11-03
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -79,6 +81,7 @@ struct ArtToolOptions {
     std::string textFont = "Sans";
     int   textSize = 24;
     bool  textBold = false;
+    bool  textItalic = false;
 };
 
 // The line gallery's named choices, shared by the Line panel and the
@@ -106,8 +109,13 @@ struct ArtToolContext {
     std::function<Color()> fillColor;      // the colour picker's foreground
     std::function<Color()> lineColor;      // its background
     std::function<void(const std::string&)> setStatus;
-    // The text tool asks the window to show its dialog for a document point.
-    std::function<void(double, double)> requestText;
+    // The text tool asks the window to start typing on the page: into
+    // `text` when one was clicked, else a new text whose first line's
+    // baseline starts at the document point.
+    std::function<void(const Point2Dd&, const std::shared_ptr<VectorStorage::VectorText>&)> requestText;
+    // A Text option changed ("font", "size", "bold", "italic"): the window
+    // applies it to the text being typed, or to the selected texts.
+    std::function<void(const std::string&)> textOptionChanged;
     // A tool wants another tool (the selector hands a double-clicked path
     // to the shape editor).
     std::function<void(ArtToolId)> selectTool;
