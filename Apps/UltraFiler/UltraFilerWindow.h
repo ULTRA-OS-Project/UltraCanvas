@@ -81,6 +81,7 @@
 // that finds it changed reopens it, at most every couple of seconds - a video
 // or sound only once its file has settled and it is not playing
 // (ReloadChangedPreview).
+// Version: 1.33.0 - PreviewPanePath: the file shown or on its way
 // Version: 1.32.0 - RefreshWslNodes, the Network section (OpenNetworkServer and the
 //                  network jobs)
 // Version: 1.31.0 - a double-click on a picture, audio file or video starts
@@ -106,7 +107,7 @@
 // Version: 1.27.1 - the connection log button on every remote drive
 // Version: 1.27.0 - OpenFolders: a second start's folders open in tabs here
 // Version: 1.26.0
-// Last Modified: 2026-10-27
+// Last Modified: 2026-11-03
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -979,7 +980,14 @@ private:
     // file as it was when opened (size and modification time, stamped before
     // the viewer reads it) for ReloadChangedPreview. `asCopy`: a remote file's
     // local copy, shown on its own rather than browsed in its folder.
+    // The pane shows a loading ring and the file's name at once, and reads the
+    // file after that frame (OpenFileWhenShown): the previous file does not
+    // linger, and the window answers again before a large file is decoded.
     void OpenPreviewFile(const std::string& path, bool asCopy);
+    // The file the pane is showing - or, while it is loading, the one on its
+    // way. What the pane is compared with, so a refresh during the load does
+    // not start it over.
+    std::string PreviewPanePath() const;
     // The previewed file changed on disk since the pane opened it - a rescan
     // found it with another size or modification time, which is how a picture
     // saved over in an editor shows up: reopen it, so the pane shows what the
