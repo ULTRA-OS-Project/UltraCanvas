@@ -4875,14 +4875,15 @@ set(_uc_export_targets
     UltraCanvasTextUtils
     UltraCanvasBase32
     UltraCrypt
-    UltraVault)
+    UltraVault
+    UltraLocalisation)
 # A static core keeps the JSON engine in its interface (consumers link the
 # archive themselves, see the uc-yyjson link above); a shared one folds it in.
-# The module homes (UltraCrypt, UltraVault, UltraDatabase) are exported either
+# The module homes (UltraCrypt, UltraVault, UltraLocalisation, UltraDatabase) are exported either
 # way; on a static core they name their archives, which then go along, while
 # on a shared core they name the core, which has already absorbed them.
 if(NOT ULTRACANVAS_BUILD_SHARED)
-    list(APPEND _uc_export_targets uc-yyjson uc-crypt uc-vault)
+    list(APPEND _uc_export_targets uc-yyjson uc-crypt uc-vault uc-localisation)
     if(TARGET uc-database)
         list(APPEND _uc_export_targets uc-database)
     endif()
