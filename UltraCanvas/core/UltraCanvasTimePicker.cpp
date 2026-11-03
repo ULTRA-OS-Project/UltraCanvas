@@ -9,6 +9,7 @@
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasTextInput.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 #include <ctime>
 #include <cctype>
 #include <cstdio>
@@ -805,12 +806,12 @@ namespace UltraCanvas {
 
         // Footer: "Now" and "Clear".
         float footerY = rowY + spinH + footerGap;
-        auto nowBtn = std::make_shared<UltraCanvasButton>("TPnow", pad, footerY, 60.0f, footerH, "Now");
+        auto nowBtn = std::make_shared<UltraCanvasButton>("TPnow", pad, footerY, 60.0f, footerH, Tr("Now"));
         nowBtn->onClick = [this]() { SetNow(true); ClosePopup(); };
         popup->AddChild(nowBtn);
 
         auto clearBtn = std::make_shared<UltraCanvasButton>(
-                "TPclear", popupW - pad - 60.0f, footerY, 60.0f, footerH, "Clear");
+                "TPclear", popupW - pad - 60.0f, footerY, 60.0f, footerH, Tr("Clear"));
         clearBtn->onClick = [this]() { Clear(true); ClosePopup(); };
         popup->AddChild(clearBtn);
     }
@@ -855,12 +856,12 @@ namespace UltraCanvas {
         popup->AddChild(clockView);
 
         float footerY = clockH + footerGap;
-        auto nowBtn = std::make_shared<UltraCanvasButton>("TPnow", pad, footerY, 60.0f, footerH, "Now");
+        auto nowBtn = std::make_shared<UltraCanvasButton>("TPnow", pad, footerY, 60.0f, footerH, Tr("Now"));
         nowBtn->onClick = [this]() { SetNow(true); ClosePopup(); };
         popup->AddChild(nowBtn);
 
         auto clearBtn = std::make_shared<UltraCanvasButton>(
-                "TPclear", popupW - pad - 60.0f, footerY, 60.0f, footerH, "Clear");
+                "TPclear", popupW - pad - 60.0f, footerY, 60.0f, footerH, Tr("Clear"));
         clearBtn->onClick = [this]() { Clear(true); ClosePopup(); };
         popup->AddChild(clearBtn);
     }
