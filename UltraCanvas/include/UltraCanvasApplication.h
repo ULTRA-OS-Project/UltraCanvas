@@ -1,5 +1,6 @@
 // include/UltraCanvasBaseApplication.h
 // Main UltraCanvas Framework Entry Point - Unified System
+// Version: 1.15.0 - SetSystemFontStyle / SetDefaultMonospacedFontStyle pin the system fonts
 // Version: 1.14.0 - UltraCanvasApplication is the Wayland backend under ULTRACANVAS_DISPLAY_WAYLAND
 // Version: 1.13.0 - RunAfterMainLoop(): the platform's step once the main loop has ended
 // Version: 1.12.0 - GenerateBitmapScalingConfig: fontconfig's bitmap-font scaling rules
@@ -415,9 +416,16 @@ namespace UltraCanvas {
         void CaptureMouse(UltraCanvasUIElement* element);
         void ReleaseMouse();
 
-        // System font detection
+        // System font detection: the desktop's interface and monospace fonts,
+        // read once and cached. SetSystemFontStyle / SetDefaultMonospacedFontStyle
+        // pin them instead - for a program that brings its own, or a test that
+        // measures text and must not depend on whatever font the machine has
+        // (the demo's layout audit pins the bundled Ubuntu 12). An empty
+        // family or a size of 0 is ignored.
         FontStyle GetSystemFontStyle();
         FontStyle GetDefaultMonospacedFontStyle();
+        void SetSystemFontStyle(const FontStyle& style);
+        void SetDefaultMonospacedFontStyle(const FontStyle& style);
 
         // ===== RUNTIME FONT REGISTRATION =====
         // Makes the faces in a font file usable by name for the rest of this
