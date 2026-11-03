@@ -4,6 +4,9 @@
 // the other per-user files under the data directory (preferences.ini), the
 // same way oauth.ini lives there. Not per-account server settings — those stay
 // on the Account in the local store.
+// Version: 0.17.0 - sendNotification: a sent message is reported in a popup
+//                   window or in the status bar (Settings > Handling > Email
+//                   send notification)
 // Version: 0.16.0 - attachmentPlacement: a message's attachments under it or at
 //                   the right (Settings > Reading > Attachments)
 // Version: 0.15.0 - switchOnQuietSec: how long alerts about failed mail checks
@@ -75,6 +78,12 @@ enum class LinkDisplay {
 enum class AttachmentPlacement {
     Bottom,   // a row of chips under the message
     Right     // a column of chips at the right of the message
+};
+
+// How UltraMail says that a message was sent.
+enum class SendNotification {
+    Popup,       // a popup window ("Message sent to ...") that is closed with OK
+    StatusBar    // the status bar says it; nothing to close
 };
 
 // The handful of app-wide view options. Add fields here (with a default) and a
@@ -186,6 +195,12 @@ struct Preferences {
     // the desktop's notification server - names the sender and subject (or
     // counts the messages), and a click on it opens the mail.
     bool notifyNewMail = true;
+
+    // Settings > Handling > Email send notification: a message sent
+    // successfully is reported in a popup window, or in the status bar. A
+    // message that could not be sent is always reported in a window: it
+    // needs an answer (Retry).
+    SendNotification sendNotification = SendNotification::Popup;
 
     // Settings > Spam/scam warnings: which kinds of warning the content scan
     // gives - phishing, romance scams, advance-fee letters, letters in an
