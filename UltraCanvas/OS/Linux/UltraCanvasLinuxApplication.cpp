@@ -1,10 +1,11 @@
 // OS/Linux/UltraCanvasLinuxApplication.cpp
 // Complete Linux application implementation with all methods
+// Version: 1.12.0 - LoadBundledFontsNative calls RegisterPlatformBundledFonts
 // Version: 1.11.0 - the fonts and the keysym table shared with the Wayland backend (UltraCanvasLinuxFonts, UltraCanvasLinuxKeys)
 // Version: 1.10.0 - a held key is one press, its repeats, and one release: detectable
 //                   auto-repeat, and the fake releases dropped where the server lacks it
 // Version: 1.9.0 - Property events of a clipboard copy sent in pieces go to the clipboard
-// Last Modified: 2026-10-17
+// Last Modified: 2026-11-03
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasLinuxAccessibility.h"
@@ -941,7 +942,7 @@ namespace UltraCanvas {
     // the Wayland backend (UltraCanvasLinuxFonts.cpp).
     FontStyle UltraCanvasLinuxApplication::DetectSystemFontStyleNative() { return LinuxFonts::DetectSystemFontStyle(); }
     FontStyle UltraCanvasLinuxApplication::DetectMonospacedFontStyleNative() { return LinuxFonts::DetectMonospacedFontStyle(); }
-    void UltraCanvasLinuxApplication::LoadBundledFontsNative() { LinuxFonts::LoadBundledFonts(); }
+    void UltraCanvasLinuxApplication::LoadBundledFontsNative() { RegisterPlatformBundledFonts(0); }
     bool UltraCanvasLinuxApplication::RegisterFontFileNative(const std::string& fontFilePath) {
         return LinuxFonts::RegisterFontFile(fontFilePath);
     }

@@ -860,9 +860,12 @@ its shadow and band as the text filter drew them:
 `VideoFX_UseUltraCanvasText()` installs it. UltraVideo does, and so does the
 `videofx` tool when built with UltraCanvas, so a project renders on the
 command line exactly as UltraVideo shows it (`videofx --version` says which).
-In a program without an `UltraCanvasApplication` - the tool - it first makes
-the framework's bundled fonts available (`RegisterBundledFontsWithoutApplication`;
-on macOS the tool sees the installed fonts). VideoFX itself stays free of
+In a program without an `UltraCanvasApplication` - the tool - it first does
+what an application's start does for text
+(`RegisterBundledFontsWithoutApplication`): the bundled fonts and the system's,
+registered by the same per-platform code the applications run
+(`RegisterPlatformBundledFonts` - CoreText on macOS, fontconfig with the
+Windows font folders on Windows). VideoFX itself stays free of
 UltraCanvas: a VideoFX built on its own draws these titles plain.
 
 ---

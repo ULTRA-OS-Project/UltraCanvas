@@ -1,6 +1,7 @@
 // UltraCanvasApplication.cpp
 // Main UltraCanvas App
-// Version: 1.15.0 - RegisterBundledFontsWithoutApplication (the fontconfig platforms)
+// Version: 1.15.0 - RegisterBundledFontsWithoutApplication: the start's font steps for a tool, on every
+//                  platform through RegisterPlatformBundledFonts
 // Version: 1.14.0 - RunAfterMainLoop() at the end of Run()
 // Version: 1.13.1 - the generated fonts.conf (Windows, Android) scales bitmap fonts to the
 //                  size asked for, as fontconfig's 10-scale-bitmap-fonts.conf does: the
@@ -829,22 +830,18 @@ namespace UltraCanvas {
     // ===== RUNTIME FONT REGISTRATION =====
 
     int RegisterBundledFontsWithoutApplication() {
-#if !defined(__APPLE__)
-        FcConfig* cfg = FcConfigGetCurrent();
-        if (!cfg) return 0;
-        const std::string dir = GetBundledFontsDir();
-        int added = 0;
-        for (size_t i = 0; i < kEmbeddedAllFontsCount; ++i) {
-            const std::string path = dir + kEmbeddedAllFonts[i];
-            std::error_code ec;
-            if (!std::filesystem::exists(PathFromUtf8(path), ec)) continue;
-            if (FcConfigAppFontAddFile(cfg, reinterpret_cast<const FcChar8*>(path.c_str()))) ++added;
-        }
-        if (added > 0) RefreshFontConfiguration();
-        return added;
-#else
-        return 0;
-#endif
+        // As an application's Initialize: the generated fonts.conf (where the
+        // system has none) before fontconfig is first read, then the
+        // platform's registration. No windows will switch to the system fonts
+        // when their scan ends (Windows), so the tool waits for it - a cold
+        // font cache takes many seconds, a warm one a moment.
+        SetupBundledFontconfig();
+        constexpr int kToolSystemFontsWaitMs = 10 * 60 * 1000;
+        const int registered = RegisterPlatformBundledFonts(kToolSystemFontsWaitMs);
+        // Pango's default font map sees the fonts registered now (a map made
+        // before them would not)
+        RefreshFontConfiguration();
+        return registered;
     }
 
     void RefreshFontConfiguration() {

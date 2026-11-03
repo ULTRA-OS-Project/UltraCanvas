@@ -1,7 +1,8 @@
 // OS/Linux/UltraCanvasLinuxFonts.cpp
 // The font side of a Linux application. See the header.
+// Version: 1.1.0 - RegisterPlatformBundledFonts (LoadBundledFonts), shared by the X11 and Wayland starts and a tool
 // Version: 1.0.0
-// Last Modified: 2026-10-30
+// Last Modified: 2026-11-03
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasLinuxFonts.h"
@@ -34,12 +35,13 @@ namespace LinuxFonts {
         return result;
     }
 
-    void LoadBundledFonts() {
+    int LoadBundledFonts() {
         FcConfig* cfg = FcConfigGetCurrent();
         if (!cfg) {
             debugOutput << "UltraCanvas: FcConfigGetCurrent() returned null; bundled fonts not registered" << std::endl;
-            return;
+            return 0;
         }
+        int registered = 0;
 
         const std::string dir = GetBundledFontsDir();
         for (size_t i = 0; i < kEmbeddedAllFontsCount; ++i) {
@@ -51,6 +53,8 @@ namespace LinuxFonts {
             if (!FcConfigAppFontAddFile(cfg,
                     reinterpret_cast<const FcChar8*>(path.c_str()))) {
                 debugOutput << "UltraCanvas: FcConfigAppFontAddFile failed for " << path << std::endl;
+            } else {
+                ++registered;
             }
         }
         // The emoji font the emoji setting picks (UOS-Settings), and the rule
@@ -103,6 +107,7 @@ namespace LinuxFonts {
             FcPatternDestroy(pat);
         }
 #endif
+        return registered;
     }
 
     bool RegisterFontFile(const std::string& fontFilePath) {
@@ -124,4 +129,13 @@ namespace LinuxFonts {
     }
 
 } // namespace LinuxFonts
+
+    // The bundled fonts for Pango, the Linux way (X11, Wayland, the BSDs) -
+    // the one registration an application's start (LoadBundledFontsNative)
+    // and a tool without one (RegisterBundledFontsWithoutApplication) make.
+    int RegisterPlatformBundledFonts(int systemFontsWaitMs) {
+        (void)systemFontsWaitMs;   // the system's fontconfig: no scan of its own
+        return LinuxFonts::LoadBundledFonts();
+    }
+
 } // namespace UltraCanvas

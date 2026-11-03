@@ -1,6 +1,7 @@
 // include/UltraCanvasBaseApplication.h
 // Main UltraCanvas Framework Entry Point - Unified System
-// Version: 1.15.0 - RegisterBundledFontsWithoutApplication: a tool that draws text uses the bundled fonts
+// Version: 1.15.0 - RegisterPlatformBundledFonts, one per platform, and RegisterBundledFontsWithoutApplication:
+//                  a tool that draws text uses the bundled and the system fonts as the applications do
 // Version: 1.14.0 - UltraCanvasApplication is the Wayland backend under ULTRACANVAS_DISPLAY_WAYLAND
 // Version: 1.13.0 - RunAfterMainLoop(): the platform's step once the main loop has ended
 // Version: 1.12.0 - GenerateBitmapScalingConfig: fontconfig's bitmap-font scaling rules
@@ -146,14 +147,27 @@ namespace UltraCanvas {
     void RefreshFontConfiguration();
 
     // The bundled fonts (kEmbeddedAllFonts in GetBundledFontsDir) made
-    // available to the text engine in a program that has no
+    // available to the text engine, the platform's one way - defined once
+    // per platform in OS/<Platform>: fontconfig on Linux, the BSDs, Android
+    // and in the browser; CoreText, for this process only, on macOS; on
+    // Windows fontconfig and GDI, with the Windows font folders, the generic
+    // aliases and a fontconfig-backed Pango font map. An application's start
+    // calls it (LoadBundledFontsNative), and so does
+    // RegisterBundledFontsWithoutApplication. `systemFontsWaitMs` is how long
+    // Windows waits for its system fonts' scan (AdoptSystemFontsWithin);
+    // elsewhere it is not read. Returns how many font files were registered.
+    int RegisterPlatformBundledFonts(int systemFontsWaitMs);
+
+    // What an application's start does for text, in a program that has no
     // UltraCanvasApplication - a command-line tool that draws text, as the
-    // `videofx` tool draws titles - so it sets text in the fonts the
-    // applications do. An application does this as it starts
-    // (LoadBundledFontsNative): call it only without one. On the fontconfig
-    // platforms (Linux, BSD, Windows) each file is added to the current
-    // configuration; on macOS a tool sees the installed fonts and this does
-    // nothing. Returns how many files were added.
+    // `videofx` tool draws titles - so it sets text in the fonts, and with the
+    // system fonts, the applications do: the generated fonts.conf where the
+    // system has none (SetupBundledFontconfig), then the platform's
+    // registration (RegisterPlatformBundledFonts) on every platform, macOS
+    // included. A tool has no windows to switch to the system fonts later, so
+    // on Windows it waits for their scan to end. Call it once, first thing,
+    // and only without an application. Returns how many bundled font files
+    // were registered.
     int RegisterBundledFontsWithoutApplication();
 
     // Watches a file descriptor from within the UltraCanvas event loop. Added so a

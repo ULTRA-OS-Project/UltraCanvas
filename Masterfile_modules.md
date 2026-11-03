@@ -809,8 +809,11 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   process by name (FontConfig on Linux/Android/WASM, GDI `FR_PRIVATE` +
   FontConfig on Windows, CoreText process scope on macOS), followed by
   `RefreshFontConfiguration()` so the new family resolves in the next layout
-  (`RegisterBundledFontsWithoutApplication()` does it for the bundled fonts
-  in a tool that has no application - the `videofx` tool drawing titles),
+  (the bundled fonts at an application's start through
+  `RegisterPlatformBundledFonts()`, one per platform in `OS/<Platform>/`;
+  `RegisterBundledFontsWithoutApplication()` runs the same start-up font
+  steps in a tool that has no application - the `videofx` tool drawing
+  titles),
   and `UltraCanvasWindowBase::RefreshAfterFontChange()` on every window (a new
   layout and a full repaint, popups too; also run when the Windows system
   fonts arrive after a cold start). Process-private and permanent: there is

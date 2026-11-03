@@ -21,10 +21,20 @@
     the engine's project under `"project"` is read for it. It never could -
     `videofx render trip.ultravideo` said "Not a VideoFX project file",
     though UltraVideo's README promised it.
-  - `RegisterBundledFontsWithoutApplication()`: a tool that draws text, with
-    no `UltraCanvasApplication` to do it at its start, sets text in the
-    framework's bundled fonts (titles' default, Ubuntu) as the applications
-    do - on the fontconfig platforms; on macOS it sees the installed fonts.
+  - **One font registration per platform.** Each platform's start-up font
+    set-up moved out of its application class into
+    `RegisterPlatformBundledFonts()` (`OS/<Platform>/`): fontconfig on Linux,
+    the BSDs, Android and in the browser, CoreText for this process only on
+    macOS, and on Windows the Windows font folders, the generic aliases, the
+    bundled fonts through fontconfig and GDI and a fontconfig-backed Pango
+    font map. Every application's `LoadBundledFontsNative` calls it, and so
+    does `RegisterBundledFontsWithoutApplication()` - what a tool that draws
+    text, with no `UltraCanvasApplication`, calls instead: the generated
+    fonts.conf where the system has none, then the platform's registration,
+    waiting on Windows for the system fonts' scan (a tool has no windows to
+    switch over later). So `videofx` sets titles in the bundled fonts and the
+    system's on every platform, macOS included, from the code the
+    applications run - no second copy.
   - `UltraVideoDocumentTest` checks that the saved project carries the
     formatting the tool reads, and that the engine lays over the frame the
     very picture the program draws.

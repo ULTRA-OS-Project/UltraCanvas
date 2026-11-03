@@ -1,5 +1,6 @@
 // OS/MacOS/UltraCanvasMacOSApplication.mm
 // Complete macOS application implementation with Cocoa/Cairo support
+// Version: 2.8.0 - RegisterPlatformBundledFonts: the CoreText registration of the bundled fonts, shared with a tool
 // Version: 2.7.0 - key presses for an element that draws input method
 //   compositions go through the input method (TextComposition events); a
 //   click commits a composition in progress
@@ -10,7 +11,7 @@
 // Version: 2.3.0 - RunInEventLoop() commits the CoreAnimation transaction each
 //   main-loop iteration, so frames rendered without a Cocoa event reach the
 //   screen (previously they waited for the next mouse move)
-// Last Modified: 2026-10-14
+// Last Modified: 2026-11-03
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasMacOSAccessibility.h"
@@ -792,10 +793,15 @@ static UltraCanvasAppDelegate* g_appDelegate = nil;
         return result;
     }
 
-    void UltraCanvasMacOSApplication::LoadBundledFontsNative() {
-        // macOS keeps the system proportional font; only the monospace family
-        // is replaced with DejaVu Sans Mono. Register the four mono variants
-        // process-privately via CoreText.
+    // The bundled fonts for Pango, the macOS way: registered with CoreText
+    // for this process only (Pango's font map on macOS is CoreText's) - the
+    // one registration an application's start (LoadBundledFontsNative) and a
+    // tool without one (RegisterBundledFontsWithoutApplication) both make.
+    // macOS keeps its own interface font; the bundled families are there for
+    // what names them (a title in Ubuntu, the monospace family).
+    int RegisterPlatformBundledFonts(int systemFontsWaitMs) {
+        (void)systemFontsWaitMs;   // no system font scan on macOS
+        int registered = 0;
         @autoreleasepool {
             const std::string dir = GetBundledFontsDir();
             for (size_t i = 0; i < kEmbeddedAllFontsCount; ++i) {
@@ -816,12 +822,21 @@ static UltraCanvasAppDelegate* g_appDelegate = nil;
                         if (code != kCTFontManagerErrorAlreadyRegistered) {
                             debugOutput << "UltraCanvas: CTFontManagerRegisterFontsForURL failed for "
                                         << path << " (code " << (long)code << ")" << std::endl;
+                        } else {
+                            ++registered;   // there already
                         }
                     }
+                } else {
+                    ++registered;
                 }
                 if (err) CFRelease(err);
             }
         }
+        return registered;
+    }
+
+    void UltraCanvasMacOSApplication::LoadBundledFontsNative() {
+        RegisterPlatformBundledFonts(0);
     }
 
     bool UltraCanvasMacOSApplication::RegisterFontFileNative(const std::string& fontFilePath) {
