@@ -1,6 +1,7 @@
 // core/UltraCanvasRasterText.cpp
 // Draws a text layer's words into its pixels through UltraCanvasRichTextEdit,
 // the element that edits them on the canvas, so the two agree to the pixel.
+// Version: 1.1.0 - RasterTextContent::letterSpacingPx: the text tracked wider or tighter
 // Version: 1.0.1 - the canvas editor and the renderer show no font notice
 // Version: 1.0.0
 // Last Modified: 2026-10-23
@@ -64,6 +65,7 @@ RichTextEditStyle TextLayerEditStyle(const RasterTextContent& content) {
     style.backgroundColor = Colors::Transparent;
     style.drawBorder = false;
     style.padding = 0.0f;
+    style.letterSpacing = content.letterSpacingPx;
     // What the editor shows on top of the words while they are edited; the
     // renderer draws neither.
     style.selectionColor = Color(64, 128, 255, 96);

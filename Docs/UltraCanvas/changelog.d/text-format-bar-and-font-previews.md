@@ -18,3 +18,9 @@
   lazily instead, in slices of about 6 ms every 15 ms once it is on screen,
   the rows its list opens on first, and shapes a row not prepared yet as it
   scrolls into view.
+- **Text layers keep a letter spacing** - `RasterTextContent::letterSpacingPx`,
+  drawn through `RichTextEditStyle::letterSpacing` - saved as
+  `"letterSpacingPx"` in a raster project and in a version 2 `UCTF` text
+  frame in a *.ucd (UCD 4.7.3). A text without letter spacing is still
+  written as version 1, which every earlier reader takes. `RasterEditingTest`
+  checks it.
