@@ -59,7 +59,7 @@
 #include "UltraCanvasModalDialog.h"
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasRichTextEdit.h"
-#include "UltraCanvasSeparator.h"
+#include "UltraCanvasTextFormatBar.h"
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasDebug.h"
 
@@ -2638,155 +2638,30 @@ void ArtCreatorWindow::CommitTextEdit() {
 // ===========================================================================
 
 void ArtCreatorWindow::BuildTextBar() {
-    constexpr float kBarHeight = 50.0f;
-    constexpr float kFieldHeight = 26.0f;
-    textBar = std::make_shared<UltraCanvasContainer>("ac-textbar", 0, 0, 0, kBarHeight);
-    textBar->layout.SetFlexRow().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Center);
-    textBar->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-    textBar->SetPadding(0, 8);
-    textBar->SetBackgroundColor(Color(228, 228, 232, 255));
-
-    // After a control of the bar has had the keyboard, it goes back to the
-    // text being typed - after the event, since a list reports its closing
-    // from inside the event that closed it.
-    auto keysBack = [this]() {
-        if (!IsEditingText() || !textEditor) return;
-        std::weak_ptr<UltraCanvasRichTextEdit> editor = textEditor;
-        std::weak_ptr<UltraCanvasContainer> host = textEditorHost;
-        auto give = [editor, host]() {
-            auto e = editor.lock();
-            auto h = host.lock();
-            if (e && h && h->IsVisible()) e->SetFocus(true);
-        };
-        if (auto* app = UltraCanvasApplicationBase::GetCurrent()) app->PostToUIThread(give);
-        else give();
+    // The framework's text bar (UltraCanvasTextFormatBar); sizes in points,
+    // the drawing's units.
+    textBar = CreateTextFormatBar("ac-textbar", 50.0f);
+    textBar->SetSizeUnit(" pt", 1, 2000, 1, 1);
+    textBar->SetLetterSpacingUnit(" pt", -100, 1000, 1, 0.5);
+    textBar->SetBackgroundColor(Color(228, 228, 232, 255));   // the transform bar's, whose place it takes
+    textBar->onFormatChanged = [this](TextFormatAttribute attribute, const TextFormat& f) {
+        toolOptions.textFont = f.fontFamily;
+        toolOptions.textSize = f.size;
+        toolOptions.textBold = f.bold;
+        toolOptions.textItalic = f.italic;
+        toolOptions.textUnderline = f.underline;
+        toolOptions.textStrike = f.strikethrough;
+        toolOptions.textAlign = static_cast<int>(f.align);
+        toolOptions.textLineSpacing = f.lineSpacing;
+        toolOptions.textLetterSpacing = f.letterSpacing;
+        static const char* names[] = { "font", "size", "bold", "italic", "underline", "strike",
+                                       "align", "line-spacing", "letter-spacing" };
+        ApplyTextAttribute(names[static_cast<int>(attribute)]);
     };
-
-    // A rule between two groups of the bar.
-    auto gap = [&]() {
-        auto line = std::make_shared<UltraCanvasSeparator>(true, 1, 28, Color(190, 190, 198, 255));
-        line->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        line->SetMargin(0, 4);
-        textBar->AddChild(line);
+    // After a control of the bar, the keys go back to the text being typed.
+    textBar->onControlDone = [this]() {
+        if (IsEditingText() && textEditor && textEditorHost && textEditorHost->IsVisible()) textEditor->SetFocus(true);
     };
-
-    // ----- Font: every family the text engine can set text in -----
-    textFamilies = GetInstalledFontFamilies();
-    for (const char* generic : { "Monospace", "Serif", "Sans" }) {
-        if (std::find(textFamilies.begin(), textFamilies.end(), generic) == textFamilies.end())
-            textFamilies.insert(textFamilies.begin(), generic);
-    }
-    textFontBox = CreateDropdown("ac-tb-font", 0, 0, 210, kFieldHeight);
-    for (const auto& family : textFamilies) textFontBox->AddItem(family, family);
-    DropdownStyle fontStyle = textFontBox->GetStyle();
-    fontStyle.maxVisibleItems = 18;
-    textFontBox->SetStyle(fontStyle);
-    textFontBox->SetTooltip("Font (" + std::to_string(textFamilies.size()) + " installed) - type its first letters to find one");
-    textFontBox->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-    textFontBox->onSelectionChanged = [this](int, const DropdownItem& item) {
-        if (syncingTextBar || item.value.empty()) return;
-        toolOptions.textFont = item.value;
-        ApplyTextAttribute("font");
-    };
-    textFontBox->onDropdownClosed = keysBack;
-    textBar->AddChild(textFontBox);
-
-    // A spinner of the bar: every step applies at once (one undo step for a
-    // run of them), its value's unit after it.
-    auto spinner = [&](const std::string& id, float width, double minimum, double maximum, int decimals,
-                       double step, const std::string& suffix, const std::string& tooltip,
-                       std::function<void(double)> set, const std::string& attribute) {
-        auto s = CreateSpinner("ac-tb-" + id, 0, 0, width, kFieldHeight);
-        s->SetDecimals(decimals);
-        s->SetSnapToStep(false);
-        s->SetRange(minimum, maximum);
-        s->SetStep(step);
-        s->SetLayout(SpinnerLayout::UpDownRight);
-        s->SetButtonThickness(14.0f);
-        s->SetSuffix(suffix);
-        s->SetTooltip(tooltip);
-        s->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        s->onValueChanged = [this, set = std::move(set), attribute](double v) {
-            if (syncingTextBar) return;
-            set(v);
-            ApplyTextAttribute(attribute);
-        };
-        textBar->AddChild(s);
-        return s;
-    };
-    textSizeBox = spinner("size", 82, 1, 2000, 1, 1, " pt", "Size, in points",
-                          [this](double v) { toolOptions.textSize = static_cast<float>(v); }, "size");
-    gap();
-
-    // ----- Bold, Italic, Underline, Strikethrough: toggles -----
-    auto toggle = [&](const std::string& id, const std::string& icon, const std::string& tooltip,
-                      std::function<void(bool)> set, const std::string& attribute) {
-        auto b = std::make_shared<UltraCanvasButton>("ac-tb-" + id, 0, 0, 30, 30, "");
-        b->SetIcon(IconPath(icon));
-        b->SetIconSize(22, 22);
-        b->SetCanToggled(true);
-        b->SetTooltip(tooltip);
-        ButtonStyle st = b->GetStyle();
-        st.cornerRadius = 6.0f;
-        b->SetStyle(st);
-        b->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        b->onToggle = [this, set = std::move(set), attribute](bool on) {
-            if (syncingTextBar) return;
-            set(on);
-            ApplyTextAttribute(attribute);
-        };
-        textBar->AddChild(b);
-        return b;
-    };
-    textBoldButton = toggle("bold", "text-bold.svg", "Bold (Ctrl+B while typing)",
-                            [this](bool on) { toolOptions.textBold = on; }, "bold");
-    textItalicButton = toggle("italic", "text-italic.svg", "Italic (Ctrl+I while typing)",
-                              [this](bool on) { toolOptions.textItalic = on; }, "italic");
-    textUnderlineButton = toggle("underline", "text-underline.svg", "Underline (Ctrl+U while typing)",
-                                 [this](bool on) { toolOptions.textUnderline = on; }, "underline");
-    textStrikeButton = toggle("strike", "text-strike.svg", "Strikethrough",
-                              [this](bool on) { toolOptions.textStrike = on; }, "strike");
-    gap();
-
-    // ----- Alignment: the lines start at, centre on or end at the text's point -----
-    textAlignSwitch = CreateSegmentedControl("ac-tb-align", 0, 0, 0, 30);
-    SegmentedControlStyle alignStyle = textAlignSwitch->GetStyle();
-    alignStyle.cornerRadius = 6.0f;
-    alignStyle.iconAsMask = true;
-    alignStyle.iconSize = 20;
-    textAlignSwitch->SetStyle(alignStyle);
-    textAlignSwitch->SetWidthMode(SegmentWidthMode::Equal);
-    textAlignSwitch->AddSegment("", IconPath("text-align-left.svg"));
-    textAlignSwitch->AddSegment("", IconPath("text-align-centre.svg"));
-    textAlignSwitch->AddSegment("", IconPath("text-align-right.svg"));
-    textAlignSwitch->SetSelectedIndex(0);
-    textAlignSwitch->SetTooltip("Alignment: the lines start at the text's point, centre on it, or end at it");
-    textAlignSwitch->SetElementSize(Size2Df(108, 30));
-    textAlignSwitch->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-    textAlignSwitch->onSegmentSelected = [this](int index) {
-        if (syncingTextBar) return;
-        toolOptions.textAlign = std::clamp(index, 0, 2);
-        ApplyTextAttribute("align");
-    };
-    textBar->AddChild(textAlignSwitch);
-    gap();
-
-    // ----- Line spacing and letter spacing -----
-    auto icon = [&](const std::string& id, const std::string& file, const std::string& tooltip) {
-        auto image = CreateImageFromFile("ac-tb-icon-" + id, 0, 0, 16, 16, MenuIconPath(file));
-        image->SetTooltip(tooltip);
-        image->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        textBar->AddChild(image);
-    };
-    icon("line", "line-spacing.svg", "Line spacing");
-    textLineSpacingBox = spinner("line", 84, 10, 1000, 0, 5, " %",
-                                 "Line spacing: from one baseline to the next, in % of the size",
-                                 [this](double v) { toolOptions.textLineSpacing = static_cast<float>(v); }, "line-spacing");
-    icon("letter", "letter-spacing.svg", "Letter spacing");
-    textLetterSpacingBox = spinner("letter", 84, -100, 1000, 1, 0.5, " pt",
-                                   "Letter spacing (tracking): points added between every two letters; below 0 sets them closer",
-                                   [this](double v) { toolOptions.textLetterSpacing = static_cast<float>(v); }, "letter-spacing");
-
     textBar->SetVisible(false);
     window->AddChild(textBar);
     SyncTextBar();
@@ -2807,62 +2682,45 @@ void ArtCreatorWindow::SyncTextBar() {
     // What the bar shows: the caret's (or the selected words') attributes
     // in the text being typed, else the first selected text's, else what a
     // new text starts in.
-    VectorTextStyle shown;
-    shown.FontFamily = toolOptions.textFont;
-    shown.FontSize = toolOptions.textSize;
-    shown.Weight = toolOptions.textBold ? FontWeight::Bold : FontWeight::Normal;
-    shown.Slant = toolOptions.textItalic ? FontSlant::Italic : FontSlant::Normal;
-    shown.Underline = toolOptions.textUnderline;
-    shown.StrikeThrough = toolOptions.textStrike;
-    shown.Anchor = AnchorOfAlign(toolOptions.textAlign);
-    shown.LineHeight = toolOptions.textLineSpacing / 100.0f;
-    shown.LetterSpacing = toolOptions.textLetterSpacing;
+    auto formatOf = [](const VectorTextStyle& st) {
+        TextFormat f;
+        f.fontFamily = st.FontFamily.empty() ? std::string("Sans") : st.FontFamily;
+        f.size = std::max(0.1f, st.FontSize);
+        f.bold = st.Weight >= FontWeight::Bold;
+        f.italic = st.Slant != FontSlant::Normal;
+        f.underline = st.Underline;
+        f.strikethrough = st.StrikeThrough;
+        f.align = static_cast<TextFormatAlign>(AlignOfTextAnchor(st.Anchor));
+        f.lineSpacing = (st.LineHeight > 0 ? st.LineHeight : 1.2f) * 100.0f;
+        f.letterSpacing = st.LetterSpacing;
+        return f;
+    };
+    TextFormat shown;
+    shown.fontFamily = toolOptions.textFont;
+    shown.size = toolOptions.textSize;
+    shown.bold = toolOptions.textBold;
+    shown.italic = toolOptions.textItalic;
+    shown.underline = toolOptions.textUnderline;
+    shown.strikethrough = toolOptions.textStrike;
+    shown.align = static_cast<TextFormatAlign>(std::clamp(toolOptions.textAlign, 0, 2));
+    shown.lineSpacing = toolOptions.textLineSpacing;
+    shown.letterSpacing = toolOptions.textLetterSpacing;
     if (textSession && textEditor) {
-        shown = textSession->model->BaseStyle;
-        const RichCharFormatState st = textEditor->GetFormatState();
-        if (!st.fontFamilyMixed && !st.fontFamily.empty()) shown.FontFamily = st.fontFamily;
-        if (!st.fontSizeMixed && st.fontSizePt > 0) shown.FontSize = st.fontSizePt / kTextPointsPerUnit;
-        if (st.bold == RichCharFormatState::Tri::On) shown.Weight = FontWeight::Bold;
-        if (st.italic == RichCharFormatState::Tri::On) shown.Slant = FontSlant::Italic;
-        shown.Underline = st.underline == RichCharFormatState::Tri::On;
-        shown.StrikeThrough = st.strikethrough == RichCharFormatState::Tri::On;
+        shown = TextFormatAtCaret(textEditor->GetFormatState(), formatOf(textSession->model->BaseStyle), kTextPointsPerUnit);
     } else {
         for (const auto& e : selection->Elements()) {
             if (auto* t = e ? dynamic_cast<VectorText*>(e.get()) : nullptr) {
-                shown = t->BaseStyle;
+                shown = formatOf(t->BaseStyle);
                 // Underlined or struck through all along, as the spans say.
                 bool under = !t->Spans.empty(), strike = !t->Spans.empty();
                 for (const auto& span : t->Spans) { under = under && span.Style.Underline; strike = strike && span.Style.StrikeThrough; }
-                shown.Underline = under;
-                shown.StrikeThrough = strike;
+                shown.underline = under;
+                shown.strikethrough = strike;
                 break;
             }
         }
     }
-
-    syncingTextBar = true;
-    if (textFontBox) {
-        const std::string family = shown.FontFamily.empty() ? std::string("Sans") : shown.FontFamily;
-        auto it = std::find(textFamilies.begin(), textFamilies.end(), family);
-        if (it == textFamilies.end()) {
-            // A font this computer lacks (a drawing from elsewhere): named
-            // all the same, at the top.
-            textFamilies.insert(textFamilies.begin(), family);
-            textFontBox->ClearItems();
-            for (const auto& f : textFamilies) textFontBox->AddItem(f, f);
-            it = textFamilies.begin();
-        }
-        textFontBox->SetSelectedIndex(static_cast<int>(it - textFamilies.begin()), false);
-    }
-    if (textSizeBox) textSizeBox->SetValue(shown.FontSize);
-    if (textBoldButton) textBoldButton->SetPressed(shown.Weight >= FontWeight::Bold);
-    if (textItalicButton) textItalicButton->SetPressed(shown.Slant != FontSlant::Normal);
-    if (textUnderlineButton) textUnderlineButton->SetPressed(shown.Underline);
-    if (textStrikeButton) textStrikeButton->SetPressed(shown.StrikeThrough);
-    if (textAlignSwitch) textAlignSwitch->SetSelectedIndex(AlignOfTextAnchor(shown.Anchor));
-    if (textLineSpacingBox) textLineSpacingBox->SetValue((shown.LineHeight > 0 ? shown.LineHeight : 1.2f) * 100.0f);
-    if (textLetterSpacingBox) textLetterSpacingBox->SetValue(shown.LetterSpacing);
-    syncingTextBar = false;
+    textBar->SetFormat(shown);
 }
 
 void ArtCreatorWindow::ApplyTextAttribute(const std::string& attribute) {
@@ -2885,13 +2743,11 @@ void ArtCreatorWindow::ApplyTextAttribute(const std::string& attribute) {
     if (textSession && textEditor) {
         if (character && textEditor->HasSelection()) {
             // The selected words take it, as spans of their own.
-            RichCharFormatDelta delta;
-            if (attribute == "font") { delta.setFontFamily = true; delta.fontFamily = toolOptions.textFont; }
-            else if (attribute == "size") { delta.setFontSize = true; delta.fontSizePt = std::max(1.0f, toolOptions.textSize) * kTextPointsPerUnit; }
-            else if (attribute == "bold") { delta.setBold = true; delta.bold = toolOptions.textBold; }
-            else if (attribute == "italic") { delta.setItalic = true; delta.italic = toolOptions.textItalic; }
-            else if (attribute == "underline") { delta.setUnderline = true; delta.underline = toolOptions.textUnderline; }
-            else if (attribute == "strike") { delta.setStrikethrough = true; delta.strikethrough = toolOptions.textStrike; }
+            static const std::map<std::string, TextFormatAttribute> which = {
+                { "font", TextFormatAttribute::Font }, { "size", TextFormatAttribute::Size },
+                { "bold", TextFormatAttribute::Bold }, { "italic", TextFormatAttribute::Italic },
+                { "underline", TextFormatAttribute::Underline }, { "strike", TextFormatAttribute::Strikethrough } };
+            const RichCharFormatDelta delta = TextFormatCharDelta(which.at(attribute), textBar->GetFormat(), kTextPointsPerUnit);
             textEditor->ApplyCharFormat(delta);
         } else {
             // Nothing selected, or a paragraph attribute: the whole text -

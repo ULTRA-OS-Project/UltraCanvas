@@ -25,3 +25,5 @@
 - A colour picked while a text is typed colours that text. Zooming while
   typing (Ctrl+wheel over the words, or the View commands) keeps the keys
   with the text.
+- The text bar is the framework's `UltraCanvasTextFormatBar`, shared with
+  UltraPaint and UltraVideo, and its **Font list shows each font in itself**.

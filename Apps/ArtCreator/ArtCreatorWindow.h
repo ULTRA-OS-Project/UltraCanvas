@@ -61,7 +61,7 @@
 #include "UltraCanvasSpinner.h"
 #include "UltraCanvasReferencePointPicker.h"
 #include "UltraCanvasRichTextEdit.h"
-#include "UltraCanvasSegmentedControl.h"
+#include "UltraCanvasTextFormatBar.h"
 #include "UltraCanvasVectorCanvas.h"
 #include "DataFormats/UltraCanvasVectorStorage.h"
 #include "DataFormats/UltraCanvasVectorEdit.h"
@@ -337,8 +337,9 @@ private:
     RichTextEditStyle TextEditorStyle() const;
     // A dashed frame round the words being typed, over the canvas.
     void DrawTextEditFrame(IRenderContext* ctx);
-    // The text bar, in the transform bar's place while the Text tool is
-    // active: Font (every installed family), Size, Bold, Italic, Underline,
+    // The text bar (the framework's UltraCanvasTextFormatBar), in the
+    // transform bar's place while the Text tool is active: Font (every
+    // installed family, each shown in itself), Size, Bold, Italic, Underline,
     // Strikethrough, Align left / centre / right, Line spacing and Letter
     // spacing. While a text is typed, the character attributes (font, size,
     // bold, italic, underline, strikethrough) go to the selected words - or,
@@ -441,13 +442,7 @@ private:
     // Measures text as the drawing's renderer does (baselines, line boxes,
     // widths), so the editor sits where the text will.
     std::unique_ptr<IRenderContext>             textMeasure;
-    std::shared_ptr<UltraCanvasContainer>       textBar;
-    std::shared_ptr<UltraCanvasDropdown>        textFontBox;
-    std::shared_ptr<UltraCanvasSpinner>         textSizeBox, textLineSpacingBox, textLetterSpacingBox;
-    std::shared_ptr<UltraCanvasButton>          textBoldButton, textItalicButton, textUnderlineButton, textStrikeButton;
-    std::shared_ptr<UltraCanvasSegmentedControl> textAlignSwitch;
-    std::vector<std::string>                    textFamilies;   // the Font list's names, in its order
-    bool syncingTextBar = false;
+    std::shared_ptr<UltraCanvasTextFormatBar>   textBar;          // the framework's text bar
 
     // in-app clipboard: clones of the copied elements
     std::vector<std::shared_ptr<VectorStorage::VectorElement>> clipboard;
