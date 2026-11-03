@@ -499,9 +499,22 @@ file's own **metadata** read with `PixelFX::Header::ReadMetadata` — one
 section per block (EXIF, IPTC, XMP, Colour / ICC, Other such as PNG text
 chunks), or a line saying the file carries none.
 
-The panel is an `UltraCanvasTextArea` in `MarkdownHybrid` mode, dark themed,
-so each section is a heading over a two-column *Property / Value* table.
-The mouse wheel, Up / Down and PageUp / PageDown scroll it; Escape or the
+The panel is an `UltraCanvasGroupBox` in the `Header` frame style, dark
+themed: its caption names what is shown (*Image information*, *Document
+information*, *eBook information* ...) and the **x** at the right end of the
+caption closes it. Inside is an `UltraCanvasTextArea` in `MarkdownHybrid`
+mode at 11 px, so each section is a heading over a two-column *Property /
+Value* table. For a GIF the table has a *Palette* row (the size of the
+colour table, global or the first frame's) and under the text the colour
+table itself is drawn as a block of swatches (`UltraCanvasColorSwatchBar`,
+wrapped, at most half the panel's height); the caption over it names the
+entry under the pointer, as its index and `#RRGGBB`.
+The mouse wheel, Up / Down and PageUp / PageDown scroll the text; Escape, the
+close button or the Details button again closes it. Left / Right keep
+browsing, and the panel follows to the next file. The panel's text is built
+only while it is open (on opening, then for each file loaded): browsing with
+it closed reads no metadata.
+
 A picture whose header reads but whose pixels do not decode (a HEIC on a
 build without an HEVC decoder, a truncated file) says so instead of leaving
 the area empty: the display shows *Cannot decode this picture*, the info bar
@@ -511,11 +524,6 @@ the same reason. The surface learns it only when it draws (that is when the
 pixels are decoded) and tells the viewer through
 `UltraCanvasMediaSurface::onDecodeFailed`, once per shown image, after the
 frame.
-
-button again closes it. Left / Right keep browsing, and the panel follows
-to the next file. The panel's text is built only while it is open (on
-opening, then for each file loaded): browsing with it closed reads no
-metadata.
 
 ```cpp
 viewer->SetDetailsVisible(true);

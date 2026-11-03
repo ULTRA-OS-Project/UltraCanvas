@@ -1,6 +1,8 @@
 // core/UltraCanvasMediaViewer.cpp
 // Implementation of the comprehensive media / photo / document viewer widget.
 // See UltraCanvasMediaViewer.h for the feature overview.
+// Version: 1.21.0 - the Details panel is a group box (the title as its caption, a close
+//                   button), its text a size smaller, and a GIF's colour table under it
 // Version: 1.20.1 - an opened attachment is kept in the per-user cache (opened-attachments),
 //                   not the shared temporary folder, and its folder is swept a day later
 //                   (DiskCache::SweepFolders, once a process)
@@ -43,7 +45,7 @@
 // Version: 1.9.1 - *.ucd: header and thumbnail through the UCD container engine; the
 //                  encryption line names the key source the spec defines
 // Version: 1.9.0
-// Last Modified: 2026-10-19
+// Last Modified: 2026-11-03
 // V1.9.0: Save image as offers FileLoader's types - every bitmap type this
 //   build writes - instead of six of its own; and another size in a bitmap
 //   type's Settings - the
@@ -82,6 +84,7 @@
 #include "UltraCanvasSlider.h"
 #include "../dialogs/UltraCanvasCurvesDialog.h"  // Curves (tone curve) editing window
 #include "UltraCanvasColorSwatchBar.h"  // backdrop palette under transparent images
+#include "UltraCanvasGroupBox.h"        // the Details panel's frame, caption and close button
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasConfig.h"     // GetResourcesDir, for the toolbar icons
 #include "UltraCanvasFileLoader.h"   // FileDialogOptions, DialogResult, FileFilter
@@ -2306,25 +2309,115 @@ void UltraCanvasMediaViewer::BuildUI(float w, float h) {
     AddChild(bottomBar);
 
     // ----- DETAILS PANEL (over the display area) -----
-    // Out of the flex flow (absolute) and above every view; Arrange() fits it
-    // over whichever view is active. Display-only like the text view, so it
-    // never takes the keyboard from the browsing keys; the wheel scrolls it and
-    // HandleViewerKey() gives it Up / Down / PageUp / PageDown while open.
+    // A group box out of the flex flow (absolute) and above every view;
+    // Arrange() fits it over whichever view is active. Its caption is the
+    // title of what is shown ("Image information"), its close button hides
+    // it. Inside: the facts as Markdown in a text area, display-only like the
+    // text view so it never takes the keyboard from the browsing keys (the
+    // wheel scrolls it and HandleViewerKey() gives it Up / Down / PageUp /
+    // PageDown while open), and under it a GIF's palette.
     {
-        auto dv = std::make_shared<UltraCanvasTextArea>("MV_Details_Panel", 0, 0, 0, 0);
-        dv->layoutItem.SetPositionType(CSSLayout::PositionType::Absolute);
-        dv->SetZIndex(OverlayZOrder::Overlays);
+        const Color panelBg(22, 22, 28, 255);
+        auto panel = std::make_shared<UltraCanvasGroupBox>("MV_Details_Panel", 0, 0, 0, 0, "");
+        panel->layoutItem.SetPositionType(CSSLayout::PositionType::Absolute);
+        panel->SetZIndex(OverlayZOrder::Overlays);
+        panel->SetFrameStyle(GroupBoxFrameStyle::Header);
+        GroupBoxVisualStyle look = GroupBoxVisualStyle::Default();
+        look.backgroundColor       = panelBg;
+        look.headerBackgroundColor = Color(34, 34, 42, 255);
+        look.borderColor           = Color(255, 255, 255, 50);
+        look.cornerRadius          = 8.0f;
+        look.titleFont.fontSize    = 12.0f;
+        look.titleFont.fontWeight  = FontWeight::Bold;
+        look.titleColor            = Color(232, 232, 238, 255);
+        look.titleVerticalPadding  = 5.0f;
+        look.contentPadding        = 4.0f;
+        look.closeIconColor            = Color(170, 170, 182, 255);
+        look.closeIconHoverColor       = Color(255, 255, 255, 255);
+        look.closeHoverBackgroundColor = Color(255, 255, 255, 36);
+        panel->SetVisualStyle(look);
+        panel->SetCloseButton(true);
+        panel->SetCloseButtonTooltip("Close (Esc)");
+        panel->onCloseClicked = [this] { SetDetailsVisible(false); };
+        panel->layout.SetFlexColumn().SetFlexGap(4);
+        panel->SetVisible(false);
+
+        auto dv = std::make_shared<UltraCanvasTextArea>("MV_Details_Text", 0, 0, 0, 0);
+        dv->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
+                      .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
         dv->ApplyDarkTheme();
-        dv->SetBackgroundColor(Color(22, 22, 28, 255));
-        dv->SetBorders(1.0f, Color(255, 255, 255, 50), 8.0f);
-        dv->SetFontSize(12);
+        dv->SetBackgroundColor(panelBg);
+        dv->SetBorders(0.0f, Colors::Transparent);
+        dv->SetFontSize(11);
         dv->SetWordWrap(true);
         dv->SetShowLineNumbers(false);
         dv->SetHighlightSyntax(false);
         dv->SetEditingMode(TextAreaEditingMode::MarkdownHybrid);
         dv->SetDisplayOnly(true);
-        dv->SetVisible(false);
-        detailsView = dv;
+        {
+            // The section headings ("Metadata", "EXIF") a step above the text,
+            // not the document-sized ones a Markdown page has.
+            MarkdownHybridStyle md = dv->GetMarkdownStyle();
+            md.headerSizeMultipliers = {1.35f, 1.2f, 1.1f, 1.05f, 1.0f, 1.0f};
+            md.tableHeaderBackground = Color(44, 44, 54, 255);
+            md.tableBorderColor      = Color(78, 78, 90, 255);
+            dv->SetMarkdownStyle(md);
+        }
+        detailsText = dv;
+        panel->AddChild(detailsText);
+        // The caption and the swatches line up with the tables' text: the text
+        // area's padding plus a table cell's.
+        const float textInset = dv->GetStyle().textPadding + dv->GetMarkdownStyle().tableCellPadding;
+
+        auto caption = std::make_shared<UltraCanvasLabel>("MV_Details_PaletteCaption", 0, 0, 0, 18, "");
+        caption->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
+                           .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        caption->SetFontSize(11);
+        caption->SetFontWeight(FontWeight::Bold);
+        caption->SetTextColor(Color(220, 220, 228, 255));
+        caption->SetMargin(0, textInset, 0, textInset);
+        caption->SetVisible(false);
+        detailsPaletteCaption = caption;
+        panel->AddChild(detailsPaletteCaption);
+
+        auto swatches = std::make_shared<UltraCanvasColorSwatchBar>("MV_Details_Palette", 0, 0, 0, 10);
+        swatches->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        swatches->SetWrap(true);
+        ColorSwatchBarStyle sw = swatches->GetStyle();
+        sw.swatchSize    = 14.0f;
+        sw.minSwatchSize = 10.0f;
+        sw.spacing       = 2.0f;
+        sw.padding       = 2.0f;
+        sw.cornerRadius  = 1.0f;
+        sw.border        = Color(255, 255, 255, 40);
+        swatches->SetStyle(sw);
+        swatches->SetMargin(0, textInset - sw.padding, 0, textInset - sw.padding);
+        // The entry under the pointer (or the one clicked) is named in the
+        // caption: its index and its value.
+        auto describe = [this](int index) {
+            auto* cap = static_cast<UltraCanvasLabel*>(detailsPaletteCaption.get());
+            auto* bar = static_cast<UltraCanvasColorSwatchBar*>(detailsPalette.get());
+            if (!cap || !bar) return;
+            if (index < 0 || index >= bar->GetColorCount()) {
+                cap->SetText(detailsPaletteText);
+                return;
+            }
+            const Color& c = bar->GetColors()[static_cast<size_t>(index)];
+            char buf[96];
+            snprintf(buf, sizeof(buf), "Entry %d:  #%02X%02X%02X   (R %d, G %d, B %d)",
+                     index, c.r, c.g, c.b, c.r, c.g, c.b);
+            cap->SetText(buf);
+        };
+        swatches->onColorHovered = describe;
+        swatches->onColorSelected = [this, describe](const Color&) {
+            auto* bar = static_cast<UltraCanvasColorSwatchBar*>(detailsPalette.get());
+            if (bar) describe(bar->GetSelectedIndex());
+        };
+        swatches->SetVisible(false);
+        detailsPalette = swatches;
+        panel->AddChild(detailsPalette);
+
+        detailsView = panel;
         AddChild(detailsView);
     }
 
@@ -4353,6 +4446,55 @@ void UltraCanvasMediaViewer::UpdateInfoBar() {
     infoLabel->SetText(os.str());
 }
 
+namespace {
+// The colour table of a GIF: the global one, or - for a file that has none -
+// the first image's local one; `isGlobal` says which. Empty for a file that
+// is not a GIF or has neither. Read from the file's own bytes: the 13-byte
+// header and the table after it, or the extension blocks before the first
+// image when the table is a local one.
+std::vector<Color> ReadGifPalette(const std::string& path, bool& isGlobal) {
+    std::vector<Color> out;
+    isGlobal = false;
+    std::FILE* f = OpenFileUtf8(path, "rb");
+    if (!f) return out;
+    struct Closer { std::FILE* f; ~Closer() { std::fclose(f); } } closer{f};
+    unsigned char header[13];
+    if (std::fread(header, 1, sizeof(header), f) != sizeof(header)) return out;
+    if (std::memcmp(header, "GIF87a", 6) != 0 && std::memcmp(header, "GIF89a", 6) != 0) return out;
+    auto readTable = [&](unsigned char packed) {
+        const size_t n = size_t(1) << ((packed & 7) + 1);
+        std::vector<unsigned char> rgb(n * 3);
+        if (std::fread(rgb.data(), 1, rgb.size(), f) != rgb.size()) return;
+        out.reserve(n);
+        for (size_t i = 0; i < n; ++i) out.emplace_back(rgb[i * 3], rgb[i * 3 + 1], rgb[i * 3 + 2], 255);
+    };
+    if (header[10] & 0x80) {
+        isGlobal = true;
+        readTable(header[10]);
+        return out;
+    }
+    // No global table: past the extensions (comments, the animation's loop
+    // and frame controls) to the first image descriptor and its local table.
+    for (int blocks = 0; blocks < 1024; ++blocks) {
+        const int introducer = std::fgetc(f);
+        if (introducer == 0x2C) {
+            unsigned char descriptor[9];
+            if (std::fread(descriptor, 1, sizeof(descriptor), f) != sizeof(descriptor)) return out;
+            if (descriptor[8] & 0x80) readTable(descriptor[8]);
+            return out;
+        }
+        if (introducer != 0x21 || std::fgetc(f) == EOF) return out;   // the trailer, or not a GIF
+        for (;;) {   // the extension's data sub-blocks, up to the empty one
+            const int length = std::fgetc(f);
+            if (length == EOF) return out;
+            if (length == 0) break;
+            if (std::fseek(f, length, SEEK_CUR) != 0) return out;
+        }
+    }
+    return out;
+}
+} // namespace
+
 void UltraCanvasMediaViewer::UpdateDetailedInfo() {
     if (!surface) return;
     if (playlist.empty()) {
@@ -4484,6 +4626,15 @@ void UltraCanvasMediaViewer::UpdateDetailedInfo() {
         }
     }
 
+    // A GIF's colour table, shown as swatches under the text.
+    bool paletteGlobal = false;
+    const std::vector<Color> palette = ReadGifPalette(path, paletteGlobal);
+    const std::string paletteSize = std::to_string(palette.size()) +
+                                    (palette.size() == 1 ? " colour" : " colours");
+    if (!palette.empty())
+        os << "Palette: " << paletteSize
+           << (paletteGlobal ? " (global colour table)\n" : " (first frame's colour table)\n");
+
 #ifdef HAS_LIBVIPS
     try {
         PixelFX::PXImageFileInfo fi = PixelFX::ExtractImageInfo(path);
@@ -4509,6 +4660,8 @@ void UltraCanvasMediaViewer::UpdateDetailedInfo() {
         os << "\n## Metadata\n";
         for (const auto& e : entries) {
             if (e.group == "Image") continue;
+            // The Palette row above, and the swatches, already say it.
+            if (!palette.empty() && e.key == "GIF palette") continue;
             ++total;
             if (shown >= kMaxEntries) continue;
             if (e.group != group) {
@@ -4528,6 +4681,7 @@ void UltraCanvasMediaViewer::UpdateDetailedInfo() {
 #endif
 
     ShowDetailsText(os.str());
+    if (!palette.empty()) ShowDetailsPalette(palette, "Palette - " + paletteSize);
 }
 
 // ===== DETAILS PANEL =====
@@ -4554,8 +4708,10 @@ std::string EscapeDetailsCell(const std::string& text) {
 // The details builders write "Title\n\nKey: value" lines, the form the text
 // view and a log read well. The panel shows them as Markdown: the title as a
 // heading, each run of "Key: value" lines as a two-column table, "## " /
-// "### " lines as section headings and anything else as a paragraph.
-std::string DetailsToMarkdown(const std::string& plain) {
+// "### " lines as section headings and anything else as a paragraph. With
+// `title` given, the title is handed back there instead of becoming a
+// heading (the Details panel shows it as its caption).
+std::string DetailsToMarkdown(const std::string& plain, std::string* title = nullptr) {
     std::istringstream in(plain);
     std::ostringstream md;
     std::string line;
@@ -4565,14 +4721,18 @@ std::string DetailsToMarkdown(const std::string& plain) {
         if (!line.empty() && line.back() == '\r') line.pop_back();
         if (first) {
             if (line.empty()) continue;
-            md << "## " << EscapeDetailsCell(line) << "\n\n";
+            if (title) *title = line;
+            else md << "## " << EscapeDetailsCell(line) << "\n\n";
             first = false;
             continue;
         }
         if (line.empty()) { endTable(); continue; }
         if (line.rfind("## ", 0) == 0 || line.rfind("### ", 0) == 0) {
             endTable();
-            md << "\n" << line << "\n\n";
+            // A section heading with its title as the caption is one level
+            // down, so "Metadata" stays above "EXIF" but below nothing big.
+            if (title) md << "\n#" << line << "\n\n";
+            else       md << "\n" << line << "\n\n";
             continue;
         }
         const size_t colon = line.find(": ");
@@ -4593,11 +4753,30 @@ std::string DetailsToMarkdown(const std::string& plain) {
 } // namespace
 
 void UltraCanvasMediaViewer::ShowDetailsText(const std::string& plain) {
-    detailsMarkdown = DetailsToMarkdown(plain);
-    if (!detailsView) return;
-    auto* dv = static_cast<UltraCanvasTextArea*>(detailsView.get());
+    std::string title;
+    detailsMarkdown = DetailsToMarkdown(plain, &title);
+    ShowDetailsPalette({}, "");
+    if (!detailsView || !detailsText) return;
+    static_cast<UltraCanvasGroupBox*>(detailsView.get())->SetTitle(title.empty() ? "Details" : title);
+    auto* dv = static_cast<UltraCanvasTextArea*>(detailsText.get());
     dv->SetText(detailsMarkdown);
     dv->ScrollTo(0);
+}
+
+void UltraCanvasMediaViewer::ShowDetailsPalette(const std::vector<Color>& colours,
+                                                const std::string& caption) {
+    if (!detailsPalette || !detailsPaletteCaption) return;
+    auto* bar = static_cast<UltraCanvasColorSwatchBar*>(detailsPalette.get());
+    auto* cap = static_cast<UltraCanvasLabel*>(detailsPaletteCaption.get());
+    const bool show = !colours.empty();
+    bar->SetColors(colours);
+    bar->ClearSelection();
+    bar->SetVisible(show);
+    detailsPaletteText = caption;
+    cap->SetText(caption);
+    cap->SetVisible(show);
+    InvalidateLayout();
+    RequestRedraw();
 }
 
 void UltraCanvasMediaViewer::ShowNote(const std::string& plain) {
@@ -4647,6 +4826,19 @@ void UltraCanvasMediaViewer::Arrange(const Rect2Df& finalRect,
     float w = std::min(kMaxWidth, area.width - 2 * kInset);
     float h = area.height - 2 * kInset;
     if (w < 60.0f || h < 60.0f) return;
+    // A palette takes the height its swatches need at the panel's inner
+    // width, but never more than half the panel: the text keeps the rest.
+    if (detailsPalette && detailsPalette->IsVisible()) {
+        auto* panel = static_cast<UltraCanvasGroupBox*>(detailsView.get());
+        const GroupBoxVisualStyle& look = panel->GetVisualStyle();
+        auto* bar = static_cast<UltraCanvasColorSwatchBar*>(detailsPalette.get());
+        auto* text = static_cast<UltraCanvasTextArea*>(detailsText.get());
+        const float margin = text->GetStyle().textPadding + text->GetMarkdownStyle().tableCellPadding -
+                             bar->GetStyle().padding;
+        const float inner = std::max(10.0f, w - 2.0f * (look.borderWidth + look.contentPadding + margin));
+        const float barH = std::min(bar->HeightForWidth(inner), h * 0.5f);
+        bar->SetElementSize(Size2Df(inner, barH));
+    }
     detailsView->Arrange(Rect2Df(area.x + kInset, area.y + kInset, w, h), ctx);
 }
 
@@ -4932,8 +5124,8 @@ bool UltraCanvasMediaViewer::HandleViewerKey(const UCEvent& event) {
 
     // The open Details panel takes Escape and the scrolling keys; Left / Right
     // keep browsing, and the panel follows the file.
-    if (IsDetailsVisible()) {
-        auto* dv = static_cast<UltraCanvasTextArea*>(detailsView.get());
+    if (IsDetailsVisible() && detailsText) {
+        auto* dv = static_cast<UltraCanvasTextArea*>(detailsText.get());
         switch (event.virtualKey) {
             case UCKeys::Escape:   SetDetailsVisible(false); return true;
             case UCKeys::Up:       dv->ScrollUp(1);          return true;

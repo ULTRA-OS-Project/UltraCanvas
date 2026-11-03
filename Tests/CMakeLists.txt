@@ -6416,6 +6416,29 @@ else()
     message(STATUS "  MediaViewerToolsTest skipped (UltraCanvas target not present)")
 endif()
 
+# MediaViewerDetailsPanelTest - the Details panel is a group box (the title as
+# its caption, a close button), a GIF's colour table is shown as swatches, and
+# a Markdown table's header fill meets its one-pixel grid. Headless.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building MediaViewerDetailsPanelTest...")
+    add_executable(MediaViewerDetailsPanelTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/MediaViewerDetailsPanelTest.cpp
+    )
+    target_include_directories(MediaViewerDetailsPanelTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(MediaViewerDetailsPanelTest PRIVATE cxx_std_20)
+    target_compile_definitions(MediaViewerDetailsPanelTest PRIVATE
+        UC_MEDIA_DIR="${ULTRACANVAS_ROOT}/media")
+    target_link_libraries(MediaViewerDetailsPanelTest PRIVATE UltraCanvas)
+    set_target_properties(MediaViewerDetailsPanelTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME MediaViewerDetailsPanelTest COMMAND MediaViewerDetailsPanelTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: MediaViewerDetailsPanelTest")
+else()
+    message(STATUS "  MediaViewerDetailsPanelTest skipped (UltraCanvas target not present)")
+endif()
+
 # OutlookMessageTest - the Outlook .msg reader (UltraCanvasOutlookMessage.h):
 # messages built with UCCompoundFileWriter as Outlook lays them out, the
 # compressed RTF body and the HTML it encapsulates, attachments; the compound

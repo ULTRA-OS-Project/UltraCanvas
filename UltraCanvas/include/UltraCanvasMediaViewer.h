@@ -87,6 +87,8 @@
 // size, and writes with the type's save settings at the size chosen; a drawing
 // is drawn again at that size, sharp, rather than stretched.
 //
+// Version: 1.23.0 - the Details panel is a group box: its title in the caption, a close
+//                   button, smaller text, and a GIF's colour table as swatches
 // Version: 1.22.0 - Outlook .msg messages; a message's attachments open and save
 // Version: 1.21.0 - saved web pages (.mht / .mhtml, IsWebArchiveFile) and Apple Mail .emlx
 // Version: 1.20.0 - e-mail messages (.eml) shown as the message (IsMailMessageFile)
@@ -111,7 +113,7 @@
 // Version: 1.13.0 - one compact toolbar row (flat, 16 px icons, scrolls when
 //                   narrow); Details only in the info bar
 // Version: 1.12.0
-// Last Modified: 2026-10-30
+// Last Modified: 2026-11-03
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -701,11 +703,14 @@ public:
     static bool IsWebArchiveFile(const std::string& path);
 
     // ===== DETAILS PANEL =====
-    // The panel the "Details" button opens over the display area: file facts
-    // and, for images, the file's own metadata (EXIF / IPTC / XMP / ICC /
-    // PNG text), laid out as Markdown tables in a scrollable text area.
-    // Works for every kind of file the viewer shows. Escape closes it. The
-    // text is built on opening and for each file loaded while it is open.
+    // The panel the "Details" button opens over the display area: a group box
+    // whose caption names what is shown ("Image information") and whose close
+    // button (or Escape) closes it. Inside, file facts and, for images, the
+    // file's own metadata (EXIF / IPTC / XMP / ICC / PNG text), laid out as
+    // Markdown tables in a scrollable text area; for a GIF, its colour table
+    // as a block of swatches under them. Works for every kind of file the
+    // viewer shows. The text is built on opening and for each file loaded
+    // while it is open.
     void SetDetailsVisible(bool visible);
     void ToggleDetails() { SetDetailsVisible(!IsDetailsVisible()); }
     bool IsDetailsVisible() const;
@@ -762,8 +767,13 @@ private:
     void ShowNote(const std::string& plain);
     void UpdateDetailedInfo();
     // Hand the Details panel its text: "Title\n\nKey: value" lines (plus any
-    // "## " / "### " headings) converted to Markdown tables.
+    // "## " / "### " headings). The title becomes the panel's caption, the
+    // rest Markdown tables. The palette block is cleared; UpdateDetailedInfo
+    // fills it afterwards for a GIF.
     void ShowDetailsText(const std::string& plain);
+    // The block of swatches under the Details text: `colours` with
+    // `caption` above them, or hidden when `colours` is empty.
+    void ShowDetailsPalette(const std::vector<Color>& colours, const std::string& caption);
     void ApplyAdjustments();          // push `adjustments` to the surface
     // Put every adjustment control back to its default without firing one
     // re-render per control (the callbacks are suppressed while they move).
@@ -892,10 +902,16 @@ private:
     std::shared_ptr<UltraCanvasUIElement>    pluginView;
     std::shared_ptr<UltraCanvasUIElement>    videoPlayer;   // UltraCanvasVideoPlayerElement
     std::shared_ptr<UltraCanvasUIElement>    audioPlayer;   // UltraCanvasAudioPlayerElement
-    // The Details panel (UltraCanvasTextArea in MarkdownHybrid mode),
-    // positioned absolutely over the display area; see SetDetailsVisible().
+    // The Details panel (UltraCanvasGroupBox), positioned absolutely over the
+    // display area; see SetDetailsVisible(). It holds the text
+    // (UltraCanvasTextArea in MarkdownHybrid mode) and, for a GIF, a caption
+    // and the palette (UltraCanvasColorSwatchBar).
     std::shared_ptr<UltraCanvasUIElement>    detailsView;
-    std::string detailsMarkdown;   // what detailsView shows for the current file
+    std::shared_ptr<UltraCanvasUIElement>    detailsText;
+    std::shared_ptr<UltraCanvasUIElement>    detailsPaletteCaption;
+    std::shared_ptr<UltraCanvasUIElement>    detailsPalette;
+    std::string detailsMarkdown;   // what detailsText shows for the current file
+    std::string detailsPaletteText; // the caption's text with no swatch under the pointer
     MediaKind activeKind = MediaKind::Image;
 
     // Details text for the current UCD container (empty when the current file
