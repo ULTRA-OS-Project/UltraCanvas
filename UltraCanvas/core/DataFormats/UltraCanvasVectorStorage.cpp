@@ -1,7 +1,8 @@
 // UltraCanvasVectorStorage.cpp
 // Implementation of the Vector Graphics Storage System for UltraCanvas
 // Version: 1.1.3 - VectorText::GetBoundingBox counts every line of a text set over several
-//                  (a span with a Position of its own starts one), in characters, not bytes
+//                  (a span with a Position of its own starts one), anchored each on its own,
+//                  in characters, not bytes, with their letter spacing
 // Last Modified: 2026-11-03
 // Author: UltraCanvas Framework
 
@@ -748,17 +749,34 @@ std::vector<Point2Dd> VectorPath::Flatten(float tolerance) const {
 // VectorText
 Rect2Dd VectorText::GetBoundingBox() const {
     // An estimate (no font engine here): each character is taken as 0.6 of
-    // its span's size wide, each line 1.2 of it tall from an ascent of one
-    // size above the baseline. A span with a Position of its own starts a
-    // line there (a text typed over several lines keeps one span a line
-    // and more), so every line counts, not the first one stretched by the
+    // its span's size wide plus its letter spacing, each line 1.2 of the
+    // size tall from an ascent of one size above the baseline. A span with
+    // a Position of its own starts a chunk there - a line of a text set over
+    // several - which the anchor places on its own start, as the renderer
+    // does; so every line counts, not the first one stretched by the
     // others' characters.
     auto glyphs = [](const std::string& s) {
         size_t n = 0;
         for (unsigned char c : s) if ((c & 0xC0) != 0x80) ++n;
         return n;
     };
-    Point2Dd pen = Position;
+    struct Piece { double x, y, width, size; };
+    struct Chunk { Point2Dd start; std::vector<Piece> pieces; double width = 0; };
+    std::vector<Chunk> chunks(1);
+    chunks[0].start = Position;
+    for (const auto& span : Spans) {
+        if (span.Position.has_value()) {
+            if (!chunks.back().pieces.empty()) chunks.emplace_back();
+            chunks.back().start = *span.Position;
+        }
+        const float size = span.Style.FontSize > 0 ? span.Style.FontSize : BaseStyle.FontSize;
+        const double n = static_cast<double>(glyphs(span.Text));
+        const double width = n * (size * 0.6 + span.Style.LetterSpacing);
+        Chunk& c = chunks.back();
+        c.pieces.push_back({c.width, c.start.y, std::max(0.0, width), size});
+        c.width += width;
+    }
+
     bool any = false;
     double x0 = 0, y0 = 0, x1 = 0, y1 = 0;
     auto add = [&](double x, double y, double w, double h) {
@@ -766,12 +784,12 @@ Rect2Dd VectorText::GetBoundingBox() const {
         x0 = std::min(x0, x); y0 = std::min(y0, y);
         x1 = std::max(x1, x + w); y1 = std::max(y1, y + h);
     };
-    for (const auto& span : Spans) {
-        const float size = span.Style.FontSize > 0 ? span.Style.FontSize : BaseStyle.FontSize;
-        if (span.Position.has_value()) pen = *span.Position;
-        const double width = static_cast<double>(glyphs(span.Text)) * size * 0.6;
-        add(pen.x, pen.y - size, width, size * 1.2);
-        pen.x += width;
+    for (const auto& c : chunks) {
+        double shift = 0;
+        if (BaseStyle.Anchor == TextAnchor::Middle) shift = -c.width / 2.0;
+        else if (BaseStyle.Anchor == TextAnchor::End) shift = -c.width;
+        for (const auto& p : c.pieces)
+            add(c.start.x + shift + p.x, p.y - p.size, p.width, p.size * 1.2);
     }
     if (!any) add(Position.x, Position.y - BaseStyle.FontSize, 0, BaseStyle.FontSize * 1.2);
 

@@ -9,7 +9,9 @@
 // to it and the application exits with the last of them.
 // Version: 1.15.0 - text is typed on the page: an UltraCanvasRichTextEdit over the canvas at
 //                   its zoom, in the text's font and colour, edits a new or a clicked text in
-//                   place (BeginTextEdit / CommitTextEdit); the Text dialog is gone
+//                   place (BeginTextEdit / CommitTextEdit); the Text dialog is gone; the text
+//                   bar (font, size, bold, italic, underline, strikethrough, alignment, line
+//                   and letter spacing) in the transform bar's place with the Text tool
 // Version: 1.14.0 - menus, toolbar, palette and shortcuts built from one command registry
 //                   per window (ArtCreatorCommands.cpp): the menu and the toolbars follow
 //                   the commands' state, the toolbar and palette are groups the user shows,
@@ -59,6 +61,7 @@
 #include "UltraCanvasSpinner.h"
 #include "UltraCanvasReferencePointPicker.h"
 #include "UltraCanvasRichTextEdit.h"
+#include "UltraCanvasSegmentedControl.h"
 #include "UltraCanvasVectorCanvas.h"
 #include "DataFormats/UltraCanvasVectorStorage.h"
 #include "DataFormats/UltraCanvasVectorEdit.h"
@@ -315,6 +318,7 @@ private:
         VectorStorage::Matrix3x3 toDocument;                 // the text's own space to the page's
         bool fillChanged = false;                            // a colour was picked while typing
         Rect2Dd viewRect;                                    // the editor, in the canvas's view coordinates
+        bool arming = false;                                 // an empty line is being armed
     };
     // Starts typing: into `text` when given, else a new text whose first
     // baseline starts at the document point.
@@ -333,9 +337,28 @@ private:
     RichTextEditStyle TextEditorStyle() const;
     // A dashed frame round the words being typed, over the canvas.
     void DrawTextEditFrame(IRenderContext* ctx);
-    // A Text option changed: applied to the whole of the text being typed,
-    // else to the selected texts as one undo step.
-    void ApplyTextOption(const std::string& option);
+    // The text bar, in the transform bar's place while the Text tool is
+    // active: Font (every installed family), Size, Bold, Italic, Underline,
+    // Strikethrough, Align left / centre / right, Line spacing and Letter
+    // spacing. While a text is typed, the character attributes (font, size,
+    // bold, italic, underline, strikethrough) go to the selected words - or,
+    // with none selected, to the whole text - and the others to the whole
+    // text; with no text being typed, everything goes to the selected texts
+    // as one undo step. Each choice is also what the next new text starts
+    // in.
+    void BuildTextBar();
+    // Shows the text bar or the transform bar, for the active tool.
+    void ShowTextBar(bool show);
+    // The bar shows the attributes at the caret (or of the selected words)
+    // of the text being typed, else of the first selected text, else the
+    // ones a new text starts in.
+    void SyncTextBar();
+    // An attribute of the bar changed ("font", "size", "bold", "italic",
+    // "underline", "strike", "align", "line-spacing", "letter-spacing").
+    void ApplyTextAttribute(const std::string& attribute);
+    // The editor's paragraphs set as the text will be: each line exactly
+    // the text's line spacing apart, aligned as its anchor says.
+    void StampEditorParagraphs();
     // Re-selects elements by Id after a history edit replaced them.
     void Reselect(const std::vector<std::string>& ids);
 
@@ -418,6 +441,13 @@ private:
     // Measures text as the drawing's renderer does (baselines, line boxes,
     // widths), so the editor sits where the text will.
     std::unique_ptr<IRenderContext>             textMeasure;
+    std::shared_ptr<UltraCanvasContainer>       textBar;
+    std::shared_ptr<UltraCanvasDropdown>        textFontBox;
+    std::shared_ptr<UltraCanvasSpinner>         textSizeBox, textLineSpacingBox, textLetterSpacingBox;
+    std::shared_ptr<UltraCanvasButton>          textBoldButton, textItalicButton, textUnderlineButton, textStrikeButton;
+    std::shared_ptr<UltraCanvasSegmentedControl> textAlignSwitch;
+    std::vector<std::string>                    textFamilies;   // the Font list's names, in its order
+    bool syncingTextBar = false;
 
     // in-app clipboard: clones of the copied elements
     std::vector<std::shared_ptr<VectorStorage::VectorElement>> clipboard;

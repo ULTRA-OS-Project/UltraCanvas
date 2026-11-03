@@ -4,8 +4,8 @@
 // feather, zoom, push - the line gallery's named choices, and the option
 // widget helpers they share with the window.
 // Version: 1.7.0 - the Text tool types on the page (requestText at a point or in the clicked
-//                 text) and its options apply live (textOptionChanged), Italic among them;
-//                 a double-click on a text with the Selector opens it for typing
+//                 text), its options on the window's text bar instead of a card; a
+//                 double-click on a text with the Selector opens it for typing
 // Version: 1.6.1 - the icon bars' dividers take their room from the toolbar's groupSpacing
 // Version: 1.6.0 - the Selector turns the selection by the rotation handle (the frame hidden
 //                 while it turns, the angle in the status line), a Dial / Stem switch for
@@ -1457,8 +1457,8 @@ protected:
 class TextTool : public ArtTool {
 public:
     TextTool() : ArtTool(ArtToolId::Text, "Text", "text.svg", 'T',
-                         "Click on the page and type; click a text to edit it. "
-                         "Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes") {}
+                         "Click on the page and type, or click a text to edit it; the bar above sets its font, "
+                         "size, style, alignment and spacing. Escape, Ctrl+Enter or a click outside finishes") {}
     UCMouseCursor Cursor() const override { return UCMouseCursor::Text; }
     void OnPress(ArtToolContext& ctx, const VectorPointerEvent& e) override {
         if (!ctx.requestText) return;
@@ -1469,18 +1469,8 @@ public:
         }
         ctx.requestText(e.snapped, nullptr);
     }
-    void BuildOptions(ArtToolContext& ctx, UltraCanvasContainer& panel, const std::function<void()>&) override {
-        ArtToolOptions& o = *ctx.options;
-        auto notify = ctx.textOptionChanged;
-        auto tell = [notify](const char* option) { if (notify) notify(option); };
-        AddDropdown(panel, "ac-text-font", "Font", { "Sans", "Serif", "Monospace" },
-                    o.textFont == "Serif" ? 1 : o.textFont == "Monospace" ? 2 : 0,
-                    [&o, tell](int i) { o.textFont = i == 1 ? "Serif" : i == 2 ? "Monospace" : "Sans"; tell("font"); });
-        AddSliderRow(panel, "ac-text-size", "Size", 6, 200, static_cast<float>(o.textSize), 1, true,
-                     [&o, tell](float v) { o.textSize = static_cast<int>(v); tell("size"); });
-        AddCheckbox(panel, "ac-text-bold", "Bold", o.textBold, [&o, tell](bool v) { o.textBold = v; tell("bold"); });
-        AddCheckbox(panel, "ac-text-italic", "Italic", o.textItalic, [&o, tell](bool v) { o.textItalic = v; tell("italic"); });
-    }
+    // Its options are on the window's text bar, which shows while the tool
+    // is active: no Tool Options card.
 };
 
 // ===========================================================================

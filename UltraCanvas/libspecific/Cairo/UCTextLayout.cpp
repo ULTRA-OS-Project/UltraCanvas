@@ -1,5 +1,6 @@
 // libspecific/Cairo/UCTextLayout.cpp
 // Pango text layout wrapper for UltraCanvas Framework
+// Version: 1.1.8 - CreateLetterSpacing takes fractional pixels
 // Version: 1.1.7 - GetCapHeight measures the font the text starts in, font
 //                  attributes included, not the layout's own font alone
 // Version: 1.1.6 - FontStyle::ToFontDesc names the Normal slant and weight (-Wswitch)
@@ -7,13 +8,14 @@
 //                  characters (Pango's own default left it whole, running
 //                  past the width it was given)
 // Version: 1.1.4
-// Last Modified: 2026-10-24
+// Last Modified: 2026-11-03
 // V1.1.4: text that is not valid UTF-8 is repaired before it reaches Pango,
 //   which would otherwise log "Invalid UTF-8 string passed to
 //   pango_layout_set_text()" and drop the string.
 // Author: UltraCanvas Framework
 
 #include "UCTextLayout.h"
+#include <cmath>
 #include <unordered_map>
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasDebug.h"
@@ -279,8 +281,9 @@ namespace UltraCanvas {
             return std::make_unique<UCTextAttribute>(pango_attr_background_alpha_new(alpha));
         }
 
-        std::unique_ptr<ITextAttribute> CreateLetterSpacing(int spacingInPixels) {
-            return std::make_unique<UCTextAttribute>(pango_attr_letter_spacing_new(spacingInPixels * PANGO_SCALE));
+        std::unique_ptr<ITextAttribute> CreateLetterSpacing(double spacingInPixels) {
+            return std::make_unique<UCTextAttribute>(pango_attr_letter_spacing_new(
+                static_cast<int>(std::lround(spacingInPixels * PANGO_SCALE))));
         }
 
         std::unique_ptr<ITextAttribute> CreateRise(int riseInPixels) {

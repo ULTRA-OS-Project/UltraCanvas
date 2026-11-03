@@ -10,7 +10,8 @@
 // survives tool switches, and ArtToolContext is what the window lets a
 // tool reach.
 // Version: 1.7.0 - text is typed on the page: ArtToolContext::requestText starts typing at a
-//                  point or in a text, textOptionChanged; ArtToolOptions::textItalic
+//                  point or in a text; ArtToolOptions' text attributes are the window's text
+//                  bar's (italic, underline, strikethrough, alignment, line and letter spacing)
 // Version: 1.6.0 - ArtToolContext::setRotationHandleStyle
 // Version: 1.5.0 - ArtOptionWidgets::AddSection; AddSwitch takes icons
 // Version: 1.4.0 - ArtToolContext::iconPath; ArtOptionWidgets::AddIconBar and AddSwitch
@@ -78,10 +79,16 @@ struct ArtToolOptions {
     float lineArrowScale = 1.0f;
     int   lineProfile = 0;             // 0 none, 1 taper end, 2 taper start, 3 taper both, 4 bulge
     int   lineBrush = 0;               // 0 none, 1 dots, 2 dashes, 3 hearts
+    // The text bar: what a new text is set in, and what the bar shows.
     std::string textFont = "Sans";
-    int   textSize = 24;
+    float textSize = 24.0f;            // points (the drawing's units)
     bool  textBold = false;
     bool  textItalic = false;
+    bool  textUnderline = false;
+    bool  textStrike = false;
+    int   textAlign = 0;               // 0 left, 1 centre, 2 right (VectorStorage::TextAnchor)
+    float textLineSpacing = 120.0f;    // % of the size from one baseline to the next
+    float textLetterSpacing = 0.0f;    // points added between letters
 };
 
 // The line gallery's named choices, shared by the Line panel and the
@@ -112,10 +119,9 @@ struct ArtToolContext {
     // The text tool asks the window to start typing on the page: into
     // `text` when one was clicked, else a new text whose first line's
     // baseline starts at the document point.
+    // Its font, size, style, alignment and spacing are set on the window's
+    // text bar.
     std::function<void(const Point2Dd&, const std::shared_ptr<VectorStorage::VectorText>&)> requestText;
-    // A Text option changed ("font", "size", "bold", "italic"): the window
-    // applies it to the text being typed, or to the selected texts.
-    std::function<void(const std::string&)> textOptionChanged;
     // A tool wants another tool (the selector hands a double-clicked path
     // to the shape editor).
     std::function<void(ArtToolId)> selectTool;
