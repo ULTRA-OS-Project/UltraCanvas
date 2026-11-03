@@ -35,6 +35,7 @@
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasSlider.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <algorithm>
 #include <cmath>
@@ -1457,8 +1458,8 @@ protected:
 class TextTool : public ArtTool {
 public:
     TextTool() : ArtTool(ArtToolId::Text, "Text", "text.svg", 'T',
-                         "Click on the page and type, or click a text to edit it; the bar above sets its font, "
-                         "size, style, alignment and spacing. Escape, Ctrl+Enter or a click outside finishes") {}
+                         Tr("Click on the page and type, or click a text to edit it; the bar above sets its font, "
+                            "size, style, alignment and spacing. Escape, Ctrl+Enter or a click outside finishes")) {}
     UCMouseCursor Cursor() const override { return UCMouseCursor::Text; }
     void OnPress(ArtToolContext& ctx, const VectorPointerEvent& e) override {
         if (!ctx.requestText) return;

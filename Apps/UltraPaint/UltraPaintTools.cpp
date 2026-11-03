@@ -25,6 +25,7 @@
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasSlider.h"
 #include "UltraCanvasSpinner.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <algorithm>
 #include <cmath>
@@ -1249,9 +1250,9 @@ private:
 class TextTool : public PaintTool {
 public:
     TextTool() : PaintTool(PaintToolId::Text, "Text", "text.svg", 'T',
-                           "Click and type, or drag a box for the lines to wrap in; click a text to edit it. "
-                           "The bar above sets font, size, style, alignment and spacing; the colour is the "
-                           "foreground colour. Escape or a click outside finishes") {}
+                           Tr("Click and type, or drag a box for the lines to wrap in; click a text to edit it. "
+                              "The bar above sets font, size, style, alignment and spacing; the colour is the "
+                              "foreground colour. Escape or a click outside finishes")) {}
     UCMouseCursor Cursor() const override { return UCMouseCursor::Text; }
     void OnPress(PaintToolContext&, const PaintPointerEvent& e) override {
         dragging = true;

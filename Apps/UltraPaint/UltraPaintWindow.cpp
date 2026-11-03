@@ -84,6 +84,7 @@
 #include "UltraCanvasVectorRaster.h"
 #include "UltraCanvasModelRaster.h"
 #include "UltraCanvasDebug.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 #include "../dialogs/UltraCanvasCurvesDialog.h"
 #include "../dialogs/UltraCanvasModelViewDialog.h"
 #ifdef HAS_LIBVIPS
@@ -2291,10 +2292,12 @@ void UltraPaintWindow::ApplyTextOption(const std::string& option) {
     content.document = words;
     std::string error;
     auto rendered = RenderTextLayerLike(*layer, content, error);
-    static const std::map<std::string, std::string> labels = {
-        { "font", "Text Font" }, { "size", "Text Size" }, { "bold", "Text Bold" }, { "italic", "Text Italic" },
-        { "underline", "Text Underline" }, { "strike", "Text Strikethrough" }, { "colour", "Text Colour" },
-        { "align", "Text Alignment" }, { "line-spacing", "Line Spacing" }, { "letter-spacing", "Letter Spacing" } };
+    const std::map<std::string, std::string> labels = {
+        { "font", Tr("Text Font") }, { "size", Tr("Text Size") }, { "bold", Tr("Text Bold") },
+        { "italic", Tr("Text Italic") }, { "underline", Tr("Text Underline") },
+        { "strike", Tr("Text Strikethrough") }, { "colour", Tr("Text Colour") },
+        { "align", Tr("Text Alignment") }, { "line-spacing", Tr("Line Spacing") },
+        { "letter-spacing", Tr("Letter Spacing") } };
     if (rendered) document->ReplaceLayer(index, rendered, labels.at(option));
     else if (statusHint) statusHint->SetText("Could not draw the text: " + error);
 }

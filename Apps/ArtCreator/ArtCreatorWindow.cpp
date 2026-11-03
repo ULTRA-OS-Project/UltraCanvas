@@ -62,6 +62,7 @@
 #include "UltraCanvasTextFormatBar.h"
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasDebug.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <algorithm>
 #include <cmath>
@@ -2466,8 +2467,8 @@ void ArtCreatorWindow::BeginTextEdit(const Point2Dd& docPoint, const std::shared
     SyncTextBar();
     textEditor->SetFocus(true);
     if (statusHint) {
-        statusHint->SetText(std::string(text ? "Editing the text" : "Typing a new text") +
-                            ": Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes");
+        statusHint->SetText(text ? Tr("Editing the text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes")
+                                 : Tr("Typing a new text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes"));
     }
     canvas->Refresh();
 }
@@ -2593,13 +2594,13 @@ void ArtCreatorWindow::CommitTextEdit() {
         // Nothing typed: no text. An edited text emptied is deleted.
         if (edited) {
             const std::string id = session->elementId;
-            history.Record("Delete Text", [&]() {
+            history.Record(Tr("Delete Text"), [&]() {
                 if (auto e = document->FindElementById(id))
                     if (auto parent = e->Parent.lock()) parent->RemoveChild(id);
             });
-            if (statusHint) statusHint->SetText("The text was emptied, so it was deleted");
+            if (statusHint) statusHint->SetText(Tr("The text was emptied, so it was deleted"));
         } else if (statusHint) {
-            statusHint->SetText("Nothing was typed");
+            statusHint->SetText(Tr("Nothing was typed"));
         }
         return;
     }
@@ -2611,7 +2612,7 @@ void ArtCreatorWindow::CommitTextEdit() {
             return;
         }
         const std::string id = session->elementId;
-        history.Record("Edit Text", [&]() {
+        history.Record(Tr("Edit Text"), [&]() {
             auto e = document->FindElementById(id);
             auto* t = e ? dynamic_cast<VectorText*>(e.get()) : nullptr;
             if (!t) return;
@@ -2620,7 +2621,7 @@ void ArtCreatorWindow::CommitTextEdit() {
             t->Spans = spans;
         });
         Reselect({id});
-        if (statusHint) statusHint->SetText("Changed the text");
+        if (statusHint) statusHint->SetText(Tr("Changed the text"));
         return;
     }
 
@@ -2630,7 +2631,7 @@ void ArtCreatorWindow::CommitTextEdit() {
     const std::string id = text->Id;
     history.Record("Text", [&]() { if (auto layer = ActiveLayer()) layer->AddChild(text); });
     Reselect({id});
-    if (statusHint) statusHint->SetText("Added the text: click it with the Text tool, or double-click it, to edit it");
+    if (statusHint) statusHint->SetText(Tr("Added the text: click it with the Text tool, or double-click it, to edit it"));
 }
 
 // ===========================================================================
@@ -2788,10 +2789,11 @@ void ArtCreatorWindow::ApplyTextAttribute(const std::string& attribute) {
     for (const auto& e : selection->Elements())
         if (e && e->Type == VectorElementType::Text) ids.push_back(e->Id);
     if (ids.empty()) return;
-    static const std::map<std::string, std::string> labels = {
-        { "font", "Text Font" }, { "size", "Text Size" }, { "bold", "Text Bold" }, { "italic", "Text Italic" },
-        { "underline", "Text Underline" }, { "strike", "Text Strikethrough" }, { "align", "Text Alignment" },
-        { "line-spacing", "Line Spacing" }, { "letter-spacing", "Letter Spacing" } };
+    const std::map<std::string, std::string> labels = {
+        { "font", Tr("Text Font") }, { "size", Tr("Text Size") }, { "bold", Tr("Text Bold") },
+        { "italic", Tr("Text Italic") }, { "underline", Tr("Text Underline") },
+        { "strike", Tr("Text Strikethrough") }, { "align", Tr("Text Alignment") },
+        { "line-spacing", Tr("Line Spacing") }, { "letter-spacing", Tr("Letter Spacing") } };
     const auto label = labels.find(attribute);
     if (label == labels.end()) return;
     const auto all = selection->Ids();

@@ -15,6 +15,7 @@
 #include "UltraCanvasSeparator.h"
 #include "UltraCanvasSpinner.h"
 #include "UltraCanvasUtils.h"           // NormalizePath
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <algorithm>
 
@@ -122,7 +123,7 @@ void UltraCanvasTextFormatBar::Build(float height) {
         AddChild(s);
         return s;
     };
-    sizeBox = field("size", 84, 1, 2000, 1, 1, " pt", "Size");
+    sizeBox = field("size", 84, 1, 2000, 1, 1, " pt", Tr("Size"));
     sizeBox->onValueChanged = [this](double v) {
         if (showing) return;
         format.size = static_cast<float>(v);
@@ -152,13 +153,13 @@ void UltraCanvasTextFormatBar::Build(float height) {
         AddChild(b);
         return b;
     };
-    boldButton = toggle("bold", "bold.svg", "Bold (Ctrl+B while typing)",
+    boldButton = toggle("bold", "bold.svg", Tr("Bold (Ctrl+B while typing)"),
                         [this](bool on) { format.bold = on; }, TextFormatAttribute::Bold);
-    italicButton = toggle("italic", "italic.svg", "Italic (Ctrl+I while typing)",
+    italicButton = toggle("italic", "italic.svg", Tr("Italic (Ctrl+I while typing)"),
                           [this](bool on) { format.italic = on; }, TextFormatAttribute::Italic);
-    underlineButton = toggle("underline", "underline.svg", "Underline (Ctrl+U while typing)",
+    underlineButton = toggle("underline", "underline.svg", Tr("Underline (Ctrl+U while typing)"),
                              [this](bool on) { format.underline = on; }, TextFormatAttribute::Underline);
-    strikeButton = toggle("strike", "strike.svg", "Strikethrough",
+    strikeButton = toggle("strike", "strike.svg", Tr("Crossed out (strikethrough)"),
                           [this](bool on) { format.strikethrough = on; }, TextFormatAttribute::Strikethrough);
     rule();
 
@@ -174,7 +175,7 @@ void UltraCanvasTextFormatBar::Build(float height) {
     alignSwitch->AddSegment("", IconPath("align-centre.svg"));
     alignSwitch->AddSegment("", IconPath("align-right.svg"));
     alignSwitch->SetSelectedIndex(0);
-    alignSwitch->SetTooltip("Alignment: the lines start at, centre on or end at the text's point");
+    alignSwitch->SetTooltip(Tr("Alignment: the lines start at, centre on or end at the text's point"));
     alignSwitch->SetElementSize(Size2Df(108, kButton));
     alignSwitch->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     alignSwitch->onSegmentSelected = [this](int index) {
@@ -194,17 +195,17 @@ void UltraCanvasTextFormatBar::Build(float height) {
         AddChild(image);
         return image;
     };
-    lineSpacingIcon = icon("line", "line-spacing.svg", "Line spacing");
+    lineSpacingIcon = icon("line", "line-spacing.svg", Tr("Line spacing"));
     lineSpacingBox = field("line", 84, 10, 1000, 0, 5, " %",
-                           "Line spacing: from one baseline to the next, in % of the size");
+                           Tr("Line spacing: from one baseline to the next, in % of the size"));
     lineSpacingBox->onValueChanged = [this](double v) {
         if (showing) return;
         format.lineSpacing = static_cast<float>(v);
         Changed(TextFormatAttribute::LineSpacing);
     };
-    letterSpacingIcon = icon("letter", "letter-spacing.svg", "Letter spacing");
+    letterSpacingIcon = icon("letter", "letter-spacing.svg", Tr("Letter spacing"));
     letterSpacingBox = field("letter", 84, -100, 1000, 1, 0.5, " pt",
-                             "Letter spacing (tracking): added between every two letters; below 0 sets them closer");
+                             Tr("Letter spacing (tracking): added between every two letters; below 0 sets them closer"));
     letterSpacingBox->onValueChanged = [this](double v) {
         if (showing) return;
         format.letterSpacing = static_cast<float>(v);
@@ -236,7 +237,7 @@ void UltraCanvasTextFormatBar::FillFontList() {
     if (!missingFamily.empty()) {
         DropdownItem item(missingFamily, missingFamily);
         item.fontFamily = missingFamily;
-        item.tooltip = "Not installed on this computer: drawn in a substitute";
+        item.tooltip = Tr("Drawn in a substitute: this font is not installed on this computer");
         fontBox->AddItem(item);
     }
     for (const auto& family : families) {
@@ -244,7 +245,7 @@ void UltraCanvasTextFormatBar::FillFontList() {
         item.fontFamily = family;          // shown in itself
         fontBox->AddItem(item);
     }
-    fontBox->SetTooltip("Font (" + std::to_string(families.size()) + " installed) - type its first letters to find one");
+    fontBox->SetTooltip(TrF("Font ({0} installed) - type its first letters to find one", families.size()));
     showing = false;
 }
 

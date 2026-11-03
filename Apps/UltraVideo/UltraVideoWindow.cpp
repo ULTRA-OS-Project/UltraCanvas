@@ -23,6 +23,7 @@
 #include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasRasterText.h"
 #include "UltraCanvasVideoTimelineModel.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <algorithm>
 #include <functional>
@@ -2301,7 +2302,7 @@ void UltraVideoWindow::BeginTitleEdit(int index) {
     ShowTextBar();
     RefreshInspector();
     titleEditor_->SetFocus(true);
-    Message("Typing the title on the frame: Escape, Ctrl+Enter or a click outside puts it in the video");
+    Message(Tr("Typing the title on the frame: Escape, Ctrl+Enter or a click outside puts it in the video"));
 }
 
 void UltraVideoWindow::PlaceTitleEditor() {
@@ -2410,8 +2411,9 @@ void UltraVideoWindow::ApplyTitleAttribute(TextFormatAttribute attribute, const 
     // No title being typed: the selected title, as one undo step
     const int index = document_.TitleIndex(selectedClip_);
     if (index < 0) return;
-    static const char* labels[] = { "Title Font", "Title Size", "Title Bold", "Title Italic", "Title Underline",
-                                    "Title Strikethrough", "Title Alignment", "Title Line Spacing", "Title Letter Spacing" };
+    const std::string labels[] = { Tr("Title Font"), Tr("Title Size"), Tr("Title Bold"), Tr("Title Italic"),
+                                   Tr("Title Underline"), Tr("Title Strikethrough"), Tr("Title Alignment"),
+                                   Tr("Title Line Spacing"), Tr("Title Letter Spacing") };
     const bool slider = attribute == TextFormatAttribute::Size || attribute == TextFormatAttribute::LineSpacing ||
                         attribute == TextFormatAttribute::LetterSpacing;
     Edit(labels[static_cast<int>(attribute)], [index, attribute, f, h](Document& d) {
@@ -2424,7 +2426,7 @@ void UltraVideoWindow::ApplyTitleAttribute(TextFormatAttribute attribute, const 
             t.look.richText = TextOverlayWordsToHtml(*words);
             t.look.richTextHeight = h;
         }
-    }, slider ? std::string("title-bar-") + labels[static_cast<int>(attribute)] : std::string());
+    }, slider ? "title-bar-" + std::to_string(static_cast<int>(attribute)) : std::string());
     SyncTextBar();
 }
 
@@ -2457,17 +2459,17 @@ void UltraVideoWindow::CommitTitleEdit() {
         RefreshPreview();
         RequestFrame();
         ShowTextBar();
-        Message("The title is unchanged");
+        Message(Tr("The title is unchanged"));
         return;
     }
     if (plain.find_first_not_of(" \t\r\n") == std::string::npos) {
-        Message("The title was emptied: it keeps its text (delete the title on its lane to remove it)");
+        Message(Tr("The title was emptied: it keeps its text (delete the title on its lane to remove it)"));
         RefreshPreview();
         RequestFrame();
         ShowTextBar();
         return;
     }
-    Edit("Edit Title", [id, span](Document& d) {
+    Edit(Tr("Edit Title"), [id, span](Document& d) {
         const int i = d.TitleIndex(id);
         if (i < 0) return;
         TitleSpan& t = d.titles[static_cast<size_t>(i)];
@@ -2481,7 +2483,7 @@ void UltraVideoWindow::CommitTitleEdit() {
         t.look.letterSpacing = span.look.letterSpacing;
     });
     RequestFrame();
-    Message("The title is in the video");
+    Message(Tr("The title is in the video"));
 }
 
 // ============================================================================
