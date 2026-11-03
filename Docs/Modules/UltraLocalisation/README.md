@@ -176,10 +176,15 @@ python3 scripts/translate_catalogue.py ja --sets Standard base/Video --dry-run
 ```
 
 The editor's drafting button (L4) is this same step. The first drafts of
-the standard and base sets ship in eight languages - `de`, `fr`, `es`,
-`it`, `nl`, `pt`, `ja`, `zh-Hans` - each file marked as a machine draft
-in `@translated-by` until reviewed; the UOS-Settings Language page lists
-a language as soon as its `Standard.json` is there.
+the standard and base sets ship in thirty languages - `de`, `fr`, `es`,
+`it`, `nl`, `pt`, `ja`, `zh-Hans`, and since 2026-11-03 `ru`, `uk`, `pl`,
+`cs`, `sv`, `da`, `nb`, `fi`, `tr`, `el`, `ko`, `zh-Hant`, `ar`, `he`,
+`hu`, `ro`, `hi`, `id`, `vi`, `th`, `ca` and `pt-BR` - each file marked
+as a machine draft in `@translated-by` until reviewed; the UOS-Settings
+Language page lists a language as soon as its `Standard.json` is there.
+`pt-BR` is a regional variant: it holds only the entries whose Brazilian
+wording differs, and everything else comes from `pt` through the
+fallback walk.
 
 The framework's own dialogs - the modal dialogs' buttons and titles, the
 file dialog, the filer widget's menus and messages, the colour, date,

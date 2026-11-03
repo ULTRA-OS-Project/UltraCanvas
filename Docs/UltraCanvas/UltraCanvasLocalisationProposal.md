@@ -20,7 +20,10 @@ are wrapped as their files are touched), and `extract_ui_strings.py`,
 `translate_catalogue.py` driving it per language and set, the first
 drafts of the standard and base sets in de, fr, es, it, nl, pt, ja and
 zh-Hans (machine drafts, marked so until reviewed), and the UOS-Settings
-Language page with the translator's name. L4 onwards are still to do. Revised 2026-11-02: the module is
+Language page with the translator's name; on 2026-11-03 twenty-two more
+drafts followed (ru, uk, pl, cs, sv, da, nb, fi, tr, el, ko, zh-Hant, ar,
+he, hu, ro, hi, id, vi, th, ca, and pt-BR as a variant of pt holding only
+what differs). L4 onwards are still to do. Revised 2026-11-02: the module is
 `UltraLocalisation`, it loads a **standard set** UltraCanvas ships for every
 application, the **base sets** of the application's type (video editing,
 banking, shopping, ...) and the application's **own set** over them, and a
