@@ -1,6 +1,6 @@
 # UltraCanvasPerformanceMatrix — Research & Feature Proposal
 
-**Status:** **Phase 1 and D4 `Cards` are implemented** as
+**Status:** **Phases 1 and 2 are implemented** as
 `UltraCanvasPerformanceMatrix` and `UltraCanvasPerformanceMatrixModel` — see
 [`UltraCanvasPerformanceMatrix.md`](UltraCanvasPerformanceMatrix.md) for the
 guide. The demo's *Performance Matrix* page (`performancematrix`, Info
@@ -31,6 +31,36 @@ How it departs from the plan below, and why:
 * **A cell's badge, like its icon, is a block at the top of the cell** in
   every design, not a corner mark. In `Cards` it is left-aligned, as in image 5.
 
+Phase 2 (2026-11-02) delivered the population: P1–P3, P5, P6, the
+`Count` / `Percent` / `Dots` / `Names` displays with the §7.2 overflow,
+`ByCount`, L4 level bars, row and column totals, item tooltips and clicks
+(I1, I3), the group legend, `SampleTeam()` and `SampleTargetDistribution()`,
+and a Calibration variant on the demo page. How it departs from the plan:
+
+* **Counts take the place of a hidden group's people too.** Hiding a group in
+  the legend removes its people from the cells, the counts, the shares and
+  `ByCount` alike. A share that still counted hidden people would no longer
+  add up to what the cells show.
+* **Deviation from a target is shown as numbers, not colour:** "14% / 10%".
+  Colour is never the only signal (§7.4), and the two numbers already say
+  which way the cell is off.
+* **The population has its own band in the cell.** Dots and names take the
+  lower part of the cell, and the cell's text is fitted into what is left; a
+  count or share is a chip in the top corner, and the text starts below it.
+  Fitting text and people into one area would let neither be read.
+* **"+N" takes slots of its own:** the last three dot slots, or the last name
+  slot. Every person is either drawn or counted, never both and never
+  neither.
+* **Anonymised keeps the dots.** Dots name no one, so they stay; names turn
+  into counts, and no person answers the pointer or a click, so no tooltip can
+  give a name away.
+* **`ByCount` uses the light 8–80 % of its colour map**, so an empty cell is
+  near white and text reads on the fullest one.
+* **Row and column totals (P3) are a line under each level label,** "n = 12",
+  switched on with `SetShowTotals`.
+* **An item has no avatar icon.** A dot or a name carries its group's colour.
+  An icon per person would have to fit a 13 px dot slot to be any use, and no
+  reference image asks for one.
 **Revision 2 (2026-10-24): scope correction.** Reference image 4, the
 importance–performance matrix, is **out of scope for this element**. It comes
 from operations strategy (Slack 1994), not from talent management. It rates
@@ -350,7 +380,6 @@ namespace UltraCanvas {
         std::string id;
         std::string label;                 // "J. Smith", "Delivery speed"
         std::string group;                 // team, department: legend and filter
-        std::string iconPath;              // avatar or symbol
         Color       color = Color(0, 0, 0, 0);
         std::string note;
 
@@ -389,7 +418,7 @@ namespace UltraCanvas {
 
         const PerformanceCell* FindCell(int row, int col) const;
         PerformanceCellRef     CellOf(const PerformanceMatrixItem& item) const;
-        std::vector<int>       CountsPerCell() const;               // row-major
+        std::vector<int>       CountsPerCell(const std::vector<std::string>& hiddenGroups = {}) const;   // row-major
         std::vector<std::string> Validate() const;   // problems; empty = valid
     };
 

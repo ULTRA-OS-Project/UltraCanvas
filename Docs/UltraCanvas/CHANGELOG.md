@@ -1,3 +1,102 @@
+#### 2026-11-03 *0.9.469*
+- **JPEG XL in every build: the framework's own loader and saver on libjxl.**
+  A libvips built without libjxl (Ubuntu 22.04's) read and wrote no `.jxl`,
+  and ImageFormatsTest had to excuse that one runner. `VipsJxlPlugin`
+  (`libspecific/Cairo/`) now registers `jxlload`, `jxlload_buffer`,
+  `jxlload_source`, `jxlsave`, `jxlsave_buffer` and `jxlsave_target` - the
+  names libvips gives its own, so `UCImageRaster`, the export encoder and
+  the format inventory need no other spelling - wherever libvips has none,
+  on the libjxl CMake finds (`HAS_LIBJXL`). The loader takes the still
+  picture at 8 or 16 bits a channel, grey or RGB, with or without alpha;
+  the saver writes 8-bit RGB or RGBA with libvips' `Q`, `distance`,
+  `effort` and `lossless` arguments. A libvips with its own JPEG XL keeps
+  it; `UC_VIPS_JXL_PLUGIN=force` registers the plug-in above it, which is
+  how it is tested on a machine that has both. CI's ubuntu-22.04 rows
+  build libjxl 0.7.0 - Ubuntu 24.04's version, the one the lossy test is
+  calibrated on - from source (cached per runner) and install it under
+  `/usr/local`, so their packages carry JPEG XL for the first time, and
+  the JPEG XL test runs on every row. `libjxl-dev` joins the dependency
+  lists.
+- **The Linux packages carry a current libheif without x265.** CI's
+  ubuntu-22.04 rows, whose libheif is 1.12 with the GPL x265 linked in,
+  build libheif 1.19.8 from source the way the Windows row does: HEVC and
+  AV1 decoding (libde265, dav1d, aom), AV1 encoding (aom), JPEG and JPEG
+  2000, HEIC encoded by kvazaar (BSD-3-Clause; built from source where
+  apt has no package) and never by x265, the codecs linked in rather than
+  loaded as plug-ins. Installed under `/usr/local` ahead of the distro's,
+  so libvips' `heifload` uses it, and the package closure ships it - the
+  first Linux packages that write HEIC, and without a GPL encoder in the
+  core. The install step fails if the distro's libheif still shadows it,
+  if it links x264 or x265, or if kvazaar is missing; the HEIF/AVIF test
+  now runs on the Linux rows with the Windows row's expectations.
+
+#### 2026-11-03 *0.9.468*
+- **Performance matrix, Phase 2: the population.** People can now be placed
+  into the boxes: `PerformanceMatrixModel::items`, each in an explicit cell or
+  placed by two scores mapped through the axes' level bounds (an explicit cell
+  wins, as a calibration override does). There are counts per cell, row and
+  column, groups, and an optional `targetDistribution`.
+  - `SetPopulationDisplay` shows each cell's people as a count chip (the
+    default), a share against the target ("14% / 10%"), dots in the group
+    colours, or names in columns. "+N" / "+N more" stand in for whoever does
+    not fit, and every person is either drawn or counted.
+  - A group legend at the right shows each department's size. A click hides
+    a group from the cells, the counts, the shares and the colouring.
+  - `SetAnonymised(true)` turns names into counts and stops any person
+    answering the pointer, for a room that should not see names.
+  - New `PerformanceCellColoring::ByCount` colouring, and level colour bars
+    along both axes (`SetShowLevelBars`). `SetShowTotals` adds "n = 12"
+    under each level label.
+  - A person's tooltip gives the name, group, box, levels, scores and note,
+    and `onItemClick` reports a click on a dot or a name.
+
+  The model gains `LevelForScore`, `CellOf`, `CountsPerCell` / `Row` /
+  `Column`, `Groups`, item and target validation, and the invented
+  `SampleTeam()` and `SampleTargetDistribution()`. The demo's Performance
+  Matrix page has a Calibration variant with a People control. Model and
+  render tests cover placement, the "+N" accounting, hiding a group and the
+  anonymised mode.
+
+#### 2026-11-03 *0.9.467*
+- **DemoApp: the Image Performance Test chooses its formats from FileLoader.**
+  A gear button at the right end of the page's toolbar opens a dialog with
+  one switch per bitmap format this build both writes and reads
+  (`UltraCanvasFileLoader::GetSupportedFormats(Bitmap)`, `canSave &&
+  canLoad`, with options from `GetImageExportOptions`), so TGA, PPM, ICO,
+  HDR, EXR, PSD and the rest can be timed too. The choice is kept between
+  runs, in the demo's settings file (`UltraCanvasAppSettings`
+  "UltraCanvasDemo", key `imagePerformance.formats`). JPEG 2000 is now off
+  by default - its encoder stretched the time axis until every other bar was
+  a sliver - and the *Include BMP* checkbox went into the list (BMP stays off
+  by default). Every format is written with its Save settings, as any
+  application saves it. Opening the page shows a popup, *"Upload an image to
+  start the test."*
+- **DemoApp: the Image Performance Test writes QOI and BMP through
+  FileLoader.** They were the last two formats the page encoded and decoded
+  with code of its own (`qoi.h`'s `qoi_write` / `qoi_read`, and a 24bpp BMP
+  writer and reader in the page), against the rule that every file goes
+  through `UltraCanvasFileLoader`. Both now take the path every other format
+  does - `UCImage::Save` with `GetImageExportOptions`, then `UCImage::Load`
+  with a full decode - and are offered where FileLoader writes and reads
+  them. Their timings now include libvips' pipeline, as every other column's
+  always did, so they are not comparable with earlier runs. About 420 lines
+  of page-local codec code are gone.
+
+#### 2026-11-03 *0.9.466*
+- **`UltraCanvasVectorCanvas::ZoomToPageWidth`** (header 1.2.0): zooms so the
+  page's width fills the canvas area less a 24 px margin, centred across,
+  keeping the document point at the middle of the view at the same height,
+  and clamps the view as a scroll does. ArtCreator's Fit Page Width uses it.
+
+#### 2026-11-02 *0.9.465*
+- **Android reads SVG.** The Android dependency build now gives libvips its
+  `rsvg` feature, as on macOS: vcpkg's librsvg 2.40, the last C release (no
+  Rust), with gdk-pixbuf, libcroco and libxml2. Without it every `.svg` -
+  the demo's icons among them - failed on the emulator with "is not a known
+  file format". The core also picks librsvg up through pkg-config for its
+  parse-once SVG documents, as on the desktop. The emulator smoke test now
+  fails when any SVG fails to load.
+
 #### 2026-11-02 *0.9.464*
 - **`UltraCanvasCommandRegistry::FindByShortcut`** finds the command a key
   press names ("Ctrl+Shift+S", however spelt), so a program's key handler runs

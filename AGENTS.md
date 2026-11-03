@@ -359,7 +359,7 @@ enforces this and runs in CI; a genuine exception opts out with
 # HEIC and AVIF decode only with them, and ImageFormatsTest insists)
 sudo apt install build-essential cmake libcairo2-dev libpango1.0-dev \
     libfreetype6-dev libvips-dev libharfbuzz-dev clang \
-    libheif-plugin-libde265 libheif-plugin-aomdec
+    libheif-plugin-libde265 libheif-plugin-aomdec libjxl-dev
 # macOS deps
 brew install cmake cairo pango freetype vips harfbuzz
 

@@ -20,8 +20,11 @@
 //     tile-at-a-time encoder of libvips 8.17+ raced on Windows x64 and ended
 //     the process (see the section).
 //
-// Headless. Needs a libvips built with libjxl: reports SKIP without one -
-// Ubuntu 22.04's libvips (CI's Linux runner) has none, 24.04's has.
+// Headless. Needs JPEG XL in libvips: its own jxlload (a libvips built with
+// libjxl, Ubuntu 24.04's) or the framework's VipsJxlPlugin on a libjxl of
+// its own (CI's ubuntu-22.04 rows, whose libvips has none). Reports SKIP
+// where there is neither.
+// Version: 1.2.1 - runs through the framework's own jxlload / jxlsave where libvips has none
 // Version: 1.2.0 - a large picture saved three times (the jxlsave tile race)
 // Version: 1.1.0 - the JXL-art samples in media/images
 // Version: 1.0.0

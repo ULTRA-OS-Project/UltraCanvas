@@ -7,11 +7,14 @@
     "Each entry is a pkg_check_modules call in UltraCanvas/CMakeLists.txt.",
     "libvips is one of them: it is part of UltraCanvas on every platform, with",
     "the codecs the desktop pipeline reads and writes (JPEG, PNG, WebP, TIFF),",
-    "EXIF and colour management, GIF (read: libvips' built-in decoder) and Netpbm;",
-    "GIF is written by the framework's own saver, ICO and QOI by the framework's",
-    "plug-ins. Deliberately absent: librsvg (Rust + gobject; SVG goes through",
-    "the core's vector renderer), GTK3/X11 (never referenced by the Android",
-    "platform arm), GStreamer (video uses the NDK's MediaCodec). See",
+    "EXIF and colour management, GIF (read: libvips' built-in decoder), Netpbm",
+    "and SVG (rsvg); GIF is written by the framework's own saver, ICO and QOI by",
+    "the framework's plug-ins. SVG is librsvg 2.40, vcpkg's port of the last C",
+    "release - no Rust - with gdk-pixbuf, libcroco and libxml2 behind it, as on",
+    "macOS: without it every .svg icon failed to load ('is not a known file",
+    "format'), and the core also finds it through pkg-config for its parse-once",
+    "SVG documents. Deliberately absent: GTK3/X11 (never referenced by the",
+    "Android platform arm), GStreamer (video uses the NDK's MediaCodec). See",
     "AndroidPortInvestigation.md sections 4.1-4.2."
   ],
   "name": "ultracanvas-android",
@@ -36,6 +39,7 @@
         "nsgif",
         "png",
         "ppm",
+        "rsvg",
         "tiff",
         "webp"
       ]
