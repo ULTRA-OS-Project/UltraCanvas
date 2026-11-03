@@ -14,7 +14,10 @@
 # size in pixels, and the scale the display's density / 160. Run on a
 # high-density display (CI runs one at 420 dpi) that is what catches a
 # backend drawing at the wrong scale, or a pixel short that the compositor
-# then stretches.
+# then stretches. Last, it turns the display to landscape and waits for a
+# frame at the new size that again fills the window: the activity is kept
+# across a rotation (configChanges in the manifest), so the backend must see
+# the window resize in place and rebuild its surface.
 #
 # Whatever happens it leaves the evidence in OUT_DIR: a screenshot, the whole
 # logcat, the crash buffer, and the app's own lines (tags UltraCanvas and
@@ -82,6 +85,42 @@ for ((elapsed = 0; elapsed < timeout; elapsed += 2)); do
                 adb logcat -d -s UltraCanvas:V | grep -m3 '\.svg.*is not a known file format' || true
                 exit 1
             fi
+            # Rotation in place: turn the display to landscape (auto-rotate off,
+            # so nothing turns it back) and wait for a frame at the new size.
+            adb exec-out screencap -p > "$out/screenshot-portrait.png" || true
+            adb shell settings put system accelerometer_rotation 0
+            adb shell settings put system user_rotation 1
+            rotated=""
+            for ((waited = 0; waited < 60; waited += 2)); do
+                rotated="$(adb logcat -d -s UltraCanvas:V | grep -m1 'resized frame presented' || true)"
+                [ -n "$rotated" ] && break
+                if [ -z "$(adb shell pidof "$package" | tr -d '\r')" ]; then
+                    echo "::error::$package died after the display turned to landscape (see logcat-crash.txt)"
+                    adb logcat -d -b crash | tail -40 || true
+                    exit 1
+                fi
+                sleep 2
+            done
+            if [ -z "$rotated" ]; then
+                echo "::error::no frame at a new size within 60s of turning the display to landscape - the app kept its ${frame} frame, so the rotation was not seen as a resize"
+                exit 1
+            fi
+            echo "android-emulator-smoke: ${rotated#*: }"
+            rframe="$(sed -n 's/.*frame presented: \([0-9]*x[0-9]*\).*/\1/p' <<<"$rotated")"
+            rwindow="$(sed -n 's/.*, window \([0-9]*x[0-9]*\).*/\1/p' <<<"$rotated")"
+            if [ "$rframe" != "$rwindow" ]; then
+                echo "::error::after rotating, the frame is ${rframe:-?} but the window is ${rwindow:-?}"
+                exit 1
+            fi
+            if [ "${rframe%x*}" -le "${rframe#*x}" ]; then
+                echo "::error::after turning the display to landscape the frame is ${rframe}, not landscape"
+                exit 1
+            fi
+            if ! grep -q 'with content' <<<"$rotated"; then
+                echo "::error::the first frame after rotating was blank"
+                exit 1
+            fi
+            sleep 3   # the landscape screenshot shows the settled UI
             echo "android-emulator-smoke: PASS"
             exit 0
         fi

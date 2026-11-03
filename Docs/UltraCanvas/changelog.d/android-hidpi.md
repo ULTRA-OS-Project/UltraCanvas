@@ -12,3 +12,12 @@
   fills the window to the pixel at the scale the density gives (density /
   160). The backend's first-frame log line now names the surface size, the
   window size and the scale.
+- **Android: rotating the device in place resizes the window.** On a
+  configuration change or window resize the backend read the window's size
+  with `ANativeWindow_getWidth`, but once it has set a buffer size the window
+  reports that size instead of its own - so the size never seemed to change,
+  and the compositor squeezed the portrait frame into the landscape window.
+  The backend now restores the window's own geometry before reading it, then
+  rebuilds the surface at the new size. The emulator smoke test turns the
+  display to landscape and requires a frame at the new size that fills the
+  window; the backend logs `resized frame presented: ...` for each new size.

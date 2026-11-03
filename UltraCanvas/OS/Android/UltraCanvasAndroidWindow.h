@@ -3,6 +3,7 @@
 // ANativeWindow (lock → row copy → unlockAndPost), following the Windows
 // backend's image-surface + blit model. The "window" always covers the whole
 // surface; desktop window-management calls are accepted no-ops.
+// Version: 1.2.0 - an in-place rotation resizes: the window's own size is re-read
 // Version: 1.1.0 - the surface is the window's real pixel size at any density
 // Version: 1.0.0
 // Last Modified: 2026-11-03
@@ -39,6 +40,11 @@ namespace UltraCanvas {
         // -> 1079 - and the compositor then stretches every frame by it.
         int systemPhysW = 0;
         int systemPhysH = 0;
+        // The surface size of the last frame logged to logcat: the first
+        // frame, and then each frame at a new size (a rotation), for the
+        // emulator smoke test (scripts/android-emulator-smoke.sh).
+        int loggedFrameW = 0;
+        int loggedFrameH = 0;
 
         bool CreateNative() override;
         void DestroyNative() override;
