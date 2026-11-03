@@ -95,13 +95,26 @@ list of what the proposals still wait for:
 
     python3 scripts/check_doc_examples.py --all --strict
     python3 scripts/check_doc_examples.py --all --update-baseline   # after fixing some
+    python3 scripts/check_doc_examples.py --update-baseline Docs/UltraCanvas/XProposal.md
+                                          # that doc's entries replaced, the rest kept
 
 A baseline entry is the doc and the message, without the line, so editing
 elsewhere in a doc does not disturb it, and without the `UltraCanvas::` one
 clang puts before a type and another leaves out, so the clang on the runner
 does not disturb it either. The file only shrinks: fix a doc's findings and
 rewrite it, never add to it to let a new one through.
+
+--update-baseline is the only way to write the file. It ends in a
+signature of its entries, and a file whose entries do not match it - one
+edited by hand, spliced from another run, or merged line by line - fails
+--strict with that message until it is rewritten. The entries are a
+multiset (a message a doc repeats is listed as often), which a hand merge
+loses first.
 """
+# Version: 1.9.0 - the baseline is signed, and --update-baseline is the only
+#                 way to write it: a hand-edited file fails --strict; with
+#                 docs named, --update-baseline replaces their entries and
+#                 keeps the rest, so a partial run can update the file
 # Version: 1.8.0 - a baseline key drops the UltraCanvas:: a clang writes before
 #                 a type's name, so the file holds under clang 14 and 18 alike
 # Version: 1.7.0 - the shared precompiled header is reused by what it was
@@ -132,7 +145,7 @@ rewrite it, never add to it to let a new one through.
 #                 what the doc's own headers and doc-check comment declare;
 #                 `Name (` with a space is prose, not a call
 # Version: 1.0.1 - a snippet's #include "..." is honoured, not only <...>
-# Last Modified: 2026-10-15
+# Last Modified: 2026-11-03
 # Author: UltraCanvas Framework
 
 import argparse
@@ -1702,7 +1715,12 @@ BASELINE_HEADER = """\
 # still waits for. When an API is written, its entries stop being found and
 # the strict run fails until the file is rewritten, in the same change:
 #     python3 scripts/check_doc_examples.py --all --update-baseline
+# or, for the docs changed, with the others' entries kept:
+#     python3 scripts/check_doc_examples.py --update-baseline <doc>...
+# Those are the only ways to write this file: the last line signs the
+# entries, and a file edited by hand fails the strict run.
 """
+SIGNATURE_PREFIX = "# signature: "
 
 
 # The module docs (Docs/Modules/<Name>/*.md) --all checks along with the
@@ -1740,13 +1758,51 @@ def finding_key(doc, message):
     return "%s::%s" % (rel.as_posix(), message)
 
 
+def baseline_signature(keys):
+    """The signature of the entries in their written order: --update-baseline
+    writes it as the file's last line, and load_baseline checks it."""
+    return hashlib.sha256("\n".join(keys).encode("utf-8")).hexdigest()
+
+
+def write_baseline(path, keys):
+    keys = sorted(keys)
+    path.write_text(BASELINE_HEADER + "".join(k + "\n" for k in keys)
+                    + SIGNATURE_PREFIX + baseline_signature(keys) + "\n", encoding="utf-8")
+    return len(keys)
+
+
 def load_baseline(path):
-    keys = collections.Counter()
+    """The entries as a Counter, and None when the file was not written by
+    --update-baseline: no signature, or one that does not match the entries
+    (edited by hand, spliced, merged). A missing file is empty and valid."""
+    keys = []
+    signature = None
     if path.exists():
         for raw in path.read_text(encoding="utf-8").splitlines():
-            if raw.strip() and not raw.lstrip().startswith("#"):
-                keys[raw.strip()] += 1
-    return keys
+            line = raw.strip()
+            if line.startswith(SIGNATURE_PREFIX):
+                signature = line[len(SIGNATURE_PREFIX):].strip()
+            elif line and not line.startswith("#"):
+                keys.append(line)
+        if signature != baseline_signature(keys) or keys != sorted(keys):
+            return None
+    return collections.Counter(keys)
+
+
+def baseline_name(path):
+    """The baseline's path as a message names it: repository-relative where it
+    is in the repository, as given otherwise (a --baseline elsewhere)."""
+    try:
+        return str(path.resolve().relative_to(ROOT))
+    except ValueError:
+        return str(path)
+
+
+HAND_EDITED = ("%s was not written by --update-baseline (its signature does not match its "
+               "entries, or they are out of order): rewrite it with\n"
+               "    python3 scripts/check_doc_examples.py --all --update-baseline\n"
+               "or, for the docs changed, with the others' entries kept,\n"
+               "    python3 scripts/check_doc_examples.py --update-baseline <doc>...")
 
 
 def check_doc(path, args, index, flags, pch):
@@ -1773,7 +1829,8 @@ def main():
     parser.add_argument("--baseline", type=Path, default=BASELINE,
                         help="findings that predate the CI check")
     parser.add_argument("--update-baseline", action="store_true",
-                        help="rewrite the baseline from the docs checked and exit")
+                        help="rewrite the baseline from the docs checked and exit: with --all the whole "
+                             "file, with docs named their entries replaced and the rest kept")
     parser.add_argument("--pch-key", action="store_true",
                         help="print what the shared precompiled header is built from, as a digest, and exit "
                              "(the CI cache key)")
@@ -1798,12 +1855,26 @@ def main():
         results = list(pool.map(lambda d: check_doc(d, args, index, flags, pch), docs))
 
     if args.update_baseline:
-        keys = sorted(finding_key(r["doc"], msg) for r in results for _, msg in r["findings"])
-        args.baseline.write_text(BASELINE_HEADER + "".join(k + "\n" for k in keys), encoding="utf-8")
-        print("check_doc_examples: wrote %d entries to %s" % (len(keys), args.baseline.relative_to(ROOT)))
+        keys = [finding_key(r["doc"], msg) for r in results for _, msg in r["findings"]]
+        if not args.all:
+            # The docs checked replace their own entries; every other doc's
+            # entries are kept as they are, so a partial run can update the
+            # file without a run over the whole tree.
+            checked = {finding_key(r["doc"], "") for r in results}
+            previous = load_baseline(args.baseline)
+            if previous is None:
+                print(HAND_EDITED % baseline_name(args.baseline))
+                return 1
+            keys += [k for k in previous.elements() if k.split("::", 1)[0] + "::" not in checked]
+        count = write_baseline(args.baseline, keys)
+        print("check_doc_examples: wrote %d entries to %s" % (count, baseline_name(args.baseline)))
         return 0
     if args.strict:
-        return report_against_baseline(results, load_baseline(args.baseline), bool(args.all))
+        baseline = load_baseline(args.baseline)
+        if baseline is None:
+            print(HAND_EDITED % baseline_name(args.baseline))
+            return 1
+        return report_against_baseline(results, baseline, bool(args.all))
 
     total = 0
     for r in results:
@@ -1845,7 +1916,8 @@ def report_against_baseline(results, baseline, whole_tree):
         print("%s:%d: %s" % (doc, line, msg) if line else "%s: %s" % (doc, msg))
     if gone:
         print("\n%d baseline entr%s no longer found - the doc has caught up, so remove %s "
-              "in this change (python3 scripts/check_doc_examples.py --all --update-baseline):"
+              "in this change (python3 scripts/check_doc_examples.py --all --update-baseline, "
+              "or --update-baseline <doc>... for the docs changed):"
               % (len(gone), "y is" if len(gone) == 1 else "ies are", "it" if len(gone) == 1 else "them"))
         for key in gone:
             print("  " + key)

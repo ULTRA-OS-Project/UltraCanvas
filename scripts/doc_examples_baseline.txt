@@ -14,6 +14,10 @@
 # still waits for. When an API is written, its entries stop being found and
 # the strict run fails until the file is rewritten, in the same change:
 #     python3 scripts/check_doc_examples.py --all --update-baseline
+# or, for the docs changed, with the others' entries kept:
+#     python3 scripts/check_doc_examples.py --update-baseline <doc>...
+# Those are the only ways to write this file: the last line signs the
+# entries, and a file edited by hand fails the strict run.
 Docs/UltraCanvas/AndroidPortInvestigation.md::prose names `ALooper_pollOnce(`, which no header declares
 Docs/UltraCanvas/ODT-DOCX-Support-Proposal.md::prose names `ConvertFile(`, which no header declares
 Docs/UltraCanvas/ODT-DOCX-Support-Proposal.md::prose names `ListEntries(`, which no header declares
@@ -367,3 +371,4 @@ Docs/UltraCanvas/WYSIWYGElementInvestigation.md::'UltraCanvasRichTextEdit::Block
 Docs/UltraCanvas/WYSIWYGElementInvestigation.md::prose names `GetFormatAtSelection(`, which no header declares
 Docs/UltraCanvas/WYSIWYGElementInvestigation.md::prose names `Revert(`, which no header declares
 Docs/UltraCanvas/WYSIWYGElementInvestigation.md::prose names `TryCoalesce(`, which no header declares
+# signature: c8c73de1692082c5736edaffb026bfac33051f2b4331a5bc3d7ceb3da48ab084
