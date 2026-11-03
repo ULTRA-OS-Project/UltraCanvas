@@ -21,14 +21,23 @@
 // "+N" where a cell runs out of room. A legend of the groups filters it, and
 // an anonymised mode shows counts only.
 //
+// For a calibration meeting the people can be moved: dragged to another cell
+// or, once selected, moved with Ctrl+arrows (both off until
+// SetAllowItemDrag(true)), with onItemMove able to veto each move. Arrows
+// move the cell selection, Enter activates it, and a "+N more" mark hands
+// everyone in its cell to onOverflowClick for a full list.
+//
 // Design: Docs/UltraCanvas/UltraCanvasPerformanceMatrixProposal.md
 // Guide:  Docs/UltraCanvas/UltraCanvasPerformanceMatrix.md
 //
+// Version: 1.2.0 - calibration: drag an item to another cell with a veto, the
+//   keyboard (arrows, Enter, Escape, Ctrl+arrows), the selected item, the
+//   overflow list callback
 // Version: 1.1.0 - the population: Count / Percent / Dots / Names, targets, the
 //   group legend, the anonymised mode, ByCount, level bars, row and column
 //   totals, item tooltips and clicks
 // Version: 1.0.0
-// Last Modified: 2026-11-02
+// Last Modified: 2026-11-03
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -141,12 +150,42 @@ namespace UltraCanvas {
         int GetCellCount(const PerformanceCellRef& ref) const;
 
         std::function<void(const PerformanceMatrixItem&)> onItemClick;
+        // The visible items in a cell, in model order: indices into
+        // GetModel().items.
+        std::vector<size_t> GetCellItems(const PerformanceCellRef& ref) const;
+        // A click on a cell's "+N" / "+N more" mark: everyone in that cell
+        // (GetCellItems), for the application to list. Not called when
+        // anonymised.
+        std::function<void(const PerformanceCellRef&, const std::vector<size_t>&)> onOverflowClick;
+
+        // ===== MOVING ITEMS (calibration) =====
+        // Off by default. When on, an item drawn as a dot or name can be
+        // dragged to another cell, and the selected item moves with
+        // Ctrl+arrows. Never while anonymised.
+        void SetAllowItemDrag(bool allow);
+        bool GetAllowItemDrag() const { return allowItemDrag; }
+        // Asked before every move, by drag, key or MoveItem; return false to
+        // veto. The model changes only after it returns true: the item gets
+        // the target as its explicit cell, and its scores stay as they were.
+        std::function<bool(const PerformanceMatrixItem&, const PerformanceCellRef& from,
+                           const PerformanceCellRef& to)> onItemMove;
+        // Moves an item as a drag would, whatever SetAllowItemDrag says.
+        // False when the index or cell is invalid, the item is already
+        // there, or onItemMove vetoed.
+        bool MoveItem(size_t index, const PerformanceCellRef& to);
+        // The item shown selected (a ring); -1 for none. Clicking an item
+        // selects it.
+        void SetSelectedItem(int index);
+        int GetSelectedItem() const { return selectedItem; }
+        // While a drag is under way: the item and the cell under the pointer.
+        bool IsDraggingItem() const { return dragging; }
+        PerformanceCellRef GetDropTarget() const { return dropTarget; }
 
         // ===== SELECTION =====
         void SetSelectedCell(const PerformanceCellRef& ref);
         PerformanceCellRef GetSelectedCell() const { return selectedCell; }
         PerformanceCellRef GetHoveredCell() const { return hoveredCell; }
-        void ClearSelection() { SetSelectedCell(PerformanceCellRef()); }
+        void ClearSelection() { SetSelectedCell(PerformanceCellRef()); SetSelectedItem(-1); }
 
         std::function<void(const PerformanceCellRef&)> onCellClick;
         std::function<void(const PerformanceCellRef&)> onCellHover;   // invalid ref = left the cells
@@ -169,12 +208,16 @@ namespace UltraCanvas {
         std::string BuildItemTooltip(size_t index) const;
         // The legend entry at a point, SIZE_MAX for none.
         size_t LegendEntryAt(const Point2Di& local) const;
+        // The cell whose "+N" mark is at a point; invalid for none.
+        PerformanceCellRef OverflowAt(const Point2Di& local) const;
 
         // ===== OVERRIDES =====
         void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
         void RenderChart(IRenderContext* ctx) override;
         bool HandleChartMouseMove(const Point2Di& mousePos) override;
         bool OnEvent(const UCEvent& event) override;
+        // Arrows, Enter and Escape need the focus, which a click gives it.
+        bool AcceptsFocus() const override { return true; }
         void InvalidateLayout() override { DropLayoutCache(); UltraCanvasChartElementBase::InvalidateLayout(); }
 
     private:
@@ -243,6 +286,13 @@ namespace UltraCanvas {
         std::vector<std::string> hiddenGroups;
         PerformanceCellRef hoveredCell, selectedCell;
         int hoveredItem = -1;
+        int selectedItem = -1;
+        // A press on an item that may become a drag.
+        bool allowItemDrag = false;
+        int pressedItem = -1;
+        Point2Di pressPoint, dragPoint;
+        bool dragging = false;
+        PerformanceCellRef dropTarget;
         ChartLegend legend;
         Layout layout;
 
@@ -282,6 +332,14 @@ namespace UltraCanvas {
         void DrawLevelLabel(IRenderContext* ctx, const PerformanceLevel& level, const Rect2Dd& box,
                             const Color& textColor, bool withIcon, const std::string& extra) const;
         void DrawAxes(IRenderContext* ctx);
+        void DrawDrag(IRenderContext* ctx) const;
+
+        bool CanMoveItems() const { return allowItemDrag && !anonymised; }
+        void EndDrag();
+        bool HandleKeyDown(const UCEvent& event);
+        // The cell one step from `from` in a direction on screen; `from`
+        // itself at the edge.
+        PerformanceCellRef Neighbour(const PerformanceCellRef& from, int dx, int dy) const;
     };
 
     std::shared_ptr<UltraCanvasPerformanceMatrix> CreatePerformanceMatrix(

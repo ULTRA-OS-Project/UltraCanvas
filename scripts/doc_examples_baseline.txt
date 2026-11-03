@@ -347,14 +347,6 @@ Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::prose names `Add
 Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::prose names `AutoOrderAxes(`, which no header declares
 Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::use of undeclared identifier 'UpdateStatusBar'
 # signature Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md: 844aee959169040729c20d732a5e2dcba8d0e13c3c92c17d2878c4b332606126
-Docs/UltraCanvas/UltraCanvasPerformanceMatrixProposal.md::'ExportPerformanceItemsCsv' is not a member of UltraCanvasPerformanceMatrix, UltraCanvasSWOTDiagram, UltraCanvasChartElementBase, UltraCanvasFileLoader, nor a free function
-Docs/UltraCanvas/UltraCanvasPerformanceMatrixProposal.md::'ExportPerformanceMatrixJson' is not a member of UltraCanvasPerformanceMatrix, UltraCanvasSWOTDiagram, UltraCanvasChartElementBase, UltraCanvasFileLoader, nor a free function
-Docs/UltraCanvas/UltraCanvasPerformanceMatrixProposal.md::'ImportPerformanceItemsCsv' is not a member of UltraCanvasPerformanceMatrix, UltraCanvasSWOTDiagram, UltraCanvasChartElementBase, UltraCanvasFileLoader, nor a free function
-Docs/UltraCanvas/UltraCanvasPerformanceMatrixProposal.md::'ImportPerformanceMatrixJson' is not a member of UltraCanvasPerformanceMatrix, UltraCanvasSWOTDiagram, UltraCanvasChartElementBase, UltraCanvasFileLoader, nor a free function
-Docs/UltraCanvas/UltraCanvasPerformanceMatrixProposal.md::'PerformanceMatrixToJson' is not a member of UltraCanvasPerformanceMatrix, UltraCanvasSWOTDiagram, UltraCanvasChartElementBase, UltraCanvasFileLoader, nor a free function
-Docs/UltraCanvas/UltraCanvasPerformanceMatrixProposal.md::'SetAllowItemDrag' is not a member of UltraCanvasPerformanceMatrix
-Docs/UltraCanvas/UltraCanvasPerformanceMatrixProposal.md::'UltraCanvasPerformanceMatrix::onItemMove' does not exist (no member named 'onItemMove' in 'UltraCanvasPerformanceMatrix')
-# signature Docs/UltraCanvas/UltraCanvasPerformanceMatrixProposal.md: 94babaf6a06cb95a4b4b6f028ecc647b3b59396bd898a16fe0fc33805709b64f
 Docs/UltraCanvas/UltraCanvasRequirementDiagramProposal.md::cannot initialize a parameter of type 'RequirementTraceDirection' with an rvalue of type 'int'
 Docs/UltraCanvas/UltraCanvasRequirementDiagramProposal.md::no member named 'SetLayout' in 'UltraCanvasRequirementDiagram'
 Docs/UltraCanvas/UltraCanvasRequirementDiagramProposal.md::prose names `SetStrictSemantics(`, which no header declares
