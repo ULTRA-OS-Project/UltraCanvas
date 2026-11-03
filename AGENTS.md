@@ -821,8 +821,9 @@ and never introduce a new literal copy of one:
    makes its entries stop being found, which fails the check until the file
    is rewritten in the same change: `--all --update-baseline`, or
    `--update-baseline <doc>...` for the docs changed, with the others'
-   entries kept. Those are the only ways to write the file - its last line
-   signs the entries, and a file edited by hand fails the check.
+   entries kept. Those are the only ways to write the file - each doc's
+   entries end in a line that signs them, and a block edited by hand fails
+   the check naming the doc to regenerate.
    Changing a header can therefore fail a doc you did not touch: fix that
    doc in the same change. A name a snippet takes from the application - a
    `window`, a callback the reader writes, a version macro - is declared in
