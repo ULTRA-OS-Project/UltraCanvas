@@ -325,6 +325,36 @@ static void TestShrinkThenGrowDefault() {
     CHECK(TooSmallForLabel(d, ids, 0.0) > 0, "and leaves the nodes as the data sized them");
 }
 
+static void TestCardsFit() {
+    std::printf("\n[cards grow and shrink for their label and sublabel]\n");
+    UltraCanvasNodeDiagram d("c", 0, 0, 800, 600);
+    d.SetLabelFit(NodeLabelFit::GrowNode);
+    NodeDiagramNode narrow = Card("narrow", 0, 0);
+    narrow.width = 60.0;
+    narrow.label = "Clara Fischer";
+    narrow.sublabel = "Books and long walks";
+    narrow.iconPath = "media/icons/menu/book.svg";
+    d.AddNode(narrow);
+    NodeDiagramNode wide = Card("wide", 300, 0);
+    wide.sublabel = "Hall";
+    d.AddNode(wide);
+    CHECK(d.FitNodesToLabels() == 1, "the narrow card grows, the wide one does not");
+    const NodeDiagramNode* n = d.GetNode("narrow");
+    int subW = 0, subH = 0;
+    d.MeasureLabel("Books and long walks", 10.0 * 0.85, subW, subH);
+    CHECK(n->width > subW + 28.0, "wide enough for the sublabel beside the 28 px icon disc");
+    CHECK(n->height == 40.0, "two lines fit the authored height, which stays");
+    CHECK(d.GetNode("wide")->width == 150.0, "the wide card keeps its width");
+    CHECK(d.GetNodeLabelFontSize("narrow") == 10.0, "GrowNode keeps the font");
+
+    UltraCanvasNodeDiagram e("e", 0, 0, 800, 600);
+    e.SetLabelFit(NodeLabelFit::ShrinkFont);
+    e.AddNode(narrow);
+    CHECK(e.FitNodesToLabels() == 0, "ShrinkFont grows nothing");
+    const double shrunk = e.GetNodeLabelFontSize("narrow");
+    CHECK(shrunk < 10.0 && shrunk >= 7.0, "the card's font shrinks for the text area, not below the minimum");
+}
+
 static void TestOtherLayoutsSeparate() {
     std::printf("\n[circular, grid and hierarchical layouts end apart]\n");
     const NodeDiagramLayout layouts[] = {NodeDiagramLayout::Circular, NodeDiagramLayout::Grid,
@@ -374,6 +404,7 @@ int main() {
     TestGrowNode();
     TestShrinkFont();
     TestShrinkThenGrowDefault();
+    TestCardsFit();
     TestOtherLayoutsSeparate();
     TestLabelFitJson();
     std::printf("\n%s (%d failure%s)\n", g_failures ? "FAILED" : "PASSED", g_failures, g_failures == 1 ? "" : "s");

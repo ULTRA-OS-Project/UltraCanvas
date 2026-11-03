@@ -1280,11 +1280,16 @@ void UltraCanvasNodeDiagram::BuildLegendFromGroups() {
 
 void UltraCanvasNodeDiagram::MeasureLabel(const std::string& label, double fontSize,
                                            int& outWidth, int& outHeight) const {
+    MeasureText(label, fontSize, FontWeight::Bold, outWidth, outHeight);
+}
+
+void UltraCanvasNodeDiagram::MeasureText(const std::string& label, double fontSize, FontWeight weight,
+                                          int& outWidth, int& outHeight) const {
     // 2.4.0: the window's font when the element has a window - the same
     // measurement Render() makes - so a size computed from it is exact.
     if (IRenderContext* ctx = GetRenderContext()) {
         ctx->PushState();
-        ctx->SetFontFace(style.fontFamily, FontWeight::Bold, FontSlant::Normal);
+        ctx->SetFontFace(style.fontFamily, weight, FontSlant::Normal);
         ctx->SetFontSize(fontSize);
         const Size2Di dim = ctx->GetTextLineDimensions(label.empty() ? std::string("M") : label);
         ctx->PopState();
@@ -1348,6 +1353,15 @@ void UltraCanvasNodeDiagram::SuggestNodeSizeForLabel(const std::string& label,
 // band - the font that fits the band, or the node whose band holds the text.
 // =============================================================================
 
+// Text is measured at zoom 1 and drawn at the view's zoom, where the font's
+// hinting rounds every glyph to a device pixel: at a small size a name
+// comes out a few units wider than measured. The room a node grows for its
+// text allows for that, and the drawing lets that much run into the
+// padding before it shortens the text.
+static constexpr double kTextDriftFactor = 0.05;
+static constexpr double kTextDriftPixels = 2.0;
+static double WithTextDrift(double width) { return width * (1.0 + kTextDriftFactor) + kTextDriftPixels; }
+
 void UltraCanvasNodeDiagram::LabelBandForShape(NodeShape shape, double width, double height,
                                                double textHeight,
                                                double& outBandWidth, double& outBandHeight) const {
@@ -1401,7 +1415,7 @@ void UltraCanvasNodeDiagram::LabelBandForShape(NodeShape shape, double width, do
 
 void UltraCanvasNodeDiagram::NodeSizeForText(NodeShape shape, double textWidth, double textHeight,
                                              double& outWidth, double& outHeight) const {
-    const double bw = textWidth  + 2.0 * std::max(0.0, labelFit.paddingX);
+    const double bw = WithTextDrift(textWidth) + 2.0 * std::max(0.0, labelFit.paddingX);
     const double bh = textHeight + 2.0 * std::max(0.0, labelFit.paddingY);
     double side = std::max(bw, bh);
     switch (shape) {
@@ -1449,31 +1463,39 @@ int UltraCanvasNodeDiagram::GrowNodesForLabels(IRenderContext* ctx) {
     // Measured by the estimate: the first frame measures again with the font.
     if (!ctx) labelFitDirty = true;
 
+    auto measure = [&](const std::string& text, double fontSize, FontWeight weight) {
+        if (ctx) {
+            ctx->PushState();
+            ctx->SetFontFace(style.fontFamily, weight, FontSlant::Normal);
+            ctx->SetFontSize(fontSize);
+            const Size2Di dim = ctx->GetTextLineDimensions(text);
+            ctx->PopState();
+            return dim;
+        }
+        int w = 0, h = 0;
+        MeasureText(text, fontSize, weight, w, h);
+        return Size2Di(w, h);
+    };
+
     int grew = 0;
     for (auto& pair : nodes) {
         NodeDiagramNode& node = pair.second;
-        // A card (icon or sublabel) keeps its authored width and shortens its
-        // text with an ellipsis instead - that is its design.
-        if (node.label.empty() || !node.iconPath.empty() || !node.sublabel.empty()) continue;
+        const bool card = !node.iconPath.empty() || !node.sublabel.empty();
+        if (node.label.empty() && !card) continue;
 
         const double fontSize = GrowthFontSize(node);
-        double textW = 0.0, textH = 0.0;
-        if (ctx) {
-            ctx->PushState();
-            ctx->SetFontFace(style.fontFamily, FontWeight::Bold, FontSlant::Normal);
-            ctx->SetFontSize(fontSize);
-            const Size2Di dim = ctx->GetTextLineDimensions(node.label);
-            ctx->PopState();
-            textW = dim.width;
-            textH = dim.height;
-        } else {
-            int w = 0, h = 0;
-            MeasureLabel(node.label, fontSize, w, h);
-            textW = w;
-            textH = h;
-        }
         double needW = 0.0, needH = 0.0;
-        NodeSizeForText(node.shape, textW, textH, needW, needH);
+        if (card) {
+            // A card: the label over the sublabel beside the icon disc.
+            Size2Di labelDim = measure(node.label.empty() ? std::string("M") : node.label, fontSize, FontWeight::Bold);
+            if (node.label.empty()) labelDim.width = 0;
+            const Size2Di subDim = node.sublabel.empty() ? Size2Di(0, 0)
+                                                         : measure(node.sublabel, fontSize * 0.85, FontWeight::Normal);
+            CardSizeForText(node, labelDim, subDim, needW, needH);
+        } else {
+            const Size2Di dim = measure(node.label, fontSize, FontWeight::Bold);
+            NodeSizeForText(node.shape, dim.width, dim.height, needW, needH);
+        }
         if (needW <= node.width + 0.5 && needH <= node.height + 0.5) continue;
 
         const double cx = node.x + node.width  * 0.5;
@@ -1527,11 +1549,16 @@ double UltraCanvasNodeDiagram::GetNodeLabelFontSize(const std::string& id) const
     const NodeDiagramNode* node = GetNode(id);
     if (!node) return 0.0;
     const double own = node->fontSize > 0 ? node->fontSize : style.baseFontSize;
-    if (node->label.empty() || labelFit.mode == NodeLabelFit::Overflow ||
-        labelFit.mode == NodeLabelFit::GrowNode ||
-        !node->iconPath.empty() || !node->sublabel.empty()) {
-        return own;
+    if (labelFit.mode == NodeLabelFit::Overflow || labelFit.mode == NodeLabelFit::GrowNode) return own;
+    if (!node->iconPath.empty() || !node->sublabel.empty()) {
+        Size2Di labelDim, subDim;
+        return FitCardFontWith(*node, [this](const std::string& text, double fontSize, FontWeight weight) {
+            int tw = 0, th = 0;
+            MeasureText(text, fontSize, weight, tw, th);
+            return Size2Di(tw, th);
+        }, labelDim, subDim);
     }
+    if (node->label.empty()) return own;
     int w = 0, h = 0;
     MeasureLabel(node->label, own, w, h);
     Size2Di dim(w, h);
@@ -1565,6 +1592,73 @@ double UltraCanvasNodeDiagram::FitLabelFontWith(const NodeDiagramNode& node,
         dim = measure(fontSize);
     }
     return fontSize;
+}
+
+// A card's text area: how far from the node's left edge the text starts
+// (after the padding and the icon disc) and how wide it may be, for a card
+// of the given size. The same arithmetic as RenderNodeLabel's card path.
+void UltraCanvasNodeDiagram::CardTextArea(const NodeDiagramNode& node, double width, double height,
+                                          double& outTextLeft, double& outMaxWidth, double& outPad) const {
+    const double pad = std::max(4.0, height * 0.14);
+    double textLeft = pad + 2.0;
+    if (!node.iconPath.empty()) {
+        const double d = std::max(8.0, height - 2.0 * pad);
+        textLeft = pad + d + pad * 0.9;
+    }
+    outPad = pad;
+    outTextLeft = textLeft;
+    outMaxWidth = width - pad - textLeft;
+}
+
+// The font size a card's label is drawn at (the sublabel at 0.85 of it):
+// the node's own unless ShrinkFont / ShrinkThenGrow must reduce it for the
+// text area. `measure` gives a text's size at a font size and weight; the
+// label's and sublabel's sizes at the returned font come out in the dims.
+double UltraCanvasNodeDiagram::FitCardFontWith(
+        const NodeDiagramNode& node,
+        const std::function<Size2Di(const std::string&, double, FontWeight)>& measure,
+        Size2Di& labelDim, Size2Di& subDim) const {
+    double fontSize = node.fontSize > 0 ? node.fontSize : style.baseFontSize;
+    auto measureBoth = [&](double f) {
+        labelDim = measure(node.label.empty() ? std::string("M") : node.label, f, FontWeight::Bold);
+        if (node.label.empty()) labelDim.width = 0;
+        subDim = node.sublabel.empty() ? Size2Di(0, 0) : measure(node.sublabel, f * 0.85, FontWeight::Normal);
+    };
+    measureBoth(fontSize);
+    if (labelFit.mode == NodeLabelFit::Overflow || labelFit.mode == NodeLabelFit::GrowNode) return fontSize;
+    const double minFont = std::min(fontSize, std::max(1.0, labelFit.minFontSize));
+    double textLeft = 0.0, maxWidth = 0.0, pad = 0.0;
+    CardTextArea(node, node.width, node.height, textLeft, maxWidth, pad);
+    const double maxHeight = node.height - 2.0 * pad;
+    for (int round = 0; round < 4; ++round) {
+        const double textW = std::max(labelDim.width, subDim.width);
+        const double textH = labelDim.height + subDim.height;
+        if (textW <= maxWidth + 0.01 && textH <= maxHeight + 0.01) break;
+        if (fontSize <= minFont + 0.01) break;
+        const double scale = std::min(maxWidth / std::max(1.0, textW), maxHeight / std::max(1.0, textH));
+        fontSize = std::max(minFont, fontSize * std::min(0.98, std::max(0.1, scale)));
+        measureBoth(fontSize);
+    }
+    return fontSize;
+}
+
+
+// The smallest card holding `labelDim` over `subDim` beside its icon: the
+// text area's left edge and padding depend on the height, so two rounds.
+void UltraCanvasNodeDiagram::CardSizeForText(const NodeDiagramNode& node, const Size2Di& labelDim,
+                                             const Size2Di& subDim, double& outWidth, double& outHeight) const {
+    const double textW = WithTextDrift(std::max(labelDim.width, subDim.width));
+    const double textH = labelDim.height + subDim.height;
+    double height = node.height;
+    double width = node.width;
+    for (int round = 0; round < 2; ++round) {
+        double textLeft = 0.0, maxWidth = 0.0, pad = 0.0;
+        CardTextArea(node, width, height, textLeft, maxWidth, pad);
+        height = std::max(height, textH + 2.0 * pad);
+        width = std::max(width, textLeft + textW + pad);
+    }
+    outWidth = width;
+    outHeight = height;
 }
 
 // =============================================================================
@@ -3126,8 +3220,6 @@ std::string FitTextToWidth(IRenderContext* ctx, const std::string& text, double 
 } // namespace
 
 void UltraCanvasNodeDiagram::RenderNodeLabel(IRenderContext* ctx, const NodeDiagramNode& node) {
-    const double fontSize = node.fontSize > 0 ? node.fontSize : style.baseFontSize;
-
     // 2.3.0: the card layout - an icon in a disc at the leading edge, the
     // label (and the sublabel under it) left-aligned beside it, shortened
     // with an ellipsis when they do not fit.
@@ -3150,29 +3242,40 @@ void UltraCanvasNodeDiagram::RenderNodeLabel(IRenderContext* ctx, const NodeDiag
         }
         const double maxWidth = node.x + node.width - pad - textLeft;
 
+        // 2.4.0: the font the fit allows (ShrinkFont / ShrinkThenGrow reduce
+        // it for the text area); what still does not fit is shortened.
+        Size2Di labelDim, subDim;
+        const double cardFont = FitCardFontWith(node, [ctx, this](const std::string& text, double size, FontWeight weight) {
+            ctx->SetFontFace(style.fontFamily, weight, FontSlant::Normal);
+            ctx->SetFontSize(size);
+            return ctx->GetTextLineDimensions(text);
+        }, labelDim, subDim);
+
+        // Shortened only past the drift the growth allowed for.
+        const double fitWidth = maxWidth + (WithTextDrift(maxWidth) - maxWidth);
         ctx->SetFontFace(style.fontFamily, FontWeight::Bold, FontSlant::Normal);
-        ctx->SetFontSize(fontSize);
-        const std::string label = FitTextToWidth(ctx, node.label, maxWidth);
+        ctx->SetFontSize(cardFont);
+        const std::string label = FitTextToWidth(ctx, node.label, fitWidth);
         const double labelHeight = ctx->GetTextLineDimensions(label.empty() ? std::string("M") : label).height;
 
         std::string sub;
         double subHeight = 0.0;
         if (!node.sublabel.empty()) {
             ctx->SetFontFace(style.fontFamily, FontWeight::Normal, FontSlant::Normal);
-            ctx->SetFontSize(fontSize * 0.85);
-            sub = FitTextToWidth(ctx, node.sublabel, maxWidth);
+            ctx->SetFontSize(cardFont * 0.85);
+            sub = FitTextToWidth(ctx, node.sublabel, fitWidth);
             subHeight = ctx->GetTextLineDimensions(sub).height;
         }
         double y = node.y + (node.height - labelHeight - subHeight) / 2.0;
         if (!label.empty()) {
             ctx->SetFontFace(style.fontFamily, FontWeight::Bold, FontSlant::Normal);
-            ctx->SetFontSize(fontSize);
+            ctx->SetFontSize(cardFont);
             ctx->SetTextPaint(node.textColor);
             ctx->DrawText(label, {textLeft, y});
         }
         if (!sub.empty()) {
             ctx->SetFontFace(style.fontFamily, FontWeight::Normal, FontSlant::Normal);
-            ctx->SetFontSize(fontSize * 0.85);
+            ctx->SetFontSize(cardFont * 0.85);
             ctx->SetTextPaint(node.sublabelColor);
             ctx->DrawText(sub, {textLeft, y + labelHeight});
         }
@@ -3233,8 +3336,8 @@ double UltraCanvasNodeDiagram::FitLabelFont(IRenderContext* ctx, const NodeDiagr
     // the rule, in the growing modes a frame at most, until the node grows.
     double bandW = 0.0, bandH = 0.0;
     LabelBandForShape(node.shape, node.width, node.height, outDim.height, bandW, bandH);
-    if (outDim.width > bandW + 0.01) {
-        outText = FitTextToWidth(ctx, node.label, bandW);
+    if (outDim.width > WithTextDrift(bandW)) {
+        outText = FitTextToWidth(ctx, node.label, WithTextDrift(bandW));
         outDim = ctx->GetTextLineDimensions(outText);
     }
     return fontSize;

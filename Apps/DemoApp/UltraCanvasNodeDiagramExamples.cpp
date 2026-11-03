@@ -105,8 +105,8 @@ static void AddFillingDiagram(const std::shared_ptr<UltraCanvasContainer>& paren
 // What the first tab shows: one person's social graph. Twenty-four friends
 // in five circles (college, the climbing club, work, the neighbours, family),
 // each friend a card - an icon for what they are into, their name, their
-// interest and city - and two people who belong to two circles at once, the
-// bridges a plain contact list cannot show.
+// interest - as wide as that text needs, and two people who belong to two
+// circles at once, the bridges a plain contact list cannot show.
 //
 // The 2.3.0 card look (icon disc, sublabel, rounded corners, shadow), the
 // 2.2.0 cluster boxes, cohesion and legend, the 2.4.0 layout that keeps
@@ -124,7 +124,7 @@ struct FriendCircle {
 
 struct Friend {
     std::string id;
-    std::string name;        // first name on the card; the surname in the status line
+    std::string name;
     std::string interest;    // "Guitar", "Trail running" ...
     std::string city;
     std::string icon;        // under media/icons/
@@ -212,11 +212,6 @@ static const std::vector<FriendTie> kFriendTies = {
 
 } // namespace
 
-static std::string FirstName(const std::string& fullName) {
-    const size_t space = fullName.find(' ');
-    return space == std::string::npos ? fullName : fullName.substr(0, space);
-}
-
 // Who the person is, the number of ties, the circles - for the status line.
 static std::string DescribeFriend(const UltraCanvasNodeDiagram& diagram, const std::string& id) {
     const NodeDiagramNode* node = diagram.GetNode(id);
@@ -249,6 +244,9 @@ std::shared_ptr<UltraCanvasNodeDiagram> CreateFriendsNetworkDiagram(
     diagram->SetBackgroundColor(Color(247, 248, 251, 255));
     diagram->SetDefaultLinkStyle(LinkStyle::Bezier);
     diagram->SetFontFamily("Arial");
+    // 2.4.0: every card as wide as its name and interest need - no ellipsis,
+    // no width chosen by hand.
+    diagram->SetLabelFit(NodeLabelFit::GrowNode);
 
     auto circleOf = [](const std::string& id) -> const FriendCircle* {
         for (const auto& c : kFriendCircles) if (c.id == id) return &c;
@@ -259,7 +257,7 @@ std::shared_ptr<UltraCanvasNodeDiagram> CreateFriendsNetworkDiagram(
     {
         NodeDiagramNode me("me", "You");
         me.shape = NodeShape::Rectangle;
-        me.width = 146.0;
+        me.width = 120.0;
         me.height = 46.0;
         me.fontSize = 12.0;
         me.fillColor = Color(31, 41, 55, 255);
@@ -281,9 +279,9 @@ std::shared_ptr<UltraCanvasNodeDiagram> CreateFriendsNetworkDiagram(
         const FriendCircle* home = circleOf(person.circles.front());
         const Color base = home ? home->color : Color(100, 116, 139, 255);
 
-        NodeDiagramNode card(person.id, FirstName(person.name));
+        NodeDiagramNode card(person.id, person.name);
         card.shape = NodeShape::Rectangle;
-        card.width = 112.0;
+        card.width = 96.0;      // a floor: the label fit widens a card for a long name
         card.height = 40.0;
         card.fontSize = 11.0;
         card.fillColor = Color(255, 255, 255, 255);

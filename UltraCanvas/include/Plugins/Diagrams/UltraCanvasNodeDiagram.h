@@ -14,6 +14,9 @@
 //         ShrinkThenGrow, the default, shrinks first and grows what still
 //         does not fit; Overflow is the 2.3 behaviour. A node that grows
 //         pushes its neighbours apart (ResolveOverlaps) and refits the view.
+//         A card grows for its label over its sublabel beside the icon, and
+//         shrinks their fonts together; what still does not fit keeps the
+//         2.3 ellipsis.
 //  - NEW: MinimumNodeSizeForLabel(label, fontSize, shape): the smallest node
 //         of that shape holding the label. FitNodesToLabels() grows every
 //         node too small for its label. GetNodeLabelFontSize(id): the size
@@ -828,10 +831,11 @@ public:
                                  double& outWidth, double& outHeight) const;
 
     // Enlarges every node smaller than MinimumNodeSizeForLabel() for its
-    // label - at its font size in GrowNode, at minFontSize in ShrinkThenGrow,
-    // never in ShrinkFont or Overflow - about its centre, and separates the
-    // nodes that then overlap. Returns how many nodes grew. RunLayout() and
-    // the sizing pass do this themselves; a host that sets sizes through
+    // label - a card for its label over its sublabel beside the icon - at
+    // its font size in GrowNode, at minFontSize in ShrinkThenGrow, never in
+    // ShrinkFont or Overflow - about its centre, and separates the nodes
+    // that then overlap. Returns how many nodes grew. RunLayout() and the
+    // sizing pass do this themselves; a host that sets sizes through
     // GetNode() calls it after.
     int FitNodesToLabels();
 
@@ -996,6 +1000,19 @@ private:
     // The sizing pass without the separation ApplyNodeSizing() adds: the
     // data-driven (or authored) size, then the label's minimum.
     void SizeNodes();
+    // Cards (an icon or a sublabel): the text area for a card of a size, the
+    // font the fit allows (label and sublabel sizes out), and the smallest
+    // card holding the text.
+    void CardTextArea(const NodeDiagramNode& node, double width, double height,
+                      double& outTextLeft, double& outMaxWidth, double& outPad) const;
+    double FitCardFontWith(const NodeDiagramNode& node,
+                           const std::function<Size2Di(const std::string&, double, FontWeight)>& measure,
+                           Size2Di& labelDim, Size2Di& subDim) const;
+    void CardSizeForText(const NodeDiagramNode& node, const Size2Di& labelDim, const Size2Di& subDim,
+                         double& outWidth, double& outHeight) const;
+    // MeasureLabel() at any weight (the sublabel is not bold).
+    void MeasureText(const std::string& label, double fontSize, FontWeight weight,
+                     int& outWidth, int& outHeight) const;
     // Whether the fit grows nodes, and the font size the growth measures at.
     bool LabelFitGrows() const;
     double GrowthFontSize(const NodeDiagramNode& node) const;

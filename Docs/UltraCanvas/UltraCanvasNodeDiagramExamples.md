@@ -35,7 +35,7 @@
   - [Serialization](#serialization)
   - [Callbacks](#callbacks)
 - [Usage Examples](#usage-examples)
-  - [Simple API — Friends network with force-directed layout](#simple-api-—-friends-network-with-force-directed-layout)
+  - [Simple API — five nodes, six links, one layout](#simple-api-—-five-nodes-six-links-one-layout)
   - [Verbose API — Workflow editor with handles](#verbose-api-—-workflow-editor-with-handles)
   - [Link styles showcase](#link-styles-showcase)
   - [Multi-select with keyboard](#multi-select-with-keyboard)
@@ -533,8 +533,10 @@ shape or the font marks the labels and the next frame measures them with the
 window's font, grows what must grow and separates what then touches. A layout
 run before the element has a window (the usual case - the diagram is built,
 laid out and then added to a page) measures by an estimate and is corrected
-on the first frame the same way. Card nodes (an icon or a sublabel) keep
-their authored width and shorten their text, as before.
+on the first frame the same way. A card node (an icon or a sublabel) grows
+for its label over its sublabel beside the icon disc, and in the shrinking
+modes its two fonts shrink together; what still does not fit keeps the 2.3
+ellipsis.
 
 Group boxes follow their members, so a department whose people grew is drawn
 larger, and since 2.4.0 the boxes are kept apart from each other too: after
@@ -721,10 +723,15 @@ std::function<void(double worldX, double worldY)> onCanvasRightClick;
 
 All examples are drawn from `Apps/DemoApp/UltraCanvasNodeDiagramExamples.cpp`.
 
-### Simple API — Friends network with force-directed layout
+### Simple API — five nodes, six links, one layout
+
+The least code that draws a graph: nodes by id, label and position, links
+between ids, a layout. (The demo's Friends tab is the card-node network
+[further down](#a-personal-network-of-card-nodes-the-demos-friends-tab);
+this is the API at its shortest.)
 
 ```cpp
-auto diagram = CreateNodeDiagram("nd_friends", x, y, w, h);
+auto diagram = CreateNodeDiagram("nd_simple", x, y, w, h);
 
 diagram->SetTheme(NodeDiagramTheme::Colorful);
 diagram->SetGridVisible(true, 25.0);
@@ -1004,7 +1011,8 @@ other modes, grows whichever node its name does not fit.
 ### A personal network of card nodes (the demo's Friends tab)
 
 What the demo's first tab shows, in outline: one person's friends as cards -
-an icon disc for what they are into, their first name, their interest - in
+an icon disc for what they are into, their name, their interest, each card
+as wide as its text needs - in
 five circles drawn as soft boxes, a friend who belongs to two circles sitting
 in both boxes, the ties coloured by circle and widened by strength, a legend,
 and the cards collapsing to their icon discs when the view is zoomed out. The
@@ -1020,11 +1028,14 @@ diagram->SetDefaultLinkStyle(LinkStyle::Bezier);
 
 const Color college(79, 70, 229, 255), climbing(22, 163, 74, 255);
 
+// GrowNode: the cards take the width their names need, no ellipsis.
+diagram->SetLabelFit(NodeLabelFit::GrowNode);
+
 auto card = [&](const char* id, const char* name, const char* interest,
                 const char* icon, const Color& circle) {
     NodeDiagramNode n(id, name);
     n.shape = NodeShape::Rectangle;
-    n.width = 112.0;
+    n.width = 96.0;     // a floor; the fit widens a card for a long name
     n.height = 40.0;
     n.fillColor = Color(255, 255, 255, 255);
     n.borderColor = circle;
@@ -1038,10 +1049,10 @@ auto card = [&](const char* id, const char* name, const char* interest,
     n.shadow = true;
     diagram->AddNode(n);
 };
-card("alice", "Alice", "Guitar",     "folder-music.svg", college);
-card("ben",   "Ben",   "Photos",     "smarthome/camera.svg", college);
-card("maya",  "Maya",  "Bouldering", "menu/run.svg", college);   // in both circles
-card("finn",  "Finn",  "Alpine",     "menu/sun.svg", climbing);
+card("alice", "Alice Weber",   "Guitar",      "folder-music.svg", college);
+card("ben",   "Ben Okafor",    "Photography", "smarthome/camera.svg", college);
+card("maya",  "Maya Schulz",   "Bouldering",  "menu/run.svg", college);   // in both circles
+card("finn",  "Finn Berg",     "Alpine routes", "menu/sun.svg", climbing);
 
 NodeDiagramNode me("me", "You");
 me.shape = NodeShape::Rectangle;

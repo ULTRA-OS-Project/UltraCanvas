@@ -40,6 +40,9 @@
   their circle's colour inside a circle and grey across, wider the closer the
   tie, the cards collapsing to their icon discs when zoomed out, and a click
   on a person that says who they are, how many ties they have and which
-  circles they are in. For it, two groups that share a member now move as one
+  circles they are in. The cards carry full names: a card node now grows
+  for its label over its sublabel beside the icon disc (`GrowNode`,
+  `ShrinkThenGrow`) and shrinks its two fonts together (`ShrinkFont`,
+  `ShrinkThenGrow`), where 2.3.0 only shortened its text with an ellipsis. For it, two groups that share a member now move as one
   unit when the cluster boxes are separated (they overlap on purpose), and a
   node in no group is pushed out of every box.
