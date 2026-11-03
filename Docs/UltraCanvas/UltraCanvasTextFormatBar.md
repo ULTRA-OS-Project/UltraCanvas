@@ -76,6 +76,11 @@ idle slices, the rows the list opens on first - see *A font list* in
 naming a font this computer lacks shows it at the top of the list, marked as
 not installed. `RefreshFonts()` reads the installed fonts again.
 
+## Narrow places
+
+The controls take about 860 pixels. In a narrower place the Font list gives up
+width first, down to 90 pixels, so every other control stays in reach.
+
 ## Look
 
 The bar takes its ground, ink and controls from a theme

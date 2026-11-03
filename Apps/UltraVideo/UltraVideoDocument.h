@@ -5,10 +5,12 @@
 // `.ultravideo` file that holds all of it (Docs/Research/UltraVideoDesignProposal.md
 // §5.6, §9.2). The project inside the file is what VideoFX_ProjectToJson
 // writes, so `videofx render` works on it once extracted.
+// Version: 0.7.0 - titles drawn by UltraCanvas (SegmentsToRender): TitleSpan's words, font,
+//                  alignment, line and letter spacing, set by the text bar
 // Version: 0.6.0 - EffectTarget: a segment's or an overlay clip's effects
 // Version: 0.5.0 - DraftSettings: the draft render's settings, shared with the test
 // Version: 0.4.0
-// Last Modified: 2026-10-16
+// Last Modified: 2026-11-03
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -64,6 +66,17 @@ struct TitleSpan {
     double fadeOut = 0.5;
     std::string style;              // the preset it was made from, for the inspector
     VideoFX::VideoFXOverlay look;   // text, anchor, size, colour, shadow, box
+    // Set by the text bar and typed on the frame (UltraVideoTitles.h): the
+    // words with their own fonts, sizes and styles (HTML; empty: look.text,
+    // plain), the font of what states none, the lines' alignment, the line
+    // spacing in % of a line's largest letters and the letter spacing as a
+    // fraction of the frame's height, like look.fontSize.
+    std::string words;
+    int wordsHeight = 1080;         // the frame height the words' own sizes were set for
+    std::string fontFamily = "Ubuntu";
+    int align = 1;                  // 0 left, 1 centre, 2 right
+    double lineSpacing = 120.0;
+    double letterSpacing = 0.0;
 
     double End() const { return start + duration; }
     std::string Name() const;       // the first line of the text
@@ -191,6 +204,15 @@ public:
     // spans cut into one overlay per segment they cross (text, or the file's
     // picture from the right second into it), fades on the outer ends only
     std::vector<VideoFX::VideoFXSegment> SegmentsForEngine() const;
+    // The same for the viewer and the export: each title drawn by UltraCanvas
+    // (UltraVideoTitles.h) for a frame `frameHeight` pixels high, as a
+    // picture laid over the frame - fonts, styles and spacing as typed. The
+    // title `hiddenTitle` (being typed on the frame, its words lying over it
+    // meanwhile) is left out. The pictures are kept between calls.
+    std::vector<VideoFX::VideoFXSegment> SegmentsToRender(int frameHeight, const std::string& hiddenTitle = "") const;
+private:
+    std::vector<VideoFX::VideoFXSegment> BuildSegments(int frameHeight, const std::string& hiddenTitle) const;
+public:
     // A new title at a time, from a style; returns its index
     int AddTitle(const std::string& styleKey, double at, const std::string& text = "");
     int TitleIndex(const std::string& id) const;   // -1 when absent

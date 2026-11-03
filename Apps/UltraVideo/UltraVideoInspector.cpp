@@ -329,7 +329,11 @@ std::shared_ptr<UltraCanvasTabbedContainer> Inspector::Build(const Palette& p) {
     titleText->onEnterPressed = [this](const std::string& text) {
         const int index = title;
         Edit("Change title text", [index, text](Document& d) {
-            if (index >= 0 && static_cast<size_t>(index) < d.titles.size()) d.titles[static_cast<size_t>(index)].look.text = text;
+            if (index < 0 || static_cast<size_t>(index) >= d.titles.size()) return;
+            // Typed here, the text is plain again: the words typed on the
+            // frame with their own styles give way to it.
+            d.titles[static_cast<size_t>(index)].look.text = text;
+            d.titles[static_cast<size_t>(index)].words.clear();
         });
         return true;
     };

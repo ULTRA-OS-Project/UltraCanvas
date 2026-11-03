@@ -8,13 +8,14 @@
 // strength, on main-track clips and overlay clips. Needs the VideoFX engine
 // (FFmpeg) for the probes and the clips it generates; without it the suite
 // skips itself.
+// Version: 0.9.0 - titles typed with the text bar: kept by the file, drawn by UltraCanvas
 // Version: 0.8.0 - effects on overlay clips; a slider's drag as one undo step
 // Version: 0.6.1 - runs on Windows too: the file holds '/' between a path's parts
 // Version: 0.7.0 - the palettes' contrast, as the tokens promise it
 // Version: 0.6.0 - a HEIC imported and exported through the framework's image reader
 // Version: 0.5.0 - the files it takes are FileLoader's lists, as the engine reads them
 // Version: 0.4.0
-// Last Modified: 2026-10-16
+// Last Modified: 2026-11-03
 // Author: UltraCanvas Framework
 #include "UltraVideoDocument.h"
 #include "UltraVideoFormats.h"
@@ -22,6 +23,7 @@
 #include "UltraVideoInspector.h"
 #include "UltraVideoMapping.h"
 #include "UltraVideoProxies.h"
+#include "UltraVideoTitles.h"
 #include "UltraVideoTokens.h"
 
 #include "UltraCanvasFileLoader.h"
@@ -395,6 +397,41 @@ int main() {
         Document back;
         CHECK(Document::Load(tfile, back, terror, nullptr), ("load with titles: " + terror).c_str());
         CHECK(back.titles.size() == 3 && back.titles[1].look.text == "Anna\nat the beach" && back.titles[1].look.box && back.titles[1].style == "lower", "the spans come back whole");
+
+        // Typed on the frame with the text bar: the words with their styles,
+        // the font, the alignment and the spacings come back too
+        {
+            Document styled = td;
+            TitleSpan& t = styled.titles[0];
+            t.words = "<p><b>Summer</b> <i>trip</i></p>";
+            t.wordsHeight = 720;
+            t.fontFamily = "Serif";
+            t.align = 2;
+            t.lineSpacing = 150.0;
+            t.letterSpacing = 0.004;
+            const std::string sfile = TempPath("styled.ultravideo");
+            CHECK(styled.Save(sfile, terror), ("save a styled title: " + terror).c_str());
+            Document again;
+            CHECK(Document::Load(sfile, again, terror, nullptr), ("load a styled title: " + terror).c_str());
+            const TitleSpan& a = again.titles[0];
+            CHECK(a.words == t.words && a.wordsHeight == 720 && a.fontFamily == "Serif" && a.align == 2 &&
+                  Near(a.lineSpacing, 150.0, 1e-9) && Near(a.letterSpacing, 0.004, 1e-12),
+                  "a styled title's words, font, alignment and spacings come back");
+            // Drawn by UltraCanvas for the viewer and the export: a picture
+            // over the frame, a share of its height, where the text overlay was
+            const auto rendered = again.SegmentsToRender(720);
+            bool picture = false;
+            for (const auto& o : rendered[0].overlays) {
+                if (o.kind != VideoFXOverlayKind::Image || !o.image.IsValid()) continue;
+                picture = Near(o.imageHeight, static_cast<double>(o.image.height) / 720.0, 1e-9) && o.anchor == t.look.anchor;
+            }
+            CHECK(picture, "SegmentsToRender: the title is a picture, sized as a share of the frame, at its anchor");
+            CHECK(again.SegmentsToRender(720, a.id)[0].overlays.size() + 1 == rendered[0].overlays.size(),
+                  "a title being typed on the frame is left out");
+            const TitlePicture big = CachedTitlePicture(a, 1440), small = CachedTitlePicture(a, 720);
+            CHECK(big.image.IsValid() && small.image.IsValid() && big.image.height > small.image.height * 1.7,
+                  "drawn for a taller frame, the title is drawn larger");
+        }
         CHECK(back.project.segments[0].overlays.empty() && back.project.segments[1].overlays.empty(), "the derived overlays are dropped on load");
         CHECK(back.nextTitleId == td.nextTitleId && back.SegmentsForEngine()[1].overlays.size() == td.SegmentsForEngine()[1].overlays.size(), "and derive the same again");
     }

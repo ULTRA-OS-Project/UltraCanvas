@@ -24,3 +24,9 @@
   frame in a *.ucd (UCD 4.7.3). A text without letter spacing is still
   written as version 1, which every earlier reader takes. `RasterEditingTest`
   checks it.
+- `SetTextLineSpacing` / `GetTextLineSpacing` (`UltraCanvasRasterText.h`): a
+  text bar's line spacing in rich text - every paragraph's lines a percentage
+  of its largest letters apart, exactly - shared by UltraPaint's text layers
+  and UltraVideo's titles.
+- In a place narrower than its controls, the text bar's Font list gives up
+  width first (down to 90 pixels), so every other control stays in reach.

@@ -1,7 +1,8 @@
 // core/UltraCanvasRasterText.cpp
 // Draws a text layer's words into its pixels through UltraCanvasRichTextEdit,
 // the element that edits them on the canvas, so the two agree to the pixel.
-// Version: 1.1.0 - RasterTextContent::letterSpacingPx: the text tracked wider or tighter
+// Version: 1.1.0 - RasterTextContent::letterSpacingPx: the text tracked wider or tighter;
+//                  SetTextLineSpacing / GetTextLineSpacing: a text bar's line spacing
 // Version: 1.0.1 - the canvas editor and the renderer show no font notice
 // Version: 1.0.0
 // Last Modified: 2026-10-23
@@ -53,6 +54,31 @@ namespace {
             if (block.spaceBeforePt < 0.0f) block.spaceBeforePt = 0.0f;
         }
     }
+}
+
+bool SetTextLineSpacing(UCRichDocument& document, float baseSizePx, float percent) {
+    bool changed = false;
+    for (auto& block : document.blocks) {
+        float largestPt = baseSizePx * kPointsPerPixel;
+        for (const auto& run : block.runs)
+            if (run.fontSizePt > 0.0f) largestPt = std::max(largestPt, run.fontSizePt);
+        const float height = largestPt * percent / 100.0f;
+        if (std::fabs(block.lineHeightPt - height) > 1e-3f || block.lineHeightAtLeast) {
+            block.lineHeightPt = height;
+            block.lineHeightAtLeast = false;
+            changed = true;
+        }
+    }
+    return changed;
+}
+
+float GetTextLineSpacing(const UCRichDocument& document, float baseSizePx) {
+    if (document.blocks.empty() || document.blocks.front().lineHeightPt <= 0.0f) return 0.0f;
+    const RichDocBlock& block = document.blocks.front();
+    float largestPt = baseSizePx * kPointsPerPixel;
+    for (const auto& run : block.runs)
+        if (run.fontSizePt > 0.0f) largestPt = std::max(largestPt, run.fontSizePt);
+    return largestPt > 0.0f ? block.lineHeightPt / largestPt * 100.0f : 0.0f;
 }
 
 RichTextEditStyle TextLayerEditStyle(const RasterTextContent& content) {

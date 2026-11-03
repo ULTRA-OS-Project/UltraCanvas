@@ -2026,37 +2026,6 @@ namespace {
     }
 
     // A new text's words: one empty paragraph, aligned as the options say.
-    // Every paragraph's lines `percent` of its largest letters apart, exactly
-    // (the text bar's line spacing): a word made larger opens its line up
-    // instead of running into the next. Whether anything changed.
-    bool StampLineSpacing(UCRichDocument& words, float baseSizePx, float percent) {
-        bool changed = false;
-        for (auto& block : words.blocks) {
-            float largestPt = baseSizePx * kTextPointsPerPixel;
-            for (const auto& run : block.runs)
-                if (run.fontSizePt > 0.0f) largestPt = std::max(largestPt, run.fontSizePt);
-            const float height = largestPt * percent / 100.0f;
-            if (std::fabs(block.lineHeightPt - height) > 1e-3f || block.lineHeightAtLeast) {
-                block.lineHeightPt = height;
-                block.lineHeightAtLeast = false;
-                changed = true;
-            }
-        }
-        return changed;
-    }
-
-    // The line spacing a text is set in, in % of its first paragraph's
-    // largest letters; 0 for a text that states none (an older text layer:
-    // the font's own spacing).
-    float TextLineSpacingOf(const UCRichDocument& words, float baseSizePx) {
-        if (words.blocks.empty() || words.blocks.front().lineHeightPt <= 0.0f) return 0.0f;
-        const RichDocBlock& block = words.blocks.front();
-        float largestPt = baseSizePx * kTextPointsPerPixel;
-        for (const auto& run : block.runs)
-            if (run.fontSizePt > 0.0f) largestPt = std::max(largestPt, run.fontSizePt);
-        return largestPt > 0.0f ? block.lineHeightPt / largestPt * 100.0f : 0.0f;
-    }
-
     std::shared_ptr<UCRichDocument> NewTextDocument(int align) {
         auto words = std::make_shared<UCRichDocument>();
         RichDocBlock paragraph;
@@ -2110,7 +2079,7 @@ void UltraPaintWindow::OpenTextSession(int layerIndex, double x, double y, doubl
         toolOptions.textFont = layer->text->fontFamily;
         toolOptions.textSize = std::max(1, static_cast<int>(std::lround(layer->text->fontSizePx)));
         toolOptions.textLetterSpacing = layer->text->letterSpacingPx;
-        session->lineSpacing = TextLineSpacingOf(*words, layer->text->fontSizePx);
+        session->lineSpacing = GetTextLineSpacing(*words, layer->text->fontSizePx);
         if (session->lineSpacing > 0.0f) toolOptions.textLineSpacing = session->lineSpacing;
     } else {
         RasterTextContent& c = session->content;
@@ -2127,7 +2096,7 @@ void UltraPaintWindow::OpenTextSession(int layerIndex, double x, double y, doubl
         c.width = std::max(c.width, 8.0);
         words = NewTextDocument(toolOptions.textAlign);
         session->lineSpacing = toolOptions.textLineSpacing;
-        StampLineSpacing(*words, c.fontSizePx, session->lineSpacing);
+        SetTextLineSpacing(*words, c.fontSizePx, session->lineSpacing);
     }
 
     if (!textEditorHost) {
@@ -2317,8 +2286,8 @@ void UltraPaintWindow::ApplyTextOption(const std::string& option) {
     if (option == "size") content.fontSizePx = static_cast<float>(std::max(1, toolOptions.textSize));
     if (option == "colour") content.colour = foreground;
     // The line spacing: set now, or kept through a change of size.
-    const float spacing = lines ? toolOptions.textLineSpacing : TextLineSpacingOf(*words, content.fontSizePx);
-    if (spacing > 0.0f) StampLineSpacing(*words, content.fontSizePx, spacing);
+    const float spacing = lines ? toolOptions.textLineSpacing : GetTextLineSpacing(*words, content.fontSizePx);
+    if (spacing > 0.0f) SetTextLineSpacing(*words, content.fontSizePx, spacing);
     content.document = words;
     std::string error;
     auto rendered = RenderTextLayerLike(*layer, content, error);
@@ -2390,7 +2359,7 @@ void UltraPaintWindow::SyncTextBar() {
         f.fontFamily = c.fontFamily;
         f.size = c.fontSizePx;
         f.letterSpacing = c.letterSpacingPx;
-        const float spacing = TextLineSpacingOf(words, c.fontSizePx);
+        const float spacing = GetTextLineSpacing(words, c.fontSizePx);
         f.lineSpacing = spacing > 0.0f ? spacing : 120.0f;
         if (!words.blocks.empty()) {
             const RichTextAlign a = words.blocks.front().align;
@@ -2422,7 +2391,7 @@ void UltraPaintWindow::StampTextLineSpacing() {
     if (!textSession || !textEditor || textSession->lineSpacing <= 0.0f) return;
     auto words = textEditor->GetDocument();
     if (!words) return;
-    if (StampLineSpacing(*words, textSession->content.fontSizePx, textSession->lineSpacing))
+    if (SetTextLineSpacing(*words, textSession->content.fontSizePx, textSession->lineSpacing))
         textEditor->InvalidateDocument();
 }
 

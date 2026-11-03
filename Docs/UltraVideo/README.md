@@ -122,10 +122,27 @@ A title is one span on the title lane: drag it to its time, drag its edges
 for its length, split it with `S`, delete it with `Del`. Its text, style,
 place on the frame (the nine anchors), size, colour, shadow, band and
 fades are in the inspector. When the engine renders - in the viewer and in
-the export - the span becomes a text overlay on every clip it crosses,
+the export - the span becomes an overlay on every clip it crosses,
 with the fades only at the span's own ends, so a title runs across a cut
-without a seam. The project file keeps the spans and writes the overlays
-beside them for `videofx render`.
+without a seam.
+
+**Type a title on the frame**: double-click it in the viewer (or its span on
+the title lane) and the words lie over the picture where the title shows, at
+the viewer's scale, in its font and colour; the title leaves the frame
+meanwhile. The **text bar** over the viewer - the framework's
+`UltraCanvasTextFormatBar`, the one ArtCreator and UltraPaint show - sets the
+font (every installed font, each shown in itself), size (pixels of the
+project's frame), bold, italic, underline, strikethrough, alignment, line
+spacing and letter spacing: of the selected words, else of the whole title;
+with no title being typed, of the selected title as one undo step. Escape,
+Ctrl+Enter or a click outside puts the words in the video.
+
+A title is drawn by UltraCanvas's text engine - the editor that types it -
+into a picture the engine lays over the frame, so the viewer, the export and
+the words being typed agree, and the shadow and band are drawn into it. The
+picture is drawn for the export's own height. The project file keeps the
+spans with their words, and still writes plain text overlays beside them for
+`videofx render`, which draws them with the engine's own text filter.
 
 ### Overlay video
 

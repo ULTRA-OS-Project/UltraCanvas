@@ -3530,6 +3530,7 @@ if(TARGET VideoFX AND ULTRACANVAS_LIBRARY)
         ${ULTRACANVAS_ROOT}/Apps/UltraVideo/UltraVideoMapping.cpp
         ${ULTRACANVAS_ROOT}/Apps/UltraVideo/UltraVideoHistory.cpp
         ${ULTRACANVAS_ROOT}/Apps/UltraVideo/UltraVideoProxies.cpp
+        ${ULTRACANVAS_ROOT}/Apps/UltraVideo/UltraVideoTitles.cpp
     )
     target_include_directories(UltraVideoDraftTest PRIVATE
         ${ULTRACANVAS_ROOT}/Apps/UltraVideo

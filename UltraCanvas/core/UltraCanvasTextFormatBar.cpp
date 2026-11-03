@@ -89,7 +89,13 @@ void UltraCanvasTextFormatBar::Build(float height) {
     fontStyle.itemHeight = 26.0f;
     fontStyle.fontSize = 12.0f;
     fontBox->SetStyle(fontStyle);
-    fontBox->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    // The one control that gives up width when the bar is narrower than its
+    // controls (a program's narrow column): down to a name's first letters,
+    // so every other control stays in reach.
+    fontBox->layoutItem.SetFlexGrow(0).SetFlexShrink(1);
+    CSSLayout::BoxConstraints fontLimits = fontBox->boxConstraints.value_or(CSSLayout::BoxConstraints{});
+    fontLimits.minWidth = CSSLayout::Dimension::Px(90.0f);
+    fontBox->boxConstraints = fontLimits;
     fontBox->onSelectionChanged = [this](int, const DropdownItem& item) {
         if (showing || item.value.empty()) return;
         format.fontFamily = item.value;

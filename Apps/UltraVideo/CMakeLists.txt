@@ -22,6 +22,7 @@ add_executable(UltraVideo
     UltraVideoPreview.cpp
     UltraVideoProxies.cpp
     UltraVideoStory.cpp
+    UltraVideoTitles.cpp
     UltraVideoViewer.cpp
     UltraVideoWindow.cpp
 )
