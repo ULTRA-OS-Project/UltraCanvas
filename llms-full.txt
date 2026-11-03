@@ -7757,9 +7757,9 @@ left between that and "runs on a device" is the APK (packaging/README.md).
 
 | Dependency | Action |
 |---|---|
-| **libvips** (+ ~10 transitive libs) | ~~Make it optional~~ **Decided otherwise (2026-10-15): libvips is part of UltraCanvas on every platform, Android included** — it is in the vcpkg manifest with JPEG, PNG, WebP, TIFF, EXIF, lcms, GIF and Netpbm, from the macOS overlay port. The optional build that the first milestone used is gone; only a single-threaded WebAssembly program goes without it, where libvips cannot run |
+| **libvips** (+ ~10 transitive libs) | ~~Make it optional~~ **Decided otherwise (2026-10-15): libvips is part of UltraCanvas on every platform, Android included** — it is in the vcpkg manifest with JPEG, PNG, WebP, TIFF, EXIF, lcms, GIF, Netpbm and SVG, from the macOS overlay port. The optional build that the first milestone used is gone; only a single-threaded WebAssembly program goes without it, where libvips cannot run |
 | X11/Xcursor/Xrandr, GTK3, GLX, desktop OpenGL | Never referenced by the Android platform arm |
-| librsvg | Skip (Rust+gobject; SVG falls back gracefully) |
+| librsvg | ~~Skip (Rust+gobject; SVG falls back gracefully)~~ **Built (2026-11): libvips' `rsvg` feature, vcpkg's librsvg 2.40 - the last C release, no Rust - as on macOS.** The fallback was not graceful: on the emulator every `.svg` icon failed with "is not a known file format". The emulator smoke test now fails if one does. |
 | GStreamer | Skip video for phase 1 (`VideoBackendNull` exists exactly for this); the right Android backend later is MediaCodec/ExoPlayer, not GStreamer-android. **Status:** done with the NDK's MediaCodec, Camera2 and AAudio (`libspecific/Video/VideoBackendAndroid*.cpp`). No ExoPlayer, so no Java dependency. |
 | miniaudio | **Works on Android out of the box** (AAudio/OpenSL backends already in the vendored header) — audio is nearly free. **Status: on.** It was the one entry in the Android CMake block whose dependency is vendored rather than pending in the sysroot, so it needed no link changes at all (AAudio and OpenSL ES are both reached through `dlopen`). The CI syntax check compiles the backend TU — and with it the whole `MINIAUDIO_IMPLEMENTATION` — for aarch64 |
 | Optional audio codecs (FLAC/vorbis/opus/LAME) | All plain C with known NDK builds; each just unlocks a format |

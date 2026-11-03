@@ -4,7 +4,7 @@
 manifest is complete and every attribute in it is load-bearing (each is
 annotated with what breaks without it). `vcpkg.json` and
 `scripts/android-bootstrap-sysroot.sh` cross-compile cairo, pango, glib,
-harfbuzz, fontconfig, freetype, tinyxml2, fmt and libvips for `arm64-v8a` and
+harfbuzz, fontconfig, freetype, tinyxml2, fmt and libvips (SVG through librsvg) for `arm64-v8a` and
 `x86_64`: `.github/workflows/android-build.yml` runs them on every pull request
 that touches the Android build, compiles the core library against the result,
 links the demo into `libUltraCanvasDemo.so`, the library the manifest here
