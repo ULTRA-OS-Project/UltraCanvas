@@ -11,10 +11,12 @@
 // With ULTRACANVAS_SCREENSHOT_DIR set, each design is also written there as a
 // PNG for a person to look at.
 //
+// Version: 1.2.0 - calibration: dragging a person to another box, the veto,
+//   click versus drag, the keyboard, Ctrl+arrows, the "+N more" list
 // Version: 1.1.0 - the population: counts, dots and names hit where drawn, "+N"
 //   accounting, the legend hiding a group, anonymised, ByCount, level bars
 // Version: 1.0.0
-// Last Modified: 2026-11-02
+// Last Modified: 2026-11-03
 // Author: UltraCanvas Framework
 
 #include "Plugins/Diagrams/UltraCanvasPerformanceMatrix.h"
@@ -28,6 +30,7 @@
 #include <iostream>
 #include <memory>
 #include <string>
+#include <vector>
 
 using namespace UltraCanvas;
 
@@ -78,6 +81,14 @@ UCEvent Mouse(UCEventType type, const Point2Di& at) {
     e.type = type;
     e.pointer = at;
     e.button = UCMouseButton::Left;
+    return e;
+}
+
+UCEvent Key(UCKeys key, bool ctrl = false) {
+    UCEvent e;
+    e.type = UCEventType::KeyDown;
+    e.virtualKey = key;
+    e.ctrl = ctrl;
     return e;
 }
 
@@ -413,6 +424,183 @@ void TestPopulation() {
     }
 }
 
+void TestCalibration() {
+    const int W = 980, H = 680;
+    PerformanceMatrixModel model = Calibration();
+
+    // ---- Dragging a person to another box -----------------------------------
+    {
+        Canvas canvas(W, H);
+        if (!canvas.ctx) return;
+        auto matrix = CreatePerformanceMatrix("pm", 0, 0, W, H);
+        matrix->SetEnableTooltips(false);
+        matrix->SetModel(model);
+        matrix->SetPopulationDisplay(PerformancePopulationDisplay::Dots);
+        matrix->Render(canvas.ctx.get(), Rect2Df(0, 0, W, H));
+        std::cout << "\nCalibration, drag\n";
+
+        // A person placed by scores, so the move must keep them.
+        size_t who = 0;
+        while (who < model.items.size() && !std::isfinite(model.items[who].xScore)) ++who;
+        const PerformanceCellRef from = model.CellOf(model.items[who]);
+        const PerformanceCellRef to = from == PerformanceCellRef(2, 2) ? PerformanceCellRef(0, 0) : PerformanceCellRef(2, 2);
+        const Point2Di start = Centre(matrix->GetItemRect(who));
+        const Point2Di end = Centre(matrix->GetCellRect(to.row, to.col));
+
+        int asked = 0, clicks = 0;
+        bool veto = false;
+        PerformanceCellRef askedFrom, askedTo;
+        matrix->onItemMove = [&](const PerformanceMatrixItem&, const PerformanceCellRef& f, const PerformanceCellRef& t) {
+            ++asked;
+            askedFrom = f;
+            askedTo = t;
+            return !veto;
+        };
+        matrix->onItemClick = [&clicks](const PerformanceMatrixItem&) { ++clicks; };
+
+        Check(!matrix->GetAllowItemDrag(), "moving people is off by default");
+        matrix->OnEvent(Mouse(UCEventType::MouseDown, start));
+        matrix->OnEvent(Mouse(UCEventType::MouseMove, end));
+        matrix->OnEvent(Mouse(UCEventType::MouseUp, end));
+        Check(!matrix->IsDraggingItem() && asked == 0 && model.CellOf(matrix->GetModel().items[who]) == from,
+              "so a drag moves no one");
+        Check(clicks == 1, "and the press is a click, reported at once");
+
+        matrix->SetAllowItemDrag(true);
+        clicks = 0;
+        matrix->OnEvent(Mouse(UCEventType::MouseDown, start));
+        Check(clicks == 0, "with dragging on, a press waits to see if it is a click");
+        matrix->OnEvent(Mouse(UCEventType::MouseMove, Point2Di(start.x + 2, start.y + 1)));
+        Check(!matrix->IsDraggingItem(), "a few pixels of wobble are not a drag");
+        matrix->OnEvent(Mouse(UCEventType::MouseMove, end));
+        Check(matrix->IsDraggingItem() && matrix->GetDropTarget() == to, "past them, the drag follows the pointer");
+        matrix->Render(canvas.ctx.get(), Rect2Df(0, 0, W, H));
+        canvas.Save("performance_matrix_drag");
+        matrix->OnEvent(Mouse(UCEventType::MouseUp, end));
+        const PerformanceMatrixItem& moved = matrix->GetModel().items[who];
+        Check(asked == 1 && askedFrom == from && askedTo == to, "onItemMove is asked, with where from and where to");
+        Check(moved.row == to.row && moved.col == to.col, "the person lands in the box dropped on");
+        Check(std::isfinite(moved.xScore) && moved.xScore == model.items[who].xScore,
+              "as an explicit cell, with the scores kept beside it");
+        Check(clicks == 0 && !matrix->IsDraggingItem(), "a drag is not a click");
+        Check(matrix->GetSelectedCell() == to && matrix->GetSelectedItem() == static_cast<int>(who),
+              "the person and the box stay selected");
+
+        // The veto: the application says no, and nothing changes.
+        veto = true;
+        matrix->Render(canvas.ctx.get(), Rect2Df(0, 0, W, H));
+        const Point2Di again = Centre(matrix->GetItemRect(who));
+        const Point2Di back = Centre(matrix->GetCellRect(from.row, from.col));
+        matrix->OnEvent(Mouse(UCEventType::MouseDown, again));
+        matrix->OnEvent(Mouse(UCEventType::MouseMove, back));
+        matrix->OnEvent(Mouse(UCEventType::MouseUp, back));
+        Check(asked == 2 && model.CellOf(matrix->GetModel().items[who]) == to, "a vetoed move changes nothing");
+
+        // A click with dragging on is reported on release.
+        veto = false;
+        matrix->OnEvent(Mouse(UCEventType::MouseDown, again));
+        matrix->OnEvent(Mouse(UCEventType::MouseUp, again));
+        Check(clicks == 1 && asked == 2, "press and release in place is one click and no move");
+
+        // Escape drops a drag in progress.
+        matrix->OnEvent(Mouse(UCEventType::MouseDown, again));
+        matrix->OnEvent(Mouse(UCEventType::MouseMove, back));
+        matrix->OnEvent(Key(UCKeys::Escape));
+        matrix->OnEvent(Mouse(UCEventType::MouseUp, back));
+        Check(!matrix->IsDraggingItem() && asked == 2, "Escape cancels a drag");
+
+        Check(!matrix->MoveItem(who, to), "moving a person to the box they are in does nothing");
+        Check(!matrix->MoveItem(who, PerformanceCellRef(3, 0)) && !matrix->MoveItem(999, from),
+              "nor does a box or person that does not exist");
+    }
+
+    // ---- The keyboard -------------------------------------------------------
+    {
+        Canvas canvas(W, H);
+        if (!canvas.ctx) return;
+        auto matrix = CreatePerformanceMatrix("pm", 0, 0, W, H);
+        matrix->SetEnableTooltips(false);
+        matrix->SetModel(model);
+        matrix->SetPopulationDisplay(PerformancePopulationDisplay::Names);
+        matrix->Render(canvas.ctx.get(), Rect2Df(0, 0, W, H));
+        std::cout << "\nCalibration, keyboard\n";
+        Check(matrix->AcceptsFocus(), "the matrix takes the focus");
+        PerformanceCellRef activated;
+        matrix->onCellClick = [&activated](const PerformanceCellRef& ref) { activated = ref; };
+
+        matrix->OnEvent(Key(UCKeys::Right));
+        Check(matrix->GetSelectedCell() == PerformanceCellRef(2, 0), "the first arrow selects the top-left box");
+        matrix->OnEvent(Key(UCKeys::Right));
+        matrix->OnEvent(Key(UCKeys::Down));
+        Check(matrix->GetSelectedCell() == PerformanceCellRef(1, 1), "arrows move on screen: right, then down");
+        for (int i = 0; i < 4; ++i) matrix->OnEvent(Key(UCKeys::Left));
+        Check(matrix->GetSelectedCell() == PerformanceCellRef(1, 0), "and stop at the edge");
+        matrix->OnEvent(Key(UCKeys::Return));
+        Check(activated == PerformanceCellRef(1, 0), "Enter activates the selected box");
+        matrix->OnEvent(Key(UCKeys::Escape));
+        Check(!matrix->GetSelectedCell().IsValid(), "Escape clears the selection");
+
+        // Ctrl+arrows move the selected person, only when moving is allowed.
+        size_t who = 0;
+        while (who < model.items.size() && model.CellOf(model.items[who]).col == 2) ++who;
+        const PerformanceCellRef from = model.CellOf(model.items[who]);
+        matrix->SetSelectedItem(static_cast<int>(who));
+        matrix->OnEvent(Key(UCKeys::Right, true));
+        Check(model.CellOf(matrix->GetModel().items[who]) == from, "Ctrl+Right moves no one while moving is off");
+        matrix->SetAllowItemDrag(true);
+        matrix->OnEvent(Key(UCKeys::Right, true));
+        const PerformanceCellRef now = model.CellOf(matrix->GetModel().items[who]);
+        Check(now == PerformanceCellRef(from.row, from.col + 1), "with it on, Ctrl+Right moves the person one box right");
+        Check(matrix->GetSelectedCell() == now, "and the selection follows them");
+        matrix->Render(canvas.ctx.get(), Rect2Df(0, 0, W, H));
+        canvas.Save("performance_matrix_keyboard_move");
+        matrix->OnEvent(Key(UCKeys::Escape));
+        Check(matrix->GetSelectedItem() == -1 && matrix->GetSelectedCell().IsValid(),
+              "Escape lets go of the person first, then the box");
+
+        matrix->SetAnonymised(true);
+        matrix->SetSelectedItem(static_cast<int>(who));
+        Check(matrix->GetSelectedItem() == -1, "anonymised, no one can be singled out");
+    }
+
+    // ---- "+N more" lists everyone in the box ---------------------------------
+    {
+        const int w = 720, h = 470;
+        Canvas canvas(w, h);
+        if (!canvas.ctx) return;
+        auto matrix = CreatePerformanceMatrix("pm", 0, 0, w, h);
+        matrix->SetEnableTooltips(false);
+        matrix->SetModel(model);
+        matrix->SetPopulationDisplay(PerformancePopulationDisplay::Names);
+        matrix->Render(canvas.ctx.get(), Rect2Df(0, 0, static_cast<float>(w), static_cast<float>(h)));
+        std::cout << "\nCalibration, overflow list\n";
+        PerformanceCellRef listed;
+        std::vector<size_t> people;
+        matrix->onOverflowClick = [&](const PerformanceCellRef& ref, const std::vector<size_t>& items) {
+            listed = ref;
+            people = items;
+        };
+        Point2Di mark(-1, -1);
+        PerformanceCellRef overflowing;
+        for (int y = 0; y < h && mark.x < 0; ++y) {
+            for (int x = 0; x < w && mark.x < 0; ++x) {
+                overflowing = matrix->OverflowAt(Point2Di(x, y));
+                if (overflowing.IsValid()) mark = Point2Di(x, y);
+            }
+        }
+        Check(mark.x >= 0, "a small matrix has a box with \"+N more\"");
+        matrix->OnEvent(Mouse(UCEventType::MouseDown, mark));
+        bool allThere = listed == overflowing && static_cast<int>(people.size()) == matrix->GetCellCount(overflowing);
+        for (size_t i : people) allThere &= model.CellOf(model.items[i]) == overflowing;
+        Check(allThere, "clicking it hands over everyone in that box");
+        Check(!matrix->GetSelectedCell().IsValid(), "and does not select the box");
+        canvas.Save("performance_matrix_overflow");
+        matrix->SetAnonymised(true);
+        matrix->Render(canvas.ctx.get(), Rect2Df(0, 0, static_cast<float>(w), static_cast<float>(h)));
+        Check(!matrix->OverflowAt(mark).IsValid(), "anonymised, there is no list to open");
+    }
+}
+
 } // namespace
 
 int main() {
@@ -426,6 +614,7 @@ int main() {
     TestGridAndInteraction();
     TestSkillWill();
     TestPopulation();
+    TestCalibration();
 
     std::cout << "\n====================================\n";
     if (g_failures == 0) {
