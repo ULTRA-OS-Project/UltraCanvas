@@ -1,3 +1,97 @@
+#### 2026-11-03 *0.9.475*
+- **`UltraCanvasTextFormatBar`: one text formatting bar for every program
+  that sets text.** Font, Size, Bold, Italic, Underline, Strikethrough, Align
+  left / centre / right, Line spacing and Letter spacing in one row; it edits
+  a `TextFormat` and reports each change with the attribute that changed
+  (`onFormatChanged`), hands the keyboard back after a control
+  (`onControlDone`), hides what a host cannot draw (`SetAttributeVisible`),
+  takes the host's size unit (`SetSizeUnit`) and its theme (`ApplyTheme`; the
+  icons, in `media/icons/textformat/`, take the ink). `TextFormatCharDelta` and
+  `TextFormatAtCaret` connect it to an `UltraCanvasRichTextEdit` typed on a
+  canvas. ArtCreator's text bar is this element now; UltraPaint and UltraVideo
+  follow.
+- **A dropdown row can be drawn in a font of its own** -
+  `DropdownItem::fontFamily` - so a font list shows each font in itself
+  without an element or a drawing callback of its own. Loading a font takes a
+  few milliseconds the first time (measured: 2.6 ms on average, 6 ms for a
+  colour emoji font), which would freeze a list of a computer's hundreds of
+  fonts for a second or more as it opened; the dropdown prepares those rows
+  lazily instead, in slices of about 6 ms every 15 ms once it is on screen,
+  the rows its list opens on first, and shapes a row not prepared yet as it
+  scrolls into view.
+- **Text layers keep a letter spacing** - `RasterTextContent::letterSpacingPx`,
+  drawn through `RichTextEditStyle::letterSpacing` - saved as
+  `"letterSpacingPx"` in a raster project and in a version 2 `UCTF` text
+  frame in a *.ucd (UCD 4.7.3). A text without letter spacing is still
+  written as version 1, which every earlier reader takes. `RasterEditingTest`
+  checks it.
+- `SetTextLineSpacing` / `GetTextLineSpacing` (`UltraCanvasRasterText.h`): a
+  text bar's line spacing in rich text - every paragraph's lines a percentage
+  of its largest letters apart, exactly - shared by UltraPaint's text layers
+  and UltraVideo's titles.
+- In a place narrower than its controls, the text bar's Font list gives up
+  width first (down to 90 pixels), so every other control stays in reach.
+- **Vector text draws underline, strikethrough and letter spacing, and
+  aligns each line on its own.** `VectorRenderer::RenderText` ignored
+  `VectorTextStyle::Underline`, `StrikeThrough` and `LetterSpacing` - an SVG
+  with `text-decoration` or `letter-spacing` lost them on screen and in every
+  bitmap export - and shifted every line of a centred or right-aligned text
+  by the width of all its lines together, so a multi-line text came apart. A
+  span with a `Position` of its own now starts a text chunk (SVG's rule),
+  which the anchor places on its own start point.
+- **`VectorText::GetBoundingBox` counts every line of a text set over
+  several**, each anchored on its own, with its letter spacing: the estimate
+  stretched the first line by every line's characters and left the others
+  out, so the selection frame and the hit test missed all but the first
+  line. Characters are counted, not UTF-8 bytes (an accented or Thai text
+  measured up to three times too wide). `VectorModelTest` checks it.
+- `TextAttributeFactory::CreateLetterSpacing` takes fractional pixels
+  (`double`): in a drawing's units, whole pixels were whole points of
+  tracking.
+- `RichTextEditStyle::letterSpacing`: `UltraCanvasRichTextEdit` tracks the
+  whole text wider or tighter, so text typed on a canvas shows the letter
+  spacing it will be drawn with.
+- **`videofx render` draws UltraVideo's titles as UltraVideo shows them.** The
+  command-line tool drew every title with FFmpeg's text filter: one font
+  file, plain, left-aligned - a title with a font of its own, a bold or
+  italic word, underline, alignment or spacing came out plain. Now:
+  - VideoFX 0.18.0: a text overlay carries that formatting
+    (`VideoFXOverlay::fontFamily`, `richText` / `richTextHeight`, `textAlign`,
+    `lineSpacing`, `letterSpacing`, saved in project files), and a host's text
+    renderer (`VideoFX_SetTextRenderer`) draws such an overlay into a picture
+    laid over the frame - asked on the calling thread by
+    `VideoFXExportJob::Start`, `VideoFX_Export` / `VideoFX_RenderProject` and
+    `VideoFXPreview::Open`, never on the export's own thread
+    (`VideoFX_DrawTextOverlays`). VideoFX stays free of UltraCanvas; built on
+    its own it draws these titles plain, as before.
+  - `VideoFXUltraCanvasText` (`VideoFX/ultracanvas/`), a library beside
+    VideoFX: UltraCanvas's text engine as that renderer - the drawing that
+    was UltraVideo's own (`UltraVideoTitles`), now shared.
+    `VideoFX_UseUltraCanvasText()` installs it; UltraVideo does, and the
+    `videofx` tool does when built in the UltraCanvas tree (`videofx
+    --version` says which).
+  - The tool reads UltraVideo's `.ultravideo`: a program's file that carries
+    the engine's project under `"project"` is read for it. It never could -
+    `videofx render trip.ultravideo` said "Not a VideoFX project file",
+    though UltraVideo's README promised it.
+  - **One font registration per platform.** Each platform's start-up font
+    set-up moved out of its application class into
+    `RegisterPlatformBundledFonts()` (`OS/<Platform>/`): fontconfig on Linux,
+    the BSDs, Android and in the browser, CoreText for this process only on
+    macOS, and on Windows the Windows font folders, the generic aliases, the
+    bundled fonts through fontconfig and GDI and a fontconfig-backed Pango
+    font map. Every application's `LoadBundledFontsNative` calls it, and so
+    does `RegisterBundledFontsWithoutApplication()` - what a tool that draws
+    text, with no `UltraCanvasApplication`, calls instead: the generated
+    fonts.conf where the system has none, then the platform's registration,
+    waiting on Windows for the system fonts' scan (a tool has no windows to
+    switch over later). So `videofx` sets titles in the bundled fonts and the
+    system's on every platform, macOS included, from the code the
+    applications run - no second copy.
+  - `UltraVideoDocumentTest` checks that the saved project carries the
+    formatting the tool reads, and that the engine lays over the frame the
+    very picture the program draws.
+
 #### 2026-11-03 *0.9.474*
 - **Android: frames are drawn at the window's exact pixel size at every
   density.** The backend built its surface from the logical size scaled back
