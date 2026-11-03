@@ -704,11 +704,11 @@ jobs:
           fi
           # JPEG XL: ubuntu-22.04 has no libjxl package (its libvips is built
           # without one). libjxl is built from source below - on the distro's
-          # brotli and Little-CMS, so nothing of its own shadows them under
-          # /usr/local - and the framework's own jxlload / jxlsave
-          # (VipsJxlPlugin) stand in for libvips', so JPEG XL reads and
-          # writes here as on every other row.
-          scripts/ci-apt.sh install libbrotli-dev liblcms2-dev
+          # brotli, so nothing of its own shadows it under /usr/local - and
+          # the framework's own jxlload / jxlsave (VipsJxlPlugin) stand in
+          # for libvips', so JPEG XL reads and writes here as on every other
+          # row.
+          scripts/ci-apt.sh install libbrotli-dev
           scripts/ci-apt.sh install libtinyxml2-dev libfmt-dev
           scripts/ci-apt.sh install libx11-dev libxcursor-dev libxi-dev libgl1-mesa-dev libgtk-3-dev
           scripts/ci-apt.sh install libcdr-dev librevenge-dev zlib1g-dev
@@ -926,15 +926,17 @@ jobs:
       # version: a newer libjxl encodes a lossy picture differently (0.10.3
       # put the test's quality-75 picture 47 off where 0.7 puts it 26, the
       # tolerance being 40), so the packages behave as 24.04 systems do.
-      # Little-CMS from the system in place of the bundled skcms, whose
-      # mirror is not reachable from everywhere the recipe is run.
+      # Its bundled Little-CMS (a static library inside libjxl.so, nothing
+      # installed) in place of the bundled skcms, whose mirror is not
+      # reachable from everywhere the recipe is run; the distro's Little-CMS
+      # is 2.12 on jammy, older than the 2.13 libjxl asks for.
       - name: Restore the libjxl build (Linux)
         if: runner.os == 'Linux'
         id: libjxl-cache
         uses: actions/cache@v5
         with:
           path: .libjxl
-          key: libjxl-v3-${{ matrix.os }}-0.7.0
+          key: libjxl-v4-${{ matrix.os }}-0.7.0
       - name: Build libjxl from source (Linux)
         if: runner.os == 'Linux' && steps.libjxl-cache.outputs.cache-hit != 'true'
         timeout-minutes: 40
@@ -945,10 +947,10 @@ jobs:
           src="$RUNNER_TEMP/libjxl-src"
           rm -rf "$src"
           git clone --depth 1 --branch "v${LIBJXL_VERSION}" https://github.com/libjxl/libjxl.git "$src"
-          ( cd "$src" && git submodule update --init --depth 1 third_party/highway third_party/brotli )
+          ( cd "$src" && git submodule update --init --depth 1 third_party/highway third_party/brotli third_party/lcms )
           # The library and its threads runner only: no tools, no tests, no
-          # plug-ins, no benchmark; highway bundled (static), brotli and
-          # Little-CMS the system's.
+          # plug-ins, no benchmark; highway and Little-CMS bundled (static),
+          # brotli the system's.
           cmake -S "$src" -B "$src/build" \
             -DCMAKE_BUILD_TYPE=Release \
             -DBUILD_SHARED_LIBS=ON \
@@ -965,7 +967,6 @@ jobs:
             -DJPEGXL_ENABLE_PLUGINS=OFF \
             -DJPEGXL_ENABLE_DEVTOOLS=OFF \
             -DJPEGXL_ENABLE_SKCMS=OFF \
-            -DJPEGXL_FORCE_SYSTEM_LCMS2=ON \
             -DJPEGXL_FORCE_SYSTEM_BROTLI=ON \
             -DCMAKE_INSTALL_PREFIX=/usr/local
           cmake --build "$src/build" -j"$(nproc)"
