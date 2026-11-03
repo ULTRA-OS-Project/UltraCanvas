@@ -10,9 +10,12 @@
 //     "title": "...", "output": "out.mp4", "settings": {...},
 //     "segments": [ {...}, ... ] }                       a timeline, or
 //     "slideshow": { "images": [...], "options": {...} } a slideshow
+// Version: 0.18.0 - a program's project file that carries the engine's project under "project" (an
+//                  .ultravideo) is read for it; a text overlay's formatted text (fontFamily, richText, richTextHeight,
+//                  textAlign, lineSpacing, letterSpacing)
 // Version: 0.16.0 - overlays[].effects
 // Version: 0.13.0
-// Last Modified: 2026-10-16
+// Last Modified: 2026-11-03
 // Author: UltraCanvas Framework
 
 #include "VideoFXProject.h"
@@ -302,10 +305,26 @@ Json OverlayOut(const VideoFXOverlay& o, const Paths& paths) {
                 {"effects", effects}};
 }
 
+// A text overlay's formatted text, written only when it has some (a project
+// without stays as it was)
+Json OverlayOutWithText(const VideoFXOverlay& o, const Paths& paths) {
+    Json j = OverlayOut(o, paths);
+    if (o.kind != VideoFXOverlayKind::Text || o.fontFamily.empty()) return j;
+    j["fontFamily"] = o.fontFamily;
+    if (!o.richText.empty()) {
+        j["richText"] = o.richText;
+        j["richTextHeight"] = o.richTextHeight;
+    }
+    j["textAlign"] = o.textAlign;
+    j["lineSpacing"] = o.lineSpacing;
+    j["letterSpacing"] = o.letterSpacing;
+    return j;
+}
+
 Json SegmentOut(const VideoFXSegment& s, const Paths& paths) {
     Json effects = Json::array(), overlays = Json::array(), keep = Json::array();
     for (const VideoFXEffect& e : s.effects) effects.push_back(EffectOut(e, paths));
-    for (const VideoFXOverlay& o : s.overlays) overlays.push_back(OverlayOut(o, paths));
+    for (const VideoFXOverlay& o : s.overlays) overlays.push_back(OverlayOutWithText(o, paths));
     for (const VideoFXRect& r : s.keepInView) keep.push_back(RectOut(r));
     return Json{{"kind", NameOf(MakeNames(kSourceKinds, "segment kind"), s.kind)},
                 {"path", paths.Out(s.path)}, {"start", s.start}, {"end", s.end}, {"duration", s.duration},
@@ -422,6 +441,13 @@ VideoFXOverlay OverlayIn(const Json& j, const Paths& paths, const std::string& a
     Get(j, "margin", o.margin, at); Get(j, "x", o.x, at); Get(j, "y", o.y, at); Get(j, "opacity", o.opacity, at);
     Get(j, "start", o.start, at); Get(j, "end", o.end, at);
     Get(j, "fadeIn", o.fadeIn, at); Get(j, "fadeOut", o.fadeOut, at);
+    // The formatted text a text renderer draws
+    Get(j, "fontFamily", o.fontFamily, at);
+    Get(j, "richText", o.richText, at);
+    Get(j, "richTextHeight", o.richTextHeight, at);
+    Get(j, "textAlign", o.textAlign, at);
+    Get(j, "lineSpacing", o.lineSpacing, at);
+    Get(j, "letterSpacing", o.letterSpacing, at);
     const Json& effects = Array(j, "effects", at);
     for (size_t i = 0; i < effects.size(); ++i)
         o.effects.push_back(EffectIn(effects[i], paths, Where(at, "effects") + "[" + std::to_string(i) + "]"));
@@ -617,6 +643,14 @@ VideoFXResult ProjectFromJsonText(const std::string& text, const std::string& ba
     } catch (const nlohmann::json::exception& e) {
         error = std::string("Not a valid project file: ") + e.what();
         return VideoFXResult::InvalidArgument;
+    }
+    // A program's own project file that carries the engine's project under
+    // "project" - UltraVideo's .ultravideo, around its bin and its lanes - is
+    // read for that project, its paths relative to the same file
+    if (j.is_object() && (!j.contains("format") || j["format"] != kFormatName) && j.contains("project") &&
+        j["project"].is_object() && j["project"].contains("format") && j["project"]["format"] == kFormatName) {
+        Json inner = j["project"];
+        j = std::move(inner);
     }
     if (!j.is_object() || !j.contains("format") || j["format"] != kFormatName) {
         error = "Not a VideoFX project file";

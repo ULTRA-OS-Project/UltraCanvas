@@ -3,9 +3,14 @@
 // or after the force-directed layout, even for wide card nodes in a small
 // element; pinned nodes stay put; the card fields (icon, sublabel, corner,
 // shadow) survive ToJson / FromJson. Headless: no window, no rendering.
+// 2.4.0: a label never outgrows its node - the node grows for it (GrowNode,
+// ShrinkThenGrow) or the font shrinks (ShrinkFont); the degree-driven
+// sizing respects the label's minimum; every layout ends without overlaps;
+// the fit survives JSON. Without a window the labels are measured by the
+// estimate, which is what these numbers test.
 //
-// Version: 1.0.0
-// Last Modified: 2026-10-21
+// Version: 1.1.0
+// Last Modified: 2026-11-03
 // Author: UltraCanvas Framework
 
 #include "Plugins/Diagrams/UltraCanvasNodeDiagram.h"
@@ -146,6 +151,248 @@ static void TestDetailZoom() {
     CHECK(!d.IsShowingIconsOnly(), "full cards at or above it");
 }
 
+// ---- 2.4.0: labels fit their nodes --------------------------------------
+
+// The demo's organization network in miniature: hubs with long names, leaves
+// with names wider than a degree-1 node, sized by degree.
+static std::vector<std::string> BuildOrg(UltraCanvasNodeDiagram& d) {
+    std::vector<std::string> ids;
+    struct Dept { const char* hub; const char* hubLabel; int members; };
+    const Dept depts[] = {{"sales", "Sales Support", 8}, {"care", "Quality Control", 3},
+                          {"bsc", "Solution Center", 9}, {"exec", "Director", 1}};
+    int linkNo = 0;
+    for (const Dept& dept : depts) {
+        NodeDiagramNode hub(dept.hub, dept.hubLabel);
+        hub.shape = NodeShape::Square;
+        hub.width = hub.height = 46.0;
+        hub.fontSize = 10.0;
+        d.AddNode(hub);
+        ids.push_back(dept.hub);
+        std::vector<std::string> members{dept.hub};
+        for (int i = 0; i < dept.members; ++i) {
+            const std::string id = std::string(dept.hub) + "_m" + std::to_string(i);
+            NodeDiagramNode n(id, "Analyst " + std::to_string(i + 1));
+            n.shape = NodeShape::Square;
+            n.width = n.height = 34.0;
+            n.fontSize = 9.0;
+            d.AddNode(n);
+            d.AddLink("l" + std::to_string(++linkNo), dept.hub, id);
+            ids.push_back(id);
+            members.push_back(id);
+        }
+        d.AddGroup(std::string("g_") + dept.hub, dept.hubLabel, members, Color(0, 0, 0, 255));
+    }
+    d.AddLink("x1", "exec", "sales");
+    d.AddLink("x2", "exec", "bsc");
+    d.AddLink("x3", "care", "bsc");
+    NodeDiagramSizing sizing;
+    sizing.mode = NodeSizeMode::ByDegree;
+    sizing.baseSize = 20.0;
+    sizing.minSize = 26.0;
+    sizing.maxSize = 74.0;
+    d.SetNodeSizing(sizing);
+    d.SetGroupCohesion(0.14);
+    return ids;
+}
+
+// The pairs of cluster boxes that intersect.
+static int GroupOverlaps(const UltraCanvasNodeDiagram& d) {
+    const std::vector<std::string> ids = d.GetAllGroupIds();
+    int count = 0;
+    for (size_t i = 0; i < ids.size(); ++i) {
+        for (size_t j = i + 1; j < ids.size(); ++j) {
+            const Rect2Dd a = d.GetGroupBounds(ids[i]);
+            const Rect2Dd b = d.GetGroupBounds(ids[j]);
+            const bool apartX = a.x + a.width <= b.x + 0.01 || b.x + b.width <= a.x + 0.01;
+            const bool apartY = a.y + a.height <= b.y + 0.01 || b.y + b.height <= a.y + 0.01;
+            if (!apartX && !apartY) ++count;
+        }
+    }
+    return count;
+}
+
+// Every node at least as large as its label needs at `fontSize`.
+static int TooSmallForLabel(const UltraCanvasNodeDiagram& d, const std::vector<std::string>& ids,
+                            double fontSizeOrZero) {
+    int count = 0;
+    for (const std::string& id : ids) {
+        const NodeDiagramNode* n = d.GetNode(id);
+        double w = 0.0, h = 0.0;
+        const double fontSize = fontSizeOrZero > 0.0 ? fontSizeOrZero : n->fontSize;
+        d.MinimumNodeSizeForLabel(n->label, fontSize, n->shape, w, h);
+        if (n->width + 0.5 < w || n->height + 0.5 < h) {
+            ++count;
+            if (std::getenv("NODE_OVERLAP_DEBUG"))
+                std::printf("    %s is %.0fx%.0f, needs %.0fx%.0f\n", id.c_str(), n->width, n->height, w, h);
+        }
+    }
+    return count;
+}
+
+static void TestMinimumNodeSize() {
+    std::printf("\n[MinimumNodeSizeForLabel]\n");
+    UltraCanvasNodeDiagram d("m", 0, 0, 400, 300);
+    double rw = 0, rh = 0, sw = 0, sh = 0, cw = 0, ch = 0, dw = 0, dh = 0, tw = 0, th = 0;
+    d.MinimumNodeSizeForLabel("Analyst 5", 9.0, NodeShape::Rectangle, rw, rh);
+    d.MinimumNodeSizeForLabel("Analyst 5", 9.0, NodeShape::Square, sw, sh);
+    d.MinimumNodeSizeForLabel("Analyst 5", 9.0, NodeShape::Circle, cw, ch);
+    d.MinimumNodeSizeForLabel("Analyst 5", 9.0, NodeShape::Diamond, dw, dh);
+    d.MinimumNodeSizeForLabel("Analyst 5", 9.0, NodeShape::Triangle, tw, th);
+    int textW = 0, textH = 0;
+    d.MeasureLabel("Analyst 5", 9.0, textW, textH);
+    CHECK(rw > textW && rh > textH && rh < rw, "a rectangle is the text plus padding, wider than tall");
+    CHECK(sw == sh && sw == rw, "a square is the rectangle's longer side");
+    CHECK(cw == ch && cw > sw, "a circle needs the box's diagonal");
+    CHECK(dw == dh && dw > cw, "a diamond needs more than a circle");
+    CHECK(tw == th && tw > dw, "a triangle needs the most");
+    double ew = 0, eh = 0;
+    d.MinimumNodeSizeForLabel("", 9.0, NodeShape::Square, ew, eh);
+    CHECK(ew > 0.0 && ew < sw, "an empty label needs only the paddings and a line's height");
+}
+
+static void TestGrowNode() {
+    std::printf("\n[GrowNode: the node grows for its label]\n");
+    UltraCanvasNodeDiagram d("g", 0, 0, 800, 600);
+    d.SetLabelFit(NodeLabelFit::Overflow);
+    const std::vector<std::string> ids = BuildOrg(d);
+    CHECK(TooSmallForLabel(d, ids, 0.0) > 0, "degree sizing alone leaves leaves smaller than their names");
+    d.SetLabelFit(NodeLabelFit::GrowNode);
+    CHECK(d.GetLabelFit() == NodeLabelFit::GrowNode, "the mode is set");
+    CHECK(TooSmallForLabel(d, ids, 0.0) == 0, "switching the fit grows them at once");
+    CHECK(Overlaps(d, ids) == 0, "apart");
+    d.SetLayout(NodeDiagramLayout::ForceDirected);
+    d.RunLayout();
+    CHECK(TooSmallForLabel(d, ids, 0.0) == 0, "after the layout every node holds its label at its own font size");
+    CHECK(Overlaps(d, ids) == 0, "and no two overlap");
+    CHECK(GroupOverlaps(d) == 0, "nor do two cluster boxes");
+    const NodeDiagramNode* hub = d.GetNode("sales");
+    const NodeDiagramNode* leaf = d.GetNode("sales_m1");
+    CHECK(hub->width > leaf->width, "a hub is still larger than a leaf");
+    CHECK(leaf->width == leaf->height, "a grown square is still square");
+    CHECK(d.GetNodeLabelFontSize("sales_m1") == 9.0, "the font is the node's own");
+    CHECK(d.FitNodesToLabels() == 0, "nothing left to grow");
+
+    // A label edited to something longer grows its node at the next fit.
+    const double before = leaf->width;
+    d.UpdateNodeLabel("sales_m1", "Senior Analyst, Northern Region");
+    CHECK(d.FitNodesToLabels() == 1, "the renamed node grows");
+    CHECK(d.GetNode("sales_m1")->width > before, "wider than before");
+    CHECK(Overlaps(d, ids) == 0, "its neighbours moved aside");
+
+    // Shapes that hold less text grow more.
+    for (const std::string& id : ids) d.SetNodeShape(id, NodeShape::Diamond);
+    CHECK(d.FitNodesToLabels() > 0, "diamonds need more room than squares");
+    CHECK(TooSmallForLabel(d, ids, 0.0) == 0 && Overlaps(d, ids) == 0, "and get it, apart");
+}
+
+static void TestShrinkFont() {
+    std::printf("\n[ShrinkFont: the font shrinks for its node]\n");
+    UltraCanvasNodeDiagram d("s", 0, 0, 800, 600);
+    d.SetLabelFit(NodeLabelFit::ShrinkFont);
+    NodeDiagramNode n("qc", "Quality Control");
+    n.shape = NodeShape::Square;
+    n.width = n.height = 60.0;
+    n.fontSize = 11.0;
+    d.AddNode(n);
+    d.AddNode("short", "QC", 200, 0, 60.0);
+    CHECK(d.FitNodesToLabels() == 0, "the nodes do not grow in this mode");
+    CHECK(d.GetNode("qc")->width == 60.0, "the authored size stays");
+    const double fitted = d.GetNodeLabelFontSize("qc");
+    CHECK(fitted < 11.0 && fitted >= 7.0, "the long name is drawn smaller, not below the minimum");
+    CHECK(d.GetNodeLabelFontSize("short") == 10.0, "a name that fits keeps its size (the simple API's 10)");
+
+    NodeDiagramLabelFit cfg = d.GetLabelFitConfig();
+    cfg.minFontSize = 9.0;
+    d.SetLabelFitConfig(cfg);
+    CHECK(d.GetNodeLabelFontSize("qc") >= 9.0, "the minimum is honoured");
+}
+
+static void TestShrinkThenGrowDefault() {
+    std::printf("\n[ShrinkThenGrow, the default]\n");
+    UltraCanvasNodeDiagram d("t", 0, 0, 800, 600);
+    CHECK(d.GetLabelFit() == NodeLabelFit::ShrinkThenGrow, "the default shrinks first and grows the rest");
+    const std::vector<std::string> ids = BuildOrg(d);
+    d.SetLayout(NodeDiagramLayout::ForceDirected);
+    d.RunLayout();
+    CHECK(TooSmallForLabel(d, ids, 7.0) == 0, "every node holds its label at the minimum font size");
+    CHECK(Overlaps(d, ids) == 0, "no two overlap");
+    CHECK(GroupOverlaps(d) == 0, "nor do two cluster boxes");
+    const double leafFont = d.GetNodeLabelFontSize("sales_m1");
+    CHECK(leafFont >= 7.0 && leafFont <= 9.0, "a leaf's name is drawn between the minimum and its own size");
+
+    d.SetLabelFit(NodeLabelFit::Overflow);
+    CHECK(d.GetNodeLabelFontSize("sales_m1") == 9.0, "Overflow draws at the node's own size");
+    CHECK(TooSmallForLabel(d, ids, 0.0) > 0, "and leaves the nodes as the data sized them");
+}
+
+static void TestCardsFit() {
+    std::printf("\n[cards grow and shrink for their label and sublabel]\n");
+    UltraCanvasNodeDiagram d("c", 0, 0, 800, 600);
+    d.SetLabelFit(NodeLabelFit::GrowNode);
+    NodeDiagramNode narrow = Card("narrow", 0, 0);
+    narrow.width = 60.0;
+    narrow.label = "Clara Fischer";
+    narrow.sublabel = "Books and long walks";
+    narrow.iconPath = "media/icons/menu/book.svg";
+    d.AddNode(narrow);
+    NodeDiagramNode wide = Card("wide", 300, 0);
+    wide.sublabel = "Hall";
+    d.AddNode(wide);
+    CHECK(d.FitNodesToLabels() == 1, "the narrow card grows, the wide one does not");
+    const NodeDiagramNode* n = d.GetNode("narrow");
+    int subW = 0, subH = 0;
+    d.MeasureLabel("Books and long walks", 10.0 * 0.85, subW, subH);
+    CHECK(n->width > subW + 28.0, "wide enough for the sublabel beside the 28 px icon disc");
+    CHECK(n->height == 40.0, "two lines fit the authored height, which stays");
+    CHECK(d.GetNode("wide")->width == 150.0, "the wide card keeps its width");
+    CHECK(d.GetNodeLabelFontSize("narrow") == 10.0, "GrowNode keeps the font");
+
+    UltraCanvasNodeDiagram e("e", 0, 0, 800, 600);
+    e.SetLabelFit(NodeLabelFit::ShrinkFont);
+    e.AddNode(narrow);
+    CHECK(e.FitNodesToLabels() == 0, "ShrinkFont grows nothing");
+    const double shrunk = e.GetNodeLabelFontSize("narrow");
+    CHECK(shrunk < 10.0 && shrunk >= 7.0, "the card's font shrinks for the text area, not below the minimum");
+}
+
+static void TestOtherLayoutsSeparate() {
+    std::printf("\n[circular, grid and hierarchical layouts end apart]\n");
+    const NodeDiagramLayout layouts[] = {NodeDiagramLayout::Circular, NodeDiagramLayout::Grid,
+                                         NodeDiagramLayout::Hierarchical};
+    for (NodeDiagramLayout layout : layouts) {
+        UltraCanvasNodeDiagram d("o", 0, 0, 300, 200);
+        std::vector<std::string> ids;
+        d.AddNode(Card("root", 0, 0));
+        ids.push_back("root");
+        for (int i = 0; i < 12; ++i) {
+            const std::string id = "c" + std::to_string(i);
+            d.AddNode(Card(id, 0, 0));
+            d.AddLink("l" + std::to_string(i), "root", id);
+            ids.push_back(id);
+        }
+        d.SetLayout(layout);
+        d.RunLayout();
+        CHECK(Overlaps(d, ids) == 0, "no two cards overlap after the layout");
+    }
+}
+
+static void TestLabelFitJson() {
+    std::printf("\n[label fit in JSON]\n");
+    UltraCanvasNodeDiagram d("j", 0, 0, 400, 300);
+    NodeDiagramLabelFit cfg;
+    cfg.mode = NodeLabelFit::GrowNode;
+    cfg.minFontSize = 8.0;
+    cfg.paddingX = 10.0;
+    cfg.paddingY = 5.0;
+    d.SetLabelFitConfig(cfg);
+    d.AddNode("a", "A", 0, 0);
+    UltraCanvasNodeDiagram back("k", 0, 0, 400, 300);
+    CHECK(back.FromJson(d.ToJson()), "FromJson reads it");
+    const NodeDiagramLabelFit got = back.GetLabelFitConfig();
+    CHECK(got.mode == NodeLabelFit::GrowNode, "the mode round-trips");
+    CHECK(got.minFontSize == 8.0 && got.paddingX == 10.0 && got.paddingY == 5.0, "and the numbers");
+}
+
 int main() {
     std::printf("NodeDiagramOverlapTest\n");
     TestResolveOverlaps();
@@ -153,6 +400,13 @@ int main() {
     TestForceLayoutWideNodes();
     TestCardJson();
     TestDetailZoom();
+    TestMinimumNodeSize();
+    TestGrowNode();
+    TestShrinkFont();
+    TestShrinkThenGrowDefault();
+    TestCardsFit();
+    TestOtherLayoutsSeparate();
+    TestLabelFitJson();
     std::printf("\n%s (%d failure%s)\n", g_failures ? "FAILED" : "PASSED", g_failures, g_failures == 1 ? "" : "s");
     return g_failures ? 1 : 0;
 }

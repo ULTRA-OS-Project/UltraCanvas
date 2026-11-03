@@ -1167,6 +1167,7 @@ set(ULTRACANVAS_CORE_SOURCES
         # and the element that renders and edits it.
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasRichDocumentEditor.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasRichTextEdit.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTextFormatBar.cpp
         # Its pages, for the printers that draw rather than take its PDF.
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasRichTextPrint.cpp
         # Word-processing formats: ODT/DOCX/DOC readers and writers
@@ -1624,13 +1625,23 @@ if(ULTRACANVAS_PLATFORM STREQUAL "Linux" AND ULTRACANVAS_WAYLAND)
 
     set(ULTRACANVAS_WAYLAND_PROTOCOL_DIR ${CMAKE_CURRENT_BINARY_DIR}/wayland-protocols)
     file(MAKE_DIRECTORY ${ULTRACANVAS_WAYLAND_PROTOCOL_DIR})
+    # wayland-protocols' own, by their path under its share directory
+    # (xdg-activation is in it from 1.21, so the 22.04 runners' 1.25 has
+    # it), and the ones that travel with the backend under
+    # OS/Linux/Wayland/protocols/: the wlroots layer shell (the desktop and
+    # its bars) and foreign toplevels (the window list), which
+    # wayland-protocols does not carry, and ext-workspace (the virtual
+    # desktops), which it carries only from 1.39.
     set(_ultracanvas_wayland_protocols
-        stable/xdg-shell/xdg-shell
-        unstable/xdg-decoration/xdg-decoration-unstable-v1
+        ${ULTRACANVAS_WAYLAND_PROTOCOLS_DIR}/stable/xdg-shell/xdg-shell.xml
+        ${ULTRACANVAS_WAYLAND_PROTOCOLS_DIR}/unstable/xdg-decoration/xdg-decoration-unstable-v1.xml
+        ${ULTRACANVAS_WAYLAND_PROTOCOLS_DIR}/staging/xdg-activation/xdg-activation-v1.xml
+        ${CMAKE_CURRENT_SOURCE_DIR}/OS/Linux/Wayland/protocols/wlr-layer-shell-unstable-v1.xml
+        ${CMAKE_CURRENT_SOURCE_DIR}/OS/Linux/Wayland/protocols/wlr-foreign-toplevel-management-unstable-v1.xml
+        ${CMAKE_CURRENT_SOURCE_DIR}/OS/Linux/Wayland/protocols/ext-workspace-v1.xml
     )
-    foreach(_proto IN LISTS _ultracanvas_wayland_protocols)
-        get_filename_component(_name ${_proto} NAME)
-        set(_xml ${ULTRACANVAS_WAYLAND_PROTOCOLS_DIR}/${_proto}.xml)
+    foreach(_xml IN LISTS _ultracanvas_wayland_protocols)
+        get_filename_component(_name ${_xml} NAME_WE)
         set(_header ${ULTRACANVAS_WAYLAND_PROTOCOL_DIR}/${_name}-client-protocol.h)
         set(_code ${ULTRACANVAS_WAYLAND_PROTOCOL_DIR}/${_name}-protocol.c)
         add_custom_command(OUTPUT ${_header}

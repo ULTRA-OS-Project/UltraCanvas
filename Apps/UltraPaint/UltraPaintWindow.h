@@ -28,6 +28,9 @@
 //                  palettes added from a gallery, an entry set with a right click;
 //                  RememberPalettes keeps them between starts
 // Version: 1.6.2 - RememberColourPicker: the picker opens as it was left
+// Version: 1.7.0 - the text bar (UltraCanvasTextFormatBar) under the toolbar with the Text tool:
+//                  strikethrough, line and letter spacing join the font, size, style and
+//                  alignment; ReturnKeyboardToText is the bar's onControlDone
 // Version: 1.6.1 - ReturnKeyboardToText: a Text option's list closed without a choice gives
 //                  the keyboard back to the text being typed
 // Version: 1.6.0 - the Text tool types on the canvas: an UltraCanvasRichTextEdit over the
@@ -42,7 +45,7 @@
 // Version: 1.1.2 - ScheduleLayerPanelRebuild: the layer list is rebuilt after the event that changed it
 // Version: 1.1.1 - ToolIconPath / MenuIconPath: the palette's 28 px and the menus' 16 px icons
 // Version: 1.1.0
-// Last Modified: 2026-10-24
+// Last Modified: 2026-11-03
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -70,6 +73,8 @@
 #include "UltraPaintSettingsDialog.h"
 
 #include <cstdint>
+#include "UltraCanvasTextFormatBar.h"
+
 #include <memory>
 #include <string>
 #include <vector>
@@ -318,6 +323,7 @@ private:
     struct TextEditSession {
         std::shared_ptr<UCRasterLayer> layer;      // the text layer being edited; null for a new text
         RasterTextContent content;                 // its box and default font (the edit's words are the editor's)
+        float lineSpacing = 0.0f;                  // % of a line's largest letters; 0: the font's own
     };
     // Starts typing at (x, y): into the text layer whose box is there, or a
     // new text there. `boxWidth` > 0 when a box was dragged out.
@@ -335,11 +341,19 @@ private:
     // A Text tool option changed: applied to the editor's selection (or what
     // is typed next), else to the whole active text layer.
     void ApplyTextOption(const std::string& option);
-    // A Text option's control let go of the keyboard without a change (a
-    // list closed with Escape): after the event that closed it, the keys go
-    // back to the text being typed - if the control still has them; Tab or a
-    // click elsewhere put them where they were meant to go.
-    void ReturnKeyboardToText(UltraCanvasUIElement& control);
+    // The text bar (the framework's UltraCanvasTextFormatBar) under the
+    // toolbar while the Text tool is active: font, size, bold, italic,
+    // underline, strikethrough, alignment, line and letter spacing. While a
+    // text is typed the character attributes go to its selection (or what is
+    // typed next), alignment to the selected paragraphs, the spacings to the
+    // whole text; otherwise everything to the active text layer.
+    void BuildTextBar();
+    void ShowTextBar(bool show);
+    // The bar shows the caret's attributes, else the active text layer's,
+    // else what a new text starts in.
+    void SyncTextBar();
+    // The text being typed keeps its line spacing on every paragraph.
+    void StampTextLineSpacing();
     // The topmost visible text layer whose box holds (x, y), or -1.
     int TextLayerAt(double x, double y) const;
     // Before painting on a text layer: asks whether to rasterize it.
@@ -417,6 +431,7 @@ private:
     std::vector<std::shared_ptr<UltraCanvasToolGroupButton>> toolSlots;
     std::shared_ptr<UltraCanvasContainer>      textEditorHost;   // over the canvas while a text is typed
     std::shared_ptr<UltraCanvasRichTextEdit>   textEditor;       // in it, on the text's box
+    std::shared_ptr<UltraCanvasTextFormatBar>  textBar;          // under the toolbar with the Text tool
     std::unique_ptr<TextEditSession>           textSession;
     std::shared_ptr<UltraCanvasContainer>      magnifierFrame;   // the glass's border, over the canvas
     std::shared_ptr<UltraCanvasPaintSurface>   magnifier;        // the loupe inside it

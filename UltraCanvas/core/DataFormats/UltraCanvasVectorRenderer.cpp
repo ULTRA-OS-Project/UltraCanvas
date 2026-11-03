@@ -1,7 +1,10 @@
 // UltraCanvasVectorRenderer.cpp
 // Vector Graphics Rendering for UltraCanvas
+// Version: 2.2.0 - RenderText: the anchor places each text chunk (a span with a Position of
+//                  its own starts one - a line of a text set over several) on its own start,
+//                  and draws underline, strikethrough and letter spacing
 // Version: 2.1.2
-// Last Modified: 2026-09-26
+// Last Modified: 2026-11-03
 // Author: UltraCanvas Framework
 //
 // Draws a VectorStorage::VectorDocument into any IRenderContext. Every
@@ -356,12 +359,28 @@ namespace UltraCanvas {
 
         // Each span is set in its own font (a span with no family or the
         // default size inherits the base style's), measured with the
-        // context's font engine, and advanced by its real width; the anchor
-        // shifts the whole run once the widths are known.
-        struct Run { const TextSpanData *span; FontStyle font; int width; };
-        std::vector<Run> runs;
-        int totalWidth = 0;
+        // context's font engine, and advanced by its real width. A span with
+        // a Position of its own starts a new chunk there - SVG's text chunk,
+        // a line of a text set over several - and the anchor places each
+        // chunk on its own start point (it shifted every line by the width
+        // of all of them together). A span underlined, struck through or
+        // letter-spaced is set in a layout of its own with those attributes;
+        // a plain one through the context's cached layouts.
+        struct Run {
+            const TextSpanData *span;
+            FontStyle font;
+            double width = 0;
+            double baseline = 0;
+            std::shared_ptr<ITextLayout> layout;   // the decorated spans' own
+        };
+        struct Chunk { Point2Dd start; std::vector<Run> runs; double width = 0; };
+        std::vector<Chunk> chunks(1);
+        chunks[0].start = text.Position;
         for (const auto &span: text.Spans) {
+            if (span.Position.has_value()) {
+                if (!chunks.back().runs.empty()) chunks.emplace_back();
+                chunks.back().start = span.Position.value();
+            }
             VectorTextStyle st = span.Style;
             if (st.FontFamily.empty()) st.FontFamily = text.BaseStyle.FontFamily;
             if (st.FontSize <= 0) st.FontSize = text.BaseStyle.FontSize;
@@ -370,36 +389,62 @@ namespace UltraCanvas {
             // length; the context's is in points at 96 dpi (1 pt = 4/3
             // units), which drew all document text a third too large.
             fs.fontSize *= 72.0f / 96.0f;
-            ctx->SetFontFace(fs.fontFamily, fs.fontWeight, fs.fontSlant);
-            ctx->SetFontSize(fs.fontSize);
-            int w = span.Text.empty() ? 0 : ctx->GetTextLineWidth(span.Text);
-            runs.push_back({&span, fs, w});
-            totalWidth += w;
+            Run run{&span, fs};
+            if (!span.Text.empty()) {
+                const bool decorated = st.Underline || st.StrikeThrough || std::fabs(st.LetterSpacing) > 1e-6f;
+                if (decorated) {
+                    std::shared_ptr<ITextLayout> layout = ctx->CreateTextLayout(span.Text, false);
+                    if (layout) {
+                        layout->SetFontStyle(fs);
+                        const int bytes = static_cast<int>(span.Text.size());
+                        auto attribute = [&](std::unique_ptr<ITextAttribute> a) {
+                            if (!a) return;
+                            a->SetRange(0, bytes);
+                            layout->InsertAttribute(std::move(a));
+                        };
+                        if (st.Underline) attribute(TextAttributeFactory::CreateUnderline(UCUnderlineType::UnderlineSingle));
+                        if (st.StrikeThrough) attribute(TextAttributeFactory::CreateStrikethrough(true));
+                        if (std::fabs(st.LetterSpacing) > 1e-6f)
+                            attribute(TextAttributeFactory::CreateLetterSpacing(static_cast<double>(st.LetterSpacing)));
+                        run.width = layout->GetLayoutWidth();
+                        run.baseline = layout->GetBaseline();
+                        run.layout = layout;
+                    }
+                }
+                if (!run.layout) {
+                    ctx->SetFontFace(fs.fontFamily, fs.fontWeight, fs.fontSlant);
+                    ctx->SetFontSize(fs.fontSize);
+                    run.width = ctx->GetTextLineWidth(span.Text);
+                    // Position is the baseline (SVG x/y, and what
+                    // GetBoundingBox assumes); DrawText places the layout's
+                    // top-left corner there, which hung every text a full
+                    // ascent below its line. The same cached layout DrawText
+                    // uses, in the current font.
+                    if (auto layout = ctx->GetOrCreateTextLayout(span.Text, {0, 0}, false))
+                        run.baseline = layout->GetBaseline();
+                }
+            }
+            chunks.back().width += run.width;
+            chunks.back().runs.push_back(std::move(run));
         }
 
-        double anchorShift = 0;
-        if (text.BaseStyle.Anchor == TextAnchor::Middle) anchorShift = -totalWidth / 2.0;
-        else if (text.BaseStyle.Anchor == TextAnchor::End) anchorShift = -totalWidth;
-
-        Point2Dd pos = text.Position;
-        pos.x += anchorShift;
-        for (const auto &run: runs) {
-            if (run.span->Position.has_value()) {
-                pos = run.span->Position.value();
-                pos.x += anchorShift;
+        for (const auto &chunk: chunks) {
+            double anchorShift = 0;
+            if (text.BaseStyle.Anchor == TextAnchor::Middle) anchorShift = -chunk.width / 2.0;
+            else if (text.BaseStyle.Anchor == TextAnchor::End) anchorShift = -chunk.width;
+            Point2Dd pos(chunk.start.x + anchorShift, chunk.start.y);
+            for (const auto &run: chunk.runs) {
+                if (!run.span->Text.empty()) {
+                    if (run.layout) {
+                        ctx->DrawTextLayout(*run.layout, Point2Dd(pos.x, pos.y - run.baseline));
+                    } else {
+                        ctx->SetFontFace(run.font.fontFamily, run.font.fontWeight, run.font.fontSlant);
+                        ctx->SetFontSize(run.font.fontSize);
+                        ctx->DrawText(run.span->Text, Point2Dd(pos.x, pos.y - run.baseline));
+                    }
+                }
+                pos.x += run.width;
             }
-            ctx->SetFontFace(run.font.fontFamily, run.font.fontWeight, run.font.fontSlant);
-            ctx->SetFontSize(run.font.fontSize);
-            // Position is the baseline (SVG x/y, and what GetBoundingBox
-            // assumes); DrawText places the layout's top-left corner there,
-            // which hung every text a full ascent below its line.
-            double baseline = 0.0;
-            if (!run.span->Text.empty())
-                // The same cached layout DrawText uses, in the current font.
-                if (auto layout = ctx->GetOrCreateTextLayout(run.span->Text, {0, 0}, false))
-                    baseline = layout->GetBaseline();
-            ctx->DrawText(run.span->Text, Point2Dd(pos.x, pos.y - baseline));
-            pos.x += run.width;
         }
     }
 

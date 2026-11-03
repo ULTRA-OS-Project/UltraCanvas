@@ -218,7 +218,12 @@ adb shell 'while [ "$(getprop sys.boot_completed)" != 1 ]; do sleep 1; done'
 ```
 
 Create a second AVD with the hardware keyboard **off** for IME testing, and a
-third at a different density for the HiDPI path (§4).
+third at a different density for the HiDPI path (§4). **Status:** CI does
+the density one - the `emulator` job also runs the demo on the `pixel_6`
+profile (1080x2400, 420 dpi), and the smoke test requires the frame to fill
+the window to the pixel at scale density / 160 - which the backend's surface
+failed by a pixel at 2.625 until it took the window's own size (1080 -> 411
+logical -> 1079).
 
 ### 5.2 Install, launch, look
 

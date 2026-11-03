@@ -1,10 +1,11 @@
 // OS/WASM/UltraCanvasWASMApplication.cpp
 // WebAssembly (Emscripten) platform application implementation
+// Version: 2.3.0 - RegisterPlatformBundledFonts: the bundled fonts' registration, shared with a tool
 // Version: 2.2.0 - input method composition: a transparent textarea takes the
 //   keyboard while the focused element draws compositions; its composition
 //   events become TextComposition events
 // Version: 2.1.0
-// Last Modified: 2026-10-14
+// Last Modified: 2026-11-03
 // Author: UltraCanvas Framework
 
 #include "../../include/UltraCanvasApplication.h"
@@ -765,7 +766,11 @@ namespace UltraCanvas {
         return result;
     }
 
-    void UltraCanvasWASMApplication::LoadBundledFontsNative() {
+    // The bundled fonts for Pango in the browser - the one registration an
+    // application's start (LoadBundledFontsNative) and a tool without one
+    // (RegisterBundledFontsWithoutApplication) both make.
+    int RegisterPlatformBundledFonts(int systemFontsWaitMs) {
+        (void)systemFontsWaitMs;   // no system font scan in the browser
         // Same registration as the Linux backend: the bundled TTFs must be
         // preloaded into the virtual FS (--preload-file media/fonts@/...) so
         // GetBundledFontsDir() resolves. Missing files are skipped with a
@@ -774,8 +779,9 @@ namespace UltraCanvas {
         FcConfig* cfg = FcConfigGetCurrent();
         if (!cfg) {
             debugOutput << "UltraCanvas WASM: no fontconfig config, bundled fonts not registered" << std::endl;
-            return;
+            return 0;
         }
+        int registered = 0;
 
         const std::string dir = GetBundledFontsDir();
         for (size_t i = 0; i < kEmbeddedAllFontsCount; i++) {
@@ -784,9 +790,14 @@ namespace UltraCanvas {
                 debugOutput << "UltraCanvas WASM: bundled font not found: " << path << std::endl;
                 continue;
             }
-            FcConfigAppFontAddFile(cfg, reinterpret_cast<const FcChar8*>(path.c_str()));
+            if (FcConfigAppFontAddFile(cfg, reinterpret_cast<const FcChar8*>(path.c_str()))) ++registered;
         }
         FcConfigBuildFonts(cfg);
+        return registered;
+    }
+
+    void UltraCanvasWASMApplication::LoadBundledFontsNative() {
+        RegisterPlatformBundledFonts(0);
     }
 
     bool UltraCanvasWASMApplication::RegisterFontFileNative(const std::string& fontFilePath) {

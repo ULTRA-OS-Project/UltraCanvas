@@ -26,6 +26,30 @@
 // Stop() must return within seconds (a blocking wake pipe once hung them for
 // good; a hang ends the test with a failure instead of holding it).
 //
+// On Wayland (a build with ULTRACANVAS_WAYLAND, under a compositor that
+// speaks wlr-foreign-toplevel-management and wlr-layer-shell: sway headless,
+// labwc, the one ULTRA OS ships) it drives the Wayland backend: a window
+// this test opens in a program of its own (--wayland-window) is listed with
+// its UTF-8 title and app id, reported by the monitor, active, minimized,
+// activated again and closed; a Desktop window (--wayland-desktop) goes on
+// the layer shell and its reserved edges shrink the compositor's workspace,
+// read back through swaymsg where the compositor is sway; the virtual
+// desktops are read (ext-workspace where the compositor has it, one desktop
+// where not) and a window's RaiseAndFocus (xdg-activation) makes it the
+// active one. Without a Wayland display the section is skipped
+// (ULTRACANVAS_TEST_DISPLAY_REQUIRED=1 fails it instead); the window list's
+// checks are skipped under a compositor without the manager (weston).
+//
+// The portals the Wayland backend takes screenshots and global shortcuts
+// through run as their own CTest entry (DesktopShellPortalTest: this test
+// with --portals, under dbus-run-session): a fake org.freedesktop.portal.Desktop
+// this test exports itself in a program of its own (--fake-portal) answers
+// Screenshot with a small PNG, CreateSession and BindShortcuts as the
+// real one does and fires Activated; the backend's CaptureScreen,
+// CaptureScreenImage, CaptureScreenArea and UltraCanvasGlobalShortcut are
+// driven against it, with the trigger spelling and the session's Close
+// read back from the fake's log.
+//
 // Two parts of the Windows backend run in programs of their own, safely
 // anywhere:
 //   - UltraCanvasShellGuard, started on this test as the "desktop" that
@@ -44,6 +68,10 @@
 // StatusNotifierItem the test exports itself over GDBus, with a pixmap, a
 // tooltip and a dbusmenu, is listed by UltraCanvasTrayHost with its PNG and
 // its menu as data, clicked, hidden and dropped when its connection closes.
+// Version: 1.10.0 - the portals (--portals, a fake portal of this test's own), the
+//                   virtual desktops and RaiseAndFocus on Wayland
+// Version: 1.9.0 - the Wayland backend under a compositor: the window list, the
+//                  monitor, activation and closing, the layer shell's reserved edges
 // Version: 1.8.1 - the X11 checks are left out of a Wayland build of the framework
 // Version: 1.8.0 - two RandR monitors under Xvfb: ListScreens and the per-monitor struts;
 //                  the lock, session and loudspeaker calls
@@ -52,12 +80,14 @@
 // Version: 1.5.0 - ListScreens, Microsoft Store applications, the Win key's tap
 // Version: 1.4.0 - instead of Explorer, the shell guard, the tray host
 // Version: 1.3.0 - ReplaceSystemDesktop / RestoreSystemDesktop
-// Last Modified: 2026-10-30
+// Last Modified: 2026-11-03
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDesktopShell.h"
 
+#include <algorithm>
 #include <atomic>
+#include <cctype>
 #include <chrono>
 #include <cstdio>
 #include <cmath>
@@ -106,6 +136,22 @@
 #  if defined(DESKTOPSHELLTEST_HAVE_GIO)
 #    include <gio/gio.h>
 #  endif
+#endif
+
+// A Wayland build of the framework: the backend is driven through windows
+// this test opens in programs of its own (UltraCanvasApplication).
+#if defined(__linux__) && defined(ULTRACANVAS_DISPLAY_WAYLAND)
+#  define DESKTOPSHELLTEST_WAYLAND 1
+#  include "UltraCanvasApplication.h"
+#  include "UltraCanvasWindow.h"
+#  if defined(DESKTOPSHELLTEST_HAVE_GIO)
+#    include <gio/gio.h>
+#    include <cairo/cairo.h>
+#  endif
+#  include <csignal>
+#  include <fcntl.h>
+#  include <sys/wait.h>
+#  include <unistd.h>
 #endif
 
 namespace fs = std::filesystem;
@@ -525,7 +571,7 @@ int TrayChild() {
 }
 #endif
 
-#if defined(DESKTOPSHELLTEST_X11)
+#if defined(DESKTOPSHELLTEST_X11) || defined(DESKTOPSHELLTEST_WAYLAND)
 // A step that must not hang - a Stop() joining a thread - on a thread of its
 // own. Still running after `ms`, it never returns, and nothing after it could
 // run either (the stuck join holds the process): say so and end the test.
@@ -555,7 +601,387 @@ bool WaitUntil(Done done, int ms) {
     }
     return true;
 }
+#endif
 
+#if defined(DESKTOPSHELLTEST_WAYLAND)
+// ----- a window of this test's own, in a program of its own -----
+// --wayland-window <title>: an ordinary window with that title, open until
+// the compositor closes it (CloseWindow from the parent) or a minute passes.
+// --wayland-desktop <title>: a Desktop window (a layer surface on the
+// compositor's background layer) that reserves 40 pixels at the top and 60
+// on the right, printing "reserved=1" when the backend took them; open until
+// the parent ends it.
+int WaylandWindowChild(const std::string& title, bool desktop) {
+    UltraCanvasApplication app;
+    if (!app.Initialize("DesktopShellTest")) return 2;
+    WindowConfig config;
+    config.title = title;
+    config.width = 320;
+    config.height = 200;
+    if (desktop) config.type = WindowType::Desktop;
+    auto window = CreateWindow(config);
+    if (!window) return 3;
+    window->Show();
+    if (desktop) {
+        const uint64_t id = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(window->GetNativeHandle()));
+        const bool reserved = UltraCanvasDesktopShell::ReserveScreenEdges(id, 0, 60, 40, 0);
+        std::printf("reserved=%d\n", reserved ? 1 : 0);
+        std::fflush(stdout);
+    }
+    // The main loop, until the window is closed (the parent's CloseWindow
+    // through the compositor) or a minute passes; the native loop runs
+    // only inside Run().
+    SetEnv("ULTRACANVAS_CLOSE_AFTER_MS", "60000");
+    app.Run();
+    return 0;
+}
+
+// --wayland-two-windows <title>: two windows, "<title> A" then "<title> B"
+// (the compositor focuses the second), and a second and a half later A's
+// RaiseAndFocus, which asks for the focus through xdg-activation. Open
+// until both are closed or a minute passes.
+int WaylandTwoWindowsChild(const std::string& title) {
+    UltraCanvasApplication app;
+    if (!app.Initialize("DesktopShellTest")) return 2;
+    WindowConfig config;
+    config.width = 320;
+    config.height = 200;
+    config.title = title + " A";
+    auto a = CreateWindow(config);
+    config.title = title + " B";
+    auto b = CreateWindow(config);
+    if (!a || !b) return 3;
+    a->Show();
+    b->Show();
+    app.StartTimer(1500, false, [a](TimerId) { a->RaiseAndFocus(); });
+    SetEnv("ULTRACANVAS_CLOSE_AFTER_MS", "60000");
+    app.Run();
+    return 0;
+}
+
+// This test again with `arguments`, its output to `output` (a file). The
+// child's pid, or -1.
+pid_t SpawnSelf(const std::vector<std::string>& arguments, const fs::path& output) {
+    char self[4096];
+    const ssize_t n = readlink("/proc/self/exe", self, sizeof(self) - 1);
+    if (n <= 0) return -1;
+    self[n] = 0;
+    const pid_t pid = fork();
+    if (pid != 0) return pid;
+    const int fd = ::open(output.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);   // path-string-ok: ASCII temp path
+    if (fd >= 0) {
+        dup2(fd, 1);
+        ::close(fd);
+    }
+    std::vector<char*> argv;
+    argv.push_back(self);
+    for (const std::string& a : arguments) argv.push_back(const_cast<char*>(a.c_str()));
+    argv.push_back(nullptr);
+    execv(self, argv.data());
+    _exit(127);
+}
+
+// The child's exit status, waited for up to `ms`; -1 when it is still
+// running then (and left running).
+int WaitChild(pid_t pid, int ms) {
+    const auto until = std::chrono::steady_clock::now() + std::chrono::milliseconds(ms);
+    for (;;) {
+        int status = 0;
+        const pid_t done = waitpid(pid, &status, WNOHANG);
+        if (done == pid) return WIFEXITED(status) ? WEXITSTATUS(status) : 128 + WTERMSIG(status);
+        if (done < 0) return -1;
+        if (std::chrono::steady_clock::now() >= until) return -1;
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
+}
+
+void EndChild(pid_t pid) {
+    if (pid <= 0) return;
+    kill(pid, SIGTERM);
+    if (WaitChild(pid, 3000) < 0) {
+        kill(pid, SIGKILL);
+        WaitChild(pid, 3000);
+    }
+}
+
+// sway's own view of the area its windows get (swaymsg, through the
+// socket sway gives its children in SWAYSOCK): the first "rect" of the
+// reply to `query` (get_outputs: the output; get_workspaces: the output
+// less every exclusive zone). False where this is not sway, or swaymsg
+// is not installed.
+bool SwayRect(const char* query, int& x, int& y, int& width, int& height) {
+    if (!std::getenv("SWAYSOCK")) return false;
+    const std::string command = std::string("swaymsg -r -t ") + query + " 2>/dev/null";
+    FILE* pipe = popen(command.c_str(), "r");
+    if (!pipe) return false;
+    std::string reply;
+    char buffer[4096];
+    size_t got = 0;
+    while ((got = fread(buffer, 1, sizeof(buffer), pipe)) > 0) reply.append(buffer, got);
+    if (pclose(pipe) != 0) return false;
+    // swaymsg pretty-prints even with -r: the spaces go before the search.
+    reply.erase(std::remove_if(reply.begin(), reply.end(), [](unsigned char c) { return std::isspace(c); }), reply.end());
+    const size_t at = reply.find("\"rect\":{");
+    if (at == std::string::npos) return false;
+    auto number = [&reply, at](const char* key) {
+        const size_t k = reply.find(std::string("\"") + key + "\":", at);
+        return k == std::string::npos ? -1 : std::atoi(reply.c_str() + k + std::strlen(key) + 3);
+    };
+    x = number("x");
+    y = number("y");
+    width = number("width");
+    height = number("height");
+    return width > 0 && height > 0;
+}
+#endif
+
+#if defined(DESKTOPSHELLTEST_WAYLAND) && defined(DESKTOPSHELLTEST_HAVE_GIO)
+// ===== A FAKE PORTAL (--fake-portal <dir>) =====
+// org.freedesktop.portal.Desktop as xdg-desktop-portal exports it, for the
+// two interfaces the backend uses: Screenshot answers with a 4x3 PNG it
+// writes under <dir>; CreateSession and BindShortcuts answer as the real
+// portal does (a Request whose Response carries the session, the bound
+// shortcuts echoed) and Activated fires twice after the binding. What it
+// did goes to <dir>/portal.log, one line each, for the test to read.
+namespace {
+
+constexpr const char* kFakePortalPath = "/org/freedesktop/portal/desktop";
+constexpr const char* kFakePortalXml =
+    "<node>"
+    "  <interface name='org.freedesktop.portal.Screenshot'>"
+    "    <method name='Screenshot'>"
+    "      <arg type='s' direction='in'/><arg type='a{sv}' direction='in'/><arg type='o' direction='out'/>"
+    "    </method>"
+    "  </interface>"
+    "  <interface name='org.freedesktop.portal.GlobalShortcuts'>"
+    "    <method name='CreateSession'><arg type='a{sv}' direction='in'/><arg type='o' direction='out'/></method>"
+    "    <method name='BindShortcuts'>"
+    "      <arg type='o' direction='in'/><arg type='a(sa{sv})' direction='in'/><arg type='s' direction='in'/>"
+    "      <arg type='a{sv}' direction='in'/><arg type='o' direction='out'/>"
+    "    </method>"
+    "    <signal name='Activated'><arg type='o'/><arg type='s'/><arg type='t'/><arg type='a{sv}'/></signal>"
+    "  </interface>"
+    "</node>";
+constexpr const char* kFakeSessionXml =
+    "<node><interface name='org.freedesktop.portal.Session'><method name='Close'/></interface></node>";
+
+struct FakePortal {
+    GDBusConnection* bus = nullptr;
+    fs::path dir;
+    int shots = 0;
+    GDBusNodeInfo* sessionInfo = nullptr;
+};
+FakePortal g_portal;
+
+void PortalLog(const std::string& line) {
+    std::ofstream out(g_portal.dir / "portal.log", std::ios::app);
+    out << line << "\n";
+}
+
+std::string SenderPart(const char* sender) {
+    std::string part = sender ? sender : "";
+    if (!part.empty() && part[0] == ':') part.erase(0, 1);
+    std::replace(part.begin(), part.end(), '.', '_');
+    return part;
+}
+
+std::string OptionString(GVariant* options, const char* key) {
+    const char* value = nullptr;
+    if (options && g_variant_lookup(options, key, "&s", &value) && value) return value;
+    return {};
+}
+
+void EmitResponse(const char* sender, const std::string& requestPath, GVariantBuilder* results) {
+    g_dbus_connection_emit_signal(g_portal.bus, sender, requestPath.c_str(), "org.freedesktop.portal.Request",
+                                  "Response", g_variant_new("(ua{sv})", 0u, results), nullptr);
+}
+
+gboolean FireActivated(gpointer data) {
+    auto* session = static_cast<std::string*>(data);
+    GVariantBuilder options;
+    g_variant_builder_init(&options, G_VARIANT_TYPE("a{sv}"));
+    g_dbus_connection_emit_signal(g_portal.bus, nullptr, kFakePortalPath, "org.freedesktop.portal.GlobalShortcuts",
+                                  "Activated",
+                                  g_variant_new("(osta{sv})", session->c_str(), "shortcut",
+                                                static_cast<guint64>(g_get_monotonic_time()), &options),
+                                  nullptr);
+    PortalLog("activated");
+    delete session;
+    return G_SOURCE_REMOVE;
+}
+
+void OnFakeSessionMethod(GDBusConnection*, const gchar*, const gchar* path, const gchar*, const gchar* method,
+                         GVariant*, GDBusMethodInvocation* invocation, gpointer) {
+    if (std::strcmp(method, "Close") == 0) PortalLog(std::string("closed ") + path);
+    g_dbus_method_invocation_return_value(invocation, nullptr);
+}
+const GDBusInterfaceVTable kFakeSessionVTable = {OnFakeSessionMethod, nullptr, nullptr, {nullptr}};
+
+void OnFakePortalMethod(GDBusConnection*, const gchar* sender, const gchar*, const gchar*, const gchar* method,
+                        GVariant* parameters, GDBusMethodInvocation* invocation, gpointer) {
+    const std::string requests = std::string(kFakePortalPath) + "/request/" + SenderPart(sender) + "/";
+    if (std::strcmp(method, "Screenshot") == 0) {
+        const char* parent = nullptr;
+        GVariant* options = nullptr;
+        g_variant_get(parameters, "(&s@a{sv})", &parent, &options);
+        const std::string requestPath = requests + OptionString(options, "handle_token");
+        g_variant_unref(options);
+        // 4x3, one colour: blue 0.6, green 0.4, red 0.2 - 0x99, 0x66, 0x33.
+        const fs::path file = g_portal.dir / ("portal-shot-" + std::to_string(++g_portal.shots) + ".png");
+        cairo_surface_t* surface = cairo_image_surface_create(CAIRO_FORMAT_RGB24, 4, 3);
+        cairo_t* cr = cairo_create(surface);
+        cairo_set_source_rgb(cr, 0.2, 0.4, 0.6);
+        cairo_paint(cr);
+        cairo_destroy(cr);
+        cairo_surface_write_to_png(surface, file.c_str());   // path-string-ok: ASCII temp path
+        cairo_surface_destroy(surface);
+        g_dbus_method_invocation_return_value(invocation, g_variant_new("(o)", requestPath.c_str()));
+        GVariantBuilder results;
+        g_variant_builder_init(&results, G_VARIANT_TYPE("a{sv}"));
+        g_variant_builder_add(&results, "{sv}", "uri", g_variant_new_string(("file://" + file.string()).c_str()));   // path-string-ok: ASCII temp path
+        EmitResponse(sender, requestPath, &results);
+        PortalLog("screenshot " + file.string());   // path-string-ok: ASCII temp path
+    } else if (std::strcmp(method, "CreateSession") == 0) {
+        GVariant* options = nullptr;
+        g_variant_get(parameters, "(@a{sv})", &options);
+        const std::string requestPath = requests + OptionString(options, "handle_token");
+        const std::string sessionPath = std::string(kFakePortalPath) + "/session/" + SenderPart(sender) + "/" +
+                                        OptionString(options, "session_handle_token");
+        g_variant_unref(options);
+        g_dbus_connection_register_object(g_portal.bus, sessionPath.c_str(), g_portal.sessionInfo->interfaces[0],
+                                          &kFakeSessionVTable, nullptr, nullptr, nullptr);
+        g_dbus_method_invocation_return_value(invocation, g_variant_new("(o)", requestPath.c_str()));
+        GVariantBuilder results;
+        g_variant_builder_init(&results, G_VARIANT_TYPE("a{sv}"));
+        g_variant_builder_add(&results, "{sv}", "session_handle", g_variant_new_string(sessionPath.c_str()));
+        EmitResponse(sender, requestPath, &results);
+        PortalLog("session " + sessionPath);
+    } else if (std::strcmp(method, "BindShortcuts") == 0) {
+        const char* session = nullptr;
+        GVariant* shortcuts = nullptr;
+        const char* parent = nullptr;
+        GVariant* options = nullptr;
+        g_variant_get(parameters, "(&o@a(sa{sv})&s@a{sv})", &session, &shortcuts, &parent, &options);
+        const std::string requestPath = requests + OptionString(options, "handle_token");
+        GVariantIter iter;
+        g_variant_iter_init(&iter, shortcuts);
+        const char* id = nullptr;
+        GVariant* shortcutOptions = nullptr;
+        while (g_variant_iter_next(&iter, "(&s@a{sv})", &id, &shortcutOptions)) {
+            PortalLog(std::string("bind ") + id + " " + OptionString(shortcutOptions, "preferred_trigger"));
+            g_variant_unref(shortcutOptions);
+        }
+        g_dbus_method_invocation_return_value(invocation, g_variant_new("(o)", requestPath.c_str()));
+        GVariantBuilder results;
+        g_variant_builder_init(&results, G_VARIANT_TYPE("a{sv}"));
+        g_variant_builder_add(&results, "{sv}", "shortcuts", shortcuts);
+        EmitResponse(sender, requestPath, &results);
+        g_timeout_add(300, FireActivated, new std::string(session));
+        g_timeout_add(600, FireActivated, new std::string(session));
+        g_variant_unref(options);
+    } else {
+        g_dbus_method_invocation_return_dbus_error(invocation, "org.freedesktop.DBus.Error.UnknownMethod", method);
+    }
+}
+const GDBusInterfaceVTable kFakePortalVTable = {OnFakePortalMethod, nullptr, nullptr, {nullptr}};
+
+void OnPortalNameAcquired(GDBusConnection*, const gchar*, gpointer) {
+    std::ofstream(g_portal.dir / "ready") << "ready\n";
+}
+
+int FakePortalMain(const fs::path& dir) {
+    g_portal.dir = dir;
+    fs::create_directories(dir);
+    GError* error = nullptr;
+    g_portal.bus = g_bus_get_sync(G_BUS_TYPE_SESSION, nullptr, &error);
+    if (!g_portal.bus) {
+        std::fprintf(stderr, "fake portal: no session bus: %s\n", error ? error->message : "");
+        return 2;
+    }
+    GDBusNodeInfo* info = g_dbus_node_info_new_for_xml(kFakePortalXml, nullptr);
+    g_portal.sessionInfo = g_dbus_node_info_new_for_xml(kFakeSessionXml, nullptr);
+    for (GDBusInterfaceInfo** iface = info->interfaces; iface && *iface; ++iface) {
+        g_dbus_connection_register_object(g_portal.bus, kFakePortalPath, *iface, &kFakePortalVTable, nullptr, nullptr,
+                                          nullptr);
+    }
+    g_bus_own_name_on_connection(g_portal.bus, "org.freedesktop.portal.Desktop", G_BUS_NAME_OWNER_FLAGS_NONE,
+                                 OnPortalNameAcquired, nullptr, nullptr, nullptr);
+    for (;;) g_main_context_iteration(nullptr, TRUE);   // until the parent ends this program
+}
+
+// ===== THE PORTALS, AGAINST THE FAKE (--portals) =====
+int PortalTest() {
+    std::printf("The portals (screenshots, global shortcuts) against a fake org.freedesktop.portal.Desktop\n");
+    const fs::path scratch = MakeScratch();
+    const pid_t fake = SpawnSelf({"--fake-portal", scratch.string()}, scratch / "fake.out");   // path-string-ok: ASCII temp path
+    Check(fake > 0 && WaitUntil([&scratch]() { return fs::exists(scratch / "ready"); }, 10000),
+          "the fake portal owns org.freedesktop.portal.Desktop on the test's bus");
+    auto logLines = [&scratch]() {
+        std::vector<std::string> lines;
+        std::ifstream in(scratch / "portal.log");
+        std::string line;
+        while (std::getline(in, line)) lines.push_back(line);
+        return lines;
+    };
+    auto logged = [&logLines](const std::string& prefix) {
+        for (const std::string& line : logLines()) {
+            if (line.rfind(prefix, 0) == 0) return true;
+        }
+        return false;
+    };
+
+    // ----- screenshots -----
+    std::string why;
+    const fs::path shot = scratch / "shots" / "screen.png";
+    Check(UltraCanvasDesktopShell::CaptureScreen(shot.string(), &why) && fs::exists(shot),   // path-string-ok: ASCII temp path
+          "CaptureScreen writes the portal's picture to the path asked for " + why);
+    Check(!fs::exists(scratch / "portal-shot-1.png"), "and the portal's own file is gone (moved)");
+    DesktopScreenImage image;
+    Check(UltraCanvasDesktopShell::CaptureScreenImage(image, &why) && image.width == 4 && image.height == 3 &&
+              image.stride == 16,
+          "CaptureScreenImage reads it into memory, 4x3 BGRx " + why);
+    Check(image.IsValid() && image.pixels[0] == 0x99 && image.pixels[1] == 0x66 && image.pixels[2] == 0x33 &&
+              image.pixels[3] == 0xFF,
+          "... the pixels in cairo's layout: blue, green, red, opaque");
+    Check(!fs::exists(scratch / "portal-shot-2.png"), "and nothing of it is left on disk");
+    DesktopScreenImage area;
+    Check(UltraCanvasDesktopShell::CaptureScreenArea(2, 1, 10, 10, area, &why) && area.x == 2 && area.y == 1 &&
+              area.width == 2 && area.height == 2,
+          "CaptureScreenArea crops it to what is on the screen " + why);
+    Check(!UltraCanvasDesktopShell::CaptureScreenArea(40, 40, 5, 5, area, &why) && !why.empty(),
+          "an area off the screen fails with a reason: " + why);
+
+    // ----- global shortcuts -----
+    UltraCanvasGlobalShortcut shortcut;
+    std::atomic<int> pressed{0};
+    why.clear();
+    Check(shortcut.Start("Ctrl+Alt+Shift+F11", [&pressed]() { ++pressed; }, &why), "a shortcut is bound through the portal " + why);
+    Check(WaitUntil([&logged]() { return logged("bind shortcut CTRL+ALT+SHIFT+F11"); }, 5000),
+          "with the trigger in the shortcuts specification's spelling");
+    Check(WaitUntil([&pressed]() { return pressed.load() >= 2; }, 5000),
+          "the portal's Activated reaches the callback, once per press (" + std::to_string(pressed.load()) + ")");
+    FinishesWithin([&shortcut]() { shortcut.Stop(); }, 5000, "the shortcut stops within seconds");
+    Check(!shortcut.IsRunning() && WaitUntil([&logged]() { return logged("closed "); }, 5000),
+          "and its session is closed");
+    UltraCanvasGlobalShortcut superTap;
+    why.clear();
+    Check(superTap.Start("Super", []() {}, &why) && WaitUntil([&logged]() { return logged("bind shortcut LOGO"); }, 5000),
+          "the Super key alone is asked for as LOGO " + why);
+    FinishesWithin([&superTap]() { superTap.Stop(); }, 5000, "and stops within seconds");
+    UltraCanvasGlobalShortcut altAlone;
+    Check(!altAlone.Start("Alt", []() {}, &why) && !why.empty(), "another modifier alone is no shortcut: " + why);
+
+    EndChild(fake);
+    std::error_code ec;
+    fs::remove_all(scratch, ec);
+    std::printf("\n%d checks, %d failures\n", g_checks, g_failures);
+    return g_failures == 0 ? 0 : 1;
+}
+
+} // namespace
+#endif
+
+#if defined(DESKTOPSHELLTEST_X11)
 // A root-window property, set or removed the way a window manager would.
 void SetRootCardinal(Display* display, const char* name, long value) {
     XChangeProperty(display, DefaultRootWindow(display), XInternAtom(display, name, False), XA_CARDINAL, 32,
@@ -937,11 +1363,30 @@ int main(int argc, char** argv) {
     // DesktopShellTrayTest runs it through dbus-run-session).
     if (argc == 2 && std::strcmp(argv[1], "--tray") == 0) return TrayTest();
 #endif
+#if defined(DESKTOPSHELLTEST_WAYLAND)
+    // The windows the Wayland section opens in programs of their own.
+    if (argc == 3 && std::strcmp(argv[1], "--wayland-window") == 0) return WaylandWindowChild(argv[2], false);
+    if (argc == 3 && std::strcmp(argv[1], "--wayland-desktop") == 0) return WaylandWindowChild(argv[2], true);
+    if (argc == 3 && std::strcmp(argv[1], "--wayland-two-windows") == 0) return WaylandTwoWindowsChild(argv[2]);
+#if defined(DESKTOPSHELLTEST_HAVE_GIO)
+    // The portals, under a session bus of their own (CTest's
+    // DesktopShellPortalTest runs it through dbus-run-session), and the
+    // fake portal that section starts.
+    if (argc == 2 && std::strcmp(argv[1], "--portals") == 0) return PortalTest();
+    if (argc == 3 && std::strcmp(argv[1], "--fake-portal") == 0) return FakePortalMain(PathFromUtf8(argv[2]));
+#endif
+#endif
     (void)argc;
     (void)argv;
 #endif
     std::srand(12345);
     const fs::path scratch = MakeScratch();
+    // The session's own runtime directory, for the Wayland section at the
+    // end: the compositor's socket is there, and the notices' checks above
+    // it point the variable at the throwaway directory.
+    const char* sessionRuntimeDir = std::getenv("XDG_RUNTIME_DIR");
+    const std::string sessionRuntime = sessionRuntimeDir ? sessionRuntimeDir : "";
+    (void)sessionRuntime;
     SetEnv("XDG_RUNTIME_DIR", scratch.string());   // path-string-ok: temp_directory_path is ASCII here
     SetEnv("XDG_DATA_HOME", (scratch / "data").string());   // path-string-ok: same
     SetEnv("XDG_DATA_DIRS", (scratch / "system").string());   // path-string-ok: same
@@ -1728,6 +2173,175 @@ int main(int argc, char** argv) {
         std::printf("  (devices: microphone %s, speaker %s, webcam %s, keyboard \"%s\")\n",
                     devices.microphoneInUse ? "in use" : "idle", devices.speakerPlaying ? "playing" : "idle",
                     devices.webcamInUse ? "in use" : "idle", devices.keyboardLayout.c_str());
+    }
+#endif
+
+#if defined(DESKTOPSHELLTEST_WAYLAND)
+    // ===== WAYLAND: THE BACKEND ON A COMPOSITOR =====
+    {
+        if (!sessionRuntime.empty()) SetEnv("XDG_RUNTIME_DIR", sessionRuntime);
+        const char* required = std::getenv("ULTRACANVAS_TEST_DISPLAY_REQUIRED");
+        const bool displayRequired = required && std::strcmp(required, "1") == 0;
+        const bool available = std::getenv("WAYLAND_DISPLAY") && UltraCanvasDesktopShell::IsAvailable();
+        if (!available) {
+            Check(!displayRequired, "a display was required (ULTRACANVAS_TEST_DISPLAY_REQUIRED=1), and there is none");
+            if (!displayRequired) std::printf("  (no Wayland display: the Wayland backend's own checks are skipped)\n");
+        } else {
+            Check(UltraCanvasDesktopShell::GetBackendName() == "wayland", "the backend is wayland");
+
+            // The window list and the monitor need the compositor's
+            // foreign-toplevel manager (every wlroots compositor, KWin);
+            // the monitor says whether there is one.
+            UltraCanvasDesktopShellMonitor monitor;
+            std::atomic<int> changes{0};
+            Check(monitor.Start([&changes]() { ++changes; }), "the monitor starts");
+            if (!monitor.IsNative()) {
+                std::printf("  (no foreign-toplevel manager here: the window list's checks are skipped)\n");
+            } else {
+                Check(true, "the monitor watches the compositor's foreign toplevels on a connection of its own");
+                const std::string title = "DesktopShellTest Fenster \xc3\x84\xc3\x96\xc3\x9c " + std::to_string(std::rand());
+                const pid_t child = SpawnSelf({"--wayland-window", title}, scratch / "window.out");
+                Check(child > 0, "a window of this test's own opens in a program of its own");
+                uint64_t id = 0;
+                DesktopWindowInfo listed;
+                auto find = [&]() {
+                    for (const DesktopWindowInfo& w : UltraCanvasDesktopShell::ListWindows()) {
+                        if (w.title == title) {
+                            listed = w;
+                            id = w.id;
+                            return true;
+                        }
+                    }
+                    return false;
+                };
+                Check(WaitUntil(find, 10000), "the window is listed with its UTF-8 title");
+                Check(listed.appClass == "DesktopShellTest", "and its app id, the program's name: " + listed.appClass);
+                Check(WaitUntil([&changes]() { return changes.load() > 0; }, 5000), "the monitor reported it");
+                Check(WaitUntil([id]() { return UltraCanvasDesktopShell::GetActiveWindow() == id; }, 5000),
+                      "a new window is the active one");
+                Check(UltraCanvasDesktopShell::MinimizeWindow(id), "the compositor is asked to minimize it");
+                // sway has no minimized state and leaves the window as it
+                // is; labwc and KWin report it minimized.
+                const bool minimized = WaitUntil([&]() { return find() && listed.minimized; }, 2000);
+                std::printf("  (minimized: %s)\n", minimized ? "reported" : "not reported by this compositor");
+                Check(UltraCanvasDesktopShell::ActivateWindow(id), "and to activate it again");
+                Check(WaitUntil([&]() { return find() && listed.active && !listed.minimized; }, 5000),
+                      "it is active and not minimized");
+                const int before = changes.load();
+                Check(UltraCanvasDesktopShell::CloseWindow(id), "and to close it");
+                Check(WaitUntil([&]() { return !find(); }, 5000), "it is gone from the list");
+                Check(WaitUntil([&changes, before]() { return changes.load() > before; }, 5000),
+                      "the monitor reported that too");
+                const int exit = WaitChild(child, 5000);
+                Check(exit == 0, "the program ended when its window was closed (exit " + std::to_string(exit) + ")");
+                if (exit < 0) EndChild(child);
+
+                // ----- the desktop on the layer shell -----
+                int outX = 0, outY = 0, outW = 0, outH = 0;
+                int areaX = 0, areaY = 0, areaW = 0, areaH = 0;
+                const bool sway = SwayRect("get_outputs", outX, outY, outW, outH) &&
+                                  SwayRect("get_workspaces", areaX, areaY, areaW, areaH);
+                const std::string desktopTitle = "DesktopShellTest Desktop " + std::to_string(std::rand());
+                const pid_t desktop = SpawnSelf({"--wayland-desktop", desktopTitle}, scratch / "desktop.out");
+                Check(desktop > 0, "a Desktop window opens in a program of its own");
+                std::string reserved;
+                Check(WaitUntil([&]() {
+                          std::ifstream in(scratch / "desktop.out");
+                          std::getline(in, reserved);
+                          return reserved == "reserved=1" || reserved == "reserved=0";
+                      }, 10000) && reserved == "reserved=1",
+                      "the backend reserved its edges on the layer shell: " + reserved);
+                if (sway) {
+                    int x = 0, y = 0, w = 0, h = 0;
+                    Check(WaitUntil([&]() {
+                              return SwayRect("get_workspaces", x, y, w, h) && y == outY + 40 && w == outW - 60 &&
+                                     h == outH - 40;
+                          }, 5000),
+                          "sway's workspace makes room for them: 40 at the top, 60 on the right (" +
+                              std::to_string(w) + "x" + std::to_string(h) + " at " + std::to_string(x) + "," +
+                              std::to_string(y) + " of " + std::to_string(outW) + "x" + std::to_string(outH) + ")");
+                } else {
+                    std::printf("  (not sway: the workspace's room for the edges is not read back)\n");
+                }
+                // A layer surface is no toplevel: the desktop is not in the
+                // list a taskbar shows.
+                bool desktopListed = false;
+                for (const DesktopWindowInfo& w : UltraCanvasDesktopShell::ListWindows()) {
+                    if (w.title == desktopTitle) desktopListed = true;
+                }
+                Check(!desktopListed, "the desktop window is not in the window list");
+                EndChild(desktop);
+                if (sway) {
+                    int x = 0, y = 0, w = 0, h = 0;
+                    Check(WaitUntil([&]() {
+                              return SwayRect("get_workspaces", x, y, w, h) && y == areaY && w == areaW && h == areaH;
+                          }, 5000),
+                          "and the workspace is whole again when the desktop is gone");
+                }
+
+                // ----- the focus through xdg-activation -----
+                // The compositor decides: sway follows an activation request
+                // with focus_on_window_activation focus (the test's
+                // configuration), marks the window urgent by default.
+                const std::string pair = "DesktopShellTest Paar " + std::to_string(std::rand());
+                const pid_t two = SpawnSelf({"--wayland-two-windows", pair}, scratch / "two.out");
+                Check(two > 0, "two windows open in a program of their own");
+                uint64_t idA = 0, idB = 0;
+                auto findPair = [&]() {
+                    idA = idB = 0;
+                    for (const DesktopWindowInfo& w : UltraCanvasDesktopShell::ListWindows()) {
+                        if (w.title == pair + " A") idA = w.id;
+                        if (w.title == pair + " B") idB = w.id;
+                    }
+                    return idA != 0 && idB != 0;
+                };
+                Check(WaitUntil(findPair, 10000), "both are listed");
+                Check(WaitUntil([&]() { return UltraCanvasDesktopShell::GetActiveWindow() == idB; }, 5000),
+                      "the second one opened is the active one");
+                // The token carries the serial of the last input the program
+                // had; a seat without a keyboard (sway headless with no
+                // input device) gave it none, and sway then marks the window
+                // urgent instead of focusing it. With a keyboard on the seat
+                // (wtype's virtual one, DESKTOPSHELLTEST_WAYLAND_KEYBOARD=1)
+                // the focus has to move.
+                const char* keyboard = std::getenv("DESKTOPSHELLTEST_WAYLAND_KEYBOARD");
+                const bool focused = WaitUntil([&]() { return UltraCanvasDesktopShell::GetActiveWindow() == idA; }, 6000);
+                if (focused || (keyboard && std::strcmp(keyboard, "1") == 0)) {
+                    Check(focused, "RaiseAndFocus makes the first one active (xdg-activation)");
+                } else {
+                    std::printf("  (RaiseAndFocus: the compositor kept the focus - no keyboard on the seat, so no serial for the token)\n");
+                }
+                UltraCanvasDesktopShell::CloseWindow(idA);
+                UltraCanvasDesktopShell::CloseWindow(idB);
+                Check(WaitChild(two, 5000) == 0, "and the program ends when both are closed");
+                EndChild(two);
+            }
+
+            // ----- the virtual desktops -----
+            // ext-workspace where the compositor speaks it (sway 1.11,
+            // labwc 0.9, KWin); one desktop where it does not (sway 1.9).
+            const int desktops = UltraCanvasDesktopShell::GetVirtualDesktopCount();
+            const int current = UltraCanvasDesktopShell::GetCurrentVirtualDesktop();
+            Check(desktops >= 1 && current >= 0 && current < desktops,
+                  "the virtual desktops are read: " + std::to_string(current + 1) + " of " + std::to_string(desktops));
+            const bool switched = UltraCanvasDesktopShell::SetCurrentVirtualDesktop(current);
+            std::printf("  (ext-workspace: %s)\n", switched ? "the compositor has it, the current desktop was activated again"
+                                                              : "not on this compositor, one desktop");
+            Check(!UltraCanvasDesktopShell::SetCurrentVirtualDesktop(desktops + 5), "a desktop past the last is refused");
+            FinishesWithin([&monitor]() { monitor.Stop(); }, 5000, "the monitor stops within seconds");
+            Check(!monitor.IsRunning(), "and is stopped");
+
+            const auto screens = UltraCanvasDesktopShell::ListScreens();
+            Check(!screens.empty() && screens[0].primary, "the outputs are the screens, the first the primary: " +
+                                                              std::to_string(screens.size()));
+            // The portals need a session bus with xdg-desktop-portal on it
+            // (DesktopShellPortalTest drives them against a fake one); here
+            // either a screenshot arrives or the reason does.
+            std::string why;
+            const bool shotTaken = UltraCanvasDesktopShell::CaptureScreen((scratch / "shot.png").string(), &why);   // path-string-ok: ASCII temp path
+            Check(shotTaken ? fs::exists(scratch / "shot.png") : !why.empty(),
+                  shotTaken ? "a screenshot through the session's portal" : "no screenshot portal here, and the reason: " + why);
+        }
     }
 #endif
 

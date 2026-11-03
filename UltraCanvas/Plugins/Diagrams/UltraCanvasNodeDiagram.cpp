@@ -1,6 +1,6 @@
 // Plugins/Diagrams/UltraCanvasNodeDiagram.cpp
 // Interactive Node Diagram component implementation
-// Version: 2.0.7
+// Version: 2.4.0
 // Last Modified: 2026-05-09
 // Author: UltraCanvas Framework
 //
@@ -110,6 +110,7 @@ void UltraCanvasNodeDiagram::AddNode(const std::string& id, const std::string& l
     nodes[id] = node;
     nodeOrder.push_back(id);
     InvalidateDegreeCache();
+    InvalidateLabelFit();   // 2.4.0: the next frame grows it for its label if it must
     RequestRedraw();
 }
 
@@ -123,6 +124,7 @@ void UltraCanvasNodeDiagram::AddNode(const NodeDiagramNode& node) {
     if (stored.baseHeight <= 0.0) stored.baseHeight = stored.height;
     nodeOrder.push_back(node.id);
     InvalidateDegreeCache();
+    InvalidateLabelFit();   // 2.4.0
     RequestRedraw();
 }
 
@@ -169,6 +171,7 @@ void UltraCanvasNodeDiagram::UpdateNodeLabel(const std::string& id, const std::s
     auto* node = GetNode(id);
     if (node) {
         node->label = label;
+        InvalidateLabelFit();   // 2.4.0: a longer name may need a larger node
         RequestRedraw();
     }
 }
@@ -186,6 +189,7 @@ void UltraCanvasNodeDiagram::SetNodeShape(const std::string& id, NodeShape shape
     auto* node = GetNode(id);
     if (node) {
         node->shape = shape;
+        InvalidateLabelFit();   // 2.4.0: a diamond holds less text than a square
         RequestRedraw();
     }
 }
@@ -376,9 +380,8 @@ void UltraCanvasNodeDiagram::RunLayout() {
     // 2.2.0: size the nodes before laying them out - the anti-overlap pass
     // separates nodes by their bounding-box radii, so it needs the final sizes
     // or a freshly grown hub will still be clipping its neighbours.
-    if (sizing.mode != NodeSizeMode::Fixed) {
-        ApplyNodeSizing();
-    }
+    // 2.4.0: that includes the size a label needs, in every sizing mode.
+    SizeNodes();
 
     switch (layout) {
         case NodeDiagramLayout::ForceDirected:
@@ -386,23 +389,34 @@ void UltraCanvasNodeDiagram::RunLayout() {
             break;
         case NodeDiagramLayout::Circular:
             ApplyCircularLayout();
+            ResolveOverlaps(6.0);   // 2.4.0: a ring of wide nodes overlaps at the sides
             break;
         case NodeDiagramLayout::Grid:
             ApplyGridLayout();
+            ResolveOverlaps(6.0);   // 2.4.0: cells are the element's share, not the node's size
             break;
         case NodeDiagramLayout::Hierarchical:
             if (!nodes.empty()) {
                 ApplyHierarchicalLayout(nodes.begin()->first);
+                ResolveOverlaps(6.0);   // 2.4.0: levels are 100 apart, whatever the nodes' width
             }
             break;
         default:
             break;
     }
+    // 2.4.0: cluster boxes apart from each other, like the nodes.
+    SeparateGroups(8.0);
     // 2.0.1: Auto-fit so the user never sees a stranded cluster in the corner.
     // FitView is safe even with bounds==0 (early returns) and respects user pan
     // afterwards via SetPanOffset.
     if (autoFitOnLayout && !nodes.empty()) {
         FitView();
+        // 2.4.0: a cluster box makes room for its title at the zoom the fit
+        // just chose, so the boxes are separated once more at that zoom.
+        SettleGroups(true);
+        // Sizes from the estimate (no window yet) are corrected on the first
+        // frame; the view is fitted again then.
+        if (labelFitDirty) refitViewAfterMeasure = true;
     }
     RequestRedraw();
 }
@@ -419,26 +433,62 @@ void UltraCanvasNodeDiagram::RunForceDirectedLayout(int iterations) {
     if (height < 100.0f) height = 600.0f;
     double centerX = width  / 2.0f;
     double centerY = height / 2.0f;
+
+    // 2.4.0: the simulation's area grows with what is in it. Forty nodes of
+    // a hundred pixels do not fit an 800 x 600 element, and holding them in
+    // it (the old clamp) left them piled up for the overlap pass to scatter
+    // through each other's clusters. The area is at least three times the
+    // nodes' own, about the element's centre; the view fits it afterwards.
+    {
+        double area = 0.0;
+        for (const auto& pair : nodes) area += (pair.second.width + 12.0) * (pair.second.height + 12.0);
+        const double side = std::sqrt(area * 3.0);
+        width  = std::max(width, side);
+        height = std::max(height, side);
+    }
+    const double minX = centerX - width  / 2.0 + 30.0, maxX = centerX + width  / 2.0 - 30.0;
+    const double minY = centerY - height / 2.0 + 30.0, maxY = centerY + height / 2.0 - 30.0;
+
+    // The half-size a node keeps others out of: springs rest beyond it and
+    // the repulsion counts from it, so a wide node is as far from its
+    // neighbours as a narrow one, border to border.
+    auto radiusOf = [](const NodeDiagramNode& n) { return 0.5 * std::max(n.width, n.height); };
     
     // 2.0.4: DETERMINISTIC circular initialization. The previous version used
     // rand() (never seeded -> first call always gave the same arrangement, but
     // the algorithm sometimes settled into a local minimum with overlapping
     // nodes). Placing nodes evenly on a ring gives the repulsion forces a
     // symmetric starting point so they fan out reliably.
+    // 2.4.0: the members of a group go on the ring together, so the cohesion
+    // gathers them where they are instead of dragging them through the
+    // other clusters.
     {
-        size_t n = nodes.size();
+        std::vector<NodeDiagramNode*> ring;
+        ring.reserve(nodes.size());
+        std::set<std::string> onRing;
+        for (const auto& group : groups) {
+            for (const auto& nodeId : group.nodeIds) {
+                auto it = nodes.find(nodeId);
+                if (it == nodes.end() || onRing.count(nodeId)) continue;
+                ring.push_back(&it->second);
+                onRing.insert(nodeId);
+            }
+        }
+        for (auto& pair : nodes) {
+            if (!onRing.count(pair.first)) ring.push_back(&pair.second);
+        }
+        const size_t n = ring.size();
         if (n == 0) return;
         double initRadius = std::min(width, height) * 0.30f;
         if (initRadius < 50.0f) initRadius = 50.0f;
         const double TWO_PI = 6.28318530717958647692f;
-        size_t idx = 0;
-        for (auto& pair : nodes) {
-            if (!pair.second.isPinned) {
+        for (size_t idx = 0; idx < n; ++idx) {
+            NodeDiagramNode& node = *ring[idx];
+            if (!node.isPinned) {
                 double angle = (static_cast<double>(idx) / static_cast<double>(n)) * TWO_PI;
-                pair.second.x = centerX + initRadius * std::cos(angle);
-                pair.second.y = centerY + initRadius * std::sin(angle);
+                node.x = centerX + initRadius * std::cos(angle) - node.width * 0.5;
+                node.y = centerY + initRadius * std::sin(angle) - node.height * 0.5;
             }
-            idx++;
         }
     }
     
@@ -469,12 +519,15 @@ void UltraCanvasNodeDiagram::RunForceDirectedLayout(int iterations) {
             auto* target = GetNode(link.targetNodeId);
             if (!source || !target) continue;
             
-            double dx = target->x - source->x;
-            double dy = target->y - source->y;
+            double dx = (target->x + target->width * 0.5) - (source->x + source->width * 0.5);
+            double dy = (target->y + target->height * 0.5) - (source->y + source->height * 0.5);
             double dist = std::sqrt(dx * dx + dy * dy);
             if (dist < 0.1f) dist = 0.1f;
-            
-            double force = (dist - style.linkDistance) * style.linkStrength;
+
+            // 2.4.0: the link's rest length is between the borders, so two
+            // wide nodes are linked as closely as two small ones.
+            const double rest = style.linkDistance + radiusOf(*source) + radiusOf(*target);
+            double force = (dist - rest) * style.linkStrength;
             double fx = (dx / dist) * force;
             double fy = (dy / dist) * force;
             
@@ -495,13 +548,18 @@ void UltraCanvasNodeDiagram::RunForceDirectedLayout(int iterations) {
             for (auto it2 = nodes.begin(); it2 != nodes.end(); ++it2) {
                 if (it1 == it2) continue;
                 
-                double dx = it2->second.x - it1->second.x;
-                double dy = it2->second.y - it1->second.y;
+                double dx = (it2->second.x + it2->second.width * 0.5) - (it1->second.x + it1->second.width * 0.5);
+                double dy = (it2->second.y + it2->second.height * 0.5) - (it1->second.y + it1->second.height * 0.5);
                 double distSq = dx * dx + dy * dy;
                 if (distSq < 1.0f) distSq = 1.0f;
-                
-                double force = style.chargeStrength / distSq;
-                double invDist = 1.0f / std::sqrt(distSq);
+                const double dist = std::sqrt(distSq);
+
+                // 2.4.0: the charge acts over the gap between the borders,
+                // not between the centres: two touching hubs a hundred pixels
+                // across repel as hard as two touching dots.
+                const double gap = std::max(1.0, dist - radiusOf(it1->second) - radiusOf(it2->second));
+                double force = style.chargeStrength / (gap * gap);
+                double invDist = 1.0f / dist;
                 it1->second.vx += dx * invDist * force;
                 it1->second.vy += dy * invDist * force;
             }
@@ -565,8 +623,8 @@ void UltraCanvasNodeDiagram::RunForceDirectedLayout(int iterations) {
             pair.second.x += vx;
             pair.second.y += vy;
             
-            pair.second.x = std::max(30.0, std::min(width - 30.0, pair.second.x));
-            pair.second.y = std::max(30.0, std::min(height - 30.0, pair.second.y));
+            pair.second.x = std::max(minX, std::min(maxX - pair.second.width, pair.second.x));
+            pair.second.y = std::max(minY, std::min(maxY - pair.second.height, pair.second.y));
         }
     }
     
@@ -736,6 +794,15 @@ int UltraCanvasNodeDiagram::GetNodeDegree(const std::string& id, NodeDegreeMode 
 
 void UltraCanvasNodeDiagram::ApplyNodeSizing() {
     if (nodes.empty()) return;
+    SizeNodes();
+    // 2.4.0: a node that grew (by its degree, its value or its label) must not
+    // sit on its neighbour.
+    ResolveOverlaps(6.0);
+    RequestRedraw();
+}
+
+void UltraCanvasNodeDiagram::SizeNodes() {
+    if (nodes.empty()) return;
 
     if (degreeCacheDirty && sizing.mode == NodeSizeMode::ByDegree) {
         RebuildDegreeCache();
@@ -749,9 +816,16 @@ void UltraCanvasNodeDiagram::ApplyNodeSizing() {
         if (node.baseWidth <= 0.0)  node.baseWidth  = node.width;
         if (node.baseHeight <= 0.0) node.baseHeight = node.height;
 
+        // Keep the node centred on the same point while it grows or shrinks -
+        // resizing from the top-left corner would make hubs visibly drift.
+        const double oldCenterX = node.x + node.width  * 0.5;
+        const double oldCenterY = node.y + node.height * 0.5;
+
         if (sizing.mode == NodeSizeMode::Fixed) {
             node.width  = node.baseWidth;
             node.height = node.baseHeight;
+            node.x = oldCenterX - node.width  * 0.5;
+            node.y = oldCenterY - node.height * 0.5;
             continue;
         }
 
@@ -765,11 +839,6 @@ void UltraCanvasNodeDiagram::ApplyNodeSizing() {
         double scaled = sizing.baseSize * std::sqrt(quantity);
         double target = std::max(sizing.minSize, std::min(sizing.maxSize, scaled));
 
-        // Keep the node centred on the same point while it grows or shrinks -
-        // resizing from the top-left corner would make hubs visibly drift.
-        double oldCenterX = node.x + node.width  * 0.5;
-        double oldCenterY = node.y + node.height * 0.5;
-
         node.width = target;
         if (sizing.keepAspect) {
             node.height = target;
@@ -781,6 +850,8 @@ void UltraCanvasNodeDiagram::ApplyNodeSizing() {
         node.y = oldCenterY - node.height * 0.5;
     }
 
+    // 2.4.0: whatever the data says, a node is at least as large as its label.
+    GrowNodesForLabels(nullptr);
     RequestRedraw();
 }
 
@@ -906,6 +977,199 @@ std::string UltraCanvasNodeDiagram::GetNodeGroupId(const std::string& nodeId) co
     return std::string();
 }
 
+// 2.4.0: cluster boxes do not overlap either. Groups that share a member
+// overlap on purpose (the member sits in both), so they move as one unit:
+// the units are the connected components of "shares a member", each with
+// the union of its boxes and of its members. Each overlapping pair of units
+// moves apart along the axis it overlaps least, half each, a unit's members
+// as one so the clusters keep their shape, pass after pass. A unit squeezed
+// between two others can be pushed back and forth; when the passes run out,
+// the units are placed one at a time instead, each at the nearest free spot
+// beside what it touches, which cannot cycle. A node in no group is then
+// pushed out of any box it sits in, and the nodes are separated again. A
+// unit with a pinned member does not move.
+int UltraCanvasNodeDiagram::SeparateGroups(double margin, int maxPasses) {
+    if (groups.empty()) return 0;
+
+    // The units.
+    struct Unit {
+        std::vector<size_t> groupIds;
+        std::set<std::string> nodeIds;
+        bool pinned = false;
+    };
+    std::vector<Unit> units;
+    {
+        std::vector<size_t> owner(groups.size(), groups.size());
+        for (size_t i = 0; i < groups.size(); ++i) {
+            if (owner[i] != groups.size()) continue;
+            Unit u;
+            std::vector<size_t> stack{i};
+            owner[i] = units.size();
+            while (!stack.empty()) {
+                const size_t g = stack.back();
+                stack.pop_back();
+                u.groupIds.push_back(g);
+                for (const auto& id : groups[g].nodeIds) {
+                    if (nodes.find(id) != nodes.end()) u.nodeIds.insert(id);
+                }
+                for (size_t k = 0; k < groups.size(); ++k) {
+                    if (owner[k] != groups.size()) continue;
+                    bool shares = false;
+                    for (const auto& id : groups[k].nodeIds) {
+                        if (std::find(groups[g].nodeIds.begin(), groups[g].nodeIds.end(), id) != groups[g].nodeIds.end()) { shares = true; break; }
+                    }
+                    if (shares) { owner[k] = units.size(); stack.push_back(k); }
+                }
+            }
+            for (const auto& id : u.nodeIds) if (nodes.find(id)->second.isPinned) u.pinned = true;
+            units.push_back(std::move(u));
+        }
+    }
+    auto boundsOf = [this](const Unit& u) {
+        Rect2Dd r(0.0, 0.0, 0.0, 0.0);
+        for (size_t g : u.groupIds) {
+            const Rect2Dd b = ComputeGroupBounds(groups[g]);
+            if (b.width <= 0.0) continue;
+            if (r.width <= 0.0) { r = b; continue; }
+            const double x0 = std::min(r.x, b.x), y0 = std::min(r.y, b.y);
+            const double x1 = std::max(r.x + r.width, b.x + b.width), y1 = std::max(r.y + r.height, b.y + b.height);
+            r = Rect2Dd(x0, y0, x1 - x0, y1 - y0);
+        }
+        return r;
+    };
+    auto shift = [this](const Unit& u, double dx, double dy) {
+        for (const auto& id : u.nodeIds) {
+            NodeDiagramNode& n = nodes.find(id)->second;
+            n.x += dx;
+            n.y += dy;
+        }
+    };
+    constexpr double kSlack = 0.5;
+
+    int pass = 0;
+    if (units.size() >= 2) {
+        for (; pass < maxPasses; ++pass) {
+            bool moved = false;
+            for (size_t i = 0; i < units.size(); ++i) {
+                for (size_t j = i + 1; j < units.size(); ++j) {
+                    const Unit& a = units[i];
+                    const Unit& b = units[j];
+                    if (a.pinned && b.pinned) continue;
+                    const Rect2Dd ra = boundsOf(a), rb = boundsOf(b);
+                    if (ra.width <= 0.0 || rb.width <= 0.0) continue;
+                    const double dx = (rb.x + rb.width * 0.5) - (ra.x + ra.width * 0.5);
+                    const double dy = (rb.y + rb.height * 0.5) - (ra.y + ra.height * 0.5);
+                    const double px = (ra.width + rb.width) * 0.5 + margin - std::abs(dx);
+                    const double py = (ra.height + rb.height) * 0.5 + margin - std::abs(dy);
+                    if (px <= 0.01 || py <= 0.01) continue;
+                    const double aShare = a.pinned ? 0.0 : (b.pinned ? 1.0 : 0.5);
+                    const double bShare = 1.0 - aShare;
+                    if (px < py) {
+                        const double dir = dx != 0.0 ? (dx > 0.0 ? 1.0 : -1.0) : 1.0;
+                        shift(a, -dir * (px + kSlack) * aShare, 0.0);
+                        shift(b,  dir * (px + kSlack) * bShare, 0.0);
+                    } else {
+                        const double dir = dy != 0.0 ? (dy > 0.0 ? 1.0 : -1.0) : 1.0;
+                        shift(a, 0.0, -dir * (py + kSlack) * aShare);
+                        shift(b, 0.0,  dir * (py + kSlack) * bShare);
+                    }
+                    moved = true;
+                }
+            }
+            if (!moved) break;
+        }
+
+        if (pass == maxPasses) {
+            // Did not settle: place the units one at a time, the pinned ones
+            // first, each where it is if that is free, else at the nearest
+            // free spot beside one of the units it touches.
+            std::vector<const Unit*> order;
+            for (const auto& u : units) order.push_back(&u);
+            std::stable_sort(order.begin(), order.end(),
+                             [](const Unit* a, const Unit* b) { return a->pinned && !b->pinned; });
+            std::vector<Rect2Dd> placed;
+            for (const Unit* u : order) {
+                const Rect2Dd box = boundsOf(*u);
+                if (box.width <= 0.0) continue;
+                auto freeAt = [&](double x, double y) {
+                    for (const Rect2Dd& o : placed) {
+                        if (x < o.x + o.width + margin - 0.01 && o.x < x + box.width + margin - 0.01 &&
+                            y < o.y + o.height + margin - 0.01 && o.y < y + box.height + margin - 0.01) return false;
+                    }
+                    return true;
+                };
+                double bestX = box.x, bestY = box.y;
+                if (!u->pinned && !freeAt(box.x, box.y)) {
+                    double best = -1.0;
+                    for (const Rect2Dd& o : placed) {
+                        const double cx[4] = {o.x - box.width - margin, o.x + o.width + margin, box.x, box.x};
+                        const double cy[4] = {box.y, box.y, o.y - box.height - margin, o.y + o.height + margin};
+                        for (int k = 0; k < 4; ++k) {
+                            const double d = (cx[k] - box.x) * (cx[k] - box.x) + (cy[k] - box.y) * (cy[k] - box.y);
+                            if ((best < 0.0 || d < best) && freeAt(cx[k], cy[k])) { best = d; bestX = cx[k]; bestY = cy[k]; }
+                        }
+                    }
+                    if (best < 0.0) {
+                        double bottom = box.y;
+                        for (const Rect2Dd& o : placed) bottom = std::max(bottom, o.y + o.height + margin);
+                        bestY = bottom;
+                    }
+                    shift(*u, bestX - box.x, bestY - box.y);
+                }
+                placed.emplace_back(bestX, bestY, box.width, box.height);
+            }
+        }
+    }
+
+    // A node in no group out of every box: along the axis it is least
+    // inside, a few passes, since leaving one box can mean entering another.
+    bool pushed = false;
+    {
+        std::set<std::string> grouped;
+        for (const auto& u : units) grouped.insert(u.nodeIds.begin(), u.nodeIds.end());
+        for (int round = 0; round < 8; ++round) {
+            bool any = false;
+            for (auto& pair : nodes) {
+                NodeDiagramNode& n = pair.second;
+                if (n.isPinned || grouped.count(n.id)) continue;
+                for (const auto& u : units) {
+                    const Rect2Dd b = boundsOf(u);
+                    if (b.width <= 0.0) continue;
+                    const double dx = (n.x + n.width * 0.5) - (b.x + b.width * 0.5);
+                    const double dy = (n.y + n.height * 0.5) - (b.y + b.height * 0.5);
+                    const double px = (n.width + b.width) * 0.5 + margin - std::abs(dx);
+                    const double py = (n.height + b.height) * 0.5 + margin - std::abs(dy);
+                    if (px <= 0.01 || py <= 0.01) continue;
+                    if (px < py) n.x += (dx != 0.0 ? (dx > 0.0 ? 1.0 : -1.0) : 1.0) * (px + kSlack);
+                    else         n.y += (dy != 0.0 ? (dy > 0.0 ? 1.0 : -1.0) : 1.0) * (py + kSlack);
+                    any = pushed = true;
+                }
+            }
+            if (!any) break;
+        }
+    }
+    if (pass > 0 || pushed) {
+        // A moved cluster may have landed on a node outside any box.
+        ResolveOverlaps(6.0);
+        RequestRedraw();
+    }
+    return pass > 0 ? pass : (pushed ? 1 : 0);
+}
+
+// The boxes apart at the zoom the view ends on: a box reserves room for its
+// title at the current zoom, and fitting the view changes the zoom, so the
+// two alternate, and the last word is the separation's - the view may then
+// be a few pixels short of the content, never a box on another.
+void UltraCanvasNodeDiagram::SettleGroups(bool fit) {
+    if (groups.empty()) return;
+    for (int round = 0; round < 3; ++round) {
+        if (SeparateGroups(8.0) == 0) return;
+        if (!fit) return;
+        FitView();
+    }
+    SeparateGroups(8.0);
+}
+
 Rect2Dd UltraCanvasNodeDiagram::ComputeGroupBounds(const NodeDiagramGroup& group) const {
     bool any = false;
     double minX = 0.0, minY = 0.0, maxX = 0.0, maxY = 0.0;
@@ -930,10 +1194,25 @@ Rect2Dd UltraCanvasNodeDiagram::ComputeGroupBounds(const NodeDiagramGroup& group
 
     if (!any) return Rect2Dd(0.0, 0.0, 0.0, 0.0);
 
+    // 2.4.0: room for the title. It is drawn at a screen size (labelFontSize
+    // over the zoom) inside the padding, and at a low zoom it is taller than
+    // the padding and sat on the first member: the edge that carries it
+    // moves out by what the title needs beyond the padding.
+    double titleRoom = 0.0;
+    if (!group.label.empty() && group.labelPosition != GroupLabelPosition::NoLabel) {
+        double zoom = viewport.GetZoomLevel();
+        if (zoom < 0.001) zoom = 1.0;
+        const double titleHeight = (group.labelFontSize * 1.3 + group.labelMargin * 2.0) / zoom;
+        titleRoom = std::max(0.0, titleHeight - group.padding);
+    }
+    const bool titleAtTop = group.labelPosition == GroupLabelPosition::TopLeft ||
+                            group.labelPosition == GroupLabelPosition::TopCenter ||
+                            group.labelPosition == GroupLabelPosition::TopRight;
+
     return Rect2Dd(minX - group.padding,
-                   minY - group.padding,
+                   minY - group.padding - (titleAtTop ? titleRoom : 0.0),
                    (maxX - minX) + group.padding * 2.0,
-                   (maxY - minY) + group.padding * 2.0);
+                   (maxY - minY) + group.padding * 2.0 + titleRoom);
 }
 
 Rect2Dd UltraCanvasNodeDiagram::GetGroupBounds(const std::string& id) const {
@@ -1001,6 +1280,23 @@ void UltraCanvasNodeDiagram::BuildLegendFromGroups() {
 
 void UltraCanvasNodeDiagram::MeasureLabel(const std::string& label, double fontSize,
                                            int& outWidth, int& outHeight) const {
+    MeasureText(label, fontSize, FontWeight::Bold, outWidth, outHeight);
+}
+
+void UltraCanvasNodeDiagram::MeasureText(const std::string& label, double fontSize, FontWeight weight,
+                                          int& outWidth, int& outHeight) const {
+    // 2.4.0: the window's font when the element has a window - the same
+    // measurement Render() makes - so a size computed from it is exact.
+    if (IRenderContext* ctx = GetRenderContext()) {
+        ctx->PushState();
+        ctx->SetFontFace(style.fontFamily, weight, FontSlant::Normal);
+        ctx->SetFontSize(fontSize);
+        const Size2Di dim = ctx->GetTextLineDimensions(label.empty() ? std::string("M") : label);
+        ctx->PopState();
+        outWidth  = label.empty() ? 0 : dim.width;
+        outHeight = dim.height;
+        return;
+    }
     if (label.empty()) {
         outWidth = 0;
         outHeight = static_cast<int>(fontSize * 1.3f);
@@ -1048,12 +1344,331 @@ void UltraCanvasNodeDiagram::SuggestNodeSizeForLabel(const std::string& label,
 }
 
 // =============================================================================
+// LABEL FIT (NEW in 2.4.0)
+// =============================================================================
+//
+// A label is drawn in the widest horizontal band of its node's shape at the
+// label's own height: the chord of a circle, the full width of a rectangle,
+// the narrowing middle of a diamond. The fit works in both directions on that
+// band - the font that fits the band, or the node whose band holds the text.
+// =============================================================================
+
+// Text is measured at zoom 1 and drawn at the view's zoom, where the font's
+// hinting rounds every glyph to a device pixel: at a small size a name
+// comes out a few units wider than measured. The room a node grows for its
+// text allows for that, and the drawing lets that much run into the
+// padding before it shortens the text.
+static constexpr double kTextDriftFactor = 0.05;
+static constexpr double kTextDriftPixels = 2.0;
+static double WithTextDrift(double width) { return width * (1.0 + kTextDriftFactor) + kTextDriftPixels; }
+
+void UltraCanvasNodeDiagram::LabelBandForShape(NodeShape shape, double width, double height,
+                                               double textHeight,
+                                               double& outBandWidth, double& outBandHeight) const {
+    const double padX = std::max(0.0, labelFit.paddingX);
+    const double padY = std::max(0.0, labelFit.paddingY);
+    const double boxH = textHeight + 2.0 * padY;    // the text and its vertical padding
+    double availW = width, availH = height;
+    switch (shape) {
+        case NodeShape::Circle: {
+            // The chord at half the box height above and below the centre.
+            const double r = std::min(width, height) / 2.0;
+            const double hh = std::min(boxH / 2.0, r);
+            availW = 2.0 * std::sqrt(std::max(0.0, r * r - hh * hh));
+            availH = 2.0 * r;
+            break;
+        }
+        case NodeShape::Diamond:
+            // Width shrinks linearly from the middle to nothing at the tips.
+            availW = width * std::max(0.0, 1.0 - boxH / std::max(1.0, height));
+            break;
+        case NodeShape::Hexagon:
+            // Pointed left and right, flat top and bottom: the sides slope
+            // from the full width at the centre to half of it at the top.
+            availW = width * std::max(0.0, 1.0 - boxH / (1.7320508 * std::max(1.0, height)));
+            break;
+        case NodeShape::Triangle:
+            // Apex up: the band's top edge is the narrow one.
+            availW = width * std::max(0.0, 1.0 - boxH / std::max(1.0, height)) * 0.5;
+            break;
+        case NodeShape::Star: {
+            // Between the two side points the outline is at about half the
+            // radius; the text sits in that middle.
+            const double r = std::min(width, height) / 2.0;
+            availW = r;
+            availH = r;
+            break;
+        }
+        case NodeShape::Cloud:
+            availW = width * 0.6;
+            availH = height * 0.5;
+            break;
+        case NodeShape::Square:
+        case NodeShape::Rectangle:
+        case NodeShape::RoundedSquare:
+        default:
+            break;
+    }
+    outBandWidth  = availW - 2.0 * padX;
+    outBandHeight = availH - 2.0 * padY;
+}
+
+void UltraCanvasNodeDiagram::NodeSizeForText(NodeShape shape, double textWidth, double textHeight,
+                                             double& outWidth, double& outHeight) const {
+    const double bw = WithTextDrift(textWidth) + 2.0 * std::max(0.0, labelFit.paddingX);
+    const double bh = textHeight + 2.0 * std::max(0.0, labelFit.paddingY);
+    double side = std::max(bw, bh);
+    switch (shape) {
+        case NodeShape::Rectangle:
+            outWidth  = bw;
+            outHeight = bh;
+            return;
+        case NodeShape::Circle:   side = std::sqrt(bw * bw + bh * bh); break;   // the box's diagonal
+        case NodeShape::Diamond:  side = bw + bh; break;                        // s(1 - bh/s) >= bw
+        case NodeShape::Hexagon:  side = bw + bh / 1.7320508; break;
+        case NodeShape::Triangle: side = 2.0 * bw + bh; break;                  // (s - bh)/2 >= bw
+        case NodeShape::Star:     side = 2.0 * std::max(bw, bh); break;
+        case NodeShape::Cloud:    side = std::max(bw / 0.6, bh / 0.5); break;
+        case NodeShape::Square:
+        case NodeShape::RoundedSquare:
+        default:
+            break;
+    }
+    outWidth = outHeight = side;
+}
+
+void UltraCanvasNodeDiagram::MinimumNodeSizeForLabel(const std::string& label, double fontSize,
+                                                     NodeShape shape,
+                                                     double& outWidth, double& outHeight) const {
+    int textW = 0, textH = 0;
+    MeasureLabel(label, fontSize, textW, textH);
+    NodeSizeForText(shape, static_cast<double>(textW), static_cast<double>(textH), outWidth, outHeight);
+}
+
+bool UltraCanvasNodeDiagram::LabelFitGrows() const {
+    return labelFit.mode == NodeLabelFit::GrowNode || labelFit.mode == NodeLabelFit::ShrinkThenGrow;
+}
+
+double UltraCanvasNodeDiagram::GrowthFontSize(const NodeDiagramNode& node) const {
+    const double own = node.fontSize > 0 ? node.fontSize : style.baseFontSize;
+    if (labelFit.mode == NodeLabelFit::ShrinkThenGrow) {
+        return std::min(own, std::max(1.0, labelFit.minFontSize));
+    }
+    return own;
+}
+
+int UltraCanvasNodeDiagram::GrowNodesForLabels(IRenderContext* ctx) {
+    if (!LabelFitGrows() || nodes.empty()) return 0;
+    if (!ctx) ctx = GetRenderContext();
+    // Measured by the estimate: the first frame measures again with the font.
+    if (!ctx) labelFitDirty = true;
+
+    auto measure = [&](const std::string& text, double fontSize, FontWeight weight) {
+        if (ctx) {
+            ctx->PushState();
+            ctx->SetFontFace(style.fontFamily, weight, FontSlant::Normal);
+            ctx->SetFontSize(fontSize);
+            const Size2Di dim = ctx->GetTextLineDimensions(text);
+            ctx->PopState();
+            return dim;
+        }
+        int w = 0, h = 0;
+        MeasureText(text, fontSize, weight, w, h);
+        return Size2Di(w, h);
+    };
+
+    int grew = 0;
+    for (auto& pair : nodes) {
+        NodeDiagramNode& node = pair.second;
+        const bool card = !node.iconPath.empty() || !node.sublabel.empty();
+        if (node.label.empty() && !card) continue;
+
+        const double fontSize = GrowthFontSize(node);
+        double needW = 0.0, needH = 0.0;
+        if (card) {
+            // A card: the label over the sublabel beside the icon disc.
+            Size2Di labelDim = measure(node.label.empty() ? std::string("M") : node.label, fontSize, FontWeight::Bold);
+            if (node.label.empty()) labelDim.width = 0;
+            const Size2Di subDim = node.sublabel.empty() ? Size2Di(0, 0)
+                                                         : measure(node.sublabel, fontSize * 0.85, FontWeight::Normal);
+            CardSizeForText(node, labelDim, subDim, needW, needH);
+        } else {
+            const Size2Di dim = measure(node.label, fontSize, FontWeight::Bold);
+            NodeSizeForText(node.shape, dim.width, dim.height, needW, needH);
+        }
+        if (needW <= node.width + 0.5 && needH <= node.height + 0.5) continue;
+
+        const double cx = node.x + node.width  * 0.5;
+        const double cy = node.y + node.height * 0.5;
+        double newW = std::max(node.width, needW);
+        double newH = std::max(node.height, needH);
+        // Every shape but the rectangle keeps its proportions: a square that
+        // grows stays a square.
+        if (node.shape != NodeShape::Rectangle) newW = newH = std::max(newW, newH);
+        node.width  = newW;
+        node.height = newH;
+        node.x = cx - newW * 0.5;
+        node.y = cy - newH * 0.5;
+        ++grew;
+    }
+    return grew;
+}
+
+int UltraCanvasNodeDiagram::FitNodesToLabels() {
+    const int grew = GrowNodesForLabels(nullptr);
+    if (grew > 0) {
+        ResolveOverlaps(6.0);
+        if (autoFitOnLayout) FitView();
+        RequestRedraw();
+    }
+    return grew;
+}
+
+void UltraCanvasNodeDiagram::SetLabelFit(NodeLabelFit mode) {
+    NodeDiagramLabelFit cfg = labelFit;
+    cfg.mode = mode;
+    SetLabelFitConfig(cfg);
+}
+
+void UltraCanvasNodeDiagram::SetLabelFitConfig(const NodeDiagramLabelFit& cfg) {
+    labelFit = cfg;
+    labelFit.minFontSize = std::max(1.0, labelFit.minFontSize);
+    labelFit.paddingX = std::max(0.0, labelFit.paddingX);
+    labelFit.paddingY = std::max(0.0, labelFit.paddingY);
+    if (nodes.empty()) return;
+    // Back to the data-driven (or authored) sizes, then up to what the new fit
+    // needs, apart, and in view.
+    SizeNodes();
+    ResolveOverlaps(6.0);
+    if (autoFitOnLayout) FitView();
+    InvalidateLabelFit();
+    RequestRedraw();
+}
+
+double UltraCanvasNodeDiagram::GetNodeLabelFontSize(const std::string& id) const {
+    const NodeDiagramNode* node = GetNode(id);
+    if (!node) return 0.0;
+    const double own = node->fontSize > 0 ? node->fontSize : style.baseFontSize;
+    if (labelFit.mode == NodeLabelFit::Overflow || labelFit.mode == NodeLabelFit::GrowNode) return own;
+    if (!node->iconPath.empty() || !node->sublabel.empty()) {
+        Size2Di labelDim, subDim;
+        return FitCardFontWith(*node, [this](const std::string& text, double fontSize, FontWeight weight) {
+            int tw = 0, th = 0;
+            MeasureText(text, fontSize, weight, tw, th);
+            return Size2Di(tw, th);
+        }, labelDim, subDim);
+    }
+    if (node->label.empty()) return own;
+    int w = 0, h = 0;
+    MeasureLabel(node->label, own, w, h);
+    Size2Di dim(w, h);
+    return FitLabelFontWith(*node, [this, node](double fontSize) {
+        int tw = 0, th = 0;
+        MeasureLabel(node->label, fontSize, tw, th);
+        return Size2Di(tw, th);
+    }, dim);
+}
+
+// The largest font size, down from the node's own, at which the label fits
+// the node's band; `measure` gives the text's size at a font size and `dim`
+// goes in as the size at the node's own font size and comes out as the size
+// at the returned one.
+double UltraCanvasNodeDiagram::FitLabelFontWith(const NodeDiagramNode& node,
+                                                const std::function<Size2Di(double)>& measure,
+                                                Size2Di& dim) const {
+    double fontSize = node.fontSize > 0 ? node.fontSize : style.baseFontSize;
+    if (labelFit.mode == NodeLabelFit::Overflow || labelFit.mode == NodeLabelFit::GrowNode) return fontSize;
+    const double minFont = std::min(fontSize, std::max(1.0, labelFit.minFontSize));
+    for (int round = 0; round < 4; ++round) {
+        double bandW = 0.0, bandH = 0.0;
+        LabelBandForShape(node.shape, node.width, node.height, dim.height, bandW, bandH);
+        if (dim.width <= bandW + 0.01 && dim.height <= bandH + 0.01) break;
+        if (fontSize <= minFont + 0.01) break;
+        // Text scales with its font size; a little under the exact ratio so
+        // rounding does not leave it a pixel over.
+        const double scale = std::min(bandW / std::max(1.0, static_cast<double>(dim.width)),
+                                      bandH / std::max(1.0, static_cast<double>(dim.height)));
+        fontSize = std::max(minFont, fontSize * std::min(0.98, std::max(0.1, scale)));
+        dim = measure(fontSize);
+    }
+    return fontSize;
+}
+
+// A card's text area: how far from the node's left edge the text starts
+// (after the padding and the icon disc) and how wide it may be, for a card
+// of the given size. The same arithmetic as RenderNodeLabel's card path.
+void UltraCanvasNodeDiagram::CardTextArea(const NodeDiagramNode& node, double width, double height,
+                                          double& outTextLeft, double& outMaxWidth, double& outPad) const {
+    const double pad = std::max(4.0, height * 0.14);
+    double textLeft = pad + 2.0;
+    if (!node.iconPath.empty()) {
+        const double d = std::max(8.0, height - 2.0 * pad);
+        textLeft = pad + d + pad * 0.9;
+    }
+    outPad = pad;
+    outTextLeft = textLeft;
+    outMaxWidth = width - pad - textLeft;
+}
+
+// The font size a card's label is drawn at (the sublabel at 0.85 of it):
+// the node's own unless ShrinkFont / ShrinkThenGrow must reduce it for the
+// text area. `measure` gives a text's size at a font size and weight; the
+// label's and sublabel's sizes at the returned font come out in the dims.
+double UltraCanvasNodeDiagram::FitCardFontWith(
+        const NodeDiagramNode& node,
+        const std::function<Size2Di(const std::string&, double, FontWeight)>& measure,
+        Size2Di& labelDim, Size2Di& subDim) const {
+    double fontSize = node.fontSize > 0 ? node.fontSize : style.baseFontSize;
+    auto measureBoth = [&](double f) {
+        labelDim = measure(node.label.empty() ? std::string("M") : node.label, f, FontWeight::Bold);
+        if (node.label.empty()) labelDim.width = 0;
+        subDim = node.sublabel.empty() ? Size2Di(0, 0) : measure(node.sublabel, f * 0.85, FontWeight::Normal);
+    };
+    measureBoth(fontSize);
+    if (labelFit.mode == NodeLabelFit::Overflow || labelFit.mode == NodeLabelFit::GrowNode) return fontSize;
+    const double minFont = std::min(fontSize, std::max(1.0, labelFit.minFontSize));
+    double textLeft = 0.0, maxWidth = 0.0, pad = 0.0;
+    CardTextArea(node, node.width, node.height, textLeft, maxWidth, pad);
+    const double maxHeight = node.height - 2.0 * pad;
+    for (int round = 0; round < 4; ++round) {
+        const double textW = std::max(labelDim.width, subDim.width);
+        const double textH = labelDim.height + subDim.height;
+        if (textW <= maxWidth + 0.01 && textH <= maxHeight + 0.01) break;
+        if (fontSize <= minFont + 0.01) break;
+        const double scale = std::min(maxWidth / std::max(1.0, textW), maxHeight / std::max(1.0, textH));
+        fontSize = std::max(minFont, fontSize * std::min(0.98, std::max(0.1, scale)));
+        measureBoth(fontSize);
+    }
+    return fontSize;
+}
+
+
+// The smallest card holding `labelDim` over `subDim` beside its icon: the
+// text area's left edge and padding depend on the height, so two rounds.
+void UltraCanvasNodeDiagram::CardSizeForText(const NodeDiagramNode& node, const Size2Di& labelDim,
+                                             const Size2Di& subDim, double& outWidth, double& outHeight) const {
+    const double textW = WithTextDrift(std::max(labelDim.width, subDim.width));
+    const double textH = labelDim.height + subDim.height;
+    double height = node.height;
+    double width = node.width;
+    for (int round = 0; round < 2; ++round) {
+        double textLeft = 0.0, maxWidth = 0.0, pad = 0.0;
+        CardTextArea(node, width, height, textLeft, maxWidth, pad);
+        height = std::max(height, textH + 2.0 * pad);
+        width = std::max(width, textLeft + textW + pad);
+    }
+    outWidth = width;
+    outHeight = height;
+}
+
+// =============================================================================
 // STYLING & THEME
 // =============================================================================
 
 void UltraCanvasNodeDiagram::SetTheme(NodeDiagramTheme newTheme) {
     theme = newTheme;
     ApplyTheme(theme);
+    InvalidateLabelFit();   // 2.4.0: the theme sets the font
     RequestRedraw();
 }
 
@@ -1070,11 +1685,13 @@ void UltraCanvasNodeDiagram::SetGridVisible(bool visible, double spacing) {
 
 void UltraCanvasNodeDiagram::SetFontFamily(const std::string& fontFamily) {
     style.fontFamily = fontFamily;
+    InvalidateLabelFit();   // 2.4.0
     RequestRedraw();
 }
 
 void UltraCanvasNodeDiagram::SetFontSize(double size) {
     style.baseFontSize = size;
+    InvalidateLabelFit();   // 2.4.0
     RequestRedraw();
 }
 
@@ -1765,6 +2382,22 @@ void UltraCanvasNodeDiagram::Render(IRenderContext* ctx, const Rect2Df& dirtyRec
     // Keep the shared viewport's drawable area in step with the element size,
     // so overlay placement and FitView stay correct after a resize.
     SyncViewportSize();
+
+    // 2.4.0: labels measured with the real font. Whatever changed what a
+    // label needs since the last frame (a node, a name, a shape, the font,
+    // the fit, or a layout run before there was a window to measure in) is
+    // settled here, before anything is drawn: a node too small for its label
+    // grows, and the nodes it then touches move apart.
+    if (labelFitDirty) {
+        labelFitDirty = false;
+        const int grew = GrowNodesForLabels(ctx);
+        if (grew > 0) ResolveOverlaps(6.0);
+        const bool refit = refitViewAfterMeasure && autoFitOnLayout && !nodes.empty();
+        refitViewAfterMeasure = false;
+        if (refit) FitView();
+        // The boxes' title room depends on the zoom the fit chose.
+        SettleGroups(refit);
+    }
     
     // Background (in screen space, no transform)
     ctx->SetFillPaint(style.backgroundColor);
@@ -2587,8 +3220,6 @@ std::string FitTextToWidth(IRenderContext* ctx, const std::string& text, double 
 } // namespace
 
 void UltraCanvasNodeDiagram::RenderNodeLabel(IRenderContext* ctx, const NodeDiagramNode& node) {
-    const double fontSize = node.fontSize > 0 ? node.fontSize : style.baseFontSize;
-
     // 2.3.0: the card layout - an icon in a disc at the leading edge, the
     // label (and the sublabel under it) left-aligned beside it, shortened
     // with an ellipsis when they do not fit.
@@ -2611,29 +3242,40 @@ void UltraCanvasNodeDiagram::RenderNodeLabel(IRenderContext* ctx, const NodeDiag
         }
         const double maxWidth = node.x + node.width - pad - textLeft;
 
+        // 2.4.0: the font the fit allows (ShrinkFont / ShrinkThenGrow reduce
+        // it for the text area); what still does not fit is shortened.
+        Size2Di labelDim, subDim;
+        const double cardFont = FitCardFontWith(node, [ctx, this](const std::string& text, double size, FontWeight weight) {
+            ctx->SetFontFace(style.fontFamily, weight, FontSlant::Normal);
+            ctx->SetFontSize(size);
+            return ctx->GetTextLineDimensions(text);
+        }, labelDim, subDim);
+
+        // Shortened only past the drift the growth allowed for.
+        const double fitWidth = maxWidth + (WithTextDrift(maxWidth) - maxWidth);
         ctx->SetFontFace(style.fontFamily, FontWeight::Bold, FontSlant::Normal);
-        ctx->SetFontSize(fontSize);
-        const std::string label = FitTextToWidth(ctx, node.label, maxWidth);
+        ctx->SetFontSize(cardFont);
+        const std::string label = FitTextToWidth(ctx, node.label, fitWidth);
         const double labelHeight = ctx->GetTextLineDimensions(label.empty() ? std::string("M") : label).height;
 
         std::string sub;
         double subHeight = 0.0;
         if (!node.sublabel.empty()) {
             ctx->SetFontFace(style.fontFamily, FontWeight::Normal, FontSlant::Normal);
-            ctx->SetFontSize(fontSize * 0.85);
-            sub = FitTextToWidth(ctx, node.sublabel, maxWidth);
+            ctx->SetFontSize(cardFont * 0.85);
+            sub = FitTextToWidth(ctx, node.sublabel, fitWidth);
             subHeight = ctx->GetTextLineDimensions(sub).height;
         }
         double y = node.y + (node.height - labelHeight - subHeight) / 2.0;
         if (!label.empty()) {
             ctx->SetFontFace(style.fontFamily, FontWeight::Bold, FontSlant::Normal);
-            ctx->SetFontSize(fontSize);
+            ctx->SetFontSize(cardFont);
             ctx->SetTextPaint(node.textColor);
             ctx->DrawText(label, {textLeft, y});
         }
         if (!sub.empty()) {
             ctx->SetFontFace(style.fontFamily, FontWeight::Normal, FontSlant::Normal);
-            ctx->SetFontSize(fontSize * 0.85);
+            ctx->SetFontSize(cardFont * 0.85);
             ctx->SetTextPaint(node.sublabelColor);
             ctx->DrawText(sub, {textLeft, y + labelHeight});
         }
@@ -2641,12 +3283,15 @@ void UltraCanvasNodeDiagram::RenderNodeLabel(IRenderContext* ctx, const NodeDiag
     }
 
     if (node.label.empty()) return;
-    
+
+    // 2.4.0: the font the fit allows (the node's own unless it had to
+    // shrink), and the text shortened when even that does not fit.
+    std::string text;
+    Size2Di nodeTextDim;
+    const double drawnFontSize = FitLabelFont(ctx, node, text, nodeTextDim);
     ctx->SetTextPaint(node.textColor);
     ctx->SetFontFace(style.fontFamily, FontWeight::Bold, FontSlant::Normal);
-    ctx->SetFontSize(fontSize);
-    
-    Size2Di nodeTextDim = ctx->GetTextLineDimensions(node.label);
+    ctx->SetFontSize(drawnFontSize);
     int textWidth = nodeTextDim.width;
     int textHeight = nodeTextDim.height;
     
@@ -2669,7 +3314,33 @@ void UltraCanvasNodeDiagram::RenderNodeLabel(IRenderContext* ctx, const NodeDiag
         textY = node.y + kInset;
     }
     
-    ctx->DrawText(node.label, {textX, textY});
+    ctx->DrawText(text, {textX, textY});
+}
+
+double UltraCanvasNodeDiagram::FitLabelFont(IRenderContext* ctx, const NodeDiagramNode& node,
+                                            std::string& outText, Size2Di& outDim) const {
+    const double own = node.fontSize > 0 ? node.fontSize : style.baseFontSize;
+    ctx->SetFontFace(style.fontFamily, FontWeight::Bold, FontSlant::Normal);
+    ctx->SetFontSize(own);
+    outDim = ctx->GetTextLineDimensions(node.label);
+    outText = node.label;
+    if (labelFit.mode == NodeLabelFit::Overflow) return own;
+
+    const double fontSize = FitLabelFontWith(node, [ctx, &node](double size) {
+        ctx->SetFontSize(size);
+        return ctx->GetTextLineDimensions(node.label);
+    }, outDim);
+    ctx->SetFontSize(fontSize);
+
+    // What the band still cannot hold is shortened - in ShrinkFont that is
+    // the rule, in the growing modes a frame at most, until the node grows.
+    double bandW = 0.0, bandH = 0.0;
+    LabelBandForShape(node.shape, node.width, node.height, outDim.height, bandW, bandH);
+    if (outDim.width > WithTextDrift(bandW)) {
+        outText = FitTextToWidth(ctx, node.label, WithTextDrift(bandW));
+        outDim = ctx->GetTextLineDimensions(outText);
+    }
+    return fontSize;
 }
 
 void UltraCanvasNodeDiagram::RenderNodeHandles(IRenderContext* ctx, const NodeDiagramNode& node) {
@@ -3391,6 +4062,25 @@ NodeDegreeMode NodeDegreeModeFromString(const std::string& s) {
     return NodeDegreeMode::Total;
 }
 
+// ---- 2.4.0 ----
+
+const char* NodeLabelFitToString(NodeLabelFit f) {
+    switch (f) {
+        case NodeLabelFit::Overflow:       return "overflow";
+        case NodeLabelFit::ShrinkFont:     return "shrinkFont";
+        case NodeLabelFit::GrowNode:       return "growNode";
+        case NodeLabelFit::ShrinkThenGrow: return "shrinkThenGrow";
+    }
+    return "shrinkThenGrow";
+}
+
+NodeLabelFit NodeLabelFitFromString(const std::string& s) {
+    if (s == "overflow")   return NodeLabelFit::Overflow;
+    if (s == "shrinkFont") return NodeLabelFit::ShrinkFont;
+    if (s == "growNode")   return NodeLabelFit::GrowNode;
+    return NodeLabelFit::ShrinkThenGrow;
+}
+
 const char* GroupLabelPositionToString(GroupLabelPosition p) {
     switch (p) {
         case GroupLabelPosition::TopCenter:    return "topCenter";
@@ -3668,6 +4358,14 @@ std::string UltraCanvasNodeDiagram::ToJson() const {
     out << "    \"keepAspect\": " << (sizing.keepAspect ? "true" : "false") << "\n";
     out << "  },\n";
 
+    // Label fit (2.4.0)
+    out << "  \"labelFit\": {\n";
+    out << "    \"mode\": \"" << NodeLabelFitToString(labelFit.mode) << "\",\n";
+    out << "    \"minFontSize\": " << labelFit.minFontSize << ",\n";
+    out << "    \"paddingX\": " << labelFit.paddingX << ",\n";
+    out << "    \"paddingY\": " << labelFit.paddingY << "\n";
+    out << "  },\n";
+
     // Groups (2.2.0)
     out << "  \"groups\": [\n";
     first = true;
@@ -3833,6 +4531,26 @@ bool UltraCanvasNodeDiagram::FromJson(const std::string& json) {
             }
         }
     }
+
+    // Label fit (2.4.0). A file from before it carries none and keeps the
+    // element's current setting.
+    {
+        size_t fitStart = json.find("\"labelFit\"");
+        if (fitStart != std::string::npos) {
+            size_t braceStart = json.find('{', fitStart);
+            size_t braceEnd = json.find('}', braceStart);
+            if (braceStart != std::string::npos && braceEnd != std::string::npos) {
+                std::string fitJson = json.substr(braceStart, braceEnd - braceStart + 1);
+                NodeDiagramLabelFit f = labelFit;
+                f.mode        = NodeLabelFitFromString(ExtractStringValue(fitJson, "mode"));
+                f.minFontSize = ExtractNumberValue(fitJson, "minFontSize", f.minFontSize);
+                f.paddingX    = ExtractNumberValue(fitJson, "paddingX", f.paddingX);
+                f.paddingY    = ExtractNumberValue(fitJson, "paddingY", f.paddingY);
+                labelFit = f;
+            }
+        }
+    }
+    InvalidateLabelFit();
 
     NotifyViewportChange();
     RequestRedraw();

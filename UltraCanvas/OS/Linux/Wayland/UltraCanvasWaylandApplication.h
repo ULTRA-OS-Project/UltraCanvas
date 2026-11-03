@@ -6,10 +6,15 @@
 // framework is configured with ULTRACANVAS_WAYLAND=ON (the public headers
 // then alias UltraCanvasApplication to this class). Everything a client may
 // do with the core protocol and xdg-shell lives here; the desktop shell's
-// own protocols (layer-shell, foreign-toplevel) belong to the desktop shell
-// backend, see Docs/UltraCanvas/WaylandDesktopShellProposal.md.
+// own protocols belong to the desktop shell backend, see
+// Docs/UltraCanvas/WaylandDesktopShellProposal.md: of those only the layer
+// shell is bound here, because a Desktop window of this backend is a layer
+// surface (UltraCanvasWaylandWindow); the window list's foreign-toplevel
+// manager lives on the shell backend's own connection.
+// Version: 0.3.0 - xdg-activation (RaiseAndFocus); the keyboard window
+// Version: 0.2.0 - the layer shell global; FindOutputAt
 // Version: 0.1.0
-// Last Modified: 2026-10-30
+// Last Modified: 2026-11-03
 // Author: UltraCanvas Framework
 #pragma once
 #ifndef ULTRACANVAS_WAYLAND_APPLICATION_H
@@ -37,6 +42,8 @@ namespace UltraCanvas { class UltraCanvasWaylandApplication; }
 
 struct xdg_wm_base;
 struct zxdg_decoration_manager_v1;
+struct zwlr_layer_shell_v1;
+struct xdg_activation_v1;
 struct wl_cursor_theme;
 
 namespace UltraCanvas {
@@ -76,6 +83,15 @@ namespace UltraCanvas {
         wl_seat* GetSeat() const { return seat; }
         xdg_wm_base* GetXdgWmBase() const { return xdgWmBase; }
         zxdg_decoration_manager_v1* GetDecorationManager() const { return decorationManager; }
+        // The layer shell (wlr-layer-shell-unstable-v1), or nullptr on a
+        // compositor without one (GNOME's); the version bound, 1 to 4.
+        zwlr_layer_shell_v1* GetLayerShell() const { return layerShell; }
+        uint32_t GetLayerShellVersion() const { return layerShellVersion; }
+        // xdg-activation-v1, or nullptr: how a window asks for the focus
+        // (UltraCanvasWaylandWindow::RaiseAndFocus).
+        xdg_activation_v1* GetActivation() const { return activation; }
+        // The window the seat's keyboard focus is in, or nullptr.
+        UltraCanvasWaylandWindow* GetKeyboardWindow() const { return keyboardWindow; }
         wl_data_device_manager* GetDataDeviceManager() const { return dataDeviceManager; }
         wl_data_device* GetDataDevice() const { return dataDevice; }
         // The serial of the last key or button the seat gave us: what
@@ -87,6 +103,8 @@ namespace UltraCanvas {
         // is taken as the primary (Wayland has no notion of one).
         const std::vector<WaylandOutput>& GetOutputs() const { return outputs; }
         const WaylandOutput* FindOutput(wl_output* output) const;
+        // The output whose logical rectangle holds the point, or nullptr.
+        const WaylandOutput* FindOutputAt(int x, int y) const;
         // The largest output, or 0x0 before the compositor has described one.
         void GetScreenSize(int& width, int& height) const;
 
@@ -144,6 +162,9 @@ namespace UltraCanvas {
         uint32_t seatCapabilities = 0;
         xdg_wm_base* xdgWmBase = nullptr;
         zxdg_decoration_manager_v1* decorationManager = nullptr;
+        zwlr_layer_shell_v1* layerShell = nullptr;
+        uint32_t layerShellVersion = 0;
+        xdg_activation_v1* activation = nullptr;
         wl_data_device_manager* dataDeviceManager = nullptr;
         wl_data_device* dataDevice = nullptr;
         std::vector<WaylandOutput> outputs;

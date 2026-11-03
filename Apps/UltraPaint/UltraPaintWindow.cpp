@@ -3,6 +3,10 @@
 // toolbars, paint surface, colour picker, option / layer panels, status
 // bar) and every command the menus and shortcuts run, plus the open-window
 // registry and the import path a dropped or opened file takes.
+// Version: 1.10.0 - the text bar (UltraCanvasTextFormatBar) under the toolbar with the Text
+//                  tool, in place of the Text card: strikethrough, line spacing (per paragraph,
+//                  of its largest letters) and letter spacing besides the font, size, style
+//                  and alignment
 // Version: 1.9.5 - a drop's passwords are forgotten when the desktop session locks; the
 //                  drop's first file is read through LoadDocumentAsking, so a password
 //                  forgotten while its import dialog was up is asked for again
@@ -55,7 +59,7 @@
 //                  buttons in the palette and the toolbar; every menu entry has an
 //                  icon from the 16 px menu set (media/icons/ultrapaint/16)
 // Version: 1.1.0
-// Last Modified: 2026-10-16
+// Last Modified: 2026-11-03
 // Author: UltraCanvas Framework
 
 #include "UltraPaintWindow.h"
@@ -80,6 +84,7 @@
 #include "UltraCanvasVectorRaster.h"
 #include "UltraCanvasModelRaster.h"
 #include "UltraCanvasDebug.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 #include "../dialogs/UltraCanvasCurvesDialog.h"
 #include "../dialogs/UltraCanvasModelViewDialog.h"
 #ifdef HAS_LIBVIPS
@@ -327,6 +332,7 @@ bool UltraPaintWindow::Initialize(const std::vector<std::string>& paths) {
 
     BuildMenuBar();
     BuildToolbar();
+    BuildTextBar();
 
     body = std::make_shared<UltraCanvasContainer>("up-body", 0, 0, 0, 0);
     body->layout.SetFlexRow().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
@@ -359,8 +365,6 @@ bool UltraPaintWindow::Initialize(const std::vector<std::string>& paths) {
     };
     toolContext.setStatus = [this](const std::string& s) { if (statusHint) statusHint->SetText(s); };
     toolContext.requestText = [this](double x, double y, double boxWidth) { BeginTextEdit(x, y, boxWidth); };
-    toolContext.textOptionChanged = [this](const std::string& option) { ApplyTextOption(option); };
-    toolContext.textControlDone = [this](UltraCanvasUIElement& control) { ReturnKeyboardToText(control); };
     toolContext.askRasterize = [this](const std::string& action) { AskRasterize(action); };
     toolContext.refreshOptions = [this]() { RebuildToolOptions(); };
 
@@ -1687,6 +1691,7 @@ PaintTool* UltraPaintWindow::ActiveTool() const {
 
 void UltraPaintWindow::SelectTool(PaintToolId id) {
     if (id != PaintToolId::Text) CommitTextEdit();
+    ShowTextBar(id == PaintToolId::Text);
     if (auto* old = ActiveTool()) { if (old->id != id) old->Deactivate(toolContext); }
     activeTool = id;
     PaintTool* t = ActiveTool();
@@ -2070,16 +2075,20 @@ void UltraPaintWindow::OpenTextSession(int layerIndex, double x, double y, doubl
         session->layer = layer;
         session->content = *layer->text;
         words = std::make_shared<UCRichDocument>(*layer->text->document);
-        // The panel shows the text's own font and size.
+        // A new text starts in this one's font, size and spacing; the bar
+        // shows them.
         toolOptions.textFont = layer->text->fontFamily;
         toolOptions.textSize = std::max(1, static_cast<int>(std::lround(layer->text->fontSizePx)));
-        if (activeTool == PaintToolId::Text) RebuildToolOptions();
+        toolOptions.textLetterSpacing = layer->text->letterSpacingPx;
+        session->lineSpacing = GetTextLineSpacing(*words, layer->text->fontSizePx);
+        if (session->lineSpacing > 0.0f) toolOptions.textLineSpacing = session->lineSpacing;
     } else {
         RasterTextContent& c = session->content;
         c.x = std::round(x);
         c.y = std::round(y);
         c.fontFamily = toolOptions.textFont;
         c.fontSizePx = static_cast<float>(std::max(1, toolOptions.textSize));
+        c.letterSpacingPx = toolOptions.textLetterSpacing;
         c.colour = foreground;
         // Dragged, the lines wrap at the box; clicked, at the image's right
         // edge - but never in less room than a few words.
@@ -2087,6 +2096,8 @@ void UltraPaintWindow::OpenTextSession(int layerIndex, double x, double y, doubl
                                  : std::max<double>(document->GetWidth() - c.x, c.fontSizePx * 8.0);
         c.width = std::max(c.width, 8.0);
         words = NewTextDocument(toolOptions.textAlign);
+        session->lineSpacing = toolOptions.textLineSpacing;
+        SetTextLineSpacing(*words, c.fontSizePx, session->lineSpacing);
     }
 
     if (!textEditorHost) {
@@ -2102,8 +2113,11 @@ void UltraPaintWindow::OpenTextSession(int layerIndex, double x, double y, doubl
         textEditor = std::make_shared<UltraCanvasRichTextEdit>("up-text-editor", 0, 0, 10, 10);
         textEditor->layoutItem.SetPositionType(CSSLayout::PositionType::AbsoluteUI);
         if (!textEditor->layoutItem.position) textEditor->layoutItem.position = CSSLayout::Position();
-        // The box grows with what is typed.
-        textEditor->onDocumentChanged = [this]() { PlaceTextEditor(); };
+        // The box grows with what is typed; a new paragraph is spaced as the
+        // others, a line with larger letters opens up.
+        textEditor->onDocumentChanged = [this]() { StampTextLineSpacing(); PlaceTextEditor(); };
+        // The text bar follows the caret.
+        textEditor->onSelectionChanged = [this]() { SyncTextBar(); };
         // Ctrl+wheel over the text zooms the canvas, which the editor follows.
         textEditor->onZoomChanged = [this](float zoom) {
             if (surface && std::fabs(surface->GetZoom() - zoom) > 1e-4) surface->SetZoom(zoom);
@@ -2123,8 +2137,10 @@ void UltraPaintWindow::OpenTextSession(int layerIndex, double x, double y, doubl
         armed.setBold = true;      armed.bold = toolOptions.textBold;
         armed.setItalic = true;    armed.italic = toolOptions.textItalic;
         armed.setUnderline = true; armed.underline = toolOptions.textUnderline;
+        armed.setStrikethrough = true; armed.strikethrough = toolOptions.textStrike;
         textEditor->ApplyCharFormat(armed);
     }
+    SyncTextBar();
     // The layer's own pixels would show under the words being typed.
     document->SetInPlaceEditLayer(textSession->layer);
     textEditorHost->SetVisible(true);
@@ -2213,44 +2229,43 @@ void UltraPaintWindow::CommitTextEdit() {
     }
 }
 
-void UltraPaintWindow::ReturnKeyboardToText(UltraCanvasUIElement& control) {
-    if (!textSession || !textEditor) return;
-    std::weak_ptr<UltraCanvasUIElement> watched = control.weak_from_this();
-    auto handBack = [this, watched]() {
-        auto still = watched.lock();
-        if (!still || !textSession || !textEditor || !window) return;
-        if (window->GetFocusedElement() == still.get()) textEditor->SetFocus(true);
-    };
-    // The list reports its closing from inside the event that closed it, and
-    // a Tab moves the focus on after that.
-    auto* app = UltraCanvasApplicationBase::GetCurrent();
-    if (!app) { handBack(); return; }
-    std::weak_ptr<bool> alive = lifeToken;
-    app->PostToUIThread([alive, handBack]() {
-        if (!alive.expired()) handBack();
-    });
-}
-
 void UltraPaintWindow::ApplyTextOption(const std::string& option) {
     if (!document) return;
     RichCharFormatDelta delta;
-    bool align = false;
+    bool align = false, lines = false, tracking = false;
     if (option == "font")      { delta.setFontFamily = true; delta.fontFamily = toolOptions.textFont; }
     else if (option == "size") { delta.setFontSize = true; delta.fontSizePt = static_cast<float>(std::max(1, toolOptions.textSize)) * kTextPointsPerPixel; }
     else if (option == "bold") { delta.setBold = true; delta.bold = toolOptions.textBold; }
     else if (option == "italic") { delta.setItalic = true; delta.italic = toolOptions.textItalic; }
     else if (option == "underline") { delta.setUnderline = true; delta.underline = toolOptions.textUnderline; }
+    else if (option == "strike") { delta.setStrikethrough = true; delta.strikethrough = toolOptions.textStrike; }
     else if (option == "colour") { delta.setColor = true; delta.color = HexColour(foreground); }
     else if (option == "align") align = true;
+    else if (option == "line-spacing") lines = true;
+    else if (option == "letter-spacing") tracking = true;
     else return;
 
     if (textSession && textEditor) {
-        // While typing: the selection, or what is typed next - and the
+        // While typing: the selection, or what is typed next; alignment the
+        // selected paragraphs; the spacings the whole text - and the
         // keyboard back in the text.
         if (align) textEditor->SetAlignment(AlignOption(toolOptions.textAlign));
-        else textEditor->ApplyCharFormat(delta);
+        else if (lines) {
+            textSession->lineSpacing = toolOptions.textLineSpacing;
+            StampTextLineSpacing();
+        } else if (tracking) {
+            textSession->content.letterSpacingPx = toolOptions.textLetterSpacing;
+            RichTextEditStyle style = textEditor->GetStyle();
+            style.letterSpacing = toolOptions.textLetterSpacing;
+            textEditor->SetStyle(style);
+            textEditor->InvalidateDocument();
+        } else {
+            textEditor->ApplyCharFormat(delta);
+            if (option == "size") StampTextLineSpacing();   // the lines follow their largest letters
+        }
         textEditor->SetFocus(true);
         PlaceTextEditor();
+        SyncTextBar();
         return;
     }
     // Otherwise the whole of the active text layer, while the Text tool is
@@ -2265,19 +2280,122 @@ void UltraPaintWindow::ApplyTextOption(const std::string& option) {
     editor.SetDocument(words);
     editor.SelectAll();
     if (align) editor.SetAlignment(AlignOption(toolOptions.textAlign));
-    else editor.ApplyCharFormat(delta);
+    else if (tracking) content.letterSpacingPx = toolOptions.textLetterSpacing;
+    else if (!lines) editor.ApplyCharFormat(delta);
     // The default the runs without their own fall back on follows too.
     if (option == "font") content.fontFamily = toolOptions.textFont;
     if (option == "size") content.fontSizePx = static_cast<float>(std::max(1, toolOptions.textSize));
     if (option == "colour") content.colour = foreground;
+    // The line spacing: set now, or kept through a change of size.
+    const float spacing = lines ? toolOptions.textLineSpacing : GetTextLineSpacing(*words, content.fontSizePx);
+    if (spacing > 0.0f) SetTextLineSpacing(*words, content.fontSizePx, spacing);
     content.document = words;
     std::string error;
     auto rendered = RenderTextLayerLike(*layer, content, error);
-    static const std::map<std::string, std::string> labels = {
-        { "font", "Text Font" }, { "size", "Text Size" }, { "bold", "Text Bold" }, { "italic", "Text Italic" },
-        { "underline", "Text Underline" }, { "colour", "Text Colour" }, { "align", "Text Alignment" } };
+    const std::map<std::string, std::string> labels = {
+        { "font", Tr("Text Font") }, { "size", Tr("Text Size") }, { "bold", Tr("Text Bold") },
+        { "italic", Tr("Text Italic") }, { "underline", Tr("Text Underline") },
+        { "strike", Tr("Text Strikethrough") }, { "colour", Tr("Text Colour") },
+        { "align", Tr("Text Alignment") }, { "line-spacing", Tr("Line Spacing") },
+        { "letter-spacing", Tr("Letter Spacing") } };
     if (rendered) document->ReplaceLayer(index, rendered, labels.at(option));
     else if (statusHint) statusHint->SetText("Could not draw the text: " + error);
+}
+
+// ===========================================================================
+// THE TEXT BAR
+// ===========================================================================
+
+void UltraPaintWindow::BuildTextBar() {
+    // The framework's text bar (UltraCanvasTextFormatBar), in pixels: shown
+    // under the toolbar while the Text tool is active.
+    textBar = CreateTextFormatBar("up-textbar", 44.0f);
+    textBar->SetSizeUnit(" px", 1, 2000, 0, 1);
+    textBar->SetLetterSpacingUnit(" px", -100, 1000, 1, 0.5);
+    textBar->SetBackgroundColor(Color(236, 236, 238, 255));
+    textBar->onFormatChanged = [this](TextFormatAttribute attribute, const TextFormat& f) {
+        toolOptions.textFont = f.fontFamily;
+        toolOptions.textSize = std::max(1, static_cast<int>(std::lround(f.size)));
+        toolOptions.textBold = f.bold;
+        toolOptions.textItalic = f.italic;
+        toolOptions.textUnderline = f.underline;
+        toolOptions.textStrike = f.strikethrough;
+        toolOptions.textAlign = static_cast<int>(f.align);
+        toolOptions.textLineSpacing = f.lineSpacing;
+        toolOptions.textLetterSpacing = f.letterSpacing;
+        static const char* names[] = { "font", "size", "bold", "italic", "underline", "strike",
+                                       "align", "line-spacing", "letter-spacing" };
+        ApplyTextOption(names[static_cast<int>(attribute)]);
+    };
+    // After a control of the bar, the keys go back to the text being typed.
+    textBar->onControlDone = [this]() {
+        if (textSession && textEditor && textEditorHost && textEditorHost->IsVisible()) textEditor->SetFocus(true);
+    };
+    textBar->SetVisible(false);
+    window->AddChild(textBar);
+}
+
+void UltraPaintWindow::ShowTextBar(bool show) {
+    if (!textBar || textBar->IsVisible() == show) return;
+    textBar->SetVisible(show);
+    if (show) SyncTextBar();
+    window->InvalidateLayout();
+    window->RequestRedraw();
+}
+
+void UltraPaintWindow::SyncTextBar() {
+    if (!textBar) return;
+    // The caret's (or the selection's) attributes in the text being typed,
+    // else the active text layer's, else what a new text starts in.
+    TextFormat base;
+    base.fontFamily = toolOptions.textFont;
+    base.size = static_cast<float>(toolOptions.textSize);
+    base.bold = toolOptions.textBold;
+    base.italic = toolOptions.textItalic;
+    base.underline = toolOptions.textUnderline;
+    base.strikethrough = toolOptions.textStrike;
+    base.align = static_cast<TextFormatAlign>(std::clamp(toolOptions.textAlign, 0, 2));
+    base.lineSpacing = toolOptions.textLineSpacing;
+    base.letterSpacing = toolOptions.textLetterSpacing;
+    auto ofContent = [&](const RasterTextContent& c, const UCRichDocument& words) {
+        TextFormat f = base;
+        f.fontFamily = c.fontFamily;
+        f.size = c.fontSizePx;
+        f.letterSpacing = c.letterSpacingPx;
+        const float spacing = GetTextLineSpacing(words, c.fontSizePx);
+        f.lineSpacing = spacing > 0.0f ? spacing : 120.0f;
+        if (!words.blocks.empty()) {
+            const RichTextAlign a = words.blocks.front().align;
+            f.align = a == RichTextAlign::Center ? TextFormatAlign::Centre
+                    : a == RichTextAlign::Right ? TextFormatAlign::Right : TextFormatAlign::Left;
+        }
+        return f;
+    };
+    TextFormat shown = base;
+    if (textSession && textEditor && textEditor->GetDocument()) {
+        shown = ofContent(textSession->content, *textEditor->GetDocument());
+        const RichDocPosition caret = textEditor->GetEditor().GetCaret();
+        const auto& blocks = textEditor->GetDocument()->blocks;
+        if (caret.blockIndex >= 0 && caret.blockIndex < static_cast<int>(blocks.size())) {
+            const RichTextAlign a = blocks[static_cast<size_t>(caret.blockIndex)].align;
+            shown.align = a == RichTextAlign::Center ? TextFormatAlign::Centre
+                        : a == RichTextAlign::Right ? TextFormatAlign::Right : TextFormatAlign::Left;
+        }
+        shown.bold = shown.italic = shown.underline = shown.strikethrough = false;
+        shown = TextFormatAtCaret(textEditor->GetFormatState(), shown, kTextPointsPerPixel);
+    } else if (document) {
+        auto layer = document->GetActiveLayer();
+        if (layer && layer->text && layer->text->document) shown = ofContent(*layer->text, *layer->text->document);
+    }
+    textBar->SetFormat(shown);
+}
+
+void UltraPaintWindow::StampTextLineSpacing() {
+    if (!textSession || !textEditor || textSession->lineSpacing <= 0.0f) return;
+    auto words = textEditor->GetDocument();
+    if (!words) return;
+    if (SetTextLineSpacing(*words, textSession->content.fontSizePx, textSession->lineSpacing))
+        textEditor->InvalidateDocument();
 }
 
 void UltraPaintWindow::AskRasterize(const std::string& action) {

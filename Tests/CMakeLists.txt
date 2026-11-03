@@ -3519,14 +3519,24 @@ message(STATUS "    Test registered: MatrixModelTest")
 
 # ===== PERFORMANCE MATRIX MODEL TEST =====
 # The performance matrix model: sparse cells, the rank from the best corner,
-# validation and the shipped samples. UI-free.
+# validation, the population, the JSON and CSV interchange and the shipped
+# samples. UI-free: the JSON wrapper and its vendored engine are compiled in
+# directly, as MatrixModelTest does.
 message(STATUS "  Building PerformanceMatrixModelTest...")
 add_executable(PerformanceMatrixModelTest
     ${CMAKE_CURRENT_SOURCE_DIR}/PerformanceMatrixModelTest.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Diagrams/UltraCanvasPerformanceMatrixModel.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/core/DataFormats/UltraCanvasJSON.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/yyjson/yyjson.c
 )
-target_include_directories(PerformanceMatrixModelTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_include_directories(PerformanceMatrixModelTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/yyjson
+)
 target_compile_features(PerformanceMatrixModelTest PRIVATE cxx_std_20)
+# The CSV scores are read and written through the locale-independent number
+# helpers in the UI-free text utilities.
+target_link_libraries(PerformanceMatrixModelTest PRIVATE UltraCanvasTextUtils)
 set_target_properties(PerformanceMatrixModelTest PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
@@ -3628,7 +3638,7 @@ if(TARGET VideoFX AND ULTRACANVAS_LIBRARY)
         ${ULTRACANVAS_ROOT}/Apps/UltraVideo
         ${ULTRACANVAS_INCLUDE_DIR}
     )
-    target_link_libraries(UltraVideoDraftTest PRIVATE ${ULTRACANVAS_LIBRARY} VideoFX::VideoFX)
+    target_link_libraries(UltraVideoDraftTest PRIVATE ${ULTRACANVAS_LIBRARY} VideoFX::VideoFX VideoFXUltraCanvasText)
     target_compile_features(UltraVideoDraftTest PRIVATE cxx_std_20)
     set_target_properties(UltraVideoDraftTest PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY ${VIDEOFX_RUNTIME_DIR}

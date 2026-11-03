@@ -17,10 +17,12 @@
 // Design: Docs/UltraCanvas/UltraCanvasPerformanceMatrixProposal.md
 // Guide:  Docs/UltraCanvas/UltraCanvasPerformanceMatrix.md
 //
+// Version: 1.2.0 - interchange: the whole model as JSON
+//   ("ultracanvas-performance-matrix"), the population as CSV
 // Version: 1.1.0 - the population: items placed by cell or by score, counts per
 //   cell, row and column, groups, a target distribution
 // Version: 1.0.0
-// Last Modified: 2026-11-02
+// Last Modified: 2026-11-03
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -31,6 +33,8 @@
 #include <vector>
 
 namespace UltraCanvas {
+
+    class JSONValue;   // DataFormats/UltraCanvasJSON.h - only the JSON functions need it
 
     // ===== AXES =====
 
@@ -175,7 +179,49 @@ namespace UltraCanvas {
         // wrong length, with a negative share or not summing to 1.
         // Empty = valid.
         std::vector<std::string> Validate() const;
+
+        // The level of `axis` a reference names: a level id, else a label
+        // (both case-insensitive), else a 0-based index. -1 when none does.
+        static int FindLevel(const PerformanceAxis& axis, const std::string& reference);
     };
+
+    // ===== INTERCHANGE =====
+    // The model functions take and return text; reading and writing the files
+    // is UltraCanvasFileLoader's job (CLAUDE.md).
+    //
+    // JSON (X1) - the whole model: title, axes with their levels and score
+    // ranges, cells, the population and the target distribution, as
+    //   { "format": "ultracanvas-performance-matrix", "version": 1, ... }
+    // A cell or item names its row and column by level index; the reader also
+    // takes a level id or label there, for files written by hand. Empty
+    // strings, default numbers and transparent colours are left out.
+    JSONValue PerformanceMatrixToJson(const PerformanceMatrixModel& model);
+    std::string ExportPerformanceMatrixJson(const PerformanceMatrixModel& model, bool pretty = true);
+    // Reads a document written by the above. Fails - leaving `out` untouched
+    // and saying why in `error` - on another format, a newer version, an
+    // unreadable colour, a row or column that names no level, or a model that
+    // does not Validate().
+    bool PerformanceMatrixFromJson(const JSONValue& json, PerformanceMatrixModel& out,
+                                   std::string* error = nullptr);
+    bool ImportPerformanceMatrixJson(const std::string& text, PerformanceMatrixModel& out,
+                                     std::string* error = nullptr);
+
+    // CSV (X2) - the population only, one person per line under a header row:
+    //   id,label,group,row,column,x,y,note
+    // `row` and `column` are the explicit cell (a level id, label or index;
+    // empty = placed by score), `x` and `y` the scores, written dot-decimal
+    // whatever the locale. On import the header's columns may come in any
+    // order and any letter case, and only `label` (or `id`) is required.
+    // Exporting writes a level's id, else its label, else its index; an
+    // item's colour is not part of the CSV.
+    std::string ExportPerformanceItemsCsv(const PerformanceMatrixModel& model);
+    // Replaces `model.items` with the people in `csv`, placed on the model's
+    // axes. Fails - leaving the model untouched and saying why, with the line
+    // number, in `error` - on a missing header, a line with more or fewer
+    // fields than the header, a score that is not a number, a level the axis
+    // does not have, or a person who ends up with no cell.
+    bool ImportPerformanceItemsCsv(const std::string& csv, PerformanceMatrixModel& model,
+                                   std::string* error = nullptr);
 
     // ===== PRESETS =====
 
