@@ -71,13 +71,8 @@ void FrameSurface::SetColors(const Color& g, const Color& gd, const Color& fl) {
     RequestRedraw();
 }
 
-void FrameSurface::Render(IRenderContext* ctx, const Rect2Df&) {
+Rect2Dd FrameSurface::PictureRect() const {
     const Rect2Df b = GetLocalBounds();
-    ctx->PushState();
-    ctx->ClipRect(Rect2Dd(b.x, b.y, b.width, b.height));
-    ctx->SetFillPaint(ground);
-    ctx->FillRectangle(Rect2Dd(b.x, b.y, b.width, b.height));
-
     // Where the picture goes: fitted, filled, or at a zoom of its own pixels
     const double shape = pixmap ? static_cast<double>(frameWidth) / std::max(1, frameHeight) : aspect;
     const double margin = kMargin;
@@ -98,7 +93,25 @@ void FrameSurface::Render(IRenderContext* ctx, const Rect2Df&) {
         if (availW / availH > shape) { h = availH; w = availH * shape; }
         else { w = availW; h = availW / shape; }
     }
-    const Rect2Dd dest(b.x + (b.width - w) / 2.0, b.y + (b.height - h) / 2.0, w, h);
+    return Rect2Dd(b.x + (b.width - w) / 2.0, b.y + (b.height - h) / 2.0, w, h);
+}
+
+bool FrameSurface::OnEvent(const UCEvent& event) {
+    if (event.type == UCEventType::MouseDoubleClick && onDoubleClick) {
+        onDoubleClick(Point2Df(static_cast<float>(event.pointer.x), static_cast<float>(event.pointer.y)));
+        return true;
+    }
+    return UltraCanvasUIElement::OnEvent(event);
+}
+
+void FrameSurface::Render(IRenderContext* ctx, const Rect2Df&) {
+    const Rect2Df b = GetLocalBounds();
+    ctx->PushState();
+    ctx->ClipRect(Rect2Dd(b.x, b.y, b.width, b.height));
+    ctx->SetFillPaint(ground);
+    ctx->FillRectangle(Rect2Dd(b.x, b.y, b.width, b.height));
+
+    const Rect2Dd dest = PictureRect();
     if (pixmap) {
         ctx->DrawPixmap(*pixmap, dest, ImageFitMode::Fill);
     } else {

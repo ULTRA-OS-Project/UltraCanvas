@@ -1,0 +1,14 @@
+{
+  "@language": "en",
+  "Click and type, or drag a box for the lines to wrap in; click a text to edit it. The bar above sets font, size, style, alignment and spacing; the colour is the foreground colour. Escape or a click outside finishes": "Click and type, or drag a box for the lines to wrap in; click a text to edit it. The bar above sets font, size, style, alignment and spacing; the colour is the foreground colour. Escape or a click outside finishes",
+  "Letter Spacing": "Letter Spacing",
+  "Line Spacing": "Line Spacing",
+  "Text Alignment": "Text Alignment",
+  "Text Bold": "Text Bold",
+  "Text Colour": "Text Colour",
+  "Text Font": "Text Font",
+  "Text Italic": "Text Italic",
+  "Text Size": "Text Size",
+  "Text Strikethrough": "Text Strikethrough",
+  "Text Underline": "Text Underline"
+}

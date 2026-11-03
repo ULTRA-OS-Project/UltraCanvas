@@ -8,13 +8,14 @@
 // Edit(), which snapshots the document, applies the change, records it and
 // shows the document again everywhere (the timeline model, the preview, the
 // inspector, the app bar).
+// Version: 0.9.0 - titles typed on the frame with the text bar (BeginTitleEdit ... CommitTitleEdit)
 // Version: 0.8.1 - WrapToWidth for the bin notes; BeginBinDrag gone, a tile's press arms the drag
 // Version: 0.8.0 - one carried drag for files, effect presets and title styles; a title dragged onto its lane
 // Version: 0.7.0 - presets on overlay clips; Edit's merge key for a slider's drag
 // Version: 0.6.0 - an effect preset dragged from its bin button onto a clip
 // Version: 0.5.0 - OpenFiles: files handed over by a second start
 // Version: 0.4.0
-// Last Modified: 2026-10-14
+// Last Modified: 2026-11-03
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -38,6 +39,8 @@
 #include "UltraCanvasSlider.h"
 #include "UltraCanvasSplitPane.h"
 #include "UltraCanvasTabbedContainer.h"
+#include "UltraCanvasRichTextEdit.h"
+#include "UltraCanvasTextFormatBar.h"
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasTimecodeField.h"
 #include "UltraCanvasTimer.h"
@@ -171,6 +174,28 @@ private:
 
     bool OnKey(const UltraCanvas::UCEvent& event);
     bool TextHasFocus() const;
+
+    // ----- titles typed on the frame -----
+    // A double-click on a title in the viewer lays an UltraCanvasRichTextEdit
+    // over it, at the picture's scale, in the title's font, colour, alignment
+    // and spacing - drawn by the engine that draws the title itself
+    // (UltraVideoTitles.h), so what is typed is what the video shows. The
+    // title is left out of the frame meanwhile. The text bar over the viewer
+    // (the framework's UltraCanvasTextFormatBar, as in ArtCreator and
+    // UltraPaint) sets the font, size, bold, italic, underline,
+    // strikethrough, alignment, line and letter spacing: of the selected
+    // words, else of the whole title; with no title being typed, of the
+    // selected title. Escape, Ctrl+Enter or a click outside puts the words in
+    // the title as one undo step.
+    void BuildTextBar();
+    void ShowTextBar();          // while a title is selected or typed
+    void SyncTextBar();
+    int TitleAtViewerPoint(const UltraCanvas::Point2Df& surfacePoint) const;
+    void BeginTitleEdit(int titleIndex);
+    void PlaceTitleEditor();
+    void CommitTitleEdit();
+    void RestyleTitleEditor();   // after the bar changed the title's base
+    void ApplyTitleAttribute(UltraCanvas::TextFormatAttribute attribute, const UltraCanvas::TextFormat& format);
     void Message(const std::string& text);
 
     UltraCanvas::UltraCanvasApplication& app_;
@@ -229,6 +254,12 @@ private:
     void SweepOldDrafts();             // drafts of earlier runs left in the temp folder
     int messageTicks_ = 0;
     std::string selectedClip_;
+    std::string editingTitle_;                 // the title typed on the frame; empty when none
+    TitleSpan editingSpan_;                    // its look as the text bar sets it meanwhile
+    std::shared_ptr<UltraCanvas::UltraCanvasTextFormatBar> textBar_;
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> titleHost_;      // over the frame surface
+    std::shared_ptr<UltraCanvas::UltraCanvasRichTextEdit> titleEditor_;
+    std::unique_ptr<UltraCanvas::IRenderContext> titleMeasure_;          // the lines' widths
     DragKind dragKind_ = DragKind::Nothing;   // the drag in flight
     std::string dragKey_;              // its file, preset key or style key
     std::string dragHover_;            // what it is over, so the status line changes only with it

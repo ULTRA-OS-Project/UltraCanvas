@@ -1,14 +1,17 @@
 // Plugins/Diagrams/UltraCanvasPerformanceMatrix.cpp
 // The performance matrix element: layout, text fitting, the four designs,
-// hover, selection and tooltips.
+// hover, selection and tooltips, moving items by drag and by key.
+// Version: 1.2.0 - drag an item to another cell with a veto, the keyboard, the
+//   selected item, the overflow list callback
 // Version: 1.1.0 - the population, the group legend, ByCount, level bars, totals
 // Version: 1.0.0
-// Last Modified: 2026-11-02
+// Last Modified: 2026-11-03
 // Author: UltraCanvas Framework
 
 #include "Plugins/Diagrams/UltraCanvasPerformanceMatrix.h"
 #include "UltraCanvasTextWrapping.h"
 #include "UltraCanvasTooltipManager.h"
+#include "UltraCanvasApplication.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -123,6 +126,8 @@ namespace UltraCanvas {
         hoveredCell = PerformanceCellRef();
         hoveredItem = -1;
         if (!model.Contains(selectedCell.row, selectedCell.col)) selectedCell = PerformanceCellRef();
+        if (selectedItem >= static_cast<int>(model.items.size())) selectedItem = -1;
+        EndDrag();
         // A group that no longer exists cannot stay hidden.
         const std::vector<std::string> groups = model.Groups();
         hiddenGroups.erase(std::remove_if(hiddenGroups.begin(), hiddenGroups.end(),
@@ -195,6 +200,11 @@ namespace UltraCanvas {
     void UltraCanvasPerformanceMatrix::SetAnonymised(bool on) {
         anonymised = on;
         hoveredItem = -1;
+        // No one is singled out in front of the room.
+        if (on) {
+            selectedItem = -1;
+            EndDrag();
+        }
         DropLayoutCache();
         RequestRedraw();
     }
@@ -229,6 +239,55 @@ namespace UltraCanvas {
         if (!model.Contains(ref.row, ref.col)) return 0;
         const std::vector<int> counts = model.CountsPerCell(hiddenGroups);
         return counts[static_cast<size_t>(ref.row * model.Columns() + ref.col)];
+    }
+
+    std::vector<size_t> UltraCanvasPerformanceMatrix::GetCellItems(const PerformanceCellRef& ref) const {
+        std::vector<size_t> members;
+        if (!model.Contains(ref.row, ref.col)) return members;
+        for (size_t i = 0; i < model.items.size(); ++i) {
+            const PerformanceMatrixItem& item = model.items[i];
+            if (IsGroupVisible(item.group) && model.CellOf(item) == ref) members.push_back(i);
+        }
+        return members;
+    }
+
+    void UltraCanvasPerformanceMatrix::SetAllowItemDrag(bool allow) {
+        allowItemDrag = allow;
+        if (!allow) EndDrag();
+    }
+
+    void UltraCanvasPerformanceMatrix::SetSelectedItem(int index) {
+        const int next = index >= 0 && index < static_cast<int>(model.items.size()) && !anonymised ? index : -1;
+        if (next == selectedItem) return;
+        selectedItem = next;
+        RequestRedraw();
+    }
+
+    bool UltraCanvasPerformanceMatrix::MoveItem(size_t index, const PerformanceCellRef& to) {
+        if (index >= model.items.size() || !model.Contains(to.row, to.col)) return false;
+        const PerformanceCellRef from = model.CellOf(model.items[index]);
+        if (from == to) return false;
+        if (onItemMove && !onItemMove(model.items[index], from, to)) return false;
+        // The callback may have replaced the model; check again before writing.
+        if (index >= model.items.size() || !model.Contains(to.row, to.col)) return false;
+        PerformanceMatrixItem& item = model.items[index];
+        item.row = to.row;
+        item.col = to.col;
+        hoveredItem = -1;
+        DropLayoutCache();
+        RequestRedraw();
+        return true;
+    }
+
+    void UltraCanvasPerformanceMatrix::EndDrag() {
+        const bool wasDragging = dragging;
+        pressedItem = -1;
+        dragging = false;
+        dropTarget = PerformanceCellRef();
+        if (auto* app = UltraCanvasApplication::GetInstance()) {
+            if (app->GetCapturedElement() == this) app->ReleaseMouse();
+        }
+        if (wasDragging) RequestRedraw();
     }
 
     void UltraCanvasPerformanceMatrix::SetSelectedCell(const PerformanceCellRef& ref) {
@@ -281,6 +340,18 @@ namespace UltraCanvas {
             }
         }
         return -1;
+    }
+
+    PerformanceCellRef UltraCanvasPerformanceMatrix::OverflowAt(const Point2Di& local) const {
+        if (anonymised || !layout.valid) return PerformanceCellRef();
+        const Point2Dd p(local.x, local.y);
+        for (const CellLayout& cell : layout.cells) {
+            if (!cell.population.Contains(p)) continue;
+            for (const ItemMark& mark : cell.marks) {
+                if (mark.item < 0 && mark.rect.Contains(p)) return cell.ref;
+            }
+        }
+        return PerformanceCellRef();
     }
 
     Rect2Dd UltraCanvasPerformanceMatrix::GetItemRect(size_t index) const {
@@ -821,6 +892,7 @@ namespace UltraCanvas {
         if (design != PerformanceMatrixDesign::HeaderTabs) DrawAxes(ctx);
         if (showLevelBars && design != PerformanceMatrixDesign::HeaderTabs) DrawLevelBars(ctx);
         DrawCells(ctx);
+        DrawDrag(ctx);
     }
 
     void UltraCanvasPerformanceMatrix::DrawLevelBars(IRenderContext* ctx) {
@@ -884,8 +956,11 @@ namespace UltraCanvas {
                 continue;
             }
             const PerformanceMatrixItem& item = model.items[static_cast<size_t>(mark.item)];
-            const Color color = ItemColor(item);
-            const bool hovered = mark.item == hoveredItem;
+            // The item being dragged stays in place, faded, until it lands.
+            const bool lifted = dragging && mark.item == pressedItem;
+            const Color color = lifted ? Mix(fill, ItemColor(item), 0.35f) : ItemColor(item);
+            const bool hovered = mark.item == hoveredItem && !dragging;
+            const bool selected = mark.item == selectedItem;
             if (display == PerformancePopulationDisplay::Dots) {
                 const Point2Dd centre(mark.rect.x + mark.rect.width * 0.5, mark.rect.y + mark.rect.height * 0.5);
                 ctx->SetFillPaint(color);
@@ -893,7 +968,17 @@ namespace UltraCanvas {
                 ctx->SetStrokePaint(darkFill ? Color(255, 255, 255, 230) : Color(255, 255, 255, 255));
                 ctx->SetStrokeWidth(hovered ? 2.0f : 1.0f);
                 ctx->DrawCircle(centre, hovered ? 6.0 : 4.6);
+                if (selected) {
+                    ctx->SetStrokePaint(ink);
+                    ctx->SetStrokeWidth(1.5f);
+                    ctx->DrawCircle(centre, 6.2);
+                }
             } else {
+                if (selected) {
+                    ctx->SetStrokePaint(ink);
+                    ctx->SetStrokeWidth(1.2f);
+                    ctx->DrawRoundedRectangle(Inset(mark.rect, 0.8), 3.0);
+                }
                 ctx->SetFillPaint(color);
                 ctx->FillRectangle(Rect2Dd(mark.rect.x + 1.0, mark.rect.y + (mark.rect.height - 7.0) * 0.5, 7.0, 7.0));
                 ctx->SetFontSize(10.5f);
@@ -947,6 +1032,45 @@ namespace UltraCanvas {
             outline(hoveredCell, CellAccent(hoveredCell.row, hoveredCell.col).Darken(0.35f), 2.0f);
         }
         if (selectedCell.IsValid()) outline(selectedCell, palette.text, 3.0f);
+    }
+
+    void UltraCanvasPerformanceMatrix::DrawDrag(IRenderContext* ctx) const {
+        if (!dragging || pressedItem < 0 || pressedItem >= static_cast<int>(model.items.size())) return;
+        const PerformanceMatrixItem& item = model.items[static_cast<size_t>(pressedItem)];
+        const bool rounded = design == PerformanceMatrixDesign::Tiles || design == PerformanceMatrixDesign::Cards;
+        const double radius = design == PerformanceMatrixDesign::Cards ? 10.0 : 12.0;
+
+        // The cell it would land in: a dashed outline, so a drop that changes
+        // nothing (its own cell) shows none.
+        if (dropTarget.IsValid() && dropTarget != model.CellOf(item)) {
+            if (const CellLayout* target = FindLayout(dropTarget)) {
+                ctx->PushState();
+                ctx->SetStrokePaint(ItemColor(item));
+                ctx->SetStrokeWidth(3.0f);
+                ctx->SetLineDash(UCDashPattern({6.0, 4.0}));
+                const Rect2Dd r = Inset(target->rect, 2.5);
+                if (rounded) ctx->DrawRoundedRectangle(r, radius);
+                else ctx->DrawRectangle(r);
+                ctx->PopState();
+            }
+        }
+
+        // The item under the pointer: its dot and its label on a pill.
+        const Point2Dd at(dragPoint.x, dragPoint.y);
+        ctx->SetFillPaint(ItemColor(item));
+        ctx->FillCircle(at, 6.0);
+        ctx->SetStrokePaint(Color(255, 255, 255, 255));
+        ctx->SetStrokeWidth(1.5f);
+        ctx->DrawCircle(at, 6.0);
+        ctx->SetFontSize(11.0f);
+        ctx->SetFontWeight(FontWeight::Bold);
+        const Size2Di size = ctx->GetTextLineDimensions(item.label);
+        const Rect2Dd pill(at.x + 10.0, at.y - size.height * 0.5 - 3.0, size.width + 12.0, size.height + 6.0);
+        ctx->SetFillPaint(Color(38, 42, 50, 225));
+        ctx->FillRoundedRectangle(pill, pill.height * 0.5);
+        ctx->SetTextPaint(Color(255, 255, 255, 255));
+        ctx->DrawText(item.label, Point2Dd(pill.x + 6.0, pill.y + 3.0));
+        ctx->SetFontWeight(FontWeight::Normal);
     }
 
     void UltraCanvasPerformanceMatrix::DrawCellText(IRenderContext* ctx, const CellLayout& cell,
@@ -1189,8 +1313,13 @@ namespace UltraCanvas {
         if (enableTooltips) {
             if (hoveredItem >= 0 || hoveredCell.IsValid()) {
                 const Point2Di tipPos(mousePos.x + 15, mousePos.y - 20);
-                const std::string tip = hoveredItem >= 0 ? BuildItemTooltip(static_cast<size_t>(hoveredItem))
-                                                         : BuildCellTooltip(hoveredCell);
+                std::string tip = hoveredItem >= 0 ? BuildItemTooltip(static_cast<size_t>(hoveredItem))
+                                                   : BuildCellTooltip(hoveredCell);
+                if (hoveredItem < 0 && onOverflowClick && OverflowAt(mousePos).IsValid()) {
+                    tip += "\nClick for everyone in this box";
+                } else if (hoveredItem >= 0 && CanMoveItems()) {
+                    tip += "\nDrag to another box to move";
+                }
                 UltraCanvasTooltipManager::UpdateAndShowTooltip(GetWindow(), tip, MapFromLocal(tipPos, nullptr));
             } else {
                 UltraCanvasTooltipManager::HideTooltip();
@@ -1199,11 +1328,71 @@ namespace UltraCanvas {
         return hoveredCell.IsValid() || hoveredItem >= 0;
     }
 
+    PerformanceCellRef UltraCanvasPerformanceMatrix::Neighbour(const PerformanceCellRef& from, int dx, int dy) const {
+        if (!model.Contains(from.row, from.col)) return from;
+        // DisplayRow and DisplayColumn are their own inverses: screen order
+        // back to model order.
+        const int screenCol = std::clamp(DisplayColumn(from.col) + dx, 0, model.Columns() - 1);
+        const int screenRow = std::clamp(DisplayRow(from.row) + dy, 0, model.Rows() - 1);
+        return PerformanceCellRef(DisplayRow(screenRow), DisplayColumn(screenCol));
+    }
+
+    bool UltraCanvasPerformanceMatrix::HandleKeyDown(const UCEvent& event) {
+        if (model.Rows() == 0 || model.Columns() == 0) return false;
+        int dx = 0, dy = 0;
+        switch (event.virtualKey) {
+            case UCKeys::Left:  dx = -1; break;
+            case UCKeys::Right: dx = 1;  break;
+            case UCKeys::Up:    dy = -1; break;
+            case UCKeys::Down:  dy = 1;  break;
+            case UCKeys::Return:
+            case UCKeys::NumPadEnter:
+            case UCKeys::Space:
+                // Activate: the selected item if there is one, else the cell.
+                if (selectedItem >= 0) {
+                    if (onItemClick) onItemClick(model.items[static_cast<size_t>(selectedItem)]);
+                    return true;
+                }
+                if (selectedCell.IsValid()) {
+                    if (onCellClick) onCellClick(selectedCell);
+                    return true;
+                }
+                return false;
+            case UCKeys::Escape:
+                // One step back at a time: the drag, the item, the cell.
+                if (pressedItem >= 0) { EndDrag(); return true; }
+                if (selectedItem >= 0) { SetSelectedItem(-1); return true; }
+                if (selectedCell.IsValid()) { SetSelectedCell(PerformanceCellRef()); return true; }
+                return false;
+            default:
+                return false;
+        }
+
+        if ((event.ctrl || event.meta) && selectedItem >= 0 && CanMoveItems()) {
+            const PerformanceCellRef from = model.CellOf(model.items[static_cast<size_t>(selectedItem)]);
+            const PerformanceCellRef to = Neighbour(from, dx, dy);
+            if (to != from && MoveItem(static_cast<size_t>(selectedItem), to)) SetSelectedCell(to);
+            return true;
+        }
+        if (!enableSelection) return false;
+        PerformanceCellRef start = selectedCell;
+        if (!start.IsValid() && selectedItem >= 0) start = model.CellOf(model.items[static_cast<size_t>(selectedItem)]);
+        // The first arrow press selects the top-left cell on screen.
+        SetSelectedCell(start.IsValid() ? Neighbour(start, dx, dy)
+                                        : PerformanceCellRef(DisplayRow(0), DisplayColumn(0)));
+        return true;
+    }
+
     bool UltraCanvasPerformanceMatrix::OnEvent(const UCEvent& event) {
         if (IsDisabled() || !IsVisible()) return false;
         switch (event.type) {
+            case UCEventType::KeyDown:
+                if (HandleKeyDown(event)) return true;
+                break;
+
             case UCEventType::MouseDown: {
                 if (event.button != UCMouseButton::Left || !layout.valid) break;
+                if (GetWindow()) SetFocus(true);
                 const Point2Di at(event.pointer.x, event.pointer.y);
                 // The legend first: a click there shows or hides a group.
                 const size_t entry = LegendEntryAt(at);
@@ -1214,15 +1403,67 @@ namespace UltraCanvas {
                 }
                 const int item = ItemAt(at);
                 if (item >= 0) {
+                    SetSelectedItem(item);
+                    if (CanMoveItems()) {
+                        // Maybe a drag: the click waits for the release.
+                        pressedItem = item;
+                        pressPoint = dragPoint = at;
+                        dragging = false;
+                        if (auto* app = UltraCanvasApplication::GetInstance()) app->CaptureMouse(this);
+                        return true;
+                    }
                     if (onItemClick) onItemClick(model.items[static_cast<size_t>(item)]);
+                    return true;
+                }
+                const PerformanceCellRef overflow = OverflowAt(at);
+                if (overflow.IsValid() && onOverflowClick) {
+                    onOverflowClick(overflow, GetCellItems(overflow));
                     return true;
                 }
                 const PerformanceCellRef clicked = CellAt(at);
                 if (!clicked.IsValid()) break;
+                SetSelectedItem(-1);
                 if (enableSelection) SetSelectedCell(clicked == selectedCell ? PerformanceCellRef() : clicked);
                 if (onCellClick) onCellClick(clicked);
                 return true;
             }
+
+            case UCEventType::MouseMove:
+                if (pressedItem >= 0) {
+                    const Point2Di at(event.pointer.x, event.pointer.y);
+                    dragPoint = at;
+                    // A few pixels of wobble in a click are not a drag.
+                    if (!dragging && std::abs(at.x - pressPoint.x) + std::abs(at.y - pressPoint.y) > 4) {
+                        dragging = true;
+                        hoveredItem = -1;
+                        UltraCanvasTooltipManager::HideTooltip();
+                    }
+                    if (dragging) {
+                        dropTarget = CellAt(at);
+                        RequestRedraw();
+                    }
+                    return true;
+                }
+                break;
+
+            case UCEventType::MouseUp:
+                if (pressedItem >= 0 && event.button == UCMouseButton::Left) {
+                    const int item = pressedItem;
+                    const bool dropped = dragging;
+                    const PerformanceCellRef target = dropTarget;
+                    EndDrag();
+                    if (dropped) {
+                        if (target.IsValid() && MoveItem(static_cast<size_t>(item), target)) {
+                            SetSelectedCell(target);
+                        }
+                    } else if (onItemClick && item < static_cast<int>(model.items.size())) {
+                        onItemClick(model.items[static_cast<size_t>(item)]);
+                    }
+                    RequestRedraw();
+                    return true;
+                }
+                break;
+
             case UCEventType::MouseLeave:
                 if (hoveredCell.IsValid() || hoveredItem >= 0) {
                     hoveredCell = PerformanceCellRef();

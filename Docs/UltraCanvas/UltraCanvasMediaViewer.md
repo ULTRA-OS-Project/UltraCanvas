@@ -499,9 +499,22 @@ file's own **metadata** read with `PixelFX::Header::ReadMetadata` — one
 section per block (EXIF, IPTC, XMP, Colour / ICC, Other such as PNG text
 chunks), or a line saying the file carries none.
 
-The panel is an `UltraCanvasTextArea` in `MarkdownHybrid` mode, dark themed,
-so each section is a heading over a two-column *Property / Value* table.
-The mouse wheel, Up / Down and PageUp / PageDown scroll it; Escape or the
+The panel is an `UltraCanvasGroupBox` in the `Header` frame style, dark
+themed: its caption names what is shown (*Image information*, *Document
+information*, *eBook information* ...) and the **x** at the right end of the
+caption closes it. Inside is an `UltraCanvasTextArea` in `MarkdownHybrid`
+mode at 11 px, so each section is a heading over a two-column *Property /
+Value* table. For a GIF the table has a *Palette* row (the size of the
+colour table, global or the first frame's) and under the text the colour
+table itself is drawn as a block of swatches (`UltraCanvasColorSwatchBar`,
+wrapped, at most half the panel's height); the caption over it names the
+entry under the pointer, as its index and `#RRGGBB`.
+The mouse wheel, Up / Down and PageUp / PageDown scroll the text; Escape, the
+close button or the Details button again closes it. Left / Right keep
+browsing, and the panel follows to the next file. The panel's text is built
+only while it is open (on opening, then for each file loaded): browsing with
+it closed reads no metadata.
+
 A picture whose header reads but whose pixels do not decode (a HEIC on a
 build without an HEVC decoder, a truncated file) says so instead of leaving
 the area empty: the display shows *Cannot decode this picture*, the info bar
@@ -511,11 +524,6 @@ the same reason. The surface learns it only when it draws (that is when the
 pixels are decoded) and tells the viewer through
 `UltraCanvasMediaSurface::onDecodeFailed`, once per shown image, after the
 frame.
-
-button again closes it. Left / Right keep browsing, and the panel follows
-to the next file. The panel's text is built only while it is open (on
-opening, then for each file loaded): browsing with it closed reads no
-metadata.
 
 ```cpp
 viewer->SetDetailsVisible(true);
@@ -537,6 +545,10 @@ viewer->OpenFolder("/home/me/Pictures");            // browse a folder
 viewer->OpenFile("/home/me/Pictures/photo.jpg");    // file first, folder around it
 viewer->SetFiles({ "a.png", "b.mp4", "c.pdf" });    // exactly these files
 
+// A window shown first and the file opened after (the window appears at once):
+viewer->OpenFileWhenShown("/home/me/Pictures/photo.jpg");   // also OpenFolderWhenShown, SetFilesWhenShown
+viewer->onCurrentFileChanged = [](const std::string& path) { /* a window title */ };
+
 // Navigation
 viewer->Next();
 viewer->Previous();
@@ -547,6 +559,20 @@ viewer->SetSlideshowIntervalSeconds(5.0);
 viewer->SetTransition(MediaTransition::CrossFade);
 viewer->PlaySlideshow();
 ```
+
+*No media* (on the display and in the info bar) means the viewer was asked
+for nothing. A host that shows its window and then opens a file calls
+`OpenFileWhenShown` (or `OpenFolderWhenShown` / `SetFilesWhenShown`): the
+viewer shows a turning ring (`UltraCanvasBusyIndicator`, `MV_Loading`) in the
+middle of the display and `name · loading` in the info bar, reports the name
+through `onCurrentFileChanged`, and opens the file once a frame of that has
+been drawn - or after 400 ms if the viewer is not drawn at all. `IsLoading()`
+and `GetLoadingPath()` say whether one is on its way; any other open or
+`CloseFile()` replaces it, and a list with nothing to show ends it. Without
+an application (a test) the file opens at once. `onCurrentFileChanged` also
+fires for every file browsed to, and with `""` when nothing is shown;
+`UltraCanvasMediaViewerWindow` and UltraViewer title their windows with it.
+The surface's own empty text is `UltraCanvasMediaSurface::SetEmptyText`.
 
 `IsSupportedMedia(path)` answers whether the viewer can display a path
 (static — the UltraFiler preview uses it to decide whether to open the

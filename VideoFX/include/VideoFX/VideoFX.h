@@ -1,12 +1,13 @@
 // VideoFX/include/VideoFX/VideoFX.h
 // Public API of the VideoFX module - video probing, frame extraction, and a
 // segment timeline that is trimmed, filtered, joined and encoded to a file.
+// Version: 0.18.0 - VideoFX_SetTextRenderer / VideoFX_DrawTextOverlays: text overlays drawn by the host
 // Version: 0.17.0 - VideoFXFrameRecorder: frames pushed one by one encoded to a file as they come
 // Version: 0.16.0 - VideoFX_UseProxies scales a Blur's radius to the proxy as it does a Crop
 // Version: 0.14.0 - VideoFX_GetFileFormats: what this build reads and writes;
 //                  VideoFX_SetPictureReader: picture types the host application reads
 // Version: 0.12.0
-// Last Modified: 2026-11-01
+// Last Modified: 2026-11-03
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -122,6 +123,29 @@ bool VideoFX_SetDefaultFontPath(const std::string& path);
 
 // The font file that will be used; "" = none found (fontconfig, if any)
 std::string VideoFX_GetDefaultFontPath();
+
+// A text renderer draws a text overlay the host's way: given the overlay and
+// the height of the frame it is drawn for, it fills `picture` (RGBA,
+// straight alpha) with the text as it lies over the frame - its shadow and
+// band too - and returns true; false leaves the overlay to the backend's
+// text filter. It is asked for every text overlay and draws those it wants
+// (UltraCanvas's draws the ones that name a fontFamily - see
+// VideoFXOverlay); what it draws is laid over the frame as a picture, placed
+// and timed as the text overlay was, sized as a share of the frame's height.
+// It runs on the thread that calls VideoFXExportJob::Start, VideoFX_Export,
+// VideoFX_RenderProject or VideoFXPreview::Open - the export's own thread
+// never calls it - so a renderer on a UI toolkit works from the UI thread.
+using VideoFXTextRenderer = std::function<bool(const VideoFXOverlay& overlay, int frameHeight, VideoFXFrame& picture)>;
+
+// Installs a text renderer (an empty one takes it away). Call it once, at
+// the start, before anything renders.
+void VideoFX_SetTextRenderer(VideoFXTextRenderer renderer);
+bool VideoFX_HasTextRenderer();
+
+// The text overlays the renderer draws, turned into picture overlays for a
+// frame `frameHeight` pixels high; the others are left as they are. The
+// calls above do it themselves; a host does it to see what they will render.
+void VideoFX_DrawTextOverlays(std::vector<VideoFXSegment>& segments, int frameHeight);
 
 // Backend diagnostics to stderr: false (default) = errors only
 void VideoFX_SetVerboseLogging(bool verbose);

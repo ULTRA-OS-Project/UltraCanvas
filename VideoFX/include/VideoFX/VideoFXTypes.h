@@ -2,6 +2,8 @@
 // Types for the VideoFX module: results, media information, frames, effects,
 // timeline segments and export settings. No FFmpeg type appears here - the
 // engine behind them is private to the module and can be swapped.
+// Version: 0.18.0 - VideoFXOverlay's formatted text (richText, fontFamily, textAlign, lineSpacing,
+//                  letterSpacing), drawn by the host's text renderer
 // Version: 0.17.0 - VideoFXRecorderSettings / VideoFXPixelLayout: frames a program pushes
 //                  one by one (a screen recording) encoded to a file as they come
 // Version: 0.16.1 - keepFacesInView on a video segment reads three frames of the clip
@@ -11,7 +13,7 @@
 // Version: 0.14.0 - VideoFXFileFormat / VideoFXFileKind (VideoFX_GetFileFormats),
 //                  VideoFXPictureReader (VideoFX_SetPictureReader)
 // Version: 0.13.0
-// Last Modified: 2026-11-01
+// Last Modified: 2026-11-03
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -252,6 +254,23 @@ struct VideoFXOverlay {
     bool box = false;               // a band behind the text
     uint32_t boxColor = 0x000000;
     double boxOpacity = 0.5;
+
+    // ---- formatted text (VideoFX_SetTextRenderer) ----
+    // What a richer text engine than the backend's text filter sets: the
+    // words with their own fonts, sizes and styles (`richText`, HTML; `text`
+    // stays their plain text), the font of what states none by name, the
+    // lines' alignment, the line spacing and the letter spacing. A text
+    // overlay that names a fontFamily is drawn by the installed text
+    // renderer into a picture laid over the frame (UltraCanvas's, in
+    // VideoFXUltraCanvasText.h - what UltraVideo and an UltraCanvas build
+    // of the `videofx` tool install), so a project renders alike wherever
+    // it does; without a renderer `text` is drawn plain by the backend.
+    std::string richText;
+    int richTextHeight = 0;         // the frame height richText's own sizes were set for (0 = 1080)
+    std::string fontFamily;         // empty: the backend's text filter, in fontPath or the default font
+    int textAlign = 1;              // 0 left, 1 centre, 2 right
+    double lineSpacing = 0.0;       // % of a line's largest letters, baseline to baseline; 0 = the font's own
+    double letterSpacing = 0.0;     // added between letters, a fraction of the output height
 
     // ---- image ----
     std::string imagePath;          // PNG (alpha kept) / JPEG / anything FFmpeg decodes

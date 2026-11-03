@@ -1,6 +1,6 @@
 # UltraCanvasPerformanceMatrix — Research & Feature Proposal
 
-**Status:** **Phases 1 and 2 are implemented** as
+**Status:** **All three phases are implemented** as
 `UltraCanvasPerformanceMatrix` and `UltraCanvasPerformanceMatrixModel` — see
 [`UltraCanvasPerformanceMatrix.md`](UltraCanvasPerformanceMatrix.md) for the
 guide. The demo's *Performance Matrix* page (`performancematrix`, Info
@@ -61,6 +61,31 @@ and a Calibration variant on the demo page. How it departs from the plan:
 * **An item has no avatar icon.** A dot or a name carries its group's colour.
   An icon per person would have to fit a 13 px dot slot to be any use, and no
   reference image asks for one.
+
+Phase 3 (2026-11-03) delivered the calibration and the files: I4 (drag with
+an `onItemMove` veto, off by default), I5 (arrows, Enter, Escape,
+Ctrl+arrows), I6, X1 and X2, and the demo's Open / Save JSON and Import /
+Export CSV through `UltraCanvasFileLoader`. How it departs from the plan:
+
+* **I6 is a callback, not a built-in popup.** A click on "+N more" calls
+  `onOverflowClick` with everyone in the box, and `GetCellItems` gives the
+  same list. Where the list goes (a side panel, a dialog, a report) is the
+  application's choice. The demo fills an `UltraCanvasListView` beside the
+  matrix, and selecting a row there selects the person, so someone hidden
+  behind "+N more" can still be moved with Ctrl+arrows.
+* **A selected person (`SetSelectedItem`) is new.** Ctrl+arrows need someone
+  to move, and the ring around a dot or name shows who.
+* **A drag starts after 4 px, and with dragging on, the click fires on
+  release.** A press cannot know whether it is a click until the pointer moves
+  or comes up. With dragging off, the click still fires on the press, as in
+  Phase 2.
+* **Moving is never possible while anonymised,** and no overflow list is
+  offered then. Both would single a person out.
+* **JSON names levels by index.** The sample levels have no ids, and an
+  index is never ambiguous. The reader also accepts an id or a label, for
+  files written by hand.
+* **CSV leaves out an item's colour.** It is the people for a spreadsheet;
+  the JSON keeps the colour.
 **Revision 2 (2026-10-24): scope correction.** Reference image 4, the
 importance–performance matrix, is **out of scope for this element**. It comes
 from operations strategy (Slack 1994), not from talent management. It rates

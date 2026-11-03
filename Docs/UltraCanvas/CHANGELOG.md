@@ -1,3 +1,344 @@
+#### 2026-11-03 *0.9.476*
+- **DemoApp, Matrix Diagram: Save JSON... goes through `UltraCanvasFileLoader`.**
+  It wrote the file with `JSON::SerializeToFile`, past the loader that every
+  user file goes through (CLAUDE.md). It now writes `ExportMatrixJson` with
+  `UltraCanvasFileLoader::SaveFile`, so a failed write leaves any file already
+  at the path intact, and the read-out names the reason a save failed.
+- **A node diagram's labels fit their nodes.** `UltraCanvasNodeDiagram` 2.4.0.
+  The demo's Organization tab drew a degree-1 analyst as a 26 px square under
+  a 9 pt name some 50 px wide, so every name ran over its neighbours and the
+  hub names over the cluster titles. The component now has a **label fit**
+  (`NodeLabelFit`, `SetLabelFit()`, `SetLabelFitConfig()`): `ShrinkFont`
+  reduces the font until the label fits, down to `minFontSize`, then shortens
+  it with an ellipsis; `GrowNode` enlarges the node until the label fits at
+  its font size; `ShrinkThenGrow`, the default, shrinks first and grows what
+  still does not fit; `Overflow` is the old behaviour. The fit is per shape -
+  a circle grows to the chord its name needs, a diamond to about twice what a
+  square needs - and a node grows about its centre, then its neighbours move
+  apart (`ResolveOverlaps`) and the view is refitted. The data-driven sizing
+  (by degree or value) keeps every node at least as large as its label, and
+  the circular, grid and hierarchical layouts end without overlaps, as the
+  force-directed one already did. The cluster boxes are kept apart from each
+  other as well, after every layout and again after the fit (a box reserves
+  room for its title at the current zoom, so a title no longer sits on the
+  first member), half a move each or, when a box squeezed between two keeps
+  bouncing, placed one by one at the nearest free spot. The force-directed
+  layout held every node inside the element (forty nodes of a hundred pixels
+  do not fit 800 x 600, and the overlap pass then scattered the clusters
+  through each other), repelled by the distance between centres and started
+  a group's members all round the ring: its area now grows with the nodes,
+  the charge and the springs act between borders, and a group's members start
+  together. `MinimumNodeSizeForLabel()`,
+  `FitNodesToLabels()` and `GetNodeLabelFontSize()` expose the pieces;
+  `MeasureLabel()` measures with the window's font once the element has one,
+  and a layout run before that is corrected with the real metrics on the
+  first frame. The fit is saved in `ToJson()`. The Organization tab uses
+  `GrowNode` with a degree range that starts above what a member's name
+  needs, and its sidebar has a LABEL FIT dropdown for all four modes.
+  `Tests/NodeDiagramOverlapTest.cpp` covers the minimum sizes per shape, the
+  growth, the shrink, the default, the three other layouts and the JSON.
+- **The node diagram demo's Friends tab is a personal social network.** In
+  place of five circles on a grid: twenty-four friends as card nodes, each
+  with an icon for what they are into, their first name and their interest,
+  in five circles (college, the climbing club, work, the neighbours, family)
+  drawn as soft boxes with a legend, two friends who belong to two circles at
+  once and sit in both boxes, "You" at the centre with every tie, the ties in
+  their circle's colour inside a circle and grey across, wider the closer the
+  tie, the cards collapsing to their icon discs when zoomed out, and a click
+  on a person that says who they are, how many ties they have and which
+  circles they are in. The cards carry full names: a card node now grows
+  for its label over its sublabel beside the icon disc (`GrowNode`,
+  `ShrinkThenGrow`) and shrinks its two fonts together (`ShrinkFont`,
+  `ShrinkThenGrow`), where 2.3.0 only shortened its text with an ellipsis. For it, two groups that share a member now move as one
+  unit when the cluster boxes are separated (they overlap on purpose), and a
+  node in no group is pushed out of every box.
+- **Performance matrix, Phase 3: calibration and files.** The 9-box can now
+  be used in a calibration meeting. People can be moved between boxes, and a
+  matrix can be saved and opened again.
+  - `SetAllowItemDrag(true)` lets a dot or a name be dragged to another box.
+    It is off by default and never on while anonymised. `onItemMove` is asked
+    first and can veto the move. A moved person gets the box as an explicit
+    cell, and their scores stay in the data beside it. A press becomes a drag
+    only after a few pixels, so `onItemClick` still fires for a click, on the
+    release.
+  - Keyboard: the arrows move the cell selection, Enter activates the
+    selected person or box, and Escape steps back (drag, then person, then
+    box). With dragging on, Ctrl+arrows move the selected person one box.
+    `MoveItem` does the same from code.
+  - A click on "+N" / "+N more" hands everyone in that box to
+    `onOverflowClick`, so the application can list them all;
+    `GetCellItems` gives the same list.
+  - `ExportPerformanceMatrixJson` / `ImportPerformanceMatrixJson` write and
+    read the whole model as `"format": "ultracanvas-performance-matrix"`.
+    A file written by hand may name levels by id or label. A file that does
+    not validate is refused, and the model is left untouched.
+  - `ExportPerformanceItemsCsv` / `ImportPerformanceItemsCsv` carry the
+    people alone, under an `id,label,group,row,column,x,y,note` header. The
+    columns may come in any order and letter case. Scores are dot-decimal
+    whatever the locale. An error names the line and leaves the people
+    untouched.
+
+  The demo's Performance Matrix page gains Open JSON / Save JSON and Import
+  CSV / Export CSV buttons through `UltraCanvasFileLoader`, an *Allow moves*
+  switch with a veto that holds the top box to its target, and an *In the
+  box* list behind "+N more". The demo tree now marks Performance Matrix
+  (Info Graphics) and Importance-Performance Chart (Charts) as fully
+  implemented. Model and render tests cover the round trips,
+  the reader's refusals, drag against click, the veto, the keys and the
+  overflow list.
+- **The Wayland desktop shell backend, phase 2 begun: the layer shell and
+  foreign toplevels.** In a build with `ULTRACANVAS_WAYLAND=ON`, on a
+  compositor that speaks the wlroots protocols (every wlroots compositor -
+  the one ULTRA OS ships - and KWin):
+  - A `WindowType::Desktop` window is a `zwlr_layer_surface_v1` on the
+    background layer of the output its `desktopArea` names, anchored to every
+    edge, so the compositor sizes it to the output and keeps it under every
+    window; `ReserveScreenEdges` becomes one transparent, input-less layer
+    surface per reserved edge on the top layer with the edge's exclusive zone
+    (the layer shell's form of a strut), so maximized windows make room for
+    UltraDesktop's bars. Without the layer shell a Desktop window stays a
+    maximized toplevel and reserves nothing.
+  - `ListWindows`, `GetActiveWindow`, `ActivateWindow`, `MinimizeWindow`,
+    `CloseWindow` and `UltraCanvasDesktopShellMonitor` run on
+    `wlr-foreign-toplevel-management-unstable-v1`, over a connection of the
+    backend's own (any thread, the application's loop untouched); the app id
+    stands in for the class, the core finds the icon from it.
+  - The two protocol definitions are vendored under
+    `OS/Linux/Wayland/protocols/` (`THIRD_PARTY_LICENSES.md`), since
+    wayland-protocols does not carry them.
+  - `KillProcess` moved to the shared `UltraCanvasLinuxDesktopShellSession.cpp`;
+    the Wayland backend now has every entry point the backend contract
+    gained since phase 1 (`GetWindowBounds`, `MoveWindowTo`,
+    `CaptureScreenArea`), the ones no protocol serves answering false.
+  - The virtual desktops are `ext-workspace-v1` on the same connection (the
+    protocol vendored too, wayland-protocols carries it only from 1.39): the
+    workspaces of the primary output's group in order, the active one the
+    current desktop, activate + commit to switch, create / remove to set the
+    count where the compositor allows. One desktop on a compositor without
+    it (sway 1.9).
+  - Screenshots and global shortcuts go through the freedesktop portals
+    (`OS/Linux/Wayland/UltraCanvasWaylandPortals.cpp`, over GDBus on a
+    context of their own): `CaptureScreen`, `CaptureScreenImage` and
+    `CaptureScreenArea` through `org.freedesktop.portal.Screenshot` (the
+    portal's PNG moved to the caller's path, or read and deleted at once),
+    `UltraCanvasGlobalShortcut` through `org.freedesktop.portal.GlobalShortcuts`
+    (a session, the accelerator as the preferred trigger in the shortcuts
+    specification's spelling, `Activated` to the callback, the session
+    closed on Stop). Without a portal every call fails with the reason.
+  - `RaiseAndFocus` asks for the focus through xdg-activation: a token
+    against the last input serial, the seat and the focused surface, then
+    the activation. The compositor decides (sway focuses with
+    `focus_on_window_activation focus`, marks urgent by default).
+  - `DesktopShellTest` drives the backend under sway headless: a window of
+    its own listed, reported, activated and closed; a Desktop window whose
+    reserved edges sway's workspace makes room for; two windows and the
+    first's RaiseAndFocus making it active; the virtual desktops read. The
+    portals are a CTest entry of their own, `DesktopShellPortalTest`,
+    against a fake portal the test exports (16 checks). Still open:
+    popups with a positioner, drags, the session lock, GL surfaces, the
+    Wayland build in CI - `Docs/UltraCanvas/WaylandDesktopShellProposal.md`.
+
+#### 2026-11-03 *0.9.475*
+- **`UltraCanvasTextFormatBar`: one text formatting bar for every program
+  that sets text.** Font, Size, Bold, Italic, Underline, Strikethrough, Align
+  left / centre / right, Line spacing and Letter spacing in one row; it edits
+  a `TextFormat` and reports each change with the attribute that changed
+  (`onFormatChanged`), hands the keyboard back after a control
+  (`onControlDone`), hides what a host cannot draw (`SetAttributeVisible`),
+  takes the host's size unit (`SetSizeUnit`) and its theme (`ApplyTheme`; the
+  icons, in `media/icons/textformat/`, take the ink). `TextFormatCharDelta` and
+  `TextFormatAtCaret` connect it to an `UltraCanvasRichTextEdit` typed on a
+  canvas. ArtCreator's text bar is this element now; UltraPaint and UltraVideo
+  follow.
+- **A dropdown row can be drawn in a font of its own** -
+  `DropdownItem::fontFamily` - so a font list shows each font in itself
+  without an element or a drawing callback of its own. Loading a font takes a
+  few milliseconds the first time (measured: 2.6 ms on average, 6 ms for a
+  colour emoji font), which would freeze a list of a computer's hundreds of
+  fonts for a second or more as it opened; the dropdown prepares those rows
+  lazily instead, in slices of about 6 ms every 15 ms once it is on screen,
+  the rows its list opens on first, and shapes a row not prepared yet as it
+  scrolls into view.
+- **Text layers keep a letter spacing** - `RasterTextContent::letterSpacingPx`,
+  drawn through `RichTextEditStyle::letterSpacing` - saved as
+  `"letterSpacingPx"` in a raster project and in a version 2 `UCTF` text
+  frame in a *.ucd (UCD 4.7.3). A text without letter spacing is still
+  written as version 1, which every earlier reader takes. `RasterEditingTest`
+  checks it.
+- `SetTextLineSpacing` / `GetTextLineSpacing` (`UltraCanvasRasterText.h`): a
+  text bar's line spacing in rich text - every paragraph's lines a percentage
+  of its largest letters apart, exactly - shared by UltraPaint's text layers
+  and UltraVideo's titles.
+- In a place narrower than its controls, the text bar's Font list gives up
+  width first (down to 90 pixels), so every other control stays in reach.
+- **Vector text draws underline, strikethrough and letter spacing, and
+  aligns each line on its own.** `VectorRenderer::RenderText` ignored
+  `VectorTextStyle::Underline`, `StrikeThrough` and `LetterSpacing` - an SVG
+  with `text-decoration` or `letter-spacing` lost them on screen and in every
+  bitmap export - and shifted every line of a centred or right-aligned text
+  by the width of all its lines together, so a multi-line text came apart. A
+  span with a `Position` of its own now starts a text chunk (SVG's rule),
+  which the anchor places on its own start point.
+- **`VectorText::GetBoundingBox` counts every line of a text set over
+  several**, each anchored on its own, with its letter spacing: the estimate
+  stretched the first line by every line's characters and left the others
+  out, so the selection frame and the hit test missed all but the first
+  line. Characters are counted, not UTF-8 bytes (an accented or Thai text
+  measured up to three times too wide). `VectorModelTest` checks it.
+- `TextAttributeFactory::CreateLetterSpacing` takes fractional pixels
+  (`double`): in a drawing's units, whole pixels were whole points of
+  tracking.
+- `RichTextEditStyle::letterSpacing`: `UltraCanvasRichTextEdit` tracks the
+  whole text wider or tighter, so text typed on a canvas shows the letter
+  spacing it will be drawn with.
+- **`videofx render` draws UltraVideo's titles as UltraVideo shows them.** The
+  command-line tool drew every title with FFmpeg's text filter: one font
+  file, plain, left-aligned - a title with a font of its own, a bold or
+  italic word, underline, alignment or spacing came out plain. Now:
+  - VideoFX 0.18.0: a text overlay carries that formatting
+    (`VideoFXOverlay::fontFamily`, `richText` / `richTextHeight`, `textAlign`,
+    `lineSpacing`, `letterSpacing`, saved in project files), and a host's text
+    renderer (`VideoFX_SetTextRenderer`) draws such an overlay into a picture
+    laid over the frame - asked on the calling thread by
+    `VideoFXExportJob::Start`, `VideoFX_Export` / `VideoFX_RenderProject` and
+    `VideoFXPreview::Open`, never on the export's own thread
+    (`VideoFX_DrawTextOverlays`). VideoFX stays free of UltraCanvas; built on
+    its own it draws these titles plain, as before.
+  - `VideoFXUltraCanvasText` (`VideoFX/ultracanvas/`), a library beside
+    VideoFX: UltraCanvas's text engine as that renderer - the drawing that
+    was UltraVideo's own (`UltraVideoTitles`), now shared.
+    `VideoFX_UseUltraCanvasText()` installs it; UltraVideo does, and the
+    `videofx` tool does when built in the UltraCanvas tree (`videofx
+    --version` says which).
+  - The tool reads UltraVideo's `.ultravideo`: a program's file that carries
+    the engine's project under `"project"` is read for it. It never could -
+    `videofx render trip.ultravideo` said "Not a VideoFX project file",
+    though UltraVideo's README promised it.
+  - **One font registration per platform.** Each platform's start-up font
+    set-up moved out of its application class into
+    `RegisterPlatformBundledFonts()` (`OS/<Platform>/`): fontconfig on Linux,
+    the BSDs, Android and in the browser, CoreText for this process only on
+    macOS, and on Windows the Windows font folders, the generic aliases, the
+    bundled fonts through fontconfig and GDI and a fontconfig-backed Pango
+    font map. Every application's `LoadBundledFontsNative` calls it, and so
+    does `RegisterBundledFontsWithoutApplication()` - what a tool that draws
+    text, with no `UltraCanvasApplication`, calls instead: the generated
+    fonts.conf where the system has none, then the platform's registration,
+    waiting on Windows for the system fonts' scan (a tool has no windows to
+    switch over later). So `videofx` sets titles in the bundled fonts and the
+    system's on every platform, macOS included, from the code the
+    applications run - no second copy.
+  - `UltraVideoDocumentTest` checks that the saved project carries the
+    formatting the tool reads, and that the engine lays over the frame the
+    very picture the program draws.
+
+#### 2026-11-03 *0.9.474*
+- **Android: frames are drawn at the window's exact pixel size at every
+  density.** The backend built its surface from the logical size scaled back
+  up, and at a phone's density that loses a pixel: at 420 dpi (scale 2.625)
+  a 1080-pixel-wide window is 411 logical units, and 411 x 2.625 rounds to
+  1079. The buffer was then a pixel short of the window, and the compositor
+  stretched every frame to fit, softening the whole UI. The surface now
+  takes the window's own size whenever it is the logical size up to
+  rounding.
+- **CI runs the Android demo at a phone's density too.** The emulator job
+  now also runs on the `pixel_6` profile (1080x2400, 420 dpi), beside the
+  default 320x640 at 160 dpi, and the smoke test checks that the first frame
+  fills the window to the pixel at the scale the density gives (density /
+  160). The backend's first-frame log line now names the surface size, the
+  window size and the scale.
+- **Android: rotating the device in place resizes the window.** On a
+  configuration change or window resize the backend read the window's size
+  with `ANativeWindow_getWidth`, but once it has set a buffer size the window
+  reports that size instead of its own (Android's `Surface` answers with the
+  size the app asked for) - so the size could not seem to change, and the
+  compositor squeezed the portrait frame into the landscape window.
+  The backend now restores the window's own geometry before reading it, then
+  rebuilds the surface at the new size. The emulator smoke test turns the
+  display to landscape and requires a frame at the new size that fills the
+  window; the backend logs `resized frame presented: ...` for each new size.
+- **Android: no blank frame on a resize.** The backend presented its rebuilt
+  surface the moment it was made, before the UI had been laid out and drawn
+  into it, so every rotation flashed an empty frame; the emulator's rotation
+  check caught it. The surface is now rebuilt without being presented, and
+  the repaint that follows shows the new frame.
+
+#### 2026-11-03 *0.9.473*
+- **CI: installing Clang on the Linux legs survives a short apt.llvm.org
+  outage.** The *Install Clang (Linux)* step fetched `llvm.sh` with a bare
+  `wget` and no retry, so on 2026-11-03 a momentary network failure (exit 4)
+  failed both Linux builds in under a second, before anything compiled. The
+  script is now fetched with curl's own retries (`--retry 5
+  --retry-all-errors`), and the whole fetch-and-install - `llvm.sh` reaches
+  the same host again for the key, the index and the packages - is tried
+  three times, 30 s and 60 s apart, before the step fails with a message
+  saying the host may be down.
+- **The media viewer's Details panel is a group box with a close button, and
+  shows a GIF's palette.** The panel's title (*Image information*, *Document
+  information* ...) is now the caption of an `UltraCanvasGroupBox` instead of
+  the first heading of its Markdown text, and an **x** at the caption's right
+  end closes it (as Escape and the Details button do). The text is a size
+  smaller (11 px, headings a step above it rather than document-sized). A GIF
+  gets a *Palette* row (its colour table's size, global or the first frame's)
+  and the colour table itself as a block of swatches under the text; the
+  entry under the pointer is named by index and `#RRGGBB`. UltraFiler and
+  UltraViewer both show this panel.
+- **`UltraCanvasGroupBox::SetCloseButton`**: an optional "x" at the right end
+  of the title bar, hover-highlighted with a tooltip
+  (`SetCloseButtonTooltip`); a click runs `onCloseClicked` and the host
+  decides what closing means. Colours: `closeIconColor`,
+  `closeIconHoverColor`, `closeHoverBackgroundColor` in `GroupBoxVisualStyle`.
+- **Markdown tables in `UltraCanvasTextArea`: the header fill now meets the
+  grid.** The column dividers were drawn in whatever paint was current - the
+  text colour - on whole-pixel coordinates, so they smeared over two pixel
+  columns, and the rule under the header sat in the middle of the separator
+  row, leaving a band of background between the header's fill and the line.
+  Every rule is now one pixel in `tableBorderColor` on a pixel centre, the
+  rule under the header is drawn at the separator row's top edge against the
+  header fill, and without a line-number gutter the separator row is only a
+  small gap rather than a whole text line.
+- **The media viewer no longer says "No media" while a file is on its way.**
+  `UltraCanvasMediaViewerWindow` showed its window and then opened the file,
+  so the first frame was the empty viewer - "No media" in the middle and in
+  the info bar - for as long as the folder took to read and the file to open
+  (long on a big folder such as a temp directory). New
+  `OpenFileWhenShown` / `OpenFolderWhenShown` / `SetFilesWhenShown` show a
+  turning ring (`UltraCanvasBusyIndicator`) in the middle of the display and
+  `name · loading` in the info bar at once, and open the file after a frame
+  of that has been drawn (or after 400 ms when the viewer is not drawn). Any
+  other open or `CloseFile` replaces it; a list with nothing to show ends it;
+  without an application the file opens at once. *No media* now means only
+  that nothing was asked for. `UltraCanvasMediaViewerWindow::Show` opens this
+  way.
+- **`UltraCanvasMediaViewer::onCurrentFileChanged`**: the file on show - the
+  one loading, each one browsed to, `""` when nothing is - for a window
+  title. `UltraCanvasMediaViewerWindow` titles its window with it when no
+  title was given, so the title follows the arrow keys.
+- `UltraCanvasMediaSurface::SetEmptyText`: what the surface draws with no
+  picture (empty draws nothing).
+- `Tests/MediaViewerLoadingTest` (Xvfb) covers the loading state, the open
+  after a frame, the empty list and the cancel.
+
+#### 2026-11-03 *0.9.472*
+- **The system fonts can be pinned.**
+  `UltraCanvasApplication::SetSystemFontStyle()` and
+  `SetDefaultMonospacedFontStyle()` set what `GetSystemFontStyle()` and
+  `GetDefaultMonospacedFontStyle()` answer, instead of the desktop's fonts -
+  for a program that brings its own, or a test that measures text and must
+  not depend on whatever font the machine has. The demo's layout audit
+  (`UltraCanvasDemo --audit-layout`, both forms) now runs in the bundled
+  Ubuntu 12 and Ubuntu Mono 12 whatever the runner's desktop font is, so
+  the pages are measured in the font they were laid out for.
+- **`scripts/check_doc_examples.py` 1.9.0: the baseline is signed.**
+  In `scripts/doc_examples_baseline.txt` each doc's entries end in a line
+  that signs them, and `--update-baseline` is the only way to write the
+  file: a block edited by hand, spliced from another run or merged line by
+  line fails `--strict` with a message naming the docs to regenerate. One
+  signature per doc rather than per file, so a merge that brings another
+  doc's rewritten block from `main` stays valid. With docs named,
+  `--update-baseline` replaces those docs' entries and keeps the rest, so
+  the file can be updated from a partial run.
+
 #### 2026-11-03 *0.9.471*
 - **Two design documents for the next framework-wide jobs.**
   `Docs/UltraCanvas/UltraCanvasLocalisationProposal.md` proposes the

@@ -1,8 +1,44 @@
 // include/Plugins/Diagrams/UltraCanvasNodeDiagram.h
 // Interactive Node Diagram component for graph/network visualization & flow editing
-// Version: 2.3.0
-// Last Modified: 2026-10-21
+// Version: 2.4.0
+// Last Modified: 2026-11-03
 // Author: UltraCanvas Framework
+//
+// CHANGELOG 2.4.0 (minor - labels fit their nodes):
+//  - NEW: NodeLabelFit / NodeDiagramLabelFit, SetLabelFit(),
+//         SetLabelFitConfig(): what happens when a label is wider than its
+//         node. ShrinkFont reduces the font until the label fits (down to
+//         minFontSize, then an ellipsis); GrowNode enlarges the node until
+//         the label fits at its font size, for the node's shape (a circle
+//         grows to the chord the text needs, a diamond to twice it);
+//         ShrinkThenGrow, the default, shrinks first and grows what still
+//         does not fit; Overflow is the 2.3 behaviour. A node that grows
+//         pushes its neighbours apart (ResolveOverlaps) and refits the view.
+//         A card grows for its label over its sublabel beside the icon, and
+//         shrinks their fonts together; what still does not fit keeps the
+//         2.3 ellipsis.
+//  - NEW: MinimumNodeSizeForLabel(label, fontSize, shape): the smallest node
+//         of that shape holding the label. FitNodesToLabels() grows every
+//         node too small for its label. GetNodeLabelFontSize(id): the size
+//         a node's label is drawn at under the fit.
+//  - CHANGED: MeasureLabel() measures with the window's real font when the
+//         element has one, and falls back to the estimate only before that.
+//         Sizes computed from the estimate (a layout run before the first
+//         frame) are corrected with the real metrics on the first Render().
+//  - CHANGED: The data-driven sizing (ByDegree / ByValue) keeps every node
+//         at least as large as its label needs, so a degree-1 leaf no longer
+//         comes out as a 26 px square under a 50 px name.
+//  - CHANGED: Every layout (Circular, Grid, Hierarchical too) ends with
+//         ResolveOverlaps(), not only the force-directed one, and with the
+//         cluster boxes moved apart from each other.
+//  - FIXED: The force-directed layout held every node inside the element
+//         (forty 100 px nodes in 800 x 600 cannot be), repelled by the
+//         distance between centres (two touching hubs barely repelled) and
+//         started a group's members all round the ring. Its area now grows
+//         with the nodes, the charge and the springs act between borders,
+//         and a group's members start together.
+//  - FIXED: A cluster title at a low zoom sat on the first member; the box
+//         makes room for it.
 //
 // CHANGELOG 2.3.0 (minor - card nodes, no overlaps):
 //  - NEW: A node can carry an icon (iconPath, drawn in a disc of
@@ -229,6 +265,14 @@ enum class NodeDegreeMode {
     Outgoing    // Links where the node is the source
 };
 
+// NEW in 2.4.0: what happens when a node's label does not fit the node.
+enum class NodeLabelFit {
+    Overflow,        // 2.3 behaviour: the label is drawn at its font size, whatever the node
+    ShrinkFont,      // the font shrinks until the label fits, to minFontSize; then an ellipsis
+    GrowNode,        // the node grows until the label fits at its font size
+    ShrinkThenGrow   // the font shrinks to minFontSize first; what still does not fit grows the node
+};
+
 // NEW in 2.2.0: where a cluster container draws its title.
 // NOTE: no enumerator may be named "None" - X11's Xlib.h defines None as a
 // macro and this header is reachable from app code that includes X11.
@@ -382,6 +426,19 @@ struct NodeDiagramSizing {
     // height keeps whatever the node was created with - useful for label-bearing
     // rectangles that must stay one text line tall.
     bool keepAspect = true;
+};
+
+// NEW in 2.4.0: how labels are kept inside their nodes.
+//
+// The fit is per shape: a label sits in the widest band of its shape at its
+// own height, so a circle holds a name nearly as wide as its diameter, a
+// diamond or a triangle far less. The paddings are the gap between the text
+// and that band's edge, in world units.
+struct NodeDiagramLabelFit {
+    NodeLabelFit mode = NodeLabelFit::ShrinkThenGrow;
+    double minFontSize = 7.0;    // ShrinkFont / ShrinkThenGrow stop here
+    double paddingX = 6.0;       // Each side of the text
+    double paddingY = 3.0;       // Above and below the text
 };
 
 // NEW in 2.2.0: a cluster container - a boundary box drawn around a set of
@@ -753,15 +810,49 @@ public:
     bool GetAutoFitOnLayout() const { return autoFitOnLayout; }
     
     // =============================================================================
+    // LABEL FIT (NEW in 2.4.0)
+    // =============================================================================
+
+    // What happens when a label is wider (or taller) than its node. The
+    // default, ShrinkThenGrow, shrinks the font to minFontSize and grows the
+    // node for what still does not fit, so a label never runs out of its
+    // node. Changing the mode re-sizes the nodes, separates the ones that
+    // now touch and refits the view (when auto-fit is on).
+    void SetLabelFit(NodeLabelFit mode);
+    NodeLabelFit GetLabelFit() const { return labelFit.mode; }
+    void SetLabelFitConfig(const NodeDiagramLabelFit& cfg);
+    NodeDiagramLabelFit GetLabelFitConfig() const { return labelFit; }
+
+    // The smallest node of `shape` that holds `label` at `fontSize` with the
+    // fit's paddings: a rectangle just around the text, a circle the chord
+    // the text needs, and so on. The width and height are equal for every
+    // shape but Rectangle.
+    void MinimumNodeSizeForLabel(const std::string& label, double fontSize, NodeShape shape,
+                                 double& outWidth, double& outHeight) const;
+
+    // Enlarges every node smaller than MinimumNodeSizeForLabel() for its
+    // label - a card for its label over its sublabel beside the icon - at
+    // its font size in GrowNode, at minFontSize in ShrinkThenGrow, never in
+    // ShrinkFont or Overflow - about its centre, and separates the nodes
+    // that then overlap. Returns how many nodes grew. RunLayout() and the
+    // sizing pass do this themselves; a host that sets sizes through
+    // GetNode() calls it after.
+    int FitNodesToLabels();
+
+    // The font size the node's label is drawn at: its own (or the base font
+    // size) in Overflow and GrowNode, smaller when the fit shrank it. 0 for
+    // an unknown id.
+    double GetNodeLabelFontSize(const std::string& id) const;
+
+    // =============================================================================
     // LABEL MEASUREMENT (NEW in 2.0.4)
     // =============================================================================
-    
-    // Heuristic estimate of how wide/tall a label would render at the given font
-    // size. Useful for callers that want to size nodes to fit their labels
-    // without having direct access to an IRenderContext. Uses the conservative
-    // average-glyph-width approximation (Arial: ~0.55 of font size) - real
-    // measurement would need ctx.GetTextLineDimensions, which is only available
-    // during Render().
+
+    // How wide and tall a label renders in bold at the given font size.
+    // CHANGED in 2.4.0: measured with the window's real font when the element
+    // has a window; before that (a layout run straight after construction)
+    // an estimate of 0.70 x fontSize per character, which the first Render()
+    // corrects for the sizes it produced.
     void MeasureLabel(const std::string& label, double fontSize,
                       int& outWidth, int& outHeight) const;
     
@@ -891,6 +982,53 @@ private:
     HandlePosition InferHandleSide(const NodeDiagramNode& fromNode,
                                     const NodeDiagramNode& toNode) const;
 
+    // NEW in 2.4.0: label fit. The band of a node's shape a label of height
+    // `textHeight` can occupy (world units, paddings taken off), the node size
+    // a text needs, the font the label is drawn at, and the growth pass.
+    void LabelBandForShape(NodeShape shape, double width, double height, double textHeight,
+                           double& outBandWidth, double& outBandHeight) const;
+    void NodeSizeForText(NodeShape shape, double textWidth, double textHeight,
+                         double& outWidth, double& outHeight) const;
+    // The font size and the text (shortened when it must be) the label is
+    // drawn with, measured in `ctx` (never null here). `outDim` is its size.
+    double FitLabelFont(IRenderContext* ctx, const NodeDiagramNode& node,
+                        std::string& outText, Size2Di& outDim) const;
+    // The same search with any measurement: `dim` is the text's size at the
+    // node's own font size going in, at the returned size coming out.
+    double FitLabelFontWith(const NodeDiagramNode& node,
+                            const std::function<Size2Di(double)>& measure, Size2Di& dim) const;
+    // The sizing pass without the separation ApplyNodeSizing() adds: the
+    // data-driven (or authored) size, then the label's minimum.
+    void SizeNodes();
+    // Cards (an icon or a sublabel): the text area for a card of a size, the
+    // font the fit allows (label and sublabel sizes out), and the smallest
+    // card holding the text.
+    void CardTextArea(const NodeDiagramNode& node, double width, double height,
+                      double& outTextLeft, double& outMaxWidth, double& outPad) const;
+    double FitCardFontWith(const NodeDiagramNode& node,
+                           const std::function<Size2Di(const std::string&, double, FontWeight)>& measure,
+                           Size2Di& labelDim, Size2Di& subDim) const;
+    void CardSizeForText(const NodeDiagramNode& node, const Size2Di& labelDim, const Size2Di& subDim,
+                         double& outWidth, double& outHeight) const;
+    // MeasureLabel() at any weight (the sublabel is not bold).
+    void MeasureText(const std::string& label, double fontSize, FontWeight weight,
+                     int& outWidth, int& outHeight) const;
+    // Whether the fit grows nodes, and the font size the growth measures at.
+    bool LabelFitGrows() const;
+    double GrowthFontSize(const NodeDiagramNode& node) const;
+    // Grows the nodes too small for their labels, measured in `ctx` when
+    // given, else by MeasureLabel(). Returns how many grew. The nodes keep
+    // their centres; nothing is separated here.
+    int GrowNodesForLabels(IRenderContext* ctx);
+    // Marks the labels for re-measurement on the next Render().
+    void InvalidateLabelFit() { labelFitDirty = true; }
+    // Moves overlapping cluster boxes apart (groups sharing a member as one
+    // unit, a unit's members as one), pushes a node in no group out of the
+    // boxes and re-separates the nodes. Returns the passes (0 = nothing).
+    int SeparateGroups(double margin, int maxPasses = 50);
+    // SeparateGroups and (when `fit`) FitView in turn, ending apart.
+    void SettleGroups(bool fit);
+
     // NEW in 2.2.0: degree cache + sizing + group geometry
     void RebuildDegreeCache() const;
     void InvalidateDegreeCache();
@@ -931,6 +1069,15 @@ private:
 
     // NEW in 2.2.0: legend overlay
     NodeDiagramLegendConfig legend;
+
+    // NEW in 2.4.0: label fit. `labelFitDirty` is set by anything that can
+    // change what a label needs (a node, its label, font, shape, the fit, a
+    // layout run measured without a context) and makes the next Render()
+    // measure the labels with the real font, grow what is too small, and
+    // separate the nodes that then overlap.
+    NodeDiagramLabelFit labelFit;
+    bool labelFitDirty = true;
+    bool refitViewAfterMeasure = false;   // RunLayout() measured by the estimate: fit again after the real one
 
     NodeDiagramStyle style;
     NodeDiagramTheme theme = NodeDiagramTheme::Default;

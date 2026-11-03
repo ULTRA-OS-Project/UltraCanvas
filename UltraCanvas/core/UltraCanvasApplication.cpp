@@ -1,5 +1,6 @@
 // UltraCanvasApplication.cpp
 // Main UltraCanvas App
+// Version: 1.16.0 - SetSystemFontStyle / SetDefaultMonospacedFontStyle pin the system fonts
 // Version: 1.15.0 - Initialize loads the translation catalogues (UltraLocalisation)
 // Version: 1.14.0 - RunAfterMainLoop() at the end of Run()
 // Version: 1.13.1 - the generated fonts.conf (Windows, Android) scales bitmap fonts to the
@@ -33,7 +34,7 @@
 //                  the bundled fonts when the scan takes long (AdoptSystemFontsWithin);
 //                  Initialize() times each of its steps (GetStartupTimings)
 // Version: 1.5.2 - modal fixes: close transient children with parent, ignore unmapped modals, raise modal on outside click
-// Last Modified: 2026-10-20
+// Last Modified: 2026-11-03
 // Author: UltraCanvas Framework
 
 #include <algorithm>
@@ -831,6 +832,21 @@ namespace UltraCanvas {
 
     // ===== RUNTIME FONT REGISTRATION =====
 
+    int RegisterBundledFontsWithoutApplication() {
+        // As an application's Initialize: the generated fonts.conf (where the
+        // system has none) before fontconfig is first read, then the
+        // platform's registration. No windows will switch to the system fonts
+        // when their scan ends (Windows), so the tool waits for it - a cold
+        // font cache takes many seconds, a warm one a moment.
+        SetupBundledFontconfig();
+        constexpr int kToolSystemFontsWaitMs = 10 * 60 * 1000;
+        const int registered = RegisterPlatformBundledFonts(kToolSystemFontsWaitMs);
+        // Pango's default font map sees the fonts registered now (a map made
+        // before them would not)
+        RefreshFontConfiguration();
+        return registered;
+    }
+
     void RefreshFontConfiguration() {
 #if !defined(__APPLE__)
         // FcConfigAppFontAddFile only records the file; the FontSet FcMatch
@@ -968,6 +984,16 @@ namespace UltraCanvas {
             cachedMonospacedFontStyle_ = DetectMonospacedFontStyleNative();
         }
         return cachedMonospacedFontStyle_.value();
+    }
+
+    void UltraCanvasApplicationBase::SetSystemFontStyle(const FontStyle& style) {
+        if (style.fontFamily.empty() || style.fontSize <= 0) return;
+        cachedSystemFontStyle_ = style;
+    }
+
+    void UltraCanvasApplicationBase::SetDefaultMonospacedFontStyle(const FontStyle& style) {
+        if (style.fontFamily.empty() || style.fontSize <= 0) return;
+        cachedMonospacedFontStyle_ = style;
     }
 
     bool UltraCanvasApplicationBase::Initialize(const std::string& app) {

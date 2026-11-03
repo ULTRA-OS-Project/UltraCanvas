@@ -180,9 +180,11 @@ The following features are planned for future releases:
 -   **3D model support** - Loading and rendering .3ds, .3dm formats
 -   **SmartHome drivers** - Device drivers for the protocols the module specifies:
     Matter, Thread, Zigbee, Z-Wave, WiFi and Bluetooth (see `Docs/Modules/Smarthome/README.md`)
--   **Wayland desktop shell** - the windowing backend is in (`-DULTRACANVAS_WAYLAND=ON`);
-    the layer-shell, foreign-toplevel and portal pieces the desktop shell needs
-    come next (see `Docs/UltraCanvas/WaylandDesktopShellProposal.md`)
+-   **Wayland desktop shell** - the windowing backend and the desktop shell's
+    protocols are in (`-DULTRACANVAS_WAYLAND=ON`): the layer shell, foreign
+    toplevels, ext-workspace, the portals for screenshots and shortcuts,
+    xdg-activation; popups with a positioner, drags, the session lock and GL
+    surfaces come next (see `Docs/UltraCanvas/WaylandDesktopShellProposal.md`)
 
 ----------
 
@@ -1008,7 +1010,12 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   `IsFontFileRegistered` / `GetRegisteredFontFiles` add a file's faces to the
   process by name (FontConfig on Linux/Android/WASM, GDI `FR_PRIVATE` +
   FontConfig on Windows, CoreText process scope on macOS), followed by
-  `RefreshFontConfiguration()` so the new family resolves in the next layout,
+  `RefreshFontConfiguration()` so the new family resolves in the next layout
+  (the bundled fonts at an application's start through
+  `RegisterPlatformBundledFonts()`, one per platform in `OS/<Platform>/`;
+  `RegisterBundledFontsWithoutApplication()` runs the same start-up font
+  steps in a tool that has no application - the `videofx` tool drawing
+  titles),
   and `UltraCanvasWindowBase::RefreshAfterFontChange()` on every window (a new
   layout and a full repaint, popups too; also run when the Windows system
   fonts arrive after a cold start). Process-private and permanent: there is
@@ -1115,10 +1122,15 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   its network, USB and Bluetooth lists) and **IODeviceManager** (operates
   peripherals). Core in `core/UltraCanvasDesktopShell.cpp`; the X11 backend
   (EWMH properties and client messages, `XGetImage`, procfs/sysfs) in
-  `OS/Linux/UltraCanvasLinuxDesktopShell.cpp`, the Wayland backend's first
-  phase (the outputs, the devices; the shell protocols are the next step,
+  `OS/Linux/UltraCanvasLinuxDesktopShell.cpp`, the Wayland backend (the
+  outputs, the devices; the window list and the monitor on
+  wlr-foreign-toplevel-management and the virtual desktops on
+  ext-workspace over a connection of its own, the reserved edges as
+  layer-shell exclusive zones -
   `Docs/UltraCanvas/WaylandDesktopShellProposal.md`) in
-  `OS/Linux/Wayland/UltraCanvasWaylandDesktopShell.cpp`, and the Win32 backend
+  `OS/Linux/Wayland/UltraCanvasWaylandDesktopShell.cpp`, its screenshots and
+  global shortcuts through the freedesktop portals in
+  `OS/Linux/Wayland/UltraCanvasWaylandPortals.cpp`, and the Win32 backend
   (`EnumWindows` filtered as Explorer's taskbar, appbars, `BitBlt`, WinEvent
   hooks, `RegisterHotKey`, the Start menu) in
   `OS/MSWindows/UltraCanvasWindowsDesktopShell.cpp` and
@@ -2777,7 +2789,11 @@ command-line tool. Planned: keyframed parameters.
   `VideoFX_GetDefaultFontPath`, `VideoFX_SetVerboseLogging`,
   `VideoFX_GetFileFormats` (the films, sound and pictures the linked FFmpeg
   reads, and the ones an export writes), `VideoFX_SetPictureReader` (picture
-  types the host application reads for the engine)
+  types the host application reads for the engine), `VideoFX_SetTextRenderer` /
+  `VideoFX_HasTextRenderer` / `VideoFX_DrawTextOverlays` (text overlays with a
+  font by name, styled words, alignment and spacing drawn by the host -
+  `VideoFX_UseUltraCanvasText` in `VideoFX/ultracanvas/VideoFXUltraCanvasText.h`
+  installs UltraCanvas's, as UltraVideo and the `videofx` tool do)
 - Inspection: `VideoFX_Probe`, `VideoFX_ExtractFrame`,
   `VideoFX_ExtractThumbnails`, `VideoFX_SaveFrameImage`,
   `VideoFX_ExtractWaveform` (the loudness envelope a timeline draws, in
@@ -7344,7 +7360,12 @@ adb shell 'while [ "$(getprop sys.boot_completed)" != 1 ]; do sleep 1; done'
 ```
 
 Create a second AVD with the hardware keyboard **off** for IME testing, and a
-third at a different density for the HiDPI path (§4).
+third at a different density for the HiDPI path (§4). **Status:** CI does
+the density one - the `emulator` job also runs the demo on the `pixel_6`
+profile (1080x2400, 420 dpi), and the smoke test requires the frame to fill
+the window to the pixel at scale density / 160 - which the backend's surface
+failed by a pixel at 2.625 until it took the window's own size (1080 -> 411
+logical -> 1079).
 
 ### 5.2 Install, launch, look
 
@@ -9482,7 +9503,7 @@ A reader meeting a code it does not know composites that layer as Normal.
 The words of a text layer: rich text — runs with their own fonts, sizes,
 colours, weights, slants and underlines; paragraphs with their alignment and
 spacing — laid out in a box the width of which the lines wrap at. After the
-8-byte preamble (`'UCTF'`, version `1`):
+8-byte preamble (`'UCTF'`, version `1` or `2`):
 
 | Offset | Size | Field | Meaning |
 |---|---|---|---|
@@ -9494,6 +9515,7 @@ spacing — laid out in a box the width of which the lines wrap at. After the
 | 44 | 4 | Font size | float32, pixels: the size of a run that states none |
 | 48 | 2 | Font family length | uint16 |
 | 50 | n | Font family | UTF-8: the font of a run that states none |
+| … | 4 | Letter spacing | version 2 only: float32, pixels added between every two letters of the text (0 = the font's own spacing) |
 | … | 4 | Text encoding | FourCC of what follows: `'ODT '` = an OpenDocument Text package (ODF 1.2, `application/vnd.oasis.opendocument.text`) |
 | … | 4 | Text length | uint32 |
 | … | n | Text | the rich text in that encoding |
@@ -9509,6 +9531,10 @@ Rules:
   text lays out the same when read back.
 - A reader that cannot decode the text encoding keeps the layer as the
   bitmap layer it shows.
+- Writers write version 1 for a text without letter spacing, so that a
+  reader of version 1 takes it; version 2 only when the letter spacing is not
+  0. A reader that does not know a frame's version keeps the layer as the
+  bitmap it shows.
 
 ## 5. Binary vs. text body encoding
 
@@ -27933,6 +27959,7 @@ FILE: Docs/UltraCanvas/UltraCanvasDropDownExamples.md
   - [Styling](#styling)
   - [Event Callbacks](#event-callbacks)
 - [Styles](#styles)
+- [A font list: each font shown in itself](#a-font-list-each-font-shown-in-itself)
 - [Factory Functions](#factory-functions)
   - [CreateDropdown](#createdropdown)
 - [Event Handling](#event-handling)
@@ -28190,6 +28217,30 @@ There are no predefined dropdown styles and no builder: start from a default
 `DropdownStyle`, change the fields you need and pass it to `SetStyle()` (see
 *Dropdown with Custom Styling* below). The look of the list scrollbar comes
 from `scrollbarStyle`.
+
+## A font list: each font shown in itself
+
+A row is drawn in its item's `fontFamily` when it has one, so a font picker is
+an ordinary dropdown - no element of its own and no drawing callback:
+
+```cpp
+auto fonts = CreateDropdown("font", 0, 0, 210, 26);
+for (const std::string& family : GetInstalledFontFamilies()) {
+    DropdownItem item(family, family);
+    item.fontFamily = family;      // the row reads "Liberation Serif" in Liberation Serif
+    fonts->AddItem(item);
+}
+```
+
+Loading a font costs a few milliseconds the first time it is drawn (measured:
+2.6 ms on average, 6 ms for a colour emoji font), which for a computer's
+hundreds of fonts would freeze the list for a second or more as it opens. So
+the dropdown prepares these rows itself, lazily: once it is drawn on screen it
+shapes them in small slices on the UI thread's timer (about 6 ms every 15 ms),
+the rows its list opens on - around the selected item - first, then the rest.
+A row not prepared yet when it scrolls into view is shaped as it is drawn, and
+the list only ever draws the rows in view. The closed button keeps the list's
+own font. `UltraCanvasTextFormatBar` builds its Font list this way.
 
 ## Factory Functions
 
@@ -39883,6 +39934,7 @@ FILE: Docs/UltraCanvas/UltraCanvasGroupBoxExamples.md
   - [Basic framed group](#basic-framed-group)
   - [Checkable group (enables/disables its contents)](#checkable-group-enablesdisables-its-contents)
   - [Switch-activated section with an info icon](#switch-activated-section-with-an-info-icon)
+  - [A panel the user closes](#a-panel-the-user-closes)
   - [Collapsible card](#collapsible-card)
   - [Sections of a window as cards](#sections-of-a-window-as-cards)
 - [Demo](#demo)
@@ -39919,6 +39971,9 @@ interactive behaviour.
   children. It can be placed on the **left or right** side of the title bar.
 - **Info icon + help text**: an optional "ⓘ" icon (left or right) that reveals
   help text as a tooltip on hover.
+- **Close button**: an optional "x" at the right end of the title bar
+  (`SetCloseButton`, `onCloseClicked`) for a box that is a panel the user
+  dismisses.
 - **Collapsible**: a disclosure arrow collapses the box down to its title bar.
 - **Standard Container**: children are added with `AddChild()` and laid out by the
   CSS layout engine inside the frame, below the caption.
@@ -39974,6 +40029,10 @@ void SetInfoIcon(bool show);
 void SetInfoIconSide(GroupBoxIndicatorSide side);       // Left / Right
 void SetHelpText(const std::string& text);              // shows the info icon
 
+void SetCloseButton(bool show);                         // an "x" at the right end of the caption
+bool HasCloseButton() const;
+void SetCloseButtonTooltip(const std::string& text);    // "Close" (in the user's language) by default
+
 void SetCollapsible(bool collapsible);
 void SetCollapsed(bool collapsed);
 bool IsCollapsed() const;
@@ -39984,6 +40043,7 @@ bool IsCollapsed() const;
 ```cpp
 std::function<void(bool)> onCheckedChanged;     // new checked state
 std::function<void(bool)> onCollapsedChanged;   // new collapsed state
+std::function<void()>     onCloseClicked;       // the close button was clicked
 ```
 
 ## Usage Examples
@@ -40028,6 +40088,23 @@ gb->SetInfoIconSide(GroupBoxIndicatorSide::Left);         // ⓘ on the left
 gb->SetHelpText("Toggle the switch to enable or disable this section.");
 gb->AddChild(std::make_shared<UltraCanvasCheckbox>("autosave", "Save automatically"));
 gb->onCheckedChanged = [](bool on) { /* ... */ };
+```
+
+### A panel the user closes
+
+`SetCloseButton(true)` puts an **x** at the right end of the caption, hover-
+highlighted and with a tooltip. A click runs `onCloseClicked`; the box does
+not hide itself, so the host decides what closing means (hide it, remove
+it, ask first). Its colours are `closeIconColor`, `closeIconHoverColor` and
+`closeHoverBackgroundColor` in `GroupBoxVisualStyle`. The media viewer's
+Details panel is one.
+
+```cpp
+auto panel = CreateGroupBox("details", 20, 20, 360, 240, "Image information");
+panel->SetFrameStyle(GroupBoxFrameStyle::Header);
+panel->SetCloseButton(true);
+panel->SetCloseButtonTooltip("Close (Esc)");
+panel->onCloseClicked = [box = panel.get()] { box->SetVisible(false); };
 ```
 
 ### Collapsible card
@@ -49180,9 +49257,22 @@ file's own **metadata** read with `PixelFX::Header::ReadMetadata` — one
 section per block (EXIF, IPTC, XMP, Colour / ICC, Other such as PNG text
 chunks), or a line saying the file carries none.
 
-The panel is an `UltraCanvasTextArea` in `MarkdownHybrid` mode, dark themed,
-so each section is a heading over a two-column *Property / Value* table.
-The mouse wheel, Up / Down and PageUp / PageDown scroll it; Escape or the
+The panel is an `UltraCanvasGroupBox` in the `Header` frame style, dark
+themed: its caption names what is shown (*Image information*, *Document
+information*, *eBook information* ...) and the **x** at the right end of the
+caption closes it. Inside is an `UltraCanvasTextArea` in `MarkdownHybrid`
+mode at 11 px, so each section is a heading over a two-column *Property /
+Value* table. For a GIF the table has a *Palette* row (the size of the
+colour table, global or the first frame's) and under the text the colour
+table itself is drawn as a block of swatches (`UltraCanvasColorSwatchBar`,
+wrapped, at most half the panel's height); the caption over it names the
+entry under the pointer, as its index and `#RRGGBB`.
+The mouse wheel, Up / Down and PageUp / PageDown scroll the text; Escape, the
+close button or the Details button again closes it. Left / Right keep
+browsing, and the panel follows to the next file. The panel's text is built
+only while it is open (on opening, then for each file loaded): browsing with
+it closed reads no metadata.
+
 A picture whose header reads but whose pixels do not decode (a HEIC on a
 build without an HEVC decoder, a truncated file) says so instead of leaving
 the area empty: the display shows *Cannot decode this picture*, the info bar
@@ -49192,11 +49282,6 @@ the same reason. The surface learns it only when it draws (that is when the
 pixels are decoded) and tells the viewer through
 `UltraCanvasMediaSurface::onDecodeFailed`, once per shown image, after the
 frame.
-
-button again closes it. Left / Right keep browsing, and the panel follows
-to the next file. The panel's text is built only while it is open (on
-opening, then for each file loaded): browsing with it closed reads no
-metadata.
 
 ```cpp
 viewer->SetDetailsVisible(true);
@@ -49218,6 +49303,10 @@ viewer->OpenFolder("/home/me/Pictures");            // browse a folder
 viewer->OpenFile("/home/me/Pictures/photo.jpg");    // file first, folder around it
 viewer->SetFiles({ "a.png", "b.mp4", "c.pdf" });    // exactly these files
 
+// A window shown first and the file opened after (the window appears at once):
+viewer->OpenFileWhenShown("/home/me/Pictures/photo.jpg");   // also OpenFolderWhenShown, SetFilesWhenShown
+viewer->onCurrentFileChanged = [](const std::string& path) { /* a window title */ };
+
 // Navigation
 viewer->Next();
 viewer->Previous();
@@ -49228,6 +49317,20 @@ viewer->SetSlideshowIntervalSeconds(5.0);
 viewer->SetTransition(MediaTransition::CrossFade);
 viewer->PlaySlideshow();
 ```
+
+*No media* (on the display and in the info bar) means the viewer was asked
+for nothing. A host that shows its window and then opens a file calls
+`OpenFileWhenShown` (or `OpenFolderWhenShown` / `SetFilesWhenShown`): the
+viewer shows a turning ring (`UltraCanvasBusyIndicator`, `MV_Loading`) in the
+middle of the display and `name · loading` in the info bar, reports the name
+through `onCurrentFileChanged`, and opens the file once a frame of that has
+been drawn - or after 400 ms if the viewer is not drawn at all. `IsLoading()`
+and `GetLoadingPath()` say whether one is on its way; any other open or
+`CloseFile()` replaces it, and a list with nothing to show ends it. Without
+an application (a test) the file opens at once. `onCurrentFileChanged` also
+fires for every file browsed to, and with `""` when nothing is shown;
+`UltraCanvasMediaViewerWindow` and UltraViewer title their windows with it.
+The surface's own empty text is `UltraCanvasMediaSurface::SetEmptyText`.
 
 `IsSupportedMedia(path)` answers whether the viewer can display a path
 (static — the UltraFiler preview uses it to decide whether to open the
@@ -49441,11 +49544,16 @@ class MyWindow {
 };
 
 void MyWindow::OnFileActivated(const std::string& path) {
-    MediaViewerWindowOptions options;
-    options.title = std::filesystem::path(path).filename().string();
-    mediaWindow.Show(path, window.get(), options);
+    // No title: the window is called after the file on show, and follows it.
+    mediaWindow.Show(path, window.get());
 }
 ```
+
+The window appears at once. Until the file is open it shows a turning ring
+where the file will be and the file's name in the info bar and the title -
+never *No media* - and the file is opened once a frame of that has been
+drawn (`UltraCanvasMediaViewer::OpenFileWhenShown`). Reading a large folder
+and decoding a large picture no longer hold the window back.
 
 | Call | What it does |
 | --- | --- |
@@ -49458,7 +49566,7 @@ void MyWindow::OnFileActivated(const std::string& path) {
 
 | Field | Default | Meaning |
 | --- | --- | --- |
-| `title` | empty | Window title; empty means the file's own name. |
+| `title` | empty | Window title; empty means the name of the file on show, following the arrow keys. |
 | `browseFolder` | `true` | Open the rest of the folder as a playlist, so the next file is one key away. `false` shows the one file alone. |
 | `width` / `height` | 1040 × 720 | Size used when there is no `host`. |
 | `background` | dark | The window's background. |
@@ -52439,6 +52547,7 @@ FILE: Docs/UltraCanvas/UltraCanvasNodeDiagramExamples.md
   - [NodeDiagramNode](#nodediagramnode)
   - [NodeDiagramLink](#nodediagramlink)
   - [NodeDiagramSizing (2.2.0)](#nodediagramsizing-220)
+  - [NodeDiagramLabelFit (2.4.0)](#nodediagramlabelfit-240)
   - [NodeDiagramGroup (2.2.0)](#nodediagramgroup-220)
   - [NodeDiagramLegendConfig (2.2.0)](#nodediagramlegendconfig-220)
 - [Class Reference](#class-reference)
@@ -52449,6 +52558,7 @@ FILE: Docs/UltraCanvas/UltraCanvasNodeDiagramExamples.md
   - [Link Management](#link-management)
   - [Layout](#layout)
   - [Data-driven node sizing (2.2.0)](#data-driven-node-sizing-220)
+  - [Label fit (2.4.0)](#label-fit-240)
   - [Cluster containers (2.2.0)](#cluster-containers-220)
   - [Color legend (2.2.0)](#color-legend-220)
   - [Styling & Theme](#styling--theme)
@@ -52460,7 +52570,7 @@ FILE: Docs/UltraCanvas/UltraCanvasNodeDiagramExamples.md
   - [Serialization](#serialization)
   - [Callbacks](#callbacks)
 - [Usage Examples](#usage-examples)
-  - [Simple API — Friends network with force-directed layout](#simple-api-—-friends-network-with-force-directed-layout)
+  - [Simple API — five nodes, six links, one layout](#simple-api-—-five-nodes-six-links-one-layout)
   - [Verbose API — Workflow editor with handles](#verbose-api-—-workflow-editor-with-handles)
   - [Link styles showcase](#link-styles-showcase)
   - [Multi-select with keyboard](#multi-select-with-keyboard)
@@ -52468,6 +52578,7 @@ FILE: Docs/UltraCanvas/UltraCanvasNodeDiagramExamples.md
   - [Right-click-to-create with auto-sized nodes](#right-click-to-create-with-auto-sized-nodes)
   - [Hierarchical org chart layout](#hierarchical-org-chart-layout)
   - [Cluster containers, sizing and legend](#cluster-containers-sizing-and-legend)
+  - [A personal network of card nodes (the demo's Friends tab)](#a-personal-network-of-card-nodes-the-demos-friends-tab)
   - [Card nodes with icons, without overlaps (2.3.0)](#card-nodes-with-icons-without-overlaps-230)
 - [Keyboard Shortcuts](#keyboard-shortcuts)
 - [See Also](#see-also)
@@ -52479,7 +52590,15 @@ FILE: Docs/UltraCanvas/UltraCanvasNodeDiagramExamples.md
 **Namespace:** `UltraCanvas`
 **Header:** `include/Plugins/Diagrams/UltraCanvasNodeDiagram.h`
 **Base Class:** `UltraCanvasUIElement`
-**Version:** 2.2.0
+**Version:** 2.4.0
+
+> **Since 2.4.0** a label never runs out of its node. The **label fit**
+> (`NodeLabelFit`) shrinks the font to a minimum and grows the node for what
+> still does not fit, per shape - a circle grows to the chord its name needs,
+> a diamond to twice that. A node that grows pushes its neighbours apart. The
+> data-driven sizing keeps every node at least as large as its label, and
+> every layout ends with no two nodes overlapping. See
+> [Label fit](#label-fit-240).
 
 > **Since 2.2.0** the component covers organizational-network work: data-driven
 > node sizing (`NodeSizeMode::ByDegree` / `ByValue`), cluster containers
@@ -52526,6 +52645,7 @@ UltraCanvasUIElement
 - **Cluster containers** (2.2.0): auto-fitted, titled boundary boxes around node sets
 - **Group cohesion** (2.2.0): pulls cluster members together during force-directed layout
 - **Color legend overlay** (2.2.0), placeable in any corner
+- **Label fit** (2.4.0): the font shrinks or the node grows, so a label never runs out of its node; no layout leaves nodes overlapping
 
 ## Data Structures
 
@@ -52563,6 +52683,14 @@ enum class NodeDegreeMode {
     Total,      // incoming + outgoing (default)
     Incoming,
     Outgoing
+};
+
+// NEW in 2.4.0: what happens when a label does not fit its node
+enum class NodeLabelFit {
+    Overflow,        // 2.3 behaviour: drawn at its font size, whatever the node
+    ShrinkFont,      // the font shrinks until the label fits, to minFontSize; then an ellipsis
+    GrowNode,        // the node grows until the label fits at its font size
+    ShrinkThenGrow   // the font shrinks to minFontSize first; what still does not fit grows the node (default)
 };
 
 // NOTE: no enumerator may be named "None" - X11's Xlib.h defines None as a macro.
@@ -52678,6 +52806,27 @@ degree-9 hub look nine times more important than a degree-1 leaf instead of thre
 `NodeDiagramNode` gained a `value` field (default `1.0`) that drives
 `NodeSizeMode::ByValue`, plus `baseWidth` / `baseHeight`, which capture the size a
 node was authored with so switching back to `NodeSizeMode::Fixed` restores it exactly.
+
+Since 2.4.0 the computed size is a floor, not the size: a node whose label
+needs more room under the [label fit](#label-fit-240) is larger than the data
+says. A degree-1 leaf named "Analyst 5" in a 9 pt font is not a 26 px square.
+
+### NodeDiagramLabelFit (2.4.0)
+
+```cpp
+struct NodeDiagramLabelFit {
+    NodeLabelFit mode = NodeLabelFit::ShrinkThenGrow;
+    double minFontSize = 7.0;    // ShrinkFont / ShrinkThenGrow stop here
+    double paddingX = 6.0;       // Each side of the text, in world units
+    double paddingY = 3.0;       // Above and below the text
+};
+```
+
+A label sits in the widest horizontal band of its shape at the label's own
+height: the full width of a rectangle or square, the chord of a circle, the
+narrowing middle of a diamond or a hexagon, the upper edge of the band in a
+triangle. The paddings are the gap between the text and that band's edge, so
+the same text makes a diamond about twice as wide as a square.
 
 ### NodeDiagramGroup (2.2.0)
 
@@ -52872,6 +53021,7 @@ int GetNodeDegree(const std::string& id, NodeDegreeMode mode) const;
 
 // Force a sizing pass now. Normally unnecessary - sizes are recomputed when
 // links or values change - but useful after bulk edits made through GetNode().
+// Since 2.4.0 it also separates the nodes that then overlap.
 void ApplyNodeSizing();
 ```
 
@@ -52879,6 +53029,67 @@ Degree counts are cached and invalidated by any node or link mutation, so
 bulk-loading a graph costs one rebuild rather than one per `AddLink` call.
 `RunLayout()` re-runs sizing before laying out, so the anti-overlap pass
 separates nodes by their final sizes.
+
+### Label fit (2.4.0)
+
+```cpp
+void                SetLabelFit(NodeLabelFit mode);
+NodeLabelFit        GetLabelFit() const;
+void                SetLabelFitConfig(const NodeDiagramLabelFit& cfg);
+NodeDiagramLabelFit GetLabelFitConfig() const;
+
+// The smallest node of `shape` that holds `label` at `fontSize` with the
+// fit's paddings. Width and height are equal for every shape but Rectangle.
+void MinimumNodeSizeForLabel(const std::string& label, double fontSize, NodeShape shape,
+                             double& outWidth, double& outHeight) const;
+
+// Grows every node smaller than its label needs (at its font size in
+// GrowNode, at minFontSize in ShrinkThenGrow), separates the nodes that then
+// overlap and refits the view when auto-fit is on. Returns how many grew.
+int FitNodesToLabels();
+
+// The font size a node's label is drawn at under the fit; 0 for an unknown id.
+double GetNodeLabelFontSize(const std::string& id) const;
+```
+
+The default, `ShrinkThenGrow`, means a diagram needs nothing from its host: a
+name wider than its node is drawn smaller, down to `minFontSize`, and a node
+that cannot hold its name even at that size grows until it can. `GrowNode`
+keeps every font size and grows the nodes instead, which is the right choice
+when the font sizes carry meaning (a hub in 10 pt, its people in 9 pt).
+`ShrinkFont` keeps every node size and shortens with an ellipsis what the
+minimum font still cannot fit, for diagrams whose geometry is authored.
+`Overflow` is the 2.3 behaviour.
+
+A node grows about its centre, and whatever grows pushes its neighbours apart
+(`ResolveOverlaps`). The growth runs inside `RunLayout()` and the sizing pass,
+so a layout is computed with the final sizes; changing the fit, a label, a
+shape or the font marks the labels and the next frame measures them with the
+window's font, grows what must grow and separates what then touches. A layout
+run before the element has a window (the usual case - the diagram is built,
+laid out and then added to a page) measures by an estimate and is corrected
+on the first frame the same way. A card node (an icon or a sublabel) grows
+for its label over its sublabel beside the icon disc, and in the shrinking
+modes its two fonts shrink together; what still does not fit keeps the 2.3
+ellipsis.
+
+Group boxes follow their members, so a department whose people grew is drawn
+larger, and since 2.4.0 the boxes are kept apart from each other too: after
+every layout (and after the fit, since a box reserves room for its title at
+the current zoom) each pair of overlapping boxes moves apart, half each, a
+group's members as one; what does not settle is placed box by box at the
+nearest free spot. Two groups that share a member overlap on purpose - the
+member sits in both - and move as one unit. A node in no group is pushed out
+of any box it sits in. A box with a pinned member stays. Nothing here moves a
+pinned node.
+
+The force-directed layout itself changed with 2.4.0 so that larger nodes
+still cluster: its area grows with the nodes in it instead of holding them
+inside the element, the repulsion and the link springs act between the
+nodes' borders rather than their centres (two touching hubs a hundred pixels
+across repel as hard as two touching dots), and a group's members start next
+to each other on the initial ring, so the cohesion gathers them where they
+are instead of dragging them through the other clusters.
 
 ### Cluster containers (2.2.0)
 
@@ -53015,6 +53226,12 @@ void SuggestNodeSizeForLabel(const std::string& label, double fontSize,
                               double& outHeight) const;
 ```
 
+Since 2.4.0 `MeasureLabel` measures with the window's font (bold, the
+diagram's family) when the element has a window, and estimates 0.70 x the
+font size per character before that. `SuggestNodeSizeForLabel` adds generous
+padding for a circle; `MinimumNodeSizeForLabel` (above) gives the exact
+minimum for any shape.
+
 ### Serialization
 
 ```cpp
@@ -53041,10 +53258,15 @@ std::function<void(double worldX, double worldY)> onCanvasRightClick;
 
 All examples are drawn from `Apps/DemoApp/UltraCanvasNodeDiagramExamples.cpp`.
 
-### Simple API — Friends network with force-directed layout
+### Simple API — five nodes, six links, one layout
+
+The least code that draws a graph: nodes by id, label and position, links
+between ids, a layout. (The demo's Friends tab is the card-node network
+[further down](#a-personal-network-of-card-nodes-the-demos-friends-tab);
+this is the API at its shortest.)
 
 ```cpp
-auto diagram = CreateNodeDiagram("nd_friends", x, y, w, h);
+auto diagram = CreateNodeDiagram("nd_simple", x, y, w, h);
 
 diagram->SetTheme(NodeDiagramTheme::Colorful);
 diagram->SetGridVisible(true, 25.0);
@@ -53251,6 +53473,7 @@ for (const auto& dept : departments) {
     hub.borderColor = Color(40, 40, 40, 255);
     hub.textColor   = Color(255, 255, 255, 255);
     hub.width = hub.height = 46.0;
+    hub.fontSize = 10.0;
     hub.value = 6.0;                     // Headcount - drives NodeSizeMode::ByValue
     diagram->AddNode(hub);
 
@@ -53261,6 +53484,7 @@ for (const auto& dept : departments) {
         node.shape       = NodeShape::Square;
         node.borderColor = dept.color;
         node.width = node.height = 34.0;
+        node.fontSize = 9.0;
         diagram->AddNode(node);
         members.push_back(id);
 
@@ -53286,12 +53510,17 @@ diagram->AddLink(NodeDiagramLink("x1", "sales_hub", "biz_hub"));
 diagram->AddLink(NodeDiagramLink("x2", "biz_hub",   "cli_hub"));
 diagram->AddLink(NodeDiagramLink("x3", "cli_hub",   "care_hub"));
 
+// The names stay at their sizes (10 pt hubs, 9 pt members) and the nodes
+// grow to hold them; the range below starts above what a member's name
+// needs, so the degree still shows.
+diagram->SetLabelFit(NodeLabelFit::GrowNode);
+
 // Hubs read as hubs: area proportional to connection count.
 NodeDiagramSizing sizing;
 sizing.mode     = NodeSizeMode::ByDegree;
-sizing.baseSize = 20.0;
-sizing.minSize  = 26.0;
-sizing.maxSize  = 74.0;
+sizing.baseSize = 36.0;
+sizing.minSize  = 40.0;
+sizing.maxSize  = 130.0;
 diagram->SetNodeSizing(sizing);
 
 // Keep each department's members together while the layout runs.
@@ -53310,8 +53539,102 @@ diagram->RunLayout();
 
 Switching `sizing.mode` to `NodeSizeMode::ByValue` sizes each node from its
 `value` field instead — headcount, budget, revenue, whatever the graph is about.
-`NodeSizeMode::Fixed` restores the authored sizes exactly.
+`NodeSizeMode::Fixed` restores the authored sizes exactly - and then, like the
+other modes, grows whichever node its name does not fit.
 
+
+### A personal network of card nodes (the demo's Friends tab)
+
+What the demo's first tab shows, in outline: one person's friends as cards -
+an icon disc for what they are into, their name, their interest, each card
+as wide as its text needs - in
+five circles drawn as soft boxes, a friend who belongs to two circles sitting
+in both boxes, the ties coloured by circle and widened by strength, a legend,
+and the cards collapsing to their icon discs when the view is zoomed out. The
+layout keeps the cards apart, the circles apart (two circles that share a
+member overlap on purpose, as one unit) and the person at the centre out of
+every box.
+
+```cpp
+auto diagram = CreateNodeDiagram("friends", 0, 0, 1000, 620);
+diagram->SetTheme(NodeDiagramTheme::Minimal);
+diagram->SetBackgroundColor(Color(247, 248, 251, 255));
+diagram->SetDefaultLinkStyle(LinkStyle::Bezier);
+
+const Color college(79, 70, 229, 255), climbing(22, 163, 74, 255);
+
+// GrowNode: the cards take the width their names need, no ellipsis.
+diagram->SetLabelFit(NodeLabelFit::GrowNode);
+
+auto card = [&](const char* id, const char* name, const char* interest,
+                const char* icon, const Color& circle) {
+    NodeDiagramNode n(id, name);
+    n.shape = NodeShape::Rectangle;
+    n.width = 96.0;     // a floor; the fit widens a card for a long name
+    n.height = 40.0;
+    n.fillColor = Color(255, 255, 255, 255);
+    n.borderColor = circle;
+    n.borderWidth = 1.2;
+    n.textColor = Color(31, 41, 55, 255);
+    n.sublabel = interest;
+    n.iconPath = std::string("media/icons/") + icon;
+    n.iconBackground = Color(std::min(255, circle.r + 150), std::min(255, circle.g + 150),
+                             std::min(255, circle.b + 150), 255);
+    n.cornerRadius = 10.0;
+    n.shadow = true;
+    diagram->AddNode(n);
+};
+card("alice", "Alice Weber",   "Guitar",      "folder-music.svg", college);
+card("ben",   "Ben Okafor",    "Photography", "smarthome/camera.svg", college);
+card("maya",  "Maya Schulz",   "Bouldering",  "menu/run.svg", college);   // in both circles
+card("finn",  "Finn Berg",     "Alpine routes", "menu/sun.svg", climbing);
+
+NodeDiagramNode me("me", "You");
+me.shape = NodeShape::Rectangle;
+me.width = 146.0;
+me.height = 46.0;
+me.fillColor = Color(31, 41, 55, 255);
+me.borderColor = Color(250, 204, 21, 255);
+me.textColor = Color(255, 255, 255, 255);
+me.sublabel = "Your network";
+me.iconPath = "media/icons/chatcube/profile.svg";
+me.iconBackground = Color(250, 204, 21, 255);
+me.cornerRadius = 12.0;
+me.shadow = true;
+diagram->AddNode(me);
+
+diagram->AddGroup("college",  "College",       {"alice", "ben", "maya"}, college,
+                  Color(229, 220, 255, 60));
+diagram->AddGroup("climbing", "Climbing club", {"maya", "finn"}, climbing,
+                  Color(172, 255, 224, 60));
+
+// A tie: the circle's colour inside a circle, grey across, wider when closer.
+auto tie = [&](const char* id, const char* a, const char* b, int strength, const Color& c) {
+    NodeDiagramLink l(id, a, b);
+    l.directed = false;
+    l.lineWidth = 0.8 + 0.9 * strength;
+    l.lineColor = Color(c.r, c.g, c.b, 120 + 30 * strength);
+    diagram->AddLink(l);
+};
+tie("t1", "me", "alice", 3, Color(148, 163, 184, 255));
+tie("t2", "alice", "ben", 3, college);
+tie("t3", "maya", "finn", 3, climbing);
+
+diagram->SetLinkDistance(28.0);
+diagram->SetChargeStrength(-360.0);
+diagram->SetGroupCohesion(0.12);
+diagram->BuildLegendFromGroups();
+diagram->SetLegendVisible(true);
+diagram->SetDetailZoom(0.5);          // below it, the cards are their icon discs
+diagram->SetLayout(NodeDiagramLayout::ForceDirected);
+diagram->RunLayout();
+
+// A click describes the person in the host's own status line.
+diagram->onNodeClick = [d = diagram.get()](const std::string& id) {
+    const int ties = d->GetNodeDegree(id);
+    (void)ties;   // "<name> - <interest>. <ties> ties, in <circle>."
+};
+```
 
 ### Card nodes with icons, without overlaps (2.3.0)
 
@@ -56402,6 +56725,10 @@ designs and one of four palettes.
   - [How a cell shows it](#how-a-cell-shows-it)
   - [The legend, totals and level bars](#the-legend-totals-and-level-bars)
   - [Showing it to a wider room](#showing-it-to-a-wider-room)
+- [Calibration: moving people](#calibration-moving-people)
+  - [The keyboard](#the-keyboard)
+  - [Everyone behind "+N more"](#everyone-behind-n-more)
+- [Files: JSON and CSV](#files-json-and-csv)
 - [What is not built yet](#what-is-not-built-yet)
 
 ## Which element do I want?
@@ -56663,14 +56990,110 @@ should not see names, call `SetAnonymised(true)`. `Names` then shows as
 counts, and no person answers the pointer or a click, so no tooltip gives a
 name away. The demo's sample team is invented.
 
+## Calibration: moving people
+
+In a calibration meeting the boxes are argued over and people are moved.
+Moving is off by default, because it is the one interaction that changes
+data. `SetAllowItemDrag(true)` turns it on for a person drawn as a dot or a
+name; it never works while the matrix is anonymised.
+
+- **Drag** a person to another box. The box under the pointer gets a dashed
+  outline, and the person follows the pointer with their name. A press
+  becomes a drag only after a few pixels, so a click is still a click.
+  `onItemClick` then fires on the release, not on the press.
+- **Ctrl+arrows** move the selected person one box on screen. A click on a
+  person selects them (`SetSelectedItem`, `GetSelectedItem`).
+- **`MoveItem(index, cell)`** moves someone from code, whatever
+  `SetAllowItemDrag` says.
+
+Every move asks `onItemMove` first. Return false to veto it: the person stays
+where they were, and nothing changes. When it returns true, the person gets
+the target as an explicit cell (`row`, `col`), and their scores stay in the
+data beside it. That is the calibration rule from the model: the meeting
+overrides the formula, and the override can be seen.
+
+```cpp
+matrix->SetAllowItemDrag(true);
+matrix->onItemMove = [](const PerformanceMatrixItem& person,
+                        const PerformanceCellRef& from, const PerformanceCellRef& to) {
+    // The application decides: permissions, a locked review cycle, a cap.
+    return !(to.row == 2 && to.col == 2 && person.group == "Contractors");
+};
+```
+
+The demo's veto holds the top box to its target share: a move into a full top
+box is refused, and the sidebar says why.
+
+### The keyboard
+
+A click gives the matrix the focus. The arrows then move the cell selection
+in screen order; the first press selects the top-left box. Enter (or Space)
+activates the selected person (`onItemClick`) or, without one, the selected
+box (`onCellClick`). Escape steps back one thing at a time: a drag in
+progress, then the selected person, then the selected box.
+
+### Everyone behind "+N more"
+
+A box that cannot draw all its people ends with "+N" (dots) or "+N more"
+(names). A click on that mark calls `onOverflowClick` with the box and
+everyone in it, in model order. `GetCellItems(ref)` gives the same list at any
+time. Hidden groups are left out of both. No list is offered while
+anonymised.
+
+```cpp
+matrix->onOverflowClick = [](const PerformanceCellRef& box, const std::vector<size_t>& people) {
+    // Fill a list view with the people, for example.
+    (void)box;
+    (void)people;
+};
+```
+
+## Files: JSON and CSV
+
+The model functions take and return text. Reading and writing the file
+itself is `UltraCanvasFileLoader`'s job, as for every file a user opens or
+saves.
+
+**JSON** carries the whole model: the title, both axes with their levels,
+score ranges and bounds, the cells, the people and the target distribution.
+
+```cpp
+const std::string json = ExportPerformanceMatrixJson(matrix->GetModel());
+PerformanceMatrixModel opened;
+std::string error;
+if (ImportPerformanceMatrixJson(json, opened, &error)) matrix->SetModel(opened);
+```
+
+The document starts with `"format": "ultracanvas-performance-matrix"` and
+`"version": 1`. A cell or person names its row and column by level index.
+In a file written by hand, a level id or label works there too. Empty text,
+default numbers and transparent colours are left out. A file of another
+format, a newer version, an unreadable colour, a row that names no level, or
+a model that does not pass `Validate()` is refused with the reason, and the
+output model is left untouched.
+
+**CSV** carries the people alone, one per line, for a spreadsheet:
+
+```
+id,label,group,row,column,x,y,note
+p1,Avery Lund,Engineering,,,4.6,4.5,
+p31,Emery Voss,Engineering,High,High,3.9,4,Moved in calibration
+```
+
+`row` and `column` are the explicit cell, given as a level id, label or
+index. Leave them empty to place the person by the scores `x` and `y`.
+`ImportPerformanceItemsCsv` takes the columns in any order and letter case,
+and only `label` (or `id`) is required. It skips a byte-order mark and blank
+lines. Scores are dot-decimal whatever the locale, so `"1,5"` is refused,
+not read as 1. A line with the wrong number of fields, a level the axis does
+not have, or a person with no place is refused, with the line number. The
+people are replaced only when the whole file reads. An item's colour is not
+part of the CSV; the JSON keeps it.
+
 ## What is not built yet
 
-The reference cards and the population are built. Still to come, as the
-proposal's Phase 3:
-
-- **Calibration:** dragging a person to another box, with a veto callback;
-  keyboard navigation; a scrollable list behind a cell's "+N more".
-- **Interchange:** JSON and CSV through `UltraCanvasFileLoader`.
+All three phases of the proposal are built. Not planned: editing cell text in
+place on the chart (the proposal's Q4) — edit the model and call `SetModel`.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasPertChartExamples.md
@@ -62677,6 +63100,16 @@ editor->ToggleCodeBlock("cpp");
 Each applies to every block the selection touches. A selection that ends exactly
 at the start of a block does not include it, which is what users expect when
 they drag down to the next paragraph.
+
+Tracking - extra room between every two letters of the whole text, as a drawing
+program's letter spacing - is part of the element's style, in pixels at 100%
+(ArtCreator sets it for the text typed on its page):
+
+```cpp
+RichTextEditStyle style = editor->GetStyle();
+style.letterSpacing = 1.5f;                     // 0 = the font's own spacing
+editor->SetStyle(style);
+```
 
 ### Named styles
 
@@ -72046,6 +72479,21 @@ FontStyle code = app->GetDefaultMonospacedFontStyle();    // Consolas, the GNOME
 Sizes are in points, as the text engine takes them. Both are read once
 and cached for the process.
 
+```cpp
+FontStyle pinned;
+pinned.fontFamily = "Ubuntu";
+pinned.fontSize = 12.0;
+app->SetSystemFontStyle(pinned);                 // what GetSystemFontStyle() answers from now on
+app->SetDefaultMonospacedFontStyle(pinned);      // an empty family or a size of 0 is ignored
+```
+
+`SetSystemFontStyle` and `SetDefaultMonospacedFontStyle` pin the answers
+instead of the desktop's fonts: for a program that brings its own, or a
+test that measures text and must not depend on whatever font the machine
+has. The demo's layout audit (`UltraCanvasDemo --audit-layout`) pins the
+bundled Ubuntu 12 and Ubuntu Mono 12, so its pages are measured in the
+font they were laid out for, whatever the runner's desktop font is.
+
 ## What each platform reads
 
 | Platform | Interface font | Monospace font |
@@ -74117,6 +74565,100 @@ unescaped, and the document view typesets them.
 - **2.0.0** (2024-12-20): Added syntax highlighting and themes
 - **1.5.0**: Added line numbers and word wrap
 - **1.0.0**: Initial implementation with basic editing
+
+==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasTextFormatBar.md
+==============================================================================
+
+# UltraCanvasTextFormatBar
+
+## What it is
+
+The bar a program shows over text the user sets on a canvas, a page or a video
+frame: **Font** (every installed family, each shown in itself), **Size**,
+**Bold**, **Italic**, **Underline**, **Strikethrough**, **Align** left / centre
+/ right, **Line spacing** (% of the size) and **Letter spacing**, in one row.
+ArtCreator, UltraPaint and UltraVideo show it while their text tool is active.
+
+It edits a `TextFormat` and reports every change with the attribute that
+changed. It never touches the text itself: what a change goes to - the selected
+words of the text being typed, the whole text, the selected objects - is the
+host's to decide.
+
+## A host typing on a canvas
+
+The usual host - a window class, whose members the callbacks reach through
+`this` - lays an `UltraCanvasRichTextEdit` over its canvas where the text
+lies and applies the bar to it. A character attribute (Font to Strikethrough)
+goes to the selected words through `TextFormatCharDelta`; alignment and the
+spacings belong to the whole text. `TextFormatAtCaret` gives the bar the format
+at the editor's caret, and `onControlDone` hands the keyboard back to the text
+once a control of the bar is finished with it.
+
+<!-- doc-check: std::shared_ptr<UltraCanvasRichTextEdit> editor; std::shared_ptr<UltraCanvasContainer> window; TextFormat textBase; void ApplyToWholeText(TextFormatAttribute attribute, const TextFormat& format); -->
+```cpp
+auto bar = CreateTextFormatBar("text-bar");
+bar->SetSizeUnit(" px", 1, 2000, 0, 1);            // a bitmap editor's sizes
+window->AddChild(bar);
+
+bar->onFormatChanged = [this](TextFormatAttribute attribute, const TextFormat& format) {
+    if (IsCharacterAttribute(attribute) && editor->HasSelection()) {
+        // The selected words take it (0.75 pt a pixel).
+        editor->ApplyCharFormat(TextFormatCharDelta(attribute, format, 0.75f));
+    } else {
+        ApplyToWholeText(attribute, format);       // the host's own
+    }
+};
+bar->onControlDone = [this]() { editor->SetFocus(true); };
+
+// The bar follows the caret.
+editor->onSelectionChanged = [this, bar = bar.get()]() {
+    bar->SetFormat(TextFormatAtCaret(editor->GetFormatState(), textBase, 0.75f));
+};
+```
+
+## What a host cannot draw
+
+A host whose renderer cannot draw an attribute hides its control, so the bar
+never offers what the result would not show:
+
+<!-- doc-check: std::shared_ptr<UltraCanvasTextFormatBar> bar; -->
+```cpp
+bar->SetAttributeVisible(TextFormatAttribute::LetterSpacing, false);
+bar->SetAttributeVisible(TextFormatAttribute::Underline, false);
+```
+
+The rule between two groups goes with them when a whole group is hidden.
+
+## Units
+
+Sizes are in the host's unit: `SetSizeUnit(suffix, minimum, maximum, decimals,
+step)` - points in a drawing, pixels in a bitmap. Letter spacing takes the same
+unit unless `SetLetterSpacingUnit` gives it its own. Line spacing is always a
+percentage of the size from one baseline to the next (120 % is the common
+default).
+
+## The Font list
+
+Every family `GetInstalledFontFamilies()` reports, after the generic "Sans",
+"Serif" and "Monospace", each drawn in itself (`DropdownItem::fontFamily`). The
+dropdown prepares those previews lazily: once the bar is on screen, in small
+idle slices, the rows the list opens on first - see *A font list* in
+[UltraCanvasDropDownExamples.md](UltraCanvasDropDownExamples.md). A format
+naming a font this computer lacks shows it at the top of the list, marked as
+not installed. `RefreshFonts()` reads the installed fonts again.
+
+## Narrow places
+
+The controls take about 860 pixels. In a narrower place the Font list gives up
+width first, down to 90 pixels, so every other control stays in reach.
+
+## Look
+
+The bar takes its ground, ink and controls from a theme
+(`ApplyTheme(UltraCanvasTheme)`; the current theme when it is built): in a dark
+program it is dark, and its icons (`media/icons/textformat/`) take the ink. A
+host may still set its own ground with `SetBackgroundColor`.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasTextInputExamples.md
@@ -80765,6 +81307,7 @@ doc file name. For the prose on a given element, use
 | Single-line text | `UltraCanvasTextInput` | `UltraCanvasTextInput.h` |
 | Multi-line text or code | `UltraCanvasTextArea` | `UltraCanvasTextArea.h` |
 | A **formatted document** edited as it looks — fonts, sizes, colours, headings, lists, tables, images ([doc](UltraCanvasRichTextEdit.md)) | `UltraCanvasRichTextEdit` | `UltraCanvasRichTextEdit.h` |
+| The **text formatting bar** over text the user sets — Font (every installed family, each shown in itself), Size, Bold, Italic, Underline, Strikethrough, alignment, line and letter spacing; reports each change, helpers for an `UltraCanvasRichTextEdit` typed on a canvas ([doc](UltraCanvasTextFormatBar.md)) | `UltraCanvasTextFormatBar` | `UltraCanvasTextFormatBar.h` |
 | Text with a suggestion list | `UltraCanvasAutoComplete` | `UltraCanvasAutoComplete.h` |
 | Tokens / tags typed into a field | `UltraCanvasTagInput` | `UltraCanvasChip.h` |
 | A number with up/down steppers | `UltraCanvasSpinner` | `UltraCanvasSpinner.h` |
@@ -80798,7 +81341,7 @@ from an external "Show password" checkbox. See
 | Checkbox | `UltraCanvasCheckbox` | `UltraCanvasCheckbox.h` |
 | Radio button / group | `UltraCanvasRadio`, `UltraCanvasRadioGroup` | `UltraCanvasRadio.h` |
 | On-off switch | `UltraCanvasSwitch` | `UltraCanvasSwitch.h` |
-| Pick one of a list | `UltraCanvasDropdown` | `UltraCanvasDropdown.h` |
+| Pick one of a list (a row can be drawn in a font of its own: a font list, `DropdownItem::fontFamily`) | `UltraCanvasDropdown` | `UltraCanvasDropdown.h` |
 | Pick one of a few, shown side by side | `UltraCanvasSegmentedControl` | `UltraCanvasSegmentedControl.h` |
 | Pick one (or several) of a row of chips - categories, filters, tags ([doc](UltraCanvasChipGroup.md)) | `UltraCanvasChipGroup` | `UltraCanvasChipGroup.h` |
 | A value on a range | `UltraCanvasSlider` | `UltraCanvasSlider.h` |
@@ -100087,6 +100630,55 @@ std::string font = VideoFX_GetDefaultFontPath();               // what will be u
 Text overlays need an FFmpeg built with libfreetype (the usual Linux, macOS
 and MSYS2 packages are); ask `VideoFX_IsTextOverlayAvailable()`.
 
+### Text drawn by the host: fonts, styles, spacing
+
+FFmpeg's text filter draws one font file, plain, left-aligned. A text
+overlay can carry more - what a word processor sets - and have the host draw
+it:
+
+| Field | Meaning |
+|---|---|
+| `fontFamily` | The font by name. A text overlay that names one is drawn by the host's text renderer, when one is installed |
+| `richText`, `richTextHeight` | The words with their own fonts, sizes and styles - bold, italic, underline, strikethrough on any word - as HTML; `text` stays their plain text. A word's own size was set for a frame `richTextHeight` pixels high and scales with the frame |
+| `textAlign` | The lines: 0 left, 1 centred, 2 right |
+| `lineSpacing` | % of a line's largest letters from one baseline to the next (0: the font's own) |
+| `letterSpacing` | Added between letters, a share of the frame's height, like `fontSize` |
+
+```cpp
+// The host draws: true and an RGBA picture of the text as it lies over the
+// frame (its shadow and band too), or false to leave it to the text filter
+VideoFX_SetTextRenderer([](const VideoFXOverlay& o, int frameHeight, VideoFXFrame& picture) {
+    if (o.fontFamily.empty()) return false;
+    picture = MyTextEngine::Draw(o, frameHeight);
+    return true;
+});
+```
+
+What the renderer draws is laid over the frame as a picture, placed, timed,
+faded and dimmed as the text overlay was, sized as a share of the frame's
+height. `VideoFXExportJob::Start`, `VideoFX_Export`, `VideoFX_RenderProject`
+and `VideoFXPreview::Open` ask it on the **calling thread** - the export's own
+thread never does - so a renderer on a UI toolkit works from the UI thread;
+`VideoFX_DrawTextOverlays(segments, frameHeight)` does the same for a host
+that wants to see the result. Without a renderer such an overlay is drawn
+plain by the text filter, in `fontPath` or the default font. The fields are
+saved in project files.
+
+**UltraCanvas's renderer.** `VideoFX/ultracanvas/VideoFXUltraCanvasText.h`
+(the `VideoFXUltraCanvasText` library, built in the UltraCanvas tree) draws
+such an overlay with the `UltraCanvasRichTextEdit` that types it on a frame,
+its shadow and band as the text filter drew them:
+`VideoFX_UseUltraCanvasText()` installs it. UltraVideo does, and so does the
+`videofx` tool when built with UltraCanvas, so a project renders on the
+command line exactly as UltraVideo shows it (`videofx --version` says which).
+In a program without an `UltraCanvasApplication` - the tool - it first does
+what an application's start does for text
+(`RegisterBundledFontsWithoutApplication`): the bundled fonts and the system's,
+registered by the same per-platform code the applications run
+(`RegisterPlatformBundledFonts` - CoreText on macOS, fontconfig with the
+Windows font folders on Windows). VideoFX itself stays free of
+UltraCanvas: a VideoFX built on its own draws these titles plain.
+
 ---
 
 ## Export settings
@@ -100334,7 +100926,12 @@ videofx slideshow trip.mp4 *.jpg --music song.mp3 --beat-sync --save-project tri
 videofx project trip.vfxproj            # summary; exit status 1 if media are missing
 videofx render trip.vfxproj             # to the output it was saved with
 videofx render trip.vfxproj draft.mp4   # somewhere else
+videofx render trip.ultravideo          # a program's file around the engine's project
 ```
+
+A program's own project file that carries the engine's project under
+`"project"` - UltraVideo's `.ultravideo`, around its bin and its lanes - is
+read for that project, its media paths relative to the same file.
 
 ---
 
@@ -105748,10 +106345,29 @@ A title is one span on the title lane: drag it to its time, drag its edges
 for its length, split it with `S`, delete it with `Del`. Its text, style,
 place on the frame (the nine anchors), size, colour, shadow, band and
 fades are in the inspector. When the engine renders - in the viewer and in
-the export - the span becomes a text overlay on every clip it crosses,
+the export - the span becomes an overlay on every clip it crosses,
 with the fades only at the span's own ends, so a title runs across a cut
-without a seam. The project file keeps the spans and writes the overlays
-beside them for `videofx render`.
+without a seam.
+
+**Type a title on the frame**: double-click it in the viewer (or its span on
+the title lane) and the words lie over the picture where the title shows, at
+the viewer's scale, in its font and colour; the title leaves the frame
+meanwhile. The **text bar** over the viewer - the framework's
+`UltraCanvasTextFormatBar`, the one ArtCreator and UltraPaint show - sets the
+font (every installed font, each shown in itself), size (pixels of the
+project's frame), bold, italic, underline, strikethrough, alignment, line
+spacing and letter spacing: of the selected words, else of the whole title;
+with no title being typed, of the selected title as one undo step. Escape,
+Ctrl+Enter or a click outside puts the words in the video.
+
+A title is drawn by UltraCanvas's text engine - the editor that types it -
+as the engine's text renderer (`VideoFXUltraCanvasText`), into a picture laid
+over the frame, so the viewer, the export and the words being typed agree;
+the shadow and band are drawn into it, for the export's own height. The
+project file keeps the spans with their words, and the engine's project in
+it carries each title's formatting on its text overlay: `videofx render
+trip.ultravideo` draws the titles the same way, being built with
+UltraCanvas.
 
 ### Overlay video
 

@@ -1,5 +1,6 @@
 // Apps/DemoApp/UltraCanvasDemo.cpp
 // Comprehensive demonstration program implementation
+// Version: 1.0.18 - Info Graphics > Performance Matrix and Charts > Importance-Performance Chart: fully implemented
 // Version: 1.0.17 - Info Graphics > Performance Matrix: the Calibration variant
 // Version: 1.0.16 - Bitmap Elements > JPEG XL Images (sample: media/images/jxl_art2.jxl)
 // Version: 1.0.15 - Info Graphics > Performance Matrix: the element replaces the placeholder
@@ -14,7 +15,7 @@
 // Version: 1.0.8 - Browser build: the window fills the viewport; the audio, video and STL pages
 //                 stay out, and a category left without pages gets no tree node
 // Version: 1.0.7 - Run(showInfoWindow): no About window when the command line opens a page
-// Last Modified: 2026-10-27
+// Last Modified: 2026-11-03
 // V1.0.6: the header title wraps a long page description instead of cutting it off
 // V1.0.5: event.targetWindow read via weak_ptr lock()
 // V1.0.4: mainContainer scrollbars disabled (it is a pure layout wrapper and must
@@ -1451,7 +1452,7 @@ namespace UltraCanvas {
         chartBuilder.AddItem("importanceperformance", "Importance-Performance Chart",
                              "Slack's importance-performance matrix: service factors over "
                              "urgent action / improve / appropriate / excess zones",
-                             ImplementationStatus::PartiallyImplemented,
+                             ImplementationStatus::FullyImplemented,
                              [this]() { return CreateImportancePerformanceChartExamples(); },
                              "DemoApp/UltraCanvasImportancePerformanceChartExamples.cpp",
                              "Docs/UltraCanvas/UltraCanvasImportancePerformanceChart.md")
@@ -1832,11 +1833,11 @@ namespace UltraCanvas {
         infoBuilder.AddItem("performancematrix", "Performance Matrix",
                             "9-box, performance vs potential, performance management and talent "
                             "review matrices: named categories where two rated axes cross",
-                            ImplementationStatus::PartiallyImplemented,
+                            ImplementationStatus::FullyImplemented,
                             [this]() { return CreatePerformanceMatrixExamples(); },
                             "DemoApp/UltraCanvasPerformanceMatrixExamples.cpp",
                             "Docs/UltraCanvas/UltraCanvasPerformanceMatrix.md")
-                .AddVariant("performancematrix", "Calibration (a team in the boxes)")
+                .AddVariant("performancematrix", "Calibration (move people, open and save files)")
                 .AddVariant("performancematrix", "9-Box (Grid)")
                 .AddVariant("performancematrix", "Performance vs Potential (Tiles)")
                 .AddVariant("performancematrix", "Performance Management (Header Tabs)")

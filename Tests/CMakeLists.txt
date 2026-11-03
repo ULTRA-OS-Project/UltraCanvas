@@ -3519,14 +3519,24 @@ message(STATUS "    Test registered: MatrixModelTest")
 
 # ===== PERFORMANCE MATRIX MODEL TEST =====
 # The performance matrix model: sparse cells, the rank from the best corner,
-# validation and the shipped samples. UI-free.
+# validation, the population, the JSON and CSV interchange and the shipped
+# samples. UI-free: the JSON wrapper and its vendored engine are compiled in
+# directly, as MatrixModelTest does.
 message(STATUS "  Building PerformanceMatrixModelTest...")
 add_executable(PerformanceMatrixModelTest
     ${CMAKE_CURRENT_SOURCE_DIR}/PerformanceMatrixModelTest.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Diagrams/UltraCanvasPerformanceMatrixModel.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/core/DataFormats/UltraCanvasJSON.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/yyjson/yyjson.c
 )
-target_include_directories(PerformanceMatrixModelTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_include_directories(PerformanceMatrixModelTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/yyjson
+)
 target_compile_features(PerformanceMatrixModelTest PRIVATE cxx_std_20)
+# The CSV scores are read and written through the locale-independent number
+# helpers in the UI-free text utilities.
+target_link_libraries(PerformanceMatrixModelTest PRIVATE UltraCanvasTextUtils)
 set_target_properties(PerformanceMatrixModelTest PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
@@ -3628,7 +3638,7 @@ if(TARGET VideoFX AND ULTRACANVAS_LIBRARY)
         ${ULTRACANVAS_ROOT}/Apps/UltraVideo
         ${ULTRACANVAS_INCLUDE_DIR}
     )
-    target_link_libraries(UltraVideoDraftTest PRIVATE ${ULTRACANVAS_LIBRARY} VideoFX::VideoFX)
+    target_link_libraries(UltraVideoDraftTest PRIVATE ${ULTRACANVAS_LIBRARY} VideoFX::VideoFX VideoFXUltraCanvasText)
     target_compile_features(UltraVideoDraftTest PRIVATE cxx_std_20)
     set_target_properties(UltraVideoDraftTest PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY ${VIDEOFX_RUNTIME_DIR}
@@ -6507,6 +6517,51 @@ if(TARGET UltraCanvas)
     message(STATUS "    Test registered: MediaViewerToolsTest")
 else()
     message(STATUS "  MediaViewerToolsTest skipped (UltraCanvas target not present)")
+endif()
+
+# MediaViewerDetailsPanelTest - the Details panel is a group box (the title as
+# its caption, a close button), a GIF's colour table is shown as swatches, and
+# a Markdown table's header fill meets its one-pixel grid. Headless.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building MediaViewerDetailsPanelTest...")
+    add_executable(MediaViewerDetailsPanelTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/MediaViewerDetailsPanelTest.cpp
+    )
+    target_include_directories(MediaViewerDetailsPanelTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(MediaViewerDetailsPanelTest PRIVATE cxx_std_20)
+    target_compile_definitions(MediaViewerDetailsPanelTest PRIVATE
+        UC_MEDIA_DIR="${ULTRACANVAS_ROOT}/media")
+    target_link_libraries(MediaViewerDetailsPanelTest PRIVATE UltraCanvas)
+    set_target_properties(MediaViewerDetailsPanelTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME MediaViewerDetailsPanelTest COMMAND MediaViewerDetailsPanelTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: MediaViewerDetailsPanelTest")
+else()
+    message(STATUS "  MediaViewerDetailsPanelTest skipped (UltraCanvas target not present)")
+endif()
+
+# MediaViewerLoadingTest - OpenFileWhenShown: a loading ring and the file's
+# name (never "No media") until a frame is drawn, then the file opens. Xvfb.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building MediaViewerLoadingTest...")
+    add_executable(MediaViewerLoadingTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/MediaViewerLoadingTest.cpp
+    )
+    target_include_directories(MediaViewerLoadingTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(MediaViewerLoadingTest PRIVATE cxx_std_20)
+    target_compile_definitions(MediaViewerLoadingTest PRIVATE
+        UC_MEDIA_DIR="${ULTRACANVAS_ROOT}/media")
+    target_link_libraries(MediaViewerLoadingTest PRIVATE UltraCanvas)
+    set_target_properties(MediaViewerLoadingTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME MediaViewerLoadingTest COMMAND MediaViewerLoadingTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: MediaViewerLoadingTest")
+else()
+    message(STATUS "  MediaViewerLoadingTest skipped (UltraCanvas target not present)")
 endif()
 
 # OutlookMessageTest - the Outlook .msg reader (UltraCanvasOutlookMessage.h):

@@ -3,12 +3,14 @@
 // feeds it the command-line paths. Everything else — browsing, slideshow,
 // zoom, image adjustments, the per-kind display views and the audio/video
 // player transport controls — lives in the viewer widget.
+// Version: 1.3.0 - the window shows at once with a loading ring and the file's name, and
+//                  opens the file after that; the title names the file on show
 // Version: 1.2.0 - the settings dialog behind the viewer's gear: how long before
 //                  Unlock's passwords are forgotten (UltraViewerSettings)
 // Version: 1.1.0 - ShowPaths / BringForward (what a second start hands over);
 //                  a folder is told apart through PathFromUtf8
 // Version: 1.0.0
-// Last Modified: 2026-10-14
+// Last Modified: 2026-11-03
 // Author: UltraCanvas Framework
 
 #include "UltraViewerWindow.h"
@@ -59,9 +61,18 @@ bool UltraViewerWindow::Initialize(const std::vector<std::string>& paths) {
     settings.Load();
     ApplySettings();
     viewer->SetSettingsAction([this]() { ShowSettings(); });
+    // "<file> - UltraViewer <version>", following the file on show.
+    UltraCanvasWindow* titled = window.get();
+    viewer->onCurrentFileChanged = [titled](const std::string& path) {
+        const std::string name = PathToUtf8(PathFromUtf8(path).filename());
+        titled->SetWindowTitle(name.empty() ? std::string("UltraViewer " ULTRAVIEWER_VERSION)
+                                            : name + " - UltraViewer " ULTRAVIEWER_VERSION);
+    };
 
-    // Open whatever the command line brought. The viewer handles the rest
-    // (drag & drop, the Open dialog, arrow-key browsing).
+    // Open whatever the command line brought - once the window is up: until
+    // then it shows a loading ring and the file's name rather than holding
+    // the window back while a large folder is read. The viewer handles the
+    // rest (drag & drop, the Open dialog, arrow-key browsing).
     ShowPaths(paths);
     return true;
 }
@@ -70,10 +81,10 @@ void UltraViewerWindow::ShowPaths(const std::vector<std::string>& paths) {
     if (!viewer) return;
     if (paths.size() == 1) {
         std::error_code ec;
-        if (fs::is_directory(PathFromUtf8(paths.front()), ec)) viewer->OpenFolder(paths.front());
-        else                                                   viewer->OpenFile(paths.front());
+        if (fs::is_directory(PathFromUtf8(paths.front()), ec)) viewer->OpenFolderWhenShown(paths.front());
+        else                                                   viewer->OpenFileWhenShown(paths.front());
     } else if (paths.size() > 1) {
-        viewer->SetFiles(paths, 0);
+        viewer->SetFilesWhenShown(paths, 0);
     }
 }
 

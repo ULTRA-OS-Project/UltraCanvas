@@ -10,6 +10,8 @@
 // joining segments of different sizes, GIF / WAV / WebM-free outputs, the
 // lossless cut, cancellation, the background job, a UTF-8 file name, and the
 // error codes. No media file from the repository is needed.
+// Version: 0.18.0 - a text overlay's formatting in project files, a host's text renderer
+//                  (VideoFX_SetTextRenderer / VideoFX_DrawTextOverlays), a program's file around the project
 // Version: 0.17.0 - VideoFXFrameRecorder: frames pushed with their time land on the
 //                  file's ticks, BGRA as RGBA, an odd size made even, duplicates dropped
 // Version: 0.16.2 - a clip re-exported over an old file of the same name has its faces looked for afresh
@@ -22,7 +24,7 @@
 // Version: 0.14.0 - VideoFX_GetFileFormats: every type it writes written and read back;
 //                  VideoFX_SetPictureReader: picture types the application reads
 // Version: 0.13.0
-// Last Modified: 2026-10-16
+// Last Modified: 2026-11-03
 // Author: UltraCanvas Framework
 
 #include "VideoFX/VideoFX.h"
@@ -979,6 +981,62 @@ static void TestProjectFiles() {
           "text where a number belongs refused");
     VideoFXProject memory = VideoFXProject::FromTimeline({VideoFXSegment::FromImageFrame(SolidFrame(8, 8, 1, 2, 3), 1.0)});
     CHECK(VideoFX_ProjectToJson(memory, json) == VideoFXResult::InvalidArgument, "a photo held only in memory refused");
+
+    // ---- a text overlay's formatting, and a program's file around the project ----
+    {
+        VideoFXSegment card = VideoFXSegment::SolidColor(0x202020, 2.0);
+        VideoFXOverlay title = VideoFXOverlay::Text("Summer trip", VideoFXAnchor::Bottom, 0.08);
+        title.fontFamily = "Serif";
+        title.richText = "<p><b>Summer</b> trip</p>";
+        title.richTextHeight = 720;
+        title.textAlign = 2;
+        title.lineSpacing = 135.0;
+        title.letterSpacing = 0.003;
+        card.overlays.push_back(title);
+        card.overlays.push_back(VideoFXOverlay::Text("plain"));
+        const VideoFXProject styled = VideoFXProject::FromTimeline({card});
+        std::string text;
+        VideoFXProject back;
+        CHECK(VideoFX_ProjectToJson(styled, text) == VideoFXResult::Ok && VideoFX_ProjectFromJson(text, back) == VideoFXResult::Ok &&
+              back.segments.size() == 1 && back.segments[0].overlays.size() == 2, "a formatted title written and read back");
+        if (back.segments.size() == 1 && back.segments[0].overlays.size() == 2) {
+            const VideoFXOverlay& t = back.segments[0].overlays[0];
+            CHECK(t.fontFamily == "Serif" && t.richText == title.richText && t.richTextHeight == 720 && t.textAlign == 2 &&
+                  Near(t.lineSpacing, 135.0, 1e-12) && Near(t.letterSpacing, 0.003, 1e-12),
+                  "its font, words, alignment and spacings kept");
+            CHECK(back.segments[0].overlays[1].fontFamily.empty() && text.find("\"plain\"") != std::string::npos &&
+                  text.find("\"richText\"") == text.rfind("\"richText\"") && text.find("\"fontFamily\"") == text.rfind("\"fontFamily\""),
+                  "a plain overlay writes none of it");
+        }
+        // UltraVideo's .ultravideo: its own keys around the engine's project
+        const std::string wrapped = "{\"format\": \"ultravideo\", \"version\": 1, \"bin\": [], \"project\": " + text + "}";
+        VideoFXProject inner;
+        CHECK(VideoFX_ProjectFromJson(wrapped, inner) == VideoFXResult::Ok && inner.segments.size() == 1 &&
+              inner.segments[0].overlays.size() == 2 && inner.segments[0].overlays[0].fontFamily == "Serif",
+              "a program's file around the engine's project read for it (videofx render trip.ultravideo)");
+
+        // A host's text renderer draws the overlays it wants, on this thread:
+        // pictures in their place, a share of the frame's height
+        std::vector<VideoFXSegment> segments = inner.segments;
+        VideoFX_DrawTextOverlays(segments, 720);
+        CHECK(segments[0].overlays[0].kind == VideoFXOverlayKind::Text, "no renderer: the text stays text");
+        int asked = 0;
+        VideoFX_SetTextRenderer([&asked](const VideoFXOverlay& o, int frameHeight, VideoFXFrame& picture) {
+            ++asked;
+            if (o.fontFamily.empty()) return false;
+            picture = SolidFrame(200, frameHeight / 10, 255, 255, 255);
+            return true;
+        });
+        CHECK(VideoFX_HasTextRenderer(), "a renderer installed");
+        VideoFX_DrawTextOverlays(segments, 720);
+        const VideoFXOverlay& drawn = segments[0].overlays[0];
+        CHECK(asked == 2 && drawn.kind == VideoFXOverlayKind::Image && drawn.image.IsValid() &&
+              Near(drawn.imageHeight, 72.0 / 720.0, 1e-12) && drawn.anchor == VideoFXAnchor::Bottom &&
+              segments[0].overlays[1].kind == VideoFXOverlayKind::Text,
+              "the renderer's overlay a picture at the text's anchor, a share of the frame; the other left to the text filter");
+        VideoFX_SetTextRenderer(nullptr);
+        CHECK(!VideoFX_HasTextRenderer(), "and taken away");
+    }
 
     // ---- files: written whole, read with missing media reported ----
     const stdfs::path tmp = stdfs::temp_directory_path() /

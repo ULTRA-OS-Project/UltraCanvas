@@ -1,5 +1,6 @@
 // include/UltraCanvasBaseApplication.h
 // Main UltraCanvas Framework Entry Point - Unified System
+// Version: 1.15.0 - SetSystemFontStyle / SetDefaultMonospacedFontStyle pin the system fonts
 // Version: 1.14.0 - UltraCanvasApplication is the Wayland backend under ULTRACANVAS_DISPLAY_WAYLAND
 // Version: 1.13.0 - RunAfterMainLoop(): the platform's step once the main loop has ended
 // Version: 1.12.0 - GenerateBitmapScalingConfig: fontconfig's bitmap-font scaling rules
@@ -10,7 +11,7 @@
 // Version: 1.8.0 - keys aimed at a blocked window go to the modal
 // Version: 1.7.0 - a theme change reaches every window
 // Version: 1.6.0
-// Last Modified: 2026-10-17
+// Last Modified: 2026-11-03
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -143,6 +144,30 @@ namespace UltraCanvas {
     // you by UltraCanvasApplicationBase::RegisterFontFile(); call it directly
     // only after registering a font behind the framework's back.
     void RefreshFontConfiguration();
+
+    // The bundled fonts (kEmbeddedAllFonts in GetBundledFontsDir) made
+    // available to the text engine, the platform's one way - defined once
+    // per platform in OS/<Platform>: fontconfig on Linux, the BSDs, Android
+    // and in the browser; CoreText, for this process only, on macOS; on
+    // Windows fontconfig and GDI, with the Windows font folders, the generic
+    // aliases and a fontconfig-backed Pango font map. An application's start
+    // calls it (LoadBundledFontsNative), and so does
+    // RegisterBundledFontsWithoutApplication. `systemFontsWaitMs` is how long
+    // Windows waits for its system fonts' scan (AdoptSystemFontsWithin);
+    // elsewhere it is not read. Returns how many font files were registered.
+    int RegisterPlatformBundledFonts(int systemFontsWaitMs);
+
+    // What an application's start does for text, in a program that has no
+    // UltraCanvasApplication - a command-line tool that draws text, as the
+    // `videofx` tool draws titles - so it sets text in the fonts, and with the
+    // system fonts, the applications do: the generated fonts.conf where the
+    // system has none (SetupBundledFontconfig), then the platform's
+    // registration (RegisterPlatformBundledFonts) on every platform, macOS
+    // included. A tool has no windows to switch to the system fonts later, so
+    // on Windows it waits for their scan to end. Call it once, first thing,
+    // and only without an application. Returns how many bundled font files
+    // were registered.
+    int RegisterBundledFontsWithoutApplication();
 
     // Watches a file descriptor from within the UltraCanvas event loop. Added so a
     // host integration (e.g. Ladybird's IPC to its WebContent process) can have its
@@ -415,9 +440,16 @@ namespace UltraCanvas {
         void CaptureMouse(UltraCanvasUIElement* element);
         void ReleaseMouse();
 
-        // System font detection
+        // System font detection: the desktop's interface and monospace fonts,
+        // read once and cached. SetSystemFontStyle / SetDefaultMonospacedFontStyle
+        // pin them instead - for a program that brings its own, or a test that
+        // measures text and must not depend on whatever font the machine has
+        // (the demo's layout audit pins the bundled Ubuntu 12). An empty
+        // family or a size of 0 is ignored.
         FontStyle GetSystemFontStyle();
         FontStyle GetDefaultMonospacedFontStyle();
+        void SetSystemFontStyle(const FontStyle& style);
+        void SetDefaultMonospacedFontStyle(const FontStyle& style);
 
         // ===== RUNTIME FONT REGISTRATION =====
         // Makes the faces in a font file usable by name for the rest of this

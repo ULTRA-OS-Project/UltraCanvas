@@ -1,5 +1,7 @@
 // core/UltraCanvasTextArea.cpp
 // Advanced text area component with syntax highlighting and full UTF-8 support
+// Version: 3.12.1 - Markdown tables: the grid in the border colour on pixel centres, the
+//                 header fill meeting the rule under it
 // Version: 3.12.0 - hidden characters: spaces, tabs, no-break and zero-width
 //                 characters and line ends marked over the text (SetShowHiddenCharacters);
 //                 a tooltip over a mark gives the character's name and code
@@ -21,7 +23,7 @@
 //                 says "Remote image:" / "Missing image:" instead of "🌐" / "⚠"
 // Version: 3.7.3 - style.scrollbarWidth / scrollbarCornerRadius / scrollbarThumbInset
 //                 replace the fixed 15px square scrollbar
-// Last Modified: 2026-10-14
+// Last Modified: 2026-11-03
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasTextArea.h"
@@ -4463,25 +4465,34 @@ namespace UltraCanvas {
                 }
                 const Color& tableBorderColor = markdownStyle.tableBorderColor;
                 const Color& tableHeaderBg    = markdownStyle.tableHeaderBackground;
+                // Every rule of the grid is one pixel wide in the border colour,
+                // drawn on a pixel centre (x + 0.5) so it covers exactly one column
+                // or row of pixels: on a whole coordinate a 1 px line smears over
+                // two at half strength and the header fill no longer meets it.
+                const double rowTop    = static_cast<double>(posOrigin.y);
+                const double rowBottom = rowTop + static_cast<double>(tbl->bounds.height);
+                const double rowLeft   = static_cast<double>(posOrigin.x);
+                const double rowRight  = rowLeft + static_cast<double>(tbl->bounds.width);
+                ctx->PushState();
+                ctx->SetStrokeWidth(1.0f);
+                auto hRule = [&](double y) {
+                    ctx->DrawLine(Point2Dd(rowLeft, y + 0.5), Point2Dd(rowRight, y + 0.5),
+                                  tableBorderColor);
+                };
 
-                // Header row background tint.
+                // Header row background: the whole row, so it meets the rule
+                // under it (the separator row's top edge) and the dividers.
                 if (line->layoutType == LineLayoutType::TableHederRow) {
-                    ctx->DrawFilledRectangle(
-                        Rect2Dd(static_cast<float>(posOrigin.x),
-                                static_cast<float>(posOrigin.y),
-                                static_cast<float>(tbl->bounds.width),
-                                static_cast<float>(tbl->bounds.height)),
-                        tableHeaderBg, 0.0f, Colors::Transparent);
+                    ctx->SetFillPaint(tableHeaderBg);
+                    ctx->FillRectangle(Rect2Dd(rowLeft, rowTop,
+                                               static_cast<double>(tbl->bounds.width),
+                                               static_cast<double>(tbl->bounds.height)));
                 }
 
                 if (line->layoutType == LineLayoutType::TableSeparatorRow) {
-                    int midY = posOrigin.y + tbl->bounds.height / 2;
-                    ctx->DrawLine(
-                        Point2Dd(static_cast<float>(posOrigin.x),
-                                 static_cast<float>(midY)),
-                        Point2Dd(static_cast<float>(posOrigin.x + tbl->bounds.width),
-                                 static_cast<float>(midY)),
-                        tableBorderColor);
+                    // The rule under the header sits at the top of the separator
+                    // row, against the header's fill, not in the middle of it.
+                    hRule(rowTop);
                 } else {
                     // Render each cell at its layout-local origin.
                     for (const auto& cell : tbl->cellsLayouts) {
@@ -4501,25 +4512,14 @@ namespace UltraCanvas {
                 for (size_t c = 0; c + 1 < tbl->cellsLayouts.size(); c++) {
                     const auto& cell = tbl->cellsLayouts[c];
                     if (!cell) continue;
-                    int bx = posOrigin.x + cell->bounds.x + cell->bounds.width + cellPadding;
-                    ctx->DrawLine(
-                        Point2Dd(static_cast<float>(bx),
-                                 static_cast<float>(posOrigin.y)),
-                        Point2Dd(static_cast<float>(bx),
-                                 static_cast<float>(posOrigin.y + tbl->bounds.height))
-                        );
+                    const double bx = static_cast<double>(
+                            posOrigin.x + static_cast<int>(cell->bounds.x + cell->bounds.width) + cellPadding) - 0.5;
+                    ctx->DrawLine(Point2Dd(bx, rowTop), Point2Dd(bx, rowBottom), tableBorderColor);
                 }
-                if (line->layoutType != LineLayoutType::TableSeparatorRow) {
-                    if (tbl->lastTableRow) {
-                        int by = posOrigin.y + tbl->bounds.height;
-                        ctx->DrawLine(
-                                Point2Dd(static_cast<float>(posOrigin.x),
-                                         static_cast<float>(by)),
-                                Point2Dd(static_cast<float>(posOrigin.x + tbl->bounds.width),
-                                         static_cast<float>(by)),
-                                tableBorderColor);
-                    }
+                if (line->layoutType != LineLayoutType::TableSeparatorRow && tbl->lastTableRow) {
+                    hRule(rowBottom - 1.0);
                 }
+                ctx->PopState();
                 return;
             }
             case LineLayoutType::MathBlockCollapsed:
