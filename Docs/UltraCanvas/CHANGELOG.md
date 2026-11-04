@@ -1,3 +1,31 @@
+#### 2026-11-04 *0.9.485*
+- **UltraCanvasFilerWidget: the move / copy dialogs are translated whole.**
+  The drop confirmation ("Move 3 items into …?", From / Into / Size, the
+  Copy / Move / Cancel buttons), the copy / move problem dialog, the
+  paste name-conflict dialog (Existing / Pasted rows with their newer /
+  older notes, Merge / Keep both / Replace, the "apply to all remaining
+  conflicts" scope) and the rename name-conflict dialog were English in
+  every language. Every text in them now goes through `Tr` / `TrF` /
+  `TrN` / `TrC` as a whole sentence per verb and kind, names as `{0}`,
+  counts in each language's plural forms; all thirty languages carry
+  them.
+- **UltraCanvasFilerWidget: the summaries a delete, copy or move ends on
+  are translated.** "Deleted 3 of 5 items. 2 were skipped.", the reason
+  beside each skipped item (write-protected, in use by a program, the
+  name already taken), the list caption, the retry and Close buttons, and
+  what a delete as administrator reports were English in every language.
+  They now go through `Tr` / `TrF` / `TrN`: counts in each language's
+  plural forms, the trash by the platform's name in a whole sentence; all
+  thirty languages carry them.
+- **check_locale_catalogues: the standard set must be translated in every
+  language.** An entry of `media/locale/en/Standard.json` that a language
+  lacks now fails the `locale-catalogues` CI gate (a regional variant such
+  as `pt-BR` counts its parent's, as the runtime's fallback walk does): it
+  would show in English to everyone using that language. 111 standard
+  texts that the localisation editor, the text bar, the menu customiser
+  and the media viewer had added untranslated are drafted in all thirty
+  languages, so the gate starts clean.
+
 #### 2026-11-04 *0.9.484*
 - **A delete Windows answers "Access is denied" is no longer taken for a
   permission problem by default.** On Windows that one error stands for four
