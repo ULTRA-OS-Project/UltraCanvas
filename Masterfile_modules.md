@@ -838,6 +838,23 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   (`ParseGtkFontName`, `ParseKdeFontEntry`, `ReadIniValue`), tested without
   a desktop. See `Docs/UltraCanvas/UltraCanvasSystemFont.md`.
 
+  The rest of the desktop's look is `UltraCanvasApplication::GetHostAppearance()`
+  (`UltraCanvasHostAppearance.h`, header-only and pure: `HostAppearance` -
+  dark, high contrast, reduced motion, the accent, the two fonts, the text
+  scale, the source - `DefaultHostAppearance`, `ApplyHostAppearanceOverride`
+  for `ULTRACANVAS_HOST_APPEARANCE`, `HostAppearanceReport`, `ColorFromHex`,
+  the Windows raw-value conversions), filled by `DetectHostAppearanceNative`:
+  the registry, the metrics and DWM on Windows
+  (`OS/MSWindows/UltraCanvasWindowsHostAppearance.cpp`), AppKit on macOS
+  (`OS/MacOS/UltraCanvasMacOSHostAppearance.mm`), the default with the font
+  detectors' fonts elsewhere. The platforms' change events
+  (`WM_SETTINGCHANGE` and its kin, KVO on `effectiveAppearance`) call
+  `ScheduleHostAppearanceRefresh`, one read per burst, and
+  `AddHostAppearanceHandler` hears a difference; the system fonts are the
+  value's. `HostAppearanceTest` covers the pure half. Phase T1 of
+  `Docs/UltraCanvas/UltraCanvasHostThemeProposal.md`; see
+  `Docs/UltraCanvas/UltraCanvasHostAppearance.md`.
+
   Emoji come from a bundled font the emoji setting picks
   (`UltraCanvasEmojiSettings.h`: `EmojiStyle` Colour / Monochrome / System,
   `EmojiSettings::Load` / `Save` on `Emoji.conf` in the UltraCanvas settings

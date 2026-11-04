@@ -1,5 +1,7 @@
 // UltraCanvasApplication.cpp
 // Main UltraCanvas App
+// Version: 1.17.0 - GetHostAppearance / RefreshHostAppearance / the handlers; the system fonts
+//                  served from the host appearance; the start-up report names the host's look
 // Version: 1.16.0 - SetSystemFontStyle / SetDefaultMonospacedFontStyle pin the system fonts
 // Version: 1.15.0 - Initialize loads the translation catalogues (UltraLocalisation)
 // Version: 1.14.0 - RunAfterMainLoop() at the end of Run()
@@ -972,18 +974,81 @@ namespace UltraCanvas {
         return registeredFontFiles_;
     }
 
-    FontStyle UltraCanvasApplicationBase::GetSystemFontStyle() {
-        if (!cachedSystemFontStyle_.has_value()) {
-            cachedSystemFontStyle_ = DetectSystemFontStyleNative();
+    // ===== THE HOST'S LOOK =====
+
+    HostAppearance UltraCanvasApplicationBase::DetectHostAppearanceNative() {
+        HostAppearance host = DefaultHostAppearance();
+        const FontStyle ui = DetectSystemFontStyleNative();
+        const FontStyle mono = DetectMonospacedFontStyleNative();
+        if (!ui.fontFamily.empty() && ui.fontSize > 0) host.uiFont = ui;
+        if (!mono.fontFamily.empty() && mono.fontSize > 0) host.monoFont = mono;
+        return host;
+    }
+
+    namespace {
+        // The platform's answer with the override over it.
+        HostAppearance ReadHostAppearance(UltraCanvasApplicationBase& app, HostAppearance (UltraCanvasApplicationBase::*detect)()) {
+            HostAppearance host = (app.*detect)();
+            if (host.uiFont.fontFamily.empty() || host.uiFont.fontSize <= 0) host.uiFont = DefaultHostAppearance().uiFont;
+            if (host.monoFont.fontFamily.empty() || host.monoFont.fontSize <= 0) host.monoFont = DefaultHostAppearance().monoFont;
+            ApplyHostAppearanceOverride(host, GetEnvUtf8("ULTRACANVAS_HOST_APPEARANCE"));
+            return host;
         }
-        return cachedSystemFontStyle_.value();
+    }
+
+    const HostAppearance& UltraCanvasApplicationBase::GetHostAppearance() {
+        if (!hostAppearance_.has_value()) {
+            hostAppearance_ = ReadHostAppearance(*this, &UltraCanvasApplicationBase::DetectHostAppearanceNative);
+        }
+        return hostAppearance_.value();
+    }
+
+    void UltraCanvasApplicationBase::RefreshHostAppearance() {
+        HostAppearance fresh = ReadHostAppearance(*this, &UltraCanvasApplicationBase::DetectHostAppearanceNative);
+        if (hostAppearance_.has_value() && fresh == hostAppearance_.value()) return;
+        const bool first = !hostAppearance_.has_value();
+        hostAppearance_ = std::move(fresh);
+        if (first) return;   // nothing changed from anyone's point of view: nobody had read it
+        debugOutput << "UltraCanvas: host appearance changed: " << HostAppearanceReport(hostAppearance_.value()) << std::endl;
+        // A copy: a handler may add or remove handlers.
+        const auto handlers = hostAppearanceHandlers_;
+        for (const auto& [id, handler] : handlers) {
+            if (handler) handler(hostAppearance_.value());
+        }
+    }
+
+    void UltraCanvasApplicationBase::ScheduleHostAppearanceRefresh() {
+        // One refresh per burst: Windows sends several WM_SETTINGCHANGE for one
+        // switch to dark, AppKit one notification per changed key.
+        if (hostAppearanceRefreshPending_.exchange(true)) return;
+        PostToUIThread([this]() {
+            hostAppearanceRefreshPending_ = false;
+            RefreshHostAppearance();
+        });
+    }
+
+    int UltraCanvasApplicationBase::AddHostAppearanceHandler(HostAppearanceHandler handler) {
+        if (!handler) return 0;
+        const int id = nextHostAppearanceHandlerId_++;
+        hostAppearanceHandlers_.emplace_back(id, std::move(handler));
+        return id;
+    }
+
+    void UltraCanvasApplicationBase::RemoveHostAppearanceHandler(int id) {
+        hostAppearanceHandlers_.erase(
+            std::remove_if(hostAppearanceHandlers_.begin(), hostAppearanceHandlers_.end(),
+                           [id](const auto& entry) { return entry.first == id; }),
+            hostAppearanceHandlers_.end());
+    }
+
+    FontStyle UltraCanvasApplicationBase::GetSystemFontStyle() {
+        if (cachedSystemFontStyle_.has_value()) return cachedSystemFontStyle_.value();
+        return GetHostAppearance().uiFont;
     }
 
     FontStyle UltraCanvasApplicationBase::GetDefaultMonospacedFontStyle() {
-        if (!cachedMonospacedFontStyle_.has_value()) {
-            cachedMonospacedFontStyle_ = DetectMonospacedFontStyleNative();
-        }
-        return cachedMonospacedFontStyle_.value();
+        if (cachedMonospacedFontStyle_.has_value()) return cachedMonospacedFontStyle_.value();
+        return GetHostAppearance().monoFont;
     }
 
     void UltraCanvasApplicationBase::SetSystemFontStyle(const FontStyle& style) {
@@ -1058,6 +1123,9 @@ namespace UltraCanvas {
             // detection runs, so platform Detect*FontStyleNative() can return
             // the just-registered families.
             LoadBundledFontsNative();
+            // The host's look, read once the bundled fonts are registered (a
+            // platform's font detector may answer one of them), reported.
+            debugOutput << "UltraCanvas: host appearance " << HostAppearanceReport(GetHostAppearance()) << std::endl;
             endStep("bundled and system fonts");
 
             if (!InitializeClipboard()) {
