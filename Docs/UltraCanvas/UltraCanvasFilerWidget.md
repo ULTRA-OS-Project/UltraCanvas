@@ -2218,7 +2218,13 @@ beside them:
   `"X" is write-protected.` — with **Skip** (the default) / **Delete anyway**
   (red) and an *Apply to all remaining write-protected items* checkbox.
   Delete-anyway lifts the protection first, so it also works on Windows, where
-  a read-only file can never be removed directly.
+  a read-only file can never be removed directly. A read-only **folder** is
+  not asked about on Windows: the attribute protects nothing there, and
+  Windows sets it itself on a folder with a `desktop.ini` and on folders
+  copied off a CD or a camera card, so Explorer deletes such a folder without
+  a word - and so does the widget, lifting the attribute as it goes. On Linux
+  and macOS a folder without write permission is a real protection (nothing
+  in it can be deleted) and is asked about.
 - A **failed delete** asks *afterwards* — `"X" could not be deleted.` with
   *Reason: Permission denied* — with **Try again** (the default) / **Skip**
   and an *Apply to all later failures* checkbox. A stored try-again-for-all
@@ -2228,23 +2234,37 @@ beside them:
 - A failure **inside a folder** is reported for the file that refused, not
   the folder: the question reads `"libvips-42.dll" in "lib" could not be
   deleted.` and the facts add a *Stopped at:* line with the file's path under
-  the folder's. A read-only file inside a folder is not a failure at all: it
-  is lifted and removed, as *Delete anyway* lifts the entry's own protection,
-  so a folder unpacked with its read-only bits goes in one pass.
-- A file **a running program holds** — its executable, a DLL it has loaded —
-  answers "Access is denied" on Windows too, but no administrator can delete
-  it either. The worker asks the [lock probe](UltraCanvasFileLock.md) (the
-  Restart Manager) before it decides, and such a file gets **Delete: a file
+  the folder's. A read-only file **or folder** inside a folder is not a
+  failure at all: it is lifted and removed, as *Delete anyway* lifts the
+  entry's own protection, so a folder unpacked with its read-only bits - or
+  copied off a CD or a camera card, or carrying a `desktop.ini` - goes in one
+  pass, as it does in Explorer. Every entry is removed through
+  [`UltraCanvasFileRemoval`](UltraCanvasFileRemoval.md), which also counts
+  an entry Windows still lists as **delete pending** (deleted, but held open
+  by a virus scanner or the indexer) as gone, and waits a moment for the
+  folder it empties.
+- A file **a running program holds** — its executable, a DLL it has loaded, a
+  picture an image library has memory-mapped — answers "Access is denied" on
+  Windows too, but no administrator can delete it either. `UltraCanvasFileRemoval`
+  tells it apart: the system granted the delete access, and only then refused
+  the delete. The program holding it may be this one - the thumbnails and
+  folder previews of the pictures being deleted are decoded by libvips, which
+  keeps what it read mapped - so the widget first lets go of those
+  (`UCImage::ReleaseCachedFiles`) and tries once more on its own. What is
+  still held asks the [lock probe](UltraCanvasFileLock.md) (the Restart
+  Manager) who holds it, and gets **Delete: a file
   in the folder is in use** — `"libvips-42.dll" in "lib" is in use by another
   program.` with *In use by: UltraFiler (4120)* among the facts — with
   **Skip** (the default) / **Try again** and an *Apply to all later files in
   use* checkbox, and no administrator button. When the holder is the running
   application itself the note says so and tells the user to close it and
   delete from elsewhere.
-- A delete that fails with **"Access is denied"** on Windows and is held by
-  nobody is the one Explorer
+- A delete the **access list** refuses (`FileRemovalProblem::NotPermitted` -
+  "Access is denied" before anything was attempted) is the one Explorer
   answers with its shield button: the entry is deletable, just not by this
-  user. Where the host has wired
+  user. Every "Access is denied" used to be taken for this one, and a
+  picture held by the Filer's own thumbnails was handed to the administrator,
+  who got the same answer. Where the host has wired
   [`UltraCanvasElevatedFileOperations`](UltraCanvasElevatedFileOperations.md)
   (UltraFiler has), the dialog is **Delete: administrator permission needed** —
   "Windows asks you to confirm once, at the end, for every item handed to the
@@ -2256,7 +2276,9 @@ beside them:
   Administrator" progress window stands in for the wait, and the widget stays
   responsive because the helper is waited for off the UI thread. What the
   helper still could not delete comes back in the [summary](#the-summary-at-the-end)
-  (*Delete finished*) with the system's reason beside each entry; a declined
+  (*Delete finished*) with the system's reason beside each entry - naming the
+  file inside that refused, and saying "in use by a program" when one holds
+  it; a declined
   prompt is reported through
   `onError` and leaves the entries in place. Sharing violations ("in use by
   another program") are not permission failures and keep the plain dialog,
@@ -2374,6 +2396,36 @@ noticing changes instead of quietly freezing on a listing that no longer
 exists; `IsFolderWatchNative()` then reports `false`. It keeps polling the
 folder even while it is gone, which is what makes the same stick plugged back
 in re-list itself rather than needing a manual refresh.
+
+A folder that is gone while its volume is still there was deleted or renamed,
+from the other pane or by another program, and is not coming back. On its
+next `Refresh()` (what the watch calls when it notices) the display **moves up
+to the nearest folder above it that is still there**, through `SetPath`, so
+`onPathChanged` tells the host. It no longer sits on an empty listing of a
+folder that does not exist. The two cases are told apart by what is left:
+
+- **Windows:** a pulled stick or a dropped share takes its drive root
+  (`E:\`, `\\server\share`) with it, so nothing above the folder is left.
+- **Linux and macOS:** the stick's mount point vanishes too, and the folder
+  left above it is on another device than the one the folder was listed from.
+
+In both cases the display stays and waits, as before. Only a folder the last
+scan listed as a real directory is moved up from. A folder that answers
+neither "there" nor "gone" — one Windows still lists as delete pending, a
+network share that did not reply — is left for the next look. An archive
+interior, a remote drive and a file list never move.
+
+A delete, a move and a folder rename take an
+[`UltraCanvasFolderWatchHold`](UltraCanvasFolderWatcher.md#letting-go-of-a-folder-about-to-change)
+on the folders they change, for as long as they run. Every watch in the
+process on one of those folders or below it lets go, and none starts there
+until the operation ends. That includes another display, such as the second
+pane of a split view, showing a subfolder of the folder being deleted. On
+Windows that watch held the subfolder open. On a FAT or exFAT drive the deleted
+folder then stayed listed as *delete pending*, and on any drive a folder above
+it could not be moved, not even to the Recycle Bin. The display whose watch was
+released moves to polling, as for a lost watch, and so notices that its folder
+is gone.
 
 The rescan itself is held back while the user is busy: no auto-refresh
 interrupts an open rename editor, a running drag or marquee, a context menu, a
