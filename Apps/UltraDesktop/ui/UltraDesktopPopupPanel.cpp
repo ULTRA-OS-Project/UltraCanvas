@@ -1,5 +1,6 @@
 // Apps/UltraDesktop/ui/UltraDesktopPopupPanel.cpp
 // The bars' popup panels' shared window. See the header.
+// Version: 0.2.0 - SetParentWindow (the desktop window places the panel on Wayland)
 // Version: 0.1.1 - SetScreenArea
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -39,6 +40,10 @@ void UltraDesktopPopupPanel::Open(int rightX, int topY) {
     WindowConfig config;
     config.title = title_;
     config.type = WindowType::Borderless;
+#if defined(ULTRACANVAS_DISPLAY_WAYLAND)
+    // A child of the desktop window: the one way to be placed on Wayland.
+    config.parentWindow = parent_;
+#endif
     config.width = width_;
     config.height = height_;
     config.resizable = false;
