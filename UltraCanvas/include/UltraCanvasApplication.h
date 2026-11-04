@@ -68,6 +68,21 @@ namespace UltraCanvas {
     std::string GenerateBitmapScalingConfig();
 #endif
 
+#if defined(_WIN32) || defined(_WIN64)
+    // The Windows font folders - the system's (%SystemRoot%\Fonts) and the
+    // user's (%LOCALAPPDATA%\Microsoft\Windows\Fonts) - and fontconfig's
+    // cache folder as a <fontconfig> document of <dir> and <cachedir>
+    // elements, by path. fontconfig's own keywords for them (WINDOWSFONTDIR,
+    // WINDOWSUSERFONTDIR, LOCAL_APPDATA_FONTCONFIG_CACHE) depend on how the
+    // fontconfig at hand resolves them in a config read from memory, and one
+    // it cannot resolve fails the whole document - the system fonts were
+    // then never loaded. A keyword stands in only where the path is unknown.
+    std::string GenerateWindowsFontFoldersConfig();
+    // The system font folder's path with forward slashes ("C:/WINDOWS/fonts"),
+    // "" when %SystemRoot% is not set.
+    std::string GetWindowsFontsFolder();
+#endif
+
     // Every font family this process can set text in: the fonts installed on
     // the system (TrueType, OpenType, Type 1, ...) with the bundled ones and
     // any added with RegisterFontFile, as the text engine sees them (Pango:
