@@ -8,10 +8,11 @@
 //
 // Usage: VectorModelTest
 // Exit code is the number of failed checks.
+// Version: 1.4.0 - a span in its own colour is painted in it (TestSpanColours)
 // Version: 1.3.0 - text bounds: every line of a multi-line text, anchored on its own, with
 //                  letter spacing
 // Version: 1.2.0 - width profiles along straight segments
-// Last Modified: 2026-11-03
+// Last Modified: 2026-11-04
 // Author: UltraCanvas Framework
 
 #include "DataFormats/UltraCanvasVectorStorage.h"
@@ -172,12 +173,72 @@ void TestTextBounds() {
           "letter spacing widens the line; an accented letter counts once");
 }
 
+// A word of a text in its own colour (VectorTextStyle::FillColor): the
+// renderer paints that span in it, the rest in the text's fill; the outline
+// view paints every span alike.
+void TestSpanColours() {
+    VectorDocument doc;
+    doc.ViewBox = Rect2Dd{0, 0, 200, 160};
+    auto layer = std::make_shared<VectorLayer>();
+    auto t = std::make_shared<VectorText>();
+    t->Position = {5, 60};
+    t->BaseStyle.FontFamily = "Sans";
+    t->BaseStyle.FontSize = 40;
+    t->BaseStyle.Weight = FontWeight::Bold;
+    t->Style.Fill = Color(0, 0, 0, 255);
+    TextSpanData black;
+    black.Text = "MMM";
+    black.Style = t->BaseStyle;
+    TextSpanData red = black;
+    red.Style.FillColor = Color(220, 0, 0, 255);
+    red.Position = Point2Dd(5, 140);          // a line of its own, below
+    t->Spans = {black, red};
+    layer->AddChild(t);
+    doc.Layers.push_back(layer);
+
+    auto count = [&](VectorDisplayQuality quality, int y0, int y1, bool wantRed) {
+        UCPixmap pixmap;
+        if (!pixmap.Init(200, 160)) return -1;
+        std::unique_ptr<IRenderContext> ctx = CreateRenderContext(Size2Di(200, 160), nullptr);
+        if (!ctx) return -1;
+        ctx->Clear(Color(0, 0, 0, 0));
+        VectorRenderer renderer;
+        VectorRenderOptions opts = renderer.GetOptions();
+        opts.DisplayQuality = quality;
+        renderer.SetOptions(opts);
+        renderer.RenderDocument(ctx.get(), doc);
+        ctx->FlushToSurface(pixmap.GetSurface(), Point2Dd(0, 0));
+        pixmap.MarkDirty();
+        pixmap.Flush();
+        int n = 0;
+        for (int y = y0; y < y1; ++y)
+            for (int x = 0; x < 200; ++x) {
+                const uint32_t p = pixmap.GetPixel(x, y);
+                const int a = (p >> 24) & 0xFF, r = (p >> 16) & 0xFF, g = (p >> 8) & 0xFF;
+                if (a < 200) continue;
+                if (wantRed ? (r > 150 && g < 60) : (r < 60 && g < 60)) ++n;
+            }
+        return n;
+    };
+    // The first line (baseline 60) is above y = 80, the second (baseline
+    // 140) below it.
+    Check(count(VectorDisplayQuality::Normal, 0, 80, false) > 50, "the text's own span is painted in its fill");
+    Check(count(VectorDisplayQuality::Normal, 0, 80, true) == 0, "... and in nothing else");
+    // (Subpixel anti-aliasing leaves a dark fringe pixel at a red glyph's
+    // edge; a span painted black would be dark all through.)
+    const int redPixels = count(VectorDisplayQuality::Normal, 80, 160, true);
+    Check(redPixels > 50, "a span with a colour of its own is painted in it");
+    Check(count(VectorDisplayQuality::Normal, 80, 160, false) * 5 < redPixels, "... not in the text's fill");
+    Check(count(VectorDisplayQuality::Outline, 80, 160, true) == 0, "the outline view paints every span alike");
+}
+
 } // namespace
 
 int main() {
     TestPathBounds();
     TestTextBounds();
     TestDisplayQuality();
+    TestSpanColours();
     // ===== Matrix3x3 =====
     {
         Matrix3x3 t = Matrix3x3::Translate(10, 20);

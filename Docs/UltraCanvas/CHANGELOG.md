@@ -1,3 +1,84 @@
+#### 2026-11-04 *0.9.483*
+- **DemoApp: the WYSIWYG editor page's Font list shows each font in itself**
+  (`DropdownItem::fontFamily`), as the framework's text bar does.
+- **The text bar's Font list follows the fonts.** It was made once, with the
+  window. On Windows, after a start whose system fonts were still being
+  scanned (a cold font cache), it then held the bundled fonts alone for the
+  whole session - ArtCreator, UltraPaint and UltraVideo offered Sans, Serif,
+  Monospace and Ubuntu. `GetFontSetGeneration()` counts each change of the
+  fonts the text engine knows (the system fonts switched to, a font file
+  registered), and the bar makes its list again when the window lays it out
+  after one.
+- **Selected words can have their own letter spacing.** A run of the rich
+  text editor carries a letter spacing of its own (`RichTextRun::
+  letterSpacingPt`, in points, over the whole text's tracking): a
+  `RichCharFormatDelta` sets it (`setLetterSpacing`), `GetFormatState`
+  reports it, the editor draws it, and ODT (`fo:letter-spacing`), DOCX
+  (`w:spacing` in the run's properties) and HTML (CSS `letter-spacing`) keep
+  it. A character style can set it too (`RichStyleCharacter::
+  letterSpacingPt`), read and written in DOCX and ODT. The text bar (`UltraCanvasTextFormatBar`)
+  treats letter spacing as a character attribute, like the font and the
+  size: `TextFormatCharDelta` and `TextFormatAtCaret` convert it both ways.
+- **A word of a drawing's text can have its own colour.** `VectorTextStyle::
+  FillColor` is a span's colour (unset: the text's fill); `VectorRenderer`
+  paints the span in it, and the SVG writer and reader keep it as the
+  `<tspan>`'s `fill` and `fill-opacity`.
+- **A size typed into the text bar went to the whole text.** Keys typed into
+  the bar's size or spacing field, or into its font list to find a font,
+  reached the program's own shortcuts: Ctrl+A ran Select All, which finished
+  the text being typed, so the size went to all of it instead of to the
+  selected words. `UltraCanvasTextFormatBar::HasKeyboardFocus` tells a host
+  when the keys are the bar's.
+- **Windows: the system fonts could be missing for the whole session.** A
+  program showed and offered only its bundled fonts (Ubuntu, Noto Color
+  Emoji) and the generic Sans, Serif and Monospace. The generated fontconfig
+  set-up named the Windows font folders through fontconfig's keywords
+  (`WINDOWSFONTDIR`, `WINDOWSUSERFONTDIR`, `LOCAL_APPDATA_FONTCONFIG_CACHE`);
+  how fontconfig resolves them in a configuration read from memory differs
+  between versions, and one it could not resolve failed the whole
+  configuration, and with it the scan of the system fonts. And
+  `FONTCONFIG_FILE` kept naming the start's file of bundled fonts alone, so
+  any reload of fontconfig's configuration dropped every system font.
+  - The folders are named by path (`GenerateWindowsFontFoldersConfig()`,
+    `GetWindowsFontsFolder()`), from `%SystemRoot%` and `%LOCALAPPDATA%`.
+  - Once the full set is in use, `FONTCONFIG_FILE` names its `fonts.conf`.
+  - A font set with folders of its own but not Windows' (a `fonts.conf`
+    found beside the program) gets them added.
+  - The debug log says whether the Windows font folder is read.
+
+#### 2026-11-04 *0.9.482*
+- **The save-settings dialog fits the window it is opened from.**
+  `UltraCanvasFileLoader::ShowSaveSettingsDialog` (the JPEG, PNG, WebP ...
+  settings) was always drawn in the dialog's own 12-point type at a fixed
+  420 wide, so opened from a 10-point settings window it towered over it,
+  with a band of empty room right of the controls and a Defaults button
+  fixed at 90 that a longer translation ("Standardwerte") filled edge to
+  edge. The `FileSavePicture` overload now takes a `fontSize` last (0 keeps
+  the dialog's own): the captions, controls and buttons are drawn at it and
+  the rows, columns, slider and size fields scaled to it. At any size the
+  window is as wide as its captions and controls need, and Defaults is as
+  wide as its label, like OK and Cancel. `SettingsPageKit::
+  ShowSaveSettingsDialog(extensionOrPath, parent)` opens it in a settings
+  window's `kTextFontSize`. `FileDialogTest` checks the smaller dialog.
+
+#### 2026-11-04 *0.9.481*
+- **DemoApp: a Localisation page under ULTRA OS modules.** `Tr`, `TrC`,
+  `TrN` and `TrF` answered live in a language picked on the page (every
+  language a catalogue ships for, named as it names itself), each with the
+  layer that answered it - the application's set, a base set, the standard
+  set, or the English at the site; a count for the plural with its CLDR
+  category, a value for `TrF`; the catalogue files of the three layers of
+  UltraTexter in that language, shown as they ship with their entry counts,
+  `@bases` and `@inherited`; the scripts and the editor around the module.
+  The pick calls `UltraLocalisation::SetLanguage`, as UOS-Settings does.
+- **`scripts/extract_ui_strings.py` reads past a `"/*"` in a string.** The
+  extraction stripped comments with a regular expression, so a `/*` inside
+  a string literal (Texter's list of comment markers) swallowed the code up
+  to the next `*/` - 1,800 lines of Texter's editor, with 17 `Tr` sites and
+  its crash-recovery plural - and a `•` in a literal stopped it. The
+  comments are now stripped by a walker that steps over string and
+  character literals, and a C++ escape is decoded as the compiler emits it.
+
 #### 2026-11-04 *0.9.480*
 - **Ternary chart, Phase 2: regions, paths, bubbles, curves, files.**
   - Regions are authored areas of the triangle. They are filled under the

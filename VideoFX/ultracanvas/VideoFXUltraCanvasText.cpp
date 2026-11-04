@@ -1,8 +1,9 @@
 // VideoFX/ultracanvas/VideoFXUltraCanvasText.cpp
 // UltraCanvas's text engine as VideoFX's text renderer: see
 // VideoFXUltraCanvasText.h.
+// Version: 0.1.1 - a word's own letter spacing scales with the frame, as its size does
 // Version: 0.1.0 - from UltraVideo's titles (UltraVideoTitles 0.1.0)
-// Last Modified: 2026-11-03
+// Last Modified: 2026-11-04
 // Author: UltraCanvas Framework
 
 #include "VideoFXUltraCanvasText.h"
@@ -73,13 +74,15 @@ std::shared_ptr<UCRichDocument> TextOverlayWords(const VideoFXOverlay& title, in
     auto words = std::make_shared<UCRichDocument>();
     if (!title.richText.empty()) {
         *words = ImportHTMLToRichDocument(title.richText);
-        // A word's own size was set for the frame the words were typed on:
-        // it scales with the frame, as the title's size does.
+        // A word's own size and letter spacing were set for the frame the
+        // words were typed on: they scale with the frame, as the title's do.
         const double scale = static_cast<double>(std::max(16, frameHeight)) / (title.richTextHeight > 0 ? std::max(16, title.richTextHeight) : 1080);
         if (std::fabs(scale - 1.0) > 1e-9) {
             for (auto& block : words->blocks)
-                for (auto& run : block.runs)
+                for (auto& run : block.runs) {
                     if (run.fontSizePt > 0.0f) run.fontSizePt = static_cast<float>(run.fontSizePt * scale);
+                    if (run.letterSpacingPt) run.letterSpacingPt = static_cast<float>(*run.letterSpacingPt * scale);
+                }
         }
     }
     if (words->blocks.empty()) {

@@ -73,6 +73,21 @@ namespace UltraCanvas {
     std::string GenerateBitmapScalingConfig();
 #endif
 
+#if defined(_WIN32) || defined(_WIN64)
+    // The Windows font folders - the system's (%SystemRoot%\Fonts) and the
+    // user's (%LOCALAPPDATA%\Microsoft\Windows\Fonts) - and fontconfig's
+    // cache folder as a <fontconfig> document of <dir> and <cachedir>
+    // elements, by path. fontconfig's own keywords for them (WINDOWSFONTDIR,
+    // WINDOWSUSERFONTDIR, LOCAL_APPDATA_FONTCONFIG_CACHE) depend on how the
+    // fontconfig at hand resolves them in a config read from memory, and one
+    // it cannot resolve fails the whole document - the system fonts were
+    // then never loaded. A keyword stands in only where the path is unknown.
+    std::string GenerateWindowsFontFoldersConfig();
+    // The system font folder's path with forward slashes ("C:/WINDOWS/fonts"),
+    // "" when %SystemRoot% is not set.
+    std::string GetWindowsFontsFolder();
+#endif
+
     // Every font family this process can set text in: the fonts installed on
     // the system (TrueType, OpenType, Type 1, ...) with the bundled ones and
     // any added with RegisterFontFile, as the text engine sees them (Pango:
@@ -149,6 +164,16 @@ namespace UltraCanvas {
     // you by UltraCanvasApplicationBase::RegisterFontFile(); call it directly
     // only after registering a font behind the framework's back.
     void RefreshFontConfiguration();
+
+    // Goes up each time the fonts the text engine knows change: a font file
+    // was registered (RefreshFontConfiguration), or the system fonts that a
+    // scan still running at the start brought later were switched to
+    // (Windows). A list of the installed families (GetInstalledFontFamilies)
+    // made at another count is out of date - a font list made with the
+    // window held the bundled fonts alone after a start with a cold font
+    // cache. The windows are laid out again after such a change, so an
+    // element holding a list compares the count in InvalidateLayout().
+    unsigned long GetFontSetGeneration();
 
     // The bundled fonts (kEmbeddedAllFonts in GetBundledFontsDir) made
     // available to the text engine, the platform's one way - defined once

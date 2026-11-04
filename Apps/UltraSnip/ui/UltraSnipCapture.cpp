@@ -1,5 +1,6 @@
 // Apps/UltraSnip/ui/UltraSnipCapture.cpp
 // See the header.
+// Version: 0.2.0 - the error texts go through Tr (UltraLocalisation)
 // Version: 0.1.1 - SnipFilePath
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -7,6 +8,7 @@
 #include "UltraSnipCapture.h"
 
 #include "UltraCanvasPathUtf8.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <algorithm>
 #include <cmath>
@@ -104,18 +106,18 @@ bool WriteFileBytes(const std::string& path, const std::vector<uint8_t>& bytes, 
     std::error_code ec;
     if (target.has_parent_path()) fs::create_directories(target.parent_path(), ec);
     if (ec) {
-        error = "The folder " + PathToUtf8(target.parent_path()) + " could not be created: " + ec.message();
+        error = TrF("The folder {0} could not be created: {1}", PathToUtf8(target.parent_path()), ec.message());
         return false;
     }
     std::FILE* file = OpenFileUtf8(path, "wb");
     if (!file) {
-        error = "The file could not be created.";
+        error = Tr("The file could not be created.");
         return false;
     }
     const bool ok = bytes.empty() || std::fwrite(bytes.data(), 1, bytes.size(), file) == bytes.size();
     const bool closed = std::fclose(file) == 0;
     if (!ok || !closed) {
-        error = "The file could not be written.";
+        error = Tr("The file could not be written.");
         std::error_code ignored;
         fs::remove(target, ignored);
         return false;
@@ -132,12 +134,12 @@ bool CopyFileTo(const std::string& from, const std::string& to, std::string& err
     ec.clear();
     if (target.has_parent_path()) fs::create_directories(target.parent_path(), ec);
     if (ec) {
-        error = "The folder " + PathToUtf8(target.parent_path()) + " could not be created: " + ec.message();
+        error = TrF("The folder {0} could not be created: {1}", PathToUtf8(target.parent_path()), ec.message());
         return false;
     }
     fs::copy_file(source, target, fs::copy_options::overwrite_existing, ec);
     if (ec) {
-        error = "The file could not be copied: " + ec.message();
+        error = TrF("The file could not be copied: {0}", ec.message());
         return false;
     }
     return true;

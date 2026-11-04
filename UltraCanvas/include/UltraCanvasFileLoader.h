@@ -4,6 +4,7 @@
 // UltraCanvasNativeDialogs. NotifyRecentFile is implemented per-platform.
 // Save settings (SAVE SETTINGS below): what each format's writer can be
 // told, described and kept per format - see UltraCanvasFileSaveSettings.h.
+// Version: 1.10.0 - ShowSaveSettingsDialog takes the type size of the window it is opened from
 // Version: 1.9.0 - SaveFile: bytes to a local file, LoadFile's counterpart
 // Version: 1.8.0 - LoadTextDocument / OpenTextDocument read a .pptx as an outline
 // Version: 1.7.0 - RequestNewDocumentPassword; SaveTextDocument saves a
@@ -16,7 +17,7 @@
 //                  GetVectorDocumentPixelSize, CanSaveImage, AddVectorDocumentSaveTypes,
 //                  AddImageSaveTypes
 // Version: 1.3.0
-// Last Modified: 2026-10-17
+// Last Modified: 2026-11-04
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -411,13 +412,19 @@ namespace UltraCanvas {
                                                               const FileSaveImageSize&)> onClosed);
         // The same for a picture that may be a drawing (FileSavePicture::
         // drawing): its Size row opens on the size it is drawn at and says
-        // that a drawing is drawn sharp at whatever size is set.
+        // that a drawing is drawn sharp at whatever size is set. A picture
+        // without a size (FileSavePicture()) gives the settings alone.
+        // `fontSize` draws the dialog - captions, controls, buttons - at the
+        // type size of the window it is opened from (a settings window's
+        // SettingsPageKit::kTextFontSize), with its rows and columns scaled
+        // to match; 0 keeps the dialog's own.
         static void ShowSaveSettingsDialog(const std::string& extensionOrPath,
                                            const FileSavePicture& picture,
                                            const FileSaveImageSize& size,
                                            UltraCanvasWindowBase* parent,
                                            std::function<void(DialogResult,
-                                                              const FileSaveImageSize&)> onClosed);
+                                                              const FileSaveImageSize&)> onClosed,
+                                           float fontSize = 0.0f);
 
         // The image writer's options (UCImageRaster::Save, ExportVImage) for
         // `path`: its format from the extension, and that format's save

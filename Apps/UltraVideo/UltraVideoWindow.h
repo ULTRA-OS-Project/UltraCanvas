@@ -8,6 +8,7 @@
 // Edit(), which snapshots the document, applies the change, records it and
 // shows the document again everywhere (the timeline model, the preview, the
 // inspector, the app bar).
+// Version: 0.10.0 - ColourTitle: the Clip panel's colour for the selected words of a title being typed
 // Version: 0.9.0 - titles typed on the frame with the text bar (BeginTitleEdit ... CommitTitleEdit)
 // Version: 0.8.1 - WrapToWidth for the bin notes; BeginBinDrag gone, a tile's press arms the drag
 // Version: 0.8.0 - one carried drag for files, effect presets and title styles; a title dragged onto its lane
@@ -15,7 +16,7 @@
 // Version: 0.6.0 - an effect preset dragged from its bin button onto a clip
 // Version: 0.5.0 - OpenFiles: files handed over by a second start
 // Version: 0.4.0
-// Last Modified: 2026-11-03
+// Last Modified: 2026-11-04
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -196,6 +197,9 @@ private:
     void CommitTitleEdit();
     void RestyleTitleEditor();   // after the bar changed the title's base
     void ApplyTitleAttribute(UltraCanvas::TextFormatAttribute attribute, const UltraCanvas::TextFormat& format);
+    // The Clip panel's colour for a title: the words selected in the title
+    // being typed, or the whole title (its words' own colours go).
+    bool ColourTitle(int title, uint32_t rgb);
     void Message(const std::string& text);
 
     UltraCanvas::UltraCanvasApplication& app_;

@@ -3111,7 +3111,10 @@ languages under `media/locale/<lang>/`. The localisation editor
 in the core, with `LocalisationWorkspace` as its model) shows every set an
 application's texts come from in one grid and merges them; UOS-Settings
 hosts it under Language > Translations, `ShowLocalisationEditorDialog`
-opens it on the running application. See
+opens it on the running application. The DemoApp page *ULTRA OS modules >
+Localisation* (`Apps/DemoApp/UltraCanvasLocalisationExamples.cpp`) shows
+the four calls live in a picked language, with the layer that answered
+each, and the catalogue files of the three layers. See
 `Docs/Modules/UltraLocalisation/README.md` and
 `Docs/UltraCanvas/UltraCanvasLocalisationEditor.md`.
 
@@ -31368,7 +31371,7 @@ the types):
 | `GetSaveSettings(extensionOrPath)` | Every setting's value: the user's where they set it, the default elsewhere |
 | `HasStoredSaveSettings(extensionOrPath)` | The user has set any of them |
 | `SetSaveSettings(settings)` / `ResetSaveSettings(extensionOrPath)` | Store (merged over what was there; a value is clamped or replaced by the default when it is not one the setting can hold, and a key the format lacks is dropped) / forget |
-| `ShowSaveSettingsDialog(extensionOrPath, parent, onClosed)` | The settings dialog the Settings button opens; with `pictureWidth, pictureHeight, size` - or a `FileSavePicture`, which may be [a drawing](#a-drawing) - also the [Size row](#the-pictures-size), `onClosed` getting the size chosen |
+| `ShowSaveSettingsDialog(extensionOrPath, parent, onClosed)` | The settings dialog the Settings button opens; with `pictureWidth, pictureHeight, size` - or a `FileSavePicture`, which may be [a drawing](#a-drawing) - also the [Size row](#the-pictures-size), `onClosed` getting the size chosen; the `FileSavePicture` form takes a `fontSize` last, [the type size of a settings window](#opened-from-a-settings-window) it is opened from |
 | `RegisterSaveFormat(format)` | A plugin's or an application's own format (or one replacing a built-in one: same first extension) |
 | `GetImageExportOptions(path, options)` | The image writer's `UCImageSave::ImageExportOptions` for `path`, from its format's settings; `GetImageExportOptions(path, size, options)` at a [chosen size](#the-pictures-size) too |
 | `SetImageExportOptions(options)` | The other way: `options.format`'s quality, compression, colour depth ... and transparency stored as that format's settings (not the size) |
@@ -31503,6 +31506,26 @@ UltraCanvasFileLoader::SaveFileDialog(opts, [w, h](DialogResult r, const std::st
 `ShowSaveSettingsDialog(extensionOrPath, picture, size, parent, onClosed)`
 takes the same as a `FileSavePicture` (`width`, `height`, `drawing`). The
 media viewer offers an SVG this way and draws it again at the size chosen.
+
+#### Opened from a settings window
+
+The dialog is drawn in its own type size (12) unless it is given another:
+the last argument of the `FileSavePicture` overload, `fontSize`, draws its
+captions, controls and buttons at the size of the window it is opened from,
+its rows and columns scaled to match. Whatever the size, the window is as
+wide as its captions and controls need, and the Defaults button as wide as
+its label. A settings window built on `SettingsPageKit` opens it through
+`SettingsPageKit::ShowSaveSettingsDialog(extensionOrPath, parent)`, which
+passes the window's `kTextFontSize` - UltraSnip's *File type* page does:
+
+<!-- doc-check: std::string pictureType; UltraCanvasWindowBase* settingsWindow = nullptr; -->
+```cpp
+// The type's settings, in the settings window's 10-point text
+SettingsPageKit::ShowSaveSettingsDialog(pictureType, settingsWindow);
+// The same, by hand: no size row (a picture without a size), font size 10
+UltraCanvasFileLoader::ShowSaveSettingsDialog(pictureType, FileSavePicture(), FileSaveImageSize(),
+                                              settingsWindow, nullptr, 10.0f);
+```
 
 ## Filter toggles
 
@@ -63403,6 +63426,23 @@ style.letterSpacing = 1.5f;                     // 0 = the font's own spacing
 editor->SetStyle(style);
 ```
 
+Some words can have a letter spacing of their own, over the whole text's - a
+run's `letterSpacingPt`, in points (below 0 sets the letters closer). It is a
+character format like the font or the colour: `ApplyCharFormat` sets it on the
+selection (or arms it for what is typed next), `GetFormatState` reports it, and
+the ODT, DOCX and HTML writers and readers keep it (`fo:letter-spacing`,
+`w:spacing`, CSS `letter-spacing`) - a character style's too:
+
+```cpp
+RichCharFormatDelta wider;
+wider.setLetterSpacing = true;
+wider.letterSpacingPt = 2.0f;                   // std::nullopt: the whole text's again
+editor->ApplyCharFormat(wider);
+const RichCharFormatState now = editor->GetFormatState();
+// now.letterSpacingPt: the selection's, unset when it has none of its own
+// or the selected runs disagree (now.letterSpacingMixed)
+```
+
 ### Named styles
 
 ```cpp
@@ -75145,10 +75185,11 @@ host's to decide.
 
 The usual host - a window class, whose members the callbacks reach through
 `this` - lays an `UltraCanvasRichTextEdit` over its canvas where the text
-lies and applies the bar to it. A character attribute (Font to Strikethrough)
-goes to the selected words through `TextFormatCharDelta`; alignment and the
-spacings belong to the whole text. `TextFormatAtCaret` gives the bar the format
-at the editor's caret, and `onControlDone` hands the keyboard back to the text
+lies and applies the bar to it. A character attribute (Font to Strikethrough,
+and the letter spacing) goes to the selected words through
+`TextFormatCharDelta`; alignment and the line spacing belong to the whole text.
+`TextFormatAtCaret` gives the bar the format at the editor's caret (a word's own
+letter spacing too), and `onControlDone` hands the keyboard back to the text
 once a control of the bar is finished with it.
 
 <!-- doc-check: std::shared_ptr<UltraCanvasRichTextEdit> editor; std::shared_ptr<UltraCanvasContainer> window; TextFormat textBase; void ApplyToWholeText(TextFormatAttribute attribute, const TextFormat& format); -->
@@ -75170,6 +75211,28 @@ bar->onControlDone = [this]() { editor->SetFocus(true); };
 // The bar follows the caret.
 editor->onSelectionChanged = [this, bar = bar.get()]() {
     bar->SetFormat(TextFormatAtCaret(editor->GetFormatState(), textBase, 0.75f));
+};
+```
+
+## The keyboard
+
+A size typed into the bar's field, or a font looked up in its list by its first
+letters, is typed into the bar: a host's own shortcuts must leave those keys
+alone. A shortcut that ran instead - Ctrl+A as Select All - finished the text
+being typed first, and the size then went to the whole text rather than the
+selected words. `HasKeyboardFocus()` says when the keys are the bar's:
+
+<!-- doc-check: std::shared_ptr<UltraCanvasTextFormatBar> bar; std::shared_ptr<UltraCanvasRichTextEdit> editor; bool RunShortcut(const UCEvent& e); -->
+```cpp
+auto shortcuts = [&](const UCEvent& e) -> bool {
+    if (bar->IsVisible() && bar->HasKeyboardFocus()) {
+        if (e.virtualKey == UCKeys::Escape) {   // back to the text
+            editor->SetFocus(true);
+            return true;
+        }
+        return false;                           // the field's or the list's
+    }
+    return RunShortcut(e);                      // the host's own
 };
 ```
 
@@ -75202,7 +75265,11 @@ dropdown prepares those previews lazily: once the bar is on screen, in small
 idle slices, the rows the list opens on first - see *A font list* in
 [UltraCanvasDropDownExamples.md](UltraCanvasDropDownExamples.md). A format
 naming a font this computer lacks shows it at the top of the list, marked as
-not installed. `RefreshFonts()` reads the installed fonts again.
+not installed. `RefreshFonts()` reads the installed fonts again, and the bar does
+that itself when the fonts the text engine knows change
+(`GetFontSetGeneration()`): a font file registered, or on Windows the system
+fonts arriving after a start with a cold font cache - the list made with the
+window held the bundled fonts alone until then.
 
 ## Narrow places
 
@@ -86035,6 +86102,20 @@ switches to the full set when the scan ends - laid out and drawn again
 (`RefreshAfterFontChange()`), so a character the start's fonts lacked does not
 stay a box. `GetSystemFontScanStatus()` says which happened, and
 `SetSystemFontsSwitchedHandler()` hears of the switch.
+
+The font folders are named by path (`GenerateWindowsFontFoldersConfig()`:
+`%SystemRoot%\fonts`, `%LOCALAPPDATA%\Microsoft\Windows\Fonts` and
+fontconfig's cache folder), not by fontconfig's keywords (`WINDOWSFONTDIR` and
+the others): how a fontconfig resolves those in a config read from memory has
+changed between versions, and one it cannot resolve failed the whole config -
+the system fonts were then never loaded. Once the full set is in use,
+`FONTCONFIG_FILE` names its `fonts.conf`, so a reload of fontconfig's
+configuration by any library reads the full set rather than the start's
+bundled fonts alone. A set with folders of its own but without Windows' (a
+`fonts.conf` beside the program) gets them added. The debug log says how it
+ended: "UltraCanvas: N system and M application font files; the Windows font
+folder (C:/WINDOWS/fonts) is read" - or "NOT read", or "read when the scan
+ends".
 
 Text goes through Pango's fontconfig font map on every thread: the main
 thread's is made in `LoadBundledFontsNative()`, and `PANGOCAIRO_BACKEND=fc` is
@@ -97177,9 +97258,9 @@ FILE: Docs/Modules/UltraLocalisation/README.md
 <!-- doc-check: int count = 3; int done = 1; std::vector<std::string> systemLanguages; -->
 
 **Status:** Phases L1 to L3 of [`UltraCanvasLocalisationProposal.md`](../../UltraCanvas/UltraCanvasLocalisationProposal.md) implemented: the module, the three layers of catalogues, the override folder, the fallback walk, plurals, `Language.conf`, the language choice, the start-up wiring (L1); the English standard set and the sixteen base sets under `media/locale/en/`, the framework's own dialogs wrapped in `Tr`, and the three scripts with their CI check (L2); the drafting tool over UltraAI with its script, the first drafts of the standard and base sets in German, French, Spanish, Italian, Dutch, Portuguese, Japanese and Simplified Chinese, and the UOS-Settings Language page (L3); the localisation editor - every set in one grid, the merge operations, the two save paths, the compare column, the drafting button - as an element, a dialog, the UOS-Settings Translations page and a DemoApp page (L4, [`UltraCanvasLocalisationEditor.md`](../../UltraCanvas/UltraCanvasLocalisationEditor.md)). The applications (L5) and locale formatting (L6) follow.
-**Version:** 1.2.0
+**Version:** 1.2.1
 **Author:** UltraCanvas Framework / ULTRA OS
-**Last Modified:** 2026-11-02
+**Last Modified:** 2026-11-04
 
 `Tr("Save")` gives the translation of the English text written at the
 site, in the language the person's desktop is set to, from three layers of
@@ -97202,6 +97283,15 @@ std::string open = TrC("button", "Open");                         // the "button
 std::string files = TrN("{n} file", "{n} files", count);          // "3 Dateien": the language's plural rule
 std::string progress = TrF("Deleted {0} of {1}", done, count);    // "1 von 3 gelöscht"
 ```
+
+## Contents
+
+- [The three layers](#the-three-layers)
+- [The catalogue file](#the-catalogue-file)
+- [The language](#the-language)
+- [The catalogues and the scripts](#the-catalogues-and-the-scripts)
+- [Drafting a language](#drafting-a-language)
+- [Related](#related)
 
 ## The three layers
 
@@ -97373,6 +97463,7 @@ shape, the chosen language its words.
 
 ## Related
 
+- DemoApp, *ULTRA OS modules > Localisation* (`Apps/DemoApp/UltraCanvasLocalisationExamples.cpp`) - the four calls live in a picked language, with the layer that answered each, and the catalogue files of the three layers; *Widgets > Localisation Editor* is the editor over the sets
 - [`UltraCanvasLocalisationProposal.md`](../../UltraCanvas/UltraCanvasLocalisationProposal.md) - the design, the standard set (Appendix A) and the base sets (Appendix B)
 - [`UltraCanvasSystemLanguage.md`](../../UltraCanvas/UltraCanvasSystemLanguage.md) - the desktop's languages
 - [`UltraCanvasEmojiSettings.md`](../../UltraCanvas/UltraCanvasEmojiSettings.md) - the shared-setting pattern `Language.conf` follows
@@ -103326,8 +103417,10 @@ bar, or press `Super+Shift+S` in any window: the screen freezes and you drag
 out the area. The button's right-click menu has the other shapes and the
 recordings.
 
-**From the window.** Start UltraSnip from the applications; choose the
-shape, the kind and the delay in its bar and click *New* (Ctrl+N):
+**From the window.** Start UltraSnip from the applications: until there is
+a snip its window is just its bar. Choose the shape and the kind (icons;
+each names itself in its tooltip) and the delay, and click *Start*
+(Ctrl+N):
 
 | Shape | What happens |
 |---|---|
@@ -103348,7 +103441,9 @@ a wait. When UltraSnip is already running the request goes to it.
 A picture is put on the clipboard and written to
 `Pictures/Screenshots/Screenshot <date> <time>.<type>` the moment it is
 taken, in the type chosen in the settings (PNG unless changed); either can
-be switched off there. The window shows it, with:
+be switched off there. The window opens out below its bar to show it, and
+the bar gains four icon buttons after the delay, with a line saying what
+was done (the whole path in its tooltip):
 
 | Button | Key | |
 |---|---|---|
@@ -103371,12 +103466,12 @@ written as it goes, so a recording cut short by a crash or a power cut still
 plays up to its last seconds.
 
 Not yet: sound (the microphone, the loudspeaker), the pointer in the
-recording, and a recording on a build whose VideoFX has no FFmpeg - *New*
+recording, and a recording on a build whose VideoFX has no FFmpeg - *Start*
 says so then, and pictures still work.
 
 ## Settings
 
-The *Settings* button under the picture opens a window laid out like
+The *Settings* button at the right end of the bar (the cog) opens a window laid out like
 UltraFiler's: the sections on the left, the page on the right, the page's
 *Restore defaults* and *Close* at the foot. Every change applies at once and
 is saved.
@@ -103387,6 +103482,14 @@ is saved.
 | Pictures > Saving | Whether every picture is written as it is taken, whether it goes to the clipboard, and the folder it is written to (*Choose folder*, or back to Pictures/Screenshots). |
 | Videos > Recording | The recording's container - MP4 with H.264, Matroska with H.264, WebM with VP9, each greyed when the build's FFmpeg lacks the encoder - the frame rate (5 to 60 a second) and the folder. |
 | Behaviour > After a snip | Whether the UltraSnip window appears with the result after a snip started from the desktop's button, the shortcut or the command line, or stays out of the way: the picture is saved and copied and nothing appears (a recording still shows its bar). A snip taken from the window always returns to it. |
+
+## Languages
+
+UltraSnip shows its texts in the language UltraCanvas runs in, from its own
+set (`media/locale/<lang>/UltraSnip.json`, machine drafts in thirty languages) over the *Image* and
+*Video* base sets and the standard set. *Translate UltraSnip...* on the
+settings window's start page opens the localisation editor on that set; a
+change is kept in the settings folder and shows at the next start.
 
 ## Where things are kept
 
@@ -103503,6 +103606,34 @@ Listed so the next session does not rediscover them:
 - **Animation frames** (GIF / WebP animation as a frame timeline).
 - **Plugins.** A filter-plugin interface so third parties can add entries to
   `PaintFilterCatalogue()` without recompiling the app.
+
+==============================================================================
+FILE: Docs/UltraPaint/changelog.d/selected-words-spacing.md
+==============================================================================
+
+- **Selected words take a letter spacing of their own.** The text bar's letter
+  spacing goes to the selected words while a text is typed (it spread the
+  whole text); with nothing selected it still sets the whole text's.
+- **A size typed into the text bar no longer changes the whole text.** Typing
+  in the size field (or Ctrl+A in it) ran the window's shortcuts, which
+  finished the text first. The keys now stay in the field, and Escape there
+  gives them back to the text.
+
+==============================================================================
+FILE: Docs/ArtCreator/changelog.d/selected-words-spacing-and-colour.md
+==============================================================================
+
+- **Selected words take a letter spacing and a colour of their own.** While a
+  text is typed on the page, the text bar's letter spacing and the fill colour
+  (picked in the colour panel) go to the selected words only, as the font, the
+  size and bold already did; with nothing selected they still change the whole
+  text. The drawing keeps both per word, and the colour panel shows the colour
+  of the words at the caret.
+- **A size typed into the text bar no longer changes the whole text.** Typing
+  in the size field (or Ctrl+A in it) ran the window's shortcuts, which
+  finished the text first, so the size went to all of it. The keys now stay in
+  the field, Escape there gives them back to the text, and the selected words
+  take the size.
 
 ==============================================================================
 FILE: Docs/DeviceExplorer/README.md
@@ -106829,6 +106960,15 @@ folder.
 | Tests | `Tests/UltraMail/test_senderidentity.cpp`, `test_threatscan.cpp`, `test_contacts.cpp`, `test_localstore.cpp`, `test_preferences.cpp`, `test_messagefilter.cpp`; `AccountBarClickTest.cpp` and `FolderTreeTest.cpp` (the counters as filters, in a window) |
 
 ==============================================================================
+FILE: Docs/UltraMail/changelog.d/font-list-in-its-fonts.md
+==============================================================================
+
+- **The format bar's Font list shows each font in itself.** Arial, Georgia,
+  Courier New and the others are drawn in their own typeface, as the text bars
+  of ArtCreator, UltraPaint and UltraVideo show theirs; a font this computer
+  lacks shows in a substitute.
+
+==============================================================================
 FILE: Docs/UltraVideo/README.md
 ==============================================================================
 
@@ -107136,6 +107276,20 @@ headless, the player part skips itself without GStreamer plugins).
 ## Not yet
 
 The proposal's roadmap (§11) has the order.
+
+==============================================================================
+FILE: Docs/UltraVideo/changelog.d/selected-words-spacing-and-colour.md
+==============================================================================
+
+- **Selected words of a title take a letter spacing and a colour of their
+  own.** While a title is typed on the frame, the text bar's letter spacing
+  and the Clip panel's colour go to the selected words only; with nothing
+  selected they change the whole title (and a colour for the whole title
+  clears its words' own). The project and `videofx render` keep both.
+- **A size typed into the text bar no longer finishes the title.** Any key
+  typed in the bar's size field, or in its font list, put the title in the
+  video first, so the size went to the whole title. The keys now stay in the
+  field, and Escape there gives them back to the title.
 
 ==============================================================================
 FILE: Docs/UltraPress/README.md

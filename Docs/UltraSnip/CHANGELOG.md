@@ -1,3 +1,49 @@
+#### 2026-11-04 *0.1.1*
+- **One bar at the top, in the settings window's type size.** The window
+  had two bars in large type: New and the choices above the picture, Save
+  as, Copy, Open folder, Edit in UltraPaint, Settings and the status line
+  under it. Everything is now in one bar at the top, at 10 points: *Start*
+  (was *New*), the shape (Rectangle, Window, Full screen) and the kind
+  (Picture, Video) as icon segments that name themselves in their
+  tooltips, the delay, then Save as, Copy, Open folder and Edit in
+  UltraPaint as icon buttons, the line saying what was done, and Settings
+  (the cog) at the right end. Until there is a snip the window is the bar
+  alone; a picture or a recording opens it out below the bar, at the height
+  it last had. New icons for the shapes and for video:
+  `media/icons/snip-rectangle.svg`, `snip-window.svg`, `snip-screen.svg`,
+  `snip-video.svg`.
+- **UltraSnip speaks the chosen language.** Every text it shows goes
+  through `Tr` / `TrF` (UltraLocalisation): the bar's buttons, tooltips and
+  delay list, the status line (its pieces - the size, "saved as", "copied"
+  - as whole phrases with `{0}` for the name), the Save as dialogs' titles
+  and filters, the error messages of the capture, the recorder and the
+  selection overlay, the recording bar, and the whole settings window. Its
+  English set is `media/locale/en/UltraSnip.json` (119 entries of its own,
+  10 from the *Image* and *Video* base sets and the standard set); the
+  language drafts do not carry it yet. *Translate UltraSnip...* on the
+  settings window's start page opens the localisation editor on its own set.
+  The command line's help stays English.
+- **UltraSnip in thirty languages.** Machine drafts of its set
+  (`media/locale/<lang>/UltraSnip.json`, marked `machine draft
+  2026-11-04, reviewed by -`) for every language the standard set has:
+  Arabic, Catalan, Chinese (Simplified and Traditional), Czech, Danish,
+  Dutch, Finnish, French, German, Greek, Hebrew, Hindi, Hungarian,
+  Indonesian, Italian, Japanese, Korean, Norwegian Bokmål, Polish,
+  Portuguese (and Brazilian Portuguese, holding only what Brazil words
+  differently), Romanian, Russian, Spanish, Swedish, Thai, Turkish,
+  Ukrainian and Vietnamese. The words the standard and base sets already
+  have (Settings, Save as, Clipboard, ...) are taken from them. The
+  settings page *Saving* is `TrC("settings page", "Saving")`: the standard
+  set's "Saving" is the progress word ("Wird gespeichert"), not a page's
+  name. The delay list is as wide as its longest item in the language
+  shown, and the status line says *saved* rather than *saved as <file>*
+  (the whole path is its tooltip), so it fits the bar in every language.
+- **The picture type's Settings dialog matches the settings window.**
+  *Pictures > File type > Settings* opened the type's settings (JPEG
+  quality, Progressive ...) in larger type than the window it came from,
+  wider than its controls, with a cramped Defaults button. It now opens in
+  the settings window's own 10-point type, sized to its content.
+
 #### 2026-11-01 *0.1.0*
 - **UltraSnip, the screenshot and screen-recording tool of ULTRA OS.** New
   takes a *Rectangle* you drag out over the frozen screen, a *Window* you
