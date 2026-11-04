@@ -1,8 +1,8 @@
 # Tests/FilerTests.cmake
 # FilerFolderPreviewTest, FilerTextPreviewTest, FilerNameEncodingTest,
 # FilerRetireTest,
-# FilerHostIconsTest, FilerShortcutEntryTest, FilerHistoryTest and
-# FilerPaneDragTest. Included by
+# FilerHostIconsTest, FilerShortcutEntryTest, FilerHistoryTest,
+# FilerPaneDragTest, FileRemovalTest and ElevatedFileOperationsTest. Included by
 # Tests/CMakeLists.txt under BUILD_TESTS, and by the top-level CMakeLists.txt
 # on its own under ULTRACANVAS_BUILD_FILER_TESTS - so the Windows CI row,
 # which builds no full test suite, runs the file display against Thai, CJK and
@@ -271,4 +271,54 @@ if(TARGET UltraCanvas)
     message(STATUS "    Test registered: FilerPaneDragTest")
 else()
     message(STATUS "  FilerPaneDragTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== FILE REMOVAL TEST =====
+# UltraCanvasFileRemoval, the delete under the Filer's: files, folders, trees
+# with links (removed as links), and why a removal failed. On Windows the four
+# things "access denied" means there, each made for real - read-only files and
+# folders (removed), an entry deleted while another handle holds it (delete
+# pending: counted as removed, its folder waited for), a memory-mapped file
+# and one open without delete sharing (InUse, never NotPermitted, which sent
+# UltraFiler's delete to an administrator who could do no better). Its scratch
+# folder has a Thai name, so on Windows every call goes through UTF-16.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building FileRemovalTest...")
+    add_executable(FileRemovalTest
+        ${_FT_DIR}/FileRemovalTest.cpp
+    )
+    target_include_directories(FileRemovalTest PRIVATE ${_FT_INCLUDE_DIR})
+    target_compile_features(FileRemovalTest PRIVATE cxx_std_20)
+    target_link_libraries(FileRemovalTest PRIVATE UltraCanvas)
+    set_target_properties(FileRemovalTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${_FT_BIN_DIR}
+    )
+    add_test(NAME FileRemovalTest COMMAND FileRemovalTest
+             WORKING_DIRECTORY ${_FT_BIN_DIR})
+    message(STATUS "    Test registered: FileRemovalTest")
+else()
+    message(STATUS "  FileRemovalTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== ELEVATED FILE OPERATIONS TEST =====
+# "Delete as administrator" minus the consent prompt: the command-line quoting
+# and splitting, the report file, the helper's own delete (read-only entries,
+# and on Windows read-only folders and a file in use named in the reason),
+# and what a platform without a backend answers.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building ElevatedFileOperationsTest...")
+    add_executable(ElevatedFileOperationsTest
+        ${_FT_DIR}/ElevatedFileOperationsTest.cpp
+    )
+    target_include_directories(ElevatedFileOperationsTest PRIVATE ${_FT_INCLUDE_DIR})
+    target_compile_features(ElevatedFileOperationsTest PRIVATE cxx_std_20)
+    target_link_libraries(ElevatedFileOperationsTest PRIVATE UltraCanvas)
+    set_target_properties(ElevatedFileOperationsTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${_FT_BIN_DIR}
+    )
+    add_test(NAME ElevatedFileOperationsTest COMMAND ElevatedFileOperationsTest
+             WORKING_DIRECTORY ${_FT_BIN_DIR})
+    message(STATUS "    Test registered: ElevatedFileOperationsTest")
+else()
+    message(STATUS "  ElevatedFileOperationsTest skipped (UltraCanvas target not present)")
 endif()

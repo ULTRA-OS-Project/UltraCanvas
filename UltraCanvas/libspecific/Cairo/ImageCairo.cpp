@@ -498,6 +498,16 @@ namespace UltraCanvas {
         // the same, and says why vips_cache_drop_all() is not the call for it.
         // Nothing is lost but a few cached headers, and this runs only when a
         // file is known to have changed.
+        ReleaseCachedFiles();
+#endif
+    }
+
+    void UCImageRaster::ReleaseCachedFiles() {
+#ifdef HAS_LIBVIPS
+        // Trimmed to nothing and allowed to grow again: the finished
+        // operations go, and with them the files they hold. Not
+        // vips_cache_drop_all(), which frees the cache table itself (see
+        // PixelFX::ReleaseCachedFiles).
         const int maxOperations = vips_cache_get_max();
         vips_cache_set_max(0);
         vips_cache_set_max(maxOperations);

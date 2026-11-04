@@ -104,6 +104,9 @@
 // thin blue bar sliding along the foot of the file area - its entries, or an
 // empty area, stay as they are - and the words go to the host's status line
 // (GetListingPendingStatus, onListingPendingChanged).
+// Version: 1.46.1 - RemoveTreeWithProgress removes through UltraCanvasFileRemoval
+//                  and says why a removal failed (FileRemovalProblem): "in
+//                  use" is no longer taken for a permission problem
 // Version: 1.46.0 - RenderFileThumbnail: a file's content as a picture, for
 //                  any caller (the thumbnail workers' switch, shared), with
 //                  a page of first lines for text documents
@@ -156,6 +159,7 @@
 #include "UltraCanvasFolderWatcher.h"
 #include "UltraCanvasFileLock.h"
 #include "UltraCanvasElevatedFileOperations.h"
+#include "UltraCanvasFileRemoval.h"
 #include "UltraCanvasArchiveRun.h"
 #include "UltraCanvasSplitPane.h"
 #include "UltraCanvasTextWrapping.h"
@@ -3683,13 +3687,27 @@ namespace UltraCanvas {
         // goes: post-order, and a symlink is removed as the link it is —
         // std::filesystem::remove_all's semantics, which this replaces.
         // `failedPath`, when given, names the entry the failure is about:
-        // a file deep inside `path` as often as `path` itself. A file that
-        // answers "permission denied" is retried once with its read-only
-        // bit lifted, as the entry's own delete lifts it before the attempt.
+        // a file deep inside `path` as often as `path` itself. Every entry
+        // goes through RemoveFileSystemEntry (UltraCanvasFileRemoval.h), so
+        // a read-only file or folder is no obstacle and an entry Windows
+        // still lists as delete pending counts as gone; `problem`, when
+        // given, says what a failure means (in use, not permitted, ...). A
+        // failure that is "in use" is tried once more after this process
+        // let go of the files its image loader still holds - the thumbnails
+        // of the pictures being deleted, mapped by libvips, were what made
+        // Windows refuse them to everybody.
         static bool RemoveTreeWithProgress(const std::string& path,
                                            FileOpItemCredit& credit,
                                            std::error_code& ec,
-                                           std::string* failedPath = nullptr);
+                                           std::string* failedPath = nullptr,
+                                           FileRemovalProblem* problem = nullptr);
+        // One pass of the above, recursive; RemoveTreeWithProgress adds the
+        // second attempt.
+        static bool RemoveTreeLevel(const std::string& path,
+                                    FileOpItemCredit& credit,
+                                    std::error_code& ec,
+                                    std::string* failedPath,
+                                    FileRemovalProblem& problem);
         // Copies one file, in chunks once it is big enough for the ring to
         // move inside it (and for Cancel to be answered before it ends).
         static bool CopyFileWithProgress(const std::string& from,

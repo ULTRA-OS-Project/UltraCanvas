@@ -2228,23 +2228,37 @@ beside them:
 - A failure **inside a folder** is reported for the file that refused, not
   the folder: the question reads `"libvips-42.dll" in "lib" could not be
   deleted.` and the facts add a *Stopped at:* line with the file's path under
-  the folder's. A read-only file inside a folder is not a failure at all: it
-  is lifted and removed, as *Delete anyway* lifts the entry's own protection,
-  so a folder unpacked with its read-only bits goes in one pass.
-- A file **a running program holds** — its executable, a DLL it has loaded —
-  answers "Access is denied" on Windows too, but no administrator can delete
-  it either. The worker asks the [lock probe](UltraCanvasFileLock.md) (the
-  Restart Manager) before it decides, and such a file gets **Delete: a file
+  the folder's. A read-only file **or folder** inside a folder is not a
+  failure at all: it is lifted and removed, as *Delete anyway* lifts the
+  entry's own protection, so a folder unpacked with its read-only bits - or
+  copied off a CD or a camera card, or carrying a `desktop.ini` - goes in one
+  pass, as it does in Explorer. Every entry is removed through
+  [`UltraCanvasFileRemoval`](UltraCanvasFileRemoval.md), which also counts
+  an entry Windows still lists as **delete pending** (deleted, but held open
+  by a virus scanner or the indexer) as gone, and waits a moment for the
+  folder it empties.
+- A file **a running program holds** — its executable, a DLL it has loaded, a
+  picture an image library has memory-mapped — answers "Access is denied" on
+  Windows too, but no administrator can delete it either. `UltraCanvasFileRemoval`
+  tells it apart: the system granted the delete access, and only then refused
+  the delete. The program holding it may be this one - the thumbnails and
+  folder previews of the pictures being deleted are decoded by libvips, which
+  keeps what it read mapped - so the widget first lets go of those
+  (`UCImage::ReleaseCachedFiles`) and tries once more on its own. What is
+  still held asks the [lock probe](UltraCanvasFileLock.md) (the Restart
+  Manager) who holds it, and gets **Delete: a file
   in the folder is in use** — `"libvips-42.dll" in "lib" is in use by another
   program.` with *In use by: UltraFiler (4120)* among the facts — with
   **Skip** (the default) / **Try again** and an *Apply to all later files in
   use* checkbox, and no administrator button. When the holder is the running
   application itself the note says so and tells the user to close it and
   delete from elsewhere.
-- A delete that fails with **"Access is denied"** on Windows and is held by
-  nobody is the one Explorer
+- A delete the **access list** refuses (`FileRemovalProblem::NotPermitted` -
+  "Access is denied" before anything was attempted) is the one Explorer
   answers with its shield button: the entry is deletable, just not by this
-  user. Where the host has wired
+  user. Every "Access is denied" used to be taken for this one, and a
+  picture held by the Filer's own thumbnails was handed to the administrator,
+  who got the same answer. Where the host has wired
   [`UltraCanvasElevatedFileOperations`](UltraCanvasElevatedFileOperations.md)
   (UltraFiler has), the dialog is **Delete: administrator permission needed** —
   "Windows asks you to confirm once, at the end, for every item handed to the
@@ -2256,7 +2270,9 @@ beside them:
   Administrator" progress window stands in for the wait, and the widget stays
   responsive because the helper is waited for off the UI thread. What the
   helper still could not delete comes back in the [summary](#the-summary-at-the-end)
-  (*Delete finished*) with the system's reason beside each entry; a declined
+  (*Delete finished*) with the system's reason beside each entry - naming the
+  file inside that refused, and saying "in use by a program" when one holds
+  it; a declined
   prompt is reported through
   `onError` and leaves the entries in place. Sharing violations ("in use by
   another program") are not permission failures and keep the plain dialog,

@@ -50,6 +50,13 @@
 // itself is never touched, so renaming and every file operation still work on
 // the real one. A name that is not UTF-8 — written in a legacy code page by an
 // old tool or an unconverting unzip — is drawn decoded rather than as U+FFFD.
+// Version: 1.43.3 - a delete that Windows answers "access denied" is told
+//                  apart (UltraCanvasFileRemoval): read-only folders inside
+//                  the tree are lifted like files, delete-pending entries
+//                  count as gone, and a file in use - a picture this program
+//                  drew a thumbnail of, memory-mapped by libvips - is let go
+//                  of and tried again, or reported as in use; only a refusal
+//                  of the access list offers "Delete as administrator"
 // Version: 1.43.2 - the delete confirmation is translated whole: question,
 //                  facts, the folder's list caption, notes and buttons, per
 //                  platform's trash name; the size facts (DescribeEntries,
@@ -7347,7 +7354,8 @@ namespace UltraCanvas {
             credit.total = CountTreeEntries(e.path, credit);
             ec.clear();
             std::string failedPath;
-            if (!RemoveTreeWithProgress(e.path, credit, ec, &failedPath)) {
+            FileRemovalProblem problem = FileRemovalProblem::NoProblem;
+            if (!RemoveTreeWithProgress(e.path, credit, ec, &failedPath, &problem)) {
                 // A removal that got part way - cancelled inside a big folder,
                 // or stopped by one locked file in it - still emptied part of
                 // the folder, and whoever shows that folder has to hear about
@@ -7368,22 +7376,27 @@ namespace UltraCanvas {
                 // questions below are asked of it.
                 if (failedPath == e.path) failedPath.clear();
                 const std::string& culprit = failedPath.empty() ? e.path : failedPath;
-                // "Access is denied" is two different things on Windows. A
-                // file a running program has loaded - its executable, a DLL
-                // - answers it, and no administrator can delete that either;
-                // the lock probe (Restart Manager) says who holds it. Only
-                // the rest is Explorer's shield-button case: deletable, just
-                // not by this user. Where the host wired the elevated helper
-                // the dialog offers that retry; the entry then waits for the
-                // one helper run at the end of the queue.
-                const bool permissionDenied =
-                        ec == std::errc::permission_denied ||
-                        ElevatedFileOperations::IsPermissionFailure(ec);
+                // "Access is denied" is several things on Windows, and
+                // RemoveFileSystemEntry has already told them apart: a
+                // read-only entry it lifted, a delete-pending one it counted
+                // as gone, and a file mapped into a process - a running
+                // program's executable or DLL, a picture an image library
+                // holds - comes back as InUse: no administrator can delete
+                // that either. Only NotPermitted is Explorer's shield-button
+                // case: deletable, just not by this user. Where the host
+                // wired the elevated helper the dialog offers that retry; the
+                // entry then waits for the one helper run at the end of the
+                // queue. The lock probe (Restart Manager) names who holds an
+                // entry in use - and catches a sharing violation a runtime
+                // reported as plain EACCES (libc++ does).
+                if (problem == FileRemovalProblem::NoProblem && ec)
+                    problem = ClassifyFileRemovalError(ec);
+                const bool permissionDenied = problem == FileRemovalProblem::NotPermitted;
                 std::vector<std::string> holders;
-                bool inUse = false;
-                if (permissionDenied && FileLockProbeAvailable()) {
+                bool inUse = problem == FileRemovalProblem::InUse;
+                if ((permissionDenied || inUse) && FileLockProbeAvailable()) {
                     const FileLockInfo lock = ProbeFileLock(culprit, /*wantHolders=*/true);
-                    inUse = lock.Blocks() || !lock.holders.empty();
+                    inUse = inUse || lock.Blocks() || !lock.holders.empty();
                     holders = lock.holders;
                 }
                 const bool needsPermission = !inUse && permissionDenied &&
@@ -8354,7 +8367,11 @@ namespace UltraCanvas {
                         return;
                     }
                     std::error_code rec;
-                    fs::remove_all(PathFromUtf8(targetPath), rec);
+                    // A picture there this program drew a thumbnail of must
+                    // not keep it: libvips holds what it decoded mapped, and
+                    // Windows refuses to delete a mapped file.
+                    UCImage::ReleaseCachedFiles();
+                    RemoveFileSystemTree(PathFromUtf8(targetPath), rec);
                     if (rec) {
                         self->ReportError("Rename could not replace " + targetPath
                                           + ": " + rec.message());
@@ -8686,14 +8703,42 @@ namespace UltraCanvas {
     bool UltraCanvasFilerWidget::RemoveTreeWithProgress(const std::string& path,
                                                         FileOpItemCredit& credit,
                                                         std::error_code& ec,
-                                                        std::string* failedPath) {
+                                                        std::string* failedPath,
+                                                        FileRemovalProblem* problem) {
+        FileRemovalProblem why = FileRemovalProblem::NoProblem;
+        bool removed = RemoveTreeLevel(path, credit, ec, failedPath, why);
+        if (!removed && why == FileRemovalProblem::InUse && !credit.Cancelled()) {
+            // The program holding it may be this one. libvips keeps the
+            // pictures it decoded - every thumbnail and folder preview drawn
+            // of the folder being deleted - mapped into this process, and
+            // Windows refuses to delete a mapped file to everybody, an
+            // administrator included. Let go of them, give a decode still
+            // running on a thumbnail worker a moment to finish, and go on
+            // from where the first attempt stopped.
+            UCImage::ReleaseCachedFiles();
+            std::this_thread::sleep_for(std::chrono::milliseconds(150));
+            ec.clear();
+            if (failedPath) failedPath->clear();
+            why = FileRemovalProblem::NoProblem;
+            removed = RemoveTreeLevel(path, credit, ec, failedPath, why);
+        }
+        if (problem) *problem = removed ? FileRemovalProblem::NoProblem : why;
+        return removed;
+    }
+
+    bool UltraCanvasFilerWidget::RemoveTreeLevel(const std::string& path,
+                                                 FileOpItemCredit& credit,
+                                                 std::error_code& ec,
+                                                 std::string* failedPath,
+                                                 FileRemovalProblem& problem) {
         ec.clear();
         if (credit.Cancelled()) return false;
         const fs::path victim = PathFromUtf8(path);
         // Whatever fails below is about this entry unless a deeper call
         // already named a deeper one.
-        auto failedHere = [&]() {
+        auto failedHere = [&](FileRemovalProblem why) {
             if (failedPath && failedPath->empty()) *failedPath = path;
+            problem = why;
             return false;
         };
         // symlink_status: a link is removed as the link it is and never
@@ -8707,42 +8752,54 @@ namespace UltraCanvas {
         // entry vanished under it (a folder watcher, another program) must not
         // stop the queue with a dialog about it.
         if (st.type() == fs::file_type::not_found) return true;
-        if (statEc) { ec = statEc; return failedHere(); }
+        if (statEc) {
+            // Windows keeps listing an entry that was deleted while a
+            // program still holds it (a scanner, the indexer), and answers
+            // "access denied" to every look at it until that program lets
+            // go. It is gone as far as this delete is concerned.
+            if (FileSystemEntryIsDeletePending(victim)) return true;
+            ec = statEc;
+            return failedHere(ClassifyFileRemovalError(ec));
+        }
         if (fs::is_directory(st)) {
             // Reading a directory while unlinking out of it may skip entries
             // (POSIX leaves it unspecified), so the pass is repeated until it
-            // finds nothing left. The repeat costs one empty readdir per
-            // folder and buys a delete that cannot silently leave files.
+            // finds nothing it has not handled. A name already handled is
+            // not handled twice: Windows lists an entry removed while a
+            // program holds it until that program lets go, and that is not
+            // work left. The repeat costs one readdir per folder and buys a
+            // delete that cannot silently leave files.
+            std::set<fs::path::string_type> handled;
             for (int pass = 0; pass < 8; ++pass) {
                 bool sawEntry = false;
                 std::error_code iterEc;
                 fs::directory_iterator it(victim, iterEc), end;
-                if (iterEc) { ec = iterEc; return failedHere(); }
+                if (iterEc) {
+                    if (FileSystemEntryIsDeletePending(victim)) return true;
+                    ec = iterEc;
+                    return failedHere(ClassifyFileRemovalError(ec));
+                }
                 for (; it != end; it.increment(iterEc)) {
-                    if (iterEc) { ec = iterEc; return failedHere(); }
+                    if (iterEc) { ec = iterEc; return failedHere(ClassifyFileRemovalError(ec)); }
                     if (credit.Cancelled()) return false;
+                    if (!handled.insert(it->path().filename().native()).second) continue;
                     sawEntry = true;
-                    if (!RemoveTreeWithProgress(PathToUtf8(it->path()), credit, ec,
-                                                failedPath))
+                    if (!RemoveTreeLevel(PathToUtf8(it->path()), credit, ec,
+                                         failedPath, problem))
                         return false;
                 }
+                if (iterEc) { ec = iterEc; return failedHere(ClassifyFileRemovalError(ec)); }
                 if (!sawEntry) break;
             }
         }
-        fs::remove(victim, ec);
-        if (ec == std::errc::permission_denied && !fs::is_directory(st)) {
-            // A read-only file inside the folder: Windows refuses to delete
-            // it with the same "access denied" a real permission problem
-            // gives. The entry's own write protection was lifted before the
-            // attempt (or asked about); one inside it is lifted here, so a
-            // folder unpacked with its read-only bits goes in one pass and
-            // without a question about administrator rights it never needed.
-            std::error_code pec;
-            fs::permissions(victim, fs::perms::owner_write,
-                            fs::perm_options::add, pec);
-            if (!pec) fs::remove(victim, ec);
-        }
-        if (ec) return failedHere();
+        // One entry, through RemoveFileSystemEntry: a read-only file or
+        // folder is lifted first (Windows refuses either with the "access
+        // denied" a real permission problem gives, and Explorer lifts both
+        // without asking), a folder whose last entries are still held is
+        // waited for briefly, and a failure comes back saying whether it is
+        // in use or not permitted.
+        FileRemovalProblem why = FileRemovalProblem::NoProblem;
+        if (!RemoveFileSystemEntry(victim, ec, &why)) return failedHere(why);
         credit.Step(1, PathToUtf8(victim.filename()));
         return true;
     }

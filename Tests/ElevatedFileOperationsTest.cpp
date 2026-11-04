@@ -6,16 +6,28 @@
 // a temp folder (read-only entries included), and what a platform without a
 // backend answers. Starting a real helper would put up a UAC prompt, so the
 // launch itself is the one thing this cannot cover.
+// Runs on Windows too (ULTRACANVAS_BUILD_FILER_TESTS), where the helper's
+// delete meets read-only folders and files in use for real.
+// Version: 1.1.0 - registered (FilerTests.cmake); paths through PathToUtf8;
+//                  Windows: read-only folders, and a file in use named
 // Version: 1.0.0
-// Last Modified: 2026-09-17
+// Last Modified: 2026-11-04
 // Author: UltraCanvas Framework
 #include "UltraCanvasElevatedFileOperations.h"
+#include "UltraCanvasPathUtf8.h"
 
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <string>
 #include <vector>
+
+#if defined(_WIN32) || defined(_WIN64)
+#  ifndef WIN32_LEAN_AND_MEAN
+#    define WIN32_LEAN_AND_MEAN
+#  endif
+#  include <windows.h>
+#endif
 
 namespace fs = std::filesystem;
 using namespace UltraCanvas;
@@ -145,14 +157,48 @@ void TestHelperDelete() {
                     fs::perm_options::remove, ec);
 
     std::vector<ElevatedFailure> failed;
-    const int code = RunHelperDelete({file.string(), locked.string(), tree.string(),
-                                      (scratch.path / "never-existed").string()},
+    const int code = RunHelperDelete({PathToUtf8(file), PathToUtf8(locked), PathToUtf8(tree),
+                                      PathToUtf8(scratch.path / "never-existed")},
                                      failed);
     Check(code == kHelperExitOk, "exit 0 when everything went");
     Check(failed.empty(), "no failures reported");
     Check(!fs::exists(file, ec), "plain file gone");
     Check(!fs::exists(locked, ec), "read-only file gone (protection lifted first)");
     Check(!fs::exists(tree, ec), "folder with a read-only file inside gone");
+
+#if defined(_WIN32) || defined(_WIN64)
+    // What a folder copied off a CD or a camera card looks like: the
+    // read-only attribute on the folders too. Windows refuses to delete a
+    // read-only folder with the "access denied" a real permission problem
+    // gives; the helper lifts it as it goes.
+    const fs::path album = scratch.path / "Lei";
+    fs::create_directories(album / "Album", ec);
+    WriteFile(album / "Album" / "photo.jpg", "x");
+    SetFileAttributesW((album / "Album").c_str(), FILE_ATTRIBUTE_READONLY);
+    SetFileAttributesW(album.c_str(), FILE_ATTRIBUTE_READONLY);
+    failed.clear();
+    Check(RunHelperDelete({PathToUtf8(album)}, failed) == kHelperExitOk && failed.empty(),
+          "Windows: a tree of read-only folders goes");
+    Check(!fs::exists(album, ec), "Windows: and is gone");
+
+    // A file a program holds: no administrator gets past that, and the
+    // reason says which file and that it is in use.
+    const fs::path held = scratch.path / "held";
+    fs::create_directories(held, ec);
+    const fs::path inner = held / "IMG_0001.JPG";
+    WriteFile(inner, "x");
+    HANDLE h = CreateFileW(inner.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr,
+                           OPEN_EXISTING, 0, nullptr);
+    failed.clear();
+    Check(RunHelperDelete({PathToUtf8(held)}, failed) == kHelperExitPartial &&
+          failed.size() == 1, "Windows: a folder with a file in use is reported");
+    if (failed.size() == 1) {
+        std::printf("        (reason: %s)\n", failed[0].reason.c_str());
+        Check(failed[0].reason.rfind("IMG_0001.JPG: in use", 0) == 0,
+              "Windows: the reason names the file inside and says it is in use");
+    }
+    if (h != INVALID_HANDLE_VALUE) CloseHandle(h);
+#endif
 
     failed.clear();
     const int relative = RunHelperDelete({"relative/path.txt"}, failed);
@@ -177,7 +223,7 @@ void TestHelperEntry() {
     const fs::path report = scratch.path / "report.txt";
     const fs::path victim = scratch.path / "victim.txt";
     WriteFile(victim, "x");
-    const std::string reportS = report.string(), victimS = victim.string();
+    const std::string reportS = PathToUtf8(report), victimS = PathToUtf8(victim);
     const char* helper[] = {"app", kHelperDeleteFlag, reportS.c_str(), victimS.c_str()};
     Check(RunHelperIfRequested(4, const_cast<char**>(helper), exitCode),
           "the helper flag makes this the helper");

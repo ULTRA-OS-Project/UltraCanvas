@@ -491,8 +491,31 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
     `ElevatedDeleteResult` (Completed with per-entry failures / Declined /
     Failed / Unavailable).
   `UltraCanvasFilerWidget` offers it from its delete-problem dialog wherever
-  the host wired the helper. See
-  `Docs/UltraCanvas/UltraCanvasElevatedFileOperations.md`.
+  the host wired the helper - for `FileRemovalProblem::NotPermitted` only.
+  See `Docs/UltraCanvas/UltraCanvasElevatedFileOperations.md`.
+
+- **UltraCanvasFileRemoval** (`UltraCanvasFileRemoval.h`) — deleting for
+  good, and why it failed in terms of the user's next step. On Windows
+  "access denied" means four things and only one is about permission: a
+  read-only file or FOLDER (lifted, put back if the delete still fails), an
+  entry already deleted that a program still holds ("delete pending" -
+  counted as removed, its folder waited for about two seconds), a file mapped
+  into a process (a running program, a picture libvips memory-mapped -
+  `InUse`, no administrator gets past it) and the access list
+  (`NotPermitted`). Where available (Windows 10 1809+, NTFS) the delete uses
+  POSIX semantics, so a held file's name goes at once. Public surface:
+  - `RemoveFileSystemEntry(path, ec, &problem)` — one file, link or empty
+    folder.
+  - `RemoveFileSystemTree(path, ec, &problem, &stoppedAt)` — `remove_all`
+    with the reason and the entry that refused.
+  - `FileSystemEntryIsDeletePending(path)`, `ClassifyFileRemovalError(ec)`,
+    `FileRemovalProblem` (`NoProblem`, `InUse`, `NotPermitted`, `NotEmpty`,
+    `Other`).
+  Core and the std::filesystem backend in `core/UltraCanvasFileRemoval.cpp`,
+  Windows in `OS/MSWindows/UltraCanvasWindowsFileRemoval.cpp`,
+  `Tests/FileRemovalTest.cpp`. `UltraCanvasFilerWidget`'s delete and the
+  elevated helper remove through it. See
+  `Docs/UltraCanvas/UltraCanvasFileRemoval.md`.
 
 - **UltraCanvasCoderModuleRepair** (`UltraCanvasCoderModuleRepair.h`) —
   repairs an installed Windows package whose ImageMagick coder carries a
