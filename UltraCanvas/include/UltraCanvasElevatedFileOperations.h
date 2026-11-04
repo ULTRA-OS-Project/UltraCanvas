@@ -36,9 +36,12 @@
 // Backends: Windows (ShellExecuteEx "runas" + the process token's elevation
 // state). Everywhere else IsAvailable() is false and DeleteElevated answers
 // Unavailable, so callers keep the plain "Try again / Skip" choice there.
+// Version: 1.2.0 - the helper removes through UltraCanvasFileRemoval (read-only
+//                  folders, delete-pending entries) and names the file inside
+//                  that refused; IsPermissionFailure says what it cannot tell
 // Version: 1.1.0 - IsAvailable() false from an MSIX package without allowElevation
 // Version: 1.0.0
-// Last Modified: 2026-10-21
+// Last Modified: 2026-11-04
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -91,7 +94,12 @@ namespace UltraCanvas {
         // Whether `ec`, from a failed std::filesystem operation, is the
         // permission refusal a retry as administrator may resolve - as
         // opposed to a sharing violation ("in use by another program"),
-        // which no amount of rights gets past.
+        // which no amount of rights gets past. It reads the code alone, and
+        // on Windows a file mapped into a process (a running program, a
+        // picture an image library holds) answers the same
+        // ERROR_ACCESS_DENIED: RemoveFileSystemEntry / RemoveFileSystemTree
+        // (UltraCanvasFileRemoval.h) tell those apart, and only their
+        // FileRemovalProblem::NotPermitted is worth the retry.
         bool IsPermissionFailure(const std::error_code& ec);
 
         // Delete these entries (files, or folders with everything in them)

@@ -57,29 +57,47 @@ SIMPLE_ESCAPES = {"n": "\n", "t": "\t", "r": "\r", "a": "\a", "b": "\b", "f": "\
 
 
 def unescape(s: str) -> str:
-    """The text a C++ string literal's body stands for, as the compiler
-    emits it: \\n, \\", \\\\; \\xHH and octal are bytes of the UTF-8 text (a
-    source writes "\\xc3\\x97" for a multiplication sign); \\uXXXX and
-    \\UXXXXXXXX are code points (a "\\u2022" bullet); any other character is
-    itself."""
+    """The text a C++ string literal's body stands for: \\n, \\", \\\\, \\xHH, octal,
+    \\uXXXX and \\UXXXXXXXX (a character outside Latin-1, such as \\u2022, as
+    the UTF-8 text the compiler emits).
+
+    \\xHH and octal escapes are bytes, as in the compiled narrow literal: a
+    source that spells a character as its UTF-8 bytes ("\\xC2\\xB7" for the
+    middle dot) means that character, so the bytes are gathered and decoded
+    as UTF-8 together. Only when they are not valid UTF-8 is each one read
+    as a character of its own, as before."""
     if "\\" not in s:
         return s
-    out = bytearray()
+
+    data = bytearray()
     pos = 0
     for m in ESCAPE.finditer(s):
-        out += s[pos:m.start()].encode("utf-8")
+        data += s[pos:m.start()].encode("utf-8")
         e = m.group(1)
-        if e[0] in "uU":
-            out += chr(int(e[1:], 16)).encode("utf-8", "surrogatepass")
-        elif e[0] == "x":
-            out.append(int(e[1:], 16) & 0xFF)
+        if e[0] == "x":
+            data.append(int(e[1:], 16))
         elif e[0] in "01234567":
-            out.append(int(e, 8) & 0xFF)
+            data.append(int(e, 8) & 0xFF)
+        elif e[0] in "uU":
+            data += chr(int(e[1:], 16)).encode("utf-8")
         else:
-            out += SIMPLE_ESCAPES.get(e, e).encode("utf-8")
+            data += SIMPLE_ESCAPES.get(e, e).encode("utf-8")
         pos = m.end()
-    out += s[pos:].encode("utf-8")
-    return out.decode("utf-8", "replace")
+    data += s[pos:].encode("utf-8")
+    try:
+        return data.decode("utf-8")
+    except UnicodeDecodeError:
+        pass
+
+    def one(m):
+        e = m.group(1)
+        if e[0] in "uUx":
+            return chr(int(e[1:], 16))
+        if e[0] in "01234567":
+            return chr(int(e, 8))
+        return SIMPLE_ESCAPES.get(e, e)
+
+    return ESCAPE.sub(one, s)
 
 
 def strip_comments(text: str) -> str:

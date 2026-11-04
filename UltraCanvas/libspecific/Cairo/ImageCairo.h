@@ -244,6 +244,15 @@ namespace VectorStorage { class VectorDocument; }
         // old file's header. Use after a file on disk changes so the next
         // Get()/DrawImage re-reads it instead of serving the stale copy.
         static void RemoveFromCache(const std::string &path);
+        // Lets go of every file a finished decode still holds. libvips keeps
+        // completed loads in its operation cache, and with them the file's
+        // descriptor and, for a JPEG, its memory map - and Windows refuses to
+        // delete a mapped file to anybody, administrators included, until
+        // this process lets go (it refuses to truncate one too). Call before
+        // deleting or overwriting files this process may have shown, such as
+        // a folder whose pictures a file manager drew thumbnails of. Decoded
+        // images and pixmaps stay cached; only finished loaders are dropped.
+        static void ReleaseCachedFiles();
         static std::shared_ptr<UCImageRaster> Load(const std::string &path, bool loadOnlyHeader = true);
         static std::shared_ptr<UCImageRaster> LoadFromMemory(const uint8_t* data, size_t dataSize);
         static std::shared_ptr<UCImageRaster> LoadFromMemory(const std::vector<uint8_t>& data) {
