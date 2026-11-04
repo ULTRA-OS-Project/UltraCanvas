@@ -387,7 +387,13 @@ installs Ubuntu packages with `scripts/ci-apt.sh install`, not
 dead, which apt itself waits out for as long as the job lasts. The build's
 Linux legs also restore the packages the last run on `main` downloaded
 (`ci-apt.sh cache-in` / `cache-out`, saved on `main` only), so a slow mirror
-serves only what changed.
+serves only what changed. Every other download a CI step makes retries too:
+a file through `curl -fsSL --retry 5 --retry-all-errors` into a file (never
+piped straight into `tar`), and a tool with no retry of its own - a
+`git clone`, a submodule update, `emsdk install`, an installer script -
+through `scripts/ci-retry.sh [--clean DIR] -- <command>`, three tries 30 s
+and 60 s apart, `--clean` emptying a clone's folder between them. A bare
+`wget` of `llvm.sh` once failed both Linux legs in under a second.
 A pull request builds five rows - Linux x86_64 and arm64, Windows x86_64 and
 ARM, macOS on Apple silicon - and the macOS Intel row on main only, since
 its runner is five to ten times slower and the two macOS rows share one code
