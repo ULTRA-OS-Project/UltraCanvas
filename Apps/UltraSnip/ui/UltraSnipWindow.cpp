@@ -1,5 +1,6 @@
 // Apps/UltraSnip/ui/UltraSnipWindow.cpp
 // See the header.
+// Version: 0.4.0 - the texts go through Tr (UltraLocalisation)
 // Version: 0.3.0 - one bar at the top, icons for the choices and actions, the settings
 //                  window's type size; the bar alone until there is a snip; New is Start
 // Version: 0.2.0 - the settings window; the picture type, folders and after-snip behaviour
@@ -29,6 +30,7 @@
 #include "UltraCanvasSegmentedControl.h"
 #include "UltraCanvasSettingsPageKit.h"
 #include "UltraCanvasUtils.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <algorithm>
 #include <filesystem>
@@ -121,7 +123,7 @@ bool UltraSnipWindow::Create() {
     window->AddChild(BuildToolbar());
     window->AddChild(BuildContent());
     ApplySettingsToControls();
-    ShowNothing("Click Start, or press Ctrl+N, to take a snip.");
+    ShowNothing(Tr("Click Start, or press Ctrl+N, to take a snip."));
 
     window->InstallEventFilter("ultrasnip-keys", [this](const UCEvent& event) { return OnKey(event); },
                                {UCEventType::KeyDown});
@@ -180,21 +182,21 @@ std::shared_ptr<UltraCanvasContainer> UltraSnipWindow::BuildToolbar() {
     bar->SetPadding(0, 10, 0, 10);
     bar->SetBackgroundColor(kChrome);
 
-    startButton_ = MakeButton("snip.start", "Start", 72, [this]() { StartCapture(RequestFromControls()); },
+    startButton_ = MakeButton("snip.start", Tr("Start"), 72, [this]() { StartCapture(RequestFromControls()); },
                               "scissors.svg");
-    startButton_->SetTooltip("Take a snip with the shape, kind and delay chosen here (Ctrl+N)");
+    startButton_->SetTooltip(Tr("Take a snip with the shape, kind and delay chosen here (Ctrl+N)"));
     bar->AddChild(startButton_);
 
-    modes_ = MakeIconChoice("snip.mode", {{"snip-rectangle.svg", "Rectangle: an area you drag out"},
-                                          {"snip-window.svg", "Window: the window you click"},
-                                          {"snip-screen.svg", "Full screen: the whole screen"}});
+    modes_ = MakeIconChoice("snip.mode", {{"snip-rectangle.svg", Tr("Rectangle: an area you drag out")},
+                                          {"snip-window.svg", Tr("Window: the window you click")},
+                                          {"snip-screen.svg", Tr("Full screen: the whole screen")}});
     modes_->onSegmentSelected = [this](int index) {
         settings_.mode = index == 1 ? SnipMode::Window : index == 2 ? SnipMode::FullScreen : SnipMode::Rectangle;
     };
     bar->AddChild(modes_);
 
-    kinds_ = MakeIconChoice("snip.kind", {{"image.svg", "Picture: a screenshot"},
-                                          {"snip-video.svg", "Video: a recording of the area"}});
+    kinds_ = MakeIconChoice("snip.kind", {{"image.svg", Tr("Picture: a screenshot")},
+                                          {"snip-video.svg", Tr("Video: a recording of the area")}});
     kinds_->onSegmentSelected = [this](int index) { settings_.kind = index == 1 ? SnipKind::Video : SnipKind::Picture; };
     bar->AddChild(kinds_);
 
@@ -204,11 +206,9 @@ std::shared_ptr<UltraCanvasContainer> UltraSnipWindow::BuildToolbar() {
         look.fontSize = SettingsPageKit::kTextFontSize;
         delays_->SetStyle(look);
     }
-    delays_->AddItem("No delay");
-    delays_->AddItem("3 s delay");
-    delays_->AddItem("5 s delay");
-    delays_->AddItem("10 s delay");
-    delays_->SetTooltip("Wait before the screen is taken, so a menu can be opened first");
+    delays_->AddItem(Tr("No delay"));
+    for (int seconds : {3, 5, 10}) delays_->AddItem(TrF("{0} s delay", seconds));
+    delays_->SetTooltip(Tr("Wait before the screen is taken, so a menu can be opened first"));
     delays_->onSelectionChanged = [this](int index, const DropdownItem&) {
         settings_.delaySeconds = kDelays[std::clamp(index, 0, 3)];
     };
@@ -222,21 +222,21 @@ std::shared_ptr<UltraCanvasContainer> UltraSnipWindow::BuildToolbar() {
     actions_->AddChild(MakeBarRule("snip.actions-rule"));
 
     saveButton_ = MakeButton("snip.save", "", kIconButtonWidth, [this]() { SaveAs(); }, "save.svg");
-    saveButton_->SetTooltip("Save as: the snip under another name or type (Ctrl+S)");
+    saveButton_->SetTooltip(Tr("Save as: the snip under another name or type (Ctrl+S)"));
     actions_->AddChild(saveButton_);
 
     copyButton_ = MakeButton("snip.copy", "", kIconButtonWidth, [this]() {
-        if (CopyPictureToClipboard()) SetStatus("Copied to the clipboard.");
+        if (CopyPictureToClipboard()) SetStatus(Tr("Copied to the clipboard."));
     }, "copy.svg");
-    copyButton_->SetTooltip("Copy: the picture to the clipboard (Ctrl+C)");
+    copyButton_->SetTooltip(Tr("Copy: the picture to the clipboard (Ctrl+C)"));
     actions_->AddChild(copyButton_);
 
     folderButton_ = MakeButton("snip.folder", "", kIconButtonWidth, [this]() { OpenFolder(); }, "folder-open.svg");
-    folderButton_->SetTooltip("Open folder: the saved file's folder in the file manager");
+    folderButton_->SetTooltip(Tr("Open folder: the saved file's folder in the file manager"));
     actions_->AddChild(folderButton_);
 
     paintButton_ = MakeButton("snip.paint", "", kIconButtonWidth, [this]() { EditInPaint(); }, "edit.svg");
-    paintButton_->SetTooltip("Edit in UltraPaint: open the saved picture there");
+    paintButton_->SetTooltip(Tr("Edit in UltraPaint: open the saved picture there"));
     actions_->AddChild(paintButton_);
     bar->AddChild(actions_);
 
@@ -252,8 +252,8 @@ std::shared_ptr<UltraCanvasContainer> UltraSnipWindow::BuildToolbar() {
     bar->AddChild(status_);
 
     settingsButton_ = MakeButton("snip.settings", "", kIconButtonWidth, [this]() { OpenSettings(); }, "settings.svg");
-    settingsButton_->SetTooltip("Settings: the picture type and folder, the recording's type and frame rate, "
-                                "what happens after a snip");
+    settingsButton_->SetTooltip(Tr("Settings: the picture type and folder, the recording's type and frame rate, "
+                                   "what happens after a snip"));
     bar->AddChild(settingsButton_);
     return bar;
 }
@@ -343,7 +343,7 @@ void UltraSnipWindow::StartCapture(const SnipRequest& request) {
         const std::string reason = UltraSnipRecorder::UnavailableReason();
         if (!reason.empty()) {
             Show();
-            UltraCanvasAlert::Error("A video cannot be recorded: " + reason, "UltraSnip", nullptr, window_.get());
+            UltraCanvasAlert::Error(TrF("A video cannot be recorded: {0}", reason), "UltraSnip", nullptr, window_.get());
             return;
         }
     }
@@ -367,7 +367,7 @@ void UltraSnipWindow::StartCapture(const SnipRequest& request) {
 void UltraSnipWindow::TakeScreen() {
     std::string error;
     if (!UltraCanvasDesktopShell::CaptureScreenImage(shot_, &error)) {
-        Fail("The screen could not be captured: " + error);
+        Fail(TrF("The screen could not be captured: {0}", error));
         return;
     }
     screenBounds_ = Rect2Di(shot_.x, shot_.y, shot_.width, shot_.height);
@@ -410,7 +410,7 @@ void UltraSnipWindow::OnCaptureCancelled() {
     shot_ = DesktopScreenImage();
     capturing_ = false;
     ShowWindowAgain();
-    SetStatus("Cancelled.");
+    SetStatus(Tr("Cancelled."));
 }
 
 void UltraSnipWindow::OnAreaChosen(const Rect2Di& area) {
@@ -428,12 +428,12 @@ void UltraSnipWindow::FinishPicture(const Rect2Di& area) {
     shot_ = DesktopScreenImage();
     capturing_ = false;
     if (!cropped) {
-        Fail("The chosen area lies outside the screen picture.");
+        Fail(Tr("The chosen area lies outside the screen picture."));
         return;
     }
     std::vector<uint8_t> png;
     if (!ClipboardDib::EncodePng(image, png)) {
-        Fail("The picture could not be encoded as PNG.");
+        Fail(Tr("The picture could not be encoded as PNG."));
         return;
     }
     result_ = ResultKind::Picture;
@@ -442,23 +442,24 @@ void UltraSnipWindow::FinishPicture(const Rect2Di& area) {
     resultPath_.clear();
     ShowPicture();
 
-    std::string status = std::to_string(resultImage_.width) + " \xC3\x97 " + std::to_string(resultImage_.height) + " px";
+    const std::string dot = "  \xC2\xB7  ";
+    std::string status = TrF("{0} \xC3\x97 {1} px", resultImage_.width, resultImage_.height);
     bool error = false;
     if (settings_.autoSave) {
         const std::string path = settings_.NewPicturePath();
         std::string reason;
         if (SavePictureTo(path, reason)) {
-            status += "  \xC2\xB7  saved as " + FileName(resultPath_);
+            status += dot + TrF("saved as {0}", FileName(resultPath_));
             if (!reason.empty()) status += " (" + reason + ")";
         } else {
-            status += "  \xC2\xB7  not saved: " + reason;
+            status += dot + TrF("not saved: {0}", reason);
             error = true;
         }
     }
     if (settings_.autoCopy) {
-        if (CopyPictureToClipboard()) status += "  \xC2\xB7  copied";
+        if (CopyPictureToClipboard()) status += dot + Tr("copied");
         else {
-            status += "  \xC2\xB7  not copied";
+            status += dot + Tr("not copied");
             error = true;
         }
     }
@@ -495,7 +496,7 @@ void UltraSnipWindow::BeginRecording(const Rect2Di& area) {
             recorder_.reset();
             recordingBar_.reset();
             capturing_ = false;
-            Fail("The recording bar could not be opened.");
+            Fail(Tr("The recording bar could not be opened."));
             return;
         }
         recordingTimer_ = app_.StartTimer(kRecordingTickMs, true, [this](TimerId) { TickRecording(); });
@@ -535,8 +536,8 @@ void UltraSnipWindow::StopRecording() {
     if (frames == 0) {
         std::error_code ec;
         std::filesystem::remove(PathFromUtf8(path), ec);
-        ShowNothing("Nothing was recorded.");
-        SetStatus(complete ? "The recording was empty." : error, !complete);
+        ShowNothing(Tr("Nothing was recorded."));
+        SetStatus(complete ? Tr("The recording was empty.") : error, !complete);
         ShowWindowAgain();
         return;
     }
@@ -545,7 +546,7 @@ void UltraSnipWindow::StopRecording() {
     resultPng_.clear();
     resultPath_ = path;
     ShowVideo(path);
-    SetStatus(FormatElapsed(seconds) + " recorded  \xC2\xB7  saved as " + FileName(path) +
+    SetStatus(TrF("{0} recorded", FormatElapsed(seconds)) + "  \xC2\xB7  " + TrF("saved as {0}", FileName(path)) +
                   (complete ? "" : "  \xC2\xB7  " + error),
               !complete);
     if (settings_.showWindowAfterSnip || windowWasShown_ || !complete) ShowWindowAgain();
@@ -628,11 +629,11 @@ bool UltraSnipWindow::CopyPictureToClipboard() {
     if (result_ != ResultKind::Picture || resultPng_.empty()) return false;
     UltraCanvasClipboard* clipboard = GetClipboard();
     if (!clipboard) {
-        SetStatus("The clipboard is not available.", true);
+        SetStatus(Tr("The clipboard is not available."), true);
         return false;
     }
     if (!clipboard->SetImage(resultPng_, "image/png")) {
-        SetStatus("The picture could not be put on the clipboard.", true);
+        SetStatus(Tr("The picture could not be put on the clipboard."), true);
         return false;
     }
     return true;
@@ -644,7 +645,7 @@ bool UltraSnipWindow::CopyPictureToClipboard() {
 // cannot write falls back to PNG beside it, and says so.
 bool UltraSnipWindow::SavePictureTo(const std::string& path, std::string& error) {
     if (result_ != ResultKind::Picture || resultPng_.empty()) {
-        error = "There is no picture to save.";
+        error = Tr("There is no picture to save.");
         return false;
     }
     std::string target = path;
@@ -656,12 +657,12 @@ bool UltraSnipWindow::SavePictureTo(const std::string& path, std::string& error)
         if (!UltraCanvasFileLoader::CanSaveImage(type) || !UltraCanvasFileLoader::GetImageExportOptions(target, options)) {
             target = SnipFilePath(path, "", "png");
             if (!WriteFileBytes(target, resultPng_, error)) return false;
-            error = "this build cannot write ." + type + ", saved as PNG";
+            error = TrF("this build cannot write .{0}, saved as PNG", type);
         } else {
             const std::shared_ptr<UCImage> picture =
                 UCImage::FromRgba(resultImage_.pixels.data(), resultImage_.width, resultImage_.height);
             if (!picture) {
-                error = "The picture could not be prepared.";
+                error = Tr("The picture could not be prepared.");
                 return false;
             }
             std::error_code ec;
@@ -682,26 +683,26 @@ void UltraSnipWindow::SaveAs() {
     opts.SetParentWindow(window_.get()).SetInitialDirectory(settings_.saveFolder);
     if (result_ == ResultKind::Video) {
         const std::string type = LowerExtension(resultPath_);
-        opts.SetTitle("Save the recording as")
+        opts.SetTitle(Tr("Save the recording as"))
             .SetDefaultFileName(FileName(resultPath_))
             .SetDefaultExtension(type)
-            .AddFilter(type == "webm" ? "WebM video" : type == "mkv" ? "Matroska video" : "MP4 video", type);
+            .AddFilter(type == "webm" ? Tr("WebM video") : type == "mkv" ? Tr("Matroska video") : Tr("MP4 video"), type);
         const std::string source = resultPath_;
         UltraCanvasFileLoader::SaveFileDialog(opts, [this, source](DialogResult result, const std::string& path) {
             if (result != DialogResult::OK || path.empty()) return;
             std::string error;
             if (!CopyFileTo(source, path, error)) {
-                UltraCanvasAlert::Error("Could not save " + path + "\n" + error, "Save as", nullptr, window_.get());
+                UltraCanvasAlert::Error(TrF("Could not save {0}", path) + "\n" + error, Tr("Save as"), nullptr, window_.get());
                 return;
             }
             settings_.saveFolder = ParentFolder(path);
             settings_.Save();
-            SetStatus("Saved as " + FileName(path));
+            SetStatus(TrF("Saved as {0}", FileName(path)));
         });
         return;
     }
     const std::string defaultType = UltraCanvasFileLoader::CanSaveImage(settings_.pictureFormat) ? settings_.pictureFormat : "png";
-    opts.SetTitle("Save the picture as")
+    opts.SetTitle(Tr("Save the picture as"))
         .SetDefaultFileName(resultPath_.empty() ? FileName(settings_.NewPicturePath()) : FileName(resultPath_))
         .SetDefaultExtension(defaultType)
         .SetImageSize(resultImage_.width, resultImage_.height);
@@ -718,20 +719,20 @@ void UltraSnipWindow::SaveAs() {
             // type's own settings (the Save dialog's Settings edits them)
             UCImageSave::ImageExportOptions options;
             const std::shared_ptr<UCImage> picture = UCImage::LoadFromMemory(resultPng_);
-            if (!picture) error = "The picture could not be read.";
+            if (!picture) error = Tr("The picture could not be read.");
             else if (!UltraCanvasFileLoader::GetImageExportOptions(path, size, options))
-                error = "This build cannot write ." + type + " pictures.";
+                error = TrF("This build cannot write .{0} pictures.", type);
             else error = picture->Save(path, options);
         }
         if (!error.empty()) {
-            UltraCanvasAlert::Error("Could not save " + path + "\n" + error, "Save as", nullptr, window_.get());
+            UltraCanvasAlert::Error(TrF("Could not save {0}", path) + "\n" + error, Tr("Save as"), nullptr, window_.get());
             return;
         }
         resultPath_ = path;
         settings_.saveFolder = ParentFolder(path);
         settings_.Save();
         UpdateActions();
-        SetStatus("Saved as " + FileName(path));
+        SetStatus(TrF("Saved as {0}", FileName(path)));
     });
 }
 
@@ -741,7 +742,7 @@ void UltraSnipWindow::OpenFolder() {
     if (folder.empty()) return;
     std::string error;
     if (!FileAssociations::OpenWithDefaultApplication({folder}, error))
-        UltraCanvasAlert::Error("The folder could not be opened: " + error, "UltraSnip", nullptr, window_.get());
+        UltraCanvasAlert::Error(TrF("The folder could not be opened: {0}", error), "UltraSnip", nullptr, window_.get());
 }
 
 void UltraSnipWindow::EditInPaint() {
@@ -749,14 +750,14 @@ void UltraSnipWindow::EditInPaint() {
     if (resultPath_.empty()) {
         std::string error;
         if (!SavePictureTo(settings_.NewPicturePath(), error)) {
-            UltraCanvasAlert::Error("The picture could not be saved for UltraPaint: " + error, "UltraSnip", nullptr,
+            UltraCanvasAlert::Error(TrF("The picture could not be saved for UltraPaint: {0}", error), "UltraSnip", nullptr,
                                     window_.get());
             return;
         }
     }
     std::string error;
     if (!UltraCanvasDesktopShell::LaunchProgram("UltraPaint", {resultPath_}, &error))
-        UltraCanvasAlert::Error("UltraPaint could not be started: " + error, "UltraSnip", nullptr, window_.get());
+        UltraCanvasAlert::Error(TrF("UltraPaint could not be started: {0}", error), "UltraSnip", nullptr, window_.get());
 }
 
 bool UltraSnipWindow::OnKey(const UCEvent& event) {
@@ -770,7 +771,7 @@ bool UltraSnipWindow::OnKey(const UCEvent& event) {
         return true;
     }
     if (event.ctrl && event.virtualKey == UCKeys::C && result_ == ResultKind::Picture) {
-        if (CopyPictureToClipboard()) SetStatus("Copied to the clipboard.");
+        if (CopyPictureToClipboard()) SetStatus(Tr("Copied to the clipboard."));
         return true;
     }
     return false;

@@ -85,6 +85,14 @@ is saved.
 | Videos > Recording | The recording's container - MP4 with H.264, Matroska with H.264, WebM with VP9, each greyed when the build's FFmpeg lacks the encoder - the frame rate (5 to 60 a second) and the folder. |
 | Behaviour > After a snip | Whether the UltraSnip window appears with the result after a snip started from the desktop's button, the shortcut or the command line, or stays out of the way: the picture is saved and copied and nothing appears (a recording still shows its bar). A snip taken from the window always returns to it. |
 
+## Languages
+
+UltraSnip shows its texts in the language UltraCanvas runs in, from its own
+set (`media/locale/en/UltraSnip.json` in English) over the *Image* and
+*Video* base sets and the standard set. *Translate UltraSnip...* on the
+settings window's start page opens the localisation editor on that set; a
+change is kept in the settings folder and shows at the next start.
+
 ## Where things are kept
 
 | What | Linux | Windows |
