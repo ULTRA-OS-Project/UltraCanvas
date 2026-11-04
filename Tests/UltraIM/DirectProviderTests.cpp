@@ -2,6 +2,8 @@
 // ChatCube Direct: the envelope, the store, and two providers end to end
 // through a local relay (P2P, read receipts, offline queue, groups, calls),
 // and two on the local network with no relay at all
+// Version: 0.1.7 - the e-mail confirmed by the link the relay e-mails; recovery by an e-mailed link, approved on
+//                  its page while the new computer asks (FinishRecovery: NeedsInput until then)
 // Version: 0.1.6 - the e-mail and phone confirmed with the relay's codes, recovery on, and the ID recovered on a
 //                  second, empty computer - signed in as the same person
 // Version: 0.1.5 - the account's profile (e-mail, phone) and its sign-in protection: a password, an
@@ -912,8 +914,55 @@ UltraIMAccountProfile FetchProfile(DirectProvider& provider) {
     return out;
 }
 
-// Confirming the e-mail and phone, recovery on, and the ID brought back on a
-// computer that never had it - by the codes the relay sends to both.
+// The last link the relay e-mailed to `to` (the outbox's JSON line, its
+// text), at most `seconds` waiting for the `count`th message.
+std::string OutboxLink(const fs::path& outbox, const std::string& to, int count, int seconds = 10) {
+    for (int waited = 0; waited < seconds * 10; ++waited) {
+        std::ifstream in(outbox);
+        std::string line, last;
+        int found = 0;
+        while (std::getline(in, line)) {
+            if (line.find("\"channel\": \"email\"") == std::string::npos) continue;
+            if (line.find("\"to\": \"" + to + "\"") == std::string::npos) continue;
+            ++found;
+            last = line;
+        }
+        if (found >= count) {
+            const size_t start = last.find("http");
+            if (start == std::string::npos) return std::string();
+            size_t end = start;
+            while (end < last.size() && last[end] != '\\' && last[end] != '"' && last[end] != ' ') ++end;
+            return last.substr(start, end - start);
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+    return std::string();
+}
+
+// A link opened in a browser: its page (GET), and the page's form sent (POST).
+int OpenLink(const std::string& link, std::string* page = nullptr) {
+    UltraNetResponse response;
+    UltraNetHttpOptions options;
+    options.timeoutMs = 5000;
+    UltraNet_HttpGet(link, response, options);          // a 410 is an answer too
+    if (page) *page = response.GetBodyAsString();
+    return response.statusCode;
+}
+
+int ApproveRecovery(const std::string& relayUrl, const std::string& link) {
+    const size_t at = link.find("token=");
+    if (at == std::string::npos) return 0;
+    const std::string form = link.substr(at);        // token_urlsafe: nothing to escape
+    UltraNetResponse response;
+    UltraNetHttpOptions options;
+    options.timeoutMs = 5000;
+    UltraNet_HttpPost(relayUrl + "/recover", std::vector<uint8_t>(form.begin(), form.end()), response, options);
+    return response.statusCode;
+}
+
+// Confirming the e-mail (the link the relay e-mails) and the phone (the code
+// it texts), recovery on, and the ID brought back on a computer that never
+// had it - by the link the relay e-mails, approved on its page.
 void TestRecovery(const std::string& relayUrl, const fs::path& base) {
     const fs::path outbox = base / "outbox.jsonl";
     UltraIMResult r;
@@ -933,24 +982,27 @@ void TestRecovery(const std::string& relayUrl, const fs::path& base) {
         create.phoneNumber = "+49 151 2345 6789";
         CHECK(WaitResult([&](UltraIMResultCallback cb) { rita.SignIn(create, cb); }, r) && r);
         userId = rita.GetLocalUserId();
-        // The sign-in sent the e-mail and phone; the relay sent a code to each.
+        // The sign-in sent the e-mail and phone: a link to the one, a code to the other.
         UltraIMAccountProfile profile;
         for (int i = 0; i < 50 && !(profile = FetchProfile(rita)).recoveryAvailable; ++i)
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        CHECK(profile.recoveryAvailable && !profile.emailVerified && !profile.recoveryEnabled);
-        // Not before both are confirmed.
+        CHECK(profile.recoveryAvailable && profile.phoneCodesAvailable);
+        CHECK(!profile.emailVerified && !profile.recoveryEnabled);
+        // Not before the address is confirmed; and it takes no code.
         CHECK(WaitResult([&](UltraIMResultCallback cb) { rita.SetRecoveryEnabled(true, cb); }, r) && !r);
         CHECK(WaitResult([&](UltraIMResultCallback cb) { rita.VerifyContact(UltraIMContactChannel::Email, "000000", cb); }, r) && !r);
-        const std::string emailCode = OutboxCode(outbox, "email", "rita@example.org", 1);
+        const std::string confirmLink = OutboxLink(outbox, "rita@example.org", 1);
+        CHECK(confirmLink.find("/confirm-email?token=") != std::string::npos);
+        std::string page;
+        CHECK(OpenLink(confirmLink, &page) == 200 && page.find("is confirmed") != std::string::npos);
+        CHECK(OpenLink(confirmLink) == 410);                // once
         const std::string phoneCode = OutboxCode(outbox, "phone", "+4915123456789", 1);
-        CHECK(emailCode.size() == 6 && phoneCode.size() == 6);
-        CHECK(WaitResult([&](UltraIMResultCallback cb) { rita.VerifyContact(UltraIMContactChannel::Email, emailCode, cb); }, r) && r);
+        CHECK(phoneCode.size() == 6);
         CHECK(WaitResult([&](UltraIMResultCallback cb) { rita.VerifyContact(UltraIMContactChannel::Phone, phoneCode, cb); }, r) && r);
         CHECK(WaitResult([&](UltraIMResultCallback cb) { rita.SetRecoveryEnabled(true, cb); }, r) && r);
         profile = FetchProfile(rita);
         CHECK(profile.emailVerified && profile.phoneVerified && profile.recoveryEnabled);
         // A computer with an ID refuses to recover one.
-        UltraIMRecoveryChallenge challenge;
         bool started = false;
         std::mutex mutex;
         std::condition_variable cv;
@@ -981,7 +1033,7 @@ void TestRecovery(const std::string& relayUrl, const fs::path& base) {
         std::condition_variable cv;
         bool done = false;
         UltraIMResult started;
-        again.StartRecovery(relayUrl, "+49 (151) 2345-6789", [&](const UltraIMResult& res, const UltraIMRecoveryChallenge& c) {
+        again.StartRecovery(relayUrl, " Rita@Example.org ", [&](const UltraIMResult& res, const UltraIMRecoveryChallenge& c) {
             std::lock_guard<std::mutex> lock(mutex);
             started = res;
             challenge = c;
@@ -992,15 +1044,26 @@ void TestRecovery(const std::string& relayUrl, const fs::path& base) {
             std::unique_lock<std::mutex> lock(mutex);
             cv.wait_for(lock, std::chrono::seconds(15), [&]() { return done; });
         }
-        CHECK(started && !challenge.recoveryId.empty());
+        CHECK(started && !challenge.recoveryId.empty() && challenge.expiresInSeconds > 0);
         UltraIMRecoveryAnswer answer;
         answer.server = relayUrl;
         answer.recoveryId = challenge.recoveryId;
-        answer.emailCode = OutboxCode(outbox, "email", "rita@example.org", 2);
-        answer.phoneCode = "000 000";
+        // Waiting for the link to be opened.
         CHECK(WaitResult([&](UltraIMResultCallback cb) { again.FinishRecovery(answer, cb); }, r) &&
-              r.code == UltraIMResultCode::AuthFailed);
-        answer.phoneCode = OutboxCode(outbox, "phone", "+4915123456789", 2);
+              r.code == UltraIMResultCode::NeedsInput);
+        const std::string link = OutboxLink(outbox, "rita@example.org", 2);
+        CHECK(link.find("/recover?token=") != std::string::npos);
+        // Opening it only asks.
+        std::string page;
+        CHECK(OpenLink(link, &page) == 200 && page.find("method=\"post\"") != std::string::npos);
+        CHECK(WaitResult([&](UltraIMResultCallback cb) { again.FinishRecovery(answer, cb); }, r) &&
+              r.code == UltraIMResultCode::NeedsInput);
+        // Another recovery id is not this computer's.
+        UltraIMRecoveryAnswer other = answer;
+        other.recoveryId = "not-the-one-started";
+        CHECK(WaitResult([&](UltraIMResultCallback cb) { again.FinishRecovery(other, cb); }, r) && !r &&
+              r.code == UltraIMResultCode::InvalidArgument);
+        CHECK(ApproveRecovery(relayUrl, link) == 200);
         CHECK(WaitResult([&](UltraIMResultCallback cb) { again.FinishRecovery(answer, cb); }, r) && r);
         CHECK(again.HasStoredSession());
         // And it signs in as Rita, with no more than the stored session.
@@ -1010,10 +1073,9 @@ void TestRecovery(const std::string& relayUrl, const fs::path& base) {
         CHECK(again.GetLocalUserId() == userId);
         const UltraIMAccountProfile profile = FetchProfile(again);
         CHECK(profile.displayName == "Rita" && profile.email == "rita@example.org" && profile.recoveryEnabled);
-        // Rita heard of it, on both: a third message to each (the code that
-        // confirmed it, the recovery code, the notice).
+        // Rita heard of it: a third e-mail (the confirmation, the recovery
+        // link, the notice).
         CHECK(OutboxCount(outbox, "email", "rita@example.org", 3) >= 3);
-        CHECK(OutboxCount(outbox, "phone", "+4915123456789", 3) >= 3);
         again.Shutdown();
     }
 }

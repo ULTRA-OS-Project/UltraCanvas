@@ -1,5 +1,6 @@
 // include/UltraIM/UltraIMPlugins.h
 // UltraIM - the provider plug-in interface and the module (DSO) host contract
+// Version: 0.1.8 - ABI 4: account recovery by an e-mailed link (FinishRecovery asks whether it was opened)
 // Version: 0.1.7 - ABI 3: confirming the e-mail and phone, and account recovery
 // Version: 0.1.6 - ABI 2: the version covers the provider interface and its types, a module says
 //                  which it was built for (UltraIM_PluginAbiVersion) and the host loads only an equal one
@@ -286,12 +287,14 @@ public:
     }
 
     // ---- Confirming the e-mail and phone; account recovery ---------------------
-    // (AccountRecovery capability.) A changed e-mail address or phone number
-    // gets a code from the service; VerifyContact sends it back,
-    // ResendContactCode asks for another. SetRecoveryEnabled turns recovery
-    // on (both confirmed) or off. On a computer without the account:
-    // StartRecovery sends a code to both, FinishRecovery with both codes puts
-    // the account on this computer - SignIn then signs in as usual.
+    // (AccountRecovery capability.) A changed e-mail address gets a link
+    // from the service, which confirms it when opened; a changed phone number
+    // gets a code, which VerifyContact sends back. ResendContactCode asks for
+    // another link or code. SetRecoveryEnabled turns recovery on (the address
+    // confirmed) or off. On a computer without the account: StartRecovery has
+    // a link e-mailed to the account's address; FinishRecovery asks whether it
+    // was opened and approved - NeedsInput while not yet, Ok once the account
+    // is on this computer - and SignIn then signs in as usual.
     virtual void VerifyContact(UltraIMContactChannel channel, const std::string& code, UltraIMResultCallback onResult) {
         (void)channel; (void)code;
         if (onResult) onResult(Unsupported("confirming an address"));
@@ -348,10 +351,11 @@ protected:
 // Version 1: the first modules. Version 2 (2026-11): the account profile and
 // sign-in protection, UltraIMCredentials::email - and the version check.
 // Version 3 (2026-11): the profile's verified flags and recovery state,
-// confirming the e-mail and phone, account recovery.
+// confirming the e-mail and phone, account recovery. Version 4 (2026-11):
+// recovery by a link e-mailed to the owner (UltraIMRecoveryAnswer has no codes).
 // ============================================================================
 
-constexpr int ULTRAIM_PLUGIN_HOST_ABI_VERSION = 3;
+constexpr int ULTRAIM_PLUGIN_HOST_ABI_VERSION = 4;
 
 struct UltraIMPluginHost {
     int abiVersion;

@@ -1,5 +1,6 @@
 // include/UltraIM/UltraIMCore.h
 // UltraIM - the public instant-messaging API (UltraIM_* functions)
+// Version: 0.1.8 - account recovery by an e-mailed link: UltraIM_FinishRecovery asks whether it was approved
 // Version: 0.1.7 - UltraIM_VerifyContact, _ResendContactCode, _SetRecoveryEnabled, _StartRecovery, _FinishRecovery
 // Version: 0.1.6 - the account's profile (UltraIM_FetchAccountProfile, UltraIM_UpdateAccountProfile) and its
 //                  sign-in protection (UltraIM_GetSignInProtection, _StartAuthenticatorSetup, _SetSignInProtection)
@@ -181,15 +182,18 @@ void UltraIM_SetSignInProtection(const std::string& providerId, const UltraIMPro
                                  UltraIMResultCallback onResult);
 
 // ---- Confirming the e-mail and phone; account recovery ---------------------------
-// A changed e-mail address or phone number gets a code from the service
-// (emailVerified / phoneVerified in the profile say when it came back):
-// UltraIM_VerifyContact sends it back, UltraIM_ResendContactCode asks for a
-// new one. UltraIM_SetRecoveryEnabled turns recovery on - both confirmed - or
+// A changed e-mail address gets a link from the service that confirms it
+// when opened; a changed phone number gets a code (emailVerified /
+// phoneVerified in the profile say when): UltraIM_VerifyContact sends the
+// phone's code back, UltraIM_ResendContactCode asks for a new link or code.
+// UltraIM_SetRecoveryEnabled turns recovery on - the address confirmed - or
 // off. On a computer without the account, UltraIM_StartRecovery(provider,
-// server, the e-mail address or the phone number) has a code sent to each,
-// and UltraIM_FinishRecovery with both puts the account on this computer;
-// UltraIM_SignIn then signs in with what it stored. The challenge looks the
-// same for an address the service does not know; only the codes tell.
+// server, the e-mail address) has a link e-mailed to it; UltraIM_FinishRecovery
+// then asks whether the owner opened it and said yes - NeedsInput while not
+// yet (ask again in a few seconds), Ok once the account is on this computer,
+// AuthFailed when the recovery expired - and UltraIM_SignIn signs in with
+// what it stored. The challenge looks the same for an address the service
+// does not know; such a recovery simply never gets approved.
 void UltraIM_VerifyContact(const std::string& providerId, UltraIMContactChannel channel, const std::string& code,
                            UltraIMResultCallback onResult);
 void UltraIM_ResendContactCode(const std::string& providerId, UltraIMContactChannel channel,

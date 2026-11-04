@@ -20,11 +20,12 @@
 //                                                [Save sign-in protection]
 //     status line
 //
-// Under the e-mail address and the phone number: "Confirmed", or the code
-// the relay sent there to type back (and another one asked for). Below,
-// "Getting this ID back": account recovery on or off - the relay then keeps
-// a copy of the key, which codes to both confirmed bring back on another
-// computer (the sign-in page's "Recover my ChatCube ID").
+// Under the e-mail address: "Confirmed", or Check (once the link the relay
+// e-mailed was opened) and Send again; under the phone number, the code the
+// relay texted to type back. Below, "Getting this ID back": account recovery
+// on or off - the relay then keeps a copy of the key, which a link e-mailed
+// to the confirmed address brings back on another computer (the sign-in
+// page's "Recover my ChatCube ID").
 //
 // The name goes to the contacts; the e-mail and the phone number into the
 // identity's key vault and to the relay, for the owner alone (UltraIM's
@@ -33,9 +34,10 @@
 // app - UltraAuthenticator scans the QR code from this screen, any other
 // authenticator from a phone. Changing it asks for what protects it now.
 //
+// Version: 0.1.2 - the e-mail address confirmed by the link e-mailed to it; recovery by an e-mailed link
 // Version: 0.1.1 - confirming the e-mail and phone with the relay's codes; account recovery on or off
 // Version: 0.1.0
-// Last Modified: 2026-11-01
+// Last Modified: 2026-11-04
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 

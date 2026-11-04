@@ -697,6 +697,7 @@ void DirectProvider::FetchAccountProfile(UltraIMAccountProfileCallback onResult)
             profile.emailVerified = r.body["email_verified"].GetBoolean();
             profile.phoneVerified = r.body["phone_verified"].GetBoolean();
             profile.recoveryAvailable = r.body["recovery_available"].GetBoolean();
+            profile.phoneCodesAvailable = r.body["phone_codes_available"].GetBoolean();
             profile.recoveryEnabled = r.body["recovery_enabled"].GetBoolean();
         }
         onResult(UltraIMResult::Ok(), profile);
@@ -800,7 +801,7 @@ void DirectProvider::StartRecovery(const std::string& server, const std::string&
     }
     if (Trimmed(address).empty()) {
         finish(UltraIMResult::Error(UltraIMResultCode::InvalidArgument,
-                                    "Type the e-mail address or the phone number of your ID"), {});
+                                    "Type the e-mail address of your ID"), {});
         return;
     }
     // A client of its own: there is no session yet. The one before is stopped
@@ -810,7 +811,9 @@ void DirectProvider::StartRecovery(const std::string& server, const std::string&
     recoveryRelay_->SetBaseUrl(url);
     JSONValue body = JSONValue::MakeObject();
     body.Set("address", JSONValue(Trimmed(address)));
-    recoveryRelay_->Request("POST", "/v1/recovery/start", &body, [finish](const RelayResponse& r) {
+    recoveryId_.clear();
+    Wipe(recoveryPollToken_);
+    recoveryRelay_->Request("POST", "/v1/recovery/start", &body, [this, finish](const RelayResponse& r) {
         if (!r.Ok()) {
             if (r.status == 503)
                 return finish(UltraIMResult::Error(UltraIMResultCode::CapabilityMissing,
@@ -820,6 +823,8 @@ void DirectProvider::StartRecovery(const std::string& server, const std::string&
         UltraIMRecoveryChallenge challenge;
         challenge.recoveryId = r.body["recovery_id"].GetString();
         challenge.expiresInSeconds = static_cast<int>(r.body["expires_in"].GetInteger());
+        recoveryId_ = challenge.recoveryId;
+        recoveryPollToken_ = r.body["poll_token"].GetString();
         finish(UltraIMResult::Ok(), challenge);
     });
 }
@@ -830,28 +835,31 @@ void DirectProvider::FinishRecovery(const UltraIMRecoveryAnswer& answer, UltraIM
         finish(UltraIMResult::Error(UltraIMResultCode::InvalidArgument, "This computer has a ChatCube ID already"));
         return;
     }
-    const std::string url = Trimmed(answer.server).empty() ? store_.GetSetting("relay_url") : Trimmed(answer.server);
-    // The client StartRecovery made (it has followed any redirect), else one now.
-    if (!recoveryRelay_) {
-        if (url.empty()) {
-            finish(UltraIMResult::Error(UltraIMResultCode::InvalidArgument, "Start the recovery first"));
-            return;
-        }
-        recoveryRelay_ = std::make_shared<RelayClient>();
-        recoveryRelay_->SetBaseUrl(url);
+    // Only the recovery this computer started (the client it made, which has
+    // followed any redirect, and the poll token the relay gave it).
+    if (!recoveryRelay_ || recoveryPollToken_.empty() || answer.recoveryId != recoveryId_) {
+        finish(UltraIMResult::Error(UltraIMResultCode::InvalidArgument, "Start the recovery first"));
+        return;
     }
     RelayClient* relay = recoveryRelay_.get();      // its callbacks run before Stop() returns
     JSONValue body = JSONValue::MakeObject();
-    body.Set("recovery_id", JSONValue(answer.recoveryId));
-    body.Set("email_code", JSONValue(Trimmed(answer.emailCode)));
-    body.Set("phone_code", JSONValue(Trimmed(answer.phoneCode)));
-    relay->Request("POST", "/v1/recovery/finish", &body, [this, relay, finish](const RelayResponse& r) {
+    body.Set("recovery_id", JSONValue(recoveryId_));
+    body.Set("poll_token", JSONValue(recoveryPollToken_));
+    relay->Request("POST", "/v1/recovery/poll", &body, [this, relay, finish](const RelayResponse& r) {
+        if (r.status == 202)
+            return finish(UltraIMResult::Error(UltraIMResultCode::NeedsInput,
+                                               "Open the link we e-mailed you and confirm there"));
         if (!r.Ok()) {
-            if (r.status == 401)
+            if (r.status == 410) {
+                recoveryId_.clear();
+                Wipe(recoveryPollToken_);
                 return finish(UltraIMResult::Error(UltraIMResultCode::AuthFailed,
-                                                   "Those are not the codes, or they have expired - start again"));
-            return finish(RelayError(r, UltraIMResultCode::AuthFailed));
+                                                   "The recovery has expired - start again"));
+            }
+            return finish(RelayError(r, UltraIMResultCode::NetworkError));
         }
+        recoveryId_.clear();
+        Wipe(recoveryPollToken_);
         std::string secret = r.body["secret_key"].GetString();
         UltraCryptSecureBuffer buffer = SecretFromText(secret);
         Wipe(secret);

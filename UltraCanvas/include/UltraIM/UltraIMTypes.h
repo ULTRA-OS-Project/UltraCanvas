@@ -1,5 +1,7 @@
 // include/UltraIM/UltraIMTypes.h
 // UltraIM - data types shared by the instant-messaging API and its providers
+// Version: 0.1.6 - account recovery by a link e-mailed to the confirmed address (UltraIMRecoveryAnswer
+//                  without codes); the e-mail address confirmed by a link, the phone by a code
 // Version: 0.1.5 - UltraIMPreviewMaker: the application's way of making a preview picture of a file to send
 // Version: 0.1.4 - UltraIMAttachment::thumbnailPath (a video's or a file's preview picture); UltraIMAttachmentCallback
 // Version: 0.1.3 - UltraIMAuthStep::OtherDevice: a sign-in confirmed on another device (a QR code scanned there)
@@ -9,7 +11,7 @@
 // Version: 0.1.2 - UltraIMAccountProfile (name, e-mail, phone), UltraIMSignInProtection, credentials.email
 // Version: 0.1.1 - UltraIMSharedCredentialsCallback: credentials one provider's service keeps for another
 // Version: 0.1.0
-// Last Modified: 2026-10-29
+// Last Modified: 2026-11-04
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -160,7 +162,7 @@ enum class UltraIMCapabilityFlags : uint32_t {
     CreateGroup     = 1u << 25,  // UltraIM_CreateGroup
     AccountProfile  = 1u << 26,  // UltraIM_FetchAccountProfile / UltraIM_UpdateAccountProfile
     SignInProtection = 1u << 27, // UltraIM_SetSignInProtection: a password, an authenticator code
-    AccountRecovery = 1u << 28   // UltraIM_StartRecovery / FinishRecovery: back with codes to the e-mail and phone
+    AccountRecovery = 1u << 28   // UltraIM_StartRecovery / FinishRecovery: back by a link e-mailed to the owner
 };
 
 inline UltraIMCapabilityFlags operator|(UltraIMCapabilityFlags a, UltraIMCapabilityFlags b) {
@@ -235,23 +237,29 @@ struct UltraIMAccountProfile {
     std::string email;
     std::string phoneNumber;        // international form, "+49 151 ..." as typed
     // What the service says, read by FetchAccountProfile (an update ignores
-    // them): whether a code sent to the address or the number came back
-    // (UltraIM_VerifyContact), whether the service offers recovery at all,
-    // and whether this account has it on (UltraIM_SetRecoveryEnabled).
+    // them): whether the address is confirmed (the link e-mailed to it was
+    // opened) and the number (the code sent to it came back,
+    // UltraIM_VerifyContact), whether the service offers recovery at all
+    // (and can text the phone a code), and whether this account has it on
+    // (UltraIM_SetRecoveryEnabled).
     bool emailVerified = false;
     bool phoneVerified = false;
     bool recoveryAvailable = false;
+    bool phoneCodesAvailable = false;
     bool recoveryEnabled = false;
 };
 
-// The two ways a code reaches the owner.
+// The two ways the service reaches the owner: a link by e-mail, a code by SMS.
 enum class UltraIMContactChannel { Email, Phone };
 
 // ---- Account recovery ------------------------------------------------------
-// A new computer gets an account back without the old one: the service sends
-// a code to the account's verified e-mail address and one to its verified
-// phone, and both typed back return the account (ChatCube Direct: the
-// relay hands back the copy of the key it keeps while recovery is on).
+// A new computer gets an account back without the old one: the service
+// e-mails a link to the account's confirmed address, and once the owner has
+// opened it and said yes, the computer that asked gets the account back
+// (ChatCube Direct: the relay hands back the copy of the key it keeps while
+// recovery is on). The asking computer finds out by asking again
+// (FinishRecovery) until then; only it can - the provider keeps what proves
+// it asked.
 struct UltraIMRecoveryChallenge {
     std::string recoveryId;         // what FinishRecovery names
     int         expiresInSeconds = 0;
@@ -259,8 +267,6 @@ struct UltraIMRecoveryChallenge {
 struct UltraIMRecoveryAnswer {
     std::string server;             // the same service StartRecovery asked
     std::string recoveryId;
-    std::string emailCode;
-    std::string phoneCode;
 };
 
 // What signing in asks of the user on this device (ChatCube Direct, whose

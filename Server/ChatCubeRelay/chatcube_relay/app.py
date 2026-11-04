@@ -378,7 +378,7 @@ def create_app(settings: Settings | None = None, notifier: Notifier | None = Non
         c = store.get_contacts(user_id)
         return {**user_json(store.get_user(user_id)), "email": c.email, "phone": c.phone,
                 "email_verified": c.email_verified, "phone_verified": c.phone_verified,
-                "recovery_available": recovery_offered(),
+                "recovery_available": recovery_offered(), "phone_codes_available": notifier.can_sms,
                 "recovery_enabled": store.get_escrow(user_id) is not None,
                 "sent": sent or []}
 

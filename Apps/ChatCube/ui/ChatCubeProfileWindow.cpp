@@ -1,8 +1,10 @@
 // Apps/ChatCube/ui/ChatCubeProfileWindow.cpp
 // The Edit profile window - see the header.
+// Version: 0.1.2 - the e-mail address confirmed by the link e-mailed to it (Check, Send again); recovery
+//                  by an e-mailed link, on once the address is confirmed
 // Version: 0.1.1 - confirming the e-mail and phone with the relay's codes; account recovery on or off
 // Version: 0.1.0
-// Last Modified: 2026-11-01
+// Last Modified: 2026-11-04
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "ChatCubeProfileWindow.h"
@@ -188,7 +190,8 @@ void ChatCubeProfileWindow::Build(UltraCanvasWindowBase* host) {
     profile->AddChild(heading);
     name_ = MakeInput("cc-profile-name", "Your name, as your contacts see it", kFieldWidth);
     profile->AddChild(Field("cc-profile-name-field", "Name", name_));
-    // Under each: whether the relay has it confirmed, or the code to type.
+    // Under each: whether the relay has it confirmed - or, for the address,
+    // Check (after opening the link e-mailed to it), for the phone the code to type.
     auto verifyRow = [this](int index, const std::string& id) {
         VerifyRow& v = verify_[index];
         const auto channel = static_cast<UltraIMContactChannel>(index);
@@ -379,17 +382,19 @@ void ChatCubeProfileWindow::UpdateVerification() {
         const bool email = index == static_cast<int>(UltraIMContactChannel::Email);
         const std::string& value = email ? profile_.email : profile_.phoneNumber;
         const bool confirmed = email ? profile_.emailVerified : profile_.phoneVerified;
-        // Nothing to say without a value, or without a relay that confirms.
-        v.row->SetVisible(!value.empty() && profile_.recoveryAvailable);
+        // Nothing to say without a value, or without a relay that confirms it.
+        const bool confirms = email ? profile_.recoveryAvailable : profile_.phoneCodesAvailable;
+        v.row->SetVisible(!value.empty() && confirms);
         if (confirmed) {
             v.state->SetText("Confirmed");
             v.state->SetTextColor(L().accent);
         } else {
-            v.state->SetText(email ? "Not confirmed yet - type the code we e-mailed you:"
+            v.state->SetText(email ? "Not confirmed yet - open the link we e-mailed you, then:"
                                    : "Not confirmed yet - type the code we sent by SMS:");
             v.state->SetTextColor(L().inkMuted);
         }
-        v.code->SetVisible(!confirmed);
+        v.code->SetVisible(!confirmed && !email);
+        v.confirm->SetText(email ? "Check" : "Confirm");
         v.confirm->SetVisible(!confirmed);
         v.again->SetVisible(!confirmed);
     }
@@ -397,6 +402,20 @@ void ChatCubeProfileWindow::UpdateVerification() {
 }
 
 void ChatCubeProfileWindow::Confirm(UltraIMContactChannel channel) {
+    if (channel == UltraIMContactChannel::Email) {
+        // The link was opened in a browser: whether the relay saw it.
+        UltraIM_FetchAccountProfile(providerId_, [this](const UltraIMResult& r, const UltraIMAccountProfile& p) {
+            if (!window_) return;
+            if (!r) return SetProfileStatus(r.message, true);
+            profile_ = p;
+            UpdateVerification();
+            UpdateRecovery();
+            SetProfileStatus(p.emailVerified ? "Your e-mail address is confirmed."
+                                             : "Not yet - open the link in the e-mail we sent, or Send again.",
+                             !p.emailVerified);
+        });
+        return;
+    }
     VerifyRow& v = verify_[static_cast<int>(channel)];
     const std::string code = Trim(v.code->GetText());
     if (code.empty()) return SetProfileStatus("Type the code first.", true);
@@ -407,8 +426,7 @@ void ChatCubeProfileWindow::Confirm(UltraIMContactChannel channel) {
         row.confirm->SetDisabled(false);
         if (!r) return SetProfileStatus(r.message, true);
         row.code->SetText(std::string());
-        SetProfileStatus(channel == UltraIMContactChannel::Email ? "Your e-mail address is confirmed."
-                                                                 : "Your phone number is confirmed.");
+        SetProfileStatus("Your phone number is confirmed.");
         Refresh();
     });
 }
@@ -417,35 +435,37 @@ void ChatCubeProfileWindow::SendAgain(UltraIMContactChannel channel) {
     UltraIM_ResendContactCode(providerId_, channel, [this, channel](const UltraIMResult& r) {
         if (!window_) return;
         if (!r) return SetProfileStatus(r.message, true);
-        SetProfileStatus(channel == UltraIMContactChannel::Email ? "A new code is on its way to your e-mail."
-                                                                 : "A new code is on its way by SMS.");
+        SetProfileStatus(channel == UltraIMContactChannel::Email
+                             ? "A new link is on its way to your e-mail - the one before no longer works."
+                             : "A new code is on its way by SMS.");
     });
 }
 
 void ChatCubeProfileWindow::UpdateRecovery() {
-    const bool both = profile_.emailVerified && profile_.phoneVerified;
+    const bool confirmed = profile_.emailVerified;
     if (!profile_.recoveryAvailable) {
-        recoveryText_->SetText("Your relay does not offer recovery - it needs to be able to send e-mail and SMS. "
+        recoveryText_->SetText("Your relay does not offer recovery - it needs to be able to send e-mail. "
                                "Without it, a ChatCube ID lost with its computer cannot come back: keep "
                                "ChatCube's data folder in your backups.");
         recoveryButton_->SetVisible(false);
     } else if (profile_.recoveryEnabled) {
         recoveryText_->SetText("Recovery is on. On another computer, \"Recover my ChatCube ID\" on the sign-in "
-                               "page sends a code to your e-mail address and one to your phone; both together "
-                               "bring this ID back. You are told on both whenever that happens. Your relay "
-                               "keeps a copy of your key for it.");
+                               "page has a link e-mailed to your address; opening it and confirming brings this "
+                               "ID back there. You get an e-mail whenever that happens. Your relay keeps a copy "
+                               "of your key for it.");
         recoveryButton_->SetText("Turn recovery off");
         recoveryButton_->SetVisible(true);
         recoveryButton_->SetDisabled(false);
     } else {
         recoveryText_->SetText("If this computer is lost, your ID can come back on another one: your relay keeps "
-                               "a copy of your key and gives it back to whoever types the codes it sends to your "
-                               "confirmed e-mail address and your phone - both. Whoever runs the relay can read "
-                               "that copy, so turn this on only with a relay you trust.");
+                               "a copy of your key and gives it back to the computer that asked, once you confirm "
+                               "through the link it e-mails to your confirmed address - so keep that mailbox safe. "
+                               "Whoever runs the relay can read that copy, so turn this on only with a relay you "
+                               "trust.");
         recoveryButton_->SetText("Turn recovery on");
         recoveryButton_->SetVisible(true);
-        recoveryButton_->SetDisabled(!both);
-        if (!both) recoveryStatus_->SetText("Confirm your e-mail address and phone number first.");
+        recoveryButton_->SetDisabled(!confirmed);
+        if (!confirmed) recoveryStatus_->SetText("Confirm your e-mail address first.");
         else recoveryStatus_->SetText(std::string());
     }
     if (window_) window_->RequestRedraw();
