@@ -25,6 +25,7 @@
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasTooltipManager.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 #include <cstdio>
 #include <cstdlib>
 #include <vector>
@@ -172,7 +173,7 @@ namespace UltraCanvas {
             item.tooltip = ModelTooltip(static_cast<ColorPickerModel>(i));
             modelDropdown->AddItem(item);
         }
-        modelDropdown->SetAccessibleName("Colour model");
+        modelDropdown->SetAccessibleName(Tr("Colour model"));
         // Raw `this`: the dropdown is our own child.
         modelDropdown->onSelectionChanged = [this](int index, const DropdownItem&) {
             if (index >= 0 && index < 3) SetModel(static_cast<ColorPickerModel>(index));
@@ -256,8 +257,8 @@ namespace UltraCanvas {
         styleSelector->AddItem("Colour slider + square", "bar", NormalizePath(icons + "bar.svg"));
         styleSelector->AddItem("Colour rectangle", "field", NormalizePath(icons + "field.svg"));
         styleSelector->AddItem("Colour + brightness sliders", "sliders", NormalizePath(icons + "sliders.svg"));
-        styleSelector->SetTooltip("Colour picker design");
-        styleSelector->SetAccessibleName("Colour picker design");
+        styleSelector->SetTooltip(Tr("Colour picker design"));
+        styleSelector->SetAccessibleName(Tr("Colour picker design"));
         // Raw `this`: the selector is our own child.
         styleSelector->onSelectionChanged = [this](int index, const DropdownItem&) {
             if (index < 0 || index >= SelectorStyleCount) return;

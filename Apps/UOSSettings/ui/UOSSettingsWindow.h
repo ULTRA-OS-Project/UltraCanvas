@@ -31,6 +31,8 @@
 //       Forget button for a device that was reset or replaced and now
 //       presents a new certificate.
 //
+// Version: 0.9.0 - Language > Translations: the localisation editor (UltraCanvasLocalisationEditor)
+// Version: 0.8.0 - the Language page
 // Version: 0.7.0 - Desktop: the Apps window (view, sub-categories, Recent)
 // Version: 0.6.0 - Desktop: the programs that start with the desktop
 // Version: 0.5.0 - Notifications > Registrations: the applications' Windows
@@ -47,7 +49,9 @@
 #include "UltraCanvasWindow.h"   // UltraCanvasWindow is a per-platform typedef
 
 #include <functional>
+#include "UltraCanvasLocalisationEditor.h"
 #include <map>
+#include <vector>
 #include <memory>
 #include <string>
 #include <utility>
@@ -97,8 +101,13 @@ private:
     void RefreshLastFolderPage();
     void SetMode(bool individual);
     void SetAppScope(const std::string& appName, bool individual);
+    void BuildLanguagePage();
+    void BuildTranslationsPage();
+    // Re-reads the folders into the editor's pickers and the translator's name.
+    void RefreshTranslationsPage();
     void BuildEmojiPage();
     // Re-reads Emoji.conf into the page's switch.
+    void RefreshLanguagePage();
     void RefreshEmojiPage();
     void BuildNotificationsPage();
     // Re-reads the registrations into the page's table.
@@ -114,6 +123,9 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasTreeView> tree_;
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> pageArea_;
     std::map<std::string, std::shared_ptr<UltraCanvas::UltraCanvasContainer>> pages_;
+
+    // ----- Translations -----
+    std::shared_ptr<UltraCanvas::UltraCanvasLocalisationEditor> translations_;
 
     // ----- Desktop -----
     std::shared_ptr<UltraCanvas::UltraCanvasDropdown> edge_;
@@ -145,6 +157,10 @@ private:
     std::map<std::string, AppRow> rows_;
 
     // ----- Emoji -----
+    std::shared_ptr<UltraCanvas::UltraCanvasDropdown> language_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> translator_;
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel> languageStatus_;
+    std::vector<std::string> languageTags_;   // the dropdown's rows: "system", then the tags
     std::shared_ptr<UltraCanvas::UltraCanvasSegmentedControl> emojiStyle_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel> emojiStatus_;
 

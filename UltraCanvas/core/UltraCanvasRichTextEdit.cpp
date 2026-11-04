@@ -7,6 +7,7 @@
 // layout text and the editor's byte offsets are the same string, hit testing,
 // caret geometry and selection painting need no translation layer.
 //
+// Version: 1.4.0 - RichTextEditStyle::letterSpacing: extra room between every two letters
 // Version: 1.3.0 - the font report and its notice: the fonts the document needs that the
 //                  computer lacks, each a link to its download page
 // Version: 1.2.1 - list bullets "•" "◦" "▪" are drawn as shapes
@@ -1118,6 +1119,15 @@ void UltraCanvasRichTextEdit::ApplyRunAttributes(ITextLayout* layout, const Rich
                                                   std::vector<BlockLayout::InlineImage>* outInlineImages,
                                                   int cellRow, int cellColumn) const {
     if (!layout) return;
+
+    // Tracking: the same extra room between every two letters of the text
+    // (a drawing's text kerned as a whole), under what the runs set.
+    if (std::fabs(style.letterSpacing) > 1e-6f) {
+        if (auto spacing = TextAttributeFactory::CreateLetterSpacing(static_cast<double>(style.letterSpacing))) {
+            spacing->SetRange(0, static_cast<int>(layout->GetText().size()));
+            layout->InsertAttribute(std::move(spacing));
+        }
+    }
 
     int position = 0;
     for (const RichTextRun& run : runs) {

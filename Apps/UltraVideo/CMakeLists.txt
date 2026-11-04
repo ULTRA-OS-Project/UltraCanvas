@@ -44,7 +44,8 @@ target_include_directories(UltraVideo PRIVATE
 
 target_link_libraries(UltraVideo PRIVATE
     ${ULTRACANVAS_LIBRARY}
-    VideoFX::VideoFX)
+    VideoFX::VideoFX
+    VideoFXUltraCanvasText)   # titles drawn by UltraCanvas, as the videofx tool draws them
 if(TARGET fmt::fmt)
     target_link_libraries(UltraVideo PRIVATE fmt::fmt)
 endif()

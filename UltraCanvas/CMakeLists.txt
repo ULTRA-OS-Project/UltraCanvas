@@ -362,6 +362,21 @@ else()
     set(ULTRACANVAS_HAS_LIBHEIF FALSE)
 endif()
 
+# libjxl - the framework's own JPEG XL loader and saver for a libvips built
+# without one (Ubuntu 22.04's; CI builds libjxl from source there). Registered
+# as jxlload / jxlsave only where libvips has none, so a libvips with its own
+# keeps it (libspecific/Cairo/VipsJxlPlugin.cpp).
+if(ULTRACANVAS_HAS_VIPS)
+    pkg_check_modules(LIBJXL libjxl)
+endif()
+if(ULTRACANVAS_HAS_VIPS AND LIBJXL_FOUND)
+    set(ULTRACANVAS_HAS_LIBJXL TRUE)
+    message(STATUS "  libjxl: ${LIBJXL_VERSION} (JPEG XL through the framework's own loader where libvips lacks one)")
+else()
+    set(ULTRACANVAS_HAS_LIBJXL FALSE)
+    message(STATUS "  libjxl: not found - JPEG XL reads only where libvips has its own loader")
+endif()
+
 # poppler-glib - a password-protected PDF on a libvips older than 8.13
 # (Ubuntu 22.04 ships 8.12). libvips added pdfload's "password" in 8.13; an
 # older one ignores it (GObject warns of an unknown property) and opens every
@@ -565,9 +580,10 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasCaret.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasWindow.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasMenu.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasMenuRegistry.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasCommandRegistry.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasMenuLayout.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasMenuConfigWidget.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasCommandConfigWidget.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasLocalisationEditor.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasUIElement.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTextInput.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasClipboard.cpp
@@ -588,6 +604,7 @@ set(ULTRACANVAS_CORE_SOURCES
         # it lands in the build twice.
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTextArea_SpellCheck.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpellChecker.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSystemLanguage.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/SpellCheckLanguageNames.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/SpellCheckBackendHunspell.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTextArea_Hex.cpp
@@ -748,6 +765,7 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasProgressDialog.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFolderWatcher.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPortableDevices.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasNetworkPlaces.cpp
         # "Is this file in use by another program" - the question behind
         # every failed overwrite. Platform backend under OS/<Platform>/.
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFileLock.cpp
@@ -1149,6 +1167,7 @@ set(ULTRACANVAS_CORE_SOURCES
         # and the element that renders and edits it.
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasRichDocumentEditor.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasRichTextEdit.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTextFormatBar.cpp
         # Its pages, for the printers that draw rather than take its PDF.
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasRichTextPrint.cpp
         # Word-processing formats: ODT/DOCX/DOC readers and writers
@@ -1606,13 +1625,23 @@ if(ULTRACANVAS_PLATFORM STREQUAL "Linux" AND ULTRACANVAS_WAYLAND)
 
     set(ULTRACANVAS_WAYLAND_PROTOCOL_DIR ${CMAKE_CURRENT_BINARY_DIR}/wayland-protocols)
     file(MAKE_DIRECTORY ${ULTRACANVAS_WAYLAND_PROTOCOL_DIR})
+    # wayland-protocols' own, by their path under its share directory
+    # (xdg-activation is in it from 1.21, so the 22.04 runners' 1.25 has
+    # it), and the ones that travel with the backend under
+    # OS/Linux/Wayland/protocols/: the wlroots layer shell (the desktop and
+    # its bars) and foreign toplevels (the window list), which
+    # wayland-protocols does not carry, and ext-workspace (the virtual
+    # desktops), which it carries only from 1.39.
     set(_ultracanvas_wayland_protocols
-        stable/xdg-shell/xdg-shell
-        unstable/xdg-decoration/xdg-decoration-unstable-v1
+        ${ULTRACANVAS_WAYLAND_PROTOCOLS_DIR}/stable/xdg-shell/xdg-shell.xml
+        ${ULTRACANVAS_WAYLAND_PROTOCOLS_DIR}/unstable/xdg-decoration/xdg-decoration-unstable-v1.xml
+        ${ULTRACANVAS_WAYLAND_PROTOCOLS_DIR}/staging/xdg-activation/xdg-activation-v1.xml
+        ${CMAKE_CURRENT_SOURCE_DIR}/OS/Linux/Wayland/protocols/wlr-layer-shell-unstable-v1.xml
+        ${CMAKE_CURRENT_SOURCE_DIR}/OS/Linux/Wayland/protocols/wlr-foreign-toplevel-management-unstable-v1.xml
+        ${CMAKE_CURRENT_SOURCE_DIR}/OS/Linux/Wayland/protocols/ext-workspace-v1.xml
     )
-    foreach(_proto IN LISTS _ultracanvas_wayland_protocols)
-        get_filename_component(_name ${_proto} NAME)
-        set(_xml ${ULTRACANVAS_WAYLAND_PROTOCOLS_DIR}/${_proto}.xml)
+    foreach(_xml IN LISTS _ultracanvas_wayland_protocols)
+        get_filename_component(_name ${_xml} NAME_WE)
         set(_header ${ULTRACANVAS_WAYLAND_PROTOCOL_DIR}/${_name}-client-protocol.h)
         set(_code ${ULTRACANVAS_WAYLAND_PROTOCOL_DIR}/${_name}-protocol.c)
         add_custom_command(OUTPUT ${_header}
@@ -1648,6 +1677,11 @@ if(ULTRACANVAS_HAS_VIPS)
         ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/VipsIcoPlugin.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/VipsGifPlugin.cpp
     )
+    if(ULTRACANVAS_HAS_LIBJXL)
+        list(APPEND ULTRACANVAS_LIBSPECIFIC_SOURCES
+            ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/VipsJxlPlugin.cpp
+        )
+    endif()
 endif()
 if(LIBRSVG_FOUND)
     # Parse-once SVG document cache (retained RsvgHandle).
@@ -2166,6 +2200,26 @@ if(LIBRSVG_FOUND)
         target_include_directories(${ULTRACANVAS_LIB_NAME} PRIVATE ${_inc_dir})
     endforeach()
 endif()
+if(ULTRACANVAS_HAS_LIBJXL)
+    # The plug-in and ImageCairo.cpp (which registers it) see libjxl; the
+    # define stays off the target for the same reason as libheif's below.
+    set(_uc_jxl_includes ${LIBJXL_INCLUDE_DIRS})
+    if(_uc_jxl_includes AND CMAKE_CXX_IMPLICIT_INCLUDE_DIRECTORIES)
+        list(REMOVE_ITEM _uc_jxl_includes ${CMAKE_CXX_IMPLICIT_INCLUDE_DIRECTORIES})
+    endif()
+    foreach(_uc_jxl_src
+            ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/ImageCairo.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/VipsJxlPlugin.cpp)
+        set_property(SOURCE ${_uc_jxl_src} APPEND PROPERTY COMPILE_DEFINITIONS HAS_LIBJXL=1)
+        if(_uc_jxl_includes)
+            set_property(SOURCE ${_uc_jxl_src} APPEND PROPERTY INCLUDE_DIRECTORIES ${_uc_jxl_includes})
+        endif()
+    endforeach()
+    # The library by its full path (no link directory: one under the
+    # checkout, as a staged install's .pc would give, is refused by CMake in
+    # a link interface).
+    target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC ${LIBJXL_LINK_LIBRARIES})
+endif()
 if(ULTRACANVAS_HAS_LIBHEIF)
     # Only libspecific/Cairo/ImageCairo.cpp includes libheif's header, so the
     # define and the include path go on that one source: on the whole library
@@ -2295,6 +2349,12 @@ endif()
 # PUBLIC so an app can leave its device rows out where nothing can list them.
 if(ULTRACANVAS_HAS_PORTABLE_DEVICES)
     target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC ULTRACANVAS_HAS_PORTABLE_DEVICES)
+endif()
+# Network places (the network's computers and shares, WSL): the same. Nothing
+# to link - the Windows backend loads mpr.dll and netapi32.dll from System32 when
+# first asked, never importing MPR.dll (UltraCanvasCoderModuleRepair.h says why).
+if(ULTRACANVAS_HAS_NETWORK_PLACES)
+    target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC ULTRACANVAS_HAS_NETWORK_PLACES)
 endif()
 if(ULTRACANVAS_HAS_NATIVE_FILE_LOCK)
     target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC ULTRACANVAS_HAS_NATIVE_FILE_LOCK)
@@ -2983,6 +3043,26 @@ target_compile_features(uc-vault PUBLIC cxx_std_20)
 set_target_properties(uc-vault PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_link_libraries(uc-vault PUBLIC uc-crypt)
 _ultracanvas_module_home(UltraVault uc-vault)
+
+# The text of every application in the person's language
+# (Docs/Modules/UltraLocalisation/README.md): Tr() over the application's
+# set, the base sets of its kind and the standard set, the catalogues as
+# JSON through the vendored yyjson engine (shared with UltraCanvasJSON and
+# UltraWin). UI-free and free of the core, so a headless engine links it as
+# it links UltraVault; the shared core absorbs it whole below.
+add_library(uc-localisation STATIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraLocalisation/UltraLocalisation.cpp)
+set_target_properties(uc-localisation PROPERTIES OUTPUT_NAME "UltraLocalisation")
+target_include_directories(uc-localisation PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include/ultracanvas/include>)
+target_compile_features(uc-localisation PUBLIC cxx_std_20)
+set_target_properties(uc-localisation PROPERTIES POSITION_INDEPENDENT_CODE ON)
+target_link_libraries(uc-localisation PRIVATE uc-yyjson)
+_ultracanvas_module_home(UltraLocalisation uc-localisation)
+if(NOT ULTRACANVAS_BUILD_SHARED)
+    target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC UltraLocalisation)
+endif()
 
 # System-wide network activity (Docs/Modules/NetworkMonitor/README.md): the
 # operating system's socket table with process attribution. UI-free like
@@ -4146,7 +4226,7 @@ foreach(_archive uc-im uc-rtc)
 endforeach()
 _ultracanvas_absorb_modules(
     uc-net uc-win ${_ultracanvas_optional_archives} uc-message uc-networkmonitor
-    uc-database uc-vault uc-crypt VirtualFS)
+    uc-database uc-vault uc-crypt uc-localisation VirtualFS)
 
 # ===== ULTRAIM PROVIDER: CHATCUBE DIRECT =====
 # The ULTRA OS native messenger as an UltraIM provider module
@@ -4847,14 +4927,15 @@ set(_uc_export_targets
     UltraCanvasTextUtils
     UltraCanvasBase32
     UltraCrypt
-    UltraVault)
+    UltraVault
+    UltraLocalisation)
 # A static core keeps the JSON engine in its interface (consumers link the
 # archive themselves, see the uc-yyjson link above); a shared one folds it in.
-# The module homes (UltraCrypt, UltraVault, UltraDatabase) are exported either
+# The module homes (UltraCrypt, UltraVault, UltraLocalisation, UltraDatabase) are exported either
 # way; on a static core they name their archives, which then go along, while
 # on a shared core they name the core, which has already absorbed them.
 if(NOT ULTRACANVAS_BUILD_SHARED)
-    list(APPEND _uc_export_targets uc-yyjson uc-crypt uc-vault)
+    list(APPEND _uc_export_targets uc-yyjson uc-crypt uc-vault uc-localisation)
     if(TARGET uc-database)
         list(APPEND _uc_export_targets uc-database)
     endif()

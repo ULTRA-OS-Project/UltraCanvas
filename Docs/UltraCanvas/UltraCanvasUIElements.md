@@ -33,6 +33,7 @@ doc file name. For the prose on a given element, use
 | Single-line text | `UltraCanvasTextInput` | `UltraCanvasTextInput.h` |
 | Multi-line text or code | `UltraCanvasTextArea` | `UltraCanvasTextArea.h` |
 | A **formatted document** edited as it looks — fonts, sizes, colours, headings, lists, tables, images ([doc](UltraCanvasRichTextEdit.md)) | `UltraCanvasRichTextEdit` | `UltraCanvasRichTextEdit.h` |
+| The **text formatting bar** over text the user sets — Font (every installed family, each shown in itself), Size, Bold, Italic, Underline, Strikethrough, alignment, line and letter spacing; reports each change, helpers for an `UltraCanvasRichTextEdit` typed on a canvas ([doc](UltraCanvasTextFormatBar.md)) | `UltraCanvasTextFormatBar` | `UltraCanvasTextFormatBar.h` |
 | Text with a suggestion list | `UltraCanvasAutoComplete` | `UltraCanvasAutoComplete.h` |
 | Tokens / tags typed into a field | `UltraCanvasTagInput` | `UltraCanvasChip.h` |
 | A number with up/down steppers | `UltraCanvasSpinner` | `UltraCanvasSpinner.h` |
@@ -66,7 +67,7 @@ from an external "Show password" checkbox. See
 | Checkbox | `UltraCanvasCheckbox` | `UltraCanvasCheckbox.h` |
 | Radio button / group | `UltraCanvasRadio`, `UltraCanvasRadioGroup` | `UltraCanvasRadio.h` |
 | On-off switch | `UltraCanvasSwitch` | `UltraCanvasSwitch.h` |
-| Pick one of a list | `UltraCanvasDropdown` | `UltraCanvasDropdown.h` |
+| Pick one of a list (a row can be drawn in a font of its own: a font list, `DropdownItem::fontFamily`) | `UltraCanvasDropdown` | `UltraCanvasDropdown.h` |
 | Pick one of a few, shown side by side | `UltraCanvasSegmentedControl` | `UltraCanvasSegmentedControl.h` |
 | Pick one (or several) of a row of chips - categories, filters, tags ([doc](UltraCanvasChipGroup.md)) | `UltraCanvasChipGroup` | `UltraCanvasChipGroup.h` |
 | A value on a range | `UltraCanvasSlider` | `UltraCanvasSlider.h` |
@@ -136,10 +137,11 @@ Positioning inside a container is the CSS layout engine's job (`layout` /
 |---|---|---|
 | The navigation column of a window: sections of items with icon, label and badge, one selected, keyboard and wheel, a compact icons-only mode ([doc](UltraCanvasSidebarNavigation.md)) | `UltraCanvasSidebarNavigation` | `UltraCanvasSidebarNavigation.h` |
 | Menu bar, popup and context menus | `UltraCanvasMenu` (+ `MenuBuilder`, `MenuItemData`) | `UltraCanvasMenu.h` |
-| Editable menu configuration | `UltraCanvasMenuConfigWidget` | `UltraCanvasMenuConfigWidget.h` |
+| Editable menus and toolbars - one editor for a program's menus and its toolbars' groups, from one command catalogue ([doc](UltraCanvasCommandConfigWidget.md)); `ShowCommandConfigDialog` opens it in a window | `UltraCanvasCommandConfigWidget` (was `UltraCanvasMenuConfigWidget`, an alias) | `UltraCanvasCommandConfigWidget.h` |
+| Translations - every set an application's texts come from (its own, the base sets it takes, Standard) in one grid with a column per set; edit, take / promote / demote / merge the sets, Undo, save into the source tree or the settings folder, export, draft ([doc](UltraCanvasLocalisationEditor.md)); `ShowLocalisationEditorDialog` opens it on the running application | `UltraCanvasLocalisationEditor` (+ `LocalisationWorkspace`, the model without UI) | `UltraCanvasLocalisationEditor.h` |
 | Path bar | `UltraCanvasBreadcrumb` | `UltraCanvasBreadcrumb.h` |
 | Page selector | `UltraCanvasPagination` | `UltraCanvasPagination.h` |
-| List **or table** — `UltraCanvasListView` is the multi-column, virtualised, model-driven one (`IListModel` + `ListColumnDef` + delegates; `SetShowHeader(true)` gives resizable columns, header tooltips and a sort indicator; sort and filter it with [`UltraCanvasListSortFilterProxy`](UltraCanvasListSortFilterProxy.md)); tree; multi-column tree; sheet | `UltraCanvasListView`, `UltraCanvasTreeView`, `UltraCanvasColumnsTreeView`, `UltraCanvasSpreadsheet` | matching `*.h` |
+| List **or table** — `UltraCanvasListView` is the multi-column, virtualised, model-driven one (`IListModel` + `ListColumnDef` + delegates; `SetShowHeader(true)` gives resizable columns, header tooltips and a sort indicator; sort and filter it with [`UltraCanvasListSortFilterProxy`](UltraCanvasListSortFilterProxy.md)); tree; multi-column tree ([`UltraCanvasColumnsTreeView`](UltraCanvasTreeViewExamples.md#columnar-layout-ultracanvascolumnstreeview): aligned Name / Type / Value columns with a header band, resizable boundaries and section-header rows); sheet | `UltraCanvasListView`, `UltraCanvasTreeView`, `UltraCanvasColumnsTreeView`, `UltraCanvasSpreadsheet` | matching `*.h` |
 | Folder contents / file browsing | `UltraCanvasFilerWidget` | `UltraCanvasFilerWidget.h` |
 | System information (CPU, GPU, NPU, memory, drives, network, USB, Bluetooth) | `UltraCanvasHardwareInfoPanel` | `UltraCanvasHardwareInfoPanel.h` |
 | The desktop message centre: every chat, mail and notification on the UltraMessage feed, with sources, filters, search and the notification's actions ([doc](UltraCanvasMessageCenter.md)) | `UltraCanvasMessageCenter` | `Plugins/UltraMessage/UltraCanvasMessageCenter.h` |

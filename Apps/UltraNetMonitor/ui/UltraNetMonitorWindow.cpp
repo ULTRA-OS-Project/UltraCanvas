@@ -51,6 +51,9 @@ constexpr int kEventsShown = 1000;
 const int64_t kRanges[] = { 3600, 24 * 3600, 7 * 24 * 3600, 30 * 24 * 3600 };
 const char* const kRangeLabels[] = { "Last hour", "Last 24 hours", "Last 7 days", "Last 30 days" };
 constexpr int kHistoryLimit = 5000;
+// Snapshots recorded before the History tab reads the store on its own after
+// Record - a few seconds at kSnapshotIntervalMs, enough for rows to exist.
+constexpr int64_t kHistoryFirstRefreshSnapshots = 3;
 
 // A split pane's panes are plain containers; a list fills one edge to edge.
 // Basis zero and grow one rather than a percentage, so the pane's size is
@@ -142,7 +145,7 @@ bool IsEventNote(const std::string& note) {
 // One source on a status line: its count while it works, else one word -
 // "stopped", or `troubleWord` for a source that runs but reports an error
 // ("failed" for a name source, "idle" for an event source whose tracker
-// has nothing to report) - the error itself is under Info… and in the
+// has nothing to report) - the error itself is under Info and in the
 // line's tooltip, where there is room for it.
 std::string SourceOnLine(const std::string& name, bool running, const std::string& lastError,
                          int64_t count, const char* unit, const char* troubleWord) {
@@ -173,6 +176,22 @@ std::string SourceInFull(const std::string& name, bool running, const std::strin
                        std::to_string(count) + " " + unit;
     if (!lastError.empty()) text += " - " + lastError;
     return text;
+}
+
+// The tables' text: one size smaller than the delegate's 12 pt default, with
+// the rows closed up to match, so a screen of connections holds more of
+// them. The header keeps the view's own 10 pt.
+constexpr float kTableFontSize = 11.0f;
+constexpr int kTableRowHeight = 22;
+
+void StyleTable(UltraCanvasListView& view) {
+    ListViewStyle style = view.GetStyle();
+    style.rowHeight = kTableRowHeight;
+    view.SetStyle(style);
+    if (auto* cells = dynamic_cast<UltraCanvasDefaultListDelegate*>(view.GetDelegate())) {
+        cells->SetFontSize(kTableFontSize);
+        cells->SetRowHeight(kTableRowHeight);
+    }
 }
 
 // Header clicks sort; the view shows the order but the proxy decides it.
@@ -232,7 +251,7 @@ bool UltraNetMonitorWindow::Initialize(std::vector<std::string> nameNotes) {
     // Laid out, not positioned: a flex column of toolbar and tabs, sized by
     // LayoutForSize so the window's size is the page's size. The window
     // starts at the toolbar; the version is in the title bar and what the
-    // backend and the sources can do is under Info….
+    // backend and the sources can do is under Info.
     page_ = CreateContainer("nmPage", 0, 0, 0, 0);
     MakePlainColumn(page_);
     page_->SetPadding(kPagePadding);
@@ -249,6 +268,9 @@ bool UltraNetMonitorWindow::Initialize(std::vector<std::string> nameNotes) {
     tabs_->AddTab("Events", BuildEventsPage());
     tabs_->SetActiveTab(kLiveTab);
     tabs_->onTabChange = [this](int, int newTab) {
+        // History reads the store when it comes to the front, so a tab that
+        // was recorded into earlier is never blank; Refresh re-reads it.
+        if (newTab == kHistoryTab) RefreshHistory();
         if (newTab == kNamesTab) RefreshNames();
         if (newTab == kEventsTab) RefreshEvents();
     };
@@ -332,7 +354,7 @@ std::shared_ptr<UltraCanvasContainer> UltraNetMonitorWindow::BuildToolbar() {
     statusLabel_ = MakeBarStatus("nmStatus");
     bar->AddChild(statusLabel_);
 
-    infoButton_ = MakeToolbarButton("nmInfo", "Info…");
+    infoButton_ = MakeToolbarButton("nmInfo", "Info");
     infoButton_->SetTooltip("What this build can see: the backend, the name and event sources, and what each could not do");
     infoButton_->SetOnClick([this]() { ShowInfo(); });
     bar->AddChild(infoButton_);
@@ -391,13 +413,17 @@ std::shared_ptr<UltraCanvasContainer> UltraNetMonitorWindow::BuildHistoryPage() 
     refreshButton_->SetOnClick([this]() { RefreshHistory(); });
     bar->AddChild(refreshButton_);
 
-    purgeButton_ = MakeToolbarButton("nmPurge", "Purge…");
+    purgeButton_ = MakeToolbarButton("nmPurge", "Purge");
     purgeButton_->SetTooltip("Delete everything recorded; asks a second time before it does");
     purgeButton_->SetOnClick([this]() { PurgeHistory(); });
     bar->AddChild(purgeButton_);
 
-    historyStatus_ = MakeBarStatus("nmHistoryStatus",
-                                   "Nothing loaded yet — press Refresh, or Record on the toolbar.");
+    // The idle line names the store the way the loaded one does, so the
+    // person knows where the record will live before anything is recorded.
+    if (storePath_.empty()) storePath_ = DefaultStorePath();
+    std::string idle = "Nothing loaded yet — press Refresh, or Record on the toolbar.";
+    if (!storePath_.empty()) idle += " · " + storePath_;
+    historyStatus_ = MakeBarStatus("nmHistoryStatus", idle);
     bar->AddChild(historyStatus_);
 
     history->AddChild(bar);
@@ -416,6 +442,7 @@ std::shared_ptr<UltraCanvasListView> UltraNetMonitorWindow::BuildProcessList() {
     processView_ = std::make_shared<UltraCanvasListView>("nmProcesses", -1, -1, 400, 300);
     processView_->SetModel(processProxy_);
     processView_->SetShowHeader(true);
+    StyleTable(*processView_);
     processView_->SetShowItemTooltips(true);
     WireHeaderSorting(processView_, processProxy_);
 
@@ -442,6 +469,7 @@ std::shared_ptr<UltraCanvasListView> UltraNetMonitorWindow::BuildConnectionList(
     connectionView_ = std::make_shared<UltraCanvasListView>("nmConnections", -1, -1, 600, 300);
     connectionView_->SetModel(connectionProxy_);
     connectionView_->SetShowHeader(true);
+    StyleTable(*connectionView_);
     connectionView_->SetShowItemTooltips(true);
     WireHeaderSorting(connectionView_, connectionProxy_);
     return connectionView_;
@@ -458,6 +486,7 @@ std::shared_ptr<UltraCanvasListView> UltraNetMonitorWindow::BuildFlowList() {
     flowView_ = std::make_shared<UltraCanvasListView>("nmFlows", -1, -1, 900, 300);
     flowView_->SetModel(flowProxy_);
     flowView_->SetShowHeader(true);
+    StyleTable(*flowView_);
     flowView_->SetShowItemTooltips(true);
     WireHeaderSorting(flowView_, flowProxy_);
     return flowView_;
@@ -496,6 +525,7 @@ std::shared_ptr<UltraCanvasListView> UltraNetMonitorWindow::BuildNameList() {
     nameView_ = std::make_shared<UltraCanvasListView>("nmNames", -1, -1, 900, 300);
     nameView_->SetModel(nameProxy_);
     nameView_->SetShowHeader(true);
+    StyleTable(*nameView_);
     nameView_->SetShowItemTooltips(true);
     WireHeaderSorting(nameView_, nameProxy_);
     return nameView_;
@@ -549,6 +579,7 @@ std::shared_ptr<UltraCanvasListView> UltraNetMonitorWindow::BuildEventList() {
     eventView_ = std::make_shared<UltraCanvasListView>("nmEvents", -1, -1, 900, 300);
     eventView_->SetModel(eventProxy_);
     eventView_->SetShowHeader(true);
+    StyleTable(*eventView_);
     eventView_->SetShowItemTooltips(true);
     WireHeaderSorting(eventView_, eventProxy_);
     return eventView_;
@@ -623,6 +654,13 @@ void UltraNetMonitorWindow::ApplyPendingSnapshot() {
         // The live event list follows the ring every snapshot; the
         // recorded view only on Refresh, since a query is not free.
         if (tabs_ && tabs_->GetActiveTab() == kEventsTab && !eventsRecorded_) RefreshEvents();
+        // The first rows after Record appear on their own while History is
+        // in front: one read once a few snapshots are in, not one per
+        // snapshot - a flow query is not free.
+        if (historyRefreshPending_ && tabs_ && tabs_->GetActiveTab() == kHistoryTab &&
+            recordedSnapshots_.load() >= kHistoryFirstRefreshSnapshots) {
+            RefreshHistory();
+        }
     }
     // Attribution notes ("N processes could not be inspected") move with
     // each snapshot, so the capabilities are re-read here, not once.
@@ -672,7 +710,7 @@ void UltraNetMonitorWindow::RefreshStatus() {
         // The first note is the one that changes what the table means. Its
         // headline is on the line; the explanation ("named from the process
         // list, without path or user (elevate for those)") is in the tooltip
-        // and under Info….
+        // and under Info.
         for (const auto& note : capabilities_.notes) {
             if (note.find("could not be") != std::string::npos) {
                 status += " · " + NoteHeadline(note);
@@ -785,7 +823,7 @@ void UltraNetMonitorWindow::RefreshNames() {
     for (const auto& record : records) if (NetworkMonitor_NameIsObserved(record.source)) ++observed;
     nameModel_->Replace(std::move(records));
 
-    // The line counts; the tooltip and Info… carry the errors and the notes.
+    // The line counts; the tooltip and Info carry the errors and the notes.
     std::string text = std::to_string(count) + " addresses named, " + std::to_string(observed) +
                        " from observed queries";
     std::string detail;
@@ -804,7 +842,7 @@ void UltraNetMonitorWindow::RefreshNames() {
         detail += (detail.empty() ? "" : "\n") + note;
         trouble = true;
     }
-    if (trouble) text += " · details under Info…";
+    if (trouble) text += " · details under Info";
     if (namesStatus_) {
         namesStatus_->SetText(text);
         namesStatus_->SetTooltip(detail);
@@ -850,7 +888,7 @@ void UltraNetMonitorWindow::RefreshEvents() {
         text = std::to_string(events.size()) + " recent events (newest " + std::to_string(kEventsShown) + " kept)";
     }
     eventModel_->Replace(std::move(events));
-    // The line counts; the tooltip and Info… carry the errors and the notes.
+    // The line counts; the tooltip and Info carry the errors and the notes.
     std::string detail;
     bool trouble = false;
     std::vector<EventSourceStatus> sources;
@@ -866,7 +904,7 @@ void UltraNetMonitorWindow::RefreshEvents() {
         detail += (detail.empty() ? "" : "\n") + note;
         trouble = true;
     }
-    if (trouble) text += " · details under Info…";
+    if (trouble) text += " · details under Info";
     if (eventsStatus_) {
         eventsStatus_->SetText(text);
         eventsStatus_->SetTooltip(detail);
@@ -1027,6 +1065,7 @@ bool UltraNetMonitorWindow::EnsureStoreOpen() {
 void UltraNetMonitorWindow::ToggleRecording() {
     if (recording_.load()) {
         recording_ = false;
+        historyRefreshPending_ = false;
         if (recordButton_) recordButton_->SetText("Record");
         std::lock_guard<std::mutex> lock(storeMutex_);
         if (store_ != NetworkMonitorInvalidStore) NetworkMonitor_ApplyRetention(store_);
@@ -1042,6 +1081,7 @@ void UltraNetMonitorWindow::ToggleRecording() {
         recordedEvents_ = 0;
         recordError_.clear();
         recording_ = true;
+        historyRefreshPending_ = true;
         if (recordButton_) recordButton_->SetText("Stop recording");
     }
     RefreshStatus();
@@ -1055,7 +1095,8 @@ int64_t UltraNetMonitorWindow::HistoryRangeSeconds() const {
 
 void UltraNetMonitorWindow::RefreshHistory() {
     purgeArmed_ = false;
-    if (purgeButton_) purgeButton_->SetText("Purge…");
+    historyRefreshPending_ = false;   // any read counts as the first one
+    if (purgeButton_) purgeButton_->SetText("Purge");
     std::vector<RecordedFlow> flows;
     NetworkMonitorStoreStats stats;
     std::string error;
@@ -1095,7 +1136,7 @@ void UltraNetMonitorWindow::PurgeHistory() {
         return;
     }
     purgeArmed_ = false;
-    if (purgeButton_) purgeButton_->SetText("Purge…");
+    if (purgeButton_) purgeButton_->SetText("Purge");
     std::string error;
     {
         std::lock_guard<std::mutex> lock(storeMutex_);

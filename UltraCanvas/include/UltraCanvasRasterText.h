@@ -16,8 +16,9 @@
 // UI-free in the sense the document is: no window is needed, the element is
 // only used to lay out and draw. Rendering is the host's call; the document
 // (UCRasterDocument) never renders text itself.
+// Version: 1.1.0 - SetTextLineSpacing / GetTextLineSpacing: a text bar's line spacing in rich text
 // Version: 1.0.0
-// Last Modified: 2026-10-15
+// Last Modified: 2026-11-03
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -70,5 +71,16 @@ std::string TextLayerName(const UCRichDocument& document, size_t maxCharacters =
 // True when the document holds no characters at all (an edit that typed
 // nothing, or deleted everything) - a text layer that would draw nothing.
 bool IsTextLayerDocumentEmpty(const UCRichDocument& document);
+
+// A text bar's line spacing (UltraCanvasTextFormatBar) in rich text: every
+// paragraph's lines `percent` of its largest letters apart, exactly, so a
+// word made larger opens its line up instead of running into the next.
+// `baseSizePx` is the size of a run that states none. Whether anything
+// changed (the caller re-lays the text out).
+bool SetTextLineSpacing(UCRichDocument& document, float baseSizePx, float percent);
+
+// The line spacing a text is set in, in % of its first paragraph's largest
+// letters; 0 for a text that states none (the font's own spacing).
+float GetTextLineSpacing(const UCRichDocument& document, float baseSizePx);
 
 } // namespace UltraCanvas

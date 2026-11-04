@@ -245,6 +245,19 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
     and `/Volumes` is where every removable volume on macOS lands — neither
     used to be looked at, so on those systems a stick was missing from the
     tree even after a restart.
+  - **Linux and Network (Windows).** Two sections after **Computer**, where
+    Explorer has them. **Linux** lists the installed WSL distributions
+    (`\\wsl$\Ubuntu`); a row is not probed — touching a distribution starts
+    it — and its folders are listed when it is opened. **Network** lists the
+    computers the Windows network knows for the workgroup or domain, the
+    ones that announce themselves through WS-Discovery (as Explorer shows
+    them: current Windows, NAS boxes running wsdd) and the servers of your
+    own connections; opening a computer lists its shared
+    folders (hidden and administrative shares left out) under its row and in
+    the folder display, each then an ordinary folder. Typing `\\NAS` into the
+    path bar opens that computer the same way, and it is kept in the section
+    for next time — a computer on another subnet, which no announcement
+    reaches, is always reachable by name. Clicking **Network** looks for computers again.
   - **Phones and cameras.** A phone, camera or media player plugged in over
     USB (MTP / PTP) gets no drive letter, so it was never listed. On Windows
     it now appears under **Computer** — in the tree, with a phone or camera

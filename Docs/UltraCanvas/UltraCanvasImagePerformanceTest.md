@@ -2,11 +2,6 @@
 
 <!-- doc-check:
 double NowMs();
-UCImageSave::ImageExportOptions DefaultOptionsFor(UCImageSaveFormat f);
-std::string EncodeQOIFromVImage(vips::VImage vImg, const std::string& outPath);
-bool DecodeQOIFile(const std::string& path);
-std::string EncodeBMPFromVImage(vips::VImage vImg, const std::string& outPath);
-bool DecodeBMPFile(const std::string& path);
 using Step = std::function<void()>;
 Step cleanupTempFiles; Step resetThumbnails; Step runBenchmark;
 CodecResult r; CodecEntry entry; UCImageSave::ImageExportOptions opts; vips::VImage vImg;
@@ -14,6 +9,7 @@ std::string outPath; std::string stablePath; int globalIdx; int slot; int active
 double t0; double t1; double d0; double d1;
 UltraCanvasWindowBase* win; IRenderContext* ctx;
 std::shared_ptr<UltraCanvasImageElement> imageElement;
+void StoreFormatChoice(const std::vector<std::pair<std::string, bool>>& choice);
 -->
 
 ## Contents
@@ -24,7 +20,8 @@ std::shared_ptr<UltraCanvasImageElement> imageElement;
   - [UCImage (loading and saving the source image)](#ucimage-loading-and-saving-the-source-image)
   - [UCImageSave::ImageExportOptions](#ucimagesaveimageexportoptions)
   - [UltraCanvasImageElement (used for thumbnails)](#ultracanvasimageelement-used-for-thumbnails)
-  - [Codec table (file-local)](#codec-table-file-local)
+  - [Codec list (file-local)](#codec-list-file-local)
+  - [Choosing the formats (Settings)](#choosing-the-formats-settings)
   - [CodecResult (per-codec output row)](#codecresult-per-codec-output-row)
   - [Helpers (file-local)](#helpers-file-local)
   - [CodecComparisonChartElement (the grouped bar chart, file-local)](#codeccomparisonchartelement-the-grouped-bar-chart-file-local)
@@ -37,8 +34,6 @@ std::shared_ptr<UltraCanvasImageElement> imageElement;
 - [Usage Examples](#usage-examples)
   - [Driving the benchmark from a "Choose Image" handler](#driving-the-benchmark-from-a-choose-image-handler)
   - [Encoding one codec and timing the round-trip](#encoding-one-codec-and-timing-the-round-trip)
-  - [Encoding with the bundled QOI path](#encoding-with-the-bundled-qoi-path)
-  - [Encoding with the bundled BMP path](#encoding-with-the-bundled-bmp-path)
   - [Hooking thumbnail clicks to the 1:1 viewer](#hooking-thumbnail-clicks-to-the-11-viewer)
   - [Live status updates per codec](#live-status-updates-per-codec)
 - [Why "Force Eager Decode" Matters](#why-force-eager-decode-matters)
@@ -48,7 +43,7 @@ std::shared_ptr<UltraCanvasImageElement> imageElement;
 
 ## Overview
 
-The **Image Performance Test** is a built-in DemoApp benchmark that compares every bitmap codec UltraCanvas can drive (PNG, JPG, JPEG2000, WebP, AVIF, HEIF, GIF, TIFF, JPEG XL, QOI, and optionally BMP) on the **same source image**. For each codec it measures three numbers:
+The **Image Performance Test** is a built-in DemoApp benchmark that compares the bitmap formats this build writes and reads - FileLoader's inventory, see [Choosing the formats (Settings)](#choosing-the-formats-settings) - on the **same source image**. By default it times PNG, QOI, JPG, WebP, AVIF, HEIF, GIF, TIFF and JPEG XL; JPEG 2000, BMP and the rest (TGA, PPM, ICO, HDR, ...) are switched on in the settings. For each codec it measures three numbers:
 
 1. **Encoded file size** — bytes on disk after `UCImage::Save()`
 2. **Encode time** — milliseconds spent in `UCImage::Save()`
@@ -66,7 +61,9 @@ The demo is registered in `UltraCanvasDemo.cpp` under three navigation variants 
 
 In the v2.x codebase all three variants present the same benchmark UI; the differing labels remain to expose the underlying conceptual breakdown of the image pipeline.
 
-**Version:** 2.5.9
+Opening the page shows a popup, *"Upload an image to start the test."*: nothing is timed until an image is chosen.
+
+**Version:** 2.8.0
 **Source file:** `Apps/DemoApp/UltraCanvasImagePerformanceTest.cpp`
 
 ## Header Includes
@@ -75,20 +72,17 @@ In the v2.x codebase all three variants present the same benchmark UI; the diffe
 #include "UltraCanvasDemo.h"
 #include "UltraCanvasImageElement.h"
 #include "UltraCanvasButton.h"
-#include "UltraCanvasCheckbox.h"
+#include "UltraCanvasSwitch.h"         // the settings dialog's format switches
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasPathUtf8.h"      // PathFromUtf8 / PathToUtf8 / GetEnvUtf8
 #include "CSSLayout/CSSLayout.h"
 #include "UltraCanvasImage.h"
 #include "UltraCanvasNativeDialogs.h"
-#include "UltraCanvasModalDialog.h"   // FileFilter
+#include "UltraCanvasModalDialog.h"   // FileFilter, the settings dialog, the popup
+#include "UltraCanvasFileLoader.h"    // the format inventory and each format's options
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasApplication.h"
-
-// QOI third-party header — provides qoi_write / qoi_read; do NOT define
-// QOI_IMPLEMENTATION here, it is defined in the standalone libspecific/Cairo/qoi.cpp.
-#include "../../UltraCanvas/libspecific/Cairo/qoi.h"
 ```
 
 ## Class Reference
@@ -104,7 +98,8 @@ public:
     static std::shared_ptr<UCImageRaster> Load(const std::string& path,
                                                bool loadOnlyHeader = true);
 
-    // Eager save through libvips (or built-in QOI/BMP path).
+    // Eager save through the image writer (libvips and the framework's own
+    // savers, such as QOI and ICO).
     std::string Save(const std::string& imagePath,
                      const UCImageSave::ImageExportOptions& options);
 
@@ -122,7 +117,10 @@ typedef std::shared_ptr<UCImage> UCImagePtr;
 
 ### UCImageSave::ImageExportOptions
 
-Used to drive `Save()` per codec. The benchmark builds one with `DefaultOptionsFor(format)`:
+Used to drive `Save()` per codec. The benchmark asks FileLoader for them -
+`UltraCanvasFileLoader::GetImageExportOptions(outPath, opts)`: the format from
+the extension and that format's Save settings, as every application saves it -
+and turns `preserveMetadata` off:
 
 ```cpp
 struct ImageExportOptions {
@@ -173,43 +171,68 @@ public:
 };
 ```
 
-### Codec table (file-local)
+### Codec list (file-local)
 
-The benchmark drives this fixed codec list in display order. `EncoderBackend` selects which encode/decode path runs:
+The page builds its list once, when it opens, from FileLoader's inventory.
+Every entry is written with `UCImage::Save` and read with `UCImage::Load`,
+the image writer and reader behind FileLoader - QOI and BMP included, which
+the page encoded with its own code until version 2.9.0:
 
 ```cpp
-enum class EncoderBackend { Libvips, QOI, BMP };
-
 struct CodecEntry {
-    UCImageSaveFormat format;     // ignored when backend != Libvips
-    const char* name;
-    const char* extension;
-    EncoderBackend backend;
-    bool isOptional;
-};
-
-const CodecEntry kAllCodecs[] = {
-    { UCImageSaveFormat::PNG,      "PNG",  "png",  EncoderBackend::Libvips, false },
-    { UCImageSaveFormat::PNG,      "QOI",  "qoi",  EncoderBackend::QOI,     false },
-    { UCImageSaveFormat::JPEG,     "JPG",  "jpg",  EncoderBackend::Libvips, false },
-    { UCImageSaveFormat::JPEG2000, "JP2K", "jp2",  EncoderBackend::Libvips, false },
-    { UCImageSaveFormat::WEBP,     "WebP", "webp", EncoderBackend::Libvips, false },
-    { UCImageSaveFormat::AVIF,     "AVIF", "avif", EncoderBackend::Libvips, false },
-    { UCImageSaveFormat::HEIF,     "HEIF", "heif", EncoderBackend::Libvips, false },
-    { UCImageSaveFormat::GIF,      "GIF",  "gif",  EncoderBackend::Libvips, false },
-    { UCImageSaveFormat::TIFF,     "TIFF", "tiff", EncoderBackend::Libvips, false },
-    { UCImageSaveFormat::JXL,      "JXL",  "jxl",  EncoderBackend::Libvips, false },
-    { UCImageSaveFormat::BMP,      "BMP",  "bmp",  EncoderBackend::BMP,     true  },
+    UCImageSaveFormat format = UCImageSaveFormat::PNG;
+    std::string name;          // chart label: "PNG", "JP2K", ...
+    std::string extension;     // FileLoader's canonical extension
+    std::string description;   // FileLoader's name for the format
+    bool enabledByDefault = false;
 };
 ```
 
-JPEG XL, HEIF and AVIF are charted only where this build can both encode and
-load them (`VipsCanEncode(ext) && VipsCanLoad(ext)`; `VipsCanEncode` tries a
-2 x 2 encode once per codec). JPEG XL needs a libvips built with libjxl, which
-Ubuntu 22.04's is not; HEIF and AVIF need libheif with an encoder for each -
-the macOS build reads HEIC but cannot write it, since its HEVC encoder, x265,
-is GPL and is kept out of the core. Elsewhere the column is left out rather
-than shown as a failure.
+`BuildCodecList` keeps every entry of
+`UltraCanvasFileLoader::GetSupportedFormats(MediaFormatCategory::Bitmap)` with
+`canSave && canLoad` whose options the image writer takes
+(`GetImageExportOptions` answers for it). The X axis, and the settings
+dialog, put the formats it always charted first, the JPEG family together -
+PNG, QOI, JPG, JP2K, JXL, WebP, AVIF, HEIF, GIF, TIFF, BMP - and the rest
+after them in the inventory's order.
+
+A format this build cannot encode is not in the inventory, so it is not
+offered at all: JPEG XL needs a libvips built with libjxl, which Ubuntu
+22.04's is not; HEIF and AVIF need libheif with an encoder for each - the
+macOS build reads HEIC but cannot write it, since its HEVC encoder, x265, is
+GPL and is kept out of the core.
+
+### Choosing the formats (Settings)
+
+The gear button at the right end of the toolbar opens a dialog with one
+`UltraCanvasSwitch` per entry of the list, in two columns, labelled with the
+chart name and FileLoader's description (`JP2K - JPEG 2000`). **Apply**
+stores the choice (`StoreFormatChoice(choice)`), rebuilds the chart's groups
+and the thumbnails under them, and re-runs the benchmark when an image is
+loaded.
+
+The choice is kept between runs, in the demo's own settings file - an
+`UltraCanvasAppSettings("UltraCanvasDemo")`, so
+`<settings folder>/UltraCanvasDemo/settings.json` (on Linux
+`~/.config/UltraCanvas/UltraCanvasDemo/settings.json`) - one value per
+extension:
+
+```json
+{ "imagePerformance": { "formats": { "png": true, "jp2": true, "gif": false } } }
+```
+
+The file is read once, the first time the page asks, and written whole on
+every Apply. A format the file does not name follows its default
+(`IsCodecEnabled` answers for one), and so does every format when there is
+no file yet:
+
+| On by default | Off by default |
+|---|---|
+| PNG, QOI, JPG, WebP, AVIF, HEIF, GIF, TIFF, JXL | JP2K (its encoder is several times slower than any other and flattens every other time bar), BMP (uncompressed, it flattens the size bars), every other format |
+
+The switched-on formats, in display order, become the chart's groups
+(`codecNames`) and `activeCodecIndices`, the indices into `codecs` the
+benchmark loop walks.
 
 ### CodecResult (per-codec output row)
 
@@ -229,30 +252,14 @@ struct CodecResult {
 
 ### Helpers (file-local)
 
-Every timed region reads one monotonic millisecond clock, and every libvips
-codec is saved with the same options builder - the struct defaults already
-carry each codec's quality (85 / 80 / 65 / 50 / ...):
+Every timed region reads one monotonic millisecond clock:
 
 ```cpp
 double NowMs() {
     using namespace std::chrono;
     return duration<double, std::milli>(steady_clock::now().time_since_epoch()).count();
 }
-
-UCImageSave::ImageExportOptions DefaultOptionsFor(UCImageSaveFormat f) {
-    UCImageSave::ImageExportOptions opt;
-    opt.format = f;
-    opt.preserveMetadata = false;
-    opt.preserveTransparency = true;
-    return opt;
-}
 ```
-
-The bundled QOI and BMP paths have four more: `EncodeQOIFromVImage(vImg, path)`
-and `EncodeBMPFromVImage(vImg, path)` return an error string (empty on
-success), `DecodeQOIFile(path)` and `DecodeBMPFile(path)` decode every pixel
-and return whether that worked. All of them live in an anonymous namespace
-in the source file; none is part of the framework.
 
 ### CodecComparisonChartElement (the grouped bar chart, file-local)
 
@@ -287,9 +294,10 @@ struct PanelState {
     int         sourceWidth = 0;
     int         sourceHeight = 0;
     std::vector<CodecResult> results;
+    std::vector<CodecEntry>  codecs;       // BuildCodecList(); thumbs is parallel to it
 
     std::shared_ptr<UltraCanvasButton>   chooseBtn;
-    std::shared_ptr<UltraCanvasCheckbox> includeBmpCheckbox;
+    std::shared_ptr<UltraCanvasButton>   settingsBtn;   // the gear
     std::shared_ptr<UltraCanvasLabel>    infoLabel;
     std::shared_ptr<UltraCanvasLabel>    statusLabel;
     std::shared_ptr<CodecComparisonChartElement> chartElem;
@@ -297,7 +305,7 @@ struct PanelState {
     std::vector<std::shared_ptr<UltraCanvasImageElement>> thumbs;
 
     std::vector<std::string> codecNames;   // chart groups, in display order
-    std::vector<int> activeCodecIndices;   // indices into kAllCodecs[], same order
+    std::vector<int> activeCodecIndices;   // indices into codecs, same order
     bool benchmarkRunning = false;         // re-entry guard while a run is in flight
     std::string runStamp;                  // temp-file prefix, new for every run
 };
@@ -310,8 +318,9 @@ The benchmark wires up the following user-facing actions:
 
 | Control              | Callback            | Behavior                                                          |
 |----------------------|---------------------|-------------------------------------------------------------------|
-| `chooseBtn`          | `SetOnClick`        | Opens native file dialog, calls `loadSourceImage`, auto-runs      |
-| `includeBmpCheckbox` | `onStateChanged`    | Rebuilds active codec set, re-runs benchmark                      |
+| `chooseBtn`          | `SetOnClick`        | Opens FileLoader's Open dialog, calls `loadSourceImage`, auto-runs |
+| `settingsBtn`        | `SetOnClick`        | Opens the format switches; Apply rebuilds the set and re-runs     |
+| Page opened          | `PostToUIThread`    | Popup "Upload an image to start the test."                        |
 | Thumbnail per codec  | `onClick`           | Opens `ShowInMediaViewer(path)` at 1:1 zoom                       |
 | `chartElem`          | `onGeometryChanged` | Repositions thumbnails under their bar groups when bounds shift   |
 
@@ -401,10 +410,12 @@ auto loadSourceImage = [state, cleanupTempFiles, resetThumbnails,
 
 ### Encoding one codec and timing the round-trip
 
-This is the inner loop of `runBenchmark` for a libvips-backed codec:
+This is the inner loop of `runBenchmark`, the same for every format:
 
 ```cpp
-auto opts = DefaultOptionsFor(entry.format);
+UCImageSave::ImageExportOptions opts;
+if (!UltraCanvasFileLoader::GetImageExportOptions(outPath, opts)) opts.format = entry.format;
+opts.preserveMetadata = false;
 double t0 = NowMs();
 std::string err = state->sourceImage->Save(outPath, opts);
 double t1 = NowMs();
@@ -433,39 +444,6 @@ if (err.empty()) {
     if (ok) { r.decodeTimeMs = d1 - d0; r.succeeded = true; }
     else    { r.errorMessage = "decode failed"; }
 }
-```
-
-### Encoding with the bundled QOI path
-
-QOI is decoded directly via the bundled `qoi.h` (no libvips round-trip on the decode side):
-
-```cpp
-vips::VImage vImg = state->sourceImage->GetVImage();
-double t0 = NowMs();
-std::string err = EncodeQOIFromVImage(vImg, outPath);
-double t1 = NowMs();
-r.encodeTimeMs = t1 - t0;
-
-double d0 = NowMs();
-bool ok = DecodeQOIFile(outPath);   // qoi_read + free
-double d1 = NowMs();
-r.decodeTimeMs = d1 - d0;
-```
-
-### Encoding with the bundled BMP path
-
-libvips has no BMP writer, so the demo ships a standalone 24bpp BI_RGB encoder/decoder. The encode/decode timing pattern is symmetric with QOI:
-
-```cpp
-double t0 = NowMs();
-std::string err = EncodeBMPFromVImage(vImg, outPath);
-double t1 = NowMs();
-r.encodeTimeMs = t1 - t0;
-
-double d0 = NowMs();
-bool ok = DecodeBMPFile(outPath);   // header parse + row walk + free
-double d1 = NowMs();
-r.decodeTimeMs = d1 - d0;
 ```
 
 ### Hooking thumbnail clicks to the 1:1 viewer
@@ -507,7 +485,7 @@ if (win && ctx) {
 
 ## Why "Force Eager Decode" Matters
 
-libvips uses lazy evaluation: `UCImage::Load()` typically only parses the file header and defers pixel decompression until pixels are actually read. Without `vImage.copy_memory()`, the timed region would only measure header parsing — drastically understating real-world decode cost for PNG, JPG, WebP, AVIF, HEIF, TIFF, and JP2K, while making them look unfairly fast next to QOI (which always fully decompresses in `qoi_read`).
+libvips uses lazy evaluation: `UCImage::Load()` typically only parses the file header and defers pixel decompression until pixels are actually read. Without `vImage.copy_memory()`, the timed region would only measure header parsing — drastically understating real-world decode cost for PNG, JPG, WebP, AVIF, HEIF, TIFF, and JP2K, and the timings would compare how quickly each format's header is parsed rather than how quickly its pixels are decoded.
 
 Calling `copy_memory()` walks the full libvips pipeline (decompress, color convert, optional alpha premultiply) and writes every pixel into a contiguous RAM buffer. Decode times then reflect real file→RAM decompression work for every codec.
 
@@ -515,7 +493,7 @@ Calling `copy_memory()` walks the full libvips pipeline (decompress, color conve
 
 1. **Always regenerate per-run temp paths.** UCImage's path-keyed cache will short-circuit identical paths and silently serve stale pixels into your thumbnails. The benchmark uses a nanosecond timestamp (`runStamp`) for this.
 2. **Force eager decode for any libvips load you intend to time.** Bare `Load()` only parses the header.
-3. **Disable BMP by default** when charting size — uncompressed RGB at 24bpp dominates the size axis and crushes the scale of every other codec.
+3. **Leave BMP and JPEG 2000 off by default** — uncompressed RGB at 24bpp dominates the size axis, and the JPEG 2000 encoder the time axis, crushing the scale of every other codec.
 4. **Re-encode through `UCImage::Save()` (not raw libvips)** so your benchmark numbers reflect what UltraCanvas apps will actually see.
 5. **Use `UpdateAndRender()` per codec** for streaming-style chart updates — without it the whole benchmark batches into a single repaint at the end.
 
@@ -524,20 +502,24 @@ Calling `copy_memory()` walks the full libvips pipeline (decompress, color conve
 | Codec | Backend  | Notes                                                                  |
 |-------|----------|------------------------------------------------------------------------|
 | PNG   | libvips  | Lossless; default reference                                            |
-| QOI   | bundled  | Lossless; reference encoder/decoder from `qoi.h`                       |
+| QOI   | UltraCanvas | Lossless; the framework's VipsQoiLoader / saver                     |
 | JPG   | libvips  | Lossy; quality 85 default                                              |
-| JP2K  | libvips  | JPEG 2000; quality 75                                                  |
+| JP2K  | libvips  | JPEG 2000; quality 75. Off by default                                  |
 | WebP  | libvips  | Lossy by default; quality 80                                           |
 | AVIF  | libvips  | Quality 65; speed 6                                                    |
 | HEIF  | libvips  | Quality 50                                                             |
 | GIF   | libvips  | 8-bit indexed                                                          |
 | TIFF  | libvips  | LZW compression default                                                |
-| BMP   | bundled  | Optional. Uncompressed 24bpp BI_RGB                                    |
+| BMP   | libvips  | Off by default. Uncompressed                                           |
+| other | libvips  | Every further format FileLoader writes and reads (TGA, PPM, ICO, HDR, EXR, PSD, ...). Off by default |
+
+Each format is written with its Save settings
+(`GetImageExportOptions`); the qualities above are the defaults.
 
 ## See Also
 
 - [UltraCanvasImageElement](UltraCanvasImageElement.md) — Image display widget used for the thumbnails
 - [UltraCanvasLabel](UltraCanvasLabelExamples.md) — Status/info text labels
 - [UltraCanvasButton](UltraCanvasButtonExamples.md) — "Choose Image..." button
-- [UltraCanvasCheckbox](UltraCanvasCheckbox.md) — "Include BMP" toggle
+- [UltraCanvasSwitch](UltraCanvasSwitch.md) — the format switches of the settings dialog
 - [UltraCanvasContainer](UltraCanvasContainer.md) — Layout root for the benchmark

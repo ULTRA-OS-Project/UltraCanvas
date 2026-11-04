@@ -1,5 +1,6 @@
 // libspecific/Cairo/ImageCairo.cpp
 // Cross-platform image loader implementation using PIMPL idiom
+// Version: 2.11.0 - the framework's JPEG XL loader and saver registered where libvips has none (VipsJxlPlugin)
 // Version: 2.10.0 - a picture without an alpha channel decodes to an RGB24 pixmap
 //                   (no alpha, a copy when composited); GetPixmap keeps a large
 //                   fitted pixmap on disk as a QOI blob between runs
@@ -42,6 +43,9 @@
 #include "VipsQoiLoader.h"
 #include "VipsIcoPlugin.h"
 #include "VipsGifPlugin.h"
+#ifdef HAS_LIBJXL
+#include "VipsJxlPlugin.h"                          // jxlload / jxlsave where libvips has none
+#endif
 #endif
 #ifdef HAS_LIBHEIF
 #include <libheif/heif.h>                          // VipsCanDecode: which codecs decode here
@@ -406,6 +410,9 @@ namespace UltraCanvas {
         vips_foreign_load_qoi_init_types();
         vips_foreign_ico_init_types();
         vips_foreign_gif_init_types();
+#ifdef HAS_LIBJXL
+        vips_foreign_jxl_init_types();
+#endif
         return true;
     }
 

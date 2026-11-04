@@ -293,6 +293,16 @@ Each applies to every block the selection touches. A selection that ends exactly
 at the start of a block does not include it, which is what users expect when
 they drag down to the next paragraph.
 
+Tracking - extra room between every two letters of the whole text, as a drawing
+program's letter spacing - is part of the element's style, in pixels at 100%
+(ArtCreator sets it for the text typed on its page):
+
+```cpp
+RichTextEditStyle style = editor->GetStyle();
+style.letterSpacing = 1.5f;                     // 0 = the font's own spacing
+editor->SetStyle(style);
+```
+
 ### Named styles
 
 ```cpp

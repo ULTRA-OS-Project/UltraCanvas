@@ -1,6 +1,7 @@
 // core/UltraCanvasProgressDialog.cpp
 // Implementation of the modal progress window.
 // See UltraCanvasProgressDialog.h for the contract.
+// Version: 1.1.0 - the Cancel button goes through Tr
 // Version: 1.0.0
 // Last Modified: 2026-08-23
 // Author: UltraCanvas Framework
@@ -9,6 +10,7 @@
 
 #include "UltraCanvasModalDialog.h"
 #include "Plugins/Charts/UltraCanvasCircularProgressChart.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <algorithm>
 #include <cmath>
@@ -93,7 +95,7 @@ namespace UltraCanvas {
                               .SetAlignSelf(CSSLayout::AlignSelf::Center);
         modal->AddDialogElement(self->ring);
 
-        modal->AddCustomButton("Cancel", DialogResult::Cancel, nullptr);
+        modal->AddCustomButton(Tr("Cancel"), DialogResult::Cancel, nullptr);
         // Every way out of the window - the button, Escape, the title bar - is
         // a cancel, and each of them means the window is already going away.
         std::weak_ptr<UltraCanvasProgressDialog> weak = self;

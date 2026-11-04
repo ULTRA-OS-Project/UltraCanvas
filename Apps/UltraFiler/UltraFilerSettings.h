@@ -7,6 +7,7 @@
 // every UltraCanvas application keeps its settings. The history, favorites,
 // folder views, folder icons and the remote drive list live beside it.
 // Settings are applied live by the settings dialog and saved on every change.
+// Version: 1.22.0 - networkServers: the computers opened by name in the Network section
 // Version: 1.21.0 - Display > New tab: newTabStart (current folder / Home / Computer)
 //                  replaces newTabOpensHome
 // Version: 1.20.0 - Archives > TAR: tar, how Compress packs a TAR (the
@@ -388,6 +389,13 @@ public:
     static constexpr size_t kMaxRecentLocations = 10;
     std::vector<std::string> recentLocations;
 
+    // The Network section's computers that were opened by name ("\\NAS"
+    // typed into the path bar) - kept, so a computer the network list does
+    // not show (one on another subnet, out of reach of WS-Discovery, or with
+    // network discovery off) is still there the next time. One key per entry.
+    static constexpr size_t kMaxNetworkServers = 20;
+    std::vector<std::string> networkServers;
+
     // ===== PERSISTENCE =====
 
     // UltraFiler's folder in the shared UltraCanvas settings folder, as every
@@ -632,6 +640,11 @@ public:
             splitView = (it->second == "true" || it->second == "1" || it->second == "yes");
         it = kv.find("view.split.second.folder");
         if (it != kv.end()) splitSecondFolder = it->second;
+        networkServers.clear();
+        for (size_t i = 1; i <= kMaxNetworkServers; ++i) {
+            it = kv.find("network.server." + std::to_string(i));
+            if (it != kv.end() && !it->second.empty()) networkServers.push_back(it->second);
+        }
         it = kv.find("handling.files.media.ultraviewer");
         if (it != kv.end())
             mediaOpensInUltraViewer =
@@ -752,6 +765,8 @@ public:
             file << "extras.locations.recent." << (i + 1) << " = " << recentLocations[i] << "\n";
         file << "view.split = " << (splitView ? "true" : "false") << "\n";
         file << "view.split.second.folder = " << splitSecondFolder << "\n";
+        for (size_t i = 0; i < networkServers.size() && i < kMaxNetworkServers; ++i)
+            file << "network.server." << (i + 1) << " = " << networkServers[i] << "\n";
         file << "handling.files.media.ultraviewer = "
              << (mediaOpensInUltraViewer ? "true" : "false") << "\n";
         return true;

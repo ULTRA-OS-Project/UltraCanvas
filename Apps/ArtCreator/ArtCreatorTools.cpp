@@ -3,6 +3,9 @@
 // line, rectangle, ellipse, quick shape, text, fill, transparency, shadow,
 // feather, zoom, push - the line gallery's named choices, and the option
 // widget helpers they share with the window.
+// Version: 1.7.0 - the Text tool types on the page (requestText at a point or in the clicked
+//                 text), its options on the window's text bar instead of a card; a
+//                 double-click on a text with the Selector opens it for typing
 // Version: 1.6.1 - the icon bars' dividers take their room from the toolbar's groupSpacing
 // Version: 1.6.0 - the Selector turns the selection by the rotation handle (the frame hidden
 //                 while it turns, the angle in the status line), a Dial / Stem switch for
@@ -20,7 +23,7 @@
 // Version: 1.2.2 - the arrow keys nudge by one icon pixel in icon mode
 // Version: 1.2.1 - the Shape Editor button reads "Line / curve", not "Line ⇄ curve"
 // Version: 1.2.0
-// Last Modified: 2026-10-30
+// Last Modified: 2026-11-03
 // Author: UltraCanvas Framework
 
 #include "ArtCreatorTools.h"
@@ -32,6 +35,7 @@
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasSlider.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <algorithm>
 #include <cmath>
@@ -582,7 +586,13 @@ public:
     void OnDoubleClick(ArtToolContext& ctx, const VectorPointerEvent& e) override {
         auto hit = ctx.canvas->HitTest(e.doc, 4.0);
         if (!hit || !hit->element) return;
-        if (hit->element->Type == VectorElementType::Text) return;
+        // A text opens for typing where it lies, with the Text tool.
+        if (hit->element->Type == VectorElementType::Text) {
+            auto text = std::static_pointer_cast<VectorText>(hit->element);
+            if (ctx.selectTool) ctx.selectTool(ArtToolId::Text);
+            if (ctx.requestText) ctx.requestText(e.doc, text);
+            return;
+        }
         ctx.selection->Set(hit->element);
         if (ctx.selectTool) ctx.selectTool(ArtToolId::ShapeEditor);
     }
@@ -1447,21 +1457,21 @@ protected:
 
 class TextTool : public ArtTool {
 public:
-    TextTool() : ArtTool(ArtToolId::Text, "Text", "text.svg", 'T', "Click where the text should start") {}
+    TextTool() : ArtTool(ArtToolId::Text, "Text", "text.svg", 'T',
+                         Tr("Click on the page and type, or click a text to edit it; the bar above sets its font, "
+                            "size, style, alignment and spacing. Escape, Ctrl+Enter or a click outside finishes")) {}
     UCMouseCursor Cursor() const override { return UCMouseCursor::Text; }
     void OnPress(ArtToolContext& ctx, const VectorPointerEvent& e) override {
+        if (!ctx.requestText) return;
         auto hit = ctx.canvas->HitTest(e.doc, 4.0);
-        if (hit && hit->element && hit->element->Type == VectorElementType::Text) { ctx.selection->Set(hit->element); }
-        if (ctx.requestText) ctx.requestText(e.snapped.x, e.snapped.y);
+        if (hit && hit->element && hit->element->Type == VectorElementType::Text) {
+            ctx.requestText(e.doc, std::static_pointer_cast<VectorText>(hit->element));
+            return;
+        }
+        ctx.requestText(e.snapped, nullptr);
     }
-    void BuildOptions(ArtToolContext& ctx, UltraCanvasContainer& panel, const std::function<void()>&) override {
-        ArtToolOptions& o = *ctx.options;
-        AddDropdown(panel, "ac-text-font", "Font", { "Sans", "Serif", "Monospace" },
-                    o.textFont == "Serif" ? 1 : o.textFont == "Monospace" ? 2 : 0,
-                    [&o](int i) { o.textFont = i == 1 ? "Serif" : i == 2 ? "Monospace" : "Sans"; });
-        AddSliderRow(panel, "ac-text-size", "Size", 6, 200, static_cast<float>(o.textSize), 1, true, [&o](float v) { o.textSize = static_cast<int>(v); });
-        AddCheckbox(panel, "ac-text-bold", "Bold", o.textBold, [&o](bool v) { o.textBold = v; });
-    }
+    // Its options are on the window's text bar, which shows while the tool
+    // is active: no Tool Options card.
 };
 
 // ===========================================================================

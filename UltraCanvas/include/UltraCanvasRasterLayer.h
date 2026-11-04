@@ -22,8 +22,9 @@
 // rasterized. Anything that changes the pixels another way takes the text
 // off: the geometry here that resamples or mirrors them, and the document's
 // pixel edits (UltraCanvasRasterDocument.h), whose undo puts it back.
+// Version: 1.2.0 - RasterTextContent::letterSpacingPx
 // Version: 1.1.0 - text layers (RasterTextContent, UCRasterLayer::text)
-// Last Modified: 2026-10-15
+// Last Modified: 2026-11-03
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -94,6 +95,9 @@ struct RasterTextContent {
     std::string fontFamily = "Sans";
     float fontSizePx = 32.0f;
     RasterPixel colour = RasterPixel(0, 0, 0, 255);
+    // Extra room between every two letters of the text, in pixels (the text
+    // bar's letter spacing); 0 is the font's own spacing.
+    float letterSpacingPx = 0.0f;
 
     Rect2Dd GetBox() const { return Rect2Dd(x, y, width, height); }
     // The same text with its box moved by (dx, dy).

@@ -808,7 +808,12 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   `IsFontFileRegistered` / `GetRegisteredFontFiles` add a file's faces to the
   process by name (FontConfig on Linux/Android/WASM, GDI `FR_PRIVATE` +
   FontConfig on Windows, CoreText process scope on macOS), followed by
-  `RefreshFontConfiguration()` so the new family resolves in the next layout,
+  `RefreshFontConfiguration()` so the new family resolves in the next layout
+  (the bundled fonts at an application's start through
+  `RegisterPlatformBundledFonts()`, one per platform in `OS/<Platform>/`;
+  `RegisterBundledFontsWithoutApplication()` runs the same start-up font
+  steps in a tool that has no application - the `videofx` tool drawing
+  titles),
   and `UltraCanvasWindowBase::RefreshAfterFontChange()` on every window (a new
   layout and a full repaint, popups too; also run when the Windows system
   fonts arrive after a cold start). Process-private and permanent: there is
@@ -819,6 +824,19 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   `IsFontFamilyAvailable`. `UltraCanvasRichTextEdit::GetFontReport` and its
   notice use them (`FontCoverageTest`, `RichTextEditElementTest`).
   See `Docs/UltraCanvas/UltraCanvasFontFile.md`.
+
+  The desktop's interface and monospace fonts are
+  `UltraCanvasApplication::GetSystemFontStyle()` /
+  `GetDefaultMonospacedFontStyle()` (what an empty `fontFamily` resolves to),
+  filled by each platform's `DetectSystemFontStyleNative`: the message font
+  of the non-client metrics and Consolas on Windows
+  (`OS/MSWindows/UltraCanvasWindowsSystemFont.cpp`), `[NSFont systemFontOfSize:]`
+  and the system monospace on macOS, GSettings / `kdeglobals` /
+  `settings.ini` on Linux and the BSDs (`OS/Linux/UltraCanvasLinuxSystemFont.cpp`),
+  the bundled Ubuntu / Ubuntu Mono at 12 pt where none answers. The parsers
+  of those forms are the header-only `UltraCanvasSystemFont.h`
+  (`ParseGtkFontName`, `ParseKdeFontEntry`, `ReadIniValue`), tested without
+  a desktop. See `Docs/UltraCanvas/UltraCanvasSystemFont.md`.
 
   Emoji come from a bundled font the emoji setting picks
   (`UltraCanvasEmojiSettings.h`: `EmojiStyle` Colour / Monochrome / System,
@@ -902,10 +920,15 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   its network, USB and Bluetooth lists) and **IODeviceManager** (operates
   peripherals). Core in `core/UltraCanvasDesktopShell.cpp`; the X11 backend
   (EWMH properties and client messages, `XGetImage`, procfs/sysfs) in
-  `OS/Linux/UltraCanvasLinuxDesktopShell.cpp`, the Wayland backend's first
-  phase (the outputs, the devices; the shell protocols are the next step,
+  `OS/Linux/UltraCanvasLinuxDesktopShell.cpp`, the Wayland backend (the
+  outputs, the devices; the window list and the monitor on
+  wlr-foreign-toplevel-management and the virtual desktops on
+  ext-workspace over a connection of its own, the reserved edges as
+  layer-shell exclusive zones -
   `Docs/UltraCanvas/WaylandDesktopShellProposal.md`) in
-  `OS/Linux/Wayland/UltraCanvasWaylandDesktopShell.cpp`, and the Win32 backend
+  `OS/Linux/Wayland/UltraCanvasWaylandDesktopShell.cpp`, its screenshots and
+  global shortcuts through the freedesktop portals in
+  `OS/Linux/Wayland/UltraCanvasWaylandPortals.cpp`, and the Win32 backend
   (`EnumWindows` filtered as Explorer's taskbar, appbars, `BitBlt`, WinEvent
   hooks, `RegisterHotKey`, the Start menu) in
   `OS/MSWindows/UltraCanvasWindowsDesktopShell.cpp` and
@@ -1121,6 +1144,19 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   compiles null-returning fallbacks and the monitor polls.
   See `Docs/UltraCanvas/UltraCanvasVolumeMonitor.md`.
 
+- **UltraCanvasNetworkPlaces** (`UltraCanvasNetworkPlaces.h`) — the places
+  Explorer lists outside *This PC*: `ListNetworkComputers` (the Windows
+  network's workgroup / domain and the servers of the user's connections),
+  `ListNetworkShares` (a computer's folders, hidden and admin shares left
+  out), `ListWslDistributions` (the WSL distributions from the registry,
+  `\\wsl$\<name>`), and the path rules `IsNetworkServerPath` /
+  `NetworkServerName` / `NetworkServerPath`. The two network calls block.
+  Windows backend `OS/MSWindows/UltraCanvasWindowsNetworkPlaces.cpp`, which
+  loads `mpr.dll` / `netapi32.dll` from System32 at first use rather than
+  importing them; empty lists elsewhere (`ULTRACANVAS_HAS_NETWORK_PLACES`).
+  UltraFiler shows them as its *Linux* and *Network* sections. See
+  `Docs/UltraCanvas/UltraCanvasNetworkPlaces.md`.
+
 - **UltraCanvasPortableDevices** (`UltraCanvasPortableDevices.h`) — phones,
   cameras and media players plugged in over USB that are not a drive (MTP /
   PTP). `List` (`PortableDeviceInfo`: id, name, manufacturer, kind),
@@ -1296,9 +1332,9 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   - Lifecycle and backend: `Initialize` / `Shutdown` / `IsInitialized`,
     `SetBackend`, `GetBackendName`.
   - Language: `GetAvailableLanguages` / `SetLanguage` / `GetLanguage` /
-    `GetLanguageInfo` / `DetectPreferredLanguage` (from `LC_ALL` / `LANG`, then
-    the backend's own `GetPreferredLanguageHint` — the OS locale on Windows,
-    where those variables are normally unset) / `ResolveAvailableLanguageCode`.
+    `GetLanguageInfo` / `DetectPreferredLanguage` (the desktop's languages
+    from `UltraCanvasSystemLanguage.h`, then the backend's own
+    `GetPreferredLanguageHint` as a tie-breaker) / `ResolveAvailableLanguageCode`.
     Codes are matched separator- and case-insensitively, so `en_US` from a
     settings file selects the `en-US` a Windows or macOS backend enumerates.
   - Checking: `IsCorrect`, `GetSuggestions`, `CheckText` (synchronous), and the
@@ -1337,6 +1373,19 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
 `UltraCanvasBrushEngine.{h,cpp}`, `UltraCanvasPaintSurface.{h,cpp}`; doc:
 `Docs/UltraCanvas/UltraCanvasPaintSurface.md`). PixelFX stays the whole-image
 engine; these classes hold the pixels being edited and hand them to it.
+
+- **UltraCanvasSystemLanguage** (`UltraCanvasSystemLanguage.h`) — the
+  languages the person's desktop is set to, best first, as BCP 47 tags: the
+  POSIX variables as gettext reads them (`LC_ALL` / `LC_MESSAGES` / `LANG`,
+  the `LANGUAGE` list first when the locale is a real one), then the
+  platform's own list (`SystemLanguageTagsNative` under `OS/<Platform>/`:
+  the preferred UI languages and default locale on Windows, Language &
+  Region on macOS, `navigator.languages` in a browser, the device
+  configuration on Android). One detector for the spell checker today and
+  the localisation module next. Public surface: `SystemLanguageTags`,
+  `SystemLanguage`, and the pure `LanguageTagFromPosixLocale`,
+  `LanguageTagsFromEnvironment`, `LanguageTagBase`, `LanguageTagsEqual`.
+  See `Docs/UltraCanvas/UltraCanvasSystemLanguage.md`.
 
 - **UCRasterLayer** — straight-RGBA 8-bit layer with name / visible / locked /
   opacity / `RasterBlendMode`; `GetPixel/SetPixel/Fill/FillRect/CopyFrom/
@@ -2538,7 +2587,11 @@ command-line tool. Planned: keyframed parameters.
   `VideoFX_GetDefaultFontPath`, `VideoFX_SetVerboseLogging`,
   `VideoFX_GetFileFormats` (the films, sound and pictures the linked FFmpeg
   reads, and the ones an export writes), `VideoFX_SetPictureReader` (picture
-  types the host application reads for the engine)
+  types the host application reads for the engine), `VideoFX_SetTextRenderer` /
+  `VideoFX_HasTextRenderer` / `VideoFX_DrawTextOverlays` (text overlays with a
+  font by name, styled words, alignment and spacing drawn by the host -
+  `VideoFX_UseUltraCanvasText` in `VideoFX/ultracanvas/VideoFXUltraCanvasText.h`
+  installs UltraCanvas's, as UltraVideo and the `videofx` tool do)
 - Inspection: `VideoFX_Probe`, `VideoFX_ExtractFrame`,
   `VideoFX_ExtractThumbnails`, `VideoFX_SaveFrameImage`,
   `VideoFX_ExtractWaveform` (the loudness envelope a timeline draws, in
@@ -2801,3 +2854,62 @@ payload handlers, key-frame recovery by PLI) with the camera through
 `UltraCanvasVideoRecorder`'s live preview. Opus needs libopus (pkg-config
 `opus`), VP8 FFmpeg; without them `caps.audio` / `caps.video` are false.
 Tests in `Tests/UltraRTC`. See `Docs/Modules/UltraRTC/README.md`.
+
+---
+
+### **20. UltraLocalisation**
+
+The text of every application in the person's language. `Tr("Save")`
+gives the translation of the English text written at the site from three
+layers of JSON catalogues - the application's own set
+(`media/locale/<lang>/<App>.json`), the base sets of its kind
+(`media/locale/<lang>/base/<Base>.json`: video editing, banking, shopping,
+...) and the standard set (`media/locale/<lang>/Standard.json`) - looked
+up in that order, the English itself when none has it; a file of the same
+name under the UltraCanvas settings folder's `locale/` is read first; a
+regional tag walks down (`zh-Hant-TW` → `zh-Hant` → `zh`). UI-free and
+free of the core (the vendored yyjson engine and the header-only path
+helpers only), built as the `uc-localisation` archive and absorbed whole
+into the shared core; linked by the public name `UltraLocalisation`.
+Sources `UltraCanvas/{include,core}/UltraLocalisation/`; wired into
+`UltraCanvasApplicationBase::Initialize`. The design is
+`Docs/UltraCanvas/UltraCanvasLocalisationProposal.md`; this is its phase
+L1. Public surface:
+
+- `Tr`, `TrC` (a context: `"button|Open"`), `TrN` (plural by the
+  language's CLDR rule, `{n}` the count), `TrF` (`{0}`, `{1}`, ... filled).
+- `LocalisationCatalogue` - the file: `Parse` / `Serialize`, entries,
+  plural forms, and the metadata `@language`, `@name`, `@source-language`,
+  `@translated-by`, `@bases`, `@inherited`.
+- `LanguageSettings` - `Language.conf` in the settings folder
+  (`language=de` or `system`, `translator=`): `Parse` / `Serialize` /
+  `FilePath` / `Load` / `Save`.
+- `UltraLocalisation` - `SetFolders` (the shipped tree and the settings
+  folder, handed in because the module knows neither), `SetLanguageOverride`
+  (`--lang`), `ChooseLanguage` (override, `ULTRACANVAS_LANG`, `Language.conf`,
+  the first desktop language with a catalogue, `en`), `Initialize`, `Load`,
+  `SetLanguage` with `AddChangeHandler` / `RemoveChangeHandler`,
+  `CurrentLanguage`, `CurrentApplication`, `AvailableLanguages`, `NativeName`,
+  `UseBaseSets` / `BaseSets`, `AddSet` / `LibrarySets` (a plugin's own set),
+  `OriginOf` / `StandardKeys` / `EntryCount` (which layer answered),
+  `PluralCategory` (pure), `ReadCatalogue`, `Reset` (for tests).
+
+The English catalogues are `media/locale/en/Standard.json` (the
+framework's `Tr` keys and the curated application vocabulary) and
+`media/locale/en/base/<Base>.json` (the sixteen base sets);
+`scripts/extract_ui_strings.py` rewrites them from the sources,
+`scripts/check_locale_catalogues.py` is the CI gate over every
+translation (`locale-catalogues.yml`, `scripts/locale_catalogues_baseline.txt`),
+and `scripts/wrap_ui_strings.py` wraps a file's interface strings in
+`Tr` for review. `ultralocalisation-draft` (`Apps/UltraLocalisationDraft`,
+on UltraAI's translator) drafts a language's catalogue, driven per set by
+`scripts/translate_catalogue.py`; machine drafts ship in thirty
+languages under `media/locale/<lang>/`. The localisation editor
+`UltraCanvasLocalisationEditor` (`include/UltraCanvasLocalisationEditor.h`,
+in the core, with `LocalisationWorkspace` as its model) shows every set an
+application's texts come from in one grid and merges them; UOS-Settings
+hosts it under Language > Translations, `ShowLocalisationEditorDialog`
+opens it on the running application. See
+`Docs/Modules/UltraLocalisation/README.md` and
+`Docs/UltraCanvas/UltraCanvasLocalisationEditor.md`.
+

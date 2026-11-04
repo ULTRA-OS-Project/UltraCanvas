@@ -24,6 +24,8 @@
 // The monitor keeps a second connection with PropertyChangeMask on the root
 // window and sleeps in poll() on it and on a wake pipe, so Stop() returns
 // promptly and nothing spins.
+// Version: 1.6.2 - KillProcess moved to UltraCanvasLinuxDesktopShellSession.cpp,
+//                  shared with the Wayland backend
 // Version: 1.6.1 - the procfs and sysfs probes moved to
 //                  UltraCanvasLinuxDeviceProbes.cpp, shared with the Wayland backend
 // Version: 1.6.0 - CaptureScreenArea: one rectangle of the root window (XGetImage of
@@ -49,7 +51,7 @@
 //                  the tray, which on X11 is a protocol of its own)
 // Version: 1.1.2 - ListNativeApplications (none: desktop entries are the list);
 //                  ReplaceSystemDesktop (none: the session starts the desktop)
-// Last Modified: 2026-10-30
+// Last Modified: 2026-11-03
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDesktopShellBackend.h"
@@ -455,33 +457,6 @@ bool MoveWindowTo(uint64_t id, int x, int y) {
     // taskbar (source 2, bits 12-15).
     const long flags = 1L | (1L << 8) | (1L << 9) | (2L << 12);
     return SendRootMessage(d, static_cast<Window>(id), "_NET_MOVERESIZE_WINDOW", flags, x, y, 0, 0);
-}
-
-bool KillProcess(int processId, std::string& error) {
-    if (processId <= 1) {
-        error = "The window does not say which program it belongs to.";
-        return false;
-    }
-    if (processId == static_cast<int>(getpid())) {
-        error = "That is the desktop itself.";
-        return false;
-    }
-    if (kill(static_cast<pid_t>(processId), SIGTERM) != 0) {
-        error = errno == EPERM ? "The program runs as another user; the desktop may not end it."
-                               : errno == ESRCH ? "The program has already ended."
-                                                : std::string("The program could not be ended: ") + std::strerror(errno);
-        return false;
-    }
-    // A program that does not end on SIGTERM within two seconds is killed.
-    const pid_t pid = static_cast<pid_t>(processId);
-    std::thread([pid]() {
-        for (int i = 0; i < 20; ++i) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
-            if (kill(pid, 0) != 0) return;
-        }
-        kill(pid, SIGKILL);
-    }).detach();
-    return true;
 }
 
 int GetVirtualDesktopCount() {

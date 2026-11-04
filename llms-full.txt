@@ -138,7 +138,8 @@ Install the required dependencies for your platform:
 # Ubuntu/Debian
 sudo apt install build-essential cmake libcairo2-dev libpango1.0-dev \
     libfreetype6-dev libvips-dev libharfbuzz-dev \
-    libheif-plugin-libde265 libheif-plugin-aomdec   # Ubuntu 24.04 on: HEIC and AVIF clang
+    libheif-plugin-libde265 libheif-plugin-aomdec \
+    libjxl-dev   # Ubuntu 24.04 on: HEIC and AVIF decoders, JPEG XL where libvips lacks it clang
 
 # macOS
 brew install cmake cairo pango freetype vips harfbuzz
@@ -179,9 +180,11 @@ The following features are planned for future releases:
 -   **3D model support** - Loading and rendering .3ds, .3dm formats
 -   **SmartHome drivers** - Device drivers for the protocols the module specifies:
     Matter, Thread, Zigbee, Z-Wave, WiFi and Bluetooth (see `Docs/Modules/Smarthome/README.md`)
--   **Wayland desktop shell** - the windowing backend is in (`-DULTRACANVAS_WAYLAND=ON`);
-    the layer-shell, foreign-toplevel and portal pieces the desktop shell needs
-    come next (see `Docs/UltraCanvas/WaylandDesktopShellProposal.md`)
+-   **Wayland desktop shell** - the windowing backend and the desktop shell's
+    protocols are in (`-DULTRACANVAS_WAYLAND=ON`): the layer shell, foreign
+    toplevels, ext-workspace, the portals for screenshots and shortcuts,
+    xdg-activation; popups with a positioner, drags, the session lock and GL
+    surfaces come next (see `Docs/UltraCanvas/WaylandDesktopShellProposal.md`)
 
 ----------
 
@@ -1007,7 +1010,12 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   `IsFontFileRegistered` / `GetRegisteredFontFiles` add a file's faces to the
   process by name (FontConfig on Linux/Android/WASM, GDI `FR_PRIVATE` +
   FontConfig on Windows, CoreText process scope on macOS), followed by
-  `RefreshFontConfiguration()` so the new family resolves in the next layout,
+  `RefreshFontConfiguration()` so the new family resolves in the next layout
+  (the bundled fonts at an application's start through
+  `RegisterPlatformBundledFonts()`, one per platform in `OS/<Platform>/`;
+  `RegisterBundledFontsWithoutApplication()` runs the same start-up font
+  steps in a tool that has no application - the `videofx` tool drawing
+  titles),
   and `UltraCanvasWindowBase::RefreshAfterFontChange()` on every window (a new
   layout and a full repaint, popups too; also run when the Windows system
   fonts arrive after a cold start). Process-private and permanent: there is
@@ -1018,6 +1026,19 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   `IsFontFamilyAvailable`. `UltraCanvasRichTextEdit::GetFontReport` and its
   notice use them (`FontCoverageTest`, `RichTextEditElementTest`).
   See `Docs/UltraCanvas/UltraCanvasFontFile.md`.
+
+  The desktop's interface and monospace fonts are
+  `UltraCanvasApplication::GetSystemFontStyle()` /
+  `GetDefaultMonospacedFontStyle()` (what an empty `fontFamily` resolves to),
+  filled by each platform's `DetectSystemFontStyleNative`: the message font
+  of the non-client metrics and Consolas on Windows
+  (`OS/MSWindows/UltraCanvasWindowsSystemFont.cpp`), `[NSFont systemFontOfSize:]`
+  and the system monospace on macOS, GSettings / `kdeglobals` /
+  `settings.ini` on Linux and the BSDs (`OS/Linux/UltraCanvasLinuxSystemFont.cpp`),
+  the bundled Ubuntu / Ubuntu Mono at 12 pt where none answers. The parsers
+  of those forms are the header-only `UltraCanvasSystemFont.h`
+  (`ParseGtkFontName`, `ParseKdeFontEntry`, `ReadIniValue`), tested without
+  a desktop. See `Docs/UltraCanvas/UltraCanvasSystemFont.md`.
 
   Emoji come from a bundled font the emoji setting picks
   (`UltraCanvasEmojiSettings.h`: `EmojiStyle` Colour / Monochrome / System,
@@ -1101,10 +1122,15 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   its network, USB and Bluetooth lists) and **IODeviceManager** (operates
   peripherals). Core in `core/UltraCanvasDesktopShell.cpp`; the X11 backend
   (EWMH properties and client messages, `XGetImage`, procfs/sysfs) in
-  `OS/Linux/UltraCanvasLinuxDesktopShell.cpp`, the Wayland backend's first
-  phase (the outputs, the devices; the shell protocols are the next step,
+  `OS/Linux/UltraCanvasLinuxDesktopShell.cpp`, the Wayland backend (the
+  outputs, the devices; the window list and the monitor on
+  wlr-foreign-toplevel-management and the virtual desktops on
+  ext-workspace over a connection of its own, the reserved edges as
+  layer-shell exclusive zones -
   `Docs/UltraCanvas/WaylandDesktopShellProposal.md`) in
-  `OS/Linux/Wayland/UltraCanvasWaylandDesktopShell.cpp`, and the Win32 backend
+  `OS/Linux/Wayland/UltraCanvasWaylandDesktopShell.cpp`, its screenshots and
+  global shortcuts through the freedesktop portals in
+  `OS/Linux/Wayland/UltraCanvasWaylandPortals.cpp`, and the Win32 backend
   (`EnumWindows` filtered as Explorer's taskbar, appbars, `BitBlt`, WinEvent
   hooks, `RegisterHotKey`, the Start menu) in
   `OS/MSWindows/UltraCanvasWindowsDesktopShell.cpp` and
@@ -1320,6 +1346,19 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   compiles null-returning fallbacks and the monitor polls.
   See `Docs/UltraCanvas/UltraCanvasVolumeMonitor.md`.
 
+- **UltraCanvasNetworkPlaces** (`UltraCanvasNetworkPlaces.h`) — the places
+  Explorer lists outside *This PC*: `ListNetworkComputers` (the Windows
+  network's workgroup / domain and the servers of the user's connections),
+  `ListNetworkShares` (a computer's folders, hidden and admin shares left
+  out), `ListWslDistributions` (the WSL distributions from the registry,
+  `\\wsl$\<name>`), and the path rules `IsNetworkServerPath` /
+  `NetworkServerName` / `NetworkServerPath`. The two network calls block.
+  Windows backend `OS/MSWindows/UltraCanvasWindowsNetworkPlaces.cpp`, which
+  loads `mpr.dll` / `netapi32.dll` from System32 at first use rather than
+  importing them; empty lists elsewhere (`ULTRACANVAS_HAS_NETWORK_PLACES`).
+  UltraFiler shows them as its *Linux* and *Network* sections. See
+  `Docs/UltraCanvas/UltraCanvasNetworkPlaces.md`.
+
 - **UltraCanvasPortableDevices** (`UltraCanvasPortableDevices.h`) — phones,
   cameras and media players plugged in over USB that are not a drive (MTP /
   PTP). `List` (`PortableDeviceInfo`: id, name, manufacturer, kind),
@@ -1495,9 +1534,9 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   - Lifecycle and backend: `Initialize` / `Shutdown` / `IsInitialized`,
     `SetBackend`, `GetBackendName`.
   - Language: `GetAvailableLanguages` / `SetLanguage` / `GetLanguage` /
-    `GetLanguageInfo` / `DetectPreferredLanguage` (from `LC_ALL` / `LANG`, then
-    the backend's own `GetPreferredLanguageHint` — the OS locale on Windows,
-    where those variables are normally unset) / `ResolveAvailableLanguageCode`.
+    `GetLanguageInfo` / `DetectPreferredLanguage` (the desktop's languages
+    from `UltraCanvasSystemLanguage.h`, then the backend's own
+    `GetPreferredLanguageHint` as a tie-breaker) / `ResolveAvailableLanguageCode`.
     Codes are matched separator- and case-insensitively, so `en_US` from a
     settings file selects the `en-US` a Windows or macOS backend enumerates.
   - Checking: `IsCorrect`, `GetSuggestions`, `CheckText` (synchronous), and the
@@ -1536,6 +1575,19 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
 `UltraCanvasBrushEngine.{h,cpp}`, `UltraCanvasPaintSurface.{h,cpp}`; doc:
 `Docs/UltraCanvas/UltraCanvasPaintSurface.md`). PixelFX stays the whole-image
 engine; these classes hold the pixels being edited and hand them to it.
+
+- **UltraCanvasSystemLanguage** (`UltraCanvasSystemLanguage.h`) — the
+  languages the person's desktop is set to, best first, as BCP 47 tags: the
+  POSIX variables as gettext reads them (`LC_ALL` / `LC_MESSAGES` / `LANG`,
+  the `LANGUAGE` list first when the locale is a real one), then the
+  platform's own list (`SystemLanguageTagsNative` under `OS/<Platform>/`:
+  the preferred UI languages and default locale on Windows, Language &
+  Region on macOS, `navigator.languages` in a browser, the device
+  configuration on Android). One detector for the spell checker today and
+  the localisation module next. Public surface: `SystemLanguageTags`,
+  `SystemLanguage`, and the pure `LanguageTagFromPosixLocale`,
+  `LanguageTagsFromEnvironment`, `LanguageTagBase`, `LanguageTagsEqual`.
+  See `Docs/UltraCanvas/UltraCanvasSystemLanguage.md`.
 
 - **UCRasterLayer** — straight-RGBA 8-bit layer with name / visible / locked /
   opacity / `RasterBlendMode`; `GetPixel/SetPixel/Fill/FillRect/CopyFrom/
@@ -2737,7 +2789,11 @@ command-line tool. Planned: keyframed parameters.
   `VideoFX_GetDefaultFontPath`, `VideoFX_SetVerboseLogging`,
   `VideoFX_GetFileFormats` (the films, sound and pictures the linked FFmpeg
   reads, and the ones an export writes), `VideoFX_SetPictureReader` (picture
-  types the host application reads for the engine)
+  types the host application reads for the engine), `VideoFX_SetTextRenderer` /
+  `VideoFX_HasTextRenderer` / `VideoFX_DrawTextOverlays` (text overlays with a
+  font by name, styled words, alignment and spacing drawn by the host -
+  `VideoFX_UseUltraCanvasText` in `VideoFX/ultracanvas/VideoFXUltraCanvasText.h`
+  installs UltraCanvas's, as UltraVideo and the `videofx` tool do)
 - Inspection: `VideoFX_Probe`, `VideoFX_ExtractFrame`,
   `VideoFX_ExtractThumbnails`, `VideoFX_SaveFrameImage`,
   `VideoFX_ExtractWaveform` (the loudness envelope a timeline draws, in
@@ -2995,6 +3051,64 @@ payload handlers, key-frame recovery by PLI) with the camera through
 `UltraCanvasVideoRecorder`'s live preview. Opus needs libopus (pkg-config
 `opus`), VP8 FFmpeg; without them `caps.audio` / `caps.video` are false.
 Tests in `Tests/UltraRTC`. See `Docs/Modules/UltraRTC/README.md`.
+
+---
+
+### **20. UltraLocalisation**
+
+The text of every application in the person's language. `Tr("Save")`
+gives the translation of the English text written at the site from three
+layers of JSON catalogues - the application's own set
+(`media/locale/<lang>/<App>.json`), the base sets of its kind
+(`media/locale/<lang>/base/<Base>.json`: video editing, banking, shopping,
+...) and the standard set (`media/locale/<lang>/Standard.json`) - looked
+up in that order, the English itself when none has it; a file of the same
+name under the UltraCanvas settings folder's `locale/` is read first; a
+regional tag walks down (`zh-Hant-TW` → `zh-Hant` → `zh`). UI-free and
+free of the core (the vendored yyjson engine and the header-only path
+helpers only), built as the `uc-localisation` archive and absorbed whole
+into the shared core; linked by the public name `UltraLocalisation`.
+Sources `UltraCanvas/{include,core}/UltraLocalisation/`; wired into
+`UltraCanvasApplicationBase::Initialize`. The design is
+`Docs/UltraCanvas/UltraCanvasLocalisationProposal.md`; this is its phase
+L1. Public surface:
+
+- `Tr`, `TrC` (a context: `"button|Open"`), `TrN` (plural by the
+  language's CLDR rule, `{n}` the count), `TrF` (`{0}`, `{1}`, ... filled).
+- `LocalisationCatalogue` - the file: `Parse` / `Serialize`, entries,
+  plural forms, and the metadata `@language`, `@name`, `@source-language`,
+  `@translated-by`, `@bases`, `@inherited`.
+- `LanguageSettings` - `Language.conf` in the settings folder
+  (`language=de` or `system`, `translator=`): `Parse` / `Serialize` /
+  `FilePath` / `Load` / `Save`.
+- `UltraLocalisation` - `SetFolders` (the shipped tree and the settings
+  folder, handed in because the module knows neither), `SetLanguageOverride`
+  (`--lang`), `ChooseLanguage` (override, `ULTRACANVAS_LANG`, `Language.conf`,
+  the first desktop language with a catalogue, `en`), `Initialize`, `Load`,
+  `SetLanguage` with `AddChangeHandler` / `RemoveChangeHandler`,
+  `CurrentLanguage`, `CurrentApplication`, `AvailableLanguages`, `NativeName`,
+  `UseBaseSets` / `BaseSets`, `AddSet` / `LibrarySets` (a plugin's own set),
+  `OriginOf` / `StandardKeys` / `EntryCount` (which layer answered),
+  `PluralCategory` (pure), `ReadCatalogue`, `Reset` (for tests).
+
+The English catalogues are `media/locale/en/Standard.json` (the
+framework's `Tr` keys and the curated application vocabulary) and
+`media/locale/en/base/<Base>.json` (the sixteen base sets);
+`scripts/extract_ui_strings.py` rewrites them from the sources,
+`scripts/check_locale_catalogues.py` is the CI gate over every
+translation (`locale-catalogues.yml`, `scripts/locale_catalogues_baseline.txt`),
+and `scripts/wrap_ui_strings.py` wraps a file's interface strings in
+`Tr` for review. `ultralocalisation-draft` (`Apps/UltraLocalisationDraft`,
+on UltraAI's translator) drafts a language's catalogue, driven per set by
+`scripts/translate_catalogue.py`; machine drafts ship in thirty
+languages under `media/locale/<lang>/`. The localisation editor
+`UltraCanvasLocalisationEditor` (`include/UltraCanvasLocalisationEditor.h`,
+in the core, with `LocalisationWorkspace` as its model) shows every set an
+application's texts come from in one grid and merges them; UOS-Settings
+hosts it under Language > Translations, `ShowLocalisationEditorDialog`
+opens it on the running application. See
+`Docs/Modules/UltraLocalisation/README.md` and
+`Docs/UltraCanvas/UltraCanvasLocalisationEditor.md`.
 
 ==============================================================================
 FILE: Docs/AI-Agent-Integration.md
@@ -5625,9 +5739,24 @@ as a `.tar.xz` on Linux, a `.tar.gz` on macOS and a `.zip` on Windows. The
 version in the name is the framework's, from the first line of
 `Docs/UltraCanvas/CHANGELOG.md`.
 
-**Where to get one.** The download page is
-[ultraos.eu/download-file](https://ultraos.eu/download-file/): pick the archive
-for your platform and architecture there. Each version of `main` also has a GitHub release tagged
+**Where to get one.** Every release is on the UltraOS server, with a
+`SHA256SUMS` beside the six archives:
+
+```
+https://start.ultraos.eu/pub/<version>/<archive>
+https://start.ultraos.eu/pub/<version>/SHA256SUMS
+https://start.ultraos.eu/pub/0.9.465/UltraCanvas-SDK-Windows-0.9.465-x86_64.zip
+```
+
+The `publish-sdk-website` job of `.github/workflows/build.yml` uploads them
+there over SFTP, into `<ULTRAOS_SFTP_DIR>/<version>/`, which the web server
+serves as `https://start.ultraos.eu/pub/` (`scripts/upload-sdk-website.sh`).
+It runs once the GitHub release below has them. It uploads nothing until `ULTRAOS_SFTP_HOST`
+is set, as a repository variable or a secret; the script's head lists the
+other settings. The *SDK website check* workflow
+(`.github/workflows/sdk-website-check.yml`, *Run workflow* in the Actions tab)
+tests those settings without a release: it logs in, writes, renames and
+removes a probe file in the directory. Each version of `main` also has a GitHub release tagged
 `v<version>` (the `publish-sdk` job of `.github/workflows/build.yml` creates
 it from the release build that `changelog-fold.yml` dispatches, with the
 version's changelog section as its notes), and the archives are its assets at
@@ -5639,9 +5768,11 @@ https://github.com/ULTRA-OS-Project/UltraCanvas/releases/download/v0.9.211/Ultra
 ```
 
 UltraCanvasStart's Framework step names the archive for the platform and
-architecture it runs on and the version it was built from, opens the download
-page in the browser with *Download page*, and unpacks the downloaded archive
-with *Unpack...*. UltraCanvasStart itself is on the same release, on its own, as
+architecture it runs on and the version it was built from. *Download* fetches
+it from `https://start.ultraos.eu/pub/` into a folder you pick, checks it
+against the version's `SHA256SUMS` and unpacks it there; *Unpack...* does the
+same for an archive downloaded by hand (`Apps/UltraCanvasStart/engine/StartSdk.h`,
+`DownloadSdk`). UltraCanvasStart itself is on the same release, on its own, as
 `UltraCanvasStart-<OS>-<version>-<arch>` (a `.tar.xz` on Linux, a `.zip` on
 Windows, a signed and notarized `.dmg` on macOS): the application, the
 libraries it loads and nothing else, for a computer that has neither the
@@ -5750,6 +5881,17 @@ glib, tinyxml2 and libvips through pkg-config:
   directory, or is empty.
 - **The Linux SDK does not**: the distribution's `-dev` packages are the
   right source there (Ubuntu 22.04's for the SDK's ABI), as step 1 lists them.
+  Only the ones an application compiles against are needed. The core also
+  records some of its own dependencies by the full path CI found them at,
+  such as `/usr/lib/x86_64-linux-gnu/libmp3lame.so`, which exists only
+  where `libmp3lame-dev` is installed, and `/usr/lib/libmupdf.a`, which CI
+  builds from source. The core is a shared library, so those are already
+  inside it or loaded with it at run time, and an application does not need
+  them on its link line. `UltraCanvasConfig.cmake` therefore leaves out any
+  such path the consuming machine does not have, and lists them in the
+  configure output (`UltraCanvas: not on this machine, left off the link
+  line ...`), instead of letting the build stop with *No rule to make
+  target*.
 
 ## Compatibility
 
@@ -7224,7 +7366,12 @@ adb shell 'while [ "$(getprop sys.boot_completed)" != 1 ]; do sleep 1; done'
 ```
 
 Create a second AVD with the hardware keyboard **off** for IME testing, and a
-third at a different density for the HiDPI path (§4).
+third at a different density for the HiDPI path (§4). **Status:** CI does
+the density one - the `emulator` job also runs the demo on the `pixel_6`
+profile (1080x2400, 420 dpi), and the smoke test requires the frame to fill
+the window to the pixel at scale density / 160 - which the backend's surface
+failed by a pixel at 2.625 until it took the window's own size (1080 -> 411
+logical -> 1079).
 
 ### 5.2 Install, launch, look
 
@@ -7735,9 +7882,9 @@ left between that and "runs on a device" is the APK (packaging/README.md).
 
 | Dependency | Action |
 |---|---|
-| **libvips** (+ ~10 transitive libs) | ~~Make it optional~~ **Decided otherwise (2026-10-15): libvips is part of UltraCanvas on every platform, Android included** — it is in the vcpkg manifest with JPEG, PNG, WebP, TIFF, EXIF, lcms, GIF and Netpbm, from the macOS overlay port. The optional build that the first milestone used is gone; only a single-threaded WebAssembly program goes without it, where libvips cannot run |
+| **libvips** (+ ~10 transitive libs) | ~~Make it optional~~ **Decided otherwise (2026-10-15): libvips is part of UltraCanvas on every platform, Android included** — it is in the vcpkg manifest with JPEG, PNG, WebP, TIFF, EXIF, lcms, GIF, Netpbm and SVG, from the macOS overlay port. The optional build that the first milestone used is gone; only a single-threaded WebAssembly program goes without it, where libvips cannot run |
 | X11/Xcursor/Xrandr, GTK3, GLX, desktop OpenGL | Never referenced by the Android platform arm |
-| librsvg | Skip (Rust+gobject; SVG falls back gracefully) |
+| librsvg | ~~Skip (Rust+gobject; SVG falls back gracefully)~~ **Built (2026-11): libvips' `rsvg` feature, vcpkg's librsvg 2.40 - the last C release, no Rust - as on macOS.** The fallback was not graceful: on the emulator every `.svg` icon failed with "is not a known file format". The emulator smoke test now fails if one does. |
 | GStreamer | Skip video for phase 1 (`VideoBackendNull` exists exactly for this); the right Android backend later is MediaCodec/ExoPlayer, not GStreamer-android. **Status:** done with the NDK's MediaCodec, Camera2 and AAudio (`libspecific/Video/VideoBackendAndroid*.cpp`). No ExoPlayer, so no Java dependency. |
 | miniaudio | **Works on Android out of the box** (AAudio/OpenSL backends already in the vendored header) — audio is nearly free. **Status: on.** It was the one entry in the Android CMake block whose dependency is vendored rather than pending in the sysroot, so it needed no link changes at all (AAudio and OpenSL ES are both reached through `dlopen`). The CI syntax check compiles the backend TU — and with it the whole `MINIAUDIO_IMPLEMENTATION` — for aarch64 |
 | Optional audio codecs (FLAC/vorbis/opus/LAME) | All plain C with known NDK builds; each just unlocks a format |
@@ -8507,7 +8654,8 @@ Install the required dependencies for your platform:
 # Ubuntu/Debian
 sudo apt install build-essential cmake libcairo2-dev libpango1.0-dev \
     libfreetype6-dev libvips-dev libharfbuzz-dev \
-    libheif-plugin-libde265 libheif-plugin-aomdec   # Ubuntu 24.04 on: HEIC and AVIF
+    libheif-plugin-libde265 libheif-plugin-aomdec \
+    libjxl-dev   # Ubuntu 24.04 on: HEIC and AVIF decoders, JPEG XL where libvips lacks it
 
 # macOS
 brew install cmake cairo pango freetype vips harfbuzz
@@ -9361,7 +9509,7 @@ A reader meeting a code it does not know composites that layer as Normal.
 The words of a text layer: rich text — runs with their own fonts, sizes,
 colours, weights, slants and underlines; paragraphs with their alignment and
 spacing — laid out in a box the width of which the lines wrap at. After the
-8-byte preamble (`'UCTF'`, version `1`):
+8-byte preamble (`'UCTF'`, version `1` or `2`):
 
 | Offset | Size | Field | Meaning |
 |---|---|---|---|
@@ -9373,6 +9521,7 @@ spacing — laid out in a box the width of which the lines wrap at. After the
 | 44 | 4 | Font size | float32, pixels: the size of a run that states none |
 | 48 | 2 | Font family length | uint16 |
 | 50 | n | Font family | UTF-8: the font of a run that states none |
+| … | 4 | Letter spacing | version 2 only: float32, pixels added between every two letters of the text (0 = the font's own spacing) |
 | … | 4 | Text encoding | FourCC of what follows: `'ODT '` = an OpenDocument Text package (ODF 1.2, `application/vnd.oasis.opendocument.text`) |
 | … | 4 | Text length | uint32 |
 | … | n | Text | the rich text in that encoding |
@@ -9388,6 +9537,10 @@ Rules:
   text lays out the same when read back.
 - A reader that cannot decode the text encoding keeps the layer as the
   bitmap layer it shows.
+- Writers write version 1 for a text without letter spacing, so that a
+  reader of version 1 takes it; version 2 only when the letter spacing is not
+  0. A reader that does not know a frame's version keeps the layer as the
+  bitmap it shows.
 
 ## 5. Binary vs. text body encoding
 
@@ -22245,6 +22398,280 @@ can mirror an external change without hearing its own echo.
   under a transparent image (and with it the UltraFiler preview pane).
 
 ==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasCommandConfigWidget.md
+==============================================================================
+
+# Menus and Toolbars Editor
+
+<!-- doc-check: void OnOpen(); void SetWordWrap(bool on); MenuItemData BuildRecentFilesSubmenu(); std::string ConfigDir(); std::shared_ptr<UltraCanvasMenu> menuBar; std::shared_ptr<UltraCanvasToolbar> toolbar; UltraCanvasCommandRegistry* registry; UltraCanvasAppSettings settings{"MyApp"}; ToolbarLayout toolbarDefaults; ToolbarLayout toolbarLayout; std::shared_ptr<UltraCanvasWindowBase> window; MenuLayoutSet defaultMenus; -->
+
+`UltraCanvasCommandConfigWidget` lets end users customise an application's menus
+**and toolbars** at runtime, in one editor: reorder entries, add or remove
+commands, group them into submenus or toolbar groups, show or hide a toolbar's
+groups and commands, fold a group into one button, and save the result so it
+survives a restart. It works together with two supporting pieces of
+infrastructure — a **command registry** and **serializable layouts** for menus
+and toolbars — that together make menus and toolbars reconfigurable.
+
+It was `UltraCanvasMenuConfigWidget`, which edited menus only; that name, its
+header and `CreateMenuConfigWidget` remain as aliases. Its `onApply` / `onSave`
+now carry a `CommandLayoutSet`, whose `menus` is the `MenuLayoutSet` they carried
+before.
+
+## Contents
+
+- [Why the extra infrastructure is needed](#why-the-extra-infrastructure-is-needed)
+- [1. Register commands](#1-register-commands)
+- [2. Describe the default layout](#2-describe-the-default-layout)
+- [3. Show the widget and wire the buttons](#3-show-the-widget-and-wire-the-buttons)
+  - [In a window](#in-a-window)
+  - [Layout of the widget](#layout-of-the-widget)
+- [4. Apply vs Save](#4-apply-vs-save)
+- [Persistence format](#persistence-format)
+- [Files](#files)
+
+## Why the extra infrastructure is needed
+
+Menus are normally built imperatively with lambdas:
+
+```cpp
+menuBar = MenuBuilder("Bar", 0, 0, 800, 28)
+    .AddSubmenu("File", {
+        MenuItemData::ActionWithShortcut("Open...", "Ctrl+O", [this]() { OnOpen(); }),
+    })
+    .Build();
+```
+
+A lambda has no stable identity and cannot be serialized, so a menu built this way
+cannot be saved, reloaded, or reorganised by id. The solution is to separate the
+two concerns:
+
+| Concern | Type | Serializable? |
+|---|---|---|
+| *What a command does* (label, icon, shortcut, callback) | `MenuCommand` in `UltraCanvasCommandRegistry` | no (holds callbacks) |
+| *How the menu is arranged* (which commands, in what order/nesting) | `MenuLayout` / `MenuLayoutSet` | yes (ids + groups only) |
+| *How a toolbar is arranged* (groups of commands, shown or not) | `ToolbarLayout` ([Toolbar Layout](UltraCanvasToolbarLayout.md)) | yes (ids + groups only) |
+
+The registry was `UltraCanvasMenuRegistry`; that name is an alias
+(`UltraCanvasMenuRegistry.h`). A program with several windows gives each window its
+own registry, so every command reaches the window it belongs to.
+
+`MenuItemData` gained one optional field, `std::string commandId`, that links a live
+menu item back to its registry entry.
+
+## 1. Register commands
+
+Each action the user may place in a menu is registered once, under a stable id and a
+category (the category groups commands in the widget's right-hand tree):
+
+```cpp
+auto& reg = UltraCanvasCommandRegistry::Default();
+reg.RegisterAction("file.open", "File", "Open...", "icons/open.svg", "Ctrl+O",
+                   [this]() { OnOpen(); });
+
+// Non-Action commands keep their proper callback slot:
+MenuCommand wrap("view.wordwrap", "View", "Word Wrap");
+wrap.type = MenuItemType::Checkbox;
+wrap.onToggle = [this](bool on) { SetWordWrap(on); };
+reg.Register(wrap);
+
+// Dynamic / provider-backed submenus (e.g. "Recent Files") that cannot be
+// decomposed into serializable children use the prototype escape hatch. They are
+// treated as an opaque, non-editable leaf by the widget:
+MenuCommand recent("file.recent", "File", "Recent Files");
+recent.prototype = [this]() { return BuildRecentFilesSubmenu(); };
+reg.Register(recent);
+```
+
+The same registry builds toolbars ([Toolbar Layout](UltraCanvasToolbarLayout.md)),
+and a command carries what a toolbar needs as well: `iconName`, resolved per
+size by `SetIconResolver` / `ResolveIcon`; a `tooltip`; live state -
+`isEnabled`, `isChecked`, `dynamicLabel` - which `Materialize` reads into the
+entry it builds and `RefreshMenuStates(menu)` reads again into a menu built
+earlier; and `makeToolbarWidget` for a command that is a widget on a toolbar.
+`FindShortcutConflicts()` lists the shortcuts given to more than one command.
+
+## 2. Describe the default layout
+
+A `MenuLayout` is a tree of `MenuLayoutNode`s (`Command`, `Group`, or `Separator`).
+A `MenuLayoutSet` holds several named menus so a menubar and any context menus can be
+edited together under one "Program" root.
+
+```cpp
+MenuLayoutSet set;
+MenuLayout& bar = set.FindOrAdd("Main Menu Bar");
+MenuLayoutNode file = MenuLayoutNode::Group("File");
+file.children = {
+    MenuLayoutNode::Command("file.new"),
+    MenuLayoutNode::Command("file.open"),
+    MenuLayoutNode::Separator(),
+    MenuLayoutNode::Command("file.recent"),
+};
+bar.topLevel = { file };
+```
+
+You can also derive an editable layout from an existing live menu with
+`LayoutFromMenu(menu, "Main Menu Bar")` (note: provider-backed submenus introspect
+as empty groups, so building the default layout explicitly is preferred when full
+fidelity matters).
+
+## 3. Show the widget and wire the buttons
+
+```cpp
+auto widget = CreateCommandConfigWidget("Customise", 0, 0, 980, 640);
+widget->SetRegistry(registry);
+widget->SetLayoutSet(set);                                        // the menus
+widget->AddToolbar(toolbarLayout, toolbarDefaults, "Main toolbar");   // as it is, and the program's
+
+widget->onApply = [this](const CommandLayoutSet& s) {
+    // Temporary: rebuild the live menu and toolbar now, lost on exit.
+    MaterializeInto(*menuBar, s.menus.menus.front(), *registry);
+    if (const ToolbarLayout* bar = s.FindToolbar("main")) MaterializeToolbar(*toolbar, *bar, *registry);
+};
+widget->onSave = [this](const CommandLayoutSet& s) {
+    MaterializeInto(*menuBar, s.menus.menus.front(), *registry);           // apply
+    SaveMenuLayoutSet(s.menus, ConfigDir() + "/menu_layout.txt");          // + persist
+    if (const ToolbarLayout* bar = s.FindToolbar("main")) {
+        MaterializeToolbar(*toolbar, *bar, *registry);
+        SaveToolbarLayout(settings, *bar, toolbarDefaults);
+    }
+};
+widget->onReset  = [this]() { /* the menus are back as given, the toolbars as the program has them */ };
+widget->onCancel = [this]() { /* close without applying */ };
+```
+
+The widget only edits a working copy and reports intent through callbacks — it never
+touches live menus or toolbars itself, so the host decides how apply/save/reset behave.
+
+### In a window
+
+`ShowCommandConfigDialog` opens the widget in a dialog window of its own over the
+program's window. Cancel and Save close it after the widget's callbacks have run;
+Apply leaves it open. The window keeps itself alive until it is closed.
+
+```cpp
+window = ShowCommandConfigDialog(menuBar->GetWindow(), widget, "Customise Menus and Toolbars");
+```
+
+### Layout of the widget
+
+```
+┌ Menus and toolbars ─────┐ ┌──────────┐ ┌ Available commands ┐
+│ Program                 │ │ Add ›    │ │ [Filter commands ] │
+│  ├ Menus                │ │ ‹ Remove │ │ File               │
+│  │  └ Main Menu Bar     │ │ Move Up  │ │   New              │
+│  │     ├ File ...       │ │ Move Down│ │   Open...          │
+│  └ Toolbars             │ │ New Group│ │ Edit               │
+│     └ Main toolbar      │ │ Separator│ │   Undo             │
+│        ├ ☑ File         │ │ Fold     │ │ ...                │
+│        │  ├ ☑ New       │ └──────────┘ └────────────────────┘
+│        │  └ ☐ Export    │
+│        └ ☑ Zoom - folded│
+│ Name [File      ]       │
+│ Icon size [24 px▾] ☐ Labels
+├──────────────────────────────────────────────────────────────┤
+│ Preview: Main toolbar   [🗋][📂] │ [↶][↷] │ [🔍▾]               │
+│ [Reset]                                  [Cancel][Apply][Save] │
+└──────────────────────────────────────────────────────────────┘
+```
+
+* **Add** (a chevron pointing right) inserts the command selected on the right after
+  the selected entry: into a selected submenu or toolbar group, or a toolbar's last
+  group. Double-clicking a command adds it too. On a toolbar, a command already in
+  the group is shown again rather than added twice, and a catalog filter
+  (`SetCatalogueFilter`) can refuse commands a toolbar does not take.
+* **Remove** (a chevron pointing left) deletes the selected menu entry. On a toolbar,
+  a command or group of the program's is hidden (unchecked) — it is the program's
+  to drop — and one the user added goes. The Program root, the headings and whole
+  menus and toolbars are structural and cannot be removed.
+* **Move Up / Move Down** reorder within the current parent: menu entries, a
+  toolbar's groups, a group's commands.
+* **New Group** inserts a submenu in a menu, or a group of the user's on a toolbar,
+  after the selected group. **Name** renames the selected menu entry or submenu, or a
+  group of the user's (a program's group keeps its name).
+* **Separator** inserts a menu separator; toolbars separate their groups themselves.
+* **Fold** folds the selected toolbar group into one button whose tools fold out, or
+  unfolds it.
+* The **check boxes** of a toolbar's groups and commands show or hide them; a hidden
+  group keeps which of its commands are shown. **Icon size** and **Labels** are the
+  selected toolbar's.
+* The **preview** shows the selected toolbar as the edits leave it; its buttons run
+  nothing.
+
+Every action is a public method too — `AddSelectedCommand`, `RemoveSelected`,
+`MoveSelected`, `AddGroup`, `AddSeparator`, `ToggleFoldSelected`, `RenameSelected`,
+`SetLayoutNodeChecked`, `SetSelectedToolbarIconSize`, `SetSelectedToolbarShowLabels`
+— with `SelectLayoutNode` and `SelectCatalogueCommand` to choose what they act on.
+
+## 4. Apply vs Save
+
+* **Apply** rebuilds the live menu in place (`UltraCanvasMenu::Clear()` +
+  `AddItem()` via `MaterializeInto`). The change is temporary and lasts until the
+  program closes.
+* **Save** applies *and* writes the layout to disk via `SaveMenuLayoutSet`. On the
+  next launch, load it with `LoadMenuLayoutSet` and `MaterializeInto` instead of the
+  hardcoded builder.
+* **Reset** reverts the menus to the layout last given (`SetLayoutSet`) and each
+  toolbar to the program's defaults given with it (`AddToolbar`), then calls
+  `onReset`. A toolbar's kept arrangement is dropped with `ForgetToolbarLayout`.
+
+## Persistence format
+
+Layouts are stored in a self-contained line/section text format (no JSON
+dependency). The caller supplies the path, keeping the core free of any
+config-directory policy:
+
+```
+[MENU]
+NAME=Main Menu Bar
+[NODE]
+KIND=Group
+DEPTH=0
+LABEL=File
+[NODE]
+KIND=Command
+DEPTH=1
+ID=file.new
+```
+
+Only ids are stored; labels, icons and shortcuts are resolved from the registry when
+the layout is materialized, so they never drift out of sync.
+
+Save with the program's default menus and load with them, and a layout the user
+arranged is brought forward to each newer program:
+
+```cpp
+SaveMenuLayoutSet(s.menus, ConfigDir() + "/menu_layout.txt", defaultMenus);   // + [KNOWN]
+MenuLayoutSet menus;
+LoadMenuLayoutSet(menus, ConfigDir() + "/menu_layout.txt", defaultMenus, registry);
+```
+
+The file then starts with a `[KNOWN]` section - the command ids the program's
+menus held when it was saved (`MenuLayoutSet::knownCommands`; a reader without
+it passes over the section). `MergeMenuLayoutSet` puts each command the newer
+defaults hold that the saved program did not know at its place: after the entry
+it follows there, in the submenu of the same label; a submenu new as a whole, and
+a menu the saved set has no menu of that name for, go in whole. A command the user
+removed stays removed, one the user already has elsewhere is not added again, and
+with the registry given an id it does not know is dropped. A file saved without
+the record counts what it holds as what its program had. An optional per-node
+`LABEL` records a user rename. Unknown ids materialize as a disabled `<id>`
+placeholder so a stale layout degrades visibly rather than silently dropping
+entries.
+
+## Files
+
+| File | Role |
+|---|---|
+| `include/UltraCanvasCommandRegistry.h`, `core/UltraCanvasCommandRegistry.cpp` | command catalog |
+| `include/UltraCanvasMenuLayout.h`, `core/UltraCanvasMenuLayout.cpp` | layout data, persistence, materialize/introspect |
+| `include/UltraCanvasToolbarLayout.h`, `core/UltraCanvasToolbarLayout.cpp` | toolbar layouts, persistence, the toolbar's context menu |
+| `include/UltraCanvasCommandConfigWidget.h`, `core/UltraCanvasCommandConfigWidget.cpp` | the widget, `ShowCommandConfigDialog` |
+| `include/UltraCanvasMenuConfigWidget.h`, `include/UltraCanvasMenuRegistry.h` | the former names, as aliases |
+| `Apps/DemoApp/UltraCanvasMenuConfigExamples.cpp` | runnable example (Demo → Widgets → "Menus and Toolbars") that customises a model of the `UltraCanvasFilerWidget`'s file context menu and toolbar |
+| `Tests/CommandConfigWidgetTest.cpp` | the editor's edits, preview, Apply and Reset |
+
+==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasCompositorDiagramExamples.md
 ==============================================================================
 
@@ -24884,7 +25311,7 @@ Selection callbacks:
 Appearance: `SetStyle(CalendarStyle)` with predefined `CalendarStyles::Default()`,
 `CalendarStyles::Compact()` and `CalendarStyles::Dark()`; or tweak any colour /
 metric on `CalendarStyle` directly. `SetShowFooter`, `SetShowAdjacentMonthDays`,
-`SetWeekdayNames`, `SetMonthNames`, `SetWeekendDays` cover the rest.
+`SetWeekdayNames`, `SetMonthNames`, `SetWeekendDays` cover the rest. Without them the names are the standard set's `weekday|Mo`, `month|May` and `month-short|May` entries in the current language (UltraLocalisation), and a language switched at run time re-reads them in every open picker; names the application set stay through a switch; `GetWeekdayNames`, `GetMonthNamesLong` and `GetMonthNamesShort` read the names in use (`Tests/DatePickerLanguageTest.cpp` holds the rule).
 
 ## 6. Date range picking & blocked dates
 
@@ -27538,6 +27965,7 @@ FILE: Docs/UltraCanvas/UltraCanvasDropDownExamples.md
   - [Styling](#styling)
   - [Event Callbacks](#event-callbacks)
 - [Styles](#styles)
+- [A font list: each font shown in itself](#a-font-list-each-font-shown-in-itself)
 - [Factory Functions](#factory-functions)
   - [CreateDropdown](#createdropdown)
 - [Event Handling](#event-handling)
@@ -27795,6 +28223,30 @@ There are no predefined dropdown styles and no builder: start from a default
 `DropdownStyle`, change the fields you need and pass it to `SetStyle()` (see
 *Dropdown with Custom Styling* below). The look of the list scrollbar comes
 from `scrollbarStyle`.
+
+## A font list: each font shown in itself
+
+A row is drawn in its item's `fontFamily` when it has one, so a font picker is
+an ordinary dropdown - no element of its own and no drawing callback:
+
+```cpp
+auto fonts = CreateDropdown("font", 0, 0, 210, 26);
+for (const std::string& family : GetInstalledFontFamilies()) {
+    DropdownItem item(family, family);
+    item.fontFamily = family;      // the row reads "Liberation Serif" in Liberation Serif
+    fonts->AddItem(item);
+}
+```
+
+Loading a font costs a few milliseconds the first time it is drawn (measured:
+2.6 ms on average, 6 ms for a colour emoji font), which for a computer's
+hundreds of fonts would freeze the list for a second or more as it opens. So
+the dropdown prepares these rows itself, lazily: once it is drawn on screen it
+shapes them in small slices on the UI thread's timer (about 6 ms every 15 ms),
+the rows its list opens on - around the selected item - first, then the rest.
+A row not prepared yet when it scrolls into view is shaped as it is drawn, and
+the list only ever draws the rows in view. The closed button keeps the list's
+own font. `UltraCanvasTextFormatBar` builds its Font list this way.
 
 ## Factory Functions
 
@@ -39488,6 +39940,7 @@ FILE: Docs/UltraCanvas/UltraCanvasGroupBoxExamples.md
   - [Basic framed group](#basic-framed-group)
   - [Checkable group (enables/disables its contents)](#checkable-group-enablesdisables-its-contents)
   - [Switch-activated section with an info icon](#switch-activated-section-with-an-info-icon)
+  - [A panel the user closes](#a-panel-the-user-closes)
   - [Collapsible card](#collapsible-card)
   - [Sections of a window as cards](#sections-of-a-window-as-cards)
 - [Demo](#demo)
@@ -39524,6 +39977,9 @@ interactive behaviour.
   children. It can be placed on the **left or right** side of the title bar.
 - **Info icon + help text**: an optional "ⓘ" icon (left or right) that reveals
   help text as a tooltip on hover.
+- **Close button**: an optional "x" at the right end of the title bar
+  (`SetCloseButton`, `onCloseClicked`) for a box that is a panel the user
+  dismisses.
 - **Collapsible**: a disclosure arrow collapses the box down to its title bar.
 - **Standard Container**: children are added with `AddChild()` and laid out by the
   CSS layout engine inside the frame, below the caption.
@@ -39579,6 +40035,10 @@ void SetInfoIcon(bool show);
 void SetInfoIconSide(GroupBoxIndicatorSide side);       // Left / Right
 void SetHelpText(const std::string& text);              // shows the info icon
 
+void SetCloseButton(bool show);                         // an "x" at the right end of the caption
+bool HasCloseButton() const;
+void SetCloseButtonTooltip(const std::string& text);    // "Close" (in the user's language) by default
+
 void SetCollapsible(bool collapsible);
 void SetCollapsed(bool collapsed);
 bool IsCollapsed() const;
@@ -39589,6 +40049,7 @@ bool IsCollapsed() const;
 ```cpp
 std::function<void(bool)> onCheckedChanged;     // new checked state
 std::function<void(bool)> onCollapsedChanged;   // new collapsed state
+std::function<void()>     onCloseClicked;       // the close button was clicked
 ```
 
 ## Usage Examples
@@ -39633,6 +40094,23 @@ gb->SetInfoIconSide(GroupBoxIndicatorSide::Left);         // ⓘ on the left
 gb->SetHelpText("Toggle the switch to enable or disable this section.");
 gb->AddChild(std::make_shared<UltraCanvasCheckbox>("autosave", "Save automatically"));
 gb->onCheckedChanged = [](bool on) { /* ... */ };
+```
+
+### A panel the user closes
+
+`SetCloseButton(true)` puts an **x** at the right end of the caption, hover-
+highlighted and with a tooltip. A click runs `onCloseClicked`; the box does
+not hide itself, so the host decides what closing means (hide it, remove
+it, ask first). Its colours are `closeIconColor`, `closeIconHoverColor` and
+`closeHoverBackgroundColor` in `GroupBoxVisualStyle`. The media viewer's
+Details panel is one.
+
+```cpp
+auto panel = CreateGroupBox("details", 20, 20, 360, 240, "Image information");
+panel->SetFrameStyle(GroupBoxFrameStyle::Header);
+panel->SetCloseButton(true);
+panel->SetCloseButtonTooltip("Close (Esc)");
+panel->onCloseClicked = [box = panel.get()] { box->SetVisible(false); };
 ```
 
 ### Collapsible card
@@ -41424,11 +41902,6 @@ FILE: Docs/UltraCanvas/UltraCanvasImagePerformanceTest.md
 
 <!-- doc-check:
 double NowMs();
-UCImageSave::ImageExportOptions DefaultOptionsFor(UCImageSaveFormat f);
-std::string EncodeQOIFromVImage(vips::VImage vImg, const std::string& outPath);
-bool DecodeQOIFile(const std::string& path);
-std::string EncodeBMPFromVImage(vips::VImage vImg, const std::string& outPath);
-bool DecodeBMPFile(const std::string& path);
 using Step = std::function<void()>;
 Step cleanupTempFiles; Step resetThumbnails; Step runBenchmark;
 CodecResult r; CodecEntry entry; UCImageSave::ImageExportOptions opts; vips::VImage vImg;
@@ -41436,6 +41909,7 @@ std::string outPath; std::string stablePath; int globalIdx; int slot; int active
 double t0; double t1; double d0; double d1;
 UltraCanvasWindowBase* win; IRenderContext* ctx;
 std::shared_ptr<UltraCanvasImageElement> imageElement;
+void StoreFormatChoice(const std::vector<std::pair<std::string, bool>>& choice);
 -->
 
 ## Contents
@@ -41446,7 +41920,8 @@ std::shared_ptr<UltraCanvasImageElement> imageElement;
   - [UCImage (loading and saving the source image)](#ucimage-loading-and-saving-the-source-image)
   - [UCImageSave::ImageExportOptions](#ucimagesaveimageexportoptions)
   - [UltraCanvasImageElement (used for thumbnails)](#ultracanvasimageelement-used-for-thumbnails)
-  - [Codec table (file-local)](#codec-table-file-local)
+  - [Codec list (file-local)](#codec-list-file-local)
+  - [Choosing the formats (Settings)](#choosing-the-formats-settings)
   - [CodecResult (per-codec output row)](#codecresult-per-codec-output-row)
   - [Helpers (file-local)](#helpers-file-local)
   - [CodecComparisonChartElement (the grouped bar chart, file-local)](#codeccomparisonchartelement-the-grouped-bar-chart-file-local)
@@ -41459,8 +41934,6 @@ std::shared_ptr<UltraCanvasImageElement> imageElement;
 - [Usage Examples](#usage-examples)
   - [Driving the benchmark from a "Choose Image" handler](#driving-the-benchmark-from-a-choose-image-handler)
   - [Encoding one codec and timing the round-trip](#encoding-one-codec-and-timing-the-round-trip)
-  - [Encoding with the bundled QOI path](#encoding-with-the-bundled-qoi-path)
-  - [Encoding with the bundled BMP path](#encoding-with-the-bundled-bmp-path)
   - [Hooking thumbnail clicks to the 1:1 viewer](#hooking-thumbnail-clicks-to-the-11-viewer)
   - [Live status updates per codec](#live-status-updates-per-codec)
 - [Why "Force Eager Decode" Matters](#why-force-eager-decode-matters)
@@ -41470,7 +41943,7 @@ std::shared_ptr<UltraCanvasImageElement> imageElement;
 
 ## Overview
 
-The **Image Performance Test** is a built-in DemoApp benchmark that compares every bitmap codec UltraCanvas can drive (PNG, JPG, JPEG2000, WebP, AVIF, HEIF, GIF, TIFF, JPEG XL, QOI, and optionally BMP) on the **same source image**. For each codec it measures three numbers:
+The **Image Performance Test** is a built-in DemoApp benchmark that compares the bitmap formats this build writes and reads - FileLoader's inventory, see [Choosing the formats (Settings)](#choosing-the-formats-settings) - on the **same source image**. By default it times PNG, QOI, JPG, WebP, AVIF, HEIF, GIF, TIFF and JPEG XL; JPEG 2000, BMP and the rest (TGA, PPM, ICO, HDR, ...) are switched on in the settings. For each codec it measures three numbers:
 
 1. **Encoded file size** — bytes on disk after `UCImage::Save()`
 2. **Encode time** — milliseconds spent in `UCImage::Save()`
@@ -41488,7 +41961,9 @@ The demo is registered in `UltraCanvasDemo.cpp` under three navigation variants 
 
 In the v2.x codebase all three variants present the same benchmark UI; the differing labels remain to expose the underlying conceptual breakdown of the image pipeline.
 
-**Version:** 2.5.9
+Opening the page shows a popup, *"Upload an image to start the test."*: nothing is timed until an image is chosen.
+
+**Version:** 2.8.0
 **Source file:** `Apps/DemoApp/UltraCanvasImagePerformanceTest.cpp`
 
 ## Header Includes
@@ -41497,20 +41972,17 @@ In the v2.x codebase all three variants present the same benchmark UI; the diffe
 #include "UltraCanvasDemo.h"
 #include "UltraCanvasImageElement.h"
 #include "UltraCanvasButton.h"
-#include "UltraCanvasCheckbox.h"
+#include "UltraCanvasSwitch.h"         // the settings dialog's format switches
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasPathUtf8.h"      // PathFromUtf8 / PathToUtf8 / GetEnvUtf8
 #include "CSSLayout/CSSLayout.h"
 #include "UltraCanvasImage.h"
 #include "UltraCanvasNativeDialogs.h"
-#include "UltraCanvasModalDialog.h"   // FileFilter
+#include "UltraCanvasModalDialog.h"   // FileFilter, the settings dialog, the popup
+#include "UltraCanvasFileLoader.h"    // the format inventory and each format's options
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasApplication.h"
-
-// QOI third-party header — provides qoi_write / qoi_read; do NOT define
-// QOI_IMPLEMENTATION here, it is defined in the standalone libspecific/Cairo/qoi.cpp.
-#include "../../UltraCanvas/libspecific/Cairo/qoi.h"
 ```
 
 ## Class Reference
@@ -41526,7 +41998,8 @@ public:
     static std::shared_ptr<UCImageRaster> Load(const std::string& path,
                                                bool loadOnlyHeader = true);
 
-    // Eager save through libvips (or built-in QOI/BMP path).
+    // Eager save through the image writer (libvips and the framework's own
+    // savers, such as QOI and ICO).
     std::string Save(const std::string& imagePath,
                      const UCImageSave::ImageExportOptions& options);
 
@@ -41544,7 +42017,10 @@ typedef std::shared_ptr<UCImage> UCImagePtr;
 
 ### UCImageSave::ImageExportOptions
 
-Used to drive `Save()` per codec. The benchmark builds one with `DefaultOptionsFor(format)`:
+Used to drive `Save()` per codec. The benchmark asks FileLoader for them -
+`UltraCanvasFileLoader::GetImageExportOptions(outPath, opts)`: the format from
+the extension and that format's Save settings, as every application saves it -
+and turns `preserveMetadata` off:
 
 ```cpp
 struct ImageExportOptions {
@@ -41595,43 +42071,68 @@ public:
 };
 ```
 
-### Codec table (file-local)
+### Codec list (file-local)
 
-The benchmark drives this fixed codec list in display order. `EncoderBackend` selects which encode/decode path runs:
+The page builds its list once, when it opens, from FileLoader's inventory.
+Every entry is written with `UCImage::Save` and read with `UCImage::Load`,
+the image writer and reader behind FileLoader - QOI and BMP included, which
+the page encoded with its own code until version 2.9.0:
 
 ```cpp
-enum class EncoderBackend { Libvips, QOI, BMP };
-
 struct CodecEntry {
-    UCImageSaveFormat format;     // ignored when backend != Libvips
-    const char* name;
-    const char* extension;
-    EncoderBackend backend;
-    bool isOptional;
-};
-
-const CodecEntry kAllCodecs[] = {
-    { UCImageSaveFormat::PNG,      "PNG",  "png",  EncoderBackend::Libvips, false },
-    { UCImageSaveFormat::PNG,      "QOI",  "qoi",  EncoderBackend::QOI,     false },
-    { UCImageSaveFormat::JPEG,     "JPG",  "jpg",  EncoderBackend::Libvips, false },
-    { UCImageSaveFormat::JPEG2000, "JP2K", "jp2",  EncoderBackend::Libvips, false },
-    { UCImageSaveFormat::WEBP,     "WebP", "webp", EncoderBackend::Libvips, false },
-    { UCImageSaveFormat::AVIF,     "AVIF", "avif", EncoderBackend::Libvips, false },
-    { UCImageSaveFormat::HEIF,     "HEIF", "heif", EncoderBackend::Libvips, false },
-    { UCImageSaveFormat::GIF,      "GIF",  "gif",  EncoderBackend::Libvips, false },
-    { UCImageSaveFormat::TIFF,     "TIFF", "tiff", EncoderBackend::Libvips, false },
-    { UCImageSaveFormat::JXL,      "JXL",  "jxl",  EncoderBackend::Libvips, false },
-    { UCImageSaveFormat::BMP,      "BMP",  "bmp",  EncoderBackend::BMP,     true  },
+    UCImageSaveFormat format = UCImageSaveFormat::PNG;
+    std::string name;          // chart label: "PNG", "JP2K", ...
+    std::string extension;     // FileLoader's canonical extension
+    std::string description;   // FileLoader's name for the format
+    bool enabledByDefault = false;
 };
 ```
 
-JPEG XL, HEIF and AVIF are charted only where this build can both encode and
-load them (`VipsCanEncode(ext) && VipsCanLoad(ext)`; `VipsCanEncode` tries a
-2 x 2 encode once per codec). JPEG XL needs a libvips built with libjxl, which
-Ubuntu 22.04's is not; HEIF and AVIF need libheif with an encoder for each -
-the macOS build reads HEIC but cannot write it, since its HEVC encoder, x265,
-is GPL and is kept out of the core. Elsewhere the column is left out rather
-than shown as a failure.
+`BuildCodecList` keeps every entry of
+`UltraCanvasFileLoader::GetSupportedFormats(MediaFormatCategory::Bitmap)` with
+`canSave && canLoad` whose options the image writer takes
+(`GetImageExportOptions` answers for it). The X axis, and the settings
+dialog, put the formats it always charted first, the JPEG family together -
+PNG, QOI, JPG, JP2K, JXL, WebP, AVIF, HEIF, GIF, TIFF, BMP - and the rest
+after them in the inventory's order.
+
+A format this build cannot encode is not in the inventory, so it is not
+offered at all: JPEG XL needs a libvips built with libjxl, which Ubuntu
+22.04's is not; HEIF and AVIF need libheif with an encoder for each - the
+macOS build reads HEIC but cannot write it, since its HEVC encoder, x265, is
+GPL and is kept out of the core.
+
+### Choosing the formats (Settings)
+
+The gear button at the right end of the toolbar opens a dialog with one
+`UltraCanvasSwitch` per entry of the list, in two columns, labelled with the
+chart name and FileLoader's description (`JP2K - JPEG 2000`). **Apply**
+stores the choice (`StoreFormatChoice(choice)`), rebuilds the chart's groups
+and the thumbnails under them, and re-runs the benchmark when an image is
+loaded.
+
+The choice is kept between runs, in the demo's own settings file - an
+`UltraCanvasAppSettings("UltraCanvasDemo")`, so
+`<settings folder>/UltraCanvasDemo/settings.json` (on Linux
+`~/.config/UltraCanvas/UltraCanvasDemo/settings.json`) - one value per
+extension:
+
+```json
+{ "imagePerformance": { "formats": { "png": true, "jp2": true, "gif": false } } }
+```
+
+The file is read once, the first time the page asks, and written whole on
+every Apply. A format the file does not name follows its default
+(`IsCodecEnabled` answers for one), and so does every format when there is
+no file yet:
+
+| On by default | Off by default |
+|---|---|
+| PNG, QOI, JPG, WebP, AVIF, HEIF, GIF, TIFF, JXL | JP2K (its encoder is several times slower than any other and flattens every other time bar), BMP (uncompressed, it flattens the size bars), every other format |
+
+The switched-on formats, in display order, become the chart's groups
+(`codecNames`) and `activeCodecIndices`, the indices into `codecs` the
+benchmark loop walks.
 
 ### CodecResult (per-codec output row)
 
@@ -41651,30 +42152,14 @@ struct CodecResult {
 
 ### Helpers (file-local)
 
-Every timed region reads one monotonic millisecond clock, and every libvips
-codec is saved with the same options builder - the struct defaults already
-carry each codec's quality (85 / 80 / 65 / 50 / ...):
+Every timed region reads one monotonic millisecond clock:
 
 ```cpp
 double NowMs() {
     using namespace std::chrono;
     return duration<double, std::milli>(steady_clock::now().time_since_epoch()).count();
 }
-
-UCImageSave::ImageExportOptions DefaultOptionsFor(UCImageSaveFormat f) {
-    UCImageSave::ImageExportOptions opt;
-    opt.format = f;
-    opt.preserveMetadata = false;
-    opt.preserveTransparency = true;
-    return opt;
-}
 ```
-
-The bundled QOI and BMP paths have four more: `EncodeQOIFromVImage(vImg, path)`
-and `EncodeBMPFromVImage(vImg, path)` return an error string (empty on
-success), `DecodeQOIFile(path)` and `DecodeBMPFile(path)` decode every pixel
-and return whether that worked. All of them live in an anonymous namespace
-in the source file; none is part of the framework.
 
 ### CodecComparisonChartElement (the grouped bar chart, file-local)
 
@@ -41709,9 +42194,10 @@ struct PanelState {
     int         sourceWidth = 0;
     int         sourceHeight = 0;
     std::vector<CodecResult> results;
+    std::vector<CodecEntry>  codecs;       // BuildCodecList(); thumbs is parallel to it
 
     std::shared_ptr<UltraCanvasButton>   chooseBtn;
-    std::shared_ptr<UltraCanvasCheckbox> includeBmpCheckbox;
+    std::shared_ptr<UltraCanvasButton>   settingsBtn;   // the gear
     std::shared_ptr<UltraCanvasLabel>    infoLabel;
     std::shared_ptr<UltraCanvasLabel>    statusLabel;
     std::shared_ptr<CodecComparisonChartElement> chartElem;
@@ -41719,7 +42205,7 @@ struct PanelState {
     std::vector<std::shared_ptr<UltraCanvasImageElement>> thumbs;
 
     std::vector<std::string> codecNames;   // chart groups, in display order
-    std::vector<int> activeCodecIndices;   // indices into kAllCodecs[], same order
+    std::vector<int> activeCodecIndices;   // indices into codecs, same order
     bool benchmarkRunning = false;         // re-entry guard while a run is in flight
     std::string runStamp;                  // temp-file prefix, new for every run
 };
@@ -41732,8 +42218,9 @@ The benchmark wires up the following user-facing actions:
 
 | Control              | Callback            | Behavior                                                          |
 |----------------------|---------------------|-------------------------------------------------------------------|
-| `chooseBtn`          | `SetOnClick`        | Opens native file dialog, calls `loadSourceImage`, auto-runs      |
-| `includeBmpCheckbox` | `onStateChanged`    | Rebuilds active codec set, re-runs benchmark                      |
+| `chooseBtn`          | `SetOnClick`        | Opens FileLoader's Open dialog, calls `loadSourceImage`, auto-runs |
+| `settingsBtn`        | `SetOnClick`        | Opens the format switches; Apply rebuilds the set and re-runs     |
+| Page opened          | `PostToUIThread`    | Popup "Upload an image to start the test."                        |
 | Thumbnail per codec  | `onClick`           | Opens `ShowInMediaViewer(path)` at 1:1 zoom                       |
 | `chartElem`          | `onGeometryChanged` | Repositions thumbnails under their bar groups when bounds shift   |
 
@@ -41823,10 +42310,12 @@ auto loadSourceImage = [state, cleanupTempFiles, resetThumbnails,
 
 ### Encoding one codec and timing the round-trip
 
-This is the inner loop of `runBenchmark` for a libvips-backed codec:
+This is the inner loop of `runBenchmark`, the same for every format:
 
 ```cpp
-auto opts = DefaultOptionsFor(entry.format);
+UCImageSave::ImageExportOptions opts;
+if (!UltraCanvasFileLoader::GetImageExportOptions(outPath, opts)) opts.format = entry.format;
+opts.preserveMetadata = false;
 double t0 = NowMs();
 std::string err = state->sourceImage->Save(outPath, opts);
 double t1 = NowMs();
@@ -41855,39 +42344,6 @@ if (err.empty()) {
     if (ok) { r.decodeTimeMs = d1 - d0; r.succeeded = true; }
     else    { r.errorMessage = "decode failed"; }
 }
-```
-
-### Encoding with the bundled QOI path
-
-QOI is decoded directly via the bundled `qoi.h` (no libvips round-trip on the decode side):
-
-```cpp
-vips::VImage vImg = state->sourceImage->GetVImage();
-double t0 = NowMs();
-std::string err = EncodeQOIFromVImage(vImg, outPath);
-double t1 = NowMs();
-r.encodeTimeMs = t1 - t0;
-
-double d0 = NowMs();
-bool ok = DecodeQOIFile(outPath);   // qoi_read + free
-double d1 = NowMs();
-r.decodeTimeMs = d1 - d0;
-```
-
-### Encoding with the bundled BMP path
-
-libvips has no BMP writer, so the demo ships a standalone 24bpp BI_RGB encoder/decoder. The encode/decode timing pattern is symmetric with QOI:
-
-```cpp
-double t0 = NowMs();
-std::string err = EncodeBMPFromVImage(vImg, outPath);
-double t1 = NowMs();
-r.encodeTimeMs = t1 - t0;
-
-double d0 = NowMs();
-bool ok = DecodeBMPFile(outPath);   // header parse + row walk + free
-double d1 = NowMs();
-r.decodeTimeMs = d1 - d0;
 ```
 
 ### Hooking thumbnail clicks to the 1:1 viewer
@@ -41929,7 +42385,7 @@ if (win && ctx) {
 
 ## Why "Force Eager Decode" Matters
 
-libvips uses lazy evaluation: `UCImage::Load()` typically only parses the file header and defers pixel decompression until pixels are actually read. Without `vImage.copy_memory()`, the timed region would only measure header parsing — drastically understating real-world decode cost for PNG, JPG, WebP, AVIF, HEIF, TIFF, and JP2K, while making them look unfairly fast next to QOI (which always fully decompresses in `qoi_read`).
+libvips uses lazy evaluation: `UCImage::Load()` typically only parses the file header and defers pixel decompression until pixels are actually read. Without `vImage.copy_memory()`, the timed region would only measure header parsing — drastically understating real-world decode cost for PNG, JPG, WebP, AVIF, HEIF, TIFF, and JP2K, and the timings would compare how quickly each format's header is parsed rather than how quickly its pixels are decoded.
 
 Calling `copy_memory()` walks the full libvips pipeline (decompress, color convert, optional alpha premultiply) and writes every pixel into a contiguous RAM buffer. Decode times then reflect real file→RAM decompression work for every codec.
 
@@ -41937,7 +42393,7 @@ Calling `copy_memory()` walks the full libvips pipeline (decompress, color conve
 
 1. **Always regenerate per-run temp paths.** UCImage's path-keyed cache will short-circuit identical paths and silently serve stale pixels into your thumbnails. The benchmark uses a nanosecond timestamp (`runStamp`) for this.
 2. **Force eager decode for any libvips load you intend to time.** Bare `Load()` only parses the header.
-3. **Disable BMP by default** when charting size — uncompressed RGB at 24bpp dominates the size axis and crushes the scale of every other codec.
+3. **Leave BMP and JPEG 2000 off by default** — uncompressed RGB at 24bpp dominates the size axis, and the JPEG 2000 encoder the time axis, crushing the scale of every other codec.
 4. **Re-encode through `UCImage::Save()` (not raw libvips)** so your benchmark numbers reflect what UltraCanvas apps will actually see.
 5. **Use `UpdateAndRender()` per codec** for streaming-style chart updates — without it the whole benchmark batches into a single repaint at the end.
 
@@ -41946,22 +42402,26 @@ Calling `copy_memory()` walks the full libvips pipeline (decompress, color conve
 | Codec | Backend  | Notes                                                                  |
 |-------|----------|------------------------------------------------------------------------|
 | PNG   | libvips  | Lossless; default reference                                            |
-| QOI   | bundled  | Lossless; reference encoder/decoder from `qoi.h`                       |
+| QOI   | UltraCanvas | Lossless; the framework's VipsQoiLoader / saver                     |
 | JPG   | libvips  | Lossy; quality 85 default                                              |
-| JP2K  | libvips  | JPEG 2000; quality 75                                                  |
+| JP2K  | libvips  | JPEG 2000; quality 75. Off by default                                  |
 | WebP  | libvips  | Lossy by default; quality 80                                           |
 | AVIF  | libvips  | Quality 65; speed 6                                                    |
 | HEIF  | libvips  | Quality 50                                                             |
 | GIF   | libvips  | 8-bit indexed                                                          |
 | TIFF  | libvips  | LZW compression default                                                |
-| BMP   | bundled  | Optional. Uncompressed 24bpp BI_RGB                                    |
+| BMP   | libvips  | Off by default. Uncompressed                                           |
+| other | libvips  | Every further format FileLoader writes and reads (TGA, PPM, ICO, HDR, EXR, PSD, ...). Off by default |
+
+Each format is written with its Save settings
+(`GetImageExportOptions`); the qualities above are the defaults.
 
 ## See Also
 
 - [UltraCanvasImageElement](UltraCanvasImageElement.md) — Image display widget used for the thumbnails
 - [UltraCanvasLabel](UltraCanvasLabelExamples.md) — Status/info text labels
 - [UltraCanvasButton](UltraCanvasButtonExamples.md) — "Choose Image..." button
-- [UltraCanvasCheckbox](UltraCanvasCheckbox.md) — "Include BMP" toggle
+- [UltraCanvasSwitch](UltraCanvasSwitch.md) — the format switches of the settings dialog
 - [UltraCanvasContainer](UltraCanvasContainer.md) — Layout root for the benchmark
 
 ==============================================================================
@@ -46957,6 +47417,257 @@ gets them when nothing focused takes them).
 - [UltraCanvasUIElement](UltraCanvasUIElement.md) — Base class documentation
 
 ==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasLocalisationEditor.md
+==============================================================================
+
+# Localisation Editor
+
+<!-- doc-check: UltraCanvasWindowBase* window; std::shared_ptr<UltraCanvasContainer> page; -->
+
+`UltraCanvasLocalisationEditor` shows every set an application's texts come
+from in one grid - the application's own set, the base sets it takes and
+the standard set - one row per key, a column per set, with where each text
+comes from visible in the row. The sets are merged in the editor, not in
+files: take a base set, promote a row into a base, demote one to the
+application, merge two bases. A save goes into the source tree where the
+catalogues are writable (a clean diff for a pull request) and into the
+UltraCanvas settings folder otherwise (what a running application picks
+up). Phase L4 of
+[`UltraCanvasLocalisationProposal.md`](UltraCanvasLocalisationProposal.md)
+§5; the module it edits is
+[`UltraLocalisation`](../Modules/UltraLocalisation/README.md).
+
+- Header: `UltraCanvas/include/UltraCanvasLocalisationEditor.h`
+- Source: `UltraCanvas/core/UltraCanvasLocalisationEditor.cpp`
+- Test: `Tests/LocalisationEditorTest.cpp` (target `LocalisationEditorTest`, headless)
+- Demo: `Apps/DemoApp/UltraCanvasLocalisationEditorExamples.cpp` (page *Localisation Editor*)
+- Hosts: UOS-Settings *Language > Translations*; `ShowLocalisationEditorDialog` for an application's own menu item
+
+## Contents
+
+- [Two layers](#two-layers)
+- [The element](#the-element)
+  - [In a page](#in-a-page)
+  - [In a dialog](#in-a-dialog)
+  - [The grid](#the-grid)
+  - [Editing](#editing)
+  - [Merging](#merging)
+  - [Saving and exporting](#saving-and-exporting)
+  - [Drafting](#drafting)
+- [The workspace](#the-workspace)
+- [Files](#files)
+
+## Two layers
+
+`LocalisationWorkspace` holds the files and knows nothing of the UI: it
+opens an application and a language from a shipped locale tree
+(`media/locale/`) and the settings folder's override tree, lists the rows
+with their status, edits the working copies, merges the sets, undoes,
+saves and exports. A test drives it on a folder of its own; a headless tool
+could too.
+
+`UltraCanvasLocalisationEditor` is the element over it: a toolbar (the
+application, the language, the comparison language, the search, the status
+filter, the *Sets...* picker, the two switches, Undo, Draft, Export, Save), a
+columns tree view, the edit row under it and a status line. It derives from
+`UltraCanvasContainer` and lays itself out with the CSS flex layout, so it
+fills whatever it is put in.
+
+## The element
+
+### In a page
+
+```cpp
+auto editor = std::make_shared<UltraCanvasLocalisationEditor>("editor");
+editor->SetFolders(GetResourcesDir() + "media/locale", PathToUtf8(UltraCanvasSettingsFolder()));
+editor->SetTranslatorName(LanguageSettings::Load(PathToUtf8(UltraCanvasSettingsFolder())).translator);
+editor->Open("UltraVideo", "de");          // "" opens the first application listed
+editor->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+page->AddChild(editor);
+editor->onStatus = [](const std::string& text) { /* the status line, for a host that shows it elsewhere */ };
+editor->onSaved = [](const std::string& report) { /* what was written */ };
+```
+
+`SetFolders` fills the application and language pickers from the folders:
+every application with an English set (`en/<App>.json`, in either tree),
+every language with a standard set, `en` first. `Open` reads the
+application's bases from its catalogue (`@bases`, the language's file else
+the English one) and loads the sets in lookup order.
+
+### In a dialog
+
+```cpp
+ShowLocalisationEditorDialog(window, UltraLocalisation::CurrentApplication(), UltraLocalisation::CurrentLanguage());
+```
+
+opens the editor in a dialog window on the application's own set and the
+language it runs in, with a Close button - the "Help > Translate this
+application..." item of an application. The folders are the module's
+(`UltraLocalisation::ShippedFolder()`, `SettingsFolder()`), the translator's
+name comes from `Language.conf`.
+
+### The grid
+
+One row per key the application uses: its own entries, and the inherited
+ones its extraction lists (`@inherited`). The columns:
+
+| Column | What it shows |
+|---|---|
+| Key (English) | the source text; the key with its context is the row's tooltip |
+| Context | the context of a `TrC` key (`button` of `button|Open`) |
+| one per set, in lookup order | that set's text in the language; grey where the set is not the one that answers |
+| Compare (*lang*) | the text in the comparison language, English by default |
+| Shown | what the application shows: the first set in lookup order that has the key, else the English in red |
+| Status | where it comes from and what is wrong with it |
+
+The statuses: *application* (its own word), *override* (the application
+translates a key a set below also has), *duplicate: drop the override*
+(with the same text), *base: Video*, *base: Video (Audio differs)* (a
+collision between two bases: the first in order is shown), *standard*,
+*untranslated*; then *plural*, *draft* (the answering file is a machine
+draft, or the row was drafted here) and *changed* (edited, not saved) where
+they apply. A plural row opens its categories as child rows, one per form
+the language's rule needs, so a missing `few` is a visible empty cell.
+
+Rows are grouped - *This application*, *From its base sets*, *From the
+standard set* - and, with *Show the whole sets* on, *Unused entries of the
+shared sets* holds what the bases and Standard carry that the application
+does not use. The search field matches the key, the texts and the compared
+text; the *Show* list filters by status (untranslated, machine drafts,
+overrides, collisions between bases, changed since the shipped file).
+
+### Editing
+
+The edit row under the grid writes the selected row: the key, the set the
+text goes into, the text. The application's set is always the target; a
+base or Standard can be chosen once *Edit shared sets* is on, because a
+change there reaches every application that takes the set. Enter, or
+leaving the field, writes it. Typing in the application's text of an
+inherited row makes it an override; *Clear override* (the button, or the
+row's menu) removes it and the row is inherited again. Undo takes any
+change back while the editor is open.
+
+The same is open to code and to tests:
+
+```cpp
+editor->SelectRow("Fade out the audio");
+editor->SetSelectedTranslation("Ton ausblenden");       // into GetEditSet(), the application by default
+editor->SetEditSharedSets(true);
+editor->SetEditSet("Standard");
+editor->SetSelectedTranslation("{n} Dateien", "other");  // a plural form
+editor->ClearSelectedOverride();
+editor->Undo();
+editor->SetSearch("trim");
+editor->SetStatusFilter("untranslated");                 // "", "untranslated", "draft", "override", "collision", "changed"
+editor->SetShowWholeSets(true);
+editor->SetColumnVisible("Standard", false);
+```
+
+### Merging
+
+The four operations of §5, on the *Sets...* picker and the row's right-click
+menu, each reversible with Undo:
+
+- **Take a base set** - tick it in *Sets...*: the application's `@bases`
+  gains it in every language the application has a file in (the English
+  first), its column appears, and every row the application had that the
+  base already translates shows as *duplicate*. Untick to drop it.
+- **Promote to a base set** - the row's menu, for a row of the application's
+  own: moved into the base in every language the application has it in; the
+  application's English lists it as inherited.
+- **Demote to the application** - the reverse, for a word a base carries
+  that only this application wants: the base loses it in every language.
+- **Merge two base sets** - `GetWorkspace().MergeBaseSets("Audio", "Video", "Media")`
+  (into one of them, or a new base): the entries of both in every language,
+  the first's text on a collision, the colliding keys returned for a
+  decision each; the application's `@bases` names the result.
+
+```cpp
+editor->TakeBaseSet("Audio");
+editor->PromoteSelected("Video");
+editor->DemoteSelected("Video");
+std::vector<std::string> collisions = editor->GetWorkspace().MergeBaseSets("Video", "Audio", "Media");
+```
+
+### Saving and exporting
+
+*Save* writes every changed file where `LocalisationWorkspace::DefaultSaveTarget()`
+says, and the status line says where:
+
+- **the source tree** when the shipped folder is writable (a checkout, a
+  folder named with `SetFolders`): the whole catalogue, keys in the
+  extraction's order, a plural's forms one per line, as
+  `extract_ui_strings.py` writes it, so the diff is clean. The file's
+  `@translated-by` gains the translator's name: a machine draft's
+  "reviewed by -" becomes "reviewed by *name*".
+- **the settings folder** otherwise: `<settings>/locale/<lang>/<Set>.json`
+  with only the entries that differ from the shipped file (an override file
+  that would be empty is removed), which a running application picks up.
+
+`Save(LocalisationSaveTarget::SettingsFolder)` forces either. *Export...*
+writes the application's merged set in the language - every row with the
+text of the set that answers - as a catalogue file, or as gettext PO when
+the name ends in `.po`, to a place the person chooses in the save dialog.
+
+### Drafting
+
+*Draft with UltraAI* fills the selected row, or every untranslated row of
+the application's keys, through a `LocalisationDrafter` the host sets - the
+button is shown only then - and marks the rows as drafts until a person
+edits them:
+
+```cpp
+editor->SetDrafter([](const std::string& language, const std::vector<std::string>& texts,
+                      std::vector<std::string>& out, std::string& error) {
+    // UltraAI::CreateTranslator(...)->Translate(...) as Apps/UltraLocalisationDraft/main.cpp does
+    for (const std::string& text : texts) out.push_back(text);
+    return true;
+});
+int drafted = editor->Draft(true);
+```
+
+A plural row sends the singular for the `one` form and the plural for every
+other form the language's rule needs.
+
+## The workspace
+
+`LocalisationWorkspace` is the model under the element, usable on its own:
+
+```cpp
+LocalisationWorkspace w;
+w.SetFolders("/checkout/media/locale", "/home/me/.config/UltraCanvas");
+std::vector<std::string> apps = w.Applications();     // every en/<App>.json
+w.Open("UltraVideo", "de");
+for (const LocalisationRow& row : w.Rows()) {
+    if (row.status == LocalisationRowStatus::Untranslated) { /* row.key, row.source */ }
+}
+w.SetText("UltraVideo", "Ripple delete", "Ripple-Löschen");
+w.TakeBaseSet("Audio");
+std::string report;
+w.Save(LocalisationSaveTarget::SourceTree, report);
+w.ExportPo("/tmp/UltraVideo.de.po", report);
+```
+
+`Rows(wholeSets)` lists the rows as the grid shows them, with every set's
+text, the one shown and its status; `Text`, `Has` and `EnglishText` read
+one set; `SetText` (an empty text removes the entry), `Clear` and `AddKey`
+edit; `TakeBaseSet`, `DropBaseSet`, `ReorderBases`, `PromoteToBase`,
+`DemoteToApplication` and `MergeBaseSets` merge; `Undo` takes the last
+operation back; `Dirty` and `DirtyFiles` say what a save would write.
+`Categories()` gives the open language's CLDR plural categories.
+
+## Files
+
+| File | Role |
+|---|---|
+| `include/UltraCanvasLocalisationEditor.h` | the workspace and the element |
+| `core/UltraCanvasLocalisationEditor.cpp` | both, the catalogue writer in the extraction's format, the PO export |
+| `Tests/LocalisationEditorTest.cpp` | the workspace and the element on a locale tree under the temp folder |
+| `Apps/DemoApp/UltraCanvasLocalisationEditorExamples.cpp` | the demo page, on a copy of the shipped catalogues |
+| `Apps/UOSSettings/ui/UOSSettingsWindow.cpp` | the *Language > Translations* page |
+| `media/locale/<lang>/<App>.json`, `base/<Base>.json`, `Standard.json` | what it edits ([the catalogue file](../Modules/UltraLocalisation/README.md#the-catalogue-file)) |
+
+==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasMacBundle.md
 ==============================================================================
 
@@ -48803,9 +49514,22 @@ file's own **metadata** read with `PixelFX::Header::ReadMetadata` — one
 section per block (EXIF, IPTC, XMP, Colour / ICC, Other such as PNG text
 chunks), or a line saying the file carries none.
 
-The panel is an `UltraCanvasTextArea` in `MarkdownHybrid` mode, dark themed,
-so each section is a heading over a two-column *Property / Value* table.
-The mouse wheel, Up / Down and PageUp / PageDown scroll it; Escape or the
+The panel is an `UltraCanvasGroupBox` in the `Header` frame style, dark
+themed: its caption names what is shown (*Image information*, *Document
+information*, *eBook information* ...) and the **x** at the right end of the
+caption closes it. Inside is an `UltraCanvasTextArea` in `MarkdownHybrid`
+mode at 11 px, so each section is a heading over a two-column *Property /
+Value* table. For a GIF the table has a *Palette* row (the size of the
+colour table, global or the first frame's) and under the text the colour
+table itself is drawn as a block of swatches (`UltraCanvasColorSwatchBar`,
+wrapped, at most half the panel's height); the caption over it names the
+entry under the pointer, as its index and `#RRGGBB`.
+The mouse wheel, Up / Down and PageUp / PageDown scroll the text; Escape, the
+close button or the Details button again closes it. Left / Right keep
+browsing, and the panel follows to the next file. The panel's text is built
+only while it is open (on opening, then for each file loaded): browsing with
+it closed reads no metadata.
+
 A picture whose header reads but whose pixels do not decode (a HEIC on a
 build without an HEVC decoder, a truncated file) says so instead of leaving
 the area empty: the display shows *Cannot decode this picture*, the info bar
@@ -48815,11 +49539,6 @@ the same reason. The surface learns it only when it draws (that is when the
 pixels are decoded) and tells the viewer through
 `UltraCanvasMediaSurface::onDecodeFailed`, once per shown image, after the
 frame.
-
-button again closes it. Left / Right keep browsing, and the panel follows
-to the next file. The panel's text is built only while it is open (on
-opening, then for each file loaded): browsing with it closed reads no
-metadata.
 
 ```cpp
 viewer->SetDetailsVisible(true);
@@ -48841,6 +49560,10 @@ viewer->OpenFolder("/home/me/Pictures");            // browse a folder
 viewer->OpenFile("/home/me/Pictures/photo.jpg");    // file first, folder around it
 viewer->SetFiles({ "a.png", "b.mp4", "c.pdf" });    // exactly these files
 
+// A window shown first and the file opened after (the window appears at once):
+viewer->OpenFileWhenShown("/home/me/Pictures/photo.jpg");   // also OpenFolderWhenShown, SetFilesWhenShown
+viewer->onCurrentFileChanged = [](const std::string& path) { /* a window title */ };
+
 // Navigation
 viewer->Next();
 viewer->Previous();
@@ -48851,6 +49574,20 @@ viewer->SetSlideshowIntervalSeconds(5.0);
 viewer->SetTransition(MediaTransition::CrossFade);
 viewer->PlaySlideshow();
 ```
+
+*No media* (on the display and in the info bar) means the viewer was asked
+for nothing. A host that shows its window and then opens a file calls
+`OpenFileWhenShown` (or `OpenFolderWhenShown` / `SetFilesWhenShown`): the
+viewer shows a turning ring (`UltraCanvasBusyIndicator`, `MV_Loading`) in the
+middle of the display and `name · loading` in the info bar, reports the name
+through `onCurrentFileChanged`, and opens the file once a frame of that has
+been drawn - or after 400 ms if the viewer is not drawn at all. `IsLoading()`
+and `GetLoadingPath()` say whether one is on its way; any other open or
+`CloseFile()` replaces it, and a list with nothing to show ends it. Without
+an application (a test) the file opens at once. `onCurrentFileChanged` also
+fires for every file browsed to, and with `""` when nothing is shown;
+`UltraCanvasMediaViewerWindow` and UltraViewer title their windows with it.
+The surface's own empty text is `UltraCanvasMediaSurface::SetEmptyText`.
 
 `IsSupportedMedia(path)` answers whether the viewer can display a path
 (static — the UltraFiler preview uses it to decide whether to open the
@@ -48914,6 +49651,25 @@ than the pane is shown at its own size, centred, instead of being enlarged to
 fill it - what a hover preview wants, so an icon stays an icon rather than a
 blur the size of the pane. The wheel still zooms in from there, and the info
 bar reports the resulting zoom as always. The default (`true`) fills the pane.
+
+### Opening the selected file
+
+A pane that follows a selection opens each file with `OpenFileWhenShown` (or
+`SetFilesWhenShown` for one file alone) rather than `OpenFile`: the pane shows
+the loading ring and the file's name at once and reads the file after that
+frame, so a large file never leaves the previous one standing in for it, and
+selections made while one loads replace it instead of queuing behind it. To
+ask whether the pane already holds a file, compare with the loading path while
+one is on its way - otherwise a refresh during the load starts it over:
+
+<!-- doc-check: std::shared_ptr<UltraCanvasMediaViewer> preview; std::string path; -->
+```cpp
+const std::string shown = preview->IsLoading() ? preview->GetLoadingPath()
+                                               : preview->GetCurrentPath();
+if (shown != path) preview->OpenFileWhenShown(path);
+```
+
+UltraFiler's preview pane works this way (`PreviewPanePath`).
 
 ### Taking the 3D view out of it
 
@@ -49064,11 +49820,16 @@ class MyWindow {
 };
 
 void MyWindow::OnFileActivated(const std::string& path) {
-    MediaViewerWindowOptions options;
-    options.title = std::filesystem::path(path).filename().string();
-    mediaWindow.Show(path, window.get(), options);
+    // No title: the window is called after the file on show, and follows it.
+    mediaWindow.Show(path, window.get());
 }
 ```
+
+The window appears at once. Until the file is open it shows a turning ring
+where the file will be and the file's name in the info bar and the title -
+never *No media* - and the file is opened once a frame of that has been
+drawn (`UltraCanvasMediaViewer::OpenFileWhenShown`). Reading a large folder
+and decoding a large picture no longer hold the window back.
 
 | Call | What it does |
 | --- | --- |
@@ -49081,7 +49842,7 @@ void MyWindow::OnFileActivated(const std::string& path) {
 
 | Field | Default | Meaning |
 | --- | --- | --- |
-| `title` | empty | Window title; empty means the file's own name. |
+| `title` | empty | Window title; empty means the name of the file on show, following the arrow keys. |
 | `browseFolder` | `true` | Open the rest of the folder as a playlist, so the next file is one key away. `false` shows the one file alone. |
 | `width` / `height` | 1040 × 720 | Size used when there is no `host`. |
 | `background` | dark | The window's background. |
@@ -49257,203 +50018,6 @@ chart->SetOnSegmentClick([](size_t columnIndex, size_t seriesIndex) {
   title rendering, background/plot-area styling, tooltip plumbing and redraw
   management. The Mekko element draws its own percent grid and axis labels, so
   the base grid/axes are disabled by default.
-
-==============================================================================
-FILE: Docs/UltraCanvas/UltraCanvasMenuConfigWidget.md
-==============================================================================
-
-# Menu Configuration Widget
-
-<!-- doc-check: void OnOpen(); void SetWordWrap(bool on); MenuItemData BuildRecentFilesSubmenu(); std::string ConfigDir(); -->
-
-`UltraCanvasMenuConfigWidget` lets end users customise an application's menus at
-runtime: reorder entries, add or remove commands, group them into submenus, and
-save the result so it survives a restart. It works together with two supporting
-pieces of infrastructure — a **command registry** and a **serializable menu
-layout** — that together form the "special way to organise menus" that makes menus
-reconfigurable.
-
-## Contents
-
-- [Why the extra infrastructure is needed](#why-the-extra-infrastructure-is-needed)
-- [1. Register commands](#1-register-commands)
-- [2. Describe the default layout](#2-describe-the-default-layout)
-- [3. Show the widget and wire the buttons](#3-show-the-widget-and-wire-the-buttons)
-  - [Layout of the widget](#layout-of-the-widget)
-- [4. Apply vs Save](#4-apply-vs-save)
-- [Persistence format](#persistence-format)
-- [Files](#files)
-
-## Why the extra infrastructure is needed
-
-Menus are normally built imperatively with lambdas:
-
-```cpp
-menuBar = MenuBuilder("Bar", 0, 0, 800, 28)
-    .AddSubmenu("File", {
-        MenuItemData::ActionWithShortcut("Open...", "Ctrl+O", [this]() { OnOpen(); }),
-    })
-    .Build();
-```
-
-A lambda has no stable identity and cannot be serialized, so a menu built this way
-cannot be saved, reloaded, or reorganised by id. The solution is to separate the
-two concerns:
-
-| Concern | Type | Serializable? |
-|---|---|---|
-| *What a command does* (label, icon, shortcut, callback) | `MenuCommand` in `UltraCanvasMenuRegistry` | no (holds callbacks) |
-| *How the menu is arranged* (which commands, in what order/nesting) | `MenuLayout` / `MenuLayoutSet` | yes (ids + groups only) |
-
-`MenuItemData` gained one optional field, `std::string commandId`, that links a live
-menu item back to its registry entry.
-
-## 1. Register commands
-
-Each action the user may place in a menu is registered once, under a stable id and a
-category (the category groups commands in the widget's right-hand tree):
-
-```cpp
-auto& reg = UltraCanvasMenuRegistry::Default();
-reg.RegisterAction("file.open", "File", "Open...", "icons/open.svg", "Ctrl+O",
-                   [this]() { OnOpen(); });
-
-// Non-Action commands keep their proper callback slot:
-MenuCommand wrap("view.wordwrap", "View", "Word Wrap");
-wrap.type = MenuItemType::Checkbox;
-wrap.onToggle = [this](bool on) { SetWordWrap(on); };
-reg.Register(wrap);
-
-// Dynamic / provider-backed submenus (e.g. "Recent Files") that cannot be
-// decomposed into serializable children use the prototype escape hatch. They are
-// treated as an opaque, non-editable leaf by the widget:
-MenuCommand recent("file.recent", "File", "Recent Files");
-recent.prototype = [this]() { return BuildRecentFilesSubmenu(); };
-reg.Register(recent);
-```
-
-The same registry builds toolbars ([Toolbar Layout](UltraCanvasToolbarLayout.md)),
-and a command carries what a toolbar needs as well: `iconName`, resolved per
-size by `SetIconResolver` / `ResolveIcon`; a `tooltip`; live state -
-`isEnabled`, `isChecked`, `dynamicLabel` - which `Materialize` reads into the
-entry it builds and `RefreshMenuStates(menu)` reads again into a menu built
-earlier; and `makeToolbarWidget` for a command that is a widget on a toolbar.
-`FindShortcutConflicts()` lists the shortcuts given to more than one command.
-
-## 2. Describe the default layout
-
-A `MenuLayout` is a tree of `MenuLayoutNode`s (`Command`, `Group`, or `Separator`).
-A `MenuLayoutSet` holds several named menus so a menubar and any context menus can be
-edited together under one "Program" root.
-
-```cpp
-MenuLayoutSet set;
-MenuLayout& bar = set.FindOrAdd("Main Menu Bar");
-MenuLayoutNode file = MenuLayoutNode::Group("File");
-file.children = {
-    MenuLayoutNode::Command("file.new"),
-    MenuLayoutNode::Command("file.open"),
-    MenuLayoutNode::Separator(),
-    MenuLayoutNode::Command("file.recent"),
-};
-bar.topLevel = { file };
-```
-
-You can also derive an editable layout from an existing live menu with
-`LayoutFromMenu(menu, "Main Menu Bar")` (note: provider-backed submenus introspect
-as empty groups, so building the default layout explicitly is preferred when full
-fidelity matters).
-
-## 3. Show the widget and wire the buttons
-
-```cpp
-auto widget = CreateMenuConfigWidget("MenuConfig", 0, 0, 900, 560);
-widget->SetRegistry(&reg);
-widget->SetLayoutSet(set);
-
-widget->onApply = [this](const MenuLayoutSet& s) {
-    // Temporary: rebuild the live menu(s) now, lost on exit.
-    MaterializeInto(*menuBar, s.menus.front(), *registry);
-};
-widget->onSave = [this](const MenuLayoutSet& s) {
-    MaterializeInto(*menuBar, s.menus.front(), *registry);   // apply
-    SaveMenuLayoutSet(s, ConfigDir() + "/menu_layout.txt");  // + persist
-};
-widget->onReset  = [this]() { /* reload defaults and re-seed the widget */ };
-widget->onCancel = [this]() { /* close without applying */ };
-```
-
-The widget only edits a working copy and reports intent through callbacks — it never
-touches live menus itself, so the host decides how apply/save/reset behave.
-
-### Layout of the widget
-
-```
-┌ Menu structure ─┐ ┌─────┐ ┌ Available commands ┐
-│ Program         │ │Add ›│ │ File               │
-│  ├ Main Menu Bar│ │‹Rem.│ │   New              │
-│  │  ├ File      │ │Up   │ │   Open...          │
-│  │  │  ├ New    │ │Down │ │ Edit               │
-│  │  │  └ Open...│ │Sub  │ │   Copy             │
-│  │  └ Edit      │ │Sep  │ │ ...                │
-│  └ Context Menu │ └─────┘ └────────────────────┘
-├──────────────────────────────────────────────────┤
-│ [Reset]                    [Cancel][Apply][Save]  │
-└──────────────────────────────────────────────────┘
-```
-
-* **Add** (a chevron pointing right) inserts the command selected on the right into the layout (after the
-  selected node, or inside it when a group is selected). Double-clicking a command
-  adds it too.
-* **Remove** (a chevron pointing left) deletes the selected layout entry (the Program root and whole menus
-  are structural and cannot be removed this way).
-* **Move Up / Move Down** reorder within the current parent.
-* **New Submenu / Separator** insert a group or separator at the selection.
-
-## 4. Apply vs Save
-
-* **Apply** rebuilds the live menu in place (`UltraCanvasMenu::Clear()` +
-  `AddItem()` via `MaterializeInto`). The change is temporary and lasts until the
-  program closes.
-* **Save** applies *and* writes the layout to disk via `SaveMenuLayoutSet`. On the
-  next launch, load it with `LoadMenuLayoutSet` and `MaterializeInto` instead of the
-  hardcoded builder.
-* **Reset** reverts the working copy to the last-seeded baseline and (optionally)
-  asks the host to reload its defaults.
-
-## Persistence format
-
-Layouts are stored in a self-contained line/section text format (no JSON
-dependency). The caller supplies the path, keeping the core free of any
-config-directory policy:
-
-```
-[MENU]
-NAME=Main Menu Bar
-[NODE]
-KIND=Group
-DEPTH=0
-LABEL=File
-[NODE]
-KIND=Command
-DEPTH=1
-ID=file.new
-```
-
-Only ids are stored; labels, icons and shortcuts are resolved from the registry when
-the layout is materialized, so they never drift out of sync. An optional per-node
-`LABEL` records a user rename. Unknown ids materialize as a disabled `<id>`
-placeholder so a stale layout degrades visibly rather than silently dropping
-entries.
-
-## Files
-
-| File | Role |
-|---|---|
-| `include/UltraCanvasMenuRegistry.h`, `core/UltraCanvasMenuRegistry.cpp` | command catalog |
-| `include/UltraCanvasMenuLayout.h`, `core/UltraCanvasMenuLayout.cpp` | layout data, persistence, materialize/introspect |
-| `include/UltraCanvasMenuConfigWidget.h`, `core/UltraCanvasMenuConfigWidget.cpp` | the widget |
-| `Apps/DemoApp/UltraCanvasMenuConfigExamples.cpp` | runnable example (Demo → Widgets → "Menu Configurator") that customises the `UltraCanvasFilerWidget` file context menu |
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasMenuExamples.md
@@ -52155,6 +52719,93 @@ Interactive dropdowns switch the color theme and shape mode of the showcase char
 - **Turn labels off for tiny charts** and rely on the legend or tooltips (`SetShowLabels(false)`, `SetLabelPosition(NestedAreaLabelPosition::Tooltip)`)
 
 ==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasNetworkPlaces.md
+==============================================================================
+
+# UltraCanvasNetworkPlaces
+
+<!-- doc-check: void AddRow(const std::string& path, const std::string& name); -->
+
+The places Windows Explorer lists outside *This PC*: the **computers on the
+network** with the folders they share, and the **Linux distributions** of the
+Windows Subsystem for Linux.
+
+```cpp
+#include "UltraCanvasNetworkPlaces.h"
+
+for (const WslDistribution& d : ListWslDistributions())
+    AddRow(d.path, d.name);                               // "\\wsl$\Ubuntu"
+
+std::vector<NetworkShare> shares;
+std::string error;
+if (ListNetworkShares("\\\\NAS", shares, error))
+    for (const NetworkShare& s : shares) AddRow(s.path, s.name);   // "\\NAS\photos"
+```
+
+What lies below a share or a distribution is an ordinary path — a UNC path
+`std::filesystem` reads like any folder — so this answers only what is *above*
+it: which computers there are, which folders a computer shares, which
+distributions are installed. A computer itself (`\\NAS`) is not a folder
+anything can list; `IsNetworkServerPath` tells it apart.
+
+## API
+
+| Call | Meaning |
+|---|---|
+| `NetworkPlacesAvailable()` | Whether this build can list any of these (Windows). |
+| `ListNetworkComputers()` | `NetworkComputer { name, path, comment }`, by name: the computers the Windows network lists for its workgroup or domain, the ones that announce themselves through WS-Discovery, and the servers of the user's own connections (a mapped drive, a share opened and remembered), each once. **Blocks** for as long as the network takes — up to some six seconds for the WS-Discovery search. |
+| `ListNetworkShares(server, out, error)` | `NetworkShare { name, path, comment }` of `server` (`"\\NAS"`, `"NAS"` or `"//NAS"`), folders only, the administrative and hidden shares (`C$`, `ADMIN$`, `IPC$`) left out. False with a reason when the computer cannot be reached or refuses. **Blocks.** |
+| `ListWslDistributions()` | `WslDistribution { name, path, isDefault }`, the default first: the installed distributions from the registry. `path` is `\\wsl$\<name>`, browsed like a share. Starts none of them. |
+| `IsNetworkServerPath(path)` / `NetworkServerName(path)` | Whether `path` names a computer and nothing below it (`\\NAS`, `\\NAS\`, `//NAS`), and its name. Not `\\NAS\photos`, not Windows' own `\\?\` and `\\.\` prefixes, not the WSL roots `\\wsl$` and `\\wsl.localhost`. |
+| `NetworkServerPath(server)` | `\\NAS` for `NAS`, `//NAS` or `\\NAS\` — the form the lists use. |
+
+Run the two blocking calls off the UI thread: a computer that does not answer is
+waited out.
+
+## Where the computers come from
+
+Windows has two ways for computers to find each other, and Explorer's
+*Network* folder shows both; so does `ListNetworkComputers`:
+
+- **The Windows network provider** (`WNetOpenEnum`): the computer browser
+  list of the workgroup or domain. It rests on NetBIOS and SMB 1, so on a
+  current network it is often short or empty.
+- **WS-Discovery**, asked through Function Discovery's
+  `Provider\Microsoft.Networking.WSD` category: what current Windows
+  (*Function Discovery Resource Publication*) and NAS boxes running `wsdd`
+  announce. Only devices that say they are a computer (`pub:Computer`, or
+  the PnP-X category *Computers*) are kept — not the printers and media
+  players that answer too. A computer that gives no name is listed by its
+  IPv4 address, which an SMB path takes as well (`\\192.168.1.20`). The
+  search runs alongside the provider's and is waited for at most six
+  seconds.
+
+WS-Discovery is multicast, so it does not cross into another subnet, and a
+machine with network discovery off answers neither. Such a computer is still
+reached **by name** — `ListNetworkShares("\\\\NAS", …)` does not need it to be
+listed — which is why UltraFiler keeps the computers opened by name
+(`UltraFilerSettings::networkServers`).
+
+## Backends
+
+| Platform | Backend |
+|---|---|
+| Windows | `WNetOpenEnumW` / `WNetEnumResourceW` (the computers, and a server's folders when `NetShareEnum` is refused), Function Discovery's WS-Discovery provider (`IFunctionDiscovery`, the computers that announce themselves only that way; its interfaces are declared in the backend, because mingw-w64's `functiondiscoveryapi.h` has `IFunctionInstance`'s slots in the wrong order), `NetShareEnum` (the shares), the `HKCU\Software\Microsoft\Windows\CurrentVersion\Lxss` key (the distributions). `mpr.dll` and `netapi32.dll` are **loaded from System32 when first needed**, never imported: an installed package can carry an ImageMagick coder named `mpr.dll`, and Windows matches modules by base name — see `UltraCanvasCoderModuleRepair.h`. |
+| everything else | none — every list is empty. A Linux desktop mounts the shares it opens through GVFS ([`ListGvfsVolumes`](UltraCanvasVolumeMonitor.md#gvfs-places)); macOS mounts them under `/Volumes`. |
+
+Wired up by the `ULTRACANVAS_HAS_NETWORK_PLACES` condition in the top-level
+`CMakeLists.txt`; without it the core file compiles the empty lists.
+
+## UltraFiler
+
+UltraFiler shows two sections after *Computer*, where Explorer has them:
+**Linux** (one row per distribution; not probed, because touching a
+distribution starts it — its folders are listed when the row is opened) and
+**Network** (one row per computer; opening one lists its shares off the UI
+thread, under its row and in the folder display). Typing `\\NAS` into the path
+bar opens that computer the same way.
+
+==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasNodeDiagramExamples.md
 ==============================================================================
 
@@ -52172,6 +52823,7 @@ FILE: Docs/UltraCanvas/UltraCanvasNodeDiagramExamples.md
   - [NodeDiagramNode](#nodediagramnode)
   - [NodeDiagramLink](#nodediagramlink)
   - [NodeDiagramSizing (2.2.0)](#nodediagramsizing-220)
+  - [NodeDiagramLabelFit (2.4.0)](#nodediagramlabelfit-240)
   - [NodeDiagramGroup (2.2.0)](#nodediagramgroup-220)
   - [NodeDiagramLegendConfig (2.2.0)](#nodediagramlegendconfig-220)
 - [Class Reference](#class-reference)
@@ -52182,6 +52834,7 @@ FILE: Docs/UltraCanvas/UltraCanvasNodeDiagramExamples.md
   - [Link Management](#link-management)
   - [Layout](#layout)
   - [Data-driven node sizing (2.2.0)](#data-driven-node-sizing-220)
+  - [Label fit (2.4.0)](#label-fit-240)
   - [Cluster containers (2.2.0)](#cluster-containers-220)
   - [Color legend (2.2.0)](#color-legend-220)
   - [Styling & Theme](#styling--theme)
@@ -52193,7 +52846,7 @@ FILE: Docs/UltraCanvas/UltraCanvasNodeDiagramExamples.md
   - [Serialization](#serialization)
   - [Callbacks](#callbacks)
 - [Usage Examples](#usage-examples)
-  - [Simple API — Friends network with force-directed layout](#simple-api-—-friends-network-with-force-directed-layout)
+  - [Simple API — five nodes, six links, one layout](#simple-api-—-five-nodes-six-links-one-layout)
   - [Verbose API — Workflow editor with handles](#verbose-api-—-workflow-editor-with-handles)
   - [Link styles showcase](#link-styles-showcase)
   - [Multi-select with keyboard](#multi-select-with-keyboard)
@@ -52201,6 +52854,7 @@ FILE: Docs/UltraCanvas/UltraCanvasNodeDiagramExamples.md
   - [Right-click-to-create with auto-sized nodes](#right-click-to-create-with-auto-sized-nodes)
   - [Hierarchical org chart layout](#hierarchical-org-chart-layout)
   - [Cluster containers, sizing and legend](#cluster-containers-sizing-and-legend)
+  - [A personal network of card nodes (the demo's Friends tab)](#a-personal-network-of-card-nodes-the-demos-friends-tab)
   - [Card nodes with icons, without overlaps (2.3.0)](#card-nodes-with-icons-without-overlaps-230)
 - [Keyboard Shortcuts](#keyboard-shortcuts)
 - [See Also](#see-also)
@@ -52212,7 +52866,15 @@ FILE: Docs/UltraCanvas/UltraCanvasNodeDiagramExamples.md
 **Namespace:** `UltraCanvas`
 **Header:** `include/Plugins/Diagrams/UltraCanvasNodeDiagram.h`
 **Base Class:** `UltraCanvasUIElement`
-**Version:** 2.2.0
+**Version:** 2.4.0
+
+> **Since 2.4.0** a label never runs out of its node. The **label fit**
+> (`NodeLabelFit`) shrinks the font to a minimum and grows the node for what
+> still does not fit, per shape - a circle grows to the chord its name needs,
+> a diamond to twice that. A node that grows pushes its neighbours apart. The
+> data-driven sizing keeps every node at least as large as its label, and
+> every layout ends with no two nodes overlapping. See
+> [Label fit](#label-fit-240).
 
 > **Since 2.2.0** the component covers organizational-network work: data-driven
 > node sizing (`NodeSizeMode::ByDegree` / `ByValue`), cluster containers
@@ -52259,6 +52921,7 @@ UltraCanvasUIElement
 - **Cluster containers** (2.2.0): auto-fitted, titled boundary boxes around node sets
 - **Group cohesion** (2.2.0): pulls cluster members together during force-directed layout
 - **Color legend overlay** (2.2.0), placeable in any corner
+- **Label fit** (2.4.0): the font shrinks or the node grows, so a label never runs out of its node; no layout leaves nodes overlapping
 
 ## Data Structures
 
@@ -52296,6 +52959,14 @@ enum class NodeDegreeMode {
     Total,      // incoming + outgoing (default)
     Incoming,
     Outgoing
+};
+
+// NEW in 2.4.0: what happens when a label does not fit its node
+enum class NodeLabelFit {
+    Overflow,        // 2.3 behaviour: drawn at its font size, whatever the node
+    ShrinkFont,      // the font shrinks until the label fits, to minFontSize; then an ellipsis
+    GrowNode,        // the node grows until the label fits at its font size
+    ShrinkThenGrow   // the font shrinks to minFontSize first; what still does not fit grows the node (default)
 };
 
 // NOTE: no enumerator may be named "None" - X11's Xlib.h defines None as a macro.
@@ -52411,6 +53082,27 @@ degree-9 hub look nine times more important than a degree-1 leaf instead of thre
 `NodeDiagramNode` gained a `value` field (default `1.0`) that drives
 `NodeSizeMode::ByValue`, plus `baseWidth` / `baseHeight`, which capture the size a
 node was authored with so switching back to `NodeSizeMode::Fixed` restores it exactly.
+
+Since 2.4.0 the computed size is a floor, not the size: a node whose label
+needs more room under the [label fit](#label-fit-240) is larger than the data
+says. A degree-1 leaf named "Analyst 5" in a 9 pt font is not a 26 px square.
+
+### NodeDiagramLabelFit (2.4.0)
+
+```cpp
+struct NodeDiagramLabelFit {
+    NodeLabelFit mode = NodeLabelFit::ShrinkThenGrow;
+    double minFontSize = 7.0;    // ShrinkFont / ShrinkThenGrow stop here
+    double paddingX = 6.0;       // Each side of the text, in world units
+    double paddingY = 3.0;       // Above and below the text
+};
+```
+
+A label sits in the widest horizontal band of its shape at the label's own
+height: the full width of a rectangle or square, the chord of a circle, the
+narrowing middle of a diamond or a hexagon, the upper edge of the band in a
+triangle. The paddings are the gap between the text and that band's edge, so
+the same text makes a diamond about twice as wide as a square.
 
 ### NodeDiagramGroup (2.2.0)
 
@@ -52605,6 +53297,7 @@ int GetNodeDegree(const std::string& id, NodeDegreeMode mode) const;
 
 // Force a sizing pass now. Normally unnecessary - sizes are recomputed when
 // links or values change - but useful after bulk edits made through GetNode().
+// Since 2.4.0 it also separates the nodes that then overlap.
 void ApplyNodeSizing();
 ```
 
@@ -52612,6 +53305,67 @@ Degree counts are cached and invalidated by any node or link mutation, so
 bulk-loading a graph costs one rebuild rather than one per `AddLink` call.
 `RunLayout()` re-runs sizing before laying out, so the anti-overlap pass
 separates nodes by their final sizes.
+
+### Label fit (2.4.0)
+
+```cpp
+void                SetLabelFit(NodeLabelFit mode);
+NodeLabelFit        GetLabelFit() const;
+void                SetLabelFitConfig(const NodeDiagramLabelFit& cfg);
+NodeDiagramLabelFit GetLabelFitConfig() const;
+
+// The smallest node of `shape` that holds `label` at `fontSize` with the
+// fit's paddings. Width and height are equal for every shape but Rectangle.
+void MinimumNodeSizeForLabel(const std::string& label, double fontSize, NodeShape shape,
+                             double& outWidth, double& outHeight) const;
+
+// Grows every node smaller than its label needs (at its font size in
+// GrowNode, at minFontSize in ShrinkThenGrow), separates the nodes that then
+// overlap and refits the view when auto-fit is on. Returns how many grew.
+int FitNodesToLabels();
+
+// The font size a node's label is drawn at under the fit; 0 for an unknown id.
+double GetNodeLabelFontSize(const std::string& id) const;
+```
+
+The default, `ShrinkThenGrow`, means a diagram needs nothing from its host: a
+name wider than its node is drawn smaller, down to `minFontSize`, and a node
+that cannot hold its name even at that size grows until it can. `GrowNode`
+keeps every font size and grows the nodes instead, which is the right choice
+when the font sizes carry meaning (a hub in 10 pt, its people in 9 pt).
+`ShrinkFont` keeps every node size and shortens with an ellipsis what the
+minimum font still cannot fit, for diagrams whose geometry is authored.
+`Overflow` is the 2.3 behaviour.
+
+A node grows about its centre, and whatever grows pushes its neighbours apart
+(`ResolveOverlaps`). The growth runs inside `RunLayout()` and the sizing pass,
+so a layout is computed with the final sizes; changing the fit, a label, a
+shape or the font marks the labels and the next frame measures them with the
+window's font, grows what must grow and separates what then touches. A layout
+run before the element has a window (the usual case - the diagram is built,
+laid out and then added to a page) measures by an estimate and is corrected
+on the first frame the same way. A card node (an icon or a sublabel) grows
+for its label over its sublabel beside the icon disc, and in the shrinking
+modes its two fonts shrink together; what still does not fit keeps the 2.3
+ellipsis.
+
+Group boxes follow their members, so a department whose people grew is drawn
+larger, and since 2.4.0 the boxes are kept apart from each other too: after
+every layout (and after the fit, since a box reserves room for its title at
+the current zoom) each pair of overlapping boxes moves apart, half each, a
+group's members as one; what does not settle is placed box by box at the
+nearest free spot. Two groups that share a member overlap on purpose - the
+member sits in both - and move as one unit. A node in no group is pushed out
+of any box it sits in. A box with a pinned member stays. Nothing here moves a
+pinned node.
+
+The force-directed layout itself changed with 2.4.0 so that larger nodes
+still cluster: its area grows with the nodes in it instead of holding them
+inside the element, the repulsion and the link springs act between the
+nodes' borders rather than their centres (two touching hubs a hundred pixels
+across repel as hard as two touching dots), and a group's members start next
+to each other on the initial ring, so the cohesion gathers them where they
+are instead of dragging them through the other clusters.
 
 ### Cluster containers (2.2.0)
 
@@ -52748,6 +53502,12 @@ void SuggestNodeSizeForLabel(const std::string& label, double fontSize,
                               double& outHeight) const;
 ```
 
+Since 2.4.0 `MeasureLabel` measures with the window's font (bold, the
+diagram's family) when the element has a window, and estimates 0.70 x the
+font size per character before that. `SuggestNodeSizeForLabel` adds generous
+padding for a circle; `MinimumNodeSizeForLabel` (above) gives the exact
+minimum for any shape.
+
 ### Serialization
 
 ```cpp
@@ -52774,10 +53534,15 @@ std::function<void(double worldX, double worldY)> onCanvasRightClick;
 
 All examples are drawn from `Apps/DemoApp/UltraCanvasNodeDiagramExamples.cpp`.
 
-### Simple API — Friends network with force-directed layout
+### Simple API — five nodes, six links, one layout
+
+The least code that draws a graph: nodes by id, label and position, links
+between ids, a layout. (The demo's Friends tab is the card-node network
+[further down](#a-personal-network-of-card-nodes-the-demos-friends-tab);
+this is the API at its shortest.)
 
 ```cpp
-auto diagram = CreateNodeDiagram("nd_friends", x, y, w, h);
+auto diagram = CreateNodeDiagram("nd_simple", x, y, w, h);
 
 diagram->SetTheme(NodeDiagramTheme::Colorful);
 diagram->SetGridVisible(true, 25.0);
@@ -52984,6 +53749,7 @@ for (const auto& dept : departments) {
     hub.borderColor = Color(40, 40, 40, 255);
     hub.textColor   = Color(255, 255, 255, 255);
     hub.width = hub.height = 46.0;
+    hub.fontSize = 10.0;
     hub.value = 6.0;                     // Headcount - drives NodeSizeMode::ByValue
     diagram->AddNode(hub);
 
@@ -52994,6 +53760,7 @@ for (const auto& dept : departments) {
         node.shape       = NodeShape::Square;
         node.borderColor = dept.color;
         node.width = node.height = 34.0;
+        node.fontSize = 9.0;
         diagram->AddNode(node);
         members.push_back(id);
 
@@ -53019,12 +53786,17 @@ diagram->AddLink(NodeDiagramLink("x1", "sales_hub", "biz_hub"));
 diagram->AddLink(NodeDiagramLink("x2", "biz_hub",   "cli_hub"));
 diagram->AddLink(NodeDiagramLink("x3", "cli_hub",   "care_hub"));
 
+// The names stay at their sizes (10 pt hubs, 9 pt members) and the nodes
+// grow to hold them; the range below starts above what a member's name
+// needs, so the degree still shows.
+diagram->SetLabelFit(NodeLabelFit::GrowNode);
+
 // Hubs read as hubs: area proportional to connection count.
 NodeDiagramSizing sizing;
 sizing.mode     = NodeSizeMode::ByDegree;
-sizing.baseSize = 20.0;
-sizing.minSize  = 26.0;
-sizing.maxSize  = 74.0;
+sizing.baseSize = 36.0;
+sizing.minSize  = 40.0;
+sizing.maxSize  = 130.0;
 diagram->SetNodeSizing(sizing);
 
 // Keep each department's members together while the layout runs.
@@ -53043,8 +53815,102 @@ diagram->RunLayout();
 
 Switching `sizing.mode` to `NodeSizeMode::ByValue` sizes each node from its
 `value` field instead — headcount, budget, revenue, whatever the graph is about.
-`NodeSizeMode::Fixed` restores the authored sizes exactly.
+`NodeSizeMode::Fixed` restores the authored sizes exactly - and then, like the
+other modes, grows whichever node its name does not fit.
 
+
+### A personal network of card nodes (the demo's Friends tab)
+
+What the demo's first tab shows, in outline: one person's friends as cards -
+an icon disc for what they are into, their name, their interest, each card
+as wide as its text needs - in
+five circles drawn as soft boxes, a friend who belongs to two circles sitting
+in both boxes, the ties coloured by circle and widened by strength, a legend,
+and the cards collapsing to their icon discs when the view is zoomed out. The
+layout keeps the cards apart, the circles apart (two circles that share a
+member overlap on purpose, as one unit) and the person at the centre out of
+every box.
+
+```cpp
+auto diagram = CreateNodeDiagram("friends", 0, 0, 1000, 620);
+diagram->SetTheme(NodeDiagramTheme::Minimal);
+diagram->SetBackgroundColor(Color(247, 248, 251, 255));
+diagram->SetDefaultLinkStyle(LinkStyle::Bezier);
+
+const Color college(79, 70, 229, 255), climbing(22, 163, 74, 255);
+
+// GrowNode: the cards take the width their names need, no ellipsis.
+diagram->SetLabelFit(NodeLabelFit::GrowNode);
+
+auto card = [&](const char* id, const char* name, const char* interest,
+                const char* icon, const Color& circle) {
+    NodeDiagramNode n(id, name);
+    n.shape = NodeShape::Rectangle;
+    n.width = 96.0;     // a floor; the fit widens a card for a long name
+    n.height = 40.0;
+    n.fillColor = Color(255, 255, 255, 255);
+    n.borderColor = circle;
+    n.borderWidth = 1.2;
+    n.textColor = Color(31, 41, 55, 255);
+    n.sublabel = interest;
+    n.iconPath = std::string("media/icons/") + icon;
+    n.iconBackground = Color(std::min(255, circle.r + 150), std::min(255, circle.g + 150),
+                             std::min(255, circle.b + 150), 255);
+    n.cornerRadius = 10.0;
+    n.shadow = true;
+    diagram->AddNode(n);
+};
+card("alice", "Alice Weber",   "Guitar",      "folder-music.svg", college);
+card("ben",   "Ben Okafor",    "Photography", "smarthome/camera.svg", college);
+card("maya",  "Maya Schulz",   "Bouldering",  "menu/run.svg", college);   // in both circles
+card("finn",  "Finn Berg",     "Alpine routes", "menu/sun.svg", climbing);
+
+NodeDiagramNode me("me", "You");
+me.shape = NodeShape::Rectangle;
+me.width = 146.0;
+me.height = 46.0;
+me.fillColor = Color(31, 41, 55, 255);
+me.borderColor = Color(250, 204, 21, 255);
+me.textColor = Color(255, 255, 255, 255);
+me.sublabel = "Your network";
+me.iconPath = "media/icons/chatcube/profile.svg";
+me.iconBackground = Color(250, 204, 21, 255);
+me.cornerRadius = 12.0;
+me.shadow = true;
+diagram->AddNode(me);
+
+diagram->AddGroup("college",  "College",       {"alice", "ben", "maya"}, college,
+                  Color(229, 220, 255, 60));
+diagram->AddGroup("climbing", "Climbing club", {"maya", "finn"}, climbing,
+                  Color(172, 255, 224, 60));
+
+// A tie: the circle's colour inside a circle, grey across, wider when closer.
+auto tie = [&](const char* id, const char* a, const char* b, int strength, const Color& c) {
+    NodeDiagramLink l(id, a, b);
+    l.directed = false;
+    l.lineWidth = 0.8 + 0.9 * strength;
+    l.lineColor = Color(c.r, c.g, c.b, 120 + 30 * strength);
+    diagram->AddLink(l);
+};
+tie("t1", "me", "alice", 3, Color(148, 163, 184, 255));
+tie("t2", "alice", "ben", 3, college);
+tie("t3", "maya", "finn", 3, climbing);
+
+diagram->SetLinkDistance(28.0);
+diagram->SetChargeStrength(-360.0);
+diagram->SetGroupCohesion(0.12);
+diagram->BuildLegendFromGroups();
+diagram->SetLegendVisible(true);
+diagram->SetDetailZoom(0.5);          // below it, the cards are their icon discs
+diagram->SetLayout(NodeDiagramLayout::ForceDirected);
+diagram->RunLayout();
+
+// A click describes the person in the host's own status line.
+diagram->onNodeClick = [d = diagram.get()](const std::string& id) {
+    const int ties = d->GetNodeDegree(id);
+    (void)ties;   // "<name> - <interest>. <ties> ties, in <circle>."
+};
+```
 
 ### Card nodes with icons, without overlaps (2.3.0)
 
@@ -56131,6 +56997,14 @@ designs and one of four palettes.
 - [Text fitting](#text-fitting)
 - [Interaction](#interaction)
 - [Samples](#samples)
+- [The population](#the-population)
+  - [How a cell shows it](#how-a-cell-shows-it)
+  - [The legend, totals and level bars](#the-legend-totals-and-level-bars)
+  - [Showing it to a wider room](#showing-it-to-a-wider-room)
+- [Calibration: moving people](#calibration-moving-people)
+  - [The keyboard](#the-keyboard)
+  - [Everyone behind "+N more"](#everyone-behind-n-more)
+- [Files: JSON and CSV](#files-json-and-csv)
 - [What is not built yet](#what-is-not-built-yet)
 
 ## Which element do I want?
@@ -56248,6 +57122,7 @@ palette's panel colour.
 | `Explicit` | Each cell's own `fill` |
 | `DiagonalBands` | The palette's `rankColors`, sampled by the cell's rank from the best corner |
 | `ByRow` / `ByColumn` | The row's or column's level colour, tinted |
+| `ByCount` | How many people the cell holds, through `SetCountColormap` (Blues by default): the fullest cell is the darkest |
 
 In the `Cards` design, the colour goes to the card's border and badge, and
 the face stays white.
@@ -56304,21 +57179,197 @@ std::string text = matrix->BuildCellTooltip(PerformanceCellRef(2, 2));
 | `PerformanceVsPotential()` | 3×3 | Codes 1A–3C counted from the best corner, and a two-line description per tile |
 | `TalentReview()` | 3×3 | Potential levels with action captions; badges and three bullets per card |
 | `SkillWill()` | 2×2 | Guide, Delegate, Direct, Excite |
+| `SampleTeam()` | — | 36 invented people in three departments for `NineBox()`: most placed by 1–5 review scores, six by a calibrated cell |
+| `SampleTargetDistribution()` | — | A forced distribution for a 3×3 grid: 10 % top box, 30 % core box |
 
 The demo page shows each one in the design it was made for, with the design,
 colouring and palette switchable.
 
+## The population
+
+`model.items` holds the people (or products, or teams) being placed. Each
+`PerformanceMatrixItem` has a `label`, a `group` (a team or department), an
+optional `color` (by default the group's colour), a `note` for the tooltip,
+and a placement:
+
+- **An explicit cell** (`row`, `col`), or
+- **two scores** (`xScore`, `yScore`) on the axes' score ranges
+  (`PerformanceAxis::minScore` / `maxScore`). Each axis maps a score to a
+  level through its levels' `upperBound`s, or splits the range evenly when
+  every bound is left at NaN. A score on a bound belongs to the level above.
+
+An explicit cell wins over the scores. That is the calibration rule: the
+meeting overrides the formula, and the scores stay in the data beside the
+override.
+
+```cpp
+PerformanceMatrixModel model = PerformanceMatrixSamples::NineBox();   // both axes score 1-5
+model.items = {
+    PerformanceMatrixItem("A. Rivera", "Sales", 4.6, 4.2),    // placed by scores
+    PerformanceMatrixItem("B. Okoye", "Support", 1, 2),       // placed in row 1, column 2
+};
+model.xAxis.levels[0].upperBound = 2.5;                   // "Low" performance ends at 2.5
+PerformanceCellRef where = model.CellOf(model.items[0]);
+std::vector<int> perCell = model.CountsPerCell();         // row-major
+std::vector<int> perRow = model.CountsPerRow();
+std::vector<std::string> departments = model.Groups();    // in order of first appearance
+```
+
+### How a cell shows it
+
+`SetPopulationDisplay` picks one form for every cell:
+
+| Display | Shows |
+|---|---|
+| `Count` (default) | The number, in a chip in the cell's top corner. It is honest at any size and shows no names |
+| `Percent` | The cell's share of the population, and `/ target` when the model has a `targetDistribution` |
+| `Dots` | One dot per person in a fixed grid, in the group's colour; `+N` when they do not fit |
+| `Names` | The labels in columns, each with its group's colour; `+N more` when they do not fit |
+| `Hidden` | Nothing |
+
+Dots and names take the lower part of the cell, and the cell's own text is
+fitted into what is left. Hovering a dot or a name shows that person's
+tooltip (name, group, box, levels, scores, note). A click calls
+`onItemClick` and does not select the cell. `ItemAt(point)` and
+`GetItemRect(index)` map between people and the element's coordinates.
+
+`targetDistribution` is optional. It holds one share per cell, row-major from
+row 0, and the shares sum to 1. `Validate()` checks its length and its sum.
+
+### The legend, totals and level bars
+
+When the people have named groups, a legend of them stands at the right,
+with each group's size. A click on an entry hides that group: its people
+leave the cells, the counts, the shares and `ByCount`, and a second click
+brings them back. `SetGroupVisible` / `IsGroupVisible` do the same from
+code, and `SetShowLegend(false)` removes the legend.
+
+`SetShowTotals(true)` adds "n = 12" under each row and column label.
+`SetShowLevelBars(true)` draws a strip in the level colours between the
+grid and its labels on both axes.
+
+```cpp
+matrix->SetModel(model);
+matrix->SetPopulationDisplay(PerformancePopulationDisplay::Dots);
+matrix->SetShowTotals(true);
+matrix->SetGroupVisible("Support", false);
+matrix->onItemClick = [](const PerformanceMatrixItem& person) {
+    // person.label, person.group ...
+};
+```
+
+### Showing it to a wider room
+
+A populated matrix puts people's names next to ratings of their potential.
+The element stores nothing and sends nothing; it only draws. When the room
+should not see names, call `SetAnonymised(true)`. `Names` then shows as
+counts, and no person answers the pointer or a click, so no tooltip gives a
+name away. The demo's sample team is invented.
+
+## Calibration: moving people
+
+In a calibration meeting the boxes are argued over and people are moved.
+Moving is off by default, because it is the one interaction that changes
+data. `SetAllowItemDrag(true)` turns it on for a person drawn as a dot or a
+name; it never works while the matrix is anonymised.
+
+- **Drag** a person to another box. The box under the pointer gets a dashed
+  outline, and the person follows the pointer with their name. A press
+  becomes a drag only after a few pixels, so a click is still a click.
+  `onItemClick` then fires on the release, not on the press.
+- **Ctrl+arrows** move the selected person one box on screen. A click on a
+  person selects them (`SetSelectedItem`, `GetSelectedItem`).
+- **`MoveItem(index, cell)`** moves someone from code, whatever
+  `SetAllowItemDrag` says.
+
+Every move asks `onItemMove` first. Return false to veto it: the person stays
+where they were, and nothing changes. When it returns true, the person gets
+the target as an explicit cell (`row`, `col`), and their scores stay in the
+data beside it. That is the calibration rule from the model: the meeting
+overrides the formula, and the override can be seen.
+
+```cpp
+matrix->SetAllowItemDrag(true);
+matrix->onItemMove = [](const PerformanceMatrixItem& person,
+                        const PerformanceCellRef& from, const PerformanceCellRef& to) {
+    // The application decides: permissions, a locked review cycle, a cap.
+    return !(to.row == 2 && to.col == 2 && person.group == "Contractors");
+};
+```
+
+The demo's veto holds the top box to its target share: a move into a full top
+box is refused, and the sidebar says why.
+
+### The keyboard
+
+A click gives the matrix the focus. The arrows then move the cell selection
+in screen order; the first press selects the top-left box. Enter (or Space)
+activates the selected person (`onItemClick`) or, without one, the selected
+box (`onCellClick`). Escape steps back one thing at a time: a drag in
+progress, then the selected person, then the selected box.
+
+### Everyone behind "+N more"
+
+A box that cannot draw all its people ends with "+N" (dots) or "+N more"
+(names). A click on that mark calls `onOverflowClick` with the box and
+everyone in it, in model order. `GetCellItems(ref)` gives the same list at any
+time. Hidden groups are left out of both. No list is offered while
+anonymised.
+
+```cpp
+matrix->onOverflowClick = [](const PerformanceCellRef& box, const std::vector<size_t>& people) {
+    // Fill a list view with the people, for example.
+    (void)box;
+    (void)people;
+};
+```
+
+## Files: JSON and CSV
+
+The model functions take and return text. Reading and writing the file
+itself is `UltraCanvasFileLoader`'s job, as for every file a user opens or
+saves.
+
+**JSON** carries the whole model: the title, both axes with their levels,
+score ranges and bounds, the cells, the people and the target distribution.
+
+```cpp
+const std::string json = ExportPerformanceMatrixJson(matrix->GetModel());
+PerformanceMatrixModel opened;
+std::string error;
+if (ImportPerformanceMatrixJson(json, opened, &error)) matrix->SetModel(opened);
+```
+
+The document starts with `"format": "ultracanvas-performance-matrix"` and
+`"version": 1`. A cell or person names its row and column by level index.
+In a file written by hand, a level id or label works there too. Empty text,
+default numbers and transparent colours are left out. A file of another
+format, a newer version, an unreadable colour, a row that names no level, or
+a model that does not pass `Validate()` is refused with the reason, and the
+output model is left untouched.
+
+**CSV** carries the people alone, one per line, for a spreadsheet:
+
+```
+id,label,group,row,column,x,y,note
+p1,Avery Lund,Engineering,,,4.6,4.5,
+p31,Emery Voss,Engineering,High,High,3.9,4,Moved in calibration
+```
+
+`row` and `column` are the explicit cell, given as a level id, label or
+index. Leave them empty to place the person by the scores `x` and `y`.
+`ImportPerformanceItemsCsv` takes the columns in any order and letter case,
+and only `label` (or `id`) is required. It skips a byte-order mark and blank
+lines. Scores are dot-decimal whatever the locale, so `"1,5"` is refused,
+not read as 1. A line with the wrong number of fields, a level the axis does
+not have, or a person with no place is refused, with the line number. The
+people are replaced only when the whole file reads. An item's colour is not
+part of the CSV; the JSON keeps it.
+
 ## What is not built yet
 
-This is the reference-card part of the proposal, with all four designs. Still
-to come:
-
-- **The population:** people placed into the boxes by cell or by score, with
-  counts, percentages, names or dots, a target distribution, an anonymised
-  mode and a group legend.
-- **Calibration:** dragging a person to another box, with a veto callback;
-  keyboard navigation; JSON and CSV interchange through
-  `UltraCanvasFileLoader`.
+All three phases of the proposal are built. Not planned: editing cell text in
+place on the chart (the proposal's Q4) — edit the model and call `SetModel`.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasPertChartExamples.md
@@ -62325,6 +63376,16 @@ editor->ToggleCodeBlock("cpp");
 Each applies to every block the selection touches. A selection that ends exactly
 at the start of a block does not include it, which is what users expect when
 they drag down to the next paragraph.
+
+Tracking - extra room between every two letters of the whole text, as a drawing
+program's letter spacing - is part of the element's style, in pixels at 100%
+(ArtCreator sets it for the text typed on its page):
+
+```cpp
+RichTextEditStyle style = editor->GetStyle();
+style.letterSpacing = 1.5f;                     // 0 = the font's own spacing
+editor->SetStyle(style);
+```
 
 ### Named styles
 
@@ -68565,11 +69626,13 @@ its argument through `ResolveAvailableLanguageCode()` first and reports the
 resolved spelling through `onSpellLanguageChange`, so what a host stores in its
 settings is what the backend enumerated.
 
-`DetectPreferredLanguage()` asks, in order: `LC_ALL`, `LC_MESSAGES`, `LANG`,
-`LANGUAGE`; then the backend's `GetPreferredLanguageHint()` (on Windows the
-locale from `GetUserDefaultLocaleName`, since the POSIX variables are normally
-unset there); then the same base language with any region; then the first
-available dictionary.
+`DetectPreferredLanguage()` asks, in order: the desktop's languages, best
+first, from [`UltraCanvasSystemLanguage.md`](UltraCanvasSystemLanguage.md)
+(the POSIX variables as gettext reads them, then the platform's own list -
+Windows' preferred UI languages and default locale, macOS's Language &
+Region); then the backend's `GetPreferredLanguageHint()` as a tie-breaker;
+for each, the same base language with any region; then the first available
+dictionary.
 
 ### Automatic language detection
 ```cpp
@@ -71662,6 +72725,165 @@ the callback before returning; the framework's do not block.
 - [UltraCanvasDialogKeyboard.md](UltraCanvasDialogKeyboard.md) — keyboard handling inside dialogs
 
 ==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasSystemFont.md
+==============================================================================
+
+# UltraCanvasSystemFont
+
+<!-- doc-check: UltraCanvasApplication* app; -->
+
+**The desktop's interface font, found rather than assumed.** An element
+whose `FontStyle::fontFamily` is empty is drawn in the system font, which
+is `UltraCanvasApplication::GetSystemFontStyle()`; code, hex and timecodes
+take `GetDefaultMonospacedFontStyle()`. Until 0.9.362 both were the literal
+Ubuntu 12 on Linux and on Windows, so a Windows desktop's Segoe UI and a
+GNOME desktop's Cantarell never reached a window. Each platform now asks
+its desktop, and this header holds the parsers of the forms the desktops
+write a font in, so a test covers every rule without a desktop.
+
+- Header: `UltraCanvas/include/UltraCanvasSystemFont.h` (header-only, pure)
+- Platform code: `OS/Linux/UltraCanvasLinuxSystemFont.cpp`,
+  `OS/MSWindows/UltraCanvasWindowsSystemFont.cpp`,
+  `OS/MacOS/UltraCanvasMacOSApplication.mm` (`DetectSystemFontStyleNative`)
+- Tests: `Tests/SystemFontTest.cpp` (target `SystemFontTest`, no display)
+
+```cpp
+FontStyle ui = app->GetSystemFontStyle();                 // Segoe UI 9, Cantarell 11, SF 13 ...
+FontStyle code = app->GetDefaultMonospacedFontStyle();    // Consolas, the GNOME monospace font, Menlo ...
+```
+
+Sizes are in points, as the text engine takes them. Both are read once
+and cached for the process.
+
+```cpp
+FontStyle pinned;
+pinned.fontFamily = "Ubuntu";
+pinned.fontSize = 12.0;
+app->SetSystemFontStyle(pinned);                 // what GetSystemFontStyle() answers from now on
+app->SetDefaultMonospacedFontStyle(pinned);      // an empty family or a size of 0 is ignored
+```
+
+`SetSystemFontStyle` and `SetDefaultMonospacedFontStyle` pin the answers
+instead of the desktop's fonts: for a program that brings its own, or a
+test that measures text and must not depend on whatever font the machine
+has. The demo's layout audit (`UltraCanvasDemo --audit-layout`) pins the
+bundled Ubuntu 12 and Ubuntu Mono 12, so its pages are measured in the
+font they were laid out for, whatever the runner's desktop font is.
+
+## What each platform reads
+
+| Platform | Interface font | Monospace font |
+|---|---|---|
+| Windows | The message font of the non-client metrics (`SPI_GETNONCLIENTMETRICS`, `lfMessageFont`), asked at 96 dpi through `SystemParametersInfoForDpi` where it exists (Windows 10 1607), else at the system dpi and converted to points: Segoe UI 9 on a stock install, whatever the person set under Accessibility | Consolas, at the same size |
+| macOS | `[NSFont systemFontOfSize:0]`, 13 pt; the family `Helvetica Neue` when AppKit names a private font Pango cannot resolve | The system monospace (`monospacedSystemFontOfSize:`), which is SF Mono and private, so Menlo at the interface size |
+| Linux, BSD | On a KDE session (`XDG_CURRENT_DESKTOP`), `~/.config/kdeglobals` `[General] font=` first; otherwise GSettings `org.gnome.desktop.interface font-name` first, read through GIO (a machine without the schema answers nothing); then the other; then `~/.config/gtk-4.0/settings.ini` and `gtk-3.0/settings.ini` `gtk-font-name`. GSettings is asked only inside a desktop session (`XDG_CURRENT_DESKTOP` or `DESKTOP_SESSION` set): with no desktop running - a bare window manager, an SSH session, a test under Xvfb - the schema would answer its compiled default, Cantarell 11, which nobody chose, so only the files are read | `monospace-font-name` and `[General] fixed=` the same way; the GTK file has no monospace key |
+| Everywhere | The bundled Ubuntu at 12 pt when nothing answers | Ubuntu Mono at 12 pt |
+
+## The parsers
+
+```cpp
+std::string family;
+double points = 0;
+bool gtk = ParseGtkFontName("Noto Sans Bold 10.5", family, points);                 // "Noto Sans", 10.5
+bool book = ParseGtkFontName("DejaVu Sans Mono Book 9", family, points);            // "DejaVu Sans Mono", 9: Book is a style
+bool px = ParseGtkFontName("Sans 12px", family, points);                            // "Sans", 9: pixels become points
+bool kde = ParseKdeFontEntry("Noto Sans,10,-1,5,50,0,0,0,0,0", family, points);     // "Noto Sans", 10
+std::string value = ReadIniValue("[Settings]\ngtk-font-name=Cantarell 11\n", "Settings", "gtk-font-name");   // "Cantarell 11"
+```
+
+`ParseGtkFontName` reads the GTK and Pango form - the family, then any
+style words (Bold, Italic, Book, Condensed, ...), then the size, in points
+or as `12px` - and leaves its outputs untouched when there is no size.
+`ParseKdeFontEntry` reads the `kdeglobals` form, the family then the point
+size then fields it ignores. `ReadIniValue` reads a `key=value` under a
+`[section]` (any section when the name is empty), comments with `#` or
+`;`, quotes around a value removed, so the GTK 2 `.gtkrc-2.0` reads too.
+A size is parsed dot-decimal whatever the locale, never through `strtod`:
+`Cantarell 1,5` is not a size.
+
+## Related
+
+- [`UltraCanvasFontFile.md`](UltraCanvasFontFile.md) - registering a font the application brings
+- [`UltraCanvasEmojiSettings.md`](UltraCanvasEmojiSettings.md) - the emoji font, a setting rather than the desktop's
+- [`UltraCanvasHostThemeProposal.md`](UltraCanvasHostThemeProposal.md) - the rest of following the host: colours, text scale, high contrast, and the change events
+
+==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasSystemLanguage.md
+==============================================================================
+
+# UltraCanvasSystemLanguage
+
+**The languages the person's desktop is set to, best first, as BCP 47
+tags.** One detector for every caller: the spell checker picks a
+dictionary by it today; the localisation module of
+[`UltraCanvasLocalisationProposal.md`](UltraCanvasLocalisationProposal.md)
+will pick a catalogue by it, and a date or number format follows the same
+answer, so a German desktop is German in every window.
+
+- Header: `UltraCanvas/include/UltraCanvasSystemLanguage.h`
+- Implementation: `UltraCanvas/core/UltraCanvasSystemLanguage.cpp`, the
+  platform's own answer in `OS/<Platform>/UltraCanvas<Platform>SystemLanguage.*`
+- Tests: `Tests/SystemLanguageTest.cpp` (target `SystemLanguageTest`, no display)
+- Used by: `UltraCanvasSpellChecker::DetectPreferredLanguage`
+  ([`UltraCanvasSpellChecker.md`](UltraCanvasSpellChecker.md))
+
+```cpp
+// Best first, each once: {"de-AT", "de", "en"} on a desktop with LANGUAGE=de_AT:de:en
+std::vector<std::string> wanted = SystemLanguageTags();
+// The first of them, or "en" when nothing names a language
+std::string language = SystemLanguage();
+// A first run picks the dictionary, catalogue or format that matches
+for (const std::string& tag : wanted) {
+    if (LanguageTagsEqual(tag, "de-AT") || LanguageTagBase(tag) == "de") break;
+}
+```
+
+## Where the answer comes from
+
+Two sources, in this order, each tag once:
+
+1. **The POSIX variables, as gettext reads them.** `LC_ALL`, else
+   `LC_MESSAGES`, else `LANG` names the locale; when that locale is a real
+   one (not `C`, `POSIX` or empty), the `LANGUAGE` list - a colon-separated
+   priority list, `de_AT:de:en` - comes first, then the locale. Under the
+   C locale `LANGUAGE` is ignored, as gettext ignores it: a list with no
+   locale behind it is a shell's leftover, not a choice.
+2. **The platform's own list**, `SystemLanguageTagsNative()`, defined under
+   `OS/<Platform>/`:
+
+| Platform | Source |
+|---|---|
+| Windows | `GetUserPreferredUILanguages` (Settings > Language, in the person's order), then `GetUserDefaultLocaleName`. The POSIX variables are normally unset on Windows, so this is usually the whole answer |
+| macOS | `NSLocale.preferredLanguages` (Language & Region, in order), then the current locale's identifier |
+| Linux, BSD | Nothing beyond the variables, which the display manager and the desktop set for the session from the language the person chose |
+| WebAssembly | `navigator.languages`, else `navigator.language` |
+| Android | The language and country of the device configuration the activity started with; nothing before the activity exists |
+
+Every spelling is folded to one: `de_DE.UTF-8@euro`, `de-de` and `DE_DE`
+are `de-DE`; a four-letter script is title case (`zh-Hant-TW`), a region
+upper case, a numeric region kept (`es-419`).
+
+## The pure helpers
+
+The rules are plain functions of their inputs, so `SystemLanguageTest`
+holds every platform's rule on the CI machine with no desktop:
+
+```cpp
+std::string tag = LanguageTagFromPosixLocale("de_DE.UTF-8@euro");             // "de-DE"
+std::string none = LanguageTagFromPosixLocale("C.UTF-8");                       // "" - names no language
+std::vector<std::string> tags = LanguageTagsFromEnvironment("de_AT:de", "", "", "de_DE.UTF-8");   // {"de-AT", "de", "de-DE"}
+std::string base = LanguageTagBase("zh-Hant-TW");                              // "zh"
+bool same = LanguageTagsEqual("de_AT", "de-at");                               // true
+bool region = LanguageTagsEqual("de", "de-AT");                                // false: a language is not its region
+```
+
+## Related
+
+- [`UltraCanvasSpellChecker.md`](UltraCanvasSpellChecker.md) - the first caller; its backend's `GetPreferredLanguageHint` is a tie-breaker after this
+- [`UltraCanvasLocalisationProposal.md`](UltraCanvasLocalisationProposal.md) - the language a catalogue is chosen by
+- [`UltraCanvasDesktopEntry.md`](UltraCanvasDesktopEntry.md) - reads the raw POSIX locale itself, because a `.desktop` file's `Name[de_DE@euro]` keys want the modifier the tag drops
+
+==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasTabExamples.md
 ==============================================================================
 
@@ -73619,6 +74841,100 @@ unescaped, and the document view typesets them.
 - **2.0.0** (2024-12-20): Added syntax highlighting and themes
 - **1.5.0**: Added line numbers and word wrap
 - **1.0.0**: Initial implementation with basic editing
+
+==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasTextFormatBar.md
+==============================================================================
+
+# UltraCanvasTextFormatBar
+
+## What it is
+
+The bar a program shows over text the user sets on a canvas, a page or a video
+frame: **Font** (every installed family, each shown in itself), **Size**,
+**Bold**, **Italic**, **Underline**, **Strikethrough**, **Align** left / centre
+/ right, **Line spacing** (% of the size) and **Letter spacing**, in one row.
+ArtCreator, UltraPaint and UltraVideo show it while their text tool is active.
+
+It edits a `TextFormat` and reports every change with the attribute that
+changed. It never touches the text itself: what a change goes to - the selected
+words of the text being typed, the whole text, the selected objects - is the
+host's to decide.
+
+## A host typing on a canvas
+
+The usual host - a window class, whose members the callbacks reach through
+`this` - lays an `UltraCanvasRichTextEdit` over its canvas where the text
+lies and applies the bar to it. A character attribute (Font to Strikethrough)
+goes to the selected words through `TextFormatCharDelta`; alignment and the
+spacings belong to the whole text. `TextFormatAtCaret` gives the bar the format
+at the editor's caret, and `onControlDone` hands the keyboard back to the text
+once a control of the bar is finished with it.
+
+<!-- doc-check: std::shared_ptr<UltraCanvasRichTextEdit> editor; std::shared_ptr<UltraCanvasContainer> window; TextFormat textBase; void ApplyToWholeText(TextFormatAttribute attribute, const TextFormat& format); -->
+```cpp
+auto bar = CreateTextFormatBar("text-bar");
+bar->SetSizeUnit(" px", 1, 2000, 0, 1);            // a bitmap editor's sizes
+window->AddChild(bar);
+
+bar->onFormatChanged = [this](TextFormatAttribute attribute, const TextFormat& format) {
+    if (IsCharacterAttribute(attribute) && editor->HasSelection()) {
+        // The selected words take it (0.75 pt a pixel).
+        editor->ApplyCharFormat(TextFormatCharDelta(attribute, format, 0.75f));
+    } else {
+        ApplyToWholeText(attribute, format);       // the host's own
+    }
+};
+bar->onControlDone = [this]() { editor->SetFocus(true); };
+
+// The bar follows the caret.
+editor->onSelectionChanged = [this, bar = bar.get()]() {
+    bar->SetFormat(TextFormatAtCaret(editor->GetFormatState(), textBase, 0.75f));
+};
+```
+
+## What a host cannot draw
+
+A host whose renderer cannot draw an attribute hides its control, so the bar
+never offers what the result would not show:
+
+<!-- doc-check: std::shared_ptr<UltraCanvasTextFormatBar> bar; -->
+```cpp
+bar->SetAttributeVisible(TextFormatAttribute::LetterSpacing, false);
+bar->SetAttributeVisible(TextFormatAttribute::Underline, false);
+```
+
+The rule between two groups goes with them when a whole group is hidden.
+
+## Units
+
+Sizes are in the host's unit: `SetSizeUnit(suffix, minimum, maximum, decimals,
+step)` - points in a drawing, pixels in a bitmap. Letter spacing takes the same
+unit unless `SetLetterSpacingUnit` gives it its own. Line spacing is always a
+percentage of the size from one baseline to the next (120 % is the common
+default).
+
+## The Font list
+
+Every family `GetInstalledFontFamilies()` reports, after the generic "Sans",
+"Serif" and "Monospace", each drawn in itself (`DropdownItem::fontFamily`). The
+dropdown prepares those previews lazily: once the bar is on screen, in small
+idle slices, the rows the list opens on first - see *A font list* in
+[UltraCanvasDropDownExamples.md](UltraCanvasDropDownExamples.md). A format
+naming a font this computer lacks shows it at the top of the list, marked as
+not installed. `RefreshFonts()` reads the installed fonts again.
+
+## Narrow places
+
+The controls take about 860 pixels. In a narrower place the Font list gives up
+width first, down to 90 pixels, so every other control stays in reach.
+
+## Look
+
+The bar takes its ground, ink and controls from a theme
+(`ApplyTheme(UltraCanvasTheme)`; the current theme when it is built): in a dark
+program it is dark, and its icons (`media/icons/textformat/`) take the ink. A
+host may still set its own ground with `SetBackgroundColor`.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasTextInputExamples.md
@@ -76586,13 +77902,21 @@ FILE: Docs/UltraCanvas/UltraCanvasToolbarConfigInvestigation.md
 
 # A Toolbar Configuration Widget — Investigation
 
-Status: **Investigation — phase 1 built.** The command catalogue, the
-group model, building a toolbar from it and keeping the user's arrangement
-(§4.1–§4.5, §6 phase 1) exist now and are documented in
-[`UltraCanvasToolbarLayout.md`](UltraCanvasToolbarLayout.md). The editor
-(§4.4) and the changes on the bar itself (§4.6) are phase 2 and are not
-built; their names are recorded in `scripts/doc_examples_baseline.txt`
-until they are.
+Status: **Investigation — phases 1, 2 and 3 built.** The command catalogue,
+the group model, building a toolbar from it and keeping the user's
+arrangement (§4.1–§4.5, §6 phase 1) are documented in
+[`UltraCanvasToolbarLayout.md`](UltraCanvasToolbarLayout.md); the editor and
+the toolbar's right-click menu (§4.4, §4.6, §6 phase 2) in
+[`UltraCanvasCommandConfigWidget.md`](UltraCanvasCommandConfigWidget.md). The
+owner settled §8's questions 1 and 2: the registry is
+`UltraCanvasCommandRegistry` now (`UltraCanvasMenuRegistry` an alias), and
+menus and toolbars have **one** editor, `UltraCanvasCommandConfigWidget` (the
+menu editor grown, `UltraCanvasMenuConfigWidget` an alias) - so §4.4's
+`UltraCanvasToolbarConfigWidget` and `ShowToolbarConfigDialog` became
+`UltraCanvasCommandConfigWidget` and `ShowCommandConfigDialog`. The
+group-aware drag on the bar itself (§4.6, item 6 of §5) is not built.
+ArtCreator (phase 3) runs on it - see §6 for what is left of that phase. The names in the code blocks that do not exist are
+recorded in `scripts/doc_examples_baseline.txt`.
 
 **Since written (2026-10-30):** three of the gaps it found are fixed —
 `groupSpacing` is read (the gap across a separator), `ToolbarOverflowMode::Menu`
@@ -76609,7 +77933,7 @@ each cover one function? Use ArtCreator as the first example.*
 
 The answer has four parts:
 
-1. **Half of it is already built, for menus.** `UltraCanvasMenuRegistry`
+1. **Half of it is already built, for menus.** `UltraCanvasCommandRegistry`
    (a catalogue of commands under stable ids), `MenuLayout` (a list of ids
    that can be saved) and `UltraCanvasMenuConfigWidget` (the editor) exist
    and work. No application uses them yet; only a DemoApp page does. A
@@ -76701,7 +78025,7 @@ What it lacks:
 
 | Piece | File | What it does |
 |---|---|---|
-| `MenuCommand` / `UltraCanvasMenuRegistry` | `UltraCanvasMenuRegistry.h` (98 lines) | A catalogue of commands. Each command has an id (`"file.open"`), a category, a label, an icon path, shortcut text, a type (Action / Checkbox / Radio), callbacks and a `prototype` escape hatch for dynamic submenus. `Default()` is the shared instance for the whole process. |
+| `MenuCommand` / `UltraCanvasCommandRegistry` | `UltraCanvasCommandRegistry.h` (98 lines) | A catalogue of commands. Each command has an id (`"file.open"`), a category, a label, an icon path, shortcut text, a type (Action / Checkbox / Radio), callbacks and a `prototype` escape hatch for dynamic submenus. `Default()` is the shared instance for the whole process. |
 | `MenuLayout` / `MenuLayoutSet` | `UltraCanvasMenuLayout.h` (105 lines) | A tree of command ids, groups and separators, made of plain data. It is saved in a line/section text format and turned back into live menu items by `MaterializeLayout` / `MaterializeInto`. |
 | `UltraCanvasMenuConfigWidget` | `UltraCanvasMenuConfigWidget.h` (117 lines), `.cpp` (420 lines) | Two `UltraCanvasTreeView`s in an `UltraCanvasSplitPane`, holding the layout and the catalogue. Add / Remove / Up / Down / Separator / Submenu buttons; `onApply`, `onSave`, `onReset` and `onCancel` callbacks. |
 
@@ -76865,10 +78189,10 @@ registers each command once, and the menu editor and the toolbar editor
 offer the same catalogue.
 
 <!-- The fields below are MenuCommand's, listed outside the struct, so the
-     doc check cannot place them; they exist (UltraCanvasMenuRegistry.h). -->
+     doc check cannot place them; they exist (UltraCanvasCommandRegistry.h). -->
 
 ```cpp
-// UltraCanvasMenuRegistry.h, MenuCommand gains:
+// UltraCanvasCommandRegistry.h, MenuCommand gains:
 std::string iconName;                    // "to-front.svg": resolved per size by the registry's icon resolver
 std::string tooltip;                     // optional; default: label + " (" + shortcut + ")"
 std::function<bool()> isEnabled;         // live state; empty = always enabled
@@ -76877,7 +78201,7 @@ std::function<std::string()> dynamicLabel;   // "Undo Move"; empty = label
 // A command that is a widget rather than a button (ArtCreator's Quality slider).
 std::function<std::shared_ptr<UltraCanvasUIElement>(const std::string& itemId)> makeToolbarWidget;
 
-// UltraCanvasMenuRegistry gains:
+// UltraCanvasCommandRegistry gains:
 // Turns an icon name and a pixel size into a file. Set once per program:
 // ArtCreator maps 16 to artcreator/16/, 24 to artcreator/ (then menu/), 28 to artcreator/28/.
 void SetIconResolver(std::function<std::string(const std::string& iconName, int pixelSize)> resolver);
@@ -76885,9 +78209,9 @@ std::string ResolveIcon(const MenuCommand& command, int pixelSize) const;
 ```
 
 Existing callers are not affected: `iconPath` keeps working, and
-`iconName` is consulted only when it is set. Whether to rename the type to
-`UltraCanvasCommandRegistry` and keep `UltraCanvasMenuRegistry` as an alias
-is an open question (§8). Because no application uses the registry yet,
+`iconName` is consulted only when it is set. Whether to rename the type
+(it was `UltraCanvasMenuRegistry`) to `UltraCanvasCommandRegistry` and keep the
+old name as an alias is an open question (§8). Because no application uses the registry yet,
 now is the cheapest time to rename it.
 
 ### 4.2 `ToolbarLayout`: groups of command ids
@@ -76936,7 +78260,7 @@ Three rules make the layout behave predictably:
 // and a separator between groups. Each item's id is the command id, so
 // GetWidget("edit.undo") finds the Undo button if it is shown.
 void MaterializeToolbar(UltraCanvasToolbar& toolbar, const ToolbarLayout& layout,
-                        const UltraCanvasMenuRegistry& registry);
+                        const UltraCanvasCommandRegistry& registry);
 
 // UltraCanvasToolbar gains:
 // Re-reads isEnabled / isChecked / dynamicLabel for every item that came from a command.
@@ -76997,7 +78321,7 @@ It is assembled from existing elements, as AGENTS.md requires:
 class UltraCanvasToolbarConfigWidget : public UltraCanvasContainer {
 public:
     explicit UltraCanvasToolbarConfigWidget(const std::string& id);
-    void SetRegistry(UltraCanvasMenuRegistry* registry);
+    void SetRegistry(UltraCanvasCommandRegistry* registry);
     // One entry per toolbar the program offers. `defaults` is what Reset returns to.
     void AddToolbar(const std::string& title, const ToolbarLayout& current, const ToolbarLayout& defaults);
     // Commands that may not go on this toolbar (the palette takes tools only).
@@ -77045,7 +78369,7 @@ release adds to `zoom` appears for users who never customised the group.
 bool SaveToolbarLayout(UltraCanvasAppSettings& settings, const ToolbarLayout& layout, const ToolbarLayout& defaults);
 // Reads toolbars.<defaults.name>: the defaults with the saved changes applied, unknown ids dropped.
 ToolbarLayout LoadToolbarLayout(const UltraCanvasAppSettings& settings, const ToolbarLayout& defaults,
-                                const UltraCanvasMenuRegistry* registry = nullptr);
+                                const UltraCanvasCommandRegistry* registry = nullptr);
 ```
 
 ArtCreator keeps its other settings in its own `config.ini`
@@ -77074,8 +78398,8 @@ The editor is the complete tool, but the common changes should not need it:
 
 | # | Piece | Where | Size |
 |---|---|---|---|
-| 1 | `MenuCommand`: `iconName`, `tooltip`, `isEnabled`, `isChecked`, `dynamicLabel`, `makeToolbarWidget`; the registry's icon resolver | `UltraCanvasMenuRegistry.{h,cpp}` | ~80 lines |
-| 2 | Menus honour `isEnabled` / `isChecked` / `dynamicLabel` when they open | `UltraCanvasMenuRegistry::Materialize`, `UltraCanvasMenu` | ~40 lines |
+| 1 | `MenuCommand`: `iconName`, `tooltip`, `isEnabled`, `isChecked`, `dynamicLabel`, `makeToolbarWidget`; the registry's icon resolver | `UltraCanvasCommandRegistry.{h,cpp}` | ~80 lines |
+| 2 | Menus honour `isEnabled` / `isChecked` / `dynamicLabel` when they open | `UltraCanvasCommandRegistry::Materialize`, `UltraCanvasMenu` | ~40 lines |
 | 3 | `ToolbarLayout`, merge with defaults, AppSettings load and save | new `UltraCanvasToolbarLayout.{h,cpp}` | ~300 lines |
 | 4 | `MaterializeToolbar`, `RefreshCommandStates`, a separator between groups, `groupSpacing` honoured | `UltraCanvasToolbar.{h,cpp}` + layout file | ~200 lines |
 | 5 | `onContextMenu` (right button), and the standard group popup | `UltraCanvasToolbar.cpp` | ~80 lines |
@@ -77104,7 +78428,14 @@ calls `RefreshCommandStates`, rather than at every opening.
 
 **Phase 2: the editor and the right-click menu (framework).** Items 5, 7
 and 8, plus a DemoApp page beside the menu-configuration page that uses
-both on one sample program.
+both on one sample program. *Built, as one editor:* the menu editor became
+`UltraCanvasCommandConfigWidget`, with the program's toolbars in its tree
+(groups and commands with check boxes, New Group, Fold, the name, icon size
+and labels, a catalog filter, a live preview) and `ShowCommandConfigDialog`;
+the toolbar's `SetOnContextMenu` and `InstallToolbarContextMenu` (its groups,
+Fold, Hide, Customise); a program group now keeps the user's order and
+additions across releases; the DemoApp's "Menus and Toolbars" page edits the
+Filer model's menu and toolbar together; `Tests/CommandConfigWidgetTest.cpp`.
 
 **Phase 3: ArtCreator.**
 1. Register its ~95 commands (the 75 menu commands, the 19 tools, and
@@ -77125,6 +78456,20 @@ both on one sample program.
    registry. The single-letter tool keys remain as they are.
 6. Draw the 25 missing 24 px icons (§3.3).
 7. *View → Toolbars* lists the groups and ends with *Customise Toolbars…*.
+
+*Built:* `Apps/ArtCreator/ArtCreatorCommands.cpp` registers
+every command once per window - the menus' ~80, the 19 tools as Radio commands
+with their letters, Quality as a widget command, Customise, and View >
+Toolbars and the two size submenus as `prototype` commands; the menu headings
+are commands of their own. The menu bar, the toolbar and the palette are built
+from layouts (steps 2-4), the keyboard runs `FindByShortcut` (step 5), and
+View > Toolbars and the right-click menus offer the groups (step 7). Undo /
+Redo carry their step, what needs a selection is greyed without one, and the
+palette follows the active tool through `RefreshCommandStates`. The menus are
+kept with `SaveMenuLayoutSet`, the toolbars with `SaveToolbarLayout`. The 24
+command icons that had no 24 px drawing (step 6) are drawn, and a saved menu
+layout gains a command a later release adds, as a toolbar's does
+(`MergeMenuLayoutSet`, with the program's commands recorded in the file).
 
 **Phase 4: the other programs.** UltraPaint and Texter first, because they
 share ArtCreator's *File / History / Zoom* groups. Texter's existing *Main
@@ -77160,13 +78505,10 @@ toolbar picker.
 
 ## 8. Questions for the owner
 
-1. **Rename** `UltraCanvasMenuRegistry` to `UltraCanvasCommandRegistry`
-   (keeping an alias) now, while it has no users? Recommended: yes.
-2. **One editor or two?** Phase 2 adds a toolbar editor next to the menu
-   editor. A later step could put both in one *Customise* dialog with a
-   *Menus* tab and a *Toolbars* tab (`UltraCanvasTabbedContainer`).
-   Recommended: build the widgets separately and offer the tabbed dialog
-   as a convenience.
+1. ~~**Rename** `UltraCanvasMenuRegistry` to `UltraCanvasCommandRegistry`
+   (keeping an alias) now, while it has no users?~~ Settled: renamed.
+2. ~~**One editor or two?**~~ Settled: one editor for menus and toolbars,
+   `UltraCanvasCommandConfigWidget`.
 3. ~~**Which shortcut does ArtCreator mean by Ctrl+Shift+S?**~~ Settled:
    Save As keeps it, and Convert to Editable Shapes is Ctrl+Shift+C.
 4. **Should a layout be shared across the suite?** For example, a user who
@@ -77356,9 +78698,14 @@ button, so the program keeps no pointers to buttons the user may remove.
 See [Toolbar Layout](UltraCanvasToolbarLayout.md).
 
 ```cpp
-void SetCommandRegistry(const UltraCanvasMenuRegistry* registry);   // MaterializeToolbar sets it
-const UltraCanvasMenuRegistry* GetCommandRegistry() const;
+void SetCommandRegistry(const UltraCanvasCommandRegistry* registry);   // MaterializeToolbar sets it
+const UltraCanvasCommandRegistry* GetCommandRegistry() const;
 void RefreshCommandStates();   // isEnabled / isChecked / dynamicLabel into the items
+// A right click on the bar or an item: the pointer in window coordinates and
+// the item's id. InstallToolbarContextMenu gives a bar built from a layout the
+// standard menu (its groups, Fold, Hide, Customise).
+void SetOnContextMenu(ContextMenuHandler handler);
+bool HasContextMenu() const;
 ```
 
 ### Tool Groups
@@ -77834,9 +79181,11 @@ commands off, and the arrangement is kept in the application's settings
 across restarts and releases. `MaterializeToolbar` turns a layout and a
 command registry into the toolbar's buttons.
 
-It is phase 1 of the toolbar configuration in
-[`UltraCanvasToolbarConfigInvestigation.md`](UltraCanvasToolbarConfigInvestigation.md);
-the editor (phase 2) is built on it.
+It is the toolbar configuration of
+[`UltraCanvasToolbarConfigInvestigation.md`](UltraCanvasToolbarConfigInvestigation.md):
+a right click on the toolbar offers its groups (section 5), and the
+[Menus and Toolbars Editor](UltraCanvasCommandConfigWidget.md) edits it - with the
+program's menus, in one editor.
 
 ## Contents
 
@@ -77848,6 +79197,7 @@ the editor (phase 2) is built on it.
 - [2. Describe the default groups](#2-describe-the-default-groups)
 - [3. Build the toolbar](#3-build-the-toolbar)
 - [4. Keep the user's arrangement](#4-keep-the-users-arrangement)
+- [5. The toolbar's context menu](#5-the-toolbars-context-menu)
 - [Files](#files)
 
 ## Why a layout
@@ -77863,11 +79213,11 @@ The layout separates the two:
 
 | Concern | Type | Saved? |
 |---|---|---|
-| What a command is: label, icon, shortcut, callback, live state | `MenuCommand` in `UltraCanvasMenuRegistry` | no (holds callbacks) |
+| What a command is: label, icon, shortcut, callback, live state | `MenuCommand` in `UltraCanvasCommandRegistry` | no (holds callbacks) |
 | How a toolbar is arranged: groups, order, what is shown | `ToolbarLayout` / `ToolbarLayoutGroup` | yes (ids only) |
 
 The registry is the one menus are built from
-([Menu Configuration Widget](UltraCanvasMenuConfigWidget.md)), so a command
+([Menus and Toolbars Editor](UltraCanvasCommandConfigWidget.md)), so a command
 registered once is the same in the menu, on the toolbar and in the shortcut
 list.
 
@@ -77876,7 +79226,7 @@ list.
 <!-- doc-check: void CmdUndo(); bool CanUndo(); std::string UndoStepName(); bool gridShown; std::string IconFolder(); -->
 
 ```cpp
-UltraCanvasMenuRegistry registry;   // one per window: the callbacks reach that window
+UltraCanvasCommandRegistry registry;   // one per window: the callbacks reach that window
 
 MenuCommand undo("edit.undo", "Edit", "Undo");
 undo.iconName = "undo.svg";          // the file name; the resolver picks the size
@@ -77942,6 +79292,9 @@ registry.Register(quality);
 `FindShortcutConflicts()` lists the shortcuts given to more than one
 command, with their ids; `"Ctrl+Shift+S"` and `"shift+ctrl+s"` are one
 shortcut. A program can check it once at start in a debug build.
+`FindByShortcut("Ctrl+Shift+S")` finds the command a key press names: a key
+handler that spells the key it got that way and runs what this finds keeps
+the shortcut the menu shows and the one that works the same.
 
 ## 2. Describe the default groups
 
@@ -77964,11 +79317,18 @@ A group's fields: `id`, `label`, `iconName` (the slot's icon when folded),
 `visible`, `folded`, `userMade`. `SetCommandShown`, `IsCommandShown` and
 `ShownCommands` work on `hidden`; a hidden command stays in its group and
 comes back in its place. `ToolbarLayout::FindGroup` and `MoveGroup` find and
-reorder groups.
+reorder groups. `separateGroups` (on by default) puts a separator between two
+shown groups; a tool palette of folded groups turns it off. It is the
+program's choice: loading takes it from the defaults.
+
+A tool palette is a layout of Radio commands with `isChecked` (the active
+tool), each group folded: `RefreshCommandStates` presses the slot of the
+group that holds the active tool, shows that tool in it, and releases the
+others.
 
 ## 3. Build the toolbar
 
-<!-- doc-check: UltraCanvasMenuRegistry registry; ToolbarLayout layout; -->
+<!-- doc-check: UltraCanvasCommandRegistry registry; ToolbarLayout layout; -->
 
 ```cpp
 auto toolbar = std::make_shared<UltraCanvasToolbar>("main", 0, 0, 0, 38);
@@ -77997,7 +79357,7 @@ outlive it, and reads the commands' state at the end; call
 
 ## 4. Keep the user's arrangement
 
-<!-- doc-check: UltraCanvasMenuRegistry registry; ToolbarLayout defaults; -->
+<!-- doc-check: UltraCanvasCommandRegistry registry; ToolbarLayout defaults; -->
 
 ```cpp
 UltraCanvasAppSettings settings("MyApp");   // <settings folder>/MyApp/settings.json
@@ -78026,25 +79386,54 @@ Only what the user changed is kept, under `toolbars.<name>`:
 ] } } }
 ```
 
-What is in a group the program defines comes from the program's defaults
-every time, so `LoadToolbarLayout` (`MergeToolbarLayout`) can bring a saved
-layout forward to a new release:
+A group the program defines is kept as the user's changes to it - which of
+its commands are hidden, the order of its commands and the commands the user
+added to it, written as `"commands"` only when they differ from the program's.
+The rest comes from the program's defaults every time, so `LoadToolbarLayout`
+(`MergeToolbarLayout`) can bring a saved layout forward to a new release:
 
-- a command the release adds to a group shows, and the user's hidden ones
-  stay hidden;
+- a command the release adds to a group shows, after the command it follows
+  in the defaults, and the user's hidden ones stay hidden;
 - a group new in the release goes in after the group it follows in the
   defaults;
 - a group the release no longer has is dropped, and with the registry given,
   so is every command it does not know - in the user's own groups too.
 
+## 5. The toolbar's context menu
+
+<!-- doc-check: UltraCanvasCommandRegistry registry; ToolbarLayout defaults; UltraCanvasAppSettings settings{"MyApp"}; std::shared_ptr<UltraCanvasToolbar> toolbar; void OpenCustomiseDialog(); -->
+
+```cpp
+auto layout = std::make_shared<ToolbarLayout>(LoadToolbarLayout(settings, defaults, &registry));
+MaterializeToolbar(*toolbar, *layout, registry);
+InstallToolbarContextMenu(*toolbar, layout, registry,
+    [this, layout]() { SaveToolbarLayout(settings, *layout, defaults); },   // after each change
+    [this]() { OpenCustomiseDialog(); });                                  // "Customise Toolbars"
+```
+
+A right click on the toolbar - on an item or between them - opens a menu with:
+
+- a check per group, shown or not;
+- for the group under the pointer, *Fold* or *Unfold* it, and on a command,
+  *Hide* that command;
+- *Customise Toolbars*, when the program gives a handler for it.
+
+Each change edits the shared layout, rebuilds the toolbar and calls the
+program's handler, where it saves the layout. The menu is
+`ToolbarContextMenuItems`, for a program that wants to add to it, and
+`ToolbarGroupOfItem` names the group an item belongs to. Underneath is the
+toolbar's own `SetOnContextMenu(handler)`, which reports a right click with the
+pointer in window coordinates and the id of the item under it.
+
 ## Files
 
 | File | Contents |
 |---|---|
-| `UltraCanvas/include/UltraCanvasToolbarLayout.h` | `ToolbarLayoutGroup`, `ToolbarLayout`, `MaterializeToolbar`, `MergeToolbarLayout`, `SaveToolbarLayout`, `LoadToolbarLayout`, `ForgetToolbarLayout` |
-| `UltraCanvas/include/UltraCanvasMenuRegistry.h` | `MenuCommand` (with `iconName`, `tooltip`, `isEnabled`, `isChecked`, `dynamicLabel`, `makeToolbarWidget`), `SetIconResolver`, `ResolveIcon`, `FindShortcutConflicts`, `RefreshMenuStates` |
-| `UltraCanvas/include/UltraCanvasToolbar.h` | `AddWidget`, `SetCommandRegistry`, `RefreshCommandStates` |
-| `Tests/ToolbarLayoutTest.cpp` | the registry, building, refreshing, saving and merging |
+| `UltraCanvas/include/UltraCanvasToolbarLayout.h` | `ToolbarLayoutGroup`, `ToolbarLayout`, `MaterializeToolbar`, `MergeToolbarLayout`, `SaveToolbarLayout`, `LoadToolbarLayout`, `ForgetToolbarLayout`, `InstallToolbarContextMenu`, `ToolbarContextMenuItems`, `ToolbarGroupOfItem` |
+| `UltraCanvas/include/UltraCanvasCommandRegistry.h` | `MenuCommand` (with `iconName`, `tooltip`, `isEnabled`, `isChecked`, `dynamicLabel`, `makeToolbarWidget`), `SetIconResolver`, `ResolveIcon`, `FindShortcutConflicts`, `RefreshMenuStates` |
+| `UltraCanvas/include/UltraCanvasToolbar.h` | `AddWidget`, `SetCommandRegistry`, `RefreshCommandStates`, `SetOnContextMenu` |
+| `UltraCanvas/include/UltraCanvasCommandConfigWidget.h` | the editor for menus and toolbars, `ShowCommandConfigDialog` |
+| `Tests/ToolbarLayoutTest.cpp` | the registry, building, refreshing, saving and merging, the context menu |
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasTooltipManager.md
@@ -80194,6 +81583,7 @@ doc file name. For the prose on a given element, use
 | Single-line text | `UltraCanvasTextInput` | `UltraCanvasTextInput.h` |
 | Multi-line text or code | `UltraCanvasTextArea` | `UltraCanvasTextArea.h` |
 | A **formatted document** edited as it looks — fonts, sizes, colours, headings, lists, tables, images ([doc](UltraCanvasRichTextEdit.md)) | `UltraCanvasRichTextEdit` | `UltraCanvasRichTextEdit.h` |
+| The **text formatting bar** over text the user sets — Font (every installed family, each shown in itself), Size, Bold, Italic, Underline, Strikethrough, alignment, line and letter spacing; reports each change, helpers for an `UltraCanvasRichTextEdit` typed on a canvas ([doc](UltraCanvasTextFormatBar.md)) | `UltraCanvasTextFormatBar` | `UltraCanvasTextFormatBar.h` |
 | Text with a suggestion list | `UltraCanvasAutoComplete` | `UltraCanvasAutoComplete.h` |
 | Tokens / tags typed into a field | `UltraCanvasTagInput` | `UltraCanvasChip.h` |
 | A number with up/down steppers | `UltraCanvasSpinner` | `UltraCanvasSpinner.h` |
@@ -80227,7 +81617,7 @@ from an external "Show password" checkbox. See
 | Checkbox | `UltraCanvasCheckbox` | `UltraCanvasCheckbox.h` |
 | Radio button / group | `UltraCanvasRadio`, `UltraCanvasRadioGroup` | `UltraCanvasRadio.h` |
 | On-off switch | `UltraCanvasSwitch` | `UltraCanvasSwitch.h` |
-| Pick one of a list | `UltraCanvasDropdown` | `UltraCanvasDropdown.h` |
+| Pick one of a list (a row can be drawn in a font of its own: a font list, `DropdownItem::fontFamily`) | `UltraCanvasDropdown` | `UltraCanvasDropdown.h` |
 | Pick one of a few, shown side by side | `UltraCanvasSegmentedControl` | `UltraCanvasSegmentedControl.h` |
 | Pick one (or several) of a row of chips - categories, filters, tags ([doc](UltraCanvasChipGroup.md)) | `UltraCanvasChipGroup` | `UltraCanvasChipGroup.h` |
 | A value on a range | `UltraCanvasSlider` | `UltraCanvasSlider.h` |
@@ -80297,10 +81687,11 @@ Positioning inside a container is the CSS layout engine's job (`layout` /
 |---|---|---|
 | The navigation column of a window: sections of items with icon, label and badge, one selected, keyboard and wheel, a compact icons-only mode ([doc](UltraCanvasSidebarNavigation.md)) | `UltraCanvasSidebarNavigation` | `UltraCanvasSidebarNavigation.h` |
 | Menu bar, popup and context menus | `UltraCanvasMenu` (+ `MenuBuilder`, `MenuItemData`) | `UltraCanvasMenu.h` |
-| Editable menu configuration | `UltraCanvasMenuConfigWidget` | `UltraCanvasMenuConfigWidget.h` |
+| Editable menus and toolbars - one editor for a program's menus and its toolbars' groups, from one command catalogue ([doc](UltraCanvasCommandConfigWidget.md)); `ShowCommandConfigDialog` opens it in a window | `UltraCanvasCommandConfigWidget` (was `UltraCanvasMenuConfigWidget`, an alias) | `UltraCanvasCommandConfigWidget.h` |
+| Translations - every set an application's texts come from (its own, the base sets it takes, Standard) in one grid with a column per set; edit, take / promote / demote / merge the sets, Undo, save into the source tree or the settings folder, export, draft ([doc](UltraCanvasLocalisationEditor.md)); `ShowLocalisationEditorDialog` opens it on the running application | `UltraCanvasLocalisationEditor` (+ `LocalisationWorkspace`, the model without UI) | `UltraCanvasLocalisationEditor.h` |
 | Path bar | `UltraCanvasBreadcrumb` | `UltraCanvasBreadcrumb.h` |
 | Page selector | `UltraCanvasPagination` | `UltraCanvasPagination.h` |
-| List **or table** — `UltraCanvasListView` is the multi-column, virtualised, model-driven one (`IListModel` + `ListColumnDef` + delegates; `SetShowHeader(true)` gives resizable columns, header tooltips and a sort indicator; sort and filter it with [`UltraCanvasListSortFilterProxy`](UltraCanvasListSortFilterProxy.md)); tree; multi-column tree; sheet | `UltraCanvasListView`, `UltraCanvasTreeView`, `UltraCanvasColumnsTreeView`, `UltraCanvasSpreadsheet` | matching `*.h` |
+| List **or table** — `UltraCanvasListView` is the multi-column, virtualised, model-driven one (`IListModel` + `ListColumnDef` + delegates; `SetShowHeader(true)` gives resizable columns, header tooltips and a sort indicator; sort and filter it with [`UltraCanvasListSortFilterProxy`](UltraCanvasListSortFilterProxy.md)); tree; multi-column tree ([`UltraCanvasColumnsTreeView`](UltraCanvasTreeViewExamples.md#columnar-layout-ultracanvascolumnstreeview): aligned Name / Type / Value columns with a header band, resizable boundaries and section-header rows); sheet | `UltraCanvasListView`, `UltraCanvasTreeView`, `UltraCanvasColumnsTreeView`, `UltraCanvasSpreadsheet` | matching `*.h` |
 | Folder contents / file browsing | `UltraCanvasFilerWidget` | `UltraCanvasFilerWidget.h` |
 | System information (CPU, GPU, NPU, memory, drives, network, USB, Bluetooth) | `UltraCanvasHardwareInfoPanel` | `UltraCanvasHardwareInfoPanel.h` |
 | The desktop message centre: every chat, mail and notification on the UltraMessage feed, with sources, filters, search and the notification's actions ([doc](UltraCanvasMessageCenter.md)) | `UltraCanvasMessageCenter` | `Plugins/UltraMessage/UltraCanvasMessageCenter.h` |
@@ -81145,8 +82536,8 @@ What the element does by itself:
 
 - **View.** Wheel zooms about the cursor (shift + wheel pans), space or the
   middle button pans, `+` / `-`, Ctrl+0 (page), Ctrl+1 (100 %).
-  `SetZoom` / `SetZoomAt` / `ZoomStep` / `ZoomToPage` / `ZoomToDrawing` /
-  `ZoomToSelection` / `ZoomToRect` / `CenterOn` / `PanBy`; `DocToView` / `ViewToDoc` /
+  `SetZoom` / `SetZoomAt` / `ZoomStep` / `ZoomToPage` / `ZoomToPageWidth` /
+  `ZoomToDrawing` / `ZoomToSelection` / `ZoomToRect` / `CenterOn` / `PanBy`; `DocToView` / `ViewToDoc` /
   `PixelsToDoc`; `VisibleDocRect`, `CanvasArea`.
 - **Page** on a pasteboard with a shadow; **grid** with subdivisions that
   hide when too dense; **rulers** in any unit with the pointer marked;
@@ -95463,6 +96854,215 @@ the merged conversation fetch and every forwarding call; the ChatCube
 Direct, Matrix and Telegram providers (above). Next: XMPP and others.
 
 ==============================================================================
+FILE: Docs/Modules/UltraLocalisation/README.md
+==============================================================================
+
+# UltraLocalisation — The Text of Every Application in the Person's Language
+
+<!-- doc-check: int count = 3; int done = 1; std::vector<std::string> systemLanguages; -->
+
+**Status:** Phases L1 to L3 of [`UltraCanvasLocalisationProposal.md`](../../UltraCanvas/UltraCanvasLocalisationProposal.md) implemented: the module, the three layers of catalogues, the override folder, the fallback walk, plurals, `Language.conf`, the language choice, the start-up wiring (L1); the English standard set and the sixteen base sets under `media/locale/en/`, the framework's own dialogs wrapped in `Tr`, and the three scripts with their CI check (L2); the drafting tool over UltraAI with its script, the first drafts of the standard and base sets in German, French, Spanish, Italian, Dutch, Portuguese, Japanese and Simplified Chinese, and the UOS-Settings Language page (L3); the localisation editor - every set in one grid, the merge operations, the two save paths, the compare column, the drafting button - as an element, a dialog, the UOS-Settings Translations page and a DemoApp page (L4, [`UltraCanvasLocalisationEditor.md`](../../UltraCanvas/UltraCanvasLocalisationEditor.md)). The applications (L5) and locale formatting (L6) follow.
+**Version:** 1.2.0
+**Author:** UltraCanvas Framework / ULTRA OS
+**Last Modified:** 2026-11-02
+
+`Tr("Save")` gives the translation of the English text written at the
+site, in the language the person's desktop is set to, from three layers of
+catalogues that the application's start-up loads for it. Nothing changes
+in how an element stores text: `Tr` is a hash lookup when a label is
+built, and the element keeps the string it is given.
+
+- Header: `UltraCanvas/include/UltraLocalisation/UltraLocalisation.h`
+- Implementation: `UltraCanvas/core/UltraLocalisation/UltraLocalisation.cpp`
+- Build: the `uc-localisation` archive, absorbed whole into the shared core;
+  linked by its public name `UltraLocalisation` (a headless engine links it
+  alone, as it links UltraVault)
+- Tests: `Tests/UltraLocalisationTest.cpp` (target `UltraLocalisationTest`, no display)
+- Registry: `Masterfile_modules.md` §20
+- Wired in: `UltraCanvasApplicationBase::Initialize` (the step "translation catalogues")
+
+```cpp
+std::string save = Tr("Save");                                    // "Speichern" on a German desktop
+std::string open = TrC("button", "Open");                         // the "button|Open" entry: "Öffnen"
+std::string files = TrN("{n} file", "{n} files", count);          // "3 Dateien": the language's plural rule
+std::string progress = TrF("Deleted {0} of {1}", done, count);    // "1 von 3 gelöscht"
+```
+
+## The three layers
+
+| Layer | File | Holds |
+|---|---|---|
+| The application's own set | `media/locale/<lang>/<App>.json` (`<App>` is the name given to `Initialize`) | what only this application says, and amendments of the layers below |
+| The base sets of its kind | `media/locale/<lang>/base/<Base>.json` | the vocabulary of video editing, banking, shopping, ... (the proposal's Appendix B); the application names the ones it takes |
+| The standard set | `media/locale/<lang>/Standard.json` | the framework's own dialogs and the words every application needs (Appendix A) |
+
+A key is looked up in that order and the English itself is the answer
+when no layer has it, so an untranslated string is always shown. A file
+of the same name under `<settings>/locale/<lang>/` - the UltraCanvas
+settings folder, `~/.config/UltraCanvas` on Linux - is read before the
+shipped one for the same layer: that is where a translator drops a draft
+and sees it on the next start, and where the editor will save on a
+packaged build. A regional tag walks down, `zh-Hant-TW` → `zh-Hant` →
+`zh`, and the more specific file wins per key.
+
+An application names its base sets in its catalogue's metadata, most
+specific first, or in code when it has no catalogue yet; a plugin with
+strings of its own adds a library set, looked up after the application's
+and before the bases:
+
+```json
+{ "@language": "en", "@bases": ["Video", "Audio", "Image"], "Fade out the audio": "Fade out the audio" }
+```
+
+```cpp
+UltraLocalisation::UseBaseSets({"Video", "Audio"});     // instead of the catalogue's "@bases"
+UltraLocalisation::AddSet("UltraCanvasCharts");          // a library's own set
+std::vector<std::string> bases = UltraLocalisation::BaseSets();
+LocalisationOrigin origin = UltraLocalisation::OriginOf("Trim");   // Application, Library, Base, Standard or Source
+```
+
+## The catalogue file
+
+One JSON object per language and set. Keys are the source text, with a
+context prefix when there is one; values are the translation; a plural
+entry is an object keyed by CLDR category; entries starting with `@` are
+metadata. `LocalisationCatalogue` reads and writes it:
+
+```json
+{
+  "@language": "de",
+  "@name": "Deutsch",
+  "@translated-by": "UltraAI draft 2026-11-02, reviewed by -",
+  "Save": "Speichern",
+  "button|Open": "Öffnen",
+  "Deleted {0} of {1}": "{0} von {1} gelöscht",
+  "{n} file": { "one": "{n} Datei", "other": "{n} Dateien" }
+}
+```
+
+```cpp
+LocalisationCatalogue catalogue;
+std::string error;
+bool ok = UltraLocalisation::ReadCatalogue("media/locale/de/Standard.json", catalogue, error);
+std::string text = catalogue.Serialize();                          // pretty, metadata first, keys in order
+bool parsed = LocalisationCatalogue::Parse(text, catalogue, error);
+```
+
+`TrN` picks the category from the count with the language's rule -
+`UltraLocalisation::PluralCategory("ru", 22)` is `"few"` - from a table of
+the CLDR rules for some forty languages (the one-form East Asian
+languages, French's zero-as-singular, the Slavic three and four forms,
+Arabic's six, Irish, Welsh, Maltese, Latvian, Lithuanian, Romanian,
+Slovenian, Hebrew). A language with one form keeps a plain string entry.
+Placeholders are `{0}`, `{1}`, ... and `{n}`; a translation may reorder
+them or leave one out. `TrF` formats integers as digits and floating
+point dot-decimal; the locale's own number and date formatting is phase
+L6.
+
+## The language
+
+`Initialize` chooses the language in this order, first answer wins, and
+loads it:
+
+1. `UltraLocalisation::SetLanguageOverride` - what an application parsed
+   from `--lang=de`.
+2. The `ULTRACANVAS_LANG` environment variable, for a script or a CI
+   screenshot.
+3. `Language.conf` in the UltraCanvas settings folder (`language=de`;
+   `language=system` or no file means the next step), which UOS-Settings
+   will write; `LanguageSettings` reads and writes it, with the
+   `translator=` line the editor puts into a catalogue's `@translated-by`.
+4. The desktop's languages, best first
+   ([`UltraCanvasSystemLanguage.md`](../../UltraCanvas/UltraCanvasSystemLanguage.md)):
+   the first one a catalogue exists for, each walked down (`de-CH` finds
+   `de`).
+5. `en`, which needs no catalogue.
+
+```cpp
+UltraLocalisation::SetFolders("/usr/share/ultracanvas/media/locale/", "/home/erika/.config/UltraCanvas");
+UltraLocalisation::Initialize("UltraMail", systemLanguages);         // what the application base does
+std::string language = UltraLocalisation::CurrentLanguage();          // "de"
+std::vector<std::string> available = UltraLocalisation::AvailableLanguages();   // {"de", "en", "fr", ...}
+std::string name = UltraLocalisation::NativeName("de");               // "Deutsch", from the standard set's "@name"
+int handler = UltraLocalisation::AddChangeHandler([](const std::string& now) { (void)now; });
+UltraLocalisation::SetLanguage("fr");                                 // reloads, then every handler runs
+UltraLocalisation::RemoveChangeHandler(handler);
+LanguageSettings settings = LanguageSettings::Load("/home/erika/.config/UltraCanvas");
+settings.language = "de";
+settings.Save("/home/erika/.config/UltraCanvas");
+```
+
+A language change reaches applications started after it; a running one
+that wants to follow rebuilds what it built from strings in a change
+handler, as the proposal's §7 says, since elements store text, not keys.
+
+## The catalogues and the scripts
+
+`media/locale/en/Standard.json` is the English standard set: the
+framework's own strings, collected from the `Tr` sites in
+`UltraCanvas/`, and the application vocabulary of the proposal's
+Appendix A, curated by hand. `media/locale/en/base/<Base>.json` are the
+sixteen base sets of Appendix B: Computer, Web, Audio, Image, Video, Text,
+Spreadsheet, Presentation, Planning, CAD, Banking, Games, Shopping,
+Fashion, Communication and Security. An English file's value is its key;
+a translation (`de/Standard.json`, `de/base/Video.json`) is the same file
+with the values in its language.
+
+| Script | Does |
+|---|---|
+| `scripts/extract_ui_strings.py` | rewrites the English catalogues from the sources: adds the framework's `Tr` keys to `Standard.json` (never removes one, so the vocabulary stays) and rewrites each application's `en/<Name>.json` from its sites, keeping its metadata and listing what it inherits under `@inherited`; `--check` is the CI sync test |
+| `scripts/check_locale_catalogues.py` | the CI gate (`locale-catalogues.yml`): every translation parses, has no stale key, keeps the source's placeholders, has the plural forms its language needs, repeats no entry of a set below it, names only base sets that exist; and the English files are in sync. Findings that predate it are in `scripts/locale_catalogues_baseline.txt` |
+| `scripts/wrap_ui_strings.py` | the migration tool: wraps the literal in the text-taking parameter of every known entry point in `Tr(...)` and writes the file (or, with `--diff`, prints the change) for a person to review; a sentence built from pieces is rewritten as `TrF` by hand |
+
+## Drafting a language
+
+`ultralocalisation-draft` (`Apps/UltraLocalisationDraft`, built when the
+UltraAI module is) reads an English source catalogue, translates every
+entry the target lacks through UltraAI's translator - any text-LLM
+provider the person has configured, or a translation provider - and
+writes the target marked `"@translated-by": "UltraAI draft <date> ...,
+reviewed by -"` until a person changes it. A context key sends its text
+alone; a plural entry sends its singular for the `one` form and its
+plural for every other form the language's rule needs; a translation
+that lost a placeholder is left untranslated and reported, so the
+catalogue check never sees it. `scripts/translate_catalogue.py` runs the
+tool over a language's sets - the standard set first, then the base
+sets, then the applications' - with a one-line context per set:
+
+```
+python3 scripts/translate_catalogue.py de fr --provider anthropic --api-key-env ANTHROPIC_API_KEY
+python3 scripts/translate_catalogue.py ja --sets Standard base/Video --dry-run
+```
+
+The editor's drafting button (`UltraCanvasLocalisationEditor::SetDrafter`, L4) is this same step, through a drafter the host wires to UltraAI. The first drafts of
+the standard and base sets ship in thirty languages - `de`, `fr`, `es`,
+`it`, `nl`, `pt`, `ja`, `zh-Hans`, and since 2026-11-03 `ru`, `uk`, `pl`,
+`cs`, `sv`, `da`, `nb`, `fi`, `tr`, `el`, `ko`, `zh-Hant`, `ar`, `he`,
+`hu`, `ro`, `hi`, `id`, `vi`, `th`, `ca` and `pt-BR` - each file marked
+as a machine draft in `@translated-by` until reviewed; the UOS-Settings
+Language page lists a language as soon as its `Standard.json` is there.
+`pt-BR` is a regional variant: it holds only the entries whose Brazilian
+wording differs, and everything else comes from `pt` through the
+fallback walk.
+
+The framework's own dialogs - the modal dialogs' buttons and titles, the
+file dialog, the filer widget's menus and messages, the colour, date,
+time and new-document dialogs, the progress dialog, the spell-check
+menu, the media viewer - are wrapped, so they show in the person's
+language as soon as a translation of `Standard.json` exists. The date
+picker's weekday and month names are the standard set's context entries
+(`"weekday|Mo"`, `"month|May"`, `"month-short|May"`), re-read when the
+language changes while a picker is open, and they are what phase L6's
+date formatting will take the names from: the platform gives a date's
+shape, the chosen language its words.
+
+## Related
+
+- [`UltraCanvasLocalisationProposal.md`](../../UltraCanvas/UltraCanvasLocalisationProposal.md) - the design, the standard set (Appendix A) and the base sets (Appendix B)
+- [`UltraCanvasSystemLanguage.md`](../../UltraCanvas/UltraCanvasSystemLanguage.md) - the desktop's languages
+- [`UltraCanvasEmojiSettings.md`](../../UltraCanvas/UltraCanvasEmojiSettings.md) - the shared-setting pattern `Language.conf` follows
+
+==============================================================================
 FILE: Docs/Modules/UltraMessage/README.md
 ==============================================================================
 
@@ -99312,6 +100912,55 @@ std::string font = VideoFX_GetDefaultFontPath();               // what will be u
 Text overlays need an FFmpeg built with libfreetype (the usual Linux, macOS
 and MSYS2 packages are); ask `VideoFX_IsTextOverlayAvailable()`.
 
+### Text drawn by the host: fonts, styles, spacing
+
+FFmpeg's text filter draws one font file, plain, left-aligned. A text
+overlay can carry more - what a word processor sets - and have the host draw
+it:
+
+| Field | Meaning |
+|---|---|
+| `fontFamily` | The font by name. A text overlay that names one is drawn by the host's text renderer, when one is installed |
+| `richText`, `richTextHeight` | The words with their own fonts, sizes and styles - bold, italic, underline, strikethrough on any word - as HTML; `text` stays their plain text. A word's own size was set for a frame `richTextHeight` pixels high and scales with the frame |
+| `textAlign` | The lines: 0 left, 1 centred, 2 right |
+| `lineSpacing` | % of a line's largest letters from one baseline to the next (0: the font's own) |
+| `letterSpacing` | Added between letters, a share of the frame's height, like `fontSize` |
+
+```cpp
+// The host draws: true and an RGBA picture of the text as it lies over the
+// frame (its shadow and band too), or false to leave it to the text filter
+VideoFX_SetTextRenderer([](const VideoFXOverlay& o, int frameHeight, VideoFXFrame& picture) {
+    if (o.fontFamily.empty()) return false;
+    picture = MyTextEngine::Draw(o, frameHeight);
+    return true;
+});
+```
+
+What the renderer draws is laid over the frame as a picture, placed, timed,
+faded and dimmed as the text overlay was, sized as a share of the frame's
+height. `VideoFXExportJob::Start`, `VideoFX_Export`, `VideoFX_RenderProject`
+and `VideoFXPreview::Open` ask it on the **calling thread** - the export's own
+thread never does - so a renderer on a UI toolkit works from the UI thread;
+`VideoFX_DrawTextOverlays(segments, frameHeight)` does the same for a host
+that wants to see the result. Without a renderer such an overlay is drawn
+plain by the text filter, in `fontPath` or the default font. The fields are
+saved in project files.
+
+**UltraCanvas's renderer.** `VideoFX/ultracanvas/VideoFXUltraCanvasText.h`
+(the `VideoFXUltraCanvasText` library, built in the UltraCanvas tree) draws
+such an overlay with the `UltraCanvasRichTextEdit` that types it on a frame,
+its shadow and band as the text filter drew them:
+`VideoFX_UseUltraCanvasText()` installs it. UltraVideo does, and so does the
+`videofx` tool when built with UltraCanvas, so a project renders on the
+command line exactly as UltraVideo shows it (`videofx --version` says which).
+In a program without an `UltraCanvasApplication` - the tool - it first does
+what an application's start does for text
+(`RegisterBundledFontsWithoutApplication`): the bundled fonts and the system's,
+registered by the same per-platform code the applications run
+(`RegisterPlatformBundledFonts` - CoreText on macOS, fontconfig with the
+Windows font folders on Windows). VideoFX itself stays free of
+UltraCanvas: a VideoFX built on its own draws these titles plain.
+
 ---
 
 ## Export settings
@@ -99559,7 +101208,12 @@ videofx slideshow trip.mp4 *.jpg --music song.mp3 --beat-sync --save-project tri
 videofx project trip.vfxproj            # summary; exit status 1 if media are missing
 videofx render trip.vfxproj             # to the output it was saved with
 videofx render trip.vfxproj draft.mp4   # somewhere else
+videofx render trip.ultravideo          # a program's file around the engine's project
 ```
+
+A program's own project file that carries the engine's project under
+`"project"` - UltraVideo's `.ultravideo`, around its bin and its lanes - is
+read for that project, its media paths relative to the same file.
 
 ---
 
@@ -102960,7 +104614,7 @@ as `code`, and each numbered step of a guide is one action.
 | **1 Your computer** | What was detected, as key/value rows: OS, architecture, distribution, the package manager (a found / not-found badge and its path), the MSYS2 root on Windows (a link to install it when missing), home, the AI assistants found, git, the framework version. Under it the guide: Linux, macOS or Windows in a segmented control, preselected to the detected one, and that platform's way in as a numbered guide with the SDK archive named for this version and linked to its release. | Nothing; it is where the reader starts. |
 | **2 Features** | The feature groups (toolchain and framework core always; CDR, PDF, OCR, Vectorizer, audio, barcode, networking extras as options). The AI assistant: *None* first, in red, for a local IDE or the compiler alone (no instruction file, no first prompt), then Claude Code, Codex, Copilot, Gemini or another in a segmented control; whether its instruction file goes into the project and the first prompt is prepared; whether the work goes through GitHub alone. For the chosen assistant: whether its command-line tool is installed and how to install and sign in, how it picks up the repository's guidance (`CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, or pasted instructions and `llms-full.txt` for a chat), how an assistant works on an UltraCanvas application, and the no-local-compiler workflow of [`GettingStarted-Cloud.md`](../GettingStarted-Cloud.md). | Which packages step 3 checks; which file the project gets. |
 | **3 Tools** | The checks run on entering: every tool (`--version`) and library (`pkg-config --modversion`) the chosen groups need, each on a row with a switch: an installed one is on and locked; a missing or not checkable one that a package provides can be flipped - on (the default) installs it with the rest, off leaves it out of the install, the command and the report; the row shows the version found and, when missing, the package that provides it; a badge says *not checked yet*, *N missing* (*N missing, M off* with switches off) or *everything installed*, and the line under the buttons says what *Install what is missing* will do - the package manager, how many and the exact command - or why it cannot run. *Install what is missing* (enabled only while something is missing) runs the package manager after a confirmation that shows the command again: `apt-get` / `dnf` / `pacman` / `zypper` behind pkexec or sudo, `brew` as the user, MSYS2's `pacman` into the MSYS2 tree, after `pacman -Syuu` (twice, in a login shell) brings an installed MSYS2's package lists and core up to date. On Windows without MSYS2 the rows still name MSYS2's packages and Install sets MSYS2 up first: `winget install --id MSYS2.MSYS2` into `C:\msys64`, a first login shell (pacman's keyring) running `pacman -Syuu` twice (a core update ends the first run), then its `pacman` installs the rest and MSYS2 is detected again before the checks. The output is shown in a console as it comes, line by line, and the checks run again. Next goes on even with something missing; the step keeps the error marker until the checks pass. | Whether the toolchain and libraries are there. |
-| **4 Framework** | *The prebuilt SDK* or *A clone, built from source*. For the SDK: the version, the matching archive, the download page ([ultraos.eu/download-file](https://ultraos.eu/download-file/)) and the same archive on the GitHub release; *Download page* opens the page in the browser, where you download the archive; *Unpack...* unpacks the archive you pick beside it and fills the prefix in; *Find...* looks for `lib/cmake/UltraCanvas/UltraCanvasConfig.cmake` under a chosen folder. For the clone: the clone command and how the project finds the checkout. The step carries the error marker while the SDK is chosen and no prefix is set. | Where `find_package(UltraCanvas)` will look. |
+| **4 Framework** | *The prebuilt SDK* or *A clone, built from source*. For the SDK: the version, the matching archive, its address on [start.ultraos.eu/pub](https://start.ultraos.eu/pub/) and the same archive on the GitHub release; *Download* fetches the archive into a folder you pick, checks it against the version's `SHA256SUMS`, unpacks it there and fills the prefix in (a build without the network library opens the address in the browser instead); *Unpack...* does the same for an archive you downloaded yourself; *Find...* looks for `lib/cmake/UltraCanvas/UltraCanvasConfig.cmake` under a chosen folder. For the clone: the clone command and how the project finds the checkout. The step carries the error marker while the SDK is chosen and no prefix is set. | Where `find_package(UltraCanvas)` will look. |
 | **5 Project** | Application name and folder, the files previewed, *Create the project*, which writes `CMakeLists.txt`, `main.cpp`, `CMakePresets.json`, `README.md` and the chosen assistant's instruction file. Then what was written. The step carries the error marker while no project exists. | The application. |
 | **6 Build** | The proof that the installation works: the two commands a programmer runs (`cmake --preset default`, `cmake --build --preset default`) shown for the project folder, *Build the project* runs them (`engine/StartBuild`: cmake with `-S` and the preset, then the preset's `build/` directory; on Windows the MSYS2 bin directories on the child's PATH), cmake's output in a console, a badge that says *not built yet*, *building...*, *built* or *failed*; the step carries the error marker after a failed build. Under it the hand-over: the first prompt to give the assistant with *Copy the first prompt*, and *Copy the report*. | Whether the application compiles here. |
 
@@ -103012,7 +104666,7 @@ static library the GUI, the CLI modes and the tests share:
 | `StartPackages` | the dependency table with the package per manager (apt, dnf, pacman, zypper, Homebrew, MSYS2), `InstallStep`, `Msys2SetupSteps` (winget, first start, update), MSYS2 architecture prefixes |
 | `StartChecks` | `CheckTool`, `CheckPkgConfigModule`, `RunChecks` |
 | `StartPlan` | `BuildPlan`, `RenderReport`, `PlatformNotes`, `DisplayCommand` |
-| `StartSdk` | artifact names matching the CI workflow, the download page and the release page, `UnpackStep`, `SdkUnpackedFolder`, `FindSdkPrefix` |
+| `StartSdk` | artifact names matching the CI workflow, the archive's address on start.ultraos.eu and the release page, `DownloadSdk` (the archive, checked against `SHA256SUMS` with `ChecksumFor`), `UnpackStep`, `SdkUnpackedFolder`, `FindSdkPrefix` |
 | `StartProject` | the scaffold files and `ScaffoldProject`, `CloneStep` |
 | `StartAi` | `DetectAi` (claude, codex, copilot, gemini), `AssistantInstallInstructions`, `AssistantGuidanceNotes`, `FirstPrompt`, `CloudChecklist` |
 | `StartGuide` | the pages' prose as Markdown: `PlatformGuide` (one action per step, the SDK named and linked), `AiGuide`; `CheckDetail` and `InstallPreview` for the Tools step's rows and what Install will do; `PlainText` for the report, `Linkify` |
@@ -104973,10 +106627,29 @@ A title is one span on the title lane: drag it to its time, drag its edges
 for its length, split it with `S`, delete it with `Del`. Its text, style,
 place on the frame (the nine anchors), size, colour, shadow, band and
 fades are in the inspector. When the engine renders - in the viewer and in
-the export - the span becomes a text overlay on every clip it crosses,
+the export - the span becomes an overlay on every clip it crosses,
 with the fades only at the span's own ends, so a title runs across a cut
-without a seam. The project file keeps the spans and writes the overlays
-beside them for `videofx render`.
+without a seam.
+
+**Type a title on the frame**: double-click it in the viewer (or its span on
+the title lane) and the words lie over the picture where the title shows, at
+the viewer's scale, in its font and colour; the title leaves the frame
+meanwhile. The **text bar** over the viewer - the framework's
+`UltraCanvasTextFormatBar`, the one ArtCreator and UltraPaint show - sets the
+font (every installed font, each shown in itself), size (pixels of the
+project's frame), bold, italic, underline, strikethrough, alignment, line
+spacing and letter spacing: of the selected words, else of the whole title;
+with no title being typed, of the selected title as one undo step. Escape,
+Ctrl+Enter or a click outside puts the words in the video.
+
+A title is drawn by UltraCanvas's text engine - the editor that types it -
+as the engine's text renderer (`VideoFXUltraCanvasText`), into a picture laid
+over the frame, so the viewer, the export and the words being typed agree;
+the shadow and band are drawn into it, for the export's own height. The
+project file keeps the spans with their words, and the engine's project in
+it carries each title's formatting on its text overlay: `videofx render
+trip.ultravideo` draws the titles the same way, being built with
+UltraCanvas.
 
 ### Overlay video
 

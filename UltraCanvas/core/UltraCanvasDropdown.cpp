@@ -2,6 +2,7 @@
 // Interactive dropdown/combobox component with icon support and multi-selection
 // Uses ListView popup for rendering dropdown items
 // The history is in the header (include/UltraCanvasDropdown.h).
+// Version: 1.3.0 - DropdownItem::fontFamily, prepared in idle slices before the list opens
 // Version: 1.2.0 - SetPlaceholderText
 // Version: 1.1.0 - the button's text and the rows' are shaped once and kept
 // Version: 1.0.4 - type-ahead, the keyboard focus, Return chooses, DropdownItem::tooltip,
@@ -10,6 +11,7 @@
 // Last Modified: 2026-10-12 - DropdownStyle::FromTheme
 #include "UltraCanvasDropdown.h"
 #include <cctype>
+#include <chrono>
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasImage.h"
@@ -35,6 +37,7 @@ namespace UltraCanvas {
         if (role == DropdownEnabledRole)          return item.enabled ? 1 : 0;
         if (role == DropdownSeparatorRole)        return item.separator ? 1 : 0;
         if (role == DropdownSelectedRole)         return item.selected ? 1 : 0;
+        if (role == DropdownFontRole)             return item.fontFamily;
 
         return std::monostate{};
     }
@@ -109,18 +112,36 @@ namespace UltraCanvas {
         }
 
         // Render text
-        std::string text = GetStringValue(model->GetData({row, 0}, ListDataRole::DisplayRole));
-        if (!text.empty()) {
+        TextLayoutKey key;
+        if (RowKey(model, row, key)) {
             if (row >= static_cast<int>(rowLayouts.size())) rowLayouts.resize(static_cast<size_t>(row) + 1);
-            TextLayoutKey key;
-            key.text = text;
-            key.font.fontFamily = style->fontFamily;
-            key.font.fontSize = style->fontSize;
             if (ITextLayout* layout = rowLayouts[static_cast<size_t>(row)].Get(ctx, key)) {
                 int textY = option.rect.y + (option.rect.height - static_cast<int>(layout->GetLayoutHeight())) / 2;
                 ctx->DrawTextLayout(*layout, Point2Di(currentX, textY));
             }
         }
+    }
+
+    bool DropdownItemDelegate::RowKey(const IListModel* model, int row, TextLayoutKey& key) const {
+        if (!style || !model) return false;
+        key.text = GetStringValue(model->GetData({row, 0}, ListDataRole::DisplayRole));
+        if (key.text.empty()) return false;
+        // A row with a font of its own (a font list) is drawn in it.
+        const std::string family = GetStringValue(model->GetData({row, 0}, DropdownFontRole));
+        key.font.fontFamily = family.empty() ? style->fontFamily : family;
+        key.font.fontSize = style->fontSize;
+        return true;
+    }
+
+    bool DropdownItemDelegate::PrepareRow(IRenderContext* ctx, const IListModel* model, int row) {
+        TextLayoutKey key;
+        if (!ctx || !RowKey(model, row, key)) return false;
+        if (row >= static_cast<int>(rowLayouts.size())) rowLayouts.resize(static_cast<size_t>(row) + 1);
+        bool rebuilt = false;
+        ITextLayout* layout = rowLayouts[static_cast<size_t>(row)].Get(ctx, key, &rebuilt);
+        // Measuring shapes the text: the font is loaded and the glyphs found now.
+        if (layout && rebuilt) (void)layout->GetLayoutHeight();
+        return layout != nullptr;
     }
 
     int DropdownItemDelegate::GetRowHeight(const IListModel* model, int row) const {
@@ -179,6 +200,70 @@ namespace UltraCanvas {
         WireListViewCallbacks();
     }
 
+    UltraCanvasDropdown::~UltraCanvasDropdown() {
+        StopPreviewTimer();
+    }
+
+    // ===== FONT PREVIEWS =====
+    // A row in a font of its own costs the font's loading the first time it
+    // is shaped - a few milliseconds a font, so a list of a computer's
+    // hundreds of fonts would stall for a second or more when it opens, and
+    // stutter as it scrolls. The rows are prepared instead in small slices on
+    // the UI thread's timer once the dropdown is drawn: first the rows the
+    // list opens on (around the selected item), then the rest. A row not
+    // prepared yet when it is shown is prepared as it is drawn.
+
+    void UltraCanvasDropdown::StopPreviewTimer() {
+        if (!previewTimer) return;
+        if (auto* app = UltraCanvasApplication::GetInstance()) app->StopTimer(previewTimer);
+        previewTimer = 0;
+    }
+
+    void UltraCanvasDropdown::QueuePreviews() {
+        previewsDirty = false;
+        previewQueue.clear();
+        previewNext = 0;
+        const int count = static_cast<int>(items.size());
+        bool anyFont = false;
+        for (const auto& item : items) anyFont = anyFont || !item.fontFamily.empty();
+        if (!anyFont) { StopPreviewTimer(); return; }
+        // The rows the list opens on first: around the selected item, as far
+        // as the list shows.
+        std::vector<bool> queued(static_cast<size_t>(count), false);
+        const int centre = std::clamp(selectedIndex, 0, std::max(0, count - 1));
+        const int reach = std::max(1, style.maxVisibleItems);
+        for (int row = std::max(0, centre - reach); row < std::min(count, centre + reach + 1); ++row) {
+            previewQueue.push_back(row);
+            queued[static_cast<size_t>(row)] = true;
+        }
+        for (int row = 0; row < count; ++row)
+            if (!queued[static_cast<size_t>(row)]) previewQueue.push_back(row);
+
+        auto* app = UltraCanvasApplication::GetInstance();
+        if (!app) return;
+        StopPreviewTimer();
+        std::weak_ptr<UltraCanvasUIElement> self = weak_from_this();
+        // Every 15 ms a slice of about 6 ms: the UI stays responsive meanwhile.
+        previewTimer = app->StartTimer(15, true, [self](TimerId) {
+            auto element = self.lock();
+            if (!element) return;
+            static_cast<UltraCanvasDropdown*>(element.get())->PrepareNextPreviews();
+        });
+    }
+
+    void UltraCanvasDropdown::PrepareNextPreviews() {
+        IRenderContext* ctx = GetRenderContext();
+        if (!ctx || !dropdownDelegate) return;   // not on a window yet: the next tick
+        const auto start = std::chrono::steady_clock::now();
+        while (previewNext < previewQueue.size()) {
+            const int row = previewQueue[previewNext++];
+            if (row < static_cast<int>(items.size()) && !items[static_cast<size_t>(row)].fontFamily.empty())
+                dropdownDelegate->PrepareRow(ctx, dropdownModel.get(), row);
+            if (std::chrono::steady_clock::now() - start > std::chrono::milliseconds(6)) return;
+        }
+        StopPreviewTimer();
+    }
+
     // ===== ITEM MANAGEMENT =====
 
     void UltraCanvasDropdown::AddItem(const std::string &text) {
@@ -198,6 +283,7 @@ namespace UltraCanvas {
 
     void UltraCanvasDropdown::AddItem(const DropdownItem &item) {
         items.push_back(item);
+        if (!item.fontFamily.empty()) previewsDirty = true;
         dropdownModel->DataChanged();
     }
 
@@ -662,6 +748,8 @@ namespace UltraCanvas {
     // ===== RENDERING =====
 
     void UltraCanvasDropdown::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
+        // On screen now: its font previews are prepared from here on.
+        if (previewsDirty) QueuePreviews();
         RenderButton(ctx);
     }
 

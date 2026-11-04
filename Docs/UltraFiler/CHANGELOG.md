@@ -1,3 +1,50 @@
+#### 2026-11-04 *1.107.0*
+- **UltraFiler speaks the chosen language.** Its own texts - the toolbar's
+  tooltips and drop-downs, the menus, the dialogs (Find text, New RAM disc,
+  Run Windows program, the connection log, the properties), the status
+  line's messages and the whole settings window - go through `Tr`, so they
+  follow the language set in UOS-Settings; `media/locale/en/UltraFiler.json`
+  is its set, over the *Computer* base set and the standard set. The
+  settings window's start page gains **Translate UltraFiler...**, which
+  opens the localisation editor on UltraFiler's own set in the language it
+  runs in. Texts built from pieces in the deeper code paths (the remote
+  drives' and the RAM discs' error reports) stay English until their pass.
+#### 2026-11-04 *1.106.0*
+- **The preview pane shows a loading ring while a file opens.** Selecting a
+  file showed the previous one until the new one had been read and decoded -
+  for a large picture, PDF or video long enough to look like the wrong file
+  was selected, with the window not answering meanwhile. The pane now shows
+  a turning ring and the file's name at once and reads the file after that
+  frame (the viewer's `OpenFileWhenShown`); selections made while one loads
+  replace it instead of queuing behind it, so holding an arrow key through a
+  folder decodes only the file it stops on. The pane is compared with the
+  file on its way (`PreviewPanePath`), so a refresh during the load does not
+  start it over.
+
+#### 2026-11-03 *1.105.0*
+- **A file opened in its own viewer window shows a loading ring and its name
+  until it is open**, not *No media*, and the window title follows the file
+  as the arrow keys browse the folder (it was fixed to the first file). See
+  the framework changelog (`OpenFileWhenShown`, `onCurrentFileChanged`).
+
+#### 2026-11-02 *1.104.0*
+- **Windows: "Linux" and "Network" in the folder tree.** Two sections after
+  Computer, where Explorer has them. *Linux* lists the WSL distributions
+  (`\\wsl$\Ubuntu`), each opened like a drive - and not touched before it is
+  opened, since touching one starts it. *Network* lists the computers of the
+  workgroup or domain and the servers of your connections; opening one lists
+  its shared folders under its row and in the folder display, read off the UI
+  thread. Typing `\\NAS` into the path bar opens that computer too, and it is
+  kept in the section, so a NAS the network list does not show stays one
+  click away. Rests on the framework's new `UltraCanvasNetworkPlaces` - see
+  the UltraCanvas changelog.
+- **Windows: the Network section finds the computers Explorer finds.** It
+  showed only the computers of the old network browser list, which a current
+  network (SMB 1 off) leaves short or empty; it now also lists the computers
+  that announce themselves through WS-Discovery - other Windows PCs, NAS
+  boxes running wsdd - as Explorer does. A computer on another subnet is still
+  opened by typing `\\NAS` into the path bar and kept in the section.
+
 #### 2026-11-01 *1.103.0*
 - **The settings window is built on the framework's settings page kit**
   (`UltraCanvasSettingsPageKit`, framework changelog `settings-page-kit`):

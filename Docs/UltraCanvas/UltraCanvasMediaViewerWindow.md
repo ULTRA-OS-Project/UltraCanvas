@@ -41,11 +41,16 @@ class MyWindow {
 };
 
 void MyWindow::OnFileActivated(const std::string& path) {
-    MediaViewerWindowOptions options;
-    options.title = std::filesystem::path(path).filename().string();
-    mediaWindow.Show(path, window.get(), options);
+    // No title: the window is called after the file on show, and follows it.
+    mediaWindow.Show(path, window.get());
 }
 ```
+
+The window appears at once. Until the file is open it shows a turning ring
+where the file will be and the file's name in the info bar and the title -
+never *No media* - and the file is opened once a frame of that has been
+drawn (`UltraCanvasMediaViewer::OpenFileWhenShown`). Reading a large folder
+and decoding a large picture no longer hold the window back.
 
 | Call | What it does |
 | --- | --- |
@@ -58,7 +63,7 @@ void MyWindow::OnFileActivated(const std::string& path) {
 
 | Field | Default | Meaning |
 | --- | --- | --- |
-| `title` | empty | Window title; empty means the file's own name. |
+| `title` | empty | Window title; empty means the name of the file on show, following the arrow keys. |
 | `browseFolder` | `true` | Open the rest of the folder as a playlist, so the next file is one key away. `false` shows the one file alone. |
 | `width` / `height` | 1040 × 720 | Size used when there is no `host`. |
 | `background` | dark | The window's background. |

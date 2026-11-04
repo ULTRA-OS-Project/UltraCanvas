@@ -75,6 +75,16 @@ if(TARGET UltraCanvas)
                          WORKING_DIRECTORY ${_DST_BIN_DIR})
                 set_tests_properties(DesktopShellTrayTest PROPERTIES TIMEOUT 120)
                 message(STATUS "    Test registered: DesktopShellTrayTest")
+                # The Wayland backend's screenshots and global shortcuts go
+                # through the freedesktop portals: driven against a fake
+                # portal the test exports itself, under a bus of its own.
+                if(ULTRACANVAS_WAYLAND)
+                    add_test(NAME DesktopShellPortalTest
+                             COMMAND ${_DST_DBUS_RUN_SESSION} -- $<TARGET_FILE:DesktopShellTest> --portals
+                             WORKING_DIRECTORY ${_DST_BIN_DIR})
+                    set_tests_properties(DesktopShellPortalTest PROPERTIES TIMEOUT 120)
+                    message(STATUS "    Test registered: DesktopShellPortalTest")
+                endif()
             else()
                 message(STATUS "    DesktopShellTrayTest skipped (no dbus-run-session)")
             endif()

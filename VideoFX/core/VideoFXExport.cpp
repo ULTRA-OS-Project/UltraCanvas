@@ -12,6 +12,7 @@
 // streams ended. A stream that ran short is padded before the next segment -
 // video by holding its last frame, audio with silence - so picture and sound
 // stay in sync across any number of joins.
+// Version: 0.18.0 - VideoFX_Export and VideoFXPreview::Open draw the text overlays the host renders first
 // Version: 0.16.2 - the face cache keyed by the file's size and write time too: a clip re-exported under the same name is looked at afresh
 // Version: 0.16.1 - a clip's faces from three frames of its range, the union kept;
 //                  a photo scaled to RGBA no longer overruns its buffer (kSwsSlack)
@@ -3449,7 +3450,10 @@ VideoFXPreview::~VideoFXPreview() = default;
 
 VideoFXResult VideoFXPreview::Open(const std::vector<VideoFXSegment>& segments, const VideoFXExportSettings& settings) {
     impl->exporter = std::make_unique<Exporter>(std::string(), settings, VideoFXProgressCallback{});
-    const VideoFXResult r = impl->exporter->OpenPreview(segments);
+    // Text overlays the host's renderer draws: pictures, drawn here
+    std::vector<VideoFXSegment> drawn = segments;
+    VideoFX_DrawTextOverlays(drawn, settings.height);
+    const VideoFXResult r = impl->exporter->OpenPreview(drawn);
     if (r != VideoFXResult::Ok) impl->exporter.reset();
     return r;
 }
@@ -3497,7 +3501,11 @@ VideoFXResult VideoFX_PlanSlideshow(const std::vector<std::string>& imagePaths, 
 VideoFXResult VideoFX_Export(const std::vector<VideoFXSegment>& segments, const std::string& outputPath,
                              const VideoFXExportSettings& settings, const VideoFXProgressCallback& progress) {
     Exporter exporter(outputPath, settings, progress);
-    return exporter.Run(segments);
+    // Text overlays the host's renderer draws: pictures, drawn here (a job
+    // drew them before its thread started; what is left is the backend's)
+    std::vector<VideoFXSegment> drawn = segments;
+    VideoFX_DrawTextOverlays(drawn, settings.height);
+    return exporter.Run(drawn);
 }
 
 VideoFXResult VideoFX_Transcode(const std::string& inputPath, const std::string& outputPath,

@@ -18,6 +18,7 @@
 // UltraCanvasDropdown, UltraCanvasButton and UltraCanvasColorPicker, and drive
 // them from GetFormatState() plus the formatting methods below.
 //
+// Version: 1.7.0 - RichTextEditStyle::letterSpacing: the whole text tracked wider or tighter
 // Version: 1.6.0 - spell marks move with an edit instead of vanishing below the caret;
 //                 onSpellLanguageSuggested
 // Version: 1.5.0 - SetHighlightColor: the background behind the selected text
@@ -100,6 +101,10 @@ struct RichTextEditStyle {
     float blockSpacing = 6.0f;        // between blocks that state no spacing of their own
     float defaultTabStop = 36.0f;     // tab interval when the document states none
     float paragraphLeading = 0.0f;    // extra leading inside a paragraph
+    // Extra room between every two letters, in pixels at 100% (CSS
+    // letter-spacing, a drawing's tracking): the whole text, on top of what
+    // its runs set. 0, the default, is the font's own spacing.
+    float letterSpacing = 0.0f;
     float scrollbarWidth = 15.0f;
     float pageGap = 16.0f;            // page view: desk between and around pages
     bool drawBorder = true;

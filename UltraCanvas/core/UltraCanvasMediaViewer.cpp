@@ -1,6 +1,11 @@
 // core/UltraCanvasMediaViewer.cpp
 // Implementation of the comprehensive media / photo / document viewer widget.
 // See UltraCanvasMediaViewer.h for the feature overview.
+// Version: 1.22.0 - OpenFileWhenShown and its kin: a turning ring and the file's name
+//                   while a file is on its way, opened after a frame of that is drawn;
+//                   "No media" only when nothing was asked for; onCurrentFileChanged
+// Version: 1.21.0 - the Details panel is a group box (the title as its caption, a close
+//                   button), its text a size smaller, and a GIF's colour table under it
 // Version: 1.20.1 - an opened attachment is kept in the per-user cache (opened-attachments),
 //                   not the shared temporary folder, and its folder is swept a day later
 //                   (DiskCache::SweepFolders, once a process)
@@ -43,7 +48,7 @@
 // Version: 1.9.1 - *.ucd: header and thumbnail through the UCD container engine; the
 //                  encryption line names the key source the spec defines
 // Version: 1.9.0
-// Last Modified: 2026-10-19
+// Last Modified: 2026-11-03
 // V1.9.0: Save image as offers FileLoader's types - every bitmap type this
 //   build writes - instead of six of its own; and another size in a bitmap
 //   type's Settings - the
@@ -82,6 +87,8 @@
 #include "UltraCanvasSlider.h"
 #include "../dialogs/UltraCanvasCurvesDialog.h"  // Curves (tone curve) editing window
 #include "UltraCanvasColorSwatchBar.h"  // backdrop palette under transparent images
+#include "UltraCanvasBusyIndicator.h"   // the ring while a file is on its way
+#include "UltraCanvasGroupBox.h"        // the Details panel's frame, caption and close button
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasConfig.h"     // GetResourcesDir, for the toolbar icons
 #include "UltraCanvasFileLoader.h"   // FileDialogOptions, DialogResult, FileFilter
@@ -128,6 +135,7 @@
 // Always: file classification asks the codec registry what this build can
 // play, and with neither backend compiled in it correctly answers "nothing".
 #include "UltraCanvasMediaCodecRegistry.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <algorithm>
 #include <cctype>
@@ -1360,7 +1368,8 @@ void UltraCanvasMediaSurface::DrawCurrent(IRenderContext* ctx, const Rect2Df& b)
     if (!image || !image->IsValid()) {
         // A picture whose pixels would not decode says so; the reason is in
         // the info bar and the Details panel.
-        const char* text = HasDecodeFailure() ? "Cannot decode this picture" : "No media";
+        const std::string text = HasDecodeFailure() ? std::string("Cannot decode this picture") : emptyText;
+        if (text.empty()) return;
         ctx->SetFontSize(16);
         ctx->SetTextPaint(Color(130, 130, 140, 255));
         Point2Dd p = ctx->CalculateCenteredTextPosition(
@@ -1840,7 +1849,7 @@ void UltraCanvasMediaViewer::BuildUI(float w, float h) {
                     double sec = std::atof(s.c_str());
                     if (sec > 0) SetSlideshowIntervalSeconds(sec);
                 });
-        dd->SetTooltip("Slideshow interval");
+        dd->SetTooltip(Tr("Slideshow interval"));
         dd->SetSelectedIndex(1, false);      // 5 s, the default
     }
     {
@@ -1856,7 +1865,7 @@ void UltraCanvasMediaViewer::BuildUI(float w, float h) {
                     else if (s == "Zoom")        t = MediaTransition::ZoomFade;
                     SetTransition(t);
                 });
-        dd->SetTooltip("Slideshow transition");
+        dd->SetTooltip(Tr("Slideshow transition"));
         dd->SetSelectedIndex(1, false);      // Cross fade, the default
     }
     toolbar->AddSeparator("mv_sep2");
@@ -1869,7 +1878,7 @@ void UltraCanvasMediaViewer::BuildUI(float w, float h) {
             [this](const std::string& s) {
                 if (s == "Fit") ZoomFitAction();
                 else            ZoomPercentAction(std::atof(s.c_str()));
-            })->SetTooltip("Zoom level");
+            })->SetTooltip(Tr("Zoom level"));
     IconOnly(toolbar->AddButton("mv_zoomin", "", ViewerIconPath("zoom-in.svg"),
                                  [this] { ZoomInAction(); }),
              "Zoom in (+)");
@@ -1960,6 +1969,7 @@ void UltraCanvasMediaViewer::BuildUI(float w, float h) {
 
     // ----- CENTRAL IMAGE SURFACE -----
     surface = std::make_shared<UltraCanvasMediaSurface>("MV_Surface");
+    surface->SetEmptyText(Tr("No media"));
     surface->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                        .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     surface->onNavigate = [this](int d) { if (d < 0) Previous(); else Next(); };
@@ -2259,7 +2269,7 @@ void UltraCanvasMediaViewer::BuildUI(float w, float h) {
     bottomBar->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
                          .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
-    infoLabel = std::make_shared<UltraCanvasLabel>("MV_InfoLabel", 0, 0, 0, 20, "No media");
+    infoLabel = std::make_shared<UltraCanvasLabel>("MV_InfoLabel", 0, 0, 0, 20, Tr("No media"));
     infoLabel->SetFontSize(11);
     infoLabel->SetTextColor(Color(200, 200, 206, 255));
     infoLabel->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
@@ -2268,13 +2278,13 @@ void UltraCanvasMediaViewer::BuildUI(float w, float h) {
     // Up only while the shown file is password-protected and not unlocked:
     // in the info bar, so a host that hides the top bars (a preview pane)
     // still offers it.
-    unlockButton = std::make_shared<UltraCanvasButton>("MV_Unlock", 0, 0, 78, 20, "Unlock");
+    unlockButton = std::make_shared<UltraCanvasButton>("MV_Unlock", 0, 0, 78, 20, Tr("Unlock"));
     unlockButton->SetIcon(ViewerIconPath("unlock.svg"));
     unlockButton->SetIconSize(14, 14);
     unlockButton->SetIconPosition(ButtonIconPosition::Left);
     unlockButton->SetUseIconAsMask(true);
     unlockButton->SetFontSize(11);
-    unlockButton->SetTooltip("Unlock: show this password-protected file (Enter)");
+    unlockButton->SetTooltip(Tr("Unlock: show this password-protected file (Enter)"));
     unlockButton->onClick = [this] { Unlock(); };
     unlockButton->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     unlockButton->SetVisible(false);
@@ -2286,7 +2296,7 @@ void UltraCanvasMediaViewer::BuildUI(float w, float h) {
     detailsBtn->SetIconPosition(ButtonIconPosition::Center);
     detailsBtn->SetIconSpacing(0);
     detailsBtn->SetUseIconAsMask(true);
-    detailsBtn->SetTooltip("Details");
+    detailsBtn->SetTooltip(Tr("Details"));
     detailsBtn->onClick = [this] { ToggleDetails(); };
     detailsBtn->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     bottomBar->AddChild(detailsBtn);
@@ -2298,7 +2308,7 @@ void UltraCanvasMediaViewer::BuildUI(float w, float h) {
     settingsButton->SetIconPosition(ButtonIconPosition::Center);
     settingsButton->SetIconSpacing(0);
     settingsButton->SetUseIconAsMask(true);
-    settingsButton->SetTooltip("Settings");
+    settingsButton->SetTooltip(Tr("Settings"));
     settingsButton->onClick = [this] { if (settingsAction) settingsAction(); };
     settingsButton->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     settingsButton->SetVisible(false);
@@ -2306,26 +2316,133 @@ void UltraCanvasMediaViewer::BuildUI(float w, float h) {
     AddChild(bottomBar);
 
     // ----- DETAILS PANEL (over the display area) -----
-    // Out of the flex flow (absolute) and above every view; Arrange() fits it
-    // over whichever view is active. Display-only like the text view, so it
-    // never takes the keyboard from the browsing keys; the wheel scrolls it and
-    // HandleViewerKey() gives it Up / Down / PageUp / PageDown while open.
+    // A group box out of the flex flow (absolute) and above every view;
+    // Arrange() fits it over whichever view is active. Its caption is the
+    // title of what is shown ("Image information"), its close button hides
+    // it. Inside: the facts as Markdown in a text area, display-only like the
+    // text view so it never takes the keyboard from the browsing keys (the
+    // wheel scrolls it and HandleViewerKey() gives it Up / Down / PageUp /
+    // PageDown while open), and under it a GIF's palette.
     {
-        auto dv = std::make_shared<UltraCanvasTextArea>("MV_Details_Panel", 0, 0, 0, 0);
-        dv->layoutItem.SetPositionType(CSSLayout::PositionType::Absolute);
-        dv->SetZIndex(OverlayZOrder::Overlays);
+        const Color panelBg(22, 22, 28, 255);
+        auto panel = std::make_shared<UltraCanvasGroupBox>("MV_Details_Panel", 0, 0, 0, 0, "");
+        panel->layoutItem.SetPositionType(CSSLayout::PositionType::Absolute);
+        panel->SetZIndex(OverlayZOrder::Overlays);
+        panel->SetFrameStyle(GroupBoxFrameStyle::Header);
+        GroupBoxVisualStyle look = GroupBoxVisualStyle::Default();
+        look.backgroundColor       = panelBg;
+        look.headerBackgroundColor = Color(34, 34, 42, 255);
+        look.borderColor           = Color(255, 255, 255, 50);
+        look.cornerRadius          = 8.0f;
+        look.titleFont.fontSize    = 12.0f;
+        look.titleFont.fontWeight  = FontWeight::Bold;
+        look.titleColor            = Color(232, 232, 238, 255);
+        look.titleVerticalPadding  = 5.0f;
+        look.contentPadding        = 4.0f;
+        look.closeIconColor            = Color(170, 170, 182, 255);
+        look.closeIconHoverColor       = Color(255, 255, 255, 255);
+        look.closeHoverBackgroundColor = Color(255, 255, 255, 36);
+        panel->SetVisualStyle(look);
+        panel->SetCloseButton(true);
+        panel->SetCloseButtonTooltip(Tr("Close (Esc)"));
+        panel->onCloseClicked = [this] { SetDetailsVisible(false); };
+        panel->layout.SetFlexColumn().SetFlexGap(4);
+        panel->SetVisible(false);
+
+        auto dv = std::make_shared<UltraCanvasTextArea>("MV_Details_Text", 0, 0, 0, 0);
+        dv->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
+                      .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
         dv->ApplyDarkTheme();
-        dv->SetBackgroundColor(Color(22, 22, 28, 255));
-        dv->SetBorders(1.0f, Color(255, 255, 255, 50), 8.0f);
-        dv->SetFontSize(12);
+        dv->SetBackgroundColor(panelBg);
+        dv->SetBorders(0.0f, Colors::Transparent);
+        dv->SetFontSize(11);
         dv->SetWordWrap(true);
         dv->SetShowLineNumbers(false);
         dv->SetHighlightSyntax(false);
         dv->SetEditingMode(TextAreaEditingMode::MarkdownHybrid);
         dv->SetDisplayOnly(true);
-        dv->SetVisible(false);
-        detailsView = dv;
+        {
+            // The section headings ("Metadata", "EXIF") a step above the text,
+            // not the document-sized ones a Markdown page has.
+            MarkdownHybridStyle md = dv->GetMarkdownStyle();
+            md.headerSizeMultipliers = {1.35f, 1.2f, 1.1f, 1.05f, 1.0f, 1.0f};
+            md.tableHeaderBackground = Color(44, 44, 54, 255);
+            md.tableBorderColor      = Color(78, 78, 90, 255);
+            dv->SetMarkdownStyle(md);
+        }
+        detailsText = dv;
+        panel->AddChild(detailsText);
+        // The caption and the swatches line up with the tables' text: the text
+        // area's padding plus a table cell's.
+        const float textInset = dv->GetStyle().textPadding + dv->GetMarkdownStyle().tableCellPadding;
+
+        auto caption = std::make_shared<UltraCanvasLabel>("MV_Details_PaletteCaption", 0, 0, 0, 18, "");
+        caption->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
+                           .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        caption->SetFontSize(11);
+        caption->SetFontWeight(FontWeight::Bold);
+        caption->SetTextColor(Color(220, 220, 228, 255));
+        caption->SetMargin(0, textInset, 0, textInset);
+        caption->SetVisible(false);
+        detailsPaletteCaption = caption;
+        panel->AddChild(detailsPaletteCaption);
+
+        auto swatches = std::make_shared<UltraCanvasColorSwatchBar>("MV_Details_Palette", 0, 0, 0, 10);
+        swatches->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        swatches->SetWrap(true);
+        ColorSwatchBarStyle sw = swatches->GetStyle();
+        sw.swatchSize    = 14.0f;
+        sw.minSwatchSize = 10.0f;
+        sw.spacing       = 2.0f;
+        sw.padding       = 2.0f;
+        sw.cornerRadius  = 1.0f;
+        sw.border        = Color(255, 255, 255, 40);
+        swatches->SetStyle(sw);
+        swatches->SetMargin(0, textInset - sw.padding, 0, textInset - sw.padding);
+        // The entry under the pointer (or the one clicked) is named in the
+        // caption: its index and its value.
+        auto describe = [this](int index) {
+            auto* cap = static_cast<UltraCanvasLabel*>(detailsPaletteCaption.get());
+            auto* bar = static_cast<UltraCanvasColorSwatchBar*>(detailsPalette.get());
+            if (!cap || !bar) return;
+            if (index < 0 || index >= bar->GetColorCount()) {
+                cap->SetText(detailsPaletteText);
+                return;
+            }
+            const Color& c = bar->GetColors()[static_cast<size_t>(index)];
+            char buf[96];
+            snprintf(buf, sizeof(buf), "#%02X%02X%02X", c.r, c.g, c.b);
+            cap->SetText(TrF("Entry {0}:  {1}   (R {2}, G {3}, B {4})", index, std::string(buf),
+                             int(c.r), int(c.g), int(c.b)));
+        };
+        swatches->onColorHovered = describe;
+        swatches->onColorSelected = [this, describe](const Color&) {
+            auto* bar = static_cast<UltraCanvasColorSwatchBar*>(detailsPalette.get());
+            if (bar) describe(bar->GetSelectedIndex());
+        };
+        swatches->SetVisible(false);
+        detailsPalette = swatches;
+        panel->AddChild(detailsPalette);
+
+        detailsView = panel;
         AddChild(detailsView);
+    }
+
+    // ----- LOADING RING (OpenFileWhenShown) -----
+    // Over the middle of the display while a file is on its way; Arrange()
+    // centres it.
+    {
+        auto ring = CreateBusyIndicator("MV_Loading", 0, 0, 44, 44, BusyIndicatorKind::Ring);
+        BusyIndicatorStyle ringStyle = ring->GetStyle();
+        ringStyle.arcColor   = Color(200, 200, 212, 255);
+        ringStyle.trackColor = Color(255, 255, 255, 28);
+        ring->SetStyle(ringStyle);
+        ring->SetAccessibleName("Loading");
+        ring->layoutItem.SetPositionType(CSSLayout::PositionType::Absolute);
+        ring->SetZIndex(OverlayZOrder::Controls);
+        ring->SetVisible(false);
+        loadingIndicator = ring;
+        AddChild(loadingIndicator);
     }
 
     // Nothing is on show yet, so no view / edit tool applies until a file loads.
@@ -2720,7 +2837,12 @@ void UltraCanvasMediaViewer::SetFiles(const std::vector<std::string>& files, siz
             out.push_back(f);
         }
     }
-    if (out.empty()) return;
+    if (out.empty()) {
+        // Nothing here to show: a loading ring for it would turn forever.
+        EndLoading();
+        if (playlist.empty()) ReportCurrentFile(std::string());
+        return;
+    }
     KeepPasswordsOnlyFor(PathToUtf8(UltraCanvas::PathFromUtf8(out.front()).parent_path()));
     playlist = std::move(out);
     currentIndex = std::min(startIndex, playlist.size() - 1);
@@ -2732,6 +2854,115 @@ void UltraCanvasMediaViewer::SetFiles(const std::vector<std::string>& files, siz
     UpdateBreadcrumb();
     LoadCurrent(false);
     if (slideshowPlaying) { PauseSlideshow(); PlaySlideshow(); }
+}
+
+// ===== OPENING ONCE THE WINDOW SHOWS =====
+
+void UltraCanvasMediaViewer::OpenFileWhenShown(const std::string& filePath) {
+    BeginLoading(filePath, [this, filePath] { OpenFile(filePath); });
+}
+
+void UltraCanvasMediaViewer::OpenFolderWhenShown(const std::string& folderPath,
+                                                 const std::string& selectFile) {
+    BeginLoading(selectFile.empty() ? folderPath : selectFile,
+                 [this, folderPath, selectFile] { OpenFolder(folderPath, selectFile); });
+}
+
+void UltraCanvasMediaViewer::SetFilesWhenShown(const std::vector<std::string>& files,
+                                               size_t startIndex) {
+    if (files.empty()) return;
+    const std::string& shown = files[std::min(startIndex, files.size() - 1)];
+    BeginLoading(shown, [this, files, startIndex] { SetFiles(files, startIndex); });
+}
+
+void UltraCanvasMediaViewer::BeginLoading(const std::string& path, std::function<void()> open) {
+    auto* app = UltraCanvasApplication::GetInstance();
+    if (!app) {
+        // No application, so no event loop to come back from (a test, a
+        // tool): open now. One that is not running yet - a window set up
+        // before Run() - opens on its first turn.
+        EndLoading();
+        open();
+        return;
+    }
+    // Nothing of the previous file stays on show under the ring.
+    StopPlayback();
+    ReleaseViewBackends();
+    playlist.clear();
+    currentIndex = 0;
+    ShowView(MediaKind::Image);
+    loadingPath = path;
+    pendingOpen = std::move(open);
+    pendingOpenScheduled = false;
+    const unsigned generation = ++openGeneration;
+    if (surface) surface->SetEmptyText("");
+    if (loadingIndicator) {
+        loadingIndicator->SetVisible(true);
+        static_cast<UltraCanvasBusyIndicator*>(loadingIndicator.get())->Start();
+    }
+    UpdateToolAvailability();
+    UpdateTransparencyPalette();
+    UpdateInfoBar();
+    if (IsDetailsVisible()) UpdateDetailedInfo();
+    ReportCurrentFile(path);
+    InvalidateLayout();
+    RequestRedraw();
+    // Render() opens it after the first frame; this is for a viewer that is
+    // not drawn (hidden, or its window not up yet), which still gets its file.
+    std::weak_ptr<UltraCanvasUIElement> self = weak_from_this();
+    app->StartTimer(400, false, [self, this, generation](TimerId) {
+        if (self.expired()) return;
+        RunPendingOpen(generation);
+    });
+}
+
+void UltraCanvasMediaViewer::SchedulePendingOpen(unsigned delayMs) {
+    if (!pendingOpen || pendingOpenScheduled) return;
+    auto* app = UltraCanvasApplication::GetInstance();
+    if (!app) return;
+    pendingOpenScheduled = true;
+    const unsigned generation = openGeneration;
+    std::weak_ptr<UltraCanvasUIElement> self = weak_from_this();
+    app->StartTimer(delayMs, false, [self, this, generation](TimerId) {
+        if (self.expired()) return;
+        RunPendingOpen(generation);
+    });
+}
+
+void UltraCanvasMediaViewer::RunPendingOpen(unsigned generation) {
+    // Replaced or already opened meanwhile.
+    if (generation != openGeneration || !pendingOpen) return;
+    auto open = std::move(pendingOpen);
+    pendingOpen = nullptr;
+    open();          // its LoadCurrent ends the loading state
+    EndLoading();    // ... and so does a list with nothing in it to show
+}
+
+void UltraCanvasMediaViewer::EndLoading() {
+    pendingOpen = nullptr;
+    pendingOpenScheduled = false;
+    if (loadingPath.empty()) return;
+    loadingPath.clear();
+    if (surface) surface->SetEmptyText(Tr("No media"));
+    if (loadingIndicator) {
+        static_cast<UltraCanvasBusyIndicator*>(loadingIndicator.get())->Stop();
+        loadingIndicator->SetVisible(false);
+    }
+    UpdateInfoBar();
+    RequestRedraw();
+}
+
+void UltraCanvasMediaViewer::ReportCurrentFile(const std::string& path) {
+    if (path == lastReportedFile) return;
+    lastReportedFile = path;
+    if (onCurrentFileChanged) onCurrentFileChanged(path);
+}
+
+void UltraCanvasMediaViewer::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
+    UltraCanvasContainer::Render(ctx, dirtyRect);
+    // A frame of the loading state is on screen: now the file can be opened
+    // (on the next turn of the event loop, not inside the paint).
+    if (pendingOpen && !pendingOpenScheduled) SchedulePendingOpen(0);
 }
 
 void UltraCanvasMediaViewer::OpenFile(const std::string& filePath) {
@@ -2854,7 +3085,7 @@ void UltraCanvasMediaViewer::ShowOpenDialog() {
     }
 
     FileDialogOptions opts;
-    opts.SetTitle("Open media").SetFilterToggles(true);
+    opts.SetTitle(Tr("Open media")).SetFilterToggles(true);
     // A kind this build cannot show at all (no video backend) gets no button.
     for (int g = 0; g < GroupCount; ++g) {
         if (!groups[g].empty()) opts.AddFilter(groupNames[g], groups[g]);
@@ -2875,7 +3106,7 @@ void UltraCanvasMediaViewer::ShowSaveDialog() {
     if (!tools.save || !surface || !surface->GetImage() || !surface->GetImage()->IsValid()) return;
 
     FileDialogOptions opts;
-    opts.SetTitle("Save image as")
+    opts.SetTitle(Tr("Save image as"))
         .SetDefaultFileName(SaveNameFor(GetCurrentPath()))
         .SetParentWindow(GetWindow());
     UltraCanvasFileLoader::AddImageSaveTypes(opts);
@@ -2904,7 +3135,7 @@ void UltraCanvasMediaViewer::ShowSaveDialog() {
                     if (infoLabel) infoLabel->SetText("Save failed: " + err);
                     UltraCanvasDialogManager::ShowError(
                             "Could not save \"" + BaseName(path) + "\".\n" + err,
-                            "Save image", nullptr, GetWindow());
+                            Tr("Save image"), nullptr, GetWindow());
                 };
                 // The dialog asked before replacing `chosen`; a name given its
                 // extension here is another file, so that one is asked about.
@@ -2914,7 +3145,7 @@ void UltraCanvasMediaViewer::ShowSaveDialog() {
                     UltraCanvasDialogManager::ShowConfirmation(
                             "\"" + BaseName(path) + "\" already exists.\n"
                             "Do you want to replace it?",
-                            "Replace File",
+                            Tr("Replace File"),
                             [save, path](bool replace) { if (replace) save(path); },
                             GetWindow());
                     return;
@@ -3095,6 +3326,8 @@ void UltraCanvasMediaViewer::UpdateBreadcrumb() {
 
 void UltraCanvasMediaViewer::LoadCurrent(bool animated) {
     if (!surface) return;
+    // Whatever was on its way is here now - or was replaced by this.
+    EndLoading();
 
     // Stop any media that was playing before we switch away from it.
     StopVideoClipTimer();
@@ -3116,6 +3349,7 @@ void UltraCanvasMediaViewer::LoadCurrent(bool animated) {
         UpdateInfoBar();
         if (IsDetailsVisible()) UpdateDetailedInfo();
         UpdateAbsenceWatch();          // kept passwords may still be held
+        ReportCurrentFile(std::string());
         return;
     }
     if (currentIndex >= playlist.size()) currentIndex = playlist.size() - 1;
@@ -3444,6 +3678,7 @@ void UltraCanvasMediaViewer::LoadCurrent(bool animated) {
     // or one that opened another file here - shows without asking again.
     if (IsLocked()) UnlockFromRememberedPasswords();
     UpdateAbsenceWatch();
+    ReportCurrentFile(GetCurrentPath());
 }
 
 void UltraCanvasMediaViewer::ApplyAdjustments() {
@@ -3572,7 +3807,7 @@ void UltraCanvasMediaViewer::AskForPassword(const std::string& note) {
                 });
             } else if (result == MediaUnlockResult::Failed) {
                 UltraCanvasDialogManager::ShowError("Could not open " + BaseName(path) + "\n" + error,
-                                                    "Unlock", nullptr, GetWindow());
+                                                    Tr("Unlock"), nullptr, GetWindow());
             }
         }, GetWindow());
 }
@@ -3858,7 +4093,7 @@ void UltraCanvasMediaViewer::ShowCurvesDialog() {
     // and a drawing's pixels are only a rendering of it. The toolbar hides
     // the button then; this guards any other way in.
     if (!tools.colour) {
-        if (infoLabel) infoLabel->SetText("Curves apply to bitmap images only");
+        if (infoLabel) infoLabel->SetText(Tr("Curves apply to bitmap images only"));
         return;
     }
 
@@ -4171,7 +4406,11 @@ void UltraCanvasMediaViewer::UpdateInfoBar() {
     UpdateZoomBox();
     if (!infoLabel) return;
     if (playlist.empty()) {
-        infoLabel->SetText("No media");
+        // "No media" is for a viewer that was asked for nothing; one with a
+        // file on its way names it.
+        infoLabel->SetText(loadingPath.empty()
+                ? Tr("No media")
+                : BaseName(loadingPath) + "   \xC2\xB7   " + Tr("loading"));
         return;
     }
     const std::string& path = playlist[currentIndex];
@@ -4321,8 +4560,8 @@ void UltraCanvasMediaViewer::UpdateInfoBar() {
         // A drawing this build has no reader for and that stores no preview
         // is a file that is there, not an absence of media.
         infoLabel->SetText(IsVectorDocumentFile(path)
-                ? BaseName(path) + " - no preview stored in this vector document"
-                : std::string("No media"));
+                ? TrF("{0} - no preview stored in this vector document", BaseName(path))
+                : Tr("No media"));
         return;
     }
     auto img = surface->GetImage();
@@ -4353,10 +4592,61 @@ void UltraCanvasMediaViewer::UpdateInfoBar() {
     infoLabel->SetText(os.str());
 }
 
+namespace {
+// The colour table of a GIF: the global one, or - for a file that has none -
+// the first image's local one; `isGlobal` says which. Empty for a file that
+// is not a GIF or has neither. Read from the file's own bytes: the 13-byte
+// header and the table after it, or the extension blocks before the first
+// image when the table is a local one.
+std::vector<Color> ReadGifPalette(const std::string& path, bool& isGlobal) {
+    std::vector<Color> out;
+    isGlobal = false;
+    std::FILE* f = OpenFileUtf8(path, "rb");
+    if (!f) return out;
+    struct Closer { std::FILE* f; ~Closer() { std::fclose(f); } } closer{f};
+    unsigned char header[13];
+    if (std::fread(header, 1, sizeof(header), f) != sizeof(header)) return out;
+    if (std::memcmp(header, "GIF87a", 6) != 0 && std::memcmp(header, "GIF89a", 6) != 0) return out;
+    auto readTable = [&](unsigned char packed) {
+        const size_t n = size_t(1) << ((packed & 7) + 1);
+        std::vector<unsigned char> rgb(n * 3);
+        if (std::fread(rgb.data(), 1, rgb.size(), f) != rgb.size()) return;
+        out.reserve(n);
+        for (size_t i = 0; i < n; ++i) out.emplace_back(rgb[i * 3], rgb[i * 3 + 1], rgb[i * 3 + 2], 255);
+    };
+    if (header[10] & 0x80) {
+        isGlobal = true;
+        readTable(header[10]);
+        return out;
+    }
+    // No global table: past the extensions (comments, the animation's loop
+    // and frame controls) to the first image descriptor and its local table.
+    for (int blocks = 0; blocks < 1024; ++blocks) {
+        const int introducer = std::fgetc(f);
+        if (introducer == 0x2C) {
+            unsigned char descriptor[9];
+            if (std::fread(descriptor, 1, sizeof(descriptor), f) != sizeof(descriptor)) return out;
+            if (descriptor[8] & 0x80) readTable(descriptor[8]);
+            return out;
+        }
+        if (introducer != 0x21 || std::fgetc(f) == EOF) return out;   // the trailer, or not a GIF
+        for (;;) {   // the extension's data sub-blocks, up to the empty one
+            const int length = std::fgetc(f);
+            if (length == EOF) return out;
+            if (length == 0) break;
+            if (std::fseek(f, length, SEEK_CUR) != 0) return out;
+        }
+    }
+    return out;
+}
+} // namespace
+
 void UltraCanvasMediaViewer::UpdateDetailedInfo() {
     if (!surface) return;
     if (playlist.empty()) {
-        ShowDetailsText("No media\n");
+        ShowDetailsText(loadingPath.empty()
+                ? std::string("No media\n")
+                : "Loading\n\nFile: " + BaseName(loadingPath) + "\nPath: " + loadingPath + "\n");
         return;
     }
     const std::string& path = playlist[currentIndex];
@@ -4484,6 +4774,15 @@ void UltraCanvasMediaViewer::UpdateDetailedInfo() {
         }
     }
 
+    // A GIF's colour table, shown as swatches under the text.
+    bool paletteGlobal = false;
+    const std::vector<Color> palette = ReadGifPalette(path, paletteGlobal);
+    const std::string paletteSize = std::to_string(palette.size()) +
+                                    (palette.size() == 1 ? " colour" : " colours");
+    if (!palette.empty())
+        os << "Palette: " << paletteSize
+           << (paletteGlobal ? " (global colour table)\n" : " (first frame's colour table)\n");
+
 #ifdef HAS_LIBVIPS
     try {
         PixelFX::PXImageFileInfo fi = PixelFX::ExtractImageInfo(path);
@@ -4509,6 +4808,8 @@ void UltraCanvasMediaViewer::UpdateDetailedInfo() {
         os << "\n## Metadata\n";
         for (const auto& e : entries) {
             if (e.group == "Image") continue;
+            // The Palette row above, and the swatches, already say it.
+            if (!palette.empty() && e.key == "GIF palette") continue;
             ++total;
             if (shown >= kMaxEntries) continue;
             if (e.group != group) {
@@ -4528,6 +4829,9 @@ void UltraCanvasMediaViewer::UpdateDetailedInfo() {
 #endif
 
     ShowDetailsText(os.str());
+    if (!palette.empty())
+        ShowDetailsPalette(palette, TrN("Palette - {n} colour", "Palette - {n} colours",
+                                        static_cast<long long>(palette.size())));
 }
 
 // ===== DETAILS PANEL =====
@@ -4554,8 +4858,10 @@ std::string EscapeDetailsCell(const std::string& text) {
 // The details builders write "Title\n\nKey: value" lines, the form the text
 // view and a log read well. The panel shows them as Markdown: the title as a
 // heading, each run of "Key: value" lines as a two-column table, "## " /
-// "### " lines as section headings and anything else as a paragraph.
-std::string DetailsToMarkdown(const std::string& plain) {
+// "### " lines as section headings and anything else as a paragraph. With
+// `title` given, the title is handed back there instead of becoming a
+// heading (the Details panel shows it as its caption).
+std::string DetailsToMarkdown(const std::string& plain, std::string* title = nullptr) {
     std::istringstream in(plain);
     std::ostringstream md;
     std::string line;
@@ -4565,14 +4871,18 @@ std::string DetailsToMarkdown(const std::string& plain) {
         if (!line.empty() && line.back() == '\r') line.pop_back();
         if (first) {
             if (line.empty()) continue;
-            md << "## " << EscapeDetailsCell(line) << "\n\n";
+            if (title) *title = line;
+            else md << "## " << EscapeDetailsCell(line) << "\n\n";
             first = false;
             continue;
         }
         if (line.empty()) { endTable(); continue; }
         if (line.rfind("## ", 0) == 0 || line.rfind("### ", 0) == 0) {
             endTable();
-            md << "\n" << line << "\n\n";
+            // A section heading with its title as the caption is one level
+            // down, so "Metadata" stays above "EXIF" but below nothing big.
+            if (title) md << "\n#" << line << "\n\n";
+            else       md << "\n" << line << "\n\n";
             continue;
         }
         const size_t colon = line.find(": ");
@@ -4593,11 +4903,30 @@ std::string DetailsToMarkdown(const std::string& plain) {
 } // namespace
 
 void UltraCanvasMediaViewer::ShowDetailsText(const std::string& plain) {
-    detailsMarkdown = DetailsToMarkdown(plain);
-    if (!detailsView) return;
-    auto* dv = static_cast<UltraCanvasTextArea*>(detailsView.get());
+    std::string title;
+    detailsMarkdown = DetailsToMarkdown(plain, &title);
+    ShowDetailsPalette({}, "");
+    if (!detailsView || !detailsText) return;
+    static_cast<UltraCanvasGroupBox*>(detailsView.get())->SetTitle(title.empty() ? Tr("Details") : title);
+    auto* dv = static_cast<UltraCanvasTextArea*>(detailsText.get());
     dv->SetText(detailsMarkdown);
     dv->ScrollTo(0);
+}
+
+void UltraCanvasMediaViewer::ShowDetailsPalette(const std::vector<Color>& colours,
+                                                const std::string& caption) {
+    if (!detailsPalette || !detailsPaletteCaption) return;
+    auto* bar = static_cast<UltraCanvasColorSwatchBar*>(detailsPalette.get());
+    auto* cap = static_cast<UltraCanvasLabel*>(detailsPaletteCaption.get());
+    const bool show = !colours.empty();
+    bar->SetColors(colours);
+    bar->ClearSelection();
+    bar->SetVisible(show);
+    detailsPaletteText = caption;
+    cap->SetText(caption);
+    cap->SetVisible(show);
+    InvalidateLayout();
+    RequestRedraw();
 }
 
 void UltraCanvasMediaViewer::ShowNote(const std::string& plain) {
@@ -4637,6 +4966,13 @@ void UltraCanvasMediaViewer::Arrange(const Rect2Df& finalRect,
             UpdateInfoBar();
         }
     }
+    if (loadingIndicator && loadingIndicator->IsVisible() && surface) {
+        const Rect2Df s = surface->GetBounds();
+        constexpr float kRing = 44.0f;
+        loadingIndicator->Arrange(Rect2Df(s.x + std::max(0.0f, (s.width - kRing) * 0.5f),
+                                          s.y + std::max(0.0f, (s.height - kRing) * 0.5f),
+                                          kRing, kRing), ctx);
+    }
     if (!IsDetailsVisible()) return;
     // Over the active view, inset a little, and no wider than a table of
     // tags and values reads comfortably.
@@ -4647,6 +4983,19 @@ void UltraCanvasMediaViewer::Arrange(const Rect2Df& finalRect,
     float w = std::min(kMaxWidth, area.width - 2 * kInset);
     float h = area.height - 2 * kInset;
     if (w < 60.0f || h < 60.0f) return;
+    // A palette takes the height its swatches need at the panel's inner
+    // width, but never more than half the panel: the text keeps the rest.
+    if (detailsPalette && detailsPalette->IsVisible()) {
+        auto* panel = static_cast<UltraCanvasGroupBox*>(detailsView.get());
+        const GroupBoxVisualStyle& look = panel->GetVisualStyle();
+        auto* bar = static_cast<UltraCanvasColorSwatchBar*>(detailsPalette.get());
+        auto* text = static_cast<UltraCanvasTextArea*>(detailsText.get());
+        const float margin = text->GetStyle().textPadding + text->GetMarkdownStyle().tableCellPadding -
+                             bar->GetStyle().padding;
+        const float inner = std::max(10.0f, w - 2.0f * (look.borderWidth + look.contentPadding + margin));
+        const float barH = std::min(bar->HeightForWidth(inner), h * 0.5f);
+        bar->SetElementSize(Size2Df(inner, barH));
+    }
     detailsView->Arrange(Rect2Df(area.x + kInset, area.y + kInset, w, h), ctx);
 }
 
@@ -4932,8 +5281,8 @@ bool UltraCanvasMediaViewer::HandleViewerKey(const UCEvent& event) {
 
     // The open Details panel takes Escape and the scrolling keys; Left / Right
     // keep browsing, and the panel follows the file.
-    if (IsDetailsVisible()) {
-        auto* dv = static_cast<UltraCanvasTextArea*>(detailsView.get());
+    if (IsDetailsVisible() && detailsText) {
+        auto* dv = static_cast<UltraCanvasTextArea*>(detailsText.get());
         switch (event.virtualKey) {
             case UCKeys::Escape:   SetDetailsVisible(false); return true;
             case UCKeys::Up:       dv->ScrollUp(1);          return true;

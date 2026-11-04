@@ -467,6 +467,13 @@ if(WIN32 OR APPLE)
     set(ULTRACANVAS_HAS_PORTABLE_DEVICES ON)
 endif()
 
+# Which platforms can list the network's computers and shares and the WSL
+# distributions (UltraCanvasNetworkPlaces: WNetOpenEnum, NetShareEnum, the Lxss
+# registry key). Windows only; elsewhere the core file compiles empty lists.
+if(WIN32)
+    set(ULTRACANVAS_HAS_NETWORK_PLACES ON)
+endif()
+
 # Which platforms can hold a single-instance lock (UltraCanvasInstanceLock:
 # flock() on Linux, the BSDs and macOS, LockFileEx on Windows). Same reason as
 # above: the core file compiles an "Unsupported" fallback unless this is set,
@@ -765,6 +772,30 @@ if(BUILD_ULTRASNIP)
     add_subdirectory(Apps/UltraSnip)
 endif()
 
+# ===== VIDEOFX TEXT THROUGH ULTRACANVAS =====
+# UltraCanvas's text engine as VideoFX's text renderer
+# (VideoFX/ultracanvas/VideoFXUltraCanvasText.h): a text overlay naming a font
+# family - an UltraVideo title, with its bold words, font, alignment and
+# spacing - is drawn by the UltraCanvasRichTextEdit that types it. A library
+# of its own beside VideoFX, which stays free of UltraCanvas, defined here
+# where both targets exist (VideoFX is added before the framework). The
+# `videofx` tool links it, so `videofx render` draws a project's titles as
+# UltraVideo shows them; a VideoFX built on its own draws them plain.
+if(TARGET VideoFX AND ULTRACANVAS_LIBRARY AND TARGET ${ULTRACANVAS_LIBRARY})
+    add_library(VideoFXUltraCanvasText STATIC VideoFX/ultracanvas/VideoFXUltraCanvasText.cpp)
+    set_target_properties(VideoFXUltraCanvasText PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    target_include_directories(VideoFXUltraCanvasText PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/VideoFX/ultracanvas
+        ${ULTRACANVAS_INCLUDE_DIRS})
+    target_link_libraries(VideoFXUltraCanvasText PUBLIC ${ULTRACANVAS_LIBRARY} VideoFX::VideoFX)
+    target_compile_features(VideoFXUltraCanvasText PUBLIC cxx_std_20)
+    if(TARGET videofx_cli)
+        target_link_libraries(videofx_cli PRIVATE VideoFXUltraCanvasText)
+        target_compile_definitions(videofx_cli PRIVATE VIDEOFX_WITH_ULTRACANVAS_TEXT=1)
+    endif()
+    message(STATUS "  [✓] VideoFX text through UltraCanvas (the videofx tool draws titles as UltraVideo does)")
+endif()
+
 # ===== ULTRAVIDEO =====
 # The video editor on the VideoFX engine and the UltraCanvasVideoTimeline
 # element: media bin, viewer with scrubbing, inspector, timeline, undo,
@@ -898,6 +929,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasLabelExamples.cpp
             Apps/DemoApp/UltraCanvasMenuExamples.cpp
             Apps/DemoApp/UltraCanvasMenuConfigExamples.cpp
+            Apps/DemoApp/UltraCanvasLocalisationEditorExamples.cpp
             Apps/DemoApp/UltraCanvasVectorCanvasExamples.cpp
             Apps/DemoApp/UltraCanvasSliderExamples.cpp
             Apps/DemoApp/UltraCanvasSpinnerExamples.cpp
@@ -1568,6 +1600,18 @@ if(BUILD_ULTRAMSG_CLI AND TARGET UltraMessage)
         "${CMAKE_CURRENT_SOURCE_DIR}/media/appicon/UltraMsg.png")
 endif()
 
+# ===== ULTRALOCALISATION DRAFT TOOL =====
+# ultralocalisation-draft (Apps/UltraLocalisationDraft): drafts a translation
+# catalogue with UltraAI's translator; scripts/translate_catalogue.py runs it
+# over every set of a language. Needs the UltraAI module.
+option(BUILD_ULTRALOCALISATION_DRAFT "Build the ultralocalisation-draft tool" ON)
+if(BUILD_ULTRALOCALISATION_DRAFT AND BUILD_ULTRAAI_MODULE AND TARGET UltraAI_Core AND TARGET UltraLocalisation)
+    add_executable(ultralocalisation-draft Apps/UltraLocalisationDraft/main.cpp)
+    target_compile_features(ultralocalisation-draft PRIVATE cxx_std_20)
+    target_link_libraries(ultralocalisation-draft PRIVATE UltraLocalisation UltraAI_Core)
+    set_target_properties(ultralocalisation-draft PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+endif()
+
 # ===== ULTRADATABASE TESTS =====
 # Independent of BUILD_TESTS / Catch2: uses a tiny in-tree framework so it
 # can run wherever UltraDatabase is built.
@@ -2106,6 +2150,7 @@ if (BUILD_ARTCREATOR_APP)
     add_executable(ArtCreator
             Apps/ArtCreator/main.cpp
             Apps/ArtCreator/ArtCreatorWindow.cpp
+            Apps/ArtCreator/ArtCreatorCommands.cpp
             Apps/ArtCreator/ArtCreatorTools.cpp
             Apps/ArtCreator/ArtCreatorDialogs.cpp
             Apps/ArtCreator/ArtCreatorIcon.cpp

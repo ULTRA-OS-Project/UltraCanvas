@@ -1,3 +1,779 @@
+#### 2026-11-04 *0.9.478*
+- **UltraCanvasFilerWidget: the delete dialogs are translated whole.** The
+  problem dialog's titles took the English "file" / "folder" and
+  `TrashDisplayName()` ("Trash", "Recycle Bin") as arguments, so every
+  language showed those words in English mid-sentence, and the rest of it
+  - the question, the facts' labels, the note, the "apply to all" label
+  and the buttons - was not translated at all; nor was any of the delete
+  confirmation (its question, From / Size facts, the folder's list caption,
+  the notes, Move to Trash / Delete permanently). Every text in both now
+  goes through `Tr` / `TrF` / `TrN` as a whole sentence, per kind and per
+  platform's trash name, with names as `{0}` so a translation can place
+  them and counts in each language's plural forms; the size facts
+  (`DescribeEntries`, `CountedSizeFact`) count files and folders the same
+  way. All thirty languages carry them.
+- **UltraLocalisation: twenty-two more languages.** The standard set and
+  the sixteen base sets are drafted in Russian, Ukrainian, Polish, Czech,
+  Swedish, Danish, Norwegian Bokmål, Finnish, Turkish, Greek, Korean,
+  Traditional Chinese, Arabic, Hebrew, Hungarian, Romanian, Hindi,
+  Indonesian, Vietnamese, Thai and Catalan (1,543 entries each), with
+  every plural form each language's rule needs (Russian, Ukrainian and
+  Polish one/few/many, Arabic all six, Hebrew one/two/many/other).
+  Brazilian Portuguese (`pt-BR`) is a regional variant over `pt` that
+  holds only the entries Brazil words differently. Every file is marked
+  `"@translated-by": "machine draft 2026-11-03, reviewed by -"` until a
+  person reviews it; the UOS-Settings Language page lists them all.
+
+#### 2026-11-03 *0.9.477*
+- **The menus-and-toolbars editor's texts go through `Tr`**
+  (`UltraCanvasCommandConfigWidget` 2.0.1): its titles, buttons, tooltips,
+  the filter's placeholder and the tree's headings follow the chosen
+  language; the English joins the standard set.
+- **UltraLocalisation phase L4: the localisation editor.**
+  `UltraCanvasLocalisationEditor` (`UltraCanvasLocalisationEditor.h`) shows
+  every set an application's texts come from - its own set, the base sets
+  it takes, the standard set - in one grid, one row per key and a column
+  per set, with where each text comes from and its status (application,
+  override, duplicate, base, collision between bases, standard,
+  untranslated; plural, draft, changed) in the row; a compare column; a
+  search and a status filter; the whole shared sets on request. The sets
+  are merged in the editor: take or drop a base set from the Sets picker,
+  promote a row into a base or demote it to the application in every
+  language, merge two bases with the collisions named; every operation
+  undoable. A save goes into the source tree where it is writable, in the
+  extraction's format with the translator's name, else into the settings
+  folder with only what differs from the shipped file; Export writes the
+  merged set as a catalogue or as gettext PO. A drafter the host wires to
+  UltraAI fills the untranslated rows. `LocalisationWorkspace` is the model
+  without UI; `ShowLocalisationEditorDialog` opens the editor on the
+  running application; UOS-Settings 0.14.0 hosts it under Language >
+  Translations, DemoApp as a page. `LocalisationEditorTest`;
+  `Docs/UltraCanvas/UltraCanvasLocalisationEditor.md`.
+
+#### 2026-11-03 *0.9.476*
+- **DemoApp, Matrix Diagram: Save JSON... goes through `UltraCanvasFileLoader`.**
+  It wrote the file with `JSON::SerializeToFile`, past the loader that every
+  user file goes through (CLAUDE.md). It now writes `ExportMatrixJson` with
+  `UltraCanvasFileLoader::SaveFile`, so a failed write leaves any file already
+  at the path intact, and the read-out names the reason a save failed.
+- **A node diagram's labels fit their nodes.** `UltraCanvasNodeDiagram` 2.4.0.
+  The demo's Organization tab drew a degree-1 analyst as a 26 px square under
+  a 9 pt name some 50 px wide, so every name ran over its neighbours and the
+  hub names over the cluster titles. The component now has a **label fit**
+  (`NodeLabelFit`, `SetLabelFit()`, `SetLabelFitConfig()`): `ShrinkFont`
+  reduces the font until the label fits, down to `minFontSize`, then shortens
+  it with an ellipsis; `GrowNode` enlarges the node until the label fits at
+  its font size; `ShrinkThenGrow`, the default, shrinks first and grows what
+  still does not fit; `Overflow` is the old behaviour. The fit is per shape -
+  a circle grows to the chord its name needs, a diamond to about twice what a
+  square needs - and a node grows about its centre, then its neighbours move
+  apart (`ResolveOverlaps`) and the view is refitted. The data-driven sizing
+  (by degree or value) keeps every node at least as large as its label, and
+  the circular, grid and hierarchical layouts end without overlaps, as the
+  force-directed one already did. The cluster boxes are kept apart from each
+  other as well, after every layout and again after the fit (a box reserves
+  room for its title at the current zoom, so a title no longer sits on the
+  first member), half a move each or, when a box squeezed between two keeps
+  bouncing, placed one by one at the nearest free spot. The force-directed
+  layout held every node inside the element (forty nodes of a hundred pixels
+  do not fit 800 x 600, and the overlap pass then scattered the clusters
+  through each other), repelled by the distance between centres and started
+  a group's members all round the ring: its area now grows with the nodes,
+  the charge and the springs act between borders, and a group's members start
+  together. `MinimumNodeSizeForLabel()`,
+  `FitNodesToLabels()` and `GetNodeLabelFontSize()` expose the pieces;
+  `MeasureLabel()` measures with the window's font once the element has one,
+  and a layout run before that is corrected with the real metrics on the
+  first frame. The fit is saved in `ToJson()`. The Organization tab uses
+  `GrowNode` with a degree range that starts above what a member's name
+  needs, and its sidebar has a LABEL FIT dropdown for all four modes.
+  `Tests/NodeDiagramOverlapTest.cpp` covers the minimum sizes per shape, the
+  growth, the shrink, the default, the three other layouts and the JSON.
+- **The node diagram demo's Friends tab is a personal social network.** In
+  place of five circles on a grid: twenty-four friends as card nodes, each
+  with an icon for what they are into, their first name and their interest,
+  in five circles (college, the climbing club, work, the neighbours, family)
+  drawn as soft boxes with a legend, two friends who belong to two circles at
+  once and sit in both boxes, "You" at the centre with every tie, the ties in
+  their circle's colour inside a circle and grey across, wider the closer the
+  tie, the cards collapsing to their icon discs when zoomed out, and a click
+  on a person that says who they are, how many ties they have and which
+  circles they are in. The cards carry full names: a card node now grows
+  for its label over its sublabel beside the icon disc (`GrowNode`,
+  `ShrinkThenGrow`) and shrinks its two fonts together (`ShrinkFont`,
+  `ShrinkThenGrow`), where 2.3.0 only shortened its text with an ellipsis. For it, two groups that share a member now move as one
+  unit when the cluster boxes are separated (they overlap on purpose), and a
+  node in no group is pushed out of every box.
+- **Performance matrix, Phase 3: calibration and files.** The 9-box can now
+  be used in a calibration meeting. People can be moved between boxes, and a
+  matrix can be saved and opened again.
+  - `SetAllowItemDrag(true)` lets a dot or a name be dragged to another box.
+    It is off by default and never on while anonymised. `onItemMove` is asked
+    first and can veto the move. A moved person gets the box as an explicit
+    cell, and their scores stay in the data beside it. A press becomes a drag
+    only after a few pixels, so `onItemClick` still fires for a click, on the
+    release.
+  - Keyboard: the arrows move the cell selection, Enter activates the
+    selected person or box, and Escape steps back (drag, then person, then
+    box). With dragging on, Ctrl+arrows move the selected person one box.
+    `MoveItem` does the same from code.
+  - A click on "+N" / "+N more" hands everyone in that box to
+    `onOverflowClick`, so the application can list them all;
+    `GetCellItems` gives the same list.
+  - `ExportPerformanceMatrixJson` / `ImportPerformanceMatrixJson` write and
+    read the whole model as `"format": "ultracanvas-performance-matrix"`.
+    A file written by hand may name levels by id or label. A file that does
+    not validate is refused, and the model is left untouched.
+  - `ExportPerformanceItemsCsv` / `ImportPerformanceItemsCsv` carry the
+    people alone, under an `id,label,group,row,column,x,y,note` header. The
+    columns may come in any order and letter case. Scores are dot-decimal
+    whatever the locale. An error names the line and leaves the people
+    untouched.
+
+  The demo's Performance Matrix page gains Open JSON / Save JSON and Import
+  CSV / Export CSV buttons through `UltraCanvasFileLoader`, an *Allow moves*
+  switch with a veto that holds the top box to its target, and an *In the
+  box* list behind "+N more". The demo tree now marks Performance Matrix
+  (Info Graphics) and Importance-Performance Chart (Charts) as fully
+  implemented. Model and render tests cover the round trips,
+  the reader's refusals, drag against click, the veto, the keys and the
+  overflow list.
+- **The Wayland desktop shell backend, phase 2 begun: the layer shell and
+  foreign toplevels.** In a build with `ULTRACANVAS_WAYLAND=ON`, on a
+  compositor that speaks the wlroots protocols (every wlroots compositor -
+  the one ULTRA OS ships - and KWin):
+  - A `WindowType::Desktop` window is a `zwlr_layer_surface_v1` on the
+    background layer of the output its `desktopArea` names, anchored to every
+    edge, so the compositor sizes it to the output and keeps it under every
+    window; `ReserveScreenEdges` becomes one transparent, input-less layer
+    surface per reserved edge on the top layer with the edge's exclusive zone
+    (the layer shell's form of a strut), so maximized windows make room for
+    UltraDesktop's bars. Without the layer shell a Desktop window stays a
+    maximized toplevel and reserves nothing.
+  - `ListWindows`, `GetActiveWindow`, `ActivateWindow`, `MinimizeWindow`,
+    `CloseWindow` and `UltraCanvasDesktopShellMonitor` run on
+    `wlr-foreign-toplevel-management-unstable-v1`, over a connection of the
+    backend's own (any thread, the application's loop untouched); the app id
+    stands in for the class, the core finds the icon from it.
+  - The two protocol definitions are vendored under
+    `OS/Linux/Wayland/protocols/` (`THIRD_PARTY_LICENSES.md`), since
+    wayland-protocols does not carry them.
+  - `KillProcess` moved to the shared `UltraCanvasLinuxDesktopShellSession.cpp`;
+    the Wayland backend now has every entry point the backend contract
+    gained since phase 1 (`GetWindowBounds`, `MoveWindowTo`,
+    `CaptureScreenArea`), the ones no protocol serves answering false.
+  - The virtual desktops are `ext-workspace-v1` on the same connection (the
+    protocol vendored too, wayland-protocols carries it only from 1.39): the
+    workspaces of the primary output's group in order, the active one the
+    current desktop, activate + commit to switch, create / remove to set the
+    count where the compositor allows. One desktop on a compositor without
+    it (sway 1.9).
+  - Screenshots and global shortcuts go through the freedesktop portals
+    (`OS/Linux/Wayland/UltraCanvasWaylandPortals.cpp`, over GDBus on a
+    context of their own): `CaptureScreen`, `CaptureScreenImage` and
+    `CaptureScreenArea` through `org.freedesktop.portal.Screenshot` (the
+    portal's PNG moved to the caller's path, or read and deleted at once),
+    `UltraCanvasGlobalShortcut` through `org.freedesktop.portal.GlobalShortcuts`
+    (a session, the accelerator as the preferred trigger in the shortcuts
+    specification's spelling, `Activated` to the callback, the session
+    closed on Stop). Without a portal every call fails with the reason.
+  - `RaiseAndFocus` asks for the focus through xdg-activation: a token
+    against the last input serial, the seat and the focused surface, then
+    the activation. The compositor decides (sway focuses with
+    `focus_on_window_activation focus`, marks urgent by default).
+  - `DesktopShellTest` drives the backend under sway headless: a window of
+    its own listed, reported, activated and closed; a Desktop window whose
+    reserved edges sway's workspace makes room for; two windows and the
+    first's RaiseAndFocus making it active; the virtual desktops read. The
+    portals are a CTest entry of their own, `DesktopShellPortalTest`,
+    against a fake portal the test exports (16 checks). Still open:
+    popups with a positioner, drags, the session lock, GL surfaces, the
+    Wayland build in CI - `Docs/UltraCanvas/WaylandDesktopShellProposal.md`.
+
+#### 2026-11-03 *0.9.475*
+- **`UltraCanvasTextFormatBar`: one text formatting bar for every program
+  that sets text.** Font, Size, Bold, Italic, Underline, Strikethrough, Align
+  left / centre / right, Line spacing and Letter spacing in one row; it edits
+  a `TextFormat` and reports each change with the attribute that changed
+  (`onFormatChanged`), hands the keyboard back after a control
+  (`onControlDone`), hides what a host cannot draw (`SetAttributeVisible`),
+  takes the host's size unit (`SetSizeUnit`) and its theme (`ApplyTheme`; the
+  icons, in `media/icons/textformat/`, take the ink). `TextFormatCharDelta` and
+  `TextFormatAtCaret` connect it to an `UltraCanvasRichTextEdit` typed on a
+  canvas. ArtCreator's text bar is this element now; UltraPaint and UltraVideo
+  follow.
+- **A dropdown row can be drawn in a font of its own** -
+  `DropdownItem::fontFamily` - so a font list shows each font in itself
+  without an element or a drawing callback of its own. Loading a font takes a
+  few milliseconds the first time (measured: 2.6 ms on average, 6 ms for a
+  colour emoji font), which would freeze a list of a computer's hundreds of
+  fonts for a second or more as it opened; the dropdown prepares those rows
+  lazily instead, in slices of about 6 ms every 15 ms once it is on screen,
+  the rows its list opens on first, and shapes a row not prepared yet as it
+  scrolls into view.
+- **Text layers keep a letter spacing** - `RasterTextContent::letterSpacingPx`,
+  drawn through `RichTextEditStyle::letterSpacing` - saved as
+  `"letterSpacingPx"` in a raster project and in a version 2 `UCTF` text
+  frame in a *.ucd (UCD 4.7.3). A text without letter spacing is still
+  written as version 1, which every earlier reader takes. `RasterEditingTest`
+  checks it.
+- `SetTextLineSpacing` / `GetTextLineSpacing` (`UltraCanvasRasterText.h`): a
+  text bar's line spacing in rich text - every paragraph's lines a percentage
+  of its largest letters apart, exactly - shared by UltraPaint's text layers
+  and UltraVideo's titles.
+- In a place narrower than its controls, the text bar's Font list gives up
+  width first (down to 90 pixels), so every other control stays in reach.
+- **Vector text draws underline, strikethrough and letter spacing, and
+  aligns each line on its own.** `VectorRenderer::RenderText` ignored
+  `VectorTextStyle::Underline`, `StrikeThrough` and `LetterSpacing` - an SVG
+  with `text-decoration` or `letter-spacing` lost them on screen and in every
+  bitmap export - and shifted every line of a centred or right-aligned text
+  by the width of all its lines together, so a multi-line text came apart. A
+  span with a `Position` of its own now starts a text chunk (SVG's rule),
+  which the anchor places on its own start point.
+- **`VectorText::GetBoundingBox` counts every line of a text set over
+  several**, each anchored on its own, with its letter spacing: the estimate
+  stretched the first line by every line's characters and left the others
+  out, so the selection frame and the hit test missed all but the first
+  line. Characters are counted, not UTF-8 bytes (an accented or Thai text
+  measured up to three times too wide). `VectorModelTest` checks it.
+- `TextAttributeFactory::CreateLetterSpacing` takes fractional pixels
+  (`double`): in a drawing's units, whole pixels were whole points of
+  tracking.
+- `RichTextEditStyle::letterSpacing`: `UltraCanvasRichTextEdit` tracks the
+  whole text wider or tighter, so text typed on a canvas shows the letter
+  spacing it will be drawn with.
+- **`videofx render` draws UltraVideo's titles as UltraVideo shows them.** The
+  command-line tool drew every title with FFmpeg's text filter: one font
+  file, plain, left-aligned - a title with a font of its own, a bold or
+  italic word, underline, alignment or spacing came out plain. Now:
+  - VideoFX 0.18.0: a text overlay carries that formatting
+    (`VideoFXOverlay::fontFamily`, `richText` / `richTextHeight`, `textAlign`,
+    `lineSpacing`, `letterSpacing`, saved in project files), and a host's text
+    renderer (`VideoFX_SetTextRenderer`) draws such an overlay into a picture
+    laid over the frame - asked on the calling thread by
+    `VideoFXExportJob::Start`, `VideoFX_Export` / `VideoFX_RenderProject` and
+    `VideoFXPreview::Open`, never on the export's own thread
+    (`VideoFX_DrawTextOverlays`). VideoFX stays free of UltraCanvas; built on
+    its own it draws these titles plain, as before.
+  - `VideoFXUltraCanvasText` (`VideoFX/ultracanvas/`), a library beside
+    VideoFX: UltraCanvas's text engine as that renderer - the drawing that
+    was UltraVideo's own (`UltraVideoTitles`), now shared.
+    `VideoFX_UseUltraCanvasText()` installs it; UltraVideo does, and the
+    `videofx` tool does when built in the UltraCanvas tree (`videofx
+    --version` says which).
+  - The tool reads UltraVideo's `.ultravideo`: a program's file that carries
+    the engine's project under `"project"` is read for it. It never could -
+    `videofx render trip.ultravideo` said "Not a VideoFX project file",
+    though UltraVideo's README promised it.
+  - **One font registration per platform.** Each platform's start-up font
+    set-up moved out of its application class into
+    `RegisterPlatformBundledFonts()` (`OS/<Platform>/`): fontconfig on Linux,
+    the BSDs, Android and in the browser, CoreText for this process only on
+    macOS, and on Windows the Windows font folders, the generic aliases, the
+    bundled fonts through fontconfig and GDI and a fontconfig-backed Pango
+    font map. Every application's `LoadBundledFontsNative` calls it, and so
+    does `RegisterBundledFontsWithoutApplication()` - what a tool that draws
+    text, with no `UltraCanvasApplication`, calls instead: the generated
+    fonts.conf where the system has none, then the platform's registration,
+    waiting on Windows for the system fonts' scan (a tool has no windows to
+    switch over later). So `videofx` sets titles in the bundled fonts and the
+    system's on every platform, macOS included, from the code the
+    applications run - no second copy.
+  - `UltraVideoDocumentTest` checks that the saved project carries the
+    formatting the tool reads, and that the engine lays over the frame the
+    very picture the program draws.
+
+#### 2026-11-03 *0.9.474*
+- **Android: frames are drawn at the window's exact pixel size at every
+  density.** The backend built its surface from the logical size scaled back
+  up, and at a phone's density that loses a pixel: at 420 dpi (scale 2.625)
+  a 1080-pixel-wide window is 411 logical units, and 411 x 2.625 rounds to
+  1079. The buffer was then a pixel short of the window, and the compositor
+  stretched every frame to fit, softening the whole UI. The surface now
+  takes the window's own size whenever it is the logical size up to
+  rounding.
+- **CI runs the Android demo at a phone's density too.** The emulator job
+  now also runs on the `pixel_6` profile (1080x2400, 420 dpi), beside the
+  default 320x640 at 160 dpi, and the smoke test checks that the first frame
+  fills the window to the pixel at the scale the density gives (density /
+  160). The backend's first-frame log line now names the surface size, the
+  window size and the scale.
+- **Android: rotating the device in place resizes the window.** On a
+  configuration change or window resize the backend read the window's size
+  with `ANativeWindow_getWidth`, but once it has set a buffer size the window
+  reports that size instead of its own (Android's `Surface` answers with the
+  size the app asked for) - so the size could not seem to change, and the
+  compositor squeezed the portrait frame into the landscape window.
+  The backend now restores the window's own geometry before reading it, then
+  rebuilds the surface at the new size. The emulator smoke test turns the
+  display to landscape and requires a frame at the new size that fills the
+  window; the backend logs `resized frame presented: ...` for each new size.
+- **Android: no blank frame on a resize.** The backend presented its rebuilt
+  surface the moment it was made, before the UI had been laid out and drawn
+  into it, so every rotation flashed an empty frame; the emulator's rotation
+  check caught it. The surface is now rebuilt without being presented, and
+  the repaint that follows shows the new frame.
+
+#### 2026-11-03 *0.9.473*
+- **CI: installing Clang on the Linux legs survives a short apt.llvm.org
+  outage.** The *Install Clang (Linux)* step fetched `llvm.sh` with a bare
+  `wget` and no retry, so on 2026-11-03 a momentary network failure (exit 4)
+  failed both Linux builds in under a second, before anything compiled. The
+  script is now fetched with curl's own retries (`--retry 5
+  --retry-all-errors`), and the whole fetch-and-install - `llvm.sh` reaches
+  the same host again for the key, the index and the packages - is tried
+  three times, 30 s and 60 s apart, before the step fails with a message
+  saying the host may be down.
+- **The media viewer's Details panel is a group box with a close button, and
+  shows a GIF's palette.** The panel's title (*Image information*, *Document
+  information* ...) is now the caption of an `UltraCanvasGroupBox` instead of
+  the first heading of its Markdown text, and an **x** at the caption's right
+  end closes it (as Escape and the Details button do). The text is a size
+  smaller (11 px, headings a step above it rather than document-sized). A GIF
+  gets a *Palette* row (its colour table's size, global or the first frame's)
+  and the colour table itself as a block of swatches under the text; the
+  entry under the pointer is named by index and `#RRGGBB`. UltraFiler and
+  UltraViewer both show this panel.
+- **`UltraCanvasGroupBox::SetCloseButton`**: an optional "x" at the right end
+  of the title bar, hover-highlighted with a tooltip
+  (`SetCloseButtonTooltip`); a click runs `onCloseClicked` and the host
+  decides what closing means. Colours: `closeIconColor`,
+  `closeIconHoverColor`, `closeHoverBackgroundColor` in `GroupBoxVisualStyle`.
+- **Markdown tables in `UltraCanvasTextArea`: the header fill now meets the
+  grid.** The column dividers were drawn in whatever paint was current - the
+  text colour - on whole-pixel coordinates, so they smeared over two pixel
+  columns, and the rule under the header sat in the middle of the separator
+  row, leaving a band of background between the header's fill and the line.
+  Every rule is now one pixel in `tableBorderColor` on a pixel centre, the
+  rule under the header is drawn at the separator row's top edge against the
+  header fill, and without a line-number gutter the separator row is only a
+  small gap rather than a whole text line.
+- **The media viewer no longer says "No media" while a file is on its way.**
+  `UltraCanvasMediaViewerWindow` showed its window and then opened the file,
+  so the first frame was the empty viewer - "No media" in the middle and in
+  the info bar - for as long as the folder took to read and the file to open
+  (long on a big folder such as a temp directory). New
+  `OpenFileWhenShown` / `OpenFolderWhenShown` / `SetFilesWhenShown` show a
+  turning ring (`UltraCanvasBusyIndicator`) in the middle of the display and
+  `name · loading` in the info bar at once, and open the file after a frame
+  of that has been drawn (or after 400 ms when the viewer is not drawn). Any
+  other open or `CloseFile` replaces it; a list with nothing to show ends it;
+  without an application the file opens at once. *No media* now means only
+  that nothing was asked for. `UltraCanvasMediaViewerWindow::Show` opens this
+  way.
+- **`UltraCanvasMediaViewer::onCurrentFileChanged`**: the file on show - the
+  one loading, each one browsed to, `""` when nothing is - for a window
+  title. `UltraCanvasMediaViewerWindow` titles its window with it when no
+  title was given, so the title follows the arrow keys.
+- `UltraCanvasMediaSurface::SetEmptyText`: what the surface draws with no
+  picture (empty draws nothing).
+- `Tests/MediaViewerLoadingTest` (Xvfb) covers the loading state, the open
+  after a frame, the empty list and the cancel.
+
+#### 2026-11-03 *0.9.472*
+- **The system fonts can be pinned.**
+  `UltraCanvasApplication::SetSystemFontStyle()` and
+  `SetDefaultMonospacedFontStyle()` set what `GetSystemFontStyle()` and
+  `GetDefaultMonospacedFontStyle()` answer, instead of the desktop's fonts -
+  for a program that brings its own, or a test that measures text and must
+  not depend on whatever font the machine has. The demo's layout audit
+  (`UltraCanvasDemo --audit-layout`, both forms) now runs in the bundled
+  Ubuntu 12 and Ubuntu Mono 12 whatever the runner's desktop font is, so
+  the pages are measured in the font they were laid out for.
+- **`scripts/check_doc_examples.py` 1.9.0: the baseline is signed.**
+  In `scripts/doc_examples_baseline.txt` each doc's entries end in a line
+  that signs them, and `--update-baseline` is the only way to write the
+  file: a block edited by hand, spliced from another run or merged line by
+  line fails `--strict` with a message naming the docs to regenerate. One
+  signature per doc rather than per file, so a merge that brings another
+  doc's rewritten block from `main` stays valid. With docs named,
+  `--update-baseline` replaces those docs' entries and keeps the rest, so
+  the file can be updated from a partial run.
+
+#### 2026-11-03 *0.9.471*
+- **Two design documents for the next framework-wide jobs.**
+  `Docs/UltraCanvas/UltraCanvasLocalisationProposal.md` proposes the
+  **UltraLocalisation** module: `Tr` / `TrC` / `TrN` / `TrF` with the
+  English text as the key; a **standard set** UltraCanvas ships for every
+  application (the framework's own strings and the common application
+  vocabulary, translated once), **base sets** per kind of application
+  (Computer, Web, Audio, Image, Video, Text, Spreadsheet, Presentation,
+  Planning, CAD, Banking, Games, Shopping, Fashion, and Communication and
+  Security for the applications the tree has) that an application takes
+  by name, drafted in an appendix, and the application's **own set** over
+  them,
+  one JSON per language and set under `media/locale/<lang>/` with a
+  per-user override under the UltraCanvas settings folder; the language
+  chosen once for every application in UOS-Settings (`Language.conf`, the
+  system's language by default); a **localisation editor** element that
+  shows the standard set, the base sets and the application set in one
+  grid - inherited, overridden, own and untranslated rows - and merges
+  them (take a base, promote or demote an entry, merge two bases), hosted
+  in UOS-Settings, in an
+  application's Help menu and in DemoApp, saving into a checkout or into
+  the settings folder; locale number, date and file-size formatting; and
+  the extraction, check, wrapping and UltraAI-draft scripts that make the
+  30 applications' migration mechanical.
+  `Docs/UltraCanvas/UltraCanvasHostThemeProposal.md` proposes following the
+  host's look: `HostAppearance` read from the Windows registry, AppKit,
+  XSETTINGS / GSettings / kdeglobals, the browser's media queries and
+  Android's configuration, with the change events each platform sends;
+  fonts and text sizes in `UltraCanvasTheme` by text role; `FromHost` with
+  the accent derived under the contrast rules the theme test enforces; a
+  theme policy on the application that follows the host by default;
+  `FromTheme` for the 42 style structs that lack one; `Appearance.conf`
+  and a UOS-Settings Appearance > Look page; and a watcher on the settings
+  folder that makes those shared settings live in running applications.
+  Both are recorded in `scripts/doc_examples_baseline.txt` until their
+  APIs exist.
+- **"The system font" is the desktop's font now, on every platform.**
+  `UltraCanvasApplication::GetSystemFontStyle()` and
+  `GetDefaultMonospacedFontStyle()` - what an element with no font family
+  of its own is drawn in - returned the literal Ubuntu 12 on Linux and on
+  Windows, so a Windows desktop's Segoe UI and a GNOME desktop's Cantarell
+  never reached a window. Windows reads the message font of the non-client
+  metrics at 96 dpi (`SystemParametersInfoForDpi`, else the system dpi) and
+  uses Consolas for code; Linux and the BSDs read GSettings
+  `org.gnome.desktop.interface` (`font-name`, `monospace-font-name`; only
+  inside a desktop session, since with no desktop running the schema
+  answers its compiled default, which nobody chose),
+  `~/.config/kdeglobals` (`font`, `fixed`; first on a KDE session) and the
+  GTK `settings.ini`; macOS keeps its system font and now gives the system
+  monospace (Menlo for SF Mono, which Pango cannot name) at the interface
+  size instead of Ubuntu Mono 12. The parsers are the header-only
+  `UltraCanvasSystemFont.h` (`ParseGtkFontName`, `ParseKdeFontEntry`,
+  `ReadIniValue`), `SystemFontTest` holds them, and the bundled Ubuntu
+  families stay the answer where nothing is set.
+- **One detector for the person's language.** `UltraCanvasSystemLanguage.h`:
+  `SystemLanguageTags()` gives the desktop's languages best first as BCP 47
+  tags - the POSIX variables as gettext reads them, then the platform's
+  own list (Windows' preferred UI languages and default locale, macOS's
+  Language & Region, `navigator.languages` in a browser, the configuration
+  on Android). The spell checker's `DetectPreferredLanguage`, which read the
+  variables itself and had no platform answer except the Windows
+  backend's, uses it; the localisation module of
+  `UltraCanvasLocalisationProposal.md` will. `SystemLanguageTest` holds the
+  rules.
+- **The standard set of the localisation proposal is measured.**
+  `scripts/survey_ui_strings.py` lists the UI strings the applications
+  share and the framework's own; its findings are the proposal's new
+  appendix, the draft contents of `Standard.json`.
+- **UltraLocalisation, phase L1: the localisation module.** `Tr("Save")`
+  gives the translation of the English text written at the site, from
+  three layers of JSON catalogues loaded at start-up - the application's
+  own set (`media/locale/<lang>/<App>.json`), the base sets of its kind
+  (`media/locale/<lang>/base/<Base>.json`, named in the catalogue's
+  `@bases` or with `UseBaseSets`) and the standard set
+  (`media/locale/<lang>/Standard.json`) - the English itself when none has
+  it, so nothing is ever blank. A file of the same name under the
+  UltraCanvas settings folder's `locale/` is read first, so a translator's
+  draft shows on the next start; a regional tag walks down (`zh-Hant-TW`,
+  `zh-Hant`, `zh`) and the more specific file wins per key. `TrC` keys on
+  a context (`"button|Open"`), `TrN` picks the plural form by the
+  language's CLDR rule from a table of forty languages, `TrF` fills `{0}`,
+  `{1}`, .... `Language.conf` in the settings folder (`language=de` or
+  `system`, `translator=`) is the one choice for every application;
+  `Initialize` takes `--lang` (`SetLanguageOverride`), `ULTRACANVAS_LANG`,
+  that file, then the first desktop language a catalogue exists for, then
+  English, and `UltraCanvasApplicationBase::Initialize` runs it before the
+  first window. The module is UI-free and free of the core (yyjson and the
+  path helpers only), the `uc-localisation` archive absorbed into the
+  shared core, public name `UltraLocalisation`, `Masterfile_modules.md`
+  §18, `Docs/Modules/UltraLocalisation/README.md`;
+  `UltraLocalisationTest` runs it over a temporary catalogue tree. The
+  catalogues' contents (L2), the scripts, the editor (L4) and locale
+  formatting (L6) follow; until L2 ships a catalogue every application
+  shows its English as before.
+- **UltraLocalisation, phase L2: the catalogues and the scripts.**
+  `media/locale/en/Standard.json` is the English standard set - the
+  framework's own `Tr` keys and the application vocabulary of the
+  proposal's Appendix A, 311 entries - and `media/locale/en/base/` holds
+  the sixteen base sets of Appendix B (Computer, Web, Audio, Image, Video,
+  Text, Spreadsheet, Presentation, Planning, CAD, Banking, Games,
+  Shopping, Fashion, Communication, Security; 1,216 entries), so a
+  translation of a language is those files with the values in that
+  language. The framework's own dialogs are wrapped in `Tr`: the modal
+  dialogs' buttons and titles, the file dialog, the filer widget's menus
+  and messages, the colour, date, time and new-document dialogs, the
+  progress dialog, the spell-check menu, the media viewer; a title built
+  from pieces became a `TrF` with placeholders, and the date picker's
+  weekday and month names are the standard set's context entries
+  (`"month|May"`, `"weekday|Mo"`), re-read when the language changes
+  while a picker is open.
+  `scripts/extract_ui_strings.py` rewrites the English catalogues from the
+  `Tr` sites (adding to the standard set, never removing; an application's
+  file from its own sites with what it inherits listed),
+  `scripts/check_locale_catalogues.py` is the CI gate over every
+  translation (parses, no stale key, placeholders kept, the plural forms
+  the language needs, no entry repeated from a set below, the English in
+  sync; `locale-catalogues.yml`, a baseline that only shrinks), and
+  `scripts/wrap_ui_strings.py` wraps a file's interface strings for
+  review. The plural table gained Breton, Scottish Gaelic, Manx, Cornish,
+  Tachelhit, Tamazight, Filipino, Colognian, the Sami languages, Hebrew's
+  "many" and European Portuguese.
+- **UltraLocalisation, phase L3: the drafts, the drafting tool, the
+  Language page.** `media/locale/` now holds the standard set and the
+  sixteen base sets in German, French, Spanish, Italian, Dutch,
+  Portuguese, Japanese and Simplified Chinese - 1,546 entries each,
+  machine drafts marked `"@translated-by": "machine draft ..., reviewed
+  by -"` until a person reviews them - so the framework's own dialogs show
+  in those languages on a desktop set to one. `ultralocalisation-draft`
+  (`Apps/UltraLocalisationDraft`, built with the UltraAI module) drafts a
+  catalogue through UltraAI's translator with any configured provider,
+  keeps what a target already has, sends every plural form the language
+  needs and refuses a draft that lost a placeholder;
+  `scripts/translate_catalogue.py` runs it over a language's sets with a
+  context per set. UOS-Settings gains a Language page (its 0.7.0): the
+  language for every application, *System* or any with a standard set,
+  written to `Language.conf`, and the translator's name for the catalogues
+  the editor will save.
+
+#### 2026-11-03 *0.9.470*
+- **An application built against the Linux SDK stopped with "No rule to make
+  target '/usr/lib/x86_64-linux-gnu/libmp3lame.so'".**
+  - **Cause:** the core links LAME, MuPDF and the libraries MuPDF uses by the
+    full path CI found them at, and the installed package handed those paths
+    on to every application linking `UltraCanvas::UltraCanvas`.
+    `/usr/lib/x86_64-linux-gnu/libmp3lame.so` exists only where
+    `libmp3lame-dev` is installed. `/usr/lib/libmupdf.a` exists only where
+    MuPDF was built from source, as on CI. So a machine with only the runtime
+    libraries could not build UltraCanvasStart's skeleton.
+  - **Fix:** the core is a shared library, so those are already inside it or
+    loaded with it at run time. `UltraCanvasConfig.cmake` now leaves any such
+    path that the consuming machine does not have off a shared core's link
+    line, and names them in the configure output. Paths that exist, and the
+    libraries named by `-l` name, stay as they were. On Windows and macOS the
+    `deps/` remapping still comes first.
+  - **Reproduced** with the 0.9.465 Linux SDK and a skeleton from
+    `UltraCanvasStart --create`, with `libmp3lame.so` and `libmupdf.a`
+    moved aside: the old package stopped with that error.
+  - **Fixed:** the same package with this change configured, named both
+    files, linked, and the skeleton started and showed its window. With both
+    files back in place, nothing is left out and the build is unchanged.
+
+#### 2026-11-03 *0.9.469*
+- **JPEG XL in every build: the framework's own loader and saver on libjxl.**
+  A libvips built without libjxl (Ubuntu 22.04's) read and wrote no `.jxl`,
+  and ImageFormatsTest had to excuse that one runner. `VipsJxlPlugin`
+  (`libspecific/Cairo/`) now registers `jxlload`, `jxlload_buffer`,
+  `jxlload_source`, `jxlsave`, `jxlsave_buffer` and `jxlsave_target` - the
+  names libvips gives its own, so `UCImageRaster`, the export encoder and
+  the format inventory need no other spelling - wherever libvips has none,
+  on the libjxl CMake finds (`HAS_LIBJXL`). The loader takes the still
+  picture at 8 or 16 bits a channel, grey or RGB, with or without alpha;
+  the saver writes 8-bit RGB or RGBA with libvips' `Q`, `distance`,
+  `effort` and `lossless` arguments. A libvips with its own JPEG XL keeps
+  it; `UC_VIPS_JXL_PLUGIN=force` registers the plug-in above it, which is
+  how it is tested on a machine that has both. CI's ubuntu-22.04 rows
+  build libjxl 0.7.0 - Ubuntu 24.04's version, the one the lossy test is
+  calibrated on - from source (cached per runner) and install it under
+  `/usr/local`, so their packages carry JPEG XL for the first time, and
+  the JPEG XL test runs on every row. `libjxl-dev` joins the dependency
+  lists.
+- **The Linux packages carry a current libheif without x265.** CI's
+  ubuntu-22.04 rows, whose libheif is 1.12 with the GPL x265 linked in,
+  build libheif 1.19.8 from source the way the Windows row does: HEVC and
+  AV1 decoding (libde265, dav1d, aom), AV1 encoding (aom), JPEG and JPEG
+  2000, HEIC encoded by kvazaar (BSD-3-Clause; built from source where
+  apt has no package) and never by x265, the codecs linked in rather than
+  loaded as plug-ins. Installed under `/usr/local` ahead of the distro's,
+  so libvips' `heifload` uses it, and the package closure ships it - the
+  first Linux packages that write HEIC, and without a GPL encoder in the
+  core. The install step fails if the distro's libheif still shadows it,
+  if it links x264 or x265, or if kvazaar is missing; the HEIF/AVIF test
+  now runs on the Linux rows with the Windows row's expectations.
+
+#### 2026-11-03 *0.9.468*
+- **Performance matrix, Phase 2: the population.** People can now be placed
+  into the boxes: `PerformanceMatrixModel::items`, each in an explicit cell or
+  placed by two scores mapped through the axes' level bounds (an explicit cell
+  wins, as a calibration override does). There are counts per cell, row and
+  column, groups, and an optional `targetDistribution`.
+  - `SetPopulationDisplay` shows each cell's people as a count chip (the
+    default), a share against the target ("14% / 10%"), dots in the group
+    colours, or names in columns. "+N" / "+N more" stand in for whoever does
+    not fit, and every person is either drawn or counted.
+  - A group legend at the right shows each department's size. A click hides
+    a group from the cells, the counts, the shares and the colouring.
+  - `SetAnonymised(true)` turns names into counts and stops any person
+    answering the pointer, for a room that should not see names.
+  - New `PerformanceCellColoring::ByCount` colouring, and level colour bars
+    along both axes (`SetShowLevelBars`). `SetShowTotals` adds "n = 12"
+    under each level label.
+  - A person's tooltip gives the name, group, box, levels, scores and note,
+    and `onItemClick` reports a click on a dot or a name.
+
+  The model gains `LevelForScore`, `CellOf`, `CountsPerCell` / `Row` /
+  `Column`, `Groups`, item and target validation, and the invented
+  `SampleTeam()` and `SampleTargetDistribution()`. The demo's Performance
+  Matrix page has a Calibration variant with a People control. Model and
+  render tests cover placement, the "+N" accounting, hiding a group and the
+  anonymised mode.
+
+#### 2026-11-03 *0.9.467*
+- **DemoApp: the Image Performance Test chooses its formats from FileLoader.**
+  A gear button at the right end of the page's toolbar opens a dialog with
+  one switch per bitmap format this build both writes and reads
+  (`UltraCanvasFileLoader::GetSupportedFormats(Bitmap)`, `canSave &&
+  canLoad`, with options from `GetImageExportOptions`), so TGA, PPM, ICO,
+  HDR, EXR, PSD and the rest can be timed too. The choice is kept between
+  runs, in the demo's settings file (`UltraCanvasAppSettings`
+  "UltraCanvasDemo", key `imagePerformance.formats`). JPEG 2000 is now off
+  by default - its encoder stretched the time axis until every other bar was
+  a sliver - and the *Include BMP* checkbox went into the list (BMP stays off
+  by default). Every format is written with its Save settings, as any
+  application saves it. Opening the page shows a popup, *"Upload an image to
+  start the test."*
+- **DemoApp: the Image Performance Test writes QOI and BMP through
+  FileLoader.** They were the last two formats the page encoded and decoded
+  with code of its own (`qoi.h`'s `qoi_write` / `qoi_read`, and a 24bpp BMP
+  writer and reader in the page), against the rule that every file goes
+  through `UltraCanvasFileLoader`. Both now take the path every other format
+  does - `UCImage::Save` with `GetImageExportOptions`, then `UCImage::Load`
+  with a full decode - and are offered where FileLoader writes and reads
+  them. Their timings now include libvips' pipeline, as every other column's
+  always did, so they are not comparable with earlier runs. About 420 lines
+  of page-local codec code are gone.
+
+#### 2026-11-03 *0.9.466*
+- **`UltraCanvasVectorCanvas::ZoomToPageWidth`** (header 1.2.0): zooms so the
+  page's width fills the canvas area less a 24 px margin, centred across,
+  keeping the document point at the middle of the view at the same height,
+  and clamps the view as a scroll does. ArtCreator's Fit Page Width uses it.
+
+#### 2026-11-02 *0.9.465*
+- **Android reads SVG.** The Android dependency build now gives libvips its
+  `rsvg` feature, as on macOS: vcpkg's librsvg 2.40, the last C release (no
+  Rust), with gdk-pixbuf, libcroco and libxml2. Without it every `.svg` -
+  the demo's icons among them - failed on the emulator with "is not a known
+  file format". The core also picks librsvg up through pkg-config for its
+  parse-once SVG documents, as on the desktop. The emulator smoke test now
+  fails when any SVG fails to load.
+
+#### 2026-11-02 *0.9.464*
+- **`UltraCanvasCommandRegistry::FindByShortcut`** finds the command a key
+  press names ("Ctrl+Shift+S", however spelt), so a program's key handler runs
+  the command whose shortcut its menu shows.
+- **A tool palette from a toolbar layout.** `ToolbarLayout::separateGroups`
+  (on by default) can be turned off for a palette of folded groups, and
+  `UltraCanvasToolbar::RefreshCommandStates` presses a folded group of check
+  commands on the checked one - the active tool - and releases the others.
+- **A menu layout the user arranged gains a newer program's commands.**
+  `SaveMenuLayoutSet(set, path, defaults)` records the commands the
+  program's menus held (`MenuLayoutSet::knownCommands`, a `[KNOWN]` section
+  an older reader passes over), and `LoadMenuLayoutSet(out, path, defaults,
+  registry)` / `MergeMenuLayoutSet` put each command added since at its place
+  in the defaults - after the entry it follows, in the submenu of the same
+  label, a new submenu or menu whole - while a command the user removed stays
+  removed and one the user has elsewhere is not added twice. A saved layout
+  used to load as it was, so a new command never appeared for a user who had
+  customised the menus.
+
+#### 2026-11-02 *0.9.463*
+- **UltraCanvasNetworkPlaces: computers announced through WS-Discovery.**
+  `ListNetworkComputers` listed only what the Windows network provider knows
+  (the NetBIOS / SMB 1 browser list), so on a current network - Windows with
+  SMB 1 off, NAS boxes running `wsdd` - it showed fewer computers than
+  Explorer. It now also asks Function Discovery's WS-Discovery provider,
+  alongside the provider's list and for at most six seconds, and keeps the
+  devices that say they are a computer (`pub:Computer`, or the PnP-X category
+  *Computers*); one that gives no name is listed by its IPv4 address. The
+  Function Discovery interfaces are declared in the backend: mingw-w64's
+  `functiondiscoveryapi.h` puts `IFunctionInstance`'s slots in the wrong
+  order. Nothing new is linked (ole32 already is).
+- **UltraCanvasNetworkPlaces: the network's computers and shares, and WSL.**
+  Below a share (`\\NAS\photos`) or a WSL distribution (`\\wsl$\Ubuntu`)
+  everything is an ordinary path, but nothing said which computers, shares or
+  distributions there are. New `UltraCanvasNetworkPlaces.h`:
+  `ListNetworkComputers` (the Windows network's workgroup or domain, and the
+  servers of the user's connections), `ListNetworkShares` (a computer's
+  folders, hidden and administrative shares left out), `ListWslDistributions`
+  (from the registry, starting none) and `IsNetworkServerPath` for a bare
+  `\\NAS`, which no folder call can list. The Windows backend loads
+  `mpr.dll` and `netapi32.dll` from System32 when first asked instead of
+  importing them - an installed package can carry an ImageMagick coder named
+  `mpr.dll`. Elsewhere the lists are empty. `NetworkPlacesTest` covers the
+  path rules.
+
+#### 2026-11-02 *0.9.462*
+- **One editor for a program's menus and toolbars.** The menu editor became
+  `UltraCanvasCommandConfigWidget`: its tree holds the program's menus and
+  its toolbars, each toolbar's groups and their commands with a check box
+  each - shown or not. Add, Remove, Move Up / Down work on both; New Group
+  makes a submenu in a menu or a group of the user's on a toolbar; Fold folds
+  a toolbar group into one button; the name field renames a submenu or a
+  group of the user's; icon size and labels are the selected toolbar's; a
+  filter narrows the command catalogue; a preview shows the selected toolbar
+  as edited. Remove hides what is the program's on a toolbar rather than
+  dropping it. `ShowCommandConfigDialog` opens the editor in a window of its
+  own. `onApply` / `onSave` carry a `CommandLayoutSet` (menus and toolbars);
+  `UltraCanvasMenuConfigWidget` and `CreateMenuConfigWidget` remain as
+  aliases. Phase 2 of the toolbar configuration investigation; doc
+  `Docs/UltraCanvas/UltraCanvasCommandConfigWidget.md`.
+- **The command registry is `UltraCanvasCommandRegistry`.** It builds
+  toolbars as well as menus; `UltraCanvasMenuRegistry` (and its header) is an
+  alias. A program with several windows gives each its own registry.
+- **A toolbar's right-click menu.** `UltraCanvasToolbar::SetOnContextMenu`
+  reports a right click with the item under the pointer;
+  `InstallToolbarContextMenu` gives a toolbar built from a `ToolbarLayout`
+  the standard menu: a check per group, Fold / Unfold and Hide for the group
+  and command under the pointer, and "Customise Toolbars".
+- **A program's toolbar group keeps the user's order and additions** across
+  saving and loading (`SaveToolbarLayout` writes its commands when they
+  differ from the program's); a command a later release adds still appears,
+  after the one it follows in the defaults.
+- The DemoApp's "Menus and Toolbars" page (was "Menu Configurator") edits
+  the Filer model's context menu and toolbar in one editor.
+
+#### 2026-11-02 *0.9.461*
+- **CI: each release's SDKs go to the UltraOS website too, not only to the
+  GitHub release.** UltraCanvasStart's Framework step opens
+  https://ultraos.eu/download-file/ and names the archive for its version,
+  but nothing put that archive on the website's server: until someone copied
+  the six files over by hand, the page did not have the version the
+  application asked for. A new `publish-sdk-website` job in
+  `.github/workflows/build.yml` runs after `publish-sdk`. It downloads the
+  same six `UltraCanvas-SDK-*` archives and uploads them over SFTP with
+  `scripts/upload-sdk-website.sh`, as
+  `<ULTRAOS_SFTP_DIR>/<version>/<archive>` plus a `SHA256SUMS`.
+  - SFTP only, in batch mode, so a hosting account with no shell and no rsync
+    is enough. Each file goes up as `<name>.part` and is renamed once
+    complete, so the page never serves half an archive under its real name.
+    A re-run of the same version replaces the files; older versions stay.
+  - The server's host key is checked against the `ULTRAOS_SFTP_KNOWN_HOSTS`
+    secret, never accepted on first sight. The private key is the
+    `ULTRAOS_SFTP_KEY` secret. Host, user, directory and port are
+    `ULTRAOS_SFTP_HOST`, `ULTRAOS_SFTP_USER`, `ULTRAOS_SFTP_DIR` and
+    `ULTRAOS_SFTP_PORT` (22 when empty), each a repository variable or, when
+    no variable has it, a secret.
+  - The job uploads nothing, and says so, until `ULTRAOS_SFTP_HOST` is set.
+    Once it is set, a missing setting fails the job instead of skipping it
+    quietly. A step makes that decision, not the job's `if`: a job condition
+    cannot read secrets, so a host kept in a secret would have skipped the
+    job on every release. The job is separate from `publish-sdk`, so an
+    unreachable server turns only this job red, and it can be re-run on its
+    own.
+  - `scripts/upload-sdk-website.sh --check` tests the settings without a
+    release: it logs in, writes a probe file, renames it, lists the
+    directory and removes the probe. It names the likely cause of a failure
+    (key, host key or directory). The new *SDK website check* workflow runs
+    it on a push that changes the script and from the Actions tab, since the
+    upload itself runs only on a release build of `main`.
+  - `publish-sdk` now has the version as a job output, so the two jobs read
+    it from the same place and cannot disagree about which archives to send.
+  - The comment above `publish-sdk` still said UltraCanvasStart downloads the
+    SDK from the release by a URL it builds; UltraCanvasStart 0.2.0 stopped
+    doing that. The comment now says what it does: it links the release page
+    beside the download page.
+  - Tested against a local OpenSSH server: a first upload (all six archives
+    arrived byte-identical, and `SHA256SUMS` verifies them), a re-run that
+    replaces a changed archive and leaves no `.part` files, five archives
+    (uploaded, with a warning), a missing server directory, a wrong host key
+    and an unset setting (each fails). `--check` was tested the same way: it
+    passes and leaves no probe behind, and it fails, naming the cause, on a
+    wrong key, a wrong host key, a missing directory and a read-only one.
+
 #### 2026-11-02 *0.9.460*
 - **An element plug-in compiled against other framework headers is not
   called.** The classes a plug-in creates derive from `UltraCanvasUIElement`
