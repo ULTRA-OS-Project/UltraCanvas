@@ -26,8 +26,9 @@
 //   shell->resets["look/colours"] = PageReset{"Restore defaults", 170, [&]() { settings.dark = false; }};
 //   shell->Finish("look/colours");
 //
+// Version: 1.1.0 - ShowSaveSettingsDialog: a file type's settings in the window's type size
 // Version: 1.0.0
-// Last Modified: 2026-11-01
+// Last Modified: 2026-11-04
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -146,6 +147,13 @@ std::shared_ptr<UltraCanvasContainer> MakeSliderRow(const std::string& id, const
 std::shared_ptr<UltraCanvasButton> MakeColorBox(const std::string& id, const Color& color,
                                                 const std::string& tooltip, std::function<void()> onClick);
 void SetColorBoxColor(const std::shared_ptr<UltraCanvasButton>& box, const Color& color);
+
+// ===== DIALOGS =====
+// A file type's save settings (JPEG quality, PNG compression ...) - the
+// framework's UltraCanvasFileLoader::ShowSaveSettingsDialog - in this
+// window's type size, so the dialog reads as part of the window it is opened
+// from rather than in the larger type of a dialog on its own.
+void ShowSaveSettingsDialog(const std::string& extensionOrPath, UltraCanvasWindowBase* parent);
 
 // ===== THE WINDOW =====
 // A page's "Restore default ..." action, shown in the bottom bar while that
