@@ -2,7 +2,8 @@
 // UCRichDocument serializers: Markdown (editable round-trip), HTML
 // (read-only rich view), plain text — plus media helpers shared by the
 // ODT/DOCX readers and writers.
-// Version: 1.4.0 - ToHTML writes a run's own letter-spacing
+// Version: 1.4.0 - ToHTML writes a run's own letter-spacing; a character style's letter
+//                  spacing applies and overlays
 // Version: 1.3.2 - ToHTML writes font sizes dot-decimal under any locale
 // Version: 1.3.1 - ConcatenateRunText counts the first run's line break, as the
 //                  editor's positions do: a block's leading empty line is kept
@@ -1923,6 +1924,7 @@ void RichStyleCharacter::ApplyTo(RichTextRun& run) const {
     if (fontSizePt) run.fontSizePt = *fontSizePt;
     if (color) run.color = *color;
     if (highlightColor) run.highlightColor = *highlightColor;
+    if (letterSpacingPt) run.letterSpacingPt = *letterSpacingPt;
 }
 
 void RichStyleCharacter::Overlay(const RichStyleCharacter& over) {
@@ -1935,6 +1937,7 @@ void RichStyleCharacter::Overlay(const RichStyleCharacter& over) {
     if (over.fontSizePt) fontSizePt = over.fontSizePt;
     if (over.color) color = over.color;
     if (over.highlightColor) highlightColor = over.highlightColor;
+    if (over.letterSpacingPt) letterSpacingPt = over.letterSpacingPt;
 }
 
 void RichStyleParagraph::ApplyTo(RichDocBlock& block) const {

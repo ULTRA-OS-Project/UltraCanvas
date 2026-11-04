@@ -7,7 +7,8 @@
 // paragraph). That byte belongs to the run it precedes, so a run's byte span
 // is [start, start + (lineBreakBefore ? 1 : 0) + text.size()).
 //
-// Version: 1.3.0 - letter spacing: a delta sets a run's own, the format state reports it
+// Version: 1.3.0 - letter spacing: a delta sets a run's own, the format state reports it, a
+//                  changed character style restyles it
 // Version: 1.2.1 - RunsText is UCRichDocument::ConcatenateRunText (one definition of
 //                  the text positions index into)
 // Version: 1.2.0
@@ -2331,6 +2332,7 @@ void RestyleRun(RichTextRun& run, const RichStyleCharacter& before, const RichSt
     Restyle(run.fontSizePt, before.fontSizePt, after.fontSizePt, force, 0.0f);
     Restyle(run.color, before.color, after.color, force, std::string());
     Restyle(run.highlightColor, before.highlightColor, after.highlightColor, force, std::string());
+    Restyle(run.letterSpacingPt, before.letterSpacingPt, after.letterSpacingPt, force, std::optional<float>());
 }
 
 } // namespace

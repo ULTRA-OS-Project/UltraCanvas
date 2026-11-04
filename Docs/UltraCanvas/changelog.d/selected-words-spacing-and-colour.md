@@ -2,8 +2,10 @@
   text editor carries a letter spacing of its own (`RichTextRun::
   letterSpacingPt`, in points, over the whole text's tracking): a
   `RichCharFormatDelta` sets it (`setLetterSpacing`), `GetFormatState`
-  reports it, the editor draws it, and ODT (`fo:letter-spacing`) and HTML
-  (CSS `letter-spacing`) keep it. The text bar (`UltraCanvasTextFormatBar`)
+  reports it, the editor draws it, and ODT (`fo:letter-spacing`), DOCX
+  (`w:spacing` in the run's properties) and HTML (CSS `letter-spacing`) keep
+  it. A character style can set it too (`RichStyleCharacter::
+  letterSpacingPt`), read and written in DOCX and ODT. The text bar (`UltraCanvasTextFormatBar`)
   treats letter spacing as a character attribute, like the font and the
   size: `TextFormatCharDelta` and `TextFormatAtCaret` convert it both ways.
 - **A word of a drawing's text can have its own colour.** `VectorTextStyle::

@@ -6,7 +6,8 @@
 // The model is deliberately UI-free: only std types, no framework headers.
 // FromHTML reads Word's list paragraphs as list items.
 // ConcatenateRunText counts the first run's line break.
-// Version: 1.4.0 - RichTextRun::letterSpacingPt: a run's own room between its letters
+// Version: 1.4.0 - RichTextRun::letterSpacingPt: a run's own room between its letters;
+//                  RichStyleCharacter::letterSpacingPt: a character style's
 // Version: 1.3.3
 // Last Modified: 2026-11-04
 // Author: UltraCanvas Framework
@@ -541,10 +542,11 @@ struct RichStyleCharacter {
     std::optional<float> fontSizePt;
     std::optional<std::string> color;
     std::optional<std::string> highlightColor;
+    std::optional<float> letterSpacingPt;   // RichTextRun::letterSpacingPt
 
     bool IsEmpty() const {
         return !bold && !italic && !underline && !strikethrough && !code && !fontFamily
-            && !fontSizePt && !color && !highlightColor;
+            && !fontSizePt && !color && !highlightColor && !letterSpacingPt;
     }
     // Sets `run`'s properties to the ones stated here.
     void ApplyTo(RichTextRun& run) const;

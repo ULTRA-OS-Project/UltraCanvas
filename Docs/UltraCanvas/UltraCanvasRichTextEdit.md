@@ -307,8 +307,8 @@ Some words can have a letter spacing of their own, over the whole text's - a
 run's `letterSpacingPt`, in points (below 0 sets the letters closer). It is a
 character format like the font or the colour: `ApplyCharFormat` sets it on the
 selection (or arms it for what is typed next), `GetFormatState` reports it, and
-the ODT and HTML writers and readers keep it (`fo:letter-spacing`, CSS
-`letter-spacing`):
+the ODT, DOCX and HTML writers and readers keep it (`fo:letter-spacing`,
+`w:spacing`, CSS `letter-spacing`) - a character style's too:
 
 ```cpp
 RichCharFormatDelta wider;

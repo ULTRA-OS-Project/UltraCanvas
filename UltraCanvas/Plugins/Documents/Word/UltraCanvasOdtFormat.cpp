@@ -5,7 +5,8 @@
 // tinyxml2 with the conventional ODF namespace prefixes (office:, text:,
 // style:, fo:, draw:, table:, xlink:) — the same approach as the existing
 // ODS spreadsheet loader.
-// Version: 1.3.0 - fo:letter-spacing: a run's own letter spacing, read and written
+// Version: 1.3.0 - fo:letter-spacing: a run's (and a named text style's) letter spacing, read
+//                  and written
 // Version: 1.2.0
 // Last Modified: 2026-11-04
 // Author: UltraCanvas Framework
@@ -768,6 +769,7 @@ private:
             if (!own.color.empty()) c.color = own.color;
             if (!own.fontFamily.empty()) c.fontFamily = own.fontFamily;
             if (own.fontSizePt > 0.0f) c.fontSizePt = own.fontSizePt;
+            if (!std::isnan(own.letterSpacingPt)) c.letterSpacingPt = own.letterSpacingPt;
             if (named.kind == RichStyle::Kind::Paragraph) {
                 RichStyleParagraph& p = named.paragraph;
                 if (own.align != RichTextAlign::Default) p.align = own.align;
@@ -3013,6 +3015,7 @@ private:
             if (c.color) xml << " fo:color=\"" << EscapeXml(*c.color) << "\"";
             if (c.fontSizePt && *c.fontSizePt > 0.0f) xml << " fo:font-size=\"" << Pt(*c.fontSizePt) << "\"";
             if (c.highlightColor) xml << " fo:background-color=\"" << EscapeXml(*c.highlightColor) << "\"";
+            if (c.letterSpacingPt) xml << " fo:letter-spacing=\"" << Pt(*c.letterSpacingPt) << "\"";
             xml << "/>";
         }
         xml << "</style:style>\n";

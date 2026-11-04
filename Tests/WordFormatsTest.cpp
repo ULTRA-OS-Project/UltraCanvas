@@ -2100,8 +2100,8 @@ int main(int argc, char** argv) {
     // A run's own letter spacing (RichTextRun::letterSpacingPt) - what the
     // text bar gives the selected words - is a format like any other: it
     // keeps two runs apart, a delta sets it, the format state reports it,
-    // and ODT (UltraPaint's text layers) and HTML (UltraVideo's titles)
-    // carry it.
+    // and ODT (UltraPaint's text layers), DOCX and HTML (UltraVideo's
+    // titles) carry it - a character style's too.
     {
         auto spaced = std::make_shared<UCRichDocument>();
         RichDocBlock para;
@@ -2128,6 +2128,50 @@ int main(int argc, char** argv) {
         CHECK_MSG(near(spacingOf(odt, "wide"), 2.5f), "ODT: fo:letter-spacing read back");
         CHECK_MSG(near(spacingOf(odt, " tight"), -0.5f), "ODT: a negative letter spacing read back");
         CHECK_MSG(!spacingOf(odt, "Plain ").has_value(), "ODT: a run without its own has none");
+
+        CHECK_MSG(UCWordDocumentIO::SaveDocx(TmpPath("spacing.docx"), *spaced, err), err);
+        UCRichDocument docx;
+        CHECK_MSG(UCWordDocumentIO::LoadDocx(TmpPath("spacing.docx"), docx, err), err);
+        CHECK_MSG(near(spacingOf(docx, "wide"), 2.5f), "DOCX: w:spacing read back");
+        CHECK_MSG(near(spacingOf(docx, " tight"), -0.5f), "DOCX: a negative w:spacing read back");
+        CHECK_MSG(!spacingOf(docx, "Plain ").has_value(), "DOCX: a run without its own has none");
+        {
+            std::string documentXml;
+            UCZipPackageReader zip;
+            CHECK(zip.Open(TmpPath("spacing.docx")) && zip.ReadEntry("word/document.xml", documentXml));
+            // Twentieths of a point, after w:color and before w:sz in CT_RPr's order.
+            CHECK_MSG(documentXml.find("<w:spacing w:val=\"50\"/>") != std::string::npos, "DOCX: 2.5 pt is w:spacing 50");
+            CHECK_MSG(documentXml.find("<w:spacing w:val=\"-10\"/>") != std::string::npos, "DOCX: -0.5 pt is w:spacing -10");
+        }
+
+        // A character style with a letter spacing: its runs take it, through
+        // DOCX and ODT alike.
+        {
+            UCRichDocument styled;
+            RichStyle wideStyle;
+            wideStyle.id = "Spread";
+            wideStyle.name = "Spread";
+            wideStyle.kind = RichStyle::Kind::Character;
+            wideStyle.character.letterSpacingPt = 3.0f;
+            styled.styles.push_back(wideStyle);
+            RichDocBlock block;
+            RichTextRun spread;
+            spread.text = "spread";
+            spread.characterStyleId = "Spread";
+            spread.letterSpacingPt = 3.0f;
+            block.runs.push_back(spread);
+            styled.blocks.push_back(block);
+            for (const char* name : {"styled-spacing.docx", "styled-spacing.odt"}) {
+                CHECK_MSG(UCWordDocumentIO::Save(TmpPath(name), styled, err), err);
+                UCRichDocument back;
+                CHECK_MSG(UCWordDocumentIO::Load(TmpPath(name), back, err), err);
+                const RichStyle* style = back.FindStyle("Spread");
+                CHECK_MSG(style && style->character.letterSpacingPt &&
+                          std::fabs(*style->character.letterSpacingPt - 3.0f) < 0.01f,
+                          std::string(name) + ": a character style keeps its letter spacing");
+                CHECK_MSG(near(spacingOf(back, "spread"), 3.0f), std::string(name) + ": its run is spread");
+            }
+        }
 
         const std::string html = spaced->ToHTML();
         CHECK_MSG(html.find("letter-spacing:2.5pt") != std::string::npos, "HTML: letter-spacing written");
