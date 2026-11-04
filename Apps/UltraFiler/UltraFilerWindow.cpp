@@ -65,6 +65,7 @@
 // display and the switch itself are remembered in the settings.
 // A previewed file that changes on disk is reopened in the preview pane
 // (ReloadChangedPreview): throttled, and never restarting a playing video.
+// Version: 1.42.2 - the texts the wrapping tool 1.1.0 finds (the page kit's buttons, dropdown items, dialog buttons, tree nodes) go through Tr
 // Version: 1.42.1 - the interface strings go through Tr (UltraLocalisation)
 // Version: 1.42.0 - the viewer window is titled by the file on show (no fixed title), so
 //                   the title follows browsing
@@ -2991,9 +2992,9 @@ void UltraFilerWindow::ConfirmEjectRamDisk(const std::string& mountPath) {
     cfg.height = 180;
     auto dialog = UltraCanvasDialogManager::CreateDialog(cfg);
     if (!dialog) return;   // no dialogs: nothing is ejected unasked
-    dialog->AddCustomButton("Eject", DialogResult::Yes,
+    dialog->AddCustomButton(Tr("Eject"), DialogResult::Yes,
                             DialogButtonRole::DestructiveDefault);
-    dialog->AddCustomButton("Cancel", DialogResult::Cancel, DialogButtonRole::Cancel);
+    dialog->AddCustomButton(Tr("Cancel"), DialogResult::Cancel, DialogButtonRole::Cancel);
     dialog->onResult = [this, mountPath, name](DialogResult result) {
         if (result != DialogResult::Yes) return;
         // Tabs leave first: a display still listing the disc keeps no file
@@ -4016,11 +4017,11 @@ void UltraFilerWindow::BuildFolderTree() {
     // never by a folder scan, and the whole section is hidden while nothing
     // is pinned.
     folderTree->AddNode(kTreeRootNodeId,
-            MakeFolderNodeData(kPinnedNodeId, "Pinned", "rating-heart-on.svg"));
+            MakeFolderNodeData(kPinnedNodeId, Tr("Pinned"), "rating-heart-on.svg"));
     treeChildrenLoaded.insert(kPinnedNodeId);
 
     TreeNode* root = folderTree->AddNode(kTreeRootNodeId,
-            MakeFolderNodeData(kComputerNodeId, "Computer", "computer.png"));
+            MakeFolderNodeData(kComputerNodeId, Tr("Computer"), "computer.png"));
     treeChildrenLoaded.insert(kComputerNodeId);
 
     // "Linux" (the WSL distributions) and "Network" (the network's computers
@@ -4031,11 +4032,11 @@ void UltraFilerWindow::BuildFolderTree() {
     // computer can always be opened by name.
     if (NetworkPlacesAvailable()) {
         folderTree->AddNode(kTreeRootNodeId,
-                MakeFolderNodeData(kWslNodeId, "Linux", "computer.svg"));
+                MakeFolderNodeData(kWslNodeId, Tr("Linux"), "computer.svg"));
         treeChildrenLoaded.insert(kWslNodeId);
         if (TreeNode* wsl = folderTree->FindNode(kWslNodeId)) wsl->data.visible = false;
         folderTree->AddNode(kTreeRootNodeId,
-                MakeFolderNodeData(kNetworkNodeId, "Network", "network.svg"));
+                MakeFolderNodeData(kNetworkNodeId, Tr("Network"), "network.svg"));
         treeChildrenLoaded.insert(kNetworkNodeId);
     }
 
@@ -4074,7 +4075,7 @@ void UltraFilerWindow::BuildFolderTree() {
     // before the drives so a disc that is also a mounted volume (macOS,
     // ImDisk) gets its row here, where it can be ejected, and not twice.
     folderTree->AddNode(kComputerNodeId,
-            MakeFolderNodeData(kRamNodeId, "RAM Discs", "drive.png"));
+            MakeFolderNodeData(kRamNodeId, Tr("RAM Discs"), "drive.png"));
     treeChildrenLoaded.insert(kRamNodeId);
     if (TreeNode* ram = folderTree->FindNode(kRamNodeId))
         ram->data.visible = false;
@@ -4592,11 +4593,11 @@ void UltraFilerWindow::AskRemoteUploadConflict(const std::shared_ptr<RemoteUploa
         dialog->AddCustomButton(Tr("Keep both"), DialogResult::Yes, DialogButtonRole::Default,
                                 [chosen]() { *chosen = KeepBoth; });
         if (!isFolder)
-            dialog->AddCustomButton("Replace", DialogResult::Yes, DialogButtonRole::Normal,
+            dialog->AddCustomButton(Tr("Replace"), DialogResult::Yes, DialogButtonRole::Normal,
                                     [chosen]() { *chosen = Replace; });
-        dialog->AddCustomButton("Skip", DialogResult::Yes, DialogButtonRole::Normal,
+        dialog->AddCustomButton(Tr("Skip"), DialogResult::Yes, DialogButtonRole::Normal,
                                 [chosen]() { *chosen = Skip; });
-        dialog->AddCustomButton("Stop", DialogResult::Cancel, DialogButtonRole::Cancel,
+        dialog->AddCustomButton(Tr("Stop"), DialogResult::Cancel, DialogButtonRole::Cancel,
                                 [chosen]() { *chosen = Stop; });
         dialog->onResult = [this, run, chosen, applyToAll, apply, f](DialogResult) {
             // Escape and the close box are Stop: nothing more goes up.
@@ -6655,8 +6656,8 @@ void UltraFilerWindow::LaunchWindowsExecutable(const FilerEntry& entry) {
     if (!UltraWin_GetCapabilities().wineTierAvailable) {
         if (statusLabel)
             statusLabel->SetText(
-                "Wine is not installed — install it (e.g. 'sudo apt install "
-                "wine') to run Windows applications");
+                Tr("Wine is not installed — install it (e.g. 'sudo apt install "
+                "wine') to run Windows applications"));
         return;
     }
 

@@ -21,7 +21,22 @@ snake_case word, a path, a format token). A line that already calls Tr,
 a #include, a comment and a stream line (debugOutput, std::cerr) are
 left alone. The include of UltraLocalisation/UltraLocalisation.h is added
 when a file gained its first Tr.
+
+The settings page kit (UltraCanvasSettingsPageKit.h) and the settings
+windows built on it carry their text in the second argument, after the
+id - MakePage(id, title, caption), MakeButton(id, label, ...),
+MakeText(id, text), MakeChoice, MakeCheckbox, MakeLabelledRow,
+MakeSliderRow, AddNote(parts, id, text), AddTreeNode(parent, id, text) -
+so POSITIONED_CALLS names the argument positions per call. A literal
+continued over several lines ("a " "b") is wrapped as one Tr(...).
 """
+# Version: 1.1.0 - the settings page kit's helpers and AddTreeNode (the text in the
+#                 second or third argument), a dropdown's AddItem, AddCustomButton,
+#                 AddFilter, SetFilterEmptyAction, SetOpenPathMenuItemVisible,
+#                 MakeFolderNodeData; a literal continued over lines is one Tr
+# Version: 1.0.0
+# Last Modified: 2026-11-04
+# Author: UltraCanvas Framework
 import argparse
 import difflib
 import re
@@ -37,7 +52,15 @@ TEXT_METHODS = ["SetText", "SetTitle", "SetTooltip", "SetPlaceholder", "SetPlace
 TEXT_CALLS = {"ShowMessage": 2, "ShowInformation": 2, "ShowQuestion": 2, "ShowWarning": 2, "ShowError": 2,
               "ShowConfirmation": 2, "ShowInputDialog": 2, "ShowSimple": 2, "AddColumn": 1, "ListColumnDef": 1,
               "FileFilter": 1, "AddTab": 1, "AddPage": 1, "AddRow": 1, "AddOption": 1, "AddHeader": 1,
-              "AddAction": 1, "AddSection": 1, "AddGroup": 1, "SetTitleText": 1}
+              "AddAction": 1, "AddSection": 1, "AddGroup": 1, "SetTitleText": 1,
+              "AddItem": 1, "AddCustomButton": 1, "AddFilter": 1, "SetFilterEmptyAction": 1}
+# Calls whose text is not the first argument: the 0-based positions. The
+# settings page kit puts the id first; AddNote and the kit's AddTreeNode put
+# it second, and a window's own AddTreeNode(d, parent, id, text) third.
+POSITIONED_CALLS = {"MakePage": {1, 2}, "MakeButton": {1}, "MakeText": {1}, "MakeLabel": {1}, "MakeHeading": {1},
+                    "MakeChoice": {1}, "MakeCheckbox": {1}, "MakeLabelledRow": {1}, "MakeSliderRow": {1},
+                    "AddNote": {2}, "AddTreeNode": {2, 3}, "SetOpenPathMenuItemVisible": {1},
+                    "MakeFolderNodeData": {1}}
 # MenuItemData builders: the label is the first argument
 MENU_BUILDERS = ["Action", "Checkbox", "Header", "Submenu", "Radio"]
 # Factories and element constructors: the text is any literal argument after
@@ -108,8 +131,15 @@ def wrap_match(args: str, positions, skip_first=False):
             wanted = False
         if wanted:
             m = re.fullmatch(r"(\s*)" + LITERAL + r"(\s*)", part)
-            if m and looks_like_text(m.group(2)):
+            if m and looks_like_text(m.group(2)) and not re.match(r"\s*[A-Za-z_]", part[m.end(2) + 1:]):
                 parts[k] = m.group(1) + 'Tr("' + m.group(2) + '")' + m.group(3)
+                changed = True
+                continue
+            # A literal continued over lines: "a " \n "b" - one text, one Tr.
+            m = re.fullmatch(r"(\s*)(" + LITERAL.replace("(", "(?:", 1) + r"(?:\s*" + LITERAL.replace("(", "(?:", 1) + r")+)(\s*)",
+                             part, re.S)
+            if m and looks_like_text("".join(re.findall(LITERAL, m.group(2)))):
+                parts[k] = m.group(1) + "Tr(" + m.group(2) + ")" + m.group(3)
                 changed = True
     return ",".join(parts), changed
 
@@ -143,7 +173,8 @@ def wrap_line_assignments(line: str) -> str:
         if looks_like_text(m.group(3)):
             return m.group(1) + 'Tr("' + m.group(3) + '")'
         return m.group(0)
-    pattern = r"(\b(?:" + "|".join(TEXT_MEMBERS) + r")\s*=\s*)" + r"()" + LITERAL
+    # A literal followed by a name is pasted to a macro ("UltraFiler " VERSION): not a text.
+    pattern = r"(\b(?:" + "|".join(TEXT_MEMBERS) + r")\s*=\s*)" + r"()" + LITERAL + r"(?!\s*[A-Za-z_])"
     return re.sub(pattern, repl, line)
 
 
@@ -161,6 +192,7 @@ def wrap_text(text: str) -> str:
 
     # Calls: scan for each known name followed by '('
     names = ([(m, "method") for m in TEXT_METHODS] + [(c, "call") for c in TEXT_CALLS] +
+             [(c, "positioned") for c in POSITIONED_CALLS] +
              [("MenuItemData::" + b, "menu") for b in MENU_BUILDERS] + [(f, "factory") for f in FACTORIES] +
              [("make_shared<" + e + ">", "factory") for e in ELEMENT_CTORS] + [(e, "factory") for e in ELEMENT_CTORS])
     for name, kind in names:
@@ -184,6 +216,8 @@ def wrap_text(text: str) -> str:
                 new_args, changed = wrap_match(args, {0})
             elif kind == "call":
                 new_args, changed = wrap_match(args, set(range(TEXT_CALLS[name])))
+            elif kind == "positioned":
+                new_args, changed = wrap_match(args, POSITIONED_CALLS[name])
             elif kind == "menu":
                 new_args, changed = wrap_match(args, {0})
             else:

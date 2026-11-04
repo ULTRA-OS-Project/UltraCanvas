@@ -1,6 +1,7 @@
 // Apps/UltraFiler/UltraFilerFolderExport.cpp
 // "Extras > Export": the folder content / folder tree as text, and the window
 // that shows it with a Save button.
+// Version: 1.0.2 - the texts the wrapping tool 1.1.0 finds (the page kit's buttons, dropdown items, dialog buttons, tree nodes) go through Tr
 // Version: 1.0.1 - the interface strings go through Tr (UltraLocalisation)
 // Version: 1.0.0
 // Author: UltraCanvas Framework
@@ -665,7 +666,7 @@ void UltraFilerFolderExportWindow::Save() {
         .SetInitialDirectory(folder_)
         .SetDefaultFileName(FolderExportFileName(folder_, kind_))
         .SetParentWindow(window_.get());
-    if (csv) opts.AddFilter("CSV files", std::vector<std::string>{"csv"});
+    if (csv) opts.AddFilter(Tr("CSV files"), std::vector<std::string>{"csv"});
     else     opts.AddFilter(Tr("Text files"), std::vector<std::string>{"txt"});
     opts.AddFilter(Tr("All files"), "*");
 
