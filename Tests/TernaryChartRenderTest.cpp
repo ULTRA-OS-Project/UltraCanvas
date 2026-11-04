@@ -12,11 +12,14 @@
 // With ULTRACANVAS_SCREENSHOT_DIR set, each case is also written there as a
 // PNG for a person to look at.
 //
+// Version: 1.2.0 - Phase 3: the zoom (corners, ticks, points outside it, the
+//   clip), drag-to-zoom and the double-click reset, a click on a region on
+//   release, density bins and contours
 // Version: 1.1.0 - Phase 2: regions named inside themselves and hit where
 //   drawn, region clicks, paths, bubbles, the curve in the legend, the reading
 //   guide
 // Version: 1.0.0
-// Last Modified: 2026-11-04
+// Last Modified: 2026-11-05
 // Author: UltraCanvas Framework
 
 #include "Plugins/Charts/Engine/Charts/UltraCanvasTernaryChart.h"
@@ -275,7 +278,9 @@ void TestRegions() {
     const Point2Dd empty = chart->SharesToScreen(70, 15, 15);   // deep in clay, no sample there
     chart->OnEvent(Mouse(UCEventType::MouseMove, empty));
     chart->OnEvent(Mouse(UCEventType::MouseDown, empty));
-    Check(clicked == 11 && chart->BuildRegionTooltip(11) == "Clay", "a click on a class reports it");
+    Check(clicked == -1, "a press on a class waits: it may become a zoom drag");
+    chart->OnEvent(Mouse(UCEventType::MouseUp, empty));
+    Check(clicked == 11 && chart->BuildRegionTooltip(11) == "Clay", "released in place, it is a click on the class");
 
     const std::string tip = chart->BuildPointTooltip(1, 0);
     Check(tip.find("Region: ") != std::string::npos, "a point's tooltip names its class");
@@ -350,6 +355,129 @@ void TestReadingGuide() {
     Check(!chart->GetGuideShares(a, b, c), "and goes away outside the triangle");
 }
 
+void TestZoom() {
+    std::cout << "\nZoom\n";
+    Canvas canvas(W, H);
+    if (!canvas.ctx) return;
+    TernaryModel model = TernarySamples::SoilTexture();
+    model.series = TernarySamples::SoilSamples().series;
+    auto chart = Make(canvas, model);
+    int changes = 0;
+    chart->onZoomChanged = [&changes]() { ++changes; };
+
+    Check(!chart->SetZoom(0.5, 0.5, 0.1), "a zoom that leaves nothing is refused");
+    Check(chart->SetZoom(0.2, 0.1, 0.3) && chart->IsZoomed() && changes == 1, "a valid zoom is taken and reported");
+    chart->Render(canvas.ctx.get(), Rect2Df(0, 0, W, H));
+    double a = 0, b = 0, c = 0;
+    Check(chart->ScreenToShares(chart->CornerPoint(0), a, b, c) && std::abs(a - 0.6) < 1e-9 &&
+          std::abs(b - 0.1) < 1e-9 && std::abs(c - 0.3) < 1e-9, "the apex is now 60 % clay, 10 % sand, 30 % silt");
+    const Point2Dd p = chart->SharesToScreen(30, 30, 40);
+    Check(std::abs(p.x - chart->SharesToScreen(0.3, 0.3, 0.4).x) < 1e-9 && chart->ScreenToShares(p, a, b, c) &&
+          std::abs(a - 0.3) < 1e-9, "a composition inside the zoom maps both ways");
+    Check(std::hypot(chart->TickPosition(0, 0.2).x - chart->CornerPoint(1).x,
+                     chart->TickPosition(0, 0.2).y - chart->CornerPoint(1).y) < 1e-9,
+          "clay's labelled edge starts at its minimum");
+
+    // A sample outside the zoom is neither drawn nor hit.
+    bool outsideHidden = true, insideShown = false;
+    for (size_t s = 0; s < model.series.size(); ++s) {
+        for (size_t i = 0; i < model.series[s].points.size(); ++i) {
+            const TernaryPoint& pt = model.series[s].points[i];
+            double sa = 0, sb = 0, sc = 0;
+            pt.Shares(sa, sb, sc);
+            const bool in = sa >= 0.2 && sb >= 0.1 && sc >= 0.3;
+            const Point2Dd at = chart->PointPosition(s, i);
+            if (in) insideShown |= !std::isnan(at.x);
+            else outsideHidden &= std::isnan(at.x);
+        }
+    }
+    Check(outsideHidden && insideShown, "samples outside the zoom are left out, those inside drawn");
+
+    // Nothing is drawn past the triangle: just outside its left edge the
+    // background shows, though the class there reaches on.
+    const Point2Dd mid((chart->CornerPoint(0).x + chart->CornerPoint(1).x) * 0.5,
+                       (chart->CornerPoint(0).y + chart->CornerPoint(1).y) * 0.5);
+    const Color outside = canvas.PixelAt(static_cast<int>(mid.x) - 40, static_cast<int>(mid.y));
+    Check(Close(outside, chart->GetTheme().backgroundColor, 3), "the regions are cut at the zoomed triangle's edge");
+    canvas.Save("ternary_zoom");
+
+    // A double click inside shows the whole triangle again.
+    chart->OnEvent(Mouse(UCEventType::MouseDoubleClick, chart->SharesToScreen(0.3, 0.3, 0.4)));
+    Check(!chart->IsZoomed() && changes == 2, "a double click undoes the zoom");
+
+    // A drag across the triangle zooms to the sub-triangle holding both ends.
+    chart->Render(canvas.ctx.get(), Rect2Df(0, 0, W, H));
+    int clicked = -1;
+    chart->onRegionClick = [&clicked](int r) { clicked = r; };
+    const Point2Dd from = chart->SharesToScreen(0.5, 0.2, 0.3), to = chart->SharesToScreen(0.2, 0.4, 0.4);
+    chart->OnEvent(Mouse(UCEventType::MouseMove, from));
+    chart->OnEvent(Mouse(UCEventType::MouseDown, from));
+    chart->OnEvent(Mouse(UCEventType::MouseMove, Point2Dd((from.x + to.x) / 2, (from.y + to.y) / 2)));
+    chart->Render(canvas.ctx.get(), Rect2Df(0, 0, W, H));
+    canvas.Save("ternary_zoom_drag");
+    chart->OnEvent(Mouse(UCEventType::MouseMove, to));
+    chart->OnEvent(Mouse(UCEventType::MouseUp, to));
+    const TernaryModel& zoomed = chart->GetModel();
+    Check(std::abs(zoomed.axes[0].minimum - 0.2) < 0.01 && std::abs(zoomed.axes[1].minimum - 0.2) < 0.01 &&
+          std::abs(zoomed.axes[2].minimum - 0.3) < 0.01, "a drag zooms to the smallest sub-triangle holding both ends");
+    Check(clicked == -1, "and is not a click");
+    chart->SetZoomByDrag(false);
+    chart->ResetZoom();
+    chart->OnEvent(Mouse(UCEventType::MouseDown, from));
+    chart->OnEvent(Mouse(UCEventType::MouseMove, to));
+    chart->OnEvent(Mouse(UCEventType::MouseUp, to));
+    Check(!chart->IsZoomed(), "with drag-to-zoom off, a drag zooms nothing");
+}
+
+void TestDensity() {
+    std::cout << "\nDensity\n";
+    Canvas canvas(W, H);
+    if (!canvas.ctx) return;
+    // 3,000 compositions round two centres, from a fixed generator.
+    TernaryModel model = TernarySamples::SoilTexture();
+    model.regions.clear();
+    TernarySeries cloud("Samples");
+    uint32_t seed = 12345;
+    auto next = [&seed]() { seed = seed * 1664525u + 1013904223u; return (seed >> 8) / 16777216.0; };
+    for (int k = 0; k < 3000; ++k) {
+        const bool first = k % 3 != 0;
+        const double ca = first ? 0.2 : 0.55, cb = first ? 0.6 : 0.15;
+        const double a = std::max(0.0, ca + (next() - 0.5) * 0.25);
+        const double b = std::max(0.0, cb + (next() - 0.5) * 0.25);
+        cloud.points.emplace_back(a, b, std::max(0.0, 1.0 - a - b));
+    }
+    model.series = {cloud};
+    auto chart = CreateTernaryChart("ternary", 0, 0, W, H);
+    chart->SetEnableTooltips(false);
+    chart->SetAnimateOnDataChange(false);
+    chart->SetModel(model);
+    chart->SetDensity(12);
+    chart->SetDensityContours(4);
+    chart->SetShowPoints(false);
+    chart->Render(canvas.ctx.get(), Rect2Df(0, 0, W, H));
+
+    int valid = 0;
+    for (const TernaryPoint& p : model.series[0].points) {
+        double sa = 0, sb = 0, sc = 0;
+        valid += p.Shares(sa, sb, sc) ? 1 : 0;
+    }
+    Check(chart->GetDensityTotal() == valid, "every point with shares falls in exactly one cell");
+    Check(chart->GetDensityMax() > 30, "the cells near the centres fill up");
+    const int dense = chart->DensityCountAt(0.2, 0.6, 0.2), sparse = chart->DensityCountAt(0.05, 0.05, 0.9);
+    Check(dense > sparse && sparse == 0, "the centre's cell holds many, a far corner none");
+    const Point2Dd d = chart->SharesToScreen(0.2, 0.6, 0.2), e = chart->SharesToScreen(0.33, 0.33, 0.34);
+    auto luma = [](const Color& c) { return 0.299 * c.r + 0.587 * c.g + 0.114 * c.b; };
+    Check(luma(canvas.PixelAt(static_cast<int>(d.x), static_cast<int>(d.y))) <
+          luma(canvas.PixelAt(static_cast<int>(e.x), static_cast<int>(e.y))), "the fuller cell is drawn darker");
+    Check(chart->GetContourSegmentCount() > 10, "contour lines are drawn round the centres");
+    canvas.Save("ternary_density");
+
+    chart->SetZoom(0.1, 0.4, 0.0);
+    chart->Render(canvas.ctx.get(), Rect2Df(0, 0, W, H));
+    Check(chart->GetDensityTotal() < valid && chart->GetDensityTotal() > 0, "zoomed in, only the points inside are binned");
+    canvas.Save("ternary_density_zoom");
+}
+
 } // namespace
 
 int main() {
@@ -364,6 +492,8 @@ int main() {
     TestRegions();
     TestPathsBubblesCurves();
     TestReadingGuide();
+    TestZoom();
+    TestDensity();
 
     std::cout << "\n====================================\n";
     if (g_failures == 0) {

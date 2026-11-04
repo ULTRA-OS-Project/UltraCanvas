@@ -1,9 +1,11 @@
 // Plugins/Charts/Engine/Charts/UltraCanvasTernaryModel.cpp
 // The UI-free model of the ternary chart and its sample models.
+// Version: 1.2.0 - the zoom: minimums, ZoomSpan, ToZoomed / FromZoomed, ticks
+//   over the visible range
 // Version: 1.1.0 - regions and RegionOf, paths, bubble sizes, curves, JSON and
 //   CSV interchange, the SoilTexture / DeFinetti / VoteTrajectories samples
 // Version: 1.0.0
-// Last Modified: 2026-11-04
+// Last Modified: 2026-11-05
 // Author: UltraCanvas Framework
 
 #include "Plugins/Charts/Engine/Charts/UltraCanvasTernaryModel.h"
@@ -13,6 +15,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <map>
 
@@ -81,13 +84,51 @@ namespace UltraCanvas {
     std::vector<double> TernaryModel::Ticks(int corner) const {
         std::vector<double> ticks;
         if (corner < 0 || corner > 2) return ticks;
-        const double step = axes[corner].tickStep;
-        if (!(step > 0.0) || step > 0.5) return {0.0, 1.0};
-        // Counted, not accumulated, so 0.1 * 10 lands on 1 exactly.
-        const int count = static_cast<int>(std::floor(1.0 / step + 1e-9));
-        for (int k = 0; k <= count; ++k) ticks.push_back(std::min(1.0, k * step));
-        if (ticks.back() < 1.0 - 1e-9) ticks.push_back(1.0);
+        const double span = ZoomSpan();
+        const double lo = std::clamp(axes[corner].minimum, 0.0, 1.0);
+        const double hi = lo + span;
+        double step = axes[corner].tickStep;
+        if (!(step > 0.0) || step > 0.5) return {lo, hi};
+        // Zoomed in: the largest nice step at most the axis's own that still
+        // gives three intervals.
+        const double nice[] = {0.5, 0.25, 0.2, 0.1, 0.05, 0.025, 0.02, 0.01, 0.005, 0.0025, 0.002, 0.001};
+        if (span / step < 3.0 - 1e-9) {
+            for (double candidate : nice) {
+                if (candidate <= step && span / candidate >= 3.0 - 1e-9) { step = candidate; break; }
+            }
+            if (span / step < 3.0 - 1e-9) step = nice[sizeof(nice) / sizeof(nice[0]) - 1];
+        }
+        ticks.push_back(lo);
+        // The multiples of the step strictly inside the range - counted, not
+        // accumulated, so 0.1 * 10 lands on 1 exactly - leaving out one too
+        // close to an end to be told from it.
+        const long first = static_cast<long>(std::floor(lo / step + 1e-9)) + 1;
+        const long last = static_cast<long>(std::ceil(hi / step - 1e-9)) - 1;
+        for (long k = first; k <= last; ++k) {
+            const double t = static_cast<double>(k) * step;
+            if (t - lo < step * 0.3 || hi - t < step * 0.3) continue;
+            ticks.push_back(t);
+        }
+        ticks.push_back(std::min(1.0, hi));
         return ticks;
+    }
+
+    double TernaryModel::ZoomSpan() const {
+        return 1.0 - std::max(0.0, axes[0].minimum) - std::max(0.0, axes[1].minimum) - std::max(0.0, axes[2].minimum);
+    }
+
+    void TernaryModel::ToZoomed(double sa, double sb, double sc, double& za, double& zb, double& zc) const {
+        const double span = std::max(1e-9, ZoomSpan());
+        za = (sa - std::max(0.0, axes[0].minimum)) / span;
+        zb = (sb - std::max(0.0, axes[1].minimum)) / span;
+        zc = (sc - std::max(0.0, axes[2].minimum)) / span;
+    }
+
+    void TernaryModel::FromZoomed(double za, double zb, double zc, double& sa, double& sb, double& sc) const {
+        const double span = ZoomSpan();
+        sa = std::max(0.0, axes[0].minimum) + za * span;
+        sb = std::max(0.0, axes[1].minimum) + zb * span;
+        sc = std::max(0.0, axes[2].minimum) + zc * span;
     }
 
     size_t TernaryModel::PointCount() const {
@@ -125,10 +166,14 @@ namespace UltraCanvas {
         const char* corners[3] = {"A", "B", "C"};
         for (int i = 0; i < 3; ++i) {
             if (axes[i].title.empty()) problems.push_back(std::string("Axis ") + corners[i] + " has no title");
+            if (!(axes[i].minimum >= 0.0) || axes[i].minimum >= 1.0) {
+                problems.push_back(std::string("Axis ") + corners[i] + " has a minimum outside [0, 1)");
+            }
             if (!(axes[i].tickStep > 0.0) || axes[i].tickStep > 0.5) {
                 problems.push_back(std::string("Axis ") + corners[i] + " has a tick step outside (0, 0.5]");
             }
         }
+        if (ZoomSpan() < 0.01) problems.push_back("The axis minimums leave less than 1 % of the triangle");
         for (const TernarySeries& s : series) {
             for (size_t p = 0; p < s.points.size(); ++p) {
                 double sa = 0.0, sb = 0.0, sc = 0.0;
@@ -232,6 +277,7 @@ namespace UltraCanvas {
             a.Set("title", axis.title);
             if (axis.unit != "%") a.Set("unit", axis.unit);
             if (axis.tickStep != 0.1) a.Set("tickStep", axis.tickStep);
+            if (axis.minimum != 0.0) a.Set("minimum", axis.minimum);
             axes.Append(a);
         }
         doc.Set("axes", axes);
@@ -326,6 +372,7 @@ namespace UltraCanvas {
             model.axes[i].title = axes[i].Get("title").GetString();
             model.axes[i].unit = axes[i].Get("unit").GetString("%");
             model.axes[i].tickStep = axes[i].Get("tickStep").GetNumber(0.1);
+            model.axes[i].minimum = axes[i].Get("minimum").GetNumber(0.0);
         }
 
         for (const JSONValue& j : json.Get("series").GetElements()) {
@@ -734,6 +781,42 @@ namespace UltraCanvas {
                 for (const Election& e : r.elections) s.points.emplace_back(e.blue, e.red, e.gold, e.year);
                 model.series.push_back(s);
             }
+            return model;
+        }
+
+        TernaryModel FeldsparCloud() {
+            TernaryModel model;
+            model.title = "Feldspar analyses (invented)";
+            model.subtitle = "2,400 compositions; the shade counts how many fall in each small triangle";
+            model.axes[0] = TernaryAxis("Orthoclase");
+            model.axes[1] = TernaryAxis("Albite");
+            model.axes[2] = TernaryAxis("Anorthite");
+            model.reading = TernaryReading::Anticlockwise;
+            // A fixed linear congruential generator, so every run - and every
+            // test - sees the same cloud. Each analysis is a centre plus a
+            // spread, clamped at 0; the chart divides by the sum.
+            uint32_t seed = 20261105u;
+            auto next = [&seed]() {
+                seed = seed * 1664525u + 1013904223u;
+                return static_cast<double>(seed >> 8) / 16777216.0;
+            };
+            struct Centre { const char* name; double or_, ab, an, spread; int count; };
+            const Centre centres[] = {
+                {"Alkali feldspar", 0.70, 0.25, 0.05, 0.22, 1000},
+                {"Plagioclase", 0.05, 0.55, 0.40, 0.30, 1000},
+                {"Anorthoclase", 0.30, 0.62, 0.08, 0.16, 400},
+            };
+            TernarySeries analyses("Analyses");
+            analyses.markerRadius = 2.0f;
+            for (const Centre& c : centres) {
+                for (int k = 0; k < c.count; ++k) {
+                    // The sum of two uniforms: a softer, peaked spread.
+                    auto jitter = [&next, &c]() { return (next() + next() - 1.0) * c.spread * 0.5; };
+                    analyses.points.emplace_back(std::max(0.0, c.or_ + jitter()), std::max(0.0, c.ab + jitter()),
+                                                 std::max(0.0, c.an + jitter()));
+                }
+            }
+            model.series = {analyses};
             return model;
         }
 
