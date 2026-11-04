@@ -693,8 +693,31 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
     `ElevatedDeleteResult` (Completed with per-entry failures / Declined /
     Failed / Unavailable).
   `UltraCanvasFilerWidget` offers it from its delete-problem dialog wherever
-  the host wired the helper. See
-  `Docs/UltraCanvas/UltraCanvasElevatedFileOperations.md`.
+  the host wired the helper - for `FileRemovalProblem::NotPermitted` only.
+  See `Docs/UltraCanvas/UltraCanvasElevatedFileOperations.md`.
+
+- **UltraCanvasFileRemoval** (`UltraCanvasFileRemoval.h`) — deleting for
+  good, and why it failed in terms of the user's next step. On Windows
+  "access denied" means four things and only one is about permission: a
+  read-only file or FOLDER (lifted, put back if the delete still fails), an
+  entry already deleted that a program still holds ("delete pending" -
+  counted as removed, its folder waited for about two seconds), a file mapped
+  into a process (a running program, a picture libvips memory-mapped -
+  `InUse`, no administrator gets past it) and the access list
+  (`NotPermitted`). Where available (Windows 10 1809+, NTFS) the delete uses
+  POSIX semantics, so a held file's name goes at once. Public surface:
+  - `RemoveFileSystemEntry(path, ec, &problem)` — one file, link or empty
+    folder.
+  - `RemoveFileSystemTree(path, ec, &problem, &stoppedAt)` — `remove_all`
+    with the reason and the entry that refused.
+  - `FileSystemEntryIsDeletePending(path)`, `ClassifyFileRemovalError(ec)`,
+    `FileRemovalProblem` (`NoProblem`, `InUse`, `NotPermitted`, `NotEmpty`,
+    `Other`).
+  Core and the std::filesystem backend in `core/UltraCanvasFileRemoval.cpp`,
+  Windows in `OS/MSWindows/UltraCanvasWindowsFileRemoval.cpp`,
+  `Tests/FileRemovalTest.cpp`. `UltraCanvasFilerWidget`'s delete and the
+  elevated helper remove through it. See
+  `Docs/UltraCanvas/UltraCanvasFileRemoval.md`.
 
 - **UltraCanvasCoderModuleRepair** (`UltraCanvasCoderModuleRepair.h`) —
   repairs an installed Windows package whose ImageMagick coder carries a
@@ -30282,9 +30305,14 @@ page, for example, keeps the plain *Try again / Skip* choice.
   reported, not resolved against whatever the elevated process's working
   directory happens to be. The one file it reads is one it writes — the
   report — and only after the deletes.
-- **Get past a sharing violation.** "In use by another program" is not a
-  permission problem; `IsPermissionFailure` says no for it and the widget keeps
-  offering *Try again* there.
+- **Get past a file in use.** "In use by another program" is not a
+  permission problem, and on Windows it often arrives as the same *Access is
+  denied*: a running program's executable, or a picture an image library
+  keeps memory-mapped, refuses its delete to an administrator too.
+  `IsPermissionFailure` only reads the error code, so it cannot tell. The
+  widget asks [UltraCanvasFileRemoval](UltraCanvasFileRemoval.md) instead
+  and offers the retry only for `FileRemovalProblem::NotPermitted`. Use that
+  for a new caller as well.
 - **Help when already elevated.** When the process runs as administrator and
   the system still says no (a file owned by TrustedInstaller, say), asking
   again cannot change the answer, so `IsAvailable()` is false then.
@@ -30318,11 +30346,15 @@ before it could write anything.
 <exe> --uc-elevated-delete <report file> <absolute path>...
 ```
 
-The helper deletes each path in order, lifting read-only attributes first (on
-the entry and, for a folder, on everything in it — a read-only file cannot be
-removed on Windows, and getting things out of the way is the point). It writes
+The helper deletes each path in order through `RemoveFileSystemTree`
+([UltraCanvasFileRemoval](UltraCanvasFileRemoval.md)). It lifts read-only
+attributes on files and folders as it goes, since Windows refuses to delete
+either while the bit is set, and counts an entry that is already delete
+pending as gone. It writes
 one `<path>\t<reason>` line per failure into the report file (UTF-8, LF) —
-an empty file for a clean run, so the caller can tell *nothing failed* from
+the reason naming the entry inside that refused (`IMG_0001.JPG: in use by a
+program (…)`), and an empty file for a clean run, so the caller can tell
+*nothing failed* from
 *the helper never got this far* — and exits `0` when everything went, `1` when
 something is left, `2` when the arguments made no sense.
 
@@ -31697,6 +31729,116 @@ file reads `Free`, that the probe changes neither size nor modification time
 nor existence, that a missing file, a directory and an empty path answer
 `Unknown`, that a batch answers one entry per path in order, and the wording.
 On a platform without a backend the detection checks are skipped, not failed.
+
+==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasFileRemoval.md
+==============================================================================
+
+# UltraCanvasFileRemoval
+
+<!-- doc-check: std::string path; -->
+
+**Deleting for good, and saying why it failed** in terms of what the user can
+do about it: close a program, ask an administrator, or nothing.
+
+```cpp
+#include "UltraCanvasFileRemoval.h"
+#include "UltraCanvasPathUtf8.h"
+
+std::error_code ec;
+FileRemovalProblem problem = FileRemovalProblem::NoProblem;
+std::filesystem::path stoppedAt;
+if (!RemoveFileSystemTree(PathFromUtf8(path), ec, &problem, &stoppedAt)) {
+    switch (problem) {
+        case FileRemovalProblem::InUse:        /* a program holds it: close it, try again */ break;
+        case FileRemovalProblem::NotPermitted: /* an administrator may succeed */ break;
+        default:                               /* ec.message() says what */ break;
+    }
+}
+```
+
+`RemoveFileSystemTree` is `std::filesystem::remove_all` with a reason. It works
+post-order, removes a link as the link and never follows it, and names in
+`stoppedAt` the entry that refused. Inside a folder that is rarely the folder
+itself.
+
+## Why "access denied" is not enough
+
+On Windows, `std::filesystem::remove` answers *Access is denied* for four
+different things, and only one of them is about permission:
+
+| What it really is | Example | What this module does |
+|---|---|---|
+| The **read-only attribute**, on a file *or a folder* | A folder copied off a CD or a camera card; a folder with a `desktop.ini` | Lifts it, as Explorer does, and puts it back if the delete still fails. FAT and exFAT refuse even to open such an entry for deleting. |
+| **Delete pending**: the entry was deleted, but a program still holds it open | A virus scanner or the search indexer reading the file at that moment | Counts it as removed. Windows lists it until the holder lets go, and refuses every look at it meanwhile. Its folder is waited for, about two seconds at most. |
+| A file **mapped into a process** | A running program's `.exe` or DLL; a picture libvips memory-mapped when it was decoded | `FileRemovalProblem::InUse`. Nobody can delete it while the mapping lasts, not even an administrator. |
+| The **access list** says no | A file of another user, or of the system | `FileRemovalProblem::NotPermitted`: the one case a retry as administrator ([UltraCanvasElevatedFileOperations](UltraCanvasElevatedFileOperations.md)) can help. |
+
+The second column of the table is how they are told apart. When opening the
+entry for deletion fails, the NTSTATUS behind the Win32 error says whether it
+was delete pending (`STATUS_DELETE_PENDING`). If the read-only bit is not set
+either, what remains is the access list. When the open *succeeds* and the
+delete is still refused (`STATUS_CANNOT_DELETE`), the system has already
+granted the delete access. A refusal at that point is never one an
+administrator can get past.
+
+This is what used to go wrong in UltraFiler. A folder on an external drive
+held pictures the Filer had drawn thumbnails of, and libvips kept them
+memory-mapped. Deleting it answered *Access is denied*, the Filer offered
+*Delete as administrator*, and the elevated helper got the same answer. Its
+summary read *could not be deleted even with administrator permission*,
+while Explorer deleted the folder without asking. The
+[Filer](UltraCanvasFilerWidget.md#delete-problems-locked--failing-entries) now
+releases what its image loader holds (`UCImage::ReleaseCachedFiles`) and tries
+again when a removal comes back `InUse`. It offers the administrator only for
+`NotPermitted`.
+
+## API
+
+| Function | Purpose |
+|---|---|
+| `RemoveFileSystemEntry(path, ec, &problem)` | One file, one link or junction (never its target), or one **empty** folder. True when it is gone: removed now, not there to begin with, or delete pending. |
+| `RemoveFileSystemTree(path, ec, &problem, &stoppedAt)` | `path` and everything under it, every entry through `RemoveFileSystemEntry`. |
+| `FileSystemEntryIsDeletePending(path)` | Windows: deleted already, listed only while a program holds it. Always false elsewhere. |
+| `ClassifyFileRemovalError(ec)` | The `FileRemovalProblem` for an error from another `std::filesystem` call, such as listing a folder on the way to removing it. |
+
+`FileRemovalProblem`:
+
+| Value | Meaning |
+|---|---|
+| `NoProblem` | Removed, already gone, or on its way out. |
+| `InUse` | A program holds it: open without delete sharing, mapped, or running. Closing that program helps; administrator rights do not. |
+| `NotPermitted` | This user may not delete it; an administrator may. |
+| `NotEmpty` | A folder that still has entries in it (`RemoveFileSystemEntry` removes empty ones only). |
+| `Other` | Anything else; `ec` says what. |
+
+## The delete itself
+
+On Windows 10 1809 and later, on NTFS, an entry is marked deleted with
+`FILE_DISPOSITION_INFO_EX` using POSIX semantics and *ignore read-only*. Its
+name leaves the folder at once, even while another program still holds the
+file with delete sharing, so the folder can be removed straight after. That
+is what `DeleteFileW` itself does on current Windows. FAT, exFAT, network
+shares and older Windows get the classic `FILE_DISPOSITION_INFO`, after the
+read-only attribute is lifted.
+
+A folder that answers *not empty* is checked before anything is reported. If
+every entry left in it is delete pending, it is tried again a few times,
+about two seconds in all. A holder that keeps an entry longer than that makes
+the folder `InUse`.
+
+## Backends
+
+| Platform | Backend |
+|---|---|
+| Windows | `OS/MSWindows/UltraCanvasWindowsFileRemoval.cpp`: `CreateFileW` with `DELETE`, `SetFileInformationByHandle`, `RtlGetLastNtStatus` from `ntdll` for the status behind *access denied*. |
+| Linux, macOS, BSD, WebAssembly | `std::filesystem::remove` in `core/UltraCanvasFileRemoval.cpp`, with the errno classified: `EACCES` / `EPERM` / `EROFS` are `NotPermitted`, `EBUSY` / `ETXTBSY` are `InUse`. Unlinking an open file is allowed there, and a deleted entry is never listed, so the Windows cases do not arise. |
+
+`Tests/FileRemovalTest.cpp` exercises it everywhere. On Windows it creates
+each case for real: read-only folders, a delete-pending file whose holder lets
+go during the wait and one whose holder does not, a memory-mapped file, and a
+file open without delete sharing. CI runs it on the Windows runners, in a
+folder with a Thai name.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasFilerWidget.md
@@ -33922,7 +34064,13 @@ beside them:
   `"X" is write-protected.` — with **Skip** (the default) / **Delete anyway**
   (red) and an *Apply to all remaining write-protected items* checkbox.
   Delete-anyway lifts the protection first, so it also works on Windows, where
-  a read-only file can never be removed directly.
+  a read-only file can never be removed directly. A read-only **folder** is
+  not asked about on Windows: the attribute protects nothing there, and
+  Windows sets it itself on a folder with a `desktop.ini` and on folders
+  copied off a CD or a camera card, so Explorer deletes such a folder without
+  a word - and so does the widget, lifting the attribute as it goes. On Linux
+  and macOS a folder without write permission is a real protection (nothing
+  in it can be deleted) and is asked about.
 - A **failed delete** asks *afterwards* — `"X" could not be deleted.` with
   *Reason: Permission denied* — with **Try again** (the default) / **Skip**
   and an *Apply to all later failures* checkbox. A stored try-again-for-all
@@ -33932,23 +34080,37 @@ beside them:
 - A failure **inside a folder** is reported for the file that refused, not
   the folder: the question reads `"libvips-42.dll" in "lib" could not be
   deleted.` and the facts add a *Stopped at:* line with the file's path under
-  the folder's. A read-only file inside a folder is not a failure at all: it
-  is lifted and removed, as *Delete anyway* lifts the entry's own protection,
-  so a folder unpacked with its read-only bits goes in one pass.
-- A file **a running program holds** — its executable, a DLL it has loaded —
-  answers "Access is denied" on Windows too, but no administrator can delete
-  it either. The worker asks the [lock probe](UltraCanvasFileLock.md) (the
-  Restart Manager) before it decides, and such a file gets **Delete: a file
+  the folder's. A read-only file **or folder** inside a folder is not a
+  failure at all: it is lifted and removed, as *Delete anyway* lifts the
+  entry's own protection, so a folder unpacked with its read-only bits - or
+  copied off a CD or a camera card, or carrying a `desktop.ini` - goes in one
+  pass, as it does in Explorer. Every entry is removed through
+  [`UltraCanvasFileRemoval`](UltraCanvasFileRemoval.md), which also counts
+  an entry Windows still lists as **delete pending** (deleted, but held open
+  by a virus scanner or the indexer) as gone, and waits a moment for the
+  folder it empties.
+- A file **a running program holds** — its executable, a DLL it has loaded, a
+  picture an image library has memory-mapped — answers "Access is denied" on
+  Windows too, but no administrator can delete it either. `UltraCanvasFileRemoval`
+  tells it apart: the system granted the delete access, and only then refused
+  the delete. The program holding it may be this one - the thumbnails and
+  folder previews of the pictures being deleted are decoded by libvips, which
+  keeps what it read mapped - so the widget first lets go of those
+  (`UCImage::ReleaseCachedFiles`) and tries once more on its own. What is
+  still held asks the [lock probe](UltraCanvasFileLock.md) (the Restart
+  Manager) who holds it, and gets **Delete: a file
   in the folder is in use** — `"libvips-42.dll" in "lib" is in use by another
   program.` with *In use by: UltraFiler (4120)* among the facts — with
   **Skip** (the default) / **Try again** and an *Apply to all later files in
   use* checkbox, and no administrator button. When the holder is the running
   application itself the note says so and tells the user to close it and
   delete from elsewhere.
-- A delete that fails with **"Access is denied"** on Windows and is held by
-  nobody is the one Explorer
+- A delete the **access list** refuses (`FileRemovalProblem::NotPermitted` -
+  "Access is denied" before anything was attempted) is the one Explorer
   answers with its shield button: the entry is deletable, just not by this
-  user. Where the host has wired
+  user. Every "Access is denied" used to be taken for this one, and a
+  picture held by the Filer's own thumbnails was handed to the administrator,
+  who got the same answer. Where the host has wired
   [`UltraCanvasElevatedFileOperations`](UltraCanvasElevatedFileOperations.md)
   (UltraFiler has), the dialog is **Delete: administrator permission needed** —
   "Windows asks you to confirm once, at the end, for every item handed to the
@@ -33960,7 +34122,9 @@ beside them:
   Administrator" progress window stands in for the wait, and the widget stays
   responsive because the helper is waited for off the UI thread. What the
   helper still could not delete comes back in the [summary](#the-summary-at-the-end)
-  (*Delete finished*) with the system's reason beside each entry; a declined
+  (*Delete finished*) with the system's reason beside each entry - naming the
+  file inside that refused, and saying "in use by a program" when one holds
+  it; a declined
   prompt is reported through
   `onError` and leaves the entries in place. Sharing violations ("in use by
   another program") are not permission failures and keep the plain dialog,
@@ -34078,6 +34242,36 @@ noticing changes instead of quietly freezing on a listing that no longer
 exists; `IsFolderWatchNative()` then reports `false`. It keeps polling the
 folder even while it is gone, which is what makes the same stick plugged back
 in re-list itself rather than needing a manual refresh.
+
+A folder that is gone while its volume is still there was deleted or renamed,
+from the other pane or by another program, and is not coming back. On its
+next `Refresh()` (what the watch calls when it notices) the display **moves up
+to the nearest folder above it that is still there**, through `SetPath`, so
+`onPathChanged` tells the host. It no longer sits on an empty listing of a
+folder that does not exist. The two cases are told apart by what is left:
+
+- **Windows:** a pulled stick or a dropped share takes its drive root
+  (`E:\`, `\\server\share`) with it, so nothing above the folder is left.
+- **Linux and macOS:** the stick's mount point vanishes too, and the folder
+  left above it is on another device than the one the folder was listed from.
+
+In both cases the display stays and waits, as before. Only a folder the last
+scan listed as a real directory is moved up from. A folder that answers
+neither "there" nor "gone" — one Windows still lists as delete pending, a
+network share that did not reply — is left for the next look. An archive
+interior, a remote drive and a file list never move.
+
+A delete, a move and a folder rename take an
+[`UltraCanvasFolderWatchHold`](UltraCanvasFolderWatcher.md#letting-go-of-a-folder-about-to-change)
+on the folders they change, for as long as they run. Every watch in the
+process on one of those folders or below it lets go, and none starts there
+until the operation ends. That includes another display, such as the second
+pane of a split view, showing a subfolder of the folder being deleted. On
+Windows that watch held the subfolder open. On a FAT or exFAT drive the deleted
+folder then stayed listed as *delete pending*, and on any drive a folder above
+it could not be moved, not even to the Recycle Bin. The display whose watch was
+released moves to polling, as for a lost watch, and so notices that its folder
+is gone.
 
 The rescan itself is held back while the user is busy: no auto-refresh
 interrupts an open rename editor, a running drag or marquee, a context menu, a
@@ -36172,8 +36366,43 @@ caller's decision, not the filesystem's.
 | `Stop()` | Stop watching. Joins the backend thread, so **no callback runs after it returns** — which is what makes it safe for the callback to capture the caller. Safe to call twice, and safe if `Watch()` failed. |
 | `IsWatching()` / `WatchedPath()` | What is being watched, if anything. |
 | `NativeBackendAvailable()` | *static.* Whether this build has a backend at all. False means every `Watch()` will fail, so a caller can skip trying. |
+| `UltraCanvasFolderWatchHold hold(folders)` | Keeps every watch in the process off `folders` and everything below them for as long as `hold` lives — see [*Letting go of a folder about to change*](#letting-go-of-a-folder-about-to-change). `hold.Released()` says how many running watches it released. |
 
 The destructor calls `Stop()`.
+
+## Letting go of a folder about to change
+
+On Windows a watch holds its folder open (with delete sharing, so the folder
+itself can still be deleted), and Windows will not let a folder go while
+anything holds it. On FAT and exFAT, the file systems of most USB sticks and
+external drives, a deleted folder stays listed as *delete pending* until the
+last handle closes. On every Windows file system, a folder **above** a held one
+cannot be renamed or moved, not even to the Recycle Bin. A second file display
+showing a subfolder of the folder being deleted was enough to cause this.
+
+So whatever deletes, renames or moves a folder holds watches off it until it is
+done:
+
+```cpp
+#include "UltraCanvasFolderWatcher.h"
+
+{
+    UltraCanvasFolderWatchHold hold({folder});   // folder: UTF-8
+    // ... delete, rename or move `folder` ...
+}   // watches may start there again
+```
+
+Taking the hold releases every running watch on those folders or below them.
+Each one stops as if it had died: its `onFailed` runs, at once and on the
+hold's thread, and its `WatchedPath()` stays, so its owner polls that path
+instead, as it does for a pulled USB stick. While the hold lives, `Watch()` on
+a path there answers false, so a display refreshing in the meantime polls
+rather than watching again. Holds may overlap, and each lifts only its own
+folders. Paths are compared by their names, without regard to case on Windows
+(`Lei2` is not below `Lei`). A hold is safe from any thread.
+
+`UltraCanvasFilerWidget` takes one for a delete (permanent or to the trash) and
+for a move, for as long as the queue runs, and for a folder rename.
 
 ## A watch that dies on its own
 
@@ -36207,7 +36436,7 @@ but the watch is alive and a rescan covers it.
 | Platform | Backend |
 |---|---|
 | Linux, BSD | `inotify` — one watch on the directory, a thread waiting on the queue and a self-pipe so `Stop()` wakes it immediately |
-| Windows | `ReadDirectoryChangesW` — overlapped, on a directory handle opened with `FILE_SHARE_DELETE` so watching a folder never blocks renaming or deleting it |
+| Windows | `ReadDirectoryChangesW` — overlapped, on a directory handle opened with `FILE_SHARE_DELETE`, so the watched folder itself can be renamed or deleted; for what the handle still blocks, see [*Letting go of a folder about to change*](#letting-go-of-a-folder-about-to-change) |
 | macOS | FSEvents — a stream on the folder, delivered on a private serial dispatch queue; events for subfolders are dropped, so it answers for this folder only like the others |
 | Android, WebAssembly | none yet — `Watch()` returns false and the caller polls |
 
@@ -103608,34 +103837,6 @@ Listed so the next session does not rediscover them:
   `PaintFilterCatalogue()` without recompiling the app.
 
 ==============================================================================
-FILE: Docs/UltraPaint/changelog.d/selected-words-spacing.md
-==============================================================================
-
-- **Selected words take a letter spacing of their own.** The text bar's letter
-  spacing goes to the selected words while a text is typed (it spread the
-  whole text); with nothing selected it still sets the whole text's.
-- **A size typed into the text bar no longer changes the whole text.** Typing
-  in the size field (or Ctrl+A in it) ran the window's shortcuts, which
-  finished the text first. The keys now stay in the field, and Escape there
-  gives them back to the text.
-
-==============================================================================
-FILE: Docs/ArtCreator/changelog.d/selected-words-spacing-and-colour.md
-==============================================================================
-
-- **Selected words take a letter spacing and a colour of their own.** While a
-  text is typed on the page, the text bar's letter spacing and the fill colour
-  (picked in the colour panel) go to the selected words only, as the font, the
-  size and bold already did; with nothing selected they still change the whole
-  text. The drawing keeps both per word, and the colour panel shows the colour
-  of the words at the caret.
-- **A size typed into the text bar no longer changes the whole text.** Typing
-  in the size field (or Ctrl+A in it) ran the window's shortcuts, which
-  finished the text first, so the size went to all of it. The keys now stay in
-  the field, Escape there gives them back to the text, and the selected words
-  take the size.
-
-==============================================================================
 FILE: Docs/DeviceExplorer/README.md
 ==============================================================================
 
@@ -106960,15 +107161,6 @@ folder.
 | Tests | `Tests/UltraMail/test_senderidentity.cpp`, `test_threatscan.cpp`, `test_contacts.cpp`, `test_localstore.cpp`, `test_preferences.cpp`, `test_messagefilter.cpp`; `AccountBarClickTest.cpp` and `FolderTreeTest.cpp` (the counters as filters, in a window) |
 
 ==============================================================================
-FILE: Docs/UltraMail/changelog.d/font-list-in-its-fonts.md
-==============================================================================
-
-- **The format bar's Font list shows each font in itself.** Arial, Georgia,
-  Courier New and the others are drawn in their own typeface, as the text bars
-  of ArtCreator, UltraPaint and UltraVideo show theirs; a font this computer
-  lacks shows in a substitute.
-
-==============================================================================
 FILE: Docs/UltraVideo/README.md
 ==============================================================================
 
@@ -107276,20 +107468,6 @@ headless, the player part skips itself without GStreamer plugins).
 ## Not yet
 
 The proposal's roadmap (§11) has the order.
-
-==============================================================================
-FILE: Docs/UltraVideo/changelog.d/selected-words-spacing-and-colour.md
-==============================================================================
-
-- **Selected words of a title take a letter spacing and a colour of their
-  own.** While a title is typed on the frame, the text bar's letter spacing
-  and the Clip panel's colour go to the selected words only; with nothing
-  selected they change the whole title (and a colour for the whole title
-  clears its words' own). The project and `videofx render` keep both.
-- **A size typed into the text bar no longer finishes the title.** Any key
-  typed in the bar's size field, or in its font list, put the title in the
-  video first, so the size went to the whole title. The keys now stay in the
-  field, and Escape there gives them back to the title.
 
 ==============================================================================
 FILE: Docs/UltraPress/README.md
