@@ -190,6 +190,8 @@
   "Texter cannot save the Word 97-2003 (.doc) format.": "Texter kan ikke lagre i formatet Word 97-2003 (.doc).",
   "The document could not be written.": "Kunne ikke skrive dokumentet.",
   "The document has no file name yet.": "Dokumentet har ikke noe filnavn ennå.",
+  "The file could not be opened for writing.": "Filen kunne ikke åpnes for skriving.",
+  "The file could not be written completely.": "Filen kunne ikke skrives fullstendig.",
   "The file could not be written.": "Kunne ikke skrive filen.",
   "The PDF could not be written.": "Kunne ikke skrive PDF-filen.",
   "The translation returned nothing.": "Oversettelsen returnerte ingenting.",

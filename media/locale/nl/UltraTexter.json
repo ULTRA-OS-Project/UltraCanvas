@@ -190,6 +190,8 @@
   "Texter cannot save the Word 97-2003 (.doc) format.": "Texter kan de indeling Word 97-2003 (.doc) niet opslaan.",
   "The document could not be written.": "Het document kon niet worden geschreven.",
   "The document has no file name yet.": "Het document heeft nog geen bestandsnaam.",
+  "The file could not be opened for writing.": "Het bestand kon niet worden geopend om te schrijven.",
+  "The file could not be written completely.": "Het bestand kon niet volledig worden geschreven.",
   "The file could not be written.": "Het bestand kon niet worden geschreven.",
   "The PDF could not be written.": "Het PDF-bestand kon niet worden geschreven.",
   "The translation returned nothing.": "De vertaling heeft niets opgeleverd.",

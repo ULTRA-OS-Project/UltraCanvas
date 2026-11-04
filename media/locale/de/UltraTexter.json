@@ -190,6 +190,8 @@
   "Texter cannot save the Word 97-2003 (.doc) format.": "Texter kann das Format Word 97-2003 (.doc) nicht speichern.",
   "The document could not be written.": "Das Dokument konnte nicht geschrieben werden.",
   "The document has no file name yet.": "Das Dokument hat noch keinen Dateinamen.",
+  "The file could not be opened for writing.": "Die Datei konnte nicht zum Schreiben geöffnet werden.",
+  "The file could not be written completely.": "Die Datei konnte nicht vollständig geschrieben werden.",
   "The file could not be written.": "Die Datei konnte nicht geschrieben werden.",
   "The PDF could not be written.": "Die PDF-Datei konnte nicht geschrieben werden.",
   "The translation returned nothing.": "Die Übersetzung hat nichts zurückgegeben.",
