@@ -1,3 +1,29 @@
+#### 2026-11-04 *0.9.478*
+- **UltraCanvasFilerWidget: the delete dialogs are translated whole.** The
+  problem dialog's titles took the English "file" / "folder" and
+  `TrashDisplayName()` ("Trash", "Recycle Bin") as arguments, so every
+  language showed those words in English mid-sentence, and the rest of it
+  - the question, the facts' labels, the note, the "apply to all" label
+  and the buttons - was not translated at all; nor was any of the delete
+  confirmation (its question, From / Size facts, the folder's list caption,
+  the notes, Move to Trash / Delete permanently). Every text in both now
+  goes through `Tr` / `TrF` / `TrN` as a whole sentence, per kind and per
+  platform's trash name, with names as `{0}` so a translation can place
+  them and counts in each language's plural forms; the size facts
+  (`DescribeEntries`, `CountedSizeFact`) count files and folders the same
+  way. All thirty languages carry them.
+- **UltraLocalisation: twenty-two more languages.** The standard set and
+  the sixteen base sets are drafted in Russian, Ukrainian, Polish, Czech,
+  Swedish, Danish, Norwegian Bokmål, Finnish, Turkish, Greek, Korean,
+  Traditional Chinese, Arabic, Hebrew, Hungarian, Romanian, Hindi,
+  Indonesian, Vietnamese, Thai and Catalan (1,543 entries each), with
+  every plural form each language's rule needs (Russian, Ukrainian and
+  Polish one/few/many, Arabic all six, Hebrew one/two/many/other).
+  Brazilian Portuguese (`pt-BR`) is a regional variant over `pt` that
+  holds only the entries Brazil words differently. Every file is marked
+  `"@translated-by": "machine draft 2026-11-03, reviewed by -"` until a
+  person reviews it; the UOS-Settings Language page lists them all.
+
 #### 2026-11-03 *0.9.477*
 - **The menus-and-toolbars editor's texts go through `Tr`**
   (`UltraCanvasCommandConfigWidget` 2.0.1): its titles, buttons, tooltips,
