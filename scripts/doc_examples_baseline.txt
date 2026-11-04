@@ -352,25 +352,12 @@ Docs/UltraCanvas/UltraCanvasRequirementDiagramProposal.md::no member named 'SetL
 Docs/UltraCanvas/UltraCanvasRequirementDiagramProposal.md::prose names `SetStrictSemantics(`, which no header declares
 Docs/UltraCanvas/UltraCanvasRequirementDiagramProposal.md::use of undeclared identifier 'RequirementLayout'
 # signature Docs/UltraCanvas/UltraCanvasRequirementDiagramProposal.md: c646c77dfc5758a2cd5d05f3a74eb0282649d38aea34d272d3a6ce6880f27ae8
-Docs/UltraCanvas/UltraCanvasTernaryChartProposal.md::'DeFinetti' is not a member of UltraCanvasTernaryChart, UltraCanvasChartEngineElement, IRenderContext, UltraCanvasFileLoader, nor a free function
-Docs/UltraCanvas/UltraCanvasTernaryChartProposal.md::'ExportTernaryCsv' is not a member of UltraCanvasTernaryChart, UltraCanvasChartEngineElement, IRenderContext, UltraCanvasFileLoader, nor a free function
-Docs/UltraCanvas/UltraCanvasTernaryChartProposal.md::'ExportTernaryJson' is not a member of UltraCanvasTernaryChart, UltraCanvasChartEngineElement, IRenderContext, UltraCanvasFileLoader, nor a free function
-Docs/UltraCanvas/UltraCanvasTernaryChartProposal.md::'ImportTernaryCsv' is not a member of UltraCanvasTernaryChart, UltraCanvasChartEngineElement, IRenderContext, UltraCanvasFileLoader, nor a free function
-Docs/UltraCanvas/UltraCanvasTernaryChartProposal.md::'ImportTernaryJson' is not a member of UltraCanvasTernaryChart, UltraCanvasChartEngineElement, IRenderContext, UltraCanvasFileLoader, nor a free function
-Docs/UltraCanvas/UltraCanvasTernaryChartProposal.md::'RegionOf' is not a member of TernaryModel
 Docs/UltraCanvas/UltraCanvasTernaryChartProposal.md::'SetDensity' is not a member of UltraCanvasTernaryChart
-Docs/UltraCanvas/UltraCanvasTernaryChartProposal.md::'SetReadingGuide' is not a member of UltraCanvasTernaryChart
-Docs/UltraCanvas/UltraCanvasTernaryChartProposal.md::'SetShowRegionLabels' is not a member of UltraCanvasTernaryChart
-Docs/UltraCanvas/UltraCanvasTernaryChartProposal.md::'SoilTexture' is not a member of UltraCanvasTernaryChart, UltraCanvasChartEngineElement, IRenderContext, UltraCanvasFileLoader, nor a free function
 Docs/UltraCanvas/UltraCanvasTernaryChartProposal.md::'TernaryAxis::minimum' does not exist (no member named 'minimum' in 'TernaryAxis')
-Docs/UltraCanvas/UltraCanvasTernaryChartProposal.md::'TernaryModel::regions' does not exist (no member named 'regions' in 'TernaryModel')
 Docs/UltraCanvas/UltraCanvasTernaryChartProposal.md::'TernaryPoint::group' does not exist (no member named 'group' in 'TernaryPoint')
-Docs/UltraCanvas/UltraCanvasTernaryChartProposal.md::'TernaryPoint::size' does not exist (no member named 'size' in 'TernaryPoint')
-Docs/UltraCanvas/UltraCanvasTernaryChartProposal.md::'TernarySeries::arrows' does not exist (no member named 'arrows' in 'TernarySeries')
-Docs/UltraCanvas/UltraCanvasTernaryChartProposal.md::'TernarySeries::kind' does not exist (no member named 'kind' in 'TernarySeries')
-Docs/UltraCanvas/UltraCanvasTernaryChartProposal.md::'UltraCanvasTernaryChart::onRegionClick' does not exist (no member named 'onRegionClick' in 'UltraCanvasTernaryChart')
+Docs/UltraCanvas/UltraCanvasTernaryChartProposal.md::'TernarySeriesKind::Bubble' does not exist (no member named 'Bubble' in 'TernarySeriesKind')
 Docs/UltraCanvas/UltraCanvasTernaryChartProposal.md::signature differs: `std::vector<TernaryPoint> SoilSamples()` - the header has: TernaryModel SoilSamples();
-# signature Docs/UltraCanvas/UltraCanvasTernaryChartProposal.md: 278df849a8ea4910b35b65e333861366967cdf8705f3ba0c82ea5c83cb594bfb
+# signature Docs/UltraCanvas/UltraCanvasTernaryChartProposal.md: f0a4148d803980dea348a50ad2d3d1d6102fb424f87fb78c183064a498c935cb
 Docs/UltraCanvas/UltraCanvasTimelineDiagramProposal.md::'TimelineEntryKind::Marker' does not exist (no member named 'Marker' in 'TimelineEntryKind')
 Docs/UltraCanvas/UltraCanvasTimelineDiagramProposal.md::'TimelineItem::date' does not exist (no member named 'date' in 'TimelineItem')
 Docs/UltraCanvas/UltraCanvasTimelineDiagramProposal.md::'TimelineItem::iconImage' does not exist (no member named 'iconImage' in 'TimelineItem')

@@ -1,6 +1,6 @@
 # UltraCanvasTernaryChart — Research & Feature Proposal
 
-**Status:** **Phase 1 is implemented** as `UltraCanvasTernaryChart` and
+**Status:** **Phases 1 and 2 are implemented** as `UltraCanvasTernaryChart` and
 `UltraCanvasTernaryModel` - see [`UltraCanvasTernaryChart.md`](UltraCanvasTernaryChart.md)
 for the guide. Phase 1 delivered `ChartProjectionKind::Ternary` and
 `ChartTernaryProjection` (A1) with their `ChartEngineTest` case, the model
@@ -33,6 +33,32 @@ How Phase 1 departs from the plan below, and why:
   left to the tooltip.
 * **The model has a `subtitle`,** drawn under the title, as the other
   charts' models do.
+
+Phase 2 (2026-11-04) delivered R1-R4 (regions with `RegionOf`, region hover
+and `onRegionClick`, the `SoilTexture` and `DeFinetti` presets), S4-S6
+(paths, bubbles, reference curves), I2 (the reading guide), X1 and X2, the
+`VoteTrajectories` sample and the demo's Vote swings, Soil texture and
+De Finetti tabs with Open / Save JSON and Import / Export CSV through
+`UltraCanvasFileLoader`. How it departs from the plan:
+
+* **The USDA outlines are derived from the class rules, not transcribed.**
+  The session could not reach the Soil Survey Manual, so the preset clips the
+  triangle with each class's published limits (as reproduced in soil-science
+  glossaries) and `TernaryModelTest` checks every class against those rules
+  on a 19,900-point grid. The corners come out where the printed triangle has
+  them. The rule table itself should still be compared with the manual once.
+* **Bubbles are a point `size`, not a series kind.** Any series can carry
+  sizes, and a path can have bubbles; a separate kind would forbid that.
+* **A region's name wraps and shrinks before it is dropped.** It is tried on
+  one line, on two lines split at the most even space, then a word per line,
+  at the region font size and a step smaller; the first that fits inside the
+  region wins. At demo size 11 of the 12 USDA names fit (loamy sand is a
+  sliver).
+* **The reading guide's readout is a box above the pointer,** not text at the
+  edges: the edges already carry the tick numbers.
+* **Curves are in the legend** after the series, and a click there hides one.
+* **CSV part columns match exactly first, then without letter case.** The
+  genotypes AA, Aa and aa differ only in case.
 
 A ternary plot draws things made of three parts, such as soil (sand, silt,
 clay), an alloy, a three-party vote or a day split into work, sleep and the
@@ -544,7 +570,7 @@ charts.
 | Phase | Delivers | Retires |
 |---|---|---|
 | **1** *(done)* | `ChartTernaryProjection` (A1) and its engine test; the model with normalisation and `Validate`; A2–A5; S1–S3; I1; the `ThreePartyVotes` sample; the demo page with scatter variants in both reading directions; the guide; model and render tests | Reference shape 1 |
-| **2** | Regions R1–R4 with the USDA soil texture and De Finetti presets; paths, bubbles and reference curves (S4–S6); the reading guide (I2); X1 and X2 with demo Open / Save through `UltraCanvasFileLoader` | Reference shapes 2 and 3 |
+| **2** *(done)* | Regions R1–R4 with the USDA soil texture and De Finetti presets; paths, bubbles and reference curves (S4–S6); the reading guide (I2); X1 and X2 with demo Open / Save through `UltraCanvasFileLoader` | Reference shapes 2 and 3 |
 | **3** | Sub-triangle zoom (A6, I3); triangular binning and iso-lines (D1, D2) | Reference shape 4 |
 
 Every phase is lines, polygons, markers and text through one affine map.

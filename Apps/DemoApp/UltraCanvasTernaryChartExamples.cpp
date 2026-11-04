@@ -1,8 +1,12 @@
 // Apps/DemoApp/UltraCanvasTernaryChartExamples.cpp
 // Ternary chart examples: three-party vote shares by region (read
-// anticlockwise) and soil samples on the USDA layout (read clockwise)
+// anticlockwise), vote swings as paths, soil samples over the USDA texture
+// classes (read clockwise) and a De Finetti diagram
+// Version: 1.1.0 - Phase 2: the Vote swings, Soil texture and De Finetti tabs,
+//   the reading guide, region clicks, Open / Save JSON and Import / Export CSV
+//   through UltraCanvasFileLoader
 // Version: 1.0.0
-// Last Modified: 2026-11-03
+// Last Modified: 2026-11-04
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -11,6 +15,10 @@
 #include "UltraCanvasTabbedContainer.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasDropdown.h"
+#include "UltraCanvasButton.h"
+#include "UltraCanvasFileLoader.h"
+#include "UltraCanvasPathUtf8.h"   // PathToUtf8 / PathFromUtf8 for the file name
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
@@ -35,9 +43,15 @@ namespace UltraCanvas {
             std::string tab;
             TernaryModel model;
         };
+        TernaryModel soil = TernarySamples::SoilTexture();
+        soil.title = "Soil samples over the USDA texture classes";
+        soil.subtitle = "Invented samples; click a class to count them";
+        soil.series = TernarySamples::SoilSamples().series;
         const std::vector<Example> examples = {
-            {"Votes (anticlockwise)", TernarySamples::ThreePartyVotes()},
-            {"Soil samples (clockwise)", TernarySamples::SoilSamples()},
+            {"Votes", TernarySamples::ThreePartyVotes()},
+            {"Vote swings", TernarySamples::VoteTrajectories()},
+            {"Soil texture", soil},
+            {"De Finetti", TernarySamples::DeFinetti()},
         };
         std::vector<std::shared_ptr<UltraCanvasTernaryChart>> charts;
         for (size_t i = 0; i < examples.size(); ++i) {
@@ -79,11 +93,29 @@ namespace UltraCanvas {
         gridSelector->SetSelectedIndex(0);
         DemoKit::AddStretched(sidebar, gridSelector);
 
+        addCaption("ternaryGuideCaption", "Reading guide");
+        auto guideSelector = std::make_shared<UltraCanvasDropdown>("ternaryGuideSelector", 0, 0, 190, 28);
+        guideSelector->AddItem("Off", "off");
+        guideSelector->AddItem("Follow the pointer", "on");
+        guideSelector->SetSelectedIndex(0);
+        DemoKit::AddStretched(sidebar, guideSelector);
+
+        addCaption("ternaryFilesCaption", "Files");
+        auto makeButton = [&sidebar](const std::string& id, const std::string& text) {
+            auto button = std::make_shared<UltraCanvasButton>(id, 0, 0, 190, 28, text);
+            DemoKit::AddStretched(sidebar, button);
+            return button;
+        };
+        auto openJsonButton = makeButton("ternaryOpenJson", "Open JSON\xE2\x80\xA6");
+        auto saveJsonButton = makeButton("ternarySaveJson", "Save JSON\xE2\x80\xA6");
+        auto importCsvButton = makeButton("ternaryImportCsv", "Import points (CSV)\xE2\x80\xA6");
+        auto exportCsvButton = makeButton("ternaryExportCsv", "Export points (CSV)\xE2\x80\xA6");
+
         addCaption("ternarySelectionCaption", "SELECTED");
         auto selection = DemoKit::AddCaption(sidebar, "ternarySelection",
-                "Click a point for its three shares. Each share is read along the grid line "
-                "that runs parallel to the edge opposite its corner, to the edge that carries "
-                "that part's numbers. Click a legend entry to hide a series.");
+                "Click a point for its three shares, or a soil class to count the samples in "
+                "it. Each share is read along the grid line parallel to the edge opposite its "
+                "corner. Click a legend entry to hide a series.");
         selection->SetTextColor(DemoKit::BodyText());
         selection->SetBackgroundColor(Color(248, 249, 250, 255));
         selection->SetPadding(10);
@@ -95,11 +127,133 @@ namespace UltraCanvas {
         std::vector<TernaryReading> sampleReadings;
         for (const Example& example : examples) sampleReadings.push_back(example.model.reading);
 
+        UltraCanvasTabbedContainer* tabsPtr = tabbedContainer.get();
+        auto active = [chartPtrs, tabsPtr]() -> UltraCanvasTernaryChart* {
+            const int index = tabsPtr->GetActiveTab();
+            return index >= 0 && index < static_cast<int>(chartPtrs.size()) ? chartPtrs[static_cast<size_t>(index)]
+                                                                            : nullptr;
+        };
+
         for (size_t i = 0; i < chartPtrs.size(); ++i) {
             charts[i]->onPointClick = [chartPtrs, i, selectionPtr](size_t series, size_t point) {
                 selectionPtr->SetText(chartPtrs[i]->BuildPointTooltip(series, point));
             };
+            // A class and how many samples fall in it - the reading a soil
+            // scientist takes from the triangle.
+            charts[i]->onRegionClick = [chartPtrs, i, selectionPtr](int region) {
+                const TernaryModel& model = chartPtrs[i]->GetModel();
+                int count = 0;
+                std::string names;
+                for (const TernarySeries& series : model.series) {
+                    for (const TernaryPoint& point : series.points) {
+                        if (model.RegionOf(point) != region) continue;
+                        ++count;
+                        names += (names.empty() ? "" : ", ") + point.label;
+                    }
+                }
+                selectionPtr->SetText(chartPtrs[i]->BuildRegionTooltip(region) + "\n" + std::to_string(count) +
+                                      (count == 1 ? " sample" : " samples") + (names.empty() ? "" : ": " + names));
+            };
         }
+        guideSelector->onSelectionChanged = [chartPtrs](int, const DropdownItem& item) {
+            for (auto* chart : chartPtrs) chart->SetReadingGuide(item.value == "on");
+        };
+
+        // ===== FILES (through UltraCanvasFileLoader, as every user file) =====
+        auto fileName = [](const std::string& path) { return PathToUtf8(PathFromUtf8(path).filename()); };
+        auto readText = [selectionPtr, fileName](const std::string& path, std::string& text) {
+            const FileBytesResult loaded = UltraCanvasFileLoader::LoadFile(path);
+            if (!loaded.success) {
+                selectionPtr->SetText("Could not open " + fileName(path) + ": " + loaded.error);
+                return false;
+            }
+            text.assign(loaded.bytes.begin(), loaded.bytes.end());
+            return true;
+        };
+        auto writeText = [selectionPtr, fileName](const std::string& path, const std::string& text) {
+            std::string error;
+            if (UltraCanvasFileLoader::SaveFile(path, std::vector<uint8_t>(text.begin(), text.end()), error)) {
+                selectionPtr->SetText("Saved " + fileName(path) + ".");
+            } else {
+                selectionPtr->SetText("Could not write " + fileName(path) + ": " + error);
+            }
+        };
+
+        // Open JSON... replaces the chart of the tab shown.
+        openJsonButton->onClick = [active, selectionPtr, readText, fileName]() {
+            UltraCanvasTernaryChart* chart = active();
+            if (!chart) return;
+            FileDialogOptions opts;
+            opts.SetTitle("Open a ternary chart")
+                .AddFilter("Ternary chart (*.json)", "json")
+                .AddFilter("All files", "*");
+            UltraCanvasFileLoader::OpenFileDialog(opts,
+                    [chart, selectionPtr, readText, fileName](DialogResult result, const std::string& path) {
+                if (result != DialogResult::OK || path.empty()) return;
+                std::string text, error;
+                if (!readText(path, text)) return;
+                TernaryModel model;
+                if (!ImportTernaryJson(text, model, &error)) {
+                    selectionPtr->SetText("Could not read " + fileName(path) + ": " + error);
+                    return;
+                }
+                chart->SetModel(model);
+                selectionPtr->SetText("Opened " + fileName(path) + ": " + std::to_string(model.PointCount()) +
+                                      " points, " + std::to_string(model.regions.size()) + " regions.");
+            });
+        };
+        saveJsonButton->onClick = [active, writeText]() {
+            UltraCanvasTernaryChart* chart = active();
+            if (!chart) return;
+            FileDialogOptions opts;
+            opts.SetTitle("Save the ternary chart")
+                .AddFilter("Ternary chart (*.json)", "json")
+                .SetDefaultExtension("json")
+                .SetDefaultFileName("ternary.json");
+            const std::string text = ExportTernaryJson(chart->GetModel());
+            UltraCanvasFileLoader::SaveFileDialog(opts, [text, writeText](DialogResult result, const std::string& path) {
+                if (result != DialogResult::OK || path.empty()) return;
+                writeText(path, text);
+            });
+        };
+        // Import points (CSV)... replaces the points of the tab shown, on its
+        // axes and over its regions.
+        importCsvButton->onClick = [active, selectionPtr, readText, fileName]() {
+            UltraCanvasTernaryChart* chart = active();
+            if (!chart) return;
+            FileDialogOptions opts;
+            opts.SetTitle("Import points")
+                .AddFilter("Comma-separated values (*.csv)", "csv")
+                .AddFilter("All files", "*");
+            UltraCanvasFileLoader::OpenFileDialog(opts,
+                    [chart, selectionPtr, readText, fileName](DialogResult result, const std::string& path) {
+                if (result != DialogResult::OK || path.empty()) return;
+                std::string text, error;
+                if (!readText(path, text)) return;
+                TernaryModel model = chart->GetModel();
+                if (!ImportTernaryCsv(text, model, &error)) {
+                    selectionPtr->SetText("Could not import " + fileName(path) + ": " + error);
+                    return;
+                }
+                chart->SetModel(model);
+                selectionPtr->SetText("Imported " + std::to_string(model.PointCount()) + " points from " +
+                                      fileName(path) + ".");
+            });
+        };
+        exportCsvButton->onClick = [active, writeText]() {
+            UltraCanvasTernaryChart* chart = active();
+            if (!chart) return;
+            FileDialogOptions opts;
+            opts.SetTitle("Export the points")
+                .AddFilter("Comma-separated values (*.csv)", "csv")
+                .SetDefaultExtension("csv")
+                .SetDefaultFileName("points.csv");
+            const std::string text = ExportTernaryCsv(chart->GetModel());
+            UltraCanvasFileLoader::SaveFileDialog(opts, [text, writeText](DialogResult result, const std::string& path) {
+                if (result != DialogResult::OK || path.empty()) return;
+                writeText(path, text);
+            });
+        };
         readingSelector->onSelectionChanged = [chartPtrs, sampleReadings](int, const DropdownItem& item) {
             for (size_t i = 0; i < chartPtrs.size(); ++i) {
                 if (item.value == "clockwise") chartPtrs[i]->SetReading(TernaryReading::Clockwise);
