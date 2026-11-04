@@ -6,3 +6,8 @@
   handles each of these as Explorer does, and asks for administrator rights
   only when the access list says no. The framework change is
   `UltraCanvasFileRemoval`; see the framework changelog.
+- **Deleting, moving or renaming a folder while the other pane shows a
+  subfolder of it works as it does with one pane.** The other pane's folder
+  watch no longer holds the subfolder open while the operation runs.
+- **A read-only folder is deleted without the "write-protected?" question on
+  Windows**, as Explorer deletes it.

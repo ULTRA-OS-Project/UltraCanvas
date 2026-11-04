@@ -2218,7 +2218,13 @@ beside them:
   `"X" is write-protected.` — with **Skip** (the default) / **Delete anyway**
   (red) and an *Apply to all remaining write-protected items* checkbox.
   Delete-anyway lifts the protection first, so it also works on Windows, where
-  a read-only file can never be removed directly.
+  a read-only file can never be removed directly. A read-only **folder** is
+  not asked about on Windows: the attribute protects nothing there, and
+  Windows sets it itself on a folder with a `desktop.ini` and on folders
+  copied off a CD or a camera card, so Explorer deletes such a folder without
+  a word - and so does the widget, lifting the attribute as it goes. On Linux
+  and macOS a folder without write permission is a real protection (nothing
+  in it can be deleted) and is asked about.
 - A **failed delete** asks *afterwards* — `"X" could not be deleted.` with
   *Reason: Permission denied* — with **Try again** (the default) / **Skip**
   and an *Apply to all later failures* checkbox. A stored try-again-for-all
@@ -2390,6 +2396,18 @@ noticing changes instead of quietly freezing on a listing that no longer
 exists; `IsFolderWatchNative()` then reports `false`. It keeps polling the
 folder even while it is gone, which is what makes the same stick plugged back
 in re-list itself rather than needing a manual refresh.
+
+A delete, a move and a folder rename take an
+[`UltraCanvasFolderWatchHold`](UltraCanvasFolderWatcher.md#letting-go-of-a-folder-about-to-change)
+on the folders they change, for as long as they run. Every watch in the
+process on one of those folders or below it lets go, and none starts there
+until the operation ends. That includes another display, such as the second
+pane of a split view, showing a subfolder of the folder being deleted. On
+Windows that watch held the subfolder open. On a FAT or exFAT drive the deleted
+folder then stayed listed as *delete pending*, and on any drive a folder above
+it could not be moved, not even to the Recycle Bin. The display whose watch was
+released moves to polling, as for a lost watch, and so notices that its folder
+is gone.
 
 The rescan itself is held back while the user is busy: no auto-refresh
 interrupts an open rename editor, a running drag or marquee, a context menu, a

@@ -9,9 +9,11 @@
 // On a platform with no native backend every Watch() fails by design; the
 // change-reporting checks are then skipped rather than failed, because the
 // caller's documented answer there is to poll instead.
+// Version: 1.2.0 - UltraCanvasFolderWatchHold: watches below a held folder let go,
+//                  none starts there, the hold's end lifts it
 // Version: 1.1.0 - a change right after Watch() returns is reported
 // Version: 1.0.0
-// Last Modified: 2026-10-30
+// Last Modified: 2026-11-04
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasFolderWatcher.h"
@@ -188,6 +190,58 @@ int main() {
         std::this_thread::sleep_for(std::chrono::milliseconds(150));
         CHECK(lost.load() == lostOnce, "and reported only once");
         watcher.Stop();
+
+        // ===== HOLDS =====
+        // A folder about to be deleted, renamed or moved: every watch on it
+        // or below lets go (on Windows a watch holds the folder open, and a
+        // second file display showing a subfolder kept a deleted folder
+        // "delete pending" on FAT and exFAT), and none starts there until
+        // the hold ends.
+        const fs::path parent = dir / "Lei";
+        const fs::path inside = parent / "Album";
+        const fs::path elsewhere = dir / "elsewhere";
+        const fs::path lookalike = dir / "Lei2";
+        fs::create_directories(inside, ec);
+        fs::create_directories(elsewhere, ec);
+        fs::create_directories(lookalike, ec);
+        UltraCanvasFolderWatcher below, outside;
+        std::atomic<int> belowLost{0}, outsideLost{0};
+        CHECK(below.Watch(inside.string(), []() {}, [&belowLost]() { ++belowLost; }) &&
+              outside.Watch(elsewhere.string(), []() {}, [&outsideLost]() { ++outsideLost; }),
+              "two watches, one below the folder about to go");
+        {
+            UltraCanvas::UltraCanvasFolderWatchHold hold({parent.string() + "/"});
+            CHECK(hold.Released() == 1, "a hold releases the watch below its folder, and only that one");
+            CHECK(!below.IsWatching(), "the released watcher is idle");
+            CHECK(belowLost.load() == 1, "and reports itself failed, at once");
+            CHECK(below.WatchedPath() == inside.string(),
+                  "and keeps its path for the owner to poll");
+            CHECK(outside.IsWatching() && outsideLost.load() == 0, "a watch elsewhere is untouched");
+
+            UltraCanvasFolderWatcher late;
+            CHECK(!late.Watch(inside.string(), []() {}), "no new watch starts below a held folder");
+            CHECK(!late.Watch(parent.string(), []() {}), "nor on the held folder itself");
+            CHECK(late.Watch(lookalike.string(), []() {}),
+                  "a folder whose name merely starts the same is not below it");
+            {
+                UltraCanvas::UltraCanvasFolderWatchHold again({parent.string()});
+                CHECK(again.Released() == 0, "a second hold on it finds nothing left to release");
+            }
+            CHECK(!late.Watch(inside.string(), []() {}),
+                  "the end of the second hold does not lift the first");
+            late.Stop();
+
+            fs::remove_all(parent, ec);
+            CHECK(!ec && !fs::exists(parent, ec), "the held folder can be deleted");
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            CHECK(belowLost.load() == 1, "the failure is reported once, not again as the folder goes");
+            below.Stop();
+        }
+        fs::create_directories(inside, ec);
+        UltraCanvasFolderWatcher after;
+        CHECK(after.Watch(inside.string(), []() {}), "once the hold ends, the folder is watched again");
+        after.Stop();
+        outside.Stop();
     }
 
     fs::remove_all(dir, ec);

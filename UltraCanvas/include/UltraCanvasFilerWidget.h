@@ -104,6 +104,9 @@
 // thin blue bar sliding along the foot of the file area - its entries, or an
 // empty area, stay as they are - and the words go to the host's status line
 // (GetListingPendingStatus, onListingPendingChanged).
+// Version: 1.46.2 - a delete, a move and a folder rename hold folder watches off
+//                  the folders they change (UltraCanvasFolderWatchHold); a
+//                  read-only folder on Windows is deleted without asking
 // Version: 1.46.1 - RemoveTreeWithProgress removes through UltraCanvasFileRemoval
 //                  and says why a removal failed (FileRemovalProblem): "in
 //                  use" is no longer taken for a permission problem
@@ -3670,6 +3673,11 @@ namespace UltraCanvas {
         // (it cannot open a dialog, or even touch the widget, itself).
         void FlushFileOperationErrors();
         // The caption above the ring: "3 items to \"Backup\"" and the like.
+        // A hold that keeps every folder watch in the process off the
+        // folders among `victims` (UltraCanvasFolderWatchHold); null when
+        // there are none.
+        static std::unique_ptr<UltraCanvasFolderWatchHold>
+        HoldWatchesOffFolders(const std::vector<FilerEntry>& victims);
         static std::string FileOperationCaption(const std::string& verb,
                                                 size_t itemCount,
                                                 const std::string& firstName,
@@ -3748,6 +3756,11 @@ namespace UltraCanvas {
         struct PendingPaste {
             std::string folder;
             std::vector<std::string> sources;
+            // A move: no watch in the process holds a source folder or
+            // anything in it until the paste is through - on Windows a
+            // watched subfolder (another display showing it) refuses the
+            // folder's rename.
+            std::unique_ptr<UltraCanvasFolderWatchHold> watchHold;
             // Per source, where it goes (empty = `folder`) and what it is:
             // an ordinary entry, an entry of a folder being MERGED into an
             // existing folder (it goes into that folder), or the merged
@@ -3944,6 +3957,11 @@ namespace UltraCanvas {
         struct PendingDelete {
             std::vector<FilerEntry> victims;
             size_t next = 0;
+            // No watch in the process holds a folder being deleted, or
+            // anything in it, until the delete is through: on Windows a
+            // second display showing a subfolder kept it open, and on FAT
+            // and exFAT a deleted folder stays listed while anything does.
+            std::unique_ptr<UltraCanvasFolderWatchHold> watchHold;
             // "Do this for all" answers, kept per dialog flavor.
             bool protectedForAll = false;          // write-protected entries…
             DeleteProblemAction protectedAction = DeleteProblemAction::Skip;

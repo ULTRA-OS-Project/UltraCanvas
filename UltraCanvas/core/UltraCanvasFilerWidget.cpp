@@ -6233,6 +6233,18 @@ namespace UltraCanvas {
         // before the first rename is attempted.
         if (cut) DeselectPathsForModification(paths);
         pendingPaste = std::make_unique<PendingPaste>();
+        // A move renames its folders away, which Windows refuses while
+        // anything holds a folder inside one open - a folder watch of
+        // another display showing it, say. Watches let go until it is done.
+        if (cut) {
+            std::vector<std::string> folders;
+            for (const std::string& p : paths)
+                if (fs::is_directory(fs::symlink_status(PathFromUtf8(p), ec))) folders.push_back(p);
+            ec.clear();
+            if (!folders.empty())
+                pendingPaste->watchHold =
+                        std::make_unique<UltraCanvasFolderWatchHold>(std::move(folders));
+        }
         pendingPaste->folder = std::move(folder);
         pendingPaste->sources = std::move(paths);
         pendingPaste->itemFolders.assign(pendingPaste->sources.size(), std::string());
@@ -7246,6 +7258,13 @@ namespace UltraCanvas {
         // delete asks afterwards — see ShowDeleteProblemDialog.
         pendingDelete = std::make_unique<PendingDelete>();
         pendingDelete->victims = fsVictims;   // copy: Refresh() rebuilds `entries`
+        // Every folder watch in the process lets go of the folders about to
+        // go - another display showing a subfolder of one, above all - and
+        // none comes back until the delete is through (FinishPendingDelete
+        // drops the hold with the queue). On Windows a watch holds its
+        // folder open, which keeps a deleted folder listed on FAT and exFAT
+        // and refuses moving a folder above it to the Recycle Bin.
+        pendingDelete->watchHold = HoldWatchesOffFolders(fsVictims);
         pendingDelete->modifiedFolders = std::move(archiveModified);
         pendingDelete->onDone = std::move(onDone);
         pendingDelete->toTrash = mode == FilerDeleteMode::MoveToTrash;
@@ -7276,6 +7295,35 @@ namespace UltraCanvas {
         PendingDelete* pd = pendingDelete.get();
         RunFileOperationStretch([this, pd]() { DeleteWorkerLoop(pd); },
                                 [this]() { AfterDeleteStretch(); });
+    }
+
+    std::unique_ptr<UltraCanvasFolderWatchHold>
+    UltraCanvasFilerWidget::HoldWatchesOffFolders(const std::vector<FilerEntry>& victims) {
+        std::vector<std::string> folders;
+        for (const FilerEntry& v : victims)
+            if (v.isDirectory && !v.path.empty()) folders.push_back(v.path);
+        if (folders.empty()) return nullptr;
+        return std::make_unique<UltraCanvasFolderWatchHold>(std::move(folders));
+    }
+
+    namespace {
+        // Whether a delete asks "write-protected?" before touching `e`. A
+        // read-only file does, everywhere. A read-only FOLDER does not on
+        // Windows: the attribute protects nothing there - the folder's
+        // entries can be added and removed as ever - and Windows sets it
+        // itself on a folder with a desktop.ini (a custom icon or a
+        // localised name) and on folders copied off a CD or a camera card,
+        // so Explorer deletes such a folder without a word. The removal
+        // lifts it as it goes (RemoveFileSystemEntry). Elsewhere a folder
+        // without write permission is a real one: nothing in it can be
+        // deleted, and the question is the place to hear it.
+        bool AsksBeforeDeleting(const FilerEntry& e) {
+            if (!e.isReadOnly) return false;
+#if defined(_WIN32) || defined(_WIN64)
+            if (e.isDirectory) return false;
+#endif
+            return true;
+        }
     }
 
     void UltraCanvasFilerWidget::DeleteWorkerLoop(PendingDelete* pd) {
@@ -7324,8 +7372,9 @@ namespace UltraCanvas {
                 AdvancePendingDelete();
                 continue;
             }
-            // A write-protected (locked) entry asks before the attempt.
-            if (e.isReadOnly) {
+            // A write-protected (locked) entry asks before the attempt -
+            // except a read-only folder on Windows (AsksBeforeDeleting).
+            if (AsksBeforeDeleting(e)) {
                 DeleteProblemAction action;
                 if (pd->currentDecided)       action = pd->currentAction;
                 else if (pd->protectedForAll) action = pd->protectedAction;
@@ -8296,6 +8345,13 @@ namespace UltraCanvas {
         if (wasOnlySelection) DeselectPathsForModification({oldPath});
 
         std::error_code ec;
+        // Windows refuses to rename a folder while anything holds a folder
+        // inside it open - a folder watch of another display showing it, say.
+        std::unique_ptr<UltraCanvasFolderWatchHold> watchHold;
+        if (fs::is_directory(fs::symlink_status(UltraCanvas::PathFromUtf8(oldPath), ec)))
+            watchHold = std::make_unique<UltraCanvasFolderWatchHold>(
+                    std::vector<std::string>{oldPath});
+        ec.clear();
         fs::rename(UltraCanvas::PathFromUtf8(oldPath), UltraCanvas::PathFromUtf8(targetPath), ec);
         if (ec) {
             ReportError("Rename failed for " + oldPath + ": " + ec.message());
