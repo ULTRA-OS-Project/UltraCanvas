@@ -3,9 +3,13 @@
   "@translated-by": "machine draft 2026-11-04, reviewed by -",
   "\"Show it in the preview\" keeps the file inside UltraFiler whenever it can show it - pictures, documents, spreadsheets, 3D models, e-books, fonts, video, audio and text - which is faster than starting a program for a look at a file.": "「在預覽中顯示」會盡可能讓檔案留在 UltraFiler 內顯示（圖片、文件、試算表、3D 模型、電子書、字型、影片、音訊和文字），比起為了看一眼檔案而啟動程式更快。",
   "\"Start the registered program\" is what a double-click does in Explorer and the Finder: the file opens in the program its type is assigned to, and UltraFiler stays as it is.": "「啟動已註冊的程式」就是在 Explorer 和 Finder 中按兩下的效果：檔案會以其類型所指派的程式開啟，UltraFiler 則保持原樣。",
+  "\"{0}\" is being downloaded from {1}.": "正在從 {1} 下載「{0}」。",
+  "\"{0}\" is being uploaded to {1}.": "正在將「{0}」上傳到 {1}。",
   "\"{0}\" is no longer connected": "「{0}」已不再連線",
+  "(stopped at {0})": "（在 {0} 個時停止）",
   "5 s clip": "5 秒片段",
-  "A download is": "一項下載",
+  "A download is still running — quit anyway?": "一項下載仍在進行。仍要結束嗎？",
+  "A download is still waiting — quit anyway?": "一項下載仍在等待。仍要結束嗎？",
   "a file": "一個檔案",
   "A file cannot replace a folder. ": "檔案無法取代資料夾。 ",
   "A file merely open elsewhere - which on this kind of system blocks nothing - is marked O instead, and wears no padlock.": "僅在其他地方開啟的檔案（在這類系統上不會鎖住任何東西）則標示為 O，且不顯示鎖頭。",
@@ -29,7 +33,11 @@
   "Add a drive: an FTP / SFTP server, a cloud account or a RAM disc": "新增磁碟機：FTP / SFTP 伺服器、雲端帳戶或 RAM 磁碟",
   "Add an FTP / SFTP drive": "新增 FTP / SFTP 磁碟機",
   "an entry": "一個項目",
-  "An upload is": "一項上傳",
+  "An upload is still running — quit anyway?": "一項上傳仍在進行。仍要結束嗎？",
+  "An upload is still waiting — quit anyway?": "一項上傳仍在等待。仍要結束嗎？",
+  "and {n} more": {
+    "other": "以及另外 {n} 項"
+  },
   "Any other file, when this system has a program registered for that kind of file:": "其他檔案（當此系統已為該類檔案註冊程式時）：",
   "Applied to {n} item.": {
     "other": "已套用至 {n} 個項目。"
@@ -183,6 +191,7 @@
   "In memory: not available.": "記憶體中：無法取得。",
   "In the thumbnail views, show the extension on the tile:": "在縮圖檢視中，於圖塊上顯示副檔名：",
   "In use:": "使用中：",
+  "in {0}": "範圍：{0}",
   "Installing {0} — first launch prepares its Windows environment, this can take a minute…": "正在安裝 {0} — 第一次啟動會準備其 Windows 環境，可能需要一分鐘…",
   "Installing {0}…": "正在安裝 {0}…",
   "It names: {0}": "它指向：{0}",
@@ -206,6 +215,7 @@
   "Looking in {0} for names already taken...": "正在 {0} 中尋找已使用的名稱...",
   "Mark files that are in use": "標示使用中的檔案",
   "Match case": "大小寫須相符",
+  "match case": "大小寫須相符",
   "Maximum 2 rows": "最多 2 行",
   "Maximum 3 rows": "最多 3 行",
   "Maximum 4 rows": "最多 4 行",
@@ -215,7 +225,8 @@
   "Merging a folder puts its entries into the folder that is there and asks about any name that is taken inside it; Replace deletes the existing folder first. Until the progress window opens, the pointer shows that the work is under way.": "合併資料夾會將其項目放入現有的資料夾，並對其中任何已使用的名稱提出詢問；「取代」會先刪除現有的資料夾。在進度視窗開啟之前，指標會顯示工作正在進行中。",
   "Message log": "訊息記錄",
   "Modern - each tab a capsule floating in the strip: the open one white with a blue outline, the others plain text until the pointer is over them": "現代 - 每個索引標籤都是浮在標籤列中的膠囊：開啟的那個為白色並有藍色外框，其他則只是純文字，直到指標移到上方",
-  "Moving files to the {0}": "將檔案移到{0}",
+  "Moving files to the Recycle Bin": "將檔案移到資源回收筒",
+  "Moving files to the Trash": "將檔案移到垃圾桶",
   "Moving files, by drag & drop or with Cut and Paste": "移動檔案（以拖放或剪下和貼上）",
   "name for the new environment": "新環境的名稱",
   "Name:": "名稱：",
@@ -294,11 +305,11 @@
   "Saved to {0}": "已儲存到 {0}",
   "Scan sub folder": "掃描子資料夾",
   "Search every sub folder of this folder (Enter)": "搜尋此資料夾的每個子資料夾 (Enter)",
-  "Search for \"": "搜尋 \"",
-  "Searching \"": "正在搜尋 \"",
+  "Search for \"{0}\"{1} stopped": "已停止搜尋「{0}」{1}",
   "Searching \"{0}\" - {1}, {2}": "正在搜尋「{0}」- {1}，{2}",
-  "Searching files for the text \"": "正在搜尋包含文字的檔案 \"",
+  "Searching \"{0}\"{1} ...": "正在搜尋「{0}」{1}...",
   "Searching files for the text \"{0}\"{1} - {2}, {3}": "正在搜尋包含文字「{0}」{1} 的檔案 - {2}，{3}",
+  "Searching files for the text \"{0}\"{1} ...": "正在搜尋包含文字的檔案「{0}」{1}...",
   "Select the command line application": "選取命令列應用程式",
   "Selected folder colour": "所選資料夾的顏色",
   "Selected folder colour:": "所選資料夾的顏色：",
@@ -338,7 +349,7 @@
   "TAR": "TAR",
   "Test": "測試",
   "Text files": "文字檔案",
-  "Text search for \"": "文字搜尋 \"",
+  "Text search for \"{0}\"{1} stopped": "已停止文字搜尋「{0}」{1}",
   "The change shows at once on the open window's tab strip. Whichever style is chosen, the tabs behave the same: click to switch, the X or a middle click to close, drag to reorder, and the + at the end opens another tab.": "變更會立即顯示在開啟視窗的索引標籤列上。無論選擇哪種樣式，索引標籤的行為都相同：按一下可切換，按 X 或按滑鼠中鍵可關閉，拖曳可重新排列，結尾的 + 可開啟另一個索引標籤。",
   "The current folder opens the tab on the folder the active tab is showing, so the work carries on where it is; the Home folder opens every new tab on the same starting point instead. Computer opens the Computer page - the drives with their free space, Home and the cloud folders - with the Home folder behind it, so a tab opened that way still has a folder to show once a drive or folder is picked.": "「目前資料夾」會在使用中索引標籤所顯示的資料夾上開啟新索引標籤，讓工作接續進行；「主資料夾」則讓每個新索引標籤都從相同的起點開啟。「電腦」會開啟電腦頁面（磁碟機及其可用空間、主資料夾和雲端資料夾），並以主資料夾作為其背後的資料夾，因此以這種方式開啟的索引標籤在選取磁碟機或資料夾後仍有資料夾可顯示。",
   "The disk cache looks after its own size: a thumbnail not used for {0} days is deleted when UltraFiler next starts, so a folder you keep visiting keeps its thumbnails and one you opened once pays for itself and then goes away. Nothing here can show an out-of-date picture - a file's size and date are stored with its thumbnail, so a file that has changed is read again.": "磁碟快取會自行管理大小：{0} 天未使用的縮圖會在 UltraFiler 下次啟動時刪除，因此經常造訪的資料夾會保留縮圖，只開過一次的資料夾則在用過之後消失。這裡不會顯示過時的圖片：檔案的大小和日期會與縮圖一起儲存，因此已變更的檔案會重新讀取。",
@@ -381,10 +392,12 @@
   "Use system default": "使用系統預設值",
   "Video": "影片",
   "Waiting after it: ": "在它之後等待中： ",
+  "Waiting: ": "等待中： ",
   "What is on screen is being read again and goes back into the cache as it lands - press Refresh to see where it settles.": "畫面上的內容正在重新讀取，並會在讀取完成時放回快取；按「重新整理」即可看到最終結果。",
   "What the \"+\" at the end of the tab strip opens:": "索引標籤列結尾的「+」會開啟：",
   "What the Home folder shows, in the folder tree and in the file display:": "主資料夾在資料夾樹狀結構和檔案顯示區中顯示的內容：",
   "What UltraFiler keeps so a folder opens without being read again:": "UltraFiler 為了讓資料夾不必重新讀取即可開啟所保留的內容：",
+  "What was sent is removed from {0} the next time you use it.": "已傳送的內容會在下次使用 {0} 時移除。",
   "Whatever is chosen here, Ctrl while dropping always copies and Shift always moves.": "無論此處選擇什麼，放下時按住 Ctrl 一律複製，按住 Shift 一律移動。",
   "When a file cannot be copied, moved or deleted:": "當檔案無法複製、移動或刪除時：",
   "When a folder is pasted over a folder:": "當資料夾貼到另一個資料夾上時：",
@@ -405,14 +418,29 @@
   "{0} - not supported by this build": "{0} - 此版本不支援",
   "{0} min": "{0} 分鐘",
   "{0}, {1} (room for {2})": "{0}，{1}（可容納 {2}）",
+  "{n} download is still running or waiting — quit anyway?": {
+    "other": "{n} 項下載仍在進行或等待。仍要結束嗎？"
+  },
+  "{n} download is still running — quit anyway?": {
+    "other": "{n} 項下載仍在進行。仍要結束嗎？"
+  },
+  "{n} download is still waiting — quit anyway?": {
+    "other": "{n} 項下載仍在等待。仍要結束嗎？"
+  },
   "{n} entry": {
     "other": "{n} 個項目"
+  },
+  "{n} file contains \"{0}\"{1} - {2}": {
+    "other": "{n} 個檔案包含「{0}」{1} - {2}"
   },
   "{n} file found": {
     "other": "找到 {n} 個檔案"
   },
   "{n} file read": {
     "other": "已讀取 {n} 個檔案"
+  },
+  "{n} file read in {0}": {
+    "other": "已讀取 {0}中的 {n} 個檔案"
   },
   "{n} folder scanned": {
     "other": "已掃描 {n} 個資料夾"
@@ -426,6 +454,9 @@
   "{n} result": {
     "other": "{n} 個結果"
   },
+  "{n} result for \"{0}\" in {1}": {
+    "other": "在 {1}中找到 {n} 個「{0}」的結果"
+  },
   "{n} shared folder": {
     "other": "{n} 個共用資料夾"
   },
@@ -437,5 +468,23 @@
   },
   "{n} tile": {
     "other": "{n} 個圖塊"
+  },
+  "{n} transfer is still running or waiting — quit anyway?": {
+    "other": "{n} 項傳輸仍在進行或等待。仍要結束嗎？"
+  },
+  "{n} transfer is still running — quit anyway?": {
+    "other": "{n} 項傳輸仍在進行。仍要結束嗎？"
+  },
+  "{n} transfer is still waiting — quit anyway?": {
+    "other": "{n} 項傳輸仍在等待。仍要結束嗎？"
+  },
+  "{n} upload is still running or waiting — quit anyway?": {
+    "other": "{n} 項上傳仍在進行或等待。仍要結束嗎？"
+  },
+  "{n} upload is still running — quit anyway?": {
+    "other": "{n} 項上傳仍在進行。仍要結束嗎？"
+  },
+  "{n} upload is still waiting — quit anyway?": {
+    "other": "{n} 項上傳仍在等待。仍要結束嗎？"
   }
 }

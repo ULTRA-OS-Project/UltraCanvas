@@ -3,9 +3,13 @@
   "@translated-by": "machine draft 2026-11-04, reviewed by -",
   "\"Show it in the preview\" keeps the file inside UltraFiler whenever it can show it - pictures, documents, spreadsheets, 3D models, e-books, fonts, video, audio and text - which is faster than starting a program for a look at a file.": "\"הצגה בתצוגה המקדימה\" משאירה את הקובץ בתוך UltraFiler בכל פעם שאפשר להציג אותו - תמונות, מסמכים, גיליונות אלקטרוניים, מודלים תלת־ממדיים, ספרים אלקטרוניים, גופנים, וידאו, שמע וטקסט - וזה מהיר יותר מהפעלת תוכנית רק כדי להעיף מבט בקובץ.",
   "\"Start the registered program\" is what a double-click does in Explorer and the Finder: the file opens in the program its type is assigned to, and UltraFiler stays as it is.": "\"הפעלת התוכנית הרשומה\" היא מה שלחיצה כפולה עושה ב-Explorer וב-Finder: הקובץ נפתח בתוכנית שסוג הקובץ משויך אליה, ו-UltraFiler נשאר כפי שהוא.",
+  "\"{0}\" is being downloaded from {1}.": "\"{0}\" מורד מ-{1}.",
+  "\"{0}\" is being uploaded to {1}.": "\"{0}\" מועלה אל {1}.",
   "\"{0}\" is no longer connected": "\"{0}\" כבר לא מחובר",
+  "(stopped at {0})": "(נעצר ב-{0})",
   "5 s clip": "קטע של 5 שניות",
-  "A download is": "הורדה אחת",
+  "A download is still running — quit anyway?": "הורדה אחת עדיין פועלת — לצאת בכל זאת?",
+  "A download is still waiting — quit anyway?": "הורדה אחת עדיין ממתינה — לצאת בכל זאת?",
   "a file": "קובץ",
   "A file cannot replace a folder. ": "קובץ אינו יכול להחליף תיקייה. ",
   "A file merely open elsewhere - which on this kind of system blocks nothing - is marked O instead, and wears no padlock.": "קובץ שרק פתוח במקום אחר - דבר שבמערכת מסוג זה אינו חוסם דבר - מסומן במקום זאת ב-O, ואין עליו מנעול.",
@@ -29,7 +33,14 @@
   "Add a drive: an FTP / SFTP server, a cloud account or a RAM disc": "הוספת כונן: שרת FTP / SFTP, חשבון ענן או כונן RAM",
   "Add an FTP / SFTP drive": "הוספת כונן FTP / SFTP",
   "an entry": "רשומה",
-  "An upload is": "העלאה אחת",
+  "An upload is still running — quit anyway?": "העלאה אחת עדיין פועלת — לצאת בכל זאת?",
+  "An upload is still waiting — quit anyway?": "העלאה אחת עדיין ממתינה — לצאת בכל זאת?",
+  "and {n} more": {
+    "one": "ועוד {n}",
+    "two": "ועוד {n}",
+    "many": "ועוד {n}",
+    "other": "ועוד {n}"
+  },
   "Any other file, when this system has a program registered for that kind of file:": "כל קובץ אחר, כשלמערכת זו יש תוכנית רשומה עבור סוג קובץ זה:",
   "Applied to {n} item.": {
     "one": "הוחל על {n} פריט.",
@@ -192,6 +203,7 @@
   "In memory: not available.": "בזיכרון: לא זמין.",
   "In the thumbnail views, show the extension on the tile:": "בתצוגות התמונות הממוזערות, הצגת הסיומת על האריח:",
   "In use:": "בשימוש:",
+  "in {0}": "ב-{0}",
   "Installing {0} — first launch prepares its Windows environment, this can take a minute…": "מתקין את {0} — ההפעלה הראשונה מכינה את סביבת ה-Windows שלו, זה עשוי לקחת דקה…",
   "Installing {0}…": "מתקין את {0}…",
   "It names: {0}": "הוא מפנה אל: {0}",
@@ -215,6 +227,7 @@
   "Looking in {0} for names already taken...": "מחפש ב-{0} שמות תפוסים...",
   "Mark files that are in use": "סימון קבצים שנמצאים בשימוש",
   "Match case": "התאמת רישיות",
+  "match case": "התאמת רישיות",
   "Maximum 2 rows": "עד 2 שורות",
   "Maximum 3 rows": "עד 3 שורות",
   "Maximum 4 rows": "עד 4 שורות",
@@ -224,7 +237,8 @@
   "Merging a folder puts its entries into the folder that is there and asks about any name that is taken inside it; Replace deletes the existing folder first. Until the progress window opens, the pointer shows that the work is under way.": "מיזוג תיקייה מכניס את הפריטים שלה לתיקייה שכבר קיימת ושואל על כל שם שתפוס בתוכה; \"החלפה\" מוחקת קודם את התיקייה הקיימת. עד שחלון ההתקדמות נפתח, סמן העכבר מראה שהעבודה מתבצעת.",
   "Message log": "יומן הודעות",
   "Modern - each tab a capsule floating in the strip: the open one white with a blue outline, the others plain text until the pointer is over them": "מודרני - כל כרטיסייה היא כמוסה שצפה בפס: הפתוחה לבנה עם מסגרת כחולה, האחרות טקסט פשוט עד שהסמן מעליהן",
-  "Moving files to the {0}": "העברת קבצים אל {0}",
+  "Moving files to the Recycle Bin": "העברת קבצים לסל המיחזור",
+  "Moving files to the Trash": "העברת קבצים לאשפה",
   "Moving files, by drag & drop or with Cut and Paste": "העברת קבצים, בגרירה ושחרור או באמצעות גזירה והדבקה",
   "name for the new environment": "שם לסביבה החדשה",
   "Name:": "שם:",
@@ -303,11 +317,11 @@
   "Saved to {0}": "נשמר אל {0}",
   "Scan sub folder": "סריקת תיקיות משנה",
   "Search every sub folder of this folder (Enter)": "חיפוש בכל תיקיות המשנה של תיקייה זו (Enter)",
-  "Search for \"": "חיפוש \"",
-  "Searching \"": "מחפש \"",
+  "Search for \"{0}\"{1} stopped": "החיפוש נעצר: \"{0}\"{1}",
   "Searching \"{0}\" - {1}, {2}": "מחפש \"{0}\" - {1}, {2}",
-  "Searching files for the text \"": "מחפש בקבצים את הטקסט \"",
+  "Searching \"{0}\"{1} ...": "מחפש \"{0}\"{1}...",
   "Searching files for the text \"{0}\"{1} - {2}, {3}": "מחפש בקבצים את הטקסט \"{0}\"{1} - {2}, {3}",
+  "Searching files for the text \"{0}\"{1} ...": "מחפש בקבצים את הטקסט \"{0}\"{1}...",
   "Select the command line application": "בחירת יישום שורת הפקודה",
   "Selected folder colour": "צבע התיקייה הנבחרת",
   "Selected folder colour:": "צבע התיקייה הנבחרת:",
@@ -350,7 +364,7 @@
   "TAR": "TAR",
   "Test": "בדיקה",
   "Text files": "קובצי טקסט",
-  "Text search for \"": "חיפוש טקסט \"",
+  "Text search for \"{0}\"{1} stopped": "חיפוש הטקסט נעצר: \"{0}\"{1}",
   "The change shows at once on the open window's tab strip. Whichever style is chosen, the tabs behave the same: click to switch, the X or a middle click to close, drag to reorder, and the + at the end opens another tab.": "השינוי מופיע מיד בפס הכרטיסיות של החלון הפתוח. בכל סגנון שייבחר, הכרטיסיות מתנהגות אותו דבר: לחיצה כדי לעבור, ה-X או לחיצה אמצעית כדי לסגור, גרירה כדי לשנות סדר, וה-+ שבסוף פותח כרטיסייה נוספת.",
   "The current folder opens the tab on the folder the active tab is showing, so the work carries on where it is; the Home folder opens every new tab on the same starting point instead. Computer opens the Computer page - the drives with their free space, Home and the cloud folders - with the Home folder behind it, so a tab opened that way still has a folder to show once a drive or folder is picked.": "\"התיקייה הנוכחית\" פותחת את הכרטיסייה על התיקייה שהכרטיסייה הפעילה מציגה, כך שהעבודה ממשיכה מהמקום שבו היא נמצאת; \"תיקיית הבית\" פותחת במקום זאת כל כרטיסייה חדשה באותה נקודת התחלה. \"מחשב\" פותח את דף המחשב - הכוננים עם השטח הפנוי שלהם, תיקיית הבית ותיקיות הענן - עם תיקיית הבית מאחוריו, כך שלכרטיסייה שנפתחה כך עדיין יש תיקייה להציג לאחר שנבחרים כונן או תיקייה.",
   "The disk cache looks after its own size: a thumbnail not used for {0} days is deleted when UltraFiler next starts, so a folder you keep visiting keeps its thumbnails and one you opened once pays for itself and then goes away. Nothing here can show an out-of-date picture - a file's size and date are stored with its thumbnail, so a file that has changed is read again.": "מטמון הדיסק דואג לגודל שלו בעצמו: תמונה ממוזערת שלא נעשה בה שימוש במשך {0} ימים נמחקת בהפעלה הבאה של UltraFiler, כך שתיקייה שמבקרים בה שוב ושוב שומרת על התמונות הממוזערות שלה, ותיקייה שנפתחה פעם אחת מחזירה את עלותה ואז נעלמת. דבר כאן אינו יכול להציג תמונה מיושנת - הגודל והתאריך של קובץ נשמרים עם התמונה הממוזערת שלו, כך שקובץ שהשתנה נקרא מחדש.",
@@ -393,10 +407,12 @@
   "Use system default": "שימוש בברירת המחדל של המערכת",
   "Video": "וידאו",
   "Waiting after it: ": "ממתינות אחריה: ",
+  "Waiting: ": "ממתינות: ",
   "What is on screen is being read again and goes back into the cache as it lands - press Refresh to see where it settles.": "מה שעל המסך נקרא מחדש וחוזר למטמון כשהוא מגיע - יש ללחוץ על \"רענון\" כדי לראות היכן זה מתייצב.",
   "What the \"+\" at the end of the tab strip opens:": "מה פותח ה-\"+\" שבסוף פס הכרטיסיות:",
   "What the Home folder shows, in the folder tree and in the file display:": "מה תיקיית הבית מציגה, בעץ התיקיות ובתצוגת הקבצים:",
   "What UltraFiler keeps so a folder opens without being read again:": "מה ש-UltraFiler שומר כדי שתיקייה תיפתח בלי לקרוא אותה שוב:",
+  "What was sent is removed from {0} the next time you use it.": "מה שנשלח יוסר מ-{0} בפעם הבאה שייעשה בו שימוש.",
   "Whatever is chosen here, Ctrl while dropping always copies and Shift always moves.": "מה שלא ייבחר כאן, Ctrl בזמן השחרור תמיד מעתיק ו-Shift תמיד מעביר.",
   "When a file cannot be copied, moved or deleted:": "כשלא ניתן להעתיק, להעביר או למחוק קובץ:",
   "When a folder is pasted over a folder:": "כשמדביקים תיקייה על תיקייה:",
@@ -417,11 +433,35 @@
   "{0} - not supported by this build": "{0} - לא נתמך בגרסה זו",
   "{0} min": "{0} דק׳",
   "{0}, {1} (room for {2})": "{0}, {1} (מקום ל-{2})",
+  "{n} download is still running or waiting — quit anyway?": {
+    "one": "{n} הורדה עדיין פועלת או ממתינה — לצאת בכל זאת?",
+    "two": "{n} הורדות עדיין פועלות או ממתינות — לצאת בכל זאת?",
+    "many": "{n} הורדות עדיין פועלות או ממתינות — לצאת בכל זאת?",
+    "other": "{n} הורדות עדיין פועלות או ממתינות — לצאת בכל זאת?"
+  },
+  "{n} download is still running — quit anyway?": {
+    "one": "{n} הורדה עדיין פועלת — לצאת בכל זאת?",
+    "two": "{n} הורדות עדיין פועלות — לצאת בכל זאת?",
+    "many": "{n} הורדות עדיין פועלות — לצאת בכל זאת?",
+    "other": "{n} הורדות עדיין פועלות — לצאת בכל זאת?"
+  },
+  "{n} download is still waiting — quit anyway?": {
+    "one": "{n} הורדה עדיין ממתינה — לצאת בכל זאת?",
+    "two": "{n} הורדות עדיין ממתינות — לצאת בכל זאת?",
+    "many": "{n} הורדות עדיין ממתינות — לצאת בכל זאת?",
+    "other": "{n} הורדות עדיין ממתינות — לצאת בכל זאת?"
+  },
   "{n} entry": {
     "one": "{n} רשומה",
     "two": "{n} רשומות",
     "many": "{n} רשומות",
     "other": "{n} רשומות"
+  },
+  "{n} file contains \"{0}\"{1} - {2}": {
+    "one": "{n} קובץ מכיל את \"{0}\"{1} - {2}",
+    "two": "{n} קבצים מכילים את \"{0}\"{1} - {2}",
+    "many": "{n} קבצים מכילים את \"{0}\"{1} - {2}",
+    "other": "{n} קבצים מכילים את \"{0}\"{1} - {2}"
   },
   "{n} file found": {
     "one": "נמצא {n} קובץ",
@@ -434,6 +474,12 @@
     "two": "נקראו {n} קבצים",
     "many": "נקראו {n} קבצים",
     "other": "נקראו {n} קבצים"
+  },
+  "{n} file read in {0}": {
+    "one": "נקרא {n} קובץ ב-{0}",
+    "two": "נקראו {n} קבצים ב-{0}",
+    "many": "נקראו {n} קבצים ב-{0}",
+    "other": "נקראו {n} קבצים ב-{0}"
   },
   "{n} folder scanned": {
     "one": "נסרקה {n} תיקייה",
@@ -459,6 +505,12 @@
     "many": "{n} תוצאות",
     "other": "{n} תוצאות"
   },
+  "{n} result for \"{0}\" in {1}": {
+    "one": "{n} תוצאה עבור \"{0}\" ב-{1}",
+    "two": "{n} תוצאות עבור \"{0}\" ב-{1}",
+    "many": "{n} תוצאות עבור \"{0}\" ב-{1}",
+    "other": "{n} תוצאות עבור \"{0}\" ב-{1}"
+  },
   "{n} shared folder": {
     "one": "{n} תיקייה משותפת",
     "two": "{n} תיקיות משותפות",
@@ -482,5 +534,41 @@
     "two": "{n} אריחים",
     "many": "{n} אריחים",
     "other": "{n} אריחים"
+  },
+  "{n} transfer is still running or waiting — quit anyway?": {
+    "one": "{n} העברה עדיין פועלת או ממתינה — לצאת בכל זאת?",
+    "two": "{n} העברות עדיין פועלות או ממתינות — לצאת בכל זאת?",
+    "many": "{n} העברות עדיין פועלות או ממתינות — לצאת בכל זאת?",
+    "other": "{n} העברות עדיין פועלות או ממתינות — לצאת בכל זאת?"
+  },
+  "{n} transfer is still running — quit anyway?": {
+    "one": "{n} העברה עדיין פועלת — לצאת בכל זאת?",
+    "two": "{n} העברות עדיין פועלות — לצאת בכל זאת?",
+    "many": "{n} העברות עדיין פועלות — לצאת בכל זאת?",
+    "other": "{n} העברות עדיין פועלות — לצאת בכל זאת?"
+  },
+  "{n} transfer is still waiting — quit anyway?": {
+    "one": "{n} העברה עדיין ממתינה — לצאת בכל זאת?",
+    "two": "{n} העברות עדיין ממתינות — לצאת בכל זאת?",
+    "many": "{n} העברות עדיין ממתינות — לצאת בכל זאת?",
+    "other": "{n} העברות עדיין ממתינות — לצאת בכל זאת?"
+  },
+  "{n} upload is still running or waiting — quit anyway?": {
+    "one": "{n} העלאה עדיין פועלת או ממתינה — לצאת בכל זאת?",
+    "two": "{n} העלאות עדיין פועלות או ממתינות — לצאת בכל זאת?",
+    "many": "{n} העלאות עדיין פועלות או ממתינות — לצאת בכל זאת?",
+    "other": "{n} העלאות עדיין פועלות או ממתינות — לצאת בכל זאת?"
+  },
+  "{n} upload is still running — quit anyway?": {
+    "one": "{n} העלאה עדיין פועלת — לצאת בכל זאת?",
+    "two": "{n} העלאות עדיין פועלות — לצאת בכל זאת?",
+    "many": "{n} העלאות עדיין פועלות — לצאת בכל זאת?",
+    "other": "{n} העלאות עדיין פועלות — לצאת בכל זאת?"
+  },
+  "{n} upload is still waiting — quit anyway?": {
+    "one": "{n} העלאה עדיין ממתינה — לצאת בכל זאת?",
+    "two": "{n} העלאות עדיין ממתינות — לצאת בכל זאת?",
+    "many": "{n} העלאות עדיין ממתינות — לצאת בכל זאת?",
+    "other": "{n} העלאות עדיין ממתינות — לצאת בכל זאת?"
   }
 }

@@ -3,9 +3,13 @@
   "@translated-by": "machine draft 2026-11-04, reviewed by -",
   "\"Show it in the preview\" keeps the file inside UltraFiler whenever it can show it - pictures, documents, spreadsheets, 3D models, e-books, fonts, video, audio and text - which is faster than starting a program for a look at a file.": "「プレビューで表示」を選ぶと、UltraFiler で表示できるファイル (画像、ドキュメント、スプレッドシート、3D モデル、電子書籍、フォント、ビデオ、オーディオ、テキスト) は UltraFiler の中で表示されます。ファイルを見るだけのためにプログラムを起動するより高速です。",
   "\"Start the registered program\" is what a double-click does in Explorer and the Finder: the file opens in the program its type is assigned to, and UltraFiler stays as it is.": "「登録済みのプログラムを起動」は、Explorer や Finder でダブルクリックしたときと同じ動作です。ファイルはその種類に割り当てられたプログラムで開かれ、UltraFiler はそのままです。",
+  "\"{0}\" is being downloaded from {1}.": "「{0}」を {1} からダウンロード中です。",
+  "\"{0}\" is being uploaded to {1}.": "「{0}」を {1} にアップロード中です。",
   "\"{0}\" is no longer connected": "「{0}」は接続されていません",
+  "(stopped at {0})": "({0} 件で打ち切り)",
   "5 s clip": "5 秒クリップ",
-  "A download is": "ダウンロード 1 件が",
+  "A download is still running — quit anyway?": "ダウンロード 1 件がまだ実行中です。それでも終了しますか？",
+  "A download is still waiting — quit anyway?": "ダウンロード 1 件がまだ待機中です。それでも終了しますか？",
   "a file": "ファイル",
   "A file cannot replace a folder. ": "ファイルでフォルダーを置き換えることはできません。 ",
   "A file merely open elsewhere - which on this kind of system blocks nothing - is marked O instead, and wears no padlock.": "他の場所で開かれているだけのファイル (この種のシステムでは何もブロックされません) には代わりに O が付き、南京錠は表示されません。",
@@ -29,7 +33,11 @@
   "Add a drive: an FTP / SFTP server, a cloud account or a RAM disc": "ドライブを追加: FTP / SFTP サーバー、クラウドアカウント、または RAM ディスク",
   "Add an FTP / SFTP drive": "FTP / SFTP ドライブを追加",
   "an entry": "項目",
-  "An upload is": "アップロード 1 件が",
+  "An upload is still running — quit anyway?": "アップロード 1 件がまだ実行中です。それでも終了しますか？",
+  "An upload is still waiting — quit anyway?": "アップロード 1 件がまだ待機中です。それでも終了しますか？",
+  "and {n} more": {
+    "other": "ほか {n} 件"
+  },
   "Any other file, when this system has a program registered for that kind of file:": "その他のファイル (このシステムでその種類のファイルにプログラムが登録されている場合):",
   "Applied to {n} item.": {
     "other": "{n} 個の項目に適用しました。"
@@ -183,6 +191,7 @@
   "In memory: not available.": "メモリ内: 利用できません。",
   "In the thumbnail views, show the extension on the tile:": "サムネイルビューでタイルに拡張子を表示:",
   "In use:": "使用中:",
+  "in {0}": "対象: {0}",
   "Installing {0} — first launch prepares its Windows environment, this can take a minute…": "{0} をインストール中 — 初回起動時は Windows 環境を準備するため、1 分ほどかかる場合があります…",
   "Installing {0}…": "{0} をインストール中…",
   "It names: {0}": "参照先: {0}",
@@ -206,6 +215,7 @@
   "Looking in {0} for names already taken...": "{0} で使用済みの名前を確認中…",
   "Mark files that are in use": "使用中のファイルにマークを付ける",
   "Match case": "大文字と小文字を区別",
+  "match case": "大文字と小文字を区別",
   "Maximum 2 rows": "最大 2 行",
   "Maximum 3 rows": "最大 3 行",
   "Maximum 4 rows": "最大 4 行",
@@ -215,7 +225,8 @@
   "Merging a folder puts its entries into the folder that is there and asks about any name that is taken inside it; Replace deletes the existing folder first. Until the progress window opens, the pointer shows that the work is under way.": "フォルダーを結合すると、その中の項目が既存のフォルダーに入れられ、その中で使用済みの名前があれば確認します。「置換」では先に既存のフォルダーが削除されます。進行状況ウィンドウが開くまでは、処理中であることがポインターで示されます。",
   "Message log": "メッセージログ",
   "Modern - each tab a capsule floating in the strip: the open one white with a blue outline, the others plain text until the pointer is over them": "モダン - 各タブがバー内に浮かぶカプセル型: 開いているタブは青い枠線付きの白、ほかのタブはポインターを合わせるまでプレーンテキスト",
-  "Moving files to the {0}": "ファイルを{0}に移動",
+  "Moving files to the Recycle Bin": "ファイルをごみ箱に移動",
+  "Moving files to the Trash": "ファイルをゴミ箱に移動",
   "Moving files, by drag & drop or with Cut and Paste": "ファイルの移動 (ドラッグ & ドロップ、または切り取りと貼り付け)",
   "name for the new environment": "新しい環境の名前",
   "Name:": "名前:",
@@ -294,11 +305,11 @@
   "Saved to {0}": "{0} に保存しました",
   "Scan sub folder": "サブフォルダーをスキャン",
   "Search every sub folder of this folder (Enter)": "このフォルダーのすべてのサブフォルダーを検索 (Enter)",
-  "Search for \"": "検索 \"",
-  "Searching \"": "検索中 \"",
+  "Search for \"{0}\"{1} stopped": "検索を停止しました: 「{0}」{1}",
   "Searching \"{0}\" - {1}, {2}": "「{0}」を検索中 - {1}、{2}",
-  "Searching files for the text \"": "ファイル内のテキストを検索中 \"",
+  "Searching \"{0}\"{1} ...": "検索中「{0}」{1}…",
   "Searching files for the text \"{0}\"{1} - {2}, {3}": "ファイル内のテキスト「{0}」{1} を検索中 - {2}、{3}",
+  "Searching files for the text \"{0}\"{1} ...": "ファイル内のテキストを検索中「{0}」{1}…",
   "Select the command line application": "コマンドラインアプリケーションを選択",
   "Selected folder colour": "選択したフォルダーの色",
   "Selected folder colour:": "選択したフォルダーの色:",
@@ -338,7 +349,7 @@
   "TAR": "TAR",
   "Test": "テスト",
   "Text files": "テキストファイル",
-  "Text search for \"": "テキスト検索 \"",
+  "Text search for \"{0}\"{1} stopped": "テキスト検索を停止しました: 「{0}」{1}",
   "The change shows at once on the open window's tab strip. Whichever style is chosen, the tabs behave the same: click to switch, the X or a middle click to close, drag to reorder, and the + at the end opens another tab.": "変更は開いているウィンドウのタブバーにすぐ反映されます。どのスタイルを選んでも、タブの動作は同じです: クリックで切り替え、X または中クリックで閉じ、ドラッグで並べ替え、末尾の + で別のタブを開きます。",
   "The current folder opens the tab on the folder the active tab is showing, so the work carries on where it is; the Home folder opens every new tab on the same starting point instead. Computer opens the Computer page - the drives with their free space, Home and the cloud folders - with the Home folder behind it, so a tab opened that way still has a folder to show once a drive or folder is picked.": "「現在のフォルダー」では、アクティブなタブが表示しているフォルダーで新しいタブが開くため、作業をその場で続けられます。「ホームフォルダー」では、すべての新しいタブが同じ開始点で開きます。「コンピューター」ではコンピューターページ (空き容量付きのドライブ、ホーム、クラウドフォルダー) が開き、その背後にホームフォルダーがあるため、この方法で開いたタブでも、ドライブやフォルダーを選んだ後に表示するフォルダーがあります。",
   "The disk cache looks after its own size: a thumbnail not used for {0} days is deleted when UltraFiler next starts, so a folder you keep visiting keeps its thumbnails and one you opened once pays for itself and then goes away. Nothing here can show an out-of-date picture - a file's size and date are stored with its thumbnail, so a file that has changed is read again.": "ディスクキャッシュは自身のサイズを管理します。{0} 日間使用されなかったサムネイルは次回 UltraFiler の起動時に削除されるため、よく開くフォルダーのサムネイルは残り、一度だけ開いたフォルダーのサムネイルは役目を終えると消えます。ここで古い画像が表示されることはありません。ファイルのサイズと日付がサムネイルとともに保存されるため、変更されたファイルは再度読み込まれます。",
@@ -381,10 +392,12 @@
   "Use system default": "システムのデフォルトを使用",
   "Video": "ビデオ",
   "Waiting after it: ": "その後に待機中: ",
+  "Waiting: ": "待機中: ",
   "What is on screen is being read again and goes back into the cache as it lands - press Refresh to see where it settles.": "画面上のものを再度読み込み、読み込み次第キャッシュに戻しています。「更新」を押すと、最終的な状態を確認できます。",
   "What the \"+\" at the end of the tab strip opens:": "タブバーの末尾の「+」で開くもの:",
   "What the Home folder shows, in the folder tree and in the file display:": "フォルダーツリーとファイル一覧でホームフォルダーに表示する内容:",
   "What UltraFiler keeps so a folder opens without being read again:": "フォルダーを再度読み込まずに開けるように UltraFiler が保持するもの:",
+  "What was sent is removed from {0} the next time you use it.": "送信済みの部分は、次回 {0} を使用するときに削除されます。",
   "Whatever is chosen here, Ctrl while dropping always copies and Shift always moves.": "ここでの設定に関係なく、ドロップ時に Ctrl を押すと常にコピー、Shift を押すと常に移動になります。",
   "When a file cannot be copied, moved or deleted:": "ファイルをコピー、移動、削除できない場合:",
   "When a folder is pasted over a folder:": "フォルダーをフォルダーの上に貼り付ける場合:",
@@ -405,14 +418,29 @@
   "{0} - not supported by this build": "{0} - このビルドではサポートされていません",
   "{0} min": "{0} 分",
   "{0}, {1} (room for {2})": "{0}、{1} (容量 {2})",
+  "{n} download is still running or waiting — quit anyway?": {
+    "other": "{n} 件のダウンロードがまだ実行中または待機中です。それでも終了しますか？"
+  },
+  "{n} download is still running — quit anyway?": {
+    "other": "{n} 件のダウンロードがまだ実行中です。それでも終了しますか？"
+  },
+  "{n} download is still waiting — quit anyway?": {
+    "other": "{n} 件のダウンロードがまだ待機中です。それでも終了しますか？"
+  },
   "{n} entry": {
     "other": "{n} 件"
+  },
+  "{n} file contains \"{0}\"{1} - {2}": {
+    "other": "{n} 個のファイルに「{0}」が含まれています{1} - {2}"
   },
   "{n} file found": {
     "other": "{n} 個のファイルが見つかりました"
   },
   "{n} file read": {
     "other": "{n} 個のファイルを読み込み済み"
+  },
+  "{n} file read in {0}": {
+    "other": "{0}内の {n} 個のファイルを読み込み済み"
   },
   "{n} folder scanned": {
     "other": "{n} 個のフォルダーをスキャン済み"
@@ -426,6 +454,9 @@
   "{n} result": {
     "other": "{n} 件の結果"
   },
+  "{n} result for \"{0}\" in {1}": {
+    "other": "{1}内の「{0}」の検索結果: {n} 件"
+  },
   "{n} shared folder": {
     "other": "共有フォルダー {n} 個"
   },
@@ -437,5 +468,23 @@
   },
   "{n} tile": {
     "other": "タイル {n} 個"
+  },
+  "{n} transfer is still running or waiting — quit anyway?": {
+    "other": "{n} 件の転送がまだ実行中または待機中です。それでも終了しますか？"
+  },
+  "{n} transfer is still running — quit anyway?": {
+    "other": "{n} 件の転送がまだ実行中です。それでも終了しますか？"
+  },
+  "{n} transfer is still waiting — quit anyway?": {
+    "other": "{n} 件の転送がまだ待機中です。それでも終了しますか？"
+  },
+  "{n} upload is still running or waiting — quit anyway?": {
+    "other": "{n} 件のアップロードがまだ実行中または待機中です。それでも終了しますか？"
+  },
+  "{n} upload is still running — quit anyway?": {
+    "other": "{n} 件のアップロードがまだ実行中です。それでも終了しますか？"
+  },
+  "{n} upload is still waiting — quit anyway?": {
+    "other": "{n} 件のアップロードがまだ待機中です。それでも終了しますか？"
   }
 }

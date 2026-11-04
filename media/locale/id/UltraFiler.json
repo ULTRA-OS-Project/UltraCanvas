@@ -3,9 +3,13 @@
   "@translated-by": "machine draft 2026-11-04, reviewed by -",
   "\"Show it in the preview\" keeps the file inside UltraFiler whenever it can show it - pictures, documents, spreadsheets, 3D models, e-books, fonts, video, audio and text - which is faster than starting a program for a look at a file.": "\"Tampilkan di pratinjau\" menjaga file tetap di dalam UltraFiler setiap kali file dapat ditampilkan - gambar, dokumen, spreadsheet, model 3D, e-book, font, video, audio, dan teks - yang lebih cepat daripada memulai program hanya untuk melihat file.",
   "\"Start the registered program\" is what a double-click does in Explorer and the Finder: the file opens in the program its type is assigned to, and UltraFiler stays as it is.": "\"Jalankan program terdaftar\" adalah yang dilakukan klik ganda di Explorer dan Finder: file terbuka di program yang ditetapkan untuk jenisnya, dan UltraFiler tetap seperti apa adanya.",
+  "\"{0}\" is being downloaded from {1}.": "\"{0}\" sedang diunduh dari {1}.",
+  "\"{0}\" is being uploaded to {1}.": "\"{0}\" sedang diunggah ke {1}.",
   "\"{0}\" is no longer connected": "\"{0}\" tidak lagi tersambung",
+  "(stopped at {0})": "(berhenti di {0})",
   "5 s clip": "Klip 5 dtk",
-  "A download is": "Sebuah unduhan",
+  "A download is still running — quit anyway?": "Sebuah unduhan masih berjalan — tetap keluar?",
+  "A download is still waiting — quit anyway?": "Sebuah unduhan masih menunggu — tetap keluar?",
   "a file": "sebuah file",
   "A file cannot replace a folder. ": "File tidak dapat mengganti folder. ",
   "A file merely open elsewhere - which on this kind of system blocks nothing - is marked O instead, and wears no padlock.": "File yang hanya terbuka di tempat lain - yang pada sistem jenis ini tidak memblokir apa pun - ditandai O sebagai gantinya, dan tidak diberi gembok.",
@@ -29,7 +33,11 @@
   "Add a drive: an FTP / SFTP server, a cloud account or a RAM disc": "Tambah drive: server FTP / SFTP, akun cloud, atau disk RAM",
   "Add an FTP / SFTP drive": "Tambah drive FTP / SFTP",
   "an entry": "sebuah entri",
-  "An upload is": "Sebuah unggahan",
+  "An upload is still running — quit anyway?": "Sebuah unggahan masih berjalan — tetap keluar?",
+  "An upload is still waiting — quit anyway?": "Sebuah unggahan masih menunggu — tetap keluar?",
+  "and {n} more": {
+    "other": "dan {n} lainnya"
+  },
   "Any other file, when this system has a program registered for that kind of file:": "File lainnya, jika sistem ini memiliki program yang terdaftar untuk jenis file tersebut:",
   "Applied to {n} item.": {
     "other": "Diterapkan ke {n} item."
@@ -183,6 +191,7 @@
   "In memory: not available.": "Di memori: tidak tersedia.",
   "In the thumbnail views, show the extension on the tile:": "Di tampilan gambar mini, tampilkan ekstensi pada ubin:",
   "In use:": "Sedang digunakan:",
+  "in {0}": "di {0}",
   "Installing {0} — first launch prepares its Windows environment, this can take a minute…": "Menginstal {0} — peluncuran pertama menyiapkan lingkungan Windows-nya, ini bisa memakan waktu sekitar satu menit…",
   "Installing {0}…": "Menginstal {0}…",
   "It names: {0}": "Mengacu ke: {0}",
@@ -206,6 +215,7 @@
   "Looking in {0} for names already taken...": "Mencari nama yang sudah dipakai di {0}...",
   "Mark files that are in use": "Tandai file yang sedang digunakan",
   "Match case": "Cocokkan huruf besar/kecil",
+  "match case": "cocokkan huruf besar/kecil",
   "Maximum 2 rows": "Maksimum 2 baris",
   "Maximum 3 rows": "Maksimum 3 baris",
   "Maximum 4 rows": "Maksimum 4 baris",
@@ -215,7 +225,8 @@
   "Merging a folder puts its entries into the folder that is there and asks about any name that is taken inside it; Replace deletes the existing folder first. Until the progress window opens, the pointer shows that the work is under way.": "Menggabungkan folder memasukkan entrinya ke folder yang sudah ada dan menanyakan setiap nama yang sudah dipakai di dalamnya; Ganti menghapus folder yang sudah ada terlebih dahulu. Sampai jendela kemajuan terbuka, penunjuk menunjukkan bahwa pekerjaan sedang berlangsung.",
   "Message log": "Log pesan",
   "Modern - each tab a capsule floating in the strip: the open one white with a blue outline, the others plain text until the pointer is over them": "Modern - setiap tab berupa kapsul yang melayang di strip: tab yang terbuka berwarna putih dengan garis tepi biru, yang lain hanya teks biasa sampai penunjuk berada di atasnya",
-  "Moving files to the {0}": "Memindahkan file ke {0}",
+  "Moving files to the Recycle Bin": "Memindahkan file ke Keranjang Sampah",
+  "Moving files to the Trash": "Memindahkan file ke Tempat Sampah",
   "Moving files, by drag & drop or with Cut and Paste": "Memindahkan file, dengan seret & lepas atau dengan Potong dan Tempel",
   "name for the new environment": "nama untuk lingkungan baru",
   "Name:": "Nama:",
@@ -294,11 +305,11 @@
   "Saved to {0}": "Disimpan ke {0}",
   "Scan sub folder": "Pindai subfolder",
   "Search every sub folder of this folder (Enter)": "Cari di setiap subfolder dari folder ini (Enter)",
-  "Search for \"": "Pencarian \"",
-  "Searching \"": "Mencari \"",
+  "Search for \"{0}\"{1} stopped": "Pencarian \"{0}\"{1} dihentikan",
   "Searching \"{0}\" - {1}, {2}": "Mencari \"{0}\" - {1}, {2}",
-  "Searching files for the text \"": "Mencari file berisi teks \"",
+  "Searching \"{0}\"{1} ...": "Mencari \"{0}\"{1}...",
   "Searching files for the text \"{0}\"{1} - {2}, {3}": "Mencari file berisi teks \"{0}\"{1} - {2}, {3}",
+  "Searching files for the text \"{0}\"{1} ...": "Mencari file berisi teks \"{0}\"{1}...",
   "Select the command line application": "Pilih aplikasi baris perintah",
   "Selected folder colour": "Warna folder yang dipilih",
   "Selected folder colour:": "Warna folder yang dipilih:",
@@ -338,7 +349,7 @@
   "TAR": "TAR",
   "Test": "Uji",
   "Text files": "File teks",
-  "Text search for \"": "Pencarian teks \"",
+  "Text search for \"{0}\"{1} stopped": "Pencarian teks \"{0}\"{1} dihentikan",
   "The change shows at once on the open window's tab strip. Whichever style is chosen, the tabs behave the same: click to switch, the X or a middle click to close, drag to reorder, and the + at the end opens another tab.": "Perubahan langsung terlihat di strip tab jendela yang terbuka. Gaya apa pun yang dipilih, tab berperilaku sama: klik untuk beralih, X atau klik tengah untuk menutup, seret untuk menyusun ulang, dan + di ujung membuka tab lain.",
   "The current folder opens the tab on the folder the active tab is showing, so the work carries on where it is; the Home folder opens every new tab on the same starting point instead. Computer opens the Computer page - the drives with their free space, Home and the cloud folders - with the Home folder behind it, so a tab opened that way still has a folder to show once a drive or folder is picked.": "Folder saat ini membuka tab di folder yang sedang ditampilkan tab aktif, sehingga pekerjaan berlanjut di tempatnya; folder Beranda membuka setiap tab baru di titik awal yang sama. Komputer membuka halaman Komputer - drive beserta ruang kosongnya, Beranda, dan folder cloud - dengan folder Beranda di belakangnya, sehingga tab yang dibuka dengan cara itu tetap memiliki folder untuk ditampilkan setelah drive atau folder dipilih.",
   "The disk cache looks after its own size: a thumbnail not used for {0} days is deleted when UltraFiler next starts, so a folder you keep visiting keeps its thumbnails and one you opened once pays for itself and then goes away. Nothing here can show an out-of-date picture - a file's size and date are stored with its thumbnail, so a file that has changed is read again.": "Cache disk mengurus ukurannya sendiri: gambar mini yang tidak digunakan selama {0} hari dihapus saat UltraFiler dijalankan berikutnya, sehingga folder yang sering Anda kunjungi tetap memiliki gambar mininya dan folder yang hanya sekali Anda buka menutup biayanya lalu hilang. Tidak ada yang dapat menampilkan gambar usang di sini - ukuran dan tanggal file disimpan bersama gambar mininya, sehingga file yang telah berubah dibaca ulang.",
@@ -381,10 +392,12 @@
   "Use system default": "Gunakan default sistem",
   "Video": "Video",
   "Waiting after it: ": "Menunggu setelahnya: ",
+  "Waiting: ": "Menunggu: ",
   "What is on screen is being read again and goes back into the cache as it lands - press Refresh to see where it settles.": "Yang ada di layar sedang dibaca ulang dan masuk kembali ke cache saat selesai - tekan Segarkan untuk melihat hasil akhirnya.",
   "What the \"+\" at the end of the tab strip opens:": "Apa yang dibuka \"+\" di ujung strip tab:",
   "What the Home folder shows, in the folder tree and in the file display:": "Apa yang ditampilkan folder Beranda, di pohon folder dan di tampilan file:",
   "What UltraFiler keeps so a folder opens without being read again:": "Apa yang disimpan UltraFiler agar folder terbuka tanpa dibaca ulang:",
+  "What was sent is removed from {0} the next time you use it.": "Yang sudah terkirim akan dihapus dari {0} saat Anda menggunakannya lagi.",
   "Whatever is chosen here, Ctrl while dropping always copies and Shift always moves.": "Apa pun yang dipilih di sini, Ctrl saat melepas selalu menyalin dan Shift selalu memindahkan.",
   "When a file cannot be copied, moved or deleted:": "Jika file tidak dapat disalin, dipindahkan, atau dihapus:",
   "When a folder is pasted over a folder:": "Jika folder ditempel di atas folder:",
@@ -405,14 +418,29 @@
   "{0} - not supported by this build": "{0} - tidak didukung oleh build ini",
   "{0} min": "{0} mnt",
   "{0}, {1} (room for {2})": "{0}, {1} (kapasitas {2})",
+  "{n} download is still running or waiting — quit anyway?": {
+    "other": "{n} unduhan masih berjalan atau menunggu — tetap keluar?"
+  },
+  "{n} download is still running — quit anyway?": {
+    "other": "{n} unduhan masih berjalan — tetap keluar?"
+  },
+  "{n} download is still waiting — quit anyway?": {
+    "other": "{n} unduhan masih menunggu — tetap keluar?"
+  },
   "{n} entry": {
     "other": "{n} entri"
+  },
+  "{n} file contains \"{0}\"{1} - {2}": {
+    "other": "{n} file berisi \"{0}\"{1} - {2}"
   },
   "{n} file found": {
     "other": "{n} file ditemukan"
   },
   "{n} file read": {
     "other": "{n} file dibaca"
+  },
+  "{n} file read in {0}": {
+    "other": "{n} file dibaca di {0}"
   },
   "{n} folder scanned": {
     "other": "{n} folder dipindai"
@@ -426,6 +454,9 @@
   "{n} result": {
     "other": "{n} hasil"
   },
+  "{n} result for \"{0}\" in {1}": {
+    "other": "{n} hasil untuk \"{0}\" di {1}"
+  },
   "{n} shared folder": {
     "other": "{n} folder bersama"
   },
@@ -437,5 +468,23 @@
   },
   "{n} tile": {
     "other": "{n} ubin"
+  },
+  "{n} transfer is still running or waiting — quit anyway?": {
+    "other": "{n} transfer masih berjalan atau menunggu — tetap keluar?"
+  },
+  "{n} transfer is still running — quit anyway?": {
+    "other": "{n} transfer masih berjalan — tetap keluar?"
+  },
+  "{n} transfer is still waiting — quit anyway?": {
+    "other": "{n} transfer masih menunggu — tetap keluar?"
+  },
+  "{n} upload is still running or waiting — quit anyway?": {
+    "other": "{n} unggahan masih berjalan atau menunggu — tetap keluar?"
+  },
+  "{n} upload is still running — quit anyway?": {
+    "other": "{n} unggahan masih berjalan — tetap keluar?"
+  },
+  "{n} upload is still waiting — quit anyway?": {
+    "other": "{n} unggahan masih menunggu — tetap keluar?"
   }
 }

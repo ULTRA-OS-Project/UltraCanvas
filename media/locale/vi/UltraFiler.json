@@ -3,9 +3,13 @@
   "@translated-by": "machine draft 2026-11-04, reviewed by -",
   "\"Show it in the preview\" keeps the file inside UltraFiler whenever it can show it - pictures, documents, spreadsheets, 3D models, e-books, fonts, video, audio and text - which is faster than starting a program for a look at a file.": "“Hiển thị trong bản xem trước” giữ tệp bên trong UltraFiler bất cứ khi nào có thể hiển thị - ảnh, tài liệu, bảng tính, mô hình 3D, sách điện tử, phông chữ, video, âm thanh và văn bản - nhanh hơn so với việc khởi động một chương trình chỉ để xem qua tệp.",
   "\"Start the registered program\" is what a double-click does in Explorer and the Finder: the file opens in the program its type is assigned to, and UltraFiler stays as it is.": "“Khởi động chương trình đã đăng ký” là điều mà nhấp đúp thực hiện trong Explorer và Finder: tệp được mở bằng chương trình được gán cho loại của nó, và UltraFiler vẫn giữ nguyên.",
+  "\"{0}\" is being downloaded from {1}.": "“{0}” đang được tải xuống từ {1}.",
+  "\"{0}\" is being uploaded to {1}.": "“{0}” đang được tải lên {1}.",
   "\"{0}\" is no longer connected": "“{0}” không còn được kết nối",
+  "(stopped at {0})": "(dừng ở {0})",
   "5 s clip": "Đoạn 5 giây",
-  "A download is": "Một lượt tải xuống",
+  "A download is still running — quit anyway?": "Một lượt tải xuống vẫn đang chạy — vẫn thoát?",
+  "A download is still waiting — quit anyway?": "Một lượt tải xuống vẫn đang chờ — vẫn thoát?",
   "a file": "một tệp",
   "A file cannot replace a folder. ": "Tệp không thể thay thế thư mục. ",
   "A file merely open elsewhere - which on this kind of system blocks nothing - is marked O instead, and wears no padlock.": "Tệp chỉ đơn thuần đang mở ở nơi khác - điều mà trên loại hệ thống này không chặn gì cả - được đánh dấu O thay vào đó, và không có biểu tượng ổ khóa.",
@@ -29,7 +33,11 @@
   "Add a drive: an FTP / SFTP server, a cloud account or a RAM disc": "Thêm ổ đĩa: máy chủ FTP / SFTP, tài khoản đám mây hoặc đĩa RAM",
   "Add an FTP / SFTP drive": "Thêm ổ đĩa FTP / SFTP",
   "an entry": "một mục",
-  "An upload is": "Một lượt tải lên",
+  "An upload is still running — quit anyway?": "Một lượt tải lên vẫn đang chạy — vẫn thoát?",
+  "An upload is still waiting — quit anyway?": "Một lượt tải lên vẫn đang chờ — vẫn thoát?",
+  "and {n} more": {
+    "other": "và {n} mục khác"
+  },
   "Any other file, when this system has a program registered for that kind of file:": "Mọi tệp khác, khi hệ thống này có chương trình được đăng ký cho loại tệp đó:",
   "Applied to {n} item.": {
     "other": "Đã áp dụng cho {n} mục."
@@ -183,6 +191,7 @@
   "In memory: not available.": "Trong bộ nhớ: không có sẵn.",
   "In the thumbnail views, show the extension on the tile:": "Trong dạng xem hình thu nhỏ, hiện phần mở rộng trên ô:",
   "In use:": "Đang được sử dụng:",
+  "in {0}": "trong {0}",
   "Installing {0} — first launch prepares its Windows environment, this can take a minute…": "Đang cài {0} — lần khởi chạy đầu tiên sẽ chuẩn bị môi trường Windows của nó, việc này có thể mất một phút…",
   "Installing {0}…": "Đang cài {0}…",
   "It names: {0}": "Đường dẫn được hiểu là: {0}",
@@ -206,6 +215,7 @@
   "Looking in {0} for names already taken...": "Đang tìm trong {0} các tên đã được sử dụng...",
   "Mark files that are in use": "Đánh dấu tệp đang được sử dụng",
   "Match case": "Phân biệt chữ hoa/thường",
+  "match case": "phân biệt chữ hoa/thường",
   "Maximum 2 rows": "Tối đa 2 dòng",
   "Maximum 3 rows": "Tối đa 3 dòng",
   "Maximum 4 rows": "Tối đa 4 dòng",
@@ -215,7 +225,8 @@
   "Merging a folder puts its entries into the folder that is there and asks about any name that is taken inside it; Replace deletes the existing folder first. Until the progress window opens, the pointer shows that the work is under way.": "Hợp nhất thư mục sẽ đưa các mục của nó vào thư mục đang có và hỏi về mọi tên đã được sử dụng bên trong; Thay thế sẽ xóa thư mục hiện có trước. Cho đến khi cửa sổ tiến trình mở ra, con trỏ cho thấy công việc đang được thực hiện.",
   "Message log": "Nhật ký thông báo",
   "Modern - each tab a capsule floating in the strip: the open one white with a blue outline, the others plain text until the pointer is over them": "Hiện đại - mỗi tab là một viên nang nổi trong dải: tab đang mở màu trắng với viền xanh lam, các tab khác chỉ là chữ thường cho đến khi con trỏ di lên",
-  "Moving files to the {0}": "Chuyển tệp vào {0}",
+  "Moving files to the Recycle Bin": "Chuyển tệp vào Thùng rác",
+  "Moving files to the Trash": "Chuyển tệp vào Thùng rác",
   "Moving files, by drag & drop or with Cut and Paste": "Di chuyển tệp, bằng kéo và thả hoặc bằng Cắt và Dán",
   "name for the new environment": "tên cho môi trường mới",
   "Name:": "Tên:",
@@ -294,11 +305,11 @@
   "Saved to {0}": "Đã lưu vào {0}",
   "Scan sub folder": "Quét thư mục con",
   "Search every sub folder of this folder (Enter)": "Tìm trong mọi thư mục con của thư mục này (Enter)",
-  "Search for \"": "Tìm kiếm \"",
-  "Searching \"": "Đang tìm \"",
+  "Search for \"{0}\"{1} stopped": "Đã dừng tìm kiếm “{0}”{1}",
   "Searching \"{0}\" - {1}, {2}": "Đang tìm “{0}” - {1}, {2}",
-  "Searching files for the text \"": "Đang tìm các tệp chứa văn bản \"",
+  "Searching \"{0}\"{1} ...": "Đang tìm “{0}”{1}...",
   "Searching files for the text \"{0}\"{1} - {2}, {3}": "Đang tìm các tệp chứa văn bản “{0}”{1} - {2}, {3}",
+  "Searching files for the text \"{0}\"{1} ...": "Đang tìm các tệp chứa văn bản “{0}”{1}...",
   "Select the command line application": "Chọn ứng dụng dòng lệnh",
   "Selected folder colour": "Màu thư mục được chọn",
   "Selected folder colour:": "Màu thư mục được chọn:",
@@ -338,7 +349,7 @@
   "TAR": "TAR",
   "Test": "Thử",
   "Text files": "Tệp văn bản",
-  "Text search for \"": "Tìm kiếm văn bản \"",
+  "Text search for \"{0}\"{1} stopped": "Đã dừng tìm kiếm văn bản “{0}”{1}",
   "The change shows at once on the open window's tab strip. Whichever style is chosen, the tabs behave the same: click to switch, the X or a middle click to close, drag to reorder, and the + at the end opens another tab.": "Thay đổi hiển thị ngay trên dải tab của cửa sổ đang mở. Dù chọn kiểu nào, các tab vẫn hoạt động như nhau: nhấp để chuyển, nút X hoặc nhấp chuột giữa để đóng, kéo để sắp xếp lại, và dấu + ở cuối để mở tab khác.",
   "The current folder opens the tab on the folder the active tab is showing, so the work carries on where it is; the Home folder opens every new tab on the same starting point instead. Computer opens the Computer page - the drives with their free space, Home and the cloud folders - with the Home folder behind it, so a tab opened that way still has a folder to show once a drive or folder is picked.": "Thư mục hiện tại mở tab trên thư mục mà tab đang hoạt động hiển thị, để công việc tiếp tục tại chỗ; Thư mục chính thì mở mọi tab mới tại cùng một điểm bắt đầu. Máy tính mở trang Máy tính - các ổ đĩa với dung lượng trống, Thư mục chính và các thư mục đám mây - với Thư mục chính phía sau, nên tab mở theo cách đó vẫn có thư mục để hiển thị khi chọn một ổ đĩa hoặc thư mục.",
   "The disk cache looks after its own size: a thumbnail not used for {0} days is deleted when UltraFiler next starts, so a folder you keep visiting keeps its thumbnails and one you opened once pays for itself and then goes away. Nothing here can show an out-of-date picture - a file's size and date are stored with its thumbnail, so a file that has changed is read again.": "Bộ nhớ đệm trên đĩa tự quản lý kích thước của nó: hình thu nhỏ không được dùng trong {0} ngày sẽ bị xóa khi UltraFiler khởi động lần sau, nên thư mục bạn thường xuyên mở vẫn giữ hình thu nhỏ, còn thư mục bạn chỉ mở một lần sẽ tự bù chi phí rồi biến mất. Không có gì ở đây có thể hiện ảnh lỗi thời - kích thước và ngày của tệp được lưu cùng hình thu nhỏ, nên tệp đã thay đổi sẽ được đọc lại.",
@@ -381,10 +392,12 @@
   "Use system default": "Dùng mặc định của hệ thống",
   "Video": "Video",
   "Waiting after it: ": "Đang chờ sau nó: ",
+  "Waiting: ": "Đang chờ: ",
   "What is on screen is being read again and goes back into the cache as it lands - press Refresh to see where it settles.": "Nội dung trên màn hình đang được đọc lại và đưa trở lại bộ nhớ đệm khi hoàn tất - nhấn Làm mới để xem kết quả cuối cùng.",
   "What the \"+\" at the end of the tab strip opens:": "Nút “+” ở cuối dải tab mở gì:",
   "What the Home folder shows, in the folder tree and in the file display:": "Thư mục chính hiển thị gì, trong cây thư mục và trong vùng hiển thị tệp:",
   "What UltraFiler keeps so a folder opens without being read again:": "Những gì UltraFiler lưu giữ để thư mục mở ra mà không phải đọc lại:",
+  "What was sent is removed from {0} the next time you use it.": "Phần đã gửi sẽ bị xóa khỏi {0} vào lần tới bạn sử dụng nó.",
   "Whatever is chosen here, Ctrl while dropping always copies and Shift always moves.": "Dù chọn gì ở đây, giữ Ctrl khi thả luôn sao chép và Shift luôn di chuyển.",
   "When a file cannot be copied, moved or deleted:": "Khi không thể sao chép, di chuyển hoặc xóa một tệp:",
   "When a folder is pasted over a folder:": "Khi dán một thư mục đè lên một thư mục:",
@@ -405,14 +418,29 @@
   "{0} - not supported by this build": "{0} - bản dựng này không hỗ trợ",
   "{0} min": "{0} phút",
   "{0}, {1} (room for {2})": "{0}, {1} (sức chứa {2})",
+  "{n} download is still running or waiting — quit anyway?": {
+    "other": "{n} lượt tải xuống vẫn đang chạy hoặc đang chờ — vẫn thoát?"
+  },
+  "{n} download is still running — quit anyway?": {
+    "other": "{n} lượt tải xuống vẫn đang chạy — vẫn thoát?"
+  },
+  "{n} download is still waiting — quit anyway?": {
+    "other": "{n} lượt tải xuống vẫn đang chờ — vẫn thoát?"
+  },
   "{n} entry": {
     "other": "{n} mục"
+  },
+  "{n} file contains \"{0}\"{1} - {2}": {
+    "other": "{n} tệp chứa “{0}”{1} - {2}"
   },
   "{n} file found": {
     "other": "Tìm thấy {n} tệp"
   },
   "{n} file read": {
     "other": "Đã đọc {n} tệp"
+  },
+  "{n} file read in {0}": {
+    "other": "Đã đọc {n} tệp trong {0}"
   },
   "{n} folder scanned": {
     "other": "Đã quét {n} thư mục"
@@ -426,6 +454,9 @@
   "{n} result": {
     "other": "{n} kết quả"
   },
+  "{n} result for \"{0}\" in {1}": {
+    "other": "{n} kết quả cho “{0}” trong {1}"
+  },
   "{n} shared folder": {
     "other": "{n} thư mục dùng chung"
   },
@@ -437,5 +468,23 @@
   },
   "{n} tile": {
     "other": "{n} ô"
+  },
+  "{n} transfer is still running or waiting — quit anyway?": {
+    "other": "{n} lượt truyền vẫn đang chạy hoặc đang chờ — vẫn thoát?"
+  },
+  "{n} transfer is still running — quit anyway?": {
+    "other": "{n} lượt truyền vẫn đang chạy — vẫn thoát?"
+  },
+  "{n} transfer is still waiting — quit anyway?": {
+    "other": "{n} lượt truyền vẫn đang chờ — vẫn thoát?"
+  },
+  "{n} upload is still running or waiting — quit anyway?": {
+    "other": "{n} lượt tải lên vẫn đang chạy hoặc đang chờ — vẫn thoát?"
+  },
+  "{n} upload is still running — quit anyway?": {
+    "other": "{n} lượt tải lên vẫn đang chạy — vẫn thoát?"
+  },
+  "{n} upload is still waiting — quit anyway?": {
+    "other": "{n} lượt tải lên vẫn đang chờ — vẫn thoát?"
   }
 }
