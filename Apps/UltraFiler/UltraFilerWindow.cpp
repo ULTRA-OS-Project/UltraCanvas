@@ -65,6 +65,7 @@
 // display and the switch itself are remembered in the settings.
 // A previewed file that changes on disk is reopened in the preview pane
 // (ReloadChangedPreview): throttled, and never restarting a playing video.
+// Version: 1.42.3 - messages built from English pieces are whole translated sentences: the search status line (started, finished, stopped, its "in *.txt, match case" qualifier) and the quit-during-transfers question and its details, counts through TrN
 // Version: 1.42.2 - the texts the wrapping tool 1.1.0 finds (the page kit's buttons, dropdown items, dialog buttons, tree nodes) go through Tr
 // Version: 1.42.1 - the interface strings go through Tr (UltraLocalisation)
 // Version: 1.42.0 - the viewer window is titled by the file on show (no fixed title), so
@@ -3308,13 +3309,16 @@ void UltraFilerWindow::RunSearch(const std::string& query,
     searchTab = tab;
     searchQueryText = query;
     searchInContents = inContents;
+    // Appended to the query in the status line (" in *.txt; *.md, match
+    // case"), so it keeps its leading space; the words are translated.
     searchFindQualifier.clear();
     if (!filePatterns.empty()) {
-        searchFindQualifier = " in ";
+        std::string patterns;
         for (size_t i = 0; i < filePatterns.size(); ++i)
-            searchFindQualifier += (i ? "; " : "") + filePatterns[i];
+            patterns += (i ? "; " : "") + filePatterns[i];
+        searchFindQualifier = " " + TrF("in {0}", patterns);
     }
-    if (matchCase) searchFindQualifier += ", match case";
+    if (matchCase) searchFindQualifier += ", " + Tr("match case");
     searchResultsShown = false;
     // A Find text query is not a name filter: the field stays empty rather
     // than suggesting that Enter would repeat this search. (Programmatic
@@ -3339,8 +3343,9 @@ void UltraFilerWindow::RunSearch(const std::string& query,
 
     searchState = std::make_shared<SubfolderSearchState>();
     const uint64_t generation = ++searchGeneration;
-    searchStatus = (inContents ? Tr("Searching files for the text \"") : Tr("Searching \""))
-            + query + "\"" + searchFindQualifier + " ...";
+    searchStatus = inContents
+            ? TrF("Searching files for the text \"{0}\"{1} ...", query, searchFindQualifier)
+            : TrF("Searching \"{0}\"{1} ...", query, searchFindQualifier);
     UpdateScanButton();
     UpdateStatusBar();
 
@@ -3557,26 +3562,30 @@ void UltraFilerWindow::DrainSubfolderSearch(
                                TrN("{n} file found", "{n} files found", matches),
                                TrN("{n} file read", "{n} files read", files));
         } else {
-            searchStatus = std::to_string(matches)
-                    + (matches == 1 ? " file contains \"" : " files contain \"")
-                    + searchQueryText + "\"" + searchFindQualifier + " - "
-                    + std::to_string(files)
-                    + (files == 1 ? " file read in " : " files read in ")
-                    + std::to_string(folders)
-                    + (folders == 1 ? " folder" : " folders");
+            // Each count in the language's plural form; the rest goes in as
+            // {0}.. after TrN has picked the form.
+            const std::string read = LocalisationDetail::Substitute(
+                    TrN("{n} file read in {0}", "{n} files read in {0}",
+                        static_cast<long long>(files)),
+                    {TrN("{n} folder", "{n} folders", static_cast<long long>(folders))});
+            searchStatus = LocalisationDetail::Substitute(
+                    TrN("{n} file contains \"{0}\"{1} - {2}", "{n} files contain \"{0}\"{1} - {2}",
+                        static_cast<long long>(matches)),
+                    {searchQueryText, searchFindQualifier, read});
         }
     } else if (!done) {
         searchStatus = TrF("Searching \"{0}\" - {1}, {2}", searchQueryText,
                            TrN("{n} result", "{n} results", matches),
                            TrN("{n} folder scanned", "{n} folders scanned", folders));
     } else {
-        searchStatus = std::to_string(matches)
-                + (matches == 1 ? " result for \"" : " results for \"")
-                + searchQueryText + "\" in " + std::to_string(folders)
-                + (folders == 1 ? " folder" : " folders");
+        searchStatus = LocalisationDetail::Substitute(
+                TrN("{n} result for \"{0}\" in {1}", "{n} results for \"{0}\" in {1}",
+                    static_cast<long long>(matches)),
+                {searchQueryText,
+                 TrN("{n} folder", "{n} folders", static_cast<long long>(folders))});
     }
     if (done && truncated)
-        searchStatus += " (stopped at " + std::to_string(kMaxSearchResults) + ")";
+        searchStatus += " " + TrF("(stopped at {0})", kMaxSearchResults);
 
     // Hidden folders the walk left out, because the display hides hidden
     // files: said in the status line, and - when nothing was found - in the
@@ -3633,8 +3642,9 @@ void UltraFilerWindow::StopSubfolderSearch() {
     // dropped by the generation bump rather than landing in the next search.
     ++searchGeneration;
     if (wasRunning && !searchQueryText.empty()) {
-        searchStatus = (searchInContents ? Tr("Text search for \"") : Tr("Search for \""))
-                + searchQueryText + "\"" + searchFindQualifier + " stopped";
+        searchStatus = searchInContents
+                ? TrF("Text search for \"{0}\"{1} stopped", searchQueryText, searchFindQualifier)
+                : TrF("Search for \"{0}\"{1} stopped", searchQueryText, searchFindQualifier);
         UpdateStatusBar();
     }
     UpdateScanButton();
@@ -7799,28 +7809,52 @@ void UltraFilerWindow::AskQuitDuringTransfers(const std::vector<RemoteTransfer>&
     }
     const std::size_t waiting = transfers.size() - running;
     // "An upload is still running", "3 downloads are still waiting",
-    // "4 transfers are still running or waiting".
-    std::string what;
+    // "4 transfers are still running or waiting": a whole sentence per kind
+    // and state, the count in the language's plural form.
+    std::string question;
     if (transfers.size() == 1) {
-        what = uploads ? Tr("An upload is") : Tr("A download is");
+        const bool isRunning = running == 1;
+        question = uploads
+                ? (isRunning ? Tr("An upload is still running — quit anyway?")
+                             : Tr("An upload is still waiting — quit anyway?"))
+                : (isRunning ? Tr("A download is still running — quit anyway?")
+                             : Tr("A download is still waiting — quit anyway?"));
     } else {
-        const char* kind = uploads == transfers.size() ? " uploads"
-                         : uploads == 0                ? " downloads"
-                                                       : " transfers";
-        what = std::to_string(transfers.size()) + kind + " are";
+        const long long n = static_cast<long long>(transfers.size());
+        const int kind = uploads == transfers.size() ? 0 : uploads == 0 ? 1 : 2;
+        const int state = waiting == 0 ? 0 : running == 0 ? 1 : 2;
+        if (kind == 0)
+            question = state == 0 ? TrN("{n} upload is still running — quit anyway?",
+                                        "{n} uploads are still running — quit anyway?", n)
+                     : state == 1 ? TrN("{n} upload is still waiting — quit anyway?",
+                                        "{n} uploads are still waiting — quit anyway?", n)
+                                  : TrN("{n} upload is still running or waiting — quit anyway?",
+                                        "{n} uploads are still running or waiting — quit anyway?", n);
+        else if (kind == 1)
+            question = state == 0 ? TrN("{n} download is still running — quit anyway?",
+                                        "{n} downloads are still running — quit anyway?", n)
+                     : state == 1 ? TrN("{n} download is still waiting — quit anyway?",
+                                        "{n} downloads are still waiting — quit anyway?", n)
+                                  : TrN("{n} download is still running or waiting — quit anyway?",
+                                        "{n} downloads are still running or waiting — quit anyway?", n);
+        else
+            question = state == 0 ? TrN("{n} transfer is still running — quit anyway?",
+                                        "{n} transfers are still running — quit anyway?", n)
+                     : state == 1 ? TrN("{n} transfer is still waiting — quit anyway?",
+                                        "{n} transfers are still waiting — quit anyway?", n)
+                                  : TrN("{n} transfer is still running or waiting — quit anyway?",
+                                        "{n} transfers are still running or waiting — quit anyway?", n);
     }
-    const char* state = waiting == 0 ? " still running"
-                      : running == 0 ? " still waiting"
-                                     : " still running or waiting";
 
     std::string details;
     for (const RemoteTransfer& t : transfers) {
         if (!t.running) continue;
-        details += "\"" + t.name + "\" is being " +
-                   (t.upload ? "uploaded to " : "downloaded from ") + t.drive + ".\n";
+        details += (t.upload ? TrF("\"{0}\" is being uploaded to {1}.", t.name, t.drive)
+                             : TrF("\"{0}\" is being downloaded from {1}.", t.name, t.drive))
+                   + "\n";
     }
     if (waiting > 0) {
-        details += running ? Tr("Waiting after it: ") : "Waiting: ";
+        details += running ? Tr("Waiting after it: ") : Tr("Waiting: ");
         std::size_t named = 0;
         for (const RemoteTransfer& t : transfers) {
             if (t.running) continue;
@@ -7828,7 +7862,9 @@ void UltraFilerWindow::AskQuitDuringTransfers(const std::vector<RemoteTransfer>&
             details += (named ? ", " : "") + ("\"" + t.name + "\"");
             ++named;
         }
-        if (waiting > named) details += " and " + std::to_string(waiting - named) + " more";
+        if (waiting > named)
+            details += " " + TrN("and {n} more", "and {n} more",
+                                 static_cast<long long>(waiting - named));
         details += ".\n";
     }
     details += running == 0  ? Tr("Quitting drops them before they start.")
@@ -7840,15 +7876,15 @@ void UltraFilerWindow::AskQuitDuringTransfers(const std::vector<RemoteTransfer>&
     // was replacing is left as it was.
     for (const RemoteTransfer& t : transfers) {
         if (!t.running || !t.cleanedUpIfStopped) continue;
-        details += " What was sent is removed from " + t.drive +
-                   " the next time you use it.";
+        details += " " + TrF("What was sent is removed from {0} the next time you use it.",
+                             t.drive);
         break;
     }
 
     DialogConfig cfg;
     cfg.title = Tr("Quit UltraFiler?");
     cfg.dialogType = DialogType::Warning;
-    cfg.message = what + state + " — quit anyway?";
+    cfg.message = question;
     cfg.details = details;
     cfg.buttons = DialogButtons::NoButtons;   // the answers are added below
     cfg.width = 500;

@@ -1465,7 +1465,11 @@ namespace {
                 UltraFilerSettings::ConfirmsCopies(st->dropConfirmation),
                 [applyConfirmation](bool) { applyConfirmation(); });
         d->confirmTrashBox = MakeCheckbox("ufl-set-fo-confirm-trash",
-                TrF("Moving files to the {0}", TrashDisplayName()), kTextWidth,
+#if defined(_WIN32) || defined(_WIN64)
+                Tr("Moving files to the Recycle Bin"), kTextWidth,
+#else
+                Tr("Moving files to the Trash"), kTextWidth,
+#endif
                 st->confirmTrashDelete, [d](bool on) {
             if (!d->settings) return;
             d->settings->confirmTrashDelete = on;
