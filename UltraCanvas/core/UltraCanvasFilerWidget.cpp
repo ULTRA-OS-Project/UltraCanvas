@@ -50,6 +50,10 @@
 // itself is never touched, so renaming and every file operation still work on
 // the real one. A name that is not UTF-8 — written in a legacy code page by an
 // old tool or an unconverting unzip — is drawn decoded rather than as U+FFFD.
+// Version: 1.43.4 - the summaries a delete, a copy or a move ends on are
+//                  translated: the messages (counts through TrN, the trash by
+//                  the platform's name), the skip reasons, the administrator
+//                  delete's outcome, the list caption and the buttons
 // Version: 1.43.3 - the move / copy dialogs are translated whole: the drop
 //                  confirmation, the paste problem and name-conflict dialogs
 //                  and the rename-replace dialog, per verb and kind, counts
@@ -6398,7 +6402,7 @@ namespace UltraCanvas {
                     continue;
                 }
                 if (action == PasteConflictAction::Skip)
-                    pp->skipped.push_back({src, "Skipped: the name is already taken", folder});
+                    pp->skipped.push_back({src, Tr("Skipped: the name is already taken"), folder});
             }
             pp->currentAction = action;
             for (;;) {
@@ -6421,7 +6425,7 @@ namespace UltraCanvas {
                     return;
                 }
                 if (pp->skipFailedForAll) {         // skip it, for the summary
-                    pp->skipped.push_back({src, why.empty() ? std::string("unknown error") : why,
+                    pp->skipped.push_back({src, why.empty() ? Tr("unknown error") : why,
                                            folder});
                     break;
                 }
@@ -6494,15 +6498,18 @@ namespace UltraCanvas {
         // end. A Stop or a Cancel already said what happened, and a paste
         // where nothing was skipped needs no window after its own.
         if (walkedToEnd && !skipped.empty()) {
-            const size_t total = pasted + skipped.size();
-            std::string message = std::string(cut ? "Moved " : "Copied ")
-                    + std::to_string(pasted) + " of " + std::to_string(total)
-                    + (total == 1 ? " item. " : " items. ")
-                    + std::to_string(skipped.size())
-                    + (skipped.size() == 1 ? " was skipped." : " were skipped.");
-            ShowOperationSummary(cut ? "Move finished" : "Copy finished", message, skipped,
-                    "**Into:** " + FactPath(destination),
-                    cut ? "Move skipped items again" : "Copy skipped items again",
+            // Two sentences, each count in the language's plural form; the
+            // first count is the total's, the done count goes in as {0}.
+            const long long total = static_cast<long long>(pasted + skipped.size());
+            const std::string message = LocalisationDetail::Substitute(
+                        cut ? TrN("Moved {0} of {n} item.", "Moved {0} of {n} items.", total)
+                            : TrN("Copied {0} of {n} item.", "Copied {0} of {n} items.", total),
+                        {std::to_string(pasted)})
+                    + " " + TrN("{n} was skipped.", "{n} were skipped.",
+                                static_cast<long long>(skipped.size()));
+            ShowOperationSummary(cut ? Tr("Move finished") : Tr("Copy finished"), message, skipped,
+                    "**" + Tr("Into:") + "** " + FactPath(destination),
+                    cut ? Tr("Move skipped items again") : Tr("Copy skipped items again"),
                     [this, skipped, cut]() { RetrySkippedPaste(skipped, cut); });
         }
     }
@@ -6601,11 +6608,11 @@ namespace UltraCanvas {
         spec.listDetails = false;   // the reason takes the room
         spec.listVisibleRows = 8;
         if (skipped.size() > spec.listed.size())
-            spec.listCaption = "The first " + std::to_string(spec.listed.size())
-                             + " of " + std::to_string(skipped.size()) + " skipped items:";
+            spec.listCaption = TrF("The first {0} of {1} skipped items:", spec.listed.size(),
+                                   skipped.size());
         if (!retryLabel.empty() && onRetry)
             spec.buttons.push_back({retryLabel, DialogButtonRole::Normal});
-        spec.buttons.push_back({"Close", DialogButtonRole::Default});
+        spec.buttons.push_back({Tr("Close"), DialogButtonRole::Default});
         spec.width = 620;
         const bool hasRetry = !retryLabel.empty() && onRetry;
         if (!ShowOperationDialog(spec,
@@ -6808,6 +6815,14 @@ namespace UltraCanvas {
                  it.increment(ec))
                 ++n;
             return n;
+        }
+        // Why an entry stayed because a program holds it, for the summary
+        // row: "in use", or "in use by A, B" naming the programs.
+        std::string InUseReason(const std::vector<std::string>& holders) {
+            if (holders.empty()) return Tr("in use");
+            std::string list;
+            for (size_t i = 0; i < holders.size(); ++i) list += (i ? ", " : "") + holders[i];
+            return TrF("in use by {0}", list);
         }
         // "3 items", in the language's plural form.
         std::string Items(size_t n) {
@@ -7331,7 +7346,7 @@ namespace UltraCanvas {
                     credit.Rollback();
                     if (pd->skipFailedForAll) {
                         pd->skipped.push_back({e.path, trashError.empty()
-                                ? std::string("unknown error") : trashError, {}});
+                                ? Tr("unknown error") : trashError, {}});
                         AdvancePendingDelete();
                         continue;
                     }
@@ -7369,7 +7384,7 @@ namespace UltraCanvas {
                     return;
                 }
                 if (action == DeleteProblemAction::Skip) {
-                    pd->skipped.push_back({e.path, "Skipped: write-protected", {}});
+                    pd->skipped.push_back({e.path, Tr("Skipped: write-protected"), {}});
                     AdvancePendingDelete();
                     continue;
                 }
@@ -7433,14 +7448,7 @@ namespace UltraCanvas {
                     continue;
                 }
                 std::string reason = ec ? ec.message() : std::string("unknown error");
-                if (inUse) {
-                    reason = "in use";
-                    if (!holders.empty()) {
-                        reason += " by ";
-                        for (size_t i = 0; i < holders.size(); ++i)
-                            reason += (i ? ", " : "") + holders[i];
-                    }
-                }
+                if (inUse) reason = InUseReason(holders);
                 if (pd->skipFailedForAll) {
                     pd->skipped.push_back({e.path, failedPath.empty()
                             ? reason
@@ -7457,7 +7465,7 @@ namespace UltraCanvas {
                 pd->stopKind = inUse           ? DeleteProblemKind::InUse
                              : needsPermission ? DeleteProblemKind::NeedsPermission
                                                : DeleteProblemKind::Failed;
-                pd->stopReason = ec ? ec.message() : std::string("unknown error");
+                pd->stopReason = ec ? ec.message() : Tr("unknown error");
                 pd->stopPath = failedPath;
                 pd->stopHolders = holders;
                 return;
@@ -7557,9 +7565,6 @@ namespace UltraCanvas {
             if (!folder.empty()) pd.modifiedFolders.push_back(folder);
         }
         const size_t left = pd.elevatedVictims.size() - gone;
-        auto items = [](size_t n) {
-            return std::to_string(n) + (n == 1 ? " item" : " items");
-        };
 
         switch (result.outcome) {
             case ElevatedOutcome::Completed:
@@ -7571,23 +7576,25 @@ namespace UltraCanvas {
                     for (const auto& f : result.failures)
                         failed.push_back({f.path, f.reason, std::string()});
                     const std::string message = result.failures.size() == 1
-                            ? "\"" + PathToUtf8(PathFromUtf8(result.failures.front().path).filename())
-                              + "\" could not be deleted even with administrator permission."
-                            : items(result.failures.size())
-                              + " could not be deleted even with administrator permission.";
-                    ShowOperationSummary("Delete finished", message, failed,
+                            ? TrF("\"{0}\" could not be deleted even with administrator permission.",
+                                  PathToUtf8(PathFromUtf8(result.failures.front().path).filename()))
+                            : TrN("{n} item could not be deleted even with administrator permission.",
+                                  "{n} items could not be deleted even with administrator permission.",
+                                  static_cast<long long>(result.failures.size()));
+                    ShowOperationSummary(Tr("Delete finished"), message, failed,
                                          std::string(), std::string(), nullptr);
                 }
                 break;
             case ElevatedOutcome::Declined:
-                ReportError("Administrator permission was not granted; "
-                            + items(left) + " left in place.");
+                ReportError(TrN("Administrator permission was not granted; {n} item left in place.",
+                                "Administrator permission was not granted; {n} items left in place.",
+                                static_cast<long long>(left)));
                 break;
             case ElevatedOutcome::Failed:
-                ReportError("Could not delete as administrator: " + result.error);
+                ReportError(TrF("Could not delete as administrator: {0}", result.error));
                 break;
             case ElevatedOutcome::Unavailable:
-                ReportError("Deleting as administrator is not available: " + result.error);
+                ReportError(TrF("Deleting as administrator is not available: {0}", result.error));
                 break;
         }
         FinishPendingDelete();   // elevationStarted: the ordinary finish now
@@ -7643,17 +7650,29 @@ namespace UltraCanvas {
         // (Entries handed to the administrator were reported by that run.)
         if (walkedToEnd && !pd->skipped.empty()) {
             const bool toTrash = pd->toTrash;
-            const size_t total = pd->removed + pd->skipped.size();
-            std::string message = std::string(toTrash ? "Moved " : "Deleted ")
-                    + std::to_string(pd->removed) + " of " + std::to_string(total)
-                    + (total == 1 ? " item" : " items")
-                    + (toTrash ? " to the " + TrashDisplayName() + ". " : std::string(". "))
-                    + std::to_string(pd->skipped.size())
-                    + (pd->skipped.size() == 1 ? " was skipped." : " were skipped.");
+            // Two sentences, the counts in the language's plural forms, the
+            // trash by the platform's name for it - whole sentences, since a
+            // name passed in would stay English.
+            const long long total = static_cast<long long>(pd->removed + pd->skipped.size());
+#if defined(_WIN32) || defined(_WIN64)
+            const std::string first = toTrash
+                    ? TrN("Moved {0} of {n} item to the Recycle Bin.",
+                          "Moved {0} of {n} items to the Recycle Bin.", total)
+                    : TrN("Deleted {0} of {n} item.", "Deleted {0} of {n} items.", total);
+#else
+            const std::string first = toTrash
+                    ? TrN("Moved {0} of {n} item to the Trash.",
+                          "Moved {0} of {n} items to the Trash.", total)
+                    : TrN("Deleted {0} of {n} item.", "Deleted {0} of {n} items.", total);
+#endif
+            const std::string message =
+                    LocalisationDetail::Substitute(first, {std::to_string(pd->removed)})
+                    + " " + TrN("{n} was skipped.", "{n} were skipped.",
+                                static_cast<long long>(pd->skipped.size()));
             std::vector<std::string> again;
             for (const SkippedItem& item : pd->skipped) again.push_back(item.path);
-            ShowOperationSummary("Delete finished", message, pd->skipped, std::string(),
-                    "Delete skipped items again",
+            ShowOperationSummary(Tr("Delete finished"), message, pd->skipped, std::string(),
+                    Tr("Delete skipped items again"),
                     [this, again, toTrash]() {
                         DeletePaths(again, nullptr, toTrash ? FilerDeleteMode::MoveToTrash
                                                             : FilerDeleteMode::Permanently);
@@ -7848,12 +7867,7 @@ namespace UltraCanvas {
         const FilerEntry victim = entry;   // `entry` aliases the queue
         // What the summary says about a skipped entry: the file that
         // stopped it and, for one in use, who holds it.
-        std::string skipReason = why;
-        if (inUse) {
-            skipReason = "in use";
-            for (size_t i = 0; i < holders.size(); ++i)
-                skipReason += (i ? ", " : " by ") + holders[i];
-        }
+        std::string skipReason = inUse ? InUseReason(holders) : why;
         if (!culpritName.empty()) skipReason = culpritName + ": " + skipReason;
         const bool shown = ShowOperationDialog(spec,
                 [self, kind, victim, answers, skipReason](size_t button, bool all) {
@@ -7878,7 +7892,7 @@ namespace UltraCanvas {
                                     pd.protectedForAll = true;
                                     pd.protectedAction = DeleteProblemAction::Skip;
                                 }
-                                pd.skipped.push_back({victim.path, "Skipped: write-protected", {}});
+                                pd.skipped.push_back({victim.path, Tr("Skipped: write-protected"), {}});
                             } else {
                                 if (all) pd.skipFailedForAll = true;
                                 pd.skipped.push_back({victim.path, skipReason, {}});
