@@ -29,11 +29,10 @@ system.
 
 ```
 ┌────┬──────────────────────────────────────────────────────────────┬────┐
-│ ⚙  │                                                              │ 🕒 │  clock
-│ ⋮⋮ │                                                              │30Oct│  and date
-│╲   │                                                              │ 1  │  desktop
-│ ╲  │                                                              │ 2  │  organiser
-│ ▣  │                                                              │ 3  │
+│ ⚙  │                                                              │ 1  │  desktop
+│ ⋮⋮ │                                                              │ 2  │  organiser
+│╲   │                                                              │ 3  │
+│ ╲  │                                                              │    │
 │ ▣  │                     wallpaper                                │ 📌 │  Sticker board
 │ ▣  │            (application windows float above)                 │ 🗒 │  notes
 │ ▣  │                                                              │ 📋 │  clipboard
@@ -42,6 +41,8 @@ system.
 │ ▤  │                                                              │ ✉14│  info panel
 │ 📁 │                                                              │ ⇧⇩ │  (devices and
 │ 🎨 │                                                              │ 🔊 │   services)
+│    │                                                              │ 🕒 │  clock
+│    │                                                              │30Oct│  and date
 └────┴──────────────────────────────────────────────────────────────┴────┘
  taskbar                                                               right bar
 ```
@@ -103,12 +104,17 @@ the right-hand monitor the primary.
 
 ### Right bar
 
-- **Clock**: the framework's gauge element in its analog clock mode
+- **Clock**, at the foot of the bar, white on black: by default the
+  framework's gauge element in its analog clock mode
   ([UltraCanvasGaugeDiagramElement](../UltraCanvas/UltraCanvasGaugeExamples.md)),
   which ticks on its own, over the date ("30 Oct"); the tooltip has the
-  whole date and time. A click opens the clock panel beside the bar: the
-  time large as an analog face and in figures (the gauge's digital clock),
-  today in words, and the month on the calendar view with today marked.
+  whole date and time. A right click chooses how it shows: *Analog clock
+  with the date*, *Analog clock*, *Digital clock with the date*, *Digital
+  clock* (21:50) or *Digital clock with seconds* (21:50:52), kept as
+  `clockStyle` in the settings. A click opens the clock panel beside the
+  bar: the time large as an analog face and in figures (the gauge's digital
+  clock), today in words, and the month on the calendar view with today
+  marked.
 - **Desktop organiser**: the virtual desktops as numbered toggles — as many
   as the window manager has (read at start-up and followed when it changes),
   the settings' count only where there is no window manager to ask; choosing

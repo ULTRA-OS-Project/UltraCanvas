@@ -109,6 +109,7 @@ std::string DesktopSettings::ToJson() const {
     root.Set("wallpaper", wallpaper);
     root.Set("ramDiscPath", ramDiscPath);
     root.Set("filerProgram", filerProgram);
+    root.Set("clockStyle", clockStyle);
     root.Set("virtualDesktops", virtualDesktops);
     root.Set("stickerboardVisible", stickerboardVisible);
     JSONValue notes = JSONValue::MakeArray();
@@ -172,6 +173,8 @@ bool DesktopSettings::FromJson(const std::string& json, std::string* error) {
     loaded.wallpaper = root.Get("wallpaper").GetString();
     loaded.ramDiscPath = root.Get("ramDiscPath").GetString(loaded.ramDiscPath);
     loaded.filerProgram = root.Get("filerProgram").GetString(loaded.filerProgram);
+    const std::string clock = root.Get("clockStyle").GetString(loaded.clockStyle);
+    if (IsClockStyle(clock)) loaded.clockStyle = clock;
     const int desktops = static_cast<int>(root.Get("virtualDesktops").GetInteger(loaded.virtualDesktops));
     loaded.virtualDesktops = std::clamp(desktops, 1, 9);
     loaded.stickerboardVisible = root.Get("stickerboardVisible").GetBoolean(false);
@@ -240,6 +243,11 @@ bool DesktopSettings::FromJson(const std::string& json, std::string* error) {
     }
     *this = std::move(loaded);
     return true;
+}
+
+bool DesktopSettings::IsClockStyle(const std::string& style) {
+    return style == "analog-date" || style == "analog" || style == "digital-date" || style == "digital" ||
+           style == "digital-seconds";
 }
 
 void DesktopSettings::NoteAppStarted(const std::string& key) {

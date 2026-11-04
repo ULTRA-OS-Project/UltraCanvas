@@ -68,6 +68,11 @@ struct DesktopSettings {
     std::string ramDiscPath = "/dev/shm";   // "" = no RAM disc button
 #endif
     std::string filerProgram = "UltraFiler";
+    // The clock at the foot of the right bar: "analog-date" (the face over
+    // the date, the default), "analog", "digital-date", "digital" or
+    // "digital-seconds"; chosen on the clock's right-click menu.
+    std::string clockStyle = "analog-date";
+    static bool IsClockStyle(const std::string& style);
     int virtualDesktops = 3;            // 1..9, what the organiser offers
     bool stickerboardVisible = false;
     std::vector<Sticker> stickers;

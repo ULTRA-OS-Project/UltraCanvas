@@ -203,9 +203,12 @@ private:
     int  DesiredDesktopCount() const;
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildTaskbar(bool vertical);
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildRightBar();
-    // The clock at the top of the right bar: the gauge element's analog
-    // clock over the date, the whole date and time in the tooltip.
+    // The clock at the foot of the right bar, white on black: the gauge
+    // element's analog clock or the digital time, with or without the date
+    // (right-click to choose), the whole date and time in the tooltip.
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildClock();
+    // The clock's right-click menu: its display types.
+    void ShowClockMenu(int windowX, int windowY);
     void UpdateClock();
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildWorkArea();
     // The installed applications, read once and again every five minutes:
@@ -344,10 +347,13 @@ private:
     std::shared_ptr<UltraDesktopTasksWindow> tasks_;
     std::unique_ptr<UltraCanvas::UltraCanvasNotificationToastHost> toasts_;
 
-    // The clock: its face and the date under it, refreshed once a minute.
+    // The clock: the analog face or the digital time, and the date under it
+    // (as DesktopSettings::clockStyle says), refreshed when the time shown
+    // changes.
     std::shared_ptr<UltraCanvas::UltraCanvasGaugeDiagramElement> clock_;
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel> clockTime_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel> clockDate_;
-    int clockMinute_ = -1;
+    std::string clockStamp_;
     std::shared_ptr<UltraDesktopClockPanel> clockPanel_;
     std::shared_ptr<UltraDesktopVolumePanel> volumePanel_;
     // The services FitInfoPanel last moved to the end of the info panel.

@@ -109,6 +109,7 @@ const char* const kInfoFoldOrder[] = {"keyboard", "vpn", "usb", "upload", "tasks
                                       "mail", "battery", "bluetooth", "webcam", "mic", "speaker", "wifi"};
 constexpr int   kClockHeight    = 68;   // the face (48) over the date line
 constexpr int   kClockFaceBox   = 66;   // the gauge's box: its face lands at the top, 48 px across
+constexpr int   kDigitalClockHeight = 30;   // the digital clock's time line
 constexpr int   kPollsPerSpeakerRead = 5;   // the loudspeaker every 10 s
 // The desktop's own picture, and the framework's for a package without it.
 const char* const kDefaultWallpaper  = "media/images/desktop/ULTRA OS A.avif";
@@ -132,7 +133,9 @@ const Color kMarkerActive  (240, 200, 0, 255);   // yellow: activity
 const Color kMarkerCount   (90, 90, 90, 255);    // grey pill for counts
 const Color kMarkerSaved   (60, 170, 90, 255);   // green: the screenshot landed
 const Color kMarkerLinkUp  (60, 170, 90, 255);   // green: Wi-Fi joined
-const Color kClockFace     (236, 236, 240, 255); // the gauge draws dark hands: a light face
+const Color kClockBack     (0, 0, 0, 255);       // the clock: white on black
+const Color kClockInk      (255, 255, 255, 255);
+const Color kClockTicks    (255, 255, 255, 140);
 
 const char* const kRunningPrefix = "win:";
 const char* const kTrayPrefix = "tray:";
@@ -299,8 +302,9 @@ void UltraDesktopWindow::BuildLayout() {
     organiser_.reset();
     info_.reset();
     clock_.reset();
+    clockTime_.reset();
     clockDate_.reset();
-    clockMinute_ = -1;
+    clockStamp_.clear();
     windowsDirty_.store(true);
     haveLastActivity_ = false;
 
@@ -562,61 +566,140 @@ std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildTaskbar(bool vert
 // ===== THE CLOCK =====
 
 std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildClock() {
+    // White on black, at the foot of the right bar, in the display type the
+    // person chose on its right-click menu (DesktopSettings::clockStyle).
+    const std::string& style = settings_.clockStyle;
+    const bool analog = style == "analog" || style == "analog-date";
+    const bool withDate = style == "analog-date" || style == "digital-date";
+    const int height = analog ? (withDate ? kClockHeight : kClockFaceBox - 14)
+                              : (withDate ? kDigitalClockHeight + 14 : kDigitalClockHeight);
+
     auto clock = CreateContainer("Clock", 0, 0, 0, 0);
-    clock->SetBackgroundColor(kBarColor);
-    clock->SetElementSize(CSSLayout::Dimension::Px(kInfoPanelWidth), CSSLayout::Dimension::Px(kClockHeight));
+    clock->SetBackgroundColor(kClockBack);
+    clock->SetElementSize(CSSLayout::Dimension::Px(kInfoPanelWidth), CSSLayout::Dimension::Px(height));
     clock->layoutItem.SetFlexShrink(0.0f);
     clock->SetTooltip(TodayInWords());
 
-    // The gauge element's analog clock, which ticks on a timer of its own.
-    // Its face sits at the top of its box, the value zone below it empty:
-    // the date goes there. A click opens the clock panel.
-    clock_ = CreateGaugeDiagramElement("ClockFace", 0, 0, static_cast<float>(kInfoPanelWidth),
-                                       static_cast<float>(kClockFaceBox));
-    clock_->SetMode(GaugeMode::AnalogClock);
-    clock_->SetShowLabels(false);
-    clock_->SetBackgroundColor(kClockFace);
-    if (!clock_->layoutItem.position) clock_->layoutItem.position = CSSLayout::Position();
-    clock_->layoutItem.position->left = CSSLayout::Dimension::Px(0);
-    clock_->layoutItem.position->top = CSSLayout::Dimension::Px(0);
-    clock_->layoutItem.SetPositionType(CSSLayout::PositionType::AbsoluteUI);
-    clock_->SetElementSize(Size2Df(static_cast<float>(kInfoPanelWidth), static_cast<float>(kClockFaceBox)));
-    const auto openPanel = [this](const UCEvent& event) {
-        if (event.type == UCEventType::MouseDown && event.button == UCMouseButton::Left) {
+    // A left click opens the clock panel; a right click offers the display
+    // types.
+    const auto onClick = [this](const UCEvent& event) {
+        if (event.type != UCEventType::MouseDown) return false;
+        if (event.button == UCMouseButton::Left) {
             OpenClockPanel();
+            return true;
+        }
+        if (event.button == UCMouseButton::Right) {
+            ShowClockMenu(event.pointerWindow.x, event.pointerWindow.y);
             return true;
         }
         return false;
     };
-    clock_->SetEventCallback(openPanel);
-    clock->AddChild(clock_);
+    const auto place = [](UltraCanvasUIElement& element, float top, float elementHeight) {
+        if (!element.layoutItem.position) element.layoutItem.position = CSSLayout::Position();
+        element.layoutItem.position->left = CSSLayout::Dimension::Px(0);
+        element.layoutItem.position->top = CSSLayout::Dimension::Px(top);
+        element.layoutItem.SetPositionType(CSSLayout::PositionType::AbsoluteUI);
+        element.SetElementSize(Size2Df(static_cast<float>(kInfoPanelWidth), elementHeight));
+    };
 
-    clockDate_ = CreateLabel("ClockDate", 0, 0, static_cast<float>(kInfoPanelWidth), 16, TodayShort());
-    clockDate_->SetFontSize(9.0f);
-    clockDate_->SetTextColor(Colors::White);
-    clockDate_->SetAlignment(TextAlignment::Center);
-    if (!clockDate_->layoutItem.position) clockDate_->layoutItem.position = CSSLayout::Position();
-    clockDate_->layoutItem.position->left = CSSLayout::Dimension::Px(0);
-    clockDate_->layoutItem.position->top = CSSLayout::Dimension::Px(50);
-    clockDate_->layoutItem.SetPositionType(CSSLayout::PositionType::AbsoluteUI);
-    clockDate_->SetElementSize(Size2Df(static_cast<float>(kInfoPanelWidth), 16));
-    clockDate_->SetEventCallback(openPanel);
-    clock->AddChild(clockDate_);
+    float dateTop = 0;
+    if (analog) {
+        // The gauge element's analog clock, which ticks on a timer of its
+        // own: its face at the top of its box, the value zone below empty -
+        // the date goes there.
+        clock_ = CreateGaugeDiagramElement("ClockFace", 0, 0, static_cast<float>(kInfoPanelWidth),
+                                           static_cast<float>(kClockFaceBox));
+        clock_->SetMode(GaugeMode::AnalogClock);
+        clock_->SetShowLabels(false);
+        clock_->SetBackgroundColor(kClockBack);
+        clock_->SetClockHandColor(kClockInk);
+        clock_->SetClockTickColor(kClockTicks);
+        place(*clock_, 0, static_cast<float>(kClockFaceBox));
+        clock_->SetEventCallback(onClick);
+        clock->AddChild(clock_);
+        dateTop = 50;
+    } else {
+        const bool seconds = style == "digital-seconds";
+        clockTime_ = CreateLabel("ClockTime", 0, 0, static_cast<float>(kInfoPanelWidth),
+                                 static_cast<float>(kDigitalClockHeight), TimeNow(seconds));
+        // As large as fits the bar's 48 px: "21:50" at 13 px bold,
+        // "21:50:33" at 9.5.
+        clockTime_->SetFontSize(seconds ? 9.5f : 13.0f);
+        clockTime_->SetFontWeight(FontWeight::Bold);
+        clockTime_->SetPadding(0);
+        clockTime_->SetTextColor(kClockInk);
+        clockTime_->SetAlignment(TextAlignment::Center);
+        place(*clockTime_, 0, static_cast<float>(kDigitalClockHeight));
+        clockTime_->SetEventCallback(onClick);
+        clock->AddChild(clockTime_);
+        dateTop = static_cast<float>(kDigitalClockHeight) - 4;
+    }
+
+    if (withDate) {
+        clockDate_ = CreateLabel("ClockDate", 0, 0, static_cast<float>(kInfoPanelWidth), 16, TodayShort());
+        clockDate_->SetFontSize(9.0f);
+        clockDate_->SetPadding(0);
+        clockDate_->SetTextColor(kClockInk);
+        clockDate_->SetAlignment(TextAlignment::Center);
+        place(*clockDate_, dateTop, 16);
+        clockDate_->SetEventCallback(onClick);
+        clock->AddChild(clockDate_);
+    }
+    clockStamp_.clear();
     UpdateClock();
     return clock;
 }
 
-// The words change once a minute; the face redraws itself every second.
+// The words change once a minute (the digital clock with seconds once a
+// second); the analog face redraws itself every second.
 void UltraDesktopWindow::UpdateClock() {
-    if (!clock_ || !clockDate_) return;
-    const std::string time = TimeNow();
-    const int minute = std::stoi(time.substr(0, 2)) * 60 + std::stoi(time.substr(3, 2));
-    if (minute == clockMinute_) return;
-    clockMinute_ = minute;
-    const std::string words = TodayInWords() + ", " + time;
-    clock_->SetTooltip(words);
-    clockDate_->SetTooltip(words);
-    clockDate_->SetText(TodayShort());
+    if (!clock_ && !clockTime_) return;
+    const bool seconds = settings_.clockStyle == "digital-seconds";
+    const std::string stamp = TimeNow(seconds);
+    if (stamp == clockStamp_) return;
+    clockStamp_ = stamp;
+    const std::string words = TodayInWords() + ", " + TimeNow();
+    if (clock_) clock_->SetTooltip(words);
+    if (clockTime_) {
+        clockTime_->SetText(stamp);
+        clockTime_->SetTooltip(words);
+    }
+    if (clockDate_) {
+        clockDate_->SetTooltip(words);
+        clockDate_->SetText(TodayShort());
+    }
+}
+
+void UltraDesktopWindow::ShowClockMenu(int windowX, int windowY) {
+    if (!window_) return;
+    struct Choice {
+        const char* style;
+        const char* label;
+    };
+    static const Choice kChoices[] = {
+        {"analog-date", "Analog clock with the date"},
+        {"analog", "Analog clock"},
+        {"digital-date", "Digital clock with the date"},
+        {"digital", "Digital clock"},
+        {"digital-seconds", "Digital clock with seconds"},
+    };
+    popupMenu_ = std::make_shared<UltraCanvasMenu>("ClockMenu", 0, 0, 240, 0);
+    popupMenu_->SetMenuType(MenuType::PopupMenu);
+    popupMenu_->AddItem(MenuItemData::Header("Clock"));
+    for (const Choice& choice : kChoices) {
+        const std::string style = choice.style;
+        popupMenu_->AddItem(MenuItemData::Radio(choice.label, 1, settings_.clockStyle == style, [this, style]() {
+            if (settings_.clockStyle == style) return;
+            settings_.clockStyle = style;
+            SaveSettings();
+            BuildLayout();
+            RefreshDesktops();
+        }));
+    }
+    popupMenu_->AddItem(MenuItemData::Separator());
+    popupMenu_->AddItem(MenuItemData::Action("Calendar and clock...", [this]() { OpenClockPanel(); }));
+    PopupElementSettings settings;
+    popupMenu_->OpenMenu(Point2Di(windowX, windowY), *window_, settings);
 }
 
 void UltraDesktopWindow::OpenClockPanel() {
@@ -626,8 +709,11 @@ void UltraDesktopWindow::OpenClockPanel() {
         clockPanel_->Close();
         return;
     }
-    // Beside the right bar, level with the clock.
-    const Rect2Df bounds = clock_ ? clock_->GetBoundsInWindow() : Rect2Df(0, 0, 0, 0);
+    // Beside the right bar, level with the clock (held on the screen by the
+    // panel: the clock is at the bar's foot).
+    UltraCanvasUIElement* face = clock_ ? static_cast<UltraCanvasUIElement*>(clock_.get())
+                                        : static_cast<UltraCanvasUIElement*>(clockTime_.get());
+    const Rect2Df bounds = face ? face->GetBoundsInWindow() : Rect2Df(0, 0, 0, 0);
     clockPanel_->SetScreenArea(area_.x, area_.y, area_.width, area_.height);
     clockPanel_->Open(ScreenX(bounds.x - 10), ScreenY(bounds.y));
 }
@@ -1052,8 +1138,6 @@ std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildRightBar() {
     bar->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     bar->layoutItem.SetFlexShrink(0.0f);
 
-    // The clock first, where the eye looks for it.
-    bar->AddChild(BuildClock());
 
     // The desktop organiser: virtual desktops, then the board, clipboard, screenshot.
     organiser_ = MakeGroup("Organiser", true, true);
@@ -1138,6 +1222,9 @@ std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildRightBar() {
         }
     }
     bar->AddChild(info_);
+
+    // The clock at the foot of the bar, under the info panel.
+    bar->AddChild(BuildClock());
     ApplySpeaker();
     return bar;
 }
