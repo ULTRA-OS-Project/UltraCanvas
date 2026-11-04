@@ -49,7 +49,14 @@ namespace UltraCanvas {
     // advance widths (HINT_METRICS_OFF) keep paragraph widths identical to the
     // font designer's metrics, and HINT_STYLE_SLIGHT keeps glyph outlines crisp
     // at small sizes without snapping advances to integer pixels.
-    static cairo_antialias_t g_TextAntialias = CAIRO_ANTIALIAS_SUBPIXEL;
+    // Grayscale antialiasing, not subpixel: subpixel (LCD) rendering colours
+    // the edge of every stem red on one side and blue on the other, which only
+    // reads as sharper text on an LCD with a horizontal RGB stripe at 1:1. In
+    // a screenshot, on a scaled, rotated or OLED screen, and in a window
+    // composited through alpha - every UltraCanvas surface is ARGB - the
+    // colours show as ghosts beside the text. SetTextAntialias(SUBPIXEL) is
+    // still there for a host that knows its panel.
+    static cairo_antialias_t g_TextAntialias = CAIRO_ANTIALIAS_GRAY;
     static cairo_hint_style_t g_TextHintStyle = CAIRO_HINT_STYLE_SLIGHT;
     static cairo_hint_metrics_t g_TextHintMetrics = CAIRO_HINT_METRICS_OFF;
 
