@@ -4,6 +4,7 @@
   "@translated-by": "machine draft 2026-11-03, reviewed by -",
   "\"{0}\" already exists in \"{1}\".": "Kansiossa ”{1}” on jo kohde ”{0}”.",
   "\"{0}\" could not be copied.": "Kohdetta ”{0}” ei voitu kopioida.",
+  "\"{0}\" could not be deleted even with administrator permission.": "Kohdetta ”{0}” ei voitu poistaa edes järjestelmänvalvojan oikeuksilla.",
   "\"{0}\" could not be deleted.": "Kohdetta ”{0}” ei voitu poistaa.",
   "\"{0}\" could not be moved to the Recycle Bin.": "Kohdetta ”{0}” ei voitu siirtää roskakoriin.",
   "\"{0}\" could not be moved to the Trash.": "Kohdetta ”{0}” ei voitu siirtää roskakoriin.",
@@ -35,6 +36,10 @@
   "Add": "Lisää",
   "Add to Dictionary": "Lisää sanastoon",
   "Address": "Osoite",
+  "Administrator permission was not granted; {n} item left in place.": {
+    "one": "Järjestelmänvalvojan oikeuksia ei myönnetty; {n} kohde jätettiin paikalleen.",
+    "other": "Järjestelmänvalvojan oikeuksia ei myönnetty; {n} kohdetta jätettiin paikalleen."
+  },
   "age|newer": "uudempi",
   "age|older": "vanhempi",
   "age|same": "identtinen",
@@ -111,10 +116,16 @@
   "Context": "Konteksti",
   "Continue": "Jatka",
   "Copied to the clipboard": "Kopioitu leikepöydälle",
+  "Copied {0} of {n} item.": {
+    "one": "{0}/{n} kohde kopioitiin.",
+    "other": "{0}/{n} kohdetta kopioitiin."
+  },
   "Copy": "Kopioi",
   "Copy \"{0}\" into \"{1}\"?": "Kopioidaanko ”{0}” kansioon ”{1}”?",
   "Copy files": "Tiedostojen kopiointi",
+  "Copy finished": "Kopiointi valmis",
   "Copy path": "Kopioi polku",
+  "Copy skipped items again": "Kopioi ohitetut kohteet uudelleen",
   "Copy {n} item into \"{0}\"?": {
     "one": "Kopioidaanko {n} kohde kansioon ”{0}”?",
     "other": "Kopioidaanko {n} kohdetta kansioon ”{0}”?"
@@ -122,6 +133,7 @@
   "Copy: a file could not be copied": "Kopiointi: tiedostoa ei voitu kopioida",
   "Copy: a folder could not be copied": "Kopiointi: kansiota ei voitu kopioida",
   "Copy: the name is already taken": "Kopiointi: nimi on jo käytössä",
+  "Could not delete as administrator: {0}": "Poistaminen järjestelmänvalvojana epäonnistui: {0}",
   "Could not read {0}": "Kohteen {0} lukeminen epäonnistui",
   "Could not save {0}": "Kohteen {0} tallentaminen epäonnistui",
   "Could not write {0}": "Kohteen {0} kirjoittaminen epäonnistui",
@@ -141,7 +153,9 @@
   "Delete anyway": "Poista silti",
   "Delete anyway removes the protection first.": "”Poista silti” poistaa ensin suojauksen.",
   "Delete as administrator": "Poista järjestelmänvalvojana",
+  "Delete finished": "Poisto valmis",
   "Delete permanently": "Poista pysyvästi",
+  "Delete skipped items again": "Poista ohitetut kohteet uudelleen",
   "Delete {n} item?": {
     "one": "Poistetaanko {n} kohde?",
     "other": "Poistetaanko {n} kohdetta?"
@@ -158,6 +172,11 @@
   "Delete: administrator permission needed": "Poisto: järjestelmänvalvojan oikeudet tarvitaan",
   "Delete: the file is in use": "Poisto: tiedosto on käytössä",
   "Delete: the folder is in use": "Poisto: kansio on käytössä",
+  "Deleted {0} of {n} item.": {
+    "one": "{0}/{n} kohde poistettiin.",
+    "other": "{0}/{n} kohdetta poistettiin."
+  },
+  "Deleting as administrator is not available: {0}": "Poistaminen järjestelmänvalvojana ei ole käytettävissä: {0}",
   "Demote to the application (from {0})": "Siirrä sovellukseen (kokoelmasta {0})",
   "Descending": "Laskeva",
   "Description": "Kuvaus",
@@ -251,6 +270,8 @@
   "Images": "Kuvat",
   "Import": "Tuo",
   "in": "kokoelmassa",
+  "in use": "käytössä",
+  "in use by {0}": "käytössä: {0}",
   "In use by:": "Käyttävä ohjelma:",
   "in {n} folder": {
     "one": "{n} kansiossa",
@@ -329,6 +350,8 @@
   "Move Down": "Siirrä alas",
   "Move down": "Siirrä alas",
   "Move files": "Tiedostojen siirto",
+  "Move finished": "Siirto valmis",
+  "Move skipped items again": "Siirrä ohitetut kohteet uudelleen",
   "Move to Recycle Bin": "Siirrä roskakoriin",
   "Move to Recycle Bin can be undone from the Recycle Bin. Delete permanently cannot be undone.": "Toiminnon ”Siirrä roskakoriin” voi perua roskakorista. Toimintoa ”Poista pysyvästi” ei voi perua.",
   "Move to Trash": "Siirrä roskakoriin",
@@ -342,6 +365,18 @@
   "Move: a file could not be moved": "Siirto: tiedostoa ei voitu siirtää",
   "Move: a folder could not be moved": "Siirto: kansiota ei voitu siirtää",
   "Move: the name is already taken": "Siirto: nimi on jo käytössä",
+  "Moved {0} of {n} item to the Recycle Bin.": {
+    "one": "{0}/{n} kohde siirrettiin roskakoriin.",
+    "other": "{0}/{n} kohdetta siirrettiin roskakoriin."
+  },
+  "Moved {0} of {n} item to the Trash.": {
+    "one": "{0}/{n} kohde siirrettiin roskakoriin.",
+    "other": "{0}/{n} kohdetta siirrettiin roskakoriin."
+  },
+  "Moved {0} of {n} item.": {
+    "one": "{0}/{n} kohde siirrettiin.",
+    "other": "{0}/{n} kohdetta siirrettiin."
+  },
   "Music": "Musiikki",
   "Name": "Nimi",
   "Network": "Verkko",
@@ -463,6 +498,8 @@
   "Size:": "Koko:",
   "Skip": "Ohita",
   "Skip All": "Ohita kaikki",
+  "Skipped: the name is already taken": "Ohitettu: nimi on jo käytössä",
+  "Skipped: write-protected": "Ohitettu: kirjoitussuojattu",
   "Slideshow interval": "Diaesityksen aikaväli",
   "Slideshow transition": "Diaesityksen siirtymä",
   "Sort": "Lajittele",
@@ -485,6 +522,7 @@
   "The base sets the application takes, in lookup order; tick one to take it": "Sovelluksen käyttämät peruskokoelmat hakujärjestyksessä; valitse kokoelma ottaaksesi sen käyttöön",
   "The file may be locked or in use by another program. Close it there, then try again.": "Tiedosto voi olla lukittu tai toisen ohjelman käytössä. Sulje se siellä ja yritä uudelleen.",
   "The first {0} of {1} items:": "{0} ensimmäistä kohdetta {1} kohteesta:",
+  "The first {0} of {1} skipped items:": "Ensimmäiset {0} ohitetuista {1} kohteesta:",
   "The folder may be locked or in use by another program. Close it there, then try again.": "Kansio voi olla lukittu tai toisen ohjelman käytössä. Sulje se siellä ja yritä uudelleen.",
   "The menus as they were opened, the toolbars as the program has them": "Valikot sellaisina kuin ne avattiin, työkalurivit sellaisina kuin ohjelmassa",
   "the read-only attribute is set": "vain luku -määrite on asetettu",
@@ -596,6 +634,10 @@
     "one": "{n} kohde",
     "other": "{n} kohdetta"
   },
+  "{n} item could not be deleted even with administrator permission.": {
+    "one": "{n} kohdetta ei voitu poistaa edes järjestelmänvalvojan oikeuksilla.",
+    "other": "{n} kohdetta ei voitu poistaa edes järjestelmänvalvojan oikeuksilla."
+  },
   "{n} minute": {
     "one": "{n} minuutti",
     "other": "{n} minuuttia"
@@ -603,5 +645,9 @@
   "{n} second": {
     "one": "{n} sekunti",
     "other": "{n} sekuntia"
+  },
+  "{n} was skipped.": {
+    "one": "{n} kohde ohitettiin.",
+    "other": "{n} kohdetta ohitettiin."
   }
 }

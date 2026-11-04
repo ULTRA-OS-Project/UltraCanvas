@@ -4,6 +4,7 @@
   "@translated-by": "machine draft 2026-11-03, reviewed by -",
   "\"{0}\" already exists in \"{1}\".": "«{0}» вже існує в папці «{1}».",
   "\"{0}\" could not be copied.": "Не вдалося скопіювати «{0}».",
+  "\"{0}\" could not be deleted even with administrator permission.": "Не вдалося видалити «{0}» навіть із правами адміністратора.",
   "\"{0}\" could not be deleted.": "Не вдалося видалити «{0}».",
   "\"{0}\" could not be moved to the Recycle Bin.": "Не вдалося перемістити «{0}» до кошика.",
   "\"{0}\" could not be moved to the Trash.": "Не вдалося перемістити «{0}» до смітника.",
@@ -35,6 +36,11 @@
   "Add": "Додати",
   "Add to Dictionary": "Додати до словника",
   "Address": "Адреса",
+  "Administrator permission was not granted; {n} item left in place.": {
+    "one": "Права адміністратора не надано; {n} елемент залишено на місці.",
+    "few": "Права адміністратора не надано; {n} елементи залишено на місці.",
+    "many": "Права адміністратора не надано; {n} елементів залишено на місці."
+  },
   "age|newer": "новіше",
   "age|older": "старіше",
   "age|same": "збігається",
@@ -114,10 +120,17 @@
   "Context": "Контекст",
   "Continue": "Продовжити",
   "Copied to the clipboard": "Скопійовано до буфера обміну",
+  "Copied {0} of {n} item.": {
+    "one": "Скопійовано {0} з {n} елемента.",
+    "few": "Скопійовано {0} з {n} елементів.",
+    "many": "Скопійовано {0} з {n} елементів."
+  },
   "Copy": "Копіювати",
   "Copy \"{0}\" into \"{1}\"?": "Скопіювати «{0}» до папки «{1}»?",
   "Copy files": "Копіювання файлів",
+  "Copy finished": "Копіювання завершено",
   "Copy path": "Копіювати шлях",
+  "Copy skipped items again": "Повторити копіювання пропущених елементів",
   "Copy {n} item into \"{0}\"?": {
     "one": "Скопіювати {n} елемент до папки «{0}»?",
     "few": "Скопіювати {n} елементи до папки «{0}»?",
@@ -126,6 +139,7 @@
   "Copy: a file could not be copied": "Копіювання: не вдалося скопіювати файл",
   "Copy: a folder could not be copied": "Копіювання: не вдалося скопіювати папку",
   "Copy: the name is already taken": "Копіювання: ця назва вже зайнята",
+  "Could not delete as administrator: {0}": "Не вдалося видалити від імені адміністратора: {0}",
   "Could not read {0}": "Не вдалося прочитати {0}",
   "Could not save {0}": "Не вдалося зберегти {0}",
   "Could not write {0}": "Не вдалося записати {0}",
@@ -145,7 +159,9 @@
   "Delete anyway": "Все одно видалити",
   "Delete anyway removes the protection first.": "«Все одно видалити» спершу знімає захист.",
   "Delete as administrator": "Видалити від імені адміністратора",
+  "Delete finished": "Видалення завершено",
   "Delete permanently": "Видалити остаточно",
+  "Delete skipped items again": "Повторити видалення пропущених елементів",
   "Delete {n} item?": {
     "one": "Видалити {n} елемент?",
     "few": "Видалити {n} елементи?",
@@ -163,6 +179,12 @@
   "Delete: administrator permission needed": "Видалення: потрібні права адміністратора",
   "Delete: the file is in use": "Видалення: файл використовується",
   "Delete: the folder is in use": "Видалення: папка використовується",
+  "Deleted {0} of {n} item.": {
+    "one": "Видалено {0} з {n} елемента.",
+    "few": "Видалено {0} з {n} елементів.",
+    "many": "Видалено {0} з {n} елементів."
+  },
+  "Deleting as administrator is not available: {0}": "Видалення від імені адміністратора недоступне: {0}",
   "Demote to the application (from {0})": "Повернути в застосунок (з {0})",
   "Descending": "За спаданням",
   "Description": "Опис",
@@ -257,6 +279,8 @@
   "Images": "Зображення",
   "Import": "Імпорт",
   "in": "у",
+  "in use": "використовується",
+  "in use by {0}": "використовується: {0}",
   "In use by:": "Використовується:",
   "in {n} folder": {
     "one": "у {n} папці",
@@ -336,6 +360,8 @@
   "Move Down": "Перемістити вниз",
   "Move down": "Перемістити вниз",
   "Move files": "Переміщення файлів",
+  "Move finished": "Переміщення завершено",
+  "Move skipped items again": "Повторити переміщення пропущених елементів",
   "Move to Recycle Bin": "Перемістити до кошика",
   "Move to Recycle Bin can be undone from the Recycle Bin. Delete permanently cannot be undone.": "Дію «Перемістити до кошика» можна скасувати з кошика. Дію «Видалити остаточно» скасувати неможливо.",
   "Move to Trash": "Перемістити до смітника",
@@ -350,6 +376,21 @@
   "Move: a file could not be moved": "Переміщення: не вдалося перемістити файл",
   "Move: a folder could not be moved": "Переміщення: не вдалося перемістити папку",
   "Move: the name is already taken": "Переміщення: ця назва вже зайнята",
+  "Moved {0} of {n} item to the Recycle Bin.": {
+    "one": "Переміщено до кошика {0} з {n} елемента.",
+    "few": "Переміщено до кошика {0} з {n} елементів.",
+    "many": "Переміщено до кошика {0} з {n} елементів."
+  },
+  "Moved {0} of {n} item to the Trash.": {
+    "one": "Переміщено до смітника {0} з {n} елемента.",
+    "few": "Переміщено до смітника {0} з {n} елементів.",
+    "many": "Переміщено до смітника {0} з {n} елементів."
+  },
+  "Moved {0} of {n} item.": {
+    "one": "Переміщено {0} з {n} елемента.",
+    "few": "Переміщено {0} з {n} елементів.",
+    "many": "Переміщено {0} з {n} елементів."
+  },
   "Music": "Музика",
   "Name": "Назва",
   "Network": "Мережа",
@@ -472,6 +513,8 @@
   "Size:": "Розмір:",
   "Skip": "Пропустити",
   "Skip All": "Пропустити все",
+  "Skipped: the name is already taken": "Пропущено: ця назва вже зайнята",
+  "Skipped: write-protected": "Пропущено: захищено від запису",
   "Slideshow interval": "Інтервал слайд-шоу",
   "Slideshow transition": "Перехід слайд-шоу",
   "Sort": "Сортування",
@@ -494,6 +537,7 @@
   "The base sets the application takes, in lookup order; tick one to take it": "Базові набори, які використовує застосунок, у порядку пошуку; позначте набір, щоб підключити його",
   "The file may be locked or in use by another program. Close it there, then try again.": "Можливо, файл заблоковано або він використовується іншою програмою. Закрийте його там і повторіть спробу.",
   "The first {0} of {1} items:": "Перші {0} з {1} елементів:",
+  "The first {0} of {1} skipped items:": "Перші {0} з {1} пропущених елементів:",
   "The folder may be locked or in use by another program. Close it there, then try again.": "Можливо, папку заблоковано або вона використовується іншою програмою. Закрийте її там і повторіть спробу.",
   "The menus as they were opened, the toolbars as the program has them": "Меню — як під час відкриття, панелі інструментів — як задано в програмі",
   "the read-only attribute is set": "встановлено атрибут «лише читання»",
@@ -611,6 +655,11 @@
     "few": "{n} елементи",
     "many": "{n} елементів"
   },
+  "{n} item could not be deleted even with administrator permission.": {
+    "one": "Не вдалося видалити {n} елемент навіть із правами адміністратора.",
+    "few": "Не вдалося видалити {n} елементи навіть із правами адміністратора.",
+    "many": "Не вдалося видалити {n} елементів навіть із правами адміністратора."
+  },
   "{n} minute": {
     "one": "{n} хвилина",
     "few": "{n} хвилини",
@@ -620,5 +669,10 @@
     "one": "{n} секунда",
     "few": "{n} секунди",
     "many": "{n} секунд"
+  },
+  "{n} was skipped.": {
+    "one": "Пропущено {n} елемент.",
+    "few": "Пропущено {n} елементи.",
+    "many": "Пропущено {n} елементів."
   }
 }

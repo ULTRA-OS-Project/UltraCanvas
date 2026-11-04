@@ -4,6 +4,7 @@
   "@translated-by": "machine draft 2026-11-03, reviewed by -",
   "\"{0}\" already exists in \"{1}\".": "Elementul „{0}” există deja în „{1}”.",
   "\"{0}\" could not be copied.": "Elementul „{0}” nu a putut fi copiat.",
+  "\"{0}\" could not be deleted even with administrator permission.": "Elementul „{0}” nu a putut fi șters nici cu permisiunea de administrator.",
   "\"{0}\" could not be deleted.": "Elementul „{0}” nu a putut fi șters.",
   "\"{0}\" could not be moved to the Recycle Bin.": "Elementul „{0}” nu a putut fi mutat în Coșul de reciclare.",
   "\"{0}\" could not be moved to the Trash.": "Elementul „{0}” nu a putut fi mutat în Coșul de gunoi.",
@@ -35,6 +36,11 @@
   "Add": "Adăugare",
   "Add to Dictionary": "Adăugare în dicționar",
   "Address": "Adresă",
+  "Administrator permission was not granted; {n} item left in place.": {
+    "one": "Permisiunea de administrator nu a fost acordată; {n} element a rămas pe loc.",
+    "few": "Permisiunea de administrator nu a fost acordată; {n} elemente au rămas pe loc.",
+    "other": "Permisiunea de administrator nu a fost acordată; {n} de elemente au rămas pe loc."
+  },
   "age|newer": "mai nou",
   "age|older": "mai vechi",
   "age|same": "identic",
@@ -114,10 +120,17 @@
   "Context": "Context",
   "Continue": "Continuare",
   "Copied to the clipboard": "Copiat în clipboard",
+  "Copied {0} of {n} item.": {
+    "one": "Au fost copiate {0} din {n} element.",
+    "few": "Au fost copiate {0} din {n} elemente.",
+    "other": "Au fost copiate {0} din {n} de elemente."
+  },
   "Copy": "Copiere",
   "Copy \"{0}\" into \"{1}\"?": "Copiați „{0}” în „{1}”?",
   "Copy files": "Copiere fișiere",
+  "Copy finished": "Copiere finalizată",
   "Copy path": "Copiere cale",
+  "Copy skipped items again": "Copiere din nou a elementelor omise",
   "Copy {n} item into \"{0}\"?": {
     "one": "Copiați {n} element în „{0}”?",
     "few": "Copiați {n} elemente în „{0}”?",
@@ -126,6 +139,7 @@
   "Copy: a file could not be copied": "Copiere: un fișier nu a putut fi copiat",
   "Copy: a folder could not be copied": "Copiere: un dosar nu a putut fi copiat",
   "Copy: the name is already taken": "Copiere: numele este deja folosit",
+  "Could not delete as administrator: {0}": "Nu s-a putut efectua ștergerea ca administrator: {0}",
   "Could not read {0}": "Nu s-a putut citi {0}",
   "Could not save {0}": "Nu s-a putut salva {0}",
   "Could not write {0}": "Nu s-a putut scrie {0}",
@@ -145,7 +159,9 @@
   "Delete anyway": "Ștergere oricum",
   "Delete anyway removes the protection first.": "„Ștergere oricum” elimină mai întâi protecția.",
   "Delete as administrator": "Ștergere ca administrator",
+  "Delete finished": "Ștergere finalizată",
   "Delete permanently": "Ștergere definitivă",
+  "Delete skipped items again": "Ștergere din nou a elementelor omise",
   "Delete {n} item?": {
     "one": "Ștergeți {n} element?",
     "few": "Ștergeți {n} elemente?",
@@ -163,6 +179,12 @@
   "Delete: administrator permission needed": "Ștergere: este necesară permisiunea de administrator",
   "Delete: the file is in use": "Ștergere: fișierul este în uz",
   "Delete: the folder is in use": "Ștergere: dosarul este în uz",
+  "Deleted {0} of {n} item.": {
+    "one": "Au fost șterse {0} din {n} element.",
+    "few": "Au fost șterse {0} din {n} elemente.",
+    "other": "Au fost șterse {0} din {n} de elemente."
+  },
+  "Deleting as administrator is not available: {0}": "Ștergerea ca administrator nu este disponibilă: {0}",
   "Demote to the application (from {0})": "Retrogradare în aplicație (din {0})",
   "Descending": "Descendent",
   "Description": "Descriere",
@@ -257,6 +279,8 @@
   "Images": "Imagini",
   "Import": "Import",
   "in": "în",
+  "in use": "în uz",
+  "in use by {0}": "folosit de {0}",
   "In use by:": "Folosit de:",
   "in {n} folder": {
     "one": "în {n} dosar",
@@ -336,6 +360,8 @@
   "Move Down": "Mutare în jos",
   "Move down": "Mutare în jos",
   "Move files": "Mutare fișiere",
+  "Move finished": "Mutare finalizată",
+  "Move skipped items again": "Mutare din nou a elementelor omise",
   "Move to Recycle Bin": "Mutare în Coșul de reciclare",
   "Move to Recycle Bin can be undone from the Recycle Bin. Delete permanently cannot be undone.": "Operația „Mutare în Coșul de reciclare” poate fi anulată din Coșul de reciclare. Operația „Ștergere definitivă” nu poate fi anulată.",
   "Move to Trash": "Mutare în Coșul de gunoi",
@@ -350,6 +376,21 @@
   "Move: a file could not be moved": "Mutare: un fișier nu a putut fi mutat",
   "Move: a folder could not be moved": "Mutare: un dosar nu a putut fi mutat",
   "Move: the name is already taken": "Mutare: numele este deja folosit",
+  "Moved {0} of {n} item to the Recycle Bin.": {
+    "one": "Au fost mutate {0} din {n} element în Coșul de reciclare.",
+    "few": "Au fost mutate {0} din {n} elemente în Coșul de reciclare.",
+    "other": "Au fost mutate {0} din {n} de elemente în Coșul de reciclare."
+  },
+  "Moved {0} of {n} item to the Trash.": {
+    "one": "Au fost mutate {0} din {n} element în Coșul de gunoi.",
+    "few": "Au fost mutate {0} din {n} elemente în Coșul de gunoi.",
+    "other": "Au fost mutate {0} din {n} de elemente în Coșul de gunoi."
+  },
+  "Moved {0} of {n} item.": {
+    "one": "Au fost mutate {0} din {n} element.",
+    "few": "Au fost mutate {0} din {n} elemente.",
+    "other": "Au fost mutate {0} din {n} de elemente."
+  },
   "Music": "Muzică",
   "Name": "Nume",
   "Network": "Rețea",
@@ -472,6 +513,8 @@
   "Size:": "Dimensiune:",
   "Skip": "Omitere",
   "Skip All": "Omitere totală",
+  "Skipped: the name is already taken": "Omis: numele este deja folosit",
+  "Skipped: write-protected": "Omis: protejat la scriere",
   "Slideshow interval": "Interval prezentare diapozitive",
   "Slideshow transition": "Tranziție prezentare diapozitive",
   "Sort": "Sortare",
@@ -494,6 +537,7 @@
   "The base sets the application takes, in lookup order; tick one to take it": "Seturile de bază pe care le folosește aplicația, în ordinea căutării; bifați unul pentru a-l folosi",
   "The file may be locked or in use by another program. Close it there, then try again.": "Fișierul poate fi blocat sau folosit de alt program. Închideți-l acolo, apoi încercați din nou.",
   "The first {0} of {1} items:": "Primele {0} (din {1} în total):",
+  "The first {0} of {1} skipped items:": "Primele {0} din {1} elemente omise:",
   "The folder may be locked or in use by another program. Close it there, then try again.": "Dosarul poate fi blocat sau folosit de alt program. Închideți-l acolo, apoi încercați din nou.",
   "The menus as they were opened, the toolbars as the program has them": "Meniurile așa cum au fost deschise, barele de instrumente așa cum le are programul",
   "the read-only attribute is set": "atributul „doar în citire” este setat",
@@ -611,6 +655,11 @@
     "few": "{n} elemente",
     "other": "{n} de elemente"
   },
+  "{n} item could not be deleted even with administrator permission.": {
+    "one": "{n} element nu a putut fi șters nici cu permisiunea de administrator.",
+    "few": "{n} elemente nu au putut fi șterse nici cu permisiunea de administrator.",
+    "other": "{n} de elemente nu au putut fi șterse nici cu permisiunea de administrator."
+  },
   "{n} minute": {
     "one": "{n} minut",
     "few": "{n} minute",
@@ -620,5 +669,10 @@
     "one": "{n} secundă",
     "few": "{n} secunde",
     "other": "{n} de secunde"
+  },
+  "{n} was skipped.": {
+    "one": "{n} element a fost omis.",
+    "few": "{n} elemente au fost omise.",
+    "other": "{n} de elemente au fost omise."
   }
 }

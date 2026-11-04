@@ -4,6 +4,7 @@
   "@translated-by": "machine draft 2026-11-03, reviewed by -",
   "\"{0}\" already exists in \"{1}\".": "„{0}“ již ve složce „{1}“ existuje.",
   "\"{0}\" could not be copied.": "„{0}“ nelze zkopírovat.",
+  "\"{0}\" could not be deleted even with administrator permission.": "„{0}“ nelze odstranit ani s oprávněním správce.",
   "\"{0}\" could not be deleted.": "„{0}“ nelze odstranit.",
   "\"{0}\" could not be moved to the Recycle Bin.": "„{0}“ nelze přesunout do koše.",
   "\"{0}\" could not be moved to the Trash.": "„{0}“ nelze přesunout do koše.",
@@ -35,6 +36,11 @@
   "Add": "Přidat",
   "Add to Dictionary": "Přidat do slovníku",
   "Address": "Adresa",
+  "Administrator permission was not granted; {n} item left in place.": {
+    "one": "Oprávnění správce nebylo uděleno; {n} položka zůstala na místě.",
+    "few": "Oprávnění správce nebylo uděleno; {n} položky zůstaly na místě.",
+    "other": "Oprávnění správce nebylo uděleno; {n} položek zůstalo na místě."
+  },
   "age|newer": "novější",
   "age|older": "starší",
   "age|same": "shoduje se",
@@ -114,10 +120,17 @@
   "Context": "Kontext",
   "Continue": "Pokračovat",
   "Copied to the clipboard": "Zkopírováno do schránky",
+  "Copied {0} of {n} item.": {
+    "one": "Zkopírováno {0} z {n} položky.",
+    "few": "Zkopírováno {0} z {n} položek.",
+    "other": "Zkopírováno {0} z {n} položek."
+  },
   "Copy": "Kopírovat",
   "Copy \"{0}\" into \"{1}\"?": "Zkopírovat „{0}“ do složky „{1}“?",
   "Copy files": "Kopírování souborů",
+  "Copy finished": "Kopírování dokončeno",
   "Copy path": "Kopírovat cestu",
+  "Copy skipped items again": "Znovu kopírovat přeskočené položky",
   "Copy {n} item into \"{0}\"?": {
     "one": "Zkopírovat {n} položku do složky „{0}“?",
     "few": "Zkopírovat {n} položky do složky „{0}“?",
@@ -126,6 +139,7 @@
   "Copy: a file could not be copied": "Kopírování: soubor nelze zkopírovat",
   "Copy: a folder could not be copied": "Kopírování: složku nelze zkopírovat",
   "Copy: the name is already taken": "Kopírování: název je již obsazen",
+  "Could not delete as administrator: {0}": "Nelze odstranit jako správce: {0}",
   "Could not read {0}": "Nelze přečíst {0}",
   "Could not save {0}": "Nelze uložit {0}",
   "Could not write {0}": "Nelze zapsat {0}",
@@ -145,7 +159,9 @@
   "Delete anyway": "Přesto odstranit",
   "Delete anyway removes the protection first.": "„Přesto odstranit“ nejprve odebere ochranu.",
   "Delete as administrator": "Odstranit jako správce",
+  "Delete finished": "Odstranění dokončeno",
   "Delete permanently": "Trvale odstranit",
+  "Delete skipped items again": "Znovu odstranit přeskočené položky",
   "Delete {n} item?": {
     "one": "Odstranit {n} položku?",
     "few": "Odstranit {n} položky?",
@@ -163,6 +179,12 @@
   "Delete: administrator permission needed": "Odstranění: jsou vyžadována oprávnění správce",
   "Delete: the file is in use": "Odstranění: soubor se používá",
   "Delete: the folder is in use": "Odstranění: složka se používá",
+  "Deleted {0} of {n} item.": {
+    "one": "Odstraněno {0} z {n} položky.",
+    "few": "Odstraněno {0} z {n} položek.",
+    "other": "Odstraněno {0} z {n} položek."
+  },
+  "Deleting as administrator is not available: {0}": "Odstranění jako správce není k dispozici: {0}",
   "Demote to the application (from {0})": "Vrátit do aplikace (z {0})",
   "Descending": "Sestupně",
   "Description": "Popis",
@@ -257,6 +279,8 @@
   "Images": "Obrázky",
   "Import": "Importovat",
   "in": "v",
+  "in use": "používá se",
+  "in use by {0}": "používá {0}",
   "In use by:": "Používá:",
   "in {n} folder": {
     "one": "v {n} složce",
@@ -336,6 +360,8 @@
   "Move Down": "Posunout dolů",
   "Move down": "Posunout dolů",
   "Move files": "Přesun souborů",
+  "Move finished": "Přesun dokončen",
+  "Move skipped items again": "Znovu přesunout přeskočené položky",
   "Move to Recycle Bin": "Přesunout do koše",
   "Move to Recycle Bin can be undone from the Recycle Bin. Delete permanently cannot be undone.": "Akci „Přesunout do koše“ lze vrátit zpět z koše. Akci „Trvale odstranit“ nelze vrátit zpět.",
   "Move to Trash": "Přesunout do koše",
@@ -350,6 +376,21 @@
   "Move: a file could not be moved": "Přesun: soubor nelze přesunout",
   "Move: a folder could not be moved": "Přesun: složku nelze přesunout",
   "Move: the name is already taken": "Přesun: název je již obsazen",
+  "Moved {0} of {n} item to the Recycle Bin.": {
+    "one": "Do koše přesunuto {0} z {n} položky.",
+    "few": "Do koše přesunuto {0} z {n} položek.",
+    "other": "Do koše přesunuto {0} z {n} položek."
+  },
+  "Moved {0} of {n} item to the Trash.": {
+    "one": "Do koše přesunuto {0} z {n} položky.",
+    "few": "Do koše přesunuto {0} z {n} položek.",
+    "other": "Do koše přesunuto {0} z {n} položek."
+  },
+  "Moved {0} of {n} item.": {
+    "one": "Přesunuto {0} z {n} položky.",
+    "few": "Přesunuto {0} z {n} položek.",
+    "other": "Přesunuto {0} z {n} položek."
+  },
   "Music": "Hudba",
   "Name": "Název",
   "Network": "Síť",
@@ -472,6 +513,8 @@
   "Size:": "Velikost:",
   "Skip": "Přeskočit",
   "Skip All": "Přeskočit vše",
+  "Skipped: the name is already taken": "Přeskočeno: název je již obsazen",
+  "Skipped: write-protected": "Přeskočeno: chráněno proti zápisu",
   "Slideshow interval": "Interval prezentace",
   "Slideshow transition": "Přechod prezentace",
   "Sort": "Seřadit",
@@ -494,6 +537,7 @@
   "The base sets the application takes, in lookup order; tick one to take it": "Základní sady, které aplikace používá, v pořadí vyhledávání; zaškrtnutím sadu připojíte",
   "The file may be locked or in use by another program. Close it there, then try again.": "Soubor může být zamčený nebo používaný jiným programem. Zavřete ho tam a zkuste to znovu.",
   "The first {0} of {1} items:": "Prvních {0} z {1} položek:",
+  "The first {0} of {1} skipped items:": "Prvních {0} z {1} přeskočených položek:",
   "The folder may be locked or in use by another program. Close it there, then try again.": "Složka může být zamčená nebo používaná jiným programem. Zavřete ji tam a zkuste to znovu.",
   "The menus as they were opened, the toolbars as the program has them": "Nabídky tak, jak byly otevřeny, panely nástrojů tak, jak je má program",
   "the read-only attribute is set": "je nastaven atribut „jen pro čtení“",
@@ -611,6 +655,11 @@
     "few": "{n} položky",
     "other": "{n} položek"
   },
+  "{n} item could not be deleted even with administrator permission.": {
+    "one": "{n} položku nelze odstranit ani s oprávněním správce.",
+    "few": "{n} položky nelze odstranit ani s oprávněním správce.",
+    "other": "{n} položek nelze odstranit ani s oprávněním správce."
+  },
   "{n} minute": {
     "one": "{n} minuta",
     "few": "{n} minuty",
@@ -620,5 +669,10 @@
     "one": "{n} sekunda",
     "few": "{n} sekundy",
     "other": "{n} sekund"
+  },
+  "{n} was skipped.": {
+    "one": "{n} položka byla přeskočena.",
+    "few": "{n} položky byly přeskočeny.",
+    "other": "{n} položek bylo přeskočeno."
   }
 }

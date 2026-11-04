@@ -4,6 +4,7 @@
   "@translated-by": "machine draft 2026-11-03, reviewed by -",
   "\"{0}\" already exists in \"{1}\".": "Το «{0}» υπάρχει ήδη στον φάκελο «{1}».",
   "\"{0}\" could not be copied.": "Δεν ήταν δυνατή η αντιγραφή του «{0}».",
+  "\"{0}\" could not be deleted even with administrator permission.": "Δεν ήταν δυνατή η διαγραφή του «{0}» ακόμη και με άδεια διαχειριστή.",
   "\"{0}\" could not be deleted.": "Δεν ήταν δυνατή η διαγραφή του «{0}».",
   "\"{0}\" could not be moved to the Recycle Bin.": "Δεν ήταν δυνατή η μετακίνηση του «{0}» στον Κάδο Ανακύκλωσης.",
   "\"{0}\" could not be moved to the Trash.": "Δεν ήταν δυνατή η μετακίνηση του «{0}» στα Απορρίμματα.",
@@ -35,6 +36,10 @@
   "Add": "Προσθήκη",
   "Add to Dictionary": "Προσθήκη στο λεξικό",
   "Address": "Διεύθυνση",
+  "Administrator permission was not granted; {n} item left in place.": {
+    "one": "Δεν δόθηκε άδεια διαχειριστή· {n} στοιχείο παρέμεινε στη θέση του.",
+    "other": "Δεν δόθηκε άδεια διαχειριστή· {n} στοιχεία παρέμειναν στη θέση τους."
+  },
   "age|newer": "νεότερο",
   "age|older": "παλαιότερο",
   "age|same": "πανομοιότυπο",
@@ -111,10 +116,16 @@
   "Context": "Πλαίσιο",
   "Continue": "Συνέχεια",
   "Copied to the clipboard": "Αντιγράφηκε στο πρόχειρο",
+  "Copied {0} of {n} item.": {
+    "one": "Αντιγράφηκαν {0} από {n} στοιχείο.",
+    "other": "Αντιγράφηκαν {0} από {n} στοιχεία."
+  },
   "Copy": "Αντιγραφή",
   "Copy \"{0}\" into \"{1}\"?": "Αντιγραφή του «{0}» στον φάκελο «{1}»;",
   "Copy files": "Αντιγραφή αρχείων",
+  "Copy finished": "Η αντιγραφή ολοκληρώθηκε",
   "Copy path": "Αντιγραφή διαδρομής",
+  "Copy skipped items again": "Επανάληψη αντιγραφής στοιχείων που παραλείφθηκαν",
   "Copy {n} item into \"{0}\"?": {
     "one": "Αντιγραφή {n} στοιχείου στον φάκελο «{0}»;",
     "other": "Αντιγραφή {n} στοιχείων στον φάκελο «{0}»;"
@@ -122,6 +133,7 @@
   "Copy: a file could not be copied": "Αντιγραφή: δεν ήταν δυνατή η αντιγραφή ενός αρχείου",
   "Copy: a folder could not be copied": "Αντιγραφή: δεν ήταν δυνατή η αντιγραφή ενός φακέλου",
   "Copy: the name is already taken": "Αντιγραφή: το όνομα χρησιμοποιείται ήδη",
+  "Could not delete as administrator: {0}": "Δεν ήταν δυνατή η διαγραφή ως διαχειριστής: {0}",
   "Could not read {0}": "Δεν ήταν δυνατή η ανάγνωση του {0}",
   "Could not save {0}": "Δεν ήταν δυνατή η αποθήκευση του {0}",
   "Could not write {0}": "Δεν ήταν δυνατή η εγγραφή του {0}",
@@ -141,7 +153,9 @@
   "Delete anyway": "Διαγραφή παρ' όλα αυτά",
   "Delete anyway removes the protection first.": "Η «Διαγραφή παρ' όλα αυτά» αφαιρεί πρώτα την προστασία.",
   "Delete as administrator": "Διαγραφή ως διαχειριστής",
+  "Delete finished": "Η διαγραφή ολοκληρώθηκε",
   "Delete permanently": "Οριστική διαγραφή",
+  "Delete skipped items again": "Επανάληψη διαγραφής στοιχείων που παραλείφθηκαν",
   "Delete {n} item?": {
     "one": "Διαγραφή {n} στοιχείου;",
     "other": "Διαγραφή {n} στοιχείων;"
@@ -158,6 +172,11 @@
   "Delete: administrator permission needed": "Διαγραφή: απαιτείται άδεια διαχειριστή",
   "Delete: the file is in use": "Διαγραφή: το αρχείο χρησιμοποιείται",
   "Delete: the folder is in use": "Διαγραφή: ο φάκελος χρησιμοποιείται",
+  "Deleted {0} of {n} item.": {
+    "one": "Διαγράφηκαν {0} από {n} στοιχείο.",
+    "other": "Διαγράφηκαν {0} από {n} στοιχεία."
+  },
+  "Deleting as administrator is not available: {0}": "Η διαγραφή ως διαχειριστής δεν είναι διαθέσιμη: {0}",
   "Demote to the application (from {0})": "Επιστροφή στην εφαρμογή (από {0})",
   "Descending": "Φθίνουσα",
   "Description": "Περιγραφή",
@@ -251,6 +270,8 @@
   "Images": "Εικόνες",
   "Import": "Εισαγωγή",
   "in": "στο",
+  "in use": "σε χρήση",
+  "in use by {0}": "σε χρήση από {0}",
   "In use by:": "Χρησιμοποιείται από:",
   "in {n} folder": {
     "one": "σε {n} φάκελο",
@@ -329,6 +350,8 @@
   "Move Down": "Μετακίνηση κάτω",
   "Move down": "Μετακίνηση κάτω",
   "Move files": "Μετακίνηση αρχείων",
+  "Move finished": "Η μετακίνηση ολοκληρώθηκε",
+  "Move skipped items again": "Επανάληψη μετακίνησης στοιχείων που παραλείφθηκαν",
   "Move to Recycle Bin": "Μετακίνηση στον Κάδο Ανακύκλωσης",
   "Move to Recycle Bin can be undone from the Recycle Bin. Delete permanently cannot be undone.": "Η «Μετακίνηση στον Κάδο Ανακύκλωσης» μπορεί να αναιρεθεί από τον Κάδο Ανακύκλωσης. Η «Οριστική διαγραφή» δεν μπορεί να αναιρεθεί.",
   "Move to Trash": "Μετακίνηση στα Απορρίμματα",
@@ -342,6 +365,18 @@
   "Move: a file could not be moved": "Μετακίνηση: δεν ήταν δυνατή η μετακίνηση ενός αρχείου",
   "Move: a folder could not be moved": "Μετακίνηση: δεν ήταν δυνατή η μετακίνηση ενός φακέλου",
   "Move: the name is already taken": "Μετακίνηση: το όνομα χρησιμοποιείται ήδη",
+  "Moved {0} of {n} item to the Recycle Bin.": {
+    "one": "Μετακινήθηκαν {0} από {n} στοιχείο στον Κάδο Ανακύκλωσης.",
+    "other": "Μετακινήθηκαν {0} από {n} στοιχεία στον Κάδο Ανακύκλωσης."
+  },
+  "Moved {0} of {n} item to the Trash.": {
+    "one": "Μετακινήθηκαν {0} από {n} στοιχείο στα Απορρίμματα.",
+    "other": "Μετακινήθηκαν {0} από {n} στοιχεία στα Απορρίμματα."
+  },
+  "Moved {0} of {n} item.": {
+    "one": "Μετακινήθηκαν {0} από {n} στοιχείο.",
+    "other": "Μετακινήθηκαν {0} από {n} στοιχεία."
+  },
   "Music": "Μουσική",
   "Name": "Όνομα",
   "Network": "Δίκτυο",
@@ -463,6 +498,8 @@
   "Size:": "Μέγεθος:",
   "Skip": "Παράλειψη",
   "Skip All": "Παράλειψη όλων",
+  "Skipped: the name is already taken": "Παραλείφθηκε: το όνομα χρησιμοποιείται ήδη",
+  "Skipped: write-protected": "Παραλείφθηκε: προστατεύεται από εγγραφή",
   "Slideshow interval": "Διάστημα προβολής διαφανειών",
   "Slideshow transition": "Μετάβαση προβολής διαφανειών",
   "Sort": "Ταξινόμηση",
@@ -485,6 +522,7 @@
   "The base sets the application takes, in lookup order; tick one to take it": "Τα βασικά σύνολα που χρησιμοποιεί η εφαρμογή, με σειρά αναζήτησης· επιλέξτε ένα για να το χρησιμοποιήσει",
   "The file may be locked or in use by another program. Close it there, then try again.": "Το αρχείο μπορεί να είναι κλειδωμένο ή να χρησιμοποιείται από άλλο πρόγραμμα. Κλείστε το εκεί και δοκιμάστε ξανά.",
   "The first {0} of {1} items:": "Τα πρώτα {0} από {1} στοιχεία:",
+  "The first {0} of {1} skipped items:": "Τα πρώτα {0} από {1} στοιχεία που παραλείφθηκαν:",
   "The folder may be locked or in use by another program. Close it there, then try again.": "Ο φάκελος μπορεί να είναι κλειδωμένος ή να χρησιμοποιείται από άλλο πρόγραμμα. Κλείστε τον εκεί και δοκιμάστε ξανά.",
   "The menus as they were opened, the toolbars as the program has them": "Τα μενού όπως ήταν όταν άνοιξαν, οι γραμμές εργαλείων όπως τις έχει το πρόγραμμα",
   "the read-only attribute is set": "έχει οριστεί το χαρακτηριστικό «μόνο για ανάγνωση»",
@@ -596,6 +634,10 @@
     "one": "{n} στοιχείο",
     "other": "{n} στοιχεία"
   },
+  "{n} item could not be deleted even with administrator permission.": {
+    "one": "Δεν ήταν δυνατή η διαγραφή {n} στοιχείου ακόμη και με άδεια διαχειριστή.",
+    "other": "Δεν ήταν δυνατή η διαγραφή {n} στοιχείων ακόμη και με άδεια διαχειριστή."
+  },
   "{n} minute": {
     "one": "{n} λεπτό",
     "other": "{n} λεπτά"
@@ -603,5 +645,9 @@
   "{n} second": {
     "one": "{n} δευτερόλεπτο",
     "other": "{n} δευτερόλεπτα"
+  },
+  "{n} was skipped.": {
+    "one": "Παραλείφθηκε {n} στοιχείο.",
+    "other": "Παραλείφθηκαν {n} στοιχεία."
   }
 }

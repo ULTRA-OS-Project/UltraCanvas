@@ -4,6 +4,7 @@
   "@translated-by": "machine draft 2026-11-03, reviewed by -",
   "\"{0}\" already exists in \"{1}\".": "“{0}”, “{1}” içinde zaten var.",
   "\"{0}\" could not be copied.": "“{0}” kopyalanamadı.",
+  "\"{0}\" could not be deleted even with administrator permission.": "“{0}” yönetici izniyle bile silinemedi.",
   "\"{0}\" could not be deleted.": "“{0}” silinemedi.",
   "\"{0}\" could not be moved to the Recycle Bin.": "“{0}” Geri Dönüşüm Kutusuna taşınamadı.",
   "\"{0}\" could not be moved to the Trash.": "“{0}” Çöp Kutusuna taşınamadı.",
@@ -35,6 +36,10 @@
   "Add": "Ekle",
   "Add to Dictionary": "Sözlüğe Ekle",
   "Address": "Adres",
+  "Administrator permission was not granted; {n} item left in place.": {
+    "one": "Yönetici izni verilmedi; {n} öğe yerinde bırakıldı.",
+    "other": "Yönetici izni verilmedi; {n} öğe yerinde bırakıldı."
+  },
   "age|newer": "daha yeni",
   "age|older": "daha eski",
   "age|same": "aynı",
@@ -111,10 +116,16 @@
   "Context": "Bağlam",
   "Continue": "Devam",
   "Copied to the clipboard": "Panoya kopyalandı",
+  "Copied {0} of {n} item.": {
+    "one": "{n} öğeden {0} tanesi kopyalandı.",
+    "other": "{n} öğeden {0} tanesi kopyalandı."
+  },
   "Copy": "Kopyala",
   "Copy \"{0}\" into \"{1}\"?": "“{0}”, “{1}” içine kopyalansın mı?",
   "Copy files": "Dosya kopyalama",
+  "Copy finished": "Kopyalama tamamlandı",
   "Copy path": "Yolu kopyala",
+  "Copy skipped items again": "Atlanan öğeleri yeniden kopyala",
   "Copy {n} item into \"{0}\"?": {
     "one": "{n} öğe “{0}” içine kopyalansın mı?",
     "other": "{n} öğe “{0}” içine kopyalansın mı?"
@@ -122,6 +133,7 @@
   "Copy: a file could not be copied": "Kopyalama: bir dosya kopyalanamadı",
   "Copy: a folder could not be copied": "Kopyalama: bir klasör kopyalanamadı",
   "Copy: the name is already taken": "Kopyalama: ad zaten kullanılıyor",
+  "Could not delete as administrator: {0}": "Yönetici olarak silinemedi: {0}",
   "Could not read {0}": "{0} okunamadı",
   "Could not save {0}": "{0} kaydedilemedi",
   "Could not write {0}": "{0} yazılamadı",
@@ -141,7 +153,9 @@
   "Delete anyway": "Yine de sil",
   "Delete anyway removes the protection first.": "“Yine de sil” önce korumayı kaldırır.",
   "Delete as administrator": "Yönetici olarak sil",
+  "Delete finished": "Silme tamamlandı",
   "Delete permanently": "Kalıcı olarak sil",
+  "Delete skipped items again": "Atlanan öğeleri yeniden sil",
   "Delete {n} item?": {
     "one": "{n} öğe silinsin mi?",
     "other": "{n} öğe silinsin mi?"
@@ -158,6 +172,11 @@
   "Delete: administrator permission needed": "Silme: yönetici izni gerekli",
   "Delete: the file is in use": "Silme: dosya kullanımda",
   "Delete: the folder is in use": "Silme: klasör kullanımda",
+  "Deleted {0} of {n} item.": {
+    "one": "{n} öğeden {0} tanesi silindi.",
+    "other": "{n} öğeden {0} tanesi silindi."
+  },
+  "Deleting as administrator is not available: {0}": "Yönetici olarak silme kullanılamıyor: {0}",
   "Demote to the application (from {0})": "Uygulamaya indir ({0} kümesinden)",
   "Descending": "Azalan",
   "Description": "Açıklama",
@@ -251,6 +270,8 @@
   "Images": "Görüntüler",
   "Import": "İçe Aktar",
   "in": "küme:",
+  "in use": "kullanımda",
+  "in use by {0}": "{0} tarafından kullanılıyor",
   "In use by:": "Kullanan:",
   "in {n} folder": {
     "one": "{n} klasörde",
@@ -329,6 +350,8 @@
   "Move Down": "Aşağı Taşı",
   "Move down": "Aşağı taşı",
   "Move files": "Dosya taşıma",
+  "Move finished": "Taşıma tamamlandı",
+  "Move skipped items again": "Atlanan öğeleri yeniden taşı",
   "Move to Recycle Bin": "Geri Dönüşüm Kutusuna Taşı",
   "Move to Recycle Bin can be undone from the Recycle Bin. Delete permanently cannot be undone.": "“Geri Dönüşüm Kutusuna Taşı” işlemi Geri Dönüşüm Kutusundan geri alınabilir. “Kalıcı olarak sil” işlemi geri alınamaz.",
   "Move to Trash": "Çöp Kutusuna Taşı",
@@ -342,6 +365,18 @@
   "Move: a file could not be moved": "Taşıma: bir dosya taşınamadı",
   "Move: a folder could not be moved": "Taşıma: bir klasör taşınamadı",
   "Move: the name is already taken": "Taşıma: ad zaten kullanılıyor",
+  "Moved {0} of {n} item to the Recycle Bin.": {
+    "one": "{n} öğeden {0} tanesi Geri Dönüşüm Kutusuna taşındı.",
+    "other": "{n} öğeden {0} tanesi Geri Dönüşüm Kutusuna taşındı."
+  },
+  "Moved {0} of {n} item to the Trash.": {
+    "one": "{n} öğeden {0} tanesi Çöp Kutusuna taşındı.",
+    "other": "{n} öğeden {0} tanesi Çöp Kutusuna taşındı."
+  },
+  "Moved {0} of {n} item.": {
+    "one": "{n} öğeden {0} tanesi taşındı.",
+    "other": "{n} öğeden {0} tanesi taşındı."
+  },
   "Music": "Müzik",
   "Name": "Ad",
   "Network": "Ağ",
@@ -463,6 +498,8 @@
   "Size:": "Boyut:",
   "Skip": "Atla",
   "Skip All": "Tümünü Atla",
+  "Skipped: the name is already taken": "Atlandı: ad zaten kullanılıyor",
+  "Skipped: write-protected": "Atlandı: yazmaya karşı korumalı",
   "Slideshow interval": "Slayt gösterisi aralığı",
   "Slideshow transition": "Slayt gösterisi geçişi",
   "Sort": "Sırala",
@@ -485,6 +522,7 @@
   "The base sets the application takes, in lookup order; tick one to take it": "Uygulamanın kullandığı temel kümeler, arama sırasıyla; kullanmak için birini işaretleyin",
   "The file may be locked or in use by another program. Close it there, then try again.": "Dosya kilitli olabilir veya başka bir program tarafından kullanılıyor olabilir. Orada kapatın, ardından yeniden deneyin.",
   "The first {0} of {1} items:": "{1} öğeden ilk {0} tanesi:",
+  "The first {0} of {1} skipped items:": "Atlanan {1} öğeden ilk {0} tanesi:",
   "The folder may be locked or in use by another program. Close it there, then try again.": "Klasör kilitli olabilir veya başka bir program tarafından kullanılıyor olabilir. Orada kapatın, ardından yeniden deneyin.",
   "The menus as they were opened, the toolbars as the program has them": "Menüler açıldıkları hâliyle, araç çubukları programdaki hâliyle",
   "the read-only attribute is set": "salt okunur özniteliği ayarlı",
@@ -596,6 +634,10 @@
     "one": "{n} öğe",
     "other": "{n} öğe"
   },
+  "{n} item could not be deleted even with administrator permission.": {
+    "one": "{n} öğe yönetici izniyle bile silinemedi.",
+    "other": "{n} öğe yönetici izniyle bile silinemedi."
+  },
   "{n} minute": {
     "one": "{n} dakika",
     "other": "{n} dakika"
@@ -603,5 +645,9 @@
   "{n} second": {
     "one": "{n} saniye",
     "other": "{n} saniye"
+  },
+  "{n} was skipped.": {
+    "one": "{n} öğe atlandı.",
+    "other": "{n} öğe atlandı."
   }
 }

@@ -4,6 +4,7 @@
   "@translated-by": "machine draft 2026-11-03, reviewed by -",
   "\"{0}\" already exists in \"{1}\".": "„{0}” már létezik itt: „{1}”.",
   "\"{0}\" could not be copied.": "„{0}” nem másolható.",
+  "\"{0}\" could not be deleted even with administrator permission.": "„{0}” rendszergazdai engedéllyel sem törölhető.",
   "\"{0}\" could not be deleted.": "„{0}” nem törölhető.",
   "\"{0}\" could not be moved to the Recycle Bin.": "„{0}” nem helyezhető át a Lomtárba.",
   "\"{0}\" could not be moved to the Trash.": "„{0}” nem helyezhető át a Lomtárba.",
@@ -35,6 +36,10 @@
   "Add": "Hozzáadás",
   "Add to Dictionary": "Hozzáadás a szótárhoz",
   "Address": "Cím",
+  "Administrator permission was not granted; {n} item left in place.": {
+    "one": "A rendszergazdai engedély nem lett megadva; {n} elem a helyén maradt.",
+    "other": "A rendszergazdai engedély nem lett megadva; {n} elem a helyén maradt."
+  },
   "age|newer": "újabb",
   "age|older": "régebbi",
   "age|same": "azonos",
@@ -111,10 +116,16 @@
   "Context": "Környezet",
   "Continue": "Folytatás",
   "Copied to the clipboard": "Vágólapra másolva",
+  "Copied {0} of {n} item.": {
+    "one": "{n} elemből {0} átmásolva.",
+    "other": "{n} elemből {0} átmásolva."
+  },
   "Copy": "Másolás",
   "Copy \"{0}\" into \"{1}\"?": "„{0}” másolása ide: „{1}”?",
   "Copy files": "Fájlok másolása",
+  "Copy finished": "Másolás befejezve",
   "Copy path": "Elérési út másolása",
+  "Copy skipped items again": "Kihagyott elemek ismételt másolása",
   "Copy {n} item into \"{0}\"?": {
     "one": "{n} elem másolása ide: „{0}”?",
     "other": "{n} elem másolása ide: „{0}”?"
@@ -122,6 +133,7 @@
   "Copy: a file could not be copied": "Másolás: egy fájl nem másolható",
   "Copy: a folder could not be copied": "Másolás: egy mappa nem másolható",
   "Copy: the name is already taken": "Másolás: a név már foglalt",
+  "Could not delete as administrator: {0}": "Nem sikerült a törlés rendszergazdaként: {0}",
   "Could not read {0}": "Nem sikerült beolvasni: {0}",
   "Could not save {0}": "Nem sikerült menteni: {0}",
   "Could not write {0}": "Nem sikerült írni: {0}",
@@ -141,7 +153,9 @@
   "Delete anyway": "Törlés mindenképp",
   "Delete anyway removes the protection first.": "A „Törlés mindenképp” először eltávolítja a védelmet.",
   "Delete as administrator": "Törlés rendszergazdaként",
+  "Delete finished": "Törlés befejezve",
   "Delete permanently": "Végleges törlés",
+  "Delete skipped items again": "Kihagyott elemek ismételt törlése",
   "Delete {n} item?": {
     "one": "Törölni szeretne {n} elemet?",
     "other": "Törölni szeretne {n} elemet?"
@@ -158,6 +172,11 @@
   "Delete: administrator permission needed": "Törlés: rendszergazdai engedély szükséges",
   "Delete: the file is in use": "Törlés: a fájl használatban van",
   "Delete: the folder is in use": "Törlés: a mappa használatban van",
+  "Deleted {0} of {n} item.": {
+    "one": "{n} elemből {0} törölve.",
+    "other": "{n} elemből {0} törölve."
+  },
+  "Deleting as administrator is not available: {0}": "A rendszergazdaként történő törlés nem érhető el: {0}",
   "Demote to the application (from {0})": "Visszahelyezés az alkalmazásba (innen: {0})",
   "Descending": "Csökkenő",
   "Description": "Leírás",
@@ -251,6 +270,8 @@
   "Images": "Képek",
   "Import": "Importálás",
   "in": "készlet:",
+  "in use": "használatban",
+  "in use by {0}": "használja: {0}",
   "In use by:": "Használja:",
   "in {n} folder": {
     "one": "{n} mappában",
@@ -329,6 +350,8 @@
   "Move Down": "Mozgatás le",
   "Move down": "Mozgatás le",
   "Move files": "Fájlok áthelyezése",
+  "Move finished": "Áthelyezés befejezve",
+  "Move skipped items again": "Kihagyott elemek ismételt áthelyezése",
   "Move to Recycle Bin": "Áthelyezés a Lomtárba",
   "Move to Recycle Bin can be undone from the Recycle Bin. Delete permanently cannot be undone.": "Az „Áthelyezés a Lomtárba” művelet a Lomtárból visszavonható. A „Végleges törlés” művelet nem vonható vissza.",
   "Move to Trash": "Áthelyezés a Lomtárba",
@@ -342,6 +365,18 @@
   "Move: a file could not be moved": "Áthelyezés: egy fájl nem helyezhető át",
   "Move: a folder could not be moved": "Áthelyezés: egy mappa nem helyezhető át",
   "Move: the name is already taken": "Áthelyezés: a név már foglalt",
+  "Moved {0} of {n} item to the Recycle Bin.": {
+    "one": "{n} elemből {0} áthelyezve a Lomtárba.",
+    "other": "{n} elemből {0} áthelyezve a Lomtárba."
+  },
+  "Moved {0} of {n} item to the Trash.": {
+    "one": "{n} elemből {0} áthelyezve a Lomtárba.",
+    "other": "{n} elemből {0} áthelyezve a Lomtárba."
+  },
+  "Moved {0} of {n} item.": {
+    "one": "{n} elemből {0} áthelyezve.",
+    "other": "{n} elemből {0} áthelyezve."
+  },
   "Music": "Zene",
   "Name": "Név",
   "Network": "Hálózat",
@@ -463,6 +498,8 @@
   "Size:": "Méret:",
   "Skip": "Kihagyás",
   "Skip All": "Az összes kihagyása",
+  "Skipped: the name is already taken": "Kihagyva: a név már foglalt",
+  "Skipped: write-protected": "Kihagyva: írásvédett",
   "Slideshow interval": "Diavetítés időköze",
   "Slideshow transition": "Diavetítés áttűnése",
   "Sort": "Rendezés",
@@ -485,6 +522,7 @@
   "The base sets the application takes, in lookup order; tick one to take it": "Az alkalmazás által használt alapkészletek, keresési sorrendben; jelöljön be egyet a használatához",
   "The file may be locked or in use by another program. Close it there, then try again.": "Lehet, hogy a fájl zárolva van, vagy egy másik program használja. Zárja be ott, majd próbálja újra.",
   "The first {0} of {1} items:": "Az első {0} elem (összesen {1}):",
+  "The first {0} of {1} skipped items:": "{1} kihagyott elemből az első {0}:",
   "The folder may be locked or in use by another program. Close it there, then try again.": "Lehet, hogy a mappa zárolva van, vagy egy másik program használja. Zárja be ott, majd próbálja újra.",
   "The menus as they were opened, the toolbars as the program has them": "A menük a megnyitáskori állapotukban, az eszköztárak a program szerinti formájukban",
   "the read-only attribute is set": "a csak olvasható attribútum be van állítva",
@@ -596,6 +634,10 @@
     "one": "{n} elem",
     "other": "{n} elem"
   },
+  "{n} item could not be deleted even with administrator permission.": {
+    "one": "{n} elem rendszergazdai engedéllyel sem törölhető.",
+    "other": "{n} elem rendszergazdai engedéllyel sem törölhető."
+  },
   "{n} minute": {
     "one": "{n} perc",
     "other": "{n} perc"
@@ -603,5 +645,9 @@
   "{n} second": {
     "one": "{n} másodperc",
     "other": "{n} másodperc"
+  },
+  "{n} was skipped.": {
+    "one": "{n} elem kihagyva.",
+    "other": "{n} elem kihagyva."
   }
 }
