@@ -1,5 +1,6 @@
 // OS/MSWindows/UltraCanvasWindowsApplication.cpp
 // Complete Windows application implementation with all methods
+// Version: 1.11.1 - the start's log line counts the fonts read from the Windows font folder
 // Version: 1.11.0 - the Windows font folders by path (GenerateWindowsFontFoldersConfig), added
 //                  to a font set that does not read them, and a log line saying whether it does
 // Version: 1.10.0 - RegisterPlatformBundledFonts: the start's font set-up (system font folders, aliases, bundled fonts, FC font map), shared with a tool
@@ -1183,11 +1184,25 @@ namespace UltraCanvas {
                 // One line to tell from a log whether Windows' fonts are in.
                 const FcFontSet* systemSet = FcConfigGetFonts(cfg, FcSetSystem);
                 const FcFontSet* appSet = FcConfigGetFonts(cfg, FcSetApplication);
+                // How many came from the Windows font folder: named is not read.
+                const std::string folder = GetWindowsFontsFolder();
+                std::string prefix = folder + "/";
+                for (char& c : prefix) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c == '\\' ? '/' : c)));
+                int fromFolder = 0;
+                for (const FcFontSet* fonts : { systemSet, appSet }) {
+                    for (int i = 0; fonts && i < fonts->nfont; ++i) {
+                        FcChar8* file = nullptr;
+                        if (FcPatternGetString(fonts->fonts[i], FC_FILE, 0, &file) != FcResultMatch || !file) continue;
+                        std::string key = reinterpret_cast<const char*>(file);
+                        for (char& c : key) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c == '\\' ? '/' : c)));
+                        if (key.rfind(prefix, 0) == 0) ++fromFolder;
+                    }
+                }
                 debugOutput << "UltraCanvas: " << (systemSet ? systemSet->nfont : 0) << " system and "
-                            << (appSet ? appSet->nfont : 0) << " application font files; the Windows font folder ("
-                            << GetWindowsFontsFolder() << ") is "
-                            << (ConfigReadsWindowsFonts(cfg) ? "read"
-                                : systemFonts ? "NOT read" : "read when the scan ends")
+                            << (appSet ? appSet->nfont : 0) << " application font files, " << fromFolder
+                            << " of them from the Windows font folder (" << folder << "), which is "
+                            << (ConfigReadsWindowsFonts(cfg) ? "named"
+                                : systemFonts ? "NOT named" : "named when the scan ends")
                             << std::endl;
             }
 
