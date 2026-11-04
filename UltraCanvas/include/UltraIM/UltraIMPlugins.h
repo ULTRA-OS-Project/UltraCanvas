@@ -1,5 +1,7 @@
 // include/UltraIM/UltraIMPlugins.h
 // UltraIM - the provider plug-in interface and the module (DSO) host contract
+// Version: 0.1.7 - ABI 3: confirming the e-mail (by a link) and the phone (by a code), and account recovery
+//                  by a link e-mailed to the owner (FinishRecovery asks whether it was approved)
 // Version: 0.1.6 - ABI 2: the version covers the provider interface and its types, a module says
 //                  which it was built for (UltraIM_PluginAbiVersion) and the host loads only an equal one
 // Version: 0.1.5 - the account's profile (name, e-mail, phone) and its sign-in protection
@@ -284,6 +286,37 @@ public:
         if (onResult) onResult(Unsupported("sign-in protection"));
     }
 
+    // ---- Confirming the e-mail and phone; account recovery ---------------------
+    // (AccountRecovery capability.) A changed e-mail address gets a link
+    // from the service, which confirms it when opened; a changed phone number
+    // gets a code, which VerifyContact sends back. ResendContactCode asks for
+    // another link or code. SetRecoveryEnabled turns recovery on (the address
+    // confirmed) or off. On a computer without the account: StartRecovery has
+    // a link e-mailed to the account's address; FinishRecovery asks whether it
+    // was opened and approved - NeedsInput while not yet, Ok once the account
+    // is on this computer - and SignIn then signs in as usual.
+    virtual void VerifyContact(UltraIMContactChannel channel, const std::string& code, UltraIMResultCallback onResult) {
+        (void)channel; (void)code;
+        if (onResult) onResult(Unsupported("confirming an address"));
+    }
+    virtual void ResendContactCode(UltraIMContactChannel channel, UltraIMResultCallback onResult) {
+        (void)channel;
+        if (onResult) onResult(Unsupported("confirming an address"));
+    }
+    virtual void SetRecoveryEnabled(bool enabled, UltraIMResultCallback onResult) {
+        (void)enabled;
+        if (onResult) onResult(Unsupported("account recovery"));
+    }
+    virtual void StartRecovery(const std::string& server, const std::string& address,
+                               UltraIMRecoveryChallengeCallback onResult) {
+        (void)server; (void)address;
+        if (onResult) onResult(Unsupported("account recovery"), UltraIMRecoveryChallenge());
+    }
+    virtual void FinishRecovery(const UltraIMRecoveryAnswer& answer, UltraIMResultCallback onResult) {
+        (void)answer;
+        if (onResult) onResult(Unsupported("account recovery"));
+    }
+
 protected:
     static UltraIMResult Unsupported(const std::string& what) {
         return UltraIMResult::Error(UltraIMResultCode::CapabilityMissing,
@@ -317,9 +350,11 @@ protected:
 //
 // Version 1: the first modules. Version 2 (2026-11): the account profile and
 // sign-in protection, UltraIMCredentials::email - and the version check.
+// Version 3 (2026-11): the profile's verified flags and recovery state,
+// confirming the e-mail and phone, account recovery by an e-mailed link.
 // ============================================================================
 
-constexpr int ULTRAIM_PLUGIN_HOST_ABI_VERSION = 2;
+constexpr int ULTRAIM_PLUGIN_HOST_ABI_VERSION = 3;
 
 struct UltraIMPluginHost {
     int abiVersion;

@@ -3,6 +3,7 @@
 // Version: 0.1.4 - UltraIM_SetPreviewMaker, UltraIM_MakePreview
 // Version: 0.1.3 - UltraIM_SendVideo, UltraIM_DownloadAttachment
 // Version: 0.1.2 - UltraIM_ResendAuthCode
+// Version: 0.1.4 - confirming the e-mail and phone; account recovery
 // Version: 0.1.3 - a module is loaded only when UltraIM_PluginAbiVersion answers this host's version
 // Version: 0.1.2 - the account's profile and its sign-in protection
 // Version: 0.1.1 - UltraIM_FetchSharedCredentials
@@ -843,6 +844,58 @@ void UltraIM_SetSignInProtection(const std::string& providerId, const UltraIMPro
         return;
     }
     provider->SetSignInProtection(change, callback ? callback : [](const UltraIMResult&) {});
+}
+
+namespace {
+template <typename Call>
+void ForwardResult(const std::string& providerId, UltraIMResultCallback onResult, Call call) {
+    auto callback = Redispatch<UltraIMResult>(std::move(onResult));
+    ProviderPtr provider = FindProvider(providerId);
+    if (!provider) {
+        if (callback) callback(NotFound(providerId));
+        return;
+    }
+    call(*provider, callback ? callback : [](const UltraIMResult&) {});
+}
+} // namespace
+
+void UltraIM_VerifyContact(const std::string& providerId, UltraIMContactChannel channel, const std::string& code,
+                           UltraIMResultCallback onResult) {
+    ForwardResult(providerId, std::move(onResult), [&](IUltraIMProviderPlugin& p, UltraIMResultCallback cb) {
+        p.VerifyContact(channel, code, std::move(cb));
+    });
+}
+
+void UltraIM_ResendContactCode(const std::string& providerId, UltraIMContactChannel channel,
+                               UltraIMResultCallback onResult) {
+    ForwardResult(providerId, std::move(onResult), [&](IUltraIMProviderPlugin& p, UltraIMResultCallback cb) {
+        p.ResendContactCode(channel, std::move(cb));
+    });
+}
+
+void UltraIM_SetRecoveryEnabled(const std::string& providerId, bool enabled, UltraIMResultCallback onResult) {
+    ForwardResult(providerId, std::move(onResult), [&](IUltraIMProviderPlugin& p, UltraIMResultCallback cb) {
+        p.SetRecoveryEnabled(enabled, std::move(cb));
+    });
+}
+
+void UltraIM_StartRecovery(const std::string& providerId, const std::string& server, const std::string& address,
+                           UltraIMRecoveryChallengeCallback onResult) {
+    auto callback = Redispatch<UltraIMResult, UltraIMRecoveryChallenge>(std::move(onResult));
+    ProviderPtr provider = FindProvider(providerId);
+    if (!provider) {
+        if (callback) callback(NotFound(providerId), UltraIMRecoveryChallenge());
+        return;
+    }
+    provider->StartRecovery(server, address,
+                            callback ? callback : [](const UltraIMResult&, const UltraIMRecoveryChallenge&) {});
+}
+
+void UltraIM_FinishRecovery(const std::string& providerId, const UltraIMRecoveryAnswer& answer,
+                            UltraIMResultCallback onResult) {
+    ForwardResult(providerId, std::move(onResult), [&](IUltraIMProviderPlugin& p, UltraIMResultCallback cb) {
+        p.FinishRecovery(answer, std::move(cb));
+    });
 }
 
 // ============================================================================

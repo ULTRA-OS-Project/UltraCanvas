@@ -22,7 +22,9 @@ The first ChatCube draft, which this replaces, is kept under
    (`Server/ChatCubeRelay`), and press **Create my ChatCube ID**. The e-mail
    address and the phone number are how you recover the account: they are
    kept in the encrypted key vault on your computer and on the relay, for you
-   alone - your contacts see your name, never these. *Signing in on this
+   alone - your contacts see your name, never these. The relay e-mails you a
+   link to confirm the address right away: open it, and the page that opens
+   says it is confirmed. *Signing in on this
    computer* chooses what a start asks for:
    - **No password** - the start signs in by itself (the key is still
      encrypted on disk, with a key kept beside it);
@@ -50,6 +52,27 @@ The first ChatCube draft, which this replaces, is kept under
    code - UltraAuthenticator's *Add account* scans it from the screen, a
    phone's authenticator app from across the desk, or type the key shown
    beside it - proven with the first code it shows.
+
+   **Getting your ID back.** Your relay confirms the e-mail address by the
+   link it e-mails there (under the field in Edit profile: *Check* once you
+   have opened it, *Send again* for a new one) and, if it can send SMS, the
+   phone number by a code it texts - type it under that field. With the
+   address confirmed, *Turn recovery on* (under *Getting this ID back*) lets
+   the relay keep a copy of your key. On another computer, *Recover my
+   ChatCube ID* under the sign-in card asks for the relay and your e-mail
+   address, and the relay e-mails a link there. Open it, press *Yes - sign
+   that computer in as my ChatCube ID* on the page, and ChatCube - which
+   has been waiting - signs in as you by itself: same ID, same contacts. You
+   get an e-mail whenever it happens. The window says the price plainly:
+   whoever runs the relay can read that copy, and whoever can read your
+   e-mail can recover your ID - so turn it on only with a relay you trust,
+   and keep the mailbox safe. Without it, an ID lost with its computer
+   cannot come back (keep the data folder in your backups). The relay must
+   be set up for it - an SMTP server and a recovery key
+   ([`Server/ChatCubeRelay`](../../Server/ChatCubeRelay/README.md), *Account
+   recovery*); one that is not says so. A recovered ID starts with
+   no password and no authenticator on the new computer: those are each
+   computer's to choose.
 3. **Copy** your ID and send it to the people who should reach you; paste
    theirs into *Contact's ChatCube ID* and press **Add**. People on your
    network are listed under *On this network* - **Add** takes them over

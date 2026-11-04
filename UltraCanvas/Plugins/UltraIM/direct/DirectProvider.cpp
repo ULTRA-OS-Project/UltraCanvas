@@ -1,5 +1,6 @@
 // Plugins/UltraIM/direct/DirectProvider.cpp
 // ChatCube Direct - the ULTRA OS native messenger as an UltraIM provider
+// Version: 0.1.5 - the e-mail and phone confirmed by the relay's codes; account recovery
 // Version: 0.1.4 - the account's profile (name, e-mail, phone); a password and/or an authenticator code to sign in
 // Version: 0.1.3 - a file that is a picture (an SVG drawing) goes with a preview picture, as a photo does
 // Version: 0.1.2 - pictures, videos and files sent and received in parts; DownloadAttachment
@@ -161,7 +162,7 @@ UltraIMCapabilityFlags DirectProvider::GetCapabilities() const {
     return F::TextMessages | F::GroupChats | F::ReadReceipts | F::TypingIndicator | F::E2EEncryption |
            F::OfflineMessages | F::PeerToPeer | F::ReplyToMessage | F::AnonymousLogin | F::AddContact |
            F::CreateGroup | F::VoiceCalls | F::VideoCalls | F::ImageMessages | F::FileTransfer |
-           F::AccountProfile | F::SignInProtection;
+           F::AccountProfile | F::SignInProtection | F::AccountRecovery;
 }
 
 UltraIMResult DirectProvider::Initialize(const UltraIMConfig& config, UltraIMEventSink sink) {
@@ -250,6 +251,10 @@ void DirectProvider::Shutdown() {
         wake_.notify_all();
     }
     if (worker_.joinable()) worker_.join();
+    if (recoveryRelay_) {
+        recoveryRelay_->Stop();
+        recoveryRelay_.reset();
+    }
     SignOut();
     if (storeOpen_) {
         store_.Close();
@@ -651,7 +656,7 @@ void DirectProvider::Enqueue(std::function<void()> job) {
 
 void DirectProvider::SendProfileToRelay(std::function<void(const UltraIMResult&)> onDone) {
     std::shared_ptr<RelayClient> relay = Relay();
-    if (!relay || state_ != UltraIMConnectionState::Connected) {
+    if (!relay || !HasRelaySession()) {
         if (onDone) onDone(UltraIMResult::Ok());     // the next sign-in sends it
         return;
     }
@@ -681,7 +686,215 @@ void DirectProvider::FetchAccountProfile(UltraIMAccountProfileCallback onResult)
         profile.email = email_;
         profile.phoneNumber = phone_;
     }
-    onResult(UltraIMResult::Ok(), profile);
+    // What only the relay knows: whether the codes came back, and recovery.
+    std::shared_ptr<RelayClient> relay = Relay();
+    if (!relay || !HasRelaySession()) {
+        onResult(UltraIMResult::Ok(), profile);
+        return;
+    }
+    relay->Request("GET", "/v1/profile", nullptr, [onResult, profile](const RelayResponse& r) mutable {
+        if (r.Ok()) {
+            profile.emailVerified = r.body["email_verified"].GetBoolean();
+            profile.phoneVerified = r.body["phone_verified"].GetBoolean();
+            profile.recoveryAvailable = r.body["recovery_available"].GetBoolean();
+            profile.phoneCodesAvailable = r.body["phone_codes_available"].GetBoolean();
+            profile.recoveryEnabled = r.body["recovery_enabled"].GetBoolean();
+        }
+        onResult(UltraIMResult::Ok(), profile);
+    });
+}
+
+// ============================================================================
+// CONFIRMING THE E-MAIL AND PHONE; ACCOUNT RECOVERY
+// ============================================================================
+
+namespace {
+const char* ChannelName(UltraIMContactChannel channel) {
+    return channel == UltraIMContactChannel::Email ? "email" : "phone";
+}
+} // namespace
+
+void DirectProvider::VerifyContact(UltraIMContactChannel channel, const std::string& code,
+                                   UltraIMResultCallback onResult) {
+    auto finish = [onResult](const UltraIMResult& r) { if (onResult) onResult(r); };
+    std::shared_ptr<RelayClient> relay = Relay();
+    if (!relay || !HasRelaySession()) {
+        finish(UltraIMResult::Error(UltraIMResultCode::NotConnected, "The relay is not connected"));
+        return;
+    }
+    JSONValue body = JSONValue::MakeObject();
+    body.Set("channel", JSONValue(ChannelName(channel)));
+    body.Set("code", JSONValue(Trimmed(code)));
+    relay->Request("POST", "/v1/profile/verify", &body, [finish](const RelayResponse& r) {
+        finish(r.Ok() ? UltraIMResult::Ok() : RelayError(r, UltraIMResultCode::AuthFailed));
+    });
+}
+
+void DirectProvider::ResendContactCode(UltraIMContactChannel channel, UltraIMResultCallback onResult) {
+    auto finish = [onResult](const UltraIMResult& r) { if (onResult) onResult(r); };
+    std::shared_ptr<RelayClient> relay = Relay();
+    if (!relay || !HasRelaySession()) {
+        finish(UltraIMResult::Error(UltraIMResultCode::NotConnected, "The relay is not connected"));
+        return;
+    }
+    JSONValue body = JSONValue::MakeObject();
+    body.Set("channel", JSONValue(ChannelName(channel)));
+    relay->Request("POST", "/v1/profile/verify/resend", &body, [finish](const RelayResponse& r) {
+        finish(r.Ok() ? UltraIMResult::Ok() : RelayError(r, UltraIMResultCode::InvalidArgument));
+    });
+}
+
+void DirectProvider::SetRecoveryEnabled(bool enabled, UltraIMResultCallback onResult) {
+    auto finish = [onResult](const UltraIMResult& r) { if (onResult) onResult(r); };
+    std::shared_ptr<RelayClient> relay = Relay();
+    if (!identity_.IsValid() || !relay || !HasRelaySession()) {
+        finish(UltraIMResult::Error(UltraIMResultCode::NotConnected, "The relay is not connected"));
+        return;
+    }
+    if (!enabled) {
+        relay->Request("DELETE", "/v1/recovery/escrow", nullptr, [finish](const RelayResponse& r) {
+            finish(r.Ok() ? UltraIMResult::Ok() : RelayError(r, UltraIMResultCode::InvalidArgument));
+        });
+        return;
+    }
+    // The relay keeps this copy encrypted with its own recovery key - and can
+    // read it: that is what turning recovery on means (README).
+    std::string secret = SecretToText(identity_.signSecret);
+    JSONValue body = JSONValue::MakeObject();
+    body.Set("secret_key", JSONValue(secret));
+    Wipe(secret);
+    relay->Request("PUT", "/v1/recovery/escrow", &body, [finish](const RelayResponse& r) {
+        finish(r.Ok() ? UltraIMResult::Ok() : RelayError(r, UltraIMResultCode::InvalidArgument));
+    });
+}
+
+// Signed in to the relay: a session token, whether or not the socket is up
+// right now (it reconnects by itself; REST calls do not need it).
+bool DirectProvider::HasRelaySession() const {
+    const UltraIMConnectionState state = state_.load();
+    return state == UltraIMConnectionState::Connected || state == UltraIMConnectionState::Reconnecting;
+}
+
+bool DirectProvider::HasIdentityHere() {
+    if (identity_.IsValid() || vault_.NeedsPassphrase()) return true;
+    bool has = false;
+    vault_.Use([&](UltraVault::DeviceKeyVault& v) { has = v.Has("identity"); });
+    return has;
+}
+
+void DirectProvider::StartRecovery(const std::string& server, const std::string& address,
+                                   UltraIMRecoveryChallengeCallback onResult) {
+    auto finish = [onResult](const UltraIMResult& r, const UltraIMRecoveryChallenge& c) {
+        if (onResult) onResult(r, c);
+    };
+    if (HasIdentityHere()) {
+        finish(UltraIMResult::Error(UltraIMResultCode::InvalidArgument,
+                                    "This computer has a ChatCube ID already - recovery puts one on a computer "
+                                    "without one"), {});
+        return;
+    }
+    const std::string url = Trimmed(server).empty() ? store_.GetSetting("relay_url") : Trimmed(server);
+    if (url.empty()) {
+        finish(UltraIMResult::Error(UltraIMResultCode::InvalidArgument,
+                                    "Recovery goes through your relay - type its address"), {});
+        return;
+    }
+    if (Trimmed(address).empty()) {
+        finish(UltraIMResult::Error(UltraIMResultCode::InvalidArgument,
+                                    "Type the e-mail address of your ID"), {});
+        return;
+    }
+    // A client of its own: there is no session yet. The one before is stopped
+    // here, on the caller's thread, never inside its own callback.
+    if (recoveryRelay_) recoveryRelay_->Stop();
+    recoveryRelay_ = std::make_shared<RelayClient>();
+    recoveryRelay_->SetBaseUrl(url);
+    JSONValue body = JSONValue::MakeObject();
+    body.Set("address", JSONValue(Trimmed(address)));
+    recoveryId_.clear();
+    Wipe(recoveryPollToken_);
+    recoveryRelay_->Request("POST", "/v1/recovery/start", &body, [this, finish](const RelayResponse& r) {
+        if (!r.Ok()) {
+            if (r.status == 503)
+                return finish(UltraIMResult::Error(UltraIMResultCode::CapabilityMissing,
+                                                   "This relay offers no account recovery"), {});
+            return finish(RelayError(r, UltraIMResultCode::InvalidArgument), {});
+        }
+        UltraIMRecoveryChallenge challenge;
+        challenge.recoveryId = r.body["recovery_id"].GetString();
+        challenge.expiresInSeconds = static_cast<int>(r.body["expires_in"].GetInteger());
+        recoveryId_ = challenge.recoveryId;
+        recoveryPollToken_ = r.body["poll_token"].GetString();
+        finish(UltraIMResult::Ok(), challenge);
+    });
+}
+
+void DirectProvider::FinishRecovery(const UltraIMRecoveryAnswer& answer, UltraIMResultCallback onResult) {
+    auto finish = [onResult](const UltraIMResult& r) { if (onResult) onResult(r); };
+    if (HasIdentityHere()) {
+        finish(UltraIMResult::Error(UltraIMResultCode::InvalidArgument, "This computer has a ChatCube ID already"));
+        return;
+    }
+    // Only the recovery this computer started (the client it made, which has
+    // followed any redirect, and the poll token the relay gave it).
+    if (!recoveryRelay_ || recoveryPollToken_.empty() || answer.recoveryId != recoveryId_) {
+        finish(UltraIMResult::Error(UltraIMResultCode::InvalidArgument, "Start the recovery first"));
+        return;
+    }
+    RelayClient* relay = recoveryRelay_.get();      // its callbacks run before Stop() returns
+    JSONValue body = JSONValue::MakeObject();
+    body.Set("recovery_id", JSONValue(recoveryId_));
+    body.Set("poll_token", JSONValue(recoveryPollToken_));
+    relay->Request("POST", "/v1/recovery/poll", &body, [this, relay, finish](const RelayResponse& r) {
+        if (r.status == 202)
+            return finish(UltraIMResult::Error(UltraIMResultCode::NeedsInput,
+                                               "Open the link we e-mailed you and confirm there"));
+        if (!r.Ok()) {
+            if (r.status == 410) {
+                recoveryId_.clear();
+                Wipe(recoveryPollToken_);
+                return finish(UltraIMResult::Error(UltraIMResultCode::AuthFailed,
+                                                   "The recovery has expired - start again"));
+            }
+            return finish(RelayError(r, UltraIMResultCode::NetworkError));
+        }
+        recoveryId_.clear();
+        Wipe(recoveryPollToken_);
+        std::string secret = r.body["secret_key"].GetString();
+        UltraCryptSecureBuffer buffer = SecretFromText(secret);
+        Wipe(secret);
+        Identity recovered;
+        std::string error;
+        if (buffer.GetSize() != 64 || !IdentityFromSecret(buffer, recovered, error) ||
+            recovered.userId != r.body["user_id"].GetString()) {
+            return finish(UltraIMResult::Error(UltraIMResultCode::PluginError,
+                                               "The relay gave back a key that is not this ID's"));
+        }
+        if (HasIdentityHere())
+            return finish(UltraIMResult::Error(UltraIMResultCode::InvalidArgument,
+                                               "This computer has a ChatCube ID already"));
+        // Stored as if it had been made here: the device key opens the vault,
+        // no password and no code yet - those are this computer's to choose.
+        identity_ = std::move(recovered);
+        if (!SaveIdentity()) {
+            identity_ = Identity();
+            return finish(UltraIMResult::Error(UltraIMResultCode::PluginError, "The ID could not be stored"));
+        }
+        {
+            std::lock_guard<std::mutex> lock(accountMutex_);
+            email_ = r.body["email"].GetString();
+            phone_ = r.body["phone"].GetString();
+            vaultPassword_.clear();
+            codeAccepted_ = true;
+        }
+        SaveProfile();
+        displayName_ = r.body["display_name"].GetString();
+        store_.SetSetting("display_name", displayName_);
+        store_.SetSetting("relay_url", relay->GetBaseUrl());
+        store_.SetSetting("signin_code", "0");
+        store_.SetSetting("totp_last_step", "0");
+        finish(UltraIMResult::Ok());
+    });
 }
 
 void DirectProvider::UpdateAccountProfile(const UltraIMAccountProfile& profile, UltraIMResultCallback onResult) {

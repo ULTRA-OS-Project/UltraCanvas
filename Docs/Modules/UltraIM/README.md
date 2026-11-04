@@ -181,6 +181,26 @@ wrong one) with the provider's `authStep` `Password`
 (`credentials.password`), then `Code` (`credentials.otpCode`), an
 `AuthStepChange` event each, the hint in `authHint`.
 
+**Confirming the e-mail and phone; account recovery** (the `AccountRecovery`
+capability). `UltraIMAccountProfile` also says what the service says:
+`emailVerified` (the link e-mailed there was opened) / `phoneVerified` (the
+code texted there came back), `recoveryAvailable`, `phoneCodesAvailable`
+and `recoveryEnabled`. A changed address gets a link that confirms it when
+opened, a changed number a code: `UltraIM_VerifyContact(provider,
+UltraIMContactChannel::Phone, code, cb)` sends the code back,
+`UltraIM_ResendContactCode(provider, channel, cb)` asks for another link or
+code. `UltraIM_SetRecoveryEnabled(provider, on, cb)` turns recovery on (the
+address confirmed) or off. On a computer without the account,
+`UltraIM_StartRecovery(provider, server, address, cb)` has a link e-mailed
+to the account's address - the `UltraIMRecoveryChallenge` looks the same for
+an address the service does not know - and
+`UltraIM_FinishRecovery(provider, {server, recoveryId}, cb)` asks whether
+the owner opened it and approved: `NeedsInput` while not yet (ask again in a
+few seconds), `AuthFailed` once it expired, `Ok` with the account on this
+computer; an ordinary `UltraIM_SignIn` follows. Only the computer that
+started the recovery can finish it. A computer that has an account refuses
+both.
+
 End-to-end encrypted conversations say so (`UltraIMConversation::isEncrypted`).
 Their keys travel as a passphrase-protected text:
 `UltraIM_ExportEncryptionKeys(provider, passphrase, cb)` hands it back, to
@@ -231,8 +251,9 @@ as it was. A change that is not part of the contract - a free inline
 function, a constant, the text of a default body's message - is recorded
 with `--update --no-abi-change "why"`. Version 1 was the first modules;
 version 2 (2026-11) added the account profile and the sign-in protection,
-`UltraIMCredentials::email`, and the check itself - versions 1 had grown
-three interface methods with no bump.
+`UltraIMCredentials::email`, and the check itself (version 1 had grown
+three interface methods with no bump); version 3 confirming the e-mail (by
+a link) and the phone (by a code), and account recovery by an e-mailed link.
 
 ## Provider: ChatCube Direct
 
@@ -306,6 +327,19 @@ server: [`Server/ChatCubeRelay`](../../../Server/ChatCubeRelay/README.md).
   starts. The code is a gate ChatCube keeps, not encryption: without a
   password, whoever can read the files and the device key can read the
   identity - so the strongest choice is both.
+- **Recovery.** The relay e-mails the link that confirms the address and
+  texts and checks the code that confirms the phone. Recovery on sends the identity's 64-byte secret key to the relay
+  (`PUT /v1/recovery/escrow`), which keeps it encrypted with its own
+  recovery key - so the relay operator can read it, which is the price the
+  user agrees to; off deletes it. Recovery talks to the relay with a client
+  of its own (there is no session yet): `POST /v1/recovery/start` answers a
+  poll token the provider keeps, `POST /v1/recovery/poll` with it answers 202
+  until the e-mailed link is approved and then the key. The provider checks
+  that the key returned is the
+  ID's (the user id is the hash of its public key), and stores it with the
+  device key as if it had been made on that computer, with the relay, name,
+  e-mail and phone - no password and no authenticator, which are per
+  computer. The account's REST calls need the relay session, not its socket.
 - **For the Telegram provider:** `FetchSharedCredentials("telegram")` asks
   the relay for the Telegram application's API ID and hash
   (`GET /v1/telegram-credentials`, from the relay's
