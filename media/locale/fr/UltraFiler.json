@@ -3,9 +3,13 @@
   "@translated-by": "machine draft 2026-11-04, reviewed by -",
   "\"Show it in the preview\" keeps the file inside UltraFiler whenever it can show it - pictures, documents, spreadsheets, 3D models, e-books, fonts, video, audio and text - which is faster than starting a program for a look at a file.": "« Afficher dans l'aperçu » garde le fichier dans UltraFiler chaque fois qu'il peut l'afficher - images, documents, feuilles de calcul, modèles 3D, livres numériques, polices, vidéo, audio et texte -, ce qui est plus rapide que de lancer un programme pour jeter un coup d'œil à un fichier.",
   "\"Start the registered program\" is what a double-click does in Explorer and the Finder: the file opens in the program its type is assigned to, and UltraFiler stays as it is.": "« Lancer le programme associé » fait ce que fait un double-clic dans Explorer et le Finder : le fichier s'ouvre dans le programme auquel son type est associé, et UltraFiler reste tel quel.",
+  "\"{0}\" is being downloaded from {1}.": "« {0} » est en cours de téléchargement depuis {1}.",
+  "\"{0}\" is being uploaded to {1}.": "« {0} » est en cours de téléversement vers {1}.",
   "\"{0}\" is no longer connected": "« {0} » n'est plus connecté",
+  "(stopped at {0})": "(arrêt à {0})",
   "5 s clip": "Extrait de 5 s",
-  "A download is": "Un téléchargement est",
+  "A download is still running — quit anyway?": "Un téléchargement est toujours en cours — quitter quand même ?",
+  "A download is still waiting — quit anyway?": "Un téléchargement est toujours en attente — quitter quand même ?",
   "a file": "un fichier",
   "A file cannot replace a folder. ": "Un fichier ne peut pas remplacer un dossier. ",
   "A file merely open elsewhere - which on this kind of system blocks nothing - is marked O instead, and wears no padlock.": "Un fichier simplement ouvert ailleurs - ce qui, sur ce type de système, ne bloque rien - est marqué O à la place, et ne porte pas de cadenas.",
@@ -29,7 +33,12 @@
   "Add a drive: an FTP / SFTP server, a cloud account or a RAM disc": "Ajouter un lecteur : un serveur FTP / SFTP, un compte cloud ou un disque RAM",
   "Add an FTP / SFTP drive": "Ajouter un lecteur FTP / SFTP",
   "an entry": "un élément",
-  "An upload is": "Un téléversement est",
+  "An upload is still running — quit anyway?": "Un téléversement est toujours en cours — quitter quand même ?",
+  "An upload is still waiting — quit anyway?": "Un téléversement est toujours en attente — quitter quand même ?",
+  "and {n} more": {
+    "one": "et {n} autre",
+    "other": "et {n} autres"
+  },
   "Any other file, when this system has a program registered for that kind of file:": "Tout autre fichier, lorsque ce système a un programme enregistré pour ce type de fichier :",
   "Applied to {n} item.": {
     "one": "Appliqué à {n} élément.",
@@ -186,6 +195,7 @@
   "In memory: not available.": "En mémoire : non disponible.",
   "In the thumbnail views, show the extension on the tile:": "Dans les vues en vignettes, afficher l'extension sur la tuile :",
   "In use:": "En cours d'utilisation :",
+  "in {0}": "dans {0}",
   "Installing {0} — first launch prepares its Windows environment, this can take a minute…": "Installation de {0} — le premier lancement prépare son environnement Windows, cela peut prendre une minute…",
   "Installing {0}…": "Installation de {0}…",
   "It names: {0}": "Il désigne : {0}",
@@ -209,6 +219,7 @@
   "Looking in {0} for names already taken...": "Recherche dans {0} des noms déjà utilisés…",
   "Mark files that are in use": "Marquer les fichiers en cours d'utilisation",
   "Match case": "Respecter la casse",
+  "match case": "respecter la casse",
   "Maximum 2 rows": "2 lignes au maximum",
   "Maximum 3 rows": "3 lignes au maximum",
   "Maximum 4 rows": "4 lignes au maximum",
@@ -218,7 +229,8 @@
   "Merging a folder puts its entries into the folder that is there and asks about any name that is taken inside it; Replace deletes the existing folder first. Until the progress window opens, the pointer shows that the work is under way.": "Fusionner un dossier place ses entrées dans le dossier existant et demande quoi faire pour chaque nom déjà utilisé à l'intérieur ; « Remplacer » supprime d'abord le dossier existant. Jusqu'à l'ouverture de la fenêtre de progression, le pointeur indique que le travail est en cours.",
   "Message log": "Journal des messages",
   "Modern - each tab a capsule floating in the strip: the open one white with a blue outline, the others plain text until the pointer is over them": "Moderne - chaque onglet est une capsule flottant dans la barre : l'onglet ouvert en blanc avec un contour bleu, les autres en texte simple jusqu'à ce que le pointeur les survole",
-  "Moving files to the {0}": "Déplacer des fichiers vers la {0}",
+  "Moving files to the Recycle Bin": "Déplacer des fichiers vers la Corbeille",
+  "Moving files to the Trash": "Déplacer des fichiers vers la corbeille",
   "Moving files, by drag & drop or with Cut and Paste": "Déplacer des fichiers, par glisser-déposer ou avec Couper et Coller",
   "name for the new environment": "nom du nouvel environnement",
   "Name:": "Nom :",
@@ -297,11 +309,11 @@
   "Saved to {0}": "Enregistré dans {0}",
   "Scan sub folder": "Analyser les sous-dossiers",
   "Search every sub folder of this folder (Enter)": "Rechercher dans tous les sous-dossiers de ce dossier (Entrée)",
-  "Search for \"": "Recherche de \"",
-  "Searching \"": "Recherche en cours de \"",
+  "Search for \"{0}\"{1} stopped": "Recherche de « {0} »{1} arrêtée",
   "Searching \"{0}\" - {1}, {2}": "Recherche de « {0} » - {1}, {2}",
-  "Searching files for the text \"": "Recherche dans les fichiers du texte \"",
+  "Searching \"{0}\"{1} ...": "Recherche en cours de « {0} »{1}…",
   "Searching files for the text \"{0}\"{1} - {2}, {3}": "Recherche dans les fichiers du texte « {0} »{1} - {2}, {3}",
+  "Searching files for the text \"{0}\"{1} ...": "Recherche dans les fichiers du texte « {0} »{1}…",
   "Select the command line application": "Sélectionner l'application en ligne de commande",
   "Selected folder colour": "Couleur du dossier sélectionné",
   "Selected folder colour:": "Couleur du dossier sélectionné :",
@@ -342,7 +354,7 @@
   "TAR": "TAR",
   "Test": "Tester",
   "Text files": "Fichiers texte",
-  "Text search for \"": "Recherche du texte \"",
+  "Text search for \"{0}\"{1} stopped": "Recherche du texte « {0} »{1} arrêtée",
   "The change shows at once on the open window's tab strip. Whichever style is chosen, the tabs behave the same: click to switch, the X or a middle click to close, drag to reorder, and the + at the end opens another tab.": "La modification apparaît immédiatement dans la barre d'onglets de la fenêtre ouverte. Quel que soit le style choisi, les onglets se comportent de la même façon : cliquer pour changer d'onglet, le X ou un clic du milieu pour fermer, glisser pour réordonner, et le + à la fin ouvre un autre onglet.",
   "The current folder opens the tab on the folder the active tab is showing, so the work carries on where it is; the Home folder opens every new tab on the same starting point instead. Computer opens the Computer page - the drives with their free space, Home and the cloud folders - with the Home folder behind it, so a tab opened that way still has a folder to show once a drive or folder is picked.": "Le dossier actuel ouvre l'onglet sur le dossier qu'affiche l'onglet actif, pour que le travail continue là où il en est ; le dossier personnel ouvre au contraire chaque nouvel onglet sur le même point de départ. Ordinateur ouvre la page Ordinateur - les lecteurs avec leur espace libre, le dossier personnel et les dossiers cloud - avec le dossier personnel derrière, si bien qu'un onglet ouvert ainsi a toujours un dossier à afficher une fois un lecteur ou un dossier choisi.",
   "The disk cache looks after its own size: a thumbnail not used for {0} days is deleted when UltraFiler next starts, so a folder you keep visiting keeps its thumbnails and one you opened once pays for itself and then goes away. Nothing here can show an out-of-date picture - a file's size and date are stored with its thumbnail, so a file that has changed is read again.": "Le cache disque gère sa propre taille : une vignette inutilisée depuis {0} jours est supprimée au prochain démarrage d'UltraFiler, si bien qu'un dossier que vous visitez souvent garde ses vignettes et qu'un dossier ouvert une seule fois se rentabilise puis disparaît. Rien ici ne peut afficher une image périmée - la taille et la date d'un fichier sont enregistrées avec sa vignette, si bien qu'un fichier modifié est relu.",
@@ -385,10 +397,12 @@
   "Use system default": "Utiliser la valeur par défaut du système",
   "Video": "Vidéo",
   "Waiting after it: ": "Ensuite en attente : ",
+  "Waiting: ": "En attente : ",
   "What is on screen is being read again and goes back into the cache as it lands - press Refresh to see where it settles.": "Ce qui est à l'écran est relu et revient dans le cache au fur et à mesure - appuyez sur Actualiser pour voir où cela se stabilise.",
   "What the \"+\" at the end of the tab strip opens:": "Ce qu'ouvre le « + » au bout de la barre d'onglets :",
   "What the Home folder shows, in the folder tree and in the file display:": "Ce que montre le dossier personnel, dans l'arborescence des dossiers et dans la vue des fichiers :",
   "What UltraFiler keeps so a folder opens without being read again:": "Ce qu'UltraFiler conserve pour qu'un dossier s'ouvre sans être relu :",
+  "What was sent is removed from {0} the next time you use it.": "Ce qui a déjà été envoyé sera supprimé de {0} lors de sa prochaine utilisation.",
   "Whatever is chosen here, Ctrl while dropping always copies and Shift always moves.": "Quel que soit le choix ici, Ctrl pendant le dépôt copie toujours et Shift déplace toujours.",
   "When a file cannot be copied, moved or deleted:": "Lorsqu'un fichier ne peut pas être copié, déplacé ou supprimé :",
   "When a folder is pasted over a folder:": "Lorsqu'un dossier est collé sur un dossier :",
@@ -409,9 +423,25 @@
   "{0} - not supported by this build": "{0} - non pris en charge par cette version",
   "{0} min": "{0} min",
   "{0}, {1} (room for {2})": "{0}, {1} (place pour {2})",
+  "{n} download is still running or waiting — quit anyway?": {
+    "one": "{n} téléchargement est toujours en cours ou en attente — quitter quand même ?",
+    "other": "{n} téléchargements sont toujours en cours ou en attente — quitter quand même ?"
+  },
+  "{n} download is still running — quit anyway?": {
+    "one": "{n} téléchargement est toujours en cours — quitter quand même ?",
+    "other": "{n} téléchargements sont toujours en cours — quitter quand même ?"
+  },
+  "{n} download is still waiting — quit anyway?": {
+    "one": "{n} téléchargement est toujours en attente — quitter quand même ?",
+    "other": "{n} téléchargements sont toujours en attente — quitter quand même ?"
+  },
   "{n} entry": {
     "one": "{n} entrée",
     "other": "{n} entrées"
+  },
+  "{n} file contains \"{0}\"{1} - {2}": {
+    "one": "{n} fichier contient « {0} »{1} - {2}",
+    "other": "{n} fichiers contiennent « {0} »{1} - {2}"
   },
   "{n} file found": {
     "one": "{n} fichier trouvé",
@@ -420,6 +450,10 @@
   "{n} file read": {
     "one": "{n} fichier lu",
     "other": "{n} fichiers lus"
+  },
+  "{n} file read in {0}": {
+    "one": "{n} fichier lu dans {0}",
+    "other": "{n} fichiers lus dans {0}"
   },
   "{n} folder scanned": {
     "one": "{n} dossier analysé",
@@ -437,6 +471,10 @@
     "one": "{n} résultat",
     "other": "{n} résultats"
   },
+  "{n} result for \"{0}\" in {1}": {
+    "one": "{n} résultat pour « {0} » dans {1}",
+    "other": "{n} résultats pour « {0} » dans {1}"
+  },
   "{n} shared folder": {
     "one": "{n} dossier partagé",
     "other": "{n} dossiers partagés"
@@ -452,5 +490,29 @@
   "{n} tile": {
     "one": "{n} tuile",
     "other": "{n} tuiles"
+  },
+  "{n} transfer is still running or waiting — quit anyway?": {
+    "one": "{n} transfert est toujours en cours ou en attente — quitter quand même ?",
+    "other": "{n} transferts sont toujours en cours ou en attente — quitter quand même ?"
+  },
+  "{n} transfer is still running — quit anyway?": {
+    "one": "{n} transfert est toujours en cours — quitter quand même ?",
+    "other": "{n} transferts sont toujours en cours — quitter quand même ?"
+  },
+  "{n} transfer is still waiting — quit anyway?": {
+    "one": "{n} transfert est toujours en attente — quitter quand même ?",
+    "other": "{n} transferts sont toujours en attente — quitter quand même ?"
+  },
+  "{n} upload is still running or waiting — quit anyway?": {
+    "one": "{n} téléversement est toujours en cours ou en attente — quitter quand même ?",
+    "other": "{n} téléversements sont toujours en cours ou en attente — quitter quand même ?"
+  },
+  "{n} upload is still running — quit anyway?": {
+    "one": "{n} téléversement est toujours en cours — quitter quand même ?",
+    "other": "{n} téléversements sont toujours en cours — quitter quand même ?"
+  },
+  "{n} upload is still waiting — quit anyway?": {
+    "one": "{n} téléversement est toujours en attente — quitter quand même ?",
+    "other": "{n} téléversements sont toujours en attente — quitter quand même ?"
   }
 }

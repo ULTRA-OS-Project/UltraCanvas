@@ -3,9 +3,13 @@
   "@translated-by": "machine draft 2026-11-04, reviewed by -",
   "\"Show it in the preview\" keeps the file inside UltraFiler whenever it can show it - pictures, documents, spreadsheets, 3D models, e-books, fonts, video, audio and text - which is faster than starting a program for a look at a file.": "»Vis den i forhåndsvisningen« holder filen inde i UltraFiler, når den kan vises – billeder, dokumenter, regneark, 3D-modeller, e-bøger, skrifttyper, video, lyd og tekst – hvilket er hurtigere end at starte et program blot for at kigge på en fil.",
   "\"Start the registered program\" is what a double-click does in Explorer and the Finder: the file opens in the program its type is assigned to, and UltraFiler stays as it is.": "»Start det registrerede program« er det, et dobbeltklik gør i Explorer og Finder: Filen åbnes i det program, dens type er tilknyttet, og UltraFiler forbliver, som den er.",
+  "\"{0}\" is being downloaded from {1}.": "»{0}« hentes fra {1}.",
+  "\"{0}\" is being uploaded to {1}.": "»{0}« uploades til {1}.",
   "\"{0}\" is no longer connected": "»{0}« er ikke længere forbundet",
+  "(stopped at {0})": "(stoppet ved {0})",
   "5 s clip": "5 s-klip",
-  "A download is": "En download er",
+  "A download is still running — quit anyway?": "En download kører stadig — afslut alligevel?",
+  "A download is still waiting — quit anyway?": "En download venter stadig — afslut alligevel?",
   "a file": "en fil",
   "A file cannot replace a folder. ": "En fil kan ikke erstatte en mappe. ",
   "A file merely open elsewhere - which on this kind of system blocks nothing - is marked O instead, and wears no padlock.": "En fil, der blot er åben et andet sted – hvilket på denne type system ikke blokerer noget – markeres i stedet med O og har ingen hængelås.",
@@ -29,7 +33,12 @@
   "Add a drive: an FTP / SFTP server, a cloud account or a RAM disc": "Tilføj et drev: en FTP-/SFTP-server, en skykonto eller en RAM-disk",
   "Add an FTP / SFTP drive": "Tilføj et FTP-/SFTP-drev",
   "an entry": "et element",
-  "An upload is": "En upload er",
+  "An upload is still running — quit anyway?": "En upload kører stadig — afslut alligevel?",
+  "An upload is still waiting — quit anyway?": "En upload venter stadig — afslut alligevel?",
+  "and {n} more": {
+    "one": "og {n} mere",
+    "other": "og {n} mere"
+  },
   "Any other file, when this system has a program registered for that kind of file:": "Enhver anden fil, når dette system har et program registreret til den type fil:",
   "Applied to {n} item.": {
     "one": "Anvendt på {n} element.",
@@ -186,6 +195,7 @@
   "In memory: not available.": "I hukommelsen: ikke tilgængelig.",
   "In the thumbnail views, show the extension on the tile:": "Vis filtypenavnet på feltet i miniaturevisningerne:",
   "In use:": "I brug:",
+  "in {0}": "i {0}",
   "Installing {0} — first launch prepares its Windows environment, this can take a minute…": "Installerer {0} — første start forbereder dens Windows-miljø, det kan tage et minut…",
   "Installing {0}…": "Installerer {0}…",
   "It names: {0}": "Den angiver: {0}",
@@ -209,6 +219,7 @@
   "Looking in {0} for names already taken...": "Leder i {0} efter navne, der allerede er i brug...",
   "Mark files that are in use": "Markér filer, der er i brug",
   "Match case": "Forskel på store og små bogstaver",
+  "match case": "forskel på store og små bogstaver",
   "Maximum 2 rows": "Højst 2 rækker",
   "Maximum 3 rows": "Højst 3 rækker",
   "Maximum 4 rows": "Højst 4 rækker",
@@ -218,7 +229,8 @@
   "Merging a folder puts its entries into the folder that is there and asks about any name that is taken inside it; Replace deletes the existing folder first. Until the progress window opens, the pointer shows that the work is under way.": "Fletning af en mappe lægger dens poster i den mappe, der allerede er der, og spørger om hvert navn, der er i brug i den; Erstat sletter først den eksisterende mappe. Indtil statusvinduet åbnes, viser markøren, at arbejdet er i gang.",
   "Message log": "Meddelelseslog",
   "Modern - each tab a capsule floating in the strip: the open one white with a blue outline, the others plain text until the pointer is over them": "Moderne – hver fane en kapsel, der svæver i linjen: den åbne hvid med blå kontur, de andre ren tekst, indtil markøren er over dem",
-  "Moving files to the {0}": "Flytning af filer til {0}",
+  "Moving files to the Recycle Bin": "Flytning af filer til papirkurven",
+  "Moving files to the Trash": "Flytning af filer til papirkurven",
   "Moving files, by drag & drop or with Cut and Paste": "Flytning af filer med træk og slip eller med Klip og Sæt ind",
   "name for the new environment": "navn til det nye miljø",
   "Name:": "Navn:",
@@ -297,11 +309,11 @@
   "Saved to {0}": "Gemt i {0}",
   "Scan sub folder": "Scan undermapper",
   "Search every sub folder of this folder (Enter)": "Søg i alle undermapper til denne mappe (Enter)",
-  "Search for \"": "Søgning efter \"",
-  "Searching \"": "Søger efter \"",
+  "Search for \"{0}\"{1} stopped": "Søgning efter »{0}«{1} stoppet",
   "Searching \"{0}\" - {1}, {2}": "Søger efter »{0}« – {1}, {2}",
-  "Searching files for the text \"": "Søger i filer efter teksten \"",
+  "Searching \"{0}\"{1} ...": "Søger efter »{0}«{1} ...",
   "Searching files for the text \"{0}\"{1} - {2}, {3}": "Søger i filer efter teksten »{0}«{1} – {2}, {3}",
+  "Searching files for the text \"{0}\"{1} ...": "Søger i filer efter teksten »{0}«{1} ...",
   "Select the command line application": "Vælg kommandolinjeapplikationen",
   "Selected folder colour": "Farve for markeret mappe",
   "Selected folder colour:": "Farve for markeret mappe:",
@@ -342,7 +354,7 @@
   "TAR": "TAR",
   "Test": "Test",
   "Text files": "Tekstfiler",
-  "Text search for \"": "Tekstsøgning efter \"",
+  "Text search for \"{0}\"{1} stopped": "Tekstsøgning efter »{0}«{1} stoppet",
   "The change shows at once on the open window's tab strip. Whichever style is chosen, the tabs behave the same: click to switch, the X or a middle click to close, drag to reorder, and the + at the end opens another tab.": "Ændringen vises med det samme på det åbne vindues fanelinje. Uanset hvilken stil der vælges, opfører fanerne sig ens: Klik for at skifte, X'et eller et midterklik for at lukke, træk for at ændre rækkefølgen, og + til sidst åbner en ny fane.",
   "The current folder opens the tab on the folder the active tab is showing, so the work carries on where it is; the Home folder opens every new tab on the same starting point instead. Computer opens the Computer page - the drives with their free space, Home and the cloud folders - with the Home folder behind it, so a tab opened that way still has a folder to show once a drive or folder is picked.": "Den aktuelle mappe åbner fanen på den mappe, den aktive fane viser, så arbejdet fortsætter, hvor det er; hjemmemappen åbner i stedet hver ny fane på samme udgangspunkt. Computer åbner siden Computer – drevene med deres ledige plads, Hjem og skymapperne – med hjemmemappen bagved, så en fane, der åbnes på den måde, stadig har en mappe at vise, når et drev eller en mappe er valgt.",
   "The disk cache looks after its own size: a thumbnail not used for {0} days is deleted when UltraFiler next starts, so a folder you keep visiting keeps its thumbnails and one you opened once pays for itself and then goes away. Nothing here can show an out-of-date picture - a file's size and date are stored with its thumbnail, so a file that has changed is read again.": "Diskcachen styrer selv sin størrelse: En miniature, der ikke er brugt i {0} dage, slettes, næste gang UltraFiler starter, så en mappe, du bliver ved med at besøge, beholder sine miniaturer, og en, du åbnede én gang, betaler for sig selv og forsvinder derefter. Intet her kan vise et forældet billede – en fils størrelse og dato gemmes med dens miniature, så en fil, der er ændret, læses igen.",
@@ -385,10 +397,12 @@
   "Use system default": "Brug systemstandard",
   "Video": "Video",
   "Waiting after it: ": "Venter efter den: ",
+  "Waiting: ": "Venter: ",
   "What is on screen is being read again and goes back into the cache as it lands - press Refresh to see where it settles.": "Det, der er på skærmen, læses igen og kommer tilbage i cachen, efterhånden som det lander – tryk på Opdatér for at se, hvor det ender.",
   "What the \"+\" at the end of the tab strip opens:": "Hvad »+« i slutningen af fanelinjen åbner:",
   "What the Home folder shows, in the folder tree and in the file display:": "Hvad hjemmemappen viser i mappetræet og i filvisningen:",
   "What UltraFiler keeps so a folder opens without being read again:": "Hvad UltraFiler gemmer, så en mappe åbnes uden at blive læst igen:",
+  "What was sent is removed from {0} the next time you use it.": "Det, der er sendt, fjernes fra {0}, næste gang du bruger det.",
   "Whatever is chosen here, Ctrl while dropping always copies and Shift always moves.": "Uanset hvad der vælges her, kopierer Ctrl under slip altid, og Shift flytter altid.",
   "When a file cannot be copied, moved or deleted:": "Når en fil ikke kan kopieres, flyttes eller slettes:",
   "When a folder is pasted over a folder:": "Når en mappe indsættes oven på en mappe:",
@@ -409,9 +423,25 @@
   "{0} - not supported by this build": "{0} – understøttes ikke af denne udgave",
   "{0} min": "{0} min.",
   "{0}, {1} (room for {2})": "{0}, {1} (plads til {2})",
+  "{n} download is still running or waiting — quit anyway?": {
+    "one": "{n} download kører eller venter stadig — afslut alligevel?",
+    "other": "{n} downloads kører eller venter stadig — afslut alligevel?"
+  },
+  "{n} download is still running — quit anyway?": {
+    "one": "{n} download kører stadig — afslut alligevel?",
+    "other": "{n} downloads kører stadig — afslut alligevel?"
+  },
+  "{n} download is still waiting — quit anyway?": {
+    "one": "{n} download venter stadig — afslut alligevel?",
+    "other": "{n} downloads venter stadig — afslut alligevel?"
+  },
   "{n} entry": {
     "one": "{n} post",
     "other": "{n} poster"
+  },
+  "{n} file contains \"{0}\"{1} - {2}": {
+    "one": "{n} fil indeholder »{0}«{1} – {2}",
+    "other": "{n} filer indeholder »{0}«{1} – {2}"
   },
   "{n} file found": {
     "one": "{n} fil fundet",
@@ -420,6 +450,10 @@
   "{n} file read": {
     "one": "{n} fil læst",
     "other": "{n} filer læst"
+  },
+  "{n} file read in {0}": {
+    "one": "{n} fil læst i {0}",
+    "other": "{n} filer læst i {0}"
   },
   "{n} folder scanned": {
     "one": "{n} mappe scannet",
@@ -437,6 +471,10 @@
     "one": "{n} resultat",
     "other": "{n} resultater"
   },
+  "{n} result for \"{0}\" in {1}": {
+    "one": "{n} resultat for »{0}« i {1}",
+    "other": "{n} resultater for »{0}« i {1}"
+  },
   "{n} shared folder": {
     "one": "{n} delt mappe",
     "other": "{n} delte mapper"
@@ -452,5 +490,29 @@
   "{n} tile": {
     "one": "{n} felt",
     "other": "{n} felter"
+  },
+  "{n} transfer is still running or waiting — quit anyway?": {
+    "one": "{n} overførsel kører eller venter stadig — afslut alligevel?",
+    "other": "{n} overførsler kører eller venter stadig — afslut alligevel?"
+  },
+  "{n} transfer is still running — quit anyway?": {
+    "one": "{n} overførsel kører stadig — afslut alligevel?",
+    "other": "{n} overførsler kører stadig — afslut alligevel?"
+  },
+  "{n} transfer is still waiting — quit anyway?": {
+    "one": "{n} overførsel venter stadig — afslut alligevel?",
+    "other": "{n} overførsler venter stadig — afslut alligevel?"
+  },
+  "{n} upload is still running or waiting — quit anyway?": {
+    "one": "{n} upload kører eller venter stadig — afslut alligevel?",
+    "other": "{n} uploads kører eller venter stadig — afslut alligevel?"
+  },
+  "{n} upload is still running — quit anyway?": {
+    "one": "{n} upload kører stadig — afslut alligevel?",
+    "other": "{n} uploads kører stadig — afslut alligevel?"
+  },
+  "{n} upload is still waiting — quit anyway?": {
+    "one": "{n} upload venter stadig — afslut alligevel?",
+    "other": "{n} uploads venter stadig — afslut alligevel?"
   }
 }
