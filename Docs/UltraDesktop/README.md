@@ -152,6 +152,7 @@ the right-hand monitor the primary.
   | Marker | Meaning | On |
   |---|---|---|
   | red dot | a device is on, or a link is down | webcam in use, microphone recording, Bluetooth powered; Internet/LAN with no link, Wi-Fi present but not joined |
+  | green dot | a link is up | Wi-Fi joined |
   | yellow dot | activity | download or upload traffic (more than 4 KB in two seconds), loudspeaker playing, VPN up |
   | grey pill | a count or a value | Email unread (from UltraMail), USB devices attached, battery percentage (green while charging, red at 15 % and below), keyboard layout |
 

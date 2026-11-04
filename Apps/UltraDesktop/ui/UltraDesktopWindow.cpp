@@ -131,6 +131,7 @@ const Color kMarkerOn      (220, 30, 30, 255);   // red: a device is on
 const Color kMarkerActive  (240, 200, 0, 255);   // yellow: activity
 const Color kMarkerCount   (90, 90, 90, 255);    // grey pill for counts
 const Color kMarkerSaved   (60, 170, 90, 255);   // green: the screenshot landed
+const Color kMarkerLinkUp  (60, 170, 90, 255);   // green: Wi-Fi joined
 const Color kClockFace     (236, 236, 240, 255); // the gauge draws dark hands: a light face
 
 const char* const kRunningPrefix = "win:";
@@ -1770,10 +1771,15 @@ void UltraDesktopWindow::ApplyDeviceActivity(const DesktopDeviceActivity& now,
         tooltip("upload", "Upload: " + FormatFileSize(static_cast<size_t>(up)) + "/s");
     }
 
-    // Links: a red marker means the link is down, none means fine.
+    // Links: a red marker means the link is down, none means fine; Wi-Fi
+    // shows green while it is joined, so a glance tells it from "off".
     marker("lan", !now.lanConnected && !now.wifiConnected && !now.internetInterfaceUp, kMarkerOn);
     tooltip("lan", now.lanConnected ? "LAN: connected" : now.internetInterfaceUp ? "Internet: connected" : "Internet / LAN: no link");
-    marker("wifi", now.wifiPresent && !now.wifiConnected, kMarkerOn);
+    if (now.wifiPresent && now.wifiConnected) {
+        info_->SetItemBadgeDot("wifi", kMarkerLinkUp);
+    } else {
+        marker("wifi", now.wifiPresent, kMarkerOn);
+    }
     tooltip("wifi", !now.wifiPresent ? "Wi-Fi: no adapter"
             : now.wifiConnected ? ("Wi-Fi: " + (now.wifiSsid.empty() ? std::string("connected") : now.wifiSsid))
                                 : "Wi-Fi: not connected");
