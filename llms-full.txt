@@ -74019,6 +74019,8 @@ the three shares of every point add up to 100 %.
   - [Corners and axes](#corners-and-axes)
 - [Regions](#regions)
 - [Paths, bubbles and curves](#paths-bubbles-and-curves)
+- [Zoom](#zoom)
+- [Density](#density)
 - [Reading direction](#reading-direction)
 - [What the chart draws](#what-the-chart-draws)
 - [Interaction](#interaction)
@@ -74132,6 +74134,53 @@ TernaryModel swings = TernarySamples::VoteTrajectories();   // paths with arrows
 TernaryModel genetics = TernarySamples::DeFinetti();        // bubbles and a curve
 chart->SetBubbleRadiusRange(3.0, 22.0);
 ```
+
+## Zoom
+
+`SetZoom(minimumA, minimumB, minimumC)` shows only the sub-triangle where
+each part is at least its minimum share; `ResetZoom()` shows the whole
+triangle again. The minimums live in the model (`TernaryAxis::minimum`), so a
+saved JSON file keeps its zoom. A zoom that leaves less than 2 % of the
+triangle is refused.
+
+Zoomed in, everything maps through the zoom: the ticks run from each axis's
+minimum to its minimum plus the span, with a finer step (25, 5, 2.5 %...)
+when 10 % would leave fewer than three intervals; drawing is clipped to the
+triangle; region outlines are cut at its edges, so their names and hit areas
+stay inside; points outside it are neither drawn nor hit.
+
+Dragging across the triangle zooms to the smallest sub-triangle holding both
+ends of the drag, previewed as a dashed triangle while the drag lasts; a
+double click inside shows the whole triangle again. Because a press may
+become a drag, a click on a region fires on release. `SetZoomByDrag(false)`
+turns this off; `onZoomChanged` follows every change.
+
+```cpp
+chart->SetZoom(0.2, 0.1, 0.3);                 // clay 20-60 %, sand 10-50 %, silt 30-70 %
+chart->onZoomChanged = []() {};
+bool zoomed = chart->IsZoomed();
+```
+
+## Density
+
+With thousands of compositions, markers hide one another. `SetDensity(n)`
+cuts the (zoomed) triangle into n * n small triangles and colours each by how
+many visible points fall in it, through a colour map (`SetDensityColormap`,
+Blues by default); empty cells stay clear. `SetDensityContours(levels)` adds
+contour lines at evenly spaced levels over the counts, smoothed at the
+lattice corners. A colour bar along the bottom says what the shades count.
+`SetShowPoints(false)` hides the markers under it.
+
+```cpp
+chart->SetModel(TernarySamples::FeldsparCloud());   // 2,400 compositions
+chart->SetDensity(15);
+chart->SetDensityContours(4);
+chart->SetShowPoints(false);
+int fullest = chart->GetDensityMax();
+```
+
+`GetDensityTotal`, `DensityCountAt` and `GetContourSegmentCount` report what
+the last draw counted.
 
 ## Reading direction
 
@@ -74247,13 +74296,15 @@ and the model is left untouched.
 | `TernarySamples::SoilTexture()` | The USDA soil texture triangle: the twelve classes as regions on the same layout, no points |
 | `TernarySamples::DeFinetti()` | Genotype shares (AA, Aa, aa) of invented populations as bubbles sized by sample, with the Hardy-Weinberg curve; the isolated populations lack heterozygotes |
 | `TernarySamples::VoteTrajectories()` | Four invented regions' vote shares over five elections, as paths with arrowheads |
+| `TernarySamples::FeldsparCloud()` | 2,400 invented feldspar analyses round three compositions, the same every run: a cloud for the density view |
 
 Every name and number in the samples is made up.
 
 ## What is not built yet
 
-Phases 1 and 2 of the proposal are built. Still to come, as Phase 3: zoom to
-a sub-triangle, and density by triangular binning with iso-lines.
+All three phases of the proposal are built. Not planned: the two-triangle
+QAPF diamond (the proposal's Q5); `ChartTernaryProjection::SetApexDown`
+keeps the door open for it.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasTextAreaExamples.md
@@ -86341,10 +86392,28 @@ the system fonts were then never loaded. Once the full set is in use,
 `FONTCONFIG_FILE` names its `fonts.conf`, so a reload of fontconfig's
 configuration by any library reads the full set rather than the start's
 bundled fonts alone. A set with folders of its own but without Windows' (a
-`fonts.conf` beside the program) gets them added. The debug log says how it
-ended: "UltraCanvas: N system and M application font files; the Windows font
-folder (C:/WINDOWS/fonts) is read" - or "NOT read", or "read when the scan
-ends".
+`fonts.conf` beside the program) gets them added.
+
+Named is not read: fontconfig keeps a cache of each folder and trusts it as
+long as the folder's time stamp is unchanged, and `C:\Windows\Fonts` seldom
+changes - a cache that once came out empty (a scan that failed, another
+program's fontconfig writing to the same cache folder) left every later start
+with the bundled fonts alone. So the scan counts the fonts it has from the
+Windows font folder; with none while the folder holds font files, it reads the
+folder again past its cache (`FcDirCacheUnlink`, a new build), and as a last
+resort adds its files one by one. An error in one element of the scan's
+configuration no longer discards the rest of it.
+
+The debug log (`ULTRACANVAS_DEBUG_LOG`) says how it went:
+
+- "UltraCanvas: N system and M application font files, K of them from the
+  Windows font folder (C:/WINDOWS/fonts), which is named" - at the start;
+  "named when the scan ends" while the scan still runs.
+- "UltraCanvas: the system font scan has K fonts from C:/WINDOWS/fonts (F font
+  files there)", and when K was 0, "... read again past its cache: K fonts"
+  or "... added file by file: K fonts".
+- "UltraCanvas: the font set in use has K fonts from C:/WINDOWS/fonts" after
+  the windows switched to the full set.
 
 Text goes through Pango's fontconfig font map on every thread: the main
 thread's is made in `LoadBundledFontsNative()`, and `PANGOCAIRO_BACKEND=fc` is
@@ -97645,7 +97714,7 @@ with the values in its language.
 | Script | Does |
 |---|---|
 | `scripts/extract_ui_strings.py` | rewrites the English catalogues from the sources: adds the framework's `Tr` keys to `Standard.json` (never removes one, so the vocabulary stays) and rewrites each application's `en/<Name>.json` from its sites, keeping its metadata and listing what it inherits under `@inherited`; `--check` is the CI sync test |
-| `scripts/check_locale_catalogues.py` | the CI gate (`locale-catalogues.yml`): every translation parses, has no stale key, keeps the source's placeholders, has the plural forms its language needs, repeats no entry of a set below it, names only base sets that exist; and the English files are in sync. Findings that predate it are in `scripts/locale_catalogues_baseline.txt` |
+| `scripts/check_locale_catalogues.py` | the CI gate (`locale-catalogues.yml`): every translation parses, has no stale key, keeps the source's placeholders, has the plural forms its language needs, repeats no entry of a set below it, names only base sets that exist; every language translates every entry of the English standard set (a regional variant counts its parent's); and the English files are in sync. Findings that predate it are in `scripts/locale_catalogues_baseline.txt` |
 | `scripts/wrap_ui_strings.py` | the migration tool: wraps the literal in the text-taking parameter of every known entry point in `Tr(...)` and writes the file (or, with `--diff`, prints the change) for a person to review; a sentence built from pieces is rewritten as `TrF` by hand |
 
 ## Drafting a language

@@ -1,5 +1,6 @@
 // Apps/DemoApp/UltraCanvasDemo.cpp
 // Comprehensive demonstration program implementation
+// Version: 1.0.21 - Charts > Ternary Chart: the Density variant (density bins, contours, zoom)
 // Version: 1.0.20 - Charts > Ternary Chart: Vote Swings, USDA Soil Texture and De Finetti variants
 // Version: 1.0.19 - Charts > Ternary Chart (UltraCanvasTernaryChart)
 // Version: 1.0.18 - Info Graphics > Performance Matrix and Charts > Importance-Performance Chart: fully implemented
@@ -17,7 +18,7 @@
 // Version: 1.0.8 - Browser build: the window fills the viewport; the audio, video and STL pages
 //                 stay out, and a category left without pages gets no tree node
 // Version: 1.0.7 - Run(showInfoWindow): no About window when the command line opens a page
-// Last Modified: 2026-11-04
+// Last Modified: 2026-11-05
 // V1.0.6: the header title wraps a long page description instead of cutting it off
 // V1.0.5: event.targetWindow read via weak_ptr lock()
 // V1.0.4: mainContainer scrollbars disabled (it is a pure layout wrapper and must
@@ -1471,7 +1472,8 @@ namespace UltraCanvas {
                 .AddVariant("ternarychart", "Three-Party Votes (anticlockwise)")
                 .AddVariant("ternarychart", "Vote Swings (paths)")
                 .AddVariant("ternarychart", "USDA Soil Texture (regions)")
-                .AddVariant("ternarychart", "De Finetti (bubbles, Hardy-Weinberg curve)");
+                .AddVariant("ternarychart", "De Finetti (bubbles, Hardy-Weinberg curve)")
+                .AddVariant("ternarychart", "Density (2,400 points, contours, zoom)");
 
         // ===== DIAGRAMS =====
         auto diagramBuilder = DemoCategoryBuilder(this, DemoCategory::Diagrams);

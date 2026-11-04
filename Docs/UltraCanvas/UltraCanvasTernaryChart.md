@@ -22,6 +22,8 @@ the three shares of every point add up to 100 %.
   - [Corners and axes](#corners-and-axes)
 - [Regions](#regions)
 - [Paths, bubbles and curves](#paths-bubbles-and-curves)
+- [Zoom](#zoom)
+- [Density](#density)
 - [Reading direction](#reading-direction)
 - [What the chart draws](#what-the-chart-draws)
 - [Interaction](#interaction)
@@ -135,6 +137,53 @@ TernaryModel swings = TernarySamples::VoteTrajectories();   // paths with arrows
 TernaryModel genetics = TernarySamples::DeFinetti();        // bubbles and a curve
 chart->SetBubbleRadiusRange(3.0, 22.0);
 ```
+
+## Zoom
+
+`SetZoom(minimumA, minimumB, minimumC)` shows only the sub-triangle where
+each part is at least its minimum share; `ResetZoom()` shows the whole
+triangle again. The minimums live in the model (`TernaryAxis::minimum`), so a
+saved JSON file keeps its zoom. A zoom that leaves less than 2 % of the
+triangle is refused.
+
+Zoomed in, everything maps through the zoom: the ticks run from each axis's
+minimum to its minimum plus the span, with a finer step (25, 5, 2.5 %...)
+when 10 % would leave fewer than three intervals; drawing is clipped to the
+triangle; region outlines are cut at its edges, so their names and hit areas
+stay inside; points outside it are neither drawn nor hit.
+
+Dragging across the triangle zooms to the smallest sub-triangle holding both
+ends of the drag, previewed as a dashed triangle while the drag lasts; a
+double click inside shows the whole triangle again. Because a press may
+become a drag, a click on a region fires on release. `SetZoomByDrag(false)`
+turns this off; `onZoomChanged` follows every change.
+
+```cpp
+chart->SetZoom(0.2, 0.1, 0.3);                 // clay 20-60 %, sand 10-50 %, silt 30-70 %
+chart->onZoomChanged = []() {};
+bool zoomed = chart->IsZoomed();
+```
+
+## Density
+
+With thousands of compositions, markers hide one another. `SetDensity(n)`
+cuts the (zoomed) triangle into n * n small triangles and colours each by how
+many visible points fall in it, through a colour map (`SetDensityColormap`,
+Blues by default); empty cells stay clear. `SetDensityContours(levels)` adds
+contour lines at evenly spaced levels over the counts, smoothed at the
+lattice corners. A colour bar along the bottom says what the shades count.
+`SetShowPoints(false)` hides the markers under it.
+
+```cpp
+chart->SetModel(TernarySamples::FeldsparCloud());   // 2,400 compositions
+chart->SetDensity(15);
+chart->SetDensityContours(4);
+chart->SetShowPoints(false);
+int fullest = chart->GetDensityMax();
+```
+
+`GetDensityTotal`, `DensityCountAt` and `GetContourSegmentCount` report what
+the last draw counted.
 
 ## Reading direction
 
@@ -250,10 +299,12 @@ and the model is left untouched.
 | `TernarySamples::SoilTexture()` | The USDA soil texture triangle: the twelve classes as regions on the same layout, no points |
 | `TernarySamples::DeFinetti()` | Genotype shares (AA, Aa, aa) of invented populations as bubbles sized by sample, with the Hardy-Weinberg curve; the isolated populations lack heterozygotes |
 | `TernarySamples::VoteTrajectories()` | Four invented regions' vote shares over five elections, as paths with arrowheads |
+| `TernarySamples::FeldsparCloud()` | 2,400 invented feldspar analyses round three compositions, the same every run: a cloud for the density view |
 
 Every name and number in the samples is made up.
 
 ## What is not built yet
 
-Phases 1 and 2 of the proposal are built. Still to come, as Phase 3: zoom to
-a sub-triangle, and density by triangular binning with iso-lines.
+All three phases of the proposal are built. Not planned: the two-triangle
+QAPF diamond (the proposal's Q5); `ChartTernaryProjection::SetApexDown`
+keeps the door open for it.
