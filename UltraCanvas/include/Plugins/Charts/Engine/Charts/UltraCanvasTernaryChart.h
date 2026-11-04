@@ -24,20 +24,27 @@
 //     sized by a fourth value, and reference curves such as the
 //     Hardy-Weinberg parabola, in the legend with the series;
 //   * on request, a reading guide: the three grid lines through the
-//     pointer, drawn to the edges that carry their numbers, with the shares.
+//     pointer, drawn to the edges that carry their numbers, with the shares;
+//   * a zoom to a sub-triangle (the axes' minimums), chosen by dragging
+//     across the triangle and undone by a double click;
+//   * on request, density: the triangle cut into small triangles coloured
+//     by how many points fall in each, with contour lines and a colour bar.
 //
 // Design: Docs/UltraCanvas/UltraCanvasTernaryChartProposal.md
 // Guide:  Docs/UltraCanvas/UltraCanvasTernaryChart.md
 //
+// Version: 1.2.0 - Phase 3: the sub-triangle zoom with drag-to-zoom and a
+//   double-click reset, density by triangular binning, contour lines
 // Version: 1.1.0 - Phase 2: regions, paths, bubbles, curves, the reading guide,
 //   region hover and clicks
 // Version: 1.0.0
-// Last Modified: 2026-11-04
+// Last Modified: 2026-11-05
 // Author: UltraCanvas Framework
 #pragma once
 
 #include "Plugins/Charts/Engine/UltraCanvasChartEngineElement.h"
 #include "Plugins/Charts/Engine/Charts/UltraCanvasTernaryModel.h"
+#include "Plugins/Charts/UltraCanvasColormap.h"
 #include <functional>
 #include <memory>
 #include <string>
@@ -77,6 +84,38 @@ public:
     // The bubble radii, in pixels, for the smallest and the largest point
     // size; points without a size keep their series' marker radius.
     void SetBubbleRadiusRange(double smallest, double largest);
+
+    // ---- zoom -------------------------------------------------------------------
+    // Show only the sub-triangle where each part is at least its minimum
+    // (shares, 0..1). Refused - false, nothing changed - when a minimum is
+    // negative or the three leave less than 2 % of the triangle.
+    bool SetZoom(double minimumA, double minimumB, double minimumC);
+    void ResetZoom() { SetZoom(0.0, 0.0, 0.0); }
+    bool IsZoomed() const { return model.IsZoomed(); }
+    // Dragging across the triangle zooms to the smallest sub-triangle holding
+    // both ends of the drag; a double click shows the whole triangle again.
+    // On by default.
+    void SetZoomByDrag(bool enabled);
+    // After every zoom change, by code, drag or double click.
+    std::function<void()> onZoomChanged;
+
+    // ---- density ------------------------------------------------------------------
+    // Cut the (zoomed) triangle into subdivisions^2 small triangles and colour
+    // each by how many visible points fall in it; 0 turns it off. For
+    // thousands of points, where markers would hide one another.
+    void SetDensity(int subdivisions);
+    int GetDensity() const { return densitySubdivisions; }
+    void SetDensityColormap(HeatmapColormap map);
+    // Contour lines over the density at this many evenly spaced levels; 0 = none.
+    void SetDensityContours(int levels);
+    // The markers themselves; turn them off over a dense density view.
+    void SetShowPoints(bool show);
+    // Counted at the last draw: all binned points, the fullest cell, the
+    // cell a composition falls in, and the contour segments drawn.
+    int GetDensityTotal() const;
+    int GetDensityMax() const { return densityMax; }
+    int DensityCountAt(double a, double b, double c) const;
+    size_t GetContourSegmentCount() const { return contourSegments.size(); }
 
     // A click on a point: its series and its index in that series.
     std::function<void(size_t seriesIndex, size_t pointIndex)> onPointClick;
@@ -130,6 +169,22 @@ protected:
 private:
     TernaryModel model;
     std::vector<bool> seriesHidden;
+    // Zoom by drag: the press, and whether it has become a drag.
+    bool zoomByDrag = true;
+    bool pressActive = false;
+    bool selecting = false;
+    Point2Dd pressScreen, dragScreen;
+    double pressShares[3] = {0.0, 0.0, 0.0};
+    double dragShares[3] = {0.0, 0.0, 0.0};
+    // Density: counts per small triangle (upward and downward, indexed
+    // i * n + j on the lattice of the zoomed triangle) and the contours.
+    int densitySubdivisions = 0;
+    int densityContourLevels = 0;
+    HeatmapColormap densityMap = HeatmapColormap::Blues;
+    bool showPoints = true;
+    std::vector<int> densityUp, densityDown;
+    int densityMax = 0;
+    std::vector<std::pair<Point2Dd, Point2Dd>> contourSegments;   // zoomed (u, v)
     std::vector<bool> curveHidden;
     bool showGridLines = true;
     bool showRegionLabels = true;
@@ -185,6 +240,19 @@ private:
     RegionLabel LayoutRegionLabel(IRenderContext* ctx, int regionIndex) const;
     void DrawRegions(IRenderContext* ctx);
     void DrawCurves(IRenderContext* ctx);
+    // Shares of the whole triangle to the projection's (u, v) under the zoom.
+    ChartNormalizedPoint ZoomedNormal(double sa, double sb, double sc) const;
+    // Shares at a screen point, clamped into the zoomed triangle.
+    void ClampedShares(const Point2Dd& screen, double shares[3]) const;
+    // Clips later drawing to the triangle.
+    void ClipToTriangle(IRenderContext* ctx) const;
+    void BinDensity();
+    void BuildContours();
+    void DrawDensity(IRenderContext* ctx);
+    // The colour bar under the triangle while density is on.
+    Rect2Dd ColourBarRect() const;
+    // The minimums a drag from one composition to another selects.
+    void SelectionMinimums(double mins[3]) const;
 };
 
 inline std::shared_ptr<UltraCanvasTernaryChart> CreateTernaryChart(
