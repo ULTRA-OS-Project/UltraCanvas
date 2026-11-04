@@ -849,6 +849,41 @@ int main(int argc, char** argv) {
         fs::remove_all(dir, ec);
     }
 
+    // ---- A word of a text in its own colour: <tspan fill>, both ways ----
+    {
+        std::printf("Span colours\n");
+        auto cdoc = std::make_shared<VectorDocument>();
+        cdoc->Size = Size2Dd{200, 100};
+        cdoc->ViewBox = Rect2Dd{0, 0, 200, 100};
+        auto layer = cdoc->AddLayer("Words");
+        auto t = std::make_shared<VectorText>();
+        t->Position = Point2Dd(10, 50);
+        t->BaseStyle.FontFamily = "Sans";
+        t->BaseStyle.FontSize = 20;
+        t->Style.Fill = Color(0, 0, 0, 255);
+        TextSpanData plain; plain.Text = "Plain "; plain.Style = t->BaseStyle;
+        TextSpanData red; red.Text = "red"; red.Style = t->BaseStyle; red.Style.FillColor = Color(210, 52, 32, 128);
+        t->Spans = {plain, red};
+        layer->AddChild(t);
+
+        const std::string out = converter.ExportToString(*cdoc, options);
+        Check(out.find("fill=\"#d23420\"") != std::string::npos, "a span's own colour is its tspan's fill");
+        Check(out.find("fill-opacity=\"0.50") != std::string::npos, "and its opacity the tspan's fill-opacity");
+        auto back = converter.ImportFromString(out, options);
+        std::shared_ptr<VectorText> bt;
+        if (back)
+            for (const auto& l : back->Layers)
+                for (const auto& c : l->Children)
+                    if (auto x = std::dynamic_pointer_cast<VectorText>(c)) bt = x;
+        Check(bt && bt->Spans.size() == 2, "the text reads back with its two spans");
+        if (bt && bt->Spans.size() == 2) {
+            Check(!bt->Spans[0].Style.FillColor, "a span without a colour of its own stays without");
+            const auto& c = bt->Spans[1].Style.FillColor;
+            Check(c && c->r == 210 && c->g == 52 && c->b == 32 && std::abs(int(c->a) - 128) <= 1,
+                  "the coloured span reads back in its colour and opacity");
+        }
+    }
+
     std::printf("%s: %d failure(s)\n", failures ? "FAILED" : "PASSED", failures);
     return failures;
 }

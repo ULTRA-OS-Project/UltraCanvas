@@ -3,6 +3,9 @@
 // toolbars, paint surface, colour picker, option / layer panels, status
 // bar) and every command the menus and shortcuts run, plus the open-window
 // registry and the import path a dropped or opened file takes.
+// Version: 1.11.0 - selected words take a letter spacing of their own (the text bar's, while
+//                  typing); a size typed into the text bar (or a font looked up by its letters)
+//                  no longer runs the window's shortcuts - Ctrl+A finished the text
 // Version: 1.10.0 - the text bar (UltraCanvasTextFormatBar) under the toolbar with the Text
 //                  tool, in place of the Text card: strikethrough, line spacing (per paragraph,
 //                  of its largest letters) and letter spacing besides the font, size, style
@@ -59,7 +62,7 @@
 //                  buttons in the palette and the toolbar; every menu entry has an
 //                  icon from the 16 px menu set (media/icons/ultrapaint/16)
 // Version: 1.1.0
-// Last Modified: 2026-11-03
+// Last Modified: 2026-11-04
 // Author: UltraCanvas Framework
 
 #include "UltraPaintWindow.h"
@@ -938,6 +941,19 @@ void UltraPaintWindow::InstallShortcuts() {
     window->InstallEventFilter("up-shortcuts", [this](const UCEvent& e) -> bool {
         if (e.type != UCEventType::KeyDown) return false;
         if (window->GetActivePopupElement()) return false;
+        // A control of the text bar has the keyboard (a size typed, a font
+        // looked up by its first letters): the keys are its, and the text
+        // being typed stays open. Escape gives the keys back to the text;
+        // the file commands still work.
+        if (textBar && textBar->IsVisible() && textBar->HasKeyboardFocus() &&
+            !(e.ctrl && (e.virtualKey == UCKeys::S || e.virtualKey == UCKeys::O || e.virtualKey == UCKeys::N ||
+                         e.virtualKey == UCKeys::E || e.virtualKey == UCKeys::Q))) {
+            if (e.virtualKey == UCKeys::Escape && IsEditingText() && textEditor) {
+                textEditor->SetFocus(true);
+                return true;
+            }
+            return false;
+        }
         // Typing on the canvas: Escape, or Ctrl+Enter, finishes the text
         // (Enter starts a new line in it).
         if (IsEditingText() && (e.virtualKey == UCKeys::Escape ||
@@ -2253,11 +2269,21 @@ void UltraPaintWindow::ApplyTextOption(const std::string& option) {
         else if (lines) {
             textSession->lineSpacing = toolOptions.textLineSpacing;
             StampTextLineSpacing();
+        } else if (tracking && textEditor->HasSelection()) {
+            // The selected words, as runs of their own.
+            RichCharFormatDelta spacing;
+            spacing.setLetterSpacing = true;
+            spacing.letterSpacingPt = toolOptions.textLetterSpacing * kTextPointsPerPixel;
+            textEditor->ApplyCharFormat(spacing);
         } else if (tracking) {
+            // Nothing selected: the whole text, its words' own spacing too.
             textSession->content.letterSpacingPx = toolOptions.textLetterSpacing;
             RichTextEditStyle style = textEditor->GetStyle();
             style.letterSpacing = toolOptions.textLetterSpacing;
             textEditor->SetStyle(style);
+            if (auto words = textEditor->GetDocument())
+                for (auto& block : words->blocks)
+                    for (auto& run : block.runs) run.letterSpacingPt.reset();
             textEditor->InvalidateDocument();
         } else {
             textEditor->ApplyCharFormat(delta);
@@ -2280,7 +2306,11 @@ void UltraPaintWindow::ApplyTextOption(const std::string& option) {
     editor.SetDocument(words);
     editor.SelectAll();
     if (align) editor.SetAlignment(AlignOption(toolOptions.textAlign));
-    else if (tracking) content.letterSpacingPx = toolOptions.textLetterSpacing;
+    else if (tracking) {
+        content.letterSpacingPx = toolOptions.textLetterSpacing;
+        for (auto& block : words->blocks)
+            for (auto& run : block.runs) run.letterSpacingPt.reset();
+    }
     else if (!lines) editor.ApplyCharFormat(delta);
     // The default the runs without their own fall back on follows too.
     if (option == "font") content.fontFamily = toolOptions.textFont;

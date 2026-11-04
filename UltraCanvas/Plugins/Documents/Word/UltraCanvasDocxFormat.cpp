@@ -2,8 +2,10 @@
 // Word 2007+ (.docx, OOXML WordprocessingML) reader and writer for
 // UCRichDocument. DOCX is an OPC ZIP package: [Content_Types].xml, _rels
 // relationship parts, word/document.xml plus styles/numbering/media parts.
+// Version: 1.3.0 - w:spacing in w:rPr: a run's (and a character style's) letter spacing, read
+//                  and written
 // Version: 1.2.0
-// Last Modified: 2026-10-17
+// Last Modified: 2026-11-04
 // Author: UltraCanvas Framework
 
 #include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
@@ -31,6 +33,27 @@ using WordFormatInternal::ToLower;
 namespace {
 
 constexpr float kEmuPerPoint = 12700.0f;
+
+// A run's character spacing, w:spacing in w:rPr (not the paragraph's
+// w:spacing in w:pPr): twentieths of a point (ST_SignedTwipsMeasure), or a
+// length with its unit ("1.5pt"). Nothing when the run states none.
+std::optional<float> CharacterSpacingPt(tinyxml2::XMLElement* rPr) {
+    auto* spacing = rPr ? rPr->FirstChildElement("w:spacing") : nullptr;
+    const char* value = spacing ? spacing->Attribute("w:val") : nullptr;
+    if (!value || !*value) return std::nullopt;
+    const std::string v(value);
+    if (v.find_first_of("abcdefghijklmnopqrstuvwxyz") != std::string::npos)
+        return WordFormatInternal::ParseLengthPt(v);
+    char* end = nullptr;
+    const long twips = std::strtol(value, &end, 10);   // an integer: no locale decimal point involved
+    if (end == value) return std::nullopt;
+    return static_cast<float>(twips) / 20.0f;
+}
+
+// w:spacing for a letter spacing in points, in twentieths of a point.
+std::string CharacterSpacingXml(float points) {
+    return "<w:spacing w:val=\"" + std::to_string(std::lround(points * 20.0f)) + "\"/>";
+}
 
 // ===== DOCX READING =====
 
@@ -761,6 +784,7 @@ private:
             const std::string v = Attr(color, "w:val");
             if (v.size() == 6 && v != "auto") character.color = "#" + v;
         }
+        character.letterSpacingPt = CharacterSpacingPt(rPr);
         return character;
     }
 
@@ -927,6 +951,7 @@ private:
         if (auto* sz = rPr->FirstChildElement("w:sz")) {
             run.fontSizePt = sz->FloatAttribute("w:val", 0.0f) / 2.0f;   // half-points
         }
+        if (const auto spacing = CharacterSpacingPt(rPr)) run.letterSpacingPt = spacing;
         // A highlighter colour (one of Word's named ones), or character
         // shading, which may be any colour.
         if (auto* highlight = rPr->FirstChildElement("w:highlight")) {
@@ -1903,6 +1928,7 @@ private:
                         || run.code || run.subscript || run.superscript
                         || !run.color.empty() || !run.fontFamily.empty()
                         || run.fontSizePt > 0 || !run.highlightColor.empty() || asHyperlink
+                        || run.letterSpacingPt.has_value()
                         || !run.characterStyleId.empty() || boldOff || italicOff || strikeOff || underlineOff;
         if (!hasProps) return;
         xml << "<w:rPr>";
@@ -1915,8 +1941,8 @@ private:
             xml << "<w:rFonts w:ascii=\"" << EscapeXml(run.fontFamily)
                 << "\" w:hAnsi=\"" << EscapeXml(run.fontFamily) << "\"/>";
         }
-        // In the order CT_RPr requires: b, i, strike, color, sz, u, shd,
-        // vertAlign (Word rejects a run whose properties are out of order).
+        // In the order CT_RPr requires: b, i, strike, color, spacing, sz, u,
+        // shd, vertAlign (Word rejects a run whose properties are out of order).
         if (run.bold) xml << "<w:b/>";
         else if (boldOff) xml << "<w:b w:val=\"0\"/>";
         if (run.italic) xml << "<w:i/>";
@@ -1930,6 +1956,7 @@ private:
         } else if (asHyperlink) {
             xml << "<w:color w:val=\"0563C1\"/>";
         }
+        if (run.letterSpacingPt) xml << CharacterSpacingXml(*run.letterSpacingPt);
         if (run.fontSizePt > 0) {
             xml << "<w:sz w:val=\"" << static_cast<int>(run.fontSizePt * 2 + 0.5f) << "\"/>"
                 << "<w:szCs w:val=\"" << static_cast<int>(run.fontSizePt * 2 + 0.5f) << "\"/>";
@@ -2874,6 +2901,7 @@ private:
             if (c.italic) xml << (*c.italic ? "<w:i/>" : "<w:i w:val=\"0\"/>");
             if (c.strikethrough) xml << (*c.strikethrough ? "<w:strike/>" : "<w:strike w:val=\"0\"/>");
             if (c.color && c.color->size() == 7) xml << "<w:color w:val=\"" << EscapeXml(c.color->substr(1)) << "\"/>";
+            if (c.letterSpacingPt) xml << CharacterSpacingXml(*c.letterSpacingPt);
             if (c.fontSizePt && *c.fontSizePt > 0.0f) {
                 const long half = std::lround(*c.fontSizePt * 2.0f);
                 xml << "<w:sz w:val=\"" << half << "\"/><w:szCs w:val=\"" << half << "\"/>";
