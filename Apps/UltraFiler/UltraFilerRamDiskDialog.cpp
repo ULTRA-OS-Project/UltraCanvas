@@ -2,6 +2,7 @@
 // Implementation of the new RAM disc dialog. Construction follows
 // UltraFilerFindTextDialog (flex-column content, custom Create / Cancel
 // buttons so Create can refuse a bad name without closing).
+// Version: 1.1.1 - the interface strings go through Tr (UltraLocalisation)
 // Version: 1.1.0 - the facts about the machine come from the caller
 // Author: UltraCanvas Framework
 
@@ -10,6 +11,7 @@
 
 #include "UltraCanvasButton.h"
 #include "UltraCanvasContainer.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 namespace UltraCanvas {
 
@@ -34,9 +36,9 @@ std::string PlatformNote(uint64_t largest) {
                         : std::string();
     std::string note;
     if (!UltraFilerRamDisks::TrueRamAvailable()) {
-        note = "No RAM disc driver (ImDisk) is installed, so this disc will be "
+        note = Tr("No RAM disc driver (ImDisk) is installed, so this disc will be "
                "a folder on the system drive, wiped when it is ejected - it "
-               "is not held in memory. ";
+               "is not held in memory. ");
     } else if (UltraFilerRamDisks::SizeIsEnforced()) {
         note = "The memory is reserved when the disc is created. " + freeText;
     } else {
@@ -52,7 +54,7 @@ std::string PlatformNote(uint64_t largest) {
 
 void UltraFilerRamDiskDialog::Initialize(const RamDiskDialogFacts& facts) {
     DialogConfig cfg;
-    cfg.title = "New RAM disc";
+    cfg.title = Tr("New RAM disc");
     cfg.width = 460;
     cfg.height = 330;
     cfg.resizable = false;
@@ -72,7 +74,7 @@ void UltraFilerRamDiskDialog::Initialize(const RamDiskDialogFacts& facts) {
     content->layout.SetFlexGap(6);
 
     content->AddChild(std::make_shared<UltraCanvasLabel>(
-        "uf-ramdisk-name-label", 0, 0, kContentWidth, 20, "Name:"));
+        "uf-ramdisk-name-label", 0, 0, kContentWidth, 20, Tr("Name:")));
     nameInput_ = std::make_shared<UltraCanvasTextInput>(
         "uf-ramdisk-name", 0, 0, kContentWidth, 30.0f);
     // 23 on Windows, where the name has to fit the disc's volume label.
@@ -85,7 +87,7 @@ void UltraFilerRamDiskDialog::Initialize(const RamDiskDialogFacts& facts) {
     content->AddChild(nameInput_);
 
     content->AddChild(std::make_shared<UltraCanvasLabel>(
-        "uf-ramdisk-size-label", 0, 0, kContentWidth, 20, "Size:"));
+        "uf-ramdisk-size-label", 0, 0, kContentWidth, 20, Tr("Size:")));
     sizeDropdown_ = std::make_shared<UltraCanvasDropdown>(
         "uf-ramdisk-size", 0, 0, kContentWidth, 30.0f);
     // Only sizes that fit: a choice that can only fail is not a choice. When
@@ -122,11 +124,11 @@ void UltraFilerRamDiskDialog::Initialize(const RamDiskDialogFacts& facts) {
     buttons->layout.SetFlexGap(8);
     auto createBtn = std::make_shared<UltraCanvasButton>(
         "uf-ramdisk-create", 0, 0, 100, 30);
-    createBtn->SetText("Create");
+    createBtn->SetText(Tr("Create"));
     createBtn->onClick = [this]() { Accept(); };
     auto cancelBtn = std::make_shared<UltraCanvasButton>(
         "uf-ramdisk-cancel", 0, 0, 100, 30);
-    cancelBtn->SetText("Cancel");
+    cancelBtn->SetText(Tr("Cancel"));
     cancelBtn->onClick = [this]() { CloseDialog(DialogResult::Cancel); };
     buttons->AddChild(createBtn);
     buttons->AddChild(cancelBtn);
