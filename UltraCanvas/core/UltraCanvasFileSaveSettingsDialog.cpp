@@ -7,8 +7,11 @@
 // width x height and Keep proportions, for this save only. A drawing has no
 // pixel size of its own: its row opens on the size it is drawn at and says it
 // is drawn sharp at any.
-// Version: 1.2.0
-// Last Modified: 2026-10-13
+// The dialog is drawn at the caller's type size when one is given (a
+// settings window's), its rows and columns scaled to it, and is as wide as
+// its captions and controls need.
+// Version: 1.3.0
+// Last Modified: 2026-11-04
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasFileLoader.h"
@@ -22,6 +25,7 @@
 #include "UltraCanvasSeparator.h"
 #include "UltraCanvasSlider.h"
 #include "UltraCanvasSpinner.h"
+#include "UltraCanvasUtilsUtf8.h"
 #include "UltraLocalisation/UltraLocalisation.h"
 
 #include <algorithm>
@@ -35,17 +39,60 @@
 namespace UltraCanvas {
 
     namespace {
-        constexpr int kRowHeight = 28;
+        // The sizes below are for the dialog's own type size (12); a dialog
+        // asked for at another size (a settings window's 10) scales them, so
+        // its rows, columns and window fit the text instead of leaving it
+        // swimming in room made for larger type.
+        constexpr float kBaseFontSize = 12.0f;
+        constexpr float kRowHeight = 28.0f;
         constexpr float kRowGap = 10.0f;
         constexpr float kColumnGap = 16.0f;
         // Every control is this wide and starts where the captions end, so
         // the sliders, lists and size fields make one straight column; a
         // slider's value sits right beside it rather than at the far edge.
-        constexpr int kControlWidth = 260;
-        constexpr int kValueWidth = 36;
+        constexpr float kControlWidth = 260.0f;
+        constexpr float kValueWidth = 36.0f;
         constexpr float kSliderGap = 10.0f;
-        constexpr int kSliderWidth = kControlWidth - kValueWidth - static_cast<int>(kSliderGap);
-        constexpr int kSpinnerWidth = 92;
+        constexpr float kSpinnerWidth = 92.0f;
+        constexpr float kCellGap = 6.0f;
+
+        // The geometry at one type size.
+        struct Metrics {
+            float fontSize = kBaseFontSize;
+            int rowHeight = 28;
+            float rowGap = kRowGap;
+            float columnGap = kColumnGap;
+            int controlWidth = 260;
+            int valueWidth = 36;
+            float sliderGap = kSliderGap;
+            int sliderWidth = 214;
+            int spinnerWidth = 92;
+
+            explicit Metrics(float size) : fontSize(size) {
+                const float k = size / kBaseFontSize;
+                auto px = [k](float v) { return static_cast<int>(std::lround(v * k)); };
+                rowHeight = std::max(20, px(kRowHeight));
+                rowGap = std::round(kRowGap * k);
+                columnGap = std::round(kColumnGap * k);
+                valueWidth = px(kValueWidth);
+                sliderGap = std::round(kSliderGap * k);
+                spinnerWidth = std::max(72, px(kSpinnerWidth));
+                // The size row (two fields, "x", "px") must fit the column.
+                const int sizeRow = 2 * spinnerWidth + px(14) + px(22) + 3 * static_cast<int>(kCellGap);
+                controlWidth = std::max(px(kControlWidth), sizeRow);
+                sliderWidth = controlWidth - valueWidth - static_cast<int>(sliderGap);
+            }
+
+            // A text's width before the window can measure it: an average
+            // advance of 0.6 em per character, which errs a little wide.
+            float TextWidth(const std::string& text) const {
+                return static_cast<float>(utf8_length(text)) * fontSize * 0.6f;
+            }
+            // A checkbox: its box, the gap, and its label.
+            float CheckboxWidth(const std::string& text) const {
+                return fontSize * 1.6f + 6.0f + TextWidth(text);
+            }
+        };
 
         // The element id of a setting's control, which a test (or an
         // application driving the dialog) finds it by.
@@ -110,7 +157,7 @@ namespace UltraCanvas {
     void UltraCanvasFileLoader::ShowSaveSettingsDialog(
             const std::string& extensionOrPath, const FileSavePicture& picture,
             const FileSaveImageSize& size, UltraCanvasWindowBase* parent,
-            std::function<void(DialogResult, const FileSaveImageSize&)> onClosed) {
+            std::function<void(DialogResult, const FileSaveImageSize&)> onClosed, float fontSize) {
         const int pictureWidth = picture.width;
         const int pictureHeight = picture.height;
         FileSaveFormat format;
@@ -144,26 +191,51 @@ namespace UltraCanvas {
         config.buttons = DialogButtons::OKCancel;
         config.defaultButton = DialogButton::OK;
         config.showIcon = false;
-        config.width = 420;
+        // The type size: the caller's (a settings window opens it at its own,
+        // so it reads as part of that window), else the dialog's own.
+        const ModalDialogStyle defaultLook = ModalDialogStyle::Default();
+        if (fontSize <= 0.0f) fontSize = defaultLook.messageFontSize;
+        const Metrics m(fontSize);
+
+        // As wide as the captions and controls need, and no wider: a fixed
+        // width left a band of empty room right of the controls. The footer
+        // widens the window further when its buttons need it.
+        float captionWidth = offerSize ? m.TextWidth("Size:") : 0.0f;
+        float controlColumn = static_cast<float>(m.controlWidth);
+        if (offerSize) controlColumn = std::max(controlColumn, m.CheckboxWidth(Tr("Keep proportions")));
+        for (const FileSaveSettingSpec& spec : format.settings) {
+            if (spec.kind == FileSaveSettingKind::Toggle)
+                controlColumn = std::max(controlColumn, m.CheckboxWidth(spec.label));
+            else
+                captionWidth = std::max(captionWidth, m.TextWidth(spec.label + ":"));
+        }
+        config.width = static_cast<int>(std::ceil(2.0f * defaultLook.padding + captionWidth +
+                                                  m.columnGap + controlColumn));
         config.height = 160;
         auto dialog = UltraCanvasDialogManager::CreateDialog(config);
         if (!dialog) {
             if (onClosed) onClosed(DialogResult::Cancel, size);
             return;
         }
+        {
+            ModalDialogStyle look = dialog->GetStyle();
+            look.messageFontSize = fontSize;
+            look.buttonFontSize = fontSize;
+            look.buttonWidth = std::round(look.buttonWidth * fontSize / kBaseFontSize);
+            dialog->SetStyle(look);
+        }
         if (auto message = dialog->FindChildById("MessageArea")) message->SetVisible(false);
-        const float fontSize = dialog->GetStyle().messageFontSize;
 
         // "caption: control", one row per setting; a rule between the size,
         // which is this save's, and the format's own settings. The grid
         // carries its own height so the dialog is sized for it before
         // anything is measured.
-        auto form = CreateFormGrid("SaveSettingsForm", kRowGap, kColumnGap);
+        auto form = CreateFormGrid("SaveSettingsForm", m.rowGap, m.columnGap);
         const bool rule = offerSize && !format.settings.empty();
         const int rows = static_cast<int>(format.settings.size()) + (offerSize ? 2 : 0);
         const int gaps = rows - 1 + (rule ? 1 : 0);
         form->size.height = CSSLayout::Dimension::Px(
-                static_cast<float>(rows * kRowHeight + (rule ? 1 : 0)) + kRowGap * static_cast<float>(gaps));
+                static_cast<float>(rows * m.rowHeight + (rule ? 1 : 0)) + m.rowGap * static_cast<float>(gaps));
 
         // Sets every control from `values` (and the size from `chosen`)
         // again: the Defaults button.
@@ -171,11 +243,11 @@ namespace UltraCanvas {
 
         if (offerSize) {
             // "Size: [ 1920 ] x [ 1080 ] px", and Keep proportions under it.
-            auto cell = CreateFormCellRow("SaveSize-row", 6.0f, kRowHeight);
-            cell->size.width = CSSLayout::Dimension::Px(kControlWidth);
-            auto width = CreateIntSpinner("SaveSizeWidth", 0, 0, kSpinnerWidth, kRowHeight,
+            auto cell = CreateFormCellRow("SaveSize-row", kCellGap, m.rowHeight);
+            cell->size.width = CSSLayout::Dimension::Px(m.controlWidth);
+            auto width = CreateIntSpinner("SaveSizeWidth", 0, 0, m.spinnerWidth, m.rowHeight,
                                           1, kMaxSide, chosen->width, 1);
-            auto height = CreateIntSpinner("SaveSizeHeight", 0, 0, kSpinnerWidth, kRowHeight,
+            auto height = CreateIntSpinner("SaveSizeHeight", 0, 0, m.spinnerWidth, m.rowHeight,
                                            1, kMaxSide, chosen->height, 1);
             width->SetTooltip(drawing ? "Width in pixels: the drawing is drawn sharp at any"
                                       : "Width in pixels");
@@ -183,8 +255,8 @@ namespace UltraCanvas {
                                        : "Height in pixels");
             width->layoutItem.SetFlexShrink(0);
             height->layoutItem.SetFlexShrink(0);
-            auto times = std::make_shared<UltraCanvasLabel>("SaveSize-times", 0, 0, 14, kRowHeight, "\u00D7");
-            auto unit = std::make_shared<UltraCanvasLabel>("SaveSize-unit", 0, 0, 22, kRowHeight, "px");
+            auto times = std::make_shared<UltraCanvasLabel>("SaveSize-times", 0, 0, 14, m.rowHeight, "\u00D7");
+            auto unit = std::make_shared<UltraCanvasLabel>("SaveSize-unit", 0, 0, 22, m.rowHeight, "px");
             for (const auto& label : {times, unit}) {
                 label->SetFontSize(fontSize);
                 label->SetAlignment(TextAlignment::Center, VerticalAlignment::Middle);
@@ -197,7 +269,7 @@ namespace UltraCanvas {
             auto caption = AddFormRow(form, "SaveSize", "Size:", cell);
             if (caption) caption->SetFontSize(fontSize);
 
-            auto keep = UltraCanvasCheckbox::CreateCheckbox("SaveSizeKeepProportions", 0, 0, -1, kRowHeight,
+            auto keep = UltraCanvasCheckbox::CreateCheckbox("SaveSizeKeepProportions", 0, 0, -1, m.rowHeight,
                                                             Tr("Keep proportions"), chosen->keep);
             keep->SetFontSize(fontSize);
             keep->layoutItem.SetJustifySelf(CSSLayout::JustifySelf::Start);
@@ -248,7 +320,7 @@ namespace UltraCanvas {
             });
 
             if (rule) {
-                auto line = std::make_shared<UltraCanvasSeparator>(false, 1, kControlWidth);
+                auto line = std::make_shared<UltraCanvasSeparator>(false, 1, m.controlWidth);
                 line->size.width = CSSLayout::Dimension::Auto();
                 line->layoutItem.SetJustifySelf(CSSLayout::JustifySelf::Stretch);
                 AddFormWideRow(form, line);
@@ -262,7 +334,7 @@ namespace UltraCanvas {
                 case FileSaveSettingKind::Toggle: {
                     // The checkbox is its own caption; it lines up with the
                     // other controls rather than with the captions.
-                    auto box = UltraCanvasCheckbox::CreateCheckbox(id, 0, 0, -1, kRowHeight, spec.label,
+                    auto box = UltraCanvasCheckbox::CreateCheckbox(id, 0, 0, -1, m.rowHeight, spec.label,
                                                                    values->GetBool(key));
                     box->SetFontSize(fontSize);
                     box->layoutItem.SetJustifySelf(CSSLayout::JustifySelf::Start);
@@ -277,9 +349,9 @@ namespace UltraCanvas {
                     break;
                 }
                 case FileSaveSettingKind::Number: {
-                    auto cell = CreateFormCellRow(id + "-row", kSliderGap, kRowHeight);
-                    cell->size.width = CSSLayout::Dimension::Px(kControlWidth);
-                    auto slider = std::make_shared<UltraCanvasSlider>(id, 0, 0, kSliderWidth, 24);
+                    auto cell = CreateFormCellRow(id + "-row", m.sliderGap, m.rowHeight);
+                    cell->size.width = CSSLayout::Dimension::Px(m.controlWidth);
+                    auto slider = std::make_shared<UltraCanvasSlider>(id, 0, 0, m.sliderWidth, 24);
                     // A horizontal slider draws its track and handle along its
                     // bottom edge (the room above is for a value shown over
                     // it). Exactly as tall as the handle, the row centres it
@@ -293,7 +365,7 @@ namespace UltraCanvas {
                     slider->SetValue(static_cast<float>(values->GetInt(key, spec.minimum)));
                     slider->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
                     if (!spec.help.empty()) slider->SetTooltip(spec.help);
-                    auto number = std::make_shared<UltraCanvasLabel>(id + "-value", 0, 0, kValueWidth, 24,
+                    auto number = std::make_shared<UltraCanvasLabel>(id + "-value", 0, 0, m.valueWidth, 24,
                             std::to_string(values->GetInt(key, spec.minimum)));
                     number->SetFontSize(fontSize);
                     number->SetAlignment(TextAlignment::Left, VerticalAlignment::Middle);
@@ -318,8 +390,8 @@ namespace UltraCanvas {
                     break;
                 }
                 case FileSaveSettingKind::Choice: {
-                    auto list = std::make_shared<UltraCanvasDropdown>(id, 0, 0, kControlWidth, kRowHeight);
-                    list->size.width = CSSLayout::Dimension::Px(kControlWidth);
+                    auto list = std::make_shared<UltraCanvasDropdown>(id, 0, 0, m.controlWidth, m.rowHeight);
+                    list->size.width = CSSLayout::Dimension::Px(m.controlWidth);
                     list->layoutItem.SetJustifySelf(CSSLayout::JustifySelf::Start);
                     for (const FileSaveChoice& choice : spec.choices) list->AddItem(choice.label, choice.value);
                     list->SetSelectedIndex(ChoiceIndex(spec, values->Get(key)), false);
@@ -346,12 +418,21 @@ namespace UltraCanvas {
         // Cancel keeps what was there.
         auto defaults = std::make_shared<UltraCanvasButton>("SaveSettingsDefaults", 0, 0, 90, 28);
         defaults->SetText(Tr("Defaults"));
+        defaults->SetFontSize(fontSize);
         defaults->SetTooltip(offerSize ? "Put every setting back to " + format.name +
                                          "'s default, and the size back to the " +
                                          (drawing ? "drawing's" : "picture's")
                                        : "Put every setting back to " + format.name + "'s default");
-        defaults->size.width = CSSLayout::Dimension::Px(90);
+        // As wide as its label, as the OK and Cancel beside it are: at a
+        // fixed 90 a longer translation ("Standardwerte") filled it edge to
+        // edge.
+        defaults->size.width = CSSLayout::Dimension::Auto();
         defaults->size.height = CSSLayout::Dimension::Px(28);
+        {
+            CSSLayout::BoxConstraints limits = defaults->boxConstraints.value_or(CSSLayout::BoxConstraints{});
+            limits.minWidth = CSSLayout::Dimension::Px(dialog->GetStyle().buttonWidth);
+            defaults->boxConstraints = limits;
+        }
         const std::vector<FileSaveSettingSpec> specs = format.settings;
         defaults->onClick = [values, specs, refreshers]() {
             for (const FileSaveSettingSpec& spec : specs) values->Set(spec.key, spec.defaultValue);

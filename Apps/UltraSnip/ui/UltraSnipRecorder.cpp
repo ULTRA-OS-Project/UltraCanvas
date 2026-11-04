@@ -1,5 +1,6 @@
 // Apps/UltraSnip/ui/UltraSnipRecorder.cpp
 // See the header.
+// Version: 0.2.0 - the texts go through Tr (UltraLocalisation)
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 
@@ -7,6 +8,7 @@
 
 #include "UltraCanvasDesktopShell.h"
 #include "UltraCanvasPathUtf8.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <VideoFX/VideoFX.h>
 
@@ -27,17 +29,17 @@ UltraSnipRecorder::~UltraSnipRecorder() {
 }
 
 std::string UltraSnipRecorder::UnavailableReason() {
-    if (!VideoFX_IsAvailable()) return "This build has no video engine (VideoFX was built without FFmpeg).";
+    if (!VideoFX_IsAvailable()) return Tr("This build has no video engine (VideoFX was built without FFmpeg).");
     if (!VideoFX_IsVideoEncoderAvailable(VideoFXVideoCodec::H264) &&
         !VideoFX_IsVideoEncoderAvailable(VideoFXVideoCodec::MPEG4))
-        return "This build's FFmpeg has no encoder a recording could use.";
-    if (!UltraCanvasDesktopShell::IsAvailable()) return "The screen cannot be captured on this platform yet.";
+        return Tr("This build's FFmpeg has no encoder a recording could use.");
+    if (!UltraCanvasDesktopShell::IsAvailable()) return Tr("The screen cannot be captured on this platform yet.");
     return "";
 }
 
 bool UltraSnipRecorder::Start(const Rect2Di& area, const std::string& path, int frameRate, std::string* error) {
     if (running_.load()) {
-        if (error) *error = "A recording is already running.";
+        if (error) *error = Tr("A recording is already running.");
         return false;
     }
     const std::string reason = UnavailableReason();
@@ -46,7 +48,7 @@ bool UltraSnipRecorder::Start(const Rect2Di& area, const std::string& path, int 
         return false;
     }
     if (area.width <= 0 || area.height <= 0) {
-        if (error) *error = "The area to record is empty.";
+        if (error) *error = Tr("The area to record is empty.");
         return false;
     }
     namespace fs = std::filesystem;
@@ -54,7 +56,7 @@ bool UltraSnipRecorder::Start(const Rect2Di& area, const std::string& path, int 
     std::error_code ec;
     if (target.has_parent_path()) fs::create_directories(target.parent_path(), ec);
     if (ec) {
-        if (error) *error = "The folder " + PathToUtf8(target.parent_path()) + " could not be created: " + ec.message();
+        if (error) *error = TrF("The folder {0} could not be created: {1}", PathToUtf8(target.parent_path()), ec.message());
         return false;
     }
 
@@ -64,7 +66,7 @@ bool UltraSnipRecorder::Start(const Rect2Di& area, const std::string& path, int 
     settings.height = area.height;
     settings.frameRate = std::clamp(frameRate, 5, 60);
     if (recorder_->Open(path, settings) != VideoFXResult::Ok) {
-        if (error) *error = "The recording could not be started: " + VideoFX_GetLastError();
+        if (error) *error = TrF("The recording could not be started: {0}", VideoFX_GetLastError());
         recorder_.reset();
         return false;
     }
@@ -133,7 +135,7 @@ bool UltraSnipRecorder::Stop(std::string* error) {
         return false;
     }
     if (closed != VideoFXResult::Ok) {
-        if (error) *error = "The recording could not be completed: " + VideoFX_GetLastError();
+        if (error) *error = TrF("The recording could not be completed: {0}", VideoFX_GetLastError());
         return false;
     }
     return true;
@@ -153,12 +155,12 @@ void UltraSnipRecorder::Run() {
         const double at = ElapsedSeconds();
         std::string error;
         if (!UltraCanvasDesktopShell::CaptureScreenArea(area_.x, area_.y, area_.width, area_.height, frame, &error)) {
-            failure_ = "The screen could not be captured: " + error;
+            failure_ = TrF("The screen could not be captured: {0}", error);
             break;
         }
         if (recorder_->PushFrame(frame.pixels.data(), frame.width, frame.height, frame.stride, at,
                                  VideoFXPixelLayout::BGRA) != VideoFXResult::Ok) {
-            failure_ = "The recording failed: " + VideoFX_GetLastError();
+            failure_ = TrF("The recording failed: {0}", VideoFX_GetLastError());
             break;
         }
         frames_.store(recorder_->GetFrameCount());
