@@ -189,6 +189,9 @@ static void TestTrajectories() {
     bool paths = model.series.size() == 4;
     for (const TernarySeries& s : model.series) paths &= s.kind == TernarySeriesKind::Path && s.arrows && s.points.size() == 5;
     CHECK(paths && model.Validate().empty(), "four regions as paths of five elections, with arrows");
+    const TernaryModel cloud = TernarySamples::FeldsparCloud();
+    CHECK(cloud.PointCount() == 2400 && cloud.Validate().empty(), "the feldspar cloud: 2,400 valid compositions");
+    CHECK(ExportTernaryJson(cloud) == ExportTernaryJson(TernarySamples::FeldsparCloud()), "and the same cloud every time");
 }
 
 static void TestValidationPhase2() {

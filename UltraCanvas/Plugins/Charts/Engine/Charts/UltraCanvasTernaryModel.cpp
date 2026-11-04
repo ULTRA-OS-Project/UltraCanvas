@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <map>
 
@@ -780,6 +781,42 @@ namespace UltraCanvas {
                 for (const Election& e : r.elections) s.points.emplace_back(e.blue, e.red, e.gold, e.year);
                 model.series.push_back(s);
             }
+            return model;
+        }
+
+        TernaryModel FeldsparCloud() {
+            TernaryModel model;
+            model.title = "Feldspar analyses (invented)";
+            model.subtitle = "2,400 compositions; the shade counts how many fall in each small triangle";
+            model.axes[0] = TernaryAxis("Orthoclase");
+            model.axes[1] = TernaryAxis("Albite");
+            model.axes[2] = TernaryAxis("Anorthite");
+            model.reading = TernaryReading::Anticlockwise;
+            // A fixed linear congruential generator, so every run - and every
+            // test - sees the same cloud. Each analysis is a centre plus a
+            // spread, clamped at 0; the chart divides by the sum.
+            uint32_t seed = 20261105u;
+            auto next = [&seed]() {
+                seed = seed * 1664525u + 1013904223u;
+                return static_cast<double>(seed >> 8) / 16777216.0;
+            };
+            struct Centre { const char* name; double or_, ab, an, spread; int count; };
+            const Centre centres[] = {
+                {"Alkali feldspar", 0.70, 0.25, 0.05, 0.22, 1000},
+                {"Plagioclase", 0.05, 0.55, 0.40, 0.30, 1000},
+                {"Anorthoclase", 0.30, 0.62, 0.08, 0.16, 400},
+            };
+            TernarySeries analyses("Analyses");
+            analyses.markerRadius = 2.0f;
+            for (const Centre& c : centres) {
+                for (int k = 0; k < c.count; ++k) {
+                    // The sum of two uniforms: a softer, peaked spread.
+                    auto jitter = [&next, &c]() { return (next() + next() - 1.0) * c.spread * 0.5; };
+                    analyses.points.emplace_back(std::max(0.0, c.or_ + jitter()), std::max(0.0, c.ab + jitter()),
+                                                 std::max(0.0, c.an + jitter()));
+                }
+            }
+            model.series = {analyses};
             return model;
         }
 

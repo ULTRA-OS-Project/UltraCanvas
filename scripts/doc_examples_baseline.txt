@@ -352,12 +352,10 @@ Docs/UltraCanvas/UltraCanvasRequirementDiagramProposal.md::no member named 'SetL
 Docs/UltraCanvas/UltraCanvasRequirementDiagramProposal.md::prose names `SetStrictSemantics(`, which no header declares
 Docs/UltraCanvas/UltraCanvasRequirementDiagramProposal.md::use of undeclared identifier 'RequirementLayout'
 # signature Docs/UltraCanvas/UltraCanvasRequirementDiagramProposal.md: c646c77dfc5758a2cd5d05f3a74eb0282649d38aea34d272d3a6ce6880f27ae8
-Docs/UltraCanvas/UltraCanvasTernaryChartProposal.md::'SetDensity' is not a member of UltraCanvasTernaryChart
-Docs/UltraCanvas/UltraCanvasTernaryChartProposal.md::'TernaryAxis::minimum' does not exist (no member named 'minimum' in 'TernaryAxis')
 Docs/UltraCanvas/UltraCanvasTernaryChartProposal.md::'TernaryPoint::group' does not exist (no member named 'group' in 'TernaryPoint')
 Docs/UltraCanvas/UltraCanvasTernaryChartProposal.md::'TernarySeriesKind::Bubble' does not exist (no member named 'Bubble' in 'TernarySeriesKind')
 Docs/UltraCanvas/UltraCanvasTernaryChartProposal.md::signature differs: `std::vector<TernaryPoint> SoilSamples()` - the header has: TernaryModel SoilSamples();
-# signature Docs/UltraCanvas/UltraCanvasTernaryChartProposal.md: f0a4148d803980dea348a50ad2d3d1d6102fb424f87fb78c183064a498c935cb
+# signature Docs/UltraCanvas/UltraCanvasTernaryChartProposal.md: 8ea019858c75b64627ddfd428ad6d5025f6de08bf822a0c67bb539ae01f90ccc
 Docs/UltraCanvas/UltraCanvasTimelineDiagramProposal.md::'TimelineEntryKind::Marker' does not exist (no member named 'Marker' in 'TimelineEntryKind')
 Docs/UltraCanvas/UltraCanvasTimelineDiagramProposal.md::'TimelineItem::date' does not exist (no member named 'date' in 'TimelineItem')
 Docs/UltraCanvas/UltraCanvasTimelineDiagramProposal.md::'TimelineItem::iconImage' does not exist (no member named 'iconImage' in 'TimelineItem')

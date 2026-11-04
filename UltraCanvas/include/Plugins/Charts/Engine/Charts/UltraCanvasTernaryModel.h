@@ -230,6 +230,10 @@ namespace UltraCanvas {
         // Invented regions' vote shares across five elections, as paths with
         // arrowheads, on the ThreePartyVotes() axes.
         TernaryModel VoteTrajectories();
+        // 2,400 invented feldspar analyses (orthoclase, albite, anorthite)
+        // round three compositions, from a fixed generator: a cloud for the
+        // density view, where markers would hide one another.
+        TernaryModel FeldsparCloud();
     }
 
 } // namespace UltraCanvas

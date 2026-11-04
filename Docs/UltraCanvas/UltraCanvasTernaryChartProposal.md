@@ -1,6 +1,6 @@
 # UltraCanvasTernaryChart — Research & Feature Proposal
 
-**Status:** **Phases 1 and 2 are implemented** as `UltraCanvasTernaryChart` and
+**Status:** **All three phases are implemented** as `UltraCanvasTernaryChart` and
 `UltraCanvasTernaryModel` - see [`UltraCanvasTernaryChart.md`](UltraCanvasTernaryChart.md)
 for the guide. Phase 1 delivered `ChartProjectionKind::Ternary` and
 `ChartTernaryProjection` (A1) with their `ChartEngineTest` case, the model
@@ -59,6 +59,27 @@ De Finetti tabs with Open / Save JSON and Import / Export CSV through
 * **Curves are in the legend** after the series, and a click there hides one.
 * **CSV part columns match exactly first, then without letter case.** The
   genotypes AA, Aa and aa differ only in case.
+
+Phase 3 (2026-11-05) delivered A6 and I3 (the sub-triangle zoom, by code
+and by drag, undone by a double click) and D1 and D2 (density by triangular
+binning, contour lines, a colour bar), the `FeldsparCloud` sample and the
+demo's Density tab. How it departs from the plan:
+
+* **A drag selects the smallest sub-triangle holding both of its ends,** not
+  a rectangle: a zoom is three minimums, and the minimum of each part over
+  the two ends is exactly the smallest triangle containing both. It is
+  previewed as a dashed triangle, and a zoom never goes below 2 % of the
+  triangle.
+* **A click on a region fires on release,** because a press may become a
+  drag. A click on a point still fires on the press.
+* **A double click shows the whole triangle,** not the zoom a file was saved
+  with; `SetZoom` sets any other.
+* **Zoomed regions are clipped in share space,** not only by the canvas clip,
+  so their names and hit areas stay inside the visible triangle.
+* **Contours come from marching triangles on the bin lattice,** not from the
+  marching-squares helper: the bins are triangles, and their corners carry
+  the mean of the counts that meet there.
+* **`SetShowPoints` is new:** over a density view the markers are noise.
 
 A ternary plot draws things made of three parts, such as soil (sand, silt,
 clay), an alloy, a three-party vote or a day split into work, sleep and the
@@ -571,6 +592,6 @@ charts.
 |---|---|---|
 | **1** *(done)* | `ChartTernaryProjection` (A1) and its engine test; the model with normalisation and `Validate`; A2–A5; S1–S3; I1; the `ThreePartyVotes` sample; the demo page with scatter variants in both reading directions; the guide; model and render tests | Reference shape 1 |
 | **2** *(done)* | Regions R1–R4 with the USDA soil texture and De Finetti presets; paths, bubbles and reference curves (S4–S6); the reading guide (I2); X1 and X2 with demo Open / Save through `UltraCanvasFileLoader` | Reference shapes 2 and 3 |
-| **3** | Sub-triangle zoom (A6, I3); triangular binning and iso-lines (D1, D2) | Reference shape 4 |
+| **3** *(done)* | Sub-triangle zoom (A6, I3); triangular binning and iso-lines (D1, D2) | Reference shape 4 |
 
 Every phase is lines, polygons, markers and text through one affine map.
