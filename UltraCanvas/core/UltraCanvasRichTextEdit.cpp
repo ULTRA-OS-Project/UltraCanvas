@@ -7,11 +7,12 @@
 // layout text and the editor's byte offsets are the same string, hit testing,
 // caret geometry and selection painting need no translation layer.
 //
+// Version: 1.5.0 - a run's own letter spacing (RichTextRun::letterSpacingPt), over the tracking
 // Version: 1.4.0 - RichTextEditStyle::letterSpacing: extra room between every two letters
 // Version: 1.3.0 - the font report and its notice: the fonts the document needs that the
 //                  computer lacks, each a link to its download page
 // Version: 1.2.1 - list bullets "•" "◦" "▪" are drawn as shapes
-// Last Modified: 2026-10-23
+// Last Modified: 2026-11-04
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasRichTextEdit.h"
@@ -1271,6 +1272,10 @@ void UltraCanvasRichTextEdit::ApplyRunAttributes(ITextLayout* layout, const Rich
         }
         if (!run.fontFamily.empty()) add(TextAttributeFactory::CreateFontFamily(run.fontFamily));
         if (run.fontSizePt > 0.0f)   add(TextAttributeFactory::CreateFontSize(run.fontSizePt));
+        // A run's own letter spacing, over the whole text's (the later of
+        // two attributes on the same letters is the one that counts).
+        if (run.letterSpacingPt)
+            add(TextAttributeFactory::CreateLetterSpacing(static_cast<double>(Px(*run.letterSpacingPt))));
         if (!run.color.empty()) {
             add(TextAttributeFactory::CreateForeground(ParseHexColor(run.color, style.textColor)));
         }

@@ -779,6 +779,12 @@ set(ULTRACANVAS_CORE_SOURCES
         # failure. Windows backend under OS/MSWindows/, picked up by the
         # platform glob; every other platform gets the fallbacks in here.
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasElevatedFileOperations.cpp
+        # Deleting for good, and why it failed: "in use" (no administrator
+        # helps) told apart from "not permitted", read-only folders and
+        # Windows' delete-pending entries handled. Windows backend under
+        # OS/MSWindows/, picked up by the platform glob; std::filesystem
+        # everywhere else, in here.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFileRemoval.cpp
         # An installed Windows package whose ImageMagick coder carries a
         # system DLL's name (mpr.dll, 0.9.92 and older, or a newer package
         # extracted over it) is put right before the image subsystem starts.

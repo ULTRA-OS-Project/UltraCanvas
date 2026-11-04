@@ -4,6 +4,7 @@
 // airbrush, eraser, clone, smudge, dodge, burn), fill, gradient, the lines
 // (line, polyline, arrow, curve), shapes (rectangle, ellipse), text, zoom
 // and pan.
+// Version: 1.3.1 - no UltraCanvasApplication.h: its font list went with the Text tool's options
 // Version: 1.3.0 - the Text tool's options moved to the window's text bar
 // Version: 1.2.1 - the Text tool's Font and Align lists give the keyboard back to the text
 //                  when they close without a choice
@@ -12,12 +13,11 @@
 // Version: 1.1.1 - AddCaption: the hints under a tool's options are quiet grey, not bold
 // Version: 1.1.0 - Polyline, Arrow and Curve
 // Version: 1.0.0
-// Last Modified: 2026-11-03
+// Last Modified: 2026-11-04
 // Author: UltraCanvas Framework
 
 #include "UltraPaintTools.h"
 
-#include "UltraCanvasApplication.h"   // GetInstalledFontFamilies
 #include "UltraCanvasCheckbox.h"
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasLabel.h"

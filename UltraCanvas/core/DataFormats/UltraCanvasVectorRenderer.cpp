@@ -1,10 +1,12 @@
 // UltraCanvasVectorRenderer.cpp
 // Vector Graphics Rendering for UltraCanvas
+// Version: 2.3.0 - RenderText: a span with a colour of its own (VectorTextStyle::FillColor)
+//                  is painted in it
 // Version: 2.2.0 - RenderText: the anchor places each text chunk (a span with a Position of
 //                  its own starts one - a line of a text set over several) on its own start,
 //                  and draws underline, strikethrough and letter spacing
 // Version: 2.1.2
-// Last Modified: 2026-11-03
+// Last Modified: 2026-11-04
 // Author: UltraCanvas Framework
 //
 // Draws a VectorStorage::VectorDocument into any IRenderContext. Every
@@ -349,13 +351,17 @@ namespace UltraCanvas {
 
     void VectorRenderer::RenderText(const VectorText &text) {
         const float opacity = silhouetteMode ? 1.0f : text.Style.FillOpacity;
-        if (silhouetteMode) ctx->SetTextPaint(Colors::Black);
-        else if (OutlineMode()) ctx->SetTextPaint(options.OutlineColor);
+        Color textPaint = WithOpacity(Colors::Black, opacity);
+        if (silhouetteMode) textPaint = Colors::Black;
+        else if (OutlineMode()) textPaint = options.OutlineColor;
         else if (text.Style.Fill.has_value()) {
             if (auto *color = std::get_if<Color>(&text.Style.Fill.value()))
-                ctx->SetTextPaint(WithOpacity(*color, opacity));
-            else ctx->SetTextPaint(WithOpacity(Colors::Black, opacity));
-        } else ctx->SetTextPaint(WithOpacity(Colors::Black, opacity));
+                textPaint = WithOpacity(*color, opacity);
+        }
+        ctx->SetTextPaint(textPaint);
+        // A span in a colour of its own is painted in it, at the text's
+        // opacity (not in the silhouette or the outline views).
+        const bool spanColours = !silhouetteMode && !OutlineMode();
 
         // Each span is set in its own font (a span with no family or the
         // default size inherits the base style's), measured with the
@@ -435,6 +441,8 @@ namespace UltraCanvas {
             Point2Dd pos(chunk.start.x + anchorShift, chunk.start.y);
             for (const auto &run: chunk.runs) {
                 if (!run.span->Text.empty()) {
+                    const auto &own = run.span->Style.FillColor;
+                    ctx->SetTextPaint(spanColours && own ? WithOpacity(*own, opacity) : textPaint);
                     if (run.layout) {
                         ctx->DrawTextLayout(*run.layout, Point2Dd(pos.x, pos.y - run.baseline));
                     } else {

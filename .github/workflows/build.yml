@@ -1963,13 +1963,19 @@ jobs:
       # its icons, the shortcut test reads .lnk files on the system they
       # come from, and the history test keeps UltraFiler's recently-used lists
       # under %APPDATA%, and the retire test stops a display's workers the way
-      # UltraFiler does for a closed tab. ULTRACANVAS_BUILD_FILER_TESTS builds
+      # UltraFiler does for a closed tab. The file-removal test makes each
+      # of the things Windows answers "access denied" for (read-only folders,
+      # delete pending, a mapped file) and checks only a refusal of the
+      # access list is taken for a permission problem; the elevated-operations
+      # test runs the administrator helper's delete on them, and the
+      # vanished-folder test checks a display whose folder is deleted moves up.
+      # ULTRACANVAS_BUILD_FILER_TESTS builds
       # them without the Linux-only BUILD_TESTS; Linux runs them in the full
       # pass.
       - name: Run Filer tests (Windows)
         if: runner.os == 'Windows'
         working-directory: build
-        run: ctest --output-on-failure --no-tests=error -R "^(FilerFolderPreviewTest|FilerNameEncodingTest|FilerHostIconsTest|FilerShortcutEntryTest|FilerHistoryTest|FilerRetireTest)$"
+        run: ctest --output-on-failure --no-tests=error -R "^(FilerFolderPreviewTest|FilerNameEncodingTest|FilerHostIconsTest|FilerShortcutEntryTest|FilerHistoryTest|FilerRetireTest|FileRemovalTest|ElevatedFileOperationsTest|FilerVanishedFolderTest)$"
 
       # The bundled emoji fonts on Windows, where emoji drew as boxes of hex
       # digits: the emoji setting's file under %APPDATA%, the generic font

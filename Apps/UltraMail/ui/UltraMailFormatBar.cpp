@@ -1,4 +1,5 @@
 // Apps/UltraMail/ui/UltraMailFormatBar.cpp
+// Version: 0.5.0 - the Font list shows each font in itself (DropdownItem::fontFamily)
 // Version: 0.4.0 - Options::singleRow (every tool in one row); Font and Size
 //                  show the font and size at the cursor (Sync); a Text |
 //                  Background switch in front of the swatches picks what a
@@ -180,7 +181,11 @@ FormatBar FormatBar::Build(const Options& options) {
     // is no font or size of its own, which the reader's program chooses.
     auto font = CreateDropdown(id + "Font", 0, 0, 130, Theme::kControlHeight);
     font->AddItem("Default", "");
-    for (const char* name : kFonts) font->AddItem(name, name);
+    for (const char* name : kFonts) {
+        DropdownItem item(name, name);
+        item.fontFamily = name;   // shown in itself
+        font->AddItem(item);
+    }
     Theme::StyleDropdown(font);
     font->SetSelectedIndex(0, /*runNotifications=*/false);
     font->SetTooltip("Font of the selected text");

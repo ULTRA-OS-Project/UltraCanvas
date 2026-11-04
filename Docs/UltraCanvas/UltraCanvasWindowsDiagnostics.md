@@ -508,6 +508,20 @@ switches to the full set when the scan ends - laid out and drawn again
 stay a box. `GetSystemFontScanStatus()` says which happened, and
 `SetSystemFontsSwitchedHandler()` hears of the switch.
 
+The font folders are named by path (`GenerateWindowsFontFoldersConfig()`:
+`%SystemRoot%\fonts`, `%LOCALAPPDATA%\Microsoft\Windows\Fonts` and
+fontconfig's cache folder), not by fontconfig's keywords (`WINDOWSFONTDIR` and
+the others): how a fontconfig resolves those in a config read from memory has
+changed between versions, and one it cannot resolve failed the whole config -
+the system fonts were then never loaded. Once the full set is in use,
+`FONTCONFIG_FILE` names its `fonts.conf`, so a reload of fontconfig's
+configuration by any library reads the full set rather than the start's
+bundled fonts alone. A set with folders of its own but without Windows' (a
+`fonts.conf` beside the program) gets them added. The debug log says how it
+ended: "UltraCanvas: N system and M application font files; the Windows font
+folder (C:/WINDOWS/fonts) is read" - or "NOT read", or "read when the scan
+ends".
+
 Text goes through Pango's fontconfig font map on every thread: the main
 thread's is made in `LoadBundledFontsNative()`, and `PANGOCAIRO_BACKEND=fc` is
 set once it exists, so a worker thread (or libvips and librsvg laying out

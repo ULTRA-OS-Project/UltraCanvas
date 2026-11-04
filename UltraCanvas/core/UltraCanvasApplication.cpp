@@ -495,6 +495,29 @@ namespace UltraCanvas {
         // would scale twice).
         // `withSystemFonts` false (Windows only): the bundled fonts alone, for
         // the start while the system fonts are scanned in the background.
+#if defined(_WIN32) || defined(_WIN64)
+        // The <dir> and <cachedir> elements of the Windows font folders, by
+        // path (GenerateWindowsFontFoldersConfig).
+        std::string WindowsFontFoldersXml(bool withFontFolders) {
+            std::ostringstream xml;
+            if (withFontFolders) {
+                const std::string system = GetWindowsFontsFolder();
+                xml << "  <dir>" << (system.empty() ? std::string("WINDOWSFONTDIR") : XmlEscape(system)) << "</dir>\n";
+                const std::string local = GetEnvUtf8("LOCALAPPDATA");
+                xml << "  <dir>" << (local.empty() ? std::string("WINDOWSUSERFONTDIR")
+                                                   : XmlEscape(ToFontconfigPath(local + "/Microsoft/Windows/Fonts")))
+                    << "</dir>\n";
+            }
+            // Where LOCAL_APPDATA_FONTCONFIG_CACHE points: the caches written
+            // so far stay valid.
+            const std::string local = GetEnvUtf8("LOCALAPPDATA");
+            xml << "  <cachedir>" << (local.empty() ? std::string("LOCAL_APPDATA_FONTCONFIG_CACHE")
+                                                    : XmlEscape(ToFontconfigPath(local + "/fontconfig/cache")))
+                << "</cachedir>\n";
+            return xml.str();
+        }
+#endif
+
         std::string GenerateFontsConf(bool withSystemFonts = true) {
             std::string bundledDir;
             {
@@ -515,13 +538,9 @@ namespace UltraCanvas {
                 conf << "  <dir>" << bundledDir << "</dir>\n";
             }
 #if defined(_WIN32) || defined(_WIN64)
-            // WINDOWSFONTDIR / WINDOWSUSERFONTDIR / LOCAL_APPDATA_FONTCONFIG_CACHE
-            // are fontconfig's built-in Windows keywords.
-            if (withSystemFonts) {
-                conf << "  <dir>WINDOWSFONTDIR</dir>\n"
-                        "  <dir>WINDOWSUSERFONTDIR</dir>\n";
-            }
-            conf << "  <cachedir>LOCAL_APPDATA_FONTCONFIG_CACHE</cachedir>\n";
+            // The Windows font folders by path, not by fontconfig's keywords
+            // (GenerateWindowsFontFoldersConfig).
+            conf << WindowsFontFoldersXml(withSystemFonts);
 #elif defined(__ANDROID__)
             // System fonts live in fixed directories (no /etc/fonts at all,
             // so this generated config is always the active one on Android).
@@ -547,6 +566,22 @@ namespace UltraCanvas {
         }
     } // namespace
 
+#if defined(_WIN32) || defined(_WIN64)
+    std::string GetWindowsFontsFolder() {
+        std::string windows = GetEnvUtf8("SystemRoot");
+        if (windows.empty()) windows = GetEnvUtf8("WINDIR");
+        // "fonts" as fontconfig's WINDOWSFONTDIR spells it: the same folder,
+        // and the same name for its cache.
+        return windows.empty() ? std::string() : ToFontconfigPath(windows + "/fonts");
+    }
+
+    std::string GenerateWindowsFontFoldersConfig() {
+        return "<?xml version=\"1.0\"?>\n"
+               "<!DOCTYPE fontconfig SYSTEM \"fonts.dtd\">\n"
+               "<fontconfig>\n" + WindowsFontFoldersXml(true) + "</fontconfig>\n";
+    }
+#endif
+
     std::string GenerateFontAliasConfig() {
         std::ostringstream conf;
         conf << "<?xml version=\"1.0\"?>\n"
@@ -568,6 +603,13 @@ namespace UltraCanvas {
     }
 #endif // !__APPLE__
 
+    namespace {
+        // GetFontSetGeneration's count; 1 for the fonts of the start.
+        std::atomic<unsigned long> fontSetGeneration{1};
+    }
+
+    unsigned long GetFontSetGeneration() { return fontSetGeneration.load(); }
+
 #if !defined(__APPLE__)
     namespace {
         // The system fonts' scan (SetupBundledFontconfig, Windows): one per process,
@@ -579,12 +621,30 @@ namespace UltraCanvas {
             SystemFontScanStatus    status;
             FcConfig*               config = nullptr;   // the full set, until it is made current
             bool                    switchWhenDone = false;   // the start went on without it
+            std::string             fullConfFile;       // the full set's fonts.conf
             std::function<void(const SystemFontScanStatus&)> onSwitched;
         };
 
         SystemFontScan& FontScan() {
             static SystemFontScan* scan = new SystemFontScan();
             return *scan;
+        }
+
+        // The full set is the one in use: fontconfig is pointed at its file,
+        // so a reload of the configuration - FcInitReinitialize or
+        // FcInitBringUptoDate, by whichever library calls it - reads the
+        // full set again. FONTCONFIG_FILE named the start's file, the bundled
+        // fonts alone, and a reload dropped every system font.
+        void PointFontconfigAtFullSet() {
+#if defined(_WIN32) || defined(_WIN64)
+            std::string file;
+            {
+                SystemFontScan& scan = FontScan();
+                std::lock_guard<std::mutex> lock(scan.mutex);
+                file = scan.fullConfFile;
+            }
+            if (!file.empty()) _putenv_s("FONTCONFIG_FILE", file.c_str());
+#endif
         }
 
         // UI thread: the full set becomes the current one and every window is
@@ -615,6 +675,7 @@ namespace UltraCanvas {
             }
             FcConfigSetCurrent(config);
             FcConfigDestroy(config);   // the current-config reference keeps it
+            PointFontconfigAtFullSet();
             // The emoji font and its rule belong to the set in use: the new
             // one gets them too.
             ApplyEmojiSettings();
@@ -629,6 +690,9 @@ namespace UltraCanvas {
             RefreshFontConfiguration();
 #endif
             RenderContextCairo::InvalidateAllFontMetricsCaches();
+            // A new set of fonts: before the windows are laid out again, so
+            // a font list sees it then (GetFontSetGeneration).
+            ++fontSetGeneration;
             // Laid out and drawn again: a new layout alone repaints nothing,
             // so the boxes drawn for characters the start's fonts lacked
             // stayed on screen until something else redrew them.
@@ -646,12 +710,13 @@ namespace UltraCanvas {
         // The scan itself, on its thread: the full config parsed from memory
         // (no path for a code page to get wrong) and its fonts read - from
         // fontconfig's cache when it is warm, from every font file when not.
-        [[maybe_unused]] void StartSystemFontScan(const std::string& fullConf) {
+        [[maybe_unused]] void StartSystemFontScan(const std::string& fullConf, const std::string& fullConfFile) {
             SystemFontScan& scan = FontScan();
             {
                 std::lock_guard<std::mutex> lock(scan.mutex);
                 if (scan.status.started) return;
                 scan.status.started = true;
+                scan.fullConfFile = fullConfFile;
             }
             std::thread([fullConf]() {
                 const auto start = std::chrono::steady_clock::now();
@@ -714,6 +779,7 @@ namespace UltraCanvas {
         }
         FcConfigSetCurrent(config);
         FcConfigDestroy(config);   // the current-config reference keeps it
+        PointFontconfigAtFullSet();
         return true;
 #else
         (void)waitMs;
@@ -792,6 +858,7 @@ namespace UltraCanvas {
         };
 
         std::string file = dir + "/fonts.conf";
+        [[maybe_unused]] const std::string fullFile = file;
         const std::string contents = GenerateFontsConf();
         if (!writeConf(file, contents)) return;
 
@@ -805,7 +872,7 @@ namespace UltraCanvas {
                 const std::string startupFile = dir + "/fonts-startup.conf";
                 if (writeConf(startupFile, GenerateFontsConf(/*withSystemFonts=*/false))) {
                     file = startupFile;
-                    StartSystemFontScan(contents);
+                    StartSystemFontScan(contents, fullFile);
                 }
             }
         }
@@ -848,6 +915,7 @@ namespace UltraCanvas {
     }
 
     void RefreshFontConfiguration() {
+        ++fontSetGeneration;
 #if !defined(__APPLE__)
         // FcConfigAppFontAddFile only records the file; the FontSet FcMatch
         // (and therefore Pango) searches is materialised by FcConfigBuildFonts.

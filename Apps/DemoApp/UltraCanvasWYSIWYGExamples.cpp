@@ -14,12 +14,13 @@
 // the table are exactly the formatting Markdown cannot spell, and they are the
 // reason this element exists next to UltraCanvasTextArea.
 //
+// Version: 1.5.0 - the Font list shows each font in itself (DropdownItem::fontFamily)
 // Version: 1.4.0 - the shared page look (UltraCanvasDemoPageKit): both pages fill the
 //                  page area with the toolbars and the editor in one card, the
 //                  editor takes the height left, status and notes wrap
 // Version: 1.3.0 - Open, Save as and Insert image offer FileLoader's types; saves through SaveTextDocument
 // Version: 1.2.2
-// Last Modified: 2026-10-23
+// Last Modified: 2026-11-04
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -597,6 +598,15 @@ namespace UltraCanvas {
                               {"Document font", "Sans", "Serif", "Monospace", "Georgia", "Verdana"},
                               "Font family of the selection (\"Document font\" = inherit)");
         if (fontBox) {
+            // Each font shown in itself ("Document font" in the bar's own).
+            fontBox->ClearItems();
+            fontBox->AddItem("Document font", "");
+            for (size_t i = 1; i < page->fonts.size(); ++i) {
+                DropdownItem item(page->fonts[i], page->fonts[i]);
+                item.fontFamily = page->fonts[i];
+                fontBox->AddItem(item);
+            }
+            fontBox->SetSelectedIndex(0, false);
             fontBox->onSelectionChanged = [raw](int index, const DropdownItem&) {
                 if (index < 0 || index >= static_cast<int>(raw->fonts.size())) return;
                 raw->edit->SetFontFamily(raw->fonts[static_cast<size_t>(index)]);

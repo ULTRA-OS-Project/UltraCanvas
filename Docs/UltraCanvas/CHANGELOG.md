@@ -1,3 +1,115 @@
+#### 2026-11-04 *0.9.484*
+- **A delete Windows answers "Access is denied" is no longer taken for a
+  permission problem by default.** On Windows that one error stands for four
+  refusals, and the Filer's delete treated every one of them as the
+  access-list case, offering "Delete as administrator". The elevated helper
+  then got the same refusal and reported "could not be deleted even with
+  administrator permission", while Explorer deleted the folder without
+  asking. The new `UltraCanvasFileRemoval`
+  (`RemoveFileSystemEntry`, `RemoveFileSystemTree`,
+  `FileSystemEntryIsDeletePending`, `FileRemovalProblem`) reads the NTSTATUS
+  behind the error and the point at which the system refused, and tells the
+  four apart:
+  - a read-only **folder** is lifted like a read-only file. Folders copied off
+    a CD or a camera card, or carrying a `desktop.ini`, have the read-only bit,
+    and FAT and exFAT drives refuse such a folder for deletion. The bit is put
+    back if the delete still fails;
+  - an entry already deleted but still held open by another program (a
+    scanner or the indexer; Windows calls it "delete pending") counts as
+    removed. The folder it empties is waited for, about two seconds at most;
+  - a file mapped into a process is `InUse`. This covers a running program
+    and a picture libvips memory-mapped when the Filer drew its thumbnail or
+    folder preview. The Filer releases what its image loader still holds
+    (`UCImage::ReleaseCachedFiles`, new) and tries once more. Whatever is
+    still held gets the "in use" dialog, not the administrator one;
+  - only a refusal of the access list is `NotPermitted`, the one case
+    "Delete as administrator" is offered for.
+  Where the system has it (Windows 10 1809+ on NTFS), a delete uses POSIX
+  semantics, so a held file's name goes at once and its folder can follow.
+  The elevated helper removes through the same code. A failure it reports
+  names the file inside that refused, and says so when a program holds it.
+  `Tests/FileRemovalTest.cpp` builds each of these cases on the Windows CI
+  runner. `Tests/ElevatedFileOperationsTest.cpp` was built nowhere; it is now
+  registered and runs there too.
+- **A folder being deleted, moved or renamed is no longer held open by
+  another file display's folder watch.** On Windows a folder watch keeps its
+  folder open. When the second pane of UltraFiler showed a subfolder of the
+  folder being deleted, that folder stayed listed as "delete pending" on a FAT
+  or exFAT drive. On any drive, a folder above the watched one could not be
+  moved, not even to the Recycle Bin. The new `UltraCanvasFolderWatchHold`
+  keeps every watch in the process off the given folders while it lives.
+  Watches already there let go: each reports itself failed, so its owner
+  polls instead and notices the folder is gone. New ones are refused until
+  the hold ends. The Filer's delete (permanent or to the trash), move and
+  folder rename take one for as long as they run. `UltraCanvasFolderWatcher`
+  is now safe to release from another thread.
+- **A read-only folder is deleted without asking on Windows.** The attribute
+  protects nothing on a Windows folder. Windows sets it itself on a folder
+  with a `desktop.ini` and on folders copied off a CD or a camera card, so
+  Explorer deletes such a folder without a word. The Filer no longer asks
+  "write-protected?" for one there; it lifts the attribute as it deletes. A
+  read-only file is still asked about, and so is a folder without write
+  permission on Linux and macOS, where nothing in it can be deleted.
+- **A Filer display whose folder is deleted moves up to the nearest folder
+  that is still there.** The folder may be deleted or renamed from the other
+  pane or by another program. The display used to list an empty folder that
+  no longer existed, with nowhere to go. Now `Refresh()`, which its folder
+  watch calls when it notices, goes to the nearest existing folder above it
+  through `SetPath`, so `onPathChanged` reports the move. A folder whose
+  volume went with it (a USB stick pulled out, a share dropped) is still
+  waited for, so the stick plugged back in re-lists itself. On Windows such
+  a folder has no drive root left; on Linux and macOS what is left above it
+  is on another device. `Tests/FilerVanishedFolderTest.cpp` runs on the
+  Windows CI runner too.
+
+#### 2026-11-04 *0.9.483*
+- **DemoApp: the WYSIWYG editor page's Font list shows each font in itself**
+  (`DropdownItem::fontFamily`), as the framework's text bar does.
+- **The text bar's Font list follows the fonts.** It was made once, with the
+  window. On Windows, after a start whose system fonts were still being
+  scanned (a cold font cache), it then held the bundled fonts alone for the
+  whole session - ArtCreator, UltraPaint and UltraVideo offered Sans, Serif,
+  Monospace and Ubuntu. `GetFontSetGeneration()` counts each change of the
+  fonts the text engine knows (the system fonts switched to, a font file
+  registered), and the bar makes its list again when the window lays it out
+  after one.
+- **Selected words can have their own letter spacing.** A run of the rich
+  text editor carries a letter spacing of its own (`RichTextRun::
+  letterSpacingPt`, in points, over the whole text's tracking): a
+  `RichCharFormatDelta` sets it (`setLetterSpacing`), `GetFormatState`
+  reports it, the editor draws it, and ODT (`fo:letter-spacing`), DOCX
+  (`w:spacing` in the run's properties) and HTML (CSS `letter-spacing`) keep
+  it. A character style can set it too (`RichStyleCharacter::
+  letterSpacingPt`), read and written in DOCX and ODT. The text bar (`UltraCanvasTextFormatBar`)
+  treats letter spacing as a character attribute, like the font and the
+  size: `TextFormatCharDelta` and `TextFormatAtCaret` convert it both ways.
+- **A word of a drawing's text can have its own colour.** `VectorTextStyle::
+  FillColor` is a span's colour (unset: the text's fill); `VectorRenderer`
+  paints the span in it, and the SVG writer and reader keep it as the
+  `<tspan>`'s `fill` and `fill-opacity`.
+- **A size typed into the text bar went to the whole text.** Keys typed into
+  the bar's size or spacing field, or into its font list to find a font,
+  reached the program's own shortcuts: Ctrl+A ran Select All, which finished
+  the text being typed, so the size went to all of it instead of to the
+  selected words. `UltraCanvasTextFormatBar::HasKeyboardFocus` tells a host
+  when the keys are the bar's.
+- **Windows: the system fonts could be missing for the whole session.** A
+  program showed and offered only its bundled fonts (Ubuntu, Noto Color
+  Emoji) and the generic Sans, Serif and Monospace. The generated fontconfig
+  set-up named the Windows font folders through fontconfig's keywords
+  (`WINDOWSFONTDIR`, `WINDOWSUSERFONTDIR`, `LOCAL_APPDATA_FONTCONFIG_CACHE`);
+  how fontconfig resolves them in a configuration read from memory differs
+  between versions, and one it could not resolve failed the whole
+  configuration, and with it the scan of the system fonts. And
+  `FONTCONFIG_FILE` kept naming the start's file of bundled fonts alone, so
+  any reload of fontconfig's configuration dropped every system font.
+  - The folders are named by path (`GenerateWindowsFontFoldersConfig()`,
+    `GetWindowsFontsFolder()`), from `%SystemRoot%` and `%LOCALAPPDATA%`.
+  - Once the full set is in use, `FONTCONFIG_FILE` names its `fonts.conf`.
+  - A font set with folders of its own but not Windows' (a `fonts.conf`
+    found beside the program) gets them added.
+  - The debug log says whether the Windows font folder is read.
+
 #### 2026-11-04 *0.9.482*
 - **The save-settings dialog fits the window it is opened from.**
   `UltraCanvasFileLoader::ShowSaveSettingsDialog` (the JPEG, PNG, WebP ...
