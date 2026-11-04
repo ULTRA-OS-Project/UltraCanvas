@@ -8207,15 +8207,23 @@ void UltraFilerWindow::OpenPreviewFile(const std::string& path, bool asCopy) {
     previewOpenedStamp = StampFile(path);
     previewOpenedAt = std::chrono::steady_clock::now();
     previewChangeStamp = FileStamp{};
-    if (asCopy) preview->SetFiles({path});
-    else        preview->OpenFile(path);
+    // Opened after the pane has drawn its loading ring and the file's name,
+    // so selecting a large file never leaves the previous one standing in for
+    // it, and keys pressed meanwhile replace it rather than queue behind it.
+    if (asCopy) preview->SetFilesWhenShown({path});
+    else        preview->OpenFileWhenShown(path);
+}
+
+std::string UltraFilerWindow::PreviewPanePath() const {
+    if (!preview) return std::string();
+    return preview->IsLoading() ? preview->GetLoadingPath() : preview->GetCurrentPath();
 }
 
 void UltraFilerWindow::ReloadChangedPreview() {
     // The pane moved on - to another file, to a folder, or folded away -
     // and has nothing of this file left to bring up to date.
     if (!preview || previewOpenedPath.empty() || !previewShown ||
-        previewShowsFolder || preview->GetCurrentPath() != previewOpenedPath) {
+        previewShowsFolder || PreviewPanePath() != previewOpenedPath) {
         CancelPreviewReloadTimer();
         return;
     }
@@ -8525,7 +8533,7 @@ void UltraFilerWindow::UpdatePreviewPane() {
             if (folderPreview->GetPath() != folderPath)
                 folderPreview->SetPath(folderPath);
         } else {
-            if (preview->GetCurrentPath() != mediaPath)
+            if (PreviewPanePath() != mediaPath)
                 OpenPreviewFile(mediaPath, mediaIsRemoteCopy);
             else
                 ReloadChangedPreview();   // same file - changed since?

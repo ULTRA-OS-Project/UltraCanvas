@@ -2899,6 +2899,12 @@ and `scripts/wrap_ui_strings.py` wraps a file's interface strings in
 `Tr` for review. `ultralocalisation-draft` (`Apps/UltraLocalisationDraft`,
 on UltraAI's translator) drafts a language's catalogue, driven per set by
 `scripts/translate_catalogue.py`; machine drafts ship in thirty
-languages under `media/locale/<lang>/`. See
-`Docs/Modules/UltraLocalisation/README.md`.
+languages under `media/locale/<lang>/`. The localisation editor
+`UltraCanvasLocalisationEditor` (`include/UltraCanvasLocalisationEditor.h`,
+in the core, with `LocalisationWorkspace` as its model) shows every set an
+application's texts come from in one grid and merges them; UOS-Settings
+hosts it under Language > Translations, `ShowLocalisationEditorDialog`
+opens it on the running application. See
+`Docs/Modules/UltraLocalisation/README.md` and
+`Docs/UltraCanvas/UltraCanvasLocalisationEditor.md`.
 

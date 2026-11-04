@@ -2,7 +2,7 @@
 
 <!-- doc-check: int count = 3; int done = 1; std::vector<std::string> systemLanguages; -->
 
-**Status:** Phases L1 to L3 of [`UltraCanvasLocalisationProposal.md`](../../UltraCanvas/UltraCanvasLocalisationProposal.md) implemented: the module, the three layers of catalogues, the override folder, the fallback walk, plurals, `Language.conf`, the language choice, the start-up wiring (L1); the English standard set and the sixteen base sets under `media/locale/en/`, the framework's own dialogs wrapped in `Tr`, and the three scripts with their CI check (L2); the drafting tool over UltraAI with its script, the first drafts of the standard and base sets in German, French, Spanish, Italian, Dutch, Portuguese, Japanese and Simplified Chinese, and the UOS-Settings Language page (L3). The editor (L4), the applications (L5) and locale formatting (L6) follow.
+**Status:** Phases L1 to L3 of [`UltraCanvasLocalisationProposal.md`](../../UltraCanvas/UltraCanvasLocalisationProposal.md) implemented: the module, the three layers of catalogues, the override folder, the fallback walk, plurals, `Language.conf`, the language choice, the start-up wiring (L1); the English standard set and the sixteen base sets under `media/locale/en/`, the framework's own dialogs wrapped in `Tr`, and the three scripts with their CI check (L2); the drafting tool over UltraAI with its script, the first drafts of the standard and base sets in German, French, Spanish, Italian, Dutch, Portuguese, Japanese and Simplified Chinese, and the UOS-Settings Language page (L3); the localisation editor - every set in one grid, the merge operations, the two save paths, the compare column, the drafting button - as an element, a dialog, the UOS-Settings Translations page and a DemoApp page (L4, [`UltraCanvasLocalisationEditor.md`](../../UltraCanvas/UltraCanvasLocalisationEditor.md)). The applications (L5) and locale formatting (L6) follow.
 **Version:** 1.2.0
 **Author:** UltraCanvas Framework / ULTRA OS
 **Last Modified:** 2026-11-02
@@ -175,7 +175,7 @@ python3 scripts/translate_catalogue.py de fr --provider anthropic --api-key-env 
 python3 scripts/translate_catalogue.py ja --sets Standard base/Video --dry-run
 ```
 
-The editor's drafting button (L4) is this same step. The first drafts of
+The editor's drafting button (`UltraCanvasLocalisationEditor::SetDrafter`, L4) is this same step, through a drafter the host wires to UltraAI. The first drafts of
 the standard and base sets ship in thirty languages - `de`, `fr`, `es`,
 `it`, `nl`, `pt`, `ja`, `zh-Hans`, and since 2026-11-03 `ru`, `uk`, `pl`,
 `cs`, `sv`, `da`, `nb`, `fi`, `tr`, `el`, `ko`, `zh-Hant`, `ar`, `he`,
