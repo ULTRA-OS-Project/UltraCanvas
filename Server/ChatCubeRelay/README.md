@@ -67,7 +67,7 @@ too, in its upgrade request).
 | `DELETE /v1/recovery/escrow` | recovery off: the copy is deleted |
 | `POST /v1/recovery/start` | `{address}` (the ID's e-mail address, any capitals), no session → `{recovery_id, poll_token, expires_in}`, the same for an address nobody has; a recovery link to the address only when an ID with recovery on has it confirmed. 429 past five an hour per address and per client |
 | `GET /recover?token=` | the page the recovery link opens: who asked and when, and a button (a form `POST`) to approve - opening the link alone approves nothing. 410 when it expired (30 minutes) or was used |
-| `POST /recover` | form `token=` → the recovery approved, the link spent; the page says to go back to the computer that asked |
+| `POST /recover` | form `token=` → the recovery approved, the link spent; the page says to go back to the computer that asked. 403 when the browser says the form came from another site (`Origin` not the relay's own, `null`, or `Sec-Fetch-Site` not `same-origin`) |
 | `POST /v1/recovery/poll` | `{recovery_id, poll_token}`, no session → 202 `{status: "pending", expires_in}` until approved; then once `{user_id, secret_key, display_name, email, phone}` and the owner is e-mailed a notice; 410 `expired` (or a wrong poll token) |
 | `GET /v1/users/{id}` | `{user_id, public_key, display_name}` — contact discovery by id |
 | `GET /v1/contacts` | `{contacts: [{user_id, public_key, display_name, presence}]}` |
@@ -120,20 +120,27 @@ words:
   (`POST /v1/recovery/start`). If an ID with recovery on has that address
   confirmed, the relay e-mails it a link to `/recover`, good for 30 minutes
   and once. The page asks before it approves: a button that sends a form
-  `POST`, so a mail scanner that opens links by itself approves nothing.
+  `POST`, so a mail scanner that opens links by itself approves nothing,
+  and the relay takes that `POST` only from its own page: a form on another
+  site, which a browser marks with its `Origin`, is refused.
   Meanwhile the new computer asks every few seconds (`POST
   /v1/recovery/poll`) with a poll token it alone was given; once the owner
   has approved, it - and only it - gets the key back, once.
 - Starting a recovery answers the same whether the address belongs to anyone
   (a recovery is recorded either way; one nobody has is never approved), and
   the e-mail is sent after the answer, so neither the answer nor its timing
-  tells. Starts are limited per address and per client.
+  tells. Starts are limited to five an hour per address and thirty per
+  client (network address - many people can share one), the one refused not
+  counted against the other.
 - When an ID is recovered, its owner is e-mailed a notice. A recovered key
   cannot be taken back: an owner who did not do it secures the mailbox and
   makes a new ID. Whoever controls the mailbox controls a recovery-enabled
   ID, and ChatCube says so where recovery is turned on.
 
 Links and poll tokens are stored as SHA-256 digests, never as themselves.
+At every start and every hour the relay deletes what can no longer be used:
+expired or used links, expired recoveries and codes, send counts older than
+a day, expired sessions.
 Turning recovery off deletes the copy. Changing the address takes the
 confirmation away until the link sent to the new one is opened, and
 recovery waits for it.
@@ -149,6 +156,7 @@ can send e-mail; SMS is only for confirming the phone number:
 | `CHATCUBE_RELAY_SMS` | `twilio` or `webhook` (optional: the phone's confirmation code) |
 | `CHATCUBE_RELAY_TWILIO_ACCOUNT_SID`, `_AUTH_TOKEN`, `_FROM` | Twilio's Messages API and the sending number |
 | `CHATCUBE_RELAY_SMS_WEBHOOK_URL`, `_TOKEN` | any other gateway: one `POST` of `{"to", "text"}` per SMS, with `Authorization: Bearer <token>` when one is set; a 2xx answer counts as sent |
+| `CHATCUBE_RELAY_RECOVERY_STARTS_PER_CLIENT` | recoveries one network address may start in an hour (30); each e-mail address has its own limit of five |
 | `CHATCUBE_RELAY_OUTBOX` | development and tests only: every e-mail and SMS is appended to this file as a JSON line instead of being sent |
 
 A relay without a recovery key or an e-mail sender works as before and says

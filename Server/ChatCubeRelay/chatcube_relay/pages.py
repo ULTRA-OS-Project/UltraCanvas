@@ -2,7 +2,9 @@
 recovery, and what came of it. One small HTML page in ChatCube's look,
 self-contained (no script, no font or picture from elsewhere - the relay may
 sit on a network that reaches nothing else), light or dark as the browser is.
-Every text put in is escaped."""
+Every text put in is escaped. The referrer policy is same-origin, not
+no-referrer: under no-referrer a browser sends the approval form with
+"Origin: null", and the relay refuses a form whose origin is not its own."""
 
 from __future__ import annotations
 
@@ -13,7 +15,7 @@ _PAGE = """<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="referrer" content="no-referrer">
+<meta name="referrer" content="same-origin">
 <title>{title} - ChatCube</title>
 <style>
 :root {{ --ground:#f4f5f2; --panel:#ffffff; --ink:#1d2321; --muted:#5d6763; --line:#dfe3df;

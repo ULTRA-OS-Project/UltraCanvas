@@ -179,7 +179,6 @@ class Store:
 
     def count_sends(self, key: str, within: int) -> int:
         with self._lock:
-            self._db.execute("DELETE FROM sends WHERE at<?", (int(time.time()) - 24 * 3600,))
             row = self._db.execute("SELECT COUNT(*) AS n FROM sends WHERE key=? AND at>=?",
                                    (key, int(time.time()) - within)).fetchone()
         return int(row["n"])
@@ -214,7 +213,6 @@ class Store:
         replaces the ones before it for that user."""
         with self._lock:
             now = int(time.time())
-            self._db.execute("DELETE FROM links WHERE expires_at<?", (now,))
             if purpose == "confirm":
                 self._db.execute("DELETE FROM links WHERE user_id=? AND purpose='confirm'", (user_id,))
             self._db.execute(
@@ -246,7 +244,6 @@ class Store:
         with `poll_token`."""
         with self._lock:
             now = int(time.time())
-            self._db.execute("DELETE FROM recoveries WHERE expires_at<?", (now,))
             self._db.execute(
                 "INSERT INTO recoveries(recovery_id, user_id, poll_digest, expires_at, requested_from) "
                 "VALUES (?,?,?,?,?)", (recovery_id, user_id, hash_token(poll_token), now + ttl, requested_from))
@@ -270,6 +267,27 @@ class Store:
             self._db.execute("DELETE FROM recoveries WHERE recovery_id=?", (recovery_id,))
             self._db.execute("UPDATE links SET used_at=COALESCE(used_at, ?) WHERE recovery_id=?",
                              (int(time.time()), recovery_id))
+
+    # ---- housekeeping ------------------------------------------------------------
+
+    # Send counts are kept this long - longer than any rate limit looks back.
+    SENDS_KEPT_SECONDS = 24 * 3600
+
+    def prune(self) -> dict[str, int]:
+        """Deletes what can no longer be used: expired or used links, expired
+        recoveries and codes, send counts older than any limit looks at, and
+        expired sessions. Run at start and every hour. Answers how many rows
+        went from each table."""
+        now = int(time.time())
+        steps = {
+            "links": ("DELETE FROM links WHERE expires_at<? OR used_at IS NOT NULL", (now,)),
+            "recoveries": ("DELETE FROM recoveries WHERE expires_at<?", (now,)),
+            "codes": ("DELETE FROM codes WHERE expires_at<?", (now,)),
+            "sends": ("DELETE FROM sends WHERE at<?", (now - self.SENDS_KEPT_SECONDS,)),
+            "sessions": ("DELETE FROM sessions WHERE expires_at<?", (now,)),
+        }
+        with self._lock:
+            return {table: self._db.execute(sql, args).rowcount for table, (sql, args) in steps.items()}
 
     # ---- sessions ------------------------------------------------------------
 

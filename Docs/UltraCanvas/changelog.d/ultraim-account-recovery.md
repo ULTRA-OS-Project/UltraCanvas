@@ -15,3 +15,10 @@
   step at a time, each step in a transaction of its own; databases from
   relays 1.0 and 1.1, which recorded none, are recognised by their tables
   and keep their data, and one from a newer relay is refused.
+- **ChatCube relay: housekeeping, and an approval only from its own page.**
+  At every start and every hour the relay deletes expired or used links,
+  expired recoveries, codes and sessions, and send counts older than a day.
+  The recovery approval form is refused when the browser says it came from
+  another site, and recoveries from one network address have a limit of
+  their own (30 an hour, `CHATCUBE_RELAY_RECOVERY_STARTS_PER_CLIENT`), so
+  people behind a shared address are not refused for each other's.

@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 from chatcube_relay.app import create_app
 from chatcube_relay.config import Settings
 from chatcube_relay.identity import login_message, register_message, user_id_for
+from chatcube_relay.store import Store
 
 
 class Person:
@@ -495,9 +496,82 @@ def test_a_recovery_expires(recovering, monkeypatch):
 
 
 def test_starting_recoveries_is_rate_limited(recovering):
+    # Five an hour for one address...
     for n in range(5):
         assert recovering.post("/v1/recovery/start", json={"address": "a@example.org"}).status_code == 200
     assert recovering.post("/v1/recovery/start", json={"address": "a@example.org"}).status_code == 429
+    # ...and more from one network address, which many people may share -
+    # the refused one above was not counted against it.
+    for n in range(25):
+        r = recovering.post("/v1/recovery/start", json={"address": f"p{n}@example.org"})
+        assert r.status_code == 200, (n, r.text)
+    assert recovering.post("/v1/recovery/start", json={"address": "q@example.org"}).status_code == 429
+
+
+def test_approving_takes_the_relay_s_own_page(recovering):
+    erin = Person(recovering, "Erin").join()
+    with_recovery(recovering, erin)
+    start = recovering.post("/v1/recovery/start", json={"address": "erin@example.org"}).json()
+    ask = {"recovery_id": start["recovery_id"], "poll_token": start["poll_token"]}
+    token = token_of(link_in(sent(recovering, "email", "erin@example.org", 2)[-1]))
+    # A form on another site, a sandboxed one ("null"), a browser that says cross-site: refused,
+    # and the link still good.
+    for headers in ({"Origin": "https://evil.example"}, {"Origin": "null"},
+                    {"Sec-Fetch-Site": "cross-site"}, {"Origin": "http://testserver", "Sec-Fetch-Site": "same-site"}):
+        r = recovering.post("/recover", data={"token": token}, headers=headers)
+        assert r.status_code == 403 and "Not approved" in r.text, headers
+    assert recovering.post("/v1/recovery/poll", json=ask).status_code == 202
+    # The relay's own page.
+    r = recovering.post("/recover", data={"token": token},
+                        headers={"Origin": "http://testserver", "Sec-Fetch-Site": "same-origin"})
+    assert r.status_code == 200 and "on its way" in r.text
+    assert recovering.post("/v1/recovery/poll", json=ask).status_code == 200
+
+
+def test_the_public_address_is_an_origin_of_its_own(tmp_path):
+    settings = Settings(database=str(tmp_path / "relay.sqlite3"), outbox=str(tmp_path / "outbox.jsonl"),
+                        recovery_key=base64.b64encode(os.urandom(32)).decode(),
+                        public_url="https://relay.example.org")
+    with TestClient(create_app(settings)) as c:
+        c.outbox = tmp_path / "outbox.jsonl"
+        erin = Person(c, "Erin").join()
+        c.put("/v1/profile", headers=erin.auth, json={"email": "erin@example.org"})
+        link = sent(c, "email", "erin@example.org")[-1]["text"]
+        assert "https://relay.example.org/confirm-email?token=" in link
+        assert c.post("/recover", data={"token": "x" * 43},
+                      headers={"Origin": "https://relay.example.org"}).status_code == 410     # not 403
+
+
+def test_what_cannot_be_used_any_more_is_deleted(tmp_path):
+    path = str(tmp_path / "relay.sqlite3")
+    store = Store(path)
+    long_ago = int(_time.time()) - 2 * 24 * 3600
+    db = store._db
+    db.execute("INSERT INTO users VALUES ('u1', x'00', 'Erin', 1)")
+    store.put_link("live", "confirm", "u1", "e@example.org", 3600)
+    store.put_link("used", "recover", "u1", "e@example.org", 3600, "r-used")
+    store.use_link("used")
+    db.execute("INSERT INTO links(token_digest, purpose, user_id, email, expires_at) "
+               "VALUES ('old', 'confirm', 'u1', 'e@example.org', ?)", (long_ago,))
+    store.start_recovery("r-live", "u1", "poll-live", 3600, "?")
+    db.execute("INSERT INTO recoveries(recovery_id, user_id, poll_digest, expires_at) VALUES ('r-old', 'u1', 'd', ?)",
+               (long_ago,))
+    store.put_code("live", "123456", 600)
+    db.execute("INSERT INTO codes(key, digest, expires_at) VALUES ('old', 'd', ?)", (long_ago,))
+    store.note_send("k")
+    db.execute("INSERT INTO sends(key, at) VALUES ('k', ?)", (long_ago,))
+    db.execute("INSERT INTO sessions VALUES ('old', 'u1', ?)", (long_ago,))
+    store.close()
+    # Opening the relay tidies up what expired while it was down.
+    settings = Settings(database=path)
+    with TestClient(create_app(settings)) as c:
+        live = c.app.state.store
+        assert live.find_link("live", "confirm") is not None
+        assert live.get_recovery("r-live") is not None and live.get_recovery("r-old") is None
+        assert live.count_sends("k", 7 * 24 * 3600) == 1
+        count = lambda table: live._db.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+        assert (count("links"), count("recoveries"), count("codes"), count("sessions")) == (1, 1, 1, 0)
+        assert live.prune() == {"links": 0, "recoveries": 0, "codes": 0, "sends": 0, "sessions": 0}
 
 
 def test_recovery_turned_off_or_not_offered(recovering, client):

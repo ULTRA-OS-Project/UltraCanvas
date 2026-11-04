@@ -12,6 +12,7 @@ import asyncio
 import base64
 import hashlib
 import hmac
+import logging
 import re
 import secrets
 import time
@@ -34,6 +35,8 @@ from . import pages
 from .identity import decode_b64, login_message, register_message, user_id_for, verify
 from .notify import Notifier
 from .store import GROUP_PREFIX, Store, hash_token, normalize_email, normalize_phone
+
+log = logging.getLogger("chatcube_relay")
 
 # Plausible, not proven: an address is proven by the mail that reaches it.
 EMAIL_PATTERN = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
@@ -216,10 +219,17 @@ def create_app(settings: Settings | None = None, notifier: Notifier | None = Non
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
+        def tidy():
+            store.expire(settings.queue_ttl_seconds)
+            pruned = {table: n for table, n in store.prune().items() if n}
+            if pruned:
+                log.info("housekeeping: deleted %s", ", ".join(f"{n} from {t}" for t, n in pruned.items()))
+
         async def housekeeping():
             while True:
                 await asyncio.sleep(3600)
-                store.expire(settings.queue_ttl_seconds)
+                tidy()
+        tidy()                                  # what expired while the relay was down
         task = asyncio.create_task(housekeeping())
         try:
             yield
@@ -336,17 +346,19 @@ def create_app(settings: Settings | None = None, notifier: Notifier | None = Non
     def public_base(request: Request) -> str:
         return settings.public_url or str(request.base_url).rstrip("/")
 
-    def rate_limited(key: str) -> bool:
-        if store.count_sends(key, 3600) >= settings.sends_per_hour:
+    def rate_limited(*limits: tuple[str, int]) -> bool:
+        """True when any (key, per hour) is used up; otherwise each is counted."""
+        if any(store.count_sends(key, 3600) >= per_hour for key, per_hour in limits):
             return True
-        store.note_send(key)
+        for key, _ in limits:
+            store.note_send(key)
         return False
 
     def send_confirmation(request: Request, user_id: str, email: str) -> bool:
         """A link that confirms `email` for `user_id`, e-mailed to it."""
         if not notifier.can_email:
             return False
-        if rate_limited(f"confirm:{user_id}"):
+        if rate_limited((f"confirm:{user_id}", settings.sends_per_hour)):
             raise error(429, "too_many_links", "Too many links were sent - try again in an hour")
         token = secrets.token_urlsafe(32)
         store.put_link(token, "confirm", user_id, email, settings.confirm_link_ttl_seconds)
@@ -364,7 +376,7 @@ def create_app(settings: Settings | None = None, notifier: Notifier | None = Non
         if not notifier.can_sms:
             return False
         limit_key = f"verify:{user_id}:phone"
-        if rate_limited(limit_key):
+        if rate_limited((limit_key, settings.sends_per_hour)):
             raise error(429, "too_many_codes", "Too many codes were sent - try again in an hour")
         code = new_code()
         store.put_code(limit_key, code, settings.code_ttl_seconds)
@@ -474,7 +486,8 @@ def create_app(settings: Settings | None = None, notifier: Notifier | None = Non
             raise error(503, "not_configured", "This relay offers no account recovery")
         address = normalize_email(body.address)
         client = request.client.host if request.client else "?"
-        if rate_limited("recover:" + address) or rate_limited("recover-from:" + client):
+        if rate_limited(("recover:" + address, settings.sends_per_hour),
+                        ("recover-from:" + client, settings.recovery_starts_per_client)):
             raise error(429, "too_many_links", "Too many recoveries were started - try again in an hour")
         # The same answer whether the address belongs to anyone: a recovery
         # is recorded either way; only one for an ID with that confirmed
@@ -528,8 +541,32 @@ def create_app(settings: Settings | None = None, notifier: Notifier | None = Non
              "If it was not you, close this page: nothing happens without this confirmation."],
             form=pages.approve_form(token)))
 
+    def origin_of(url: str) -> str:
+        parts = urllib.parse.urlsplit(url)
+        return f"{parts.scheme}://{parts.netloc}".lower() if parts.scheme and parts.netloc else ""
+
+    def from_another_site(request: Request) -> bool:
+        """A form sent by a page that is not the relay's own. Browsers say
+        where a POST comes from (Origin; Sec-Fetch-Site in newer ones), and
+        no page can make them say it is ours; a request without them is not
+        from a browser, so it is not a forged one either."""
+        if request.headers.get("sec-fetch-site", "same-origin") not in ("same-origin", "none"):
+            return True
+        origin = request.headers.get("origin")
+        if origin is None:
+            return False
+        ours = {origin_of(str(request.base_url))}
+        if settings.public_url:
+            ours.add(origin_of(settings.public_url))
+        return origin.strip().lower() not in ours           # "null" included
+
     @app.post("/recover", response_class=HTMLResponse)
     async def recover_approve(request: Request):
+        if from_another_site(request):
+            return HTMLResponse(pages.page(
+                "Not approved",
+                ["The confirmation did not come from the page the e-mailed link opens. Open the link "
+                 "again and press the button there."], bad=True), status_code=403)
         form = urllib.parse.parse_qs((await request.body()).decode("utf-8", "replace"))
         token = (form.get("token") or [""])[0]
         found, refused = recover_link_page(token)

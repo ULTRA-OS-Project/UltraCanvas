@@ -65,7 +65,11 @@ class Settings:
     recovery_ttl_seconds: int = 30 * 60           # a recovery, its link and its polling
     code_ttl_seconds: int = 600          # a code (the phone's) is good for ten minutes
     code_attempts: int = 5               # then it is spent
-    sends_per_hour: int = 5              # codes to one address or account in an hour
+    sends_per_hour: int = 5              # links or codes to one address or account in an hour
+    # Recoveries started from one network address in an hour. Higher than
+    # the per-address limit: many people can share one (a company's NAT, a
+    # carrier's CGNAT), and each address has its own limit anyway.
+    recovery_starts_per_client: int = 30
 
     @classmethod
     def from_environment(cls) -> "Settings":
@@ -95,4 +99,6 @@ class Settings:
         s.sms_webhook_token = env("SMS_WEBHOOK_TOKEN")
         s.outbox = env("OUTBOX")
         s.public_url = env("PUBLIC_URL").rstrip("/")
+        s.recovery_starts_per_client = int(env("RECOVERY_STARTS_PER_CLIENT", str(s.recovery_starts_per_client))
+                                           or s.recovery_starts_per_client)
         return s
