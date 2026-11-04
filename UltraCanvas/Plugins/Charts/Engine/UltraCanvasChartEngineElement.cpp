@@ -1,8 +1,9 @@
 // Plugins/Charts/Engine/UltraCanvasChartEngineElement.cpp
 // The chart engine's three-phase render driver
+// Version: 1.3.5 - the ternary projection's plot area is its triangle
 // Version: 1.3.4 - ChartHighlightShape::Polygon
 // Version: 1.3.3
-// Last Modified: 2026-10-20
+// Last Modified: 2026-11-03
 // V1.3.3: Tick labels drawn inside the plot (an in-plot axis, the radial
 //   value rule under Polar) are obstacles in the label plan, so a solved
 //   label no longer overprints them - the polar chart's "0 ppm" under its
@@ -986,6 +987,12 @@ void UltraCanvasChartEngineElement::RenderEngineBackground(IRenderContext* ctx) 
     if (!showBackground) return;
     ctx->DrawFilledRectangle(GetLocalBounds(), backgroundColor);
     ctx->SetFillPaint(plotAreaColor);
+    if (projectionKind == ChartProjectionKind::Ternary && engineProjection) {
+        // A triangular chart gets a triangular plot area.
+        const auto* ternary = static_cast<const ChartTernaryProjection*>(engineProjection.get());
+        ctx->FillLinePath({ternary->Corner(0), ternary->Corner(1), ternary->Corner(2)});
+        return;
+    }
     if (projectionKind != ChartProjectionKind::Polar) {
         ctx->FillRectangle(frame.plotArea);
         return;

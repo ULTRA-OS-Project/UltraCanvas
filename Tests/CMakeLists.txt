@@ -4038,6 +4038,32 @@ add_test(NAME ImportancePerformanceModelTest COMMAND ImportancePerformanceModelT
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: ImportancePerformanceModelTest")
 
+# ===== TERNARY MODEL TEST =====
+# The ternary chart model: shares from raw amounts, the reading direction,
+# ticks, validation, the USDA outlines against the class rules, the JSON and
+# CSV interchange and the samples. UI-free: the JSON wrapper and its vendored
+# engine are compiled in directly, as MatrixModelTest does.
+message(STATUS "  Building TernaryModelTest...")
+add_executable(TernaryModelTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/TernaryModelTest.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Charts/Engine/Charts/UltraCanvasTernaryModel.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/core/DataFormats/UltraCanvasJSON.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/yyjson/yyjson.c
+)
+target_include_directories(TernaryModelTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/yyjson
+)
+target_compile_features(TernaryModelTest PRIVATE cxx_std_20)
+# The CSV reads and writes numbers through the locale-independent helpers.
+target_link_libraries(TernaryModelTest PRIVATE UltraCanvasTextUtils)
+set_target_properties(TernaryModelTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME TernaryModelTest COMMAND TernaryModelTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: TernaryModelTest")
+
 # ===== ELEMENT PLUGIN TEST =====
 # The element plugin registry, create-by-name, keyword text dispatch, the named
 # property surface, the ABI handshake, and a real end-to-end DSO load: two test
@@ -5755,6 +5781,29 @@ if(TARGET UltraCanvas AND ULTRACANVAS_ENABLE_CHARTS)
     message(STATUS "    Test registered: ImportancePerformanceChartRenderTest")
 else()
     message(STATUS "  ImportancePerformanceChartRenderTest skipped (UltraCanvas or charts not present)")
+endif()
+
+# ===== TERNARY CHART RENDER TEST =====
+# The ternary chart drawn offscreen: the triangle, every point placed and hit
+# where its shares say, the reading in both directions, clicks, hidden series,
+# point labels. With ULTRACANVAS_SCREENSHOT_DIR set, each case is written
+# there as a PNG.
+if(TARGET UltraCanvas AND ULTRACANVAS_ENABLE_CHARTS)
+    message(STATUS "  Building TernaryChartRenderTest...")
+    add_executable(TernaryChartRenderTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/TernaryChartRenderTest.cpp
+    )
+    target_include_directories(TernaryChartRenderTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(TernaryChartRenderTest PRIVATE cxx_std_20)
+    target_link_libraries(TernaryChartRenderTest PRIVATE UltraCanvas)
+    set_target_properties(TernaryChartRenderTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME TernaryChartRenderTest COMMAND TernaryChartRenderTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: TernaryChartRenderTest")
+else()
+    message(STATUS "  TernaryChartRenderTest skipped (UltraCanvas or charts not present)")
 endif()
 
 # ===== BUSY INDICATOR RENDER TEST =====
