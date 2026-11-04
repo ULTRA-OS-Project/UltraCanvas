@@ -1,3 +1,9 @@
+#### 2026-11-04 *0.10.85*
+- **The format bar's Font list shows each font in itself.** Arial, Georgia,
+  Courier New and the others are drawn in their own typeface, as the text bars
+  of ArtCreator, UltraPaint and UltraVideo show theirs; a font this computer
+  lacks shows in a substitute.
+
 #### 2026-11-03 *0.10.84*
 - **Settings > Handling > Email send notification: a sent message is
   reported in a popup window or in the status bar.** Until now every message

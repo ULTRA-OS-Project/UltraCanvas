@@ -2,6 +2,11 @@
 // ArtCreator main window: menus, toolbars, palette, canvas, panels, status
 // bar, shortcuts, file open / save through the Vector plugin's converters,
 // and every command.
+// Version: 1.12.0 - selected words of a text being typed take a letter spacing and a colour of
+//                  their own (the fill colour, picked while words are selected), as they took
+//                  a font, size and style; the drawing keeps both per span. A size typed into
+//                  the text bar (or a font looked up by its letters) no longer runs the
+//                  window's shortcuts - Ctrl+A finished the text, and the size went to all of it
 // Version: 1.11.0 - text is typed on the page (an UltraCanvasRichTextEdit over the canvas, at its
 //                  zoom, in the text's font, colour, alignment and spacing) and edited where it
 //                  lies; the text bar - font, size, bold, italic, underline, strikethrough,
@@ -1074,6 +1079,22 @@ void ArtCreatorWindow::InstallShortcuts() {
     window->InstallEventFilter("ac-shortcuts", [this](const UCEvent& e) -> bool {
         if (e.type != UCEventType::KeyDown) return false;
         if (window->GetActivePopupElement()) return false;
+        // The file commands still work while a text is typed (it is
+        // finished first); every other key is the text's.
+        const bool fileKey = e.ctrl && (e.virtualKey == UCKeys::S || e.virtualKey == UCKeys::O ||
+                                        e.virtualKey == UCKeys::N || e.virtualKey == UCKeys::E ||
+                                        e.virtualKey == UCKeys::Q);
+        // A control of the text bar has the keyboard (a size typed, a font
+        // looked up by its first letters): the keys are its, and the text
+        // being typed stays open - a shortcut that finished it sent the
+        // size to the whole text. Escape gives the keys back to the text.
+        if (textBar && textBar->IsVisible() && textBar->HasKeyboardFocus() && !fileKey) {
+            if (e.virtualKey == UCKeys::Escape && IsEditingText() && textEditor) {
+                textEditor->SetFocus(true);
+                return true;
+            }
+            return false;
+        }
         // Typing on the page: Escape, or Ctrl+Enter, finishes the text
         // (Enter starts a new line in it).
         if (IsEditingText() && (e.virtualKey == UCKeys::Escape ||
@@ -1081,11 +1102,6 @@ void ArtCreatorWindow::InstallShortcuts() {
             CommitTextEdit();
             return true;
         }
-        // The file commands still work while a text is typed (it is
-        // finished first); every other key is the text's.
-        const bool fileKey = e.ctrl && (e.virtualKey == UCKeys::S || e.virtualKey == UCKeys::O ||
-                                        e.virtualKey == UCKeys::N || e.virtualKey == UCKeys::E ||
-                                        e.virtualKey == UCKeys::Q);
         if (IsEditingText() && fileKey) return RunShortcut(e);
         if (FocusIsTextEntry(window.get())) return false;
         // Delete is the Shape Editor's own while it is active (its nodes).
@@ -2030,9 +2046,23 @@ void ArtCreatorWindow::ApplyFillColour(const Color& c, bool commit) {
     // While a text is typed, the colour is the text's: it goes into the
     // edit, and the keys go back to the text once the choice is made.
     if (textSession && textEditor) {
-        textSession->model->Style.Fill = c;
-        textSession->fillChanged = true;
-        textEditor->SetStyle(TextEditorStyle());
+        if (textEditor->HasSelection()) {
+            // The selected words take it, as runs of their own.
+            RichCharFormatDelta delta;
+            delta.setColor = true;
+            delta.color = Color(c.r, c.g, c.b).ToHexString();
+            textEditor->ApplyCharFormat(delta);
+        } else {
+            // Nothing selected: the whole text, its words' own colours too.
+            textSession->model->Style.Fill = c;
+            textSession->fillChanged = true;
+            if (auto words = textEditor->GetDocument()) {
+                for (auto& block : words->blocks)
+                    for (auto& run : block.runs) run.color.clear();
+            }
+            textEditor->SetStyle(TextEditorStyle());
+            textEditor->InvalidateDocument();
+        }
         if (commit) textEditor->SetFocus(true);
         return;
     }
@@ -2052,6 +2082,10 @@ void ArtCreatorWindow::ApplyFillColour(const Color& c, bool commit) {
                 }
             }
             if (!done) e->Style.Fill = c;
+            // A whole text takes the colour: its words' own colours go.
+            if (!done)
+                if (auto* t = dynamic_cast<VectorText*>(e.get()))
+                    for (auto& span : t->Spans) span.Style.FillColor.reset();
         }
     };
     if (commit) { history.Record("Fill Colour", apply, true); Reselect(ids); }
@@ -2158,7 +2192,24 @@ namespace {
         if (!span.FontFamily.empty() && span.FontFamily != base.FontFamily) run.fontFamily = span.FontFamily;
         if (span.FontSize > 0 && std::fabs(span.FontSize - base.FontSize) > 1e-3f)
             run.fontSizePt = span.FontSize * kTextPointsPerUnit;
+        if (std::fabs(span.LetterSpacing - base.LetterSpacing) > 1e-4f)
+            run.letterSpacingPt = span.LetterSpacing * kTextPointsPerUnit;
+        if (span.FillColor) run.color = span.FillColor->ToHexString();
         return run;
+    }
+
+    // "#RRGGBB" (a run's colour) as a colour; nothing for anything else.
+    std::optional<Color> ColourOfHex(const std::string& hex) {
+        if (hex.size() != 7 || hex[0] != '#') return std::nullopt;
+        unsigned value = 0;
+        for (size_t i = 1; i < 7; ++i) {
+            const char c = hex[i];
+            const int digit = c >= '0' && c <= '9' ? c - '0' : c >= 'a' && c <= 'f' ? c - 'a' + 10
+                            : c >= 'A' && c <= 'F' ? c - 'A' + 10 : -1;
+            if (digit < 0) return std::nullopt;
+            value = value * 16 + static_cast<unsigned>(digit);
+        }
+        return Color(static_cast<uint8_t>(value >> 16), static_cast<uint8_t>(value >> 8), static_cast<uint8_t>(value));
     }
 
     // A text's words as the editor's document: a paragraph for each line -
@@ -2220,6 +2271,8 @@ namespace {
         st.StrikeThrough = run.strikethrough;
         if (!run.fontFamily.empty()) st.FontFamily = run.fontFamily;
         if (run.fontSizePt > 0) st.FontSize = run.fontSizePt / kTextPointsPerUnit;
+        if (run.letterSpacingPt) st.LetterSpacing = *run.letterSpacingPt / kTextPointsPerUnit;
+        st.FillColor = ColourOfHex(run.color);
         return st;
     }
 
@@ -2250,7 +2303,7 @@ namespace {
         return a.FontFamily == b.FontFamily && std::fabs(a.FontSize - b.FontSize) < 1e-4f &&
                a.Weight == b.Weight && a.Slant == b.Slant && a.Anchor == b.Anchor &&
                std::fabs(a.LetterSpacing - b.LetterSpacing) < 1e-4f && std::fabs(a.LineHeight - b.LineHeight) < 1e-4f &&
-               a.Underline == b.Underline && a.StrikeThrough == b.StrikeThrough;
+               a.Underline == b.Underline && a.StrikeThrough == b.StrikeThrough && a.FillColor == b.FillColor;
     }
 
     bool SameSpans(const std::vector<TextSpanData>& a, const std::vector<TextSpanData>& b) {
@@ -2497,16 +2550,24 @@ void ArtCreatorWindow::PlaceTextEditor() {
     const double baseline = EditorBaseline(textMeasure.get(), SpanFont(t.BaseStyle, t.BaseStyle), advance);
     double widest = 0;
     int lineCount = 1;
+    // The lines' heights as their largest letters need them: the editor
+    // lays a larger word out on its next frame, and a box sized before that
+    // showed a scrollbar.
+    double linesHeight = advance;
     if (auto words = textEditor->GetDocument()) {
         const auto lines = LinesOfWords(*words);
         lineCount = std::max<int>(1, static_cast<int>(lines.size()));
+        linesHeight = 0;
         for (const auto& line : lines) {
             double width = 0;
+            double lineHeight = advance;
             for (const RichTextRun* run : line) {
-                const FontStyle fs = SpanFont(StyleOfRun(*run, t.BaseStyle), t.BaseStyle);
+                const VectorTextStyle st = StyleOfRun(*run, t.BaseStyle);
+                const FontStyle fs = SpanFont(st, t.BaseStyle);
+                lineHeight = std::max(lineHeight, fs.fontSize / kTextPointsPerUnit * 1.3);
                 size_t letters = 0;
                 for (unsigned char ch : run->text) if ((ch & 0xC0) != 0x80) ++letters;
-                width += static_cast<double>(letters) * t.BaseStyle.LetterSpacing;
+                width += static_cast<double>(letters) * st.LetterSpacing;   // the run's own, or the text's
                 if (textMeasure) {
                     textMeasure->SetFontFace(fs.fontFamily, fs.fontWeight, fs.fontSlant);
                     textMeasure->SetFontSize(fs.fontSize);
@@ -2516,11 +2577,12 @@ void ArtCreatorWindow::PlaceTextEditor() {
                 }
             }
             widest = std::max(widest, width);
+            linesHeight += lineHeight;
         }
     }
 
     const double size = std::max(1.0f, t.BaseStyle.FontSize);
-    const double contentHeight = std::max<double>(textEditor->GetContentHeight(), advance * lineCount);
+    const double contentHeight = std::max({static_cast<double>(textEditor->GetContentHeight()), advance * lineCount, linesHeight});
     const Point2Dd at = canvas->DocToView(m.Transform(t.Position));
     const double width = std::ceil((widest + size * 2.0) * zoom) + 4.0;
     // The lines start at the text's point, or centre on it, or end there -
@@ -2707,7 +2769,22 @@ void ArtCreatorWindow::SyncTextBar() {
     shown.lineSpacing = toolOptions.textLineSpacing;
     shown.letterSpacing = toolOptions.textLetterSpacing;
     if (textSession && textEditor) {
-        shown = TextFormatAtCaret(textEditor->GetFormatState(), formatOf(textSession->model->BaseStyle), kTextPointsPerUnit);
+        const RichCharFormatState state = textEditor->GetFormatState();
+        shown = TextFormatAtCaret(state, formatOf(textSession->model->BaseStyle), kTextPointsPerUnit);
+        // The colour picker shows the caret's colour too: the selected
+        // words' own, else the text's.
+        if (colorPicker && !syncingColours) {
+            std::optional<Color> colour = state.colorMixed ? std::nullopt : ColourOfHex(state.color);
+            if (colour) colour->a = fillColour.a;   // a word's colour has no opacity of its own
+            if (!colour && textSession->model->Style.Fill.has_value())
+                if (const auto* c = std::get_if<Color>(&*textSession->model->Style.Fill)) colour = *c;
+            if (colour) {
+                syncingColours = true;
+                fillColour = *colour;
+                colorPicker->SetForegroundColor(*colour, false);
+                syncingColours = false;
+            }
+        }
     } else {
         for (const auto& e : selection->Elements()) {
             if (auto* t = e ? dynamic_cast<VectorText*>(e.get()) : nullptr) {
@@ -2727,7 +2804,8 @@ void ArtCreatorWindow::SyncTextBar() {
 void ArtCreatorWindow::ApplyTextAttribute(const std::string& attribute) {
     if (!document) return;
     const bool character = attribute == "font" || attribute == "size" || attribute == "bold" ||
-                           attribute == "italic" || attribute == "underline" || attribute == "strike";
+                           attribute == "italic" || attribute == "underline" || attribute == "strike" ||
+                           attribute == "letter-spacing";
     // An attribute in a text's style, as the options now say.
     auto applyTo = [&](VectorTextStyle& style) {
         if (attribute == "font") style.FontFamily = toolOptions.textFont;
@@ -2747,7 +2825,8 @@ void ArtCreatorWindow::ApplyTextAttribute(const std::string& attribute) {
             static const std::map<std::string, TextFormatAttribute> which = {
                 { "font", TextFormatAttribute::Font }, { "size", TextFormatAttribute::Size },
                 { "bold", TextFormatAttribute::Bold }, { "italic", TextFormatAttribute::Italic },
-                { "underline", TextFormatAttribute::Underline }, { "strike", TextFormatAttribute::Strikethrough } };
+                { "underline", TextFormatAttribute::Underline }, { "strike", TextFormatAttribute::Strikethrough },
+                { "letter-spacing", TextFormatAttribute::LetterSpacing } };
             const RichCharFormatDelta delta = TextFormatCharDelta(which.at(attribute), textBar->GetFormat(), kTextPointsPerUnit);
             textEditor->ApplyCharFormat(delta);
         } else {
@@ -2763,6 +2842,7 @@ void ArtCreatorWindow::ApplyTextAttribute(const std::string& attribute) {
                         else if (attribute == "italic") run.italic = false;
                         else if (attribute == "underline") run.underline = toolOptions.textUnderline;
                         else if (attribute == "strike") run.strikethrough = toolOptions.textStrike;
+                        else if (attribute == "letter-spacing") run.letterSpacingPt.reset();
                     }
                 }
             }

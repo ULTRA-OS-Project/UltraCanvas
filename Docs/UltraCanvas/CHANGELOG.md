@@ -1,3 +1,51 @@
+#### 2026-11-04 *0.9.483*
+- **DemoApp: the WYSIWYG editor page's Font list shows each font in itself**
+  (`DropdownItem::fontFamily`), as the framework's text bar does.
+- **The text bar's Font list follows the fonts.** It was made once, with the
+  window. On Windows, after a start whose system fonts were still being
+  scanned (a cold font cache), it then held the bundled fonts alone for the
+  whole session - ArtCreator, UltraPaint and UltraVideo offered Sans, Serif,
+  Monospace and Ubuntu. `GetFontSetGeneration()` counts each change of the
+  fonts the text engine knows (the system fonts switched to, a font file
+  registered), and the bar makes its list again when the window lays it out
+  after one.
+- **Selected words can have their own letter spacing.** A run of the rich
+  text editor carries a letter spacing of its own (`RichTextRun::
+  letterSpacingPt`, in points, over the whole text's tracking): a
+  `RichCharFormatDelta` sets it (`setLetterSpacing`), `GetFormatState`
+  reports it, the editor draws it, and ODT (`fo:letter-spacing`), DOCX
+  (`w:spacing` in the run's properties) and HTML (CSS `letter-spacing`) keep
+  it. A character style can set it too (`RichStyleCharacter::
+  letterSpacingPt`), read and written in DOCX and ODT. The text bar (`UltraCanvasTextFormatBar`)
+  treats letter spacing as a character attribute, like the font and the
+  size: `TextFormatCharDelta` and `TextFormatAtCaret` convert it both ways.
+- **A word of a drawing's text can have its own colour.** `VectorTextStyle::
+  FillColor` is a span's colour (unset: the text's fill); `VectorRenderer`
+  paints the span in it, and the SVG writer and reader keep it as the
+  `<tspan>`'s `fill` and `fill-opacity`.
+- **A size typed into the text bar went to the whole text.** Keys typed into
+  the bar's size or spacing field, or into its font list to find a font,
+  reached the program's own shortcuts: Ctrl+A ran Select All, which finished
+  the text being typed, so the size went to all of it instead of to the
+  selected words. `UltraCanvasTextFormatBar::HasKeyboardFocus` tells a host
+  when the keys are the bar's.
+- **Windows: the system fonts could be missing for the whole session.** A
+  program showed and offered only its bundled fonts (Ubuntu, Noto Color
+  Emoji) and the generic Sans, Serif and Monospace. The generated fontconfig
+  set-up named the Windows font folders through fontconfig's keywords
+  (`WINDOWSFONTDIR`, `WINDOWSUSERFONTDIR`, `LOCAL_APPDATA_FONTCONFIG_CACHE`);
+  how fontconfig resolves them in a configuration read from memory differs
+  between versions, and one it could not resolve failed the whole
+  configuration, and with it the scan of the system fonts. And
+  `FONTCONFIG_FILE` kept naming the start's file of bundled fonts alone, so
+  any reload of fontconfig's configuration dropped every system font.
+  - The folders are named by path (`GenerateWindowsFontFoldersConfig()`,
+    `GetWindowsFontsFolder()`), from `%SystemRoot%` and `%LOCALAPPDATA%`.
+  - Once the full set is in use, `FONTCONFIG_FILE` names its `fonts.conf`.
+  - A font set with folders of its own but not Windows' (a `fonts.conf`
+    found beside the program) gets them added.
+  - The debug log says whether the Windows font folder is read.
+
 #### 2026-11-04 *0.9.482*
 - **The save-settings dialog fits the window it is opened from.**
   `UltraCanvasFileLoader::ShowSaveSettingsDialog` (the JPEG, PNG, WebP ...
