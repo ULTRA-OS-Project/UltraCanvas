@@ -2143,6 +2143,17 @@ namespace UltraCanvas {
                                [this]() { return CreateFileLoaderExamples(); },
                                "DemoApp/UltraCanvasFileLoaderExamples.cpp",
                                "Docs/Modules/FileLoader/README.md");
+        // The text of every application in the person's language: Tr, TrC,
+        // TrN and TrF live in a picked language, the catalogue files of the
+        // three layers, the scripts around them. The editor over the sets is
+        // Widgets > Localisation Editor.
+        modulesBuilder.AddItem("localisation", "Localisation",
+                               "UltraLocalisation - Tr, TrC, TrN and TrF in a picked language, with the "
+                               "layer that answered each; the catalogue files of the three layers",
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreateLocalisationExamples(); },
+                               "DemoApp/UltraCanvasLocalisationExamples.cpp",
+                               "Docs/Modules/UltraLocalisation/README.md");
         // Built into the core (core/IODeviceManager + OS backends): printers on
         // Linux, macOS and Windows plus IPP everywhere, scanners on Linux plus
         // eSCL, webcams on Linux; the other categories and platform backends are

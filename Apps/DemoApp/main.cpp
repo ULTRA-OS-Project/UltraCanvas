@@ -1,4 +1,5 @@
 // UltraCanvas Framework Demonstration Program Entry Point
+// Version: 1.0.7 - Initialize is given the name "UltraCanvasDemo", not argv[0]
 // Version: 1.0.6 - --audit-layout runs in the bundled Ubuntu 12, whatever the desktop's font
 // Version: 1.0.5 - --audit-layout [--pseudo-loc] [--audit-page <id>]
 // Version: 1.0.4 - Builds for Android: the body is ultracanvas_app_main(),
@@ -280,7 +281,7 @@ int main(int argc, char* argv[]) {
 
 
         // Initialize system
-        if (!InitializeSystem(g_app, argv[0])) {
+        if (!InitializeSystem(g_app, "UltraCanvasDemo")) {
             return EXIT_FAILURE;
         }
 
