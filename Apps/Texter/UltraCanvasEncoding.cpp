@@ -1,8 +1,10 @@
 // Apps/Texter/UltraCanvasEncoding.cpp
 // Text encoding detection and conversion utilities using POSIX iconv
+// Version: 1.1.0 - the display names go through Tr
 // Version: 1.0.0
 
 #include "UltraCanvasEncoding.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 #include <iconv.h>
 #include <cerrno>
 #include <cstring>
@@ -15,7 +17,9 @@ namespace UltraCanvas {
 // ===== SUPPORTED ENCODINGS =====
 
     std::vector<EncodingInfo> GetSupportedEncodings() {
-        static const std::vector<EncodingInfo> encodings = {
+        // Built per call: the display names are translated, so they follow
+        // the language the editor runs in.
+        const std::vector<EncodingInfo> encodings = {
                 // ── Unicode (Modern Standard) ──
                 {"UTF-8",        "UTF-8"},
                 {"UTF-16LE",     "UTF-16 LE"},
@@ -25,27 +29,27 @@ namespace UltraCanvas {
 
                 // ── Legacy / Regional ──
                 {"ASCII",        "ASCII"},
-                {"ISO-8859-1",   "ISO-8859-1 (Latin-1)"},
-                {"ISO-8859-5",   "ISO-8859-5 (Cyrillic)"},
-                {"ISO-8859-6",   "ISO-8859-6 (Arabic)"},
-                {"ISO-8859-7",   "ISO-8859-7 (Greek)"},
-                {"ISO-8859-8",   "ISO-8859-8 (Hebrew)"},
-                {"CP1252",       "Windows-1252 (Western)"},
-                {"CP1251",       "Windows-1251 (Cyrillic)"},
+                {"ISO-8859-1",   Tr("ISO-8859-1 (Latin-1)")},
+                {"ISO-8859-5",   Tr("ISO-8859-5 (Cyrillic)")},
+                {"ISO-8859-6",   Tr("ISO-8859-6 (Arabic)")},
+                {"ISO-8859-7",   Tr("ISO-8859-7 (Greek)")},
+                {"ISO-8859-8",   Tr("ISO-8859-8 (Hebrew)")},
+                {"CP1252",       Tr("Windows-1252 (Western)")},
+                {"CP1251",       Tr("Windows-1251 (Cyrillic)")},
 
                 // ── East Asian ──
-                {"SHIFT_JIS",    "Shift-JIS (Japanese)"},
-                {"EUC-JP",       "EUC-JP (Japanese)"},
-                {"GB2312",       "GB2312 (Chinese Simplified)"},
-                {"GBK",          "GBK (Chinese Simplified)"},
-                {"GB18030",      "GB18030 (Chinese)"},
-                {"BIG5",         "Big5 (Chinese Traditional)"},
-                {"EUC-KR",       "EUC-KR (Korean)"},
+                {"SHIFT_JIS",    Tr("Shift-JIS (Japanese)")},
+                {"EUC-JP",       Tr("EUC-JP (Japanese)")},
+                {"GB2312",       Tr("GB2312 (Chinese Simplified)")},
+                {"GBK",          Tr("GBK (Chinese Simplified)")},
+                {"GB18030",      Tr("GB18030 (Chinese)")},
+                {"BIG5",         Tr("Big5 (Chinese Traditional)")},
+                {"EUC-KR",       Tr("EUC-KR (Korean)")},
 
                 // ── Other Notable ──
-                {"EBCDIC-US",    "EBCDIC (IBM Mainframe)"},
-                {"KOI8-R",       "KOI8-R (Russian)"},
-                {"KOI8-U",       "KOI8-U (Ukrainian)"},
+                {"EBCDIC-US",    Tr("EBCDIC (IBM Mainframe)")},
+                {"KOI8-R",       Tr("KOI8-R (Russian)")},
+                {"KOI8-U",       Tr("KOI8-U (Ukrainian)")},
         };
         return encodings;
     }

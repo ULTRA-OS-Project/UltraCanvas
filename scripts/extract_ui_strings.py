@@ -51,8 +51,56 @@ SITE = re.compile(r"(?<![A-Za-z0-9_:])(Tr|TrC|TrN|TrF)\s*\(")
 SOURCE_SUFFIXES = (".cpp", ".h", ".mm", ".hpp")
 
 
+ESCAPE = re.compile(r"\\(u[0-9a-fA-F]{4}|U[0-9a-fA-F]{8}|x[0-9a-fA-F]{1,2}|[0-7]{1,3}|.)", re.S)
+SIMPLE_ESCAPES = {"n": "\n", "t": "\t", "r": "\r", "a": "\a", "b": "\b", "f": "\f", "v": "\v",
+                  '"': '"', "'": "'", "\\": "\\", "?": "?"}
+
+
 def unescape(s: str) -> str:
-    return bytes(s, "utf-8").decode("unicode_escape").encode("latin-1").decode("utf-8") if "\\" in s else s
+    """The text a C++ string literal's body stands for: \\n, \\", \\\\, \\xHH, octal,
+    \\uXXXX and \\UXXXXXXXX (a character outside Latin-1, such as \\u2022, as
+    the UTF-8 text the compiler emits)."""
+    if "\\" not in s:
+        return s
+
+    def one(m):
+        e = m.group(1)
+        if e[0] in "uUx":
+            return chr(int(e[1:], 16))
+        if e[0] in "01234567":
+            return chr(int(e, 8))
+        return SIMPLE_ESCAPES.get(e, e)
+
+    return ESCAPE.sub(one, s)
+
+
+def strip_comments(text: str) -> str:
+    """The source without its // and /* */ comments. String and character
+    literals are walked over, so a "/*" or "//" inside one (a comment
+    opener in a list of markers, a URL) does not swallow the code after it;
+    the newlines of a block comment stay, so line numbers hold."""
+    out = []
+    i, n = 0, len(text)
+    while i < n:
+        c = text[i]
+        if c == '"' or c == "'":
+            j = i + 1
+            while j < n and text[j] != c:
+                j += 2 if text[j] == "\\" else 1
+            out.append(text[i:j + 1])
+            i = j + 1
+        elif text.startswith("//", i):
+            j = text.find("\n", i)
+            i = n if j < 0 else j
+        elif text.startswith("/*", i):
+            j = text.find("*/", i + 2)
+            end = n if j < 0 else j + 2
+            out.append("\n" * text.count("\n", i, end))
+            i = end
+        else:
+            out.append(c)
+            i += 1
+    return "".join(out)
 
 
 def literal_args(text: str, open_paren: int):
@@ -93,8 +141,7 @@ def sites_in(path: Path):
         text = path.read_text(encoding="utf-8", errors="ignore")
     except OSError:
         return []
-    text = re.sub(r"//[^\n]*", "", text)
-    text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
+    text = strip_comments(text)
     found = []
     for m in SITE.finditer(text):
         name = m.group(1)

@@ -5,6 +5,7 @@
 // selection. The first time nothing is installed, the module's "Get a local
 // model" dialog offers the download and the translation runs once it is
 // done. A build without UltraAI says so instead.
+// Version: 1.1.0 - the status texts go through Tr / TrF
 // Version: 1.0.0
 // Last Modified: 2026-10-21
 // Author: UltraCanvas Framework
@@ -20,6 +21,7 @@
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasModalDialog.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <memory>
 #include <string>
@@ -30,8 +32,8 @@ namespace UltraCanvas {
 
 void UltraCanvasTextEditor::OnEditTranslateSelection() {
     UltraCanvasDialogManager::ShowInformation(
-        "This build of UltraTexter has no UltraAI module to translate with.",
-        "Translate Selection", nullptr, GetWindow());
+        Tr("This build of UltraTexter has no UltraAI module to translate with."),
+        Tr("Translate Selection"), nullptr, GetWindow());
 }
 
 void UltraCanvasTextEditor::TranslateSelection(const std::string&, const std::string&) {}
@@ -47,12 +49,12 @@ void UltraCanvasTextEditor::OnEditTranslateSelection() {
     }
     if (selected.empty()) {
         UltraCanvasDialogManager::ShowInformation(
-            "Select the text to translate first.", "Translate Selection", nullptr, GetWindow());
+            Tr("Select the text to translate first."), Tr("Translate Selection"), nullptr, GetWindow());
         return;
     }
     UltraCanvasDialogManager::ShowInputDialog(
-        "Translate into (a language code such as en, de, fr or pt-BR):",
-        "Translate Selection", lastTranslateLanguage, InputType::Text,
+        Tr("Translate into (a language code such as en, de, fr or pt-BR):"),
+        Tr("Translate Selection"), lastTranslateLanguage, InputType::Text,
         [this, selected](DialogResult result, const std::string& language) {
             if (result != DialogResult::OK || language.empty()) return;
             lastTranslateLanguage = language;
@@ -64,7 +66,7 @@ void UltraCanvasTextEditor::OnEditTranslateSelection() {
 void UltraCanvasTextEditor::TranslateSelection(const std::string& text, const std::string& language) {
     if (translating) return;
     translating = true;
-    if (statusLabel) statusLabel->SetText("Translating into " + language + "...");
+    if (statusLabel) statusLabel->SetText(TrF("Translating into {0}...", language));
 
     // The provider call runs off the UI thread; the result comes back
     // through the event loop. `this` outlives the thread: the editor is the
@@ -78,7 +80,7 @@ void UltraCanvasTextEditor::TranslateSelection(const std::string& text, const st
             resp.error = createError;
             if (resp.error.IsOk()) {
                 resp.error.code    = UltraAI::ErrorCode::ProviderError;
-                resp.error.message = "no translation provider is available";
+                resp.error.message = Tr("no translation provider is available");
             }
         } else {
             UltraAI::TranslateRequest req;
@@ -90,16 +92,16 @@ void UltraCanvasTextEditor::TranslateSelection(const std::string& text, const st
         auto deliver = [this, text, language, resp]() {
             translating = false;
             if (UltraAI::UltraAILocalModelDialog::NeedsInstall(resp.error)) {
-                if (statusLabel) statusLabel->SetText("Translation needs a model on this computer.");
+                if (statusLabel) statusLabel->SetText(Tr("Translation needs a model on this computer."));
                 UltraAI::UltraAILocalModelDialog::Show(GetWindow(), "Translation", "textllm", "",
                     [this, text, language](const std::string&) { TranslateSelection(text, language); });
                 return;
             }
             if (!resp.error.IsOk() || resp.results.empty()) {
-                if (statusLabel) statusLabel->SetText("Translation failed.");
+                if (statusLabel) statusLabel->SetText(Tr("Translation failed."));
                 UltraCanvasDialogManager::ShowError(
-                    resp.error.message.empty() ? "The translation returned nothing." : resp.error.message,
-                    "Translate Selection", nullptr, GetWindow());
+                    resp.error.message.empty() ? Tr("The translation returned nothing.") : resp.error.message,
+                    Tr("Translate Selection"), nullptr, GetWindow());
                 return;
             }
             // Put the translation where the selection was. The user may have
@@ -112,7 +114,7 @@ void UltraCanvasTextEditor::TranslateSelection(const std::string& text, const st
             } else if (auto doc = GetActiveDocument(); doc && doc->textArea) {
                 doc->textArea->InsertText(translated);
             }
-            if (statusLabel) statusLabel->SetText("Translated into " + language + ".");
+            if (statusLabel) statusLabel->SetText(TrF("Translated into {0}.", language));
         };
         auto* app = UltraCanvasApplicationBase::GetCurrent();
         if (app) app->PostToUIThread(std::move(deliver));
