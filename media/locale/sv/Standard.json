@@ -4,6 +4,7 @@
   "@translated-by": "machine draft 2026-11-03, reviewed by -",
   "\"{0}\" already exists in \"{1}\".": "”{0}” finns redan i ”{1}”.",
   "\"{0}\" could not be copied.": "”{0}” kunde inte kopieras.",
+  "\"{0}\" could not be deleted even with administrator permission.": "”{0}” kunde inte tas bort ens med administratörsbehörighet.",
   "\"{0}\" could not be deleted.": "”{0}” kunde inte tas bort.",
   "\"{0}\" could not be moved to the Recycle Bin.": "”{0}” kunde inte flyttas till papperskorgen.",
   "\"{0}\" could not be moved to the Trash.": "”{0}” kunde inte flyttas till papperskorgen.",
@@ -35,6 +36,10 @@
   "Add": "Lägg till",
   "Add to Dictionary": "Lägg till i ordlistan",
   "Address": "Adress",
+  "Administrator permission was not granted; {n} item left in place.": {
+    "one": "Administratörsbehörighet beviljades inte; {n} objekt lämnades orört.",
+    "other": "Administratörsbehörighet beviljades inte; {n} objekt lämnades orörda."
+  },
   "age|newer": "nyare",
   "age|older": "äldre",
   "age|same": "identisk",
@@ -111,10 +116,16 @@
   "Context": "Sammanhang",
   "Continue": "Fortsätt",
   "Copied to the clipboard": "Kopierat till Urklipp",
+  "Copied {0} of {n} item.": {
+    "one": "Kopierade {0} av {n} objekt.",
+    "other": "Kopierade {0} av {n} objekt."
+  },
   "Copy": "Kopiera",
   "Copy \"{0}\" into \"{1}\"?": "Kopiera ”{0}” till ”{1}”?",
   "Copy files": "Kopiera filer",
+  "Copy finished": "Kopieringen är klar",
   "Copy path": "Kopiera sökväg",
+  "Copy skipped items again": "Kopiera överhoppade objekt igen",
   "Copy {n} item into \"{0}\"?": {
     "one": "Kopiera {n} objekt till ”{0}”?",
     "other": "Kopiera {n} objekt till ”{0}”?"
@@ -122,6 +133,7 @@
   "Copy: a file could not be copied": "Kopiera: en fil kunde inte kopieras",
   "Copy: a folder could not be copied": "Kopiera: en mapp kunde inte kopieras",
   "Copy: the name is already taken": "Kopiera: namnet används redan",
+  "Could not delete as administrator: {0}": "Kunde inte ta bort som administratör: {0}",
   "Could not read {0}": "Det gick inte att läsa {0}",
   "Could not save {0}": "Det gick inte att spara {0}",
   "Could not write {0}": "Det gick inte att skriva {0}",
@@ -141,7 +153,9 @@
   "Delete anyway": "Ta bort ändå",
   "Delete anyway removes the protection first.": "”Ta bort ändå” tar först bort skyddet.",
   "Delete as administrator": "Ta bort som administratör",
+  "Delete finished": "Borttagningen är klar",
   "Delete permanently": "Ta bort permanent",
+  "Delete skipped items again": "Ta bort överhoppade objekt igen",
   "Delete {n} item?": {
     "one": "Ta bort {n} objekt?",
     "other": "Ta bort {n} objekt?"
@@ -158,6 +172,11 @@
   "Delete: administrator permission needed": "Ta bort: administratörsbehörighet krävs",
   "Delete: the file is in use": "Ta bort: filen används",
   "Delete: the folder is in use": "Ta bort: mappen används",
+  "Deleted {0} of {n} item.": {
+    "one": "Tog bort {0} av {n} objekt.",
+    "other": "Tog bort {0} av {n} objekt."
+  },
+  "Deleting as administrator is not available: {0}": "Borttagning som administratör är inte tillgänglig: {0}",
   "Demote to the application (from {0})": "Flytta ned till applikationen (från {0})",
   "Descending": "Fallande",
   "Description": "Beskrivning",
@@ -251,6 +270,8 @@
   "Images": "Bilder",
   "Import": "Importera",
   "in": "i",
+  "in use": "används",
+  "in use by {0}": "används av {0}",
   "In use by:": "Används av:",
   "in {n} folder": {
     "one": "i {n} mapp",
@@ -329,6 +350,8 @@
   "Move Down": "Flytta ned",
   "Move down": "Flytta ned",
   "Move files": "Flytta filer",
+  "Move finished": "Flytten är klar",
+  "Move skipped items again": "Flytta överhoppade objekt igen",
   "Move to Recycle Bin": "Flytta till papperskorgen",
   "Move to Recycle Bin can be undone from the Recycle Bin. Delete permanently cannot be undone.": "”Flytta till papperskorgen” kan ångras från papperskorgen. ”Ta bort permanent” kan inte ångras.",
   "Move to Trash": "Flytta till papperskorgen",
@@ -342,6 +365,18 @@
   "Move: a file could not be moved": "Flytta: en fil kunde inte flyttas",
   "Move: a folder could not be moved": "Flytta: en mapp kunde inte flyttas",
   "Move: the name is already taken": "Flytta: namnet används redan",
+  "Moved {0} of {n} item to the Recycle Bin.": {
+    "one": "Flyttade {0} av {n} objekt till papperskorgen.",
+    "other": "Flyttade {0} av {n} objekt till papperskorgen."
+  },
+  "Moved {0} of {n} item to the Trash.": {
+    "one": "Flyttade {0} av {n} objekt till papperskorgen.",
+    "other": "Flyttade {0} av {n} objekt till papperskorgen."
+  },
+  "Moved {0} of {n} item.": {
+    "one": "Flyttade {0} av {n} objekt.",
+    "other": "Flyttade {0} av {n} objekt."
+  },
   "Music": "Musik",
   "Name": "Namn",
   "Network": "Nätverk",
@@ -463,6 +498,8 @@
   "Size:": "Storlek:",
   "Skip": "Hoppa över",
   "Skip All": "Hoppa över alla",
+  "Skipped: the name is already taken": "Överhoppat: namnet används redan",
+  "Skipped: write-protected": "Överhoppat: skrivskyddat",
   "Slideshow interval": "Bildspelsintervall",
   "Slideshow transition": "Bildspelsövergång",
   "Sort": "Sortera",
@@ -485,6 +522,7 @@
   "The base sets the application takes, in lookup order; tick one to take it": "Basuppsättningarna som applikationen använder, i uppslagsordning; markera en för att använda den",
   "The file may be locked or in use by another program. Close it there, then try again.": "Filen kan vara låst eller användas av ett annat program. Stäng den där och försök sedan igen.",
   "The first {0} of {1} items:": "De första {0} av {1} objekt:",
+  "The first {0} of {1} skipped items:": "De första {0} av {1} överhoppade objekt:",
   "The folder may be locked or in use by another program. Close it there, then try again.": "Mappen kan vara låst eller användas av ett annat program. Stäng den där och försök sedan igen.",
   "The menus as they were opened, the toolbars as the program has them": "Menyerna som de öppnades, verktygsfälten som programmet har dem",
   "the read-only attribute is set": "skrivskyddsattributet är angivet",
@@ -596,6 +634,10 @@
     "one": "{n} objekt",
     "other": "{n} objekt"
   },
+  "{n} item could not be deleted even with administrator permission.": {
+    "one": "{n} objekt kunde inte tas bort ens med administratörsbehörighet.",
+    "other": "{n} objekt kunde inte tas bort ens med administratörsbehörighet."
+  },
   "{n} minute": {
     "one": "{n} minut",
     "other": "{n} minuter"
@@ -603,5 +645,9 @@
   "{n} second": {
     "one": "{n} sekund",
     "other": "{n} sekunder"
+  },
+  "{n} was skipped.": {
+    "one": "{n} objekt hoppades över.",
+    "other": "{n} objekt hoppades över."
   }
 }

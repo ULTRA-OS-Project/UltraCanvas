@@ -4,6 +4,7 @@
   "@translated-by": "machine draft 2026-11-02, reviewed by -",
   "\"{0}\" already exists in \"{1}\".": "«{0}» ya existe en «{1}».",
   "\"{0}\" could not be copied.": "No se pudo copiar «{0}».",
+  "\"{0}\" could not be deleted even with administrator permission.": "No se pudo eliminar «{0}» ni siquiera con permisos de administrador.",
   "\"{0}\" could not be deleted.": "No se pudo eliminar «{0}».",
   "\"{0}\" could not be moved to the Recycle Bin.": "No se pudo mover «{0}» a la Papelera de reciclaje.",
   "\"{0}\" could not be moved to the Trash.": "No se pudo mover «{0}» a la papelera.",
@@ -35,6 +36,10 @@
   "Add": "Añadir",
   "Add to Dictionary": "Añadir al diccionario",
   "Address": "Dirección",
+  "Administrator permission was not granted; {n} item left in place.": {
+    "one": "No se concedieron permisos de administrador; {n} elemento quedó en su lugar.",
+    "other": "No se concedieron permisos de administrador; {n} elementos quedaron en su lugar."
+  },
   "age|newer": "más reciente",
   "age|older": "menos reciente",
   "age|same": "idéntico",
@@ -111,10 +116,16 @@
   "Context": "Contexto",
   "Continue": "Continuar",
   "Copied to the clipboard": "Copiado al portapapeles",
+  "Copied {0} of {n} item.": {
+    "one": "Elementos copiados: {0} de {n}.",
+    "other": "Elementos copiados: {0} de {n}."
+  },
   "Copy": "Copiar",
   "Copy \"{0}\" into \"{1}\"?": "¿Copiar «{0}» en «{1}»?",
   "Copy files": "Copiar archivos",
+  "Copy finished": "Copia finalizada",
   "Copy path": "Copiar ruta",
+  "Copy skipped items again": "Volver a copiar los elementos omitidos",
   "Copy {n} item into \"{0}\"?": {
     "one": "¿Copiar {n} elemento en «{0}»?",
     "other": "¿Copiar {n} elementos en «{0}»?"
@@ -122,6 +133,7 @@
   "Copy: a file could not be copied": "Copiar: no se pudo copiar un archivo",
   "Copy: a folder could not be copied": "Copiar: no se pudo copiar una carpeta",
   "Copy: the name is already taken": "Copiar: el nombre ya está en uso",
+  "Could not delete as administrator: {0}": "No se pudo eliminar como administrador: {0}",
   "Could not read {0}": "No se pudo leer {0}",
   "Could not save {0}": "No se pudo guardar {0}",
   "Could not write {0}": "No se pudo escribir {0}",
@@ -141,7 +153,9 @@
   "Delete anyway": "Eliminar de todos modos",
   "Delete anyway removes the protection first.": "«Eliminar de todos modos» quita primero la protección.",
   "Delete as administrator": "Eliminar como administrador",
+  "Delete finished": "Eliminación finalizada",
   "Delete permanently": "Eliminar permanentemente",
+  "Delete skipped items again": "Volver a eliminar los elementos omitidos",
   "Delete {n} item?": {
     "one": "¿Eliminar {n} elemento?",
     "other": "¿Eliminar {n} elementos?"
@@ -158,6 +172,11 @@
   "Delete: administrator permission needed": "Eliminar: se necesitan permisos de administrador",
   "Delete: the file is in use": "Eliminar: el archivo está en uso",
   "Delete: the folder is in use": "Eliminar: la carpeta está en uso",
+  "Deleted {0} of {n} item.": {
+    "one": "Elementos eliminados: {0} de {n}.",
+    "other": "Elementos eliminados: {0} de {n}."
+  },
+  "Deleting as administrator is not available: {0}": "Eliminar como administrador no está disponible: {0}",
   "Demote to the application (from {0})": "Devolver a la aplicación (desde {0})",
   "Descending": "Descendente",
   "Description": "Descripción",
@@ -251,6 +270,8 @@
   "Images": "Imágenes",
   "Import": "Importar",
   "in": "en",
+  "in use": "en uso",
+  "in use by {0}": "en uso por {0}",
   "In use by:": "Usado por:",
   "in {n} folder": {
     "one": "en {n} carpeta",
@@ -329,6 +350,8 @@
   "Move Down": "Bajar",
   "Move down": "Bajar",
   "Move files": "Mover archivos",
+  "Move finished": "Movimiento finalizado",
+  "Move skipped items again": "Volver a mover los elementos omitidos",
   "Move to Recycle Bin": "Mover a la Papelera de reciclaje",
   "Move to Recycle Bin can be undone from the Recycle Bin. Delete permanently cannot be undone.": "«Mover a la Papelera de reciclaje» se puede deshacer desde la Papelera de reciclaje. «Eliminar permanentemente» no se puede deshacer.",
   "Move to Trash": "Mover a la papelera",
@@ -342,6 +365,18 @@
   "Move: a file could not be moved": "Mover: no se pudo mover un archivo",
   "Move: a folder could not be moved": "Mover: no se pudo mover una carpeta",
   "Move: the name is already taken": "Mover: el nombre ya está en uso",
+  "Moved {0} of {n} item to the Recycle Bin.": {
+    "one": "Elementos movidos a la Papelera de reciclaje: {0} de {n}.",
+    "other": "Elementos movidos a la Papelera de reciclaje: {0} de {n}."
+  },
+  "Moved {0} of {n} item to the Trash.": {
+    "one": "Elementos movidos a la papelera: {0} de {n}.",
+    "other": "Elementos movidos a la papelera: {0} de {n}."
+  },
+  "Moved {0} of {n} item.": {
+    "one": "Elementos movidos: {0} de {n}.",
+    "other": "Elementos movidos: {0} de {n}."
+  },
   "Music": "Música",
   "Name": "Nombre",
   "Network": "Red",
@@ -463,6 +498,8 @@
   "Size:": "Tamaño:",
   "Skip": "Omitir",
   "Skip All": "Omitir todo",
+  "Skipped: the name is already taken": "Omitido: el nombre ya está en uso",
+  "Skipped: write-protected": "Omitido: de solo lectura",
   "Slideshow interval": "Intervalo de la presentación",
   "Slideshow transition": "Transición de la presentación",
   "Sort": "Ordenar",
@@ -485,6 +522,7 @@
   "The base sets the application takes, in lookup order; tick one to take it": "Los conjuntos base que usa la aplicación, en orden de búsqueda; marque uno para usarlo",
   "The file may be locked or in use by another program. Close it there, then try again.": "Puede que el archivo esté bloqueado o en uso por otro programa. Ciérrelo allí y vuelva a intentarlo.",
   "The first {0} of {1} items:": "Los primeros {0} de {1} elementos:",
+  "The first {0} of {1} skipped items:": "Los primeros {0} de {1} elementos omitidos:",
   "The folder may be locked or in use by another program. Close it there, then try again.": "Puede que la carpeta esté bloqueada o en uso por otro programa. Ciérrela allí y vuelva a intentarlo.",
   "The menus as they were opened, the toolbars as the program has them": "Los menús tal como se abrieron, las barras de herramientas tal como las tiene el programa",
   "the read-only attribute is set": "el atributo de solo lectura está activado",
@@ -596,6 +634,10 @@
     "one": "{n} elemento",
     "other": "{n} elementos"
   },
+  "{n} item could not be deleted even with administrator permission.": {
+    "one": "{n} elemento no se pudo eliminar ni siquiera con permisos de administrador.",
+    "other": "{n} elementos no se pudieron eliminar ni siquiera con permisos de administrador."
+  },
   "{n} minute": {
     "one": "{n} minuto",
     "other": "{n} minutos"
@@ -603,5 +645,9 @@
   "{n} second": {
     "one": "{n} segundo",
     "other": "{n} segundos"
+  },
+  "{n} was skipped.": {
+    "one": "{n} elemento se omitió.",
+    "other": "{n} elementos se omitieron."
   }
 }

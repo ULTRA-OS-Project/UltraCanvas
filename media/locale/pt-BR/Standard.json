@@ -2,6 +2,7 @@
   "@language": "pt-BR",
   "@name": "Português (Brasil)",
   "@translated-by": "machine draft 2026-11-03, reviewed by -",
+  "\"{0}\" could not be deleted even with administrator permission.": "Não foi possível excluir \"{0}\", nem mesmo com permissão de administrador.",
   "\"{0}\" could not be deleted.": "Não foi possível excluir \"{0}\".",
   "\"{0}\" could not be moved to the Recycle Bin.": "Não foi possível mover \"{0}\" para a Lixeira.",
   "\"{0}\" could not be moved to the Trash.": "Não foi possível mover \"{0}\" para a Lixeira.",
@@ -18,6 +19,10 @@
   "A folder that another program still holds open - or that is shown in a preview - cannot be copied until that program lets go of it. Close it there, then try again.": "Uma pasta que outro programa ainda mantém aberta (ou que está sendo exibida em uma visualização) não pode ser copiada até que esse programa a libere. Feche-a lá e tente novamente.",
   "A folder that another program still holds open - or that is shown in a preview - cannot be moved until that program lets go of it. Close it there, then try again.": "Uma pasta que outro programa ainda mantém aberta (ou que está sendo exibida em uma visualização) não pode ser movida até que esse programa a libere. Feche-a lá e tente novamente.",
   "Abort": "Anular",
+  "Administrator permission was not granted; {n} item left in place.": {
+    "one": "A permissão de administrador não foi concedida; {n} item permaneceu no lugar.",
+    "other": "A permissão de administrador não foi concedida; {n} itens permaneceram no lugar."
+  },
   "All Files": "Todos os arquivos",
   "All files": "Todos os arquivos",
   "Application": "Aplicativo",
@@ -38,7 +43,9 @@
   "Compress": "Compactar",
   "Connected": "Conectado",
   "Copy files": "Copiar arquivos",
+  "Copy skipped items again": "Copiar novamente os itens pulados",
   "Copy: a file could not be copied": "Copiar: não foi possível copiar um arquivo",
+  "Could not delete as administrator: {0}": "Não foi possível excluir como administrador: {0}",
   "Could not save {0}": "Não foi possível salvar {0}",
   "Could not write {0}": "Não foi possível gravar {0}",
   "counting…": "contando…",
@@ -51,7 +58,9 @@
   "Delete anyway": "Excluir mesmo assim",
   "Delete anyway removes the protection first.": "\"Excluir mesmo assim\" remove a proteção primeiro.",
   "Delete as administrator": "Excluir como administrador",
+  "Delete finished": "Exclusão concluída",
   "Delete permanently": "Excluir permanentemente",
+  "Delete skipped items again": "Excluir novamente os itens pulados",
   "Delete {n} item?": {
     "one": "Excluir {n} item?",
     "other": "Excluir {n} itens?"
@@ -68,6 +77,11 @@
   "Delete: administrator permission needed": "Excluir: é necessária permissão de administrador",
   "Delete: the file is in use": "Excluir: o arquivo está em uso",
   "Delete: the folder is in use": "Excluir: a pasta está em uso",
+  "Deleted {0} of {n} item.": {
+    "one": "Itens excluídos: {0} de {n}.",
+    "other": "Itens excluídos: {0} de {n}."
+  },
+  "Deleting as administrator is not available: {0}": "A exclusão como administrador não está disponível: {0}",
   "Descending": "Decrescente",
   "Deselect": "Desmarcar",
   "Desktop": "Área de trabalho",
@@ -105,11 +119,20 @@
   "Merge moves the {0} into the existing folder and asks about any name that is taken inside it. Replace deletes the existing folder and its {1} first.": "\"Mesclar\" move o conteúdo ({0}) para a pasta existente e pergunta o que fazer com cada nome que já esteja em uso dentro dela. \"Substituir\" exclui primeiro a pasta existente e o conteúdo dela ({1}).",
   "Monospace": "Monoespaçada",
   "Move files": "Mover arquivos",
+  "Move skipped items again": "Mover novamente os itens pulados",
   "Move to Recycle Bin": "Mover para a Lixeira",
   "Move to Recycle Bin can be undone from the Recycle Bin. Delete permanently cannot be undone.": "\"Mover para a Lixeira\" pode ser desfeito na Lixeira. \"Excluir permanentemente\" não pode ser desfeito.",
   "Move to Trash": "Mover para a Lixeira",
   "Move to Trash can be undone from the Trash. Delete permanently cannot be undone.": "\"Mover para a Lixeira\" pode ser desfeito na Lixeira. \"Excluir permanentemente\" não pode ser desfeito.",
   "Move: a file could not be moved": "Mover: não foi possível mover um arquivo",
+  "Moved {0} of {n} item to the Recycle Bin.": {
+    "one": "Itens movidos para a Lixeira: {0} de {n}.",
+    "other": "Itens movidos para a Lixeira: {0} de {n}."
+  },
+  "Moved {0} of {n} item to the Trash.": {
+    "one": "Itens movidos para a Lixeira: {0} de {n}.",
+    "other": "Itens movidos para a Lixeira: {0} de {n}."
+  },
   "No file chosen": "Nenhum arquivo escolhido",
   "No media": "Sem mídia",
   "No results": "Nenhum resultado",
@@ -145,6 +168,8 @@
   "Show hidden files": "Mostrar arquivos ocultos",
   "Skip": "Pular",
   "Skip All": "Pular tudo",
+  "Skipped: the name is already taken": "Pulado: o nome já está em uso",
+  "Skipped: write-protected": "Pulado: somente leitura",
   "Slideshow interval": "Intervalo da apresentação de slides",
   "Slideshow transition": "Transição da apresentação de slides",
   "Sort": "Classificar",
@@ -153,6 +178,7 @@
   "Tags": "Tags",
   "That program is this one: it is running from the folder being deleted. Close it, then delete the folder from another file manager or from a copy started elsewhere.": "Esse programa é este mesmo: ele está sendo executado a partir da pasta que está sendo excluída. Feche-o e depois exclua a pasta usando outro gerenciador de arquivos ou uma cópia iniciada em outro local.",
   "The file may be locked or in use by another program. Close it there, then try again.": "O arquivo pode estar bloqueado ou em uso por outro programa. Feche-o lá e tente novamente.",
+  "The first {0} of {1} skipped items:": "Os primeiros {0} de {1} itens pulados:",
   "The folder may be locked or in use by another program. Close it there, then try again.": "A pasta pode estar bloqueada ou em uso por outro programa. Feche-a lá e tente novamente.",
   "the read-only attribute is set": "o atributo somente leitura está definido",
   "The two files have the same size and date. Keep both renames the pasted file to \"{0}\".": "Os dois arquivos têm o mesmo tamanho e a mesma data. \"Manter ambos\" renomeia o arquivo colado para \"{0}\".",
@@ -174,5 +200,13 @@
   "{n} file": {
     "one": "{n} arquivo",
     "other": "{n} arquivos"
+  },
+  "{n} item could not be deleted even with administrator permission.": {
+    "one": "Não foi possível excluir {n} item, nem mesmo com permissão de administrador.",
+    "other": "Não foi possível excluir {n} itens, nem mesmo com permissão de administrador."
+  },
+  "{n} was skipped.": {
+    "one": "{n} item foi pulado.",
+    "other": "{n} itens foram pulados."
   }
 }
