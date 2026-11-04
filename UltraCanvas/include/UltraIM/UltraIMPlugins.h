@@ -1,7 +1,7 @@
 // include/UltraIM/UltraIMPlugins.h
 // UltraIM - the provider plug-in interface and the module (DSO) host contract
-// Version: 0.1.8 - ABI 4: account recovery by an e-mailed link (FinishRecovery asks whether it was opened)
-// Version: 0.1.7 - ABI 3: confirming the e-mail and phone, and account recovery
+// Version: 0.1.7 - ABI 3: confirming the e-mail (by a link) and the phone (by a code), and account recovery
+//                  by a link e-mailed to the owner (FinishRecovery asks whether it was approved)
 // Version: 0.1.6 - ABI 2: the version covers the provider interface and its types, a module says
 //                  which it was built for (UltraIM_PluginAbiVersion) and the host loads only an equal one
 // Version: 0.1.5 - the account's profile (name, e-mail, phone) and its sign-in protection
@@ -351,11 +351,10 @@ protected:
 // Version 1: the first modules. Version 2 (2026-11): the account profile and
 // sign-in protection, UltraIMCredentials::email - and the version check.
 // Version 3 (2026-11): the profile's verified flags and recovery state,
-// confirming the e-mail and phone, account recovery. Version 4 (2026-11):
-// recovery by a link e-mailed to the owner (UltraIMRecoveryAnswer has no codes).
+// confirming the e-mail and phone, account recovery by an e-mailed link.
 // ============================================================================
 
-constexpr int ULTRAIM_PLUGIN_HOST_ABI_VERSION = 4;
+constexpr int ULTRAIM_PLUGIN_HOST_ABI_VERSION = 3;
 
 struct UltraIMPluginHost {
     int abiVersion;
