@@ -662,7 +662,7 @@ namespace UltraCanvas {
         TernaryModel DeFinetti() {
             TernaryModel model;
             model.title = "Genotype shares of invented populations";
-            model.subtitle = "Marker area: individuals sampled. Dashed: Hardy-Weinberg equilibrium";
+            model.subtitle = "Marker area: individuals sampled";
             model.axes[0] = TernaryAxis("Aa");
             model.axes[1] = TernaryAxis("AA");
             model.axes[2] = TernaryAxis("aa");

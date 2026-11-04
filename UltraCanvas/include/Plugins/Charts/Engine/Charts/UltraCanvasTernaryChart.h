@@ -16,13 +16,23 @@
 //   * the points of each series as markers, with a legend that hides a
 //     series, tooltips giving all three shares and the raw amounts, and
 //     optional point labels through the engine's label plan (a label that
-//     cannot sit near its point is left to the tooltip).
+//     cannot sit near its point is left to the tooltip);
+//   * the model's regions under the grid, each named at its widest inside
+//     point, with hover, a tooltip and onRegionClick; a point's tooltip says
+//     which region it is in;
+//   * paths (a composition changing over time) with arrowheads, bubbles
+//     sized by a fourth value, and reference curves such as the
+//     Hardy-Weinberg parabola, in the legend with the series;
+//   * on request, a reading guide: the three grid lines through the
+//     pointer, drawn to the edges that carry their numbers, with the shares.
 //
 // Design: Docs/UltraCanvas/UltraCanvasTernaryChartProposal.md
 // Guide:  Docs/UltraCanvas/UltraCanvasTernaryChart.md
 //
+// Version: 1.1.0 - Phase 2: regions, paths, bubbles, curves, the reading guide,
+//   region hover and clicks
 // Version: 1.0.0
-// Last Modified: 2026-11-03
+// Last Modified: 2026-11-04
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -55,9 +65,23 @@ public:
     void SetShowPointLabels(bool show);
     void SetSeriesVisible(size_t seriesIndex, bool visible);
     bool IsSeriesVisible(size_t seriesIndex) const;
+    void SetCurveVisible(size_t curveIndex, bool visible);
+    bool IsCurveVisible(size_t curveIndex) const;
+    // Each region's name inside it, where it fits (it is always in the
+    // region's tooltip).
+    void SetShowRegionLabels(bool show);
+    // The three grid lines through the pointer, to the edges that carry their
+    // numbers, with the pointer's shares (and region) beside it.
+    void SetReadingGuide(bool show);
+    bool GetReadingGuide() const { return readingGuide; }
+    // The bubble radii, in pixels, for the smallest and the largest point
+    // size; points without a size keep their series' marker radius.
+    void SetBubbleRadiusRange(double smallest, double largest);
 
     // A click on a point: its series and its index in that series.
     std::function<void(size_t seriesIndex, size_t pointIndex)> onPointClick;
+    // A click on a region (not on a point in it): its index in the model.
+    std::function<void(int regionIndex)> onRegionClick;
 
     // ---- geometry (valid after the first render) -------------------------------
     // A corner: 0 = A (apex), 1 = B (bottom left), 2 = C (bottom right).
@@ -72,7 +96,17 @@ public:
     Point2Dd PointPosition(size_t seriesIndex, size_t pointIndex) const;
     // The hovered point, {SIZE_MAX, SIZE_MAX} for none.
     std::pair<size_t, size_t> GetHoveredPoint() const;
+    // The hovered region (not counting a point in it), -1 for none.
+    int GetHoveredRegion() const;
     std::string BuildPointTooltip(size_t seriesIndex, size_t pointIndex) const;
+    std::string BuildRegionTooltip(int regionIndex) const;
+    // A point's marker radius: its bubble size, or its series' radius.
+    double PointRadius(size_t seriesIndex, size_t pointIndex) const;
+    // Where a region's name is drawn: its widest inside point. Invalid (NaN)
+    // when the name does not fit or the region has no area.
+    Point2Dd RegionLabelCentre(int regionIndex) const;
+    // The shares under the pointer while the reading guide is on.
+    bool GetGuideShares(double& a, double& b, double& c) const;
 
     // ---- engine contract -------------------------------------------------------
     void DescribeAxes(ChartAxisSet& axes) override;
@@ -91,11 +125,28 @@ protected:
     // out: across a crowded triangle a long leader reads worse than none,
     // and the name is still in the point's tooltip.
     void RenderPlannedLabels(IRenderContext* ctx) override;
+    void RenderInteractionOverlay(IRenderContext* ctx, const ChartEngineFrame& frame) override;
 
 private:
     TernaryModel model;
     std::vector<bool> seriesHidden;
+    std::vector<bool> curveHidden;
     bool showGridLines = true;
+    bool showRegionLabels = true;
+    bool readingGuide = false;
+    bool guideActive = false;
+    double guideShares[3] = {0.0, 0.0, 0.0};
+    double bubbleSmallest = 4.0, bubbleLargest = 18.0;
+    float regionFontSize = 10.5f;
+    // A region's name as drawn: on one line or wrapped at its spaces, at
+    // the region font size or a step smaller - whatever fits inside.
+    struct RegionLabel {
+        Rect2Dd box;                         // empty = the name does not fit
+        std::vector<std::string> lines;
+        float size = 10.5f;
+        double lineHeight = 0.0;
+    };
+    std::vector<RegionLabel> regionLabels;   // from the last draw
     bool showEdgeTitles = true;
     bool showPointLabels = false;
     float cornerFontSize = 12.5f;
@@ -126,6 +177,14 @@ private:
     static int64_t RegionId(size_t seriesIndex, size_t pointIndex) {
         return static_cast<int64_t>(seriesIndex) * 65536 + static_cast<int64_t>(pointIndex);
     }
+    // Hit-region ids of the model's regions start here, above every point's.
+    static constexpr int64_t kRegionIdBase = int64_t(1) << 40;
+    // A region's outline on screen; empty when it has no valid corners.
+    std::vector<Point2Dd> RegionScreenOutline(int regionIndex) const;
+    // A region's name laid out where it fits; an empty box otherwise.
+    RegionLabel LayoutRegionLabel(IRenderContext* ctx, int regionIndex) const;
+    void DrawRegions(IRenderContext* ctx);
+    void DrawCurves(IRenderContext* ctx);
 };
 
 inline std::shared_ptr<UltraCanvasTernaryChart> CreateTernaryChart(

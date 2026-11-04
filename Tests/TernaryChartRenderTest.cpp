@@ -12,8 +12,11 @@
 // With ULTRACANVAS_SCREENSHOT_DIR set, each case is also written there as a
 // PNG for a person to look at.
 //
+// Version: 1.1.0 - Phase 2: regions named inside themselves and hit where
+//   drawn, region clicks, paths, bubbles, the curve in the legend, the reading
+//   guide
 // Version: 1.0.0
-// Last Modified: 2026-11-03
+// Last Modified: 2026-11-04
 // Author: UltraCanvas Framework
 
 #include "Plugins/Charts/Engine/Charts/UltraCanvasTernaryChart.h"
@@ -21,6 +24,7 @@
 
 #include <cairo/cairo.h>
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
@@ -234,6 +238,118 @@ void TestInteraction() {
     canvas.Save("ternary_votes_labels");
 }
 
+void TestRegions() {
+    std::cout << "\nRegions (USDA soil texture)\n";
+    Canvas canvas(W, H);
+    if (!canvas.ctx) return;
+    TernaryModel model = TernarySamples::SoilTexture();
+    model.series = TernarySamples::SoilSamples().series;
+    auto chart = Make(canvas, model);
+
+    int named = 0;
+    bool namedInside = true, hitWhereNamed = true;
+    for (int r = 0; r < static_cast<int>(model.regions.size()); ++r) {
+        const Point2Dd centre = chart->RegionLabelCentre(r);
+        if (std::isnan(centre.x)) continue;
+        ++named;
+        double a = 0, b = 0, c = 0;
+        namedInside &= chart->ScreenToShares(centre, a, b, c) && model.RegionOf(a, b, c) == r;
+        chart->OnEvent(Mouse(UCEventType::MouseMove, centre));
+        // A point may sit on the name; then the point answers instead.
+        hitWhereNamed &= chart->GetHoveredRegion() == r || chart->GetHoveredPoint().first != SIZE_MAX;
+    }
+    Check(named >= 10, "most classes are named inside themselves (" + std::to_string(named) + " of 12)");
+    Check(namedInside, "every name sits inside its own class, even in the classes that are not convex");
+    Check(hitWhereNamed, "and each class answers the pointer where its name is");
+
+    // The fill is the region's colour.
+    const Point2Dd clay = chart->SharesToScreen(88, 6, 6);
+    bool clayFill = false;
+    for (int dy = -4; dy <= 4 && !clayFill; dy += 2) {
+        clayFill |= Close(canvas.PixelAt(static_cast<int>(clay.x), static_cast<int>(clay.y) + dy), model.regions[11].fill, 3);
+    }
+    Check(clayFill, "a class is filled with its colour");
+
+    int clicked = -1;
+    chart->onRegionClick = [&clicked](int region) { clicked = region; };
+    const Point2Dd empty = chart->SharesToScreen(70, 15, 15);   // deep in clay, no sample there
+    chart->OnEvent(Mouse(UCEventType::MouseMove, empty));
+    chart->OnEvent(Mouse(UCEventType::MouseDown, empty));
+    Check(clicked == 11 && chart->BuildRegionTooltip(11) == "Clay", "a click on a class reports it");
+
+    const std::string tip = chart->BuildPointTooltip(1, 0);
+    Check(tip.find("Region: ") != std::string::npos, "a point's tooltip names its class");
+    canvas.Save("ternary_soil_texture");
+}
+
+void TestPathsBubblesCurves() {
+    std::cout << "\nPaths, bubbles and curves\n";
+    {
+        Canvas canvas(W, H);
+        if (!canvas.ctx) return;
+        const TernaryModel model = TernarySamples::VoteTrajectories();
+        auto chart = Make(canvas, model);
+        // Midway between two elections the path is drawn in the series colour.
+        bool drawn = true;
+        for (size_t s = 0; s < model.series.size(); ++s) {
+            const Point2Dd a = chart->PointPosition(s, 1), b = chart->PointPosition(s, 2);
+            const Point2Dd mid((a.x + b.x) * 0.5, (a.y + b.y) * 0.5);
+            bool hit = false;
+            for (int dx = -1; dx <= 1 && !hit; ++dx) {
+                for (int dy = -1; dy <= 1 && !hit; ++dy) {
+                    hit |= Close(canvas.PixelAt(static_cast<int>(std::lround(mid.x)) + dx,
+                                                static_cast<int>(std::lround(mid.y)) + dy),
+                                 chart->Palette().ColorAt(s, model.series.size()), 40);
+                }
+            }
+            drawn &= hit;
+        }
+        Check(drawn, "each path joins its elections in its series' colour");
+        canvas.Save("ternary_trajectories");
+    }
+    {
+        Canvas canvas(W, H);
+        if (!canvas.ctx) return;
+        const TernaryModel model = TernarySamples::DeFinetti();
+        auto chart = Make(canvas, model);
+        double largest = 0.0, smallest = 1e9;
+        for (size_t s = 0; s < model.series.size(); ++s) {
+            for (size_t p = 0; p < model.series[s].points.size(); ++p) {
+                largest = std::max(largest, chart->PointRadius(s, p));
+                smallest = std::min(smallest, chart->PointRadius(s, p));
+            }
+        }
+        Check(std::abs(largest - 18.0) < 1e-9 && smallest > 4.0 && smallest < largest,
+              "bubble radii run up to the largest for the biggest sample");
+        const std::vector<ChartLegendEntry>& entries = chart->GetLegend().GetEntries();
+        Check(entries.size() == 3 && entries[2].label == "Hardy-Weinberg equilibrium",
+              "the curve has a legend entry after the series");
+        chart->SetCurveVisible(0, false);
+        Check(!chart->IsCurveVisible(0), "and can be hidden");
+        chart->SetCurveVisible(0, true);
+        canvas.Save("ternary_de_finetti");
+    }
+}
+
+void TestReadingGuide() {
+    std::cout << "\nReading guide\n";
+    Canvas canvas(W, H);
+    if (!canvas.ctx) return;
+    TernaryModel model = TernarySamples::SoilTexture();
+    auto chart = Make(canvas, model);
+    double a = 0, b = 0, c = 0;
+    chart->OnEvent(Mouse(UCEventType::MouseMove, chart->SharesToScreen(30, 30, 40)));
+    Check(!chart->GetGuideShares(a, b, c), "the guide is off by default");
+    chart->SetReadingGuide(true);
+    chart->OnEvent(Mouse(UCEventType::MouseMove, chart->SharesToScreen(30, 30, 40)));
+    Check(chart->GetGuideShares(a, b, c) && std::abs(a - 0.3) < 0.01 && std::abs(b - 0.3) < 0.01 &&
+          std::abs(c - 0.4) < 0.01, "on, it follows the pointer's shares");
+    chart->Render(canvas.ctx.get(), Rect2Df(0, 0, W, H));
+    canvas.Save("ternary_reading_guide");
+    chart->OnEvent(Mouse(UCEventType::MouseMove, Point2Dd(5, 5)));
+    Check(!chart->GetGuideShares(a, b, c), "and goes away outside the triangle");
+}
+
 } // namespace
 
 int main() {
@@ -245,6 +361,9 @@ int main() {
     TestReading(TernaryReading::Clockwise, "clockwise");
     TestReading(TernaryReading::Anticlockwise, "anticlockwise");
     TestInteraction();
+    TestRegions();
+    TestPathsBubblesCurves();
+    TestReadingGuide();
 
     std::cout << "\n====================================\n";
     if (g_failures == 0) {
