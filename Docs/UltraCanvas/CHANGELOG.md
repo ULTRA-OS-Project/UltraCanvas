@@ -1,3 +1,21 @@
+#### 2026-11-04 *0.9.481*
+- **DemoApp: a Localisation page under ULTRA OS modules.** `Tr`, `TrC`,
+  `TrN` and `TrF` answered live in a language picked on the page (every
+  language a catalogue ships for, named as it names itself), each with the
+  layer that answered it - the application's set, a base set, the standard
+  set, or the English at the site; a count for the plural with its CLDR
+  category, a value for `TrF`; the catalogue files of the three layers of
+  UltraTexter in that language, shown as they ship with their entry counts,
+  `@bases` and `@inherited`; the scripts and the editor around the module.
+  The pick calls `UltraLocalisation::SetLanguage`, as UOS-Settings does.
+- **`scripts/extract_ui_strings.py` reads past a `"/*"` in a string.** The
+  extraction stripped comments with a regular expression, so a `/*` inside
+  a string literal (Texter's list of comment markers) swallowed the code up
+  to the next `*/` - 1,800 lines of Texter's editor, with 17 `Tr` sites and
+  its crash-recovery plural - and a `•` in a literal stopped it. The
+  comments are now stripped by a walker that steps over string and
+  character literals, and a C++ escape is decoded as the compiler emits it.
+
 #### 2026-11-04 *0.9.480*
 - **Ternary chart, Phase 2: regions, paths, bubbles, curves, files.**
   - Regions are authored areas of the triangle. They are filled under the
