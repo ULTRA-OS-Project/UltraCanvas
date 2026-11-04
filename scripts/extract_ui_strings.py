@@ -57,21 +57,29 @@ SIMPLE_ESCAPES = {"n": "\n", "t": "\t", "r": "\r", "a": "\a", "b": "\b", "f": "\
 
 
 def unescape(s: str) -> str:
-    """The text a C++ string literal's body stands for: \\n, \\", \\\\, \\xHH, octal,
-    \\uXXXX and \\UXXXXXXXX (a character outside Latin-1, such as \\u2022, as
-    the UTF-8 text the compiler emits)."""
+    """The text a C++ string literal's body stands for, as the compiler
+    emits it: \\n, \\", \\\\; \\xHH and octal are bytes of the UTF-8 text (a
+    source writes "\\xc3\\x97" for a multiplication sign); \\uXXXX and
+    \\UXXXXXXXX are code points (a "\\u2022" bullet); any other character is
+    itself."""
     if "\\" not in s:
         return s
-
-    def one(m):
+    out = bytearray()
+    pos = 0
+    for m in ESCAPE.finditer(s):
+        out += s[pos:m.start()].encode("utf-8")
         e = m.group(1)
-        if e[0] in "uUx":
-            return chr(int(e[1:], 16))
-        if e[0] in "01234567":
-            return chr(int(e, 8))
-        return SIMPLE_ESCAPES.get(e, e)
-
-    return ESCAPE.sub(one, s)
+        if e[0] in "uU":
+            out += chr(int(e[1:], 16)).encode("utf-8", "surrogatepass")
+        elif e[0] == "x":
+            out.append(int(e[1:], 16) & 0xFF)
+        elif e[0] in "01234567":
+            out.append(int(e, 8) & 0xFF)
+        else:
+            out += SIMPLE_ESCAPES.get(e, e).encode("utf-8")
+        pos = m.end()
+    out += s[pos:].encode("utf-8")
+    return out.decode("utf-8", "replace")
 
 
 def strip_comments(text: str) -> str:
