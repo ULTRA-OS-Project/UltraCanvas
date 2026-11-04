@@ -20,7 +20,9 @@
 // bitmap); letter spacing is in the same unit unless it is given its own.
 //
 // Version: 1.1.0 - letter spacing is a character attribute: the selected words take it;
-//                  HasKeyboardFocus: a host's shortcuts leave the keys to a control of the bar
+//                  HasKeyboardFocus: a host's shortcuts leave the keys to a control of the bar;
+//                  the Font list is made again when the fonts change (the system fonts
+//                  arriving after the start - on Windows the list held the bundled fonts alone)
 // Version: 1.0.0
 // Last Modified: 2026-11-04
 // Author: UltraCanvas Framework
@@ -105,8 +107,15 @@ public:
 
     // The Font list again from the fonts installed now (one installed
     // meanwhile joins it). Each family is shown in itself; the list prepares
-    // those previews in idle slices once the bar is on screen.
+    // those previews in idle slices once the bar is on screen. The bar does
+    // this itself when the fonts the text engine knows change
+    // (GetFontSetGeneration) - the system fonts that arrive after the start
+    // on Windows, a font file registered.
     void RefreshFonts();
+
+    // Laid out again: the window does this to every element after the fonts
+    // changed, and the bar then makes its Font list again.
+    void InvalidateLayout() override;
     const std::vector<std::string>& GetFontFamilies() const { return families; }
 
     // The bar's ground, ink and controls from a theme (a dark program's bar
@@ -140,6 +149,8 @@ private:
     std::vector<std::string> families;
     std::string missingFamily;           // shown at the top of the list: not installed
     bool showing = false;                // ShowFormat is setting the controls
+    unsigned long fontGeneration = 0;    // GetFontSetGeneration when the list was made
+    bool fontRefreshQueued = false;
     bool letterUnitOwn = false;
     std::shared_ptr<bool> alive = std::make_shared<bool>(true);
 

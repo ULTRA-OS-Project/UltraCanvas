@@ -145,6 +145,16 @@ namespace UltraCanvas {
     // only after registering a font behind the framework's back.
     void RefreshFontConfiguration();
 
+    // Goes up each time the fonts the text engine knows change: a font file
+    // was registered (RefreshFontConfiguration), or the system fonts that a
+    // scan still running at the start brought later were switched to
+    // (Windows). A list of the installed families (GetInstalledFontFamilies)
+    // made at another count is out of date - a font list made with the
+    // window held the bundled fonts alone after a start with a cold font
+    // cache. The windows are laid out again after such a change, so an
+    // element holding a list compares the count in InvalidateLayout().
+    unsigned long GetFontSetGeneration();
+
     // The bundled fonts (kEmbeddedAllFonts in GetBundledFontsDir) made
     // available to the text engine, the platform's one way - defined once
     // per platform in OS/<Platform>: fontconfig on Linux, the BSDs, Android

@@ -97,7 +97,11 @@ dropdown prepares those previews lazily: once the bar is on screen, in small
 idle slices, the rows the list opens on first - see *A font list* in
 [UltraCanvasDropDownExamples.md](UltraCanvasDropDownExamples.md). A format
 naming a font this computer lacks shows it at the top of the list, marked as
-not installed. `RefreshFonts()` reads the installed fonts again.
+not installed. `RefreshFonts()` reads the installed fonts again, and the bar does
+that itself when the fonts the text engine knows change
+(`GetFontSetGeneration()`): a font file registered, or on Windows the system
+fonts arriving after a start with a cold font cache - the list made with the
+window held the bundled fonts alone until then.
 
 ## Narrow places
 

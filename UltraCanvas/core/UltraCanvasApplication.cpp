@@ -568,6 +568,13 @@ namespace UltraCanvas {
     }
 #endif // !__APPLE__
 
+    namespace {
+        // GetFontSetGeneration's count; 1 for the fonts of the start.
+        std::atomic<unsigned long> fontSetGeneration{1};
+    }
+
+    unsigned long GetFontSetGeneration() { return fontSetGeneration.load(); }
+
 #if !defined(__APPLE__)
     namespace {
         // The system fonts' scan (SetupBundledFontconfig, Windows): one per process,
@@ -629,6 +636,9 @@ namespace UltraCanvas {
             RefreshFontConfiguration();
 #endif
             RenderContextCairo::InvalidateAllFontMetricsCaches();
+            // A new set of fonts: before the windows are laid out again, so
+            // a font list sees it then (GetFontSetGeneration).
+            ++fontSetGeneration;
             // Laid out and drawn again: a new layout alone repaints nothing,
             // so the boxes drawn for characters the start's fonts lacked
             // stayed on screen until something else redrew them.
@@ -848,6 +858,7 @@ namespace UltraCanvas {
     }
 
     void RefreshFontConfiguration() {
+        ++fontSetGeneration;
 #if !defined(__APPLE__)
         // FcConfigAppFontAddFile only records the file; the FontSet FcMatch
         // (and therefore Pango) searches is materialised by FcConfigBuildFonts.

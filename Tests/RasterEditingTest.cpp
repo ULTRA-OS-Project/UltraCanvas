@@ -6,6 +6,8 @@
 // keying (Colour to Alpha), text layers (UltraCanvasRasterText.h), the paint
 // surface's view through a resize, and the PNG and .ucraster round trips (the
 // last three only with libvips).
+// Version: 1.9.0 - TestFontListFollowsTheFonts: the text bar's Font list takes a font that
+//                  arrives while it exists
 // Version: 1.8.0 - TestRunLetterSpacing: a word's own letter spacing is drawn on it alone,
 //                  kept by *.ucd, and converted by the text bar
 // Version: 1.7.0 - TestTextLetterSpacing: a text layer's letter spacing is drawn and kept by *.ucd
@@ -29,7 +31,8 @@
 #include "UltraCanvasRichDocument.h"
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasImage.h"
-#include "UltraCanvasApplication.h"   // GetInstalledFontFamilies
+#include "UltraCanvasApplication.h"   // GetInstalledFontFamilies, GetFontSetGeneration
+#include "UltraCanvasConfig.h"        // GetResourcesDir
 #include "UltraCanvasPaintSurface.h"
 #include "UltraCanvasUCDContainer.h"
 
@@ -38,6 +41,9 @@
 #include <vips/vips8>
 #endif
 
+#if defined(__linux__)
+#include <fontconfig/fontconfig.h>
+#endif
 #include <algorithm>
 #include <cctype>
 #include <cmath>
@@ -1255,6 +1261,38 @@ static void TestRunLetterSpacing() {
     CHECK(TextFormatAtCaret(state, base, 0.75f).letterSpacing == 1.5f);   // mixed: the text's own
 }
 
+// The text bar's Font list follows the fonts: a font that arrives while the
+// bar exists (the system fonts after a cold start on Windows, a registered
+// font file) joins the list when the window lays the bar out again - the
+// list made with the window held the bundled fonts alone.
+static void TestFontListFollowsTheFonts() {
+#if defined(__linux__)
+    const std::string file = GetResourcesDir() + "media/microtex/latinmodern-math.otf";
+    const std::string family = "Latin Modern Math";
+    std::error_code ec;
+    if (!std::filesystem::exists(PathFromUtf8(file), ec)) {
+        std::printf("  (skipped: %s not found)\n", file.c_str());
+        return;
+    }
+    auto bar = CreateTextFormatBar("font-list-test");
+    auto listed = [&]() {
+        const auto& families = bar->GetFontFamilies();
+        return std::find(families.begin(), families.end(), family) != families.end();
+    };
+    if (listed()) {
+        std::printf("  (skipped: %s is installed here already)\n", family.c_str());
+        return;
+    }
+    const unsigned long before = GetFontSetGeneration();
+    CHECK(FcConfigAppFontAddFile(FcConfigGetCurrent(), reinterpret_cast<const FcChar8*>(file.c_str())) == FcTrue);
+    RefreshFontConfiguration();
+    CHECK(GetFontSetGeneration() > before);       // the fonts changed
+    CHECK(!listed());                              // the list is as it was made ...
+    bar->InvalidateLayout();                       // ... until the bar is laid out again
+    CHECK(listed());
+#endif
+}
+
 static void TestLayeredUCD() {
     std::string err;
     const std::filesystem::path dir = std::filesystem::temp_directory_path() / "ultracanvas-raster-ucd";
@@ -1480,6 +1518,7 @@ int main() {
     TestLayeredUCD();
     TestTextLetterSpacing();
     TestRunLetterSpacing();
+    TestFontListFollowsTheFonts();
     TestProtectedUCD();
 #ifdef HAS_LIBVIPS
     TestTextLayerProject();

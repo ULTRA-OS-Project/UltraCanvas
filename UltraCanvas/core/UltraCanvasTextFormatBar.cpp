@@ -1,7 +1,8 @@
 // core/UltraCanvasTextFormatBar.cpp
 // The text formatting bar: see include/UltraCanvasTextFormatBar.h.
 // Version: 1.1.0 - letter spacing to and from the selected words (TextFormatCharDelta,
-//                  TextFormatAtCaret); HasKeyboardFocus
+//                  TextFormatAtCaret); HasKeyboardFocus; the Font list made again when the
+//                  fonts change (GetFontSetGeneration)
 // Version: 1.0.0
 // Last Modified: 2026-11-04
 // Author: UltraCanvas Framework
@@ -85,6 +86,7 @@ UltraCanvasTextFormatBar::~UltraCanvasTextFormatBar() {
 }
 
 void UltraCanvasTextFormatBar::Build(float height) {
+    fontGeneration = GetFontSetGeneration();   // the list below is made from these fonts
     layout.SetFlexRow().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Center);
     layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     SetPadding(0, 8);
@@ -232,6 +234,7 @@ void UltraCanvasTextFormatBar::Build(float height) {
 }
 
 void UltraCanvasTextFormatBar::RefreshFonts() {
+    fontGeneration = GetFontSetGeneration();
     families = GetInstalledFontFamilies();
     // The generic names first: a text that names one finds it.
     for (const char* generic : { "Monospace", "Serif", "Sans" }) {
@@ -292,6 +295,23 @@ void UltraCanvasTextFormatBar::ShowFormat() {
     if (lineSpacingBox) lineSpacingBox->SetValue(format.lineSpacing);
     if (letterSpacingBox) letterSpacingBox->SetValue(format.letterSpacing);
     showing = false;
+}
+
+void UltraCanvasTextFormatBar::InvalidateLayout() {
+    UltraCanvasContainer::InvalidateLayout();
+    // The fonts changed since the list was made: the list again - after the
+    // window's pass over its elements, not inside it.
+    if (!fontBox || fontRefreshQueued || fontGeneration == GetFontSetGeneration()) return;
+    fontRefreshQueued = true;
+    std::weak_ptr<bool> token = alive;
+    auto refresh = [this, token]() {
+        auto still = token.lock();
+        if (!still || !*still) return;
+        fontRefreshQueued = false;
+        RefreshFonts();
+    };
+    if (auto* app = UltraCanvasApplicationBase::GetCurrent()) app->PostToUIThread(refresh);
+    else refresh();
 }
 
 void UltraCanvasTextFormatBar::Changed(TextFormatAttribute attribute) {
