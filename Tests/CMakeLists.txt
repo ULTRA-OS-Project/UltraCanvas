@@ -4040,14 +4040,23 @@ message(STATUS "    Test registered: ImportancePerformanceModelTest")
 
 # ===== TERNARY MODEL TEST =====
 # The ternary chart model: shares from raw amounts, the reading direction,
-# ticks, validation and the samples. UI-free.
+# ticks, validation, the USDA outlines against the class rules, the JSON and
+# CSV interchange and the samples. UI-free: the JSON wrapper and its vendored
+# engine are compiled in directly, as MatrixModelTest does.
 message(STATUS "  Building TernaryModelTest...")
 add_executable(TernaryModelTest
     ${CMAKE_CURRENT_SOURCE_DIR}/TernaryModelTest.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Charts/Engine/Charts/UltraCanvasTernaryModel.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/core/DataFormats/UltraCanvasJSON.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/yyjson/yyjson.c
 )
-target_include_directories(TernaryModelTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_include_directories(TernaryModelTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/yyjson
+)
 target_compile_features(TernaryModelTest PRIVATE cxx_std_20)
+# The CSV reads and writes numbers through the locale-independent helpers.
+target_link_libraries(TernaryModelTest PRIVATE UltraCanvasTextUtils)
 set_target_properties(TernaryModelTest PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )

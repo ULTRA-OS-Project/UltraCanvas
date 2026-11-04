@@ -13,8 +13,12 @@
 // Design: Docs/UltraCanvas/UltraCanvasTernaryChartProposal.md
 // Guide:  Docs/UltraCanvas/UltraCanvasTernaryChart.md
 //
+// Version: 1.1.0 - Phase 2: regions with classification (RegionOf), paths,
+//   bubble sizes, reference curves, the JSON round trip of the whole model and
+//   the CSV of the points; the SoilTexture (USDA), DeFinetti and
+//   VoteTrajectories samples
 // Version: 1.0.0
-// Last Modified: 2026-11-03
+// Last Modified: 2026-11-04
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -25,11 +29,27 @@
 
 namespace UltraCanvas {
 
+    class JSONValue;   // DataFormats/UltraCanvasJSON.h - only the JSON functions need it
+
+    // Three amounts, as given; a region corner or a curve vertex.
+    struct TernaryComposition {
+        double a = 0.0, b = 0.0, c = 0.0;
+
+        TernaryComposition() = default;
+        TernaryComposition(double pa, double pb, double pc) : a(pa), b(pb), c(pc) {}
+        // As TernaryPoint::Shares.
+        bool Shares(double& sa, double& sb, double& sc) const;
+    };
+
     // One composition, as given: any non-negative amounts.
     struct TernaryPoint {
         double a = 0.0, b = 0.0, c = 0.0;
         std::string label;
         std::string note;                 // tooltip only
+        // A fourth value drawn as the marker's area (a bubble); 0 = the
+        // series' marker size. Bubbles are scaled against the largest size
+        // in the model.
+        double size = 0.0;
 
         TernaryPoint() = default;
         TernaryPoint(double pa, double pb, double pc, std::string pointLabel = std::string())
@@ -41,16 +61,44 @@ namespace UltraCanvas {
         double Sum() const { return a + b + c; }
     };
 
+    // Scatter: the points alone. Path: the points joined in order - a
+    // composition changing over time - with an arrowhead on each step when
+    // `arrows` is set.
+    enum class TernarySeriesKind { Scatter, Path };
+
     // A group of points with one colour, marker and legend entry.
     struct TernarySeries {
         std::string name;
         std::vector<TernaryPoint> points;
+        TernarySeriesKind kind = TernarySeriesKind::Scatter;
+        bool arrows = false;                      // Path only
         Color color = Color(0, 0, 0, 0);          // transparent = from the palette
         ChartMarkerShape marker = ChartMarkerShape::Circle;
         float markerRadius = 4.5f;
 
         TernarySeries() = default;
         explicit TernarySeries(std::string seriesName) : name(std::move(seriesName)) {}
+    };
+
+    // An authored area of the triangle: a soil texture class, a rock field.
+    // The outline is closed and given in order; its corners may be in any
+    // unit, as points are.
+    struct TernaryRegion {
+        std::string id;
+        std::string name;                         // "Silty clay loam"; drawn in the region
+        std::vector<TernaryComposition> outline;
+        Color fill = Color(0, 0, 0, 0);           // transparent = from the palette, light
+        std::string note;                         // tooltip only
+    };
+
+    // A reference line through the triangle: the Hardy-Weinberg parabola of a
+    // De Finetti diagram, a mixing line, a phase boundary.
+    struct TernaryCurve {
+        std::string name;                         // the legend entry
+        std::vector<TernaryComposition> points;   // in order
+        Color color = Color(90, 90, 90, 255);
+        float width = 1.6f;
+        bool dashed = true;
     };
 
     // One part: the corner that is 100 % of it.
@@ -78,6 +126,8 @@ namespace UltraCanvas {
         TernaryAxis axes[3];              // A (apex), B (bottom left), C (bottom right)
         TernaryReading reading = TernaryReading::Clockwise;
         std::vector<TernarySeries> series;
+        std::vector<TernaryRegion> regions;       // drawn under the grid, in order
+        std::vector<TernaryCurve> curves;         // drawn over the regions, under the points
 
         // The corner whose labels run up to the given corner's, i.e. where
         // the axis of `corner` reads 0 % on its labelled edge. Clockwise:
@@ -88,12 +138,50 @@ namespace UltraCanvas {
         std::vector<double> Ticks(int corner) const;
 
         size_t PointCount() const;
+        // The largest point size in the model; 0 when no point has one.
+        double MaxPointSize() const;
+
+        // The region a composition falls in, by the same geometry the chart
+        // draws; -1 for none or for a composition with no shares. A point on
+        // an edge two regions share belongs to the one listed first.
+        int RegionOf(double a, double b, double c) const;
+        int RegionOf(const TernaryPoint& point) const { return RegionOf(point.a, point.b, point.c); }
 
         // Problems that make the model unusable or misleading: an axis
         // without a title, a tick step outside (0, 0.5], a point with a
-        // negative or non-finite part or a sum of 0. Empty = valid.
+        // negative or non-finite part or a sum of 0, a negative point size,
+        // a region with fewer than three corners or a corner with no shares,
+        // a curve with fewer than two points. Empty = valid.
         std::vector<std::string> Validate() const;
     };
+
+    // ===== INTERCHANGE =====
+    // The model functions take and return text; reading and writing the files
+    // is UltraCanvasFileLoader's job (CLAUDE.md).
+    //
+    // JSON - the whole model as { "format": "ultracanvas-ternary", "version": 1,
+    // ... }: title, axes, reading, series with their points, regions and
+    // curves. Empty strings, default numbers and transparent colours are left
+    // out. The reader refuses - leaving `out` untouched and saying why - another
+    // format, a newer version, an unknown series kind or reading, an
+    // unreadable colour, or a model that does not Validate().
+    JSONValue TernaryModelToJson(const TernaryModel& model);
+    std::string ExportTernaryJson(const TernaryModel& model, bool pretty = true);
+    bool TernaryModelFromJson(const JSONValue& json, TernaryModel& out, std::string* error = nullptr);
+    bool ImportTernaryJson(const std::string& text, TernaryModel& out, std::string* error = nullptr);
+
+    // CSV - the points only, one per line under a header row:
+    //   label,series,<title A>,<title B>,<title C>,size,note
+    // The three part columns are found by the axes' titles (any letter case)
+    // or as a, b, c; the other columns may be left out and come in any order.
+    // Numbers are dot-decimal whatever the locale. Importing replaces the
+    // model's points: a series named in the file keeps its look when the
+    // model already has it, a new one gets the default look, and lines
+    // without a series go to "Points". Fails - leaving the model untouched and
+    // naming the line - on a missing part column, a line with more or fewer
+    // fields than the header, or a part or size that is not a number.
+    std::string ExportTernaryCsv(const TernaryModel& model);
+    bool ImportTernaryCsv(const std::string& csv, TernaryModel& model, std::string* error = nullptr);
 
     // A share as a person reads it: "38.1%". Display only, in the locale's
     // digits; files use FormatFloatClassic.
@@ -104,9 +192,22 @@ namespace UltraCanvas {
         // elections: a scatter in two series, anticlockwise reading.
         TernaryModel ThreePartyVotes();
         // Invented soil samples (sand, silt, clay) on the USDA layout: clay at
-        // the apex, sand bottom left, silt bottom right, read clockwise. Phase 1
-        // draws the points only; the texture classes are Phase 2.
+        // the apex, sand bottom left, silt bottom right, read clockwise.
         TernaryModel SoilSamples();
+        // The USDA soil texture triangle: the twelve texture classes as
+        // regions, on the same layout as SoilSamples(), no points. The class
+        // outlines are derived from the class rules of the USDA Soil Survey
+        // Manual (sand, loamy sand, sandy loam, loam, silt loam, silt, sandy
+        // clay loam, clay loam, silty clay loam, sandy clay, silty clay, clay),
+        // and listed in that order.
+        TernaryModel SoilTexture();
+        // A De Finetti diagram: genotype shares AA (bottom left), Aa (apex)
+        // and aa (bottom right) of invented populations, sized by how many
+        // were sampled, with the Hardy-Weinberg curve Aa^2 = 4 AA aa.
+        TernaryModel DeFinetti();
+        // Invented regions' vote shares across five elections, as paths with
+        // arrowheads, on the ThreePartyVotes() axes.
+        TernaryModel VoteTrajectories();
     }
 
 } // namespace UltraCanvas
