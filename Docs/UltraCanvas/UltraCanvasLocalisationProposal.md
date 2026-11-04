@@ -697,6 +697,8 @@ run in CI:
 | `UltraCanvasDialogManager::Show*`, `UltraCanvasAlert::Show*` | message, title, button labels |
 | `SetText`, `SetTitle`, `SetWindowTitle`, `SetTooltip`, `SetPlaceholder`, `SetStatus` | the text |
 | `AddColumn`, `TreeNodeData`, `AddTab`, `FormLayout::AddRow` | the header / label |
+| The settings page kit: `MakePage`, `MakeButton`, `MakeText`, `MakeLabel`, `MakeChoice`, `MakeCheckbox`, `MakeLabelledRow`, `MakeSliderRow`, `AddNote`, `AddTreeNode` | the text after the id (the second argument; `MakePage`'s title and caption; `AddNote`'s and `AddTreeNode`'s third) |
+| A dropdown's `AddItem`, `AddCustomButton`, `AddFilter`, `SetFilterEmptyAction`, `SetOpenPathMenuItemVisible`, `MakeFolderNodeData` | the shown text (a dropdown item's value stays) |
 
 - **`translate_catalogue.py`** drafts a language with UltraAI (the
   framework's own LLM module, any configured provider): every untranslated

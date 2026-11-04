@@ -1,3 +1,76 @@
+#### 2026-11-04 *0.9.479*
+- **A locale catalogue that conflicts in a merge is rebuilt, not hand-merged.**
+  `extract_ui_strings.py` reads a catalogue left with conflict markers from
+  the two sides git keeps for it: its `@bases` and other metadata, and every
+  key of either side for `Standard.json`. It then writes the catalogue whole
+  from the merged sources, and refuses (leaving the markers) when the two
+  sides set the metadata differently. Before, it read such a file as empty
+  and silently dropped `@bases`, so the application stopped inheriting its
+  base set. `check_pr_overlap.py` reports a conflicting `media/locale/en/`
+  catalogue as *rebuilt*, not a conflict, and says what the second branch
+  to merge runs.
+- **UltraIM: confirming the e-mail and phone, and account recovery** (module
+  ABI 3). `UltraIMAccountProfile` says whether the e-mail and phone are
+  confirmed and whether recovery is offered and on;
+  `UltraIM_VerifyContact`, `UltraIM_ResendContactCode`,
+  `UltraIM_SetRecoveryEnabled`, `UltraIM_StartRecovery` and
+  `UltraIM_FinishRecovery` (the `AccountRecovery` capability) do the rest -
+  finishing a recovery asks whether the owner approved the link e-mailed to
+  them (`NeedsInput` until then). ChatCube Direct implements them on its
+  relay (1.2.0: a confirmation link and a recovery link e-mailed over SMTP,
+  each opening a page of its own; the phone's code by Twilio or an SMS
+  webhook; a copy of the key encrypted with the relay's recovery key, handed
+  back once only to the computer that asked; the owner e-mailed a notice).
+- **ChatCube relay: a versioned database.** The relay's SQLite schema records
+  its version (`PRAGMA user_version`) and every start brings it forward a
+  step at a time, each step in a transaction of its own; databases from
+  relays 1.0 and 1.1, which recorded none, are recognised by their tables
+  and keep their data, and one from a newer relay is refused.
+- **ChatCube relay: housekeeping, and an approval only from its own page.**
+  At every start and every hour the relay deletes expired or used links,
+  expired recoveries, codes and sessions, and send counts older than a day.
+  The recovery approval form is refused when the browser says it came from
+  another site, and recoveries from one network address have a limit of
+  their own (30 an hour, `CHATCUBE_RELAY_RECOVERY_STARTS_PER_CLIENT`), so
+  people behind a shared address are not refused for each other's.
+- **UltraNet WebSocket: an idle connection stays up, and a large message
+  arrives whole.** Three faults in `UltraNetWebSocket.cpp`, found through
+  ChatCube's relay connection dropping every half minute or so:
+  - the server's PINGs went unanswered - libcurl 8.5 does not answer them in
+    connect-only mode, whatever the comment said - so a server that pings and
+    closes an unanswered connection (uvicorn: 20 s and 20 s) dropped every
+    idle one; they are answered now, once each (`CURLWS_NOAUTOPONG` where
+    libcurl has it);
+  - `UltraNetWebSocketOptions::pingIntervalMs` was read by nothing: the client
+    pings at it now, and a peer that sends nothing at all for two intervals is
+    taken as gone (`onError` once, so the owner reconnects);
+  - a frame larger than a read (8 KB) went to `onText` / `onBinary` one read
+    at a time - libcurl's `bytesleft` was taken for "whole": a relay's 40 KB
+    envelope arrived as five broken messages. Until now the drops hid it,
+    since each reconnect fetched the queue over HTTP.
+  Reads and writes of the one libcurl handle also share one mutex now (the
+  receiver read while other threads sent).
+- **`UltraNetWebSocketOptions`: every member does what it says.** Four did
+  nothing. `maxFrameSize` ("0 = libcurl default (~64KB)" - there is none) is
+  now `maxMessageBytes`: the largest incoming message, 64 MB unless set, 0
+  for no limit; a larger one ends the connection (close 1009) before it is
+  assembled, where a server could otherwise grow one without end.
+  `autoReconnect`, `maxReconnectAttempts` and `reconnectDelayMs` are gone:
+  reconnecting is the owner's, on `onClose` / `onError` (a handle is one
+  connection), as ChatCube's relay client does. Nothing in the repository
+  set any of the four. `test_websocket.cpp` covers each:
+  a server pinging every half second, the client's pings, a silent peer,
+  four threads sending while pinged, a 50 KB message, one past its limit.
+- **`scripts/wrap_ui_strings.py` 1.1.0 knows the settings page kit.** The
+  migration tool wraps the text of `MakePage` (title and caption),
+  `MakeButton`, `MakeText`, `MakeLabel`, `MakeChoice`, `MakeCheckbox`,
+  `MakeLabelledRow`, `MakeSliderRow`, `AddNote` and `AddTreeNode`, which
+  carry it after the id, and a dropdown's `AddItem`, `AddCustomButton`,
+  `AddFilter`, `SetFilterEmptyAction`, `SetOpenPathMenuItemVisible` and
+  `MakeFolderNodeData`; a literal continued over several lines is wrapped
+  as one `Tr(...)`. On UltraFiler's settings window before its pass it
+  finds 178 strings where it found 6.
+
 #### 2026-11-04 *0.9.478*
 - **UltraCanvasFilerWidget: the delete dialogs are translated whole.** The
   problem dialog's titles took the English "file" / "folder" and

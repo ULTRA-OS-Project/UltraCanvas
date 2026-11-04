@@ -45,6 +45,7 @@
 // where the same spot serves every page that has one. The backdrop behind
 // transparent images is no longer a page here: the media viewer's own colour
 // strip under the picture chooses it, and the choice is saved from there.
+// Version: 1.20.1 - the texts the wrapping tool 1.1.0 finds (the page kit's buttons, dropdown items, dialog buttons, tree nodes) go through Tr
 // Version: 1.20.0 - the interface strings go through Tr (UltraLocalisation); "Translate UltraFiler..." on the start page opens the localisation editor
 // Version: 1.19.0 - built on the framework's UltraCanvasSettingsPageKit: the window, the
 //                   page skeleton and the controls come from it, nothing changes on screen
@@ -1952,8 +1953,8 @@ namespace {
             if (d->onClearFolderViews) d->onClearFolderViews();
             if (d->listsStatus) {
                 d->listsStatus->SetText(
-                        "Folder views cleared - every folder opens with the "
-                        "current view again.");
+                        Tr("Folder views cleared - every folder opens with the "
+                        "current view again."));
                 d->listsStatus->RequestRedraw();
             }
         });

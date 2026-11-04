@@ -1,6 +1,7 @@
 // Apps/UltraFiler/UltraFilerRunWindowsDialog.cpp
 // Implementation of the environment picker. Construction follows the
 // CSV dialogs (flex-column content, custom OK/Cancel buttons).
+// Version: 1.0.2 - the texts the wrapping tool 1.1.0 finds (the page kit's buttons, dropdown items, dialog buttons, tree nodes) go through Tr
 // Version: 1.0.1 - the interface strings go through Tr (UltraLocalisation)
 // Version: 1.0.0
 // Author: UltraCanvas Framework
@@ -52,7 +53,7 @@ void UltraFilerRunWindowsDialog::Initialize(
     // pre-selects an existing environment when it names one.
     envDropdown_ = std::make_shared<UltraCanvasDropdown>(
         "uf-runwin-env", 0, 0, 428.0f, 30.0f);
-    envDropdown_->AddItem("New environment:");
+    envDropdown_->AddItem(Tr("New environment:"));
     int preselect = kNewEnvironmentIndex;
     for (size_t i = 0; i < environments_.size(); ++i) {
         envDropdown_->AddItem(environments_[i]);
