@@ -1,5 +1,7 @@
 // Apps/ChatCube/ui/ChatCubeWindow.cpp
 // The ChatCube window: sign-in page, conversations, messages
+// Version: 0.2.7 - recovery by the link e-mailed to the ID's address: the window waits for it and signs in
+// Version: 0.2.6 - "Recover my ChatCube ID": the codes sent to the e-mail and phone bring an ID back
 // Version: 0.2.5 - an e-mail address and a phone number for a new ID, a password and/or an
 //                  UltraAuthenticator code to sign in; the Edit profile window
 // Version: 0.2.4 - the Settings window (the gear beside the copy button): the send key, typing either
@@ -160,6 +162,7 @@ ChatCubeWindow::~ChatCubeWindow() {
     if (subscription_) UltraIM_Unsubscribe(subscription_);
     if (callTimer_)
         if (auto* app = UltraCanvasApplicationBase::GetCurrent()) app->StopTimer(callTimer_);
+    StopRecoveryPolling();
 }
 
 bool ChatCubeWindow::Create() {
@@ -306,9 +309,19 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildSignInPage() {
     newPasswordRow_->AddChild(repeatPassword_);
     card->AddChild(newPasswordRow_);
 
+    // Recovering an ID made on another computer: the e-mail address it has;
+    // the relay e-mails a link to it.
+    recoverAddress_ = MakeInput("cc-recover-address", "Your ID's e-mail address", static_cast<int>(kFormWidth));
+    recoverAddress_->onEnterPressed = [this](const std::string&) { SignIn(); return true; };
+    card->AddChild(recoverAddress_);
+
     signIn_ = MakeButton("cc-signin-go", "Create my ChatCube ID", static_cast<int>(kFormWidth), true);
     signIn_->SetOnClick([this]() { SignIn(); });
     card->AddChild(signIn_);
+    recoverToggle_ = MakeButton("cc-recover-toggle", "Recover my ChatCube ID", static_cast<int>(kFormWidth));
+    StyleButton(recoverToggle_, false, true);
+    recoverToggle_->SetOnClick([this]() { ToggleRecoveryForm(); });
+    card->AddChild(recoverToggle_);
 
     signInStatus_ = MakeLabel("cc-signin-status", "", kTextFont, L().inkMuted);
     signInStatus_->SetWrap(TextWrap::WrapWord);
@@ -848,7 +861,8 @@ void ChatCubeWindow::SetSignInStatus(const std::string& text) {
 // =================================================================== actions
 
 void ChatCubeWindow::UpdateSignInForm() {
-    const bool creating = !hasIdentity_;
+    const bool recovering = !hasIdentity_ && recovering_;
+    const bool creating = !hasIdentity_ && !recovering_;
     const int chosen = protection_->GetSelectedIndex();
     const auto protection = static_cast<UltraIMSignInProtection>(std::clamp(chosen, 0, 3));
     name_->SetVisible(creating);
@@ -856,15 +870,100 @@ void ChatCubeWindow::UpdateSignInForm() {
     phone_->SetVisible(creating);
     protectionRow_->SetVisible(creating);
     newPasswordRow_->SetVisible(creating && UltraIM_ProtectionHasPassword(protection));
-    unlockPassword_->SetVisible(!creating && unlockStep_ == UltraIMAuthStep::Password);
-    unlockCode_->SetVisible(!creating && unlockStep_ == UltraIMAuthStep::Code);
-    if (creating) signIn_->SetText("Create my ChatCube ID");
+    localNetwork_->SetVisible(!recovering);
+    unlockPassword_->SetVisible(!hasIdentity_ ? false : unlockStep_ == UltraIMAuthStep::Password);
+    unlockCode_->SetVisible(!hasIdentity_ ? false : unlockStep_ == UltraIMAuthStep::Code);
+    recoverAddress_->SetVisible(recovering && recoveryId_.empty());
+    recoverToggle_->SetVisible(!hasIdentity_);
+    recoverToggle_->SetText(!recovering ? "Recover my ChatCube ID"
+                            : recoveryId_.empty() ? "Make a new ChatCube ID instead"
+                                                  : "Start over - send a new link");
+    relay_->SetPlaceholder(recovering ? "Your relay, e.g. https://relay.example.org"
+                                      : "Relay server (optional), e.g. https://relay.example.org");
+    if (recovering) signIn_->SetText(recoveryId_.empty() ? "E-mail me a link" : "Check now");
+    else if (creating) signIn_->SetText("Create my ChatCube ID");
     else if (unlockStep_ == UltraIMAuthStep::Password || unlockStep_ == UltraIMAuthStep::Code) signIn_->SetText("Unlock");
     else signIn_->SetText("Sign in");
     if (window_) window_->RequestRedraw();
 }
 
+void ChatCubeWindow::ToggleRecoveryForm() {
+    // While a link is on its way, back to the address (a new link); from
+    // there, or from making an ID, between the two.
+    StopRecoveryPolling();
+    if (recovering_ && !recoveryId_.empty()) {
+        recoveryId_.clear();
+        SetSignInStatus("Ask for a new link - the one before stops working when it expires.");
+        UpdateSignInForm();
+        return;
+    }
+    recovering_ = !recovering_;
+    recoveryId_.clear();
+    SetSignInStatus(recovering_ ? "Your ID comes back from your relay, if recovery was turned on in Edit profile: "
+                                  "it e-mails a link to your ID's address."
+                                : std::string());
+    UpdateSignInForm();
+}
+
+void ChatCubeWindow::StopRecoveryPolling() {
+    if (recoveryTimer_)
+        if (auto* app = UltraCanvasApplicationBase::GetCurrent()) app->StopTimer(recoveryTimer_);
+    recoveryTimer_ = 0;
+}
+
+void ChatCubeWindow::Recover() {
+    const std::string server = Trim(relay_->GetText());
+    if (!recoveryId_.empty()) return PollRecovery();        // "Check now"
+    // The link, e-mailed to the address - if an ID with recovery on has it.
+    const std::string address = Trim(recoverAddress_->GetText());
+    if (server.empty()) return SetSignInStatus("Type the address of the relay your ID used.");
+    if (address.find('@') == std::string::npos) return SetSignInStatus("Type your ID's e-mail address.");
+    signIn_->SetDisabled(true);
+    SetSignInStatus("Asking the relay\xE2\x80\xA6");
+    UltraIM_StartRecovery(providerId_, server, address,
+                          [this](const UltraIMResult& r, const UltraIMRecoveryChallenge& challenge) {
+        signIn_->SetDisabled(false);
+        if (!r) return SetSignInStatus(r.message);
+        recoveryId_ = challenge.recoveryId;
+        SetSignInStatus("If that address belongs to an ID with recovery on, a link is on its way to it. Open it "
+                        "and confirm - ChatCube signs in here by itself. (Not there? Look in the spam folder.)");
+        UpdateSignInForm();
+        // Asked every few seconds until the link is approved or expires.
+        if (auto* app = UltraCanvasApplicationBase::GetCurrent())
+            recoveryTimer_ = app->StartTimer(3000, true, [this](TimerId) { PollRecovery(); });
+    });
+}
+
+void ChatCubeWindow::PollRecovery() {
+    if (recoveryId_.empty() || recoveryAsking_) return;
+    recoveryAsking_ = true;
+    UltraIMRecoveryAnswer answer;
+    answer.server = Trim(relay_->GetText());
+    answer.recoveryId = recoveryId_;
+    UltraIM_FinishRecovery(providerId_, answer, [this](const UltraIMResult& r) {
+        recoveryAsking_ = false;
+        if (r.code == UltraIMResultCode::NeedsInput) return;        // not opened yet
+        if (!r) {
+            if (r.code == UltraIMResultCode::AuthFailed) {
+                // Expired: back to the address, for a new link.
+                StopRecoveryPolling();
+                recoveryId_.clear();
+                UpdateSignInForm();
+            }
+            return SetSignInStatus(r.message);      // the relay away: asked again in a moment
+        }
+        StopRecoveryPolling();
+        hasIdentity_ = true;
+        recovering_ = false;
+        recoveryId_.clear();
+        UpdateSignInForm();
+        SetSignInStatus("Your ChatCube ID is back on this computer.");
+        SignIn();                       // with what FinishRecovery stored
+    });
+}
+
 void ChatCubeWindow::SignIn() {
+    if (!hasIdentity_ && recovering_) return Recover();
     UltraIMCredentials credentials;
     credentials.loginType = UltraIMLoginType::KeyPair;
     credentials.server = Trim(relay_->GetText());

@@ -25,6 +25,8 @@
 # (ChatCubeWindow.cpp: Build*): a change to the sign-in card or the sidebar
 # moves them, and the pictures then show where the clicks landed.
 #
+# Version: 0.1.3 - the relay offers recovery (an outbox file): profile.png shows the confirmation rows
+# Version: 0.1.2 - the card's fields 21 pixels higher ("Recover my ChatCube ID" under the button)
 # Version: 0.1.1 - the e-mail and phone on the sign-in card; profile.png, the Edit profile window
 # Version: 0.1.0
 # Last Modified: 2026-10-28
@@ -80,8 +82,11 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# A relay of our own, and Bob, who answers everything.
-CHATCUBE_RELAY_PORT=$port CHATCUBE_RELAY_DB="$work/relay.sqlite3" "$relay" > "$work/relay.log" 2>&1 &
+# A relay of our own - offering recovery, its e-mail and SMS to an outbox
+# file, so Edit profile shows the confirmation rows - and Bob, who answers
+# everything.
+CHATCUBE_RELAY_PORT=$port CHATCUBE_RELAY_DB="$work/relay.sqlite3" CHATCUBE_RELAY_OUTBOX="$work/outbox.jsonl" \
+CHATCUBE_RELAY_RECOVERY_KEY="$(head -c 32 /dev/urandom | base64)" "$relay" > "$work/relay.log" 2>&1 &
 pids+=($!)
 for _ in $(seq 1 50); do
     curl -fsS "http://127.0.0.1:$port/healthz" >/dev/null 2>&1 && break
@@ -106,8 +111,8 @@ xvfb-run -a -s "-screen 0 1200x850x24" bash -c '
     sleep 5
     import -window root "$OUT/signin.png"
     # The sign-in card: the name, the e-mail, the phone, the relay, the button.
-    "$XINPUT" click 499 254 type "Alice Park" click 499 296 type "alice@example.org" \
-        click 499 338 type "+49 151 2345 6789" click 499 380 type "http://127.0.0.1:$PORT" click 499 513 sleep 4000
+    "$XINPUT" click 499 233 type "Alice Park" click 499 275 type "alice@example.org" \
+        click 499 317 type "+49 151 2345 6789" click 499 359 type "http://127.0.0.1:$PORT" click 499 492 sleep 4000
     import -window root "$OUT/empty.png"
     # The sidebar: the add-a-contact pill, then the first conversation row,
     # then the composer at the bottom of the window.
