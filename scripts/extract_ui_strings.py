@@ -59,9 +59,35 @@ SIMPLE_ESCAPES = {"n": "\n", "t": "\t", "r": "\r", "a": "\a", "b": "\b", "f": "\
 def unescape(s: str) -> str:
     """The text a C++ string literal's body stands for: \\n, \\", \\\\, \\xHH, octal,
     \\uXXXX and \\UXXXXXXXX (a character outside Latin-1, such as \\u2022, as
-    the UTF-8 text the compiler emits)."""
+    the UTF-8 text the compiler emits).
+
+    \\xHH and octal escapes are bytes, as in the compiled narrow literal: a
+    source that spells a character as its UTF-8 bytes ("\\xC2\\xB7" for the
+    middle dot) means that character, so the bytes are gathered and decoded
+    as UTF-8 together. Only when they are not valid UTF-8 is each one read
+    as a character of its own, as before."""
     if "\\" not in s:
         return s
+
+    data = bytearray()
+    pos = 0
+    for m in ESCAPE.finditer(s):
+        data += s[pos:m.start()].encode("utf-8")
+        e = m.group(1)
+        if e[0] == "x":
+            data.append(int(e[1:], 16))
+        elif e[0] in "01234567":
+            data.append(int(e, 8) & 0xFF)
+        elif e[0] in "uU":
+            data += chr(int(e[1:], 16)).encode("utf-8")
+        else:
+            data += SIMPLE_ESCAPES.get(e, e).encode("utf-8")
+        pos = m.end()
+    data += s[pos:].encode("utf-8")
+    try:
+        return data.decode("utf-8")
+    except UnicodeDecodeError:
+        pass
 
     def one(m):
         e = m.group(1)
