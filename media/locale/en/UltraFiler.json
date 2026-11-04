@@ -38,11 +38,13 @@
     "Settings",
     "Show hidden files",
     "Size",
+    "Size:",
     "Sort",
     "Thumbnails",
     "Type",
     "Unpin",
-    "View"
+    "View",
+    "{n} file"
   ],
   "": "",
   "\"Show it in the preview\" keeps the file inside UltraFiler whenever it can show it - pictures, documents, spreadsheets, 3D models, e-books, fonts, video, audio and text - which is faster than starting a program for a look at a file.": "\"Show it in the preview\" keeps the file inside UltraFiler whenever it can show it - pictures, documents, spreadsheets, 3D models, e-books, fonts, video, audio and text - which is faster than starting a program for a look at a file.",
@@ -335,7 +337,6 @@
   "Showing them also shows the Home folder whole, whatever Display > Home folder says - the switch means \"show me everything\".": "Showing them also shows the Home folder whole, whatever Display > Home folder says - the switch means \"show me everything\".",
   "Simple modern - flat tabs, with a blue line under the open one": "Simple modern - flat tabs, with a blue line under the open one",
   "Size bars": "Size bars",
-  "Size:": "Size:",
   "Skip it and report at the end": "Skip it and report at the end",
   "Small icons": "Small icons",
   "Split view: two folder displays side by side": "Split view: two folder displays side by side",
@@ -404,10 +405,6 @@
   "Width of the page thumbnails in the preview's PDF page inventory, the strip beside the page:": "Width of the page thumbnails in the preview's PDF page inventory, the strip beside the page:",
   "With the extension hidden, \"UltraFiler.exe\" is listed as \"UltraFiler\". Only the drawn name changes - renaming, sorting and every file operation keep using the real name.": "With the extension hidden, \"UltraFiler.exe\" is listed as \"UltraFiler\". Only the drawn name changes - renaming, sorting and every file operation keep using the real name.",
   "Zstandard long mode: matches across 128 MB (zstd --long=27)": "Zstandard long mode: matches across 128 MB (zstd --long=27)",
-  "{n} file": {
-    "one": "{n} file",
-    "other": "{n} files"
-  },
   "{n} file found": {
     "one": "{n} file found",
     "other": "{n} files found"
