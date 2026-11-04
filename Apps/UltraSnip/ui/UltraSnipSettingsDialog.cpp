@@ -492,7 +492,7 @@ void UpdatePictureFolderLine(DialogState* d) {
 }
 
 std::shared_ptr<UltraCanvasContainer> BuildPictureSavingPage(DialogState* d) {
-    PageParts parts = MakePage("snip-set-page-saving", Tr("Saving"),
+    PageParts parts = MakePage("snip-set-page-saving", TrC("settings page", "Saving"),
                                Tr("What happens to a picture the moment it is taken:"));
     d->autoSaveBox = MakeCheckbox("snip-set-autosave", Tr("Write every picture to the folder below"), kTextWidth,
                                   d->settings->autoSave, [d](bool on) {
@@ -698,7 +698,8 @@ void BuildDialog(DialogState* d, UltraCanvasWindowBase* parent) {
     if (!d->Create(parent, Tr("UltraSnip - Settings"))) return;
     d->AddSection(kPagePictures, Tr("Pictures"));
     d->AddTreeNode(kPagePictures, kPagePictureType, Tr("File type"));
-    d->AddTreeNode(kPagePictures, kPagePictureSaving, Tr("Saving"));
+    // "Saving" as the page's name, not the standard set's "Saving..." in progress
+    d->AddTreeNode(kPagePictures, kPagePictureSaving, TrC("settings page", "Saving"));
     d->AddSection(kPageVideos, Tr("Videos"));
     d->AddTreeNode(kPageVideos, kPageRecording, Tr("Recording"));
     d->AddSection(kPageBehaviour, Tr("Behaviour"));

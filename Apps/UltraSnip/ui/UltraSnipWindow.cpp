@@ -30,6 +30,7 @@
 #include "UltraCanvasSegmentedControl.h"
 #include "UltraCanvasSettingsPageKit.h"
 #include "UltraCanvasUtils.h"
+#include "UltraCanvasUtilsUtf8.h"
 #include "UltraLocalisation/UltraLocalisation.h"
 
 #include <algorithm>
@@ -206,8 +207,20 @@ std::shared_ptr<UltraCanvasContainer> UltraSnipWindow::BuildToolbar() {
         look.fontSize = SettingsPageKit::kTextFontSize;
         delays_->SetStyle(look);
     }
-    delays_->AddItem(Tr("No delay"));
-    for (int seconds : {3, 5, 10}) delays_->AddItem(TrF("{0} s delay", seconds));
+    // As wide as its longest item in the language shown ("Keine Verzögerung",
+    // "Καθυστέρηση 10 δευτ."): the text at ~0.62 em a character, plus the
+    // arrow and padding. Measuring needs a render context the bar does not
+    // have yet.
+    std::vector<std::string> delayItems = {Tr("No delay")};
+    for (int seconds : {3, 5, 10}) delayItems.push_back(TrF("{0} s delay", seconds));
+    int longest = 0;
+    for (const std::string& item : delayItems) {
+        longest = std::max(longest, utf8_length(item));
+        delays_->AddItem(item);
+    }
+    const int delayWidth = std::clamp(static_cast<int>(longest * SettingsPageKit::kTextFontSize * 0.62f) + 40, 96, 180);
+    delays_->SetSize(delayWidth, kControlHeight);
+    delays_->size.width = CSSLayout::Dimension::Px(static_cast<float>(delayWidth));
     delays_->SetTooltip(Tr("Wait before the screen is taken, so a menu can be opened first"));
     delays_->onSelectionChanged = [this](int index, const DropdownItem&) {
         settings_.delaySeconds = kDelays[std::clamp(index, 0, 3)];
@@ -240,14 +253,14 @@ std::shared_ptr<UltraCanvasContainer> UltraSnipWindow::BuildToolbar() {
     actions_->AddChild(paintButton_);
     bar->AddChild(actions_);
 
-    // What just happened: the size, where it was saved, copied - two short
-    // lines at most, the whole path in the tooltip
+    // What just happened: the size, saved, copied - short enough for two
+    // lines in any language; the saved file's whole path is the tooltip
     status_ = CreateLabel("snip.status", "");
     status_->SetTextColor(kStatusText);
     status_->SetFontSize(SettingsPageKit::kNoteFontSize);
     status_->SetWrap(TextWrap::WrapWord);
     status_->SetAlignment(TextAlignment::Left, VerticalAlignment::Middle);
-    status_->size.height = CSSLayout::Dimension::Px(kBarHeight - 4);
+    status_->size.height = CSSLayout::Dimension::Px(kBarHeight);
     status_->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetFlexBasis(CSSLayout::Dimension::Px(0));
     bar->AddChild(status_);
 
@@ -449,7 +462,7 @@ void UltraSnipWindow::FinishPicture(const Rect2Di& area) {
         const std::string path = settings_.NewPicturePath();
         std::string reason;
         if (SavePictureTo(path, reason)) {
-            status += dot + TrF("saved as {0}", FileName(resultPath_));
+            status += dot + Tr("saved");
             if (!reason.empty()) status += " (" + reason + ")";
         } else {
             status += dot + TrF("not saved: {0}", reason);
@@ -546,7 +559,7 @@ void UltraSnipWindow::StopRecording() {
     resultPng_.clear();
     resultPath_ = path;
     ShowVideo(path);
-    SetStatus(TrF("{0} recorded", FormatElapsed(seconds)) + "  \xC2\xB7  " + TrF("saved as {0}", FileName(path)) +
+    SetStatus(TrF("{0} recorded", FormatElapsed(seconds)) + "  \xC2\xB7  " + Tr("saved") +
                   (complete ? "" : "  \xC2\xB7  " + error),
               !complete);
     if (settings_.showWindowAfterSnip || windowWasShown_ || !complete) ShowWindowAgain();

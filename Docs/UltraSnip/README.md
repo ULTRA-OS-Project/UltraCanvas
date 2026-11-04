@@ -88,7 +88,7 @@ is saved.
 ## Languages
 
 UltraSnip shows its texts in the language UltraCanvas runs in, from its own
-set (`media/locale/en/UltraSnip.json` in English) over the *Image* and
+set (`media/locale/<lang>/UltraSnip.json`, machine drafts in thirty languages) over the *Image* and
 *Video* base sets and the standard set. *Translate UltraSnip...* on the
 settings window's start page opens the localisation editor on that set; a
 change is kept in the settings folder and shows at the next start.
