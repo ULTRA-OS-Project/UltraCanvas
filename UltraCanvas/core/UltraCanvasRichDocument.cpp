@@ -2,6 +2,7 @@
 // UCRichDocument serializers: Markdown (editable round-trip), HTML
 // (read-only rich view), plain text — plus media helpers shared by the
 // ODT/DOCX readers and writers.
+// Version: 1.4.0 - ToHTML writes a run's own letter-spacing
 // Version: 1.3.2 - ToHTML writes font sizes dot-decimal under any locale
 // Version: 1.3.1 - ConcatenateRunText counts the first run's line break, as the
 //                  editor's positions do: a block's leading empty line is kept
@@ -9,7 +10,7 @@
 //                  (ImportHTMLToRichDocument); its own tokenizer, entity table
 //                  and CSS reader are gone
 // Version: 1.2.0
-// Last Modified: 2026-10-15
+// Last Modified: 2026-11-04
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasRichDocument.h"
@@ -1342,6 +1343,7 @@ std::string RunsToHtml(const std::vector<RichTextRun>& runs,
         // Dot-decimal whatever the desktop's locale: std::to_string wrote
         // "24,500000pt" on a comma-decimal one, which no CSS reader takes.
         if (run.fontSizePt > 0) style += "font-size:" + FormatFloatClassic(run.fontSizePt) + "pt;";
+        if (run.letterSpacingPt) style += "letter-spacing:" + FormatFloatClassic(*run.letterSpacingPt) + "pt;";
         if (!style.empty()) body = "<span style=\"" + style + "\">" + body + "</span>";
         if (!run.linkTarget.empty()) {
             body = "<a href=\"" + EscapeHtml(run.linkTarget) + "\">" + body + "</a>";

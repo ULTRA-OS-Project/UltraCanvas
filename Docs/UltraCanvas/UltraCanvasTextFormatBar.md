@@ -17,10 +17,11 @@ host's to decide.
 
 The usual host - a window class, whose members the callbacks reach through
 `this` - lays an `UltraCanvasRichTextEdit` over its canvas where the text
-lies and applies the bar to it. A character attribute (Font to Strikethrough)
-goes to the selected words through `TextFormatCharDelta`; alignment and the
-spacings belong to the whole text. `TextFormatAtCaret` gives the bar the format
-at the editor's caret, and `onControlDone` hands the keyboard back to the text
+lies and applies the bar to it. A character attribute (Font to Strikethrough,
+and the letter spacing) goes to the selected words through
+`TextFormatCharDelta`; alignment and the line spacing belong to the whole text.
+`TextFormatAtCaret` gives the bar the format at the editor's caret (a word's own
+letter spacing too), and `onControlDone` hands the keyboard back to the text
 once a control of the bar is finished with it.
 
 <!-- doc-check: std::shared_ptr<UltraCanvasRichTextEdit> editor; std::shared_ptr<UltraCanvasContainer> window; TextFormat textBase; void ApplyToWholeText(TextFormatAttribute attribute, const TextFormat& format); -->
@@ -42,6 +43,28 @@ bar->onControlDone = [this]() { editor->SetFocus(true); };
 // The bar follows the caret.
 editor->onSelectionChanged = [this, bar = bar.get()]() {
     bar->SetFormat(TextFormatAtCaret(editor->GetFormatState(), textBase, 0.75f));
+};
+```
+
+## The keyboard
+
+A size typed into the bar's field, or a font looked up in its list by its first
+letters, is typed into the bar: a host's own shortcuts must leave those keys
+alone. A shortcut that ran instead - Ctrl+A as Select All - finished the text
+being typed first, and the size then went to the whole text rather than the
+selected words. `HasKeyboardFocus()` says when the keys are the bar's:
+
+<!-- doc-check: std::shared_ptr<UltraCanvasTextFormatBar> bar; std::shared_ptr<UltraCanvasRichTextEdit> editor; bool RunShortcut(const UCEvent& e); -->
+```cpp
+auto shortcuts = [&](const UCEvent& e) -> bool {
+    if (bar->IsVisible() && bar->HasKeyboardFocus()) {
+        if (e.virtualKey == UCKeys::Escape) {   // back to the text
+            editor->SetFocus(true);
+            return true;
+        }
+        return false;                           // the field's or the list's
+    }
+    return RunShortcut(e);                      // the host's own
 };
 ```
 

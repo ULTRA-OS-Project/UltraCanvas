@@ -7,6 +7,7 @@
 // paragraph). That byte belongs to the run it precedes, so a run's byte span
 // is [start, start + (lineBreakBefore ? 1 : 0) + text.size()).
 //
+// Version: 1.3.0 - letter spacing: a delta sets a run's own, the format state reports it
 // Version: 1.2.1 - RunsText is UCRichDocument::ConcatenateRunText (one definition of
 //                  the text positions index into)
 // Version: 1.2.0
@@ -116,6 +117,7 @@ void RichCharFormatDelta::ApplyTo(RichTextRun& run) const {
     if (setFontSize)   run.fontSizePt = fontSizePt;
     if (setColor)      run.color = color;
     if (setHighlight)  run.highlightColor = highlightColor;
+    if (setLetterSpacing) run.letterSpacingPt = letterSpacingPt;
     if (setLink)       run.linkTarget = linkTarget;
     if (addComment >= 0 && std::find(run.commentIds.begin(), run.commentIds.end(), addComment) == run.commentIds.end()) {
         run.commentIds.push_back(addComment);
@@ -1776,6 +1778,12 @@ RichCharFormatState UCRichDocumentEditor::GetFormatState() const {
         } else if (!state.fontSizeMixed && state.fontSizePt != run.fontSizePt) {
             state.fontSizeMixed = true;
             state.fontSizePt = 0.0f;
+        }
+        if (first) {
+            state.letterSpacingPt = run.letterSpacingPt;
+        } else if (!state.letterSpacingMixed && state.letterSpacingPt != run.letterSpacingPt) {
+            state.letterSpacingMixed = true;
+            state.letterSpacingPt.reset();
         }
     };
 

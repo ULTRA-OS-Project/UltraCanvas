@@ -5,8 +5,9 @@
 // tinyxml2 with the conventional ODF namespace prefixes (office:, text:,
 // style:, fo:, draw:, table:, xlink:) — the same approach as the existing
 // ODS spreadsheet loader.
+// Version: 1.3.0 - fo:letter-spacing: a run's own letter spacing, read and written
 // Version: 1.2.0
-// Last Modified: 2026-07-12
+// Last Modified: 2026-11-04
 // Author: UltraCanvas Framework
 
 #include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
@@ -52,6 +53,7 @@ struct OdtTextProps {
     std::string color;
     std::string fontFamily;
     float fontSizePt = 0.0f;
+    float letterSpacingPt = kUnsetLength;           // fo:letter-spacing ("normal" = 0); NaN = inherit
     std::string parentStyleName;
     std::string masterPageName;                     // style:master-page-name (paragraph styles)
     RichTextAlign align = RichTextAlign::Default;   // paragraph styles only
@@ -110,6 +112,7 @@ struct OdtTextProps {
         if (color.empty()) color = parent.color;
         if (fontFamily.empty()) fontFamily = parent.fontFamily;
         if (fontSizePt <= 0) fontSizePt = parent.fontSizePt;
+        if (std::isnan(letterSpacingPt)) letterSpacingPt = parent.letterSpacingPt;
         if (masterPageName.empty()) masterPageName = parent.masterPageName;
         if (align == RichTextAlign::Default) align = parent.align;
         if (rightToLeft < 0) rightToLeft = parent.rightToLeft;
@@ -671,6 +674,9 @@ private:
                 props.fontFamily = FamilyForFontName(Attr(tp, "style:font-name"));
                 if (props.fontFamily.empty()) props.fontFamily = Attr(tp, "fo:font-family");
                 props.fontSizePt = ParseLengthPt(Attr(tp, "fo:font-size"));
+                const std::string tracking = Attr(tp, "fo:letter-spacing");
+                if (tracking == "normal") props.letterSpacingPt = 0.0f;
+                else if (!tracking.empty()) props.letterSpacingPt = ParseLengthPt(tracking);
                 // A character background is a highlight; "transparent" says
                 // explicitly that there is none.
                 props.highlight = Attr(tp, "fo:background-color");
@@ -876,6 +882,7 @@ private:
         if (!props.color.empty()) run.color = props.color;
         if (!props.fontFamily.empty()) run.fontFamily = props.fontFamily;
         if (props.fontSizePt > 0) run.fontSizePt = props.fontSizePt;
+        if (!std::isnan(props.letterSpacingPt)) run.letterSpacingPt = props.letterSpacingPt;
         // A monospace family is the inline-code signal in the model.
         if (IsMonospaceFamily(props.fontFamily)) run.code = true;
         if (!props.highlight.empty() && props.highlight != "transparent") run.highlightColor = props.highlight;
@@ -2817,6 +2824,8 @@ private:
             if (!t.color.empty()) xml << " fo:color=\"" << EscapeXml(t.color) << "\"";
             if (!t.highlightColor.empty()) xml << " fo:background-color=\"" << EscapeXml(t.highlightColor) << "\"";
             if (t.fontSizePt > 0) xml << " fo:font-size=\"" << t.fontSizePt << "pt\"";
+            if (t.letterSpacingPt)
+                xml << " fo:letter-spacing=\"" << FormatFloatClassic(*t.letterSpacingPt) << "pt\"";
             xml << "/></style:style>\n";
         }
 

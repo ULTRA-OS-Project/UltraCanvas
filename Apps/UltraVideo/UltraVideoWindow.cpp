@@ -1,5 +1,8 @@
 // Apps/UltraVideo/UltraVideoWindow.cpp
 // The editor window (UltraVideoWindow.h).
+// Version: 0.13.0 - selected words of a title take a letter spacing and a colour (the Clip
+//                  panel's, while words are selected) of their own; a size typed into the text
+//                  bar (or a font looked up by its letters) no longer finishes the title
 // Version: 0.12.0 - titles typed on the frame with the text bar, drawn by UltraCanvas as the engine's
 //                  text renderer (VideoFXUltraCanvasText) for the viewer and the export
 // Version: 0.11.0 - a tile's press arms the file drag as a button's arms the others: one filter, one cancel for all four
@@ -11,7 +14,7 @@
 // Version: 0.6.0 - OpenFiles: files handed over by a second start
 // Version: 0.5.0 - Import, the overlay and a sound on A2 offer FileLoader's types the engine reads
 // Version: 0.4.0
-// Last Modified: 2026-11-03
+// Last Modified: 2026-11-04
 // Author: UltraCanvas Framework
 #include "UltraVideoWindow.h"
 #include "UltraVideoFormats.h"
@@ -26,6 +29,7 @@
 #include "UltraLocalisation/UltraLocalisation.h"
 
 #include <algorithm>
+#include <cstdio>
 #include <functional>
 #include <cmath>
 #include <filesystem>
@@ -144,6 +148,7 @@ bool UltraVideoWindow::Create(const std::vector<std::string>& paths) {
     inspector_.onEditEnd = [this]() { history_.EndMerge(); };
     inspector_.onAddMusic = [this]() { ImportMedia(); };
     inspector_.onUseProxies = [this](bool on) { SetUseProxies(on); };
+    inspector_.onTitleColour = [this](int title, uint32_t rgb) { return ColourTitle(title, rgb); };
     proxies_.onDone = [this](const std::string& clip, ProxyMaker::State state) { ProxyDone(clip, state); };
     proxies_.onProgress = [this]() { RefreshBin(); };
     inspectorPane_->AddChild(inspectorTabs_);
@@ -2134,6 +2139,7 @@ namespace {
                     case TextFormatAttribute::Italic: run.italic = f.italic; break;
                     case TextFormatAttribute::Underline: run.underline = f.underline; break;
                     case TextFormatAttribute::Strikethrough: run.strikethrough = f.strikethrough; break;
+                    case TextFormatAttribute::LetterSpacing: run.letterSpacingPt.reset(); break;
                     default: break;
                 }
             }
@@ -2327,9 +2333,15 @@ void UltraVideoWindow::PlaceTitleEditor() {
     const double size = std::max(4.0, t.fontSize * h);
     const double tracking = t.letterSpacing * h;
     double widest = 0.0;
+    // The lines' heights as their largest letters need them: the editor lays
+    // a larger or smaller word out on its next frame, and a box sized before
+    // that showed a scrollbar.
+    const double lineAdvance = size * t.lineSpacing / 100.0;
+    double linesHeight = 0.0;
     if (auto words = titleEditor_->GetDocument()) {
         for (const auto& block : words->blocks) {
             double width = 0.0;
+            double lineHeight = lineAdvance;
             for (const auto& run : block.runs) {
                 if (run.text.empty()) continue;
                 FontStyle fs;
@@ -2337,9 +2349,11 @@ void UltraVideoWindow::PlaceTitleEditor() {
                 fs.fontSize = run.fontSizePt > 0.0f ? run.fontSizePt : static_cast<float>(size * kTextOverlayPointsPerPixel);
                 fs.fontWeight = run.bold ? FontWeight::Bold : FontWeight::Normal;
                 fs.fontSlant = run.italic ? FontSlant::Italic : FontSlant::Normal;
+                lineHeight = std::max(lineHeight, fs.fontSize / kTextOverlayPointsPerPixel * 1.3);
                 size_t letters = 0;
                 for (unsigned char ch : run.text) if ((ch & 0xC0) != 0x80) ++letters;
-                width += letters * tracking;
+                // A word's own letter spacing, or the title's
+                width += letters * (run.letterSpacingPt ? *run.letterSpacingPt / kTextOverlayPointsPerPixel : tracking);
                 if (titleMeasure_) {
                     titleMeasure_->SetFontFace(fs.fontFamily, fs.fontWeight, fs.fontSlant);
                     titleMeasure_->SetFontSize(fs.fontSize);
@@ -2347,9 +2361,10 @@ void UltraVideoWindow::PlaceTitleEditor() {
                 }
             }
             widest = std::max(widest, width);
+            linesHeight += lineHeight;
         }
     }
-    const double textH = std::max<double>(titleEditor_->GetContentHeight(), size * t.lineSpacing / 100.0);
+    const double textH = std::max({static_cast<double>(titleEditor_->GetContentHeight()), lineAdvance, linesHeight});
     const int band = t.box ? std::max(2, static_cast<int>(std::lround(size / 3.0))) : 0;
     const int drop = t.shadow ? std::max(1, static_cast<int>(std::lround(size / 18.0))) : 0;
     const int pad = std::max(band, drop);
@@ -2387,6 +2402,37 @@ void UltraVideoWindow::RestyleTitleEditor() {
     PlaceTitleEditor();
 }
 
+bool UltraVideoWindow::ColourTitle(int title, uint32_t rgb) {
+    char hex[8];
+    std::snprintf(hex, sizeof hex, "#%06X", static_cast<unsigned>(rgb & 0xFFFFFFu));
+    if (!editingTitle_.empty() && titleEditor_ && titleEditor_->HasSelection()) {
+        // The selected words, as runs of their own
+        RichCharFormatDelta colour;
+        colour.setColor = true;
+        colour.color = hex;
+        titleEditor_->ApplyCharFormat(colour);
+        titleEditor_->SetFocus(true);
+        return true;
+    }
+    // The whole title: its colour, and its words' own colours go (Edit puts
+    // a title being typed in first)
+    if (title < 0 || static_cast<size_t>(title) >= document_.titles.size()) return false;
+    const int h = document_.Height();
+    Edit(Tr("Colour title"), [title, rgb, h](Document& d) {
+        if (title < 0 || static_cast<size_t>(title) >= d.titles.size()) return;
+        TitleSpan& t = d.titles[static_cast<size_t>(title)];
+        t.look.textColor = rgb;
+        if (!t.look.richText.empty()) {
+            auto words = TextOverlayWords(t.Look(), h);
+            for (auto& block : words->blocks)
+                for (auto& run : block.runs) run.color.clear();
+            t.look.richText = TextOverlayWordsToHtml(*words);
+            t.look.richTextHeight = h;
+        }
+    });
+    return true;
+}
+
 void UltraVideoWindow::ApplyTitleAttribute(TextFormatAttribute attribute, const TextFormat& f) {
     const int h = document_.Height();
     if (!editingTitle_.empty() && titleEditor_) {
@@ -2398,7 +2444,7 @@ void UltraVideoWindow::ApplyTitleAttribute(TextFormatAttribute attribute, const 
             ApplyToSpan(editingSpan_, attribute, f, h);
             if (auto words = titleEditor_->GetDocument()) ApplyToAllRuns(*words, attribute, f);
             if (IsCharacterAttribute(attribute) && attribute != TextFormatAttribute::Font &&
-                attribute != TextFormatAttribute::Size) {
+                attribute != TextFormatAttribute::Size && attribute != TextFormatAttribute::LetterSpacing) {
                 titleEditor_->ApplyCharFormat(TextFormatCharDelta(attribute, f, kTextOverlayPointsPerPixel));   // and what is typed next
             }
             RestyleTitleEditor();
@@ -2492,7 +2538,8 @@ void UltraVideoWindow::CommitTitleEdit() {
 bool UltraVideoWindow::TextHasFocus() const {
     UltraCanvasUIElement* focused = window_ ? window_->GetFocusedElement() : nullptr;
     return focused && (dynamic_cast<UltraCanvasTextInput*>(focused) || dynamic_cast<UltraCanvasTimecodeField*>(focused) ||
-                       dynamic_cast<UltraCanvasRichTextEdit*>(focused));
+                       dynamic_cast<UltraCanvasRichTextEdit*>(focused) ||
+                       (textBar_ && textBar_->HasKeyboardFocus()));   // a size typed, a font looked up
 }
 
 bool UltraVideoWindow::OnKey(const UCEvent& event) {
@@ -2507,13 +2554,24 @@ bool UltraVideoWindow::OnKey(const UCEvent& event) {
     // (Enter starts a new line); the file keys still work, after it; every
     // other key is the title's.
     if (!editingTitle_.empty()) {
+        const bool fileKey = ctrl && (event.virtualKey == UCKeys::S || event.virtualKey == UCKeys::O ||
+                                      event.virtualKey == UCKeys::N || event.virtualKey == UCKeys::E);
+        // A control of the text bar has the keyboard (a size typed, a font
+        // looked up by its first letters): the keys are its, and the title
+        // stays open - finishing it sent the size to the whole title.
+        // Escape gives the keys back to the title.
+        if (!fileKey && textBar_ && textBar_->IsVisible() && textBar_->HasKeyboardFocus()) {
+            if (event.virtualKey == UCKeys::Escape && titleEditor_) {
+                titleEditor_->SetFocus(true);
+                return true;
+            }
+            return false;
+        }
         if (event.virtualKey == UCKeys::Escape ||
             (ctrl && (event.virtualKey == UCKeys::Return || event.virtualKey == UCKeys::NumPadEnter))) {
             CommitTitleEdit();
             return true;
         }
-        const bool fileKey = ctrl && (event.virtualKey == UCKeys::S || event.virtualKey == UCKeys::O ||
-                                      event.virtualKey == UCKeys::N || event.virtualKey == UCKeys::E);
         if (!fileKey && TextHasFocus()) return false;
         CommitTitleEdit();
     }
