@@ -800,7 +800,13 @@ and never introduce a new literal copy of one:
    `TrF`), never a bare literal in a label, a menu or a dialog — then run
    `python3 scripts/extract_ui_strings.py` so the English catalogues under
    `media/locale/en/` carry the key, and `python3
-   scripts/check_locale_catalogues.py`; CI runs that too. A word every
+   scripts/check_locale_catalogues.py`; CI runs that too. **A text that lands
+   in the standard set (`media/locale/en/Standard.json`) brings its
+   translations with it:** the check fails on a standard entry any language
+   lacks (a regional variant such as `pt-BR` counts its parent's), because
+   that text would show in English to everyone using that language, in
+   every application - draft them with `scripts/translate_catalogue.py`
+   (marked `machine draft … reviewed by -` like the rest). A word every
    application has is in `Standard.json` or a base set already (the
    proposal's appendices): an application's own catalogue holds only what
    is its own. **A catalogue under `media/locale/en/` that conflicts in a
