@@ -23,6 +23,11 @@ nothing in the working tree is touched). It reports
     Not a real conflict, and never resolved by hand: those two are written on
     main after the merge (llms-regenerate.yml), so a branch carrying them
     drops them.
+  * rebuilt - an English locale catalogue (media/locale/en/*.json, not the
+    hand-curated base/ sets) that conflicts. Not a real conflict either:
+    whichever branch merges second merges the base and runs
+    scripts/extract_ui_strings.py, which rebuilds a conflicted catalogue from
+    both sides and the sources - never a hand-merge.
   * version collision - an application changelog both branches give the same
     top version (`#### date *x.y.z*`). Git may merge that with no conflict at
     all and ship two releases under one number; renumber one of them.
@@ -56,6 +61,10 @@ import sys
 # hand. llms.txt / llms-full.txt are written on main after the merge
 # (llms-regenerate.yml), so a branch that still carries them drops them.
 GENERATED = {"llms.txt", "llms-full.txt"}
+# Written by scripts/extract_ui_strings.py from the Tr() sites: a conflict in
+# one is resolved by merging and running it (it rebuilds a conflicted
+# catalogue from both sides). The base sets under base/ are curated by hand.
+REBUILT = re.compile(r"^media/locale/en/[^/]+\.json$")
 
 CHANGELOG_TOP = re.compile(r"^####\s+\d{4}-\d{2}-\d{2}\s+\*([0-9][0-9A-Za-z.\-]*)\*")
 
@@ -219,8 +228,9 @@ def main():
         # direct comparison of the fallback also sees what the other branch
         # conflicts with main over; that is its problem, not this branch's.
         conflicted = [f for f in conflicted if f in shared]
-        real = [f for f in conflicted if f not in GENERATED]
+        real = [f for f in conflicted if f not in GENERATED and not REBUILT.match(f)]
         regen = [f for f in conflicted if f in GENERATED]
+        rebuilt = [f for f in conflicted if REBUILT.match(f)]
 
         collisions = []
         for path in shared:
@@ -241,6 +251,10 @@ def main():
             print(f"  {label}: generated, not a real conflict - {', '.join(regen)}; main "
                   f"regenerates them, drop them from the branch: git checkout {base_ref} -- "
                   f"{' '.join(regen)}")
+        if rebuilt:
+            print(f"  {label}: rebuilt, not a real conflict - {', '.join(rebuilt)}; whichever "
+                  f"merges second: merge {base_ref}, run python3 scripts/extract_ui_strings.py "
+                  f"(never merge it by hand), git add it")
         quiet = [f for f in shared if f not in conflicted]
         if quiet and not real:
             shown = ", ".join(quiet[:6]) + (f" and {len(quiet) - 6} more" if len(quiet) > 6 else "")
