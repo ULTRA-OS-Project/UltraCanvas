@@ -1,3 +1,54 @@
+#### 2026-11-04 *0.9.480*
+- **Ternary chart, Phase 2: regions, paths, bubbles, curves, files.**
+  - Regions are authored areas of the triangle. They are filled under the
+    grid and named inside themselves; a long name wraps or steps its font
+    down to fit. Each region answers hover and `onRegionClick`.
+    `TernaryModel::RegionOf` classifies a composition by the drawn geometry,
+    and a point's tooltip names its region.
+  - `TernarySamples::SoilTexture()` is the USDA soil texture triangle. Its
+    twelve class outlines are derived from the class rules, and the model
+    test checks them against those rules on a 19,900-point grid.
+  - Paths (`TernarySeriesKind::Path`, with arrowheads) show a composition
+    changing over time. A point's `size` draws it as a bubble.
+    `TernaryCurve` adds reference lines that appear in the legend, such as the
+    Hardy-Weinberg parabola of the new `DeFinetti()` sample.
+  - `SetReadingGuide(true)` draws the three grid lines through the pointer,
+    with its shares.
+  - `ExportTernaryJson` / `ImportTernaryJson` round-trip the whole model as
+    `"format": "ultracanvas-ternary"`. `ExportTernaryCsv` /
+    `ImportTernaryCsv` carry the points, with the part columns named by the
+    axis titles.
+
+  The demo's Ternary Chart page gains Vote swings, Soil texture and
+  De Finetti tabs, a reading-guide control, class clicks that count the
+  samples, and Open / Save JSON and Import / Export CSV through
+  `UltraCanvasFileLoader`.
+- **New chart: `UltraCanvasTernaryChart` (Phase 1).** It draws compositions of
+  three parts - a three-party vote, soil texture, an alloy - as points in an
+  equilateral triangle, where each corner is all of one part.
+  - The chart engine gains `ChartProjectionKind::Ternary`
+    (`ChartTernaryProjection`). It maps `(u, v)` as the shares of the second
+    and third part into the largest triangle that fits the plot. The map is
+    affine, so polygons, hit regions and the label plan work through it
+    unchanged. The engine fills the triangle as the plot area.
+  - `UltraCanvasTernaryModel` keeps each point's raw amounts and divides them
+    by their sum, so the shares always add up to 1 and a lab result that sums
+    to 99.7 is still drawn. A point with no shares (a negative part, a
+    missing one, a sum of 0) is left out, and `Validate()` names it.
+  - The chart draws the grid, three edge axes with ticks every 10 %, the
+    edge titles with arrows and the corner titles. The axes read clockwise
+    (the USDA soil triangle) or anticlockwise, set by one flag, and each tick
+    runs along its own grid line.
+  - The series are drawn as markers with a legend that hides a series.
+    Tooltips give each share and the raw amounts. `onPointClick` reports
+    clicks. Optional point labels steer around the axis numbers and titles.
+
+  The demo's Charts section gains *Ternary Chart*, with invented vote and
+  soil samples and controls for the reading direction, point names, the grid
+  and the edge titles. `TernaryModelTest`, `TernaryChartRenderTest` and a
+  `ChartEngineTest` case for the projection cover the shares, the reading in
+  both directions, hit-testing, clicks and hidden series.
+
 #### 2026-11-04 *0.9.479*
 - **A locale catalogue that conflicts in a merge is rebuilt, not hand-merged.**
   `extract_ui_strings.py` reads a catalogue left with conflict markers from
