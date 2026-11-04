@@ -1,5 +1,7 @@
 // Apps/UltraSnip/ui/UltraSnipWindow.cpp
 // See the header.
+// Version: 0.3.0 - one bar at the top, icons for the choices and actions, the settings
+//                  window's type size; the bar alone until there is a snip; New is Start
 // Version: 0.2.0 - the settings window; the picture type, folders and after-snip behaviour
 // Version: 0.1.1 - the result shown from its pixels (UCImage::FromRgba)
 // Version: 0.1.0
@@ -25,10 +27,13 @@
 #include "UltraCanvasMediaViewer.h"
 #include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasSegmentedControl.h"
+#include "UltraCanvasSettingsPageKit.h"
 #include "UltraCanvasUtils.h"
 
 #include <algorithm>
 #include <filesystem>
+#include <utility>
+#include <vector>
 
 #ifndef ULTRASNIP_VERSION
 #error "ULTRASNIP_VERSION must come from Docs/UltraSnip/CHANGELOG.md via CMake"
@@ -44,7 +49,12 @@ const Color kLine(214, 214, 220, 255);
 const Color kCanvas(232, 232, 236, 255);
 const Color kStatusText(70, 70, 80, 255);
 const Color kErrorText(185, 28, 28, 255);
-const Color kWelcomeText(110, 110, 120, 255);
+constexpr int kBarHeight = 44;              // the bar: 28-high controls with 8 above and below
+constexpr int kControlHeight = 28;
+constexpr int kChoiceWidth = 34;            // one icon segment
+constexpr int kIconButtonWidth = 30;
+constexpr int kMinWidth = 700;              // every control of the bar, and room for the news
+constexpr int kMinOpenHeight = 360;         // opened out: room for the snip under the bar
 constexpr int kDelays[] = {0, 3, 5, 10};
 constexpr unsigned kSettleMs = 350;         // the window has left the screen by then
 constexpr unsigned kRecordingTickMs = 250;
@@ -93,12 +103,14 @@ UltraSnipWindow::~UltraSnipWindow() {
 bool UltraSnipWindow::Create() {
     settings_.Load();
 
+    // Until there is a snip the window is its bar alone; the picture or the
+    // recording opens it out below the bar (SetCompact).
     WindowConfig config;
     config.title = std::string("UltraSnip ") + ULTRASNIP_VERSION;
     config.width = 820;
-    config.height = 600;
-    config.minWidth = 640;
-    config.minHeight = 420;
+    config.height = kBarHeight;
+    config.minWidth = kMinWidth;
+    config.minHeight = kBarHeight;
     config.backgroundColor = kCanvas;
     window_ = CreateWindow(config);
     if (!window_) return false;
@@ -108,9 +120,8 @@ bool UltraSnipWindow::Create() {
     window->SetBackgroundColor(kCanvas);
     window->AddChild(BuildToolbar());
     window->AddChild(BuildContent());
-    window->AddChild(BuildActions());
     ApplySettingsToControls();
-    ShowNothing("Click New, or press Ctrl+N, to take a snip.");
+    ShowNothing("Click Start, or press Ctrl+N, to take a snip.");
 
     window->InstallEventFilter("ultrasnip-keys", [this](const UCEvent& event) { return OnKey(event); },
                                {UCEventType::KeyDown});
@@ -123,37 +134,76 @@ bool UltraSnipWindow::Create() {
     return true;
 }
 
+namespace {
+// The bar's segmented choices: icons only, in the settings window's type
+// size, each segment naming itself in the tooltip while it is hovered.
+std::shared_ptr<UltraCanvasSegmentedControl> MakeIconChoice(const std::string& id,
+                                                            const std::vector<std::pair<std::string, std::string>>& segments) {
+    auto control = CreateSegmentedControl(id, 0, 0, static_cast<long>(segments.size()) * kChoiceWidth, kControlHeight);
+    SegmentedControlStyle look = control->GetStyle();
+    look.fontSize = SettingsPageKit::kTextFontSize;
+    look.iconSize = 16;
+    look.iconAsMask = true;
+    look.paddingHorizontal = 6;
+    look.paddingVertical = 4;
+    look.cornerRadius = 4.0f;
+    control->SetStyle(look);
+    for (const auto& segment : segments) control->AddSegment("", SettingsPageKit::IconPath(segment.first));
+    UltraCanvasSegmentedControl* raw = control.get();
+    std::vector<std::string> tips;
+    for (const auto& segment : segments) tips.push_back(segment.second);
+    control->onSegmentHover = [raw, tips](int index) {
+        if (index >= 0 && index < static_cast<int>(tips.size())) raw->SetTooltip(tips[static_cast<size_t>(index)]);
+    };
+    if (!tips.empty()) control->SetTooltip(tips.front());
+    control->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    return control;
+}
+
+std::shared_ptr<UltraCanvasContainer> MakeBarRule(const std::string& id) {
+    auto rule = std::make_shared<UltraCanvasContainer>(id, 0, 0, 1, 22);
+    rule->SetBackgroundColor(kLine);
+    rule->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    return rule;
+}
+} // namespace
+
+// One bar for everything: Start, the shape, the kind and the delay; then
+// what can be done with the snip (shown once there is one), its line of
+// news, and Settings at the far end.
 std::shared_ptr<UltraCanvasContainer> UltraSnipWindow::BuildToolbar() {
+    using SettingsPageKit::MakeButton;
     auto bar = std::make_shared<UltraCanvasContainer>("snip.bar");
-    bar->layout.SetFlexRow().SetFlexGap(12).SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    bar->layout.SetFlexRow().SetFlexGap(8).SetFlexAlignItems(CSSLayout::AlignItems::Center);
     bar->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-    bar->SetPadding(10, 16, 10, 16);
+    bar->size.height = CSSLayout::Dimension::Px(kBarHeight);
+    bar->SetPadding(0, 10, 0, 10);
     bar->SetBackgroundColor(kChrome);
-    bar->SetBorderBottom(1, kLine);
 
-    newButton_ = CreateButton("snip.new", 0, 0, 96, 34, "New");
-    newButton_->SetTooltip("Take a snip with the shape, kind and delay chosen here (Ctrl+N)");
-    newButton_->onClick = [this]() { StartCapture(RequestFromControls()); };
-    bar->AddChild(newButton_);
+    startButton_ = MakeButton("snip.start", "Start", 72, [this]() { StartCapture(RequestFromControls()); },
+                              "scissors.svg");
+    startButton_->SetTooltip("Take a snip with the shape, kind and delay chosen here (Ctrl+N)");
+    bar->AddChild(startButton_);
 
-    modes_ = CreateSegmentedControl("snip.mode", 0, 0, 300, 34);
-    modes_->AddSegment("Rectangle");
-    modes_->AddSegment("Window");
-    modes_->AddSegment("Full screen");
-    modes_->SetTooltip("The shape: an area you drag, a window you click, or the whole screen");
+    modes_ = MakeIconChoice("snip.mode", {{"snip-rectangle.svg", "Rectangle: an area you drag out"},
+                                          {"snip-window.svg", "Window: the window you click"},
+                                          {"snip-screen.svg", "Full screen: the whole screen"}});
     modes_->onSegmentSelected = [this](int index) {
         settings_.mode = index == 1 ? SnipMode::Window : index == 2 ? SnipMode::FullScreen : SnipMode::Rectangle;
     };
     bar->AddChild(modes_);
 
-    kinds_ = CreateSegmentedControl("snip.kind", 0, 0, 180, 34);
-    kinds_->AddSegment("Picture");
-    kinds_->AddSegment("Video");
-    kinds_->SetTooltip("A picture, or a video recording of the area");
+    kinds_ = MakeIconChoice("snip.kind", {{"image.svg", "Picture: a screenshot"},
+                                          {"snip-video.svg", "Video: a recording of the area"}});
     kinds_->onSegmentSelected = [this](int index) { settings_.kind = index == 1 ? SnipKind::Video : SnipKind::Picture; };
     bar->AddChild(kinds_);
 
-    delays_ = CreateDropdown("snip.delay", 0, 0, 120, 34);
+    delays_ = CreateDropdown("snip.delay", 0, 0, 96, kControlHeight);
+    {
+        DropdownStyle look = delays_->GetStyle();
+        look.fontSize = SettingsPageKit::kTextFontSize;
+        delays_->SetStyle(look);
+    }
     delays_->AddItem("No delay");
     delays_->AddItem("3 s delay");
     delays_->AddItem("5 s delay");
@@ -162,7 +212,49 @@ std::shared_ptr<UltraCanvasContainer> UltraSnipWindow::BuildToolbar() {
     delays_->onSelectionChanged = [this](int index, const DropdownItem&) {
         settings_.delaySeconds = kDelays[std::clamp(index, 0, 3)];
     };
+    delays_->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     bar->AddChild(delays_);
+
+    // What can be done with the snip: there only while there is one
+    actions_ = std::make_shared<UltraCanvasContainer>("snip.actions");
+    actions_->layout.SetFlexRow().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    actions_->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    actions_->AddChild(MakeBarRule("snip.actions-rule"));
+
+    saveButton_ = MakeButton("snip.save", "", kIconButtonWidth, [this]() { SaveAs(); }, "save.svg");
+    saveButton_->SetTooltip("Save as: the snip under another name or type (Ctrl+S)");
+    actions_->AddChild(saveButton_);
+
+    copyButton_ = MakeButton("snip.copy", "", kIconButtonWidth, [this]() {
+        if (CopyPictureToClipboard()) SetStatus("Copied to the clipboard.");
+    }, "copy.svg");
+    copyButton_->SetTooltip("Copy: the picture to the clipboard (Ctrl+C)");
+    actions_->AddChild(copyButton_);
+
+    folderButton_ = MakeButton("snip.folder", "", kIconButtonWidth, [this]() { OpenFolder(); }, "folder-open.svg");
+    folderButton_->SetTooltip("Open folder: the saved file's folder in the file manager");
+    actions_->AddChild(folderButton_);
+
+    paintButton_ = MakeButton("snip.paint", "", kIconButtonWidth, [this]() { EditInPaint(); }, "edit.svg");
+    paintButton_->SetTooltip("Edit in UltraPaint: open the saved picture there");
+    actions_->AddChild(paintButton_);
+    bar->AddChild(actions_);
+
+    // What just happened: the size, where it was saved, copied - two short
+    // lines at most, the whole path in the tooltip
+    status_ = CreateLabel("snip.status", "");
+    status_->SetTextColor(kStatusText);
+    status_->SetFontSize(SettingsPageKit::kNoteFontSize);
+    status_->SetWrap(TextWrap::WrapWord);
+    status_->SetAlignment(TextAlignment::Left, VerticalAlignment::Middle);
+    status_->size.height = CSSLayout::Dimension::Px(kBarHeight - 4);
+    status_->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetFlexBasis(CSSLayout::Dimension::Px(0));
+    bar->AddChild(status_);
+
+    settingsButton_ = MakeButton("snip.settings", "", kIconButtonWidth, [this]() { OpenSettings(); }, "settings.svg");
+    settingsButton_->SetTooltip("Settings: the picture type and folder, the recording's type and frame rate, "
+                                "what happens after a snip");
+    bar->AddChild(settingsButton_);
     return bar;
 }
 
@@ -172,15 +264,8 @@ std::shared_ptr<UltraCanvasContainer> UltraSnipWindow::BuildContent() {
         .SetFlexJustifyContent(CSSLayout::JustifyContent::Center);
     content_->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetFlexBasis(CSSLayout::Dimension::Px(0));
     content_->SetBackgroundColor(kCanvas);
+    content_->SetBorderTop(1, kLine);
     content_->SetPadding(12);
-
-    welcome_ = CreateLabel("snip.welcome", "");
-    welcome_->SetTextColor(kWelcomeText);
-    welcome_->SetFontSize(15);
-    welcome_->SetAlignment(TextAlignment::Center, VerticalAlignment::Middle);
-    welcome_->SetWrap(TextWrap::WrapWord);
-    welcome_->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-    content_->AddChild(welcome_);
 
     picture_ = CreateImageElement("snip.picture", 0, 0, 0, 0);
     picture_->SetFitMode(ImageFitMode::ScaleDown);
@@ -194,61 +279,25 @@ std::shared_ptr<UltraCanvasContainer> UltraSnipWindow::BuildContent() {
     viewer_->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     viewer_->SetVisible(false);
     content_->AddChild(viewer_);
+    content_->SetVisible(false);
     return content_;
 }
 
-std::shared_ptr<UltraCanvasContainer> UltraSnipWindow::BuildActions() {
-    auto foot = std::make_shared<UltraCanvasContainer>("snip.foot");
-    foot->layout.SetFlexColumn().SetFlexGap(8).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-    foot->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-    foot->SetPadding(10, 16, 10, 16);
-    foot->SetBackgroundColor(kChrome);
-    foot->SetBorderTop(1, kLine);
-
-    auto actions = std::make_shared<UltraCanvasContainer>("snip.actions");
-    actions->layout.SetFlexRow().SetFlexGap(10).SetFlexAlignItems(CSSLayout::AlignItems::Center);
-    actions->layoutItem.SetFlexShrink(0);
-
-    saveButton_ = CreateButton("snip.save", 0, 0, 96, 32, "Save as");
-    saveButton_->SetTooltip("Save the snip under another name or type (Ctrl+S)");
-    saveButton_->onClick = [this]() { SaveAs(); };
-    actions->AddChild(saveButton_);
-
-    copyButton_ = CreateButton("snip.copy", 0, 0, 80, 32, "Copy");
-    copyButton_->SetTooltip("Put the picture on the clipboard (Ctrl+C)");
-    copyButton_->onClick = [this]() {
-        if (CopyPictureToClipboard()) SetStatus("Copied to the clipboard.");
-    };
-    actions->AddChild(copyButton_);
-
-    folderButton_ = CreateButton("snip.folder", 0, 0, 110, 32, "Open folder");
-    folderButton_->SetTooltip("Show the saved file's folder in the file manager");
-    folderButton_->onClick = [this]() { OpenFolder(); };
-    actions->AddChild(folderButton_);
-
-    paintButton_ = CreateButton("snip.paint", 0, 0, 140, 32, "Edit in UltraPaint");
-    paintButton_->SetTooltip("Open the saved picture in UltraPaint");
-    paintButton_->onClick = [this]() { EditInPaint(); };
-    actions->AddChild(paintButton_);
-
-    settingsButton_ = CreateButton("snip.settings", 0, 0, 100, 32, "Settings");
-    settingsButton_->SetIcon(NormalizePath(GetResourcesDir() + "media/icons/settings.svg"));
-    settingsButton_->SetIconSize(16, 16);
-    settingsButton_->SetIconPosition(ButtonIconPosition::Left);
-    settingsButton_->SetUseIconAsMask(true);
-    settingsButton_->SetIconMaskColor(kStatusText);
-    settingsButton_->SetTooltip("The picture type and folder, the recording's type and frame rate, what happens after a snip");
-    settingsButton_->onClick = [this]() { OpenSettings(); };
-    actions->AddChild(settingsButton_);
-
-    status_ = CreateLabel("snip.status", "");
-    status_->SetTextColor(kStatusText);
-    status_->SetFontSize(12);
-    status_->SetWrap(TextWrap::WrapWord);
-    status_->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
-    actions->AddChild(status_);
-    foot->AddChild(actions);
-    return foot;
+// The bar alone, or the bar with the snip under it. Opened out, the window
+// takes the height it last had opened out.
+void UltraSnipWindow::SetCompact(bool compact) {
+    if (!window_ || compact == compact_) return;
+    compact_ = compact;
+    const int width = static_cast<int>(window_->GetWidth());
+    if (compact) {
+        const int height = static_cast<int>(window_->GetHeight());
+        if (height > kBarHeight + 100) openHeight_ = height;
+        if (content_) content_->SetVisible(false);
+        window_->SetWindowSize(width, kBarHeight);
+    } else {
+        if (content_) content_->SetVisible(true);
+        window_->SetWindowSize(width, std::max(openHeight_, kMinOpenHeight));
+    }
 }
 
 void UltraSnipWindow::ApplySettingsToControls() {
@@ -519,20 +568,17 @@ void UltraSnipWindow::Fail(const std::string& message) {
 // ===== THE RESULT =====
 
 void UltraSnipWindow::ShowNothing(const std::string& message) {
-    result_ = result_ == ResultKind::Nothing ? ResultKind::Nothing : result_;
     if (viewer_) {
         viewer_->CloseFile();
         viewer_->SetVisible(false);
     }
     if (picture_) picture_->SetVisible(false);
-    if (welcome_) {
-        welcome_->SetText(message);
-        welcome_->SetVisible(true);
-    }
     result_ = ResultKind::Nothing;
     resultImage_ = ClipboardDib::RgbaImage();
     resultPng_.clear();
     resultPath_.clear();
+    SetCompact(true);
+    SetStatus(message);
     UpdateActions();
 }
 
@@ -541,28 +587,29 @@ void UltraSnipWindow::ShowPicture() {
         viewer_->CloseFile();
         viewer_->SetVisible(false);
     }
-    if (welcome_) welcome_->SetVisible(false);
     if (picture_) {
         // Straight from the pixels; the PNG is for the clipboard and the file
         picture_->LoadFromImage(UCImage::FromRgba(resultImage_.pixels.data(), resultImage_.width, resultImage_.height));
         picture_->SetVisible(true);
     }
+    SetCompact(false);
     UpdateActions();
 }
 
 void UltraSnipWindow::ShowVideo(const std::string& path) {
-    if (welcome_) welcome_->SetVisible(false);
     if (picture_) picture_->SetVisible(false);
     if (viewer_) {
         viewer_->SetVisible(true);
         viewer_->OpenFile(path);
     }
+    SetCompact(false);
     UpdateActions();
 }
 
 void UltraSnipWindow::UpdateActions() {
     const bool any = result_ != ResultKind::Nothing;
     const bool picture = result_ == ResultKind::Picture;
+    if (actions_) actions_->SetVisible(any);
     if (saveButton_) saveButton_->SetDisabled(!any);
     if (copyButton_) copyButton_->SetDisabled(!picture);
     if (folderButton_) folderButton_->SetDisabled(resultPath_.empty());

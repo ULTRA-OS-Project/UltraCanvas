@@ -19,8 +19,10 @@ bar, or press `Super+Shift+S` in any window: the screen freezes and you drag
 out the area. The button's right-click menu has the other shapes and the
 recordings.
 
-**From the window.** Start UltraSnip from the applications; choose the
-shape, the kind and the delay in its bar and click *New* (Ctrl+N):
+**From the window.** Start UltraSnip from the applications: until there is
+a snip its window is just its bar. Choose the shape and the kind (icons;
+each names itself in its tooltip) and the delay, and click *Start*
+(Ctrl+N):
 
 | Shape | What happens |
 |---|---|
@@ -41,7 +43,9 @@ a wait. When UltraSnip is already running the request goes to it.
 A picture is put on the clipboard and written to
 `Pictures/Screenshots/Screenshot <date> <time>.<type>` the moment it is
 taken, in the type chosen in the settings (PNG unless changed); either can
-be switched off there. The window shows it, with:
+be switched off there. The window opens out below its bar to show it, and
+the bar gains four icon buttons after the delay, with a line saying what
+was done (the whole path in its tooltip):
 
 | Button | Key | |
 |---|---|---|
@@ -64,12 +68,12 @@ written as it goes, so a recording cut short by a crash or a power cut still
 plays up to its last seconds.
 
 Not yet: sound (the microphone, the loudspeaker), the pointer in the
-recording, and a recording on a build whose VideoFX has no FFmpeg - *New*
+recording, and a recording on a build whose VideoFX has no FFmpeg - *Start*
 says so then, and pictures still work.
 
 ## Settings
 
-The *Settings* button under the picture opens a window laid out like
+The *Settings* button at the right end of the bar (the cog) opens a window laid out like
 UltraFiler's: the sections on the left, the page on the right, the page's
 *Restore defaults* and *Close* at the foot. Every change applies at once and
 is saved.
