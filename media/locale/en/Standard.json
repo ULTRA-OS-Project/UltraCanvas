@@ -1,9 +1,13 @@
 {
   "@language": "en",
   "@name": "English",
+  "\"{0}\" already exists in \"{1}\".": "\"{0}\" already exists in \"{1}\".",
+  "\"{0}\" could not be copied.": "\"{0}\" could not be copied.",
+  "\"{0}\" could not be deleted even with administrator permission.": "\"{0}\" could not be deleted even with administrator permission.",
   "\"{0}\" could not be deleted.": "\"{0}\" could not be deleted.",
   "\"{0}\" could not be moved to the Recycle Bin.": "\"{0}\" could not be moved to the Recycle Bin.",
   "\"{0}\" could not be moved to the Trash.": "\"{0}\" could not be moved to the Trash.",
+  "\"{0}\" could not be moved.": "\"{0}\" could not be moved.",
   "\"{0}\" in \"{1}\" could not be deleted.": "\"{0}\" in \"{1}\" could not be deleted.",
   "\"{0}\" in \"{1}\" is in use by another program.": "\"{0}\" in \"{1}\" is in use by another program.",
   "\"{0}\" in \"{1}\" needs administrator permission to be deleted.": "\"{0}\" in \"{1}\" needs administrator permission to be deleted.",
@@ -13,7 +17,14 @@
   "(no suggestions)": "(no suggestions)",
   "(the first {0} shown)": "(the first {0} shown)",
   "A change in a base set or in Standard reaches every application that takes it": "A change in a base set or in Standard reaches every application that takes it",
+  "A file \"{0}\" already exists in this folder.": "A file \"{0}\" already exists in this folder.",
+  "A file that another program still holds open - or that is shown in a preview - cannot be copied until that program lets go of it. Close it there, then try again.": "A file that another program still holds open - or that is shown in a preview - cannot be copied until that program lets go of it. Close it there, then try again.",
+  "A file that another program still holds open - or that is shown in a preview - cannot be moved until that program lets go of it. Close it there, then try again.": "A file that another program still holds open - or that is shown in a preview - cannot be moved until that program lets go of it. Close it there, then try again.",
+  "A folder \"{0}\" already exists in \"{1}\".": "A folder \"{0}\" already exists in \"{1}\".",
+  "A folder \"{0}\" already exists in this folder.": "A folder \"{0}\" already exists in this folder.",
   "A folder named \"{0}\" already exists in this folder.": "A folder named \"{0}\" already exists in this folder.",
+  "A folder that another program still holds open - or that is shown in a preview - cannot be copied until that program lets go of it. Close it there, then try again.": "A folder that another program still holds open - or that is shown in a preview - cannot be copied until that program lets go of it. Close it there, then try again.",
+  "A folder that another program still holds open - or that is shown in a preview - cannot be moved until that program lets go of it. Close it there, then try again.": "A folder that another program still holds open - or that is shown in a preview - cannot be moved until that program lets go of it. Close it there, then try again.",
   "A line between two menu entries": "A line between two menu entries",
   "A submenu in a menu, a group of your own on a toolbar": "A submenu in a menu, a group of your own on a toolbar",
   "Abort": "Abort",
@@ -24,6 +35,14 @@
   "Add": "Add",
   "Add to Dictionary": "Add to Dictionary",
   "Address": "Address",
+  "Administrator permission was not granted; {n} item left in place.": {
+    "one": "Administrator permission was not granted; {n} item left in place.",
+    "other": "Administrator permission was not granted; {n} items left in place."
+  },
+  "age|newer": "newer",
+  "age|older": "older",
+  "age|same": "same",
+  "age|same date": "same date",
   "Alignment": "Alignment",
   "Alignment: the lines start at, centre on or end at the text's point": "Alignment: the lines start at, centre on or end at the text's point",
   "All Files": "All Files",
@@ -36,6 +55,14 @@
   "Apply to all later files in use": "Apply to all later files in use",
   "Apply to all later permission failures": "Apply to all later permission failures",
   "Apply to all remaining write-protected items": "Apply to all remaining write-protected items",
+  "Apply to the {n} remaining conflict": {
+    "one": "Apply to the {n} remaining conflict",
+    "other": "Apply to all {n} remaining conflicts"
+  },
+  "Apply to the {n} remaining folder conflict": {
+    "one": "Apply to the {n} remaining folder conflict",
+    "other": "Apply to all {n} remaining folder conflicts"
+  },
   "Are you sure you want to delete {n} item": {
     "one": "Are you sure you want to delete {n} item",
     "other": "Are you sure you want to delete {n} items"
@@ -88,8 +115,24 @@
   "Context": "Context",
   "Continue": "Continue",
   "Copied to the clipboard": "Copied to the clipboard",
+  "Copied {0} of {n} item.": {
+    "one": "Copied {0} of {n} item.",
+    "other": "Copied {0} of {n} items."
+  },
   "Copy": "Copy",
+  "Copy \"{0}\" into \"{1}\"?": "Copy \"{0}\" into \"{1}\"?",
+  "Copy files": "Copy files",
+  "Copy finished": "Copy finished",
   "Copy path": "Copy path",
+  "Copy skipped items again": "Copy skipped items again",
+  "Copy {n} item into \"{0}\"?": {
+    "one": "Copy {n} item into \"{0}\"?",
+    "other": "Copy {n} items into \"{0}\"?"
+  },
+  "Copy: a file could not be copied": "Copy: a file could not be copied",
+  "Copy: a folder could not be copied": "Copy: a folder could not be copied",
+  "Copy: the name is already taken": "Copy: the name is already taken",
+  "Could not delete as administrator: {0}": "Could not delete as administrator: {0}",
   "Could not read {0}": "Could not read {0}",
   "Could not save {0}": "Could not save {0}",
   "Could not write {0}": "Could not write {0}",
@@ -109,7 +152,9 @@
   "Delete anyway": "Delete anyway",
   "Delete anyway removes the protection first.": "Delete anyway removes the protection first.",
   "Delete as administrator": "Delete as administrator",
+  "Delete finished": "Delete finished",
   "Delete permanently": "Delete permanently",
+  "Delete skipped items again": "Delete skipped items again",
   "Delete {n} item?": {
     "one": "Delete {n} item?",
     "other": "Delete {n} items?"
@@ -126,6 +171,11 @@
   "Delete: administrator permission needed": "Delete: administrator permission needed",
   "Delete: the file is in use": "Delete: the file is in use",
   "Delete: the folder is in use": "Delete: the folder is in use",
+  "Deleted {0} of {n} item.": {
+    "one": "Deleted {0} of {n} item.",
+    "other": "Deleted {0} of {n} items."
+  },
+  "Deleting as administrator is not available: {0}": "Deleting as administrator is not available: {0}",
   "Demote to the application (from {0})": "Demote to the application (from {0})",
   "Descending": "Descending",
   "Description": "Description",
@@ -160,6 +210,7 @@
   "English is the source language; choose the language to draft.": "English is the source language; choose the language to draft.",
   "Entry {0}:  {1}   (R {2}, G {3}, B {4})": "Entry {0}:  {1}   (R {2}, G {3}, B {4})",
   "Error": "Error",
+  "Existing": "Existing",
   "Export": "Export",
   "Export failed: {0}": "Export failed: {0}",
   "Export the merged catalogue": "Export the merged catalogue",
@@ -218,6 +269,8 @@
   "Images": "Images",
   "Import": "Import",
   "in": "in",
+  "in use": "in use",
+  "in use by {0}": "in use by {0}",
   "In use by:": "In use by:",
   "in {n} folder": {
     "one": "in {n} folder",
@@ -227,6 +280,7 @@
   "Install": "Install",
   "into the settings folder": "into the settings folder",
   "into the source tree": "into the source tree",
+  "Into:": "Into:",
   "It is never deleted for good instead. To remove it anyway, stop and delete it with Delete permanently (Shift+Del).": "It is never deleted for good instead. To remove it anyway, stop and delete it with Delete permanently (Shift+Del).",
   "Italic": "Italic",
   "Italic (Ctrl+I while typing)": "Italic (Ctrl+I while typing)",
@@ -236,6 +290,8 @@
   "Items on a remote drive cannot go to the Trash.": "Items on a remote drive cannot go to the Trash.",
   "Justify": "Justify",
   "KB": "KB",
+  "Keep both": "Keep both",
+  "Keep both renames the pasted file to \"{0}\".": "Keep both renames the pasted file to \"{0}\".",
   "Keep proportions": "Keep proportions",
   "Key (English)": "Key (English)",
   "Labels": "Labels",
@@ -258,6 +314,9 @@
   "Media": "Media",
   "Menus": "Menus",
   "Menus and toolbars": "Menus and toolbars",
+  "Merge": "Merge",
+  "Merge copies the {0} into the existing folder and asks about any name that is taken inside it. Replace deletes the existing folder and its {1} first.": "Merge copies the {0} into the existing folder and asks about any name that is taken inside it. Replace deletes the existing folder and its {1} first.",
+  "Merge moves the {0} into the existing folder and asks about any name that is taken inside it. Replace deletes the existing folder and its {1} first.": "Merge moves the {0} into the existing folder and asks about any name that is taken inside it. Replace deletes the existing folder and its {1} first.",
   "Middle": "Middle",
   "Modified": "Modified",
   "Monospace": "Monospace",
@@ -285,14 +344,38 @@
   "month|November": "November",
   "month|October": "October",
   "month|September": "September",
+  "Move": "Move",
+  "Move \"{0}\" into \"{1}\"?": "Move \"{0}\" into \"{1}\"?",
   "Move Down": "Move Down",
   "Move down": "Move down",
+  "Move files": "Move files",
+  "Move finished": "Move finished",
+  "Move skipped items again": "Move skipped items again",
   "Move to Recycle Bin": "Move to Recycle Bin",
   "Move to Recycle Bin can be undone from the Recycle Bin. Delete permanently cannot be undone.": "Move to Recycle Bin can be undone from the Recycle Bin. Delete permanently cannot be undone.",
   "Move to Trash": "Move to Trash",
   "Move to Trash can be undone from the Trash. Delete permanently cannot be undone.": "Move to Trash can be undone from the Trash. Delete permanently cannot be undone.",
   "Move Up": "Move Up",
   "Move up": "Move up",
+  "Move {n} item into \"{0}\"?": {
+    "one": "Move {n} item into \"{0}\"?",
+    "other": "Move {n} items into \"{0}\"?"
+  },
+  "Move: a file could not be moved": "Move: a file could not be moved",
+  "Move: a folder could not be moved": "Move: a folder could not be moved",
+  "Move: the name is already taken": "Move: the name is already taken",
+  "Moved {0} of {n} item to the Recycle Bin.": {
+    "one": "Moved {0} of {n} item to the Recycle Bin.",
+    "other": "Moved {0} of {n} items to the Recycle Bin."
+  },
+  "Moved {0} of {n} item to the Trash.": {
+    "one": "Moved {0} of {n} item to the Trash.",
+    "other": "Moved {0} of {n} items to the Trash."
+  },
+  "Moved {0} of {n} item.": {
+    "one": "Moved {0} of {n} item.",
+    "other": "Moved {0} of {n} items."
+  },
   "Music": "Music",
   "Name": "Name",
   "Network": "Network",
@@ -339,6 +422,7 @@
   },
   "Password": "Password",
   "Paste": "Paste",
+  "Pasted": "Pasted",
   "Path": "Path",
   "Pause": "Pause",
   "Pictures": "Pictures",
@@ -366,7 +450,10 @@
   "Remove the application's own text, so the row is inherited again": "Remove the application's own text, so the row is inherited again",
   "Rename": "Rename",
   "Rename: the name is already taken": "Rename: the name is already taken",
+  "Renamed": "Renamed",
   "Replace": "Replace",
+  "Replace deletes the existing file and gives \"{0}\" its name. This cannot be undone.": "Replace deletes the existing file and gives \"{0}\" its name. This cannot be undone.",
+  "Replace deletes the existing folder and gives \"{0}\" its name. This cannot be undone.": "Replace deletes the existing folder and gives \"{0}\" its name. This cannot be undone.",
   "Replace File": "Replace File",
   "Reset": "Reset",
   "Restore defaults": "Restore defaults",
@@ -410,6 +497,8 @@
   "Size:": "Size:",
   "Skip": "Skip",
   "Skip All": "Skip All",
+  "Skipped: the name is already taken": "Skipped: the name is already taken",
+  "Skipped: write-protected": "Skipped: write-protected",
   "Slideshow interval": "Slideshow interval",
   "Slideshow transition": "Slideshow transition",
   "Sort": "Sort",
@@ -432,10 +521,12 @@
   "The base sets the application takes, in lookup order; tick one to take it": "The base sets the application takes, in lookup order; tick one to take it",
   "The file may be locked or in use by another program. Close it there, then try again.": "The file may be locked or in use by another program. Close it there, then try again.",
   "The first {0} of {1} items:": "The first {0} of {1} items:",
+  "The first {0} of {1} skipped items:": "The first {0} of {1} skipped items:",
   "The folder may be locked or in use by another program. Close it there, then try again.": "The folder may be locked or in use by another program. Close it there, then try again.",
   "The menus as they were opened, the toolbars as the program has them": "The menus as they were opened, the toolbars as the program has them",
   "the read-only attribute is set": "the read-only attribute is set",
   "The translation": "The translation",
+  "The two files have the same size and date. Keep both renames the pasted file to \"{0}\".": "The two files have the same size and date. Keep both renames the pasted file to \"{0}\".",
   "The two passwords do not match.": "The two passwords do not match.",
   "This application": "This application",
   "This cannot be undone.": "This cannot be undone.",
@@ -538,6 +629,14 @@
     "one": "{n} hour",
     "other": "{n} hours"
   },
+  "{n} item": {
+    "one": "{n} item",
+    "other": "{n} items"
+  },
+  "{n} item could not be deleted even with administrator permission.": {
+    "one": "{n} item could not be deleted even with administrator permission.",
+    "other": "{n} items could not be deleted even with administrator permission."
+  },
   "{n} minute": {
     "one": "{n} minute",
     "other": "{n} minutes"
@@ -545,5 +644,9 @@
   "{n} second": {
     "one": "{n} second",
     "other": "{n} seconds"
+  },
+  "{n} was skipped.": {
+    "one": "{n} was skipped.",
+    "other": "{n} were skipped."
   }
 }

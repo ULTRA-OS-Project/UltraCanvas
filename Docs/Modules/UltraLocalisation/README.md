@@ -161,7 +161,7 @@ with the values in its language.
 | Script | Does |
 |---|---|
 | `scripts/extract_ui_strings.py` | rewrites the English catalogues from the sources: adds the framework's `Tr` keys to `Standard.json` (never removes one, so the vocabulary stays) and rewrites each application's `en/<Name>.json` from its sites, keeping its metadata and listing what it inherits under `@inherited`; `--check` is the CI sync test |
-| `scripts/check_locale_catalogues.py` | the CI gate (`locale-catalogues.yml`): every translation parses, has no stale key, keeps the source's placeholders, has the plural forms its language needs, repeats no entry of a set below it, names only base sets that exist; and the English files are in sync. Findings that predate it are in `scripts/locale_catalogues_baseline.txt` |
+| `scripts/check_locale_catalogues.py` | the CI gate (`locale-catalogues.yml`): every translation parses, has no stale key, keeps the source's placeholders, has the plural forms its language needs, repeats no entry of a set below it, names only base sets that exist; every language translates every entry of the English standard set (a regional variant counts its parent's); and the English files are in sync. Findings that predate it are in `scripts/locale_catalogues_baseline.txt` |
 | `scripts/wrap_ui_strings.py` | the migration tool: wraps the literal in the text-taking parameter of every known entry point in `Tr(...)` and writes the file (or, with `--diff`, prints the change) for a person to review; a sentence built from pieces is rewritten as `TrF` by hand |
 
 ## Drafting a language

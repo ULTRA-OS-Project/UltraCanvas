@@ -50,6 +50,14 @@
 // itself is never touched, so renaming and every file operation still work on
 // the real one. A name that is not UTF-8 — written in a legacy code page by an
 // old tool or an unconverting unzip — is drawn decoded rather than as U+FFFD.
+// Version: 1.43.6 - the summaries a delete, a copy or a move ends on are
+//                  translated: the messages (counts through TrN, the trash by
+//                  the platform's name), the skip reasons, the administrator
+//                  delete's outcome, the list caption and the buttons
+// Version: 1.43.5 - the move / copy dialogs are translated whole: the drop
+//                  confirmation, the paste problem and name-conflict dialogs
+//                  and the rename-replace dialog, per verb and kind, counts
+//                  through TrN, the newer / older notes as TrC("age", ...)
 // Version: 1.43.4 - Refresh() moves up to the nearest existing folder when the
 //                  shown folder is gone and its volume is not
 // Version: 1.43.3 - a delete that Windows answers "access denied" is told
@@ -5808,36 +5816,43 @@ namespace UltraCanvas {
                                                  std::function<void()> onCancel) {
         if (!proceed) return;
 
-        const std::string verb = copyRequested ? "Copy" : "Move";
-        const std::string other = copyRequested ? "Move" : "Copy";
+        // Whole sentences per verb, translated: names as {0}, the count in
+        // the language's plural form.
+        const std::string verb = copyRequested ? Tr("Copy") : Tr("Move");
+        const std::string other = copyRequested ? Tr("Move") : Tr("Copy");
         const std::string destName = PathToUtf8(PathFromUtf8(destDir).filename());
+        const std::string into = destName.empty() ? destDir : destName;
         const std::vector<FilerEntry> entries = EntriesForPaths(sources);
-        std::string what;
-        if (sources.size() == 1) {
-            what = "\"" + RepairLegacyEncodedName(
-                    PathToUtf8(PathFromUtf8(sources.front()).filename())) + "\"";
-        } else {
-            what = std::to_string(sources.size()) + " items";
-        }
 
         OperationDialogSpec spec;
-        spec.title = verb + " files";
+        spec.title = copyRequested ? Tr("Copy files") : Tr("Move files");
         spec.type = DialogType::Question;
-        spec.question = verb + " " + what + " into \"" +
-                        (destName.empty() ? destDir : destName) + "\"?";
+        if (sources.size() == 1) {
+            const std::string name = RepairLegacyEncodedName(
+                    PathToUtf8(PathFromUtf8(sources.front()).filename()));
+            spec.question = copyRequested ? TrF("Copy \"{0}\" into \"{1}\"?", name, into)
+                                          : TrF("Move \"{0}\" into \"{1}\"?", name, into);
+        } else {
+            const long long n = static_cast<long long>(sources.size());
+            spec.question = LocalisationDetail::Substitute(
+                    copyRequested ? TrN("Copy {n} item into \"{0}\"?", "Copy {n} items into \"{0}\"?", n)
+                                  : TrN("Move {n} item into \"{0}\"?", "Move {n} items into \"{0}\"?", n),
+                    {into});
+        }
         // The full paths answer "which folder of that name" - a drop lands on
         // whatever folder happened to be under the cursor.
         const std::string from = CommonParentFolder(sources);
-        spec.facts = "**From:** " + (from.empty() ? std::string("several folders")
-                                                   : FactPath(from))
-                   + "\n\n**Into:** " + FactPath(destDir);
+        spec.facts = "**" + Tr("From:") + "** " + (from.empty() ? Tr("several folders")
+                                                               : FactPath(from))
+                   + "\n\n**" + Tr("Into:") + "** " + FactPath(destDir);
+        const std::string sizeLabel = "\n\n**" + Tr("Size:") + "** ";
         // How much is going: the set's tally, or a single entry's own size.
         // What a folder holds comes from the background walk the info bar
         // uses; the dialog opens at once and the line fills in as walks land.
         const std::string placeFacts = spec.facts;
-        auto sizeFacts = [this, placeFacts, entries]() {
+        auto sizeFacts = [this, placeFacts, sizeLabel, entries]() {
             if (entries.empty()) return placeFacts;
-            return placeFacts + "\n\n**Size:** " + CountedSizeFact(entries);
+            return placeFacts + sizeLabel + CountedSizeFact(entries);
         };
         spec.facts = sizeFacts();
         spec.liveFacts = sizeFacts;
@@ -5845,14 +5860,14 @@ namespace UltraCanvas {
             spec.listed.assign(entries.begin(), entries.begin() +
                     static_cast<std::ptrdiff_t>(std::min(entries.size(), kOperationListRows)));
             if (entries.size() > spec.listed.size())
-                spec.listCaption = "The first " + std::to_string(spec.listed.size())
-                                 + " of " + std::to_string(entries.size()) + " items:";
+                spec.listCaption = TrF("The first {0} of {1} items:", spec.listed.size(),
+                                       entries.size());
         }
         // Both verbs, the requested one as the coloured default: a drop with
         // the wrong modifier is put right here instead of by a second drag.
         spec.buttons = {{verb, DialogButtonRole::Default},
                         {other, DialogButtonRole::Normal},
-                        {"Cancel", DialogButtonRole::Cancel}};
+                        {Tr("Cancel"), DialogButtonRole::Cancel}};
         spec.width = entries.size() > 1 ? 600 : 520;
 
         const bool shown = ShowOperationDialog(spec,
@@ -6474,7 +6489,7 @@ namespace UltraCanvas {
                     continue;
                 }
                 if (action == PasteConflictAction::Skip)
-                    pp->skipped.push_back({src, "Skipped: the name is already taken", folder});
+                    pp->skipped.push_back({src, Tr("Skipped: the name is already taken"), folder});
             }
             pp->currentAction = action;
             for (;;) {
@@ -6497,7 +6512,7 @@ namespace UltraCanvas {
                     return;
                 }
                 if (pp->skipFailedForAll) {         // skip it, for the summary
-                    pp->skipped.push_back({src, why.empty() ? std::string("unknown error") : why,
+                    pp->skipped.push_back({src, why.empty() ? Tr("unknown error") : why,
                                            folder});
                     break;
                 }
@@ -6570,15 +6585,18 @@ namespace UltraCanvas {
         // end. A Stop or a Cancel already said what happened, and a paste
         // where nothing was skipped needs no window after its own.
         if (walkedToEnd && !skipped.empty()) {
-            const size_t total = pasted + skipped.size();
-            std::string message = std::string(cut ? "Moved " : "Copied ")
-                    + std::to_string(pasted) + " of " + std::to_string(total)
-                    + (total == 1 ? " item. " : " items. ")
-                    + std::to_string(skipped.size())
-                    + (skipped.size() == 1 ? " was skipped." : " were skipped.");
-            ShowOperationSummary(cut ? "Move finished" : "Copy finished", message, skipped,
-                    "**Into:** " + FactPath(destination),
-                    cut ? "Move skipped items again" : "Copy skipped items again",
+            // Two sentences, each count in the language's plural form; the
+            // first count is the total's, the done count goes in as {0}.
+            const long long total = static_cast<long long>(pasted + skipped.size());
+            const std::string message = LocalisationDetail::Substitute(
+                        cut ? TrN("Moved {0} of {n} item.", "Moved {0} of {n} items.", total)
+                            : TrN("Copied {0} of {n} item.", "Copied {0} of {n} items.", total),
+                        {std::to_string(pasted)})
+                    + " " + TrN("{n} was skipped.", "{n} were skipped.",
+                                static_cast<long long>(skipped.size()));
+            ShowOperationSummary(cut ? Tr("Move finished") : Tr("Copy finished"), message, skipped,
+                    "**" + Tr("Into:") + "** " + FactPath(destination),
+                    cut ? Tr("Move skipped items again") : Tr("Copy skipped items again"),
                     [this, skipped, cut]() { RetrySkippedPaste(skipped, cut); });
         }
     }
@@ -6677,11 +6695,11 @@ namespace UltraCanvas {
         spec.listDetails = false;   // the reason takes the room
         spec.listVisibleRows = 8;
         if (skipped.size() > spec.listed.size())
-            spec.listCaption = "The first " + std::to_string(spec.listed.size())
-                             + " of " + std::to_string(skipped.size()) + " skipped items:";
+            spec.listCaption = TrF("The first {0} of {1} skipped items:", spec.listed.size(),
+                                   skipped.size());
         if (!retryLabel.empty() && onRetry)
             spec.buttons.push_back({retryLabel, DialogButtonRole::Normal});
-        spec.buttons.push_back({"Close", DialogButtonRole::Default});
+        spec.buttons.push_back({Tr("Close"), DialogButtonRole::Default});
         spec.width = 620;
         const bool hasRetry = !retryLabel.empty() && onRetry;
         if (!ShowOperationDialog(spec,
@@ -6792,32 +6810,49 @@ namespace UltraCanvas {
         std::error_code ec;
         const fs::path from = PathFromUtf8(src);
         const std::string name = RepairLegacyEncodedName(PathToUtf8(from.filename()));
-        const std::string kind = fs::is_directory(UltraCanvas::PathFromUtf8(from), ec) ? "folder" : "file";
+        // Whole sentences per kind and verb: a word passed in would stay
+        // English, and most languages inflect around it.
+        const bool isFolder = fs::is_directory(UltraCanvas::PathFromUtf8(from), ec);
         const bool moving = pendingPaste->cut;
-        const std::string verb = moving ? "moved" : "copied";
         const size_t at = pendingPaste->next;
         const std::string folder =
                 at < pendingPaste->itemFolders.size() && !pendingPaste->itemFolders[at].empty()
                 ? pendingPaste->itemFolders[at] : pendingPaste->folder;
-        const std::string why = reason.empty() ? std::string("unknown error") : reason;
+        const std::string why = reason.empty() ? Tr("unknown error") : reason;
 
         OperationDialogSpec spec;
-        spec.title = std::string(moving ? "Move" : "Copy") + ": a " + kind
-                   + " could not be " + verb;
+        spec.title = moving ? (isFolder ? Tr("Move: a folder could not be moved")
+                                        : Tr("Move: a file could not be moved"))
+                            : (isFolder ? Tr("Copy: a folder could not be copied")
+                                        : Tr("Copy: a file could not be copied"));
         spec.type = DialogType::Warning;
-        spec.question = "\"" + name + "\" could not be " + verb + ".";
+        spec.question = moving ? TrF("\"{0}\" could not be moved.", name)
+                               : TrF("\"{0}\" could not be copied.", name);
         // The whole failure, spelled out: the operating system's own words for
         // why, the folder it was in and the one it was headed for.
-        spec.facts = "**Reason:** " + why
-                   + "\n\n**From:** " + FactPath(PathToUtf8(from.parent_path()))
-                   + "\n\n**Into:** " + FactPath(folder);
-        spec.note = "A " + kind + " that another program still holds open - or that is "
-                    "shown in a preview - cannot be " + verb + " until that program lets "
-                    "go of it. Close it there, then try again.";
-        spec.applyToAllLabel = "Apply to all later failures";
-        spec.buttons = {{"Try again", DialogButtonRole::Default},
-                        {"Skip", DialogButtonRole::Normal},
-                        {"Stop", DialogButtonRole::Cancel}};
+        spec.facts = "**" + Tr("Reason:") + "** " + why
+                   + "\n\n**" + Tr("From:") + "** " + FactPath(PathToUtf8(from.parent_path()))
+                   + "\n\n**" + Tr("Into:") + "** " + FactPath(folder);
+        if (moving)
+            spec.note = isFolder
+                    ? Tr("A folder that another program still holds open - or that is shown "
+                         "in a preview - cannot be moved until that program lets go of it. "
+                         "Close it there, then try again.")
+                    : Tr("A file that another program still holds open - or that is shown "
+                         "in a preview - cannot be moved until that program lets go of it. "
+                         "Close it there, then try again.");
+        else
+            spec.note = isFolder
+                    ? Tr("A folder that another program still holds open - or that is shown "
+                         "in a preview - cannot be copied until that program lets go of it. "
+                         "Close it there, then try again.")
+                    : Tr("A file that another program still holds open - or that is shown "
+                         "in a preview - cannot be copied until that program lets go of it. "
+                         "Close it there, then try again.");
+        spec.applyToAllLabel = Tr("Apply to all later failures");
+        spec.buttons = {{Tr("Try again"), DialogButtonRole::Default},
+                        {Tr("Skip"), DialogButtonRole::Normal},
+                        {Tr("Stop"), DialogButtonRole::Cancel}};
         spec.width = 620;
 
         auto self = this;
@@ -6868,8 +6903,17 @@ namespace UltraCanvas {
                 ++n;
             return n;
         }
+        // Why an entry stayed because a program holds it, for the summary
+        // row: "in use", or "in use by A, B" naming the programs.
+        std::string InUseReason(const std::vector<std::string>& holders) {
+            if (holders.empty()) return Tr("in use");
+            std::string list;
+            for (size_t i = 0; i < holders.size(); ++i) list += (i ? ", " : "") + holders[i];
+            return TrF("in use by {0}", list);
+        }
+        // "3 items", in the language's plural form.
         std::string Items(size_t n) {
-            return std::to_string(n) + (n == 1 ? " item" : " items");
+            return TrN("{n} item", "{n} items", static_cast<long long>(n));
         }
         // What tells two entries of the same name apart, for the row beside
         // each: which is newer, or that nothing does ("same": a file of the
@@ -6878,10 +6922,12 @@ namespace UltraCanvas {
                              std::string& aNote, std::string& bNote) {
             const bool identical = !a.isDirectory && !b.isDirectory &&
                                    a.size == b.size && a.modifiedTime == b.modifiedTime;
-            if (identical)                              aNote = bNote = "same";
-            else if (a.modifiedTime == b.modifiedTime)  aNote = bNote = "same date";
-            else if (b.modifiedTime > a.modifiedTime) { aNote = "older"; bNote = "newer"; }
-            else                                      { aNote = "newer"; bNote = "older"; }
+            // A context ("age|newer"): the words stand alone beside a row and
+            // a language may need a different form than elsewhere.
+            if (identical)                              aNote = bNote = TrC("age", "same");
+            else if (a.modifiedTime == b.modifiedTime)  aNote = bNote = TrC("age", "same date");
+            else if (b.modifiedTime > a.modifiedTime) { aNote = TrC("age", "older"); bNote = TrC("age", "newer"); }
+            else                                      { aNote = TrC("age", "newer"); bNote = TrC("age", "older"); }
         }
     }
 
@@ -6899,7 +6945,6 @@ namespace UltraCanvas {
         const std::string dest = PathToUtf8(PathFromUtf8(folder) / from.filename());
         const bool isDir = fs::is_directory(UltraCanvas::PathFromUtf8(from), ec) &&
                            fs::is_directory(PathFromUtf8(dest), ec);
-        const std::string kind = isDir ? "folder" : "file";
         std::string folderName = PathToUtf8(PathFromUtf8(folder).filename());
         if (folderName.empty()) folderName = folder;
 
@@ -6938,46 +6983,55 @@ namespace UltraCanvas {
 
         const std::string keepBothName = PathToUtf8(PathFromUtf8(
                 UniquePathIn(folder, PathToUtf8(from.filename()))).filename());
-        const std::string moveVerb = pp.cut ? "moves" : "copies";
 
         OperationDialogSpec spec;
-        spec.title = std::string(pp.cut ? "Move" : "Copy") + ": the name is already taken";
+        spec.title = pp.cut ? Tr("Move: the name is already taken")
+                            : Tr("Copy: the name is already taken");
         spec.type = DialogType::Question;
         spec.question = isDir
-                ? "A folder \"" + name + "\" already exists in \"" + folderName + "\"."
-                : "\"" + name + "\" already exists in \"" + folderName + "\".";
+                ? TrF("A folder \"{0}\" already exists in \"{1}\".", name, folderName)
+                : TrF("\"{0}\" already exists in \"{1}\".", name, folderName);
         spec.listed = {existing, pasted};
-        spec.rowLabels = {"Existing", "Pasted"};
+        spec.rowLabels = {Tr("Existing"), Tr("Pasted")};
         spec.rowNotes = {existingNote, pastedNote};
         spec.listVisibleRows = 2;
         if (isDir) {
-            spec.note = "Merge " + moveVerb + " the " + Items(pastedCount)
-                      + " into the existing folder and asks about any name that is "
-                        "taken inside it. Replace deletes the existing folder and its "
-                      + Items(existingCount) + " first.";
+            // {0} and {1} are counts already in the language's plural form
+            // ("3 items").
+            spec.note = pp.cut
+                    ? TrF("Merge moves the {0} into the existing folder and asks about any "
+                          "name that is taken inside it. Replace deletes the existing folder "
+                          "and its {1} first.", Items(pastedCount), Items(existingCount))
+                    : TrF("Merge copies the {0} into the existing folder and asks about any "
+                          "name that is taken inside it. Replace deletes the existing folder "
+                          "and its {1} first.", Items(pastedCount), Items(existingCount));
         } else if (identical) {
-            spec.note = "The two files have the same size and date. Keep both renames "
-                        "the pasted file to \"" + keepBothName + "\".";
+            spec.note = TrF("The two files have the same size and date. Keep both renames "
+                            "the pasted file to \"{0}\".", keepBothName);
         } else {
-            spec.note = "Keep both renames the pasted file to \"" + keepBothName + "\".";
+            spec.note = TrF("Keep both renames the pasted file to \"{0}\".", keepBothName);
         }
         if (remaining > 0) {
-            spec.applyToAllLabel = "Apply to all " + std::to_string(remaining) + " remaining "
-                                 + (isDir ? "folder conflicts" : "conflicts");
+            const long long n = static_cast<long long>(remaining);
+            spec.applyToAllLabel = isDir
+                    ? TrN("Apply to the {n} remaining folder conflict",
+                          "Apply to all {n} remaining folder conflicts", n)
+                    : TrN("Apply to the {n} remaining conflict",
+                          "Apply to all {n} remaining conflicts", n);
             spec.applyToAllChecked = isDir ? pp.applyToAllFolders : pp.applyToAll;
         }
         if (isDir) {
-            spec.buttons = {{"Merge", DialogButtonRole::Default},
-                            {"Replace", DialogButtonRole::Destructive},
-                            {"Skip", DialogButtonRole::Normal},
-                            {"Stop", DialogButtonRole::Cancel}};
+            spec.buttons = {{Tr("Merge"), DialogButtonRole::Default},
+                            {Tr("Replace"), DialogButtonRole::Destructive},
+                            {Tr("Skip"), DialogButtonRole::Normal},
+                            {Tr("Stop"), DialogButtonRole::Cancel}};
         } else {
-            spec.buttons = {{"Keep both", identical ? DialogButtonRole::Normal
-                                                    : DialogButtonRole::Default},
-                            {"Replace", DialogButtonRole::Normal},
-                            {"Skip", identical ? DialogButtonRole::Default
-                                               : DialogButtonRole::Normal},
-                            {"Stop", DialogButtonRole::Cancel}};
+            spec.buttons = {{Tr("Keep both"), identical ? DialogButtonRole::Normal
+                                                        : DialogButtonRole::Default},
+                            {Tr("Replace"), DialogButtonRole::Normal},
+                            {Tr("Skip"), identical ? DialogButtonRole::Default
+                                                   : DialogButtonRole::Normal},
+                            {Tr("Stop"), DialogButtonRole::Cancel}};
         }
         spec.width = 700;
 
@@ -7415,7 +7469,7 @@ namespace UltraCanvas {
                     credit.Rollback();
                     if (pd->skipFailedForAll) {
                         pd->skipped.push_back({e.path, trashError.empty()
-                                ? std::string("unknown error") : trashError, {}});
+                                ? Tr("unknown error") : trashError, {}});
                         AdvancePendingDelete();
                         continue;
                     }
@@ -7454,7 +7508,7 @@ namespace UltraCanvas {
                     return;
                 }
                 if (action == DeleteProblemAction::Skip) {
-                    pd->skipped.push_back({e.path, "Skipped: write-protected", {}});
+                    pd->skipped.push_back({e.path, Tr("Skipped: write-protected"), {}});
                     AdvancePendingDelete();
                     continue;
                 }
@@ -7524,14 +7578,7 @@ namespace UltraCanvas {
                     continue;
                 }
                 std::string reason = ec ? ec.message() : std::string("unknown error");
-                if (inUse) {
-                    reason = "in use";
-                    if (!holders.empty()) {
-                        reason += " by ";
-                        for (size_t i = 0; i < holders.size(); ++i)
-                            reason += (i ? ", " : "") + holders[i];
-                    }
-                }
+                if (inUse) reason = InUseReason(holders);
                 if (pd->skipFailedForAll) {
                     pd->skipped.push_back({e.path, failedPath.empty()
                             ? reason
@@ -7548,7 +7595,7 @@ namespace UltraCanvas {
                 pd->stopKind = inUse           ? DeleteProblemKind::InUse
                              : needsPermission ? DeleteProblemKind::NeedsPermission
                                                : DeleteProblemKind::Failed;
-                pd->stopReason = ec ? ec.message() : std::string("unknown error");
+                pd->stopReason = ec ? ec.message() : Tr("unknown error");
                 pd->stopPath = failedPath;
                 pd->stopHolders = holders;
                 return;
@@ -7648,9 +7695,6 @@ namespace UltraCanvas {
             if (!folder.empty()) pd.modifiedFolders.push_back(folder);
         }
         const size_t left = pd.elevatedVictims.size() - gone;
-        auto items = [](size_t n) {
-            return std::to_string(n) + (n == 1 ? " item" : " items");
-        };
 
         switch (result.outcome) {
             case ElevatedOutcome::Completed:
@@ -7662,23 +7706,25 @@ namespace UltraCanvas {
                     for (const auto& f : result.failures)
                         failed.push_back({f.path, f.reason, std::string()});
                     const std::string message = result.failures.size() == 1
-                            ? "\"" + PathToUtf8(PathFromUtf8(result.failures.front().path).filename())
-                              + "\" could not be deleted even with administrator permission."
-                            : items(result.failures.size())
-                              + " could not be deleted even with administrator permission.";
-                    ShowOperationSummary("Delete finished", message, failed,
+                            ? TrF("\"{0}\" could not be deleted even with administrator permission.",
+                                  PathToUtf8(PathFromUtf8(result.failures.front().path).filename()))
+                            : TrN("{n} item could not be deleted even with administrator permission.",
+                                  "{n} items could not be deleted even with administrator permission.",
+                                  static_cast<long long>(result.failures.size()));
+                    ShowOperationSummary(Tr("Delete finished"), message, failed,
                                          std::string(), std::string(), nullptr);
                 }
                 break;
             case ElevatedOutcome::Declined:
-                ReportError("Administrator permission was not granted; "
-                            + items(left) + " left in place.");
+                ReportError(TrN("Administrator permission was not granted; {n} item left in place.",
+                                "Administrator permission was not granted; {n} items left in place.",
+                                static_cast<long long>(left)));
                 break;
             case ElevatedOutcome::Failed:
-                ReportError("Could not delete as administrator: " + result.error);
+                ReportError(TrF("Could not delete as administrator: {0}", result.error));
                 break;
             case ElevatedOutcome::Unavailable:
-                ReportError("Deleting as administrator is not available: " + result.error);
+                ReportError(TrF("Deleting as administrator is not available: {0}", result.error));
                 break;
         }
         FinishPendingDelete();   // elevationStarted: the ordinary finish now
@@ -7734,17 +7780,29 @@ namespace UltraCanvas {
         // (Entries handed to the administrator were reported by that run.)
         if (walkedToEnd && !pd->skipped.empty()) {
             const bool toTrash = pd->toTrash;
-            const size_t total = pd->removed + pd->skipped.size();
-            std::string message = std::string(toTrash ? "Moved " : "Deleted ")
-                    + std::to_string(pd->removed) + " of " + std::to_string(total)
-                    + (total == 1 ? " item" : " items")
-                    + (toTrash ? " to the " + TrashDisplayName() + ". " : std::string(". "))
-                    + std::to_string(pd->skipped.size())
-                    + (pd->skipped.size() == 1 ? " was skipped." : " were skipped.");
+            // Two sentences, the counts in the language's plural forms, the
+            // trash by the platform's name for it - whole sentences, since a
+            // name passed in would stay English.
+            const long long total = static_cast<long long>(pd->removed + pd->skipped.size());
+#if defined(_WIN32) || defined(_WIN64)
+            const std::string first = toTrash
+                    ? TrN("Moved {0} of {n} item to the Recycle Bin.",
+                          "Moved {0} of {n} items to the Recycle Bin.", total)
+                    : TrN("Deleted {0} of {n} item.", "Deleted {0} of {n} items.", total);
+#else
+            const std::string first = toTrash
+                    ? TrN("Moved {0} of {n} item to the Trash.",
+                          "Moved {0} of {n} items to the Trash.", total)
+                    : TrN("Deleted {0} of {n} item.", "Deleted {0} of {n} items.", total);
+#endif
+            const std::string message =
+                    LocalisationDetail::Substitute(first, {std::to_string(pd->removed)})
+                    + " " + TrN("{n} was skipped.", "{n} were skipped.",
+                                static_cast<long long>(pd->skipped.size()));
             std::vector<std::string> again;
             for (const SkippedItem& item : pd->skipped) again.push_back(item.path);
-            ShowOperationSummary("Delete finished", message, pd->skipped, std::string(),
-                    "Delete skipped items again",
+            ShowOperationSummary(Tr("Delete finished"), message, pd->skipped, std::string(),
+                    Tr("Delete skipped items again"),
                     [this, again, toTrash]() {
                         DeletePaths(again, nullptr, toTrash ? FilerDeleteMode::MoveToTrash
                                                             : FilerDeleteMode::Permanently);
@@ -7939,12 +7997,7 @@ namespace UltraCanvas {
         const FilerEntry victim = entry;   // `entry` aliases the queue
         // What the summary says about a skipped entry: the file that
         // stopped it and, for one in use, who holds it.
-        std::string skipReason = why;
-        if (inUse) {
-            skipReason = "in use";
-            for (size_t i = 0; i < holders.size(); ++i)
-                skipReason += (i ? ", " : " by ") + holders[i];
-        }
+        std::string skipReason = inUse ? InUseReason(holders) : why;
         if (!culpritName.empty()) skipReason = culpritName + ": " + skipReason;
         const bool shown = ShowOperationDialog(spec,
                 [self, kind, victim, answers, skipReason](size_t button, bool all) {
@@ -7969,7 +8022,7 @@ namespace UltraCanvas {
                                     pd.protectedForAll = true;
                                     pd.protectedAction = DeleteProblemAction::Skip;
                                 }
-                                pd.skipped.push_back({victim.path, "Skipped: write-protected", {}});
+                                pd.skipped.push_back({victim.path, Tr("Skipped: write-protected"), {}});
                             } else {
                                 if (all) pd.skipFailedForAll = true;
                                 pd.skipped.push_back({victim.path, skipReason, {}});
@@ -8454,7 +8507,6 @@ namespace UltraCanvas {
         const std::string oldName = RepairLegacyEncodedName(
                 PathToUtf8(PathFromUtf8(oldPath).filename()));
         const bool isDir = fs::is_directory(UltraCanvas::PathFromUtf8(target), ec);
-        const std::string kind = isDir ? "folder" : "file";
 
         // The two of them side by side: the entry that has the name, and the
         // entry about to take it.
@@ -8471,16 +8523,20 @@ namespace UltraCanvas {
         OperationDialogSpec spec;
         spec.title = Tr("Rename: the name is already taken");
         spec.type = DialogType::Warning;
-        spec.question = "A " + kind + " \"" + newName + "\" already exists in this folder.";
-        spec.facts = "**Folder:** " + FactPath(PathToUtf8(target.parent_path()));
+        spec.question = isDir ? TrF("A folder \"{0}\" already exists in this folder.", newName)
+                              : TrF("A file \"{0}\" already exists in this folder.", newName);
+        spec.facts = "**" + Tr("Folder:") + "** " + FactPath(PathToUtf8(target.parent_path()));
         spec.listed = {existing, renamed};
-        spec.rowLabels = {"Existing", "Renamed"};
+        spec.rowLabels = {Tr("Existing"), Tr("Renamed")};
         spec.rowNotes = {existingNote, renamedNote};
         spec.listVisibleRows = 2;
-        spec.note = "Replace deletes the existing " + kind + " and gives \"" + oldName
-                  + "\" its name. This cannot be undone.";
-        spec.buttons = {{"Replace", DialogButtonRole::DestructiveDefault},
-                        {"Cancel", DialogButtonRole::Cancel}};
+        spec.note = isDir
+                ? TrF("Replace deletes the existing folder and gives \"{0}\" its name. "
+                      "This cannot be undone.", oldName)
+                : TrF("Replace deletes the existing file and gives \"{0}\" its name. "
+                      "This cannot be undone.", oldName);
+        spec.buttons = {{Tr("Replace"), DialogButtonRole::DestructiveDefault},
+                        {Tr("Cancel"), DialogButtonRole::Cancel}};
         spec.width = 640;
 
         auto self = this;
