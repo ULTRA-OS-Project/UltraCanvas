@@ -1,5 +1,6 @@
 // Apps/UltraSnip/ui/UltraSnipWindow.cpp
 // See the header.
+// Version: 0.4.1 - the delay list measured in its font, not estimated (Thai ran wide)
 // Version: 0.4.0 - the texts go through Tr (UltraLocalisation)
 // Version: 0.3.0 - one bar at the top, icons for the choices and actions, the settings
 //                  window's type size; the bar alone until there is a snip; New is Start
@@ -34,6 +35,7 @@
 #include "UltraLocalisation/UltraLocalisation.h"
 
 #include <algorithm>
+#include <cmath>
 #include <filesystem>
 #include <utility>
 #include <vector>
@@ -208,17 +210,32 @@ std::shared_ptr<UltraCanvasContainer> UltraSnipWindow::BuildToolbar() {
         delays_->SetStyle(look);
     }
     // As wide as its longest item in the language shown ("Keine Verzögerung",
-    // "Καθυστέρηση 10 δευτ."): the text at ~0.62 em a character, plus the
-    // arrow and padding. Measuring needs a render context the bar does not
-    // have yet.
+    // "Καθυστέρηση 10 δευτ.", "ไม่หน่วงเวลา"), plus the arrow and padding:
+    // measured in the dropdown's own font by the window, which has its render
+    // context before the bar is built. Without one, an estimate of ~0.62 em
+    // a character - which counts Thai and Devanagari vowel marks as
+    // characters, so it runs wide there.
     std::vector<std::string> delayItems = {Tr("No delay")};
     for (int seconds : {3, 5, 10}) delayItems.push_back(TrF("{0} s delay", seconds));
-    int longest = 0;
+    const DropdownStyle& delayLook = delays_->GetStyle();
+    IRenderContext* measure = window_ ? window_->GetRenderContext() : nullptr;
+    if (measure) {
+        measure->PushState();
+        measure->SetFontFace(delayLook.fontFamily, FontWeight::Normal, FontSlant::Normal);
+        measure->SetFontSize(delayLook.fontSize);
+    }
+    int widest = 0;
     for (const std::string& item : delayItems) {
-        longest = std::max(longest, utf8_length(item));
+        const int width = measure ? measure->GetTextLineWidth(item)
+                                  : static_cast<int>(utf8_length(item) * delayLook.fontSize * 0.62f);
+        widest = std::max(widest, width);
         delays_->AddItem(item);
     }
-    const int delayWidth = std::clamp(static_cast<int>(longest * SettingsPageKit::kTextFontSize * 0.62f) + 40, 96, 180);
+    if (measure) measure->PopState();
+    // The text starts paddingLeft in and is clipped arrowSize * 2 + 3 before
+    // the right edge (UltraCanvasDropdown::RenderButton); 6 more for air.
+    const int chrome = static_cast<int>(std::ceil(delayLook.paddingLeft + delayLook.arrowSize * 2.0f + 3.0f)) + 6;
+    const int delayWidth = std::clamp(widest + chrome, 80, 200);
     delays_->SetSize(delayWidth, kControlHeight);
     delays_->size.width = CSSLayout::Dimension::Px(static_cast<float>(delayWidth));
     delays_->SetTooltip(Tr("Wait before the screen is taken, so a menu can be opened first"));
