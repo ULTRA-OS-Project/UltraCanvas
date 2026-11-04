@@ -1,3 +1,9 @@
+#### 2026-11-04 *1.107.1*
+- Seventeen more texts go through `Tr`: the settings window's and the
+  properties' buttons, the Run Windows program dialog's environment item
+  and its Wine note, the folder tree's section names, the upload
+  conflict's and the eject question's buttons, the CSV export filter.
+
 #### 2026-11-04 *1.107.0*
 - **UltraFiler speaks the chosen language.** Its own texts - the toolbar's
   tooltips and drop-downs, the menus, the dialogs (Find text, New RAM disc,

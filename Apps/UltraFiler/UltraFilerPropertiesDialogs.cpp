@@ -6,6 +6,7 @@
 // matrix (special bits like setuid are preserved), reduced to a single
 // "Read-only" switch on Windows, where only the write bits map onto the
 // filesystem attribute.
+// Version: 1.0.3 - the texts the wrapping tool 1.1.0 finds (the page kit's buttons, dropdown items, dialog buttons, tree nodes) go through Tr
 // Version: 1.0.2 - the interface strings go through Tr (UltraLocalisation)
 // Version: 1.0.1 - Read-only works on a name outside the Windows code page
 // Last Modified: 2026-10-07
@@ -183,7 +184,7 @@ namespace {
         bottom->SetPadding(8, 12, 8, 12);
         bottom->SetBorderTop(1, Color(225, 225, 230, 255));
         UltraCanvasWindow* raw = window.get();
-        bottom->AddChild(MakeButton(idPrefix + "-close", "Close", 90,
+        bottom->AddChild(MakeButton(idPrefix + "-close", Tr("Close"), 90,
                 [raw]() { raw->Close(); }));
         window->AddChild(bottom);
 
@@ -472,7 +473,7 @@ void UltraFilerPropertiesDialogs::ShowAccess(
                          .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     buttonRow->size.height = CSSLayout::Dimension::Px(34);
     AccessState* raw = state.get();
-    buttonRow->AddChild(MakeButton("ufl-acc-apply", "Apply", 90,
+    buttonRow->AddChild(MakeButton("ufl-acc-apply", Tr("Apply"), 90,
             [raw]() { ApplyAccess(raw); }));
     content->AddChild(buttonRow);
 
