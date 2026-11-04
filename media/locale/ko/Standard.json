@@ -4,6 +4,7 @@
   "@translated-by": "machine draft 2026-11-03, reviewed by -",
   "\"{0}\" already exists in \"{1}\".": "\"{0}\"이(가) \"{1}\"에 이미 있습니다.",
   "\"{0}\" could not be copied.": "\"{0}\"을(를) 복사할 수 없습니다.",
+  "\"{0}\" could not be deleted even with administrator permission.": "\"{0}\"을(를) 관리자 권한으로도 삭제할 수 없습니다.",
   "\"{0}\" could not be deleted.": "\"{0}\"을(를) 삭제할 수 없습니다.",
   "\"{0}\" could not be moved to the Recycle Bin.": "\"{0}\"을(를) 휴지통으로 이동할 수 없습니다.",
   "\"{0}\" could not be moved to the Trash.": "\"{0}\"을(를) 휴지통으로 이동할 수 없습니다.",
@@ -35,6 +36,9 @@
   "Add": "추가",
   "Add to Dictionary": "사전에 추가",
   "Address": "주소",
+  "Administrator permission was not granted; {n} item left in place.": {
+    "other": "관리자 권한이 허용되지 않았습니다. 항목 {n}개가 그대로 남아 있습니다."
+  },
   "age|newer": "더 새로움",
   "age|older": "더 오래됨",
   "age|same": "동일",
@@ -108,16 +112,22 @@
   "Context": "컨텍스트",
   "Continue": "계속",
   "Copied to the clipboard": "클립보드에 복사됨",
+  "Copied {0} of {n} item.": {
+    "other": "항목 {n}개 중 {0}개를 복사했습니다."
+  },
   "Copy": "복사",
   "Copy \"{0}\" into \"{1}\"?": "\"{0}\"을(를) \"{1}\"에 복사하시겠습니까?",
   "Copy files": "파일 복사",
+  "Copy finished": "복사 완료",
   "Copy path": "경로 복사",
+  "Copy skipped items again": "건너뛴 항목 다시 복사",
   "Copy {n} item into \"{0}\"?": {
     "other": "{n}개 항목을 \"{0}\"에 복사하시겠습니까?"
   },
   "Copy: a file could not be copied": "복사: 파일을 복사할 수 없습니다",
   "Copy: a folder could not be copied": "복사: 폴더를 복사할 수 없습니다",
   "Copy: the name is already taken": "복사: 이름이 이미 사용 중입니다",
+  "Could not delete as administrator: {0}": "관리자 권한으로 삭제할 수 없습니다: {0}",
   "Could not read {0}": "{0}을(를) 읽을 수 없습니다",
   "Could not save {0}": "{0}을(를) 저장할 수 없습니다",
   "Could not write {0}": "{0}에 쓸 수 없습니다",
@@ -137,7 +147,9 @@
   "Delete anyway": "무시하고 삭제",
   "Delete anyway removes the protection first.": "\"무시하고 삭제\"를 선택하면 먼저 보호가 해제됩니다.",
   "Delete as administrator": "관리자 권한으로 삭제",
+  "Delete finished": "삭제 완료",
   "Delete permanently": "영구적으로 삭제",
+  "Delete skipped items again": "건너뛴 항목 다시 삭제",
   "Delete {n} item?": {
     "other": "{n}개 항목을 삭제하시겠습니까?"
   },
@@ -153,6 +165,10 @@
   "Delete: administrator permission needed": "삭제: 관리자 권한이 필요합니다",
   "Delete: the file is in use": "삭제: 파일이 사용 중입니다",
   "Delete: the folder is in use": "삭제: 폴더가 사용 중입니다",
+  "Deleted {0} of {n} item.": {
+    "other": "항목 {n}개 중 {0}개를 삭제했습니다."
+  },
+  "Deleting as administrator is not available: {0}": "관리자 권한으로 삭제를 사용할 수 없습니다: {0}",
   "Demote to the application (from {0})": "애플리케이션으로 내리기 ({0}에서)",
   "Descending": "내림차순",
   "Description": "설명",
@@ -245,6 +261,8 @@
   "Images": "이미지",
   "Import": "가져오기",
   "in": "세트:",
+  "in use": "사용 중",
+  "in use by {0}": "{0}에서 사용 중",
   "In use by:": "사용 중인 프로그램:",
   "in {n} folder": {
     "other": "/ {n}개 폴더"
@@ -322,6 +340,8 @@
   "Move Down": "아래로 이동",
   "Move down": "아래로 이동",
   "Move files": "파일 이동",
+  "Move finished": "이동 완료",
+  "Move skipped items again": "건너뛴 항목 다시 이동",
   "Move to Recycle Bin": "휴지통으로 이동",
   "Move to Recycle Bin can be undone from the Recycle Bin. Delete permanently cannot be undone.": "\"휴지통으로 이동\"은 휴지통에서 되돌릴 수 있습니다. \"영구적으로 삭제\"는 되돌릴 수 없습니다.",
   "Move to Trash": "휴지통으로 이동",
@@ -334,6 +354,15 @@
   "Move: a file could not be moved": "이동: 파일을 이동할 수 없습니다",
   "Move: a folder could not be moved": "이동: 폴더를 이동할 수 없습니다",
   "Move: the name is already taken": "이동: 이름이 이미 사용 중입니다",
+  "Moved {0} of {n} item to the Recycle Bin.": {
+    "other": "항목 {n}개 중 {0}개를 휴지통으로 이동했습니다."
+  },
+  "Moved {0} of {n} item to the Trash.": {
+    "other": "항목 {n}개 중 {0}개를 휴지통으로 이동했습니다."
+  },
+  "Moved {0} of {n} item.": {
+    "other": "항목 {n}개 중 {0}개를 이동했습니다."
+  },
   "Music": "음악",
   "Name": "이름",
   "Network": "네트워크",
@@ -454,6 +483,8 @@
   "Size:": "크기:",
   "Skip": "건너뛰기",
   "Skip All": "모두 건너뛰기",
+  "Skipped: the name is already taken": "건너뜀: 이름이 이미 사용 중입니다",
+  "Skipped: write-protected": "건너뜀: 쓰기 금지됨",
   "Slideshow interval": "슬라이드 쇼 간격",
   "Slideshow transition": "슬라이드 쇼 전환",
   "Sort": "정렬",
@@ -476,6 +507,7 @@
   "The base sets the application takes, in lookup order; tick one to take it": "애플리케이션이 사용하는 베이스 세트(조회 순서). 사용하려면 체크하십시오",
   "The file may be locked or in use by another program. Close it there, then try again.": "파일이 잠겨 있거나 다른 프로그램에서 사용 중일 수 있습니다. 해당 프로그램에서 파일을 닫은 후 다시 시도하십시오.",
   "The first {0} of {1} items:": "항목 {1}개 중 처음 {0}개:",
+  "The first {0} of {1} skipped items:": "건너뛴 항목 {1}개 중 처음 {0}개:",
   "The folder may be locked or in use by another program. Close it there, then try again.": "폴더가 잠겨 있거나 다른 프로그램에서 사용 중일 수 있습니다. 해당 프로그램에서 폴더를 닫은 후 다시 시도하십시오.",
   "The menus as they were opened, the toolbars as the program has them": "메뉴는 열었을 때의 상태, 도구 모음은 프로그램의 현재 상태",
   "the read-only attribute is set": "읽기 전용 특성이 설정되어 있음",
@@ -581,10 +613,16 @@
   "{n} item": {
     "other": "{n}개 항목"
   },
+  "{n} item could not be deleted even with administrator permission.": {
+    "other": "항목 {n}개는 관리자 권한으로도 삭제할 수 없습니다."
+  },
   "{n} minute": {
     "other": "{n}분"
   },
   "{n} second": {
     "other": "{n}초"
+  },
+  "{n} was skipped.": {
+    "other": "항목 {n}개를 건너뛰었습니다."
   }
 }

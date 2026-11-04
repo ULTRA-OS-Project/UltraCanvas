@@ -4,6 +4,7 @@
   "@translated-by": "machine draft 2026-11-03, reviewed by -",
   "\"{0}\" already exists in \"{1}\".": "\"{0}\" sudah ada di \"{1}\".",
   "\"{0}\" could not be copied.": "\"{0}\" tidak dapat disalin.",
+  "\"{0}\" could not be deleted even with administrator permission.": "\"{0}\" tidak dapat dihapus bahkan dengan izin administrator.",
   "\"{0}\" could not be deleted.": "\"{0}\" tidak dapat dihapus.",
   "\"{0}\" could not be moved to the Recycle Bin.": "\"{0}\" tidak dapat dipindahkan ke Keranjang Sampah.",
   "\"{0}\" could not be moved to the Trash.": "\"{0}\" tidak dapat dipindahkan ke Tempat Sampah.",
@@ -35,6 +36,9 @@
   "Add": "Tambah",
   "Add to Dictionary": "Tambahkan ke Kamus",
   "Address": "Alamat",
+  "Administrator permission was not granted; {n} item left in place.": {
+    "other": "Izin administrator tidak diberikan; {n} item dibiarkan di tempatnya."
+  },
   "age|newer": "lebih baru",
   "age|older": "lebih lama",
   "age|same": "sama",
@@ -108,16 +112,22 @@
   "Context": "Konteks",
   "Continue": "Lanjutkan",
   "Copied to the clipboard": "Disalin ke papan klip",
+  "Copied {0} of {n} item.": {
+    "other": "{0} dari {n} item disalin."
+  },
   "Copy": "Salin",
   "Copy \"{0}\" into \"{1}\"?": "Salin \"{0}\" ke \"{1}\"?",
   "Copy files": "Salin file",
+  "Copy finished": "Penyalinan selesai",
   "Copy path": "Salin jalur",
+  "Copy skipped items again": "Salin lagi item yang dilewati",
   "Copy {n} item into \"{0}\"?": {
     "other": "Salin {n} item ke \"{0}\"?"
   },
   "Copy: a file could not be copied": "Salin: sebuah file tidak dapat disalin",
   "Copy: a folder could not be copied": "Salin: sebuah folder tidak dapat disalin",
   "Copy: the name is already taken": "Salin: nama sudah dipakai",
+  "Could not delete as administrator: {0}": "Tidak dapat menghapus sebagai administrator: {0}",
   "Could not read {0}": "Tidak dapat membaca {0}",
   "Could not save {0}": "Tidak dapat menyimpan {0}",
   "Could not write {0}": "Tidak dapat menulis {0}",
@@ -137,7 +147,9 @@
   "Delete anyway": "Tetap hapus",
   "Delete anyway removes the protection first.": "\"Tetap hapus\" melepas perlindungan terlebih dahulu.",
   "Delete as administrator": "Hapus sebagai administrator",
+  "Delete finished": "Penghapusan selesai",
   "Delete permanently": "Hapus permanen",
+  "Delete skipped items again": "Hapus lagi item yang dilewati",
   "Delete {n} item?": {
     "other": "Hapus {n} item?"
   },
@@ -153,6 +165,10 @@
   "Delete: administrator permission needed": "Hapus: memerlukan izin administrator",
   "Delete: the file is in use": "Hapus: file sedang digunakan",
   "Delete: the folder is in use": "Hapus: folder sedang digunakan",
+  "Deleted {0} of {n} item.": {
+    "other": "{0} dari {n} item dihapus."
+  },
+  "Deleting as administrator is not available: {0}": "Penghapusan sebagai administrator tidak tersedia: {0}",
   "Demote to the application (from {0})": "Turunkan ke aplikasi (dari {0})",
   "Descending": "Turun",
   "Description": "Deskripsi",
@@ -245,6 +261,8 @@
   "Images": "Gambar",
   "Import": "Impor",
   "in": "di",
+  "in use": "sedang digunakan",
+  "in use by {0}": "sedang digunakan oleh {0}",
   "In use by:": "Digunakan oleh:",
   "in {n} folder": {
     "other": "dalam {n} folder"
@@ -322,6 +340,8 @@
   "Move Down": "Pindahkan ke Bawah",
   "Move down": "Pindahkan ke bawah",
   "Move files": "Pindahkan file",
+  "Move finished": "Pemindahan selesai",
+  "Move skipped items again": "Pindahkan lagi item yang dilewati",
   "Move to Recycle Bin": "Pindahkan ke Keranjang Sampah",
   "Move to Recycle Bin can be undone from the Recycle Bin. Delete permanently cannot be undone.": "\"Pindahkan ke Keranjang Sampah\" dapat diurungkan dari Keranjang Sampah. \"Hapus permanen\" tidak dapat diurungkan.",
   "Move to Trash": "Pindahkan ke Tempat Sampah",
@@ -334,6 +354,15 @@
   "Move: a file could not be moved": "Pindahkan: sebuah file tidak dapat dipindahkan",
   "Move: a folder could not be moved": "Pindahkan: sebuah folder tidak dapat dipindahkan",
   "Move: the name is already taken": "Pindahkan: nama sudah dipakai",
+  "Moved {0} of {n} item to the Recycle Bin.": {
+    "other": "{0} dari {n} item dipindahkan ke Keranjang Sampah."
+  },
+  "Moved {0} of {n} item to the Trash.": {
+    "other": "{0} dari {n} item dipindahkan ke Tempat Sampah."
+  },
+  "Moved {0} of {n} item.": {
+    "other": "{0} dari {n} item dipindahkan."
+  },
   "Music": "Musik",
   "Name": "Nama",
   "Network": "Jaringan",
@@ -454,6 +483,8 @@
   "Size:": "Ukuran:",
   "Skip": "Lewati",
   "Skip All": "Lewati Semua",
+  "Skipped: the name is already taken": "Dilewati: nama sudah dipakai",
+  "Skipped: write-protected": "Dilewati: dilindungi dari penulisan",
   "Slideshow interval": "Interval tayangan slide",
   "Slideshow transition": "Transisi tayangan slide",
   "Sort": "Urutkan",
@@ -476,6 +507,7 @@
   "The base sets the application takes, in lookup order; tick one to take it": "Set dasar yang dipakai aplikasi, menurut urutan pencarian; centang salah satu untuk memakainya",
   "The file may be locked or in use by another program. Close it there, then try again.": "File mungkin terkunci atau sedang digunakan oleh program lain. Tutup di sana, lalu coba lagi.",
   "The first {0} of {1} items:": "{0} item pertama dari {1}:",
+  "The first {0} of {1} skipped items:": "{0} item pertama dari {1} item yang dilewati:",
   "The folder may be locked or in use by another program. Close it there, then try again.": "Folder mungkin terkunci atau sedang digunakan oleh program lain. Tutup di sana, lalu coba lagi.",
   "The menus as they were opened, the toolbars as the program has them": "Menu seperti saat dibuka, bilah alat seperti yang dimiliki program",
   "the read-only attribute is set": "atribut hanya-baca diaktifkan",
@@ -581,10 +613,16 @@
   "{n} item": {
     "other": "{n} item"
   },
+  "{n} item could not be deleted even with administrator permission.": {
+    "other": "{n} item tidak dapat dihapus bahkan dengan izin administrator."
+  },
   "{n} minute": {
     "other": "{n} menit"
   },
   "{n} second": {
     "other": "{n} detik"
+  },
+  "{n} was skipped.": {
+    "other": "{n} item dilewati."
   }
 }

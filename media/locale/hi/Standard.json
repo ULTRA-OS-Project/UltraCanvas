@@ -4,6 +4,7 @@
   "@translated-by": "machine draft 2026-11-03, reviewed by -",
   "\"{0}\" already exists in \"{1}\".": "“{1}” में “{0}” पहले से मौजूद है।",
   "\"{0}\" could not be copied.": "“{0}” कॉपी नहीं किया जा सका।",
+  "\"{0}\" could not be deleted even with administrator permission.": "“{0}” व्यवस्थापक अनुमति के साथ भी हटाया नहीं जा सका।",
   "\"{0}\" could not be deleted.": "“{0}” हटाया नहीं जा सका।",
   "\"{0}\" could not be moved to the Recycle Bin.": "“{0}” को रीसायकल बिन में नहीं ले जाया जा सका।",
   "\"{0}\" could not be moved to the Trash.": "“{0}” को ट्रैश में नहीं ले जाया जा सका।",
@@ -35,6 +36,10 @@
   "Add": "जोड़ें",
   "Add to Dictionary": "शब्दकोश में जोड़ें",
   "Address": "पता",
+  "Administrator permission was not granted; {n} item left in place.": {
+    "one": "व्यवस्थापक अनुमति नहीं दी गई; {n} आइटम अपनी जगह पर छोड़ा गया।",
+    "other": "व्यवस्थापक अनुमति नहीं दी गई; {n} आइटम अपनी जगह पर छोड़े गए।"
+  },
   "age|newer": "नया",
   "age|older": "पुराना",
   "age|same": "समान",
@@ -111,10 +116,16 @@
   "Context": "संदर्भ",
   "Continue": "जारी रखें",
   "Copied to the clipboard": "क्लिपबोर्ड पर कॉपी किया गया",
+  "Copied {0} of {n} item.": {
+    "one": "{n} आइटम में से {0} कॉपी किया गया।",
+    "other": "{n} आइटम में से {0} कॉपी किए गए।"
+  },
   "Copy": "कॉपी करें",
   "Copy \"{0}\" into \"{1}\"?": "“{0}” को “{1}” में कॉपी करें?",
   "Copy files": "फ़ाइलें कॉपी करें",
+  "Copy finished": "कॉपी पूर्ण",
   "Copy path": "पथ कॉपी करें",
+  "Copy skipped items again": "छोड़े गए आइटम फिर से कॉपी करें",
   "Copy {n} item into \"{0}\"?": {
     "one": "{n} आइटम को “{0}” में कॉपी करें?",
     "other": "{n} आइटम को “{0}” में कॉपी करें?"
@@ -122,6 +133,7 @@
   "Copy: a file could not be copied": "कॉपी करें: एक फ़ाइल कॉपी नहीं की जा सकी",
   "Copy: a folder could not be copied": "कॉपी करें: एक फ़ोल्डर कॉपी नहीं किया जा सका",
   "Copy: the name is already taken": "कॉपी करें: नाम पहले से लिया हुआ है",
+  "Could not delete as administrator: {0}": "व्यवस्थापक के रूप में हटाया नहीं जा सका: {0}",
   "Could not read {0}": "{0} पढ़ा नहीं जा सका",
   "Could not save {0}": "{0} सहेजा नहीं जा सका",
   "Could not write {0}": "{0} लिखा नहीं जा सका",
@@ -141,7 +153,9 @@
   "Delete anyway": "फिर भी हटाएँ",
   "Delete anyway removes the protection first.": "“फिर भी हटाएँ” पहले सुरक्षा हटा देता है।",
   "Delete as administrator": "व्यवस्थापक के रूप में हटाएँ",
+  "Delete finished": "हटाना पूर्ण",
   "Delete permanently": "स्थायी रूप से हटाएँ",
+  "Delete skipped items again": "छोड़े गए आइटम फिर से हटाएँ",
   "Delete {n} item?": {
     "one": "{n} आइटम हटाएँ?",
     "other": "{n} आइटम हटाएँ?"
@@ -158,6 +172,11 @@
   "Delete: administrator permission needed": "हटाएँ: व्यवस्थापक अनुमति आवश्यक है",
   "Delete: the file is in use": "हटाएँ: फ़ाइल उपयोग में है",
   "Delete: the folder is in use": "हटाएँ: फ़ोल्डर उपयोग में है",
+  "Deleted {0} of {n} item.": {
+    "one": "{n} आइटम में से {0} हटाया गया।",
+    "other": "{n} आइटम में से {0} हटाए गए।"
+  },
+  "Deleting as administrator is not available: {0}": "व्यवस्थापक के रूप में हटाना उपलब्ध नहीं है: {0}",
   "Demote to the application (from {0})": "ऐप्लिकेशन में नीचे ले जाएँ ({0} से)",
   "Descending": "अवरोही",
   "Description": "विवरण",
@@ -251,6 +270,8 @@
   "Images": "छवियाँ",
   "Import": "आयात करें",
   "in": "में",
+  "in use": "उपयोग में",
+  "in use by {0}": "{0} द्वारा उपयोग में",
   "In use by:": "उपयोग कर रहे प्रोग्राम:",
   "in {n} folder": {
     "one": "{n} फ़ोल्डर में",
@@ -329,6 +350,8 @@
   "Move Down": "नीचे ले जाएँ",
   "Move down": "नीचे ले जाएँ",
   "Move files": "फ़ाइलें ले जाएँ",
+  "Move finished": "ले जाना पूर्ण",
+  "Move skipped items again": "छोड़े गए आइटम फिर से ले जाएँ",
   "Move to Recycle Bin": "रीसायकल बिन में ले जाएँ",
   "Move to Recycle Bin can be undone from the Recycle Bin. Delete permanently cannot be undone.": "“रीसायकल बिन में ले जाएँ” को रीसायकल बिन से पूर्ववत किया जा सकता है। “स्थायी रूप से हटाएँ” को पूर्ववत नहीं किया जा सकता।",
   "Move to Trash": "ट्रैश में ले जाएँ",
@@ -342,6 +365,18 @@
   "Move: a file could not be moved": "ले जाएँ: एक फ़ाइल ले जाई नहीं जा सकी",
   "Move: a folder could not be moved": "ले जाएँ: एक फ़ोल्डर ले जाया नहीं जा सका",
   "Move: the name is already taken": "ले जाएँ: नाम पहले से लिया हुआ है",
+  "Moved {0} of {n} item to the Recycle Bin.": {
+    "one": "{n} आइटम में से {0} रीसायकल बिन में ले जाया गया।",
+    "other": "{n} आइटम में से {0} रीसायकल बिन में ले जाए गए।"
+  },
+  "Moved {0} of {n} item to the Trash.": {
+    "one": "{n} आइटम में से {0} ट्रैश में ले जाया गया।",
+    "other": "{n} आइटम में से {0} ट्रैश में ले जाए गए।"
+  },
+  "Moved {0} of {n} item.": {
+    "one": "{n} आइटम में से {0} ले जाया गया।",
+    "other": "{n} आइटम में से {0} ले जाए गए।"
+  },
   "Music": "संगीत",
   "Name": "नाम",
   "Network": "नेटवर्क",
@@ -463,6 +498,8 @@
   "Size:": "आकार:",
   "Skip": "छोड़ें",
   "Skip All": "सभी छोड़ें",
+  "Skipped: the name is already taken": "छोड़ा गया: नाम पहले से लिया हुआ है",
+  "Skipped: write-protected": "छोड़ा गया: लेखन-सुरक्षित",
   "Slideshow interval": "स्लाइड शो अंतराल",
   "Slideshow transition": "स्लाइड शो ट्रांज़िशन",
   "Sort": "क्रमबद्ध करें",
@@ -485,6 +522,7 @@
   "The base sets the application takes, in lookup order; tick one to take it": "ऐप्लिकेशन द्वारा शामिल आधार सेट, खोज क्रम में; किसी सेट को शामिल करने के लिए उस पर टिक करें",
   "The file may be locked or in use by another program. Close it there, then try again.": "फ़ाइल लॉक हो सकती है या किसी अन्य प्रोग्राम द्वारा उपयोग में हो सकती है। उसे वहाँ बंद करें, फिर पुनः प्रयास करें।",
   "The first {0} of {1} items:": "{1} आइटम में से पहले {0}:",
+  "The first {0} of {1} skipped items:": "छोड़े गए {1} आइटम में से पहले {0}:",
   "The folder may be locked or in use by another program. Close it there, then try again.": "फ़ोल्डर लॉक हो सकता है या किसी अन्य प्रोग्राम द्वारा उपयोग में हो सकता है। उसे वहाँ बंद करें, फिर पुनः प्रयास करें।",
   "The menus as they were opened, the toolbars as the program has them": "मेनू वैसे जैसे वे खोले गए थे, टूलबार वैसे जैसे प्रोग्राम में हैं",
   "the read-only attribute is set": "केवल-पठन विशेषता सेट है",
@@ -596,6 +634,10 @@
     "one": "{n} आइटम",
     "other": "{n} आइटम"
   },
+  "{n} item could not be deleted even with administrator permission.": {
+    "one": "{n} आइटम व्यवस्थापक अनुमति के साथ भी हटाया नहीं जा सका।",
+    "other": "{n} आइटम व्यवस्थापक अनुमति के साथ भी हटाए नहीं जा सके।"
+  },
   "{n} minute": {
     "one": "{n} मिनट",
     "other": "{n} मिनट"
@@ -603,5 +645,9 @@
   "{n} second": {
     "one": "{n} सेकंड",
     "other": "{n} सेकंड"
+  },
+  "{n} was skipped.": {
+    "one": "{n} आइटम छोड़ा गया।",
+    "other": "{n} आइटम छोड़े गए।"
   }
 }

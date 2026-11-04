@@ -4,6 +4,7 @@
   "@translated-by": "machine draft 2026-11-02, reviewed by -",
   "\"{0}\" already exists in \"{1}\".": "“{1}”中已存在“{0}”。",
   "\"{0}\" could not be copied.": "无法复制“{0}”。",
+  "\"{0}\" could not be deleted even with administrator permission.": "即使使用管理员权限也无法删除“{0}”。",
   "\"{0}\" could not be deleted.": "无法删除“{0}”。",
   "\"{0}\" could not be moved to the Recycle Bin.": "无法将“{0}”移动到回收站。",
   "\"{0}\" could not be moved to the Trash.": "无法将“{0}”移动到回收站。",
@@ -35,6 +36,9 @@
   "Add": "添加",
   "Add to Dictionary": "添加到词典",
   "Address": "地址",
+  "Administrator permission was not granted; {n} item left in place.": {
+    "other": "未获得管理员权限；{n} 个项目保留在原处。"
+  },
   "age|newer": "较新",
   "age|older": "较旧",
   "age|same": "相同",
@@ -108,16 +112,22 @@
   "Context": "上下文",
   "Continue": "继续",
   "Copied to the clipboard": "已复制到剪贴板",
+  "Copied {0} of {n} item.": {
+    "other": "已复制 {n} 个项目中的 {0} 个。"
+  },
   "Copy": "复制",
   "Copy \"{0}\" into \"{1}\"?": "要将“{0}”复制到“{1}”吗？",
   "Copy files": "复制文件",
+  "Copy finished": "复制完成",
   "Copy path": "复制路径",
+  "Copy skipped items again": "再次复制已跳过的项目",
   "Copy {n} item into \"{0}\"?": {
     "other": "要将 {n} 个项目复制到“{0}”吗？"
   },
   "Copy: a file could not be copied": "复制：无法复制文件",
   "Copy: a folder could not be copied": "复制：无法复制文件夹",
   "Copy: the name is already taken": "复制：名称已被占用",
+  "Could not delete as administrator: {0}": "无法以管理员身份删除：{0}",
   "Could not read {0}": "无法读取 {0}",
   "Could not save {0}": "无法保存 {0}",
   "Could not write {0}": "无法写入 {0}",
@@ -137,7 +147,9 @@
   "Delete anyway": "仍然删除",
   "Delete anyway removes the protection first.": "“仍然删除”会先解除保护。",
   "Delete as administrator": "以管理员身份删除",
+  "Delete finished": "删除完成",
   "Delete permanently": "永久删除",
+  "Delete skipped items again": "再次删除已跳过的项目",
   "Delete {n} item?": {
     "other": "要删除 {n} 个项目吗？"
   },
@@ -153,6 +165,10 @@
   "Delete: administrator permission needed": "删除：需要管理员权限",
   "Delete: the file is in use": "删除：文件正在使用",
   "Delete: the folder is in use": "删除：文件夹正在使用",
+  "Deleted {0} of {n} item.": {
+    "other": "已删除 {n} 个项目中的 {0} 个。"
+  },
+  "Deleting as administrator is not available: {0}": "以管理员身份删除不可用：{0}",
   "Demote to the application (from {0})": "降级到应用程序（来自 {0}）",
   "Descending": "降序",
   "Description": "描述",
@@ -245,6 +261,8 @@
   "Images": "图像",
   "Import": "导入",
   "in": "位于",
+  "in use": "正在使用",
+  "in use by {0}": "正被 {0} 使用",
   "In use by:": "占用程序：",
   "in {n} folder": {
     "other": "位于 {n} 个文件夹中"
@@ -322,6 +340,8 @@
   "Move Down": "下移",
   "Move down": "下移",
   "Move files": "移动文件",
+  "Move finished": "移动完成",
+  "Move skipped items again": "再次移动已跳过的项目",
   "Move to Recycle Bin": "移到回收站",
   "Move to Recycle Bin can be undone from the Recycle Bin. Delete permanently cannot be undone.": "“移到回收站”可以从回收站撤销。“永久删除”无法撤销。",
   "Move to Trash": "移到回收站",
@@ -334,6 +354,15 @@
   "Move: a file could not be moved": "移动：无法移动文件",
   "Move: a folder could not be moved": "移动：无法移动文件夹",
   "Move: the name is already taken": "移动：名称已被占用",
+  "Moved {0} of {n} item to the Recycle Bin.": {
+    "other": "已将 {n} 个项目中的 {0} 个移到回收站。"
+  },
+  "Moved {0} of {n} item to the Trash.": {
+    "other": "已将 {n} 个项目中的 {0} 个移到回收站。"
+  },
+  "Moved {0} of {n} item.": {
+    "other": "已移动 {n} 个项目中的 {0} 个。"
+  },
   "Music": "音乐",
   "Name": "名称",
   "Network": "网络",
@@ -454,6 +483,8 @@
   "Size:": "大小：",
   "Skip": "跳过",
   "Skip All": "全部跳过",
+  "Skipped: the name is already taken": "已跳过：名称已被占用",
+  "Skipped: write-protected": "已跳过：受写保护",
   "Slideshow interval": "幻灯片放映间隔",
   "Slideshow transition": "幻灯片切换效果",
   "Sort": "排序",
@@ -476,6 +507,7 @@
   "The base sets the application takes, in lookup order; tick one to take it": "应用程序采用的基础文本集，按查找顺序排列；勾选即可采用",
   "The file may be locked or in use by another program. Close it there, then try again.": "该文件可能已被锁定或正被另一个程序使用。请在该程序中关闭它，然后重试。",
   "The first {0} of {1} items:": "{1} 个项目中的前 {0} 个：",
+  "The first {0} of {1} skipped items:": "已跳过的 {1} 个项目中的前 {0} 个：",
   "The folder may be locked or in use by another program. Close it there, then try again.": "该文件夹可能已被锁定或正被另一个程序使用。请在该程序中关闭它，然后重试。",
   "The menus as they were opened, the toolbars as the program has them": "菜单为打开时的状态，工具栏为程序当前的状态",
   "the read-only attribute is set": "已设置只读属性",
@@ -581,10 +613,16 @@
   "{n} item": {
     "other": "{n} 个项目"
   },
+  "{n} item could not be deleted even with administrator permission.": {
+    "other": "即使使用管理员权限，也无法删除 {n} 个项目。"
+  },
   "{n} minute": {
     "other": "{n} 分钟"
   },
   "{n} second": {
     "other": "{n} 秒"
+  },
+  "{n} was skipped.": {
+    "other": "已跳过 {n} 个项目。"
   }
 }

@@ -4,6 +4,7 @@
   "@translated-by": "machine draft 2026-11-03, reviewed by -",
   "\"{0}\" already exists in \"{1}\".": "「{1}」中已有「{0}」。",
   "\"{0}\" could not be copied.": "無法複製「{0}」。",
+  "\"{0}\" could not be deleted even with administrator permission.": "即使使用管理員權限也無法刪除「{0}」。",
   "\"{0}\" could not be deleted.": "無法刪除「{0}」。",
   "\"{0}\" could not be moved to the Recycle Bin.": "無法將「{0}」移到資源回收筒。",
   "\"{0}\" could not be moved to the Trash.": "無法將「{0}」移到垃圾桶。",
@@ -35,6 +36,9 @@
   "Add": "新增",
   "Add to Dictionary": "加入字典",
   "Address": "地址",
+  "Administrator permission was not granted; {n} item left in place.": {
+    "other": "未取得管理員權限；{n} 個項目保留在原處。"
+  },
   "age|newer": "較新",
   "age|older": "較舊",
   "age|same": "相同",
@@ -108,16 +112,22 @@
   "Context": "內容脈絡",
   "Continue": "繼續",
   "Copied to the clipboard": "已複製到剪貼簿",
+  "Copied {0} of {n} item.": {
+    "other": "已複製 {n} 個項目中的 {0} 個。"
+  },
   "Copy": "複製",
   "Copy \"{0}\" into \"{1}\"?": "要將「{0}」複製到「{1}」嗎？",
   "Copy files": "複製檔案",
+  "Copy finished": "複製完成",
   "Copy path": "複製路徑",
+  "Copy skipped items again": "再次複製已略過的項目",
   "Copy {n} item into \"{0}\"?": {
     "other": "要將 {n} 個項目複製到「{0}」嗎？"
   },
   "Copy: a file could not be copied": "複製：無法複製檔案",
   "Copy: a folder could not be copied": "複製：無法複製資料夾",
   "Copy: the name is already taken": "複製：名稱已被使用",
+  "Could not delete as administrator: {0}": "無法以管理員身分刪除：{0}",
   "Could not read {0}": "無法讀取 {0}",
   "Could not save {0}": "無法儲存 {0}",
   "Could not write {0}": "無法寫入 {0}",
@@ -137,7 +147,9 @@
   "Delete anyway": "仍要刪除",
   "Delete anyway removes the protection first.": "「仍要刪除」會先移除保護。",
   "Delete as administrator": "以管理員身分刪除",
+  "Delete finished": "刪除完成",
   "Delete permanently": "永久刪除",
+  "Delete skipped items again": "再次刪除已略過的項目",
   "Delete {n} item?": {
     "other": "要刪除 {n} 個項目嗎？"
   },
@@ -153,6 +165,10 @@
   "Delete: administrator permission needed": "刪除：需要管理員權限",
   "Delete: the file is in use": "刪除：檔案正在使用中",
   "Delete: the folder is in use": "刪除：資料夾正在使用中",
+  "Deleted {0} of {n} item.": {
+    "other": "已刪除 {n} 個項目中的 {0} 個。"
+  },
+  "Deleting as administrator is not available: {0}": "無法使用以管理員身分刪除功能：{0}",
   "Demote to the application (from {0})": "降級至應用程式（來自 {0}）",
   "Descending": "遞減",
   "Description": "描述",
@@ -245,6 +261,8 @@
   "Images": "影像",
   "Import": "匯入",
   "in": "位於",
+  "in use": "使用中",
+  "in use by {0}": "正由 {0} 使用中",
   "In use by:": "使用中的程式：",
   "in {n} folder": {
     "other": "位於 {n} 個資料夾中"
@@ -322,6 +340,8 @@
   "Move Down": "下移",
   "Move down": "下移",
   "Move files": "移動檔案",
+  "Move finished": "移動完成",
+  "Move skipped items again": "再次移動已略過的項目",
   "Move to Recycle Bin": "移到資源回收筒",
   "Move to Recycle Bin can be undone from the Recycle Bin. Delete permanently cannot be undone.": "「移到資源回收筒」可從資源回收筒復原。「永久刪除」無法復原。",
   "Move to Trash": "移到垃圾桶",
@@ -334,6 +354,15 @@
   "Move: a file could not be moved": "移動：無法移動檔案",
   "Move: a folder could not be moved": "移動：無法移動資料夾",
   "Move: the name is already taken": "移動：名稱已被使用",
+  "Moved {0} of {n} item to the Recycle Bin.": {
+    "other": "已將 {n} 個項目中的 {0} 個移到資源回收筒。"
+  },
+  "Moved {0} of {n} item to the Trash.": {
+    "other": "已將 {n} 個項目中的 {0} 個移到垃圾桶。"
+  },
+  "Moved {0} of {n} item.": {
+    "other": "已移動 {n} 個項目中的 {0} 個。"
+  },
   "Music": "音樂",
   "Name": "名稱",
   "Network": "網路",
@@ -454,6 +483,8 @@
   "Size:": "大小：",
   "Skip": "略過",
   "Skip All": "全部略過",
+  "Skipped: the name is already taken": "已略過：名稱已被使用",
+  "Skipped: write-protected": "已略過：已防寫",
   "Slideshow interval": "幻燈片秀間隔",
   "Slideshow transition": "幻燈片秀轉場",
   "Sort": "排序",
@@ -476,6 +507,7 @@
   "The base sets the application takes, in lookup order; tick one to take it": "應用程式採用的基礎文字集，依查詢順序排列；勾選即可採用",
   "The file may be locked or in use by another program. Close it there, then try again.": "檔案可能已鎖定或正被另一個程式使用。請在該程式中關閉它，然後再試一次。",
   "The first {0} of {1} items:": "{1} 個項目中的前 {0} 個：",
+  "The first {0} of {1} skipped items:": "已略過的 {1} 個項目中的前 {0} 個：",
   "The folder may be locked or in use by another program. Close it there, then try again.": "資料夾可能已鎖定或正被另一個程式使用。請在該程式中關閉它，然後再試一次。",
   "The menus as they were opened, the toolbars as the program has them": "選單為開啟時的狀態，工具列為程式目前的狀態",
   "the read-only attribute is set": "已設定唯讀屬性",
@@ -581,10 +613,16 @@
   "{n} item": {
     "other": "{n} 個項目"
   },
+  "{n} item could not be deleted even with administrator permission.": {
+    "other": "即使使用管理員權限，仍無法刪除 {n} 個項目。"
+  },
   "{n} minute": {
     "other": "{n} 分鐘"
   },
   "{n} second": {
     "other": "{n} 秒"
+  },
+  "{n} was skipped.": {
+    "other": "已略過 {n} 個項目。"
   }
 }

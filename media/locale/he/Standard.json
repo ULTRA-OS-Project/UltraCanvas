@@ -4,6 +4,7 @@
   "@translated-by": "machine draft 2026-11-03, reviewed by -",
   "\"{0}\" already exists in \"{1}\".": "\"{0}\" כבר קיים ב-\"{1}\".",
   "\"{0}\" could not be copied.": "לא ניתן היה להעתיק את \"{0}\".",
+  "\"{0}\" could not be deleted even with administrator permission.": "לא ניתן היה למחוק את \"{0}\" גם עם הרשאת מנהל.",
   "\"{0}\" could not be deleted.": "לא ניתן היה למחוק את \"{0}\".",
   "\"{0}\" could not be moved to the Recycle Bin.": "לא ניתן היה להעביר את \"{0}\" לסל המיחזור.",
   "\"{0}\" could not be moved to the Trash.": "לא ניתן היה להעביר את \"{0}\" לאשפה.",
@@ -35,6 +36,12 @@
   "Add": "הוספה",
   "Add to Dictionary": "הוספה למילון",
   "Address": "כתובת",
+  "Administrator permission was not granted; {n} item left in place.": {
+    "one": "הרשאת מנהל לא ניתנה; {n} פריט נשאר במקומו.",
+    "two": "הרשאת מנהל לא ניתנה; {n} פריטים נשארו במקומם.",
+    "many": "הרשאת מנהל לא ניתנה; {n} פריטים נשארו במקומם.",
+    "other": "הרשאת מנהל לא ניתנה; {n} פריטים נשארו במקומם."
+  },
   "age|newer": "חדש יותר",
   "age|older": "ישן יותר",
   "age|same": "זהה",
@@ -117,10 +124,18 @@
   "Context": "הקשר",
   "Continue": "המשך",
   "Copied to the clipboard": "הועתק ללוח",
+  "Copied {0} of {n} item.": {
+    "one": "הועתקו {0} מתוך {n} פריט.",
+    "two": "הועתקו {0} מתוך {n} פריטים.",
+    "many": "הועתקו {0} מתוך {n} פריטים.",
+    "other": "הועתקו {0} מתוך {n} פריטים."
+  },
   "Copy": "העתקה",
   "Copy \"{0}\" into \"{1}\"?": "להעתיק את \"{0}\" אל \"{1}\"?",
   "Copy files": "העתקת קבצים",
+  "Copy finished": "ההעתקה הסתיימה",
   "Copy path": "העתקת הנתיב",
+  "Copy skipped items again": "העתקה חוזרת של הפריטים שדולגו",
   "Copy {n} item into \"{0}\"?": {
     "one": "להעתיק {n} פריט אל \"{0}\"?",
     "two": "להעתיק {n} פריטים אל \"{0}\"?",
@@ -130,6 +145,7 @@
   "Copy: a file could not be copied": "העתקה: לא ניתן היה להעתיק קובץ",
   "Copy: a folder could not be copied": "העתקה: לא ניתן היה להעתיק תיקייה",
   "Copy: the name is already taken": "העתקה: השם כבר תפוס",
+  "Could not delete as administrator: {0}": "לא ניתן היה למחוק כמנהל מערכת: {0}",
   "Could not read {0}": "לא ניתן היה לקרוא את {0}",
   "Could not save {0}": "לא ניתן היה לשמור את {0}",
   "Could not write {0}": "לא ניתן היה לכתוב את {0}",
@@ -149,7 +165,9 @@
   "Delete anyway": "מחיקה בכל זאת",
   "Delete anyway removes the protection first.": "\"מחיקה בכל זאת\" מסירה קודם את ההגנה.",
   "Delete as administrator": "מחיקה כמנהל מערכת",
+  "Delete finished": "המחיקה הסתיימה",
   "Delete permanently": "מחיקה לצמיתות",
+  "Delete skipped items again": "מחיקה חוזרת של הפריטים שדולגו",
   "Delete {n} item?": {
     "one": "למחוק {n} פריט?",
     "two": "למחוק {n} פריטים?",
@@ -168,6 +186,13 @@
   "Delete: administrator permission needed": "מחיקה: נדרשת הרשאת מנהל",
   "Delete: the file is in use": "מחיקה: הקובץ נמצא בשימוש",
   "Delete: the folder is in use": "מחיקה: התיקייה נמצאת בשימוש",
+  "Deleted {0} of {n} item.": {
+    "one": "נמחקו {0} מתוך {n} פריט.",
+    "two": "נמחקו {0} מתוך {n} פריטים.",
+    "many": "נמחקו {0} מתוך {n} פריטים.",
+    "other": "נמחקו {0} מתוך {n} פריטים."
+  },
+  "Deleting as administrator is not available: {0}": "מחיקה כמנהל מערכת אינה זמינה: {0}",
   "Demote to the application (from {0})": "הורדה ליישום (מ-{0})",
   "Descending": "סדר יורד",
   "Description": "תיאור",
@@ -263,6 +288,8 @@
   "Images": "תמונות",
   "Import": "ייבוא",
   "in": "בתוך",
+  "in use": "בשימוש",
+  "in use by {0}": "בשימוש על ידי {0}",
   "In use by:": "בשימוש על ידי:",
   "in {n} folder": {
     "one": "ב-{n} תיקייה",
@@ -343,6 +370,8 @@
   "Move Down": "הזזה למטה",
   "Move down": "הזזה למטה",
   "Move files": "העברת קבצים",
+  "Move finished": "ההעברה הסתיימה",
+  "Move skipped items again": "העברה חוזרת של הפריטים שדולגו",
   "Move to Recycle Bin": "העברה לסל המיחזור",
   "Move to Recycle Bin can be undone from the Recycle Bin. Delete permanently cannot be undone.": "את \"העברה לסל המיחזור\" ניתן לבטל מסל המיחזור. את \"מחיקה לצמיתות\" לא ניתן לבטל.",
   "Move to Trash": "העברה לאשפה",
@@ -358,6 +387,24 @@
   "Move: a file could not be moved": "העברה: לא ניתן היה להעביר קובץ",
   "Move: a folder could not be moved": "העברה: לא ניתן היה להעביר תיקייה",
   "Move: the name is already taken": "העברה: השם כבר תפוס",
+  "Moved {0} of {n} item to the Recycle Bin.": {
+    "one": "הועברו {0} מתוך {n} פריט לסל המיחזור.",
+    "two": "הועברו {0} מתוך {n} פריטים לסל המיחזור.",
+    "many": "הועברו {0} מתוך {n} פריטים לסל המיחזור.",
+    "other": "הועברו {0} מתוך {n} פריטים לסל המיחזור."
+  },
+  "Moved {0} of {n} item to the Trash.": {
+    "one": "הועברו {0} מתוך {n} פריט לאשפה.",
+    "two": "הועברו {0} מתוך {n} פריטים לאשפה.",
+    "many": "הועברו {0} מתוך {n} פריטים לאשפה.",
+    "other": "הועברו {0} מתוך {n} פריטים לאשפה."
+  },
+  "Moved {0} of {n} item.": {
+    "one": "הועברו {0} מתוך {n} פריט.",
+    "two": "הועברו {0} מתוך {n} פריטים.",
+    "many": "הועברו {0} מתוך {n} פריטים.",
+    "other": "הועברו {0} מתוך {n} פריטים."
+  },
   "Music": "מוזיקה",
   "Name": "שם",
   "Network": "רשת",
@@ -481,6 +528,8 @@
   "Size:": "גודל:",
   "Skip": "דילוג",
   "Skip All": "דילוג על הכול",
+  "Skipped: the name is already taken": "דולג: השם כבר תפוס",
+  "Skipped: write-protected": "דולג: מוגן מפני כתיבה",
   "Slideshow interval": "מרווח בין שקופיות",
   "Slideshow transition": "מעבר בין שקופיות",
   "Sort": "מיון",
@@ -503,6 +552,7 @@
   "The base sets the application takes, in lookup order; tick one to take it": "ערכות הבסיס שהיישום מצרף, לפי סדר החיפוש; יש לסמן ערכה כדי לצרף אותה",
   "The file may be locked or in use by another program. Close it there, then try again.": "ייתכן שהקובץ נעול או בשימוש על ידי תוכנית אחרת. יש לסגור אותו שם ולנסות שוב.",
   "The first {0} of {1} items:": "{0} הפריטים הראשונים מתוך {1}:",
+  "The first {0} of {1} skipped items:": "{0} הראשונים מתוך {1} הפריטים שדולגו:",
   "The folder may be locked or in use by another program. Close it there, then try again.": "ייתכן שהתיקייה נעולה או בשימוש על ידי תוכנית אחרת. יש לסגור אותה שם ולנסות שוב.",
   "The menus as they were opened, the toolbars as the program has them": "התפריטים כפי שהיו בפתיחה, סרגלי הכלים כפי שהם בתוכנית",
   "the read-only attribute is set": "המאפיין \"קריאה בלבד\" מוגדר",
@@ -626,6 +676,12 @@
     "many": "{n} פריטים",
     "other": "{n} פריטים"
   },
+  "{n} item could not be deleted even with administrator permission.": {
+    "one": "לא ניתן היה למחוק {n} פריט גם עם הרשאת מנהל.",
+    "two": "לא ניתן היה למחוק {n} פריטים גם עם הרשאת מנהל.",
+    "many": "לא ניתן היה למחוק {n} פריטים גם עם הרשאת מנהל.",
+    "other": "לא ניתן היה למחוק {n} פריטים גם עם הרשאת מנהל."
+  },
   "{n} minute": {
     "one": "{n} דקה",
     "two": "{n} דקות",
@@ -637,5 +693,11 @@
     "two": "{n} שניות",
     "many": "{n} שניות",
     "other": "{n} שניות"
+  },
+  "{n} was skipped.": {
+    "one": "{n} פריט דולג.",
+    "two": "{n} פריטים דולגו.",
+    "many": "{n} פריטים דולגו.",
+    "other": "{n} פריטים דולגו."
   }
 }
