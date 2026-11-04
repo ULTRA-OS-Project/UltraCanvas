@@ -22,6 +22,14 @@ never touched here.
     python3 scripts/extract_ui_strings.py            # rewrite the en catalogues
     python3 scripts/extract_ui_strings.py --check    # exit 1 when a rewrite would change one (CI)
 
+A catalogue two branches both changed is never merged by hand: merge, and
+run this. A catalogue the merge left conflicted (<<<<<<< markers, not JSON)
+is read from the two sides git keeps for it (the index's stages 2 and 3) -
+its hand-set metadata ("@bases", ...) from them, and for Standard.json,
+which never loses a key, the keys of both - then written whole from the
+sources; `git add` it after. Metadata the two sides set differently is not
+guessed: that is reported, and the catalogue left as it is.
+
 A key is the literal as written, escapes decoded; a TrC key is
 "context|text" with the text alone as its English value; a TrN key is the
 singular, its entry the two forms; a TrF key keeps its {0} placeholders. Adjacent literals ("a" "b") are one.
@@ -29,6 +37,7 @@ singular, its entry the two forms; a TrF key keeps its {0} placeholders. Adjacen
 import argparse
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -121,12 +130,62 @@ def collect(folders):
     return entries, plurals
 
 
+CONFLICT_MARKER = re.compile(r"^(<{7}|={7}|>{7})( |$)", re.M)
+
+
+class MetadataConflict(Exception):
+    """A catalogue the merge left conflicted whose two sides set its metadata differently."""
+
+
+def merge_side(path: Path, stage: int) -> dict:
+    """The catalogue as one side of an unfinished merge had it: stage 2 is
+    the branch merged into, 3 the one merged in. {} when that side has none."""
+    rel = path.relative_to(ROOT).as_posix()
+    shown = subprocess.run(["git", "show", ":%d:%s" % (stage, rel)], cwd=ROOT, capture_output=True,
+                           text=True, encoding="utf-8")
+    if shown.returncode != 0:
+        return {}
+    try:
+        return json.loads(shown.stdout)
+    except ValueError:
+        return {}
+
+
+def read_conflicted(path: Path) -> dict:
+    """A catalogue the merge left with conflict markers, read from both
+    sides: their metadata (the same on both, or one side's alone), and for
+    the standard set every key either side has."""
+    ours, theirs = merge_side(path, 2), merge_side(path, 3)
+    if not ours and not theirs:
+        raise MetadataConflict("conflict markers, and git has no sides for it (not in a merge?)")
+    merged = {}
+    for key in sorted({k for k in ours if k.startswith("@")} | {k for k in theirs if k.startswith("@")}):
+        if key == "@inherited":
+            continue                        # worked out again from the sources
+        if key in ours and key in theirs and ours[key] != theirs[key]:
+            raise MetadataConflict("%s differs between the two sides: %s / %s"
+                                   % (key, json.dumps(ours[key]), json.dumps(theirs[key])))
+        merged[key] = ours[key] if key in ours else theirs[key]
+    for side in (theirs, ours):             # ours last: its wording wins a key both have
+        merged.update({k: v for k, v in side.items() if not k.startswith("@")})
+    print("%s: merge conflict - rebuilt from both sides and the sources; git add it"
+          % path.relative_to(ROOT), file=sys.stderr)
+    return merged
+
+
 def read_catalogue(path: Path):
     if not path.exists():
         return {}
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError) as err:
+        text = path.read_text(encoding="utf-8")
+    except OSError as err:
+        print("%s: not read: %s" % (path.relative_to(ROOT), err), file=sys.stderr)
+        return {}
+    if CONFLICT_MARKER.search(text):
+        return read_conflicted(path)
+    try:
+        return json.loads(text)
+    except ValueError as err:
         print("%s: not read: %s" % (path.relative_to(ROOT), err), file=sys.stderr)
         return {}
 
@@ -159,10 +218,16 @@ def main():
     parser.add_argument("--check", action="store_true", help="exit 1 when a catalogue would change; write nothing")
     args = parser.parse_args()
     changed = []
+    unresolved = []                         # conflicted catalogues whose metadata the sides disagree on
 
     # The standard set: add, never remove
     standard_path = LOCALE / "en" / "Standard.json"
-    standard = read_catalogue(standard_path)
+    try:
+        standard = read_catalogue(standard_path)
+    except MetadataConflict as err:
+        print("%s: %s - merge its metadata by hand, then run this again"
+              % (standard_path.relative_to(ROOT), err), file=sys.stderr)
+        return 1
     meta = {k: v for k, v in standard.items() if k.startswith("@")}
     meta.setdefault("@language", "en")
     meta.setdefault("@name", "English")
@@ -198,7 +263,11 @@ def main():
         path = LOCALE / "en" / (name + ".json")
         if not found_entries and not found_plurals and not path.exists():
             continue
-        existing = read_catalogue(path)
+        try:
+            existing = read_catalogue(path)
+        except MetadataConflict as err:
+            unresolved.append("%s: %s" % (path.relative_to(ROOT), err))
+            continue
         meta = {k: v for k, v in existing.items() if k.startswith("@")}
         meta.setdefault("@language", "en")
         inherited_from = set(standard_keys)
@@ -217,6 +286,10 @@ def main():
 
     for path in changed:
         print(("would rewrite " if args.check else "rewrote ") + str(path.relative_to(ROOT)))
+    if unresolved:
+        for line in unresolved:
+            print(line + " - merge its metadata by hand, then run this again", file=sys.stderr)
+        return 1
     if args.check and changed:
         print("extract_ui_strings: %d catalogue(s) out of date - run python3 scripts/extract_ui_strings.py" % len(changed))
         return 1

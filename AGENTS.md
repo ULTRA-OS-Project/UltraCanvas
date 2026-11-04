@@ -803,7 +803,16 @@ and never introduce a new literal copy of one:
    scripts/check_locale_catalogues.py`; CI runs that too. A word every
    application has is in `Standard.json` or a base set already (the
    proposal's appendices): an application's own catalogue holds only what
-   is its own.
+   is its own. **A catalogue under `media/locale/en/` that conflicts in a
+   merge is never merged by hand:** whichever branch merges second merges
+   the base and runs `python3 scripts/extract_ui_strings.py` - it rebuilds a
+   conflicted catalogue from both sides git keeps (its `@bases` and other
+   metadata) and the merged sources - then `git add`s it.
+   `check_pr_overlap.py` reports such a file as *rebuilt*, not as a
+   conflict. (A hand-merge, or the script before it learned this, can drop
+   `@bases`, and the application then stops inheriting its base set without
+   any check noticing.) The hand-curated base sets under `base/` are not
+   generated: a conflict there is a real one.
 3. Check `Docs/UltraCanvas/<Component>*.md` (or `llms.txt`) before using a
    component; if you add or change public API, update the matching doc in
    the same change. Then run `python3 scripts/check_doc_examples.py <doc>`:
