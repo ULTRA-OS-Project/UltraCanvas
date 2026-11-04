@@ -1,3 +1,14 @@
+#### 2026-11-04 *0.7.5*
+- **Selected words of a title take a letter spacing and a colour of their
+  own.** While a title is typed on the frame, the text bar's letter spacing
+  and the Clip panel's colour go to the selected words only; with nothing
+  selected they change the whole title (and a colour for the whole title
+  clears its words' own). The project and `videofx render` keep both.
+- **A size typed into the text bar no longer finishes the title.** Any key
+  typed in the bar's size field, or in its font list, put the title in the
+  video first, so the size went to the whole title. The keys now stay in the
+  field, and Escape there gives them back to the title.
+
 #### 2026-11-03 *0.7.4*
 - **Type a title on the frame.** A double-click on a title in the viewer, or
   on its span on the title lane, lays the words over the picture where the
