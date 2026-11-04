@@ -57,7 +57,6 @@
     "{n} file",
     "{n} second"
   ],
-  "": "",
   "\"Show it in the preview\" keeps the file inside UltraFiler whenever it can show it - pictures, documents, spreadsheets, 3D models, e-books, fonts, video, audio and text - which is faster than starting a program for a look at a file.": "\"Show it in the preview\" keeps the file inside UltraFiler whenever it can show it - pictures, documents, spreadsheets, 3D models, e-books, fonts, video, audio and text - which is faster than starting a program for a look at a file.",
   "\"Start the registered program\" is what a double-click does in Explorer and the Finder: the file opens in the program its type is assigned to, and UltraFiler stays as it is.": "\"Start the registered program\" is what a double-click does in Explorer and the Finder: the file opens in the program its type is assigned to, and UltraFiler stays as it is.",
   "\"{0}\" is no longer connected": "\"{0}\" is no longer connected",

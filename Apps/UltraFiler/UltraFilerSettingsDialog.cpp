@@ -1849,7 +1849,7 @@ namespace {
         d->promptInput->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
         pathRow->AddChild(d->promptInput);
 
-        pathRow->AddChild(MakeButton("ufl-set-op-browse", Tr(""), 32,
+        pathRow->AddChild(MakeButton("ufl-set-op-browse", std::string(), 32,
                 [d]() { BrowseForPromptApplication(d); }, "folder-open.svg"));
         parts.body->AddChild(pathRow);
 
@@ -1873,7 +1873,7 @@ namespace {
         parts.body->AddChild(buttonRow);
 
         // What will be started - feedback, so it stays with the controls.
-        d->promptStatus = MakeText("ufl-set-op-status", Tr(""), kTextWidth,
+        d->promptStatus = MakeText("ufl-set-op-status", std::string(), kTextWidth,
                                    kTextFontSize, kNoteTextColor);
         parts.body->AddChild(d->promptStatus);
         UpdatePromptStatus(d);
@@ -1966,7 +1966,7 @@ namespace {
         parts.body->AddChild(buttonRow);
 
         // What was just cleared - feedback, so it stays with the buttons.
-        d->listsStatus = MakeText("ufl-set-hf-status", Tr(""), kTextWidth,
+        d->listsStatus = MakeText("ufl-set-hf-status", std::string(), kTextWidth,
                                   kTextFontSize, kNoteTextColor);
         parts.body->AddChild(d->listsStatus);
 
@@ -2186,18 +2186,18 @@ namespace {
         // What is held now, against what it is allowed to hold.
         parts.body->AddChild(MakeText("ufl-set-cache-used-title",
                 Tr("In use:"), kTextWidth, kTextFontSize, kTextColor));
-        d->cacheDiskLine = MakeText("ufl-set-cache-disk-line", Tr(""));
-        d->cacheMemoryLine = MakeText("ufl-set-cache-memory-line", Tr(""));
-        d->cacheIconLine = MakeText("ufl-set-cache-icon-line", Tr(""));
-        d->cacheHotLine = MakeText("ufl-set-cache-hot-line", Tr(""));
-        d->cacheMissingLine = MakeText("ufl-set-cache-missing-line", Tr(""));
+        d->cacheDiskLine = MakeText("ufl-set-cache-disk-line", std::string());
+        d->cacheMemoryLine = MakeText("ufl-set-cache-memory-line", std::string());
+        d->cacheIconLine = MakeText("ufl-set-cache-icon-line", std::string());
+        d->cacheHotLine = MakeText("ufl-set-cache-hot-line", std::string());
+        d->cacheMissingLine = MakeText("ufl-set-cache-missing-line", std::string());
         parts.body->AddChild(d->cacheDiskLine);
         parts.body->AddChild(d->cacheMemoryLine);
         parts.body->AddChild(d->cacheIconLine);
         parts.body->AddChild(d->cacheHotLine);
         parts.body->AddChild(d->cacheMissingLine);
 
-        d->cacheLocationLine = MakeText("ufl-set-cache-location", Tr(""), kTextWidth,
+        d->cacheLocationLine = MakeText("ufl-set-cache-location", std::string(), kTextWidth,
                                         kNoteFontSize, kNoteTextColor);
         parts.body->AddChild(d->cacheLocationLine);
 
@@ -2226,7 +2226,7 @@ namespace {
                                        [d]() { RefreshCacheUsage(d); }));
         parts.body->AddChild(buttonRow);
 
-        d->cacheStatus = MakeText("ufl-set-cache-status", Tr(""), kTextWidth,
+        d->cacheStatus = MakeText("ufl-set-cache-status", std::string(), kTextWidth,
                                   kTextFontSize, kNoteTextColor);
         parts.body->AddChild(d->cacheStatus);
 
