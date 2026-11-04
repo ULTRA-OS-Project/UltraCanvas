@@ -50,6 +50,8 @@
 // itself is never touched, so renaming and every file operation still work on
 // the real one. A name that is not UTF-8 — written in a legacy code page by an
 // old tool or an unconverting unzip — is drawn decoded rather than as U+FFFD.
+// Version: 1.43.4 - Refresh() moves up to the nearest existing folder when the
+//                  shown folder is gone and its volume is not
 // Version: 1.43.3 - a delete that Windows answers "access denied" is told
 //                  apart (UltraCanvasFileRemoval): read-only folders inside
 //                  the tree are lifted like files, delete-pending entries
@@ -2866,7 +2868,61 @@ namespace UltraCanvas {
     void UltraCanvasFilerWidget::Refresh() {
         CancelRename();
         CancelPendingRename();
+        // The folder itself may be what changed: deleted from the other pane
+        // or by another program. Listing a folder that is not there showed an
+        // empty display with nowhere to go; the display moves up instead.
+        if (MoveUpFromVanishedFolder()) return;
         ScanFolder();
+    }
+
+    unsigned long long UltraCanvasFilerWidget::FolderDevice(const std::string& path) {
+#if defined(_WIN32) || defined(_WIN64)
+        (void)path;
+        return 0;
+#else
+        struct stat sb {};
+        if (::stat(PathFromUtf8(path).c_str(), &sb) != 0) return 0;
+        return static_cast<unsigned long long>(sb.st_dev);
+#endif
+    }
+
+    bool UltraCanvasFilerWidget::MoveUpFromVanishedFolder() {
+        // Only a folder the last scan saw as a real directory can have been
+        // deleted from under the display: an archive interior, a remote
+        // drive and a file list are not on the local disk to begin with.
+        if (fileListMode || currentPath.empty() || currentPath != shownFolderSeenPath)
+            return false;
+        if (isRemotePath && isRemotePath(currentPath)) return false;
+
+        fs::path shown = PathFromUtf8(currentPath).lexically_normal();
+        if (!shown.has_filename() && shown.has_relative_path()) shown = shown.parent_path();
+        std::error_code ec;
+        // Gone, and nothing less: a folder Windows still lists as delete
+        // pending, or one a network hiccup could not answer for, is left to
+        // the next look.
+        if (fs::symlink_status(shown, ec).type() != fs::file_type::not_found)
+            return false;
+
+        // The nearest folder above it that is still there. When none is -
+        // not even the drive root - the volume went (a stick pulled out on
+        // Windows, a share dropped), and the display waits for it.
+        fs::path up = shown;
+        for (;;) {
+            if (!up.has_relative_path()) return false;   // the root itself is gone
+            up = up.parent_path();
+            std::error_code uec;
+            if (fs::is_directory(up, uec)) break;
+        }
+        const std::string target = PathToUtf8(up);
+        // On Linux and macOS a pulled stick's mount point vanishes with it,
+        // and what is left above it is on another device: that too is a
+        // volume gone, not a folder deleted, and is waited for.
+        if (shownFolderDevice != 0) {
+            const unsigned long long device = FolderDevice(target);
+            if (device != 0 && device != shownFolderDevice) return false;
+        }
+        SetPath(target);
+        return true;
     }
 
     // ===== NAME FILTER (filter-as-you-type) =====
@@ -3940,6 +3996,18 @@ namespace UltraCanvas {
         // previews, the lock column - reads the local filesystem per entry,
         // which is exactly what a remote drive cannot serve.
         listingIsRealDirectory = fileListMode || isRealDir;
+        // What MoveUpFromVanishedFolder needs to tell a deleted folder from
+        // a volume that went: the folder, seen real, and its device then.
+        // Kept while the same path lists as gone - that is the case it is for.
+        if (!fileListMode && isRealDir) {
+            if (shownFolderSeenPath != currentPath) {
+                shownFolderSeenPath = currentPath;
+                shownFolderDevice = FolderDevice(currentPath);
+            }
+        } else if (fileListMode || shownFolderSeenPath != currentPath) {
+            shownFolderSeenPath.clear();
+            shownFolderDevice = 0;
+        }
 
         // Watch first, read second. Started after the read, the watch missed
         // whatever the folder did while it was being read - a file saved into

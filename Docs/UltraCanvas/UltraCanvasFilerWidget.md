@@ -2397,6 +2397,24 @@ exists; `IsFolderWatchNative()` then reports `false`. It keeps polling the
 folder even while it is gone, which is what makes the same stick plugged back
 in re-list itself rather than needing a manual refresh.
 
+A folder that is gone while its volume is still there was deleted or renamed,
+from the other pane or by another program, and is not coming back. On its
+next `Refresh()` (what the watch calls when it notices) the display **moves up
+to the nearest folder above it that is still there**, through `SetPath`, so
+`onPathChanged` tells the host. It no longer sits on an empty listing of a
+folder that does not exist. The two cases are told apart by what is left:
+
+- **Windows:** a pulled stick or a dropped share takes its drive root
+  (`E:\`, `\\server\share`) with it, so nothing above the folder is left.
+- **Linux and macOS:** the stick's mount point vanishes too, and the folder
+  left above it is on another device than the one the folder was listed from.
+
+In both cases the display stays and waits, as before. Only a folder the last
+scan listed as a real directory is moved up from. A folder that answers
+neither "there" nor "gone" — one Windows still lists as delete pending, a
+network share that did not reply — is left for the next look. An archive
+interior, a remote drive and a file list never move.
+
 A delete, a move and a folder rename take an
 [`UltraCanvasFolderWatchHold`](UltraCanvasFolderWatcher.md#letting-go-of-a-folder-about-to-change)
 on the folders they change, for as long as they run. Every watch in the

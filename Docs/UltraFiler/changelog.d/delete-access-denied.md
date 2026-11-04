@@ -11,3 +11,7 @@
   watch no longer holds the subfolder open while the operation runs.
 - **A read-only folder is deleted without the "write-protected?" question on
   Windows**, as Explorer deletes it.
+- **A pane whose folder is deleted - from the other pane or by another
+  program - moves up to the nearest folder that is still there**, instead of
+  showing an empty folder that no longer exists. A USB stick pulled out is
+  still waited for, so plugging it back in shows its folder again.

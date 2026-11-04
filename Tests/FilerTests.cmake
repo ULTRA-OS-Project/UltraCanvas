@@ -2,7 +2,8 @@
 # FilerFolderPreviewTest, FilerTextPreviewTest, FilerNameEncodingTest,
 # FilerRetireTest,
 # FilerHostIconsTest, FilerShortcutEntryTest, FilerHistoryTest,
-# FilerPaneDragTest, FileRemovalTest and ElevatedFileOperationsTest. Included by
+# FilerPaneDragTest, FileRemovalTest, ElevatedFileOperationsTest and
+# FilerVanishedFolderTest. Included by
 # Tests/CMakeLists.txt under BUILD_TESTS, and by the top-level CMakeLists.txt
 # on its own under ULTRACANVAS_BUILD_FILER_TESTS - so the Windows CI row,
 # which builds no full test suite, runs the file display against Thai, CJK and
@@ -321,4 +322,28 @@ if(TARGET UltraCanvas)
     message(STATUS "    Test registered: ElevatedFileOperationsTest")
 else()
     message(STATUS "  ElevatedFileOperationsTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== FILER VANISHED FOLDER TEST =====
+# A display whose folder is deleted from under it - from the other pane, or by
+# another program - moves up to the nearest folder still there on Refresh()
+# (what its folder watch calls), and onPathChanged reports it; a folder still
+# there, a path that never listed as a folder and a file list stay put. Its
+# scratch folder has a Thai name, so on Windows every step goes through UTF-16.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building FilerVanishedFolderTest...")
+    add_executable(FilerVanishedFolderTest
+        ${_FT_DIR}/FilerVanishedFolderTest.cpp
+    )
+    target_include_directories(FilerVanishedFolderTest PRIVATE ${_FT_INCLUDE_DIR})
+    target_compile_features(FilerVanishedFolderTest PRIVATE cxx_std_20)
+    target_link_libraries(FilerVanishedFolderTest PRIVATE UltraCanvas)
+    set_target_properties(FilerVanishedFolderTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${_FT_BIN_DIR}
+    )
+    add_test(NAME FilerVanishedFolderTest COMMAND FilerVanishedFolderTest
+             WORKING_DIRECTORY ${_FT_BIN_DIR})
+    message(STATUS "    Test registered: FilerVanishedFolderTest")
+else()
+    message(STATUS "  FilerVanishedFolderTest skipped (UltraCanvas target not present)")
 endif()

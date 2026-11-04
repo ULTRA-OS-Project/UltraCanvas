@@ -49,3 +49,14 @@
   "write-protected?" for one there; it lifts the attribute as it deletes. A
   read-only file is still asked about, and so is a folder without write
   permission on Linux and macOS, where nothing in it can be deleted.
+- **A Filer display whose folder is deleted moves up to the nearest folder
+  that is still there.** The folder may be deleted or renamed from the other
+  pane or by another program. The display used to list an empty folder that
+  no longer existed, with nowhere to go. Now `Refresh()`, which its folder
+  watch calls when it notices, goes to the nearest existing folder above it
+  through `SetPath`, so `onPathChanged` reports the move. A folder whose
+  volume went with it (a USB stick pulled out, a share dropped) is still
+  waited for, so the stick plugged back in re-lists itself. On Windows such
+  a folder has no drive root left; on Linux and macOS what is left above it
+  is on another device. `Tests/FilerVanishedFolderTest.cpp` runs on the
+  Windows CI runner too.

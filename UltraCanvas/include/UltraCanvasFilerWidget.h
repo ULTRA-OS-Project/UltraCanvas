@@ -104,6 +104,8 @@
 // thin blue bar sliding along the foot of the file area - its entries, or an
 // empty area, stay as they are - and the words go to the host's status line
 // (GetListingPendingStatus, onListingPendingChanged).
+// Version: 1.46.3 - Refresh() moves up to the nearest existing folder when the
+//                  shown one was deleted (not when its volume went)
 // Version: 1.46.2 - a delete, a move and a folder rename hold folder watches off
 //                  the folders they change (UltraCanvasFolderWatchHold); a
 //                  read-only folder on Windows is deleted without asking
@@ -813,7 +815,13 @@ namespace UltraCanvas {
         // What the remote folder shown is waiting for (remoteListingStatus):
         // empty when nothing is being fetched for it.
         const std::string& GetListingPendingStatus() const { return listingPendingStatus; }
-        void Refresh();                                // rescan the current folder
+        // Rescans the current folder. When the folder shown is gone - deleted
+        // or renamed by another display or another program - it moves up to
+        // the nearest folder above it that is still there (SetPath, so
+        // onPathChanged reports it). A folder whose volume went with it (a
+        // USB stick pulled out, a share dropped) is waited for instead: the
+        // display stays on it and re-lists itself when the volume returns.
+        void Refresh();
 
         // ===== FILE LIST (SEARCH RESULTS) =====
         // Display an explicit list of paths (e.g. search results) instead of
@@ -2369,6 +2377,13 @@ namespace UltraCanvas {
         // Runs on the UI thread, driven by the flag the watcher's failure
         // callback sets.
         void HandleLostNativeWatch();
+        // Refresh()'s first step: when the folder the last scan listed as a
+        // real directory is gone and its volume is still there, SetPath to
+        // the nearest existing folder above it. True when it moved.
+        bool MoveUpFromVanishedFolder();
+        // The device a folder is on (POSIX st_dev), 0 when unknown or on
+        // Windows - where a volume that went takes its drive root with it.
+        static unsigned long long FolderDevice(const std::string& path);
         // True while an interaction owns the view and a rescan would disturb
         // it (an open rename editor, a drag, a file operation and its dialog).
         bool IsBusyForAutoRefresh() const;
@@ -2398,6 +2413,12 @@ namespace UltraCanvas {
         uint64_t                folderWatchSignature = 0;
         bool                    folderWatchHaveBaseline = false;  // first scan only measures
         std::atomic<bool>       folderWatchDirty{false};  // worker -> UI timer
+        // The folder the last scan found a real directory, and its device
+        // then: what MoveUpFromVanishedFolder compares against. Empty for an
+        // archive interior, a remote drive or a file list, which are never
+        // "deleted" from under the display.
+        std::string             shownFolderSeenPath;
+        unsigned long long      shownFolderDevice = 0;
         TimerId                 folderWatchTimer = InvalidTimerId;
 
         bool dragEnabled = true;
