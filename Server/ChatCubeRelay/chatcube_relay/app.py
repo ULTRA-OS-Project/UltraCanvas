@@ -15,11 +15,12 @@ import hmac
 import re
 import secrets
 import time
+import urllib.parse
 from contextlib import asynccontextmanager
 from typing import Any
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field, field_validator
 
 from . import __version__
@@ -29,9 +30,10 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 
+from . import pages
 from .identity import decode_b64, login_message, register_message, user_id_for, verify
-from .notify import Notifier, mask_email, mask_phone
-from .store import GROUP_PREFIX, Store, normalize_email, normalize_phone
+from .notify import Notifier
+from .store import GROUP_PREFIX, Store, hash_token, normalize_email, normalize_phone
 
 # Plausible, not proven: an address is proven by the mail that reaches it.
 EMAIL_PATTERN = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
@@ -144,13 +146,12 @@ class EscrowBody(BaseModel):
 
 
 class RecoveryStartBody(BaseModel):
-    address: str = Field(min_length=3, max_length=254)     # the e-mail address or the phone number
+    address: str = Field(min_length=3, max_length=254)     # the ID's e-mail address
 
 
-class RecoveryFinishBody(BaseModel):
+class RecoveryPollBody(BaseModel):
     recovery_id: str = Field(min_length=8, max_length=128)
-    email_code: str = Field(min_length=1, max_length=16)
-    phone_code: str = Field(min_length=1, max_length=16)
+    poll_token: str = Field(min_length=16, max_length=128)
 
 
 def new_code() -> str:
@@ -313,42 +314,64 @@ def create_app(settings: Settings | None = None, notifier: Notifier | None = Non
 
     # ---- the owner's e-mail and phone; account recovery ---------------------
     #
-    # An address or a number is verified once the code sent to it comes back.
-    # Recovery is offered when the relay can send to both and has a recovery
-    # key; a user turns it on by giving the relay a copy of their key, which
-    # it keeps encrypted with that key (README: "Account recovery"). Then
-    # codes sent to both, typed on another computer, hand the key back.
+    # The e-mail address is confirmed by a link the relay e-mails to it - at
+    # registration (ChatCube sends the address right after its first sign-in)
+    # and whenever it changes; the phone number by a code sent by SMS. A user
+    # with a confirmed address can turn recovery on: the relay then keeps a
+    # copy of their key, encrypted with its recovery key (README: "Account
+    # recovery"). On another computer, ChatCube asks for a recovery by that
+    # address; the relay e-mails a link to it - only when an ID really has
+    # it, answering the same either way - and once the link's page is
+    # approved, the asking computer, which polls with a token only it holds,
+    # gets the key.
 
     def recovery_offered() -> bool:
-        return recovery_key is not None and notifier.can_email and notifier.can_sms
+        return recovery_key is not None and notifier.can_email
 
     def send_later(job) -> None:
         # After the answer, on a worker thread: an SMTP server or an SMS
         # gateway takes its time, and how long must not tell anything.
         asyncio.get_running_loop().run_in_executor(None, job)
 
-    def send_code(user_id: str, channel: str, address: str) -> bool:
-        if channel == "email" and not notifier.can_email:
+    def public_base(request: Request) -> str:
+        return settings.public_url or str(request.base_url).rstrip("/")
+
+    def rate_limited(key: str) -> bool:
+        if store.count_sends(key, 3600) >= settings.sends_per_hour:
+            return True
+        store.note_send(key)
+        return False
+
+    def send_confirmation(request: Request, user_id: str, email: str) -> bool:
+        """A link that confirms `email` for `user_id`, e-mailed to it."""
+        if not notifier.can_email:
             return False
-        if channel == "phone" and not notifier.can_sms:
+        if rate_limited(f"confirm:{user_id}"):
+            raise error(429, "too_many_links", "Too many links were sent - try again in an hour")
+        token = secrets.token_urlsafe(32)
+        store.put_link(token, "confirm", user_id, email, settings.confirm_link_ttl_seconds)
+        link = f"{public_base(request)}/confirm-email?token={token}"
+        hours = settings.confirm_link_ttl_seconds // 3600
+        send_later(lambda: notifier.send_email(
+            email, "ChatCube: confirm your e-mail address",
+            "Please confirm that this e-mail address belongs to your ChatCube ID - open this link:\n\n"
+            f"{link}\n\nIt works for {hours} hours. With the address confirmed, you can turn on recovery in "
+            "ChatCube's Edit profile window and get your ID back by e-mail if you lose your computer.\n\n"
+            "If you did not add this address to a ChatCube ID, ignore this message - nothing happens."))
+        return True
+
+    def send_phone_code(user_id: str, phone: str) -> bool:
+        if not notifier.can_sms:
             return False
-        limit_key = f"verify:{user_id}:{channel}"
-        if store.count_sends(limit_key, 3600) >= settings.sends_per_hour:
+        limit_key = f"verify:{user_id}:phone"
+        if rate_limited(limit_key):
             raise error(429, "too_many_codes", "Too many codes were sent - try again in an hour")
         code = new_code()
         store.put_code(limit_key, code, settings.code_ttl_seconds)
-        store.note_send(limit_key)
         minutes = settings.code_ttl_seconds // 60
-        if channel == "email":
-            send_later(lambda: notifier.send_email(
-                address, f"ChatCube: {code} confirms this e-mail address",
-                f"Your ChatCube code is {code}.\n\nType it in ChatCube's Edit profile window to confirm "
-                f"that this address is yours. It works for {minutes} minutes.\n\nIf you did not add this "
-                "address to a ChatCube ID, ignore this message."))
-        else:
-            send_later(lambda: notifier.send_sms(
-                normalize_phone(address),
-                f"ChatCube code {code} - confirms this phone number for your ChatCube ID ({minutes} min)."))
+        send_later(lambda: notifier.send_sms(
+            normalize_phone(phone),
+            f"ChatCube code {code} - confirms this phone number for your ChatCube ID ({minutes} min)."))
         return True
 
     def own_profile(user_id: str, sent: list[str] | None = None) -> dict[str, Any]:
@@ -357,55 +380,76 @@ def create_app(settings: Settings | None = None, notifier: Notifier | None = Non
                 "email_verified": c.email_verified, "phone_verified": c.phone_verified,
                 "recovery_available": recovery_offered(),
                 "recovery_enabled": store.get_escrow(user_id) is not None,
-                "codes_sent": sent or []}
+                "sent": sent or []}
 
     @app.get("/v1/profile")
     async def get_profile(user_id: str = Depends(current_user)):
         return own_profile(user_id)
 
     @app.put("/v1/profile")
-    async def set_profile(body: ProfileBody, user_id: str = Depends(current_user)):
+    async def set_profile(body: ProfileBody, request: Request, user_id: str = Depends(current_user)):
         if body.display_name is not None:
             store.set_display_name(user_id, body.display_name)
         sent: list[str] = []
         if body.email is not None or body.phone is not None:
-            # A changed address or number is confirmed again: a code to it.
+            # A changed address gets a confirmation link, a changed number a code.
             for channel in store.set_contacts(user_id, body.email, body.phone):
-                address = body.email if channel == "email" else body.phone
-                if send_code(user_id, channel, address or ""):
-                    sent.append(channel)
+                if channel == "email" and send_confirmation(request, user_id, body.email or ""):
+                    sent.append("email")
+                elif channel == "phone" and send_phone_code(user_id, body.phone or ""):
+                    sent.append("phone")
         return own_profile(user_id, sent)
 
     @app.post("/v1/profile/verify")
-    async def verify_contact(body: VerifyBody, user_id: str = Depends(current_user)):
-        contacts = store.get_contacts(user_id)
-        if not (contacts.email if body.channel == "email" else contacts.phone):
-            raise error(404, "not_set", "There is no address to confirm")
-        if not store.take_code(f"verify:{user_id}:{body.channel}", digits_of(body.code), settings.code_attempts):
+    async def verify_phone(body: VerifyBody, user_id: str = Depends(current_user)):
+        if body.channel == "email":
+            raise error(400, "use_the_link", "The e-mail address is confirmed by the link e-mailed to it")
+        if not store.get_contacts(user_id).phone:
+            raise error(404, "not_set", "There is no phone number to confirm")
+        if not store.take_code(f"verify:{user_id}:phone", digits_of(body.code), settings.code_attempts):
             raise error(400, "invalid_code", "That is not the code, or it has expired - ask for a new one")
-        store.mark_verified(user_id, body.channel)
+        store.mark_verified(user_id, "phone")
         return own_profile(user_id)
 
     @app.post("/v1/profile/verify/resend")
-    async def resend_code(body: VerifyBody, user_id: str = Depends(current_user)):
+    async def resend(body: VerifyBody, request: Request, user_id: str = Depends(current_user)):
         contacts = store.get_contacts(user_id)
-        address = contacts.email if body.channel == "email" else contacts.phone
+        email = body.channel == "email"
+        address = contacts.email if email else contacts.phone
         if not address:
             raise error(404, "not_set", "There is no address to confirm")
-        verified = contacts.email_verified if body.channel == "email" else contacts.phone_verified
-        if verified:
+        if contacts.email_verified if email else contacts.phone_verified:
             return own_profile(user_id)
-        if not send_code(user_id, body.channel, address):
+        sent = send_confirmation(request, user_id, address) if email else send_phone_code(user_id, address)
+        if not sent:
             raise error(503, "not_configured", "This relay cannot send to that channel")
         return own_profile(user_id, [body.channel])
+
+    @app.get("/confirm-email", response_class=HTMLResponse)
+    async def confirm_email(token: str = ""):
+        link = store.find_link(token, "confirm") if token else None
+        if link and normalize_email(store.get_contacts(link["user_id"]).email) != normalize_email(link["email"]):
+            link = None             # the address changed since: this link is for the old one
+        if not link or not store.use_link(token):
+            return HTMLResponse(pages.page(
+                "This link does not work any more",
+                ["It has expired, it was used already, or the address was changed since it was sent.",
+                 "In ChatCube, open Edit profile and choose Send again under your e-mail address for a new one."],
+                bad=True), status_code=410)
+        store.mark_verified(link["user_id"], "email")
+        user = store.get_user(link["user_id"])
+        return HTMLResponse(pages.page(
+            "Your e-mail address is confirmed",
+            [f"{link['email']} now belongs to the ChatCube ID of {user.display_name if user else 'yours'}.",
+             "You can close this page. In ChatCube's Edit profile window you can now turn on recovery, "
+             "to get your ID back by e-mail if you lose your computer."]))
 
     @app.put("/v1/recovery/escrow")
     async def put_escrow(body: EscrowBody, user_id: str = Depends(current_user)):
         if not recovery_offered():
             raise error(503, "not_configured", "This relay offers no account recovery")
-        contacts = store.get_contacts(user_id)
-        if not (contacts.email_verified and contacts.phone_verified):
-            raise error(409, "not_verified", "Confirm the e-mail address and the phone number first")
+        if not store.get_contacts(user_id).email_verified:
+            raise error(409, "not_verified", "Confirm the e-mail address first")
         secret = decode_b64(body.secret_key)
         user = store.get_user(user_id)
         if not secret or len(secret) != 64 or not user:
@@ -428,64 +472,108 @@ def create_app(settings: Settings | None = None, notifier: Notifier | None = Non
     async def recovery_start(body: RecoveryStartBody, request: Request):
         if not recovery_offered():
             raise error(503, "not_configured", "This relay offers no account recovery")
-        address = body.address.strip()
-        key = normalize_email(address) if "@" in address else normalize_phone(address)
+        address = normalize_email(body.address)
         client = request.client.host if request.client else "?"
-        if (store.count_sends("recover:" + key, 3600) >= settings.sends_per_hour or
-                store.count_sends("recover-from:" + client, 3600) >= settings.sends_per_hour * 4):
-            raise error(429, "too_many_codes", "Too many recoveries were started - try again in an hour")
-        store.note_send("recover:" + key)
-        store.note_send("recover-from:" + client)
-        # The same answer whether the address belongs to anyone: a recovery is
-        # recorded either way, only a real one gets codes and can finish.
-        user_id = store.find_verified(address)
-        contacts = store.get_contacts(user_id) if user_id else None
-        if not (user_id and contacts and contacts.email_verified and contacts.phone_verified and
-                store.get_escrow(user_id)):
-            user_id, contacts = None, None
+        if rate_limited("recover:" + address) or rate_limited("recover-from:" + client):
+            raise error(429, "too_many_links", "Too many recoveries were started - try again in an hour")
+        # The same answer whether the address belongs to anyone: a recovery
+        # is recorded either way; only one for an ID with that confirmed
+        # address and recovery on gets a link.
+        user_id = store.find_verified(address) if "@" in address else None
+        if user_id and not store.get_escrow(user_id):
+            user_id = None
         recovery_id = secrets.token_urlsafe(24)
-        email_code, phone_code = new_code(), new_code()
-        store.start_recovery(recovery_id, user_id, email_code, phone_code, settings.code_ttl_seconds)
-        if contacts:
-            minutes = settings.code_ttl_seconds // 60
-            email, phone = contacts.email, normalize_phone(contacts.phone)
+        poll_token = secrets.token_urlsafe(32)
+        store.start_recovery(recovery_id, user_id, poll_token, settings.recovery_ttl_seconds, client)
+        if user_id:
+            token = secrets.token_urlsafe(32)
+            email = store.get_contacts(user_id).email
+            store.put_link(token, "recover", user_id, email, settings.recovery_ttl_seconds, recovery_id)
+            link = f"{public_base(request)}/recover?token={token}"
+            minutes = settings.recovery_ttl_seconds // 60
+            when = time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime())
             send_later(lambda: notifier.send_email(
-                email, f"ChatCube: {email_code} recovers your ChatCube ID",
-                f"Someone - you, we hope - is recovering your ChatCube ID on another computer.\n\n"
-                f"The e-mail code is {email_code}. A second code went to your phone; both are needed. "
-                f"They work for {minutes} minutes.\n\nIf this was not you, do not pass the codes on to "
-                "anyone, and turn recovery off in ChatCube's Edit profile window."))
-            send_later(lambda: notifier.send_sms(
-                phone, f"ChatCube recovery code {phone_code} ({minutes} min). Not you? Do not share it."))
-        return {"recovery_id": recovery_id, "channels": ["email", "phone"],
-                "expires_in": settings.code_ttl_seconds}
+                email, "ChatCube: recover your ChatCube ID",
+                f"Someone - you, we hope - asked at {when} to recover your ChatCube ID on another computer.\n\n"
+                f"To let that computer sign in as you, open this link and confirm:\n\n{link}\n\n"
+                f"It works for {minutes} minutes, once. If this was not you, ignore this message: without "
+                "the link nobody gets your ID - and you can turn recovery off in ChatCube's Edit profile."))
+        return {"recovery_id": recovery_id, "poll_token": poll_token,
+                "expires_in": settings.recovery_ttl_seconds}
 
-    @app.post("/v1/recovery/finish")
-    async def recovery_finish(body: RecoveryFinishBody):
+    def recover_link_page(token: str):
+        link = store.find_link(token, "recover") if token else None
+        recovery = store.get_recovery(link["recovery_id"]) if link else None
+        if not link or not recovery or recovery["expires_at"] < time.time():
+            return None, HTMLResponse(pages.page(
+                "This link does not work any more",
+                ["It has expired or was used already. Start the recovery again in ChatCube "
+                 "(Recover my ChatCube ID, under the sign-in card) for a new one."], bad=True), status_code=410)
+        return (link, recovery), None
+
+    @app.get("/recover", response_class=HTMLResponse)
+    async def recover_page(token: str = ""):
+        # Opening the link only asks: a mail scanner opening it approves nothing.
+        found, refused = recover_link_page(token)
+        if refused:
+            return refused
+        link, recovery = found
+        user = store.get_user(link["user_id"])
+        asked = time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime(recovery["expires_at"] - settings.recovery_ttl_seconds))
+        return HTMLResponse(pages.page(
+            "Recover your ChatCube ID?",
+            [f"A computer asked at {asked} to sign in as the ChatCube ID of "
+             f"{user.display_name if user else 'yours'}.",
+             "If that was you, confirm below - ChatCube on that computer continues by itself. "
+             "If it was not you, close this page: nothing happens without this confirmation."],
+            form=pages.approve_form(token)))
+
+    @app.post("/recover", response_class=HTMLResponse)
+    async def recover_approve(request: Request):
+        form = urllib.parse.parse_qs((await request.body()).decode("utf-8", "replace"))
+        token = (form.get("token") or [""])[0]
+        found, refused = recover_link_page(token)
+        if refused:
+            return refused
+        link, recovery = found
+        if not store.use_link(token) or not store.approve_recovery(recovery["recovery_id"]):
+            return HTMLResponse(pages.page("This link does not work any more",
+                                           ["It was used already."], bad=True), status_code=410)
+        return HTMLResponse(pages.page(
+            "Your ChatCube ID is on its way",
+            ["Go back to the computer that asked: ChatCube signs in there by itself in a few seconds.",
+             "You will get an e-mail when it has. You can close this page."]))
+
+    @app.post("/v1/recovery/poll")
+    async def recovery_poll(body: RecoveryPollBody):
+        """Pending (202) until the link's page is approved; then the key, once."""
         if not recovery_offered():
             raise error(503, "not_configured", "This relay offers no account recovery")
-        user_id = store.finish_recovery(body.recovery_id, digits_of(body.email_code), digits_of(body.phone_code),
-                                        settings.code_attempts)
-        if not user_id:
-            raise error(401, "invalid_code", "Those are not the codes, or they have expired")
+        recovery = store.get_recovery(body.recovery_id)
+        if (not recovery or recovery["expires_at"] < time.time() or
+                not hmac.compare_digest(recovery["poll_digest"], hash_token(body.poll_token))):
+            raise error(410, "expired", "This recovery has expired - start again")
+        if recovery["approved_at"] is None or not recovery["user_id"]:
+            return JSONResponse(status_code=202, content={"status": "pending",
+                                                          "expires_in": int(recovery["expires_at"] - time.time())})
+        user_id = recovery["user_id"]
+        store.end_recovery(body.recovery_id)
         sealed = store.get_escrow(user_id)
         user = store.get_user(user_id)
         if not sealed or not user:
-            raise error(401, "invalid_code", "Those are not the codes, or they have expired")
+            raise error(410, "expired", "Recovery was turned off for this ID")
         try:
             secret = AESGCM(recovery_key).decrypt(sealed[0], sealed[1], user_id.encode())
         except InvalidTag:
             raise error(500, "escrow_unreadable", "The recovery copy cannot be read with this relay's key")
         contacts = store.get_contacts(user_id)
-        # The owner hears of it on both, whoever did it.
         when = time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime())
-        email, phone = contacts.email, normalize_phone(contacts.phone)
+        email = contacts.email
         send_later(lambda: notifier.send_email(
             email, "ChatCube: your ID was recovered on another computer",
-            f"Your ChatCube ID was recovered on another computer at {when}.\n\nIf this was you, there is "
-            "nothing to do. If it was not, someone has your e-mail and your phone: secure both, and make a "
-            "new ChatCube ID - a recovered key cannot be taken back."))
-        send_later(lambda: notifier.send_sms(phone, f"Your ChatCube ID was recovered on another computer at {when}."))
+            f"Your ChatCube ID was recovered on another computer at {when}, through the link e-mailed to "
+            "you.\n\nIf this was you, there is nothing to do. If it was not, someone has your e-mail: "
+            "secure it, and make a new ChatCube ID - a recovered key cannot be taken back."))
         return {"user_id": user_id, "secret_key": base64.b64encode(secret).decode(),
                 "display_name": user.display_name, "email": contacts.email, "phone": contacts.phone}
 

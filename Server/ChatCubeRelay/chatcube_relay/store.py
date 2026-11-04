@@ -15,91 +15,7 @@ import time
 import uuid
 from dataclasses import dataclass
 
-SCHEMA = """
-CREATE TABLE IF NOT EXISTS users (
-    user_id      TEXT PRIMARY KEY,
-    public_key   BLOB NOT NULL,
-    display_name TEXT NOT NULL,
-    created_at   INTEGER NOT NULL
-);
-CREATE TABLE IF NOT EXISTS sessions (
-    token_hash TEXT PRIMARY KEY,
-    user_id    TEXT NOT NULL REFERENCES users(user_id),
-    expires_at INTEGER NOT NULL
-);
-CREATE TABLE IF NOT EXISTS contacts (
-    owner      TEXT NOT NULL,
-    contact    TEXT NOT NULL,
-    created_at INTEGER NOT NULL,
-    PRIMARY KEY (owner, contact)
-);
-CREATE INDEX IF NOT EXISTS contacts_by_contact ON contacts(contact);
-CREATE TABLE IF NOT EXISTS groups (
-    group_id   TEXT PRIMARY KEY,
-    title      TEXT NOT NULL,
-    owner      TEXT NOT NULL,
-    created_at INTEGER NOT NULL
-);
-CREATE TABLE IF NOT EXISTS group_members (
-    group_id TEXT NOT NULL REFERENCES groups(group_id),
-    user_id  TEXT NOT NULL,
-    PRIMARY KEY (group_id, user_id)
-);
-CREATE INDEX IF NOT EXISTS members_by_user ON group_members(user_id);
-CREATE TABLE IF NOT EXISTS messages (
-    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    recipient    TEXT NOT NULL,
-    sender       TEXT NOT NULL,
-    message_id   TEXT NOT NULL,
-    conversation TEXT NOT NULL,
-    envelope     TEXT NOT NULL,
-    created_at   INTEGER NOT NULL,
-    UNIQUE (recipient, message_id)
-);
-CREATE INDEX IF NOT EXISTS messages_by_recipient ON messages(recipient, id);
--- What a user gave to recover the account with: theirs alone, never part of
--- what anyone else is told about them (user_json). Verified once a code sent
--- to it came back (the columns are added by _migrate on a 1.1.0 database).
-CREATE TABLE IF NOT EXISTS recovery (
-    user_id    TEXT PRIMARY KEY REFERENCES users(user_id),
-    email      TEXT NOT NULL DEFAULT '',
-    phone      TEXT NOT NULL DEFAULT '',
-    updated_at INTEGER NOT NULL
-);
--- A code waiting to come back: confirming an e-mail address or a phone.
-CREATE TABLE IF NOT EXISTS codes (
-    key        TEXT PRIMARY KEY,              -- "verify:<user>:<channel>"
-    digest     TEXT NOT NULL,                 -- SHA-256 of key and code
-    expires_at INTEGER NOT NULL,
-    attempts   INTEGER NOT NULL DEFAULT 0
-);
--- The recovery copy of a user's key, encrypted with the relay's recovery key
--- (AES-256-GCM, the user id as associated data). Present only while the
--- user has recovery turned on.
-CREATE TABLE IF NOT EXISTS escrow (
-    user_id    TEXT PRIMARY KEY REFERENCES users(user_id),
-    nonce      BLOB NOT NULL,
-    sealed     BLOB NOT NULL,
-    updated_at INTEGER NOT NULL
-);
--- A recovery under way: the codes sent to both, until they come back. One
--- for an address nobody has too (user_id NULL), so the answer never tells.
-CREATE TABLE IF NOT EXISTS recoveries (
-    recovery_id  TEXT PRIMARY KEY,
-    user_id      TEXT,
-    email_digest TEXT NOT NULL,
-    phone_digest TEXT NOT NULL,
-    expires_at   INTEGER NOT NULL,
-    attempts     INTEGER NOT NULL DEFAULT 0
-);
--- When codes went where, for the hourly limit.
-CREATE TABLE IF NOT EXISTS sends (
-    key TEXT NOT NULL,
-    at  INTEGER NOT NULL
-);
-CREATE INDEX IF NOT EXISTS sends_by_key ON sends(key, at);
-"""
-
+from .migrations import migrate
 
 def code_digest(key: str, code: str) -> str:
     return hashlib.sha256((key + "\n" + code).encode()).hexdigest()
@@ -152,14 +68,8 @@ class Store:
         with self._lock:
             self._db.execute("PRAGMA journal_mode=WAL")
             self._db.execute("PRAGMA foreign_keys=ON")
-            self._db.executescript(SCHEMA)
-            self._migrate()
-
-    def _migrate(self) -> None:
-        columns = {row["name"] for row in self._db.execute("PRAGMA table_info(recovery)")}
-        for column in ("email_verified", "phone_verified"):
-            if column not in columns:
-                self._db.execute(f"ALTER TABLE recovery ADD COLUMN {column} INTEGER NOT NULL DEFAULT 0")
+            # The schema, brought to this relay's version (migrations.py).
+            self.migrations_applied = migrate(self._db)
 
     def close(self) -> None:
         with self._lock:
@@ -296,36 +206,70 @@ class Store:
         with self._lock:
             self._db.execute("DELETE FROM escrow WHERE user_id=?", (user_id,))
 
-    def start_recovery(self, recovery_id: str, user_id: str | None, email_code: str, phone_code: str,
-                       ttl: int) -> None:
-        with self._lock:
-            self._db.execute("DELETE FROM recoveries WHERE expires_at<?", (int(time.time()),))
-            self._db.execute(
-                "INSERT INTO recoveries(recovery_id, user_id, email_digest, phone_digest, expires_at) "
-                "VALUES (?,?,?,?,?)",
-                (recovery_id, user_id, code_digest(recovery_id + ":email", email_code),
-                 code_digest(recovery_id + ":phone", phone_code), int(time.time()) + ttl))
+    # ---- links e-mailed: confirming the address, approving a recovery ---------------
 
-    def finish_recovery(self, recovery_id: str, email_code: str, phone_code: str,
-                        max_attempts: int) -> str | None:
-        """The user id when both codes are right (and the recovery gone); None
-        otherwise - also for an address nobody has. A wrong pair counts."""
+    def put_link(self, token: str, purpose: str, user_id: str, email: str, ttl: int,
+                 recovery_id: str | None = None) -> None:
+        """A link's token, kept as its SHA-256 only. A new confirmation link
+        replaces the ones before it for that user."""
+        with self._lock:
+            now = int(time.time())
+            self._db.execute("DELETE FROM links WHERE expires_at<?", (now,))
+            if purpose == "confirm":
+                self._db.execute("DELETE FROM links WHERE user_id=? AND purpose='confirm'", (user_id,))
+            self._db.execute(
+                "INSERT INTO links(token_digest, purpose, user_id, email, recovery_id, expires_at) "
+                "VALUES (?,?,?,?,?,?)", (hash_token(token), purpose, user_id, email, recovery_id, now + ttl))
+
+    def find_link(self, token: str, purpose: str) -> dict | None:
+        """The link behind `token` while it can still be used: not expired,
+        not used. None otherwise."""
         with self._lock:
             row = self._db.execute(
-                "SELECT user_id, email_digest, phone_digest, expires_at, attempts FROM recoveries "
-                "WHERE recovery_id=?", (recovery_id,)).fetchone()
-            if not row or row["expires_at"] < time.time():
-                return None
-            email_ok = hmac.compare_digest(row["email_digest"], code_digest(recovery_id + ":email", email_code))
-            phone_ok = hmac.compare_digest(row["phone_digest"], code_digest(recovery_id + ":phone", phone_code))
-            if email_ok and phone_ok and row["user_id"]:
-                self._db.execute("DELETE FROM recoveries WHERE recovery_id=?", (recovery_id,))
-                return row["user_id"]
-            if row["attempts"] + 1 >= max_attempts:
-                self._db.execute("DELETE FROM recoveries WHERE recovery_id=?", (recovery_id,))
-            else:
-                self._db.execute("UPDATE recoveries SET attempts=attempts+1 WHERE recovery_id=?", (recovery_id,))
+                "SELECT user_id, email, recovery_id, expires_at, used_at FROM links "
+                "WHERE token_digest=? AND purpose=?", (hash_token(token), purpose)).fetchone()
+        if not row or row["used_at"] is not None or row["expires_at"] < time.time():
             return None
+        return dict(row)
+
+    def use_link(self, token: str) -> bool:
+        """Marks the link used; False when it already was (two clicks at once)."""
+        with self._lock:
+            cur = self._db.execute("UPDATE links SET used_at=? WHERE token_digest=? AND used_at IS NULL",
+                                   (int(time.time()), hash_token(token)))
+            return cur.rowcount == 1
+
+    def start_recovery(self, recovery_id: str, user_id: str | None, poll_token: str, ttl: int,
+                       requested_from: str) -> None:
+        """A recovery for `user_id` (None: an address nobody has - recorded
+        anyway, so the answer is the same), which the asking computer polls
+        with `poll_token`."""
+        with self._lock:
+            now = int(time.time())
+            self._db.execute("DELETE FROM recoveries WHERE expires_at<?", (now,))
+            self._db.execute(
+                "INSERT INTO recoveries(recovery_id, user_id, poll_digest, expires_at, requested_from) "
+                "VALUES (?,?,?,?,?)", (recovery_id, user_id, hash_token(poll_token), now + ttl, requested_from))
+
+    def get_recovery(self, recovery_id: str) -> dict | None:
+        with self._lock:
+            row = self._db.execute(
+                "SELECT recovery_id, user_id, poll_digest, approved_at, expires_at, requested_from "
+                "FROM recoveries WHERE recovery_id=?", (recovery_id,)).fetchone()
+        return dict(row) if row else None
+
+    def approve_recovery(self, recovery_id: str) -> bool:
+        with self._lock:
+            cur = self._db.execute(
+                "UPDATE recoveries SET approved_at=? WHERE recovery_id=? AND approved_at IS NULL AND expires_at>=?",
+                (int(time.time()), recovery_id, int(time.time())))
+            return cur.rowcount == 1
+
+    def end_recovery(self, recovery_id: str) -> None:
+        with self._lock:
+            self._db.execute("DELETE FROM recoveries WHERE recovery_id=?", (recovery_id,))
+            self._db.execute("UPDATE links SET used_at=COALESCE(used_at, ?) WHERE recovery_id=?",
+                             (int(time.time()), recovery_id))
 
     # ---- sessions ------------------------------------------------------------
 

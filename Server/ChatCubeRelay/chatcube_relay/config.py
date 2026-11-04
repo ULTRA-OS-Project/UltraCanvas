@@ -57,7 +57,13 @@ class Settings:
     # Development and tests only: every e-mail and SMS is appended to this
     # file (a JSON object per line) instead of being sent.
     outbox: str = ""
-    code_ttl_seconds: int = 600          # a code is good for ten minutes
+    # Where the e-mailed links point: the relay's public https:// address
+    # ("https://relay.example.org"). Without it, the address the request came
+    # in on - right without a proxy in front, wrong behind one.
+    public_url: str = ""
+    confirm_link_ttl_seconds: int = 24 * 3600     # an address confirmation link
+    recovery_ttl_seconds: int = 30 * 60           # a recovery, its link and its polling
+    code_ttl_seconds: int = 600          # a code (the phone's) is good for ten minutes
     code_attempts: int = 5               # then it is spent
     sends_per_hour: int = 5              # codes to one address or account in an hour
 
@@ -88,4 +94,5 @@ class Settings:
         s.sms_webhook_url = env("SMS_WEBHOOK_URL")
         s.sms_webhook_token = env("SMS_WEBHOOK_TOKEN")
         s.outbox = env("OUTBOX")
+        s.public_url = env("PUBLIC_URL").rstrip("/")
         return s
