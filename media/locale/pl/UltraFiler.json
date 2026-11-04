@@ -3,9 +3,13 @@
   "@translated-by": "machine draft 2026-11-04, reviewed by -",
   "\"Show it in the preview\" keeps the file inside UltraFiler whenever it can show it - pictures, documents, spreadsheets, 3D models, e-books, fonts, video, audio and text - which is faster than starting a program for a look at a file.": "„Pokaż w podglądzie” zatrzymuje plik w UltraFiler, gdy tylko da się go pokazać – obrazy, dokumenty, arkusze kalkulacyjne, modele 3D, e-booki, czcionki, wideo, dźwięk i tekst – co jest szybsze niż uruchamianie programu, by zerknąć na plik.",
   "\"Start the registered program\" is what a double-click does in Explorer and the Finder: the file opens in the program its type is assigned to, and UltraFiler stays as it is.": "„Uruchom zarejestrowany program” to to, co robi dwukrotne kliknięcie w programach Explorer i Finder: plik otwiera się w programie, do którego przypisano jego typ, a UltraFiler pozostaje bez zmian.",
+  "\"{0}\" is being downloaded from {1}.": "„{0}” jest pobierany z {1}.",
+  "\"{0}\" is being uploaded to {1}.": "„{0}” jest przesyłany do {1}.",
   "\"{0}\" is no longer connected": "„{0}” nie jest już połączony",
+  "(stopped at {0})": "(zatrzymano na {0})",
   "5 s clip": "Klip 5 s",
-  "A download is": "Pobieranie",
+  "A download is still running — quit anyway?": "Pobieranie nadal trwa – zakończyć mimo to?",
+  "A download is still waiting — quit anyway?": "Pobieranie nadal czeka w kolejce – zakończyć mimo to?",
   "a file": "pliku",
   "A file cannot replace a folder. ": "Plik nie może zastąpić folderu. ",
   "A file merely open elsewhere - which on this kind of system blocks nothing - is marked O instead, and wears no padlock.": "Plik jedynie otwarty w innym programie – co w tego rodzaju systemie niczego nie blokuje – jest oznaczany literą O i nie dostaje kłódki.",
@@ -29,7 +33,13 @@
   "Add a drive: an FTP / SFTP server, a cloud account or a RAM disc": "Dodaj dysk: serwer FTP / SFTP, konto w chmurze lub dysk RAM",
   "Add an FTP / SFTP drive": "Dodaj dysk FTP / SFTP",
   "an entry": "elementu",
-  "An upload is": "Przesyłanie",
+  "An upload is still running — quit anyway?": "Przesyłanie nadal trwa – zakończyć mimo to?",
+  "An upload is still waiting — quit anyway?": "Przesyłanie nadal czeka w kolejce – zakończyć mimo to?",
+  "and {n} more": {
+    "one": "i jeszcze {n}",
+    "few": "i jeszcze {n}",
+    "many": "i jeszcze {n}"
+  },
   "Any other file, when this system has a program registered for that kind of file:": "Każdy inny plik, jeśli ten system ma program zarejestrowany dla tego rodzaju plików:",
   "Applied to {n} item.": {
     "one": "Zastosowano do {n} elementu.",
@@ -189,6 +199,7 @@
   "In memory: not available.": "W pamięci: niedostępne.",
   "In the thumbnail views, show the extension on the tile:": "W widokach miniatur pokazuj rozszerzenie na kafelku:",
   "In use:": "W użyciu:",
+  "in {0}": "w {0}",
   "Installing {0} — first launch prepares its Windows environment, this can take a minute…": "Instalowanie {0} – pierwsze uruchomienie przygotowuje środowisko Windows, może to potrwać minutę…",
   "Installing {0}…": "Instalowanie {0}…",
   "It names: {0}": "Wskazuje na: {0}",
@@ -212,6 +223,7 @@
   "Looking in {0} for names already taken...": "Szukanie zajętych nazw w {0}...",
   "Mark files that are in use": "Oznaczaj używane pliki",
   "Match case": "Uwzględniaj wielkość liter",
+  "match case": "z uwzględnieniem wielkości liter",
   "Maximum 2 rows": "Maksymalnie 2 wiersze",
   "Maximum 3 rows": "Maksymalnie 3 wiersze",
   "Maximum 4 rows": "Maksymalnie 4 wiersze",
@@ -221,7 +233,8 @@
   "Merging a folder puts its entries into the folder that is there and asks about any name that is taken inside it; Replace deletes the existing folder first. Until the progress window opens, the pointer shows that the work is under way.": "Scalenie folderu umieszcza jego elementy w istniejącym folderze i pyta o każdą nazwę, która jest w nim już zajęta; „Zamień” najpierw usuwa istniejący folder. Dopóki nie otworzy się okno postępu, wskaźnik pokazuje, że praca trwa.",
   "Message log": "Dziennik komunikatów",
   "Modern - each tab a capsule floating in the strip: the open one white with a blue outline, the others plain text until the pointer is over them": "Nowoczesny – każda karta jako kapsułka unosząca się na pasku: otwarta biała z niebieskim obrysem, pozostałe jako zwykły tekst, dopóki nie najedzie się na nie wskaźnikiem",
-  "Moving files to the {0}": "Przenoszenie plików do kosza ({0})",
+  "Moving files to the Recycle Bin": "Przenoszenie plików do kosza",
+  "Moving files to the Trash": "Przenoszenie plików do kosza",
   "Moving files, by drag & drop or with Cut and Paste": "Przenoszenie plików metodą przeciągnij i upuść lub poleceniami „Wytnij” i „Wklej”",
   "name for the new environment": "nazwa nowego środowiska",
   "Name:": "Nazwa:",
@@ -300,11 +313,11 @@
   "Saved to {0}": "Zapisano w {0}",
   "Scan sub folder": "Przeszukaj podfoldery",
   "Search every sub folder of this folder (Enter)": "Przeszukaj wszystkie podfoldery tego folderu (Enter)",
-  "Search for \"": "Wyszukiwanie „",
-  "Searching \"": "Wyszukiwanie „",
+  "Search for \"{0}\"{1} stopped": "Zatrzymano wyszukiwanie „{0}”{1}",
   "Searching \"{0}\" - {1}, {2}": "Wyszukiwanie „{0}” – {1}, {2}",
-  "Searching files for the text \"": "Wyszukiwanie w plikach tekstu „",
+  "Searching \"{0}\"{1} ...": "Wyszukiwanie „{0}”{1}...",
   "Searching files for the text \"{0}\"{1} - {2}, {3}": "Wyszukiwanie w plikach tekstu „{0}”{1} – {2}, {3}",
+  "Searching files for the text \"{0}\"{1} ...": "Wyszukiwanie w plikach tekstu „{0}”{1}...",
   "Select the command line application": "Wybierz aplikację wiersza poleceń",
   "Selected folder colour": "Kolor zaznaczonego folderu",
   "Selected folder colour:": "Kolor zaznaczonego folderu:",
@@ -346,7 +359,7 @@
   "TAR": "TAR",
   "Test": "Testuj",
   "Text files": "Pliki tekstowe",
-  "Text search for \"": "Wyszukiwanie tekstu „",
+  "Text search for \"{0}\"{1} stopped": "Zatrzymano wyszukiwanie tekstu „{0}”{1}",
   "The change shows at once on the open window's tab strip. Whichever style is chosen, the tabs behave the same: click to switch, the X or a middle click to close, drag to reorder, and the + at the end opens another tab.": "Zmiana jest od razu widoczna na pasku kart otwartego okna. Niezależnie od wybranego stylu karty zachowują się tak samo: kliknięcie przełącza, X lub kliknięcie środkowym przyciskiem zamyka, przeciąganie zmienia kolejność, a „+” na końcu otwiera kolejną kartę.",
   "The current folder opens the tab on the folder the active tab is showing, so the work carries on where it is; the Home folder opens every new tab on the same starting point instead. Computer opens the Computer page - the drives with their free space, Home and the cloud folders - with the Home folder behind it, so a tab opened that way still has a folder to show once a drive or folder is picked.": "„Bieżący folder” otwiera kartę na folderze pokazywanym przez aktywną kartę, więc praca toczy się dalej tam, gdzie jest; „Folder domowy” otwiera natomiast każdą nową kartę w tym samym punkcie startowym. „Komputer” otwiera stronę Komputer – dyski z wolnym miejscem, folder domowy i foldery w chmurze – z folderem domowym za nią, więc karta otwarta w ten sposób nadal ma folder do pokazania po wybraniu dysku lub folderu.",
   "The disk cache looks after its own size: a thumbnail not used for {0} days is deleted when UltraFiler next starts, so a folder you keep visiting keeps its thumbnails and one you opened once pays for itself and then goes away. Nothing here can show an out-of-date picture - a file's size and date are stored with its thumbnail, so a file that has changed is read again.": "Pamięć podręczna na dysku sama pilnuje swojego rozmiaru: miniatura nieużywana od {0} dni jest usuwana przy następnym uruchomieniu UltraFiler, więc folder, do którego często wracasz, zachowuje swoje miniatury, a ten otwarty raz zwraca swój koszt i znika. Nic tutaj nie może pokazać nieaktualnego obrazu – rozmiar i data pliku są przechowywane razem z jego miniaturą, więc zmieniony plik jest odczytywany ponownie.",
@@ -389,10 +402,12 @@
   "Use system default": "Użyj domyślnego programu systemu",
   "Video": "Wideo",
   "Waiting after it: ": "Oczekujące po nim: ",
+  "Waiting: ": "Oczekujące: ",
   "What is on screen is being read again and goes back into the cache as it lands - press Refresh to see where it settles.": "To, co jest na ekranie, jest odczytywane ponownie i wraca do pamięci podręcznej w miarę napływania – naciśnij „Odśwież”, aby zobaczyć, na czym się ustabilizuje.",
   "What the \"+\" at the end of the tab strip opens:": "Co otwiera „+” na końcu paska kart:",
   "What the Home folder shows, in the folder tree and in the file display:": "Co pokazuje folder domowy w drzewie folderów i w obszarze plików:",
   "What UltraFiler keeps so a folder opens without being read again:": "Co UltraFiler przechowuje, aby folder otwierał się bez ponownego odczytu:",
+  "What was sent is removed from {0} the next time you use it.": "To, co zostało wysłane, zostanie usunięte z {0} przy następnym użyciu.",
   "Whatever is chosen here, Ctrl while dropping always copies and Shift always moves.": "Niezależnie od tego wyboru Ctrl podczas upuszczania zawsze kopiuje, a Shift zawsze przenosi.",
   "When a file cannot be copied, moved or deleted:": "Gdy pliku nie można skopiować, przenieść ani usunąć:",
   "When a folder is pasted over a folder:": "Gdy folder jest wklejany na folder:",
@@ -413,10 +428,30 @@
   "{0} - not supported by this build": "{0} – nieobsługiwane w tej kompilacji",
   "{0} min": "{0} min",
   "{0}, {1} (room for {2})": "{0}, {1} (miejsce na {2})",
+  "{n} download is still running or waiting — quit anyway?": {
+    "one": "{n} pobieranie nadal trwa lub czeka – zakończyć mimo to?",
+    "few": "{n} pobierania nadal trwają lub czekają – zakończyć mimo to?",
+    "many": "{n} pobierań nadal trwa lub czeka – zakończyć mimo to?"
+  },
+  "{n} download is still running — quit anyway?": {
+    "one": "{n} pobieranie nadal trwa – zakończyć mimo to?",
+    "few": "{n} pobierania nadal trwają – zakończyć mimo to?",
+    "many": "{n} pobierań nadal trwa – zakończyć mimo to?"
+  },
+  "{n} download is still waiting — quit anyway?": {
+    "one": "{n} pobieranie nadal czeka w kolejce – zakończyć mimo to?",
+    "few": "{n} pobierania nadal czekają w kolejce – zakończyć mimo to?",
+    "many": "{n} pobierań nadal czeka w kolejce – zakończyć mimo to?"
+  },
   "{n} entry": {
     "one": "{n} wpis",
     "few": "{n} wpisy",
     "many": "{n} wpisów"
+  },
+  "{n} file contains \"{0}\"{1} - {2}": {
+    "one": "{n} plik zawiera „{0}”{1} – {2}",
+    "few": "{n} pliki zawierają „{0}”{1} – {2}",
+    "many": "{n} plików zawiera „{0}”{1} – {2}"
   },
   "{n} file found": {
     "one": "znaleziono {n} plik",
@@ -427,6 +462,11 @@
     "one": "odczytano {n} plik",
     "few": "odczytano {n} pliki",
     "many": "odczytano {n} plików"
+  },
+  "{n} file read in {0}": {
+    "one": "odczytano {n} plik ({0})",
+    "few": "odczytano {n} pliki ({0})",
+    "many": "odczytano {n} plików ({0})"
   },
   "{n} folder scanned": {
     "one": "przeszukano {n} folder",
@@ -448,6 +488,11 @@
     "few": "{n} wyniki",
     "many": "{n} wyników"
   },
+  "{n} result for \"{0}\" in {1}": {
+    "one": "{n} wynik dla „{0}” ({1})",
+    "few": "{n} wyniki dla „{0}” ({1})",
+    "many": "{n} wyników dla „{0}” ({1})"
+  },
   "{n} shared folder": {
     "one": "{n} folder udostępniony",
     "few": "{n} foldery udostępnione",
@@ -467,5 +512,35 @@
     "one": "{n} kafelek",
     "few": "{n} kafelki",
     "many": "{n} kafelków"
+  },
+  "{n} transfer is still running or waiting — quit anyway?": {
+    "one": "{n} transfer nadal trwa lub czeka – zakończyć mimo to?",
+    "few": "{n} transfery nadal trwają lub czekają – zakończyć mimo to?",
+    "many": "{n} transferów nadal trwa lub czeka – zakończyć mimo to?"
+  },
+  "{n} transfer is still running — quit anyway?": {
+    "one": "{n} transfer nadal trwa – zakończyć mimo to?",
+    "few": "{n} transfery nadal trwają – zakończyć mimo to?",
+    "many": "{n} transferów nadal trwa – zakończyć mimo to?"
+  },
+  "{n} transfer is still waiting — quit anyway?": {
+    "one": "{n} transfer nadal czeka w kolejce – zakończyć mimo to?",
+    "few": "{n} transfery nadal czekają w kolejce – zakończyć mimo to?",
+    "many": "{n} transferów nadal czeka w kolejce – zakończyć mimo to?"
+  },
+  "{n} upload is still running or waiting — quit anyway?": {
+    "one": "{n} przesyłanie nadal trwa lub czeka – zakończyć mimo to?",
+    "few": "{n} przesyłania nadal trwają lub czekają – zakończyć mimo to?",
+    "many": "{n} przesyłań nadal trwa lub czeka – zakończyć mimo to?"
+  },
+  "{n} upload is still running — quit anyway?": {
+    "one": "{n} przesyłanie nadal trwa – zakończyć mimo to?",
+    "few": "{n} przesyłania nadal trwają – zakończyć mimo to?",
+    "many": "{n} przesyłań nadal trwa – zakończyć mimo to?"
+  },
+  "{n} upload is still waiting — quit anyway?": {
+    "one": "{n} przesyłanie nadal czeka w kolejce – zakończyć mimo to?",
+    "few": "{n} przesyłania nadal czekają w kolejce – zakończyć mimo to?",
+    "many": "{n} przesyłań nadal czeka w kolejce – zakończyć mimo to?"
   }
 }

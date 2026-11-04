@@ -3,9 +3,13 @@
   "@translated-by": "machine draft 2026-11-04, reviewed by -",
   "\"Show it in the preview\" keeps the file inside UltraFiler whenever it can show it - pictures, documents, spreadsheets, 3D models, e-books, fonts, video, audio and text - which is faster than starting a program for a look at a file.": "«Показати в попередньому перегляді» залишає файл в UltraFiler, якщо його можна показати: зображення, документи, електронні таблиці, 3D-моделі, електронні книги, шрифти, відео, аудіо й текст. Це швидше, ніж запускати програму, щоб глянути на файл.",
   "\"Start the registered program\" is what a double-click does in Explorer and the Finder: the file opens in the program its type is assigned to, and UltraFiler stays as it is.": "«Запустити зареєстровану програму» — це те, що робить подвійне клацання в Explorer і Finder: файл відкривається в програмі, якій призначено його тип, а UltraFiler залишається як є.",
+  "\"{0}\" is being downloaded from {1}.": "«{0}» завантажується з {1}.",
+  "\"{0}\" is being uploaded to {1}.": "«{0}» вивантажується до {1}.",
   "\"{0}\" is no longer connected": "«{0}» більше не під'єднано",
+  "(stopped at {0})": "(зупинено на {0})",
   "5 s clip": "Кліп 5 с",
-  "A download is": "Завантаження",
+  "A download is still running — quit anyway?": "Завантаження ще триває — все одно вийти?",
+  "A download is still waiting — quit anyway?": "Завантаження ще чекає в черзі — все одно вийти?",
   "a file": "файлу",
   "A file cannot replace a folder. ": "Файл не може замінити папку. ",
   "A file merely open elsewhere - which on this kind of system blocks nothing - is marked O instead, and wears no padlock.": "Файл, просто відкритий в іншій програмі, — а в такій системі це нічого не блокує — позначається літерою O і не отримує замка.",
@@ -29,7 +33,13 @@
   "Add a drive: an FTP / SFTP server, a cloud account or a RAM disc": "Додати диск: сервер FTP / SFTP, хмарний обліковий запис або RAM-диск",
   "Add an FTP / SFTP drive": "Додати диск FTP / SFTP",
   "an entry": "елемента",
-  "An upload is": "Вивантаження",
+  "An upload is still running — quit anyway?": "Вивантаження ще триває — все одно вийти?",
+  "An upload is still waiting — quit anyway?": "Вивантаження ще чекає в черзі — все одно вийти?",
+  "and {n} more": {
+    "one": "і ще {n}",
+    "few": "і ще {n}",
+    "many": "і ще {n}"
+  },
   "Any other file, when this system has a program registered for that kind of file:": "Будь-який інший файл, якщо в системі для цього типу файлів зареєстровано програму:",
   "Applied to {n} item.": {
     "one": "Застосовано до {n} елемента.",
@@ -189,6 +199,7 @@
   "In memory: not available.": "У пам'яті: недоступно.",
   "In the thumbnail views, show the extension on the tile:": "У виглядах мініатюр показувати розширення на плитці:",
   "In use:": "Використовується:",
+  "in {0}": "у {0}",
   "Installing {0} — first launch prepares its Windows environment, this can take a minute…": "Встановлення {0} — перший запуск готує середовище Windows, це може тривати хвилину…",
   "Installing {0}…": "Встановлення {0}…",
   "It names: {0}": "Вказує на: {0}",
@@ -212,6 +223,7 @@
   "Looking in {0} for names already taken...": "Пошук зайнятих назв у {0}...",
   "Mark files that are in use": "Позначати файли, що використовуються",
   "Match case": "Враховувати регістр",
+  "match case": "з урахуванням регістру",
   "Maximum 2 rows": "Не більше 2 рядків",
   "Maximum 3 rows": "Не більше 3 рядків",
   "Maximum 4 rows": "Не більше 4 рядків",
@@ -221,7 +233,8 @@
   "Merging a folder puts its entries into the folder that is there and asks about any name that is taken inside it; Replace deletes the existing folder first. Until the progress window opens, the pointer shows that the work is under way.": "Під час об'єднання папки її елементи переносяться в наявну папку, а про кожну назву, яка в ній уже зайнята, ставиться запитання; «Замінити» спочатку видаляє наявну папку. Доки не відкриється вікно перебігу виконання, вказівник показує, що робота триває.",
   "Message log": "Журнал повідомлень",
   "Modern - each tab a capsule floating in the strip: the open one white with a blue outline, the others plain text until the pointer is over them": "Сучасний — кожна вкладка капсулою плаває на смузі: відкрита біла із синім контуром, інші простим текстом, доки на них не наведено вказівник",
-  "Moving files to the {0}": "Переміщення файлів до: {0}",
+  "Moving files to the Recycle Bin": "Переміщення файлів до кошика",
+  "Moving files to the Trash": "Переміщення файлів до смітника",
   "Moving files, by drag & drop or with Cut and Paste": "Переміщення файлів перетягуванням або командами «Вирізати» й «Вставити»",
   "name for the new environment": "назва нового середовища",
   "Name:": "Назва:",
@@ -300,11 +313,11 @@
   "Saved to {0}": "Збережено в {0}",
   "Scan sub folder": "Пошук у підпапках",
   "Search every sub folder of this folder (Enter)": "Шукати в усіх підпапках цієї папки (Enter)",
-  "Search for \"": "Пошук \"",
-  "Searching \"": "Пошук \"",
+  "Search for \"{0}\"{1} stopped": "Пошук «{0}»{1} зупинено",
   "Searching \"{0}\" - {1}, {2}": "Пошук «{0}» — {1}, {2}",
-  "Searching files for the text \"": "Пошук у файлах тексту \"",
+  "Searching \"{0}\"{1} ...": "Пошук «{0}»{1}...",
   "Searching files for the text \"{0}\"{1} - {2}, {3}": "Пошук у файлах тексту «{0}»{1} — {2}, {3}",
+  "Searching files for the text \"{0}\"{1} ...": "Пошук у файлах тексту «{0}»{1}...",
   "Select the command line application": "Виберіть застосунок командного рядка",
   "Selected folder colour": "Колір вибраної папки",
   "Selected folder colour:": "Колір вибраної папки:",
@@ -346,7 +359,7 @@
   "TAR": "TAR",
   "Test": "Перевірити",
   "Text files": "Текстові файли",
-  "Text search for \"": "Пошук тексту \"",
+  "Text search for \"{0}\"{1} stopped": "Пошук тексту «{0}»{1} зупинено",
   "The change shows at once on the open window's tab strip. Whichever style is chosen, the tabs behave the same: click to switch, the X or a middle click to close, drag to reorder, and the + at the end opens another tab.": "Зміну одразу видно на смузі вкладок відкритого вікна. Який би стиль не було вибрано, вкладки поводяться однаково: клацання перемикає, X або клацання середньою кнопкою закриває, перетягування змінює порядок, а «+» у кінці відкриває ще одну вкладку.",
   "The current folder opens the tab on the folder the active tab is showing, so the work carries on where it is; the Home folder opens every new tab on the same starting point instead. Computer opens the Computer page - the drives with their free space, Home and the cloud folders - with the Home folder behind it, so a tab opened that way still has a folder to show once a drive or folder is picked.": "«Поточна папка» відкриває вкладку в папці, яку показує активна вкладка, тож робота триває там само; «Домашня папка» натомість відкриває кожну нову вкладку в тій самій початковій точці. «Комп'ютер» відкриває сторінку «Комп'ютер» — диски з вільним місцем, домашню папку й хмарні папки — з домашньою папкою за нею, тож відкрита так вкладка матиме що показати, коли буде вибрано диск або папку.",
   "The disk cache looks after its own size: a thumbnail not used for {0} days is deleted when UltraFiler next starts, so a folder you keep visiting keeps its thumbnails and one you opened once pays for itself and then goes away. Nothing here can show an out-of-date picture - a file's size and date are stored with its thumbnail, so a file that has changed is read again.": "Дисковий кеш сам стежить за своїм розміром: мініатюра, не використана {0} дн., видаляється під час наступного запуску UltraFiler, тож папка, яку ви постійно відвідуєте, зберігає свої мініатюри, а відкрита один раз окупається й зникає. Тут ніщо не може показати застаріле зображення: розмір і дата файлу зберігаються разом із його мініатюрою, тому змінений файл читається заново.",
@@ -389,10 +402,12 @@
   "Use system default": "Використовувати системне типове значення",
   "Video": "Відео",
   "Waiting after it: ": "Після нього чекають: ",
+  "Waiting: ": "Чекають: ",
   "What is on screen is being read again and goes back into the cache as it lands - press Refresh to see where it settles.": "Те, що на екрані, читається заново й повертається в кеш у міру надходження — натисніть «Оновити», щоб побачити, на чому все зупиниться.",
   "What the \"+\" at the end of the tab strip opens:": "Що відкриває «+» у кінці смуги вкладок:",
   "What the Home folder shows, in the folder tree and in the file display:": "Що показує домашня папка в дереві папок і в області файлів:",
   "What UltraFiler keeps so a folder opens without being read again:": "Що зберігає UltraFiler, щоб папка відкривалася без повторного читання:",
+  "What was sent is removed from {0} the next time you use it.": "Надіслане буде видалено з {0} наступного разу, коли ви ним скористаєтеся.",
   "Whatever is chosen here, Ctrl while dropping always copies and Shift always moves.": "Що б тут не було вибрано, Ctrl під час перетягування завжди копіює, а Shift завжди переміщує.",
   "When a file cannot be copied, moved or deleted:": "Якщо файл не вдається скопіювати, перемістити чи видалити:",
   "When a folder is pasted over a folder:": "Коли папку вставляють поверх папки:",
@@ -413,10 +428,30 @@
   "{0} - not supported by this build": "{0} — не підтримується цією збіркою",
   "{0} min": "{0} хв",
   "{0}, {1} (room for {2})": "{0}, {1} (ліміт {2})",
+  "{n} download is still running or waiting — quit anyway?": {
+    "one": "{n} завантаження ще триває або чекає — все одно вийти?",
+    "few": "{n} завантаження ще тривають або чекають — все одно вийти?",
+    "many": "{n} завантажень ще тривають або чекають — все одно вийти?"
+  },
+  "{n} download is still running — quit anyway?": {
+    "one": "{n} завантаження ще триває — все одно вийти?",
+    "few": "{n} завантаження ще тривають — все одно вийти?",
+    "many": "{n} завантажень ще тривають — все одно вийти?"
+  },
+  "{n} download is still waiting — quit anyway?": {
+    "one": "{n} завантаження ще чекає в черзі — все одно вийти?",
+    "few": "{n} завантаження ще чекають у черзі — все одно вийти?",
+    "many": "{n} завантажень ще чекають у черзі — все одно вийти?"
+  },
   "{n} entry": {
     "one": "{n} запис",
     "few": "{n} записи",
     "many": "{n} записів"
+  },
+  "{n} file contains \"{0}\"{1} - {2}": {
+    "one": "{n} файл містить «{0}»{1} — {2}",
+    "few": "{n} файли містять «{0}»{1} — {2}",
+    "many": "{n} файлів містять «{0}»{1} — {2}"
   },
   "{n} file found": {
     "one": "знайдено {n} файл",
@@ -427,6 +462,11 @@
     "one": "прочитано {n} файл",
     "few": "прочитано {n} файли",
     "many": "прочитано {n} файлів"
+  },
+  "{n} file read in {0}": {
+    "one": "прочитано {n} файл ({0})",
+    "few": "прочитано {n} файли ({0})",
+    "many": "прочитано {n} файлів ({0})"
   },
   "{n} folder scanned": {
     "one": "переглянуто {n} папку",
@@ -448,6 +488,11 @@
     "few": "{n} результати",
     "many": "{n} результатів"
   },
+  "{n} result for \"{0}\" in {1}": {
+    "one": "{n} результат за запитом «{0}» ({1})",
+    "few": "{n} результати за запитом «{0}» ({1})",
+    "many": "{n} результатів за запитом «{0}» ({1})"
+  },
   "{n} shared folder": {
     "one": "{n} спільна папка",
     "few": "{n} спільні папки",
@@ -467,5 +512,35 @@
     "one": "{n} плитка",
     "few": "{n} плитки",
     "many": "{n} плиток"
+  },
+  "{n} transfer is still running or waiting — quit anyway?": {
+    "one": "{n} передавання ще триває або чекає — все одно вийти?",
+    "few": "{n} передавання ще тривають або чекають — все одно вийти?",
+    "many": "{n} передавань ще тривають або чекають — все одно вийти?"
+  },
+  "{n} transfer is still running — quit anyway?": {
+    "one": "{n} передавання ще триває — все одно вийти?",
+    "few": "{n} передавання ще тривають — все одно вийти?",
+    "many": "{n} передавань ще тривають — все одно вийти?"
+  },
+  "{n} transfer is still waiting — quit anyway?": {
+    "one": "{n} передавання ще чекає в черзі — все одно вийти?",
+    "few": "{n} передавання ще чекають у черзі — все одно вийти?",
+    "many": "{n} передавань ще чекають у черзі — все одно вийти?"
+  },
+  "{n} upload is still running or waiting — quit anyway?": {
+    "one": "{n} вивантаження ще триває або чекає — все одно вийти?",
+    "few": "{n} вивантаження ще тривають або чекають — все одно вийти?",
+    "many": "{n} вивантажень ще тривають або чекають — все одно вийти?"
+  },
+  "{n} upload is still running — quit anyway?": {
+    "one": "{n} вивантаження ще триває — все одно вийти?",
+    "few": "{n} вивантаження ще тривають — все одно вийти?",
+    "many": "{n} вивантажень ще тривають — все одно вийти?"
+  },
+  "{n} upload is still waiting — quit anyway?": {
+    "one": "{n} вивантаження ще чекає в черзі — все одно вийти?",
+    "few": "{n} вивантаження ще чекають у черзі — все одно вийти?",
+    "many": "{n} вивантажень ще чекають у черзі — все одно вийти?"
   }
 }

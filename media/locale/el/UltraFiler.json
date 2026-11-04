@@ -3,9 +3,13 @@
   "@translated-by": "machine draft 2026-11-04, reviewed by -",
   "\"Show it in the preview\" keeps the file inside UltraFiler whenever it can show it - pictures, documents, spreadsheets, 3D models, e-books, fonts, video, audio and text - which is faster than starting a program for a look at a file.": "Η «Εμφάνιση στην προεπισκόπηση» κρατά το αρχείο μέσα στο UltraFiler όποτε μπορεί να το εμφανίσει - εικόνες, έγγραφα, υπολογιστικά φύλλα, τρισδιάστατα μοντέλα, ηλεκτρονικά βιβλία, γραμματοσειρές, βίντεο, ήχο και κείμενο -, κάτι που είναι ταχύτερο από την εκκίνηση ενός προγράμματος μόνο για μια ματιά σε ένα αρχείο.",
   "\"Start the registered program\" is what a double-click does in Explorer and the Finder: the file opens in the program its type is assigned to, and UltraFiler stays as it is.": "Η «Εκκίνηση του καταχωρημένου προγράμματος» είναι ό,τι κάνει ένα διπλό κλικ στο Explorer και στο Finder: το αρχείο ανοίγει στο πρόγραμμα στο οποίο έχει αντιστοιχιστεί ο τύπος του, και το UltraFiler μένει όπως είναι.",
+  "\"{0}\" is being downloaded from {1}.": "Γίνεται λήψη του «{0}» από {1}.",
+  "\"{0}\" is being uploaded to {1}.": "Γίνεται μεταφόρτωση του «{0}» σε {1}.",
   "\"{0}\" is no longer connected": "Το «{0}» δεν είναι πλέον συνδεδεμένο",
+  "(stopped at {0})": "(διακόπηκε στα {0})",
   "5 s clip": "Απόσπασμα 5 s",
-  "A download is": "Μια λήψη είναι",
+  "A download is still running — quit anyway?": "Μια λήψη εκτελείται ακόμη — έξοδος ούτως ή άλλως;",
+  "A download is still waiting — quit anyway?": "Μια λήψη περιμένει ακόμη — έξοδος ούτως ή άλλως;",
   "a file": "ενός αρχείου",
   "A file cannot replace a folder. ": "Ένα αρχείο δεν μπορεί να αντικαταστήσει έναν φάκελο. ",
   "A file merely open elsewhere - which on this kind of system blocks nothing - is marked O instead, and wears no padlock.": "Ένα αρχείο που είναι απλώς ανοιχτό αλλού - κάτι που σε αυτό το είδος συστήματος δεν μπλοκάρει τίποτα - επισημαίνεται αντί γι' αυτό με O και δεν φέρει λουκέτο.",
@@ -29,7 +33,12 @@
   "Add a drive: an FTP / SFTP server, a cloud account or a RAM disc": "Προσθήκη μονάδας δίσκου: ένας διακομιστής FTP / SFTP, ένας λογαριασμός cloud ή ένας δίσκος RAM",
   "Add an FTP / SFTP drive": "Προσθήκη μονάδας FTP / SFTP",
   "an entry": "μιας καταχώρισης",
-  "An upload is": "Μια μεταφόρτωση είναι",
+  "An upload is still running — quit anyway?": "Μια μεταφόρτωση εκτελείται ακόμη — έξοδος ούτως ή άλλως;",
+  "An upload is still waiting — quit anyway?": "Μια μεταφόρτωση περιμένει ακόμη — έξοδος ούτως ή άλλως;",
+  "and {n} more": {
+    "one": "και {n} ακόμη",
+    "other": "και {n} ακόμη"
+  },
   "Any other file, when this system has a program registered for that kind of file:": "Οποιοδήποτε άλλο αρχείο, όταν αυτό το σύστημα έχει καταχωρημένο πρόγραμμα για αυτό το είδος αρχείου:",
   "Applied to {n} item.": {
     "one": "Εφαρμόστηκε σε {n} στοιχείο.",
@@ -186,6 +195,7 @@
   "In memory: not available.": "Στη μνήμη: μη διαθέσιμο.",
   "In the thumbnail views, show the extension on the tile:": "Στις προβολές μικρογραφιών, εμφάνιση της επέκτασης στο πλακίδιο:",
   "In use:": "Σε χρήση:",
+  "in {0}": "σε {0}",
   "Installing {0} — first launch prepares its Windows environment, this can take a minute…": "Εγκατάσταση {0} — η πρώτη εκκίνηση προετοιμάζει το περιβάλλον Windows του, αυτό μπορεί να διαρκέσει ένα λεπτό…",
   "Installing {0}…": "Εγκατάσταση {0}…",
   "It names: {0}": "Παραπέμπει σε: {0}",
@@ -209,6 +219,7 @@
   "Looking in {0} for names already taken...": "Αναζήτηση στο {0} για ονόματα που χρησιμοποιούνται ήδη...",
   "Mark files that are in use": "Επισήμανση αρχείων σε χρήση",
   "Match case": "Διάκριση πεζών-κεφαλαίων",
+  "match case": "με διάκριση πεζών-κεφαλαίων",
   "Maximum 2 rows": "Έως 2 γραμμές",
   "Maximum 3 rows": "Έως 3 γραμμές",
   "Maximum 4 rows": "Έως 4 γραμμές",
@@ -218,7 +229,8 @@
   "Merging a folder puts its entries into the folder that is there and asks about any name that is taken inside it; Replace deletes the existing folder first. Until the progress window opens, the pointer shows that the work is under way.": "Η συγχώνευση ενός φακέλου βάζει τις καταχωρίσεις του στον υπάρχοντα φάκελο και ρωτά για κάθε όνομα που χρησιμοποιείται ήδη μέσα σε αυτόν· η Αντικατάσταση διαγράφει πρώτα τον υπάρχοντα φάκελο. Μέχρι να ανοίξει το παράθυρο προόδου, ο δείκτης δείχνει ότι η εργασία είναι σε εξέλιξη.",
   "Message log": "Αρχείο καταγραφής μηνυμάτων",
   "Modern - each tab a capsule floating in the strip: the open one white with a blue outline, the others plain text until the pointer is over them": "Μοντέρνο - κάθε καρτέλα μια κάψουλα που αιωρείται στη λωρίδα: η ανοιχτή λευκή με μπλε περίγραμμα, οι άλλες απλό κείμενο μέχρι να βρεθεί ο δείκτης πάνω τους",
-  "Moving files to the {0}": "Μετακίνηση αρχείων σε {0}",
+  "Moving files to the Recycle Bin": "Μετακίνηση αρχείων στον Κάδο Ανακύκλωσης",
+  "Moving files to the Trash": "Μετακίνηση αρχείων στα Απορρίμματα",
   "Moving files, by drag & drop or with Cut and Paste": "Μετακίνηση αρχείων, με μεταφορά και απόθεση ή με Αποκοπή και Επικόλληση",
   "name for the new environment": "όνομα για το νέο περιβάλλον",
   "Name:": "Όνομα:",
@@ -297,11 +309,11 @@
   "Saved to {0}": "Αποθηκεύτηκε στο {0}",
   "Scan sub folder": "Σάρωση υποφακέλων",
   "Search every sub folder of this folder (Enter)": "Αναζήτηση σε κάθε υποφάκελο αυτού του φακέλου (Enter)",
-  "Search for \"": "Αναζήτηση για \"",
-  "Searching \"": "Αναζήτηση \"",
+  "Search for \"{0}\"{1} stopped": "Η αναζήτηση για «{0}»{1} διακόπηκε",
   "Searching \"{0}\" - {1}, {2}": "Αναζήτηση «{0}» - {1}, {2}",
-  "Searching files for the text \"": "Αναζήτηση στα αρχεία για το κείμενο \"",
+  "Searching \"{0}\"{1} ...": "Αναζήτηση «{0}»{1}...",
   "Searching files for the text \"{0}\"{1} - {2}, {3}": "Αναζήτηση στα αρχεία για το κείμενο «{0}»{1} - {2}, {3}",
+  "Searching files for the text \"{0}\"{1} ...": "Αναζήτηση στα αρχεία για το κείμενο «{0}»{1}...",
   "Select the command line application": "Επιλέξτε την εφαρμογή γραμμής εντολών",
   "Selected folder colour": "Χρώμα επιλεγμένου φακέλου",
   "Selected folder colour:": "Χρώμα επιλεγμένου φακέλου:",
@@ -342,7 +354,7 @@
   "TAR": "TAR",
   "Test": "Δοκιμή",
   "Text files": "Αρχεία κειμένου",
-  "Text search for \"": "Αναζήτηση κειμένου για \"",
+  "Text search for \"{0}\"{1} stopped": "Η αναζήτηση κειμένου για «{0}»{1} διακόπηκε",
   "The change shows at once on the open window's tab strip. Whichever style is chosen, the tabs behave the same: click to switch, the X or a middle click to close, drag to reorder, and the + at the end opens another tab.": "Η αλλαγή εμφανίζεται αμέσως στη γραμμή καρτελών του ανοιχτού παραθύρου. Όποιο στυλ κι αν επιλεγεί, οι καρτέλες συμπεριφέρονται το ίδιο: κλικ για εναλλαγή, το X ή μεσαίο κλικ για κλείσιμο, μεταφορά για αναδιάταξη, και το + στο τέλος ανοίγει άλλη καρτέλα.",
   "The current folder opens the tab on the folder the active tab is showing, so the work carries on where it is; the Home folder opens every new tab on the same starting point instead. Computer opens the Computer page - the drives with their free space, Home and the cloud folders - with the Home folder behind it, so a tab opened that way still has a folder to show once a drive or folder is picked.": "Ο τρέχων φάκελος ανοίγει την καρτέλα στον φάκελο που δείχνει η ενεργή καρτέλα, ώστε η δουλειά να συνεχίζεται εκεί που είναι· ο Προσωπικός φάκελος ανοίγει αντίθετα κάθε νέα καρτέλα στο ίδιο σημείο εκκίνησης. Ο Υπολογιστής ανοίγει τη σελίδα Υπολογιστής - τις μονάδες δίσκου με τον ελεύθερο χώρο τους, τον Προσωπικό φάκελο και τους φακέλους cloud - με τον Προσωπικό φάκελο από πίσω, ώστε μια καρτέλα που ανοίγει έτσι να έχει πάντα φάκελο να δείξει μόλις επιλεγεί μια μονάδα δίσκου ή ένας φάκελος.",
   "The disk cache looks after its own size: a thumbnail not used for {0} days is deleted when UltraFiler next starts, so a folder you keep visiting keeps its thumbnails and one you opened once pays for itself and then goes away. Nothing here can show an out-of-date picture - a file's size and date are stored with its thumbnail, so a file that has changed is read again.": "Η κρυφή μνήμη δίσκου φροντίζει μόνη της το μέγεθός της: μια μικρογραφία που δεν έχει χρησιμοποιηθεί για {0} ημέρες διαγράφεται στην επόμενη εκκίνηση του UltraFiler, οπότε ένας φάκελος που επισκέπτεστε συχνά κρατά τις μικρογραφίες του, ενώ ένας που ανοίξατε μία φορά αποσβένει το κόστος του και μετά φεύγει. Τίποτα εδώ δεν μπορεί να δείξει ξεπερασμένη εικόνα - το μέγεθος και η ημερομηνία ενός αρχείου αποθηκεύονται μαζί με τη μικρογραφία του, οπότε ένα αρχείο που έχει αλλάξει διαβάζεται ξανά.",
@@ -385,10 +397,12 @@
   "Use system default": "Χρήση προεπιλογής συστήματος",
   "Video": "Βίντεο",
   "Waiting after it: ": "Σε αναμονή μετά από αυτή: ",
+  "Waiting: ": "Σε αναμονή: ",
   "What is on screen is being read again and goes back into the cache as it lands - press Refresh to see where it settles.": "Ό,τι υπάρχει στην οθόνη διαβάζεται ξανά και επιστρέφει στην κρυφή μνήμη καθώς φτάνει - πατήστε Ανανέωση για να δείτε πού σταθεροποιείται.",
   "What the \"+\" at the end of the tab strip opens:": "Τι ανοίγει το «+» στο τέλος της γραμμής καρτελών:",
   "What the Home folder shows, in the folder tree and in the file display:": "Τι δείχνει ο Προσωπικός φάκελος, στο δέντρο φακέλων και στο πλαίσιο αρχείων:",
   "What UltraFiler keeps so a folder opens without being read again:": "Τι κρατά το UltraFiler ώστε ένας φάκελος να ανοίγει χωρίς να διαβάζεται ξανά:",
+  "What was sent is removed from {0} the next time you use it.": "Ό,τι στάλθηκε αφαιρείται από {0} την επόμενη φορά που θα τη χρησιμοποιήσετε.",
   "Whatever is chosen here, Ctrl while dropping always copies and Shift always moves.": "Ό,τι κι αν επιλεγεί εδώ, το Ctrl κατά την απόθεση πάντα αντιγράφει και το Shift πάντα μετακινεί.",
   "When a file cannot be copied, moved or deleted:": "Όταν ένα αρχείο δεν μπορεί να αντιγραφεί, να μετακινηθεί ή να διαγραφεί:",
   "When a folder is pasted over a folder:": "Όταν ένας φάκελος επικολλάται πάνω σε φάκελο:",
@@ -409,9 +423,25 @@
   "{0} - not supported by this build": "{0} - δεν υποστηρίζεται από αυτή την έκδοση",
   "{0} min": "{0} λεπ.",
   "{0}, {1} (room for {2})": "{0}, {1} (χώρος για {2})",
+  "{n} download is still running or waiting — quit anyway?": {
+    "one": "{n} λήψη εκτελείται ή περιμένει ακόμη — έξοδος ούτως ή άλλως;",
+    "other": "{n} λήψεις εκτελούνται ή περιμένουν ακόμη — έξοδος ούτως ή άλλως;"
+  },
+  "{n} download is still running — quit anyway?": {
+    "one": "{n} λήψη εκτελείται ακόμη — έξοδος ούτως ή άλλως;",
+    "other": "{n} λήψεις εκτελούνται ακόμη — έξοδος ούτως ή άλλως;"
+  },
+  "{n} download is still waiting — quit anyway?": {
+    "one": "{n} λήψη περιμένει ακόμη — έξοδος ούτως ή άλλως;",
+    "other": "{n} λήψεις περιμένουν ακόμη — έξοδος ούτως ή άλλως;"
+  },
   "{n} entry": {
     "one": "{n} καταχώριση",
     "other": "{n} καταχωρίσεις"
+  },
+  "{n} file contains \"{0}\"{1} - {2}": {
+    "one": "{n} αρχείο περιέχει «{0}»{1} - {2}",
+    "other": "{n} αρχεία περιέχουν «{0}»{1} - {2}"
   },
   "{n} file found": {
     "one": "{n} αρχείο βρέθηκε",
@@ -420,6 +450,10 @@
   "{n} file read": {
     "one": "{n} αρχείο διαβάστηκε",
     "other": "{n} αρχεία διαβάστηκαν"
+  },
+  "{n} file read in {0}": {
+    "one": "{n} αρχείο διαβάστηκε ({0})",
+    "other": "{n} αρχεία διαβάστηκαν ({0})"
   },
   "{n} folder scanned": {
     "one": "{n} φάκελος σαρώθηκε",
@@ -437,6 +471,10 @@
     "one": "{n} αποτέλεσμα",
     "other": "{n} αποτελέσματα"
   },
+  "{n} result for \"{0}\" in {1}": {
+    "one": "{n} αποτέλεσμα για «{0}» ({1})",
+    "other": "{n} αποτελέσματα για «{0}» ({1})"
+  },
   "{n} shared folder": {
     "one": "{n} κοινόχρηστος φάκελος",
     "other": "{n} κοινόχρηστοι φάκελοι"
@@ -452,5 +490,29 @@
   "{n} tile": {
     "one": "{n} πλακίδιο",
     "other": "{n} πλακίδια"
+  },
+  "{n} transfer is still running or waiting — quit anyway?": {
+    "one": "{n} μεταφορά εκτελείται ή περιμένει ακόμη — έξοδος ούτως ή άλλως;",
+    "other": "{n} μεταφορές εκτελούνται ή περιμένουν ακόμη — έξοδος ούτως ή άλλως;"
+  },
+  "{n} transfer is still running — quit anyway?": {
+    "one": "{n} μεταφορά εκτελείται ακόμη — έξοδος ούτως ή άλλως;",
+    "other": "{n} μεταφορές εκτελούνται ακόμη — έξοδος ούτως ή άλλως;"
+  },
+  "{n} transfer is still waiting — quit anyway?": {
+    "one": "{n} μεταφορά περιμένει ακόμη — έξοδος ούτως ή άλλως;",
+    "other": "{n} μεταφορές περιμένουν ακόμη — έξοδος ούτως ή άλλως;"
+  },
+  "{n} upload is still running or waiting — quit anyway?": {
+    "one": "{n} μεταφόρτωση εκτελείται ή περιμένει ακόμη — έξοδος ούτως ή άλλως;",
+    "other": "{n} μεταφορτώσεις εκτελούνται ή περιμένουν ακόμη — έξοδος ούτως ή άλλως;"
+  },
+  "{n} upload is still running — quit anyway?": {
+    "one": "{n} μεταφόρτωση εκτελείται ακόμη — έξοδος ούτως ή άλλως;",
+    "other": "{n} μεταφορτώσεις εκτελούνται ακόμη — έξοδος ούτως ή άλλως;"
+  },
+  "{n} upload is still waiting — quit anyway?": {
+    "one": "{n} μεταφόρτωση περιμένει ακόμη — έξοδος ούτως ή άλλως;",
+    "other": "{n} μεταφορτώσεις περιμένουν ακόμη — έξοδος ούτως ή άλλως;"
   }
 }

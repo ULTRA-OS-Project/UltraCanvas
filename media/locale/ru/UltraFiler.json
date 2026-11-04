@@ -3,9 +3,13 @@
   "@translated-by": "machine draft 2026-11-04, reviewed by -",
   "\"Show it in the preview\" keeps the file inside UltraFiler whenever it can show it - pictures, documents, spreadsheets, 3D models, e-books, fonts, video, audio and text - which is faster than starting a program for a look at a file.": "«Показать в области предварительного просмотра» оставляет файл в UltraFiler, если его можно показать: изображения, документы, электронные таблицы, 3D-модели, электронные книги, шрифты, видео, аудио и текст. Это быстрее, чем запускать программу, чтобы взглянуть на файл.",
   "\"Start the registered program\" is what a double-click does in Explorer and the Finder: the file opens in the program its type is assigned to, and UltraFiler stays as it is.": "«Запустить зарегистрированную программу» — это то, что делает двойной щелчок в Explorer и Finder: файл открывается в программе, которой назначен его тип, а UltraFiler остаётся как есть.",
+  "\"{0}\" is being downloaded from {1}.": "«{0}» скачивается с {1}.",
+  "\"{0}\" is being uploaded to {1}.": "«{0}» отправляется на {1}.",
   "\"{0}\" is no longer connected": "«{0}» больше не подключён",
+  "(stopped at {0})": "(остановлено на {0})",
   "5 s clip": "Клип 5 с",
-  "A download is": "Скачивание",
+  "A download is still running — quit anyway?": "Скачивание ещё выполняется — всё равно выйти?",
+  "A download is still waiting — quit anyway?": "Скачивание ещё ожидает в очереди — всё равно выйти?",
   "a file": "файла",
   "A file cannot replace a folder. ": "Файл не может заменить папку. ",
   "A file merely open elsewhere - which on this kind of system blocks nothing - is marked O instead, and wears no padlock.": "Файл, просто открытый в другой программе, — а в такой системе это ничего не блокирует — помечается буквой O и не получает замка.",
@@ -29,7 +33,13 @@
   "Add a drive: an FTP / SFTP server, a cloud account or a RAM disc": "Добавить диск: сервер FTP / SFTP, облачную учётную запись или RAM-диск",
   "Add an FTP / SFTP drive": "Добавить диск FTP / SFTP",
   "an entry": "элемента",
-  "An upload is": "Отправка на сервер",
+  "An upload is still running — quit anyway?": "Отправка на сервер ещё выполняется — всё равно выйти?",
+  "An upload is still waiting — quit anyway?": "Отправка на сервер ещё ожидает в очереди — всё равно выйти?",
+  "and {n} more": {
+    "one": "и ещё {n}",
+    "few": "и ещё {n}",
+    "many": "и ещё {n}"
+  },
   "Any other file, when this system has a program registered for that kind of file:": "Любой другой файл, если в системе для этого типа файлов зарегистрирована программа:",
   "Applied to {n} item.": {
     "one": "Применено к {n} элементу.",
@@ -189,6 +199,7 @@
   "In memory: not available.": "В памяти: недоступно.",
   "In the thumbnail views, show the extension on the tile:": "В видах эскизов показывать расширение на плитке:",
   "In use:": "Используется:",
+  "in {0}": "в {0}",
   "Installing {0} — first launch prepares its Windows environment, this can take a minute…": "Установка {0} — первый запуск готовит среду Windows, это может занять минуту…",
   "Installing {0}…": "Установка {0}…",
   "It names: {0}": "Указывает на: {0}",
@@ -212,6 +223,7 @@
   "Looking in {0} for names already taken...": "Поиск занятых имён в {0}...",
   "Mark files that are in use": "Помечать используемые файлы",
   "Match case": "Учитывать регистр",
+  "match case": "с учётом регистра",
   "Maximum 2 rows": "Не более 2 строк",
   "Maximum 3 rows": "Не более 3 строк",
   "Maximum 4 rows": "Не более 4 строк",
@@ -221,7 +233,8 @@
   "Merging a folder puts its entries into the folder that is there and asks about any name that is taken inside it; Replace deletes the existing folder first. Until the progress window opens, the pointer shows that the work is under way.": "При объединении папки её элементы помещаются в существующую папку, а о каждом имени, которое в ней уже занято, задаётся вопрос; «Заменить» сначала удаляет существующую папку. Пока не откроется окно хода выполнения, указатель показывает, что работа идёт.",
   "Message log": "Журнал сообщений",
   "Modern - each tab a capsule floating in the strip: the open one white with a blue outline, the others plain text until the pointer is over them": "Современный — каждая вкладка капсулой парит в полосе: открытая белая с синим контуром, остальные простым текстом, пока на них не наведён указатель",
-  "Moving files to the {0}": "Перемещение файлов в корзину ({0})",
+  "Moving files to the Recycle Bin": "Перемещение файлов в корзину",
+  "Moving files to the Trash": "Перемещение файлов в корзину",
   "Moving files, by drag & drop or with Cut and Paste": "Перемещение файлов перетаскиванием или командами «Вырезать» и «Вставить»",
   "name for the new environment": "имя новой среды",
   "Name:": "Имя:",
@@ -300,11 +313,11 @@
   "Saved to {0}": "Сохранено в {0}",
   "Scan sub folder": "Поиск в подпапках",
   "Search every sub folder of this folder (Enter)": "Искать во всех подпапках этой папки (Enter)",
-  "Search for \"": "Поиск \"",
-  "Searching \"": "Поиск \"",
+  "Search for \"{0}\"{1} stopped": "Поиск «{0}»{1} остановлен",
   "Searching \"{0}\" - {1}, {2}": "Поиск «{0}» — {1}, {2}",
-  "Searching files for the text \"": "Поиск в файлах текста \"",
+  "Searching \"{0}\"{1} ...": "Поиск «{0}»{1}...",
   "Searching files for the text \"{0}\"{1} - {2}, {3}": "Поиск в файлах текста «{0}»{1} — {2}, {3}",
+  "Searching files for the text \"{0}\"{1} ...": "Поиск в файлах текста «{0}»{1}...",
   "Select the command line application": "Выберите приложение командной строки",
   "Selected folder colour": "Цвет выбранной папки",
   "Selected folder colour:": "Цвет выбранной папки:",
@@ -346,7 +359,7 @@
   "TAR": "TAR",
   "Test": "Проверить",
   "Text files": "Текстовые файлы",
-  "Text search for \"": "Поиск текста \"",
+  "Text search for \"{0}\"{1} stopped": "Поиск текста «{0}»{1} остановлен",
   "The change shows at once on the open window's tab strip. Whichever style is chosen, the tabs behave the same: click to switch, the X or a middle click to close, drag to reorder, and the + at the end opens another tab.": "Изменение сразу видно на полосе вкладок открытого окна. Какой бы стиль ни был выбран, вкладки ведут себя одинаково: щелчок переключает, X или щелчок средней кнопкой закрывает, перетаскивание меняет порядок, а «+» в конце открывает ещё одну вкладку.",
   "The current folder opens the tab on the folder the active tab is showing, so the work carries on where it is; the Home folder opens every new tab on the same starting point instead. Computer opens the Computer page - the drives with their free space, Home and the cloud folders - with the Home folder behind it, so a tab opened that way still has a folder to show once a drive or folder is picked.": "«Текущая папка» открывает вкладку в папке, которую показывает активная вкладка, так что работа продолжается там же; «Домашняя папка» открывает каждую новую вкладку в одной и той же начальной точке. «Компьютер» открывает страницу «Компьютер» — диски со свободным местом, домашнюю папку и облачные папки — с домашней папкой за ней, так что открытой так вкладке есть что показать, когда будет выбран диск или папка.",
   "The disk cache looks after its own size: a thumbnail not used for {0} days is deleted when UltraFiler next starts, so a folder you keep visiting keeps its thumbnails and one you opened once pays for itself and then goes away. Nothing here can show an out-of-date picture - a file's size and date are stored with its thumbnail, so a file that has changed is read again.": "Дисковый кеш сам следит за своим размером: эскиз, не использовавшийся {0} дн., удаляется при следующем запуске UltraFiler, так что папка, которую вы постоянно посещаете, сохраняет свои эскизы, а открытая однажды окупается и исчезает. Здесь ничто не может показать устаревшее изображение: размер и дата файла хранятся вместе с его эскизом, поэтому изменившийся файл читается заново.",
@@ -389,10 +402,12 @@
   "Use system default": "Использовать системное значение по умолчанию",
   "Video": "Видео",
   "Waiting after it: ": "После неё ожидают: ",
+  "Waiting: ": "Ожидают: ",
   "What is on screen is being read again and goes back into the cache as it lands - press Refresh to see where it settles.": "То, что на экране, читается заново и возвращается в кеш по мере поступления — нажмите «Обновить», чтобы увидеть, на чём всё остановится.",
   "What the \"+\" at the end of the tab strip opens:": "Что открывает «+» в конце полосы вкладок:",
   "What the Home folder shows, in the folder tree and in the file display:": "Что показывает домашняя папка в дереве папок и в области файлов:",
   "What UltraFiler keeps so a folder opens without being read again:": "Что хранит UltraFiler, чтобы папка открывалась без повторного чтения:",
+  "What was sent is removed from {0} the next time you use it.": "Отправленное будет удалено с {0} при следующем обращении к нему.",
   "Whatever is chosen here, Ctrl while dropping always copies and Shift always moves.": "Что бы здесь ни было выбрано, Ctrl при перетаскивании всегда копирует, а Shift всегда перемещает.",
   "When a file cannot be copied, moved or deleted:": "Если файл не удаётся скопировать, переместить или удалить:",
   "When a folder is pasted over a folder:": "Когда папка вставляется поверх папки:",
@@ -413,10 +428,30 @@
   "{0} - not supported by this build": "{0} — не поддерживается этой сборкой",
   "{0} min": "{0} мин",
   "{0}, {1} (room for {2})": "{0}, {1} (лимит {2})",
+  "{n} download is still running or waiting — quit anyway?": {
+    "one": "{n} скачивание ещё выполняется или ожидает — всё равно выйти?",
+    "few": "{n} скачивания ещё выполняются или ожидают — всё равно выйти?",
+    "many": "{n} скачиваний ещё выполняются или ожидают — всё равно выйти?"
+  },
+  "{n} download is still running — quit anyway?": {
+    "one": "{n} скачивание ещё выполняется — всё равно выйти?",
+    "few": "{n} скачивания ещё выполняются — всё равно выйти?",
+    "many": "{n} скачиваний ещё выполняются — всё равно выйти?"
+  },
+  "{n} download is still waiting — quit anyway?": {
+    "one": "{n} скачивание ещё ожидает в очереди — всё равно выйти?",
+    "few": "{n} скачивания ещё ожидают в очереди — всё равно выйти?",
+    "many": "{n} скачиваний ещё ожидают в очереди — всё равно выйти?"
+  },
   "{n} entry": {
     "one": "{n} запись",
     "few": "{n} записи",
     "many": "{n} записей"
+  },
+  "{n} file contains \"{0}\"{1} - {2}": {
+    "one": "{n} файл содержит «{0}»{1} — {2}",
+    "few": "{n} файла содержат «{0}»{1} — {2}",
+    "many": "{n} файлов содержат «{0}»{1} — {2}"
   },
   "{n} file found": {
     "one": "найден {n} файл",
@@ -427,6 +462,11 @@
     "one": "прочитан {n} файл",
     "few": "прочитано {n} файла",
     "many": "прочитано {n} файлов"
+  },
+  "{n} file read in {0}": {
+    "one": "прочитан {n} файл ({0})",
+    "few": "прочитано {n} файла ({0})",
+    "many": "прочитано {n} файлов ({0})"
   },
   "{n} folder scanned": {
     "one": "просмотрена {n} папка",
@@ -448,6 +488,11 @@
     "few": "{n} результата",
     "many": "{n} результатов"
   },
+  "{n} result for \"{0}\" in {1}": {
+    "one": "{n} результат по запросу «{0}» ({1})",
+    "few": "{n} результата по запросу «{0}» ({1})",
+    "many": "{n} результатов по запросу «{0}» ({1})"
+  },
   "{n} shared folder": {
     "one": "{n} общая папка",
     "few": "{n} общие папки",
@@ -467,5 +512,35 @@
     "one": "{n} плитка",
     "few": "{n} плитки",
     "many": "{n} плиток"
+  },
+  "{n} transfer is still running or waiting — quit anyway?": {
+    "one": "{n} передача ещё выполняется или ожидает — всё равно выйти?",
+    "few": "{n} передачи ещё выполняются или ожидают — всё равно выйти?",
+    "many": "{n} передач ещё выполняются или ожидают — всё равно выйти?"
+  },
+  "{n} transfer is still running — quit anyway?": {
+    "one": "{n} передача ещё выполняется — всё равно выйти?",
+    "few": "{n} передачи ещё выполняются — всё равно выйти?",
+    "many": "{n} передач ещё выполняются — всё равно выйти?"
+  },
+  "{n} transfer is still waiting — quit anyway?": {
+    "one": "{n} передача ещё ожидает в очереди — всё равно выйти?",
+    "few": "{n} передачи ещё ожидают в очереди — всё равно выйти?",
+    "many": "{n} передач ещё ожидают в очереди — всё равно выйти?"
+  },
+  "{n} upload is still running or waiting — quit anyway?": {
+    "one": "{n} отправка на сервер ещё выполняется или ожидает — всё равно выйти?",
+    "few": "{n} отправки на сервер ещё выполняются или ожидают — всё равно выйти?",
+    "many": "{n} отправок на сервер ещё выполняются или ожидают — всё равно выйти?"
+  },
+  "{n} upload is still running — quit anyway?": {
+    "one": "{n} отправка на сервер ещё выполняется — всё равно выйти?",
+    "few": "{n} отправки на сервер ещё выполняются — всё равно выйти?",
+    "many": "{n} отправок на сервер ещё выполняются — всё равно выйти?"
+  },
+  "{n} upload is still waiting — quit anyway?": {
+    "one": "{n} отправка на сервер ещё ожидает в очереди — всё равно выйти?",
+    "few": "{n} отправки на сервер ещё ожидают в очереди — всё равно выйти?",
+    "many": "{n} отправок на сервер ещё ожидают в очереди — всё равно выйти?"
   }
 }

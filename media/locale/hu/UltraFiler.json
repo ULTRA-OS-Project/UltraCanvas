@@ -3,9 +3,13 @@
   "@translated-by": "machine draft 2026-11-04, reviewed by -",
   "\"Show it in the preview\" keeps the file inside UltraFiler whenever it can show it - pictures, documents, spreadsheets, 3D models, e-books, fonts, video, audio and text - which is faster than starting a program for a look at a file.": "A „Megjelenítés az előnézetben” beállítás az UltraFileren belül tartja a fájlt, valahányszor meg tudja jeleníteni – képek, dokumentumok, táblázatok, 3D-modellek, e-könyvek, betűtípusok, videó, hang és szöveg –, ami gyorsabb, mint elindítani egy programot csak azért, hogy belenézzünk egy fájlba.",
   "\"Start the registered program\" is what a double-click does in Explorer and the Finder: the file opens in the program its type is assigned to, and UltraFiler stays as it is.": "Az „A regisztrált program indítása” beállítás azt teszi, amit a dupla kattintás az Explorerben és a Finderben: a fájl abban a programban nyílik meg, amelyhez a típusa hozzá van rendelve, az UltraFiler pedig változatlan marad.",
+  "\"{0}\" is being downloaded from {1}.": "„{0}” letöltése folyamatban innen: {1}.",
+  "\"{0}\" is being uploaded to {1}.": "„{0}” feltöltése folyamatban ide: {1}.",
   "\"{0}\" is no longer connected": "„{0}” már nincs csatlakoztatva",
+  "(stopped at {0})": "({0} találatnál leállt)",
   "5 s clip": "5 mp-es klip",
-  "A download is": "Egy letöltés",
+  "A download is still running — quit anyway?": "Egy letöltés még folyamatban van — mégis kilép?",
+  "A download is still waiting — quit anyway?": "Egy letöltés még várakozik — mégis kilép?",
   "a file": "egy fájl",
   "A file cannot replace a folder. ": "Fájl nem helyettesíthet mappát. ",
   "A file merely open elsewhere - which on this kind of system blocks nothing - is marked O instead, and wears no padlock.": "A máshol csupán megnyitott fájl – ami ezen a fajta rendszeren semmit sem zárol – ehelyett O jelölést kap, és nincs rajta lakat.",
@@ -29,7 +33,12 @@
   "Add a drive: an FTP / SFTP server, a cloud account or a RAM disc": "Meghajtó hozzáadása: FTP / SFTP-kiszolgáló, felhőfiók vagy RAM-lemez",
   "Add an FTP / SFTP drive": "FTP / SFTP-meghajtó hozzáadása",
   "an entry": "egy bejegyzés",
-  "An upload is": "Egy feltöltés",
+  "An upload is still running — quit anyway?": "Egy feltöltés még folyamatban van — mégis kilép?",
+  "An upload is still waiting — quit anyway?": "Egy feltöltés még várakozik — mégis kilép?",
+  "and {n} more": {
+    "one": "és még {n}",
+    "other": "és még {n}"
+  },
   "Any other file, when this system has a program registered for that kind of file:": "Bármely más fájl, ha ebben a rendszerben regisztrált program tartozik az ilyen fájlokhoz:",
   "Applied to {n} item.": {
     "one": "Alkalmazva {n} elemre.",
@@ -186,6 +195,7 @@
   "In memory: not available.": "Memóriában: nem érhető el.",
   "In the thumbnail views, show the extension on the tile:": "A miniatűrnézetekben a kiterjesztés megjelenítése a csempén:",
   "In use:": "Használatban:",
+  "in {0}": "{0} fájlokban",
   "Installing {0} — first launch prepares its Windows environment, this can take a minute…": "{0} telepítése — az első indítás előkészíti a Windows-környezetét, ez egy percig is eltarthat…",
   "Installing {0}…": "{0} telepítése…",
   "It names: {0}": "Erre mutat: {0}",
@@ -209,6 +219,7 @@
   "Looking in {0} for names already taken...": "Foglalt nevek keresése itt: {0}...",
   "Mark files that are in use": "Használatban lévő fájlok megjelölése",
   "Match case": "Kis- és nagybetűk megkülönböztetése",
+  "match case": "kis- és nagybetűk megkülönböztetésével",
   "Maximum 2 rows": "Legfeljebb 2 sor",
   "Maximum 3 rows": "Legfeljebb 3 sor",
   "Maximum 4 rows": "Legfeljebb 4 sor",
@@ -218,7 +229,8 @@
   "Merging a folder puts its entries into the folder that is there and asks about any name that is taken inside it; Replace deletes the existing folder first. Until the progress window opens, the pointer shows that the work is under way.": "A mappa egyesítése a bejegyzéseit a már ott lévő mappába helyezi, és rákérdez minden olyan névre, amely azon belül foglalt; a Csere előbb törli a meglévő mappát. Amíg a folyamatablak meg nem nyílik, az egérmutató jelzi, hogy a munka folyamatban van.",
   "Message log": "Üzenetnapló",
   "Modern - each tab a capsule floating in the strip: the open one white with a blue outline, the others plain text until the pointer is over them": "Modern – minden lap egy kapszula, amely a sávban lebeg: a megnyitott fehér, kék körvonallal, a többi egyszerű szöveg, amíg a mutató nincs fölöttük",
-  "Moving files to the {0}": "Fájlok áthelyezése ide: {0}",
+  "Moving files to the Recycle Bin": "Fájlok áthelyezése a Lomtárba",
+  "Moving files to the Trash": "Fájlok áthelyezése a Lomtárba",
   "Moving files, by drag & drop or with Cut and Paste": "Fájlok áthelyezése húzással vagy Kivágás és Beillesztés használatával",
   "name for the new environment": "az új környezet neve",
   "Name:": "Név:",
@@ -297,11 +309,11 @@
   "Saved to {0}": "Mentve ide: {0}",
   "Scan sub folder": "Almappák átvizsgálása",
   "Search every sub folder of this folder (Enter)": "A mappa összes almappájának átkeresése (Enter)",
-  "Search for \"": "Keresés: \"",
-  "Searching \"": "Keresés: \"",
+  "Search for \"{0}\"{1} stopped": "Keresés leállítva: „{0}”{1}",
   "Searching \"{0}\" - {1}, {2}": "Keresés: „{0}” – {1}, {2}",
-  "Searching files for the text \"": "Szöveg keresése a fájlokban: \"",
+  "Searching \"{0}\"{1} ...": "Keresés: „{0}”{1}...",
   "Searching files for the text \"{0}\"{1} - {2}, {3}": "Szöveg keresése a fájlokban: „{0}”{1} – {2}, {3}",
+  "Searching files for the text \"{0}\"{1} ...": "Szöveg keresése a fájlokban: „{0}”{1}...",
   "Select the command line application": "Válassza ki a parancssori alkalmazást",
   "Selected folder colour": "Kijelölt mappa színe",
   "Selected folder colour:": "Kijelölt mappa színe:",
@@ -342,7 +354,7 @@
   "TAR": "TAR",
   "Test": "Kipróbálás",
   "Text files": "Szövegfájlok",
-  "Text search for \"": "Szövegkeresés: \"",
+  "Text search for \"{0}\"{1} stopped": "Szövegkeresés leállítva: „{0}”{1}",
   "The change shows at once on the open window's tab strip. Whichever style is chosen, the tabs behave the same: click to switch, the X or a middle click to close, drag to reorder, and the + at the end opens another tab.": "A módosítás azonnal megjelenik a megnyitott ablak lapsávján. Bármelyik stílus van kiválasztva, a lapok ugyanúgy viselkednek: kattintással váltás, az X-szel vagy középső kattintással bezárás, húzással átrendezés, a végén lévő + pedig újabb lapot nyit.",
   "The current folder opens the tab on the folder the active tab is showing, so the work carries on where it is; the Home folder opens every new tab on the same starting point instead. Computer opens the Computer page - the drives with their free space, Home and the cloud folders - with the Home folder behind it, so a tab opened that way still has a folder to show once a drive or folder is picked.": "Az aktuális mappa azon a mappán nyitja meg a lapot, amelyet az aktív lap mutat, így a munka ott folytatódik, ahol tart; a Kezdőmappa ehelyett minden új lapot ugyanarról a kiindulópontról nyit meg. A Számítógép a Számítógép oldalt nyitja meg – a meghajtókat a szabad helyükkel, a Kezdőmappát és a felhőmappákat –, mögötte a Kezdőmappával, így az ilyen módon megnyitott lapnak is lesz mit mutatnia, amint kiválasztanak egy meghajtót vagy mappát.",
   "The disk cache looks after its own size: a thumbnail not used for {0} days is deleted when UltraFiler next starts, so a folder you keep visiting keeps its thumbnails and one you opened once pays for itself and then goes away. Nothing here can show an out-of-date picture - a file's size and date are stored with its thumbnail, so a file that has changed is read again.": "A lemezes gyorsítótár maga gondoskodik a méretéről: a {0} napja nem használt miniatűr az UltraFiler következő indításakor törlődik, így a rendszeresen látogatott mappa megtartja a miniatűrjeit, az egyszer megnyitott pedig megtérül, majd eltűnik. Itt semmi sem mutathat elavult képet – a fájl mérete és dátuma a miniatűrjével együtt tárolódik, így a megváltozott fájl újra beolvasásra kerül.",
@@ -385,10 +397,12 @@
   "Use system default": "Rendszeralapértelmezés használata",
   "Video": "Videó",
   "Waiting after it: ": "Utána várakozik: ",
+  "Waiting: ": "Várakozik: ",
   "What is on screen is being read again and goes back into the cache as it lands - press Refresh to see where it settles.": "A képernyőn lévők újraolvasása folyamatban, és beérkezésükkor visszakerülnek a gyorsítótárba – nyomja meg a Frissítés gombot, hogy lássa, hol állapodik meg.",
   "What the \"+\" at the end of the tab strip opens:": "Mit nyit meg a lapsáv végén lévő „+”:",
   "What the Home folder shows, in the folder tree and in the file display:": "Mit mutat a Kezdőmappa a mappafában és a fájlnézetben:",
   "What UltraFiler keeps so a folder opens without being read again:": "Mit tart meg az UltraFiler, hogy egy mappa újraolvasás nélkül nyíljon meg:",
+  "What was sent is removed from {0} the next time you use it.": "Az elküldött adatok a(z) {0} következő használatakor törlődnek onnan.",
   "Whatever is chosen here, Ctrl while dropping always copies and Shift always moves.": "Bármi is van itt kiválasztva, ejtéskor a Ctrl mindig másol, a Shift pedig mindig áthelyez.",
   "When a file cannot be copied, moved or deleted:": "Ha egy fájl nem másolható, helyezhető át vagy törölhető:",
   "When a folder is pasted over a folder:": "Ha egy mappát egy mappára illesztenek be:",
@@ -409,9 +423,25 @@
   "{0} - not supported by this build": "{0} – ez a kiadás nem támogatja",
   "{0} min": "{0} perc",
   "{0}, {1} (room for {2})": "{0}, {1} (hely: {2})",
+  "{n} download is still running or waiting — quit anyway?": {
+    "one": "{n} letöltés még folyamatban van vagy várakozik — mégis kilép?",
+    "other": "{n} letöltés még folyamatban van vagy várakozik — mégis kilép?"
+  },
+  "{n} download is still running — quit anyway?": {
+    "one": "{n} letöltés még folyamatban van — mégis kilép?",
+    "other": "{n} letöltés még folyamatban van — mégis kilép?"
+  },
+  "{n} download is still waiting — quit anyway?": {
+    "one": "{n} letöltés még várakozik — mégis kilép?",
+    "other": "{n} letöltés még várakozik — mégis kilép?"
+  },
   "{n} entry": {
     "one": "{n} bejegyzés",
     "other": "{n} bejegyzés"
+  },
+  "{n} file contains \"{0}\"{1} - {2}": {
+    "one": "{n} fájl tartalmazza ezt: „{0}”{1} – {2}",
+    "other": "{n} fájl tartalmazza ezt: „{0}”{1} – {2}"
   },
   "{n} file found": {
     "one": "{n} fájl található",
@@ -420,6 +450,10 @@
   "{n} file read": {
     "one": "{n} fájl beolvasva",
     "other": "{n} fájl beolvasva"
+  },
+  "{n} file read in {0}": {
+    "one": "{n} fájl beolvasva ({0})",
+    "other": "{n} fájl beolvasva ({0})"
   },
   "{n} folder scanned": {
     "one": "{n} mappa átvizsgálva",
@@ -437,6 +471,10 @@
     "one": "{n} találat",
     "other": "{n} találat"
   },
+  "{n} result for \"{0}\" in {1}": {
+    "one": "{n} találat erre: „{0}” ({1})",
+    "other": "{n} találat erre: „{0}” ({1})"
+  },
   "{n} shared folder": {
     "one": "{n} megosztott mappa",
     "other": "{n} megosztott mappa"
@@ -452,5 +490,29 @@
   "{n} tile": {
     "one": "{n} csempe",
     "other": "{n} csempe"
+  },
+  "{n} transfer is still running or waiting — quit anyway?": {
+    "one": "{n} átvitel még folyamatban van vagy várakozik — mégis kilép?",
+    "other": "{n} átvitel még folyamatban van vagy várakozik — mégis kilép?"
+  },
+  "{n} transfer is still running — quit anyway?": {
+    "one": "{n} átvitel még folyamatban van — mégis kilép?",
+    "other": "{n} átvitel még folyamatban van — mégis kilép?"
+  },
+  "{n} transfer is still waiting — quit anyway?": {
+    "one": "{n} átvitel még várakozik — mégis kilép?",
+    "other": "{n} átvitel még várakozik — mégis kilép?"
+  },
+  "{n} upload is still running or waiting — quit anyway?": {
+    "one": "{n} feltöltés még folyamatban van vagy várakozik — mégis kilép?",
+    "other": "{n} feltöltés még folyamatban van vagy várakozik — mégis kilép?"
+  },
+  "{n} upload is still running — quit anyway?": {
+    "one": "{n} feltöltés még folyamatban van — mégis kilép?",
+    "other": "{n} feltöltés még folyamatban van — mégis kilép?"
+  },
+  "{n} upload is still waiting — quit anyway?": {
+    "one": "{n} feltöltés még várakozik — mégis kilép?",
+    "other": "{n} feltöltés még várakozik — mégis kilép?"
   }
 }

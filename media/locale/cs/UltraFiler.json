@@ -3,9 +3,13 @@
   "@translated-by": "machine draft 2026-11-04, reviewed by -",
   "\"Show it in the preview\" keeps the file inside UltraFiler whenever it can show it - pictures, documents, spreadsheets, 3D models, e-books, fonts, video, audio and text - which is faster than starting a program for a look at a file.": "„Zobrazit v náhledu“ ponechá soubor uvnitř UltraFileru, kdykoli ho dokáže zobrazit – obrázky, dokumenty, tabulky, 3D modely, e-knihy, písma, video, zvuk a text –, což je rychlejší než spouštět program jen kvůli pohledu na soubor.",
   "\"Start the registered program\" is what a double-click does in Explorer and the Finder: the file opens in the program its type is assigned to, and UltraFiler stays as it is.": "„Spustit registrovaný program“ dělá totéž co dvojklik v Exploreru a ve Finderu: soubor se otevře v programu, ke kterému je přiřazen jeho typ, a UltraFiler zůstane, jak je.",
+  "\"{0}\" is being downloaded from {1}.": "„{0}“ se stahuje z {1}.",
+  "\"{0}\" is being uploaded to {1}.": "„{0}“ se nahrává do {1}.",
   "\"{0}\" is no longer connected": "„{0}“ již není připojeno",
+  "(stopped at {0})": "(zastaveno na {0})",
   "5 s clip": "Klip 5 s",
-  "A download is": "Jedno stahování",
+  "A download is still running — quit anyway?": "Jedno stahování stále probíhá — přesto ukončit?",
+  "A download is still waiting — quit anyway?": "Jedno stahování stále čeká ve frontě — přesto ukončit?",
   "a file": "soubor",
   "A file cannot replace a folder. ": "Soubor nemůže nahradit složku. ",
   "A file merely open elsewhere - which on this kind of system blocks nothing - is marked O instead, and wears no padlock.": "Soubor, který je jinde jen otevřený – což v tomto druhu systému nic neblokuje –, je místo toho označen O a visací zámek nemá.",
@@ -29,7 +33,13 @@
   "Add a drive: an FTP / SFTP server, a cloud account or a RAM disc": "Přidat jednotku: server FTP / SFTP, cloudový účet nebo RAM disk",
   "Add an FTP / SFTP drive": "Přidat jednotku FTP / SFTP",
   "an entry": "položka",
-  "An upload is": "Jedno nahrávání",
+  "An upload is still running — quit anyway?": "Jedno nahrávání stále probíhá — přesto ukončit?",
+  "An upload is still waiting — quit anyway?": "Jedno nahrávání stále čeká ve frontě — přesto ukončit?",
+  "and {n} more": {
+    "one": "a {n} další",
+    "few": "a {n} další",
+    "other": "a {n} dalších"
+  },
   "Any other file, when this system has a program registered for that kind of file:": "Jakýkoli jiný soubor, pokud má tento systém pro tento druh souborů registrovaný program:",
   "Applied to {n} item.": {
     "one": "Použito na {n} položku.",
@@ -189,6 +199,7 @@
   "In memory: not available.": "V paměti: není k dispozici.",
   "In the thumbnail views, show the extension on the tile:": "V zobrazeních miniatur zobrazit příponu na dlaždici:",
   "In use:": "Používá se:",
+  "in {0}": "v {0}",
   "Installing {0} — first launch prepares its Windows environment, this can take a minute…": "Instalace {0} — první spuštění připravuje jeho prostředí Windows, může to chvíli trvat…",
   "Installing {0}…": "Instalace {0}…",
   "It names: {0}": "Odkazuje na: {0}",
@@ -212,6 +223,7 @@
   "Looking in {0} for names already taken...": "Hledání již obsazených názvů v {0}...",
   "Mark files that are in use": "Označovat používané soubory",
   "Match case": "Rozlišovat velikost písmen",
+  "match case": "s rozlišením velikosti písmen",
   "Maximum 2 rows": "Nejvýše 2 řádky",
   "Maximum 3 rows": "Nejvýše 3 řádky",
   "Maximum 4 rows": "Nejvýše 4 řádky",
@@ -221,7 +233,8 @@
   "Merging a folder puts its entries into the folder that is there and asks about any name that is taken inside it; Replace deletes the existing folder first. Until the progress window opens, the pointer shows that the work is under way.": "Sloučení složky vloží její položky do složky, která tam je, a zeptá se na každý název, který je v ní již obsazen; Nahradit nejprve odstraní existující složku. Dokud se neotevře okno průběhu, ukazatel myši ukazuje, že práce probíhá.",
   "Message log": "Protokol zpráv",
   "Modern - each tab a capsule floating in the strip: the open one white with a blue outline, the others plain text until the pointer is over them": "Moderní – každá karta je kapsle plovoucí v pruhu: otevřená bílá s modrým obrysem, ostatní prostý text, dokud nad nimi není ukazatel",
-  "Moving files to the {0}": "Přesouvání souborů do: {0}",
+  "Moving files to the Recycle Bin": "Přesouvání souborů do koše",
+  "Moving files to the Trash": "Přesouvání souborů do koše",
   "Moving files, by drag & drop or with Cut and Paste": "Přesouvání souborů přetažením nebo pomocí Vyjmout a Vložit",
   "name for the new environment": "název nového prostředí",
   "Name:": "Název:",
@@ -300,11 +313,11 @@
   "Saved to {0}": "Uloženo do {0}",
   "Scan sub folder": "Prohledat podsložky",
   "Search every sub folder of this folder (Enter)": "Prohledat všechny podsložky této složky (Enter)",
-  "Search for \"": "Hledání \"",
-  "Searching \"": "Hledání \"",
+  "Search for \"{0}\"{1} stopped": "Hledání „{0}“{1} zastaveno",
   "Searching \"{0}\" - {1}, {2}": "Hledání „{0}“ – {1}, {2}",
-  "Searching files for the text \"": "Hledání textu v souborech \"",
+  "Searching \"{0}\"{1} ...": "Hledání „{0}“{1}...",
   "Searching files for the text \"{0}\"{1} - {2}, {3}": "Hledání textu „{0}“ v souborech{1} – {2}, {3}",
+  "Searching files for the text \"{0}\"{1} ...": "Hledání textu „{0}“ v souborech{1}...",
   "Select the command line application": "Vyberte aplikaci příkazového řádku",
   "Selected folder colour": "Barva vybrané složky",
   "Selected folder colour:": "Barva vybrané složky:",
@@ -346,7 +359,7 @@
   "TAR": "TAR",
   "Test": "Vyzkoušet",
   "Text files": "Textové soubory",
-  "Text search for \"": "Hledání textu \"",
+  "Text search for \"{0}\"{1} stopped": "Hledání textu „{0}“ v souborech{1} zastaveno",
   "The change shows at once on the open window's tab strip. Whichever style is chosen, the tabs behave the same: click to switch, the X or a middle click to close, drag to reorder, and the + at the end opens another tab.": "Změna se projeví okamžitě na pruhu karet otevřeného okna. Ať je zvolen jakýkoli styl, karty se chovají stejně: kliknutím přepnete, X nebo prostředním tlačítkem zavřete, přetažením změníte pořadí a + na konci otevře další kartu.",
   "The current folder opens the tab on the folder the active tab is showing, so the work carries on where it is; the Home folder opens every new tab on the same starting point instead. Computer opens the Computer page - the drives with their free space, Home and the cloud folders - with the Home folder behind it, so a tab opened that way still has a folder to show once a drive or folder is picked.": "Aktuální složka otevře kartu na složce, kterou zobrazuje aktivní karta, takže práce pokračuje tam, kde je; domovská složka místo toho otevírá každou novou kartu na stejném výchozím místě. Počítač otevře stránku Počítač – jednotky s jejich volným místem, domovskou složku a cloudové složky – s domovskou složkou za ní, takže karta otevřená tímto způsobem má stále co zobrazit, jakmile se vybere jednotka nebo složka.",
   "The disk cache looks after its own size: a thumbnail not used for {0} days is deleted when UltraFiler next starts, so a folder you keep visiting keeps its thumbnails and one you opened once pays for itself and then goes away. Nothing here can show an out-of-date picture - a file's size and date are stored with its thumbnail, so a file that has changed is read again.": "Mezipaměť na disku se o svou velikost stará sama: miniatura nepoužitá {0} dní se odstraní při příštím spuštění UltraFileru, takže složka, kterou stále navštěvujete, si miniatury ponechá, a ta, kterou jste otevřeli jen jednou, se zaplatí a pak zmizí. Nic zde nemůže zobrazit zastaralý obrázek – velikost a datum souboru se ukládají s jeho miniaturou, takže změněný soubor se přečte znovu.",
@@ -389,10 +402,12 @@
   "Use system default": "Použít výchozí nastavení systému",
   "Video": "Video",
   "Waiting after it: ": "Za ním čeká: ",
+  "Waiting: ": "Čeká: ",
   "What is on screen is being read again and goes back into the cache as it lands - press Refresh to see where it settles.": "To, co je na obrazovce, se čte znovu a vrací se do mezipaměti, jak dorazí – stiskněte Obnovit a uvidíte, kde se ustálí.",
   "What the \"+\" at the end of the tab strip opens:": "Co otevře „+“ na konci pruhu karet:",
   "What the Home folder shows, in the folder tree and in the file display:": "Co domovská složka zobrazuje ve stromu složek a v zobrazení souborů:",
   "What UltraFiler keeps so a folder opens without being read again:": "Co UltraFiler uchovává, aby se složka otevřela bez opětovného čtení:",
+  "What was sent is removed from {0} the next time you use it.": "To, co bylo odesláno, bude z {0} odstraněno při jejím příštím použití.",
   "Whatever is chosen here, Ctrl while dropping always copies and Shift always moves.": "Ať je zde zvoleno cokoli, Ctrl při upuštění vždy kopíruje a Shift vždy přesouvá.",
   "When a file cannot be copied, moved or deleted:": "Když soubor nelze zkopírovat, přesunout nebo odstranit:",
   "When a folder is pasted over a folder:": "Když se složka vkládá přes složku:",
@@ -413,10 +428,30 @@
   "{0} - not supported by this build": "{0} – toto sestavení nepodporuje",
   "{0} min": "{0} min",
   "{0}, {1} (room for {2})": "{0}, {1} (místo pro {2})",
+  "{n} download is still running or waiting — quit anyway?": {
+    "one": "{n} stahování stále probíhá nebo čeká — přesto ukončit?",
+    "few": "{n} stahování stále probíhají nebo čekají — přesto ukončit?",
+    "other": "{n} stahování stále probíhá nebo čeká — přesto ukončit?"
+  },
+  "{n} download is still running — quit anyway?": {
+    "one": "{n} stahování stále probíhá — přesto ukončit?",
+    "few": "{n} stahování stále probíhají — přesto ukončit?",
+    "other": "{n} stahování stále probíhá — přesto ukončit?"
+  },
+  "{n} download is still waiting — quit anyway?": {
+    "one": "{n} stahování stále čeká ve frontě — přesto ukončit?",
+    "few": "{n} stahování stále čekají ve frontě — přesto ukončit?",
+    "other": "{n} stahování stále čeká ve frontě — přesto ukončit?"
+  },
   "{n} entry": {
     "one": "{n} položka",
     "few": "{n} položky",
     "other": "{n} položek"
+  },
+  "{n} file contains \"{0}\"{1} - {2}": {
+    "one": "{n} soubor obsahuje „{0}“{1} – {2}",
+    "few": "{n} soubory obsahují „{0}“{1} – {2}",
+    "other": "{n} souborů obsahuje „{0}“{1} – {2}"
   },
   "{n} file found": {
     "one": "Nalezen {n} soubor",
@@ -427,6 +462,11 @@
     "one": "Přečten {n} soubor",
     "few": "Přečteny {n} soubory",
     "other": "Přečteno {n} souborů"
+  },
+  "{n} file read in {0}": {
+    "one": "přečten {n} soubor ({0})",
+    "few": "přečteny {n} soubory ({0})",
+    "other": "přečteno {n} souborů ({0})"
   },
   "{n} folder scanned": {
     "one": "Prohledána {n} složka",
@@ -448,6 +488,11 @@
     "few": "{n} výsledky",
     "other": "{n} výsledků"
   },
+  "{n} result for \"{0}\" in {1}": {
+    "one": "{n} výsledek pro „{0}“ ({1})",
+    "few": "{n} výsledky pro „{0}“ ({1})",
+    "other": "{n} výsledků pro „{0}“ ({1})"
+  },
   "{n} shared folder": {
     "one": "{n} sdílená složka",
     "few": "{n} sdílené složky",
@@ -467,5 +512,35 @@
     "one": "{n} dlaždice",
     "few": "{n} dlaždice",
     "other": "{n} dlaždic"
+  },
+  "{n} transfer is still running or waiting — quit anyway?": {
+    "one": "{n} přenos stále probíhá nebo čeká — přesto ukončit?",
+    "few": "{n} přenosy stále probíhají nebo čekají — přesto ukončit?",
+    "other": "{n} přenosů stále probíhá nebo čeká — přesto ukončit?"
+  },
+  "{n} transfer is still running — quit anyway?": {
+    "one": "{n} přenos stále probíhá — přesto ukončit?",
+    "few": "{n} přenosy stále probíhají — přesto ukončit?",
+    "other": "{n} přenosů stále probíhá — přesto ukončit?"
+  },
+  "{n} transfer is still waiting — quit anyway?": {
+    "one": "{n} přenos stále čeká ve frontě — přesto ukončit?",
+    "few": "{n} přenosy stále čekají ve frontě — přesto ukončit?",
+    "other": "{n} přenosů stále čeká ve frontě — přesto ukončit?"
+  },
+  "{n} upload is still running or waiting — quit anyway?": {
+    "one": "{n} nahrávání stále probíhá nebo čeká — přesto ukončit?",
+    "few": "{n} nahrávání stále probíhají nebo čekají — přesto ukončit?",
+    "other": "{n} nahrávání stále probíhá nebo čeká — přesto ukončit?"
+  },
+  "{n} upload is still running — quit anyway?": {
+    "one": "{n} nahrávání stále probíhá — přesto ukončit?",
+    "few": "{n} nahrávání stále probíhají — přesto ukončit?",
+    "other": "{n} nahrávání stále probíhá — přesto ukončit?"
+  },
+  "{n} upload is still waiting — quit anyway?": {
+    "one": "{n} nahrávání stále čeká ve frontě — přesto ukončit?",
+    "few": "{n} nahrávání stále čekají ve frontě — přesto ukončit?",
+    "other": "{n} nahrávání stále čeká ve frontě — přesto ukončit?"
   }
 }

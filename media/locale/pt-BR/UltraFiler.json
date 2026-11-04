@@ -3,9 +3,13 @@
   "@translated-by": "machine draft 2026-11-04, reviewed by -",
   "\"Show it in the preview\" keeps the file inside UltraFiler whenever it can show it - pictures, documents, spreadsheets, 3D models, e-books, fonts, video, audio and text - which is faster than starting a program for a look at a file.": "\"Mostrar na visualização\" mantém o arquivo dentro do UltraFiler sempre que ele consegue exibi-lo (imagens, documentos, planilhas, modelos 3D, e-books, fontes, vídeo, áudio e texto), o que é mais rápido do que iniciar um programa só para dar uma olhada em um arquivo.",
   "\"Start the registered program\" is what a double-click does in Explorer and the Finder: the file opens in the program its type is assigned to, and UltraFiler stays as it is.": "\"Iniciar o programa registrado\" é o que um clique duplo faz no Explorador e no Finder: o arquivo é aberto no programa ao qual o tipo dele está associado, e o UltraFiler continua como está.",
+  "\"{0}\" is being downloaded from {1}.": "\"{0}\" está sendo baixado de {1}.",
+  "\"{0}\" is being uploaded to {1}.": "\"{0}\" está sendo enviado para {1}.",
   "\"{0}\" is no longer connected": "\"{0}\" não está mais conectado",
+  "(stopped at {0})": "(parou em {0} resultados)",
   "5 s clip": "Clipe de 5 s",
-  "A download is": "Um download está",
+  "A download is still running — quit anyway?": "Um download ainda está em andamento — sair mesmo assim?",
+  "A download is still waiting — quit anyway?": "Um download ainda está aguardando — sair mesmo assim?",
   "a file": "um arquivo",
   "A file cannot replace a folder. ": "Um arquivo não pode substituir uma pasta. ",
   "A file merely open elsewhere - which on this kind of system blocks nothing - is marked O instead, and wears no padlock.": "Um arquivo apenas aberto em outro lugar (o que, neste tipo de sistema, não bloqueia nada) é marcado com O e não recebe cadeado.",
@@ -23,7 +27,8 @@
   "A thumbnail costs far more to make than to keep: a folder of photos, videos or documents is minutes of work the first time it is opened. Kept on disk, that is paid once instead of once per start.": "Uma miniatura custa muito mais para ser criada do que para ser guardada: uma pasta de fotos, vídeos ou documentos representa minutos de trabalho na primeira vez que é aberta. Mantido no disco, esse custo é pago uma vez em vez de uma vez a cada inicialização.",
   "A type this system has no icon for keeps the simple one, and so does every icon until its lookup lands: the display never waits for the host and never shows an empty box. With host icons on, a folder is drawn with the system's folder icon, so the pictures inside it (Display > Thumbnails) no longer peek out of it.": "Um tipo para o qual este sistema não tem ícone mantém o ícone simples, e o mesmo vale para cada ícone até a busca dele terminar: a exibição nunca espera pelo sistema e nunca mostra uma caixa vazia. Com os ícones do sistema ativados, uma pasta é desenhada com o ícone de pasta do sistema, então as imagens dentro dela (Exibição > Miniaturas) não aparecem mais por cima.",
   "Add a drive: a RAM disc (FTP and cloud drives need UltraCloud)": "Adicionar uma unidade: um disco RAM (unidades FTP e na nuvem precisam do UltraCloud)",
-  "An upload is": "Um envio está",
+  "An upload is still running — quit anyway?": "Um envio ainda está em andamento — sair mesmo assim?",
+  "An upload is still waiting — quit anyway?": "Um envio ainda está aguardando — sair mesmo assim?",
   "Any other file, when this system has a program registered for that kind of file:": "Qualquer outro arquivo, quando este sistema tem um programa registrado para esse tipo de arquivo:",
   "Archives": "Arquivos compactados",
   "Archives - how Compress packs a TAR: each compressor's level and threads, the header format, what is stored of each file, and the names left out.": "Arquivos compactados - como Compactar empacota um TAR: o nível e as threads de cada compressor, o formato do cabeçalho, o que é armazenado de cada arquivo e os nomes deixados de fora.",
@@ -140,7 +145,8 @@
   "Merging a folder puts its entries into the folder that is there and asks about any name that is taken inside it; Replace deletes the existing folder first. Until the progress window opens, the pointer shows that the work is under way.": "Mesclar uma pasta coloca as entradas dela na pasta que já existe e pergunta o que fazer com cada nome que já esteja em uso dentro dela; Substituir exclui primeiro a pasta existente. Até a janela de progresso abrir, o ponteiro indica que o trabalho está em andamento.",
   "Message log": "Log de mensagens",
   "Modern - each tab a capsule floating in the strip: the open one white with a blue outline, the others plain text until the pointer is over them": "Moderno - cada aba é uma cápsula flutuando na barra: a aberta em branco com contorno azul, as outras apenas texto até o ponteiro passar sobre elas",
-  "Moving files to the {0}": "Mover arquivos para a {0}",
+  "Moving files to the Recycle Bin": "Mover arquivos para a Lixeira",
+  "Moving files to the Trash": "Mover arquivos para a Lixeira",
   "Moving files, by drag & drop or with Cut and Paste": "Mover arquivos, arrastando e soltando ou com Recortar e Colar",
   "Names the file display never lists:": "Nomes que a exibição de arquivos nunca lista:",
   "New tab": "Nova aba",
@@ -193,10 +199,10 @@
   "Save export": "Salvar exportação",
   "Saved application: {0}": "Aplicativo salvo: {0}",
   "Saved to {0}": "Salvo em {0}",
-  "Searching \"": "Pesquisando \"",
   "Searching \"{0}\" - {1}, {2}": "Pesquisando \"{0}\" - {1}, {2}",
-  "Searching files for the text \"": "Pesquisando arquivos com o texto \"",
+  "Searching \"{0}\"{1} ...": "Pesquisando \"{0}\"{1}…",
   "Searching files for the text \"{0}\"{1} - {2}, {3}": "Pesquisando arquivos com o texto \"{0}\"{1} - {2}, {3}",
+  "Searching files for the text \"{0}\"{1} ...": "Pesquisando arquivos com o texto \"{0}\"{1}…",
   "Select the command line application": "Selecionar o aplicativo de linha de comando",
   "Selected: {0} - press \"Save app\" to keep it.": "Selecionado: {0} - pressione \"Salvar aplicativo\" para mantê-lo.",
   "Sent {0} files to the printer.": "{0} arquivos enviados para a impressora.",
@@ -250,10 +256,12 @@
   "Uploading {0} to {1}...": "Enviando {0} para {1}…",
   "Use system default": "Usar o padrão do sistema",
   "Waiting after it: ": "Na fila em seguida: ",
+  "Waiting: ": "Na fila: ",
   "What is on screen is being read again and goes back into the cache as it lands - press Refresh to see where it settles.": "O que está na tela está sendo lido de novo e volta para o cache conforme chega - pressione Atualizar para ver onde ele se estabiliza.",
   "What the \"+\" at the end of the tab strip opens:": "O que o \"+\" no final da barra de abas abre:",
   "What the Home folder shows, in the folder tree and in the file display:": "O que a pasta pessoal mostra, na árvore de pastas e na exibição de arquivos:",
   "What UltraFiler keeps so a folder opens without being read again:": "O que o UltraFiler mantém para que uma pasta abra sem ser lida de novo:",
+  "What was sent is removed from {0} the next time you use it.": "O que foi enviado é removido de {0} na próxima vez que você usá-la.",
   "Whatever is chosen here, Ctrl while dropping always copies and Shift always moves.": "Seja qual for a escolha aqui, Ctrl ao soltar sempre copia e Shift sempre move.",
   "When a file cannot be copied, moved or deleted:": "Quando um arquivo não puder ser copiado, movido ou excluído:",
   "When a folder is pasted over a folder:": "Quando uma pasta for colada sobre outra pasta:",
@@ -270,6 +278,22 @@
   "With the extension hidden, \"UltraFiler.exe\" is listed as \"UltraFiler\". Only the drawn name changes - renaming, sorting and every file operation keep using the real name.": "Com a extensão oculta, \"UltraFiler.exe\" é listado como \"UltraFiler\". Só o nome exibido muda - renomear, classificar e todas as operações com arquivos continuam usando o nome real.",
   "{0} (default)": "{0} (padrão)",
   "{0} - not supported by this build": "{0} - sem suporte nesta compilação",
+  "{n} download is still running or waiting — quit anyway?": {
+    "one": "{n} download ainda está em andamento ou aguardando — sair mesmo assim?",
+    "other": "{n} downloads ainda estão em andamento ou aguardando — sair mesmo assim?"
+  },
+  "{n} download is still running — quit anyway?": {
+    "one": "{n} download ainda está em andamento — sair mesmo assim?",
+    "other": "{n} downloads ainda estão em andamento — sair mesmo assim?"
+  },
+  "{n} download is still waiting — quit anyway?": {
+    "one": "{n} download ainda está aguardando — sair mesmo assim?",
+    "other": "{n} downloads ainda estão aguardando — sair mesmo assim?"
+  },
+  "{n} file contains \"{0}\"{1} - {2}": {
+    "one": "{n} arquivo contém \"{0}\"{1} - {2}",
+    "other": "{n} arquivos contêm \"{0}\"{1} - {2}"
+  },
   "{n} file found": {
     "one": "{n} arquivo encontrado",
     "other": "{n} arquivos encontrados"
@@ -277,6 +301,10 @@
   "{n} file read": {
     "one": "{n} arquivo lido",
     "other": "{n} arquivos lidos"
+  },
+  "{n} file read in {0}": {
+    "one": "{n} arquivo lido em {0}",
+    "other": "{n} arquivos lidos em {0}"
   },
   "{n} folder scanned": {
     "one": "{n} pasta verificada",
@@ -289,5 +317,29 @@
   "{n} tile": {
     "one": "{n} bloco",
     "other": "{n} blocos"
+  },
+  "{n} transfer is still running or waiting — quit anyway?": {
+    "one": "{n} transferência ainda está em andamento ou aguardando — sair mesmo assim?",
+    "other": "{n} transferências ainda estão em andamento ou aguardando — sair mesmo assim?"
+  },
+  "{n} transfer is still running — quit anyway?": {
+    "one": "{n} transferência ainda está em andamento — sair mesmo assim?",
+    "other": "{n} transferências ainda estão em andamento — sair mesmo assim?"
+  },
+  "{n} transfer is still waiting — quit anyway?": {
+    "one": "{n} transferência ainda está aguardando — sair mesmo assim?",
+    "other": "{n} transferências ainda estão aguardando — sair mesmo assim?"
+  },
+  "{n} upload is still running or waiting — quit anyway?": {
+    "one": "{n} envio ainda está em andamento ou aguardando — sair mesmo assim?",
+    "other": "{n} envios ainda estão em andamento ou aguardando — sair mesmo assim?"
+  },
+  "{n} upload is still running — quit anyway?": {
+    "one": "{n} envio ainda está em andamento — sair mesmo assim?",
+    "other": "{n} envios ainda estão em andamento — sair mesmo assim?"
+  },
+  "{n} upload is still waiting — quit anyway?": {
+    "one": "{n} envio ainda está aguardando — sair mesmo assim?",
+    "other": "{n} envios ainda estão aguardando — sair mesmo assim?"
   }
 }

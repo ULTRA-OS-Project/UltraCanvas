@@ -3,9 +3,13 @@
   "@translated-by": "machine draft 2026-11-04, reviewed by -",
   "\"Show it in the preview\" keeps the file inside UltraFiler whenever it can show it - pictures, documents, spreadsheets, 3D models, e-books, fonts, video, audio and text - which is faster than starting a program for a look at a file.": "„Afișare în previzualizare” păstrează fișierul în UltraFiler ori de câte ori îl poate afișa - imagini, documente, foi de calcul, modele 3D, cărți electronice, fonturi, video, audio și text -, ceea ce este mai rapid decât pornirea unui program doar pentru a arunca o privire la un fișier.",
   "\"Start the registered program\" is what a double-click does in Explorer and the Finder: the file opens in the program its type is assigned to, and UltraFiler stays as it is.": "„Pornire program înregistrat” este ceea ce face un dublu clic în Explorer și în Finder: fișierul se deschide în programul căruia îi este atribuit tipul său, iar UltraFiler rămâne așa cum este.",
+  "\"{0}\" is being downloaded from {1}.": "„{0}” se descarcă din {1}.",
+  "\"{0}\" is being uploaded to {1}.": "„{0}” se încarcă în {1}.",
   "\"{0}\" is no longer connected": "„{0}” nu mai este conectat",
+  "(stopped at {0})": "(căutare oprită la {0})",
   "5 s clip": "Clip de 5 s",
-  "A download is": "O descărcare este",
+  "A download is still running — quit anyway?": "O descărcare este încă în curs — ieșiți oricum?",
+  "A download is still waiting — quit anyway?": "O descărcare este încă în așteptare — ieșiți oricum?",
   "a file": "un fișier",
   "A file cannot replace a folder. ": "Un fișier nu poate înlocui un dosar. ",
   "A file merely open elsewhere - which on this kind of system blocks nothing - is marked O instead, and wears no padlock.": "Un fișier doar deschis în altă parte - ceea ce pe acest tip de sistem nu blochează nimic - este marcat în schimb cu O și nu poartă lacăt.",
@@ -29,7 +33,13 @@
   "Add a drive: an FTP / SFTP server, a cloud account or a RAM disc": "Adăugare unitate: un server FTP / SFTP, un cont cloud sau un disc RAM",
   "Add an FTP / SFTP drive": "Adăugare unitate FTP / SFTP",
   "an entry": "o intrare",
-  "An upload is": "O încărcare este",
+  "An upload is still running — quit anyway?": "O încărcare este încă în curs — ieșiți oricum?",
+  "An upload is still waiting — quit anyway?": "O încărcare este încă în așteptare — ieșiți oricum?",
+  "and {n} more": {
+    "one": "și încă {n}",
+    "few": "și încă {n}",
+    "other": "și încă {n}"
+  },
   "Any other file, when this system has a program registered for that kind of file:": "Orice alt fișier, când acest sistem are un program înregistrat pentru acel tip de fișier:",
   "Applied to {n} item.": {
     "one": "Aplicat pentru {n} element.",
@@ -189,6 +199,7 @@
   "In memory: not available.": "În memorie: indisponibil.",
   "In the thumbnail views, show the extension on the tile:": "În vizualizările cu miniaturi, afișare extensie pe dală:",
   "In use:": "În uz:",
+  "in {0}": "în {0}",
   "Installing {0} — first launch prepares its Windows environment, this can take a minute…": "Se instalează {0} — prima lansare îi pregătește mediul Windows, poate dura un minut…",
   "Installing {0}…": "Se instalează {0}…",
   "It names: {0}": "Indică spre: {0}",
@@ -212,6 +223,7 @@
   "Looking in {0} for names already taken...": "Se caută în {0} numele deja folosite...",
   "Mark files that are in use": "Marcare fișiere în uz",
   "Match case": "Potrivire majuscule/minuscule",
+  "match case": "cu potrivire majuscule/minuscule",
   "Maximum 2 rows": "Maximum 2 rânduri",
   "Maximum 3 rows": "Maximum 3 rânduri",
   "Maximum 4 rows": "Maximum 4 rânduri",
@@ -221,7 +233,8 @@
   "Merging a folder puts its entries into the folder that is there and asks about any name that is taken inside it; Replace deletes the existing folder first. Until the progress window opens, the pointer shows that the work is under way.": "Îmbinarea unui dosar pune intrările sale în dosarul existent și întreabă despre orice nume deja folosit în el; Înlocuire șterge mai întâi dosarul existent. Până la deschiderea ferestrei de progres, cursorul arată că lucrul este în desfășurare.",
   "Message log": "Jurnal de mesaje",
   "Modern - each tab a capsule floating in the strip: the open one white with a blue outline, the others plain text until the pointer is over them": "Modern - fiecare filă o capsulă care plutește în bandă: cea deschisă albă cu contur albastru, celelalte text simplu până când cursorul ajunge deasupra lor",
-  "Moving files to the {0}": "Mutarea fișierelor în {0}",
+  "Moving files to the Recycle Bin": "Mutarea fișierelor în Coșul de reciclare",
+  "Moving files to the Trash": "Mutarea fișierelor în Coșul de gunoi",
   "Moving files, by drag & drop or with Cut and Paste": "Mutarea fișierelor, prin tragere și plasare sau cu Decupare și Lipire",
   "name for the new environment": "nume pentru noul mediu",
   "Name:": "Nume:",
@@ -300,11 +313,11 @@
   "Saved to {0}": "Salvat în {0}",
   "Scan sub folder": "Scanare subdosare",
   "Search every sub folder of this folder (Enter)": "Căutare în fiecare subdosar al acestui dosar (Enter)",
-  "Search for \"": "Căutare \"",
-  "Searching \"": "Se caută \"",
+  "Search for \"{0}\"{1} stopped": "Căutarea „{0}”{1} a fost oprită",
   "Searching \"{0}\" - {1}, {2}": "Se caută „{0}” - {1}, {2}",
-  "Searching files for the text \"": "Se caută în fișiere textul \"",
+  "Searching \"{0}\"{1} ...": "Se caută „{0}”{1}...",
   "Searching files for the text \"{0}\"{1} - {2}, {3}": "Se caută în fișiere textul „{0}”{1} - {2}, {3}",
+  "Searching files for the text \"{0}\"{1} ...": "Se caută în fișiere textul „{0}”{1}...",
   "Select the command line application": "Selectați aplicația de linie de comandă",
   "Selected folder colour": "Culoarea dosarului selectat",
   "Selected folder colour:": "Culoarea dosarului selectat:",
@@ -346,7 +359,7 @@
   "TAR": "TAR",
   "Test": "Testare",
   "Text files": "Fișiere text",
-  "Text search for \"": "Căutare text \"",
+  "Text search for \"{0}\"{1} stopped": "Căutarea textului „{0}”{1} a fost oprită",
   "The change shows at once on the open window's tab strip. Whichever style is chosen, the tabs behave the same: click to switch, the X or a middle click to close, drag to reorder, and the + at the end opens another tab.": "Modificarea apare imediat pe bara de file a ferestrei deschise. Indiferent de stilul ales, filele se comportă la fel: clic pentru comutare, X sau clic de mijloc pentru închidere, tragere pentru reordonare, iar + de la capăt deschide o altă filă.",
   "The current folder opens the tab on the folder the active tab is showing, so the work carries on where it is; the Home folder opens every new tab on the same starting point instead. Computer opens the Computer page - the drives with their free space, Home and the cloud folders - with the Home folder behind it, so a tab opened that way still has a folder to show once a drive or folder is picked.": "Dosarul curent deschide fila pe dosarul afișat de fila activă, astfel încât lucrul continuă de unde a rămas; dosarul personal deschide în schimb fiecare filă nouă în același punct de pornire. Computer deschide pagina Computer - unitățile cu spațiul lor liber, dosarul personal și dosarele cloud - cu dosarul personal în spate, astfel încât o filă deschisă astfel are tot un dosar de afișat după ce este aleasă o unitate sau un dosar.",
   "The disk cache looks after its own size: a thumbnail not used for {0} days is deleted when UltraFiler next starts, so a folder you keep visiting keeps its thumbnails and one you opened once pays for itself and then goes away. Nothing here can show an out-of-date picture - a file's size and date are stored with its thumbnail, so a file that has changed is read again.": "Cache-ul de pe disc își gestionează singur dimensiunea: o miniatură nefolosită timp de {0} zile este ștearsă la următoarea pornire a UltraFiler, așa că un dosar pe care îl vizitați des își păstrează miniaturile, iar unul deschis o singură dată se amortizează și apoi dispare. Nimic de aici nu poate afișa o imagine învechită - dimensiunea și data unui fișier sunt stocate cu miniatura sa, deci un fișier care s-a modificat este citit din nou.",
@@ -389,10 +402,12 @@
   "Use system default": "Utilizare implicit de sistem",
   "Video": "Video",
   "Waiting after it: ": "În așteptare după aceasta: ",
+  "Waiting: ": "În așteptare: ",
   "What is on screen is being read again and goes back into the cache as it lands - press Refresh to see where it settles.": "Ce este pe ecran este citit din nou și revine în cache pe măsură ce sosește - apăsați Reîmprospătare pentru a vedea unde se stabilizează.",
   "What the \"+\" at the end of the tab strip opens:": "Ce deschide „+” de la capătul barei de file:",
   "What the Home folder shows, in the folder tree and in the file display:": "Ce afișează dosarul personal, în arborele de dosare și în panoul de fișiere:",
   "What UltraFiler keeps so a folder opens without being read again:": "Ce păstrează UltraFiler pentru ca un dosar să se deschidă fără a fi citit din nou:",
+  "What was sent is removed from {0} the next time you use it.": "Ce s-a trimis este eliminat din {0} data viitoare când o folosiți.",
   "Whatever is chosen here, Ctrl while dropping always copies and Shift always moves.": "Indiferent de ce este ales aici, Ctrl în timpul plasării copiază întotdeauna, iar Shift mută întotdeauna.",
   "When a file cannot be copied, moved or deleted:": "Când un fișier nu poate fi copiat, mutat sau șters:",
   "When a folder is pasted over a folder:": "Când un dosar este lipit peste un dosar:",
@@ -413,10 +428,30 @@
   "{0} - not supported by this build": "{0} - neacceptat de această versiune",
   "{0} min": "{0} min",
   "{0}, {1} (room for {2})": "{0}, {1} (loc pentru {2})",
+  "{n} download is still running or waiting — quit anyway?": {
+    "one": "{n} descărcare este încă în curs sau în așteptare — ieșiți oricum?",
+    "few": "{n} descărcări sunt încă în curs sau în așteptare — ieșiți oricum?",
+    "other": "{n} de descărcări sunt încă în curs sau în așteptare — ieșiți oricum?"
+  },
+  "{n} download is still running — quit anyway?": {
+    "one": "{n} descărcare este încă în curs — ieșiți oricum?",
+    "few": "{n} descărcări sunt încă în curs — ieșiți oricum?",
+    "other": "{n} de descărcări sunt încă în curs — ieșiți oricum?"
+  },
+  "{n} download is still waiting — quit anyway?": {
+    "one": "{n} descărcare este încă în așteptare — ieșiți oricum?",
+    "few": "{n} descărcări sunt încă în așteptare — ieșiți oricum?",
+    "other": "{n} de descărcări sunt încă în așteptare — ieșiți oricum?"
+  },
   "{n} entry": {
     "one": "{n} intrare",
     "few": "{n} intrări",
     "other": "{n} de intrări"
+  },
+  "{n} file contains \"{0}\"{1} - {2}": {
+    "one": "{n} fișier conține „{0}”{1} - {2}",
+    "few": "{n} fișiere conțin „{0}”{1} - {2}",
+    "other": "{n} de fișiere conțin „{0}”{1} - {2}"
   },
   "{n} file found": {
     "one": "{n} fișier găsit",
@@ -427,6 +462,11 @@
     "one": "{n} fișier citit",
     "few": "{n} fișiere citite",
     "other": "{n} de fișiere citite"
+  },
+  "{n} file read in {0}": {
+    "one": "{n} fișier citit în {0}",
+    "few": "{n} fișiere citite în {0}",
+    "other": "{n} de fișiere citite în {0}"
   },
   "{n} folder scanned": {
     "one": "{n} dosar scanat",
@@ -448,6 +488,11 @@
     "few": "{n} rezultate",
     "other": "{n} de rezultate"
   },
+  "{n} result for \"{0}\" in {1}": {
+    "one": "{n} rezultat pentru „{0}” în {1}",
+    "few": "{n} rezultate pentru „{0}” în {1}",
+    "other": "{n} de rezultate pentru „{0}” în {1}"
+  },
   "{n} shared folder": {
     "one": "{n} dosar partajat",
     "few": "{n} dosare partajate",
@@ -467,5 +512,35 @@
     "one": "{n} dală",
     "few": "{n} dale",
     "other": "{n} de dale"
+  },
+  "{n} transfer is still running or waiting — quit anyway?": {
+    "one": "{n} transfer este încă în curs sau în așteptare — ieșiți oricum?",
+    "few": "{n} transferuri sunt încă în curs sau în așteptare — ieșiți oricum?",
+    "other": "{n} de transferuri sunt încă în curs sau în așteptare — ieșiți oricum?"
+  },
+  "{n} transfer is still running — quit anyway?": {
+    "one": "{n} transfer este încă în curs — ieșiți oricum?",
+    "few": "{n} transferuri sunt încă în curs — ieșiți oricum?",
+    "other": "{n} de transferuri sunt încă în curs — ieșiți oricum?"
+  },
+  "{n} transfer is still waiting — quit anyway?": {
+    "one": "{n} transfer este încă în așteptare — ieșiți oricum?",
+    "few": "{n} transferuri sunt încă în așteptare — ieșiți oricum?",
+    "other": "{n} de transferuri sunt încă în așteptare — ieșiți oricum?"
+  },
+  "{n} upload is still running or waiting — quit anyway?": {
+    "one": "{n} încărcare este încă în curs sau în așteptare — ieșiți oricum?",
+    "few": "{n} încărcări sunt încă în curs sau în așteptare — ieșiți oricum?",
+    "other": "{n} de încărcări sunt încă în curs sau în așteptare — ieșiți oricum?"
+  },
+  "{n} upload is still running — quit anyway?": {
+    "one": "{n} încărcare este încă în curs — ieșiți oricum?",
+    "few": "{n} încărcări sunt încă în curs — ieșiți oricum?",
+    "other": "{n} de încărcări sunt încă în curs — ieșiți oricum?"
+  },
+  "{n} upload is still waiting — quit anyway?": {
+    "one": "{n} încărcare este încă în așteptare — ieșiți oricum?",
+    "few": "{n} încărcări sunt încă în așteptare — ieșiți oricum?",
+    "other": "{n} de încărcări sunt încă în așteptare — ieșiți oricum?"
   }
 }
