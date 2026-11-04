@@ -1,6 +1,7 @@
 // Apps/UltraFiler/UltraFilerFolderExport.cpp
 // "Extras > Export": the folder content / folder tree as text, and the window
 // that shows it with a Save button.
+// Version: 1.0.1 - the interface strings go through Tr (UltraLocalisation)
 // Version: 1.0.0
 // Author: UltraCanvas Framework
 
@@ -12,6 +13,7 @@
 #include "UltraCanvasFileLoader.h"
 #include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasUtils.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <algorithm>
 #include <chrono>
@@ -254,7 +256,7 @@ namespace {
 
     std::string FormatContent(const FolderExportListing& listing,
                               const FolderExportOptions& options) {
-        if (!listing.folderReadable) return "The folder cannot be read.\n";
+        if (!listing.folderReadable) return Tr("The folder cannot be read.\n");
 
         // The name column is as wide as the longest name, within reason: one
         // very long name should not push every size off the screen.
@@ -430,7 +432,7 @@ std::string FormatFolderExport(const FolderExportListing& listing,
     // A CSV file is a table and nothing else: a heading above it would be
     // read as data rows.
     if (listing.kind == FolderExportKind::Csv) return FormatCsv(listing, options);
-    std::string text = (listing.kind == FolderExportKind::Tree ? "Folder tree: "
+    std::string text = (listing.kind == FolderExportKind::Tree ? Tr("Folder tree: ")
                                                                : "Folder: ") +
                        listing.folder + "\n" +
                        "Exported: " + FormatTime(listing.readAt) +
@@ -480,9 +482,9 @@ void UltraFilerFolderExportWindow::Open(const std::string& folder, FolderExportK
 
     const std::string folderName = PathToUtf8(PathFromUtf8(folder).filename());
     WindowConfig wc;
-    wc.title = std::string(kind == FolderExportKind::Tree  ? "Folder tree content"
-                           : kind == FolderExportKind::Csv ? "Folder tree as CSV"
-                                                           : "Folder content") +
+    wc.title = std::string(kind == FolderExportKind::Tree  ? Tr("Folder tree content")
+                           : kind == FolderExportKind::Csv ? Tr("Folder tree as CSV")
+                                                           : Tr("Folder content")) +
                " - " + (folderName.empty() ? folder : folderName) + " - UltraFiler";
     wc.width = 760;
     wc.height = 560;
@@ -513,8 +515,8 @@ void UltraFilerFolderExportWindow::Open(const std::string& folder, FolderExportK
     textArea_->SetFont("monospace", 10.0f);
     textArea_->SetWordWrap(false);
     textArea_->SetShowLineNumbers(false);
-    textArea_->SetText(kind == FolderExportKind::Content ? "Reading the folder ..."
-                                                         : "Reading the folder tree ...",
+    textArea_->SetText(kind == FolderExportKind::Content ? Tr("Reading the folder ...")
+                                                         : Tr("Reading the folder tree ..."),
                        false);
     textArea_->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                          .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
@@ -573,7 +575,7 @@ void UltraFilerFolderExportWindow::Open(const std::string& folder, FolderExportK
     statusLabel_ = std::make_shared<UltraCanvasLabel>("uf-export-status", 0, 0, 0, 20);
     statusLabel_->SetFontSize(kFontSize);
     statusLabel_->SetTextColor(Color(110, 110, 118, 255));
-    statusLabel_->SetText("Reading ...");
+    statusLabel_->SetText(Tr("Reading ..."));
     statusLabel_->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
     bottom->AddChild(statusLabel_);
 
@@ -637,7 +639,7 @@ void UltraFilerFolderExportWindow::Reformat() {
         size_t lines = 0;
         for (char c : text_)
             if (c == '\n') ++lines;
-        statusLabel_->SetText(std::to_string(lines) + " lines");
+        statusLabel_->SetText(TrN("{n} line", "{n} lines", lines));
     }
 }
 
@@ -659,13 +661,13 @@ void UltraFilerFolderExportWindow::Save() {
     }
 
     FileDialogOptions opts;
-    opts.SetTitle("Save export")
+    opts.SetTitle(Tr("Save export"))
         .SetInitialDirectory(folder_)
         .SetDefaultFileName(FolderExportFileName(folder_, kind_))
         .SetParentWindow(window_.get());
     if (csv) opts.AddFilter("CSV files", std::vector<std::string>{"csv"});
-    else     opts.AddFilter("Text files", std::vector<std::string>{"txt"});
-    opts.AddFilter("All files", "*");
+    else     opts.AddFilter(Tr("Text files"), std::vector<std::string>{"txt"});
+    opts.AddFilter(Tr("All files"), "*");
 
     std::weak_ptr<UltraFilerFolderExportWindow> self = weak_from_this();
     UltraCanvasFileLoader::SaveFileDialog(opts,
@@ -680,12 +682,12 @@ void UltraFilerFolderExportWindow::Save() {
             ok = std::fclose(f) == 0 && ok;
         }
         if (!ok) {
-            UltraCanvasAlert::Error("Cannot write the file\n" + path, "Save export",
+            UltraCanvasAlert::Error(TrF("Cannot write the file\n{0}", path), Tr("Save export"),
                                     nullptr, parent);
             return;
         }
         if (exportWindow && exportWindow->statusLabel_)
-            exportWindow->statusLabel_->SetText("Saved to " + path);
+            exportWindow->statusLabel_->SetText(TrF("Saved to {0}", path));
     });
 }
 

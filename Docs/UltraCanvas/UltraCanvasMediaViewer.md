@@ -637,6 +637,25 @@ fill it - what a hover preview wants, so an icon stays an icon rather than a
 blur the size of the pane. The wheel still zooms in from there, and the info
 bar reports the resulting zoom as always. The default (`true`) fills the pane.
 
+### Opening the selected file
+
+A pane that follows a selection opens each file with `OpenFileWhenShown` (or
+`SetFilesWhenShown` for one file alone) rather than `OpenFile`: the pane shows
+the loading ring and the file's name at once and reads the file after that
+frame, so a large file never leaves the previous one standing in for it, and
+selections made while one loads replace it instead of queuing behind it. To
+ask whether the pane already holds a file, compare with the loading path while
+one is on its way - otherwise a refresh during the load starts it over:
+
+<!-- doc-check: std::shared_ptr<UltraCanvasMediaViewer> preview; std::string path; -->
+```cpp
+const std::string shown = preview->IsLoading() ? preview->GetLoadingPath()
+                                               : preview->GetCurrentPath();
+if (shown != path) preview->OpenFileWhenShown(path);
+```
+
+UltraFiler's preview pane works this way (`PreviewPanePath`).
+
 ### Taking the 3D view out of it
 
 A model in the viewer is orbited with the mouse, and a host that embeds it as

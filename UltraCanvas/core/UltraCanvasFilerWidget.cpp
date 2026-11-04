@@ -50,6 +50,14 @@
 // itself is never touched, so renaming and every file operation still work on
 // the real one. A name that is not UTF-8 — written in a legacy code page by an
 // old tool or an unconverting unzip — is drawn decoded rather than as U+FFFD.
+// Version: 1.43.2 - the delete confirmation is translated whole: question,
+//                  facts, the folder's list caption, notes and buttons, per
+//                  platform's trash name; the size facts (DescribeEntries,
+//                  CountedSizeFact) count files and folders through TrN
+// Version: 1.43.1 - the delete-problem dialog is translated whole: titles,
+//                  questions, facts, notes, scope and buttons, per kind and
+//                  trash name, no longer an English "file" / "folder" /
+//                  "Trash" passed into a translated sentence
 // Version: 1.43.0 - RenderFileThumbnail; the workers' decode switch is
 //                  DecodeContentThumbnail, shared with it; RenderTextPagePixmap
 // Version: 1.42.0 - Compress packs a TAR with the host's FilerTarSettings
@@ -5665,15 +5673,19 @@ namespace UltraCanvas {
                 if (e.isDirectory) ++folders;
                 else { ++files; bytes += e.size; }
             }
-            std::string text;
-            if (folders) text += std::to_string(folders) + (folders == 1 ? " folder" : " folders");
-            if (folders && files) text += " and ";
-            if (files) text += std::to_string(files) + (files == 1 ? " file" : " files");
+            // Translated, with each count's plural form from the language's
+            // own rule ("3 папки", "5 папок").
+            const std::string folderText = TrN("{n} folder", "{n} folders", static_cast<long long>(folders));
+            const std::string fileText = TrN("{n} file", "{n} files", static_cast<long long>(files));
+            std::string text = (folders && files) ? TrF("{0} and {1}", folderText, fileText)
+                             : folders            ? folderText
+                                                  : fileText;
             if (!folderTally) {
-                if (files) text += " (" + FormatSize(bytes) + (folders ? " in the files)" : ")");
+                if (files) text = folders ? TrF("{0} ({1} in the files)", text, FormatSize(bytes))
+                                          : text + " (" + FormatSize(bytes) + ")";
             } else if (folderTally->pending) {
-                text += " (" + (bytes ? FormatSize(bytes) + " so far, " : std::string())
-                      + "counting…)";
+                text = bytes ? TrF("{0} ({1} so far, counting…)", text, FormatSize(bytes))
+                             : TrF("{0} (counting…)", text);
             } else {
                 text += " (" + std::string(folderTally->capped ? "≥ " : "") + FormatSize(bytes) + ")";
             }
@@ -5703,13 +5715,14 @@ namespace UltraCanvas {
         if (entries.size() > 1) return DescribeEntries(entries, &tally);
         if (entries.empty()) return {};
         if (!entries.front().isDirectory) return FormatSize(entries.front().size);
-        if (tally.pending) return "counting…";
+        if (tally.pending) return Tr("counting…");
         const std::string atLeast = tally.capped ? "≥ " : "";
         std::string size = atLeast + FormatSize(tally.bytes) + " (" + atLeast
-                + std::to_string(walkedFiles) + (walkedFiles == 1 ? " file" : " files");
+                + TrN("{n} file", "{n} files", static_cast<long long>(walkedFiles));
+        // "in 3 folders" whole, so a language can put the noun in the case
+        // its preposition wants ("в 3 папках").
         if (walkedFolders)
-            size += " in " + std::to_string(walkedFolders)
-                  + (walkedFolders == 1 ? " folder" : " folders");
+            size += " " + TrN("in {n} folder", "in {n} folders", static_cast<long long>(walkedFolders));
         return size + ")";
     }
 
@@ -7647,13 +7660,20 @@ namespace UltraCanvas {
                                                          DeleteProblemKind kind,
                                                          const std::string& reason) {
         if (!pendingDelete) return;
-        const std::string kindWord = entry.isDirectory ? "folder" : "file";
+        // Every text is translated whole, per kind (and, for the trash, per
+        // the platform's name for it): "file", "folder" and
+        // TrashDisplayName() passed in through a placeholder would stay
+        // English in every language, and most languages need the noun's
+        // gender or case in the sentence around it anyway. Names go in as
+        // {0} / {1}, so a translation can put them where its grammar wants.
+        const bool isFolder = entry.isDirectory;
+        const std::string kindLabel = isFolder ? Tr("Folder:") : Tr("File:");
         const bool writeProtected = kind == DeleteProblemKind::WriteProtected;
         const bool needsPermission = kind == DeleteProblemKind::NeedsPermission;
         const bool inUse = kind == DeleteProblemKind::InUse;
         const bool toTrash = pendingDelete->toTrash;
         const std::string name = RepairLegacyEncodedName(entry.name);
-        const std::string why = reason.empty() ? std::string("unknown error") : reason;
+        const std::string why = reason.empty() ? Tr("unknown error") : reason;
         // The file inside the folder that refused, when the failure is not
         // the entry's own: the question is about the entry the user chose,
         // the facts name the file that stopped it.
@@ -7663,10 +7683,9 @@ namespace UltraCanvas {
                 : RepairLegacyEncodedName(PathToUtf8(PathFromUtf8(culprit).filename()));
         const std::vector<std::string> holders = pendingDelete->stopHolders;
         auto entryFact = [&]() {
-            std::string facts = "**" + std::string(entry.isDirectory ? "Folder" : "File")
-                              + ":** " + FactPath(entry.path);
+            std::string facts = "**" + kindLabel + "** " + FactPath(entry.path);
             if (!culprit.empty())
-                facts += "\n\n**Stopped at:** " + FactPath(culprit);
+                facts += "\n\n**" + Tr("Stopped at:") + "** " + FactPath(culprit);
             return facts;
         };
         // Whether the file belongs to this very program: the delete is then
@@ -7685,50 +7704,50 @@ namespace UltraCanvas {
         spec.type = DialogType::Warning;
         spec.width = 640;
         if (writeProtected) {
-            spec.title = TrF("Delete: a {0} is write-protected", kindWord);
-            spec.question = "\"" + name + "\" is write-protected.";
-            spec.facts = "**" + std::string(entry.isDirectory ? "Folder" : "File") + ":** "
-                       + FactPath(entry.path)
-                       + "\n\n**Why:** the read-only attribute is set";
-            spec.note = "Delete anyway removes the protection first.";
-            spec.applyToAllLabel = "Apply to all remaining write-protected items";
+            spec.title = isFolder ? Tr("Delete: a folder is write-protected")
+                                  : Tr("Delete: a file is write-protected");
+            spec.question = TrF("\"{0}\" is write-protected.", name);
+            spec.facts = "**" + kindLabel + "** " + FactPath(entry.path)
+                       + "\n\n**" + Tr("Why:") + "** " + Tr("the read-only attribute is set");
+            spec.note = Tr("Delete anyway removes the protection first.");
+            spec.applyToAllLabel = Tr("Apply to all remaining write-protected items");
             // Skipping is the safe default for a locked entry.
-            spec.buttons = {{"Skip", DialogButtonRole::Default},
-                            {"Delete anyway", DialogButtonRole::Destructive},
-                            {"Stop", DialogButtonRole::Cancel}};
+            spec.buttons = {{Tr("Skip"), DialogButtonRole::Default},
+                            {Tr("Delete anyway"), DialogButtonRole::Destructive},
+                            {Tr("Stop"), DialogButtonRole::Cancel}};
             answers = {Skip, Proceed};
         } else if (inUse) {
             // A program holds the file - a running program's own executable
             // or library, as a rule. Not a permission problem, whatever the
             // system's wording: an administrator cannot delete it either, so
             // the answer is to close that program, and the dialog names it.
-            spec.title = culprit.empty()
-                    ? "Delete: the " + kindWord + " is in use"
-                    : "Delete: a file in the folder is in use";
+            spec.title = !culprit.empty() ? Tr("Delete: a file in the folder is in use")
+                       : isFolder         ? Tr("Delete: the folder is in use")
+                                          : Tr("Delete: the file is in use");
             spec.question = culprit.empty()
-                    ? "\"" + name + "\" is in use by another program."
-                    : "\"" + culpritName + "\" in \"" + name + "\" is in use by another program.";
+                    ? TrF("\"{0}\" is in use by another program.", name)
+                    : TrF("\"{0}\" in \"{1}\" is in use by another program.", culpritName, name);
             std::string facts = entryFact();
             if (!holders.empty()) {
-                facts += "\n\n**In use by:** ";
+                facts += "\n\n**" + Tr("In use by:") + "** ";
                 for (size_t i = 0; i < holders.size(); ++i)
                     facts += (i ? ", " : "") + holders[i];
             }
-            facts += "\n\n**Reason:** " + why;
+            facts += "\n\n**" + Tr("Reason:") + "** " + why;
             spec.facts = facts;
             if (ownFile) {
-                spec.note = "That program is this one: it is running from the folder "
-                            "being deleted. Close it, then delete the folder from "
-                            "another file manager or from a copy started elsewhere.";
+                spec.note = Tr("That program is this one: it is running from the folder "
+                               "being deleted. Close it, then delete the folder from "
+                               "another file manager or from a copy started elsewhere.");
             } else {
-                spec.note = "Close the program that holds it, then try again. "
-                            "Administrator rights do not help: a file a running "
-                            "program has loaded cannot be deleted by anyone.";
+                spec.note = Tr("Close the program that holds it, then try again. "
+                               "Administrator rights do not help: a file a running "
+                               "program has loaded cannot be deleted by anyone.");
             }
-            spec.applyToAllLabel = "Apply to all later files in use";
-            spec.buttons = {{"Skip", DialogButtonRole::Default},
-                            {"Try again", DialogButtonRole::Normal},
-                            {"Stop", DialogButtonRole::Cancel}};
+            spec.applyToAllLabel = Tr("Apply to all later files in use");
+            spec.buttons = {{Tr("Skip"), DialogButtonRole::Default},
+                            {Tr("Try again"), DialogButtonRole::Normal},
+                            {Tr("Stop"), DialogButtonRole::Cancel}};
             answers = {Skip, TryAgain};
         } else if (needsPermission) {
             // Explorer's "You'll need to provide administrator permission to
@@ -7736,44 +7755,53 @@ namespace UltraCanvas {
             // user. Windows asks for consent before the helper runs.
             spec.title = Tr("Delete: administrator permission needed");
             spec.question = culprit.empty()
-                    ? "\"" + name + "\" needs administrator permission to be deleted."
-                    : "\"" + culpritName + "\" in \"" + name
-                              + "\" needs administrator permission to be deleted.";
-            spec.facts = entryFact() + "\n\n**Reason:** " + why;
-            spec.note = "Windows asks you to confirm once, at the end, for every item "
-                        "handed to the administrator.";
-            spec.applyToAllLabel = "Apply to all later permission failures";
-            spec.buttons = {{"Delete as administrator", DialogButtonRole::Default},
-                            {"Try again", DialogButtonRole::Normal},
-                            {"Skip", DialogButtonRole::Normal},
-                            {"Stop", DialogButtonRole::Cancel}};
+                    ? TrF("\"{0}\" needs administrator permission to be deleted.", name)
+                    : TrF("\"{0}\" in \"{1}\" needs administrator permission to be deleted.",
+                          culpritName, name);
+            spec.facts = entryFact() + "\n\n**" + Tr("Reason:") + "** " + why;
+            spec.note = Tr("Windows asks you to confirm once, at the end, for every item "
+                           "handed to the administrator.");
+            spec.applyToAllLabel = Tr("Apply to all later permission failures");
+            spec.buttons = {{Tr("Delete as administrator"), DialogButtonRole::Default},
+                            {Tr("Try again"), DialogButtonRole::Normal},
+                            {Tr("Skip"), DialogButtonRole::Normal},
+                            {Tr("Stop"), DialogButtonRole::Cancel}};
             answers = {Elevate, TryAgain, Skip};
         } else if (toTrash) {
-            const std::string trash = TrashDisplayName();
-            spec.title = TrF("Delete: a {0} could not be moved to the {1}", kindWord, trash);
-            spec.question = "\"" + name + "\" could not be moved to the " + trash + ".";
-            spec.facts = "**" + std::string(entry.isDirectory ? "Folder" : "File") + ":** "
-                       + FactPath(entry.path) + "\n\n**Reason:** " + why;
-            spec.note = "It is never deleted for good instead. To remove it anyway, "
-                        "stop and delete it with Delete permanently (Shift+Del).";
-            spec.applyToAllLabel = "Apply to all later failures";
-            spec.buttons = {{"Try again", DialogButtonRole::Default},
-                            {"Skip", DialogButtonRole::Normal},
-                            {"Stop", DialogButtonRole::Cancel}};
+#if defined(_WIN32) || defined(_WIN64)
+            spec.title = isFolder ? Tr("Delete: a folder could not be moved to the Recycle Bin")
+                                  : Tr("Delete: a file could not be moved to the Recycle Bin");
+            spec.question = TrF("\"{0}\" could not be moved to the Recycle Bin.", name);
+#else
+            spec.title = isFolder ? Tr("Delete: a folder could not be moved to the Trash")
+                                  : Tr("Delete: a file could not be moved to the Trash");
+            spec.question = TrF("\"{0}\" could not be moved to the Trash.", name);
+#endif
+            spec.facts = "**" + kindLabel + "** " + FactPath(entry.path)
+                       + "\n\n**" + Tr("Reason:") + "** " + why;
+            spec.note = Tr("It is never deleted for good instead. To remove it anyway, "
+                           "stop and delete it with Delete permanently (Shift+Del).");
+            spec.applyToAllLabel = Tr("Apply to all later failures");
+            spec.buttons = {{Tr("Try again"), DialogButtonRole::Default},
+                            {Tr("Skip"), DialogButtonRole::Normal},
+                            {Tr("Stop"), DialogButtonRole::Cancel}};
             answers = {TryAgain, Skip};
         } else {
-            spec.title = TrF("Delete: a {0} could not be deleted", kindWord);
+            spec.title = isFolder ? Tr("Delete: a folder could not be deleted")
+                                  : Tr("Delete: a file could not be deleted");
             spec.question = culprit.empty()
-                    ? "\"" + name + "\" could not be deleted."
-                    : "\"" + culpritName + "\" in \"" + name + "\" could not be deleted.";
-            spec.facts = entryFact() + "\n\n**Reason:** " + why;
-            spec.note = "The " + (culprit.empty() ? kindWord : std::string("file"))
-                        + " may be locked or in use by another program. "
-                        "Close it there, then try again.";
-            spec.applyToAllLabel = "Apply to all later failures";
-            spec.buttons = {{"Try again", DialogButtonRole::Default},
-                            {"Skip", DialogButtonRole::Normal},
-                            {"Stop", DialogButtonRole::Cancel}};
+                    ? TrF("\"{0}\" could not be deleted.", name)
+                    : TrF("\"{0}\" in \"{1}\" could not be deleted.", culpritName, name);
+            spec.facts = entryFact() + "\n\n**" + Tr("Reason:") + "** " + why;
+            spec.note = (culprit.empty() && isFolder)
+                    ? Tr("The folder may be locked or in use by another program. "
+                         "Close it there, then try again.")
+                    : Tr("The file may be locked or in use by another program. "
+                         "Close it there, then try again.");
+            spec.applyToAllLabel = Tr("Apply to all later failures");
+            spec.buttons = {{Tr("Try again"), DialogButtonRole::Default},
+                            {Tr("Skip"), DialogButtonRole::Normal},
+                            {Tr("Stop"), DialogButtonRole::Cancel}};
             answers = {TryAgain, Skip};
         }
 
@@ -7970,30 +7998,44 @@ namespace UltraCanvas {
                 }
             }
 #endif
-            listCaption = "Folder \"" + RepairLegacyEncodedName(folder.name) + "\" contains "
-                        + Items(listedTotal);
-            if (listedTotal == 0) listCaption = "Folder \"" +
-                    RepairLegacyEncodedName(folder.name) + "\" is empty.";
+            // The count's plural form from the language, the folder's name
+            // put in after it (TrN fills only {n}).
+            const std::string folderName = RepairLegacyEncodedName(folder.name);
+            listCaption = listedTotal == 0
+                    ? TrF("Folder \"{0}\" is empty.", folderName)
+                    : LocalisationDetail::Substitute(
+                          TrN("Folder \"{0}\" contains {n} item", "Folder \"{0}\" contains {n} items",
+                              static_cast<long long>(listedTotal)),
+                          {folderName});
         }
         if (listedTotal > listed.size())
-            listCaption += (listCaption.empty() ? "The first " : " (the first ")
-                         + std::to_string(listed.size())
-                         + (listCaption.empty() ? " of " + std::to_string(listedTotal) + " items:"
-                                                : " shown)");
+            listCaption = listCaption.empty()
+                    ? TrF("The first {0} of {1} items:", listed.size(), listedTotal)
+                    : listCaption + " " + TrF("(the first {0} shown)", listed.size());
 
         // The trash / permanent choice. Where the trash cannot take these
         // entries only the permanent delete is offered, and the note says why
         // rather than leaving a greyed-out button unexplained.
-        const std::string trash = TrashDisplayName();
+        // Whole sentences per platform's name for the trash: a name passed
+        // in through a placeholder would stay English in every language.
         const bool trashPossible = CanMoveToTrash(victims);
         std::string noTrashWhy;
         if (!trashPossible) {
+#if defined(_WIN32) || defined(_WIN64)
             if (!TrashAvailable())
-                noTrashWhy = "This system has no " + trash + ".";
+                noTrashWhy = Tr("This system has no Recycle Bin.");
             else if (ShowingRemoteFolder())
-                noTrashWhy = "Items on a remote drive cannot go to the " + trash + ".";
+                noTrashWhy = Tr("Items on a remote drive cannot go to the Recycle Bin.");
             else
-                noTrashWhy = "Items inside an archive cannot go to the " + trash + ".";
+                noTrashWhy = Tr("Items inside an archive cannot go to the Recycle Bin.");
+#else
+            if (!TrashAvailable())
+                noTrashWhy = Tr("This system has no Trash.");
+            else if (ShowingRemoteFolder())
+                noTrashWhy = Tr("Items on a remote drive cannot go to the Trash.");
+            else
+                noTrashWhy = Tr("Items inside an archive cannot go to the Trash.");
+#endif
         }
         const bool startInTrash =
                 trashPossible && preferred == FilerDeleteMode::MoveToTrash;
@@ -8003,13 +8045,14 @@ namespace UltraCanvas {
         spec.title = Tr("Delete");
         spec.type = DialogType::Warning;
         spec.question = one
-                ? "Delete \"" + RepairLegacyEncodedName(victims.front().name) + "\"?"
-                : "Delete " + std::to_string(victims.size()) + " items?";
+                ? TrF("Delete \"{0}\"?", RepairLegacyEncodedName(victims.front().name))
+                : TrN("Delete {n} item?", "Delete {n} items?", static_cast<long long>(victims.size()));
         std::vector<std::string> paths;
         for (const FilerEntry& v : victims) paths.push_back(v.path);
         const std::string from = CommonParentFolder(paths);
-        spec.facts = "**From:** " + (from.empty() ? std::string("several folders")
-                                                   : FactPath(from));
+        spec.facts = "**" + Tr("From:") + "** " + (from.empty() ? Tr("several folders")
+                                                               : FactPath(from));
+        const std::string sizeLabel = "\n\n**" + Tr("Size:") + "** ";
         // How much goes, as the move / copy question counts it: the folders'
         // contents from the background walk, the line filling in as walks
         // land. Only a folder on this machine's file system can be walked -
@@ -8023,31 +8066,38 @@ namespace UltraCanvas {
         }
         if (walkable) {
             const std::string placeFacts = spec.facts;
-            auto sizeFacts = [this, placeFacts, victims]() {
-                return placeFacts + "\n\n**Size:** " + CountedSizeFact(victims);
+            auto sizeFacts = [this, placeFacts, sizeLabel, victims]() {
+                return placeFacts + sizeLabel + CountedSizeFact(victims);
             };
             spec.facts = sizeFacts();
             spec.liveFacts = sizeFacts;
         } else if (victims.size() > 1) {
-            spec.facts += "\n\n**Size:** " + DescribeEntries(victims);
+            spec.facts += sizeLabel + DescribeEntries(victims);
         } else if (!victims.front().isDirectory) {
-            spec.facts += "\n\n**Size:** " + FormatSize(victims.front().size);
+            spec.facts += sizeLabel + FormatSize(victims.front().size);
         }
         spec.listed = std::move(listed);
         spec.listCaption = listCaption;
         spec.listVisibleRows = 10;
         if (trashPossible) {
-            spec.note = "Move to " + trash + " can be undone from the " + trash
-                      + ". Delete permanently cannot be undone.";
-            spec.buttons = {{"Move to " + trash, startInTrash ? DialogButtonRole::Default
-                                                              : DialogButtonRole::Normal},
-                            {"Delete permanently", startInTrash ? DialogButtonRole::Destructive
-                                                                : DialogButtonRole::DestructiveDefault},
-                            {"Cancel", DialogButtonRole::Cancel}};
+#if defined(_WIN32) || defined(_WIN64)
+            spec.note = Tr("Move to Recycle Bin can be undone from the Recycle Bin. "
+                           "Delete permanently cannot be undone.");
+            const std::string toTrashLabel = Tr("Move to Recycle Bin");
+#else
+            spec.note = Tr("Move to Trash can be undone from the Trash. "
+                           "Delete permanently cannot be undone.");
+            const std::string toTrashLabel = Tr("Move to Trash");
+#endif
+            spec.buttons = {{toTrashLabel, startInTrash ? DialogButtonRole::Default
+                                                        : DialogButtonRole::Normal},
+                            {Tr("Delete permanently"), startInTrash ? DialogButtonRole::Destructive
+                                                                    : DialogButtonRole::DestructiveDefault},
+                            {Tr("Cancel"), DialogButtonRole::Cancel}};
         } else {
-            spec.note = "This cannot be undone. " + noTrashWhy;
-            spec.buttons = {{"Delete permanently", DialogButtonRole::DestructiveDefault},
-                            {"Cancel", DialogButtonRole::Cancel}};
+            spec.note = Tr("This cannot be undone.") + " " + noTrashWhy;
+            spec.buttons = {{Tr("Delete permanently"), DialogButtonRole::DestructiveDefault},
+                            {Tr("Cancel"), DialogButtonRole::Cancel}};
         }
         spec.width = spec.listed.empty() ? 520 : 640;
 

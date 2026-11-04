@@ -20,7 +20,10 @@ are wrapped as their files are touched), and `extract_ui_strings.py`,
 `translate_catalogue.py` driving it per language and set, the first
 drafts of the standard and base sets in de, fr, es, it, nl, pt, ja and
 zh-Hans (machine drafts, marked so until reviewed), and the UOS-Settings
-Language page with the translator's name. L4 onwards are still to do. Revised 2026-11-02: the module is
+Language page with the translator's name; on 2026-11-03 twenty-two more
+drafts followed (ru, uk, pl, cs, sv, da, nb, fi, tr, el, ko, zh-Hant, ar,
+he, hu, ro, hi, id, vi, th, ca, and pt-BR as a variant of pt holding only
+what differs). **L4 implemented 2026-11-03**: `UltraCanvasLocalisationEditor` ([`UltraCanvasLocalisationEditor.md`](UltraCanvasLocalisationEditor.md)) - the merged grid over the columns tree view with a column per set, the Sets picker, the four merge operations, the two save paths, the compare column, the drafting button (through a drafter the host wires), `ShowLocalisationEditorDialog`, the UOS-Settings Translations page, the DemoApp page, `LocalisationEditorTest`; the one departure from §5 is that a cell is edited in the row under the grid rather than in place, since the columns tree view has no in-place editing. L5 onwards are still to do. Revised 2026-11-02: the module is
 `UltraLocalisation`, it loads a **standard set** UltraCanvas ships for every
 application, the **base sets** of the application's type (video editing,
 banking, shopping, ...) and the application's **own set** over them, and a
@@ -713,7 +716,7 @@ run in CI:
 | **L1** | The UltraLocalisation module: `Tr`/`TrC`/`TrN`/`TrF`, the two sets from both folders, `OriginOf`, the fallback walk over `SystemLanguageTags()`, the plural table, `Language.conf`, `Initialize()` wiring, the Masterfile section, `Tests/UltraLocalisationTest.cpp` (no display) | module | 3 days |
 | **L2** | The standard set: the framework's own strings wrapped (file dialog, modal dialogs, alert, filer widget, colour picker, date picker, spell-check menu, tooltips, media viewer) and the curated vocabulary written into `en/Standard.json`; the sixteen base sets of Appendix B written into `en/base/`; `extract_ui_strings.py`, `check_locale_catalogues.py` with its baseline, `wrap_ui_strings.py` | core, scripts | 6 days (every application gains translated dialogs and the vocabulary at once) |
 | **L3** | `translate_catalogue.py`; the standard set and the base sets drafted in de, fr, es, it, nl, pt, ja, zh-Hans, the standard set reviewed; UOS-Settings Language page | scripts, UOSSettings | 3 days |
-| **L4** | The editor element: the merged grid over the columns tree view with a column per set, the Sets picker, the four merge operations, the two save paths, the compare column, the drafting button; its dialog opener; the UOS-Settings Translations page; the DemoApp page; `UltraCanvasLocalisationEditor.md` | core, UOSSettings, DemoApp | 7 days |
+| **L4** | The editor element: the merged grid over the columns tree view with a column per set, the Sets picker, the four merge operations, the two save paths, the compare column, the drafting button; its dialog opener; the UOS-Settings Translations page; the DemoApp page; `UltraCanvasLocalisationEditor.md`. **Implemented 2026-11-03.** | core, UOSSettings, DemoApp | 7 days |
 | **L5** | The applications, one PR each so a reviewer sees one app's diff: wrap, extract, name the bases, draft, build, run; the Help menu item. Order by use: UltraFiler, Texter, UltraMail, UltraPassword, UOSSettings, UltraDesktop, then the rest; DemoApp last, or its demo pages left English (they are the catalogue of the elements, read by developers) | Apps | ½ day per application - most of an application's strings are standard or base after L2 - ~15 days for 29 |
 | **L6** | §6 formatting with its four backends; `FormatFileSize` replacing the filer's, the cleaner's and the mail client's own; `check_locale_numbers.py` learns the new functions are `locale-ok` | module, Apps | 3 days |
 

@@ -1,5 +1,6 @@
 // core/UltraCanvasCommandConfigWidget.cpp
 // One editor for a program's menus and toolbars.
+// Version: 2.0.1 - the editor's texts go through Tr
 // Version: 2.0.0 - menus and toolbars in one tree, toolbar groups with check boxes, New
 //                  Group, Fold, the name field, icon size and labels, a catalog filter, a
 //                  live toolbar preview, ShowCommandConfigDialog (was
@@ -17,6 +18,7 @@
 #include "UltraCanvasConfig.h"  // GetResourcesDir
 #include "UltraCanvasWindow.h"
 #include "CSSLayout/CSSLayout.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <algorithm>
 #include <iterator>
@@ -113,7 +115,7 @@ namespace UltraCanvas {
         leftPane->layout.SetFlexColumn().SetFlexGap(4)
                 .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         auto leftTitle = std::make_shared<UltraCanvasLabel>(
-                GetIdentifier() + "_LeftTitle", "Menus and toolbars");
+                GetIdentifier() + "_LeftTitle", Tr("Menus and toolbars"));
         leftTitle->SetFontWeight(FontWeight::Bold);
         leftPane->AddChild(leftTitle);
 
@@ -148,7 +150,7 @@ namespace UltraCanvas {
             return r;
         };
         auto nameRow = row("NameRow");
-        nameRow->AddChild(std::make_shared<UltraCanvasLabel>(GetIdentifier() + "_NameCaption", "Name"));
+        nameRow->AddChild(std::make_shared<UltraCanvasLabel>(GetIdentifier() + "_NameCaption", Tr("Name")));
         nameField = std::make_shared<UltraCanvasTextInput>(GetIdentifier() + "_Name", 0, 0, 160, 26);
         nameField->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
         nameField->onTextChanged = [this](const std::string& text) {
@@ -157,7 +159,7 @@ namespace UltraCanvas {
         nameRow->AddChild(nameField);
 
         auto optionsRow = row("ToolbarRow");
-        optionsRow->AddChild(std::make_shared<UltraCanvasLabel>(GetIdentifier() + "_IconCaption", "Icon size"));
+        optionsRow->AddChild(std::make_shared<UltraCanvasLabel>(GetIdentifier() + "_IconCaption", Tr("Icon size")));
         iconSizeList = std::make_shared<UltraCanvasDropdown>(GetIdentifier() + "_IconSize", 0, 0, 90, 26);
         for (const char* name : kIconSizeNames) iconSizeList->AddItem(name);
         iconSizeList->SetSelectedIndex(1, false);
@@ -166,7 +168,7 @@ namespace UltraCanvas {
             SetSelectedToolbarIconSize(kIconSizes[index]);
         };
         optionsRow->AddChild(iconSizeList);
-        labelsBox = std::make_shared<UltraCanvasCheckbox>(GetIdentifier() + "_Labels", "Labels");
+        labelsBox = std::make_shared<UltraCanvasCheckbox>(GetIdentifier() + "_Labels", Tr("Labels"));
         labelsBox->onStateChanged = [this](CheckedState, CheckedState now) {
             if (!rebuilding) SetSelectedToolbarShowLabels(now == CheckedState::Checked);
         };
@@ -200,30 +202,30 @@ namespace UltraCanvas {
             btn.SetUseIconAsMask(true);
             btn.SetIconMaskColor(Colors::Transparent);   // follow the text colour
         };
-        addButton = makeMidButton("Add", "Add", [this]() { AddSelectedCommand(); });
+        addButton = makeMidButton("Add", Tr("Add"), [this]() { AddSelectedCommand(); });
         setChevron(*addButton, "chevron-right.svg", ButtonIconPosition::Right);
-        removeButton = makeMidButton("Remove", "Remove", [this]() { RemoveSelected(); });
+        removeButton = makeMidButton("Remove", Tr("Remove"), [this]() { RemoveSelected(); });
         setChevron(*removeButton, "chevron-left.svg", ButtonIconPosition::Left);
-        upButton = makeMidButton("Up", "Move Up", [this]() { MoveSelected(-1); });
-        downButton = makeMidButton("Down", "Move Down", [this]() { MoveSelected(+1); });
-        groupButton = makeMidButton("Group", "New Group", [this]() { AddGroup(); });
-        separatorButton = makeMidButton("Sep", "Separator", [this]() { AddSeparator(); });
-        foldButton = makeMidButton("Fold", "Fold", [this]() { ToggleFoldSelected(); });
-        addButton->SetTooltip("Put the command selected on the right after the entry selected on the left");
-        removeButton->SetTooltip("Take the selected entry out (a toolbar keeps a program's command, unchecked)");
-        groupButton->SetTooltip("A submenu in a menu, a group of your own on a toolbar");
-        separatorButton->SetTooltip("A line between two menu entries");
-        foldButton->SetTooltip("Show the toolbar group as one button with the others folding out");
+        upButton = makeMidButton("Up", Tr("Move Up"), [this]() { MoveSelected(-1); });
+        downButton = makeMidButton("Down", Tr("Move Down"), [this]() { MoveSelected(+1); });
+        groupButton = makeMidButton("Group", Tr("New Group"), [this]() { AddGroup(); });
+        separatorButton = makeMidButton("Sep", Tr("Separator"), [this]() { AddSeparator(); });
+        foldButton = makeMidButton("Fold", Tr("Fold"), [this]() { ToggleFoldSelected(); });
+        addButton->SetTooltip(Tr("Put the command selected on the right after the entry selected on the left"));
+        removeButton->SetTooltip(Tr("Take the selected entry out (a toolbar keeps a program's command, unchecked)"));
+        groupButton->SetTooltip(Tr("A submenu in a menu, a group of your own on a toolbar"));
+        separatorButton->SetTooltip(Tr("A line between two menu entries"));
+        foldButton->SetTooltip(Tr("Show the toolbar group as one button with the others folding out"));
 
         // Right pane: title, filter and the registry's catalog.
         rightPane->layout.SetFlexColumn().SetFlexGap(4)
                 .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         auto rightTitle = std::make_shared<UltraCanvasLabel>(
-                GetIdentifier() + "_RightTitle", "Available commands");
+                GetIdentifier() + "_RightTitle", Tr("Available commands"));
         rightTitle->SetFontWeight(FontWeight::Bold);
         rightPane->AddChild(rightTitle);
         auto filter = std::make_shared<UltraCanvasTextInput>(GetIdentifier() + "_Filter", 0, 0, 160, 26);
-        filter->SetPlaceholder("Filter commands");
+        filter->SetPlaceholder(Tr("Filter commands"));
         filter->layoutItem.SetFlexShrink(0);
         filter->onTextChanged = [this](const std::string& text) {
             if (rightTree) rightTree->SetFilterText(text);
@@ -246,7 +248,7 @@ namespace UltraCanvas {
         AddChild(splitPane);
 
         // ----- the selected toolbar as the edits leave it -----
-        previewCaption = std::make_shared<UltraCanvasLabel>(GetIdentifier() + "_PreviewCaption", "Preview");
+        previewCaption = std::make_shared<UltraCanvasLabel>(GetIdentifier() + "_PreviewCaption", Tr("Preview"));
         previewCaption->SetFontWeight(FontWeight::Bold);
         previewCaption->layoutItem.SetFlexShrink(0);
         AddChild(previewCaption);
@@ -272,7 +274,7 @@ namespace UltraCanvas {
         };
 
         // Reset on the left, primary actions on the right.
-        auto reset = makeFooterButton("Reset", "Reset", [this]() {
+        auto reset = makeFooterButton("Reset", Tr("Reset"), [this]() {
             working.menus = baselineMenus;
             for (size_t i = 0; i < working.toolbars.size() && i < toolbarInfo.size(); ++i) {
                 working.toolbars[i] = toolbarInfo[i].defaults;
@@ -283,11 +285,11 @@ namespace UltraCanvas {
             UpdateControls();
             if (onReset) onReset();
         });
-        reset->SetTooltip("The menus as they were opened, the toolbars as the program has them");
+        reset->SetTooltip(Tr("The menus as they were opened, the toolbars as the program has them"));
         footer->AddStretchSpacer(1);
-        makeFooterButton("Cancel", "Cancel", [this]() { if (onCancel) onCancel(); });
-        makeFooterButton("Apply",  "Apply",  [this]() { if (onApply) onApply(working); });
-        makeFooterButton("Save",   "Save",   [this]() { if (onSave)  onSave(working); });
+        makeFooterButton("Cancel", Tr("Cancel"), [this]() { if (onCancel) onCancel(); });
+        makeFooterButton("Apply",  Tr("Apply"),  [this]() { if (onApply) onApply(working); });
+        makeFooterButton("Save",   Tr("Save"),   [this]() { if (onSave)  onSave(working); });
 
         AddChild(footer);
 
@@ -374,12 +376,12 @@ namespace UltraCanvas {
         rebuilding = true;
         leftTree->ClearSelection();
 
-        TreeNodeData rootData("root", "Program");
+        TreeNodeData rootData("root", Tr("Program"));
         rootData.showCheckbox = false;
         leftTree->SetRootNode(rootData);
 
         if (!working.menus.menus.empty()) {
-            TreeNodeData heading("menus", "Menus");
+            TreeNodeData heading("menus", Tr("Menus"));
             heading.showCheckbox = false;
             leftTree->AddNode("root", heading);
             for (size_t i = 0; i < working.menus.menus.size(); ++i) {
@@ -394,7 +396,7 @@ namespace UltraCanvas {
             }
         }
         if (!working.toolbars.empty()) {
-            TreeNodeData heading("toolbars", "Toolbars");
+            TreeNodeData heading("toolbars", Tr("Toolbars"));
             heading.showCheckbox = false;
             leftTree->AddNode("root", heading);
             for (size_t t = 0; t < working.toolbars.size(); ++t) BuildToolbarNodes(static_cast<int>(t));

@@ -2343,6 +2343,13 @@ namespace UltraCanvas {
                                "DemoApp/UltraCanvasMenuConfigExamples.cpp",
                                "Docs/UltraCanvas/UltraCanvasCommandConfigWidget.md");
 
+        widgetsBuilder.AddItem("localisationeditor", "Localisation Editor",
+                               "Every set an application's texts come from in one grid: edit, take a base set, promote, demote, save",
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreateLocalisationEditorExamples(); },
+                               "DemoApp/UltraCanvasLocalisationEditorExamples.cpp",
+                               "Docs/UltraCanvas/UltraCanvasLocalisationEditor.md");
+
         widgetsBuilder.AddItem("colorpicker", "Colour Picker",
                                "HSV colour wheel with saturation/value square, preview "
                                "swatches, hex input, HSV/HSL/RGB channel sliders and alpha; "

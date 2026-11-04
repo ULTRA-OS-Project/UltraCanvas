@@ -6165,6 +6165,28 @@ else()
     message(STATUS "  CommandConfigWidgetTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== LOCALISATION EDITOR TEST =====
+# The localisation editor's workspace (rows, edits, the four merge
+# operations, undo, the two save paths, export) and the element over it on
+# a locale tree under the temp folder. Headless.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building LocalisationEditorTest...")
+    add_executable(LocalisationEditorTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/LocalisationEditorTest.cpp
+    )
+    target_include_directories(LocalisationEditorTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(LocalisationEditorTest PRIVATE cxx_std_20)
+    target_link_libraries(LocalisationEditorTest PRIVATE UltraCanvas)
+    set_target_properties(LocalisationEditorTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME LocalisationEditorTest COMMAND LocalisationEditorTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: LocalisationEditorTest")
+else()
+    message(STATUS "  LocalisationEditorTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== MENU LAYOUT MERGE TEST =====
 # A menu layout the user arranged, brought forward to a newer program's
 # defaults: new commands at their place, removed ones still removed. Headless.
