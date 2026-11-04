@@ -13,12 +13,14 @@
 // Design: Docs/UltraCanvas/UltraCanvasTernaryChartProposal.md
 // Guide:  Docs/UltraCanvas/UltraCanvasTernaryChart.md
 //
+// Version: 1.2.0 - Phase 3: the sub-triangle zoom - a minimum share per axis,
+//   ZoomSpan, ToZoomed / FromZoomed, ticks over the visible range
 // Version: 1.1.0 - Phase 2: regions with classification (RegionOf), paths,
 //   bubble sizes, reference curves, the JSON round trip of the whole model and
 //   the CSV of the points; the SoilTexture (USDA), DeFinetti and
 //   VoteTrajectories samples
 // Version: 1.0.0
-// Last Modified: 2026-11-04
+// Last Modified: 2026-11-05
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -105,7 +107,12 @@ namespace UltraCanvas {
     struct TernaryAxis {
         std::string title;                // "Clay"; drawn at its corner and along its edge
         std::string unit = "%";           // after the tick numbers in the edge title
-        double tickStep = 0.1;            // as a share: 0.1 = every 10 %
+        double tickStep = 0.1;            // as a share: 0.1 = every 10 %; finer when zoomed in
+        // The smallest share shown: above 0, the chart shows only the
+        // sub-triangle where every part is at least its minimum (a zoom).
+        // The three minimums must leave some of the triangle: their sum
+        // stays under 1.
+        double minimum = 0.0;
 
         TernaryAxis() = default;
         explicit TernaryAxis(std::string axisTitle) : title(std::move(axisTitle)) {}
@@ -134,8 +141,22 @@ namespace UltraCanvas {
         // A from B, B from C, C from A.
         int LabelEdgeStart(int corner) const;
 
-        // The shares at which the axis has a tick: 0, step, 2 step ... 1.
+        // The shares at which the axis has a tick, over the range it shows:
+        // its minimum, the multiples of the step inside the range, and the
+        // range's top (1 when not zoomed). Zoomed in far enough that the
+        // step would leave fewer than three ticks, it uses a finer one.
         std::vector<double> Ticks(int corner) const;
+
+        // ---- the zoom ------------------------------------------------------
+        // The share of the whole triangle the zoomed one spans: 1 minus the
+        // minimums. 1 = not zoomed.
+        double ZoomSpan() const;
+        bool IsZoomed() const { return ZoomSpan() < 1.0 - 1e-12; }
+        // Shares of the whole triangle to shares of the zoomed one, and
+        // back. A composition outside the zoomed triangle gets a negative
+        // zoomed share.
+        void ToZoomed(double sa, double sb, double sc, double& za, double& zb, double& zc) const;
+        void FromZoomed(double za, double zb, double zc, double& sa, double& sb, double& sc) const;
 
         size_t PointCount() const;
         // The largest point size in the model; 0 when no point has one.
@@ -151,7 +172,8 @@ namespace UltraCanvas {
         // without a title, a tick step outside (0, 0.5], a point with a
         // negative or non-finite part or a sum of 0, a negative point size,
         // a region with fewer than three corners or a corner with no shares,
-        // a curve with fewer than two points. Empty = valid.
+        // a curve with fewer than two points, a minimum outside [0, 1) or
+        // minimums that leave less than 1 % of the triangle. Empty = valid.
         std::vector<std::string> Validate() const;
     };
 
