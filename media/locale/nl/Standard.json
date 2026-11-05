@@ -3,17 +3,21 @@
   "@name": "Nederlands",
   "@translated-by": "machine draft 2026-11-02, reviewed by -",
   "\"{0}\" already exists in \"{1}\".": "'{0}' bestaat al in '{1}'.",
+  "\"{0}\" copied to \"{1}\"": "'{0}' gekopieerd naar '{1}'",
   "\"{0}\" could not be copied.": "'{0}' kon niet worden gekopieerd.",
   "\"{0}\" could not be deleted even with administrator permission.": "'{0}' kon zelfs met beheerdersrechten niet worden verwijderd.",
   "\"{0}\" could not be deleted.": "'{0}' kon niet worden verwijderd.",
   "\"{0}\" could not be moved to the Recycle Bin.": "'{0}' kon niet naar de Prullenbak worden verplaatst.",
   "\"{0}\" could not be moved to the Trash.": "'{0}' kon niet naar de prullenbak worden verplaatst.",
   "\"{0}\" could not be moved.": "'{0}' kon niet worden verplaatst.",
+  "\"{0}\" holds the {1} you are using right now.": "'{0}' bevat het programma {1} dat u nu gebruikt.",
   "\"{0}\" in \"{1}\" could not be deleted.": "'{0}' in '{1}' kon niet worden verwijderd.",
   "\"{0}\" in \"{1}\" is in use by another program.": "'{0}' in '{1}' wordt door een ander programma gebruikt.",
   "\"{0}\" in \"{1}\" needs administrator permission to be deleted.": "Voor het verwijderen van '{0}' in '{1}' zijn beheerdersrechten vereist.",
   "\"{0}\" is in use by another program.": "'{0}' wordt door een ander programma gebruikt.",
+  "\"{0}\" is part of the {1} you are using right now.": "'{0}' maakt deel uit van het programma {1} dat u nu gebruikt.",
   "\"{0}\" is write-protected.": "'{0}' is beveiligd tegen schrijven.",
+  "\"{0}\" moved to \"{1}\"": "'{0}' verplaatst naar '{1}'",
   "\"{0}\" needs administrator permission to be deleted.": "Voor het verwijderen van '{0}' zijn beheerdersrechten vereist.",
   "(no suggestions)": "(geen suggesties)",
   "(the first {0} shown)": "(de eerste {0} worden weergegeven)",
@@ -27,6 +31,7 @@
   "A folder that another program still holds open - or that is shown in a preview - cannot be copied until that program lets go of it. Close it there, then try again.": "Een map die een ander programma nog geopend houdt – of die in een voorbeeld wordt weergegeven – kan pas worden gekopieerd als dat programma deze vrijgeeft. Sluit deze daar en probeer het opnieuw.",
   "A folder that another program still holds open - or that is shown in a preview - cannot be moved until that program lets go of it. Close it there, then try again.": "Een map die een ander programma nog geopend houdt – of die in een voorbeeld wordt weergegeven – kan pas worden verplaatst als dat programma deze vrijgeeft. Sluit deze daar en probeer het opnieuw.",
   "A line between two menu entries": "Een lijn tussen twee menu-items",
+  "A running program cannot delete its own files: the ones it has loaded refuse to go, and taking the rest away makes it crash. Close this {0} and delete the folder from another file manager, or from a copy of {0} started elsewhere.": "Een actief programma kan zijn eigen bestanden niet verwijderen: de bestanden die het heeft geladen, laten zich niet verwijderen, en als de rest wordt weggehaald, crasht het. Sluit {0} en verwijder de map met een andere bestandsbeheerder of vanuit een kopie van {0} die elders is gestart.",
   "A submenu in a menu, a group of your own on a toolbar": "Een submenu in een menu, een eigen groep op een werkbalk",
   "Abort": "Afbreken",
   "About": "Over",
@@ -102,6 +107,7 @@
   "Close": "Sluiten",
   "Close (Esc)": "Sluiten (Esc)",
   "Close All": "Alles sluiten",
+  "Close it and delete the folder from elsewhere.": "Sluit het programma en verwijder de map vanaf een andere plek.",
   "Close the program that holds it, then try again. Administrator rights do not help: a file a running program has loaded cannot be deleted by anyone.": "Sluit het programma dat het item gebruikt en probeer het opnieuw. Beheerdersrechten helpen niet: een bestand dat een actief programma heeft geladen, kan door niemand worden verwijderd.",
   "Collisions between bases": "Botsingen tussen basissets",
   "Colour": "Kleur",
@@ -122,6 +128,10 @@
   },
   "Copy": "Kopiëren",
   "Copy \"{0}\" into \"{1}\"?": "'{0}' naar '{1}' kopiëren?",
+  "Copy cancelled - {0} of {n} item copied to \"{1}\"": {
+    "one": "Kopiëren geannuleerd – {0} van {n} item gekopieerd naar '{1}'",
+    "other": "Kopiëren geannuleerd – {0} van {n} items gekopieerd naar '{1}'"
+  },
   "Copy files": "Bestanden kopiëren",
   "Copy finished": "Kopiëren voltooid",
   "Copy path": "Pad kopiëren",
@@ -347,6 +357,10 @@
   "month|September": "september",
   "Move": "Verplaatsen",
   "Move \"{0}\" into \"{1}\"?": "'{0}' naar '{1}' verplaatsen?",
+  "Move cancelled - {0} of {n} item moved to \"{1}\"": {
+    "one": "Verplaatsen geannuleerd – {0} van {n} item verplaatst naar '{1}'",
+    "other": "Verplaatsen geannuleerd – {0} van {n} items verplaatst naar '{1}'"
+  },
   "Move Down": "Omlaag",
   "Move down": "Omlaag",
   "Move files": "Bestanden verplaatsen",
@@ -433,6 +447,7 @@
   "Preview": "Voorbeeld",
   "Print": "Afdrukken",
   "Program": "Programma",
+  "Program folder:": "Programmamap:",
   "Promote to a base set": "Naar een basisset promoveren",
   "Properties": "Eigenschappen",
   "Put the command selected on the right after the entry selected on the left": "De rechts geselecteerde opdracht na het links geselecteerde item plaatsen",
@@ -599,6 +614,14 @@
   "{0} in {1}: {2} rows": "{0} in {1}: {2} rijen",
   "{0} is not a base set the application can take": "{0} is geen basisset die de toepassing kan gebruiken",
   "{0} no longer taken": "{0} niet meer in gebruik",
+  "{0} of {n} item copied to \"{1}\" ({2} skipped)": {
+    "one": "{0} van {n} item gekopieerd naar '{1}' ({2} overgeslagen)",
+    "other": "{0} van {n} items gekopieerd naar '{1}' ({2} overgeslagen)"
+  },
+  "{0} of {n} item moved to \"{1}\" ({2} skipped)": {
+    "one": "{0} van {n} item verplaatst naar '{1}' ({2} overgeslagen)",
+    "other": "{0} van {n} items verplaatst naar '{1}' ({2} overgeslagen)"
+  },
   "{0} rows drafted; review them before saving": "{0} rijen als concept gemaakt; controleer ze voordat u opslaat",
   "{0} taken": "{0} in gebruik genomen",
   "{0} taken; {1} rows now duplicate a base's text and can be dropped": "{0} in gebruik genomen; {1} rijen herhalen nu de tekst van een basisset en kunnen worden weggelaten",
@@ -622,9 +645,25 @@
     "one": "{n} bestand",
     "other": "{n} bestanden"
   },
+  "{n} file copied to \"{0}\"": {
+    "one": "{n} bestand gekopieerd naar '{0}'",
+    "other": "{n} bestanden gekopieerd naar '{0}'"
+  },
+  "{n} file moved to \"{0}\"": {
+    "one": "{n} bestand verplaatst naar '{0}'",
+    "other": "{n} bestanden verplaatst naar '{0}'"
+  },
   "{n} folder": {
     "one": "{n} map",
     "other": "{n} mappen"
+  },
+  "{n} folder copied to \"{0}\"": {
+    "one": "{n} map gekopieerd naar '{0}'",
+    "other": "{n} mappen gekopieerd naar '{0}'"
+  },
+  "{n} folder moved to \"{0}\"": {
+    "one": "{n} map verplaatst naar '{0}'",
+    "other": "{n} mappen verplaatst naar '{0}'"
   },
   "{n} hour": {
     "one": "{n} uur",
@@ -634,9 +673,17 @@
     "one": "{n} item",
     "other": "{n} items"
   },
+  "{n} item copied to \"{0}\"": {
+    "one": "{n} item gekopieerd naar '{0}'",
+    "other": "{n} items gekopieerd naar '{0}'"
+  },
   "{n} item could not be deleted even with administrator permission.": {
     "one": "{n} item kon zelfs met beheerdersrechten niet worden verwijderd.",
     "other": "{n} items konden zelfs met beheerdersrechten niet worden verwijderd."
+  },
+  "{n} item moved to \"{0}\"": {
+    "one": "{n} item verplaatst naar '{0}'",
+    "other": "{n} items verplaatst naar '{0}'"
   },
   "{n} minute": {
     "one": "{n} minuut",

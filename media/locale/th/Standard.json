@@ -3,17 +3,21 @@
   "@name": "ไทย",
   "@translated-by": "machine draft 2026-11-03, reviewed by -",
   "\"{0}\" already exists in \"{1}\".": "มี “{0}” อยู่ใน “{1}” แล้ว",
+  "\"{0}\" copied to \"{1}\"": "คัดลอก “{0}” ไปยัง “{1}” แล้ว",
   "\"{0}\" could not be copied.": "ไม่สามารถคัดลอก “{0}” ได้",
   "\"{0}\" could not be deleted even with administrator permission.": "ไม่สามารถลบ “{0}” ได้แม้จะใช้สิทธิ์ผู้ดูแลระบบ",
   "\"{0}\" could not be deleted.": "ไม่สามารถลบ “{0}” ได้",
   "\"{0}\" could not be moved to the Recycle Bin.": "ไม่สามารถย้าย “{0}” ไปยังถังรีไซเคิลได้",
   "\"{0}\" could not be moved to the Trash.": "ไม่สามารถย้าย “{0}” ไปยังถังขยะได้",
   "\"{0}\" could not be moved.": "ไม่สามารถย้าย “{0}” ได้",
+  "\"{0}\" holds the {1} you are using right now.": "“{0}” มี {1} ที่กำลังใช้งานอยู่ในขณะนี้",
   "\"{0}\" in \"{1}\" could not be deleted.": "ไม่สามารถลบ “{0}” ใน “{1}” ได้",
   "\"{0}\" in \"{1}\" is in use by another program.": "“{0}” ใน “{1}” กำลังถูกใช้งานโดยโปรแกรมอื่น",
   "\"{0}\" in \"{1}\" needs administrator permission to be deleted.": "ต้องได้รับสิทธิ์ผู้ดูแลระบบจึงจะลบ “{0}” ใน “{1}” ได้",
   "\"{0}\" is in use by another program.": "“{0}” กำลังถูกใช้งานโดยโปรแกรมอื่น",
+  "\"{0}\" is part of the {1} you are using right now.": "“{0}” เป็นส่วนหนึ่งของ {1} ที่กำลังใช้งานอยู่ในขณะนี้",
   "\"{0}\" is write-protected.": "“{0}” ได้รับการป้องกันการเขียน",
+  "\"{0}\" moved to \"{1}\"": "ย้าย “{0}” ไปที่ “{1}” แล้ว",
   "\"{0}\" needs administrator permission to be deleted.": "ต้องได้รับสิทธิ์ผู้ดูแลระบบจึงจะลบ “{0}” ได้",
   "(no suggestions)": "(ไม่มีคำแนะนำ)",
   "(the first {0} shown)": "(แสดง {0} รายการแรก)",
@@ -27,6 +31,7 @@
   "A folder that another program still holds open - or that is shown in a preview - cannot be copied until that program lets go of it. Close it there, then try again.": "โฟลเดอร์ที่โปรแกรมอื่นยังเปิดค้างไว้ - หรือที่แสดงอยู่ในการแสดงตัวอย่าง - จะคัดลอกไม่ได้จนกว่าโปรแกรมนั้นจะปล่อยโฟลเดอร์ ปิดโฟลเดอร์ในโปรแกรมนั้น แล้วลองอีกครั้ง",
   "A folder that another program still holds open - or that is shown in a preview - cannot be moved until that program lets go of it. Close it there, then try again.": "โฟลเดอร์ที่โปรแกรมอื่นยังเปิดค้างไว้ - หรือที่แสดงอยู่ในการแสดงตัวอย่าง - จะย้ายไม่ได้จนกว่าโปรแกรมนั้นจะปล่อยโฟลเดอร์ ปิดโฟลเดอร์ในโปรแกรมนั้น แล้วลองอีกครั้ง",
   "A line between two menu entries": "เส้นคั่นระหว่างรายการเมนูสองรายการ",
+  "A running program cannot delete its own files: the ones it has loaded refuse to go, and taking the rest away makes it crash. Close this {0} and delete the folder from another file manager, or from a copy of {0} started elsewhere.": "โปรแกรมที่กำลังทำงานไม่สามารถลบไฟล์ของตัวเองได้: ไฟล์ที่โหลดไว้จะลบไม่ได้ และการนำไฟล์ที่เหลือออกจะทำให้โปรแกรมขัดข้อง ปิด {0} นี้ แล้วลบโฟลเดอร์จากตัวจัดการไฟล์อื่น หรือจากสำเนาของ {0} ที่เปิดจากตำแหน่งอื่น",
   "A submenu in a menu, a group of your own on a toolbar": "เมนูย่อยในเมนู กลุ่มของคุณเองบนแถบเครื่องมือ",
   "Abort": "ยุติ",
   "About": "เกี่ยวกับ",
@@ -98,6 +103,7 @@
   "Close": "ปิด",
   "Close (Esc)": "ปิด (Esc)",
   "Close All": "ปิดทั้งหมด",
+  "Close it and delete the folder from elsewhere.": "ปิดโปรแกรมนี้ แล้วลบโฟลเดอร์จากตำแหน่งอื่น",
   "Close the program that holds it, then try again. Administrator rights do not help: a file a running program has loaded cannot be deleted by anyone.": "ปิดโปรแกรมที่ใช้งานไฟล์นี้อยู่ แล้วลองอีกครั้ง สิทธิ์ผู้ดูแลระบบช่วยไม่ได้: ไม่มีผู้ใดลบไฟล์ที่โปรแกรมซึ่งกำลังทำงานโหลดไว้ได้",
   "Collisions between bases": "ความขัดแย้งระหว่างชุดฐาน",
   "Colour": "สี",
@@ -117,6 +123,9 @@
   },
   "Copy": "คัดลอก",
   "Copy \"{0}\" into \"{1}\"?": "คัดลอก “{0}” ไปยัง “{1}” หรือไม่",
+  "Copy cancelled - {0} of {n} item copied to \"{1}\"": {
+    "other": "ยกเลิกการคัดลอกแล้ว - คัดลอก {0} จาก {n} รายการไปยัง “{1}” แล้ว"
+  },
   "Copy files": "คัดลอกไฟล์",
   "Copy finished": "คัดลอกเสร็จสิ้น",
   "Copy path": "คัดลอกพาธ",
@@ -337,6 +346,9 @@
   "month|September": "กันยายน",
   "Move": "ย้าย",
   "Move \"{0}\" into \"{1}\"?": "ย้าย “{0}” ไปยัง “{1}” หรือไม่",
+  "Move cancelled - {0} of {n} item moved to \"{1}\"": {
+    "other": "ยกเลิกการย้ายแล้ว - ย้าย {0} จาก {n} รายการไปที่ “{1}” แล้ว"
+  },
   "Move Down": "ย้ายลง",
   "Move down": "ย้ายลง",
   "Move files": "ย้ายไฟล์",
@@ -418,6 +430,7 @@
   "Preview": "แสดงตัวอย่าง",
   "Print": "พิมพ์",
   "Program": "โปรแกรม",
+  "Program folder:": "โฟลเดอร์โปรแกรม:",
   "Promote to a base set": "เลื่อนขึ้นไปยังชุดฐาน",
   "Properties": "คุณสมบัติ",
   "Put the command selected on the right after the entry selected on the left": "วางคำสั่งที่เลือกทางขวาไว้หลังรายการที่เลือกทางซ้าย",
@@ -584,6 +597,12 @@
   "{0} in {1}: {2} rows": "{0} ใน {1}: {2} แถว",
   "{0} is not a base set the application can take": "{0} ไม่ใช่ชุดฐานที่แอปพลิเคชันใช้ได้",
   "{0} no longer taken": "เลิกใช้ {0} แล้ว",
+  "{0} of {n} item copied to \"{1}\" ({2} skipped)": {
+    "other": "คัดลอก {0} จาก {n} รายการไปยัง “{1}” แล้ว (ข้าม {2} รายการ)"
+  },
+  "{0} of {n} item moved to \"{1}\" ({2} skipped)": {
+    "other": "ย้าย {0} จาก {n} รายการไปที่ “{1}” แล้ว (ข้าม {2} รายการ)"
+  },
   "{0} rows drafted; review them before saving": "ร่างแล้ว {0} แถว ตรวจทานก่อนบันทึก",
   "{0} taken": "ใช้ {0} แล้ว",
   "{0} taken; {1} rows now duplicate a base's text and can be dropped": "ใช้ {0} แล้ว มี {1} แถวที่ตอนนี้ซ้ำกับข้อความของชุดฐานและลบออกได้",
@@ -604,8 +623,20 @@
   "{n} file": {
     "other": "{n} ไฟล์"
   },
+  "{n} file copied to \"{0}\"": {
+    "other": "คัดลอก {n} ไฟล์ไปยัง “{0}” แล้ว"
+  },
+  "{n} file moved to \"{0}\"": {
+    "other": "ย้าย {n} ไฟล์ไปที่ “{0}” แล้ว"
+  },
   "{n} folder": {
     "other": "{n} โฟลเดอร์"
+  },
+  "{n} folder copied to \"{0}\"": {
+    "other": "คัดลอก {n} โฟลเดอร์ไปยัง “{0}” แล้ว"
+  },
+  "{n} folder moved to \"{0}\"": {
+    "other": "ย้าย {n} โฟลเดอร์ไปที่ “{0}” แล้ว"
   },
   "{n} hour": {
     "other": "{n} ชั่วโมง"
@@ -613,8 +644,14 @@
   "{n} item": {
     "other": "{n} รายการ"
   },
+  "{n} item copied to \"{0}\"": {
+    "other": "คัดลอก {n} รายการไปยัง “{0}” แล้ว"
+  },
   "{n} item could not be deleted even with administrator permission.": {
     "other": "ไม่สามารถลบ {n} รายการได้แม้จะใช้สิทธิ์ผู้ดูแลระบบ"
+  },
+  "{n} item moved to \"{0}\"": {
+    "other": "ย้าย {n} รายการไปที่ “{0}” แล้ว"
   },
   "{n} minute": {
     "other": "{n} นาที"

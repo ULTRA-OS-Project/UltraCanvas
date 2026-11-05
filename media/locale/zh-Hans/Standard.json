@@ -3,17 +3,21 @@
   "@name": "简体中文",
   "@translated-by": "machine draft 2026-11-02, reviewed by -",
   "\"{0}\" already exists in \"{1}\".": "“{1}”中已存在“{0}”。",
+  "\"{0}\" copied to \"{1}\"": "已将“{0}”复制到“{1}”",
   "\"{0}\" could not be copied.": "无法复制“{0}”。",
   "\"{0}\" could not be deleted even with administrator permission.": "即使使用管理员权限也无法删除“{0}”。",
   "\"{0}\" could not be deleted.": "无法删除“{0}”。",
   "\"{0}\" could not be moved to the Recycle Bin.": "无法将“{0}”移动到回收站。",
   "\"{0}\" could not be moved to the Trash.": "无法将“{0}”移动到回收站。",
   "\"{0}\" could not be moved.": "无法移动“{0}”。",
+  "\"{0}\" holds the {1} you are using right now.": "“{0}”包含当前正在使用的 {1}。",
   "\"{0}\" in \"{1}\" could not be deleted.": "无法删除“{1}”中的“{0}”。",
   "\"{0}\" in \"{1}\" is in use by another program.": "“{1}”中的“{0}”正被另一个程序使用。",
   "\"{0}\" in \"{1}\" needs administrator permission to be deleted.": "删除“{1}”中的“{0}”需要管理员权限。",
   "\"{0}\" is in use by another program.": "“{0}”正被另一个程序使用。",
+  "\"{0}\" is part of the {1} you are using right now.": "“{0}”是当前正在使用的 {1} 的一部分。",
   "\"{0}\" is write-protected.": "“{0}”受写保护。",
+  "\"{0}\" moved to \"{1}\"": "已将“{0}”移动到“{1}”",
   "\"{0}\" needs administrator permission to be deleted.": "删除“{0}”需要管理员权限。",
   "(no suggestions)": "（没有建议）",
   "(the first {0} shown)": "(显示前 {0} 个)",
@@ -27,6 +31,7 @@
   "A folder that another program still holds open - or that is shown in a preview - cannot be copied until that program lets go of it. Close it there, then try again.": "其他程序仍处于打开状态的文件夹（或正在预览中显示的文件夹）在该程序将其释放之前无法复制。请在该程序中关闭它，然后重试。",
   "A folder that another program still holds open - or that is shown in a preview - cannot be moved until that program lets go of it. Close it there, then try again.": "其他程序仍处于打开状态的文件夹（或正在预览中显示的文件夹）在该程序将其释放之前无法移动。请在该程序中关闭它，然后重试。",
   "A line between two menu entries": "两个菜单项之间的分隔线",
+  "A running program cannot delete its own files: the ones it has loaded refuse to go, and taking the rest away makes it crash. Close this {0} and delete the folder from another file manager, or from a copy of {0} started elsewhere.": "正在运行的程序无法删除自身的文件：已加载的文件无法删除，而移除其余文件会导致程序崩溃。请关闭此 {0}，然后从其他文件管理器或从其他位置启动的 {0} 副本中删除该文件夹。",
   "A submenu in a menu, a group of your own on a toolbar": "在菜单中为子菜单，在工具栏上为自定义组",
   "Abort": "中止",
   "About": "关于",
@@ -98,6 +103,7 @@
   "Close": "关闭",
   "Close (Esc)": "关闭 (Esc)",
   "Close All": "全部关闭",
+  "Close it and delete the folder from elsewhere.": "请关闭此程序，然后从其他位置删除该文件夹。",
   "Close the program that holds it, then try again. Administrator rights do not help: a file a running program has loaded cannot be deleted by anyone.": "请关闭占用它的程序，然后重试。管理员权限也无济于事：正在运行的程序已加载的文件，任何人都无法删除。",
   "Collisions between bases": "基础文本集之间的冲突",
   "Colour": "颜色",
@@ -117,6 +123,9 @@
   },
   "Copy": "复制",
   "Copy \"{0}\" into \"{1}\"?": "要将“{0}”复制到“{1}”吗？",
+  "Copy cancelled - {0} of {n} item copied to \"{1}\"": {
+    "other": "复制已取消 - 已将 {n} 个项目中的 {0} 个复制到“{1}”"
+  },
   "Copy files": "复制文件",
   "Copy finished": "复制完成",
   "Copy path": "复制路径",
@@ -337,6 +346,9 @@
   "month|September": "九月",
   "Move": "移动",
   "Move \"{0}\" into \"{1}\"?": "要将“{0}”移动到“{1}”吗？",
+  "Move cancelled - {0} of {n} item moved to \"{1}\"": {
+    "other": "移动已取消 - 已将 {n} 个项目中的 {0} 个移动到“{1}”"
+  },
   "Move Down": "下移",
   "Move down": "下移",
   "Move files": "移动文件",
@@ -418,6 +430,7 @@
   "Preview": "预览",
   "Print": "打印",
   "Program": "程序",
+  "Program folder:": "程序文件夹：",
   "Promote to a base set": "提升到基础文本集",
   "Properties": "属性",
   "Put the command selected on the right after the entry selected on the left": "将右侧所选命令放在左侧所选条目之后",
@@ -584,6 +597,12 @@
   "{0} in {1}: {2} rows": "{0}（{1}）：{2} 行",
   "{0} is not a base set the application can take": "{0} 不是该应用程序可以采用的基础文本集",
   "{0} no longer taken": "已不再采用 {0}",
+  "{0} of {n} item copied to \"{1}\" ({2} skipped)": {
+    "other": "已将 {n} 个项目中的 {0} 个复制到“{1}”（已跳过 {2} 个）"
+  },
+  "{0} of {n} item moved to \"{1}\" ({2} skipped)": {
+    "other": "已将 {n} 个项目中的 {0} 个移动到“{1}”（已跳过 {2} 个）"
+  },
   "{0} rows drafted; review them before saving": "已起草 {0} 行；请在保存前审阅",
   "{0} taken": "已采用 {0}",
   "{0} taken; {1} rows now duplicate a base's text and can be dropped": "已采用 {0}；{1} 行现与基础文本集的文本重复，可以删除",
@@ -604,8 +623,20 @@
   "{n} file": {
     "other": "{n} 个文件"
   },
+  "{n} file copied to \"{0}\"": {
+    "other": "已将 {n} 个文件复制到“{0}”"
+  },
+  "{n} file moved to \"{0}\"": {
+    "other": "已将 {n} 个文件移动到“{0}”"
+  },
   "{n} folder": {
     "other": "{n} 个文件夹"
+  },
+  "{n} folder copied to \"{0}\"": {
+    "other": "已将 {n} 个文件夹复制到“{0}”"
+  },
+  "{n} folder moved to \"{0}\"": {
+    "other": "已将 {n} 个文件夹移动到“{0}”"
   },
   "{n} hour": {
     "other": "{n} 小时"
@@ -613,8 +644,14 @@
   "{n} item": {
     "other": "{n} 个项目"
   },
+  "{n} item copied to \"{0}\"": {
+    "other": "已将 {n} 个项目复制到“{0}”"
+  },
   "{n} item could not be deleted even with administrator permission.": {
     "other": "即使使用管理员权限，也无法删除 {n} 个项目。"
+  },
+  "{n} item moved to \"{0}\"": {
+    "other": "已将 {n} 个项目移动到“{0}”"
   },
   "{n} minute": {
     "other": "{n} 分钟"

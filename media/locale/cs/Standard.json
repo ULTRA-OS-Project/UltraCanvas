@@ -3,17 +3,21 @@
   "@name": "Čeština",
   "@translated-by": "machine draft 2026-11-03, reviewed by -",
   "\"{0}\" already exists in \"{1}\".": "„{0}“ již ve složce „{1}“ existuje.",
+  "\"{0}\" copied to \"{1}\"": "Položka „{0}“ zkopírována do složky „{1}“",
   "\"{0}\" could not be copied.": "„{0}“ nelze zkopírovat.",
   "\"{0}\" could not be deleted even with administrator permission.": "„{0}“ nelze odstranit ani s oprávněním správce.",
   "\"{0}\" could not be deleted.": "„{0}“ nelze odstranit.",
   "\"{0}\" could not be moved to the Recycle Bin.": "„{0}“ nelze přesunout do koše.",
   "\"{0}\" could not be moved to the Trash.": "„{0}“ nelze přesunout do koše.",
   "\"{0}\" could not be moved.": "„{0}“ nelze přesunout.",
+  "\"{0}\" holds the {1} you are using right now.": "„{0}“ obsahuje program {1}, který právě používáte.",
   "\"{0}\" in \"{1}\" could not be deleted.": "„{0}“ ve složce „{1}“ nelze odstranit.",
   "\"{0}\" in \"{1}\" is in use by another program.": "„{0}“ ve složce „{1}“ používá jiný program.",
   "\"{0}\" in \"{1}\" needs administrator permission to be deleted.": "Odstranění „{0}“ ve složce „{1}“ vyžaduje oprávnění správce.",
   "\"{0}\" is in use by another program.": "„{0}“ používá jiný program.",
+  "\"{0}\" is part of the {1} you are using right now.": "„{0}“ je součástí programu {1}, který právě používáte.",
   "\"{0}\" is write-protected.": "Položka „{0}“ je chráněna proti zápisu.",
+  "\"{0}\" moved to \"{1}\"": "Položka „{0}“ přesunuta do složky „{1}“",
   "\"{0}\" needs administrator permission to be deleted.": "Odstranění „{0}“ vyžaduje oprávnění správce.",
   "(no suggestions)": "(žádné návrhy)",
   "(the first {0} shown)": "(zobrazeno prvních {0})",
@@ -27,6 +31,7 @@
   "A folder that another program still holds open - or that is shown in a preview - cannot be copied until that program lets go of it. Close it there, then try again.": "Složku, kterou jiný program stále drží otevřenou – nebo která je zobrazena v náhledu – nelze zkopírovat, dokud ji tento program neuvolní. Zavřete ji tam a zkuste to znovu.",
   "A folder that another program still holds open - or that is shown in a preview - cannot be moved until that program lets go of it. Close it there, then try again.": "Složku, kterou jiný program stále drží otevřenou – nebo která je zobrazena v náhledu – nelze přesunout, dokud ji tento program neuvolní. Zavřete ji tam a zkuste to znovu.",
   "A line between two menu entries": "Čára mezi dvěma položkami nabídky",
+  "A running program cannot delete its own files: the ones it has loaded refuse to go, and taking the rest away makes it crash. Close this {0} and delete the folder from another file manager, or from a copy of {0} started elsewhere.": "Spuštěný program nemůže odstranit vlastní soubory: soubory, které načetl, odstranit nelze, a odebrání ostatních způsobí jeho pád. Zavřete program {0} a složku odstraňte z jiného správce souborů nebo z kopie programu {0} spuštěné odjinud.",
   "A submenu in a menu, a group of your own on a toolbar": "Podnabídka v nabídce, vlastní skupina na panelu nástrojů",
   "Abort": "Přerušit",
   "About": "O aplikaci",
@@ -106,6 +111,7 @@
   "Close": "Zavřít",
   "Close (Esc)": "Zavřít (Esc)",
   "Close All": "Zavřít vše",
+  "Close it and delete the folder from elsewhere.": "Zavřete jej a složku odstraňte odjinud.",
   "Close the program that holds it, then try again. Administrator rights do not help: a file a running program has loaded cannot be deleted by anyone.": "Zavřete program, který jej drží, a zkuste to znovu. Oprávnění správce nepomohou: soubor načtený spuštěným programem nemůže odstranit nikdo.",
   "Collisions between bases": "Kolize mezi základními sadami",
   "Colour": "Barva",
@@ -127,6 +133,11 @@
   },
   "Copy": "Kopírovat",
   "Copy \"{0}\" into \"{1}\"?": "Zkopírovat „{0}“ do složky „{1}“?",
+  "Copy cancelled - {0} of {n} item copied to \"{1}\"": {
+    "one": "Kopírování zrušeno – zkopírováno {0} z {n} položky do složky „{1}“",
+    "few": "Kopírování zrušeno – zkopírováno {0} z {n} položek do složky „{1}“",
+    "other": "Kopírování zrušeno – zkopírováno {0} z {n} položek do složky „{1}“"
+  },
   "Copy files": "Kopírování souborů",
   "Copy finished": "Kopírování dokončeno",
   "Copy path": "Kopírovat cestu",
@@ -357,6 +368,11 @@
   "month|September": "Září",
   "Move": "Přesunout",
   "Move \"{0}\" into \"{1}\"?": "Přesunout „{0}“ do složky „{1}“?",
+  "Move cancelled - {0} of {n} item moved to \"{1}\"": {
+    "one": "Přesun zrušen – přesunuto {0} z {n} položky do složky „{1}“",
+    "few": "Přesun zrušen – přesunuto {0} z {n} položek do složky „{1}“",
+    "other": "Přesun zrušen – přesunuto {0} z {n} položek do složky „{1}“"
+  },
   "Move Down": "Posunout dolů",
   "Move down": "Posunout dolů",
   "Move files": "Přesun souborů",
@@ -448,6 +464,7 @@
   "Preview": "Náhled",
   "Print": "Tisk",
   "Program": "Program",
+  "Program folder:": "Složka programu:",
   "Promote to a base set": "Přesunout do základní sady",
   "Properties": "Vlastnosti",
   "Put the command selected on the right after the entry selected on the left": "Vložit příkaz vybraný vpravo za položku vybranou vlevo",
@@ -614,6 +631,16 @@
   "{0} in {1}: {2} rows": "{0}, jazyk {1}: počet řádků {2}",
   "{0} is not a base set the application can take": "{0} není základní sada, kterou může aplikace připojit",
   "{0} no longer taken": "Sada {0} odpojena",
+  "{0} of {n} item copied to \"{1}\" ({2} skipped)": {
+    "one": "Zkopírováno {0} z {n} položky do složky „{1}“ (přeskočeno: {2})",
+    "few": "Zkopírováno {0} z {n} položek do složky „{1}“ (přeskočeno: {2})",
+    "other": "Zkopírováno {0} z {n} položek do složky „{1}“ (přeskočeno: {2})"
+  },
+  "{0} of {n} item moved to \"{1}\" ({2} skipped)": {
+    "one": "Přesunuto {0} z {n} položky do složky „{1}“ (přeskočeno: {2})",
+    "few": "Přesunuto {0} z {n} položek do složky „{1}“ (přeskočeno: {2})",
+    "other": "Přesunuto {0} z {n} položek do složky „{1}“ (přeskočeno: {2})"
+  },
   "{0} rows drafted; review them before saving": "Vytvořené koncepty řádků: {0}; před uložením je zkontrolujte",
   "{0} taken": "Sada {0} připojena",
   "{0} taken; {1} rows now duplicate a base's text and can be dropped": "Sada {0} připojena; počet řádků, které nyní duplikují text základní sady a lze je odstranit: {1}",
@@ -640,10 +667,30 @@
     "few": "{n} soubory",
     "other": "{n} souborů"
   },
+  "{n} file copied to \"{0}\"": {
+    "one": "{n} soubor zkopírován do složky „{0}“",
+    "few": "{n} soubory zkopírovány do složky „{0}“",
+    "other": "{n} souborů zkopírováno do složky „{0}“"
+  },
+  "{n} file moved to \"{0}\"": {
+    "one": "{n} soubor přesunut do složky „{0}“",
+    "few": "{n} soubory přesunuty do složky „{0}“",
+    "other": "{n} souborů přesunuto do složky „{0}“"
+  },
   "{n} folder": {
     "one": "{n} složka",
     "few": "{n} složky",
     "other": "{n} složek"
+  },
+  "{n} folder copied to \"{0}\"": {
+    "one": "{n} složka zkopírována do složky „{0}“",
+    "few": "{n} složky zkopírovány do složky „{0}“",
+    "other": "{n} složek zkopírováno do složky „{0}“"
+  },
+  "{n} folder moved to \"{0}\"": {
+    "one": "{n} složka přesunuta do složky „{0}“",
+    "few": "{n} složky přesunuty do složky „{0}“",
+    "other": "{n} složek přesunuto do složky „{0}“"
   },
   "{n} hour": {
     "one": "{n} hodina",
@@ -655,10 +702,20 @@
     "few": "{n} položky",
     "other": "{n} položek"
   },
+  "{n} item copied to \"{0}\"": {
+    "one": "{n} položka zkopírována do složky „{0}“",
+    "few": "{n} položky zkopírovány do složky „{0}“",
+    "other": "{n} položek zkopírováno do složky „{0}“"
+  },
   "{n} item could not be deleted even with administrator permission.": {
     "one": "{n} položku nelze odstranit ani s oprávněním správce.",
     "few": "{n} položky nelze odstranit ani s oprávněním správce.",
     "other": "{n} položek nelze odstranit ani s oprávněním správce."
+  },
+  "{n} item moved to \"{0}\"": {
+    "one": "{n} položka přesunuta do složky „{0}“",
+    "few": "{n} položky přesunuty do složky „{0}“",
+    "other": "{n} položek přesunuto do složky „{0}“"
   },
   "{n} minute": {
     "one": "{n} minuta",

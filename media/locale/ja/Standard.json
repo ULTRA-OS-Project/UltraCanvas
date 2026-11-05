@@ -3,17 +3,21 @@
   "@name": "日本語",
   "@translated-by": "machine draft 2026-11-02, reviewed by -",
   "\"{0}\" already exists in \"{1}\".": "「{1}」には「{0}」がすでにあります。",
+  "\"{0}\" copied to \"{1}\"": "「{0}」を「{1}」にコピーしました",
   "\"{0}\" could not be copied.": "「{0}」をコピーできませんでした。",
   "\"{0}\" could not be deleted even with administrator permission.": "管理者権限でも「{0}」を削除できませんでした。",
   "\"{0}\" could not be deleted.": "「{0}」を削除できませんでした。",
   "\"{0}\" could not be moved to the Recycle Bin.": "「{0}」をごみ箱に移動できませんでした。",
   "\"{0}\" could not be moved to the Trash.": "「{0}」をゴミ箱に移動できませんでした。",
   "\"{0}\" could not be moved.": "「{0}」を移動できませんでした。",
+  "\"{0}\" holds the {1} you are using right now.": "「{0}」には、現在使用中の {1} が入っています。",
   "\"{0}\" in \"{1}\" could not be deleted.": "「{1}」内の「{0}」を削除できませんでした。",
   "\"{0}\" in \"{1}\" is in use by another program.": "「{1}」内の「{0}」は別のプログラムで使用中です。",
   "\"{0}\" in \"{1}\" needs administrator permission to be deleted.": "「{1}」内の「{0}」を削除するには管理者権限が必要です。",
   "\"{0}\" is in use by another program.": "「{0}」は別のプログラムで使用中です。",
+  "\"{0}\" is part of the {1} you are using right now.": "「{0}」は、現在使用中の {1} の一部です。",
   "\"{0}\" is write-protected.": "「{0}」は書き込み禁止です。",
+  "\"{0}\" moved to \"{1}\"": "「{0}」を「{1}」に移動しました",
   "\"{0}\" needs administrator permission to be deleted.": "「{0}」を削除するには管理者権限が必要です。",
   "(no suggestions)": "(候補なし)",
   "(the first {0} shown)": "(最初の {0} 個を表示)",
@@ -27,6 +31,7 @@
   "A folder that another program still holds open - or that is shown in a preview - cannot be copied until that program lets go of it. Close it there, then try again.": "別のプログラムで開かれたままのフォルダーや、プレビューに表示されているフォルダーは、そのプログラムが解放するまでコピーできません。そのプログラムでフォルダーを閉じてから、もう一度お試しください。",
   "A folder that another program still holds open - or that is shown in a preview - cannot be moved until that program lets go of it. Close it there, then try again.": "別のプログラムで開かれたままのフォルダーや、プレビューに表示されているフォルダーは、そのプログラムが解放するまで移動できません。そのプログラムでフォルダーを閉じてから、もう一度お試しください。",
   "A line between two menu entries": "2 つのメニュー項目の間の区切り線",
+  "A running program cannot delete its own files: the ones it has loaded refuse to go, and taking the rest away makes it crash. Close this {0} and delete the folder from another file manager, or from a copy of {0} started elsewhere.": "実行中のプログラムは自身のファイルを削除できません。読み込まれたファイルは削除できず、残りのファイルを取り除くとプログラムがクラッシュします。この {0} を閉じてから、別のファイル マネージャーか、別の場所から起動した {0} のコピーでフォルダーを削除してください。",
   "A submenu in a menu, a group of your own on a toolbar": "メニューではサブメニュー、ツールバーでは独自のグループ",
   "Abort": "中止",
   "About": "情報",
@@ -98,6 +103,7 @@
   "Close": "閉じる",
   "Close (Esc)": "閉じる (Esc)",
   "Close All": "すべて閉じる",
+  "Close it and delete the folder from elsewhere.": "このプログラムを閉じてから、別の場所でフォルダーを削除してください。",
   "Close the program that holds it, then try again. Administrator rights do not help: a file a running program has loaded cannot be deleted by anyone.": "このファイルを使用しているプログラムを閉じてから、もう一度お試しください。管理者権限でも解決しません。実行中のプログラムが読み込んだファイルは、誰も削除できません。",
   "Collisions between bases": "ベースセット間の衝突",
   "Colour": "色",
@@ -117,6 +123,9 @@
   },
   "Copy": "コピー",
   "Copy \"{0}\" into \"{1}\"?": "「{0}」を「{1}」にコピーしますか？",
+  "Copy cancelled - {0} of {n} item copied to \"{1}\"": {
+    "other": "コピーがキャンセルされました - {n} 個の項目のうち {0} 個を「{1}」にコピーしました"
+  },
   "Copy files": "ファイルのコピー",
   "Copy finished": "コピー完了",
   "Copy path": "パスをコピー",
@@ -337,6 +346,9 @@
   "month|September": "9月",
   "Move": "移動",
   "Move \"{0}\" into \"{1}\"?": "「{0}」を「{1}」に移動しますか？",
+  "Move cancelled - {0} of {n} item moved to \"{1}\"": {
+    "other": "移動がキャンセルされました - {n} 個の項目のうち {0} 個を「{1}」に移動しました"
+  },
   "Move Down": "下へ移動",
   "Move down": "下へ移動",
   "Move files": "ファイルの移動",
@@ -418,6 +430,7 @@
   "Preview": "プレビュー",
   "Print": "印刷",
   "Program": "プログラム",
+  "Program folder:": "プログラム フォルダー:",
   "Promote to a base set": "ベースセットに昇格",
   "Properties": "プロパティ",
   "Put the command selected on the right after the entry selected on the left": "右で選択したコマンドを、左で選択した項目の後ろに挿入",
@@ -584,6 +597,12 @@
   "{0} in {1}: {2} rows": "{0} ({1}): {2} 行",
   "{0} is not a base set the application can take": "{0} はこのアプリケーションが使えるベースセットではありません",
   "{0} no longer taken": "{0} の使用を停止しました",
+  "{0} of {n} item copied to \"{1}\" ({2} skipped)": {
+    "other": "{n} 個の項目のうち {0} 個を「{1}」にコピーしました ({2} 個をスキップ)"
+  },
+  "{0} of {n} item moved to \"{1}\" ({2} skipped)": {
+    "other": "{n} 個の項目のうち {0} 個を「{1}」に移動しました ({2} 個をスキップ)"
+  },
   "{0} rows drafted; review them before saving": "{0} 行を下書きしました。保存する前に確認してください",
   "{0} taken": "{0} を使用します",
   "{0} taken; {1} rows now duplicate a base's text and can be dropped": "{0} を使用します。{1} 行がベースセットのテキストと重複しているため削除できます",
@@ -604,8 +623,20 @@
   "{n} file": {
     "other": "{n} 個のファイル"
   },
+  "{n} file copied to \"{0}\"": {
+    "other": "{n} 個のファイルを「{0}」にコピーしました"
+  },
+  "{n} file moved to \"{0}\"": {
+    "other": "{n} 個のファイルを「{0}」に移動しました"
+  },
   "{n} folder": {
     "other": "{n} 個のフォルダー"
+  },
+  "{n} folder copied to \"{0}\"": {
+    "other": "{n} 個のフォルダーを「{0}」にコピーしました"
+  },
+  "{n} folder moved to \"{0}\"": {
+    "other": "{n} 個のフォルダーを「{0}」に移動しました"
   },
   "{n} hour": {
     "other": "{n} 時間"
@@ -613,8 +644,14 @@
   "{n} item": {
     "other": "{n} 個の項目"
   },
+  "{n} item copied to \"{0}\"": {
+    "other": "{n} 個の項目を「{0}」にコピーしました"
+  },
   "{n} item could not be deleted even with administrator permission.": {
     "other": "{n} 個の項目は管理者権限でも削除できませんでした。"
+  },
+  "{n} item moved to \"{0}\"": {
+    "other": "{n} 個の項目を「{0}」に移動しました"
   },
   "{n} minute": {
     "other": "{n} 分"

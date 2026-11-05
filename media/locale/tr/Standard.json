@@ -3,17 +3,21 @@
   "@name": "Türkçe",
   "@translated-by": "machine draft 2026-11-03, reviewed by -",
   "\"{0}\" already exists in \"{1}\".": "“{0}”, “{1}” içinde zaten var.",
+  "\"{0}\" copied to \"{1}\"": "“{0}”, “{1}” içine kopyalandı",
   "\"{0}\" could not be copied.": "“{0}” kopyalanamadı.",
   "\"{0}\" could not be deleted even with administrator permission.": "“{0}” yönetici izniyle bile silinemedi.",
   "\"{0}\" could not be deleted.": "“{0}” silinemedi.",
   "\"{0}\" could not be moved to the Recycle Bin.": "“{0}” Geri Dönüşüm Kutusuna taşınamadı.",
   "\"{0}\" could not be moved to the Trash.": "“{0}” Çöp Kutusuna taşınamadı.",
   "\"{0}\" could not be moved.": "“{0}” taşınamadı.",
+  "\"{0}\" holds the {1} you are using right now.": "“{0}”, şu anda kullandığınız {1} programını içeriyor.",
   "\"{0}\" in \"{1}\" could not be deleted.": "“{1}” içindeki “{0}” silinemedi.",
   "\"{0}\" in \"{1}\" is in use by another program.": "“{1}” içindeki “{0}” başka bir program tarafından kullanılıyor.",
   "\"{0}\" in \"{1}\" needs administrator permission to be deleted.": "“{1}” içindeki “{0}” öğesini silmek için yönetici izni gerekiyor.",
   "\"{0}\" is in use by another program.": "“{0}” başka bir program tarafından kullanılıyor.",
+  "\"{0}\" is part of the {1} you are using right now.": "“{0}”, şu anda kullandığınız {1} programının bir parçası.",
   "\"{0}\" is write-protected.": "“{0}” yazmaya karşı korumalı.",
+  "\"{0}\" moved to \"{1}\"": "“{0}”, “{1}” içine taşındı",
   "\"{0}\" needs administrator permission to be deleted.": "“{0}” öğesini silmek için yönetici izni gerekiyor.",
   "(no suggestions)": "(öneri yok)",
   "(the first {0} shown)": "(ilk {0} tanesi gösteriliyor)",
@@ -27,6 +31,7 @@
   "A folder that another program still holds open - or that is shown in a preview - cannot be copied until that program lets go of it. Close it there, then try again.": "Başka bir programın hâlâ açık tuttuğu – veya bir önizlemede gösterilen – bir klasör, o program onu bırakana kadar kopyalanamaz. Orada kapatın, ardından yeniden deneyin.",
   "A folder that another program still holds open - or that is shown in a preview - cannot be moved until that program lets go of it. Close it there, then try again.": "Başka bir programın hâlâ açık tuttuğu – veya bir önizlemede gösterilen – bir klasör, o program onu bırakana kadar taşınamaz. Orada kapatın, ardından yeniden deneyin.",
   "A line between two menu entries": "İki menü öğesi arasında bir çizgi",
+  "A running program cannot delete its own files: the ones it has loaded refuse to go, and taking the rest away makes it crash. Close this {0} and delete the folder from another file manager, or from a copy of {0} started elsewhere.": "Çalışan bir program kendi dosyalarını silemez: yüklediği dosyalar silinmeyi reddeder, geri kalanların kaldırılması ise programın çökmesine yol açar. Bu {0} programını kapatın ve klasörü başka bir dosya yöneticisinden ya da başka bir yerde başlatılmış bir {0} kopyasından silin.",
   "A submenu in a menu, a group of your own on a toolbar": "Menüde bir alt menü, araç çubuğunda size ait bir grup",
   "Abort": "Durdur",
   "About": "Hakkında",
@@ -102,6 +107,7 @@
   "Close": "Kapat",
   "Close (Esc)": "Kapat (Esc)",
   "Close All": "Tümünü Kapat",
+  "Close it and delete the folder from elsewhere.": "Programı kapatın ve klasörü başka bir yerden silin.",
   "Close the program that holds it, then try again. Administrator rights do not help: a file a running program has loaded cannot be deleted by anyone.": "Dosyayı tutan programı kapatın, ardından yeniden deneyin. Yönetici hakları işe yaramaz: çalışan bir programın yüklediği bir dosyayı kimse silemez.",
   "Collisions between bases": "Temel kümeler arası çakışmalar",
   "Colour": "Renk",
@@ -122,6 +128,10 @@
   },
   "Copy": "Kopyala",
   "Copy \"{0}\" into \"{1}\"?": "“{0}”, “{1}” içine kopyalansın mı?",
+  "Copy cancelled - {0} of {n} item copied to \"{1}\"": {
+    "one": "Kopyalama iptal edildi - {n} öğeden {0} tanesi “{1}” içine kopyalandı",
+    "other": "Kopyalama iptal edildi - {n} öğeden {0} tanesi “{1}” içine kopyalandı"
+  },
   "Copy files": "Dosya kopyalama",
   "Copy finished": "Kopyalama tamamlandı",
   "Copy path": "Yolu kopyala",
@@ -347,6 +357,10 @@
   "month|September": "Eylül",
   "Move": "Taşı",
   "Move \"{0}\" into \"{1}\"?": "“{0}”, “{1}” içine taşınsın mı?",
+  "Move cancelled - {0} of {n} item moved to \"{1}\"": {
+    "one": "Taşıma iptal edildi - {n} öğeden {0} tanesi “{1}” içine taşındı",
+    "other": "Taşıma iptal edildi - {n} öğeden {0} tanesi “{1}” içine taşındı"
+  },
   "Move Down": "Aşağı Taşı",
   "Move down": "Aşağı taşı",
   "Move files": "Dosya taşıma",
@@ -433,6 +447,7 @@
   "Preview": "Önizleme",
   "Print": "Yazdır",
   "Program": "Program",
+  "Program folder:": "Program klasörü:",
   "Promote to a base set": "Bir temel kümeye yükselt",
   "Properties": "Özellikler",
   "Put the command selected on the right after the entry selected on the left": "Sağda seçili komutu, solda seçili öğenin arkasına koy",
@@ -599,6 +614,14 @@
   "{0} in {1}: {2} rows": "{0} ({1}): {2} satır",
   "{0} is not a base set the application can take": "{0}, uygulamanın kullanabileceği bir temel küme değil",
   "{0} no longer taken": "{0} artık kullanılmıyor",
+  "{0} of {n} item copied to \"{1}\" ({2} skipped)": {
+    "one": "{n} öğeden {0} tanesi “{1}” içine kopyalandı ({2} tanesi atlandı)",
+    "other": "{n} öğeden {0} tanesi “{1}” içine kopyalandı ({2} tanesi atlandı)"
+  },
+  "{0} of {n} item moved to \"{1}\" ({2} skipped)": {
+    "one": "{n} öğeden {0} tanesi “{1}” içine taşındı ({2} tanesi atlandı)",
+    "other": "{n} öğeden {0} tanesi “{1}” içine taşındı ({2} tanesi atlandı)"
+  },
   "{0} rows drafted; review them before saving": "{0} satırın taslağı oluşturuldu; kaydetmeden önce gözden geçirin",
   "{0} taken": "{0} kullanılıyor",
   "{0} taken; {1} rows now duplicate a base's text and can be dropped": "{0} kullanılıyor; {1} satır artık bir temel kümenin metnini yineliyor ve kaldırılabilir",
@@ -622,9 +645,25 @@
     "one": "{n} dosya",
     "other": "{n} dosya"
   },
+  "{n} file copied to \"{0}\"": {
+    "one": "{n} dosya “{0}” içine kopyalandı",
+    "other": "{n} dosya “{0}” içine kopyalandı"
+  },
+  "{n} file moved to \"{0}\"": {
+    "one": "{n} dosya “{0}” içine taşındı",
+    "other": "{n} dosya “{0}” içine taşındı"
+  },
   "{n} folder": {
     "one": "{n} klasör",
     "other": "{n} klasör"
+  },
+  "{n} folder copied to \"{0}\"": {
+    "one": "{n} klasör “{0}” içine kopyalandı",
+    "other": "{n} klasör “{0}” içine kopyalandı"
+  },
+  "{n} folder moved to \"{0}\"": {
+    "one": "{n} klasör “{0}” içine taşındı",
+    "other": "{n} klasör “{0}” içine taşındı"
   },
   "{n} hour": {
     "one": "{n} saat",
@@ -634,9 +673,17 @@
     "one": "{n} öğe",
     "other": "{n} öğe"
   },
+  "{n} item copied to \"{0}\"": {
+    "one": "{n} öğe “{0}” içine kopyalandı",
+    "other": "{n} öğe “{0}” içine kopyalandı"
+  },
   "{n} item could not be deleted even with administrator permission.": {
     "one": "{n} öğe yönetici izniyle bile silinemedi.",
     "other": "{n} öğe yönetici izniyle bile silinemedi."
+  },
+  "{n} item moved to \"{0}\"": {
+    "one": "{n} öğe “{0}” içine taşındı",
+    "other": "{n} öğe “{0}” içine taşındı"
   },
   "{n} minute": {
     "one": "{n} dakika",

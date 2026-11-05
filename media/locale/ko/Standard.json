@@ -3,17 +3,21 @@
   "@name": "한국어",
   "@translated-by": "machine draft 2026-11-03, reviewed by -",
   "\"{0}\" already exists in \"{1}\".": "\"{0}\"이(가) \"{1}\"에 이미 있습니다.",
+  "\"{0}\" copied to \"{1}\"": "\"{0}\"을(를) \"{1}\"(으)로 복사했습니다",
   "\"{0}\" could not be copied.": "\"{0}\"을(를) 복사할 수 없습니다.",
   "\"{0}\" could not be deleted even with administrator permission.": "\"{0}\"을(를) 관리자 권한으로도 삭제할 수 없습니다.",
   "\"{0}\" could not be deleted.": "\"{0}\"을(를) 삭제할 수 없습니다.",
   "\"{0}\" could not be moved to the Recycle Bin.": "\"{0}\"을(를) 휴지통으로 이동할 수 없습니다.",
   "\"{0}\" could not be moved to the Trash.": "\"{0}\"을(를) 휴지통으로 이동할 수 없습니다.",
   "\"{0}\" could not be moved.": "\"{0}\"을(를) 이동할 수 없습니다.",
+  "\"{0}\" holds the {1} you are using right now.": "\"{0}\"에는 현재 사용 중인 {1}이(가) 들어 있습니다.",
   "\"{0}\" in \"{1}\" could not be deleted.": "\"{1}\"에 있는 \"{0}\"을(를) 삭제할 수 없습니다.",
   "\"{0}\" in \"{1}\" is in use by another program.": "\"{1}\"에 있는 \"{0}\"을(를) 다른 프로그램에서 사용 중입니다.",
   "\"{0}\" in \"{1}\" needs administrator permission to be deleted.": "\"{1}\"에 있는 \"{0}\"을(를) 삭제하려면 관리자 권한이 필요합니다.",
   "\"{0}\" is in use by another program.": "\"{0}\"을(를) 다른 프로그램에서 사용 중입니다.",
+  "\"{0}\" is part of the {1} you are using right now.": "\"{0}\"은(는) 현재 사용 중인 {1}의 일부입니다.",
   "\"{0}\" is write-protected.": "\"{0}\"이(가) 쓰기 금지되어 있습니다.",
+  "\"{0}\" moved to \"{1}\"": "\"{0}\"을(를) \"{1}\"(으)로 이동했습니다",
   "\"{0}\" needs administrator permission to be deleted.": "\"{0}\"을(를) 삭제하려면 관리자 권한이 필요합니다.",
   "(no suggestions)": "(제안 없음)",
   "(the first {0} shown)": "(처음 {0}개 표시)",
@@ -27,6 +31,7 @@
   "A folder that another program still holds open - or that is shown in a preview - cannot be copied until that program lets go of it. Close it there, then try again.": "다른 프로그램에서 아직 열려 있거나 미리 보기에 표시된 폴더는 해당 프로그램이 폴더를 해제할 때까지 복사할 수 없습니다. 해당 프로그램에서 폴더를 닫은 후 다시 시도하십시오.",
   "A folder that another program still holds open - or that is shown in a preview - cannot be moved until that program lets go of it. Close it there, then try again.": "다른 프로그램에서 아직 열려 있거나 미리 보기에 표시된 폴더는 해당 프로그램이 폴더를 해제할 때까지 이동할 수 없습니다. 해당 프로그램에서 폴더를 닫은 후 다시 시도하십시오.",
   "A line between two menu entries": "두 메뉴 항목 사이의 구분선",
+  "A running program cannot delete its own files: the ones it has loaded refuse to go, and taking the rest away makes it crash. Close this {0} and delete the folder from another file manager, or from a copy of {0} started elsewhere.": "실행 중인 프로그램은 자신의 파일을 삭제할 수 없습니다. 로드된 파일은 삭제되지 않으며, 나머지 파일을 제거하면 프로그램이 충돌합니다. 이 {0}을(를) 닫은 후 다른 파일 관리자나 다른 위치에서 시작한 {0} 사본에서 폴더를 삭제하십시오.",
   "A submenu in a menu, a group of your own on a toolbar": "메뉴에서는 하위 메뉴, 도구 모음에서는 사용자 그룹",
   "Abort": "중단",
   "About": "정보",
@@ -98,6 +103,7 @@
   "Close": "닫기",
   "Close (Esc)": "닫기 (Esc)",
   "Close All": "모두 닫기",
+  "Close it and delete the folder from elsewhere.": "이 프로그램을 닫은 후 다른 위치에서 폴더를 삭제하십시오.",
   "Close the program that holds it, then try again. Administrator rights do not help: a file a running program has loaded cannot be deleted by anyone.": "파일을 사용 중인 프로그램을 닫은 후 다시 시도하십시오. 관리자 권한으로도 해결되지 않습니다. 실행 중인 프로그램이 로드한 파일은 누구도 삭제할 수 없습니다.",
   "Collisions between bases": "베이스 세트 간 충돌",
   "Colour": "색",
@@ -117,6 +123,9 @@
   },
   "Copy": "복사",
   "Copy \"{0}\" into \"{1}\"?": "\"{0}\"을(를) \"{1}\"에 복사하시겠습니까?",
+  "Copy cancelled - {0} of {n} item copied to \"{1}\"": {
+    "other": "복사 취소됨 - 항목 {n}개 중 {0}개를 \"{1}\"(으)로 복사했습니다"
+  },
   "Copy files": "파일 복사",
   "Copy finished": "복사 완료",
   "Copy path": "경로 복사",
@@ -337,6 +346,9 @@
   "month|September": "9월",
   "Move": "이동",
   "Move \"{0}\" into \"{1}\"?": "\"{0}\"을(를) \"{1}\"(으)로 이동하시겠습니까?",
+  "Move cancelled - {0} of {n} item moved to \"{1}\"": {
+    "other": "이동 취소됨 - 항목 {n}개 중 {0}개를 \"{1}\"(으)로 이동했습니다"
+  },
   "Move Down": "아래로 이동",
   "Move down": "아래로 이동",
   "Move files": "파일 이동",
@@ -418,6 +430,7 @@
   "Preview": "미리 보기",
   "Print": "인쇄",
   "Program": "프로그램",
+  "Program folder:": "프로그램 폴더:",
   "Promote to a base set": "베이스 세트로 올리기",
   "Properties": "속성",
   "Put the command selected on the right after the entry selected on the left": "오른쪽에서 선택한 명령을 왼쪽에서 선택한 항목 뒤에 넣기",
@@ -584,6 +597,12 @@
   "{0} in {1}: {2} rows": "{0} ({1}): {2}행",
   "{0} is not a base set the application can take": "{0}은(는) 이 애플리케이션이 사용할 수 있는 베이스 세트가 아닙니다",
   "{0} no longer taken": "{0} 사용 안 함",
+  "{0} of {n} item copied to \"{1}\" ({2} skipped)": {
+    "other": "항목 {n}개 중 {0}개를 \"{1}\"(으)로 복사했습니다 ({2}개 건너뜀)"
+  },
+  "{0} of {n} item moved to \"{1}\" ({2} skipped)": {
+    "other": "항목 {n}개 중 {0}개를 \"{1}\"(으)로 이동했습니다 ({2}개 건너뜀)"
+  },
   "{0} rows drafted; review them before saving": "{0}개 행의 초안을 작성했습니다. 저장하기 전에 검토하십시오",
   "{0} taken": "{0} 사용",
   "{0} taken; {1} rows now duplicate a base's text and can be dropped": "{0} 사용. {1}개 행이 베이스 세트의 텍스트와 중복되므로 삭제할 수 있습니다",
@@ -604,8 +623,20 @@
   "{n} file": {
     "other": "{n}개 파일"
   },
+  "{n} file copied to \"{0}\"": {
+    "other": "파일 {n}개를 \"{0}\"(으)로 복사했습니다"
+  },
+  "{n} file moved to \"{0}\"": {
+    "other": "파일 {n}개를 \"{0}\"(으)로 이동했습니다"
+  },
   "{n} folder": {
     "other": "{n}개 폴더"
+  },
+  "{n} folder copied to \"{0}\"": {
+    "other": "폴더 {n}개를 \"{0}\"(으)로 복사했습니다"
+  },
+  "{n} folder moved to \"{0}\"": {
+    "other": "폴더 {n}개를 \"{0}\"(으)로 이동했습니다"
   },
   "{n} hour": {
     "other": "{n}시간"
@@ -613,8 +644,14 @@
   "{n} item": {
     "other": "{n}개 항목"
   },
+  "{n} item copied to \"{0}\"": {
+    "other": "항목 {n}개를 \"{0}\"(으)로 복사했습니다"
+  },
   "{n} item could not be deleted even with administrator permission.": {
     "other": "항목 {n}개는 관리자 권한으로도 삭제할 수 없습니다."
+  },
+  "{n} item moved to \"{0}\"": {
+    "other": "항목 {n}개를 \"{0}\"(으)로 이동했습니다"
   },
   "{n} minute": {
     "other": "{n}분"

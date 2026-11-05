@@ -3,17 +3,21 @@
   "@name": "Magyar",
   "@translated-by": "machine draft 2026-11-03, reviewed by -",
   "\"{0}\" already exists in \"{1}\".": "„{0}” már létezik itt: „{1}”.",
+  "\"{0}\" copied to \"{1}\"": "„{0}” átmásolva ide: „{1}”",
   "\"{0}\" could not be copied.": "„{0}” nem másolható.",
   "\"{0}\" could not be deleted even with administrator permission.": "„{0}” rendszergazdai engedéllyel sem törölhető.",
   "\"{0}\" could not be deleted.": "„{0}” nem törölhető.",
   "\"{0}\" could not be moved to the Recycle Bin.": "„{0}” nem helyezhető át a Lomtárba.",
   "\"{0}\" could not be moved to the Trash.": "„{0}” nem helyezhető át a Lomtárba.",
   "\"{0}\" could not be moved.": "„{0}” nem helyezhető át.",
+  "\"{0}\" holds the {1} you are using right now.": "„{0}” tartalmazza a jelenleg használt {1} programot.",
   "\"{0}\" in \"{1}\" could not be deleted.": "„{0}” nem törölhető (mappa: „{1}”).",
   "\"{0}\" in \"{1}\" is in use by another program.": "„{0}” használatban van egy másik programban (mappa: „{1}”).",
   "\"{0}\" in \"{1}\" needs administrator permission to be deleted.": "„{0}” törléséhez rendszergazdai engedély szükséges (mappa: „{1}”).",
   "\"{0}\" is in use by another program.": "„{0}” használatban van egy másik programban.",
+  "\"{0}\" is part of the {1} you are using right now.": "„{0}” a jelenleg használt {1} program része.",
   "\"{0}\" is write-protected.": "„{0}” írásvédett.",
+  "\"{0}\" moved to \"{1}\"": "„{0}” áthelyezve ide: „{1}”",
   "\"{0}\" needs administrator permission to be deleted.": "„{0}” törléséhez rendszergazdai engedély szükséges.",
   "(no suggestions)": "(nincs javaslat)",
   "(the first {0} shown)": "(az első {0} látható)",
@@ -27,6 +31,7 @@
   "A folder that another program still holds open - or that is shown in a preview - cannot be copied until that program lets go of it. Close it there, then try again.": "Az a mappa, amelyet egy másik program még nyitva tart – vagy amely egy előnézetben látható –, nem másolható, amíg az a program el nem engedi. Zárja be ott, majd próbálja újra.",
   "A folder that another program still holds open - or that is shown in a preview - cannot be moved until that program lets go of it. Close it there, then try again.": "Az a mappa, amelyet egy másik program még nyitva tart – vagy amely egy előnézetben látható –, nem helyezhető át, amíg az a program el nem engedi. Zárja be ott, majd próbálja újra.",
   "A line between two menu entries": "Vonal két menüpont között",
+  "A running program cannot delete its own files: the ones it has loaded refuse to go, and taking the rest away makes it crash. Close this {0} and delete the folder from another file manager, or from a copy of {0} started elsewhere.": "Egy futó program nem törölheti a saját fájljait: a betöltött fájlok nem törölhetők, a többi eltávolítása pedig a program összeomlását okozza. Zárja be a futó {0} programot, és törölje a mappát egy másik fájlkezelőből vagy egy máshonnan indított {0} programpéldányból.",
   "A submenu in a menu, a group of your own on a toolbar": "Almenü a menüben, saját csoport az eszköztáron",
   "Abort": "Megszakítás",
   "About": "Névjegy",
@@ -102,6 +107,7 @@
   "Close": "Bezárás",
   "Close (Esc)": "Bezárás (Esc)",
   "Close All": "Az összes bezárása",
+  "Close it and delete the folder from elsewhere.": "Zárja be, majd törölje a mappát máshonnan.",
   "Close the program that holds it, then try again. Administrator rights do not help: a file a running program has loaded cannot be deleted by anyone.": "Zárja be a fájlt használó programot, majd próbálja újra. A rendszergazdai jogok nem segítenek: egy futó program által betöltött fájlt senki sem törölhet.",
   "Collisions between bases": "Ütközések az alapkészletek között",
   "Colour": "Szín",
@@ -122,6 +128,10 @@
   },
   "Copy": "Másolás",
   "Copy \"{0}\" into \"{1}\"?": "„{0}” másolása ide: „{1}”?",
+  "Copy cancelled - {0} of {n} item copied to \"{1}\"": {
+    "one": "Másolás megszakítva – {n} elemből {0} átmásolva ide: „{1}”",
+    "other": "Másolás megszakítva – {n} elemből {0} átmásolva ide: „{1}”"
+  },
   "Copy files": "Fájlok másolása",
   "Copy finished": "Másolás befejezve",
   "Copy path": "Elérési út másolása",
@@ -347,6 +357,10 @@
   "month|September": "szeptember",
   "Move": "Áthelyezés",
   "Move \"{0}\" into \"{1}\"?": "„{0}” áthelyezése ide: „{1}”?",
+  "Move cancelled - {0} of {n} item moved to \"{1}\"": {
+    "one": "Áthelyezés megszakítva – {n} elemből {0} áthelyezve ide: „{1}”",
+    "other": "Áthelyezés megszakítva – {n} elemből {0} áthelyezve ide: „{1}”"
+  },
   "Move Down": "Mozgatás le",
   "Move down": "Mozgatás le",
   "Move files": "Fájlok áthelyezése",
@@ -433,6 +447,7 @@
   "Preview": "Előnézet",
   "Print": "Nyomtatás",
   "Program": "Program",
+  "Program folder:": "Programmappa:",
   "Promote to a base set": "Áthelyezés alapkészletbe",
   "Properties": "Tulajdonságok",
   "Put the command selected on the right after the entry selected on the left": "A jobb oldalon kijelölt parancs beszúrása a bal oldalon kijelölt elem után",
@@ -599,6 +614,14 @@
   "{0} in {1}: {2} rows": "{0} ({1}): {2} sor",
   "{0} is not a base set the application can take": "{0}: nem olyan alapkészlet, amelyet az alkalmazás használhat",
   "{0} no longer taken": "{0}: már nincs használatban",
+  "{0} of {n} item copied to \"{1}\" ({2} skipped)": {
+    "one": "{n} elemből {0} átmásolva ide: „{1}” ({2} kihagyva)",
+    "other": "{n} elemből {0} átmásolva ide: „{1}” ({2} kihagyva)"
+  },
+  "{0} of {n} item moved to \"{1}\" ({2} skipped)": {
+    "one": "{n} elemből {0} áthelyezve ide: „{1}” ({2} kihagyva)",
+    "other": "{n} elemből {0} áthelyezve ide: „{1}” ({2} kihagyva)"
+  },
   "{0} rows drafted; review them before saving": "{0} sor piszkozata elkészült; mentés előtt ellenőrizze őket",
   "{0} taken": "{0}: használatban",
   "{0} taken; {1} rows now duplicate a base's text and can be dropped": "{0}: használatban; {1} sor most egy alapkészlet szövegét ismétli, és törölhető",
@@ -622,9 +645,25 @@
     "one": "{n} fájl",
     "other": "{n} fájl"
   },
+  "{n} file copied to \"{0}\"": {
+    "one": "{n} fájl átmásolva ide: „{0}”",
+    "other": "{n} fájl átmásolva ide: „{0}”"
+  },
+  "{n} file moved to \"{0}\"": {
+    "one": "{n} fájl áthelyezve ide: „{0}”",
+    "other": "{n} fájl áthelyezve ide: „{0}”"
+  },
   "{n} folder": {
     "one": "{n} mappa",
     "other": "{n} mappa"
+  },
+  "{n} folder copied to \"{0}\"": {
+    "one": "{n} mappa átmásolva ide: „{0}”",
+    "other": "{n} mappa átmásolva ide: „{0}”"
+  },
+  "{n} folder moved to \"{0}\"": {
+    "one": "{n} mappa áthelyezve ide: „{0}”",
+    "other": "{n} mappa áthelyezve ide: „{0}”"
   },
   "{n} hour": {
     "one": "{n} óra",
@@ -634,9 +673,17 @@
     "one": "{n} elem",
     "other": "{n} elem"
   },
+  "{n} item copied to \"{0}\"": {
+    "one": "{n} elem átmásolva ide: „{0}”",
+    "other": "{n} elem átmásolva ide: „{0}”"
+  },
   "{n} item could not be deleted even with administrator permission.": {
     "one": "{n} elem rendszergazdai engedéllyel sem törölhető.",
     "other": "{n} elem rendszergazdai engedéllyel sem törölhető."
+  },
+  "{n} item moved to \"{0}\"": {
+    "one": "{n} elem áthelyezve ide: „{0}”",
+    "other": "{n} elem áthelyezve ide: „{0}”"
   },
   "{n} minute": {
     "one": "{n} perc",
