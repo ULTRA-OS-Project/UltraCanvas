@@ -1,0 +1,15 @@
+{
+  "@language": "he",
+  "@translated-by": "machine draft 2026-11-05, reviewed by -",
+  "Click and type, or drag a box for the lines to wrap in; click a text to edit it. The bar above sets font, size, style, alignment and spacing; the colour is the foreground colour. Escape or a click outside finishes": "יש ללחוץ ולהקליד, או לגרור תיבה שבתוכה השורות יגלשו; יש ללחוץ על טקסט כדי לערוך אותו. הסרגל שלמעלה קובע גופן, גודל, סגנון, יישור וריווח; הצבע הוא הצבע הקדמי. לסיום: Escape או לחיצה בחוץ",
+  "Letter Spacing": "ריווח אותיות",
+  "Line Spacing": "ריווח שורות",
+  "Text Alignment": "יישור טקסט",
+  "Text Bold": "טקסט מודגש",
+  "Text Colour": "צבע טקסט",
+  "Text Font": "גופן טקסט",
+  "Text Italic": "טקסט נטוי",
+  "Text Size": "גודל טקסט",
+  "Text Strikethrough": "קו חוצה בטקסט",
+  "Text Underline": "קו תחתון בטקסט"
+}

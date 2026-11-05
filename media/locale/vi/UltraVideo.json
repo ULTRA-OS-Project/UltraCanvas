@@ -1,0 +1,19 @@
+{
+  "@language": "vi",
+  "@translated-by": "machine draft 2026-11-05, reviewed by -",
+  "Colour title": "Tô màu tiêu đề",
+  "Edit Title": "Chỉnh sửa tiêu đề",
+  "The title is in the video": "Tiêu đề đã nằm trong video",
+  "The title is unchanged": "Tiêu đề không thay đổi",
+  "The title was emptied: it keeps its text (delete the title on its lane to remove it)": "Tiêu đề đã bị làm trống: tiêu đề vẫn giữ văn bản của nó (xóa tiêu đề trên làn của nó để loại bỏ)",
+  "Title Alignment": "Căn chỉnh tiêu đề",
+  "Title Bold": "Tiêu đề đậm",
+  "Title Font": "Phông chữ tiêu đề",
+  "Title Italic": "Tiêu đề nghiêng",
+  "Title Letter Spacing": "Khoảng cách chữ tiêu đề",
+  "Title Line Spacing": "Giãn dòng tiêu đề",
+  "Title Size": "Kích thước tiêu đề",
+  "Title Strikethrough": "Gạch ngang tiêu đề",
+  "Title Underline": "Gạch chân tiêu đề",
+  "Typing the title on the frame: Escape, Ctrl+Enter or a click outside puts it in the video": "Đang gõ tiêu đề trên khung hình: Escape, Ctrl+Enter hoặc nhấp ra ngoài sẽ đưa tiêu đề vào video"
+}

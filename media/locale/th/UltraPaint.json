@@ -1,0 +1,15 @@
+{
+  "@language": "th",
+  "@translated-by": "machine draft 2026-11-05, reviewed by -",
+  "Click and type, or drag a box for the lines to wrap in; click a text to edit it. The bar above sets font, size, style, alignment and spacing; the colour is the foreground colour. Escape or a click outside finishes": "คลิกแล้วพิมพ์ หรือลากกรอบเพื่อให้บรรทัดตัดคำภายในกรอบ คลิกข้อความเพื่อแก้ไข แถบด้านบนใช้ตั้งค่าแบบอักษร ขนาด สไตล์ การจัดแนว และระยะห่าง สีคือสีพื้นหน้า กด Escape หรือคลิกด้านนอกเพื่อเสร็จสิ้น",
+  "Letter Spacing": "ระยะห่างตัวอักษร",
+  "Line Spacing": "ระยะห่างบรรทัด",
+  "Text Alignment": "การจัดแนวข้อความ",
+  "Text Bold": "ตัวหนาของข้อความ",
+  "Text Colour": "สีข้อความ",
+  "Text Font": "แบบอักษรของข้อความ",
+  "Text Italic": "ตัวเอียงของข้อความ",
+  "Text Size": "ขนาดข้อความ",
+  "Text Strikethrough": "ขีดทับข้อความ",
+  "Text Underline": "ขีดเส้นใต้ข้อความ"
+}

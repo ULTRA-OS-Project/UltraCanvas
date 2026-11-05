@@ -1,0 +1,19 @@
+{
+  "@language": "th",
+  "@translated-by": "machine draft 2026-11-05, reviewed by -",
+  "Colour title": "สีชื่อเรื่อง",
+  "Edit Title": "แก้ไขชื่อเรื่อง",
+  "The title is in the video": "ชื่อเรื่องอยู่ในวิดีโอแล้ว",
+  "The title is unchanged": "ชื่อเรื่องไม่มีการเปลี่ยนแปลง",
+  "The title was emptied: it keeps its text (delete the title on its lane to remove it)": "ชื่อเรื่องว่างเปล่า: ยังคงข้อความเดิมไว้ (หากต้องการเอาออก ให้ลบชื่อเรื่องบนแทร็กของชื่อเรื่องนั้น)",
+  "Title Alignment": "การจัดแนวชื่อเรื่อง",
+  "Title Bold": "ตัวหนาของชื่อเรื่อง",
+  "Title Font": "แบบอักษรของชื่อเรื่อง",
+  "Title Italic": "ตัวเอียงของชื่อเรื่อง",
+  "Title Letter Spacing": "ระยะห่างตัวอักษรของชื่อเรื่อง",
+  "Title Line Spacing": "ระยะห่างบรรทัดของชื่อเรื่อง",
+  "Title Size": "ขนาดชื่อเรื่อง",
+  "Title Strikethrough": "ขีดทับชื่อเรื่อง",
+  "Title Underline": "ขีดเส้นใต้ชื่อเรื่อง",
+  "Typing the title on the frame: Escape, Ctrl+Enter or a click outside puts it in the video": "กำลังพิมพ์ชื่อเรื่องบนเฟรม: กด Escape, Ctrl+Enter หรือคลิกด้านนอกเพื่อใส่ลงในวิดีโอ"
+}

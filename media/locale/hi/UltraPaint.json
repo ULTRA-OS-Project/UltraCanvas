@@ -1,0 +1,15 @@
+{
+  "@language": "hi",
+  "@translated-by": "machine draft 2026-11-05, reviewed by -",
+  "Click and type, or drag a box for the lines to wrap in; click a text to edit it. The bar above sets font, size, style, alignment and spacing; the colour is the foreground colour. Escape or a click outside finishes": "क्लिक करके टाइप करें, या एक बॉक्स खींचें जिसमें पंक्तियाँ रैप हों; किसी टेक्स्ट को संपादित करने के लिए उस पर क्लिक करें। ऊपर का बार फ़ॉन्ट, आकार, शैली, संरेखण और अंतराल तय करता है; रंग अग्रभूमि रंग होता है। Escape या बाहर क्लिक करने से समाप्त होता है",
+  "Letter Spacing": "अक्षर अंतराल",
+  "Line Spacing": "पंक्ति अंतराल",
+  "Text Alignment": "टेक्स्ट संरेखण",
+  "Text Bold": "बोल्ड टेक्स्ट",
+  "Text Colour": "टेक्स्ट रंग",
+  "Text Font": "टेक्स्ट फ़ॉन्ट",
+  "Text Italic": "इटैलिक टेक्स्ट",
+  "Text Size": "टेक्स्ट आकार",
+  "Text Strikethrough": "काटकर लिखा टेक्स्ट",
+  "Text Underline": "रेखांकित टेक्स्ट"
+}

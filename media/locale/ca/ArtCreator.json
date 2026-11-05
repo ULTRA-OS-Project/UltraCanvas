@@ -1,0 +1,22 @@
+{
+  "@language": "ca",
+  "@translated-by": "machine draft 2026-11-05, reviewed by -",
+  "Added the text: click it with the Text tool, or double-click it, to edit it": "S'ha afegit el text: feu-hi clic amb l'eina de text, o feu-hi doble clic, per editar-lo",
+  "Changed the text": "S'ha modificat el text",
+  "Click on the page and type, or click a text to edit it; the bar above sets its font, size, style, alignment and spacing. Escape, Ctrl+Enter or a click outside finishes": "Feu clic a la pàgina i escriviu, o feu clic en un text per editar-lo; la barra de dalt n'estableix la lletra, la mida, l'estil, l'alineació i l'espaiat. Esc, Ctrl+Retorn o un clic a fora acaba",
+  "Delete Text": "Supressió del text",
+  "Edit Text": "Edició del text",
+  "Editing the text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes": "Editant el text: Retorn comença una línia nova; Esc, Ctrl+Retorn o un clic a fora acaba",
+  "Letter Spacing": "Espaiat entre lletres",
+  "Line Spacing": "Interlineat",
+  "Nothing was typed": "No s'ha escrit res",
+  "Text Alignment": "Alineació del text",
+  "Text Bold": "Negreta del text",
+  "Text Font": "Lletra del text",
+  "Text Italic": "Cursiva del text",
+  "Text Size": "Mida del text",
+  "Text Strikethrough": "Ratllat del text",
+  "Text Underline": "Subratllat del text",
+  "The text was emptied, so it was deleted": "El text s'ha buidat i, per tant, s'ha suprimit",
+  "Typing a new text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes": "Escrivint un text nou: Retorn comença una línia nova; Esc, Ctrl+Retorn o un clic a fora acaba"
+}

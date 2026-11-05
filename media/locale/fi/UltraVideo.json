@@ -1,0 +1,19 @@
+{
+  "@language": "fi",
+  "@translated-by": "machine draft 2026-11-05, reviewed by -",
+  "Colour title": "Otsikon väri",
+  "Edit Title": "Otsikon muokkaus",
+  "The title is in the video": "Otsikko on videossa",
+  "The title is unchanged": "Otsikko on ennallaan",
+  "The title was emptied: it keeps its text (delete the title on its lane to remove it)": "Otsikko tyhjennettiin: se säilyttää tekstinsä (poista otsikko sen raidalta, jos haluat poistaa sen)",
+  "Title Alignment": "Otsikon tasaus",
+  "Title Bold": "Otsikon lihavointi",
+  "Title Font": "Otsikon fontti",
+  "Title Italic": "Otsikon kursivointi",
+  "Title Letter Spacing": "Otsikon merkkiväli",
+  "Title Line Spacing": "Otsikon riviväli",
+  "Title Size": "Otsikon koko",
+  "Title Strikethrough": "Otsikon yliviivaus",
+  "Title Underline": "Otsikon alleviivaus",
+  "Typing the title on the frame: Escape, Ctrl+Enter or a click outside puts it in the video": "Otsikkoa kirjoitetaan kuvaan: Escape, Ctrl+Enter tai napsautus muualle lisää sen videoon"
+}

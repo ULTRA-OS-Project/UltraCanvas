@@ -1,0 +1,22 @@
+{
+  "@language": "ja",
+  "@translated-by": "machine draft 2026-11-05, reviewed by -",
+  "Added the text: click it with the Text tool, or double-click it, to edit it": "テキストを追加しました: 編集するには、テキストツールでクリックするか、ダブルクリックします",
+  "Changed the text": "テキストを変更しました",
+  "Click on the page and type, or click a text to edit it; the bar above sets its font, size, style, alignment and spacing. Escape, Ctrl+Enter or a click outside finishes": "ページをクリックして入力するか、テキストをクリックして編集します。上のバーでフォント、サイズ、スタイル、配置、間隔を設定します。Escape、Ctrl+Enter、または外側をクリックすると終了します",
+  "Delete Text": "テキストの削除",
+  "Edit Text": "テキストの編集",
+  "Editing the text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes": "テキストを編集中: Enter で改行します。Escape、Ctrl+Enter、または外側をクリックすると終了します",
+  "Letter Spacing": "文字間隔",
+  "Line Spacing": "行間",
+  "Nothing was typed": "何も入力されませんでした",
+  "Text Alignment": "テキストの配置",
+  "Text Bold": "テキストの太字",
+  "Text Font": "テキストのフォント",
+  "Text Italic": "テキストの斜体",
+  "Text Size": "テキストのサイズ",
+  "Text Strikethrough": "テキストの取り消し線",
+  "Text Underline": "テキストの下線",
+  "The text was emptied, so it was deleted": "テキストが空になったため、削除しました",
+  "Typing a new text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes": "新しいテキストを入力中: Enter で改行します。Escape、Ctrl+Enter、または外側をクリックすると終了します"
+}

@@ -1,0 +1,15 @@
+{
+  "@language": "el",
+  "@translated-by": "machine draft 2026-11-05, reviewed by -",
+  "Click and type, or drag a box for the lines to wrap in; click a text to edit it. The bar above sets font, size, style, alignment and spacing; the colour is the foreground colour. Escape or a click outside finishes": "Κάντε κλικ και πληκτρολογήστε ή σύρετε ένα πλαίσιο μέσα στο οποίο θα αναδιπλώνονται οι γραμμές· κάντε κλικ σε ένα κείμενο για να το επεξεργαστείτε. Η γραμμή επάνω ορίζει γραμματοσειρά, μέγεθος, στυλ, στοίχιση και αποστάσεις· το χρώμα είναι το χρώμα προσκηνίου. Το Escape ή ένα κλικ έξω ολοκληρώνει",
+  "Letter Spacing": "Απόσταση γραμμάτων",
+  "Line Spacing": "Διάστιχο",
+  "Text Alignment": "Στοίχιση κειμένου",
+  "Text Bold": "Έντονα κειμένου",
+  "Text Colour": "Χρώμα κειμένου",
+  "Text Font": "Γραμματοσειρά κειμένου",
+  "Text Italic": "Πλάγια κειμένου",
+  "Text Size": "Μέγεθος κειμένου",
+  "Text Strikethrough": "Διακριτή διαγραφή κειμένου",
+  "Text Underline": "Υπογράμμιση κειμένου"
+}

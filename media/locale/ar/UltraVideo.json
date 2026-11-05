@@ -1,0 +1,19 @@
+{
+  "@language": "ar",
+  "@translated-by": "machine draft 2026-11-05, reviewed by -",
+  "Colour title": "تلوين العنوان",
+  "Edit Title": "تحرير العنوان",
+  "The title is in the video": "العنوان في الفيديو",
+  "The title is unchanged": "لم يتغير العنوان",
+  "The title was emptied: it keeps its text (delete the title on its lane to remove it)": "أصبح العنوان فارغًا: يحتفظ بنصه (احذف العنوان من مساره لإزالته)",
+  "Title Alignment": "محاذاة العنوان",
+  "Title Bold": "عنوان غامق",
+  "Title Font": "خط العنوان",
+  "Title Italic": "عنوان مائل",
+  "Title Letter Spacing": "تباعد أحرف العنوان",
+  "Title Line Spacing": "تباعد أسطر العنوان",
+  "Title Size": "حجم العنوان",
+  "Title Strikethrough": "عنوان يتوسطه خط",
+  "Title Underline": "تسطير العنوان",
+  "Typing the title on the frame: Escape, Ctrl+Enter or a click outside puts it in the video": "كتابة العنوان على الإطار: يضعه Escape أو Ctrl+Enter أو النقر في الخارج في الفيديو"
+}
