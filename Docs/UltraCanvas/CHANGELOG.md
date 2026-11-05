@@ -1,3 +1,29 @@
+#### 2026-11-05 *0.9.488*
+- **The extractor's reading rules are tested.** `scripts/tests/test_extract_ui_strings.py`
+  holds what `extract_ui_strings.py` reads the sources by - a literal's
+  escapes (a `\xHH` or octal escape a byte of the UTF-8 text, `\uXXXX` a
+  code point), comments stripped without a `"/*"` or a URL's `//` inside a
+  string swallowing the code after it, a call's literal arguments, the sites
+  a file yields - after two escape bugs in two days; `locale-catalogues.yml`
+  runs it before the catalogue check.
+- **The desktop's look, read from the host (T1 of the host theme proposal).**
+  `UltraCanvasApplication::GetHostAppearance()` says whether the desktop is
+  dark, asks for high contrast or less motion, what its accent is, its
+  interface and monospace fonts and its text scale, with where it came
+  from. Windows reads the registry (`AppsUseLightTheme`, `AccentColorMenu`,
+  `TextScaleFactor`), the metrics and DWM; macOS reads AppKit
+  (`effectiveAppearance`, `controlAccentColor`, the accessibility options);
+  the other platforms answer light with their font detectors' fonts until
+  T2. A switch to dark while an application runs (`WM_SETTINGCHANGE` and
+  its kin, KVO on `effectiveAppearance`) is read once per burst and
+  `AddHostAppearanceHandler` hears it; the start-up report names the host's
+  look. `GetSystemFontStyle()` and `GetDefaultMonospacedFontStyle()` are the
+  value's fonts, a pin still winning. `ULTRACANVAS_HOST_APPEARANCE`
+  (`dark,font=Noto Sans 14,accent=#e95420,scale=1.25,contrast=high`) overrides
+  any of it for a dark, light or 14 pt run on any desktop.
+  `UltraCanvasHostAppearance.h` is header-only and pure; `HostAppearanceTest`
+  covers it without a display. `Docs/UltraCanvas/UltraCanvasHostAppearance.md`.
+
 #### 2026-11-04 *0.9.487*
 - **Windows: the system fonts stayed missing behind an empty font cache.**
   fontconfig trusts its cache of a folder as long as the folder's time stamp
