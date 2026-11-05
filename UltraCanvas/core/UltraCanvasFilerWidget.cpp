@@ -58,6 +58,8 @@
 //                  confirmation, the paste problem and name-conflict dialogs
 //                  and the rename-replace dialog, per verb and kind, counts
 //                  through TrN, the newer / older notes as TrC("age", ...)
+// Version: 1.44.0 - onFolderChangedOnDisk after every re-listing the folder watch
+//                  asked for
 // Version: 1.43.4 - Refresh() moves up to the nearest existing folder when the
 //                  shown folder is gone and its volume is not
 // Version: 1.43.3 - a delete that Windows answers "access denied" is told
@@ -15256,10 +15258,20 @@ namespace UltraCanvas {
             if (!folderWatchDirty.load()) return;
             if (IsBusyForAutoRefresh()) return;   // try again on the next tick
             folderWatchDirty.store(false);
+            // Taken before Refresh(), which moves up when the folder itself
+            // is what went - and then the folder that went is the news.
+            const std::string changed = fileListMode ? std::string() : currentPath;
             Refresh();
             // The listing changed under the host too: its status bar counts and
             // any preview fed from the selection describe the folder as well.
             if (onFolderRefreshed) onFolderRefreshed();
+            // And so may its folder tree, which hears of the widget's own
+            // operations through onFolderModified but of nothing else: a
+            // subfolder another program deleted, or one this widget deleted
+            // while a program still held it, which Windows went on listing
+            // until that program let go - the tree checked it then, saw it
+            // still there, and kept its row for good.
+            if (onFolderChangedOnDisk && !changed.empty()) onFolderChangedOnDisk(changed);
         });
     }
 

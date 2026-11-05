@@ -2186,6 +2186,20 @@ jobs:
           xvfb-run -a -s "-screen 0 1280x800x24"
           ctest --output-on-failure --no-tests=error --timeout 300 -R "^SmartHomeWidgets$"
 
+      # The vanished-folder test's second half drives the Filer's folder watch,
+      # which only runs inside the application's timers: a subfolder deleted on
+      # disk is reported through onFolderChangedOnDisk (what UltraFiler's folder
+      # tree re-syncs from), and the shown folder deleted moves the display up.
+      # Without a display that half skips; here it has to run.
+      - name: Run the Filer folder-watch test on a virtual display (Linux)
+        if: runner.os == 'Linux'
+        working-directory: build
+        env:
+          ULTRACANVAS_TEST_DISPLAY_REQUIRED: 1
+        run: >-
+          xvfb-run -a -s "-screen 0 1280x800x24"
+          ctest --output-on-failure --no-tests=error --timeout 300 -R "^FilerVanishedFolderTest$"
+
       # The demo's layout audit (Apps/DemoApp/UltraCanvasDemoLayoutAudit.cpp)
       # opens every page and fails on a label or button narrower than its
       # text, or content cut off with no scrollbar to reach it. The second run
