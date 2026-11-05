@@ -1,0 +1,19 @@
+{
+  "@language": "de",
+  "@translated-by": "machine draft 2026-11-05, reviewed by -",
+  "Colour title": "Titelfarbe",
+  "Edit Title": "Titel bearbeiten",
+  "The title is in the video": "Der Titel ist im Video",
+  "The title is unchanged": "Der Titel ist unverändert",
+  "The title was emptied: it keeps its text (delete the title on its lane to remove it)": "Der Titel wurde geleert: Er behält seinen Text (löschen Sie den Titel auf seiner Spur, um ihn zu entfernen)",
+  "Title Alignment": "Titelausrichtung",
+  "Title Bold": "Titel fett",
+  "Title Font": "Titelschrift",
+  "Title Italic": "Titel kursiv",
+  "Title Letter Spacing": "Zeichenabstand des Titels",
+  "Title Line Spacing": "Zeilenabstand des Titels",
+  "Title Size": "Titelgröße",
+  "Title Strikethrough": "Titel durchgestrichen",
+  "Title Underline": "Titel unterstrichen",
+  "Typing the title on the frame: Escape, Ctrl+Enter or a click outside puts it in the video": "Titel wird im Bild geschrieben: Escape, Ctrl+Eingabe oder ein Klick außerhalb setzt ihn ins Video"
+}

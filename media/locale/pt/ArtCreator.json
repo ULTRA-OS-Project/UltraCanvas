@@ -1,0 +1,22 @@
+{
+  "@language": "pt",
+  "@translated-by": "machine draft 2026-11-05, reviewed by -",
+  "Added the text: click it with the Text tool, or double-click it, to edit it": "Texto adicionado: clique nele com a ferramenta texto, ou faça duplo clique nele, para o editar",
+  "Changed the text": "Texto alterado",
+  "Click on the page and type, or click a text to edit it; the bar above sets its font, size, style, alignment and spacing. Escape, Ctrl+Enter or a click outside finishes": "Clique na página e escreva, ou clique num texto para o editar; a barra acima define o tipo de letra, o tamanho, o estilo, o alinhamento e o espaçamento. Esc, Ctrl+Enter ou um clique fora termina",
+  "Delete Text": "Eliminação do texto",
+  "Edit Text": "Edição do texto",
+  "Editing the text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes": "A editar o texto: Enter inicia uma nova linha; Esc, Ctrl+Enter ou um clique fora termina",
+  "Letter Spacing": "Espaçamento entre letras",
+  "Line Spacing": "Espaçamento entre linhas",
+  "Nothing was typed": "Não foi escrito nada",
+  "Text Alignment": "Alinhamento do texto",
+  "Text Bold": "Negrito do texto",
+  "Text Font": "Tipo de letra do texto",
+  "Text Italic": "Itálico do texto",
+  "Text Size": "Tamanho do texto",
+  "Text Strikethrough": "Rasurado do texto",
+  "Text Underline": "Sublinhado do texto",
+  "The text was emptied, so it was deleted": "O texto ficou vazio, por isso foi eliminado",
+  "Typing a new text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes": "A escrever um texto novo: Enter inicia uma nova linha; Esc, Ctrl+Enter ou um clique fora termina"
+}

@@ -1,0 +1,22 @@
+{
+  "@language": "fr",
+  "@translated-by": "machine draft 2026-11-05, reviewed by -",
+  "Added the text: click it with the Text tool, or double-click it, to edit it": "Texte ajouté : cliquez dessus avec l'outil texte, ou double-cliquez dessus, pour le modifier",
+  "Changed the text": "Texte modifié",
+  "Click on the page and type, or click a text to edit it; the bar above sets its font, size, style, alignment and spacing. Escape, Ctrl+Enter or a click outside finishes": "Cliquez sur la page et tapez, ou cliquez sur un texte pour le modifier ; la barre ci-dessus règle sa police, sa taille, son style, son alignement et son espacement. Esc, Ctrl+Entrée ou un clic à l'extérieur termine",
+  "Delete Text": "Suppression du texte",
+  "Edit Text": "Modification du texte",
+  "Editing the text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes": "Modification du texte : Entrée commence une nouvelle ligne ; Esc, Ctrl+Entrée ou un clic à l'extérieur termine",
+  "Letter Spacing": "Espacement des lettres",
+  "Line Spacing": "Interligne",
+  "Nothing was typed": "Rien n'a été saisi",
+  "Text Alignment": "Alignement du texte",
+  "Text Bold": "Gras du texte",
+  "Text Font": "Police du texte",
+  "Text Italic": "Italique du texte",
+  "Text Size": "Taille du texte",
+  "Text Strikethrough": "Barré du texte",
+  "Text Underline": "Souligné du texte",
+  "The text was emptied, so it was deleted": "Le texte a été vidé, il a donc été supprimé",
+  "Typing a new text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes": "Saisie d'un nouveau texte : Entrée commence une nouvelle ligne ; Esc, Ctrl+Entrée ou un clic à l'extérieur termine"
+}

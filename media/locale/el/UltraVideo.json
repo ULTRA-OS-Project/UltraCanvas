@@ -1,0 +1,19 @@
+{
+  "@language": "el",
+  "@translated-by": "machine draft 2026-11-05, reviewed by -",
+  "Colour title": "Χρώμα τίτλου",
+  "Edit Title": "Επεξεργασία τίτλου",
+  "The title is in the video": "Ο τίτλος μπήκε στο βίντεο",
+  "The title is unchanged": "Ο τίτλος δεν άλλαξε",
+  "The title was emptied: it keeps its text (delete the title on its lane to remove it)": "Ο τίτλος άδειασε: διατηρεί το κείμενό του (για να τον αφαιρέσετε, διαγράψτε τον τίτλο στη λωρίδα του)",
+  "Title Alignment": "Στοίχιση τίτλου",
+  "Title Bold": "Έντονα τίτλου",
+  "Title Font": "Γραμματοσειρά τίτλου",
+  "Title Italic": "Πλάγια τίτλου",
+  "Title Letter Spacing": "Απόσταση γραμμάτων τίτλου",
+  "Title Line Spacing": "Διάστιχο τίτλου",
+  "Title Size": "Μέγεθος τίτλου",
+  "Title Strikethrough": "Διακριτή διαγραφή τίτλου",
+  "Title Underline": "Υπογράμμιση τίτλου",
+  "Typing the title on the frame: Escape, Ctrl+Enter or a click outside puts it in the video": "Πληκτρολόγηση του τίτλου στο καρέ: το Escape, το Ctrl+Enter ή ένα κλικ έξω τον τοποθετεί στο βίντεο"
+}

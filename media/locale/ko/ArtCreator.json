@@ -1,0 +1,22 @@
+{
+  "@language": "ko",
+  "@translated-by": "machine draft 2026-11-05, reviewed by -",
+  "Added the text: click it with the Text tool, or double-click it, to edit it": "텍스트를 추가했습니다: 편집하려면 텍스트 도구로 클릭하거나 두 번 클릭하십시오",
+  "Changed the text": "텍스트를 변경했습니다",
+  "Click on the page and type, or click a text to edit it; the bar above sets its font, size, style, alignment and spacing. Escape, Ctrl+Enter or a click outside finishes": "페이지를 클릭하고 입력하거나, 텍스트를 클릭하여 편집합니다. 위의 막대에서 글꼴, 크기, 스타일, 정렬, 간격을 설정합니다. Escape, Ctrl+Enter 또는 바깥쪽을 클릭하면 끝납니다",
+  "Delete Text": "텍스트 삭제",
+  "Edit Text": "텍스트 편집",
+  "Editing the text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes": "텍스트 편집 중: Enter로 새 줄을 시작합니다. Escape, Ctrl+Enter 또는 바깥쪽을 클릭하면 끝납니다",
+  "Letter Spacing": "자간",
+  "Line Spacing": "줄 간격",
+  "Nothing was typed": "입력된 내용이 없습니다",
+  "Text Alignment": "텍스트 정렬",
+  "Text Bold": "텍스트 굵게",
+  "Text Font": "텍스트 글꼴",
+  "Text Italic": "텍스트 기울임꼴",
+  "Text Size": "텍스트 크기",
+  "Text Strikethrough": "텍스트 취소선",
+  "Text Underline": "텍스트 밑줄",
+  "The text was emptied, so it was deleted": "텍스트가 비어 있으므로 삭제했습니다",
+  "Typing a new text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes": "새 텍스트 입력 중: Enter로 새 줄을 시작합니다. Escape, Ctrl+Enter 또는 바깥쪽을 클릭하면 끝납니다"
+}
