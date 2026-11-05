@@ -65,6 +65,9 @@
 // display and the switch itself are remembered in the settings.
 // A previewed file that changes on disk is reopened in the preview pane
 // (ReloadChangedPreview): throttled, and never restarting a playing video.
+// Version: 1.42.4 - the folder tree follows what a display's folder watch saw
+//                  change on disk (onFolderChangedOnDisk), so a folder deleted
+//                  after a locked file in it was let go leaves the tree
 // Version: 1.42.3 - messages built from English pieces are whole translated sentences: the search status line (started, finished, stopped, its "in *.txt, match case" qualifier) and the quit-during-transfers question and its details, counts through TrN
 // Version: 1.42.2 - the texts the wrapping tool 1.1.0 finds (the page kit's buttons, dropdown items, dialog buttons, tree nodes) go through Tr
 // Version: 1.42.1 - the interface strings go through Tr (UltraLocalisation)
@@ -1322,6 +1325,9 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
     // History and the folder tree follow it the same way.
     folderPreview->onFolderModified = [this](const std::string& folder) {
         HandleFolderModified(folder, folderPreview.get());
+    };
+    folderPreview->onFolderChangedOnDisk = [this](const std::string& folder) {
+        RefreshTreeFolder(folder);
     };
     folderPreview->onError = [this](const std::string& message) {
         if (statusLabel) statusLabel->SetText(TrF("Error: {0}", message));
@@ -6248,6 +6254,15 @@ void UltraFilerWindow::WireFilerCallbacks(FilerTabState* tab) {
     // Merely looking at a folder does neither.
     tab->filer->onFolderModified = [this, tab](const std::string& folder) {
         HandleFolderModified(folder, tab->filer.get());
+    };
+    // What the display's folder watch saw change on disk is not work done
+    // here - it stays out of the History - but the folder tree follows it:
+    // a subfolder another program deleted, or one deleted here while a
+    // program still held a file in it (Windows lists such a folder until
+    // the program lets go, so the tree saw it still there when the delete
+    // reported, and kept its row).
+    tab->filer->onFolderChangedOnDisk = [this](const std::string& folder) {
+        RefreshTreeFolder(folder);
     };
     tab->filer->onError = [this](const std::string& message) {
         if (statusLabel) statusLabel->SetText(TrF("Error: {0}", message));
