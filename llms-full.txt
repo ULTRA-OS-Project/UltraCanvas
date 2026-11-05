@@ -84723,8 +84723,8 @@ child elements of its own)
 `Tests/VideoTimelineElementTest.cpp` (the element in a window, under Xvfb)
 **Design:** the screens and specifications in `Apps/UltraVideo/screens/`, and
 `Docs/Research/UltraVideoDesignProposal.md` §7
-**Version:** 1.4.0
-**Last Modified:** 2026-11-01
+**Version:** 1.5.0
+**Last Modified:** 2026-11-05
 **Author:** UltraCanvas Framework
 
 ## Contents
@@ -84873,8 +84873,11 @@ timeline->ClearDropFeedback();                     // a DragLeave event does the
 
 ### Providers
 
-Thumbnails and peaks arrive later, from the app. The element asks once per
-clip and zoom step, caches what it gets, and draws the clip's fill alone
+Thumbnails and peaks arrive later, from the app. The element asks for the
+thumbnails of the part of a clip in view, a few pictures at a time (`frames`
+evenly spread moments from `in` to `out`, both included; a picture that
+cannot be decoded may be a null pixmap, its slot then stays empty), and the
+peaks once per clip; it caches what it gets, and draws the clip's fill alone
 until then — never a spinner inside a clip. The callback may run at once or
 after a decode on another thread; call `done` on the UI thread.
 
@@ -85040,9 +85043,12 @@ timeline->SetStyle(style);
   ignores it then, so a decode need not be cancelled.
 - The model keeps seconds; the element rounds edits to the frame grid of
   `frameRate` and shows `HH:MM:SS:FF`.
-- Thumbnail requests are keyed by source, range, frame count and height,
-  with the frame count rounded up to a multiple of four so that zooming
-  does not decode at every step.
+- Thumbnail requests are keyed by source, range, frame count and height.
+  Each picture fills a slot of about one frame's width at its own moment,
+  so it sits where its time is on the ruler, to the clip's end at any zoom;
+  the slot length steps by a factor of root 2, so zooming inside a step and
+  scrolling reuse what was decoded. Only the slots in view are asked for,
+  in chunks of eight.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasVolumeMonitor.md
