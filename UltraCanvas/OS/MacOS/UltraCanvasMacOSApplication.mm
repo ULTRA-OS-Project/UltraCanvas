@@ -1,5 +1,7 @@
 // OS/MacOS/UltraCanvasMacOSApplication.mm
 // Complete macOS application implementation with Cocoa/Cairo support
+// Version: 2.10.0 - the host appearance observers installed at start and removed at shutdown
+//                   (UltraCanvasMacOSHostAppearance.mm)
 // Version: 2.9.0 - RegisterPlatformBundledFonts: the CoreText registration of the bundled fonts, shared with a tool
 // Version: 2.8.0 - the monospace font is the system's (SF Mono by Menlo) at the interface size, not Ubuntu Mono 12
 // Version: 2.7.0 - key presses for an element that draws input method
@@ -104,6 +106,9 @@ static UltraCanvasAppDelegate* g_appDelegate = nil;
 
             // STEP 6: Initialize wakeup mechanism for cross-thread signaling
             InitializeWakeUp();
+
+            // STEP 7: hear the host's look change (dark, accent, contrast)
+            InstallHostAppearanceObservers();
 
             initialized = true;
 
@@ -230,6 +235,7 @@ static UltraCanvasAppDelegate* g_appDelegate = nil;
     void UltraCanvasMacOSApplication::ShutdownNative() {
         debugOutput << "UltraCanvas: Shutting down macOS Application..." << std::endl;
 
+        RemoveHostAppearanceObservers();
         MacOSAccessibility::Shutdown();
 
         ShutdownWakeUp();

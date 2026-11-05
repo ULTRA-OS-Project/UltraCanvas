@@ -1647,6 +1647,21 @@ if(TARGET UltraCanvas)
     message(STATUS "    Test registered: UltraCanvasThemeTest")
 endif()
 
+# ===== HOST APPEARANCE TEST =====
+# UltraCanvasHostAppearance.h without a display: the default, the raw-value
+# conversions of the Windows backend, the ULTRACANVAS_HOST_APPEARANCE
+# override, the report line, equality.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building HostAppearanceTest...")
+    add_executable(HostAppearanceTest ${CMAKE_CURRENT_SOURCE_DIR}/HostAppearanceTest.cpp)
+    target_include_directories(HostAppearanceTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_link_libraries(HostAppearanceTest PRIVATE ${ULTRACANVAS_LIBRARY})
+    target_compile_features(HostAppearanceTest PRIVATE cxx_std_20)
+    set_target_properties(HostAppearanceTest PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    add_test(NAME HostAppearanceTest COMMAND HostAppearanceTest WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: HostAppearanceTest")
+endif()
+
 # ===== ULTRALOCALISATION TEST =====
 # The localisation module over a temporary catalogue tree: the three
 # layers, the override folder, the fallback walk, plurals, Language.conf,
