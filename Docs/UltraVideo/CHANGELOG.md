@@ -1,3 +1,9 @@
+#### 2026-11-05 *0.7.7*
+- **UltraVideo takes the Video, Audio and Image base sets.** Its catalogue
+  names them under `@bases`, as the localisation proposal's Appendix B
+  assigns them, so a text of video, audio or picture editing it shows comes
+  in the shared vocabulary of every language.
+
 #### 2026-11-05 *0.7.6*
 - **Titles in every language.** UltraVideo's own catalogue
   (`media/locale/<lang>/UltraVideo.json`) now exists in all thirty

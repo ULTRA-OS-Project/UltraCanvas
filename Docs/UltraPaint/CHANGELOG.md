@@ -1,3 +1,9 @@
+#### 2026-11-05 *0.2.33*
+- **UltraPaint takes the Image base set.** Its catalogue names `Image` under
+  `@bases`, as the localisation proposal's Appendix B assigns it, so a text
+  of image editing it shows comes in the shared Image vocabulary of every
+  language - the same words as ArtCreator and UltraViewer.
+
 #### 2026-11-05 *0.2.32*
 - **The Text tool in every language.** UltraPaint's own catalogue
   (`media/locale/<lang>/UltraPaint.json`) now exists in all thirty

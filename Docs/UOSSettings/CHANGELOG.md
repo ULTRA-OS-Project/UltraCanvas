@@ -1,3 +1,10 @@
+#### 2026-11-05 *0.16.0*
+- **UOS-Settings takes the Computer base set.** Its catalogue names
+  `Computer` under `@bases`, as the localisation proposal's Appendix B
+  assigns it: "Notifications" and "System" now come from that set, worded
+  as UltraFiler and the other system tools word them, instead of from a
+  copy in UOS-Settings' own catalogue.
+
 #### 2026-11-05 *0.15.0*
 - **Settings in every language.** UOS-Settings' own catalogue
   (`media/locale/<lang>/UOS-Settings.json`) now exists in all thirty
