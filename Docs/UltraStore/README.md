@@ -515,6 +515,10 @@ server's document root until then.
 
 ## The window
 
+How the window and the web shop look is drawn in
+[`design/README.md`](design/README.md): the Discover page, an app's page,
+the category browser and the phone views, with every colour, size and font.
+
 `ultrastore` started plainly (or with `--catalog`, `--root`, `--channel`)
 opens the window; `Apps/UltraStore/ui/`. A sidebar
 (`UltraCanvasSidebarNavigation`) selects the page, the download queue sits

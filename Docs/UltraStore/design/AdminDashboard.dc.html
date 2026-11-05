@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>UltraStoreAdmin - Overview</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Manrope:wght@600;700;800&amp;display=swap">
+<style>
+body{margin:0;background:#f8fafc}
+a{color:#1d4ed8}a:hover{color:#1e40af}
+</style>
+</helmet>
+<div style="min-height: 100%; background: #f8fafc; color: #0f172a; font-family: Inter, system-ui, sans-serif; font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased; display: flex; flex-direction: column">
+
+<header style="background: #ffffff; border-bottom: 1px solid #e2e8f0; padding: 10px 24px; display: flex; align-items: center; gap: 20px; flex-wrap: wrap; min-height: 60px; box-sizing: border-box">
+<a href="AdminDashboard.dc.html" aria-label="UltraStoreAdmin overview" style="display: flex; align-items: center; gap: 10px; text-decoration: none; color: #0f172a">
+<img src="/_blob/9b931f0bda5f6ee1d30304d2295e0e4a" alt="" style="width: 30px; height: 30px; border-radius: 8px">
+<span style="font-family: Manrope, Inter, sans-serif; font-weight: 800; font-size: 17px; letter-spacing: -0.02em">UltraStoreAdmin</span>
+</a>
+<span style="display: inline-flex; align-items: center; gap: 8px; color: #475569; font-size: 13px"><span style="font-weight: 600; color: #0f172a">ULTRA OS Store</span>· store.ultraos.eu/v1</span>
+<span style="flex: 1 1 auto"></span>
+<span style="display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px; border-radius: 999px; background: #dcfce7; color: #166534; font-size: 12px; font-weight: 700"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"></path></svg>Sequence 42 · published 24 Oct 2026</span>
+<a href="AdminPublish.dc.html" style="display: inline-flex; align-items: center; height: 38px; padding: 0 16px; border-radius: 999px; background: {{accent}}; color: #ffffff; text-decoration: none; font-weight: 700">Publish…</a>
+<button type="button" aria-label="Account: Alex" style="width: 36px; height: 36px; border-radius: 999px; border: 0; background: #0f172a; color: #ffffff; font: inherit; font-weight: 700; font-size: 13px; cursor: pointer">AK</button>
+</header>
+
+<div style="flex: 1 1 auto; display: flex; flex-wrap: wrap; align-items: flex-start">
+
+<nav aria-label="Admin" style="flex: 1 1 220px; max-width: 260px; min-width: 0; padding: 20px 12px; box-sizing: border-box; display: flex; flex-direction: column; gap: 20px">
+<div style="display: flex; flex-direction: column; gap: 2px">
+<span style="padding: 0 12px 6px; font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em">Store</span>
+<a href="AdminDashboard.dc.html" aria-current="page" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 10px; text-decoration: none; background: #dbeafe; color: #1d4ed8; font-weight: 700"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="8" height="8" rx="2"></rect><rect x="13" y="3" width="8" height="5" rx="2"></rect><rect x="13" y="11" width="8" height="10" rx="2"></rect><rect x="3" y="14" width="8" height="7" rx="2"></rect></svg>Overview</a>
+<a href="AdminApps.dc.html" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #334155; font-weight: 500"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="5"></rect><path d="M8 12h8"></path><path d="M12 8v8"></path></svg>Apps and components</a>
+<a href="AdminSales.dc.html" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #334155; font-weight: 500"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h2l2.5 11h9l2-7H7"></path><circle cx="10" cy="19" r="1.5"></circle><circle cx="17" cy="19" r="1.5"></circle></svg>Sales</a>
+<a href="AdminFinance.dc.html" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #334155; font-weight: 500"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19h16"></path><path d="M6 16V9"></path><path d="M11 16V5"></path><path d="M16 16v-6"></path></svg>Finance</a>
+<a href="#affiliates" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #334155; font-weight: 500"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"></circle><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"></path><path d="M16 4.5a3.5 3.5 0 0 1 0 7"></path><path d="M21 20c0-2.6-1.6-4.8-4-5.6"></path></svg>Affiliates and codes</a>
+<a href="AdminPublish.dc.html" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #334155; font-weight: 500"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20V8"></path><path d="M6 14l6-6 6 6"></path><path d="M4 4h16"></path></svg>Publish</a>
+<a href="#keys" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #334155; font-weight: 500"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="14" r="4"></circle><path d="M11 11l9-9"></path><path d="M16 6l3 3"></path></svg>Keys</a>
+<a href="#settings" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #334155; font-weight: 500"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"></path></svg>Settings</a>
+</div>
+<div style="display: flex; flex-direction: column; gap: 2px">
+<span style="padding: 0 12px 6px; font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em">Apps</span>
+<a href="AdminAppEditor.dc.html" style="display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #334155"><img src="/_blob/023cd138f38912c764ae7c221c087db6" alt="" style="width: 22px; height: 22px; border-radius: 6px">UltraVideo</a>
+<a href="#app-ultrapaint" style="display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #334155"><img src="/_blob/451050dafeeb42579ba048b1a08f78fa" alt="" style="width: 22px; height: 22px; border-radius: 6px">UltraPaint</a>
+<a href="#app-artcreator" style="display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #334155"><img src="/_blob/0d8f1d55bd369843755da72b7a7fbd33" alt="" style="width: 22px; height: 22px; border-radius: 6px">ArtCreator</a>
+<a href="#app-ultrafiler" style="display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #334155"><img src="/_blob/0339854b95aaa1785eff13f10f2fce1c" alt="" style="width: 22px; height: 22px; border-radius: 6px">UltraFiler</a>
+<a href="#app-ultramail" style="display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #334155"><img src="/_blob/bafbc6e21d0bfb6f2d3d60d6d272ad66" alt="" style="width: 22px; height: 22px; border-radius: 6px">UltraMail</a>
+<a href="#app-hello" style="display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #334155"><span style="width: 22px; height: 22px; border-radius: 6px; background: #e2e8f0; flex: 0 0 auto"></span><span style="flex: 1 1 auto; min-width: 0">Hello</span><span style="font-size: 11px; font-weight: 600; color: #b45309">no release</span></a>
+<a href="AdminApps.dc.html" style="display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #1d4ed8; font-weight: 600; font-size: 13px">All 24 apps</a>
+</div>
+<div style="display: flex; flex-direction: column; gap: 2px">
+<span style="padding: 0 12px 6px; font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em">Runtimes and libraries</span>
+<a href="#runtime" style="display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #334155"><span style="width: 22px; height: 22px; border-radius: 6px; background: #0f172a; flex: 0 0 auto"></span>UltraCanvas runtime</a>
+<a href="#videofx" style="display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #334155"><span style="width: 22px; height: 22px; border-radius: 6px; background: #7c3aed; flex: 0 0 auto"></span>VideoFX</a>
+<a href="#pdfplugin" style="display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #334155"><span style="width: 22px; height: 22px; border-radius: 6px; background: #0f766e; flex: 0 0 auto"></span>PDF plug-in</a>
+</div>
+</nav>
+
+<main style="flex: 999 1 560px; min-width: 0; padding: 24px; box-sizing: border-box; display: flex; flex-direction: column; gap: 20px">
+
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap">
+<div style="display: flex; flex-direction: column">
+<h1 style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 28px; font-weight: 800; letter-spacing: -0.02em">Overview</h1>
+<span style="color: #64748b">Store folder ~/.local/share/UltraStoreAdmin · admin.sqlite · 24 apps, 3 components, 2 publishers</span>
+</div>
+<div style="display: flex; gap: 10px; flex-wrap: wrap">
+<label style="display: flex; align-items: center; gap: 8px; color: #475569">Period
+<select style="height: 38px; padding: 0 12px; border-radius: 10px; border: 1px solid #cbd5e1; background: #ffffff; font: inherit; color: #0f172a">
+<option>Last 30 days</option>
+<option>Last 90 days</option>
+<option>This year</option>
+</select>
+</label>
+<a href="AdminApps.dc.html" style="display: inline-flex; align-items: center; gap: 8px; height: 38px; padding: 0 16px; border-radius: 999px; border: 1px solid #cbd5e1; background: #ffffff; color: #0f172a; text-decoration: none; font-weight: 600"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg>Add an app or a component</a>
+</div>
+</div>
+
+<div style="display: flex; flex-wrap: wrap; gap: 16px">
+<div style="flex: 1 1 200px; min-width: 0; display: flex; flex-direction: column; gap: 6px; padding: 18px 20px; box-sizing: border-box; border-radius: 16px; background: #ffffff; border: 1px solid #e2e8f0">
+<span style="font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.06em">Revenue, 30 days</span>
+<span style="font-family: Manrope, Inter, sans-serif; font-size: 30px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.1">4,218.60 EUR</span>
+<span style="font-size: 13px; color: #475569"><span style="color: #15803d; font-weight: 700">+12%</span> against the 30 days before</span>
+</div>
+<div style="flex: 1 1 200px; min-width: 0; display: flex; flex-direction: column; gap: 6px; padding: 18px 20px; box-sizing: border-box; border-radius: 16px; background: #ffffff; border: 1px solid #e2e8f0">
+<span style="font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.06em">Paid orders</span>
+<span style="font-family: Manrope, Inter, sans-serif; font-size: 30px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.1">141</span>
+<span style="font-size: 13px; color: #475569">38 with a partner code</span>
+</div>
+<div style="flex: 1 1 200px; min-width: 0; display: flex; flex-direction: column; gap: 6px; padding: 18px 20px; box-sizing: border-box; border-radius: 16px; background: #ffffff; border: 1px solid #e2e8f0">
+<span style="font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.06em">Trials started</span>
+<span style="font-family: Manrope, Inter, sans-serif; font-size: 30px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.1">318</span>
+<span style="font-size: 13px; color: #475569">44% bought within 30 days</span>
+</div>
+<div style="flex: 1 1 200px; min-width: 0; display: flex; flex-direction: column; gap: 6px; padding: 18px 20px; box-sizing: border-box; border-radius: 16px; background: #ffffff; border: 1px solid #e2e8f0">
+<span style="font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.06em">Owed to partners</span>
+<span style="font-family: Manrope, Inter, sans-serif; font-size: 30px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.1">612.40 EUR</span>
+<a href="AdminFinance.dc.html" style="font-size: 13px; font-weight: 600; text-decoration: none">Affiliate report</a>
+</div>
+</div>
+
+<section aria-labelledby="rev-title" style="display: flex; flex-direction: column; gap: 14px; padding: 20px 22px; box-sizing: border-box; border-radius: 16px; background: #ffffff; border: 1px solid #e2e8f0">
+<div style="display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap">
+<h2 id="rev-title" style="margin: 0; font-size: 16px; font-weight: 700">Revenue by week, EUR</h2>
+<span style="font-size: 13px; color: #475569; min-height: 20px">{{hoverText}}</span>
+</div>
+<div style="display: flex; gap: 12px; align-items: stretch">
+<div aria-hidden="true" style="flex: 0 0 48px; height: 200px; display: flex; flex-direction: column; justify-content: space-between; font-size: 11px; color: #64748b; text-align: right">
+<span>600</span><span>400</span><span>200</span><span>0</span>
+</div>
+<div style="flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 8px">
+<div role="img" aria-label="Weekly revenue for the last twelve weeks, between 285 and 489 euros, rising towards the latest weeks" style="position: relative; height: 200px; border-bottom: 1px solid #cbd5e1; display: flex; align-items: flex-end; gap: 6px; padding: 0 6px; box-sizing: border-box">
+<span aria-hidden="true" style="position: absolute; left: 0; right: 0; top: 0; border-top: 1px solid #f1f5f9"></span>
+<span aria-hidden="true" style="position: absolute; left: 0; right: 0; top: 33.3%; border-top: 1px solid #f1f5f9"></span>
+<span aria-hidden="true" style="position: absolute; left: 0; right: 0; top: 66.6%; border-top: 1px solid #f1f5f9"></span>
+<sc-for list="{{bars}}" as="bar" hint-placeholder-count="12">
+<button type="button" onMouseEnter="{{bar.enter}}" onMouseLeave="{{bar.leave}}" onFocus="{{bar.enter}}" onBlur="{{bar.leave}}" aria-label="{{bar.label}}" style="flex: 1 1 0; min-width: 0; height: 100%; border: 0; background: transparent; padding: 0; display: flex; align-items: flex-end; justify-content: center; cursor: pointer; position: relative">
+<span aria-hidden="true" style="{{bar.style}}"></span>
+</button>
+</sc-for>
+</div>
+<div aria-hidden="true" style="display: flex; gap: 6px; padding: 0 6px; font-size: 11px; color: #64748b">
+<sc-for list="{{bars}}" as="bar" hint-placeholder-count="12">
+<span style="flex: 1 1 0; min-width: 0; text-align: center; white-space: nowrap; overflow: hidden">{{bar.week}}</span>
+</sc-for>
+</div>
+</div>
+</div>
+</section>
+
+<div style="display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start">
+
+<section aria-labelledby="top-title" style="flex: 1 1 420px; min-width: 0; display: flex; flex-direction: column; gap: 12px; padding: 20px 22px; box-sizing: border-box; border-radius: 16px; background: #ffffff; border: 1px solid #e2e8f0">
+<div style="display: flex; align-items: baseline; justify-content: space-between; gap: 12px">
+<h2 id="top-title" style="margin: 0; font-size: 16px; font-weight: 700">Top apps, 30 days</h2>
+<a href="AdminFinance.dc.html" style="font-size: 13px; font-weight: 600; text-decoration: none">Revenue by app</a>
+</div>
+<div style="overflow-x: auto">
+<table style="width: 100%; border-collapse: collapse; font-size: 13px; min-width: 420px">
+<thead><tr style="color: #64748b; text-align: left"><th scope="col" style="font-weight: 600; padding: 6px 8px; border-bottom: 1px solid #e2e8f0">App</th><th scope="col" style="font-weight: 600; padding: 6px 8px; border-bottom: 1px solid #e2e8f0; text-align: right">Orders</th><th scope="col" style="font-weight: 600; padding: 6px 8px; border-bottom: 1px solid #e2e8f0; text-align: right">Revenue</th><th scope="col" style="font-weight: 600; padding: 6px 8px; border-bottom: 1px solid #e2e8f0; width: 30%">Share</th></tr></thead>
+<tbody>
+<tr><td style="padding: 8px; border-bottom: 1px solid #f1f5f9"><span style="display: flex; align-items: center; gap: 8px"><img src="/_blob/023cd138f38912c764ae7c221c087db6" alt="" style="width: 24px; height: 24px; border-radius: 6px"><span style="font-weight: 600">UltraVideo</span></span></td><td style="padding: 8px; border-bottom: 1px solid #f1f5f9; text-align: right">68</td><td style="padding: 8px; border-bottom: 1px solid #f1f5f9; text-align: right; font-weight: 600">2,033.20</td><td style="padding: 8px; border-bottom: 1px solid #f1f5f9"><span style="display: block; height: 8px; border-radius: 4px; background: #e2e8f0"><span style="display: block; width: 48%; height: 8px; border-radius: 4px; background: #2563eb"></span></span></td></tr>
+<tr><td style="padding: 8px; border-bottom: 1px solid #f1f5f9"><span style="display: flex; align-items: center; gap: 8px"><img src="/_blob/c5402e04d2949ef467a6e80deabd4144" alt="" style="width: 24px; height: 24px; border-radius: 6px"><span style="font-weight: 600">UltraFIBU</span></span></td><td style="padding: 8px; border-bottom: 1px solid #f1f5f9; text-align: right">31</td><td style="padding: 8px; border-bottom: 1px solid #f1f5f9; text-align: right; font-weight: 600">1,239.00</td><td style="padding: 8px; border-bottom: 1px solid #f1f5f9"><span style="display: block; height: 8px; border-radius: 4px; background: #e2e8f0"><span style="display: block; width: 29%; height: 8px; border-radius: 4px; background: #2563eb"></span></span></td></tr>
+<tr><td style="padding: 8px; border-bottom: 1px solid #f1f5f9"><span style="display: flex; align-items: center; gap: 8px"><img src="/_blob/0d8f1d55bd369843755da72b7a7fbd33" alt="" style="width: 24px; height: 24px; border-radius: 6px"><span style="font-weight: 600">ArtCreator</span></span></td><td style="padding: 8px; border-bottom: 1px solid #f1f5f9; text-align: right">27</td><td style="padding: 8px; border-bottom: 1px solid #f1f5f9; text-align: right; font-weight: 600">672.30</td><td style="padding: 8px; border-bottom: 1px solid #f1f5f9"><span style="display: block; height: 8px; border-radius: 4px; background: #e2e8f0"><span style="display: block; width: 16%; height: 8px; border-radius: 4px; background: #2563eb"></span></span></td></tr>
+<tr><td style="padding: 8px"><span style="display: flex; align-items: center; gap: 8px"><img src="/_blob/9f46fbb5f61e6ff5f3160c323225c3d3" alt="" style="width: 24px; height: 24px; border-radius: 6px"><span style="font-weight: 600">UltraPress</span></span></td><td style="padding: 8px; text-align: right">15</td><td style="padding: 8px; text-align: right; font-weight: 600">274.10</td><td style="padding: 8px"><span style="display: block; height: 8px; border-radius: 4px; background: #e2e8f0"><span style="display: block; width: 7%; height: 8px; border-radius: 4px; background: #2563eb"></span></span></td></tr>
+</tbody>
+</table>
+</div>
+</section>
+
+<section aria-labelledby="recent-title" style="flex: 1 1 360px; min-width: 0; display: flex; flex-direction: column; gap: 12px; padding: 20px 22px; box-sizing: border-box; border-radius: 16px; background: #ffffff; border: 1px solid #e2e8f0">
+<div style="display: flex; align-items: baseline; justify-content: space-between; gap: 12px">
+<h2 id="recent-title" style="margin: 0; font-size: 16px; font-weight: 700">Latest sales</h2>
+<a href="AdminSales.dc.html" style="font-size: 13px; font-weight: 600; text-decoration: none">Ledger</a>
+</div>
+<ul style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; font-size: 13px">
+<li style="display: flex; align-items: center; gap: 12px; padding: 9px 0; border-bottom: 1px solid #f1f5f9"><img src="/_blob/023cd138f38912c764ae7c221c087db6" alt="" style="width: 28px; height: 28px; border-radius: 7px"><span style="flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column"><span style="font-weight: 600">UltraVideo · receipt 2026-0141</span><span style="color: #64748b">Code ANNA-20 · 14:02 today</span></span><span style="font-weight: 700">23.92</span></li>
+<li style="display: flex; align-items: center; gap: 12px; padding: 9px 0; border-bottom: 1px solid #f1f5f9"><img src="/_blob/c5402e04d2949ef467a6e80deabd4144" alt="" style="width: 28px; height: 28px; border-radius: 7px"><span style="flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column"><span style="font-weight: 600">UltraFIBU · receipt 2026-0140</span><span style="color: #64748b">No code · 11:48 today</span></span><span style="font-weight: 700">39.90</span></li>
+<li style="display: flex; align-items: center; gap: 12px; padding: 9px 0; border-bottom: 1px solid #f1f5f9"><img src="/_blob/023cd138f38912c764ae7c221c087db6" alt="" style="width: 28px; height: 28px; border-radius: 7px"><span style="flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column"><span style="font-weight: 600">UltraVideo · receipt 2026-0139</span><span style="color: #64748b">No code · 09:15 today</span></span><span style="font-weight: 700">29.90</span></li>
+<li style="display: flex; align-items: center; gap: 12px; padding: 9px 0; border-bottom: 1px solid #f1f5f9"><img src="/_blob/0d8f1d55bd369843755da72b7a7fbd33" alt="" style="width: 28px; height: 28px; border-radius: 7px"><span style="flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column"><span style="font-weight: 600">ArtCreator · receipt 2026-0138</span><span style="color: #64748b">Code SUPER-10 · yesterday</span></span><span style="font-weight: 700">22.41</span></li>
+<li style="display: flex; align-items: center; gap: 12px; padding: 9px 0"><img src="/_blob/9f46fbb5f61e6ff5f3160c323225c3d3" alt="" style="width: 28px; height: 28px; border-radius: 7px"><span style="flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column"><span style="font-weight: 600">UltraPress · receipt 2026-0137</span><span style="color: #64748b">No code · yesterday</span></span><span style="font-weight: 700">19.90</span></li>
+</ul>
+</section>
+
+</div>
+
+<div style="display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start">
+
+<section aria-labelledby="pub-title" style="flex: 1 1 300px; min-width: 0; display: flex; flex-direction: column; gap: 12px; padding: 20px 22px; box-sizing: border-box; border-radius: 16px; background: #ffffff; border: 1px solid #e2e8f0">
+<h2 id="pub-title" style="margin: 0; font-size: 16px; font-weight: 700">Last publish</h2>
+<dl style="margin: 0; display: flex; flex-direction: column; gap: 6px; font-size: 13px">
+<div style="display: flex; justify-content: space-between; gap: 12px"><dt style="color: #64748b">Sequence</dt><dd style="margin: 0; font-weight: 600">42</dd></div>
+<div style="display: flex; justify-content: space-between; gap: 12px"><dt style="color: #64748b">Published</dt><dd style="margin: 0; font-weight: 600">24 Oct 2026, 12:00</dd></div>
+<div style="display: flex; justify-content: space-between; gap: 12px"><dt style="color: #64748b">Signed with</dt><dd style="margin: 0; font-weight: 600">production (key 1)</dd></div>
+<div style="display: flex; justify-content: space-between; gap: 12px"><dt style="color: #64748b">Uploaded to</dt><dd style="margin: 0; font-weight: 600">sftp://deploy@store.ultraos.eu</dd></div>
+</dl>
+<div style="display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 10px; background: #fef3c7; color: #92400e; font-size: 13px; font-weight: 600"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l10 18H2z"></path><path d="M12 10v4"></path><path d="M12 17.5h.01"></path></svg>4 changes since the last publish, 2 warnings</div>
+<a href="AdminPublish.dc.html" style="align-self: flex-start; display: inline-flex; align-items: center; height: 38px; padding: 0 16px; border-radius: 999px; background: #dbeafe; color: #1d4ed8; text-decoration: none; font-weight: 700">Check and publish</a>
+</section>
+
+<section aria-labelledby="tr-title" style="flex: 1 1 300px; min-width: 0; display: flex; flex-direction: column; gap: 12px; padding: 20px 22px; box-sizing: border-box; border-radius: 16px; background: #ffffff; border: 1px solid #e2e8f0">
+<h2 id="tr-title" style="margin: 0; font-size: 16px; font-weight: 700">Translations</h2>
+<p style="margin: 0; font-size: 13px; color: #475569">3 apps lack texts in some of the 42 official languages. UltraAI fills the missing ones and marks them as machine translated.</p>
+<ul style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; font-size: 13px">
+<li style="display: flex; justify-content: space-between; gap: 12px"><span style="font-weight: 600">Hello</span><span style="color: #64748b">41 missing</span></li>
+<li style="display: flex; justify-content: space-between; gap: 12px"><span style="font-weight: 600">UltraPress</span><span style="color: #64748b">6 missing</span></li>
+<li style="display: flex; justify-content: space-between; gap: 12px"><span style="font-weight: 600">ArtCreator</span><span style="color: #64748b">2 missing</span></li>
+</ul>
+<button type="button" style="align-self: flex-start; height: 38px; padding: 0 16px; border-radius: 999px; border: 0; background: #dbeafe; color: #1d4ed8; font: inherit; font-weight: 700; cursor: pointer">Translate the missing languages</button>
+</section>
+
+<section aria-labelledby="keys-title" style="flex: 1 1 300px; min-width: 0; display: flex; flex-direction: column; gap: 12px; padding: 20px 22px; box-sizing: border-box; border-radius: 16px; background: #ffffff; border: 1px solid #e2e8f0">
+<h2 id="keys-title" style="margin: 0; font-size: 16px; font-weight: 700">Signing keys</h2>
+<ul style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 10px; font-size: 13px">
+<li style="display: flex; align-items: center; gap: 10px"><span style="width: 10px; height: 10px; border-radius: 999px; background: #15803d; flex: 0 0 auto"></span><span style="flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column"><span style="font-weight: 600">production</span><span style="color: #64748b; font-family: ui-monospace, monospace; font-size: 12px">0415eff8…fba970e</span></span><span style="color: #166534; font-weight: 600">active</span></li>
+<li style="display: flex; align-items: center; gap: 10px"><span style="width: 10px; height: 10px; border-radius: 999px; background: #15803d; flex: 0 0 auto"></span><span style="flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column"><span style="font-weight: 600">build-server</span><span style="color: #64748b; font-family: ui-monospace, monospace; font-size: 12px">9c2b41d0…17ae3c</span></span><span style="color: #166534; font-weight: 600">active</span></li>
+<li style="display: flex; align-items: center; gap: 10px"><span style="width: 10px; height: 10px; border-radius: 999px; background: #94a3b8; flex: 0 0 auto"></span><span style="flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column"><span style="font-weight: 600">production-2025</span><span style="color: #64748b; font-family: ui-monospace, monospace; font-size: 12px">7bd0c3e1…02f9a4</span></span><span style="color: #64748b; font-weight: 600">retired</span></li>
+</ul>
+<a href="#keys" style="font-size: 13px; font-weight: 600; text-decoration: none; display: inline-flex; align-items: center; height: 32px">Manage keys</a>
+</section>
+
+</div>
+
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#2563eb","options":["#2563eb","#0f172a","#7c3aed","#0f766e"]},"$preview":{"width":1440,"height":1560}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { hover: -1 };
+  }
+  renderVals() {
+    const accent = this.props.accent ?? '#2563eb';
+    const WEEKS = [
+      { week: '18 Aug', value: 312, orders: 11 }, { week: '25 Aug', value: 285, orders: 10 },
+      { week: '1 Sep', value: 340, orders: 12 }, { week: '8 Sep', value: 398, orders: 14 },
+      { week: '15 Sep', value: 361, orders: 12 }, { week: '22 Sep', value: 412, orders: 14 },
+      { week: '29 Sep', value: 377, orders: 13 }, { week: '6 Oct', value: 455, orders: 16 },
+      { week: '13 Oct', value: 431, orders: 15 }, { week: '20 Oct', value: 489, orders: 17 },
+      { week: '27 Oct', value: 402, orders: 14 }, { week: '3 Nov', value: 356, orders: 12 }
+    ];
+    const MAX = 600;
+    const hover = this.state.hover;
+    const bars = WEEKS.map((w, i) => {
+      const pct = Math.round((w.value / MAX) * 100);
+      const active = hover === i;
+      return {
+        ...w,
+        label: 'Week of ' + w.week + ': ' + w.value.toFixed(2) + ' EUR, ' + w.orders + ' orders',
+        style: 'display: block; width: 100%; max-width: 28px; height: ' + pct + '%; border-radius: 4px 4px 0 0; background: ' + (active ? '#1e40af' : accent),
+        enter: () => this.setState({ hover: i }),
+        leave: () => this.setState({ hover: -1 })
+      };
+    });
+    const h = hover >= 0 ? WEEKS[hover] : null;
+    return {
+      accent,
+      bars,
+      hoverText: h ? ('Week of ' + h.week + ': ' + h.value.toFixed(2) + ' EUR · ' + h.orders + ' orders') : 'Hover a bar for the week. 12 weeks, paid orders only.'
+    };
+  }
+}
+</script>
+</body>
+</html>

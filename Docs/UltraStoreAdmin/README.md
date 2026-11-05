@@ -52,6 +52,11 @@ does and what a command does never differ.
 
 ## The window
 
+How the window looks is drawn in the store's
+[`design/README.md`](../UltraStore/design/README.md): Overview, the apps
+table with *Add an app or a component*, an app's form, Sales, Finance and
+Publish.
+
 `ultrastoreadmin` alone, or `ultrastoreadmin --store <dir>` alone, opens
 the window on the store (the default store is
 `<data folder>/UltraStoreAdmin`, created on the first start). A sidebar

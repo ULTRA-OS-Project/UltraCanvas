@@ -1,0 +1,30 @@
+{
+  "v": 3,
+  "createdOnFiles": {"v": 1, "at": "2026-11-05T10:20:00Z"},
+  "title": "UltraStore Shop Design",
+  "launch": {"view": "canvas"},
+  "pages": [],
+  "boards": {
+    "Main.dc.html": {"x": 0, "y": 0, "w": 1440, "h": 2480, "title": "Discover (home)", "expand": "fill", "is_interactive": true},
+    "AppDetail.dc.html": {"x": 1520, "y": 0, "w": 1440, "h": 2280, "title": "App page: UltraVideo", "expand": "fill", "is_interactive": true},
+    "Categories.dc.html": {"x": 3040, "y": 0, "w": 1440, "h": 1720, "title": "Browse by category", "expand": "fill", "is_interactive": true},
+    "PhoneHome.dc.html": {"x": 0, "y": 2900, "w": 390, "h": 844, "title": "Phone: Discover", "radius": 44},
+    "PhoneDetail.dc.html": {"x": 470, "y": 2900, "w": 390, "h": 844, "title": "Phone: App page", "radius": 44},
+    "AdminDashboard.dc.html": {"x": 0, "y": 4100, "w": 1440, "h": 1560, "title": "Admin: Overview", "expand": "fill", "is_interactive": true},
+    "AdminApps.dc.html": {"x": 1520, "y": 4100, "w": 1440, "h": 1360, "title": "Admin: Apps + Add an app", "expand": "fill", "is_interactive": true},
+    "AdminAppEditor.dc.html": {"x": 3040, "y": 4100, "w": 1440, "h": 2380, "title": "Admin: App form (UltraVideo)", "expand": "fill", "is_interactive": true},
+    "AdminSales.dc.html": {"x": 0, "y": 6900, "w": 1440, "h": 1460, "title": "Admin: Sales ledger", "expand": "fill", "is_interactive": true},
+    "AdminFinance.dc.html": {"x": 1520, "y": 6900, "w": 1440, "h": 1760, "title": "Admin: Financial reports", "expand": "fill", "is_interactive": true},
+    "AdminPublish.dc.html": {"x": 3040, "y": 6900, "w": 1440, "h": 1480, "title": "Admin: Publish + upload", "expand": "fill", "is_interactive": true}
+  },
+  "order": ["Main.dc.html", "AppDetail.dc.html", "Categories.dc.html", "PhoneHome.dc.html", "PhoneDetail.dc.html", "AdminDashboard.dc.html", "AdminApps.dc.html", "AdminAppEditor.dc.html", "AdminSales.dc.html", "AdminFinance.dc.html", "AdminPublish.dc.html"],
+  "notes": {
+    "desk": {"x": 0, "y": -300, "text": "UltraStore - web shop, desktop", "kind": "title1", "maxW": 4480},
+    "phone": {"x": 0, "y": 2600, "text": "UltraStore - phone", "kind": "title1", "maxW": 860},
+    "look": {"x": 960, "y": 2900, "w": 420, "text": "Look: white ground, ink #0F172A, UltraStore blue #2563EB from the app icon, Manrope display over Inter body, 20 px card radius, pill buttons. Real ULTRA OS app icons and versions; prices, sizes and dates beyond the UltraVideo example in Docs/UltraStore/README.md are sample data marked [PRICE] where unknown. No star ratings: the catalog has none yet.", "fill": "blue"},
+    "admin": {"x": 0, "y": 3800, "text": "UltraStoreAdmin - merchant and admin backend", "kind": "title1", "maxW": 4480},
+    "admin2": {"x": 0, "y": 6600, "text": "UltraStoreAdmin - sales, finance, publish", "kind": "title1", "maxW": 4480},
+    "adminnote": {"x": 4560, "y": 4100, "w": 420, "text": "Admin pages follow Docs/UltraStoreAdmin/README.md: the sidebar lists the store pages then every app and component; the app form carries every catalog setting; Publish checks, signs and uploads; Sales is the ledger sale sync fills; Finance is the affiliate report plus revenue by app. Every figure (revenue, orders, payouts) is sample data for layout only.", "fill": "orange"}
+  },
+  "designSystems": []
+}
