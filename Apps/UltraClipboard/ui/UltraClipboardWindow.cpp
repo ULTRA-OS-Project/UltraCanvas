@@ -1093,7 +1093,7 @@ void UltraClipboardWindow::FinishExtractText() {
     if ((recorded == ClipboardRecordResult::Recorded || recorded == ClipboardRecordResult::MovedToTop) && newId != 0) {
         generation_ = history_->GetGeneration();
         CopyEntry(newId);   // on the clipboard, at the top, chosen
-    } else if (auto* clipboard = GetClipboard(); clipboard && clipboard->SetClipboardText(result.text)) {
+    } else if (auto* clipboard = GetClipboard(); clipboard && clipboard->SetText(result.text)) {
         // Not kept (recording paused, too large): on the clipboard all the same.
         if (recorder_) recorder_->Tick();
     } else {
