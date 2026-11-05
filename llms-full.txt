@@ -104072,6 +104072,25 @@ Listed so the next session does not rediscover them:
   `PaintFilterCatalogue()` without recompiling the app.
 
 ==============================================================================
+FILE: Docs/UltraPaint/changelog.d/text-tool-in-every-language.md
+==============================================================================
+
+- **The Text tool in every language.** UltraPaint's own catalogue
+  (`media/locale/<lang>/UltraPaint.json`) now exists in all thirty
+  languages: the Text tool's status-line hint and its undo steps showed in
+  English whatever the language. They read the same as ArtCreator's.
+
+==============================================================================
+FILE: Docs/ArtCreator/changelog.d/text-tool-in-every-language.md
+==============================================================================
+
+- **The Text tool in every language.** ArtCreator's own catalogue
+  (`media/locale/<lang>/ArtCreator.json`) now exists in all thirty
+  languages: the Text tool's status-line hints and its undo steps ("Undo
+  Text Bold", "Undo Letter Spacing" ...) showed in English whatever the
+  language.
+
+==============================================================================
 FILE: Docs/DeviceExplorer/README.md
 ==============================================================================
 
@@ -107703,6 +107722,16 @@ headless, the player part skips itself without GStreamer plugins).
 ## Not yet
 
 The proposal's roadmap (§11) has the order.
+
+==============================================================================
+FILE: Docs/UltraVideo/changelog.d/titles-in-every-language.md
+==============================================================================
+
+- **Titles in every language.** UltraVideo's own catalogue
+  (`media/locale/<lang>/UltraVideo.json`) now exists in all thirty
+  languages: typing a title on the frame, its status messages and its undo
+  steps ("Undo Title Font", "Undo Colour title" ...) showed in English
+  whatever the language.
 
 ==============================================================================
 FILE: Docs/UltraPress/README.md
