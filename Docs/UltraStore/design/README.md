@@ -22,6 +22,12 @@ over these.
 | `AdminSales.dc.html` | the sales ledger with its filters, totals and *Record a sale by hand* | page |
 | `AdminFinance.dc.html` | the monthly statement, net by month, revenue by app, the affiliate report, VAT by country, the archive | page |
 | `AdminPublish.dc.html` | Publish: the changes since the last sequence, the check's warnings, sign and publish, upload, history | page |
+| `SuperDashboard.dc.html` | the operator's (super admin's) dashboard: merchants, review queue, reports, compliance, operator actions | page |
+| `SuperMerchants.dc.html` | the merchants: verification requests, the table with terms, warnings, reports, payouts and status | page |
+| `SuperMerchantDetail.dc.html` | one merchant's file: apps, history, compliance, money, open reports, with the Suspend dialog open | page |
+| `SuperReview.dc.html` | app review and release: the queue, the automatic checks, the reviewer's checklist, the store card, the decision | page |
+| `SuperReports.dc.html` | reports from users and merchants about apps and merchants, one opened with findings and actions | page |
+| `SuperTerms.dc.html` | the merchant terms by version and who accepted, the enforcement policy, warnings by clause, notices sent, send a notice | page |
 
 Each `.dc.html` is one self-contained HTML page. Every colour, size,
 radius and font is inline on the element, so read the file next to the
@@ -104,3 +110,11 @@ for the layout. The store shows no star ratings because the catalog has no
 rating field. VAT by country and the statements archive on the Finance
 page are proposals beyond the admin backend's README; the rest of the admin
 pages follow its *The window* table.
+
+The `Super*` pages are a **proposal** for a third tier the READMEs do not
+describe yet: the operator of UltraStore running a marketplace in which
+other publishers (merchants) open shops. The operator verifies merchants,
+reviews and releases their submissions with the catalog publish, handles
+reports, warns, suspends and reinstates merchants and apps, and keeps every
+merchant on the current terms. The dark sidebar marks that tier; every
+merchant, user, report and figure on those pages is invented sample data.
