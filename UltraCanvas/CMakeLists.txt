@@ -804,6 +804,9 @@ set(ULTRACANVAS_CORE_SOURCES
         # the platform glob.
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSessionLock.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFileLoader.cpp
+        # ExtractText: the words in a file (documents, PDF, spreadsheets,
+        # pictures through text recognition, recordings through speech to text).
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFileLoaderText.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSupportedFormats.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasMediaCodecRegistry.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasNewDocumentDialog.cpp

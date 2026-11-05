@@ -1655,6 +1655,17 @@ type the build reads), `AddSaveTypes(opts, category)` / `AddImageSaveTypes`
 codec an application brings joins them through `RegisterMediaCodec`, as
 UltraVideo's FFmpeg engine does (`VideoFX_GetFileFormats`).
 
+The words in a file, as plain text: `UltraCanvasFileLoader::ExtractText(path,
+password)` (`TextExtractionResult`: text, `TextExtractionMethod`, error) reads
+documents and decks (`LoadTextDocument`), PDFs (page text; a scan by text
+recognition), spreadsheets (every sheet, tab-separated), text files, pictures
+(text recognition) and recordings (speech to text);
+`GetTextExtractionMethod` / `CanExtractText` / `WhyNoTextExtraction` say how
+and whether. Text recognition and speech to text are hooks:
+`SetImageTextRecognizer` (the OCR plugin's `RegisterOCRTextRecognition()`
+installs Tesseract) and `SetSpeechTranscriber` (an application's engine, e.g.
+UltraAI's `ISpeechToText`). UltraClipboard's *Extract text* uses it.
+
 ### **4. Plug-ins for File Types**
 
 Per-format plug-ins under `UltraCanvas/Plugins/` (Charts, Diagrams, Text,

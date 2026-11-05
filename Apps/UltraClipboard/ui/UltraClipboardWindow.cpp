@@ -1,5 +1,6 @@
 // Apps/UltraClipboard/ui/UltraClipboardWindow.cpp
 // UltraClipboard's main window. See UltraClipboardWindow.h.
+// Version: 0.1.6 - Extract text
 // Version: 0.1.5
 // Author: UltraCanvas Framework / ULTRA OS
 
@@ -35,6 +36,7 @@
 #include <cctype>
 #include <cmath>
 #include <cstdio>
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <random>
@@ -575,6 +577,8 @@ void UltraClipboardWindow::Tick() {
             PlacePreview();
         }
     }
+    if (extracting_.valid() && extracting_.wait_for(std::chrono::seconds(0)) == std::future_status::ready)
+        FinishExtractText();
     if (messageTicks_ > 0 && --messageTicks_ == 0) message_->SetText("");
     if (undoTicks_ > 0 && --undoTicks_ == 0) {
         removedId_ = 0;
@@ -635,6 +639,10 @@ bool UltraClipboardWindow::OnKey(const UCEvent& event) {
     }
     if (letter('p')) {
         if (const int64_t id = chosen()) TogglePin(id);
+        return true;
+    }
+    if (letter('t')) {
+        if (const int64_t id = chosen()) ExtractText(id);
         return true;
     }
     if (letter('z') && removedId_ != 0) {
@@ -958,6 +966,147 @@ void UltraClipboardWindow::SaveFilesTo(const ClipboardHistoryEntry& entry, const
     });
 }
 
+// ===== EXTRACT TEXT =====
+
+// An image always (text recognition says itself when it is missing); files
+// when one of them is of a type that holds words - with or without the engine
+// it needs, so choosing it can say what is missing.
+bool UltraClipboardWindow::CanExtractText(const ClipboardHistoryEntry& entry) const {
+    if (entry.kind == ClipboardEntryKind::Image) return true;
+    if (entry.kind != ClipboardEntryKind::Files) return false;
+    size_t start = 0;
+    while (start < entry.preview.size()) {
+        size_t end = entry.preview.find('\n', start);
+        if (end == std::string::npos) end = entry.preview.size();
+        const std::string path = entry.preview.substr(start, end - start);
+        std::error_code ec;
+        if (!path.empty() && std::filesystem::is_regular_file(PathFromUtf8(path), ec) &&
+            UltraCanvasFileLoader::GetTextExtractionMethod(path) != UltraCanvasFileLoader::TextExtractionMethod::NoText)
+            return true;
+        start = end + 1;
+    }
+    return false;
+}
+
+void UltraClipboardWindow::ExtractText(int64_t id) {
+    if (!history_ || !window_) return;
+    HidePreview();
+    if (extracting_.valid()) {
+        Message("Still reading the text of another entry");
+        return;
+    }
+    const std::optional<ClipboardHistoryEntry> entry = history_->Get(id);
+    if (!entry) return;
+    std::vector<std::string> files;
+    if (entry->kind == ClipboardEntryKind::Image) {
+        // The image as a file, the one the preview shows.
+        const std::string file = PreviewFileFor(*entry);
+        if (file.empty()) {
+            UltraCanvasAlert::Error("The image could not be read from the clipboard history.", "Extract text",
+                                    nullptr, window_.get());
+            return;
+        }
+        files.push_back(file);
+    } else if (entry->kind == ClipboardEntryKind::Files) {
+        ClipboardSnapshot content;
+        if (!history_->ReadFormats(id, content.formats)) {
+            UltraCanvasAlert::Error("This entry can no longer be read from the clipboard history.", "Extract text",
+                                    nullptr, window_.get());
+            return;
+        }
+        bool cut = false;
+        files = CopiedPaths(content, cut);
+    } else {
+        Message("This entry is text already");
+        return;
+    }
+    // The files this build can read; why not, for the first one it cannot.
+    std::vector<std::string> readable;
+    std::string why;
+    for (const std::string& file : files) {
+        std::error_code ec;
+        if (!std::filesystem::is_regular_file(PathFromUtf8(file), ec)) continue;
+        if (UltraCanvasFileLoader::GetTextExtractionMethod(file) == UltraCanvasFileLoader::TextExtractionMethod::NoText)
+            continue;
+        if (!UltraCanvasFileLoader::CanExtractText(file)) {
+            if (why.empty()) why = UltraCanvasFileLoader::WhyNoTextExtraction(file);
+            continue;
+        }
+        readable.push_back(file);
+    }
+    if (readable.empty()) {
+        UltraCanvasAlert::Info(why.empty() ? "There is no text to read in " +
+                                                     std::string(files.size() == 1 ? "this file." : "these files.")
+                                           : why,
+                               "Extract text", nullptr, window_.get());
+        return;
+    }
+    // Several files: each one's text under its name.
+    const bool named = readable.size() > 1;
+    extractingId_ = id;
+    if (undoTicks_ > 0) {   // the removal's Undo goes first, as with any message
+        removedId_ = 0;
+        undoTicks_ = 0;
+        undo_->SetVisible(false);
+    }
+    message_->SetText("Reading the text\xE2\x80\xA6");
+    messageTicks_ = 0;   // until the text is there
+    extracting_ = std::async(std::launch::async, [readable, named]() {
+        ExtractedText out;
+        for (const std::string& file : readable) {
+            const std::string name = PathToUtf8(PathFromUtf8(file).filename());
+            const UltraCanvasFileLoader::TextExtractionResult result = UltraCanvasFileLoader::ExtractText(file);
+            if (!result.Ok()) {
+                if (out.error.empty()) out.error = named ? name + ": " + result.error : result.error;
+                continue;
+            }
+            if (result.text.empty()) continue;
+            if (!out.text.empty()) out.text += "\n\n";
+            if (named) out.text += name + "\n";
+            out.text += result.text;
+            ++out.sources;
+        }
+        return out;
+    });
+}
+
+// The text as a new text entry, put on the clipboard; or why there is none.
+void UltraClipboardWindow::FinishExtractText() {
+    ExtractedText result = extracting_.get();
+    extractingId_ = 0;
+    message_->SetText("");
+    if (!history_ || !window_) return;
+    if (result.text.empty()) {
+        if (result.error.empty()) {
+            Message("No text was found");
+        } else {
+            UltraCanvasAlert::Error("The text could not be read.\n" + result.error, "Extract text", nullptr,
+                                    window_.get());
+        }
+        return;
+    }
+    ClipboardSnapshot snapshot;
+    snapshot.SetText(result.text);
+    snapshot.sourceApplication = "UltraClipboard";
+    int64_t newId = 0;
+    const ClipboardRecordResult recorded = history_->Record(snapshot, &newId);
+    if ((recorded == ClipboardRecordResult::Recorded || recorded == ClipboardRecordResult::MovedToTop) && newId != 0) {
+        generation_ = history_->GetGeneration();
+        CopyEntry(newId);   // on the clipboard, at the top, chosen
+    } else if (auto* clipboard = GetClipboard(); clipboard && clipboard->SetClipboardText(result.text)) {
+        // Not kept (recording paused, too large): on the clipboard all the same.
+        if (recorder_) recorder_->Tick();
+    } else {
+        UltraCanvasAlert::Error("The text could not be put on the clipboard.", "Extract text", nullptr,
+                                window_.get());
+        return;
+    }
+    size_t lines = 1;
+    for (const char c : result.text) lines += c == '\n' ? 1 : 0;
+    Message("Text extracted and copied: " + Plural(lines, "line", "lines") +
+            (result.error.empty() ? std::string() : " (some files could not be read)"));
+}
+
 void UltraClipboardWindow::OfferToDelete(int64_t id, const std::string& saved) {
     std::error_code ec;
     const std::filesystem::path where = PathFromUtf8(saved);
@@ -990,6 +1139,9 @@ void UltraClipboardWindow::ShowRowMenu(int row, const UCEvent& event) {
         menu_->AddItem(MenuItemData::ActionWithShortcut("Edit\xE2\x80\xA6", "F2", [this, id]() { EditEntry(id); }));
     }
     menu_->AddItem(MenuItemData::ActionWithShortcut("Save as\xE2\x80\xA6", "Ctrl+S", [this, id]() { SaveEntryAs(id); }));
+    if (CanExtractText(*entry)) {
+        menu_->AddItem(MenuItemData::ActionWithShortcut("Extract text", "Ctrl+T", [this, id]() { ExtractText(id); }));
+    }
     menu_->AddItem(MenuItemData::ActionWithShortcut(entry->pinned ? "Unpin" : "Pin", "Ctrl+P",
                                                     [this, id]() { TogglePin(id); }));
     menu_->AddItem(MenuItemData::Separator());

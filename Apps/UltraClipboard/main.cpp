@@ -4,6 +4,8 @@
 // --edit ID (an entry's edit dialog at once). When UltraClipboard is already
 // running, the request goes to it and this start quits
 // (UltraCanvasSingleInstance.h).
+// Version: 0.3.0 - text recognition: the OCR plugin reads the words in a picture
+//                  for Extract text (UltraCanvasFileLoader::ExtractText)
 // Version: 0.2.0 - the framework's single-instance helper: two starts at the
 //                  same moment no longer both stay, and a copy that does not
 //                  answer is reported instead of joined by a second one
@@ -15,6 +17,9 @@
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasSingleInstance.h"
 #include "UltraCanvasUtils.h"
+#ifdef ULTRACANVAS_OCR_SUPPORT
+#include "UltraCanvasOCRPlugin.h"   // Extract text reads pictures with it
+#endif
 
 #ifdef __linux__
 #include <X11/Xlib.h>
@@ -106,6 +111,9 @@ int main(int argc, char* argv[]) {
         app.SetDefaultWindowIcon(NormalizePath(GetResourcesDir() + "media/appicon/UltraClipboard.png"));
         if (start == UltraCanvasSingleInstance::Start::AlreadyRunning)
             return UltraCanvasSingleInstance::RunAlreadyRunningAlert(app, "UltraClipboard");
+#ifdef ULTRACANVAS_OCR_SUPPORT
+        RegisterOCRTextRecognition();
+#endif
         window = std::make_unique<UltraClipboard::UltraClipboardWindow>(app);
         if (!window->Create(search, editId)) {
             std::cerr << "Failed to create the main window\n";

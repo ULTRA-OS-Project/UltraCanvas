@@ -1,7 +1,8 @@
 // UltraCanvasOCRPlugin.cpp
 // OCR plugin facade: engine selection, image bridging, and exporters.
+// Version: 0.2.0 - RecognizeRaw, RegisterOCRTextRecognition
 // Version: 0.1.0
-// Last Modified: 2026-05-21
+// Last Modified: 2026-11-05
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasOCRPlugin.h"
@@ -10,8 +11,12 @@
 
 //#include "PixelFX/PixelFX.h"
 
+#include "UltraCanvasFileLoader.h"
+
+#include <algorithm>
 #include <cstring>
 #include <iomanip>
+#include <mutex>
 #include <sstream>
 #include <thread>
 #include <utility>
@@ -140,6 +145,13 @@ OCRResult UltraCanvasOCR::RecognizeImage(const vips::VImage& img) {
         return r;
     }
     return engine->RecognizeRaw(raw.data(), w, h, bpp, stride);
+}
+
+OCRResult UltraCanvasOCR::RecognizeRaw(const uint8_t* pixels, int width, int height,
+                                       int bytesPerPixel, int bytesPerLine) {
+    if (!engine) { OCRResult r; r.error = "No OCR engine available"; return r; }
+    if (!pixels || width <= 0 || height <= 0) { OCRResult r; r.error = "Empty image"; return r; }
+    return engine->RecognizeRaw(pixels, width, height, bytesPerPixel, bytesPerLine);
 }
 
 std::future<OCRResult> UltraCanvasOCR::RecognizeFileAsync(const std::string& path) {
@@ -276,6 +288,71 @@ std::string OCRResultToALTO(const OCRResult& result, const Size2Di& imageSize,
 
     out << "   </PrintSpace>\n  </Page>\n </Layout>\n</alto>\n";
     return out.str();
+}
+
+// ===== FILE LOADER HOOK =====
+namespace {
+
+// The languages the recognizer reads: those asked for, else every language
+// installed (not the helper models: osd, equ), else English.
+std::vector<std::string> RecognitionLanguages(const std::vector<std::string>& asked) {
+    if (!asked.empty()) return asked;
+    std::vector<std::string> languages;
+    for (const std::string& code : UltraCanvasOCR::InstalledLanguages()) {
+        if (code == "osd" || code == "equ") continue;
+        const OCRLanguageInfo* info = UltraCanvasOCR::FindLanguage(code);
+        if (info && info->isScript) continue;
+        languages.push_back(code);
+    }
+    // English first: Tesseract finds the data folder by the first language.
+    const auto english = std::find(languages.begin(), languages.end(), "eng");
+    if (english != languages.end()) std::rotate(languages.begin(), english, english + 1);
+    if (languages.empty()) languages.push_back("eng");
+    return languages;
+}
+
+} // namespace
+
+void RegisterOCRTextRecognition(const std::vector<std::string>& languages) {
+    struct Shared {
+        std::mutex mutex;
+        std::vector<std::string> languages;
+        std::unique_ptr<UltraCanvasOCR> ocr;
+    };
+    auto shared = std::make_shared<Shared>();
+    shared->languages = languages;
+    UltraCanvasFileLoader::SetImageTextRecognizer(
+            [shared](const UltraCanvasFileLoader::TextRecognitionImage& image, std::string& text,
+                     std::string& error) {
+        std::lock_guard<std::mutex> lock(shared->mutex);
+        auto recognize = [&image](UltraCanvasOCR& ocr) {
+            if (image.path.empty())
+                return ocr.RecognizeRaw(image.pixels, image.width, image.height, image.bytesPerPixel,
+                                        image.bytesPerLine);
+            return ocr.RecognizeFile(image.path);
+        };
+        if (!shared->ocr) {
+            OCRConfig config;
+            config.languages = RecognitionLanguages(shared->languages);
+            shared->ocr = std::make_unique<UltraCanvasOCR>(config);
+        }
+        OCRResult result = recognize(*shared->ocr);
+        // Languages installed in different folders cannot be loaded together:
+        // the first one alone, then.
+        if (!result.Ok() && shared->ocr->Config().languages.size() > 1 &&
+            result.error.rfind("Engine not initialised", 0) == 0) {
+            OCRConfig config = shared->ocr->Config();
+            config.languages.resize(1);
+            shared->ocr = std::make_unique<UltraCanvasOCR>(config);
+            result = recognize(*shared->ocr);
+        }
+        if (!result.Ok()) {
+            error = "Text recognition failed: " + result.error;
+            return false;
+        }
+        text = result.plainText;
+        return true;
+    });
 }
 
 } // namespace UltraCanvas

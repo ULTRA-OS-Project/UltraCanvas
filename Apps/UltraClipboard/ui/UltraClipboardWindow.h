@@ -16,9 +16,16 @@
 // number). Where no desktop records - another desktop, Windows, macOS - the
 // window records itself while it is open.
 //
+// Extract text (the row menu, Ctrl+T) reads the words in an image (text
+// recognition) or in copied files - a word processor document, a PDF, a
+// spreadsheet, a text file, a picture, and a recording or a video when a
+// speech-to-text engine is installed (UltraCanvasFileLoader::ExtractText) -
+// on a worker thread. The text arrives as a new text entry, on the clipboard.
+//
 // Keys: typing in the search field filters; Up / Down choose; Enter copies;
-// F2 or Ctrl+E edits; Ctrl+S saves as; Delete deletes; Ctrl+P pins; Ctrl+F finds; Escape
-// closes the preview, then clears the search.
+// F2 or Ctrl+E edits; Ctrl+S saves as; Ctrl+T extracts the text; Delete
+// deletes; Ctrl+P pins; Ctrl+F finds; Escape closes the preview, then clears
+// the search.
 //
 // The preview: resting the pointer on an image's thumbnail (or on the
 // thumbnail of copied files whose first file the media viewer shows - a
@@ -32,6 +39,7 @@
 // stays while the pointer is on that row or on the preview itself, where
 // the wheel zooms; it follows the wheel scrolling the list; Escape or
 // moving elsewhere closes it.
+// Version: 0.1.6 - Extract text
 // Version: 0.1.5
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -43,6 +51,7 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <future>
 #include <map>
 #include <memory>
 #include <string>
@@ -105,6 +114,12 @@ private:
     void SaveTextAs(const UltraCanvas::ClipboardHistoryEntry& entry, const UltraCanvas::ClipboardSnapshot& content);
     void SaveImageAs(const UltraCanvas::ClipboardHistoryEntry& entry, const UltraCanvas::ClipboardSnapshot& content);
     void SaveFilesTo(const UltraCanvas::ClipboardHistoryEntry& entry, const UltraCanvas::ClipboardSnapshot& content);
+    // Extract text (see the top of this file): whether the entry has words to
+    // read (an image, or files of a type that has); starting it; and taking
+    // the result in, from Tick, once the worker is done.
+    bool CanExtractText(const UltraCanvas::ClipboardHistoryEntry& entry) const;
+    void ExtractText(int64_t id);
+    void FinishExtractText();
     // After a save: "Delete the item from the clipboard?"
     void OfferToDelete(int64_t id, const std::string& saved);
     void ShowRowMenu(int row, const UltraCanvas::UCEvent& event);
@@ -156,6 +171,13 @@ private:
     bool copiedShowing_ = false;
     bool updatingRecording_ = false;
     int64_t pendingEdit_ = 0;
+    struct ExtractedText {
+        std::string text;
+        std::string error;
+        size_t sources = 0;              // the files (or the image) the text came from
+    };
+    std::future<ExtractedText> extracting_;   // valid while a worker reads
+    int64_t extractingId_ = 0;
     std::string saveFolder_;             // where the last Save as went: the next one starts there
 
     int64_t previewId_ = 0;              // the entry on show; 0 while hidden
