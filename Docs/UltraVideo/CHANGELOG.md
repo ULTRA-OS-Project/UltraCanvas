@@ -1,3 +1,20 @@
+#### 2026-11-05 *0.7.8*
+- **Pictures along the whole clip on the timeline.** A long clip zoomed in
+  showed pictures only over its first part (at most 200 were asked for,
+  spread over the whole clip, then laid side by side from its start), and
+  they did not sit at their own times. Each picture now fills a slot at its
+  own moment, to the clip's end at any zoom; only the part in view is
+  decoded, a few pictures at a time, and a picture that cannot be read
+  leaves its slot empty instead of ending the strip.
+- **The export's progress window says what is written:** under the file
+  name, the size, the frame rate, the video codec and the sound
+  ("1920 × 1080 · 25 fps · H.264 · AAC stereo").
+- **"Saved …" shows the path as it is.** The message is Markdown, so a
+  Windows path's backslashes vanished (`D:j filesjakobis…`); paths and
+  error texts in the export's messages are now escaped.
+- **The export starts in the folder the last export went to** (kept in
+  UltraVideo's `settings.json`), else the project's folder.
+
 #### 2026-11-05 *0.7.7*
 - **UltraVideo takes the Video, Audio and Image base sets.** Its catalogue
   names them under `@bases`, as the localisation proposal's Appendix B
