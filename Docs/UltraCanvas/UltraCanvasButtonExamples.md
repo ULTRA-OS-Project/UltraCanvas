@@ -216,7 +216,7 @@ std::function<void(bool isPressed)> onToggle;  // Fired on a toggle button's sta
 std::function<void()> onDoubleClick;     // Left double-click, instead of a second press
 std::function<void()> onSecondaryClick;  // Fired when a split button's secondary section is clicked
 std::function<void(int windowX, int windowY)> onContextMenu;  // Right mouse button, window coordinates
-std::function<void()> onHoverEnter;      // Fired when mouse enters button
+std::function<void()> onHoverEnter;      // Fired when mouse enters button (a toggle that is on too; a push button held down not)
 std::function<void()> onHoverLeave;      // Fired when mouse leaves button
 ```
 

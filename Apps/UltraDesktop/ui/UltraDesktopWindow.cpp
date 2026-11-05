@@ -2,6 +2,9 @@
 // The desktop window: bars, wallpaper, and the live data behind the items.
 // See the header for the shape; the comments here say why each piece is
 // wired the way it is.
+// Version: 0.7.0 - the running apps grouped: one button per application with
+//                  the count of its windows, their pictures on a short rest
+//                  of the pointer (ShowPreviews), the group's own menu
 // Version: 0.5.2 - the screenshot button opens UltraSnip: a click snips an area, the
 //                  right click offers a window, the screen and a recording;
 //                  Super+Shift+S from any window; TakeScreenshot stays the fallback
@@ -38,6 +41,8 @@
 #include "UltraDesktopWifiPanel.h"
 #include "UltraDesktopBluetoothPanel.h"
 #include "UltraDesktopDevicePanel.h"
+#include "UltraDesktopWindowPreviews.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include "UltraCanvasAlert.h"
 #include "UltraCanvasAudioDevices.h"
@@ -138,6 +143,27 @@ const Color kClockInk      (255, 255, 255, 255);
 const Color kClockTicks    (255, 255, 255, 140);
 
 const char* const kRunningPrefix = "win:";
+// The pointer rests this long on an application's button before its
+// windows' pictures open, and the pictures stay this long after it left
+// both the button and them (time to cross the gap between the two).
+constexpr unsigned kPreviewOpenMs = 400;
+constexpr unsigned kPreviewCloseMs = 450;
+
+std::string LowerAscii(std::string text) {
+    std::transform(text.begin(), text.end(), text.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return text;
+}
+
+// The windows of one application share a button: Windows' AppUserModelID
+// when the window carries one (every Explorer window, a Store application's
+// frames), else the application's class (WM_CLASS on X11, the program on
+// Windows), else the window alone.
+std::string RunningGroupKey(const DesktopWindowInfo& w) {
+    if (!w.appUserModelId.empty()) return "aumid:" + LowerAscii(w.appUserModelId);
+    if (!w.appClass.empty()) return "class:" + LowerAscii(w.appClass);
+    return "window:" + std::to_string(w.id);
+}
 const char* const kTrayPrefix = "tray:";
 
 // The window's native handle as the id the desktop shell module takes: an
@@ -175,6 +201,8 @@ UltraDesktopWindow::~UltraDesktopWindow() {
     lockShortcut_.Stop();
     snipShortcut_.Stop();
     clipboardShortcut_.Stop();
+    StopPreviewTimers();
+    previews_.reset();
     clipboardPanel_.reset();
     clockPanel_.reset();
     volumePanel_.reset();
@@ -291,7 +319,8 @@ void UltraDesktopWindow::BuildLayout() {
         window_->RemoveChild(root_);
         root_.reset();
     }
-    runningItems_.clear();
+    HidePreviews();
+    runningGroups_.clear();
     runningTitles_.clear();
     // The tray icons live on the info panel, which is built anew.
     trayIcons_.clear();
@@ -1736,15 +1765,14 @@ void UltraDesktopWindow::RefreshDesktops() {
     }
 }
 
-std::string UltraDesktopWindow::RunningItemId(uint64_t windowId) const {
-    return kRunningPrefix + std::to_string(windowId);
-}
-
 void UltraDesktopWindow::RefreshWindows() {
     if (!running_) return;
     const std::vector<DesktopWindowInfo> windows = UltraCanvasDesktopShell::ListWindows();
 
-    std::map<uint64_t, const DesktopWindowInfo*> wanted;
+    // The windows the bar shows, by application, in ListWindows' order.
+    std::vector<std::string> order;
+    std::map<std::string, std::vector<const DesktopWindowInfo*>> wanted;
+    runningTitles_.clear();
     for (const DesktopWindowInfo& w : windows) {
         // Where a paste from the clipboard panel goes when it is opened from
         // the bar: clicking the bar does not change it.
@@ -1752,74 +1780,286 @@ void UltraDesktopWindow::RefreshWindows() {
         if (w.skipTaskbar) continue;
         if (w.appClass == "UltraDesktop") continue;   // ourselves, whatever the manager says
         if (currentDesktop_ >= 0 && w.virtualDesktop >= 0 && w.virtualDesktop != currentDesktop_) continue;
-        wanted[w.id] = &w;
+        const std::string key = RunningGroupKey(w);
+        auto& members = wanted[key];
+        if (members.empty()) order.push_back(key);
+        members.push_back(&w);
+        runningTitles_[w.id] = w.title;
     }
 
-    // Gone windows leave the bar.
-    for (auto it = runningItems_.begin(); it != runningItems_.end();) {
+    // Applications whose last window went leave the bar.
+    for (auto it = runningGroups_.begin(); it != runningGroups_.end();) {
         if (wanted.count(it->first) == 0) {
-            running_->RemoveItem(it->second);
-            runningTitles_.erase(it->first);
-            it = runningItems_.erase(it);
+            running_->RemoveItem(it->second.itemId);
+            if (hoveredGroup_ == it->first) hoveredGroup_.clear();
+            it = runningGroups_.erase(it);
         } else {
             ++it;
         }
     }
 
-    // New windows join it, next to their application's other windows when
-    // it has any, at the end otherwise. Existing ones only update.
-    for (const DesktopWindowInfo& w : windows) {
-        auto found = wanted.find(w.id);
-        if (found == wanted.end()) continue;
-        const std::string itemId = RunningItemId(w.id);
-        auto existing = runningItems_.find(w.id);
+    // New applications join at the end; the others keep their place (the
+    // person may have dragged them) and only update.
+    for (const std::string& key : order) {
+        const std::vector<const DesktopWindowInfo*>& members = wanted[key];
+        const DesktopWindowInfo& first = *members.front();
+        auto existing = runningGroups_.find(key);
+        const bool added = existing == runningGroups_.end();
+        RunningGroup& group = runningGroups_[key];
+        std::vector<RunningWindow> now;
+        bool active = false;
+        for (const DesktopWindowInfo* w : members) {
+            now.push_back({w->id, w->title, w->iconFile, w->active, w->minimized});
+            if (w->active && !w->minimized) active = true;
+        }
+        std::string iconFile;
+        for (const DesktopWindowInfo* w : members) {
+            if (!w->iconFile.empty()) {
+                iconFile = w->iconFile;
+                break;
+            }
+        }
         std::shared_ptr<UltraCanvasButton> button;
-        if (existing == runningItems_.end()) {
-            std::string text;
-            if (w.iconFile.empty()) {
-                const std::string& source = !w.appClass.empty() ? w.appClass : w.title;
-                if (!source.empty()) text = source.substr(0, 1);
-                std::transform(text.begin(), text.end(), text.begin(),
+        if (added) {
+            group.itemId = kRunningPrefix + std::to_string(++nextRunningItem_);
+            group.name = !first.appClass.empty() ? first.appClass : first.title;
+            if (!group.name.empty()) {
+                group.letter = group.name.substr(0, 1);
+                std::transform(group.letter.begin(), group.letter.end(), group.letter.begin(),
                                [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
             }
-            const uint64_t id = w.id;
-            button = AddBarToggle(running_, itemId, w.title, w.iconFile, text, [this, id](bool on) {
-                if (on) UltraCanvasDesktopShell::ActivateWindow(id);
-                else UltraCanvasDesktopShell::MinimizeWindow(id);
-            });
+            button = AddBarToggle(running_, group.itemId, first.title, iconFile,
+                                  iconFile.empty() ? group.letter : std::string(),
+                                  [this, key](bool on) { OnRunningToggled(key, on); });
             // The application's own icon in its own colours, as the pins
             // and the tray show it; only the bar's glyphs and the letter
             // fallback are tinted through the mask.
-            button->SetUseIconAsMask(w.iconFile.empty());
-            button->onContextMenu = [this, id](int x, int y) { ShowWindowMenu(id, x, y); };
-            runningItems_[w.id] = itemId;
-
-            // Group with the same application's windows.
-            int place = -1;
-            const auto order = running_->GetItemOrder();
-            for (size_t i = 0; i < order.size(); ++i) {
-                for (const auto& [otherId, otherItem] : runningItems_) {
-                    if (otherItem != order[i] || otherId == w.id) continue;
-                    const auto other = wanted.find(otherId);
-                    if (other != wanted.end() && other->second->appClass == w.appClass) place = static_cast<int>(i);
-                }
-            }
-            if (place >= 0) {
-                const int from = running_->GetItemIndex(itemId);
-                if (from > place + 1) running_->MoveItem(from, place + 1);
-            }
+            button->SetUseIconAsMask(iconFile.empty());
+            button->onContextMenu = [this, key](int x, int y) {
+                HidePreviews();
+                auto it = runningGroups_.find(key);
+                if (it == runningGroups_.end()) return;
+                if (it->second.windows.size() == 1) ShowWindowMenu(it->second.windows.front().id, x, y);
+                else ShowGroupMenu(key, x, y);
+            };
+            button->onHoverEnter = [this, key]() { HoverRunning(key); };
+            button->onHoverLeave = [this, key]() { UnhoverRunning(key); };
         } else {
-            button = std::dynamic_pointer_cast<UltraCanvasButton>(running_->GetWidget(itemId));
+            button = std::dynamic_pointer_cast<UltraCanvasButton>(running_->GetWidget(group.itemId));
         }
+
+        // The windows keep the order they came in, not the stacking order,
+        // so the pictures do not change places each time one is raised.
+        if (!added) {
+            std::map<uint64_t, size_t> before;
+            for (size_t i = 0; i < group.windows.size(); ++i) before[group.windows[i].id] = i;
+            std::stable_sort(now.begin(), now.end(), [&before](const RunningWindow& a, const RunningWindow& b) {
+                const auto ia = before.find(a.id);
+                const auto ib = before.find(b.id);
+                const size_t pa = ia == before.end() ? SIZE_MAX : ia->second;
+                const size_t pb = ib == before.end() ? SIZE_MAX : ib->second;
+                return pa < pb;
+            });
+        }
+        // An open strip of pictures whose windows changed is out of date.
+        if (previews_ && previews_->IsOpenFor(key)) {
+            std::vector<uint64_t> ids;
+            for (const RunningWindow& w : now) ids.push_back(w.id);
+            if (ids != previews_->WindowIds()) HidePreviews();
+        }
+        group.windows = std::move(now);
+        group.active = active;
         if (!button) continue;
-        if (runningTitles_[w.id] != w.title) {
-            runningTitles_[w.id] = w.title;
-            button->SetTooltip(w.title.empty() ? w.appClass : w.title);
+
+        const int count = static_cast<int>(group.windows.size());
+        // Several windows: the pictures say which; a tooltip would only sit
+        // under them.
+        const std::string tooltip = count == 1 ? (first.title.empty() ? group.name : first.title) : std::string();
+        if (added || button->GetTooltip() != tooltip) button->SetTooltip(tooltip);
+        const int badge = count > 1 ? count : 0;
+        if (badge != group.badge) {
+            group.badge = badge;
+            if (badge > 0) running_->SetItemBadgeCount(group.itemId, badge);
+            else running_->ClearItemBadge(group.itemId);
         }
-        button->SetPressed(w.active && !w.minimized);
+        button->SetPressed(active);
     }
     running_->InvalidateLayout();
     running_->RequestRedraw();
+}
+
+void UltraDesktopWindow::OnRunningToggled(const std::string& key, bool on) {
+    auto it = runningGroups_.find(key);
+    if (it == runningGroups_.end()) return;
+    const RunningGroup& group = it->second;
+    if (group.windows.size() == 1) {
+        HidePreviews();
+        const uint64_t id = group.windows.front().id;
+        if (on) UltraCanvasDesktopShell::ActivateWindow(id);
+        else UltraCanvasDesktopShell::MinimizeWindow(id);
+        return;
+    }
+    // Several windows: the click does not pick one, the pictures do. The
+    // button keeps showing whether one of them has the focus.
+    if (auto button = std::dynamic_pointer_cast<UltraCanvasButton>(running_->GetWidget(group.itemId))) {
+        button->SetPressed(group.active);
+    }
+    if (previews_ && previews_->IsOpenFor(key)) {
+        HidePreviews();
+    } else {
+        StopPreviewTimers();
+        ShowPreviews(key);
+    }
+}
+
+void UltraDesktopWindow::HoverRunning(const std::string& key) {
+    hoveredGroup_ = key;
+    auto* app = UltraCanvasApplication::GetInstance();
+    if (!app) return;
+    if (previewCloseTimer_) {
+        app->StopTimer(previewCloseTimer_);
+        previewCloseTimer_ = 0;
+    }
+    auto it = runningGroups_.find(key);
+    const bool several = it != runningGroups_.end() && it->second.windows.size() > 1;
+    if (previews_ && previews_->IsOpen()) {
+        // Along the bar from one application to the next: the pictures
+        // follow at once.
+        if (previews_->IsOpenFor(key)) return;
+        if (several) ShowPreviews(key);
+        else HidePreviews();
+        return;
+    }
+    if (!several) return;
+    if (previewOpenTimer_) app->StopTimer(previewOpenTimer_);
+    previewOpenTimer_ = app->StartTimer(kPreviewOpenMs, false, [this, key](TimerId) {
+        previewOpenTimer_ = 0;
+        if (hoveredGroup_ == key) ShowPreviews(key);
+    });
+}
+
+void UltraDesktopWindow::UnhoverRunning(const std::string& key) {
+    if (hoveredGroup_ == key) hoveredGroup_.clear();
+    auto* app = UltraCanvasApplication::GetInstance();
+    if (app && previewOpenTimer_) {
+        app->StopTimer(previewOpenTimer_);
+        previewOpenTimer_ = 0;
+    }
+    if (previews_ && previews_->IsOpen()) SchedulePreviewsClose();
+}
+
+void UltraDesktopWindow::SchedulePreviewsClose() {
+    auto* app = UltraCanvasApplication::GetInstance();
+    if (!app) return;
+    if (previewCloseTimer_) app->StopTimer(previewCloseTimer_);
+    previewCloseTimer_ = app->StartTimer(kPreviewCloseMs, false, [this](TimerId) {
+        previewCloseTimer_ = 0;
+        // Back on the button in the meantime: it stays.
+        if (previews_ && !hoveredGroup_.empty() && previews_->IsOpenFor(hoveredGroup_)) return;
+        HidePreviews();
+    });
+}
+
+void UltraDesktopWindow::StopPreviewTimers() {
+    auto* app = UltraCanvasApplication::GetInstance();
+    if (!app) return;
+    if (previewOpenTimer_) app->StopTimer(previewOpenTimer_);
+    if (previewCloseTimer_) app->StopTimer(previewCloseTimer_);
+    previewOpenTimer_ = 0;
+    previewCloseTimer_ = 0;
+}
+
+void UltraDesktopWindow::HidePreviews() {
+    StopPreviewTimers();
+    if (previews_) previews_->Close();
+}
+
+void UltraDesktopWindow::ShowPreviews(const std::string& key) {
+    if (!window_ || !running_) return;
+    auto it = runningGroups_.find(key);
+    if (it == runningGroups_.end()) return;
+    const RunningGroup& group = it->second;
+    auto button = running_->GetWidget(group.itemId);
+    if (!button) return;
+    if (!previews_) {
+        previews_ = std::make_shared<UltraDesktopWindowPreviews>();
+        previews_->onChoose = [](uint64_t id) { UltraCanvasDesktopShell::ActivateWindow(id); };
+        previews_->onCloseWindow = [this](uint64_t id) {
+            UltraCanvasDesktopShell::CloseWindow(id);
+            windowsDirty_.store(true);
+        };
+        previews_->onPointerInside = [this]() {
+            auto* app = UltraCanvasApplication::GetInstance();
+            if (app && previewCloseTimer_) {
+                app->StopTimer(previewCloseTimer_);
+                previewCloseTimer_ = 0;
+            }
+        };
+        previews_->onPointerOutside = [this]() { SchedulePreviewsClose(); };
+    }
+    std::vector<WindowPreviewItem> items;
+    for (const RunningWindow& w : group.windows) {
+        WindowPreviewItem item;
+        item.id = w.id;
+        item.title = w.title;
+        item.iconFile = w.iconFile;
+        item.letter = group.letter;
+        item.active = w.active;
+        item.minimized = w.minimized;
+        items.push_back(std::move(item));
+    }
+    // Beside the bar's button, on the side away from the screen's edge.
+    const Rect2Df bounds = button->GetBoundsInWindow();
+    const int left = ScreenX(bounds.x);
+    const int top = ScreenY(bounds.y);
+    const int right = ScreenX(bounds.x + bounds.width);
+    const int bottom = ScreenY(bounds.y + bounds.height);
+    PreviewSide side = PreviewSide::Right;
+    if (settings_.taskbarEdge == TaskbarEdge::Top) side = PreviewSide::Down;
+    else if (settings_.taskbarEdge == TaskbarEdge::Bottom) side = PreviewSide::Up;
+    const float scale = window_->LogicalToPhysical(1000) / 1000.0f;
+    previews_->Show(key, items, left, top, right - left, bottom - top, side, area_.x, area_.y, area_.width,
+                    area_.height, scale);
+}
+
+void UltraDesktopWindow::ShowGroupMenu(const std::string& key, int windowX, int windowY) {
+    if (!window_) return;
+    auto it = runningGroups_.find(key);
+    if (it == runningGroups_.end()) return;
+    const RunningGroup& group = it->second;
+    std::vector<uint64_t> ids;
+    for (const RunningWindow& w : group.windows) ids.push_back(w.id);
+    popupMenu_ = std::make_shared<UltraCanvasMenu>("GroupMenu", 0, 0, 260, 0);
+    popupMenu_->SetMenuType(MenuType::PopupMenu);
+    if (!group.name.empty()) popupMenu_->AddItem(MenuItemData::Header(Shorten(group.name, 40)));
+    for (const RunningWindow& w : group.windows) {
+        const uint64_t id = w.id;
+        const std::string title = w.title.empty() ? group.name : w.title;
+        popupMenu_->AddItem(MenuItemData::Action(Shorten(title, 40),
+                                                 [id]() { UltraCanvasDesktopShell::ActivateWindow(id); }));
+    }
+    popupMenu_->AddItem(MenuItemData::Separator());
+    popupMenu_->AddItem(MenuItemData::Action(Tr("Minimize all"), [ids]() {
+        for (const uint64_t id : ids) UltraCanvasDesktopShell::MinimizeWindow(id);
+    }));
+    // Its application, when one is installed under its class: pinned from here.
+    for (const DesktopWindowInfo& w : UltraCanvasDesktopShell::ListWindows()) {
+        if (w.id != ids.front()) continue;
+        if (const UCDesktopEntry* entry = UltraCanvasDesktopShell::MatchApplication(w, Applications())) {
+            const UCDesktopEntry application = *entry;
+            const bool pinned = IsPinned(application);
+            popupMenu_->AddItem(MenuItemData::Action(pinned ? Tr("Unpin from taskbar") : Tr("Pin to taskbar"),
+                                                     [this, application, pinned]() { SetPinned(application, !pinned); }));
+        }
+        break;
+    }
+    popupMenu_->AddItem(MenuItemData::Separator());
+    popupMenu_->AddItem(MenuItemData::Action(TrF("Close all {0} windows", ids.size()), [this, ids]() {
+        for (const uint64_t id : ids) UltraCanvasDesktopShell::CloseWindow(id);
+        windowsDirty_.store(true);
+    }));
+    PopupElementSettings settings;
+    popupMenu_->OpenMenu(Point2Di(windowX, windowY), *window_, settings);
 }
 
 void UltraDesktopWindow::ApplyDeviceActivity(const DesktopDeviceActivity& now,

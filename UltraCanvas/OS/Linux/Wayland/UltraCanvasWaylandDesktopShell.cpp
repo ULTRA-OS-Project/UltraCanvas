@@ -693,6 +693,14 @@ bool GetWindowBounds(uint64_t, int&, int&, int&, int&) {
 
 bool MoveWindowTo(uint64_t, int, int) { return false; }
 
+bool CaptureWindowImage(uint64_t, DesktopScreenImage& out, std::string& error) {
+    // Nor where it is, nor what it shows: a picture of another client's
+    // window takes the compositor's own screencopy of that toplevel.
+    out = DesktopScreenImage();
+    error = "Window pictures are not available on Wayland.";
+    return false;
+}
+
 int GetVirtualDesktopCount() {
     std::lock_guard<std::mutex> lock(g_shellMutex);
     if (!Sync()) return 1;

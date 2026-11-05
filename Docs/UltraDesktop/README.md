@@ -59,15 +59,33 @@ organiser.
 1. **System** — *ULTRA OS settings*, shown as the ULTRA OS logo, and the
    *app starter*. *ULTRA OS settings* starts **UOS-Settings**, the system's settings application
    (`Docs/UOSSettings/README.md`), which opens on its *Desktop* page.
-2. **Running applications** — one button per open window on the current
-   desktop, with the application's own icon (resolved from its desktop
-   entry; the first letter of its class when it has none). The active
-   window's button is highlighted. A click activates the window or minimizes
-   it if it already is active; a right-click offers *Activate*, *Minimize*,
-   *Move to desktop …* and *Close window*. Drag a button to reorder; when
-   the group is full it scrolls with the mouse wheel. New windows join next
-   to their application's other windows. *Pin to taskbar* on the menu pins
-   the window's application.
+2. **Running applications** — one button per application with open
+   windows on the current desktop, with the application's own icon
+   (resolved from its desktop entry, on Windows a Store application's tile
+   icon from the shell; the first letter of its class when it has none).
+   An application's windows share its button - by their class on X11, on
+   Windows by the application identity the shell gives them
+   (`appUserModelId`: every Explorer window is Explorer's), else by their
+   program - and a count on the button says how many there are. The button
+   is highlighted while one of its windows is active.
+   - **One window:** a click activates it, or minimizes it if it already is
+     active; a right-click offers *Activate*, *Minimize*, *Move to desktop
+     …*, *Pin to taskbar* and *Close window*.
+   - **Several windows:** rest the pointer on the button and their pictures
+     open beside it (above it with the taskbar at the bottom, below it at
+     the top) - one tile per window with its icon, title and a picture of
+     the window, the active one framed, a minimized one showing its icon.
+     A click on a tile brings that window forward, its **×** asks it to
+     close. The pictures follow the pointer along the bar to the next
+     application and close shortly after it leaves both. A click on the
+     button opens or closes them at once. A right-click lists the windows,
+     with *Minimize all*, *Pin to taskbar* and *Close all windows*. On
+     Windows each window draws its own picture, so a covered window shows
+     its own content; on X11 the picture is the window's place on the
+     screen, which shows whatever lies on top of it there.
+
+   Drag a button to reorder; when the group is full it scrolls with the
+   mouse wheel. New applications join at the end.
 3. **Pinned** — the *RAM disc* (opens the path from the settings, `/dev/shm`
    by default, in the file manager), *UltraFiler*, and the applications the
    user pinned - from a running window's menu or a tile's in the
