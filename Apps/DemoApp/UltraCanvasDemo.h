@@ -54,6 +54,7 @@
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasUtils.h"
+#include "UltraLocalisation/UltraLocalisation.h"   // Tr for the shell's texts
 #include "Plugins/Diagrams/UltraCanvasNodeDiagram.h"
 #include "Plugins/Diagrams/UltraCanvasGourceTree.h"
 #include <memory>
