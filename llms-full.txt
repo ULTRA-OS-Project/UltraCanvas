@@ -34789,6 +34789,32 @@ filer->onFolderModified = [this](const std::string& folder) {
 };
 ```
 
+**Changes the widget did not make** arrive through
+`onFolderChangedOnDisk(folderPath)` instead. The folder watch (see
+[Watching the shown folder](#watching-the-shown-folder)) noticed the shown
+folder change on disk, and the display re-listed it. Navigation, sorting and a
+plain `Refresh()` never fire it, and nothing goes to a "worked in" list. Its
+cases are:
+
+- Another program created, deleted or renamed something in the folder.
+- An entry this widget deleted went at last. On Windows, a folder whose last
+  file a program still held, perhaps the locked file a delete stopped at,
+  stays listed as *delete pending* until the program lets go. So when the
+  delete reported the folder through `onFolderModified`, the folder was still
+  there.
+- The shown folder itself was deleted. The display has already
+  [moved up](#watching-the-shown-folder), and the argument is the folder that
+  went.
+
+A host's folder tree should re-sync that folder's rows from both callbacks.
+UltraFiler's tree kept a deleted subfolder's row for good while it listened to
+`onFolderModified` alone.
+
+```cpp
+filer->onFolderModified      = [this](const std::string& f) { tree.Resync(f); history.Record(f); };
+filer->onFolderChangedOnDisk = [this](const std::string& f) { tree.Resync(f); };
+```
+
 ### Finished copies and moves
 
 `onTransferFinished(result)` fires once a paste, a drop or a Move to / Copy to
@@ -34977,6 +35003,7 @@ reports what the system hides, not what the host asked for.
 | `onFolderRefreshed()` | After every (re)scan of the shown folder — the listing changed (file operation, drop, rename, `Refresh()`) |
 | `onListingPendingChanged(status)` | A remote folder's fetch status changed (`remoteListingStatus`): set when a fetch is waited for, updated as it goes, `""` once the listing is in — for the host's status line (see [Showing that a folder is on its way](#showing-that-a-folder-is-on-its-way)) |
 | `onFolderModified(folderPath)` | The **user** changed a folder's content through the widget — see [Folder modifications](#folder-modifications) |
+| `onFolderChangedOnDisk(folderPath)` | The folder watch saw the shown folder change on disk and the display re-listed it: another program's change, an entry deleted here that Windows listed until a program let go, or the folder itself gone (the display has moved up) — see [Folder modifications](#folder-modifications) |
 | `onTransferFinished(result)` | A copy or move ended — what arrived where — see [Finished copies and moves](#finished-copies-and-moves) |
 | `onDeleteFinished(result)` | A delete ended — what went, to the trash or for good — see [Finished copies and moves](#finished-copies-and-moves) |
 | `onViewTypeChanged(viewType)` | View switched (API or Display > Type) |
