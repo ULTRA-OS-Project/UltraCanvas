@@ -1,7 +1,6 @@
 {
   "@language": "it",
   "@translated-by": "machine draft 2026-11-02, reviewed by -",
-  "Add account": "Aggiungi account",
   "App password": "Password per app",
   "Attach file": "Allega file",
   "Attachment": "Allegato",
@@ -44,7 +43,6 @@
   "Search messages": "Cerca nei messaggi",
   "Sending": "Invio in corso",
   "Sent": "Inviati",
-  "Server": "Server",
   "Sign out": "Esci",
   "Sign-in": "Accesso",
   "Spam": "Spam",

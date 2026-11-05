@@ -1,5 +1,6 @@
 // Apps/UltraPress/cli/UltraPressCli.cpp
 // The commands: new, check, page, publish, import, hosts, help, --version.
+// Version: 0.7.2 - hosts add --port; an ftp host's scheme checked before it is stored
 // Version: 0.7.1 - media prune; a picture's pixels in the list
 // Version: 0.6.0 - media: the library listed, files added and removed; check finds missing media
 // Version: 0.5.1 - publish --prune; hosts add --key
@@ -7,7 +8,7 @@
 // Version: 0.4.1 - help names the window, the same program since there is one
 // Version: 0.4.0 - import: a WordPress export as a site
 // Version: 0.1.0
-// Last Modified: 2026-10-13
+// Last Modified: 2026-11-06
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraPressCli.h"
 
@@ -20,6 +21,7 @@
 #include "UltraPressDeploy.h"
 #if ULTRAPRESS_HAS_ULTRACLOUD
 #include "UltraPressHosting.h"
+#include <UltraCloud/UltraCloudFtp.h>   // FtpSchemeKnown, FtpServerOf / FtpServerUrl for --port
 #endif
 
 #include "UltraCanvasPathUtf8.h"
@@ -66,9 +68,10 @@ void PrintHelp() {
         "  ultrapress hosts\n"
         "      the hosts a site can be published to: FTP, FTPS, SFTP, WebDAV, Nextcloud\n"
         "  ultrapress hosts add <ftp|webdav|nextcloud> --server <url> --user <name> [--password <p>]\n"
-        "                      [--key <private-key-file>] [--name <label>] [--folder <remote-folder>] [--no-verify]\n"
+        "                      [--port <n>] [--key <private-key-file>] [--name <label>] [--folder <remote-folder>] [--no-verify]\n"
         "      a host; the password from --password or ULTRAPRESS_HOST_PASSWORD; the\n"
         "      server is ftp://, ftps://, ftpes:// or sftp:// for ftp, https:// otherwise;\n"
+        "      --port when an ftp host's port is not its protocol's own (21; 990 for ftps://, 22 for sftp://);\n"
         "      --key signs an sftp:// host in with that key, the password as its passphrase\n"
         "  ultrapress hosts remove <host>\n"
         "  ultrapress hosts use <site-dir> <host> [--path <remote-folder>]\n"
@@ -87,6 +90,17 @@ std::string Option(const std::vector<std::string>& args, const std::string& name
         if (args[i] == name) return args[i + 1];
     }
     return fallback;
+}
+
+// --port: a number from 1 to 65535, or 0 for anything else.
+int ParsePort(const std::string& text) {
+    if (text.empty() || text.size() > 5) return 0;
+    int value = 0;
+    for (const char c : text) {
+        if (c < '0' || c > '9') return 0;
+        value = value * 10 + (c - '0');
+    }
+    return value >= 1 && value <= 65535 ? value : 0;
 }
 
 bool HasFlag(const std::vector<std::string>& args, const std::string& name) {
@@ -282,6 +296,33 @@ int CommandHosts(const std::vector<std::string>& args) {
         account.remoteFolder = Option(args, "--folder", "");
         if (account.serverUrl.empty() || account.username.empty()) {
             std::fprintf(stderr, "a host needs --server and --user\n");
+            return 2;
+        }
+        const std::string portText = Option(args, "--port", "");
+        if (account.providerId == "ftp") {
+            // Said here as well as by the provider's Verify, so that
+            // --no-verify stores no https:// host either.
+            if (!UltraCloud::FtpSchemeKnown(account.serverUrl)) {
+                std::fprintf(stderr, "--server for an ftp host starts with ftp://, ftps://, ftpes:// or sftp://; %s is not FTP\n",
+                             account.serverUrl.c_str());
+                return 2;
+            }
+            // --port goes into the URL, where the window's dialog puts the
+            // port it asks for: `--server sftp://my.example --port 2222` and
+            // `--server sftp://my.example:2222` store the same host, and a
+            // port that is the protocol's own is left out.
+            if (!portText.empty()) {
+                const int port = ParsePort(portText);
+                if (port <= 0) {
+                    std::fprintf(stderr, "--port is a number from 1 to 65535\n");
+                    return 2;
+                }
+                UltraCloud::FtpServer server = UltraCloud::FtpServerOf(account.serverUrl);
+                server.port = port;
+                account.serverUrl = UltraCloud::FtpServerUrl(server);
+            }
+        } else if (!portText.empty()) {
+            std::fprintf(stderr, "--port is for an ftp host; a WebDAV or Nextcloud server's port is part of its URL\n");
             return 2;
         }
         if (account.displayName.empty()) account.displayName = account.username + " at " + account.serverUrl;

@@ -1,7 +1,6 @@
 {
   "@language": "id",
   "@translated-by": "machine draft 2026-11-03, reviewed by -",
-  "Add account": "Tambah akun",
   "App password": "Kata sandi aplikasi",
   "Attach file": "Lampirkan file",
   "Attachment": "Lampiran",
@@ -44,7 +43,6 @@
   "Search messages": "Cari pesan",
   "Sending": "Mengirim",
   "Sent": "Terkirim",
-  "Server": "Server",
   "Sign out": "Keluar",
   "Sign-in": "Masuk",
   "Spam": "Spam",

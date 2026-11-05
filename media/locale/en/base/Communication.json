@@ -1,7 +1,6 @@
 {
   "@language": "en",
   "@set": "Communication",
-  "Add account": "Add account",
   "App password": "App password",
   "Attach file": "Attach file",
   "Attachment": "Attachment",
@@ -44,7 +43,6 @@
   "Search messages": "Search messages",
   "Sending": "Sending",
   "Sent": "Sent",
-  "Server": "Server",
   "Sign out": "Sign out",
   "Sign-in": "Sign-in",
   "Spam": "Spam",
