@@ -343,9 +343,11 @@ namespace UltraCanvas {
         // preview: no larger than `maxWidth` x `maxHeight` (the window's own
         // proportions kept; never enlarged), the same pixel layout as
         // CaptureScreenImage. Windows draws the window itself
-        // (PrintWindow), so a covered window shows its own content; X11 and
-        // the rest copy the window's rectangle of the screen, which shows
-        // whatever lies on top of it. A minimized window has no picture.
+        // (PrintWindow), and a Wayland compositor copies it
+        // (ext-image-copy-capture-v1, where it offers that), so a covered
+        // window shows its own content; X11 copies the window's rectangle of
+        // the screen, which shows whatever lies on top of it; macOS has none
+        // yet. A minimized window has no picture.
         // False with the reason; `out` is then empty.
         static bool CaptureWindowImage(uint64_t id, int maxWidth, int maxHeight, DesktopScreenImage& out,
                                        std::string* error = nullptr);

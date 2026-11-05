@@ -12,3 +12,6 @@
   show their own icon** on the taskbar instead of a letter ("A", "W"): the
   icon now comes from the application identity Windows gives the window,
   through the shell's Applications folder.
+- **On Wayland the window pictures come from the compositor** where it
+  offers window capture (`ext-image-copy-capture-v1`: sway 1.11, labwc,
+  river, niri and others), so a covered window shows its own content.

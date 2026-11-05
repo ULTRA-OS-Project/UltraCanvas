@@ -80,9 +80,12 @@ organiser.
      application and close shortly after it leaves both. A click on the
      button opens or closes them at once. A right-click lists the windows,
      with *Minimize all*, *Pin to taskbar* and *Close all windows*. On
-     Windows each window draws its own picture, so a covered window shows
-     its own content; on X11 the picture is the window's place on the
-     screen, which shows whatever lies on top of it there.
+     Windows each window draws its own picture and on Wayland the
+     compositor copies it, so a covered window shows its own content; on
+     X11 the picture is the window's place on the screen, which shows
+     whatever lies on top of it there. A Wayland compositor without window
+     capture (`ext-image-copy-capture-v1`) gives no picture: the tile shows
+     the application's icon.
 
    Drag a button to reorder; when the group is full it scrolls with the
    mouse wheel. New applications join at the end.
