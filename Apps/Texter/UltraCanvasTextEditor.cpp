@@ -3067,8 +3067,8 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         }
 
         // Scan for orphan autosave backups now (filesystem I/O behind the splash).
-        // PromptCrashRecovery() reads pendingOrphanBackups and only opens a dialog
-        // if anything remains.
+        // PromptCrashRecovery() reads pendingOrphanBackups and reopens whatever
+        // remains, without asking.
         pendingOrphanBackups.clear();
         std::vector<std::string> allBackups = autosaveManager.FindExistingBackups();
         for (const auto& b : allBackups) {
@@ -3078,40 +3078,21 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         }
     }
 
-    // Phase 2: prompt the user about orphan crash backups.
-    // Must be called after the splash has closed so the modal can take focus.
+    // Phase 2: recover orphan crash backups. Runs after the splash has closed.
+    // Every autosaved file from the previous session is reopened straight away
+    // (marked modified, so nothing is lost) - no question is asked.
     void UltraCanvasTextEditor::PromptCrashRecovery() {
         hasCheckedForBackups = true;
 
         if (pendingOrphanBackups.empty()) return;
 
-        // Move the list into the dialog callback so we don't accidentally
-        // re-prompt on a second call.
+        // Take the list so a second call cannot recover the same files twice.
         std::vector<std::string> backups;
         backups.swap(pendingOrphanBackups);
 
-        std::string message = TrN("Found {n} autosaved file from a previous session.\n\nWould you like to recover it?",
-                                  "Found {n} autosaved files from a previous session.\n\nWould you like to recover them?",
-                                  static_cast<long long>(backups.size()));
-
-        UltraCanvasDialogManager::ShowMessage(
-                message,
-                Tr("Crash Recovery"),
-                DialogType::Question,
-                DialogButtons::YesNo,
-                [this, backups](DialogResult result) {
-                    if (result == DialogResult::Yes) {
-                        for (const auto& backupPath : backups) {
-                            OfferRecoveryForBackup(backupPath);
-                        }
-                    } else {
-                        for (const auto& backupPath : backups) {
-                            autosaveManager.DeleteBackup(backupPath);
-                        }
-                    }
-                },
-                GetWindow()
-        );
+        for (const auto& backupPath : backups) {
+            OfferRecoveryForBackup(backupPath);
+        }
     }
 
     void UltraCanvasTextEditor::RecoverBackupIntoDocument(

@@ -38,7 +38,6 @@
   "Comment:": "Комментарий:",
   "Copy (Ctrl+C)": "Копировать (Ctrl+C)",
   "Could not read the image file.": "Не удалось прочитать файл изображения.",
-  "Crash Recovery": "Восстановление после сбоя",
   "Cut (Ctrl+X)": "Вырезать (Ctrl+X)",
   "Decrease Font Size": "Уменьшить размер шрифта",
   "Decrease Font Size (Ctrl+-)": "Уменьшить размер шрифта (Ctrl+-)",
@@ -72,11 +71,6 @@
   "Find Previous": "Найти ранее",
   "Find Previous (Shift+Enter)": "Найти ранее (Shift+Enter)",
   "Find what:": "Найти:",
-  "Found {n} autosaved file from a previous session.\n\nWould you like to recover it?": {
-    "one": "Найден {n} автосохранённый файл из предыдущего сеанса.\n\nВосстановить его?",
-    "few": "Найдено {n} автосохранённых файла из предыдущего сеанса.\n\nВосстановить их?",
-    "many": "Найдено {n} автосохранённых файлов из предыдущего сеанса.\n\nВосстановить их?"
-  },
   "GB18030 (Chinese)": "GB18030 (китайский)",
   "GB2312 (Chinese Simplified)": "GB2312 (китайский упрощённый)",
   "GBK (Chinese Simplified)": "GBK (китайский упрощённый)",

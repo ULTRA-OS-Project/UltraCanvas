@@ -38,7 +38,6 @@
   "Comment:": "Megjegyzés:",
   "Copy (Ctrl+C)": "Másolás (Ctrl+C)",
   "Could not read the image file.": "Nem sikerült beolvasni a képfájlt.",
-  "Crash Recovery": "Helyreállítás összeomlás után",
   "Cut (Ctrl+X)": "Kivágás (Ctrl+X)",
   "Decrease Font Size": "Betűméret csökkentése",
   "Decrease Font Size (Ctrl+-)": "Betűméret csökkentése (Ctrl+-)",
@@ -71,10 +70,6 @@
   "Find Previous": "Előző keresése",
   "Find Previous (Shift+Enter)": "Előző keresése (Shift+Enter)",
   "Find what:": "Keresett szöveg:",
-  "Found {n} autosaved file from a previous session.\n\nWould you like to recover it?": {
-    "one": "{n} automatikusan mentett fájl található egy korábbi munkamenetből.\n\nSzeretné helyreállítani?",
-    "other": "{n} automatikusan mentett fájl található egy korábbi munkamenetből.\n\nSzeretné helyreállítani őket?"
-  },
   "GB18030 (Chinese)": "GB18030 (kínai)",
   "GB2312 (Chinese Simplified)": "GB2312 (egyszerűsített kínai)",
   "GBK (Chinese Simplified)": "GBK (egyszerűsített kínai)",
