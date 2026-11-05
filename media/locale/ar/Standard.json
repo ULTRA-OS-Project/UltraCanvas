@@ -3,17 +3,21 @@
   "@name": "العربية",
   "@translated-by": "machine draft 2026-11-03, reviewed by -",
   "\"{0}\" already exists in \"{1}\".": "«{0}» موجود بالفعل في «{1}».",
+  "\"{0}\" copied to \"{1}\"": "تم نسخ «{0}» إلى «{1}»",
   "\"{0}\" could not be copied.": "تعذّر نسخ «{0}».",
   "\"{0}\" could not be deleted even with administrator permission.": "تعذّر حذف «{0}» حتى بإذن المسؤول.",
   "\"{0}\" could not be deleted.": "تعذّر حذف «{0}».",
   "\"{0}\" could not be moved to the Recycle Bin.": "تعذّر نقل «{0}» إلى سلة المحذوفات.",
   "\"{0}\" could not be moved to the Trash.": "تعذّر نقل «{0}» إلى سلة المهملات.",
   "\"{0}\" could not be moved.": "تعذّر نقل «{0}».",
+  "\"{0}\" holds the {1} you are using right now.": "«{0}» يضم {1} الذي تستخدمه حاليًا.",
   "\"{0}\" in \"{1}\" could not be deleted.": "تعذّر حذف «{0}» في «{1}».",
   "\"{0}\" in \"{1}\" is in use by another program.": "«{0}» في «{1}» قيد الاستخدام من قِبل برنامج آخر.",
   "\"{0}\" in \"{1}\" needs administrator permission to be deleted.": "يلزم إذن المسؤول لحذف «{0}» في «{1}».",
   "\"{0}\" is in use by another program.": "«{0}» قيد الاستخدام من قِبل برنامج آخر.",
+  "\"{0}\" is part of the {1} you are using right now.": "«{0}» جزء من {1} الذي تستخدمه حاليًا.",
   "\"{0}\" is write-protected.": "«{0}» محمي من الكتابة.",
+  "\"{0}\" moved to \"{1}\"": "تم نقل «{0}» إلى «{1}»",
   "\"{0}\" needs administrator permission to be deleted.": "يلزم إذن المسؤول لحذف «{0}».",
   "(no suggestions)": "(لا توجد اقتراحات)",
   "(the first {0} shown)": "(يُعرض أول {0})",
@@ -27,6 +31,7 @@
   "A folder that another program still holds open - or that is shown in a preview - cannot be copied until that program lets go of it. Close it there, then try again.": "لا يمكن نسخ مجلد لا يزال برنامج آخر يبقيه مفتوحًا - أو معروض في معاينة - إلى أن يحرره ذلك البرنامج. أغلقه هناك، ثم حاول مرة أخرى.",
   "A folder that another program still holds open - or that is shown in a preview - cannot be moved until that program lets go of it. Close it there, then try again.": "لا يمكن نقل مجلد لا يزال برنامج آخر يبقيه مفتوحًا - أو معروض في معاينة - إلى أن يحرره ذلك البرنامج. أغلقه هناك، ثم حاول مرة أخرى.",
   "A line between two menu entries": "خط بين عنصرين في القائمة",
+  "A running program cannot delete its own files: the ones it has loaded refuse to go, and taking the rest away makes it crash. Close this {0} and delete the folder from another file manager, or from a copy of {0} started elsewhere.": "لا يمكن لبرنامج قيد التشغيل حذف ملفاته الخاصة: فالملفات التي حمّلها ترفض الحذف، وإزالة البقية تؤدي إلى تعطّله. أغلق {0} هذا واحذف المجلد من مدير ملفات آخر، أو من نسخة من {0} جرى تشغيلها من مكان آخر.",
   "A submenu in a menu, a group of your own on a toolbar": "قائمة فرعية في قائمة، ومجموعة خاصة بك في شريط أدوات",
   "Abort": "إحباط",
   "About": "حول",
@@ -118,6 +123,7 @@
   "Close": "إغلاق",
   "Close (Esc)": "إغلاق (Esc)",
   "Close All": "إغلاق الكل",
+  "Close it and delete the folder from elsewhere.": "أغلقه واحذف المجلد من مكان آخر.",
   "Close the program that holds it, then try again. Administrator rights do not help: a file a running program has loaded cannot be deleted by anyone.": "أغلق البرنامج الذي يستخدمه، ثم حاول مرة أخرى. لا تفيد صلاحيات المسؤول: لا يمكن لأحد حذف ملف حمّله برنامج قيد التشغيل.",
   "Collisions between bases": "تعارضات بين المجموعات الأساسية",
   "Colour": "اللون",
@@ -142,6 +148,14 @@
   },
   "Copy": "نسخ",
   "Copy \"{0}\" into \"{1}\"?": "نسخ «{0}» إلى «{1}»؟",
+  "Copy cancelled - {0} of {n} item copied to \"{1}\"": {
+    "zero": "تم إلغاء النسخ - تم نسخ {0} من أصل {n} عنصر إلى «{1}»",
+    "one": "تم إلغاء النسخ - تم نسخ {0} من أصل {n} عنصر إلى «{1}»",
+    "two": "تم إلغاء النسخ - تم نسخ {0} من أصل {n} عنصرين إلى «{1}»",
+    "few": "تم إلغاء النسخ - تم نسخ {0} من أصل {n} عناصر إلى «{1}»",
+    "many": "تم إلغاء النسخ - تم نسخ {0} من أصل {n} عنصرًا إلى «{1}»",
+    "other": "تم إلغاء النسخ - تم نسخ {0} من أصل {n} عنصر إلى «{1}»"
+  },
   "Copy files": "نسخ الملفات",
   "Copy finished": "اكتمل النسخ",
   "Copy path": "نسخ المسار",
@@ -387,6 +401,14 @@
   "month|September": "سبتمبر",
   "Move": "نقل",
   "Move \"{0}\" into \"{1}\"?": "نقل «{0}» إلى «{1}»؟",
+  "Move cancelled - {0} of {n} item moved to \"{1}\"": {
+    "zero": "تم إلغاء النقل - تم نقل {0} من أصل {n} عنصر إلى «{1}»",
+    "one": "تم إلغاء النقل - تم نقل {0} من أصل {n} عنصر إلى «{1}»",
+    "two": "تم إلغاء النقل - تم نقل {0} من أصل {n} عنصرين إلى «{1}»",
+    "few": "تم إلغاء النقل - تم نقل {0} من أصل {n} عناصر إلى «{1}»",
+    "many": "تم إلغاء النقل - تم نقل {0} من أصل {n} عنصرًا إلى «{1}»",
+    "other": "تم إلغاء النقل - تم نقل {0} من أصل {n} عنصر إلى «{1}»"
+  },
   "Move Down": "نقل لأسفل",
   "Move down": "نقل لأسفل",
   "Move files": "نقل الملفات",
@@ -493,6 +515,7 @@
   "Preview": "معاينة",
   "Print": "طباعة",
   "Program": "البرنامج",
+  "Program folder:": "مجلد البرنامج:",
   "Promote to a base set": "رفع إلى مجموعة أساسية",
   "Properties": "الخصائص",
   "Put the command selected on the right after the entry selected on the left": "ضع الأمر المحدد على اليمين بعد العنصر المحدد على اليسار",
@@ -659,6 +682,22 @@
   "{0} in {1}: {2} rows": "{0} في {1}: عدد الصفوف {2}",
   "{0} is not a base set the application can take": "{0} ليست مجموعة أساسية يمكن للتطبيق اعتمادها",
   "{0} no longer taken": "لم تعد {0} معتمدة",
+  "{0} of {n} item copied to \"{1}\" ({2} skipped)": {
+    "zero": "تم نسخ {0} من أصل {n} عنصر إلى «{1}» (تم تخطي {2})",
+    "one": "تم نسخ {0} من أصل {n} عنصر إلى «{1}» (تم تخطي {2})",
+    "two": "تم نسخ {0} من أصل {n} عنصرين إلى «{1}» (تم تخطي {2})",
+    "few": "تم نسخ {0} من أصل {n} عناصر إلى «{1}» (تم تخطي {2})",
+    "many": "تم نسخ {0} من أصل {n} عنصرًا إلى «{1}» (تم تخطي {2})",
+    "other": "تم نسخ {0} من أصل {n} عنصر إلى «{1}» (تم تخطي {2})"
+  },
+  "{0} of {n} item moved to \"{1}\" ({2} skipped)": {
+    "zero": "تم نقل {0} من أصل {n} عنصر إلى «{1}» (تم تخطي {2})",
+    "one": "تم نقل {0} من أصل {n} عنصر إلى «{1}» (تم تخطي {2})",
+    "two": "تم نقل {0} من أصل {n} عنصرين إلى «{1}» (تم تخطي {2})",
+    "few": "تم نقل {0} من أصل {n} عناصر إلى «{1}» (تم تخطي {2})",
+    "many": "تم نقل {0} من أصل {n} عنصرًا إلى «{1}» (تم تخطي {2})",
+    "other": "تم نقل {0} من أصل {n} عنصر إلى «{1}» (تم تخطي {2})"
+  },
   "{0} rows drafted; review them before saving": "عدد الصفوف التي أُنشئت مسوداتها: {0}؛ راجعها قبل الحفظ",
   "{0} taken": "تم اعتماد {0}",
   "{0} taken; {1} rows now duplicate a base's text and can be dropped": "تم اعتماد {0}؛ عدد الصفوف التي تكرر الآن نص مجموعة أساسية ويمكن حذفها: {1}",
@@ -694,6 +733,22 @@
     "many": "{n} ملفًا",
     "other": "{n} ملف"
   },
+  "{n} file copied to \"{0}\"": {
+    "zero": "تم نسخ {n} ملف إلى «{0}»",
+    "one": "تم نسخ {n} ملف إلى «{0}»",
+    "two": "تم نسخ {n} ملفين إلى «{0}»",
+    "few": "تم نسخ {n} ملفات إلى «{0}»",
+    "many": "تم نسخ {n} ملفًا إلى «{0}»",
+    "other": "تم نسخ {n} ملف إلى «{0}»"
+  },
+  "{n} file moved to \"{0}\"": {
+    "zero": "تم نقل {n} ملف إلى «{0}»",
+    "one": "تم نقل {n} ملف إلى «{0}»",
+    "two": "تم نقل {n} ملفين إلى «{0}»",
+    "few": "تم نقل {n} ملفات إلى «{0}»",
+    "many": "تم نقل {n} ملفًا إلى «{0}»",
+    "other": "تم نقل {n} ملف إلى «{0}»"
+  },
   "{n} folder": {
     "zero": "{n} مجلد",
     "one": "{n} مجلد",
@@ -701,6 +756,22 @@
     "few": "{n} مجلدات",
     "many": "{n} مجلدًا",
     "other": "{n} مجلد"
+  },
+  "{n} folder copied to \"{0}\"": {
+    "zero": "تم نسخ {n} مجلد إلى «{0}»",
+    "one": "تم نسخ {n} مجلد إلى «{0}»",
+    "two": "تم نسخ {n} مجلدين إلى «{0}»",
+    "few": "تم نسخ {n} مجلدات إلى «{0}»",
+    "many": "تم نسخ {n} مجلدًا إلى «{0}»",
+    "other": "تم نسخ {n} مجلد إلى «{0}»"
+  },
+  "{n} folder moved to \"{0}\"": {
+    "zero": "تم نقل {n} مجلد إلى «{0}»",
+    "one": "تم نقل {n} مجلد إلى «{0}»",
+    "two": "تم نقل {n} مجلدين إلى «{0}»",
+    "few": "تم نقل {n} مجلدات إلى «{0}»",
+    "many": "تم نقل {n} مجلدًا إلى «{0}»",
+    "other": "تم نقل {n} مجلد إلى «{0}»"
   },
   "{n} hour": {
     "zero": "{n} ساعة",
@@ -718,6 +789,14 @@
     "many": "{n} عنصرًا",
     "other": "{n} عنصر"
   },
+  "{n} item copied to \"{0}\"": {
+    "zero": "تم نسخ {n} عنصر إلى «{0}»",
+    "one": "تم نسخ {n} عنصر إلى «{0}»",
+    "two": "تم نسخ {n} عنصرين إلى «{0}»",
+    "few": "تم نسخ {n} عناصر إلى «{0}»",
+    "many": "تم نسخ {n} عنصرًا إلى «{0}»",
+    "other": "تم نسخ {n} عنصر إلى «{0}»"
+  },
   "{n} item could not be deleted even with administrator permission.": {
     "zero": "تعذّر حذف {n} عنصر حتى بإذن المسؤول.",
     "one": "تعذّر حذف {n} عنصر حتى بإذن المسؤول.",
@@ -725,6 +804,14 @@
     "few": "تعذّر حذف {n} عناصر حتى بإذن المسؤول.",
     "many": "تعذّر حذف {n} عنصرًا حتى بإذن المسؤول.",
     "other": "تعذّر حذف {n} عنصر حتى بإذن المسؤول."
+  },
+  "{n} item moved to \"{0}\"": {
+    "zero": "تم نقل {n} عنصر إلى «{0}»",
+    "one": "تم نقل {n} عنصر إلى «{0}»",
+    "two": "تم نقل {n} عنصرين إلى «{0}»",
+    "few": "تم نقل {n} عناصر إلى «{0}»",
+    "many": "تم نقل {n} عنصرًا إلى «{0}»",
+    "other": "تم نقل {n} عنصر إلى «{0}»"
   },
   "{n} minute": {
     "zero": "{n} دقيقة",

@@ -3,17 +3,21 @@
   "@name": "עברית",
   "@translated-by": "machine draft 2026-11-03, reviewed by -",
   "\"{0}\" already exists in \"{1}\".": "\"{0}\" כבר קיים ב-\"{1}\".",
+  "\"{0}\" copied to \"{1}\"": "\"{0}\" הועתק אל \"{1}\"",
   "\"{0}\" could not be copied.": "לא ניתן היה להעתיק את \"{0}\".",
   "\"{0}\" could not be deleted even with administrator permission.": "לא ניתן היה למחוק את \"{0}\" גם עם הרשאת מנהל.",
   "\"{0}\" could not be deleted.": "לא ניתן היה למחוק את \"{0}\".",
   "\"{0}\" could not be moved to the Recycle Bin.": "לא ניתן היה להעביר את \"{0}\" לסל המיחזור.",
   "\"{0}\" could not be moved to the Trash.": "לא ניתן היה להעביר את \"{0}\" לאשפה.",
   "\"{0}\" could not be moved.": "לא ניתן היה להעביר את \"{0}\".",
+  "\"{0}\" holds the {1} you are using right now.": "\"{0}\" מכיל את {1} שנמצא בשימוש כעת.",
   "\"{0}\" in \"{1}\" could not be deleted.": "לא ניתן היה למחוק את \"{0}\" שבתוך \"{1}\".",
   "\"{0}\" in \"{1}\" is in use by another program.": "\"{0}\" שבתוך \"{1}\" נמצא בשימוש על ידי תוכנית אחרת.",
   "\"{0}\" in \"{1}\" needs administrator permission to be deleted.": "למחיקת \"{0}\" שבתוך \"{1}\" נדרשת הרשאת מנהל.",
   "\"{0}\" is in use by another program.": "\"{0}\" נמצא בשימוש על ידי תוכנית אחרת.",
+  "\"{0}\" is part of the {1} you are using right now.": "\"{0}\" הוא חלק מ-{1} שנמצא בשימוש כעת.",
   "\"{0}\" is write-protected.": "\"{0}\" מוגן מפני כתיבה.",
+  "\"{0}\" moved to \"{1}\"": "\"{0}\" הועבר אל \"{1}\"",
   "\"{0}\" needs administrator permission to be deleted.": "למחיקת \"{0}\" נדרשת הרשאת מנהל.",
   "(no suggestions)": "(אין הצעות)",
   "(the first {0} shown)": "(מוצגים {0} הראשונים)",
@@ -27,6 +31,7 @@
   "A folder that another program still holds open - or that is shown in a preview - cannot be copied until that program lets go of it. Close it there, then try again.": "לא ניתן להעתיק תיקייה שתוכנית אחרת עדיין מחזיקה פתוחה - או שמוצגת בתצוגה מקדימה - עד שאותה תוכנית תשחרר אותה. יש לסגור אותה שם ולנסות שוב.",
   "A folder that another program still holds open - or that is shown in a preview - cannot be moved until that program lets go of it. Close it there, then try again.": "לא ניתן להעביר תיקייה שתוכנית אחרת עדיין מחזיקה פתוחה - או שמוצגת בתצוגה מקדימה - עד שאותה תוכנית תשחרר אותה. יש לסגור אותה שם ולנסות שוב.",
   "A line between two menu entries": "קו בין שני פריטי תפריט",
+  "A running program cannot delete its own files: the ones it has loaded refuse to go, and taking the rest away makes it crash. Close this {0} and delete the folder from another file manager, or from a copy of {0} started elsewhere.": "תוכנית פועלת אינה יכולה למחוק את הקבצים של עצמה: הקבצים שהיא טענה מסרבים להימחק, והסרת השאר גורמת לה לקרוס. יש לסגור את {0} הזה ולמחוק את התיקייה ממנהל קבצים אחר, או מעותק של {0} שהופעל ממקום אחר.",
   "A submenu in a menu, a group of your own on a toolbar": "תפריט משנה בתפריט, קבוצה משלך בסרגל כלים",
   "Abort": "הפסקה",
   "About": "אודות",
@@ -110,6 +115,7 @@
   "Close": "סגירה",
   "Close (Esc)": "סגירה (Esc)",
   "Close All": "סגירת הכול",
+  "Close it and delete the folder from elsewhere.": "יש לסגור אותו ולמחוק את התיקייה ממקום אחר.",
   "Close the program that holds it, then try again. Administrator rights do not help: a file a running program has loaded cannot be deleted by anyone.": "יש לסגור את התוכנית שמחזיקה בו ולנסות שוב. הרשאות מנהל לא יעזרו: אף אחד לא יכול למחוק קובץ שנטען על ידי תוכנית פועלת.",
   "Collisions between bases": "התנגשויות בין ערכות בסיס",
   "Colour": "צבע",
@@ -132,6 +138,12 @@
   },
   "Copy": "העתקה",
   "Copy \"{0}\" into \"{1}\"?": "להעתיק את \"{0}\" אל \"{1}\"?",
+  "Copy cancelled - {0} of {n} item copied to \"{1}\"": {
+    "one": "ההעתקה בוטלה - הועתקו {0} מתוך {n} פריט אל \"{1}\"",
+    "two": "ההעתקה בוטלה - הועתקו {0} מתוך {n} פריטים אל \"{1}\"",
+    "many": "ההעתקה בוטלה - הועתקו {0} מתוך {n} פריטים אל \"{1}\"",
+    "other": "ההעתקה בוטלה - הועתקו {0} מתוך {n} פריטים אל \"{1}\""
+  },
   "Copy files": "העתקת קבצים",
   "Copy finished": "ההעתקה הסתיימה",
   "Copy path": "העתקת הנתיב",
@@ -367,6 +379,12 @@
   "month|September": "ספטמבר",
   "Move": "העברה",
   "Move \"{0}\" into \"{1}\"?": "להעביר את \"{0}\" אל \"{1}\"?",
+  "Move cancelled - {0} of {n} item moved to \"{1}\"": {
+    "one": "ההעברה בוטלה - הועברו {0} מתוך {n} פריט אל \"{1}\"",
+    "two": "ההעברה בוטלה - הועברו {0} מתוך {n} פריטים אל \"{1}\"",
+    "many": "ההעברה בוטלה - הועברו {0} מתוך {n} פריטים אל \"{1}\"",
+    "other": "ההעברה בוטלה - הועברו {0} מתוך {n} פריטים אל \"{1}\""
+  },
   "Move Down": "הזזה למטה",
   "Move down": "הזזה למטה",
   "Move files": "העברת קבצים",
@@ -463,6 +481,7 @@
   "Preview": "תצוגה מקדימה",
   "Print": "הדפסה",
   "Program": "תוכנית",
+  "Program folder:": "תיקיית התוכנית:",
   "Promote to a base set": "העלאה לערכת בסיס",
   "Properties": "מאפיינים",
   "Put the command selected on the right after the entry selected on the left": "הצבת הפקודה שנבחרה מימין אחרי הפריט שנבחר משמאל",
@@ -629,6 +648,18 @@
   "{0} in {1}: {2} rows": "{0} ב-{1}: {2} שורות",
   "{0} is not a base set the application can take": "{0} אינה ערכת בסיס שהיישום יכול לצרף",
   "{0} no longer taken": "{0} כבר לא מצורפת",
+  "{0} of {n} item copied to \"{1}\" ({2} skipped)": {
+    "one": "הועתקו {0} מתוך {n} פריט אל \"{1}\" ({2} דולגו)",
+    "two": "הועתקו {0} מתוך {n} פריטים אל \"{1}\" ({2} דולגו)",
+    "many": "הועתקו {0} מתוך {n} פריטים אל \"{1}\" ({2} דולגו)",
+    "other": "הועתקו {0} מתוך {n} פריטים אל \"{1}\" ({2} דולגו)"
+  },
+  "{0} of {n} item moved to \"{1}\" ({2} skipped)": {
+    "one": "הועברו {0} מתוך {n} פריט אל \"{1}\" ({2} דולגו)",
+    "two": "הועברו {0} מתוך {n} פריטים אל \"{1}\" ({2} דולגו)",
+    "many": "הועברו {0} מתוך {n} פריטים אל \"{1}\" ({2} דולגו)",
+    "other": "הועברו {0} מתוך {n} פריטים אל \"{1}\" ({2} דולגו)"
+  },
   "{0} rows drafted; review them before saving": "נוצרו טיוטות ל-{0} שורות; יש לבדוק אותן לפני השמירה",
   "{0} taken": "{0} צורפה",
   "{0} taken; {1} rows now duplicate a base's text and can be dropped": "{0} צורפה; {1} שורות משכפלות כעת את הטקסט של ערכת בסיס וניתן להסיר אותן",
@@ -658,11 +689,35 @@
     "many": "{n} קבצים",
     "other": "{n} קבצים"
   },
+  "{n} file copied to \"{0}\"": {
+    "one": "{n} קובץ הועתק אל \"{0}\"",
+    "two": "{n} קבצים הועתקו אל \"{0}\"",
+    "many": "{n} קבצים הועתקו אל \"{0}\"",
+    "other": "{n} קבצים הועתקו אל \"{0}\""
+  },
+  "{n} file moved to \"{0}\"": {
+    "one": "{n} קובץ הועבר אל \"{0}\"",
+    "two": "{n} קבצים הועברו אל \"{0}\"",
+    "many": "{n} קבצים הועברו אל \"{0}\"",
+    "other": "{n} קבצים הועברו אל \"{0}\""
+  },
   "{n} folder": {
     "one": "{n} תיקייה",
     "two": "{n} תיקיות",
     "many": "{n} תיקיות",
     "other": "{n} תיקיות"
+  },
+  "{n} folder copied to \"{0}\"": {
+    "one": "{n} תיקייה הועתקה אל \"{0}\"",
+    "two": "{n} תיקיות הועתקו אל \"{0}\"",
+    "many": "{n} תיקיות הועתקו אל \"{0}\"",
+    "other": "{n} תיקיות הועתקו אל \"{0}\""
+  },
+  "{n} folder moved to \"{0}\"": {
+    "one": "{n} תיקייה הועברה אל \"{0}\"",
+    "two": "{n} תיקיות הועברו אל \"{0}\"",
+    "many": "{n} תיקיות הועברו אל \"{0}\"",
+    "other": "{n} תיקיות הועברו אל \"{0}\""
   },
   "{n} hour": {
     "one": "{n} שעה",
@@ -676,11 +731,23 @@
     "many": "{n} פריטים",
     "other": "{n} פריטים"
   },
+  "{n} item copied to \"{0}\"": {
+    "one": "{n} פריט הועתק אל \"{0}\"",
+    "two": "{n} פריטים הועתקו אל \"{0}\"",
+    "many": "{n} פריטים הועתקו אל \"{0}\"",
+    "other": "{n} פריטים הועתקו אל \"{0}\""
+  },
   "{n} item could not be deleted even with administrator permission.": {
     "one": "לא ניתן היה למחוק {n} פריט גם עם הרשאת מנהל.",
     "two": "לא ניתן היה למחוק {n} פריטים גם עם הרשאת מנהל.",
     "many": "לא ניתן היה למחוק {n} פריטים גם עם הרשאת מנהל.",
     "other": "לא ניתן היה למחוק {n} פריטים גם עם הרשאת מנהל."
+  },
+  "{n} item moved to \"{0}\"": {
+    "one": "{n} פריט הועבר אל \"{0}\"",
+    "two": "{n} פריטים הועברו אל \"{0}\"",
+    "many": "{n} פריטים הועברו אל \"{0}\"",
+    "other": "{n} פריטים הועברו אל \"{0}\""
   },
   "{n} minute": {
     "one": "{n} דקה",

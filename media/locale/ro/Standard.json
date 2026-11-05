@@ -3,17 +3,21 @@
   "@name": "Română",
   "@translated-by": "machine draft 2026-11-03, reviewed by -",
   "\"{0}\" already exists in \"{1}\".": "Elementul „{0}” există deja în „{1}”.",
+  "\"{0}\" copied to \"{1}\"": "Elementul „{0}” a fost copiat în „{1}”",
   "\"{0}\" could not be copied.": "Elementul „{0}” nu a putut fi copiat.",
   "\"{0}\" could not be deleted even with administrator permission.": "Elementul „{0}” nu a putut fi șters nici cu permisiunea de administrator.",
   "\"{0}\" could not be deleted.": "Elementul „{0}” nu a putut fi șters.",
   "\"{0}\" could not be moved to the Recycle Bin.": "Elementul „{0}” nu a putut fi mutat în Coșul de reciclare.",
   "\"{0}\" could not be moved to the Trash.": "Elementul „{0}” nu a putut fi mutat în Coșul de gunoi.",
   "\"{0}\" could not be moved.": "Elementul „{0}” nu a putut fi mutat.",
+  "\"{0}\" holds the {1} you are using right now.": "Elementul „{0}” conține programul {1} pe care îl folosiți acum.",
   "\"{0}\" in \"{1}\" could not be deleted.": "Elementul „{0}” din „{1}” nu a putut fi șters.",
   "\"{0}\" in \"{1}\" is in use by another program.": "Elementul „{0}” din „{1}” este folosit de alt program.",
   "\"{0}\" in \"{1}\" needs administrator permission to be deleted.": "Ștergerea elementului „{0}” din „{1}” necesită permisiunea de administrator.",
   "\"{0}\" is in use by another program.": "Elementul „{0}” este folosit de alt program.",
+  "\"{0}\" is part of the {1} you are using right now.": "Elementul „{0}” face parte din programul {1} pe care îl folosiți acum.",
   "\"{0}\" is write-protected.": "Elementul „{0}” este protejat la scriere.",
+  "\"{0}\" moved to \"{1}\"": "Elementul „{0}” a fost mutat în „{1}”",
   "\"{0}\" needs administrator permission to be deleted.": "Ștergerea elementului „{0}” necesită permisiunea de administrator.",
   "(no suggestions)": "(nicio sugestie)",
   "(the first {0} shown)": "(sunt afișate primele {0})",
@@ -27,6 +31,7 @@
   "A folder that another program still holds open - or that is shown in a preview - cannot be copied until that program lets go of it. Close it there, then try again.": "Un dosar pe care alt program îl ține încă deschis - sau care este afișat într-o previzualizare - nu poate fi copiat până când acel program nu îl eliberează. Închideți-l acolo, apoi încercați din nou.",
   "A folder that another program still holds open - or that is shown in a preview - cannot be moved until that program lets go of it. Close it there, then try again.": "Un dosar pe care alt program îl ține încă deschis - sau care este afișat într-o previzualizare - nu poate fi mutat până când acel program nu îl eliberează. Închideți-l acolo, apoi încercați din nou.",
   "A line between two menu entries": "O linie între două intrări de meniu",
+  "A running program cannot delete its own files: the ones it has loaded refuse to go, and taking the rest away makes it crash. Close this {0} and delete the folder from another file manager, or from a copy of {0} started elsewhere.": "Un program în execuție nu își poate șterge propriile fișiere: cele pe care le-a încărcat nu pot fi șterse, iar eliminarea celorlalte îl face să se blocheze. Închideți programul {0} și ștergeți dosarul din alt manager de fișiere sau dintr-o copie a programului {0} pornită din altă parte.",
   "A submenu in a menu, a group of your own on a toolbar": "Un submeniu într-un meniu, un grup propriu într-o bară de instrumente",
   "Abort": "Abandonare",
   "About": "Despre",
@@ -106,6 +111,7 @@
   "Close": "Închidere",
   "Close (Esc)": "Închidere (Esc)",
   "Close All": "Închidere totală",
+  "Close it and delete the folder from elsewhere.": "Închideți-l și ștergeți dosarul din altă parte.",
   "Close the program that holds it, then try again. Administrator rights do not help: a file a running program has loaded cannot be deleted by anyone.": "Închideți programul care îl ține deschis, apoi încercați din nou. Drepturile de administrator nu ajută: un fișier încărcat de un program în execuție nu poate fi șters de nimeni.",
   "Collisions between bases": "Conflicte între seturile de bază",
   "Colour": "Culoare",
@@ -127,6 +133,11 @@
   },
   "Copy": "Copiere",
   "Copy \"{0}\" into \"{1}\"?": "Copiați „{0}” în „{1}”?",
+  "Copy cancelled - {0} of {n} item copied to \"{1}\"": {
+    "one": "Copiere anulată - au fost copiate {0} din {n} element în „{1}”",
+    "few": "Copiere anulată - au fost copiate {0} din {n} elemente în „{1}”",
+    "other": "Copiere anulată - au fost copiate {0} din {n} de elemente în „{1}”"
+  },
   "Copy files": "Copiere fișiere",
   "Copy finished": "Copiere finalizată",
   "Copy path": "Copiere cale",
@@ -357,6 +368,11 @@
   "month|September": "septembrie",
   "Move": "Mutare",
   "Move \"{0}\" into \"{1}\"?": "Mutați „{0}” în „{1}”?",
+  "Move cancelled - {0} of {n} item moved to \"{1}\"": {
+    "one": "Mutare anulată - au fost mutate {0} din {n} element în „{1}”",
+    "few": "Mutare anulată - au fost mutate {0} din {n} elemente în „{1}”",
+    "other": "Mutare anulată - au fost mutate {0} din {n} de elemente în „{1}”"
+  },
   "Move Down": "Mutare în jos",
   "Move down": "Mutare în jos",
   "Move files": "Mutare fișiere",
@@ -448,6 +464,7 @@
   "Preview": "Previzualizare",
   "Print": "Imprimare",
   "Program": "Program",
+  "Program folder:": "Dosarul programului:",
   "Promote to a base set": "Promovare într-un set de bază",
   "Properties": "Proprietăți",
   "Put the command selected on the right after the entry selected on the left": "Plasarea comenzii selectate în dreapta după intrarea selectată în stânga",
@@ -614,6 +631,16 @@
   "{0} in {1}: {2} rows": "{0} în {1}: {2} rânduri",
   "{0} is not a base set the application can take": "{0} nu este un set de bază pe care aplicația îl poate folosi",
   "{0} no longer taken": "{0} nu mai este folosit",
+  "{0} of {n} item copied to \"{1}\" ({2} skipped)": {
+    "one": "Au fost copiate {0} din {n} element în „{1}” (omise: {2})",
+    "few": "Au fost copiate {0} din {n} elemente în „{1}” (omise: {2})",
+    "other": "Au fost copiate {0} din {n} de elemente în „{1}” (omise: {2})"
+  },
+  "{0} of {n} item moved to \"{1}\" ({2} skipped)": {
+    "one": "Au fost mutate {0} din {n} element în „{1}” (omise: {2})",
+    "few": "Au fost mutate {0} din {n} elemente în „{1}” (omise: {2})",
+    "other": "Au fost mutate {0} din {n} de elemente în „{1}” (omise: {2})"
+  },
   "{0} rows drafted; review them before saving": "{0} rânduri cu ciornă; revizuiți-le înainte de salvare",
   "{0} taken": "{0} folosit",
   "{0} taken; {1} rows now duplicate a base's text and can be dropped": "{0} folosit; {1} rânduri dublează acum textul unei baze și pot fi eliminate",
@@ -640,10 +667,30 @@
     "few": "{n} fișiere",
     "other": "{n} de fișiere"
   },
+  "{n} file copied to \"{0}\"": {
+    "one": "{n} fișier a fost copiat în „{0}”",
+    "few": "{n} fișiere au fost copiate în „{0}”",
+    "other": "{n} de fișiere au fost copiate în „{0}”"
+  },
+  "{n} file moved to \"{0}\"": {
+    "one": "{n} fișier a fost mutat în „{0}”",
+    "few": "{n} fișiere au fost mutate în „{0}”",
+    "other": "{n} de fișiere au fost mutate în „{0}”"
+  },
   "{n} folder": {
     "one": "{n} dosar",
     "few": "{n} dosare",
     "other": "{n} de dosare"
+  },
+  "{n} folder copied to \"{0}\"": {
+    "one": "{n} dosar a fost copiat în „{0}”",
+    "few": "{n} dosare au fost copiate în „{0}”",
+    "other": "{n} de dosare au fost copiate în „{0}”"
+  },
+  "{n} folder moved to \"{0}\"": {
+    "one": "{n} dosar a fost mutat în „{0}”",
+    "few": "{n} dosare au fost mutate în „{0}”",
+    "other": "{n} de dosare au fost mutate în „{0}”"
   },
   "{n} hour": {
     "one": "{n} oră",
@@ -655,10 +702,20 @@
     "few": "{n} elemente",
     "other": "{n} de elemente"
   },
+  "{n} item copied to \"{0}\"": {
+    "one": "{n} element a fost copiat în „{0}”",
+    "few": "{n} elemente au fost copiate în „{0}”",
+    "other": "{n} de elemente au fost copiate în „{0}”"
+  },
   "{n} item could not be deleted even with administrator permission.": {
     "one": "{n} element nu a putut fi șters nici cu permisiunea de administrator.",
     "few": "{n} elemente nu au putut fi șterse nici cu permisiunea de administrator.",
     "other": "{n} de elemente nu au putut fi șterse nici cu permisiunea de administrator."
+  },
+  "{n} item moved to \"{0}\"": {
+    "one": "{n} element a fost mutat în „{0}”",
+    "few": "{n} elemente au fost mutate în „{0}”",
+    "other": "{n} de elemente au fost mutate în „{0}”"
   },
   "{n} minute": {
     "one": "{n} minut",

@@ -3,17 +3,21 @@
   "@name": "Svenska",
   "@translated-by": "machine draft 2026-11-03, reviewed by -",
   "\"{0}\" already exists in \"{1}\".": "”{0}” finns redan i ”{1}”.",
+  "\"{0}\" copied to \"{1}\"": "”{0}” kopierades till ”{1}”",
   "\"{0}\" could not be copied.": "”{0}” kunde inte kopieras.",
   "\"{0}\" could not be deleted even with administrator permission.": "”{0}” kunde inte tas bort ens med administratörsbehörighet.",
   "\"{0}\" could not be deleted.": "”{0}” kunde inte tas bort.",
   "\"{0}\" could not be moved to the Recycle Bin.": "”{0}” kunde inte flyttas till papperskorgen.",
   "\"{0}\" could not be moved to the Trash.": "”{0}” kunde inte flyttas till papperskorgen.",
   "\"{0}\" could not be moved.": "”{0}” kunde inte flyttas.",
+  "\"{0}\" holds the {1} you are using right now.": "”{0}” innehåller programmet {1} som du använder just nu.",
   "\"{0}\" in \"{1}\" could not be deleted.": "”{0}” i ”{1}” kunde inte tas bort.",
   "\"{0}\" in \"{1}\" is in use by another program.": "”{0}” i ”{1}” används av ett annat program.",
   "\"{0}\" in \"{1}\" needs administrator permission to be deleted.": "Administratörsbehörighet krävs för att ta bort ”{0}” i ”{1}”.",
   "\"{0}\" is in use by another program.": "”{0}” används av ett annat program.",
+  "\"{0}\" is part of the {1} you are using right now.": "”{0}” är en del av programmet {1} som du använder just nu.",
   "\"{0}\" is write-protected.": "”{0}” är skrivskyddad.",
+  "\"{0}\" moved to \"{1}\"": "”{0}” flyttades till ”{1}”",
   "\"{0}\" needs administrator permission to be deleted.": "Administratörsbehörighet krävs för att ta bort ”{0}”.",
   "(no suggestions)": "(inga förslag)",
   "(the first {0} shown)": "(de första {0} visas)",
@@ -27,6 +31,7 @@
   "A folder that another program still holds open - or that is shown in a preview - cannot be copied until that program lets go of it. Close it there, then try again.": "En mapp som ett annat program fortfarande håller öppen – eller som visas i en förhandsgranskning – kan inte kopieras förrän programmet släpper den. Stäng den där och försök sedan igen.",
   "A folder that another program still holds open - or that is shown in a preview - cannot be moved until that program lets go of it. Close it there, then try again.": "En mapp som ett annat program fortfarande håller öppen – eller som visas i en förhandsgranskning – kan inte flyttas förrän programmet släpper den. Stäng den där och försök sedan igen.",
   "A line between two menu entries": "En linje mellan två menyposter",
+  "A running program cannot delete its own files: the ones it has loaded refuse to go, and taking the rest away makes it crash. Close this {0} and delete the folder from another file manager, or from a copy of {0} started elsewhere.": "Ett program som körs kan inte ta bort sina egna filer: de som det har läst in går inte att ta bort, och om resten tas bort kraschar det. Stäng {0} och ta bort mappen från en annan filhanterare eller från en kopia av {0} som startats någon annanstans.",
   "A submenu in a menu, a group of your own on a toolbar": "En undermeny i en meny, en egen grupp i ett verktygsfält",
   "Abort": "Avbryt",
   "About": "Om",
@@ -102,6 +107,7 @@
   "Close": "Stäng",
   "Close (Esc)": "Stäng (Esc)",
   "Close All": "Stäng alla",
+  "Close it and delete the folder from elsewhere.": "Stäng programmet och ta bort mappen från någon annanstans.",
   "Close the program that holds it, then try again. Administrator rights do not help: a file a running program has loaded cannot be deleted by anyone.": "Stäng programmet som använder den och försök sedan igen. Administratörsbehörighet hjälper inte: en fil som ett program som körs har läst in kan inte tas bort av någon.",
   "Collisions between bases": "Kollisioner mellan basuppsättningar",
   "Colour": "Färg",
@@ -122,6 +128,10 @@
   },
   "Copy": "Kopiera",
   "Copy \"{0}\" into \"{1}\"?": "Kopiera ”{0}” till ”{1}”?",
+  "Copy cancelled - {0} of {n} item copied to \"{1}\"": {
+    "one": "Kopieringen avbröts – {0} av {n} objekt kopierades till ”{1}”",
+    "other": "Kopieringen avbröts – {0} av {n} objekt kopierades till ”{1}”"
+  },
   "Copy files": "Kopiera filer",
   "Copy finished": "Kopieringen är klar",
   "Copy path": "Kopiera sökväg",
@@ -347,6 +357,10 @@
   "month|September": "september",
   "Move": "Flytta",
   "Move \"{0}\" into \"{1}\"?": "Flytta ”{0}” till ”{1}”?",
+  "Move cancelled - {0} of {n} item moved to \"{1}\"": {
+    "one": "Flytten avbröts – {0} av {n} objekt flyttades till ”{1}”",
+    "other": "Flytten avbröts – {0} av {n} objekt flyttades till ”{1}”"
+  },
   "Move Down": "Flytta ned",
   "Move down": "Flytta ned",
   "Move files": "Flytta filer",
@@ -433,6 +447,7 @@
   "Preview": "Förhandsgranska",
   "Print": "Skriv ut",
   "Program": "Program",
+  "Program folder:": "Programmapp:",
   "Promote to a base set": "Flytta upp till en basuppsättning",
   "Properties": "Egenskaper",
   "Put the command selected on the right after the entry selected on the left": "Placera kommandot som är markerat till höger efter posten som är markerad till vänster",
@@ -599,6 +614,14 @@
   "{0} in {1}: {2} rows": "{0} på {1}: {2} rader",
   "{0} is not a base set the application can take": "{0} är inte en basuppsättning som applikationen kan använda",
   "{0} no longer taken": "{0} används inte längre",
+  "{0} of {n} item copied to \"{1}\" ({2} skipped)": {
+    "one": "{0} av {n} objekt kopierades till ”{1}” ({2} hoppades över)",
+    "other": "{0} av {n} objekt kopierades till ”{1}” ({2} hoppades över)"
+  },
+  "{0} of {n} item moved to \"{1}\" ({2} skipped)": {
+    "one": "{0} av {n} objekt flyttades till ”{1}” ({2} hoppades över)",
+    "other": "{0} av {n} objekt flyttades till ”{1}” ({2} hoppades över)"
+  },
   "{0} rows drafted; review them before saving": "{0} rader har fått utkast; granska dem innan du sparar",
   "{0} taken": "{0} används",
   "{0} taken; {1} rows now duplicate a base's text and can be dropped": "{0} används; {1} rader upprepar nu en bastext och kan tas bort",
@@ -622,9 +645,25 @@
     "one": "{n} fil",
     "other": "{n} filer"
   },
+  "{n} file copied to \"{0}\"": {
+    "one": "{n} fil kopierades till ”{0}”",
+    "other": "{n} filer kopierades till ”{0}”"
+  },
+  "{n} file moved to \"{0}\"": {
+    "one": "{n} fil flyttades till ”{0}”",
+    "other": "{n} filer flyttades till ”{0}”"
+  },
   "{n} folder": {
     "one": "{n} mapp",
     "other": "{n} mappar"
+  },
+  "{n} folder copied to \"{0}\"": {
+    "one": "{n} mapp kopierades till ”{0}”",
+    "other": "{n} mappar kopierades till ”{0}”"
+  },
+  "{n} folder moved to \"{0}\"": {
+    "one": "{n} mapp flyttades till ”{0}”",
+    "other": "{n} mappar flyttades till ”{0}”"
   },
   "{n} hour": {
     "one": "{n} timme",
@@ -634,9 +673,17 @@
     "one": "{n} objekt",
     "other": "{n} objekt"
   },
+  "{n} item copied to \"{0}\"": {
+    "one": "{n} objekt kopierades till ”{0}”",
+    "other": "{n} objekt kopierades till ”{0}”"
+  },
   "{n} item could not be deleted even with administrator permission.": {
     "one": "{n} objekt kunde inte tas bort ens med administratörsbehörighet.",
     "other": "{n} objekt kunde inte tas bort ens med administratörsbehörighet."
+  },
+  "{n} item moved to \"{0}\"": {
+    "one": "{n} objekt flyttades till ”{0}”",
+    "other": "{n} objekt flyttades till ”{0}”"
   },
   "{n} minute": {
     "one": "{n} minut",

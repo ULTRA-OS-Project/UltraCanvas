@@ -3,17 +3,21 @@
   "@name": "Polski",
   "@translated-by": "machine draft 2026-11-03, reviewed by -",
   "\"{0}\" already exists in \"{1}\".": "Element „{0}” już istnieje w folderze „{1}”.",
+  "\"{0}\" copied to \"{1}\"": "Skopiowano „{0}” do folderu „{1}”",
   "\"{0}\" could not be copied.": "Nie można skopiować „{0}”.",
   "\"{0}\" could not be deleted even with administrator permission.": "Nie można usunąć „{0}” nawet z uprawnieniami administratora.",
   "\"{0}\" could not be deleted.": "Nie można usunąć „{0}”.",
   "\"{0}\" could not be moved to the Recycle Bin.": "Nie można przenieść „{0}” do kosza.",
   "\"{0}\" could not be moved to the Trash.": "Nie można przenieść „{0}” do kosza.",
   "\"{0}\" could not be moved.": "Nie można przenieść „{0}”.",
+  "\"{0}\" holds the {1} you are using right now.": "„{0}” zawiera program {1}, którego właśnie używasz.",
   "\"{0}\" in \"{1}\" could not be deleted.": "Nie można usunąć „{0}” w folderze „{1}”.",
   "\"{0}\" in \"{1}\" is in use by another program.": "Element „{0}” w folderze „{1}” jest używany przez inny program.",
   "\"{0}\" in \"{1}\" needs administrator permission to be deleted.": "Usunięcie „{0}” w folderze „{1}” wymaga uprawnień administratora.",
   "\"{0}\" is in use by another program.": "Element „{0}” jest używany przez inny program.",
+  "\"{0}\" is part of the {1} you are using right now.": "„{0}” jest częścią programu {1}, którego właśnie używasz.",
   "\"{0}\" is write-protected.": "Element „{0}” jest chroniony przed zapisem.",
+  "\"{0}\" moved to \"{1}\"": "Przeniesiono „{0}” do folderu „{1}”",
   "\"{0}\" needs administrator permission to be deleted.": "Usunięcie „{0}” wymaga uprawnień administratora.",
   "(no suggestions)": "(brak sugestii)",
   "(the first {0} shown)": "(pokazano pierwsze {0})",
@@ -27,6 +31,7 @@
   "A folder that another program still holds open - or that is shown in a preview - cannot be copied until that program lets go of it. Close it there, then try again.": "Folderu, który inny program nadal trzyma otwarty – lub który jest wyświetlany w podglądzie – nie można skopiować, dopóki ten program go nie zwolni. Zamknij go tam i spróbuj ponownie.",
   "A folder that another program still holds open - or that is shown in a preview - cannot be moved until that program lets go of it. Close it there, then try again.": "Folderu, który inny program nadal trzyma otwarty – lub który jest wyświetlany w podglądzie – nie można przenieść, dopóki ten program go nie zwolni. Zamknij go tam i spróbuj ponownie.",
   "A line between two menu entries": "Linia między dwoma pozycjami menu",
+  "A running program cannot delete its own files: the ones it has loaded refuse to go, and taking the rest away makes it crash. Close this {0} and delete the folder from another file manager, or from a copy of {0} started elsewhere.": "Działający program nie może usunąć własnych plików: wczytanych plików nie da się usunąć, a usunięcie pozostałych powoduje jego awarię. Zamknij program {0} i usuń folder z innego menedżera plików lub z kopii programu {0} uruchomionej z innego miejsca.",
   "A submenu in a menu, a group of your own on a toolbar": "Podmenu w menu, własna grupa na pasku narzędzi",
   "Abort": "Przerwij",
   "About": "Informacje",
@@ -106,6 +111,7 @@
   "Close": "Zamknij",
   "Close (Esc)": "Zamknij (Esc)",
   "Close All": "Zamknij wszystko",
+  "Close it and delete the folder from elsewhere.": "Zamknij go i usuń folder z innego miejsca.",
   "Close the program that holds it, then try again. Administrator rights do not help: a file a running program has loaded cannot be deleted by anyone.": "Zamknij program, który go blokuje, i spróbuj ponownie. Uprawnienia administratora nie pomogą: pliku wczytanego przez działający program nie może usunąć nikt.",
   "Collisions between bases": "Kolizje między zestawami bazowymi",
   "Colour": "Kolor",
@@ -127,6 +133,11 @@
   },
   "Copy": "Kopiuj",
   "Copy \"{0}\" into \"{1}\"?": "Skopiować „{0}” do folderu „{1}”?",
+  "Copy cancelled - {0} of {n} item copied to \"{1}\"": {
+    "one": "Anulowano kopiowanie – skopiowano {0} z {n} elementu do folderu „{1}”",
+    "few": "Anulowano kopiowanie – skopiowano {0} z {n} elementów do folderu „{1}”",
+    "many": "Anulowano kopiowanie – skopiowano {0} z {n} elementów do folderu „{1}”"
+  },
   "Copy files": "Kopiowanie plików",
   "Copy finished": "Kopiowanie zakończone",
   "Copy path": "Kopiuj ścieżkę",
@@ -357,6 +368,11 @@
   "month|September": "Wrzesień",
   "Move": "Przenieś",
   "Move \"{0}\" into \"{1}\"?": "Przenieść „{0}” do folderu „{1}”?",
+  "Move cancelled - {0} of {n} item moved to \"{1}\"": {
+    "one": "Anulowano przenoszenie – przeniesiono {0} z {n} elementu do folderu „{1}”",
+    "few": "Anulowano przenoszenie – przeniesiono {0} z {n} elementów do folderu „{1}”",
+    "many": "Anulowano przenoszenie – przeniesiono {0} z {n} elementów do folderu „{1}”"
+  },
   "Move Down": "Przesuń w dół",
   "Move down": "Przenieś w dół",
   "Move files": "Przenoszenie plików",
@@ -448,6 +464,7 @@
   "Preview": "Podgląd",
   "Print": "Drukuj",
   "Program": "Program",
+  "Program folder:": "Folder programu:",
   "Promote to a base set": "Przenieś do zestawu bazowego",
   "Properties": "Właściwości",
   "Put the command selected on the right after the entry selected on the left": "Wstaw polecenie zaznaczone po prawej za pozycją zaznaczoną po lewej",
@@ -614,6 +631,16 @@
   "{0} in {1}: {2} rows": "{0}, język {1}: wiersze: {2}",
   "{0} is not a base set the application can take": "{0} nie jest zestawem bazowym, który aplikacja może podłączyć",
   "{0} no longer taken": "Zestaw {0} odłączony",
+  "{0} of {n} item copied to \"{1}\" ({2} skipped)": {
+    "one": "Skopiowano {0} z {n} elementu do folderu „{1}” (pominięto: {2})",
+    "few": "Skopiowano {0} z {n} elementów do folderu „{1}” (pominięto: {2})",
+    "many": "Skopiowano {0} z {n} elementów do folderu „{1}” (pominięto: {2})"
+  },
+  "{0} of {n} item moved to \"{1}\" ({2} skipped)": {
+    "one": "Przeniesiono {0} z {n} elementu do folderu „{1}” (pominięto: {2})",
+    "few": "Przeniesiono {0} z {n} elementów do folderu „{1}” (pominięto: {2})",
+    "many": "Przeniesiono {0} z {n} elementów do folderu „{1}” (pominięto: {2})"
+  },
   "{0} rows drafted; review them before saving": "Utworzono szkice wierszy: {0}; przejrzyj je przed zapisaniem",
   "{0} taken": "Zestaw {0} podłączony",
   "{0} taken; {1} rows now duplicate a base's text and can be dropped": "Zestaw {0} podłączony; wiersze, które teraz powielają tekst zestawu bazowego i można je usunąć: {1}",
@@ -640,10 +667,30 @@
     "few": "{n} pliki",
     "many": "{n} plików"
   },
+  "{n} file copied to \"{0}\"": {
+    "one": "Skopiowano {n} plik do folderu „{0}”",
+    "few": "Skopiowano {n} pliki do folderu „{0}”",
+    "many": "Skopiowano {n} plików do folderu „{0}”"
+  },
+  "{n} file moved to \"{0}\"": {
+    "one": "Przeniesiono {n} plik do folderu „{0}”",
+    "few": "Przeniesiono {n} pliki do folderu „{0}”",
+    "many": "Przeniesiono {n} plików do folderu „{0}”"
+  },
   "{n} folder": {
     "one": "{n} folder",
     "few": "{n} foldery",
     "many": "{n} folderów"
+  },
+  "{n} folder copied to \"{0}\"": {
+    "one": "Skopiowano {n} folder do folderu „{0}”",
+    "few": "Skopiowano {n} foldery do folderu „{0}”",
+    "many": "Skopiowano {n} folderów do folderu „{0}”"
+  },
+  "{n} folder moved to \"{0}\"": {
+    "one": "Przeniesiono {n} folder do folderu „{0}”",
+    "few": "Przeniesiono {n} foldery do folderu „{0}”",
+    "many": "Przeniesiono {n} folderów do folderu „{0}”"
   },
   "{n} hour": {
     "one": "{n} godzina",
@@ -655,10 +702,20 @@
     "few": "{n} elementy",
     "many": "{n} elementów"
   },
+  "{n} item copied to \"{0}\"": {
+    "one": "Skopiowano {n} element do folderu „{0}”",
+    "few": "Skopiowano {n} elementy do folderu „{0}”",
+    "many": "Skopiowano {n} elementów do folderu „{0}”"
+  },
   "{n} item could not be deleted even with administrator permission.": {
     "one": "Nie można usunąć {n} elementu nawet z uprawnieniami administratora.",
     "few": "Nie można usunąć {n} elementów nawet z uprawnieniami administratora.",
     "many": "Nie można usunąć {n} elementów nawet z uprawnieniami administratora."
+  },
+  "{n} item moved to \"{0}\"": {
+    "one": "Przeniesiono {n} element do folderu „{0}”",
+    "few": "Przeniesiono {n} elementy do folderu „{0}”",
+    "many": "Przeniesiono {n} elementów do folderu „{0}”"
   },
   "{n} minute": {
     "one": "{n} minuta",

@@ -3,17 +3,21 @@
   "@name": "Dansk",
   "@translated-by": "machine draft 2026-11-03, reviewed by -",
   "\"{0}\" already exists in \"{1}\".": "»{0}« findes allerede i »{1}«.",
+  "\"{0}\" copied to \"{1}\"": "»{0}« kopieret til »{1}«",
   "\"{0}\" could not be copied.": "»{0}« kunne ikke kopieres.",
   "\"{0}\" could not be deleted even with administrator permission.": "»{0}« kunne ikke slettes, heller ikke med administratortilladelse.",
   "\"{0}\" could not be deleted.": "»{0}« kunne ikke slettes.",
   "\"{0}\" could not be moved to the Recycle Bin.": "»{0}« kunne ikke flyttes til papirkurven.",
   "\"{0}\" could not be moved to the Trash.": "»{0}« kunne ikke flyttes til papirkurven.",
   "\"{0}\" could not be moved.": "»{0}« kunne ikke flyttes.",
+  "\"{0}\" holds the {1} you are using right now.": "»{0}« indeholder programmet {1}, som du bruger lige nu.",
   "\"{0}\" in \"{1}\" could not be deleted.": "»{0}« i »{1}« kunne ikke slettes.",
   "\"{0}\" in \"{1}\" is in use by another program.": "»{0}« i »{1}« bruges af et andet program.",
   "\"{0}\" in \"{1}\" needs administrator permission to be deleted.": "Det kræver administratortilladelse at slette »{0}« i »{1}«.",
   "\"{0}\" is in use by another program.": "»{0}« bruges af et andet program.",
+  "\"{0}\" is part of the {1} you are using right now.": "»{0}« er en del af programmet {1}, som du bruger lige nu.",
   "\"{0}\" is write-protected.": "»{0}« er skrivebeskyttet.",
+  "\"{0}\" moved to \"{1}\"": "»{0}« flyttet til »{1}«",
   "\"{0}\" needs administrator permission to be deleted.": "Det kræver administratortilladelse at slette »{0}«.",
   "(no suggestions)": "(ingen forslag)",
   "(the first {0} shown)": "(de første {0} vises)",
@@ -27,6 +31,7 @@
   "A folder that another program still holds open - or that is shown in a preview - cannot be copied until that program lets go of it. Close it there, then try again.": "En mappe, som et andet program stadig holder åben – eller som vises i en forhåndsvisning – kan ikke kopieres, før programmet slipper den. Luk den der, og prøv igen.",
   "A folder that another program still holds open - or that is shown in a preview - cannot be moved until that program lets go of it. Close it there, then try again.": "En mappe, som et andet program stadig holder åben – eller som vises i en forhåndsvisning – kan ikke flyttes, før programmet slipper den. Luk den der, og prøv igen.",
   "A line between two menu entries": "En linje mellem to menupunkter",
+  "A running program cannot delete its own files: the ones it has loaded refuse to go, and taking the rest away makes it crash. Close this {0} and delete the folder from another file manager, or from a copy of {0} started elsewhere.": "Et kørende program kan ikke slette sine egne filer: De filer, det har indlæst, kan ikke fjernes, og hvis resten fjernes, går det ned. Luk {0}, og slet mappen fra en anden filhåndtering eller fra en kopi af {0}, der er startet et andet sted.",
   "A submenu in a menu, a group of your own on a toolbar": "En undermenu i en menu, en egen gruppe på en værktøjslinje",
   "Abort": "Afbryd",
   "About": "Om",
@@ -102,6 +107,7 @@
   "Close": "Luk",
   "Close (Esc)": "Luk (Esc)",
   "Close All": "Luk alle",
+  "Close it and delete the folder from elsewhere.": "Luk programmet, og slet mappen fra et andet sted.",
   "Close the program that holds it, then try again. Administrator rights do not help: a file a running program has loaded cannot be deleted by anyone.": "Luk det program, der bruger den, og prøv igen. Administratorrettigheder hjælper ikke: En fil, som et kørende program har indlæst, kan ingen slette.",
   "Collisions between bases": "Kollisioner mellem basissæt",
   "Colour": "Farve",
@@ -122,6 +128,10 @@
   },
   "Copy": "Kopiér",
   "Copy \"{0}\" into \"{1}\"?": "Kopiér »{0}« til »{1}«?",
+  "Copy cancelled - {0} of {n} item copied to \"{1}\"": {
+    "one": "Kopiering annulleret – {0} af {n} element kopieret til »{1}«",
+    "other": "Kopiering annulleret – {0} af {n} elementer kopieret til »{1}«"
+  },
   "Copy files": "Kopiér filer",
   "Copy finished": "Kopiering fuldført",
   "Copy path": "Kopiér sti",
@@ -347,6 +357,10 @@
   "month|September": "september",
   "Move": "Flyt",
   "Move \"{0}\" into \"{1}\"?": "Flyt »{0}« til »{1}«?",
+  "Move cancelled - {0} of {n} item moved to \"{1}\"": {
+    "one": "Flytning annulleret – {0} af {n} element flyttet til »{1}«",
+    "other": "Flytning annulleret – {0} af {n} elementer flyttet til »{1}«"
+  },
   "Move Down": "Flyt ned",
   "Move down": "Flyt ned",
   "Move files": "Flyt filer",
@@ -433,6 +447,7 @@
   "Preview": "Eksempel",
   "Print": "Udskriv",
   "Program": "Program",
+  "Program folder:": "Programmappe:",
   "Promote to a base set": "Flyt op til et basissæt",
   "Properties": "Egenskaber",
   "Put the command selected on the right after the entry selected on the left": "Indsæt den kommando, der er markeret til højre, efter den post, der er markeret til venstre",
@@ -599,6 +614,14 @@
   "{0} in {1}: {2} rows": "{0} på {1}: {2} rækker",
   "{0} is not a base set the application can take": "{0} er ikke et basissæt, som applikationen kan bruge",
   "{0} no longer taken": "{0} bruges ikke længere",
+  "{0} of {n} item copied to \"{1}\" ({2} skipped)": {
+    "one": "{0} af {n} element kopieret til »{1}« ({2} sprunget over)",
+    "other": "{0} af {n} elementer kopieret til »{1}« ({2} sprunget over)"
+  },
+  "{0} of {n} item moved to \"{1}\" ({2} skipped)": {
+    "one": "{0} af {n} element flyttet til »{1}« ({2} sprunget over)",
+    "other": "{0} af {n} elementer flyttet til »{1}« ({2} sprunget over)"
+  },
   "{0} rows drafted; review them before saving": "{0} rækker har fået udkast; gennemse dem, før du gemmer",
   "{0} taken": "{0} bruges",
   "{0} taken; {1} rows now duplicate a base's text and can be dropped": "{0} bruges; {1} rækker gentager nu en basistekst og kan fjernes",
@@ -622,9 +645,25 @@
     "one": "{n} fil",
     "other": "{n} filer"
   },
+  "{n} file copied to \"{0}\"": {
+    "one": "{n} fil kopieret til »{0}«",
+    "other": "{n} filer kopieret til »{0}«"
+  },
+  "{n} file moved to \"{0}\"": {
+    "one": "{n} fil flyttet til »{0}«",
+    "other": "{n} filer flyttet til »{0}«"
+  },
   "{n} folder": {
     "one": "{n} mappe",
     "other": "{n} mapper"
+  },
+  "{n} folder copied to \"{0}\"": {
+    "one": "{n} mappe kopieret til »{0}«",
+    "other": "{n} mapper kopieret til »{0}«"
+  },
+  "{n} folder moved to \"{0}\"": {
+    "one": "{n} mappe flyttet til »{0}«",
+    "other": "{n} mapper flyttet til »{0}«"
   },
   "{n} hour": {
     "one": "{n} time",
@@ -634,9 +673,17 @@
     "one": "{n} element",
     "other": "{n} elementer"
   },
+  "{n} item copied to \"{0}\"": {
+    "one": "{n} element kopieret til »{0}«",
+    "other": "{n} elementer kopieret til »{0}«"
+  },
   "{n} item could not be deleted even with administrator permission.": {
     "one": "{n} element kunne ikke slettes, heller ikke med administratortilladelse.",
     "other": "{n} elementer kunne ikke slettes, heller ikke med administratortilladelse."
+  },
+  "{n} item moved to \"{0}\"": {
+    "one": "{n} element flyttet til »{0}«",
+    "other": "{n} elementer flyttet til »{0}«"
   },
   "{n} minute": {
     "one": "{n} minut",

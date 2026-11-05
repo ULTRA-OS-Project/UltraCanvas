@@ -2,17 +2,21 @@
   "@language": "en",
   "@name": "English",
   "\"{0}\" already exists in \"{1}\".": "\"{0}\" already exists in \"{1}\".",
+  "\"{0}\" copied to \"{1}\"": "\"{0}\" copied to \"{1}\"",
   "\"{0}\" could not be copied.": "\"{0}\" could not be copied.",
   "\"{0}\" could not be deleted even with administrator permission.": "\"{0}\" could not be deleted even with administrator permission.",
   "\"{0}\" could not be deleted.": "\"{0}\" could not be deleted.",
   "\"{0}\" could not be moved to the Recycle Bin.": "\"{0}\" could not be moved to the Recycle Bin.",
   "\"{0}\" could not be moved to the Trash.": "\"{0}\" could not be moved to the Trash.",
   "\"{0}\" could not be moved.": "\"{0}\" could not be moved.",
+  "\"{0}\" holds the {1} you are using right now.": "\"{0}\" holds the {1} you are using right now.",
   "\"{0}\" in \"{1}\" could not be deleted.": "\"{0}\" in \"{1}\" could not be deleted.",
   "\"{0}\" in \"{1}\" is in use by another program.": "\"{0}\" in \"{1}\" is in use by another program.",
   "\"{0}\" in \"{1}\" needs administrator permission to be deleted.": "\"{0}\" in \"{1}\" needs administrator permission to be deleted.",
   "\"{0}\" is in use by another program.": "\"{0}\" is in use by another program.",
+  "\"{0}\" is part of the {1} you are using right now.": "\"{0}\" is part of the {1} you are using right now.",
   "\"{0}\" is write-protected.": "\"{0}\" is write-protected.",
+  "\"{0}\" moved to \"{1}\"": "\"{0}\" moved to \"{1}\"",
   "\"{0}\" needs administrator permission to be deleted.": "\"{0}\" needs administrator permission to be deleted.",
   "(no suggestions)": "(no suggestions)",
   "(the first {0} shown)": "(the first {0} shown)",
@@ -26,6 +30,7 @@
   "A folder that another program still holds open - or that is shown in a preview - cannot be copied until that program lets go of it. Close it there, then try again.": "A folder that another program still holds open - or that is shown in a preview - cannot be copied until that program lets go of it. Close it there, then try again.",
   "A folder that another program still holds open - or that is shown in a preview - cannot be moved until that program lets go of it. Close it there, then try again.": "A folder that another program still holds open - or that is shown in a preview - cannot be moved until that program lets go of it. Close it there, then try again.",
   "A line between two menu entries": "A line between two menu entries",
+  "A running program cannot delete its own files: the ones it has loaded refuse to go, and taking the rest away makes it crash. Close this {0} and delete the folder from another file manager, or from a copy of {0} started elsewhere.": "A running program cannot delete its own files: the ones it has loaded refuse to go, and taking the rest away makes it crash. Close this {0} and delete the folder from another file manager, or from a copy of {0} started elsewhere.",
   "A submenu in a menu, a group of your own on a toolbar": "A submenu in a menu, a group of your own on a toolbar",
   "Abort": "Abort",
   "About": "About",
@@ -101,6 +106,7 @@
   "Close": "Close",
   "Close (Esc)": "Close (Esc)",
   "Close All": "Close All",
+  "Close it and delete the folder from elsewhere.": "Close it and delete the folder from elsewhere.",
   "Close the program that holds it, then try again. Administrator rights do not help: a file a running program has loaded cannot be deleted by anyone.": "Close the program that holds it, then try again. Administrator rights do not help: a file a running program has loaded cannot be deleted by anyone.",
   "Collisions between bases": "Collisions between bases",
   "Colour": "Colour",
@@ -121,6 +127,10 @@
   },
   "Copy": "Copy",
   "Copy \"{0}\" into \"{1}\"?": "Copy \"{0}\" into \"{1}\"?",
+  "Copy cancelled - {0} of {n} item copied to \"{1}\"": {
+    "one": "Copy cancelled - {0} of {n} item copied to \"{1}\"",
+    "other": "Copy cancelled - {0} of {n} items copied to \"{1}\""
+  },
   "Copy files": "Copy files",
   "Copy finished": "Copy finished",
   "Copy path": "Copy path",
@@ -346,6 +356,10 @@
   "month|September": "September",
   "Move": "Move",
   "Move \"{0}\" into \"{1}\"?": "Move \"{0}\" into \"{1}\"?",
+  "Move cancelled - {0} of {n} item moved to \"{1}\"": {
+    "one": "Move cancelled - {0} of {n} item moved to \"{1}\"",
+    "other": "Move cancelled - {0} of {n} items moved to \"{1}\""
+  },
   "Move Down": "Move Down",
   "Move down": "Move down",
   "Move files": "Move files",
@@ -432,6 +446,7 @@
   "Preview": "Preview",
   "Print": "Print",
   "Program": "Program",
+  "Program folder:": "Program folder:",
   "Promote to a base set": "Promote to a base set",
   "Properties": "Properties",
   "Put the command selected on the right after the entry selected on the left": "Put the command selected on the right after the entry selected on the left",
@@ -598,6 +613,14 @@
   "{0} in {1}: {2} rows": "{0} in {1}: {2} rows",
   "{0} is not a base set the application can take": "{0} is not a base set the application can take",
   "{0} no longer taken": "{0} no longer taken",
+  "{0} of {n} item copied to \"{1}\" ({2} skipped)": {
+    "one": "{0} of {n} item copied to \"{1}\" ({2} skipped)",
+    "other": "{0} of {n} items copied to \"{1}\" ({2} skipped)"
+  },
+  "{0} of {n} item moved to \"{1}\" ({2} skipped)": {
+    "one": "{0} of {n} item moved to \"{1}\" ({2} skipped)",
+    "other": "{0} of {n} items moved to \"{1}\" ({2} skipped)"
+  },
   "{0} rows drafted; review them before saving": "{0} rows drafted; review them before saving",
   "{0} taken": "{0} taken",
   "{0} taken; {1} rows now duplicate a base's text and can be dropped": "{0} taken; {1} rows now duplicate a base's text and can be dropped",
@@ -621,9 +644,25 @@
     "one": "{n} file",
     "other": "{n} files"
   },
+  "{n} file copied to \"{0}\"": {
+    "one": "{n} file copied to \"{0}\"",
+    "other": "{n} files copied to \"{0}\""
+  },
+  "{n} file moved to \"{0}\"": {
+    "one": "{n} file moved to \"{0}\"",
+    "other": "{n} files moved to \"{0}\""
+  },
   "{n} folder": {
     "one": "{n} folder",
     "other": "{n} folders"
+  },
+  "{n} folder copied to \"{0}\"": {
+    "one": "{n} folder copied to \"{0}\"",
+    "other": "{n} folders copied to \"{0}\""
+  },
+  "{n} folder moved to \"{0}\"": {
+    "one": "{n} folder moved to \"{0}\"",
+    "other": "{n} folders moved to \"{0}\""
   },
   "{n} hour": {
     "one": "{n} hour",
@@ -633,9 +672,17 @@
     "one": "{n} item",
     "other": "{n} items"
   },
+  "{n} item copied to \"{0}\"": {
+    "one": "{n} item copied to \"{0}\"",
+    "other": "{n} items copied to \"{0}\""
+  },
   "{n} item could not be deleted even with administrator permission.": {
     "one": "{n} item could not be deleted even with administrator permission.",
     "other": "{n} items could not be deleted even with administrator permission."
+  },
+  "{n} item moved to \"{0}\"": {
+    "one": "{n} item moved to \"{0}\"",
+    "other": "{n} items moved to \"{0}\""
   },
   "{n} minute": {
     "one": "{n} minute",

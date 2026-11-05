@@ -3,17 +3,21 @@
   "@name": "Tiếng Việt",
   "@translated-by": "machine draft 2026-11-03, reviewed by -",
   "\"{0}\" already exists in \"{1}\".": "“{0}” đã tồn tại trong “{1}”.",
+  "\"{0}\" copied to \"{1}\"": "Đã sao chép “{0}” vào “{1}”",
   "\"{0}\" could not be copied.": "Không thể sao chép “{0}”.",
   "\"{0}\" could not be deleted even with administrator permission.": "Không thể xóa “{0}” ngay cả với quyền quản trị viên.",
   "\"{0}\" could not be deleted.": "Không thể xóa “{0}”.",
   "\"{0}\" could not be moved to the Recycle Bin.": "Không thể chuyển “{0}” vào Thùng rác.",
   "\"{0}\" could not be moved to the Trash.": "Không thể chuyển “{0}” vào Thùng rác.",
   "\"{0}\" could not be moved.": "Không thể di chuyển “{0}”.",
+  "\"{0}\" holds the {1} you are using right now.": "“{0}” chứa {1} mà bạn đang sử dụng.",
   "\"{0}\" in \"{1}\" could not be deleted.": "Không thể xóa “{0}” trong “{1}”.",
   "\"{0}\" in \"{1}\" is in use by another program.": "“{0}” trong “{1}” đang được một chương trình khác sử dụng.",
   "\"{0}\" in \"{1}\" needs administrator permission to be deleted.": "Cần quyền quản trị viên để xóa “{0}” trong “{1}”.",
   "\"{0}\" is in use by another program.": "“{0}” đang được một chương trình khác sử dụng.",
+  "\"{0}\" is part of the {1} you are using right now.": "“{0}” là một phần của {1} mà bạn đang sử dụng.",
   "\"{0}\" is write-protected.": "“{0}” được bảo vệ chống ghi.",
+  "\"{0}\" moved to \"{1}\"": "Đã di chuyển “{0}” vào “{1}”",
   "\"{0}\" needs administrator permission to be deleted.": "Cần quyền quản trị viên để xóa “{0}”.",
   "(no suggestions)": "(không có gợi ý)",
   "(the first {0} shown)": "(hiển thị {0} mục đầu tiên)",
@@ -27,6 +31,7 @@
   "A folder that another program still holds open - or that is shown in a preview - cannot be copied until that program lets go of it. Close it there, then try again.": "Không thể sao chép thư mục mà một chương trình khác vẫn đang mở - hoặc đang được hiển thị trong bản xem trước - cho đến khi chương trình đó giải phóng thư mục. Hãy đóng thư mục ở đó, rồi thử lại.",
   "A folder that another program still holds open - or that is shown in a preview - cannot be moved until that program lets go of it. Close it there, then try again.": "Không thể di chuyển thư mục mà một chương trình khác vẫn đang mở - hoặc đang được hiển thị trong bản xem trước - cho đến khi chương trình đó giải phóng thư mục. Hãy đóng thư mục ở đó, rồi thử lại.",
   "A line between two menu entries": "Đường kẻ giữa hai mục menu",
+  "A running program cannot delete its own files: the ones it has loaded refuse to go, and taking the rest away makes it crash. Close this {0} and delete the folder from another file manager, or from a copy of {0} started elsewhere.": "Chương trình đang chạy không thể xóa các tệp của chính nó: những tệp nó đã tải sẽ không chịu bị xóa, còn xóa phần còn lại sẽ khiến nó gặp sự cố. Hãy đóng {0} này và xóa thư mục từ một trình quản lý tệp khác, hoặc từ một bản sao {0} được khởi động ở nơi khác.",
   "A submenu in a menu, a group of your own on a toolbar": "Menu con trong menu, nhóm riêng của bạn trên thanh công cụ",
   "Abort": "Hủy bỏ",
   "About": "Giới thiệu",
@@ -98,6 +103,7 @@
   "Close": "Đóng",
   "Close (Esc)": "Đóng (Esc)",
   "Close All": "Đóng tất cả",
+  "Close it and delete the folder from elsewhere.": "Hãy đóng chương trình và xóa thư mục từ nơi khác.",
   "Close the program that holds it, then try again. Administrator rights do not help: a file a running program has loaded cannot be deleted by anyone.": "Hãy đóng chương trình đang giữ tệp, rồi thử lại. Quyền quản trị viên không giúp được: không ai có thể xóa tệp mà một chương trình đang chạy đã tải.",
   "Collisions between bases": "Xung đột giữa các bộ cơ sở",
   "Colour": "Màu",
@@ -117,6 +123,9 @@
   },
   "Copy": "Sao chép",
   "Copy \"{0}\" into \"{1}\"?": "Sao chép “{0}” vào “{1}”?",
+  "Copy cancelled - {0} of {n} item copied to \"{1}\"": {
+    "other": "Đã hủy sao chép - đã sao chép {0} trong số {n} mục vào “{1}”"
+  },
   "Copy files": "Sao chép tệp",
   "Copy finished": "Sao chép hoàn tất",
   "Copy path": "Sao chép đường dẫn",
@@ -337,6 +346,9 @@
   "month|September": "Tháng 9",
   "Move": "Di chuyển",
   "Move \"{0}\" into \"{1}\"?": "Di chuyển “{0}” vào “{1}”?",
+  "Move cancelled - {0} of {n} item moved to \"{1}\"": {
+    "other": "Đã hủy di chuyển - đã di chuyển {0} trong số {n} mục vào “{1}”"
+  },
   "Move Down": "Di chuyển xuống",
   "Move down": "Di chuyển xuống",
   "Move files": "Di chuyển tệp",
@@ -418,6 +430,7 @@
   "Preview": "Xem trước",
   "Print": "In",
   "Program": "Chương trình",
+  "Program folder:": "Thư mục chương trình:",
   "Promote to a base set": "Nâng lên bộ cơ sở",
   "Properties": "Thuộc tính",
   "Put the command selected on the right after the entry selected on the left": "Đặt lệnh đã chọn bên phải sau mục đã chọn bên trái",
@@ -584,6 +597,12 @@
   "{0} in {1}: {2} rows": "{0} trong {1}: {2} hàng",
   "{0} is not a base set the application can take": "{0} không phải là bộ cơ sở mà ứng dụng có thể dùng",
   "{0} no longer taken": "Đã ngừng dùng {0}",
+  "{0} of {n} item copied to \"{1}\" ({2} skipped)": {
+    "other": "Đã sao chép {0} trong số {n} mục vào “{1}” (đã bỏ qua {2})"
+  },
+  "{0} of {n} item moved to \"{1}\" ({2} skipped)": {
+    "other": "Đã di chuyển {0} trong số {n} mục vào “{1}” (đã bỏ qua {2})"
+  },
   "{0} rows drafted; review them before saving": "Đã soạn nháp {0} hàng; hãy xem lại trước khi lưu",
   "{0} taken": "Đã dùng {0}",
   "{0} taken; {1} rows now duplicate a base's text and can be dropped": "Đã dùng {0}; {1} hàng giờ trùng với văn bản của bộ cơ sở và có thể bỏ",
@@ -604,8 +623,20 @@
   "{n} file": {
     "other": "{n} tệp"
   },
+  "{n} file copied to \"{0}\"": {
+    "other": "Đã sao chép {n} tệp vào “{0}”"
+  },
+  "{n} file moved to \"{0}\"": {
+    "other": "Đã di chuyển {n} tệp vào “{0}”"
+  },
   "{n} folder": {
     "other": "{n} thư mục"
+  },
+  "{n} folder copied to \"{0}\"": {
+    "other": "Đã sao chép {n} thư mục vào “{0}”"
+  },
+  "{n} folder moved to \"{0}\"": {
+    "other": "Đã di chuyển {n} thư mục vào “{0}”"
   },
   "{n} hour": {
     "other": "{n} giờ"
@@ -613,8 +644,14 @@
   "{n} item": {
     "other": "{n} mục"
   },
+  "{n} item copied to \"{0}\"": {
+    "other": "Đã sao chép {n} mục vào “{0}”"
+  },
   "{n} item could not be deleted even with administrator permission.": {
     "other": "Không thể xóa {n} mục ngay cả với quyền quản trị viên."
+  },
+  "{n} item moved to \"{0}\"": {
+    "other": "Đã di chuyển {n} mục vào “{0}”"
   },
   "{n} minute": {
     "other": "{n} phút"

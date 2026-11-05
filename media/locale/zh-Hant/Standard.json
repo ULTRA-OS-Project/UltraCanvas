@@ -3,17 +3,21 @@
   "@name": "繁體中文",
   "@translated-by": "machine draft 2026-11-03, reviewed by -",
   "\"{0}\" already exists in \"{1}\".": "「{1}」中已有「{0}」。",
+  "\"{0}\" copied to \"{1}\"": "已將「{0}」複製到「{1}」",
   "\"{0}\" could not be copied.": "無法複製「{0}」。",
   "\"{0}\" could not be deleted even with administrator permission.": "即使使用管理員權限也無法刪除「{0}」。",
   "\"{0}\" could not be deleted.": "無法刪除「{0}」。",
   "\"{0}\" could not be moved to the Recycle Bin.": "無法將「{0}」移到資源回收筒。",
   "\"{0}\" could not be moved to the Trash.": "無法將「{0}」移到垃圾桶。",
   "\"{0}\" could not be moved.": "無法移動「{0}」。",
+  "\"{0}\" holds the {1} you are using right now.": "「{0}」包含目前正在使用的 {1}。",
   "\"{0}\" in \"{1}\" could not be deleted.": "無法刪除「{1}」中的「{0}」。",
   "\"{0}\" in \"{1}\" is in use by another program.": "「{1}」中的「{0}」正被另一個程式使用。",
   "\"{0}\" in \"{1}\" needs administrator permission to be deleted.": "刪除「{1}」中的「{0}」需要管理員權限。",
   "\"{0}\" is in use by another program.": "「{0}」正被另一個程式使用。",
+  "\"{0}\" is part of the {1} you are using right now.": "「{0}」是目前正在使用的 {1} 的一部分。",
   "\"{0}\" is write-protected.": "「{0}」已防寫。",
+  "\"{0}\" moved to \"{1}\"": "已將「{0}」移動到「{1}」",
   "\"{0}\" needs administrator permission to be deleted.": "刪除「{0}」需要管理員權限。",
   "(no suggestions)": "（沒有建議）",
   "(the first {0} shown)": "(顯示前 {0} 個)",
@@ -27,6 +31,7 @@
   "A folder that another program still holds open - or that is shown in a preview - cannot be copied until that program lets go of it. Close it there, then try again.": "其他程式仍保持開啟的資料夾（或正在預覽中顯示的資料夾）在該程式將其釋放之前無法複製。請在該程式中關閉它，然後再試一次。",
   "A folder that another program still holds open - or that is shown in a preview - cannot be moved until that program lets go of it. Close it there, then try again.": "其他程式仍保持開啟的資料夾（或正在預覽中顯示的資料夾）在該程式將其釋放之前無法移動。請在該程式中關閉它，然後再試一次。",
   "A line between two menu entries": "兩個選單項目之間的分隔線",
+  "A running program cannot delete its own files: the ones it has loaded refuse to go, and taking the rest away makes it crash. Close this {0} and delete the folder from another file manager, or from a copy of {0} started elsewhere.": "執行中的程式無法刪除自己的檔案：已載入的檔案無法刪除，而移除其餘檔案會導致程式當機。請關閉此 {0}，然後從其他檔案管理員或從其他位置啟動的 {0} 副本刪除該資料夾。",
   "A submenu in a menu, a group of your own on a toolbar": "在選單中為子選單，在工具列上為自訂群組",
   "Abort": "中止",
   "About": "關於",
@@ -98,6 +103,7 @@
   "Close": "關閉",
   "Close (Esc)": "關閉 (Esc)",
   "Close All": "全部關閉",
+  "Close it and delete the folder from elsewhere.": "請關閉此程式，然後從其他位置刪除該資料夾。",
   "Close the program that holds it, then try again. Administrator rights do not help: a file a running program has loaded cannot be deleted by anyone.": "請關閉佔用它的程式，然後再試一次。管理員權限也無濟於事：執行中的程式已載入的檔案，任何人都無法刪除。",
   "Collisions between bases": "基礎文字集之間的衝突",
   "Colour": "色彩",
@@ -117,6 +123,9 @@
   },
   "Copy": "複製",
   "Copy \"{0}\" into \"{1}\"?": "要將「{0}」複製到「{1}」嗎？",
+  "Copy cancelled - {0} of {n} item copied to \"{1}\"": {
+    "other": "複製已取消 - 已將 {n} 個項目中的 {0} 個複製到「{1}」"
+  },
   "Copy files": "複製檔案",
   "Copy finished": "複製完成",
   "Copy path": "複製路徑",
@@ -337,6 +346,9 @@
   "month|September": "九月",
   "Move": "移動",
   "Move \"{0}\" into \"{1}\"?": "要將「{0}」移動到「{1}」嗎？",
+  "Move cancelled - {0} of {n} item moved to \"{1}\"": {
+    "other": "移動已取消 - 已將 {n} 個項目中的 {0} 個移動到「{1}」"
+  },
   "Move Down": "下移",
   "Move down": "下移",
   "Move files": "移動檔案",
@@ -418,6 +430,7 @@
   "Preview": "預覽",
   "Print": "列印",
   "Program": "程式",
+  "Program folder:": "程式資料夾：",
   "Promote to a base set": "提升至基礎文字集",
   "Properties": "內容",
   "Put the command selected on the right after the entry selected on the left": "將右側所選命令放在左側所選項目之後",
@@ -584,6 +597,12 @@
   "{0} in {1}: {2} rows": "{0}（{1}）：{2} 列",
   "{0} is not a base set the application can take": "{0} 不是此應用程式可以採用的基礎文字集",
   "{0} no longer taken": "已不再採用 {0}",
+  "{0} of {n} item copied to \"{1}\" ({2} skipped)": {
+    "other": "已將 {n} 個項目中的 {0} 個複製到「{1}」（已略過 {2} 個）"
+  },
+  "{0} of {n} item moved to \"{1}\" ({2} skipped)": {
+    "other": "已將 {n} 個項目中的 {0} 個移動到「{1}」（已略過 {2} 個）"
+  },
   "{0} rows drafted; review them before saving": "已草擬 {0} 列；請在儲存前檢閱",
   "{0} taken": "已採用 {0}",
   "{0} taken; {1} rows now duplicate a base's text and can be dropped": "已採用 {0}；{1} 列現與基礎文字集的文字重複，可以刪除",
@@ -604,8 +623,20 @@
   "{n} file": {
     "other": "{n} 個檔案"
   },
+  "{n} file copied to \"{0}\"": {
+    "other": "已將 {n} 個檔案複製到「{0}」"
+  },
+  "{n} file moved to \"{0}\"": {
+    "other": "已將 {n} 個檔案移動到「{0}」"
+  },
   "{n} folder": {
     "other": "{n} 個資料夾"
+  },
+  "{n} folder copied to \"{0}\"": {
+    "other": "已將 {n} 個資料夾複製到「{0}」"
+  },
+  "{n} folder moved to \"{0}\"": {
+    "other": "已將 {n} 個資料夾移動到「{0}」"
   },
   "{n} hour": {
     "other": "{n} 小時"
@@ -613,8 +644,14 @@
   "{n} item": {
     "other": "{n} 個項目"
   },
+  "{n} item copied to \"{0}\"": {
+    "other": "已將 {n} 個項目複製到「{0}」"
+  },
   "{n} item could not be deleted even with administrator permission.": {
     "other": "即使使用管理員權限，仍無法刪除 {n} 個項目。"
+  },
+  "{n} item moved to \"{0}\"": {
+    "other": "已將 {n} 個項目移動到「{0}」"
   },
   "{n} minute": {
     "other": "{n} 分鐘"

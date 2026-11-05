@@ -3,17 +3,21 @@
   "@name": "Suomi",
   "@translated-by": "machine draft 2026-11-03, reviewed by -",
   "\"{0}\" already exists in \"{1}\".": "Kansiossa ”{1}” on jo kohde ”{0}”.",
+  "\"{0}\" copied to \"{1}\"": "Kohde ”{0}” kopioitiin kansioon ”{1}”",
   "\"{0}\" could not be copied.": "Kohdetta ”{0}” ei voitu kopioida.",
   "\"{0}\" could not be deleted even with administrator permission.": "Kohdetta ”{0}” ei voitu poistaa edes järjestelmänvalvojan oikeuksilla.",
   "\"{0}\" could not be deleted.": "Kohdetta ”{0}” ei voitu poistaa.",
   "\"{0}\" could not be moved to the Recycle Bin.": "Kohdetta ”{0}” ei voitu siirtää roskakoriin.",
   "\"{0}\" could not be moved to the Trash.": "Kohdetta ”{0}” ei voitu siirtää roskakoriin.",
   "\"{0}\" could not be moved.": "Kohdetta ”{0}” ei voitu siirtää.",
+  "\"{0}\" holds the {1} you are using right now.": "Kohde ”{0}” sisältää ohjelman {1}, jota käytät juuri nyt.",
   "\"{0}\" in \"{1}\" could not be deleted.": "Kohdetta ”{0}” kansiossa ”{1}” ei voitu poistaa.",
   "\"{0}\" in \"{1}\" is in use by another program.": "Kohde ”{0}” kansiossa ”{1}” on toisen ohjelman käytössä.",
   "\"{0}\" in \"{1}\" needs administrator permission to be deleted.": "Kohteen ”{0}” poistaminen kansiosta ”{1}” vaatii järjestelmänvalvojan oikeudet.",
   "\"{0}\" is in use by another program.": "Kohde ”{0}” on toisen ohjelman käytössä.",
+  "\"{0}\" is part of the {1} you are using right now.": "Kohde ”{0}” on osa ohjelmaa {1}, jota käytät juuri nyt.",
   "\"{0}\" is write-protected.": "Kohde ”{0}” on kirjoitussuojattu.",
+  "\"{0}\" moved to \"{1}\"": "Kohde ”{0}” siirrettiin kansioon ”{1}”",
   "\"{0}\" needs administrator permission to be deleted.": "Kohteen ”{0}” poistaminen vaatii järjestelmänvalvojan oikeudet.",
   "(no suggestions)": "(ei ehdotuksia)",
   "(the first {0} shown)": "(näytetään ensimmäiset {0})",
@@ -27,6 +31,7 @@
   "A folder that another program still holds open - or that is shown in a preview - cannot be copied until that program lets go of it. Close it there, then try again.": "Kansiota, jota toinen ohjelma pitää yhä auki – tai joka näkyy esikatselussa – ei voi kopioida ennen kuin ohjelma vapauttaa sen. Sulje se siellä ja yritä uudelleen.",
   "A folder that another program still holds open - or that is shown in a preview - cannot be moved until that program lets go of it. Close it there, then try again.": "Kansiota, jota toinen ohjelma pitää yhä auki – tai joka näkyy esikatselussa – ei voi siirtää ennen kuin ohjelma vapauttaa sen. Sulje se siellä ja yritä uudelleen.",
   "A line between two menu entries": "Viiva kahden valikkokohdan välissä",
+  "A running program cannot delete its own files: the ones it has loaded refuse to go, and taking the rest away makes it crash. Close this {0} and delete the folder from another file manager, or from a copy of {0} started elsewhere.": "Käynnissä oleva ohjelma ei voi poistaa omia tiedostojaan: sen lataamia tiedostoja ei voi poistaa, ja muiden poistaminen kaataa ohjelman. Sulje {0} ja poista kansio toisesta tiedostonhallinnasta tai muualta käynnistetystä ohjelman {0} kopiosta.",
   "A submenu in a menu, a group of your own on a toolbar": "Alivalikko valikossa, oma ryhmä työkalurivillä",
   "Abort": "Keskeytä",
   "About": "Tietoja",
@@ -102,6 +107,7 @@
   "Close": "Sulje",
   "Close (Esc)": "Sulje (Esc)",
   "Close All": "Sulje kaikki",
+  "Close it and delete the folder from elsewhere.": "Sulje ohjelma ja poista kansio muualta.",
   "Close the program that holds it, then try again. Administrator rights do not help: a file a running program has loaded cannot be deleted by anyone.": "Sulje ohjelma, joka pitää sitä varattuna, ja yritä uudelleen. Järjestelmänvalvojan oikeudet eivät auta: tiedostoa, jonka käynnissä oleva ohjelma on ladannut, ei voi poistaa kukaan.",
   "Collisions between bases": "Ristiriidat peruskokoelmien välillä",
   "Colour": "Väri",
@@ -122,6 +128,10 @@
   },
   "Copy": "Kopioi",
   "Copy \"{0}\" into \"{1}\"?": "Kopioidaanko ”{0}” kansioon ”{1}”?",
+  "Copy cancelled - {0} of {n} item copied to \"{1}\"": {
+    "one": "Kopiointi peruutettu – {0}/{n} kohde kopioitiin kansioon ”{1}”",
+    "other": "Kopiointi peruutettu – {0}/{n} kohdetta kopioitiin kansioon ”{1}”"
+  },
   "Copy files": "Tiedostojen kopiointi",
   "Copy finished": "Kopiointi valmis",
   "Copy path": "Kopioi polku",
@@ -347,6 +357,10 @@
   "month|September": "syyskuu",
   "Move": "Siirrä",
   "Move \"{0}\" into \"{1}\"?": "Siirretäänkö ”{0}” kansioon ”{1}”?",
+  "Move cancelled - {0} of {n} item moved to \"{1}\"": {
+    "one": "Siirto peruutettu – {0}/{n} kohde siirrettiin kansioon ”{1}”",
+    "other": "Siirto peruutettu – {0}/{n} kohdetta siirrettiin kansioon ”{1}”"
+  },
   "Move Down": "Siirrä alas",
   "Move down": "Siirrä alas",
   "Move files": "Tiedostojen siirto",
@@ -433,6 +447,7 @@
   "Preview": "Esikatselu",
   "Print": "Tulosta",
   "Program": "Ohjelma",
+  "Program folder:": "Ohjelmakansio:",
   "Promote to a base set": "Siirrä peruskokoelmaan",
   "Properties": "Ominaisuudet",
   "Put the command selected on the right after the entry selected on the left": "Lisää oikealla valittu komento vasemmalla valitun kohdan jälkeen",
@@ -599,6 +614,14 @@
   "{0} in {1}: {2} rows": "{0}, {1}: {2} riviä",
   "{0} is not a base set the application can take": "{0} ei ole peruskokoelma, jonka sovellus voi ottaa käyttöön",
   "{0} no longer taken": "{0} ei enää käytössä",
+  "{0} of {n} item copied to \"{1}\" ({2} skipped)": {
+    "one": "{0}/{n} kohde kopioitiin kansioon ”{1}” ({2} ohitettiin)",
+    "other": "{0}/{n} kohdetta kopioitiin kansioon ”{1}” ({2} ohitettiin)"
+  },
+  "{0} of {n} item moved to \"{1}\" ({2} skipped)": {
+    "one": "{0}/{n} kohde siirrettiin kansioon ”{1}” ({2} ohitettiin)",
+    "other": "{0}/{n} kohdetta siirrettiin kansioon ”{1}” ({2} ohitettiin)"
+  },
   "{0} rows drafted; review them before saving": "{0} riviä luonnosteltu; tarkista ne ennen tallennusta",
   "{0} taken": "{0} otettu käyttöön",
   "{0} taken; {1} rows now duplicate a base's text and can be dropped": "{0} otettu käyttöön; {1} riviä toistaa nyt peruskokoelman tekstiä ja voidaan poistaa",
@@ -622,9 +645,25 @@
     "one": "{n} tiedosto",
     "other": "{n} tiedostoa"
   },
+  "{n} file copied to \"{0}\"": {
+    "one": "{n} tiedosto kopioitiin kansioon ”{0}”",
+    "other": "{n} tiedostoa kopioitiin kansioon ”{0}”"
+  },
+  "{n} file moved to \"{0}\"": {
+    "one": "{n} tiedosto siirrettiin kansioon ”{0}”",
+    "other": "{n} tiedostoa siirrettiin kansioon ”{0}”"
+  },
   "{n} folder": {
     "one": "{n} kansio",
     "other": "{n} kansiota"
+  },
+  "{n} folder copied to \"{0}\"": {
+    "one": "{n} kansio kopioitiin kansioon ”{0}”",
+    "other": "{n} kansiota kopioitiin kansioon ”{0}”"
+  },
+  "{n} folder moved to \"{0}\"": {
+    "one": "{n} kansio siirrettiin kansioon ”{0}”",
+    "other": "{n} kansiota siirrettiin kansioon ”{0}”"
   },
   "{n} hour": {
     "one": "{n} tunti",
@@ -634,9 +673,17 @@
     "one": "{n} kohde",
     "other": "{n} kohdetta"
   },
+  "{n} item copied to \"{0}\"": {
+    "one": "{n} kohde kopioitiin kansioon ”{0}”",
+    "other": "{n} kohdetta kopioitiin kansioon ”{0}”"
+  },
   "{n} item could not be deleted even with administrator permission.": {
     "one": "{n} kohdetta ei voitu poistaa edes järjestelmänvalvojan oikeuksilla.",
     "other": "{n} kohdetta ei voitu poistaa edes järjestelmänvalvojan oikeuksilla."
+  },
+  "{n} item moved to \"{0}\"": {
+    "one": "{n} kohde siirrettiin kansioon ”{0}”",
+    "other": "{n} kohdetta siirrettiin kansioon ”{0}”"
   },
   "{n} minute": {
     "one": "{n} minuutti",

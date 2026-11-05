@@ -3,17 +3,21 @@
   "@name": "Català",
   "@translated-by": "machine draft 2026-11-03, reviewed by -",
   "\"{0}\" already exists in \"{1}\".": "«{0}» ja existeix a «{1}».",
+  "\"{0}\" copied to \"{1}\"": "«{0}» copiat a «{1}»",
   "\"{0}\" could not be copied.": "No s'ha pogut copiar «{0}».",
   "\"{0}\" could not be deleted even with administrator permission.": "No s'ha pogut suprimir «{0}» ni tan sols amb permís d'administrador.",
   "\"{0}\" could not be deleted.": "No s'ha pogut suprimir «{0}».",
   "\"{0}\" could not be moved to the Recycle Bin.": "No s'ha pogut moure «{0}» a la Paperera de reciclatge.",
   "\"{0}\" could not be moved to the Trash.": "No s'ha pogut moure «{0}» a la paperera.",
   "\"{0}\" could not be moved.": "No s'ha pogut moure «{0}».",
+  "\"{0}\" holds the {1} you are using right now.": "«{0}» conté {1}, que esteu utilitzant ara mateix.",
   "\"{0}\" in \"{1}\" could not be deleted.": "No s'ha pogut suprimir «{0}» dins de «{1}».",
   "\"{0}\" in \"{1}\" is in use by another program.": "Un altre programa està utilitzant «{0}» dins de «{1}».",
   "\"{0}\" in \"{1}\" needs administrator permission to be deleted.": "Cal permís d'administrador per suprimir «{0}» dins de «{1}».",
   "\"{0}\" is in use by another program.": "Un altre programa està utilitzant «{0}».",
+  "\"{0}\" is part of the {1} you are using right now.": "«{0}» forma part de {1}, que esteu utilitzant ara mateix.",
   "\"{0}\" is write-protected.": "«{0}» és de només lectura.",
+  "\"{0}\" moved to \"{1}\"": "«{0}» mogut a «{1}»",
   "\"{0}\" needs administrator permission to be deleted.": "Cal permís d'administrador per suprimir «{0}».",
   "(no suggestions)": "(cap suggeriment)",
   "(the first {0} shown)": "(es mostren els primers {0})",
@@ -27,6 +31,7 @@
   "A folder that another program still holds open - or that is shown in a preview - cannot be copied until that program lets go of it. Close it there, then try again.": "Una carpeta que un altre programa encara té oberta (o que es mostra en una previsualització) no es pot copiar fins que aquest programa l'alliberi. Tanqueu-la allà i torneu-ho a provar.",
   "A folder that another program still holds open - or that is shown in a preview - cannot be moved until that program lets go of it. Close it there, then try again.": "Una carpeta que un altre programa encara té oberta (o que es mostra en una previsualització) no es pot moure fins que aquest programa l'alliberi. Tanqueu-la allà i torneu-ho a provar.",
   "A line between two menu entries": "Una línia entre dues entrades de menú",
+  "A running program cannot delete its own files: the ones it has loaded refuse to go, and taking the rest away makes it crash. Close this {0} and delete the folder from another file manager, or from a copy of {0} started elsewhere.": "Un programa en execució no pot suprimir els seus propis fitxers: els que ha carregat es neguen a desaparèixer, i treure la resta el fa fallar. Tanqueu aquesta instància de {0} i suprimiu la carpeta des d'un altre gestor de fitxers o des d'una còpia de {0} iniciada en un altre lloc.",
   "A submenu in a menu, a group of your own on a toolbar": "Un submenú en un menú, un grup propi en una barra d'eines",
   "Abort": "Interromp",
   "About": "Quant a",
@@ -102,6 +107,7 @@
   "Close": "Tanca",
   "Close (Esc)": "Tanca (Esc)",
   "Close All": "Tanca-ho tot",
+  "Close it and delete the folder from elsewhere.": "Tanqueu-lo i suprimiu la carpeta des d'un altre lloc.",
   "Close the program that holds it, then try again. Administrator rights do not help: a file a running program has loaded cannot be deleted by anyone.": "Tanqueu el programa que l'està utilitzant i torneu-ho a provar. Els permisos d'administrador no hi ajuden: ningú no pot suprimir un fitxer que un programa en execució té carregat.",
   "Collisions between bases": "Conflictes entre conjunts base",
   "Colour": "Color",
@@ -122,6 +128,10 @@
   },
   "Copy": "Copia",
   "Copy \"{0}\" into \"{1}\"?": "Voleu copiar «{0}» a «{1}»?",
+  "Copy cancelled - {0} of {n} item copied to \"{1}\"": {
+    "one": "Còpia cancel·lada - {0} de {n} element copiat a «{1}»",
+    "other": "Còpia cancel·lada - {0} de {n} elements copiats a «{1}»"
+  },
   "Copy files": "Copia fitxers",
   "Copy finished": "Còpia acabada",
   "Copy path": "Copia el camí",
@@ -347,6 +357,10 @@
   "month|September": "setembre",
   "Move": "Mou",
   "Move \"{0}\" into \"{1}\"?": "Voleu moure «{0}» a «{1}»?",
+  "Move cancelled - {0} of {n} item moved to \"{1}\"": {
+    "one": "Moviment cancel·lat - {0} de {n} element mogut a «{1}»",
+    "other": "Moviment cancel·lat - {0} de {n} elements moguts a «{1}»"
+  },
   "Move Down": "Mou avall",
   "Move down": "Mou avall",
   "Move files": "Mou fitxers",
@@ -433,6 +447,7 @@
   "Preview": "Previsualització",
   "Print": "Imprimeix",
   "Program": "Programa",
+  "Program folder:": "Carpeta del programa:",
   "Promote to a base set": "Promou a un conjunt base",
   "Properties": "Propietats",
   "Put the command selected on the right after the entry selected on the left": "Posa l'ordre seleccionada a la dreta després de l'entrada seleccionada a l'esquerra",
@@ -599,6 +614,14 @@
   "{0} in {1}: {2} rows": "{0} en {1}: {2} files",
   "{0} is not a base set the application can take": "{0} no és un conjunt base que l'aplicació pugui utilitzar",
   "{0} no longer taken": "{0} ja no s'utilitza",
+  "{0} of {n} item copied to \"{1}\" ({2} skipped)": {
+    "one": "{0} de {n} element copiat a «{1}» ({2} omès)",
+    "other": "{0} de {n} elements copiats a «{1}» ({2} omesos)"
+  },
+  "{0} of {n} item moved to \"{1}\" ({2} skipped)": {
+    "one": "{0} de {n} element mogut a «{1}» ({2} omès)",
+    "other": "{0} de {n} elements moguts a «{1}» ({2} omesos)"
+  },
   "{0} rows drafted; review them before saving": "{0} files amb esborrany; reviseu-les abans de desar",
   "{0} taken": "{0} en ús",
   "{0} taken; {1} rows now duplicate a base's text and can be dropped": "{0} en ús; {1} files ara dupliquen el text d'una base i es poden eliminar",
@@ -622,9 +645,25 @@
     "one": "{n} fitxer",
     "other": "{n} fitxers"
   },
+  "{n} file copied to \"{0}\"": {
+    "one": "{n} fitxer copiat a «{0}»",
+    "other": "{n} fitxers copiats a «{0}»"
+  },
+  "{n} file moved to \"{0}\"": {
+    "one": "{n} fitxer mogut a «{0}»",
+    "other": "{n} fitxers moguts a «{0}»"
+  },
   "{n} folder": {
     "one": "{n} carpeta",
     "other": "{n} carpetes"
+  },
+  "{n} folder copied to \"{0}\"": {
+    "one": "{n} carpeta copiada a «{0}»",
+    "other": "{n} carpetes copiades a «{0}»"
+  },
+  "{n} folder moved to \"{0}\"": {
+    "one": "{n} carpeta moguda a «{0}»",
+    "other": "{n} carpetes mogudes a «{0}»"
   },
   "{n} hour": {
     "one": "{n} hora",
@@ -634,9 +673,17 @@
     "one": "{n} element",
     "other": "{n} elements"
   },
+  "{n} item copied to \"{0}\"": {
+    "one": "{n} element copiat a «{0}»",
+    "other": "{n} elements copiats a «{0}»"
+  },
   "{n} item could not be deleted even with administrator permission.": {
     "one": "No s'ha pogut suprimir {n} element ni tan sols amb permís d'administrador.",
     "other": "No s'han pogut suprimir {n} elements ni tan sols amb permís d'administrador."
+  },
+  "{n} item moved to \"{0}\"": {
+    "one": "{n} element mogut a «{0}»",
+    "other": "{n} elements moguts a «{0}»"
   },
   "{n} minute": {
     "one": "{n} minut",

@@ -50,6 +50,10 @@
 // itself is never touched, so renaming and every file operation still work on
 // the real one. A name that is not UTF-8 — written in a legacy code page by an
 // old tool or an unconverting unzip — is drawn decoded rather than as U+FFFD.
+// Version: 1.43.7 - the last English messages are whole translated sentences:
+//                  the status line a copy or a move ends on (one sentence per
+//                  verb and kind, counts through TrN, names as {0}) and the
+//                  refusal to delete the running program's own folder
 // Version: 1.43.6 - the summaries a delete, a copy or a move ends on are
 //                  translated: the messages (counts through TrN, the trash by
 //                  the platform's name), the skip reasons, the administrator
@@ -6613,28 +6617,45 @@ namespace UltraCanvas {
         if (r.items == 0 && !r.cancelled && r.skipped == 0) return {};   // nothing asked to move
         std::string where = PathToUtf8(PathFromUtf8(r.destination).filename());
         if (where.empty()) where = r.destination;                      // a drive root
-        where = "\"" + RepairLegacyEncodedName(where) + "\"";
-        const std::string done = r.moved ? "moved" : "copied";
-        auto count = [](size_t n, const char* one, const char* many) {
-            return std::to_string(n) + " " + (n == 1 ? one : many);
-        };
-        std::string what;
-        if (r.items == 1)
-            what = "\"" + RepairLegacyEncodedName(r.firstName) + "\"";
-        else if (r.folders == 0)
-            what = count(r.items, "file", "files");
-        else if (r.files == 0)
-            what = count(r.items, "folder", "folders");
-        else
-            what = count(r.items, "item", "items");
+        where = RepairLegacyEncodedName(where);
+        // A whole sentence per verb and kind, the counts in the language's
+        // plural forms, the names as {0}.. so a translation can place them
+        // and quote them its own way: a verb or a noun passed in would stay
+        // English.
+        const bool moved = r.moved;
         if (r.cancelled)
-            return std::string(r.moved ? "Move" : "Copy") + " cancelled - "
-                 + std::to_string(r.items) + " of " + count(requested, "item", "items")
-                 + " " + done + " to " + where;
+            return LocalisationDetail::Substitute(
+                    moved ? TrN("Move cancelled - {0} of {n} item moved to \"{1}\"",
+                                "Move cancelled - {0} of {n} items moved to \"{1}\"",
+                                static_cast<long long>(requested))
+                          : TrN("Copy cancelled - {0} of {n} item copied to \"{1}\"",
+                                "Copy cancelled - {0} of {n} items copied to \"{1}\"",
+                                static_cast<long long>(requested)),
+                    {std::to_string(r.items), where});
         if (r.skipped)
-            return std::to_string(r.items) + " of " + count(r.items + r.skipped, "item", "items")
-                 + " " + done + " to " + where + " (" + std::to_string(r.skipped) + " skipped)";
-        return what + " " + done + " to " + where;
+            return LocalisationDetail::Substitute(
+                    moved ? TrN("{0} of {n} item moved to \"{1}\" ({2} skipped)",
+                                "{0} of {n} items moved to \"{1}\" ({2} skipped)",
+                                static_cast<long long>(r.items + r.skipped))
+                          : TrN("{0} of {n} item copied to \"{1}\" ({2} skipped)",
+                                "{0} of {n} items copied to \"{1}\" ({2} skipped)",
+                                static_cast<long long>(r.items + r.skipped)),
+                    {std::to_string(r.items), where, std::to_string(r.skipped)});
+        if (r.items == 1)
+            return moved ? TrF("\"{0}\" moved to \"{1}\"", RepairLegacyEncodedName(r.firstName), where)
+                         : TrF("\"{0}\" copied to \"{1}\"", RepairLegacyEncodedName(r.firstName), where);
+        const long long n = static_cast<long long>(r.items);
+        std::string pattern;
+        if (r.folders == 0)
+            pattern = moved ? TrN("{n} file moved to \"{0}\"", "{n} files moved to \"{0}\"", n)
+                            : TrN("{n} file copied to \"{0}\"", "{n} files copied to \"{0}\"", n);
+        else if (r.files == 0)
+            pattern = moved ? TrN("{n} folder moved to \"{0}\"", "{n} folders moved to \"{0}\"", n)
+                            : TrN("{n} folder copied to \"{0}\"", "{n} folders copied to \"{0}\"", n);
+        else
+            pattern = moved ? TrN("{n} item moved to \"{0}\"", "{n} items moved to \"{0}\"", n)
+                            : TrN("{n} item copied to \"{0}\"", "{n} items copied to \"{0}\"", n);
+        return LocalisationDetail::Substitute(pattern, {where});
     }
 
     void UltraCanvasFilerWidget::RetrySkippedPaste(const std::vector<SkippedItem>& items,
@@ -8093,21 +8114,22 @@ namespace UltraCanvas {
         cfg.dialogType = DialogType::Warning;
         cfg.width = 560;
         cfg.height = 240;
+        // Whole sentences, the item and the program's name as {0} / {1}.
         cfg.message = whole
-                ? "\"" + name + "\" holds the " + program + " you are using right now."
-                : "\"" + name + "\" is part of the " + program + " you are using right now.";
-        cfg.details = "**Program folder:** " + FactPath(ownDir) + "\n\n"
-                      "A running program cannot delete its own files: the ones it has "
-                      "loaded refuse to go, and taking the rest away makes it crash. "
-                      "Close this " + program + " and delete the folder from another "
-                      "file manager, or from a copy of " + program + " started elsewhere.";
+                ? TrF("\"{0}\" holds the {1} you are using right now.", name, program)
+                : TrF("\"{0}\" is part of the {1} you are using right now.", name, program);
+        cfg.details = "**" + Tr("Program folder:") + "** " + FactPath(ownDir) + "\n\n" +
+                      TrF("A running program cannot delete its own files: the ones it has "
+                          "loaded refuse to go, and taking the rest away makes it crash. "
+                          "Close this {0} and delete the folder from another file manager, "
+                          "or from a copy of {0} started elsewhere.", program);
         cfg.buttons = DialogButtons::OK;
         auto dialog = UltraCanvasDialogManager::CreateDialog(cfg);
         if (dialog) {
             dialog->SetStyle(DialogStyleForFonts(dialog->GetStyle()));
             UltraCanvasDialogManager::ShowDialog(dialog, nullptr, GetWindow());
         } else {
-            ReportError(cfg.message + " Close it and delete the folder from elsewhere.");
+            ReportError(cfg.message + " " + Tr("Close it and delete the folder from elsewhere."));
         }
         return true;
     }

@@ -6,10 +6,12 @@
   "\"{0}\" could not be deleted.": "Não foi possível excluir \"{0}\".",
   "\"{0}\" could not be moved to the Recycle Bin.": "Não foi possível mover \"{0}\" para a Lixeira.",
   "\"{0}\" could not be moved to the Trash.": "Não foi possível mover \"{0}\" para a Lixeira.",
+  "\"{0}\" holds the {1} you are using right now.": "\"{0}\" contém {1}, que você está usando agora.",
   "\"{0}\" in \"{1}\" could not be deleted.": "Não foi possível excluir \"{0}\" em \"{1}\".",
   "\"{0}\" in \"{1}\" is in use by another program.": "Outro programa está usando \"{0}\" em \"{1}\".",
   "\"{0}\" in \"{1}\" needs administrator permission to be deleted.": "É necessária permissão de administrador para excluir \"{0}\" em \"{1}\".",
   "\"{0}\" is in use by another program.": "Outro programa está usando \"{0}\".",
+  "\"{0}\" is part of the {1} you are using right now.": "\"{0}\" faz parte de {1}, que você está usando agora.",
   "\"{0}\" is write-protected.": "\"{0}\" é somente leitura.",
   "\"{0}\" needs administrator permission to be deleted.": "É necessária permissão de administrador para excluir \"{0}\".",
   "(the first {0} shown)": "(exibindo os primeiros {0})",
@@ -18,6 +20,7 @@
   "A file that another program still holds open - or that is shown in a preview - cannot be moved until that program lets go of it. Close it there, then try again.": "Um arquivo que outro programa ainda mantém aberto (ou que está sendo exibido em uma visualização) não pode ser movido até que esse programa o libere. Feche-o lá e tente novamente.",
   "A folder that another program still holds open - or that is shown in a preview - cannot be copied until that program lets go of it. Close it there, then try again.": "Uma pasta que outro programa ainda mantém aberta (ou que está sendo exibida em uma visualização) não pode ser copiada até que esse programa a libere. Feche-a lá e tente novamente.",
   "A folder that another program still holds open - or that is shown in a preview - cannot be moved until that program lets go of it. Close it there, then try again.": "Uma pasta que outro programa ainda mantém aberta (ou que está sendo exibida em uma visualização) não pode ser movida até que esse programa a libere. Feche-a lá e tente novamente.",
+  "A running program cannot delete its own files: the ones it has loaded refuse to go, and taking the rest away makes it crash. Close this {0} and delete the folder from another file manager, or from a copy of {0} started elsewhere.": "Um programa em execução não consegue excluir os próprios arquivos: os que ele carregou se recusam a sair, e remover o restante faz com que ele trave. Feche esta instância de {0} e exclua a pasta usando outro gerenciador de arquivos ou uma cópia de {0} iniciada em outro local.",
   "Abort": "Anular",
   "Administrator permission was not granted; {n} item left in place.": {
     "one": "A permissão de administrador não foi concedida; {n} item permaneceu no lugar.",
@@ -38,6 +41,7 @@
   "Background": "Plano de fundo",
   "Cannot delete: {0} is running from here": "Não é possível excluir: {0} está sendo executado a partir daqui",
   "Cannot open file {0}": "Não é possível abrir o arquivo {0}",
+  "Close it and delete the folder from elsewhere.": "Feche-o e exclua a pasta a partir de outro local.",
   "Close the program that holds it, then try again. Administrator rights do not help: a file a running program has loaded cannot be deleted by anyone.": "Feche o programa em questão e tente novamente. Permissões de administrador não ajudam: ninguém consegue excluir um arquivo que um programa em execução tenha carregado.",
   "Colour picker design": "Aparência do seletor de cores",
   "Compress": "Compactar",
@@ -197,9 +201,25 @@
   "{0} (counting…)": "{0} (contando…)",
   "{0} ({1} in the files)": "{0} ({1} nos arquivos)",
   "{0} ({1} so far, counting…)": "{0} ({1} até agora, contando…)",
+  "{0} of {n} item copied to \"{1}\" ({2} skipped)": {
+    "one": "{0} de {n} item copiado para \"{1}\" ({2} pulado)",
+    "other": "{0} de {n} itens copiados para \"{1}\" ({2} pulados)"
+  },
+  "{0} of {n} item moved to \"{1}\" ({2} skipped)": {
+    "one": "{0} de {n} item movido para \"{1}\" ({2} pulado)",
+    "other": "{0} de {n} itens movidos para \"{1}\" ({2} pulados)"
+  },
   "{n} file": {
     "one": "{n} arquivo",
     "other": "{n} arquivos"
+  },
+  "{n} file copied to \"{0}\"": {
+    "one": "{n} arquivo copiado para \"{0}\"",
+    "other": "{n} arquivos copiados para \"{0}\""
+  },
+  "{n} file moved to \"{0}\"": {
+    "one": "{n} arquivo movido para \"{0}\"",
+    "other": "{n} arquivos movidos para \"{0}\""
   },
   "{n} item could not be deleted even with administrator permission.": {
     "one": "Não foi possível excluir {n} item, nem mesmo com permissão de administrador.",

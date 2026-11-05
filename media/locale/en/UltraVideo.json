@@ -1,5 +1,10 @@
 {
   "@language": "en",
+  "@bases": [
+    "Video",
+    "Audio",
+    "Image"
+  ],
   "Colour title": "Colour title",
   "Edit Title": "Edit Title",
   "The title is in the video": "The title is in the video",

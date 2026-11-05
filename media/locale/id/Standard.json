@@ -3,17 +3,21 @@
   "@name": "Bahasa Indonesia",
   "@translated-by": "machine draft 2026-11-03, reviewed by -",
   "\"{0}\" already exists in \"{1}\".": "\"{0}\" sudah ada di \"{1}\".",
+  "\"{0}\" copied to \"{1}\"": "\"{0}\" disalin ke \"{1}\"",
   "\"{0}\" could not be copied.": "\"{0}\" tidak dapat disalin.",
   "\"{0}\" could not be deleted even with administrator permission.": "\"{0}\" tidak dapat dihapus bahkan dengan izin administrator.",
   "\"{0}\" could not be deleted.": "\"{0}\" tidak dapat dihapus.",
   "\"{0}\" could not be moved to the Recycle Bin.": "\"{0}\" tidak dapat dipindahkan ke Keranjang Sampah.",
   "\"{0}\" could not be moved to the Trash.": "\"{0}\" tidak dapat dipindahkan ke Tempat Sampah.",
   "\"{0}\" could not be moved.": "\"{0}\" tidak dapat dipindahkan.",
+  "\"{0}\" holds the {1} you are using right now.": "\"{0}\" berisi {1} yang sedang Anda gunakan saat ini.",
   "\"{0}\" in \"{1}\" could not be deleted.": "\"{0}\" di \"{1}\" tidak dapat dihapus.",
   "\"{0}\" in \"{1}\" is in use by another program.": "\"{0}\" di \"{1}\" sedang digunakan oleh program lain.",
   "\"{0}\" in \"{1}\" needs administrator permission to be deleted.": "\"{0}\" di \"{1}\" memerlukan izin administrator untuk dihapus.",
   "\"{0}\" is in use by another program.": "\"{0}\" sedang digunakan oleh program lain.",
+  "\"{0}\" is part of the {1} you are using right now.": "\"{0}\" adalah bagian dari {1} yang sedang Anda gunakan saat ini.",
   "\"{0}\" is write-protected.": "\"{0}\" dilindungi dari penulisan.",
+  "\"{0}\" moved to \"{1}\"": "\"{0}\" dipindahkan ke \"{1}\"",
   "\"{0}\" needs administrator permission to be deleted.": "\"{0}\" memerlukan izin administrator untuk dihapus.",
   "(no suggestions)": "(tidak ada saran)",
   "(the first {0} shown)": "({0} pertama ditampilkan)",
@@ -27,6 +31,7 @@
   "A folder that another program still holds open - or that is shown in a preview - cannot be copied until that program lets go of it. Close it there, then try again.": "Folder yang masih dibuka oleh program lain - atau yang sedang ditampilkan dalam pratinjau - tidak dapat disalin sampai program tersebut melepaskannya. Tutup di sana, lalu coba lagi.",
   "A folder that another program still holds open - or that is shown in a preview - cannot be moved until that program lets go of it. Close it there, then try again.": "Folder yang masih dibuka oleh program lain - atau yang sedang ditampilkan dalam pratinjau - tidak dapat dipindahkan sampai program tersebut melepaskannya. Tutup di sana, lalu coba lagi.",
   "A line between two menu entries": "Garis di antara dua entri menu",
+  "A running program cannot delete its own files: the ones it has loaded refuse to go, and taking the rest away makes it crash. Close this {0} and delete the folder from another file manager, or from a copy of {0} started elsewhere.": "Program yang sedang berjalan tidak dapat menghapus filenya sendiri: file yang sudah dimuatnya menolak dihapus, dan menghapus sisanya membuat program itu mogok. Tutup {0} ini dan hapus folder tersebut dari pengelola file lain, atau dari salinan {0} yang dijalankan dari tempat lain.",
   "A submenu in a menu, a group of your own on a toolbar": "Submenu di dalam menu, grup buatan Anda sendiri di bilah alat",
   "Abort": "Batalkan",
   "About": "Tentang",
@@ -98,6 +103,7 @@
   "Close": "Tutup",
   "Close (Esc)": "Tutup (Esc)",
   "Close All": "Tutup Semua",
+  "Close it and delete the folder from elsewhere.": "Tutup program tersebut dan hapus foldernya dari tempat lain.",
   "Close the program that holds it, then try again. Administrator rights do not help: a file a running program has loaded cannot be deleted by anyone.": "Tutup program yang menahannya, lalu coba lagi. Hak administrator tidak membantu: file yang telah dimuat oleh program yang sedang berjalan tidak dapat dihapus oleh siapa pun.",
   "Collisions between bases": "Bentrokan antar-set dasar",
   "Colour": "Warna",
@@ -117,6 +123,9 @@
   },
   "Copy": "Salin",
   "Copy \"{0}\" into \"{1}\"?": "Salin \"{0}\" ke \"{1}\"?",
+  "Copy cancelled - {0} of {n} item copied to \"{1}\"": {
+    "other": "Penyalinan dibatalkan - {0} dari {n} item disalin ke \"{1}\""
+  },
   "Copy files": "Salin file",
   "Copy finished": "Penyalinan selesai",
   "Copy path": "Salin jalur",
@@ -337,6 +346,9 @@
   "month|September": "September",
   "Move": "Pindahkan",
   "Move \"{0}\" into \"{1}\"?": "Pindahkan \"{0}\" ke \"{1}\"?",
+  "Move cancelled - {0} of {n} item moved to \"{1}\"": {
+    "other": "Pemindahan dibatalkan - {0} dari {n} item dipindahkan ke \"{1}\""
+  },
   "Move Down": "Pindahkan ke Bawah",
   "Move down": "Pindahkan ke bawah",
   "Move files": "Pindahkan file",
@@ -418,6 +430,7 @@
   "Preview": "Pratinjau",
   "Print": "Cetak",
   "Program": "Program",
+  "Program folder:": "Folder program:",
   "Promote to a base set": "Naikkan ke set dasar",
   "Properties": "Properti",
   "Put the command selected on the right after the entry selected on the left": "Letakkan perintah yang dipilih di kanan setelah entri yang dipilih di kiri",
@@ -584,6 +597,12 @@
   "{0} in {1}: {2} rows": "{0} dalam {1}: {2} baris",
   "{0} is not a base set the application can take": "{0} bukan set dasar yang dapat dipakai aplikasi",
   "{0} no longer taken": "{0} tidak dipakai lagi",
+  "{0} of {n} item copied to \"{1}\" ({2} skipped)": {
+    "other": "{0} dari {n} item disalin ke \"{1}\" ({2} dilewati)"
+  },
+  "{0} of {n} item moved to \"{1}\" ({2} skipped)": {
+    "other": "{0} dari {n} item dipindahkan ke \"{1}\" ({2} dilewati)"
+  },
   "{0} rows drafted; review them before saving": "{0} baris dibuatkan draf; tinjau sebelum menyimpan",
   "{0} taken": "{0} dipakai",
   "{0} taken; {1} rows now duplicate a base's text and can be dropped": "{0} dipakai; {1} baris kini menduplikasi teks set dasar dan dapat dibuang",
@@ -604,8 +623,20 @@
   "{n} file": {
     "other": "{n} file"
   },
+  "{n} file copied to \"{0}\"": {
+    "other": "{n} file disalin ke \"{0}\""
+  },
+  "{n} file moved to \"{0}\"": {
+    "other": "{n} file dipindahkan ke \"{0}\""
+  },
   "{n} folder": {
     "other": "{n} folder"
+  },
+  "{n} folder copied to \"{0}\"": {
+    "other": "{n} folder disalin ke \"{0}\""
+  },
+  "{n} folder moved to \"{0}\"": {
+    "other": "{n} folder dipindahkan ke \"{0}\""
   },
   "{n} hour": {
     "other": "{n} jam"
@@ -613,8 +644,14 @@
   "{n} item": {
     "other": "{n} item"
   },
+  "{n} item copied to \"{0}\"": {
+    "other": "{n} item disalin ke \"{0}\""
+  },
   "{n} item could not be deleted even with administrator permission.": {
     "other": "{n} item tidak dapat dihapus bahkan dengan izin administrator."
+  },
+  "{n} item moved to \"{0}\"": {
+    "other": "{n} item dipindahkan ke \"{0}\""
   },
   "{n} minute": {
     "other": "{n} menit"

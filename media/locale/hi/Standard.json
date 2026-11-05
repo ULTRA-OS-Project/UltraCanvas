@@ -3,17 +3,21 @@
   "@name": "हिन्दी",
   "@translated-by": "machine draft 2026-11-03, reviewed by -",
   "\"{0}\" already exists in \"{1}\".": "“{1}” में “{0}” पहले से मौजूद है।",
+  "\"{0}\" copied to \"{1}\"": "“{0}” को “{1}” में कॉपी किया गया",
   "\"{0}\" could not be copied.": "“{0}” कॉपी नहीं किया जा सका।",
   "\"{0}\" could not be deleted even with administrator permission.": "“{0}” व्यवस्थापक अनुमति के साथ भी हटाया नहीं जा सका।",
   "\"{0}\" could not be deleted.": "“{0}” हटाया नहीं जा सका।",
   "\"{0}\" could not be moved to the Recycle Bin.": "“{0}” को रीसायकल बिन में नहीं ले जाया जा सका।",
   "\"{0}\" could not be moved to the Trash.": "“{0}” को ट्रैश में नहीं ले जाया जा सका।",
   "\"{0}\" could not be moved.": "“{0}” ले जाया नहीं जा सका।",
+  "\"{0}\" holds the {1} you are using right now.": "“{0}” में वह {1} है जिसका आप अभी उपयोग कर रहे हैं।",
   "\"{0}\" in \"{1}\" could not be deleted.": "“{1}” में “{0}” हटाया नहीं जा सका।",
   "\"{0}\" in \"{1}\" is in use by another program.": "“{1}” में “{0}” किसी अन्य प्रोग्राम द्वारा उपयोग में है।",
   "\"{0}\" in \"{1}\" needs administrator permission to be deleted.": "“{1}” में “{0}” को हटाने के लिए व्यवस्थापक अनुमति आवश्यक है।",
   "\"{0}\" is in use by another program.": "“{0}” किसी अन्य प्रोग्राम द्वारा उपयोग में है।",
+  "\"{0}\" is part of the {1} you are using right now.": "“{0}” उस {1} का हिस्सा है जिसका आप अभी उपयोग कर रहे हैं।",
   "\"{0}\" is write-protected.": "“{0}” लेखन-सुरक्षित है।",
+  "\"{0}\" moved to \"{1}\"": "“{0}” को “{1}” में ले जाया गया",
   "\"{0}\" needs administrator permission to be deleted.": "“{0}” को हटाने के लिए व्यवस्थापक अनुमति आवश्यक है।",
   "(no suggestions)": "(कोई सुझाव नहीं)",
   "(the first {0} shown)": "(पहले {0} दिखाए गए हैं)",
@@ -27,6 +31,7 @@
   "A folder that another program still holds open - or that is shown in a preview - cannot be copied until that program lets go of it. Close it there, then try again.": "जिस फ़ोल्डर को कोई अन्य प्रोग्राम अब भी खोले हुए है - या जो किसी पूर्वावलोकन में दिखाया जा रहा है - उसे तब तक कॉपी नहीं किया जा सकता जब तक वह प्रोग्राम उसे छोड़ न दे। उसे वहाँ बंद करें, फिर पुनः प्रयास करें।",
   "A folder that another program still holds open - or that is shown in a preview - cannot be moved until that program lets go of it. Close it there, then try again.": "जिस फ़ोल्डर को कोई अन्य प्रोग्राम अब भी खोले हुए है - या जो किसी पूर्वावलोकन में दिखाया जा रहा है - उसे तब तक ले जाया नहीं जा सकता जब तक वह प्रोग्राम उसे छोड़ न दे। उसे वहाँ बंद करें, फिर पुनः प्रयास करें।",
   "A line between two menu entries": "दो मेनू प्रविष्टियों के बीच एक रेखा",
+  "A running program cannot delete its own files: the ones it has loaded refuse to go, and taking the rest away makes it crash. Close this {0} and delete the folder from another file manager, or from a copy of {0} started elsewhere.": "चल रहा प्रोग्राम अपनी ही फ़ाइलें नहीं हटा सकता: जो फ़ाइलें उसने लोड की हैं वे हटने से इनकार करती हैं, और बाकी को हटाने से वह क्रैश हो जाता है। इस {0} को बंद करें और फ़ोल्डर को किसी अन्य फ़ाइल प्रबंधक से, या कहीं और से शुरू की गई {0} की किसी प्रति से हटाएँ।",
   "A submenu in a menu, a group of your own on a toolbar": "मेनू में एक उपमेनू, टूलबार पर आपका अपना समूह",
   "Abort": "निरस्त करें",
   "About": "परिचय",
@@ -102,6 +107,7 @@
   "Close": "बंद करें",
   "Close (Esc)": "बंद करें (Esc)",
   "Close All": "सभी बंद करें",
+  "Close it and delete the folder from elsewhere.": "इसे बंद करें और फ़ोल्डर को कहीं और से हटाएँ।",
   "Close the program that holds it, then try again. Administrator rights do not help: a file a running program has loaded cannot be deleted by anyone.": "जिस प्रोग्राम ने इसे पकड़ रखा है उसे बंद करें, फिर पुनः प्रयास करें। व्यवस्थापक अधिकारों से कोई लाभ नहीं होता: किसी चल रहे प्रोग्राम द्वारा लोड की गई फ़ाइल को कोई भी नहीं हटा सकता।",
   "Collisions between bases": "आधार सेटों के बीच टकराव",
   "Colour": "रंग",
@@ -122,6 +128,10 @@
   },
   "Copy": "कॉपी करें",
   "Copy \"{0}\" into \"{1}\"?": "“{0}” को “{1}” में कॉपी करें?",
+  "Copy cancelled - {0} of {n} item copied to \"{1}\"": {
+    "one": "कॉपी रद्द - {n} आइटम में से {0} “{1}” में कॉपी किया गया",
+    "other": "कॉपी रद्द - {n} आइटम में से {0} “{1}” में कॉपी किए गए"
+  },
   "Copy files": "फ़ाइलें कॉपी करें",
   "Copy finished": "कॉपी पूर्ण",
   "Copy path": "पथ कॉपी करें",
@@ -347,6 +357,10 @@
   "month|September": "सितंबर",
   "Move": "ले जाएँ",
   "Move \"{0}\" into \"{1}\"?": "“{0}” को “{1}” में ले जाएँ?",
+  "Move cancelled - {0} of {n} item moved to \"{1}\"": {
+    "one": "ले जाना रद्द - {n} आइटम में से {0} “{1}” में ले जाया गया",
+    "other": "ले जाना रद्द - {n} आइटम में से {0} “{1}” में ले जाए गए"
+  },
   "Move Down": "नीचे ले जाएँ",
   "Move down": "नीचे ले जाएँ",
   "Move files": "फ़ाइलें ले जाएँ",
@@ -433,6 +447,7 @@
   "Preview": "पूर्वावलोकन",
   "Print": "प्रिंट करें",
   "Program": "प्रोग्राम",
+  "Program folder:": "प्रोग्राम फ़ोल्डर:",
   "Promote to a base set": "आधार सेट में ऊपर ले जाएँ",
   "Properties": "गुण",
   "Put the command selected on the right after the entry selected on the left": "दाईं ओर चुनी गई कमांड को बाईं ओर चुनी गई प्रविष्टि के बाद रखें",
@@ -599,6 +614,14 @@
   "{0} in {1}: {2} rows": "{0} ({1}): {2} पंक्तियाँ",
   "{0} is not a base set the application can take": "{0} ऐसा आधार सेट नहीं है जिसे ऐप्लिकेशन शामिल कर सके",
   "{0} no longer taken": "{0} अब शामिल नहीं है",
+  "{0} of {n} item copied to \"{1}\" ({2} skipped)": {
+    "one": "{n} आइटम में से {0} “{1}” में कॉपी किया गया ({2} छोड़े गए)",
+    "other": "{n} आइटम में से {0} “{1}” में कॉपी किए गए ({2} छोड़े गए)"
+  },
+  "{0} of {n} item moved to \"{1}\" ({2} skipped)": {
+    "one": "{n} आइटम में से {0} “{1}” में ले जाया गया ({2} छोड़े गए)",
+    "other": "{n} आइटम में से {0} “{1}” में ले जाए गए ({2} छोड़े गए)"
+  },
   "{0} rows drafted; review them before saving": "{0} पंक्तियों के ड्राफ़्ट बनाए गए; सहेजने से पहले उनकी समीक्षा करें",
   "{0} taken": "{0} शामिल किया गया",
   "{0} taken; {1} rows now duplicate a base's text and can be dropped": "{0} शामिल किया गया; {1} पंक्तियाँ अब किसी आधार सेट के टेक्स्ट को दोहराती हैं और हटाई जा सकती हैं",
@@ -622,9 +645,25 @@
     "one": "{n} फ़ाइल",
     "other": "{n} फ़ाइलें"
   },
+  "{n} file copied to \"{0}\"": {
+    "one": "{n} फ़ाइल “{0}” में कॉपी की गई",
+    "other": "{n} फ़ाइलें “{0}” में कॉपी की गईं"
+  },
+  "{n} file moved to \"{0}\"": {
+    "one": "{n} फ़ाइल “{0}” में ले जाई गई",
+    "other": "{n} फ़ाइलें “{0}” में ले जाई गईं"
+  },
   "{n} folder": {
     "one": "{n} फ़ोल्डर",
     "other": "{n} फ़ोल्डर"
+  },
+  "{n} folder copied to \"{0}\"": {
+    "one": "{n} फ़ोल्डर “{0}” में कॉपी किया गया",
+    "other": "{n} फ़ोल्डर “{0}” में कॉपी किए गए"
+  },
+  "{n} folder moved to \"{0}\"": {
+    "one": "{n} फ़ोल्डर “{0}” में ले जाया गया",
+    "other": "{n} फ़ोल्डर “{0}” में ले जाए गए"
   },
   "{n} hour": {
     "one": "{n} घंटा",
@@ -634,9 +673,17 @@
     "one": "{n} आइटम",
     "other": "{n} आइटम"
   },
+  "{n} item copied to \"{0}\"": {
+    "one": "{n} आइटम “{0}” में कॉपी किया गया",
+    "other": "{n} आइटम “{0}” में कॉपी किए गए"
+  },
   "{n} item could not be deleted even with administrator permission.": {
     "one": "{n} आइटम व्यवस्थापक अनुमति के साथ भी हटाया नहीं जा सका।",
     "other": "{n} आइटम व्यवस्थापक अनुमति के साथ भी हटाए नहीं जा सके।"
+  },
+  "{n} item moved to \"{0}\"": {
+    "one": "{n} आइटम “{0}” में ले जाया गया",
+    "other": "{n} आइटम “{0}” में ले जाए गए"
   },
   "{n} minute": {
     "one": "{n} मिनट",

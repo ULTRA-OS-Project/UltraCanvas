@@ -3,17 +3,21 @@
   "@name": "Deutsch",
   "@translated-by": "machine draft 2026-11-02, reviewed by -",
   "\"{0}\" already exists in \"{1}\".": "„{0}“ ist in „{1}“ bereits vorhanden.",
+  "\"{0}\" copied to \"{1}\"": "„{0}“ nach „{1}“ kopiert",
   "\"{0}\" could not be copied.": "„{0}“ konnte nicht kopiert werden.",
   "\"{0}\" could not be deleted even with administrator permission.": "„{0}“ konnte auch mit Administratorrechten nicht gelöscht werden.",
   "\"{0}\" could not be deleted.": "„{0}“ konnte nicht gelöscht werden.",
   "\"{0}\" could not be moved to the Recycle Bin.": "„{0}“ konnte nicht in den Papierkorb verschoben werden.",
   "\"{0}\" could not be moved to the Trash.": "„{0}“ konnte nicht in den Papierkorb verschoben werden.",
   "\"{0}\" could not be moved.": "„{0}“ konnte nicht verschoben werden.",
+  "\"{0}\" holds the {1} you are using right now.": "„{0}“ enthält das Programm {1}, das Sie gerade verwenden.",
   "\"{0}\" in \"{1}\" could not be deleted.": "„{0}“ in „{1}“ konnte nicht gelöscht werden.",
   "\"{0}\" in \"{1}\" is in use by another program.": "„{0}“ in „{1}“ wird von einem anderen Programm verwendet.",
   "\"{0}\" in \"{1}\" needs administrator permission to be deleted.": "Zum Löschen von „{0}“ in „{1}“ sind Administratorrechte erforderlich.",
   "\"{0}\" is in use by another program.": "„{0}“ wird von einem anderen Programm verwendet.",
+  "\"{0}\" is part of the {1} you are using right now.": "„{0}“ ist Teil des Programms {1}, das Sie gerade verwenden.",
   "\"{0}\" is write-protected.": "„{0}“ ist schreibgeschützt.",
+  "\"{0}\" moved to \"{1}\"": "„{0}“ nach „{1}“ verschoben",
   "\"{0}\" needs administrator permission to be deleted.": "Zum Löschen von „{0}“ sind Administratorrechte erforderlich.",
   "(no suggestions)": "(keine Vorschläge)",
   "(the first {0} shown)": "(die ersten {0} werden angezeigt)",
@@ -27,6 +31,7 @@
   "A folder that another program still holds open - or that is shown in a preview - cannot be copied until that program lets go of it. Close it there, then try again.": "Ein Ordner, den ein anderes Programm noch geöffnet hält – oder der in einer Vorschau angezeigt wird –, kann erst kopiert werden, wenn das Programm ihn freigibt. Schließen Sie ihn dort und versuchen Sie es dann erneut.",
   "A folder that another program still holds open - or that is shown in a preview - cannot be moved until that program lets go of it. Close it there, then try again.": "Ein Ordner, den ein anderes Programm noch geöffnet hält – oder der in einer Vorschau angezeigt wird –, kann erst verschoben werden, wenn das Programm ihn freigibt. Schließen Sie ihn dort und versuchen Sie es dann erneut.",
   "A line between two menu entries": "Eine Linie zwischen zwei Menüeinträgen",
+  "A running program cannot delete its own files: the ones it has loaded refuse to go, and taking the rest away makes it crash. Close this {0} and delete the folder from another file manager, or from a copy of {0} started elsewhere.": "Ein laufendes Programm kann seine eigenen Dateien nicht löschen: Die geladenen lassen sich nicht entfernen, und wenn der Rest entfernt wird, stürzt es ab. Schließen Sie {0} und löschen Sie den Ordner mit einem anderen Dateimanager oder aus einer anderswo gestarteten Kopie von {0}.",
   "A submenu in a menu, a group of your own on a toolbar": "Ein Untermenü in einem Menü, eine eigene Gruppe in einer Symbolleiste",
   "Abort": "Abbrechen",
   "About": "Über",
@@ -102,6 +107,7 @@
   "Close": "Schließen",
   "Close (Esc)": "Schließen (Esc)",
   "Close All": "Alle schließen",
+  "Close it and delete the folder from elsewhere.": "Schließen Sie das Programm und löschen Sie den Ordner von anderer Stelle aus.",
   "Close the program that holds it, then try again. Administrator rights do not help: a file a running program has loaded cannot be deleted by anyone.": "Schließen Sie das betreffende Programm und versuchen Sie es dann erneut. Administratorrechte helfen nicht: Eine Datei, die ein laufendes Programm geladen hat, kann niemand löschen.",
   "Collisions between bases": "Kollisionen zwischen Basissätzen",
   "Colour": "Farbe",
@@ -122,6 +128,10 @@
   },
   "Copy": "Kopieren",
   "Copy \"{0}\" into \"{1}\"?": "„{0}“ nach „{1}“ kopieren?",
+  "Copy cancelled - {0} of {n} item copied to \"{1}\"": {
+    "one": "Kopieren abgebrochen – {0} von {n} Element nach „{1}“ kopiert",
+    "other": "Kopieren abgebrochen – {0} von {n} Elementen nach „{1}“ kopiert"
+  },
   "Copy files": "Dateien kopieren",
   "Copy finished": "Kopieren abgeschlossen",
   "Copy path": "Pfad kopieren",
@@ -347,6 +357,10 @@
   "month|September": "September",
   "Move": "Verschieben",
   "Move \"{0}\" into \"{1}\"?": "„{0}“ nach „{1}“ verschieben?",
+  "Move cancelled - {0} of {n} item moved to \"{1}\"": {
+    "one": "Verschieben abgebrochen – {0} von {n} Element nach „{1}“ verschoben",
+    "other": "Verschieben abgebrochen – {0} von {n} Elementen nach „{1}“ verschoben"
+  },
   "Move Down": "Nach unten",
   "Move down": "Nach unten",
   "Move files": "Dateien verschieben",
@@ -433,6 +447,7 @@
   "Preview": "Vorschau",
   "Print": "Drucken",
   "Program": "Programm",
+  "Program folder:": "Programmordner:",
   "Promote to a base set": "In einen Basissatz hochstufen",
   "Properties": "Eigenschaften",
   "Put the command selected on the right after the entry selected on the left": "Den rechts ausgewählten Befehl nach dem links ausgewählten Eintrag einfügen",
@@ -599,6 +614,14 @@
   "{0} in {1}: {2} rows": "{0} in {1}: {2} Zeilen",
   "{0} is not a base set the application can take": "{0} ist kein Basissatz, den die Anwendung übernehmen kann",
   "{0} no longer taken": "{0} wird nicht mehr übernommen",
+  "{0} of {n} item copied to \"{1}\" ({2} skipped)": {
+    "one": "{0} von {n} Element nach „{1}“ kopiert ({2} übersprungen)",
+    "other": "{0} von {n} Elementen nach „{1}“ kopiert ({2} übersprungen)"
+  },
+  "{0} of {n} item moved to \"{1}\" ({2} skipped)": {
+    "one": "{0} von {n} Element nach „{1}“ verschoben ({2} übersprungen)",
+    "other": "{0} von {n} Elementen nach „{1}“ verschoben ({2} übersprungen)"
+  },
   "{0} rows drafted; review them before saving": "{0} Zeilen entworfen; prüfen Sie sie vor dem Speichern",
   "{0} taken": "{0} übernommen",
   "{0} taken; {1} rows now duplicate a base's text and can be dropped": "{0} übernommen; {1} Zeilen wiederholen jetzt den Text eines Basissatzes und können verworfen werden",
@@ -622,9 +645,25 @@
     "one": "{n} Datei",
     "other": "{n} Dateien"
   },
+  "{n} file copied to \"{0}\"": {
+    "one": "{n} Datei nach „{0}“ kopiert",
+    "other": "{n} Dateien nach „{0}“ kopiert"
+  },
+  "{n} file moved to \"{0}\"": {
+    "one": "{n} Datei nach „{0}“ verschoben",
+    "other": "{n} Dateien nach „{0}“ verschoben"
+  },
   "{n} folder": {
     "one": "{n} Ordner",
     "other": "{n} Ordner"
+  },
+  "{n} folder copied to \"{0}\"": {
+    "one": "{n} Ordner nach „{0}“ kopiert",
+    "other": "{n} Ordner nach „{0}“ kopiert"
+  },
+  "{n} folder moved to \"{0}\"": {
+    "one": "{n} Ordner nach „{0}“ verschoben",
+    "other": "{n} Ordner nach „{0}“ verschoben"
   },
   "{n} hour": {
     "one": "{n} Stunde",
@@ -634,9 +673,17 @@
     "one": "{n} Element",
     "other": "{n} Elemente"
   },
+  "{n} item copied to \"{0}\"": {
+    "one": "{n} Element nach „{0}“ kopiert",
+    "other": "{n} Elemente nach „{0}“ kopiert"
+  },
   "{n} item could not be deleted even with administrator permission.": {
     "one": "{n} Element konnte auch mit Administratorrechten nicht gelöscht werden.",
     "other": "{n} Elemente konnten auch mit Administratorrechten nicht gelöscht werden."
+  },
+  "{n} item moved to \"{0}\"": {
+    "one": "{n} Element nach „{0}“ verschoben",
+    "other": "{n} Elemente nach „{0}“ verschoben"
   },
   "{n} minute": {
     "one": "{n} Minute",
