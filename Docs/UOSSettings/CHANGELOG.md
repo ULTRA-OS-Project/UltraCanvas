@@ -1,3 +1,11 @@
+#### 2026-11-05 *0.15.0*
+- **Settings in every language.** UOS-Settings' own catalogue
+  (`media/locale/<lang>/UOS-Settings.json`) now exists in all thirty
+  languages: its page names (Appearance, Notifications, Translations,
+  Trusted certificates ...), the language page with its notes, and the
+  localisation editor's translator field showed in English whatever the
+  language - on the very page where the language is chosen.
+
 #### 2026-11-03 *0.14.0*
 - **Language > Translations: the localisation editor.** A page under
   Language hosts `UltraCanvasLocalisationEditor`: every set an

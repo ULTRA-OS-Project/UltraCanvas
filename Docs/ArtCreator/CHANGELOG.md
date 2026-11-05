@@ -1,3 +1,10 @@
+#### 2026-11-05 *0.8.13*
+- **The Text tool in every language.** ArtCreator's own catalogue
+  (`media/locale/<lang>/ArtCreator.json`) now exists in all thirty
+  languages: the Text tool's status-line hints and its undo steps ("Undo
+  Text Bold", "Undo Letter Spacing" ...) showed in English whatever the
+  language.
+
 #### 2026-11-04 *0.8.12*
 - **Selected words take a letter spacing and a colour of their own.** While a
   text is typed on the page, the text bar's letter spacing and the fill colour

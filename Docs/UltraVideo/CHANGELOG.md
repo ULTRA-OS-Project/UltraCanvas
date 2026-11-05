@@ -1,3 +1,10 @@
+#### 2026-11-05 *0.7.6*
+- **Titles in every language.** UltraVideo's own catalogue
+  (`media/locale/<lang>/UltraVideo.json`) now exists in all thirty
+  languages: typing a title on the frame, its status messages and its undo
+  steps ("Undo Title Font", "Undo Colour title" ...) showed in English
+  whatever the language.
+
 #### 2026-11-04 *0.7.5*
 - **Selected words of a title take a letter spacing and a colour of their
   own.** While a title is typed on the frame, the text bar's letter spacing
