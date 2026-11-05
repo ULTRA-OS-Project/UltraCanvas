@@ -8,7 +8,8 @@ name: Locale catalogues
 # its language needs and repeats no entry of a set below it.
 #
 # Findings that predate the check are in scripts/locale_catalogues_baseline.txt;
-# only additions fail.
+# only additions fail. The extractor's own reading rules are tested first
+# (scripts/tests/test_extract_ui_strings.py).
 
 on:
   push:
@@ -19,6 +20,7 @@ on:
       - 'media/locale/**'
       - 'scripts/check_locale_catalogues.py'
       - 'scripts/extract_ui_strings.py'
+      - 'scripts/tests/**'
       - 'scripts/locale_catalogues_baseline.txt'
       - '.github/workflows/locale-catalogues.yml'
   pull_request:
@@ -37,5 +39,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+      # The rules the extractor reads the sources by - a literal's escapes,
+      # comments stripped without a "/*" in a string swallowing the code
+      # after it, a call's literal arguments - held in
+      # scripts/tests/test_extract_ui_strings.py.
+      - name: Test the extractor's reading of the sources
+        run: python3 -m unittest discover -s scripts/tests -v
       - name: Check the translation catalogues and their sync with the sources
         run: python3 scripts/check_locale_catalogues.py --strict

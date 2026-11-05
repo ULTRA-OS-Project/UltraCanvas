@@ -45,6 +45,7 @@
 // where the same spot serves every page that has one. The backdrop behind
 // transparent images is no longer a page here: the media viewer's own colour
 // strip under the picture chooses it, and the choice is saved from there.
+// Version: 1.20.2 - the texts left in English go through Tr too: captions, tooltips, the cache figures (counts through TrN), the TAR labels; the conflict choices get ids that do not change with the language
 // Version: 1.20.1 - the texts the wrapping tool 1.1.0 finds (the page kit's buttons, dropdown items, dialog buttons, tree nodes) go through Tr
 // Version: 1.20.0 - the interface strings go through Tr (UltraLocalisation); "Translate UltraFiler..." on the start page opens the localisation editor
 // Version: 1.19.0 - built on the framework's UltraCanvasSettingsPageKit: the window, the
@@ -455,7 +456,7 @@ namespace {
 
         d->driveColorBox = MakeColorBox("ufl-set-tv-drive-color",
                 d->settings->treeDriveBackgroundColor,
-                "Row background of the drives in the folder tree",
+                Tr("Row background of the drives in the folder tree"),
                 [d]() {
             ShowColorPickerPopup(d, Tr("Drive background colour"),
                     d->settings->treeDriveBackgroundColor,
@@ -471,11 +472,11 @@ namespace {
             });
         });
         parts.body->AddChild(MakeColorRow("ufl-set-tv-drive-row",
-                "Drive background colour:", d->driveColorBox));
+                Tr("Drive background colour:"), d->driveColorBox));
 
         d->selectedColorBox = MakeColorBox("ufl-set-tv-selected-color",
                 d->settings->treeSelectedFolderColor,
-                "Highlight of the selected folder in the folder tree",
+                Tr("Highlight of the selected folder in the folder tree"),
                 [d]() {
             ShowColorPickerPopup(d, Tr("Selected folder colour"),
                     d->settings->treeSelectedFolderColor,
@@ -491,11 +492,11 @@ namespace {
             });
         });
         parts.body->AddChild(MakeColorRow("ufl-set-tv-selected-row",
-                "Selected folder colour:", d->selectedColorBox));
+                Tr("Selected folder colour:"), d->selectedColorBox));
 
         // ----- the tree's width: fitted, or [ 280 px ] -----
         AddBodyCaption(parts, "ufl-set-tv-width-caption",
-                       "Width of the folder tree:");
+                       Tr("Width of the folder tree:"));
         const bool fit = d->settings->treeWidthAuto;
         d->treeFitRadio = MakeChoice("ufl-set-tv-width-fit",
                 Tr("Auto - 10 px wider than the longest name shown"), fit);
@@ -890,7 +891,7 @@ namespace {
                 });
                 entry.box->SetTooltip(entry.supported
                         ? info.label
-                        : info.label + " - not supported by this build");
+                        : TrF("{0} - not supported by this build", info.label));
                 entry.box->SetDisabled(!entry.supported ||
                         (mask & static_cast<uint32_t>(kind)) == 0);
                 row->AddChild(entry.box);
@@ -912,7 +913,7 @@ namespace {
 
         const std::pair<int, std::string> choices[] = {
             {UltraFilerSettings::kFileNameLinesFull,
-                    "Full name - as many lines as the name needs"},
+                    Tr("Full name - as many lines as the name needs")},
             {2, Tr("Maximum 2 rows")},
             {3, Tr("Maximum 3 rows")},
             {4, Tr("Maximum 4 rows")},
@@ -986,7 +987,7 @@ namespace {
         parts.body->AddChild(d->extensionsInNamesBox);
 
         AddBodyCaption(parts, "ufl-set-ext-badge-caption",
-                "In the thumbnail views, show the extension on the tile:");
+                Tr("In the thumbnail views, show the extension on the tile:"));
 
         d->badgeRadios.clear();
         for (FilerExtensionBadge badge :
@@ -1294,7 +1295,7 @@ namespace {
 
         // ----- the user's own patterns -----
         AddBodyCaption(parts, "ufl-set-ign-own-caption",
-                "Own patterns - type one and press Enter:");
+                Tr("Own patterns - type one and press Enter:"));
         d->ignorePatternsInput = CreateTagInput("ufl-set-ign-own", -1, -1,
                                                 static_cast<float>(kTextWidth));
         d->ignorePatternsInput->SetPlaceholder(Tr("e.g. *.bak"));
@@ -1310,7 +1311,7 @@ namespace {
         parts.body->AddChild(d->ignorePatternsInput);
 
         // ----- where they apply -----
-        AddBodyCaption(parts, "ufl-set-ign-scope-caption", "Apply them:");
+        AddBodyCaption(parts, "ufl-set-ign-scope-caption", Tr("Apply them:"));
         const bool homeOnly = d->settings->ignoreOnlyInHomeFolder;
         d->ignoreHomeRadio = MakeChoice("ufl-set-ign-home",
                 Tr("Only in the Home folder"), homeOnly);
@@ -1438,8 +1439,8 @@ namespace {
     void UpdateProgressDelayLabel(DialogState* d) {
         if (!d->progressDelayValue || !d->settings) return;
         const int s = d->settings->progressDelaySeconds;
-        d->progressDelayValue->SetText(s == 0 ? std::string("at once")
-                                              : std::to_string(s) + (s == 1 ? " second" : " seconds"));
+        d->progressDelayValue->SetText(s == 0 ? Tr("at once")
+                                              : TrN("{n} second", "{n} seconds", s));
     }
 
     std::shared_ptr<UltraCanvasContainer> BuildFileOperationsPage(DialogState* d) {
@@ -1448,7 +1449,7 @@ namespace {
                    "that stand for good:"), /*scrolls=*/true);
         UltraFilerSettings* st = d->settings;
 
-        AddBodyCaption(parts, "ufl-set-fo-ask-caption", "Ask before:");
+        AddBodyCaption(parts, "ufl-set-fo-ask-caption", Tr("Ask before:"));
         auto applyConfirmation = [d]() {
             if (!d->settings || !d->confirmMovesBox || !d->confirmCopiesBox) return;
             d->settings->dropConfirmation = UltraFilerSettings::DropConfirmationFor(
@@ -1464,7 +1465,11 @@ namespace {
                 UltraFilerSettings::ConfirmsCopies(st->dropConfirmation),
                 [applyConfirmation](bool) { applyConfirmation(); });
         d->confirmTrashBox = MakeCheckbox("ufl-set-fo-confirm-trash",
-                TrF("Moving files to the {0}", TrashDisplayName()), kTextWidth,
+#if defined(_WIN32) || defined(_WIN64)
+                Tr("Moving files to the Recycle Bin"), kTextWidth,
+#else
+                Tr("Moving files to the Trash"), kTextWidth,
+#endif
                 st->confirmTrashDelete, [d](bool on) {
             if (!d->settings) return;
             d->settings->confirmTrashDelete = on;
@@ -1479,17 +1484,19 @@ namespace {
         parts.body->AddChild(d->confirmPermanentBox);
 
         AddBodyCaption(parts, "ufl-set-fo-conflict-caption",
-                "When a name is already taken:");
+                Tr("When a name is already taken:"));
         {
             auto row = MakeChoiceRow("ufl-set-fo-conflict-row");
-            const std::vector<std::pair<FilerConflictPolicy, std::string>> choices = {
-                {FilerConflictPolicy::Ask,      "Ask"},
-                {FilerConflictPolicy::KeepBoth, Tr("Keep both")},
-                {FilerConflictPolicy::Replace,  "Replace"},
-                {FilerConflictPolicy::Skip,     "Skip"},
+            // The id from a fixed key, not from the label: a translated
+            // label would give each language a different element id.
+            const std::vector<std::tuple<FilerConflictPolicy, const char*, std::string>> choices = {
+                {FilerConflictPolicy::Ask,      "ask",      Tr("Ask")},
+                {FilerConflictPolicy::KeepBoth, "keepboth", Tr("Keep both")},
+                {FilerConflictPolicy::Replace,  "replace",  Tr("Replace")},
+                {FilerConflictPolicy::Skip,     "skip",     Tr("Skip")},
             };
-            for (const auto& [policy, label] : choices) {
-                auto radio = MakeChoice("ufl-set-fo-conflict-" + std::string(label), label,
+            for (const auto& [policy, key, label] : choices) {
+                auto radio = MakeChoice("ufl-set-fo-conflict-" + std::string(key), label,
                                         st->conflictPolicy == policy, 100);
                 d->conflictRadios.emplace_back(policy, radio);
                 d->conflictGroup.AddRadioButton(radio);
@@ -1506,7 +1513,7 @@ namespace {
         }
 
         AddBodyCaption(parts, "ufl-set-fo-folder-caption",
-                "When a folder is pasted over a folder:");
+                Tr("When a folder is pasted over a folder:"));
         {
             auto row = MakeChoiceRow("ufl-set-fo-folder-row");
             d->folderMergeRadio = MakeChoice("ufl-set-fo-folder-merge",
@@ -1529,7 +1536,7 @@ namespace {
         }
 
         AddBodyCaption(parts, "ufl-set-fo-failure-caption",
-                "When a file cannot be copied, moved or deleted:");
+                Tr("When a file cannot be copied, moved or deleted:"));
         {
             auto row = MakeChoiceRow("ufl-set-fo-failure-row");
             d->failureAskRadio = MakeChoice("ufl-set-fo-failure-ask", Tr("Ask each time"),
@@ -1552,7 +1559,7 @@ namespace {
         }
 
         AddBodyCaption(parts, "ufl-set-fo-progress-caption",
-                "Progress window - shown once the operation has been running for:");
+                Tr("Progress window - shown once the operation has been running for:"));
         d->progressDelaySlider = MakeIntSlider("ufl-set-fo-progress-delay",
                 UltraFilerSettings::kMinProgressDelaySeconds,
                 UltraFilerSettings::kMaxProgressDelaySeconds,
@@ -1601,8 +1608,8 @@ namespace {
         parts.body->AddChild(d->mediaUltraViewerBox);
 
         AddBodyCaption(parts, "ufl-set-open-other-caption",
-                "Any other file, when this system has a program registered for "
-                "that kind of file:");
+                Tr("Any other file, when this system has a program registered for "
+                   "that kind of file:"));
 
         const bool app = d->settings->doubleClickOpensRegisteredApp;
 
@@ -1653,7 +1660,7 @@ namespace {
         if (!d->settings || !d->forgetPasswordsValue) return;
         const int minutes = d->settings->forgetPasswordsAfterMinutes;
         d->forgetPasswordsValue->SetText(minutes == 0 ? std::string(Tr("Never"))
-                                                      : std::to_string(minutes) + " min");
+                                                      : TrF("{0} min", minutes));
         d->forgetPasswordsValue->RequestRedraw();
     }
 
@@ -1707,7 +1714,7 @@ namespace {
         PageParts parts = MakePage("ufl-set-page-new-tab", Tr("New tab"),
                 Tr("What the \"+\" at the end of the tab strip opens:"));
 
-        AddBodyCaption(parts, "ufl-set-tab-options-caption", "Display options");
+        AddBodyCaption(parts, "ufl-set-tab-options-caption", Tr("Display options"));
 
         const FilerNewTabStart start = d->settings->newTabStart;
         d->newTabCurrentRadio = MakeChoice("ufl-set-tab-current",
@@ -1761,7 +1768,7 @@ namespace {
             d->promptStatus->SetText(detected.empty()
                     ? Tr("No command line program was found on this system - "
                          "choose one above.")
-                    : "System default in use: " + detected);
+                    : TrF("System default in use: {0}", detected));
         }
         d->promptStatus->RequestRedraw();
     }
@@ -1846,7 +1853,7 @@ namespace {
         d->promptInput->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
         pathRow->AddChild(d->promptInput);
 
-        pathRow->AddChild(MakeButton("ufl-set-op-browse", Tr(""), 32,
+        pathRow->AddChild(MakeButton("ufl-set-op-browse", std::string(), 32,
                 [d]() { BrowseForPromptApplication(d); }, "folder-open.svg"));
         parts.body->AddChild(pathRow);
 
@@ -1870,7 +1877,7 @@ namespace {
         parts.body->AddChild(buttonRow);
 
         // What will be started - feedback, so it stays with the controls.
-        d->promptStatus = MakeText("ufl-set-op-status", Tr(""), kTextWidth,
+        d->promptStatus = MakeText("ufl-set-op-status", std::string(), kTextWidth,
                                    kTextFontSize, kNoteTextColor);
         parts.body->AddChild(d->promptStatus);
         UpdatePromptStatus(d);
@@ -1893,7 +1900,7 @@ namespace {
     void UpdateHistoryLimitLabel(DialogState* d) {
         if (!d->settings || !d->historyLimitValue) return;
         d->historyLimitValue->SetText(
-                std::to_string(d->settings->historyMaxEntries) + " entries");
+                TrN("{n} entry", "{n} entries", d->settings->historyMaxEntries));
         d->historyLimitValue->RequestRedraw();
     }
 
@@ -1963,7 +1970,7 @@ namespace {
         parts.body->AddChild(buttonRow);
 
         // What was just cleared - feedback, so it stays with the buttons.
-        d->listsStatus = MakeText("ufl-set-hf-status", Tr(""), kTextWidth,
+        d->listsStatus = MakeText("ufl-set-hf-status", std::string(), kTextWidth,
                                   kTextFontSize, kNoteTextColor);
         parts.body->AddChild(d->listsStatus);
 
@@ -2028,16 +2035,14 @@ namespace {
     // "231 thumbnails, 12.4 MB of 96 MB" - how many, and what that leaves of
     // what it may use. Nothing held says so in words: "0 thumbnails, nothing
     // of 96 MB" is three facts where one will do.
+    // `count` is the number of entries in words, in the language's plural
+    // form ("3 thumbnails"), from the caller's TrN.
     std::string FormatUsage(uint64_t used, uint64_t budget, size_t entries,
-                            const char* noun) {
+                            const std::string& count) {
         // "nothing of 96 MB" read as a riddle; say what it is: what is held
         // now, and the most it may hold.
-        const std::string limit = " (room for " + FormatBytes(budget) + ")";
-        if (entries == 0) return "empty" + limit;
-        const std::string count = entries == 1
-                ? "1 " + std::string(noun)
-                : std::to_string(entries) + " " + std::string(noun) + "s";
-        return count + ", " + FormatBytes(used) + limit;
+        if (entries == 0) return TrF("empty (room for {0})", FormatBytes(budget));
+        return TrF("{0}, {1} (room for {2})", count, FormatBytes(used), FormatBytes(budget));
     }
 
     void SetLine(const std::shared_ptr<UltraCanvasLabel>& label,
@@ -2059,22 +2064,21 @@ namespace {
         // are still there, still counted, still expiring.
         if (directory.empty()) {
             SetLine(d->cacheDiskLine,
-                    "On disk: unavailable - this system offers nowhere to "
-                    "write a cache.");
+                    Tr("On disk: unavailable - this system offers nowhere to "
+                       "write a cache."));
             SetLine(d->cacheLocationLine, "");
         } else {
             // No ceiling on the disk half: it is bounded by the two-week
             // expiry rather than by a byte budget, so what it is holding is
             // the whole answer.
             const std::string held = disk.files == 0
-                    ? std::string("nothing yet")
-                    : (disk.files == 1 ? std::string("1 thumbnail")
-                                       : std::to_string(disk.files) + " thumbnails")
+                    ? Tr("nothing yet")
+                    : TrN("{n} thumbnail", "{n} thumbnails", static_cast<long long>(disk.files))
                       + ", " + FormatBytes(disk.bytes);
             SetLine(d->cacheDiskLine,
-                    "On disk: " + held +
-                    (d->settings && d->settings->thumbnailDiskCache
-                             ? "" : " (switched off - left to expire)"));
+                    d->settings && d->settings->thumbnailDiskCache
+                            ? TrF("On disk: {0}", held)
+                            : TrF("On disk: {0} (switched off - left to expire)", held));
             SetLine(d->cacheLocationLine, directory);
         }
 
@@ -2093,24 +2097,26 @@ namespace {
         const size_t previewEntries = memory.entries - memory.iconEntries;
         const size_t previewBytes = memory.storedBytes - memory.iconBytes;
         SetLine(d->cacheMemoryLine,
-                "In memory, previews: " +
-                FormatUsage(previewBytes, memory.contentBudget,
-                            previewEntries, "thumbnail"));
+                TrF("In memory, previews: {0}",
+                    FormatUsage(previewBytes, memory.contentBudget, previewEntries,
+                                TrN("{n} thumbnail", "{n} thumbnails",
+                                    static_cast<long long>(previewEntries)))));
         SetLine(d->cacheIconLine,
-                "In memory, application icons: " +
-                FormatUsage(memory.iconBytes, memory.iconBudget,
-                            memory.iconEntries, "icon"));
+                TrF("In memory, application icons: {0}",
+                    FormatUsage(memory.iconBytes, memory.iconBudget, memory.iconEntries,
+                                TrN("{n} icon", "{n} icons",
+                                    static_cast<long long>(memory.iconEntries)))));
         // This one is worth a word of explanation wherever it is shown: it
         // holds the tiles being painted at this moment and nothing else, so
         // with a settings window over the file display it is normally empty -
         // which would otherwise read as something not working.
         SetLine(d->cacheHotLine,
                 d->settings && d->settings->compressedThumbnails
-                        ? "In memory, unpacked for drawing: " +
-                          FormatUsage(memory.hotBytes, memory.hotBudget,
-                                      memory.hotEntries, "tile") +
-                          " - only the tiles on screen, so this empties while "
-                          "the display is not being drawn."
+                        ? TrF("In memory, unpacked for drawing: {0} - only the tiles on "
+                              "screen, so this empties while the display is not being drawn.",
+                              FormatUsage(memory.hotBytes, memory.hotBudget, memory.hotEntries,
+                                          TrN("{n} tile", "{n} tiles",
+                                              static_cast<long long>(memory.hotEntries))))
                         : Tr("In memory, unpacked for drawing: not used while "
                              "thumbnails are held uncompressed."));
         // The thumbnails the display in front does NOT have, and why: the
@@ -2120,17 +2126,15 @@ namespace {
         const size_t waiting = memory.pendingEntries -
                 std::min(memory.pendingEntries, memory.inFlightEntries);
         SetLine(d->cacheMissingLine,
-                "Not shown yet: " + std::to_string(waiting) + " waiting, " +
-                std::to_string(memory.inFlightEntries) + " being made, " +
-                std::to_string(memory.failedEntries) +
-                " could not be made (the tile keeps its type icon)." +
+                TrF("Not shown yet: {0} waiting, {1} being made, {2} could not be made "
+                    "(the tile keeps its type icon).",
+                    waiting, memory.inFlightEntries, memory.failedEntries) +
                 // A job running this long is what holds up a whole folder;
                 // naming it is how the culprit is found.
                 (memory.longestJobSeconds >= 10
-                         ? " Slowest job: \"" + memory.longestJobPath +
-                           "\", running for " +
-                           std::to_string(memory.longestJobSeconds) + " s (" +
-                           std::to_string(memory.workerCount) + " workers)."
+                         ? " " + TrF("Slowest job: \"{0}\", running for {1} s ({2} workers).",
+                                     memory.longestJobPath, memory.longestJobSeconds,
+                                     memory.workerCount)
                          : std::string()));
     }
 
@@ -2163,7 +2167,7 @@ namespace {
                    "again:"));
 
         d->diskCacheSwitch = MakeSwitch("ufl-set-cache-disk",
-                "Keep thumbnails on disk between runs",
+                Tr("Keep thumbnails on disk between runs"),
                 d->settings->thumbnailDiskCache, [d](bool on) {
             d->settings->thumbnailDiskCache = on;
             UltraCanvasFilerWidget::SetThumbnailDiskCacheEnabled(on);
@@ -2174,7 +2178,7 @@ namespace {
         parts.body->AddChild(d->diskCacheSwitch);
 
         d->compressedSwitch = MakeSwitch("ufl-set-cache-compressed",
-                "Compress thumbnails held in memory",
+                Tr("Compress thumbnails held in memory"),
                 d->settings->compressedThumbnails, [d](bool on) {
             d->settings->compressedThumbnails = on;
             if (d->cacheHooks.apply) d->cacheHooks.apply();
@@ -2186,18 +2190,18 @@ namespace {
         // What is held now, against what it is allowed to hold.
         parts.body->AddChild(MakeText("ufl-set-cache-used-title",
                 Tr("In use:"), kTextWidth, kTextFontSize, kTextColor));
-        d->cacheDiskLine = MakeText("ufl-set-cache-disk-line", Tr(""));
-        d->cacheMemoryLine = MakeText("ufl-set-cache-memory-line", Tr(""));
-        d->cacheIconLine = MakeText("ufl-set-cache-icon-line", Tr(""));
-        d->cacheHotLine = MakeText("ufl-set-cache-hot-line", Tr(""));
-        d->cacheMissingLine = MakeText("ufl-set-cache-missing-line", Tr(""));
+        d->cacheDiskLine = MakeText("ufl-set-cache-disk-line", std::string());
+        d->cacheMemoryLine = MakeText("ufl-set-cache-memory-line", std::string());
+        d->cacheIconLine = MakeText("ufl-set-cache-icon-line", std::string());
+        d->cacheHotLine = MakeText("ufl-set-cache-hot-line", std::string());
+        d->cacheMissingLine = MakeText("ufl-set-cache-missing-line", std::string());
         parts.body->AddChild(d->cacheDiskLine);
         parts.body->AddChild(d->cacheMemoryLine);
         parts.body->AddChild(d->cacheIconLine);
         parts.body->AddChild(d->cacheHotLine);
         parts.body->AddChild(d->cacheMissingLine);
 
-        d->cacheLocationLine = MakeText("ufl-set-cache-location", Tr(""), kTextWidth,
+        d->cacheLocationLine = MakeText("ufl-set-cache-location", std::string(), kTextWidth,
                                         kNoteFontSize, kNoteTextColor);
         parts.body->AddChild(d->cacheLocationLine);
 
@@ -2213,20 +2217,20 @@ namespace {
             // quietly grows, and Refresh is right there.
             SetLine(d->cacheStatus,
                     (files == 0
-                        ? std::string(Tr("Cache emptied."))
-                        : "Cache emptied: " + std::to_string(files) +
-                          (files == 1 ? " thumbnail" : " thumbnails") +
-                          " deleted from disk.") +
-                    " What is on screen is being read again and goes back into "
-                    "the cache as it lands - press Refresh to see where it "
-                    "settles.");
+                        ? Tr("Cache emptied.")
+                        : TrN("Cache emptied: {n} thumbnail deleted from disk.",
+                              "Cache emptied: {n} thumbnails deleted from disk.",
+                              static_cast<long long>(files))) +
+                    " " + Tr("What is on screen is being read again and goes back into "
+                             "the cache as it lands - press Refresh to see where it "
+                             "settles."));
             RefreshCacheUsage(d);
         }));
         buttonRow->AddChild(MakeButton("ufl-set-cache-refresh", Tr("Refresh"), 90,
                                        [d]() { RefreshCacheUsage(d); }));
         parts.body->AddChild(buttonRow);
 
-        d->cacheStatus = MakeText("ufl-set-cache-status", Tr(""), kTextWidth,
+        d->cacheStatus = MakeText("ufl-set-cache-status", std::string(), kTextWidth,
                                   kTextFontSize, kNoteTextColor);
         parts.body->AddChild(d->cacheStatus);
 
@@ -2236,14 +2240,13 @@ namespace {
                    "it is opened. Kept on disk, that is paid once instead of once "
                    "per start."));
         AddNote(parts, "ufl-set-cache-note2",
-                Tr("The disk cache looks after its own size: a thumbnail not used "
-                   "for ") +
-                std::to_string(DiskCache::kDefaultMaxAge.count() / 24) +
-                " days is deleted when UltraFiler next starts, so a folder you "
-                "keep visiting keeps its thumbnails and one you opened once "
-                "pays for itself and then goes away. Nothing here can show an "
-                "out-of-date picture - a file's size and date are stored with "
-                "its thumbnail, so a file that has changed is read again.");
+                TrF("The disk cache looks after its own size: a thumbnail not used "
+                    "for {0} days is deleted when UltraFiler next starts, so a folder "
+                    "you keep visiting keeps its thumbnails and one you opened once "
+                    "pays for itself and then goes away. Nothing here can show an "
+                    "out-of-date picture - a file's size and date are stored with "
+                    "its thumbnail, so a file that has changed is read again.",
+                    DiskCache::kDefaultMaxAge.count() / 24));
         AddNote(parts, "ufl-set-cache-note3",
                 Tr("The memory figures are the file display in front. Previews and "
                    "application icons have separate ceilings so a folder of photos "
@@ -2265,8 +2268,8 @@ namespace {
         const FilerTarSettings defaults;
         auto level = [](DialogState::TarSliderRow& row, int value, int byDefault) {
             if (!row.value) return;
-            row.value->SetText(std::to_string(value) +
-                               (value == byDefault ? " (default)" : ""));
+            row.value->SetText(value == byDefault ? TrF("{0} (default)", value)
+                                                  : std::to_string(value));
             row.value->RequestRedraw();
         };
         level(d->tarGzip, tar.gzipLevel, defaults.gzipLevel);
@@ -2275,8 +2278,8 @@ namespace {
         level(d->tarZstd, tar.zstdLevel, defaults.zstdLevel);
         if (d->tarThreads.value) {
             const int n = tar.threads;
-            d->tarThreads.value->SetText(n == 0 ? std::string("every core")
-                    : std::to_string(n) + (n == 1 ? " thread" : " threads"));
+            d->tarThreads.value->SetText(n == 0 ? Tr("every core")
+                    : TrN("{n} thread", "{n} threads", n));
             d->tarThreads.value->RequestRedraw();
         }
     }
@@ -2336,7 +2339,7 @@ namespace {
 
         // ----- the compressors -----
         AddBodyCaption(parts, "ufl-set-tar-level-caption",
-                       "Compression level - higher packs smaller, and slower:");
+                       Tr("Compression level - higher packs smaller, and slower:"));
         d->tarGzip = AddTarSlider(d, parts, "gzip", "gzip", 1,
                 FilerTarSettings::kMaxGzipLevel, &FilerTarSettings::gzipLevel);
         d->tarBzip2 = AddTarSlider(d, parts, "bzip2", "bzip2", 1,
@@ -2347,13 +2350,13 @@ namespace {
                 FilerTarSettings::kMaxZstdLevel, &FilerTarSettings::zstdLevel);
 
         AddBodyCaption(parts, "ufl-set-tar-threads-caption",
-                       "Threads of xz and Zstandard (0: one per core):");
+                       Tr("Threads of xz and Zstandard (0: one per core):"));
         // As many as this machine has cores - or more, when the setting was
         // made on a bigger one.
         const int cores = std::max(1, static_cast<int>(std::thread::hardware_concurrency()));
         const int maxThreads = std::min(FilerTarSettings::kMaxThreads,
                                         std::max(cores, tar.threads));
-        d->tarThreads = AddTarSlider(d, parts, "threads", "Threads", 0, maxThreads,
+        d->tarThreads = AddTarSlider(d, parts, "threads", Tr("Threads"), 0, maxThreads,
                                      &FilerTarSettings::threads);
 
         d->tarLongBox = MakeCheckbox("ufl-set-tar-long",
@@ -2366,7 +2369,7 @@ namespace {
         parts.body->AddChild(d->tarLongBox);
 
         // ----- the header format -----
-        AddBodyCaption(parts, "ufl-set-tar-format-caption", "Header format:");
+        AddBodyCaption(parts, "ufl-set-tar-format-caption", Tr("Header format:"));
         {
             auto row = MakeChoiceRow("ufl-set-tar-format-row");
             const std::vector<std::tuple<FilerTarHeaderFormat, const char*, int>> choices = {
@@ -2394,7 +2397,7 @@ namespace {
         }
 
         // ----- what each file keeps -----
-        AddBodyCaption(parts, "ufl-set-tar-keep-caption", "Store with each file:");
+        AddBodyCaption(parts, "ufl-set-tar-keep-caption", Tr("Store with each file:"));
         d->tarTimesBox = MakeCheckbox("ufl-set-tar-times",
                 Tr("Its modification time (else the time it was packed)"),
                 kTextWidth, tar.keepTimestamps, [d](bool on) {
@@ -2421,7 +2424,7 @@ namespace {
         parts.body->AddChild(d->tarOwnerBox);
 
         // ----- symbolic links -----
-        AddBodyCaption(parts, "ufl-set-tar-links-caption", "A symbolic link:");
+        AddBodyCaption(parts, "ufl-set-tar-links-caption", Tr("A symbolic link:"));
         d->tarLinkRadio = MakeChoice("ufl-set-tar-links-link",
                 Tr("Store the link"), tar.storeSymlinks);
         d->tarTargetRadio = MakeChoice("ufl-set-tar-links-target",
@@ -2439,7 +2442,7 @@ namespace {
 
         // ----- the exclusions -----
         AddBodyCaption(parts, "ufl-set-tar-exclude-caption",
-                       "Leave out - type a pattern and press Enter:");
+                       Tr("Leave out - type a pattern and press Enter:"));
         d->tarExcludeInput = CreateTagInput("ufl-set-tar-exclude", -1, -1,
                                             static_cast<float>(kTextWidth));
         d->tarExcludeInput->SetPlaceholder(Tr("e.g. .git or *.tmp"));

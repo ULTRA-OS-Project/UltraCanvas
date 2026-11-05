@@ -1,3 +1,12 @@
+#### 2026-11-04 *0.1.2*
+- **The delay list is exactly as wide as its longest item.** Its width was
+  estimated from the number of characters, which counts Thai and
+  Devanagari vowel and tone marks as characters of their own, so the list
+  ran wide in Thai and Hindi. It is now measured in the list's own font by
+  the window (which has its render context before the bar is built), plus
+  the room the list's padding and arrow take; the estimate is kept only for
+  a window without a render context.
+
 #### 2026-11-04 *0.1.1*
 - **One bar at the top, in the settings window's type size.** The window
   had two bars in large type: New and the choices above the picture, Save

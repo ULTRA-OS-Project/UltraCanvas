@@ -22,8 +22,9 @@ FontStyle ui = app->GetSystemFontStyle();                 // Segoe UI 9, Cantare
 FontStyle code = app->GetDefaultMonospacedFontStyle();    // Consolas, the GNOME monospace font, Menlo ...
 ```
 
-Sizes are in points, as the text engine takes them. Both are read once
-and cached for the process.
+Sizes are in points, as the text engine takes them. Both are the host
+appearance's fonts ([`UltraCanvasHostAppearance.md`](UltraCanvasHostAppearance.md)):
+read once, kept, and read again when the desktop says its look changed.
 
 ```cpp
 FontStyle pinned;
@@ -75,4 +76,5 @@ A size is parsed dot-decimal whatever the locale, never through `strtod`:
 
 - [`UltraCanvasFontFile.md`](UltraCanvasFontFile.md) - registering a font the application brings
 - [`UltraCanvasEmojiSettings.md`](UltraCanvasEmojiSettings.md) - the emoji font, a setting rather than the desktop's
-- [`UltraCanvasHostThemeProposal.md`](UltraCanvasHostThemeProposal.md) - the rest of following the host: colours, text scale, high contrast, and the change events
+- [`UltraCanvasHostAppearance.md`](UltraCanvasHostAppearance.md) - the rest of what the host says: dark or light, the accent, high contrast, the text scale, and the change events the fonts follow too
+- [`UltraCanvasHostThemeProposal.md`](UltraCanvasHostThemeProposal.md) - the theme built from it

@@ -1,5 +1,7 @@
 // OS/MSWindows/UltraCanvasWindowsWindow.cpp
 // Complete Windows window implementation with Cairo rendering
+// Version: 1.6.0 - WM_SETTINGCHANGE, WM_THEMECHANGED and the DWM colour change
+//                  schedule a read of the host appearance
 // Version: 1.5.0 - WindowType::Desktop on any monitor (config.desktopArea)
 // Version: 1.4.0 - WindowType::Desktop: undecorated, the primary monitor's
 //                  size, out of the taskbar and Alt+Tab, on every virtual
@@ -26,6 +28,9 @@
 // GetProcAddress so no shcore/user32 import lib is required.
 #ifndef WM_DPICHANGED
 #define WM_DPICHANGED 0x02E0
+#endif
+#ifndef WM_DWMCOLORIZATIONCOLORCHANGED
+#define WM_DWMCOLORIZATIONCOLORCHANGED 0x0320
 #endif
 #ifndef MDT_EFFECTIVE_DPI
 #define MDT_EFFECTIVE_DPI 0
@@ -549,6 +554,18 @@ namespace UltraCanvas {
                 // and repaint (authoritative final state after the nested WM_SIZE).
                 HandleDeviceScaleChange();
                 return 0;
+            }
+
+            // The host's look changed - a switch to dark, a new accent, a new
+            // text size or font (WM_SETTINGCHANGE, lParam "ImmersiveColorSet"
+            // or wParam SPI_SETNONCLIENTMETRICS among others), the theme
+            // (WM_THEMECHANGED), the DWM colour. Every top-level window gets
+            // the broadcast; the application reads the host once per burst.
+            case WM_SETTINGCHANGE:
+            case WM_THEMECHANGED:
+            case WM_DWMCOLORIZATIONCOLORCHANGED: {
+                if (auto* app = UltraCanvasWindowsApplication::GetInstance()) app->ScheduleHostAppearanceRefresh();
+                break;
             }
 
             case WM_CLOSE: {

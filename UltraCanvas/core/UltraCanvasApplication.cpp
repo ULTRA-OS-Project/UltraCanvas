@@ -1,5 +1,7 @@
 // UltraCanvasApplication.cpp
 // Main UltraCanvas App
+// Version: 1.17.0 - GetHostAppearance / RefreshHostAppearance / the handlers; the system fonts
+//                  served from the host appearance; the start-up report names the host's look
 // Version: 1.16.0 - SetSystemFontStyle / SetDefaultMonospacedFontStyle pin the system fonts
 // Version: 1.15.0 - Initialize loads the translation catalogues (UltraLocalisation)
 // Version: 1.14.0 - RunAfterMainLoop() at the end of Run()
@@ -630,6 +632,77 @@ namespace UltraCanvas {
             return *scan;
         }
 
+#if defined(_WIN32) || defined(_WIN64)
+        // A path as compared: forward slashes, lower case, no trailing slash.
+        std::string FolderKey(std::string s) {
+            for (char& c : s) {
+                if (c == '\\') c = '/';
+                c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            }
+            while (s.size() > 1 && s.back() == '/') s.pop_back();
+            return s;
+        }
+
+        // How many of `config`'s fonts (system and application sets) are files
+        // in `folder`.
+        int FontsFromFolder(FcConfig* config, const std::string& folder) {
+            if (!config || folder.empty()) return 0;
+            const std::string prefix = FolderKey(folder) + "/";
+            int count = 0;
+            for (FcSetName set : { FcSetSystem, FcSetApplication }) {
+                FcFontSet* fonts = FcConfigGetFonts(config, set);
+                if (!fonts) continue;
+                for (int i = 0; i < fonts->nfont; ++i) {
+                    FcChar8* file = nullptr;
+                    if (FcPatternGetString(fonts->fonts[i], FC_FILE, 0, &file) == FcResultMatch && file &&
+                        FolderKey(reinterpret_cast<const char*>(file)).rfind(prefix, 0) == 0)
+                        ++count;
+                }
+            }
+            return count;
+        }
+
+        // The font files in a folder (.ttf, .ttc, .otf, .otc), as UTF-8 paths.
+        std::vector<std::string> FontFilesIn(const std::string& folder) {
+            std::vector<std::string> files;
+            std::error_code ec;
+            for (std::filesystem::directory_iterator it(PathFromUtf8(folder), ec), end; !ec && it != end;
+                 it.increment(ec)) {
+                std::string ext = PathToUtf8(it->path().extension());
+                for (char& c : ext) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+                if (ext == ".ttf" || ext == ".ttc" || ext == ".otf" || ext == ".otc")
+                    files.push_back(PathToUtf8(it->path()));
+            }
+            return files;
+        }
+
+        // The scan's set has the Windows font folder's fonts, whatever
+        // fontconfig's cache of the folder says. A cache is trusted as long
+        // as the folder's time stamp is unchanged, and C:\\Windows\\Fonts
+        // seldom changes: a cache that once came out empty (a scan that
+        // failed, another program's fontconfig) left every later start with
+        // the bundled fonts alone. Then the folder is read again past its
+        // cache, and as a last resort file by file.
+        void MakeSureWindowsFontsAreRead(FcConfig* config) {
+            const std::string folder = GetWindowsFontsFolder();
+            if (!config || folder.empty()) return;
+            const std::vector<std::string> files = FontFilesIn(folder);
+            int read = FontsFromFolder(config, folder);
+            debugOutput << "UltraCanvas: the system font scan has " << read << " fonts from " << folder
+                        << " (" << files.size() << " font files there)" << std::endl;
+            if (read > 0 || files.empty()) return;
+            FcDirCacheUnlink(reinterpret_cast<const FcChar8*>(folder.c_str()), config);
+            FcConfigBuildFonts(config);
+            read = FontsFromFolder(config, folder);
+            debugOutput << "UltraCanvas: " << folder << " read again past its cache: " << read << " fonts" << std::endl;
+            if (read > 0) return;
+            for (const std::string& file : files)
+                FcConfigAppFontAddFile(config, reinterpret_cast<const FcChar8*>(file.c_str()));
+            read = FontsFromFolder(config, folder);
+            debugOutput << "UltraCanvas: " << folder << " added file by file: " << read << " fonts" << std::endl;
+        }
+#endif
+
         // The full set is the one in use: fontconfig is pointed at its file,
         // so a reload of the configuration - FcInitReinitialize or
         // FcInitBringUptoDate, by whichever library calls it - reads the
@@ -704,6 +777,11 @@ namespace UltraCanvas {
             debugOutput << "UltraCanvas: system fonts ready after "
                         << static_cast<long long>(status.ms + 0.5)
                         << " ms; the windows now use them" << std::endl;
+#if defined(_WIN32) || defined(_WIN64)
+            debugOutput << "UltraCanvas: the font set in use has "
+                        << FontsFromFolder(FcConfigGetCurrent(), GetWindowsFontsFolder()) << " fonts from "
+                        << GetWindowsFontsFolder() << std::endl;
+#endif
             if (onSwitched) onSwitched(status);
         }
 
@@ -721,10 +799,17 @@ namespace UltraCanvas {
             std::thread([fullConf]() {
                 const auto start = std::chrono::steady_clock::now();
                 FcConfig* config = FcConfigCreate();
-                const bool ok = config &&
-                    FcConfigParseAndLoadFromMemory(config, reinterpret_cast<const FcChar8*>(fullConf.c_str()),
-                                                   FcTrue) &&
-                    FcConfigBuildFonts(config);
+                // An error in one element of the configuration (a folder
+                // fontconfig cannot resolve) no longer discards the rest:
+                // what it holds is built all the same.
+                if (config && !FcConfigParseAndLoadFromMemory(config, reinterpret_cast<const FcChar8*>(fullConf.c_str()),
+                                                              FcTrue))
+                    debugOutput << "UltraCanvas: the system fonts' configuration reported an error; "
+                                   "building what it holds" << std::endl;
+                const bool ok = config && FcConfigBuildFonts(config);
+#if defined(_WIN32) || defined(_WIN64)
+                if (ok) MakeSureWindowsFontsAreRead(config);
+#endif
                 if (!ok && config) {
                     FcConfigDestroy(config);
                     config = nullptr;
@@ -1040,18 +1125,81 @@ namespace UltraCanvas {
         return registeredFontFiles_;
     }
 
-    FontStyle UltraCanvasApplicationBase::GetSystemFontStyle() {
-        if (!cachedSystemFontStyle_.has_value()) {
-            cachedSystemFontStyle_ = DetectSystemFontStyleNative();
+    // ===== THE HOST'S LOOK =====
+
+    HostAppearance UltraCanvasApplicationBase::DetectHostAppearanceNative() {
+        HostAppearance host = DefaultHostAppearance();
+        const FontStyle ui = DetectSystemFontStyleNative();
+        const FontStyle mono = DetectMonospacedFontStyleNative();
+        if (!ui.fontFamily.empty() && ui.fontSize > 0) host.uiFont = ui;
+        if (!mono.fontFamily.empty() && mono.fontSize > 0) host.monoFont = mono;
+        return host;
+    }
+
+    namespace {
+        // The platform's answer with the override over it.
+        HostAppearance ReadHostAppearance(UltraCanvasApplicationBase& app, HostAppearance (UltraCanvasApplicationBase::*detect)()) {
+            HostAppearance host = (app.*detect)();
+            if (host.uiFont.fontFamily.empty() || host.uiFont.fontSize <= 0) host.uiFont = DefaultHostAppearance().uiFont;
+            if (host.monoFont.fontFamily.empty() || host.monoFont.fontSize <= 0) host.monoFont = DefaultHostAppearance().monoFont;
+            ApplyHostAppearanceOverride(host, GetEnvUtf8("ULTRACANVAS_HOST_APPEARANCE"));
+            return host;
         }
-        return cachedSystemFontStyle_.value();
+    }
+
+    const HostAppearance& UltraCanvasApplicationBase::GetHostAppearance() {
+        if (!hostAppearance_.has_value()) {
+            hostAppearance_ = ReadHostAppearance(*this, &UltraCanvasApplicationBase::DetectHostAppearanceNative);
+        }
+        return hostAppearance_.value();
+    }
+
+    void UltraCanvasApplicationBase::RefreshHostAppearance() {
+        HostAppearance fresh = ReadHostAppearance(*this, &UltraCanvasApplicationBase::DetectHostAppearanceNative);
+        if (hostAppearance_.has_value() && fresh == hostAppearance_.value()) return;
+        const bool first = !hostAppearance_.has_value();
+        hostAppearance_ = std::move(fresh);
+        if (first) return;   // nothing changed from anyone's point of view: nobody had read it
+        debugOutput << "UltraCanvas: host appearance changed: " << HostAppearanceReport(hostAppearance_.value()) << std::endl;
+        // A copy: a handler may add or remove handlers.
+        const auto handlers = hostAppearanceHandlers_;
+        for (const auto& [id, handler] : handlers) {
+            if (handler) handler(hostAppearance_.value());
+        }
+    }
+
+    void UltraCanvasApplicationBase::ScheduleHostAppearanceRefresh() {
+        // One refresh per burst: Windows sends several WM_SETTINGCHANGE for one
+        // switch to dark, AppKit one notification per changed key.
+        if (hostAppearanceRefreshPending_.exchange(true)) return;
+        PostToUIThread([this]() {
+            hostAppearanceRefreshPending_ = false;
+            RefreshHostAppearance();
+        });
+    }
+
+    int UltraCanvasApplicationBase::AddHostAppearanceHandler(HostAppearanceHandler handler) {
+        if (!handler) return 0;
+        const int id = nextHostAppearanceHandlerId_++;
+        hostAppearanceHandlers_.emplace_back(id, std::move(handler));
+        return id;
+    }
+
+    void UltraCanvasApplicationBase::RemoveHostAppearanceHandler(int id) {
+        hostAppearanceHandlers_.erase(
+            std::remove_if(hostAppearanceHandlers_.begin(), hostAppearanceHandlers_.end(),
+                           [id](const auto& entry) { return entry.first == id; }),
+            hostAppearanceHandlers_.end());
+    }
+
+    FontStyle UltraCanvasApplicationBase::GetSystemFontStyle() {
+        if (cachedSystemFontStyle_.has_value()) return cachedSystemFontStyle_.value();
+        return GetHostAppearance().uiFont;
     }
 
     FontStyle UltraCanvasApplicationBase::GetDefaultMonospacedFontStyle() {
-        if (!cachedMonospacedFontStyle_.has_value()) {
-            cachedMonospacedFontStyle_ = DetectMonospacedFontStyleNative();
-        }
-        return cachedMonospacedFontStyle_.value();
+        if (cachedMonospacedFontStyle_.has_value()) return cachedMonospacedFontStyle_.value();
+        return GetHostAppearance().monoFont;
     }
 
     void UltraCanvasApplicationBase::SetSystemFontStyle(const FontStyle& style) {
@@ -1126,6 +1274,9 @@ namespace UltraCanvas {
             // detection runs, so platform Detect*FontStyleNative() can return
             // the just-registered families.
             LoadBundledFontsNative();
+            // The host's look, read once the bundled fonts are registered (a
+            // platform's font detector may answer one of them), reported.
+            debugOutput << "UltraCanvas: host appearance " << HostAppearanceReport(GetHostAppearance()) << std::endl;
             endStep("bundled and system fonts");
 
             if (!InitializeClipboard()) {
