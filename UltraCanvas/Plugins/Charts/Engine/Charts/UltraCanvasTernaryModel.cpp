@@ -1,11 +1,13 @@
 // Plugins/Charts/Engine/Charts/UltraCanvasTernaryModel.cpp
 // The UI-free model of the ternary chart and its sample models.
+// Version: 1.3.0 - edgeLean (RegionOf, Validate, JSON); the USDA preset leans as the
+//   Soil Survey Manual assigns its class boundaries
 // Version: 1.2.0 - the zoom: minimums, ZoomSpan, ToZoomed / FromZoomed, ticks
 //   over the visible range
 // Version: 1.1.0 - regions and RegionOf, paths, bubble sizes, curves, JSON and
 //   CSV interchange, the SoilTexture / DeFinetti / VoteTrajectories samples
 // Version: 1.0.0
-// Last Modified: 2026-11-05
+// Last Modified: 2026-11-06
 // Author: UltraCanvas Framework
 
 #include "Plugins/Charts/Engine/Charts/UltraCanvasTernaryModel.h"
@@ -150,15 +152,31 @@ namespace UltraCanvas {
     int TernaryModel::RegionOf(double a, double b, double c) const {
         double sa = 0.0, sb = 0.0, sc = 0.0;
         if (!SharesOf(a, b, c, sa, sb, sc)) return -1;
-        for (size_t r = 0; r < regions.size(); ++r) {
-            std::vector<std::pair<double, double>> poly;
-            for (const TernaryComposition& corner : regions[r].outline) {
-                double ca = 0.0, cb = 0.0, cc = 0.0;
-                if (corner.Shares(ca, cb, cc)) poly.emplace_back(cb, cc);
+        auto firstContaining = [this](double u, double v) {
+            for (size_t r = 0; r < regions.size(); ++r) {
+                std::vector<std::pair<double, double>> poly;
+                for (const TernaryComposition& corner : regions[r].outline) {
+                    double ca = 0.0, cb = 0.0, cc = 0.0;
+                    if (corner.Shares(ca, cb, cc)) poly.emplace_back(cb, cc);
+                }
+                if (poly.size() >= 3 && InsideOrOn(poly, u, v)) return static_cast<int>(r);
             }
-            if (poly.size() >= 3 && InsideOrOn(poly, sb, sc)) return static_cast<int>(r);
+            return -1;
+        };
+        // On a shared edge, the point a hair along edgeLean decides: it lies
+        // inside the region on that side. Far from any edge it is in the same
+        // region as the point itself.
+        const double lean = std::hypot(edgeLean[0], edgeLean[1], edgeLean[2]);
+        if (lean > 0.0 && std::isfinite(lean)) {
+            const double step = 1e-6 / lean;
+            const double la = sa + edgeLean[0] * step, lb = sb + edgeLean[1] * step,
+                         lc = sc + edgeLean[2] * step;
+            if (la >= 0.0 && lb >= 0.0 && lc >= 0.0) {
+                const int region = firstContaining(lb, lc);
+                if (region >= 0) return region;
+            }
         }
-        return -1;
+        return firstContaining(sb, sc);
     }
 
     std::vector<std::string> TernaryModel::Validate() const {
@@ -174,6 +192,11 @@ namespace UltraCanvas {
             }
         }
         if (ZoomSpan() < 0.01) problems.push_back("The axis minimums leave less than 1 % of the triangle");
+        if (!std::isfinite(edgeLean[0]) || !std::isfinite(edgeLean[1]) || !std::isfinite(edgeLean[2]) ||
+            std::abs(edgeLean[0] + edgeLean[1] + edgeLean[2]) >
+                1e-9 * std::max(1.0, std::abs(edgeLean[0]) + std::abs(edgeLean[1]) + std::abs(edgeLean[2]))) {
+            problems.push_back("The edge lean does not add up to 0");
+        }
         for (const TernarySeries& s : series) {
             for (size_t p = 0; p < s.points.size(); ++p) {
                 double sa = 0.0, sb = 0.0, sc = 0.0;
@@ -319,6 +342,11 @@ namespace UltraCanvas {
                 regions.Append(j);
             }
             doc.Set("regions", regions);
+            if (model.edgeLean[0] != 0.0 || model.edgeLean[1] != 0.0 || model.edgeLean[2] != 0.0) {
+                JSONValue lean = JSONValue::MakeArray();
+                for (double d : model.edgeLean) lean.Append(JSONValue(d));
+                doc.Set("edgeLean", lean);
+            }
         }
         if (!model.curves.empty()) {
             JSONValue curves = JSONValue::MakeArray();
@@ -413,6 +441,15 @@ namespace UltraCanvas {
                 r.outline.push_back(c);
             }
             model.regions.push_back(r);
+        }
+        {
+            const std::vector<JSONValue> lean = json.Get("edgeLean").GetElements();
+            if (!lean.empty()) {
+                if (lean.size() != 3 || !lean[0].IsNumber() || !lean[1].IsNumber() || !lean[2].IsNumber()) {
+                    return failWith("\"edgeLean\" is not three numbers");
+                }
+                for (size_t k = 0; k < 3; ++k) model.edgeLean[k] = lean[k].GetNumber(0.0);
+            }
         }
         for (const JSONValue& j : json.Get("curves").GetElements()) {
             TernaryCurve c;
@@ -668,7 +705,16 @@ namespace UltraCanvas {
             // e.g. loam: clay 7-27 %, silt 28-50 %, sand at most 52 %; silt
             // loam: silt at least 50 % with clay 12-27 %, or silt 50-80 % with
             // clay under 12 %. Corners are (clay, sand, silt) in percent, and
-            // TernaryModelTest checks RegionOf against the rules on a grid.
+            // TernaryModelTest checks RegionOf against the rules on a grid and
+            // at every whole percent.
+            //
+            // The manual gives every boundary to the finer side: more clay,
+            // more silt, less sand ("7 to less than 27 percent clay", "52
+            // percent or less sand", "silt plus 1.5 times clay is 15 or
+            // more"). edgeLean says so. On the sand = 0 rim the lean would
+            // leave the triangle and the listing order decides, so the silty
+            // classes are listed silty clay, silty clay loam, silt loam, silt:
+            // each wins its boundary with the next, as the manual has it.
             struct Corner { double clay, sand, silt; };
             struct Class { const char* id; const char* name; std::vector<Corner> outline; Color fill; };
             const std::vector<Class> classes = {
@@ -680,18 +726,18 @@ namespace UltraCanvas {
                  Color(232, 196, 150, 255)},
                 {"loam", "Loam", {{7, 52, 41}, {7, 43, 50}, {27, 23, 50}, {27, 45, 28}, {20, 52, 28}},
                  Color(214, 196, 160, 255)},
-                {"silt-loam", "Silt loam",
-                 {{0, 50, 50}, {0, 20, 80}, {12, 8, 80}, {12, 0, 88}, {27, 0, 73}, {27, 23, 50}, {12, 38, 50}},
-                 Color(205, 214, 178, 255)},
-                {"silt", "Silt", {{0, 20, 80}, {0, 0, 100}, {12, 0, 88}, {12, 8, 80}}, Color(222, 232, 196, 255)},
                 {"sandy-clay-loam", "Sandy clay loam", {{35, 65, 0}, {20, 80, 0}, {20, 52, 28}, {27, 45, 28}, {35, 45, 20}},
                  Color(226, 178, 146, 255)},
                 {"clay-loam", "Clay loam", {{27, 45, 28}, {27, 20, 53}, {40, 20, 40}, {40, 45, 15}},
                  Color(200, 178, 156, 255)},
-                {"silty-clay-loam", "Silty clay loam", {{27, 20, 53}, {27, 0, 73}, {40, 0, 60}, {40, 20, 40}},
-                 Color(188, 200, 170, 255)},
                 {"sandy-clay", "Sandy clay", {{55, 45, 0}, {35, 65, 0}, {35, 45, 20}}, Color(214, 160, 140, 255)},
                 {"silty-clay", "Silty clay", {{40, 20, 40}, {40, 0, 60}, {60, 0, 40}}, Color(176, 190, 176, 255)},
+                {"silty-clay-loam", "Silty clay loam", {{27, 20, 53}, {27, 0, 73}, {40, 0, 60}, {40, 20, 40}},
+                 Color(188, 200, 170, 255)},
+                {"silt-loam", "Silt loam",
+                 {{0, 50, 50}, {0, 20, 80}, {12, 8, 80}, {12, 0, 88}, {27, 0, 73}, {27, 23, 50}, {12, 38, 50}},
+                 Color(205, 214, 178, 255)},
+                {"silt", "Silt", {{0, 20, 80}, {0, 0, 100}, {12, 0, 88}, {12, 8, 80}}, Color(222, 232, 196, 255)},
                 {"clay", "Clay", {{100, 0, 0}, {55, 45, 0}, {40, 45, 15}, {40, 20, 40}, {60, 0, 40}},
                  Color(196, 168, 168, 255)},
             };
@@ -703,6 +749,7 @@ namespace UltraCanvas {
                 for (const Corner& corner : c.outline) region.outline.emplace_back(corner.clay, corner.sand, corner.silt);
                 model.regions.push_back(region);
             }
+            model.edgeLean = {2.0, -3.0, 1.0};      // clay up, sand down, silt up
             return model;
         }
 

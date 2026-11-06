@@ -4105,6 +4105,26 @@ add_test(NAME TernaryModelTest COMMAND TernaryModelTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: TernaryModelTest")
 
+# ===== CONTROL LIMITS TEST =====
+# Statistical process control, UI-free: the d2 / d3 / c4 constants and the
+# factors derived from them against the published tables, X-bar-R and I-MR
+# limits on hand-checked data, within-subgroup sigma against a shifted
+# process, and every Western Electric rule firing on its minimal pattern and
+# not on a near miss.
+message(STATUS "  Building ControlLimitsTest...")
+add_executable(ControlLimitsTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/ControlLimitsTest.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Charts/Engine/UltraCanvasControlLimits.cpp
+)
+target_include_directories(ControlLimitsTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(ControlLimitsTest PRIVATE cxx_std_20)
+set_target_properties(ControlLimitsTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME ControlLimitsTest COMMAND ControlLimitsTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: ControlLimitsTest")
+
 # ===== ELEMENT PLUGIN TEST =====
 # The element plugin registry, create-by-name, keyword text dispatch, the named
 # property surface, the ABI handshake, and a real end-to-end DSO load: two test
@@ -5867,6 +5887,30 @@ if(TARGET UltraCanvas AND ULTRACANVAS_ENABLE_CHARTS)
     message(STATUS "    Test registered: TernaryChartRenderTest")
 else()
     message(STATUS "  TernaryChartRenderTest skipped (UltraCanvas or charts not present)")
+endif()
+
+# ===== ENGINE LINE CHART TEST =====
+# UltraCanvasEngineLineChart drawn offscreen: per-series line shape, markers,
+# legend entries and interactivity; per-point styles and tooltip notes;
+# stacked panes with their own value axes, grids and limiters; and
+# ShowControlChart putting an X-bar-R and an I-MR result on a chart. With
+# ULTRACANVAS_SCREENSHOT_DIR set, each case is written there as a PNG.
+if(TARGET UltraCanvas AND ULTRACANVAS_ENABLE_CHARTS)
+    message(STATUS "  Building EngineLineChartTest...")
+    add_executable(EngineLineChartTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/EngineLineChartTest.cpp
+    )
+    target_include_directories(EngineLineChartTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(EngineLineChartTest PRIVATE cxx_std_20)
+    target_link_libraries(EngineLineChartTest PRIVATE UltraCanvas)
+    set_target_properties(EngineLineChartTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME EngineLineChartTest COMMAND EngineLineChartTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: EngineLineChartTest")
+else()
+    message(STATUS "  EngineLineChartTest skipped (UltraCanvas or charts not present)")
 endif()
 
 # ===== BUSY INDICATOR RENDER TEST =====
