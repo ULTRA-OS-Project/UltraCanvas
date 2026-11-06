@@ -1,4 +1,11 @@
 // UltraCloud/ui/UltraCloudAccountDialog.cpp
+// Version: 0.8.1 - a failed sign-in says why in a translated sentence by its
+//                  result code (DescribeResult); the service's technical
+//                  message is the status line's tooltip
+// Version: 0.8.0 - every text a person reads goes through Tr / TrF (the
+//                  standard set: UltraFiler and UltraPress both show this
+//                  dialog); the OAuth hint is one sentence with the provider
+//                  as {0}
 // Version: 0.7.1 - a private key row for SFTP
 // Version: 0.7.0 - the shared_ptr form: the sign-in thread holds the service
 //                  until it ends
@@ -6,6 +13,7 @@
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraCloudAccountDialog.h"
 #include "UltraCloudUiStyle.h"
+#include "UltraCloudResultText.h"
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasButton.h"
@@ -18,6 +26,7 @@
 #include "UltraCanvasSpacer.h"
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasUtils.h"   // OpenURL
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <UltraCloud/UltraCloudOAuth.h>
 
@@ -79,7 +88,7 @@ void ShowAddAccountDialog(UltraCanvasWindowBase* parent, std::shared_ptr<CloudSe
                           const std::string& title, AddAccountWatch watch) {
     if (!service) return;
     DialogConfig config;
-    config.title      = title.empty() ? "Add cloud account" : title;
+    config.title      = title.empty() ? Tr("Add cloud account") : title;
     config.width      = 520;
     // Tall enough for the provider that needs every row: WebDAV's seven
     // captioned rows (7x32) plus the checkbox (26), the hint (36) and the
@@ -136,46 +145,48 @@ void ShowAddAccountDialog(UltraCanvasWindowBase* parent, std::shared_ptr<CloudSe
     auto provider = CreateDropdown("cloudAccProvider", 0, 0, 0, UiStyle::kControlHeight);
     for (const auto& p : providers) provider->AddItem(p->DisplayName(), p->Id());
     if (!providers.empty()) provider->SetSelectedIndex(0, /*runNotifications=*/false);
-    addRow("cloudAccProvider", "Provider", provider);
+    addRow("cloudAccProvider", Tr("Provider"), provider);
 
     auto name = CreateTextInput("cloudAccName", 0, 0, 0, UiStyle::kControlHeight);
-    name->SetPlaceholder("My cloud (optional)");
-    addRow("cloudAccName", "Name", name);
+    name->SetPlaceholder(Tr("My cloud (optional)"));
+    addRow("cloudAccName", Tr("Name"), name);
 
     auto server = CreateTextInput("cloudAccServer", 0, 0, 0, UiStyle::kControlHeight);
     server->SetPlaceholder("https://cloud.example.com");
-    auto serverRow = addRow("cloudAccServer", "Server URL", server);
+    auto serverRow = addRow("cloudAccServer", Tr("Server URL"), server);
 
     auto user = CreateTextInput("cloudAccUser", 0, 0, 0, UiStyle::kControlHeight);
-    user->SetPlaceholder("user name");
-    auto userRow = addRow("cloudAccUser", "User", user);
+    user->SetPlaceholder(Tr("user name"));
+    auto userRow = addRow("cloudAccUser", Tr("User"), user);
 
     auto password = CreatePasswordInput("cloudAccPass", 0, 0, 0, UiStyle::kControlHeight);
-    password->SetPlaceholder("password or app password");
-    auto passwordRow = addRow("cloudAccPass", "Password", password);
+    password->SetPlaceholder(Tr("password or app password"));
+    auto passwordRow = addRow("cloudAccPass", Tr("Password"), password);
 
     // SFTP with a key: the private key file's path; the password above is
     // then its passphrase (and the server's password, failing the key).
     auto keyFile = CreateTextInput("cloudAccKey", 0, 0, 0, UiStyle::kControlHeight);
-    keyFile->SetPlaceholder("~/.ssh/id_ed25519 (sftp:// only; optional)");
-    auto keyRow = addRow("cloudAccKey", "Private key", keyFile);
+    keyFile->SetPlaceholder(TrF("{0} (sftp:// only; optional)", "~/.ssh/id_ed25519"));
+    auto keyRow = addRow("cloudAccKey", Tr("Private key"), keyFile);
 
     auto publicUrl = CreateTextInput("cloudAccPublic", 0, 0, 0, UiStyle::kControlHeight);
-    publicUrl->SetPlaceholder("https://files.example.org/pub (links = this URL + path)");
-    auto publicRow = addRow("cloudAccPublic", "Public URL", publicUrl);
+    publicUrl->SetPlaceholder(TrF("{0} (links = this URL + path)", "https://files.example.org/pub"));
+    auto publicRow = addRow("cloudAccPublic", Tr("Public URL"), publicUrl);
 
     auto folder = CreateTextInput("cloudAccFolder", 0, 0, 0, UiStyle::kControlHeight);
+    // A folder name on the server, not a text of the dialog: the same in
+    // every language, so a second device finds the folder the first made.
     folder->SetText("/Shared from ULTRA OS");
-    addRow("cloudAccFolder", "Upload folder", folder);
+    addRow("cloudAccFolder", Tr("Upload folder"), folder);
 
     // Its own caption, so it spans both columns - as do the hint and the
     // status line below it.
     auto makeDefault = UltraCanvasCheckbox::CreateCheckbox(
-        "cloudAccDefault", 0, 0, 300, 26, "Use as the default cloud account", false);
+        "cloudAccDefault", 0, 0, 300, 26, Tr("Use as the default cloud account"), false);
     AddFormWideRow(form, makeDefault);
 
     auto hint = CreateLabel("cloudAccHint", 0, 0, 0, 36,
-        "Nextcloud: create an app password under Settings → Security and use it here.");
+        Tr("Nextcloud: create an app password under Settings → Security and use it here."));
     hint->SetWrap(TextWrap::WrapWord);
     hint->SetFontSize(UiStyle::kFontSize - 1.0f);
     hint->SetTextColor(UiStyle::kTextSecondary);
@@ -193,7 +204,7 @@ void ShowAddAccountDialog(UltraCanvasWindowBase* parent, std::shared_ptr<CloudSe
     dialog->AddChild(std::make_shared<UltraCanvasSpacer>(0, 0, 1.0f));
 
     // Buttons (created here so applyProvider can relabel the Add button).
-    auto addBtn = CreateButton("cloudAccAdd", 0, 0, 160, UiStyle::kControlHeight, "Add account");
+    auto addBtn = CreateButton("cloudAccAdd", 0, 0, 160, UiStyle::kControlHeight, Tr("Add account"));
     UiStyle::StylePrimary(addBtn);
 
     // Show only the rows the chosen provider needs. OAuth providers sign in
@@ -211,19 +222,22 @@ void ShowAddAccountDialog(UltraCanvasWindowBase* parent, std::shared_ptr<CloudSe
         passwordRow.SetVisible(!caps.needsOAuth && id != "memory");
         keyRow.SetVisible(id == "ftp");
         if (caps.needsOAuth) {
-            addBtn->SetText("Sign in in browser");
+            addBtn->SetText(Tr("Sign in in browser"));
+            // Whole sentences, the provider's name as {0}: a possessive or a
+            // preposition glued to it would stay English.
             hint->SetText(CanSignIn(id)
-                ? "Your browser opens " + p->DisplayName() + "'s sign-in page; come back here when it says you are done."
-                : "The sign-in service is off and no OAuth client id is configured for " + p->DisplayName()
-                  + " — set ULTRACLOUD_OAUTH_SERVICE_URL or ULTRACLOUD_" + id
-                  + "_CLIENT_ID (see Docs/Modules/UltraCloud/README.md).");
+                ? TrF("Your browser opens the sign-in page of {0}; come back here when it says you are done.",
+                      p->DisplayName())
+                : TrF("The sign-in service is off and no OAuth client id is configured for {0} - set "
+                      "ULTRACLOUD_OAUTH_SERVICE_URL or ULTRACLOUD_{1}_CLIENT_ID (see "
+                      "Docs/Modules/UltraCloud/README.md).", p->DisplayName(), id));
         } else {
-            addBtn->SetText("Add account");
+            addBtn->SetText(Tr("Add account"));
             hint->SetText(id == "nextcloud"
-                ? "Nextcloud: create an app password under Settings → Security and use it here."
-                : id == "webdav" ? "Links need a public URL that serves the same folder as the DAV root."
-                : id == "ftp" ? "ftp://, ftps://, ftpes:// or sftp://. An SFTP key: its file above, the passphrase as the password."
-                : "");
+                ? Tr("Nextcloud: create an app password under Settings → Security and use it here.")
+                : id == "webdav" ? Tr("Links need a public URL that serves the same folder as the DAV root.")
+                : id == "ftp" ? Tr("ftp://, ftps://, ftpes:// or sftp://. An SFTP key: its file above, the passphrase as the password.")
+                : std::string());
         }
     };
     provider->onSelectionChanged = [applyProvider](int, const DropdownItem&) { applyProvider(); };
@@ -235,7 +249,7 @@ void ShowAddAccountDialog(UltraCanvasWindowBase* parent, std::shared_ptr<CloudSe
                    .SetFlexGap(8)
                    .SetFlexAlignItems(CSSLayout::AlignItems::Center);
     buttons->AddStretchSpacer(1);
-    auto cancelBtn = CreateButton("cloudAccCancel", 0, 0, 90, UiStyle::kControlHeight, "Cancel");
+    auto cancelBtn = CreateButton("cloudAccCancel", 0, 0, 90, UiStyle::kControlHeight, Tr("Cancel"));
     UiStyle::StyleSecondary(cancelBtn);
     buttons->AddChild(cancelBtn);
     buttons->AddChild(addBtn);
@@ -266,16 +280,16 @@ void ShowAddAccountDialog(UltraCanvasWindowBase* parent, std::shared_ptr<CloudSe
         c.privateKeyFile = a.providerId == "ftp" ? keyFile->GetText() : std::string();
 
         const auto caps = providers[static_cast<std::size_t>(idx)]->Capabilities();
-        if (caps.needsServerUrl && a.serverUrl.empty()) { status->SetText("Enter the server URL."); return; }
+        if (caps.needsServerUrl && a.serverUrl.empty()) { status->SetText(Tr("Enter the server URL.")); return; }
         if (!caps.needsOAuth && a.username.empty() && a.providerId != "memory") {
-            status->SetText("Enter the user name."); return;
+            status->SetText(Tr("Enter the user name.")); return;
         }
         if (caps.needsOAuth && !CanSignIn(a.providerId)) {
-            status->SetText("The sign-in service is off and no OAuth client id is configured for this provider."); return;
+            status->SetText(Tr("The sign-in service is off and no OAuth client id is configured for this provider.")); return;
         }
 
         status->SetTextColor(Color(60, 60, 60, 255));
-        status->SetText(caps.needsOAuth ? "Waiting for the browser sign-in…" : "Signing in…");
+        status->SetText(caps.needsOAuth ? Tr("Waiting for the browser sign-in…") : Tr("Signing in…"));
         addBtn->SetDisabled(true);
 
         // Verify + store off the UI thread; report back on it. OAuth providers
@@ -303,7 +317,8 @@ void ShowAddAccountDialog(UltraCanvasWindowBase* parent, std::shared_ptr<CloudSe
                 if (r.code == ResultCode::Cancelled) return;   // closed meanwhile
                 if (r) { *added = a; dlg->CloseDialog(DialogResult::OK); return; }
                 status->SetTextColor(Color(180, 40, 40, 255));
-                status->SetText(r.message);
+                status->SetText(DescribeResult(r));
+                status->SetTooltip(ResultDetail(r));
                 addBtn->SetDisabled(false);
             };
             if (app) app->PostToUIThread(finish); else finish();
