@@ -1,3 +1,33 @@
+#### 2026-11-06 *0.4.10*
+- **The clock is at the foot of the right bar, white on black, in a
+  display type of the person's choosing.** It was at the top, dark hands on
+  a light grey face. A right click on it now offers *Analog clock with the
+  date* (the default), *Analog clock*, *Digital clock with the date*,
+  *Digital clock* and *Digital clock with seconds*; the choice is kept in the
+  settings (`clockStyle`). A left click still opens the clock panel.
+- **An application's windows share one taskbar button, with their
+  pictures on hover.** Three Explorer windows were three buttons; now they
+  are one, with a count. Resting the pointer on it opens a strip of the
+  windows - icon, title and a picture of each, the active one framed, a
+  minimized one shown by its icon - and a click on a picture brings that
+  window forward; its × closes it. The strip opens beside the bar on the
+  left, above it at the bottom and below it at the top, follows the pointer
+  along the bar and does not take the keyboard focus. The button's
+  right-click menu lists the windows with *Minimize all* and *Close all
+  windows*. A single window behaves as before.
+- **Windows: Calculator, Settings, WhatsApp and other Store applications
+  show their own icon** on the taskbar instead of a letter ("A", "W"): the
+  icon now comes from the application identity Windows gives the window,
+  through the shell's Applications folder.
+- **On Wayland the window pictures come from the compositor** where it
+  offers window capture (`ext-image-copy-capture-v1`: sway 1.11, labwc,
+  river, niri and others), so a covered window shows its own content.
+- **The Wi-Fi icon shows a green dot while Wi-Fi is joined.** A joined
+  Wi-Fi had no dot, and on Windows the icon showed the red "not joined"
+  dot even while the Wi-Fi panel said "Connected to …" (the framework read
+  every Wi-Fi adapter as not joined; fixed there). Red still means an
+  adapter that is on but not joined; no dot, no adapter.
+
 #### 2026-11-02 *0.4.9*
 - **The wallpaper comes up from the disk cache.** The desktop's wallpaper
   is decoded and fitted to the monitor once; the fitted picture is kept in

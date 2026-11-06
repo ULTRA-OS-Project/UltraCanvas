@@ -1,3 +1,39 @@
+#### 2026-11-06 *0.9.496*
+- **UltraCanvasDesktopShell: `CaptureWindowImage` and
+  `DesktopWindowInfo::appUserModelId`.** `CaptureWindowImage(id, maxWidth,
+  maxHeight, image)` gives a small picture of one window for a taskbar's
+  previews - on Windows drawn by the window itself (`PrintWindow` with the
+  full content) and on Wayland copied by the compositor
+  (`ext-image-copy-capture-v1`, where it offers it: wlroots 0.19 and later,
+  niri and others), so a covered window shows its own content; on X11 the
+  window's rectangle of the screen. On Windows `ListWindows` now reads each
+  window's AppUserModelID (the window's own, else its process's): a
+  taskbar groups an application's windows by it, `MatchApplication` finds
+  a Store application's entry by it, and a Store application's window or a
+  frame whose program is not known yet - Calculator, Settings, WhatsApp -
+  takes the tile icon and the name the shell's Applications folder gives
+  it instead of showing a letter.
+- **UltraCanvasButton: a toggle that is on reports the hover.**
+  `onHoverEnter` was skipped while the button was pressed, so a toggle
+  button that is on - a taskbar's button of the active window - never said
+  the pointer had come over it. A push button held down still does not.
+- **UltraCanvasGaugeDiagramElement: an analog clock on a dark face.**
+  `SetClockHandColor` (the hour and minute hands and the hub) and
+  `SetClockTickColor` (the ticks, the rim and the hour numbers) colour what
+  `AnalogClock` drew in fixed dark greys, so a black face can take white
+  hands. The defaults are the colours it had. Doc:
+  `Docs/UltraCanvas/UltraCanvasGaugeExamples.md`.
+- **UltraCanvasHardwareInfo on Windows: a joined Wi-Fi adapter reads as
+  joined.** The WLAN service's record for an adapter was looked up under
+  its GUID wrapped in a second pair of braces, so none was found, and every
+  Wi-Fi adapter came back with an empty record saying "not joined" - no
+  SSID, no signal - while it was online. The record is now found with
+  braces and case aside; joined or not comes from the WLAN enumeration's
+  state, which needs no location access, and an adapter WLAN does not
+  report takes its link state. `UltraCanvasDesktopShell::ReadDeviceActivity`
+  (`wifiConnected`, `wifiSsid`) reads from it, and so does UltraDesktop's
+  Wi-Fi marker.
+
 #### 2026-11-06 *0.9.495*
 - **The theme follows the desktop (T3 of the host theme proposal).**
   `UltraCanvasTheme` gains the font half of a look - `fonts.ui`,
