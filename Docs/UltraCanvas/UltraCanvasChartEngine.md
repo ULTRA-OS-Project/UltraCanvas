@@ -260,9 +260,11 @@ target.label = "Target window";
   caption goes: `Solved` (the default) lets the label solver place it beside
   the line near its far end, anchored half its own width in from the end so it
   fits there instead of running past the plot edge; `AboveEnd` pins it just
-  above the line there; `BeyondEnd` puts it just past the line's end, outside
-  the plot, in room the engine reserves - the column of limit values a control
-  chart has, clear of the data. `GetLimiters()` and `GetHighlights()` return
+  above the line there (beside a line that runs up the screen, such as a
+  stage divider, so it stays inside the plot); `BeyondEnd` puts it just past
+  the line's end, outside the plot, in room the engine reserves - the column
+  of limit values a control chart has, clear of the data. Where two captions
+  in that column would overprint, they are spread apart just enough, in order. `GetLimiters()` and `GetHighlights()` return
   what was added.
 - **Span annotations**: `AddSpanAnnotation({xAxisIndex, yAxisIndex, from, to,
   label, ...})` draws a dimension line between two value-space points, with

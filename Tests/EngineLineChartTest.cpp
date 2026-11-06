@@ -11,6 +11,9 @@
 // With ULTRACANVAS_SCREENSHOT_DIR set, each case is also written there as a
 // PNG for a person to look at.
 //
+// Version: 1.1.0 - Phase 2: bands between series, drawLine, onPointClick; the p
+//   chart's stepped limits and zone bands, stages, excluded points and notes,
+//   specification limits
 // Version: 1.0.0
 // Last Modified: 2026-11-06
 // Author: UltraCanvas Framework
@@ -382,6 +385,178 @@ void TestIndividuals() {
     canvas.Save("engine_line_control_imr");
 }
 
+
+UCEvent MouseDown(const Point2Dd& at) {
+    UCEvent e;
+    e.type = UCEventType::MouseDown;
+    e.pointer = Point2Di(static_cast<int>(std::lround(at.x)), static_cast<int>(std::lround(at.y)));
+    e.button = UCMouseButton::Left;
+    return e;
+}
+
+void TestBandsAndClicks() {
+    std::cout << "\nBands between series, drawLine, point clicks\n";
+    Canvas canvas(W, H);
+    if (!canvas.ctx) return;
+    auto chart = NewChart();
+    chart->SetCategories({"a", "b", "c", "d"});
+    EngineLineSeries low = Series("low", {2, 2, 2, 2});
+    EngineLineSeries high = Series("high", {6, 6, 6, 6});
+    EngineLineSeries data = Series("data", {3, 5, 4, 5}, kBlue);
+    for (EngineLineSeries* edge : {&low, &high}) {
+        edge->drawLine = false;
+        edge->showMarkers = false;
+        edge->interactive = false;
+        edge->inLegend = false;
+    }
+    chart->SetSeries({low, high, data});
+    EngineLineBand band;
+    band.lowerSeries = 0;
+    band.upperSeries = 1;
+    band.color = kRed;
+    band.opacity = 0.6f;
+    chart->AddSeriesBand(band);
+    size_t clickedSeries = 99, clickedIndex = 99;
+    chart->onPointClick = [&](size_t s, size_t i) {
+        clickedSeries = s;
+        clickedIndex = i;
+    };
+    Draw(canvas, *chart);
+    const Point2Dd a = At(*chart, 0, 0), b = At(*chart, 1, 0);
+    const Point2Dd inside((a.x + At(*chart, 0, 1).x) * 0.5, (a.y + b.y) * 0.5 + 10.0);
+    const Color fill = canvas.PixelAt(inside);
+    Check(fill.r > fill.b + 40 && fill.r > 150, "the band between two series is filled in its colour");
+    const Point2Dd outside(inside.x, b.y - 20.0);
+    const Color clear = canvas.PixelAt(outside);
+    Check(!(clear.r > clear.b + 40), "and only between them");
+    const Point2Dd onEdge((a.x + At(*chart, 0, 1).x) * 0.5, a.y);
+    Check(!Close(canvas.PixelAt(onEdge), kBlue), "a series with drawLine = false strokes no line");
+    Check(chart->GetSeriesBands().size() == 1, "GetSeriesBands");
+
+    chart->OnEvent(MouseDown(At(*chart, 2, 2)));
+    Check(clickedSeries == 2 && clickedIndex == 2, "onPointClick reports the series and the point");
+    clickedSeries = 99;
+    chart->OnEvent(MouseDown(Point2Dd(inside.x, inside.y)));
+    Check(clickedSeries == 99, "a click away from any point reports nothing");
+    canvas.Save("engine_line_band");
+}
+
+std::vector<ControlSubgroup> Lots() {
+    // 20 lots of varying size, about 5 % defective; lot 15 is bad.
+    const double sizes[20] = {120, 200, 160, 240, 90, 180, 220, 150, 130, 260,
+                              170, 110, 200, 140, 190, 230, 100, 210, 160, 180};
+    std::vector<ControlSubgroup> lots;
+    for (int i = 0; i < 20; ++i) {
+        ControlSubgroup g;
+        g.label = "L" + std::to_string(i + 1);
+        g.size = sizes[i];
+        g.count = std::round(sizes[i] * ((i == 14) ? 0.16 : 0.05 + 0.01 * ((i * 3) % 4 - 1.5) / 1.5));
+        lots.push_back(g);
+    }
+    return lots;
+}
+
+void TestAttributeChart() {
+    std::cout << "\nShowControlChart, a p chart\n";
+    Canvas canvas(W, H);
+    if (!canvas.ctx) return;
+    ControlOptions options;
+    options.kind = ControlChartKind::P;
+    const ControlResult result = ComputeControlChart(Lots(), options);
+    Check(!result.location.constantLimits && !result.RulesAt(14).empty(), "(varying limits; the bad lot is flagged)");
+    auto chart = NewChart();
+    ShowControlChart(*chart, result);
+    Draw(canvas, *chart);
+    const std::vector<EngineLineSeries>& series = chart->GetSeries();
+    Check(chart->Axes().Count() == 2 && series.size() == 4, "one pane: the proportions and three stepped limit lines");
+    Check(series[1].shape && *series[1].shape == ChartLineShape::StepMiddle && !series[1].interactive &&
+              !series[1].inLegend,
+          "the limits step from lot to lot and are not data");
+    size_t captions = 0;
+    for (const PlacedChartLabel& label : chart->GetLabelPlan().labels) {
+        if (label.text.rfind("UCL = ", 0) == 0 || label.text.rfind("CL = ", 0) == 0) {
+            captions += label.bounds.x >= chart->Frame().plotArea.Right() ? 1 : 0;
+        }
+    }
+    Check(captions == 2, "the last lot's limits stand in the caption column");
+    const Point2Dd bad = At(*chart, 0, 14);
+    Check(Close(canvas.PixelAt(bad), Color(200, 40, 40, 255)), "the bad lot is a red diamond");
+    canvas.Save("engine_line_control_p");
+
+    ControlChartStyle zones;
+    zones.showZones = true;
+    ShowControlChart(*chart, result, zones);
+    Canvas zoned(W, H);
+    Draw(zoned, *chart);
+    Check(chart->GetSeriesBands().size() == 6 && chart->GetHighlights().empty(),
+          "zones under stepped limits are six bands, not value-band highlights");
+    zoned.Save("engine_line_control_p_zones");
+}
+
+void TestStagesExclusionsSpecs() {
+    std::cout << "\nShowControlChart: stages, excluded points, notes, specification limits\n";
+    Canvas canvas(W, H);
+    if (!canvas.ctx) return;
+    std::vector<ControlSubgroup> data;
+    const double values[] = {10, 11, 9, 10, 12, 8, 10, 11, 9, 10, 20, 21, 19, 20, 22, 18, 20, 21, 19, 20};
+    for (double v : values) {
+        ControlSubgroup g;
+        g.values = {v};
+        data.push_back(g);
+    }
+    data[4].excluded = true;
+    data[4].note = "Operator new to the line";
+    ControlOptions options;
+    options.kind = ControlChartKind::IndividualsMR;
+    options.stages = {{10, "New tooling"}};
+    options.lowerSpec = 5;
+    options.upperSpec = 25;
+    const ControlResult result = ComputeControlChart(data, options);
+    auto chart = NewChart();
+    ShowControlChart(*chart, result);
+    Draw(canvas, *chart);
+
+    bool divider = false, usl = false, lsl = false;
+    for (const ChartLimiter& l : chart->GetLimiters()) {
+        divider = divider || (l.axisIndex == 1 && std::abs(l.value - 9.5) < 1e-9 && l.caption == "New tooling");
+        usl = usl || l.caption.rfind("USL = 25", 0) == 0;
+        lsl = lsl || l.caption.rfind("LSL = 5", 0) == 0;
+    }
+    Check(divider, "a divider where the second stage starts, named");
+    Check(usl && lsl, "specification limits with their captions");
+    bool named = false;
+    for (const PlacedChartLabel& label : chart->GetLabelPlan().labels) named = named || label.text == "New tooling";
+    Check(named, "the stage's name is drawn");
+    std::vector<Rect2Dd> columnBoxes;
+    for (const PlacedChartLabel& label : chart->GetLabelPlan().labels) {
+        if (label.bounds.x >= chart->Frame().plotArea.Right()) columnBoxes.push_back(label.bounds);
+    }
+    bool overlap = false;
+    for (size_t i = 0; i < columnBoxes.size(); ++i) {
+        for (size_t j = i + 1; j < columnBoxes.size(); ++j) {
+            const Rect2Dd& p = columnBoxes[i];
+            const Rect2Dd& q = columnBoxes[j];
+            overlap = overlap || (p.x < q.Right() && q.x < p.Right() && p.y < q.Bottom() && q.y < p.Bottom());
+        }
+    }
+    Check(columnBoxes.size() >= 6 && !overlap,
+          "the caption column never overprints (UCL 24.7 beside USL 25)");
+    for (const PlacedChartLabel& label : chart->GetLabelPlan().labels) {
+        if (label.text != "New tooling") continue;
+        Check(label.bounds.y >= chart->Frame().plotArea.y - 0.5 &&
+                  label.bounds.x >= chart->Frame().projection->ToScreen(ChartNormalizedPoint(
+                      chart->Axes().At(1).Normalize(9.5), 1.0)).x,
+              "the stage name sits beside its divider, inside the plot");
+    }
+    Check(!result.location.constantLimits && chart->GetSeries().size() > 2,
+          "two stages: the limits step at the boundary");
+    std::string tip;
+    chart->HitRegionAt(At(*chart, 0, 4), &tip);
+    Check(tip.find("Excluded from the limits") != std::string::npos &&
+              tip.find("Operator new to the line") != std::string::npos,
+          "an excluded point says so in its tooltip, with its note");
+    canvas.Save("engine_line_control_stages");
+}
 } // namespace
 
 int main() {
@@ -393,6 +568,9 @@ int main() {
     TestPanes();
     TestShowControlChart();
     TestIndividuals();
+    TestBandsAndClicks();
+    TestAttributeChart();
+    TestStagesExclusionsSpecs();
     std::cout << "\n" << (g_failures == 0 ? "All checks passed." : "Some checks FAILED.") << "\n";
     return g_failures == 0 ? 0 : 1;
 }

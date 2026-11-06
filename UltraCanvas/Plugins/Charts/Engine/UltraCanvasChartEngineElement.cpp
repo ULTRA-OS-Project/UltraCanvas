@@ -4,7 +4,9 @@
 //                  outside its axis's band is not drawn (nor captioned); a limiter's
 //                  caption is anchored half its width in from the line's end, so it
 //                  fits beside the line instead of across it; ChartLimiter::captionPlacement
-//                  (AboveEnd pins it there, BeyondEnd puts it past the plot's edge)
+//                  (AboveEnd pins it there, BeyondEnd puts it past the plot's edge, the
+//                  column spread so captions never overprint); AboveEnd beside a line
+//                  that runs up the screen
 // Version: 1.3.5 - the ternary projection's plot area is its triangle
 // Version: 1.3.4 - ChartHighlightShape::Polygon
 // Version: 1.3.3
@@ -733,6 +735,7 @@ void UltraCanvasChartEngineElement::BuildLabelPlan(IRenderContext* ctx) {
 
     // Limiter captions ride the plan so they cannot overprint value labels.
     ctx->SetFontSize(axisFontSize);
+    std::vector<ChartLabelRequest> column;      // BeyondEnd captions, spread below
     for (const ChartLimiter& limiter : limiters) {
         if (limiter.caption.empty() || limiter.axisIndex >= engineAxes.Count()) continue;
         const ChartAxis& axis = engineAxes.At(limiter.axisIndex);
@@ -782,11 +785,47 @@ void UltraCanvasChartEngineElement::BuildLabelPlan(IRenderContext* ctx) {
         caption.klass = ChartLabelClass::LimiterCaption;
         caption.anchor = anchor;
         caption.textSize = Size2Dd(size.width, size.height);
-        caption.preferredSide = beyond ? LabelSide::Right
-                                : polarRing ? LabelSide::Right : LabelSide::Top;
+        // Beside the line near its end: above a line across the screen, to
+        // the right of one that runs up it (a stage divider), so it stays
+        // inside the plot either way.
+        const bool pinnedBeside = limiter.captionPlacement == ChartLimiterCaptionPlacement::AboveEnd &&
+                                  !acrossScreen && projectionKind != ChartProjectionKind::Polar;
+        caption.preferredSide = (beyond || polarRing || pinnedBeside) ? LabelSide::Right : LabelSide::Top;
         caption.priority = 5;
         caption.pinned = limiter.captionPlacement != ChartLimiterCaptionPlacement::Solved;
-        broker.Add(caption);
+        if (beyond) column.push_back(caption);
+        else broker.Add(caption);
+    }
+    // The captions past the plot's edge form a column: where two would
+    // overprint (an upper control limit next to an upper specification
+    // limit) they are spread apart just enough, kept in order and within the
+    // plot's height.
+    if (!column.empty()) {
+        std::sort(column.begin(), column.end(), [](const ChartLabelRequest& a, const ChartLabelRequest& b) {
+            if (std::abs(a.anchor.x - b.anchor.x) > 1.0) return a.anchor.x < b.anchor.x;
+            return a.anchor.y < b.anchor.y;
+        });
+        const Rect2Dd plot = frame.plotArea;
+        size_t begin = 0;
+        while (begin < column.size()) {
+            size_t end = begin + 1;
+            while (end < column.size() && std::abs(column[end].anchor.x - column[begin].anchor.x) <= 1.0) ++end;
+            // Down from the top, then back up from the bottom if it ran over.
+            for (size_t k = begin + 1; k < end; ++k) {
+                const double gap = (column[k - 1].textSize.height + column[k].textSize.height) * 0.5 + 2.0;
+                column[k].anchor.y = std::max(column[k].anchor.y, column[k - 1].anchor.y + gap);
+            }
+            const double bottom = plot.y + plot.height + column[end - 1].textSize.height * 0.5;
+            if (column[end - 1].anchor.y > bottom) {
+                column[end - 1].anchor.y = bottom;
+                for (size_t k = end - 1; k > begin; --k) {
+                    const double gap = (column[k - 1].textSize.height + column[k].textSize.height) * 0.5 + 2.0;
+                    column[k - 1].anchor.y = std::min(column[k - 1].anchor.y, column[k].anchor.y - gap);
+                }
+            }
+            begin = end;
+        }
+        for (const ChartLabelRequest& caption : column) broker.Add(caption);
     }
 
     // Highlight labels ride the plan too, anchored at the group's centre.

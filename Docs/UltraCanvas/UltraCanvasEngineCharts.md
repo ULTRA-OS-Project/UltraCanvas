@@ -6,6 +6,7 @@
 - [Which charts were ported](#which-charts-were-ported)
 - [Line, area and cumulative flow](#line-area-and-cumulative-flow)
   - [Per-series and per-point options](#per-series-and-per-point-options)
+  - [Bands and point clicks](#bands-and-point-clicks)
   - [Stacked panes](#stacked-panes)
   - [Control charts](#control-charts)
 - [Scatter and bubble](#scatter-and-bubble)
@@ -150,7 +151,28 @@ chart->AddSeries(actual);
 
 `hollow = true` draws a point's outline only. A point's note is a further
 line in its tooltip. The legend lists only the series with `inLegend`, and a
-click on an entry hides that series.
+click on an entry hides that series. `drawLine = false` strokes no line - a
+series that is only the edge of a band.
+
+### Bands and point clicks
+
+`AddSeriesBand` fills between two series, point by point - a confidence
+interval, a min / max envelope, zones under limits that change - under the
+lines, through the pane of the lower series; a gap in either edge is a gap in
+the band. `onPointClick` reports a click on a point of an interactive series:
+
+```cpp
+EngineLineBand envelope;
+envelope.lowerSeries = 2;           // indices into the chart's series
+envelope.upperSeries = 3;
+envelope.color = Color(30, 90, 200, 255);   // alpha 0 = the upper series' colour
+envelope.opacity = 0.2f;
+chart->AddSeriesBand(envelope);
+
+chart->onPointClick = [](size_t seriesIndex, size_t valueIndex) {
+    // drill down, exclude the point from a calculation, ...
+};
+```
 
 ### Stacked panes
 
@@ -209,6 +231,22 @@ ControlChartStyle look;
 look.showZones = true;          // A / B / C shading
 look.showSigmaLines = true;     // dotted 1 and 2 sigma lines
 ShowControlChart(*spc, result, look);
+```
+
+Limits that change from point to point - p and u charts, X-bar-S with
+unequal subgroups, stages - are drawn as stepped lines, centred on each
+point, with the last point's values in the caption column; zones under them
+are bands. Each later stage gets a divider with its name beside it, an
+excluded point is drawn hollow and says so in its tooltip, a point's note
+joins its tooltip, and specification limits (`showSpecLimits`) are solid
+lines in `specColor`. The demo excludes a point when it is clicked:
+
+```cpp
+std::vector<ControlSubgroup> samples = hours;
+spc->onPointClick = [&](size_t, size_t index) {
+    samples[index].excluded = !samples[index].excluded;
+    ShowControlChart(*spc, ComputeControlChart(samples), look);
+};
 ```
 
 Recompute and call `ShowControlChart` again whenever the data changes. The
