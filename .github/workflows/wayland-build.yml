@@ -196,14 +196,18 @@ jobs:
           WTYPE=$!
           sleep 1
           cd "$GITHUB_WORKSPACE/build/bin"
-          timeout 600 ./DesktopShellTest
-          status=$?
+          status=0
+          timeout 600 ./DesktopShellTest || status=$?
           kill $WTYPE 2>/dev/null || true
+          # The script ends sway when the test is done. A second command
+          # on the config's exec line would not wait for it: ';' separates
+          # sway commands, so "exec A; exec swaymsg exit" ran both at once
+          # and sway quit before the test had connected.
+          swaymsg exit >/dev/null 2>&1 || true
           exit $status
           EOF
           chmod +x "$RUNNER_TEMP/under-sway.sh"
-          # sway runs the script as its startup command and ends with it.
-          echo "exec $RUNNER_TEMP/under-sway.sh; exec swaymsg exit" >> "$RUNNER_TEMP/sway.config"
+          echo "exec $RUNNER_TEMP/under-sway.sh" >> "$RUNNER_TEMP/sway.config"
           timeout 900 sway -c "$RUNNER_TEMP/sway.config" 2>&1 | tee "$RUNNER_TEMP/sway.log"
           # The test's own verdict is in its output; sway's exit says nothing.
           grep -q "checks, 0 failures" "$RUNNER_TEMP/sway.log"
@@ -226,9 +230,11 @@ jobs:
           sleep 12
           grim "$RUNNER_TEMP/ultradesktop-wayland.png" || true
           wait
+          # Ends sway (see the step above for why not on the exec line).
+          swaymsg exit >/dev/null 2>&1 || true
           EOF
           chmod +x "$RUNNER_TEMP/shot.sh"
-          printf 'output HEADLESS-1 resolution 1280x800\nxwayland disable\nexec %s; exec swaymsg exit\n' "$RUNNER_TEMP/shot.sh" > "$RUNNER_TEMP/shot.config"
+          printf 'output HEADLESS-1 resolution 1280x800\nxwayland disable\nexec %s\n' "$RUNNER_TEMP/shot.sh" > "$RUNNER_TEMP/shot.config"
           timeout 120 sway -c "$RUNNER_TEMP/shot.config" > "$RUNNER_TEMP/sway-shot.log" 2>&1 || true
           ls -la "$RUNNER_TEMP/ultradesktop-wayland.png"
 
