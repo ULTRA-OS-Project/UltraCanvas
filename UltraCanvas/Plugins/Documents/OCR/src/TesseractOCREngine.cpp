@@ -1,7 +1,8 @@
 // TesseractOCREngine.cpp
 // Tier-1 Tesseract 5 backend implementation.
+// Version: 0.1.1 - RecognizeFile reads the file through OpenFileUtf8 (a UTF-8 name on Windows)
 // Version: 0.1.0
-// Last Modified: 2026-05-21
+// Last Modified: 2026-11-06
 // Author: UltraCanvas Framework
 
 #include "TesseractOCREngine.h"
@@ -21,10 +22,12 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <sstream>
 #include <system_error>
+#include <vector>
 
 #include "UltraCanvasUtils.h"   // GetExecutableDir()
 #include "UltraCanvasConfig.h"  // GetResourcesDir()
@@ -259,7 +262,18 @@ OCRResult TesseractOCREngine::RecognizeFile(const std::string& path) {
     }
 
     const auto t0 = std::chrono::steady_clock::now();
-    Pix* pix = pixRead(path.c_str());
+    // Leptonica's pixRead takes the name in the ANSI code page on Windows,
+    // so a Thai or emoji folder failed there: the bytes are read here, by
+    // the UTF-8 name, and decoded from memory.
+    std::vector<l_uint8> bytes;
+    if (std::FILE* file = OpenFileUtf8(path, "rb")) {
+        l_uint8 buffer[65536];
+        size_t read = 0;
+        while ((read = std::fread(buffer, 1, sizeof(buffer), file)) > 0)
+            bytes.insert(bytes.end(), buffer, buffer + read);
+        std::fclose(file);
+    }
+    Pix* pix = bytes.empty() ? nullptr : pixReadMem(bytes.data(), bytes.size());
     if (!pix) {
         OCRResult r; r.error = "Failed to read image: " + path; return r;
     }

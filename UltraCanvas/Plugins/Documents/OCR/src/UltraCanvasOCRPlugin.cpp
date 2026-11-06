@@ -1,8 +1,10 @@
 // UltraCanvasOCRPlugin.cpp
 // OCR plugin facade: engine selection, image bridging, and exporters.
+// Version: 0.2.1 - RecognizeFile decodes with libvips (every type the image pipeline reads,
+//                  UTF-8 names), Leptonica only as the fallback
 // Version: 0.2.0 - RecognizeRaw, RegisterOCRTextRecognition
 // Version: 0.1.0
-// Last Modified: 2026-11-05
+// Last Modified: 2026-11-06
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasOCRPlugin.h"
@@ -49,18 +51,19 @@ bool ImageToRaw(const vips::VImage& src,
                 int& outW, int& outH, int& outBpp, int& outStride) {
     try {
         // Force RGB / 8-bit; Tesseract handles greyscale internally.
-        vips::VImage img = src; // VImage inherits from vips::VImage
-        if (img.format() != VIPS_FORMAT_UCHAR) {
-            img = img.cast(VIPS_FORMAT_UCHAR);
+        vips::VImage img = src;
+        // Alpha onto white - flatten()'s own background is black, which
+        // left a transparent screenshot's dark text on black.
+        if (img.has_alpha()) {
+            const double white = img.interpretation() == VIPS_INTERPRETATION_RGB16 ||
+                                 img.interpretation() == VIPS_INTERPRETATION_GREY16 ? 65535.0 : 255.0;
+            img = img.flatten(vips::VImage::option()->set(
+                    "background", std::vector<double>(static_cast<size_t>(img.bands() - 1), white)));
         }
-        if (img.bands() == 1) {
-            // keep greyscale
-        } else if (img.bands() == 4) {
-            img = img.flatten();                 // drop alpha onto white
-            img = img.colourspace(VIPS_INTERPRETATION_sRGB);
-        } else {
-            img = img.colourspace(VIPS_INTERPRETATION_sRGB);
-        }
+        // 16-bit is scaled to 8, not clipped (a cast would clip).
+        if (img.bands() != 1) img = img.colourspace(VIPS_INTERPRETATION_sRGB);
+        else if (img.interpretation() == VIPS_INTERPRETATION_GREY16) img = img.colourspace(VIPS_INTERPRETATION_B_W);
+        if (img.format() != VIPS_FORMAT_UCHAR) img = img.cast(VIPS_FORMAT_UCHAR);
 
         outW = img.width();
         outH = img.height();
@@ -127,6 +130,19 @@ OCREngineKind UltraCanvasOCR::EngineInUse() const {
 
 OCRResult UltraCanvasOCR::RecognizeFile(const std::string& path) {
     if (!engine) { OCRResult r; r.error = "No OCR engine available"; return r; }
+    // libvips first: every picture type the image pipeline reads (WebP,
+    // HEIC, AVIF, JPEG XL ... which Leptonica does not), and its file names
+    // are UTF-8 on every platform. The engine's own reader is the fallback.
+    try {
+        const vips::VImage image = vips::VImage::new_from_file(
+                path.c_str(), vips::VImage::option()->set("access", VIPS_ACCESS_SEQUENTIAL));
+        std::vector<uint8_t> raw;
+        int w = 0, h = 0, bpp = 0, stride = 0;
+        if (ImageToRaw(image, raw, w, h, bpp, stride))
+            return engine->RecognizeRaw(raw.data(), w, h, bpp, stride);
+    } catch (const std::exception&) {
+        // not a picture libvips reads: the engine's reader may
+    }
     return engine->RecognizeFile(path);
 }
 

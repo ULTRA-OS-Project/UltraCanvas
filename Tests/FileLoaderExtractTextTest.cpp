@@ -9,14 +9,17 @@
 //     and, with no recognizer, CanExtractText false and a reason to show;
 //   - a recording through the installed transcriber, the same way;
 //   - with the OCR plugin built, Tesseract itself reads media/images/OCR-demo.png
-//     (RegisterOCRTextRecognition).
+//     (RegisterOCRTextRecognition), and RecognizeFile reads it by a Thai name
+//     and as dark text on a transparent picture.
 //
 // The files sit in a folder with a Thai name (UTF-8 paths). Headless.
+// Version: 1.1.0 - RecognizeFile: a UTF-8 name, a transparent picture
 // Version: 1.0.0
-// Last Modified: 2026-11-05
+// Last Modified: 2026-11-06
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasFileLoader.h"
+#include "UltraCanvasImage.h"
 #include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasRichDocument.h"
 #include "UltraCanvasSpreadsheet.h"
@@ -157,6 +160,39 @@ int main() {
     } else {
         Check(result.Ok() && Contains(result.text, "OCR demo") && Contains(result.text, "Receipt"),
               "Tesseract (RegisterOCRTextRecognition) reads OCR-demo.png");
+
+        // RecognizeFile by a UTF-8 name (the Thai folder): read by the
+        // name, not through the ANSI code page.
+        const fs::path copy = folder / PathFromUtf8("\xE0\xB8\xA0\xE0\xB8\xB2\xE0\xB8\x9E.png");
+        fs::copy_file(PathFromUtf8(picture), copy, fs::copy_options::overwrite_existing, ec);
+        OCRConfig config;
+        config.languages = {"eng"};
+        UltraCanvasOCR ocr(config);
+        const OCRResult byName = ocr.RecognizeFile(PathToUtf8(copy));
+        Check(byName.Ok() && Contains(byName.plainText, "OCR demo"),
+              "UltraCanvasOCR::RecognizeFile reads a picture in a folder with a Thai name");
+
+        // Dark text on a transparent picture: flattened onto white, not black.
+        const std::shared_ptr<UCImage> clear = UCImage::Load(picture, false);
+        const std::shared_ptr<UCPixmapCairo> pixmap = clear ? clear->GetPixmap() : nullptr;
+        if (pixmap && pixmap->IsValid()) {
+            pixmap->Flush();
+            const int w = pixmap->GetRawWidth(), h = pixmap->GetRawHeight();
+            std::vector<uint8_t> rgba(static_cast<size_t>(w) * h * 4);
+            const uint32_t* argb = pixmap->GetPixelData();
+            for (size_t i = 0, n = static_cast<size_t>(w) * h; i < n; ++i) {
+                const int level = static_cast<int>((argb[i] >> 8) & 0xFF);   // green: the ink is dark
+                rgba[i * 4 + 0] = rgba[i * 4 + 1] = rgba[i * 4 + 2] = 0;      // black ink ...
+                rgba[i * 4 + 3] = static_cast<uint8_t>(255 - level);          // ... only where the text is
+            }
+            const fs::path transparent = folder / PathFromUtf8("transparent.png");
+            const std::shared_ptr<UCImage> ink = UCImage::FromRgba(rgba.data(), w, h);
+            UCImageSave::ImageExportOptions png;
+            const std::string saveError = ink ? ink->Save(PathToUtf8(transparent), png) : std::string("no image");
+            const OCRResult onWhite = ocr.RecognizeFile(PathToUtf8(transparent));
+            Check(saveError.empty() && onWhite.Ok() && Contains(onWhite.plainText, "OCR demo"),
+                  "... and dark text on a transparent picture (alpha onto white)");
+        }
     }
 #endif
     UltraCanvasFileLoader::SetImageTextRecognizer(nullptr);
