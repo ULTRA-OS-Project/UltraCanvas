@@ -1,3 +1,9 @@
+#### 2026-11-06 *0.17.0*
+- **Desktop > Start with the desktop** lists UltraClipboard,
+  UltraNotifications and the Sticker board as well (UltraDesktop's own
+  list): the two programs start with no window, the board is made ready
+  unseen.
+
 #### 2026-11-05 *0.16.0*
 - **UOS-Settings takes the Computer base set.** Its catalogue names
   `Computer` under `@bases`, as the localisation proposal's Appendix B
