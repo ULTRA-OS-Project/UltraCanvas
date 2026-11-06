@@ -1,5 +1,7 @@
 // include/UltraCanvasBaseApplication.h
 // Main UltraCanvas Framework Entry Point - Unified System
+// Version: 1.17.0 - the theme policy (SetThemePolicy / SetThemeProvider): the theme built
+//                  from the host at start and on every host change, a window's ground from it
 // Version: 1.16.0 - GetHostAppearance: the desktop's look (dark, contrast, accent, fonts,
 //                  text scale) from the platform, refreshed on its change event, the
 //                  ULTRACANVAS_HOST_APPEARANCE override; the system fonts served from it
@@ -315,6 +317,14 @@ namespace UltraCanvas {
         // The host's look, read on the first GetHostAppearance and again by
         // RefreshHostAppearance; the handlers hear a change.
         std::optional<HostAppearance> hostAppearance_;
+        // The theme policy (UltraCanvasTheme.h): what ApplyThemePolicy builds,
+        // the provider an Own application gave, and the name of the theme
+        // the policy set last - a current theme of another name means the
+        // application set its own, which the policy then leaves alone.
+        ThemePolicy themePolicy_ = ThemePolicy::FollowHost;
+        std::function<UltraCanvasTheme(const HostAppearance&)> themeProvider_;
+        std::string policyThemeName_;
+        bool themePolicyApplied_ = false;
         std::atomic<bool> hostAppearanceRefreshPending_{false};
         std::vector<std::pair<int, std::function<void(const HostAppearance&)>>> hostAppearanceHandlers_;
         int nextHostAppearanceHandlerId_ = 1;
@@ -496,6 +506,26 @@ namespace UltraCanvas {
         using HostAppearanceHandler = std::function<void(const HostAppearance&)>;
         int AddHostAppearanceHandler(HostAppearanceHandler handler);
         void RemoveHostAppearanceHandler(int id);
+
+        // ===== THE THEME POLICY =====
+        // What the theme follows: FollowHost (the default) builds
+        // UltraCanvasTheme::FromHost(GetHostAppearance()) at start and again
+        // on every host change; Light and Dark take the framework's preset
+        // with the host's fonts; Own leaves the theme to the application,
+        // with the provider - a function from the host to the application's
+        // theme, UltraVideo's ThemeFor is one - called at start and on every
+        // change when it gave one. An application that calls
+        // UltraCanvasTheme::SetCurrent itself under another policy has taken
+        // over: the policy does not put its theme back over it.
+        void SetThemePolicy(ThemePolicy policy);
+        ThemePolicy GetThemePolicy() const { return themePolicy_; }
+        void SetThemeProvider(std::function<UltraCanvasTheme(const HostAppearance&)> provider);
+        // Builds the policy's theme from the host and makes it current (the
+        // change handlers run); Initialize and a host change call it.
+        void ApplyThemePolicy();
+        // The current theme is the one the policy set: a window built with
+        // the default background takes the theme's ground then.
+        bool ThemeIsFromPolicy() const;
 
         // System font detection: the desktop's interface and monospace fonts,
         // the host appearance's uiFont and monoFont. SetSystemFontStyle /

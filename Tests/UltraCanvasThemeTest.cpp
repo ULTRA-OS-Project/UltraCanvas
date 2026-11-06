@@ -3,6 +3,7 @@
 // the current theme, and the styles the timeline and the timecode field
 // take from a theme - shared roles mapped, element roles honoured, the
 // palette's colour where a theme is silent.
+// Version: 1.7.0 - fonts and text roles, the high-contrast presets, DeriveAccent and FromHost
 // Version: 1.6.0 - the contrast the presets keep
 // Version: 1.5.0 - the modal dialog style
 // Version: 1.4.0 - the label variants
@@ -13,6 +14,7 @@
 // Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 #include "UltraCanvasTheme.h"
+#include "UltraCanvasHostAppearance.h"
 #include "UltraCanvasAlbum.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasContainer.h"
@@ -286,6 +288,95 @@ int main() {
     CHECK(Same(follower->GetStyle().normalColor, dark.roles.raised) && Same(text->GetStyle().textColor, light.roles.ink),
           "SetFollowTheme(false) stops the re-styling");
     panel->ClearChildren();
+
+
+    std::printf("Fonts and text roles\n");
+    {
+        UltraCanvasTheme t = UltraCanvasTheme::Light();
+        CHECK(t.fonts.ui.fontFamily == "Ubuntu" && Near(t.fonts.ui.fontSize, 12.0, 1e-9) && t.fonts.mono.fontFamily == "Ubuntu Mono"
+              && Near(t.fonts.scale, 1.0, 1e-9), "a preset carries the bundled fonts at 12 pt, scale 1");
+        CHECK(Near(t.FontSize(ThemeTextRole::Body), 12.0, 1e-9) && Near(t.FontSize(ThemeTextRole::Caption), 11.0, 1e-9)
+              && Near(t.FontSize(ThemeTextRole::Small), 10.25, 1e-9) && Near(t.FontSize(ThemeTextRole::Heading), 15.0, 1e-9)
+              && Near(t.FontSize(ThemeTextRole::Title), 18.0, 1e-9), "the roles' sizes from a 12 pt base: 12, 11, 10.25, 15, 18");
+        CHECK(t.Font(ThemeTextRole::Heading).fontFamily == "Ubuntu" && Near(t.Font(ThemeTextRole::Heading).fontSize, 15.0, 1e-9),
+              "Font(Heading) is the interface font at the heading size");
+        CHECK(t.Font(ThemeTextRole::Mono).fontFamily == "Ubuntu Mono" && Near(t.Font(ThemeTextRole::Mono).fontSize, 12.0, 1e-9),
+              "Font(Mono) is the monospace font at the body size");
+        t.fonts.ui.fontFamily = "Segoe UI";
+        t.fonts.ui.fontSize = 9.0;
+        t.fonts.scale = 1.25;
+        CHECK(Near(t.FontSize(ThemeTextRole::Body), 11.25, 1e-9) && Near(t.FontSize(ThemeTextRole::Caption), 10.25, 1e-9),
+              "the host's scale multiplies: Segoe UI 9 at 1.25 is 11.25, its caption 10.25 (to the quarter point)");
+        CHECK(Near(UltraCanvasTheme::Luminance(Colors::White), 1.0, 1e-9) && Near(UltraCanvasTheme::Contrast(Colors::White, Colors::Black), 21.0, 0.01),
+              "the theme's own luminance and contrast measure");
+    }
+
+    std::printf("High contrast presets\n");
+    for (const UltraCanvasTheme& t : {UltraCanvasTheme::LightHighContrast(), UltraCanvasTheme::DarkHighContrast()}) {
+        const ThemeRoles& r = t.roles;
+        const std::string n = t.name + ": ";
+        CHECK(t.highContrast && (t.dark == (t.name == "Dark High Contrast")), (n + "flagged high contrast, dark as named").c_str());
+        const Color surfaces[] = {r.ground, r.panel, r.well, r.raised};
+        bool inks = true;
+        for (const Color& s : surfaces) {
+            inks = inks && Contrast(r.ink, s) >= 7.0 && Contrast(r.inkMuted, s) >= 7.0 && Contrast(r.inkFaint, s) >= 7.0;
+        }
+        CHECK(inks, (n + "every ink reads 7:1 on ground, panel, well and raised").c_str());
+        CHECK(Contrast(r.ink, r.hover) >= 7.0 && Contrast(r.ink, r.pressed) >= 7.0, (n + "the ink reads 7:1 on hover and pressed").c_str());
+        CHECK(Contrast(r.onAccent, r.accent) >= 7.0, (n + "text on the accent reads 7:1").c_str());
+        CHECK(Contrast(r.focus, r.ground) >= 7.0 && Contrast(r.lineStrong, r.panel) >= 7.0, (n + "the focus ring and a control border read 7:1").c_str());
+    }
+
+    std::printf("DeriveAccent and FromHost\n");
+    {
+        const Color accents[] = {Color(0x00, 0x78, 0xd4), Color(0x35, 0x84, 0xe4), Color(0xc8, 0x88, 0x00), Color(0xed, 0x5b, 0x00),
+                                 Color(0xe6, 0x2d, 0x42), Color(0xd5, 0x61, 0x99), Color(0x91, 0x41, 0xac), Color(0x6f, 0x83, 0x96),
+                                 Color(0x3a, 0x94, 0x4a), Color(0x21, 0x90, 0xa4), Color(255, 255, 0), Color(128, 128, 128), Color(255, 255, 255), Color(0, 0, 0)};
+        bool okLight = true, okDark = true, okHigh = true;
+        for (const Color& a : accents) {
+            const ThemeRoles l = UltraCanvasTheme::DeriveAccent(UltraCanvasTheme::Light().roles, a, false);
+            const ThemeRoles d = UltraCanvasTheme::DeriveAccent(UltraCanvasTheme::Dark().roles, a, true);
+            const ThemeRoles h = UltraCanvasTheme::DeriveAccent(UltraCanvasTheme::DarkHighContrast().roles, a, true, 7.0);
+            okLight = okLight && Contrast(l.onAccent, l.accent) >= 4.5 && Contrast(l.focus, l.ground) >= 3.0;
+            okDark = okDark && Contrast(d.onAccent, d.accent) >= 4.5 && Contrast(d.focus, d.ground) >= 3.0;
+            okHigh = okHigh && Contrast(h.onAccent, h.accent) >= 7.0;
+        }
+        CHECK(okLight, "every accent, Windows' and GNOME's and the hard ones (yellow, grey, white, black), reads 4.5:1 under its text on Light");
+        CHECK(okDark, "the same on Dark, the focus ring 3:1 on ground");
+        CHECK(okHigh, "at 7:1 for high contrast");
+        const ThemeRoles blue = UltraCanvasTheme::DeriveAccent(UltraCanvasTheme::Light().roles, Color(0x00, 0x78, 0xd4), false);
+        CHECK(Same(blue.accent, Color(0x00, 0x78, 0xd4, 255)) && Same(blue.onAccent, Colors::White) && Same(blue.focus, blue.accent),
+              "Windows' blue stays itself: white reads on it, it is the focus ring");
+        const ThemeRoles yellow = UltraCanvasTheme::DeriveAccent(UltraCanvasTheme::Light().roles, Color(255, 255, 0), false);
+        CHECK(Same(yellow.onAccent, UltraCanvasTheme::Light().roles.ink) && Contrast(yellow.focus, UltraCanvasTheme::Light().roles.ground) >= 3.0,
+              "a yellow accent takes the dark ink, and a focus ring that shows on the ground");
+        CHECK(!Same(blue.accentSoft, blue.accent) && !Same(blue.accentHover, blue.accent), "hover and soft are derived, not the accent itself");
+
+        HostAppearance host = DefaultHostAppearance();
+        UltraCanvasTheme fromDefault = UltraCanvasTheme::FromHost(host);
+        CHECK(fromDefault.name == "Host Light" && !fromDefault.dark && !fromDefault.highContrast
+              && Same(fromDefault.roles.accent, UltraCanvasTheme::Light().roles.accent) && fromDefault.fonts.ui.fontFamily == "Ubuntu",
+              "the default host gives Host Light with the preset's accent and the bundled fonts");
+        host.dark = true;
+        host.accent = Color(0xe9, 0x54, 0x20);
+        host.uiFont.fontFamily = "Noto Sans";
+        host.uiFont.fontSize = 10;
+        host.monoFont.fontFamily = "Fira Code";
+        host.textScale = 1.25;
+        UltraCanvasTheme fromDark = UltraCanvasTheme::FromHost(host);
+        CHECK(fromDark.name == "Host Dark" && fromDark.dark && Same(fromDark.roles.panel, UltraCanvasTheme::Dark().roles.panel),
+              "a dark host gives Host Dark on the Dark preset");
+        CHECK(Contrast(fromDark.roles.onAccent, fromDark.roles.accent) >= 4.5 && !Same(fromDark.roles.accent, UltraCanvasTheme::Dark().roles.accent),
+              "its accent is the host's, derived");
+        CHECK(fromDark.fonts.ui.fontFamily == "Noto Sans" && fromDark.fonts.mono.fontFamily == "Fira Code" && Near(fromDark.fonts.scale, 1.25, 1e-9)
+              && Near(fromDark.FontSize(ThemeTextRole::Body), 12.5, 1e-9), "its fonts and scale are the host's: Noto Sans 10 at 1.25 is 12.5");
+        host.highContrast = true;
+        UltraCanvasTheme fromHigh = UltraCanvasTheme::FromHost(host);
+        CHECK(fromHigh.name == "Host Dark High Contrast" && fromHigh.highContrast && Contrast(fromHigh.roles.onAccent, fromHigh.roles.accent) >= 7.0,
+              "a high-contrast dark host gives the dark high-contrast preset with the accent at 7:1");
+        host.dark = false;
+        CHECK(UltraCanvasTheme::FromHost(host).name == "Host Light High Contrast", "a high-contrast light host the light one");
+    }
 
     UltraCanvasTheme::SetCurrent(light);
     std::printf("\n%d of %d checks passed\n", testCount - failCount, testCount);
