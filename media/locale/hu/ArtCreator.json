@@ -1,0 +1,22 @@
+{
+  "@language": "hu",
+  "@translated-by": "machine draft 2026-11-05, reviewed by -",
+  "Added the text: click it with the Text tool, or double-click it, to edit it": "A szöveg hozzáadva: szerkesztéséhez kattintson rá a Szöveg eszközzel, vagy kattintson rá duplán",
+  "Changed the text": "A szöveg módosítva",
+  "Click on the page and type, or click a text to edit it; the bar above sets its font, size, style, alignment and spacing. Escape, Ctrl+Enter or a click outside finishes": "Kattintson az oldalra és gépeljen, vagy kattintson egy szövegre a szerkesztéséhez; a fenti sáv állítja be a betűtípusát, méretét, stílusát, igazítását és térközeit. Az Escape, a Ctrl+Enter vagy egy kívülre kattintás befejezi",
+  "Delete Text": "Szöveg törlése",
+  "Edit Text": "Szöveg szerkesztése",
+  "Editing the text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes": "A szöveg szerkesztése: az Enter új sort kezd; az Escape, a Ctrl+Enter vagy egy kívülre kattintás befejezi",
+  "Letter Spacing": "Betűköz",
+  "Line Spacing": "Sorköz",
+  "Nothing was typed": "Nem lett begépelve semmi",
+  "Text Alignment": "Szöveg igazítása",
+  "Text Bold": "Félkövér szöveg",
+  "Text Font": "Szöveg betűtípusa",
+  "Text Italic": "Dőlt szöveg",
+  "Text Size": "Szöveg mérete",
+  "Text Strikethrough": "Áthúzott szöveg",
+  "Text Underline": "Aláhúzott szöveg",
+  "The text was emptied, so it was deleted": "A szöveg kiürült, ezért törölve lett",
+  "Typing a new text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes": "Új szöveg gépelése: az Enter új sort kezd; az Escape, a Ctrl+Enter vagy egy kívülre kattintás befejezi"
+}

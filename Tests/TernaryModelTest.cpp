@@ -3,11 +3,13 @@
 // points that have none, the reading direction's label edges, the ticks,
 // validation and the shipped samples. UI-free.
 //
+// Version: 1.2.0 - Phase 3: the zoom - spans, the mapping both ways, ticks over
+//   the visible range, validation of minimums, minimums in the JSON
 // Version: 1.1.0 - Phase 2: the USDA outlines against the class rules on a
 //   grid, ties on shared edges, the De Finetti curve, bubble sizes, the JSON
 //   round trip of every sample and its refusals, the CSV both ways
 // Version: 1.0.0
-// Last Modified: 2026-11-04
+// Last Modified: 2026-11-05
 // Author: UltraCanvas Framework
 
 #include "Plugins/Charts/Engine/Charts/UltraCanvasTernaryModel.h"
@@ -187,6 +189,9 @@ static void TestTrajectories() {
     bool paths = model.series.size() == 4;
     for (const TernarySeries& s : model.series) paths &= s.kind == TernarySeriesKind::Path && s.arrows && s.points.size() == 5;
     CHECK(paths && model.Validate().empty(), "four regions as paths of five elections, with arrows");
+    const TernaryModel cloud = TernarySamples::FeldsparCloud();
+    CHECK(cloud.PointCount() == 2400 && cloud.Validate().empty(), "the feldspar cloud: 2,400 valid compositions");
+    CHECK(ExportTernaryJson(cloud) == ExportTernaryJson(TernarySamples::FeldsparCloud()), "and the same cloud every time");
 }
 
 static void TestValidationPhase2() {
@@ -216,7 +221,7 @@ static bool SameModel(const TernaryModel& x, const TernaryModel& y) {
     }
     for (int i = 0; i < 3; ++i) {
         if (x.axes[i].title != y.axes[i].title || x.axes[i].unit != y.axes[i].unit ||
-            !Near(x.axes[i].tickStep, y.axes[i].tickStep)) return false;
+            !Near(x.axes[i].tickStep, y.axes[i].tickStep) || !Near(x.axes[i].minimum, y.axes[i].minimum)) return false;
     }
     for (size_t i = 0; i < x.series.size(); ++i) {
         const TernarySeries& p = x.series[i];
@@ -334,6 +339,49 @@ static void TestCsv() {
     CHECK(refuses("AA,Aa,aa,size\n1,2,3,big\n", "size 'big'"), "a size that is not a number is refused");
 }
 
+static void TestZoom() {
+    std::printf("\n[Zoom]\n");
+    TernaryModel model = TernarySamples::SoilTexture();
+    CHECK(!model.IsZoomed() && Near(model.ZoomSpan(), 1.0), "a model without minimums shows the whole triangle");
+    model.axes[0].minimum = 0.2;
+    model.axes[1].minimum = 0.1;
+    model.axes[2].minimum = 0.3;
+    CHECK(model.IsZoomed() && Near(model.ZoomSpan(), 0.4), "minimums of 20, 10 and 30 % leave a triangle 40 % across");
+    double za = 0, zb = 0, zc = 0;
+    model.ToZoomed(0.6, 0.1, 0.3, za, zb, zc);
+    CHECK(Near(za, 1.0) && Near(zb, 0.0) && Near(zc, 0.0), "the zoomed triangle's A corner is 60 / 10 / 30");
+    model.ToZoomed(0.1, 0.5, 0.4, za, zb, zc);
+    CHECK(za < 0.0, "a composition under a minimum falls outside it");
+    double sa = 0, sb = 0, sc = 0;
+    model.FromZoomed(0.25, 0.25, 0.5, sa, sb, sc);
+    model.ToZoomed(sa, sb, sc, za, zb, zc);
+    CHECK(Near(za, 0.25) && Near(zb, 0.25) && Near(zc, 0.5) && Near(sa + sb + sc, 1.0), "the mapping round-trips and keeps the sum");
+
+    const std::vector<double> ticks = model.Ticks(0);   // clay from 20 % to 60 %
+    CHECK(Near(ticks.front(), 0.2) && Near(ticks.back(), 0.6), "an axis ticks from its minimum to its minimum plus the span");
+    CHECK(ticks.size() == 5 && Near(ticks[1], 0.3), "every 10 %, as before, while that still gives three steps");
+    model.axes[0].minimum = 0.3;
+    model.axes[2].minimum = 0.55;    // span 0.05
+    const std::vector<double> fine = model.Ticks(0);
+    bool inside = fine.size() >= 4;
+    for (double t : fine) inside &= t >= 0.3 - 1e-9 && t <= 0.35 + 1e-9;
+    CHECK(inside, "zoomed in to a span of 5 %, a finer step keeps at least three intervals");
+
+    TernaryModel bad = TernarySamples::SoilTexture();
+    bad.axes[1].minimum = -0.1;
+    CHECK(!bad.Validate().empty(), "a negative minimum is reported");
+    bad.axes[1].minimum = 0.5;
+    bad.axes[2].minimum = 0.495;
+    CHECK(!bad.Validate().empty(), "minimums that leave less than 1 % are reported");
+
+    TernaryModel zoomed = TernarySamples::SoilTexture();
+    zoomed.axes[0].minimum = 0.1;
+    TernaryModel back;
+    std::string error;
+    CHECK(ImportTernaryJson(ExportTernaryJson(zoomed), back, &error) && Near(back.axes[0].minimum, 0.1),
+          "the zoom is saved with the model");
+}
+
 int main() {
     std::printf("====================================\n");
     std::printf("  UltraCanvas Ternary Model\n");
@@ -350,6 +398,7 @@ int main() {
     TestValidationPhase2();
     TestJson();
     TestCsv();
+    TestZoom();
 
     std::printf("\n====================================\n");
     if (g_failures == 0) {

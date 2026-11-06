@@ -1,0 +1,19 @@
+{
+  "@language": "hu",
+  "@translated-by": "machine draft 2026-11-05, reviewed by -",
+  "Colour title": "Cím színe",
+  "Edit Title": "Cím szerkesztése",
+  "The title is in the video": "A cím bekerült a videóba",
+  "The title is unchanged": "A cím nem változott",
+  "The title was emptied: it keeps its text (delete the title on its lane to remove it)": "A cím kiürült: megtartja a szövegét (az eltávolításához törölje a címet a sávján)",
+  "Title Alignment": "Cím igazítása",
+  "Title Bold": "Félkövér cím",
+  "Title Font": "Cím betűtípusa",
+  "Title Italic": "Dőlt cím",
+  "Title Letter Spacing": "Cím betűköze",
+  "Title Line Spacing": "Cím sorköze",
+  "Title Size": "Cím mérete",
+  "Title Strikethrough": "Áthúzott cím",
+  "Title Underline": "Aláhúzott cím",
+  "Typing the title on the frame: Escape, Ctrl+Enter or a click outside puts it in the video": "A cím gépelése a képkockán: az Escape, a Ctrl+Enter vagy egy kívülre kattintás beteszi a videóba"
+}

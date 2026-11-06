@@ -45,7 +45,7 @@ ROOT = Path(__file__).resolve().parent.parent
 LOCALE = ROOT / "media" / "locale"
 FRAMEWORK_DIRS = ["UltraCanvas/include", "UltraCanvas/core", "UltraCanvas/libspecific", "UltraCanvas/OS",
                   "UltraCanvas/Plugins"]
-SKIP_APPS = {"DemoApp", "CSSLayoutTests"}
+SKIP_APPS = {"CSSLayoutTests"}
 LIT = r'"((?:[^"\\\n]|\\.)*)"'
 SITE = re.compile(r"(?<![A-Za-z0-9_:])(Tr|TrC|TrN|TrF)\s*\(")
 SOURCE_SUFFIXES = (".cpp", ".h", ".mm", ".hpp")
@@ -275,7 +275,9 @@ def serialize(meta: dict, entries: dict, plurals: dict) -> str:
 
 def app_name(folder: Path) -> str:
     for path in walk(folder):
-        m = re.search(r'Initialize\("([^"]+)"\)', path.read_text(encoding="utf-8", errors="ignore"))
+        # Initialize("Name"), or a helper that passes it on as its last
+        # argument - DemoApp's InitializeSystem(g_app, "UltraCanvasDemo").
+        m = re.search(r'Initialize\w*\((?:[^()"]*,\s*)?"([^"]+)"\)', path.read_text(encoding="utf-8", errors="ignore"))
         if m:
             return m.group(1)
     return folder.name

@@ -1,0 +1,19 @@
+{
+  "@language": "ro",
+  "@translated-by": "machine draft 2026-11-05, reviewed by -",
+  "Colour title": "Culoare titlu",
+  "Edit Title": "Editare titlu",
+  "The title is in the video": "Titlul este în videoclip",
+  "The title is unchanged": "Titlul este neschimbat",
+  "The title was emptied: it keeps its text (delete the title on its lane to remove it)": "Titlul a fost golit: își păstrează textul (pentru a-l elimina, ștergeți titlul de pe pista sa)",
+  "Title Alignment": "Aliniere titlu",
+  "Title Bold": "Titlu aldin",
+  "Title Font": "Font titlu",
+  "Title Italic": "Titlu cursiv",
+  "Title Letter Spacing": "Spațiere între literele titlului",
+  "Title Line Spacing": "Spațiere între liniile titlului",
+  "Title Size": "Dimensiune titlu",
+  "Title Strikethrough": "Tăiere cu o linie a titlului",
+  "Title Underline": "Subliniere titlu",
+  "Typing the title on the frame: Escape, Ctrl+Enter or a click outside puts it in the video": "Tastarea titlului pe cadru: Escape, Ctrl+Enter sau un clic în afară îl pune în videoclip"
+}

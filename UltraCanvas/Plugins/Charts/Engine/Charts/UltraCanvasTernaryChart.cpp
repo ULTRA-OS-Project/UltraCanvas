@@ -1,11 +1,14 @@
 // Plugins/Charts/Engine/Charts/UltraCanvasTernaryChart.cpp
 // The ternary chart on the chart engine.
+// Version: 1.2.0 - the zoom (drawing clipped to the triangle, region outlines
+//   clipped to it), drag-to-zoom, density bins, contours, the colour bar
 // Version: 1.1.0 - regions, paths, bubbles, curves, the reading guide, region clicks
 // Version: 1.0.0
-// Last Modified: 2026-11-04
+// Last Modified: 2026-11-05
 // Author: UltraCanvas Framework
 
 #include "Plugins/Charts/Engine/Charts/UltraCanvasTernaryChart.h"
+#include "UltraCanvasApplication.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -37,7 +40,16 @@ Point2Dd Unit(double x, double y) {
 
 std::string TickText(double share) {
     char text[16];
-    std::snprintf(text, sizeof(text), "%.0f", share * 100.0);   // locale-ok: a tick label a person reads
+    // Whole percentages as such; a zoomed axis can tick at 12.5 or 30.25.
+    const double percent = share * 100.0;
+    const double whole = std::round(percent);
+    if (std::abs(percent - whole) < 1e-6) {
+        std::snprintf(text, sizeof(text), "%.0f", whole);   // locale-ok: a tick label a person reads
+    } else if (std::abs(percent * 10.0 - std::round(percent * 10.0)) < 1e-6) {
+        std::snprintf(text, sizeof(text), "%.1f", percent);   // locale-ok: a tick label a person reads
+    } else {
+        std::snprintf(text, sizeof(text), "%.2f", percent);   // locale-ok: a tick label a person reads
+    }
     return text;
 }
 
@@ -99,6 +111,31 @@ Point2Dd WidestInsidePoint(const std::vector<Point2Dd>& poly, double& clearance)
         cellY /= 8.0;
     }
     return best;
+}
+
+// Clips a polygon in (u, v) to the unit triangle u >= 0, v >= 0, u + v <= 1
+// (Sutherland-Hodgman, one half-plane at a time), so a region reaching out
+// of a zoomed triangle is cut at its edges rather than drawn past them.
+std::vector<ChartNormalizedPoint> ClipToUnitTriangle(std::vector<ChartNormalizedPoint> poly) {
+    auto clip = [](const std::vector<ChartNormalizedPoint>& in, auto value) {
+        std::vector<ChartNormalizedPoint> out;
+        for (size_t i = 0; i < in.size(); ++i) {
+            const ChartNormalizedPoint& p = in[i];
+            const ChartNormalizedPoint& q = in[(i + 1) % in.size()];
+            const double fp = value(p), fq = value(q);
+            if (fp >= 0.0) out.push_back(p);
+            if ((fp >= 0.0) != (fq >= 0.0)) {
+                const double t = fp / (fp - fq);
+                out.emplace_back(p.u + (q.u - p.u) * t, p.v + (q.v - p.v) * t);
+            }
+        }
+        return out;
+    };
+    poly = clip(poly, [](const ChartNormalizedPoint& p) { return p.u; });
+    if (poly.empty()) return poly;
+    poly = clip(poly, [](const ChartNormalizedPoint& p) { return p.v; });
+    if (poly.empty()) return poly;
+    return clip(poly, [](const ChartNormalizedPoint& p) { return 1.0 - p.u - p.v; });
 }
 
 // A box of `size` placed beyond `anchor` in `direction`, its near edge at
@@ -187,6 +224,213 @@ void UltraCanvasTernaryChart::SetReadingGuide(bool show) {
     RequestRedraw();
 }
 
+bool UltraCanvasTernaryChart::SetZoom(double minimumA, double minimumB, double minimumC) {
+    const double m[3] = {minimumA, minimumB, minimumC};
+    for (double v : m) {
+        if (!std::isfinite(v) || v < 0.0) return false;
+    }
+    if (m[0] + m[1] + m[2] > 0.98 + 1e-12) return false;
+    for (int i = 0; i < 3; ++i) model.axes[i].minimum = m[i];
+    guideActive = false;
+    MarkEngineDirty(ChartDirty::Style);     // ticks, labels and the label plan follow the zoom
+    if (onZoomChanged) onZoomChanged();
+    return true;
+}
+
+void UltraCanvasTernaryChart::SetZoomByDrag(bool enabled) {
+    zoomByDrag = enabled;
+    if (!enabled) pressActive = selecting = false;
+}
+
+void UltraCanvasTernaryChart::SetDensity(int subdivisions) {
+    densitySubdivisions = std::clamp(subdivisions, 0, 200);
+    MarkEngineDirty(ChartDirty::Style);     // the colour bar reserves room
+}
+
+void UltraCanvasTernaryChart::SetDensityColormap(HeatmapColormap map) {
+    densityMap = map;
+    RequestRedraw();
+}
+
+void UltraCanvasTernaryChart::SetDensityContours(int levels) {
+    densityContourLevels = std::clamp(levels, 0, 20);
+    RequestRedraw();
+}
+
+void UltraCanvasTernaryChart::SetShowPoints(bool show) {
+    showPoints = show;
+    RequestRedraw();
+}
+
+int UltraCanvasTernaryChart::GetDensityTotal() const {
+    int total = 0;
+    for (int n : densityUp) total += n;
+    for (int n : densityDown) total += n;
+    return total;
+}
+
+int UltraCanvasTernaryChart::DensityCountAt(double a, double b, double c) const {
+    const int n = densitySubdivisions;
+    double sa = 0.0, sb = 0.0, sc = 0.0;
+    if (n <= 0 || densityUp.empty() || !TernaryPoint(a, b, c).Shares(sa, sb, sc)) return 0;
+    const ChartNormalizedPoint z = ZoomedNormal(sa, sb, sc);
+    if (z.u < -1e-9 || z.v < -1e-9 || 1.0 - z.u - z.v < -1e-9) return 0;
+    const double x = z.u * n, y = z.v * n;
+    int i = std::clamp(static_cast<int>(std::floor(x)), 0, n - 1);
+    int j = std::clamp(static_cast<int>(std::floor(y)), 0, n - 1);
+    if (i + j > n - 1) j = n - 1 - i;
+    const bool up = (x - i) + (y - j) <= 1.0 || i + j == n - 1;
+    return up ? densityUp[static_cast<size_t>(i * n + j)] : densityDown[static_cast<size_t>(i * n + j)];
+}
+
+void UltraCanvasTernaryChart::BinDensity() {
+    const int n = densitySubdivisions;
+    densityUp.assign(static_cast<size_t>(std::max(0, n * n)), 0);
+    densityDown.assign(static_cast<size_t>(std::max(0, n * n)), 0);
+    densityMax = 0;
+    if (n <= 0) return;
+    // Each small triangle of the lattice: upward (i, j) has corners
+    // (i, j), (i+1, j), (i, j+1) in units of 1/n of (u, v); downward (i, j)
+    // has (i+1, j), (i, j+1), (i+1, j+1).
+    for (size_t s = 0; s < model.series.size(); ++s) {
+        if (seriesHidden[s]) continue;
+        for (const TernaryPoint& point : model.series[s].points) {
+            double sa = 0.0, sb = 0.0, sc = 0.0;
+            if (!point.Shares(sa, sb, sc)) continue;
+            const ChartNormalizedPoint z = ZoomedNormal(sa, sb, sc);
+            if (z.u < -1e-9 || z.v < -1e-9 || 1.0 - z.u - z.v < -1e-9) continue;   // outside the zoom
+            const double x = z.u * n, y = z.v * n;
+            int i = std::clamp(static_cast<int>(std::floor(x)), 0, n - 1);
+            int j = std::clamp(static_cast<int>(std::floor(y)), 0, n - 1);
+            if (i + j > n - 1) j = n - 1 - i;
+            const bool up = (x - i) + (y - j) <= 1.0 || i + j == n - 1;
+            int& cell = up ? densityUp[static_cast<size_t>(i * n + j)] : densityDown[static_cast<size_t>(i * n + j)];
+            densityMax = std::max(densityMax, ++cell);
+        }
+    }
+}
+
+void UltraCanvasTernaryChart::BuildContours() {
+    contourSegments.clear();
+    const int n = densitySubdivisions;
+    if (n <= 0 || densityContourLevels <= 0 || densityMax <= 0) return;
+    // A value at every lattice corner: the mean count of the small triangles
+    // that meet there (up to six), so the contours follow a smooth surface.
+    std::vector<double> corner(static_cast<size_t>((n + 1) * (n + 1)), 0.0);
+    auto at = [&corner, n](int i, int j) -> double& { return corner[static_cast<size_t>(i * (n + 1) + j)]; };
+    double highest = 0.0;
+    for (int i = 0; i <= n; ++i) {
+        for (int j = 0; i + j <= n; ++j) {
+            double sum = 0.0;
+            int count = 0;
+            auto addUp = [&](int a, int b) {
+                if (a >= 0 && b >= 0 && a + b <= n - 1) { sum += densityUp[static_cast<size_t>(a * n + b)]; ++count; }
+            };
+            auto addDown = [&](int a, int b) {
+                if (a >= 0 && b >= 0 && a + b <= n - 2) { sum += densityDown[static_cast<size_t>(a * n + b)]; ++count; }
+            };
+            addUp(i, j); addUp(i - 1, j); addUp(i, j - 1);
+            addDown(i - 1, j); addDown(i, j - 1); addDown(i - 1, j - 1);
+            at(i, j) = count > 0 ? sum / count : 0.0;
+            highest = std::max(highest, at(i, j));
+        }
+    }
+    if (highest <= 0.0) return;
+    // Marching triangles: in each small triangle, a level crosses the two
+    // edges whose ends lie on either side of it.
+    auto cross = [](double level, const ChartNormalizedPoint* p, const double* v,
+                    std::vector<std::pair<Point2Dd, Point2Dd>>& out) {
+        Point2Dd hits[3];
+        int found = 0;
+        for (int e = 0; e < 3 && found < 3; ++e) {
+            const int a = e, b = (e + 1) % 3;
+            if ((v[a] >= level) == (v[b] >= level)) continue;
+            const double t = (level - v[a]) / (v[b] - v[a]);
+            hits[found++] = Point2Dd(p[a].u + (p[b].u - p[a].u) * t, p[a].v + (p[b].v - p[a].v) * t);
+        }
+        if (found == 2) out.emplace_back(hits[0], hits[1]);
+    };
+    const double step = 1.0 / n;
+    for (int k = 1; k <= densityContourLevels; ++k) {
+        const double level = highest * k / (densityContourLevels + 1);
+        for (int i = 0; i < n; ++i) {
+            for (int j = 0; i + j <= n - 1; ++j) {
+                const ChartNormalizedPoint up[3] = {{i * step, j * step}, {(i + 1) * step, j * step}, {i * step, (j + 1) * step}};
+                const double upValues[3] = {at(i, j), at(i + 1, j), at(i, j + 1)};
+                cross(level, up, upValues, contourSegments);
+                if (i + j <= n - 2) {
+                    const ChartNormalizedPoint down[3] = {{(i + 1) * step, j * step}, {i * step, (j + 1) * step},
+                                                          {(i + 1) * step, (j + 1) * step}};
+                    const double downValues[3] = {at(i + 1, j), at(i, j + 1), at(i + 1, j + 1)};
+                    cross(level, down, downValues, contourSegments);
+                }
+            }
+        }
+    }
+}
+
+void UltraCanvasTernaryChart::DrawDensity(IRenderContext* ctx) {
+    const ChartTernaryProjection* projection = Projection();
+    const int n = densitySubdivisions;
+    if (!projection || n <= 0 || densityMax <= 0) return;
+    ctx->PushState();
+    const double step = 1.0 / n;
+    auto shade = [this](int count) {
+        // The light end of the map stays for empty cells, so a cell with one
+        // point already reads as something.
+        return SampleColormap(densityMap, {}, 0.15 + 0.85 * static_cast<double>(count) / densityMax, false);
+    };
+    auto fill = [&](int count, std::initializer_list<ChartNormalizedPoint> corners) {
+        if (count <= 0) return;
+        std::vector<Point2Dd> poly;
+        for (const ChartNormalizedPoint& c : corners) poly.push_back(projection->ToScreen(c));
+        ctx->SetFillPaint(shade(count));
+        ctx->FillLinePath(poly);
+        // A hairline in the same colour closes the seams between cells.
+        ctx->SetStrokePaint(shade(count));
+        ctx->SetStrokeWidth(0.6f);
+        ctx->DrawLinePath(poly, true);
+    };
+    for (int i = 0; i < n; ++i) {
+        for (int j = 0; i + j <= n - 1; ++j) {
+            fill(densityUp[static_cast<size_t>(i * n + j)],
+                 {{i * step, j * step}, {(i + 1) * step, j * step}, {i * step, (j + 1) * step}});
+            if (i + j <= n - 2) {
+                fill(densityDown[static_cast<size_t>(i * n + j)],
+                     {{(i + 1) * step, j * step}, {i * step, (j + 1) * step}, {(i + 1) * step, (j + 1) * step}});
+            }
+        }
+    }
+    if (!contourSegments.empty()) {
+        ctx->SetStrokePaint(Color(30, 40, 60, 200));
+        ctx->SetStrokeWidth(1.2f);
+        for (const auto& segment : contourSegments) {
+            ctx->DrawLine(projection->ToScreen(ChartNormalizedPoint(segment.first.x, segment.first.y)),
+                          projection->ToScreen(ChartNormalizedPoint(segment.second.x, segment.second.y)));
+        }
+    }
+    ctx->PopState();
+}
+
+Rect2Dd UltraCanvasTernaryChart::ColourBarRect() const {
+    // Along the bottom of the element, under the corner titles, centred.
+    const double width = std::min(180.0, std::max(60.0, GetWidth() * 0.3));
+    return Rect2Dd((GetWidth() - width) * 0.5, GetHeight() - 20.0, width, 10.0);
+}
+
+void UltraCanvasTernaryChart::SelectionMinimums(double mins[3]) const {
+    double sum = 0.0;
+    for (int i = 0; i < 3; ++i) {
+        mins[i] = std::max(0.0, std::min(pressShares[i], dragShares[i]));
+        sum += mins[i];
+    }
+    // At least 2 % of the triangle: a tiny drag still zooms to something
+    // that can be read.
+    if (sum > 0.98) {
+        for (int i = 0; i < 3; ++i) mins[i] *= 0.98 / sum;
+    }
+}
+
 void UltraCanvasTernaryChart::SetBubbleRadiusRange(double smallest, double largest) {
     bubbleSmallest = std::max(1.0, smallest);
     bubbleLargest = std::max(bubbleSmallest, largest);
@@ -244,11 +488,39 @@ const ChartTernaryProjection* UltraCanvasTernaryChart::Projection() const {
     return static_cast<const ChartTernaryProjection*>(Frame().projection);
 }
 
+ChartNormalizedPoint UltraCanvasTernaryChart::ZoomedNormal(double sa, double sb, double sc) const {
+    double za = 0.0, zb = 0.0, zc = 0.0;
+    model.ToZoomed(sa, sb, sc, za, zb, zc);
+    return ChartNormalizedPoint(zb, zc);
+}
+
 ChartNormalizedPoint UltraCanvasTernaryChart::Normalized(double sa, double sb, double sc,
                                                          double progress) const {
-    (void)sa;
+    const ChartNormalizedPoint z = ZoomedNormal(sa, sb, sc);
     const double third = 1.0 / 3.0;
-    return ChartNormalizedPoint(third + (sb - third) * progress, third + (sc - third) * progress);
+    return ChartNormalizedPoint(third + (z.u - third) * progress, third + (z.v - third) * progress);
+}
+
+void UltraCanvasTernaryChart::ClampedShares(const Point2Dd& screen, double shares[3]) const {
+    const ChartTernaryProjection* projection = Projection();
+    if (!projection) return;
+    const ChartNormalizedPoint p = projection->ToNormalized(screen);
+    // Into the zoomed triangle: no negative share, then rescaled to sum 1.
+    double z[3] = {std::max(0.0, 1.0 - p.u - p.v), std::max(0.0, p.u), std::max(0.0, p.v)};
+    const double sum = z[0] + z[1] + z[2];
+    if (sum <= 0.0) return;
+    model.FromZoomed(z[0] / sum, z[1] / sum, z[2] / sum, shares[0], shares[1], shares[2]);
+}
+
+void UltraCanvasTernaryChart::ClipToTriangle(IRenderContext* ctx) const {
+    const Point2Dd a = CornerPoint(0), b = CornerPoint(1), c = CornerPoint(2);
+    ctx->ClearPath();
+    ctx->MoveTo(a.x, a.y);
+    ctx->LineTo(b.x, b.y);
+    ctx->LineTo(c.x, c.y);
+    ctx->ClosePath();
+    ctx->ClipPath();
+    ctx->ClearPath();
 }
 
 Point2Dd UltraCanvasTernaryChart::CornerPoint(int corner) const {
@@ -263,27 +535,26 @@ Point2Dd UltraCanvasTernaryChart::SharesToScreen(double a, double b, double c) c
     if (!projection || !point.Shares(sa, sb, sc)) {
         return Point2Dd(std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN());
     }
-    return projection->ToScreen(ChartNormalizedPoint(sb, sc));
+    return projection->ToScreen(ZoomedNormal(sa, sb, sc));
 }
 
 bool UltraCanvasTernaryChart::ScreenToShares(const Point2Dd& screen, double& a, double& b, double& c) const {
     const ChartTernaryProjection* projection = Projection();
     if (!projection) return false;
     const ChartNormalizedPoint p = projection->ToNormalized(screen);
-    const double sa = 1.0 - p.u - p.v;
+    const double za = 1.0 - p.u - p.v;
     const double eps = 1e-9;
-    if (p.u < -eps || p.v < -eps || sa < -eps) return false;
-    a = std::max(0.0, sa);
-    b = std::max(0.0, p.u);
-    c = std::max(0.0, p.v);
+    if (p.u < -eps || p.v < -eps || za < -eps) return false;
+    model.FromZoomed(std::max(0.0, za), std::max(0.0, p.u), std::max(0.0, p.v), a, b, c);
     return true;
 }
 
 Point2Dd UltraCanvasTernaryChart::TickPosition(int corner, double share) const {
     corner = std::clamp(corner, 0, 2);
-    // The labelled edge runs from the corner before this one (0 %) to this
-    // corner (100 %).
-    return Lerp(CornerPoint(model.LabelEdgeStart(corner)), CornerPoint(corner), share);
+    // The labelled edge runs from the corner before this one (the axis's
+    // minimum) to this corner (the minimum plus the zoom's span).
+    const double t = (share - model.axes[corner].minimum) / std::max(1e-9, model.ZoomSpan());
+    return Lerp(CornerPoint(model.LabelEdgeStart(corner)), CornerPoint(corner), t);
 }
 
 Point2Dd UltraCanvasTernaryChart::TickDirection(int corner) const {
@@ -303,6 +574,10 @@ Point2Dd UltraCanvasTernaryChart::PointPosition(size_t seriesIndex, size_t point
         return Point2Dd(nan, nan);
     }
     const TernaryPoint& point = model.series[seriesIndex].points[pointIndex];
+    double sa = 0.0, sb = 0.0, sc = 0.0;
+    if (!point.Shares(sa, sb, sc)) return Point2Dd(nan, nan);
+    const ChartNormalizedPoint z = ZoomedNormal(sa, sb, sc);
+    if (z.u < -1e-9 || z.v < -1e-9 || 1.0 - z.u - z.v < -1e-9) return Point2Dd(nan, nan);   // outside the zoom
     return SharesToScreen(point.a, point.b, point.c);
 }
 
@@ -330,10 +605,14 @@ std::vector<Point2Dd> UltraCanvasTernaryChart::RegionScreenOutline(int regionInd
     std::vector<Point2Dd> outline;
     const ChartTernaryProjection* projection = Projection();
     if (!projection || regionIndex < 0 || regionIndex >= static_cast<int>(model.regions.size())) return outline;
+    std::vector<ChartNormalizedPoint> zoomed;
     for (const TernaryComposition& corner : model.regions[static_cast<size_t>(regionIndex)].outline) {
         double sa = 0.0, sb = 0.0, sc = 0.0;
-        if (corner.Shares(sa, sb, sc)) outline.push_back(projection->ToScreen(ChartNormalizedPoint(sb, sc)));
+        if (corner.Shares(sa, sb, sc)) zoomed.push_back(ZoomedNormal(sa, sb, sc));
     }
+    // Only the part inside the (zoomed) triangle is drawn, named and hit.
+    if (model.IsZoomed()) zoomed = ClipToUnitTriangle(zoomed);
+    for (const ChartNormalizedPoint& p : zoomed) outline.push_back(projection->ToScreen(p));
     return outline;
 }
 
@@ -531,7 +810,9 @@ void UltraCanvasTernaryChart::MeasureContent(IRenderContext* ctx, ChartLayoutReq
     request.Reserve(ChartAxisEdge::Left, side);
     request.Reserve(ChartAxisEdge::Right, side);
     request.Reserve(ChartAxisEdge::Top, band + cornerHeight + 6.0 + SubtitleHeight(ctx));
-    request.Reserve(ChartAxisEdge::Bottom, band + std::max(edgeTitle, cornerHeight + 6.0) + 6.0);
+    // The density's colour bar takes a strip along the bottom.
+    const double colourBar = densitySubdivisions > 0 ? 28.0 : 0.0;
+    request.Reserve(ChartAxisEdge::Bottom, band + std::max(edgeTitle, cornerHeight + 6.0) + 6.0 + colourBar);
 }
 
 void UltraCanvasTernaryChart::RenderEngineTitle(IRenderContext* ctx) {
@@ -568,8 +849,12 @@ void UltraCanvasTernaryChart::DrawRegions(IRenderContext* ctx) {
 
 void UltraCanvasTernaryChart::RenderEngineGrid(IRenderContext* ctx) {
     if (!Projection()) return;
-    // The regions lie under the grid, their outlines and names over it.
+    // The regions lie under the grid, their outlines and names over it; the
+    // density over the regions, under the grid.
+    BinDensity();
+    BuildContours();
     DrawRegions(ctx);
+    DrawDensity(ctx);
     if (showGridLines) {
         ctx->PushState();
         ctx->SetStrokePaint(gridColor);
@@ -580,8 +865,10 @@ void UltraCanvasTernaryChart::RenderEngineGrid(IRenderContext* ctx) {
             const Point2Dd at = CornerPoint(corner);
             const Point2Dd p = CornerPoint((corner + 1) % 3), q = CornerPoint((corner + 2) % 3);
             for (double k : model.Ticks(corner)) {
-                if (k <= 1e-9 || k >= 1.0 - 1e-9) continue;   // the edges themselves
-                ctx->DrawLine(Lerp(p, at, k), Lerp(q, at, k));
+                // The tick's place along the zoomed axis.
+                const double t = (k - model.axes[corner].minimum) / std::max(1e-9, model.ZoomSpan());
+                if (t <= 1e-9 || t >= 1.0 - 1e-9) continue;   // the edges themselves
+                ctx->DrawLine(Lerp(p, at, t), Lerp(q, at, t));
             }
         }
         ctx->PopState();
@@ -623,7 +910,7 @@ void UltraCanvasTernaryChart::DrawCurves(IRenderContext* ctx) {
         std::vector<Point2Dd> line;
         for (const TernaryComposition& c : curve.points) {
             double sa = 0.0, sb = 0.0, sc = 0.0;
-            if (c.Shares(sa, sb, sc)) line.push_back(projection->ToScreen(ChartNormalizedPoint(sb, sc)));
+            if (c.Shares(sa, sb, sc)) line.push_back(projection->ToScreen(ZoomedNormal(sa, sb, sc)));
         }
         if (line.size() < 2) continue;
         ctx->PushState();
@@ -736,6 +1023,30 @@ void UltraCanvasTernaryChart::RenderEngineAxes(IRenderContext* ctx) {
         ctx->DrawText(corner.first, Point2Dd(corner.second.x, corner.second.y));
     }
     ctx->SetFontWeight(FontWeight::Normal);
+
+    // The density's colour bar: what the shades count.
+    if (densitySubdivisions > 0 && densityMax > 0) {
+        const Rect2Dd bar = ColourBarRect();
+        const int steps = 32;
+        for (int k = 0; k < steps; ++k) {
+            ctx->SetFillPaint(SampleColormap(densityMap, {}, 0.15 + 0.85 * (k + 0.5) / steps, false));
+            ctx->FillRectangle(Rect2Dd(bar.x + bar.width * k / steps, bar.y, bar.width / steps + 0.5, bar.height));
+        }
+        ctx->SetStrokePaint(axisLineColor.WithAlpha(120));
+        ctx->SetStrokeWidth(1.0f);
+        ctx->DrawRectangle(bar);
+        ctx->SetFontSize(axisFontSize);
+        ctx->SetTextPaint(axisLabelColor);
+        const std::string low = "1";
+        const std::string high = std::to_string(densityMax);
+        const std::string caption = "Points per cell";
+        const Size2Di lowSize = ctx->GetTextLineDimensions(low);
+        const Size2Di captionSize = ctx->GetTextLineDimensions(caption);
+        const double textY = bar.y + (bar.height - lowSize.height) * 0.5;
+        ctx->DrawText(low, Point2Dd(bar.x - lowSize.width - 6.0, textY));
+        ctx->DrawText(high, Point2Dd(bar.Right() + 6.0, textY));
+        ctx->DrawText(caption, Point2Dd(bar.x - lowSize.width - 18.0 - captionSize.width, textY));
+    }
     ctx->PopState();
 }
 
@@ -744,6 +1055,10 @@ void UltraCanvasTernaryChart::RenderChartContent(IRenderContext* ctx, const Char
     const double progress = frame.animationProgress;
     const std::pair<size_t, size_t> hovered = GetHoveredPoint();
     const Color outline = frame.theme ? frame.theme->plotAreaColor : Colors::White;
+    // Zoomed in, paths and curves run on past the triangle's edges: nothing
+    // is drawn outside it.
+    ctx->PushState();
+    ClipToTriangle(ctx);
 
     // The regions answer the pointer first, so a point drawn in one wins
     // (the last hit region added wins).
@@ -761,11 +1076,14 @@ void UltraCanvasTernaryChart::RenderChartContent(IRenderContext* ctx, const Char
         const Color color = SeriesColor(s);
         std::vector<Point2Dd> positions;
         std::vector<size_t> indices;
+        std::vector<bool> inside;   // within the zoom: drawn as a marker and hit
         for (size_t p = 0; p < series.points.size(); ++p) {
             double sa = 0.0, sb = 0.0, sc = 0.0;
             if (!series.points[p].Shares(sa, sb, sc)) continue;   // Validate() names it
             positions.push_back(frame.projection->ToScreen(Normalized(sa, sb, sc, progress)));
             indices.push_back(p);
+            const ChartNormalizedPoint z = ZoomedNormal(sa, sb, sc);
+            inside.push_back(z.u >= -1e-9 && z.v >= -1e-9 && 1.0 - z.u - z.v >= -1e-9);
         }
 
         // A path joins its points in order; each step ends in an arrowhead
@@ -798,6 +1116,7 @@ void UltraCanvasTernaryChart::RenderChartContent(IRenderContext* ctx, const Char
         // Bubbles are translucent so the ones under them stay visible.
         const bool bubbles = model.MaxPointSize() > 0.0;
         for (size_t k = 0; k < positions.size(); ++k) {
+            if (!showPoints || !inside[k]) continue;
             const size_t p = indices[k];
             const Point2Dd& at = positions[k];
             const bool hot = hovered.first == s && hovered.second == p;
@@ -810,6 +1129,7 @@ void UltraCanvasTernaryChart::RenderChartContent(IRenderContext* ctx, const Char
                          BuildPointTooltip(s, p));
         }
     }
+    ctx->PopState();
 }
 
 void UltraCanvasTernaryChart::CollectChartLabels(IRenderContext* ctx, ChartLabelBroker& broker) {
@@ -839,7 +1159,9 @@ void UltraCanvasTernaryChart::CollectChartLabels(IRenderContext* ctx, ChartLabel
             ChartLabelRequest label;
             label.text = point.label;
             label.klass = ChartLabelClass::ValueLabel;
-            label.anchor = Frame().projection->ToScreen(ChartNormalizedPoint(sb, sc));
+            const ChartNormalizedPoint z = ZoomedNormal(sa, sb, sc);
+            if (z.u < -1e-9 || z.v < -1e-9 || 1.0 - z.u - z.v < -1e-9) continue;   // outside the zoom
+            label.anchor = Frame().projection->ToScreen(z);
             label.anchorRadius = PointRadius(s, p);
             const Size2Di size = ctx->GetTextLineDimensions(label.text);
             label.textSize = Size2Dd(size.width, size.height);
@@ -872,6 +1194,22 @@ void UltraCanvasTernaryChart::RenderPlannedLabels(IRenderContext* ctx) {
 
 void UltraCanvasTernaryChart::RenderInteractionOverlay(IRenderContext* ctx, const ChartEngineFrame& frame) {
     (void)frame;
+    if (selecting && Projection()) {
+        // The sub-triangle the drag will zoom to.
+        double m[3];
+        SelectionMinimums(m);
+        const Point2Dd a = SharesToScreen(1.0 - m[1] - m[2], m[1], m[2]);
+        const Point2Dd b = SharesToScreen(m[0], 1.0 - m[0] - m[2], m[2]);
+        const Point2Dd c = SharesToScreen(m[0], m[1], 1.0 - m[0] - m[1]);
+        ctx->PushState();
+        ctx->SetFillPaint(Color(40, 90, 200, 40));
+        ctx->FillLinePath({a, b, c});
+        ctx->SetStrokePaint(Color(40, 90, 200, 220));
+        ctx->SetStrokeWidth(1.5f);
+        ctx->SetLineDash(UCDashPattern({6.0, 3.0}));
+        ctx->DrawLinePath({a, b, c}, true);
+        ctx->PopState();
+    }
     if (!readingGuide || !guideActive || !Projection()) return;
     const Point2Dd at = SharesToScreen(guideShares[0], guideShares[1], guideShares[2]);
     ctx->PushState();
@@ -909,10 +1247,43 @@ void UltraCanvasTernaryChart::RenderInteractionOverlay(IRenderContext* ctx, cons
 }
 
 bool UltraCanvasTernaryChart::OnEvent(const UCEvent& event) {
+    const Point2Dd at(event.pointer.x, event.pointer.y);
+
+    // A drag across the triangle that started on no point zooms to it.
+    if (pressActive && event.type == UCEventType::MouseMove) {
+        dragScreen = at;
+        ClampedShares(at, dragShares);
+        if (!selecting && std::hypot(at.x - pressScreen.x, at.y - pressScreen.y) > 4.0) selecting = true;
+        if (selecting) {
+            RequestRedraw();
+            return true;
+        }
+    }
+    if (pressActive && event.type == UCEventType::MouseUp && event.button == UCMouseButton::Left) {
+        pressActive = false;
+        if (auto* app = UltraCanvasApplication::GetInstance()) {
+            if (app->GetCapturedElement() == this) app->ReleaseMouse();
+        }
+        if (selecting) {
+            selecting = false;
+            ClampedShares(at, dragShares);
+            double m[3];
+            SelectionMinimums(m);
+            SetZoom(m[0], m[1], m[2]);
+            return true;
+        }
+        // No drag: a click on the region under the press.
+        const int region = GetHoveredRegion();
+        if (region >= 0 && onRegionClick) {
+            onRegionClick(region);
+            return true;
+        }
+    }
+
     const bool handled = UltraCanvasChartEngineElement::OnEvent(event);
     if (readingGuide && event.type == UCEventType::MouseMove) {
         double a = 0.0, b = 0.0, c = 0.0;
-        const bool inside = ScreenToShares(Point2Dd(event.pointer.x, event.pointer.y), a, b, c);
+        const bool inside = ScreenToShares(at, a, b, c);
         if (inside || guideActive) {
             guideActive = inside;
             guideShares[0] = a;
@@ -925,10 +1296,32 @@ bool UltraCanvasTernaryChart::OnEvent(const UCEvent& event) {
         guideActive = false;
         RequestRedraw();
     }
+    if (event.type == UCEventType::MouseDoubleClick && IsZoomed()) {
+        double a = 0.0, b = 0.0, c = 0.0;
+        if (ScreenToShares(at, a, b, c)) {
+            ResetZoom();
+            return true;
+        }
+    }
     if (!handled && event.type == UCEventType::MouseDown && event.button == UCMouseButton::Left) {
         const std::pair<size_t, size_t> hit = GetHoveredPoint();
-        if (hit.first != SIZE_MAX && onPointClick) {
-            onPointClick(hit.first, hit.second);
+        if (hit.first != SIZE_MAX) {
+            if (onPointClick) {
+                onPointClick(hit.first, hit.second);
+                return true;
+            }
+            return false;
+        }
+        double a = 0.0, b = 0.0, c = 0.0;
+        if (zoomByDrag && ScreenToShares(at, a, b, c)) {
+            // Maybe a drag: a region's click waits for the release.
+            pressActive = true;
+            selecting = false;
+            pressScreen = dragScreen = at;
+            pressShares[0] = dragShares[0] = a;
+            pressShares[1] = dragShares[1] = b;
+            pressShares[2] = dragShares[2] = c;
+            if (auto* app = UltraCanvasApplication::GetInstance()) app->CaptureMouse(this);
             return true;
         }
         const int region = GetHoveredRegion();

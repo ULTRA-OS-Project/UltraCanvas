@@ -343,6 +343,17 @@ backend builds from the call and the render state. The key holds:
 - the pinned Pango resolution, so a layout made at one point-to-pixel ratio
   is never reused at another.
 
+The key holds no transform, and none is needed: a layout is shaped once at
+the context's resolution and drawn through whatever transform is current, so
+text drawn under a zoom is as wide as the same text measured unscaled, times
+the zoom, to within a pixel of antialiasing at each end.
+`Tests/TextMeasureZoomTest.cpp` holds the backend to that from a zoom of 0.4
+to 3.0. An element that lays out at one zoom and draws at another - a node
+diagram, a drawing, a map - can therefore size its boxes from
+`GetTextLineDimensions` and trust them at every zoom; what it must allow for
+is only its own rounding, a measurement in whole pixels against a box in
+fractions.
+
 Left out on purpose: the device scale (a layout's extents are in logical
 units and, with hint metrics off, the same at any scale - only the paint
 differs), and the process-wide font options (antialias, hint style, hint

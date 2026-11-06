@@ -1,3 +1,183 @@
+#### 2026-11-06 *0.9.494*
+- **Text in the media viewer can be copied.** The text view (text, source,
+  Markdown files and notes) and the Details panel are display-only text
+  areas: they let the mouse select, but they never take the keyboard, so
+  Ctrl+C reached whatever held the focus - in UltraFiler's preview pane the
+  file display, which copied the files - and the viewer's own Ctrl+C test
+  compared the character, which Ctrl turns into a control code on most
+  platforms. A press in that text now gives the viewer the focus, and Ctrl+C
+  / Ctrl+Insert (Cmd+C on macOS) copy the selection by key code, the Details
+  panel's first; Ctrl+A selects all of the area last pressed in
+  (`UltraCanvasMediaViewer` 1.25.0).
+- **`UltraCanvasTextArea`: a Copy / Select All menu on read-only text.** A
+  right-click on a read-only or display-only area that neither
+  `onContextMenu` nor the spell checker takes opens Copy (dimmed without a
+  selection) and Select All. `SetReadOnlyContextMenu(false)` turns it off
+  (`UltraCanvasTextArea` 3.17.0).
+
+#### 2026-11-06 *0.9.493*
+- **The desktop's look on Linux and in the browser (T2 of the host theme
+  proposal).** `GetHostAppearance()` on X11 and Wayland reads the portal's
+  colour scheme over the session bus, GSettings (`color-scheme`,
+  `gtk-theme`, `accent-color`, `text-scaling-factor`, `enable-animations`,
+  `high-contrast`), the XSETTINGS manager's property (X11: `Net/ThemeName`,
+  `Gtk/EnableAnimations`), `~/.config/kdeglobals` (the scheme, the window
+  background's luminance, `AccentColor`, the animation factor) and
+  `gtk-4.0/` or `gtk-3.0/settings.ini` - the KDE file first in a KDE
+  session, the portal and GSettings only inside a desktop session, so a run
+  under Xvfb stays light in the bundled fonts. A change reaches the
+  handlers through the manager's `PropertyNotify` and a watch on the
+  config folders (dconf's database, `kdeglobals`, the GTK folders).
+  WebAssembly answers `prefers-color-scheme`, `prefers-contrast` and
+  `prefers-reduced-motion`, and their `change` events. The readers are pure
+  (`HostAppearanceLinux`), covered by `HostAppearanceTest`;
+  `LinuxHostAppearanceTest` runs the detector on a made-up config home.
+
+#### 2026-11-06 *0.9.492*
+- **A node diagram label that fit by the arithmetic was shortened by a
+  rounding, and the backend is cleared of the blame.** A card that grew to
+  exactly the width its name needed drew that name with an ellipsis: the
+  text is measured in whole pixels and the room for it computed in
+  fractions, so an exact fit came out a hundredth short. The fit now keeps
+  one pixel of slack on both sides of the comparison, in place of the five
+  percent margin 2.4.0 added on the theory that font hinting widened text
+  drawn at a low zoom. `Tests/TextMeasureZoomTest.cpp` measures that theory
+  against the Cairo backend and finds it false: text drawn under a zoom from
+  0.4 to 3.0 is the unscaled measurement times the zoom, to within a pixel,
+  so an element that lays out at one zoom and draws at another can trust its
+  measurements. The test stays as the guard.
+- **Text is antialiased in grayscale, not subpixel, by default.** The Cairo
+  backend rendered every glyph with LCD subpixel antialiasing, which colours
+  the edge of each stem red on one side and blue on the other. That reads as
+  sharper text only on an LCD with a horizontal RGB stripe at 1:1 scale; in
+  a screenshot, on a scaled, rotated or OLED screen, and in a window
+  composited through alpha - every UltraCanvas surface is ARGB - the colours
+  showed as red and green ghosts beside the text, as the demo's screenshots
+  did. `RenderContextCairo::SetTextAntialias(CAIRO_ANTIALIAS_SUBPIXEL)` is
+  still there for a host that knows its panel; the demo's Text Rendering
+  page switches it.
+
+#### 2026-11-05 *0.9.491*
+- **DemoApp's shell is translated.** The demo now has its own catalogue
+  (`media/locale/<lang>/UltraCanvasDemo.json`) in all thirty languages: the
+  window title, the category tree with every page's name, description and
+  variants, the filter field, the status legend, the source and
+  documentation windows' titles, the placeholder pages and the information
+  window. `extract_ui_strings.py` no longer skips DemoApp, and it reads an
+  application's name from a helper that passes it on
+  (`InitializeSystem(g_app, "UltraCanvasDemo")`). The pages themselves -
+  each element's examples - follow page by page.
+
+#### 2026-11-05 *0.9.490*
+- **`UltraCanvasFilerWidget::onFolderChangedOnDisk(folderPath)`: what the
+  folder watch saw change.** The widget told its host about its own
+  operations (`onFolderModified`) and about every rescan
+  (`onFolderRefreshed`). A host's folder tree therefore never heard of a
+  change it did not make. That covers a subfolder another program deleted.
+  It also covers one this widget deleted that Windows still listed as
+  "delete pending" when the delete reported, because a program held a
+  locked file in it. The new callback fires after every re-listing the
+  folder watch asked for, with the folder that changed. When that folder
+  itself is gone, the display has already moved up and the argument is the
+  folder that went.
+
+#### 2026-11-05 *0.9.489*
+- **The filer's last English messages are translated.** The status line a
+  copy or a move ends on ("3 files moved to "Photos"", "Move cancelled - 2 of
+  5 items moved to ...", "... (1 skipped)") was assembled from English words
+  in every language; it is now one whole sentence per verb and kind, the
+  counts in each language's plural forms and the names placed by the
+  translation. The refusal to delete the folder the running program lives in
+  - its message, the program-folder fact and the explanation - goes through
+  `Tr` as whole sentences too. 17 new standard-set texts, drafted in all
+  thirty languages (`UltraCanvasFilerWidget.cpp` 1.43.7).
+
+#### 2026-11-05 *0.9.488*
+- **The extractor's reading rules are tested.** `scripts/tests/test_extract_ui_strings.py`
+  holds what `extract_ui_strings.py` reads the sources by - a literal's
+  escapes (a `\xHH` or octal escape a byte of the UTF-8 text, `\uXXXX` a
+  code point), comments stripped without a `"/*"` or a URL's `//` inside a
+  string swallowing the code after it, a call's literal arguments, the sites
+  a file yields - after two escape bugs in two days; `locale-catalogues.yml`
+  runs it before the catalogue check.
+- **The desktop's look, read from the host (T1 of the host theme proposal).**
+  `UltraCanvasApplication::GetHostAppearance()` says whether the desktop is
+  dark, asks for high contrast or less motion, what its accent is, its
+  interface and monospace fonts and its text scale, with where it came
+  from. Windows reads the registry (`AppsUseLightTheme`, `AccentColorMenu`,
+  `TextScaleFactor`), the metrics and DWM; macOS reads AppKit
+  (`effectiveAppearance`, `controlAccentColor`, the accessibility options);
+  the other platforms answer light with their font detectors' fonts until
+  T2. A switch to dark while an application runs (`WM_SETTINGCHANGE` and
+  its kin, KVO on `effectiveAppearance`) is read once per burst and
+  `AddHostAppearanceHandler` hears it; the start-up report names the host's
+  look. `GetSystemFontStyle()` and `GetDefaultMonospacedFontStyle()` are the
+  value's fonts, a pin still winning. `ULTRACANVAS_HOST_APPEARANCE`
+  (`dark,font=Noto Sans 14,accent=#e95420,scale=1.25,contrast=high`) overrides
+  any of it for a dark, light or 14 pt run on any desktop.
+  `UltraCanvasHostAppearance.h` is header-only and pure; `HostAppearanceTest`
+  covers it without a display. `Docs/UltraCanvas/UltraCanvasHostAppearance.md`.
+
+#### 2026-11-04 *0.9.487*
+- **Windows: the system fonts stayed missing behind an empty font cache.**
+  fontconfig trusts its cache of a folder as long as the folder's time stamp
+  is unchanged, and `C:\Windows\Fonts` seldom changes: a cache that once came
+  out empty - a scan that failed, another program's fontconfig writing to the
+  same cache folder - kept every later start at the bundled fonts, with the
+  folder named in the configuration. The background scan now counts the fonts
+  it has from the Windows font folder; with none while the folder holds font
+  files, it reads the folder again past its cache, and as a last resort adds
+  its files one by one. An error in one element of the scan's configuration no
+  longer discards the rest of it. The debug log gives the counts at each step.
+
+#### 2026-11-04 *0.9.486*
+- **Ternary chart, Phase 3: zoom and density.**
+  - `UltraCanvasTernaryChart::SetZoom` shows only the sub-triangle where each
+    part is at least a minimum share. The minimums are kept in the model
+    (`TernaryAxis::minimum`) and saved in the JSON.
+  - When zoomed, everything follows the zoom. The ticks cover the visible
+    range, switching to a finer step when needed. Drawing is clipped to the
+    triangle. Regions are cut at its edges, so their names stay inside, and
+    points outside it are left out.
+  - Dragging across the triangle zooms to the smallest sub-triangle that holds
+    both ends of the drag, shown as a preview while dragging. A double click
+    shows the whole triangle again. A click on a region now fires on release.
+  - `SetDensity(n)` bins the visible points into n * n small triangles and
+    colours each through a colour map, with a colour bar.
+    `SetDensityContours` draws contour lines over the counts, and
+    `SetShowPoints(false)` hides the markers under them.
+  - New sample: `TernarySamples::FeldsparCloud()`, 2,400 invented analyses.
+    The demo gains a Density tab, a density control, a zoom-out button and a
+    read-out of the zoom.
+
+#### 2026-11-04 *0.9.485*
+- **UltraCanvasFilerWidget: the move / copy dialogs are translated whole.**
+  The drop confirmation ("Move 3 items into …?", From / Into / Size, the
+  Copy / Move / Cancel buttons), the copy / move problem dialog, the
+  paste name-conflict dialog (Existing / Pasted rows with their newer /
+  older notes, Merge / Keep both / Replace, the "apply to all remaining
+  conflicts" scope) and the rename name-conflict dialog were English in
+  every language. Every text in them now goes through `Tr` / `TrF` /
+  `TrN` / `TrC` as a whole sentence per verb and kind, names as `{0}`,
+  counts in each language's plural forms; all thirty languages carry
+  them.
+- **UltraCanvasFilerWidget: the summaries a delete, copy or move ends on
+  are translated.** "Deleted 3 of 5 items. 2 were skipped.", the reason
+  beside each skipped item (write-protected, in use by a program, the
+  name already taken), the list caption, the retry and Close buttons, and
+  what a delete as administrator reports were English in every language.
+  They now go through `Tr` / `TrF` / `TrN`: counts in each language's
+  plural forms, the trash by the platform's name in a whole sentence; all
+  thirty languages carry them.
+- **check_locale_catalogues: the standard set must be translated in every
+  language.** An entry of `media/locale/en/Standard.json` that a language
+  lacks now fails the `locale-catalogues` CI gate (a regional variant such
+  as `pt-BR` counts its parent's, as the runtime's fallback walk does): it
+  would show in English to everyone using that language. 111 standard
+  texts that the localisation editor, the text bar, the menu customiser
+  and the media viewer had added untranslated are drafted in all thirty
+  languages, so the gate starts clean.
+
 #### 2026-11-04 *0.9.484*
 - **A delete Windows answers "Access is denied" is no longer taken for a
   permission problem by default.** On Windows that one error stands for four

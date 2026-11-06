@@ -1,3 +1,31 @@
+#### 2026-11-06 *1.107.5*
+- **Text selected in the preview pane can be copied.** Ctrl+C after
+  selecting text in a previewed text file or in the Details panel copied the
+  selected files instead (the file display still held the keyboard). A press
+  in the text now moves the keyboard to the preview, so Ctrl+C copies the
+  text, Ctrl+A selects all of it, and a right-click opens Copy / Select All.
+
+#### 2026-11-05 *1.107.4*
+- **The folder tree drops a folder deleted in the file pane, even when the
+  delete stopped at a locked file first.** Windows kept such a folder listed
+  until the program holding the file let go. The tree looked at the folder
+  the moment the delete reported, saw it still there, and kept its row. The
+  tree now also follows what a pane's folder watch sees change on disk. A
+  folder that goes later, or that another program deletes or creates in a
+  folder a pane shows, is brought in line as soon as the pane re-lists it.
+
+#### 2026-11-04 *1.107.3*
+- **UltraFiler in every language.** The settings window's last English
+  texts - the folder tree's colours and width, the file-operation and
+  thumbnail-cache captions, the cache figures, the TAR page's labels - go
+  through `Tr`, the counts through `TrN`; a cache note that translated only
+  its first half is one sentence now; the conflict choices' element ids no
+  longer change with the language. And UltraFiler's own catalogue
+  (`media/locale/<lang>/UltraFiler.json`) now exists in all thirty
+  languages: until now every one of its texts - the toolbar, the menus,
+  the dialogs, the status line, the whole settings window - showed in
+  English whatever the language.
+
 #### 2026-11-04 *1.107.2*
 - **Deleting a folder on an external drive no longer ends in "could not be
   deleted even with administrator permission".** Windows answers "Access is

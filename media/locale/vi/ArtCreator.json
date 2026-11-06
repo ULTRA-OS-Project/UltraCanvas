@@ -1,0 +1,22 @@
+{
+  "@language": "vi",
+  "@translated-by": "machine draft 2026-11-05, reviewed by -",
+  "Added the text: click it with the Text tool, or double-click it, to edit it": "Đã thêm văn bản: nhấp vào văn bản bằng Công cụ văn bản, hoặc nhấp đúp vào nó, để chỉnh sửa",
+  "Changed the text": "Đã thay đổi văn bản",
+  "Click on the page and type, or click a text to edit it; the bar above sets its font, size, style, alignment and spacing. Escape, Ctrl+Enter or a click outside finishes": "Nhấp vào trang rồi gõ, hoặc nhấp vào một văn bản để chỉnh sửa; thanh phía trên đặt phông chữ, kích thước, kiểu, căn chỉnh và khoảng cách của văn bản. Escape, Ctrl+Enter hoặc nhấp ra ngoài để kết thúc",
+  "Delete Text": "Xóa văn bản",
+  "Edit Text": "Chỉnh sửa văn bản",
+  "Editing the text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes": "Đang chỉnh sửa văn bản: Enter bắt đầu dòng mới; Escape, Ctrl+Enter hoặc nhấp ra ngoài để kết thúc",
+  "Letter Spacing": "Khoảng cách chữ",
+  "Line Spacing": "Giãn dòng",
+  "Nothing was typed": "Chưa gõ gì",
+  "Text Alignment": "Căn chỉnh văn bản",
+  "Text Bold": "Văn bản đậm",
+  "Text Font": "Phông chữ văn bản",
+  "Text Italic": "Văn bản nghiêng",
+  "Text Size": "Kích thước văn bản",
+  "Text Strikethrough": "Gạch ngang văn bản",
+  "Text Underline": "Gạch chân văn bản",
+  "The text was emptied, so it was deleted": "Văn bản đã bị làm trống nên đã bị xóa",
+  "Typing a new text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes": "Đang gõ văn bản mới: Enter bắt đầu dòng mới; Escape, Ctrl+Enter hoặc nhấp ra ngoài để kết thúc"
+}

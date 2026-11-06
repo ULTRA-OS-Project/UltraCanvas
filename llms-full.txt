@@ -1063,6 +1063,30 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   (`ParseGtkFontName`, `ParseKdeFontEntry`, `ReadIniValue`), tested without
   a desktop. See `Docs/UltraCanvas/UltraCanvasSystemFont.md`.
 
+  The rest of the desktop's look is `UltraCanvasApplication::GetHostAppearance()`
+  (`UltraCanvasHostAppearance.h`, header-only and pure: `HostAppearance` -
+  dark, high contrast, reduced motion, the accent, the two fonts, the text
+  scale, the source - `DefaultHostAppearance`, `ApplyHostAppearanceOverride`
+  for `ULTRACANVAS_HOST_APPEARANCE`, `HostAppearanceReport`, `ColorFromHex`,
+  the Windows raw-value conversions), filled by `DetectHostAppearanceNative`:
+  the registry, the metrics and DWM on Windows
+  (`OS/MSWindows/UltraCanvasWindowsHostAppearance.cpp`), AppKit on macOS
+  (`OS/MacOS/UltraCanvasMacOSHostAppearance.mm`), on Linux and the BSDs the
+  portal's colour scheme, GSettings, the XSETTINGS manager's property (X11),
+  `kdeglobals` and `settings.ini` (`OS/Linux/UltraCanvasLinuxHostAppearance.cpp`,
+  the pure readers `HostAppearanceLinux` in the header, the session helpers
+  `UltraCanvasLinuxDesktop.h`), the browser's media queries in WebAssembly,
+  the default with the font detectors' fonts on Android. The platforms'
+  change events (`WM_SETTINGCHANGE` and its kin, KVO on
+  `effectiveAppearance`, XSETTINGS' `PropertyNotify` and the config folders
+  watched by `UltraCanvasLinuxHostAppearanceWatch`, the media queries'
+  `change`) call `ScheduleHostAppearanceRefresh`, one read per burst, and
+  `AddHostAppearanceHandler` hears a difference; the system fonts are the
+  value's. `HostAppearanceTest` covers the pure half,
+  `LinuxHostAppearanceTest` the Linux detector against a made-up config
+  home. Phases T1 and T2 of `Docs/UltraCanvas/UltraCanvasHostThemeProposal.md`;
+  see `Docs/UltraCanvas/UltraCanvasHostAppearance.md`.
+
   Emoji come from a bundled font the emoji setting picks
   (`UltraCanvasEmojiSettings.h`: `EmojiStyle` Colour / Monochrome / System,
   `EmojiSettings::Load` / `Save` on `Emoji.conf` in the UltraCanvas settings
@@ -34772,6 +34796,32 @@ filer->onFolderModified = [this](const std::string& folder) {
 };
 ```
 
+**Changes the widget did not make** arrive through
+`onFolderChangedOnDisk(folderPath)` instead. The folder watch (see
+[Watching the shown folder](#watching-the-shown-folder)) noticed the shown
+folder change on disk, and the display re-listed it. Navigation, sorting and a
+plain `Refresh()` never fire it, and nothing goes to a "worked in" list. Its
+cases are:
+
+- Another program created, deleted or renamed something in the folder.
+- An entry this widget deleted went at last. On Windows, a folder whose last
+  file a program still held, perhaps the locked file a delete stopped at,
+  stays listed as *delete pending* until the program lets go. So when the
+  delete reported the folder through `onFolderModified`, the folder was still
+  there.
+- The shown folder itself was deleted. The display has already
+  [moved up](#watching-the-shown-folder), and the argument is the folder that
+  went.
+
+A host's folder tree should re-sync that folder's rows from both callbacks.
+UltraFiler's tree kept a deleted subfolder's row for good while it listened to
+`onFolderModified` alone.
+
+```cpp
+filer->onFolderModified      = [this](const std::string& f) { tree.Resync(f); history.Record(f); };
+filer->onFolderChangedOnDisk = [this](const std::string& f) { tree.Resync(f); };
+```
+
 ### Finished copies and moves
 
 `onTransferFinished(result)` fires once a paste, a drop or a Move to / Copy to
@@ -34960,6 +35010,7 @@ reports what the system hides, not what the host asked for.
 | `onFolderRefreshed()` | After every (re)scan of the shown folder — the listing changed (file operation, drop, rename, `Refresh()`) |
 | `onListingPendingChanged(status)` | A remote folder's fetch status changed (`remoteListingStatus`): set when a fetch is waited for, updated as it goes, `""` once the listing is in — for the host's status line (see [Showing that a folder is on its way](#showing-that-a-folder-is-on-its-way)) |
 | `onFolderModified(folderPath)` | The **user** changed a folder's content through the widget — see [Folder modifications](#folder-modifications) |
+| `onFolderChangedOnDisk(folderPath)` | The folder watch saw the shown folder change on disk and the display re-listed it: another program's change, an entry deleted here that Windows listed until a program let go, or the folder itself gone (the display has moved up) — see [Folder modifications](#folder-modifications) |
 | `onTransferFinished(result)` | A copy or move ended — what arrived where — see [Finished copies and moves](#finished-copies-and-moves) |
 | `onDeleteFinished(result)` | A delete ended — what went, to the trash or for good — see [Finished copies and moves](#finished-copies-and-moves) |
 | `onViewTypeChanged(viewType)` | View switched (API or Display > Type) |
@@ -41790,6 +41841,188 @@ default. Hovering a hexagon shows its cell index and value.
 - The geometry math (`MakeHexLayout`, `HexCenter`, `HexNearestCell`) is
   dependency-free and unit-tested (grid fit, centre round-trip, point binning).
 - Cells whose value is `NaN` (transparent NaN colour) are skipped.
+
+==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasHostAppearance.md
+==============================================================================
+
+# UltraCanvasHostAppearance
+
+<!-- doc-check: UltraCanvasApplication* app; -->
+
+**What the desktop looks like, read from the host.** A desktop is light or
+dark, has an accent colour, an interface font at a size, a monospace font,
+a text scale, and may ask for high contrast or less motion. `HostAppearance`
+is that value; `UltraCanvasApplication::GetHostAppearance()` reads it from
+the platform once, keeps it, and reads it again when the host says it
+changed, so an application that asks hears about a switch to dark while it
+runs. It is phase T1 of
+[`UltraCanvasHostThemeProposal.md`](UltraCanvasHostThemeProposal.md): the
+reading, with T2 the Linux, BSD and WebAssembly backends. The theme built
+from it (`FromHost`, the policy) is T3, and until then the value is there
+for an application's own handler and for the system fonts, which now come
+from it.
+
+- Header: `UltraCanvas/include/UltraCanvasHostAppearance.h` (header-only, pure)
+- Application: `GetHostAppearance`, `RefreshHostAppearance`, `ScheduleHostAppearanceRefresh`, `AddHostAppearanceHandler` / `RemoveHostAppearanceHandler` (`UltraCanvasApplication.h`)
+- Platform code: `OS/MSWindows/UltraCanvasWindowsHostAppearance.cpp`, `OS/MacOS/UltraCanvasMacOSHostAppearance.mm`, `OS/Linux/UltraCanvasLinuxHostAppearance.cpp` with `UltraCanvasLinuxHostAppearanceWatch.cpp` (X11 and Wayland, the BSDs with them), `OS/WASM/UltraCanvasWASMApplication.cpp`; Android answers the default with its font detectors' fonts
+- Tests: `Tests/HostAppearanceTest.cpp` (target `HostAppearanceTest`, no display), `Tests/LinuxHostAppearanceTest.cpp` (`LinuxHostAppearanceTest`, the Linux detector against a made-up config home, no display, no session)
+
+## Contents
+
+- [The value](#the-value)
+- [Reading it](#reading-it)
+- [Hearing a change](#hearing-a-change)
+- [What each platform reads](#what-each-platform-reads)
+- [The override](#the-override)
+- [The pure half](#the-pure-half)
+- [Related](#related)
+
+## The value
+
+```cpp
+const HostAppearance& host = app->GetHostAppearance();
+bool dark = host.dark;                         // the desktop prefers a dark look
+bool contrast = host.highContrast;             // Windows High Contrast, macOS Increase Contrast
+bool calm = host.reduceMotion;                 // the animation preference
+std::optional<Color> accent = host.accent;     // the desktop's accent, when it has one
+FontStyle ui = host.uiFont;                    // Segoe UI 9, Helvetica Neue 13, Ubuntu 12 ...
+FontStyle mono = host.monoFont;                // Consolas, Menlo, Ubuntu Mono ...
+double scale = host.textScale;                 // Windows "Text size": 1.0 to 2.25
+std::string source = host.source;              // "windows-registry", "macos-appkit", "default", "+override"
+```
+
+Font sizes are in points, as the text engine takes them; the text scale is
+a factor over them that the theme (T3) will apply. `source` names where
+the value came from, for the start-up report (`UltraCanvas: host
+appearance dark, accent #0078d4, font Segoe UI 9, mono Consolas 9, from
+windows-registry` in the debug log).
+
+`GetSystemFontStyle()` and `GetDefaultMonospacedFontStyle()` are `uiFont`
+and `monoFont`, unless `SetSystemFontStyle` / `SetDefaultMonospacedFontStyle`
+pinned them ([`UltraCanvasSystemFont.md`](UltraCanvasSystemFont.md)); a pin
+outlives a host change.
+
+## Reading it
+
+The first `GetHostAppearance()` asks the platform (`DetectHostAppearanceNative`)
+and applies the override; later calls return the kept value. It is read on
+the UI thread. `RefreshHostAppearance()` reads it again now and, when the
+value differs, runs the handlers. The platforms call
+`ScheduleHostAppearanceRefresh()` from their change events, from any
+thread: it posts one refresh to the UI thread per burst of events, so the
+several `WM_SETTINGCHANGE` a switch to dark sends become one read, and the
+handlers run once.
+
+```cpp
+app->RefreshHostAppearance();            // read the host again now; handlers when it changed
+app->ScheduleHostAppearanceRefresh();    // the same, posted to the UI thread, bursts coalesced
+```
+
+## Hearing a change
+
+```cpp
+int handler = app->AddHostAppearanceHandler([](const HostAppearance& host) {
+    // re-style a hand-painted panel, pick a dark or light image, ...
+    (void)host.dark;
+});
+app->RemoveHostAppearanceHandler(handler);
+```
+
+A handler runs on the UI thread after the value changed, with the new
+value. Until T3 nothing in the framework acts on the change by itself: the
+theme stays what the application set. An application that wants to follow
+today installs a handler and calls `UltraCanvasTheme::SetCurrent` with
+`Dark()` or `Light()`, as UltraVideo's `ThemeFor` does.
+
+## What each platform reads
+
+| Platform | Dark, contrast, motion | Accent | Fonts and scale | Change event |
+|---|---|---|---|---|
+| Windows | `HKCU\...\Themes\Personalize\AppsUseLightTheme` (0 is dark; missing is light); `SPI_GETHIGHCONTRAST`; `SPI_GETCLIENTAREAANIMATION` off is "reduce" | `HKCU\...\Explorer\Accent\AccentColorMenu` (the colour Settings shows), else `DwmGetColorizationColor` | the message font and Consolas ([`UltraCanvasSystemFont.md`](UltraCanvasSystemFont.md)); `HKCU\Software\Microsoft\Accessibility\TextScaleFactor` (100 to 225) | `WM_SETTINGCHANGE`, `WM_THEMECHANGED`, `WM_DWMCOLORIZATIONCOLORCHANGED` in the window procedure, every top-level window getting the broadcast and the application reading once |
+| macOS | `NSApp.effectiveAppearance` best match of Aqua / DarkAqua (10.14); `NSWorkspace` `accessibilityDisplayShouldIncreaseContrast`, `...ShouldReduceMotion` | `NSColor.controlAccentColor` in sRGB (10.14) | the system font and the system monospace; scale 1.0, macOS scales the display | KVO on `effectiveAppearance`, `NSSystemColorsDidChangeNotification`, `NSWorkspaceAccessibilityDisplayOptionsDidChangeNotification`, installed once `NSApp` exists |
+| Linux, BSD (X11 and Wayland) | the portal's `org.freedesktop.appearance color-scheme` over the session bus first (every modern desktop answers it); then GSettings `color-scheme` (`prefer-dark`) and `gtk-theme`, the XSETTINGS manager's `Net/ThemeName` (X11), `settings.ini`'s `gtk-application-prefer-dark-theme` and `gtk-theme-name`, `kdeglobals`' `ColorScheme` and `[Colors:Window] BackgroundNormal` (dark under half luminance) - the KDE file first in a KDE session; high contrast from GSettings `org.gnome.desktop.a11y.interface high-contrast` or a theme named HighContrast; motion from GSettings `enable-animations`, XSETTINGS `Gtk/EnableAnimations` or `kdeglobals`' `AnimationDurationFactor` | GSettings `accent-color` (GNOME 47's names) or `kdeglobals`' `AccentColor` | the font detectors ([`UltraCanvasSystemFont.md`](UltraCanvasSystemFont.md)); GSettings `text-scaling-factor` | `PropertyNotify` on the XSETTINGS manager's window (X11); `UltraCanvasFolderWatcher` on `~/.config`, `~/.config/dconf` (GSettings' database, the portal on GNOME), `gtk-4.0/` and `gtk-3.0/` |
+| WebAssembly | `prefers-color-scheme: dark`, `prefers-contrast: more`, `prefers-reduced-motion: reduce` | none | the bundled fonts | the media queries' `change` events |
+| Android | light (its own backend is to come) | none | the font detectors | none yet |
+| Everywhere | The `default`: light, no accent, the bundled Ubuntu 12 and Ubuntu Mono 12, when nothing answers | | | |
+
+## The override
+
+`ULTRACANVAS_HOST_APPEARANCE` is applied over what the host said, on every
+read - for a dark, light or 14 pt run of an application on any desktop,
+and for CI screenshots. Comma-separated, every part optional, in any order;
+a part it does not understand is ignored; the source gains `+override`.
+
+```
+ULTRACANVAS_HOST_APPEARANCE="dark,font=Noto Sans 14,mono=Fira Code 13,accent=#e95420,scale=1.25,contrast=high,motion=reduce"
+```
+
+| Part | Meaning |
+|---|---|
+| `dark`, `light`, `look=dark`, `look=light` | the look |
+| `contrast=high`, `contrast=normal`, `high-contrast` | high contrast |
+| `motion=reduce`, `motion=full`, `reduce-motion` | reduced motion |
+| `accent=#rrggbb`, `accent=none` | the accent, or none |
+| `font=<family> <points>`, `mono=<family> <points>` | the fonts, in the GTK form (`Noto Sans Bold 10.5`: style words dropped) |
+| `scale=<factor>` | the text scale, 0.5 to 4 |
+
+The portal and GSettings are asked only inside a desktop session
+(`XDG_CURRENT_DESKTOP` or `DESKTOP_SESSION` set): with no desktop running -
+a bare window manager, an SSH session, a test under Xvfb - the portal is not
+there and the schemas answer only their compiled defaults, which nobody
+chose, so only XSETTINGS and the files are read. The source then says where
+the look came from: `linux:portal`, `linux:gsettings`, `linux:xsettings`,
+`linux:gtk-settings-ini`, `linux:kdeglobals`, or `linux:default`.
+
+## The pure half
+
+The header holds what a test can hold without a desktop: the value, the
+default, the conversions of the raw values the Windows backend fetches,
+the Linux readers and their composer, the colour-as-text helpers, the
+override and the report line.
+
+```cpp
+HostAppearance host = DefaultHostAppearance();                                // light, no accent, Ubuntu 12, Ubuntu Mono 12
+bool applied = ApplyHostAppearanceOverride(host, "dark,font=Noto Sans 14");   // true; host.dark, host.uiFont Noto Sans 14
+std::string line = HostAppearanceReport(host);                                // "dark, no accent, font Noto Sans 14, mono Ubuntu Mono 12, from default+override"
+Color accent;
+bool ok = ColorFromHex("#0078d4", accent);                                   // true
+std::string hex = HexOfColor(accent);                                         // "#0078d4"
+bool dark = HostAppearanceWindows::DarkFromAppsUseLightTheme(0);              // true
+Color menu = HostAppearanceWindows::AccentFromAbgr(0xFFD47800u);              // #0078d4: the registry's 0xAABBGGRR
+Color dwm = HostAppearanceWindows::AccentFromArgb(0xC40078D4u);               // #0078d4: DWM's 0xAARRGGBB
+double factor = HostAppearanceWindows::TextScaleFromPercent(125);             // 1.25; outside 100-225 gives 1.0
+```
+
+The Linux readers, in `HostAppearanceLinux`: `DecodeXSettings` reads the
+manager's property as the XSETTINGS specification lays it out, in either
+byte order; `DarkFromThemeName`, `DarkFromColorScheme` and
+`DarkFromPortalColorScheme` are the three ways a desktop says dark;
+`ParseKdeColor` and `IsDarkColor` read `kdeglobals`' colours;
+`AccentFromGnomeName` knows GNOME 47's nine names. `Sources` holds what
+the platform fetched, each part absent when its source is not there, and
+`HostAppearanceFromSources` composes them with the precedence above.
+
+```cpp
+HostAppearanceLinux::XSettingsMap settings;
+std::vector<uint8_t> property;                                                // the _XSETTINGS_SETTINGS bytes
+bool decoded = HostAppearanceLinux::DecodeXSettings(property.data(), property.size(), settings);
+bool darkName = HostAppearanceLinux::DarkFromThemeName("Adwaita-dark");       // true
+std::optional<bool> scheme = HostAppearanceLinux::DarkFromColorScheme("prefer-dark");   // true; "default" gives nothing
+Color window;
+bool kde = HostAppearanceLinux::ParseKdeColor("35,38,41", window);            // true
+bool darkWindow = HostAppearanceLinux::IsDarkColor(window);                   // true
+std::optional<Color> accent = HostAppearanceLinux::AccentFromGnomeName("blue");   // #3584e4
+HostAppearanceLinux::Sources sources;
+sources.gsColorScheme = "prefer-dark";
+HostAppearance composed = HostAppearanceLinux::HostAppearanceFromSources(sources);   // dark, from "gsettings"
+```
+
+## Related
+
+- [`UltraCanvasHostThemeProposal.md`](UltraCanvasHostThemeProposal.md) - the whole: the theme from the host (T3), every element following (T4), the setting and UOS-Settings (T5)
+- [`UltraCanvasSystemFont.md`](UltraCanvasSystemFont.md) - the font detectors the value's fonts come from, and the pins
+- [`UltraCanvasTheme.md`](UltraCanvasTheme.md) - the colour roles a handler sets today
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasHostFileIcons.md
@@ -62332,6 +62565,17 @@ backend builds from the call and the render state. The key holds:
 - the pinned Pango resolution, so a layout made at one point-to-pixel ratio
   is never reused at another.
 
+The key holds no transform, and none is needed: a layout is shaped once at
+the context's resolution and drawn through whatever transform is current, so
+text drawn under a zoom is as wide as the same text measured unscaled, times
+the zoom, to within a pixel of antialiasing at each end.
+`Tests/TextMeasureZoomTest.cpp` holds the backend to that from a zoom of 0.4
+to 3.0. An element that lays out at one zoom and draws at another - a node
+diagram, a drawing, a map - can therefore size its boxes from
+`GetTextLineDimensions` and trust them at every zoom; what it must allow for
+is only its own rounding, a measurement in whole pixels against a box in
+fractions.
+
 Left out on purpose: the device scale (a layout's extents are in logical
 units and, with hint metrics off, the same at any scale - only the paint
 differs), and the process-wide font options (antialias, hint style, hint
@@ -73037,8 +73281,9 @@ FontStyle ui = app->GetSystemFontStyle();                 // Segoe UI 9, Cantare
 FontStyle code = app->GetDefaultMonospacedFontStyle();    // Consolas, the GNOME monospace font, Menlo ...
 ```
 
-Sizes are in points, as the text engine takes them. Both are read once
-and cached for the process.
+Sizes are in points, as the text engine takes them. Both are the host
+appearance's fonts ([`UltraCanvasHostAppearance.md`](UltraCanvasHostAppearance.md)):
+read once, kept, and read again when the desktop says its look changed.
 
 ```cpp
 FontStyle pinned;
@@ -73090,7 +73335,8 @@ A size is parsed dot-decimal whatever the locale, never through `strtod`:
 
 - [`UltraCanvasFontFile.md`](UltraCanvasFontFile.md) - registering a font the application brings
 - [`UltraCanvasEmojiSettings.md`](UltraCanvasEmojiSettings.md) - the emoji font, a setting rather than the desktop's
-- [`UltraCanvasHostThemeProposal.md`](UltraCanvasHostThemeProposal.md) - the rest of following the host: colours, text scale, high contrast, and the change events
+- [`UltraCanvasHostAppearance.md`](UltraCanvasHostAppearance.md) - the rest of what the host says: dark or light, the accent, high contrast, the text scale, and the change events the fonts follow too
+- [`UltraCanvasHostThemeProposal.md`](UltraCanvasHostThemeProposal.md) - the theme built from it
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasSystemLanguage.md
@@ -74019,6 +74265,8 @@ the three shares of every point add up to 100 %.
   - [Corners and axes](#corners-and-axes)
 - [Regions](#regions)
 - [Paths, bubbles and curves](#paths-bubbles-and-curves)
+- [Zoom](#zoom)
+- [Density](#density)
 - [Reading direction](#reading-direction)
 - [What the chart draws](#what-the-chart-draws)
 - [Interaction](#interaction)
@@ -74132,6 +74380,53 @@ TernaryModel swings = TernarySamples::VoteTrajectories();   // paths with arrows
 TernaryModel genetics = TernarySamples::DeFinetti();        // bubbles and a curve
 chart->SetBubbleRadiusRange(3.0, 22.0);
 ```
+
+## Zoom
+
+`SetZoom(minimumA, minimumB, minimumC)` shows only the sub-triangle where
+each part is at least its minimum share; `ResetZoom()` shows the whole
+triangle again. The minimums live in the model (`TernaryAxis::minimum`), so a
+saved JSON file keeps its zoom. A zoom that leaves less than 2 % of the
+triangle is refused.
+
+Zoomed in, everything maps through the zoom: the ticks run from each axis's
+minimum to its minimum plus the span, with a finer step (25, 5, 2.5 %...)
+when 10 % would leave fewer than three intervals; drawing is clipped to the
+triangle; region outlines are cut at its edges, so their names and hit areas
+stay inside; points outside it are neither drawn nor hit.
+
+Dragging across the triangle zooms to the smallest sub-triangle holding both
+ends of the drag, previewed as a dashed triangle while the drag lasts; a
+double click inside shows the whole triangle again. Because a press may
+become a drag, a click on a region fires on release. `SetZoomByDrag(false)`
+turns this off; `onZoomChanged` follows every change.
+
+```cpp
+chart->SetZoom(0.2, 0.1, 0.3);                 // clay 20-60 %, sand 10-50 %, silt 30-70 %
+chart->onZoomChanged = []() {};
+bool zoomed = chart->IsZoomed();
+```
+
+## Density
+
+With thousands of compositions, markers hide one another. `SetDensity(n)`
+cuts the (zoomed) triangle into n * n small triangles and colours each by how
+many visible points fall in it, through a colour map (`SetDensityColormap`,
+Blues by default); empty cells stay clear. `SetDensityContours(levels)` adds
+contour lines at evenly spaced levels over the counts, smoothed at the
+lattice corners. A colour bar along the bottom says what the shades count.
+`SetShowPoints(false)` hides the markers under it.
+
+```cpp
+chart->SetModel(TernarySamples::FeldsparCloud());   // 2,400 compositions
+chart->SetDensity(15);
+chart->SetDensityContours(4);
+chart->SetShowPoints(false);
+int fullest = chart->GetDensityMax();
+```
+
+`GetDensityTotal`, `DensityCountAt` and `GetContourSegmentCount` report what
+the last draw counted.
 
 ## Reading direction
 
@@ -74247,13 +74542,15 @@ and the model is left untouched.
 | `TernarySamples::SoilTexture()` | The USDA soil texture triangle: the twelve classes as regions on the same layout, no points |
 | `TernarySamples::DeFinetti()` | Genotype shares (AA, Aa, aa) of invented populations as bubbles sized by sample, with the Hardy-Weinberg curve; the isolated populations lack heterozygotes |
 | `TernarySamples::VoteTrajectories()` | Four invented regions' vote shares over five elections, as paths with arrowheads |
+| `TernarySamples::FeldsparCloud()` | 2,400 invented feldspar analyses round three compositions, the same every run: a cloud for the density view |
 
 Every name and number in the samples is made up.
 
 ## What is not built yet
 
-Phases 1 and 2 of the proposal are built. Still to come, as Phase 3: zoom to
-a sub-triangle, and density by triangular binning with iso-lines.
+All three phases of the proposal are built. Not planned: the two-triangle
+QAPF diamond (the proposal's Q5); `ChartTernaryProjection::SetApexDown`
+keeps the door open for it.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasTextAreaExamples.md
@@ -76688,6 +76985,14 @@ After mutating any of the three, call `RequestRedraw()` on the affected element 
 | 4     | `CAIRO_ANTIALIAS_FAST`      | Hint to the backend: choose speed over quality                              |
 | 5     | `CAIRO_ANTIALIAS_GOOD`      | Hint: balanced quality                                                      |
 | 6     | `CAIRO_ANTIALIAS_BEST`      | Hint: highest quality                                                       |
+
+The framework's default is `CAIRO_ANTIALIAS_GRAY`. Subpixel rendering colours
+the edges of every stem (red on one side, blue on the other), which reads as
+sharper text only on an LCD with a horizontal RGB stripe at 1:1 scale; in a
+screenshot, on a scaled, rotated or OLED screen, and in a window composited
+through alpha, as every UltraCanvas window is, the colours show as ghosts
+beside the text. A host that knows its panel selects `SUBPIXEL` with
+`RenderContextCairo::SetTextAntialias`.
 
 ## Hint Styles
 
@@ -84480,8 +84785,8 @@ child elements of its own)
 `Tests/VideoTimelineElementTest.cpp` (the element in a window, under Xvfb)
 **Design:** the screens and specifications in `Apps/UltraVideo/screens/`, and
 `Docs/Research/UltraVideoDesignProposal.md` §7
-**Version:** 1.4.0
-**Last Modified:** 2026-11-01
+**Version:** 1.5.0
+**Last Modified:** 2026-11-05
 **Author:** UltraCanvas Framework
 
 ## Contents
@@ -84630,8 +84935,11 @@ timeline->ClearDropFeedback();                     // a DragLeave event does the
 
 ### Providers
 
-Thumbnails and peaks arrive later, from the app. The element asks once per
-clip and zoom step, caches what it gets, and draws the clip's fill alone
+Thumbnails and peaks arrive later, from the app. The element asks for the
+thumbnails of the part of a clip in view, a few pictures at a time (`frames`
+evenly spread moments from `in` to `out`, both included; a picture that
+cannot be decoded may be a null pixmap, its slot then stays empty), and the
+peaks once per clip; it caches what it gets, and draws the clip's fill alone
 until then — never a spinner inside a clip. The callback may run at once or
 after a decode on another thread; call `done` on the UI thread.
 
@@ -84797,9 +85105,12 @@ timeline->SetStyle(style);
   ignores it then, so a decode need not be cancelled.
 - The model keeps seconds; the element rounds edits to the frame grid of
   `frameRate` and shows `HH:MM:SS:FF`.
-- Thumbnail requests are keyed by source, range, frame count and height,
-  with the frame count rounded up to a multiple of four so that zooming
-  does not decode at every step.
+- Thumbnail requests are keyed by source, range, frame count and height.
+  Each picture fills a slot of about one frame's width at its own moment,
+  so it sits where its time is on the ruler, to the clip's end at any zoom;
+  the slot length steps by a factor of root 2, so zooming inside a step and
+  scrolling reuse what was decoded. Only the slots in view are asked for,
+  in chunks of eight.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasVolumeMonitor.md
@@ -86341,10 +86652,28 @@ the system fonts were then never loaded. Once the full set is in use,
 `FONTCONFIG_FILE` names its `fonts.conf`, so a reload of fontconfig's
 configuration by any library reads the full set rather than the start's
 bundled fonts alone. A set with folders of its own but without Windows' (a
-`fonts.conf` beside the program) gets them added. The debug log says how it
-ended: "UltraCanvas: N system and M application font files; the Windows font
-folder (C:/WINDOWS/fonts) is read" - or "NOT read", or "read when the scan
-ends".
+`fonts.conf` beside the program) gets them added.
+
+Named is not read: fontconfig keeps a cache of each folder and trusts it as
+long as the folder's time stamp is unchanged, and `C:\Windows\Fonts` seldom
+changes - a cache that once came out empty (a scan that failed, another
+program's fontconfig writing to the same cache folder) left every later start
+with the bundled fonts alone. So the scan counts the fonts it has from the
+Windows font folder; with none while the folder holds font files, it reads the
+folder again past its cache (`FcDirCacheUnlink`, a new build), and as a last
+resort adds its files one by one. An error in one element of the scan's
+configuration no longer discards the rest of it.
+
+The debug log (`ULTRACANVAS_DEBUG_LOG`) says how it went:
+
+- "UltraCanvas: N system and M application font files, K of them from the
+  Windows font folder (C:/WINDOWS/fonts), which is named" - at the start;
+  "named when the scan ends" while the scan still runs.
+- "UltraCanvas: the system font scan has K fonts from C:/WINDOWS/fonts (F font
+  files there)", and when K was 0, "... read again past its cache: K fonts"
+  or "... added file by file: K fonts".
+- "UltraCanvas: the font set in use has K fonts from C:/WINDOWS/fonts" after
+  the windows switched to the full set.
 
 Text goes through Pango's fontconfig font map on every thread: the main
 thread's is made in `LoadBundledFontsNative()`, and `PANGOCAIRO_BACKEND=fc` is
@@ -97645,7 +97974,8 @@ with the values in its language.
 | Script | Does |
 |---|---|
 | `scripts/extract_ui_strings.py` | rewrites the English catalogues from the sources: adds the framework's `Tr` keys to `Standard.json` (never removes one, so the vocabulary stays) and rewrites each application's `en/<Name>.json` from its sites, keeping its metadata and listing what it inherits under `@inherited`; `--check` is the CI sync test |
-| `scripts/check_locale_catalogues.py` | the CI gate (`locale-catalogues.yml`): every translation parses, has no stale key, keeps the source's placeholders, has the plural forms its language needs, repeats no entry of a set below it, names only base sets that exist; and the English files are in sync. Findings that predate it are in `scripts/locale_catalogues_baseline.txt` |
+| `scripts/check_locale_catalogues.py` | the CI gate (`locale-catalogues.yml`): every translation parses, has no stale key, keeps the source's placeholders, has the plural forms its language needs, repeats no entry of a set below it, names only base sets that exist; every language translates every entry of the English standard set (a regional variant counts its parent's); and the English files are in sync. Findings that predate it are in `scripts/locale_catalogues_baseline.txt` |
+| `scripts/tests/test_extract_ui_strings.py` | the extractor's reading rules, held without a checkout: a literal's escapes (`\xHH` a byte of the UTF-8 text, `\uXXXX` a code point), comments stripped without a `"/*"` in a string swallowing the code after it, a call's literal arguments (continued literals joined, a variable stopping the list), the sites a file yields - `python3 -m unittest discover -s scripts/tests`, run by `locale-catalogues.yml` |
 | `scripts/wrap_ui_strings.py` | the migration tool: wraps the literal in the text-taking parameter of every known entry point in `Tr(...)` and writes the file (or, with `--diff`, prints the change) for a person to review; a sentence built from pieces is rewritten as `TrF` by hand |
 
 ## Drafting a language

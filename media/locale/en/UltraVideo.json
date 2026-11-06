@@ -1,7 +1,16 @@
 {
   "@language": "en",
+  "@bases": [
+    "Video",
+    "Audio",
+    "Image"
+  ],
   "Colour title": "Colour title",
   "Edit Title": "Edit Title",
+  "fps": "fps",
+  "mono": "mono",
+  "no sound": "no sound",
+  "stereo": "stereo",
   "The title is in the video": "The title is in the video",
   "The title is unchanged": "The title is unchanged",
   "The title was emptied: it keeps its text (delete the title on its lane to remove it)": "The title was emptied: it keeps its text (delete the title on its lane to remove it)",

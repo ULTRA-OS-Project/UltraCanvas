@@ -1,10 +1,15 @@
 {
   "@language": "en",
+  "@bases": [
+    "Computer"
+  ],
   "@inherited": [
     "Close",
     "Desktop",
     "Devices",
-    "Language"
+    "Language",
+    "Notifications",
+    "System"
   ],
   "An application uses a change the next time it starts. The command line (--lang) and the ULTRACANVAS_LANG variable override this setting for one start.": "An application uses a change the next time it starts. The command line (--lang) and the ULTRACANVAS_LANG variable override this setting for one start.",
   "Appearance": "Appearance",
@@ -18,12 +23,10 @@
   "Language:": "Language:",
   "Last used folder": "Last used folder",
   "None: no RAM disc button": "None: no RAM disc button",
-  "Notifications": "Notifications",
   "Registrations": "Registrations",
   "Remove all": "Remove all",
   "Saved.": "Saved.",
   "Saved. Applications started from now on use this language.": "Saved. Applications started from now on use this language.",
-  "System": "System",
   "The language every application shows its menus, buttons and messages in. \"System\" follows the computer's own language setting; a language is offered here when a translation of the standard set ships for it.": "The language every application shows its menus, buttons and messages in. \"System\" follows the computer's own language setting; a language is offered here when a translation of the standard set ships for it.",
   "The languages come from media/locale/ in the applications' resources and from locale/ in the UltraCanvas settings folder, where a translator puts a draft to see it in the real window.": "The languages come from media/locale/ in the applications' resources and from locale/ in the UltraCanvas settings folder, where a translator puts a draft to see it in the real window.",
   "The translator's name goes into the catalogues the localisation editor saves, so a draft says who reviewed it.": "The translator's name goes into the catalogues the localisation editor saves, so a draft says who reviewed it.",

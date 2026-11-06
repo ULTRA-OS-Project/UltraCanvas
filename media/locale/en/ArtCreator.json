@@ -1,5 +1,8 @@
 {
   "@language": "en",
+  "@bases": [
+    "Image"
+  ],
   "Added the text: click it with the Text tool, or double-click it, to edit it": "Added the text: click it with the Text tool, or double-click it, to edit it",
   "Changed the text": "Changed the text",
   "Click on the page and type, or click a text to edit it; the bar above sets its font, size, style, alignment and spacing. Escape, Ctrl+Enter or a click outside finishes": "Click on the page and type, or click a text to edit it; the bar above sets its font, size, style, alignment and spacing. Escape, Ctrl+Enter or a click outside finishes",

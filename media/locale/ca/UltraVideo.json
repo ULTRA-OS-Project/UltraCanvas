@@ -1,0 +1,19 @@
+{
+  "@language": "ca",
+  "@translated-by": "machine draft 2026-11-05, reviewed by -",
+  "Colour title": "Color del títol",
+  "Edit Title": "Edició del títol",
+  "The title is in the video": "El títol és al vídeo",
+  "The title is unchanged": "El títol no ha canviat",
+  "The title was emptied: it keeps its text (delete the title on its lane to remove it)": "El títol s'ha buidat: conserva el text (suprimiu el títol a la seva pista per eliminar-lo)",
+  "Title Alignment": "Alineació del títol",
+  "Title Bold": "Negreta del títol",
+  "Title Font": "Lletra del títol",
+  "Title Italic": "Cursiva del títol",
+  "Title Letter Spacing": "Espaiat entre lletres del títol",
+  "Title Line Spacing": "Interlineat del títol",
+  "Title Size": "Mida del títol",
+  "Title Strikethrough": "Ratllat del títol",
+  "Title Underline": "Subratllat del títol",
+  "Typing the title on the frame: Escape, Ctrl+Enter or a click outside puts it in the video": "Escrivint el títol al fotograma: Esc, Ctrl+Retorn o un clic a fora el posa al vídeo"
+}

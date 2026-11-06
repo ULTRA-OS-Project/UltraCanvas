@@ -1,5 +1,6 @@
 // OS/MacOS/UltraCanvasMacOSApplication.h
 // Complete macOS platform implementation for UltraCanvas Framework using Cairo
+// Version: 2.5.0 - DetectHostAppearanceNative and the host appearance observers
 // Version: 2.4.0 - Dropped the unused hand-rolled double-click tracking state
 //   (AppKit's NSEvent.clickCount drives MouseDoubleClick instead)
 // Version: 2.3.0 - RunInEventLoop() override (CoreAnimation commit per frame)
@@ -159,6 +160,11 @@ namespace UltraCanvas {
         void ShutdownWakeUp() override;
         FontStyle DetectSystemFontStyleNative() override;
         FontStyle DetectMonospacedFontStyleNative() override;
+        // AppKit (UltraCanvasMacOSHostAppearance.mm); the observers hear the
+        // host change once NSApp exists, and leave at shutdown.
+        HostAppearance DetectHostAppearanceNative() override;
+        void InstallHostAppearanceObservers();
+        void RemoveHostAppearanceObservers();
         void LoadBundledFontsNative() override;
         bool RegisterFontFileNative(const std::string& fontFilePath) override;
         NSCursor* LoadCursorFromImage(const std::string& filename, int hotspotX, int hotspotY);

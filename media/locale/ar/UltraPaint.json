@@ -1,0 +1,15 @@
+{
+  "@language": "ar",
+  "@translated-by": "machine draft 2026-11-05, reviewed by -",
+  "Click and type, or drag a box for the lines to wrap in; click a text to edit it. The bar above sets font, size, style, alignment and spacing; the colour is the foreground colour. Escape or a click outside finishes": "انقر واكتب، أو اسحب مربعًا تلتف فيه الأسطر؛ انقر على نص لتحريره. يضبط الشريط أعلاه الخط والحجم والنمط والمحاذاة والتباعد؛ واللون هو لون المقدمة. يُنهي Escape أو النقر في الخارج الكتابة",
+  "Letter Spacing": "تباعد الأحرف",
+  "Line Spacing": "تباعد الأسطر",
+  "Text Alignment": "محاذاة النص",
+  "Text Bold": "نص غامق",
+  "Text Colour": "لون النص",
+  "Text Font": "خط النص",
+  "Text Italic": "نص مائل",
+  "Text Size": "حجم النص",
+  "Text Strikethrough": "نص يتوسطه خط",
+  "Text Underline": "تسطير النص"
+}

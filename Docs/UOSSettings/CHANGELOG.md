@@ -1,3 +1,18 @@
+#### 2026-11-05 *0.16.0*
+- **UOS-Settings takes the Computer base set.** Its catalogue names
+  `Computer` under `@bases`, as the localisation proposal's Appendix B
+  assigns it: "Notifications" and "System" now come from that set, worded
+  as UltraFiler and the other system tools word them, instead of from a
+  copy in UOS-Settings' own catalogue.
+
+#### 2026-11-05 *0.15.0*
+- **Settings in every language.** UOS-Settings' own catalogue
+  (`media/locale/<lang>/UOS-Settings.json`) now exists in all thirty
+  languages: its page names (Appearance, Notifications, Translations,
+  Trusted certificates ...), the language page with its notes, and the
+  localisation editor's translator field showed in English whatever the
+  language - on the very page where the language is chosen.
+
 #### 2026-11-03 *0.14.0*
 - **Language > Translations: the localisation editor.** A page under
   Language hosts `UltraCanvasLocalisationEditor`: every set an

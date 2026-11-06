@@ -1,0 +1,15 @@
+{
+  "@language": "ja",
+  "@translated-by": "machine draft 2026-11-05, reviewed by -",
+  "Click and type, or drag a box for the lines to wrap in; click a text to edit it. The bar above sets font, size, style, alignment and spacing; the colour is the foreground colour. Escape or a click outside finishes": "クリックして入力するか、ドラッグして行を折り返す枠を作成します。テキストをクリックすると編集できます。上のバーでフォント、サイズ、スタイル、配置、間隔を設定します。色は描画色です。Escape または外側をクリックすると終了します",
+  "Letter Spacing": "文字間隔",
+  "Line Spacing": "行間",
+  "Text Alignment": "テキストの配置",
+  "Text Bold": "テキストの太字",
+  "Text Colour": "テキストの色",
+  "Text Font": "テキストのフォント",
+  "Text Italic": "テキストの斜体",
+  "Text Size": "テキストのサイズ",
+  "Text Strikethrough": "テキストの取り消し線",
+  "Text Underline": "テキストの下線"
+}

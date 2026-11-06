@@ -1,5 +1,6 @@
 // Apps/Texter/UltraCanvasTextEditor.cpp
 // Complete text editor implementation with multi-file tabs and autosave
+// Version: 2.5.1 - a failed save says why in a whole translated sentence (SaveFailureReason no longer puts an English phrase into "The file {0}.")
 // Version: 2.5.0 - every text a person reads goes through Tr / TrF / TrN (the menus,
 //                  the toolbars' tooltips, the dialogs, the status line, the About box);
 //                  Help > Translate UltraTexter... opens the localisation editor
@@ -2603,9 +2604,15 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         // destination - missing folder, read-only file, locked by another
         // program, disk full - or the system's own error (errno, which the C
         // runtime sets when it cannot open or write the file).
-        std::string SaveFailureReason(const std::string& filePath, const char* what) {
+        // The step is a whole translated sentence per case - an English
+        // phrase passed into a translated one would stay English in every
+        // language. errno is read first, before Tr does anything.
+        enum class SaveStep { Open, Write };
+        std::string SaveFailureReason(const std::string& filePath, SaveStep step) {
             const int err = errno;
-            std::string reason = TrF("The file {0}.", what) + "\n" +
+            std::string reason = (step == SaveStep::Open
+                                      ? Tr("The file could not be opened for writing.")
+                                      : Tr("The file could not be written completely.")) + "\n" +
                                  FileWriteFailureReason(filePath, err);
             if (err != 0) {
                 reason += "\n" + TrF("(System error {0}: {1})", err, std::strerror(err));
@@ -2679,14 +2686,14 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         errno = 0;
         std::ofstream file(UltraCanvas::PathFromUtf8(filePath), std::ios::binary);
         if (!file.is_open()) {
-            lastSaveError = SaveFailureReason(filePath, "could not be opened for writing");
+            lastSaveError = SaveFailureReason(filePath, SaveStep::Open);
             debugOutput << "Failed to save file: " << filePath << ": " << lastSaveError << std::endl;
             return false;
         }
         file.write(text.data(), static_cast<std::streamsize>(text.size()));
         file.close();
         if (!file) {
-            lastSaveError = SaveFailureReason(filePath, "could not be written completely");
+            lastSaveError = SaveFailureReason(filePath, SaveStep::Write);
             return false;
         }
         return true;
@@ -2771,7 +2778,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                 errno = 0;
                 std::ofstream file(UltraCanvas::PathFromUtf8(filePath), std::ios::binary);
                 if (!file.is_open()) {
-                    lastSaveError = SaveFailureReason(filePath, "could not be opened for writing");
+                    lastSaveError = SaveFailureReason(filePath, SaveStep::Open);
                     debugOutput << "Failed to save file: " << filePath << ": " << lastSaveError << std::endl;
                     return false;
                 }
@@ -2779,7 +2786,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                            static_cast<std::streamsize>(rawBytes.size()));
                 file.close();
                 if (!file) {
-                    lastSaveError = SaveFailureReason(filePath, "could not be written completely");
+                    lastSaveError = SaveFailureReason(filePath, SaveStep::Write);
                     debugOutput << "Failed to save file: " << filePath << ": " << lastSaveError << std::endl;
                     return false;
                 }
@@ -2838,7 +2845,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                 errno = 0;
                 std::ofstream file(UltraCanvas::PathFromUtf8(filePath), std::ios::binary);
                 if (!file.is_open()) {
-                    lastSaveError = SaveFailureReason(filePath, "could not be opened for writing");
+                    lastSaveError = SaveFailureReason(filePath, SaveStep::Open);
                     debugOutput << "Failed to save file: " << filePath << ": " << lastSaveError << std::endl;
                     return false;
                 }
@@ -2861,7 +2868,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                            static_cast<std::streamsize>(outputBytes.size()));
                 file.close();
                 if (!file) {
-                    lastSaveError = SaveFailureReason(filePath, "could not be written completely");
+                    lastSaveError = SaveFailureReason(filePath, SaveStep::Write);
                     debugOutput << "Failed to save file: " << filePath << ": " << lastSaveError << std::endl;
                     return false;
                 }

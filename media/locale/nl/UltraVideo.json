@@ -1,0 +1,19 @@
+{
+  "@language": "nl",
+  "@translated-by": "machine draft 2026-11-05, reviewed by -",
+  "Colour title": "Titelkleur",
+  "Edit Title": "Titel bewerken",
+  "The title is in the video": "De titel staat in de video",
+  "The title is unchanged": "De titel is ongewijzigd",
+  "The title was emptied: it keeps its text (delete the title on its lane to remove it)": "De titel is leeggemaakt: hij behoudt zijn tekst (verwijder de titel op zijn spoor om hem weg te halen)",
+  "Title Alignment": "Titeluitlijning",
+  "Title Bold": "Titel vet",
+  "Title Font": "Titellettertype",
+  "Title Italic": "Titel cursief",
+  "Title Letter Spacing": "Letterafstand titel",
+  "Title Line Spacing": "Regelafstand titel",
+  "Title Size": "Titelgrootte",
+  "Title Strikethrough": "Titel doorgehaald",
+  "Title Underline": "Titel onderstreept",
+  "Typing the title on the frame: Escape, Ctrl+Enter or a click outside puts it in the video": "De titel wordt op het frame getypt: Escape, Ctrl+Enter of een klik erbuiten plaatst hem in de video"
+}

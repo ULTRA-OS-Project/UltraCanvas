@@ -861,6 +861,30 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   (`ParseGtkFontName`, `ParseKdeFontEntry`, `ReadIniValue`), tested without
   a desktop. See `Docs/UltraCanvas/UltraCanvasSystemFont.md`.
 
+  The rest of the desktop's look is `UltraCanvasApplication::GetHostAppearance()`
+  (`UltraCanvasHostAppearance.h`, header-only and pure: `HostAppearance` -
+  dark, high contrast, reduced motion, the accent, the two fonts, the text
+  scale, the source - `DefaultHostAppearance`, `ApplyHostAppearanceOverride`
+  for `ULTRACANVAS_HOST_APPEARANCE`, `HostAppearanceReport`, `ColorFromHex`,
+  the Windows raw-value conversions), filled by `DetectHostAppearanceNative`:
+  the registry, the metrics and DWM on Windows
+  (`OS/MSWindows/UltraCanvasWindowsHostAppearance.cpp`), AppKit on macOS
+  (`OS/MacOS/UltraCanvasMacOSHostAppearance.mm`), on Linux and the BSDs the
+  portal's colour scheme, GSettings, the XSETTINGS manager's property (X11),
+  `kdeglobals` and `settings.ini` (`OS/Linux/UltraCanvasLinuxHostAppearance.cpp`,
+  the pure readers `HostAppearanceLinux` in the header, the session helpers
+  `UltraCanvasLinuxDesktop.h`), the browser's media queries in WebAssembly,
+  the default with the font detectors' fonts on Android. The platforms'
+  change events (`WM_SETTINGCHANGE` and its kin, KVO on
+  `effectiveAppearance`, XSETTINGS' `PropertyNotify` and the config folders
+  watched by `UltraCanvasLinuxHostAppearanceWatch`, the media queries'
+  `change`) call `ScheduleHostAppearanceRefresh`, one read per burst, and
+  `AddHostAppearanceHandler` hears a difference; the system fonts are the
+  value's. `HostAppearanceTest` covers the pure half,
+  `LinuxHostAppearanceTest` the Linux detector against a made-up config
+  home. Phases T1 and T2 of `Docs/UltraCanvas/UltraCanvasHostThemeProposal.md`;
+  see `Docs/UltraCanvas/UltraCanvasHostAppearance.md`.
+
   Emoji come from a bundled font the emoji setting picks
   (`UltraCanvasEmojiSettings.h`: `EmojiStyle` Colour / Monochrome / System,
   `EmojiSettings::Load` / `Save` on `Emoji.conf` in the UltraCanvas settings
