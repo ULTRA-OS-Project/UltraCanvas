@@ -4,8 +4,11 @@
 // table (GetSystemFirmwareTable), the processor topology API, storage IOCTLs,
 // IP Helper, WLAN, SetupAPI and the Bluetooth API. Anything a header may be too
 // old to declare is guarded with __has_include and degrades to a warning.
+// Version: 0.1.1 - Wi-Fi: the WLAN record found by the adapter's GUID with braces and
+//                  case aside (none was found, every adapter read as not joined); joined
+//                  from the enumeration's state when the details are refused
 // Version: 0.1.0
-// Last Modified: 2026-08-29
+// Last Modified: 2026-11-04
 // Author: UltraCanvas Framework
 
 // The storage temperature IOCTL and the processor-group topology API are gated
@@ -973,6 +976,17 @@ std::string SecurityName(DOT11_AUTH_ALGORITHM algorithm) {
     }
 }
 
+// A GUID's text without braces, upper-case: the key two APIs' spellings of
+// one adapter compare equal by.
+std::string GuidKey(const std::string& text) {
+    std::string key;
+    for (char c : text) {
+        if (c == '{' || c == '}') continue;
+        key += static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+    }
+    return key;
+}
+
 // SSID and signal for every associated wireless interface, keyed by the
 // adapter GUID that GetAdaptersAddresses reports.
 std::map<std::string, WiFiInfo> ReadWiFiConnections(std::vector<std::string>& warnings) {
@@ -989,6 +1003,9 @@ std::map<std::string, WiFiInfo> ReadWiFiConnections(std::vector<std::string>& wa
             ::StringFromGUID2(interfaceInfo.InterfaceGuid, guidText,
                               static_cast<int>(std::size(guidText)));
             WiFiInfo wifi;
+            // Joined or not is in the enumeration itself; the details below
+            // need a query Windows may refuse (location access, 24H2).
+            wifi.connected = interfaceInfo.isState == wlan_interface_state_connected;
 
             DWORD dataSize = 0;
             void* data = nullptr;
@@ -1103,15 +1120,25 @@ void QueryNetwork(std::vector<NetworkInterfaceInfo>& out, std::vector<std::strin
 
 #ifdef ULTRACANVAS_HAS_WLANAPI
         if (info.type == NetworkLinkType::WiFi && adapter->AdapterName) {
-            // GetAdaptersAddresses spells the GUID without braces; WLAN's
-            // StringFromGUID2 adds them.
-            const std::string braced = std::string("{") + adapter->AdapterName + "}";
-            auto connection = wifiConnections.find(braced);
-            if (connection != wifiConnections.end()) info.wifi = connection->second;
+            // GetAdaptersAddresses' AdapterName is the GUID in braces
+            // ("{4D36...}"), WLAN's StringFromGUID2 too - but neither promises
+            // it: braces and case are left out of the comparison. (Wrapping
+            // the name in a second pair of braces matched nothing, and every
+            // Wi-Fi adapter read as not joined.)
+            const std::string key = GuidKey(adapter->AdapterName);
+            for (const auto& [guid, connection] : wifiConnections) {
+                if (GuidKey(guid) == key) {
+                    info.wifi = connection;
+                    break;
+                }
+            }
         }
 #endif
         if (info.type == NetworkLinkType::WiFi && !info.wifi) {
+            // No WLAN record for it: whether it is joined is what its link
+            // says, not "no".
             info.wifi = WiFiInfo{};
+            info.wifi->connected = info.connected;
 #ifndef ULTRACANVAS_HAS_WLANAPI
             warnings.push_back("Wi-Fi network details are unavailable: this build was compiled "
                                "without the WLAN API headers.");
