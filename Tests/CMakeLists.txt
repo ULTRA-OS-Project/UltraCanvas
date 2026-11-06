@@ -5750,6 +5750,28 @@ else()
     message(STATUS "  MatrixDiagramRenderTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== TEXT MEASURED AT ONE ZOOM, DRAWN AT ANOTHER =====
+# Text drawn under a scaled transform is as wide as the same text measured
+# unscaled, times the scale, so an element that lays out at one zoom and draws
+# at another can trust its measurements. Headless, offscreen Cairo.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building TextMeasureZoomTest...")
+    add_executable(TextMeasureZoomTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/TextMeasureZoomTest.cpp
+    )
+    target_include_directories(TextMeasureZoomTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(TextMeasureZoomTest PRIVATE cxx_std_20)
+    target_link_libraries(TextMeasureZoomTest PRIVATE UltraCanvas)
+    set_target_properties(TextMeasureZoomTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME TextMeasureZoomTest COMMAND TextMeasureZoomTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: TextMeasureZoomTest")
+else()
+    message(STATUS "  TextMeasureZoomTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== PERFORMANCE MATRIX RENDER TEST =====
 # The performance matrix drawn offscreen in each design: every cell is laid
 # out and hit where it is drawn, the colouring paints each cell its rank or
