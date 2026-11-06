@@ -1,4 +1,7 @@
 // UltraCloud/ui/UltraCloudAccountDialog.cpp
+// Version: 0.8.1 - a failed sign-in says why in a translated sentence by its
+//                  result code (DescribeResult); the service's technical
+//                  message is the status line's tooltip
 // Version: 0.8.0 - every text a person reads goes through Tr / TrF (the
 //                  standard set: UltraFiler and UltraPress both show this
 //                  dialog); the OAuth hint is one sentence with the provider
@@ -10,6 +13,7 @@
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraCloudAccountDialog.h"
 #include "UltraCloudUiStyle.h"
+#include "UltraCloudResultText.h"
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasButton.h"
@@ -313,7 +317,8 @@ void ShowAddAccountDialog(UltraCanvasWindowBase* parent, std::shared_ptr<CloudSe
                 if (r.code == ResultCode::Cancelled) return;   // closed meanwhile
                 if (r) { *added = a; dlg->CloseDialog(DialogResult::OK); return; }
                 status->SetTextColor(Color(180, 40, 40, 255));
-                status->SetText(r.message);
+                status->SetText(DescribeResult(r));
+                status->SetTooltip(ResultDetail(r));
                 addBtn->SetDisabled(false);
             };
             if (app) app->PostToUIThread(finish); else finish();

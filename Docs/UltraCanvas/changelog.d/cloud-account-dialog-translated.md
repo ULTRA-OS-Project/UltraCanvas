@@ -13,3 +13,12 @@
   now scans `UltraCloud/ui` with the framework. The default upload folder
   (`/Shared from ULTRA OS`) stays the same in every language - it is a
   folder name on the server.
+- **A failed cloud call says why in the reader's language.** The service's
+  own error text is technical English built in about ninety places (often
+  the network library's message passed on), so it cannot be a translation
+  key; the new `UltraCloud/ui/UltraCloudResultText.h` gives
+  `DescribeResult` - one translated sentence per result code (not found,
+  sign-in refused, server unreachable, HTTP error with its status, rate
+  limit, ...) - and `ResultDetail`, the technical message. Both dialogs show
+  the sentence and keep the detail as the status line's tooltip; the
+  applications that show cloud results can call the same pair.

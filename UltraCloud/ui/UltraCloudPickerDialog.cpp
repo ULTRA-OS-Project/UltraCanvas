@@ -1,4 +1,7 @@
 // UltraCloud/ui/UltraCloudPickerDialog.cpp
+// Version: 0.4.1 - a failed listing, upload or link says why in a translated
+//                  sentence by its result code (DescribeResult); the
+//                  technical message is the status line's tooltip
 // Version: 0.4.0 - every text a person reads goes through Tr / TrF (the
 //                  standard set, like the add-account dialog's); the status
 //                  lines are whole sentences with the name as {0}
@@ -8,6 +11,7 @@
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraCloudPickerDialog.h"
 #include "UltraCloudUiStyle.h"
+#include "UltraCloudResultText.h"
 #include "UltraCloudAccountDialog.h"
 #include "UltraLocalisation/UltraLocalisation.h"
 
@@ -99,10 +103,13 @@ void Post(std::function<void()> fn) {
     else fn();
 }
 
-void SetStatus(const std::shared_ptr<PickerState>& st, const std::string& text, bool error = false) {
+// `detail`: the technical message behind an error, as the line's tooltip.
+void SetStatus(const std::shared_ptr<PickerState>& st, const std::string& text, bool error = false,
+               const std::string& detail = std::string()) {
     if (!st->status) return;
     st->status->SetTextColor(error ? Color(180, 40, 40, 255) : Color(60, 60, 60, 255));
     st->status->SetText(text);
+    st->status->SetTooltip(detail);
 }
 
 void UpdateButtons(const std::shared_ptr<PickerState>& st) {
@@ -155,7 +162,7 @@ void Navigate(const std::shared_ptr<PickerState>& st, const std::string& path) {
         Post([st, entries, r, target, gen]() {
             if (st->dialog.expired() || gen != st->generation) return;
             st->busy = false;
-            if (!r) { SetStatus(st, r.message, true); UpdateButtons(st); return; }
+            if (!r) { SetStatus(st, DescribeResult(r), true, ResultDetail(r)); UpdateButtons(st); return; }
             st->path = target;
             st->entries = entries;
             FillList(st);
@@ -214,7 +221,7 @@ void UploadHere(const std::shared_ptr<PickerState>& st) {
             Post([st, r, folder]() {
                 if (st->dialog.expired()) return;
                 st->busy = false;
-                if (!r) { SetStatus(st, r.message, true); UpdateButtons(st); return; }
+                if (!r) { SetStatus(st, DescribeResult(r), true, ResultDetail(r)); UpdateButtons(st); return; }
                 Navigate(st, folder);   // refresh; the new file shows up
             });
         }).detach();
@@ -237,7 +244,7 @@ void MakeLinkAndClose(const std::shared_ptr<PickerState>& st) {
         Post([st, r, link, account, entry]() {
             if (st->dialog.expired()) return;
             st->busy = false;
-            if (!r) { SetStatus(st, r.message, true); UpdateButtons(st); return; }
+            if (!r) { SetStatus(st, DescribeResult(r), true, ResultDetail(r)); UpdateButtons(st); return; }
             st->result.account = account;
             st->result.entry = entry;
             st->result.link = link;
