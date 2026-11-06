@@ -517,22 +517,35 @@ server's document root until then.
 ## The window
 
 `ultrastore` started plainly (or with `--catalog`, `--root`, `--channel`)
-opens the window; `Apps/UltraStore/ui/`. A sidebar
-(`UltraCanvasSidebarNavigation`) selects the page, the download queue sits
-in a collapsible panel along the bottom (`UltraCanvasCollapsiblePanel`),
-a status line under it. Every operation goes through the core - the same
-`StoreEngine`, `CatalogClient`, `PackageResolver` the command line uses -
-so the window and the command line never disagree; the pages are
-`StoreQuery::ListApps` with four filters.
+opens the window; `Apps/UltraStore/ui/`. It follows the UltraStore shop
+design (the canvas *UltraStore Shop Design*, 2026-11-05): a white ground,
+ink text, the UltraStore blue of the app icon as the one accent, Manrope
+for display text over Inter for body text (both in `media/fonts`), 20 px
+card corners, pill buttons and chips (`StoreTheme.h`). A header carries
+the wordmark (the way home), the sections as pills - Discover, Categories,
+Installed, Updates with its count - the search pill, Refresh and Settings
+(where the design has *Sign in*: the store has no accounts). The download
+queue sits in a collapsible panel along the bottom
+(`UltraCanvasCollapsiblePanel`), a status line under it. Every operation
+goes through the core - the same `StoreEngine`, `CatalogClient`,
+`PackageResolver` the command line uses - so the window and the command
+line never disagree; the pages are `StoreQuery::ListApps` with its filters.
 
 | Page | Shows | Does |
 |---|---|---|
-| Discover | every app of the catalog as a card (`UltraCanvasCard`): icon, publisher, summary, its state (installed version, update available, not for this system, price) | search over name, id, publisher, summary, tags and categories; Install / Try, Buy… (the publisher's page, until payment lands), Open, Update, Remove, Details; Refresh fetches the catalog |
-| Categories | the catalog's categories as a single-select chip group (`UltraCanvasChipGroup`) over the same cards | |
-| Installed | the installed apps, then the runtimes and libraries under them | Open, Remove, Reload, Clean up (the garbage collector) |
-| Updates | the installed apps a newer release has a package for; the count as the sidebar's badge | Update one, Update all |
-| Details | one app: icon, name, publisher, licence, id, state, the badges (price, age rating, open source, needs an account, update period, deprecated / withdrawn, translated automatically), the description, the screenshots side by side, the release's notes and what it needs, the package for this machine, the links (homepage, support, privacy, source) | the same actions; Back |
+| Discover | the featured app as a hero (the newest release the machine can install: the catalog carries no editorial pick), the categories as pills, *New and updated* as a numbered list in two columns, *Free essentials* as cards, the four reasons for the store, the partner / discount code; text in the header's search pill turns the page into the results, as cards | Install / Try free / Buy, Open, Update, Remove on each card or row; a card, a row or the hero opens the app page; a category pill opens Categories on it |
+| Categories | the filters on the left - the catalog's categories as chips (`UltraCanvasChipGroup`), All / Free / Paid, open source only, hide installed - the heading with the count and the sort order (newest release, name, price), and the cards in a wrapping grid | the same actions; the design's *Runs on* filter is not there: a native store resolves every app for this machine |
+| Installed | the installed apps as cards, then the runtimes and libraries under them | Open, Remove, Reload, Clean up (the garbage collector) |
+| Updates | the installed apps a newer release has a package for; the count in the header pill | Update one, Update all |
+| App page | the shop's app page: the breadcrumb (the section it came from, the category, the name), the icon, the name, the summary, the publisher (a link when the catalog has their page), the facts as pills (the trial, open source and the licence, the systems, the age rating, the account, the update period, a purchase, a code in force), the actions, what this machine downloads (the plan: the layers already there, the ones added, the bytes); the screenshots side by side; *About this app*; *What's new* with the release notes and the version history; *What it installs* step by step with the sizes; the information column (publisher, licence, price, trial, updates, languages, age rating, the links); *More from* the publisher | the same actions; the breadcrumb is the way back |
 | Settings | channel, the texts' language, the servers, the keys trusted beside the compiled-in ones, fetch at start; this machine, the store folder, the settings file, the catalog's state, what is installed | Save, Revert, Refresh catalog now, Clean up, Reload installed |
+
+Not in the window, of the design: *Sign in* (no accounts), *Editor's
+picks* (the catalog has no field for an editorial choice), the share and
+wish-list buttons of the app page, and the footer's links (for publishers,
+support, privacy, terms: the catalog carries no store-wide pages). The
+phone artboards are a web shop's; the admin and operator artboards belong
+to UltraStoreAdmin and to a proposal.
 
 What is shown follows the admin backend's settings (`StoreQuery`): a
 *listed* app always; an *unlisted* one when it is installed or searched for
