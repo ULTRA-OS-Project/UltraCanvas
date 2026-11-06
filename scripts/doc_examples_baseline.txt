@@ -157,32 +157,37 @@ Docs/UltraCanvas/UltraCanvasContourChartProposal.md::prose names `SetLevelMode(`
 Docs/UltraCanvas/UltraCanvasControlChartProposal.md::'AddSeriesBand' is not a member of UltraCanvasEngineLineChart
 Docs/UltraCanvas/UltraCanvasControlChartProposal.md::'AppendPoint' is not a member of UltraCanvasEngineLineChart
 Docs/UltraCanvas/UltraCanvasControlChartProposal.md::'ClearSeriesBands' is not a member of UltraCanvasEngineLineChart
-Docs/UltraCanvas/UltraCanvasControlChartProposal.md::'ComputeControlChart' is not a member of UltraCanvasEngineLineChart, UltraCanvasFishboneDiagram, UltraCanvasChartEngineElement, UltraCanvasFileLoader, nor a free function
-Docs/UltraCanvas/UltraCanvasControlChartProposal.md::'ControlC4' is not a member of UltraCanvasEngineLineChart, UltraCanvasFishboneDiagram, UltraCanvasChartEngineElement, UltraCanvasFileLoader, nor a free function
-Docs/UltraCanvas/UltraCanvasControlChartProposal.md::'ControlD2' is not a member of UltraCanvasEngineLineChart, UltraCanvasFishboneDiagram, UltraCanvasChartEngineElement, UltraCanvasFileLoader, nor a free function
-Docs/UltraCanvas/UltraCanvasControlChartProposal.md::'ControlD3' is not a member of UltraCanvasEngineLineChart, UltraCanvasFishboneDiagram, UltraCanvasChartEngineElement, UltraCanvasFileLoader, nor a free function
-Docs/UltraCanvas/UltraCanvasControlChartProposal.md::'ControlRuleDescription' is not a member of UltraCanvasEngineLineChart, UltraCanvasFishboneDiagram, UltraCanvasChartEngineElement, UltraCanvasFileLoader, nor a free function
-Docs/UltraCanvas/UltraCanvasControlChartProposal.md::'EngineLineSeries::inLegend' does not exist (no member named 'inLegend' in 'EngineLineSeries')
-Docs/UltraCanvas/UltraCanvasControlChartProposal.md::'EngineLineSeries::interactive' does not exist (no member named 'interactive' in 'EngineLineSeries')
-Docs/UltraCanvas/UltraCanvasControlChartProposal.md::'EngineLineSeries::pane' does not exist (no member named 'pane' in 'EngineLineSeries')
-Docs/UltraCanvas/UltraCanvasControlChartProposal.md::'EngineLineSeries::pointNotes' does not exist (no member named 'pointNotes' in 'EngineLineSeries')
-Docs/UltraCanvas/UltraCanvasControlChartProposal.md::'EngineLineSeries::pointStyles' does not exist (no member named 'pointStyles' in 'EngineLineSeries')
-Docs/UltraCanvas/UltraCanvasControlChartProposal.md::'EngineLineSeries::shape' does not exist (no member named 'shape' in 'EngineLineSeries')
-Docs/UltraCanvas/UltraCanvasControlChartProposal.md::'EngineLineSeries::showMarkers' does not exist (no member named 'showMarkers' in 'EngineLineSeries')
+Docs/UltraCanvas/UltraCanvasControlChartProposal.md::'ControlChartKind::C' does not exist (no member named 'C' in 'ControlChartKind')
+Docs/UltraCanvas/UltraCanvasControlChartProposal.md::'ControlChartKind::CUSUM' does not exist (no member named 'CUSUM' in 'ControlChartKind')
+Docs/UltraCanvas/UltraCanvasControlChartProposal.md::'ControlChartKind::EWMA' does not exist (no member named 'EWMA' in 'ControlChartKind')
+Docs/UltraCanvas/UltraCanvasControlChartProposal.md::'ControlChartKind::NP' does not exist (no member named 'NP' in 'ControlChartKind')
+Docs/UltraCanvas/UltraCanvasControlChartProposal.md::'ControlChartKind::P' does not exist (no member named 'P' in 'ControlChartKind')
+Docs/UltraCanvas/UltraCanvasControlChartProposal.md::'ControlChartKind::U' does not exist (no member named 'U' in 'ControlChartKind')
+Docs/UltraCanvas/UltraCanvasControlChartProposal.md::'ControlChartKind::XbarS' does not exist (no member named 'XbarS' in 'ControlChartKind')
+Docs/UltraCanvas/UltraCanvasControlChartProposal.md::'ControlOptions::baselineCount' does not exist (no member named 'baselineCount' in 'ControlOptions')
+Docs/UltraCanvas/UltraCanvasControlChartProposal.md::'ControlOptions::cusumH' does not exist (no member named 'cusumH' in 'ControlOptions')
+Docs/UltraCanvas/UltraCanvasControlChartProposal.md::'ControlOptions::cusumK' does not exist (no member named 'cusumK' in 'ControlOptions')
+Docs/UltraCanvas/UltraCanvasControlChartProposal.md::'ControlOptions::ewmaL' does not exist (no member named 'ewmaL' in 'ControlOptions')
+Docs/UltraCanvas/UltraCanvasControlChartProposal.md::'ControlOptions::ewmaLambda' does not exist (no member named 'ewmaLambda' in 'ControlOptions')
+Docs/UltraCanvas/UltraCanvasControlChartProposal.md::'ControlOptions::fixedCentre' does not exist (no member named 'fixedCentre' in 'ControlOptions')
+Docs/UltraCanvas/UltraCanvasControlChartProposal.md::'ControlOptions::fixedSigma' does not exist (no member named 'fixedSigma' in 'ControlOptions')
+Docs/UltraCanvas/UltraCanvasControlChartProposal.md::'ControlOptions::lowerSpec' does not exist (no member named 'lowerSpec' in 'ControlOptions')
+Docs/UltraCanvas/UltraCanvasControlChartProposal.md::'ControlOptions::ruleSet' does not exist (no member named 'ruleSet' in 'ControlOptions')
+Docs/UltraCanvas/UltraCanvasControlChartProposal.md::'ControlOptions::rulesOnDispersion' does not exist (no member named 'rulesOnDispersion' in 'ControlOptions')
+Docs/UltraCanvas/UltraCanvasControlChartProposal.md::'ControlOptions::stages' does not exist (no member named 'stages' in 'ControlOptions')
+Docs/UltraCanvas/UltraCanvasControlChartProposal.md::'ControlOptions::upperSpec' does not exist (no member named 'upperSpec' in 'ControlOptions')
+Docs/UltraCanvas/UltraCanvasControlChartProposal.md::'ControlResult::capability' does not exist (no member named 'capability' in 'ControlResult')
+Docs/UltraCanvas/UltraCanvasControlChartProposal.md::'ControlSubgroup::count' does not exist (no member named 'count' in 'ControlSubgroup')
+Docs/UltraCanvas/UltraCanvasControlChartProposal.md::'ControlSubgroup::excluded' does not exist (no member named 'excluded' in 'ControlSubgroup')
+Docs/UltraCanvas/UltraCanvasControlChartProposal.md::'ControlSubgroup::note' does not exist (no member named 'note' in 'ControlSubgroup')
+Docs/UltraCanvas/UltraCanvasControlChartProposal.md::'ControlSubgroup::size' does not exist (no member named 'size' in 'ControlSubgroup')
 Docs/UltraCanvas/UltraCanvasControlChartProposal.md::'PaneGap' is not a member of UltraCanvasEngineLineChart
-Docs/UltraCanvas/UltraCanvasControlChartProposal.md::'SetPaneGap' is not a member of UltraCanvasEngineLineChart
-Docs/UltraCanvas/UltraCanvasControlChartProposal.md::'SetPanes' is not a member of UltraCanvasEngineLineChart
 Docs/UltraCanvas/UltraCanvasControlChartProposal.md::'SetVisibleWindow' is not a member of UltraCanvasEngineLineChart
 Docs/UltraCanvas/UltraCanvasControlChartProposal.md::'UltraCanvasEngineLineChart::onPointClick' does not exist (no member named 'onPointClick' in 'UltraCanvasEngineLineChart')
-Docs/UltraCanvas/UltraCanvasControlChartProposal.md::'ValueAxisOfPane' is not a member of UltraCanvasEngineLineChart
 Docs/UltraCanvas/UltraCanvasControlChartProposal.md::no member named 'onPointClick' in 'UltraCanvasEngineLineChart'
-Docs/UltraCanvas/UltraCanvasControlChartProposal.md::prose names `SetPanes(`, which no header declares
-Docs/UltraCanvas/UltraCanvasControlChartProposal.md::prose names `ValueAxisOfPane(`, which no header declares
-Docs/UltraCanvas/UltraCanvasControlChartProposal.md::unknown type name 'ControlOptions'
-Docs/UltraCanvas/UltraCanvasControlChartProposal.md::unknown type name 'ControlResult'
-Docs/UltraCanvas/UltraCanvasControlChartProposal.md::unknown type name 'ControlResult'
-Docs/UltraCanvas/UltraCanvasControlChartProposal.md::use of undeclared identifier 'ControlChartKind'
-# signature Docs/UltraCanvas/UltraCanvasControlChartProposal.md: 41be477972be338be8660e274fd047a3fc05c2b42b201042fece5dba45ac63d1
+Docs/UltraCanvas/UltraCanvasControlChartProposal.md::signature differs: `size_t ValueAxisOfPane(size_t pane) const` - the header has: static size_t ValueAxisOfPane(size_t pane) { return pane == 0 ? 0 : pane + 1; }
+Docs/UltraCanvas/UltraCanvasControlChartProposal.md::signature differs: `std::string ControlRuleDescription(ControlRuleSet set, int rule)` - the header has: std::string ControlRuleDescription(int rule, int sameSideRun = 8);
+# signature Docs/UltraCanvas/UltraCanvasControlChartProposal.md: 29e5ebfe7d9d37cca01762bd0e77bcc310a2045d56b9f09482c6cef55a658873
 Docs/UltraCanvas/UltraCanvasERDiagramProposal.md::no matching member function for call to 'AddAttribute'
 Docs/UltraCanvas/UltraCanvasERDiagramProposal.md::no member named 'ExportImage' in 'UltraCanvasERDiagram'
 Docs/UltraCanvas/UltraCanvasERDiagramProposal.md::no member named 'ExportSql' in 'UltraCanvasERDiagram'

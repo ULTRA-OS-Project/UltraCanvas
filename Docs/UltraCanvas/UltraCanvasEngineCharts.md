@@ -5,6 +5,9 @@
 - [Overview](#overview)
 - [Which charts were ported](#which-charts-were-ported)
 - [Line, area and cumulative flow](#line-area-and-cumulative-flow)
+  - [Per-series and per-point options](#per-series-and-per-point-options)
+  - [Stacked panes](#stacked-panes)
+  - [Control charts](#control-charts)
 - [Scatter and bubble](#scatter-and-bubble)
 - [Waterfall](#waterfall)
 - [Diverging and population pyramid](#diverging-and-population-pyramid)
@@ -116,6 +119,102 @@ A cumulative flow diagram is the `StackedArea` mode with the first series on
 top (`SetReverseStackOrder(true)`); `AddCumulativeFlowAnnotations()` adds the
 lead time, cycle time and WIP spans as engine span annotations, which the
 value labels steer around.
+
+### Per-series and per-point options
+
+Each `EngineLineSeries` can override the chart for itself alone, and each of
+its points can carry its own look and a tooltip note:
+
+```cpp
+EngineLineSeries target;
+target.name = "Target";
+target.values = {50000, 50000, 60000, 60000, 60000, 70000};
+target.shape = ChartLineShape::StepMiddle;   // unset = the chart's SetLineShape
+target.showMarkers = false;                  // unset = the chart's SetShowMarkers
+target.inLegend = false;                     // a reference line, not data
+target.interactive = false;                  // no hit regions, tooltips or value labels
+target.dashed = true;
+chart->AddSeries(target);
+
+EngineLineSeries actual;
+actual.name = "Actual";
+actual.values = {45000, 52000, 48000, 61000, 55000, 67000};
+actual.pointStyles.resize(actual.values.size());
+actual.pointStyles[2].color = Color(200, 40, 40, 255);       // alpha 0 = the series' colour
+actual.pointStyles[2].marker = ChartMarkerShape::Diamond;    // unset = the series' marker
+actual.pointStyles[2].radiusScale = 1.4f;
+actual.pointStyles[2].alwaysShown = true;                    // even with markers off
+actual.pointNotes = {"", "", "Missed the target: a supplier was late"};
+chart->AddSeries(actual);
+```
+
+`hollow = true` draws a point's outline only. A point's note is a further
+line in its tooltip. The legend lists only the series with `inLegend`, and a
+click on an entry hides that series.
+
+### Stacked panes
+
+`SetPanes` stacks panes from the top down, each with its own value axis,
+grid and title in a sub-band of the plot, all sharing the domain axis; each
+series names its pane. Pane heights follow their weights, with
+`SetPaneGap(fraction)` between them (0.06 by default).
+
+```cpp
+chart->SetPanes({{1.0, "Price", false}, {0.4, "Volume", true}});   // weight, title, includeZero
+EngineLineSeries volume;
+volume.name = "Volume";
+volume.values = {120, 180, 90, 210, 160, 140};
+volume.pane = 1;
+chart->AddSeries(volume);
+
+ChartLimiter cap;
+cap.axisIndex = UltraCanvasEngineLineChart::ValueAxisOfPane(1);   // axis 0, then 2, 3, ...
+cap.value = 200;
+cap.caption = "Capacity";
+chart->AddLimiter(cap);
+```
+
+A pane's `rangeIncludes` lists values its axis always reaches, data or not -
+limits, a target - since a limiter outside its axis's range is not drawn.
+Axis 0 is pane 0's value axis and axis 1 the domain, so a single-pane chart
+is unchanged; `ValueAxisOfPane(p)` gives the index that limiters
+(`ChartLimiter::axisIndex`) and highlights (`ChartHighlight::axisIndex`)
+take to land in pane p. The stacked area modes and Polar draw every series in
+pane 0 (`PaneOfSeries` reports where a series is drawn). Under `Horizontal`
+the panes sit side by side from the left.
+
+### Control charts
+
+A Shewhart control chart is a line chart with computed limits.
+`ComputeControlChart` (`UltraCanvasControlLimits.h`) computes the centre
+line, the control limits and the run-rule signals of an X-bar-R or I-MR
+chart; `ShowControlChart` puts the result on a line chart with the parts
+above - the statistic in pane 0 and its range in pane 1, the limits as
+limiters with their values in a column past the plot's right edge
+(`ChartLimiterCaptionPlacement::BeyondEnd`), a lower limit clamped at zero
+left out, and the points that break a rule as red diamonds with the rule in
+their tooltip. It also pads the domain by half a slot, so the first and last
+points clear the plot edges:
+
+```cpp
+std::vector<ControlSubgroup> hours = {
+    {"08:00", {25.004, 24.993, 25.011, 25.002, 24.998}},
+    {"09:00", {25.007, 25.001, 24.996, 25.009, 25.000}},
+    {"10:00", {24.995, 25.003, 25.006, 24.999, 25.012}},
+};
+const ControlResult result = ComputeControlChart(hours);   // X-bar-R by default
+
+auto spc = CreateEngineLineChart("Spc", 0, 0, 720, 460);
+ControlChartStyle look;
+look.showZones = true;          // A / B / C shading
+look.showSigmaLines = true;     // dotted 1 and 2 sigma lines
+ShowControlChart(*spc, result, look);
+```
+
+Recompute and call `ShowControlChart` again whenever the data changes. The
+statistics and the rules are described in
+[UltraCanvasControlLimits.md](UltraCanvasControlLimits.md); the demo's
+**Charts > Line Chart** page ends with an interactive one.
 
 ## Scatter and bubble
 

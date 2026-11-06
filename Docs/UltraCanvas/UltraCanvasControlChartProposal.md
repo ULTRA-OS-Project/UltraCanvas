@@ -1,8 +1,45 @@
 # Control Charts on the Line Chart — Research & Feature Proposal
 
-**Status:** Proposal. Nothing in this document is implemented yet; the API in
-§5 is a sketch, and `check_doc_examples.py` records its findings in
+**Status:** **Phase 1 is implemented** - see
+[`UltraCanvasControlLimits.md`](UltraCanvasControlLimits.md) for the
+statistics and
+[`UltraCanvasEngineCharts.md`](UltraCanvasEngineCharts.md#control-charts) for
+the line chart features and `ShowControlChart`. Phase 1 delivered E1-E4 and
+E6 on `UltraCanvasEngineLineChart`, the helper with K1, K2 and R1, P1, the
+demo card at the end of **Charts > Line Chart** (P3, an X-bar-R and an I-MR
+process, each with a late process change to switch on),
+`Tests/ControlLimitsTest.cpp` and `Tests/EngineLineChartTest.cpp`. The rest
+of §5 is still a sketch, and `check_doc_examples.py` records its findings in
 `scripts/doc_examples_baseline.txt` until each part lands.
+
+How Phase 1 departs from the plan below, and why:
+
+* **The helper has only what Phase 1 computes.** `ControlChartKind` lists
+  X-bar-R and I-MR; `ControlSubgroup` has no count, size, exclusion or note;
+  `ControlOptions` has the four Western Electric switches and the run length.
+  A field nothing reads would only be a promise in the API.
+* **`FindRuleViolations` is public.** It runs the rules on one pane's series
+  against whatever limits it carries, which is what limits frozen from a
+  baseline (L5) need, and it lets the test check every rule on standard-unit
+  data.
+* **d2 and d3 are kept to four decimals.** From the three-decimal tables the
+  derived factors missed their own published values (D4(2) came out 3.2686
+  against 3.267).
+* **A pane can name values its axis must reach** (`EngineLinePane::rangeIncludes`):
+  a limit outside its pane's data range was otherwise drawn across the
+  neighbouring pane. The engine now leaves a limiter outside its axis's band
+  undrawn, and anchors a limiter's caption half its width in from the line's
+  end, so the caption sits beside the line rather than across it.
+* **The limit values stand in a column past the plot's right edge**, the
+  usual SPC layout, through a new `ChartLimiter::captionPlacement`
+  (`BeyondEnd`): placed by the label solver inside the plot, data lines kept
+  crossing them or pushing them onto the axis. §7.6's in-plot stacking is not
+  needed.
+* **The engine gained `SetExtraGridAxes`** (a grid in every pane) and three
+  read accessors, `GetLimiters`, `GetHighlights` and `HitRegionAt`, for
+  tests and for hosts with their own read-out.
+* **A clamped lower limit draws nothing**, not a caption reading "LCL = 0
+  (none)": with no line there is nothing for a caption to sit beside.
 
 A control chart (Shewhart chart, statistical process control chart) plots a
 measurement of a process in time order against a centre line and two control

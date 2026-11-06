@@ -53,6 +53,13 @@
 **Last Modified:** 2026-10-07  
 **Author:** UltraCanvas Framework
 
+Its engine port, `UltraCanvasEngineLineChart`
+([UltraCanvasEngineCharts.md](UltraCanvasEngineCharts.md#line-area-and-cumulative-flow)),
+adds per-series line shapes and markers, per-point styles and tooltip notes,
+stacked panes and control charts (`ShowControlChart`,
+[UltraCanvasControlLimits.md](UltraCanvasControlLimits.md)); the demo's Line
+Chart page ends with a control chart built that way.
+
 ## Class Hierarchy
 
 ```

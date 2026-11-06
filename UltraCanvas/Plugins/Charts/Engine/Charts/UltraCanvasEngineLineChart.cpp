@@ -1,8 +1,10 @@
 // Plugins/Charts/Engine/Charts/UltraCanvasEngineLineChart.cpp
 // Line, area, stacked area and cumulative flow charts on the chart engine.
+// Version: 1.2.0 - per-series line shape, markers, legend entry and
+//                  interactivity; per-point styles and notes; stacked panes
 // Version: 1.1.0 - SetValueAtLeast
 // Version: 1.0.0
-// Last Modified: 2026-10-24
+// Last Modified: 2026-11-06
 // Author: UltraCanvas Framework
 
 #include "Plugins/Charts/Engine/Charts/UltraCanvasEngineLineChart.h"
@@ -10,6 +12,7 @@
 #include <limits>
 #include <sstream>
 #include <cmath>
+#include <cstdio>
 #include <cstdlib>
 
 namespace UltraCanvas {
@@ -70,8 +73,8 @@ void UltraCanvasEngineLineChart::SetXValues(const std::vector<double>& values) {
 void UltraCanvasEngineLineChart::SetSeries(const std::vector<EngineLineSeries>& seriesList) {
     series = seriesList;
     hidden.assign(series.size(), false);
-    SetShowLegend(series.size() > 1);
     RefreshLegend();
+    SetShowLegend(legendSeries.size() > 1);
     RebuildSpanAnnotations();
     MarkEngineDirty(ChartDirty::Data);
 }
@@ -79,8 +82,8 @@ void UltraCanvasEngineLineChart::SetSeries(const std::vector<EngineLineSeries>& 
 void UltraCanvasEngineLineChart::AddSeries(const EngineLineSeries& s) {
     series.push_back(s);
     hidden.push_back(false);
-    SetShowLegend(series.size() > 1);
     RefreshLegend();
+    SetShowLegend(legendSeries.size() > 1);
     RebuildSpanAnnotations();
     MarkEngineDirty(ChartDirty::Data);
 }
@@ -193,6 +196,39 @@ void UltraCanvasEngineLineChart::SetReverseStackOrder(bool reverse) {
     MarkEngineDirty(ChartDirty::Data);
 }
 
+void UltraCanvasEngineLineChart::SetPanes(const std::vector<EngineLinePane>& paneList) {
+    panes = paneList;
+    MarkEngineDirty(ChartDirty::Data);      // the axes change
+}
+
+void UltraCanvasEngineLineChart::SetPaneGap(double fraction) {
+    paneGap = std::clamp(fraction, 0.0, 0.3);
+    MarkEngineDirty(ChartDirty::Data);
+}
+
+size_t UltraCanvasEngineLineChart::PaneCount() const {
+    if (Stacked() || GetProjectionKind() == ChartProjectionKind::Polar) return 1;
+    return std::max<size_t>(1, panes.size());
+}
+
+size_t UltraCanvasEngineLineChart::PaneOfSeries(size_t index) const {
+    const size_t count = PaneCount();
+    if (count <= 1 || index >= series.size()) return 0;
+    return std::min(series[index].pane, count - 1);
+}
+
+const ChartAxis& UltraCanvasEngineLineChart::SeriesValueAxis(const ChartAxisSet& axes,
+                                                             size_t s) const {
+    const size_t index = ValueAxisOfPane(PaneOfSeries(s));
+    return index < axes.Count() ? axes.At(index) : axes.At(0);
+}
+
+ChartLineOptions UltraCanvasEngineLineChart::SeriesLineOptions(size_t s) const {
+    ChartLineOptions options = lineOptions;
+    if (s < series.size() && series[s].shape) options.shape = *series[s].shape;
+    return options;
+}
+
 void UltraCanvasEngineLineChart::AddSeriesSpan(const EngineLineSpan& span) {
     spans.push_back(span);
     RebuildSpanAnnotations();
@@ -279,7 +315,10 @@ std::string UltraCanvasEngineLineChart::FormatPlotted(const ChartAxis& valueAxis
 
 void UltraCanvasEngineLineChart::RefreshLegend() {
     std::vector<ChartLegendEntry> entries;
+    legendSeries.clear();
     for (size_t s = 0; s < series.size(); ++s) {
+        if (!series[s].inLegend) continue;
+        legendSeries.push_back(s);
         LegendSwatch swatch = LegendSwatch::Line;
         if (Filled()) swatch = gradientFill ? LegendSwatch::Gradient : LegendSwatch::Square;
         else if (series[s].dashed) swatch = LegendSwatch::DashedLine;
@@ -349,7 +388,8 @@ void UltraCanvasEngineLineChart::RebuildSpanAnnotations() {
 std::vector<ChartNormalizedPoint> UltraCanvasEngineLineChart::TopPoints(
         size_t s, const ChartStackedValues& bands, const ChartAxis& value,
         const ChartAxis& domain, double progress) const {
-    const double zero = std::clamp(value.Normalize(0.0), 0.0, 1.0);
+    const double zero = std::clamp(value.Normalize(0.0), std::min(value.bandStart, value.bandEnd),
+                                   std::max(value.bandStart, value.bandEnd));
     std::vector<ChartNormalizedPoint> points;
     const size_t count = PointCount();
     points.reserve(count);
@@ -368,40 +408,78 @@ std::vector<ChartNormalizedPoint> UltraCanvasEngineLineChart::TopPoints(
 void UltraCanvasEngineLineChart::DescribeAxes(ChartAxisSet& axes) {
     const bool horizontal = GetProjectionKind() == ChartProjectionKind::Horizontal;
     const bool polar = GetProjectionKind() == ChartProjectionKind::Polar;
+    const size_t paneCount = PaneCount();
 
-    ChartAxis value("value");
-    value.side = horizontal ? ChartAxisSide::Bottom : ChartAxisSide::Left;
-    value.title = polar ? std::string() : valueTitle;
-    if (mode == EngineLineChartMode::PercentStackedArea) {
-        value.unitSuffix = "%";
-        value.decimals = 0;
-    } else {
-        value.unitPrefix = valuePrefix;
-        value.unitSuffix = valueSuffix;
-        value.compactNumbers = compactValues;
-        value.decimals = valueDecimals;
+    // Pane sub-bands: pane 0 at the top (at the left when Horizontal), each
+    // sized by its weight, with paneGap between neighbours.
+    std::vector<std::pair<double, double>> paneBands(paneCount, {0.0, 1.0});
+    if (paneCount > 1) {
+        double total = 0.0;
+        for (size_t p = 0; p < paneCount; ++p) total += std::max(0.01, panes[p].weight);
+        const double available = std::max(0.1, 1.0 - paneGap * static_cast<double>(paneCount - 1));
+        double cursor = horizontal ? 0.0 : 1.0;
+        for (size_t p = 0; p < paneCount; ++p) {
+            const double share = available * std::max(0.01, panes[p].weight) / total;
+            if (horizontal) {
+                paneBands[p] = {cursor, cursor + share};
+                cursor += share + paneGap;
+            } else {
+                paneBands[p] = {cursor - share, cursor};
+                cursor -= share + paneGap;
+            }
+        }
+        // The last pane meets the plot edge exactly, whatever the rounding.
+        if (horizontal) paneBands.back().second = 1.0;
+        else paneBands.back().first = 0.0;
     }
 
-    std::vector<std::vector<double>> visible;
-    for (size_t s = 0; s < series.size(); ++s) {
-        if (s < hidden.size() && hidden[s]) continue;
-        visible.push_back(series[s].values);
-    }
-    if (Stacked()) {
-        ChartBarLayoutOptions options;
-        options.arrangement = mode == EngineLineChartMode::StackedArea
-                                  ? ChartBarArrangement::Stacked
-                                  : ChartBarArrangement::PercentStacked;
-        ObserveBarSeries(value, visible, options);
-    } else {
-        for (const std::vector<double>& values : visible) value.Observe(values);
-        if (Filled() || includeZero || polar) value.Observe(0.0);
-        if (std::isfinite(valueAtLeast)) value.Observe(valueAtLeast);
-        // Keeps the extreme points and their markers clear of the plot edge;
-        // a range that starts at zero keeps its baseline.
-        value.rangePadding = 0.05;
-    }
-    axes.Add(value);
+    auto valueAxis = [&](size_t p) {
+        ChartAxis value(p == 0 ? std::string("value") : "value" + std::to_string(p));
+        value.side = horizontal ? ChartAxisSide::Bottom : ChartAxisSide::Left;
+        std::string title = (p == 0) ? valueTitle : std::string();
+        if (p < panes.size() && !panes[p].valueTitle.empty()) title = panes[p].valueTitle;
+        value.title = polar ? std::string() : title;
+        value.bandStart = paneBands[p].first;
+        value.bandEnd = paneBands[p].second;
+        if (mode == EngineLineChartMode::PercentStackedArea) {
+            value.unitSuffix = "%";
+            value.decimals = 0;
+        } else {
+            value.unitPrefix = valuePrefix;
+            value.unitSuffix = valueSuffix;
+            value.compactNumbers = compactValues;
+            value.decimals = valueDecimals;
+        }
+
+        std::vector<std::vector<double>> visible;
+        for (size_t s = 0; s < series.size(); ++s) {
+            if (s < hidden.size() && hidden[s]) continue;
+            if (PaneOfSeries(s) != p) continue;
+            visible.push_back(series[s].values);
+        }
+        if (Stacked()) {
+            ChartBarLayoutOptions options;
+            options.arrangement = mode == EngineLineChartMode::StackedArea
+                                      ? ChartBarArrangement::Stacked
+                                      : ChartBarArrangement::PercentStacked;
+            ObserveBarSeries(value, visible, options);
+        } else {
+            for (const std::vector<double>& values : visible) value.Observe(values);
+            const bool paneZero = p < panes.size() && panes[p].includeZero;
+            if (Filled() || includeZero || paneZero || polar) value.Observe(0.0);
+            if (p == 0 && std::isfinite(valueAtLeast)) value.Observe(valueAtLeast);
+            if (p < panes.size()) {
+                for (double v : panes[p].rangeIncludes) {
+                    if (std::isfinite(v)) value.Observe(v);
+                }
+            }
+            // Keeps the extreme points and their markers clear of the plot
+            // edge; a range that starts at zero keeps its baseline.
+            value.rangePadding = 0.05;
+        }
+        return value;
+    };
+    axes.Add(valueAxis(0));
 
     ChartAxis domain("domain");
     domain.side = horizontal ? ChartAxisSide::Left : ChartAxisSide::Bottom;
@@ -423,8 +501,15 @@ void UltraCanvasEngineLineChart::DescribeAxes(ChartAxisSet& axes) {
     }
     axes.Add(domain);
 
+    std::vector<size_t> paneGrids;
+    for (size_t p = 1; p < paneCount; ++p) {
+        axes.Add(valueAxis(p));
+        paneGrids.push_back(ValueAxisOfPane(p));
+    }
+
     SetGridAxis(0);
     SetDomainGridAxis(polar ? 1 : static_cast<size_t>(-1));
+    SetExtraGridAxes(paneGrids);
 }
 
 void UltraCanvasEngineLineChart::RenderChartContent(IRenderContext* ctx,
@@ -436,18 +521,21 @@ void UltraCanvasEngineLineChart::RenderChartContent(IRenderContext* ctx,
     const bool orthogonal = GetProjectionKind() != ChartProjectionKind::Polar;
     const double progress = frame.animationProgress;
     const ChartStackedValues bands = Bands();
-    const double zero = std::clamp(value.Normalize(0.0), 0.0, 1.0);
     const int64_t hovered = HoveredRegionId();
     const size_t hoveredSeries = hovered >= 0 ? static_cast<size_t>(hovered / 1000000) : SIZE_MAX;
     // Around a full circle of categories the series is a loop: December
     // joins back to January.
-    ChartLineOptions shapeOptions = lineOptions;
-    shapeOptions.closed = !orthogonal && domain.scale == ChartScale::Category && domain.cyclic;
+    const bool closed = !orthogonal && domain.scale == ChartScale::Category && domain.cyclic;
+    auto shapeOf = [&](size_t s) {
+        ChartLineOptions options = SeriesLineOptions(s);
+        options.closed = closed;
+        return options;
+    };
 
     std::vector<std::vector<ChartNormalizedPoint>> tops(series.size());
     for (size_t s = 0; s < series.size(); ++s) {
         if (s < hidden.size() && hidden[s]) continue;
-        tops[s] = TopPoints(s, bands, value, domain, progress);
+        tops[s] = TopPoints(s, bands, SeriesValueAxis(*frame.axes, s), domain, progress);
     }
 
     // ---- fills (area modes): bottom of the stack first ----------------------
@@ -457,21 +545,25 @@ void UltraCanvasEngineLineChart::RenderChartContent(IRenderContext* ctx,
         if (reverseStack) std::reverse(order.begin(), order.end());
         for (size_t s : order) {
             if (tops[s].empty()) continue;
+            const ChartAxis& axis = SeriesValueAxis(*frame.axes, s);
+            const double zero = std::clamp(axis.Normalize(0.0),
+                                           std::min(axis.bandStart, axis.bandEnd),
+                                           std::max(axis.bandStart, axis.bandEnd));
             std::vector<ChartNormalizedPoint> base;
             base.reserve(tops[s].size());
             for (size_t i = 0; i < tops[s].size(); ++i) {
                 const double b = (i < bands.base[s].size()) ? bands.base[s][i] : std::nan("");
-                const double v = Finite(b) ? value.Normalize(b) : std::nan("");
+                const double v = Finite(b) ? axis.Normalize(b) : std::nan("");
                 base.emplace_back(tops[s][i].u, zero + (v - zero) * progress);
             }
             const Color color = SeriesColor(s);
             const float alpha = (hoveredSeries == s) ? std::min(1.0f, areaOpacity + 0.2f)
                                                      : areaOpacity;
             for (const std::vector<Point2Dd>& outline :
-                 BuildAreaOutlines(projection, tops[s], base, shapeOptions)) {
+                 BuildAreaOutlines(projection, tops[s], base, shapeOf(s))) {
                 if (outline.size() < 3) continue;
                 if (gradientFill && orthogonal) {
-                    const Point2Dd from = projection.ToScreen(ChartNormalizedPoint(0.5, 1.0));
+                    const Point2Dd from = projection.ToScreen(ChartNormalizedPoint(0.5, std::max(axis.bandStart, axis.bandEnd)));
                     const Point2Dd to = projection.ToScreen(ChartNormalizedPoint(0.5, zero));
                     ctx->SetFillPaint(ctx->CreateLinearGradientPattern(
                         from.x, from.y, to.x, to.y,
@@ -492,7 +584,7 @@ void UltraCanvasEngineLineChart::RenderChartContent(IRenderContext* ctx,
     ctx->SetLineCap(LineCap::Round);
     for (size_t s = 0; s < series.size(); ++s) {
         if (tops[s].empty()) continue;
-        runs[s] = BuildLineRuns(projection, tops[s], shapeOptions);
+        runs[s] = BuildLineRuns(projection, tops[s], shapeOf(s));
         if (Filled() && !showEdgeLines) continue;
         const Color color = SeriesColor(s);
         float width = series[s].lineWidth > 0.0f ? series[s].lineWidth : lineWidth;
@@ -509,29 +601,47 @@ void UltraCanvasEngineLineChart::RenderChartContent(IRenderContext* ctx,
     ctx->PopState();
 
     // ---- markers and hit regions ----------------------------------------------
-    // Tooltips show the datum as supplied, in the chart's own units - under
-    // 100% stacking the axis reads percent, the data does not.
-    ChartAxis datum = value;
-    if (mode == EngineLineChartMode::PercentStackedArea) {
-        datum.unitPrefix = valuePrefix;
-        datum.unitSuffix = valueSuffix;
-        datum.compactNumbers = compactValues;
-        datum.decimals = valueDecimals;
-    }
     for (size_t s = 0; s < series.size(); ++s) {
+        // Tooltips show the datum as supplied, in the chart's own units -
+        // under 100% stacking the axis reads percent, the data does not.
+        const ChartAxis& axis = SeriesValueAxis(*frame.axes, s);
+        ChartAxis datum = axis;
+        if (mode == EngineLineChartMode::PercentStackedArea) {
+            datum.unitPrefix = valuePrefix;
+            datum.unitSuffix = valueSuffix;
+            datum.compactNumbers = compactValues;
+            datum.decimals = valueDecimals;
+        }
         const Color color = SeriesColor(s);
         const Color fill = markerColor.a > 0 ? markerColor : color;
+        const bool markers = series[s].showMarkers.value_or(showMarkers);
+        const bool interactive = series[s].interactive;
         for (const ChartLineRun& run : runs[s]) {
             for (size_t k = 0; k < run.knots.size() && k < run.indices.size(); ++k) {
                 const size_t i = run.indices[k];
                 const Point2Dd& p = run.knots[k];
                 const int64_t id = RegionId(s, i);
-                const bool isHovered = (hovered == id);
-                if (showMarkers || isHovered) {
-                    DrawChartMarker(ctx, series[s].marker, p,
-                                    isHovered ? markerRadius + 2.0 : markerRadius, fill,
-                                    GetTheme().plotAreaColor, 1.5f);
+                const bool isHovered = interactive && (hovered == id);
+                const EngineLinePointStyle* style =
+                    i < series[s].pointStyles.size() ? &series[s].pointStyles[i] : nullptr;
+                if (markers || isHovered || (style && style->alwaysShown)) {
+                    double radius = (isHovered ? markerRadius + 2.0 : markerRadius);
+                    ChartMarkerShape shape = series[s].marker;
+                    Color own = fill;
+                    bool hollow = false;
+                    if (style) {
+                        radius *= std::max(0.1f, style->radiusScale);
+                        if (style->marker) shape = *style->marker;
+                        if (style->color.a > 0) own = style->color;
+                        hollow = style->hollow;
+                    }
+                    if (hollow) {
+                        DrawChartMarker(ctx, shape, p, radius, GetTheme().plotAreaColor, own, 2.0f);
+                    } else {
+                        DrawChartMarker(ctx, shape, p, radius, own, GetTheme().plotAreaColor, 1.5f);
+                    }
                 }
+                if (!interactive) continue;
                 const double raw = (i < series[s].values.size()) ? series[s].values[i]
                                                                  : std::nan("");
                 std::ostringstream tip;
@@ -542,6 +652,9 @@ void UltraCanvasEngineLineChart::RenderChartContent(IRenderContext* ctx,
                 if (mode == EngineLineChartMode::PercentStackedArea &&
                     i < bands.top[s].size() && i < bands.base[s].size()) {
                     tip << " (" << value.FormatValue(bands.top[s][i] - bands.base[s][i]) << ")";
+                }
+                if (i < series[s].pointNotes.size() && !series[s].pointNotes[i].empty()) {
+                    tip << "\n" << series[s].pointNotes[i];
                 }
                 const double r = std::max(6.0, static_cast<double>(markerRadius) + 3.0);
                 AddHitRegion(Rect2Dd(p.x - r, p.y - r, r * 2.0, r * 2.0), id, tip.str());
@@ -566,7 +679,6 @@ void UltraCanvasEngineLineChart::MeasureContent(IRenderContext* ctx,
 void UltraCanvasEngineLineChart::CollectChartLabels(IRenderContext* ctx,
                                                     ChartLabelBroker& broker) {
     if (!Frame().axes || Frame().axes->Count() < 2 || !Frame().projection) return;
-    const ChartAxis& value = Frame().axes->At(0);
     const ChartAxis& domain = Frame().axes->At(1);
     const ChartStackedValues bands = Bands();
     ctx->SetFontSize(axisFontSize);
@@ -574,9 +686,10 @@ void UltraCanvasEngineLineChart::CollectChartLabels(IRenderContext* ctx,
     // The lines are obstacles: a label must not sit on its own series.
     for (size_t s = 0; s < series.size(); ++s) {
         if (s < hidden.size() && hidden[s]) continue;
+        const ChartAxis& value = SeriesValueAxis(*Frame().axes, s);
         for (const ChartLineRun& run :
              BuildLineRuns(*Frame().projection, TopPoints(s, bands, value, domain, 1.0),
-                           lineOptions)) {
+                           SeriesLineOptions(s))) {
             if (run.points.size() >= 2) broker.AddObstaclePolyline(run.points, lineWidth * 0.5 + 1.0);
         }
     }
@@ -584,6 +697,8 @@ void UltraCanvasEngineLineChart::CollectChartLabels(IRenderContext* ctx,
 
     for (size_t s = 0; s < series.size(); ++s) {
         if (s < hidden.size() && hidden[s]) continue;
+        if (!series[s].interactive) continue;        // a reference line has no labels
+        const ChartAxis& value = SeriesValueAxis(*Frame().axes, s);
         // The series' extreme survives any declutter.
         size_t champion = SIZE_MAX;
         double best = -std::numeric_limits<double>::max();
@@ -620,10 +735,157 @@ void UltraCanvasEngineLineChart::OnChartThemeChanged() {
 }
 
 void UltraCanvasEngineLineChart::OnLegendEntryToggled(size_t entryIndex, bool enabled) {
-    if (entryIndex >= hidden.size()) return;
-    hidden[entryIndex] = !enabled;
+    if (entryIndex >= legendSeries.size()) return;
+    const size_t s = legendSeries[entryIndex];
+    if (s >= hidden.size()) return;
+    hidden[s] = !enabled;
     RebuildSpanAnnotations();
     MarkEngineDirty(ChartDirty::Data);  // the range and the stack change
+}
+
+// =============================================================================
+// CONTROL CHARTS
+// =============================================================================
+
+namespace {
+
+// Enough decimals to tell the limits apart: one more than the spread's
+// leading digit (sigma 0.0093 -> 4 decimals, 0.018 -> 3).
+int LimitDecimals(double spread) {
+    if (!(spread > 0.0) || !std::isfinite(spread)) return 2;
+    return std::clamp(static_cast<int>(std::ceil(-std::log10(spread))) + 1, 0, 6);
+}
+
+std::string FormatLimit(double value, int decimals) {
+    char buffer[64];
+    std::snprintf(buffer, sizeof(buffer), "%.*f", decimals, value);   // locale-ok: display text
+    return buffer;
+}
+
+} // namespace
+
+void ShowControlChart(UltraCanvasEngineLineChart& chart, const ControlResult& result,
+                      const ControlChartStyle& style) {
+    const ChartTheme& theme = chart.GetTheme();
+    const Color dataColor = style.dataColor.a > 0 ? style.dataColor : theme.palette.ColorAt(0);
+    const Color limitColor = style.limitColor.a > 0 ? style.limitColor : theme.axisLineColor;
+    const Color centreColor = style.centreColor.a > 0 ? style.centreColor
+                                                      : theme.axisLabelColor.WithAlpha(170);
+
+    chart.ClearLimiters();
+    chart.ClearHighlights();
+    chart.SetCategories(result.labels);
+    chart.SetCategoryPadding(0.5);             // the first and last points clear of the plot edges
+
+    const bool twoPanes = result.dispersion.has_value() && style.showDispersion;
+    std::vector<const ControlSeries*> paneSeries = {&result.location};
+    if (twoPanes) paneSeries.push_back(&*result.dispersion);
+
+    std::vector<EngineLinePane> panes;
+    std::vector<EngineLineSeries> seriesList;
+    for (size_t p = 0; p < paneSeries.size(); ++p) {
+        const ControlSeries& cs = *paneSeries[p];
+        EngineLinePane pane;
+        pane.weight = (p == 0) ? 1.0 : std::max(0.1, style.dispersionWeight);
+        pane.valueTitle = cs.name;
+        pane.includeZero = (p == 1);           // a range starts at zero
+        // The limits are always in view, however close the data stays.
+        if (cs.constantLimits && !cs.value.empty()) {
+            pane.rangeIncludes = {cs.upper.front(), cs.centre.front()};
+            if (!cs.lowerClamped) pane.rangeIncludes.push_back(cs.lower.front());
+        }
+        panes.push_back(pane);
+
+        EngineLineSeries s;
+        s.name = cs.name;
+        s.values = cs.value;
+        s.color = dataColor;
+        s.marker = ChartMarkerShape::Circle;
+        s.pane = p;
+        s.pointStyles.resize(cs.value.size());
+        s.pointNotes.resize(cs.value.size());
+        for (size_t i = 0; i < cs.value.size(); ++i) {
+            const std::vector<int> rules = result.RulesAt(i, p);
+            if (rules.empty()) continue;
+            EngineLinePointStyle flag;
+            flag.color = style.flagColor;
+            flag.marker = ChartMarkerShape::Diamond;
+            flag.radiusScale = 1.4f;
+            flag.alwaysShown = true;
+            s.pointStyles[i] = flag;
+            std::string note;
+            for (int rule : rules) {
+                if (!note.empty()) note += "\n";
+                note += ControlRuleDescription(rule);
+            }
+            s.pointNotes[i] = note;
+        }
+        seriesList.push_back(std::move(s));
+    }
+    chart.SetPanes(panes);
+    chart.SetSeries(seriesList);
+    chart.SetShowLegend(false);                // the pane titles name the statistics
+
+    for (size_t p = 0; p < paneSeries.size(); ++p) {
+        const ControlSeries& cs = *paneSeries[p];
+        if (cs.value.empty() || !cs.constantLimits) continue;
+        const double centre = cs.centre.front(), upper = cs.upper.front(), lower = cs.lower.front();
+        if (!std::isfinite(centre) || !std::isfinite(upper)) continue;
+        const size_t axis = UltraCanvasEngineLineChart::ValueAxisOfPane(p);
+        const int decimals = LimitDecimals((upper - centre) / 3.0);
+        auto limiter = [&](double value, const Color& color, bool dashed, float width,
+                           const std::string& caption) {
+            ChartLimiter l;
+            l.kind = ChartLimiterKind::Threshold;
+            l.axisIndex = axis;
+            l.value = value;
+            l.color = color;
+            l.dashed = dashed;
+            l.width = width;
+            if (style.showLimitCaptions && !caption.empty()) {
+                l.caption = caption;
+                l.captionColor = color;
+                // Past the plot's right edge, clear of the data.
+                l.captionPlacement = ChartLimiterCaptionPlacement::BeyondEnd;
+            }
+            chart.AddLimiter(l);
+        };
+        limiter(upper, limitColor, true, 1.5f, "UCL = " + FormatLimit(upper, decimals));
+        limiter(centre, centreColor, false, 1.2f, "CL = " + FormatLimit(centre, decimals));
+        if (!cs.lowerClamped && std::isfinite(lower)) {
+            limiter(lower, limitColor, true, 1.5f, "LCL = " + FormatLimit(lower, decimals));
+        }
+
+        // Sigma lines and zones belong to the values pane: the run rules
+        // read them there.
+        const double sigma = cs.sigma.front();
+        if (p != 0 || !(sigma > 0.0)) continue;
+        if (style.showSigmaLines) {
+            for (double k : {-2.0, -1.0, 1.0, 2.0}) {
+                limiter(centre + k * sigma, limitColor.WithAlpha(110), true, 1.0f, std::string());
+            }
+        }
+        if (style.showZones) {
+            // Zone A (2-3 sigma) strongest, C (within 1 sigma) faintest.
+            const uint8_t alphas[3] = {14, 28, 46};
+            for (int zone = 0; zone < 3; ++zone) {
+                for (int side : {1, -1}) {
+                    ChartHighlight h;
+                    h.shape = ChartHighlightShape::ValueBand;
+                    h.axisIndex = axis;
+                    const double a = centre + side * zone * sigma;
+                    const double b = centre + side * (zone + 1) * sigma;
+                    h.bandLow = std::min(a, b);
+                    h.bandHigh = std::max(a, b);
+                    h.fill = dataColor.WithAlpha(alphas[zone]);
+                    h.stroke = Color(0, 0, 0, 0);
+                    h.strokeWidth = 0.0f;
+                    h.zSlot = 200;
+                    chart.AddHighlight(h);
+                }
+            }
+        }
+    }
 }
 
 } // namespace UltraCanvas

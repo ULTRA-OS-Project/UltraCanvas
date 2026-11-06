@@ -1,9 +1,14 @@
 // Plugins/Charts/Engine/UltraCanvasChartEngineElement.cpp
 // The chart engine's three-phase render driver
+// Version: 1.3.6 - SetExtraGridAxes (a grid in every pane), HitRegionAt; a limiter
+//                  outside its axis's band is not drawn (nor captioned); a limiter's
+//                  caption is anchored half its width in from the line's end, so it
+//                  fits beside the line instead of across it; ChartLimiter::captionPlacement
+//                  (AboveEnd pins it there, BeyondEnd puts it past the plot's edge)
 // Version: 1.3.5 - the ternary projection's plot area is its triangle
 // Version: 1.3.4 - ChartHighlightShape::Polygon
 // Version: 1.3.3
-// Last Modified: 2026-11-03
+// Last Modified: 2026-11-06
 // V1.3.3: Tick labels drawn inside the plot (an in-plot axis, the radial
 //   value rule under Polar) are obstacles in the label plan, so a solved
 //   label no longer overprints them - the polar chart's "0 ppm" under its
@@ -236,6 +241,11 @@ void UltraCanvasChartEngineElement::SetDomainGridAxis(size_t axisIndex) {
     RequestRedraw();
 }
 
+void UltraCanvasChartEngineElement::SetExtraGridAxes(const std::vector<size_t>& axisIndices) {
+    extraGridAxes = axisIndices;
+    RequestRedraw();
+}
+
 size_t UltraCanvasChartEngineElement::AddLimiter(const ChartLimiter& limiter) {
     limiters.push_back(limiter);
     MarkEngineDirty(ChartDirty::Style);       // captions join the label plan
@@ -381,6 +391,13 @@ void UltraCanvasChartEngineElement::AddHitRegion(const std::vector<Point2Dd>& po
     region.id = regionId;
     region.tooltip = tooltip;
     hitRegions.push_back(std::move(region));
+}
+
+int64_t UltraCanvasChartEngineElement::HitRegionAt(const Point2Dd& point,
+                                                   std::string* tooltip) const {
+    const ChartHitRegion* region = HitTestRegions(point);
+    if (tooltip) *tooltip = region ? region->tooltip : std::string();
+    return region ? region->id : -1;
 }
 
 const UltraCanvasChartEngineElement::ChartHitRegion*
@@ -645,6 +662,22 @@ void UltraCanvasChartEngineElement::RunLayout(IRenderContext* ctx) {
     // edge instead of pushed down onto the bar.
     ChartLayoutRequest contentRequest;
     MeasureContent(ctx, contentRequest);
+    // Limiter captions placed beyond the line's end need room past the plot
+    // edge; as a content reservation their labels may use it.
+    if (!polar) {
+        ctx->SetFontSize(axisFontSize);
+        for (const ChartLimiter& limiter : limiters) {
+            if (limiter.caption.empty() ||
+                limiter.captionPlacement != ChartLimiterCaptionPlacement::BeyondEnd ||
+                limiter.axisIndex >= engineAxes.Count()) continue;
+            const ChartAxis& axis = engineAxes.At(limiter.axisIndex);
+            const bool domainLimiter = !axis.inPlot && IsDomainAxis(axis);
+            const bool acrossScreen = (projectionKind == ChartProjectionKind::Horizontal) == domainLimiter;
+            if (!acrossScreen) continue;
+            contentRequest.Reserve(ChartAxisEdge::Right,
+                                   ctx->GetTextLineWidth(limiter.caption) + 10.0);
+        }
+    }
     contentMargins = contentRequest.margins;
     request.margins.Merge(contentMargins);
     request.margins.top += titleBand;
@@ -704,6 +737,8 @@ void UltraCanvasChartEngineElement::BuildLabelPlan(IRenderContext* ctx) {
         if (limiter.caption.empty() || limiter.axisIndex >= engineAxes.Count()) continue;
         const ChartAxis& axis = engineAxes.At(limiter.axisIndex);
         const double v = axis.Normalize(limiter.value);
+        if (v < std::min(axis.bandStart, axis.bandEnd) - 0.001 ||
+            v > std::max(axis.bandStart, axis.bandEnd) + 0.001) continue;   // not drawn
         // Near the far end of the line's extent, along whichever direction
         // the limiter runs (across the value range for a domain axis).
         const bool domainLimiter = !axis.inPlot && IsDomainAxis(axis);
@@ -712,16 +747,45 @@ void UltraCanvasChartEngineElement::BuildLabelPlan(IRenderContext* ctx) {
         const bool polarRing = projectionKind == ChartProjectionKind::Polar && !domainLimiter;
         const double along = limiter.extentStart +
                              (limiter.extentEnd - limiter.extentStart) * (polarRing ? 0.06 : 0.98);
-        const Point2Dd anchor = engineProjection->ToScreen(
+        Point2Dd anchor = engineProjection->ToScreen(
             domainLimiter ? ChartNormalizedPoint(v, along) : ChartNormalizedPoint(along, v));
+        const Size2Di size = ctx->GetTextLineDimensions(limiter.caption);
+        const bool acrossScreen = projectionKind != ChartProjectionKind::Polar &&
+                                  (projectionKind == ChartProjectionKind::Horizontal) == domainLimiter;
+        const bool beyond = acrossScreen &&
+                            limiter.captionPlacement == ChartLimiterCaptionPlacement::BeyondEnd;
+        if (beyond) {
+            // Just past the line's far end, in the room reserved for it.
+            anchor = engineProjection->ToScreen(domainLimiter
+                                                    ? ChartNormalizedPoint(v, limiter.extentEnd)
+                                                    : ChartNormalizedPoint(limiter.extentEnd, v));
+        } else if (!polarRing && projectionKind != ChartProjectionKind::Polar) {
+            // Back from the line's far end by half the caption, so the
+            // caption fits beside the line there instead of running past the
+            // plot edge - which left the solver only a place across the line.
+            const auto at = [&](double e) {
+                return engineProjection->ToScreen(domainLimiter ? ChartNormalizedPoint(v, e)
+                                                                : ChartNormalizedPoint(e, v));
+            };
+            const Point2Dd end = at(limiter.extentEnd), start = at(limiter.extentStart);
+            const double length = std::hypot(start.x - end.x, start.y - end.y);
+            if (length > 1.0) {
+                const double dx = (start.x - end.x) / length, dy = (start.y - end.y) / length;
+                const double back = std::min(length * 0.5,
+                                             std::abs(dx) * (size.width * 0.5 + 6.0) +
+                                             std::abs(dy) * (size.height * 0.5 + 6.0));
+                anchor = Point2Dd(end.x + dx * back, end.y + dy * back);
+            }
+        }
         ChartLabelRequest caption;
         caption.text = limiter.caption;
         caption.klass = ChartLabelClass::LimiterCaption;
         caption.anchor = anchor;
-        const Size2Di size = ctx->GetTextLineDimensions(limiter.caption);
         caption.textSize = Size2Dd(size.width, size.height);
-        caption.preferredSide = polarRing ? LabelSide::Right : LabelSide::Top;
+        caption.preferredSide = beyond ? LabelSide::Right
+                                : polarRing ? LabelSide::Right : LabelSide::Top;
         caption.priority = 5;
+        caption.pinned = limiter.captionPlacement != ChartLimiterCaptionPlacement::Solved;
         broker.Add(caption);
     }
 
@@ -1205,6 +1269,11 @@ void UltraCanvasChartEngineElement::RenderEngineGrid(IRenderContext* ctx) {
     ctx->SetStrokeWidth(1.0f);
     RenderGridFrom(ctx, gridAxisIndex);
     if (domainGridAxisIndex != gridAxisIndex) RenderGridFrom(ctx, domainGridAxisIndex);
+    for (size_t axisIndex : extraGridAxes) {
+        if (axisIndex != gridAxisIndex && axisIndex != domainGridAxisIndex) {
+            RenderGridFrom(ctx, axisIndex);
+        }
+    }
 }
 
 void UltraCanvasChartEngineElement::RenderGridFrom(IRenderContext* ctx, size_t axisIndex) {
@@ -1280,7 +1349,10 @@ void UltraCanvasChartEngineElement::RenderEngineLimiters(IRenderContext* ctx) {
         if (limiter.axisIndex >= engineAxes.Count()) continue;
         const ChartAxis& axis = engineAxes.At(limiter.axisIndex);
         const double v = axis.Normalize(limiter.value);
-        if (v < -0.001 || v > 1.001) continue;
+        // Outside its axis's band (the whole plot, or the axis's pane) a
+        // limiter is not drawn rather than drawn across a neighbouring pane.
+        if (v < std::min(axis.bandStart, axis.bandEnd) - 0.001 ||
+            v > std::max(axis.bandStart, axis.bandEnd) + 0.001) continue;
 
         ctx->SetStrokePaint(limiter.color);
         ctx->SetStrokeWidth(limiter.width);
