@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>UltraStore - UltraVideo</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Manrope:wght@600;700;800&amp;display=swap">
+<style>
+body{margin:0;background:#ffffff}
+a{color:#1d4ed8}a:hover{color:#1e40af}
+</style>
+</helmet>
+<div style="min-height: 100%; background: #ffffff; color: #0f172a; font-family: Inter, system-ui, sans-serif; font-size: 15px; line-height: 1.5; -webkit-font-smoothing: antialiased">
+
+<header style="border-bottom: 1px solid #e2e8f0; background: #ffffff">
+<div style="max-width: 1280px; margin: 0 auto; padding: 12px 32px; min-height: 72px; box-sizing: border-box; display: flex; align-items: center; gap: 24px; flex-wrap: wrap">
+<a href="Main.dc.html" aria-label="UltraStore home" style="display: flex; align-items: center; gap: 10px; text-decoration: none; color: #0f172a">
+<img src="/_blob/9b931f0bda5f6ee1d30304d2295e0e4a" alt="" style="width: 36px; height: 36px; border-radius: 10px">
+<span style="font-family: Manrope, Inter, sans-serif; font-weight: 800; font-size: 21px; letter-spacing: -0.02em">UltraStore</span>
+</a>
+<nav aria-label="Store sections" style="display: flex; gap: 4px; flex-wrap: wrap">
+<a href="Main.dc.html" style="display: inline-flex; align-items: center; height: 40px; padding: 0 14px; border-radius: 999px; text-decoration: none; font-weight: 500; color: #334155">Discover</a>
+<a href="Categories.dc.html" style="display: inline-flex; align-items: center; height: 40px; padding: 0 14px; border-radius: 999px; text-decoration: none; font-weight: 500; color: #334155">Categories</a>
+<a href="#installed" style="display: inline-flex; align-items: center; height: 40px; padding: 0 14px; border-radius: 999px; text-decoration: none; font-weight: 500; color: #334155">Installed</a>
+<a href="#updates" style="display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 14px; border-radius: 999px; text-decoration: none; font-weight: 500; color: #334155">Updates <span style="display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 999px; background: #0f172a; color: #ffffff; font-size: 12px; font-weight: 700">3</span></a>
+</nav>
+<form role="search" style="flex: 1 1 240px; display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 16px; box-sizing: border-box; border-radius: 999px; background: #f1f5f9; border: 1px solid transparent">
+<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+<label for="search-detail" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap">Search apps</label>
+<input id="search-detail" type="search" placeholder="Search apps, publishers, tags" style="flex: 1 1 auto; min-width: 0; border: 0; background: transparent; font: inherit; font-size: 15px; color: #0f172a; outline: none">
+</form>
+<button type="button" style="height: 44px; padding: 0 18px; border-radius: 999px; border: 1px solid #cbd5e1; background: #ffffff; color: #0f172a; font: inherit; font-weight: 600; cursor: pointer">Sign in</button>
+</div>
+</header>
+
+<main style="max-width: 1280px; margin: 0 auto; padding: 24px 32px 0; box-sizing: border-box; display: flex; flex-direction: column; gap: 40px">
+
+<nav aria-label="Breadcrumb" style="font-size: 13px; color: #64748b; display: flex; gap: 8px; align-items: center; flex-wrap: wrap">
+<a href="Main.dc.html" style="color: #475569; text-decoration: none; font-weight: 500">Discover</a>
+<span aria-hidden="true">/</span>
+<a href="Categories.dc.html" style="color: #475569; text-decoration: none; font-weight: 500">Creative &amp; media</a>
+<span aria-hidden="true">/</span>
+<span style="color: #0f172a; font-weight: 600">UltraVideo</span>
+</nav>
+
+<section aria-labelledby="app-title" style="display: flex; flex-wrap: wrap; gap: 32px; align-items: flex-start">
+<img src="/_blob/023cd138f38912c764ae7c221c087db6" alt="UltraVideo icon" style="width: 160px; height: 160px; border-radius: 36px; box-shadow: 0 12px 32px rgba(15,23,42,0.18); flex: 0 0 auto">
+<div style="flex: 1 1 420px; min-width: 0; display: flex; flex-direction: column; gap: 14px">
+<div style="display: flex; flex-direction: column; gap: 4px">
+<h1 id="app-title" style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 44px; font-weight: 800; letter-spacing: -0.03em; line-height: 1.05">UltraVideo</h1>
+<p style="margin: 0; font-size: 18px; color: #475569">Video editor with a timeline and one-button export</p>
+<a href="#publisher" style="font-weight: 600; text-decoration: none; font-size: 15px">ULTRA OS Project</a>
+</div>
+<ul style="margin: 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 8px">
+<li style="height: 30px; display: inline-flex; align-items: center; gap: 6px; padding: 0 12px; border-radius: 999px; background: #dcfce7; color: #166534; font-size: 13px; font-weight: 700">30-day free trial</li>
+<li style="height: 30px; display: inline-flex; align-items: center; gap: 6px; padding: 0 12px; border-radius: 999px; background: #f1f5f9; color: #334155; font-size: 13px; font-weight: 600">Open source · MIT</li>
+<li style="height: 30px; display: inline-flex; align-items: center; gap: 6px; padding: 0 12px; border-radius: 999px; background: #f1f5f9; color: #334155; font-size: 13px; font-weight: 600">PEGI 3</li>
+<li style="height: 30px; display: inline-flex; align-items: center; gap: 6px; padding: 0 12px; border-radius: 999px; background: #f1f5f9; color: #334155; font-size: 13px; font-weight: 600">No account needed</li>
+<li style="height: 30px; display: inline-flex; align-items: center; gap: 6px; padding: 0 12px; border-radius: 999px; background: #f1f5f9; color: #334155; font-size: 13px; font-weight: 600">Updates free until 31 Dec 2027</li>
+</ul>
+<div style="display: flex; flex-wrap: wrap; gap: 12px; align-items: center; padding-top: 6px">
+<button type="button" style="display: inline-flex; align-items: center; gap: 10px; height: 52px; padding: 0 26px; border-radius: 999px; border: 0; background: {{accent}}; color: #ffffff; font: inherit; font-weight: 700; font-size: 16px; cursor: pointer"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v12"></path><path d="M6 10l6 6 6-6"></path><path d="M4 20h16"></path></svg>Try free</button>
+<button type="button" style="display: inline-flex; align-items: center; gap: 8px; height: 52px; padding: 0 24px; border-radius: 999px; border: 1px solid #cbd5e1; background: #ffffff; color: #0f172a; font: inherit; font-weight: 700; font-size: 16px; cursor: pointer">Buy · 29.90 EUR</button>
+<button type="button" aria-label="Share" style="width: 52px; height: 52px; border-radius: 999px; border: 1px solid #cbd5e1; background: #ffffff; display: inline-flex; align-items: center; justify-content: center; cursor: pointer"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0f172a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><path d="M8.6 13.5l6.8 4"></path><path d="M15.4 6.5l-6.8 4"></path></svg></button>
+<button type="button" aria-label="Add to wish list" style="width: 52px; height: 52px; border-radius: 999px; border: 1px solid #cbd5e1; background: #ffffff; display: inline-flex; align-items: center; justify-content: center; cursor: pointer"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0f172a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"></path></svg></button>
+</div>
+<p style="margin: 0; font-size: 13px; color: #64748b">Download for this machine: 3.2 MB. The UltraCanvas runtime is already installed, VideoFX 0.12.0 (14 MB) will be added.</p>
+</div>
+<dl style="flex: 0 1 300px; margin: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; padding: 22px; box-sizing: border-box; border-radius: 20px; background: #f8fafc">
+<div style="display: flex; flex-direction: column; gap: 2px"><dt style="font-size: 12px; color: #64748b; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em">Version</dt><dd style="margin: 0; font-weight: 700">0.7.0</dd></div>
+<div style="display: flex; flex-direction: column; gap: 2px"><dt style="font-size: 12px; color: #64748b; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em">Released</dt><dd style="margin: 0; font-weight: 700">22 Oct 2026</dd></div>
+<div style="display: flex; flex-direction: column; gap: 2px"><dt style="font-size: 12px; color: #64748b; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em">Channel</dt><dd style="margin: 0; font-weight: 700">Stable</dd></div>
+<div style="display: flex; flex-direction: column; gap: 2px"><dt style="font-size: 12px; color: #64748b; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em">Category</dt><dd style="margin: 0; font-weight: 700">Creative &amp; media</dd></div>
+<div style="display: flex; flex-direction: column; gap: 2px"><dt style="font-size: 12px; color: #64748b; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em">Runs on</dt><dd style="margin: 0; font-weight: 700">Linux · macOS 14+ · Windows 10+</dd></div>
+<div style="display: flex; flex-direction: column; gap: 2px"><dt style="font-size: 12px; color: #64748b; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em">App id</dt><dd style="margin: 0; font-weight: 700; font-size: 13px; word-break: break-all">org.ultraos.ultravideo</dd></div>
+</dl>
+</section>
+
+<section aria-labelledby="shots-title" style="display: flex; flex-direction: column; gap: 16px">
+<h2 id="shots-title" style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 24px; font-weight: 800; letter-spacing: -0.02em">Screenshots</h2>
+<div style="display: flex; gap: 16px; overflow-x: auto; padding-bottom: 8px">
+<figure style="margin: 0; flex: 0 0 560px; display: flex; flex-direction: column; gap: 8px">
+<div aria-hidden="true" style="height: 340px; border-radius: 16px; background: #111a2e; border: 1px solid #243047; display: flex; flex-direction: column; overflow: hidden">
+<div style="height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 12px; background: #0f172a; border-bottom: 1px solid #243047"><span style="width: 9px; height: 9px; border-radius: 999px; background: #475569"></span><span style="width: 9px; height: 9px; border-radius: 999px; background: #475569"></span><span style="width: 9px; height: 9px; border-radius: 999px; background: #475569"></span></div>
+<div style="flex: 1 1 auto; display: flex; gap: 10px; padding: 12px"><div style="flex: 0 0 150px; border-radius: 8px; background: #1e293b"></div><div style="flex: 1 1 0; border-radius: 8px; background: #1e293b; display: flex; align-items: center; justify-content: center"><span style="width: 0; height: 0; border-left: 24px solid #e2e8f0; border-top: 14px solid transparent; border-bottom: 14px solid transparent"></span></div><div style="flex: 0 0 120px; border-radius: 8px; background: #1e293b"></div></div>
+<div style="display: flex; flex-direction: column; gap: 5px; padding: 0 12px 12px"><div style="display: flex; gap: 4px; height: 20px"><span style="flex: 0 0 30%; border-radius: 4px; background: #3b82f6"></span><span style="flex: 0 0 25%; border-radius: 4px; background: #60a5fa"></span><span style="flex: 0 0 35%; border-radius: 4px; background: #3b82f6"></span></div><div style="display: flex; gap: 4px; height: 20px"><span style="flex: 0 0 45%; margin-left: 12%; border-radius: 4px; background: #8b5cf6"></span></div><div style="display: flex; gap: 4px; height: 20px"><span style="flex: 0 0 90%; border-radius: 4px; background: #14b8a6"></span></div></div>
+</div>
+<figcaption style="font-size: 13px; color: #64748b">[SCREENSHOT 1] The timeline with video, title and audio tracks</figcaption>
+</figure>
+<figure style="margin: 0; flex: 0 0 560px; display: flex; flex-direction: column; gap: 8px">
+<div aria-hidden="true" style="height: 340px; border-radius: 16px; background: #111a2e; border: 1px solid #243047; display: flex; flex-direction: column; overflow: hidden">
+<div style="height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 12px; background: #0f172a; border-bottom: 1px solid #243047"><span style="width: 9px; height: 9px; border-radius: 999px; background: #475569"></span><span style="width: 9px; height: 9px; border-radius: 999px; background: #475569"></span><span style="width: 9px; height: 9px; border-radius: 999px; background: #475569"></span></div>
+<div style="flex: 1 1 auto; display: flex; gap: 10px; padding: 12px"><div style="flex: 1 1 0; border-radius: 8px; background: #1e293b"></div><div style="flex: 0 0 200px; display: flex; flex-direction: column; gap: 8px"><span style="height: 10px; border-radius: 4px; background: #334155"></span><span style="height: 6px; border-radius: 4px; background: #3b82f6; width: 60%"></span><span style="height: 10px; border-radius: 4px; background: #334155"></span><span style="height: 6px; border-radius: 4px; background: #3b82f6; width: 40%"></span><span style="height: 10px; border-radius: 4px; background: #334155"></span><span style="height: 6px; border-radius: 4px; background: #3b82f6; width: 75%"></span><span style="margin-top: auto; height: 32px; border-radius: 8px; background: #2563eb"></span></div></div>
+</div>
+<figcaption style="font-size: 13px; color: #64748b">[SCREENSHOT 2] Colour grading with the VideoFX panel</figcaption>
+</figure>
+<figure style="margin: 0; flex: 0 0 560px; display: flex; flex-direction: column; gap: 8px">
+<div aria-hidden="true" style="height: 340px; border-radius: 16px; background: #111a2e; border: 1px solid #243047; display: flex; align-items: center; justify-content: center">
+<div style="width: 300px; display: flex; flex-direction: column; gap: 12px; padding: 20px; border-radius: 12px; background: #0f172a; border: 1px solid #334155"><span style="height: 12px; width: 50%; border-radius: 4px; background: #e2e8f0"></span><span style="height: 8px; border-radius: 4px; background: #334155"></span><span style="height: 8px; width: 80%; border-radius: 4px; background: #334155"></span><span style="height: 36px; border-radius: 999px; background: #2563eb; margin-top: 6px"></span></div>
+</div>
+<figcaption style="font-size: 13px; color: #64748b">[SCREENSHOT 3] One-button export</figcaption>
+</figure>
+</div>
+</section>
+
+<div style="display: flex; flex-wrap: wrap; gap: 40px; align-items: flex-start">
+
+<div style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 40px">
+
+<section aria-labelledby="about-title" style="display: flex; flex-direction: column; gap: 12px">
+<h2 id="about-title" style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 24px; font-weight: 800; letter-spacing: -0.02em">About this app</h2>
+<p style="margin: 0; color: #334155; font-size: 16px; max-width: 70ch">UltraVideo is the video editor of ULTRA OS. Drop clips on a multi-track timeline, trim and split with the keyboard, add titles and transitions, and grade with the VideoFX engine. When the cut is done, one button renders to MP4, WebM or ProRes with the settings you used last time.</p>
+<p style="margin: 0; color: #334155; font-size: 16px; max-width: 70ch">Projects are plain files you can keep in any folder, open on another machine, or hand to a colleague. Every effect is non-destructive and the original footage is never touched.</p>
+<a href="#more" style="font-weight: 600; text-decoration: none; display: inline-flex; align-items: center; height: 44px">Read more</a>
+</section>
+
+<section aria-labelledby="whatsnew-title" style="display: flex; flex-direction: column; gap: 12px; padding: 24px; box-sizing: border-box; border-radius: 20px; background: #f8fafc">
+<div style="display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; align-items: baseline">
+<h2 id="whatsnew-title" style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 20px; font-weight: 800; letter-spacing: -0.02em">What's new in 0.7.0</h2>
+<a href="#history" style="font-size: 14px; font-weight: 600; text-decoration: none">Version history</a>
+</div>
+<ul style="margin: 0; padding-left: 20px; color: #334155; display: flex; flex-direction: column; gap: 6px">
+<li>Timeline: ripple delete and snap to clip edges.</li>
+<li>Export: ProRes 422 on macOS and Linux, hardware H.264 on Windows.</li>
+<li>VideoFX 0.12: LUT support and a faster colour pipeline.</li>
+<li>Many fixes to audio sync when mixing frame rates.</li>
+</ul>
+</section>
+
+<section aria-labelledby="needs-title" style="display: flex; flex-direction: column; gap: 14px">
+<h2 id="needs-title" style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 24px; font-weight: 800; letter-spacing: -0.02em">What it installs</h2>
+<p style="margin: 0; color: #64748b; font-size: 14px">Apps share layers. Only the layers missing on this machine are downloaded.</p>
+<ul style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden">
+<li style="display: flex; align-items: center; gap: 14px; padding: 14px 18px; border-bottom: 1px solid #e2e8f0">
+<span style="width: 36px; height: 36px; border-radius: 10px; background: #dcfce7; display: inline-flex; align-items: center; justify-content: center"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#166534" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"></path></svg></span>
+<div style="flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column"><span style="font-weight: 700">UltraCanvas runtime 0.9.410</span><span style="font-size: 13px; color: #64748b">Runtime · already installed</span></div>
+<span style="font-size: 13px; color: #64748b">110 MB</span>
+</li>
+<li style="display: flex; align-items: center; gap: 14px; padding: 14px 18px; border-bottom: 1px solid #e2e8f0">
+<span style="width: 36px; height: 36px; border-radius: 10px; background: #dbeafe; display: inline-flex; align-items: center; justify-content: center"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1d4ed8" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v12"></path><path d="M6 10l6 6 6-6"></path><path d="M4 20h16"></path></svg></span>
+<div style="flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column"><span style="font-weight: 700">VideoFX 0.12.0</span><span style="font-size: 13px; color: #64748b">Library · will be downloaded</span></div>
+<span style="font-size: 13px; color: #64748b">14 MB</span>
+</li>
+<li style="display: flex; align-items: center; gap: 14px; padding: 14px 18px">
+<span style="width: 36px; height: 36px; border-radius: 10px; background: #dbeafe; display: inline-flex; align-items: center; justify-content: center"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1d4ed8" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v12"></path><path d="M6 10l6 6 6-6"></path><path d="M4 20h16"></path></svg></span>
+<div style="flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column"><span style="font-weight: 700">UltraVideo 0.7.0</span><span style="font-size: 13px; color: #64748b">App · linux x86_64 · 7z · SHA-256 verified</span></div>
+<span style="font-size: 13px; color: #64748b">3.2 MB</span>
+</li>
+</ul>
+</section>
+
+</div>
+
+<aside style="flex: 1 1 300px; min-width: 0; display: flex; flex-direction: column; gap: 24px">
+<section aria-labelledby="info-title" style="display: flex; flex-direction: column; gap: 14px; padding: 22px; box-sizing: border-box; border-radius: 20px; border: 1px solid #e2e8f0">
+<h2 id="info-title" style="margin: 0; font-size: 16px; font-weight: 700">Information</h2>
+<dl style="margin: 0; display: flex; flex-direction: column; gap: 10px; font-size: 14px">
+<div style="display: flex; justify-content: space-between; gap: 12px"><dt style="color: #64748b">Publisher</dt><dd style="margin: 0; font-weight: 600; text-align: right">ULTRA OS Project</dd></div>
+<div style="display: flex; justify-content: space-between; gap: 12px"><dt style="color: #64748b">Licence</dt><dd style="margin: 0; font-weight: 600; text-align: right">MIT</dd></div>
+<div style="display: flex; justify-content: space-between; gap: 12px"><dt style="color: #64748b">Price</dt><dd style="margin: 0; font-weight: 600; text-align: right">29.90 EUR, one-time</dd></div>
+<div style="display: flex; justify-content: space-between; gap: 12px"><dt style="color: #64748b">Trial</dt><dd style="margin: 0; font-weight: 600; text-align: right">30 days, full app</dd></div>
+<div style="display: flex; justify-content: space-between; gap: 12px"><dt style="color: #64748b">Updates</dt><dd style="margin: 0; font-weight: 600; text-align: right">Free until 31 Dec 2027</dd></div>
+<div style="display: flex; justify-content: space-between; gap: 12px"><dt style="color: #64748b">Languages</dt><dd style="margin: 0; font-weight: 600; text-align: right">English, Deutsch, +6</dd></div>
+<div style="display: flex; justify-content: space-between; gap: 12px"><dt style="color: #64748b">Age rating</dt><dd style="margin: 0; font-weight: 600; text-align: right">PEGI 3</dd></div>
+</dl>
+<div style="border-top: 1px solid #e2e8f0; padding-top: 14px; display: flex; flex-direction: column; gap: 8px; font-size: 14px">
+<a href="#homepage" style="display: inline-flex; align-items: center; gap: 8px; height: 32px; text-decoration: none; font-weight: 600"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M3 12h18"></path><path d="M12 3a14 14 0 0 1 0 18a14 14 0 0 1 0-18"></path></svg>Homepage</a>
+<a href="#support" style="display: inline-flex; align-items: center; gap: 8px; height: 32px; text-decoration: none; font-weight: 600"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.4-1 .9-1 1.7"></path><path d="M12 17h.01"></path></svg>Support</a>
+<a href="#source" style="display: inline-flex; align-items: center; gap: 8px; height: 32px; text-decoration: none; font-weight: 600"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 7l-5 5 5 5"></path><path d="M16 7l5 5-5 5"></path><path d="M14 4l-4 16"></path></svg>Source code</a>
+<a href="#privacy" style="display: inline-flex; align-items: center; gap: 8px; height: 32px; text-decoration: none; font-weight: 600"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 3v6c0 4.5-3.5 8-8 9-4.5-1-8-4.5-8-9V6z"></path></svg>Privacy policy</a>
+</div>
+</section>
+
+<section aria-labelledby="more-title" style="display: flex; flex-direction: column; gap: 12px">
+<h2 id="more-title" style="margin: 0; font-size: 16px; font-weight: 700">More from ULTRA OS Project</h2>
+<ul style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px">
+<li><a href="#ultrapaint" style="display: flex; align-items: center; gap: 12px; padding: 8px; border-radius: 14px; text-decoration: none; color: #0f172a"><img src="/_blob/451050dafeeb42579ba048b1a08f78fa" alt="" style="width: 48px; height: 48px; border-radius: 12px"><span style="display: flex; flex-direction: column; min-width: 0"><span style="font-weight: 700">UltraPaint</span><span style="font-size: 13px; color: #64748b">Bitmap editor · Free</span></span></a></li>
+<li><a href="#artcreator" style="display: flex; align-items: center; gap: 12px; padding: 8px; border-radius: 14px; text-decoration: none; color: #0f172a"><img src="/_blob/0d8f1d55bd369843755da72b7a7fbd33" alt="" style="width: 48px; height: 48px; border-radius: 12px"><span style="display: flex; flex-direction: column; min-width: 0"><span style="font-weight: 700">ArtCreator</span><span style="font-size: 13px; color: #64748b">Vector drawing · [PRICE] EUR</span></span></a></li>
+<li><a href="#ultraviewer" style="display: flex; align-items: center; gap: 12px; padding: 8px; border-radius: 14px; text-decoration: none; color: #0f172a"><img src="/_blob/05ae627f527f163025af07e9a4228fc4" alt="" style="width: 48px; height: 48px; border-radius: 12px"><span style="display: flex; flex-direction: column; min-width: 0"><span style="font-weight: 700">UltraViewer</span><span style="font-size: 13px; color: #64748b">Media viewer · Free</span></span></a></li>
+<li><a href="#ultrasnip" style="display: flex; align-items: center; gap: 12px; padding: 8px; border-radius: 14px; text-decoration: none; color: #0f172a"><img src="/_blob/2a23005da8e1e896df09b451fcedae79" alt="" style="width: 48px; height: 48px; border-radius: 12px"><span style="display: flex; flex-direction: column; min-width: 0"><span style="font-weight: 700">UltraSnip</span><span style="font-size: 13px; color: #64748b">Screen capture · Free</span></span></a></li>
+</ul>
+</section>
+</aside>
+
+</div>
+
+</main>
+
+<footer style="margin-top: 72px; border-top: 1px solid #e2e8f0; background: #f8fafc">
+<div style="max-width: 1280px; margin: 0 auto; padding: 32px; box-sizing: border-box; display: flex; flex-wrap: wrap; gap: 24px; align-items: center; justify-content: space-between; color: #64748b; font-size: 13px">
+<div style="display: flex; align-items: center; gap: 10px">
+<img src="/_blob/9b931f0bda5f6ee1d30304d2295e0e4a" alt="" style="width: 28px; height: 28px; border-radius: 8px">
+<span style="font-weight: 600; color: #0f172a">UltraStore</span>
+<span>· the ULTRA OS app store</span>
+</div>
+<nav aria-label="Footer" style="display: flex; flex-wrap: wrap; gap: 20px">
+<a href="#publishers" style="color: #475569; text-decoration: none; font-weight: 500">For publishers</a>
+<a href="#support" style="color: #475569; text-decoration: none; font-weight: 500">Support</a>
+<a href="#privacy" style="color: #475569; text-decoration: none; font-weight: 500">Privacy</a>
+<a href="#terms" style="color: #475569; text-decoration: none; font-weight: 500">Terms</a>
+<a href="#language" style="color: #475569; text-decoration: none; font-weight: 500">English</a>
+</nav>
+</div>
+</footer>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#2563eb","options":["#2563eb","#0f172a","#7c3aed","#0f766e"]},"$preview":{"width":1440,"height":2280}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { accent: this.props.accent ?? '#2563eb' };
+  }
+}
+</script>
+</body>
+</html>
