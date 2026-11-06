@@ -600,6 +600,7 @@ build system, CI — plus DemoApp, which is the framework's showcase and is name
 | `Docs/UltraCleaner/CHANGELOG.md` | UltraCleaner |
 | `Docs/UltraClaude/CHANGELOG.md` | UltraClaude — chat with Claude through the Claude Code CLI |
 | `Docs/UltraClipboard/CHANGELOG.md` | UltraClipboard — the clipboard history |
+| `Docs/UltraNotifications/CHANGELOG.md` | UltraNotifications — the notifications after their pop-up |
 | `Docs/UltraSnip/CHANGELOG.md` | UltraSnip — screenshots and screen recordings |
 | `Docs/UOSSettings/CHANGELOG.md` | UOS-Settings — the ULTRA OS settings |
 | `Docs/UltraFiler/CHANGELOG.md` | UltraFiler |

@@ -153,7 +153,10 @@ public:
     // The Sticker board's window: over the work area, below the application
     // that was in front.
     void ShowCategoryBoard();
-    // settings_.startWithDesktop: started minimized unless running already.
+    // Its window and cards made, not shown ("Start with the desktop").
+    void PrepareCategoryBoard();
+    // settings_.startWithDesktop: each started unseen (minimized, or with no
+    // window) unless running already; the Sticker board made ready.
     void StartStartupPrograms();
     void PlaceCategoryBoard();
     void SwitchToDesktop(int index);

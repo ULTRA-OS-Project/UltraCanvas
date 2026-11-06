@@ -41,6 +41,7 @@
 
 #include "UltraCanvasAlert.h"
 #include "UltraCanvasAudioDevices.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 #include "UltraCanvasHardwareInfo.h"
 #include "UltraCanvasRemovableDrives.h"
 #include "UltraCanvasVideoDevices.h"
@@ -106,7 +107,7 @@ constexpr int   kInfoIconCompact   = 18;
 // The services that fold first, least used first. Webcam and microphone
 // come late: their red dot says a device is on, and that must stay seen.
 const char* const kInfoFoldOrder[] = {"keyboard", "vpn", "usb", "upload", "tasks", "download", "lan",
-                                      "mail", "battery", "bluetooth", "webcam", "mic", "speaker", "wifi"};
+                                      "mail", "notifications", "battery", "bluetooth", "webcam", "mic", "speaker", "wifi"};
 constexpr int   kClockHeight    = 68;   // the face (48) over the date line
 constexpr int   kClockFaceBox   = 66;   // the gauge's box: its face lands at the top, 48 px across
 constexpr int   kPollsPerSpeakerRead = 5;   // the loudspeaker every 10 s
@@ -662,6 +663,12 @@ void UltraDesktopWindow::StartStartupPrograms() {
     };
     for (const StartupProgram& program : DesktopSettings::StartupPrograms()) {
         if (!settings_.StartsWithDesktop(program.program)) continue;
+        if (program.builtIn) {
+            // The desktop's own Sticker board: its window made and its
+            // thumbnails drawn now, shown on the first click.
+            if (std::string(program.program) == "StickerBoard") PrepareCategoryBoard();
+            continue;
+        }
         const std::string name = lower(program.program);
         bool running = false;
         for (const DesktopWindowInfo& w : windows) {
@@ -669,7 +676,10 @@ void UltraDesktopWindow::StartStartupPrograms() {
         }
         if (running) continue;
         std::string error;
-        if (!UltraCanvasDesktopShell::LaunchProgram(program.program, {"--minimized"}, &error)) {
+        // A program started without a window (--background) has none to
+        // find above: starting it again only reaches the running copy, which
+        // takes a background start as nothing to do.
+        if (!UltraCanvasDesktopShell::LaunchProgram(program.program, {program.arguments}, &error)) {
             debugOutput << "UltraDesktop: " << program.program << " did not start with the desktop: " << error
                         << std::endl;
         }
@@ -1117,6 +1127,8 @@ std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildRightBar() {
     info_->SetPadding(4, 4);
     info_->AddStretch(1.0f);
     AddBarButton(info_, "mail",      "Email",        IconPath("mail.svg"),      [this]() { UltraCanvasDesktopShell::LaunchProgram("UltraMail"); });
+    AddBarButton(info_, "notifications", Tr("Notifications"), IconPath("notifications.svg"),
+                 [this]() { UltraCanvasDesktopShell::LaunchProgram("UltraNotifications"); });
     AddBarButton(info_, "upload",    "Upload",       IconPath("upload.svg"),    [this]() { UltraCanvasDesktopShell::LaunchProgram("UltraNetMonitor"); });
     AddBarButton(info_, "download",  "Download",     IconPath("download.svg"),  [this]() { UltraCanvasDesktopShell::LaunchProgram("UltraNetMonitor"); });
     AddBarButton(info_, "lan",       "Internet / LAN", IconPath("lan.svg"),     [this]() { UltraCanvasDesktopShell::LaunchProgram("UltraNetMonitor"); });
@@ -1328,6 +1340,19 @@ void UltraDesktopWindow::ToggleCategoryBoard(bool visible) {
 // back above it, so the board is second from the top and the application
 // stays where the person was working.
 void UltraDesktopWindow::ShowCategoryBoard() {
+    PrepareCategoryBoard();
+    if (!boardWindow_) return;
+    PlaceCategoryBoard();
+    boardWindow_->Show();
+    boardWindow_->RaiseAndFocus();
+    // The application in front before the click goes back above the board.
+    if (lastPasteWindow_ != 0) UltraCanvasDesktopShell::ActivateWindow(lastPasteWindow_);
+}
+
+// The board's window and its cards, not shown: on the first click, or
+// beforehand when "Start with the desktop" names the Sticker board, so the
+// click shows it with its thumbnails already made.
+void UltraDesktopWindow::PrepareCategoryBoard() {
     if (!window_ || !workArea_) return;
     if (!boardWindow_) {
         WindowConfig config;
@@ -1370,12 +1395,8 @@ void UltraDesktopWindow::ShowCategoryBoard() {
                 }
             }
         };
+        PlaceCategoryBoard();
     }
-    PlaceCategoryBoard();
-    boardWindow_->Show();
-    boardWindow_->RaiseAndFocus();
-    // The application in front before the click goes back above the board.
-    if (lastPasteWindow_ != 0) UltraCanvasDesktopShell::ActivateWindow(lastPasteWindow_);
 }
 
 // Over the work area, in screen pixels; again whenever the bars move (a
@@ -1817,6 +1838,19 @@ void UltraDesktopWindow::ApplyNotices() {
         else if (!mail.text.empty()) button->SetTooltip("Email: " + mail.text);
         else button->SetTooltip("Email: " + std::to_string(mail.count) + " unread");
     }
+    // UltraNotifications publishes its unread count while it runs (in the
+    // background when "Start with the desktop" names it).
+    const DesktopNotice notifications = UltraCanvasDesktopShell::ReadNotice("UltraNotifications");
+    if (notifications.updatedUnixSeconds > 0 && notifications.count > 0) {
+        info_->SetItemBadgeCount("notifications", notifications.count, kMarkerCount);
+    } else {
+        info_->ClearItemBadge("notifications");
+    }
+    if (auto button = std::dynamic_pointer_cast<UltraCanvasButton>(info_->GetWidget("notifications"))) {
+        button->SetTooltip(notifications.updatedUnixSeconds > 0 && !notifications.text.empty()
+                               ? TrF("Notifications: {0}", notifications.text)
+                               : Tr("Notifications"));
+    }
 }
 
 void UltraDesktopWindow::StartDevicePoll() {
@@ -1913,7 +1947,7 @@ void UltraDesktopWindow::ShowSettingsButtonMenu(int windowX, int windowY) {
     std::vector<MenuItemData> startup;
     for (const StartupProgram& program : DesktopSettings::StartupPrograms()) {
         const std::string name = program.program;
-        startup.push_back(MenuItemData::Checkbox(name, settings_.StartsWithDesktop(name), [this, name](bool on) {
+        startup.push_back(MenuItemData::Checkbox(program.name, settings_.StartsWithDesktop(name), [this, name](bool on) {
             settings_.SetStartsWithDesktop(name, on);
             SaveSettings();
             // Now as well, not only from the next start.

@@ -1638,6 +1638,15 @@ package_if_built "UltraClipboard" build_app_bundle \
     "public.app-category.utilities" \
     ""
 
+# Package UltraNotifications, the notifications after their toast has gone
+package_if_built "UltraNotifications" build_app_bundle \
+    "UltraNotifications" \
+    "UltraNotifications" \
+    "com.cloverleaf.UltraNotifications" \
+    "media/appicon/UltraNotifications.png" \
+    "public.app-category.utilities" \
+    ""
+
 # Package UltraSnip, the screenshot and screen-recording tool (libVideoFX and
 # FFmpeg go to the shared Frameworks/ with the rest)
 package_if_built "UltraSnip" build_app_bundle \

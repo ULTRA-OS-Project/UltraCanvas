@@ -552,8 +552,9 @@ void UOSSettingsWindow::BuildDesktopPage() {
     }
     page->AddChild(body);
 
-    // The programs that start with the desktop, minimized, in the
-    // background: their messages and mail arrive without opening them.
+    // What starts with the desktop, unseen (UltraDesktop's own list):
+    // ChatCube and UltraMail minimized, UltraClipboard and
+    // UltraNotifications with no window, the Sticker board made ready.
     auto startupTitle = MakeLabel("uos-dt-startup-title", "Start with the desktop", kTextFontSize);
     startupTitle->SetFontWeight(FontWeight::Bold);
     startupTitle->SetMargin(16, 0, 4, 0);

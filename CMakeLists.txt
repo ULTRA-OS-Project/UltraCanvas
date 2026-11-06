@@ -356,6 +356,7 @@ if(EMSCRIPTEN)
     set(BUILD_ULTRAWEB OFF CACHE BOOL "Build the UltraWeb browser")
     set(BUILD_ULTRADESKTOP OFF CACHE BOOL "Build the UltraDesktop application")
     set(BUILD_ULTRACLIPBOARD OFF CACHE BOOL "Build the UltraClipboard application")
+    set(BUILD_ULTRANOTIFICATIONS OFF CACHE BOOL "Build the UltraNotifications application")
     set(BUILD_ULTRASNIP OFF CACHE BOOL "Build the UltraSnip application")
     set(BUILD_ULTRAVIDEO OFF CACHE BOOL "Build the UltraVideo application")
     set(BUILD_DEVICEEXPLORER OFF CACHE BOOL "Build the DeviceExplorer application")
@@ -760,6 +761,16 @@ endif()
 option(BUILD_ULTRACLIPBOARD "Build the UltraClipboard application" ON)
 if(BUILD_ULTRACLIPBOARD)
     add_subdirectory(Apps/UltraClipboard)
+endif()
+
+# ===== ULTRANOTIFICATIONS =====
+# The notifications of ULTRA OS after their toast has gone: every
+# notification, chat message and mail on the UltraMessage feed, to read,
+# search, open and dismiss (UltraCanvasMessageCenter). UltraDesktop's bell
+# opens it and shows its unread count.
+option(BUILD_ULTRANOTIFICATIONS "Build the UltraNotifications application" ON)
+if(BUILD_ULTRANOTIFICATIONS)
+    add_subdirectory(Apps/UltraNotifications)
 endif()
 
 # ===== ULTRASNIP =====
@@ -2879,7 +2890,8 @@ if(WIN32 AND CMAKE_BUILD_TYPE STREQUAL "Release")
     foreach(_uc_gui_app
             UltraCanvasDemo Texter UltraFiler UltraViewer UltraPaint ArtCreator
             UCFileManager UltraAIApp EmailCleaner UltraSocial UOSSettings
-            UltraClipboard UltraSnip UltraAuthenticator UltraPassword UltraVideo UltraDBAdmin)
+            UltraClipboard UltraNotifications UltraSnip UltraAuthenticator UltraPassword UltraVideo
+            UltraDBAdmin)
         if(TARGET ${_uc_gui_app})
             ultracanvas_windows_gui_app(${_uc_gui_app})
         endif()
