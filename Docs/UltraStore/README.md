@@ -368,6 +368,33 @@ the admin backend until it exists: `GenerateSigningKey`, `PublicKeyOfSeed`,
   the catalog is what an attacker with the key controls. The announced
   keys live in the cache folder beside the catalog they came from, with the
   same trust as the settings file next to it.
+- **Two signing roles once the operator tier is built** (*The operator
+  tier*). Today one key does everything, because one publisher is the
+  operator. In the marketplace the roles split, and the store must not
+  confuse them:
+  - **The operator's key signs the catalog.** It is the only kind of key
+    the store trusts for `catalog.json.sig`: compiled in, announced in
+    `trusted_keys`, rotated and retired as above. A merchant's key never
+    appears in `trusted_keys` and never signs a public catalog; a catalog
+    signed with one is refused like any unknown key.
+  - **A merchant's key signs submissions.** The pair the admin backend
+    generates (*Who generates the production pair*) stays on the
+    merchant's machine and signs what `submit` sends to the marketplace
+    service: the component object, the package hashes, the media. The
+    service checks the signature against the public half the merchant
+    registered when the shop was verified, keeps it on the submission, and
+    the review reads it as proof of who sent the build. The merchant's
+    `publish` still signs that merchant's own private or test catalog with
+    the same key; such a catalog is trusted only by a store whose settings
+    name the key, never by the public store.
+  - **The packages carry no signature of their own**, in either role: a
+    package is what its SHA-256 in the signed catalog says it is, and the
+    catalog's signature covers the hash. A merchant's signature on a
+    submission proves origin to the operator; the operator's signature on
+    the catalog proves the result to the store.
+  - A merchant's key is retired at the service (the operator marks it,
+    the merchant registers a new public half); nothing in the store
+    changes, since the store never trusted it.
 
 ### Resolver (`PackageResolver`)
 
