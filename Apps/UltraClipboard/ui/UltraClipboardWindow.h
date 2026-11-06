@@ -20,7 +20,9 @@
 // recognition) or in copied files - a word processor document, a PDF, a
 // spreadsheet, a text file, a picture, and a recording or a video when a
 // speech-to-text engine is installed (UltraCanvasFileLoader::ExtractText) -
-// on a worker thread. The text arrives as a new text entry, on the clipboard.
+// on a worker thread - a picture by an UltraAI vision provider when one reads
+// text, else by the OCR plugin. The text arrives as a new text entry, on the
+// clipboard.
 //
 // Keys: typing in the search field filters; Up / Down choose; Enter copies;
 // F2 or Ctrl+E edits; Ctrl+S saves as; Ctrl+T extracts the text; Delete
@@ -39,6 +41,7 @@
 // stays while the pointer is on that row or on the preview itself, where
 // the wheel zooms; it follows the wheel scrolling the list; Escape or
 // moving elsewhere closes it.
+// Version: 0.1.7 - Extract text says which UltraAI provider read a picture
 // Version: 0.1.6 - Extract text
 // Version: 0.1.5
 // Author: UltraCanvas Framework / ULTRA OS
@@ -175,6 +178,7 @@ private:
         std::string text;
         std::string error;
         size_t sources = 0;              // the files (or the image) the text came from
+        std::string reader;              // the UltraAI provider that read a picture; "" for the built-in OCR
     };
     std::future<ExtractedText> extracting_;   // valid while a worker reads
     int64_t extractingId_ = 0;

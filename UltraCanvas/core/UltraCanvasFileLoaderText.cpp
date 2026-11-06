@@ -4,6 +4,7 @@
 // one), a spreadsheet, a text file, a picture (text recognition) and a
 // recording (speech to text). The two recognition engines are hooks a plugin
 // or the application installs (SetImageTextRecognizer, SetSpeechTranscriber).
+// Version: 1.2.0 - GetImageTextRecognizer
 // Version: 1.1.0 - the messages in the person's language (Tr)
 // Version: 1.0.0
 // Last Modified: 2026-11-06
@@ -251,6 +252,10 @@ namespace UltraCanvas {
     void UltraCanvasFileLoader::SetSpeechTranscriber(SpeechTranscriber transcriber) {
         std::lock_guard<std::mutex> lock(HookMutex());
         Transcriber() = std::move(transcriber);
+    }
+
+    UltraCanvasFileLoader::ImageTextRecognizer UltraCanvasFileLoader::GetImageTextRecognizer() {
+        return CurrentRecognizer();
     }
 
     bool UltraCanvasFileLoader::HasImageTextRecognizer() {

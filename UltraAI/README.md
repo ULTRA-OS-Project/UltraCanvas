@@ -38,6 +38,21 @@ between cloud and local models without rebuilding apps.
 Each interface ships with a programmable mock adapter so apps and
 tests run without any network or external model.
 
+### Text recognition for UltraCanvas applications
+
+`UltraAI::RegisterUltraAITextRecognition()` (`ui/include/UltraAITextRecognition.h`,
+in `UltraAI_UI`) puts UltraAI in front of UltraCanvas's text recognizer: when a
+vision provider on the default route - the one chosen for `"visionanalyzer"`,
+then the providers on this computer, a cloud one only when chosen or allowed,
+never `mock` - declares `VisionTask::Ocr` on one of its models, it reads the
+words in pictures and scanned PDF pages (`UltraCanvasFileLoader::ExtractText`)
+instead of the OCR plugin's Tesseract. With no such provider, or when it
+fails, the recognizer installed before it reads the picture, so register the
+framework's first. `FindOcrProvider` says which provider would read now, and
+`LastTextRecognitionProvider` which one read the last picture. UltraClipboard's
+*Extract text* uses it. No adapter implements `IVisionAnalyzer` yet besides the
+mock, so until one does the built-in OCR keeps reading.
+
 ---
 
 ## Adapters
@@ -108,7 +123,7 @@ UltraAI/
 │   └── UltraAICodeAssist.h
 ├── src/                           # Capability factories (registry)
 ├── runtime/                       # The local runtime: engine gallery, model catalogue, installs, supervision
-├── ui/                            # UltraAI_UI: the "Get a local model" dialog every application shows (in-tree, on the UltraCanvas core)
+├── ui/                            # UltraAI_UI: the "Get a local model" dialog every application shows, and UltraAI as FileLoader's text recognizer (in-tree, on the UltraCanvas core)
 ├── adapters/
 │   ├── _shared/                   # Credentials, error mapping, retry, transport seam (HTTP/SSE/byte stream/WebSocket), base64, multipart, job polling, cassettes
 │   ├── mock/                      # In-process mocks for every capability

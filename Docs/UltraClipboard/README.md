@@ -61,8 +61,11 @@ through the list, skipping the section headers.
 
 **Extracting the text.** *Extract text* turns what an entry shows into text
 you can paste. An image - a screenshot, a photographed page - is read by text
-recognition (OCR: Tesseract, in every language installed; more come with the
-system's `tesseract-ocr-<language>` packages). Copied files are read by their
+recognition: by an UltraAI vision provider that reads text, when one is set
+up (a model on this computer, or a cloud service you chose in UltraAI), and
+otherwise by OCR (Tesseract, in every language installed; more come with the
+system's `tesseract-ocr-<language>` packages). When UltraAI read it, the
+status bar says which provider did. Copied files are read by their
 type: a word processor document (ODT, DOCX) or a deck (PPTX), a PDF (its
 text; a scanned PDF by text recognition), a spreadsheet (ODS, XLSX, XLS:
 every sheet, tab-separated), a text or code file. A recording or a video is

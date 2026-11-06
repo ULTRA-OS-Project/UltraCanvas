@@ -1,5 +1,6 @@
 // Apps/UltraClipboard/ui/UltraClipboardWindow.cpp
 // UltraClipboard's main window. See UltraClipboardWindow.h.
+// Version: 0.1.8 - Extract text says which UltraAI provider read a picture
 // Version: 0.1.7 - every text through Tr (UltraLocalisation)
 // Version: 0.1.6 - Extract text
 // Version: 0.1.5
@@ -33,6 +34,9 @@
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasTooltipManager.h"
 #include "UltraLocalisation/UltraLocalisation.h"
+#ifdef ULTRACLIPBOARD_HAS_ULTRAAI
+#include "UltraAITextRecognition.h"   // LastTextRecognitionProvider
+#endif
 
 #include <algorithm>
 #include <cctype>
@@ -1066,6 +1070,9 @@ void UltraClipboardWindow::ExtractText(int64_t id) {
         for (const std::string& file : readable) {
             const std::string name = PathToUtf8(PathFromUtf8(file).filename());
             const UltraCanvasFileLoader::TextExtractionResult result = UltraCanvasFileLoader::ExtractText(file);
+#ifdef ULTRACLIPBOARD_HAS_ULTRAAI
+            if (const std::string reader = UltraAI::LastTextRecognitionProvider(); !reader.empty()) out.reader = reader;
+#endif
             if (!result.Ok()) {
                 if (out.error.empty()) out.error = named ? name + ": " + result.error : result.error;
                 continue;
@@ -1113,12 +1120,14 @@ void UltraClipboardWindow::FinishExtractText() {
     }
     size_t lines = 1;
     for (const char c : result.text) lines += c == '\n' ? 1 : 0;
-    Message(result.error.empty()
-                    ? TrN("Text extracted and copied: {n} line", "Text extracted and copied: {n} lines",
-                          static_cast<long long>(lines))
-                    : TrN("Text extracted and copied: {n} line (some files could not be read)",
-                          "Text extracted and copied: {n} lines (some files could not be read)",
-                          static_cast<long long>(lines)));
+    std::string done = result.error.empty()
+            ? TrN("Text extracted and copied: {n} line", "Text extracted and copied: {n} lines",
+                  static_cast<long long>(lines))
+            : TrN("Text extracted and copied: {n} line (some files could not be read)",
+                  "Text extracted and copied: {n} lines (some files could not be read)",
+                  static_cast<long long>(lines));
+    if (!result.reader.empty()) done += " \xC2\xB7 " + TrF("read by {0}", result.reader);
+    Message(done);
 }
 
 void UltraClipboardWindow::OfferToDelete(int64_t id, const std::string& saved) {

@@ -4,6 +4,7 @@
 // UltraCanvasNativeDialogs. NotifyRecentFile is implemented per-platform.
 // Save settings (SAVE SETTINGS below): what each format's writer can be
 // told, described and kept per format - see UltraCanvasFileSaveSettings.h.
+// Version: 1.12.0 - GetImageTextRecognizer (a recognizer that wraps the one before it)
 // Version: 1.11.0 - ExtractText: the words in a document, PDF, spreadsheet, picture (text
 //                   recognition) or recording (speech to text); the two recognition hooks
 // Version: 1.10.0 - ShowSaveSettingsDialog takes the type size of the window it is opened from
@@ -19,7 +20,7 @@
 //                  GetVectorDocumentPixelSize, CanSaveImage, AddVectorDocumentSaveTypes,
 //                  AddImageSaveTypes
 // Version: 1.3.0
-// Last Modified: 2026-11-05
+// Last Modified: 2026-11-06
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -387,6 +388,11 @@ namespace UltraCanvas {
                 std::function<bool(const std::string& path, std::string& text, std::string& error)>;
         // Installs (or, with nullptr, removes) the hook.
         static void SetImageTextRecognizer(ImageTextRecognizer recognizer);
+        // The recognizer installed now (empty when none): one installed
+        // after it can keep it as its fallback - UltraAI's
+        // (RegisterUltraAITextRecognition) hands a picture to Tesseract when
+        // no AI provider reads text.
+        static ImageTextRecognizer GetImageTextRecognizer();
         static void SetSpeechTranscriber(SpeechTranscriber transcriber);
         static bool HasImageTextRecognizer();
         static bool HasSpeechTranscriber();

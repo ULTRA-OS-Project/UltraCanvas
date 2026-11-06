@@ -1319,7 +1319,9 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   - `ClipboardHistoryListModel` + `ClipboardHistoryRowDelegate`
     (`ClipboardRowStyle::Light()` / `Dark()`) - the history in an
     `UltraCanvasListView`: thumbnails by kind, meta line, painted Copy / Edit
-    / Delete hit-tested with `ActionAt`.
+    / Delete hit-tested with `ActionAt`; its text in the person's language
+    (`Tr`), with `ClipboardEntryKindLabel` / `ClipboardEntryDisplayTitle` for
+    what is stored in English.
   - `EditClipboardText` (trim, join lines, case), `ClipboardImageFile`,
     `FoldForClipboardSearch`, `DescribeClipboardEntry`,
     `PreferredClipboardKinds` (what a program takes when pasted into, from
@@ -1856,6 +1858,17 @@ type the build reads), `AddSaveTypes(opts, category)` / `AddImageSaveTypes`
 `SaveTextDocument` (what `LoadTextDocument` reads, ODT and DOCX written). A
 codec an application brings joins them through `RegisterMediaCodec`, as
 UltraVideo's FFmpeg engine does (`VideoFX_GetFileFormats`).
+
+The words in a file, as plain text: `UltraCanvasFileLoader::ExtractText(path,
+password)` (`TextExtractionResult`: text, `TextExtractionMethod`, error) reads
+documents and decks (`LoadTextDocument`), PDFs (page text; a scan by text
+recognition), spreadsheets (every sheet, tab-separated), text files, pictures
+(text recognition) and recordings (speech to text);
+`GetTextExtractionMethod` / `CanExtractText` / `WhyNoTextExtraction` say how
+and whether. Text recognition and speech to text are hooks:
+`SetImageTextRecognizer` (the OCR plugin's `RegisterOCRTextRecognition()`
+installs Tesseract) and `SetSpeechTranscriber` (an application's engine, e.g.
+UltraAI's `ISpeechToText`). UltraClipboard's *Extract text* uses it.
 
 ### **4. Plug-ins for File Types**
 
@@ -89522,6 +89535,7 @@ FILE: Docs/Modules/FileLoader/README.md
 - [Key Functionality](#key-functionality)
   - [Generic File Loading](#generic-file-loading)
   - [Typed Object Loaders](#typed-object-loaders)
+  - [Text From Any File](#text-from-any-file)
   - [Editable Vector Documents](#editable-vector-documents)
   - [Save Settings](#save-settings)
   - [A Drawing Saved as a Bitmap](#a-drawing-saved-as-a-bitmap)
@@ -89635,6 +89649,59 @@ loader: `LoadTextDocument(path, error, password)`, or a spreadsheet's
 and `SaveTextDocument(document, path, error, password)` or a spreadsheet's
 `SaveToFile(path, password)` writes the file encrypted. See
 [UltraCanvasOfficeEncryption](../../UltraCanvas/UltraCanvasOfficeEncryption.md).
+
+### Text From Any File
+
+`ExtractText(path)` gives the words in a file as plain text a person can
+paste - the "extract text" of a clipboard manager, a file manager or a search
+indexer:
+
+| File | How it is read (`TextExtractionMethod`) |
+|---|---|
+| ODT, DOCX, LaTeX, a PowerPoint deck | `Document`: `LoadTextDocument`, then its plain text |
+| PDF | `PDF`: the text of every page; a scanned PDF without any is rendered at 300 DPI and read by text recognition |
+| ODS, XLSX, XLS | `Spreadsheet`: every sheet, tab-separated, each under its name when there are several |
+| TXT, Markdown, CSV, code, any UTF-8 file | `PlainText`: as it is |
+| PNG, JPEG, WebP, ... (what the image pipeline decodes) | `Recognition`: text recognition (OCR), on white where the picture is transparent |
+| Sound and video | `Transcription`: speech to text |
+
+Text recognition and speech to text are hooks, not part of the core. The OCR
+plugin installs Tesseract with `RegisterOCRTextRecognition()`
+(`UltraCanvasOCRPlugin.h`; every installed language, or the ones it is
+given). UltraAI's `RegisterUltraAITextRecognition()`
+(`UltraAITextRecognition.h`, in `UltraAI_UI`), installed after it, puts an
+UltraAI vision provider that reads text in front - local first, a cloud one
+only when chosen - with Tesseract as the fallback
+(`GetImageTextRecognizer` hands it the recognizer before). An application with a speech-to-text engine - UltraAI's
+`ISpeechToText`, a local one - installs it with `SetSpeechTranscriber`.
+`CanExtractText(path)` says whether this build can read a file, and
+`WhyNoTextExtraction(path)` says why not in a sentence for the user ("Speech
+to text is not available ..."). Recognition and transcription take seconds, so
+call `ExtractText` off the UI thread; the hooks are called on that thread.
+
+<!-- doc-check: std::string path; void ShowText(const std::string& text); void ShowError(const std::string& message); -->
+```cpp
+// Speech to text from the application's own engine (here: none yet).
+UltraCanvasFileLoader::SetSpeechTranscriber(
+        [](const std::string& file, std::string& text, std::string& error) {
+    (void)file;
+    (void)text;
+    error = "No speech engine";
+    return false;
+});
+
+if (!UltraCanvasFileLoader::CanExtractText(path)) {
+    ShowError(UltraCanvasFileLoader::WhyNoTextExtraction(path));
+} else {
+    auto reading = std::async(std::launch::async, [path]() { return UltraCanvasFileLoader::ExtractText(path); });
+    // ... later, on the UI thread:
+    const UltraCanvasFileLoader::TextExtractionResult result = reading.get();
+    if (!result.Ok()) ShowError(result.error);
+    else ShowText(result.text);   // empty: the file holds no words
+}
+```
+
+UltraClipboard's *Extract text* (an image, or copied files) is built on it.
 
 ### Editable Vector Documents
 
@@ -94311,6 +94378,21 @@ between cloud and local models without rebuilding apps.
 Each interface ships with a programmable mock adapter so apps and
 tests run without any network or external model.
 
+### Text recognition for UltraCanvas applications
+
+`UltraAI::RegisterUltraAITextRecognition()` (`ui/include/UltraAITextRecognition.h`,
+in `UltraAI_UI`) puts UltraAI in front of UltraCanvas's text recognizer: when a
+vision provider on the default route - the one chosen for `"visionanalyzer"`,
+then the providers on this computer, a cloud one only when chosen or allowed,
+never `mock` - declares `VisionTask::Ocr` on one of its models, it reads the
+words in pictures and scanned PDF pages (`UltraCanvasFileLoader::ExtractText`)
+instead of the OCR plugin's Tesseract. With no such provider, or when it
+fails, the recognizer installed before it reads the picture, so register the
+framework's first. `FindOcrProvider` says which provider would read now, and
+`LastTextRecognitionProvider` which one read the last picture. UltraClipboard's
+*Extract text* uses it. No adapter implements `IVisionAnalyzer` yet besides the
+mock, so until one does the built-in OCR keeps reading.
+
 ---
 
 ## Adapters
@@ -94381,7 +94463,7 @@ UltraAI/
 │   └── UltraAICodeAssist.h
 ├── src/                           # Capability factories (registry)
 ├── runtime/                       # The local runtime: engine gallery, model catalogue, installs, supervision
-├── ui/                            # UltraAI_UI: the "Get a local model" dialog every application shows (in-tree, on the UltraCanvas core)
+├── ui/                            # UltraAI_UI: the "Get a local model" dialog every application shows, and UltraAI as FileLoader's text recognizer (in-tree, on the UltraCanvas core)
 ├── adapters/
 │   ├── _shared/                   # Credentials, error mapping, retry, transport seam (HTTP/SSE/byte stream/WebSocket), base64, multipart, job polling, cassettes
 │   ├── mock/                      # In-process mocks for every capability
@@ -103772,7 +103854,8 @@ The buttons stand right of the entry's text, or left of it between the
 thumbnail and the text: Settings, *Display → Icons*. The desktop's quick
 panel follows the same setting.
 
-Right-click a row for the same and *Pin* / *Unpin* (Ctrl+P).
+Right-click a row for the same, *Pin* / *Unpin* (Ctrl+P) and, on an image
+or copied files with words in them, *Extract text* (Ctrl+T).
 
 **Saving as a file.** *Save as* writes the entry where you choose, through
 the framework's Save dialog: a text, code, link or colour as a text file;
@@ -103786,6 +103869,23 @@ you say so. Once saved, UltraClipboard asks *Delete the item from the
 clipboard?* - Yes deletes it, with *Undo* as for any deletion; No keeps it.
 The next *Save as* starts in the folder the last one saved to. Up and Down move
 through the list, skipping the section headers.
+
+**Extracting the text.** *Extract text* turns what an entry shows into text
+you can paste. An image - a screenshot, a photographed page - is read by text
+recognition: by an UltraAI vision provider that reads text, when one is set
+up (a model on this computer, or a cloud service you chose in UltraAI), and
+otherwise by OCR (Tesseract, in every language installed; more come with the
+system's `tesseract-ocr-<language>` packages). When UltraAI read it, the
+status bar says which provider did. Copied files are read by their
+type: a word processor document (ODT, DOCX) or a deck (PPTX), a PDF (its
+text; a scanned PDF by text recognition), a spreadsheet (ODS, XLSX, XLS:
+every sheet, tab-separated), a text or code file. A recording or a video is
+read when a speech-to-text engine is installed; without one *Extract text*
+says that speech to text is not available. The reading runs in the background
+(*Reading the text…* in the status bar); the text arrives as a new text entry
+at the top, already on the clipboard. From several files you get one text,
+each file's under its name. Built on `UltraCanvasFileLoader::ExtractText`
+([FileLoader](../Modules/FileLoader/README.md), *Text From Any File*).
 
 **Finding.** Type in the search field (Ctrl+F) to search titles and texts,
 whatever their case and accents. *All*, *Text*, *Images*, *Files*, *Links* and
@@ -103855,6 +103955,39 @@ without the key. Image thumbnails are not
 encrypted. A program running as you can read the clipboard itself, so the
 encryption does not protect against that; leaving such programs' copies out,
 or pausing the recording, does.
+
+==============================================================================
+FILE: Docs/UltraClipboard/changelog.d/extract-text.md
+==============================================================================
+
+- **Extract text: the words in an image or in copied files, as real text.**
+  The row menu has *Extract text* (also Ctrl+T) on an image and on copied
+  files that hold words. An image - a screenshot, a photographed page - is
+  read by text recognition (Tesseract, through the OCR plugin, in every
+  language installed); copied files are read by type: a word processor
+  document or a deck, a PDF (text recognition for a scanned one), a
+  spreadsheet (every sheet, tab-separated), a text or code file. A recording
+  or a video is read when a speech-to-text engine is installed; until then
+  the menu says that speech to text is not available. The reading runs in the
+  background with *Reading the text…* in the status bar; the text arrives as
+  a new text entry at the top, already on the clipboard, ready to paste or to
+  edit. Several files give one text, each under its name (framework changelog:
+  `extract-text`).
+
+==============================================================================
+FILE: Docs/UltraClipboard/changelog.d/localisation.md
+==============================================================================
+
+- **UltraClipboard can be translated.** Every text in its window, menus,
+  dialogs and messages goes through `Tr` (UltraLocalisation): the English
+  catalogue is `media/locale/en/UltraClipboard.json` (126 entries; *Copy*,
+  *Delete*, *Settings*, *Cancel* and the other common words come from the
+  standard set, so they already show in every language it has). Counts are
+  plurals (`TrN`): "1 entry", "2 entries", and the forms a language with more
+  than two has. No translation of the application's own entries ships yet;
+  a translator adds `media/locale/<lang>/UltraClipboard.json`. The entry
+  rows' tooltips and meta line come from the framework's clipboard history
+  view and are not covered here.
 
 ==============================================================================
 FILE: Docs/UltraSnip/README.md

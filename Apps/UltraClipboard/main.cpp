@@ -4,6 +4,8 @@
 // --edit ID (an entry's edit dialog at once). When UltraClipboard is already
 // running, the request goes to it and this start quits
 // (UltraCanvasSingleInstance.h).
+// Version: 0.4.0 - UltraAI reads the words in a picture when one of its vision providers
+//                  reads text; the OCR plugin otherwise
 // Version: 0.3.0 - text recognition: the OCR plugin reads the words in a picture
 //                  for Extract text (UltraCanvasFileLoader::ExtractText)
 // Version: 0.2.0 - the framework's single-instance helper: two starts at the
@@ -19,6 +21,9 @@
 #include "UltraCanvasUtils.h"
 #ifdef ULTRACANVAS_OCR_SUPPORT
 #include "UltraCanvasOCRPlugin.h"   // Extract text reads pictures with it
+#endif
+#ifdef ULTRACLIPBOARD_HAS_ULTRAAI
+#include "UltraAITextRecognition.h"   // ... or with an UltraAI vision provider, when one reads text
 #endif
 
 #ifdef __linux__
@@ -113,6 +118,9 @@ int main(int argc, char* argv[]) {
             return UltraCanvasSingleInstance::RunAlreadyRunningAlert(app, "UltraClipboard");
 #ifdef ULTRACANVAS_OCR_SUPPORT
         RegisterOCRTextRecognition();
+#endif
+#ifdef ULTRACLIPBOARD_HAS_ULTRAAI
+        UltraAI::RegisterUltraAITextRecognition();   // in front of the OCR plugin, which stays the fallback
 #endif
         window = std::make_unique<UltraClipboard::UltraClipboardWindow>(app);
         if (!window->Create(search, editId)) {

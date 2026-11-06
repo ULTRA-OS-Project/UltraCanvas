@@ -140,7 +140,11 @@ indexer:
 Text recognition and speech to text are hooks, not part of the core. The OCR
 plugin installs Tesseract with `RegisterOCRTextRecognition()`
 (`UltraCanvasOCRPlugin.h`; every installed language, or the ones it is
-given); an application with a speech-to-text engine - UltraAI's
+given). UltraAI's `RegisterUltraAITextRecognition`
+(`UltraAITextRecognition.h`, in `UltraAI_UI`), installed after it, puts an
+UltraAI vision provider that reads text in front - local first, a cloud one
+only when chosen - with Tesseract as the fallback
+(`GetImageTextRecognizer` hands it the recognizer before). An application with a speech-to-text engine - UltraAI's
 `ISpeechToText`, a local one - installs it with `SetSpeechTranscriber`.
 `CanExtractText(path)` says whether this build can read a file, and
 `WhyNoTextExtraction(path)` says why not in a sentence for the user ("Speech
