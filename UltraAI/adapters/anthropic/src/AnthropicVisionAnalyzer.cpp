@@ -1,6 +1,7 @@
 // UltraAI/adapters/anthropic/src/AnthropicVisionAnalyzer.cpp
 // Anthropic (Claude) IVisionAnalyzer: OCR through the Messages API. See
 // include/UltraAIAnthropicVisionAnalyzer.h.
+// Version: 0.1.1 - the refusal fallback is the text adapter's default now
 // Version: 0.1.0
 // Last Modified: 2026-11-06
 // Author: UltraAI Module
@@ -24,7 +25,6 @@ namespace {
 using nlohmann::json;
 
 constexpr const char* kDefaultModel = "claude-opus-5-5";
-constexpr const char* kFallbackBeta = "server-side-fallback-2026-07-01";
 constexpr const char* kVaultRef = "ai.anthropic.api_key";   // UltraAICommon.h's canonical name
 
 // What Claude is asked. The structured output carries the words alone, so
@@ -50,13 +50,6 @@ json OcrOutputConfig() {
 
 bool HasOption(const OptionsMap& options, const std::string& key) {
     return options.find(key) != options.end();
-}
-
-std::string OptionString(const OptionsMap& options, const std::string& key) {
-    auto it = options.find(key);
-    if (it == options.end()) return {};
-    const auto* s = std::get_if<std::string>(&it->second);
-    return s ? *s : std::string{};
 }
 
 class AnthropicVisionAnalyzer : public IVisionAnalyzer {
@@ -125,13 +118,8 @@ public:
         // Defaults the configuration may replace (see the header).
         const OptionsMap& configured = config_.providerOptions;
         if (!HasOption(configured, "output_config")) chat.options["output_config"] = OcrOutputConfig().dump();
-        if (!HasOption(configured, "fallbacks")) {
-            chat.options["fallbacks"] = std::string("default");
-            std::string beta = OptionString(configured, "anthropic-beta");
-            if (beta.find(kFallbackBeta) == std::string::npos)
-                beta = beta.empty() ? std::string(kFallbackBeta) : beta + "," + kFallbackBeta;
-            chat.options["anthropic-beta"] = beta;
-        }
+        // Refusal fallbacks: the text adapter's default ("fallbacks": "default"
+        // with its beta), or the configured ones.
         for (const auto& [key, value] : request.options) chat.options[key] = value;
 
         const ChatResponse response = llm_->Chat(chat);
