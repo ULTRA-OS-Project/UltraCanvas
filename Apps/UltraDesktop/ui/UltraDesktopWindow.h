@@ -33,6 +33,9 @@
 // settings button offers sign out, restart and shut down, which Explorer's
 // Start menu would otherwise, and a tap of the Win key opens the
 // Applications window.
+// Version: 0.7.0 - an application's windows share one taskbar button with a
+//                  count; resting the pointer on it shows the windows'
+//                  pictures to choose from (UltraDesktopWindowPreviews)
 // Version: 0.5.2 - the screenshot button opens UltraSnip (OpenSnip, its menu of
 //                  shapes and the recording, Super+Shift+S), the plain capture as the fallback
 // Version: 0.6.0 - the Wi-Fi and Bluetooth panels (join, pair, connect),
@@ -103,6 +106,7 @@ class UltraDesktopDevicePanel;
 class UltraDesktopStickerboard;
 class UltraDesktopCategoryBoard;
 class UltraDesktopTasksWindow;
+class UltraDesktopWindowPreviews;
 
 class UltraDesktopWindow {
 public:
@@ -206,9 +210,12 @@ private:
     int  DesiredDesktopCount() const;
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildTaskbar(bool vertical);
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildRightBar();
-    // The clock at the top of the right bar: the gauge element's analog
-    // clock over the date, the whole date and time in the tooltip.
+    // The clock at the foot of the right bar, white on black: the gauge
+    // element's analog clock or the digital time, with or without the date
+    // (right-click to choose), the whole date and time in the tooltip.
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildClock();
+    // The clock's right-click menu: its display types.
+    void ShowClockMenu(int windowX, int windowY);
     void UpdateClock();
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildWorkArea();
     // The installed applications, read once and again every five minutes:
@@ -253,7 +260,20 @@ private:
     void StopDevicePoll();
 
     // ===== RUNNING APPS =====
+    // One button per application (RunningGroupKey): a click on the button of
+    // a single window raises or minimizes it; with several the previews
+    // open, and the person picks the window there.
+    void OnRunningToggled(const std::string& key, bool on);
+    void HoverRunning(const std::string& key);
+    void UnhoverRunning(const std::string& key);
+    void ShowPreviews(const std::string& key);
+    void HidePreviews();
+    void SchedulePreviewsClose();
+    void StopPreviewTimers();
     void ShowWindowMenu(uint64_t windowId, int windowX, int windowY);
+    // An application's button with several windows: its windows, minimize
+    // all, close all, pin.
+    void ShowGroupMenu(const std::string& key, int windowX, int windowY);
     void ShowPinnedMenu(const UltraCanvas::UCDesktopEntry& entry, int windowX, int windowY);
     void ShowClipboardMenu(int windowX, int windowY);
     void ShowSettingsButtonMenu(int windowX, int windowY);
@@ -315,7 +335,6 @@ private:
     void SetClipboardRecording(bool on);
     void UpdateClipboardButton();
     void CheckClipboardHistory();
-    std::string RunningItemId(uint64_t windowId) const;
 
     // ===== STATE =====
     std::string settingsPath_;
@@ -347,10 +366,13 @@ private:
     std::shared_ptr<UltraDesktopTasksWindow> tasks_;
     std::unique_ptr<UltraCanvas::UltraCanvasNotificationToastHost> toasts_;
 
-    // The clock: its face and the date under it, refreshed once a minute.
+    // The clock: the analog face or the digital time, and the date under it
+    // (as DesktopSettings::clockStyle says), refreshed when the time shown
+    // changes.
     std::shared_ptr<UltraCanvas::UltraCanvasGaugeDiagramElement> clock_;
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel> clockTime_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel> clockDate_;
-    int clockMinute_ = -1;
+    std::string clockStamp_;
     std::shared_ptr<UltraDesktopClockPanel> clockPanel_;
     std::shared_ptr<UltraDesktopVolumePanel> volumePanel_;
     // The services FitInfoPanel last moved to the end of the info panel.
@@ -388,9 +410,30 @@ private:
     std::vector<UltraCanvas::UCDesktopEntry> applications_;
     std::chrono::steady_clock::time_point applicationsRead_{};
 
-    // window id -> the toolbar item for it, in the order the user keeps
-    std::map<uint64_t, std::string> runningItems_;
+    // An application's windows on the bar: the group key (RunningGroupKey)
+    // -> its toolbar item and its windows in ListWindows' order.
+    struct RunningWindow {
+        uint64_t id = 0;
+        std::string title;
+        std::string iconFile;
+        bool active = false;
+        bool minimized = false;
+    };
+    struct RunningGroup {
+        std::string itemId;
+        std::string name;        // the application, for the tooltip
+        std::string letter;      // the button's text when there is no icon
+        std::vector<RunningWindow> windows;
+        int badge = 0;           // the count the button shows, 0 for none
+        bool active = false;     // one of them has the focus
+    };
+    std::map<std::string, RunningGroup> runningGroups_;
     std::map<uint64_t, std::string> runningTitles_;
+    uint64_t nextRunningItem_ = 0;
+    std::shared_ptr<UltraDesktopWindowPreviews> previews_;
+    std::string hoveredGroup_;
+    UltraCanvas::TimerId previewOpenTimer_ = 0;
+    UltraCanvas::TimerId previewCloseTimer_ = 0;
     int currentDesktop_ = -1;
     int desktopCount_ = 0;
     int requestedDesktops_ = 0;   // the settings' choice, for the rebuild that applies it

@@ -1,5 +1,12 @@
 {
   "@language": "en",
+  "Close all {0} windows": "Close all {0} windows",
+  "Close window": "Close window",
+  "Minimize all": "Minimize all",
   "Notifications": "Notifications",
-  "Notifications: {0}": "Notifications: {0}"
+  "Notifications: {0}": "Notifications: {0}",
+  "Pin to taskbar": "Pin to taskbar",
+  "Unpin from taskbar": "Unpin from taskbar",
+  "Window previews": "Window previews",
+  "{0} (minimized)": "{0} (minimized)"
 }
