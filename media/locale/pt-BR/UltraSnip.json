@@ -32,7 +32,6 @@
   "PNG keeps every pixel and is read everywhere. JPEG XL, AVIF and HEIC are far smaller at the same quality but need a program that reads them; WebP sits between. JPEG is the smallest for a photo and the worst for text and lines.": "O PNG mantém todos os pixels e é lido em qualquer lugar. JPEG XL, AVIF e HEIC são bem menores com a mesma qualidade, mas precisam de um programa que os leia; o WebP fica no meio-termo. O JPEG é o menor para uma foto e o pior para texto e linhas.",
   "Rectangle: an area you drag out": "Retângulo: uma área que você arrasta",
   "Restore default type": "Restaurar o tipo padrão",
-  "Save as": "Salvar como",
   "Save as: the snip under another name or type (Ctrl+S)": "Salvar como: a captura com outro nome ou tipo (Ctrl+S)",
   "Save in": "Salvar em",
   "Save the picture as": "Salvar a imagem como",

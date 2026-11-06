@@ -13,6 +13,7 @@
 //     and as dark text on a transparent picture.
 //
 // The files sit in a folder with a Thai name (UTF-8 paths). Headless.
+// Version: 1.2.0 - the language data in a folder with a Thai name
 // Version: 1.1.0 - RecognizeFile: a UTF-8 name, a transparent picture
 // Version: 1.0.0
 // Last Modified: 2026-11-06
@@ -171,6 +172,32 @@ int main() {
         const OCRResult byName = ocr.RecognizeFile(PathToUtf8(copy));
         Check(byName.Ok() && Contains(byName.plainText, "OCR demo"),
               "UltraCanvasOCR::RecognizeFile reads a picture in a folder with a Thai name");
+
+        // The language data in a folder with a Thai name: Tesseract 5 reads
+        // it through the engine's FileReader (OpenFileUtf8).
+        fs::path english;
+        for (const char* candidate : {"/usr/share/tesseract-ocr/5/tessdata", "/usr/share/tesseract-ocr/4.00/tessdata",
+                                      "/usr/share/tessdata", "/usr/local/share/tessdata",
+                                      "/opt/homebrew/share/tessdata"}) {
+            if (fs::exists(fs::path(candidate) / "eng.traineddata", ec)) {
+                english = fs::path(candidate) / "eng.traineddata";
+                break;
+            }
+        }
+        if (!english.empty()) {
+            const fs::path data = folder / PathFromUtf8("\xE0\xB8\x82\xE0\xB9\x89\xE0\xB8\xAD\xE0\xB8\xA1\xE0\xB8\xB9\xE0\xB8\xA5");
+            fs::create_directories(data, ec);
+            fs::copy_file(english, data / "eng.traineddata", fs::copy_options::overwrite_existing, ec);
+            OCRConfig thaiData;
+            thaiData.languages = {"eng"};
+            thaiData.dataPath = PathToUtf8(data);
+            UltraCanvasOCR fromThaiFolder(thaiData);
+            const OCRResult read = fromThaiFolder.RecognizeFile(picture);
+            Check(read.Ok() && Contains(read.plainText, "OCR demo"),
+                  "... with its language data in a folder with a Thai name");
+        } else {
+            std::cout << "  [SKIP] no eng.traineddata in the usual folders to copy\n";
+        }
 
         // Dark text on a transparent picture: flattened onto white, not black.
         const std::shared_ptr<UCImage> clear = UCImage::Load(picture, false);

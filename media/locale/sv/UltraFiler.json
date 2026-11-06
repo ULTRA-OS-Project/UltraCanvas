@@ -35,10 +35,6 @@
   "an entry": "en post",
   "An upload is still running — quit anyway?": "En uppladdning pågår fortfarande — avsluta ändå?",
   "An upload is still waiting — quit anyway?": "En uppladdning väntar fortfarande — avsluta ändå?",
-  "and {n} more": {
-    "one": "och {n} till",
-    "other": "och {n} till"
-  },
   "Any other file, when this system has a program registered for that kind of file:": "Alla andra filer, när det här systemet har ett program registrerat för den typen av fil:",
   "Applied to {n} item.": {
     "one": "Tillämpat på {n} objekt.",
@@ -462,10 +458,6 @@
   "{n} icon": {
     "one": "{n} ikon",
     "other": "{n} ikoner"
-  },
-  "{n} line": {
-    "one": "{n} rad",
-    "other": "{n} rader"
   },
   "{n} result": {
     "one": "{n} resultat",

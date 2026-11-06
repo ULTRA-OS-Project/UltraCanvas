@@ -35,10 +35,6 @@
   "an entry": "egy bejegyzés",
   "An upload is still running — quit anyway?": "Egy feltöltés még folyamatban van — mégis kilép?",
   "An upload is still waiting — quit anyway?": "Egy feltöltés még várakozik — mégis kilép?",
-  "and {n} more": {
-    "one": "és még {n}",
-    "other": "és még {n}"
-  },
   "Any other file, when this system has a program registered for that kind of file:": "Bármely más fájl, ha ebben a rendszerben regisztrált program tartozik az ilyen fájlokhoz:",
   "Applied to {n} item.": {
     "one": "Alkalmazva {n} elemre.",
@@ -462,10 +458,6 @@
   "{n} icon": {
     "one": "{n} ikon",
     "other": "{n} ikon"
-  },
-  "{n} line": {
-    "one": "{n} sor",
-    "other": "{n} sor"
   },
   "{n} result": {
     "one": "{n} találat",

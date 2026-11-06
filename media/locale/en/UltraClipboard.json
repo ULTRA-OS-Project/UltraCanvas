@@ -14,11 +14,13 @@
     "Images",
     "Pin",
     "Save",
+    "Save as",
     "Save image as",
     "Settings",
     "Text",
     "Undo",
     "Unpin",
+    "{0} MB",
     "{n} day"
   ],
   "1 year": "1 year",
@@ -87,7 +89,6 @@
   },
   "Right of the item text": "Right of the item text",
   "Save and copy": "Save and copy",
-  "Save as": "Save as",
   "Save as…": "Save as…",
   "Save copies of the files in": "Save copies of the files in",
   "Saved": "Saved",
@@ -138,7 +139,6 @@
   "What the clipboard history keeps, and for how long. Pinned entries are kept whatever the limits say.": "What the clipboard history keeps, and for how long. Pinned entries are kept whatever the limits say.",
   "{0} file": "{0} file",
   "{0} GB": "{0} GB",
-  "{0} MB": "{0} MB",
   "{n} entry": {
     "one": "{n} entry",
     "other": "{n} entries"

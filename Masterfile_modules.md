@@ -1117,7 +1117,9 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   - `ClipboardHistoryListModel` + `ClipboardHistoryRowDelegate`
     (`ClipboardRowStyle::Light()` / `Dark()`) - the history in an
     `UltraCanvasListView`: thumbnails by kind, meta line, painted Copy / Edit
-    / Delete hit-tested with `ActionAt`.
+    / Delete hit-tested with `ActionAt`; its text in the person's language
+    (`Tr`), with `ClipboardEntryKindLabel` / `ClipboardEntryDisplayTitle` for
+    what is stored in English.
   - `EditClipboardText` (trim, join lines, case), `ClipboardImageFile`,
     `FoldForClipboardSearch`, `DescribeClipboardEntry`,
     `PreferredClipboardKinds` (what a program takes when pasted into, from

@@ -6,6 +6,7 @@
   "@inherited": [
     "Add a drive",
     "All files",
+    "and {n} more",
     "Apply",
     "Cache",
     "Camera",
@@ -56,6 +57,7 @@
     "View",
     "{n} file",
     "{n} folder",
+    "{n} line",
     "{n} second"
   ],
   "\"Show it in the preview\" keeps the file inside UltraFiler whenever it can show it - pictures, documents, spreadsheets, 3D models, e-books, fonts, video, audio and text - which is faster than starting a program for a look at a file.": "\"Show it in the preview\" keeps the file inside UltraFiler whenever it can show it - pictures, documents, spreadsheets, 3D models, e-books, fonts, video, audio and text - which is faster than starting a program for a look at a file.",
@@ -92,10 +94,6 @@
   "an entry": "an entry",
   "An upload is still running — quit anyway?": "An upload is still running — quit anyway?",
   "An upload is still waiting — quit anyway?": "An upload is still waiting — quit anyway?",
-  "and {n} more": {
-    "one": "and {n} more",
-    "other": "and {n} more"
-  },
   "Any other file, when this system has a program registered for that kind of file:": "Any other file, when this system has a program registered for that kind of file:",
   "Applied to {n} item.": {
     "one": "Applied to {n} item.",
@@ -519,10 +517,6 @@
   "{n} icon": {
     "one": "{n} icon",
     "other": "{n} icons"
-  },
-  "{n} line": {
-    "one": "{n} line",
-    "other": "{n} lines"
   },
   "{n} result": {
     "one": "{n} result",

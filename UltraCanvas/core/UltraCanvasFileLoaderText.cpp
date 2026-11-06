@@ -4,8 +4,9 @@
 // one), a spreadsheet, a text file, a picture (text recognition) and a
 // recording (speech to text). The two recognition engines are hooks a plugin
 // or the application installs (SetImageTextRecognizer, SetSpeechTranscriber).
+// Version: 1.1.0 - the messages in the person's language (Tr)
 // Version: 1.0.0
-// Last Modified: 2026-11-05
+// Last Modified: 2026-11-06
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasFileLoader.h"
@@ -15,6 +16,7 @@
 #include "UltraCanvasRichDocument.h"
 #include "UltraCanvasSpreadsheet.h"
 #include "UltraCanvasSupportedFormats.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 #include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
 #ifdef ULTRACANVAS_PLUGIN_PDF
 #include "Plugins/Documents/UltraCanvasPDF.h"
@@ -131,13 +133,14 @@ namespace UltraCanvas {
                             std::string& error) {
             const std::shared_ptr<UCImage> image = UCImage::Load(filePath, false);
             if (!image || !image->errorMessage.empty() || image->GetWidth() <= 0) {
-                error = "The picture could not be read" +
-                        (image && !image->errorMessage.empty() ? ": " + image->errorMessage : std::string("."));
+                error = image && !image->errorMessage.empty()
+                                ? TrF("The picture could not be read: {0}", image->errorMessage)
+                                : Tr("The picture could not be read.");
                 return false;
             }
             const std::shared_ptr<UCPixmapCairo> pixmap = image->GetPixmap();
             if (!pixmap || !pixmap->IsValid()) {
-                error = "The picture could not be decoded.";
+                error = Tr("The picture could not be decoded.");
                 return false;
             }
             pixmap->Flush();
@@ -145,7 +148,7 @@ namespace UltraCanvas {
             height = pixmap->GetRawHeight();
             const uint32_t* pixels = pixmap->GetPixelData();
             if (!pixels || width <= 0 || height <= 0) {
-                error = "The picture is empty.";
+                error = Tr("The picture is empty.");
                 return false;
             }
             // Cairo's surfaces are rows of premultiplied ARGB words, a stride
@@ -168,7 +171,7 @@ namespace UltraCanvas {
         std::string SpreadsheetText(const std::string& filePath, const std::string& password, std::string& error) {
             UltraCanvasSpreadsheet sheet;
             if (!sheet.LoadFromFile(filePath, password)) {
-                error = sheet.GetLastError().empty() ? "The spreadsheet could not be read." : sheet.GetLastError();
+                error = sheet.GetLastError().empty() ? Tr("The spreadsheet could not be read.") : sheet.GetLastError();
                 return "";
             }
             CSVExportOptions options;
@@ -193,13 +196,13 @@ namespace UltraCanvas {
         std::string PdfText(const std::string& filePath, const std::string& password, std::string& error) {
             auto document = PDFEngineFactory::Create(PDFEngineKind::Auto);
             if (!document) {
-                error = "This build has no PDF reader.";
+                error = Tr("This build has no PDF reader.");
                 return "";
             }
             if (!document->OpenInMemory(filePath, password)) {
                 error = document->GetLastOpenError() == PDFOpenError::NoError
-                                ? "The PDF could not be read."
-                                : "The PDF is password-protected or damaged.";
+                                ? Tr("The PDF could not be read.")
+                                : Tr("The PDF is password-protected or damaged.");
                 return "";
             }
             const int pages = document->GetPageCount();
@@ -227,7 +230,7 @@ namespace UltraCanvas {
                 image.bytesPerLine = rendered.stride;
                 std::string pageText, pageError;
                 if (!recognizer(image, pageText, pageError)) {
-                    error = pageError.empty() ? "Text recognition failed." : pageError;
+                    error = pageError.empty() ? Tr("Text recognition failed.") : pageError;
                     return "";
                 }
                 pageText = Tidy(pageText);
@@ -296,21 +299,21 @@ namespace UltraCanvas {
 
     std::string UltraCanvasFileLoader::WhyNoTextExtraction(const std::string& filePath) {
         switch (GetTextExtractionMethod(filePath)) {
-            case TextExtractionMethod::NoText: return "There is no text to read in this type of file.";
+            case TextExtractionMethod::NoText: return Tr("There is no text to read in this type of file.");
             case TextExtractionMethod::Recognition:
                 return HasImageTextRecognizer()
                                ? ""
-                               : "Text recognition (OCR) is not available: this build has no OCR engine.";
+                               : Tr("Text recognition (OCR) is not available: this build has no OCR engine.");
             case TextExtractionMethod::Transcription:
                 return HasSpeechTranscriber()
                                ? ""
-                               : "Speech to text is not available: no speech recognition (UltraAI STT or "
-                                 "another engine) is set up.";
+                               : Tr("Speech to text is not available: no speech recognition (UltraAI STT or "
+                                    "another engine) is set up.");
             case TextExtractionMethod::PDF:
 #ifdef ULTRACANVAS_PLUGIN_PDF
                 return "";
 #else
-                return "This build has no PDF reader.";
+                return Tr("This build has no PDF reader.");
 #endif
             default: return "";
         }
@@ -325,14 +328,14 @@ namespace UltraCanvas {
         switch (result.method) {
             case TextExtractionMethod::PlainText: {
                 std::string bytes;
-                if (!ReadFileBytes(filePath, bytes)) result.error = "The file could not be read.";
+                if (!ReadFileBytes(filePath, bytes)) result.error = Tr("The file could not be read.");
                 else result.text = Tidy(std::move(bytes));
                 break;
             }
             case TextExtractionMethod::Document: {
                 const std::shared_ptr<UCRichDocument> document = LoadTextDocument(filePath, result.error, password);
                 if (document) result.text = Tidy(document->ToPlainText());
-                else if (result.error.empty()) result.error = "The document could not be read.";
+                else if (result.error.empty()) result.error = Tr("The document could not be read.");
                 break;
             }
             case TextExtractionMethod::Spreadsheet:
@@ -353,7 +356,7 @@ namespace UltraCanvas {
                 image.bytesPerLine = image.width * 3;
                 std::string text;
                 if (!recognizer || !recognizer(image, text, result.error)) {
-                    if (result.error.empty()) result.error = "Text recognition failed.";
+                    if (result.error.empty()) result.error = Tr("Text recognition failed.");
                     break;
                 }
                 result.text = Tidy(std::move(text));
@@ -363,7 +366,7 @@ namespace UltraCanvas {
                 const SpeechTranscriber transcriber = CurrentTranscriber();
                 std::string text;
                 if (!transcriber || !transcriber(filePath, text, result.error)) {
-                    if (result.error.empty()) result.error = "Speech to text failed.";
+                    if (result.error.empty()) result.error = Tr("Speech to text failed.");
                     break;
                 }
                 result.text = Tidy(std::move(text));

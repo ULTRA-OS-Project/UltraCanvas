@@ -35,10 +35,6 @@
   "an entry": "ein Eintrag",
   "An upload is still running — quit anyway?": "Ein Upload läuft noch – trotzdem beenden?",
   "An upload is still waiting — quit anyway?": "Ein Upload wartet noch – trotzdem beenden?",
-  "and {n} more": {
-    "one": "und {n} weitere",
-    "other": "und {n} weitere"
-  },
   "Any other file, when this system has a program registered for that kind of file:": "Jede andere Datei, wenn dieses System für diese Art von Datei ein Programm registriert hat:",
   "Applied to {n} item.": {
     "one": "Auf {n} Element angewendet.",
@@ -462,10 +458,6 @@
   "{n} icon": {
     "one": "{n} Symbol",
     "other": "{n} Symbole"
-  },
-  "{n} line": {
-    "one": "{n} Zeile",
-    "other": "{n} Zeilen"
   },
   "{n} result": {
     "one": "{n} Ergebnis",

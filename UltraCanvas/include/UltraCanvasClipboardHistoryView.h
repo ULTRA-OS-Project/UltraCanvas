@@ -17,9 +17,11 @@
 // The actions are painted into the row, as UltraMail's contact list paints its
 // bin, and hit-tested through onCellClicked; the keyboard reaches them too
 // (Enter copies, F2 edits, Delete deletes - the window handles those keys).
+// Version: 1.3.0 - the text in the person's language (Tr); ClipboardEntryKindLabel,
+//                  ClipboardEntryDisplayTitle
 // Version: 1.2.0 - ClipboardRowAction::SaveAs, shown with ClipboardRowStyle::saveAction;
 //                  the icons left of the text (ClipboardRowStyle::actionsLeftOfText)
-// Last Modified: 2026-10-14
+// Last Modified: 2026-11-06
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -168,8 +170,17 @@ private:
                    FontWeight weight, const Color& color, bool monospace) const;
 };
 
+// Everything below is in the person's language (Tr): the English shown in
+// the examples is what an untranslated build shows.
+//
 // The meta line under a title: "Text · 2 lines · 29 characters · UltraMail · 5 min ago".
 std::string DescribeClipboardEntry(const ClipboardHistoryEntry& entry, int64_t nowMs, bool compact);
+// A kind's name to show: "Text", "Formatted text", "Image" ... (ClipboardEntryKindName
+// is the English one search matches against).
+std::string ClipboardEntryKindLabel(ClipboardEntryKind kind);
+// The title to show for an entry: its stored title, but an image's "Image"
+// and copied files' "a, b and 2 more" made again in the person's language.
+std::string ClipboardEntryDisplayTitle(const ClipboardHistoryEntry& entry);
 // "just now", "5 min ago", "2 h ago", "today 09:41", "yesterday 16:20", "3 Oct", "3 Oct 2025".
 std::string FormatClipboardAge(int64_t whenMs, int64_t nowMs);
 // "512 bytes", "412 KB", "2.4 MB".

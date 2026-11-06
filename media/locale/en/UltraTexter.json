@@ -35,7 +35,8 @@
     "Toolbars",
     "Undo",
     "Whole word",
-    "Words"
+    "Words",
+    "{0} bytes"
   ],
   "(no dictionaries installed)": "(no dictionaries installed)",
   "(None)": "(None)",
@@ -255,6 +256,5 @@
   "Windows-1251 (Cyrillic)": "Windows-1251 (Cyrillic)",
   "Windows-1252 (Western)": "Windows-1252 (Western)",
   "Word Wrap": "Word Wrap",
-  "Zoom Level": "Zoom Level",
-  "{0} bytes": "{0} bytes"
+  "Zoom Level": "Zoom Level"
 }
