@@ -15,15 +15,16 @@
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
+#include "UltraCanvasApplication.h"
+#include "UltraCanvasWindow.h"
+
 #include <memory>
 #include <string>
 
 namespace UltraCanvas {
-    class UltraCanvasApplication;
     class UltraCanvasButton;
     class UltraCanvasContainer;
     class UltraCanvasMessageCenter;
-    class UltraCanvasWindow;
     struct MessageCenterEntry;
     struct UCEvent;
 }
