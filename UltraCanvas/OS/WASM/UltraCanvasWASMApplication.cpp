@@ -146,17 +146,21 @@ namespace UltraCanvas {
         // The browser's look: a change of the colour scheme, the contrast or
         // the motion preference reaches DetectHostAppearanceNative through
         // one refresh.
+        // (EM_ASM stringifies its argument through the preprocessor, which
+        // splits it at a comma outside parentheses: hence push, not an array
+        // literal.)
         EM_ASM({
             if (!window.matchMedia) return;
             if (!window.__ultracanvasAppearanceQueries) {
-                window.__ultracanvasAppearanceQueries = [
-                    window.matchMedia('(prefers-color-scheme: dark)'),
-                    window.matchMedia('(prefers-contrast: more)'),
-                    window.matchMedia('(prefers-reduced-motion: reduce)')
-                ];
-                window.__ultracanvasAppearanceQueries.forEach(function(q) {
-                    try { q.addEventListener('change', function() { _UltraCanvasWasmOnHostAppearanceChanged(); }); }
-                    catch (err) { try { q.addListener(function() { _UltraCanvasWasmOnHostAppearanceChanged(); }); } catch (e2) {} }
+                var queries = [];
+                queries.push(window.matchMedia('(prefers-color-scheme: dark)'));
+                queries.push(window.matchMedia('(prefers-contrast: more)'));
+                queries.push(window.matchMedia('(prefers-reduced-motion: reduce)'));
+                window.__ultracanvasAppearanceQueries = queries;
+                queries.forEach(function(q) {
+                    var fire = function() { _UltraCanvasWasmOnHostAppearanceChanged(); };
+                    try { q.addEventListener('change', fire); }
+                    catch (err) { try { q.addListener(fire); } catch (e2) {} }
                 });
             }
         });
