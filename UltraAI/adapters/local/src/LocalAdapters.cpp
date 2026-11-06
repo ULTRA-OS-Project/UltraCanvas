@@ -2,8 +2,9 @@
 // The `local` provider: the runtime supplies an engine endpoint for the
 // model, the OpenAI adapter speaks to it. Resolution is lazy and per
 // model: a request naming another installed model gets its own engine.
+// Version: 0.2.0 - providerOptions["topic"]: the model the user set for a topic
 // Version: 0.1.0
-// Last Modified: 2026-10-20
+// Last Modified: 2026-11-06
 // Author: UltraAI Module
 
 #include "UltraAILocal.h"
@@ -23,6 +24,13 @@
 namespace UltraAI {
 
 namespace {
+
+std::string OptionString(const OptionsMap& options, const char* key) {
+    auto it = options.find(key);
+    if (it == options.end()) return {};
+    if (const std::string* s = std::get_if<std::string>(&it->second)) return *s;
+    return {};
+}
 
 bool OptionBool(const OptionsMap& options, const char* key) {
     auto it = options.find(key);
@@ -48,15 +56,22 @@ public:
           capability_(std::move(capability)) {
         allowDownload_ = OptionBool(config_.providerOptions, "allow_download");
         config_.providerOptions.erase("allow_download");
+        topic_ = OptionString(config_.providerOptions, "topic");
+        config_.providerOptions.erase("topic");
     }
     virtual ~LocalBase() = default;
 
 protected:
-    // The model a request means: its own, the configured default, or the
-    // runtime's recommendation for this computer.
+    // The model a request means: its own, the configured default, the
+    // model the user set for the configured topic, or the runtime's
+    // recommendation for this computer.
     std::string ResolveModelId(const std::string& requested, Error* outError) const {
         if (!requested.empty()) return requested;
         if (!config_.defaultModel.empty()) return config_.defaultModel;
+        if (!topic_.empty()) {
+            const std::string forTopic = runtime_->ModelForTopic(topic_);
+            if (!forTopic.empty() && runtime_->CapabilityOf(forTopic) == capability_) return forTopic;
+        }
         const LocalModelInfo recommended = runtime_->Recommend(capability_);
         if (recommended.id.empty() && outError) {
             outError->code    = ErrorCode::ModelNotFound;
@@ -112,6 +127,7 @@ protected:
     LocalRuntime* runtime_;
     std::shared_ptr<ITransport> transport_;
     std::string capability_;
+    std::string topic_;          // providerOptions["topic"], "" when none
     bool allowDownload_ = false;
 
     struct Entry {

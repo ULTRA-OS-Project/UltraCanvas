@@ -1,0 +1,22 @@
+[Unit]
+Description=UltraAI model server (the engines, models and topics UltraAI clients install from)
+After=network.target
+
+[Service]
+Type=simple
+User=ultraai-models
+Group=ultraai-models
+WorkingDirectory=/opt/ultraai-model-server
+EnvironmentFile=/etc/ultraai-model-server.env
+ExecStart=/opt/ultraai-model-server/.venv/bin/ultraai-model-server
+Restart=on-failure
+RestartSec=3
+StateDirectory=ultraai-models
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/ultraai-models
+
+[Install]
+WantedBy=multi-user.target

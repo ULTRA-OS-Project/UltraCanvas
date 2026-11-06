@@ -268,6 +268,7 @@ if(ANDROID)
     # stop this configure, and the Android store is a later milestone.
     set(BUILD_ULTRASTORE OFF CACHE BOOL "Build the UltraStore application")
     set(BUILD_ULTRASTOREADMIN OFF CACHE BOOL "Build the UltraStoreAdmin application")
+    set(BUILD_ULTRAAISERVERADMIN OFF CACHE BOOL "Build the UltraAI ServerAdmin application")
     # AnchorPoint's GUI CMake takes Android for desktop Linux (UNIX, not
     # APPLE) and asks pkg-config for X11.
     set(BUILD_ANCHORPOINT OFF CACHE BOOL "Build the AnchorPoint application")
@@ -349,6 +350,7 @@ if(EMSCRIPTEN)
     set(BUILD_ULTRACANVASSTART OFF CACHE BOOL "Build the UltraCanvasStart application")
     set(BUILD_ULTRASTORE OFF CACHE BOOL "Build the UltraStore application")
     set(BUILD_ULTRASTOREADMIN OFF CACHE BOOL "Build the UltraStoreAdmin application")
+    set(BUILD_ULTRAAISERVERADMIN OFF CACHE BOOL "Build the UltraAI ServerAdmin application")
     set(BUILD_UOS_SETTINGS OFF CACHE BOOL "Build the UOS-Settings application")
     set(BUILD_ULTRACLAUDE OFF CACHE BOOL "Build the UltraClaude application")
     set(BUILD_ULTRANETMONITOR OFF CACHE BOOL "Build the UltraNetMonitor application")
@@ -891,6 +893,18 @@ if(BUILD_ULTRASTOREADMIN AND TARGET UltraStoreCore)
     message(STATUS "")
     message(STATUS "── Building UltraStoreAdmin ──")
     add_subdirectory(Apps/UltraStoreAdmin)
+endif()
+
+# ===== ULTRAAI SERVERADMIN =====
+# The super administrator's tool for an UltraAI model server
+# (Server/UltraAIModelServer): which models UltraAI clients may install, their
+# files, the topics, the accounts (Docs/UltraAIServerAdmin/README.md). On the
+# shared core's UltraNet and UltraCrypt.
+option(BUILD_ULTRAAISERVERADMIN "Build the UltraAI ServerAdmin application" ON)
+if(BUILD_ULTRAAISERVERADMIN AND TARGET UltraNet AND TARGET UltraCrypt)
+    message(STATUS "")
+    message(STATUS "── Building UltraAI ServerAdmin ──")
+    add_subdirectory(Apps/UltraAIServerAdmin)
 endif()
 
 # ===== ANCHORPOINT =====
@@ -2228,6 +2242,7 @@ if(BUILD_ULTRAAI_APP AND TARGET UltraAI_Core)
         Apps/UltraAIApp/UltraAISettingsDialog.cpp
         Apps/UltraAIApp/UltraAIAppSettings.cpp
         Apps/UltraAIApp/UltraAISettingsWindow.cpp
+        Apps/UltraAIApp/UltraAITopicsPage.cpp
         Apps/UltraAIApp/UltraAISettingsWidgets.cpp
         Apps/UltraAIApp/UltraAILocalModelsPage.cpp
         Apps/UltraAIApp/UltraAIChatDialog.cpp

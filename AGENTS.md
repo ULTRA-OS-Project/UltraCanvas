@@ -596,6 +596,7 @@ build system, CI — plus DemoApp, which is the framework's showcase and is name
 | `Docs/Modules/UltraWin/CHANGELOG.md` | UltraWin — the Windows tier, UltraWinManager and UltraWinSetup |
 | `Docs/Texter/CHANGELOG.md` | UltraTexter |
 | `Docs/UltraAI/CHANGELOG.md` | UltraAI and its dashboard app |
+| `Docs/UltraAIServerAdmin/CHANGELOG.md` | UltraAI ServerAdmin — the model server's admin tool |
 | `Docs/UltraAuthenticator/CHANGELOG.md` | UltraAuthenticator |
 | `Docs/UltraCleaner/CHANGELOG.md` | UltraCleaner |
 | `Docs/UltraClaude/CHANGELOG.md` | UltraClaude — chat with Claude through the Claude Code CLI |
