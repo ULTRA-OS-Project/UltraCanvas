@@ -111,9 +111,10 @@ rating field. VAT by country and the statements archive on the Finance
 page are proposals beyond the admin backend's README; the rest of the admin
 pages follow its *The window* table.
 
-The `Super*` pages are a **proposal** for a third tier the READMEs do not
-describe yet: the operator of UltraStore running a marketplace in which
-other publishers (merchants) open shops. The operator verifies merchants,
+The `Super*` pages are a **proposal** for a third tier, later: the operator
+of UltraStore running a marketplace in which other publishers (merchants)
+open shops. Where its records live is settled in the store's README,
+*The operator tier*. The operator verifies merchants,
 reviews and releases their submissions with the catalog publish, handles
 reports, warns, suspends and reinstates merchants and apps, and keeps every
 merchant on the current terms. The dark sidebar marks that tier; every

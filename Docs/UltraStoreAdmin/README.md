@@ -223,3 +223,7 @@ Hello.
    *Payment*), the signed URLs for `restricted/`, `sale sync` pulling the
    sales into the ledger, the catalog naming the service from the
    `payment.*` settings.
+6. **The marketplace** (the store's README, *The operator tier*): `submit`
+   sends a release to the operator's service signed with this backend's
+   key; the notices banner and the *Terms* page read from it; `publish`
+   stays for a private or test catalog.
