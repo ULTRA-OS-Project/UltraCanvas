@@ -3,6 +3,9 @@
 // with priorities/due dates/assignees/tags, drag & drop, a built-in card
 // editor, move history for flow metrics, text-definition (Mermaid kanban)
 // and JSON loading, and a preset-based design/palette system.
+// Version: 1.2.0 - a card's picture beside its text (cardImagePlacement Left),
+//                  centred titles, onContextMenu, onCardHoverChanged and a
+//                  larger preview of a card over the board (ShowCardPreview)
 // Version: 1.1.0 - a picture on a card: cardImageProvider and the style's
 //                  cardImageHeight (a file's thumbnail, a photo of a note)
 // Version: 1.0.1 - default bodies mark unused parameters (void): no -Wunused-parameter
@@ -266,6 +269,12 @@ namespace UltraCanvas {
         Chip          // Colored chip with the priority name
     };
 
+    // Where a card's picture (cardImageProvider) sits.
+    enum class KanbanCardImagePlacement {
+        Top,          // A band across the card, above the title
+        Left          // A square at the card's left, the text to its right
+    };
+
     // Complete visual description of a Kanban board. Design presets fill
     // this in; every field can be adjusted afterwards.
     struct KanbanBoardStyle {
@@ -342,6 +351,12 @@ namespace UltraCanvas {
         // The band a card's picture takes above its title, when
         // cardImageProvider hands one over; 0 = no pictures.
         float cardImageHeight = 64.0f;
+        // Top: the band; Left: a square cardImageHeight wide and high (at
+        // most half the card), the card at least that tall.
+        KanbanCardImagePlacement cardImagePlacement = KanbanCardImagePlacement::Top;
+        // Centres the title's lines (a Top picture is centred anyway);
+        // false = left-aligned.
+        bool centerCardTitle = false;
 
         // ----- Card content -----
         bool showCardDescription = true;
@@ -486,6 +501,19 @@ namespace UltraCanvas {
         // Scrolls the board sideways just far enough to show the whole column
         // (applied at the next layout, so it works right after AddColumn).
         void ScrollToColumn(int columnId);
+        // A card's rectangle in the element's own coordinates, as last laid
+        // out; empty when the card is not on screen.
+        Rect2Df GetCardBounds(int cardId) const;
+
+        // ===== PREVIEW =====
+        // A larger picture of a card - a file's preview while the pointer
+        // rests on it - drawn over the board beside the card, `size` pixels
+        // square at most, with the card's title under it. It goes when
+        // HideCardPreview() is called, and by itself when the pointer leaves
+        // the card, a button is pressed, the board scrolls or a drag starts.
+        void ShowCardPreview(int cardId, std::shared_ptr<UCPixmap> picture, float size);
+        void HideCardPreview();
+        int GetPreviewCardId() const { return previewCardId; }
         // Id of the column under a point in the element's own coordinates
         // (the gap between two columns belongs to the nearer one); -1 = none.
         int ColumnIdAt(const Point2Di& pos) const;
@@ -500,6 +528,13 @@ namespace UltraCanvas {
         std::function<void(int cardId)> onSelectionChanged; // -1 = cleared
         std::function<void(int columnId)> onWipExceeded;
         std::function<void()> onBoardChanged;             // Any editor mutation
+        // A right click: the card under it (-1 = none; the card is selected
+        // first), the column (-1 = none) and the point in window
+        // coordinates, where a popup menu opens.
+        std::function<void(int cardId, int columnId, const Point2Di& windowPos)> onContextMenu;
+        // The card under the pointer changed (-1 = none any more, also when
+        // a drag starts or the pointer leaves the board).
+        std::function<void(int cardId)> onCardHoverChanged;
 
         // Editable boards can veto a drop (e.g. strict WIP enforcement).
         std::function<bool(int cardId, int toColumnId)> canDropCard;
@@ -595,6 +630,10 @@ namespace UltraCanvas {
         std::map<int, float> columnScroll;   // columnId -> scrollY
         int selectedCardId = -1;
         int hoveredCardId = -1;
+        // ShowCardPreview's picture, for previewCardId (-1 = none).
+        int previewCardId = -1;
+        std::shared_ptr<UCPixmap> previewPicture;
+        float previewSize = 0.0f;
 
         // Drag & drop state
         int pressedCardId = -1;
@@ -651,6 +690,8 @@ namespace UltraCanvas {
                              const Color& face);
         void RenderDropIndicator(IRenderContext* ctx);
         void RenderEditingChrome(IRenderContext* ctx);
+        void RenderCardPreview(IRenderContext* ctx);
+        void SetHoveredCard(int cardId);
         void RenderEditorOverlay(IRenderContext* ctx);
 
         // ----- Interaction -----

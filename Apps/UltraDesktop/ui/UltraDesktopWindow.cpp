@@ -1623,6 +1623,14 @@ void UltraDesktopWindow::CheckSettingsFile() {
     }
     // Only what UOS-Settings edits; the notes and the Stickerboard switch are
     // this process's and the copy in memory is the current one.
+    // The Sticker board's card display and hover preview: the board takes
+    // them as they are, nothing else needs to be rebuilt.
+    if (written.categoryBoard.display != settings_.categoryBoard.display ||
+        written.categoryBoard.hoverPreview != settings_.categoryBoard.hoverPreview) {
+        settings_.categoryBoard.display = written.categoryBoard.display;
+        settings_.categoryBoard.hoverPreview = written.categoryBoard.hoverPreview;
+        if (categoryBoard_) categoryBoard_->ApplyDisplaySettings(settings_.categoryBoard);
+    }
     const bool changed = written.taskbarEdge != settings_.taskbarEdge ||
                          written.wallpaper != settings_.wallpaper ||
                          written.ramDiscPath != settings_.ramDiscPath ||
