@@ -86,7 +86,7 @@ jobs:
           scripts/ci-apt.sh install libcurl4-openssl-dev libpsl-dev libssh2-1-dev libssl-dev
           scripts/ci-apt.sh install libgpgme-dev gnupg libsodium-dev libunwind-dev libarchive-dev
           scripts/ci-apt.sh install libsqlite3-dev libpq-dev libmariadb-dev
-          scripts/ci-apt.sh install libaom-dev libdav1d-dev libde265-dev libkvazaar-dev libbrotli-dev
+          scripts/ci-apt.sh install libaom-dev libdav1d-dev libde265-dev libbrotli-dev
           scripts/ci-apt.sh install libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good
           scripts/ci-apt.sh install libflac-dev libogg-dev libopus-dev libopusfile-dev libvorbis-dev libmp3lame-dev
           scripts/ci-apt.sh install libavcodec-dev libavformat-dev libavfilter-dev libavutil-dev libswscale-dev
