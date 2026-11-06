@@ -74,7 +74,6 @@
   "Comment:": "Comment:",
   "Copy (Ctrl+C)": "Copy (Ctrl+C)",
   "Could not read the image file.": "Could not read the image file.",
-  "Crash Recovery": "Crash Recovery",
   "Cut (Ctrl+X)": "Cut (Ctrl+X)",
   "Decrease Font Size": "Decrease Font Size",
   "Decrease Font Size (Ctrl+-)": "Decrease Font Size (Ctrl+-)",
@@ -107,10 +106,6 @@
   "Find Previous": "Find Previous",
   "Find Previous (Shift+Enter)": "Find Previous (Shift+Enter)",
   "Find what:": "Find what:",
-  "Found {n} autosaved file from a previous session.\n\nWould you like to recover it?": {
-    "one": "Found {n} autosaved file from a previous session.\n\nWould you like to recover it?",
-    "other": "Found {n} autosaved files from a previous session.\n\nWould you like to recover them?"
-  },
   "GB18030 (Chinese)": "GB18030 (Chinese)",
   "GB2312 (Chinese Simplified)": "GB2312 (Chinese Simplified)",
   "GBK (Chinese Simplified)": "GBK (Chinese Simplified)",

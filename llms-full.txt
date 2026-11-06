@@ -1084,8 +1084,16 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   `AddHostAppearanceHandler` hears a difference; the system fonts are the
   value's. `HostAppearanceTest` covers the pure half,
   `LinuxHostAppearanceTest` the Linux detector against a made-up config
-  home. Phases T1 and T2 of `Docs/UltraCanvas/UltraCanvasHostThemeProposal.md`;
-  see `Docs/UltraCanvas/UltraCanvasHostAppearance.md`.
+  home. `UltraCanvasTheme::FromHost` builds the theme the desktop asks for
+  from it - Light or Dark, the high-contrast presets, the accent derived
+  into the five accent roles (`DeriveAccent`), the fonts and text roles
+  (`ThemeFonts`, `ThemeTextRole`) - and the application's theme policy
+  (`SetThemePolicy`: FollowHost by default, Light, Dark, Own with
+  `SetThemeProvider`) applies it in `Initialize` and on every host change,
+  a window built with the default background taking the theme's ground.
+  Phases T1 to T3 of `Docs/UltraCanvas/UltraCanvasHostThemeProposal.md`;
+  see `Docs/UltraCanvas/UltraCanvasHostAppearance.md` and
+  `Docs/UltraCanvas/UltraCanvasTheme.md`.
 
   Emoji come from a bundled font the emoji setting picks
   (`UltraCanvasEmojiSettings.h`: `EmojiStyle` Colour / Monochrome / System,
@@ -16724,7 +16732,7 @@ std::function<void(bool isPressed)> onToggle;  // Fired on a toggle button's sta
 std::function<void()> onDoubleClick;     // Left double-click, instead of a second press
 std::function<void()> onSecondaryClick;  // Fired when a split button's secondary section is clicked
 std::function<void(int windowX, int windowY)> onContextMenu;  // Right mouse button, window coordinates
-std::function<void()> onHoverEnter;      // Fired when mouse enters button
+std::function<void()> onHoverEnter;      // Fired when mouse enters button (a toggle that is on too; a push button held down not)
 std::function<void()> onHoverLeave;      // Fired when mouse leaves button
 ```
 
@@ -18208,12 +18216,26 @@ target.label = "Target window";
   web); a domain axis rules across the value range (spokes under Polar).
   `SetDomainGridAxis(index)` adds the second direction, so a scatter plot
   rules both x and y and a radar draws rings and spokes.
+  `SetExtraGridAxes({index, ...})` rules further axes the same way: the other
+  panes of a chart whose value axes share the plot in sub-bands
+  (`ChartAxis::bandStart` / `bandEnd`), so every pane has its own grid.
 - **Limiters**: `AddLimiter({kind, axisIndex, value, color, width, dashed,
   caption})` draws reference lines (average, target, threshold...); captions
   are solved into the label plan so they never overprint value labels. A
   limiter on a domain axis runs across the value range (a pyramid's average
   age), and `extentStart` / `extentEnd` trim it to part of the plot (one side
-  of a diverging chart).
+  of a diverging chart). A limiter whose value falls outside its axis's band
+  (the whole plot, or the axis's pane) is neither drawn nor captioned, rather
+  than drawn across a neighbouring pane. `captionPlacement` decides where the
+  caption goes: `Solved` (the default) lets the label solver place it beside
+  the line near its far end, anchored half its own width in from the end so it
+  fits there instead of running past the plot edge; `AboveEnd` pins it just
+  above the line there (beside a line that runs up the screen, such as a
+  stage divider, so it stays inside the plot); `BeyondEnd` puts it just past
+  the line's end, outside the plot, in room the engine reserves - the column
+  of limit values a control chart has, clear of the data. Where two captions
+  in that column would overprint, they are spread apart just enough, in order. `GetLimiters()` and `GetHighlights()` return
+  what was added.
 - **Span annotations**: `AddSpanAnnotation({xAxisIndex, yAxisIndex, from, to,
   label, ...})` draws a dimension line between two value-space points, with
   arrowheads and a boxed caption the label plan steers around - the lead time,
@@ -18479,7 +18501,10 @@ sectors, wedges). The engine then owns hover: MouseMove hit-tests the regions
 without re-running layout or the label solver, `HoveredRegionId()` tells the
 content what to emphasise, `OnHitRegionHoverChanged` notifies subclasses, and
 a region's tooltip is shown through the standard tooltip manager whenever
-tooltips are enabled (`SetEnableTooltips`).
+tooltips are enabled (`SetEnableTooltips`). `HitRegionAt(point, &tooltip)`
+answers what a hover at `point` would find - the region's id (-1 for none)
+and its tooltip, as of the last render - for tests and for a host that shows
+its own read-out.
 
 ## Animation
 
@@ -24573,6 +24598,239 @@ states what the mouse does there (zoom / pan / rotate) and which renderer
 draws the tab.
 
 ==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasControlLimits.md
+==============================================================================
+
+# UltraCanvasControlLimits
+
+Statistical process control without a window: the centre line, control
+limits and run-rule signals of a Shewhart control chart, computed from the
+data. `ShowControlChart` draws a result on the engine line chart
+([UltraCanvasEngineCharts.md](UltraCanvasEngineCharts.md#control-charts)).
+
+```cpp
+#include "Plugins/Charts/Engine/UltraCanvasControlLimits.h"
+```
+
+## Overview
+
+A control chart plots a measurement of a process in time order against a
+centre line and two control limits three standard deviations either side. It
+answers one question: is the variation in this process the usual kind, or has
+something changed? A point beyond the limits, or a pattern of points inside
+them, is a signal worth investigating; everything else is noise to leave
+alone.
+
+Control limits are not specification limits: they describe what the process
+does, not what the customer accepts.
+
+| Kind | Plots (pane 0 / pane 1) | Data (`ControlSubgroup`) |
+|---|---|---|
+| `XbarR` | subgroup means / ranges | `values`: 2..25 measurements per subgroup |
+| `XbarS` | subgroup means / standard deviations | `values`: 2 or more, sizes may vary |
+| `IndividualsMR` | individual values / moving ranges of two | `values`: one value per point |
+| `P` | proportion defective (one pane) | `count` defectives in a lot of `size` (sizes may vary) |
+| `NP` | number defective | `count` in a lot of constant `size` |
+| `C` | defects per inspection unit | `count` |
+| `U` | defects per unit | `count` defects over `size` units (may vary) |
+
+## Quick start
+
+```cpp
+std::vector<ControlSubgroup> hours = {
+    {"08:00", {25.004, 24.993, 25.011, 25.002, 24.998}},
+    {"09:00", {25.007, 25.001, 24.996, 25.009, 25.000}},
+    {"10:00", {24.995, 25.003, 25.006, 24.999, 25.012}},
+};
+ControlResult result = ComputeControlChart(hours);
+
+double centre = result.location.centre[0];
+double ucl = result.location.upper[0];
+for (const ControlViolation& v : result.violations) {
+    std::string what = ControlRuleDescription(v.rule);   // "Rule 1: a point beyond the control limits"
+    std::string when = result.labels[v.point];
+}
+for (const std::string& warning : result.warnings) {
+    // "Only 3 points: limits from fewer than 20 are preliminary."
+}
+```
+
+For individuals, one value per point; for counts, a count and the size it
+was counted over:
+
+```cpp
+ControlOptions options;
+options.kind = ControlChartKind::IndividualsMR;
+std::vector<ControlSubgroup> days = {{"Mon", {4.1}}, {"Tue", {3.8}}, {"Wed", {4.4}}, {"Thu", {4.0}}};
+ControlResult daily = ComputeControlChart(days, options);
+
+ControlSubgroup lot;
+lot.label = "Lot 1142";
+lot.count = 7;            // failed inspection
+lot.size = 180;           // items inspected
+ControlOptions attributes;
+attributes.kind = ControlChartKind::P;
+ControlResult lots = ComputeControlChart({lot}, attributes);
+```
+
+## Where the limits come from
+
+Sigma is estimated within subgroups, never from the standard deviation of
+all the values: a shift in the process inflates that standard deviation,
+which widens the limits and hides the very shift the chart is meant to show.
+
+| Pane | Centre | Limits | Point sigma |
+|---|---|---|---|
+| X-bar (with R) | the mean of the subgroup means | centre +- A2 R-bar | R-bar / (d2 sqrt n) |
+| R | R-bar | D3 R-bar and D4 R-bar | d3 R-bar / d2 |
+| X-bar (with S) | the means weighted by n | centre +- 3 sigma / sqrt n_i | sigma / sqrt n_i |
+| S | c4(n_i) sigma | centre +- 3 sigma sqrt(1 - c4^2) | sigma sqrt(1 - c4^2) |
+| I | the mean | centre +- 2.66 MR-bar | MR-bar / d2(2) |
+| MR | MR-bar | 0 and 3.267 MR-bar | d3(2) MR-bar / d2(2) |
+| p | p-bar = all defectives / all items | p-bar +- 3 sqrt(p-bar (1 - p-bar) / n_i) | per lot |
+| np | n p-bar | n p-bar +- 3 sqrt(n p-bar (1 - p-bar)) | |
+| c | c-bar | c-bar +- 3 sqrt(c-bar) | |
+| u | u-bar = all defects / all units | u-bar +- 3 sqrt(u-bar / n_i) | per lot |
+
+For X-bar-S, sigma is S-bar / c4(n) when the subgroups are the same size
+(so the limits are the textbook A3 S-bar, B3 S-bar and B4 S-bar), and the
+pooled standard deviation unbiased by c4 of its degrees of freedom plus one
+when they are not. Where the size varies - X-bar-S, p, u - each point has
+limits for its own size (`constantLimits` is false). `result.sigmaWithin` is
+the estimate of an individual value's sigma (NaN for the counts).
+
+```cpp
+double d2 = ControlD2(5);                 // 2.326 (tabulated, n = 2..25)
+double d3 = ControlD3(5);                 // 0.864
+double c4 = ControlC4(5);                 // 0.9400 (closed form, any n >= 2)
+double a2 = ControlA2(5);                 // 0.577 = 3 / (d2 sqrt n)
+double d3f = ControlRangeLowerFactor(5);  // D3 = 0 up to n = 6
+double d4f = ControlRangeUpperFactor(5);  // D4 = 2.114
+double a3 = ControlA3(5);                 // 1.427
+double b3 = ControlSigmaLowerFactor(5);   // B3 = 0 up to n = 5
+double b4 = ControlSigmaUpperFactor(5);   // B4 = 2.089
+```
+
+d2 and d3 are kept to four decimals, so the derived factors match their own
+published three-decimal tables.
+
+A lower limit below zero for a statistic that cannot go below zero (ranges,
+deviations, counts, proportions: `nonNegative`) is raised to 0, and that
+point has no lower limit (`HasLowerLimit`); a pane where no point has one is
+`lowerClamped`. A proportion's upper limit stops at 1, an np chart's at n.
+
+Subgroups of unequal size on X-bar-R use the most common size for the
+constants, with a warning that X-bar-S handles them; a subgroup with fewer
+than two values is left out. I-MR takes the first value of each point. An
+np chart wants one lot size (`defaultSize` stands in where a lot gives none);
+a lot without a size or a valid count is left out, with a warning.
+
+## Run rules
+
+Rules are evaluated on each point's z-score, (value - centre) / sigma, with
+that point's own sigma. A pattern flags **the point that completes it**;
+`firstPoint` keeps where it started, and a long run flags every point from
+the one that completes it on.
+
+| Rule | Western Electric (default) | Nelson (`ControlRuleSet::Nelson`) |
+|---|---|---|
+| 1 | a point beyond 3 sigma | a point beyond 3 sigma |
+| 2 | two of three beyond 2 sigma, one side | nine in a row on one side |
+| 3 | four of five beyond 1 sigma, one side | six in a row steadily increasing or decreasing |
+| 4 | eight in a row on one side | fourteen in a row alternating up and down |
+| 5 | | two of three beyond 2 sigma, one side |
+| 6 | | four of five beyond 1 sigma, one side |
+| 7 | | fifteen in a row within 1 sigma |
+| 8 | | eight in a row beyond 1 sigma, either side |
+
+The dispersion pane is checked against rule 1 only, unless
+`rulesOnDispersion`: the pattern rules assume roughly normal, independent
+values, which ranges are not. A point on the centre line, or a gap, ends a
+run; a point with no value or a sigma of zero is never flagged.
+
+```cpp
+ControlOptions options;
+options.ruleSet = ControlRuleSet::Nelson;
+options.rulesEnabled = {true, true, false, true, true, true, true, true};   // all but rule 3
+options.sameSideRun = 8;                            // 0 = the set's own: 8, Nelson 9
+ControlResult checked = ComputeControlChart(hours, options);
+std::vector<int> rules = checked.RulesAt(2);        // the rules point 2 completes, pane 0
+std::string text = ControlRuleDescription(checked.ruleSet, rules.empty() ? 1 : rules.front(),
+                                          checked.sameSideRun);
+```
+
+## Stages, excluded points, baselines
+
+A process change - new tooling, a new supplier - starts a **stage**: each
+stage has its own limits, and no rule (nor a moving range) looks across a
+stage boundary. An **excluded** point (an assignable cause found and fixed)
+is still plotted and checked, but left out of the limits. A **baseline**
+takes each stage's limits from its first N points only and judges the rest
+against them.
+
+```cpp
+std::vector<ControlSubgroup> data = hours;
+data[1].excluded = true;
+data[1].note = "Gauge dropped";                   // shown with the point
+
+ControlOptions staged;
+staged.stages = {{2, "New tooling"}};             // a new stage from point 2 on
+staged.baselineCount = 20;                        // limits from each stage's first 20 points
+ControlResult phases = ComputeControlChart(data, staged);
+size_t stage = phases.StageOf(2);                 // 1
+```
+
+`result.stages` lists the stages as applied (sorted, the first at 0),
+`result.excluded` and `result.notes` the points' flags and notes. A stage
+with fewer than 20 points behind its limits gets a "preliminary" warning.
+
+`FindRuleViolations` runs the rules on one pane's series against whatever
+limits it carries - limits frozen from a baseline, say:
+
+```cpp
+ControlSeries frozen = result.location;   // centre, limits and sigma from the baseline
+frozen.value = {25.001, 25.031, 24.998};  // today's means against them
+std::vector<ControlViolation> today = FindRuleViolations(frozen, ControlOptions(), 0);
+```
+
+## Capability
+
+Specification limits on a measurement chart give the capability of the last
+stage, from its values (excluded points left out):
+
+```cpp
+ControlOptions specified;
+specified.lowerSpec = 24.97;
+specified.upperSpec = 25.03;
+specified.target = 25.0;
+const ControlCapability cap = ComputeControlChart(hours, specified).capability;
+// cap.cp  = (USL - LSL) / 6 sigma within      (both limits needed)
+// cap.cpk = (nearest limit - mean) / 3 sigma within
+// cap.pp, cap.ppk: the same with the overall standard deviation
+```
+
+Cp and Pp need both limits; with one, only Cpk and Ppk are given. On an
+attribute chart specification limits are refused, with a warning.
+
+## Drawing it
+
+`ShowControlChart(chart, result, style)` replaces a line chart's categories,
+series, bands, panes, limiters and highlights with the result
+([UltraCanvasEngineCharts.md](UltraCanvasEngineCharts.md#control-charts)).
+`ControlChartStyle` chooses the range pane and its height
+(`showDispersion`, `dispersionWeight`), A / B / C zones (`showZones`), dotted
+1 and 2 sigma lines (`showSigmaLines`), the "UCL = ..." captions
+(`showLimitCaptions`), the specification lines (`showSpecLimits`,
+`specColor`), the stage names (`showStageNames`) and the colours; a colour
+left at alpha 0 comes from the chart's theme. Each pane's axis always reaches
+its limits.
+
+## Not yet
+
+EWMA and CUSUM, and live appending against frozen limits, are Phase 3 of
+[UltraCanvasControlChartProposal.md](UltraCanvasControlChartProposal.md).
+
+==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasCoordinateSystemGuide.md
 ==============================================================================
 
@@ -26430,7 +26688,7 @@ panel never disagree about an interface.
 
 | Call | Meaning |
 |---|---|
-| `ListWindows()` | Every managed window in stacking order, bottom first, as `DesktopWindowInfo { id, title, appClass, appName, iconFile, virtualDesktop, processId, active, minimized, maximized, skipTaskbar }`. Docks, panels, the desktop and tooltips are included with `skipTaskbar` true so a caller can tell them apart; a taskbar lists the rest. `iconFile` is the application's own icon, resolved from `appClass` through the icon themes ([UltraCanvasDesktopEntry](UltraCanvasDesktopEntry.md)) — for the applications this repository ships, `StartupWMClass` and `Icon=` carry the same name. On Windows `id` is the `HWND`, `appClass` the program's name (`firefox`, `UltraFiler` — for a Microsoft Store application the program inside its frame), `appName` the same in lower case, and `iconFile` the executable's icon as a PNG. |
+| `ListWindows()` | Every managed window in stacking order, bottom first, as `DesktopWindowInfo { id, title, appClass, appName, iconFile, appUserModelId, virtualDesktop, processId, active, minimized, maximized, skipTaskbar }`. Docks, panels, the desktop and tooltips are included with `skipTaskbar` true so a caller can tell them apart; a taskbar lists the rest. `iconFile` is the application's own icon, resolved from `appClass` through the icon themes ([UltraCanvasDesktopEntry](UltraCanvasDesktopEntry.md)) — for the applications this repository ships, `StartupWMClass` and `Icon=` carry the same name. On Windows `id` is the `HWND`, `appClass` the program's name (`firefox`, `UltraFiler` — for a Microsoft Store application the program inside its frame), `appName` the same in lower case, and `iconFile` the executable's icon as a PNG. `appUserModelId` is Windows' identity of the application the window belongs to - the window's own `AppUserModelID` (`Microsoft.Windows.Explorer` for every Explorer window), else its process's (`Microsoft.WindowsCalculator_8wekyb3d8bbwe!App` for a Store application) - and empty elsewhere: a taskbar groups an application's windows by it. A Store application's window and a frame whose program is not yet known (Settings, Calculator, WhatsApp: their executables carry no icon of their own) take the icon and the name the shell's *Applications* folder gives that identity, so they show their tile icon rather than a letter. |
 | `GetActiveWindow()` | The focused window's id, 0 if none. |
 | `ActivateWindow(id)` | Raise, un-minimize and focus; switches to the window's desktop first. |
 | `MinimizeWindow(id)` | Iconify. |
@@ -26464,6 +26722,7 @@ never to "every desktop".
 | `ReserveScreenEdges(windowId, left, right, top, bottom)` | Reserve strips along the screen's edges for a window — a desktop's bars, a dock — so maximised and tiled windows stop short of them (`_NET_WM_STRUT_PARTIAL` and `_NET_WM_STRUT` on X11; the work area shrinks accordingly). Physical pixels, 0 for an edge that reserves nothing, each strip the full length of its edge; call again to change, four zeros to release. `windowId` is the window's native handle. On X11 a strut is measured from the root window's edge whatever monitor the window is on, so a window that covers one monitor of several reserves an edge only where its monitor lies on that edge of the root (a strip from the root's edge across another monitor would push that monitor's windows aside) and its strips run the window's own extent, not the root's: a desktop on the right monitor reserves its right bar along its own height and nothing on the left. On Windows each edge is an appbar of its own while Explorer's taskbar runs (placed beside Explorer's bars, and released when the window closes), and the work area itself (`SPI_SETWORKAREA`) when nothing else keeps it — UltraDesktop as the shell; call it from the window's own thread. Asking again for the same strips changes nothing. |
 | `CaptureScreen(pngPath, &error)` | The whole screen as PNG. The directory is created; false with the reason. |
 | `CaptureScreenImage(image, &error)` | The whole screen as pixels in memory, in a `DesktopScreenImage`: `width`, `height`, `stride` and `pixels`, four bytes a pixel in memory order B, G, R, unused — cairo's RGB24, the QR scanner's `BGRA32` — so a row goes to either without a copy. Nothing is written anywhere; for a caller that must not leave a file behind (UltraAuthenticator reads an enrolment QR code off the screen this way, and a PNG of it would be the seed in the clear). False with the reason, and `image` empty. |
+| `CaptureWindowImage(id, maxWidth, maxHeight, image, &error)` | A small picture of one window of `ListWindows`, for a taskbar's previews: no larger than `maxWidth` x `maxHeight` (the window's proportions kept, never enlarged, shrunk by averaging so text thins out rather than breaking up), in the same `DesktopScreenImage` layout. On Windows the window draws itself into the picture (`PrintWindow` with `PW_RENDERFULLCONTENT`), so a window that others cover shows its own content; on Wayland the compositor copies the window (`ext-image-copy-capture-v1` of the window's `ext-foreign-toplevel-image-capture-source`, the window found on `ext-foreign-toplevel-list-v1` by its app id and title; wlroots 0.19 and later - sway 1.11, labwc, river - niri and others offer it, and elsewhere the answer is false with the reason), with the same result; on X11 it is the window's rectangle of the screen, which shows whatever lies on top of it; macOS has none yet. A minimized window has no picture. False with the reason, and `image` empty. Any thread: UltraDesktop takes its previews on a worker. |
 | `CaptureScreenArea(x, y, width, height, image, &error)` | One rectangle of the screen - `x`, `y`, `width`, `height` in the pixels of `ListScreens` - as pixels in memory, in the same `DesktopScreenImage` layout; the rectangle is clipped to the screen, and `image.x` / `image.y` say where the pixels came from (`CaptureScreenImage` sets them too: 0,0 on X11, the virtual screen's origin on Windows, which is negative when a monitor lies left of or above the primary). Cheaper than the whole screen and a crop - `XGetImage` of that much, a `BitBlt` of that much - which is what a screen recorder taking twenty frames a second of one window needs. False with the reason (a rectangle wholly off the screen among them), and `image` empty. |
 | `DefaultScreenshotPath()` | `<Pictures>/Screenshots/Screenshot 2026-09-29 14.05.31.png` — the user's Pictures folder from `GetWellKnownUserFolders`, the home directory when there is none. Dots in the time, since a colon is not a file-name character on Windows. |
 | `DefaultRecordingPath()` | `<Videos>/Screen Recordings/Screen recording 2026-09-29 14.05.31.mp4` — the user's Videos folder, the home directory when there is none. Only names the file; the recorder (UltraSnip) creates the directory. |
@@ -26511,7 +26770,7 @@ second or two is fine.
 | `ListApplications(iconSize)` | Every menu-visible desktop entry in the standard `applications` directories (`XDG_DATA_HOME`, then `XDG_DATA_DIRS`), one per desktop-file id — a user's entry shadows the system's, and a hidden user entry hides it — sorted by name, `iconFile` resolved at `iconSize`. Entries whose `TryExec` is not installed are left out. On Windows the Start menu's shortcuts instead (`%APPDATA%` and `%ProgramData%` `\Microsoft\Windows\Start Menu\Programs`), the user's shadowing the machine's of the same name: named as the folder's `desktop.ini` names them, programs only (no uninstallers, help files or web links), `program` the shortcut's target, `startupWMClass` its name (so `MatchApplication` finds its windows), `shortcutPath` the `.lnk`, `iconFile` a PNG of its icon. Then the Microsoft Store (packaged) applications, which have no shortcut there: the shell's *Applications* folder (`FOLDERID_AppsFolder`, what the Start menu's list is made of), each entry with its `appUserModelId` (`Microsoft.WindowsCalculator_8wekyb3d8bbwe!App`), its display name and a PNG of the tile icon the shell gives it, `program` empty. On macOS the application bundles in `~/Applications`, `/Applications`, `/Applications/Utilities`, `/System/Applications` and `/System/Applications/Utilities`, and one level of subfolders below them (`/Applications/Adobe Photoshop 2025/…`); agents and background-only bundles (`LSUIElement`, `LSBackgroundOnly`) left out, a bundle identifier listed once (the user's copy first): named as Finder names it (localized), `genericName` the bundle's `CFBundleName`, `program`, `exec` and `shortcutPath` the bundle, `startupWMClass` its bundle identifier, `categories` its `LSApplicationCategoryType` (`public.app-category.productivity`) when it declares one, `iconFile` a PNG of the icon Finder shows, at twice `iconSize`. |
 | `LaunchApplication(entry, files, &error)` | Start it detached through `DesktopEntryCommand`; a `Terminal=true` entry is wrapped in the terminal the machine has. An entry with a `shortcutPath` is opened the way Explorer opens the shortcut — files, if any, go to its `program`. While no Explorer taskbar runs (the desktop is the shell), a shortcut to a bare `explorer.exe` — the Start menu's *File Explorer* — opens *This PC*: started with nothing to open, Explorer would take over as the session's desktop. An entry with an `appUserModelId` is started through `IApplicationActivationManager`, as the Start menu starts it (`shell:AppsFolder\<id>` when that is not there); it takes no files and refuses them with a reason. On macOS an application bundle is started through `NSWorkspace openApplicationAtURL` and brought to the front, as Finder starts it; a failure macOS reports later is logged. |
 | `LaunchProgram(name, args, &error)` / `FindProgram(name)` | A program by name — `"UltraFiler"` — looked for next to this executable first (a build tree, a bundle), then on `PATH`. On macOS, where each application is a bundle of its own, `<name>.app` beside this application's bundle and in `~/Applications` and `/Applications` comes before `PATH`. |
-| `MatchApplication(window, applications)` | The desktop entry a window (`DesktopWindowInfo`) belongs to, among `ListApplications()`: the entry whose `StartupWMClass` is the window's `WM_CLASS`, else whose program, icon name or name the class or instance spells, case aside (`Gimp-2.10` is `gimp-2.10`'s). `nullptr` when none matches. UltraDesktop's clipboard panel uses it to know what the window being pasted into takes. |
+| `MatchApplication(window, applications)` | The desktop entry a window (`DesktopWindowInfo`) belongs to, among `ListApplications()`: on Windows first the entry whose `appUserModelId` is the window's (a Store application: Calculator's window is Calculator's entry), then the entry whose `StartupWMClass` is the window's `WM_CLASS`, else whose program, icon name or name the class or instance spells, case aside (`Gimp-2.10` is `gimp-2.10`'s). `nullptr` when none matches. UltraDesktop's clipboard panel uses it to know what the window being pasted into takes. |
 
 ### In place of the system's desktop
 
@@ -26766,7 +27025,7 @@ the shell they are free.
 | Platform | Backend |
 |---|---|
 | Linux, BSD | `x11`: the EWMH root-window properties every window manager on ULTRA OS and the Linux desktops maintains (`_NET_CLIENT_LIST_STACKING`, `_NET_ACTIVE_WINDOW`, `_NET_WM_DESKTOP`, `_NET_CURRENT_DESKTOP`, …); actions as the client messages the specification prescribes, so the manager decides how a window is raised or closed; the screenshot through `XGetImage` on the root window into a BGRx buffer, which `CaptureScreenImage` hands over as is and `CaptureScreen` writes with cairo's PNG writer; the monitors from RandR (`XRRGetMonitors`); the monitor on its own connection with `PropertyChangeMask` on the root, sleeping in `poll()` on it and a wake pipe; a global shortcut as a passive `XGrabKey` on the root window (with the Caps Lock and Num Lock variants), on a connection and thread of its own the same way, and `BadAccess` reported as "another program holds it"; the Super tap through XInput2's raw key events on that connection. The queries open a connection of their own, so they run from any thread and without an UltraCanvas window (the headless `UltraDesktop --windows`). The end of the session and the lock through logind on the system bus (`OS/Linux/UltraCanvasLinuxDesktopShellSession.cpp`), the loudspeaker through libpulse loaded at run time (`UltraCanvasLinuxDesktopShellAudio.cpp`), the notification area (`UltraCanvasLinuxTrayHost.cpp`) as a StatusNotifierWatcher and host on the D-Bus session bus through GDBus, on a private connection and a `GMainContext` of its own: items' properties over `org.freedesktop.DBus.Properties`, pixmaps written through cairo as PNG files in the disk cache's `desktop-icons` folder (`$XDG_CACHE_HOME/UltraCanvas`, named after their pixels and swept by its rule), theme names through the item's `IconThemePath` and `FindDesktopIconFile`, dbusmenu menus (`com.canonical.dbusmenu`) as data, clicks as `Activate` / `SecondaryActivate` / `ContextMenu` at the pointer read from the query connection; refused while another watcher owns the name. No switch at sign-in: the session owns that. |
-| Linux on Wayland (`-DULTRACANVAS_WAYLAND=ON`) | `wayland` (`OS/Linux/Wayland/UltraCanvasWaylandDesktopShell.cpp`), phase 1 of `WaylandDesktopShellProposal.md`: the monitors from the compositor's `wl_output`s (position, mode and scale; the first announced is the primary, Wayland naming none), the devices from the same procfs and sysfs probes as X11, the keyboard layout from the seat's xkb keymap; the session's end and lock, the loudspeaker and the notification area are the shared Linux files above, a tray click reported at the last pointer position in the shell's own window (a Wayland client knows no screen position). The window list, the virtual desktops, `ReserveScreenEdges`, the screenshot, the monitor and the global shortcuts answer false with "not available on Wayland yet" until the layer-shell and foreign-toplevel protocols and the Screenshot and GlobalShortcuts portals are in. |
+| Linux on Wayland (`-DULTRACANVAS_WAYLAND=ON`) | `wayland` (`OS/Linux/Wayland/UltraCanvasWaylandDesktopShell.cpp`), phase 1 of `WaylandDesktopShellProposal.md`: the monitors from the compositor's `wl_output`s (position, mode and scale; the first announced is the primary, Wayland naming none), the devices from the same procfs and sysfs probes as X11, the keyboard layout from the seat's xkb keymap; the session's end and lock, the loudspeaker and the notification area are the shared Linux files above, a tray click reported at the last pointer position in the shell's own window (a Wayland client knows no screen position). The window list, the virtual desktops, `ReserveScreenEdges`, the screenshot, the monitor and the global shortcuts answer false with "not available on Wayland yet" until the layer-shell and foreign-toplevel protocols and the Screenshot and GlobalShortcuts portals are in. `CaptureWindowImage` is the compositor's copy of the window through `ext-image-copy-capture-v1` (with `ext-image-capture-source-v1` and `ext-foreign-toplevel-list-v1`, the three XML files carried under `OS/Linux/Wayland/protocols/`), into a `wl_shm` buffer, each step given a second and a half. |
 | Windows | `win32` (`OS/MSWindows/UltraCanvasWindowsDesktopShell.cpp` and `UltraCanvasWindowsTrayHost.cpp`), with Explorer running beside UltraDesktop or with UltraDesktop as the shell: the window list from `EnumWindows`, filtered as Explorer's taskbar filters (visible; `WS_EX_APPWINDOW`, or unowned and no tool window), cloaked windows on the current desktop left out, the shell's own windows listed with `skipTaskbar`; titles through `InternalGetWindowText`, which sends nothing, so a hung program cannot block the list; actions asynchronous (`ShowWindowAsync`, a posted `SC_CLOSE`), and activation through `SetForegroundWindow`; virtual desktops as described above; the screenshot through `BitBlt` of the whole virtual screen into a 32-bit DIB, already the BGRx layout; the edges as appbars or the work area; the devices from the consent store, Core Audio, the power status and the keyboard layout; the monitor through WinEvent hooks and a registry notification, pumping its own thread's messages in `MsgWaitForMultipleObjectsEx`; a global shortcut through `RegisterHotKey`, the Win key's tap through a `WH_KEYBOARD_LL` hook; the monitors from `EnumDisplayMonitors`; the application list from the Start menu and the shell's *Applications* folder, Store applications started through `IApplicationActivationManager`; the switch at sign-in through the `Run` key or the account's shell setting and UltraCanvasShellGuard; the notification area as a `Shell_TrayWnd` of its own, reading the `WM_COPYDATA` `Shell_NotifyIcon` sends — `NOTIFYICONDATAW` in its 32-bit layout behind a two-word header, the layout every replacement shell reads; the end of the session through `ExitWindowsEx`. Executable, shortcut and tray icons are extracted into PNG files in the disk cache's `desktop-icons` folder (`%LOCALAPPDATA%\UltraCanvas`) and swept by its rule. |
 | macOS, Android, WebAssembly | `null`: `IsAvailable()` false, every window and desktop query empty, `CaptureScreen`, `CaptureScreenImage`, `UltraCanvasGlobalShortcut::Start`, `UltraCanvasTrayHost::Start`, `EndSession`, `LockSession` and the loudspeaker calls fail with a reason (`ReadAudioOutput` answers `available` false); the application list, launcher and notices still work. |
 | macOS: the applications | `OS/MacOS/UltraCanvasMacOSApplications.mm` (`ULTRACANVAS_DESKTOPSHELL_NATIVE_APPLICATIONS`): the application list from the bundles and their `Info.plist`, icons drawn from `NSWorkspace iconForFile:` into PNG files in the disk cache's `desktop-icons` folder (`~/Library/Caches/UltraCanvas`, swept by its rule), launch through `NSWorkspace`; on any thread. The rest of the backend is the `null` one above. |
@@ -30529,6 +30788,10 @@ FILE: Docs/UltraCanvas/UltraCanvasEngineCharts.md
 - [Overview](#overview)
 - [Which charts were ported](#which-charts-were-ported)
 - [Line, area and cumulative flow](#line-area-and-cumulative-flow)
+  - [Per-series and per-point options](#per-series-and-per-point-options)
+  - [Bands and point clicks](#bands-and-point-clicks)
+  - [Stacked panes](#stacked-panes)
+  - [Control charts](#control-charts)
 - [Scatter and bubble](#scatter-and-bubble)
 - [Waterfall](#waterfall)
 - [Diverging and population pyramid](#diverging-and-population-pyramid)
@@ -30640,6 +30903,139 @@ A cumulative flow diagram is the `StackedArea` mode with the first series on
 top (`SetReverseStackOrder(true)`); `AddCumulativeFlowAnnotations()` adds the
 lead time, cycle time and WIP spans as engine span annotations, which the
 value labels steer around.
+
+### Per-series and per-point options
+
+Each `EngineLineSeries` can override the chart for itself alone, and each of
+its points can carry its own look and a tooltip note:
+
+```cpp
+EngineLineSeries target;
+target.name = "Target";
+target.values = {50000, 50000, 60000, 60000, 60000, 70000};
+target.shape = ChartLineShape::StepMiddle;   // unset = the chart's SetLineShape
+target.showMarkers = false;                  // unset = the chart's SetShowMarkers
+target.inLegend = false;                     // a reference line, not data
+target.interactive = false;                  // no hit regions, tooltips or value labels
+target.dashed = true;
+chart->AddSeries(target);
+
+EngineLineSeries actual;
+actual.name = "Actual";
+actual.values = {45000, 52000, 48000, 61000, 55000, 67000};
+actual.pointStyles.resize(actual.values.size());
+actual.pointStyles[2].color = Color(200, 40, 40, 255);       // alpha 0 = the series' colour
+actual.pointStyles[2].marker = ChartMarkerShape::Diamond;    // unset = the series' marker
+actual.pointStyles[2].radiusScale = 1.4f;
+actual.pointStyles[2].alwaysShown = true;                    // even with markers off
+actual.pointNotes = {"", "", "Missed the target: a supplier was late"};
+chart->AddSeries(actual);
+```
+
+`hollow = true` draws a point's outline only. A point's note is a further
+line in its tooltip. The legend lists only the series with `inLegend`, and a
+click on an entry hides that series. `drawLine = false` strokes no line - a
+series that is only the edge of a band.
+
+### Bands and point clicks
+
+`AddSeriesBand` fills between two series, point by point - a confidence
+interval, a min / max envelope, zones under limits that change - under the
+lines, through the pane of the lower series; a gap in either edge is a gap in
+the band. `onPointClick` reports a click on a point of an interactive series:
+
+```cpp
+EngineLineBand envelope;
+envelope.lowerSeries = 2;           // indices into the chart's series
+envelope.upperSeries = 3;
+envelope.color = Color(30, 90, 200, 255);   // alpha 0 = the upper series' colour
+envelope.opacity = 0.2f;
+chart->AddSeriesBand(envelope);
+
+chart->onPointClick = [](size_t seriesIndex, size_t valueIndex) {
+    // drill down, exclude the point from a calculation, ...
+};
+```
+
+### Stacked panes
+
+`SetPanes` stacks panes from the top down, each with its own value axis,
+grid and title in a sub-band of the plot, all sharing the domain axis; each
+series names its pane. Pane heights follow their weights, with
+`SetPaneGap(fraction)` between them (0.06 by default).
+
+```cpp
+chart->SetPanes({{1.0, "Price", false}, {0.4, "Volume", true}});   // weight, title, includeZero
+EngineLineSeries volume;
+volume.name = "Volume";
+volume.values = {120, 180, 90, 210, 160, 140};
+volume.pane = 1;
+chart->AddSeries(volume);
+
+ChartLimiter cap;
+cap.axisIndex = UltraCanvasEngineLineChart::ValueAxisOfPane(1);   // axis 0, then 2, 3, ...
+cap.value = 200;
+cap.caption = "Capacity";
+chart->AddLimiter(cap);
+```
+
+A pane's `rangeIncludes` lists values its axis always reaches, data or not -
+limits, a target - since a limiter outside its axis's range is not drawn.
+Axis 0 is pane 0's value axis and axis 1 the domain, so a single-pane chart
+is unchanged; `ValueAxisOfPane(p)` gives the index that limiters
+(`ChartLimiter::axisIndex`) and highlights (`ChartHighlight::axisIndex`)
+take to land in pane p. The stacked area modes and Polar draw every series in
+pane 0 (`PaneOfSeries` reports where a series is drawn). Under `Horizontal`
+the panes sit side by side from the left.
+
+### Control charts
+
+A Shewhart control chart is a line chart with computed limits.
+`ComputeControlChart` (`UltraCanvasControlLimits.h`) computes the centre
+line, the control limits and the run-rule signals of an X-bar-R or I-MR
+chart; `ShowControlChart` puts the result on a line chart with the parts
+above - the statistic in pane 0 and its range in pane 1, the limits as
+limiters with their values in a column past the plot's right edge
+(`ChartLimiterCaptionPlacement::BeyondEnd`), a lower limit clamped at zero
+left out, and the points that break a rule as red diamonds with the rule in
+their tooltip. It also pads the domain by half a slot, so the first and last
+points clear the plot edges:
+
+```cpp
+std::vector<ControlSubgroup> hours = {
+    {"08:00", {25.004, 24.993, 25.011, 25.002, 24.998}},
+    {"09:00", {25.007, 25.001, 24.996, 25.009, 25.000}},
+    {"10:00", {24.995, 25.003, 25.006, 24.999, 25.012}},
+};
+const ControlResult result = ComputeControlChart(hours);   // X-bar-R by default
+
+auto spc = CreateEngineLineChart("Spc", 0, 0, 720, 460);
+ControlChartStyle look;
+look.showZones = true;          // A / B / C shading
+look.showSigmaLines = true;     // dotted 1 and 2 sigma lines
+ShowControlChart(*spc, result, look);
+```
+
+Limits that change from point to point - p and u charts, X-bar-S with
+unequal subgroups, stages - are drawn as stepped lines, centred on each
+point, with the last point's values in the caption column; zones under them
+are bands. Each later stage gets a divider with its name beside it, an
+excluded point is drawn hollow and says so in its tooltip, a point's note
+joins its tooltip, and specification limits (`showSpecLimits`) are solid
+lines in `specColor`. The demo excludes a point when it is clicked:
+
+```cpp
+std::vector<ControlSubgroup> samples = hours;
+spc->onPointClick = [&](size_t, size_t index) {
+    samples[index].excluded = !samples[index].excluded;
+    ShowControlChart(*spc, ComputeControlChart(samples), look);
+};
+```
+
+Recompute and call `ShowControlChart` again whenever the data changes. The
+statistics and the rules are described in
+[UltraCanvasControlLimits.md](UltraCanvasControlLimits.md); the demo's
+**Charts > Line Chart** page ends with an interactive one.
 
 ## Scatter and bubble
 
@@ -38293,6 +38689,8 @@ void SetArcAngles(double startDeg, double endDeg);  // custom sweep for analog d
 void SetGaugeColor(const Color& c);       // fill / needle / indicator colour
 void SetBackgroundColor(const Color& c);  // panel background
 void SetTextColor(const Color& c);        // value / title text colour
+void SetClockHandColor(const Color& c);   // AnalogClock: hour and minute hands, the hub
+void SetClockTickColor(const Color& c);   // AnalogClock: ticks, rim, hour numbers
 ```
 
 ### Round-Gauge (CircularRing) Styling
@@ -38446,6 +38844,19 @@ its own internal timer — no value updates required.
 auto clock = CreateGaugeDiagramElement("clock", 0, 0, 272, 374);
 clock->SetMode(GaugeMode::AnalogClock);
 clock->SetTitle("Clock");
+```
+
+The hands and ticks are dark for the light face it starts with. On a dark
+face give them light colours - a desktop's clock, white on black; the
+second hand stays red:
+
+```cpp
+auto night = CreateGaugeDiagramElement("night", 0, 0, 48, 52);
+night->SetMode(GaugeMode::AnalogClock);
+night->SetShowLabels(false);
+night->SetBackgroundColor(Colors::Black);
+night->SetClockHandColor(Colors::White);
+night->SetClockTickColor(Color(255, 255, 255, 140));
 ```
 
 ### 5. Stopwatch with Start/Stop/Reset
@@ -41858,10 +42269,10 @@ the platform once, keeps it, and reads it again when the host says it
 changed, so an application that asks hears about a switch to dark while it
 runs. It is phase T1 of
 [`UltraCanvasHostThemeProposal.md`](UltraCanvasHostThemeProposal.md): the
-reading, with T2 the Linux, BSD and WebAssembly backends. The theme built
-from it (`FromHost`, the policy) is T3, and until then the value is there
-for an application's own handler and for the system fonts, which now come
-from it.
+reading, with T2 the Linux, BSD and WebAssembly backends; T3 builds the
+theme from it (`UltraCanvasTheme::FromHost`, the application's theme
+policy - [`UltraCanvasTheme.md`](UltraCanvasTheme.md)). The system fonts
+come from it too.
 
 - Header: `UltraCanvas/include/UltraCanvasHostAppearance.h` (header-only, pure)
 - Application: `GetHostAppearance`, `RefreshHostAppearance`, `ScheduleHostAppearanceRefresh`, `AddHostAppearanceHandler` / `RemoveHostAppearanceHandler` (`UltraCanvasApplication.h`)
@@ -41930,10 +42341,11 @@ app->RemoveHostAppearanceHandler(handler);
 ```
 
 A handler runs on the UI thread after the value changed, with the new
-value. Until T3 nothing in the framework acts on the change by itself: the
-theme stays what the application set. An application that wants to follow
-today installs a handler and calls `UltraCanvasTheme::SetCurrent` with
-`Dark()` or `Light()`, as UltraVideo's `ThemeFor` does.
+value - after the theme policy has applied the change
+([`UltraCanvasTheme.md`](UltraCanvasTheme.md), *The policy*): under the
+default `FollowHost` the theme is `FromHost(host)` again, so an element
+that follows the theme has re-styled by the time the handler runs, and a
+hand-painted panel reads the new roles from `UltraCanvasTheme::Current()`.
 
 ## What each platform reads
 
@@ -46329,6 +46741,13 @@ FILE: Docs/UltraCanvas/UltraCanvasLineChartElement.md
 **Last Modified:** 2026-10-07  
 **Author:** UltraCanvas Framework
 
+Its engine port, `UltraCanvasEngineLineChart`
+([UltraCanvasEngineCharts.md](UltraCanvasEngineCharts.md#line-area-and-cumulative-flow)),
+adds per-series line shapes and markers, per-point styles and tooltip notes,
+stacked panes and control charts (`ShowControlChart`,
+[UltraCanvasControlLimits.md](UltraCanvasControlLimits.md)); the demo's Line
+Chart page ends with a control chart built that way.
+
 ## Class Hierarchy
 
 ```
@@ -50100,6 +50519,16 @@ FTP and cloud drives without downloading videos or documents. Keyboard: Left / R
 browse, Space toggles the slideshow; the widget claims the window keyboard
 focus when attached (`SetGrabFocusOnAttach(false)` opts out) and filters the
 window's key events so browsing works while a display view holds the focus.
+
+Text the viewer shows - a text, source or Markdown file, a note, the Details
+panel - is selected with the mouse and copied. Those areas are display-only
+and never take the focus, so a press in one gives the focus to the widget
+itself: from then on Ctrl+C (or Ctrl+Insert, Cmd+C on macOS) copies the
+selection - the Details panel's first, then the text view's - and Ctrl+A
+selects all of the area last pressed in. Embedded in a host such as
+UltraFiler, this is what keeps Ctrl+C from reaching the file display (which
+would copy the files) after text was selected in the preview. A right-click
+on the text opens Copy / Select All (`UltraCanvasTextArea`'s read-only menu).
 
 ## Video preview behaviour
 
@@ -74349,13 +74778,25 @@ int region = soil.RegionOf(27.3, 22.4, 50.1);            // the class a sample f
 ```
 
 `RegionOf` classifies by the geometry the chart draws, in share space. A point
-exactly on an edge two regions share belongs to the region listed first, so
-the order of `regions` is the tie-break.
+exactly on an edge two regions share belongs to the region on the side
+`edgeLean` leans into - a change in the A, B and C shares that adds up to 0 -
+or, with no lean (the default) or on the triangle's rim where the lean would
+leave it, to the region listed first:
 
-The USDA preset's outlines are derived from the class rules of the USDA Soil
-Survey Manual (loam: clay 7-27 %, silt 28-50 %, sand at most 52 %, and so
-on), not drawn by hand. `TernaryModelTest` checks every class against those
-rules on a grid of 19,900 compositions.
+```cpp
+soil.edgeLean = {2.0, -3.0, 1.0};   // edges go to the side with more A and C, less B
+```
+
+The USDA preset's outlines are derived from the class definitions of the
+USDA Soil Survey Manual (Handbook 18, 2017, chapter 3: loam is "7 to less
+than 27 percent clay, 28 to less than 50 percent silt, and 52 percent or less
+sand", and so on), not drawn by hand. The manual gives every class boundary
+to the finer side - more clay, more silt, less sand - and the preset's lean
+does the same, so a sample of exactly 7 % clay is loam, as the manual says,
+not sandy loam. `TernaryModelTest` checks the classes against the manual's
+wording on a grid of 19,900 compositions off the boundaries and at all 5,151
+whole-percent compositions, boundaries and corners included. The lean is
+saved in the JSON (`"edgeLean"`).
 
 Hovering a region shows its name and note, a click calls
 `onRegionClick(regionIndex)`, and a point's tooltip names the region it is
@@ -75028,6 +75469,18 @@ keyboard scrolling calls `ScrollUp()` / `ScrollDown()` itself.
 auto viewer = std::make_shared<UltraCanvasTextArea>("LogView", 0, 0, 600, 400);
 viewer->SetDisplayOnly(true);          // read-only AND not focusable
 viewer->SetText(logContents);
+```
+
+A display-only area never gets the copy keys, so a right-click on it - and on
+any read-only area - opens a small menu of its own: **Copy** (Ctrl+C, dimmed
+without a selection) and **Select All** (Ctrl+A). It opens only when neither
+`onContextMenu` nor the spell checker took the click, so a host with a menu of
+its own keeps it. A host that drives a display-only area's keys (as
+`UltraCanvasMediaViewer` does) calls `CopySelection()` / `SelectAll()` itself.
+
+```cpp
+viewer->SetReadOnlyContextMenu(false); // right-click does nothing, as before
+bool on = viewer->GetReadOnlyContextMenu();
 ```
 
 #### SetWordWrap
@@ -77188,7 +77641,7 @@ those elements, the tabbed container and the text area
 (`include/UltraCanvasUIElement.h`)
 **Tests:** `Tests/UltraCanvasThemeTest.cpp` (without a display)
 **Design:** `Docs/Research/UltraVideoDesignProposal.md` §5.8
-**Version:** 1.6.0 - the readability the presets keep, measured by the test
+**Version:** 1.7.0 - fonts and text roles, the high-contrast presets, the theme from the host and the policy (T3 of the host theme proposal)
 **Last Modified:** 2026-10-12
 **Author:** UltraCanvas Framework
 
@@ -77357,11 +77810,89 @@ UltraCanvasTheme::RemoveChangeHandler(handler);
 A handler added during a change is not called for that change; one
 removed during a change is not called again.
 
+## Fonts and text roles
+
+The font half of a look lives in the theme too: `fonts.ui`, the interface
+font at its base size in points; `fonts.mono`, the monospace font; and
+`fonts.scale`, the host's text scale over both (the window's DPI is
+applied after). A preset carries the bundled Ubuntu 12 and Ubuntu Mono 12;
+`FromHost` puts the desktop's in. An element's text plays a role, and the
+role has a size: `Body` 1.0 of the base, `Caption` 0.92 (the 11 pt of a
+12 pt base), `Small` 0.85, `Heading` 1.25, `Title` 1.5, `Mono` the
+monospace font at the body size, each to the quarter point.
+
+```cpp
+UltraCanvasTheme theme = UltraCanvasTheme::Current();
+double caption = theme.FontSize(ThemeTextRole::Caption);         // 11 for a 12 pt base at scale 1
+FontStyle heading = theme.Font(ThemeTextRole::Heading);          // the interface font at 1.25 of the base
+FontStyle code = theme.Font(ThemeTextRole::Mono);                // the monospace font
+theme.fonts.ui.fontFamily = "Segoe UI";
+theme.fonts.ui.fontSize = 9;
+theme.fonts.scale = 1.25;                                        // Body is then 11.25
+```
+
+A `FromTheme` reader sets its style's family and size from `Font(role)`
+as it gains fonts by role (T4 of the proposal); until then the sizes are
+there for an application's own text.
+
+## The theme from the host
+
+`FromHost` builds the theme a desktop asks for from what
+[`UltraCanvasHostAppearance.md`](UltraCanvasHostAppearance.md) read:
+`Light()` or `Dark()` by the host's dark flag, `LightHighContrast()` or
+`DarkHighContrast()` when it asks for high contrast (black on white or
+white on black, every ink at 7:1), the five accent roles derived from the
+host's one accent, its fonts and text scale; the name says so (`Host
+Dark`, `Host Light High Contrast`).
+
+```cpp
+UltraCanvasTheme host = UltraCanvasTheme::FromHost(app->GetHostAppearance());
+ThemeRoles derived = UltraCanvasTheme::DeriveAccent(UltraCanvasTheme::Dark().roles, Color(0xe9, 0x54, 0x20), true);
+double ratio = UltraCanvasTheme::Contrast(derived.onAccent, derived.accent);   // at least 4.5
+```
+
+`DeriveAccent` keeps the readability the test enforces: text on the
+accent is white or the dark ink, whichever reads better, and the accent is
+moved toward black or white a step at a time until that text reaches
+4.5:1 (7:1 for high contrast) - a yellow or a mid-grey accent is nudged, a
+blue stays itself; `accentHover` is the accent moved 8 % toward the ink;
+`accentSoft` the accent at 18 % over the panel when dark, 14 % when light;
+`focus` the accent unless it fails 3:1 on the ground, then `lineStrong`.
+
+## The policy
+
+The application decides what the theme follows
+(`UltraCanvasApplication::SetThemePolicy`): `FollowHost`, the default,
+builds `FromHost(GetHostAppearance())` in `Initialize` before the first
+window and again on every host change, so switching the desktop to dark
+re-styles every element that follows and every window built with the
+default background takes the theme's ground; `Light` and `Dark` take the
+framework's preset with the host's fonts; `Own` leaves the theme to the
+application, with a provider - a function from the host to the
+application's theme, UltraVideo's `ThemeFor` is one - called at start and
+on every change when it gave one. An application that calls `SetCurrent`
+itself under another policy has taken over: the policy does not put its
+theme back over it.
+
+```cpp
+app->SetThemePolicy(ThemePolicy::Own);
+app->SetThemeProvider([](const HostAppearance& host) {
+    UltraCanvasTheme theme = host.dark ? UltraCanvasTheme::Dark() : UltraCanvasTheme::Light();
+    theme.name = "My app";
+    theme.fonts.ui = host.uiFont;
+    return theme;
+});
+ThemePolicy policy = app->GetThemePolicy();
+bool fromPolicy = app->ThemeIsFromPolicy();                      // the current theme is the policy's
+```
+
 ## Related
 
 - `Docs/UltraCanvas/UltraCanvasVideoTimeline.md`, `UltraCanvasTimecodeField.md` — the two readers with element roles of their own
 - `Docs/UltraCanvas/UltraCanvasTooltipManager.md` — `TooltipStyle::FromTheme`, the manager's style
 - `Apps/UltraVideo/UltraVideoTheme.h` — a design's tokens mapped onto the theme (`ThemeFor`)
+- [`UltraCanvasHostAppearance.md`](UltraCanvasHostAppearance.md) — what `FromHost` reads: the desktop's dark flag, contrast, accent, fonts and text scale
+- [`UltraCanvasHostThemeProposal.md`](UltraCanvasHostThemeProposal.md) — the whole: every element following by default (T4), the setting and UOS-Settings (T5)
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasTickerBoard.md
@@ -105040,11 +105571,10 @@ system.
 
 ```
 ┌────┬──────────────────────────────────────────────────────────────┬────┐
-│ ⚙  │                                                              │ 🕒 │  clock
-│ ⋮⋮ │                                                              │30Oct│  and date
-│╲   │                                                              │ 1  │  desktop
-│ ╲  │                                                              │ 2  │  organiser
-│ ▣  │                                                              │ 3  │
+│ ⚙  │                                                              │ 1  │  desktop
+│ ⋮⋮ │                                                              │ 2  │  organiser
+│╲   │                                                              │ 3  │
+│ ╲  │                                                              │    │
 │ ▣  │                     wallpaper                                │ 📌 │  Sticker board
 │ ▣  │            (application windows float above)                 │ 🗒 │  notes
 │ ▣  │                                                              │ 📋 │  clipboard
@@ -105053,6 +105583,8 @@ system.
 │ ▤  │                                                              │ ✉14│  info panel
 │ 📁 │                                                              │ ⇧⇩ │  (devices and
 │ 🎨 │                                                              │ 🔊 │   services)
+│    │                                                              │ 🕒 │  clock
+│    │                                                              │30Oct│  and date
 └────┴──────────────────────────────────────────────────────────────┴────┘
  taskbar                                                               right bar
 ```
@@ -105069,15 +105601,36 @@ organiser.
 1. **System** — *ULTRA OS settings*, shown as the ULTRA OS logo, and the
    *app starter*. *ULTRA OS settings* starts **UOS-Settings**, the system's settings application
    (`Docs/UOSSettings/README.md`), which opens on its *Desktop* page.
-2. **Running applications** — one button per open window on the current
-   desktop, with the application's own icon (resolved from its desktop
-   entry; the first letter of its class when it has none). The active
-   window's button is highlighted. A click activates the window or minimizes
-   it if it already is active; a right-click offers *Activate*, *Minimize*,
-   *Move to desktop …* and *Close window*. Drag a button to reorder; when
-   the group is full it scrolls with the mouse wheel. New windows join next
-   to their application's other windows. *Pin to taskbar* on the menu pins
-   the window's application.
+2. **Running applications** — one button per application with open
+   windows on the current desktop, with the application's own icon
+   (resolved from its desktop entry, on Windows a Store application's tile
+   icon from the shell; the first letter of its class when it has none).
+   An application's windows share its button - by their class on X11, on
+   Windows by the application identity the shell gives them
+   (`appUserModelId`: every Explorer window is Explorer's), else by their
+   program - and a count on the button says how many there are. The button
+   is highlighted while one of its windows is active.
+   - **One window:** a click activates it, or minimizes it if it already is
+     active; a right-click offers *Activate*, *Minimize*, *Move to desktop
+     …*, *Pin to taskbar* and *Close window*.
+   - **Several windows:** rest the pointer on the button and their pictures
+     open beside it (above it with the taskbar at the bottom, below it at
+     the top) - one tile per window with its icon, title and a picture of
+     the window, the active one framed, a minimized one showing its icon.
+     A click on a tile brings that window forward, its **×** asks it to
+     close. The pictures follow the pointer along the bar to the next
+     application and close shortly after it leaves both. A click on the
+     button opens or closes them at once. A right-click lists the windows,
+     with *Minimize all*, *Pin to taskbar* and *Close all windows*. On
+     Windows each window draws its own picture and on Wayland the
+     compositor copies it, so a covered window shows its own content; on
+     X11 the picture is the window's place on the screen, which shows
+     whatever lies on top of it there. A Wayland compositor without window
+     capture (`ext-image-copy-capture-v1`) gives no picture: the tile shows
+     the application's icon.
+
+   Drag a button to reorder; when the group is full it scrolls with the
+   mouse wheel. New applications join at the end.
 3. **Pinned** — the *RAM disc* (opens the path from the settings, `/dev/shm`
    by default, in the file manager), *UltraFiler*, and the applications the
    user pinned - from a running window's menu or a tile's in the
@@ -105114,12 +105667,17 @@ the right-hand monitor the primary.
 
 ### Right bar
 
-- **Clock**: the framework's gauge element in its analog clock mode
+- **Clock**, at the foot of the bar, white on black: by default the
+  framework's gauge element in its analog clock mode
   ([UltraCanvasGaugeDiagramElement](../UltraCanvas/UltraCanvasGaugeExamples.md)),
   which ticks on its own, over the date ("30 Oct"); the tooltip has the
-  whole date and time. A click opens the clock panel beside the bar: the
-  time large as an analog face and in figures (the gauge's digital clock),
-  today in words, and the month on the calendar view with today marked.
+  whole date and time. A right click chooses how it shows: *Analog clock
+  with the date*, *Analog clock*, *Digital clock with the date*, *Digital
+  clock* (21:50) or *Digital clock with seconds* (21:50:52), kept as
+  `clockStyle` in the settings. A click opens the clock panel beside the
+  bar: the time large as an analog face and in figures (the gauge's digital
+  clock), today in words, and the month on the calendar view with today
+  marked.
 - **Desktop organiser**: the virtual desktops as numbered toggles — as many
   as the window manager has (read at start-up and followed when it changes),
   the settings' count only where there is no window manager to ask; choosing
@@ -105163,6 +105721,7 @@ the right-hand monitor the primary.
   | Marker | Meaning | On |
   |---|---|---|
   | red dot | a device is on, or a link is down | webcam in use, microphone recording, Bluetooth powered; Internet/LAN with no link, Wi-Fi present but not joined |
+  | green dot | a link is up | Wi-Fi joined |
   | yellow dot | activity | download or upload traffic (more than 4 KB in two seconds), loudspeaker playing, VPN up |
   | grey pill | a count or a value | Email unread (from UltraMail), USB devices attached, battery percentage (green while charging, red at 15 % and below), keyboard layout |
 

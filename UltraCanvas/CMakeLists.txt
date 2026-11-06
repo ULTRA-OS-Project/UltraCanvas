@@ -928,6 +928,7 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/UltraCanvasChartTheme.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/UltraCanvasChartHighlights.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/UltraCanvasChartAnalysis.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/UltraCanvasControlLimits.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/UltraCanvasChartEngineElement.cpp
         # Engine ports of the legacy charts (Docs/UltraCanvas/UltraCanvasEngineCharts.md)
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/Charts/UltraCanvasEngineLineChart.cpp
@@ -1643,7 +1644,9 @@ if(ULTRACANVAS_PLATFORM STREQUAL "Linux" AND ULTRACANVAS_WAYLAND)
     # OS/Linux/Wayland/protocols/: the wlroots layer shell (the desktop and
     # its bars) and foreign toplevels (the window list), which
     # wayland-protocols does not carry, and ext-workspace (the virtual
-    # desktops), which it carries only from 1.39.
+    # desktops), which it carries only from 1.39, and the window capture
+    # (ext-foreign-toplevel-list, ext-image-capture-source,
+    # ext-image-copy-capture: a taskbar's window pictures), from 1.37.
     set(_ultracanvas_wayland_protocols
         ${ULTRACANVAS_WAYLAND_PROTOCOLS_DIR}/stable/xdg-shell/xdg-shell.xml
         ${ULTRACANVAS_WAYLAND_PROTOCOLS_DIR}/unstable/xdg-decoration/xdg-decoration-unstable-v1.xml
@@ -1652,6 +1655,9 @@ if(ULTRACANVAS_PLATFORM STREQUAL "Linux" AND ULTRACANVAS_WAYLAND)
         ${CMAKE_CURRENT_SOURCE_DIR}/OS/Linux/Wayland/protocols/wlr-layer-shell-unstable-v1.xml
         ${CMAKE_CURRENT_SOURCE_DIR}/OS/Linux/Wayland/protocols/wlr-foreign-toplevel-management-unstable-v1.xml
         ${CMAKE_CURRENT_SOURCE_DIR}/OS/Linux/Wayland/protocols/ext-workspace-v1.xml
+        ${CMAKE_CURRENT_SOURCE_DIR}/OS/Linux/Wayland/protocols/ext-foreign-toplevel-list-v1.xml
+        ${CMAKE_CURRENT_SOURCE_DIR}/OS/Linux/Wayland/protocols/ext-image-capture-source-v1.xml
+        ${CMAKE_CURRENT_SOURCE_DIR}/OS/Linux/Wayland/protocols/ext-image-copy-capture-v1.xml
     )
     foreach(_xml IN LISTS _ultracanvas_wayland_protocols)
         get_filename_component(_name ${_xml} NAME_WE)
