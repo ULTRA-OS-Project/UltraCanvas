@@ -568,7 +568,9 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   the window's one type scale (`MakeChoice`, `MakeCheckbox`, `MakeIntSlider`
   / `MakeSliderRow`, `MakeButton` / `MakeButtonRow`, `MakeChoiceRow`,
   `MakeLabelledRow`, `MakeColorBox`, `MakeLabel` / `MakeText`). UltraFiler's
-  settings window set the style; it and UltraSnip's are built on the kit.
+  settings window set the style; it, UltraSnip's and UOS-Settings (a main
+  window with the logo above its tree, through `SettingsWindowOptions`) are
+  built on the kit; the demo's *Widgets > Settings Window* page shows it.
   Core in `core/UltraCanvasSettingsPageKit.cpp`. See
   `Docs/UltraCanvas/UltraCanvasSettingsPageKit.md`.
 

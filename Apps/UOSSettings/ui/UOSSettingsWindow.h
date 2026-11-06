@@ -31,6 +31,9 @@
 //       Forget button for a device that was reset or replaced and now
 //       presents a new certificate.
 //
+// Version: 0.9.0 - built on the framework's UltraCanvasSettingsPageKit: the window, the
+//                  tree, the bottom bar and the page switching are the kit's; nothing
+//                  changes on screen
 // Version: 0.9.0 - Language > Translations: the localisation editor (UltraCanvasLocalisationEditor)
 // Version: 0.8.0 - the Language page
 // Version: 0.7.0 - Desktop: the Apps window (view, sub-categories, Recent)
@@ -46,6 +49,7 @@
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
+#include "UltraCanvasSettingsPageKit.h"   // the window, the tree of pages, the page look
 #include "UltraCanvasWindow.h"   // UltraCanvasWindow is a per-platform typedef
 
 #include <functional>
@@ -71,7 +75,10 @@ namespace UltraCanvas {
 
 namespace UOSSettings {
 
-class UOSSettingsWindow {
+// The framework's settings window (UltraCanvasSettingsPageKit): the tree
+// of pages, the page area, the bottom bar and the page switching are its;
+// this class adds the ULTRA OS logo over the tree and the pages.
+class UOSSettingsWindow : public UltraCanvas::SettingsPageKit::UltraCanvasSettingsWindow {
 public:
     explicit UOSSettingsWindow(std::string version);
     ~UOSSettingsWindow();
@@ -80,7 +87,6 @@ public:
     void Show();
 
     // The window was closed.
-    std::function<void()> onClosed;
 
 private:
     void BuildDesktopPage();
@@ -96,7 +102,6 @@ private:
     // Explorer (from the next sign-in).
     void SetSystemDesktop(UltraCanvas::DesktopReplacement how);
     void BuildLastFolderPage();
-    void ShowPage(const std::string& pageId);
     // Re-reads FileDialog.conf and fills the switch and the table from it.
     void RefreshLastFolderPage();
     void SetMode(bool individual);
@@ -119,10 +124,6 @@ private:
     void ForgetCertificate(const std::string& address);
 
     std::string version_;
-    std::shared_ptr<UltraCanvas::UltraCanvasWindow> window_;
-    std::shared_ptr<UltraCanvas::UltraCanvasTreeView> tree_;
-    std::shared_ptr<UltraCanvas::UltraCanvasContainer> pageArea_;
-    std::map<std::string, std::shared_ptr<UltraCanvas::UltraCanvasContainer>> pages_;
 
     // ----- Translations -----
     std::shared_ptr<UltraCanvas::UltraCanvasLocalisationEditor> translations_;

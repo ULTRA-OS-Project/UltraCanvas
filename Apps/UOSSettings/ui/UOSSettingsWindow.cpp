@@ -1,6 +1,8 @@
 // Apps/UOSSettings/ui/UOSSettingsWindow.cpp
 // The UOS-Settings window: page tree | page, Close at the foot - the layout
 // of UltraFiler's settings window. See UOSSettingsWindow.h.
+// Version: 0.9.0 - on UltraCanvasSettingsPageKit (the window, the tree, the bottom bar,
+//                  the page switching, MakeLabel); the logo as the kit's sidebar header
 // Version: 0.8.1 - the Language and Translations pages, the page tree and the window's buttons go through Tr
 // Version: 0.8.0 - Language > Translations: the localisation editor (UltraCanvasLocalisationEditor)
 // Version: 0.7.0 - the Language page: the language every application shows, Language.conf
@@ -52,8 +54,9 @@ using namespace UltraCanvas;
 namespace UOSSettings {
 
 namespace {
-    // The look of UltraFiler's settings window, so the two read as one family.
-    constexpr float kTitleFontSize = 15.0f;
+    // The look of UltraFiler's settings window, so the two read as one
+    // family: the framework's settings page kit.
+    using SettingsPageKit::kTitleFontSize;
     // The Apps window's choices: when a category is split (0 = never) and
     // how many applications Recent shows.
     constexpr int kAppsSplitChoices[] = {0, 4, 6, 8, 10, 12, 16, 20};
@@ -72,22 +75,20 @@ namespace {
     int ChoiceAt(const int (&choices)[N], int index, int fallback) {
         return index >= 0 && static_cast<size_t>(index) < N ? choices[index] : fallback;
     }
-    constexpr float kTextFontSize  = 10.0f;
-    constexpr float kNoteFontSize  = 9.0f;
-    constexpr float kTreeFontSize  = 9.0f;
-    const Color kTextColor      = Color(40, 40, 44, 255);
+    // The type scale and the colours are the kit's; the widths are this
+    // window's own (its pages are wider than a dialog's).
+    using SettingsPageKit::kTextFontSize;
+    using SettingsPageKit::kNoteFontSize;
+    using SettingsPageKit::kTextColor;
+    using SettingsPageKit::kNoteTextColor;
     const Color kMutedTextColor = Color(120, 120, 128, 255);
-    const Color kNoteTextColor  = Color(96, 96, 104, 255);
-    const Color kNoteBackground = Color(244, 245, 248, 255);
-    const Color kNoteAccent     = Color(160, 176, 200, 255);
     const Color kRuleColor      = Color(225, 225, 230, 255);
     const Color kHeaderBackground = Color(243, 243, 246, 255);
-    const Color kSidebarBackground = Color(243, 243, 246, 255);
     constexpr int kSidebarWidth = 180;
     // The ULTRA OS logo over the page tree: ultraos-logo-light.png, 384 x 200.
     constexpr int kLogoWidth = 132;
     constexpr int kLogoHeight = 132 * 200 / 384;
-    constexpr int kPagePadding = 20;
+    using SettingsPageKit::kPagePadding;
     constexpr int kTextWidth   = 520;
     constexpr int kNoteWidth   = 510;
 
@@ -132,29 +133,16 @@ namespace {
     constexpr int kSegmentGlobal = 0;
     constexpr int kSegmentIndividual = 1;
 
-    std::shared_ptr<UltraCanvasLabel> MakeLabel(const std::string& id,
-                                                const std::string& text,
-                                                float fontSize = kTextFontSize,
-                                                const Color& color = kTextColor) {
-        auto l = std::make_shared<UltraCanvasLabel>(id, 0, 0, 0, 20);
-        l->SetText(text);
-        l->SetFontSize(fontSize);
-        l->SetTextColor(color);
-        l->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        l->size.width  = CSSLayout::Dimension::Auto();
-        l->size.height = CSSLayout::Dimension::Auto();
-        return l;
-    }
+    using SettingsPageKit::MakeLabel;
 
+    // A paragraph wrapped at this window's text width (the kit's is a
+    // dialog's, narrower)
     std::shared_ptr<UltraCanvasLabel> MakeText(const std::string& id,
                                                const std::string& text,
                                                int width = kTextWidth,
                                                float fontSize = kTextFontSize,
                                                const Color& color = kTextColor) {
-        auto l = MakeLabel(id, text, fontSize, color);
-        l->SetWrap(TextWrap::WrapWord);
-        l->size.width = CSSLayout::Dimension::Px(static_cast<float>(width));
-        return l;
+        return SettingsPageKit::MakeText(id, text, width, fontSize, color);
     }
 
     std::shared_ptr<UltraCanvasSegmentedControl> MakeScopeSwitch(const std::string& id,
@@ -254,14 +242,7 @@ namespace {
     // The shaded box of notes at the foot of a page.
     std::shared_ptr<UltraCanvasContainer> MakeNotes(const std::string& id,
                                                     const std::vector<std::string>& texts) {
-        auto notes = std::make_shared<UltraCanvasContainer>(id);
-        notes->layout.SetFlexColumn().SetFlexGap(6)
-                     .SetFlexAlignItems(CSSLayout::AlignItems::Start);
-        notes->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
-                         .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-        notes->SetBackgroundColor(kNoteBackground);
-        notes->SetBorderLeft(3, kNoteAccent);
-        notes->SetPadding(10, 12, 10, 12);
+        auto notes = SettingsPageKit::MakeNotesBlock(id);
         for (size_t i = 0; i < texts.size(); ++i) {
             notes->AddChild(MakeText(id + "-" + std::to_string(i + 1), texts[i],
                                      kNoteWidth, kNoteFontSize, kNoteTextColor));
@@ -275,34 +256,8 @@ UOSSettingsWindow::UOSSettingsWindow(std::string version) : version_(std::move(v
 UOSSettingsWindow::~UOSSettingsWindow() = default;
 
 bool UOSSettingsWindow::Create() {
-    WindowConfig wc;
-    // Every app shows its version in its main window title (AGENTS.md).
-    wc.title = "UOS-Settings " + version_;
-    wc.width = 860;
-    wc.height = 580;
-    wc.resizable = true;
-    window_ = CreateWindow(wc);
-    if (!window_ || !window_->IsCreated()) { window_.reset(); return false; }
-
-    window_->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-    window_->SetBackgroundColor(Color(249, 249, 251, 255));
-
-    // ----- page tree | page area -----
-    auto content = std::make_shared<UltraCanvasContainer>("uos-content");
-    content->layout.SetFlexRow().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-    content->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
-                       .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-
-    // The sidebar: the ULTRA OS logo - the version drawn for a light ground,
-    // as the desktop's taskbar shows the one for a dark ground - over the
-    // page tree.
-    auto sidebar = std::make_shared<UltraCanvasContainer>("uos-sidebar");
-    sidebar->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-    sidebar->SetBackgroundColor(kSidebarBackground);
-    sidebar->size.width = CSSLayout::Dimension::Px(kSidebarWidth);
-    sidebar->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
-                       .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-
+    // The ULTRA OS logo over the page tree - the version drawn for a light
+    // ground, as the desktop's taskbar shows the one for a dark ground.
     auto logo = std::make_shared<UltraCanvasImageElement>("uos-logo", 0, 0, kLogoWidth, kLogoHeight);
     logo->SetFitMode(ImageFitMode::Contain);
     logo->LoadFromFile(GetResourcesDir() + "media/icons/desktop/ultraos-logo-light.png");
@@ -310,42 +265,28 @@ bool UOSSettingsWindow::Create() {
     logo->layoutItem.SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Center);
     logo->SetMargin(14, 0, 10, 0);
     logo->SetTooltip("ULTRA OS");
-    sidebar->AddChild(logo);
 
-    tree_ = std::make_shared<UltraCanvasTreeView>("uos-tree");
-    tree_->SetFontSize(kTreeFontSize);
-    tree_->SetRowHeight(24);
-    tree_->SetSelectionMode(TreeSelectionMode::Single);
-    tree_->SetLineStyle(TreeLineStyle::NoLine);
-    tree_->SetBackgroundColor(kSidebarBackground);
-    tree_->SetShowFirstChildOnExpand(true);
-    tree_->SetAutoExpandSelectedNode(true);
-    tree_->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetFlexBasis(CSSLayout::Dimension::Px(0))
-                     .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    SettingsPageKit::SettingsWindowOptions options;
+    options.width = 860;
+    options.height = 580;
+    options.treeWidth = kSidebarWidth;
+    options.sidebarHeader = logo;
+    options.dialog = false;              // the settings are the application: its main window
+    options.closeLabel = Tr("Close");
+    // Every app shows its version in its main window title (AGENTS.md).
+    if (!UltraCanvasSettingsWindow::Create(nullptr, "UOS-Settings " + version_, options)) return false;
 
-    TreeNodeData rootData("settings", "Settings");
-    tree_->SetRootNode(rootData);
-    tree_->AddNode("settings", TreeNodeData(kPageDesktop, Tr("Desktop")));
-    tree_->AddNode("settings", TreeNodeData(kPageLanguage, Tr("Language")));
-    tree_->AddNode(kPageLanguage, TreeNodeData(kPageTranslations, Tr("Translations")));
-    tree_->AddNode("settings", TreeNodeData(kSectionFileDialogs, Tr("File dialogs")));
-    tree_->AddNode(kSectionFileDialogs, TreeNodeData(kPageLastFolder, Tr("Last used folder")));
-    tree_->AddNode("settings", TreeNodeData(kSectionAppearance, Tr("Appearance")));
-    tree_->AddNode(kSectionAppearance, TreeNodeData(kPageEmoji, Tr("Emoji")));
-    tree_->AddNode("settings", TreeNodeData(kSectionNotifications, Tr("Notifications")));
-    tree_->AddNode(kSectionNotifications, TreeNodeData(kPageRegistrations, Tr("Registrations")));
-    tree_->AddNode("settings", TreeNodeData(kSectionDevices, Tr("Devices")));
-    tree_->AddNode(kSectionDevices, TreeNodeData(kPageCertificates, Tr("Trusted certificates")));
-    tree_->SetRootVisible(false);
-    sidebar->AddChild(tree_);
-    content->AddChild(sidebar);
-
-    pageArea_ = std::make_shared<UltraCanvasContainer>("uos-pages");
-    pageArea_->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-    pageArea_->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
-                         .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-    pageArea_->SetBackgroundColor(Color(255, 255, 255, 255));
-    content->AddChild(pageArea_);
+    AddTreeNode("settings", kPageDesktop, Tr("Desktop"));
+    AddTreeNode("settings", kPageLanguage, Tr("Language"));
+    AddTreeNode(kPageLanguage, kPageTranslations, Tr("Translations"));
+    AddTreeNode("settings", kSectionFileDialogs, Tr("File dialogs"));
+    AddTreeNode(kSectionFileDialogs, kPageLastFolder, Tr("Last used folder"));
+    AddTreeNode("settings", kSectionAppearance, Tr("Appearance"));
+    AddTreeNode(kSectionAppearance, kPageEmoji, Tr("Emoji"));
+    AddTreeNode("settings", kSectionNotifications, Tr("Notifications"));
+    AddTreeNode(kSectionNotifications, kPageRegistrations, Tr("Registrations"));
+    AddTreeNode("settings", kSectionDevices, Tr("Devices"));
+    AddTreeNode(kSectionDevices, kPageCertificates, Tr("Trusted certificates"));
 
     BuildDesktopPage();
     BuildLastFolderPage();
@@ -354,68 +295,29 @@ bool UOSSettingsWindow::Create() {
     BuildEmojiPage();
     BuildNotificationsPage();
     BuildCertificatesPage();
-    window_->AddChild(content);
 
-    // ----- bottom bar: Close -----
-    auto bottom = std::make_shared<UltraCanvasContainer>("uos-bottom");
-    bottom->layout.SetFlexRow().SetFlexGap(8)
-                  .SetFlexAlignItems(CSSLayout::AlignItems::Center)
-                  .SetFlexJustifyContent(CSSLayout::JustifyContent::FlexEnd);
-    bottom->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
-                      .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-    bottom->SetPadding(8, 12, 8, 12);
-    bottom->SetBorderTop(1, kRuleColor);
-    auto close = std::make_shared<UltraCanvasButton>("uos-close", 0, 0, 90, 28, Tr("Close"));
-    close->SetFontSize(kTextFontSize);
-    close->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-    close->SetOnClick([win = window_.get()]() { win->Close(); });
-    bottom->AddChild(close);
-    window_->AddChild(bottom);
-
-    tree_->onNodeSelected = [this](TreeNode* node) {
-        if (!node) return;
-        // A section has no page of its own: it shows its first page.
-        TreeNode* leaf = node;
-        while (leaf && leaf->HasChildren()) leaf = leaf->FirstChild();
-        if (leaf && leaf != node) {
-            tree_->SelectNode(leaf);
-            return;
-        }
-        ShowPage(node->data.nodeId);
+    // Another application may have written a page's file since it was
+    // built: a page is re-read on the way in, shown as it is now.
+    onPageShown = [this](const std::string& pageId) {
+        if (pageId == kPageLastFolder) RefreshLastFolderPage();
+        if (pageId == kPageDesktop) RefreshDesktopPage();
+        if (pageId == kPageCertificates) RefreshCertificatesPage();
+        if (pageId == kPageEmoji) RefreshEmojiPage();
+        if (pageId == kPageLanguage) RefreshLanguagePage();
+        if (pageId == kPageTranslations) RefreshTranslationsPage();
+        if (pageId == kPageRegistrations) RefreshNotificationsPage();
     };
     // Opens on the desktop's page - what the desktop's settings button is
     // usually pressed for - with the File dialogs section open below it.
-    if (TreeNode* section = tree_->FindNode(kSectionFileDialogs)) tree_->ExpandNode(section);
-    if (TreeNode* page = tree_->FindNode(kPageDesktop)) tree_->SelectNode(page);
-    ShowPage(kPageDesktop);
-
-    window_->SetEventCallback([](const UCEvent& event) {
-        if (event.type == UCEventType::KeyUp && event.virtualKey == UCKeys::Escape) {
-            if (auto tw = event.targetWindow.lock())
-                static_cast<UltraCanvasWindow*>(tw.get())->Close();
-            return true;
-        }
-        return false;
-    });
-    window_->onWindowClosed = [this]() { if (onClosed) onClosed(); };
+    // Show() shows the window.
+    Finish(kPageDesktop, /*show=*/false);
+    if (TreeNode* section = tree->FindNode(kSectionFileDialogs)) tree->ExpandNode(section);
+    SelectPage(kPageDesktop);
     return true;
 }
 
 void UOSSettingsWindow::Show() {
-    if (window_) window_->Show();
-}
-
-void UOSSettingsWindow::ShowPage(const std::string& pageId) {
-    if (!pages_.count(pageId)) return;
-    for (auto& [id, page] : pages_) page->SetVisible(id == pageId);
-    // Another application may have written the file since: show it as it is.
-    if (pageId == kPageLastFolder) RefreshLastFolderPage();
-    if (pageId == kPageDesktop) RefreshDesktopPage();
-    if (pageId == kPageCertificates) RefreshCertificatesPage();
-    if (pageId == kPageEmoji) RefreshEmojiPage();
-    if (pageId == kPageLanguage) RefreshLanguagePage();
-    if (pageId == kPageTranslations) RefreshTranslationsPage();
-    if (pageId == kPageRegistrations) RefreshNotificationsPage();
+    if (window) window->Show();
 }
 
 // ===== DESKTOP =====
@@ -627,8 +529,8 @@ void UOSSettingsWindow::BuildDesktopPage() {
     auto notes = MakeNotes("uos-dt-note", noteTexts);
     page->AddChild(notes);
 
-    pages_[kPageDesktop] = page;
-    pageArea_->AddChild(page);
+    pages[kPageDesktop] = page;
+    pageArea->AddChild(page);
 }
 
 void UOSSettingsWindow::RefreshDesktopPage() {
@@ -738,7 +640,7 @@ void UOSSettingsWindow::SetSystemDesktop(DesktopReplacement how) {
 void UOSSettingsWindow::BrowseWallpaper() {
     FileDialogOptions options;
     options.title = Tr("Choose a wallpaper");
-    options.parentWindow = window_.get();
+    options.parentWindow = window.get();
     options.AddFilter("Pictures", std::vector<std::string>{"jpg", "jpeg", "png", "webp",
                                                            "avif", "heic", "bmp"});
     UltraCanvasFileLoader::OpenFileDialog(options, [this](DialogResult result,
@@ -814,8 +716,8 @@ void UOSSettingsWindow::BuildLastFolderPage() {
     // any of them has opened one.
     for (const std::string& app : KnownFileDialogApplications()) AddAppRow(app);
 
-    pages_[kPageLastFolder] = page;
-    pageArea_->AddChild(page);
+    pages[kPageLastFolder] = page;
+    pageArea->AddChild(page);
 }
 
 void UOSSettingsWindow::AddAppRow(const std::string& appName) {
@@ -882,7 +784,7 @@ void UOSSettingsWindow::RefreshLastFolderPage() {
         row.scope->SetDisabled(!individual);
     }
     refreshing_ = false;
-    if (window_) window_->RequestRedraw();
+    if (window) window->RequestRedraw();
 }
 
 void UOSSettingsWindow::SetMode(bool individual) {
@@ -983,8 +885,8 @@ void UOSSettingsWindow::BuildEmojiPage() {
     notes->SetMargin(14, 0, 0, 0);
     page->AddChild(notes);
 
-    pages_[kPageEmoji] = page;
-    pageArea_->AddChild(page);
+    pages[kPageEmoji] = page;
+    pageArea->AddChild(page);
 }
 
 void UOSSettingsWindow::RefreshEmojiPage() {
@@ -1051,8 +953,8 @@ void UOSSettingsWindow::BuildNotificationsPage() {
     notes->SetMargin(14, 0, 0, 0);
     page->AddChild(notes);
 
-    pages_[kPageRegistrations] = page;
-    pageArea_->AddChild(page);
+    pages[kPageRegistrations] = page;
+    pageArea->AddChild(page);
 }
 
 void UOSSettingsWindow::RefreshNotificationsPage() {
@@ -1088,7 +990,7 @@ void UOSSettingsWindow::RefreshNotificationsPage() {
                                                     : "Registered for this Windows account:");
     }
     if (removeRegistrations_) removeRegistrations_->SetDisabled(listed.empty());
-    if (pageArea_) pageArea_->InvalidateLayout();
+    if (pageArea) pageArea->InvalidateLayout();
 }
 
 void UOSSettingsWindow::RemoveNotificationRegistrations() {
@@ -1187,8 +1089,8 @@ void UOSSettingsWindow::BuildLanguagePage() {
     notes->SetMargin(14, 0, 0, 0);
     page->AddChild(notes);
 
-    pages_[kPageLanguage] = page;
-    pageArea_->AddChild(page);
+    pages[kPageLanguage] = page;
+    pageArea->AddChild(page);
 }
 
 void UOSSettingsWindow::BuildTranslationsPage() {
@@ -1216,8 +1118,8 @@ void UOSSettingsWindow::BuildTranslationsPage() {
     translations_->SetMargin(12, 0, 0, 0);
     page->AddChild(translations_);
 
-    pages_[kPageTranslations] = page;
-    pageArea_->AddChild(page);
+    pages[kPageTranslations] = page;
+    pageArea->AddChild(page);
 }
 
 void UOSSettingsWindow::RefreshTranslationsPage() {
@@ -1303,8 +1205,8 @@ void UOSSettingsWindow::BuildCertificatesPage() {
     notes->SetMargin(14, 0, 0, 0);
     page->AddChild(notes);
 
-    pages_[kPageCertificates] = page;
-    pageArea_->AddChild(page);
+    pages[kPageCertificates] = page;
+    pageArea->AddChild(page);
 }
 
 void UOSSettingsWindow::AddCertificateRow(const std::string& address) {
@@ -1377,7 +1279,7 @@ void UOSSettingsWindow::RefreshCertificatesPage() {
         certificateStatus_->SetText(file.empty() ? "There is no settings folder to keep keys in."
                                                  : "Kept in " + file);
     }
-    if (window_) window_->RequestRedraw();
+    if (window) window->RequestRedraw();
 }
 
 void UOSSettingsWindow::ForgetCertificate(const std::string& address) {

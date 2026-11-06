@@ -2357,6 +2357,16 @@ namespace UltraCanvas {
                                "DemoApp/UltraCanvasMenuConfigExamples.cpp",
                                "Docs/UltraCanvas/UltraCanvasCommandConfigWidget.md");
 
+        // The look of an application's settings window, once; UltraFiler,
+        // UltraSnip and UOS-Settings are built on it.
+        widgetsBuilder.AddItem("settingspagekit", Tr("Settings Window"),
+                               Tr("A settings window from the framework's kit: the tree of pages, the page skeleton "
+                                  "and the controls in one type scale, with Restore defaults per page"),
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreateSettingsPageKitExamples(); },
+                               "DemoApp/UltraCanvasSettingsPageKitExamples.cpp",
+                               "Docs/UltraCanvas/UltraCanvasSettingsPageKit.md");
+
         widgetsBuilder.AddItem("localisationeditor", Tr("Localisation Editor"),
                                Tr("Every set an application's texts come from in one grid: edit, take a base set, promote, demote, save"),
                                ImplementationStatus::FullyImplemented,
