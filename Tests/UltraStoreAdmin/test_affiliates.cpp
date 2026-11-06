@@ -269,6 +269,25 @@ TEST(the_catalog_carries_the_enabled_codes_and_publish_writes_their_pages) {
     REQUIRE_EQ(report.Value().retiredPages, size_t(2));   // the partner aff-gone, the code OFF
     REQUIRE(ReadFile(Join(options.outDirUtf8, "join/aff-gone/index.html")).find("This invitation is closed") != std::string::npos);
     REQUIRE(ReadFile(Join(options.outDirUtf8, "go/OFF/index.html")).find("no longer valid") != std::string::npos);
+    // The database remembers every page published, so a code and a partner
+    // removed outright still get their retired page on the next publish -
+    // into a fresh folder, to show it is the record and not the old files.
+    const auto pages = db.PublishedPages();
+    REQUIRE(pages.Ok());
+    REQUIRE_EQ(pages.Value().size(), size_t(5));   // go/ANNA-20, go/OFF, go/STALE, join/aff-anna, join/aff-gone
+    REQUIRE(!pages.Value()[0].firstPublishedAt.empty());
+    REQUIRE(db.RemoveCode("anna-20").Ok());
+    REQUIRE(db.RemoveAffiliate("aff-anna").Ok());
+    PublishOptions again = options;
+    again.outDirUtf8 = Join(dir, "out2");
+    const auto second = Publish(db, added.Value().id, "pass", again);
+    REQUIRE(second.Ok());
+    REQUIRE_EQ(second.Value().codePages, size_t(1));      // STALE
+    REQUIRE_EQ(second.Value().joinPages, size_t(0));
+    REQUIRE_EQ(second.Value().retiredPages, size_t(4));   // OFF, aff-gone, and the removed ANNA-20 and aff-anna
+    REQUIRE(ReadFile(Join(again.outDirUtf8, "go/ANNA-20/index.html")).find("no longer valid") != std::string::npos);
+    REQUIRE(ReadFile(Join(again.outDirUtf8, "join/aff-anna/index.html")).find("This invitation is closed") != std::string::npos);
+    REQUIRE_EQ(db.PublishedPages().Value().size(), size_t(5));   // nothing new, nothing forgotten
     RemoveDir(dir);
 }
 

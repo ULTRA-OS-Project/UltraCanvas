@@ -7,9 +7,11 @@
   `settings set store.contact <address>`.
 - **A stale page no longer outlives its code or partner.** The uploader
   never deletes on the server, so a page once published stayed reachable
-  after its code was switched off or its partner left. A code out of the
-  catalog and a partner switched off now get a page that says so (*no
-  longer valid*, *this invitation is closed*), which the next upload puts
-  in place of the old one. The publish report, in the window and on the
-  command line, counts the code pages, the join pages and these retired
-  pages.
+  after its code was switched off or its partner left. `admin.sqlite` now
+  remembers every page ever published (`published_pages`, schema 4), and
+  each publish writes one for every entry: a code out of the catalog, a
+  partner switched off, and a code or a partner removed outright get a
+  page that says so (*no longer valid*, *this invitation is closed*),
+  which the next upload puts in place of the old one. The publish report,
+  in the window and on the command line, counts the code pages, the join
+  pages and these retired pages.

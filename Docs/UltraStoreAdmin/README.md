@@ -30,7 +30,7 @@ store itself is [`Docs/UltraStore/README.md`](../UltraStore/README.md).
 ```
 Apps/UltraStoreAdmin/
   core/                          UltraStoreAdminCore (static), on UltraStoreCore, UltraDatabase, UltraCrypt, UltraAI
-    AdminDatabase.h/.cpp         admin.sqlite: settings, publishers, components (whole), package files, keys, the sequence
+    AdminDatabase.h/.cpp         admin.sqlite: settings, publishers, components (whole), package files, keys, the pages ever published, the sequence
     KeyVault.h/.cpp              the seed sealed with the passphrase; a new pair
     PackageStore.h/.cpp          a build into the package store under its hash; the archive's listing; the entry
     CatalogPublisher.h/.cpp      the catalog from the database, laid out, signed, verified; the publish folder
@@ -200,9 +200,13 @@ Hello.
   `join/<affiliate>/index.html` behind the join QR code's link, naming who
   invites, what a partner earns, the id to name when signing up and the
   store's contact (`store.contact`). The uploader never deletes on the
-  server, so a code that left the catalog and a partner switched off keep
-  a page that says the code is no longer valid or the invitation is
-  closed: the next upload replaces the stale page instead of leaving it.
+  server, so a page once published stays reachable; `admin.sqlite`
+  remembers every page ever published (`published_pages`, schema 4), and
+  each publish writes one for every entry: the current page, or - for a
+  code that left the catalog, a partner switched off, a code or a partner
+  removed outright - a page that says the code is no longer valid or the
+  invitation is closed, which the next upload puts in place of the stale
+  one.
 - The catalog is schema 2 and announces every active key (`trusted_keys`):
   to rotate, `key new`, publish once with the old key, then with the new
   one; `key retire` the old one afterwards.
