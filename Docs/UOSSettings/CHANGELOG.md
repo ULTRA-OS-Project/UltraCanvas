@@ -1,3 +1,9 @@
+#### 2026-11-06 *0.18.0*
+- **Desktop: the Sticker board's cards and hover preview.** Two more rows on
+  the *Desktop* page: *Sticker board cards* (*Text only*, *Thumbnail and
+  text*, *Thumbnail and text in a row*) and *Hover preview* (*Small*,
+  *Medium*, *Large*). The desktop takes a change within a second.
+
 #### 2026-11-06 *0.17.0*
 - **Desktop > Start with the desktop** lists UltraClipboard,
   UltraNotifications and the Sticker board as well (UltraDesktop's own
