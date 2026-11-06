@@ -220,6 +220,8 @@ void SetArcAngles(double startDeg, double endDeg);  // custom sweep for analog d
 void SetGaugeColor(const Color& c);       // fill / needle / indicator colour
 void SetBackgroundColor(const Color& c);  // panel background
 void SetTextColor(const Color& c);        // value / title text colour
+void SetClockHandColor(const Color& c);   // AnalogClock: hour and minute hands, the hub
+void SetClockTickColor(const Color& c);   // AnalogClock: ticks, rim, hour numbers
 ```
 
 ### Round-Gauge (CircularRing) Styling
@@ -373,6 +375,19 @@ its own internal timer — no value updates required.
 auto clock = CreateGaugeDiagramElement("clock", 0, 0, 272, 374);
 clock->SetMode(GaugeMode::AnalogClock);
 clock->SetTitle("Clock");
+```
+
+The hands and ticks are dark for the light face it starts with. On a dark
+face give them light colours - a desktop's clock, white on black; the
+second hand stays red:
+
+```cpp
+auto night = CreateGaugeDiagramElement("night", 0, 0, 48, 52);
+night->SetMode(GaugeMode::AnalogClock);
+night->SetShowLabels(false);
+night->SetBackgroundColor(Colors::Black);
+night->SetClockHandColor(Colors::White);
+night->SetClockTickColor(Color(255, 255, 255, 140));
 ```
 
 ### 5. Stopwatch with Start/Stop/Reset

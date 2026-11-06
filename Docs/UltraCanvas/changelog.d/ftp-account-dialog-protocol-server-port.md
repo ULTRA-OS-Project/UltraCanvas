@@ -13,16 +13,14 @@
   SFTP only, has a *Choose* button that opens the file dialog in `~/.ssh`
   with hidden files shown; a `~/` typed into it is expanded. The status
   line wraps onto two lines, so a server's refusal is read whole, and a
-  refusal without words of its own still says that much. The callbacks the
+  refusal is said by its result code (`DescribeResult`). The callbacks the
   widgets hold reach the other widgets through plain pointers - the dialog
   owns them all and outlives every callback - where the provider menu's own
   callback used to hold a `shared_ptr` to the menu, a cycle that kept the
-  menu alive. Its texts go through `Tr`: `extract_ui_strings.py` reads
-  `UltraCloud/ui` into the standard set, since the dialog is every
-  application's, and the 42 entries come drafted in all thirty languages;
-  *Port*, *Protocol*, *User*, *Server* and *Add account* move up into the
-  standard set from the Computer and Communication base sets, which kept
-  the translations they had (`UltraCloudAccountDialog.cpp` 0.8.0).
+  menu alive. The new texts (the protocol menu, the server and port rows, their
+  messages) go through `Tr` into the standard set, drafted in all thirty
+  languages; the rest keep the wording and translations of the dialog's
+  earlier `Tr` conversion (`UltraCloudAccountDialog.cpp` 0.8.2).
 - **The FTP provider refuses a scheme it does not speak.** `Verify` answers
   `InvalidArgument` - "the server URL starts with https://, which is not
   FTP: it has to start with ftp://, ftps://, ftpes:// or sftp://" - before

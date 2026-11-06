@@ -3,6 +3,7 @@
 // backend. Applications include UltraCanvasDesktopShell.h instead; this
 // header exists so OS/<Platform>/UltraCanvas*DesktopShell.cpp and the shared
 // core agree on one set of entry points.
+// Version: 1.9.0 - CaptureWindowImage
 // Version: 1.8.0 - macOS: ListNativeApplications and LaunchShortcut native
 //                  (ULTRACANVAS_DESKTOPSHELL_NATIVE_APPLICATIONS)
 // Version: 1.7.0 - GetWindowBounds, MoveWindowTo, KillProcess
@@ -77,6 +78,9 @@ namespace DesktopShellBackend {
     // the screen by the backend; false (with the reason) when nothing of it
     // is on the screen. `out.x` / `out.y` say what was captured.
     bool CaptureScreenArea(int x, int y, int width, int height, DesktopScreenImage& out, std::string& error);
+    // One window at its own size (the core scales it down); false (with the
+    // reason) for a minimized or vanished window.
+    bool CaptureWindowImage(uint64_t id, DesktopScreenImage& out, std::string& error);
 
     // The installed applications, where the platform keeps them somewhere
     // other than freedesktop desktop entries: the Start menu's shortcuts on

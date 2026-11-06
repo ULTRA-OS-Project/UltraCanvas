@@ -246,12 +246,26 @@ target.label = "Target window";
   web); a domain axis rules across the value range (spokes under Polar).
   `SetDomainGridAxis(index)` adds the second direction, so a scatter plot
   rules both x and y and a radar draws rings and spokes.
+  `SetExtraGridAxes({index, ...})` rules further axes the same way: the other
+  panes of a chart whose value axes share the plot in sub-bands
+  (`ChartAxis::bandStart` / `bandEnd`), so every pane has its own grid.
 - **Limiters**: `AddLimiter({kind, axisIndex, value, color, width, dashed,
   caption})` draws reference lines (average, target, threshold...); captions
   are solved into the label plan so they never overprint value labels. A
   limiter on a domain axis runs across the value range (a pyramid's average
   age), and `extentStart` / `extentEnd` trim it to part of the plot (one side
-  of a diverging chart).
+  of a diverging chart). A limiter whose value falls outside its axis's band
+  (the whole plot, or the axis's pane) is neither drawn nor captioned, rather
+  than drawn across a neighbouring pane. `captionPlacement` decides where the
+  caption goes: `Solved` (the default) lets the label solver place it beside
+  the line near its far end, anchored half its own width in from the end so it
+  fits there instead of running past the plot edge; `AboveEnd` pins it just
+  above the line there (beside a line that runs up the screen, such as a
+  stage divider, so it stays inside the plot); `BeyondEnd` puts it just past
+  the line's end, outside the plot, in room the engine reserves - the column
+  of limit values a control chart has, clear of the data. Where two captions
+  in that column would overprint, they are spread apart just enough, in order. `GetLimiters()` and `GetHighlights()` return
+  what was added.
 - **Span annotations**: `AddSpanAnnotation({xAxisIndex, yAxisIndex, from, to,
   label, ...})` draws a dimension line between two value-space points, with
   arrowheads and a boxed caption the label plan steers around - the lead time,
@@ -517,7 +531,10 @@ sectors, wedges). The engine then owns hover: MouseMove hit-tests the regions
 without re-running layout or the label solver, `HoveredRegionId()` tells the
 content what to emphasise, `OnHitRegionHoverChanged` notifies subclasses, and
 a region's tooltip is shown through the standard tooltip manager whenever
-tooltips are enabled (`SetEnableTooltips`).
+tooltips are enabled (`SetEnableTooltips`). `HitRegionAt(point, &tooltip)`
+answers what a hover at `point` would find - the region's id (-1 for none)
+and its tooltip, as of the last render - for tests and for a host that shows
+its own read-out.
 
 ## Animation
 

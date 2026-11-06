@@ -38,7 +38,6 @@
   "Comment:": "Comentariu:",
   "Copy (Ctrl+C)": "Copiere (Ctrl+C)",
   "Could not read the image file.": "Fișierul imagine nu a putut fi citit.",
-  "Crash Recovery": "Recuperare după blocare",
   "Cut (Ctrl+X)": "Decupare (Ctrl+X)",
   "Decrease Font Size": "Micșorare dimensiune font",
   "Decrease Font Size (Ctrl+-)": "Micșorare dimensiune font (Ctrl+-)",
@@ -72,11 +71,6 @@
   "Find Previous": "Căutare anterior",
   "Find Previous (Shift+Enter)": "Căutare anterior (Shift+Enter)",
   "Find what:": "De căutat:",
-  "Found {n} autosaved file from a previous session.\n\nWould you like to recover it?": {
-    "one": "S-a găsit {n} fișier salvat automat dintr-o sesiune anterioară.\n\nDoriți să îl recuperați?",
-    "few": "S-au găsit {n} fișiere salvate automat dintr-o sesiune anterioară.\n\nDoriți să le recuperați?",
-    "other": "S-au găsit {n} de fișiere salvate automat dintr-o sesiune anterioară.\n\nDoriți să le recuperați?"
-  },
   "GB18030 (Chinese)": "GB18030 (chineză)",
   "GB2312 (Chinese Simplified)": "GB2312 (chineză simplificată)",
   "GBK (Chinese Simplified)": "GBK (chineză simplificată)",

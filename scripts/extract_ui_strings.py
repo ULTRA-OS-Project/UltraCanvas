@@ -5,12 +5,12 @@ Docs/UltraCanvas/UltraCanvasLocalisationProposal.md §8. Every call of
 Tr("..."), TrC("ctx", "..."), TrN("one", "many", n) and TrF("...", ...)
 with a literal is a key:
 
-- the framework's (UltraCanvas/{include,core,libspecific,OS,Plugins}), and
-  those of the shared dialogs a module offers every application
-  (UltraCloud/ui), go into media/locale/en/Standard.json, which is
-  maintained as well as generated: a key the sources use is added, nothing
-  is ever removed, so the curated vocabulary (the proposal's Appendix A)
-  stays for the applications;
+- the framework's (UltraCanvas/{include,core,libspecific,OS,Plugins}),
+  and UltraCloud/ui's shared dialogs, go
+  into media/locale/en/Standard.json, which is maintained as well as
+  generated: a key the sources use is added, nothing is ever removed, so
+  the curated vocabulary (the proposal's Appendix A) stays for the
+  applications;
 - an application's (Apps/<App>/) go into media/locale/en/<Name>.json,
   <Name> being the name it gives Initialize(); the file is rewritten from
   the sources, keeping its metadata ("@bases", "@source-language", ...),
@@ -44,12 +44,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 LOCALE = ROOT / "media" / "locale"
+# The framework, and the modules' shared dialogs every application that uses
+# the module shows (UltraCloud's account and picker dialogs: UltraFiler,
+# UltraPress): their texts are the standard set's.
 FRAMEWORK_DIRS = ["UltraCanvas/include", "UltraCanvas/core", "UltraCanvas/libspecific", "UltraCanvas/OS",
-                  "UltraCanvas/Plugins",
-                  # UltraCloud's add-account and picker dialogs: one dialog for
-                  # every application that links UltraCloudUI, so its texts are
-                  # every application's - the standard set's.
-                  "UltraCloud/ui"]
+                  "UltraCanvas/Plugins", "UltraCloud/ui"]
 SKIP_APPS = {"CSSLayoutTests"}
 LIT = r'"((?:[^"\\\n]|\\.)*)"'
 SITE = re.compile(r"(?<![A-Za-z0-9_:])(Tr|TrC|TrN|TrF)\s*\(")

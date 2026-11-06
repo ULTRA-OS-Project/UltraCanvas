@@ -106,13 +106,25 @@ int region = soil.RegionOf(27.3, 22.4, 50.1);            // the class a sample f
 ```
 
 `RegionOf` classifies by the geometry the chart draws, in share space. A point
-exactly on an edge two regions share belongs to the region listed first, so
-the order of `regions` is the tie-break.
+exactly on an edge two regions share belongs to the region on the side
+`edgeLean` leans into - a change in the A, B and C shares that adds up to 0 -
+or, with no lean (the default) or on the triangle's rim where the lean would
+leave it, to the region listed first:
 
-The USDA preset's outlines are derived from the class rules of the USDA Soil
-Survey Manual (loam: clay 7-27 %, silt 28-50 %, sand at most 52 %, and so
-on), not drawn by hand. `TernaryModelTest` checks every class against those
-rules on a grid of 19,900 compositions.
+```cpp
+soil.edgeLean = {2.0, -3.0, 1.0};   // edges go to the side with more A and C, less B
+```
+
+The USDA preset's outlines are derived from the class definitions of the
+USDA Soil Survey Manual (Handbook 18, 2017, chapter 3: loam is "7 to less
+than 27 percent clay, 28 to less than 50 percent silt, and 52 percent or less
+sand", and so on), not drawn by hand. The manual gives every class boundary
+to the finer side - more clay, more silt, less sand - and the preset's lean
+does the same, so a sample of exactly 7 % clay is loam, as the manual says,
+not sandy loam. `TernaryModelTest` checks the classes against the manual's
+wording on a grid of 19,900 compositions off the boundaries and at all 5,151
+whole-percent compositions, boundaries and corners included. The lean is
+saved in the JSON (`"edgeLean"`).
 
 Hovering a region shows its name and note, a click calls
 `onRegionClick(regionIndex)`, and a point's tooltip names the region it is

@@ -1,9 +1,16 @@
 // UltraCloud/ui/UltraCloudAccountDialog.cpp
-// Version: 0.8.0 - the FTP provider asks for the protocol, the server and the
+// Version: 0.8.2 - the FTP provider asks for the protocol, the server and the
 //                  port each on its own; the private key is chosen with a
 //                  file dialog; a refusal is shown whole, on two lines; the
 //                  callbacks reach the widgets through plain pointers; the
 //                  texts through Tr
+// Version: 0.8.1 - a failed sign-in says why in a translated sentence by its
+//                  result code (DescribeResult); the service's technical
+//                  message is the status line's tooltip
+// Version: 0.8.0 - every text a person reads goes through Tr / TrF (the
+//                  standard set: UltraFiler and UltraPress both show this
+//                  dialog); the OAuth hint is one sentence with the provider
+//                  as {0}
 // Version: 0.7.1 - a private key row for SFTP
 // Version: 0.7.0 - the shared_ptr form: the sign-in thread holds the service
 //                  until it ends
@@ -11,6 +18,7 @@
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraCloudAccountDialog.h"
 #include "UltraCloudUiStyle.h"
+#include "UltraCloudResultText.h"
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasButton.h"
@@ -216,10 +224,11 @@ void ApplyProvider(const Form& form) {
     if (caps.needsOAuth) {
         form.addBtn->SetText(Tr("Sign in in browser"));
         form.hint->SetText(CanSignIn(id)
-            ? TrF("Your browser opens {0}'s sign-in page; come back here when it says you are done.",
+            ? TrF("Your browser opens the sign-in page of {0}; come back here when it says you are done.",
                   p->DisplayName())
-            : TrF("The sign-in service is off and no OAuth client id is configured for {0} — set "
-                  "ULTRACLOUD_OAUTH_SERVICE_URL or ULTRACLOUD_{1}_CLIENT_ID (see Docs/Modules/UltraCloud/README.md).",
+            : TrF("The sign-in service is off and no OAuth client id is configured for {0} - set "
+                  "ULTRACLOUD_OAUTH_SERVICE_URL or ULTRACLOUD_{1}_CLIENT_ID (see "
+                  "Docs/Modules/UltraCloud/README.md).",
                   p->DisplayName(), id));
     } else {
         form.addBtn->SetText(Tr("Add account"));
@@ -383,11 +392,13 @@ void ShowAddAccountDialog(UltraCanvasWindowBase* parent, std::shared_ptr<CloudSe
     chooseKey->onClick = [keyInput = keyFile.get()]() { ChooseKeyFile(keyInput); };
 
     auto publicUrl = CreateTextInput("cloudAccPublic", 0, 0, 0, UiStyle::kControlHeight);
-    publicUrl->SetPlaceholder(Tr("https://files.example.org/pub (links = this URL + path)"));
+    publicUrl->SetPlaceholder(TrF("{0} (links = this URL + path)", "https://files.example.org/pub"));
     form->publicRow = addRow("cloudAccPublic", Tr("Public URL"), publicUrl);
     form->publicUrl = publicUrl.get();
 
     auto folder = CreateTextInput("cloudAccFolder", 0, 0, 0, UiStyle::kControlHeight);
+    // A folder name on the server, not a text of the dialog: the same in
+    // every language, so a second device finds the folder the first made.
     folder->SetText("/Shared from ULTRA OS");
     addRow("cloudAccFolder", Tr("Upload folder"), folder);
     form->folder = folder.get();
@@ -539,9 +550,10 @@ void ShowAddAccountDialog(UltraCanvasWindowBase* parent, std::shared_ptr<CloudSe
                 if (r.code == ResultCode::Cancelled) return;   // closed meanwhile
                 if (r) { *added = a; dlg->CloseDialog(DialogResult::OK); return; }
                 form->status->SetTextColor(UiStyle::kDanger);
-                // A refusal with no words of its own still says that much:
-                // an empty status line reads as nothing having happened.
-                form->status->SetText(r.message.empty() ? Tr("The sign-in was refused.") : r.message);
+                // DescribeResult: a sentence in the reader's language for
+                // the result code; the service's own words in the tooltip.
+                form->status->SetText(DescribeResult(r));
+                form->status->SetTooltip(ResultDetail(r));
                 form->addBtn->SetDisabled(false);
             };
             if (app) app->PostToUIThread(finish); else finish();

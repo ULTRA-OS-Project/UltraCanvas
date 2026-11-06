@@ -1,11 +1,19 @@
 // UltraCloud/ui/UltraCloudPickerDialog.cpp
+// Version: 0.4.1 - a failed listing, upload or link says why in a translated
+//                  sentence by its result code (DescribeResult); the
+//                  technical message is the status line's tooltip
+// Version: 0.4.0 - every text a person reads goes through Tr / TrF (the
+//                  standard set, like the add-account dialog's); the status
+//                  lines are whole sentences with the name as {0}
 // Version: 0.3.0 - the worker threads and the add-account dialog hold the
 //                  shared service until they end
 // Last Modified: 2026-10-14
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraCloudPickerDialog.h"
 #include "UltraCloudUiStyle.h"
+#include "UltraCloudResultText.h"
 #include "UltraCloudAccountDialog.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasButton.h"
@@ -95,10 +103,13 @@ void Post(std::function<void()> fn) {
     else fn();
 }
 
-void SetStatus(const std::shared_ptr<PickerState>& st, const std::string& text, bool error = false) {
+// `detail`: the technical message behind an error, as the line's tooltip.
+void SetStatus(const std::shared_ptr<PickerState>& st, const std::string& text, bool error = false,
+               const std::string& detail = std::string()) {
     if (!st->status) return;
     st->status->SetTextColor(error ? Color(180, 40, 40, 255) : Color(60, 60, 60, 255));
     st->status->SetText(text);
+    st->status->SetTooltip(detail);
 }
 
 void UpdateButtons(const std::shared_ptr<PickerState>& st) {
@@ -142,7 +153,7 @@ void Navigate(const std::shared_ptr<PickerState>& st, const std::string& path) {
     const int gen = ++st->generation;
     st->busy = true;
     UpdateButtons(st);
-    SetStatus(st, "Loading " + target + "…");
+    SetStatus(st, TrF("Loading {0}…", target));
 
     std::shared_ptr<CloudService> service = st->service;
     std::thread([st, service, accountId, target, gen]() {
@@ -151,11 +162,11 @@ void Navigate(const std::shared_ptr<PickerState>& st, const std::string& path) {
         Post([st, entries, r, target, gen]() {
             if (st->dialog.expired() || gen != st->generation) return;
             st->busy = false;
-            if (!r) { SetStatus(st, r.message, true); UpdateButtons(st); return; }
+            if (!r) { SetStatus(st, DescribeResult(r), true, ResultDetail(r)); UpdateButtons(st); return; }
             st->path = target;
             st->entries = entries;
             FillList(st);
-            SetStatus(st, entries.empty() ? "Empty folder." : "");
+            SetStatus(st, entries.empty() ? Tr("Empty folder.") : std::string());
         });
     }).detach();
 }
@@ -181,7 +192,7 @@ void ReloadAccounts(const std::shared_ptr<PickerState>& st, const std::string& p
     if (st->accounts.empty()) {
         st->entries.clear();
         FillList(st);
-        SetStatus(st, "No cloud account yet — add one to attach links.");
+        SetStatus(st, Tr("No cloud account yet — add one to attach links."));
         return;
     }
     Navigate(st, "/");
@@ -191,7 +202,7 @@ void UploadHere(const std::shared_ptr<PickerState>& st) {
     const Account* acc = st->Current();
     if (!acc) return;
     FileDialogOptions options;
-    options.title = "Upload to " + acc->displayName;
+    options.title = TrF("Upload to {0}", acc->displayName);
     options.parentWindow = st->parent;
     UltraCanvasFileLoader::OpenFileDialog(options, [st](DialogResult result, const std::string& local) {
         if (result != DialogResult::OK || local.empty()) return;
@@ -203,14 +214,14 @@ void UploadHere(const std::shared_ptr<PickerState>& st) {
         const std::string remote = (folder == "/" ? "" : folder) + "/" + name;
         st->busy = true;
         UpdateButtons(st);
-        SetStatus(st, "Uploading " + name + "…");
+        SetStatus(st, TrF("Uploading {0}…", name));
         std::shared_ptr<CloudService> service = st->service;
         std::thread([st, service, accountId, local, remote, folder]() {
             Result r = service->Upload(accountId, local, remote);
             Post([st, r, folder]() {
                 if (st->dialog.expired()) return;
                 st->busy = false;
-                if (!r) { SetStatus(st, r.message, true); UpdateButtons(st); return; }
+                if (!r) { SetStatus(st, DescribeResult(r), true, ResultDetail(r)); UpdateButtons(st); return; }
                 Navigate(st, folder);   // refresh; the new file shows up
             });
         }).detach();
@@ -225,7 +236,7 @@ void MakeLinkAndClose(const std::shared_ptr<PickerState>& st) {
     const Account account = *acc;
     st->busy = true;
     UpdateButtons(st);
-    SetStatus(st, "Creating link for " + entry.name + "…");
+    SetStatus(st, TrF("Creating link for {0}…", entry.name));
     std::shared_ptr<CloudService> service = st->service;
     std::thread([st, service, account, entry]() {
         ShareLink link;
@@ -233,7 +244,7 @@ void MakeLinkAndClose(const std::shared_ptr<PickerState>& st) {
         Post([st, r, link, account, entry]() {
             if (st->dialog.expired()) return;
             st->busy = false;
-            if (!r) { SetStatus(st, r.message, true); UpdateButtons(st); return; }
+            if (!r) { SetStatus(st, DescribeResult(r), true, ResultDetail(r)); UpdateButtons(st); return; }
             st->result.account = account;
             st->result.entry = entry;
             st->result.link = link;
@@ -257,7 +268,7 @@ void ShowCloudLinkPicker(UltraCanvasWindowBase* parent, std::shared_ptr<CloudSer
                          std::function<void(const CloudLinkPick&)> onPicked) {
     if (!service) return;
     DialogConfig config;
-    config.title      = "Attach cloud link";
+    config.title      = Tr("Attach cloud link");
     config.width      = 640;
     config.height     = 480;
     config.dialogType = DialogType::Custom;
@@ -288,10 +299,10 @@ void ShowCloudLinkPicker(UltraCanvasWindowBase* parent, std::shared_ptr<CloudSer
     st->accountBox = CreateDropdown("cloudPickAccount", 0, 0, 0, UiStyle::kControlHeight);
     accountCell->AddChild(st->accountBox);
     st->accountBox->layoutItem.SetFlexGrow(1);
-    auto addBtn = CreateButton("cloudPickAdd", 0, 0, 134, UiStyle::kControlHeight, "Add account…");
+    auto addBtn = CreateButton("cloudPickAdd", 0, 0, 134, UiStyle::kControlHeight, Tr("Add account…"));
     UiStyle::StyleSecondary(addBtn);
     accountCell->AddChild(addBtn);
-    AddFormRow(topForm, UiStyle::MakeCaption("cloudPickAccountLbl", "Account"), accountCell);
+    AddFormRow(topForm, UiStyle::MakeCaption("cloudPickAccountLbl", Tr("Account")), accountCell);
 
     // Row 2: path + Up + Upload.
     auto pathCell = CreateFormCellRow("cloudPickPathRow", 8.0f,
@@ -301,14 +312,14 @@ void ShowCloudLinkPicker(UltraCanvasWindowBase* parent, std::shared_ptr<CloudSer
     st->pathLabel->SetTextColor(UiStyle::kTextPrimary);
     pathCell->AddChild(st->pathLabel);
     st->pathLabel->layoutItem.SetFlexGrow(1);
-    st->upBtn = CreateButton("cloudPickUp", 0, 0, 64, UiStyle::kControlHeight, "↑ Up");
+    st->upBtn = CreateButton("cloudPickUp", 0, 0, 64, UiStyle::kControlHeight, "↑ " + Tr("Up"));
     st->uploadBtn = CreateButton("cloudPickUpload", 0, 0, 124, UiStyle::kControlHeight,
-                                 "Upload file…");
+                                 Tr("Upload file…"));
     UiStyle::StyleSecondary(st->upBtn);
     UiStyle::StyleSecondary(st->uploadBtn);
     pathCell->AddChild(st->upBtn);
     pathCell->AddChild(st->uploadBtn);
-    AddFormRow(topForm, UiStyle::MakeCaption("cloudPickPathLbl", "Folder"), pathCell);
+    AddFormRow(topForm, UiStyle::MakeCaption("cloudPickPathLbl", Tr("Folder")), pathCell);
 
     dialog->AddChild(topForm);
 
@@ -325,11 +336,11 @@ void ShowCloudLinkPicker(UltraCanvasWindowBase* parent, std::shared_ptr<CloudSer
     st->list->SetLineColor(Colors::Transparent);
     st->list->SetBorders(1.0f, UiStyle::kBorder, UiStyle::kRadius);
     st->list->SetColumns({
-        { "name",     "Name",     0,   160, 1.0f, TextAlignment::Left,
+        { "name",     Tr("Name"),     0,   160, 1.0f, TextAlignment::Left,
           Color(30, 30, 30), Colors::Transparent, 0, /*isTreeColumn=*/true },
-        { "size",     "Size",     90,  0,   1.0f, TextAlignment::Right,
+        { "size",     Tr("Size"),     90,  0,   1.0f, TextAlignment::Right,
           Color(90, 90, 90), Colors::Transparent, 0, false },
-        { "modified", "Modified", 170, 0,   1.0f, TextAlignment::Left,
+        { "modified", Tr("Modified"), 170, 0,   1.0f, TextAlignment::Left,
           Color(90, 90, 90), Colors::Transparent, 0, false },
     });
     st->list->SetColumnStyle(UiStyle::ListHeader());
@@ -347,9 +358,9 @@ void ShowCloudLinkPicker(UltraCanvasWindowBase* parent, std::shared_ptr<CloudSer
     buttons->layout.SetFlexRow().SetFlexGap(8)
                    .SetFlexAlignItems(CSSLayout::AlignItems::Center);
     buttons->AddStretchSpacer(1);
-    auto cancelBtn = CreateButton("cloudPickCancel", 0, 0, 90, UiStyle::kControlHeight, "Cancel");
+    auto cancelBtn = CreateButton("cloudPickCancel", 0, 0, 90, UiStyle::kControlHeight, Tr("Cancel"));
     UiStyle::StyleSecondary(cancelBtn);
-    st->linkBtn = CreateButton("cloudPickLink", 0, 0, 120, UiStyle::kControlHeight, "Insert link");
+    st->linkBtn = CreateButton("cloudPickLink", 0, 0, 120, UiStyle::kControlHeight, Tr("Insert link"));
     UiStyle::StylePrimary(st->linkBtn);
     buttons->AddChild(cancelBtn);
     buttons->AddChild(st->linkBtn);

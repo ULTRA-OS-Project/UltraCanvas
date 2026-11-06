@@ -34,10 +34,23 @@
 // toplevel to a workspace, so a window's desktop is unknown (-1) and
 // MoveWindowToVirtualDesktop answers false.
 //
+// A window's picture (CaptureWindowImage, a taskbar's previews) is
+// ext-image-copy-capture-v1 of the window's ext-image-capture-source: the
+// window is named to it through ext-foreign-toplevel-list-v1, whose handles
+// are matched to the wlr list's by app id and title (the nth of a kind to
+// the nth: both lists announce in the compositor's order), and the frame is
+// copied into a wl_shm buffer in XRGB / ARGB8888 - B, G, R, x in memory,
+// DesktopScreenImage's layout. The compositor draws the window itself, so a
+// covered window shows its own content. wlroots 0.19 and later (sway 1.11,
+// labwc, river), niri and others offer it; elsewhere the answer is false
+// with the reason, and the taskbar shows the window's icon.
+//
 // Screenshots and global shortcuts go through the freedesktop portals,
 // in UltraCanvasWaylandPortals.cpp. A window's bounds and position are
 // the compositor's alone (no protocol tells a taskbar where a window is):
 // GetWindowBounds and MoveWindowTo answer false.
+// Version: 0.4.0 - CaptureWindowImage (ext-image-copy-capture-v1 through
+//                  ext-foreign-toplevel-list-v1)
 // Version: 0.3.0 - the virtual desktops (ext-workspace-v1); the portals in a
 //                  file of their own
 // Version: 0.2.0 - the window list, the monitor and the reserved edges
@@ -58,11 +71,16 @@
 
 #include "wlr-foreign-toplevel-management-unstable-v1-client-protocol.h"
 #include "ext-workspace-v1-client-protocol.h"
+#include "ext-foreign-toplevel-list-v1-client-protocol.h"
+#include "ext-image-capture-source-v1-client-protocol.h"
+#include "ext-image-copy-capture-v1-client-protocol.h"
 
 #include <wayland-client.h>
 
 #include <algorithm>
 #include <cerrno>
+#include <chrono>
+#include <functional>
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
@@ -73,6 +91,7 @@
 
 #include <fcntl.h>
 #include <poll.h>
+#include <sys/mman.h>
 #include <unistd.h>
 
 namespace UltraCanvas {
@@ -124,6 +143,14 @@ namespace {
         uint32_t capabilities = 0;
     };
 
+    // ext-foreign-toplevel-list-v1: the same toplevels again, as the
+    // capture protocols name them.
+    struct ListedToplevel {
+        ext_foreign_toplevel_handle_v1* handle = nullptr;
+        std::string title;
+        std::string appId;
+    };
+
     struct ShellConnection {
         wl_display* display = nullptr;
         wl_registry* registry = nullptr;
@@ -139,6 +166,14 @@ namespace {
         uint64_t nextArrival = 1;
         std::vector<std::unique_ptr<ForeignToplevel>> toplevels;
         uint64_t nextId = 1;
+        // A window's picture: the second list and the capture managers.
+        ext_foreign_toplevel_list_v1* list = nullptr;
+        uint32_t listName = 0;
+        bool listGone = false;
+        std::vector<std::unique_ptr<ListedToplevel>> listed;
+        ext_foreign_toplevel_image_capture_source_manager_v1* sourceManager = nullptr;
+        ext_image_copy_capture_manager_v1* copyManager = nullptr;
+        wl_shm* shm = nullptr;
         bool changed = false;        // something the monitor reports happened since it last looked
         bool managerGone = false;    // the compositor withdrew the manager (`finished`)
         int monitorNudgeFd = -1;     // the monitor's pipe, while one waits
@@ -247,6 +282,78 @@ namespace {
             ManagerToplevel,
             ManagerFinished,
     };
+
+    // ----- the second list (for the capture) -----
+    ListedToplevel* FindListed(ShellConnection* shell, ext_foreign_toplevel_handle_v1* handle) {
+        for (auto& l : shell->listed) {
+            if (l->handle == handle) return l.get();
+        }
+        return nullptr;
+    }
+    void ListedClosed(void* data, ext_foreign_toplevel_handle_v1* handle) {
+        auto* shell = static_cast<ShellConnection*>(data);
+        for (auto it = shell->listed.begin(); it != shell->listed.end(); ++it) {
+            if ((*it)->handle != handle) continue;
+            ext_foreign_toplevel_handle_v1_destroy(handle);
+            shell->listed.erase(it);
+            break;
+        }
+    }
+    void ListedDone(void*, ext_foreign_toplevel_handle_v1*) {}
+    void ListedTitle(void* data, ext_foreign_toplevel_handle_v1* handle, const char* title) {
+        if (auto* l = FindListed(static_cast<ShellConnection*>(data), handle)) l->title = title ? title : "";
+    }
+    void ListedAppId(void* data, ext_foreign_toplevel_handle_v1* handle, const char* appId) {
+        if (auto* l = FindListed(static_cast<ShellConnection*>(data), handle)) l->appId = appId ? appId : "";
+    }
+    void ListedIdentifier(void*, ext_foreign_toplevel_handle_v1*, const char*) {}
+    const ext_foreign_toplevel_handle_v1_listener kListedListener = {
+            ListedClosed,
+            ListedDone,
+            ListedTitle,
+            ListedAppId,
+            ListedIdentifier,
+    };
+    void ListToplevel(void* data, ext_foreign_toplevel_list_v1*, ext_foreign_toplevel_handle_v1* handle) {
+        auto* shell = static_cast<ShellConnection*>(data);
+        auto l = std::make_unique<ListedToplevel>();
+        l->handle = handle;
+        ext_foreign_toplevel_handle_v1_add_listener(handle, &kListedListener, shell);
+        shell->listed.push_back(std::move(l));
+    }
+    void ListFinished(void* data, ext_foreign_toplevel_list_v1*) {
+        static_cast<ShellConnection*>(data)->listGone = true;
+    }
+    const ext_foreign_toplevel_list_v1_listener kListListener = {
+            ListToplevel,
+            ListFinished,
+    };
+
+    // The second list's handle for `t`: the same app id and title, the nth
+    // of them for the nth (both lists hold the toplevels in the order the
+    // compositor announced them); else the nth of the same app id, for a
+    // title that changed between the two lists' events. The caller holds
+    // the mutex.
+    ext_foreign_toplevel_handle_v1* ListedFor(ShellConnection* shell, const ForeignToplevel* t) {
+        const auto pick = [shell, t](bool byTitle) -> ext_foreign_toplevel_handle_v1* {
+            const auto same = [t, byTitle](const std::string& appId, const std::string& title) {
+                return appId == t->appId && (!byTitle || title == t->title);
+            };
+            size_t rank = 0;
+            for (const auto& other : shell->toplevels) {
+                if (other.get() == t) break;
+                if (same(other->appId, other->title)) ++rank;
+            }
+            for (const auto& l : shell->listed) {
+                if (!same(l->appId, l->title)) continue;
+                if (rank == 0) return l->handle;
+                --rank;
+            }
+            return nullptr;
+        };
+        if (auto* handle = pick(true)) return handle;
+        return pick(false);
+    }
 
     // ----- the workspaces -----
     WorkspaceGroup* FindGroup(ShellConnection* shell, ext_workspace_group_handle_v1* handle) {
@@ -474,6 +581,20 @@ namespace {
         } else if (what == wl_seat_interface.name && !shell->seat) {
             // The seat an activation names; its devices are not wanted here.
             shell->seat = static_cast<wl_seat*>(wl_registry_bind(registry, name, &wl_seat_interface, 1));
+        } else if (what == ext_foreign_toplevel_list_v1_interface.name && !shell->list) {
+            shell->list = static_cast<ext_foreign_toplevel_list_v1*>(
+                    wl_registry_bind(registry, name, &ext_foreign_toplevel_list_v1_interface, 1));
+            shell->listName = name;
+            ext_foreign_toplevel_list_v1_add_listener(shell->list, &kListListener, shell);
+        } else if (what == ext_foreign_toplevel_image_capture_source_manager_v1_interface.name &&
+                   !shell->sourceManager) {
+            shell->sourceManager = static_cast<ext_foreign_toplevel_image_capture_source_manager_v1*>(
+                    wl_registry_bind(registry, name, &ext_foreign_toplevel_image_capture_source_manager_v1_interface, 1));
+        } else if (what == ext_image_copy_capture_manager_v1_interface.name && !shell->copyManager) {
+            shell->copyManager = static_cast<ext_image_copy_capture_manager_v1*>(
+                    wl_registry_bind(registry, name, &ext_image_copy_capture_manager_v1_interface, 1));
+        } else if (what == wl_shm_interface.name && !shell->shm) {
+            shell->shm = static_cast<wl_shm*>(wl_registry_bind(registry, name, &wl_shm_interface, 1));
         } else if (what == ext_workspace_manager_v1_interface.name && !shell->workspaces) {
             shell->workspaces = static_cast<ext_workspace_manager_v1*>(
                     wl_registry_bind(registry, name, &ext_workspace_manager_v1_interface, 1));
@@ -487,6 +608,7 @@ namespace {
             shell->managerGone = true;
             NoteChange(shell);
         }
+        if (shell->list && name == shell->listName) shell->listGone = true;
         if (shell->workspaces && name == shell->workspacesName) {
             shell->workspacesGone = true;
             NoteChange(shell);
@@ -513,6 +635,17 @@ namespace {
             if (!shell->managerGone) zwlr_foreign_toplevel_manager_v1_stop(shell->manager);
             zwlr_foreign_toplevel_manager_v1_destroy(shell->manager);
         }
+        for (auto& l : shell->listed) {
+            if (l->handle) ext_foreign_toplevel_handle_v1_destroy(l->handle);
+        }
+        shell->listed.clear();
+        if (shell->list) {
+            if (!shell->listGone) ext_foreign_toplevel_list_v1_stop(shell->list);
+            ext_foreign_toplevel_list_v1_destroy(shell->list);
+        }
+        if (shell->sourceManager) ext_foreign_toplevel_image_capture_source_manager_v1_destroy(shell->sourceManager);
+        if (shell->copyManager) ext_image_copy_capture_manager_v1_destroy(shell->copyManager);
+        if (shell->shm) wl_shm_destroy(shell->shm);
         for (auto& w : shell->workspaceList) {
             if (w->handle) ext_workspace_handle_v1_destroy(w->handle);
         }
@@ -593,6 +726,129 @@ namespace {
         }
         return true;
     }
+
+    // ----- a window's picture -----
+    struct CaptureState {
+        uint32_t width = 0, height = 0;
+        bool haveXrgb = false, haveArgb = false;
+        bool constraintsDone = false;
+        bool stopped = false;
+        bool ready = false;
+        bool failed = false;
+        uint32_t failure = 0;
+    };
+    void SessionBufferSize(void* data, ext_image_copy_capture_session_v1*, uint32_t width, uint32_t height) {
+        auto* state = static_cast<CaptureState*>(data);
+        state->width = width;
+        state->height = height;
+    }
+    void SessionShmFormat(void* data, ext_image_copy_capture_session_v1*, uint32_t format) {
+        auto* state = static_cast<CaptureState*>(data);
+        if (format == WL_SHM_FORMAT_XRGB8888) state->haveXrgb = true;
+        if (format == WL_SHM_FORMAT_ARGB8888) state->haveArgb = true;
+    }
+    void SessionDmabufDevice(void*, ext_image_copy_capture_session_v1*, wl_array*) {}
+    void SessionDmabufFormat(void*, ext_image_copy_capture_session_v1*, uint32_t, wl_array*) {}
+    void SessionDone(void* data, ext_image_copy_capture_session_v1*) {
+        static_cast<CaptureState*>(data)->constraintsDone = true;
+    }
+    void SessionStopped(void* data, ext_image_copy_capture_session_v1*) {
+        static_cast<CaptureState*>(data)->stopped = true;
+    }
+    const ext_image_copy_capture_session_v1_listener kSessionListener = {
+            SessionBufferSize,
+            SessionShmFormat,
+            SessionDmabufDevice,
+            SessionDmabufFormat,
+            SessionDone,
+            SessionStopped,
+    };
+    void FrameTransform(void*, ext_image_copy_capture_frame_v1*, uint32_t) {}
+    void FrameDamage(void*, ext_image_copy_capture_frame_v1*, int32_t, int32_t, int32_t, int32_t) {}
+    void FramePresentationTime(void*, ext_image_copy_capture_frame_v1*, uint32_t, uint32_t, uint32_t) {}
+    void FrameReady(void* data, ext_image_copy_capture_frame_v1*) {
+        static_cast<CaptureState*>(data)->ready = true;
+    }
+    void FrameFailed(void* data, ext_image_copy_capture_frame_v1*, uint32_t reason) {
+        auto* state = static_cast<CaptureState*>(data);
+        state->failed = true;
+        state->failure = reason;
+    }
+    const ext_image_copy_capture_frame_v1_listener kFrameListener = {
+            FrameTransform,
+            FrameDamage,
+            FramePresentationTime,
+            FrameReady,
+            FrameFailed,
+    };
+
+    // Reads and dispatches until `done` says so, the connection fails or
+    // `timeoutMs` pass. The caller holds g_shellMutex (the monitor reads
+    // the socket only under it, so the events land here).
+    bool DispatchUntil(wl_display* display, const std::function<bool()>& done, int timeoutMs) {
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeoutMs);
+        while (!done()) {
+            while (wl_display_prepare_read(display) != 0) {
+                if (wl_display_dispatch_pending(display) < 0) return false;
+                if (done()) return true;
+            }
+            wl_display_flush(display);
+            const auto left = std::chrono::duration_cast<std::chrono::milliseconds>(
+                    deadline - std::chrono::steady_clock::now()).count();
+            if (left <= 0) {
+                wl_display_cancel_read(display);
+                return false;
+            }
+            pollfd fd;
+            fd.fd = wl_display_get_fd(display);
+            fd.events = POLLIN;
+            fd.revents = 0;
+            const int n = ::poll(&fd, 1, static_cast<int>(left));
+            if (n <= 0) {
+                wl_display_cancel_read(display);
+                if (n < 0 && errno == EINTR) continue;
+                if (n == 0) return false;
+                return false;
+            }
+            if (wl_display_read_events(display) < 0) return false;
+            if (wl_display_dispatch_pending(display) < 0) return false;
+        }
+        return true;
+    }
+
+    // A shared-memory buffer of `width` x `height` 32-bit pixels.
+    struct ShmBuffer {
+        int fd = -1;
+        void* data = MAP_FAILED;
+        size_t size = 0;
+        wl_shm_pool* pool = nullptr;
+        wl_buffer* buffer = nullptr;
+        ~ShmBuffer() {
+            if (buffer) wl_buffer_destroy(buffer);
+            if (pool) wl_shm_pool_destroy(pool);
+            if (data != MAP_FAILED) ::munmap(data, size);
+            if (fd >= 0) ::close(fd);
+        }
+        bool Create(wl_shm* shm, int width, int height, uint32_t format) {
+            const int stride = width * 4;
+            size = static_cast<size_t>(stride) * static_cast<size_t>(height);
+            fd = ::memfd_create("ultracanvas-window-picture", MFD_CLOEXEC);
+            if (fd < 0 || ::ftruncate(fd, static_cast<off_t>(size)) != 0) return false;
+            data = ::mmap(nullptr, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+            if (data == MAP_FAILED) return false;
+            pool = wl_shm_create_pool(shm, fd, static_cast<int32_t>(size));
+            if (!pool) return false;
+            buffer = wl_shm_pool_create_buffer(pool, 0, width, height, stride, format);
+            return buffer != nullptr;
+        }
+    };
+
+    // How long the compositor gets for each step: the constraints, then
+    // the copy. The first frame of a session is copied at once.
+    constexpr int kCaptureStepMs = 1500;
+    // A window larger than this is not copied: its picture would be a
+    // waste of shared memory for a 200-pixel preview.
+    constexpr uint32_t kCaptureMaxSide = 16384;
 } // namespace
 
 // ===== WHAT THE TRAY HOST SHARES =====
@@ -692,6 +948,109 @@ bool GetWindowBounds(uint64_t, int&, int&, int&, int&) {
 }
 
 bool MoveWindowTo(uint64_t, int, int) { return false; }
+
+bool CaptureWindowImage(uint64_t id, DesktopScreenImage& out, std::string& error) {
+    out = DesktopScreenImage();
+    std::lock_guard<std::mutex> lock(g_shellMutex);
+    if (!Sync()) {
+        error = "No compositor to ask for the window's picture.";
+        return false;
+    }
+    ShellConnection* shell = g_shell;
+    const ForeignToplevel* t = FindById(shell, id);
+    if (!t) {
+        error = "The window is gone.";
+        return false;
+    }
+    if (t->minimized) {
+        error = "The window is minimized.";
+        return false;
+    }
+    if (!shell->list || shell->listGone || !shell->sourceManager || !shell->copyManager || !shell->shm) {
+        error = "The compositor offers no window capture (ext-image-copy-capture-v1).";
+        return false;
+    }
+    ext_foreign_toplevel_handle_v1* listed = ListedFor(shell, t);
+    if (!listed) {
+        error = "The compositor does not offer this window for capture.";
+        return false;
+    }
+
+    CaptureState state;
+    ext_image_capture_source_v1* source =
+            ext_foreign_toplevel_image_capture_source_manager_v1_create_source(shell->sourceManager, listed);
+    ext_image_copy_capture_session_v1* session =
+            ext_image_copy_capture_manager_v1_create_session(shell->copyManager, source, 0);   // no pointer
+    ext_image_copy_capture_session_v1_add_listener(session, &kSessionListener, &state);
+    ext_image_copy_capture_frame_v1* frame = nullptr;
+    bool ok = false;
+    const auto finish = [&]() {
+        if (frame) ext_image_copy_capture_frame_v1_destroy(frame);
+        ext_image_copy_capture_session_v1_destroy(session);
+        ext_image_capture_source_v1_destroy(source);
+        wl_display_flush(shell->display);
+    };
+
+    if (!DispatchUntil(shell->display, [&state]() { return state.constraintsDone || state.stopped; },
+                       kCaptureStepMs) ||
+        state.stopped) {
+        error = state.stopped ? "The window is gone." : "The compositor did not answer the capture.";
+        finish();
+        return false;
+    }
+    if (state.width == 0 || state.height == 0 || state.width > kCaptureMaxSide || state.height > kCaptureMaxSide) {
+        error = "The window has no size to capture.";
+        finish();
+        return false;
+    }
+    if (!state.haveXrgb && !state.haveArgb) {
+        error = "The compositor offers the window's picture only in a format not read here.";
+        finish();
+        return false;
+    }
+    const int width = static_cast<int>(state.width);
+    const int height = static_cast<int>(state.height);
+    {
+        ShmBuffer buffer;
+        if (!buffer.Create(shell->shm, width, height,
+                           state.haveXrgb ? WL_SHM_FORMAT_XRGB8888 : WL_SHM_FORMAT_ARGB8888)) {
+            error = "No shared memory for the window's picture.";
+            finish();
+            return false;
+        }
+        frame = ext_image_copy_capture_session_v1_create_frame(session);
+        ext_image_copy_capture_frame_v1_add_listener(frame, &kFrameListener, &state);
+        ext_image_copy_capture_frame_v1_attach_buffer(frame, buffer.buffer);
+        ext_image_copy_capture_frame_v1_damage_buffer(frame, 0, 0, width, height);
+        ext_image_copy_capture_frame_v1_capture(frame);
+        const bool answered = DispatchUntil(
+                shell->display, [&state]() { return state.ready || state.failed || state.stopped; }, kCaptureStepMs);
+        if (answered && state.ready) {
+            // XRGB / ARGB8888 are B, G, R, A|x in memory on a little-endian
+            // machine: the rows are DesktopScreenImage's as they are.
+            try {
+                const auto* bytes = static_cast<const uint8_t*>(buffer.data);
+                out.pixels.assign(bytes, bytes + buffer.size);
+                out.width = width;
+                out.height = height;
+                out.stride = width * 4;
+                ok = true;
+            } catch (const std::bad_alloc&) {
+                out = DesktopScreenImage();
+                error = "Not enough memory for the window's picture.";
+            }
+        } else if (state.failed) {
+            error = state.failure == EXT_IMAGE_COPY_CAPTURE_FRAME_V1_FAILURE_REASON_STOPPED
+                            ? "The window is gone."
+                            : "The compositor could not copy the window.";
+        } else {
+            error = "The compositor did not copy the window in time.";
+        }
+        // The frame goes before its buffer.
+        finish();
+    }
+    return ok;
+}
 
 int GetVirtualDesktopCount() {
     std::lock_guard<std::mutex> lock(g_shellMutex);

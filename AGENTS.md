@@ -809,7 +809,12 @@ and never introduce a new literal copy of one:
    (marked `machine draft … reviewed by -` like the rest). A word every
    application has is in `Standard.json` or a base set already (the
    proposal's appendices): an application's own catalogue holds only what
-   is its own. **A catalogue under `media/locale/en/` that conflicts in a
+   is its own. The demo app is the one place a bare literal is right:
+   `DemoApp` is in `SKIP_APPS` of `scripts/extract_ui_strings.py`, so its
+   pages have no catalogue and wrap nothing - a demo page is example code a
+   developer reads beside its document, in English, not a product a person
+   runs in their language - and a review that finds no `Tr` there has found
+   nothing. **A catalogue under `media/locale/en/` that conflicts in a
    merge is never merged by hand:** whichever branch merges second merges
    the base and runs `python3 scripts/extract_ui_strings.py` - it rebuilds a
    conflicted catalogue from both sides git keeps (its `@bases` and other

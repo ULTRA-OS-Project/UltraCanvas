@@ -38,7 +38,6 @@
   "Comment:": "Komentar:",
   "Copy (Ctrl+C)": "Salin (Ctrl+C)",
   "Could not read the image file.": "Tidak dapat membaca file gambar.",
-  "Crash Recovery": "Pemulihan setelah Crash",
   "Cut (Ctrl+X)": "Potong (Ctrl+X)",
   "Decrease Font Size": "Perkecil Ukuran Font",
   "Decrease Font Size (Ctrl+-)": "Perkecil Ukuran Font (Ctrl+-)",
@@ -70,9 +69,6 @@
   "Find Previous": "Cari Sebelumnya",
   "Find Previous (Shift+Enter)": "Cari Sebelumnya (Shift+Enter)",
   "Find what:": "Cari apa:",
-  "Found {n} autosaved file from a previous session.\n\nWould you like to recover it?": {
-    "other": "Ditemukan {n} file simpanan otomatis dari sesi sebelumnya.\n\nApakah Anda ingin memulihkannya?"
-  },
   "GB18030 (Chinese)": "GB18030 (Tionghoa)",
   "GB2312 (Chinese Simplified)": "GB2312 (Tionghoa Sederhana)",
   "GBK (Chinese Simplified)": "GBK (Tionghoa Sederhana)",
