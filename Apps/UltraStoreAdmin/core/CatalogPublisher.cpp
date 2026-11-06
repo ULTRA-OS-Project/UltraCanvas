@@ -262,21 +262,36 @@ Result<PublishReport> Publish(AdminDatabase& db, int64_t keyId, const std::strin
             ++report.codePages;
         }
     }
-    // A join page per enabled partner, join/<affiliate>/index.html: what the
-    // join QR code and link open, so a future partner lands on who invited
-    // them and the id to name when they are signed up. The same folder-and-
-    // index layout as go/, for the same reason. A partner switched off has
-    // no page; what the server already holds stays, as with everything the
-    // uploader sends.
+    // The uploader never deletes on the server (a store half-way through a
+    // download needs its file), so a page once published stays reachable.
+    // A code that left the catalog - switched off, or its partner was - and
+    // a partner switched off therefore keep a page, one that says so: the
+    // next upload replaces the stale page instead of leaving it.
+    const std::string pagesBase = TrimSlash(options.catalogBaseUrl.empty() ? db.Setting("catalog.base_url") : options.catalogBaseUrl);
+    if (const auto codes = db.Codes(); codes) {
+        for (const CodeRecord& record : codes.Value()) {
+            if (catalog.FindCode(record.code.code) != nullptr) continue;
+            const fs::path folder = out / "go" / UltraCanvas::PathFromUtf8(UltraStore::NormalizeCode(record.code.code));
+            fs::create_directories(folder, ec);
+            if (ec) return R::Failure(ErrorCode::IoError, "cannot create " + UltraCanvas::PathToUtf8(folder) + ": " + ec.message());
+            if (!WriteFileAtomically(folder / "index.html", RetiredCodePage(record.code.code, pagesBase), error)) return R::Failure(ErrorCode::IoError, error);
+            ++report.retiredPages;
+        }
+    }
+    // A join page per partner, join/<affiliate>/index.html: what the join QR
+    // code and link open, so a future partner lands on who invited them,
+    // the id to name when they are signed up, and the store's contact
+    // (store.contact) to sign up with. The same folder-and-index layout as
+    // go/, for the same reason. A partner switched off gets the page that
+    // says the invitation is closed.
     if (const auto affiliates = db.Affiliates(); affiliates && !affiliates.Value().empty()) {
-        const std::string catalogBase = TrimSlash(options.catalogBaseUrl.empty() ? db.Setting("catalog.base_url") : options.catalogBaseUrl);
+        const std::string storeContact = db.Setting("store.contact");
         for (const Affiliate& partner : affiliates.Value()) {
-            if (!partner.enabled) continue;
             const fs::path folder = out / "join" / UltraCanvas::PathFromUtf8(partner.id);
             fs::create_directories(folder, ec);
             if (ec) return R::Failure(ErrorCode::IoError, "cannot create " + UltraCanvas::PathToUtf8(folder) + ": " + ec.message());
-            if (!WriteFileAtomically(folder / "index.html", JoinPage(partner, catalogBase), error)) return R::Failure(ErrorCode::IoError, error);
-            ++report.joinPages;
+            if (!WriteFileAtomically(folder / "index.html", JoinPage(partner, storeContact, pagesBase), error)) return R::Failure(ErrorCode::IoError, error);
+            if (partner.enabled) ++report.joinPages; else ++report.retiredPages;
         }
     }
 

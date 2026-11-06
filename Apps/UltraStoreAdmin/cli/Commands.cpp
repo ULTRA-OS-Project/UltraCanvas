@@ -628,8 +628,8 @@ int CmdPublish(Store& store, const std::vector<std::string>& args) {
     if (!report) return Fail(report.error);
     const PublishReport& r = report.Value();
     for (const std::string& w : r.warnings) std::fprintf(stderr, "warning: %s\n", w.c_str());
-    std::printf("published sequence %llu: %zu app(s), %zu component(s), %zu package file(s), %zu picture(s), %zu code page(s), %zu join page(s)\n  %s\n  %s\n  key %s\n",
-                static_cast<unsigned long long>(r.sequence), r.apps, r.components, r.packagesCopied, r.mediaCopied, r.codePages, r.joinPages,
+    std::printf("published sequence %llu: %zu app(s), %zu component(s), %zu package file(s), %zu picture(s), %zu code page(s), %zu join page(s), %zu retired page(s)\n  %s\n  %s\n  key %s\n",
+                static_cast<unsigned long long>(r.sequence), r.apps, r.components, r.packagesCopied, r.mediaCopied, r.codePages, r.joinPages, r.retiredPages,
                 r.catalogPath.c_str(), r.signaturePath.c_str(), r.publicKeyHex.c_str());
     return 0;
 }

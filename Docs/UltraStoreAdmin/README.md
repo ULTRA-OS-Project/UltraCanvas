@@ -92,6 +92,7 @@ The settings in `admin.sqlite`:
 |---|---|
 | `catalog.base_url` | where `catalog.json` will be served: `https://store.example/v1` |
 | `packages.base_url` | where `packages/` and `restricted/` are served; the catalog's URL when unset |
+| `store.contact` | how a future partner reaches the store's team to sign up (an address, a page); printed on the partners' join pages |
 | `texts.languages` | the languages `translate` fills, codes separated by spaces; set by `init` to the official list |
 | `ai.provider`, `ai.base_url`, `ai.model` | the UltraAI translator's provider, server and model |
 | `catalog.sequence`, `catalog.published_at` | the last publish; set by `publish`, never by hand |
@@ -195,9 +196,13 @@ Hello.
   have one, is enabled too; a code naming an app the catalog does not list
   is warned about. A page per code is written as `go/<CODE>/index.html`,
   so the QR code's link `<catalog base>/go/<CODE>` is served by a plain
-  static web server with no rewrite rule; a page per enabled partner as
+  static web server with no rewrite rule; a page per partner as
   `join/<affiliate>/index.html` behind the join QR code's link, naming who
-  invites, what a partner earns and the id to name when signing up.
+  invites, what a partner earns, the id to name when signing up and the
+  store's contact (`store.contact`). The uploader never deletes on the
+  server, so a code that left the catalog and a partner switched off keep
+  a page that says the code is no longer valid or the invitation is
+  closed: the next upload replaces the stale page instead of leaving it.
 - The catalog is schema 2 and announces every active key (`trusted_keys`):
   to rotate, `key new`, publish once with the old key, then with the new
   one; `key retire` the old one afterwards.

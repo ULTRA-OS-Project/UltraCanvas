@@ -176,13 +176,26 @@ TEST(links_qr_codes_and_the_landing_page) {
     // The join page names the inviting partner, their id and their contact.
     Affiliate anna = Aff("aff-anna", "Anna & Co", 20, 5);
     anna.contact = "anna@example.com";
-    const std::string join = JoinPage(anna, "https://store.example/v1/");
+    const std::string join = JoinPage(anna, "partners@store.example", "https://store.example/v1/");
     REQUIRE(join.find("<strong>Anna &amp; Co</strong> invites you") != std::string::npos);
     REQUIRE(join.find("<code>aff-anna</code>") != std::string::npos);
     REQUIRE(join.find("anna@example.com") != std::string::npos);
+    REQUIRE(join.find("<strong>partners@store.example</strong>") != std::string::npos);   // the store's contact
     REQUIRE(join.find("https://store.example/v1<") != std::string::npos);   // the base, slash trimmed
     anna.contact.clear();
-    REQUIRE(JoinPage(anna, "https://store.example/v1").find("Questions about") == std::string::npos);
+    const std::string noContacts = JoinPage(anna, "", "https://store.example/v1");
+    REQUIRE(noContacts.find("Questions about") == std::string::npos);
+    REQUIRE(noContacts.find("done by the store's team") != std::string::npos);
+    // A partner switched off: the invitation is closed, and the page says so.
+    anna.enabled = false;
+    const std::string closed = JoinPage(anna, "partners@store.example", "https://store.example/v1");
+    REQUIRE(closed.find("This invitation is closed") != std::string::npos);
+    REQUIRE(closed.find("aff-anna") == std::string::npos);
+    REQUIRE(closed.find("partners@store.example") != std::string::npos);
+    // A code out of the catalog: no longer valid.
+    const std::string retired = RetiredCodePage(" anna-20 ", "https://store.example/v1");
+    REQUIRE(retired.find("<code>ANNA-20</code>") != std::string::npos);
+    REQUIRE(retired.find("no longer valid") != std::string::npos);
     RemoveDir(dir);
 }
 
@@ -191,6 +204,7 @@ TEST(the_catalog_carries_the_enabled_codes_and_publish_writes_their_pages) {
     AdminDatabase db;
     REQUIRE(db.Open(Join(dir, "admin.sqlite")).Ok());
     REQUIRE(db.SetSetting("catalog.base_url", "https://store.example/v1").Ok());
+    REQUIRE(db.SetSetting("store.contact", "partners@store.example").Ok());
     REQUIRE(db.PutPublisher({"ultra-os-project", "ULTRA OS Project", ""}).Ok());
     REQUIRE(db.PutComponent(HelloApp()).Ok());
     PackageFile f;
@@ -248,7 +262,13 @@ TEST(the_catalog_carries_the_enabled_codes_and_publish_writes_their_pages) {
     const std::string join = ReadFile(Join(options.outDirUtf8, "join/aff-anna/index.html"));
     REQUIRE(join.find("<code>aff-anna</code>") != std::string::npos);
     REQUIRE(join.find("Anna") != std::string::npos);
-    REQUIRE(!std::filesystem::exists(UltraCanvas::PathFromUtf8(Join(options.outDirUtf8, "join/aff-gone/index.html"))));
+    REQUIRE(join.find("partners@store.example") != std::string::npos);   // store.contact
+    // A partner switched off and a code out of the catalog keep a page that
+    // says so: the uploader never deletes on the server, so this is what
+    // replaces the stale page there.
+    REQUIRE_EQ(report.Value().retiredPages, size_t(2));   // the partner aff-gone, the code OFF
+    REQUIRE(ReadFile(Join(options.outDirUtf8, "join/aff-gone/index.html")).find("This invitation is closed") != std::string::npos);
+    REQUIRE(ReadFile(Join(options.outDirUtf8, "go/OFF/index.html")).find("no longer valid") != std::string::npos);
     RemoveDir(dir);
 }
 

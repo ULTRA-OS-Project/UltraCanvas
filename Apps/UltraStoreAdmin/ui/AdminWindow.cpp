@@ -46,6 +46,7 @@ constexpr const char* kItemPrefix = "c:";
 const char* kSettingKeys[][2] = {
     {"catalog.base_url", "Catalog base URL"},
     {"packages.base_url", "Packages base URL"},
+    {"store.contact", "Store contact (on the partners' join pages)"},
     {"texts.languages", "Languages to translate into"},
     {"ai.provider", "UltraAI provider"},
     {"ai.base_url", "UltraAI server"},
@@ -645,7 +646,7 @@ void AdminWindow::PublishNow() {
         out.message = "Published sequence " + std::to_string(r.sequence) + ": " + std::to_string(r.apps) + " app(s), " +
                       std::to_string(r.components) + " component(s), " + std::to_string(r.packagesCopied) + " package file(s), " +
                       std::to_string(r.mediaCopied) + " picture(s), " + std::to_string(r.codePages) + " code page(s), " +
-                      std::to_string(r.joinPages) + " join page(s)";
+                      std::to_string(r.joinPages) + " join page(s), " + std::to_string(r.retiredPages) + " retired page(s)";
         out.lines.push_back(r.catalogPath);
         out.lines.push_back(r.signaturePath);
         out.lines.push_back("key " + r.publicKeyHex);
