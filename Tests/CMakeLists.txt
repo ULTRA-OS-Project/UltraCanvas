@@ -1749,6 +1749,32 @@ if(UNIX AND NOT APPLE AND NOT EMSCRIPTEN)
     endif()
 endif()
 
+# ===== LINUX HOST APPEARANCE TEST =====
+# LinuxHostAppearance::Detect against a made-up config home, without a
+# display or a desktop session: the default where nothing answers (what a
+# CI runner under Xvfb must see), settings.ini and kdeglobals read, a KDE
+# session reading kdeglobals first, an XSETTINGS property from the fetcher
+# decoded, the portal not asked. Compiled from the backend's sources with
+# GIO, as the core links it; the file watcher is the core's and stays out.
+if(UNIX AND NOT APPLE AND NOT EMSCRIPTEN AND LSF_GIO_FOUND)
+    message(STATUS "  Building LinuxHostAppearanceTest...")
+    add_executable(LinuxHostAppearanceTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/LinuxHostAppearanceTest.cpp
+        ${ULTRACANVAS_ROOT}/UltraCanvas/OS/Linux/UltraCanvasLinuxHostAppearance.cpp
+        ${ULTRACANVAS_ROOT}/UltraCanvas/OS/Linux/UltraCanvasLinuxSystemFont.cpp
+    )
+    target_include_directories(LinuxHostAppearanceTest PRIVATE
+        ${ULTRACANVAS_INCLUDE_DIR}
+        ${ULTRACANVAS_ROOT}/UltraCanvas/OS/Linux
+        ${LSF_GIO_INCLUDE_DIRS})
+    target_link_directories(LinuxHostAppearanceTest PRIVATE ${LSF_GIO_LIBRARY_DIRS})
+    target_link_libraries(LinuxHostAppearanceTest PRIVATE ${LSF_GIO_LIBRARIES})
+    target_compile_features(LinuxHostAppearanceTest PRIVATE cxx_std_20)
+    set_target_properties(LinuxHostAppearanceTest PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    add_test(NAME LinuxHostAppearanceTest COMMAND LinuxHostAppearanceTest WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: LinuxHostAppearanceTest")
+endif()
+
 # ===== VIDEO TIMELINE ELEMENT TEST =====
 # UltraCanvasVideoTimeline in a real window: geometry, hit testing and the
 # edits that mouse and key events turn into reported changes (trim with

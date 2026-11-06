@@ -18,12 +18,15 @@
 // SSH session, a CI runner under Xvfb - the schema answers its compiled
 // default, Cantarell 11, which nobody chose; GTK itself reads GSettings
 // only through the desktop's settings daemon and falls back to its files.
+// Version: 1.3.0 - the session helpers and the GSettings readers are LinuxDesktop's
+//                  (UltraCanvasLinuxDesktop.h), shared with the host appearance detector
 // Version: 1.2.0 - GSettings only inside a desktop session; the layout audit under Xvfb got Cantarell 11
 // Version: 1.1.0 - the detectors are LinuxFonts::DetectSystemFontStyle / DetectMonospacedFontStyle, shared with the Wayland backend
 // Version: 1.0.0
 // Last Modified: 2026-11-03
 // Author: UltraCanvas Framework
 #include "UltraCanvasLinuxFonts.h"
+#include "UltraCanvasLinuxDesktop.h"
 #include "UltraCanvasSystemFont.h"
 #include "UltraCanvasPathUtf8.h"
 
@@ -36,9 +39,9 @@
 
 namespace UltraCanvas {
 
-namespace {
+// ===== THE SESSION (UltraCanvasLinuxDesktop.h) =====
 
-std::string ReadWholeFile(const std::filesystem::path& path) {
+std::string LinuxDesktop::ReadWholeFile(const std::filesystem::path& path) {
     std::ifstream in(path);
     if (!in) return {};
     std::ostringstream text;
@@ -46,7 +49,7 @@ std::string ReadWholeFile(const std::filesystem::path& path) {
     return text.str();
 }
 
-std::filesystem::path ConfigHome() {
+std::filesystem::path LinuxDesktop::ConfigHome() {
     const std::string xdg = GetEnvUtf8("XDG_CONFIG_HOME");
     if (!xdg.empty()) return PathFromUtf8(xdg);
     const std::string home = GetEnvUtf8("HOME");
@@ -54,38 +57,69 @@ std::filesystem::path ConfigHome() {
     return {};
 }
 
-bool IsKdeSession() {
+bool LinuxDesktop::IsKdeSession() {
     const std::string desktop = SystemFontDetail::Lower(GetEnvUtf8("XDG_CURRENT_DESKTOP"));
     return desktop.find("kde") != std::string::npos;
 }
 
-// A desktop environment is running this session - every one of them exports
-// XDG_CURRENT_DESKTOP, and the display managers DESKTOP_SESSION.
-bool IsDesktopSession() {
+bool LinuxDesktop::IsDesktopSession() {
     return !GetEnvUtf8("XDG_CURRENT_DESKTOP").empty() || !GetEnvUtf8("DESKTOP_SESSION").empty();
 }
 
-// A string key of a GSettings schema, "" when the schema or the key is not
-// installed. Looked up rather than opened blind: g_settings_new aborts the
-// process on a missing schema.
-std::string GSettingsString(const char* schema, const char* key) {
+namespace {
+
+// The schema's settings object when the schema and the key are installed;
+// the caller unrefs it.
+GSettings* OpenSchemaKey(const char* schema, const char* key) {
     GSettingsSchemaSource* source = g_settings_schema_source_get_default();
-    if (!source) return {};
+    if (!source) return nullptr;
     GSettingsSchema* found = g_settings_schema_source_lookup(source, schema, TRUE);
-    if (!found) return {};
-    std::string result;
-    if (g_settings_schema_has_key(found, key)) {
-        if (GSettings* settings = g_settings_new_full(found, nullptr, nullptr)) {
-            if (gchar* value = g_settings_get_string(settings, key)) {
-                result = value;
-                g_free(value);
-            }
-            g_object_unref(settings);
-        }
-    }
+    if (!found) return nullptr;
+    GSettings* settings = nullptr;
+    if (g_settings_schema_has_key(found, key)) settings = g_settings_new_full(found, nullptr, nullptr);
     g_settings_schema_unref(found);
+    return settings;
+}
+
+}  // namespace
+
+std::string LinuxDesktop::GSettingsString(const char* schema, const char* key) {
+    std::string result;
+    if (GSettings* settings = OpenSchemaKey(schema, key)) {
+        if (gchar* value = g_settings_get_string(settings, key)) {
+            result = value;
+            g_free(value);
+        }
+        g_object_unref(settings);
+    }
     return result;
 }
+
+std::optional<bool> LinuxDesktop::GSettingsBoolean(const char* schema, const char* key) {
+    std::optional<bool> result;
+    if (GSettings* settings = OpenSchemaKey(schema, key)) {
+        result = g_settings_get_boolean(settings, key) != FALSE;
+        g_object_unref(settings);
+    }
+    return result;
+}
+
+std::optional<double> LinuxDesktop::GSettingsDouble(const char* schema, const char* key) {
+    std::optional<double> result;
+    if (GSettings* settings = OpenSchemaKey(schema, key)) {
+        result = g_settings_get_double(settings, key);
+        g_object_unref(settings);
+    }
+    return result;
+}
+
+namespace {
+
+using LinuxDesktop::ConfigHome;
+using LinuxDesktop::GSettingsString;
+using LinuxDesktop::IsDesktopSession;
+using LinuxDesktop::IsKdeSession;
+using LinuxDesktop::ReadWholeFile;
 
 bool FromGSettings(bool monospace, FontStyle& out) {
     if (!IsDesktopSession()) return false;
