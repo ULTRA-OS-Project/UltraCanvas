@@ -1,5 +1,10 @@
 // GLContextManagerEGL_Linux.cpp
 // EGL-based OpenGL context manager for Linux
+// Version: 1.1.0 - the display from the Wayland connection in a Wayland build,
+//                  else Mesa's surfaceless platform, before EGL's default
+// Version: 1.0.0
+// Last Modified: 2026-11-04
+// Author: UltraCanvas Framework
 #include "GL/GLContextManager.h"
 #include "UltraCanvasGLSurface.h"
 
@@ -11,7 +16,61 @@
 #include <cstring>
 #include <iostream>
 
+#ifdef ULTRACANVAS_DISPLAY_WAYLAND
+#include "../Linux/Wayland/UltraCanvasWaylandApplication.h"
+#endif
+
 namespace UltraCanvas {
+
+namespace {
+    // The EGL display. The surfaces are pbuffers (the frame is read back
+    // and composited into the window's own picture), so no window-system
+    // surface is needed, only a display that initialises: in a Wayland
+    // build the compositor connection (EGL_PLATFORM_WAYLAND), else Mesa's
+    // surfaceless platform, else EGL's default (X11 where there is one).
+    // A display counts only when it has a pbuffer-capable OpenGL config:
+    // Mesa's Wayland platform offers window configs alone, and on a
+    // compositor without a GPU (sway headless with the pixman renderer)
+    // nothing a context can draw into, where the surfaceless platform has
+    // its software renderer's pbuffers.
+    bool Usable(EGLDisplay display) {
+        EGLint major = 0, minor = 0, count = 0;
+        if (display == EGL_NO_DISPLAY || !eglInitialize(display, &major, &minor)) return false;
+        const EGLint wanted[] = {
+            EGL_SURFACE_TYPE, EGL_PBUFFER_BIT,
+            EGL_RENDERABLE_TYPE, EGL_OPENGL_BIT,
+            EGL_NONE
+        };
+        EGLConfig config = nullptr;
+        if (eglChooseConfig(display, wanted, &config, 1, &count) && count > 0) return true;
+        eglTerminate(display);
+        return false;
+    }
+
+    EGLDisplay OpenEglDisplay() {
+        EGLDisplay display = EGL_NO_DISPLAY;
+        auto getPlatformDisplay = reinterpret_cast<PFNEGLGETPLATFORMDISPLAYEXTPROC>(
+                eglGetProcAddress("eglGetPlatformDisplayEXT"));
+#ifdef ULTRACANVAS_DISPLAY_WAYLAND
+        if (getPlatformDisplay) {
+            auto* app = UltraCanvasWaylandApplication::GetInstance();
+            if (app && app->GetDisplay()) {
+                display = getPlatformDisplay(EGL_PLATFORM_WAYLAND_KHR, app->GetDisplay(), nullptr);
+                if (Usable(display)) return display;
+            }
+        }
+#endif
+#ifdef EGL_PLATFORM_SURFACELESS_MESA
+        if (getPlatformDisplay) {
+            display = getPlatformDisplay(EGL_PLATFORM_SURFACELESS_MESA, EGL_DEFAULT_DISPLAY, nullptr);
+            if (Usable(display)) return display;
+        }
+#endif
+        display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
+        if (Usable(display)) return display;
+        return EGL_NO_DISPLAY;
+    }
+} // namespace
 
 class GLContextManagerEGL : public GLContextManager {
 public:
@@ -19,23 +78,14 @@ public:
     ~GLContextManagerEGL() override { Cleanup(); }
 
     bool Initialize(const GLSurfaceConfig& config) override {
-        // Get EGL display
-        // First try platform-specific display, fall back to default
-        eglDisplay_ = eglGetDisplay(EGL_DEFAULT_DISPLAY);
+        // Get and initialise the EGL display (see OpenEglDisplay)
+        eglDisplay_ = OpenEglDisplay();
         if (eglDisplay_ == EGL_NO_DISPLAY) {
-            std::cerr << "[GLContextManagerEGL] Failed to get EGL display" << std::endl;
+            std::cerr << "[GLContextManagerEGL] No EGL display could be initialised" << std::endl;
             return false;
         }
-
-        // Initialize EGL
-        EGLint major, minor;
-        if (!eglInitialize(eglDisplay_, &major, &minor)) {
-            std::cerr << "[GLContextManagerEGL] Failed to initialize EGL" << std::endl;
-            eglDisplay_ = EGL_NO_DISPLAY;
-            return false;
-        }
-
-        std::cout << "[GLContextManagerEGL] EGL version: " << major << "." << minor << std::endl;
+        std::cout << "[GLContextManagerEGL] EGL " << (eglQueryString(eglDisplay_, EGL_VERSION) ? eglQueryString(eglDisplay_, EGL_VERSION) : "")
+                  << std::endl;
 
         // Bind OpenGL API (not OpenGL ES)
         if (!eglBindAPI(EGL_OPENGL_API)) {

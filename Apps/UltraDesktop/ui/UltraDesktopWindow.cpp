@@ -2,6 +2,7 @@
 // The desktop window: bars, wallpaper, and the live data behind the items.
 // See the header for the shape; the comments here say why each piece is
 // wired the way it is.
+// Version: 0.7.1 - the panels get the desktop window as their parent (placed on Wayland)
 // Version: 0.7.0 - the running apps grouped: one button per application with
 //                  the count of its windows, their pictures on a short rest
 //                  of the pointer (ShowPreviews), the group's own menu
@@ -745,6 +746,7 @@ void UltraDesktopWindow::OpenClockPanel() {
                                         : static_cast<UltraCanvasUIElement*>(clockTime_.get());
     const Rect2Df bounds = face ? face->GetBoundsInWindow() : Rect2Df(0, 0, 0, 0);
     clockPanel_->SetScreenArea(area_.x, area_.y, area_.width, area_.height);
+    clockPanel_->SetParentWindow(window_.get());
     clockPanel_->Open(ScreenX(bounds.x - 10), ScreenY(bounds.y));
 }
 
@@ -762,6 +764,7 @@ void UltraDesktopWindow::OpenVolumePanel() {
     auto speaker = std::dynamic_pointer_cast<UltraCanvasButton>(info_->GetWidget("speaker"));
     const Rect2Df bounds = speaker ? speaker->GetBoundsInWindow() : Rect2Df(0, 0, 0, 0);
     volumePanel_->SetScreenArea(area_.x, area_.y, area_.width, area_.height);
+    volumePanel_->SetParentWindow(window_.get());
     volumePanel_->Open(ScreenX(bounds.x - 10), ScreenY(bounds.y - 60));
 }
 
@@ -1013,6 +1016,7 @@ void UltraDesktopWindow::OpenWifiPanel() {
     }
     const Rect2Df bounds = info_->GetWidget("wifi") ? info_->GetWidget("wifi")->GetBoundsInWindow() : Rect2Df(0, 0, 0, 0);
     wifiPanel_->SetScreenArea(area_.x, area_.y, area_.width, area_.height);
+    wifiPanel_->SetParentWindow(window_.get());
     wifiPanel_->Open(ScreenX(bounds.x - 10), ScreenY(bounds.y - 200));
 }
 
@@ -1039,6 +1043,7 @@ void UltraDesktopWindow::ShowBluetoothPanel() {
     const Rect2Df bounds =
         info_->GetWidget("bluetooth") ? info_->GetWidget("bluetooth")->GetBoundsInWindow() : Rect2Df(0, 0, 0, 0);
     bluetoothPanel_->SetScreenArea(area_.x, area_.y, area_.width, area_.height);
+    bluetoothPanel_->SetParentWindow(window_.get());
     bluetoothPanel_->Open(ScreenX(bounds.x - 10), ScreenY(bounds.y - 200));
 }
 
@@ -1087,6 +1092,7 @@ void UltraDesktopWindow::OpenDevicePanel(const std::string& device) {
     const Rect2Df bounds =
         info_->GetWidget(device) ? info_->GetWidget(device)->GetBoundsInWindow() : Rect2Df(0, 0, 0, 0);
     panel->SetScreenArea(area_.x, area_.y, area_.width, area_.height);
+    panel->SetParentWindow(window_.get());
     panel->Open(ScreenX(bounds.x - 10), ScreenY(bounds.y - 120));
 }
 
@@ -2907,6 +2913,7 @@ void UltraDesktopWindow::ToggleClipboardPanel(bool besideButton) {
     }
     // On the desktop's own monitor: beside the button, or centred for Super+V.
     clipboardPanel_->SetScreenArea(area_.x, area_.y, area_.width, area_.height);
+    clipboardPanel_->SetParentWindow(window_.get());
     if (besideButton && clipboardButton_) {
         const Rect2Df bounds = clipboardButton_->GetBoundsInWindow();
         clipboardPanel_->Open(ScreenX(bounds.x - 10), ScreenY(bounds.y - 8), std::move(target));

@@ -451,12 +451,6 @@ if(ULTRACANVAS_PLATFORM STREQUAL "Linux")
             find_program(ULTRACANVAS_WAYLAND_SCANNER wayland-scanner REQUIRED)
         endif()
         message(STATUS "  Wayland backend: wayland-client ${WAYLAND_wayland-client_VERSION}, protocols in ${ULTRACANVAS_WAYLAND_PROTOCOLS_DIR}")
-        if(ULTRACANVAS_ENABLE_GL)
-            # The GL context managers are GLX / EGL-on-Xlib; EGL on a
-            # wl_egl_window is a later step of the backend.
-            message(STATUS "  Wayland backend: GL surfaces are not available yet (ULTRACANVAS_ENABLE_GL forced OFF)")
-            set(ULTRACANVAS_ENABLE_GL OFF CACHE BOOL "Enable OpenGL 3D surface support" FORCE)
-        endif()
     endif()
     # XFixes: the clipboard backend hears of every new clipboard owner (an
     # image or a file copy as much as a text) instead of comparing the text.
@@ -466,17 +460,26 @@ if(ULTRACANVAS_PLATFORM STREQUAL "Linux")
     find_package(OpenGL REQUIRED)
     pkg_check_modules(GTK3 REQUIRED gtk+-3.0 gtk+-unix-print-3.0)
 
-    # OpenGL/EGL support for GL surfaces
+    # OpenGL/EGL support for GL surfaces. The surfaces are pbuffers read
+    # back into the window's picture, so the context manager needs a
+    # display, not a window: EGL on the Wayland connection (or Mesa's
+    # surfaceless platform) in a Wayland build, where GLX - an X11 API -
+    # is left out; EGL first and GLX as the fallback on X11.
     if(ULTRACANVAS_ENABLE_GL)
         pkg_check_modules(EGL egl)
         if(EGL_FOUND)
             set(ULTRACANVAS_HAS_EGL TRUE)
             message(STATUS "  EGL: ${EGL_VERSION} (primary GL context backend)")
+        elseif(ULTRACANVAS_WAYLAND)
+            message(STATUS "  Wayland backend: no EGL, so no GL surfaces (ULTRACANVAS_ENABLE_GL forced OFF)")
+            set(ULTRACANVAS_ENABLE_GL OFF CACHE BOOL "Enable OpenGL 3D surface support" FORCE)
         else()
             message(STATUS "  EGL: NOT FOUND (will use GLX fallback)")
         endif()
-        # GLX is always available with OpenGL on Linux
-        set(ULTRACANVAS_HAS_GLX TRUE)
+        if(NOT ULTRACANVAS_WAYLAND)
+            # GLX is always available with OpenGL on X11
+            set(ULTRACANVAS_HAS_GLX TRUE)
+        endif()
     endif()
 elseif(ULTRACANVAS_PLATFORM STREQUAL "Windows")
     # Windows SDK provides most dependencies
@@ -1635,8 +1638,9 @@ if(ULTRACANVAS_PLATFORM STREQUAL "Linux" AND ULTRACANVAS_WAYLAND)
     set(ULTRACANVAS_WAYLAND_PROTOCOL_DIR ${CMAKE_CURRENT_BINARY_DIR}/wayland-protocols)
     file(MAKE_DIRECTORY ${ULTRACANVAS_WAYLAND_PROTOCOL_DIR})
     # wayland-protocols' own, by their path under its share directory
-    # (xdg-activation is in it from 1.21, so the 22.04 runners' 1.25 has
-    # it), and the ones that travel with the backend under
+    # (xdg-activation is in it from 1.21 and ext-session-lock from 1.25,
+    # so the 22.04 runners' 1.25 has both), and the ones that travel with
+    # the backend under
     # OS/Linux/Wayland/protocols/: the wlroots layer shell (the desktop and
     # its bars) and foreign toplevels (the window list), which
     # wayland-protocols does not carry, and ext-workspace (the virtual
@@ -1647,6 +1651,7 @@ if(ULTRACANVAS_PLATFORM STREQUAL "Linux" AND ULTRACANVAS_WAYLAND)
         ${ULTRACANVAS_WAYLAND_PROTOCOLS_DIR}/stable/xdg-shell/xdg-shell.xml
         ${ULTRACANVAS_WAYLAND_PROTOCOLS_DIR}/unstable/xdg-decoration/xdg-decoration-unstable-v1.xml
         ${ULTRACANVAS_WAYLAND_PROTOCOLS_DIR}/staging/xdg-activation/xdg-activation-v1.xml
+        ${ULTRACANVAS_WAYLAND_PROTOCOLS_DIR}/staging/ext-session-lock/ext-session-lock-v1.xml
         ${CMAKE_CURRENT_SOURCE_DIR}/OS/Linux/Wayland/protocols/wlr-layer-shell-unstable-v1.xml
         ${CMAKE_CURRENT_SOURCE_DIR}/OS/Linux/Wayland/protocols/wlr-foreign-toplevel-management-unstable-v1.xml
         ${CMAKE_CURRENT_SOURCE_DIR}/OS/Linux/Wayland/protocols/ext-workspace-v1.xml

@@ -1,9 +1,11 @@
 // OS/Linux/Wayland/UltraCanvasWaylandWindow.cpp
 // A window on Wayland. See the header.
+// Version: 0.4.0 - panels of a layer-shell desktop as layer surfaces, popups of
+//                  a toplevel as xdg_popup; the session lock surface; file drags
 // Version: 0.3.0 - RaiseAndFocus through xdg-activation
 // Version: 0.2.0 - Desktop windows on the layer shell; the reserved edges
 // Version: 0.1.0
-// Last Modified: 2026-11-03
+// Last Modified: 2026-11-04
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasWaylandWindow.h"
@@ -15,6 +17,8 @@
 #include "xdg-decoration-unstable-v1-client-protocol.h"
 #include "wlr-layer-shell-unstable-v1-client-protocol.h"
 #include "xdg-activation-v1-client-protocol.h"
+#include "ext-session-lock-v1-client-protocol.h"
+#include "UltraCanvasWaylandClipboard.h"
 
 #include <sys/mman.h>
 #include <unistd.h>
@@ -59,6 +63,14 @@ namespace UltraCanvas {
         static void ActivationTokenDone(void* data, xdg_activation_token_v1*, const char* token) {
             Win(data)->HandleActivationToken(token);
         }
+        static void PopupConfigure(void* data, xdg_popup*, int32_t x, int32_t y, int32_t width, int32_t height) {
+            Win(data)->HandlePopupConfigure(x, y, width, height);
+        }
+        static void PopupDone(void* data, xdg_popup*) { Win(data)->HandlePopupDone(); }
+        static void PopupRepositioned(void*, xdg_popup*, uint32_t) {}
+        static void LockConfigure(void* data, ext_session_lock_surface_v1*, uint32_t serial, uint32_t width, uint32_t height) {
+            Win(data)->HandleLockConfigure(serial, width, height);
+        }
         static void StrutClosed(void* data, zwlr_layer_surface_v1*) {
             // The output went away: the strut with it; a new desktop window
             // on the new output reserves its edges anew.
@@ -98,6 +110,14 @@ namespace UltraCanvas {
         const xdg_activation_token_v1_listener kActivationTokenListener = {
                 WaylandWindowListeners::ActivationTokenDone,
         };
+        const xdg_popup_listener kPopupListener = {
+                WaylandWindowListeners::PopupConfigure,
+                WaylandWindowListeners::PopupDone,
+                WaylandWindowListeners::PopupRepositioned,
+        };
+        const ext_session_lock_surface_v1_listener kLockListener = {
+                WaylandWindowListeners::LockConfigure,
+        };
 
         UltraCanvasWaylandApplication* App() { return UltraCanvasWaylandApplication::GetInstance(); }
 
@@ -129,6 +149,7 @@ namespace UltraCanvas {
             case WindowType::Overlay:
             case WindowType::Popup:
             case WindowType::Fullscreen:
+            case WindowType::SessionLock:
                 return false;
             default:
                 return true;
@@ -146,12 +167,30 @@ namespace UltraCanvas {
         if (!surface) return false;
         wl_surface_add_listener(surface, &kSurfaceListener, this);
 
+        UltraCanvasWaylandWindow* parent = PlacingParent();
         if (config_.type == WindowType::Desktop && app->GetLayerShell()) {
             // The desktop on the layer shell (see the header).
             if (!CreateLayerSurface(app)) {
                 DestroyNative();
                 return false;
             }
+        } else if (config_.type == WindowType::SessionLock && app->GetSessionLockManager()) {
+            if (!CreateLockSurface(app)) {
+                DestroyNative();
+                return false;
+            }
+        } else if (parent && parent->IsLayerSurface() && app->GetLayerShell()) {
+            // A panel of the desktop: a layer surface beside its bars.
+            if (!CreatePanelLayer(app, parent)) {
+                DestroyNative();
+                return false;
+            }
+        } else if (parent && parent->GetXdgSurface()) {
+            // A popup of a toplevel: the xdg_surface now, the popup role at
+            // Show, when the position is known.
+            xdgSurface = xdg_wm_base_get_xdg_surface(app->GetXdgWmBase(), surface);
+            xdg_surface_add_listener(xdgSurface, &kXdgSurfaceListener, this);
+            popupWanted = true;
         } else {
             xdgSurface = xdg_wm_base_get_xdg_surface(app->GetXdgWmBase(), surface);
             xdg_surface_add_listener(xdgSurface, &kXdgSurfaceListener, this);
@@ -326,6 +365,167 @@ namespace UltraCanvas {
         strut.thickness = 0;
     }
 
+    // ===== A CHILD PLACED BY ITS PARENT =====
+    UltraCanvasWaylandWindow* UltraCanvasWaylandWindow::PlacingParent() const {
+        switch (config_.type) {
+            case WindowType::Popup:
+            case WindowType::Borderless:
+            case WindowType::Tool:
+            case WindowType::Notification:
+                break;
+            default:
+                return nullptr;
+        }
+        auto* parent = dynamic_cast<UltraCanvasWaylandWindow*>(config_.parentWindow);
+        return parent && parent->GetSurface() ? parent : nullptr;
+    }
+
+    bool UltraCanvasWaylandWindow::CreatePanelLayer(UltraCanvasWaylandApplication* app, UltraCanvasWaylandWindow* parent) {
+        layerOutput = parent->GetLayerOutput();
+        layerSurface = zwlr_layer_shell_v1_get_layer_surface(app->GetLayerShell(), surface, layerOutput,
+                                                             ZWLR_LAYER_SHELL_V1_LAYER_TOP, "ultracanvas-panel");
+        if (!layerSurface) return false;
+        panelLayer = true;
+        zwlr_layer_surface_v1_add_listener(layerSurface, &kLayerListener, this);
+        zwlr_layer_surface_v1_set_anchor(layerSurface, ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP | ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT);
+        zwlr_layer_surface_v1_set_size(layerSurface, static_cast<uint32_t>(std::max(1, config_.width)),
+                                       static_cast<uint32_t>(std::max(1, config_.height)));
+        zwlr_layer_surface_v1_set_exclusive_zone(layerSurface, 0);
+        // The keys when clicked, back to the desktop when that is clicked
+        // (a blur, which closes a panel): on-demand focus from version 4;
+        // before it a panel gets no keys, since exclusive would keep them.
+        zwlr_layer_surface_v1_set_keyboard_interactivity(
+                layerSurface, app->GetLayerShellVersion() >= 4 ? ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_ON_DEMAND
+                                                               : ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE);
+        ApplyPanelPosition();
+        return true;
+    }
+
+    void UltraCanvasWaylandWindow::ApplyPanelPosition() {
+        if (!layerSurface || !panelLayer) return;
+        auto* parent = PlacingParent();
+        // The position is in screen pixels (the parent's own are the
+        // output's origin); the margins in the output's logical ones.
+        int px = 0, py = 0;
+        if (parent) parent->GetWindowPosition(px, py);
+        const float scale = std::max(1.0f, parent ? parent->GetDeviceScale() : 1.0f);
+        const int left = std::max(0, static_cast<int>(std::lround(static_cast<float>(config_.x - px) / scale)));
+        const int top = std::max(0, static_cast<int>(std::lround(static_cast<float>(config_.y - py) / scale)));
+        zwlr_layer_surface_v1_set_margin(layerSurface, top, 0, 0, left);
+    }
+
+    xdg_positioner* UltraCanvasWaylandWindow::MakePositioner(UltraCanvasWaylandApplication* app,
+                                                            UltraCanvasWaylandWindow* parent) const {
+        xdg_positioner* positioner = xdg_wm_base_create_positioner(app->GetXdgWmBase());
+        if (!positioner) return nullptr;
+        int px = 0, py = 0;
+        parent->GetWindowPosition(px, py);
+        const float scale = std::max(1.0f, parent->GetDeviceScale());
+        const int parentWidth = std::max(1, parent->GetConfig().width);
+        const int parentHeight = std::max(1, parent->GetConfig().height);
+        // The anchor: the asked-for corner, as a point inside the parent
+        // (a point outside it is a protocol error); the popup hangs off it
+        // to the bottom right and is slid onto the screen where it would
+        // leave it.
+        const int ax = std::clamp(static_cast<int>(std::lround(static_cast<float>(config_.x - px) / scale)), 0, parentWidth - 1);
+        const int ay = std::clamp(static_cast<int>(std::lround(static_cast<float>(config_.y - py) / scale)), 0, parentHeight - 1);
+        xdg_positioner_set_size(positioner, std::max(1, config_.width), std::max(1, config_.height));
+        xdg_positioner_set_anchor_rect(positioner, ax, ay, 1, 1);
+        xdg_positioner_set_anchor(positioner, XDG_POSITIONER_ANCHOR_TOP_LEFT);
+        xdg_positioner_set_gravity(positioner, XDG_POSITIONER_GRAVITY_BOTTOM_RIGHT);
+        xdg_positioner_set_constraint_adjustment(positioner, XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_SLIDE_X |
+                                                             XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_SLIDE_Y);
+        return positioner;
+    }
+
+    bool UltraCanvasWaylandWindow::CreatePopupRole(UltraCanvasWaylandApplication* app) {
+        auto* parent = PlacingParent();
+        if (!parent || !parent->GetXdgSurface() || !app->GetXdgWmBase()) return false;
+        if (!xdgSurface) {
+            xdgSurface = xdg_wm_base_get_xdg_surface(app->GetXdgWmBase(), surface);
+            if (!xdgSurface) return false;
+            xdg_surface_add_listener(xdgSurface, &kXdgSurfaceListener, this);
+        }
+        xdg_positioner* positioner = MakePositioner(app, parent);
+        if (!positioner) return false;
+        popup = xdg_surface_get_popup(xdgSurface, parent->GetXdgSurface(), positioner);
+        xdg_positioner_destroy(positioner);
+        if (!popup) return false;
+        xdg_popup_add_listener(popup, &kPopupListener, this);
+        // No grab: the compositor validates one against a button still
+        // held, and a panel opens on the click's release.
+        return true;
+    }
+
+    void UltraCanvasWaylandWindow::DestroyPopupRole() {
+        if (popup) { xdg_popup_destroy(popup); popup = nullptr; }
+        if (xdgSurface && popupWanted) { xdg_surface_destroy(xdgSurface); xdgSurface = nullptr; }
+        configured = false;
+    }
+
+    void UltraCanvasWaylandWindow::HandlePopupConfigure(int32_t x, int32_t y, int32_t width, int32_t height) {
+        if (width > 0 && height > 0) {
+            pendingResize = true;
+            pendingWidth = width;
+            pendingHeight = height;
+        }
+        // Where it landed, in screen pixels, for GetWindowPosition.
+        if (auto* parent = PlacingParent()) {
+            int px = 0, py = 0;
+            parent->GetWindowPosition(px, py);
+            const float scale = std::max(1.0f, parent->GetDeviceScale());
+            config_.x = px + static_cast<int>(std::lround(static_cast<float>(x) * scale));
+            config_.y = py + static_cast<int>(std::lround(static_cast<float>(y) * scale));
+        }
+    }
+
+    void UltraCanvasWaylandWindow::HandlePopupDone() {
+        // Dismissed by the compositor: the window closes, as a panel does
+        // when something else is chosen.
+        HandleToplevelClose();
+    }
+
+    // ===== THE SESSION LOCK =====
+    bool UltraCanvasWaylandWindow::CreateLockSurface(UltraCanvasWaylandApplication* app) {
+        const WaylandOutput* info = nullptr;
+        if (config_.desktopArea.width > 0 && config_.desktopArea.height > 0) {
+            info = app->FindOutputAt(config_.desktopArea.x, config_.desktopArea.y);
+        }
+        if (!info && !app->GetOutputs().empty()) info = &app->GetOutputs().front();
+        if (!info || !info->output) return false;   // a lock surface needs its output
+        ext_session_lock_v1* lock = app->AcquireSessionLock();
+        if (!lock) return false;
+        layerOutput = info->output;
+        lockSurface = ext_session_lock_v1_get_lock_surface(lock, surface, info->output);
+        if (!lockSurface) {
+            app->ReleaseSessionLock();
+            return false;
+        }
+        ext_session_lock_surface_v1_add_listener(lockSurface, &kLockListener, this);
+        if (info->Width() > 0 && info->Height() > 0) {
+            config_.width = info->Width();
+            config_.height = info->Height();
+            config_.x = info->x;
+            config_.y = info->y;
+            SetBounds(Rect2Di(0, 0, config_.width, config_.height));
+        }
+        return true;
+    }
+
+    void UltraCanvasWaylandWindow::HandleLockConfigure(uint32_t serial, uint32_t width, uint32_t height) {
+        if (!lockSurface) return;
+        ext_session_lock_surface_v1_ack_configure(lockSurface, serial);
+        lastConfigureSerial = serial;
+        const bool first = !configured;
+        configured = true;
+        if (width > 0 && height > 0) {
+            pendingResize = true;
+            pendingWidth = static_cast<int>(width);
+            pendingHeight = static_cast<int>(height);
+        }
+        FinishConfigure(first);
+    }
+
     void UltraCanvasWaylandWindow::ApplyDecoration() {
         auto* app = App();
         if (!app || !toplevel) return;
@@ -356,7 +556,9 @@ namespace UltraCanvas {
 
     void UltraCanvasWaylandWindow::ApplyType() {
         if (!toplevel) return;
-        if (config_.type == WindowType::Fullscreen) {
+        if (config_.type == WindowType::Fullscreen || config_.type == WindowType::SessionLock) {
+            // A lock screen on a compositor without ext-session-lock: all
+            // the client can ask for is the whole screen.
             xdg_toplevel_set_fullscreen(toplevel, nullptr);
         } else if (config_.type == WindowType::Desktop) {
             // Until the desktop shell backend puts it on the layer shell, a
@@ -522,7 +724,15 @@ namespace UltraCanvas {
         DestroyAllBuffers();
         for (EdgeStrut& strut : struts) DestroyStrut(strut);
         if (activationToken) { xdg_activation_token_v1_destroy(activationToken); activationToken = nullptr; }
+        if (popup) { xdg_popup_destroy(popup); popup = nullptr; }
+        popupWanted = false;
+        if (lockSurface) {
+            ext_session_lock_surface_v1_destroy(lockSurface);
+            lockSurface = nullptr;
+            if (app) app->ReleaseSessionLock();   // the last lock window unlocks
+        }
         if (layerSurface) { zwlr_layer_surface_v1_destroy(layerSurface); layerSurface = nullptr; }
+        panelLayer = false;
         layerOutput = nullptr;
         if (decoration) { zxdg_toplevel_decoration_v1_destroy(decoration); decoration = nullptr; }
         if (toplevel) { xdg_toplevel_destroy(toplevel); toplevel = nullptr; }
@@ -535,11 +745,18 @@ namespace UltraCanvas {
 
     void UltraCanvasWaylandWindow::Show() {
         if (!_created || _windowVisible || !surface) return;
+        auto* app = App();
+        // A popup gets its role now, at the position set since creation;
+        // one that could not be placed stays hidden.
+        if (popupWanted && !popup && (!app || !CreatePopupRole(app))) return;
+        if (panelLayer) ApplyPanelPosition();
         // The first commit without a buffer asks for the initial configure;
         // the first frame goes up once it is acked (HandleSurfaceConfigure).
-        if (!configured) {
+        // A lock surface is configured on creation and must not be
+        // committed before its first frame.
+        if (!configured && !lockSurface) {
             wl_surface_commit(surface);
-            if (auto* app = App()) app->Flush();
+            if (app) app->Flush();
         }
         _windowVisible = true;
         presentWanted = true;
@@ -550,11 +767,19 @@ namespace UltraCanvas {
 
     void UltraCanvasWaylandWindow::Hide() {
         if (!_created || !_windowVisible || !surface) return;
-        // A surface with no buffer is unmapped; the next Show commits anew
-        // and the compositor configures it again.
-        wl_surface_attach(surface, nullptr, 0, 0);
-        wl_surface_commit(surface);
-        configured = false;
+        // A lock surface may not go without a buffer: a lock screen is
+        // closed, not hidden.
+        if (lockSurface) return;
+        if (popup) {
+            // A popup is dismissed for good; the next Show makes a new one.
+            DestroyPopupRole();
+        } else {
+            // A surface with no buffer is unmapped; the next Show commits anew
+            // and the compositor configures it again.
+            wl_surface_attach(surface, nullptr, 0, 0);
+            wl_surface_commit(surface);
+            configured = false;
+        }
         if (auto* app = App()) app->Flush();
         _windowVisible = false;
         HandleWindowHidden();
@@ -716,9 +941,26 @@ namespace UltraCanvas {
 
     void UltraCanvasWaylandWindow::SetWindowPosition(int x, int y) {
         // A client does not place its own toplevels on Wayland; the
-        // compositor does. The wish is kept for GetWindowPosition.
+        // compositor does, and the wish is kept for GetWindowPosition. A
+        // child placed by its parent moves: a panel through its margins,
+        // a popup through a new positioner (xdg_wm_base 3).
         config_.x = x;
         config_.y = y;
+        auto* app = App();
+        if (!app) return;
+        if (panelLayer && layerSurface && configured) {
+            ApplyPanelPosition();
+            wl_surface_commit(surface);
+            app->Flush();
+        } else if (popup && app->GetXdgWmBaseVersion() >= 3) {
+            if (auto* parent = PlacingParent()) {
+                if (xdg_positioner* positioner = MakePositioner(app, parent)) {
+                    xdg_popup_reposition(popup, positioner, ++repositionToken);
+                    xdg_positioner_destroy(positioner);
+                    app->Flush();
+                }
+            }
+        }
     }
 
     void UltraCanvasWaylandWindow::GetWindowPosition(int& x, int& y) const {
@@ -799,14 +1041,18 @@ namespace UltraCanvas {
         xdg_toplevel_set_parent(toplevel, other ? other->GetToplevel() : nullptr);
     }
 
-    bool UltraCanvasWaylandWindow::StartNativeFileDrag(const std::vector<std::string>&,
-                                                       std::function<void(bool, bool)>) {
-        // wl_data_device drags are a later step of the backend.
-        return false;
+    bool UltraCanvasWaylandWindow::StartNativeFileDrag(const std::vector<std::string>& filePaths,
+                                                       std::function<void(bool, bool)> onFinished) {
+        // The seat's data device, which the clipboard backend holds.
+        auto* clipboard = UltraCanvasWaylandClipboard::Current();
+        return clipboard && clipboard->StartFileDrag(this, filePaths, std::move(onFinished));
     }
 
     bool UltraCanvasWaylandWindow::StartNativeSaveDrag(const std::string&,
                                                        std::function<void(const std::string&)>) {
+        // XDS (a file dragged out of a Save dialog, the target naming the
+        // folder) is an X11 convention with no Wayland counterpart.
+        debugOutput << "UltraCanvas Wayland: a save drag (XDS) has no Wayland form" << std::endl;
         return false;
     }
 
