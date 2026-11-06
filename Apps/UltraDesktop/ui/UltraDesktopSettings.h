@@ -5,6 +5,9 @@
 // Stickerboard and the Sticker board's categories. One JSON file, read at
 // start-up and written on every change. No UI in here, which is what lets
 // the test read and write it.
+// Version: 0.5.0 - StartupProgram::arguments and ::builtIn: UltraClipboard
+//                  and UltraNotifications start in the background
+//                  (--background), the Sticker board is made ready unseen
 // Version: 0.4.0 - the Apps window's view, split threshold, Recent count and
 //                  history (appsView, appsSplitAbove, recentAppsShown, recentApps);
 //                  the applications dragged to another category (appMoves)
@@ -54,9 +57,12 @@ struct CategoryBoardSettings {
 // A program the desktop can start with itself, in the background: one that
 // keeps working while nobody looks at it (messages arrive, mail is counted).
 struct StartupProgram {
-    const char* program;        // LaunchProgram's name: "ChatCube"
+    const char* program;        // LaunchProgram's name: "ChatCube"; the key in startWithDesktop
     const char* appId;          // its single-instance id: running already, it is left alone
     const char* label;          // what the settings show
+    const char* name;           // the menu's entry: "ChatCube", "Sticker board"
+    const char* arguments;      // how it starts unseen: "--minimized", "--background"
+    bool builtIn;               // part of the desktop itself (the Sticker board), not a program
 };
 
 struct DesktopSettings {
@@ -117,7 +123,9 @@ struct DesktopSettings {
     std::string ToJson() const;
     bool FromJson(const std::string& json, std::string* error = nullptr);
 
-    // The programs that may be in startWithDesktop: ChatCube and UltraMail.
+    // The programs that may be in startWithDesktop: ChatCube and UltraMail
+    // (minimized), UltraClipboard and UltraNotifications (no window), and
+    // the desktop's own Sticker board (made ready, not shown).
     static const std::vector<StartupProgram>& StartupPrograms();
     bool StartsWithDesktop(const std::string& program) const;
     void SetStartsWithDesktop(const std::string& program, bool start);

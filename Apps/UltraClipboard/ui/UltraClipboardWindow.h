@@ -32,6 +32,9 @@
 // stays while the pointer is on that row or on the preview itself, where
 // the wheel zooms; it follows the wheel scrolling the list; Escape or
 // moving elsewhere closes it.
+// Version: 0.2.0 - in the background (SetKeepRunning): closing the window
+//                  hides it, a later start shows it again, Quit in the
+//                  More menu ends the program
 // Version: 0.1.5
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -79,8 +82,13 @@ public:
     bool Create(const std::string& search, int64_t editId);
     void Show();
     // Another start of UltraClipboard handed this over (UltraCanvasSingleInstance): the
-    // window comes forward with that search, or that entry's edit dialog.
+    // window comes forward - shown first when it was hidden - with that
+    // search, or that entry's edit dialog.
     void Present(const std::string& search, int64_t editId);
+    // Started in the background (--background, UltraDesktop's "start with
+    // the desktop"): closing the window hides it and the program stays, so
+    // the next start shows it at once; Quit in the More menu ends it.
+    void SetKeepRunning(bool keep) { keepRunning_ = keep; }
 
 private:
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildToolbar();
@@ -132,6 +140,8 @@ private:
     std::unique_ptr<UltraCanvas::UltraCanvasClipboardHistory> history_;
     std::unique_ptr<UltraCanvas::UltraCanvasClipboardRecorder> recorder_;
     std::shared_ptr<UltraCanvas::UltraCanvasWindow> window_;
+    bool keepRunning_ = false;
+    bool shown_ = false;
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> search_;
     std::shared_ptr<UltraCanvas::UltraCanvasSegmentedControl> kinds_;
     std::shared_ptr<UltraCanvas::UltraCanvasSwitch> recording_;

@@ -3,6 +3,8 @@
 // Numbers in the file are dot-decimal by construction: the JSON writer and
 // reader never consult the locale.
 // Version: 0.4.0 - appsView, appsSplitAbove, recentAppsShown, recentApps (NoteAppStarted), appMoves
+// Version: 0.4.0 - UltraClipboard, UltraNotifications and the Sticker board
+//                  among the StartupPrograms
 // Version: 0.3.0 - startWithDesktop, StartupPrograms
 // Version: 0.2.0 - the pinned applications
 // Version: 0.1.1 - the file lives in the framework's desktop settings folder
@@ -263,8 +265,18 @@ bool DesktopSettings::IsPinned(const std::string& key) const {
 
 const std::vector<StartupProgram>& DesktopSettings::StartupPrograms() {
     static const std::vector<StartupProgram> programs = {
-        {"ChatCube", "org.ultraos.chatcube", "ChatCube - messages arrive while its window is closed"},
-        {"UltraMail", "org.ultraos.ultramail", "UltraMail - new mail is fetched and counted on the mail icon"},
+        {"ChatCube", "org.ultraos.chatcube", "ChatCube - messages arrive while its window is closed",
+         "ChatCube", "--minimized", false},
+        {"UltraMail", "org.ultraos.ultramail", "UltraMail - new mail is fetched and counted on the mail icon",
+         "UltraMail", "--minimized", false},
+        {"UltraClipboard", "org.ultraos.ultraclipboard",
+         "UltraClipboard - no window: opens at once from the clipboard panel",
+         "UltraClipboard", "--background", false},
+        {"UltraNotifications", "org.ultraos.ultranotifications",
+         "UltraNotifications - no window: counts the unread on the bell, opens at once",
+         "UltraNotifications", "--background", false},
+        {"StickerBoard", "", "Sticker board - made ready unseen: shows at once, the thumbnails made",
+         "Sticker board", "", true},
     };
     return programs;
 }
