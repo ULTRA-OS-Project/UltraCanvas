@@ -96,7 +96,10 @@ jobs:
       # bison and flex for the odd generator. ImageMagick: the APK's launcher
       # icons, sized from media/appicon/Demo.png (android-package-apk.sh).
       - name: Install host tools
-        timeout-minutes: 20
+        # A crawling mirror still finishes (15-27 min on a bad day, against a
+        # few normally), as the Build rows allow; scripts/ci-apt.sh retries
+        # one that stops dead. The job has 180.
+        timeout-minutes: 45
         run: |
           scripts/ci-apt.sh update
           scripts/ci-apt.sh install --no-install-recommends \
