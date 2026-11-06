@@ -51,8 +51,16 @@ instead of the OCR plugin's Tesseract. With no such provider, or when it
 fails, the recognizer installed before it reads the picture, so register the
 framework's first. `FindOcrProvider` says which provider would read now, and
 `LastTextRecognitionProvider` which one read the last picture. UltraClipboard's
-*Extract text* uses it. No adapter implements `IVisionAnalyzer` yet besides the
-mock, so until one does the built-in OCR keeps reading.
+*Extract text* uses it.
+
+The one vision provider that reads text today is `anthropic`
+(`CreateAnthropicVisionAnalyzer`, `adapters/anthropic`): OCR through Claude
+(`claude-opus-5-5` by default, low effort, the transcription as structured
+output, server-side refusal fallbacks on). It is a cloud provider, so the
+default route uses it only once chosen - `ULTRAAI_DEFAULT_VISIONANALYZER=anthropic`,
+`SetDefaultProvider("visionanalyzer", "anthropic")` or the dashboard's
+settings - with its key in UltraVault under `ai.anthropic.api_key` (or in the
+config). Pictures over 3.75 MB of PNG are halved until they fit.
 
 ---
 
@@ -61,7 +69,7 @@ mock, so until one does the built-in OCR keeps reading.
 | Adapter | Capabilities | Where the model runs | CMake option |
 |---|---|---|---|
 | `mock` | all ten | in-process | `ULTRAAI_ADAPTER_MOCK` (ON) |
-| `anthropic` | `ITextLLM` | cloud | `ULTRAAI_ADAPTER_ANTHROPIC` (ON) |
+| `anthropic` | `ITextLLM`, `IVisionAnalyzer` (OCR) | cloud | `ULTRAAI_ADAPTER_ANTHROPIC` (ON) |
 | `openai` | `ITextLLM`, `IEmbeddings` | cloud, or any OpenAI-compatible server via `baseUrl` | `ULTRAAI_ADAPTER_OPENAI` (ON) |
 | `minimax` | `IVideoGen`, `IImageGen`, `ITextToSpeech` | cloud (MiniMax / Hailuo) | `ULTRAAI_ADAPTER_MINIMAX` (ON) |
 | `qwen` | `ITextLLM`, `IEmbeddings` | local — Ollama, vLLM, llama.cpp server, LM Studio | `ULTRAAI_ADAPTER_QWEN` (ON) |

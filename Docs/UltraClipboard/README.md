@@ -62,7 +62,9 @@ through the list, skipping the section headers.
 **Extracting the text.** *Extract text* turns what an entry shows into text
 you can paste. An image - a screenshot, a photographed page - is read by text
 recognition: by an UltraAI vision provider that reads text, when one is set
-up (a model on this computer, or a cloud service you chose in UltraAI), and
+up (a model on this computer, or a cloud service you chose in UltraAI - Claude,
+for one: `ULTRAAI_DEFAULT_VISIONANALYZER=anthropic` with the key in UltraVault
+under `ai.anthropic.api_key`), and
 otherwise by OCR (Tesseract, in every language installed; more come with the
 system's `tesseract-ocr-<language>` packages). When UltraAI read it, the
 status bar says which provider did. Copied files are read by their

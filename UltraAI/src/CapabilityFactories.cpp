@@ -25,6 +25,9 @@
 #include "UltraAIMockTextToSpeech.h"
 #include "UltraAIMockImageGen.h"
 #include "UltraAIMockVisionAnalyzer.h"
+#ifdef ULTRAAI_HAS_ANTHROPIC_ADAPTER
+#include "UltraAIAnthropicVisionAnalyzer.h"
+#endif
 #include "UltraAIMockTranslator.h"
 #include "UltraAIMockVideoGen.h"
 #include "UltraAIMockMusicGen.h"
@@ -286,6 +289,14 @@ Registry<IVisionAnalyzer, VisionAnalyzerConfig>& VisReg() {
             if (!r.providers.count("mock")) {
                 r.providers["mock"] = [](const VisionAnalyzerConfig&, Error*) {
                     return CreateMockVisionAnalyzer();
+                };
+            }
+#endif
+#ifdef ULTRAAI_HAS_ANTHROPIC_ADAPTER
+            // OCR through Claude (a cloud provider: used when chosen).
+            if (!r.providers.count("anthropic")) {
+                r.providers["anthropic"] = [](const VisionAnalyzerConfig& cfg, Error* err) {
+                    return CreateAnthropicVisionAnalyzer(cfg, err);
                 };
             }
 #endif

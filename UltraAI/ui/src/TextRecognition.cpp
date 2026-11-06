@@ -1,6 +1,7 @@
 // UltraAI/ui/src/TextRecognition.cpp
 // UltraAI in front of UltraCanvas's text recognizer. See
 // include/UltraAITextRecognition.h.
+// Version: 1.1.0 - a picture over 3.75 MB of PNG is halved until it fits (the providers' image limits)
 // Version: 1.0.0
 // Last Modified: 2026-11-06
 // Author: UltraAI Module
@@ -71,7 +72,31 @@ bool PictureAsPng(const UltraCanvas::UltraCanvasFileLoader::TextRecognitionImage
             rgba.pixels[o++] = 255;   // the pixels come on white already
         }
     }
-    return UltraCanvas::ClipboardDib::EncodePng(rgba, png);
+    // Providers cap an image's size (Claude: 5 MB once base64-encoded, so
+    // 3.75 MB of PNG): a picture over it is halved until it fits - a 300 DPI
+    // scan still reads well at 150.
+    constexpr size_t kMaxPngBytes = 3750u * 1024u;
+    for (;;) {
+        if (!UltraCanvas::ClipboardDib::EncodePng(rgba, png)) return false;
+        if (png.size() <= kMaxPngBytes || rgba.width < 512 || rgba.height < 512) return true;
+        UltraCanvas::ClipboardDib::RgbaImage half;
+        half.width = rgba.width / 2;
+        half.height = rgba.height / 2;
+        half.pixels.resize(static_cast<size_t>(half.width) * half.height * 4);
+        for (int y = 0; y < half.height; ++y) {
+            for (int x = 0; x < half.width; ++x) {
+                for (int c = 0; c < 4; ++c) {
+                    auto at = [&](int xx, int yy) {
+                        return static_cast<int>(rgba.pixels[(static_cast<size_t>(yy) * rgba.width + xx) * 4 + c]);
+                    };
+                    const int sum = at(2 * x, 2 * y) + at(2 * x + 1, 2 * y) + at(2 * x, 2 * y + 1) +
+                                    at(2 * x + 1, 2 * y + 1);
+                    half.pixels[(static_cast<size_t>(y) * half.width + x) * 4 + c] = static_cast<uint8_t>(sum / 4);
+                }
+            }
+        }
+        rgba = std::move(half);
+    }
 }
 
 // The words of a response: the OCR text, else its spans, else the document

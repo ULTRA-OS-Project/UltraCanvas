@@ -61,6 +61,15 @@ if(TARGET UltraAI_AdapterAnthropic)
         "${CMAKE_CURRENT_SOURCE_DIR}/../../UltraCanvas/third_party")
     target_compile_features(ultraai_test_anthropic_adapter PRIVATE cxx_std_20)
     add_test(NAME ultraai.anthropic_adapter COMMAND ultraai_test_anthropic_adapter)
+
+    # The OCR vision adapter on top of it, offline the same way.
+    add_executable(ultraai_test_anthropic_vision test_anthropic_vision.cpp)
+    target_link_libraries(ultraai_test_anthropic_vision PRIVATE
+        UltraAI_Core UltraAI_AdapterAnthropic)
+    target_include_directories(ultraai_test_anthropic_vision PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../UltraCanvas/third_party")
+    target_compile_features(ultraai_test_anthropic_vision PRIVATE cxx_std_20)
+    add_test(NAME ultraai.anthropic_vision COMMAND ultraai_test_anthropic_vision)
 endif()
 
 if(TARGET UltraAI_AdapterOpenAI)
