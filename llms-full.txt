@@ -95586,6 +95586,17 @@ UltraCloud::ShowCloudLinkPicker(window, cloud, [](const CloudLinkPick& pick) {
 });
 ```
 
+For the FTP provider the dialog asks for the protocol (SFTP, FTP with TLS,
+FTP over TLS, plain FTP), the server's name or address and the port - empty
+for the protocol's own - each on its own rather than as one URL, and stores
+them as the one URL the command line takes (`FtpServerUrl`:
+`sftp://files.example.org:2222`, the protocol's own port left out so the
+account keeps its id); a URL typed into the server field is refused with the
+reason. The private key row, shown for SFTP, has a *Choose* button that opens
+the file dialog in `~/.ssh`. A server URL whose scheme the provider does not
+speak - `https://`, pasted from the browser - is refused by `Verify` before
+anything is sent, so the command line and UltraFiler's "+ Drive" say so too.
+
 The picker lists the accounts (default preselected), browses the chosen one,
 uploads a local file into the current folder, and returns a share link for the
 selected file. When no account exists yet it offers the add-account dialog,
@@ -95608,7 +95619,7 @@ the `CloudService&` forms leave keeping the service alive to the caller.
 | `UltraCloudHttp.h` | `HttpFn`, `HttpProviderBase` (auth from credentials, every request logged, a throttled request sent again, HTTP → Result with the service's reason; `DownloadToFile` writes a download to disk as it arrives, never holding the file in memory, with no whole-transfer time limit and a half-written file removed; uploads send their bytes from the file as they go - `UltraNetHttpRequest::bodyFilePath`, a range of it per upload-session chunk - except Google Drive's multipart body, at most 5 MB), `RateLimitPolicy`, `SetThreadRateLimitPolicy` |
 | `UltraCloudLog.h` | The session log: `LogKind`, `LogLine`, `LogCallback`, `SetThreadLog`, `ThreadLogActive`, `LogToThread`; `LoggableUrl`, `ServerErrorReason`, `RetryAfterSeconds` |
 | `UltraCloudOAuth.h` | `OAuthApp` (= `UltraNetOAuth2App`), `SetOAuthApp` / `GetOAuthApp` / `HasOAuthApp` / `UsesSignInService` / `CanSignIn` / `DefaultRedirectUri` / `EnsureOAuthAppsRegistered` (the profile of UltraNet's shared app registry and its sign-in service), `OAuthHooks`, `OAuthProviderBase` (`OAuthConfig`, `SignInServiceProviderId`, `OAuthServiceConfig`) |
-| `UltraCloudFtp.h` | `FtpProvider`, `FtpOps` (the injectable FTP seam), `FtpTransportFor`, `FtpHostAndBase`, `FtpUrl`, `FtpEntryToEntry`, `FromFtp` |
+| `UltraCloudFtp.h` | `FtpProvider`, `FtpOps` (the injectable FTP seam), `FtpTransportFor`, `FtpHostAndBase`, `FtpUrl`, `FtpEntryToEntry`, `FromFtp`; the server as a form asks for it: `FtpServer`, `FtpServerOf`, `FtpServerUrl`, `FtpDefaultPort`, `FtpSchemeKnown` |
 | `UltraCloudDropbox.h` | `DropboxProvider`, `DropboxPath` |
 | `UltraCloudOneDrive.h` | `OneDriveProvider`, `OneDriveItemUrl` |
 | `UltraCloudGoogleDrive.h` | `GoogleDriveProvider` (+ `ResolveId`), `GoogleDriveChildQuery` |
@@ -108526,8 +108537,13 @@ the site's name follows file by file. **Host…** opens UltraCloud's
 add-account dialog, limited to the web hosts - FTP / FTPS / SFTP, WebDAV,
 Nextcloud - and the host added becomes the site's (`hosting` in
 `site.json`, with the dialog's upload folder as the site's root on the
-host). Without a host of its own the site publishes to the default host;
-without any, Publish opens the dialog.
+host). An FTP / SFTP host is asked for its protocol, its name or address
+and its port (empty: the protocol's own), and its private key is chosen
+with a file dialog. The sign-in is reported on the console as it happens -
+where, as whom, the session's steps, how it ended and the transport's
+diagnostics - the way `ultrapress hosts add` reports one, so a host that
+refused can be read step by step. Without a host of its own the site
+publishes to the default host; without any, Publish opens the dialog.
 
 The left column lists the pages and the current page's blocks: select one,
 move it with the arrows, remove it, or add one after the selection from
@@ -108581,6 +108597,7 @@ ultrapress publish mysite out --renderer ultrapress-0.1.0.js      # with the ren
 ultrapress import export.xml mysite --media                       # a WordPress export as a site, attachments fetched
 ultrapress hosts                                                  # the hosts a site can be published to
 ultrapress hosts add ftp --server sftp://my.example --user me --folder /public_html   # a host; the password from --password or ULTRAPRESS_HOST_PASSWORD
+ultrapress hosts add ftp --server sftp://my.example --port 2222 --user me       # on a port that is not the protocol's own
 ultrapress hosts use mysite me-at-my.example --path /public_html  # remember it in site.json
 ultrapress publish mysite out --to site                           # write, then upload what changed onto the site's host
 ultrapress publish mysite out --to "me at sftp://my.example" --path /www --force   # onto a named host, everything
@@ -108735,9 +108752,14 @@ MKCOL, outermost first). A site names its host and the folder on it in
 "hosting": { "account": "ftp-me-my-example", "path": "/public_html" }
 ```
 
-`ultrapress hosts use` writes it; the window's Host… button does the same.
-An `sftp://` host signs in with a password or a private key (`--key`, or
-the dialog's *Private key* row; the password is then the key's passphrase).
+`ultrapress hosts use` writes it; the window's Host… button does the same,
+from the protocol, server and port it asks for (`FtpServerUrl`); on the
+command line the port is `--port`, or part of the URL (`sftp://my.example:2222`),
+the two storing the same host. A server URL that is not FTP - `https://`,
+from the browser's bar - is refused before anything is sent, by `hosts add`
+and by the provider. An `sftp://` host signs in with a
+password or a private key (`--key`, or the dialog's *Private key* row and
+its *Choose* button; the password is then the key's passphrase).
 The window's Publish prunes; the command line prunes with `--prune`.
 
 **Text in place.** Click a piece of text on the page - a title, a
