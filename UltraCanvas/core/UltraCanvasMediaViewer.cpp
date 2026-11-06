@@ -1,6 +1,9 @@
 // core/UltraCanvasMediaViewer.cpp
 // Implementation of the comprehensive media / photo / document viewer widget.
 // See UltraCanvasMediaViewer.h for the feature overview.
+// Version: 1.23.0 - copying text: a press in the text view or the Details panel focuses
+//                   the widget; Ctrl+C / Ctrl+Insert copy the selection (by key code, not
+//                   the character Ctrl turns into a control code), Ctrl+A selects all
 // Version: 1.22.0 - OpenFileWhenShown and its kin: a turning ring and the file's name
 //                   while a file is on its way, opened after a frame of that is drawn;
 //                   "No media" only when nothing was asked for; onCurrentFileChanged
@@ -5259,7 +5262,73 @@ void UltraCanvasMediaViewer::SetWindow(UltraCanvasWindowBase* win) {
     if (grabFocusOnAttach) FocusForKeyboard();
 }
 
+UltraCanvasTextArea* UltraCanvasMediaViewer::SelectableTextAt(const Point2Di& windowPoint) const {
+    const Point2Df p(static_cast<float>(windowPoint.x), static_cast<float>(windowPoint.y));
+    auto under = [&](const std::shared_ptr<UltraCanvasUIElement>& e) -> UltraCanvasTextArea* {
+        if (!e || !e->IsVisible()) return nullptr;
+        for (const UltraCanvasUIElement* a = e->GetParentContainer(); a; a = a->GetParentContainer())
+            if (!a->IsVisible()) return nullptr;
+        return e->GetBoundsInWindow().Contains(p) ? static_cast<UltraCanvasTextArea*>(e.get()) : nullptr;
+    };
+    // The Details panel floats over the view, so it is asked first.
+    if (IsDetailsVisible())
+        if (auto* ta = under(detailsText)) return ta;
+    if (activeKind != MediaKind::Text || webShown) return nullptr;
+    return under(noteShown ? noteView : textView);
+}
+
+bool UltraCanvasMediaViewer::HandleTextCopyKey(const UCEvent& event) {
+    if (event.type != UCEventType::KeyDown || event.alt || event.shift) return false;
+    const bool command = event.ctrl || event.meta;
+    if (!command) return false;
+    const bool copy = event.virtualKey == UCKeys::C ||
+                      (event.ctrl && event.virtualKey == UCKeys::Insert);
+    const bool all  = event.virtualKey == UCKeys::A;
+    if (!copy && !all) return false;
+
+    auto* details = IsDetailsVisible() && detailsText
+        ? static_cast<UltraCanvasTextArea*>(detailsText.get()) : nullptr;
+    UltraCanvasTextArea* shown = nullptr;
+    if (activeKind == MediaKind::Text && !webShown) {
+        UltraCanvasUIElement* e = noteShown ? noteView.get() : textView.get();
+        if (e && e->IsVisible()) shown = static_cast<UltraCanvasTextArea*>(e);
+    }
+
+    if (copy) {
+        for (UltraCanvasTextArea* ta : {details, shown}) {
+            if (ta && ta->HasSelection()) {
+                ta->CopySelection();
+                return true;
+            }
+        }
+        return false;
+    }
+    // Select All acts on the area the user last worked in, when it is still
+    // on show; otherwise on the open Details panel, then the text view.
+    UltraCanvasTextArea* target = nullptr;
+    if (lastPressedText && (lastPressedText == details || lastPressedText == shown))
+        target = lastPressedText;
+    if (!target) target = details ? details : shown;
+    if (!target) return false;
+    target->SelectAll();
+    return true;
+}
+
 bool UltraCanvasMediaViewer::HandleFilteredKey(const UCEvent& event) {
+    if (event.type == UCEventType::MouseDown) {
+        // A press in a display-only text area (to select, or to open its
+        // Copy menu) brings the keyboard here, so the copy keys reach
+        // HandleTextCopyKey. The press itself goes on to the area.
+        if (!IsEffectivelyVisible()) return false;
+        auto* win = GetWindow();
+        if (!win || win->GetActivePopupElement()) return false;
+        if (event.button != UCMouseButton::Left && event.button != UCMouseButton::Right) return false;
+        if (UltraCanvasTextArea* ta = SelectableTextAt(event.pointerWindow)) {
+            lastPressedText = ta;
+            if (!IsFocused()) FocusForKeyboard();
+        }
+        return false;
+    }
     if (event.type != UCEventType::KeyDown) return false;
     if (!IsEffectivelyVisible()) return false;
     auto* win = GetWindow();
@@ -5278,6 +5347,9 @@ bool UltraCanvasMediaViewer::HandleFilteredKey(const UCEvent& event) {
 
 bool UltraCanvasMediaViewer::HandleViewerKey(const UCEvent& event) {
     if (event.type != UCEventType::KeyDown) return false;
+
+    // Copy / Select All in the text the viewer shows.
+    if (HandleTextCopyKey(event)) return true;
 
     // The open Details panel takes Escape and the scrolling keys; Left / Right
     // keep browsing, and the panel follows the file.
@@ -5347,10 +5419,6 @@ bool UltraCanvasMediaViewer::HandleViewerKey(const UCEvent& event) {
             case UCKeys::PageUp:   ta->ScrollUp(10);    return true;
             case UCKeys::PageDown: ta->ScrollDown(10);  return true;
             default: break;
-        }
-        if (event.ctrl && (event.character == 'c' || event.character == 'C')) {
-            ta->CopySelection();
-            return true;
         }
         return false;
     }
