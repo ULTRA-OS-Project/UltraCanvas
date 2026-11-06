@@ -2,6 +2,12 @@
 // ChatCube Direct: the envelope, the store, and two providers end to end
 // through a local relay (P2P, read receipts, offline queue, groups, calls),
 // and two on the local network with no relay at all
+// Version: 0.1.7 - the e-mail confirmed by the link the relay e-mails; recovery by an e-mailed link, approved on
+//                  its page while the new computer asks (FinishRecovery: NeedsInput until then)
+// Version: 0.1.6 - the e-mail and phone confirmed with the relay's codes, recovery on, and the ID recovered on a
+//                  second, empty computer - signed in as the same person
+// Version: 0.1.5 - the account's profile (e-mail, phone) and its sign-in protection: a password, an
+//                  authenticator code, both, and back to the device key, across restarts
 // Version: 0.1.4 - a picture over the link, a file through the relay's queue to someone away, a picture to a
 //                  group, and a picture over the local network with no relay - each read back byte for byte
 // Version: 0.1.3 - the relay's port probed free, three tries
@@ -16,6 +22,8 @@
 #include "DirectStore.h"
 
 #include "UltraCanvasPathUtf8.h"
+#include "UltraCrypt/OtpAuthUri.h"
+#include "UltraCrypt/UltraOtp.h"
 #include "UltraIM/UltraIMCore.h"
 #include "UltraNet/UltraNetCore.h"
 #include "UltraNet/UltraNetHttp.h"
@@ -23,12 +31,14 @@
 #include "UltraRTC/UltraRTCCore.h"
 
 #include <atomic>
+#include <cctype>
 #include <chrono>
 #include <cmath>
 #include <condition_variable>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
 #include <functional>
 #include <mutex>
 #include <string>
@@ -282,6 +292,9 @@ struct Relay {
                 // The Telegram application's keys a relay hands its users.
                 setenv("CHATCUBE_RELAY_TELEGRAM_API_ID", "1017053", 1);
                 setenv("CHATCUBE_RELAY_TELEGRAM_API_HASH", "0123456789abcdef0123456789abcdef", 1);
+                // Account recovery: its codes go to a file the test reads.
+                setenv("CHATCUBE_RELAY_OUTBOX", UltraCanvas::PathToUtf8(dataDir / "outbox.jsonl").c_str(), 1);
+                setenv("CHATCUBE_RELAY_RECOVERY_KEY", "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=", 1);
                 execlp("python3", "python3", "-m", "chatcube_relay", static_cast<char*>(nullptr));
                 _exit(127);
             }
@@ -836,6 +849,238 @@ void TestLocalNetworkDiscovery() {
 }
 #endif
 
+#if !defined(_WIN32)
+// How many messages the relay wrote to its outbox for `to` on `channel`,
+// waiting up to `seconds` for `count` of them.
+int OutboxCount(const fs::path& outbox, const std::string& channel, const std::string& to, int count,
+                int seconds = 10) {
+    int found = 0;
+    for (int waited = 0; waited < seconds * 10; ++waited) {
+        std::ifstream in(outbox);
+        std::string line;
+        found = 0;
+        while (std::getline(in, line)) {
+            if (line.find("\"channel\": \"" + channel + "\"") != std::string::npos &&
+                line.find("\"to\": \"" + to + "\"") != std::string::npos)
+                ++found;
+        }
+        if (found >= count) break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+    return found;
+}
+
+// The last code the relay wrote to its outbox for `to` on `channel`
+// ("email" / "phone"), at most `seconds` waiting for the `count`th message.
+std::string OutboxCode(const fs::path& outbox, const std::string& channel, const std::string& to, int count,
+                       int seconds = 10) {
+    for (int waited = 0; waited < seconds * 10; ++waited) {
+        std::ifstream in(outbox);
+        std::string line, last;
+        int found = 0;
+        while (std::getline(in, line)) {
+            if (line.find("\"channel\": \"" + channel + "\"") == std::string::npos) continue;
+            if (line.find("\"to\": \"" + to + "\"") == std::string::npos) continue;
+            ++found;
+            last = line;
+        }
+        if (found >= count) {
+            for (size_t i = 0; i + 6 <= last.size(); ++i) {
+                bool six = true;
+                for (size_t k = 0; k < 6; ++k) six = six && std::isdigit(static_cast<unsigned char>(last[i + k]));
+                const bool alone = (i == 0 || !std::isdigit(static_cast<unsigned char>(last[i - 1]))) &&
+                                   (i + 6 == last.size() || !std::isdigit(static_cast<unsigned char>(last[i + 6])));
+                if (six && alone) return last.substr(i, 6);
+            }
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+    return std::string();
+}
+
+UltraIMAccountProfile FetchProfile(DirectProvider& provider) {
+    UltraIMAccountProfile out;
+    std::mutex mutex;
+    std::condition_variable cv;
+    bool done = false;
+    provider.FetchAccountProfile([&](const UltraIMResult&, const UltraIMAccountProfile& p) {
+        std::lock_guard<std::mutex> lock(mutex);
+        out = p;
+        done = true;
+        cv.notify_all();
+    });
+    std::unique_lock<std::mutex> lock(mutex);
+    cv.wait_for(lock, std::chrono::seconds(10), [&]() { return done; });
+    return out;
+}
+
+// The last link the relay e-mailed to `to` (the outbox's JSON line, its
+// text), at most `seconds` waiting for the `count`th message.
+std::string OutboxLink(const fs::path& outbox, const std::string& to, int count, int seconds = 10) {
+    for (int waited = 0; waited < seconds * 10; ++waited) {
+        std::ifstream in(outbox);
+        std::string line, last;
+        int found = 0;
+        while (std::getline(in, line)) {
+            if (line.find("\"channel\": \"email\"") == std::string::npos) continue;
+            if (line.find("\"to\": \"" + to + "\"") == std::string::npos) continue;
+            ++found;
+            last = line;
+        }
+        if (found >= count) {
+            const size_t start = last.find("http");
+            if (start == std::string::npos) return std::string();
+            size_t end = start;
+            while (end < last.size() && last[end] != '\\' && last[end] != '"' && last[end] != ' ') ++end;
+            return last.substr(start, end - start);
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+    return std::string();
+}
+
+// A link opened in a browser: its page (GET), and the page's form sent (POST).
+int OpenLink(const std::string& link, std::string* page = nullptr) {
+    UltraNetResponse response;
+    UltraNetHttpOptions options;
+    options.timeoutMs = 5000;
+    UltraNet_HttpGet(link, response, options);          // a 410 is an answer too
+    if (page) *page = response.GetBodyAsString();
+    return response.statusCode;
+}
+
+int ApproveRecovery(const std::string& relayUrl, const std::string& link) {
+    const size_t at = link.find("token=");
+    if (at == std::string::npos) return 0;
+    const std::string form = link.substr(at);        // token_urlsafe: nothing to escape
+    UltraNetResponse response;
+    UltraNetHttpOptions options;
+    options.timeoutMs = 5000;
+    UltraNet_HttpPost(relayUrl + "/recover", std::vector<uint8_t>(form.begin(), form.end()), response, options);
+    return response.statusCode;
+}
+
+// Confirming the e-mail (the link the relay e-mails) and the phone (the code
+// it texts), recovery on, and the ID brought back on a computer that never
+// had it - by the link the relay e-mails, approved on its page.
+void TestRecovery(const std::string& relayUrl, const fs::path& base) {
+    const fs::path outbox = base / "outbox.jsonl";
+    UltraIMResult r;
+    std::string userId;
+    {
+        Events events;
+        DirectProvider rita("rita");
+        UltraIMConfig config;
+        config.dataDirectory = UltraCanvas::PathToUtf8(base / "rita");
+        CHECK(rita.Initialize(config, events.Sink()));
+        UltraIMCredentials create;
+        create.loginType = UltraIMLoginType::KeyPair;
+        create.server = relayUrl;
+        create.createAccount = true;
+        create.displayName = "Rita";
+        create.email = "rita@example.org";
+        create.phoneNumber = "+49 151 2345 6789";
+        CHECK(WaitResult([&](UltraIMResultCallback cb) { rita.SignIn(create, cb); }, r) && r);
+        userId = rita.GetLocalUserId();
+        // The sign-in sent the e-mail and phone: a link to the one, a code to the other.
+        UltraIMAccountProfile profile;
+        for (int i = 0; i < 50 && !(profile = FetchProfile(rita)).recoveryAvailable; ++i)
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        CHECK(profile.recoveryAvailable && profile.phoneCodesAvailable);
+        CHECK(!profile.emailVerified && !profile.recoveryEnabled);
+        // Not before the address is confirmed; and it takes no code.
+        CHECK(WaitResult([&](UltraIMResultCallback cb) { rita.SetRecoveryEnabled(true, cb); }, r) && !r);
+        CHECK(WaitResult([&](UltraIMResultCallback cb) { rita.VerifyContact(UltraIMContactChannel::Email, "000000", cb); }, r) && !r);
+        const std::string confirmLink = OutboxLink(outbox, "rita@example.org", 1);
+        CHECK(confirmLink.find("/confirm-email?token=") != std::string::npos);
+        std::string page;
+        CHECK(OpenLink(confirmLink, &page) == 200 && page.find("is confirmed") != std::string::npos);
+        CHECK(OpenLink(confirmLink) == 410);                // once
+        const std::string phoneCode = OutboxCode(outbox, "phone", "+4915123456789", 1);
+        CHECK(phoneCode.size() == 6);
+        CHECK(WaitResult([&](UltraIMResultCallback cb) { rita.VerifyContact(UltraIMContactChannel::Phone, phoneCode, cb); }, r) && r);
+        CHECK(WaitResult([&](UltraIMResultCallback cb) { rita.SetRecoveryEnabled(true, cb); }, r) && r);
+        profile = FetchProfile(rita);
+        CHECK(profile.emailVerified && profile.phoneVerified && profile.recoveryEnabled);
+        // A computer with an ID refuses to recover one.
+        bool started = false;
+        std::mutex mutex;
+        std::condition_variable cv;
+        bool done = false;
+        rita.StartRecovery(relayUrl, "rita@example.org", [&](const UltraIMResult& res, const UltraIMRecoveryChallenge&) {
+            std::lock_guard<std::mutex> lock(mutex);
+            started = res.success;
+            done = true;
+            cv.notify_all();
+        });
+        {
+            std::unique_lock<std::mutex> lock(mutex);
+            cv.wait_for(lock, std::chrono::seconds(10), [&]() { return done; });
+        }
+        CHECK(done && !started);
+        rita.Shutdown();
+    }
+    {
+        // Another computer: nothing in its data folder.
+        Events events;
+        DirectProvider again("rita");
+        UltraIMConfig config;
+        config.dataDirectory = UltraCanvas::PathToUtf8(base / "rita-new-computer");
+        CHECK(again.Initialize(config, events.Sink()));
+        CHECK(!again.HasStoredSession());
+        UltraIMRecoveryChallenge challenge;
+        std::mutex mutex;
+        std::condition_variable cv;
+        bool done = false;
+        UltraIMResult started;
+        again.StartRecovery(relayUrl, " Rita@Example.org ", [&](const UltraIMResult& res, const UltraIMRecoveryChallenge& c) {
+            std::lock_guard<std::mutex> lock(mutex);
+            started = res;
+            challenge = c;
+            done = true;
+            cv.notify_all();
+        });
+        {
+            std::unique_lock<std::mutex> lock(mutex);
+            cv.wait_for(lock, std::chrono::seconds(15), [&]() { return done; });
+        }
+        CHECK(started && !challenge.recoveryId.empty() && challenge.expiresInSeconds > 0);
+        UltraIMRecoveryAnswer answer;
+        answer.server = relayUrl;
+        answer.recoveryId = challenge.recoveryId;
+        // Waiting for the link to be opened.
+        CHECK(WaitResult([&](UltraIMResultCallback cb) { again.FinishRecovery(answer, cb); }, r) &&
+              r.code == UltraIMResultCode::NeedsInput);
+        const std::string link = OutboxLink(outbox, "rita@example.org", 2);
+        CHECK(link.find("/recover?token=") != std::string::npos);
+        // Opening it only asks.
+        std::string page;
+        CHECK(OpenLink(link, &page) == 200 && page.find("method=\"post\"") != std::string::npos);
+        CHECK(WaitResult([&](UltraIMResultCallback cb) { again.FinishRecovery(answer, cb); }, r) &&
+              r.code == UltraIMResultCode::NeedsInput);
+        // Another recovery id is not this computer's.
+        UltraIMRecoveryAnswer other = answer;
+        other.recoveryId = "not-the-one-started";
+        CHECK(WaitResult([&](UltraIMResultCallback cb) { again.FinishRecovery(other, cb); }, r) && !r &&
+              r.code == UltraIMResultCode::InvalidArgument);
+        CHECK(ApproveRecovery(relayUrl, link) == 200);
+        CHECK(WaitResult([&](UltraIMResultCallback cb) { again.FinishRecovery(answer, cb); }, r) && r);
+        CHECK(again.HasStoredSession());
+        // And it signs in as Rita, with no more than the stored session.
+        UltraIMCredentials stored;
+        stored.loginType = UltraIMLoginType::KeyPair;
+        CHECK(WaitResult([&](UltraIMResultCallback cb) { again.SignIn(stored, cb); }, r) && r);
+        CHECK(again.GetLocalUserId() == userId);
+        const UltraIMAccountProfile profile = FetchProfile(again);
+        CHECK(profile.displayName == "Rita" && profile.email == "rita@example.org" && profile.recoveryEnabled);
+        // Rita heard of it: a third e-mail (the confirmation, the recovery
+        // link, the notice).
+        CHECK(OutboxCount(outbox, "email", "rita@example.org", 3) >= 3);
+        again.Shutdown();
+    }
+}
+#endif
+
 void TestEndToEnd() {
 #if defined(_WIN32)
     std::printf("DirectProviderTests: end-to-end part skipped on Windows\n");
@@ -1026,6 +1271,7 @@ void TestEndToEnd() {
 
     alice->Shutdown();
     bob->Shutdown();
+    TestRecovery(relay.url, base);
     UltraRtc_Shutdown();
     relay.Stop();
     std::error_code ec;
@@ -1034,6 +1280,173 @@ void TestEndToEnd() {
 }
 
 } // namespace
+
+#if !defined(_WIN32)
+// The code an authenticator that scanned `uri` shows `offsetSeconds` from now.
+std::string CodeFor(const std::string& uri, int64_t offsetSeconds) {
+    UltraCanvas::Otp::Parameters params;
+    UltraCryptSecureBuffer secret;
+    if (!UltraCanvas::Otp::ParseOtpAuthUri(uri, params, secret)) return std::string();
+    const int64_t now = std::chrono::duration_cast<std::chrono::seconds>(
+                            std::chrono::system_clock::now().time_since_epoch()).count();
+    std::string code;
+    UltraCanvas::Otp::GenerateTotp(secret, params, now + offsetSeconds, code);
+    return code;
+}
+
+UltraIMAccountProfile ProfileOf(DirectProvider& provider) {
+    UltraIMAccountProfile out;
+    std::mutex mutex;
+    std::condition_variable cv;
+    bool done = false;
+    provider.FetchAccountProfile([&](const UltraIMResult&, const UltraIMAccountProfile& p) {
+        std::lock_guard<std::mutex> lock(mutex);
+        out = p;
+        done = true;
+        cv.notify_all();
+    });
+    std::unique_lock<std::mutex> lock(mutex);
+    cv.wait_for(lock, std::chrono::seconds(10), [&]() { return done; });
+    return out;
+}
+
+// The profile and the ways of signing in, on the local network alone (no
+// relay needed): each step through a restart of the provider, as a new
+// start of ChatCube would.
+void TestSignInProtection() {
+    const fs::path base = TempDir("protection");
+    ProviderTimings timings;
+    timings.lanDiscoveryMs = 0;
+    UltraIMConfig config;
+    config.dataDirectory = UltraCanvas::PathToUtf8(base / "erin");
+    auto start = [&](Events& events) {
+        auto provider = std::make_unique<DirectProvider>("erin");
+        provider->SetTimings(timings);
+        provider->SetCallUseDevices(false);
+        CHECK(provider->Initialize(config, events.Sink()));
+        return provider;
+    };
+    using P = UltraIMSignInProtection;
+    UltraIMResult r;
+    std::string uri;
+    // Codes are good once each: the one taken at the set-up and at the
+    // sign-in are kept, to show them refused again (out of the window, too,
+    // should the clock pass a step boundary meanwhile).
+    std::string setupCode, signInCode;
+    {
+        Events events;
+        auto erin = start(events);
+        UltraIMCredentials create;
+        create.loginType = UltraIMLoginType::KeyPair;
+        create.createAccount = true;
+        create.displayName = "Erin";
+        create.email = "not an address";
+        CHECK(WaitResult([&](UltraIMResultCallback cb) { erin->SignIn(create, cb); }, r) &&
+              r.code == UltraIMResultCode::InvalidArgument);
+        create.email = " erin@example.org ";
+        create.phoneNumber = "+49 151 2345 6789";
+        CHECK(WaitResult([&](UltraIMResultCallback cb) { erin->SignIn(create, cb); }, r) && r);
+        UltraIMAccountProfile profile = ProfileOf(*erin);
+        CHECK(profile.displayName == "Erin" && profile.email == "erin@example.org" &&
+              profile.phoneNumber == "+49 151 2345 6789");
+        CHECK(erin->GetSignInProtection() == P::DeviceKey);
+        profile.phoneNumber = "0151 2345";              // no country code
+        CHECK(WaitResult([&](UltraIMResultCallback cb) { erin->UpdateAccountProfile(profile, cb); }, r) &&
+              r.code == UltraIMResultCode::InvalidArgument);
+        profile.phoneNumber = "+44 20 7946 0000";
+        profile.displayName = "Erin K.";
+        CHECK(WaitResult([&](UltraIMResultCallback cb) { erin->UpdateAccountProfile(profile, cb); }, r) && r);
+
+        // A password: too short, then one.
+        UltraIMProtectionChange change;
+        change.protection = P::Password;
+        change.newPassword = "short";
+        CHECK(WaitResult([&](UltraIMResultCallback cb) { erin->SetSignInProtection(change, cb); }, r) &&
+              r.code == UltraIMResultCode::InvalidArgument);
+        change.newPassword = "correct horse battery";
+        CHECK(WaitResult([&](UltraIMResultCallback cb) { erin->SetSignInProtection(change, cb); }, r) && r);
+        CHECK(erin->GetSignInProtection() == P::Password);
+
+        // And an authenticator: proven with the current password and the
+        // new authenticator's first code.
+        CHECK(erin->StartAuthenticatorSetup(uri) && uri.rfind("otpauth://totp/ChatCube%3AErin", 0) == 0);
+        change = UltraIMProtectionChange();
+        change.protection = P::PasswordAndAuthenticatorCode;
+        change.newCode = CodeFor(uri, -30);
+        CHECK(WaitResult([&](UltraIMResultCallback cb) { erin->SetSignInProtection(change, cb); }, r) &&
+              r.code == UltraIMResultCode::InvalidArgument);         // no current password
+        change.currentPassword = "wrong horse";
+        CHECK(WaitResult([&](UltraIMResultCallback cb) { erin->SetSignInProtection(change, cb); }, r) &&
+              r.code == UltraIMResultCode::AuthFailed);
+        change.currentPassword = "correct horse battery";
+        change.newCode = "000000";
+        CHECK(WaitResult([&](UltraIMResultCallback cb) { erin->SetSignInProtection(change, cb); }, r) && !r);
+        setupCode = CodeFor(uri, -30);
+        change.newCode = setupCode;
+        CHECK(WaitResult([&](UltraIMResultCallback cb) { erin->SetSignInProtection(change, cb); }, r) && r);
+        CHECK(erin->GetSignInProtection() == P::PasswordAndAuthenticatorCode);
+        erin->Shutdown();
+    }
+    {
+        // The next start asks for the password, then for the code.
+        Events events;
+        auto erin = start(events);
+        CHECK(erin->HasStoredSession());
+        CHECK(erin->GetSignInProtection() == P::PasswordAndAuthenticatorCode);
+        UltraIMCredentials stored;
+        stored.loginType = UltraIMLoginType::KeyPair;
+        CHECK(WaitResult([&](UltraIMResultCallback cb) { erin->SignIn(stored, cb); }, r) &&
+              r.code == UltraIMResultCode::NeedsInput && erin->GetAuthStep() == UltraIMAuthStep::Password);
+        stored.password = "wrong horse";
+        CHECK(WaitResult([&](UltraIMResultCallback cb) { erin->SignIn(stored, cb); }, r) &&
+              r.code == UltraIMResultCode::AuthFailed && erin->GetAuthStep() == UltraIMAuthStep::Password);
+        CHECK(erin->GetConnectionState() != UltraIMConnectionState::Connected);
+        stored.password = "correct horse battery";
+        CHECK(WaitResult([&](UltraIMResultCallback cb) { erin->SignIn(stored, cb); }, r) &&
+              r.code == UltraIMResultCode::NeedsInput && erin->GetAuthStep() == UltraIMAuthStep::Code);
+        UltraIMCredentials code;
+        code.loginType = UltraIMLoginType::KeyPair;
+        code.otpCode = "123 456";
+        CHECK(WaitResult([&](UltraIMResultCallback cb) { erin->SignIn(code, cb); }, r) &&
+              r.code == UltraIMResultCode::AuthFailed && erin->GetAuthStep() == UltraIMAuthStep::Code);
+        code.otpCode = setupCode;                       // used already
+        CHECK(WaitResult([&](UltraIMResultCallback cb) { erin->SignIn(code, cb); }, r) &&
+              r.code == UltraIMResultCode::AuthFailed);
+        signInCode = CodeFor(uri, 0);
+        code.otpCode = signInCode;
+        CHECK(WaitResult([&](UltraIMResultCallback cb) { erin->SignIn(code, cb); }, r) && r);
+        CHECK(erin->GetConnectionState() == UltraIMConnectionState::Connected);
+        CHECK(erin->GetAuthStep() == UltraIMAuthStep::Idle);
+        const UltraIMAccountProfile profile = ProfileOf(*erin);
+        CHECK(profile.displayName == "Erin K." && profile.email == "erin@example.org" &&
+              profile.phoneNumber == "+44 20 7946 0000");          // from the vault, behind the password
+
+        // Back to the device key: proven with both.
+        UltraIMProtectionChange change;
+        change.protection = P::DeviceKey;
+        change.currentPassword = "correct horse battery";
+        change.currentCode = signInCode;                // spent
+        CHECK(WaitResult([&](UltraIMResultCallback cb) { erin->SetSignInProtection(change, cb); }, r) &&
+              r.code == UltraIMResultCode::AuthFailed);
+        change.currentCode = CodeFor(uri, 30);
+        CHECK(WaitResult([&](UltraIMResultCallback cb) { erin->SetSignInProtection(change, cb); }, r) && r);
+        CHECK(erin->GetSignInProtection() == P::DeviceKey);
+        erin->Shutdown();
+    }
+    {
+        Events events;
+        auto erin = start(events);
+        CHECK(erin->GetSignInProtection() == P::DeviceKey);
+        UltraIMCredentials stored;
+        stored.loginType = UltraIMLoginType::KeyPair;
+        CHECK(WaitResult([&](UltraIMResultCallback cb) { erin->SignIn(stored, cb); }, r) && r);
+        CHECK(ProfileOf(*erin).email == "erin@example.org");
+        erin->Shutdown();
+    }
+    std::error_code ec;
+    fs::remove_all(base, ec);
+}
+#endif
 
 int main() {
     TestEnvelope();
@@ -1045,6 +1458,7 @@ int main() {
     UltraRtc_Initialize();
     TestLocalNetwork();
     TestLocalNetworkDiscovery();
+    TestSignInProtection();
     UltraRtc_Shutdown();
 #endif
     std::printf("DirectProviderTests: %d checks, %d failures\n", g_checks, g_failures);

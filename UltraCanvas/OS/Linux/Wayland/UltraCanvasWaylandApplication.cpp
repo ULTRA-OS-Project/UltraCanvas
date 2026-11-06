@@ -1,19 +1,25 @@
 // OS/Linux/Wayland/UltraCanvasWaylandApplication.cpp
 // The Wayland windowing backend's application. See the header.
+// Version: 0.4.0 - DetectHostAppearanceNative (LinuxHostAppearance) and the config folders' watch
+// Version: 0.3.0 - xdg-activation (RaiseAndFocus); the keyboard window
+// Version: 0.2.0 - the layer shell global; FindOutputAt
 // Version: 0.1.0
-// Last Modified: 2026-10-30
+// Last Modified: 2026-11-03
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasWaylandApplication.h"
 #include "UltraCanvasWaylandWindow.h"
 #include "../UltraCanvasLinuxAccessibility.h"
 #include "../UltraCanvasLinuxFonts.h"
+#include "../UltraCanvasLinuxHostAppearance.h"
 #include "../UltraCanvasLinuxKeys.h"
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasDebug.h"
 
 #include "xdg-shell-client-protocol.h"
 #include "xdg-decoration-unstable-v1-client-protocol.h"
+#include "wlr-layer-shell-unstable-v1-client-protocol.h"
+#include "xdg-activation-v1-client-protocol.h"
 
 #include <wayland-cursor.h>
 #include <linux/input-event-codes.h>
@@ -383,6 +389,8 @@ namespace UltraCanvas {
         }
         InitializeWakeUp();
         LinuxAccessibility::Start();
+        // The desktop's look changes through the files the desktops write.
+        hostAppearanceWatch.Start([this]() { ScheduleHostAppearanceRefresh(); });
 
         initialized = true;
         running = false;
@@ -439,6 +447,11 @@ namespace UltraCanvas {
             xdg_wm_base_add_listener(xdgWmBase, &kWmBaseListener, this);
         } else if (what == zxdg_decoration_manager_v1_interface.name) {
             decorationManager = static_cast<zxdg_decoration_manager_v1*>(bind(&zxdg_decoration_manager_v1_interface, 1));
+        } else if (what == zwlr_layer_shell_v1_interface.name) {
+            layerShellVersion = std::min<uint32_t>(version, 4);
+            layerShell = static_cast<zwlr_layer_shell_v1*>(bind(&zwlr_layer_shell_v1_interface, 4));
+        } else if (what == xdg_activation_v1_interface.name) {
+            activation = static_cast<xdg_activation_v1*>(bind(&xdg_activation_v1_interface, 1));
         } else if (what == wl_data_device_manager_interface.name) {
             dataDeviceManager = static_cast<wl_data_device_manager*>(bind(&wl_data_device_manager_interface, 3));
             UpdateSeatDevices();
@@ -487,6 +500,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasWaylandApplication::ShutdownNative() {
+        hostAppearanceWatch.Stop();
         LinuxAccessibility::Stop();
         StopKeyRepeat();
         ShutdownWakeUp();
@@ -509,6 +523,8 @@ namespace UltraCanvas {
         }
         outputs.clear();
         if (decorationManager) { zxdg_decoration_manager_v1_destroy(decorationManager); decorationManager = nullptr; }
+        if (layerShell) { zwlr_layer_shell_v1_destroy(layerShell); layerShell = nullptr; }
+        if (activation) { xdg_activation_v1_destroy(activation); activation = nullptr; }
         if (xdgWmBase) { xdg_wm_base_destroy(xdgWmBase); xdgWmBase = nullptr; }
         if (shm) { wl_shm_destroy(shm); shm = nullptr; }
         if (compositor) { wl_compositor_destroy(compositor); compositor = nullptr; }
@@ -766,6 +782,14 @@ namespace UltraCanvas {
         return nullptr;
     }
 
+    const WaylandOutput* UltraCanvasWaylandApplication::FindOutputAt(int x, int y) const {
+        for (const auto& o : outputs) {
+            if (o.Width() <= 0 || o.Height() <= 0) continue;
+            if (x >= o.x && y >= o.y && x < o.x + o.Width() && y < o.y + o.Height()) return &o;
+        }
+        return nullptr;
+    }
+
     void UltraCanvasWaylandApplication::GetScreenSize(int& width, int& height) const {
         width = height = 0;
         for (const auto& o : outputs) {
@@ -801,6 +825,10 @@ namespace UltraCanvas {
 
     FontStyle UltraCanvasWaylandApplication::DetectMonospacedFontStyleNative() {
         return LinuxFonts::DetectMonospacedFontStyle();
+    }
+
+    HostAppearance UltraCanvasWaylandApplication::DetectHostAppearanceNative() {
+        return LinuxHostAppearance::Detect(nullptr);
     }
 
     void UltraCanvasWaylandApplication::LoadBundledFontsNative() {

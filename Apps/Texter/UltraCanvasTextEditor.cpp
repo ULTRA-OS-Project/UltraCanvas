@@ -1,5 +1,9 @@
 // Apps/Texter/UltraCanvasTextEditor.cpp
 // Complete text editor implementation with multi-file tabs and autosave
+// Version: 2.5.1 - a failed save says why in a whole translated sentence (SaveFailureReason no longer puts an English phrase into "The file {0}.")
+// Version: 2.5.0 - every text a person reads goes through Tr / TrF / TrN (the menus,
+//                  the toolbars' tooltips, the dialogs, the status line, the About box);
+//                  Help > Translate UltraTexter... opens the localisation editor
 // Version: 2.4.1 - HasOpenFile / FindDocumentIndexByPath: the already-open check
 //                  of OpenFile, also asked across windows for a file a second
 //                  start hands over
@@ -56,6 +60,8 @@
 #include "UltraCanvasUtilsUtf8.h"
 #include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasFileError.h"   // FileWriteFailureReason
+#include "UltraLocalisation/UltraLocalisation.h"
+#include "UltraCanvasLocalisationEditor.h"
 
 // ULTRATEXTER_VERSION comes from the build alone: CMake reads the first line
 // of Docs/Texter/CHANGELOG.md (cmake/UltraCanvasVersion.cmake) and passes it
@@ -497,13 +503,13 @@ namespace {
 
                         // ===== FILE MENU =====
                 .AddSubmenu("File", {
-                        MenuItemData::ActionWithShortcut("New", "Ctrl+N", NormalizePath(GetResourcesDir() + "media/icons/texter/add-document.svg"), [this]() {
+                        MenuItemData::ActionWithShortcut(Tr("New"), "Ctrl+N", NormalizePath(GetResourcesDir() + "media/icons/texter/add-document.svg"), [this]() {
                             OnFileNew();
                         }),
-                        MenuItemData::ActionWithShortcut("New Window", "Ctrl+Shift+N", NormalizePath(GetResourcesDir() + "media/icons/texter/add-document.svg"), [this]() {
+                        MenuItemData::ActionWithShortcut(Tr("New Window"), "Ctrl+Shift+N", NormalizePath(GetResourcesDir() + "media/icons/texter/add-document.svg"), [this]() {
                             if (onNewWindowRequest) onNewWindowRequest();
                         }),
-                        MenuItemData::Submenu("New from Template", NormalizePath(GetResourcesDir() + "media/icons/texter/add-document.svg"),
+                        MenuItemData::Submenu(Tr("New from Template"), NormalizePath(GetResourcesDir() + "media/icons/texter/add-document.svg"),
                             [this]() -> std::vector<MenuItemData> {
                                 std::vector<MenuItemData> items;
                                 if (config.documentTemplates.empty()) {
@@ -523,11 +529,11 @@ namespace {
                                 }
                                 return items;
                             }),
-                        MenuItemData::ActionWithShortcut("Open...", "Ctrl+O", NormalizePath(GetResourcesDir() + "media/icons/texter/folder-open.svg"), [this]() {
+                        MenuItemData::ActionWithShortcut(Tr("Open..."), "Ctrl+O", NormalizePath(GetResourcesDir() + "media/icons/texter/folder-open.svg"), [this]() {
                             OnFileOpen();
                         }),
                         [this]() {
-                            auto recentFolders = MenuItemData::Submenu("Open recent folder", NormalizePath(GetResourcesDir() + "media/icons/texter/folder-open.svg"),
+                            auto recentFolders = MenuItemData::Submenu(Tr("Open recent folder"), NormalizePath(GetResourcesDir() + "media/icons/texter/folder-open.svg"),
                             [this]() -> std::vector<MenuItemData> {
                                 std::vector<MenuItemData> items;
 
@@ -563,7 +569,7 @@ namespace {
                                                 return;
                                             }
                                             FileDialogOptions opts;
-                                            opts.title = "Open File(s)";
+                                            opts.title = Tr("Open File(s)");
                                             opts.filters = DialogFileFilters(false);
                                             opts.initialDirectory = folderCopy;
                                             opts.parentWindow = GetWindow();
@@ -591,7 +597,7 @@ namespace {
                             return recentFolders;
                         }(),
                         [this]() {
-                            auto recent = MenuItemData::Submenu("Recent Files", NormalizePath(GetResourcesDir() + "media/icons/texter/clock-five.svg"),
+                            auto recent = MenuItemData::Submenu(Tr("Recent Files"), NormalizePath(GetResourcesDir() + "media/icons/texter/clock-five.svg"),
                             [this]() -> std::vector<MenuItemData> {
                                 std::vector<MenuItemData> recentItems;
                                 RefreshRecentFiles();
@@ -625,7 +631,7 @@ namespace {
                                     }
                                     recentItems.push_back(MenuItemData::Separator());
                                     recentItems.push_back(
-                                        MenuItemData::Action("Clear Recent Files", NormalizePath(GetResourcesDir()+"media/icons/texter/square-minus.svg"), [this]() {
+                                        MenuItemData::Action(Tr("Clear Recent Files"), NormalizePath(GetResourcesDir()+"media/icons/texter/square-minus.svg"), [this]() {
                                             ClearRecentFiles();
                                         })
                                     );
@@ -636,31 +642,31 @@ namespace {
                             return recent;
                         }(),
                         MenuItemData::Separator(),
-                        MenuItemData::ActionWithShortcut("Save", "Ctrl+S", NormalizePath(GetResourcesDir() + "media/icons/texter/save.svg"), [this]() {
+                        MenuItemData::ActionWithShortcut(Tr("Save"), "Ctrl+S", NormalizePath(GetResourcesDir() + "media/icons/texter/save.svg"), [this]() {
                             OnFileSave();
                         }),
-                        MenuItemData::ActionWithShortcut("Save As...", "Ctrl+Shift+S", NormalizePath(GetResourcesDir() + "media/icons/texter/save.svg"), [this]() {
+                        MenuItemData::ActionWithShortcut(Tr("Save As..."), "Ctrl+Shift+S", NormalizePath(GetResourcesDir() + "media/icons/texter/save.svg"), [this]() {
                             OnFileSaveAs();
                         }),
-                        MenuItemData::Action("Save All", NormalizePath(GetResourcesDir() + "media/icons/texter/save.svg"), [this]() {
+                        MenuItemData::Action(Tr("Save All"), NormalizePath(GetResourcesDir() + "media/icons/texter/save.svg"), [this]() {
                             OnFileSaveAll();
                         }),
                         MenuItemData::Separator(),
                         // ── ADD THESE TWO LINES ──
-                        MenuItemData::ActionWithShortcut("Print...", "Ctrl+P", [this]() {
+                        MenuItemData::ActionWithShortcut(Tr("Print..."), "Ctrl+P", [this]() {
                             OnFilePrint();
                         }),
-                        MenuItemData::Action("Export as PDF...", [this]() {
+                        MenuItemData::Action(Tr("Export as PDF..."), [this]() {
                             OnFileExportPdf();
                         }),                        MenuItemData::Separator(),
-                        MenuItemData::ActionWithShortcut("Close Tab", "Ctrl+W", NormalizePath(GetResourcesDir() + "media/icons/texter/close_tab.svg"), [this]() {
+                        MenuItemData::ActionWithShortcut(Tr("Close Tab"), "Ctrl+W", NormalizePath(GetResourcesDir() + "media/icons/texter/close_tab.svg"), [this]() {
                             OnFileClose();
                         }),
-                        MenuItemData::Action("Close All", NormalizePath(GetResourcesDir() + "media/icons/texter/close_tab.svg"), [this]() {
+                        MenuItemData::Action(Tr("Close All"), NormalizePath(GetResourcesDir() + "media/icons/texter/close_tab.svg"), [this]() {
                             OnFileCloseAll();
                         }),
                         MenuItemData::Separator(),
-                        MenuItemData::ActionWithShortcut("Quit", "Alt+F4", NormalizePath(GetResourcesDir() + "media/icons/texter/exit.svg"), [this]() {
+                        MenuItemData::ActionWithShortcut(Tr("Quit"), "Alt+F4", NormalizePath(GetResourcesDir() + "media/icons/texter/exit.svg"), [this]() {
                             OnFileQuit();
                         })
                 })
@@ -668,83 +674,83 @@ namespace {
                         // ===== EDIT MENU =====
                 .AddSubmenu("Edit", {
                         // "↶ Undo"
-                        MenuItemData::ActionWithShortcut("Undo", "Ctrl+Z", NormalizePath(GetResourcesDir() + "media/icons/texter/undo.svg"), [this]() {
+                        MenuItemData::ActionWithShortcut(Tr("Undo"), "Ctrl+Z", NormalizePath(GetResourcesDir() + "media/icons/texter/undo.svg"), [this]() {
                             OnEditUndo();
                         }),
                         // "↷ Redo"
-                        MenuItemData::ActionWithShortcut("Redo", "Ctrl+Y", NormalizePath(GetResourcesDir() + "media/icons/texter/redo.svg"), [this]() {
+                        MenuItemData::ActionWithShortcut(Tr("Redo"), "Ctrl+Y", NormalizePath(GetResourcesDir() + "media/icons/texter/redo.svg"), [this]() {
                             OnEditRedo();
                         }),
                         MenuItemData::Separator(),
-                        MenuItemData::ActionWithShortcut("Cut", "Ctrl+X", NormalizePath(GetResourcesDir() + "media/icons/texter/scissors.svg"), [this]() {
+                        MenuItemData::ActionWithShortcut(Tr("Cut"), "Ctrl+X", NormalizePath(GetResourcesDir() + "media/icons/texter/scissors.svg"), [this]() {
                             OnEditCut();
                         }),
-                        MenuItemData::ActionWithShortcut("Copy", "Ctrl+C", NormalizePath(GetResourcesDir() + "media/icons/texter/copy.svg"), [this]() {
+                        MenuItemData::ActionWithShortcut(Tr("Copy"), "Ctrl+C", NormalizePath(GetResourcesDir() + "media/icons/texter/copy.svg"), [this]() {
                             OnEditCopy();
                         }),
-                        MenuItemData::ActionWithShortcut("Paste", "Ctrl+V", NormalizePath(GetResourcesDir() + "media/icons/texter/paste.svg"), [this]() {
+                        MenuItemData::ActionWithShortcut(Tr("Paste"), "Ctrl+V", NormalizePath(GetResourcesDir() + "media/icons/texter/paste.svg"), [this]() {
                             OnEditPaste();
                         }),
                         MenuItemData::Separator(),
-                        MenuItemData::ActionWithShortcut("Find...", "Ctrl+F", NormalizePath(GetResourcesDir() + "media/icons/texter/search.svg"), [this]() {
+                        MenuItemData::ActionWithShortcut(Tr("Find..."), "Ctrl+F", NormalizePath(GetResourcesDir() + "media/icons/texter/search.svg"), [this]() {
                             OnEditSearch();
                         }),
-                        MenuItemData::ActionWithShortcut("Replace...", "Ctrl+H",  NormalizePath(GetResourcesDir() + "media/icons/texter/replace.svg"), [this]() {
+                        MenuItemData::ActionWithShortcut(Tr("Replace..."), "Ctrl+H",  NormalizePath(GetResourcesDir() + "media/icons/texter/replace.svg"), [this]() {
                             OnEditReplace();
                         }),
-                        MenuItemData::ActionWithShortcut("Go to Line...", "Ctrl+G", NormalizePath(GetResourcesDir() + "media/icons/texter/gotoline.svg"), [this]() {
+                        MenuItemData::ActionWithShortcut(Tr("Go to Line..."), "Ctrl+G", NormalizePath(GetResourcesDir() + "media/icons/texter/gotoline.svg"), [this]() {
                             OnEditGoToLine();
                         }),
                         MenuItemData::Separator(),
-                        MenuItemData::Action("Translate Selection...", [this]() {
+                        MenuItemData::Action(Tr("Translate Selection..."), [this]() {
                             OnEditTranslateSelection();
                         }),
                         MenuItemData::Separator(),
-                        MenuItemData::ActionWithShortcut("Select All", "Ctrl+A", [this]() {
+                        MenuItemData::ActionWithShortcut(Tr("Select All"), "Ctrl+A", [this]() {
                             OnEditSelectAll();
                         }),
                         MenuItemData::Separator(),
                         // Lambda-provided so the enable check mark and the
                         // active dictionary are live every time it opens.
-                        MenuItemData::Submenu("Spelling",
+                        MenuItemData::Submenu(Tr("Spelling"),
                                               NormalizePath(GetResourcesDir() + "media/icons/texter/spellcheck.svg"),
                                               [this]() { return BuildSpellingMenuItems(); })
                 })
 
                         // ===== VIEW MENU =====
                 .AddSubmenu("View", {
-                        MenuItemData::ActionWithShortcut("Increase Font Size", "Ctrl++", NormalizePath(GetResourcesDir() + "media/icons/texter/zoom-in.svg"), [this]() {
+                        MenuItemData::ActionWithShortcut(Tr("Increase Font Size"), "Ctrl++", NormalizePath(GetResourcesDir() + "media/icons/texter/zoom-in.svg"), [this]() {
                             OnViewIncreaseFontSize();
                         }),
-                        MenuItemData::ActionWithShortcut("Decrease Font Size", "Ctrl+-", NormalizePath(GetResourcesDir() + "media/icons/texter/zoom-out.svg"), [this]() {
+                        MenuItemData::ActionWithShortcut(Tr("Decrease Font Size"), "Ctrl+-", NormalizePath(GetResourcesDir() + "media/icons/texter/zoom-out.svg"), [this]() {
                             OnViewDecreaseFontSize();
                         }),
-                        MenuItemData::ActionWithShortcut("Reset Font Size", "Ctrl+0", [this]() {
+                        MenuItemData::ActionWithShortcut(Tr("Reset Font Size"), "Ctrl+0", [this]() {
                             OnViewResetFontSize();
                         }),
                         MenuItemData::Separator(),
-                        MenuItemData::ActionWithShortcut("Toggle Theme", "Ctrl+T", NormalizePath(GetResourcesDir() + "media/icons/texter/theme_mode.svg"), [this]() {
+                        MenuItemData::ActionWithShortcut(Tr("Toggle Theme"), "Ctrl+T", NormalizePath(GetResourcesDir() + "media/icons/texter/theme_mode.svg"), [this]() {
                             OnViewToggleTheme();
                         }),
                         MenuItemData::Separator(),
-                        MenuItemData::Checkbox("Line Numbers", config.showLineNumbers, [this](bool checked) {
+                        MenuItemData::Checkbox(Tr("Line Numbers"), config.showLineNumbers, [this](bool checked) {
                             OnViewToggleLineNumbers(checked);
                         }),
-                        MenuItemData::Checkbox("Word Wrap", config.wordWrap, [this](bool checked) {
+                        MenuItemData::Checkbox(Tr("Word Wrap"), config.wordWrap, [this](bool checked) {
                             OnViewToggleWordWrap(checked);
                         }),
-                        MenuItemData::Checkbox("Hidden Characters", config.showHiddenCharacters, [this](bool checked) {
+                        MenuItemData::Checkbox(Tr("Hidden Characters"), config.showHiddenCharacters, [this](bool checked) {
                             OnViewToggleHiddenCharacters(checked);
                         }),
-                        MenuItemData::Checkbox("Page Layout (documents)", config.documentPageLayout, [this](bool checked) {
+                        MenuItemData::Checkbox(Tr("Page Layout (documents)"), config.documentPageLayout, [this](bool checked) {
                             OnViewTogglePageLayout(checked);
                         }),
                         MenuItemData::Separator(),
-                        MenuItemData::Submenu("Toolbars", {
-                            MenuItemData::Checkbox("Main Toolbar", config.showToolbar, [this](bool checked) {
+                        MenuItemData::Submenu(Tr("Toolbars"), {
+                            MenuItemData::Checkbox(Tr("Main Toolbar"), config.showToolbar, [this](bool checked) {
                                 OnViewToggleToolbar(checked);
                             }),
-                            MenuItemData::Checkbox("Markdown Toolbar", config.showMarkdownToolbar, [this](bool checked) {
+                            MenuItemData::Checkbox(Tr("Markdown Toolbar"), config.showMarkdownToolbar, [this](bool checked) {
                                 OnViewToggleMarkdownToolbar(checked);
                             })
                         })
@@ -752,11 +758,11 @@ namespace {
 
                         // ===== INFO MENU =====
                 .AddSubmenu("Info", {
-                        MenuItemData::Action("File Statistics", [this]() {
+                        MenuItemData::Action(Tr("File Statistics"), [this]() {
                          OnInfoFileStatistics();
                         }),
                         MenuItemData::Separator(),
-                        MenuItemData::Action("Changes", [this]() {
+                        MenuItemData::Action(Tr("Changes"), [this]() {
 #if defined(_WIN32) || defined(_WIN64)
                             auto path = NormalizePath(GetResourcesDir() + "Docs\\Texter\\CHANGELOG.md");
 #else
@@ -764,11 +770,15 @@ namespace {
 #endif
                             OpenDocumentFromPath(path);
                         }),
-                        MenuItemData::Action("Feedback", [this]() {
+                        MenuItemData::Action(Tr("Feedback"), [this]() {
                             OpenURL("https://ultraos.eu/feedback?app=texter&purpose=bugreport");
                         }),
                         MenuItemData::Separator(),
-                        MenuItemData::Action("About UltraTexter", [this]() {
+                        MenuItemData::Action(Tr("Translate UltraTexter..."), [this]() {
+                            ShowLocalisationEditorDialog(GetWindow(), UltraLocalisation::CurrentApplication(),
+                                                         UltraLocalisation::CurrentLanguage());
+                        }),
+                        MenuItemData::Action(Tr("About UltraTexter"), [this]() {
                             OnInfoAbout();
                         })
                 })
@@ -814,20 +824,20 @@ namespace {
                 .AddButton("zoom-out", "", NormalizePath(GetResourcesDir() + "media/icons/texter/zoom-out.svg"), [this]() { OnViewDecreaseFontSize(); })
                 .Build();
 
-        struct { const char* id; const char* tip; } toolbarTooltips[] = {
-                { "new",     "New File (Ctrl+N)"          },
-                { "open",    "Open File... (Ctrl+O)"       },
-                { "save",    "Save (Ctrl+S)"               },
-                { "recent",  "Recent Files"                },
-                { "cut",     "Cut (Ctrl+X)"                },
-                { "copy",    "Copy (Ctrl+C)"               },
-                { "paste",   "Paste (Ctrl+V)"              },
-                { "undo",    "Undo (Ctrl+Z)"               },
-                { "redo",    "Redo (Ctrl+Y)"               },
+        struct { const char* id; std::string tip; } toolbarTooltips[] = {
+                { "new",     Tr("New File (Ctrl+N)")          },
+                { "open",    Tr("Open File... (Ctrl+O)")       },
+                { "save",    Tr("Save (Ctrl+S)")               },
+                { "recent",  Tr("Recent Files")                },
+                { "cut",     Tr("Cut (Ctrl+X)")                },
+                { "copy",    Tr("Copy (Ctrl+C)")               },
+                { "paste",   Tr("Paste (Ctrl+V)")              },
+                { "undo",    Tr("Undo (Ctrl+Z)")               },
+                { "redo",    Tr("Redo (Ctrl+Y)")               },
                 { "search",  "Find... (Ctrl+F)"            },
-                { "replace", "Replace... (Ctrl+H)"         },
-                { "zoom-in", "Increase Font Size (Ctrl++)" },
-                { "zoom-out","Decrease Font Size (Ctrl+-)" },
+                { "replace", Tr("Replace... (Ctrl+H)")         },
+                { "zoom-in", Tr("Increase Font Size (Ctrl++)") },
+                { "zoom-out",Tr("Decrease Font Size (Ctrl+-)") },
         };
 
         for (auto& entry : toolbarTooltips) {
@@ -868,20 +878,20 @@ namespace {
     }
 
     void UltraCanvasTextEditor::SetupMarkdownToolbar() {
-        struct { const char* id; const char* tip; } mdTooltips[] = {
-            { "md-bold",       "Bold (**text**)"                    },
-            { "md-italic",     "Italic (*text*)"                    },
-            { "md-superscript","Superscript (^text^)"               },
-            { "md-subscript",  "Subscript (~text~)"                 },
-            { "md-heading",    "Heading (## Heading)"               },
-            { "md-ul",         "Unordered List (- item)"            },
-            { "md-ol",         "Ordered List (1. item)"             },
-            { "md-checklist",  "Checklist (- [ ] item)"             },
-            { "md-quote",      "Blockquote (> text)"                },
-            { "md-code",       "Code Block (```code```)"            },
-            { "md-table",      "Insert Table"                       },
-            { "md-link",       "Hyperlink ([title](url))"           },
-            { "md-image",      "Image (![title](path))"             },
+        struct { const char* id; std::string tip; } mdTooltips[] = {
+            { "md-bold",       Tr("Bold (**text**)")                    },
+            { "md-italic",     Tr("Italic (*text*)")                    },
+            { "md-superscript",Tr("Superscript (^text^)")               },
+            { "md-subscript",  Tr("Subscript (~text~)")                 },
+            { "md-heading",    Tr("Heading (## Heading)")               },
+            { "md-ul",         Tr("Unordered List (- item)")            },
+            { "md-ol",         Tr("Ordered List (1. item)")             },
+            { "md-checklist",  Tr("Checklist (- [ ] item)")             },
+            { "md-quote",      Tr("Blockquote (> text)")                },
+            { "md-code",       Tr("Code Block (```code```)")            },
+            { "md-table",      Tr("Insert Table")                       },
+            { "md-link",       Tr("Hyperlink ([title](url))")           },
+            { "md-image",      Tr("Image (![title](path))")             },
         };
 
         markdownToolbar = UltraCanvasToolbarBuilder("MarkdownToolbar")
@@ -1097,7 +1107,7 @@ namespace {
             tabContextMenu->AddItem(MenuItemData::Separator());
 
             // 3. Open in new window
-            tabContextMenu->AddItem(MenuItemData::Action("Open in New Window", [this, tabIndex]() {
+            tabContextMenu->AddItem(MenuItemData::Action(Tr("Open in New Window"), [this, tabIndex]() {
                 if (tabIndex >= 0 && tabIndex < static_cast<int>(documents.size())) {
                     auto doc = ExtractDocument(tabIndex);
                     if (doc && onTabDraggedOut) {
@@ -1110,14 +1120,14 @@ namespace {
             tabContextMenu->AddItem(MenuItemData::Separator());
 
             // 5. Close
-            tabContextMenu->AddItem(MenuItemData::Action("Close", [this, tabIndex]() {
+            tabContextMenu->AddItem(MenuItemData::Action(Tr("Close"), [this, tabIndex]() {
                 if (tabIndex >= 0 && tabIndex < static_cast<int>(documents.size())) {
                     CloseDocument(tabIndex);
                 }
             }));
 
             // 6. Close other tabs
-            tabContextMenu->AddItem(MenuItemData::Action("Close Other Tabs", [this, tabIndex]() {
+            tabContextMenu->AddItem(MenuItemData::Action(Tr("Close Other Tabs"), [this, tabIndex]() {
                 isDocumentClosing = true;
                 for (int i = static_cast<int>(documents.size()) - 1; i >= 0; i--) {
                     if (i != tabIndex) {
@@ -1135,7 +1145,7 @@ namespace {
             }));
 
             // 7. Close all tabs
-            tabContextMenu->AddItem(MenuItemData::Action("Close All Tabs", [this]() {
+            tabContextMenu->AddItem(MenuItemData::Action(Tr("Close All Tabs"), [this]() {
                 OnFileCloseAll();
             }));
 
@@ -1171,8 +1181,8 @@ namespace {
                 languageDropdownWidth, statusBarHeight - 4
         );
 
-        languageDropdown->AddItem("Plain Text", "Plain Text");
-        languageDropdown->AddItem("Markdown", "Markdown");
+        languageDropdown->AddItem(Tr("Plain Text"), "Plain Text");
+        languageDropdown->AddItem(Tr("Markdown"), "Markdown");
         languageDropdown->AddSeparator();
  
         {
@@ -1181,10 +1191,10 @@ namespace {
             std::sort(languages.begin(), languages.end());
  
             const std::vector<std::pair<std::string, std::string>> assemblerMap = {
-                    {"68000 Assembly", "Assembler (68000)"},
-                    {"ARM Assembly",   "Assembler (ARM)"},
-                    {"x86 Assembly",   "Assembler (x86)"},
-                    {"Z80 Assembly",   "Assembler (Z80)"},
+                    {"68000 Assembly", Tr("Assembler (68000)")},
+                    {"ARM Assembly",   Tr("Assembler (ARM)")},
+                    {"x86 Assembly",   Tr("Assembler (x86)")},
+                    {"Z80 Assembly",   Tr("Assembler (Z80)")},
             };
  
             auto isAssembler = [&](const std::string& lang) -> bool {
@@ -1210,9 +1220,9 @@ namespace {
         // Hex/Binary at the very bottom in its own block —
         // binary files are a fundamentally different category from text modes
         languageDropdown->AddSeparator();
-        languageDropdown->AddItem("Hex/Binary", "Hex/Binary");
+        languageDropdown->AddItem(Tr("Hex/Binary"), "Hex/Binary");
         languageDropdown->SetSelectedIndex(0); // Plain Text
-        languageDropdown->SetTooltip("File Type / Syntax Mode");
+        languageDropdown->SetTooltip(Tr("File Type / Syntax Mode"));
 
         DropdownStyle langStyle = languageDropdown->GetStyle();
         langStyle.fontSize = 10;
@@ -1251,7 +1261,7 @@ namespace {
         }
 
         encodingDropdown->SetSelectedIndex(0); // Default: UTF-8
-        encodingDropdown->SetTooltip("Character Encoding");
+        encodingDropdown->SetTooltip(Tr("Character Encoding"));
 
         DropdownStyle encStyle = encodingDropdown->GetStyle();
         encStyle.fontSize = 10;
@@ -1277,7 +1287,7 @@ namespace {
         // Default to system default
         auto defaultEOL = UltraCanvasTextArea::GetSystemDefaultLineEnding();
         eolDropdown->SetSelectedIndex(static_cast<int>(defaultEOL));
-        eolDropdown->SetTooltip("Line Ending Style (LF / CRLF / CR)");
+        eolDropdown->SetTooltip(Tr("Line Ending Style (LF / CRLF / CR)"));
 
         DropdownStyle eolStyle = eolDropdown->GetStyle();
         eolStyle.fontSize = 10;
@@ -1310,7 +1320,7 @@ namespace {
         zoomDropdown->onSelectionChanged = [this](int index, const DropdownItem& item) {
             SetFontZoomPercent(std::stoi(item.value));
         };
-        zoomDropdown->SetTooltip("Zoom Level");
+        zoomDropdown->SetTooltip(Tr("Zoom Level"));
 
         statusBarContainer->AddChild(zoomDropdown);
 
@@ -1318,7 +1328,7 @@ namespace {
         statusLabel = std::make_shared<UltraCanvasLabel>(
                 "StatusBar"
         );
-        statusLabel->SetText("Ready");
+        statusLabel->SetText(Tr("Ready"));
         statusLabel->SetFontSize(10);
         statusLabel->SetTextColor(Color(80, 80, 80, 255));
         statusLabel->SetBackgroundColor(Color(240, 240, 240, 255));
@@ -2216,7 +2226,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                 "This build of Texter has no PDF support (MuPDF was not found "
                 "when it was built), so " + PathToUtf8(PathFromUtf8(filePath).filename()) +
                 " cannot be opened.",
-                "Open PDF", DialogType::Warning, DialogButtons::OK, nullptr);
+                Tr("Open PDF"), DialogType::Warning, DialogButtons::OK, nullptr);
         (void)doc;
         return false;
 #else
@@ -2428,7 +2438,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                 document = UltraCanvasFileLoader::LoadTextDocument(filePath, loadError);
             if (!document) {
                 if (DetectWordDocumentFormat(filePath) == WordDocumentFormat::LegacyDoc) {
-                    UltraCanvasDialogManager::ShowError(loadError, "Unsupported Format",
+                    UltraCanvasDialogManager::ShowError(loadError, Tr("Unsupported Format"),
                                                         nullptr, this);
                     return false;
                 }
@@ -2594,12 +2604,18 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         // destination - missing folder, read-only file, locked by another
         // program, disk full - or the system's own error (errno, which the C
         // runtime sets when it cannot open or write the file).
-        std::string SaveFailureReason(const std::string& filePath, const char* what) {
+        // The step is a whole translated sentence per case - an English
+        // phrase passed into a translated one would stay English in every
+        // language. errno is read first, before Tr does anything.
+        enum class SaveStep { Open, Write };
+        std::string SaveFailureReason(const std::string& filePath, SaveStep step) {
             const int err = errno;
-            std::string reason = std::string("The file ") + what + ".\n" +
+            std::string reason = (step == SaveStep::Open
+                                      ? Tr("The file could not be opened for writing.")
+                                      : Tr("The file could not be written completely.")) + "\n" +
                                  FileWriteFailureReason(filePath, err);
             if (err != 0) {
-                reason += "\n(System error " + std::to_string(err) + ": " + std::strerror(err) + ")";
+                reason += "\n" + TrF("(System error {0}: {1})", err, std::strerror(err));
             }
             return reason;
         }
@@ -2613,7 +2629,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         auto doc = documents[docIndex];
 
         if (doc->filePath.empty()) {
-            lastSaveError = "The document has no file name yet.";
+            lastSaveError = Tr("The document has no file name yet.");
             return false; // No file path set, use SaveDocumentAs
         }
 
@@ -2629,10 +2645,10 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
 
         if (targetExtension == "doc") {
             UltraCanvasDialogManager::ShowError(
-                "Saving to the legacy Word 97-2003 (.doc) format is not "
-                "supported. Save as .docx instead.",
-                "Unsupported Format", nullptr, this);
-            lastSaveError = "Texter cannot save the Word 97-2003 (.doc) format.";
+                Tr("Saving to the legacy Word 97-2003 (.doc) format is not "
+                "supported. Save as .docx instead."),
+                Tr("Unsupported Format"), nullptr, this);
+            lastSaveError = Tr("Texter cannot save the Word 97-2003 (.doc) format.");
             return false;
         }
 
@@ -2645,7 +2661,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             if (!UltraCanvasFileLoader::SaveTextDocument(*document, filePath, saveError)) {
                 debugOutput << "Failed to save document: " << saveError << std::endl;
                 lastSaveError = saveError;
-                UltraCanvasDialogManager::ShowError(saveError, "Save Failed",
+                UltraCanvasDialogManager::ShowError(saveError, Tr("Save Failed"),
                                                     nullptr, this);
                 return false;
             }
@@ -2670,14 +2686,14 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         errno = 0;
         std::ofstream file(UltraCanvas::PathFromUtf8(filePath), std::ios::binary);
         if (!file.is_open()) {
-            lastSaveError = SaveFailureReason(filePath, "could not be opened for writing");
+            lastSaveError = SaveFailureReason(filePath, SaveStep::Open);
             debugOutput << "Failed to save file: " << filePath << ": " << lastSaveError << std::endl;
             return false;
         }
         file.write(text.data(), static_cast<std::streamsize>(text.size()));
         file.close();
         if (!file) {
-            lastSaveError = SaveFailureReason(filePath, "could not be written completely");
+            lastSaveError = SaveFailureReason(filePath, SaveStep::Write);
             return false;
         }
         return true;
@@ -2697,7 +2713,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             if (doc->IsPdf() && doc->pdfView) {
                 if (!doc->pdfView->SaveAs(filePath)) {
                     debugOutput << "Failed to save PDF: " << filePath << std::endl;
-                    lastSaveError = "The PDF could not be written.";
+                    lastSaveError = Tr("The PDF could not be written.");
                     return false;
                 }
                 doc->filePath     = filePath;
@@ -2724,7 +2740,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             // the runs the writer receives.
             if (doc->IsRichDocument() && doc->richEdit) {
                 if (!SaveRichDocumentAs(docIndex, filePath, targetExt)) {
-                    if (lastSaveError.empty()) lastSaveError = "The document could not be written.";
+                    if (lastSaveError.empty()) lastSaveError = Tr("The document could not be written.");
                     return false;
                 }
                 doc->filePath = filePath;
@@ -2762,7 +2778,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                 errno = 0;
                 std::ofstream file(UltraCanvas::PathFromUtf8(filePath), std::ios::binary);
                 if (!file.is_open()) {
-                    lastSaveError = SaveFailureReason(filePath, "could not be opened for writing");
+                    lastSaveError = SaveFailureReason(filePath, SaveStep::Open);
                     debugOutput << "Failed to save file: " << filePath << ": " << lastSaveError << std::endl;
                     return false;
                 }
@@ -2770,16 +2786,16 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                            static_cast<std::streamsize>(rawBytes.size()));
                 file.close();
                 if (!file) {
-                    lastSaveError = SaveFailureReason(filePath, "could not be written completely");
+                    lastSaveError = SaveFailureReason(filePath, SaveStep::Write);
                     debugOutput << "Failed to save file: " << filePath << ": " << lastSaveError << std::endl;
                     return false;
                 }
             } else if (isWordTarget) {
                 if (targetExt == "doc") {
                     UltraCanvasDialogManager::ShowError(
-                        "Saving to the legacy Word 97-2003 (.doc) format is not "
-                        "supported. Save as .docx instead.",
-                        "Unsupported Format", nullptr, this);
+                        Tr("Saving to the legacy Word 97-2003 (.doc) format is not "
+                        "supported. Save as .docx instead."),
+                        Tr("Unsupported Format"), nullptr, this);
                     return false;
                 }
                 // Relative image paths in the markdown resolve against the
@@ -2794,7 +2810,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                 if (!UltraCanvasFileLoader::SaveTextDocument(rich, filePath, saveError)) {
                     debugOutput << "Failed to save document: " << saveError << std::endl;
                     lastSaveError = saveError;
-                    UltraCanvasDialogManager::ShowError(saveError, "Save Failed",
+                    UltraCanvasDialogManager::ShowError(saveError, Tr("Save Failed"),
                                                         nullptr, this);
                     return false;
                 }
@@ -2829,7 +2845,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                 errno = 0;
                 std::ofstream file(UltraCanvas::PathFromUtf8(filePath), std::ios::binary);
                 if (!file.is_open()) {
-                    lastSaveError = SaveFailureReason(filePath, "could not be opened for writing");
+                    lastSaveError = SaveFailureReason(filePath, SaveStep::Open);
                     debugOutput << "Failed to save file: " << filePath << ": " << lastSaveError << std::endl;
                     return false;
                 }
@@ -2852,7 +2868,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                            static_cast<std::streamsize>(outputBytes.size()));
                 file.close();
                 if (!file) {
-                    lastSaveError = SaveFailureReason(filePath, "could not be written completely");
+                    lastSaveError = SaveFailureReason(filePath, SaveStep::Write);
                     debugOutput << "Failed to save file: " << filePath << ": " << lastSaveError << std::endl;
                     return false;
                 }
@@ -3074,13 +3090,13 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         std::vector<std::string> backups;
         backups.swap(pendingOrphanBackups);
 
-        std::string message = "Found " + std::to_string(backups.size()) +
-                              " autosaved file(s) from a previous session.\n\n" +
-                              "Would you like to recover them?";
+        std::string message = TrN("Found {n} autosaved file from a previous session.\n\nWould you like to recover it?",
+                                  "Found {n} autosaved files from a previous session.\n\nWould you like to recover them?",
+                                  static_cast<long long>(backups.size()));
 
         UltraCanvasDialogManager::ShowMessage(
                 message,
-                "Crash Recovery",
+                Tr("Crash Recovery"),
                 DialogType::Question,
                 DialogButtons::YesNo,
                 [this, backups](DialogResult result) {
@@ -3267,7 +3283,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             case FormatCommand::Link:
                 if (rich) {
                     UltraCanvasDialogManager::ShowInputDialog(
-                        "Link address:", "Insert Hyperlink", "https://",
+                        Tr("Link address:"), Tr("Insert Hyperlink"), "https://",
                         InputType::URL,
                         [this](DialogResult result, const std::string& target) {
                             if (result != DialogResult::OK || target.empty()) return;
@@ -3275,20 +3291,20 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                         },
                         GetWindow());
                 } else {
-                    InsertMarkdownSnippet("[", "](http://example.com/)", "Link title");
+                    InsertMarkdownSnippet("[", "](http://example.com/)", Tr("Link title"));
                 }
                 break;
             case FormatCommand::Image:
                 if (rich) {
                     FileDialogOptions opts;
-                    opts.title = "Insert Image";
+                    opts.title = Tr("Insert Image");
                     opts.initialDirectory = lastOpenedDirectory;
                     opts.parentWindow = GetWindow();
                     // Every picture type this build reads (FileLoader's
                     // list), and SVG, which the image reader draws too
                     UltraCanvasFileLoader::AddLoadTypes(opts, "Images", {MediaFormatCategory::Bitmap});
                     if (!opts.filters.empty()) opts.filters.back().extensions.push_back("svg");
-                    opts.AddFilter("All Files", "*");
+                    opts.AddFilter(Tr("All Files"), "*");
                     UltraCanvasFileLoader::OpenFileDialog(
                         opts,
                         [this](DialogResult result, const std::string& path) {
@@ -3298,12 +3314,12 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                             // store, so the picture survives the save.
                             if (edit && !edit->InsertImageFromFile(path)) {
                                 UltraCanvasDialogManager::ShowError(
-                                    "Could not read the image file.",
-                                    "Insert Image", nullptr, this);
+                                    Tr("Could not read the image file."),
+                                    Tr("Insert Image"), nullptr, this);
                             }
                         });
                 } else {
-                    InsertMarkdownSnippet("![", "](image path)", "Image title");
+                    InsertMarkdownSnippet("![", "](image path)", Tr("Image title"));
                 }
                 break;
             case FormatCommand::Heading1:
@@ -3667,7 +3683,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
 
     void UltraCanvasTextEditor::OnFileOpen() {
         FileDialogOptions opts;
-        opts.title = "Open File(s)";
+        opts.title = Tr("Open File(s)");
         opts.filters = DialogFileFilters(false);
         opts.initialDirectory = lastOpenedDirectory;
         opts.parentWindow = GetWindow();
@@ -3779,7 +3795,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         }
 
         FileDialogOptions opts;
-        opts.title = "Save File As";
+        opts.title = Tr("Save File As");
         opts.filters = DialogFileFilters(true);
         opts.initialDirectory = lastOpenedDirectory;
         opts.defaultFileName = defaultName;
@@ -3815,8 +3831,8 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         if (!doc) return;
         if (!doc->IsRichDocument() || !doc->richEdit) {
             UltraCanvasDialogManager::ShowError(
-                "Export as PDF works on word-processing documents (.docx, .odt, .doc, .md opened as a document).",
-                "Export as PDF", nullptr, GetWindow());
+                Tr("Export as PDF works on word-processing documents (.docx, .odt, .doc, .md opened as a document)."),
+                Tr("Export as PDF"), nullptr, GetWindow());
             return;
         }
         std::string stem = doc->fileName.empty() ? std::string("Untitled") : doc->fileName;
@@ -3824,8 +3840,8 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         if (dot != std::string::npos && dot > 0) stem = stem.substr(0, dot);
 
         FileDialogOptions opts;
-        opts.title = "Export as PDF";
-        opts.filters = {FileFilter("PDF document", std::vector<std::string>{"pdf"})};
+        opts.title = Tr("Export as PDF");
+        opts.filters = {FileFilter(Tr("PDF document"), std::vector<std::string>{"pdf"})};
         opts.initialDirectory = lastOpenedDirectory;
         opts.defaultFileName = stem + ".pdf";
         opts.parentWindow = GetWindow();
@@ -3838,7 +3854,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                     if (index < 0 || !documents[static_cast<size_t>(index)]->richEdit) return;
                     std::string error;
                     if (!documents[static_cast<size_t>(index)]->richEdit->ExportToPdf(filePath, error)) {
-                        UltraCanvasDialogManager::ShowError(error, "Export as PDF", nullptr, GetWindow());
+                        UltraCanvasDialogManager::ShowError(error, Tr("Export as PDF"), nullptr, GetWindow());
                     }
                 });
     }
@@ -3858,14 +3874,14 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             std::vector<uint8_t> pdf;
             std::string error;
             if (!doc->richEdit->ExportToPdf(pdf, error)) {
-                UltraCanvasDialogManager::ShowError(error, "Print Failed", nullptr, GetWindow());
+                UltraCanvasDialogManager::ShowError(error, Tr("Print Failed"), nullptr, GetWindow());
                 return;
             }
             const IODeviceResult printed =
                 PrintDocumentWithDialog(docName, pdf, "application/pdf", GetWindow(),
                                         CreateRichDocumentPrintPages(*doc->richEdit));
             if (!printed.success && printed.code != IODeviceResultCode::Cancelled) {
-                UltraCanvasDialogManager::ShowError(printed.message, "Print Failed", nullptr, GetWindow());
+                UltraCanvasDialogManager::ShowError(printed.message, Tr("Print Failed"), nullptr, GetWindow());
             }
             return;
         }
@@ -4228,11 +4244,11 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         auto* viewItem = menuBar->GetItem(2);
         if (!viewItem) return;
         for (auto& sub : viewItem->subItems) {
-            if (sub.label == "Line Numbers") {
+            if (sub.label == Tr("Line Numbers")) {
                 sub.checked = config.showLineNumbers;
-            } else if (sub.label == "Word Wrap") {
+            } else if (sub.label == Tr("Word Wrap")) {
                 sub.checked = config.wordWrap;
-            } else if (sub.label == "Hidden Characters") {
+            } else if (sub.label == Tr("Hidden Characters")) {
                 sub.checked = config.showHiddenCharacters;
             }
         }
@@ -4273,11 +4289,11 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         // "Toolbars" submenu is the last item in View's subItems
         auto& viewSubs = viewItem->subItems;
         for (auto& sub : viewSubs) {
-            if (sub.type == MenuItemType::Submenu && sub.label == "Toolbars") {
+            if (sub.type == MenuItemType::Submenu && sub.label == Tr("Toolbars")) {
                 for (auto& tbItem : sub.subItems) {
-                    if (tbItem.label == "Main Toolbar") {
+                    if (tbItem.label == Tr("Main Toolbar")) {
                         tbItem.checked = config.showToolbar;
-                    } else if (tbItem.label == "Markdown Toolbar") {
+                    } else if (tbItem.label == Tr("Markdown Toolbar")) {
                         tbItem.checked = config.showMarkdownToolbar;
                     }
                 }
@@ -4290,7 +4306,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         if (aboutDialog) return;
 
         DialogConfig config;
-        config.title = "About UltraTexter";
+        config.title = Tr("About UltraTexter");
         config.dialogType = DialogType::Custom;
         config.buttons = DialogButtons::NoButtons;
         config.width = 430;
@@ -4322,7 +4338,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         titleLabel->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
         // Version
-        auto versionLabel = std::make_shared<UltraCanvasLabel>("AboutVersion", 300, 40, "Version " + version + "\nUltraCanvas version " + versionString);
+        auto versionLabel = std::make_shared<UltraCanvasLabel>("AboutVersion", 300, 40, TrF("Version {0}\nUltraCanvas version {1}", version, versionString));
         versionLabel->SetFontSize(11);
         versionLabel->SetTextColor(Color(100, 100, 100));
         versionLabel->SetAlignment(TextAlignment::Center);
@@ -4332,13 +4348,13 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
 
         // Description
         auto descLabel = std::make_shared<UltraCanvasLabel>("AboutDesc", 350, 120,
-                "A full-featured text editor built with UltraCanvas\nFramework\n\n"
+                Tr("A full-featured text editor built with UltraCanvas\nFramework\n\n"
                 "Features:\n"
                 "\u2022 Multi-file editing with tabs\n"
                 "\u2022 Syntax highlighting\n"
                 "\u2022 Autosave and crash recovery\n"
                 "\u2022 Dark/Light themes\n"
-                "\u2022 Full Markdown text editing");
+                "\u2022 Full Markdown text editing"));
         descLabel->SetFontSize(11);
         descLabel->SetTextColor(Color(60, 60, 60));
         descLabel->SetAlignment(TextAlignment::Left);
@@ -4412,7 +4428,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             return;
         }
         if (!doc || !doc->textArea) {
-            statusLabel->SetText("Ready");
+            statusLabel->SetText(Tr("Ready"));
             return;
         }
         // const auto& text = doc->textArea->GetText();
@@ -5013,11 +5029,11 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             return;
         }
 
-        std::string message = "Save changes to \"" + doc->fileName + "\"?";
+        std::string message = TrF("Save changes to \"{0}\"?", doc->fileName);
 
         UltraCanvasDialogManager::ShowMessage(
                 message,
-                "Save Changes?",
+                Tr("Save Changes?"),
                 DialogType::Question,
                 DialogButtons::YesNoCancel,
                 [this, docIndex, onComplete](DialogResult result) {
@@ -5025,7 +5041,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                         auto doc = documents[docIndex];
                         if (doc->filePath.empty()) {
                             FileDialogOptions opts;
-                            opts.title = "Save File";
+                            opts.title = Tr("Save File");
                             opts.filters = DialogFileFilters(true);
                             opts.defaultFileName = doc->fileName;
                             opts.parentWindow = GetWindow();
@@ -5078,18 +5094,18 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
     void UltraCanvasTextEditor::OfferSaveAsAfterFailure(std::shared_ptr<DocumentTab> doc,
                                                         const std::string& failedPath,
                                                         std::function<void(bool)> onDone) {
-        const std::string reason = lastSaveError.empty() ? "The file could not be written." : lastSaveError;
+        const std::string reason = lastSaveError.empty() ? Tr("The file could not be written.") : lastSaveError;
         const std::string message = "\"" + failedPath + "\" could not be saved.\n\n" + reason +
                                     "\n\nChoose another name or folder to save it.";
 
         UltraCanvasDialogManager::ShowMessage(
                 message,
-                "Save Failed",
+                Tr("Save Failed"),
                 DialogType::Error,
                 DialogButtons::OK,
                 [this, doc, failedPath, onDone](DialogResult) {
                     FileDialogOptions opts;
-                    opts.title = "Save File";
+                    opts.title = Tr("Save File");
                     opts.filters = DialogFileFilters(true);
                     opts.defaultFileName = PathToUtf8(PathFromUtf8(failedPath).filename());
                     opts.initialDirectory = PathToUtf8(PathFromUtf8(failedPath).parent_path());
@@ -5143,7 +5159,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
 
         UltraCanvasDialogManager::ShowMessage(
                 message,
-                "Unsaved Changes",
+                Tr("Unsaved Changes"),
                 DialogType::Question,
                 DialogButtons::YesNoCancel,
                 [this, modifiedDocs, onComplete](DialogResult result) {
@@ -5188,7 +5204,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                             }
 
                             FileDialogOptions opts;
-                            opts.title = "Save File";
+                            opts.title = Tr("Save File");
                             opts.filters = DialogFileFilters(true);
                             opts.defaultFileName = doc->fileName;
                             opts.parentWindow = GetWindow();
@@ -5944,7 +5960,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         ctx->SetFontWeight(FontWeight::Bold);
         ctx->SetFontSize(18.0f);
 
-        std::string dropText = "Drop files to open in new tabs";
+        std::string dropText = Tr("Drop files to open in new tabs");
         int textWidth = ctx->GetTextLineWidth(dropText);
         ctx->DrawText(dropText, {iconCenterX - textWidth / 2, iconCenterY + iconH / 2 + 16});
 
@@ -6054,7 +6070,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
 
             recentFilesPopupMenu->AddItem(MenuItemData::Separator());
             recentFilesPopupMenu->AddItem(
-                MenuItemData::Action("Clear Recent Files",
+                MenuItemData::Action(Tr("Clear Recent Files"),
                     NormalizePath(GetResourcesDir() + "media/icons/texter/square-minus.svg"),
                     [this]() {
                         ClearRecentFiles();

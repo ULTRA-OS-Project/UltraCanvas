@@ -1,0 +1,19 @@
+{
+  "@language": "he",
+  "@translated-by": "machine draft 2026-11-05, reviewed by -",
+  "Colour title": "צביעת כותרת",
+  "Edit Title": "עריכת כותרת",
+  "The title is in the video": "הכותרת נמצאת בווידאו",
+  "The title is unchanged": "הכותרת לא השתנתה",
+  "The title was emptied: it keeps its text (delete the title on its lane to remove it)": "הכותרת התרוקנה: היא שומרת על הטקסט שלה (כדי להסיר אותה יש למחוק את הכותרת במסלול שלה)",
+  "Title Alignment": "יישור כותרת",
+  "Title Bold": "כותרת מודגשת",
+  "Title Font": "גופן כותרת",
+  "Title Italic": "כותרת נטויה",
+  "Title Letter Spacing": "ריווח אותיות בכותרת",
+  "Title Line Spacing": "ריווח שורות בכותרת",
+  "Title Size": "גודל כותרת",
+  "Title Strikethrough": "קו חוצה בכותרת",
+  "Title Underline": "קו תחתון בכותרת",
+  "Typing the title on the frame: Escape, Ctrl+Enter or a click outside puts it in the video": "הקלדת הכותרת על הפריים: Escape, Ctrl+Enter או לחיצה בחוץ מכניסים אותה לווידאו"
+}

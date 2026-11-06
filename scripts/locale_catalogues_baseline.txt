@@ -1,0 +1,3 @@
+# Findings of scripts/check_locale_catalogues.py that predate the CI check,
+# so it can block new ones. One per line: <file>::<message>. Only shrinks.
+# Regenerate with: python3 scripts/check_locale_catalogues.py --update-baseline

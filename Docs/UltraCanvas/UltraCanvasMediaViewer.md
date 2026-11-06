@@ -499,9 +499,22 @@ file's own **metadata** read with `PixelFX::Header::ReadMetadata` — one
 section per block (EXIF, IPTC, XMP, Colour / ICC, Other such as PNG text
 chunks), or a line saying the file carries none.
 
-The panel is an `UltraCanvasTextArea` in `MarkdownHybrid` mode, dark themed,
-so each section is a heading over a two-column *Property / Value* table.
-The mouse wheel, Up / Down and PageUp / PageDown scroll it; Escape or the
+The panel is an `UltraCanvasGroupBox` in the `Header` frame style, dark
+themed: its caption names what is shown (*Image information*, *Document
+information*, *eBook information* ...) and the **x** at the right end of the
+caption closes it. Inside is an `UltraCanvasTextArea` in `MarkdownHybrid`
+mode at 11 px, so each section is a heading over a two-column *Property /
+Value* table. For a GIF the table has a *Palette* row (the size of the
+colour table, global or the first frame's) and under the text the colour
+table itself is drawn as a block of swatches (`UltraCanvasColorSwatchBar`,
+wrapped, at most half the panel's height); the caption over it names the
+entry under the pointer, as its index and `#RRGGBB`.
+The mouse wheel, Up / Down and PageUp / PageDown scroll the text; Escape, the
+close button or the Details button again closes it. Left / Right keep
+browsing, and the panel follows to the next file. The panel's text is built
+only while it is open (on opening, then for each file loaded): browsing with
+it closed reads no metadata.
+
 A picture whose header reads but whose pixels do not decode (a HEIC on a
 build without an HEVC decoder, a truncated file) says so instead of leaving
 the area empty: the display shows *Cannot decode this picture*, the info bar
@@ -511,11 +524,6 @@ the same reason. The surface learns it only when it draws (that is when the
 pixels are decoded) and tells the viewer through
 `UltraCanvasMediaSurface::onDecodeFailed`, once per shown image, after the
 frame.
-
-button again closes it. Left / Right keep browsing, and the panel follows
-to the next file. The panel's text is built only while it is open (on
-opening, then for each file loaded): browsing with it closed reads no
-metadata.
 
 ```cpp
 viewer->SetDetailsVisible(true);
@@ -537,6 +545,10 @@ viewer->OpenFolder("/home/me/Pictures");            // browse a folder
 viewer->OpenFile("/home/me/Pictures/photo.jpg");    // file first, folder around it
 viewer->SetFiles({ "a.png", "b.mp4", "c.pdf" });    // exactly these files
 
+// A window shown first and the file opened after (the window appears at once):
+viewer->OpenFileWhenShown("/home/me/Pictures/photo.jpg");   // also OpenFolderWhenShown, SetFilesWhenShown
+viewer->onCurrentFileChanged = [](const std::string& path) { /* a window title */ };
+
 // Navigation
 viewer->Next();
 viewer->Previous();
@@ -548,6 +560,20 @@ viewer->SetTransition(MediaTransition::CrossFade);
 viewer->PlaySlideshow();
 ```
 
+*No media* (on the display and in the info bar) means the viewer was asked
+for nothing. A host that shows its window and then opens a file calls
+`OpenFileWhenShown` (or `OpenFolderWhenShown` / `SetFilesWhenShown`): the
+viewer shows a turning ring (`UltraCanvasBusyIndicator`, `MV_Loading`) in the
+middle of the display and `name · loading` in the info bar, reports the name
+through `onCurrentFileChanged`, and opens the file once a frame of that has
+been drawn - or after 400 ms if the viewer is not drawn at all. `IsLoading()`
+and `GetLoadingPath()` say whether one is on its way; any other open or
+`CloseFile()` replaces it, and a list with nothing to show ends it. Without
+an application (a test) the file opens at once. `onCurrentFileChanged` also
+fires for every file browsed to, and with `""` when nothing is shown;
+`UltraCanvasMediaViewerWindow` and UltraViewer title their windows with it.
+The surface's own empty text is `UltraCanvasMediaSurface::SetEmptyText`.
+
 `IsSupportedMedia(path)` answers whether the viewer can display a path
 (static — the UltraFiler preview uses it to decide whether to open the
 pane). `ClassifyFile(path)` (static) says which view a path opens in -
@@ -558,6 +584,16 @@ FTP and cloud drives without downloading videos or documents. Keyboard: Left / R
 browse, Space toggles the slideshow; the widget claims the window keyboard
 focus when attached (`SetGrabFocusOnAttach(false)` opts out) and filters the
 window's key events so browsing works while a display view holds the focus.
+
+Text the viewer shows - a text, source or Markdown file, a note, the Details
+panel - is selected with the mouse and copied. Those areas are display-only
+and never take the focus, so a press in one gives the focus to the widget
+itself: from then on Ctrl+C (or Ctrl+Insert, Cmd+C on macOS) copies the
+selection - the Details panel's first, then the text view's - and Ctrl+A
+selects all of the area last pressed in. Embedded in a host such as
+UltraFiler, this is what keeps Ctrl+C from reaching the file display (which
+would copy the files) after text was selected in the preview. A right-click
+on the text opens Copy / Select All (`UltraCanvasTextArea`'s read-only menu).
 
 ## Video preview behaviour
 
@@ -610,6 +646,25 @@ than the pane is shown at its own size, centred, instead of being enlarged to
 fill it - what a hover preview wants, so an icon stays an icon rather than a
 blur the size of the pane. The wheel still zooms in from there, and the info
 bar reports the resulting zoom as always. The default (`true`) fills the pane.
+
+### Opening the selected file
+
+A pane that follows a selection opens each file with `OpenFileWhenShown` (or
+`SetFilesWhenShown` for one file alone) rather than `OpenFile`: the pane shows
+the loading ring and the file's name at once and reads the file after that
+frame, so a large file never leaves the previous one standing in for it, and
+selections made while one loads replace it instead of queuing behind it. To
+ask whether the pane already holds a file, compare with the loading path while
+one is on its way - otherwise a refresh during the load starts it over:
+
+<!-- doc-check: std::shared_ptr<UltraCanvasMediaViewer> preview; std::string path; -->
+```cpp
+const std::string shown = preview->IsLoading() ? preview->GetLoadingPath()
+                                               : preview->GetCurrentPath();
+if (shown != path) preview->OpenFileWhenShown(path);
+```
+
+UltraFiler's preview pane works this way (`PreviewPanePath`).
 
 ### Taking the 3D view out of it
 

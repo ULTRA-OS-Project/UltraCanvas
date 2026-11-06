@@ -104,6 +104,16 @@
 // thin blue bar sliding along the foot of the file area - its entries, or an
 // empty area, stay as they are - and the words go to the host's status line
 // (GetListingPendingStatus, onListingPendingChanged).
+// Version: 1.47.0 - onFolderChangedOnDisk: the folder watch's re-listings, for a
+//                  host's folder tree
+// Version: 1.46.3 - Refresh() moves up to the nearest existing folder when the
+//                  shown one was deleted (not when its volume went)
+// Version: 1.46.2 - a delete, a move and a folder rename hold folder watches off
+//                  the folders they change (UltraCanvasFolderWatchHold); a
+//                  read-only folder on Windows is deleted without asking
+// Version: 1.46.1 - RemoveTreeWithProgress removes through UltraCanvasFileRemoval
+//                  and says why a removal failed (FileRemovalProblem): "in
+//                  use" is no longer taken for a permission problem
 // Version: 1.46.0 - RenderFileThumbnail: a file's content as a picture, for
 //                  any caller (the thumbnail workers' switch, shared), with
 //                  a page of first lines for text documents
@@ -156,6 +166,7 @@
 #include "UltraCanvasFolderWatcher.h"
 #include "UltraCanvasFileLock.h"
 #include "UltraCanvasElevatedFileOperations.h"
+#include "UltraCanvasFileRemoval.h"
 #include "UltraCanvasArchiveRun.h"
 #include "UltraCanvasSplitPane.h"
 #include "UltraCanvasTextWrapping.h"
@@ -806,7 +817,13 @@ namespace UltraCanvas {
         // What the remote folder shown is waiting for (remoteListingStatus):
         // empty when nothing is being fetched for it.
         const std::string& GetListingPendingStatus() const { return listingPendingStatus; }
-        void Refresh();                                // rescan the current folder
+        // Rescans the current folder. When the folder shown is gone - deleted
+        // or renamed by another display or another program - it moves up to
+        // the nearest folder above it that is still there (SetPath, so
+        // onPathChanged reports it). A folder whose volume went with it (a
+        // USB stick pulled out, a share dropped) is waited for instead: the
+        // display stays on it and re-lists itself when the volume returns.
+        void Refresh();
 
         // ===== FILE LIST (SEARCH RESULTS) =====
         // Display an explicit list of paths (e.g. search results) instead of
@@ -1813,6 +1830,18 @@ namespace UltraCanvas {
         // it. A file-list display (ShowFileList) only reports changes whose
         // folder is known, since its entries span many folders.
         std::function<void(const std::string& folderPath)> onFolderModified;
+        // After the folder watch noticed the shown folder change on disk and
+        // the display re-listed it: what the widget's own operations do not
+        // report through onFolderModified. Another program created, deleted
+        // or renamed something in it; an entry this widget deleted while a
+        // program still held it went at last (Windows keeps such an entry
+        // listed, as "delete pending", until the program lets go); or the
+        // folder itself was deleted, in which case the display has already
+        // moved up and the argument is the folder that went. A host's folder
+        // tree re-syncs that folder's rows from it - without it, a subfolder
+        // deleted that way stayed in the tree. Not fired for navigation, a
+        // sort or a plain Refresh().
+        std::function<void(const std::string& folderPath)> onFolderChangedOnDisk;
         // A copy or move has ended - walked to its end, or cancelled part-way
         // - with what arrived where (see FilerTransferResult). For a
         // confirmation on the host's status line; the widget shows nothing
@@ -2362,6 +2391,13 @@ namespace UltraCanvas {
         // Runs on the UI thread, driven by the flag the watcher's failure
         // callback sets.
         void HandleLostNativeWatch();
+        // Refresh()'s first step: when the folder the last scan listed as a
+        // real directory is gone and its volume is still there, SetPath to
+        // the nearest existing folder above it. True when it moved.
+        bool MoveUpFromVanishedFolder();
+        // The device a folder is on (POSIX st_dev), 0 when unknown or on
+        // Windows - where a volume that went takes its drive root with it.
+        static unsigned long long FolderDevice(const std::string& path);
         // True while an interaction owns the view and a rescan would disturb
         // it (an open rename editor, a drag, a file operation and its dialog).
         bool IsBusyForAutoRefresh() const;
@@ -2391,6 +2427,12 @@ namespace UltraCanvas {
         uint64_t                folderWatchSignature = 0;
         bool                    folderWatchHaveBaseline = false;  // first scan only measures
         std::atomic<bool>       folderWatchDirty{false};  // worker -> UI timer
+        // The folder the last scan found a real directory, and its device
+        // then: what MoveUpFromVanishedFolder compares against. Empty for an
+        // archive interior, a remote drive or a file list, which are never
+        // "deleted" from under the display.
+        std::string             shownFolderSeenPath;
+        unsigned long long      shownFolderDevice = 0;
         TimerId                 folderWatchTimer = InvalidTimerId;
 
         bool dragEnabled = true;
@@ -3666,6 +3708,11 @@ namespace UltraCanvas {
         // (it cannot open a dialog, or even touch the widget, itself).
         void FlushFileOperationErrors();
         // The caption above the ring: "3 items to \"Backup\"" and the like.
+        // A hold that keeps every folder watch in the process off the
+        // folders among `victims` (UltraCanvasFolderWatchHold); null when
+        // there are none.
+        static std::unique_ptr<UltraCanvasFolderWatchHold>
+        HoldWatchesOffFolders(const std::vector<FilerEntry>& victims);
         static std::string FileOperationCaption(const std::string& verb,
                                                 size_t itemCount,
                                                 const std::string& firstName,
@@ -3683,13 +3730,27 @@ namespace UltraCanvas {
         // goes: post-order, and a symlink is removed as the link it is —
         // std::filesystem::remove_all's semantics, which this replaces.
         // `failedPath`, when given, names the entry the failure is about:
-        // a file deep inside `path` as often as `path` itself. A file that
-        // answers "permission denied" is retried once with its read-only
-        // bit lifted, as the entry's own delete lifts it before the attempt.
+        // a file deep inside `path` as often as `path` itself. Every entry
+        // goes through RemoveFileSystemEntry (UltraCanvasFileRemoval.h), so
+        // a read-only file or folder is no obstacle and an entry Windows
+        // still lists as delete pending counts as gone; `problem`, when
+        // given, says what a failure means (in use, not permitted, ...). A
+        // failure that is "in use" is tried once more after this process
+        // let go of the files its image loader still holds - the thumbnails
+        // of the pictures being deleted, mapped by libvips, were what made
+        // Windows refuse them to everybody.
         static bool RemoveTreeWithProgress(const std::string& path,
                                            FileOpItemCredit& credit,
                                            std::error_code& ec,
-                                           std::string* failedPath = nullptr);
+                                           std::string* failedPath = nullptr,
+                                           FileRemovalProblem* problem = nullptr);
+        // One pass of the above, recursive; RemoveTreeWithProgress adds the
+        // second attempt.
+        static bool RemoveTreeLevel(const std::string& path,
+                                    FileOpItemCredit& credit,
+                                    std::error_code& ec,
+                                    std::string* failedPath,
+                                    FileRemovalProblem& problem);
         // Copies one file, in chunks once it is big enough for the ring to
         // move inside it (and for Cancel to be answered before it ends).
         static bool CopyFileWithProgress(const std::string& from,
@@ -3730,6 +3791,11 @@ namespace UltraCanvas {
         struct PendingPaste {
             std::string folder;
             std::vector<std::string> sources;
+            // A move: no watch in the process holds a source folder or
+            // anything in it until the paste is through - on Windows a
+            // watched subfolder (another display showing it) refuses the
+            // folder's rename.
+            std::unique_ptr<UltraCanvasFolderWatchHold> watchHold;
             // Per source, where it goes (empty = `folder`) and what it is:
             // an ordinary entry, an entry of a folder being MERGED into an
             // existing folder (it goes into that folder), or the merged
@@ -3926,6 +3992,11 @@ namespace UltraCanvas {
         struct PendingDelete {
             std::vector<FilerEntry> victims;
             size_t next = 0;
+            // No watch in the process holds a folder being deleted, or
+            // anything in it, until the delete is through: on Windows a
+            // second display showing a subfolder kept it open, and on FAT
+            // and exFAT a deleted folder stays listed while anything does.
+            std::unique_ptr<UltraCanvasFolderWatchHold> watchHold;
             // "Do this for all" answers, kept per dialog flavor.
             bool protectedForAll = false;          // write-protected entries…
             DeleteProblemAction protectedAction = DeleteProblemAction::Skip;

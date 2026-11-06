@@ -1,3 +1,69 @@
+#### 2026-11-05 *0.7.8*
+- **Pictures along the whole clip on the timeline.** A long clip zoomed in
+  showed pictures only over its first part (at most 200 were asked for,
+  spread over the whole clip, then laid side by side from its start), and
+  they did not sit at their own times. Each picture now fills a slot at its
+  own moment, to the clip's end at any zoom; only the part in view is
+  decoded, a few pictures at a time, and a picture that cannot be read
+  leaves its slot empty instead of ending the strip.
+- **The export's progress window says what is written:** under the file
+  name, the size, the frame rate, the video codec and the sound
+  ("1920 × 1080 · 25 fps · H.264 · AAC stereo").
+- **"Saved …" shows the path as it is.** The message is Markdown, so a
+  Windows path's backslashes vanished (`D:j filesjakobis…`); paths and
+  error texts in the export's messages are now escaped.
+- **The export starts in the folder the last export went to** (kept in
+  UltraVideo's `settings.json`), else the project's folder.
+
+#### 2026-11-05 *0.7.7*
+- **UltraVideo takes the Video, Audio and Image base sets.** Its catalogue
+  names them under `@bases`, as the localisation proposal's Appendix B
+  assigns them, so a text of video, audio or picture editing it shows comes
+  in the shared vocabulary of every language.
+
+#### 2026-11-05 *0.7.6*
+- **Titles in every language.** UltraVideo's own catalogue
+  (`media/locale/<lang>/UltraVideo.json`) now exists in all thirty
+  languages: typing a title on the frame, its status messages and its undo
+  steps ("Undo Title Font", "Undo Colour title" ...) showed in English
+  whatever the language.
+
+#### 2026-11-04 *0.7.5*
+- **Selected words of a title take a letter spacing and a colour of their
+  own.** While a title is typed on the frame, the text bar's letter spacing
+  and the Clip panel's colour go to the selected words only; with nothing
+  selected they change the whole title (and a colour for the whole title
+  clears its words' own). The project and `videofx render` keep both.
+- **A size typed into the text bar no longer finishes the title.** Any key
+  typed in the bar's size field, or in its font list, put the title in the
+  video first, so the size went to the whole title. The keys now stay in the
+  field, and Escape there gives them back to the title.
+
+#### 2026-11-03 *0.7.4*
+- **Type a title on the frame.** A double-click on a title in the viewer, or
+  on its span on the title lane, lays the words over the picture where the
+  title shows, at the viewer's scale, in its font and colour; the title leaves
+  the frame meanwhile. Escape, Ctrl+Enter or a click outside puts them in the
+  video as one undo step (*Edit Title*).
+- **The text bar** over the viewer, shown with a title - the framework's
+  `UltraCanvasTextFormatBar`, as in ArtCreator and UltraPaint, in the
+  program's theme: the font (every installed font, each shown in itself),
+  size in pixels of the project's frame, bold, italic, underline,
+  strikethrough, alignment, line spacing and letter spacing. While a title is
+  typed they go to the selected words, else to the whole title; otherwise to
+  the selected title, one undo step (a held arrow is one).
+- **Titles are drawn by UltraCanvas**, the engine that types them, into a
+  picture laid over the frame - for the viewer, the draft and the export, at
+  the export's own height - instead of FFmpeg's text filter, which could set
+  none of the above. Their shadow and band are drawn into the picture as the
+  filter drew them. Typing a title's text in the inspector makes it plain
+  again. A saved project keeps the words, the font, the alignment and the
+  spacings.
+- The titles are drawn as the engine's text renderer
+  (`VideoFXUltraCanvasText`, shared with the `videofx` tool): the project's
+  text overlays carry each title's formatting, so `videofx render
+  trip.ultravideo` draws the titles exactly as UltraVideo shows them.
+
 #### 2026-11-01 *0.7.3*
 - **A gap left by a cut closes with one click.** Split a clip on the
   overlay, title or sound lane, delete one part, and the empty stretch it

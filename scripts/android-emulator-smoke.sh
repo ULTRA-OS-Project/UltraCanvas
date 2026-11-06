@@ -7,7 +7,17 @@
 # it presents a frame (OS/Android/UltraCanvasAndroidWindow.cpp, tag
 # UltraCanvas), saying whether that frame has content or is one colour
 # everywhere. This waits for that line, and fails when the process dies
-# first, when the frame is blank, or when the time runs out.
+# first, when the frame is blank, or when the time runs out - and, once the
+# frame is there, when an SVG failed to load ("is not a known file format":
+# the APK's libvips was built without SVG support), and when the display's
+# density did not reach the frame: the surface must be exactly the window's
+# size in pixels, and the scale the display's density / 160. Run on a
+# high-density display (CI runs one at 420 dpi) that is what catches a
+# backend drawing at the wrong scale, or a pixel short that the compositor
+# then stretches. Last, it turns the display to landscape and waits for a
+# frame at the new size that again fills the window: the activity is kept
+# across a rotation (configChanges in the manifest), so the backend must see
+# the window resize in place and rebuild its surface.
 #
 # Whatever happens it leaves the evidence in OUT_DIR: a screenshot, the whole
 # logcat, the crash buffer, and the app's own lines (tags UltraCanvas and
@@ -51,6 +61,66 @@ for ((elapsed = 0; elapsed < timeout; elapsed += 2)); do
         # Leave it running a moment so the screenshot shows the settled UI.
         sleep 5
         if grep -q 'with content' <<<"$line"; then
+            # "first frame presented: 1080x2337, window 1080x2337, scale 2.625, ..."
+            frame="$(sed -n 's/.*first frame presented: \([0-9]*x[0-9]*\).*/\1/p' <<<"$line")"
+            window="$(sed -n 's/.*, window \([0-9]*x[0-9]*\).*/\1/p' <<<"$line")"
+            scale="$(sed -n 's/.*, scale \([0-9.]*\).*/\1/p' <<<"$line")"
+            if [ -z "$frame" ] || [ "$frame" != "$window" ]; then
+                echo "::error::the frame is ${frame:-?} but the window is ${window:-?}: the compositor stretches every frame to fit"
+                exit 1
+            fi
+            # "Physical density: 420", or "Override density: ..." when set.
+            density="$(adb shell wm density | tr -d '\r' | awk -F': ' '/density/ {d = $2} END {print d}')"
+            if [ -z "$density" ] || [ -z "$scale" ] ||
+               ! awk -v d="$density" -v s="$scale" 'BEGIN { e = d / 160; exit !(s - e < 0.002 && e - s < 0.002) }'; then
+                echo "::error::the display is ${density:-?} dpi but the app drew at scale ${scale:-?} (expected density / 160)"
+                exit 1
+            fi
+            echo "android-emulator-smoke: ${density} dpi, scale ${scale}, frame fills the ${window} window"
+            # The demo's icons are SVG: one that libvips cannot read means the
+            # APK's libvips was built without SVG support (packaging/vcpkg.json).
+            svg_failures="$(adb logcat -d -s UltraCanvas:V | grep -c '\.svg.*is not a known file format' || true)"
+            if [ "${svg_failures:-0}" -gt 0 ]; then
+                echo "::error::$svg_failures SVG load(s) failed: libvips cannot read SVG (see logcat-ultracanvas.txt)"
+                adb logcat -d -s UltraCanvas:V | grep -m3 '\.svg.*is not a known file format' || true
+                exit 1
+            fi
+            # Rotation in place: turn the display to landscape (auto-rotate off,
+            # so nothing turns it back) and wait for a frame at the new size.
+            adb exec-out screencap -p > "$out/screenshot-portrait.png" || true
+            adb shell settings put system accelerometer_rotation 0
+            adb shell settings put system user_rotation 1
+            rotated=""
+            for ((waited = 0; waited < 60; waited += 2)); do
+                rotated="$(adb logcat -d -s UltraCanvas:V | grep -m1 'resized frame presented' || true)"
+                [ -n "$rotated" ] && break
+                if [ -z "$(adb shell pidof "$package" | tr -d '\r')" ]; then
+                    echo "::error::$package died after the display turned to landscape (see logcat-crash.txt)"
+                    adb logcat -d -b crash | tail -40 || true
+                    exit 1
+                fi
+                sleep 2
+            done
+            if [ -z "$rotated" ]; then
+                echo "::error::no frame at a new size within 60s of turning the display to landscape - the app kept its ${frame} frame, so the rotation was not seen as a resize"
+                exit 1
+            fi
+            echo "android-emulator-smoke: ${rotated#*: }"
+            rframe="$(sed -n 's/.*frame presented: \([0-9]*x[0-9]*\).*/\1/p' <<<"$rotated")"
+            rwindow="$(sed -n 's/.*, window \([0-9]*x[0-9]*\).*/\1/p' <<<"$rotated")"
+            if [ "$rframe" != "$rwindow" ]; then
+                echo "::error::after rotating, the frame is ${rframe:-?} but the window is ${rwindow:-?}"
+                exit 1
+            fi
+            if [ "${rframe%x*}" -le "${rframe#*x}" ]; then
+                echo "::error::after turning the display to landscape the frame is ${rframe}, not landscape"
+                exit 1
+            fi
+            if ! grep -q 'with content' <<<"$rotated"; then
+                echo "::error::the first frame after rotating was blank"
+                exit 1
+            fi
+            sleep 3   # the landscape screenshot shows the settled UI
             echo "android-emulator-smoke: PASS"
             exit 0
         fi

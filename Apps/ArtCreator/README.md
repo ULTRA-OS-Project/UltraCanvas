@@ -92,7 +92,7 @@ Mould*, *View* (Zoom, Push).
 | R | Rectangle | Drag; shift for a square, ctrl from the centre; corner radius option |
 | E | Ellipse | Drag; shift for a circle, ctrl from the centre |
 | Q | Quick Shape | Drag from the centre. Options: Shape (Polygon — a regular n-gon, 8 corners for an octagon — or Star), Corners (3–24), Depth (how far a star's inner corners are pulled in). Shift stands it upright: a star's point up, an even polygon on a flat side |
-| T | Text | Click; a dialog asks for the text, font, size, bold, italic |
+| T | Text | Click on the page and type there, in the text's font, size and colour at the canvas's zoom; click a text (or double-click it with the Selector) to edit it where it lies. Enter starts a new line. The **text bar** (the framework's `UltraCanvasTextFormatBar`) replaces the transform bar while the tool is active: Font (every installed family, each shown in itself; type to find one), Size, Bold, Italic, Underline, Strikethrough, Align left / centre / right, Line spacing (%) and Letter spacing (pt). While typing, Font to Strikethrough apply to the selected words, or to the whole text with none selected; the rest always to the whole text. With no text being typed, the bar applies to the selected texts. Escape, Ctrl+Enter or a click outside finishes |
 | G | Fill | Drag across a shape for a linear (or radial) gradient from the fill colour; drag the gradient's ends to adjust; flat / no fill buttons |
 | Y | Transparency | Click a shape and drag right for a flat level, or drag across it for a linear / radial / conical ramp; the mix (stained glass, bleach, contrast, ...) and the level are in the options |
 | W | Shadow | Click a shape for a wall shadow and drag it into place; kind (wall / floor / glow), blur, darkness and colour in the options |
@@ -105,7 +105,8 @@ Mould*, *View* (Zoom, Push).
 | H | Push | Drag the view (space + drag does the same with any tool) |
 
 The wheel zooms about the pointer, shift + wheel pans, `+` / `-`, Ctrl+0
-fits the page, Ctrl+1 is 100 %. Drag a guide out of a ruler; alt-drag a
+fits the page, Ctrl+2 fits the page's width (the toolbar's Fit Page Width
+button), Ctrl+1 is 100 %. Drag a guide out of a ruler; alt-drag a
 guide to move it; drop it back on a ruler to delete it.
 
 The **Line** card on the right (shown with the line tools) holds the line gallery: the width, an
@@ -114,6 +115,30 @@ bar, and Xara's eight stock arrowheads drawn with Xara's own shapes and
 sizes) and their size, a width profile (taper to either end, both, bulge)
 and a brush (dots, dashes, hearts stamped along the path). It applies to
 the selection and to every line drawn afterwards.
+
+## Customising the menus and toolbars
+
+Every command - the menu entries, the toolbar's buttons, the tools and the
+keys - is registered once, so a command has one label, one icon, one
+shortcut and one state wherever it appears: Undo names the step it undoes and
+is greyed with nothing to undo, a command that needs a selection is greyed
+without one, and the active tool's slot is pressed.
+
+- **Right-click the toolbar or the tool palette** for its groups: tick a
+  group to show it (the toolbar offers Edit, Align, Distribute, Combine,
+  Layer, Line, Guides and Snap besides the six it shows), *Fold* the group
+  under the pointer into one button whose others fold out, *Hide* the
+  command under it, or *Customise Toolbars*. View > Toolbars offers the same.
+- **View > Customise Menus and Toolbars** opens the editor for the menu bar,
+  the toolbar and the palette together: add any command to a menu or a
+  toolbar group, remove, reorder, make groups and submenus of your own, fold
+  groups, choose the toolbar's icon size and labels; Apply shows the result,
+  Save keeps it, Reset goes back to ArtCreator's arrangement. The palette
+  takes tools only.
+- What you change is kept in the settings folder: the menus in `menus.txt`,
+  the toolbars in `settings.json` (only what differs from ArtCreator's, so a
+  command a new version adds to a group still appears). A toolbar wider than
+  the window puts what does not fit into a chevron's menu at its end.
 
 ## Menus and shortcuts
 
@@ -246,9 +271,10 @@ brings ArtCreator forward (`UltraCanvasSingleInstance`). `--help` and
 | File | Contents |
 |---|---|
 | `main.cpp` | Bootstrap, arguments, plugin registration, the first window |
-| `ArtCreatorWindow.{h,cpp}` | Window composition, the open-window registry, menus, panels, status bar, shortcuts, file open / save, every command |
+| `ArtCreatorWindow.{h,cpp}` | Window composition, the open-window registry, panels, status bar, file open / save, every command's work |
+| `ArtCreatorCommands.cpp` | Every command registered once (menus, toolbar, palette, keys, live state), the default menu, toolbar and palette layouts, the icon sizes, the user's layouts kept, the Customise editor |
 | `ArtCreatorTools.{h,cpp}` | The `ArtTool` base, the 15 tools, the line gallery's named choices, the option-widget helpers |
-| `ArtCreatorDialogs.{h,cpp}` | New Drawing / Document Setup and Text |
+| `ArtCreatorDialogs.{h,cpp}` | New Drawing / Document Setup |
 | `ArtCreatorIcon.{h,cpp}` | Icon mode's sizes, the page drawn at the icon's size with its soft pixels, and the preview element |
 | `ArtCreator.desktop` | The freedesktop launcher |
 | `../../media/icons/artcreator/` | Tool and command icons in one shade, each set drawn on the pixel grid of the size it is shown at, so its lines land on whole pixels: the 24 px set (toolbar and panel buttons), `28/` (the tool palette, 28 px icons in 36 px buttons) and `16/` (every menu entry). The toolbar's file, edit and zoom buttons use `../../media/icons/menu/`; `../../media/appicon/ArtCreator.{png,svg}` is the app icon |

@@ -151,6 +151,9 @@ SEARCH_ROOTS = [
     "Tests/FilerHostIconsTest.cpp",
     "Tests/FilerNameEncodingTest.cpp",
     "Tests/FilerShortcutEntryTest.cpp",
+    "Tests/FileRemovalTest.cpp",
+    "Tests/ElevatedFileOperationsTest.cpp",
+    "Tests/FilerVanishedFolderTest.cpp",
 ]
 # The rest of Tests/ is not scanned: the framework test suite builds on Linux
 # only (BUILD_TESTS in build.yml), where a path's native string is the UTF-8

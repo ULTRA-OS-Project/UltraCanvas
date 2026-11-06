@@ -7,6 +7,16 @@
 // The editor is multi-window: the class also holds the registry of open
 // windows, so File > New Window and a second file on the command line add
 // to it and the application exits with the last of them.
+// Version: 1.15.0 - text is typed on the page: an UltraCanvasRichTextEdit over the canvas at
+//                   its zoom, in the text's font and colour, edits a new or a clicked text in
+//                   place (BeginTextEdit / CommitTextEdit); the Text dialog is gone; the text
+//                   bar (font, size, bold, italic, underline, strikethrough, alignment, line
+//                   and letter spacing) in the transform bar's place with the Text tool
+// Version: 1.14.0 - menus, toolbar, palette and shortcuts built from one command registry
+//                   per window (ArtCreatorCommands.cpp): the menu and the toolbars follow
+//                   the commands' state, the toolbar and palette are groups the user shows,
+//                   hides, reorders and folds (a right click, or View > Customise Menus
+//                   and Toolbars), kept in ArtCreator's settings folder
 // Version: 1.13.1 - settings are changed through ArtCreatorSettings::Update, so one window
 //                   no longer writes back another's changes
 // Version: 1.13.0 - the transform bar's rotation centre (fields on the page or from the middle,
@@ -31,7 +41,7 @@
 // Version: 1.5.0 - SaveToPath takes the bitmap size: Export saves every type through FileLoader
 // Version: 1.4.0 - ToolIconPath / SharedIconPath; MenuIconPath is the app's 16 px menu set
 // Version: 1.3.0
-// Last Modified: 2026-10-29
+// Last Modified: 2026-11-03
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -50,10 +60,16 @@
 #include "UltraCanvasGradientEditor.h"
 #include "UltraCanvasSpinner.h"
 #include "UltraCanvasReferencePointPicker.h"
+#include "UltraCanvasRichTextEdit.h"
+#include "UltraCanvasTextFormatBar.h"
 #include "UltraCanvasVectorCanvas.h"
 #include "DataFormats/UltraCanvasVectorStorage.h"
 #include "DataFormats/UltraCanvasVectorEdit.h"
 #include "UltraCanvasFileSaveSettings.h"   // FileSaveImageSize
+#include "UltraCanvasCommandRegistry.h"
+#include "UltraCanvasMenuLayout.h"
+#include "UltraCanvasToolbarLayout.h"
+#include "UltraCanvasAppSettings.h"
 
 #include "ArtCreatorTools.h"
 #include "ArtCreatorDialogs.h"
@@ -115,6 +131,34 @@ private:
     // The framework's shared line icons (media/icons/menu/, 24 px): the
     // toolbar's New, Open, Save, Undo, Redo and zoom buttons.
     std::string SharedIconPath(const std::string& file) const;
+
+    // ----- commands (ArtCreatorCommands.cpp) -----
+    // Every command once, in this window's registry: the menu bar, the
+    // toolbar, the palette and the keyboard are all built from it, so a
+    // label, an icon, a shortcut or a state is written in one place.
+    void RegisterCommands();
+    // The program's arrangements - what Reset in the editor returns to.
+    static MenuLayoutSet DefaultMenuLayout();
+    static ToolbarLayout DefaultToolbarLayout();
+    static ToolbarLayout DefaultPaletteLayout();
+    // A command icon's file at `pixels`: the app's set drawn for that size,
+    // else the shared one, else the nearest size there is.
+    std::string ResolveCommandIcon(const std::string& name, int pixels) const;
+    // The user's arrangement: the menus in menus.txt and the toolbars in
+    // settings.json, both in ArtCreator's settings folder.
+    void LoadLayouts();
+    void SaveLayouts();
+    void ApplyMenuLayout();
+    void ApplyToolbarLayout();
+    void ApplyPaletteLayout();
+    // The menu, the toolbar and the palette follow the commands' state
+    // (Undo with its step, what needs a selection, the active tool).
+    void RefreshCommandStates();
+    // The editor for the menus and both toolbars, in a window of its own;
+    // `selectNode` picks what it opens on ("t0" the toolbar, "t1" the palette).
+    void OpenCustomise(const std::string& selectNode = std::string());
+    // A key press to the command whose shortcut it is; false for none.
+    bool RunShortcut(const UCEvent& e);
 
     // ----- document -----
     void NewDrawing(const ArtCreatorPageResult& page);
@@ -255,11 +299,78 @@ private:
     void ApplyFillColour(const Color& c, bool commit);
     void ApplyLineColour(const Color& c, bool commit);
     void ApplyRamp(bool commit);
-    void PlaceText(double x, double y, const ArtCreatorTextResult& r);
+
+    // ----- typing text on the page -----
+    // A text is typed into an UltraCanvasRichTextEdit lying over the canvas
+    // where the text lies, at the canvas's zoom, in the text's font and
+    // fill colour on a transparent ground - so what is typed looks as the
+    // drawing will show it. Enter starts a new line (a paragraph of the
+    // editor is a line of the text); bold, italic, font and size set on part
+    // of it (the editor's own keys, Ctrl+B / Ctrl+I) become spans of their
+    // own. The text being edited is left out of the drawing meanwhile, and
+    // the edit goes into the document as one undo step when it is
+    // committed: Escape, Ctrl+Enter, a click outside, another tool or any
+    // command that changes the drawing.
+    struct TextEditSession {
+        std::string elementId;                               // the text edited; empty for a new one
+        std::shared_ptr<VectorStorage::VectorText> model;    // its position, styles and colour
+        std::shared_ptr<UCRichDocument> startWords;          // what the editor opened with
+        VectorStorage::Matrix3x3 toDocument;                 // the text's own space to the page's
+        bool fillChanged = false;                            // a colour was picked while typing
+        Rect2Dd viewRect;                                    // the editor, in the canvas's view coordinates
+        bool arming = false;                                 // an empty line is being armed
+    };
+    // Starts typing: into `text` when given, else a new text whose first
+    // baseline starts at the document point.
+    void BeginTextEdit(const Point2Dd& docPoint, const std::shared_ptr<VectorStorage::VectorText>& text);
+    // Puts what was typed into the document and closes the editor. A new
+    // text left empty adds nothing; an edited text emptied is deleted.
+    void CommitTextEdit();
+    // Closes the editor without touching the document (it is being replaced).
+    void DropTextEdit();
+    bool IsEditingText() const { return textSession != nullptr; }
+    // Keeps the editor on the text as the view zooms and pans, and as wide
+    // and tall as what is typed.
+    void PlaceTextEditor();
+    // The editor's look for the session's text: its base font at the
+    // engine's points, its colour, no frame, padding or paragraph gaps.
+    RichTextEditStyle TextEditorStyle() const;
+    // A dashed frame round the words being typed, over the canvas.
+    void DrawTextEditFrame(IRenderContext* ctx);
+    // The text bar (the framework's UltraCanvasTextFormatBar), in the
+    // transform bar's place while the Text tool is active: Font (every
+    // installed family, each shown in itself), Size, Bold, Italic, Underline,
+    // Strikethrough, Align left / centre / right, Line spacing and Letter
+    // spacing. While a text is typed, the character attributes (font, size,
+    // bold, italic, underline, strikethrough) go to the selected words - or,
+    // with none selected, to the whole text - and the others to the whole
+    // text; with no text being typed, everything goes to the selected texts
+    // as one undo step. Each choice is also what the next new text starts
+    // in.
+    void BuildTextBar();
+    // Shows the text bar or the transform bar, for the active tool.
+    void ShowTextBar(bool show);
+    // The bar shows the attributes at the caret (or of the selected words)
+    // of the text being typed, else of the first selected text, else the
+    // ones a new text starts in.
+    void SyncTextBar();
+    // An attribute of the bar changed ("font", "size", "bold", "italic",
+    // "underline", "strike", "align", "line-spacing", "letter-spacing").
+    void ApplyTextAttribute(const std::string& attribute);
+    // The editor's paragraphs set as the text will be: each line exactly
+    // the text's line spacing apart, aligned as its anchor says.
+    void StampEditorParagraphs();
     // Re-selects elements by Id after a history edit replaced them.
     void Reselect(const std::vector<std::string>& ids);
 
     // ----- members -----
+    // The window's commands; declared first, so it outlives everything
+    // built from it.
+    UltraCanvasCommandRegistry                  commands;
+    MenuLayoutSet                               menuLayout;
+    std::shared_ptr<ToolbarLayout>              toolbarLayout;
+    std::shared_ptr<ToolbarLayout>              paletteLayout;
+    std::shared_ptr<UltraCanvasWindowBase>      customiseWindow;
     std::shared_ptr<UltraCanvasWindow>          window;
     std::shared_ptr<UltraCanvasMenu>            menuBar;
     std::shared_ptr<UltraCanvasToolbar>         toolbar;
@@ -279,7 +390,6 @@ private:
     std::shared_ptr<UltraCanvasContainer>       layerRows;
     std::shared_ptr<UltraCanvasContainer>       statusBar;
     std::shared_ptr<UltraCanvasLabel>           statusPos, statusZoom, statusSelection, statusHint;
-    std::shared_ptr<UltraCanvasButton>          undoButton, redoButton;
     std::shared_ptr<UltraCanvasSlider>          qualitySlider;
     std::shared_ptr<UltraCanvasLabel>           qualityLabel;
     std::shared_ptr<UltraCanvasContainer>       transformBar;
@@ -292,8 +402,6 @@ private:
     std::shared_ptr<UltraCanvasLabel>           centreXCaption, centreYCaption;
     std::shared_ptr<UltraCanvasSpinner>         centreXBox, centreYBox;
     std::shared_ptr<UltraCanvasReferencePointPicker> centrePicker;
-    // The palette's slots: one per group of tools (see PaletteGroups()).
-    std::vector<std::shared_ptr<UltraCanvasToolGroupButton>> toolSlots;
     std::shared_ptr<UltraCanvasGroupBox>        iconPanel;
     std::shared_ptr<UltraCanvasDropdown>        iconSizeBox;
     std::shared_ptr<ArtIconPreview>             iconPreview;
@@ -328,7 +436,13 @@ private:
     VectorGridSpec gridBeforeIcon;
     VectorSnapOptions snapBeforeIcon;
     std::shared_ptr<const ArtIconRaster> iconRaster;
-    ArtCreatorTextResult lastText;
+    std::unique_ptr<TextEditSession>            textSession;
+    std::shared_ptr<UltraCanvasContainer>       textEditorHost;   // over the canvas while typing
+    std::shared_ptr<UltraCanvasRichTextEdit>    textEditor;
+    // Measures text as the drawing's renderer does (baselines, line boxes,
+    // widths), so the editor sits where the text will.
+    std::unique_ptr<IRenderContext>             textMeasure;
+    std::shared_ptr<UltraCanvasTextFormatBar>   textBar;          // the framework's text bar
 
     // in-app clipboard: clones of the copied elements
     std::vector<std::shared_ptr<VectorStorage::VectorElement>> clipboard;

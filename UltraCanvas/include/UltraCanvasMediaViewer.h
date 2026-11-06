@@ -87,6 +87,15 @@
 // size, and writes with the type's save settings at the size chosen; a drawing
 // is drawn again at that size, sharp, rather than stretched.
 //
+// Version: 1.25.0 - text shown in the text view or the Details panel can be copied: a press
+//                   there gives the widget the keyboard, and Ctrl+C / Ctrl+Insert copy the
+//                   selection, Ctrl+A selects all; a right-click opens Copy / Select All
+//
+// Version: 1.24.0 - OpenFileWhenShown / OpenFolderWhenShown / SetFilesWhenShown: a turning
+//                   ring and the file's name while a file is on its way, never "No media";
+//                   onCurrentFileChanged; MediaSurface::SetEmptyText
+// Version: 1.23.0 - the Details panel is a group box: its title in the caption, a close
+//                   button, smaller text, and a GIF's colour table as swatches
 // Version: 1.22.0 - Outlook .msg messages; a message's attachments open and save
 // Version: 1.21.0 - saved web pages (.mht / .mhtml, IsWebArchiveFile) and Apple Mail .emlx
 // Version: 1.20.0 - e-mail messages (.eml) shown as the message (IsMailMessageFile)
@@ -111,7 +120,7 @@
 // Version: 1.13.0 - one compact toolbar row (flat, 16 px icons, scrolls when
 //                   narrow); Details only in the info bar
 // Version: 1.12.0
-// Last Modified: 2026-10-30
+// Last Modified: 2026-11-03
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -342,6 +351,11 @@ public:
     // True when the shown image's header read but its pixels did not decode.
     bool HasDecodeFailure() const;
 
+    // What the surface says when it has no picture ("No media"); empty draws
+    // nothing - the viewer clears it while a file is loading.
+    void SetEmptyText(const std::string& text) { emptyText = text; RequestRedraw(); }
+    const std::string& GetEmptyText() const { return emptyText; }
+
     void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
     bool OnEvent(const UCEvent& event) override;
     bool AcceptsFocus() const override { return true; }
@@ -375,6 +389,7 @@ private:
     std::shared_ptr<UCImage>  image;
     std::shared_ptr<UCPixmap> processed;     // colour-adjusted full-res pixmap (or null)
     bool decodeFailureReported = false;      // onDecodeFailed already told for `image`
+    std::string emptyText = "No media";      // drawn with no picture (SetEmptyText)
     MediaAdjustments adjust;
 
     // Frame stepping for animated images (GIF, animated WebP). Plays while
@@ -458,6 +473,28 @@ public:
     // previewed file - a document engine that still holds the file open makes
     // the move fail on Windows, where an open handle blocks the rename.
     void CloseFile();
+
+    // ===== OPENING ONCE THE WINDOW SHOWS =====
+    // For a host that shows its window and then opens a file - a viewer
+    // window, an application started with a file. The viewer shows at once
+    // that a file is on its way: a turning ring where the file will show and
+    // the file's name in the info bar (never "No media", which means nothing
+    // was asked for), and onCurrentFileChanged names it so a window title can
+    // follow. The file is opened once a frame of that has been drawn, so the
+    // window appears straight away rather than after the folder has been read
+    // and the file decoded. Any other OpenFolder / OpenFile / SetFiles /
+    // CloseFile before then replaces it. Without a running application (a
+    // test, a tool) they open at once.
+    void OpenFileWhenShown(const std::string& filePath);
+    void OpenFolderWhenShown(const std::string& folderPath, const std::string& selectFile = "");
+    void SetFilesWhenShown(const std::vector<std::string>& files, size_t startIndex = 0);
+    // True from one of those until its file is opened; the path it shows.
+    bool IsLoading() const { return !loadingPath.empty(); }
+    const std::string& GetLoadingPath() const { return loadingPath; }
+
+    // The file on show changed: the path now shown, the one being loaded
+    // (see OpenFileWhenShown), or "" when nothing is. For a window title.
+    std::function<void(const std::string& path)> onCurrentFileChanged;
 
     size_t GetCount() const { return playlist.size(); }
     size_t GetCurrentIndex() const { return currentIndex; }
@@ -672,8 +709,12 @@ public:
     bool AcceptsFocus() const override { return true; }
     void SetWindow(UltraCanvasWindowBase* win) override;
     bool OnEvent(const UCEvent& event) override;
-    // Lays the children out, then fits the Details panel over the active view.
+    // Lays the children out, then fits the Details panel over the active view
+    // (and the loading ring over the middle of the display).
     void Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) override;
+    // Draws the children; the first frame drawn while a file is loading
+    // (OpenFileWhenShown) sends it on its way.
+    void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
 
     // Whether a path is a media file this viewer can display.
     static bool IsSupportedMedia(const std::string& path);
@@ -701,11 +742,14 @@ public:
     static bool IsWebArchiveFile(const std::string& path);
 
     // ===== DETAILS PANEL =====
-    // The panel the "Details" button opens over the display area: file facts
-    // and, for images, the file's own metadata (EXIF / IPTC / XMP / ICC /
-    // PNG text), laid out as Markdown tables in a scrollable text area.
-    // Works for every kind of file the viewer shows. Escape closes it. The
-    // text is built on opening and for each file loaded while it is open.
+    // The panel the "Details" button opens over the display area: a group box
+    // whose caption names what is shown ("Image information") and whose close
+    // button (or Escape) closes it. Inside, file facts and, for images, the
+    // file's own metadata (EXIF / IPTC / XMP / ICC / PNG text), laid out as
+    // Markdown tables in a scrollable text area; for a GIF, its colour table
+    // as a block of swatches under them. Works for every kind of file the
+    // viewer shows. The text is built on opening and for each file loaded
+    // while it is open.
     void SetDetailsVisible(bool visible);
     void ToggleDetails() { SetDetailsVisible(!IsDetailsVisible()); }
     bool IsDetailsVisible() const;
@@ -762,8 +806,13 @@ private:
     void ShowNote(const std::string& plain);
     void UpdateDetailedInfo();
     // Hand the Details panel its text: "Title\n\nKey: value" lines (plus any
-    // "## " / "### " headings) converted to Markdown tables.
+    // "## " / "### " headings). The title becomes the panel's caption, the
+    // rest Markdown tables. The palette block is cleared; UpdateDetailedInfo
+    // fills it afterwards for a GIF.
     void ShowDetailsText(const std::string& plain);
+    // The block of swatches under the Details text: `colours` with
+    // `caption` above them, or hidden when `colours` is empty.
+    void ShowDetailsPalette(const std::vector<Color>& colours, const std::string& caption);
     void ApplyAdjustments();          // push `adjustments` to the surface
     // Put every adjustment control back to its default without firing one
     // re-render per control (the callbacks are suppressed while they move).
@@ -815,6 +864,18 @@ private:
     // (focus is nowhere, or on a display view that would swallow the key).
     bool HandleViewerKey(const UCEvent& event);
     bool HandleFilteredKey(const UCEvent& event);
+    // The display-only text area under a window point - the open Details
+    // panel's text, else the shown text view or note - or null. A press there
+    // gives the widget the keyboard focus (those areas never take it), so
+    // Ctrl+C copies the text selected with the mouse instead of reaching
+    // whatever held the focus before (in UltraFiler the file display, which
+    // would copy the files).
+    UltraCanvasTextArea* SelectableTextAt(const Point2Di& windowPoint) const;
+    // Ctrl+C / Ctrl+Insert / Ctrl+A for the display-only text areas: copy the
+    // selection (the Details panel's first, then the text view's) or select
+    // all of the area last pressed in. False when the key is none of those or
+    // there is nothing to copy, so the key goes on as before.
+    bool HandleTextCopyKey(const UCEvent& event);
     void InstallKeyFilter();
     void RemoveKeyFilter();
     std::string KeyFilterId() const;
@@ -892,10 +953,18 @@ private:
     std::shared_ptr<UltraCanvasUIElement>    pluginView;
     std::shared_ptr<UltraCanvasUIElement>    videoPlayer;   // UltraCanvasVideoPlayerElement
     std::shared_ptr<UltraCanvasUIElement>    audioPlayer;   // UltraCanvasAudioPlayerElement
-    // The Details panel (UltraCanvasTextArea in MarkdownHybrid mode),
-    // positioned absolutely over the display area; see SetDetailsVisible().
+    // The Details panel (UltraCanvasGroupBox), positioned absolutely over the
+    // display area; see SetDetailsVisible(). It holds the text
+    // (UltraCanvasTextArea in MarkdownHybrid mode) and, for a GIF, a caption
+    // and the palette (UltraCanvasColorSwatchBar).
     std::shared_ptr<UltraCanvasUIElement>    detailsView;
-    std::string detailsMarkdown;   // what detailsView shows for the current file
+    std::shared_ptr<UltraCanvasUIElement>    detailsText;
+    // The display-only text area the mouse last went down in (Ctrl+A target).
+    UltraCanvasTextArea*                     lastPressedText = nullptr;
+    std::shared_ptr<UltraCanvasUIElement>    detailsPaletteCaption;
+    std::shared_ptr<UltraCanvasUIElement>    detailsPalette;
+    std::string detailsMarkdown;   // what detailsText shows for the current file
+    std::string detailsPaletteText; // the caption's text with no swatch under the pointer
     MediaKind activeKind = MediaKind::Image;
 
     // Details text for the current UCD container (empty when the current file
@@ -925,6 +994,24 @@ private:
     // Watched for the user's absence - the session lock, the idle timer -
     // exactly while a password is kept or a file is shown unlocked.
     void UpdateAbsenceWatch();
+
+    // ----- Loading (OpenFileWhenShown) -----
+    // Shows the loading state for `path` and keeps `open` until a frame of it
+    // has been drawn (Render) - or a moment has passed without one.
+    void BeginLoading(const std::string& path, std::function<void()> open);
+    // The loading state goes (the ring stops, "No media" is back): the file
+    // is being opened, or something else replaced it.
+    void EndLoading();
+    void SchedulePendingOpen(unsigned delayMs);
+    void RunPendingOpen(unsigned generation);
+    std::string loadingPath;
+    std::function<void()> pendingOpen;
+    unsigned openGeneration = 0;        // which BeginLoading a scheduled open belongs to
+    bool pendingOpenScheduled = false;  // the after-a-frame open is on its way
+    std::shared_ptr<UltraCanvasUIElement> loadingIndicator;   // UltraCanvasBusyIndicator
+    std::string lastReportedFile;       // what onCurrentFileChanged said last
+    void ReportCurrentFile(const std::string& path);
+
     std::chrono::seconds forgetAfterIdle = kDefaultForgetPasswordsAfterIdle;
     std::chrono::steady_clock::time_point lastActivity = std::chrono::steady_clock::now();   // last key or mouse input
     bool tryingKeptPasswords = false;   // UnlockWithPassword is called by UnlockFromRememberedPasswords

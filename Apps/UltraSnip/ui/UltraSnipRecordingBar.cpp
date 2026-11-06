@@ -1,5 +1,6 @@
 // Apps/UltraSnip/ui/UltraSnipRecordingBar.cpp
 // See the header.
+// Version: 0.2.0 - the texts go through Tr (UltraLocalisation)
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 
@@ -10,6 +11,7 @@
 #include "UltraCanvasButton.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasLabel.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 using namespace UltraCanvas;
 
@@ -32,7 +34,7 @@ UltraSnipRecordingBar::~UltraSnipRecordingBar() { Close(); }
 bool UltraSnipRecordingBar::Open(const Rect2Di& area, const Rect2Di& screen) {
     Close();
     WindowConfig config;
-    config.title = "Recording";
+    config.title = Tr("Recording");
     config.type = WindowType::Notification;
     config.width = kBarWidth;
     config.height = kBarHeight;
@@ -59,7 +61,7 @@ bool UltraSnipRecordingBar::Open(const Rect2Di& area, const Rect2Di& screen) {
     mark_ = CreateLabel("snip.bar.mark", "\xE2\x97\x8F");       // ●
     mark_->SetFontSize(16);
     mark_->SetTextColor(kRecording);
-    mark_->SetTooltip("Recording");
+    mark_->SetTooltip(Tr("Recording"));
     window->AddChild(mark_);
 
     time_ = CreateLabel("snip.bar.time", "0:00");
@@ -68,16 +70,16 @@ bool UltraSnipRecordingBar::Open(const Rect2Di& area, const Rect2Di& screen) {
     time_->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
     window->AddChild(time_);
 
-    pause_ = CreateButton("snip.bar.pause", 0, 0, 76, 30, "Pause");
-    pause_->SetTooltip("Pause the recording; Resume goes on where it stopped");
+    pause_ = CreateButton("snip.bar.pause", 0, 0, 76, 30, Tr("Pause"));
+    pause_->SetTooltip(Tr("Pause the recording; Resume goes on where it stopped"));
     pause_->onClick = [this]() {
         if (paused_) { if (onResume) onResume(); }
         else if (onPause) onPause();
     };
     window->AddChild(pause_);
 
-    stop_ = CreateButton("snip.bar.stop", 0, 0, 64, 30, "Stop");
-    stop_->SetTooltip("Finish the recording");
+    stop_ = CreateButton("snip.bar.stop", 0, 0, 64, 30, Tr("Stop"));
+    stop_->SetTooltip(Tr("Finish the recording"));
     stop_->onClick = [this]() { if (onStop) onStop(); };
     window->AddChild(stop_);
 
@@ -95,10 +97,10 @@ bool UltraSnipRecordingBar::Open(const Rect2Di& area, const Rect2Di& screen) {
 
 void UltraSnipRecordingBar::SetElapsed(double seconds, bool paused) {
     if (!window_) return;
-    if (time_) time_->SetText(FormatElapsed(seconds) + (paused ? "  paused" : ""));
+    if (time_) time_->SetText(FormatElapsed(seconds) + (paused ? "  " + Tr("paused") : std::string()));
     if (paused != paused_) {
         paused_ = paused;
-        if (pause_) pause_->SetText(paused ? "Resume" : "Pause");
+        if (pause_) pause_->SetText(paused ? Tr("Resume") : Tr("Pause"));
         if (mark_) mark_->SetTextColor(paused ? kPausedMark : kRecording);
     }
 }

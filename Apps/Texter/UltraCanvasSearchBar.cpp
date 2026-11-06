@@ -1,5 +1,6 @@
 // Apps/Texter/UltraCanvasSearchBar.cpp
 // Inline search and replace bar implementation
+// Version: 1.5.0 - the bar's texts go through Tr
 // Version: 1.4.1 - the settings and history menus open anchored to their buttons:
 //                  above them when the bar is at the foot of the window
 // Version: 1.4.0
@@ -9,6 +10,7 @@
 #include "UltraCanvasSearchBar.h"
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasUtilsUtf8.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 #include <string>
 #include <algorithm>
 
@@ -115,14 +117,14 @@ namespace UltraCanvas {
         searchIconButton->SetIconSize(14, 14);
         searchIconButton->SetPadding(4,4,4,4);
         searchIconButton->SetAcceptsFocus(false);
-        searchIconButton->SetTooltip("Search History");
+        searchIconButton->SetTooltip(Tr("Search History"));
         searchIconButton->onClick = [this]() { ShowHistoryMenu(false); };
         fixed(searchIconButton);
         findRow->AddChild(searchIconButton);
 
         // Search input — takes ~40% of the bar width.
         searchInput = std::make_shared<UltraCanvasTextInput>("SearchInput", 0, 0, 0, inputH);
-        searchInput->SetPlaceholder("Find...");
+        searchInput->SetPlaceholder(Tr("Find..."));
         searchInput->SetShowValidationState(false);
         searchInput->SetFontSize(11);
         searchInput->SetShowClearButton(true);
@@ -145,7 +147,7 @@ namespace UltraCanvas {
         firstMatchButton->SetIcon(NormalizePath(GetResourcesDir() + "media/icons/texter/arrow-up-to-bar.svg")); // ⤒
         firstMatchButton->SetIconSize(18,18);
         firstMatchButton->SetPadding(4,4,4,4);
-        firstMatchButton->SetTooltip("Go to First Match");
+        firstMatchButton->SetTooltip(Tr("Go to First Match"));
         firstMatchButton->SetAcceptsFocus(false);
         fixed(firstMatchButton);
         findRow->AddChild(firstMatchButton);
@@ -155,7 +157,7 @@ namespace UltraCanvas {
         nextButton->SetIcon(NormalizePath(GetResourcesDir() + "media/icons/texter/arrow-down.svg"));
         nextButton->SetIconSize(18,18);
         nextButton->SetPadding(4,4,4,4);
-        nextButton->SetTooltip("Find Next (Enter)");
+        nextButton->SetTooltip(Tr("Find Next (Enter)"));
         nextButton->SetAcceptsFocus(false);
         fixed(nextButton);
         findRow->AddChild(nextButton);
@@ -164,7 +166,7 @@ namespace UltraCanvas {
         prevButton->SetIcon(NormalizePath(GetResourcesDir() + "media/icons/texter/arrow-up.svg"));
         prevButton->SetIconSize(18,18);
         prevButton->SetPadding(4,4,4,4);
-        prevButton->SetTooltip("Find Previous (Shift+Enter)");
+        prevButton->SetTooltip(Tr("Find Previous (Shift+Enter)"));
         prevButton->SetAcceptsFocus(false);
         fixed(prevButton);
         findRow->AddChild(prevButton);
@@ -173,7 +175,7 @@ namespace UltraCanvas {
         settingsButton->SetIcon(NormalizePath(GetResourcesDir() + "media/icons/texter/settings-sliders.svg"));
         settingsButton->SetIconSize(18,18);
         settingsButton->SetPadding(4,4,4,4);
-        settingsButton->SetTooltip("Search Options");
+        settingsButton->SetTooltip(Tr("Search Options"));
         settingsButton->SetAcceptsFocus(false);
         fixed(settingsButton);
         findRow->AddChild(settingsButton);
@@ -189,7 +191,7 @@ namespace UltraCanvas {
         closeButton = std::make_shared<UltraCanvasButton>("CloseBtn", 0, 0, IconBtnSize, IconBtnSize);
         closeButton->SetText("\xe2\x9c\x95"); // ✕
         closeButton->SetFontSize(11);
-        closeButton->SetTooltip("Close (Escape)");
+        closeButton->SetTooltip(Tr("Close (Escape)"));
         closeButton->SetAcceptsFocus(false);
         fixed(closeButton);
         findRow->AddChild(closeButton);
@@ -201,9 +203,9 @@ namespace UltraCanvas {
         settingsMenu = std::make_shared<UltraCanvasMenu>("SearchSettingsMenu", 0, 0, 200, 100);
         settingsMenu->SetMenuType(MenuType::PopupMenu);
 
-        settingsMenu->AddItem(MenuItemData::Header("Options"));
+        settingsMenu->AddItem(MenuItemData::Header(Tr("Options")));
         settingsMenu->AddItem(MenuItemData::Separator());
-        settingsMenu->AddItem(MenuItemData::Checkbox("Case sensitive", caseSensitive, [this](bool checked) {
+        settingsMenu->AddItem(MenuItemData::Checkbox(Tr("Case sensitive"), caseSensitive, [this](bool checked) {
             caseSensitive = checked;
             if (IsLiveSearchText(searchText)) {
                 if (onIncrementalFind) onIncrementalFind(searchText, caseSensitive, wholeWord);
@@ -211,7 +213,7 @@ namespace UltraCanvas {
             }
         }));
 
-        settingsMenu->AddItem(MenuItemData::Checkbox("Whole words", wholeWord, [this](bool checked) {
+        settingsMenu->AddItem(MenuItemData::Checkbox(Tr("Whole words"), wholeWord, [this](bool checked) {
             wholeWord = checked;
             if (IsLiveSearchText(searchText)) {
                 if (onIncrementalFind) onIncrementalFind(searchText, caseSensitive, wholeWord);
@@ -247,14 +249,14 @@ namespace UltraCanvas {
         replaceIconButton->SetIconSize(14, 14);
         replaceIconButton->SetPadding(4,4,4,4);
         replaceIconButton->SetAcceptsFocus(false);
-        replaceIconButton->SetTooltip("Replace History");
+        replaceIconButton->SetTooltip(Tr("Replace History"));
         replaceIconButton->onClick = [this]() { ShowHistoryMenu(true); };
         fixed(replaceIconButton);
         replaceRow->AddChild(replaceIconButton);
 
         // Replace input — same 40% width as the search input (aligns the two inputs).
         replaceInput = std::make_shared<UltraCanvasTextInput>("ReplaceInput", 0, 0, 0, inputH);
-        replaceInput->SetPlaceholder("Replace...");
+        replaceInput->SetPlaceholder(Tr("Replace..."));
         replaceInput->SetShowValidationState(false);
         replaceInput->SetFontSize(11);
         replaceInput->SetShowClearButton(true);
@@ -264,14 +266,14 @@ namespace UltraCanvas {
 
         // Left-aligned replace buttons (after input)
         replaceButton = std::make_shared<UltraCanvasButton>("ReplaceBtn", 0, 0, ReplaceBtnW, IconBtnSize);
-        replaceButton->SetText("Replace");
+        replaceButton->SetText(Tr("Replace"));
         replaceButton->SetFontSize(11);
         replaceButton->SetAcceptsFocus(false);
         fixed(replaceButton);
         replaceRow->AddChild(replaceButton);
 
         replaceAllButton = std::make_shared<UltraCanvasButton>("ReplaceAllBtn", 0, 0, ReplaceBtnW, IconBtnSize);
-        replaceAllButton->SetText("Replace all");
+        replaceAllButton->SetText(Tr("Replace all"));
         replaceAllButton->SetFontSize(11);
         replaceAllButton->SetAcceptsFocus(false);
         fixed(replaceAllButton);
@@ -463,7 +465,7 @@ namespace UltraCanvas {
         if (totalMatches == 0) {
             countLabel->SetText("\u26A0 ...");
             countLabel->SetTextColor(Color(200, 60, 60, 255));
-            countLabel->SetTooltip("No matches found");
+            countLabel->SetTooltip(Tr("No matches found"));
         } else if (currentIndex > 0) {
             countLabel->SetText(std::to_string(currentIndex) + " / " + std::to_string(totalMatches));
             countLabel->SetTextColor(Color(60, 150, 60, 255));

@@ -1,0 +1,22 @@
+{
+  "@language": "pt-BR",
+  "@translated-by": "machine draft 2026-11-03, reviewed by -",
+  "A master password is required.": "É necessária uma senha mestra.",
+  "Backup codes": "Códigos de backup",
+  "Change master password": "Alterar senha mestra",
+  "Choose a master password": "Escolha uma senha mestra",
+  "Confirm password": "Confirmar senha",
+  "Decrypt": "Descriptografar",
+  "Delete group": "Excluir grupo",
+  "Encrypted": "Criptografado",
+  "Master password": "Senha mestra",
+  "New password": "Nova senha",
+  "One-time code": "Código de uso único",
+  "Password strength": "Força da senha",
+  "Passwords": "Senhas",
+  "Remember this device": "Lembrar deste dispositivo",
+  "Scan QR code": "Escanear código QR",
+  "Trusted device": "Dispositivo confiável",
+  "Type it again": "Digite novamente",
+  "Website": "Site"
+}

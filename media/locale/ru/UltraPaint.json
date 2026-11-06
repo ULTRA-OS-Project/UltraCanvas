@@ -1,0 +1,15 @@
+{
+  "@language": "ru",
+  "@translated-by": "machine draft 2026-11-05, reviewed by -",
+  "Click and type, or drag a box for the lines to wrap in; click a text to edit it. The bar above sets font, size, style, alignment and spacing; the colour is the foreground colour. Escape or a click outside finishes": "Щёлкните и введите текст или растяните рамку, в пределах которой будут переноситься строки; щёлкните текст, чтобы изменить его. Панель выше задаёт шрифт, размер, стиль, выравнивание и интервалы; цвет текста — основной цвет. Escape или щелчок снаружи завершают ввод",
+  "Letter Spacing": "Межбуквенный интервал",
+  "Line Spacing": "Межстрочный интервал",
+  "Text Alignment": "Выравнивание текста",
+  "Text Bold": "Текст: полужирный",
+  "Text Colour": "Цвет текста",
+  "Text Font": "Шрифт текста",
+  "Text Italic": "Текст: курсив",
+  "Text Size": "Размер текста",
+  "Text Strikethrough": "Текст: зачёркнутый",
+  "Text Underline": "Текст: подчёркнутый"
+}

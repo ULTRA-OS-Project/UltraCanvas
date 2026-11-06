@@ -1,10 +1,18 @@
 // Apps/Demo/Items/UltraCanvasNodeDiagramExamples.cpp
-// Comprehensive examples for UltraCanvasNodeDiagram v2.2.0
+// Comprehensive examples for UltraCanvasNodeDiagram v2.4.0
+// Version: 2.4.1 - the Friends tab is a personal social network: 24 card
+//                  nodes with interest icons in five circles, two bridges,
+//                  tie-strength link widths, a legend, icon-only cards when
+//                  zoomed out, and a click that describes the person
+// Version: 2.4.0 - the Organization tab's names fit their nodes: the diagram
+//                  uses NodeLabelFit::GrowNode (the nodes grow for their
+//                  names, the degree sizing starts above what a name needs)
+//                  and the sidebar has a LABEL FIT dropdown for all four modes
 // Version: 2.3.0 - the shared page look (UltraCanvasDemoPageKit): the tabs in a
 //                  card that fills the page area, each diagram filling its tab,
 //                  the Organization sidebar and the edit popup laid out by flex,
 //                  every label and button sized to its text
-// Last Modified: 2026-10-23
+// Last Modified: 2026-11-03
 //
 // Demonstrates all features of NodeDiagram 2.x:
 //  - Simple API (graph visualization)
@@ -56,7 +64,10 @@
 #include "UltraCanvasTabbedContainer.h"
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasUIElement.h"
+#include "UltraCanvasUtils.h"
 #include <memory>
+#include <map>
+#include <algorithm>
 #include <vector>
 #include <string>
 #include <iostream>
@@ -88,39 +99,263 @@ static void AddFillingDiagram(const std::shared_ptr<UltraCanvasContainer>& paren
 }
 
 // =============================================================================
-// 1. SIMPLE API - GRAPH VISUALIZATION (compatible with 1.x)
+// 1. FRIENDS - A PERSONAL SOCIAL NETWORK OF CARD NODES (2.4.0)
 // =============================================================================
 //
-// Quick way to visualize a graph: AddNode with simple parameters,
-// AddLink between ids, run a layout, done.
+// What the first tab shows: one person's social graph. Twenty-four friends
+// in five circles (college, the climbing club, work, the neighbours, family),
+// each friend a card - an icon for what they are into, their name, their
+// interest - as wide as that text needs, and two people who belong to two
+// circles at once, the bridges a plain contact list cannot show.
 //
-// 2.0.2: This now returns the bare diagram (no overlays). The button bar and
-// status are provided by the wrapping container (see CreateNodeDiagramExamples).
+// The 2.3.0 card look (icon disc, sublabel, rounded corners, shadow), the
+// 2.2.0 cluster boxes, cohesion and legend, the 2.4.0 layout that keeps
+// the cards and the boxes apart, and the detail zoom: zoom out and the
+// cards collapse to their icon discs, zoom in and they come back.
+// =============================================================================
+
+namespace {
+
+struct FriendCircle {
+    std::string id;
+    std::string label;
+    Color color;
+};
+
+struct Friend {
+    std::string id;
+    std::string name;
+    std::string interest;    // "Guitar", "Trail running" ...
+    std::string city;
+    std::string icon;        // under media/icons/
+    std::vector<std::string> circles;   // one, or two for a bridge
+};
+
+// A light tint of a circle's colour for the icon disc and the box wash.
+static Color FriendTint(const Color& base, int alpha) {
+    return Color(std::min(255, base.r + 150), std::min(255, base.g + 150), std::min(255, base.b + 150), alpha);
+}
+
+static std::string FriendIcon(const std::string& relativePath) {
+    return NormalizePath(GetResourcesDir() + "media/icons/" + relativePath);
+}
+
+static const std::vector<FriendCircle> kFriendCircles = {
+    {"college",   "College",       Color(79,  70, 229, 255)},
+    {"climbing",  "Climbing club", Color(22, 163,  74, 255)},
+    {"work",      "Work",          Color(217, 119,   6, 255)},
+    {"neighbours","Neighbours",    Color(13, 148, 136, 255)},
+    {"family",    "Family",        Color(219,  39, 119, 255)},
+};
+
+static const std::vector<Friend> kFriends = {
+    // College
+    {"alice",  "Alice Weber",    "Guitar",        "Berlin",     "folder-music.svg",     {"college"}},
+    {"ben",    "Ben Okafor",     "Photos",   "Hamburg",    "smarthome/camera.svg", {"college"}},
+    {"clara",  "Clara Fischer",  "Books",         "Leipzig",    "menu/book.svg",        {"college"}},
+    {"david",  "David Lund",     "Film nights",   "Berlin",     "chatcube/video.svg",   {"college"}},
+    {"emma",   "Emma Rossi",     "Travel",        "Milan",      "menu/globe.svg",       {"college"}},
+    // College + climbing: a bridge
+    {"maya",   "Maya Schulz",    "Bouldering",    "Berlin",     "menu/run.svg",         {"college", "climbing"}},
+    // Climbing club
+    {"finn",   "Finn Berg",      "Alpine", "Munich",     "menu/sun.svg",         {"climbing"}},
+    {"greta",  "Greta Hahn",     "Trail runs",    "Innsbruck",  "menu/run.svg",         {"climbing"}},
+    {"hugo",   "Hugo Martin",    "Routes", "Berlin",     "menu/wand.svg",        {"climbing"}},
+    {"ida",    "Ida Nilsson",    "Yoga",          "Potsdam",    "smarthome/activity.svg", {"climbing"}},
+    // Work
+    {"jonas",  "Jonas Krause",   "Code",   "Berlin",     "menu/code.svg",        {"work", "neighbours"}},
+    {"kim",    "Kim Park",       "Data",          "Seoul",      "menu/chart.svg",       {"work"}},
+    {"lena",   "Lena Vogel",     "Design",        "Berlin",     "menu/palette.svg",     {"work"}},
+    {"marco",  "Marco Conti",    "Coffee",        "Turin",      "smarthome/kettle.svg", {"work"}},
+    {"nina",   "Nina Adler",     "Podcasts",      "Vienna",     "chatcube/mic.svg",     {"work"}},
+    {"omar",   "Omar Haddad",    "Chess",         "Berlin",     "menu/dataset.svg",     {"work"}},
+    // Neighbours
+    {"paula",  "Paula Brandt",   "Gardening",     "Berlin",     "smarthome/home.svg",   {"neighbours"}},
+    {"quentin","Quentin Roux",   "Games",   "Berlin",     "menu/monitor.svg",     {"neighbours"}},
+    {"rosa",   "Rosa Ortiz",     "Night owl",     "Berlin",     "menu/moon.svg",        {"neighbours"}},
+    // Family
+    {"sam",    "Sam Weber",      "Brother",       "Cologne",    "chatcube/profile.svg", {"family"}},
+    {"tess",   "Tess Weber",     "Mother",        "Cologne",    "chatcube/profile.svg", {"family"}},
+    {"uli",    "Uli Weber",      "Father",        "Cologne",    "chatcube/profile.svg", {"family"}},
+    {"vera",   "Vera Lindt",     "Cook",  "Bonn",       "smarthome/kettle.svg", {"family"}},
+    {"will",   "Will Weber",     "Gamer", "Cologne",    "menu/monitor.svg",     {"family"}},
+};
+
+// Who knows whom, and how well (1 = acquaintance, 2 = friend, 3 = close).
+struct FriendTie { std::string a, b; int strength; };
+static const std::vector<FriendTie> kFriendTies = {
+    // You and your circles
+    {"me", "alice", 3}, {"me", "maya", 3}, {"me", "clara", 2}, {"me", "david", 2},
+    {"me", "finn", 2}, {"me", "hugo", 2},
+    {"me", "jonas", 3}, {"me", "lena", 2}, {"me", "kim", 1},
+    {"me", "paula", 2}, {"me", "rosa", 1},
+    {"me", "sam", 3}, {"me", "tess", 3}, {"me", "uli", 3}, {"me", "vera", 2},
+    // College
+    {"alice", "ben", 3}, {"alice", "clara", 2}, {"ben", "david", 2}, {"clara", "emma", 3},
+    {"david", "emma", 1}, {"maya", "alice", 2}, {"maya", "emma", 1},
+    // Climbing
+    {"maya", "finn", 3}, {"maya", "greta", 2}, {"finn", "greta", 3}, {"finn", "hugo", 2},
+    {"hugo", "ida", 2}, {"greta", "ida", 1},
+    // Work
+    {"jonas", "kim", 2}, {"jonas", "lena", 3}, {"kim", "omar", 2}, {"lena", "marco", 2},
+    {"marco", "nina", 3}, {"nina", "omar", 1}, {"lena", "nina", 1},
+    // Neighbours
+    {"jonas", "paula", 2}, {"paula", "quentin", 2}, {"quentin", "rosa", 3}, {"paula", "rosa", 1},
+    // Family
+    {"sam", "tess", 3}, {"sam", "uli", 3}, {"tess", "uli", 3}, {"tess", "vera", 2},
+    {"sam", "will", 2}, {"uli", "will", 2},
+    // Across circles: the ties that make it a network
+    {"ben", "lena", 1},        // college meets work over photography
+    {"ida", "rosa", 1},        // yoga class
+    {"will", "quentin", 2},    // board games
+};
+
+} // namespace
+
+// Who the person is, the number of ties, the circles - for the status line.
+static std::string DescribeFriend(const UltraCanvasNodeDiagram& diagram, const std::string& id) {
+    const NodeDiagramNode* node = diagram.GetNode(id);
+    if (!node) return {};
+    const Friend* person = nullptr;
+    for (const auto& f : kFriends) if (f.id == id) person = &f;
+    std::string circles;
+    for (const auto& groupId : diagram.GetAllGroupIds()) {
+        const NodeDiagramGroup* group = diagram.GetGroup(groupId);
+        if (!group) continue;
+        if (std::find(group->nodeIds.begin(), group->nodeIds.end(), id) == group->nodeIds.end()) continue;
+        if (!circles.empty()) circles += " and ";
+        circles += group->label;
+    }
+    const int friends = diagram.GetNodeDegree(id, NodeDegreeMode::Total);
+    std::string text = person ? person->name + " - " + person->interest + ", " + person->city : node->label;
+    text += ". " + std::to_string(friends) + (friends == 1 ? " tie" : " ties");
+    if (id == "me") text += " - everyone here is one step away.";
+    else if (circles.find(" and ") != std::string::npos) text += ", a bridge between " + circles + ".";
+    else if (!circles.empty()) text += ", in " + circles + ".";
+    else text += ".";
+    return text;
+}
 
 std::shared_ptr<UltraCanvasNodeDiagram> CreateFriendsNetworkDiagram(
         int x, int y, int w, int h) {
     auto diagram = CreateNodeDiagram("nd_friends", x, y, w, h);
-    
-    diagram->SetTheme(NodeDiagramTheme::Colorful);
-    diagram->SetGridVisible(true, 25.0f);
-    
-    // Just node id, label, position - cannot get simpler
-    diagram->AddNode("alice",   "Alice",   200, 200);
-    diagram->AddNode("bob",     "Bob",     400, 150);
-    diagram->AddNode("charlie", "Charlie", 600, 250);
-    diagram->AddNode("diana",   "Diana",   300, 400);
-    diagram->AddNode("eve",     "Eve",     500, 450);
-    
-    diagram->AddLink("l1", "alice", "bob");
-    diagram->AddLink("l2", "alice", "diana");
-    diagram->AddLink("l3", "bob", "charlie");
-    diagram->AddLink("l4", "charlie", "eve");
-    diagram->AddLink("l5", "diana", "eve");
-    diagram->AddLink("l6", "bob", "diana");
-    
+
+    diagram->SetTheme(NodeDiagramTheme::Minimal);
+    diagram->SetBackgroundColor(Color(247, 248, 251, 255));
+    diagram->SetDefaultLinkStyle(LinkStyle::Bezier);
+    diagram->SetFontFamily("Arial");
+    // 2.4.0: every card as wide as its name and interest need - no ellipsis,
+    // no width chosen by hand.
+    diagram->SetLabelFit(NodeLabelFit::GrowNode);
+
+    auto circleOf = [](const std::string& id) -> const FriendCircle* {
+        for (const auto& c : kFriendCircles) if (c.id == id) return &c;
+        return nullptr;
+    };
+
+    // --- You, at the centre of it all ---
+    {
+        NodeDiagramNode me("me", "You");
+        me.shape = NodeShape::Rectangle;
+        me.width = 120.0;
+        me.height = 46.0;
+        me.fontSize = 12.0;
+        me.fillColor = Color(31, 41, 55, 255);
+        me.borderColor = Color(250, 204, 21, 255);
+        me.borderWidth = 2.5;
+        me.textColor = Color(255, 255, 255, 255);
+        me.sublabel = "Your network";
+        me.sublabelColor = Color(203, 213, 225, 255);
+        me.iconPath = FriendIcon("chatcube/profile.svg");
+        me.iconBackground = Color(250, 204, 21, 255);
+        me.cornerRadius = 12.0;
+        me.shadow = true;
+        diagram->AddNode(me);
+    }
+
+    // --- The friends, one card each ---
+    std::map<std::string, std::vector<std::string>> members;   // circle -> ids
+    for (const auto& person : kFriends) {
+        const FriendCircle* home = circleOf(person.circles.front());
+        const Color base = home ? home->color : Color(100, 116, 139, 255);
+
+        NodeDiagramNode card(person.id, person.name);
+        card.shape = NodeShape::Rectangle;
+        card.width = 96.0;      // a floor: the label fit widens a card for a long name
+        card.height = 40.0;
+        card.fontSize = 11.0;
+        card.fillColor = Color(255, 255, 255, 255);
+        card.borderColor = person.circles.size() > 1 ? Color(31, 41, 55, 255) : base;
+        card.borderWidth = person.circles.size() > 1 ? 2.0 : 1.2;   // a bridge is outlined dark
+        card.textColor = Color(31, 41, 55, 255);
+        card.sublabel = person.interest;
+        card.sublabelColor = Color(100, 116, 139, 255);
+        card.iconPath = FriendIcon(person.icon);
+        card.iconBackground = FriendTint(base, 255);
+        card.cornerRadius = 10.0;
+        card.shadow = true;
+        diagram->AddNode(card);
+
+        for (const auto& circleId : person.circles) members[circleId].push_back(person.id);
+    }
+
+    // --- The circles as soft boxes ---
+    for (const auto& circle : kFriendCircles) {
+        NodeDiagramGroup group(circle.id, circle.label);
+        group.nodeIds = members[circle.id];
+        group.borderColor = Color(circle.color.r, circle.color.g, circle.color.b, 160);
+        group.borderWidth = 1.2;
+        group.fillColor = FriendTint(circle.color, 60);
+        group.labelColor = circle.color;
+        group.labelFontSize = 12.0;
+        group.padding = 14.0;
+        group.cornerRadius = 14.0;
+        group.labelPosition = GroupLabelPosition::TopLeft;
+        diagram->AddGroup(group);
+    }
+
+    // --- The ties: a circle's colour inside it, grey across, width by strength ---
+    int tieNo = 0;
+    for (const auto& tie : kFriendTies) {
+        NodeDiagramLink link("tie" + std::to_string(++tieNo), tie.a, tie.b);
+        link.directed = false;
+        link.lineWidth = 0.8 + 0.9 * tie.strength;
+        const std::string ga = diagram->GetNodeGroupId(tie.a);
+        const std::string gb = diagram->GetNodeGroupId(tie.b);
+        const FriendCircle* shared = nullptr;
+        if (tie.a != "me" && tie.b != "me" && !ga.empty() && ga == gb) shared = circleOf(ga);
+        if (shared) {
+            link.lineColor = Color(shared->color.r, shared->color.g, shared->color.b, 120 + 30 * tie.strength);
+        } else {
+            link.lineColor = Color(148, 163, 184, 90 + 35 * tie.strength);
+        }
+        diagram->AddLink(link);
+    }
+
+    // --- Layout: cards apart, circles together ---
+    diagram->SetLinkDistance(28.0);
+    diagram->SetChargeStrength(-360.0);
+    diagram->SetGroupCohesion(0.12);
+
+    diagram->BuildLegendFromGroups();
+    NodeDiagramLegendConfig legendCfg = diagram->GetLegendConfig();
+    legendCfg.visible = true;
+    legendCfg.position = DiagramPanelPosition::BottomRight;
+    legendCfg.title = "Circles";
+    legendCfg.backgroundColor = Color(255, 255, 255, 235);
+    legendCfg.borderColor = Color(226, 232, 240, 255);
+    diagram->SetLegendConfig(legendCfg);
+
+    // Zoomed out, the cards become their icon discs; a hovered or selected
+    // one still shows its name.
+    diagram->SetDetailZoom(0.5);
+
+    diagram->SetMinimapVisible(false);
+    diagram->SetControlsVisible(false);
+
     diagram->SetLayout(NodeDiagramLayout::ForceDirected);
     diagram->RunLayout();  // Auto-fits at the end (2.0.1)
-    
+
     return diagram;
 }
 
@@ -257,6 +492,7 @@ std::shared_ptr<UltraCanvasNodeDiagram> CreateOrgNetworkDiagram(
         hub.borderColor = Color(40, 40, 40, 255);
         hub.textColor = Color(255, 255, 255, 255);
         hub.width = hub.height = 46.0;
+        hub.fontSize = 10.0;
         hub.value = 6.0;   // Headcount-ish magnitude, for NodeSizeMode::ByValue
         diagram->AddNode(hub);
 
@@ -326,13 +562,19 @@ std::shared_ptr<UltraCanvasNodeDiagram> CreateOrgNetworkDiagram(
         diagram->AddLink(link);
     }
 
+    // --- 2.4.0: the names keep their sizes (10 pt hubs, 9 pt members) and
+    // the nodes grow to hold them. The degree range below starts above what
+    // a member's name needs at 9 pt, so a hub still outgrows a leaf by its
+    // connections and not only by the length of its name.
+    diagram->SetLabelFit(NodeLabelFit::GrowNode);
+
     // --- 2.2.0 features on by default so the tab opens on the good view ---
     NodeDiagramSizing sizing;
     sizing.mode = NodeSizeMode::ByDegree;
     sizing.degreeMode = NodeDegreeMode::Total;
-    sizing.baseSize = 20.0;
-    sizing.minSize = 26.0;
-    sizing.maxSize = 74.0;
+    sizing.baseSize = 36.0;
+    sizing.minSize = 40.0;
+    sizing.maxSize = 130.0;
     diagram->SetNodeSizing(sizing);
 
     diagram->SetGroupCohesion(0.14);
@@ -445,8 +687,9 @@ static std::shared_ptr<UltraCanvasContainer> CreateOrgShowcaseTab(
                     break;
                 case 2:
                     diagram->SetNodeSizeMode(NodeSizeMode::Fixed);
-                    setStatus("Fixed size - every node renders at its authored size, "
-                              "and the hubs become impossible to spot.");
+                    setStatus("Fixed size - every node renders at its authored size "
+                              "(grown where its name needs more), and the hubs "
+                              "become hard to spot.");
                     break;
                 default:
                     diagram->SetNodeSizeMode(NodeSizeMode::ByDegree);
@@ -457,6 +700,43 @@ static std::shared_ptr<UltraCanvasContainer> CreateOrgShowcaseTab(
             diagram->FitView();
         };
     DemoKit::AddStretched(sidebar, sizeDD);
+
+    // ---- Label fit (2.4.0) ----
+    addCaption("ndOrgFitCap", "LABEL FIT (2.4.0)");
+    auto fitDD = makeDropdown("ndOrgFit");
+    fitDD->AddItem("Grow node", "grow");
+    fitDD->AddItem("Shrink font", "shrink");
+    fitDD->AddItem("Shrink, then grow", "both");
+    fitDD->AddItem("Overflow (2.3)", "overflow");
+    fitDD->SetSelectedIndex(0);
+    fitDD->onSelectionChanged =
+        [diagram, setStatus](int index, const DropdownItem&) {
+            switch (index) {
+                case 1:
+                    diagram->SetLabelFit(NodeLabelFit::ShrinkFont);
+                    setStatus("Shrink font - the nodes keep the size the data gives "
+                              "them and a name is drawn smaller, down to 7 pt; what "
+                              "still does not fit ends in an ellipsis.");
+                    break;
+                case 2:
+                    diagram->SetLabelFit(NodeLabelFit::ShrinkThenGrow);
+                    setStatus("Shrink, then grow (the component's default) - a name "
+                              "shrinks to 7 pt first, and a node that still cannot "
+                              "hold it grows.");
+                    break;
+                case 3:
+                    diagram->SetLabelFit(NodeLabelFit::Overflow);
+                    setStatus("Overflow - the 2.3 behaviour: names run out of their "
+                              "nodes and over their neighbours.");
+                    break;
+                default:
+                    diagram->SetLabelFit(NodeLabelFit::GrowNode);
+                    setStatus("Grow node - every name keeps its size and its node "
+                              "grows to hold it; neighbours move aside.");
+                    break;
+            }
+        };
+    DemoKit::AddStretched(sidebar, fitDD);
 
     // ---- Degree counting mode ----
     addCaption("ndOrgDegreeCap", "DEGREE COUNTS");
@@ -548,7 +828,11 @@ static std::shared_ptr<UltraCanvasContainer> CreateOrgShowcaseTab(
             for (const auto& nodeId : diagram->GetAllNodeIds()) {
                 diagram->SetNodeShape(nodeId, shape);
             }
-            setStatus("Node shape changed for all nodes.");
+            // 2.4.0: a diamond holds less text than a square, so the nodes
+            // grow to fit their names and the layout spreads to fit them.
+            diagram->FitNodesToLabels();
+            setStatus("Node shape changed for all nodes - the ones whose names "
+                      "need more room in the new shape grew.");
         };
     DemoKit::AddStretched(sidebar, shapeDD);
 
@@ -1517,7 +1801,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateNodeDiag
     // ---- Page: the tabs fill the display area, each diagram scrolls and
     // zooms inside its tab ----
     auto root = DemoKit::CreatePage("ndDemoRoot", "Node Diagram",
-        "Friends: a force-directed network. Organization: cluster containers, "
+        "Friends: a personal network of card nodes in five circles. Organization: cluster containers, "
         "degree-based node sizing and a color legend, with controls for every "
         "option. Custom: click 'Add Node' or right-click the canvas to create "
         "nodes, double-click a node to edit its label and color.");
@@ -1545,6 +1829,10 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateNodeDiag
     
     // ---- Friends tab (read-only example graph) ----
     auto friendsDiag = CreateFriendsNetworkDiagram(4, 4, INNER_W, INNER_H);
+    // A click names the person: who they are, how many ties, which circles.
+    friendsDiag->onNodeClick = [diagram = friendsDiag.get(), statusLabel](const std::string& id) {
+        if (statusLabel) statusLabel->SetText(DescribeFriend(*diagram, id));
+    };
     auto friendsTab = std::make_shared<UltraCanvasContainer>(
         "ndTabFriends", 0, 0, INNER_W, INNER_H);
     friendsTab->SetBackgroundColor(Color(255, 255, 255, 255));
@@ -1595,8 +1883,9 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateNodeDiag
                                       "node sizing and a color legend. Use the controls "
                                       "on the left to switch every option on and off.");
             } else {
-                statusLabel->SetText("Friends - Force-directed graph. "
-                                      "Use mouse wheel to zoom, drag to pan.");
+                statusLabel->SetText("Friends - your network: 24 people in five circles, "
+                                      "two of them bridges. Click a person, zoom out to "
+                                      "see the circles as icons, drag to pan.");
             }
         }
     };

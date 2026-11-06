@@ -36,6 +36,7 @@
 // The directory is a UTF-8 path on every platform (UltraCanvasPathUtf8.h): a
 // profile folder named in Thai or Cyrillic opens the same as an ASCII one.
 //
+// Version: 0.5.0 - UseWithPassphrase: Use() for a vault behind a Primary Password
 // Version: 0.4.0 - ChangePassphrase, NeedsPassphrase, ForgetDeviceKey: a Primary Password
 // Version: 0.3.0 - several vaults in one process, from any thread: one lock,
 //                  the store's owner remembered, a vault re-opens its own file
@@ -133,6 +134,16 @@ public:
     // directly re-opens its own file when a Use() took the store meanwhile).
     // False (and `use` not run) when the vault cannot be opened.
     bool Use(const std::function<void(DeviceKeyVault& vault)>& use);
+
+    // Use() for a vault behind a Primary Password: opens this vault's file
+    // with `passphrase` (the one the user typed), runs `use` and closes it
+    // again - all under the process's one lock, so no other vault takes the
+    // store between the unlock and `use` (an Unlock() followed by a
+    // Retrieve() could find it gone, and a vault with no device key cannot
+    // re-open by itself). "" is Use(): the device key. What Unlock()
+    // answered, and `use` run only on Ok.
+    UnlockStatus UseWithPassphrase(const std::string& passphrase,
+                                   const std::function<void(DeviceKeyVault& vault)>& use);
 
     // Write `passphrase` as the device key (owner-only perms), so the next
     // launch unlocks silently. Call after a manual Unlock() succeeds.

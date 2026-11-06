@@ -224,7 +224,8 @@ Apps/UltraMail/
                                   Reading >
                                   Layout / Messages, Privacy > Images /
                                   Sender icons, Display > Links /
-                                  Notifications / Treeview
+                                  Notifications / Treeview, Handling >
+                                  Email send notification
     UltraMailPreferences.{h,cpp}  app-wide preferences.ini behind it
   main.cpp                        entry point: init app, open store, show window
   CMakeLists.txt                  UltraMailEngine static library
@@ -267,6 +268,11 @@ each page, *Restore default* in the bottom bar). Changes apply and are saved
   account** (the account chosen in the account bar; a click on another tile
   shows that one's folders) or **Show all email accounts** (the default),
   one below the other in the account bar's order.
+- *Handling > Email send notification* — how a message sent successfully is
+  reported: **Show in popup window** ("Message sent to ...", closed with OK;
+  the default) or **Display success in status bar** (the same words at the
+  foot of the main window, nothing to close). A message that could not be
+  sent is always reported in a window, with Retry.
 
 An account's servers and sign-in stay in its own *Account Settings*.
 

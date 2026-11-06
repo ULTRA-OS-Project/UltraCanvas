@@ -3,13 +3,23 @@
 //
 // Sign-in page:
 //                        ChatCube
-//      Chat directly with the people you know - no account, no password
+//      Chat directly with the people you know - end-to-end encrypted
 //                 [ Your name               ]
+//                 [ E-mail address          ]   to recover the account
+//                 [ Phone number (+...)     ]   with, kept for you alone
 //                 [ Relay server (optional) ]
 //                 [x] Also find people on this network
+//                 Signing in on this computer: [ No password v ]
+//                 [ Password ] [ Repeat ]        (when one is chosen)
 //                 [ Create my ChatCube ID   ]   (or: Sign in)
 //      No relay at all: ChatCube works on the local network only.
 //                       status line
+//
+// An ID behind a password or an authenticator code (UltraIM's sign-in
+// protection) is asked for them at every start, one after the other, on the
+// same page: [ Password ] and then [ The code UltraAuthenticator shows ].
+// The person button beside the ID opens the Edit profile window
+// (ChatCubeProfileWindow): the name, e-mail and phone, and the protection.
 //
 // Chat view:
 //
@@ -49,6 +59,12 @@
 // MessageDelivered events move its ticks (✓ in the relay's queue, ✓✓ on the
 // other device, green ✓✓ read).
 //
+// Version: 0.2.8 - recovery by the link e-mailed to the ID's address: ChatCube waits for it to be opened
+//                  and signs in by itself
+// Version: 0.2.7 - "Recover my ChatCube ID" on the sign-in page: the codes sent to the e-mail and phone
+//                  bring an ID back on a computer without one
+// Version: 0.2.6 - an e-mail address and a phone number for every ID; a password and/or an
+//                  UltraAuthenticator code to sign in, chosen at the start or in Edit profile
 // Version: 0.2.5 - a gear beside the copy button opens the Settings window (ChatCubeSettingsWindow);
 //                  the send key, typing either way, the nearby list and the clock follow its choices
 // Version: 0.2.4 - Minimize() (ChatCube --minimized)
@@ -66,6 +82,7 @@
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
+#include "ChatCubeProfileWindow.h"
 #include "ChatCubeSettings.h"
 #include "ChatCubeSettingsWindow.h"
 #include "ChatCubeViews.h"
@@ -84,6 +101,7 @@ namespace UltraCanvas {
 class UltraCanvasButton;
 class UltraCanvasCheckbox;
 class UltraCanvasContainer;
+class UltraCanvasDropdown;
 class UltraCanvasImageElement;
 class UltraCanvasLabel;
 class UltraCanvasListView;
@@ -119,6 +137,21 @@ private:
 
     // ---- actions -------------------------------------------------------------
     void SignIn();
+    // The sign-in page's fields for what it does now: create an ID (name,
+    // e-mail, phone, how to sign in), or sign in (the password or the code
+    // the provider asks for).
+    void UpdateSignInForm();
+    // After a new ID: the protection chosen with it set up (a password at
+    // once; an authenticator finished in the Edit profile window).
+    void FinishCreatedProtection(UltraIMSignInProtection chosen, const std::string& password);
+    void EditProfile();
+    // "Recover my ChatCube ID": the address, then - once the link e-mailed
+    // to it was opened and approved - signed in. While it waits, the relay is
+    // asked every few seconds (PollRecovery).
+    void ToggleRecoveryForm();
+    void Recover();
+    void PollRecovery();
+    void StopRecoveryPolling();
     void AddContact();
     void AddContactById(const std::string& id);
     void RefreshNearby();           // the "On this network" list
@@ -222,6 +255,23 @@ private:
 
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> signInPage_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> name_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> email_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> phone_;
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> protectionRow_;   // "Signing in on this computer" and the list
+    std::shared_ptr<UltraCanvas::UltraCanvasDropdown>  protection_;
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> newPasswordRow_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> newPassword_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> repeatPassword_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> unlockPassword_;  // asked by the provider
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> unlockCode_;
+    UltraIMAuthStep unlockStep_ = UltraIMAuthStep::Idle;
+    // Recovering an ID instead of making one (a computer without one).
+    std::shared_ptr<UltraCanvas::UltraCanvasButton>    recoverToggle_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> recoverAddress_;
+    bool        recovering_ = false;
+    std::string recoveryId_;           // "" until the link is on its way
+    uint64_t    recoveryTimer_ = 0;    // asks the relay whether it was opened (0: none)
+    bool        recoveryAsking_ = false;
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> relay_;
     std::shared_ptr<UltraCanvas::UltraCanvasCheckbox>  localNetwork_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton>    signIn_;
@@ -287,6 +337,7 @@ private:
     std::vector<StagedAttachment>                      staged_;
     int                                                stagedCount_ = 0;   // ids for the tiles
     UltraCanvas::UltraCanvasMediaViewerWindow          viewer_;         // a picture or a video, full size
+    std::unique_ptr<ChatCubeProfileWindow>             profileWindow_;  // Edit profile
     std::shared_ptr<UltraCanvas::UltraCanvasLabel>     status_;
     std::string actionStatus_;
     std::map<std::string, std::string> providerStatus_;   // provider id -> its state

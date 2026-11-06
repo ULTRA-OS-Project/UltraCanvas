@@ -28,6 +28,14 @@ designs and one of four palettes.
 - [Text fitting](#text-fitting)
 - [Interaction](#interaction)
 - [Samples](#samples)
+- [The population](#the-population)
+  - [How a cell shows it](#how-a-cell-shows-it)
+  - [The legend, totals and level bars](#the-legend-totals-and-level-bars)
+  - [Showing it to a wider room](#showing-it-to-a-wider-room)
+- [Calibration: moving people](#calibration-moving-people)
+  - [The keyboard](#the-keyboard)
+  - [Everyone behind "+N more"](#everyone-behind-n-more)
+- [Files: JSON and CSV](#files-json-and-csv)
 - [What is not built yet](#what-is-not-built-yet)
 
 ## Which element do I want?
@@ -145,6 +153,7 @@ palette's panel colour.
 | `Explicit` | Each cell's own `fill` |
 | `DiagonalBands` | The palette's `rankColors`, sampled by the cell's rank from the best corner |
 | `ByRow` / `ByColumn` | The row's or column's level colour, tinted |
+| `ByCount` | How many people the cell holds, through `SetCountColormap` (Blues by default): the fullest cell is the darkest |
 
 In the `Cards` design, the colour goes to the card's border and badge, and
 the face stays white.
@@ -201,18 +210,194 @@ std::string text = matrix->BuildCellTooltip(PerformanceCellRef(2, 2));
 | `PerformanceVsPotential()` | 3×3 | Codes 1A–3C counted from the best corner, and a two-line description per tile |
 | `TalentReview()` | 3×3 | Potential levels with action captions; badges and three bullets per card |
 | `SkillWill()` | 2×2 | Guide, Delegate, Direct, Excite |
+| `SampleTeam()` | — | 36 invented people in three departments for `NineBox()`: most placed by 1–5 review scores, six by a calibrated cell |
+| `SampleTargetDistribution()` | — | A forced distribution for a 3×3 grid: 10 % top box, 30 % core box |
 
 The demo page shows each one in the design it was made for, with the design,
 colouring and palette switchable.
 
+## The population
+
+`model.items` holds the people (or products, or teams) being placed. Each
+`PerformanceMatrixItem` has a `label`, a `group` (a team or department), an
+optional `color` (by default the group's colour), a `note` for the tooltip,
+and a placement:
+
+- **An explicit cell** (`row`, `col`), or
+- **two scores** (`xScore`, `yScore`) on the axes' score ranges
+  (`PerformanceAxis::minScore` / `maxScore`). Each axis maps a score to a
+  level through its levels' `upperBound`s, or splits the range evenly when
+  every bound is left at NaN. A score on a bound belongs to the level above.
+
+An explicit cell wins over the scores. That is the calibration rule: the
+meeting overrides the formula, and the scores stay in the data beside the
+override.
+
+```cpp
+PerformanceMatrixModel model = PerformanceMatrixSamples::NineBox();   // both axes score 1-5
+model.items = {
+    PerformanceMatrixItem("A. Rivera", "Sales", 4.6, 4.2),    // placed by scores
+    PerformanceMatrixItem("B. Okoye", "Support", 1, 2),       // placed in row 1, column 2
+};
+model.xAxis.levels[0].upperBound = 2.5;                   // "Low" performance ends at 2.5
+PerformanceCellRef where = model.CellOf(model.items[0]);
+std::vector<int> perCell = model.CountsPerCell();         // row-major
+std::vector<int> perRow = model.CountsPerRow();
+std::vector<std::string> departments = model.Groups();    // in order of first appearance
+```
+
+### How a cell shows it
+
+`SetPopulationDisplay` picks one form for every cell:
+
+| Display | Shows |
+|---|---|
+| `Count` (default) | The number, in a chip in the cell's top corner. It is honest at any size and shows no names |
+| `Percent` | The cell's share of the population, and `/ target` when the model has a `targetDistribution` |
+| `Dots` | One dot per person in a fixed grid, in the group's colour; `+N` when they do not fit |
+| `Names` | The labels in columns, each with its group's colour; `+N more` when they do not fit |
+| `Hidden` | Nothing |
+
+Dots and names take the lower part of the cell, and the cell's own text is
+fitted into what is left. Hovering a dot or a name shows that person's
+tooltip (name, group, box, levels, scores, note). A click calls
+`onItemClick` and does not select the cell. `ItemAt(point)` and
+`GetItemRect(index)` map between people and the element's coordinates.
+
+`targetDistribution` is optional. It holds one share per cell, row-major from
+row 0, and the shares sum to 1. `Validate()` checks its length and its sum.
+
+### The legend, totals and level bars
+
+When the people have named groups, a legend of them stands at the right,
+with each group's size. A click on an entry hides that group: its people
+leave the cells, the counts, the shares and `ByCount`, and a second click
+brings them back. `SetGroupVisible` / `IsGroupVisible` do the same from
+code, and `SetShowLegend(false)` removes the legend.
+
+`SetShowTotals(true)` adds "n = 12" under each row and column label.
+`SetShowLevelBars(true)` draws a strip in the level colours between the
+grid and its labels on both axes.
+
+```cpp
+matrix->SetModel(model);
+matrix->SetPopulationDisplay(PerformancePopulationDisplay::Dots);
+matrix->SetShowTotals(true);
+matrix->SetGroupVisible("Support", false);
+matrix->onItemClick = [](const PerformanceMatrixItem& person) {
+    // person.label, person.group ...
+};
+```
+
+### Showing it to a wider room
+
+A populated matrix puts people's names next to ratings of their potential.
+The element stores nothing and sends nothing; it only draws. When the room
+should not see names, call `SetAnonymised(true)`. `Names` then shows as
+counts, and no person answers the pointer or a click, so no tooltip gives a
+name away. The demo's sample team is invented.
+
+## Calibration: moving people
+
+In a calibration meeting the boxes are argued over and people are moved.
+Moving is off by default, because it is the one interaction that changes
+data. `SetAllowItemDrag(true)` turns it on for a person drawn as a dot or a
+name; it never works while the matrix is anonymised.
+
+- **Drag** a person to another box. The box under the pointer gets a dashed
+  outline, and the person follows the pointer with their name. A press
+  becomes a drag only after a few pixels, so a click is still a click.
+  `onItemClick` then fires on the release, not on the press.
+- **Ctrl+arrows** move the selected person one box on screen. A click on a
+  person selects them (`SetSelectedItem`, `GetSelectedItem`).
+- **`MoveItem(index, cell)`** moves someone from code, whatever
+  `SetAllowItemDrag` says.
+
+Every move asks `onItemMove` first. Return false to veto it: the person stays
+where they were, and nothing changes. When it returns true, the person gets
+the target as an explicit cell (`row`, `col`), and their scores stay in the
+data beside it. That is the calibration rule from the model: the meeting
+overrides the formula, and the override can be seen.
+
+```cpp
+matrix->SetAllowItemDrag(true);
+matrix->onItemMove = [](const PerformanceMatrixItem& person,
+                        const PerformanceCellRef& from, const PerformanceCellRef& to) {
+    // The application decides: permissions, a locked review cycle, a cap.
+    return !(to.row == 2 && to.col == 2 && person.group == "Contractors");
+};
+```
+
+The demo's veto holds the top box to its target share: a move into a full top
+box is refused, and the sidebar says why.
+
+### The keyboard
+
+A click gives the matrix the focus. The arrows then move the cell selection
+in screen order; the first press selects the top-left box. Enter (or Space)
+activates the selected person (`onItemClick`) or, without one, the selected
+box (`onCellClick`). Escape steps back one thing at a time: a drag in
+progress, then the selected person, then the selected box.
+
+### Everyone behind "+N more"
+
+A box that cannot draw all its people ends with "+N" (dots) or "+N more"
+(names). A click on that mark calls `onOverflowClick` with the box and
+everyone in it, in model order. `GetCellItems(ref)` gives the same list at any
+time. Hidden groups are left out of both. No list is offered while
+anonymised.
+
+```cpp
+matrix->onOverflowClick = [](const PerformanceCellRef& box, const std::vector<size_t>& people) {
+    // Fill a list view with the people, for example.
+    (void)box;
+    (void)people;
+};
+```
+
+## Files: JSON and CSV
+
+The model functions take and return text. Reading and writing the file
+itself is `UltraCanvasFileLoader`'s job, as for every file a user opens or
+saves.
+
+**JSON** carries the whole model: the title, both axes with their levels,
+score ranges and bounds, the cells, the people and the target distribution.
+
+```cpp
+const std::string json = ExportPerformanceMatrixJson(matrix->GetModel());
+PerformanceMatrixModel opened;
+std::string error;
+if (ImportPerformanceMatrixJson(json, opened, &error)) matrix->SetModel(opened);
+```
+
+The document starts with `"format": "ultracanvas-performance-matrix"` and
+`"version": 1`. A cell or person names its row and column by level index.
+In a file written by hand, a level id or label works there too. Empty text,
+default numbers and transparent colours are left out. A file of another
+format, a newer version, an unreadable colour, a row that names no level, or
+a model that does not pass `Validate()` is refused with the reason, and the
+output model is left untouched.
+
+**CSV** carries the people alone, one per line, for a spreadsheet:
+
+```
+id,label,group,row,column,x,y,note
+p1,Avery Lund,Engineering,,,4.6,4.5,
+p31,Emery Voss,Engineering,High,High,3.9,4,Moved in calibration
+```
+
+`row` and `column` are the explicit cell, given as a level id, label or
+index. Leave them empty to place the person by the scores `x` and `y`.
+`ImportPerformanceItemsCsv` takes the columns in any order and letter case,
+and only `label` (or `id`) is required. It skips a byte-order mark and blank
+lines. Scores are dot-decimal whatever the locale, so `"1,5"` is refused,
+not read as 1. A line with the wrong number of fields, a level the axis does
+not have, or a person with no place is refused, with the line number. The
+people are replaced only when the whole file reads. An item's colour is not
+part of the CSV; the JSON keeps it.
+
 ## What is not built yet
 
-This is the reference-card part of the proposal, with all four designs. Still
-to come:
-
-- **The population:** people placed into the boxes by cell or by score, with
-  counts, percentages, names or dots, a target distribution, an anonymised
-  mode and a group legend.
-- **Calibration:** dragging a person to another box, with a veto callback;
-  keyboard navigation; JSON and CSV interchange through
-  `UltraCanvasFileLoader`.
+All three phases of the proposal are built. Not planned: editing cell text in
+place on the chart (the proposal's Q4) — edit the model and call `SetModel`.

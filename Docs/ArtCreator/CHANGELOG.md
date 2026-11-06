@@ -1,3 +1,92 @@
+#### 2026-11-05 *0.8.14*
+- **ArtCreator takes the Image base set.** Its catalogue names `Image` under
+  `@bases`, as the localisation proposal's Appendix B assigns it, so a text
+  of image editing it shows comes in the shared Image vocabulary of every
+  language rather than a wording of its own.
+
+#### 2026-11-05 *0.8.13*
+- **The Text tool in every language.** ArtCreator's own catalogue
+  (`media/locale/<lang>/ArtCreator.json`) now exists in all thirty
+  languages: the Text tool's status-line hints and its undo steps ("Undo
+  Text Bold", "Undo Letter Spacing" ...) showed in English whatever the
+  language.
+
+#### 2026-11-04 *0.8.12*
+- **Selected words take a letter spacing and a colour of their own.** While a
+  text is typed on the page, the text bar's letter spacing and the fill colour
+  (picked in the colour panel) go to the selected words only, as the font, the
+  size and bold already did; with nothing selected they still change the whole
+  text. The drawing keeps both per word, and the colour panel shows the colour
+  of the words at the caret.
+- **A size typed into the text bar no longer changes the whole text.** Typing
+  in the size field (or Ctrl+A in it) ran the window's shortcuts, which
+  finished the text first, so the size went to all of it. The keys now stay in
+  the field, Escape there gives them back to the text, and the selected words
+  take the size.
+
+#### 2026-11-03 *0.8.11*
+- **Text is typed on the page, not in a window.** The Text tool's click
+  puts a caret where the text starts, and the words appear there as they
+  are typed - in the text's font, size, style, fill colour, alignment and
+  spacing, at the canvas's zoom, following it as the view zooms or scrolls -
+  inside a dashed frame. Enter starts a new line (each line is a span on its
+  own baseline, so the drawing and its SVG keep them). Escape, Ctrl+Enter, a
+  click outside, another tool or any command that changes the drawing
+  finishes it, as one undo step (*Text*, or *Edit Text*); the editor's own
+  Ctrl+Z takes back typing until then. The Text dialog is gone.
+- **Click a text to edit it in place** with the Text tool, or double-click it
+  with the Selector (which used to do nothing on a text). The text is left
+  out of the drawing while its words are typed over it; emptied, it is
+  deleted. A text looked at and not changed adds no undo step.
+- **The text bar.** While the Text tool is active, the bar under the toolbar
+  sets a text's **font** (every family installed, not three; type its first
+  letters to find one), **size**, **bold**, **italic**, **underline**,
+  **strikethrough**, **alignment** (the lines start at, centre on or end at
+  the text's point), **line spacing** (% of the size) and **letter spacing**
+  (points between letters, below 0 closer). While a text is typed, the
+  first six go to the selected words - spans of their own - or, with none
+  selected, to the whole text; the others always to the whole text. With no
+  text being typed they go to the selected texts, as one undo step, and are
+  what the next new text starts in. The bar shows what is at the caret.
+  It replaces the Text tool's card in the right panel.
+- A colour picked while a text is typed colours that text. Zooming while
+  typing (Ctrl+wheel over the words, or the View commands) keeps the keys
+  with the text.
+- The text bar is the framework's `UltraCanvasTextFormatBar`, shared with
+  UltraPaint and UltraVideo, and its **Font list shows each font in itself**.
+
+#### 2026-11-03 *0.8.10*
+- **Fit Page Width** on the toolbar's Zoom group, between Fit Page and
+  Actual Size, in the View menu and on Ctrl+2: the page's width fills the
+  window, and the part of the page in the middle of the view stays there,
+  so a tall page can be worked on at a readable size. A new icon,
+  `zoom-width.svg`, drawn on the 24 px and 16 px grids. A toolbar the user
+  customised gets the button too, after Fit Page.
+
+#### 2026-11-02 *0.8.9*
+- **Customise the menus and toolbars.** Every command is registered once
+  (`ArtCreatorCommands.cpp`) and the menu bar, the toolbar, the tool palette
+  and the keyboard are built from it, so a command has one label, icon,
+  shortcut and state everywhere. Undo / Redo name their step and are greyed
+  with nothing to undo - in the menu too, which never was - and what needs a
+  selection is greyed without one.
+- **Right-click the toolbar or the palette** to show or hide its groups -
+  the toolbar offers Edit, Align, Distribute, Combine, Layer, Line, Guides
+  and Snap besides the six it shows - to fold a group into one button, or to
+  hide a command; View > Toolbars offers the same. **View > Customise Menus
+  and Toolbars** edits the menu bar, the toolbar and the palette in one
+  editor. The arrangement is kept in the settings folder (`menus.txt`,
+  `settings.json`). A toolbar wider than the window puts what does not fit
+  into a chevron's menu.
+- **24 more toolbar icons**, drawn on the 24 px grid: Save As, Export,
+  Document Setup, New Icon, Quit, About, Rulers, Guides, Clear Guides, the
+  four snaps and Snap to Pixels, Show / Hide Layer, Remove ClipView, and the
+  line widths. A command's icon on the toolbar was its 16 px menu drawing
+  scaled up, which blurs.
+- A version that adds a menu command shows it to a user who customised the
+  menus too: `menus.txt` records ArtCreator's commands and is merged with the
+  next version's menus.
+
 #### 2026-10-30 *0.8.8*
 - **Ctrl+Shift+S showed *Convert to Editable Shapes* in the Arrange menu but
   ran *Save As*.** Save As keeps Ctrl+Shift+S, as the File menu says;

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "chatcube-relay"
-version = "1.0.0"
+version = "1.2.0"
 description = "The ChatCube relay: accounts, contacts, presence, P2P signalling, offline queue and group fan-out for ChatCube Direct - it stores and forwards end-to-end encrypted envelopes only"
 readme = "README.md"
 requires-python = ">=3.11"

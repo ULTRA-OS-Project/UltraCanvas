@@ -29,6 +29,9 @@
 // fills it from a ToolbarLayout - groups of command ids - and a command
 // registry, and RefreshCommandStates re-reads each command's enabled, checked
 // and label state into its button.
+// Version: 1.14.0 - RefreshCommandStates: a folded group of check commands shows the
+//                   checked one, pressed
+// Version: 1.13.0 - SetOnContextMenu: a right click on the bar or an item, with the item's id
 // Version: 1.12.0 - AddWidget; SetCommandRegistry / RefreshCommandStates for a bar built
 //                   from commands (MaterializeToolbar)
 // Version: 1.11.0 - groupSpacing is the gap across a separator (it was never read);
@@ -71,7 +74,7 @@ namespace UltraCanvas {
 
 // ===== FORWARD DECLARATIONS =====
     class UltraCanvasToolbar;
-    class UltraCanvasMenuRegistry;
+    class UltraCanvasCommandRegistry;
 
 // ===== TOOLBAR ENUMERATIONS =====
 
@@ -316,7 +319,7 @@ namespace UltraCanvas {
         bool pointerFilterInstalled = false;
 
         // The registry the items came from (SetCommandRegistry).
-        const UltraCanvasMenuRegistry* commandRegistry = nullptr;
+        const UltraCanvasCommandRegistry* commandRegistry = nullptr;
 
         // Magnification (for dock-style toolbars)
         int hoveredItemIndex = -1;
@@ -444,12 +447,13 @@ namespace UltraCanvas {
         // it must outlive the bar). An item whose id is a command id there -
         // a button, a toggle, a widget, a tool group's tools - follows that
         // command's state on RefreshCommandStates.
-        void SetCommandRegistry(const UltraCanvasMenuRegistry* registry) { commandRegistry = registry; }
-        const UltraCanvasMenuRegistry* GetCommandRegistry() const { return commandRegistry; }
+        void SetCommandRegistry(const UltraCanvasCommandRegistry* registry) { commandRegistry = registry; }
+        const UltraCanvasCommandRegistry* GetCommandRegistry() const { return commandRegistry; }
         // Re-reads every command's isEnabled, isChecked and dynamicLabel into
         // its item: a disabled command greys its button, a checked one presses
         // its toggle, and the tooltip follows the label ("Undo Move (Ctrl+Z)").
-        // A tool group is enabled while any of its tools is. The program calls
+        // A tool group is enabled while any of its tools is, and a group of
+        // check commands (a palette's tools) shows the checked one, pressed. The program calls
         // this where its state changes - after an edit, a selection - instead
         // of keeping pointers to the buttons, which the user may have removed.
         void RefreshCommandStates();
@@ -523,7 +527,22 @@ namespace UltraCanvas {
         std::function<void(int, int)> onItemReordered;
         std::function<void(ToolbarPosition)> onPositionChanged;
 
+        // A right click on the bar - on an item or between them - with the
+        // pointer in window coordinates and the id of the item under it ("" for
+        // none, or an unnamed one): where a context menu opens. The press does
+        // not reach the item, and the handler runs on the release, so the menu
+        // it opens does not take that release as a pick.
+        // InstallToolbarContextMenu (UltraCanvasToolbarLayout.h) gives a bar
+        // built from a ToolbarLayout the standard one. A setter, as the toolbar
+        // watches the window's pointer for it only while one is set.
+        using ContextMenuHandler = std::function<void(const Point2Di& posInWindow, const std::string& itemId)>;
+        void SetOnContextMenu(ContextMenuHandler handler);
+        bool HasContextMenu() const { return static_cast<bool>(contextMenuHandler); }
+
     private:
+        ContextMenuHandler contextMenuHandler;
+        bool contextPressPending = false;   // a right press taken, its release to come
+        bool HandleContextMenuEvent(const UCEvent& event);
         // Internal helpers
         void CreateLayout();
         // Whether a press landed on one of the bar's items rather than on the

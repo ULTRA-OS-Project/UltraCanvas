@@ -3,6 +3,8 @@
 // One copy per user: a second start hands its files to the running copy,
 // which opens them as File > Open does, and quits
 // (UltraCanvasSingleInstance.h).
+// Version: 2.2.0 - the start-up messages go through Tr; the application's name
+//                  is given to Initialize as a literal, the name of its catalogue
 // Version: 2.1.0 - one UltraTexter per user: a second start's files open in
 //                  the running copy; every file named on the command line
 //                  opens, not only the last
@@ -34,6 +36,7 @@
 #include <X11/Xlib.h>
 #include <signal.h>
 #include "UltraCanvasDebug.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 #endif
 
 using namespace UltraCanvas;
@@ -232,7 +235,7 @@ void SignalHandler(int) {
 #endif
 
 // ===== SYSTEM INITIALIZATION =====
-bool InitializeSystem(UltraCanvasApplication& app, const std::string& appName) {
+bool InitializeSystem(UltraCanvasApplication& app) {
     debugOutput << "=== UltraTexter - Text Editor ===" << std::endl;
     debugOutput << "Version: 2.0.0" << std::endl;
     debugOutput << "Build Date: " << __DATE__ << " " << __TIME__ << std::endl;
@@ -266,7 +269,9 @@ bool InitializeSystem(UltraCanvasApplication& app, const std::string& appName) {
     try {
         debugOutput << "Initializing UltraCanvas framework..." << std::endl;
 
-        if (!app.Initialize(appName)) {
+        // The literal is the application's name in the locale catalogues too
+        // (scripts/extract_ui_strings.py reads it): media/locale/<lang>/UltraTexter.json.
+        if (!app.Initialize("UltraTexter")) {
             HandleFatalError("Failed to initialize UltraCanvas application");
             return false;
         }
@@ -364,7 +369,7 @@ int main(int argc, char* argv[]) {
 
     try {
         // Initialize system
-        if (!InitializeSystem(app, "UltraTexter")) {
+        if (!InitializeSystem(app)) {
             return EXIT_FAILURE;
         }
         if (start == UltraCanvasSingleInstance::Start::AlreadyRunning) {

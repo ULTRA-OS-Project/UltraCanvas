@@ -1,3 +1,40 @@
+#### 2026-11-05 *0.2.33*
+- **UltraPaint takes the Image base set.** Its catalogue names `Image` under
+  `@bases`, as the localisation proposal's Appendix B assigns it, so a text
+  of image editing it shows comes in the shared Image vocabulary of every
+  language - the same words as ArtCreator and UltraViewer.
+
+#### 2026-11-05 *0.2.32*
+- **The Text tool in every language.** UltraPaint's own catalogue
+  (`media/locale/<lang>/UltraPaint.json`) now exists in all thirty
+  languages: the Text tool's status-line hint and its undo steps showed in
+  English whatever the language. They read the same as ArtCreator's.
+
+#### 2026-11-04 *0.2.31*
+- **Selected words take a letter spacing of their own.** The text bar's letter
+  spacing goes to the selected words while a text is typed (it spread the
+  whole text); with nothing selected it still sets the whole text's.
+- **A size typed into the text bar no longer changes the whole text.** Typing
+  in the size field (or Ctrl+A in it) ran the window's shortcuts, which
+  finished the text first. The keys now stay in the field, and Escape there
+  gives them back to the text.
+
+#### 2026-11-03 *0.2.30*
+- **The text bar.** While the Text tool is active, a bar under the toolbar -
+  the framework's `UltraCanvasTextFormatBar`, the one ArtCreator shows - sets
+  the font (every installed font, each shown in itself in the list), size,
+  bold, italic, underline, **strikethrough**, alignment, **line spacing** and
+  **letter spacing**. It replaces the Text card in the right panel and shows
+  what is at the caret. While a text is typed, the character attributes go to
+  the selection or what is typed next, alignment to the selected paragraphs
+  and the spacings to the whole text; otherwise the bar changes the active
+  text layer as one undo step.
+- Line spacing is a percentage of each line's largest letters, set exactly, so
+  a word made larger opens its line up instead of running into the next. A
+  text layer from before keeps the font's own spacing until it is given one.
+- Letter spacing is kept in the project and in a *.ucd (a version 2 text
+  frame, written only for a text that has some).
+
 #### 2026-10-25 *0.2.29*
 - **The Palette manager.** The "+" under the colour palettes opens a window
   with a title bar to drag it by; *Add palette* at its foot makes a palette

@@ -1,3 +1,41 @@
+#### 2026-11-04 *0.1.15*
+- **Your e-mail address is confirmed by a link.** Right after you make your
+  ChatCube ID, the relay e-mails a link to the address you gave; opening it
+  shows a page that says the address is confirmed. Edit profile shows
+  whether it is, with *Check* and *Send again* under the field. The phone
+  number is confirmed by a code sent by SMS, when the relay can send one.
+- **Your ChatCube ID can come back on a new computer.** With the address
+  confirmed, *Turn recovery on* in Edit profile lets the relay keep a copy of
+  your key. On another computer, *Recover my ChatCube ID* under the sign-in
+  card asks for the relay and your e-mail address; the relay e-mails a link
+  there - only if an ID really has that address. Open it and confirm on the
+  page, and ChatCube, which has been waiting, signs in as you by itself -
+  same ID, same contacts - and you get an e-mail saying so. Recovery is off
+  until you turn it on, and the window says why: whoever runs the relay can
+  read that copy, and whoever reads your e-mail can recover your ID. The
+  relay needs an e-mail sender for it (ChatCube relay 1.2.0); one without
+  says so.
+
+#### 2026-11-02 *0.1.14*
+- **An e-mail address and a phone number for every ChatCube ID.** A new ID
+  asks for both: they are how the account is recovered, kept in the
+  identity's encrypted key vault on this computer and on the relay, for the
+  owner alone - contacts see the name, never these.
+- **A password, an UltraAuthenticator code, or both to sign in.** The
+  sign-in card asks how signing in on this computer is protected: no
+  password (as before), a password - the key to the ID is then encrypted
+  with it (Argon2id, XChaCha20-Poly1305) and cannot be read without it - a
+  6-digit code from UltraAuthenticator or any other authenticator app, or
+  the password and the code. A protected ID asks for them at every start,
+  the password first, then the code; each code works once, and after five
+  wrong ones ChatCube waits before it takes another.
+- **Edit profile.** The person button beside your ID opens a window with
+  the name, the e-mail address and the phone number, and how signing in is
+  protected. Changing the protection asks for what protects it now; a new
+  authenticator is a QR code (and its key, for typing) that
+  UltraAuthenticator scans from the screen, proven with the first code it
+  shows.
+
 #### 2026-11-01 *0.1.13*
 - **A Settings window.** The gear beside the copy button, at the top of the
   sidebar, opens it - laid out as UltraFiler's: the sections on the left,

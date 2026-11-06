@@ -10,13 +10,27 @@ set_target_properties(UltraIMTestProviderModule PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/modules)
 target_compile_features(UltraIMTestProviderModule PRIVATE cxx_std_20)
 target_link_libraries(UltraIMTestProviderModule PRIVATE UltraIM)
+# Beside it, two the host must refuse: one from before the version check,
+# one built for another version (StaleProviderModules.cpp).
+foreach(_stale v1 other)
+    string(TOUPPER "${_stale}" _stale_define)
+    add_library(UltraIMStaleProviderModule_${_stale} MODULE StaleProviderModules.cpp)
+    set_target_properties(UltraIMStaleProviderModule_${_stale} PROPERTIES
+        OUTPUT_NAME "ultraim_stale_${_stale}"
+        PREFIX ""
+        LIBRARY_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/modules)
+    target_compile_features(UltraIMStaleProviderModule_${_stale} PRIVATE cxx_std_20)
+    target_compile_definitions(UltraIMStaleProviderModule_${_stale} PRIVATE ULTRAIM_STALE_${_stale_define})
+    target_link_libraries(UltraIMStaleProviderModule_${_stale} PRIVATE UltraIM)
+endforeach()
 
 add_executable(UltraIMTests UltraIMTests.cpp)
 target_compile_features(UltraIMTests PRIVATE cxx_std_20)
 target_link_libraries(UltraIMTests PRIVATE UltraIM)
 target_compile_definitions(UltraIMTests PRIVATE
     ULTRAIM_TEST_MODULE_DIR="$<TARGET_FILE_DIR:UltraIMTestProviderModule>")
-add_dependencies(UltraIMTests UltraIMTestProviderModule)
+add_dependencies(UltraIMTests UltraIMTestProviderModule UltraIMStaleProviderModule_v1
+                 UltraIMStaleProviderModule_other)
 add_test(NAME UltraIMTests COMMAND UltraIMTests)
 
 # ChatCube Direct: envelope and store units always; the end-to-end part

@@ -1,5 +1,9 @@
 // include/UltraCanvasBaseApplication.h
 // Main UltraCanvas Framework Entry Point - Unified System
+// Version: 1.16.0 - GetHostAppearance: the desktop's look (dark, contrast, accent, fonts,
+//                  text scale) from the platform, refreshed on its change event, the
+//                  ULTRACANVAS_HOST_APPEARANCE override; the system fonts served from it
+// Version: 1.15.0 - SetSystemFontStyle / SetDefaultMonospacedFontStyle pin the system fonts
 // Version: 1.14.0 - UltraCanvasApplication is the Wayland backend under ULTRACANVAS_DISPLAY_WAYLAND
 // Version: 1.13.0 - RunAfterMainLoop(): the platform's step once the main loop has ended
 // Version: 1.12.0 - GenerateBitmapScalingConfig: fontconfig's bitmap-font scaling rules
@@ -10,7 +14,7 @@
 // Version: 1.8.0 - keys aimed at a blocked window go to the modal
 // Version: 1.7.0 - a theme change reaches every window
 // Version: 1.6.0
-// Last Modified: 2026-10-17
+// Last Modified: 2026-11-03
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -23,6 +27,8 @@
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasTimer.h"
 #include "UltraCanvasFocusHistory.h"
+#include "UltraCanvasHostAppearance.h"
+#include <atomic>
 #include <vector>
 #include <algorithm>
 #include <functional>
@@ -65,6 +71,21 @@ namespace UltraCanvas {
     // bitmaps' size. The generated fonts.conf carries it on Windows and
     // Android; a config made another way without a conf.d loads this.
     std::string GenerateBitmapScalingConfig();
+#endif
+
+#if defined(_WIN32) || defined(_WIN64)
+    // The Windows font folders - the system's (%SystemRoot%\Fonts) and the
+    // user's (%LOCALAPPDATA%\Microsoft\Windows\Fonts) - and fontconfig's
+    // cache folder as a <fontconfig> document of <dir> and <cachedir>
+    // elements, by path. fontconfig's own keywords for them (WINDOWSFONTDIR,
+    // WINDOWSUSERFONTDIR, LOCAL_APPDATA_FONTCONFIG_CACHE) depend on how the
+    // fontconfig at hand resolves them in a config read from memory, and one
+    // it cannot resolve fails the whole document - the system fonts were
+    // then never loaded. A keyword stands in only where the path is unknown.
+    std::string GenerateWindowsFontFoldersConfig();
+    // The system font folder's path with forward slashes ("C:/WINDOWS/fonts"),
+    // "" when %SystemRoot% is not set.
+    std::string GetWindowsFontsFolder();
 #endif
 
     // Every font family this process can set text in: the fonts installed on
@@ -143,6 +164,40 @@ namespace UltraCanvas {
     // you by UltraCanvasApplicationBase::RegisterFontFile(); call it directly
     // only after registering a font behind the framework's back.
     void RefreshFontConfiguration();
+
+    // Goes up each time the fonts the text engine knows change: a font file
+    // was registered (RefreshFontConfiguration), or the system fonts that a
+    // scan still running at the start brought later were switched to
+    // (Windows). A list of the installed families (GetInstalledFontFamilies)
+    // made at another count is out of date - a font list made with the
+    // window held the bundled fonts alone after a start with a cold font
+    // cache. The windows are laid out again after such a change, so an
+    // element holding a list compares the count in InvalidateLayout().
+    unsigned long GetFontSetGeneration();
+
+    // The bundled fonts (kEmbeddedAllFonts in GetBundledFontsDir) made
+    // available to the text engine, the platform's one way - defined once
+    // per platform in OS/<Platform>: fontconfig on Linux, the BSDs, Android
+    // and in the browser; CoreText, for this process only, on macOS; on
+    // Windows fontconfig and GDI, with the Windows font folders, the generic
+    // aliases and a fontconfig-backed Pango font map. An application's start
+    // calls it (LoadBundledFontsNative), and so does
+    // RegisterBundledFontsWithoutApplication. `systemFontsWaitMs` is how long
+    // Windows waits for its system fonts' scan (AdoptSystemFontsWithin);
+    // elsewhere it is not read. Returns how many font files were registered.
+    int RegisterPlatformBundledFonts(int systemFontsWaitMs);
+
+    // What an application's start does for text, in a program that has no
+    // UltraCanvasApplication - a command-line tool that draws text, as the
+    // `videofx` tool draws titles - so it sets text in the fonts, and with the
+    // system fonts, the applications do: the generated fonts.conf where the
+    // system has none (SetupBundledFontconfig), then the platform's
+    // registration (RegisterPlatformBundledFonts) on every platform, macOS
+    // included. A tool has no windows to switch to the system fonts later, so
+    // on Windows it waits for their scan to end. Call it once, first thing,
+    // and only without an application. Returns how many bundled font files
+    // were registered.
+    int RegisterBundledFontsWithoutApplication();
 
     // Watches a file descriptor from within the UltraCanvas event loop. Added so a
     // host integration (e.g. Ladybird's IPC to its WebContent process) can have its
@@ -252,9 +307,17 @@ namespace UltraCanvas {
         const float DOUBLE_CLICK_TIME = 0;
         const int DOUBLE_CLICK_DISTANCE = 0;
 
-        // Cached system font styles
+        // The system fonts pinned by SetSystemFontStyle / SetDefaultMonospacedFontStyle;
+        // unpinned, they are the host appearance's.
         std::optional<FontStyle> cachedSystemFontStyle_;
         std::optional<FontStyle> cachedMonospacedFontStyle_;
+
+        // The host's look, read on the first GetHostAppearance and again by
+        // RefreshHostAppearance; the handlers hear a change.
+        std::optional<HostAppearance> hostAppearance_;
+        std::atomic<bool> hostAppearanceRefreshPending_{false};
+        std::vector<std::pair<int, std::function<void(const HostAppearance&)>>> hostAppearanceHandlers_;
+        int nextHostAppearanceHandlerId_ = 1;
 
         // Font files handed to RegisterFontFile(), by resolved path, so a
         // second call for the same file does not register it twice.
@@ -415,9 +478,36 @@ namespace UltraCanvas {
         void CaptureMouse(UltraCanvasUIElement* element);
         void ReleaseMouse();
 
-        // System font detection
+        // ===== THE HOST'S LOOK =====
+        // What the desktop says now - dark or light, high contrast, reduced
+        // motion, its accent, its interface and monospace fonts, its text
+        // scale (UltraCanvasHostAppearance.h) - read on the first call and
+        // kept; the platform's change event (WM_SETTINGCHANGE, AppKit's
+        // effectiveAppearance) reads it again. ULTRACANVAS_HOST_APPEARANCE
+        // ("dark,font=Noto Sans 14", see the header) is applied over it. UI
+        // thread.
+        const HostAppearance& GetHostAppearance();
+        // Reads the host again now; the handlers run when it changed. UI
+        // thread - a platform's event calls ScheduleHostAppearanceRefresh,
+        // which posts it here once per burst of events.
+        void RefreshHostAppearance();
+        void ScheduleHostAppearanceRefresh();
+        // Called on the UI thread after a change, with the new value.
+        using HostAppearanceHandler = std::function<void(const HostAppearance&)>;
+        int AddHostAppearanceHandler(HostAppearanceHandler handler);
+        void RemoveHostAppearanceHandler(int id);
+
+        // System font detection: the desktop's interface and monospace fonts,
+        // the host appearance's uiFont and monoFont. SetSystemFontStyle /
+        // SetDefaultMonospacedFontStyle pin them instead - for a program that
+        // brings its own, or a test that measures text and must not depend on
+        // whatever font the machine has (the demo's layout audit pins the
+        // bundled Ubuntu 12). An empty family or a size of 0 is ignored; a
+        // pin outlives a host change.
         FontStyle GetSystemFontStyle();
         FontStyle GetDefaultMonospacedFontStyle();
+        void SetSystemFontStyle(const FontStyle& style);
+        void SetDefaultMonospacedFontStyle(const FontStyle& style);
 
         // ===== RUNTIME FONT REGISTRATION =====
         // Makes the faces in a font file usable by name for the rest of this
@@ -528,6 +618,10 @@ namespace UltraCanvas {
         // Platform-specific system font detection
         virtual FontStyle DetectSystemFontStyleNative() = 0;
         virtual FontStyle DetectMonospacedFontStyleNative() = 0;
+        // The host's look. The base answers the default - light, no accent -
+        // with the two font detectors' fonts; Windows (the registry and the
+        // metrics) and macOS (AppKit) override it.
+        virtual HostAppearance DetectHostAppearanceNative();
 
         // Register the bundled DejaVu fonts (process-private) so they are
         // available as the framework defaults on every platform. Implemented

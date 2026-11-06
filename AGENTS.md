@@ -66,6 +66,7 @@ before adding cross-module code.
   CI runs `UltraCanvasDemo --audit-layout` and `--audit-layout --pseudo-loc`
   (every text ~40% longer) on a virtual display and fails on a label or
   button narrower than its text, or content cut off without a scrollbar.
+  The audit measures in the bundled Ubuntu 12, whatever the desktop's font.
   Run both before pushing a page (`--audit-page <id>` for one page).
 
 ## Core conventions
@@ -358,7 +359,7 @@ enforces this and runs in CI; a genuine exception opts out with
 # HEIC and AVIF decode only with them, and ImageFormatsTest insists)
 sudo apt install build-essential cmake libcairo2-dev libpango1.0-dev \
     libfreetype6-dev libvips-dev libharfbuzz-dev clang \
-    libheif-plugin-libde265 libheif-plugin-aomdec
+    libheif-plugin-libde265 libheif-plugin-aomdec libjxl-dev
 # macOS deps
 brew install cmake cairo pango freetype vips harfbuzz
 
@@ -771,7 +772,15 @@ and never introduce a new literal copy of one:
    `LoadImage`, `SendMessage`), nor after an X11 macro (`None`, `Success`,
    `Status`, `Bool`, `Above`), nor `YES` / `NO` / `nil`, nor `id` / `Class` /
    `BOOL` at file scope — run `python3 scripts/check_platform_names.py`; CI
-   runs that too. Changing VideoFX? Run `scripts/check_libcxx_syntax.sh`:
+   runs that too. Changing UltraIM's provider interface
+   (`UltraIMPlugins.h`) or a type in `UltraIMTypes.h`? Bump
+   `ULTRAIM_PLUGIN_HOST_ABI_VERSION` - the provider modules are called through
+   that vtable and those structs, and the host loads only a module of its own
+   version. Changing `UltraCanvasElementPlugins.h`? Bump
+   `ULTRACANVAS_PLUGIN_HOST_ABI_VERSION` for a member appended to the host
+   table, or the `ucN` of `ULTRACANVAS_FRAMEWORK_ABI_TAG` for a type that
+   crosses to the plug-ins. Then run `python3 scripts/check_plugin_abi.py
+   --update`; CI runs the check. Changing VideoFX? Run `scripts/check_libcxx_syntax.sh`:
    the Windows builds compile it against libc++, which refuses what libstdc++
    lets through (`std::to_string` of a file time's tick count, say), and the
    script type-checks the module against libc++ in seconds. Reading HTML,
@@ -786,7 +795,30 @@ and never introduce a new literal copy of one:
    (`UltraCanvasNotificationActivation.h`); and it gets a row in
    `NOTIFICATION_ACTIVATORS` in `scripts/make_msix_layout.py`, which declares
    the activator in the MSIX package's manifest — run
-   `python3 scripts/check_notification_activators.py`; CI runs that too.
+   `python3 scripts/check_notification_activators.py`; CI runs that too. Writing text a person reads in a window? Through `Tr`
+   (`UltraLocalisation/UltraLocalisation.h`: `Tr("Save")`, `TrC`, `TrN`,
+   `TrF`), never a bare literal in a label, a menu or a dialog — then run
+   `python3 scripts/extract_ui_strings.py` so the English catalogues under
+   `media/locale/en/` carry the key, and `python3
+   scripts/check_locale_catalogues.py`; CI runs that too. **A text that lands
+   in the standard set (`media/locale/en/Standard.json`) brings its
+   translations with it:** the check fails on a standard entry any language
+   lacks (a regional variant such as `pt-BR` counts its parent's), because
+   that text would show in English to everyone using that language, in
+   every application - draft them with `scripts/translate_catalogue.py`
+   (marked `machine draft … reviewed by -` like the rest). A word every
+   application has is in `Standard.json` or a base set already (the
+   proposal's appendices): an application's own catalogue holds only what
+   is its own. **A catalogue under `media/locale/en/` that conflicts in a
+   merge is never merged by hand:** whichever branch merges second merges
+   the base and runs `python3 scripts/extract_ui_strings.py` - it rebuilds a
+   conflicted catalogue from both sides git keeps (its `@bases` and other
+   metadata) and the merged sources - then `git add`s it.
+   `check_pr_overlap.py` reports such a file as *rebuilt*, not as a
+   conflict. (A hand-merge, or the script before it learned this, can drop
+   `@bases`, and the application then stops inheriting its base set without
+   any check noticing.) The hand-curated base sets under `base/` are not
+   generated: a conflict there is a real one.
 3. Check `Docs/UltraCanvas/<Component>*.md` (or `llms.txt`) before using a
    component; if you add or change public API, update the matching doc in
    the same change. Then run `python3 scripts/check_doc_examples.py <doc>`:
@@ -802,7 +834,11 @@ and never introduce a new literal copy of one:
    are listed in `scripts/doc_examples_baseline.txt` until the API exists;
    a component doc must never be added there. Writing one of those APIs
    makes its entries stop being found, which fails the check until the file
-   is rewritten (`--all --update-baseline`) in the same change.
+   is rewritten in the same change: `--all --update-baseline`, or
+   `--update-baseline <doc>...` for the docs changed, with the others'
+   entries kept. Those are the only ways to write the file - each doc's
+   entries end in a line that signs them, and a block edited by hand fails
+   the check naming the doc to regenerate.
    Changing a header can therefore fail a doc you did not touch: fix that
    doc in the same change. A name a snippet takes from the application - a
    `window`, a callback the reader writes, a version macro - is declared in

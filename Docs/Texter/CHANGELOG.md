@@ -1,3 +1,22 @@
+#### 2026-11-04 *1.77*
+- **UltraTexter in every language.** Its own catalogue
+  (`media/locale/<lang>/UltraTexter.json`) now exists in all thirty
+  languages: until now its 213 texts - menus, toolbars, the find bar,
+  comments and tracked changes, the export and print dialogs - showed in
+  English whatever the language. A failed save no longer explains itself
+  half in English: the reason is a whole translated sentence per case
+  instead of an English phrase put into "The file {0}.".
+
+#### 2026-11-04 *1.76*
+- **UltraTexter speaks the chosen language.** Its own texts - the menus, the
+  toolbars' tooltips, the language and encoding lists, the search bar, the
+  dialogs (Go to line, Crash recovery, File statistics, the spelling and
+  review menus, Translate selection), the status line's messages and the
+  About box - go through `Tr`, so they follow the language set in
+  UOS-Settings; `media/locale/en/UltraTexter.json` is its set, on the *Text*
+  base set. **Help > Translate UltraTexter...** opens the localisation
+  editor on UltraTexter's own set in the language it runs in.
+
 #### 2026-10-28 *1.75*
 - **Hidden characters can be shown.** The editor's right-click menu has a
   *Display* submenu with *Hidden Characters*, *Line Numbers* and *Word Wrap*;

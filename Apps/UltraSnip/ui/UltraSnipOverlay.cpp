@@ -1,5 +1,6 @@
 // Apps/UltraSnip/ui/UltraSnipOverlay.cpp
 // See the header.
+// Version: 0.2.0 - the texts go through Tr (UltraLocalisation)
 // Version: 0.1.1 - the frozen screen shown from its pixels (UCImage::FromBgra), no PNG round trip
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -11,6 +12,7 @@
 #include "UltraCanvasImage.h"
 #include "UltraCanvasImageElement.h"
 #include "UltraCanvasRenderContext.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <algorithm>
 #include <cmath>
@@ -188,9 +190,9 @@ void UltraSnipSelectionElement::Render(IRenderContext* ctx, const Rect2Df&) {
         ctx->DrawLine(Point2Dd(0, current_.y + 0.5), Point2Dd(w, current_.y + 0.5));
     }
 
-    const char* hint = mode_ == SnipMode::Window
-                           ? "Click a window, or drag an area  \xC2\xB7  Enter: the window under the pointer  \xC2\xB7  Esc: cancel"
-                           : "Drag an area  \xC2\xB7  Enter: the whole screen  \xC2\xB7  Esc: cancel";
+    const std::string hint = mode_ == SnipMode::Window
+                           ? Tr("Click a window, or drag an area  \xC2\xB7  Enter: the window under the pointer  \xC2\xB7  Esc: cancel")
+                           : Tr("Drag an area  \xC2\xB7  Enter: the whole screen  \xC2\xB7  Esc: cancel");
     DrawPill(ctx, hint, w / 2, 16, true);
     ctx->PopState();
 }
@@ -210,7 +212,7 @@ bool UltraSnipOverlay::Open(const DesktopScreenImage& shot, SnipMode mode, const
                             std::string* error) {
     Close();
     if (!shot.IsValid()) {
-        if (error) *error = "There is no screen picture to choose from.";
+        if (error) *error = Tr("There is no screen picture to choose from.");
         return false;
     }
     // The capture as the picture the image element shows: its B G R x rows
@@ -218,7 +220,7 @@ bool UltraSnipOverlay::Open(const DesktopScreenImage& shot, SnipMode mode, const
     std::shared_ptr<UCImage> picture =
         UCImage::FromBgra(shot.pixels.data(), shot.width, shot.height, shot.stride, /*opaque=*/true);
     if (!picture) {
-        if (error) *error = "The screen picture could not be prepared.";
+        if (error) *error = Tr("The screen picture could not be prepared.");
         return false;
     }
 
@@ -237,7 +239,7 @@ bool UltraSnipOverlay::Open(const DesktopScreenImage& shot, SnipMode mode, const
     config.backgroundColor = Colors::Black;
     window_ = CreateWindow(config);
     if (!window_) {
-        if (error) *error = "The selection window could not be opened.";
+        if (error) *error = Tr("The selection window could not be opened.");
         return false;
     }
     shotX_ = shot.x;

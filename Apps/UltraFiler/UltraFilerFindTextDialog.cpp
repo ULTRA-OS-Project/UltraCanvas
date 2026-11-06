@@ -2,6 +2,7 @@
 // Implementation of the Find text dialog and its file-name patterns.
 // Construction follows UltraFilerRunWindowsDialog (flex-column content,
 // custom Find / Cancel buttons).
+// Version: 1.0.1 - the interface strings go through Tr (UltraLocalisation)
 // Version: 1.0.0
 // Author: UltraCanvas Framework
 
@@ -9,6 +10,7 @@
 
 #include "UltraCanvasButton.h"
 #include "UltraCanvasContainer.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 namespace UltraCanvas {
 
@@ -71,7 +73,7 @@ bool FileNameMatchesPatterns(const std::string& name,
 
 void UltraFilerFindTextDialog::Initialize(const FilerFindTextOptions& initial) {
     DialogConfig cfg;
-    cfg.title = "Find text";
+    cfg.title = Tr("Find text");
     cfg.width = 460;
     cfg.height = 270;
     cfg.resizable = false;
@@ -92,7 +94,7 @@ void UltraFilerFindTextDialog::Initialize(const FilerFindTextOptions& initial) {
 
     content->AddChild(std::make_shared<UltraCanvasLabel>(
         "uf-findtext-text-label", 0, 0, 428.0f, 20,
-        "Find files in this folder and its sub folders that contain:"));
+        Tr("Find files in this folder and its sub folders that contain:")));
     textInput_ = std::make_shared<UltraCanvasTextInput>(
         "uf-findtext-text", 0, 0, 428.0f, 30.0f);
     textInput_->SetText(initial.text);
@@ -104,10 +106,10 @@ void UltraFilerFindTextDialog::Initialize(const FilerFindTextOptions& initial) {
 
     content->AddChild(std::make_shared<UltraCanvasLabel>(
         "uf-findtext-pattern-label", 0, 0, 428.0f, 20,
-        "In files named:"));
+        Tr("In files named:")));
     patternInput_ = std::make_shared<UltraCanvasTextInput>(
         "uf-findtext-pattern", 0, 0, 428.0f, 30.0f);
-    patternInput_->SetPlaceholder("e.g. *.cpp; *.h  (empty: all files)");
+    patternInput_->SetPlaceholder(Tr("e.g. *.cpp; *.h  (empty: all files)"));
     patternInput_->SetText(initial.filePattern);
     patternInput_->onEnterPressed = [this](const std::string&) {
         Accept();
@@ -116,7 +118,7 @@ void UltraFilerFindTextDialog::Initialize(const FilerFindTextOptions& initial) {
     content->AddChild(patternInput_);
 
     matchCaseCheck_ = std::make_shared<UltraCanvasCheckbox>(
-        "uf-findtext-matchcase", 0, 0, 428.0f, 24.0f, "Match case");
+        "uf-findtext-matchcase", 0, 0, 428.0f, 24.0f, Tr("Match case"));
     matchCaseCheck_->SetChecked(initial.matchCase);
     content->AddChild(matchCaseCheck_);
 
@@ -129,11 +131,11 @@ void UltraFilerFindTextDialog::Initialize(const FilerFindTextOptions& initial) {
     buttons->layout.SetFlexGap(8);
     auto findBtn = std::make_shared<UltraCanvasButton>(
         "uf-findtext-find", 0, 0, 100, 30);
-    findBtn->SetText("Find");
+    findBtn->SetText(Tr("Find"));
     findBtn->onClick = [this]() { Accept(); };
     auto cancelBtn = std::make_shared<UltraCanvasButton>(
         "uf-findtext-cancel", 0, 0, 100, 30);
-    cancelBtn->SetText("Cancel");
+    cancelBtn->SetText(Tr("Cancel"));
     cancelBtn->onClick = [this]() { CloseDialog(DialogResult::Cancel); };
     buttons->AddChild(findBtn);
     buttons->AddChild(cancelBtn);

@@ -1,0 +1,505 @@
+// Tests/TernaryChartRenderTest.cpp
+// The ternary chart drawn offscreen.
+//
+// The model has its own unit test (TernaryModelTest); this one covers what
+// the chart adds. The triangle must be equilateral and inside the element.
+// Every point must be drawn where its shares say and be hit there. The
+// reading must be right: from any point, the grid line of each part leads to
+// that part's tick on its labelled edge, in both reading directions. Clicks,
+// the legend and tooltips must report the right point, and a point with no
+// shares must be left out without harm.
+//
+// With ULTRACANVAS_SCREENSHOT_DIR set, each case is also written there as a
+// PNG for a person to look at.
+//
+// Version: 1.2.0 - Phase 3: the zoom (corners, ticks, points outside it, the
+//   clip), drag-to-zoom and the double-click reset, a click on a region on
+//   release, density bins and contours
+// Version: 1.1.0 - Phase 2: regions named inside themselves and hit where
+//   drawn, region clicks, paths, bubbles, the curve in the legend, the reading
+//   guide
+// Version: 1.0.0
+// Last Modified: 2026-11-05
+// Author: UltraCanvas Framework
+
+#include "Plugins/Charts/Engine/Charts/UltraCanvasTernaryChart.h"
+#include "UltraCanvasRenderContext.h"
+
+#include <cairo/cairo.h>
+
+#include <algorithm>
+#include <cmath>
+#include <cstdint>
+#include <cstdlib>
+#include <iostream>
+#include <memory>
+#include <string>
+#include <utility>
+
+using namespace UltraCanvas;
+
+namespace {
+
+int g_failures = 0;
+
+void Check(bool condition, const std::string& what) {
+    std::cout << (condition ? "  [ OK ] " : "  [FAIL] ") << what << "\n";
+    if (!condition) ++g_failures;
+}
+
+struct Canvas {
+    std::unique_ptr<IRenderContext> ctx;
+    cairo_t* cr = nullptr;
+
+    Canvas(int w, int h) {
+        ctx = CreateRenderContext(Size2Di(w, h), nullptr);
+        if (!ctx) return;
+        cr = static_cast<cairo_t*>(ctx->GetNativeContext());
+    }
+
+    Color PixelAt(int x, int y) const {
+        if (!cr) return Color(0, 0, 0, 0);
+        cairo_surface_t* s = cairo_get_target(cr);
+        cairo_surface_flush(s);
+        const unsigned char* data = cairo_image_surface_get_data(s);
+        const uint32_t p = reinterpret_cast<const uint32_t*>(data + y * cairo_image_surface_get_stride(s))[x];
+        return Color((p >> 16) & 0xFF, (p >> 8) & 0xFF, p & 0xFF, 255);
+    }
+
+    void Save(const std::string& name) const {
+        const char* dir = std::getenv("ULTRACANVAS_SCREENSHOT_DIR");
+        if (!dir || !cr) return;
+        const std::string path = std::string(dir) + "/" + name + ".png";
+        cairo_surface_write_to_png(cairo_get_target(cr), path.c_str());   // path-string-ok: test output under an ASCII directory the caller chose
+        std::cout << "  wrote " << path << "\n";
+    }
+};
+
+bool Close(const Color& a, const Color& b, int tolerance = 12) {
+    return std::abs(a.r - b.r) <= tolerance && std::abs(a.g - b.g) <= tolerance &&
+           std::abs(a.b - b.b) <= tolerance;
+}
+
+UCEvent Mouse(UCEventType type, const Point2Dd& at) {
+    UCEvent e;
+    e.type = type;
+    e.pointer = Point2Di(static_cast<int>(std::lround(at.x)), static_cast<int>(std::lround(at.y)));
+    e.button = UCMouseButton::Left;
+    return e;
+}
+
+double Distance(const Point2Dd& a, const Point2Dd& b) { return std::hypot(a.x - b.x, a.y - b.y); }
+
+// Whether the segment p -> q runs parallel to the segment r -> s.
+bool Parallel(const Point2Dd& p, const Point2Dd& q, const Point2Dd& r, const Point2Dd& s) {
+    const double ax = q.x - p.x, ay = q.y - p.y, bx = s.x - r.x, by = s.y - r.y;
+    const double cross = ax * by - ay * bx;
+    return std::abs(cross) <= 1e-6 * std::hypot(ax, ay) * std::hypot(bx, by) + 1e-9;
+}
+
+const int W = 760, H = 600;
+
+std::shared_ptr<UltraCanvasTernaryChart> Make(Canvas& canvas, const TernaryModel& model) {
+    auto chart = CreateTernaryChart("ternary", 0, 0, W, H);
+    chart->SetEnableTooltips(false);          // no window to show one in
+    chart->SetAnimateOnDataChange(false);     // one frame: the points in place
+    chart->SetModel(model);
+    chart->Render(canvas.ctx.get(), Rect2Df(0, 0, W, H));
+    return chart;
+}
+
+void TestTriangleAndPoints() {
+    std::cout << "\nTriangle and points\n";
+    Canvas canvas(W, H);
+    if (!canvas.ctx) return;
+    const TernaryModel model = TernarySamples::ThreePartyVotes();
+    auto chart = Make(canvas, model);
+
+    const Point2Dd a = chart->CornerPoint(0), b = chart->CornerPoint(1), c = chart->CornerPoint(2);
+    const double side = Distance(b, c);
+    Check(side > 300.0, "the triangle takes most of the element");
+    Check(std::abs(Distance(a, b) - side) < 1e-6 && std::abs(Distance(a, c) - side) < 1e-6,
+          "the triangle is equilateral");
+    Check(a.y < b.y && b.x < c.x && a.x > 0 && c.x < W && b.y < H, "apex up, inside the element");
+
+    // The plot area is the triangle: inside it the plot colour (between the
+    // grid lines), outside it the background.
+    const Color plot = chart->GetTheme().plotAreaColor;
+    const Point2Dd centre((a.x + b.x + c.x) / 3.0, (a.y + b.y + c.y) / 3.0);
+    bool filled = false;
+    for (int dy = -6; dy <= 6 && !filled; dy += 3) {
+        filled |= Close(canvas.PixelAt(static_cast<int>(centre.x) + 2, static_cast<int>(centre.y) + dy), plot, 1);
+    }
+    const Color outside = canvas.PixelAt(static_cast<int>(b.x) + 4, static_cast<int>(a.y) + 4);
+    Check(filled && !Close(outside, plot, 1), "the triangle, and only the triangle, is filled as the plot area");
+
+    bool allPlaced = true, allHit = true;
+    for (size_t s = 0; s < model.series.size(); ++s) {
+        for (size_t p = 0; p < model.series[s].points.size(); ++p) {
+            const TernaryPoint& point = model.series[s].points[p];
+            const Point2Dd at = chart->PointPosition(s, p);
+            double sa = 0, sb = 0, sc = 0, ra = 0, rb = 0, rc = 0;
+            point.Shares(sa, sb, sc);
+            allPlaced &= chart->ScreenToShares(at, ra, rb, rc) &&
+                         std::abs(ra - sa) < 1e-9 && std::abs(rb - sb) < 1e-9 && std::abs(rc - sc) < 1e-9;
+            chart->OnEvent(Mouse(UCEventType::MouseMove, at));
+            const std::pair<size_t, size_t> hit = chart->GetHoveredPoint();
+            // Overlapping markers: the later one wins, which is drawn on top.
+            allHit &= hit.first != SIZE_MAX &&
+                      Distance(chart->PointPosition(hit.first, hit.second), at) < 9.0;
+        }
+    }
+    Check(allPlaced, "every point is drawn where its shares say, and reads back the same shares");
+    Check(allHit, "every point answers the pointer where it is drawn");
+
+    // A point's colour is its series'.
+    const Point2Dd first = chart->PointPosition(0, 0);
+    const Color marker = canvas.PixelAt(static_cast<int>(std::lround(first.x)), static_cast<int>(std::lround(first.y)));
+    Check(Close(marker, chart->Palette().ColorAt(0, model.series.size()), 40),
+          "a marker is drawn in its series' colour");
+
+    // The corners and the centroid.
+    Check(Distance(chart->SharesToScreen(1, 0, 0), a) < 1e-9 && Distance(chart->SharesToScreen(0, 0, 7), c) < 1e-9,
+          "a pure part sits on its corner, however much of it there is");
+    Check(Distance(chart->SharesToScreen(5, 5, 5), Point2Dd((a.x + b.x + c.x) / 3, (a.y + b.y + c.y) / 3)) < 1e-9,
+          "equal parts sit at the centroid");
+    double ra = 0, rb = 0, rc = 0;
+    Check(!chart->ScreenToShares(Point2Dd(b.x - 20, b.y + 20), ra, rb, rc), "a screen point outside the triangle has no shares");
+
+    const std::string tip = chart->BuildPointTooltip(0, 0);
+    Check(tip.find("Northfield") != std::string::npos && tip.find("Blue Party: 43.3") != std::string::npos &&
+          tip.find("(41200)") != std::string::npos, "a tooltip gives each share and the raw votes");
+    canvas.Save("ternary_votes");
+}
+
+void TestReading(TernaryReading reading, const std::string& name) {
+    std::cout << "\nReading " << name << "\n";
+    Canvas canvas(W, H);
+    if (!canvas.ctx) return;
+    TernaryModel model = TernarySamples::SoilSamples();
+    model.reading = reading;
+    model.series[0].points.emplace_back(20, 30, 50, "Probe");   // 20 % A, 30 % B, 50 % C
+    auto chart = Make(canvas, model);
+    const Point2Dd a = chart->CornerPoint(0), b = chart->CornerPoint(1), c = chart->CornerPoint(2);
+    const Point2Dd p = chart->SharesToScreen(20, 30, 50);
+
+    // The grid line of each part runs parallel to the edge opposite its
+    // corner, and the tick for that part's share sits on it.
+    const Point2Dd ta = chart->TickPosition(0, 0.2), tb = chart->TickPosition(1, 0.3), tc = chart->TickPosition(2, 0.5);
+    Check(Parallel(p, ta, b, c), "the A share is read along a line parallel to BC, to the A tick");
+    Check(Parallel(p, tb, a, c), "the B share is read along a line parallel to AC, to the B tick");
+    Check(Parallel(p, tc, a, b), "the C share is read along a line parallel to AB, to the C tick");
+
+    // Which edge carries which labels.
+    const bool clockwise = reading == TernaryReading::Clockwise;
+    Check(Distance(chart->TickPosition(0, 0.0), clockwise ? b : c) < 1e-9 && Distance(chart->TickPosition(0, 1.0), a) < 1e-9,
+          clockwise ? "clockwise: A reads up the left edge" : "anticlockwise: A reads up the right edge");
+    Check(Distance(chart->TickPosition(1, 0.0), clockwise ? c : a) < 1e-9,
+          clockwise ? "B reads right to left along the bottom" : "B reads down the left edge");
+    Check(Distance(chart->TickPosition(2, 0.0), clockwise ? a : b) < 1e-9,
+          clockwise ? "C reads down the right edge" : "C reads left to right along the bottom");
+
+    // The tooltip of a lab result that sums to 100 gives shares, not raw values twice.
+    const size_t probe = model.series[0].points.size() - 1;
+    const std::string tip = chart->BuildPointTooltip(0, probe);
+    Check(tip.find("Clay: 20.0") != std::string::npos && tip.find("(20)") == std::string::npos,
+          "percentages are not repeated as raw amounts");
+    canvas.Save(std::string("ternary_soil_") + name);
+}
+
+void TestInteraction() {
+    std::cout << "\nInteraction\n";
+    Canvas canvas(W, H);
+    if (!canvas.ctx) return;
+    TernaryModel model = TernarySamples::ThreePartyVotes();
+    model.series[1].points.emplace_back(0, 0, 0, "Empty region");   // no shares: left out
+    auto chart = Make(canvas, model);
+    Check(!model.Validate().empty(), "a point with no shares is named by Validate");
+    Check(std::isnan(chart->PointPosition(1, model.series[1].points.size() - 1).x), "and is not drawn");
+
+    size_t clickedSeries = SIZE_MAX, clickedPoint = SIZE_MAX;
+    chart->onPointClick = [&](size_t s, size_t p) { clickedSeries = s; clickedPoint = p; };
+    const Point2Dd at = chart->PointPosition(1, 4);
+    chart->OnEvent(Mouse(UCEventType::MouseMove, at));
+    chart->OnEvent(Mouse(UCEventType::MouseDown, at));
+    Check(clickedSeries == 1 && clickedPoint == 4, "a click reports the point's series and index");
+
+    chart->SetSeriesVisible(1, false);
+    chart->Render(canvas.ctx.get(), Rect2Df(0, 0, W, H));
+    Check(std::isnan(chart->PointPosition(1, 4).x), "a hidden series has no positions");
+    chart->OnEvent(Mouse(UCEventType::MouseMove, at));
+    const std::pair<size_t, size_t> hit = chart->GetHoveredPoint();
+    Check(hit.first != 1, "and none of its points answers the pointer");
+    chart->SetSeriesVisible(1, true);
+    Check(chart->IsSeriesVisible(1), "a series can be shown again");
+
+    chart->SetShowPointLabels(true);
+    chart->Render(canvas.ctx.get(), Rect2Df(0, 0, W, H));
+    size_t placed = 0;
+    for (const PlacedChartLabel& label : chart->GetLabelPlan().labels) placed += label.suppressed ? 0 : 1;
+    Check(placed > 0, "point labels go through the label plan");
+    canvas.Save("ternary_votes_labels");
+}
+
+void TestRegions() {
+    std::cout << "\nRegions (USDA soil texture)\n";
+    Canvas canvas(W, H);
+    if (!canvas.ctx) return;
+    TernaryModel model = TernarySamples::SoilTexture();
+    model.series = TernarySamples::SoilSamples().series;
+    auto chart = Make(canvas, model);
+
+    int named = 0;
+    bool namedInside = true, hitWhereNamed = true;
+    for (int r = 0; r < static_cast<int>(model.regions.size()); ++r) {
+        const Point2Dd centre = chart->RegionLabelCentre(r);
+        if (std::isnan(centre.x)) continue;
+        ++named;
+        double a = 0, b = 0, c = 0;
+        namedInside &= chart->ScreenToShares(centre, a, b, c) && model.RegionOf(a, b, c) == r;
+        chart->OnEvent(Mouse(UCEventType::MouseMove, centre));
+        // A point may sit on the name; then the point answers instead.
+        hitWhereNamed &= chart->GetHoveredRegion() == r || chart->GetHoveredPoint().first != SIZE_MAX;
+    }
+    Check(named >= 10, "most classes are named inside themselves (" + std::to_string(named) + " of 12)");
+    Check(namedInside, "every name sits inside its own class, even in the classes that are not convex");
+    Check(hitWhereNamed, "and each class answers the pointer where its name is");
+
+    // The fill is the region's colour.
+    const Point2Dd clay = chart->SharesToScreen(88, 6, 6);
+    bool clayFill = false;
+    for (int dy = -4; dy <= 4 && !clayFill; dy += 2) {
+        clayFill |= Close(canvas.PixelAt(static_cast<int>(clay.x), static_cast<int>(clay.y) + dy), model.regions[11].fill, 3);
+    }
+    Check(clayFill, "a class is filled with its colour");
+
+    int clicked = -1;
+    chart->onRegionClick = [&clicked](int region) { clicked = region; };
+    const Point2Dd empty = chart->SharesToScreen(70, 15, 15);   // deep in clay, no sample there
+    chart->OnEvent(Mouse(UCEventType::MouseMove, empty));
+    chart->OnEvent(Mouse(UCEventType::MouseDown, empty));
+    Check(clicked == -1, "a press on a class waits: it may become a zoom drag");
+    chart->OnEvent(Mouse(UCEventType::MouseUp, empty));
+    Check(clicked == 11 && chart->BuildRegionTooltip(11) == "Clay", "released in place, it is a click on the class");
+
+    const std::string tip = chart->BuildPointTooltip(1, 0);
+    Check(tip.find("Region: ") != std::string::npos, "a point's tooltip names its class");
+    canvas.Save("ternary_soil_texture");
+}
+
+void TestPathsBubblesCurves() {
+    std::cout << "\nPaths, bubbles and curves\n";
+    {
+        Canvas canvas(W, H);
+        if (!canvas.ctx) return;
+        const TernaryModel model = TernarySamples::VoteTrajectories();
+        auto chart = Make(canvas, model);
+        // Midway between two elections the path is drawn in the series colour.
+        bool drawn = true;
+        for (size_t s = 0; s < model.series.size(); ++s) {
+            const Point2Dd a = chart->PointPosition(s, 1), b = chart->PointPosition(s, 2);
+            const Point2Dd mid((a.x + b.x) * 0.5, (a.y + b.y) * 0.5);
+            bool hit = false;
+            for (int dx = -1; dx <= 1 && !hit; ++dx) {
+                for (int dy = -1; dy <= 1 && !hit; ++dy) {
+                    hit |= Close(canvas.PixelAt(static_cast<int>(std::lround(mid.x)) + dx,
+                                                static_cast<int>(std::lround(mid.y)) + dy),
+                                 chart->Palette().ColorAt(s, model.series.size()), 40);
+                }
+            }
+            drawn &= hit;
+        }
+        Check(drawn, "each path joins its elections in its series' colour");
+        canvas.Save("ternary_trajectories");
+    }
+    {
+        Canvas canvas(W, H);
+        if (!canvas.ctx) return;
+        const TernaryModel model = TernarySamples::DeFinetti();
+        auto chart = Make(canvas, model);
+        double largest = 0.0, smallest = 1e9;
+        for (size_t s = 0; s < model.series.size(); ++s) {
+            for (size_t p = 0; p < model.series[s].points.size(); ++p) {
+                largest = std::max(largest, chart->PointRadius(s, p));
+                smallest = std::min(smallest, chart->PointRadius(s, p));
+            }
+        }
+        Check(std::abs(largest - 18.0) < 1e-9 && smallest > 4.0 && smallest < largest,
+              "bubble radii run up to the largest for the biggest sample");
+        const std::vector<ChartLegendEntry>& entries = chart->GetLegend().GetEntries();
+        Check(entries.size() == 3 && entries[2].label == "Hardy-Weinberg equilibrium",
+              "the curve has a legend entry after the series");
+        chart->SetCurveVisible(0, false);
+        Check(!chart->IsCurveVisible(0), "and can be hidden");
+        chart->SetCurveVisible(0, true);
+        canvas.Save("ternary_de_finetti");
+    }
+}
+
+void TestReadingGuide() {
+    std::cout << "\nReading guide\n";
+    Canvas canvas(W, H);
+    if (!canvas.ctx) return;
+    TernaryModel model = TernarySamples::SoilTexture();
+    auto chart = Make(canvas, model);
+    double a = 0, b = 0, c = 0;
+    chart->OnEvent(Mouse(UCEventType::MouseMove, chart->SharesToScreen(30, 30, 40)));
+    Check(!chart->GetGuideShares(a, b, c), "the guide is off by default");
+    chart->SetReadingGuide(true);
+    chart->OnEvent(Mouse(UCEventType::MouseMove, chart->SharesToScreen(30, 30, 40)));
+    Check(chart->GetGuideShares(a, b, c) && std::abs(a - 0.3) < 0.01 && std::abs(b - 0.3) < 0.01 &&
+          std::abs(c - 0.4) < 0.01, "on, it follows the pointer's shares");
+    chart->Render(canvas.ctx.get(), Rect2Df(0, 0, W, H));
+    canvas.Save("ternary_reading_guide");
+    chart->OnEvent(Mouse(UCEventType::MouseMove, Point2Dd(5, 5)));
+    Check(!chart->GetGuideShares(a, b, c), "and goes away outside the triangle");
+}
+
+void TestZoom() {
+    std::cout << "\nZoom\n";
+    Canvas canvas(W, H);
+    if (!canvas.ctx) return;
+    TernaryModel model = TernarySamples::SoilTexture();
+    model.series = TernarySamples::SoilSamples().series;
+    auto chart = Make(canvas, model);
+    int changes = 0;
+    chart->onZoomChanged = [&changes]() { ++changes; };
+
+    Check(!chart->SetZoom(0.5, 0.5, 0.1), "a zoom that leaves nothing is refused");
+    Check(chart->SetZoom(0.2, 0.1, 0.3) && chart->IsZoomed() && changes == 1, "a valid zoom is taken and reported");
+    chart->Render(canvas.ctx.get(), Rect2Df(0, 0, W, H));
+    double a = 0, b = 0, c = 0;
+    Check(chart->ScreenToShares(chart->CornerPoint(0), a, b, c) && std::abs(a - 0.6) < 1e-9 &&
+          std::abs(b - 0.1) < 1e-9 && std::abs(c - 0.3) < 1e-9, "the apex is now 60 % clay, 10 % sand, 30 % silt");
+    const Point2Dd p = chart->SharesToScreen(30, 30, 40);
+    Check(std::abs(p.x - chart->SharesToScreen(0.3, 0.3, 0.4).x) < 1e-9 && chart->ScreenToShares(p, a, b, c) &&
+          std::abs(a - 0.3) < 1e-9, "a composition inside the zoom maps both ways");
+    Check(std::hypot(chart->TickPosition(0, 0.2).x - chart->CornerPoint(1).x,
+                     chart->TickPosition(0, 0.2).y - chart->CornerPoint(1).y) < 1e-9,
+          "clay's labelled edge starts at its minimum");
+
+    // A sample outside the zoom is neither drawn nor hit.
+    bool outsideHidden = true, insideShown = false;
+    for (size_t s = 0; s < model.series.size(); ++s) {
+        for (size_t i = 0; i < model.series[s].points.size(); ++i) {
+            const TernaryPoint& pt = model.series[s].points[i];
+            double sa = 0, sb = 0, sc = 0;
+            pt.Shares(sa, sb, sc);
+            const bool in = sa >= 0.2 && sb >= 0.1 && sc >= 0.3;
+            const Point2Dd at = chart->PointPosition(s, i);
+            if (in) insideShown |= !std::isnan(at.x);
+            else outsideHidden &= std::isnan(at.x);
+        }
+    }
+    Check(outsideHidden && insideShown, "samples outside the zoom are left out, those inside drawn");
+
+    // Nothing is drawn past the triangle: just outside its left edge the
+    // background shows, though the class there reaches on.
+    const Point2Dd mid((chart->CornerPoint(0).x + chart->CornerPoint(1).x) * 0.5,
+                       (chart->CornerPoint(0).y + chart->CornerPoint(1).y) * 0.5);
+    const Color outside = canvas.PixelAt(static_cast<int>(mid.x) - 40, static_cast<int>(mid.y));
+    Check(Close(outside, chart->GetTheme().backgroundColor, 3), "the regions are cut at the zoomed triangle's edge");
+    canvas.Save("ternary_zoom");
+
+    // A double click inside shows the whole triangle again.
+    chart->OnEvent(Mouse(UCEventType::MouseDoubleClick, chart->SharesToScreen(0.3, 0.3, 0.4)));
+    Check(!chart->IsZoomed() && changes == 2, "a double click undoes the zoom");
+
+    // A drag across the triangle zooms to the sub-triangle holding both ends.
+    chart->Render(canvas.ctx.get(), Rect2Df(0, 0, W, H));
+    int clicked = -1;
+    chart->onRegionClick = [&clicked](int r) { clicked = r; };
+    const Point2Dd from = chart->SharesToScreen(0.5, 0.2, 0.3), to = chart->SharesToScreen(0.2, 0.4, 0.4);
+    chart->OnEvent(Mouse(UCEventType::MouseMove, from));
+    chart->OnEvent(Mouse(UCEventType::MouseDown, from));
+    chart->OnEvent(Mouse(UCEventType::MouseMove, Point2Dd((from.x + to.x) / 2, (from.y + to.y) / 2)));
+    chart->Render(canvas.ctx.get(), Rect2Df(0, 0, W, H));
+    canvas.Save("ternary_zoom_drag");
+    chart->OnEvent(Mouse(UCEventType::MouseMove, to));
+    chart->OnEvent(Mouse(UCEventType::MouseUp, to));
+    const TernaryModel& zoomed = chart->GetModel();
+    Check(std::abs(zoomed.axes[0].minimum - 0.2) < 0.01 && std::abs(zoomed.axes[1].minimum - 0.2) < 0.01 &&
+          std::abs(zoomed.axes[2].minimum - 0.3) < 0.01, "a drag zooms to the smallest sub-triangle holding both ends");
+    Check(clicked == -1, "and is not a click");
+    chart->SetZoomByDrag(false);
+    chart->ResetZoom();
+    chart->OnEvent(Mouse(UCEventType::MouseDown, from));
+    chart->OnEvent(Mouse(UCEventType::MouseMove, to));
+    chart->OnEvent(Mouse(UCEventType::MouseUp, to));
+    Check(!chart->IsZoomed(), "with drag-to-zoom off, a drag zooms nothing");
+}
+
+void TestDensity() {
+    std::cout << "\nDensity\n";
+    Canvas canvas(W, H);
+    if (!canvas.ctx) return;
+    // 3,000 compositions round two centres, from a fixed generator.
+    TernaryModel model = TernarySamples::SoilTexture();
+    model.regions.clear();
+    TernarySeries cloud("Samples");
+    uint32_t seed = 12345;
+    auto next = [&seed]() { seed = seed * 1664525u + 1013904223u; return (seed >> 8) / 16777216.0; };
+    for (int k = 0; k < 3000; ++k) {
+        const bool first = k % 3 != 0;
+        const double ca = first ? 0.2 : 0.55, cb = first ? 0.6 : 0.15;
+        const double a = std::max(0.0, ca + (next() - 0.5) * 0.25);
+        const double b = std::max(0.0, cb + (next() - 0.5) * 0.25);
+        cloud.points.emplace_back(a, b, std::max(0.0, 1.0 - a - b));
+    }
+    model.series = {cloud};
+    auto chart = CreateTernaryChart("ternary", 0, 0, W, H);
+    chart->SetEnableTooltips(false);
+    chart->SetAnimateOnDataChange(false);
+    chart->SetModel(model);
+    chart->SetDensity(12);
+    chart->SetDensityContours(4);
+    chart->SetShowPoints(false);
+    chart->Render(canvas.ctx.get(), Rect2Df(0, 0, W, H));
+
+    int valid = 0;
+    for (const TernaryPoint& p : model.series[0].points) {
+        double sa = 0, sb = 0, sc = 0;
+        valid += p.Shares(sa, sb, sc) ? 1 : 0;
+    }
+    Check(chart->GetDensityTotal() == valid, "every point with shares falls in exactly one cell");
+    Check(chart->GetDensityMax() > 30, "the cells near the centres fill up");
+    const int dense = chart->DensityCountAt(0.2, 0.6, 0.2), sparse = chart->DensityCountAt(0.05, 0.05, 0.9);
+    Check(dense > sparse && sparse == 0, "the centre's cell holds many, a far corner none");
+    const Point2Dd d = chart->SharesToScreen(0.2, 0.6, 0.2), e = chart->SharesToScreen(0.33, 0.33, 0.34);
+    auto luma = [](const Color& c) { return 0.299 * c.r + 0.587 * c.g + 0.114 * c.b; };
+    Check(luma(canvas.PixelAt(static_cast<int>(d.x), static_cast<int>(d.y))) <
+          luma(canvas.PixelAt(static_cast<int>(e.x), static_cast<int>(e.y))), "the fuller cell is drawn darker");
+    Check(chart->GetContourSegmentCount() > 10, "contour lines are drawn round the centres");
+    canvas.Save("ternary_density");
+
+    chart->SetZoom(0.1, 0.4, 0.0);
+    chart->Render(canvas.ctx.get(), Rect2Df(0, 0, W, H));
+    Check(chart->GetDensityTotal() < valid && chart->GetDensityTotal() > 0, "zoomed in, only the points inside are binned");
+    canvas.Save("ternary_density_zoom");
+}
+
+} // namespace
+
+int main() {
+    std::cout << "====================================\n";
+    std::cout << "  Ternary Chart Render Test\n";
+    std::cout << "====================================\n";
+
+    TestTriangleAndPoints();
+    TestReading(TernaryReading::Clockwise, "clockwise");
+    TestReading(TernaryReading::Anticlockwise, "anticlockwise");
+    TestInteraction();
+    TestRegions();
+    TestPathsBubblesCurves();
+    TestReadingGuide();
+    TestZoom();
+    TestDensity();
+
+    std::cout << "\n====================================\n";
+    if (g_failures == 0) {
+        std::cout << "All tests passed.\n";
+        return 0;
+    }
+    std::cout << g_failures << " test(s) FAILED.\n";
+    return 1;
+}

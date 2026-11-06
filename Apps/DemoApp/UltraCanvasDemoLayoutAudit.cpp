@@ -8,7 +8,11 @@
 // a translation into German or Finnish is, so a page that only just fits in
 // English shows where it would break; text without a letter (a time readout,
 // a "+" button) is no language's and stays as it is. Exits 0 when nothing was
-// found, 1 when something was. CI runs both forms on Linux (build.yml).
+// found, 1 when something was. CI runs both forms on Linux (build.yml). The
+// audit measures in the bundled Ubuntu 12 / Ubuntu Mono 12 (main.cpp pins
+// them through SetSystemFontStyle), so a runner's desktop font - or the
+// GNOME schema's default where no desktop runs - cannot move the result.
+// Version: 1.1.1 - the audit runs in the bundled Ubuntu 12, whatever the desktop's font
 // Version: 1.1.0 - --pseudo-loc leaves text without a letter as it is
 // Version: 1.0.0 (--pseudo-loc with --component: the page shown with the longer texts)
 // Last Modified: 2026-10-24

@@ -1,5 +1,10 @@
 // include/UltraIM/UltraIMPlugins.h
 // UltraIM - the provider plug-in interface and the module (DSO) host contract
+// Version: 0.1.7 - ABI 3: confirming the e-mail (by a link) and the phone (by a code), and account recovery
+//                  by a link e-mailed to the owner (FinishRecovery asks whether it was approved)
+// Version: 0.1.6 - ABI 2: the version covers the provider interface and its types, a module says
+//                  which it was built for (UltraIM_PluginAbiVersion) and the host loads only an equal one
+// Version: 0.1.5 - the account's profile (name, e-mail, phone) and its sign-in protection
 // Version: 0.1.4 - SendVideo; DownloadAttachment (a video, a file, a voice note fetched when asked for)
 // Version: 0.1.3 - a sign-in by a QR code (credentials.loginType QRCode, UltraIMAuthStep::OtherDevice)
 // Version: 0.1.2 - GetAuthResendHint / ResendAuthCode: a sign-in code sent another way
@@ -248,6 +253,70 @@ public:
         if (onResult) onResult(Unsupported("importing encryption keys"), 0);
     }
 
+    // ---- The account's own profile -----------------------------------------------
+    // (Last in the class, so the slots before keep their places in the vtable.)
+    // The signed-in account's name, e-mail address and phone number
+    // (UltraIMAccountProfile; AccountProfile capability). Updating sends
+    // the name to the contacts and the e-mail and phone to the provider's
+    // service, for the owner alone.
+    virtual void FetchAccountProfile(UltraIMAccountProfileCallback onResult) {
+        if (onResult) onResult(Unsupported("an account profile"), UltraIMAccountProfile());
+    }
+    virtual void UpdateAccountProfile(const UltraIMAccountProfile& profile, UltraIMResultCallback onResult) {
+        (void)profile;
+        if (onResult) onResult(Unsupported("an account profile"));
+    }
+
+    // ---- How signing in on this device is protected ---------------------------------
+    // (SignInProtection capability.) A protected sign-in goes in steps, as
+    // Telegram's does: SignIn answers NeedsInput with GetAuthStep() Password
+    // (credentials.password) and then Code (credentials.otpCode, the
+    // authenticator's code).
+    virtual UltraIMSignInProtection GetSignInProtection() const { return UltraIMSignInProtection::DeviceKey; }
+    // A new authenticator secret, as the otpauth:// link an authenticator
+    // app (UltraAuthenticator) takes from a QR code or pasted: kept until
+    // SetSignInProtection proves it with a code, or another set-up replaces
+    // it. The link holds the secret: show it, never log it.
+    virtual UltraIMResult StartAuthenticatorSetup(std::string& outOtpAuthUri) {
+        outOtpAuthUri.clear();
+        return Unsupported("an authenticator code");
+    }
+    virtual void SetSignInProtection(const UltraIMProtectionChange& change, UltraIMResultCallback onResult) {
+        (void)change;
+        if (onResult) onResult(Unsupported("sign-in protection"));
+    }
+
+    // ---- Confirming the e-mail and phone; account recovery ---------------------
+    // (AccountRecovery capability.) A changed e-mail address gets a link
+    // from the service, which confirms it when opened; a changed phone number
+    // gets a code, which VerifyContact sends back. ResendContactCode asks for
+    // another link or code. SetRecoveryEnabled turns recovery on (the address
+    // confirmed) or off. On a computer without the account: StartRecovery has
+    // a link e-mailed to the account's address; FinishRecovery asks whether it
+    // was opened and approved - NeedsInput while not yet, Ok once the account
+    // is on this computer - and SignIn then signs in as usual.
+    virtual void VerifyContact(UltraIMContactChannel channel, const std::string& code, UltraIMResultCallback onResult) {
+        (void)channel; (void)code;
+        if (onResult) onResult(Unsupported("confirming an address"));
+    }
+    virtual void ResendContactCode(UltraIMContactChannel channel, UltraIMResultCallback onResult) {
+        (void)channel;
+        if (onResult) onResult(Unsupported("confirming an address"));
+    }
+    virtual void SetRecoveryEnabled(bool enabled, UltraIMResultCallback onResult) {
+        (void)enabled;
+        if (onResult) onResult(Unsupported("account recovery"));
+    }
+    virtual void StartRecovery(const std::string& server, const std::string& address,
+                               UltraIMRecoveryChallengeCallback onResult) {
+        (void)server; (void)address;
+        if (onResult) onResult(Unsupported("account recovery"), UltraIMRecoveryChallenge());
+    }
+    virtual void FinishRecovery(const UltraIMRecoveryAnswer& answer, UltraIMResultCallback onResult) {
+        (void)answer;
+        if (onResult) onResult(Unsupported("account recovery"));
+    }
+
 protected:
     static UltraIMResult Unsupported(const std::string& what) {
         return UltraIMResult::Error(UltraIMResultCode::CapabilityMissing,
@@ -257,18 +326,35 @@ protected:
 
 // ============================================================================
 // MODULE (DSO) HOST CONTRACT
-// A provider module exports
+// A provider module exports two functions:
 //
+//     ULTRAIM_DEFINE_PLUGIN_ABI_VERSION()     // UltraIM_PluginAbiVersion: the version it was built for
 //     extern "C" ULTRAIM_PLUGIN_EXPORT void UltraIM_PluginInit(const UltraIMPluginHost* host);
 //
-// and, when host->abiVersion is one it was built for, calls
+// and, when host->abiVersion is the version it was built for, calls
 // host->RegisterProvider for each provider it carries. Modules link the
-// shared UltraCanvas core like any other library; the table is the version
-// gate, so an outdated module is skipped instead of crashing. Append new
-// members only, and bump the version when you do.
+// shared UltraCanvas core like any other library.
+//
+// The version covers the whole binary contract between the host and a
+// module: this table, the IUltraIMProviderPlugin interface above (its
+// virtual functions and their order) and every type that crosses it - all
+// of UltraIMTypes.h. A module built against another version would call
+// past the end of a vtable or read a struct laid out differently, so both
+// sides refuse a mismatch: the host reads UltraIM_PluginAbiVersion before
+// it calls anything and skips a module that answers another version, or
+// has no answer (one built before version 2); the module checks the host's
+// in UltraIM_PluginInit. Bump the version with any change to those - a new
+// virtual, a new member of a struct, a reordered enum.
+// scripts/check_plugin_abi.py fails CI when they change and the version
+// does not (scripts/plugin_abi.txt records the version and a fingerprint).
+//
+// Version 1: the first modules. Version 2 (2026-11): the account profile and
+// sign-in protection, UltraIMCredentials::email - and the version check.
+// Version 3 (2026-11): the profile's verified flags and recovery state,
+// confirming the e-mail and phone, account recovery by an e-mailed link.
 // ============================================================================
 
-constexpr int ULTRAIM_PLUGIN_HOST_ABI_VERSION = 1;
+constexpr int ULTRAIM_PLUGIN_HOST_ABI_VERSION = 3;
 
 struct UltraIMPluginHost {
     int abiVersion;
@@ -276,9 +362,15 @@ struct UltraIMPluginHost {
 };
 
 using UltraIM_PluginInitFn = void (*)(const UltraIMPluginHost* host);
+using UltraIM_PluginAbiVersionFn = int (*)();
 
 #if defined(_WIN32)
 #define ULTRAIM_PLUGIN_EXPORT __declspec(dllexport)
 #else
 #define ULTRAIM_PLUGIN_EXPORT __attribute__((visibility("default")))
 #endif
+
+// The version a module was built for, which the host reads before it calls
+// anything else in it. One line in every provider module, at file scope.
+#define ULTRAIM_DEFINE_PLUGIN_ABI_VERSION() \
+    extern "C" ULTRAIM_PLUGIN_EXPORT int UltraIM_PluginAbiVersion() { return ULTRAIM_PLUGIN_HOST_ABI_VERSION; }

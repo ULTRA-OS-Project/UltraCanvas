@@ -245,6 +245,18 @@ bool DeviceKeyVault::Use(const std::function<void(DeviceKeyVault& vault)>& use) 
     return true;
 }
 
+UnlockStatus DeviceKeyVault::UseWithPassphrase(const std::string& passphrase,
+                                               const std::function<void(DeviceKeyVault& vault)>& use) {
+    Turn turn(Turns());
+    if (passphrase.empty()) return Use(use) ? UnlockStatus::Ok : lastStatus_;
+    if (unlocked_) Lock();
+    const UnlockStatus status = Unlock(passphrase);
+    if (status != UnlockStatus::Ok) return status;
+    if (use) use(*this);
+    Lock();
+    return UnlockStatus::Ok;
+}
+
 void DeviceKeyVault::Lock() {
     Turn turn(Turns());
     if (!unlocked_) return;

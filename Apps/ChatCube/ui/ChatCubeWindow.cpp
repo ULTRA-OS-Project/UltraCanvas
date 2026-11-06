@@ -1,5 +1,9 @@
 // Apps/ChatCube/ui/ChatCubeWindow.cpp
 // The ChatCube window: sign-in page, conversations, messages
+// Version: 0.2.7 - recovery by the link e-mailed to the ID's address: the window waits for it and signs in
+// Version: 0.2.6 - "Recover my ChatCube ID": the codes sent to the e-mail and phone bring an ID back
+// Version: 0.2.5 - an e-mail address and a phone number for a new ID, a password and/or an
+//                  UltraAuthenticator code to sign in; the Edit profile window
 // Version: 0.2.4 - the Settings window (the gear beside the copy button): the send key, typing either
 //                  way, the nearby list, 12-hour times and other date orders, signing out of a network
 // Version: 0.2.3 - a picture or a file waits in a strip above the field, with a x to drop it, and
@@ -17,6 +21,8 @@
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "ChatCubeWindow.h"
+#include "ChatCubeControls.h"
+#include "ChatCubeProfileWindow.h"
 #include "ChatCubeTheme.h"
 
 #include "UltraCanvasApplication.h"
@@ -25,6 +31,7 @@
 #include "UltraCanvasClipboard.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasDataFolder.h"
+#include "UltraCanvasDropdown.h"
 #include "UltraCanvasFileLoader.h"
 #include "UltraCanvasImage.h"
 #include "UltraCanvasImageElement.h"
@@ -55,104 +62,17 @@ namespace ChatCube {
 
 namespace {
 
-constexpr float kTextFont = 10.0f;
-constexpr int   kControlHeight = 32;
 constexpr int   kSidebarWidth = 320;
 constexpr int   kInputHeight = 48;
-constexpr float kFormWidth = 340.0f;
-constexpr float kControlRadius = 8.0f;
-constexpr int   kIconButton = 34;       // a round icon button's side
 constexpr int   kTileSide = 64;         // a staged picture's tile in the composer
 constexpr int   kFileTileWidth = 180;   // a staged file's tile: its name and size
 constexpr int   kTileClose = 20;        // the x on a tile
 constexpr int64_t kTypingShownMs = 5000;
 constexpr int64_t kTypingResendMs = 3000;
 
-// The window's colours, from the theme set before it was built (main.cpp:
-// ChatCube::ThemeFor, light or --dark). Read once: the look does not change
-// while the window is up.
-const Look& L() {
-    static const Look look = CurrentLook();
-    return look;
-}
-
-Color Darker(const Color& c, int by) {
-    auto d = [by](uint8_t v) { return static_cast<uint8_t>(std::max(0, v - by)); };
-    return Color(d(c.r), d(c.g), d(c.b), c.a);
-}
-
 int64_t NowMs() {
     return std::chrono::duration_cast<std::chrono::milliseconds>(
                std::chrono::system_clock::now().time_since_epoch()).count();
-}
-
-std::string Trim(const std::string& s) {
-    const size_t a = s.find_first_not_of(" \t\r\n");
-    if (a == std::string::npos) return std::string();
-    const size_t b = s.find_last_not_of(" \t\r\n");
-    return s.substr(a, b - a + 1);
-}
-
-std::shared_ptr<UltraCanvasLabel> MakeLabel(const std::string& id, const std::string& text,
-                                            float fontSize = kTextFont, const Color& color = L().ink) {
-    auto l = std::make_shared<UltraCanvasLabel>(id, 0, 0, 0, 20);
-    l->SetText(text);
-    l->SetFontSize(fontSize);
-    l->SetTextColor(color);
-    l->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-    l->size.width = CSSLayout::Dimension::Auto();
-    l->size.height = CSSLayout::Dimension::Auto();
-    return l;
-}
-
-// A button in the window's look: rounded, a hairline border at rest, the
-// accent fill when primary, no fill at rest when ghost (the icon buttons).
-void StyleButton(const std::shared_ptr<UltraCanvasButton>& b, bool primary, bool ghost = false) {
-    ButtonStyle st = b->GetStyle();
-    st.cornerRadius = kControlRadius;
-    st.fontSize = kTextFont;
-    st.borderWidth = ghost || primary ? 0.0f : 1.0f;
-    st.borderColor = L().line;
-    if (primary) {
-        st.normalColor = L().accent;
-        st.hoverColor = L().accentHover;
-        st.pressedColor = Darker(L().accentHover, 16);
-        st.normalTextColor = st.hoverTextColor = st.pressedTextColor = L().onAccent;
-        st.disabledColor = L().pressed;
-        st.disabledTextColor = L().inkFaint;
-    } else {
-        st.normalColor = ghost ? Colors::Transparent : L().panel;
-        st.hoverColor = L().hover;
-        st.pressedColor = L().pressed;
-        st.normalTextColor = st.hoverTextColor = st.pressedTextColor = L().ink;
-        st.disabledColor = ghost ? Colors::Transparent : L().well;
-        st.disabledTextColor = L().inkFaint;
-    }
-    b->SetStyle(st);
-}
-
-std::shared_ptr<UltraCanvasButton> MakeButton(const std::string& id, const std::string& text, int width,
-                                              bool primary = false) {
-    auto b = std::make_shared<UltraCanvasButton>(id, 0, 0, width, kControlHeight, text);
-    b->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-    StyleButton(b, primary);
-    return b;
-}
-
-// A button with an icon from media/icons/chatcube, drawn in the text colour;
-// `text` beside it when given, else the icon alone on a round button.
-std::shared_ptr<UltraCanvasButton> MakeIconButton(const std::string& id, const std::string& icon,
-                                                  const std::string& text = std::string(), int width = kIconButton,
-                                                  bool primary = false, bool ghost = true) {
-    auto b = std::make_shared<UltraCanvasButton>(id, 0, 0, width, kIconButton, text);
-    b->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-    StyleButton(b, primary, ghost && !primary);
-    if (text.empty()) b->GetStyle().cornerRadius = kIconButton / 2.0f;
-    b->SetIcon(IconPath(icon));
-    b->SetIconSize(18, 18);
-    b->SetUseIconAsMask(true);
-    b->SetIconSpacing(6);
-    return b;
 }
 
 // A network's button in the sidebar (Matrix, Telegram): always the network's
@@ -162,44 +82,6 @@ void SetNetworkButton(const std::shared_ptr<UltraCanvasButton>& button, const st
                       const std::string& tooltip) {
     button->SetText(name);
     button->SetTooltip(tooltip);
-}
-
-std::shared_ptr<UltraCanvasTextInput> MakeInput(const std::string& id, const std::string& placeholder, int width,
-                                                bool pill = false) {
-    auto t = std::make_shared<UltraCanvasTextInput>(id, 0, 0, width, kControlHeight);
-    t->SetPlaceholder(placeholder);
-    t->SetFontSize(kTextFont);
-    t->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-    TextInputStyle st = t->GetStyle();
-    st.backgroundColor = L().panel;
-    st.borderColor = L().line;
-    st.focusBorderColor = L().accent;
-    st.textColor = L().ink;
-    st.placeholderColor = L().inkFaint;
-    st.caretColor = L().ink;
-    st.selectionColor = Color(L().accent.r, L().accent.g, L().accent.b, 90);
-    st.borderRadius = pill ? kControlHeight / 2 : static_cast<int>(kControlRadius);
-    st.paddingLeft = st.paddingRight = pill ? 14 : 10;
-    t->SetStyle(st);
-    return t;
-}
-
-// The ChatCube logo, `side` pixels square.
-std::shared_ptr<UltraCanvasImageElement> MakeLogo(const std::string& id, int side) {
-    auto logo = std::make_shared<UltraCanvasImageElement>(id, 0, 0, side, side);
-    logo->LoadFromFile(NormalizePath(GetResourcesDir() + "media/appicon/ChatCube.png"));
-    logo->SetFitMode(ImageFitMode::Contain);
-    logo->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-    logo->size.width = CSSLayout::Dimension::Px(static_cast<float>(side));
-    logo->size.height = CSSLayout::Dimension::Px(static_cast<float>(side));
-    return logo;
-}
-
-std::shared_ptr<UltraCanvasContainer> MakeRow(const std::string& id, int gap = 8) {
-    auto row = std::make_shared<UltraCanvasContainer>(id);
-    row->layout.SetFlexRow().SetFlexGap(gap).SetFlexAlignItems(CSSLayout::AlignItems::Center);
-    row->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-    return row;
 }
 
 // What a file is sent as, by its extension: a photo, a video, or a file
@@ -268,8 +150,10 @@ std::string PresenceText(UltraIMPresence presence) {
 
 ChatCubeWindow::ChatCubeWindow(std::string version, std::string providerId, Settings settings)
     : version_(std::move(version)), providerId_(std::move(providerId)), settings_(settings),
-      dataFolder_(PathToUtf8(UltraCanvasDataFolder("ChatCube"))) {
+      dataFolder_(PathToUtf8(UltraCanvasDataFolder("ChatCube"))),
+      profileWindow_(std::make_unique<ChatCubeProfileWindow>(providerId_)) {
     SetDateTimeStyle(settings_.clock24, settings_.dateStyle);
+    profileWindow_->onSaved = [this](const std::string& text) { SetStatus(text); };
 }
 
 ChatCubeWindow::~ChatCubeWindow() {
@@ -278,6 +162,7 @@ ChatCubeWindow::~ChatCubeWindow() {
     if (subscription_) UltraIM_Unsubscribe(subscription_);
     if (callTimer_)
         if (auto* app = UltraCanvasApplicationBase::GetCurrent()) app->StopTimer(callTimer_);
+    StopRecoveryPolling();
 }
 
 bool ChatCubeWindow::Create() {
@@ -309,8 +194,7 @@ bool ChatCubeWindow::Create() {
         return true;
     }
     hasIdentity_ = info.hasStoredSession;
-    signIn_->SetText(hasIdentity_ ? "Sign in" : "Create my ChatCube ID");
-    name_->SetVisible(!hasIdentity_);
+    UpdateSignInForm();
     ShowSignInPage();
     if (hasIdentity_) SignIn();         // a saved identity signs in without asking
     return true;
@@ -339,7 +223,7 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildSignInPage() {
     title->SetFontWeight(FontWeight::Bold);
     signInPage_->AddChild(title);
     signInPage_->AddChild(MakeLabel("cc-signin-tagline",
-                                    "Chat directly with the people you know - no account, no password",
+                                    "Chat directly with the people you know - end-to-end encrypted",
                                     11.0f, L().inkMuted));
     signInPage_->AddSpacer(10);
 
@@ -355,6 +239,23 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildSignInPage() {
     name_ = MakeInput("cc-signin-name", "Your name, as your contacts will see it", static_cast<int>(kFormWidth));
     name_->onEnterPressed = [this](const std::string&) { SignIn(); return true; };
     card->AddChild(name_);
+    // To recover the account with: kept in the key vault and on the relay,
+    // for the owner alone.
+    email_ = MakeInput("cc-signin-email", "E-mail address, to recover your account", static_cast<int>(kFormWidth));
+    email_->onEnterPressed = [this](const std::string&) { SignIn(); return true; };
+    card->AddChild(email_);
+    phone_ = MakeInput("cc-signin-phone", "Phone number with + and country code, for recovery",
+                       static_cast<int>(kFormWidth));
+    phone_->onEnterPressed = [this](const std::string&) { SignIn(); return true; };
+    card->AddChild(phone_);
+    // Asked by the provider at a start: the password, then the code.
+    unlockPassword_ = MakeInput("cc-signin-password", "Your ChatCube password", static_cast<int>(kFormWidth));
+    unlockPassword_->SetInputType(TextInputType::Password);
+    unlockPassword_->onEnterPressed = [this](const std::string&) { SignIn(); return true; };
+    card->AddChild(unlockPassword_);
+    unlockCode_ = MakeInput("cc-signin-code", "The 6-digit code UltraAuthenticator shows", static_cast<int>(kFormWidth));
+    unlockCode_->onEnterPressed = [this](const std::string&) { SignIn(); return true; };
+    card->AddChild(unlockCode_);
     relay_ = MakeInput("cc-signin-relay", "Relay server (optional), e.g. https://relay.example.org",
                        static_cast<int>(kFormWidth));
     relay_->onEnterPressed = [this](const std::string&) { SignIn(); return true; };
@@ -373,9 +274,54 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildSignInPage() {
     localNetwork_->SetVisualStyle(lanStyle);
     card->AddChild(localNetwork_);
 
+    // How signing in on this computer is protected - a new ID's choice;
+    // Edit profile changes it later.
+    protectionRow_ = std::make_shared<UltraCanvasContainer>("cc-signin-protection-row");
+    protectionRow_->layout.SetFlexColumn().SetFlexGap(4).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    protectionRow_->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    protectionRow_->AddChild(MakeLabel("cc-signin-protection-caption", "Signing in on this computer", 9.0f, L().inkMuted));
+    protection_ = std::make_shared<UltraCanvasDropdown>("cc-signin-protection", 0, 0, kFormWidth, kControlHeight);
+    protection_->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    DropdownStyle dropStyle = protection_->GetStyle();
+    dropStyle.fontSize = kTextFont;
+    dropStyle.cornerRadius = kControlRadius;
+    dropStyle.itemHeight = 28.0f;
+    dropStyle.maxItemWidth = kFormWidth + 60;
+    protection_->SetStyle(dropStyle);
+    // In UltraIMSignInProtection's order.
+    protection_->AddItem("No password - this computer signs in by itself");
+    protection_->AddItem("A password");
+    protection_->AddItem("A code from UltraAuthenticator");
+    protection_->AddItem("A password and a code from UltraAuthenticator");
+    protection_->SetSelectedIndex(0, false);
+    protection_->SetAccessibleName("Signing in on this computer");
+    protection_->onSelectionChanged = [this](int, const DropdownItem&) { UpdateSignInForm(); };
+    protectionRow_->AddChild(protection_);
+    card->AddChild(protectionRow_);
+    newPasswordRow_ = MakeRow("cc-signin-new-password", 8);
+    const int halfForm = static_cast<int>((kFormWidth - 8) / 2);
+    newPassword_ = MakeInput("cc-signin-new", "Password", halfForm);
+    newPassword_->SetInputType(TextInputType::Password);
+    newPasswordRow_->AddChild(newPassword_);
+    repeatPassword_ = MakeInput("cc-signin-repeat", "The same again", halfForm);
+    repeatPassword_->SetInputType(TextInputType::Password);
+    repeatPassword_->onEnterPressed = [this](const std::string&) { SignIn(); return true; };
+    newPasswordRow_->AddChild(repeatPassword_);
+    card->AddChild(newPasswordRow_);
+
+    // Recovering an ID made on another computer: the e-mail address it has;
+    // the relay e-mails a link to it.
+    recoverAddress_ = MakeInput("cc-recover-address", "Your ID's e-mail address", static_cast<int>(kFormWidth));
+    recoverAddress_->onEnterPressed = [this](const std::string&) { SignIn(); return true; };
+    card->AddChild(recoverAddress_);
+
     signIn_ = MakeButton("cc-signin-go", "Create my ChatCube ID", static_cast<int>(kFormWidth), true);
     signIn_->SetOnClick([this]() { SignIn(); });
     card->AddChild(signIn_);
+    recoverToggle_ = MakeButton("cc-recover-toggle", "Recover my ChatCube ID", static_cast<int>(kFormWidth));
+    StyleButton(recoverToggle_, false, true);
+    recoverToggle_->SetOnClick([this]() { ToggleRecoveryForm(); });
+    card->AddChild(recoverToggle_);
 
     signInStatus_ = MakeLabel("cc-signin-status", "", kTextFont, L().inkMuted);
     signInStatus_->SetWrap(TextWrap::WrapWord);
@@ -426,6 +372,10 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildSidebar() {
     gear->SetTooltip("Settings");
     gear->SetOnClick([this]() { OpenSettings(); });
     idRow->AddChild(gear);
+    auto profile = MakeIconButton("cc-myid-profile", "profile");
+    profile->SetTooltip("Edit profile: name, e-mail, phone and how you sign in");
+    profile->SetOnClick([this]() { EditProfile(); });
+    idRow->AddChild(profile);
     sidebar->AddChild(idRow);
 
     // Adding someone: a pill, and a round plus.
@@ -910,34 +860,191 @@ void ChatCubeWindow::SetSignInStatus(const std::string& text) {
 
 // =================================================================== actions
 
+void ChatCubeWindow::UpdateSignInForm() {
+    const bool recovering = !hasIdentity_ && recovering_;
+    const bool creating = !hasIdentity_ && !recovering_;
+    const int chosen = protection_->GetSelectedIndex();
+    const auto protection = static_cast<UltraIMSignInProtection>(std::clamp(chosen, 0, 3));
+    name_->SetVisible(creating);
+    email_->SetVisible(creating);
+    phone_->SetVisible(creating);
+    protectionRow_->SetVisible(creating);
+    newPasswordRow_->SetVisible(creating && UltraIM_ProtectionHasPassword(protection));
+    localNetwork_->SetVisible(!recovering);
+    unlockPassword_->SetVisible(!hasIdentity_ ? false : unlockStep_ == UltraIMAuthStep::Password);
+    unlockCode_->SetVisible(!hasIdentity_ ? false : unlockStep_ == UltraIMAuthStep::Code);
+    recoverAddress_->SetVisible(recovering && recoveryId_.empty());
+    recoverToggle_->SetVisible(!hasIdentity_);
+    recoverToggle_->SetText(!recovering ? "Recover my ChatCube ID"
+                            : recoveryId_.empty() ? "Make a new ChatCube ID instead"
+                                                  : "Start over - send a new link");
+    relay_->SetPlaceholder(recovering ? "Your relay, e.g. https://relay.example.org"
+                                      : "Relay server (optional), e.g. https://relay.example.org");
+    if (recovering) signIn_->SetText(recoveryId_.empty() ? "E-mail me a link" : "Check now");
+    else if (creating) signIn_->SetText("Create my ChatCube ID");
+    else if (unlockStep_ == UltraIMAuthStep::Password || unlockStep_ == UltraIMAuthStep::Code) signIn_->SetText("Unlock");
+    else signIn_->SetText("Sign in");
+    if (window_) window_->RequestRedraw();
+}
+
+void ChatCubeWindow::ToggleRecoveryForm() {
+    // While a link is on its way, back to the address (a new link); from
+    // there, or from making an ID, between the two.
+    StopRecoveryPolling();
+    if (recovering_ && !recoveryId_.empty()) {
+        recoveryId_.clear();
+        SetSignInStatus("Ask for a new link - the one before stops working when it expires.");
+        UpdateSignInForm();
+        return;
+    }
+    recovering_ = !recovering_;
+    recoveryId_.clear();
+    SetSignInStatus(recovering_ ? "Your ID comes back from your relay, if recovery was turned on in Edit profile: "
+                                  "it e-mails a link to your ID's address."
+                                : std::string());
+    UpdateSignInForm();
+}
+
+void ChatCubeWindow::StopRecoveryPolling() {
+    if (recoveryTimer_)
+        if (auto* app = UltraCanvasApplicationBase::GetCurrent()) app->StopTimer(recoveryTimer_);
+    recoveryTimer_ = 0;
+}
+
+void ChatCubeWindow::Recover() {
+    const std::string server = Trim(relay_->GetText());
+    if (!recoveryId_.empty()) return PollRecovery();        // "Check now"
+    // The link, e-mailed to the address - if an ID with recovery on has it.
+    const std::string address = Trim(recoverAddress_->GetText());
+    if (server.empty()) return SetSignInStatus("Type the address of the relay your ID used.");
+    if (address.find('@') == std::string::npos) return SetSignInStatus("Type your ID's e-mail address.");
+    signIn_->SetDisabled(true);
+    SetSignInStatus("Asking the relay\xE2\x80\xA6");
+    UltraIM_StartRecovery(providerId_, server, address,
+                          [this](const UltraIMResult& r, const UltraIMRecoveryChallenge& challenge) {
+        signIn_->SetDisabled(false);
+        if (!r) return SetSignInStatus(r.message);
+        recoveryId_ = challenge.recoveryId;
+        SetSignInStatus("If that address belongs to an ID with recovery on, a link is on its way to it. Open it "
+                        "and confirm - ChatCube signs in here by itself. (Not there? Look in the spam folder.)");
+        UpdateSignInForm();
+        // Asked every few seconds until the link is approved or expires.
+        if (auto* app = UltraCanvasApplicationBase::GetCurrent())
+            recoveryTimer_ = app->StartTimer(3000, true, [this](TimerId) { PollRecovery(); });
+    });
+}
+
+void ChatCubeWindow::PollRecovery() {
+    if (recoveryId_.empty() || recoveryAsking_) return;
+    recoveryAsking_ = true;
+    UltraIMRecoveryAnswer answer;
+    answer.server = Trim(relay_->GetText());
+    answer.recoveryId = recoveryId_;
+    UltraIM_FinishRecovery(providerId_, answer, [this](const UltraIMResult& r) {
+        recoveryAsking_ = false;
+        if (r.code == UltraIMResultCode::NeedsInput) return;        // not opened yet
+        if (!r) {
+            if (r.code == UltraIMResultCode::AuthFailed) {
+                // Expired: back to the address, for a new link.
+                StopRecoveryPolling();
+                recoveryId_.clear();
+                UpdateSignInForm();
+            }
+            return SetSignInStatus(r.message);      // the relay away: asked again in a moment
+        }
+        StopRecoveryPolling();
+        hasIdentity_ = true;
+        recovering_ = false;
+        recoveryId_.clear();
+        UpdateSignInForm();
+        SetSignInStatus("Your ChatCube ID is back on this computer.");
+        SignIn();                       // with what FinishRecovery stored
+    });
+}
+
 void ChatCubeWindow::SignIn() {
+    if (!hasIdentity_ && recovering_) return Recover();
     UltraIMCredentials credentials;
     credentials.loginType = UltraIMLoginType::KeyPair;
     credentials.server = Trim(relay_->GetText());
     credentials.displayName = Trim(name_->GetText());
     credentials.createAccount = !hasIdentity_;
-    if (!hasIdentity_ && credentials.displayName.empty()) {
-        SetSignInStatus("Enter the name your contacts will see.");
-        return;
+    const auto chosen = static_cast<UltraIMSignInProtection>(std::clamp(protection_->GetSelectedIndex(), 0, 3));
+    std::string password;
+    if (!hasIdentity_) {
+        credentials.email = Trim(email_->GetText());
+        credentials.phoneNumber = Trim(phone_->GetText());
+        if (credentials.displayName.empty()) {
+            SetSignInStatus("Enter the name your contacts will see.");
+            return;
+        }
+        if (credentials.email.empty() || credentials.phoneNumber.empty()) {
+            SetSignInStatus("Enter your e-mail address and phone number: they are how you get your account back.");
+            return;
+        }
+        if (UltraIM_ProtectionHasPassword(chosen)) {
+            password = newPassword_->GetText();
+            if (password.size() < 8) {
+                SetSignInStatus("Choose a password of 8 characters or more.");
+                return;
+            }
+            if (password != repeatPassword_->GetText()) {
+                SetSignInStatus("The two passwords are not the same.");
+                return;
+            }
+        }
+    } else if (unlockStep_ == UltraIMAuthStep::Password) {
+        credentials.password = unlockPassword_->GetText();
+        if (credentials.password.empty()) {
+            SetSignInStatus("Type your ChatCube password.");
+            return;
+        }
+    } else if (unlockStep_ == UltraIMAuthStep::Code) {
+        credentials.otpCode = Trim(unlockCode_->GetText());
+        if (credentials.otpCode.empty()) {
+            SetSignInStatus("Type the code UltraAuthenticator shows for ChatCube.");
+            return;
+        }
     }
     // No relay: the local network only (the provider says so when there is
     // no relay remembered either).
     credentials.localNetwork = localNetwork_->IsChecked();
     signIn_->SetDisabled(true);
-    SetSignInStatus("Connecting\xE2\x80\xA6");
-    UltraIM_SignIn(providerId_, credentials, [this](const UltraIMResult& r) {
+    SetSignInStatus(unlockStep_ == UltraIMAuthStep::Password ? "Opening the key vault\xE2\x80\xA6"
+                                                             : "Connecting\xE2\x80\xA6");
+    const bool created = !hasIdentity_;
+    UltraIM_SignIn(providerId_, credentials, [this, created, chosen, password](const UltraIMResult& r) {
         signIn_->SetDisabled(false);
         if (!r) {
+            // A protected ID: the password, then the code, on this page.
+            UltraIMProviderInfo asked;
+            if (hasIdentity_ && UltraIM_GetProviderInfo(providerId_, asked) &&
+                (asked.authStep == UltraIMAuthStep::Password || asked.authStep == UltraIMAuthStep::Code)) {
+                // Typed again from the start: a wrong one, or the next step.
+                unlockPassword_->SetText(std::string());
+                unlockCode_->SetText(std::string());
+                unlockStep_ = asked.authStep;
+                UpdateSignInForm();
+                (unlockStep_ == UltraIMAuthStep::Password ? unlockPassword_ : unlockCode_)->SetFocus(true);
+            }
             SetSignInStatus(r.message);
             ShowSignInPage();
             return;
         }
+        unlockStep_ = UltraIMAuthStep::Idle;
+        unlockPassword_->SetText(std::string());
+        unlockCode_->SetText(std::string());
+        newPassword_->SetText(std::string());
+        repeatPassword_->SetText(std::string());
+        SetSignInStatus(std::string());
         hasIdentity_ = true;
+        UpdateSignInForm();
         UltraIMProviderInfo info;
         if (UltraIM_GetProviderInfo(providerId_, info))
             myId_->SetText(GroupUserId(info.localUserId));
         ShowChatView();
         SetProviderStatus(providerId_, "connected");
+        if (created) FinishCreatedProtection(chosen, password);
         RefreshConversations();
         RefreshNearby();
         UltraIMProviderInfo matrixInfo;
@@ -953,6 +1060,37 @@ void ChatCubeWindow::SignIn() {
                 SignInToTelegram(true);
         });
     });
+}
+
+void ChatCubeWindow::FinishCreatedProtection(UltraIMSignInProtection chosen, const std::string& password) {
+    if (chosen == UltraIMSignInProtection::DeviceKey) return;
+    // The authenticator to add is shown in Edit profile, the password (when
+    // chosen with it) already set and filled in there.
+    auto authenticator = [this, chosen, password]() {
+        if (!UltraIM_ProtectionHasCode(chosen)) return;
+        SetStatus("Add ChatCube to UltraAuthenticator to finish: scan the code in Edit profile.");
+        profileWindow_->Show(window_.get(), chosen, password);
+    };
+    if (!UltraIM_ProtectionHasPassword(chosen)) {
+        authenticator();
+        return;
+    }
+    UltraIMProtectionChange change;
+    change.protection = UltraIMSignInProtection::Password;
+    change.newPassword = password;
+    SetStatus("Encrypting your ID with your password\xE2\x80\xA6");
+    UltraIM_SetSignInProtection(providerId_, change, [this, authenticator](const UltraIMResult& r) {
+        if (!r) {
+            SetStatus("The password could not be set: " + r.message + " - set it in Edit profile.");
+            return;
+        }
+        SetStatus("Your ID is protected by your password: ChatCube asks for it at every start.");
+        authenticator();
+    });
+}
+
+void ChatCubeWindow::EditProfile() {
+    profileWindow_->Show(window_.get());
 }
 
 void ChatCubeWindow::FetchTelegramCredentials(std::function<void()> then) {

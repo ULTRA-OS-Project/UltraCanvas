@@ -1,0 +1,38 @@
+{
+  "@language": "en",
+  "@bases": [
+    "Computer"
+  ],
+  "@inherited": [
+    "Close",
+    "Desktop",
+    "Devices",
+    "Language",
+    "Notifications",
+    "System"
+  ],
+  "An application uses a change the next time it starts. The command line (--lang) and the ULTRACANVAS_LANG variable override this setting for one start.": "An application uses a change the next time it starts. The command line (--lang) and the ULTRACANVAS_LANG variable override this setting for one start.",
+  "Appearance": "Appearance",
+  "Browse...": "Browse...",
+  "Choose a wallpaper": "Choose a wallpaper",
+  "Could not write {0}.": "Could not write {0}.",
+  "Emoji": "Emoji",
+  "Every set an application's texts come from in one grid - its own set, the base sets it takes and the standard set - for any application and any language. A save goes into the source tree when the catalogues are writable, else into the UltraCanvas settings folder, where a running application picks it up; the status line says where.": "Every set an application's texts come from in one grid - its own set, the base sets it takes and the standard set - for any application and any language. A save goes into the source tree when the catalogues are writable, else into the UltraCanvas settings folder, where a running application picks it up; the status line says where.",
+  "File dialogs": "File dialogs",
+  "Forget": "Forget",
+  "Language:": "Language:",
+  "Last used folder": "Last used folder",
+  "None: no RAM disc button": "None: no RAM disc button",
+  "Registrations": "Registrations",
+  "Remove all": "Remove all",
+  "Saved.": "Saved.",
+  "Saved. Applications started from now on use this language.": "Saved. Applications started from now on use this language.",
+  "The language every application shows its menus, buttons and messages in. \"System\" follows the computer's own language setting; a language is offered here when a translation of the standard set ships for it.": "The language every application shows its menus, buttons and messages in. \"System\" follows the computer's own language setting; a language is offered here when a translation of the standard set ships for it.",
+  "The languages come from media/locale/ in the applications' resources and from locale/ in the UltraCanvas settings folder, where a translator puts a draft to see it in the real window.": "The languages come from media/locale/ in the applications' resources and from locale/ in the UltraCanvas settings folder, where a translator puts a draft to see it in the real window.",
+  "The translator's name goes into the catalogues the localisation editor saves, so a draft says who reviewed it.": "The translator's name goes into the catalogues the localisation editor saves, so a draft says who reviewed it.",
+  "Translations": "Translations",
+  "Translator:": "Translator:",
+  "Trusted certificates": "Trusted certificates",
+  "ULTRA OS A (the default picture)": "ULTRA OS A (the default picture)",
+  "Your name, for the catalogues you edit": "Your name, for the catalogues you edit"
+}

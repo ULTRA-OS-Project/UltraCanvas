@@ -1,3 +1,42 @@
+#### 2026-11-05 *0.16.0*
+- **UOS-Settings takes the Computer base set.** Its catalogue names
+  `Computer` under `@bases`, as the localisation proposal's Appendix B
+  assigns it: "Notifications" and "System" now come from that set, worded
+  as UltraFiler and the other system tools word them, instead of from a
+  copy in UOS-Settings' own catalogue.
+
+#### 2026-11-05 *0.15.0*
+- **Settings in every language.** UOS-Settings' own catalogue
+  (`media/locale/<lang>/UOS-Settings.json`) now exists in all thirty
+  languages: its page names (Appearance, Notifications, Translations,
+  Trusted certificates ...), the language page with its notes, and the
+  localisation editor's translator field showed in English whatever the
+  language - on the very page where the language is chosen.
+
+#### 2026-11-03 *0.14.0*
+- **Language > Translations: the localisation editor.** A page under
+  Language hosts `UltraCanvasLocalisationEditor`: every set an
+  application's texts come from - its own set, the base sets it takes, the
+  standard set - in one grid for any application and any language, with
+  the Sets picker, promote / demote / merge, Undo, a compare column, and a
+  save into the source tree where the catalogues are writable or into the
+  UltraCanvas settings folder otherwise (`Docs/UltraCanvas/UltraCanvasLocalisationEditor.md`).
+  The translator's name from the Language page goes into the files it saves.
+- **The Language and Translations pages, the page tree and the window's
+  buttons go through `Tr`**, so they follow the chosen language; the
+  extraction writes UOS-Settings' own English set
+  (`media/locale/en/UOS-Settings.json`). The other pages follow in their
+  own pass.
+
+#### 2026-11-02 *0.13.0*
+- **Language: the language every application shows.** A new top-level page
+  chooses the language for all UltraCanvas applications - *System*, or any
+  language a translation of the standard set ships for, listed by its own
+  name - and writes `Language.conf` in the UltraCanvas settings folder,
+  which every application reads when it starts (UltraLocalisation,
+  `Docs/Modules/UltraLocalisation/README.md`). A *Translator* field keeps
+  the name the localisation editor will write into the catalogues it saves.
+
 #### 2026-11-01 *0.12.0*
 - Desktop: the empty Wallpaper field names the default it stands for,
   "ULTRA OS A (the default picture)".

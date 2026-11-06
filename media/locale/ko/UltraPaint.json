@@ -1,0 +1,15 @@
+{
+  "@language": "ko",
+  "@translated-by": "machine draft 2026-11-05, reviewed by -",
+  "Click and type, or drag a box for the lines to wrap in; click a text to edit it. The bar above sets font, size, style, alignment and spacing; the colour is the foreground colour. Escape or a click outside finishes": "클릭하고 입력하거나, 줄이 바뀔 상자를 드래그합니다. 텍스트를 클릭하면 편집합니다. 위의 막대에서 글꼴, 크기, 스타일, 정렬, 간격을 설정하며, 색은 전경색입니다. Escape 또는 바깥쪽을 클릭하면 끝납니다",
+  "Letter Spacing": "자간",
+  "Line Spacing": "줄 간격",
+  "Text Alignment": "텍스트 정렬",
+  "Text Bold": "텍스트 굵게",
+  "Text Colour": "텍스트 색",
+  "Text Font": "텍스트 글꼴",
+  "Text Italic": "텍스트 기울임꼴",
+  "Text Size": "텍스트 크기",
+  "Text Strikethrough": "텍스트 취소선",
+  "Text Underline": "텍스트 밑줄"
+}

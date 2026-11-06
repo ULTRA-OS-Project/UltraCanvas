@@ -1,8 +1,11 @@
 // OS/Android/UltraCanvasAndroidWindow.cpp
 // Android window implementation for UltraCanvas Framework.
+// Version: 1.3.0 - in-place rotation: re-read the window's own size, log each new frame size,
+//                 and no blank frame on resize
+// Version: 1.2.0 - surface at the window's real pixel size, not logical x scale
 // Version: 1.1.0 - logs the first frame it presents, for the emulator smoke test
 // Version: 1.0.0
-// Last Modified: 2026-10-21
+// Last Modified: 2026-11-03
 // Author: UltraCanvas Framework
 
 // The public headers first: they define the base classes and then pull in the
@@ -19,7 +22,10 @@
 #include <android_native_app_glue.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <string>
 
@@ -51,6 +57,8 @@ namespace UltraCanvas {
         RefreshDeviceScale();
         const int physW = ANativeWindow_getWidth(nativeWindow);
         const int physH = ANativeWindow_getHeight(nativeWindow);
+        systemPhysW = physW;
+        systemPhysH = physH;
         if (physW > 0 && physH > 0) {
             config_.x = 0;
             config_.y = 0;
@@ -76,8 +84,14 @@ namespace UltraCanvas {
     bool UltraCanvasAndroidWindow::CreateNativeCairoSurface() {
         if (!nativeWindow) return false;
 
-        const int pixW = LogicalToPhysical(config_.width);
-        const int pixH = LogicalToPhysical(config_.height);
+        // The window's own pixel size when it is the logical size up to
+        // rounding (see systemPhysW); anything further off - a size the
+        // framework chose itself - goes by the logical size.
+        const int slack = static_cast<int>(std::ceil(deviceScale));
+        int pixW = LogicalToPhysical(config_.width);
+        int pixH = LogicalToPhysical(config_.height);
+        if (systemPhysW > 0 && std::abs(systemPhysW - pixW) <= slack) pixW = systemPhysW;
+        if (systemPhysH > 0 && std::abs(systemPhysH - pixH) <= slack) pixH = systemPhysH;
 
         // Fix the producer buffer geometry so PresentSurface's row copy and
         // the lock buffer agree on size and format.
@@ -124,8 +138,13 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasAndroidWindow::DoResizeNative() {
+        // Rebuild only. Presenting here put the new surface on screen while it
+        // was still empty - the core lays out and repaints after this call
+        // (UltraCanvasWindowBase::DoResize marks the whole window dirty) - so
+        // every rotation flashed a blank frame, which the emulator smoke test
+        // caught. The composition the dirty window gets presents the frame.
         RecreateNativeSurface();
-        InvalidateWindowNative();
+        RequestWindowComposition();
     }
 
     float UltraCanvasAndroidWindow::QueryNativeDeviceScale() const {
@@ -168,10 +187,11 @@ namespace UltraCanvas {
         const int copyH = std::min(srcH, buffer.height);
         auto* dstBase = static_cast<uint32_t*>(buffer.bits);
 
-        // The first frame of the process is also checked for content: a frame
-        // of one colour everywhere means nothing was drawn into it.
-        static bool firstFramePresented = false;
-        const bool firstFrame = !firstFramePresented;
+        // The first frame, and the first at each new size (a rotation), is
+        // also checked for content: a frame of one colour everywhere means
+        // nothing was drawn into it.
+        const bool firstFrame = loggedFrameW == 0 && loggedFrameH == 0;
+        const bool logFrame = srcW != loggedFrameW || srcH != loggedFrameH;
         const uint32_t firstPixel = copyW > 0 && copyH > 0
                 ? reinterpret_cast<const uint32_t*>(srcData)[0] & 0x00FFFFFFu : 0;
         bool uniform = true;
@@ -183,7 +203,7 @@ namespace UltraCanvas {
                 // Cairo xRGB words (B,G,R,X bytes on little-endian) -> the
                 // buffer's RGBX byte order: swap the R and B channels.
                 const uint32_t px = srcRow[x];
-                if (firstFrame && uniform && (px & 0x00FFFFFFu) != firstPixel) uniform = false;
+                if (logFrame && uniform && (px & 0x00FFFFFFu) != firstPixel) uniform = false;
                 dstRow[x] = (px & 0xFF00FF00u)
                           | ((px & 0x00FF0000u) >> 16)
                           | ((px & 0x000000FFu) << 16);
@@ -192,13 +212,21 @@ namespace UltraCanvas {
 
         ANativeWindow_unlockAndPost(nativeWindow);
 
-        if (firstFrame) {
-            firstFramePresented = true;
+        if (logFrame) {
+            loggedFrameW = srcW;
+            loggedFrameH = srcH;
             // Straight to logcat, like the JNI bridge check: the emulator
             // smoke test in android-build.yml waits for this line, and
             // debugOutput can be switched off (debug.ultracanvas.log).
-            const std::string line = "first frame presented: " + std::to_string(copyW) +
-                    "x" + std::to_string(copyH) +
+            // The surface's size against the window's own (systemPhysW/H) and
+            // the scale: the smoke test checks they agree, and that the
+            // scale is the display density / 160.
+            char scale[16];
+            std::snprintf(scale, sizeof(scale), "%.3f", deviceScale);   // locale-ok: log text only
+            const std::string line = std::string(firstFrame ? "first" : "resized") +
+                    " frame presented: " + std::to_string(srcW) +
+                    "x" + std::to_string(srcH) + ", window " + std::to_string(systemPhysW) +
+                    "x" + std::to_string(systemPhysH) + ", scale " + scale +
                     (uniform ? ", one colour everywhere (nothing drawn)" : ", with content");
             __android_log_write(uniform ? ANDROID_LOG_WARN : ANDROID_LOG_INFO,
                                 "UltraCanvas", line.c_str());
@@ -214,6 +242,8 @@ namespace UltraCanvas {
         RefreshDeviceScale();
         const int physW = ANativeWindow_getWidth(nativeWindow);
         const int physH = ANativeWindow_getHeight(nativeWindow);
+        systemPhysW = physW;   // a new window: no buffer geometry set on it yet
+        systemPhysH = physH;
         const int logW = PhysicalToLogical(physW);
         const int logH = PhysicalToLogical(physH);
 
@@ -253,10 +283,34 @@ namespace UltraCanvas {
     void UltraCanvasAndroidWindow::HandleNativeSurfaceResized() {
         if (!nativeWindow) return;
         RefreshDeviceScale();
-        const int logW = PhysicalToLogical(ANativeWindow_getWidth(nativeWindow));
-        const int logH = PhysicalToLogical(ANativeWindow_getHeight(nativeWindow));
-        if (logW > 0 && logH > 0 && (logW != config_.width || logH != config_.height)) {
-            HandleResizeEvent(logW, logH);
+
+        // Once ANativeWindow_setBuffersGeometry has set a size, the window
+        // reports that size, not its own - so read here, it never changed,
+        // and an in-place rotation left a portrait buffer for the compositor
+        // to squeeze into the landscape window. A 0x0 geometry restores the
+        // window's own size; the surface rebuilt below sets ours again.
+        ANativeWindow_setBuffersGeometry(nativeWindow, 0, 0, WINDOW_FORMAT_RGBX_8888);
+        const int physW = ANativeWindow_getWidth(nativeWindow);
+        const int physH = ANativeWindow_getHeight(nativeWindow);
+        if (physW <= 0 || physH <= 0) return;
+        systemPhysW = physW;
+        systemPhysH = physH;
+
+        auto* surface = static_cast<cairo_surface_t*>(nativeSurface);
+        const int surfW = surface ? cairo_image_surface_get_width(surface) : 0;
+        const int surfH = surface ? cairo_image_surface_get_height(surface) : 0;
+        const int logW = PhysicalToLogical(physW);
+        const int logH = PhysicalToLogical(physH);
+        if (logW != config_.width || logH != config_.height) {
+            HandleResizeEvent(logW, logH);   // rebuilds the surface at the new size
+        } else if (physW != surfW || physH != surfH) {
+            // Same logical size, other pixels (rounding at this density).
+            RecreateNativeSurface();
+            AddDirtyRectangle(Rect2Di(0, 0, config_.width, config_.height));
+            RequestWindowComposition();
+        } else {
+            // Nothing changed: put the buffer back at the surface's size.
+            ANativeWindow_setBuffersGeometry(nativeWindow, surfW, surfH, WINDOW_FORMAT_RGBX_8888);
         }
     }
 

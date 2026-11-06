@@ -2,8 +2,9 @@
 // See the header. The look came from UltraFiler's settings window
 // (Apps/UltraFiler/UltraFilerSettingsDialog.cpp), where it was written
 // first; UltraSnip copied it, and the copy became this kit.
+// Version: 1.1.0 - ShowSaveSettingsDialog
 // Version: 1.0.0
-// Last Modified: 2026-11-01
+// Last Modified: 2026-11-04
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSettingsPageKit.h"
@@ -12,6 +13,7 @@
 #include "UltraCanvasCheckbox.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasEvent.h"
+#include "UltraCanvasFileLoader.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasRadio.h"
 #include "UltraCanvasSlider.h"
@@ -275,6 +277,13 @@ void SetColorBoxColor(const std::shared_ptr<UltraCanvasButton>& box, const Color
     if (!box) return;
     box->SetColors(color, color, color, color);
     box->RequestRedraw();
+}
+
+// ===== DIALOGS =====
+
+void ShowSaveSettingsDialog(const std::string& extensionOrPath, UltraCanvasWindowBase* parent) {
+    UltraCanvasFileLoader::ShowSaveSettingsDialog(extensionOrPath, FileSavePicture(), FileSaveImageSize(), parent,
+                                                  nullptr, kTextFontSize);
 }
 
 // ===== THE WINDOW =====

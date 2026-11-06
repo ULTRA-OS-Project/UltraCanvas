@@ -1,6 +1,7 @@
 // VideoFX/core/VideoFXJob.cpp
 // VideoFXExportJob - VideoFX_Export on a worker thread, polled by the UI.
 // Backend-independent: also built when FFmpeg is absent.
+// Version: 0.2.0 - Start draws the text overlays the host renders, on the caller's thread
 // Version: 0.1.0
 // Last Modified: 2026-09-29
 // Author: UltraCanvas Framework
@@ -26,6 +27,9 @@ bool VideoFXExportJob::Start(std::vector<VideoFXSegment> segments, std::string o
         error.clear();
     }
     running = true;
+    // The host's text renderer runs here, on the caller's thread, never on
+    // the export's own: a renderer on a UI toolkit works from the UI thread
+    VideoFX_DrawTextOverlays(segments, settings.height);
     worker = std::thread([this, segments = std::move(segments), outputPath = std::move(outputPath),
                           settings = std::move(settings)]() {
         const VideoFXResult r = VideoFX_Export(segments, outputPath, settings, [this](double fraction) {

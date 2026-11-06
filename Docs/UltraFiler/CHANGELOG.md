@@ -1,3 +1,103 @@
+#### 2026-11-06 *1.107.5*
+- **Text selected in the preview pane can be copied.** Ctrl+C after
+  selecting text in a previewed text file or in the Details panel copied the
+  selected files instead (the file display still held the keyboard). A press
+  in the text now moves the keyboard to the preview, so Ctrl+C copies the
+  text, Ctrl+A selects all of it, and a right-click opens Copy / Select All.
+
+#### 2026-11-05 *1.107.4*
+- **The folder tree drops a folder deleted in the file pane, even when the
+  delete stopped at a locked file first.** Windows kept such a folder listed
+  until the program holding the file let go. The tree looked at the folder
+  the moment the delete reported, saw it still there, and kept its row. The
+  tree now also follows what a pane's folder watch sees change on disk. A
+  folder that goes later, or that another program deletes or creates in a
+  folder a pane shows, is brought in line as soon as the pane re-lists it.
+
+#### 2026-11-04 *1.107.3*
+- **UltraFiler in every language.** The settings window's last English
+  texts - the folder tree's colours and width, the file-operation and
+  thumbnail-cache captions, the cache figures, the TAR page's labels - go
+  through `Tr`, the counts through `TrN`; a cache note that translated only
+  its first half is one sentence now; the conflict choices' element ids no
+  longer change with the language. And UltraFiler's own catalogue
+  (`media/locale/<lang>/UltraFiler.json`) now exists in all thirty
+  languages: until now every one of its texts - the toolbar, the menus,
+  the dialogs, the status line, the whole settings window - showed in
+  English whatever the language.
+
+#### 2026-11-04 *1.107.2*
+- **Deleting a folder on an external drive no longer ends in "could not be
+  deleted even with administrator permission".** Windows answers "Access is
+  denied" for several things that are not about permission. Read-only
+  folders inside the one being deleted are one of them. So is a picture
+  UltraFiler itself still held from drawing its thumbnail. UltraFiler now
+  handles each of these as Explorer does, and asks for administrator rights
+  only when the access list says no. The framework change is
+  `UltraCanvasFileRemoval`; see the framework changelog.
+- **Deleting, moving or renaming a folder while the other pane shows a
+  subfolder of it works as it does with one pane.** The other pane's folder
+  watch no longer holds the subfolder open while the operation runs.
+- **A read-only folder is deleted without the "write-protected?" question on
+  Windows**, as Explorer deletes it.
+- **A pane whose folder is deleted - from the other pane or by another
+  program - moves up to the nearest folder that is still there**, instead of
+  showing an empty folder that no longer exists. A USB stick pulled out is
+  still waited for, so plugging it back in shows its folder again.
+
+#### 2026-11-04 *1.107.1*
+- Seventeen more texts go through `Tr`: the settings window's and the
+  properties' buttons, the Run Windows program dialog's environment item
+  and its Wine note, the folder tree's section names, the upload
+  conflict's and the eject question's buttons, the CSV export filter.
+
+#### 2026-11-04 *1.107.0*
+- **UltraFiler speaks the chosen language.** Its own texts - the toolbar's
+  tooltips and drop-downs, the menus, the dialogs (Find text, New RAM disc,
+  Run Windows program, the connection log, the properties), the status
+  line's messages and the whole settings window - go through `Tr`, so they
+  follow the language set in UOS-Settings; `media/locale/en/UltraFiler.json`
+  is its set, over the *Computer* base set and the standard set. The
+  settings window's start page gains **Translate UltraFiler...**, which
+  opens the localisation editor on UltraFiler's own set in the language it
+  runs in. Texts built from pieces in the deeper code paths (the remote
+  drives' and the RAM discs' error reports) stay English until their pass.
+#### 2026-11-04 *1.106.0*
+- **The preview pane shows a loading ring while a file opens.** Selecting a
+  file showed the previous one until the new one had been read and decoded -
+  for a large picture, PDF or video long enough to look like the wrong file
+  was selected, with the window not answering meanwhile. The pane now shows
+  a turning ring and the file's name at once and reads the file after that
+  frame (the viewer's `OpenFileWhenShown`); selections made while one loads
+  replace it instead of queuing behind it, so holding an arrow key through a
+  folder decodes only the file it stops on. The pane is compared with the
+  file on its way (`PreviewPanePath`), so a refresh during the load does not
+  start it over.
+
+#### 2026-11-03 *1.105.0*
+- **A file opened in its own viewer window shows a loading ring and its name
+  until it is open**, not *No media*, and the window title follows the file
+  as the arrow keys browse the folder (it was fixed to the first file). See
+  the framework changelog (`OpenFileWhenShown`, `onCurrentFileChanged`).
+
+#### 2026-11-02 *1.104.0*
+- **Windows: "Linux" and "Network" in the folder tree.** Two sections after
+  Computer, where Explorer has them. *Linux* lists the WSL distributions
+  (`\\wsl$\Ubuntu`), each opened like a drive - and not touched before it is
+  opened, since touching one starts it. *Network* lists the computers of the
+  workgroup or domain and the servers of your connections; opening one lists
+  its shared folders under its row and in the folder display, read off the UI
+  thread. Typing `\\NAS` into the path bar opens that computer too, and it is
+  kept in the section, so a NAS the network list does not show stays one
+  click away. Rests on the framework's new `UltraCanvasNetworkPlaces` - see
+  the UltraCanvas changelog.
+- **Windows: the Network section finds the computers Explorer finds.** It
+  showed only the computers of the old network browser list, which a current
+  network (SMB 1 off) leaves short or empty; it now also lists the computers
+  that announce themselves through WS-Discovery - other Windows PCs, NAS
+  boxes running wsdd - as Explorer does. A computer on another subnet is still
+  opened by typing `\\NAS` into the path bar and kept in the section.
+
 #### 2026-11-01 *1.103.0*
 - **The settings window is built on the framework's settings page kit**
   (`UltraCanvasSettingsPageKit`, framework changelog `settings-page-kit`):

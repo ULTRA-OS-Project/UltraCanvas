@@ -1,10 +1,11 @@
 // Apps/UltraVideo/UltraVideoInspector.cpp
 // The inspector's three tabs (UltraVideoInspector.h).
+// Version: 0.8.0 - a title's colour goes to the window first (onTitleColour)
 // Version: 0.7.0 - an overlay clip's effects rows; every slider's drag one undo step
 // Version: 0.6.0 - a video clip's Keep faces in shot (the Fill crop around them)
 // Version: 0.5.0 - the tabs, dropdowns, fields, sliders, switches, buttons and labels follow the theme
 // Version: 0.4.0
-// Last Modified: 2026-10-16
+// Last Modified: 2026-11-04
 // Author: UltraCanvas Framework
 #include "UltraVideoInspector.h"
 #include "UltraVideoMapping.h"
@@ -329,7 +330,11 @@ std::shared_ptr<UltraCanvasTabbedContainer> Inspector::Build(const Palette& p) {
     titleText->onEnterPressed = [this](const std::string& text) {
         const int index = title;
         Edit("Change title text", [index, text](Document& d) {
-            if (index >= 0 && static_cast<size_t>(index) < d.titles.size()) d.titles[static_cast<size_t>(index)].look.text = text;
+            if (index < 0 || static_cast<size_t>(index) >= d.titles.size()) return;
+            // Typed here, the text is plain again: the words typed on the
+            // frame with their own styles give way to it.
+            d.titles[static_cast<size_t>(index)].look.text = text;
+            d.titles[static_cast<size_t>(index)].look.richText.clear();
         });
         return true;
     };
@@ -399,6 +404,7 @@ std::shared_ptr<UltraCanvasTabbedContainer> Inspector::Build(const Palette& p) {
     titleColor->onSelectionChanged = [this](int i, const DropdownItem&) {
         const int index = title;
         const uint32_t rgb = kColors[std::clamp(i, 0, 6)].rgb;
+        if (onTitleColour && onTitleColour(index, rgb)) return;
         Edit("Colour title", [index, rgb](Document& d) {
             if (index >= 0 && static_cast<size_t>(index) < d.titles.size()) d.titles[static_cast<size_t>(index)].look.textColor = rgb;
         });

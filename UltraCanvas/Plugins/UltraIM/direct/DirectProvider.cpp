@@ -1,5 +1,7 @@
 // Plugins/UltraIM/direct/DirectProvider.cpp
 // ChatCube Direct - the ULTRA OS native messenger as an UltraIM provider
+// Version: 0.1.5 - the e-mail and phone confirmed by the relay's codes; account recovery
+// Version: 0.1.4 - the account's profile (name, e-mail, phone); a password and/or an authenticator code to sign in
 // Version: 0.1.3 - a file that is a picture (an SVG drawing) goes with a preview picture, as a photo does
 // Version: 0.1.2 - pictures, videos and files sent and received in parts; DownloadAttachment
 // Version: 0.1.1 - FetchSharedCredentials: the Telegram application's keys from the relay
@@ -10,6 +12,8 @@
 #include "DirectProvider.h"
 
 #include "UltraCanvasPathUtf8.h"
+#include "UltraCrypt/OtpAuthUri.h"
+#include "UltraCrypt/UltraOtp.h"
 #include "UltraIM/UltraIMCore.h"
 #include "UltraRTC/UltraRTCCore.h"
 
@@ -17,6 +21,7 @@
 #include <cctype>
 #include <chrono>
 #include <cstdio>
+#include <cstdlib>
 #include <filesystem>
 #include <system_error>
 
@@ -63,6 +68,73 @@ std::string NormalizeUserId(const std::string& address) {
     return id;
 }
 
+// ---- the account's sign-in -------------------------------------------------------
+constexpr size_t kMinPasswordLength = 8;
+constexpr int    kFreeCodeAttempts = 5;         // wrong codes before the first pause
+constexpr int64_t kCodePauseSeconds = 30;       // doubled with each further wrong one
+constexpr int64_t kMaxCodePauseSeconds = 15 * 60;
+
+int64_t NowSeconds() {
+    return std::chrono::duration_cast<std::chrono::seconds>(
+               std::chrono::system_clock::now().time_since_epoch()).count();
+}
+
+long long SettingNumber(const std::string& text) {
+    return text.empty() ? 0 : std::strtoll(text.c_str(), nullptr, 10);
+}
+
+std::string Trimmed(const std::string& text) {
+    size_t first = 0, last = text.size();
+    while (first < last && std::isspace(static_cast<unsigned char>(text[first]))) ++first;
+    while (last > first && std::isspace(static_cast<unsigned char>(text[last - 1]))) --last;
+    return text.substr(first, last - first);
+}
+
+// The same rules as the relay's (chatcube_relay/app.py): plausible, not
+// proven - an address is proven by the mail that reaches it.
+bool PlausibleEmail(const std::string& email) {
+    const size_t at = email.find('@');
+    if (at == std::string::npos || at == 0 || email.find('@', at + 1) != std::string::npos) return false;
+    const size_t dot = email.find('.', at + 2);
+    if (dot == std::string::npos || dot + 1 >= email.size()) return false;
+    for (const char c : email)
+        if (std::isspace(static_cast<unsigned char>(c))) return false;
+    return email.size() <= 254;
+}
+
+// International form: "+" and 7 to 15 digits, spaces, dashes and brackets
+// as people write them.
+bool PlausiblePhone(const std::string& phone) {
+    if (phone.empty() || phone[0] != '+' || phone.size() > 32) return false;
+    int digits = 0;
+    for (size_t i = 1; i < phone.size(); ++i) {
+        const char c = phone[i];
+        if (std::isdigit(static_cast<unsigned char>(c))) ++digits;
+        else if (c != ' ' && c != '-' && c != '(' && c != ')') return false;
+    }
+    return digits >= 7 && digits <= 15;
+}
+
+void Wipe(std::string& text) {
+    if (!text.empty()) UltraCrypt_SecureZero(text.data(), text.size());
+    text.clear();
+}
+
+std::string SecretToText(const UltraCryptSecureBuffer& secret) {
+    const std::vector<uint8_t> bytes(secret.Data(), secret.Data() + secret.GetSize());
+    std::string text = Base64(bytes);
+    std::vector<uint8_t> copy = bytes;
+    if (!copy.empty()) UltraCrypt_SecureZero(copy.data(), copy.size());
+    return text;
+}
+
+UltraCryptSecureBuffer SecretFromText(const std::string& text) {
+    std::vector<uint8_t> bytes = FromBase64(text);
+    UltraCryptSecureBuffer secret(bytes.data(), bytes.size());
+    if (!bytes.empty()) UltraCrypt_SecureZero(bytes.data(), bytes.size());
+    return secret;
+}
+
 UltraIMResult RelayError(const RelayResponse& r, UltraIMResultCode fallback) {
     UltraIMResultCode code = fallback;
     if (r.status == 0) code = UltraIMResultCode::NetworkError;
@@ -89,7 +161,8 @@ UltraIMCapabilityFlags DirectProvider::GetCapabilities() const {
     using F = UltraIMCapabilityFlags;
     return F::TextMessages | F::GroupChats | F::ReadReceipts | F::TypingIndicator | F::E2EEncryption |
            F::OfflineMessages | F::PeerToPeer | F::ReplyToMessage | F::AnonymousLogin | F::AddContact |
-           F::CreateGroup | F::VoiceCalls | F::VideoCalls | F::ImageMessages | F::FileTransfer;
+           F::CreateGroup | F::VoiceCalls | F::VideoCalls | F::ImageMessages | F::FileTransfer |
+           F::AccountProfile | F::SignInProtection | F::AccountRecovery;
 }
 
 UltraIMResult DirectProvider::Initialize(const UltraIMConfig& config, UltraIMEventSink sink) {
@@ -178,6 +251,10 @@ void DirectProvider::Shutdown() {
         wake_.notify_all();
     }
     if (worker_.joinable()) worker_.join();
+    if (recoveryRelay_) {
+        recoveryRelay_->Stop();
+        recoveryRelay_.reset();
+    }
     SignOut();
     if (storeOpen_) {
         store_.Close();
@@ -192,27 +269,87 @@ void DirectProvider::Shutdown() {
 
 // The vault is opened for each access and closed after (DeviceKeyVault::Use):
 // the process has one open store, and other modules' vaults take turns with it.
-bool DirectProvider::LoadIdentity(std::string& error) {
-    std::string secret;
-    if (!vault_.Use([&](UltraVault::DeviceKeyVault& v) { v.Retrieve("identity", secret); })) {
-        error = "The key vault cannot be opened: " +
-                UltraVault::DeviceKeyVault::DescribeUnlockStatus(vault_.GetLastUnlockStatus());
-        return false;
+// Behind a password it is opened with the password it was opened with at
+// sign-in (UseWithPassphrase), which the provider keeps while it runs - as it
+// keeps the identity's key itself.
+bool DirectProvider::WithVault(const std::function<void(UltraVault::DeviceKeyVault& vault)>& use) {
+    std::string password;
+    {
+        std::lock_guard<std::mutex> lock(accountMutex_);
+        password = vaultPassword_;
+    }
+    const bool ok = vault_.UseWithPassphrase(password, use) == UltraVault::UnlockStatus::Ok;
+    Wipe(password);
+    return ok;
+}
+
+DirectProvider::VaultOpen DirectProvider::OpenVault(const std::string& password, std::string& error) {
+    std::string secret, totp, profile;
+    auto read = [&](UltraVault::DeviceKeyVault& v) {
+        v.Retrieve("identity", secret);
+        v.Retrieve("totp", totp);
+        v.Retrieve("profile", profile);
+    };
+    bool behindPassword = vault_.NeedsPassphrase();
+    if (behindPassword && password.empty()) return VaultOpen::NeedsPassword;
+    UltraVault::UnlockStatus status = vault_.UseWithPassphrase(behindPassword ? password : std::string(), read);
+    if (!behindPassword && status == UltraVault::UnlockStatus::WrongPassphrase) {
+        // A device key left by a change to a password that did not finish:
+        // it no longer opens the file, the password does.
+        if (password.empty()) return VaultOpen::NeedsPassword;
+        status = vault_.UseWithPassphrase(password, read);
+        if (status == UltraVault::UnlockStatus::Ok) {
+            vault_.ForgetDeviceKey();
+            behindPassword = true;
+        }
+    }
+    if (status == UltraVault::UnlockStatus::WrongPassphrase) return VaultOpen::WrongPassword;
+    if (status != UltraVault::UnlockStatus::Ok) {
+        error = "The key vault cannot be opened: " + UltraVault::DeviceKeyVault::DescribeUnlockStatus(status);
+        return VaultOpen::Failed;
     }
     if (secret.empty()) {
         error.clear();
-        return false;
+        return VaultOpen::Empty;
     }
-    const std::vector<uint8_t> bytes = FromBase64(secret);
-    UltraCryptSecureBuffer buffer(bytes.data(), bytes.size());
-    return IdentityFromSecret(buffer, identity_, error);
+    UltraCryptSecureBuffer buffer = SecretFromText(secret);
+    Wipe(secret);
+    if (!IdentityFromSecret(buffer, identity_, error)) return VaultOpen::Failed;
+    std::lock_guard<std::mutex> lock(accountMutex_);
+    vaultPassword_ = behindPassword ? password : std::string();
+    totpSecret_ = totp.empty() ? UltraCryptSecureBuffer() : SecretFromText(totp);
+    Wipe(totp);
+    codeAccepted_ = totpSecret_.IsEmpty();
+    if (!profile.empty()) {
+        UltraCanvas::JSONParseResult parsed;
+        const JSONValue json = UltraCanvas::JSON::Parse(profile, &parsed);
+        if (parsed.success) {
+            email_ = json["email"].GetString();
+            phone_ = json["phone"].GetString();
+        }
+    }
+    return VaultOpen::Opened;
 }
 
 bool DirectProvider::SaveIdentity() {
-    const std::vector<uint8_t> bytes(identity_.signSecret.Data(),
-                                     identity_.signSecret.Data() + identity_.signSecret.GetSize());
+    const std::string secret = SecretToText(identity_.signSecret);
     bool stored = false;
-    vault_.Use([&](UltraVault::DeviceKeyVault& v) { stored = v.Store("identity", Base64(bytes)); });
+    WithVault([&](UltraVault::DeviceKeyVault& v) { stored = v.Store("identity", secret); });
+    std::string wipe = secret;
+    Wipe(wipe);
+    return stored;
+}
+
+bool DirectProvider::SaveProfile() {
+    JSONValue json = JSONValue::MakeObject();
+    {
+        std::lock_guard<std::mutex> lock(accountMutex_);
+        json.Set("email", JSONValue(email_));
+        json.Set("phone", JSONValue(phone_));
+    }
+    const std::string text = UltraCanvas::JSON::Serialize(json);
+    bool stored = false;
+    WithVault([&](UltraVault::DeviceKeyVault& v) { stored = v.Store("profile", text); });
     return stored;
 }
 
@@ -222,9 +359,16 @@ bool DirectProvider::HasStoredSession() const {
     // network alone.
     if (!storeOpen_) return false;
     if (self->store_.GetSetting("relay_url").empty() && self->store_.GetSetting("local_network") != "1") return false;
+    // Behind a password: the identity is there, SignIn asks for the password.
+    if (vault_.NeedsPassphrase()) return true;
     bool has = false;
     self->vault_.Use([&](UltraVault::DeviceKeyVault& v) { has = v.Has("identity"); });
     return has;
+}
+
+std::string DirectProvider::GetAuthHint() const {
+    std::lock_guard<std::mutex> lock(accountMutex_);
+    return authHint_;
 }
 
 std::string DirectProvider::GetLocalUserId() const {
@@ -246,11 +390,36 @@ void DirectProvider::Emit(const UltraIMEvent& event) {
 }
 
 void DirectProvider::SignIn(const UltraIMCredentials& credentials, UltraIMResultCallback onResult) {
+    // A typed password is stretched (Argon2id) before the vault opens: that
+    // takes a moment, so it is done on the worker thread.
+    if (!identity_.IsValid() && !credentials.password.empty()) {
+        Enqueue([this, credentials, onResult]() { SignInNow(credentials, onResult); });
+        return;
+    }
+    SignInNow(credentials, onResult);
+}
+
+void DirectProvider::SignInNow(const UltraIMCredentials& credentials, UltraIMResultCallback onResult) {
     auto finish = [onResult](const UltraIMResult& r) { if (onResult) onResult(r); };
     if (state_ == UltraIMConnectionState::Connected || state_ == UltraIMConnectionState::Connecting) {
         finish(UltraIMResult::Ok());
         return;
     }
+    // A step the user is asked for: SignIn again with it.
+    auto ask = [this, finish](UltraIMAuthStep step, UltraIMResultCode code, const std::string& text) {
+        {
+            std::lock_guard<std::mutex> lock(accountMutex_);
+            authHint_ = text;
+        }
+        authStep_ = step;
+        UltraIMEvent event;
+        event.type = UltraIMEventType::AuthStepChange;
+        event.providerId = providerId_;
+        event.authStep = step;
+        event.errorText = text;
+        Emit(event);
+        finish(UltraIMResult::Error(code, text));
+    };
     // No relay at all: the local network only.
     const std::string relayUrl = credentials.server.empty() ? store_.GetSetting("relay_url") : credentials.server;
     if (credentials.localNetwork) store_.SetSetting("local_network", "1");
@@ -258,21 +427,93 @@ void DirectProvider::SignIn(const UltraIMCredentials& credentials, UltraIMResult
     if (relayUrl.empty()) store_.SetSetting("local_network", "1");
 
     std::string error;
-    if (!identity_.IsValid() && !LoadIdentity(error)) {
-        if (!error.empty()) {
-            finish(UltraIMResult::Error(UltraIMResultCode::PluginError, error));
+    if (!identity_.IsValid()) {
+        switch (OpenVault(credentials.password, error)) {
+            case VaultOpen::Opened:
+                break;
+            case VaultOpen::NeedsPassword:
+                ask(UltraIMAuthStep::Password, UltraIMResultCode::NeedsInput, "Type your ChatCube password");
+                return;
+            case VaultOpen::WrongPassword:
+                ask(UltraIMAuthStep::Password, UltraIMResultCode::AuthFailed,
+                    "That is not your ChatCube password - type it again");
+                return;
+            case VaultOpen::Failed:
+                finish(UltraIMResult::Error(UltraIMResultCode::PluginError, error));
+                return;
+            case VaultOpen::Empty: {
+                if (!credentials.createAccount) {
+                    finish(UltraIMResult::Error(UltraIMResultCode::NotAuthenticated,
+                                                "This device has no ChatCube identity yet - create one"));
+                    return;
+                }
+                const std::string email = Trimmed(credentials.email);
+                const std::string phone = Trimmed(credentials.phoneNumber);
+                if (!email.empty() && !PlausibleEmail(email)) {
+                    finish(UltraIMResult::Error(UltraIMResultCode::InvalidArgument,
+                                                "That does not look like an e-mail address"));
+                    return;
+                }
+                if (!phone.empty() && !PlausiblePhone(phone)) {
+                    finish(UltraIMResult::Error(UltraIMResultCode::InvalidArgument,
+                                                "Type the phone number with + and the country code (+49 151 ...)"));
+                    return;
+                }
+                if (!CreateIdentity(identity_, error) || !SaveIdentity()) {
+                    identity_ = Identity();
+                    finish(UltraIMResult::Error(UltraIMResultCode::PluginError,
+                                                error.empty() ? "The new identity could not be stored" : error));
+                    return;
+                }
+                {
+                    std::lock_guard<std::mutex> lock(accountMutex_);
+                    email_ = email;
+                    phone_ = phone;
+                    codeAccepted_ = true;
+                }
+                if (!email.empty() || !phone.empty()) SaveProfile();
+                store_.SetSetting("signin_code", "0");
+                break;
+            }
+        }
+    }
+    // The authenticator's code, when one is asked for: good once.
+    bool needCode = false;
+    {
+        std::lock_guard<std::mutex> lock(accountMutex_);
+        needCode = !codeAccepted_ && !totpSecret_.IsEmpty();
+    }
+    if (needCode) {
+        if (Trimmed(credentials.otpCode).empty()) {
+            ask(UltraIMAuthStep::Code, UltraIMResultCode::NeedsInput,
+                "Type the code your authenticator app (UltraAuthenticator) shows for ChatCube");
             return;
         }
-        if (!credentials.createAccount) {
-            finish(UltraIMResult::Error(UltraIMResultCode::NotAuthenticated,
-                                        "This device has no ChatCube identity yet - create one"));
+        uint64_t step = 0;
+        bool right = false;
+        {
+            std::lock_guard<std::mutex> lock(accountMutex_);
+            right = CheckCode(totpSecret_, credentials.otpCode,
+                              static_cast<uint64_t>(SettingNumber(store_.GetSetting("totp_last_step"))), step, error);
+            if (right) codeAccepted_ = true;
+        }
+        if (!right) {
+            ask(UltraIMAuthStep::Code, UltraIMResultCode::AuthFailed, error);
             return;
         }
-        if (!CreateIdentity(identity_, error) || !SaveIdentity()) {
-            finish(UltraIMResult::Error(UltraIMResultCode::PluginError,
-                                        error.empty() ? "The new identity could not be stored" : error));
-            return;
+        store_.SetSetting("totp_last_step", std::to_string(step));
+    }
+    if (authStep_ != UltraIMAuthStep::Idle) {
+        {
+            std::lock_guard<std::mutex> lock(accountMutex_);
+            authHint_.clear();
         }
+        authStep_ = UltraIMAuthStep::Idle;
+        UltraIMEvent event;
+        event.type = UltraIMEventType::AuthStepChange;
+        event.providerId = providerId_;
+        event.authStep = UltraIMAuthStep::Idle;
+        Emit(event);
     }
     displayName_ = !credentials.displayName.empty() ? credentials.displayName : store_.GetSetting("display_name");
     if (displayName_.empty()) displayName_ = "ChatCube user";
@@ -389,7 +630,499 @@ void DirectProvider::AfterLogin() {
         links_.SetIceServers(servers);
         calls_.SetIceServers(servers);
     });
+    // What the owner gave to recover the account with (the relay keeps it
+    // for them alone): sent at every sign-in, so a profile made while the
+    // relay was away, or before it was set, gets there.
+    bool hasRecovery = false;
+    {
+        std::lock_guard<std::mutex> lock(accountMutex_);
+        hasRecovery = !email_.empty() || !phone_.empty();
+    }
+    if (hasRecovery) SendProfileToRelay(nullptr);
     relay->StartSocket();
+}
+
+// ============================================================================
+// THE ACCOUNT: PROFILE AND SIGN-IN PROTECTION
+// ============================================================================
+
+void DirectProvider::Enqueue(std::function<void()> job) {
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        jobs_.push_back(std::move(job));
+    }
+    Wake();
+}
+
+void DirectProvider::SendProfileToRelay(std::function<void(const UltraIMResult&)> onDone) {
+    std::shared_ptr<RelayClient> relay = Relay();
+    if (!relay || !HasRelaySession()) {
+        if (onDone) onDone(UltraIMResult::Ok());     // the next sign-in sends it
+        return;
+    }
+    JSONValue body = JSONValue::MakeObject();
+    body.Set("display_name", JSONValue(displayName_));
+    {
+        std::lock_guard<std::mutex> lock(accountMutex_);
+        body.Set("email", JSONValue(email_));
+        body.Set("phone", JSONValue(phone_));
+    }
+    relay->Request("PUT", "/v1/profile", &body, [onDone](const RelayResponse& r) {
+        if (!onDone) return;
+        onDone(r.Ok() ? UltraIMResult::Ok() : RelayError(r, UltraIMResultCode::InvalidArgument));
+    });
+}
+
+void DirectProvider::FetchAccountProfile(UltraIMAccountProfileCallback onResult) {
+    if (!onResult) return;
+    if (!identity_.IsValid()) {
+        onResult(UltraIMResult::Error(UltraIMResultCode::NotAuthenticated, "Not signed in"), UltraIMAccountProfile());
+        return;
+    }
+    UltraIMAccountProfile profile;
+    profile.displayName = displayName_;
+    {
+        std::lock_guard<std::mutex> lock(accountMutex_);
+        profile.email = email_;
+        profile.phoneNumber = phone_;
+    }
+    // What only the relay knows: whether the codes came back, and recovery.
+    std::shared_ptr<RelayClient> relay = Relay();
+    if (!relay || !HasRelaySession()) {
+        onResult(UltraIMResult::Ok(), profile);
+        return;
+    }
+    relay->Request("GET", "/v1/profile", nullptr, [onResult, profile](const RelayResponse& r) mutable {
+        if (r.Ok()) {
+            profile.emailVerified = r.body["email_verified"].GetBoolean();
+            profile.phoneVerified = r.body["phone_verified"].GetBoolean();
+            profile.recoveryAvailable = r.body["recovery_available"].GetBoolean();
+            profile.phoneCodesAvailable = r.body["phone_codes_available"].GetBoolean();
+            profile.recoveryEnabled = r.body["recovery_enabled"].GetBoolean();
+        }
+        onResult(UltraIMResult::Ok(), profile);
+    });
+}
+
+// ============================================================================
+// CONFIRMING THE E-MAIL AND PHONE; ACCOUNT RECOVERY
+// ============================================================================
+
+namespace {
+const char* ChannelName(UltraIMContactChannel channel) {
+    return channel == UltraIMContactChannel::Email ? "email" : "phone";
+}
+} // namespace
+
+void DirectProvider::VerifyContact(UltraIMContactChannel channel, const std::string& code,
+                                   UltraIMResultCallback onResult) {
+    auto finish = [onResult](const UltraIMResult& r) { if (onResult) onResult(r); };
+    std::shared_ptr<RelayClient> relay = Relay();
+    if (!relay || !HasRelaySession()) {
+        finish(UltraIMResult::Error(UltraIMResultCode::NotConnected, "The relay is not connected"));
+        return;
+    }
+    JSONValue body = JSONValue::MakeObject();
+    body.Set("channel", JSONValue(ChannelName(channel)));
+    body.Set("code", JSONValue(Trimmed(code)));
+    relay->Request("POST", "/v1/profile/verify", &body, [finish](const RelayResponse& r) {
+        finish(r.Ok() ? UltraIMResult::Ok() : RelayError(r, UltraIMResultCode::AuthFailed));
+    });
+}
+
+void DirectProvider::ResendContactCode(UltraIMContactChannel channel, UltraIMResultCallback onResult) {
+    auto finish = [onResult](const UltraIMResult& r) { if (onResult) onResult(r); };
+    std::shared_ptr<RelayClient> relay = Relay();
+    if (!relay || !HasRelaySession()) {
+        finish(UltraIMResult::Error(UltraIMResultCode::NotConnected, "The relay is not connected"));
+        return;
+    }
+    JSONValue body = JSONValue::MakeObject();
+    body.Set("channel", JSONValue(ChannelName(channel)));
+    relay->Request("POST", "/v1/profile/verify/resend", &body, [finish](const RelayResponse& r) {
+        finish(r.Ok() ? UltraIMResult::Ok() : RelayError(r, UltraIMResultCode::InvalidArgument));
+    });
+}
+
+void DirectProvider::SetRecoveryEnabled(bool enabled, UltraIMResultCallback onResult) {
+    auto finish = [onResult](const UltraIMResult& r) { if (onResult) onResult(r); };
+    std::shared_ptr<RelayClient> relay = Relay();
+    if (!identity_.IsValid() || !relay || !HasRelaySession()) {
+        finish(UltraIMResult::Error(UltraIMResultCode::NotConnected, "The relay is not connected"));
+        return;
+    }
+    if (!enabled) {
+        relay->Request("DELETE", "/v1/recovery/escrow", nullptr, [finish](const RelayResponse& r) {
+            finish(r.Ok() ? UltraIMResult::Ok() : RelayError(r, UltraIMResultCode::InvalidArgument));
+        });
+        return;
+    }
+    // The relay keeps this copy encrypted with its own recovery key - and can
+    // read it: that is what turning recovery on means (README).
+    std::string secret = SecretToText(identity_.signSecret);
+    JSONValue body = JSONValue::MakeObject();
+    body.Set("secret_key", JSONValue(secret));
+    Wipe(secret);
+    relay->Request("PUT", "/v1/recovery/escrow", &body, [finish](const RelayResponse& r) {
+        finish(r.Ok() ? UltraIMResult::Ok() : RelayError(r, UltraIMResultCode::InvalidArgument));
+    });
+}
+
+// Signed in to the relay: a session token, whether or not the socket is up
+// right now (it reconnects by itself; REST calls do not need it).
+bool DirectProvider::HasRelaySession() const {
+    const UltraIMConnectionState state = state_.load();
+    return state == UltraIMConnectionState::Connected || state == UltraIMConnectionState::Reconnecting;
+}
+
+bool DirectProvider::HasIdentityHere() {
+    if (identity_.IsValid() || vault_.NeedsPassphrase()) return true;
+    bool has = false;
+    vault_.Use([&](UltraVault::DeviceKeyVault& v) { has = v.Has("identity"); });
+    return has;
+}
+
+void DirectProvider::StartRecovery(const std::string& server, const std::string& address,
+                                   UltraIMRecoveryChallengeCallback onResult) {
+    auto finish = [onResult](const UltraIMResult& r, const UltraIMRecoveryChallenge& c) {
+        if (onResult) onResult(r, c);
+    };
+    if (HasIdentityHere()) {
+        finish(UltraIMResult::Error(UltraIMResultCode::InvalidArgument,
+                                    "This computer has a ChatCube ID already - recovery puts one on a computer "
+                                    "without one"), {});
+        return;
+    }
+    const std::string url = Trimmed(server).empty() ? store_.GetSetting("relay_url") : Trimmed(server);
+    if (url.empty()) {
+        finish(UltraIMResult::Error(UltraIMResultCode::InvalidArgument,
+                                    "Recovery goes through your relay - type its address"), {});
+        return;
+    }
+    if (Trimmed(address).empty()) {
+        finish(UltraIMResult::Error(UltraIMResultCode::InvalidArgument,
+                                    "Type the e-mail address of your ID"), {});
+        return;
+    }
+    // A client of its own: there is no session yet. The one before is stopped
+    // here, on the caller's thread, never inside its own callback.
+    if (recoveryRelay_) recoveryRelay_->Stop();
+    recoveryRelay_ = std::make_shared<RelayClient>();
+    recoveryRelay_->SetBaseUrl(url);
+    JSONValue body = JSONValue::MakeObject();
+    body.Set("address", JSONValue(Trimmed(address)));
+    recoveryId_.clear();
+    Wipe(recoveryPollToken_);
+    recoveryRelay_->Request("POST", "/v1/recovery/start", &body, [this, finish](const RelayResponse& r) {
+        if (!r.Ok()) {
+            if (r.status == 503)
+                return finish(UltraIMResult::Error(UltraIMResultCode::CapabilityMissing,
+                                                   "This relay offers no account recovery"), {});
+            return finish(RelayError(r, UltraIMResultCode::InvalidArgument), {});
+        }
+        UltraIMRecoveryChallenge challenge;
+        challenge.recoveryId = r.body["recovery_id"].GetString();
+        challenge.expiresInSeconds = static_cast<int>(r.body["expires_in"].GetInteger());
+        recoveryId_ = challenge.recoveryId;
+        recoveryPollToken_ = r.body["poll_token"].GetString();
+        finish(UltraIMResult::Ok(), challenge);
+    });
+}
+
+void DirectProvider::FinishRecovery(const UltraIMRecoveryAnswer& answer, UltraIMResultCallback onResult) {
+    auto finish = [onResult](const UltraIMResult& r) { if (onResult) onResult(r); };
+    if (HasIdentityHere()) {
+        finish(UltraIMResult::Error(UltraIMResultCode::InvalidArgument, "This computer has a ChatCube ID already"));
+        return;
+    }
+    // Only the recovery this computer started (the client it made, which has
+    // followed any redirect, and the poll token the relay gave it).
+    if (!recoveryRelay_ || recoveryPollToken_.empty() || answer.recoveryId != recoveryId_) {
+        finish(UltraIMResult::Error(UltraIMResultCode::InvalidArgument, "Start the recovery first"));
+        return;
+    }
+    RelayClient* relay = recoveryRelay_.get();      // its callbacks run before Stop() returns
+    JSONValue body = JSONValue::MakeObject();
+    body.Set("recovery_id", JSONValue(recoveryId_));
+    body.Set("poll_token", JSONValue(recoveryPollToken_));
+    relay->Request("POST", "/v1/recovery/poll", &body, [this, relay, finish](const RelayResponse& r) {
+        if (r.status == 202)
+            return finish(UltraIMResult::Error(UltraIMResultCode::NeedsInput,
+                                               "Open the link we e-mailed you and confirm there"));
+        if (!r.Ok()) {
+            if (r.status == 410) {
+                recoveryId_.clear();
+                Wipe(recoveryPollToken_);
+                return finish(UltraIMResult::Error(UltraIMResultCode::AuthFailed,
+                                                   "The recovery has expired - start again"));
+            }
+            return finish(RelayError(r, UltraIMResultCode::NetworkError));
+        }
+        recoveryId_.clear();
+        Wipe(recoveryPollToken_);
+        std::string secret = r.body["secret_key"].GetString();
+        UltraCryptSecureBuffer buffer = SecretFromText(secret);
+        Wipe(secret);
+        Identity recovered;
+        std::string error;
+        if (buffer.GetSize() != 64 || !IdentityFromSecret(buffer, recovered, error) ||
+            recovered.userId != r.body["user_id"].GetString()) {
+            return finish(UltraIMResult::Error(UltraIMResultCode::PluginError,
+                                               "The relay gave back a key that is not this ID's"));
+        }
+        if (HasIdentityHere())
+            return finish(UltraIMResult::Error(UltraIMResultCode::InvalidArgument,
+                                               "This computer has a ChatCube ID already"));
+        // Stored as if it had been made here: the device key opens the vault,
+        // no password and no code yet - those are this computer's to choose.
+        identity_ = std::move(recovered);
+        if (!SaveIdentity()) {
+            identity_ = Identity();
+            return finish(UltraIMResult::Error(UltraIMResultCode::PluginError, "The ID could not be stored"));
+        }
+        {
+            std::lock_guard<std::mutex> lock(accountMutex_);
+            email_ = r.body["email"].GetString();
+            phone_ = r.body["phone"].GetString();
+            vaultPassword_.clear();
+            codeAccepted_ = true;
+        }
+        SaveProfile();
+        displayName_ = r.body["display_name"].GetString();
+        store_.SetSetting("display_name", displayName_);
+        store_.SetSetting("relay_url", relay->GetBaseUrl());
+        store_.SetSetting("signin_code", "0");
+        store_.SetSetting("totp_last_step", "0");
+        finish(UltraIMResult::Ok());
+    });
+}
+
+void DirectProvider::UpdateAccountProfile(const UltraIMAccountProfile& profile, UltraIMResultCallback onResult) {
+    auto finish = [onResult](const UltraIMResult& r) { if (onResult) onResult(r); };
+    if (!identity_.IsValid()) {
+        finish(UltraIMResult::Error(UltraIMResultCode::NotAuthenticated, "Not signed in"));
+        return;
+    }
+    const std::string name = Trimmed(profile.displayName);
+    const std::string email = Trimmed(profile.email);
+    const std::string phone = Trimmed(profile.phoneNumber);
+    if (name.empty() || name.size() > 64) {
+        finish(UltraIMResult::Error(UltraIMResultCode::InvalidArgument, "The name must be 1 to 64 characters"));
+        return;
+    }
+    if (!email.empty() && !PlausibleEmail(email)) {
+        finish(UltraIMResult::Error(UltraIMResultCode::InvalidArgument, "That does not look like an e-mail address"));
+        return;
+    }
+    if (!phone.empty() && !PlausiblePhone(phone)) {
+        finish(UltraIMResult::Error(UltraIMResultCode::InvalidArgument,
+                                    "Type the phone number with + and the country code (+49 151 ...)"));
+        return;
+    }
+    displayName_ = name;
+    store_.SetSetting("display_name", name);
+    {
+        std::lock_guard<std::mutex> lock(accountMutex_);
+        email_ = email;
+        phone_ = phone;
+    }
+    if (!SaveProfile()) {
+        finish(UltraIMResult::Error(UltraIMResultCode::PluginError, "The profile could not be stored in the key vault"));
+        return;
+    }
+    SendProfileToRelay(finish);
+}
+
+UltraIMSignInProtection DirectProvider::GetSignInProtection() const {
+    const bool password = vault_.NeedsPassphrase();
+    bool code = false;
+    if (identity_.IsValid()) {
+        std::lock_guard<std::mutex> lock(accountMutex_);
+        code = !totpSecret_.IsEmpty();
+    } else {
+        // Before the vault is open: what the last change said (the vault
+        // itself decides - a code is asked for whenever it holds a secret).
+        code = const_cast<DirectProvider*>(this)->store_.GetSetting("signin_code") == "1";
+    }
+    if (password && code) return UltraIMSignInProtection::PasswordAndAuthenticatorCode;
+    if (password) return UltraIMSignInProtection::Password;
+    if (code) return UltraIMSignInProtection::AuthenticatorCode;
+    return UltraIMSignInProtection::DeviceKey;
+}
+
+UltraIMResult DirectProvider::StartAuthenticatorSetup(std::string& outOtpAuthUri) {
+    outOtpAuthUri.clear();
+    if (!identity_.IsValid())
+        return UltraIMResult::Error(UltraIMResultCode::NotAuthenticated, "Not signed in");
+    namespace Otp = UltraCanvas::Otp;
+    UltraCryptSecureBuffer secret;
+    const Otp::Result made = Otp::NewTotpSecret(secret);
+    if (!made) return UltraIMResult::Error(UltraIMResultCode::PluginError, "No authenticator secret: " + made.message);
+    Otp::Parameters params;                 // TOTP, SHA-1, 6 digits, 30 s: what every authenticator reads
+    params.issuer = "ChatCube";
+    // The name the authenticator lists it under: the person's, and the
+    // start of the ID so two identities on one phone differ.
+    std::string account;
+    for (const char c : displayName_)
+        if (c != ':' && static_cast<unsigned char>(c) >= 0x20) account += c;
+    account = Trimmed(account);
+    account += (account.empty() ? "" : " ") + ("(" + identity_.userId.substr(0, 8) + ")");
+    params.accountName = account;
+    const Otp::Result built = Otp::BuildOtpAuthUri(params, secret, outOtpAuthUri);
+    if (!built) return UltraIMResult::Error(UltraIMResultCode::PluginError, built.message);
+    std::lock_guard<std::mutex> lock(accountMutex_);
+    pendingTotp_ = std::move(secret);
+    return UltraIMResult::Ok();
+}
+
+bool DirectProvider::CheckCode(const UltraCryptSecureBuffer& secret, const std::string& code, uint64_t lastStep,
+                               uint64_t& outStep, std::string& error) {
+    const int64_t now = NowSeconds();
+    const int64_t pausedUntil = SettingNumber(store_.GetSetting("code_paused_until"));
+    if (now < pausedUntil) {
+        error = "Too many wrong codes - try again in " + std::to_string(pausedUntil - now) + " seconds";
+        return false;
+    }
+    UltraCanvas::Otp::Parameters params;
+    const UltraCanvas::Otp::Result r = UltraCanvas::Otp::VerifyTotp(secret, params, now, code, 1, lastStep, outStep);
+    if (r) {
+        store_.SetSetting("code_failures", "0");
+        return true;
+    }
+    const long long failures = SettingNumber(store_.GetSetting("code_failures")) + 1;
+    store_.SetSetting("code_failures", std::to_string(failures));
+    if (failures >= kFreeCodeAttempts) {
+        const long long extra = std::min<long long>(failures - kFreeCodeAttempts, 10);
+        const int64_t pause = std::min<int64_t>(kCodePauseSeconds << extra, kMaxCodePauseSeconds);
+        store_.SetSetting("code_paused_until", std::to_string(now + pause));
+        error = "That is not the code - try again in " + std::to_string(pause) + " seconds";
+    } else {
+        error = "That is not the code your authenticator shows for ChatCube - type the one it shows now";
+    }
+    return false;
+}
+
+void DirectProvider::SetSignInProtection(const UltraIMProtectionChange& change, UltraIMResultCallback onResult) {
+    if (!identity_.IsValid()) {
+        if (onResult) onResult(UltraIMResult::Error(UltraIMResultCode::NotAuthenticated, "Not signed in"));
+        return;
+    }
+    Enqueue([this, change, onResult]() { ChangeProtection(change, onResult); });
+}
+
+void DirectProvider::ChangeProtection(const UltraIMProtectionChange& change, UltraIMResultCallback onResult) {
+    auto finish = [onResult](const UltraIMResult& r) { if (onResult) onResult(r); };
+    auto refuse = [&finish](UltraIMResultCode code, const std::string& text) {
+        finish(UltraIMResult::Error(code, text));
+    };
+    namespace UV = UltraVault;
+    const bool hadPassword = vault_.NeedsPassphrase();
+    const bool hasPassword = UltraIM_ProtectionHasPassword(change.protection);
+    const bool hasCode = UltraIM_ProtectionHasCode(change.protection);
+    std::string error;
+
+    // ---- what it is now, proven -------------------------------------------------
+    std::string current;
+    {
+        std::lock_guard<std::mutex> lock(accountMutex_);
+        current = vaultPassword_;
+    }
+    if (hadPassword) {
+        if (change.currentPassword.empty()) return refuse(UltraIMResultCode::InvalidArgument, "Type your current password");
+        if (vault_.UseWithPassphrase(change.currentPassword, nullptr) != UV::UnlockStatus::Ok)
+            return refuse(UltraIMResultCode::AuthFailed, "That is not your current password");
+        current = change.currentPassword;
+    }
+    bool hadCode = false;
+    {
+        std::lock_guard<std::mutex> lock(accountMutex_);
+        hadCode = !totpSecret_.IsEmpty();
+        if (hadCode) {
+            if (Trimmed(change.currentCode).empty()) {
+                error = "Type the code your authenticator shows now";
+            } else {
+                uint64_t step = 0;
+                const uint64_t last = static_cast<uint64_t>(SettingNumber(store_.GetSetting("totp_last_step")));
+                if (CheckCode(totpSecret_, change.currentCode, last, step, error))
+                    store_.SetSetting("totp_last_step", std::to_string(step));
+                else if (error.empty())
+                    error = "That is not the code";
+                else
+                    error = "Current code: " + error;
+            }
+        }
+    }
+    if (!error.empty()) return refuse(UltraIMResultCode::AuthFailed, error);
+
+    // ---- what it becomes ----------------------------------------------------------
+    std::string password;
+    if (hasPassword) {
+        password = change.newPassword.empty() && hadPassword ? current : change.newPassword;
+        if (password.empty()) return refuse(UltraIMResultCode::InvalidArgument, "Choose a password");
+        if (password.size() < kMinPasswordLength)
+            return refuse(UltraIMResultCode::InvalidArgument,
+                          "The password needs at least " + std::to_string(kMinPasswordLength) + " characters");
+    }
+    UltraCryptSecureBuffer newSecret;
+    bool newAuthenticator = false;
+    uint64_t newStep = 0;
+    if (hasCode) {
+        std::lock_guard<std::mutex> lock(accountMutex_);
+        if (!pendingTotp_.IsEmpty()) {
+            if (Trimmed(change.newCode).empty()) {
+                error = "Type the code the authenticator shows for ChatCube, to show it was added";
+            } else if (!CheckCode(pendingTotp_, change.newCode, 0, newStep, error)) {
+                error = "New authenticator: " + error;
+            } else {
+                newSecret = pendingTotp_.Clone();
+                newAuthenticator = true;
+            }
+        } else if (hadCode) {
+            newSecret = totpSecret_.Clone();
+        } else {
+            error = "Set up the authenticator first: scan the QR code with UltraAuthenticator";
+        }
+    }
+    if (!error.empty()) return refuse(UltraIMResultCode::InvalidArgument, error);
+
+    // ---- written: the vault re-keyed, then the authenticator into it ---------
+    if (hasPassword && (!hadPassword || password != current)) {
+        const UV::UnlockStatus s = vault_.ChangePassphrase(hadPassword ? current : std::string(), password, false);
+        vault_.Lock();
+        if (s != UV::UnlockStatus::Ok)
+            return refuse(UltraIMResultCode::PluginError,
+                          "The password could not be set: " + UV::DeviceKeyVault::DescribeUnlockStatus(s));
+    } else if (!hasPassword && hadPassword) {
+        const UV::UnlockStatus s = vault_.ChangePassphrase(current, UV::DeviceKeyVault::NewDeviceKey(), true);
+        vault_.Lock();
+        if (s != UV::UnlockStatus::Ok)
+            return refuse(UltraIMResultCode::PluginError,
+                          "The password could not be removed: " + UV::DeviceKeyVault::DescribeUnlockStatus(s));
+    }
+    {
+        std::lock_guard<std::mutex> lock(accountMutex_);
+        vaultPassword_ = hasPassword ? password : std::string();
+    }
+    Wipe(password);
+    Wipe(current);
+    const std::string secretText = hasCode ? SecretToText(newSecret) : std::string();
+    bool written = false;
+    WithVault([&](UV::DeviceKeyVault& v) {
+        written = hasCode ? v.Store("totp", secretText) : (v.Remove("totp") || !v.Has("totp"));
+    });
+    std::string wipe = secretText;
+    Wipe(wipe);
+    if (!written) return refuse(UltraIMResultCode::PluginError, "The authenticator could not be stored in the key vault");
+    {
+        std::lock_guard<std::mutex> lock(accountMutex_);
+        totpSecret_ = std::move(newSecret);
+        if (newAuthenticator) pendingTotp_.Clear();
+        codeAccepted_ = true;
+    }
+    store_.SetSetting("signin_code", hasCode ? "1" : "0");
+    if (newAuthenticator) store_.SetSetting("totp_last_step", std::to_string(newStep));
+    if (!hasCode) store_.SetSetting("totp_last_step", "0");
+    finish(UltraIMResult::Ok());
 }
 
 void DirectProvider::SignOut() {
@@ -1678,13 +2411,17 @@ void DirectProvider::Wake() {
 }
 
 void DirectProvider::WorkerLoop() {
+    std::vector<std::function<void()>> jobs;   // SignIn with a password, SetSignInProtection
     for (;;) {
         {
             std::unique_lock<std::mutex> lock(mutex_);
             wake_.wait_for(lock, std::chrono::milliseconds(timings_.tickMs), [this]() { return stopping_ || woken_; });
             if (stopping_) return;
             woken_ = false;
+            jobs.swap(jobs_);
         }
+        for (auto& job : jobs) job();
+        jobs.clear();
         Pump();
     }
 }

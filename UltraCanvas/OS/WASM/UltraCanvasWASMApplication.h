@@ -1,5 +1,6 @@
 // OS/WASM/UltraCanvasWASMApplication.h
 // WebAssembly (Emscripten) platform application implementation
+// Version: 2.2.0 - DetectHostAppearanceNative: the browser's media queries
 // Version: 2.1.0 - input method composition through a hidden <textarea>
 //   while the focused element draws compositions (TextComposition events)
 // Version: 2.0.0
@@ -107,6 +108,9 @@ namespace UltraCanvas {
         void ShutdownWakeUp() override;
         FontStyle DetectSystemFontStyleNative() override;
         FontStyle DetectMonospacedFontStyleNative() override;
+        // The browser's media queries: prefers-color-scheme, prefers-contrast,
+        // prefers-reduced-motion; their change events post a refresh.
+        HostAppearance DetectHostAppearanceNative() override;
         void LoadBundledFontsNative() override;
         bool RegisterFontFileNative(const std::string& fontFilePath) override;
     };

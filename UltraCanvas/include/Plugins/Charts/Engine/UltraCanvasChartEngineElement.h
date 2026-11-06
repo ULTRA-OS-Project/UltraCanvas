@@ -17,6 +17,7 @@
 // UltraCanvasChartElementBase, so the existing charts stay untouched (Tier 0
 // of the migration plan); native (Tier 2) charts derive from here.
 //
+// Version: 1.6.1 - under the ternary projection the plot area drawn is the triangle
 // Version: 1.6.0 - draws ChartHighlightShape::Polygon (densified along the rings under Polar)
 // Version: 1.5.0 - OnThemeChanged() renamed OnChartThemeChanged(): it hid the element's
 //   OnThemeChanged(const UltraCanvasTheme&); value-axis tick labels inside the
@@ -28,7 +29,7 @@
 //   a partial extent, span annotations
 // Version: 1.3.1 - default bodies mark unused parameters (void): no -Wunused-parameter
 // Version: 1.3.0
-// Last Modified: 2026-10-20
+// Last Modified: 2026-11-03
 // Author: UltraCanvas Framework
 #pragma once
 

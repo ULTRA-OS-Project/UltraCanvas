@@ -1,0 +1,15 @@
+{
+  "@language": "fr",
+  "@translated-by": "machine draft 2026-11-05, reviewed by -",
+  "Click and type, or drag a box for the lines to wrap in; click a text to edit it. The bar above sets font, size, style, alignment and spacing; the colour is the foreground colour. Escape or a click outside finishes": "Cliquez et tapez, ou tracez un cadre dans lequel le texte revient à la ligne ; cliquez sur un texte pour le modifier. La barre ci-dessus règle la police, la taille, le style, l'alignement et l'espacement ; la couleur est la couleur de premier plan. Esc ou un clic à l'extérieur termine",
+  "Letter Spacing": "Espacement des lettres",
+  "Line Spacing": "Interligne",
+  "Text Alignment": "Alignement du texte",
+  "Text Bold": "Gras du texte",
+  "Text Colour": "Couleur du texte",
+  "Text Font": "Police du texte",
+  "Text Italic": "Italique du texte",
+  "Text Size": "Taille du texte",
+  "Text Strikethrough": "Barré du texte",
+  "Text Underline": "Souligné du texte"
+}

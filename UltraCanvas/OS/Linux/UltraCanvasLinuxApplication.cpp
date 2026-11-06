@@ -1,5 +1,8 @@
 // OS/Linux/UltraCanvasLinuxApplication.cpp
 // Complete Linux application implementation with all methods
+// Version: 1.13.0 - the desktop's look (DetectHostAppearanceNative): XSETTINGS fetched and
+//                   its manager's PropertyNotify heard, the config folders watched
+// Version: 1.12.0 - the system fonts are the desktop's (UltraCanvasLinuxSystemFont.cpp), not Ubuntu 12
 // Version: 1.11.0 - the fonts and the keysym table shared with the Wayland backend (UltraCanvasLinuxFonts, UltraCanvasLinuxKeys)
 // Version: 1.10.0 - a held key is one press, its repeats, and one release: detectable
 //                   auto-repeat, and the fake releases dropped where the server lacks it
@@ -11,6 +14,7 @@
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasLinuxClipboard.h"
 #include "UltraCanvasLinuxFonts.h"
+#include "UltraCanvasLinuxHostAppearance.h"
 #include "UltraCanvasLinuxKeys.h"
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasEmojiSettings.h"
@@ -89,6 +93,11 @@ namespace UltraCanvas {
             // desktop has accessibility on; services D-Bus through an fd watch.
             LinuxAccessibility::Start();
 
+            // STEP 5c: hear the desktop's look change - the XSETTINGS
+            // manager's property, and the config folders the desktops write.
+            WatchXSettingsOwner();
+            hostAppearanceWatch.Start([this]() { ScheduleHostAppearanceRefresh(); });
+
             // STEP 6: Mark as initialized
             initialized = true;
             running = false;
@@ -104,6 +113,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasLinuxApplication::ShutdownNative() {
+        hostAppearanceWatch.Stop();
         LinuxAccessibility::Stop();
 
         // Clean up wakeup mechanism
@@ -200,6 +210,51 @@ namespace UltraCanvas {
 
     void UltraCanvasLinuxApplication::InitializeAtoms() {
         wmDeleteWindow = XInternAtom(display, "WM_DELETE_WINDOW", False);
+        xsettingsSelection = XInternAtom(display, ("_XSETTINGS_S" + std::to_string(screen)).c_str(), False);
+        xsettingsSettings = XInternAtom(display, "_XSETTINGS_SETTINGS", False);
+    }
+
+// ===== THE DESKTOP'S LOOK =====
+
+    void UltraCanvasLinuxApplication::WatchXSettingsOwner() {
+        if (!display || xsettingsSelection == None) return;
+        const Window owner = XGetSelectionOwner(display, xsettingsSelection);
+        if (owner == xsettingsOwner) return;
+        xsettingsOwner = owner;
+        // Our interest in the manager's property, on another client's
+        // window: X allows it, and a window gone meanwhile is a BadWindow
+        // the error handler logs.
+        if (xsettingsOwner != None) XSelectInput(display, xsettingsOwner, PropertyChangeMask);
+    }
+
+    bool UltraCanvasLinuxApplication::FetchXSettings(std::vector<uint8_t>& bytes) {
+        bytes.clear();
+        WatchXSettingsOwner();
+        if (!display || xsettingsOwner == None || xsettingsSettings == None) return false;
+        Atom actualType = None;
+        int actualFormat = 0;
+        unsigned long items = 0, remaining = 0;
+        unsigned char* data = nullptr;
+        // The property is read whole: 64 KB of settings is far more than
+        // any desktop exports.
+        if (XGetWindowProperty(display, xsettingsOwner, xsettingsSettings, 0, 65536 / 4, False,
+                               xsettingsSettings, &actualType, &actualFormat, &items, &remaining,
+                               &data) != Success) {
+            return false;
+        }
+        bool ok = false;
+        if (data) {
+            if (actualType == xsettingsSettings && actualFormat == 8 && items > 0) {
+                bytes.assign(data, data + items);
+                ok = true;
+            }
+            XFree(data);
+        }
+        return ok;
+    }
+
+    HostAppearance UltraCanvasLinuxApplication::DetectHostAppearanceNative() {
+        return LinuxHostAppearance::Detect([this](std::vector<uint8_t>& bytes) { return FetchXSettings(bytes); });
     }
 
 // ===== XIM (X INPUT METHOD) SUPPORT FOR UTF-8 =====
@@ -423,6 +478,12 @@ namespace UltraCanvas {
                 }
             }
             UltraCanvasLinuxClipboard::ProcessClipboardEvent(xEvent);
+        } else if (xEvent.type == PropertyNotify && xsettingsOwner != None &&
+                   xEvent.xproperty.window == xsettingsOwner) {
+            // The XSETTINGS manager rewrote its property: the desktop's look
+            // (theme, font, animations) changed. Read once per burst.
+            if (xEvent.xproperty.atom == xsettingsSettings) ScheduleHostAppearanceRefresh();
+            return;
         } else if (xEvent.type == PropertyNotify &&
                    UltraCanvasLinuxClipboard::ProcessClipboardPropertyEvent(xEvent)) {
             // A piece of a clipboard copy sent or received in pieces (INCR)

@@ -1,0 +1,22 @@
+{
+  "@language": "sv",
+  "@translated-by": "machine draft 2026-11-05, reviewed by -",
+  "Added the text: click it with the Text tool, or double-click it, to edit it": "Texten har lagts till: klicka på den med textverktyget eller dubbelklicka på den för att redigera den",
+  "Changed the text": "Texten har ändrats",
+  "Click on the page and type, or click a text to edit it; the bar above sets its font, size, style, alignment and spacing. Escape, Ctrl+Enter or a click outside finishes": "Klicka på sidan och skriv, eller klicka på en text för att redigera den; fältet ovanför ställer in dess teckensnitt, storlek, stil, justering och avstånd. Escape, Ctrl+Enter eller ett klick utanför avslutar",
+  "Delete Text": "Ta bort text",
+  "Edit Text": "Redigera text",
+  "Editing the text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes": "Redigerar texten: Enter börjar en ny rad; Escape, Ctrl+Enter eller ett klick utanför avslutar",
+  "Letter Spacing": "Teckenavstånd",
+  "Line Spacing": "Radavstånd",
+  "Nothing was typed": "Inget skrevs",
+  "Text Alignment": "Textjustering",
+  "Text Bold": "Fet text",
+  "Text Font": "Textens teckensnitt",
+  "Text Italic": "Kursiv text",
+  "Text Size": "Textstorlek",
+  "Text Strikethrough": "Genomstruken text",
+  "Text Underline": "Understruken text",
+  "The text was emptied, so it was deleted": "Texten tömdes, så den togs bort",
+  "Typing a new text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes": "Skriver en ny text: Enter börjar en ny rad; Escape, Ctrl+Enter eller ett klick utanför avslutar"
+}

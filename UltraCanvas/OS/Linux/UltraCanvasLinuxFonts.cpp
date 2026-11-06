@@ -1,7 +1,9 @@
 // OS/Linux/UltraCanvasLinuxFonts.cpp
 // The font side of a Linux application. See the header.
+// Version: 1.2.0 - RegisterPlatformBundledFonts: LoadBundledFonts, as the X11 and Wayland starts call it, for a tool
+// Version: 1.1.0 - the detectors read the desktop (UltraCanvasLinuxSystemFont.cpp), not Ubuntu 12
 // Version: 1.0.0
-// Last Modified: 2026-10-30
+// Last Modified: 2026-11-03
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasLinuxFonts.h"
@@ -20,26 +22,17 @@
 namespace UltraCanvas {
 namespace LinuxFonts {
 
-    FontStyle DetectSystemFontStyle() {
-        FontStyle result;
-        result.fontFamily = "Ubuntu";
-        result.fontSize = 12.0;
-        return result;
-    }
+    // DetectSystemFontStyle / DetectMonospacedFontStyle: the desktop's
+    // fonts from GSettings, kdeglobals and the GTK settings.ini, in
+    // UltraCanvasLinuxSystemFont.cpp.
 
-    FontStyle DetectMonospacedFontStyle() {
-        FontStyle result;
-        result.fontFamily = "Ubuntu Mono";
-        result.fontSize = 12.0;
-        return result;
-    }
-
-    void LoadBundledFonts() {
+    int LoadBundledFonts() {
         FcConfig* cfg = FcConfigGetCurrent();
         if (!cfg) {
             debugOutput << "UltraCanvas: FcConfigGetCurrent() returned null; bundled fonts not registered" << std::endl;
-            return;
+            return 0;
         }
+        int registered = 0;
 
         const std::string dir = GetBundledFontsDir();
         for (size_t i = 0; i < kEmbeddedAllFontsCount; ++i) {
@@ -51,6 +44,8 @@ namespace LinuxFonts {
             if (!FcConfigAppFontAddFile(cfg,
                     reinterpret_cast<const FcChar8*>(path.c_str()))) {
                 debugOutput << "UltraCanvas: FcConfigAppFontAddFile failed for " << path << std::endl;
+            } else {
+                ++registered;
             }
         }
         // The emoji font the emoji setting picks (UOS-Settings), and the rule
@@ -103,6 +98,7 @@ namespace LinuxFonts {
             FcPatternDestroy(pat);
         }
 #endif
+        return registered;
     }
 
     bool RegisterFontFile(const std::string& fontFilePath) {
@@ -124,4 +120,14 @@ namespace LinuxFonts {
     }
 
 } // namespace LinuxFonts
+
+    // The bundled fonts for Pango, the Linux way (X11, Wayland, the BSDs):
+    // LoadBundledFonts, which the X11 and the Wayland starts call
+    // (LoadBundledFontsNative), and a tool without an application through
+    // RegisterBundledFontsWithoutApplication.
+    int RegisterPlatformBundledFonts(int systemFontsWaitMs) {
+        (void)systemFontsWaitMs;   // the system's fontconfig: no scan of its own
+        return LinuxFonts::LoadBundledFonts();
+    }
+
 } // namespace UltraCanvas

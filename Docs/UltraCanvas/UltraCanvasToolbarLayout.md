@@ -7,9 +7,11 @@ commands off, and the arrangement is kept in the application's settings
 across restarts and releases. `MaterializeToolbar` turns a layout and a
 command registry into the toolbar's buttons.
 
-It is phase 1 of the toolbar configuration in
-[`UltraCanvasToolbarConfigInvestigation.md`](UltraCanvasToolbarConfigInvestigation.md);
-the editor (phase 2) is built on it.
+It is the toolbar configuration of
+[`UltraCanvasToolbarConfigInvestigation.md`](UltraCanvasToolbarConfigInvestigation.md):
+a right click on the toolbar offers its groups (section 5), and the
+[Menus and Toolbars Editor](UltraCanvasCommandConfigWidget.md) edits it - with the
+program's menus, in one editor.
 
 ## Contents
 
@@ -21,6 +23,7 @@ the editor (phase 2) is built on it.
 - [2. Describe the default groups](#2-describe-the-default-groups)
 - [3. Build the toolbar](#3-build-the-toolbar)
 - [4. Keep the user's arrangement](#4-keep-the-users-arrangement)
+- [5. The toolbar's context menu](#5-the-toolbars-context-menu)
 - [Files](#files)
 
 ## Why a layout
@@ -36,11 +39,11 @@ The layout separates the two:
 
 | Concern | Type | Saved? |
 |---|---|---|
-| What a command is: label, icon, shortcut, callback, live state | `MenuCommand` in `UltraCanvasMenuRegistry` | no (holds callbacks) |
+| What a command is: label, icon, shortcut, callback, live state | `MenuCommand` in `UltraCanvasCommandRegistry` | no (holds callbacks) |
 | How a toolbar is arranged: groups, order, what is shown | `ToolbarLayout` / `ToolbarLayoutGroup` | yes (ids only) |
 
 The registry is the one menus are built from
-([Menu Configuration Widget](UltraCanvasMenuConfigWidget.md)), so a command
+([Menus and Toolbars Editor](UltraCanvasCommandConfigWidget.md)), so a command
 registered once is the same in the menu, on the toolbar and in the shortcut
 list.
 
@@ -49,7 +52,7 @@ list.
 <!-- doc-check: void CmdUndo(); bool CanUndo(); std::string UndoStepName(); bool gridShown; std::string IconFolder(); -->
 
 ```cpp
-UltraCanvasMenuRegistry registry;   // one per window: the callbacks reach that window
+UltraCanvasCommandRegistry registry;   // one per window: the callbacks reach that window
 
 MenuCommand undo("edit.undo", "Edit", "Undo");
 undo.iconName = "undo.svg";          // the file name; the resolver picks the size
@@ -115,6 +118,9 @@ registry.Register(quality);
 `FindShortcutConflicts()` lists the shortcuts given to more than one
 command, with their ids; `"Ctrl+Shift+S"` and `"shift+ctrl+s"` are one
 shortcut. A program can check it once at start in a debug build.
+`FindByShortcut("Ctrl+Shift+S")` finds the command a key press names: a key
+handler that spells the key it got that way and runs what this finds keeps
+the shortcut the menu shows and the one that works the same.
 
 ## 2. Describe the default groups
 
@@ -137,11 +143,18 @@ A group's fields: `id`, `label`, `iconName` (the slot's icon when folded),
 `visible`, `folded`, `userMade`. `SetCommandShown`, `IsCommandShown` and
 `ShownCommands` work on `hidden`; a hidden command stays in its group and
 comes back in its place. `ToolbarLayout::FindGroup` and `MoveGroup` find and
-reorder groups.
+reorder groups. `separateGroups` (on by default) puts a separator between two
+shown groups; a tool palette of folded groups turns it off. It is the
+program's choice: loading takes it from the defaults.
+
+A tool palette is a layout of Radio commands with `isChecked` (the active
+tool), each group folded: `RefreshCommandStates` presses the slot of the
+group that holds the active tool, shows that tool in it, and releases the
+others.
 
 ## 3. Build the toolbar
 
-<!-- doc-check: UltraCanvasMenuRegistry registry; ToolbarLayout layout; -->
+<!-- doc-check: UltraCanvasCommandRegistry registry; ToolbarLayout layout; -->
 
 ```cpp
 auto toolbar = std::make_shared<UltraCanvasToolbar>("main", 0, 0, 0, 38);
@@ -170,7 +183,7 @@ outlive it, and reads the commands' state at the end; call
 
 ## 4. Keep the user's arrangement
 
-<!-- doc-check: UltraCanvasMenuRegistry registry; ToolbarLayout defaults; -->
+<!-- doc-check: UltraCanvasCommandRegistry registry; ToolbarLayout defaults; -->
 
 ```cpp
 UltraCanvasAppSettings settings("MyApp");   // <settings folder>/MyApp/settings.json
@@ -199,22 +212,51 @@ Only what the user changed is kept, under `toolbars.<name>`:
 ] } } }
 ```
 
-What is in a group the program defines comes from the program's defaults
-every time, so `LoadToolbarLayout` (`MergeToolbarLayout`) can bring a saved
-layout forward to a new release:
+A group the program defines is kept as the user's changes to it - which of
+its commands are hidden, the order of its commands and the commands the user
+added to it, written as `"commands"` only when they differ from the program's.
+The rest comes from the program's defaults every time, so `LoadToolbarLayout`
+(`MergeToolbarLayout`) can bring a saved layout forward to a new release:
 
-- a command the release adds to a group shows, and the user's hidden ones
-  stay hidden;
+- a command the release adds to a group shows, after the command it follows
+  in the defaults, and the user's hidden ones stay hidden;
 - a group new in the release goes in after the group it follows in the
   defaults;
 - a group the release no longer has is dropped, and with the registry given,
   so is every command it does not know - in the user's own groups too.
 
+## 5. The toolbar's context menu
+
+<!-- doc-check: UltraCanvasCommandRegistry registry; ToolbarLayout defaults; UltraCanvasAppSettings settings{"MyApp"}; std::shared_ptr<UltraCanvasToolbar> toolbar; void OpenCustomiseDialog(); -->
+
+```cpp
+auto layout = std::make_shared<ToolbarLayout>(LoadToolbarLayout(settings, defaults, &registry));
+MaterializeToolbar(*toolbar, *layout, registry);
+InstallToolbarContextMenu(*toolbar, layout, registry,
+    [this, layout]() { SaveToolbarLayout(settings, *layout, defaults); },   // after each change
+    [this]() { OpenCustomiseDialog(); });                                  // "Customise Toolbars"
+```
+
+A right click on the toolbar - on an item or between them - opens a menu with:
+
+- a check per group, shown or not;
+- for the group under the pointer, *Fold* or *Unfold* it, and on a command,
+  *Hide* that command;
+- *Customise Toolbars*, when the program gives a handler for it.
+
+Each change edits the shared layout, rebuilds the toolbar and calls the
+program's handler, where it saves the layout. The menu is
+`ToolbarContextMenuItems`, for a program that wants to add to it, and
+`ToolbarGroupOfItem` names the group an item belongs to. Underneath is the
+toolbar's own `SetOnContextMenu(handler)`, which reports a right click with the
+pointer in window coordinates and the id of the item under it.
+
 ## Files
 
 | File | Contents |
 |---|---|
-| `UltraCanvas/include/UltraCanvasToolbarLayout.h` | `ToolbarLayoutGroup`, `ToolbarLayout`, `MaterializeToolbar`, `MergeToolbarLayout`, `SaveToolbarLayout`, `LoadToolbarLayout`, `ForgetToolbarLayout` |
-| `UltraCanvas/include/UltraCanvasMenuRegistry.h` | `MenuCommand` (with `iconName`, `tooltip`, `isEnabled`, `isChecked`, `dynamicLabel`, `makeToolbarWidget`), `SetIconResolver`, `ResolveIcon`, `FindShortcutConflicts`, `RefreshMenuStates` |
-| `UltraCanvas/include/UltraCanvasToolbar.h` | `AddWidget`, `SetCommandRegistry`, `RefreshCommandStates` |
-| `Tests/ToolbarLayoutTest.cpp` | the registry, building, refreshing, saving and merging |
+| `UltraCanvas/include/UltraCanvasToolbarLayout.h` | `ToolbarLayoutGroup`, `ToolbarLayout`, `MaterializeToolbar`, `MergeToolbarLayout`, `SaveToolbarLayout`, `LoadToolbarLayout`, `ForgetToolbarLayout`, `InstallToolbarContextMenu`, `ToolbarContextMenuItems`, `ToolbarGroupOfItem` |
+| `UltraCanvas/include/UltraCanvasCommandRegistry.h` | `MenuCommand` (with `iconName`, `tooltip`, `isEnabled`, `isChecked`, `dynamicLabel`, `makeToolbarWidget`), `SetIconResolver`, `ResolveIcon`, `FindShortcutConflicts`, `RefreshMenuStates` |
+| `UltraCanvas/include/UltraCanvasToolbar.h` | `AddWidget`, `SetCommandRegistry`, `RefreshCommandStates`, `SetOnContextMenu` |
+| `UltraCanvas/include/UltraCanvasCommandConfigWidget.h` | the editor for menus and toolbars, `ShowCommandConfigDialog` |
+| `Tests/ToolbarLayoutTest.cpp` | the registry, building, refreshing, saving and merging, the context menu |

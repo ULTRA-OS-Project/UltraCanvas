@@ -1,8 +1,9 @@
 // Apps/ChatCube/main.cpp
 // ChatCube - the ULTRA OS native messenger. Chat directly between two
 // computers (end-to-end encrypted, peer to peer when both are online), in
-// groups through a relay server, without an account or a password: the
-// identity is a key made on this computer. Built on UltraIM, whose
+// groups through a relay server. The identity is a key made on this
+// computer - behind a password and/or an authenticator code (UltraAuthenticator)
+// when its owner chooses, with an e-mail and a phone number to recover it. Built on UltraIM, whose
 // provider modules carry the networks - ChatCube Direct, Matrix and
 // Telegram; XMPP and others follow as further providers.
 //

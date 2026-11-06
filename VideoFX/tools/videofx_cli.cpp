@@ -63,11 +63,20 @@
 //          temperature=v grayscale sepia invert blur=r sharpen=v denoise=v
 //          vignette=v rotate90 rotate180 rotate270 rotate=deg hflip vflip
 //          crop=x:y:w:h fadein=s fadeout=s volume=g normalize[=lufs] lut=path
+//
+// Built with UltraCanvas (in the UltraCanvas tree), a project's titles with
+// their own fonts, bold or italic words, alignment and spacing - what
+// UltraVideo saves - are drawn by UltraCanvas's text engine as UltraVideo
+// draws them (VideoFXUltraCanvasText.h); built on its own, as plain text.
+// Version: 0.14.0 - titles drawn by UltraCanvas when built with it (VIDEOFX_WITH_ULTRACANVAS_TEXT)
 // Version: 0.13.0
-// Last Modified: 2026-10-13
+// Last Modified: 2026-11-03
 // Author: UltraCanvas Framework
 
 #include <VideoFX/VideoFX.h>
+#ifdef VIDEOFX_WITH_ULTRACANVAS_TEXT
+#include "VideoFXUltraCanvasText.h"
+#endif
 
 #include <algorithm>
 #include <cmath>
@@ -696,8 +705,17 @@ int main(int argc, char** argv) {
     args.erase(args.begin(), args.begin() + 2);
     if (cmd == "--version" || cmd == "version") {
         std::cout << "videofx " << VideoFX_GetVersion() << " - " << VideoFX_GetBackendVersion() << "\n";
+#ifdef VIDEOFX_WITH_ULTRACANVAS_TEXT
+        std::cout << "titles: drawn by UltraCanvas, as UltraVideo draws them\n";
+#else
+        std::cout << "titles: plain text (built without UltraCanvas)\n";
+#endif
         return 0;
     }
+#ifdef VIDEOFX_WITH_ULTRACANVAS_TEXT
+    // Titles with their fonts, styles and spacing, drawn as UltraVideo does
+    VideoFX_UseUltraCanvasText();
+#endif
     if (!VideoFX_IsAvailable()) {
         std::cerr << "videofx: " << VideoFX_GetLastError() << "\n";
         return 1;

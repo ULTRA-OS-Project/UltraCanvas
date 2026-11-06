@@ -6,11 +6,13 @@
 // end, the large timecode readout over the project length, the volume.
 // Playback itself is the window's: it moves the playhead and the viewer
 // shows what the engine renders for it.
+// Version: 0.3.0 - FrameSurface::PictureRect and onDoubleClick; GetSurface / GetPanel: a title
+//                  typed on the frame lies over the picture
 // Version: 0.2.2 - SetProjectSize
 // Version: 0.2.1 - SetFit
 // Version: 0.2.0 - DraftPlay returns bool
 // Version: 0.1.0
-// Last Modified: 2026-10-11
+// Last Modified: 2026-11-03
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -54,6 +56,12 @@ public:
     }
     void SetColors(const UltraCanvas::Color& ground, const UltraCanvas::Color& guide, const UltraCanvas::Color& frameLine);
     void Render(UltraCanvas::IRenderContext* ctx, const UltraCanvas::Rect2Df& dirtyRect) override;
+    bool OnEvent(const UltraCanvas::UCEvent& event) override;
+    // Where the picture is drawn, in the surface's own coordinates
+    UltraCanvas::Rect2Dd PictureRect() const;
+    // A double-click on the surface, in its own coordinates (a title there
+    // opens for typing)
+    std::function<void(const UltraCanvas::Point2Df&)> onDoubleClick;
 
 private:
     UltraCanvas::UCPixmapPtr pixmap;
@@ -104,6 +112,10 @@ public:
     std::function<void()> onStepForward;
     std::function<void()> onToEnd;
     std::function<void(double)> onVolumeChanged;    // 0..1
+    // The frame surface and the panel it lies in: the window lays a title
+    // being typed over the picture
+    std::shared_ptr<FrameSurface> GetSurface() const { return surface; }
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> GetPanel() const { return panel; }
 
 private:
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> panel;

@@ -2,8 +2,11 @@
 // A toolbar as groups of command ids: building the toolbar from one, merging
 // the user's changes over the program's defaults, and keeping them in the
 // application's settings.
+// Version: 1.2.0 - separateGroups
+// Version: 1.1.0 - a program's group keeps the user's order and additions; the
+//                  toolbar's context menu (InstallToolbarContextMenu)
 // Version: 1.0.0
-// Last Modified: 2026-10-30
+// Last Modified: 2026-11-02
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasToolbarLayout.h"
@@ -68,7 +71,7 @@ namespace UltraCanvas {
 
         // Runs what a pick of the command means: a toggle command is switched
         // on (a tool picked from a folded group), an action runs.
-        void RunCommand(const UltraCanvasMenuRegistry& registry, const std::string& id) {
+        void RunCommand(const UltraCanvasCommandRegistry& registry, const std::string& id) {
             const MenuCommand* cmd = registry.Find(id);
             if (!cmd) return;
             if (IsToggleCommand(*cmd)) {
@@ -80,7 +83,7 @@ namespace UltraCanvas {
     }
 
     void MaterializeToolbar(UltraCanvasToolbar& toolbar, const ToolbarLayout& layout,
-                            const UltraCanvasMenuRegistry& registry) {
+                            const UltraCanvasCommandRegistry& registry) {
         toolbar.ClearItems();
         toolbar.SetCommandRegistry(&registry);
         ToolbarAppearance look = toolbar.GetAppearance();
@@ -88,7 +91,7 @@ namespace UltraCanvas {
         look.showIconLabels = layout.showLabels;
         toolbar.SetAppearance(look);
         const int iconPx = look.IconPixelSize().width;
-        const UltraCanvasMenuRegistry* reg = &registry;
+        const UltraCanvasCommandRegistry* reg = &registry;
 
         std::set<std::string> placed;   // a command shows once, in the first group that has it
         bool firstGroup = true;
@@ -100,7 +103,7 @@ namespace UltraCanvas {
                 if (cmd && placed.insert(id).second) cmds.push_back(cmd);
             }
             if (cmds.empty()) continue;
-            if (!firstGroup) toolbar.AddSeparator("sep." + group.id);
+            if (!firstGroup && layout.separateGroups) toolbar.AddSeparator("sep." + group.id);
             firstGroup = false;
 
             // A folded group: one slot with a fold-out bar. A widget cannot
@@ -154,7 +157,7 @@ namespace UltraCanvas {
 // ===== MERGE =====
 
     ToolbarLayout MergeToolbarLayout(const ToolbarLayout& defaults, const ToolbarLayout& saved,
-                                     const UltraCanvasMenuRegistry* registry) {
+                                     const UltraCanvasCommandRegistry* registry) {
         const auto known = [registry](const std::string& id) { return !registry || registry->Contains(id); };
         const auto keepKnown = [&known](std::vector<std::string>& ids) {
             ids.erase(std::remove_if(ids.begin(), ids.end(), [&known](const std::string& id) { return !known(id); }),
@@ -172,6 +175,7 @@ namespace UltraCanvas {
 
         ToolbarLayout result;
         result.name = defaults.name;
+        result.separateGroups = defaults.separateGroups;
         result.iconSize = saved.iconSize;
         result.showLabels = saved.showLabels;
 
@@ -181,11 +185,29 @@ namespace UltraCanvas {
             if (sg.userMade) {
                 g = sg;
             } else if (const ToolbarLayoutGroup* dg = defaults.FindGroup(sg.id); dg && !dg->userMade) {
-                // What is in a program's group is the program's; how it shows is the user's.
+                // A program's group: the program's commands, in the order the
+                // user gave them, with what the user added; how it shows is
+                // the user's.
                 g = *dg;
                 g.visible = sg.visible;
                 g.folded = sg.folded;
                 g.hidden = sg.hidden;
+                if (sg.commands != dg->commands) {
+                    // The user's order first; a command the program added
+                    // since goes in after the one it follows in the defaults.
+                    std::vector<std::string> commands = sg.commands;
+                    for (size_t i = 0; i < dg->commands.size(); ++i) {
+                        const std::string& id = dg->commands[i];
+                        if (std::find(commands.begin(), commands.end(), id) != commands.end()) continue;
+                        size_t at = 0;
+                        for (size_t j = i; j-- > 0;) {
+                            auto it = std::find(commands.begin(), commands.end(), dg->commands[j]);
+                            if (it != commands.end()) { at = static_cast<size_t>(it - commands.begin()) + 1; break; }
+                        }
+                        commands.insert(commands.begin() + static_cast<std::ptrdiff_t>(at), id);
+                    }
+                    g.commands = std::move(commands);
+                }
             } else {
                 continue;   // a group this release no longer has
             }
@@ -270,7 +292,9 @@ namespace UltraCanvas {
                 if (!g.visible) entry.Set("visible", false);
                 if (g.folded) entry.Set("folded", true);
             } else {
-                // A program's group: only how it differs.
+                // A program's group: only how it differs - its commands only
+                // when the user reordered them or added one.
+                if (g.commands != dg->commands) entry.Set("commands", StringArray(g.commands));
                 if (g.visible != dg->visible) entry.Set("visible", g.visible);
                 if (g.folded != dg->folded) entry.Set("folded", g.folded);
                 if (g.hidden != dg->hidden) entry.Set("hidden", StringArray(g.hidden));
@@ -287,7 +311,7 @@ namespace UltraCanvas {
     }
 
     ToolbarLayout LoadToolbarLayout(const UltraCanvasAppSettings& settings, const ToolbarLayout& defaults,
-                                    const UltraCanvasMenuRegistry* registry) {
+                                    const UltraCanvasCommandRegistry* registry) {
         const JSONValue& kept = settings.Document().Get("toolbars").Get(defaults.name);
         if (!kept.IsObject()) return MergeToolbarLayout(defaults, defaults, registry);
 
@@ -312,6 +336,7 @@ namespace UltraCanvas {
             g.userMade = entry.Get("user").GetBoolean(false);
             if (const ToolbarLayoutGroup* dg = defaults.FindGroup(g.id); dg && !g.userMade) {
                 g = *dg;   // the flags start from the program's
+                if (entry.Get("commands").IsArray()) g.commands = StringsOf(entry.Get("commands"));
             } else {
                 g.label = entry.Get("label").GetString(g.id);
                 g.iconName = entry.Get("iconName").GetString();
@@ -323,6 +348,103 @@ namespace UltraCanvas {
             saved.groups.push_back(std::move(g));
         }
         return MergeToolbarLayout(defaults, saved, registry);
+    }
+
+// ===== THE TOOLBAR'S CONTEXT MENU =====
+
+    std::string ToolbarGroupOfItem(const ToolbarLayout& layout, const std::string& itemId) {
+        if (itemId.empty()) return std::string();
+        if (layout.FindGroup(itemId)) return itemId;                    // a folded group's slot
+        if (itemId.rfind("sep.", 0) == 0 && layout.FindGroup(itemId.substr(4))) return itemId.substr(4);
+        for (const auto& g : layout.groups) {
+            if (g.visible && g.IsCommandShown(itemId)) return g.id;      // the group that shows it
+        }
+        return std::string();
+    }
+
+    std::vector<MenuItemData> ToolbarContextMenuItems(UltraCanvasToolbar& toolbar,
+                                                      const std::shared_ptr<ToolbarLayout>& layout,
+                                                      const UltraCanvasCommandRegistry& registry,
+                                                      const std::string& itemId,
+                                                      std::function<void()> onChanged,
+                                                      std::function<void()> onCustomise) {
+        std::vector<MenuItemData> items;
+        if (!layout) return items;
+        // The toolbar is the one whose menu this is: held raw, it outlives
+        // the menu it opens. Each change rebuilds it and tells the program.
+        UltraCanvasToolbar* bar = &toolbar;
+        const UltraCanvasCommandRegistry* reg = &registry;
+        auto rebuild = [bar, layout, reg, onChanged]() {
+            MaterializeToolbar(*bar, *layout, *reg);
+            if (onChanged) onChanged();
+        };
+
+        for (const auto& g : layout->groups) {
+            const std::string id = g.id;
+            items.push_back(MenuItemData::Checkbox(g.label.empty() ? g.id : g.label, g.visible,
+                                                   [layout, id, rebuild](bool on) {
+                if (ToolbarLayoutGroup* group = layout->FindGroup(id)) {
+                    group->visible = on;
+                    rebuild();
+                }
+            }));
+        }
+
+        const std::string groupId = ToolbarGroupOfItem(*layout, itemId);
+        if (const ToolbarLayoutGroup* group = layout->FindGroup(groupId)) {
+            const std::string name = group->label.empty() ? group->id : group->label;
+            items.push_back(MenuItemData::Separator());
+            if (group->ShownCommands().size() >= 2 || group->folded) {
+                items.push_back(MenuItemData::Action((group->folded ? "Unfold \"" : "Fold \"") + name + "\"",
+                                                     [layout, groupId, rebuild]() {
+                    if (ToolbarLayoutGroup* g = layout->FindGroup(groupId)) {
+                        g->folded = !g->folded;
+                        rebuild();
+                    }
+                }));
+            }
+            if (group->IsCommandShown(itemId)) {
+                const MenuCommand* cmd = registry.Find(itemId);
+                const std::string label = cmd ? cmd->CurrentLabel() : itemId;
+                items.push_back(MenuItemData::Action("Hide \"" + label + "\"", [layout, groupId, itemId, rebuild]() {
+                    if (ToolbarLayoutGroup* g = layout->FindGroup(groupId)) {
+                        g->SetCommandShown(itemId, false);
+                        rebuild();
+                    }
+                }));
+            }
+        }
+
+        if (onCustomise) {
+            items.push_back(MenuItemData::Separator());
+            items.push_back(MenuItemData::Action("Customise Toolbars", onCustomise));
+        }
+        return items;
+    }
+
+    void InstallToolbarContextMenu(UltraCanvasToolbar& toolbar, std::shared_ptr<ToolbarLayout> layout,
+                                   const UltraCanvasCommandRegistry& registry,
+                                   std::function<void()> onChanged,
+                                   std::function<void()> onCustomise) {
+        UltraCanvasToolbar* bar = &toolbar;
+        const UltraCanvasCommandRegistry* reg = &registry;
+        // The open menu is kept here until the next one replaces it.
+        auto open = std::make_shared<std::shared_ptr<UltraCanvasMenu>>();
+        toolbar.SetOnContextMenu([bar, layout, reg, onChanged, onCustomise, open](const Point2Di& pos,
+                                                                                   const std::string& itemId) {
+            UltraCanvasWindowBase* window = bar->GetWindow();
+            if (!window) return;
+            if (*open) (*open)->CloseMenu();
+            auto menu = std::make_shared<UltraCanvasMenu>(bar->GetIdentifier() + ".context", 0, 0, 220, 0);
+            menu->SetMenuType(MenuType::PopupMenu);
+            for (auto& item : ToolbarContextMenuItems(*bar, layout, *reg, itemId, onChanged, onCustomise)) {
+                menu->AddItem(item);
+            }
+            *open = menu;
+            PopupElementSettings settings;
+            settings.popupOwner = bar->weak_from_this();
+            menu->OpenMenu(pos, *window, settings);
+        });
     }
 
     bool ForgetToolbarLayout(UltraCanvasAppSettings& settings, const std::string& name) {
