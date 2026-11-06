@@ -91,9 +91,17 @@ at once; a caller that makes thumbnails on a worker thread returns nullptr
 until one is done, then calls `InvalidateLayout()` so the card grows to show
 it. Pill and Grid cards have no room for a picture.
 
+`style.cardImagePlacement` puts the picture in a band above the title
+(`KanbanCardImagePlacement::Top`, the default) or in a square
+`cardImageHeight` wide at the card's left with the text beside it
+(`KanbanCardImagePlacement::Left`; at most half the card, which is at least
+as tall as the picture). `style.centerCardTitle` centres the title's lines.
+
 <!-- doc-check: std::shared_ptr<UltraCanvasKanbanBoardElement> board; std::map<std::string, std::shared_ptr<UCPixmap>> thumbnails; -->
 ```cpp
 board->EditStyle().cardImageHeight = 56.0f;
+board->EditStyle().centerCardTitle = true;   // the name centred under the picture
+board->StyleChanged();
 board->cardImageProvider = [&thumbnails](const KanbanCard& card) -> std::shared_ptr<UCPixmap> {
     auto found = thumbnails.find(card.description);   // the card's file
     return found == thumbnails.end() ? nullptr : found->second;
@@ -222,6 +230,19 @@ lists Overdue plus every priority actually used on the board.
   column under a point in the element's coordinates (-1 = none);
   `BeginColumnRename(columnId, startEmpty)` opens a column title's inline
   rename, for an "add column" button of the host's own.
+- **Context menu**: `onContextMenu(cardId, columnId, windowPos)` runs on a
+  right click - the card under the pointer (selected first; -1 = none), the
+  column (-1 = none) and the point in window coordinates where the host opens
+  its `UltraCanvasMenu`. Unset, the right click passes on.
+- **Hover and preview**: `onCardHoverChanged(cardId)` names the card the
+  pointer moves onto (-1 when it leaves one, the board, or a drag starts).
+  `ShowCardPreview(cardId, picture, size)` draws a larger picture of a card -
+  `size` pixels square at most, with its title under it - beside the card
+  over the board; it goes with `HideCardPreview()`, and by itself when the
+  pointer leaves the card, a button is pressed, the board scrolls or a drag
+  starts. The host decides when it opens (the Sticker board waits two seconds
+  with an `UltraCanvasApplication` timer) and makes the picture.
+  `GetCardBounds(cardId)` is a card's rectangle as last laid out.
 
 Callbacks:
 
@@ -238,6 +259,8 @@ board->canDropCard = [](int cardId, int toColumnId) { return true; };
 board->onFilesDropped = [data](const std::vector<std::string>& files, int columnId, int laneId) {
     for (const std::string& path : files) data->AddCard(columnId, path, laneId);
 };
+board->onContextMenu = [](int cardId, int columnId, const Point2Di& windowPos) { /* open a menu */ };
+board->onCardHoverChanged = [](int cardId) { /* -1 = none */ };
 ```
 
 ## Factories

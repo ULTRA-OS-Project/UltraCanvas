@@ -5,6 +5,7 @@
 // Stickerboard and the Sticker board's categories. One JSON file, read at
 // start-up and written on every change. No UI in here, which is what lets
 // the test read and write it.
+// Version: 0.6.0 - the Sticker board's card display and hover preview size
 // Version: 0.5.0 - StartupProgram::arguments and ::builtIn: UltraClipboard
 //                  and UltraNotifications start in the background
 //                  (--background), the Sticker board is made ready unseen
@@ -47,6 +48,13 @@ struct Sticker {
 struct CategoryBoardSettings {
     bool visible = false;
     std::string design = "stickynotes";   // stickynotes | poster | schematic | dark
+    // How a card shows its file: "text" (the name only), "thumbnail" (the
+    // picture with the name centred under it) or "row" (a small picture
+    // and the name beside it).
+    std::string display = "thumbnail";
+    // The larger preview after the pointer rests on a card for two seconds:
+    // "small", "medium" or "large".
+    std::string hoverPreview = "medium";
     float x = 320;
     float y = 60;
     float width = 780;

@@ -1,6 +1,7 @@
 // Apps/UOSSettings/ui/UOSSettingsWindow.cpp
 // The UOS-Settings window: page tree | page, Close at the foot - the layout
 // of UltraFiler's settings window. See UOSSettingsWindow.h.
+// Version: 0.9.0 - Desktop: the Sticker board's card display and hover preview size
 // Version: 0.8.1 - the Language and Translations pages, the page tree and the window's buttons go through Tr
 // Version: 0.8.0 - Language > Translations: the localisation editor (UltraCanvasLocalisationEditor)
 // Version: 0.7.0 - the Language page: the language every application shows, Language.conf
@@ -534,6 +535,26 @@ void UOSSettingsWindow::BuildDesktopPage() {
     };
     addRow("uos-dt-recent-row", "Recent shows", recentShown_);
 
+    // The Sticker board: how a card shows its file, and the size of the
+    // preview that opens when the pointer rests on one.
+    boardDisplay_ = std::make_shared<UltraCanvasDropdown>("uos-dt-boarddisplay", 0, 0, 220, 28);
+    boardDisplay_->AddItem(Tr("Text only"), "text");
+    boardDisplay_->AddItem(Tr("Thumbnail and text"), "thumbnail");
+    boardDisplay_->AddItem(Tr("Thumbnail and text in a row"), "row");
+    boardDisplay_->onSelectionChanged = [this](int, const DropdownItem&) {
+        if (!refreshing_) SaveDesktopPage();
+    };
+    addRow("uos-dt-boarddisplay-row", "Sticker board cards", boardDisplay_);
+
+    boardPreview_ = std::make_shared<UltraCanvasDropdown>("uos-dt-boardpreview", 0, 0, 120, 28);
+    boardPreview_->AddItem(Tr("Small"), "small");
+    boardPreview_->AddItem(Tr("Medium"), "medium");
+    boardPreview_->AddItem(Tr("Large"), "large");
+    boardPreview_->onSelectionChanged = [this](int, const DropdownItem&) {
+        if (!refreshing_) SaveDesktopPage();
+    };
+    addRow("uos-dt-boardpreview-row", "Hover preview", boardPreview_);
+
     // Only where there is a system desktop to take the place of (Windows).
     if (UltraCanvasDesktopShell::CanReplaceSystemDesktop()) {
         systemDesktop_ = std::make_shared<UltraCanvasDropdown>("uos-dt-replace", 0, 0, 300, 28);
@@ -651,6 +672,14 @@ void UOSSettingsWindow::RefreshDesktopPage() {
     if (appsView_) appsView_->SetSelectedIndex(settings.appsView == "tree" ? 1 : 0, false);
     if (appsSplit_) appsSplit_->SetSelectedIndex(NearestChoice(kAppsSplitChoices, settings.appsSplitAbove), false);
     if (recentShown_) recentShown_->SetSelectedIndex(NearestChoice(kRecentShownChoices, settings.recentAppsShown), false);
+    if (boardDisplay_) {
+        const std::string& display = settings.categoryBoard.display;
+        boardDisplay_->SetSelectedIndex(display == "text" ? 0 : display == "row" ? 2 : 1, false);
+    }
+    if (boardPreview_) {
+        const std::string& preview = settings.categoryBoard.hoverPreview;
+        boardPreview_->SetSelectedIndex(preview == "small" ? 0 : preview == "large" ? 2 : 1, false);
+    }
     for (auto& [program, box] : startup_) box->SetChecked(settings.StartsWithDesktop(program));
     if (systemDesktop_) {
         const DesktopReplacement mode = UltraCanvasDesktopShell::GetSystemDesktopReplacement();
@@ -687,6 +716,14 @@ void UOSSettingsWindow::SaveDesktopPage() {
     if (appsView_) settings.appsView = appsView_->GetSelectedIndex() == 1 ? "tree" : "tiles";
     if (appsSplit_) settings.appsSplitAbove = ChoiceAt(kAppsSplitChoices, appsSplit_->GetSelectedIndex(), 8);
     if (recentShown_) settings.recentAppsShown = ChoiceAt(kRecentShownChoices, recentShown_->GetSelectedIndex(), 8);
+    if (boardDisplay_) {
+        const int index = boardDisplay_->GetSelectedIndex();
+        settings.categoryBoard.display = index == 0 ? "text" : index == 2 ? "row" : "thumbnail";
+    }
+    if (boardPreview_) {
+        const int index = boardPreview_->GetSelectedIndex();
+        settings.categoryBoard.hoverPreview = index == 0 ? "small" : index == 2 ? "large" : "medium";
+    }
     for (const auto& [program, box] : startup_) settings.SetStartsWithDesktop(program, box->IsChecked());
     if (!settings.Save(path, &error)) {
         if (desktopStatus_) desktopStatus_->SetText("Not saved: " + error);

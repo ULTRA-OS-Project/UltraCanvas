@@ -323,7 +323,17 @@ the right-hand monitor the primary.
   scrolls to it when the board is too wide to show them all, and lets you
   type its name (double-click a category's title to rename it later). The
   picker in the bar switches the display style: *Sticky notes*, *Poster*,
-  *Schematic* or *Dark*. The board and its style are kept.
+  *Schematic* or *Dark*. A right click on a card offers *Open*, *Copy* (the
+  file onto the clipboard, as the file manager copies it), *Delete* (into the
+  trash, after a question), *Remove from the board* and *Move to* another
+  category; on a note, *Open*, *Copy* its text and *Delete* it. *Display*,
+  in the same menu (anywhere on the board), shows the cards as *Text only*,
+  *Thumbnail and text* (the picture with the name centred under it - the
+  default) or *Thumbnail and text in a row*, and sets the size of the *Mouse
+  hover preview* (*Small*, *Medium*, *Large*): resting the pointer on a
+  file's card for two seconds opens a larger picture of it beside the card.
+  The *Desktop* page of UOS-Settings has the same two choices. The board,
+  its style and its display are kept.
 - **Notes** (the note button below it): free sticky notes over the
   wallpaper. *+* in the corner adds one; each note is edited in place,
   dragged by its top bar, cycled through six paper colours and closed with
@@ -399,7 +409,8 @@ earlier versions kept under `~/.config` is moved on the first start):
   "virtualDesktops": 3,
   "stickerboardVisible": false,
   "stickers": [ { "id": "note1", "text": "…", "x": 60, "y": 60, "width": 220, "height": 160, "color": "#FFF59D" } ],
-  "categoryBoard": { "visible": false, "design": "stickynotes", "x": 320, "y": 60, "width": 780, "height": 460,
+  "categoryBoard": { "visible": false, "design": "stickynotes", "display": "thumbnail", "hoverPreview": "medium",
+                     "x": 320, "y": 60, "width": 780, "height": 460,
                      "board": { "type": "kanban-board", "version": 1, "columns": [ … ], "cards": [ … ] } },
   "pinnedApps": [ "/usr/bin/gimp", "/usr/bin/kate" ],
   "startWithDesktop": [ "ChatCube", "UltraMail" ]
@@ -414,7 +425,9 @@ RAM disc of its own, that is the default.
 `categoryBoard.board` is the Kanban element's own JSON document
 ([UltraCanvasKanbanBoard](../UltraCanvas/UltraCanvasKanbanBoard.md)); without
 it the Sticker board starts with Docs, Work and Home. `design` is one of
-`stickynotes`, `poster`, `schematic`, `dark`. `visible`, `x`, `y`, `width`
+`stickynotes`, `poster`, `schematic`, `dark`; `display` one of `text`,
+`thumbnail` (the default) and `row`; `hoverPreview` one of `small`, `medium`
+(the default) and `large`. `visible`, `x`, `y`, `width`
 and `height` are kept for older versions and no longer used: the board fills
 the work area and starts hidden. `pinnedApps` are the pinned
 applications' keys in the order they were pinned: the program's path, or on
