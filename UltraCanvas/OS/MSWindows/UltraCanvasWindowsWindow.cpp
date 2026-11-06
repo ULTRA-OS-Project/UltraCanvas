@@ -1,5 +1,6 @@
 // OS/MSWindows/UltraCanvasWindowsWindow.cpp
 // Complete Windows window implementation with Cairo rendering
+// Version: 1.7.0 - WindowType::SessionLock: a topmost borderless window (not enforced)
 // Version: 1.6.0 - WM_SETTINGCHANGE, WM_THEMECHANGED and the DWM colour change
 //                  schedule a read of the host appearance
 // Version: 1.5.0 - WindowType::Desktop on any monitor (config.desktopArea)
@@ -199,6 +200,12 @@ namespace UltraCanvas {
                 break;
             case WindowType::Fullscreen:
                 style = WS_POPUP;
+                break;
+            case WindowType::SessionLock:
+                // A lock screen this program draws: undecorated and above
+                // everything; Windows does not keep the rest unreachable.
+                style = WS_POPUP;
+                exStyle = WS_EX_TOPMOST;
                 break;
             case WindowType::Notification:
                 // A toast: above everything, out of the taskbar and Alt+Tab,

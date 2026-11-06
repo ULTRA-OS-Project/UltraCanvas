@@ -394,7 +394,9 @@ namespace UltraCanvas {
         // status dot in `color` (a red dot = the webcam is on, a yellow one =
         // traffic). Each call replaces what the item showed before; the
         // returned badge can be styled further. Without `color` the badge
-        // keeps UltraCanvasBadge's default variant.
+        // keeps UltraCanvasBadge's default variant. The badge is not
+        // interactive: a click or a hover on it reaches the item below
+        // (SetInteractive(true) on it, with an onClick, to make it a target).
         std::shared_ptr<UltraCanvasBadge> SetItemBadge(const std::string& id, const std::string& text,
                                                       std::optional<Color> color = std::nullopt);
         std::shared_ptr<UltraCanvasBadge> SetItemBadgeCount(const std::string& id, int count,

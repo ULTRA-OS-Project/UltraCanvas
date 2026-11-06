@@ -183,8 +183,9 @@ The following features are planned for future releases:
 -   **Wayland desktop shell** - the windowing backend and the desktop shell's
     protocols are in (`-DULTRACANVAS_WAYLAND=ON`): the layer shell, foreign
     toplevels, ext-workspace, the portals for screenshots and shortcuts,
-    xdg-activation; popups with a positioner, drags, the session lock and GL
-    surfaces come next (see `Docs/UltraCanvas/WaylandDesktopShellProposal.md`)
+    xdg-activation, panels and popups placed by their parent, drag and drop,
+    the session lock, GL surfaces, a CI row under sway; an icon for a drag and
+    a menu grab remain (see `Docs/UltraCanvas/WaylandDesktopShellProposal.md`)
 
 ----------
 
@@ -785,7 +786,7 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   (`cmake/UltraCanvasSingleInstance.cmake`) compiles
   `core/AppEntry/UltraCanvasSingleInstance.cpp` into the application and links
   UltraMessage where present. Used by the single-window applications (UltraMail,
-  UltraClipboard, UltraSnip, DeviceExplorer, UOS-Settings, UltraNetMonitor, UltraDBAdmin, UltraPassword,
+  UltraClipboard, UltraNotifications, UltraSnip, DeviceExplorer, UOS-Settings, UltraNetMonitor, UltraDBAdmin, UltraPassword,
   UltraAuthenticator, UltraCleaner, EmailCleaner, UltraClaude, UltraAI,
   UltraSocial, UltraFIBU, UltraWin Manager) and, with their files handed over,
   the document applications (Texter, UltraFiler, UltraViewer, UltraPaint,
@@ -6556,6 +6557,23 @@ pin anything you copied.
 
 **Built on:** ClipboardHistory.
 **Version:** 0.1.5 (2026-10-14).
+
+### UltraNotifications
+
+**Purpose:** the notifications after their pop-up has gone: every
+notification, chat message and mail on the UltraMessage feed, to read again,
+search, open and dismiss.
+
+**Capabilities:**
+- All / Chats / Mail / System, the sources with their unread counts, search
+  and filters; the selected one in full with its own buttons.
+- *Open* takes a mail to UltraMail, a ChatCube chat to ChatCube, and does a
+  notification's first action; *Dismiss* also closes its pop-up.
+- Runs without a window (`--background`, UltraDesktop's *Start with the
+  desktop*) and counts the unread for the desktop's bell.
+
+**Built on:** UltraMessage, UltraCanvasMessageCenter.
+**Version:** 0.1.0 (2026-11-06).
 
 ### UltraCleaner
 
@@ -51816,7 +51834,8 @@ FILE: Docs/UltraCanvas/UltraCanvasMessageCenter.md
 `UltraCanvasMessageCenter` is the desktop message centre as one composite
 element: every chat message, mail and system notification on the UltraMessage
 feed (`Masterfile_modules.md` §13, `Docs/Modules/UltraMessage/README.md`) in
-one structured view, for any application to embed — the ULTRA OS desktop,
+one structured view, for any application to embed — UltraNotifications
+(which is this element in a window of its own), the ULTRA OS desktop,
 UltraMail's toolbox, the DemoApp page. It is built from catalogue elements
 only and it is a client of the bus and nothing else: it never talks to a
 messenger or a mail server.
@@ -79987,7 +80006,7 @@ FILE: Docs/UltraCanvas/UltraCanvasToolbarExamples.md
 - **Overflow Handling**: Wrap, overflow menu, scroll, or hide
 - **Builder API**: Fluent `UltraCanvasToolbarBuilder`
 - **Preset Factories**: One-call construction of common toolbar shapes
-- **Item Badges and Tooltips**: a count, a short text or a status dot in the corner of any item (`SetItemBadge` / `SetItemBadgeCount` / `SetItemBadgeDot`), hover tooltips on the items themselves
+- **Item Badges and Tooltips**: a count, a short text or a status dot in the corner of any item (`SetItemBadge` / `SetItemBadgeCount` / `SetItemBadgeDot`), hover tooltips on the items themselves; the badge lets the pointer through, so a click on an item's count is a click on the item
 - **Auto-Hide and Drag Modes**: optional auto-hide, drag-to-move the toolbar (`ToolbarDragMode::Movable`) and drag-to-reorder its items (`EnableItemReordering`)
 - **Scrolling**: `ToolbarOverflowMode::Scroll` keeps the items at their size and scrolls a full toolbar with the mouse wheel; a chevron over the edge the items continue past says so, and a click on it scrolls a page (`SetScrollHints`)
 
@@ -95567,6 +95586,17 @@ UltraCloud::ShowCloudLinkPicker(window, cloud, [](const CloudLinkPick& pick) {
 });
 ```
 
+For the FTP provider the dialog asks for the protocol (SFTP, FTP with TLS,
+FTP over TLS, plain FTP), the server's name or address and the port - empty
+for the protocol's own - each on its own rather than as one URL, and stores
+them as the one URL the command line takes (`FtpServerUrl`:
+`sftp://files.example.org:2222`, the protocol's own port left out so the
+account keeps its id); a URL typed into the server field is refused with the
+reason. The private key row, shown for SFTP, has a *Choose* button that opens
+the file dialog in `~/.ssh`. A server URL whose scheme the provider does not
+speak - `https://`, pasted from the browser - is refused by `Verify` before
+anything is sent, so the command line and UltraFiler's "+ Drive" say so too.
+
 The picker lists the accounts (default preselected), browses the chosen one,
 uploads a local file into the current folder, and returns a share link for the
 selected file. When no account exists yet it offers the add-account dialog,
@@ -95589,7 +95619,7 @@ the `CloudService&` forms leave keeping the service alive to the caller.
 | `UltraCloudHttp.h` | `HttpFn`, `HttpProviderBase` (auth from credentials, every request logged, a throttled request sent again, HTTP → Result with the service's reason; `DownloadToFile` writes a download to disk as it arrives, never holding the file in memory, with no whole-transfer time limit and a half-written file removed; uploads send their bytes from the file as they go - `UltraNetHttpRequest::bodyFilePath`, a range of it per upload-session chunk - except Google Drive's multipart body, at most 5 MB), `RateLimitPolicy`, `SetThreadRateLimitPolicy` |
 | `UltraCloudLog.h` | The session log: `LogKind`, `LogLine`, `LogCallback`, `SetThreadLog`, `ThreadLogActive`, `LogToThread`; `LoggableUrl`, `ServerErrorReason`, `RetryAfterSeconds` |
 | `UltraCloudOAuth.h` | `OAuthApp` (= `UltraNetOAuth2App`), `SetOAuthApp` / `GetOAuthApp` / `HasOAuthApp` / `UsesSignInService` / `CanSignIn` / `DefaultRedirectUri` / `EnsureOAuthAppsRegistered` (the profile of UltraNet's shared app registry and its sign-in service), `OAuthHooks`, `OAuthProviderBase` (`OAuthConfig`, `SignInServiceProviderId`, `OAuthServiceConfig`) |
-| `UltraCloudFtp.h` | `FtpProvider`, `FtpOps` (the injectable FTP seam), `FtpTransportFor`, `FtpHostAndBase`, `FtpUrl`, `FtpEntryToEntry`, `FromFtp` |
+| `UltraCloudFtp.h` | `FtpProvider`, `FtpOps` (the injectable FTP seam), `FtpTransportFor`, `FtpHostAndBase`, `FtpUrl`, `FtpEntryToEntry`, `FromFtp`; the server as a form asks for it: `FtpServer`, `FtpServerOf`, `FtpServerUrl`, `FtpDefaultPort`, `FtpSchemeKnown` |
 | `UltraCloudDropbox.h` | `DropboxProvider`, `DropboxPath` |
 | `UltraCloudOneDrive.h` | `OneDriveProvider`, `OneDriveItemUrl` |
 | `UltraCloudGoogleDrive.h` | `GoogleDriveProvider` (+ `ResolveId`), `GoogleDriveChildQuery` |
@@ -104466,8 +104496,15 @@ UltraClipboard is already running instead of opening a window of its own.
 
 ```
 UltraClipboard [--search TEXT] [--edit ID]
+UltraClipboard --background
 UltraClipboard --version
 ```
+
+`--background` starts it with the history open and no window - UltraDesktop
+does so when *Start with the desktop* names it - and the next start shows the
+window at once. While it runs this way, closing the window only hides it;
+*Quit* in the More menu (Ctrl+Q) ends the program. A background start while
+it runs changes nothing.
 
 ## Privacy
 
@@ -104481,6 +104518,80 @@ without the key. Image thumbnails are not
 encrypted. A program running as you can read the clipboard itself, so the
 encryption does not protect against that; leaving such programs' copies out,
 or pausing the recording, does.
+
+==============================================================================
+FILE: Docs/UltraNotifications/README.md
+==============================================================================
+
+# UltraNotifications
+
+The notifications of ULTRA OS after their pop-up has gone. UltraDesktop
+draws each notification as it arrives - a toast in the top-right corner -
+and the toast goes after a few seconds; UltraNotifications is where it stays:
+every notification, chat message and mail that reached the UltraMessage
+feed, to read again, search, open and dismiss.
+
+The window is the framework's
+[UltraCanvasMessageCenter](../UltraCanvas/UltraCanvasMessageCenter.md)
+filling it: the program adds the window, the background start, the unread
+count for the desktop and what *Open* does.
+
+## Contents
+
+- [Using it](#using-it)
+- [In the background](#in-the-background)
+- [The bell on the desktop](#the-bell-on-the-desktop)
+- [Command line](#command-line)
+- [Building](#building)
+
+## Using it
+
+| Part | What it does |
+|---|---|
+| *All / Chats / Mail / System* | the feed's three kinds, or all of them |
+| Sources (left) | each chat, mail account and application, with its unread count |
+| Search, *Unread*, the service chips | narrow the list |
+| The list | newest first; unread ones marked, urgent ones in red |
+| The detail (right) | the whole text; *Open*, *Mark read / unread*, *Dismiss*, and the notification's own buttons |
+
+Selecting a row marks it read. *Open* (or a double-click) opens a mail in
+UltraMail, a ChatCube chat in ChatCube, and does a notification's first
+action. *Dismiss* removes the row and, for a notification, closes its
+pop-up too.
+
+## In the background
+
+`UltraNotifications --background` starts it with no window: it connects to
+the UltraMessage bus, keeps the list and counts the unread. The next start -
+the bell, the Applications window, `UltraNotifications` - shows the window at
+once. While it runs this way, closing the window only hides it; *Quit* at the
+foot of the window, or Ctrl+Q, ends the program.
+
+UltraDesktop starts it so when *Start with the desktop* names it - the
+settings button's right-click menu, or UOS-Settings > Desktop. One copy runs
+per user (UltraCanvasSingleInstance): a second start brings the running one
+forward, and a second background start changes nothing.
+
+## The bell on the desktop
+
+While it runs, UltraNotifications publishes its unread count as a desktop
+notice (`UltraCanvasDesktopShell::PublishNotice("UltraNotifications", …)`);
+UltraDesktop shows it on the bell on its right bar and opens
+UltraNotifications from there. When the program ends the notice goes, and
+the bell shows no count.
+
+## Command line
+
+```
+UltraNotifications [--background]
+UltraNotifications --version | --help
+```
+
+## Building
+
+`BUILD_ULTRANOTIFICATIONS` (on by default) builds it wherever the
+`UltraMessageCenter` library is built. It is packaged with the other
+applications on Linux, Windows and macOS.
 
 ==============================================================================
 FILE: Docs/UltraSnip/README.md
@@ -105710,12 +105821,12 @@ the right-hand monitor the primary.
   the clipboard, so it can still be pasted. Without a history (a build
   without SQLite) the button shows a menu of this session's last fifteen
   copies, as before.
-- **Info panel**, anchored to the bottom: Email, Upload, Download,
+- **Info panel**, anchored to the bottom: Email, Notifications, Upload, Download,
   Internet/LAN, VPN, Bluetooth, Wi-Fi, USB, Keyboard, Webcam, Microphone,
   Loudspeaker, Battery and Task Manager. On a screen less than 960 pixels
   high the icons are smaller, and those that still do not fit fold into a
   chevron menu at the bar's foot, least used first - keyboard, VPN, USB,
-  upload, Task Manager, download, LAN, email - so the webcam's and
+  upload, Task Manager, download, LAN, email, notifications - so the webcam's and
   microphone's in-use dots stay in sight. The markers:
 
   | Marker | Meaning | On |
@@ -105723,11 +105834,12 @@ the right-hand monitor the primary.
   | red dot | a device is on, or a link is down | webcam in use, microphone recording, Bluetooth powered; Internet/LAN with no link, Wi-Fi present but not joined |
   | green dot | a link is up | Wi-Fi joined |
   | yellow dot | activity | download or upload traffic (more than 4 KB in two seconds), loudspeaker playing, VPN up |
-  | grey pill | a count or a value | Email unread (from UltraMail), USB devices attached, battery percentage (green while charging, red at 15 % and below), keyboard layout |
+  | grey pill | a count or a value | Email unread (from UltraMail), notifications unread (from UltraNotifications, while it runs), USB devices attached, battery percentage (green while charging, red at 15 % and below), keyboard layout |
 
   The tooltip of every icon says it in words ("Wi-Fi: HomeNet", "Download:
   1.2 MB/s", "Battery: 84%, charging", "Loudspeaker: 63%, playing"). Clicking
-  opens what the icon is about: Email starts UltraMail, the traffic, LAN and
+  opens what the icon is about: Email starts UltraMail, the bell
+  UltraNotifications (every notification after its pop-up has gone), the traffic, LAN and
   VPN icons UltraNetMonitor, Wi-Fi and Bluetooth their panels (below), USB,
   keyboard, webcam, microphone and battery a panel saying what is attached
   or in use with a button on to Device Explorer or the Task Manager, the
@@ -105965,15 +106077,24 @@ and `UltraMail` are the ones it offers; empty (the default), none.
 
 ## Programs that start with the desktop
 
-ChatCube and UltraMail can start with the desktop, so messages arrive and
-mail is counted on the mail icon without opening them first. Tick them in
-UOS-Settings > Desktop > *Start with the desktop*, or on the settings
-button's right-click menu (*Start with the desktop*). Three seconds after the
-desktop starts - so it shows first - each ticked program that is not
-running yet is started with `--minimized`: its window goes to the taskbar
-and it works in the background. One that is running already is left alone,
-since a second start of these single-copy programs would only bring their
-window forward. Ticking one in the menu starts it at once as well.
+Some programs can start with the desktop, unseen, so they are at work or
+ready before they are asked for. Tick them in UOS-Settings > Desktop >
+*Start with the desktop*, or on the settings button's right-click menu
+(*Start with the desktop*). Three seconds after the desktop starts - so it
+shows first - each ticked one that is not running yet is started:
+
+| Program | Started with | What it does in the background |
+|---|---|---|
+| ChatCube | `--minimized` | messages arrive; its window is on the taskbar |
+| UltraMail | `--minimized` | new mail is fetched and counted on the mail icon |
+| UltraClipboard | `--background` | no window; opens at once from the clipboard panel |
+| UltraNotifications | `--background` | no window; counts the unread on the bell, opens at once |
+| Sticker board | - | the desktop's own board: its window and file thumbnails are made, not shown, so the first click shows it at once |
+
+A minimized program that is running already is left alone, since a second
+start of these single-copy programs would only bring their window forward; a
+second `--background` start reaches the running copy, which takes it as
+nothing to do. Ticking one in the menu starts it at once as well.
 
 ## How the mail count gets there
 
@@ -108416,8 +108537,13 @@ the site's name follows file by file. **Host…** opens UltraCloud's
 add-account dialog, limited to the web hosts - FTP / FTPS / SFTP, WebDAV,
 Nextcloud - and the host added becomes the site's (`hosting` in
 `site.json`, with the dialog's upload folder as the site's root on the
-host). Without a host of its own the site publishes to the default host;
-without any, Publish opens the dialog.
+host). An FTP / SFTP host is asked for its protocol, its name or address
+and its port (empty: the protocol's own), and its private key is chosen
+with a file dialog. The sign-in is reported on the console as it happens -
+where, as whom, the session's steps, how it ended and the transport's
+diagnostics - the way `ultrapress hosts add` reports one, so a host that
+refused can be read step by step. Without a host of its own the site
+publishes to the default host; without any, Publish opens the dialog.
 
 The left column lists the pages and the current page's blocks: select one,
 move it with the arrows, remove it, or add one after the selection from
@@ -108471,6 +108597,7 @@ ultrapress publish mysite out --renderer ultrapress-0.1.0.js      # with the ren
 ultrapress import export.xml mysite --media                       # a WordPress export as a site, attachments fetched
 ultrapress hosts                                                  # the hosts a site can be published to
 ultrapress hosts add ftp --server sftp://my.example --user me --folder /public_html   # a host; the password from --password or ULTRAPRESS_HOST_PASSWORD
+ultrapress hosts add ftp --server sftp://my.example --port 2222 --user me       # on a port that is not the protocol's own
 ultrapress hosts use mysite me-at-my.example --path /public_html  # remember it in site.json
 ultrapress publish mysite out --to site                           # write, then upload what changed onto the site's host
 ultrapress publish mysite out --to "me at sftp://my.example" --path /www --force   # onto a named host, everything
@@ -108625,9 +108752,14 @@ MKCOL, outermost first). A site names its host and the folder on it in
 "hosting": { "account": "ftp-me-my-example", "path": "/public_html" }
 ```
 
-`ultrapress hosts use` writes it; the window's Host… button does the same.
-An `sftp://` host signs in with a password or a private key (`--key`, or
-the dialog's *Private key* row; the password is then the key's passphrase).
+`ultrapress hosts use` writes it; the window's Host… button does the same,
+from the protocol, server and port it asks for (`FtpServerUrl`); on the
+command line the port is `--port`, or part of the URL (`sftp://my.example:2222`),
+the two storing the same host. A server URL that is not FTP - `https://`,
+from the browser's bar - is refused before anything is sent, by `hosts add`
+and by the provider. An `sftp://` host signs in with a
+password or a private key (`--key`, or the dialog's *Private key* row and
+its *Choose* button; the password is then the key's passphrase).
 The window's Publish prunes; the command line prunes with `--prune`.
 
 **Text in place.** Click a piece of text on the page - a title, a

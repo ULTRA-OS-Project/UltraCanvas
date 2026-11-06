@@ -1,3 +1,83 @@
+#### 2026-11-06 *0.9.501*
+- **UltraCloud's add-account dialog asks an FTP / SFTP server for its
+  protocol, its name and its port, each on its own.** The one *Server URL*
+  field took whatever was pasted into it - an `https://` address from the
+  browser's bar, which is no FTP at all - and tried it as plain FTP on port
+  21 without a word; the port had no place but a `host:port` nobody was
+  told about. The FTP provider now shows a *Protocol* menu (SFTP, FTP with
+  TLS, FTP over TLS, plain FTP, each with its port named), a *Server* field
+  for the name or address and a *Port* field beside it, empty for the
+  protocol's own; a URL typed into the server field is refused with the
+  reason. The three are stored as the one URL the command line takes
+  (`FtpServerUrl`: `sftp://files.example.org:2222`, the protocol's own port
+  left out, so an account keeps its id). The *Private key* row, shown for
+  SFTP only, has a *Choose* button that opens the file dialog in `~/.ssh`
+  with hidden files shown; a `~/` typed into it is expanded. The status
+  line wraps onto two lines, so a server's refusal is read whole, and a
+  refusal is said by its result code (`DescribeResult`). The callbacks the
+  widgets hold reach the other widgets through plain pointers - the dialog
+  owns them all and outlives every callback - where the provider menu's own
+  callback used to hold a `shared_ptr` to the menu, a cycle that kept the
+  menu alive. The new texts (the protocol menu, the server and port rows, their
+  messages) go through `Tr` into the standard set, drafted in all thirty
+  languages; the rest keep the wording and translations of the dialog's
+  earlier `Tr` conversion (`UltraCloudAccountDialog.cpp` 0.8.2).
+- **The FTP provider refuses a scheme it does not speak.** `Verify` answers
+  `InvalidArgument` - "the server URL starts with https://, which is not
+  FTP: it has to start with ftp://, ftps://, ftpes:// or sftp://" - before
+  anything is sent, so `ultrapress hosts add` and UltraFiler's "+ Drive" say
+  so too. `FtpServer`, `FtpServerOf`, `FtpServerUrl`, `FtpDefaultPort` and
+  `FtpSchemeKnown` in `UltraCloudFtp.h` (0.2.0) are the pure helpers behind
+  the form, tested in `Tests/UltraCloud/test_ftp.cpp`.
+
+#### 2026-11-06 *0.9.500*
+- **The Wayland desktop shell's remaining pieces: panels and popups placed
+  by their parent, drag and drop, the session lock, GL surfaces, and the
+  Wayland build in CI** (`Docs/UltraCanvas/WaylandDesktopShellProposal.md`,
+  sections 4.6 to 4.10). In a build with `ULTRACANVAS_WAYLAND=ON`:
+  - A window with `parentWindow` of type Popup, Borderless, Tool or
+    Notification is placed where `config.x` / `config.y` say, relative to
+    its parent: a child of a layer-shell desktop as a layer surface of its
+    own on the top layer (keyboard focus on demand, so a panel takes the
+    keys when clicked and loses them - a blur - when the desktop is), a
+    child of a toplevel as an `xdg_popup` with a positioner, made on Show
+    and repositioned through xdg_wm_base 3. UltraDesktop's popup panels and
+    clipboard panel get the desktop window as their parent in a Wayland
+    build (`SetParentWindow`), so they open beside their bars instead of
+    being tiled as toplevels.
+  - File drags out of a window (`StartNativeFileDrag`: a `wl_data_source`
+    with `text/uri-list`, copy and move, the target's answer to the
+    callback) and drops in (`DragEnter` / `DragOver` / `DragLeave` / `Drop`
+    with the paths, as XDnD on X11); a save drag has no Wayland form and
+    answers false.
+  - `WindowType::SessionLock`, the lock screen a program draws: an
+    `ext-session-lock-v1` lock surface on Wayland (the application holds
+    the one lock, taken with the first such window and released with the
+    last; a compositor that refuses closes them), a fullscreen window kept
+    above elsewhere.
+  - GL surfaces on Wayland: the EGL context manager opens its display on
+    the Wayland connection, else Mesa's surfaceless platform; GLX is left
+    out of a Wayland build and `ULTRACANVAS_ENABLE_GL` is no longer forced
+    off.
+  - `.github/workflows/wayland-build.yml`: the framework, DesktopShellTest
+    and UltraDesktop built with `ULTRACANVAS_WAYLAND=ON` on ubuntu-24.04,
+    DesktopShellPortalTest under a session bus, DesktopShellTest under sway
+    headless with a virtual keyboard, and a screenshot of UltraDesktop under
+    sway as an artifact.
+  - DesktopShellTest's Wayland section checks each: the lock granted and
+    released, a popup placed at 40,30 as asked, a panel at its size, a drag
+    started or refused with the compositor's reason, a GL surface drawn
+    with the renderer EGL gave it.
+
+#### 2026-11-06 *0.9.499*
+- **UltraCanvasToolbar: a click on an item's badge reaches the item.** The
+  badge `SetItemBadge` / `SetItemBadgeCount` / `SetItemBadgeDot` puts in an
+  item's corner took the click and the hover itself and did nothing with
+  them, so on a small bar button - UltraDesktop's mail icon with its unread
+  count - a good part of the button did not respond. The badge is no
+  longer interactive; a host that gives it an `onClick` of its own sets it
+  interactive again.
+
 #### 2026-11-06 *0.9.498*
 - **The UltraDBAdmin end-to-end job keeps its packages between runs.** On
   2026-11-04 the Azure Ubuntu mirror served the job's package install at a

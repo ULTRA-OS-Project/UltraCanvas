@@ -1,11 +1,12 @@
 // OS/Linux/UltraCanvasLinuxWindow.cpp
 // Complete Linux window implementation with all methods
+// Version: 1.6.0 - WindowType::SessionLock: fullscreen, above, undecorated (not enforced)
 // Version: 1.5.0 - WindowConfig::alwaysOnTop: _NET_WM_STATE_ABOVE on any window type
 // Version: 1.4.0 - WindowType::Desktop covers config.desktopArea when given
 // Version: 1.3.0 - WindowType::Notification: EWMH notification type, above,
 //                  sticky, out of taskbars, input hint off
 // Version: 1.2.0 - per-monitor HiDPI: physical surface/window, hybrid DPI detect
-// Last Modified: 2026-10-15
+// Last Modified: 2026-11-04
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasApplication.h"
@@ -290,7 +291,8 @@ namespace UltraCanvas {
         // map so the manager applies it as the window appears): a recording
         // bar, a floating palette. A notification has it already, with its
         // other states; a desktop window is kept below by its type.
-        if (config_.alwaysOnTop && config_.type != WindowType::Notification && config_.type != WindowType::Desktop) {
+        if ((config_.alwaysOnTop || config_.type == WindowType::SessionLock) &&
+            config_.type != WindowType::Notification && config_.type != WindowType::Desktop) {
             Atom stateAtom = XInternAtom(display, "_NET_WM_STATE", False);
             Atom above = XInternAtom(display, "_NET_WM_STATE_ABOVE", False);
             XChangeProperty(display, xWindow, stateAtom, XA_ATOM, 32, PropModeAppend,
@@ -299,7 +301,7 @@ namespace UltraCanvas {
 
         // Apply borderless style if requested (remove window decorations)
         if (config_.type == WindowType::Borderless || config_.type == WindowType::Desktop ||
-            config_.type == WindowType::Notification) {
+            config_.type == WindowType::Notification || config_.type == WindowType::SessionLock) {
             struct {
                 unsigned long flags;
                 unsigned long functions;
@@ -945,7 +947,7 @@ namespace UltraCanvas {
         XMapWindow(application->GetDisplay(), xWindow);
         XFlush(application->GetDisplay());
 
-        if (config_.type == WindowType::Fullscreen) {
+        if (config_.type == WindowType::Fullscreen || config_.type == WindowType::SessionLock) {
             SetFullscreen(true);
         }
 

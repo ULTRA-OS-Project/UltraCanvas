@@ -111,8 +111,15 @@ UltraClipboard is already running instead of opening a window of its own.
 
 ```
 UltraClipboard [--search TEXT] [--edit ID]
+UltraClipboard --background
 UltraClipboard --version
 ```
+
+`--background` starts it with the history open and no window - UltraDesktop
+does so when *Start with the desktop* names it - and the next start shows the
+window at once. While it runs this way, closing the window only hides it;
+*Quit* in the More menu (Ctrl+Q) ends the program. A background start while
+it runs changes nothing.
 
 ## Privacy
 
