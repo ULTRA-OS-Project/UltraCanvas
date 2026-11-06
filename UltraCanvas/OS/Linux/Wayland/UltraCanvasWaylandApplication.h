@@ -11,6 +11,7 @@
 // shell is bound here, because a Desktop window of this backend is a layer
 // surface (UltraCanvasWaylandWindow); the window list's foreign-toplevel
 // manager lives on the shell backend's own connection.
+// Version: 0.4.0 - DetectHostAppearanceNative and the config folders' watch
 // Version: 0.3.0 - xdg-activation (RaiseAndFocus); the keyboard window
 // Version: 0.2.0 - the layer shell global; FindOutputAt
 // Version: 0.1.0
@@ -25,6 +26,7 @@
 // either header be included first.
 namespace UltraCanvas { class UltraCanvasWaylandApplication; }
 #include "../../../include/UltraCanvasApplication.h"
+#include "../UltraCanvasLinuxHostAppearanceWatch.h"
 #include "../../../include/UltraCanvasWindow.h"
 #include "../../../include/UltraCanvasEvent.h"
 #include "../../../include/UltraCanvasCommonTypes.h"
@@ -145,6 +147,11 @@ namespace UltraCanvas {
         void ShutdownWakeUp() override;
         FontStyle DetectSystemFontStyleNative() override;
         FontStyle DetectMonospacedFontStyleNative() override;
+        // The desktop's look (UltraCanvasLinuxHostAppearance.h): the portal,
+        // GSettings and the files - no XSETTINGS under Wayland; the config
+        // folders watched for the change.
+        HostAppearance DetectHostAppearanceNative() override;
+        LinuxHostAppearanceWatch hostAppearanceWatch;
         void LoadBundledFontsNative() override;
         bool RegisterFontFileNative(const std::string& fontFilePath) override;
 

@@ -1,5 +1,6 @@
 // OS/Linux/Wayland/UltraCanvasWaylandApplication.cpp
 // The Wayland windowing backend's application. See the header.
+// Version: 0.4.0 - DetectHostAppearanceNative (LinuxHostAppearance) and the config folders' watch
 // Version: 0.3.0 - xdg-activation (RaiseAndFocus); the keyboard window
 // Version: 0.2.0 - the layer shell global; FindOutputAt
 // Version: 0.1.0
@@ -10,6 +11,7 @@
 #include "UltraCanvasWaylandWindow.h"
 #include "../UltraCanvasLinuxAccessibility.h"
 #include "../UltraCanvasLinuxFonts.h"
+#include "../UltraCanvasLinuxHostAppearance.h"
 #include "../UltraCanvasLinuxKeys.h"
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasDebug.h"
@@ -387,6 +389,8 @@ namespace UltraCanvas {
         }
         InitializeWakeUp();
         LinuxAccessibility::Start();
+        // The desktop's look changes through the files the desktops write.
+        hostAppearanceWatch.Start([this]() { ScheduleHostAppearanceRefresh(); });
 
         initialized = true;
         running = false;
@@ -496,6 +500,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasWaylandApplication::ShutdownNative() {
+        hostAppearanceWatch.Stop();
         LinuxAccessibility::Stop();
         StopKeyRepeat();
         ShutdownWakeUp();
@@ -820,6 +825,10 @@ namespace UltraCanvas {
 
     FontStyle UltraCanvasWaylandApplication::DetectMonospacedFontStyleNative() {
         return LinuxFonts::DetectMonospacedFontStyle();
+    }
+
+    HostAppearance UltraCanvasWaylandApplication::DetectHostAppearanceNative() {
+        return LinuxHostAppearance::Detect(nullptr);
     }
 
     void UltraCanvasWaylandApplication::LoadBundledFontsNative() {
