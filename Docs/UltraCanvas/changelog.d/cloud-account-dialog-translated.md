@@ -1,4 +1,8 @@
-- **UltraCloud's "Add cloud account" dialog is translated.** Every text a
+- **UltraCloud's dialogs are translated.** The "Attach cloud link" picker
+  (`UltraCloudPickerDialog.cpp` 0.4.0) - its title, account and folder
+  rows, buttons, column headers and the status lines (now whole sentences
+  with the name as `{0}`) - adds 10 standard-set texts.
+- **The "Add cloud account" dialog is translated.** Every text a
   person reads in it - the title, the row captions, the placeholders, the
   default-account checkbox, the buttons, the per-provider hint and the
   status messages - goes through `Tr` / `TrF`
