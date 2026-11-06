@@ -1,3 +1,94 @@
+#### 2026-11-06 *0.9.497*
+- **UltraCloud's dialogs are translated.** The "Attach cloud link" picker
+  (`UltraCloudPickerDialog.cpp` 0.4.0) - its title, account and folder
+  rows, buttons, column headers and the status lines (now whole sentences
+  with the name as `{0}`) - adds 10 standard-set texts.
+- **The "Add cloud account" dialog is translated.** Every text a
+  person reads in it - the title, the row captions, the placeholders, the
+  default-account checkbox, the buttons, the per-provider hint and the
+  status messages - goes through `Tr` / `TrF`
+  (`UltraCloudAccountDialog.cpp` 0.8.0), and the OAuth hint is one sentence
+  with the provider's name as `{0}` instead of an English possessive. The
+  dialog is shown by UltraFiler and UltraPress, so its 25 texts are in the
+  standard set, drafted in all thirty languages: `extract_ui_strings.py`
+  now scans `UltraCloud/ui` with the framework. The default upload folder
+  (`/Shared from ULTRA OS`) stays the same in every language - it is a
+  folder name on the server.
+- **A failed cloud call says why in the reader's language.** The service's
+  own error text is technical English built in about ninety places (often
+  the network library's message passed on), so it cannot be a translation
+  key; the new `UltraCloud/ui/UltraCloudResultText.h` gives
+  `DescribeResult` - one translated sentence per result code (not found,
+  sign-in refused, server unreachable, HTTP error with its status, rate
+  limit, ...) - and `ResultDetail`, the technical message. Both dialogs show
+  the sentence and keep the detail as the status line's tooltip; the
+  applications that show cloud results can call the same pair.
+- **Control charts on the engine line chart.** `ComputeControlChart`
+  (`UltraCanvasControlLimits.h`, UI-free) computes the centre line, control
+  limits and Western Electric run-rule signals of an X-bar-R or I-MR chart,
+  with sigma estimated within subgroups; `ShowControlChart` draws a result on
+  an `UltraCanvasEngineLineChart`: the statistic over its range, limits with
+  their values in a column past the plot ("UCL = ..."), flagged points as red diamonds with the rule in their
+  tooltip, optional A / B / C zones and sigma lines. `FindRuleViolations` runs
+  the rules against limits from elsewhere. The demo's Charts > Line Chart page
+  ends with a control chart card. Guide: `UltraCanvasControlLimits.md`.
+- **The engine line chart gained general options.** Per series: a line shape
+  (`shape`), markers (`showMarkers`), a legend entry (`inLegend`) and
+  interactivity (`interactive`); per point: a look (`pointStyles`: colour,
+  marker, hollow, size, always shown) and a tooltip note (`pointNotes`).
+  `SetPanes` stacks panes, each with its own value axis, grid and title, the
+  series naming their pane; `ValueAxisOfPane` gives the axis index limiters
+  and highlights take, and `EngineLinePane::rangeIncludes` keeps limits in
+  view. A chart that uses none of them draws as before.
+- **Chart engine:** `SetExtraGridAxes` rules further axes (a grid in every
+  pane); a limiter outside its axis's band is no longer drawn across a
+  neighbouring pane; a limiter's caption is anchored half its width in from
+  the line's end, so it sits beside the line instead of across it, and
+  `ChartLimiter::captionPlacement` can pin it above the line's end
+  (`AboveEnd`) or put it past the plot's edge in reserved room (`BeyondEnd`);
+  new read accessors `GetLimiters`, `GetHighlights` and `HitRegionAt`.
+- **Tests:** `ControlLimitsTest` (the constants against the published tables,
+  hand-checked limits, within-subgroup sigma on a shifted process, every rule
+  on its minimal pattern and a near miss) and `EngineLineChartTest` (the first
+  test of the engine line chart: each new option, panes, and both control
+  chart kinds drawn).
+- **Control charts, Phase 2: X-bar-S, the attribute charts, Nelson rules,
+  stages and capability.** `ComputeControlChart` adds X-bar-S (unequal
+  subgroups too: the pooled standard deviation, limits for each subgroup's
+  own size), the p, np, c and u charts (limits per lot where the sizes vary),
+  the Nelson rules (`ControlRuleSet::Nelson`; the run length a setting; the
+  whole set on the dispersion pane with `rulesOnDispersion`), stages (each
+  with its own limits, no rule or moving range across a boundary), excluded
+  points (plotted and checked, left out of the limits), `baselineCount`
+  (limits from a stage's first points), notes, and specification limits with
+  Cp, Cpk, Pp and Ppk. New factors `ControlA3`, `ControlSigmaLowerFactor`
+  and `ControlSigmaUpperFactor`; `ControlC4` for any n >= 2.
+- **`ShowControlChart` draws limits that change** as stepped lines with the
+  last point's values in the caption column, zones under them as bands, a
+  named divider at each stage, excluded points hollow, notes in the tooltips
+  and specification limits in their own colour.
+- **The engine line chart** fills between two series (`AddSeriesBand`),
+  reports clicks on points (`onPointClick`) and can leave a series' line out
+  (`drawLine = false`).
+- **Chart engine:** the captions past the plot's edge are spread apart where
+  they would overprint, and an `AboveEnd` caption on a vertical line sits
+  beside it, inside the plot.
+- **Demo:** the Line Chart page's control chart card adds a p chart of failed
+  inspections and a c chart of paint defects, the Nelson rules, the late
+  change as a new stage, specification limits with the capability in the
+  summary, and a click that excludes a point from the limits.
+- **The ternary chart's USDA soil classes now match the Soil Survey Manual on
+  the class boundaries.** A composition exactly on a boundary went to the
+  class listed first, so 258 of the 5,151 whole-percent compositions - where
+  lab results land - got another class than the manual gives: 7 % clay with
+  48 % sand was sandy loam instead of loam, 50 % sand and 50 % silt sandy loam
+  instead of silt loam. The manual (USDA Handbook 18, 2017, chapter 3) gives
+  every boundary to the finer side, and the new `TernaryModel::edgeLean` says
+  which side of a shared edge a point on it belongs to; the USDA preset leans
+  that way and lists its silty classes so the rim matches too. The lean is
+  saved in the JSON. `TernaryModelTest` now checks the classes against the
+  manual's wording, transcribed word for word, at every whole percent.
+
 #### 2026-11-06 *0.9.496*
 - **UltraCanvasDesktopShell: `CaptureWindowImage` and
   `DesktopWindowInfo::appUserModelId`.** `CaptureWindowImage(id, maxWidth,
