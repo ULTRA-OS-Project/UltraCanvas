@@ -16,6 +16,7 @@
   "Copied to the clipboard.": "클립보드에 복사되었습니다.",
   "Copy: the picture to the clipboard (Ctrl+C)": "복사: 이미지를 클립보드로 복사 (Ctrl+C)",
   "Drag an area  ·  Enter: the whole screen  ·  Esc: cancel": "영역을 드래그  ·  Enter: 전체 화면  ·  Esc: 취소",
+  "Drag an area on the screen now, or choose a delay and click Start.": "지금 화면에서 영역을 드래그하거나, 지연을 선택하고 시작을 클릭하세요.",
   "Edit in UltraPaint: open the saved picture there": "UltraPaint에서 편집: 저장한 이미지를 UltraPaint에서 열기",
   "Every change applies straight away and is saved; there is nothing to confirm.": "모든 변경 사항은 즉시 적용되고 저장됩니다. 따로 확인할 필요가 없습니다.",
   "Every text UltraSnip shows, in one grid with the sets it comes from: its own set, the Image and Video base sets and the standard set. A change is saved into the settings folder and shows the next time UltraSnip starts.": "UltraSnip이 표시하는 모든 텍스트를 해당 텍스트가 속한 세트(자체 세트, 이미지 및 비디오 기본 세트, 표준 세트)와 함께 하나의 표로 보여 줍니다. 변경 사항은 설정 폴더에 저장되며 다음에 UltraSnip을 시작할 때 표시됩니다.",

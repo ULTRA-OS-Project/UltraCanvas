@@ -1,5 +1,7 @@
 // OS/Linux/UltraCanvasLinuxWindow.cpp
 // Complete Linux window implementation with all methods
+// Version: 1.7.0 - RaiseAndFocus raises the window itself as well (XRaiseWindow): with
+//                  no window manager the _NET_ACTIVE_WINDOW request alone raised nothing
 // Version: 1.6.0 - WindowType::SessionLock: fullscreen, above, undecorated (not enforced)
 // Version: 1.5.0 - WindowConfig::alwaysOnTop: _NET_WM_STATE_ABOVE on any window type
 // Version: 1.4.0 - WindowType::Desktop covers config.desktopArea when given
@@ -1118,6 +1120,13 @@ namespace UltraCanvas {
         if (xWindow == 0 || !display) {
             return;
         }
+
+        // Raised by the window itself as well: with no window manager (a
+        // kiosk, a test display) the request below goes nowhere, and a
+        // window keeps the place in the stack it was created in - under
+        // every window made after it, mapped or not. A manager receives
+        // this as a restack request and honours it as it chooses.
+        XRaiseWindow(display, xWindow);
 
         Atom net_active = XInternAtom(display, "_NET_ACTIVE_WINDOW", False);
 

@@ -444,15 +444,17 @@ void UltraSnipWindow::ArmNow() {
         return;
     }
     armed_ = true;
+    SetStatus(Tr("Drag an area on the screen now, or choose a delay and click Start."));
     overlay_->SetHintTop(static_cast<float>(kBarTopMargin + kBarHeight + 12));
     PlaceBarTopCentre();
-    Show();
+    Show();                // after the overlay, so the bar is raised above it
     PlaceBarTopCentre();   // again once mapped: a window manager may place a new window itself
 }
 
 void UltraSnipWindow::Disarm() {
     if (!armed_) return;
     armed_ = false;
+    SetStatus(Tr("Click Start, or press Ctrl+N, to take a snip."));
     if (overlay_) overlay_->Close();
     overlay_.reset();
     shot_ = DesktopScreenImage();
