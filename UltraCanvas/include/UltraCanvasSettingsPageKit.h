@@ -164,6 +164,23 @@ struct PageReset {
     std::function<void()> action;
 };
 
+// How the window is made: its size, the tree's width, what stands above the
+// tree, whether it is a dialog of a parent window or an application's own
+// main window, and the Close button's text.
+struct SettingsWindowOptions {
+    int width = kWindowWidth;
+    int height = kWindowHeight;
+    // The tree's width: wider for a long page list, or long page names
+    int treeWidth = kTreeWidth;
+    // An element shown above the tree, in the sidebar: a logo. Null for none.
+    std::shared_ptr<UltraCanvasUIElement> sidebarHeader;
+    // A dialog of `parent` (WindowType::Dialog), or with false an ordinary
+    // main window (UOS-Settings is one: the settings are the application)
+    bool dialog = true;
+    // The Close button's text, for a translated window
+    std::string closeLabel = "Close";
+};
+
 // The settings window's skeleton: the tree of pages on the left, the page
 // area on the right, the bottom bar with the shown page's restore button
 // and Close. An application's dialog state derives from it (or holds one),
@@ -188,8 +205,8 @@ public:
 
     // The window (not shown yet), the empty tree and the bottom bar. False
     // when the window could not be made.
-    bool Create(UltraCanvasWindowBase* parent, const std::string& title, int width = kWindowWidth,
-                int height = kWindowHeight);
+    bool Create(UltraCanvasWindowBase* parent, const std::string& title,
+                const SettingsWindowOptions& options = SettingsWindowOptions());
     // A top-level section of the tree, and a node under any node.
     void AddSection(const std::string& id, const std::string& text);
     void AddTreeNode(const std::string& parentId, const std::string& id, const std::string& text);
@@ -197,8 +214,9 @@ public:
     void AddPage(const std::string& pageId, const std::shared_ptr<UltraCanvasContainer>& page);
     // After the nodes and pages: hides the tree's root (which promotes the
     // sections to the top level), wires the selection, shows `startPage`
-    // and the window.
-    void Finish(const std::string& startPage);
+    // and - unless `show` is false, for a main window shown later - the
+    // window.
+    void Finish(const std::string& startPage, bool show = true);
 
     // Show the page of `nodeId`; a section without a page of its own falls
     // through to its first page.

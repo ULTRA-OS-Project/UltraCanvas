@@ -303,6 +303,7 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasUIElement> CreateListViewExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateMenuExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateMenuConfigExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateSettingsPageKitExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateLocalisationEditorExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateDialogExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateTextAreaExamples();

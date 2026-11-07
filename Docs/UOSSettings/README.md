@@ -8,10 +8,13 @@ that belong to the system rather than to one application. It ships as
 (`-DBUILD_UOS_SETTINGS=ON`, the default). Its version is the first line of
 `Docs/UOSSettings/CHANGELOG.md` and shows in the window title.
 
-The window is laid out like UltraFiler's settings: a tree of pages on the
-left, the selected page on the right and Close at the foot. There is no
-Apply - every change is written at once and is picked up the next time an
-application opens the setting.
+The window is laid out like UltraFiler's settings - a tree of pages on the
+left, the selected page on the right and Close at the foot - and built on the
+same framework kit, `UltraCanvasSettingsPageKit`
+([doc](../UltraCanvas/UltraCanvasSettingsPageKit.md)), as a main window with
+the ULTRA OS logo above its tree. There is no Apply - every change is
+written at once and is picked up the next time an application opens the
+setting.
 
 ## Pages
 
