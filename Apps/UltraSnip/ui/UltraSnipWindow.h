@@ -31,7 +31,6 @@
 namespace UltraCanvas {
 class UltraCanvasButton;
 class UltraCanvasContainer;
-class UltraCanvasDropdown;
 class UltraCanvasImageElement;
 class UltraCanvasLabel;
 class UltraCanvasMediaViewer;
@@ -52,6 +51,11 @@ public:
     void Present(const SnipRequest& request);
     // Begins a snip: the window hides, the delay passes, the screen is taken
     void StartCapture(const SnipRequest& request);
+    // The bar at the top centre of the screen over the screen already
+    // dimmed: the shape chosen on the bar can be dragged out (or a window
+    // clicked) at once, without Start. Escape or a right click leaves the
+    // bar alone; Start (with its delay) and Settings put the dim away first.
+    void Arm();
 
 private:
     enum class ResultKind { Nothing, Picture, Video };
@@ -65,6 +69,10 @@ private:
 
     // The capture, step by step
     void TakeScreen();
+    void ArmNow();
+    void Disarm();
+    void PlaceBarTopCentre();
+    std::vector<SnipWindowBounds> ListPickableWindows() const;
     void OnAreaChosen(const UltraCanvas::Rect2Di& area);
     void OnCaptureCancelled();
     void FinishPicture(const UltraCanvas::Rect2Di& area);
@@ -97,7 +105,7 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasButton> startButton_;
     std::shared_ptr<UltraCanvas::UltraCanvasSegmentedControl> modes_;
     std::shared_ptr<UltraCanvas::UltraCanvasSegmentedControl> kinds_;
-    std::shared_ptr<UltraCanvas::UltraCanvasDropdown> delays_;
+    std::shared_ptr<UltraCanvas::UltraCanvasSegmentedControl> delays_;
     // The result
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> content_;
     std::shared_ptr<UltraCanvas::UltraCanvasImageElement> picture_;
@@ -118,6 +126,7 @@ private:
     SnipRequest pending_;
     bool capturing_ = false;
     bool windowWasShown_ = false;
+    bool armed_ = false;                                // the dimmed screen is up under the bar
     UltraCanvas::TimerId delayTimer_ = 0;
     UltraCanvas::DesktopScreenImage shot_;              // the frozen screen
     UltraCanvas::Rect2Di screenBounds_;                 // where the shot lies

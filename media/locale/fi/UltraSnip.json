@@ -34,7 +34,7 @@
   "More frames a second make a smoother recording and a larger file; 20 is enough for a walk-through, 30 for motion. The recording is written as it goes, so one cut short by a crash still plays up to its last seconds.": "Useampi kuva sekunnissa tekee tallenteesta sujuvamman ja tiedostosta suuremman; 20 riittää esittelyyn, 30 liikkeeseen. Tallenne kirjoitetaan sitä mukaa kuin se syntyy, joten kaatumisen katkaisema tallenne toistuu silti viimeisiin sekunteihinsa asti.",
   "MP4 video": "MP4-video",
   "MP4 with H.264 (.mp4)  -  plays everywhere": "MP4 ja H.264 (.mp4)  -  toistuu kaikkialla",
-  "No delay": "Ei viivettä",
+  "No delay: the screen is taken at once": "Ei viivettä: näyttö kaapataan heti",
   "No other type in this build": "Tässä versiossa ei ole muuta tyyppiä",
   "No recording on this build: {0}": "Tässä versiossa ei voi tallentaa: {0}",
   "not copied": "ei kopioitu",
@@ -107,7 +107,7 @@
   "UltraSnip - Settings": "UltraSnip - Asetukset",
   "Video: a recording of the area": "Video: alueen tallenne",
   "Videos - the recording's container, its frame rate and its folder.": "Videot - tallenteen säiliömuoto, kuvataajuus ja kansio.",
-  "Wait before the screen is taken, so a menu can be opened first": "Odota ennen näytön kaappaamista, jotta valikon voi ensin avata",
+  "Wait {0} seconds before the screen is taken, so a menu can be opened first": "Odota {0} sekuntia ennen näytön kaappaamista, jotta valikon voi avata ensin",
   "WebM video": "WebM-video",
   "WebM with VP9 (.webm)  -  the web's own": "WebM ja VP9 (.webm)  -  verkon oma muoto",
   "What happens to a picture the moment it is taken:": "Mitä kuvalle tapahtuu heti, kun se otetaan:",
@@ -119,6 +119,6 @@
   "Write every picture to the folder below": "Kirjoita jokainen kuva alla olevaan kansioon",
   "{0} fps": "{0} fps",
   "{0} recorded": "{0} tallennettu",
-  "{0} s delay": "{0} s viive",
+  "{0} s": "{0} s",
   "{0} × {1} px": "{0} × {1} px"
 }

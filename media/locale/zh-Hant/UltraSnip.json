@@ -34,7 +34,7 @@
   "More frames a second make a smoother recording and a larger file; 20 is enough for a walk-through, 30 for motion. The recording is written as it goes, so one cut short by a crash still plays up to its last seconds.": "每秒影格數越多，錄製越流暢，檔案也越大；操作示範用 20 即可，動態畫面用 30。錄製時會邊錄邊寫入，因此即使因當機而中斷，錄影仍可播放到最後幾秒。",
   "MP4 video": "MP4 影片",
   "MP4 with H.264 (.mp4)  -  plays everywhere": "採用 H.264 的 MP4（.mp4）  -  隨處皆可播放",
-  "No delay": "無延遲",
+  "No delay: the screen is taken at once": "不延遲：立即擷取螢幕",
   "No other type in this build": "此版本沒有其他格式",
   "No recording on this build: {0}": "此版本無法錄製：{0}",
   "not copied": "未複製",
@@ -107,7 +107,7 @@
   "UltraSnip - Settings": "UltraSnip - 設定",
   "Video: a recording of the area": "影片：錄製該區域",
   "Videos - the recording's container, its frame rate and its folder.": "影片 - 錄影的容器格式、影格速率和資料夾。",
-  "Wait before the screen is taken, so a menu can be opened first": "擷取螢幕前先等待，以便先開啟選單",
+  "Wait {0} seconds before the screen is taken, so a menu can be opened first": "擷取螢幕前等待 {0} 秒，以便先開啟選單",
   "WebM video": "WebM 影片",
   "WebM with VP9 (.webm)  -  the web's own": "採用 VP9 的 WebM（.webm）  -  網頁原生格式",
   "What happens to a picture the moment it is taken:": "圖片擷取後立即執行的動作：",
@@ -119,6 +119,6 @@
   "Write every picture to the folder below": "將每張圖片寫入下方資料夾",
   "{0} fps": "{0} fps",
   "{0} recorded": "已錄製 {0}",
-  "{0} s delay": "延遲 {0} 秒",
+  "{0} s": "{0} 秒",
   "{0} × {1} px": "{0} × {1} px"
 }

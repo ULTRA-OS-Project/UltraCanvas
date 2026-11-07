@@ -34,7 +34,7 @@
   "More frames a second make a smoother recording and a larger file; 20 is enough for a walk-through, 30 for motion. The recording is written as it goes, so one cut short by a crash still plays up to its last seconds.": "प्रति सेकंड अधिक फ़्रेम से रिकॉर्डिंग अधिक सहज और फ़ाइल बड़ी होती है; वॉक-थ्रू के लिए 20 काफ़ी है, गति के लिए 30। रिकॉर्डिंग साथ-साथ लिखी जाती है, इसलिए क्रैश से बीच में कटी रिकॉर्डिंग भी अपने अंतिम सेकंडों तक चलती है।",
   "MP4 video": "MP4 वीडियो",
   "MP4 with H.264 (.mp4)  -  plays everywhere": "H.264 के साथ MP4 (.mp4)  -  हर जगह चलता है",
-  "No delay": "कोई विलंब नहीं",
+  "No delay: the screen is taken at once": "कोई विलंब नहीं: स्क्रीन तुरंत ली जाती है",
   "No other type in this build": "इस बिल्ड में कोई अन्य प्रकार नहीं",
   "No recording on this build: {0}": "इस बिल्ड में रिकॉर्डिंग नहीं: {0}",
   "not copied": "कॉपी नहीं किया गया",
@@ -107,7 +107,7 @@
   "UltraSnip - Settings": "UltraSnip - सेटिंग्स",
   "Video: a recording of the area": "वीडियो: क्षेत्र की रिकॉर्डिंग",
   "Videos - the recording's container, its frame rate and its folder.": "वीडियो - रिकॉर्डिंग का कंटेनर, उसकी फ़्रेम दर और उसका फ़ोल्डर।",
-  "Wait before the screen is taken, so a menu can be opened first": "स्क्रीन लेने से पहले प्रतीक्षा करें, ताकि पहले कोई मेनू खोला जा सके",
+  "Wait {0} seconds before the screen is taken, so a menu can be opened first": "स्क्रीन लेने से पहले {0} सेकंड प्रतीक्षा करें, ताकि पहले मेनू खोला जा सके",
   "WebM video": "WebM वीडियो",
   "WebM with VP9 (.webm)  -  the web's own": "VP9 के साथ WebM (.webm)  -  वेब का अपना",
   "What happens to a picture the moment it is taken:": "लिए जाते ही चित्र के साथ क्या होता है:",
@@ -119,6 +119,6 @@
   "Write every picture to the folder below": "हर चित्र को नीचे दिए फ़ोल्डर में लिखें",
   "{0} fps": "{0} fps",
   "{0} recorded": "{0} रिकॉर्ड किया गया",
-  "{0} s delay": "{0} से. विलंब",
+  "{0} s": "{0} से",
   "{0} × {1} px": "{0} × {1} px"
 }

@@ -34,7 +34,7 @@
   "More frames a second make a smoother recording and a larger file; 20 is enough for a walk-through, 30 for motion. The recording is written as it goes, so one cut short by a crash still plays up to its last seconds.": "Fler bilder per sekund ger en jämnare inspelning och en större fil; 20 räcker för en genomgång, 30 för rörelse. Inspelningen skrivs medan den pågår, så en inspelning som avbryts av en krasch går ändå att spela upp fram till de sista sekunderna.",
   "MP4 video": "MP4-video",
   "MP4 with H.264 (.mp4)  -  plays everywhere": "MP4 med H.264 (.mp4)  -  spelas upp överallt",
-  "No delay": "Ingen fördröjning",
+  "No delay: the screen is taken at once": "Ingen fördröjning: skärmen tas direkt",
   "No other type in this build": "Ingen annan typ i den här versionen",
   "No recording on this build: {0}": "Ingen inspelning i den här versionen: {0}",
   "not copied": "inte kopierat",
@@ -107,7 +107,7 @@
   "UltraSnip - Settings": "UltraSnip - Inställningar",
   "Video: a recording of the area": "Video: en inspelning av området",
   "Videos - the recording's container, its frame rate and its folder.": "Videor - inspelningens container, dess bildfrekvens och dess mapp.",
-  "Wait before the screen is taken, so a menu can be opened first": "Vänta innan skärmen fångas, så att en meny kan öppnas först",
+  "Wait {0} seconds before the screen is taken, so a menu can be opened first": "Vänta {0} sekunder innan skärmen tas, så att en meny kan öppnas först",
   "WebM video": "WebM-video",
   "WebM with VP9 (.webm)  -  the web's own": "WebM med VP9 (.webm)  -  webbens eget format",
   "What happens to a picture the moment it is taken:": "Vad som händer med en bild i samma stund som den tas:",
@@ -119,6 +119,6 @@
   "Write every picture to the folder below": "Skriv varje bild till mappen nedan",
   "{0} fps": "{0} fps",
   "{0} recorded": "{0} inspelat",
-  "{0} s delay": "{0} s fördröjning",
+  "{0} s": "{0} s",
   "{0} × {1} px": "{0} × {1} px"
 }

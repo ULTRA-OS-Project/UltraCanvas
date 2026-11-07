@@ -1,5 +1,8 @@
 // Apps/UltraSnip/ui/UltraSnipWindow.cpp
 // See the header.
+// Version: 0.5.0 - opens at the top centre of the screen over the screen already dimmed
+//                  (Arm); the delay a segmented choice like the shape and the kind;
+//                  each segment its own tooltip
 // Version: 0.4.1 - the delay list measured in its font, not estimated (Thai ran wide)
 // Version: 0.4.0 - the texts go through Tr (UltraLocalisation)
 // Version: 0.3.0 - one bar at the top, icons for the choices and actions, the settings
@@ -19,7 +22,6 @@
 #include "UltraCanvasClipboardDib.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasDesktopShell.h"
-#include "UltraCanvasDropdown.h"
 #include "UltraCanvasEvent.h"
 #include "UltraCanvasFileAssociations.h"
 #include "UltraCanvasFileLoader.h"
@@ -63,6 +65,7 @@ constexpr int kMinOpenHeight = 360;         // opened out: room for the snip und
 constexpr int kDelays[] = {0, 3, 5, 10};
 constexpr unsigned kSettleMs = 350;         // the window has left the screen by then
 constexpr unsigned kRecordingTickMs = 250;
+constexpr int kBarTopMargin = 8;            // the armed bar's distance from the top of the screen
 
 std::string LowerExtension(const std::string& path) {
     const size_t dot = path.find_last_of('.');
@@ -131,6 +134,7 @@ bool UltraSnipWindow::Create() {
     window->InstallEventFilter("ultrasnip-keys", [this](const UCEvent& event) { return OnKey(event); },
                                {UCEventType::KeyDown});
     window->onWindowClosing = [this]() {
+        Disarm();
         if (recorder_ && recorder_->IsRecording()) StopRecording();
         settings_.Save();
         app_.RequestExit();
@@ -141,7 +145,7 @@ bool UltraSnipWindow::Create() {
 
 namespace {
 // The bar's segmented choices: icons only, in the settings window's type
-// size, each segment naming itself in the tooltip while it is hovered.
+// size, each segment naming itself in its own tooltip.
 std::shared_ptr<UltraCanvasSegmentedControl> MakeIconChoice(const std::string& id,
                                                             const std::vector<std::pair<std::string, std::string>>& segments) {
     auto control = CreateSegmentedControl(id, 0, 0, static_cast<long>(segments.size()) * kChoiceWidth, kControlHeight);
@@ -154,13 +158,7 @@ std::shared_ptr<UltraCanvasSegmentedControl> MakeIconChoice(const std::string& i
     look.cornerRadius = 4.0f;
     control->SetStyle(look);
     for (const auto& segment : segments) control->AddSegment("", SettingsPageKit::IconPath(segment.first));
-    UltraCanvasSegmentedControl* raw = control.get();
-    std::vector<std::string> tips;
-    for (const auto& segment : segments) tips.push_back(segment.second);
-    control->onSegmentHover = [raw, tips](int index) {
-        if (index >= 0 && index < static_cast<int>(tips.size())) raw->SetTooltip(tips[static_cast<size_t>(index)]);
-    };
-    if (!tips.empty()) control->SetTooltip(tips.front());
+    for (size_t i = 0; i < segments.size(); ++i) control->SetSegmentTooltip(static_cast<int>(i), segments[i].second);
     control->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     return control;
 }
@@ -195,6 +193,7 @@ std::shared_ptr<UltraCanvasContainer> UltraSnipWindow::BuildToolbar() {
                                           {"snip-screen.svg", Tr("Full screen: the whole screen")}});
     modes_->onSegmentSelected = [this](int index) {
         settings_.mode = index == 1 ? SnipMode::Window : index == 2 ? SnipMode::FullScreen : SnipMode::Rectangle;
+        if (armed_ && overlay_) overlay_->SetMode(settings_.mode);
     };
     bar->AddChild(modes_);
 
@@ -203,21 +202,20 @@ std::shared_ptr<UltraCanvasContainer> UltraSnipWindow::BuildToolbar() {
     kinds_->onSegmentSelected = [this](int index) { settings_.kind = index == 1 ? SnipKind::Video : SnipKind::Picture; };
     bar->AddChild(kinds_);
 
-    delays_ = CreateDropdown("snip.delay", 0, 0, 96, kControlHeight);
-    {
-        DropdownStyle look = delays_->GetStyle();
-        look.fontSize = SettingsPageKit::kTextFontSize;
-        delays_->SetStyle(look);
-    }
-    // As wide as its longest item in the language shown ("Keine Verzögerung",
-    // "Καθυστέρηση 10 δευτ.", "ไม่หน่วงเวลา"), plus the arrow and padding:
-    // measured in the dropdown's own font by the window, which has its render
-    // context before the bar is built. Without one, an estimate of ~0.62 em
-    // a character - which counts Thai and Devanagari vowel marks as
-    // characters, so it runs wide there.
-    std::vector<std::string> delayItems = {Tr("No delay")};
-    for (int seconds : {3, 5, 10}) delayItems.push_back(TrF("{0} s delay", seconds));
-    const DropdownStyle& delayLook = delays_->GetStyle();
+    // The delay as a choice like the shape and the kind: 0, 3, 5 or 10
+    // seconds, every segment as wide as the widest caption in the language
+    // shown - measured in the control's font by the window, which has its
+    // render context before the bar is built (an estimate of ~0.62 em a
+    // character without one).
+    std::vector<std::string> delayItems;
+    for (int seconds : kDelays) delayItems.push_back(TrF("{0} s", seconds));
+    delays_ = CreateSegmentedControl("snip.delay", 0, 0, 0, kControlHeight);
+    SegmentedControlStyle delayLook = delays_->GetStyle();
+    delayLook.fontSize = SettingsPageKit::kTextFontSize;
+    delayLook.paddingHorizontal = 6;
+    delayLook.paddingVertical = 4;
+    delayLook.cornerRadius = 4.0f;
+    delays_->SetStyle(delayLook);
     IRenderContext* measure = window_ ? window_->GetRenderContext() : nullptr;
     if (measure) {
         measure->PushState();
@@ -229,17 +227,18 @@ std::shared_ptr<UltraCanvasContainer> UltraSnipWindow::BuildToolbar() {
         const int width = measure ? measure->GetTextLineWidth(item)
                                   : static_cast<int>(utf8_length(item) * delayLook.fontSize * 0.62f);
         widest = std::max(widest, width);
-        delays_->AddItem(item);
+        delays_->AddSegment(item);
     }
     if (measure) measure->PopState();
-    // The text starts paddingLeft in and is clipped arrowSize * 2 + 3 before
-    // the right edge (UltraCanvasDropdown::RenderButton); 6 more for air.
-    const int chrome = static_cast<int>(std::ceil(delayLook.paddingLeft + delayLook.arrowSize * 2.0f + 3.0f)) + 6;
-    const int delayWidth = std::clamp(widest + chrome, 80, 200);
+    const int segmentWidth = std::clamp(widest + static_cast<int>(delayLook.paddingHorizontal) * 2 + 4, kChoiceWidth, 90);
+    const int delayWidth = segmentWidth * static_cast<int>(delayItems.size());
     delays_->SetSize(delayWidth, kControlHeight);
     delays_->size.width = CSSLayout::Dimension::Px(static_cast<float>(delayWidth));
-    delays_->SetTooltip(Tr("Wait before the screen is taken, so a menu can be opened first"));
-    delays_->onSelectionChanged = [this](int index, const DropdownItem&) {
+    delays_->SetSegmentTooltip(0, Tr("No delay: the screen is taken at once"));
+    for (int i = 1; i < static_cast<int>(std::size(kDelays)); ++i)
+        delays_->SetSegmentTooltip(i, TrF("Wait {0} seconds before the screen is taken, so a menu can be opened first",
+                                          kDelays[i]));
+    delays_->onSegmentSelected = [this](int index) {
         settings_.delaySeconds = kDelays[std::clamp(index, 0, 3)];
     };
     delays_->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
@@ -333,11 +332,12 @@ void UltraSnipWindow::SetCompact(bool compact) {
 void UltraSnipWindow::ApplySettingsToControls() {
     if (modes_) modes_->SetSelectedIndex(settings_.mode == SnipMode::Window ? 1 : settings_.mode == SnipMode::FullScreen ? 2 : 0);
     if (kinds_) kinds_->SetSelectedIndex(settings_.kind == SnipKind::Video ? 1 : 0);
-    if (delays_) delays_->SetSelectedIndex(IndexOf(kDelays, 4, settings_.delaySeconds), false);
+    if (delays_) delays_->SetSelectedIndex(IndexOf(kDelays, 4, settings_.delaySeconds));
 }
 
 void UltraSnipWindow::OpenSettings() {
     if (!window_) return;
+    Disarm();   // the settings window would open under the dimmed screen
     UltraSnipSettingsDialog::Show(window_.get(), &settings_, [this]() { ApplySettingsToControls(); });
 }
 
@@ -361,13 +361,139 @@ void UltraSnipWindow::Present(const SnipRequest& request) {
         StartCapture(request);
         return;
     }
+    Arm();
+}
+
+// ===== THE BAR OVER THE DIMMED SCREEN =====
+
+void UltraSnipWindow::Arm() {
+    if (!window_) return;
+    // A snip on show, one in flight, or the screen already dimmed: the
+    // window forward, as it is
+    if (armed_ || capturing_ || (recorder_ && recorder_->IsRecording()) || result_ != ResultKind::Nothing ||
+        !compact_) {
+        Show();
+        return;
+    }
+    // The screen is taken without the bar on it
+    capturing_ = true;
+    if (window_->IsWindowVisible()) {
+        window_->Hide();
+        if (delayTimer_) app_.StopTimer(delayTimer_);
+        delayTimer_ = app_.StartTimer(kSettleMs, false, [this](TimerId) {
+            delayTimer_ = 0;
+            ArmNow();
+        });
+        return;
+    }
+    ArmNow();
+}
+
+void UltraSnipWindow::ArmNow() {
+    capturing_ = false;
+    std::string error;
+    if (!UltraCanvasDesktopShell::CaptureScreenImage(shot_, &error)) {
+        shot_ = DesktopScreenImage();
+        PlaceBarTopCentre();
+        Show();
+        SetStatus(TrF("The screen could not be captured: {0}", error), true);
+        return;
+    }
+    screenBounds_ = Rect2Di(shot_.x, shot_.y, shot_.width, shot_.height);
+    overlay_ = std::make_unique<UltraSnipOverlay>();
+    overlay_->onSelected = [this](const Rect2Di& area) {
+        app_.PostToUIThread([this, area]() {
+            overlay_.reset();
+            armed_ = false;
+            pending_ = RequestFromControls();
+            if (pending_.kind == SnipKind::Video) {
+                const std::string reason = UltraSnipRecorder::UnavailableReason();
+                if (!reason.empty()) {
+                    shot_ = DesktopScreenImage();
+                    Show();
+                    UltraCanvasAlert::Error(TrF("A video cannot be recorded: {0}", reason), "UltraSnip", nullptr,
+                                            window_.get());
+                    return;
+                }
+                window_->Hide();   // not in the recording
+            }
+            settings_.Save();
+            capturing_ = true;
+            windowWasShown_ = true;
+            OnAreaChosen(area);
+        });
+    };
+    overlay_->onCancelled = [this]() {
+        app_.PostToUIThread([this]() {
+            overlay_.reset();
+            armed_ = false;
+            shot_ = DesktopScreenImage();
+            Show();
+        });
+    };
+    // A click on the dimmed screen raises it over the bar: the bar comes back
+    overlay_->onReleased = [this]() {
+        if (window_ && armed_) window_->RaiseAndFocus();
+    };
+    if (!overlay_->Open(shot_, settings_.mode, ListPickableWindows(), &error)) {
+        overlay_.reset();
+        shot_ = DesktopScreenImage();
+        PlaceBarTopCentre();
+        Show();
+        SetStatus(error, true);
+        return;
+    }
+    armed_ = true;
+    overlay_->SetHintTop(static_cast<float>(kBarTopMargin + kBarHeight + 12));
+    PlaceBarTopCentre();
     Show();
+    PlaceBarTopCentre();   // again once mapped: a window manager may place a new window itself
+}
+
+void UltraSnipWindow::Disarm() {
+    if (!armed_) return;
+    armed_ = false;
+    if (overlay_) overlay_->Close();
+    overlay_.reset();
+    shot_ = DesktopScreenImage();
+}
+
+// Centred across the primary screen (the first one without a primary), at
+// its top: in the pixels of ListScreens, which SetWindowPosition takes
+void UltraSnipWindow::PlaceBarTopCentre() {
+    if (!window_) return;
+    const std::vector<DesktopScreenInfo> screens = UltraCanvasDesktopShell::ListScreens();
+    if (screens.empty()) return;
+    DesktopScreenInfo screen = screens.front();
+    for (const DesktopScreenInfo& s : screens)
+        if (s.primary) screen = s;
+    int w = 0, h = 0;
+    window_->GetNativeWindowSize(w, h);
+    const float scale = window_->GetDeviceScale() > 0.0f ? window_->GetDeviceScale() : 1.0f;
+    const int x = screen.x + std::max(0, (screen.width - w) / 2);
+    const int y = screen.y + static_cast<int>(std::lround(kBarTopMargin * scale));
+    window_->SetWindowPosition(x, y);
+}
+
+std::vector<SnipWindowBounds> UltraSnipWindow::ListPickableWindows() const {
+    std::vector<SnipWindowBounds> windows;
+    for (const DesktopWindowInfo& w : UltraCanvasDesktopShell::ListWindows()) {
+        if (w.minimized || w.skipTaskbar) continue;
+        SnipWindowBounds b;
+        if (!UltraCanvasDesktopShell::GetWindowBounds(w.id, b.bounds.x, b.bounds.y, b.bounds.width, b.bounds.height))
+            continue;
+        b.id = w.id;
+        b.title = w.title;
+        windows.push_back(b);
+    }
+    return windows;
 }
 
 // ===== THE CAPTURE =====
 
 void UltraSnipWindow::StartCapture(const SnipRequest& request) {
     if (!window_) return;
+    Disarm();   // taken afresh, after the delay
     if (capturing_ || (recorder_ && recorder_->IsRecording())) return;
     if (request.kind == SnipKind::Video) {
         const std::string reason = UltraSnipRecorder::UnavailableReason();
@@ -406,17 +532,7 @@ void UltraSnipWindow::TakeScreen() {
         return;
     }
     std::vector<SnipWindowBounds> windows;
-    if (pending_.mode == SnipMode::Window) {
-        for (const DesktopWindowInfo& w : UltraCanvasDesktopShell::ListWindows()) {
-            if (w.minimized || w.skipTaskbar) continue;
-            SnipWindowBounds b;
-            if (!UltraCanvasDesktopShell::GetWindowBounds(w.id, b.bounds.x, b.bounds.y, b.bounds.width, b.bounds.height))
-                continue;
-            b.id = w.id;
-            b.title = w.title;
-            windows.push_back(b);
-        }
-    }
+    if (pending_.mode == SnipMode::Window) windows = ListPickableWindows();
     overlay_ = std::make_unique<UltraSnipOverlay>();
     overlay_->onSelected = [this](const Rect2Di& area) {
         app_.PostToUIThread([this, area]() {
@@ -792,6 +908,10 @@ void UltraSnipWindow::EditInPaint() {
 
 bool UltraSnipWindow::OnKey(const UCEvent& event) {
     if (event.type != UCEventType::KeyDown) return false;
+    if (armed_ && event.virtualKey == UCKeys::Escape) {
+        Disarm();
+        return true;
+    }
     if (event.ctrl && event.virtualKey == UCKeys::N) {
         StartCapture(RequestFromControls());
         return true;

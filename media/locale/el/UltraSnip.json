@@ -34,7 +34,7 @@
   "More frames a second make a smoother recording and a larger file; 20 is enough for a walk-through, 30 for motion. The recording is written as it goes, so one cut short by a crash still plays up to its last seconds.": "Περισσότερα καρέ ανά δευτερόλεπτο δίνουν πιο ομαλή εγγραφή και μεγαλύτερο αρχείο: 20 αρκούν για μια επίδειξη βημάτων, 30 για κίνηση. Η εγγραφή γράφεται καθώς προχωρά, οπότε ακόμη και μια εγγραφή που διακόπηκε από κατάρρευση αναπαράγεται έως τα τελευταία της δευτερόλεπτα.",
   "MP4 video": "Βίντεο MP4",
   "MP4 with H.264 (.mp4)  -  plays everywhere": "MP4 με H.264 (.mp4)  -  αναπαράγεται παντού",
-  "No delay": "Χωρίς καθυστέρηση",
+  "No delay: the screen is taken at once": "Χωρίς καθυστέρηση: η οθόνη λαμβάνεται αμέσως",
   "No other type in this build": "Κανένας άλλος τύπος σε αυτή την έκδοση",
   "No recording on this build: {0}": "Δεν υπάρχει εγγραφή σε αυτή την έκδοση: {0}",
   "not copied": "δεν αντιγράφηκε",
@@ -107,7 +107,7 @@
   "UltraSnip - Settings": "UltraSnip - Ρυθμίσεις",
   "Video: a recording of the area": "Βίντεο: εγγραφή της περιοχής",
   "Videos - the recording's container, its frame rate and its folder.": "Βίντεο - ο περιέκτης της εγγραφής, ο ρυθμός καρέ και ο φάκελός της.",
-  "Wait before the screen is taken, so a menu can be opened first": "Αναμονή πριν από τη λήψη της οθόνης, ώστε να ανοίξει πρώτα ένα μενού",
+  "Wait {0} seconds before the screen is taken, so a menu can be opened first": "Αναμονή {0} δευτερολέπτων πριν από τη λήψη της οθόνης, ώστε να ανοίξει πρώτα ένα μενού",
   "WebM video": "Βίντεο WebM",
   "WebM with VP9 (.webm)  -  the web's own": "WebM με VP9 (.webm)  -  η εγγενής μορφή του ιστού",
   "What happens to a picture the moment it is taken:": "Τι συμβαίνει σε μια εικόνα τη στιγμή που λαμβάνεται:",
@@ -119,6 +119,6 @@
   "Write every picture to the folder below": "Εγγραφή κάθε εικόνας στον παρακάτω φάκελο",
   "{0} fps": "{0} fps",
   "{0} recorded": "Εγγράφηκε: {0}",
-  "{0} s delay": "Καθυστέρηση {0} δευτ.",
+  "{0} s": "{0} δ",
   "{0} × {1} px": "{0} × {1} px"
 }

@@ -34,7 +34,7 @@
   "More frames a second make a smoother recording and a larger file; 20 is enough for a walk-through, 30 for motion. The recording is written as it goes, so one cut short by a crash still plays up to its last seconds.": "Więcej klatek na sekundę daje płynniejsze nagranie i większy plik; 20 wystarcza do prezentacji, 30 do ruchu. Nagranie jest zapisywane na bieżąco, więc nagranie przerwane przez awarię nadal da się odtworzyć do ostatnich sekund.",
   "MP4 video": "Wideo MP4",
   "MP4 with H.264 (.mp4)  -  plays everywhere": "MP4 z H.264 (.mp4)  -  odtwarzane wszędzie",
-  "No delay": "Bez opóźnienia",
+  "No delay: the screen is taken at once": "Bez opóźnienia: ekran jest przechwytywany od razu",
   "No other type in this build": "Brak innego typu w tej wersji",
   "No recording on this build: {0}": "Brak nagrywania w tej wersji: {0}",
   "not copied": "nie skopiowano",
@@ -107,7 +107,7 @@
   "UltraSnip - Settings": "UltraSnip - Ustawienia",
   "Video: a recording of the area": "Wideo: nagranie obszaru",
   "Videos - the recording's container, its frame rate and its folder.": "Wideo - kontener nagrania, liczba klatek na sekundę i folder.",
-  "Wait before the screen is taken, so a menu can be opened first": "Odczekaj przed zrobieniem zrzutu ekranu, aby najpierw otworzyć menu",
+  "Wait {0} seconds before the screen is taken, so a menu can be opened first": "Czekaj {0} s przed przechwyceniem ekranu, aby najpierw otworzyć menu",
   "WebM video": "Wideo WebM",
   "WebM with VP9 (.webm)  -  the web's own": "WebM z VP9 (.webm)  -  format sieci",
   "What happens to a picture the moment it is taken:": "Co dzieje się z obrazem w chwili jego wykonania:",
@@ -119,6 +119,6 @@
   "Write every picture to the folder below": "Zapisuj każdy obraz w folderze poniżej",
   "{0} fps": "{0} fps",
   "{0} recorded": "Nagrano: {0}",
-  "{0} s delay": "Opóźnienie {0} s",
+  "{0} s": "{0} s",
   "{0} × {1} px": "{0} × {1} px"
 }

@@ -34,7 +34,7 @@
   "More frames a second make a smoother recording and a larger file; 20 is enough for a walk-through, 30 for motion. The recording is written as it goes, so one cut short by a crash still plays up to its last seconds.": "Més fotogrames per segon fan un enregistrament més fluid i un fitxer més gran; 20 n'hi ha prou per a una demostració, 30 per a moviment. L'enregistrament s'escriu a mesura que avança, de manera que un enregistrament interromput per una fallada es reprodueix igualment fins als últims segons.",
   "MP4 video": "Vídeo MP4",
   "MP4 with H.264 (.mp4)  -  plays everywhere": "MP4 amb H.264 (.mp4)  -  es reprodueix a tot arreu",
-  "No delay": "Sense retard",
+  "No delay: the screen is taken at once": "Sense retard: la pantalla es captura de seguida",
   "No other type in this build": "No hi ha cap altre tipus en aquesta compilació",
   "No recording on this build: {0}": "Aquesta compilació no pot enregistrar: {0}",
   "not copied": "no copiat",
@@ -107,7 +107,7 @@
   "UltraSnip - Settings": "UltraSnip - Configuració",
   "Video: a recording of the area": "Vídeo: un enregistrament de l'àrea",
   "Videos - the recording's container, its frame rate and its folder.": "Vídeos: el contenidor de l'enregistrament, els fotogrames per segon i la carpeta.",
-  "Wait before the screen is taken, so a menu can be opened first": "Espera abans de capturar la pantalla, perquè primer es pugui obrir un menú",
+  "Wait {0} seconds before the screen is taken, so a menu can be opened first": "Espera {0} segons abans de capturar la pantalla, per poder obrir abans un menú",
   "WebM video": "Vídeo WebM",
   "WebM with VP9 (.webm)  -  the web's own": "WebM amb VP9 (.webm)  -  el format propi del web",
   "What happens to a picture the moment it is taken:": "Què passa amb una imatge en el moment de capturar-la:",
@@ -119,6 +119,6 @@
   "Write every picture to the folder below": "Escriu cada imatge a la carpeta de sota",
   "{0} fps": "{0} fps",
   "{0} recorded": "{0} enregistrat",
-  "{0} s delay": "{0} s de retard",
+  "{0} s": "{0} s",
   "{0} × {1} px": "{0} × {1} px"
 }

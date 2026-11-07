@@ -123,7 +123,7 @@ int main(int argc, char* argv[]) {
             app.PostToUIThread([shown, later]() { shown->Present(later); });
         });
         if (request.startAtOnce) window->StartCapture(request);
-        else window->Show();
+        else window->Arm();
         app.Run();
     } catch (const std::exception& e) {
         std::cerr << "Fatal: " << e.what() << "\n";

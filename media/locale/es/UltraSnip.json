@@ -34,7 +34,7 @@
   "More frames a second make a smoother recording and a larger file; 20 is enough for a walk-through, 30 for motion. The recording is written as it goes, so one cut short by a crash still plays up to its last seconds.": "Más fotogramas por segundo dan una grabación más fluida y un archivo más grande; 20 bastan para una demostración, 30 para movimiento. La grabación se escribe sobre la marcha, así que una interrumpida por un fallo se puede reproducir hasta sus últimos segundos.",
   "MP4 video": "Vídeo MP4",
   "MP4 with H.264 (.mp4)  -  plays everywhere": "MP4 con H.264 (.mp4)  -  se reproduce en todas partes",
-  "No delay": "Sin retardo",
+  "No delay: the screen is taken at once": "Sin retardo: la pantalla se captura al instante",
   "No other type in this build": "Ningún otro tipo en esta compilación",
   "No recording on this build: {0}": "Sin grabación en esta compilación: {0}",
   "not copied": "no copiado",
@@ -107,7 +107,7 @@
   "UltraSnip - Settings": "UltraSnip - Ajustes",
   "Video: a recording of the area": "Vídeo: una grabación del área",
   "Videos - the recording's container, its frame rate and its folder.": "Vídeos - el contenedor de la grabación, sus fotogramas por segundo y su carpeta.",
-  "Wait before the screen is taken, so a menu can be opened first": "Esperar antes de capturar la pantalla, para poder abrir antes un menú",
+  "Wait {0} seconds before the screen is taken, so a menu can be opened first": "Esperar {0} segundos antes de capturar la pantalla, para abrir antes un menú",
   "WebM video": "Vídeo WebM",
   "WebM with VP9 (.webm)  -  the web's own": "WebM con VP9 (.webm)  -  el formato propio de la web",
   "What happens to a picture the moment it is taken:": "Qué le ocurre a una imagen en cuanto se toma:",
@@ -119,6 +119,6 @@
   "Write every picture to the folder below": "Escribir cada imagen en la carpeta de abajo",
   "{0} fps": "{0} fps",
   "{0} recorded": "Grabado: {0}",
-  "{0} s delay": "Retardo de {0} s",
+  "{0} s": "{0} s",
   "{0} × {1} px": "{0} × {1} px"
 }

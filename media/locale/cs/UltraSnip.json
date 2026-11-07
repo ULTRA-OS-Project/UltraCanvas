@@ -34,7 +34,7 @@
   "More frames a second make a smoother recording and a larger file; 20 is enough for a walk-through, 30 for motion. The recording is written as it goes, so one cut short by a crash still plays up to its last seconds.": "Více snímků za sekundu znamená plynulejší záznam a větší soubor; 20 stačí na ukázku postupu, 30 na pohyb. Záznam se zapisuje průběžně, takže záznam přerušený pádem programu lze přehrát až do posledních sekund.",
   "MP4 video": "Video MP4",
   "MP4 with H.264 (.mp4)  -  plays everywhere": "MP4 s H.264 (.mp4)  -  přehraje se všude",
-  "No delay": "Bez zpoždění",
+  "No delay: the screen is taken at once": "Bez zpoždění: obrazovka se zachytí ihned",
   "No other type in this build": "V této verzi není jiný typ",
   "No recording on this build: {0}": "V této verzi nelze nahrávat: {0}",
   "not copied": "nezkopírováno",
@@ -107,7 +107,7 @@
   "UltraSnip - Settings": "UltraSnip - Nastavení",
   "Video: a recording of the area": "Video: záznam oblasti",
   "Videos - the recording's container, its frame rate and its folder.": "Videa - kontejner záznamu, jeho snímková frekvence a složka.",
-  "Wait before the screen is taken, so a menu can be opened first": "Počkat před sejmutím obrazovky, aby šlo nejprve otevřít nabídku",
+  "Wait {0} seconds before the screen is taken, so a menu can be opened first": "Počkat {0} sekund před zachycením obrazovky, aby šlo nejprve otevřít nabídku",
   "WebM video": "Video WebM",
   "WebM with VP9 (.webm)  -  the web's own": "WebM s VP9 (.webm)  -  vlastní formát webu",
   "What happens to a picture the moment it is taken:": "Co se stane s obrázkem ve chvíli, kdy je pořízen:",
@@ -119,6 +119,6 @@
   "Write every picture to the folder below": "Zapisovat každý obrázek do složky níže",
   "{0} fps": "{0} fps",
   "{0} recorded": "Nahráno: {0}",
-  "{0} s delay": "Zpoždění {0} s",
+  "{0} s": "{0} s",
   "{0} × {1} px": "{0} × {1} px"
 }
