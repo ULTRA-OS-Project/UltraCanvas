@@ -60,7 +60,7 @@ void PrintUsage(const char* prog) {
               << "  -h, --help     show this message\n"
               << "  -v, --version  show version\n"
               << "  --settings [page]  open the settings window at start; page is one of\n"
-              << "                 default-providers, local-models, local-and-cloud, endpoints\n"
+              << "                 default-providers, local-models, topics, local-and-cloud, endpoints\n"
               << "  --get-local-model  open the \"Get a local model\" dialog at start, as\n"
               << "                 Chat does when its model is not installed\n";
 }
@@ -87,6 +87,7 @@ int main(int argc, char* argv[]) {
             using Page = UltraAIApp::UltraAISettingsWindow::Page;
             if (page == "default-providers") { settingsPage = Page::DefaultProviders; ++i; }
             else if (page == "local-models") { settingsPage = Page::LocalModels; ++i; }
+            else if (page == "topics") { settingsPage = Page::Topics; ++i; }
             else if (page == "local-and-cloud") { settingsPage = Page::LocalAndCloud; ++i; }
             else if (page == "endpoints") { settingsPage = Page::Endpoints; ++i; }
         }

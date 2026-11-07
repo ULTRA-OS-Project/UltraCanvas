@@ -65,6 +65,8 @@ Paths Paths::For(const fs::path& root) {
     p.galleryJson    = root / "gallery" / "index.json";
     p.catalogueJson  = root / "gallery" / "catalogue.json";
     p.userModelsJson = root / "user-models.json";
+    p.topicsJson     = root / "gallery" / "topics.json";
+    p.topicPreferencesJson = root / "topic-preferences.json";
     return p;
 }
 

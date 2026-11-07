@@ -1,7 +1,7 @@
 # UltraAI Local Runtime — models on this computer, nothing to install
 
-**Version:** 0.1.0
-**Last Modified:** 2026-10-20
+**Version:** 0.2.0
+**Last Modified:** 2026-11-06
 
 ## Overview
 
@@ -71,11 +71,12 @@ on Windows, `~/Library/Application Support` on macOS, `$XDG_DATA_HOME` or
 ├── engines/<engine>/<version>-<platform>-<accelerator>/   an unpacked bundle, with bundle.json
 ├── models/<model id>/                                      the files, with model.json
 ├── downloads/*.part                                        in flight; resumed next time
-├── gallery/index.json, catalogue.json                      the refreshed copies
+├── gallery/index.json, catalogue.json, topics.json         the refreshed copies
 ├── logs/<engine>-<model>.log                               the engine's output (rotated at 4 MB)
 ├── runtime.json                                            running engines: pid, port, model, started, last used
 ├── runtime.key                                             the loopback API key (owner-only on POSIX)
 ├── runtime-settings.json                                   the settings below
+├── topic-preferences.json                                  the user's model per topic, new models (Topics)
 └── user-models.json                                        models the user added
 ```
 
@@ -193,6 +194,71 @@ install time.
 
 ---
 
+## Topics
+
+A topic is what a model is used for: general chat, programming,
+translation, summaries, pictures and documents, search, or one the model
+server adds. The server ([`Server/UltraAIModelServer`](../../../Server/UltraAIModelServer/README.md),
+managed with [UltraAI ServerAdmin](../../UltraAIServerAdmin/README.md))
+publishes `topics.json` beside the index; `RefreshGallery()` fetches it
+with the catalogue, and the copy built into the framework stands in until
+then (and for a mirror that publishes none).
+
+```json
+{
+  "formatVersion": 1,
+  "published": "2026-11-06",
+  "topics": [
+    {"id": "translation", "name": "Translation", "description": "...", "capability": "textllm",
+     "models": [{"id": "qwen3-4b-q4", "default": true}, {"id": "qwen3-8b-q4"}, {"id": "qwen3-1.7b-q8"}]}
+  ]
+}
+```
+
+`models` is the server's order, best first; the one marked `default` is
+the server's choice (the first one when none is marked). The built-in
+topics are `chat`, `code`, `translation`, `summary`, `vision` and
+`search`.
+
+The user's side is `TopicPreferences`, kept in `topic-preferences.json`:
+
+| Field | Meaning |
+|---|---|
+| `choices[topic].modelId` | `""` (the default): follow the server's choice, and move with it; otherwise the model the user picked |
+| `choices[topic].autoInstall` | while following: `ApplyTopicUpdates` downloads the server's choice when it is not installed (default on) |
+| `newModels` | `Notify` (default): `NewModels()` lists catalogue models published since the user last looked; `Automatic`: also downloads one that becomes a followed topic's choice; `Ignore`: nothing is reported |
+| `seenModels` | the catalogue ids already reported; the whole catalogue the first time, so only later ones count as new |
+
+`ModelForTopic(topic)` decides which model a topic uses on this computer:
+the user's pick while it exists and fits; else the server's choice when it
+fits (installed, or installable because the user lets it download); else
+an installed model the topic offers; else the first offered model that
+fits; else `Recommend(capability)`. A model that is *too large* is never
+chosen.
+
+```cpp
+LocalRuntime& rt = LocalRuntime::Instance();
+for (const ModelTopic& t : rt.ListTopics()) {
+    // t.name, t.capability, t.ServerDefault(), rt.ModelForTopic(t.id)
+}
+rt.SetTopicModel("code", "qwen3-8b-q4");          // the user's pick; "" follows the server again
+TopicPreferences p = rt.GetTopicPreferences();
+p.newModels = NewModelPolicy::Automatic;
+rt.SetTopicPreferences(p);
+rt.RefreshGallery();                               // the server's index, catalogue and topics
+rt.ApplyTopicUpdates(onProgress);                  // download what the topic settings call for
+for (const LocalModelInfo& m : rt.NewModels()) { /* tell the user */ }
+rt.MarkModelsSeen({});                             // all of them seen
+```
+
+`ApplyTopicUpdates` does nothing under `DownloadPolicy::Never`. An
+application asks for a topic's model through the `local` provider with
+`providerOptions["topic"] = "translation"` (and no `defaultModel`). The
+dashboard's *Model topics* settings page (`Apps/UltraAIApp/UltraAITopicsPage`)
+is the user's view of all of this.
+
+---
+
 ## The `local` provider
 
 `CreateTextLLM` / `CreateEmbeddings` with `providerId = "local"`, or an
@@ -201,7 +267,8 @@ in `KnownLocalProviders` for `textllm`, `embeddings` and `translator`.
 
 | Config field | Meaning |
 |---|---|
-| `defaultModel` | a catalogue id, `file:<path>`, `hf:<repo>:<file>`, or empty for `Recommend(capability)` |
+| `defaultModel` | a catalogue id, `file:<path>`, `hf:<repo>:<file>`, or empty for the topic's model or `Recommend(capability)` |
+| `providerOptions["topic"]` | string: with no `defaultModel`, the model the user set for this topic (`ModelForTopic`) |
 | `providerOptions["allow_download"]` | bool: the first call may install under the *Ask* policy |
 | `timeoutMs`, other `providerOptions` | passed to the OpenAI-wire delegate |
 | `apiKey`, `apiKeyVaultRef`, `baseUrl` | ignored: the runtime's endpoint and key are used |

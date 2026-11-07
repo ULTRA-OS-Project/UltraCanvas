@@ -1615,15 +1615,23 @@ through any text LLM (`UltraAITextLLMTranslator.h`: `CreateTextLLMTranslator`,
 `ListModels` / `ListEngines` / `Recommend` / `Fit`, `InstallModel` /
 `InstallEngine` / `Cancel` / `RemoveModel`, `AddModelFile` /
 `AddHuggingFaceModel`, `Ensure` / `Touch` / `StopIdle` / `StopAll`,
-`GetSettings` / `SetSettings`, `RefreshGallery`) downloads an inference
-engine and a model on demand and supervises the engine as a loopback
-process shared between applications; the `local` provider
+`GetSettings` / `SetSettings`, `RefreshGallery`; topics: `ListTopics` /
+`ModelForTopic` / `GetTopicPreferences` / `SetTopicPreferences` /
+`SetTopicModel` / `NewModels` / `MarkModelsSeen` / `ApplyTopicUpdates`)
+downloads an inference engine and a model on demand and supervises the
+engine as a loopback process shared between applications, and keeps which
+model the user wants for each topic (chat, code, translation, ...) from
+the model server's `topics.json`; the `local` provider
 (`UltraAILocal.h`: `CreateLocalTextLLM`, `CreateLocalEmbeddings`) serves
 chat and embeddings through it; the module's one library that draws,
 `UltraAI_UI` (`UltraAI/ui/`, `UltraAILocalModelDialog.h`:
 `UltraAILocalModelDialog::Show`, `NeedsInstall`), is the "Get a local model"
 dialog an application shows when a service needs a model that is not on
-this computer. `Docs/Modules/UltraAI/LocalRuntime.md`.
+this computer. `Docs/Modules/UltraAI/LocalRuntime.md`. The model server
+those catalogues and topics come from is `Server/UltraAIModelServer`
+(FastAPI on SQLite), managed with UltraAI ServerAdmin
+(`Apps/UltraAIServerAdmin`, `ModelServerClient.h`: the admin API's client;
+`Docs/UltraAIServerAdmin/README.md`).
 
 ### **3. FileLoader**
 

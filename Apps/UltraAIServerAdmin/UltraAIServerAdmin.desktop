@@ -1,0 +1,17 @@
+[Desktop Entry]
+# The freedesktop shortcut for UltraAI ServerAdmin. `Icon=UltraAI` is the
+# UltraAI dashboard's icon, which its install rules put into
+# share/icons/hicolor.
+Type=Application
+Version=1.5
+Name=UltraAI ServerAdmin
+GenericName=AI Model Server Administration
+Comment=Choose which AI models UltraAI clients may install: upload, publish, topics, accounts
+Exec=ultraai-serveradmin
+TryExec=ultraai-serveradmin
+Icon=UltraAI
+Terminal=false
+StartupNotify=true
+StartupWMClass=UltraAIServerAdmin
+Categories=Development;System;
+Keywords=ai;models;server;admin;upload;publish;
