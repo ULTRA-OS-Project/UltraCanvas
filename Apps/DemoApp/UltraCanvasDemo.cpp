@@ -1,5 +1,6 @@
 // Apps/DemoApp/UltraCanvasDemo.cpp
 // Comprehensive demonstration program implementation
+// Version: 1.0.22 - Charts > Line Chart: the Control Chart variant
 // Version: 1.0.21 - Charts > Ternary Chart: the Density variant (density bins, contours, zoom)
 // Version: 1.0.20 - Charts > Ternary Chart: Vote Swings, USDA Soil Texture and De Finetti variants
 // Version: 1.0.19 - Charts > Ternary Chart (UltraCanvasTernaryChart)
@@ -1151,7 +1152,8 @@ namespace UltraCanvas {
                              ImplementationStatus::FullyImplemented,
                              [this]() { return CreateLineChartsExamples(); },
                              "DemoApp/UltraCanvasBasicChartsExamples.cpp",
-                             "Docs/UltraCanvas/UltraCanvasLineChartElement.md");
+                             "Docs/UltraCanvas/UltraCanvasLineChartElement.md")
+                .AddVariant("linecharts", Tr("Control Chart (X-bar-R, I-MR)"));
 
         chartBuilder.AddItem("barcharts", Tr("Bar Chart"), Tr("Bar chart data visualization"),
                              ImplementationStatus::FullyImplemented,

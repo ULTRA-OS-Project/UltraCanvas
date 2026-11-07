@@ -1,3 +1,9 @@
+#### 2026-11-06 *1.78*
+- **Crash recovery no longer asks.** Files autosaved in a session that did not
+  end cleanly are reopened at startup straight away, each in its own tab and
+  marked modified, instead of behind a *Crash Recovery* question whose *No*
+  deleted them.
+
 #### 2026-11-04 *1.77*
 - **UltraTexter in every language.** Its own catalogue
   (`media/locale/<lang>/UltraTexter.json`) now exists in all thirty

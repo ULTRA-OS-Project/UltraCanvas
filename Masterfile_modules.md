@@ -585,7 +585,7 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   (`cmake/UltraCanvasSingleInstance.cmake`) compiles
   `core/AppEntry/UltraCanvasSingleInstance.cpp` into the application and links
   UltraMessage where present. Used by the single-window applications (UltraMail,
-  UltraClipboard, UltraSnip, DeviceExplorer, UOS-Settings, UltraNetMonitor, UltraDBAdmin, UltraPassword,
+  UltraClipboard, UltraNotifications, UltraSnip, DeviceExplorer, UOS-Settings, UltraNetMonitor, UltraDBAdmin, UltraPassword,
   UltraAuthenticator, UltraCleaner, EmailCleaner, UltraClaude, UltraAI,
   UltraSocial, UltraFIBU, UltraWin Manager) and, with their files handed over,
   the document applications (Texter, UltraFiler, UltraViewer, UltraPaint,
@@ -884,8 +884,16 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   `AddHostAppearanceHandler` hears a difference; the system fonts are the
   value's. `HostAppearanceTest` covers the pure half,
   `LinuxHostAppearanceTest` the Linux detector against a made-up config
-  home. Phases T1 and T2 of `Docs/UltraCanvas/UltraCanvasHostThemeProposal.md`;
-  see `Docs/UltraCanvas/UltraCanvasHostAppearance.md`.
+  home. `UltraCanvasTheme::FromHost` builds the theme the desktop asks for
+  from it - Light or Dark, the high-contrast presets, the accent derived
+  into the five accent roles (`DeriveAccent`), the fonts and text roles
+  (`ThemeFonts`, `ThemeTextRole`) - and the application's theme policy
+  (`SetThemePolicy`: FollowHost by default, Light, Dark, Own with
+  `SetThemeProvider`) applies it in `Initialize` and on every host change,
+  a window built with the default background taking the theme's ground.
+  Phases T1 to T3 of `Docs/UltraCanvas/UltraCanvasHostThemeProposal.md`;
+  see `Docs/UltraCanvas/UltraCanvasHostAppearance.md` and
+  `Docs/UltraCanvas/UltraCanvasTheme.md`.
 
   Emoji come from a bundled font the emoji setting picks
   (`UltraCanvasEmojiSettings.h`: `EmojiStyle` Colour / Monochrome / System,

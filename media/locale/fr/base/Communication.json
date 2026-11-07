@@ -1,7 +1,6 @@
 {
   "@language": "fr",
   "@translated-by": "machine draft 2026-11-02, reviewed by -",
-  "Add account": "Ajouter un compte",
   "App password": "Mot de passe d'application",
   "Attach file": "Joindre un fichier",
   "Attachment": "Pièce jointe",
@@ -44,7 +43,6 @@
   "Search messages": "Rechercher dans les messages",
   "Sending": "Envoi en cours",
   "Sent": "Envoyés",
-  "Server": "Serveur",
   "Sign out": "Se déconnecter",
   "Sign-in": "Connexion",
   "Spam": "Indésirables",

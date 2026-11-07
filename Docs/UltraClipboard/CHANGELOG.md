@@ -1,3 +1,11 @@
+#### 2026-11-06 *0.1.7*
+- **Start without a window.** `UltraClipboard --background` (UltraDesktop's
+  *Start with the desktop*) starts it with the history open and no window;
+  the next start - the clipboard panel's *Open UltraClipboard*, the
+  Applications window - shows the window at once. While it runs this way,
+  closing the window only hides it, and *Quit* in the More menu (Ctrl+Q)
+  ends the program. A background start while it runs changes nothing.
+
 #### 2026-10-20 *0.1.6*
 - **Code is recognised by its language.** A copy is a *Code* entry also when
   its language can be named although it has no brackets or semicolons - a

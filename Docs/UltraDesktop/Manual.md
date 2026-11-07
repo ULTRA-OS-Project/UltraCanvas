@@ -229,10 +229,21 @@ into categories, on a board over the wallpaper. It starts with **Docs**,
   category later, double-click its title.
 - **Change the look:** the picker in the board's bar offers **Sticky notes**,
   **Poster**, **Schematic** and **Dark**.
+- **Open, copy or delete a file:** right-click its card. **Copy** puts the
+  file on the clipboard, to paste in the file manager; **Delete** moves it to
+  the trash after asking; **Remove from the board** only takes the card
+  away. **Move to** sends it to another category, as dragging does.
+- **Choose how cards look:** right-click anywhere on the board, then
+  **Display**: **Text only**, **Thumbnail and text** (the picture with the
+  name under it, the usual one) or **Thumbnail and text in a row**.
+- **See a file larger:** rest the pointer on its card for two seconds and a
+  bigger preview opens beside it. Its size is **Display ▸ Mouse hover
+  preview**: **Small**, **Medium** or **Large**. Both choices are also on
+  the **Desktop** page of the settings.
 - **Move or resize the board:** drag it by its title; resize it by the grip
   (◢) in its bottom-right corner.
 
-The board, its look, its place and its size are kept.
+The board, its look, how cards are shown and the preview size are kept.
 
 ### 4.8 The clock
 
@@ -475,6 +486,7 @@ at sign-in.
 | Screenshot button | click / right-click | UltraSnip snips an area / a window, the whole screen, a recording, the plain screenshot, open UltraSnip |
 | Clipboard panel | Up, Down, Enter, Delete, F2, Escape | choose, copy, delete, edit, close |
 | Sticker board | drop files / double-click a card / double-click a category title | add / open / rename |
+| Sticker board | right-click a card / rest the pointer on it for two seconds | Open, Copy, Delete, Move to, Display / a larger preview |
 | A notification | click / × | its default action / dismiss |
 
 ## 8. Troubleshooting

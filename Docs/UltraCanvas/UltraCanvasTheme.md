@@ -20,7 +20,7 @@ those elements, the tabbed container and the text area
 (`include/UltraCanvasUIElement.h`)
 **Tests:** `Tests/UltraCanvasThemeTest.cpp` (without a display)
 **Design:** `Docs/Research/UltraVideoDesignProposal.md` §5.8
-**Version:** 1.6.0 - the readability the presets keep, measured by the test
+**Version:** 1.7.0 - fonts and text roles, the high-contrast presets, the theme from the host and the policy (T3 of the host theme proposal)
 **Last Modified:** 2026-10-12
 **Author:** UltraCanvas Framework
 
@@ -189,8 +189,86 @@ UltraCanvasTheme::RemoveChangeHandler(handler);
 A handler added during a change is not called for that change; one
 removed during a change is not called again.
 
+## Fonts and text roles
+
+The font half of a look lives in the theme too: `fonts.ui`, the interface
+font at its base size in points; `fonts.mono`, the monospace font; and
+`fonts.scale`, the host's text scale over both (the window's DPI is
+applied after). A preset carries the bundled Ubuntu 12 and Ubuntu Mono 12;
+`FromHost` puts the desktop's in. An element's text plays a role, and the
+role has a size: `Body` 1.0 of the base, `Caption` 0.92 (the 11 pt of a
+12 pt base), `Small` 0.85, `Heading` 1.25, `Title` 1.5, `Mono` the
+monospace font at the body size, each to the quarter point.
+
+```cpp
+UltraCanvasTheme theme = UltraCanvasTheme::Current();
+double caption = theme.FontSize(ThemeTextRole::Caption);         // 11 for a 12 pt base at scale 1
+FontStyle heading = theme.Font(ThemeTextRole::Heading);          // the interface font at 1.25 of the base
+FontStyle code = theme.Font(ThemeTextRole::Mono);                // the monospace font
+theme.fonts.ui.fontFamily = "Segoe UI";
+theme.fonts.ui.fontSize = 9;
+theme.fonts.scale = 1.25;                                        // Body is then 11.25
+```
+
+A `FromTheme` reader sets its style's family and size from `Font(role)`
+as it gains fonts by role (T4 of the proposal); until then the sizes are
+there for an application's own text.
+
+## The theme from the host
+
+`FromHost` builds the theme a desktop asks for from what
+[`UltraCanvasHostAppearance.md`](UltraCanvasHostAppearance.md) read:
+`Light()` or `Dark()` by the host's dark flag, `LightHighContrast()` or
+`DarkHighContrast()` when it asks for high contrast (black on white or
+white on black, every ink at 7:1), the five accent roles derived from the
+host's one accent, its fonts and text scale; the name says so (`Host
+Dark`, `Host Light High Contrast`).
+
+```cpp
+UltraCanvasTheme host = UltraCanvasTheme::FromHost(app->GetHostAppearance());
+ThemeRoles derived = UltraCanvasTheme::DeriveAccent(UltraCanvasTheme::Dark().roles, Color(0xe9, 0x54, 0x20), true);
+double ratio = UltraCanvasTheme::Contrast(derived.onAccent, derived.accent);   // at least 4.5
+```
+
+`DeriveAccent` keeps the readability the test enforces: text on the
+accent is white or the dark ink, whichever reads better, and the accent is
+moved toward black or white a step at a time until that text reaches
+4.5:1 (7:1 for high contrast) - a yellow or a mid-grey accent is nudged, a
+blue stays itself; `accentHover` is the accent moved 8 % toward the ink;
+`accentSoft` the accent at 18 % over the panel when dark, 14 % when light;
+`focus` the accent unless it fails 3:1 on the ground, then `lineStrong`.
+
+## The policy
+
+The application decides what the theme follows
+(`UltraCanvasApplication::SetThemePolicy`): `FollowHost`, the default,
+builds `FromHost(GetHostAppearance())` in `Initialize` before the first
+window and again on every host change, so switching the desktop to dark
+re-styles every element that follows and every window built with the
+default background takes the theme's ground; `Light` and `Dark` take the
+framework's preset with the host's fonts; `Own` leaves the theme to the
+application, with a provider - a function from the host to the
+application's theme, UltraVideo's `ThemeFor` is one - called at start and
+on every change when it gave one. An application that calls `SetCurrent`
+itself under another policy has taken over: the policy does not put its
+theme back over it.
+
+```cpp
+app->SetThemePolicy(ThemePolicy::Own);
+app->SetThemeProvider([](const HostAppearance& host) {
+    UltraCanvasTheme theme = host.dark ? UltraCanvasTheme::Dark() : UltraCanvasTheme::Light();
+    theme.name = "My app";
+    theme.fonts.ui = host.uiFont;
+    return theme;
+});
+ThemePolicy policy = app->GetThemePolicy();
+bool fromPolicy = app->ThemeIsFromPolicy();                      // the current theme is the policy's
+```
+
 ## Related
 
 - `Docs/UltraCanvas/UltraCanvasVideoTimeline.md`, `UltraCanvasTimecodeField.md` — the two readers with element roles of their own
 - `Docs/UltraCanvas/UltraCanvasTooltipManager.md` — `TooltipStyle::FromTheme`, the manager's style
 - `Apps/UltraVideo/UltraVideoTheme.h` — a design's tokens mapped onto the theme (`ThemeFor`)
+- [`UltraCanvasHostAppearance.md`](UltraCanvasHostAppearance.md) — what `FromHost` reads: the desktop's dark flag, contrast, accent, fonts and text scale
+- [`UltraCanvasHostThemeProposal.md`](UltraCanvasHostThemeProposal.md) — the whole: every element following by default (T4), the setting and UOS-Settings (T5)

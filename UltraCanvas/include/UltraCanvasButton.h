@@ -347,6 +347,8 @@ namespace UltraCanvas {
         // Right (secondary) mouse button pressed over the button; args are window-relative
         // coordinates, suitable for popping up a context menu there.
         std::function<void(int windowX, int windowY)> onContextMenu;
+        // The pointer comes over the button / goes off it. A toggle button
+        // that is on reports it too; a push button held down does not.
         std::function<void()> onHoverEnter;
         std::function<void()> onHoverLeave;
 

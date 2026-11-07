@@ -1,7 +1,6 @@
 {
   "@language": "ko",
   "@translated-by": "machine draft 2026-11-03, reviewed by -",
-  "Add account": "계정 추가",
   "App password": "앱 암호",
   "Attach file": "파일 첨부",
   "Attachment": "첨부 파일",
@@ -44,7 +43,6 @@
   "Search messages": "메시지 검색",
   "Sending": "보내는 중",
   "Sent": "보낸 편지함",
-  "Server": "서버",
   "Sign out": "로그아웃",
   "Sign-in": "로그인",
   "Spam": "스팸",

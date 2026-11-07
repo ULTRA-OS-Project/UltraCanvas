@@ -1,0 +1,20 @@
+[Desktop Entry]
+# The freedesktop shortcut for UltraNotifications. `Icon=UltraNotifications`
+# is resolved through the icon themes; the install rules put
+# media/appicon/UltraNotifications.png and .svg into share/icons/hicolor.
+#
+# UltraDesktop starts it with --background when "Start with the desktop"
+# names it, and opens it from the bell on its right bar.
+Type=Application
+Version=1.5
+Name=UltraNotifications
+GenericName=Notifications
+Comment=Every notification, chat message and mail, after the pop-up has gone
+Exec=UltraNotifications
+TryExec=UltraNotifications
+Icon=UltraNotifications
+Terminal=false
+StartupNotify=true
+StartupWMClass=UltraNotifications
+Categories=Utility;
+Keywords=notifications;messages;history;unread;bell;

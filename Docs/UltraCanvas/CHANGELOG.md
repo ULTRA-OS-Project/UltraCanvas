@@ -1,3 +1,258 @@
+#### 2026-11-06 *0.9.502*
+- **Kanban board: a card's picture beside its text, a context menu, hover and
+  a larger preview.** `KanbanBoardStyle::cardImagePlacement`
+  (`KanbanCardImagePlacement::Top` / `Left`) puts a card's picture in a band
+  above the title or in a square at its left with the text beside it;
+  `centerCardTitle` centres the title. `onContextMenu(cardId, columnId,
+  windowPos)` runs on a right click (the card is selected first),
+  `onCardHoverChanged(cardId)` names the card under the pointer, and
+  `ShowCardPreview(cardId, picture, size)` / `HideCardPreview()` draw a
+  larger picture of a card beside it over the board, gone by itself when the
+  pointer leaves the card, a button is pressed, the board scrolls or a drag
+  starts. `GetCardBounds(cardId)` gives a card's laid-out rectangle.
+  `KanbanFileDropTest` covers all of it.
+
+#### 2026-11-06 *0.9.501*
+- **UltraCloud's add-account dialog asks an FTP / SFTP server for its
+  protocol, its name and its port, each on its own.** The one *Server URL*
+  field took whatever was pasted into it - an `https://` address from the
+  browser's bar, which is no FTP at all - and tried it as plain FTP on port
+  21 without a word; the port had no place but a `host:port` nobody was
+  told about. The FTP provider now shows a *Protocol* menu (SFTP, FTP with
+  TLS, FTP over TLS, plain FTP, each with its port named), a *Server* field
+  for the name or address and a *Port* field beside it, empty for the
+  protocol's own; a URL typed into the server field is refused with the
+  reason. The three are stored as the one URL the command line takes
+  (`FtpServerUrl`: `sftp://files.example.org:2222`, the protocol's own port
+  left out, so an account keeps its id). The *Private key* row, shown for
+  SFTP only, has a *Choose* button that opens the file dialog in `~/.ssh`
+  with hidden files shown; a `~/` typed into it is expanded. The status
+  line wraps onto two lines, so a server's refusal is read whole, and a
+  refusal is said by its result code (`DescribeResult`). The callbacks the
+  widgets hold reach the other widgets through plain pointers - the dialog
+  owns them all and outlives every callback - where the provider menu's own
+  callback used to hold a `shared_ptr` to the menu, a cycle that kept the
+  menu alive. The new texts (the protocol menu, the server and port rows, their
+  messages) go through `Tr` into the standard set, drafted in all thirty
+  languages; the rest keep the wording and translations of the dialog's
+  earlier `Tr` conversion (`UltraCloudAccountDialog.cpp` 0.8.2).
+- **The FTP provider refuses a scheme it does not speak.** `Verify` answers
+  `InvalidArgument` - "the server URL starts with https://, which is not
+  FTP: it has to start with ftp://, ftps://, ftpes:// or sftp://" - before
+  anything is sent, so `ultrapress hosts add` and UltraFiler's "+ Drive" say
+  so too. `FtpServer`, `FtpServerOf`, `FtpServerUrl`, `FtpDefaultPort` and
+  `FtpSchemeKnown` in `UltraCloudFtp.h` (0.2.0) are the pure helpers behind
+  the form, tested in `Tests/UltraCloud/test_ftp.cpp`.
+
+#### 2026-11-06 *0.9.500*
+- **The Wayland desktop shell's remaining pieces: panels and popups placed
+  by their parent, drag and drop, the session lock, GL surfaces, and the
+  Wayland build in CI** (`Docs/UltraCanvas/WaylandDesktopShellProposal.md`,
+  sections 4.6 to 4.10). In a build with `ULTRACANVAS_WAYLAND=ON`:
+  - A window with `parentWindow` of type Popup, Borderless, Tool or
+    Notification is placed where `config.x` / `config.y` say, relative to
+    its parent: a child of a layer-shell desktop as a layer surface of its
+    own on the top layer (keyboard focus on demand, so a panel takes the
+    keys when clicked and loses them - a blur - when the desktop is), a
+    child of a toplevel as an `xdg_popup` with a positioner, made on Show
+    and repositioned through xdg_wm_base 3. UltraDesktop's popup panels and
+    clipboard panel get the desktop window as their parent in a Wayland
+    build (`SetParentWindow`), so they open beside their bars instead of
+    being tiled as toplevels.
+  - File drags out of a window (`StartNativeFileDrag`: a `wl_data_source`
+    with `text/uri-list`, copy and move, the target's answer to the
+    callback) and drops in (`DragEnter` / `DragOver` / `DragLeave` / `Drop`
+    with the paths, as XDnD on X11); a save drag has no Wayland form and
+    answers false.
+  - `WindowType::SessionLock`, the lock screen a program draws: an
+    `ext-session-lock-v1` lock surface on Wayland (the application holds
+    the one lock, taken with the first such window and released with the
+    last; a compositor that refuses closes them), a fullscreen window kept
+    above elsewhere.
+  - GL surfaces on Wayland: the EGL context manager opens its display on
+    the Wayland connection, else Mesa's surfaceless platform; GLX is left
+    out of a Wayland build and `ULTRACANVAS_ENABLE_GL` is no longer forced
+    off.
+  - `.github/workflows/wayland-build.yml`: the framework, DesktopShellTest
+    and UltraDesktop built with `ULTRACANVAS_WAYLAND=ON` on ubuntu-24.04,
+    DesktopShellPortalTest under a session bus, DesktopShellTest under sway
+    headless with a virtual keyboard, and a screenshot of UltraDesktop under
+    sway as an artifact.
+  - DesktopShellTest's Wayland section checks each: the lock granted and
+    released, a popup placed at 40,30 as asked, a panel at its size, a drag
+    started or refused with the compositor's reason, a GL surface drawn
+    with the renderer EGL gave it.
+
+#### 2026-11-06 *0.9.499*
+- **UltraCanvasToolbar: a click on an item's badge reaches the item.** The
+  badge `SetItemBadge` / `SetItemBadgeCount` / `SetItemBadgeDot` puts in an
+  item's corner took the click and the hover itself and did nothing with
+  them, so on a small bar button - UltraDesktop's mail icon with its unread
+  count - a good part of the button did not respond. The badge is no
+  longer interactive; a host that gives it an `onClick` of its own sets it
+  interactive again.
+
+#### 2026-11-06 *0.9.498*
+- **The UltraDBAdmin end-to-end job keeps its packages between runs.** On
+  2026-11-04 the Azure Ubuntu mirror served the job's package install at a
+  few kilobytes per second and its 20 minutes ran out on package 130 of the
+  list, before anything was built or tested; the re-run passed in 17
+  minutes. `ci-apt.sh` retries a download that stops dead and waits out one
+  that trickles on purpose, so the job now does what the Build workflow's
+  Linux rows do: the .deb files of the last run on `main` are restored into
+  apt's cache first (its own cache, as its runner image is Ubuntu 24.04, not
+  the rows' 22.04) and saved again on `main`, and the step has the rows' 45
+  minutes within the job's 60.
+- `AGENTS.md` says why the demo app's pages keep bare literals: `DemoApp`
+  is skipped by the string extraction on purpose, so a review that finds no
+  `Tr` there has found nothing.
+
+#### 2026-11-06 *0.9.497*
+- **UltraCloud's dialogs are translated.** The "Attach cloud link" picker
+  (`UltraCloudPickerDialog.cpp` 0.4.0) - its title, account and folder
+  rows, buttons, column headers and the status lines (now whole sentences
+  with the name as `{0}`) - adds 10 standard-set texts.
+- **The "Add cloud account" dialog is translated.** Every text a
+  person reads in it - the title, the row captions, the placeholders, the
+  default-account checkbox, the buttons, the per-provider hint and the
+  status messages - goes through `Tr` / `TrF`
+  (`UltraCloudAccountDialog.cpp` 0.8.0), and the OAuth hint is one sentence
+  with the provider's name as `{0}` instead of an English possessive. The
+  dialog is shown by UltraFiler and UltraPress, so its 25 texts are in the
+  standard set, drafted in all thirty languages: `extract_ui_strings.py`
+  now scans `UltraCloud/ui` with the framework. The default upload folder
+  (`/Shared from ULTRA OS`) stays the same in every language - it is a
+  folder name on the server.
+- **A failed cloud call says why in the reader's language.** The service's
+  own error text is technical English built in about ninety places (often
+  the network library's message passed on), so it cannot be a translation
+  key; the new `UltraCloud/ui/UltraCloudResultText.h` gives
+  `DescribeResult` - one translated sentence per result code (not found,
+  sign-in refused, server unreachable, HTTP error with its status, rate
+  limit, ...) - and `ResultDetail`, the technical message. Both dialogs show
+  the sentence and keep the detail as the status line's tooltip; the
+  applications that show cloud results can call the same pair.
+- **Control charts on the engine line chart.** `ComputeControlChart`
+  (`UltraCanvasControlLimits.h`, UI-free) computes the centre line, control
+  limits and Western Electric run-rule signals of an X-bar-R or I-MR chart,
+  with sigma estimated within subgroups; `ShowControlChart` draws a result on
+  an `UltraCanvasEngineLineChart`: the statistic over its range, limits with
+  their values in a column past the plot ("UCL = ..."), flagged points as red diamonds with the rule in their
+  tooltip, optional A / B / C zones and sigma lines. `FindRuleViolations` runs
+  the rules against limits from elsewhere. The demo's Charts > Line Chart page
+  ends with a control chart card. Guide: `UltraCanvasControlLimits.md`.
+- **The engine line chart gained general options.** Per series: a line shape
+  (`shape`), markers (`showMarkers`), a legend entry (`inLegend`) and
+  interactivity (`interactive`); per point: a look (`pointStyles`: colour,
+  marker, hollow, size, always shown) and a tooltip note (`pointNotes`).
+  `SetPanes` stacks panes, each with its own value axis, grid and title, the
+  series naming their pane; `ValueAxisOfPane` gives the axis index limiters
+  and highlights take, and `EngineLinePane::rangeIncludes` keeps limits in
+  view. A chart that uses none of them draws as before.
+- **Chart engine:** `SetExtraGridAxes` rules further axes (a grid in every
+  pane); a limiter outside its axis's band is no longer drawn across a
+  neighbouring pane; a limiter's caption is anchored half its width in from
+  the line's end, so it sits beside the line instead of across it, and
+  `ChartLimiter::captionPlacement` can pin it above the line's end
+  (`AboveEnd`) or put it past the plot's edge in reserved room (`BeyondEnd`);
+  new read accessors `GetLimiters`, `GetHighlights` and `HitRegionAt`.
+- **Tests:** `ControlLimitsTest` (the constants against the published tables,
+  hand-checked limits, within-subgroup sigma on a shifted process, every rule
+  on its minimal pattern and a near miss) and `EngineLineChartTest` (the first
+  test of the engine line chart: each new option, panes, and both control
+  chart kinds drawn).
+- **Control charts, Phase 2: X-bar-S, the attribute charts, Nelson rules,
+  stages and capability.** `ComputeControlChart` adds X-bar-S (unequal
+  subgroups too: the pooled standard deviation, limits for each subgroup's
+  own size), the p, np, c and u charts (limits per lot where the sizes vary),
+  the Nelson rules (`ControlRuleSet::Nelson`; the run length a setting; the
+  whole set on the dispersion pane with `rulesOnDispersion`), stages (each
+  with its own limits, no rule or moving range across a boundary), excluded
+  points (plotted and checked, left out of the limits), `baselineCount`
+  (limits from a stage's first points), notes, and specification limits with
+  Cp, Cpk, Pp and Ppk. New factors `ControlA3`, `ControlSigmaLowerFactor`
+  and `ControlSigmaUpperFactor`; `ControlC4` for any n >= 2.
+- **`ShowControlChart` draws limits that change** as stepped lines with the
+  last point's values in the caption column, zones under them as bands, a
+  named divider at each stage, excluded points hollow, notes in the tooltips
+  and specification limits in their own colour.
+- **The engine line chart** fills between two series (`AddSeriesBand`),
+  reports clicks on points (`onPointClick`) and can leave a series' line out
+  (`drawLine = false`).
+- **Chart engine:** the captions past the plot's edge are spread apart where
+  they would overprint, and an `AboveEnd` caption on a vertical line sits
+  beside it, inside the plot.
+- **Demo:** the Line Chart page's control chart card adds a p chart of failed
+  inspections and a c chart of paint defects, the Nelson rules, the late
+  change as a new stage, specification limits with the capability in the
+  summary, and a click that excludes a point from the limits.
+- **The ternary chart's USDA soil classes now match the Soil Survey Manual on
+  the class boundaries.** A composition exactly on a boundary went to the
+  class listed first, so 258 of the 5,151 whole-percent compositions - where
+  lab results land - got another class than the manual gives: 7 % clay with
+  48 % sand was sandy loam instead of loam, 50 % sand and 50 % silt sandy loam
+  instead of silt loam. The manual (USDA Handbook 18, 2017, chapter 3) gives
+  every boundary to the finer side, and the new `TernaryModel::edgeLean` says
+  which side of a shared edge a point on it belongs to; the USDA preset leans
+  that way and lists its silty classes so the rim matches too. The lean is
+  saved in the JSON. `TernaryModelTest` now checks the classes against the
+  manual's wording, transcribed word for word, at every whole percent.
+
+#### 2026-11-06 *0.9.496*
+- **UltraCanvasDesktopShell: `CaptureWindowImage` and
+  `DesktopWindowInfo::appUserModelId`.** `CaptureWindowImage(id, maxWidth,
+  maxHeight, image)` gives a small picture of one window for a taskbar's
+  previews - on Windows drawn by the window itself (`PrintWindow` with the
+  full content) and on Wayland copied by the compositor
+  (`ext-image-copy-capture-v1`, where it offers it: wlroots 0.19 and later,
+  niri and others), so a covered window shows its own content; on X11 the
+  window's rectangle of the screen. On Windows `ListWindows` now reads each
+  window's AppUserModelID (the window's own, else its process's): a
+  taskbar groups an application's windows by it, `MatchApplication` finds
+  a Store application's entry by it, and a Store application's window or a
+  frame whose program is not known yet - Calculator, Settings, WhatsApp -
+  takes the tile icon and the name the shell's Applications folder gives
+  it instead of showing a letter.
+- **UltraCanvasButton: a toggle that is on reports the hover.**
+  `onHoverEnter` was skipped while the button was pressed, so a toggle
+  button that is on - a taskbar's button of the active window - never said
+  the pointer had come over it. A push button held down still does not.
+- **UltraCanvasGaugeDiagramElement: an analog clock on a dark face.**
+  `SetClockHandColor` (the hour and minute hands and the hub) and
+  `SetClockTickColor` (the ticks, the rim and the hour numbers) colour what
+  `AnalogClock` drew in fixed dark greys, so a black face can take white
+  hands. The defaults are the colours it had. Doc:
+  `Docs/UltraCanvas/UltraCanvasGaugeExamples.md`.
+- **UltraCanvasHardwareInfo on Windows: a joined Wi-Fi adapter reads as
+  joined.** The WLAN service's record for an adapter was looked up under
+  its GUID wrapped in a second pair of braces, so none was found, and every
+  Wi-Fi adapter came back with an empty record saying "not joined" - no
+  SSID, no signal - while it was online. The record is now found with
+  braces and case aside; joined or not comes from the WLAN enumeration's
+  state, which needs no location access, and an adapter WLAN does not
+  report takes its link state. `UltraCanvasDesktopShell::ReadDeviceActivity`
+  (`wifiConnected`, `wifiSsid`) reads from it, and so does UltraDesktop's
+  Wi-Fi marker.
+
+#### 2026-11-06 *0.9.495*
+- **The theme follows the desktop (T3 of the host theme proposal).**
+  `UltraCanvasTheme` gains the font half of a look - `fonts.ui`,
+  `fonts.mono`, the host's text scale, and a size per text role (Body,
+  Caption, Small, Heading, Title, Mono) - and two high-contrast presets,
+  black on white and white on black with every ink at 7:1.
+  `UltraCanvasTheme::FromHost` builds the theme a desktop asks for from the
+  host appearance: Light or Dark, the high-contrast variant, the desktop's
+  accent derived into the five accent roles with the readability the test
+  enforces (text on the accent at 4.5:1, 7:1 for high contrast, the focus
+  ring 3:1 on the ground), its fonts. The application's theme policy
+  (`SetThemePolicy`: FollowHost by default, Light, Dark, Own with a
+  provider) applies it in `Initialize` before the first window and again
+  on every host change, so switching the desktop to dark re-styles every
+  element that follows the theme and every window built with the default
+  background takes the theme's ground; an application that sets its own
+  theme is left alone. `UltraCanvasThemeTest` covers the sizes, the
+  presets, the derivation over fourteen accents and `FromHost`.
+
 #### 2026-11-06 *0.9.494*
 - **Text in the media viewer can be copied.** The text view (text, source,
   Markdown files and notes) and the Details panel are display-only text

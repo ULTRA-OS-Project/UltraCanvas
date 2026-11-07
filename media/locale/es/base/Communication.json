@@ -1,7 +1,6 @@
 {
   "@language": "es",
   "@translated-by": "machine draft 2026-11-02, reviewed by -",
-  "Add account": "Añadir cuenta",
   "App password": "Contraseña de aplicación",
   "Attach file": "Adjuntar archivo",
   "Attachment": "Adjunto",
@@ -44,7 +43,6 @@
   "Search messages": "Buscar mensajes",
   "Sending": "Enviando",
   "Sent": "Enviados",
-  "Server": "Servidor",
   "Sign out": "Cerrar sesión",
   "Sign-in": "Inicio de sesión",
   "Spam": "Spam",

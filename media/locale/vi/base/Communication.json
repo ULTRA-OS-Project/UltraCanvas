@@ -1,7 +1,6 @@
 {
   "@language": "vi",
   "@translated-by": "machine draft 2026-11-03, reviewed by -",
-  "Add account": "Thêm tài khoản",
   "App password": "Mật khẩu ứng dụng",
   "Attach file": "Đính kèm tệp",
   "Attachment": "Tệp đính kèm",
@@ -44,7 +43,6 @@
   "Search messages": "Tìm kiếm tin nhắn",
   "Sending": "Đang gửi",
   "Sent": "Đã gửi",
-  "Server": "Máy chủ",
   "Sign out": "Đăng xuất",
   "Sign-in": "Đăng nhập",
   "Spam": "Thư rác",

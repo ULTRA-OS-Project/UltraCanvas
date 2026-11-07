@@ -432,6 +432,17 @@ UltraCloud::ShowCloudLinkPicker(window, cloud, [](const CloudLinkPick& pick) {
 });
 ```
 
+For the FTP provider the dialog asks for the protocol (SFTP, FTP with TLS,
+FTP over TLS, plain FTP), the server's name or address and the port - empty
+for the protocol's own - each on its own rather than as one URL, and stores
+them as the one URL the command line takes (`FtpServerUrl`:
+`sftp://files.example.org:2222`, the protocol's own port left out so the
+account keeps its id); a URL typed into the server field is refused with the
+reason. The private key row, shown for SFTP, has a *Choose* button that opens
+the file dialog in `~/.ssh`. A server URL whose scheme the provider does not
+speak - `https://`, pasted from the browser - is refused by `Verify` before
+anything is sent, so the command line and UltraFiler's "+ Drive" say so too.
+
 The picker lists the accounts (default preselected), browses the chosen one,
 uploads a local file into the current folder, and returns a share link for the
 selected file. When no account exists yet it offers the add-account dialog,
@@ -454,7 +465,7 @@ the `CloudService&` forms leave keeping the service alive to the caller.
 | `UltraCloudHttp.h` | `HttpFn`, `HttpProviderBase` (auth from credentials, every request logged, a throttled request sent again, HTTP → Result with the service's reason; `DownloadToFile` writes a download to disk as it arrives, never holding the file in memory, with no whole-transfer time limit and a half-written file removed; uploads send their bytes from the file as they go - `UltraNetHttpRequest::bodyFilePath`, a range of it per upload-session chunk - except Google Drive's multipart body, at most 5 MB), `RateLimitPolicy`, `SetThreadRateLimitPolicy` |
 | `UltraCloudLog.h` | The session log: `LogKind`, `LogLine`, `LogCallback`, `SetThreadLog`, `ThreadLogActive`, `LogToThread`; `LoggableUrl`, `ServerErrorReason`, `RetryAfterSeconds` |
 | `UltraCloudOAuth.h` | `OAuthApp` (= `UltraNetOAuth2App`), `SetOAuthApp` / `GetOAuthApp` / `HasOAuthApp` / `UsesSignInService` / `CanSignIn` / `DefaultRedirectUri` / `EnsureOAuthAppsRegistered` (the profile of UltraNet's shared app registry and its sign-in service), `OAuthHooks`, `OAuthProviderBase` (`OAuthConfig`, `SignInServiceProviderId`, `OAuthServiceConfig`) |
-| `UltraCloudFtp.h` | `FtpProvider`, `FtpOps` (the injectable FTP seam), `FtpTransportFor`, `FtpHostAndBase`, `FtpUrl`, `FtpEntryToEntry`, `FromFtp` |
+| `UltraCloudFtp.h` | `FtpProvider`, `FtpOps` (the injectable FTP seam), `FtpTransportFor`, `FtpHostAndBase`, `FtpUrl`, `FtpEntryToEntry`, `FromFtp`; the server as a form asks for it: `FtpServer`, `FtpServerOf`, `FtpServerUrl`, `FtpDefaultPort`, `FtpSchemeKnown` |
 | `UltraCloudDropbox.h` | `DropboxProvider`, `DropboxPath` |
 | `UltraCloudOneDrive.h` | `OneDriveProvider`, `OneDriveItemUrl` |
 | `UltraCloudGoogleDrive.h` | `GoogleDriveProvider` (+ `ResolveId`), `GoogleDriveChildQuery` |

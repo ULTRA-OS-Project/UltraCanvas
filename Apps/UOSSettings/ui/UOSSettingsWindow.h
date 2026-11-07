@@ -31,7 +31,7 @@
 //       Forget button for a device that was reset or replaced and now
 //       presents a new certificate.
 //
-// Version: 0.9.0 - built on the framework's UltraCanvasSettingsPageKit: the window, the
+// Version: 0.10.0 - built on the framework's UltraCanvasSettingsPageKit: the window, the
 //                  tree, the bottom bar and the page switching are the kit's; nothing
 //                  changes on screen
 // Version: 0.9.0 - Language > Translations: the localisation editor (UltraCanvasLocalisationEditor)
@@ -137,6 +137,8 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasDropdown> appsView_;     // the Apps window: tiles or tree
     std::shared_ptr<UltraCanvas::UltraCanvasDropdown> appsSplit_;    // split a category above N
     std::shared_ptr<UltraCanvas::UltraCanvasDropdown> recentShown_;  // Recent's count
+    std::shared_ptr<UltraCanvas::UltraCanvasDropdown> boardDisplay_;  // Sticker board: text / thumbnail / row
+    std::shared_ptr<UltraCanvas::UltraCanvasDropdown> boardPreview_;  // Sticker board: hover preview size
     std::shared_ptr<UltraCanvas::UltraCanvasDropdown> systemDesktop_;   // only where the platform has the switch
     std::shared_ptr<UltraCanvas::UltraCanvasLabel> desktopStatus_;
     // "Start with the desktop": one per DesktopSettings::StartupPrograms(),

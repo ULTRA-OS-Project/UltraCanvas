@@ -1,5 +1,6 @@
 // include/UltraCanvasWindowBase.h
 // Enhanced abstract base window interface inheriting from UltraCanvasContainer
+// Version: 2.10.0 - WindowType::SessionLock: the lock screen a program draws
 // Version: 2.9.0 - UltraCanvasWindow is the Wayland backend under ULTRACANVAS_DISPLAY_WAYLAND
 // Version: 2.8.0 - WindowConfig::alwaysOnTop honoured on X11 and macOS (it was Windows only)
 // Version: 2.7.0 - WindowConfig::desktopArea: a Desktop window on any monitor
@@ -65,7 +66,16 @@ namespace UltraCanvas {
         // WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE on Windows).
         // Placed where config.x / config.y say. Where the platform has no
         // such notion it is a borderless window.
-        Notification
+        Notification,
+        // The session's lock screen, drawn by this program: covers its
+        // monitor (config.desktopArea names which, else the first), takes
+        // every key, and nothing else is shown or reachable until the last
+        // such window closes, which unlocks. On Wayland the compositor
+        // enforces it (ext-session-lock-v1: the lock is asked for with the
+        // first such window and released with the last; a compositor that
+        // refuses closes them). Elsewhere a fullscreen borderless window
+        // kept above every other, which the platform does not enforce.
+        SessionLock
     };
 
     enum class WindowState {

@@ -497,6 +497,16 @@ in the order its key gives them, so that tie-break matches the published
 rule. The model test covers points on every shared edge and every corner of
 the preset.
 
+*Since implemented differently (2026-11-06):* checked against the Soil
+Survey Manual's own wording, no listing order can match it - silt and silt
+loam share two edges, and the manual gives one to each. The manual instead
+gives every boundary to the finer side (more clay, more silt, less sand).
+`TernaryModel::edgeLean` expresses that: a point on a shared edge belongs to
+the region the lean points into, and the listing order decides only on the
+triangle's rim. With the listing order alone, 258 of the 5,151 whole-percent
+compositions got another class than the manual's; the model test now checks
+all of them.
+
 ### 7.4 Labels in a triangle
 
 The corners are narrow, and the edge labels are tilted at ±60°. Corner

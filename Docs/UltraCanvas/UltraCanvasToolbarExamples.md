@@ -53,7 +53,7 @@
 - **Overflow Handling**: Wrap, overflow menu, scroll, or hide
 - **Builder API**: Fluent `UltraCanvasToolbarBuilder`
 - **Preset Factories**: One-call construction of common toolbar shapes
-- **Item Badges and Tooltips**: a count, a short text or a status dot in the corner of any item (`SetItemBadge` / `SetItemBadgeCount` / `SetItemBadgeDot`), hover tooltips on the items themselves
+- **Item Badges and Tooltips**: a count, a short text or a status dot in the corner of any item (`SetItemBadge` / `SetItemBadgeCount` / `SetItemBadgeDot`), hover tooltips on the items themselves; the badge lets the pointer through, so a click on an item's count is a click on the item
 - **Auto-Hide and Drag Modes**: optional auto-hide, drag-to-move the toolbar (`ToolbarDragMode::Movable`) and drag-to-reorder its items (`EnableItemReordering`)
 - **Scrolling**: `ToolbarOverflowMode::Scroll` keeps the items at their size and scrolls a full toolbar with the mouse wheel; a chevron over the edge the items continue past says so, and a click on it scrolls a page (`SetScrollHints`)
 

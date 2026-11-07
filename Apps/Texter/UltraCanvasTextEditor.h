@@ -624,8 +624,8 @@ namespace UltraCanvas {
         // Post-construction initialization (called after window is shown).
         // Split into two phases around the splash screen:
         //   - RestoreSessionDocuments() runs synchronously while the splash is up.
-        //   - PromptCrashRecovery() runs after the splash closes so the modal
-        //     recovery dialog can take focus cleanly.
+        //   - PromptCrashRecovery() runs after the splash closes and reopens
+        //     every orphan autosave backup as a modified tab - no dialog.
         void RestoreSessionDocuments();
         void PromptCrashRecovery();
 

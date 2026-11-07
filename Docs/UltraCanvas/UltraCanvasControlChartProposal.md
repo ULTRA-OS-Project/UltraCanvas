@@ -1,8 +1,75 @@
 # Control Charts on the Line Chart — Research & Feature Proposal
 
-**Status:** Proposal. Nothing in this document is implemented yet; the API in
-§5 is a sketch, and `check_doc_examples.py` records its findings in
+**Status:** **Phases 1 and 2 are implemented** - see
+[`UltraCanvasControlLimits.md`](UltraCanvasControlLimits.md) for the
+statistics and
+[`UltraCanvasEngineCharts.md`](UltraCanvasEngineCharts.md#control-charts) for
+the line chart features and `ShowControlChart`. Phase 1 delivered E1-E4 and
+E6 on `UltraCanvasEngineLineChart`, the helper with K1, K2 and R1, P1, the
+demo card at the end of **Charts > Line Chart** (P3, an X-bar-R and an I-MR
+process, each with a late process change to switch on),
+`Tests/ControlLimitsTest.cpp` and `Tests/EngineLineChartTest.cpp`. The rest
+of §5 is still a sketch, and `check_doc_examples.py` records its findings in
 `scripts/doc_examples_baseline.txt` until each part lands.
+
+How Phase 1 departs from the plan below, and why:
+
+* **The helper has only what Phase 1 computes.** `ControlChartKind` lists
+  X-bar-R and I-MR; `ControlSubgroup` has no count, size, exclusion or note;
+  `ControlOptions` has the four Western Electric switches and the run length.
+  A field nothing reads would only be a promise in the API.
+* **`FindRuleViolations` is public.** It runs the rules on one pane's series
+  against whatever limits it carries, which is what limits frozen from a
+  baseline (L5) need, and it lets the test check every rule on standard-unit
+  data.
+* **d2 and d3 are kept to four decimals.** From the three-decimal tables the
+  derived factors missed their own published values (D4(2) came out 3.2686
+  against 3.267).
+* **A pane can name values its axis must reach** (`EngineLinePane::rangeIncludes`):
+  a limit outside its pane's data range was otherwise drawn across the
+  neighbouring pane. The engine now leaves a limiter outside its axis's band
+  undrawn, and anchors a limiter's caption half its width in from the line's
+  end, so the caption sits beside the line rather than across it.
+* **The limit values stand in a column past the plot's right edge**, the
+  usual SPC layout, through a new `ChartLimiter::captionPlacement`
+  (`BeyondEnd`): placed by the label solver inside the plot, data lines kept
+  crossing them or pushing them onto the axis. §7.6's in-plot stacking is not
+  needed.
+* **The engine gained `SetExtraGridAxes`** (a grid in every pane) and three
+  read accessors, `GetLimiters`, `GetHighlights` and `HitRegionAt`, for
+  tests and for hosts with their own read-out.
+* **A clamped lower limit draws nothing**, not a caption reading "LCL = 0
+  (none)": with no line there is nothing for a caption to sit beside.
+
+Phase 2 (2026-11-06) delivered E5 (`AddSeriesBand`) and E7 (`onPointClick`),
+K3-K5 (X-bar-S with unequal subgroups, p, np, c and u), R2 (the Nelson rules,
+the run length as a setting, `rulesOnDispersion`), S1 (stages), S2 (excluded
+points, `baselineCount`), C1 (spec limits, Cp, Cpk, Pp, Ppk), P2 (stepped
+limits, stage dividers, hollow excluded points, notes, spec lines) and P4 (the
+demo's p and c processes, a rule-set choice, the change as a stage, spec
+limits with capability, and a click that excludes a point). How it departs:
+
+* **No fixed centre and sigma in the options.** `baselineCount` freezes the
+  limits from a stage's first points, and `FindRuleViolations` judges data
+  against limits from anywhere; a third way would only be a promise.
+* **`drawLine = false` on a series** makes an invisible band edge, so zones
+  under stepped limits are bands between hidden series rather than a new
+  kind of highlight.
+* **Nelson rules 3 and 4 read the z-scores**, not the raw values: with limits
+  that change from lot to lot, a run of rising proportions is not a trend if
+  the lots shrink.
+* **Capability is that of the last stage** (the process as it is now), from
+  its values with the excluded points left out; specification limits on an
+  attribute chart are refused with a warning.
+* **`ControlC4` works for any n >= 2** (its closed form has no table limit),
+  and `ControlA3`, `ControlSigmaLowerFactor` and `ControlSigmaUpperFactor`
+  give A3, B3 and B4.
+* **Stepped limits caption the last point's values** in the caption column,
+  through zero-length limiters; the engine spreads that column so a control
+  limit and a specification limit never overprint, and an `AboveEnd` caption
+  on a vertical line (a stage divider) sits beside it, inside the plot.
+* **The data line is not broken at a stage boundary**; the divider and the
+  step in the limits mark it.
 
 A control chart (Shewhart chart, statistical process control chart) plots a
 measurement of a process in time order against a centre line and two control

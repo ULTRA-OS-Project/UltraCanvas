@@ -2,6 +2,7 @@
 // FTP helpers: transports, URLs (the trailing slash that decides list from
 // retrieve), listing entries, error mapping; and the provider's calls against
 // a fake FTP seam. Headless - no server is contacted.
+// Version: 0.2.0 - the server form helpers; Verify refuses a foreign scheme
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "test_framework.h"
@@ -164,6 +165,124 @@ TEST(ftp_host_and_base) {
                std::string("files.example.org/srv/pub"));
     REQUIRE_EQ(FtpHostAndBase("files.example.org"), std::string("files.example.org"));
     REQUIRE_EQ(FtpHostAndBase(""), std::string(""));
+}
+
+TEST(ftp_default_ports_follow_the_scheme) {
+    REQUIRE_EQ(FtpDefaultPort("ftp"), 21);
+    REQUIRE_EQ(FtpDefaultPort("ftpes"), 21);
+    REQUIRE_EQ(FtpDefaultPort("ftps"), 990);
+    REQUIRE_EQ(FtpDefaultPort("sftp"), 22);
+    REQUIRE_EQ(FtpDefaultPort("SFTP"), 22);
+    REQUIRE_EQ(FtpDefaultPort(""), 21);
+}
+
+TEST(ftp_scheme_known_is_the_four_or_none) {
+    REQUIRE(FtpSchemeKnown("ftp://h"));
+    REQUIRE(FtpSchemeKnown("FTPS://h"));
+    REQUIRE(FtpSchemeKnown("ftpes://h"));
+    REQUIRE(FtpSchemeKnown("sftp://h"));
+    REQUIRE(FtpSchemeKnown("files.example.org"));
+    // Pasted from the browser's address bar.
+    REQUIRE(!FtpSchemeKnown("https://files.example.org"));
+    REQUIRE(!FtpSchemeKnown("http://files.example.org"));
+    REQUIRE(!FtpSchemeKnown("ssh://files.example.org"));
+}
+
+TEST(ftp_server_taken_apart) {
+    FtpServer s = FtpServerOf("sftp://files.example.org:2222/srv/pub/");
+    REQUIRE_EQ(s.scheme, std::string("sftp"));
+    REQUIRE_EQ(s.host, std::string("files.example.org"));
+    REQUIRE_EQ(s.port, 2222);
+    REQUIRE_EQ(s.base, std::string("srv/pub"));
+
+    // No scheme is plain FTP; no port is the scheme's own (0); no base is "".
+    s = FtpServerOf("files.example.org");
+    REQUIRE_EQ(s.scheme, std::string("ftp"));
+    REQUIRE_EQ(s.host, std::string("files.example.org"));
+    REQUIRE_EQ(s.port, 0);
+    REQUIRE_EQ(s.base, std::string(""));
+
+    // A scheme the provider does not speak reads as plain FTP, as
+    // FtpTransportFor reads it - FtpSchemeKnown is what tells them apart.
+    REQUIRE_EQ(FtpServerOf("https://h").scheme, std::string("ftp"));
+    REQUIRE_EQ(FtpServerOf("FTPES://h:21").scheme, std::string("ftpes"));
+    REQUIRE_EQ(FtpServerOf("FTPES://h:21").port, 21);
+
+    // An IPv4 address with a port, and an IPv6 address, whose colons are
+    // its own, with and without one.
+    s = FtpServerOf("ftp://203.0.113.5:2121");
+    REQUIRE_EQ(s.host, std::string("203.0.113.5"));
+    REQUIRE_EQ(s.port, 2121);
+    s = FtpServerOf("sftp://[2001:db8::1]:2222/pub");
+    REQUIRE_EQ(s.host, std::string("[2001:db8::1]"));
+    REQUIRE_EQ(s.port, 2222);
+    REQUIRE_EQ(s.base, std::string("pub"));
+    s = FtpServerOf("sftp://[2001:db8::1]");
+    REQUIRE_EQ(s.host, std::string("[2001:db8::1]"));
+    REQUIRE_EQ(s.port, 0);
+
+    // What is not a port stays part of the host, for the server to refuse.
+    s = FtpServerOf("ftp://h:abc");
+    REQUIRE_EQ(s.host, std::string("h:abc"));
+    REQUIRE_EQ(s.port, 0);
+    s = FtpServerOf("ftp://h:70000");
+    REQUIRE_EQ(s.host, std::string("h:70000"));
+    REQUIRE_EQ(s.port, 0);
+}
+
+TEST(ftp_server_put_back_leaves_the_default_port_out) {
+    FtpServer s;
+    s.scheme = "sftp";
+    s.host = "files.example.org";
+    REQUIRE_EQ(FtpServerUrl(s), std::string("sftp://files.example.org"));
+    // The scheme's own port is the same server: the URL - and with it the
+    // account id - stays the one the command line would have stored.
+    s.port = 22;
+    REQUIRE_EQ(FtpServerUrl(s), std::string("sftp://files.example.org"));
+    s.port = 2222;
+    REQUIRE_EQ(FtpServerUrl(s), std::string("sftp://files.example.org:2222"));
+    s.base = "/srv/pub/";
+    REQUIRE_EQ(FtpServerUrl(s), std::string("sftp://files.example.org:2222/srv/pub"));
+
+    s = FtpServer();
+    s.scheme = "ftps";
+    s.host = "h";
+    s.port = 990;
+    REQUIRE_EQ(FtpServerUrl(s), std::string("ftps://h"));
+    s.port = 21;
+    REQUIRE_EQ(FtpServerUrl(s), std::string("ftps://h:21"));
+    s.scheme = "FTPES";
+    REQUIRE_EQ(FtpServerUrl(s), std::string("ftpes://h"));
+    // An unknown scheme is not written: plain FTP, as the parser reads it.
+    s.scheme = "https";
+    s.port = 0;
+    REQUIRE_EQ(FtpServerUrl(s), std::string("ftp://h"));
+
+    // Round trips, through FtpHostAndBase too, which the transfers hang
+    // every path off.
+    const std::string url = "sftp://[2001:db8::1]:2222/srv/pub";
+    REQUIRE_EQ(FtpServerUrl(FtpServerOf(url)), url);
+    REQUIRE_EQ(FtpHostAndBase(url), std::string("[2001:db8::1]:2222/srv/pub"));
+    REQUIRE_EQ(FtpServerUrl(FtpServerOf("ftp://203.0.113.5:2121")), std::string("ftp://203.0.113.5:2121"));
+}
+
+TEST(ftp_verify_refuses_a_scheme_it_does_not_speak) {
+    Capture cap;
+    FtpProvider provider(FakeOps(cap));
+    Account a = PlainAccount();
+    a.serverUrl = "https://files.example.org";   // the browser's address bar
+    const Result r = provider.Verify(a, PasswordCredentials());
+    REQUIRE(!r);
+    REQUIRE(r.code == ResultCode::InvalidArgument);
+    REQUIRE(r.message.find("https://") != std::string::npos);
+    REQUIRE(r.message.find("sftp://") != std::string::npos);
+    // Nothing was sent: the seam was never asked.
+    REQUIRE(cap.listUrl.empty());
+
+    // No scheme at all is plain FTP, as it always was.
+    a.serverUrl = "files.example.org";
+    REQUIRE(provider.Verify(a, PasswordCredentials()));
+    REQUIRE_EQ(cap.listUrl, std::string("ftp://files.example.org/"));
 }
 
 TEST(ftp_url_trailing_slash_decides_list_from_retrieve) {

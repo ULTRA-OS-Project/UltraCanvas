@@ -1,5 +1,6 @@
 // Apps/DemoApp/UltraCanvasDemo.h
 // Comprehensive demonstration program showing all UltraCanvas display elements
+// Version: 1.0.10 - AddControlChartCard (the Line Chart page's control chart)
 // Version: 1.0.9 - CreateTernaryChartExamples
 // Version: 1.0.8 - treeFilterInput: a filter field over the component tree,
 //                 with a "Reset" button inside it (OnTreeFilterChanged)
@@ -182,6 +183,10 @@ namespace UltraCanvas {
         void CreateSourceWindow(const std::string& content, const std::string& title);
         void CreateDocumentationWindow(const std::string& content, const std::string& title);
     };
+    // The control chart card the Line Chart page ends with
+    // (UltraCanvasControlChartExamples.cpp).
+    void AddControlChartCard(const std::shared_ptr<UltraCanvasContainer>& page);
+
 // ===== MAIN DEMO APPLICATION CLASS =====
     class DemoCategoryBuilder;
 

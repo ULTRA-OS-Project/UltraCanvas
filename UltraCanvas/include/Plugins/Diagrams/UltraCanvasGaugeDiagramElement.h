@@ -1,5 +1,6 @@
 // Plugins/Gauges/UltraCanvasGaugeDiagramElement.h
 // Comprehensive gauge element supporting analog, digital, progress, and specialized gauge modes
+// Version: 2.4.0 - SetClockHandColor / SetClockTickColor: an analog clock on a dark face
 // Version: 2.3.0
 // Last Modified: 2026-10-20
 // Author: UltraCanvas Framework
@@ -292,6 +293,14 @@ public:
     const Color& GetBackgroundColor() const { return bgColor; }
     void SetTextColor(const Color& c);
     const Color& GetTextColor() const { return textColor; }
+    // AnalogClock: the hands (hour hand and hub; the minute hand too), and
+    // the ticks, the rim and the hour numbers. The defaults are for the
+    // light face; a dark face (SetBackgroundColor) takes light ones - a
+    // desktop's clock white on black. The second hand stays red.
+    void SetClockHandColor(const Color& c);
+    const Color& GetClockHandColor() const { return clockHandColor; }
+    void SetClockTickColor(const Color& c);
+    const Color& GetClockTickColor() const { return clockTickColor; }
 
     // ===== RANGES & THRESHOLDS =====
     void AddRange(const GaugeRangeSegment& range);
@@ -429,6 +438,11 @@ private:
     Color gaugeColor = Color(0, 122, 255, 255);
     Color bgColor = Color(238, 239, 245, 255);
     Color textColor = Color(55, 55, 70, 255);
+    Color clockHandColor = Color(60, 60, 75, 255);
+    Color clockMinuteHandColor = Color(80, 80, 95, 255);
+    Color clockTickColor = Color(180, 180, 195, 220);
+    Color clockRimColor = Color(200, 200, 215, 255);
+    Color clockLabelColor = Color(100, 100, 115, 255);
 
     std::vector<GaugeRangeSegment> ranges;
     std::vector<GaugeThreshold> thresholds;

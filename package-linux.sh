@@ -52,6 +52,8 @@ MULTIARCH="$(dpkg-architecture -qDEB_HOST_MULTIARCH 2>/dev/null \
 # (UltraCrypt); without it they are skipped here like any app not built.
 # UltraClipboard shows the clipboard history UltraDesktop records, and
 # records it itself while it is open on another desktop.
+# UltraNotifications keeps the notifications after their toast has gone and
+# counts the unread for UltraDesktop's bell.
 # UltraWeb carries its WebAssembly engine (wasmtime) linked in statically.
 # UltraCanvasStart, the setup application, is in the bundle like every app;
 # scripts/package-ultracanvasstart.sh cuts it out of the bundle on its own.
@@ -61,7 +63,7 @@ MULTIARCH="$(dpkg-architecture -qDEB_HOST_MULTIARCH 2>/dev/null \
 # to bin/.
 APPS=(UltraCanvasDemo Texter UltraFiler UltraMail UltraAIApp UltraViewer UltraPaint ArtCreator
       ultrafibu UltraNetMonitor DeviceExplorer ultramsg UOS-Settings UltraClaude
-      UltraAuthenticator UltraPassword UltraClipboard UltraWeb UltraCanvasStart ultrapress
+      UltraAuthenticator UltraPassword UltraClipboard UltraNotifications UltraWeb UltraCanvasStart ultrapress
       SmartHomeCenter UltraDBAdmin)
 
 # AnchorPoint is peer-to-peer file sharing: the window, and `anchorpoint-cli`,

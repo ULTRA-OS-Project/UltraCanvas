@@ -3,6 +3,8 @@
 // with priorities/due dates/assignees/tags, drag & drop, a built-in card
 // editor, move history for flow metrics, text-definition (Mermaid kanban)
 // and JSON loading, and a preset-based design/palette system.
+// Version: 1.2.0 - pictures beside the text, centred titles, the context
+//                  menu and hover callbacks, the card preview
 // Version: 1.1.0 - card pictures (cardImageProvider)
 // Version: 1.0.1 - a press on the board's background (focus, deselect) is the board's
 // Version: 1.0.0
@@ -1467,6 +1469,17 @@ std::string UltraCanvasKanbanBoardElement::FormatDate(const GanttDate& date) con
 // ELEMENT — LAYOUT
 // =============================================================================
 
+namespace {
+// The space between a Beside picture and the card's text.
+constexpr double kBesideGap = 8.0;
+
+// A Beside picture's side: the style's image height, but never more than
+// half the card's inner width, so the text keeps room.
+double BesidePictureSide(const KanbanBoardStyle& style, double innerWidth) {
+    return std::max(0.0, std::min<double>(style.cardImageHeight, innerWidth / 2.0));
+}
+} // namespace
+
 std::shared_ptr<UCPixmap> UltraCanvasKanbanBoardElement::CardImage(const KanbanCard& card) const {
     if (!cardImageProvider || style.cardImageHeight <= 0) return nullptr;
     if (style.cardShape == KanbanCardShape::Pill || style.cardLayout == KanbanCardLayout::Grid) return nullptr;
@@ -1484,7 +1497,15 @@ double UltraCanvasKanbanBoardElement::CardHeight(IRenderContext* ctx,
 
     double innerWidth = cardWidth - 2 * style.cardPadding;
     double h = style.cardPadding * 2;
-    if (CardImage(card)) h += style.cardImageHeight + 6;
+    double pictureBeside = 0;
+    if (CardImage(card)) {
+        if (style.cardImagePlacement == KanbanCardImagePlacement::Left) {
+            pictureBeside = BesidePictureSide(style, innerWidth);
+            innerWidth -= pictureBeside + kBesideGap;
+        } else {
+            h += style.cardImageHeight + 6;
+        }
+    }
 
     // Mirror RenderCard's reserved corner space for the priority marker.
     double titleReserve = 0;
@@ -1527,6 +1548,7 @@ double UltraCanvasKanbanBoardElement::CardHeight(IRenderContext* ctx,
     if (avatarRow || tagRow) {
         h += 6 + std::max(18.0, style.metaFontSize * 1.5);
     }
+    if (pictureBeside > 0) h = std::max(h, pictureBeside + style.cardPadding * 2);
     return std::max(h, 30.0);
 }
 
@@ -1845,6 +1867,7 @@ void UltraCanvasKanbanBoardElement::RenderChart(IRenderContext* ctx) {
     RenderEditingChrome(ctx);
     ctx->PopState();
 
+    RenderCardPreview(ctx);
     if (editor.open) RenderEditorOverlay(ctx);
 }
 
@@ -2192,12 +2215,23 @@ void UltraCanvasKanbanBoardElement::RenderCard(IRenderContext* ctx,
     ctx->ClipRect(rect);
 
     double cursor = rect.y + pad;
+    // Where the text goes: the whole inner width, or right of a picture
+    // beside it.
+    double textLeft = rect.x + pad;
+    double textWidth = innerWidth;
 
-    // The picture, above the title.
+    // The picture: above the title, or at the card's left.
     if (auto picture = CardImage(card)) {
-        ctx->DrawPixmap(*picture, Rect2Dd(rect.x + pad, cursor, innerWidth, style.cardImageHeight),
-                        ImageFitMode::Contain);
-        cursor += style.cardImageHeight + 6;
+        if (style.cardImagePlacement == KanbanCardImagePlacement::Left) {
+            const double side = BesidePictureSide(style, innerWidth);
+            ctx->DrawPixmap(*picture, Rect2Dd(rect.x + pad, rect.y + pad, side, side), ImageFitMode::Contain);
+            textLeft += side + kBesideGap;
+            textWidth -= side + kBesideGap;
+        } else {
+            ctx->DrawPixmap(*picture, Rect2Dd(rect.x + pad, cursor, innerWidth, style.cardImageHeight),
+                            ImageFitMode::Contain);
+            cursor += style.cardImageHeight + 6;
+        }
     }
 
     // Title.
@@ -2209,7 +2243,7 @@ void UltraCanvasKanbanBoardElement::RenderCard(IRenderContext* ctx,
         // Color-block card without caption (Schematic reference image).
     } else {
         std::vector<std::string> titleLines =
-                WrapTextLines(ctx, card.title, innerWidth - titleReserve);
+                WrapTextLines(ctx, card.title, textWidth - titleReserve);
         size_t maxTitle = std::min<size_t>(titleLines.size(), 3);
         if (style.cardLayout == KanbanCardLayout::Grid) {
             // Vertically center a single line in the fixed-height card.
@@ -2220,7 +2254,12 @@ void UltraCanvasKanbanBoardElement::RenderCard(IRenderContext* ctx,
             cursor = rect.y + rect.height;
         } else {
             for (size_t i = 0; i < maxTitle; ++i) {
-                ctx->DrawText(titleLines[i], Point2Dd(rect.x + pad, cursor));
+                double x = textLeft;
+                if (style.centerCardTitle) {
+                    const double lineWidth = ctx->GetTextLineDimensions(titleLines[i]).width;
+                    x += std::max(0.0, (textWidth - titleReserve - lineWidth) / 2.0);
+                }
+                ctx->DrawText(titleLines[i], Point2Dd(x, cursor));
                 cursor += titleLineH;
             }
         }
@@ -2236,13 +2275,13 @@ void UltraCanvasKanbanBoardElement::RenderCard(IRenderContext* ctx,
         ctx->SetTextPaint(descColor);
         ctx->SetFontSize(style.cardTextFontSize);
         std::vector<std::string> lines =
-                WrapTextLines(ctx, card.description, innerWidth);
+                WrapTextLines(ctx, card.description, textWidth);
         size_t maxLines = static_cast<size_t>(std::max(1, style.descriptionMaxLines));
         double lineH = style.cardTextFontSize * 1.35;
         for (size_t i = 0; i < lines.size() && i < maxLines; ++i) {
             std::string text = lines[i];
             if (i + 1 == maxLines && lines.size() > maxLines) text += "…";
-            ctx->DrawText(text, Point2Dd(rect.x + pad, cursor));
+            ctx->DrawText(text, Point2Dd(textLeft, cursor));
             cursor += lineH;
         }
     }
@@ -2258,14 +2297,14 @@ void UltraCanvasKanbanBoardElement::RenderCard(IRenderContext* ctx,
         ctx->SetFontSize(style.metaFontSize);
         if (!style.dueDateLabel.empty()) {
             ctx->SetTextPaint(overdue ? style.overdueColor : labelColor);
-            ctx->DrawText(style.dueDateLabel, Point2Dd(rect.x + pad, cursor));
+            ctx->DrawText(style.dueDateLabel, Point2Dd(textLeft, cursor));
             cursor += metaLineH;
             ctx->SetTextPaint(overdue ? style.overdueColor : style.cardTextColor);
-            ctx->DrawText(FormatDate(card.dueDate), Point2Dd(rect.x + pad, cursor));
+            ctx->DrawText(FormatDate(card.dueDate), Point2Dd(textLeft, cursor));
         } else {
             ctx->SetTextPaint(overdue ? style.overdueColor : style.cardTextColor);
             ctx->DrawText("Due " + FormatDate(card.dueDate),
-                          Point2Dd(rect.x + pad, cursor));
+                          Point2Dd(textLeft, cursor));
         }
         cursor += metaLineH;
     }
@@ -2279,7 +2318,7 @@ void UltraCanvasKanbanBoardElement::RenderCard(IRenderContext* ctx,
         if (tagRow) {
             Color accent = CardTitleColor(card, columnIndex);
             ctx->SetFontSize(style.metaFontSize);
-            double tx = rect.x + pad;
+            double tx = textLeft;
             for (const auto& tag : card.tags) {
                 Size2Di sz = ctx->GetTextLineDimensions(tag);
                 double tw = sz.width + 12;
@@ -2712,13 +2751,11 @@ bool UltraCanvasKanbanBoardElement::HandleChartMouseMove(const Point2Di& mousePo
     if (editor.open) return true;
 
     const CardLayout* over = CardAt(mousePos);
-    int overId = over ? over->cardId : -1;
-    if (overId != hoveredCardId) {
-        hoveredCardId = overId;
-        RequestRedraw();
-    }
+    SetHoveredCard(over ? over->cardId : -1);
 
-    if (over && enableTooltips && !draggingCard) {
+    // The card's preview says more than its tooltip, and the two would
+    // cover each other.
+    if (over && enableTooltips && !draggingCard && over->cardId != previewCardId) {
         auto ds = GetKanbanDataSource();
         const KanbanCard* card = ds ? ds->FindCard(over->cardId) : nullptr;
         if (card) {
@@ -2736,6 +2773,7 @@ bool UltraCanvasKanbanBoardElement::HandleChartMouseMove(const Point2Di& mousePo
 
 bool UltraCanvasKanbanBoardElement::HandleWheel(const UCEvent& event) {
     if (editor.open) return true;
+    HideCardPreview();
 
     // Wheel scrolling glides to its target (see UltraCanvasSmoothScroll.h).
     const float step = 60.0f;
@@ -2827,6 +2865,7 @@ bool UltraCanvasKanbanBoardElement::EditorMouseDown(const UCEvent& event) {
 
 bool UltraCanvasKanbanBoardElement::HandleMouseDown(const UCEvent& event) {
     SetFocus(true);
+    HideCardPreview();
     if (editor.open) return EditorMouseDown(event);
     if (renamingColumnId >= 0) {
         CommitRename(true);
@@ -3117,6 +3156,97 @@ void UltraCanvasKanbanBoardElement::NotifyWipIfExceeded(int columnId) {
     }
 }
 
+// =============================================================================
+// ELEMENT — HOVER AND PREVIEW
+// =============================================================================
+
+void UltraCanvasKanbanBoardElement::SetHoveredCard(int cardId) {
+    if (cardId == hoveredCardId) return;
+    hoveredCardId = cardId;
+    if (previewCardId >= 0 && previewCardId != cardId) HideCardPreview();
+    RequestRedraw();
+    if (onCardHoverChanged) onCardHoverChanged(cardId);
+}
+
+Rect2Df UltraCanvasKanbanBoardElement::GetCardBounds(int cardId) const {
+    for (const auto& cl : layout.cards) {
+        if (cl.cardId == cardId) {
+            return Rect2Df(static_cast<float>(cl.rect.x), static_cast<float>(cl.rect.y),
+                           static_cast<float>(cl.rect.width), static_cast<float>(cl.rect.height));
+        }
+    }
+    return Rect2Df(0, 0, 0, 0);
+}
+
+void UltraCanvasKanbanBoardElement::ShowCardPreview(int cardId, std::shared_ptr<UCPixmap> picture,
+                                                    float size) {
+    if (!picture || size <= 0 || cardId < 0) {
+        HideCardPreview();
+        return;
+    }
+    previewCardId = cardId;
+    previewPicture = std::move(picture);
+    previewSize = size;
+    if (isTooltipActive) HideTooltip();
+    RequestRedraw();
+}
+
+void UltraCanvasKanbanBoardElement::HideCardPreview() {
+    if (previewCardId < 0 && !previewPicture) return;
+    previewCardId = -1;
+    previewPicture.reset();
+    RequestRedraw();
+}
+
+void UltraCanvasKanbanBoardElement::RenderCardPreview(IRenderContext* ctx) {
+    if (previewCardId < 0 || !previewPicture || draggingCard || editor.open) return;
+    auto ds = GetKanbanDataSource();
+    const KanbanCard* card = ds ? ds->FindCard(previewCardId) : nullptr;
+    const Rect2Df cardRect = GetCardBounds(previewCardId);
+    if (!card || cardRect.width <= 0) return;
+
+    const Rect2Df local = GetLocalBounds();
+    const double margin = 8.0, pad = 8.0, gap = 10.0;
+    const double titleH = card->title.empty() ? 0.0 : 22.0;
+    // The picture keeps its proportions inside a square of previewSize,
+    // never bigger than the board.
+    double side = std::min<double>(previewSize, std::min(local.width, local.height) - 2 * (margin + pad) - titleH);
+    if (side < 32) return;
+    const double pw = std::max(1, previewPicture->GetWidth());
+    const double ph = std::max(1, previewPicture->GetHeight());
+    double w = side, h = side;
+    if (pw >= ph) h = side * ph / pw; else w = side * pw / ph;
+    w = std::max(w, 120.0);
+    const double panelW = w + 2 * pad;
+    const double panelH = h + 2 * pad + titleH;
+
+    // Right of the card where there is room, else left of it, else over it.
+    double x = cardRect.x + cardRect.width + gap;
+    if (x + panelW > local.x + local.width - margin) x = cardRect.x - gap - panelW;
+    if (x < local.x + margin) x = std::max<double>(local.x + margin, local.x + local.width - margin - panelW);
+    double y = std::clamp<double>(cardRect.y, local.y + margin,
+                                  std::max<double>(local.y + margin, local.y + local.height - margin - panelH));
+    const Rect2Dd panel(x, y, panelW, panelH);
+
+    ctx->PushState();
+    ctx->SetFillPaint(Color(0, 0, 0, 50));
+    ctx->FillRoundedRectangle(Rect2Dd(panel.x + 3, panel.y + 4, panel.width, panel.height), 8.0);
+    ctx->SetFillPaint(style.editorPanelColor);
+    ctx->FillRoundedRectangle(panel, 8.0);
+    ctx->SetStrokePaint(Color(0, 0, 0, 60));
+    ctx->SetStrokeWidth(1.0f);
+    ctx->DrawRoundedRectangle(panel, 8.0);
+    ctx->DrawPixmap(*previewPicture, Rect2Dd(panel.x + pad, panel.y + pad, panelW - 2 * pad, h),
+                    ImageFitMode::Contain);
+    if (titleH > 0) {
+        ctx->SetTextPaint(style.editorTextColor);
+        ctx->SetFontSize(std::max(11.0f, style.cardTitleFontSize));
+        DrawCellText(ctx, card->title, Rect2Dd(panel.x + pad, panel.y + pad + h + 2, panelW - 2 * pad, titleH),
+                     TextAlignment::Center, 0.0f);
+    }
+    ctx->PopState();
+}
+
 bool UltraCanvasKanbanBoardElement::OnEvent(const UCEvent& event) {
     if (IsDisabled() || !IsVisible()) return false;
 
@@ -3124,6 +3254,21 @@ bool UltraCanvasKanbanBoardElement::OnEvent(const UCEvent& event) {
         case UCEventType::MouseDown:
             if (event.button == UCMouseButton::Left) {
                 return HandleMouseDown(event);
+            }
+            if (event.button == UCMouseButton::Right && onContextMenu && !editor.open &&
+                !draggingCard) {
+                HideCardPreview();
+                if (isTooltipActive) HideTooltip();
+                if (renamingColumnId >= 0) CommitRename(true);
+                SetFocus(true);
+                const CardLayout* over = CardAt(event.pointer);
+                const int cardId = over ? over->cardId : -1;
+                if (cardId >= 0) SelectCard(cardId);
+                const Point2Df at = MapFromLocal(Point2Df(static_cast<float>(event.pointer.x),
+                                                          static_cast<float>(event.pointer.y)), nullptr);
+                onContextMenu(cardId, ColumnIdAt(event.pointer),
+                              Point2Di(static_cast<int>(at.x), static_cast<int>(at.y)));
+                return true;
             }
             return false;
 
@@ -3141,6 +3286,7 @@ bool UltraCanvasKanbanBoardElement::OnEvent(const UCEvent& event) {
                 if (dx * dx + dy * dy > 16) {
                     draggingCard = true;
                     if (isTooltipActive) HideTooltip();
+                    SetHoveredCard(-1);
                 }
             }
             if (draggingCard) {
@@ -3161,10 +3307,7 @@ bool UltraCanvasKanbanBoardElement::OnEvent(const UCEvent& event) {
                 dropColumnIndex = -1;
             }
             pressedCardId = -1;
-            if (hoveredCardId != -1) {
-                hoveredCardId = -1;
-                RequestRedraw();
-            }
+            SetHoveredCard(-1);
             if (isTooltipActive) HideTooltip();
             return true;
 
