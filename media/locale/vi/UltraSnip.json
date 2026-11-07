@@ -16,6 +16,7 @@
   "Copied to the clipboard.": "Đã sao chép vào bảng tạm.",
   "Copy: the picture to the clipboard (Ctrl+C)": "Sao chép: ảnh vào bảng tạm (Ctrl+C)",
   "Drag an area  ·  Enter: the whole screen  ·  Esc: cancel": "Kéo một vùng  ·  Enter: toàn màn hình  ·  Esc: hủy",
+  "Drag an area on the screen now, or choose a delay and click Start.": "Kéo một vùng trên màn hình ngay, hoặc chọn độ trễ rồi bấm Bắt đầu.",
   "Edit in UltraPaint: open the saved picture there": "Chỉnh sửa trong UltraPaint: mở ảnh đã lưu ở đó",
   "Every change applies straight away and is saved; there is nothing to confirm.": "Mọi thay đổi được áp dụng ngay và được lưu; không cần xác nhận gì.",
   "Every text UltraSnip shows, in one grid with the sets it comes from: its own set, the Image and Video base sets and the standard set. A change is saved into the settings folder and shows the next time UltraSnip starts.": "Mọi văn bản UltraSnip hiển thị, trong một lưới cùng với các bộ chứa chúng: bộ riêng của nó, các bộ cơ sở Hình ảnh và Video, và bộ chuẩn. Thay đổi được lưu vào thư mục cài đặt và có hiệu lực vào lần khởi động UltraSnip tiếp theo.",
@@ -34,7 +35,7 @@
   "More frames a second make a smoother recording and a larger file; 20 is enough for a walk-through, 30 for motion. The recording is written as it goes, so one cut short by a crash still plays up to its last seconds.": "Nhiều khung hình mỗi giây hơn cho bản ghi mượt hơn và tệp lớn hơn; 20 là đủ cho video hướng dẫn, 30 cho chuyển động. Bản ghi được ghi dần trong lúc quay, nên bản ghi bị cắt ngang do sự cố vẫn phát được đến những giây cuối cùng.",
   "MP4 video": "Video MP4",
   "MP4 with H.264 (.mp4)  -  plays everywhere": "MP4 với H.264 (.mp4)  -  phát được ở mọi nơi",
-  "No delay": "Không trễ",
+  "No delay: the screen is taken at once": "Không trễ: chụp màn hình ngay",
   "No other type in this build": "Không có loại khác trong bản dựng này",
   "No recording on this build: {0}": "Bản dựng này không ghi hình được: {0}",
   "not copied": "chưa sao chép",
@@ -107,7 +108,7 @@
   "UltraSnip - Settings": "UltraSnip - Cài đặt",
   "Video: a recording of the area": "Video: bản ghi của vùng",
   "Videos - the recording's container, its frame rate and its folder.": "Video - định dạng chứa của bản ghi, tốc độ khung hình và thư mục của nó.",
-  "Wait before the screen is taken, so a menu can be opened first": "Chờ trước khi chụp màn hình, để có thể mở menu trước",
+  "Wait {0} seconds before the screen is taken, so a menu can be opened first": "Chờ {0} giây trước khi chụp màn hình, để có thể mở menu trước",
   "WebM video": "Video WebM",
   "WebM with VP9 (.webm)  -  the web's own": "WebM với VP9 (.webm)  -  định dạng riêng của web",
   "What happens to a picture the moment it is taken:": "Điều xảy ra với ảnh ngay khi chụp:",
@@ -119,6 +120,6 @@
   "Write every picture to the folder below": "Ghi mọi ảnh vào thư mục bên dưới",
   "{0} fps": "{0} fps",
   "{0} recorded": "Đã ghi {0}",
-  "{0} s delay": "Trễ {0} giây",
+  "{0} s": "{0} giây",
   "{0} × {1} px": "{0} × {1} px"
 }

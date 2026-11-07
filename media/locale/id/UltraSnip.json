@@ -16,6 +16,7 @@
   "Copied to the clipboard.": "Disalin ke papan klip.",
   "Copy: the picture to the clipboard (Ctrl+C)": "Salin: gambar ke papan klip (Ctrl+C)",
   "Drag an area  ·  Enter: the whole screen  ·  Esc: cancel": "Seret area  ·  Enter: seluruh layar  ·  Esc: batal",
+  "Drag an area on the screen now, or choose a delay and click Start.": "Seret area di layar sekarang, atau pilih jeda lalu klik Mulai.",
   "Edit in UltraPaint: open the saved picture there": "Edit di UltraPaint: buka gambar yang disimpan di sana",
   "Every change applies straight away and is saved; there is nothing to confirm.": "Setiap perubahan langsung diterapkan dan disimpan; tidak ada yang perlu dikonfirmasi.",
   "Every text UltraSnip shows, in one grid with the sets it comes from: its own set, the Image and Video base sets and the standard set. A change is saved into the settings folder and shows the next time UltraSnip starts.": "Setiap teks yang ditampilkan UltraSnip, dalam satu kisi bersama set asalnya: set miliknya sendiri, set dasar Gambar dan Video, serta set standar. Perubahan disimpan ke folder pengaturan dan tampil saat UltraSnip dijalankan berikutnya.",
@@ -34,7 +35,7 @@
   "More frames a second make a smoother recording and a larger file; 20 is enough for a walk-through, 30 for motion. The recording is written as it goes, so one cut short by a crash still plays up to its last seconds.": "Lebih banyak bingkai per detik menghasilkan rekaman yang lebih mulus dan file yang lebih besar; 20 cukup untuk panduan langkah demi langkah, 30 untuk gerakan. Rekaman ditulis selama berjalan, sehingga rekaman yang terputus karena crash tetap dapat diputar hingga detik-detik terakhirnya.",
   "MP4 video": "Video MP4",
   "MP4 with H.264 (.mp4)  -  plays everywhere": "MP4 dengan H.264 (.mp4)  -  dapat diputar di mana saja",
-  "No delay": "Tanpa penundaan",
+  "No delay: the screen is taken at once": "Tanpa jeda: layar diambil seketika",
   "No other type in this build": "Tidak ada jenis lain di build ini",
   "No recording on this build: {0}": "Tidak ada perekaman di build ini: {0}",
   "not copied": "tidak disalin",
@@ -107,7 +108,7 @@
   "UltraSnip - Settings": "UltraSnip - Pengaturan",
   "Video: a recording of the area": "Video: rekaman area",
   "Videos - the recording's container, its frame rate and its folder.": "Video - kontainer rekaman, laju bingkai, dan foldernya.",
-  "Wait before the screen is taken, so a menu can be opened first": "Tunggu sebelum layar diambil, agar menu dapat dibuka terlebih dahulu",
+  "Wait {0} seconds before the screen is taken, so a menu can be opened first": "Tunggu {0} detik sebelum layar diambil, agar menu dapat dibuka dulu",
   "WebM video": "Video WebM",
   "WebM with VP9 (.webm)  -  the web's own": "WebM dengan VP9 (.webm)  -  format asli web",
   "What happens to a picture the moment it is taken:": "Apa yang terjadi pada gambar saat diambil:",
@@ -119,6 +120,6 @@
   "Write every picture to the folder below": "Tulis setiap gambar ke folder di bawah",
   "{0} fps": "{0} fps",
   "{0} recorded": "{0} direkam",
-  "{0} s delay": "Tunda {0} dtk",
+  "{0} s": "{0} d",
   "{0} × {1} px": "{0} × {1} px"
 }

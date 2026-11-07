@@ -16,6 +16,7 @@
   "Copied to the clipboard.": "Vágólapra másolva.",
   "Copy: the picture to the clipboard (Ctrl+C)": "Másolás: a kép a vágólapra (Ctrl+C)",
   "Drag an area  ·  Enter: the whole screen  ·  Esc: cancel": "Húzzon ki egy területet  ·  Enter: a teljes képernyő  ·  Esc: mégse",
+  "Drag an area on the screen now, or choose a delay and click Start.": "Húzzon ki most egy területet a képernyőn, vagy válasszon késleltetést, és kattintson az Indítás gombra.",
   "Edit in UltraPaint: open the saved picture there": "Szerkesztés az UltraPaintben: a mentett kép megnyitása ott",
   "Every change applies straight away and is saved; there is nothing to confirm.": "Minden módosítás azonnal érvénybe lép és mentődik; semmit sem kell jóváhagyni.",
   "Every text UltraSnip shows, in one grid with the sets it comes from: its own set, the Image and Video base sets and the standard set. A change is saved into the settings folder and shows the next time UltraSnip starts.": "Az UltraSnip összes megjelenített szövege egyetlen táblázatban, a forráskészleteikkel együtt: a saját készlete, a Kép és a Videó alapkészlet, valamint a standard készlet. A módosítás a beállítások mappájába mentődik, és az UltraSnip következő indításakor jelenik meg.",
@@ -34,7 +35,7 @@
   "More frames a second make a smoother recording and a larger file; 20 is enough for a walk-through, 30 for motion. The recording is written as it goes, so one cut short by a crash still plays up to its last seconds.": "Több képkocka másodpercenként egyenletesebb felvételt és nagyobb fájlt ad; bemutatóhoz 20 is elég, mozgáshoz 30. A felvétel menet közben íródik, így egy összeomlás miatt félbeszakadt felvétel is lejátszható az utolsó másodperceiig.",
   "MP4 video": "MP4 videó",
   "MP4 with H.264 (.mp4)  -  plays everywhere": "MP4, H.264 (.mp4)  -  mindenhol lejátszható",
-  "No delay": "Nincs késleltetés",
+  "No delay: the screen is taken at once": "Nincs késleltetés: a képernyő azonnal rögzül",
   "No other type in this build": "Ebben a változatban nincs más típus",
   "No recording on this build: {0}": "Ebben a változatban nincs felvétel: {0}",
   "not copied": "nincs másolva",
@@ -107,7 +108,7 @@
   "UltraSnip - Settings": "UltraSnip - Beállítások",
   "Video: a recording of the area": "Videó: a terület felvétele",
   "Videos - the recording's container, its frame rate and its folder.": "Videók - a felvétel konténere, képkockasebessége és mappája.",
-  "Wait before the screen is taken, so a menu can be opened first": "Várakozás a képernyő rögzítése előtt, hogy előbb megnyitható legyen egy menü",
+  "Wait {0} seconds before the screen is taken, so a menu can be opened first": "Várakozás {0} másodpercig a képernyő rögzítése előtt, hogy előbb megnyitható legyen egy menü",
   "WebM video": "WebM videó",
   "WebM with VP9 (.webm)  -  the web's own": "WebM, VP9 (.webm)  -  a web saját formátuma",
   "What happens to a picture the moment it is taken:": "Mi történjen a képpel a rögzítés pillanatában:",
@@ -119,6 +120,6 @@
   "Write every picture to the folder below": "Minden kép mentése az alábbi mappába",
   "{0} fps": "{0} fps",
   "{0} recorded": "Rögzítve: {0}",
-  "{0} s delay": "{0} mp késleltetés",
+  "{0} s": "{0} mp",
   "{0} × {1} px": "{0} × {1} px"
 }

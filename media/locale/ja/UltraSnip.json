@@ -16,6 +16,7 @@
   "Copied to the clipboard.": "クリップボードにコピーしました。",
   "Copy: the picture to the clipboard (Ctrl+C)": "コピー: 画像をクリップボードへ (Ctrl+C)",
   "Drag an area  ·  Enter: the whole screen  ·  Esc: cancel": "範囲をドラッグ  ·  Enter: 画面全体  ·  Esc: キャンセル",
+  "Drag an area on the screen now, or choose a delay and click Start.": "今すぐ画面上で範囲をドラッグするか、遅延を選んで[開始]をクリックします。",
   "Edit in UltraPaint: open the saved picture there": "UltraPaint で編集: 保存した画像を UltraPaint で開く",
   "Every change applies straight away and is saved; there is nothing to confirm.": "変更はすべてすぐに適用され、保存されます。確定する必要はありません。",
   "Every text UltraSnip shows, in one grid with the sets it comes from: its own set, the Image and Video base sets and the standard set. A change is saved into the settings folder and shows the next time UltraSnip starts.": "UltraSnip が表示するすべてのテキストを、その出典のセット (独自のセット、画像とビデオの基本セット、標準セット) とともに 1 つの表に表示します。変更は設定フォルダーに保存され、次回 UltraSnip を起動したときに反映されます。",
@@ -34,7 +35,7 @@
   "More frames a second make a smoother recording and a larger file; 20 is enough for a walk-through, 30 for motion. The recording is written as it goes, so one cut short by a crash still plays up to its last seconds.": "1 秒あたりのフレーム数が多いほど録画は滑らかになり、ファイルは大きくなります。操作説明には 20、動きのある映像には 30 で十分です。録画は進行に合わせて書き込まれるため、クラッシュで途中終了した録画も最後の数秒まで再生できます。",
   "MP4 video": "MP4 ビデオ",
   "MP4 with H.264 (.mp4)  -  plays everywhere": "H.264 の MP4 (.mp4)  -  どこでも再生可能",
-  "No delay": "遅延なし",
+  "No delay: the screen is taken at once": "遅延なし: すぐに画面を取得します",
   "No other type in this build": "このビルドには他の形式がありません",
   "No recording on this build: {0}": "このビルドでは録画できません: {0}",
   "not copied": "未コピー",
@@ -107,7 +108,7 @@
   "UltraSnip - Settings": "UltraSnip - 設定",
   "Video: a recording of the area": "ビデオ: 範囲の録画",
   "Videos - the recording's container, its frame rate and its folder.": "ビデオ - 録画のコンテナー、フレームレート、フォルダー。",
-  "Wait before the screen is taken, so a menu can be opened first": "画面を撮る前に待機し、先にメニューを開けるようにします",
+  "Wait {0} seconds before the screen is taken, so a menu can be opened first": "画面を取得する前に {0} 秒待ち、先にメニューを開けるようにします",
   "WebM video": "WebM ビデオ",
   "WebM with VP9 (.webm)  -  the web's own": "VP9 の WebM (.webm)  -  Web 標準",
   "What happens to a picture the moment it is taken:": "撮った直後の画像の扱い:",
@@ -119,6 +120,6 @@
   "Write every picture to the folder below": "すべての画像を下のフォルダーに書き出す",
   "{0} fps": "{0} fps",
   "{0} recorded": "{0} 録画済み",
-  "{0} s delay": "{0} 秒の遅延",
+  "{0} s": "{0} 秒",
   "{0} × {1} px": "{0} × {1} px"
 }

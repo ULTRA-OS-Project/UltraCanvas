@@ -16,6 +16,7 @@
   "Copied to the clipboard.": "Αντιγράφηκε στο πρόχειρο.",
   "Copy: the picture to the clipboard (Ctrl+C)": "Αντιγραφή: η εικόνα στο πρόχειρο (Ctrl+C)",
   "Drag an area  ·  Enter: the whole screen  ·  Esc: cancel": "Σύρετε μια περιοχή  ·  Enter: ολόκληρη η οθόνη  ·  Esc: ακύρωση",
+  "Drag an area on the screen now, or choose a delay and click Start.": "Σύρετε μια περιοχή στην οθόνη τώρα ή επιλέξτε καθυστέρηση και πατήστε Έναρξη.",
   "Edit in UltraPaint: open the saved picture there": "Επεξεργασία στο UltraPaint: άνοιγμα της αποθηκευμένης εικόνας εκεί",
   "Every change applies straight away and is saved; there is nothing to confirm.": "Κάθε αλλαγή εφαρμόζεται αμέσως και αποθηκεύεται. Δεν χρειάζεται επιβεβαίωση.",
   "Every text UltraSnip shows, in one grid with the sets it comes from: its own set, the Image and Video base sets and the standard set. A change is saved into the settings folder and shows the next time UltraSnip starts.": "Όλα τα κείμενα που εμφανίζει το UltraSnip, σε έναν πίνακα μαζί με τα σύνολα από τα οποία προέρχονται: το δικό του σύνολο, τα βασικά σύνολα Εικόνα και Βίντεο και το τυπικό σύνολο. Μια αλλαγή αποθηκεύεται στον φάκελο ρυθμίσεων και εμφανίζεται την επόμενη φορά που θα ξεκινήσει το UltraSnip.",
@@ -34,7 +35,7 @@
   "More frames a second make a smoother recording and a larger file; 20 is enough for a walk-through, 30 for motion. The recording is written as it goes, so one cut short by a crash still plays up to its last seconds.": "Περισσότερα καρέ ανά δευτερόλεπτο δίνουν πιο ομαλή εγγραφή και μεγαλύτερο αρχείο: 20 αρκούν για μια επίδειξη βημάτων, 30 για κίνηση. Η εγγραφή γράφεται καθώς προχωρά, οπότε ακόμη και μια εγγραφή που διακόπηκε από κατάρρευση αναπαράγεται έως τα τελευταία της δευτερόλεπτα.",
   "MP4 video": "Βίντεο MP4",
   "MP4 with H.264 (.mp4)  -  plays everywhere": "MP4 με H.264 (.mp4)  -  αναπαράγεται παντού",
-  "No delay": "Χωρίς καθυστέρηση",
+  "No delay: the screen is taken at once": "Χωρίς καθυστέρηση: η οθόνη λαμβάνεται αμέσως",
   "No other type in this build": "Κανένας άλλος τύπος σε αυτή την έκδοση",
   "No recording on this build: {0}": "Δεν υπάρχει εγγραφή σε αυτή την έκδοση: {0}",
   "not copied": "δεν αντιγράφηκε",
@@ -107,7 +108,7 @@
   "UltraSnip - Settings": "UltraSnip - Ρυθμίσεις",
   "Video: a recording of the area": "Βίντεο: εγγραφή της περιοχής",
   "Videos - the recording's container, its frame rate and its folder.": "Βίντεο - ο περιέκτης της εγγραφής, ο ρυθμός καρέ και ο φάκελός της.",
-  "Wait before the screen is taken, so a menu can be opened first": "Αναμονή πριν από τη λήψη της οθόνης, ώστε να ανοίξει πρώτα ένα μενού",
+  "Wait {0} seconds before the screen is taken, so a menu can be opened first": "Αναμονή {0} δευτερολέπτων πριν από τη λήψη της οθόνης, ώστε να ανοίξει πρώτα ένα μενού",
   "WebM video": "Βίντεο WebM",
   "WebM with VP9 (.webm)  -  the web's own": "WebM με VP9 (.webm)  -  η εγγενής μορφή του ιστού",
   "What happens to a picture the moment it is taken:": "Τι συμβαίνει σε μια εικόνα τη στιγμή που λαμβάνεται:",
@@ -119,6 +120,6 @@
   "Write every picture to the folder below": "Εγγραφή κάθε εικόνας στον παρακάτω φάκελο",
   "{0} fps": "{0} fps",
   "{0} recorded": "Εγγράφηκε: {0}",
-  "{0} s delay": "Καθυστέρηση {0} δευτ.",
+  "{0} s": "{0} δ",
   "{0} × {1} px": "{0} × {1} px"
 }

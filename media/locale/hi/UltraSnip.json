@@ -16,6 +16,7 @@
   "Copied to the clipboard.": "क्लिपबोर्ड पर कॉपी किया गया।",
   "Copy: the picture to the clipboard (Ctrl+C)": "कॉपी करें: चित्र को क्लिपबोर्ड पर (Ctrl+C)",
   "Drag an area  ·  Enter: the whole screen  ·  Esc: cancel": "कोई क्षेत्र खींचें  ·  Enter: पूरी स्क्रीन  ·  Esc: रद्द करें",
+  "Drag an area on the screen now, or choose a delay and click Start.": "अभी स्क्रीन पर कोई क्षेत्र खींचें, या विलंब चुनें और प्रारंभ करें पर क्लिक करें।",
   "Edit in UltraPaint: open the saved picture there": "UltraPaint में संपादित करें: सहेजा गया चित्र वहाँ खोलें",
   "Every change applies straight away and is saved; there is nothing to confirm.": "हर परिवर्तन तुरंत लागू होता है और सहेजा जाता है; पुष्टि करने के लिए कुछ नहीं है।",
   "Every text UltraSnip shows, in one grid with the sets it comes from: its own set, the Image and Video base sets and the standard set. A change is saved into the settings folder and shows the next time UltraSnip starts.": "UltraSnip द्वारा दिखाया जाने वाला हर पाठ, एक ग्रिड में उन सेटों के साथ जिनसे वह आता है: उसका अपना सेट, छवि और वीडियो आधार सेट, और मानक सेट। परिवर्तन सेटिंग्स फ़ोल्डर में सहेजा जाता है और अगली बार UltraSnip शुरू होने पर दिखता है।",
@@ -34,7 +35,7 @@
   "More frames a second make a smoother recording and a larger file; 20 is enough for a walk-through, 30 for motion. The recording is written as it goes, so one cut short by a crash still plays up to its last seconds.": "प्रति सेकंड अधिक फ़्रेम से रिकॉर्डिंग अधिक सहज और फ़ाइल बड़ी होती है; वॉक-थ्रू के लिए 20 काफ़ी है, गति के लिए 30। रिकॉर्डिंग साथ-साथ लिखी जाती है, इसलिए क्रैश से बीच में कटी रिकॉर्डिंग भी अपने अंतिम सेकंडों तक चलती है।",
   "MP4 video": "MP4 वीडियो",
   "MP4 with H.264 (.mp4)  -  plays everywhere": "H.264 के साथ MP4 (.mp4)  -  हर जगह चलता है",
-  "No delay": "कोई विलंब नहीं",
+  "No delay: the screen is taken at once": "कोई विलंब नहीं: स्क्रीन तुरंत ली जाती है",
   "No other type in this build": "इस बिल्ड में कोई अन्य प्रकार नहीं",
   "No recording on this build: {0}": "इस बिल्ड में रिकॉर्डिंग नहीं: {0}",
   "not copied": "कॉपी नहीं किया गया",
@@ -107,7 +108,7 @@
   "UltraSnip - Settings": "UltraSnip - सेटिंग्स",
   "Video: a recording of the area": "वीडियो: क्षेत्र की रिकॉर्डिंग",
   "Videos - the recording's container, its frame rate and its folder.": "वीडियो - रिकॉर्डिंग का कंटेनर, उसकी फ़्रेम दर और उसका फ़ोल्डर।",
-  "Wait before the screen is taken, so a menu can be opened first": "स्क्रीन लेने से पहले प्रतीक्षा करें, ताकि पहले कोई मेनू खोला जा सके",
+  "Wait {0} seconds before the screen is taken, so a menu can be opened first": "स्क्रीन लेने से पहले {0} सेकंड प्रतीक्षा करें, ताकि पहले मेनू खोला जा सके",
   "WebM video": "WebM वीडियो",
   "WebM with VP9 (.webm)  -  the web's own": "VP9 के साथ WebM (.webm)  -  वेब का अपना",
   "What happens to a picture the moment it is taken:": "लिए जाते ही चित्र के साथ क्या होता है:",
@@ -119,6 +120,6 @@
   "Write every picture to the folder below": "हर चित्र को नीचे दिए फ़ोल्डर में लिखें",
   "{0} fps": "{0} fps",
   "{0} recorded": "{0} रिकॉर्ड किया गया",
-  "{0} s delay": "{0} से. विलंब",
+  "{0} s": "{0} से",
   "{0} × {1} px": "{0} × {1} px"
 }

@@ -16,6 +16,7 @@
   "Copied to the clipboard.": "Kopierat till Urklipp.",
   "Copy: the picture to the clipboard (Ctrl+C)": "Kopiera: bilden till Urklipp (Ctrl+C)",
   "Drag an area  ·  Enter: the whole screen  ·  Esc: cancel": "Dra upp ett område  ·  Enter: hela skärmen  ·  Esc: avbryt",
+  "Drag an area on the screen now, or choose a delay and click Start.": "Dra ett område på skärmen nu, eller välj en fördröjning och klicka på Starta.",
   "Edit in UltraPaint: open the saved picture there": "Redigera i UltraPaint: öppna den sparade bilden där",
   "Every change applies straight away and is saved; there is nothing to confirm.": "Varje ändring gäller direkt och sparas; det finns inget att bekräfta.",
   "Every text UltraSnip shows, in one grid with the sets it comes from: its own set, the Image and Video base sets and the standard set. A change is saved into the settings folder and shows the next time UltraSnip starts.": "Alla texter som UltraSnip visar, i ett rutnät med de uppsättningar de kommer från: programmets egen uppsättning, basuppsättningarna Bild och Video och standarduppsättningen. En ändring sparas i inställningsmappen och visas nästa gång UltraSnip startas.",
@@ -34,7 +35,7 @@
   "More frames a second make a smoother recording and a larger file; 20 is enough for a walk-through, 30 for motion. The recording is written as it goes, so one cut short by a crash still plays up to its last seconds.": "Fler bilder per sekund ger en jämnare inspelning och en större fil; 20 räcker för en genomgång, 30 för rörelse. Inspelningen skrivs medan den pågår, så en inspelning som avbryts av en krasch går ändå att spela upp fram till de sista sekunderna.",
   "MP4 video": "MP4-video",
   "MP4 with H.264 (.mp4)  -  plays everywhere": "MP4 med H.264 (.mp4)  -  spelas upp överallt",
-  "No delay": "Ingen fördröjning",
+  "No delay: the screen is taken at once": "Ingen fördröjning: skärmen tas direkt",
   "No other type in this build": "Ingen annan typ i den här versionen",
   "No recording on this build: {0}": "Ingen inspelning i den här versionen: {0}",
   "not copied": "inte kopierat",
@@ -107,7 +108,7 @@
   "UltraSnip - Settings": "UltraSnip - Inställningar",
   "Video: a recording of the area": "Video: en inspelning av området",
   "Videos - the recording's container, its frame rate and its folder.": "Videor - inspelningens container, dess bildfrekvens och dess mapp.",
-  "Wait before the screen is taken, so a menu can be opened first": "Vänta innan skärmen fångas, så att en meny kan öppnas först",
+  "Wait {0} seconds before the screen is taken, so a menu can be opened first": "Vänta {0} sekunder innan skärmen tas, så att en meny kan öppnas först",
   "WebM video": "WebM-video",
   "WebM with VP9 (.webm)  -  the web's own": "WebM med VP9 (.webm)  -  webbens eget format",
   "What happens to a picture the moment it is taken:": "Vad som händer med en bild i samma stund som den tas:",
@@ -119,6 +120,6 @@
   "Write every picture to the folder below": "Skriv varje bild till mappen nedan",
   "{0} fps": "{0} fps",
   "{0} recorded": "{0} inspelat",
-  "{0} s delay": "{0} s fördröjning",
+  "{0} s": "{0} s",
   "{0} × {1} px": "{0} × {1} px"
 }

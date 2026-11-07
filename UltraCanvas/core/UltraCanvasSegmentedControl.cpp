@@ -1,5 +1,6 @@
 // core/UltraCanvasSegmentedControl.cpp
 // Implementation of segmented control component
+// Version: 1.7.0 - SetSegmentTooltip: the tooltip follows the segment under the pointer
 // Version: 1.6.1 - a caption stays on one line, shortened with an ellipsis when the segment
 //                 is too narrow, instead of wrapping out of the segment
 // Version: 1.6.0 - a caption is centred on its capitals (the layout gets the segment's
@@ -9,10 +10,12 @@
 // Version: 1.4.0 - SetSegmentTextColor: a segment's own text colour while unselected
 // Version: 1.3.1 - the key switch says the keys it ignores (default; -Wswitch)
 // Version: 1.3.0
-// Last Modified: 2026-10-24
+// Last Modified: 2026-11-07
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSegmentedControl.h"
+#include "UltraCanvasTooltipManager.h"
+#include "UltraCanvasWindow.h"
 #include "CSSLayout/LayoutUtils.h"
 #include <fmt/os.h>
 #include <algorithm>
@@ -470,6 +473,11 @@ namespace UltraCanvas {
             case UCEventType::MouseUp:
                 return HandleMouseUp(event);
 
+            case UCEventType::MouseEnter:
+                // Before the application reads the tooltip to show it
+                if (Contains(event.pointer)) UpdateSegmentTooltip(event, GetSegmentAtPosition(event.pointer.x, event.pointer.y));
+                return false;
+
             case UCEventType::MouseMove:
                 return HandleMouseMove(event);
 
@@ -549,6 +557,7 @@ namespace UltraCanvas {
         int index = GetSegmentAtPosition(event.pointer.x, event.pointer.y);
         if (index != hoveredIndex) {
             hoveredIndex = index;
+            UpdateSegmentTooltip(event, index);
 
             if (hoveredIndex >= 0 && onSegmentHover) {
                 onSegmentHover(hoveredIndex);
@@ -762,6 +771,39 @@ namespace UltraCanvas {
         if (index >= 0 && index < static_cast<int>(segments.size())) {
             segments[index].textColor = color;
             RequestRedraw();
+        }
+    }
+
+    void UltraCanvasSegmentedControl::SetSegmentTooltip(int index, const std::string& text) {
+        if (index >= 0 && index < static_cast<int>(segments.size())) segments[index].tooltip = text;
+    }
+
+    std::string UltraCanvasSegmentedControl::GetSegmentTooltip(int index) const {
+        if (index >= 0 && index < static_cast<int>(segments.size())) return segments[index].tooltip;
+        return {};
+    }
+
+    void UltraCanvasSegmentedControl::UpdateSegmentTooltip(const UCEvent& event, int index) {
+        bool anyOwn = false;
+        for (const auto& segment : segments) anyOwn = anyOwn || !segment.tooltip.empty();
+        if (!anyOwn) return;   // the control's tooltip alone, as before
+        // The control's own tooltip, as it was before a segment's replaced it
+        if (!controlTooltipKept || GetTooltip() != lastSegmentTooltip) {
+            controlTooltip = GetTooltip();
+            controlTooltipKept = true;
+        }
+        std::string text = controlTooltip;
+        if (index >= 0 && index < static_cast<int>(segments.size()) && !segments[index].tooltip.empty())
+            text = segments[index].tooltip;
+        if (text == GetTooltip()) return;
+        SetTooltip(text);
+        lastSegmentTooltip = text;
+        // The manager took the old text when the pointer came in: give it
+        // the new one where it is up or about to be
+        UltraCanvasWindowBase* win = GetWindow();
+        if (win && (UltraCanvasTooltipManager::IsVisible() || UltraCanvasTooltipManager::IsPending())) {
+            if (text.empty()) UltraCanvasTooltipManager::HideTooltip();
+            else UltraCanvasTooltipManager::UpdateAndShowTooltip(win, text, event.pointerWindow);
         }
     }
 

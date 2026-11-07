@@ -1,5 +1,6 @@
 // Apps/UltraSnip/ui/UltraSnipOverlay.cpp
 // See the header.
+// Version: 0.3.0 - SetMode while open; onReleased, for the bar kept above it
 // Version: 0.2.0 - the texts go through Tr (UltraLocalisation)
 // Version: 0.1.1 - the frozen screen shown from its pixels (UCImage::FromBgra), no PNG round trip
 // Version: 0.1.0
@@ -193,7 +194,7 @@ void UltraSnipSelectionElement::Render(IRenderContext* ctx, const Rect2Df&) {
     const std::string hint = mode_ == SnipMode::Window
                            ? Tr("Click a window, or drag an area  \xC2\xB7  Enter: the window under the pointer  \xC2\xB7  Esc: cancel")
                            : Tr("Drag an area  \xC2\xB7  Enter: the whole screen  \xC2\xB7  Esc: cancel");
-    DrawPill(ctx, hint, w / 2, 16, true);
+    DrawPill(ctx, hint, w / 2, hintTop_, true);
     ctx->PopState();
 }
 
@@ -303,6 +304,11 @@ bool UltraSnipOverlay::Open(const DesktopScreenImage& shot, SnipMode mode, const
         }
         return false;
     }, {UCEventType::KeyDown});
+    // Ahead of the marquee, which then has the release as well
+    window_->InstallEventFilter("snip-overlay-release", [this](const UCEvent&) {
+        if (open_ && onReleased) onReleased();
+        return false;
+    }, {UCEventType::MouseUp});
     window_->Show();
     window_->RaiseAndFocus();
     return true;
@@ -323,6 +329,14 @@ void UltraSnipOverlay::Finish(bool selected, const Rect2Di& area) {
     } else if (onCancelled) {
         onCancelled();
     }
+}
+
+void UltraSnipOverlay::SetMode(SnipMode mode) {
+    if (marquee_) marquee_->SetMode(mode);
+}
+
+void UltraSnipOverlay::SetHintTop(float top) {
+    if (marquee_) marquee_->SetHintTop(top);
 }
 
 void UltraSnipOverlay::Close() {
