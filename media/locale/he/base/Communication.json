@@ -1,7 +1,6 @@
 {
   "@language": "he",
   "@translated-by": "machine draft 2026-11-03, reviewed by -",
-  "Add account": "הוספת חשבון",
   "App password": "סיסמת יישום",
   "Attach file": "צירוף קובץ",
   "Attachment": "קובץ מצורף",
@@ -44,7 +43,6 @@
   "Search messages": "חיפוש בהודעות",
   "Sending": "בשליחה",
   "Sent": "פריטים שנשלחו",
-  "Server": "שרת",
   "Sign out": "התנתקות",
   "Sign-in": "כניסה",
   "Spam": "דואר זבל",

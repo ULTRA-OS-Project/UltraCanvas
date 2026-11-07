@@ -2,6 +2,9 @@
 // ChatCube Direct: the envelope, the store, and two providers end to end
 // through a local relay (P2P, read receipts, offline queue, groups, calls),
 // and two on the local network with no relay at all
+// Version: 0.1.8 - the authenticator's setup code waits for a 30-second step with room left: computed a
+//                  step back and checked after the password work, it was refused when a step boundary
+//                  passed in between, and the wrong codes it then counted paused the rest
 // Version: 0.1.7 - the e-mail confirmed by the link the relay e-mails; recovery by an e-mailed link, approved on
 //                  its page while the new computer asks (FinishRecovery: NeedsInput until then)
 // Version: 0.1.6 - the e-mail and phone confirmed with the relay's codes, recovery on, and the ID recovered on a
@@ -1294,6 +1297,20 @@ std::string CodeFor(const std::string& uri, int64_t offsetSeconds) {
     return code;
 }
 
+// Waits, when fewer than `seconds` are left in the current 30-second TOTP
+// step, for the next one. A code made for the step before (CodeFor(uri, -30))
+// is accepted only while the checking side is still in this step: the window
+// is one step either way. SetSignInProtection derives a key from the password
+// before it looks at the code, which takes seconds on a slow runner, so a
+// boundary passing in between refused the code - and the wrong codes counted
+// from then on paused every later check.
+void WaitForRoomInTotpStep(int64_t seconds) {
+    const int64_t now = std::chrono::duration_cast<std::chrono::seconds>(
+                            std::chrono::system_clock::now().time_since_epoch()).count();
+    const int64_t left = 30 - now % 30;
+    if (left < seconds) std::this_thread::sleep_for(std::chrono::seconds(left + 1));
+}
+
 UltraIMAccountProfile ProfileOf(DirectProvider& provider) {
     UltraIMAccountProfile out;
     std::mutex mutex;
@@ -1381,6 +1398,10 @@ void TestSignInProtection() {
         change.currentPassword = "correct horse battery";
         change.newCode = "000000";
         CHECK(WaitResult([&](UltraIMResultCallback cb) { erin->SetSignInProtection(change, cb); }, r) && !r);
+        // The step before, so that the sign-in code (this step) and the
+        // change back (the next) each come after it - a spent step is
+        // refused - all three within the window of one step either way.
+        WaitForRoomInTotpStep(15);
         setupCode = CodeFor(uri, -30);
         change.newCode = setupCode;
         CHECK(WaitResult([&](UltraIMResultCallback cb) { erin->SetSignInProtection(change, cb); }, r) && r);

@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>UltraStoreAdmin - Apps and components</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Manrope:wght@600;700;800&amp;display=swap">
+<style>
+body{margin:0;background:#f8fafc}
+a{color:#1d4ed8}a:hover{color:#1e40af}
+</style>
+</helmet>
+<div style="min-height: 100%; background: #f8fafc; color: #0f172a; font-family: Inter, system-ui, sans-serif; font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased; display: flex; flex-direction: column">
+
+<header style="background: #ffffff; border-bottom: 1px solid #e2e8f0; padding: 10px 24px; display: flex; align-items: center; gap: 20px; flex-wrap: wrap; min-height: 60px; box-sizing: border-box">
+<a href="AdminDashboard.dc.html" aria-label="UltraStoreAdmin overview" style="display: flex; align-items: center; gap: 10px; text-decoration: none; color: #0f172a">
+<img src="/_blob/9b931f0bda5f6ee1d30304d2295e0e4a" alt="" style="width: 30px; height: 30px; border-radius: 8px">
+<span style="font-family: Manrope, Inter, sans-serif; font-weight: 800; font-size: 17px; letter-spacing: -0.02em">UltraStoreAdmin</span>
+</a>
+<span style="display: inline-flex; align-items: center; gap: 8px; color: #475569; font-size: 13px"><span style="font-weight: 600; color: #0f172a">ULTRA OS Store</span>· store.ultraos.eu/v1</span>
+<span style="flex: 1 1 auto"></span>
+<span style="display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px; border-radius: 999px; background: #fef3c7; color: #92400e; font-size: 12px; font-weight: 700">4 changes since sequence 42</span>
+<a href="AdminPublish.dc.html" style="display: inline-flex; align-items: center; height: 38px; padding: 0 16px; border-radius: 999px; background: {{accent}}; color: #ffffff; text-decoration: none; font-weight: 700">Publish…</a>
+<button type="button" aria-label="Account: Alex" style="width: 36px; height: 36px; border-radius: 999px; border: 0; background: #0f172a; color: #ffffff; font: inherit; font-weight: 700; font-size: 13px; cursor: pointer">AK</button>
+</header>
+
+<div style="flex: 1 1 auto; display: flex; flex-wrap: wrap; align-items: flex-start">
+
+<nav aria-label="Admin" style="flex: 1 1 220px; max-width: 260px; min-width: 0; padding: 20px 12px; box-sizing: border-box; display: flex; flex-direction: column; gap: 20px">
+<div style="display: flex; flex-direction: column; gap: 2px">
+<span style="padding: 0 12px 6px; font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em">Store</span>
+<a href="AdminDashboard.dc.html" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #334155; font-weight: 500">Overview</a>
+<a href="AdminApps.dc.html" aria-current="page" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 10px; text-decoration: none; background: #dbeafe; color: #1d4ed8; font-weight: 700">Apps and components</a>
+<a href="AdminSales.dc.html" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #334155; font-weight: 500">Sales</a>
+<a href="AdminFinance.dc.html" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #334155; font-weight: 500">Finance</a>
+<a href="#affiliates" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #334155; font-weight: 500">Affiliates and codes</a>
+<a href="AdminPublish.dc.html" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #334155; font-weight: 500">Publish</a>
+<a href="#keys" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #334155; font-weight: 500">Keys</a>
+<a href="#settings" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #334155; font-weight: 500">Settings</a>
+</div>
+<div style="display: flex; flex-direction: column; gap: 2px">
+<span style="padding: 0 12px 6px; font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em">Apps</span>
+<a href="AdminAppEditor.dc.html" style="display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #334155"><img src="/_blob/023cd138f38912c764ae7c221c087db6" alt="" style="width: 22px; height: 22px; border-radius: 6px">UltraVideo</a>
+<a href="#app-ultrapaint" style="display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #334155"><img src="/_blob/451050dafeeb42579ba048b1a08f78fa" alt="" style="width: 22px; height: 22px; border-radius: 6px">UltraPaint</a>
+<a href="#app-artcreator" style="display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #334155"><img src="/_blob/0d8f1d55bd369843755da72b7a7fbd33" alt="" style="width: 22px; height: 22px; border-radius: 6px">ArtCreator</a>
+<a href="#app-ultrafiler" style="display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #334155"><img src="/_blob/0339854b95aaa1785eff13f10f2fce1c" alt="" style="width: 22px; height: 22px; border-radius: 6px">UltraFiler</a>
+<a href="#app-ultramail" style="display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #334155"><img src="/_blob/bafbc6e21d0bfb6f2d3d60d6d272ad66" alt="" style="width: 22px; height: 22px; border-radius: 6px">UltraMail</a>
+<a href="#app-hello" style="display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #334155"><span style="width: 22px; height: 22px; border-radius: 6px; background: #e2e8f0; flex: 0 0 auto"></span><span style="flex: 1 1 auto; min-width: 0">Hello</span><span style="font-size: 11px; font-weight: 600; color: #b45309">no release</span></a>
+</div>
+<div style="display: flex; flex-direction: column; gap: 2px">
+<span style="padding: 0 12px 6px; font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em">Runtimes and libraries</span>
+<a href="#runtime" style="display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #334155"><span style="width: 22px; height: 22px; border-radius: 6px; background: #0f172a; flex: 0 0 auto"></span>UltraCanvas runtime</a>
+<a href="#videofx" style="display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #334155"><span style="width: 22px; height: 22px; border-radius: 6px; background: #7c3aed; flex: 0 0 auto"></span>VideoFX</a>
+<a href="#pdfplugin" style="display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #334155"><span style="width: 22px; height: 22px; border-radius: 6px; background: #0f766e; flex: 0 0 auto"></span>PDF plug-in</a>
+</div>
+</nav>
+
+<main style="flex: 999 1 560px; min-width: 0; padding: 24px; box-sizing: border-box; display: flex; flex-direction: column; gap: 20px">
+
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap">
+<div style="display: flex; flex-direction: column">
+<h1 style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 28px; font-weight: 800; letter-spacing: -0.02em">Apps and components</h1>
+<span style="color: #64748b">24 apps, 1 runtime, 2 libraries · the catalog's component objects, kept whole in admin.sqlite</span>
+</div>
+<div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center">
+<form role="search" style="display: flex; align-items: center; gap: 8px; height: 38px; padding: 0 12px; box-sizing: border-box; border-radius: 10px; background: #ffffff; border: 1px solid #cbd5e1">
+<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+<label for="apps-search" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap">Filter by name or id</label>
+<input id="apps-search" type="search" placeholder="Filter by name or id" style="width: 200px; border: 0; background: transparent; font: inherit; color: #0f172a; outline: none">
+</form>
+<button type="button" style="display: inline-flex; align-items: center; gap: 8px; height: 38px; padding: 0 16px; border-radius: 999px; border: 0; background: {{accent}}; color: #ffffff; font: inherit; font-weight: 700; cursor: pointer"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg>Add an app or a component</button>
+</div>
+</div>
+
+<section aria-labelledby="add-title" style="display: flex; flex-direction: column; gap: 16px; padding: 22px 24px; box-sizing: border-box; border-radius: 16px; background: #ffffff; border: 2px solid #2563eb">
+<div style="display: flex; flex-direction: column; gap: 2px">
+<h2 id="add-title" style="margin: 0; font-size: 18px; font-weight: 700">Add an app or a component</h2>
+<p style="margin: 0; color: #64748b; font-size: 13px">Creates the record and opens its form. Everything else, from texts to packages, is filled in there.</p>
+</div>
+<div style="display: flex; flex-wrap: wrap; gap: 16px">
+<div style="flex: 1 1 260px; min-width: 0; display: flex; flex-direction: column; gap: 6px">
+<label for="new-id" style="font-size: 13px; font-weight: 600; color: #334155">Id <span style="color: #64748b; font-weight: 400">reverse DNS</span></label>
+<input id="new-id" type="text" value="org.ultraos.hello" style="height: 40px; padding: 0 12px; box-sizing: border-box; border-radius: 10px; border: 1px solid #cbd5e1; background: #ffffff; font: inherit; font-family: ui-monospace, monospace; color: #0f172a">
+</div>
+<div style="flex: 1 1 260px; min-width: 0; display: flex; flex-direction: column; gap: 6px">
+<label for="new-name" style="font-size: 13px; font-weight: 600; color: #334155">Name</label>
+<input id="new-name" type="text" value="Hello" style="height: 40px; padding: 0 12px; box-sizing: border-box; border-radius: 10px; border: 1px solid #cbd5e1; background: #ffffff; font: inherit; color: #0f172a">
+</div>
+<fieldset style="flex: 1 1 260px; min-width: 0; margin: 0; padding: 0; border: 0; display: flex; flex-direction: column; gap: 6px">
+<legend style="font-size: 13px; font-weight: 600; color: #334155; padding: 0; margin-bottom: 6px">Kind</legend>
+<div style="display: flex; padding: 4px; border-radius: 10px; background: #f1f5f9; gap: 2px">
+<label style="flex: 1 1 0; display: flex; align-items: center; justify-content: center; gap: 6px; height: 32px; border-radius: 8px; background: #ffffff; box-shadow: 0 1px 2px rgba(15,23,42,0.12); font-weight: 600; cursor: pointer"><input type="radio" name="kind" checked style="margin: 0; accent-color: #2563eb">App</label>
+<label style="flex: 1 1 0; display: flex; align-items: center; justify-content: center; gap: 6px; height: 32px; border-radius: 8px; color: #475569; cursor: pointer"><input type="radio" name="kind" style="margin: 0; accent-color: #2563eb">Runtime</label>
+<label style="flex: 1 1 0; display: flex; align-items: center; justify-content: center; gap: 6px; height: 32px; border-radius: 8px; color: #475569; cursor: pointer"><input type="radio" name="kind" style="margin: 0; accent-color: #2563eb">Library</label>
+</div>
+</fieldset>
+<div style="flex: 1 1 260px; min-width: 0; display: flex; flex-direction: column; gap: 6px">
+<label for="new-publisher" style="font-size: 13px; font-weight: 600; color: #334155">Publisher</label>
+<select id="new-publisher" style="height: 40px; padding: 0 12px; border-radius: 10px; border: 1px solid #cbd5e1; background: #ffffff; font: inherit; color: #0f172a">
+<option>ULTRA OS Project</option>
+<option>RISC OS Cloverleaf</option>
+<option>Add a publisher…</option>
+</select>
+</div>
+</div>
+<div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap">
+<a href="AdminAppEditor.dc.html" style="display: inline-flex; align-items: center; height: 40px; padding: 0 18px; border-radius: 999px; background: {{accent}}; color: #ffffff; text-decoration: none; font-weight: 700">Create and open the form</a>
+<button type="button" style="height: 40px; padding: 0 16px; border-radius: 999px; border: 1px solid #cbd5e1; background: #ffffff; color: #0f172a; font: inherit; font-weight: 600; cursor: pointer">Cancel</button>
+<button type="button" style="height: 40px; padding: 0 16px; border-radius: 999px; border: 0; background: transparent; color: #1d4ed8; font: inherit; font-weight: 600; cursor: pointer">Import a component.json instead</button>
+</div>
+</section>
+
+<section aria-label="All apps and components" style="display: flex; flex-direction: column; gap: 12px; padding: 8px 0 0; box-sizing: border-box; border-radius: 16px; background: #ffffff; border: 1px solid #e2e8f0; overflow: hidden">
+<div style="display: flex; gap: 6px; flex-wrap: wrap; padding: 10px 16px 2px">
+<button type="button" aria-pressed="true" style="height: 32px; padding: 0 12px; border-radius: 999px; border: 1px solid #0f172a; background: #0f172a; color: #ffffff; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer">All 27</button>
+<button type="button" aria-pressed="false" style="height: 32px; padding: 0 12px; border-radius: 999px; border: 1px solid #e2e8f0; background: #ffffff; color: #334155; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer">Apps 24</button>
+<button type="button" aria-pressed="false" style="height: 32px; padding: 0 12px; border-radius: 999px; border: 1px solid #e2e8f0; background: #ffffff; color: #334155; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer">Components 3</button>
+<button type="button" aria-pressed="false" style="height: 32px; padding: 0 12px; border-radius: 999px; border: 1px solid #e2e8f0; background: #ffffff; color: #334155; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer">Changed since publish 4</button>
+<button type="button" aria-pressed="false" style="height: 32px; padding: 0 12px; border-radius: 999px; border: 1px solid #e2e8f0; background: #ffffff; color: #334155; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer">No release 1</button>
+<button type="button" aria-pressed="false" style="height: 32px; padding: 0 12px; border-radius: 999px; border: 1px solid #e2e8f0; background: #ffffff; color: #334155; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer">Paid 5</button>
+</div>
+<div style="overflow-x: auto">
+<table style="width: 100%; border-collapse: collapse; font-size: 13px; min-width: 900px">
+<thead><tr style="color: #64748b; text-align: left; background: #f8fafc">
+<th scope="col" style="font-weight: 600; padding: 10px 16px; border-bottom: 1px solid #e2e8f0">Name</th>
+<th scope="col" style="font-weight: 600; padding: 10px 12px; border-bottom: 1px solid #e2e8f0">Id</th>
+<th scope="col" style="font-weight: 600; padding: 10px 12px; border-bottom: 1px solid #e2e8f0">Kind</th>
+<th scope="col" style="font-weight: 600; padding: 10px 12px; border-bottom: 1px solid #e2e8f0">Pricing</th>
+<th scope="col" style="font-weight: 600; padding: 10px 12px; border-bottom: 1px solid #e2e8f0">Visibility</th>
+<th scope="col" style="font-weight: 600; padding: 10px 12px; border-bottom: 1px solid #e2e8f0">Latest release</th>
+<th scope="col" style="font-weight: 600; padding: 10px 12px; border-bottom: 1px solid #e2e8f0">Languages</th>
+<th scope="col" style="font-weight: 600; padding: 10px 16px; border-bottom: 1px solid #e2e8f0">State</th>
+</tr></thead>
+<tbody>
+<tr style="background: #fffbeb">
+<td style="padding: 10px 16px; border-bottom: 1px solid #f1f5f9"><a href="#app-hello" style="display: flex; align-items: center; gap: 10px; text-decoration: none; color: #0f172a; font-weight: 600"><span style="width: 28px; height: 28px; border-radius: 7px; background: #e2e8f0; flex: 0 0 auto"></span>Hello</a></td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9; font-family: ui-monospace, monospace; font-size: 12px; color: #475569">org.ultraos.hello</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9">App</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9">Free</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9">Unlisted</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9; color: #b45309; font-weight: 600">no release</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9">1 of 42</td>
+<td style="padding: 10px 16px; border-bottom: 1px solid #f1f5f9"><span style="display: inline-flex; align-items: center; height: 24px; padding: 0 10px; border-radius: 999px; background: #fef3c7; color: #92400e; font-size: 12px; font-weight: 700">New, unpublished</span></td>
+</tr>
+<tr>
+<td style="padding: 10px 16px; border-bottom: 1px solid #f1f5f9"><a href="AdminAppEditor.dc.html" style="display: flex; align-items: center; gap: 10px; text-decoration: none; color: #0f172a; font-weight: 600"><img src="/_blob/023cd138f38912c764ae7c221c087db6" alt="" style="width: 28px; height: 28px; border-radius: 7px">UltraVideo</a></td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9; font-family: ui-monospace, monospace; font-size: 12px; color: #475569">org.ultraos.ultravideo</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9">App</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9">29.90 EUR · 30-day trial</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9">Listed</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9">0.7.0 · stable · 22 Oct</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9">42 of 42</td>
+<td style="padding: 10px 16px; border-bottom: 1px solid #f1f5f9"><span style="display: inline-flex; align-items: center; height: 24px; padding: 0 10px; border-radius: 999px; background: #dbeafe; color: #1e40af; font-size: 12px; font-weight: 700">Changed since publish</span></td>
+</tr>
+<tr>
+<td style="padding: 10px 16px; border-bottom: 1px solid #f1f5f9"><a href="#app-ultrapaint" style="display: flex; align-items: center; gap: 10px; text-decoration: none; color: #0f172a; font-weight: 600"><img src="/_blob/451050dafeeb42579ba048b1a08f78fa" alt="" style="width: 28px; height: 28px; border-radius: 7px">UltraPaint</a></td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9; font-family: ui-monospace, monospace; font-size: 12px; color: #475569">org.ultraos.ultrapaint</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9">App</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9">Free</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9">Listed</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9">0.2.25 · stable · 21 Oct</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9">42 of 42</td>
+<td style="padding: 10px 16px; border-bottom: 1px solid #f1f5f9"><span style="display: inline-flex; align-items: center; height: 24px; padding: 0 10px; border-radius: 999px; background: #dcfce7; color: #166534; font-size: 12px; font-weight: 700">Published</span></td>
+</tr>
+<tr>
+<td style="padding: 10px 16px; border-bottom: 1px solid #f1f5f9"><a href="#app-artcreator" style="display: flex; align-items: center; gap: 10px; text-decoration: none; color: #0f172a; font-weight: 600"><img src="/_blob/0d8f1d55bd369843755da72b7a7fbd33" alt="" style="width: 28px; height: 28px; border-radius: 7px">ArtCreator</a></td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9; font-family: ui-monospace, monospace; font-size: 12px; color: #475569">org.ultraos.artcreator</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9">App</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9">[PRICE] EUR · 30-day trial</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9">Listed</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9">0.7.3 · stable · 18 Oct</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9">40 of 42</td>
+<td style="padding: 10px 16px; border-bottom: 1px solid #f1f5f9"><span style="display: inline-flex; align-items: center; height: 24px; padding: 0 10px; border-radius: 999px; background: #dcfce7; color: #166534; font-size: 12px; font-weight: 700">Published</span></td>
+</tr>
+<tr>
+<td style="padding: 10px 16px; border-bottom: 1px solid #f1f5f9"><a href="#app-ultrapress" style="display: flex; align-items: center; gap: 10px; text-decoration: none; color: #0f172a; font-weight: 600"><img src="/_blob/9f46fbb5f61e6ff5f3160c323225c3d3" alt="" style="width: 28px; height: 28px; border-radius: 7px">UltraPress</a></td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9; font-family: ui-monospace, monospace; font-size: 12px; color: #475569">org.ultraos.ultrapress</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9">App</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9">[PRICE] EUR · yearly</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9">Listed</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9">0.8.2 · beta · 15 Oct</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9">36 of 42</td>
+<td style="padding: 10px 16px; border-bottom: 1px solid #f1f5f9"><span style="display: inline-flex; align-items: center; height: 24px; padding: 0 10px; border-radius: 999px; background: #fef3c7; color: #92400e; font-size: 12px; font-weight: 700">Warning: no screenshot</span></td>
+</tr>
+<tr>
+<td style="padding: 10px 16px; border-bottom: 1px solid #f1f5f9"><a href="#app-ultrafiler" style="display: flex; align-items: center; gap: 10px; text-decoration: none; color: #0f172a; font-weight: 600"><img src="/_blob/0339854b95aaa1785eff13f10f2fce1c" alt="" style="width: 28px; height: 28px; border-radius: 7px">UltraFiler</a></td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9; font-family: ui-monospace, monospace; font-size: 12px; color: #475569">org.ultraos.ultrafiler</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9">App</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9">Free</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9">Listed</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9">1.75.0 · stable · 30 Oct</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9">42 of 42</td>
+<td style="padding: 10px 16px; border-bottom: 1px solid #f1f5f9"><span style="display: inline-flex; align-items: center; height: 24px; padding: 0 10px; border-radius: 999px; background: #dbeafe; color: #1e40af; font-size: 12px; font-weight: 700">Changed since publish</span></td>
+</tr>
+<tr>
+<td style="padding: 10px 16px; border-bottom: 1px solid #f1f5f9"><a href="#app-ultrafibu" style="display: flex; align-items: center; gap: 10px; text-decoration: none; color: #0f172a; font-weight: 600"><img src="/_blob/c5402e04d2949ef467a6e80deabd4144" alt="" style="width: 28px; height: 28px; border-radius: 7px">UltraFIBU</a></td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9; font-family: ui-monospace, monospace; font-size: 12px; color: #475569">org.ultraos.ultrafibu</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9">App</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9">[PRICE] EUR · 30-day trial</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9">Listed</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9">0.24.5 · stable · 20 Oct</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9">42 of 42</td>
+<td style="padding: 10px 16px; border-bottom: 1px solid #f1f5f9"><span style="display: inline-flex; align-items: center; height: 24px; padding: 0 10px; border-radius: 999px; background: #dcfce7; color: #166534; font-size: 12px; font-weight: 700">Published</span></td>
+</tr>
+<tr>
+<td style="padding: 10px 16px; border-bottom: 1px solid #f1f5f9"><a href="#app-ultramail" style="display: flex; align-items: center; gap: 10px; text-decoration: none; color: #0f172a; font-weight: 600"><img src="/_blob/bafbc6e21d0bfb6f2d3d60d6d272ad66" alt="" style="width: 28px; height: 28px; border-radius: 7px">UltraMail</a></td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9; font-family: ui-monospace, monospace; font-size: 12px; color: #475569">org.ultraos.ultramail</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9">App</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9">Free</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9">Listed</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9">0.10.59 · stable · 29 Oct</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9">42 of 42</td>
+<td style="padding: 10px 16px; border-bottom: 1px solid #f1f5f9"><span style="display: inline-flex; align-items: center; height: 24px; padding: 0 10px; border-radius: 999px; background: #dcfce7; color: #166534; font-size: 12px; font-weight: 700">Published</span></td>
+</tr>
+<tr>
+<td style="padding: 10px 16px; border-bottom: 1px solid #f1f5f9"><a href="#app-texter-old" style="display: flex; align-items: center; gap: 10px; text-decoration: none; color: #0f172a; font-weight: 600"><img src="/_blob/693816119a6f2ec456eb26c1c05fd97a" alt="" style="width: 28px; height: 28px; border-radius: 7px">Texter Classic</a></td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9; font-family: ui-monospace, monospace; font-size: 12px; color: #475569">org.ultraos.texter-classic</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9">App</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9">Free</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9">Hidden</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9">1.40 · stable · 2025</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9">42 of 42</td>
+<td style="padding: 10px 16px; border-bottom: 1px solid #f1f5f9"><span style="display: inline-flex; align-items: center; height: 24px; padding: 0 10px; border-radius: 999px; background: #f1f5f9; color: #475569; font-size: 12px; font-weight: 700">Deprecated → Texter</span></td>
+</tr>
+<tr>
+<td style="padding: 10px 16px; border-bottom: 1px solid #f1f5f9"><a href="#runtime" style="display: flex; align-items: center; gap: 10px; text-decoration: none; color: #0f172a; font-weight: 600"><span style="width: 28px; height: 28px; border-radius: 7px; background: #0f172a; flex: 0 0 auto"></span>UltraCanvas runtime</a></td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9; font-family: ui-monospace, monospace; font-size: 12px; color: #475569">org.ultraos.runtime</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9">Runtime</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9; color: #64748b">—</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9; color: #64748b">—</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9">0.9.410 · stable · 20 Oct</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9; color: #64748b">—</td>
+<td style="padding: 10px 16px; border-bottom: 1px solid #f1f5f9"><span style="display: inline-flex; align-items: center; height: 24px; padding: 0 10px; border-radius: 999px; background: #dcfce7; color: #166534; font-size: 12px; font-weight: 700">Published</span></td>
+</tr>
+<tr>
+<td style="padding: 10px 16px"><a href="#videofx" style="display: flex; align-items: center; gap: 10px; text-decoration: none; color: #0f172a; font-weight: 600"><span style="width: 28px; height: 28px; border-radius: 7px; background: #7c3aed; flex: 0 0 auto"></span>VideoFX</a></td>
+<td style="padding: 10px 12px; font-family: ui-monospace, monospace; font-size: 12px; color: #475569">org.ultraos.lib.videofx</td>
+<td style="padding: 10px 12px">Library</td>
+<td style="padding: 10px 12px; color: #64748b">—</td>
+<td style="padding: 10px 12px; color: #64748b">—</td>
+<td style="padding: 10px 12px">0.12.0 · stable · 22 Oct</td>
+<td style="padding: 10px 12px; color: #64748b">—</td>
+<td style="padding: 10px 16px"><span style="display: inline-flex; align-items: center; height: 24px; padding: 0 10px; border-radius: 999px; background: #dcfce7; color: #166534; font-size: 12px; font-weight: 700">Published</span></td>
+</tr>
+</tbody>
+</table>
+</div>
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 16px; border-top: 1px solid #f1f5f9; font-size: 13px; color: #64748b">
+<span>Showing 11 of 27</span>
+<div style="display: flex; gap: 6px">
+<button type="button" style="height: 32px; padding: 0 12px; border-radius: 8px; border: 1px solid #e2e8f0; background: #ffffff; font: inherit; color: #334155; cursor: pointer">Previous</button>
+<button type="button" style="height: 32px; padding: 0 12px; border-radius: 8px; border: 1px solid #e2e8f0; background: #ffffff; font: inherit; color: #334155; cursor: pointer">Next</button>
+</div>
+</div>
+</section>
+
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#2563eb","options":["#2563eb","#0f172a","#7c3aed","#0f766e"]},"$preview":{"width":1440,"height":1360}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { accent: this.props.accent ?? '#2563eb' };
+  }
+}
+</script>
+</body>
+</html>

@@ -173,8 +173,9 @@ The following features are planned for future releases:
 -   **Wayland desktop shell** - the windowing backend and the desktop shell's
     protocols are in (`-DULTRACANVAS_WAYLAND=ON`): the layer shell, foreign
     toplevels, ext-workspace, the portals for screenshots and shortcuts,
-    xdg-activation; popups with a positioner, drags, the session lock and GL
-    surfaces come next (see `Docs/UltraCanvas/WaylandDesktopShellProposal.md`)
+    xdg-activation, panels and popups placed by their parent, drag and drop,
+    the session lock, GL surfaces, a CI row under sway; an icon for a drag and
+    a menu grab remain (see `Docs/UltraCanvas/WaylandDesktopShellProposal.md`)
 
 ----------
 

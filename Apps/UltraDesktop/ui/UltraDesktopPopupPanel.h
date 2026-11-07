@@ -6,6 +6,7 @@
 // focus, on Escape, and on request. The clock panel and the volume panel
 // are built on it; the clipboard panel predates it and keeps its own copy
 // of the arrangement, since its keyboard handling is the larger part.
+// Version: 0.2.0 - SetParentWindow: the desktop window, which places the panel on Wayland
 // Version: 0.1.1 - SetScreenArea: kept on the desktop's own monitor
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -17,6 +18,7 @@
 #include <string>
 
 namespace UltraCanvas {
+    class UltraCanvasWindowBase;
     struct UCEvent;
 }
 
@@ -36,6 +38,10 @@ public:
     // The monitor the panel stays on, in screen pixels: the desktop's own.
     // Unset, the whole screen.
     void SetScreenArea(int x, int y, int width, int height);
+    // The desktop window the panel belongs to. On Wayland a window is
+    // placed only relative to a parent: the panel becomes a child of the
+    // desktop's layer surface, put where Open says beside its bar.
+    void SetParentWindow(UltraCanvas::UltraCanvasWindowBase* parent) { parent_ = parent; }
 
 protected:
     // The window is empty and sized; add the elements. Called once per Open.
@@ -55,6 +61,7 @@ private:
     int height_;
     std::shared_ptr<UltraCanvas::UltraCanvasWindow> window_;
     int areaX_ = 0, areaY_ = 0, areaW_ = 0, areaH_ = 0;
+    UltraCanvas::UltraCanvasWindowBase* parent_ = nullptr;
     bool open_ = false;
     bool closing_ = false;
 };

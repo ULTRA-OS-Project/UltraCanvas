@@ -35,6 +35,7 @@ add_executable(UltraDesktop
     ui/UltraDesktopVolumePanel.cpp
     ui/UltraDesktopWifiPanel.cpp
     ui/UltraDesktopWindow.cpp
+    ui/UltraDesktopWindowPreviews.cpp
 )
 
 # Export dynamic symbols so on-demand plugin modules resolve core symbols

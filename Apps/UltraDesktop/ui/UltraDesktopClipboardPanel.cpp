@@ -1,5 +1,6 @@
 // Apps/UltraDesktop/ui/UltraDesktopClipboardPanel.cpp
 // The clipboard quick panel. See UltraDesktopClipboardPanel.h.
+// Version: 0.2.0 - SetParentWindow (the desktop window places the panel on Wayland)
 // Version: 0.1.2 - SetScreenArea
 // Version: 0.1.1 - the row's icons follow the history's iconSide (left or right of the text)
 // Version: 0.1.0
@@ -69,6 +70,10 @@ void UltraDesktopClipboardPanel::Open(int rightX, int topY, Target target) {
     WindowConfig config;
     config.title = "Clipboard";
     config.type = WindowType::Borderless;
+#if defined(ULTRACANVAS_DISPLAY_WAYLAND)
+    // A child of the desktop window: the one way to be placed on Wayland.
+    config.parentWindow = parent_;
+#endif
     config.width = kPanelWidth;
     config.height = kPanelHeight;
     config.resizable = false;

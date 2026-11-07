@@ -582,6 +582,23 @@ pin anything you copied.
 **Built on:** ClipboardHistory.
 **Version:** 0.1.5 (2026-10-14).
 
+### UltraNotifications
+
+**Purpose:** the notifications after their pop-up has gone: every
+notification, chat message and mail on the UltraMessage feed, to read again,
+search, open and dismiss.
+
+**Capabilities:**
+- All / Chats / Mail / System, the sources with their unread counts, search
+  and filters; the selected one in full with its own buttons.
+- *Open* takes a mail to UltraMail, a ChatCube chat to ChatCube, and does a
+  notification's first action; *Dismiss* also closes its pop-up.
+- Runs without a window (`--background`, UltraDesktop's *Start with the
+  desktop*) and counts the unread for the desktop's bell.
+
+**Built on:** UltraMessage, UltraCanvasMessageCenter.
+**Version:** 0.1.0 (2026-11-06).
+
 ### UltraCleaner
 
 **Purpose:** finds and removes the leftovers macOS, Windows and Linux leave

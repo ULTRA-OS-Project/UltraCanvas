@@ -13,6 +13,8 @@
 // Design: Docs/UltraCanvas/UltraCanvasTernaryChartProposal.md
 // Guide:  Docs/UltraCanvas/UltraCanvasTernaryChart.md
 //
+// Version: 1.3.0 - edgeLean: which side of a shared edge a point on it belongs to;
+//   the USDA preset follows the Soil Survey Manual's class boundaries
 // Version: 1.2.0 - Phase 3: the sub-triangle zoom - a minimum share per axis,
 //   ZoomSpan, ToZoomed / FromZoomed, ticks over the visible range
 // Version: 1.1.0 - Phase 2: regions with classification (RegionOf), paths,
@@ -20,12 +22,13 @@
 //   the CSV of the points; the SoilTexture (USDA), DeFinetti and
 //   VoteTrajectories samples
 // Version: 1.0.0
-// Last Modified: 2026-11-05
+// Last Modified: 2026-11-06
 // Author: UltraCanvas Framework
 #pragma once
 
 #include "UltraCanvasCommonTypes.h"
 #include "Plugins/Charts/Engine/UltraCanvasChartSeries.h"   // ChartMarkerShape
+#include <array>
 #include <string>
 #include <vector>
 
@@ -134,6 +137,15 @@ namespace UltraCanvas {
         TernaryReading reading = TernaryReading::Clockwise;
         std::vector<TernarySeries> series;
         std::vector<TernaryRegion> regions;       // drawn under the grid, in order
+        // Which region a point lying on an edge two regions share belongs
+        // to: the one on the side this direction leans into - a change in the
+        // A, B and C shares, summing to 0. All zero (the default) = the
+        // region listed first. Where the lean would leave the triangle (a
+        // point on its rim), the listing order decides. The USDA preset leans
+        // to more clay and silt and less sand: the Soil Survey Manual gives
+        // every class boundary to that side ("7 to less than 27 percent
+        // clay", "52 percent or less sand").
+        std::array<double, 3> edgeLean = {0.0, 0.0, 0.0};
         std::vector<TernaryCurve> curves;         // drawn over the regions, under the points
 
         // The corner whose labels run up to the given corner's, i.e. where
@@ -164,7 +176,8 @@ namespace UltraCanvas {
 
         // The region a composition falls in, by the same geometry the chart
         // draws; -1 for none or for a composition with no shares. A point on
-        // an edge two regions share belongs to the one listed first.
+        // an edge two regions share belongs to the one edgeLean leans into,
+        // else to the one listed first.
         int RegionOf(double a, double b, double c) const;
         int RegionOf(const TernaryPoint& point) const { return RegionOf(point.a, point.b, point.c); }
 

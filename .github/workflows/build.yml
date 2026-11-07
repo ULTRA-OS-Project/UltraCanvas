@@ -2870,18 +2870,36 @@ jobs:
     # The whole job, not only its apt step: without one only GitHub's 6-hour
     # default applied, and on 2026-10-07 a hung apt held PR #720's checks for
     # five hours before it was cancelled by hand. Normally 75 s (5.5 min on a
-    # slow-mirror day); the install step keeps its own 20 minutes inside this,
+    # slow-mirror day); the install step keeps its own 45 minutes inside this,
     # and the NDK syntax check, the slowest of the rest, takes under a minute.
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
         with:
           ref: ${{ inputs.sha }}
 
+      # The packages the ubuntu-22.04 build row of the last run on main kept
+      # (it saves them; this job only reads them): the same runner image, and
+      # the row installs this list too, libvips-dev and its dependencies the
+      # bulk of it. On 2026-11-06 the mirror trickled this step past its 20
+      # minutes on PR #1138 while it fetched those; with the .deb files
+      # restored, apt fetches only what changed since.
+      - name: Restore the apt package cache
+        uses: actions/cache/restore@v5
+        with:
+          path: ${{ runner.temp }}/apt-debs
+          key: apt-debs-ubuntu-22.04-
+          restore-keys: apt-debs-ubuntu-22.04-
+
+      - name: Put the cached packages in apt's cache
+        run: scripts/ci-apt.sh cache-in "${{ runner.temp }}/apt-debs"
+
       - name: Install host dependency headers
-        # Normally 20 s; 8 min on a slow mirror day (2026-10-07).
-        timeout-minutes: 20
+        # Normally 20 s; 8 min on a slow mirror day (2026-10-07), past 20 on
+        # 2026-11-06. A mirror that crawls still finishes, as the build rows
+        # and the browser end-to-end job allow (45).
+        timeout-minutes: 45
         run: |
           scripts/ci-apt.sh update
           # libvips-dev: the Android arm requires libvips like every other

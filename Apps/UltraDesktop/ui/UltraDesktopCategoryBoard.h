@@ -14,6 +14,16 @@
 // UltraDesktopWindow::ShowCategoryBoard). A file's card shows a thumbnail -
 // the picture itself, else the system's icon for its type - made on a worker
 // thread. The board and its style live in the desktop settings.
+//
+// A right click on a card offers Open, Copy and Delete for its file (a note:
+// its text), moving it to another category, and the Display choices: the
+// cards as text only, as a thumbnail with the name centred under it, or as a
+// small thumbnail with the name beside it (the default is the thumbnail),
+// and the size of the hover preview - the larger picture of a file that
+// opens beside its card after the pointer has rested on it for two seconds.
+// UOS-Settings offers the same two choices.
+// Version: 0.3.0 - the context menu (Open, Copy, Delete, Move to, Display),
+//                  three card displays, the hover preview
 // Version: 0.2.0 - fills its own window; a close button; thumbnails; smaller
 //                  card text; no more panel to drag or resize
 // Version: 0.1.0
@@ -26,6 +36,7 @@
 
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasImage.h"
+#include "UltraCanvasTimer.h"
 
 #include <map>
 #include <memory>
@@ -38,6 +49,7 @@ namespace UltraCanvas {
     class UltraCanvasLabel;
     class UltraCanvasDropdown;
     class UltraCanvasKanbanBoardElement;
+    class UltraCanvasMenu;
     class KanbanDataSource;
 }
 
@@ -48,6 +60,7 @@ class UltraDesktopWindow;
 class UltraDesktopCategoryBoard : public UltraCanvas::UltraCanvasContainer {
 public:
     UltraDesktopCategoryBoard(const std::string& identifier, UltraDesktopWindow* desktop);
+    ~UltraDesktopCategoryBoard() override;
 
     // Rebuild the board, its style and its place from the settings.
     void LoadFrom(const DesktopSettings& settings);
@@ -60,6 +73,15 @@ public:
     // "stickynotes", "poster", "schematic" or "dark"; anything else is
     // Sticky notes.
     void SetDesign(const std::string& design);
+    // How cards show their files: "text", "thumbnail" or "row"; anything
+    // else is "thumbnail". Kept in the settings.
+    void SetDisplay(const std::string& display);
+    // The hover preview's size: "small", "medium" or "large"; anything else
+    // is "medium". Kept in the settings.
+    void SetHoverPreview(const std::string& size);
+    // The two above as the settings now hold them (UOS-Settings changed
+    // them), without writing the settings again.
+    void ApplyDisplaySettings(const CategoryBoardSettings& settings);
 
     // The categories every new board starts with.
     static const std::vector<std::string>& DefaultCategories();
@@ -67,6 +89,19 @@ public:
 private:
     void SaveBoard();
     void OpenCardFile(int cardId);
+    // The card's file when it is one that exists; "" for a note.
+    std::string CardFile(int cardId) const;
+    void ShowContextMenu(int cardId, int columnId, const UltraCanvas::Point2Di& windowPos);
+    void CopyCard(int cardId);
+    void DeleteCardFile(int cardId);
+    void RemoveCard(int cardId);
+    void MoveCardTo(int cardId, int columnId);
+    // The style's card metrics for display_ (after a design is applied).
+    void ApplyDisplayStyle();
+    // The pointer rests on a card: the preview after two seconds.
+    void OnCardHover(int cardId);
+    void ShowHoverPreview(int cardId);
+    float PreviewSize() const;
     // A file card's thumbnail, when it is ready; asks for one otherwise.
     std::shared_ptr<UltraCanvas::UCPixmap> Thumbnail(const UltraCanvas::KanbanCard& card);
 
@@ -75,6 +110,17 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasDropdown> designPicker_;
     std::shared_ptr<UltraCanvas::UltraCanvasKanbanBoardElement> board_;
     std::shared_ptr<UltraCanvas::KanbanDataSource> data_;
+    std::shared_ptr<UltraCanvas::UltraCanvasMenu> menu_;
+    std::string design_ = "stickynotes";
+    std::string display_ = "thumbnail";
+    std::string hoverPreview_ = "medium";
+
+    // The hover preview: the card under the pointer, the timer that waits
+    // the two seconds, and the larger pictures made so far, by path and size.
+    int hoverCardId_ = -1;
+    UltraCanvas::TimerId hoverTimer_ = UltraCanvas::InvalidTimerId;
+    std::map<std::string, std::shared_ptr<UltraCanvas::UCPixmap>> previews_;
+    std::set<std::string> previewPending_;
 
     // Thumbnails by file path: made on worker threads, kept for the
     // session; `pending_` are those under way, `missing_` those there are

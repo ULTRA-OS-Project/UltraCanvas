@@ -1,7 +1,6 @@
 {
   "@language": "nb",
   "@translated-by": "machine draft 2026-11-03, reviewed by -",
-  "Add account": "Legg til konto",
   "App password": "Apppassord",
   "Attach file": "Legg ved fil",
   "Attachment": "Vedlegg",
@@ -44,7 +43,6 @@
   "Search messages": "Søk i meldinger",
   "Sending": "Sender",
   "Sent": "Sendt",
-  "Server": "Server",
   "Sign out": "Logg av",
   "Sign-in": "Pålogging",
   "Spam": "Søppelpost",
