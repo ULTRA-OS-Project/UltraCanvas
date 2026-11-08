@@ -1,4 +1,8 @@
 // Apps/UltraMail/engine/UltraMailSyncEngine.cpp
+// Version: 0.6.1 - SyncFolders stores the server's inbox as INBOX whatever it is
+//                  listed as ("Inbox", a JMAP mailbox of role inbox): the mail is
+//                  synced under INBOX, and the account bar counts the folder
+//                  with the inbox role - which was a second, empty folder
 // Version: 0.6.0 - message files read and written through UltraMailStorage (sealed at rest)
 // Version: 0.5.1 - the envelope date parses an ISO 8601 UTCDate (JMAP's
 //                  receivedAt) as well as an RFC 2822 Date header (IMAP)
@@ -17,6 +21,7 @@
 #include "UltraMailThreatScan.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
@@ -170,6 +175,15 @@ std::string SanitizeFolder(const std::string& folder) {
     return out;
 }
 
+bool SameNameNoCase(const std::string& a, const std::string& b) {
+    if (a.size() != b.size()) return false;
+    for (std::size_t i = 0; i < a.size(); ++i)
+        if (std::tolower(static_cast<unsigned char>(a[i])) !=
+            std::tolower(static_cast<unsigned char>(b[i])))
+            return false;
+    return true;
+}
+
 } // namespace
 
 std::string CachedBodyPath(const std::string& emlDir, const std::string& accountId,
@@ -203,10 +217,16 @@ SyncOutcome SyncEngine::SyncFolders(const std::string& accountId,
         lf.accountId = accountId;
         lf.name = f.name;
         lf.role = FolderRoleFromString(f.role);
+        // The inbox is INBOX here, as the inbox sync stores its mail, however
+        // the server names it: an IMAP server may list "Inbox" (the name is
+        // case-insensitive), a JMAP server lists its role=inbox mailbox by
+        // its display name. Kept under that name it became a second folder,
+        // with the inbox role but none of the mail.
+        if (lf.role == FolderRole::Inbox) lf.name = "INBOX";
         lf.selectable = f.selectable;   // \Noselect containers (e.g. "[Gmail]")
         lf.delimiter = f.delimiter;
         if (store_.UpsertFolder(lf)) out.stats.folders++;
-        listed.insert(f.name);
+        listed.insert(lf.name);
     }
 
     // A folder the server no longer lists was deleted or renamed there: it
@@ -217,8 +237,13 @@ SyncOutcome SyncEngine::SyncFolders(const std::string& accountId,
         for (const auto& s : stored) {
             if (listed.count(s.name) || s.name == "INBOX") continue;
             if (!store_.RemoveFolder(accountId, s.name)) continue;
-            std::error_code ec;
-            fs::remove_all(PathFromUtf8(BodyPath(accountId, s.name, 0)).parent_path(), ec);
+            // The row an older version kept for the inbox as listed ("Inbox")
+            // goes, but not its directory: on a file system that ignores case
+            // (Windows, macOS) that is INBOX's, with the inbox's bodies.
+            if (!SameNameNoCase(s.name, "INBOX")) {
+                std::error_code ec;
+                fs::remove_all(PathFromUtf8(BodyPath(accountId, s.name, 0)).parent_path(), ec);
+            }
             out.stats.foldersRemoved++;
         }
     }

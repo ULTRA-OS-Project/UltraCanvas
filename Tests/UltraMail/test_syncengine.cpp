@@ -4,6 +4,7 @@
 // correctly: folder sync, envelope sync with needs-answer computation,
 // incremental fetch, raw-body caching (parseable by MimeCodec) and two-sided
 // flag changes.
+// Version: 0.2.0 - a server's inbox listed as "Inbox" is stored as INBOX
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "test_framework.h"
@@ -318,6 +319,35 @@ TEST(sync_folders_populates_store) {
     bool inbox = false;
     for (auto& f : folders) if (f.name == "INBOX") { inbox = true; REQUIRE(f.role == FolderRole::Inbox); }
     REQUIRE(inbox);
+}
+
+// A server that lists its inbox as "Inbox" (IMAP names it in any case; a JMAP
+// server lists the role=inbox mailbox by its display name): the folder is
+// INBOX, where the inbox sync stores the mail, and the account bar counts it.
+// The "Inbox" row an older version kept beside it goes.
+TEST(sync_folders_stores_listed_inbox_as_INBOX) {
+    Fixture fx("inbox-case");
+    fx.fake.folders = { MakeFolder("Inbox", "inbox"), MakeFolder("Sent", "sent") };
+    Folder stale; stale.accountId = "erika"; stale.name = "Inbox"; stale.role = FolderRole::Inbox;
+    REQUIRE(fx.store.UpsertFolder(stale).success);
+    SyncEngine engine(fx.store, fx.fake, fx.emlDir);
+    UltraNetMailOptions opts;
+    REQUIRE(engine.SyncMessages("erika", "INBOX", "imaps://x/", opts).ok);
+    REQUIRE(engine.SyncFolders("erika", "imaps://x/", opts).ok);
+
+    std::vector<Folder> folders;
+    REQUIRE(fx.store.ListFolders("erika", folders).success);
+    REQUIRE_EQ(folders.size(), (size_t)2);
+    bool inbox = false;
+    for (auto& f : folders) {
+        REQUIRE(f.name != "Inbox");
+        if (f.name == "INBOX") { inbox = true; REQUIRE(f.role == FolderRole::Inbox); }
+    }
+    REQUIRE(inbox);
+    std::vector<AccountStatus> st;
+    REQUIRE(fx.store.GetAccountStatus(st).success);
+    REQUIRE_EQ(st.size(), (size_t)1);
+    REQUIRE_EQ(st[0].unread, 2);   // messages 1 and 2; 3 is \Seen
 }
 
 TEST(sync_messages_computes_needs_answer) {
