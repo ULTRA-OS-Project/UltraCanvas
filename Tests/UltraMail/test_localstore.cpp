@@ -749,7 +749,7 @@ TEST(open_repairs_inbox_without_role) {
     }
     LocalStore s;
     REQUIRE(s.Open("umtest-repair-2", db).success);
-    REQUIRE_EQ(UnreadFor(s, "erika"), 3);   // 2 is \Answered but unseen too
+    REQUIRE_EQ(UnreadFor(s, "erika"), 4);   // all four unseen (2 is only \Answered)
     REQUIRE_EQ(NeedsFor(s, "erika"), 1);    // only 1: 2 answered, 3 not to her, 4 marked no
     std::vector<MessageEnvelope> waiting;
     REQUIRE(s.ListNeedsAnswer("erika", waiting).success);
