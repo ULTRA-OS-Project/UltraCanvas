@@ -538,8 +538,9 @@ function(ultracanvas_require_widgets build_flag app_name)
         endif()
     endforeach()
     if(missing)
-        message(FATAL_ERROR "${app_name} needs ${missing} compiled into the core: add "
-            "${missing} to ULTRACANVAS_WIDGETS (or use 'all'), or configure with -D${build_flag}=OFF")
+        string(REPLACE ";" ", " missing_text "${missing}")
+        message(FATAL_ERROR "${app_name} needs ${missing_text} compiled into the core: add "
+            "them to ULTRACANVAS_WIDGETS (or use 'all'), or configure with -D${build_flag}=OFF")
     endif()
 endfunction()
 ultracanvas_require_widgets(BUILD_DEMO_APP DemoApp
