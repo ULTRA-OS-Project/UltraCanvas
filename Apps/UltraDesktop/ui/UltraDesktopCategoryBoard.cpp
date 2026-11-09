@@ -148,10 +148,8 @@ std::string KindTag(const std::string& path) {
     return ext.empty() ? "file" : ext;
 }
 
-// A file as a picture `pixels` high (and up to twice as wide): what it holds
-// as UltraFiler's tiles show it - the picture, a PDF's first page, a book's
-// cover, a page of a document's first lines ... - else the icon of its type.
-// Blocking: call it on a worker thread.
+} // namespace
+
 std::shared_ptr<UCPixmap> MakeFilePicture(const std::string& path, int pixels, const std::string& icons) {
     std::error_code ec;
     if (!fs::exists(PathFromUtf8(path), ec)) return nullptr;   // a note, or a file gone
@@ -171,8 +169,6 @@ std::shared_ptr<UCPixmap> MakeFilePicture(const std::string& path, int pixels, c
     }
     return nullptr;
 }
-
-} // namespace
 
 const std::vector<std::string>& UltraDesktopCategoryBoard::DefaultCategories() {
     static const std::vector<std::string> categories = {"Docs", "Work", "Home"};
@@ -368,6 +364,19 @@ void UltraDesktopCategoryBoard::AddCategory() {
     // show them all.
     board_->BeginColumnRename(columnId, /*startEmpty=*/true);
     SaveBoard();
+}
+
+void UltraDesktopCategoryBoard::AddFilesToCategory(const std::vector<std::string>& files,
+                                                   const std::string& category) {
+    int columnId = -1;
+    for (const KanbanColumn& column : data_->GetColumns()) {
+        if (column.title == category) {
+            columnId = column.id;
+            break;
+        }
+    }
+    if (columnId < 0) columnId = data_->AddColumn(category);
+    AddFiles(files, columnId);
 }
 
 void UltraDesktopCategoryBoard::AddFiles(const std::vector<std::string>& files, int columnId) {

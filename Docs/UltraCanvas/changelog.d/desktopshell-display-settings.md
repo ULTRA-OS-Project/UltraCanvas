@@ -9,3 +9,7 @@
   `lxqt-config-monitor`, `budgie-control-center display`, then `wdisplays`,
   `nwg-displays`, and outside Wayland `arandr` and `lxrandr`. UltraDesktop's
   desktop menu uses it.
+- **`UltraCanvasImageElement::LoadFromPixmap`** shows a picture that is
+  already drawn - a file's icon (`LoadHostFileIconPixmap`) or thumbnail
+  (`RenderFileThumbnail`) - fitted to the box like a loaded image. UltraDesktop's
+  desktop icons use it.

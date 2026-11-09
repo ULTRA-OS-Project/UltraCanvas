@@ -442,6 +442,28 @@ void TestSettingsKeepTheTheme() {
     Check(odd.theme == "dark", "a theme it does not know is the dark one");
 }
 
+void TestSettingsKeepTheDropTarget() {
+    std::cout << "\nWhere files dropped on the wallpaper go\n";
+    UltraDesktop::DesktopSettings settings;
+    Check(settings.dropFilesOn == "board", "a new desktop drops them on the Sticker board");
+    settings.dropFilesOn = "desktop";
+    UltraDesktop::DesktopSettings::IconPlace place;
+    place.x = 120;
+    place.y = 216;
+    settings.desktopIcons["Report – März.pdf"] = place;
+    UltraDesktop::DesktopSettings read;
+    std::string error;
+    Check(read.FromJson(settings.ToJson(), &error), "a saved desktop reads back" + (error.empty() ? "" : ": " + error));
+    Check(read.dropFilesOn == "desktop", "dropping on the desktop");
+    auto found = read.desktopIcons.find("Report – März.pdf");
+    Check(found != read.desktopIcons.end() && found->second.x == 120 && found->second.y == 216,
+          "with an icon's place, under a name that is not ASCII");
+    settings.dropFilesOn = "floor";
+    UltraDesktop::DesktopSettings odd;
+    odd.FromJson(settings.ToJson(), &error);
+    Check(odd.dropFilesOn == "board", "a target it does not know is the Sticker board");
+}
+
 } // namespace
 
 int main() {
@@ -459,6 +481,7 @@ int main() {
     TestCardDragStillMoves();
     TestSettingsKeepTheDisplay();
     TestSettingsKeepTheTheme();
+    TestSettingsKeepTheDropTarget();
     std::cout << "\n" << (g_failures == 0 ? "All passed" : std::to_string(g_failures) + " failed") << "\n";
     return g_failures == 0 ? 0 : 1;
 }

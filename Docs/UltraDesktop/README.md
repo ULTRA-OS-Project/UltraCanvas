@@ -253,8 +253,9 @@ The panels and windows the bars open keep their own colours.
 - **The wallpaper** (right click): *Change wallpaper...* (an Open dialog
   with every picture type this build reads, through FileLoader), *Default
   wallpaper* (when another is set), *Theme* (*Dark*, *Light*), *Taskbar
-  position* (*on the left*, *at the top*, *at the bottom*), *Notes on the
-  wallpaper*, *Display settings...* and *Desktop settings...* (UOS-Settings).
+  position* (*on the left*, *at the top*, *at the bottom*), *Drop files*
+  (*Drop on sticker board*, *Drop on desktop*; below), *Arrange icons* (with
+  the desktop icons), *Notes on the wallpaper*, *Display settings...* and *Desktop settings...* (UOS-Settings).
   *Display settings...* opens the system's own
   (`UltraCanvasDesktopShell::OpenDisplaySettings`): Settings > Display on
   Windows, System Settings > Displays on macOS, and on Linux the first
@@ -267,6 +268,25 @@ The panels and windows the bars open keep their own colours.
   virtual desktop, a service icon): the taskbar's edge, the theme and
   *Desktop settings...*. The ⚙ button's menu has *Taskbar position* and
   *Theme* as submenus.
+
+**Files dropped on the wallpaper** go where `dropFilesOn` says:
+
+- `board` (the default): onto the Sticker board, into its **Unsorted**
+  category (added at the end when the board has none; a file already on the
+  board moves there), and the board shows.
+- `desktop`: into the Desktop folder (the platform's own - the known folder
+  on Windows, xdg-user-dirs on Linux - else `~/Desktop`, made when missing),
+  moved, or copied when it is on another drive; a name already taken becomes
+  `name (2).ext`. The wallpaper then shows the Desktop folder's entries
+  (hidden ones left out) as icons - the file's picture (a photo's or
+  document's thumbnail, else the system's icon for its type) over its name -
+  in an `UltraDesktopDesktopIcons` layer under the notes. A dropped file lies
+  where it was dropped; others fill a grid column by column from the top
+  left. A click selects, a double click opens with the default application,
+  a drag moves (kept in `desktopIcons` by the entry's name), a right click
+  offers *Open*, *Show in the file manager*, *Delete* (into the trash, after
+  a question) and *Arrange icons*. The folder is looked at every two seconds,
+  so a file another program saves there appears too.
 
 A change is saved at once and the bars are rebuilt in place; one made in
 UOS-Settings is followed within a second.
@@ -439,6 +459,8 @@ earlier versions kept under `~/.config` is moved on the first start):
   "virtualDesktops": 3,
   "clockStyle": "analog-date",
   "theme": "dark",
+  "dropFilesOn": "board",
+  "desktopIcons": { "report.pdf": { "x": 16, "y": 56 } },
   "stickerboardVisible": false,
   "stickers": [ { "id": "note1", "text": "…", "x": 60, "y": 60, "width": 220, "height": 160, "color": "#FFF59D" } ],
   "categoryBoard": { "visible": false, "design": "stickynotes", "display": "thumbnail", "hoverPreview": "medium",
@@ -464,7 +486,9 @@ and `height` are kept for older versions and no longer used: the board fills
 the work area and starts hidden. `pinnedApps` are the pinned
 applications' keys in the order they were pinned: the program's path, or on
 Windows the shortcut's path or `store:<AppUserModelID>`.
-`theme` is `dark` (the default) or `light`; `clockStyle` one of
+`dropFilesOn` is `board` (the default) or `desktop`; `desktopIcons` keeps the
+desktop icons' places in the work area by name, and forgets one whose entry
+has gone. `theme` is `dark` (the default) or `light`; `clockStyle` one of
 `analog-date` (the default), `analog`, `digital-date`, `digital` and
 `digital-seconds`.
 `startWithDesktop` names the programs started with the desktop - `ChatCube`

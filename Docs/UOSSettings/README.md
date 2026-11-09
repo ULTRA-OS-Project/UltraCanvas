@@ -27,6 +27,7 @@ UOS-Settings opens on this page.
 |---|---|
 | **Taskbar** | The screen edge the taskbar sits on: Left, Top or Bottom. |
 | **Theme** | The bars' colours: Dark (the default) or Light. |
+| **Dropped files** | Where files dropped on the wallpaper go: the Sticker board's Unsorted category (the default) or the Desktop folder, shown as icons. |
 | **Wallpaper** | The picture behind the desktop; empty is the framework's picture. *Browse...* opens the file dialog. |
 | **RAM disc** | The folder the desktop's drive button opens; empty, no button (the default on Windows). |
 | **File manager** | The program the desktop's folder buttons start. |

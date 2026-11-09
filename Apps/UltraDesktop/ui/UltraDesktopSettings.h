@@ -5,6 +5,8 @@
 // Stickerboard and the Sticker board's categories. One JSON file, read at
 // start-up and written on every change. No UI in here, which is what lets
 // the test read and write it.
+// Version: 0.8.0 - where files dropped on the wallpaper go (dropFilesOn) and
+//                  the desktop icons' places (desktopIcons)
 // Version: 0.7.0 - the bars' theme (theme: "dark" or "light")
 // Version: 0.6.0 - the Sticker board's card display and hover preview size
 // Version: 0.5.0 - StartupProgram::arguments and ::builtIn: UltraClipboard
@@ -93,6 +95,19 @@ struct DesktopSettings {
     // right-click menu or in UOS-Settings.
     std::string theme = "dark";
     static bool IsTheme(const std::string& theme);
+    // Files dropped on the wallpaper: "board" (onto the Sticker board, in
+    // its "Unsorted" category - the default) or "desktop" (moved into the
+    // Desktop folder, whose contents the wallpaper then shows as icons).
+    std::string dropFilesOn = "board";
+    static bool IsDropTarget(const std::string& target);
+    // Where the desktop icons lie, in work-area coordinates, by the entry's
+    // name in the Desktop folder. An entry not listed is placed in the
+    // first free cell of the grid.
+    struct IconPlace {
+        float x = 0;
+        float y = 0;
+    };
+    std::map<std::string, IconPlace> desktopIcons;
     int virtualDesktops = 3;            // 1..9, what the organiser offers
     bool stickerboardVisible = false;
     std::vector<Sticker> stickers;

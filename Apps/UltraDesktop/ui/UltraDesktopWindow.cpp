@@ -36,6 +36,7 @@
 #include "UltraDesktopCategoryBoard.h"
 #include "UltraDesktopClipboardPanel.h"
 #include "UltraDesktopClockPanel.h"
+#include "UltraDesktopDesktopIcons.h"
 #include "UltraDesktopStickerboard.h"
 #include "UltraDesktopTasksWindow.h"
 #include "UltraDesktopVolumePanel.h"
@@ -138,6 +139,9 @@ const Color kMarkerSaved   (60, 170, 90, 255);   // green: the screenshot landed
 const Color kMarkerLinkUp  (60, 170, 90, 255);   // green: Wi-Fi joined
 
 const char* const kRunningPrefix = "win:";
+// The Sticker board's category for files dropped on the wallpaper.
+const char* const kUnsortedCategory = "Unsorted";
+constexpr int   kDesktopIconTicks = 8;   // the Desktop folder looked at every 2 s
 // The pointer rests this long on an application's button before its
 // windows' pictures open, and the pictures stay this long after it left
 // both the button and them (time to cross the gap between the two).
@@ -1318,6 +1322,14 @@ std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildWorkArea() {
     // A right click on the wallpaper: the desktop's menu, on the release, so
     // the menu does not take that release as a pick.
     wallpaper_->SetEventCallback([this, pending = false](const UCEvent& event) mutable {
+        // Files dropped on the wallpaper: the Sticker board or the Desktop
+        // folder, as the desktop's menu says (DropFiles).
+        if (event.type == UCEventType::DragEnter || event.type == UCEventType::DragOver) return true;
+        if (event.type == UCEventType::Drop) {
+            if (event.droppedFiles.empty()) return false;
+            DropFiles(event.droppedFiles, event.pointer);
+            return true;
+        }
         if (event.button != UCMouseButton::Right) return false;
         if (event.type == UCEventType::MouseDown) {
             pending = true;
@@ -1333,6 +1345,20 @@ std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildWorkArea() {
     wallpaper_->layoutItem.SetFlexGrow(1.0f).SetFlexShrink(1.0f).SetFlexBasis(CSSLayout::Dimension::Px(0));
     wallpaper_->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     area->AddChild(wallpaper_);
+
+    // The desktop icons lie over the wallpaper, under the notes, pinned to
+    // every edge of the area; they show while dropped files go to the
+    // Desktop folder.
+    desktopIcons_ = std::make_shared<UltraDesktopDesktopIcons>("DesktopIcons", this);
+    if (!desktopIcons_->layoutItem.position) desktopIcons_->layoutItem.position = CSSLayout::Position();
+    desktopIcons_->layoutItem.position->left = CSSLayout::Dimension::Px(0);
+    desktopIcons_->layoutItem.position->top = CSSLayout::Dimension::Px(0);
+    desktopIcons_->layoutItem.position->right = CSSLayout::Dimension::Px(0);
+    desktopIcons_->layoutItem.position->bottom = CSSLayout::Dimension::Px(0);
+    desktopIcons_->layoutItem.SetPositionType(CSSLayout::PositionType::AbsoluteUI);
+    desktopIcons_->SetVisible(settings_.dropFilesOn == "desktop");
+    area->AddChild(desktopIcons_);
+    if (settings_.dropFilesOn == "desktop") desktopIcons_->Refresh(true);
 
     // The Stickerboard lies over the wallpaper, out of the flow, pinned to
     // every edge of the area.
@@ -1400,6 +1426,19 @@ void UltraDesktopWindow::ShowDesktopMenu(int windowX, int windowY) {
     }
     popupMenu_->AddItem(MenuItemData::Submenu(Tr("Theme"), ThemeItems()));
     popupMenu_->AddItem(MenuItemData::Submenu(Tr("Taskbar position"), TaskbarEdgeItems()));
+    {
+        std::vector<MenuItemData> drop;
+        drop.push_back(MenuItemData::Radio(Tr("Drop on sticker board"), 4, settings_.dropFilesOn != "desktop",
+                                           [this]() { SetDropTarget("board"); }));
+        drop.push_back(MenuItemData::Radio(Tr("Drop on desktop"), 4, settings_.dropFilesOn == "desktop",
+                                           [this]() { SetDropTarget("desktop"); }));
+        popupMenu_->AddItem(MenuItemData::Submenu(Tr("Drop files"), drop));
+    }
+    if (settings_.dropFilesOn == "desktop" && desktopIcons_) {
+        popupMenu_->AddItem(MenuItemData::Action(Tr("Arrange icons"), [this]() {
+            if (desktopIcons_) desktopIcons_->ArrangeIcons();
+        }));
+    }
     popupMenu_->AddItem(MenuItemData::Separator());
     popupMenu_->AddItem(MenuItemData::Checkbox(Tr("Notes on the wallpaper"), settings_.stickerboardVisible,
                                                [this](bool on) {
@@ -1449,6 +1488,36 @@ void UltraDesktopWindow::InstallBarMenu(const std::shared_ptr<UltraCanvasToolbar
         }
         ShowBarMenu(at.x, at.y);
     });
+}
+
+void UltraDesktopWindow::SetDropTarget(const std::string& target) {
+    if (!DesktopSettings::IsDropTarget(target) || settings_.dropFilesOn == target) return;
+    settings_.dropFilesOn = target;
+    SaveSettings();
+    if (desktopIcons_) {
+        desktopIcons_->SetVisible(target == "desktop");
+        if (target == "desktop") desktopIcons_->Refresh(true);
+        if (workArea_) workArea_->InvalidateLayout();
+    }
+    if (window_) window_->RequestRedraw();
+}
+
+void UltraDesktopWindow::DropFiles(const std::vector<std::string>& files, const Point2Df& at) {
+    if (files.empty()) return;
+    if (settings_.dropFilesOn == "desktop" && desktopIcons_) {
+        std::string error;
+        if (!desktopIcons_->TakeFiles(files, at, error)) {
+            UltraCanvasAlert::Error(Tr("Not every file could be put on the desktop: ") + error, "UltraDesktop",
+                                    nullptr, window_.get());
+        }
+        return;
+    }
+    // The Sticker board, in its "Unsorted" category; it shows, so the files
+    // are seen to have landed.
+    PrepareCategoryBoard();
+    if (!categoryBoard_) return;
+    categoryBoard_->AddFilesToCategory(files, kUnsortedCategory);
+    if (!settings_.categoryBoard.visible) ToggleCategoryBoard(true);
 }
 
 void UltraDesktopWindow::SetTaskbarEdge(TaskbarEdge edge) {
@@ -1843,7 +1912,8 @@ void UltraDesktopWindow::CheckSettingsFile() {
                          written.ramDiscPath != settings_.ramDiscPath ||
                          written.filerProgram != settings_.filerProgram ||
                          written.virtualDesktops != settings_.virtualDesktops ||
-                         written.theme != settings_.theme;
+                         written.theme != settings_.theme ||
+                         written.dropFilesOn != settings_.dropFilesOn;
     if (!changed) return;
     settings_.taskbarEdge = written.taskbarEdge;
     settings_.wallpaper = written.wallpaper;
@@ -1851,6 +1921,7 @@ void UltraDesktopWindow::CheckSettingsFile() {
     settings_.filerProgram = written.filerProgram;
     settings_.virtualDesktops = written.virtualDesktops;
     settings_.theme = written.theme;
+    settings_.dropFilesOn = written.dropFilesOn;
     // Written back with the notes as they are now, should a note have
     // changed between UOS-Settings reading the file and writing it.
     ApplySettings();
@@ -1926,6 +1997,10 @@ void UltraDesktopWindow::OnTimer() {
     if (trayDirty_.exchange(false)) RefreshTray();
     FitInfoPanel();
     if (boardWindow_ && settings_.categoryBoard.visible) PlaceCategoryBoard();
+    if (desktopIcons_ && settings_.dropFilesOn == "desktop" && ++desktopIconTicks_ >= kDesktopIconTicks) {
+        desktopIconTicks_ = 0;
+        desktopIcons_->Refresh();
+    }
     UpdateClock();
 
     bool apply = false;

@@ -339,6 +339,19 @@ Right-click the **wallpaper** for the desktop's menu:
 - **Theme**: **Dark** (light icons on dark grey bars) or **Light** (dark
   icons on light grey bars).
 - **Taskbar position**: on the left, at the top or at the bottom.
+- **Drop files**: where files you drag onto the wallpaper go.
+  - **Drop on sticker board** (the default): they join the Sticker board's
+    **Unsorted** category, which is added when the board has none, and the
+    board opens to show them.
+  - **Drop on desktop**: they are moved into your Desktop folder (copied,
+    when they come from another drive) and appear where you dropped them as
+    icons on the wallpaper. The wallpaper shows the Desktop folder's files as
+    icons while this is chosen: double-click one to open it, drag it to move
+    it (it stays there), right-click for **Open**, **Show in the file
+    manager**, **Delete** and **Arrange icons**. A file saved to the Desktop
+    folder by another program appears within two seconds.
+- **Arrange icons** (with **Drop on desktop**) puts the icons back on the
+  grid, in name order.
 - **Notes on the wallpaper** shows or hides the notes.
 - **Display settings...** opens the system's own display settings - the
   resolution, how the monitors are arranged, which one is the main one.
@@ -362,6 +375,7 @@ settings**.
 |---|---|
 | **Taskbar** | **Left**, **Top** or **Bottom** edge. |
 | **Theme** | **Dark** or **Light** bars. |
+| **Dropped files** | **Sticker board (Unsorted)** or **Desktop (as icons)**: where files dragged onto the wallpaper go (section 4.13). |
 | **Wallpaper** | A picture file (**Browse...**). Empty: the framework's landscape picture. |
 | **RAM disc** | The folder the RAM disc button opens. Empty: no button. On Linux it is `/dev/shm` unless you change it; on Windows it is empty unless you set one. |
 | **File manager** | The program the folder buttons start (UltraFiler unless you change it). |
@@ -502,7 +516,8 @@ at sign-in.
 | Any window, Linux | Super+L | locks the screen (on Windows Win+L is Windows' own) |
 | Any window | Super+Shift+S (Win+Shift+S) | UltraSnip snips an area (on Windows only instead of Explorer; Win+Shift+S is Windows' own beside it) |
 | Clock | click / right-click | the clock panel / analog or digital, with or without the date |
-| Wallpaper | right-click | wallpaper, theme, taskbar position, notes, display settings, desktop settings |
+| Wallpaper | right-click / drop files | wallpaper, theme, taskbar position, drop files, notes, display settings, desktop settings / onto the Sticker board's Unsorted category, or onto the desktop |
+| Desktop icon | click / double-click / drag / right-click | select / open / move / Open, Show in the file manager, Delete, Arrange icons |
 | The bars, between the buttons | right-click | taskbar position, theme |
 | Loudspeaker icon | click | the volume panel |
 | Pinned program | click / right-click | start it / open, unpin |

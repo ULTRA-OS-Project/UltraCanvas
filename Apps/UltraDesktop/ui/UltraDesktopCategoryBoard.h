@@ -22,6 +22,7 @@
 // and the size of the hover preview - the larger picture of a file that
 // opens beside its card after the pointer has rested on it for two seconds.
 // UOS-Settings offers the same two choices.
+// Version: 0.4.0 - AddFilesToCategory (a drop on the wallpaper: "Unsorted"); MakeFilePicture shared
 // Version: 0.3.0 - the context menu (Open, Copy, Delete, Move to, Display),
 //                  three card displays, the hover preview
 // Version: 0.2.0 - fills its own window; a close button; thumbnails; smaller
@@ -57,6 +58,15 @@ namespace UltraDesktop {
 
 class UltraDesktopWindow;
 
+// A file as a picture `pixels` high (and up to twice as wide): what it holds
+// as UltraFiler's tiles show it - the picture, a PDF's first page, a book's
+// cover, a page of a document's first lines ... - else the icon of its type
+// (`icons`: the framework's media/icons/ folder, for a system without an
+// icon theme). Blocking: call it on a worker thread. The board's cards and
+// the desktop's icons use it.
+std::shared_ptr<UltraCanvas::UCPixmap> MakeFilePicture(const std::string& path, int pixels,
+                                                       const std::string& icons);
+
 class UltraDesktopCategoryBoard : public UltraCanvas::UltraCanvasContainer {
 public:
     UltraDesktopCategoryBoard(const std::string& identifier, UltraDesktopWindow* desktop);
@@ -70,6 +80,10 @@ public:
     // Files into the category `columnId`: new ones as cards at its end,
     // ones already on the board moved there. -1 = the first category.
     void AddFiles(const std::vector<std::string>& files, int columnId);
+    // Files into the category named `category`, made at the end when the
+    // board has none of that name (files dropped on the wallpaper go to
+    // "Unsorted").
+    void AddFilesToCategory(const std::vector<std::string>& files, const std::string& category);
     // "stickynotes", "poster", "schematic" or "dark"; anything else is
     // Sticky notes.
     void SetDesign(const std::string& design);
