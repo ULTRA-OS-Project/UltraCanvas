@@ -1,5 +1,7 @@
 // UltraCanvasWindowBase.cpp
 // Fixed implementation of cross-platform window management system
+// Version: 1.7.1 - a change of scale goes to the tooltip manager, which draws the tooltip
+//                  again in its own window rather than hiding it
 // Version: 1.7.0 - Close() kept back by onWindowClosing restores a minimized
 //                  window, so the question it asks is seen
 // Version: 1.6.0 - RefreshAfterFontChange(): a new layout and a full repaint, popups too
@@ -9,7 +11,7 @@
 // Version: 1.4.0 - popups composite at their opacity (SetPopupOpacity), mixed with
 //                  the window content beneath, so a popup can fade as a whole
 // Version: 1.3.3 - PerformClose() closes transient child windows so no orphaned modal survives its parent
-// Last Modified: 2026-10-11
+// Last Modified: 2026-11-09
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasWindow.h"
@@ -521,9 +523,10 @@ namespace UltraCanvas {
                 }
             }
         }
-        // Tooltip caches a static render context tied to the old nativeSurface;
-        // drop it now so it is rebuilt at the new scale on next show.
-        UltraCanvasTooltipManager::HideTooltipImmediately();
+        // Tooltip caches a static render context tied to the old nativeSurface:
+        // a tooltip drawn in this window is hidden, to be rebuilt at the new
+        // scale on its next show; the tooltip's own window draws it again.
+        UltraCanvasTooltipManager::WindowScaleChanged(this);
         // The shared caret's context likewise; it is only rebuilt on a size
         // change by itself, and the caret's size in logical pixels is the same
         // on both monitors.
@@ -794,7 +797,9 @@ namespace UltraCanvas {
             // No surface to restore the caret's layer from => full composite.
             // Nor when that layer is a popup shown below full opacity: its
             // surface alone is not what is on screen there.
-            bool caretCovered = UltraCanvasTooltipManager::IsVisible() ||
+            // A tooltip in a window of its own covers nothing drawn here.
+            bool caretCovered = (UltraCanvasTooltipManager::IsVisible() &&
+                                 UltraCanvasTooltipManager::GetTooltipWindow() == nullptr) ||
                                 (caretLayer && !caretLayer->renderContext) ||
                                 (caretLayer && GetPopupOpacity(*caretLayer) < 1.0f);
             if (!caretCovered) {

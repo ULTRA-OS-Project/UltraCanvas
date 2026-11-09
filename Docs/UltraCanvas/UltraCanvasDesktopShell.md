@@ -417,4 +417,7 @@ fallback when it is absent.
   virtual desktop and out of the taskbar and Alt+Tab); `WindowType::Notification`
   the toast above everything that never takes the focus, which
   [UltraCanvasNotificationToast](UltraCanvasNotificationToast.md) draws
-  notifications in.
+  notifications in; `WindowType::Tooltip` the window
+  [UltraCanvasTooltipManager](UltraCanvasTooltipManager.md#its-own-window)
+  shows every tooltip in, so the tooltips of the bars in the desktop window
+  are not covered by the windows above it.

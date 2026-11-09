@@ -435,7 +435,10 @@ if(ULTRACANVAS_PLATFORM STREQUAL "Linux")
     # xi: XInput2's raw key events, which the desktop shell's "Super" tap
     # watches without grabbing the key (GTK 3 depends on it, so it is
     # installed wherever the GTK dependency below is).
-    pkg_check_modules(X11 REQUIRED x11 xcursor xrandr xi)
+    # xext: the shape extension, which gives the tooltip's own window an
+    # empty input region so the pointer passes through it (libxi needs
+    # libxext, so it is installed wherever xi is).
+    pkg_check_modules(X11 REQUIRED x11 xcursor xrandr xi xext)
     if(ULTRACANVAS_WAYLAND)
         # The Wayland backend: libwayland-client, the cursor themes, and
         # xkbcommon for the seat's keymap. The X11 libraries stay linked:

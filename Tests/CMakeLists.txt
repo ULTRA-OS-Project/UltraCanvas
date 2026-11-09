@@ -1211,6 +1211,30 @@ else()
     message(STATUS "  CaretStackingTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== TOOLTIP OWN WINDOW TEST =====
+# The tooltip in a window of its own: above a window that covers the one it
+# belongs to (as an application's window covers the desktop's bars), outside
+# that window where there is room, the pointer passing through it, and closed
+# with that window. Reads the X server's stacking order and the screen's
+# pixels, so X11 only. Skips without DISPLAY.
+if(TARGET UltraCanvas AND UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN AND NOT ULTRACANVAS_WAYLAND)
+    message(STATUS "  Building TooltipOwnWindowTest...")
+    add_executable(TooltipOwnWindowTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/TooltipOwnWindowTest.cpp
+    )
+    target_include_directories(TooltipOwnWindowTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(TooltipOwnWindowTest PRIVATE cxx_std_20)
+    target_link_libraries(TooltipOwnWindowTest PRIVATE UltraCanvas)
+    set_target_properties(TooltipOwnWindowTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME TooltipOwnWindowTest COMMAND TooltipOwnWindowTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: TooltipOwnWindowTest")
+else()
+    message(STATUS "  TooltipOwnWindowTest skipped (UltraCanvas target not present, or not X11)")
+endif()
+
 # ===== TOOL GROUP BUTTON TEST =====
 # Several tools sharing one toolbar slot: the bar of the whole group folds out
 # while the pointer rests on the slot, a click in it picks a tool, and it folds

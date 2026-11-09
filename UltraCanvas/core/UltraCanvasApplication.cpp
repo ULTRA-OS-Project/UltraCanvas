@@ -1,5 +1,7 @@
 // UltraCanvasApplication.cpp
 // Main UltraCanvas App
+// Version: 1.18.1 - a closing window takes its tooltip and the tooltip's own window with it;
+//                  the tooltip's window (WindowType::Tooltip) is no application window
 // Version: 1.18.0 - the theme policy: FromHost at start and on every host change, a provider for
 //                  an Own application, a window's ground from the policy's theme
 // Version: 1.17.0 - GetHostAppearance / RefreshHostAppearance / the handlers; the system fonts
@@ -38,7 +40,7 @@
 //                  the bundled fonts when the scan takes long (AdoptSystemFontsWithin);
 //                  Initialize() times each of its steps (GetStartupTimings)
 // Version: 1.5.2 - modal fixes: close transient children with parent, ignore unmapped modals, raise modal on outside click
-// Last Modified: 2026-11-03
+// Last Modified: 2026-11-09
 // Author: UltraCanvas Framework
 
 #include <algorithm>
@@ -1597,6 +1599,9 @@ namespace UltraCanvas {
 
     void UltraCanvasApplicationBase::CleanupWindowReferences(UltraCanvasWindowBase* win) {
         UnregisterModalWindow(win);
+        // A tooltip of the window goes with it, and so does the tooltip's own
+        // window, which would otherwise outlive it and keep Run() going.
+        UltraCanvasTooltipManager::ForgetWindow(win);
         // Called from PerformClose() while the window is still alive, so the weak_ptrs
         // can still be locked and compared here.
         windowFocusHistory.Remove(win);
@@ -1765,6 +1770,8 @@ namespace UltraCanvas {
             if (!other || other.get() == window) continue;
             const WindowState state = other->GetState();
             if (state == WindowState::Closing || state == WindowState::Closed) continue;
+            // A tooltip's window is not one of the application's windows
+            if (other->GetConfig().type == WindowType::Tooltip) continue;
             // Up the parent chain, comparing pointers first: a parent that is
             // no longer registered is gone, and is not read.
             bool goesWithIt = false;
@@ -1878,8 +1885,9 @@ namespace UltraCanvas {
                 state == WindowState::Hidden) {
                 return false;
             }
-            // Popup windows (menus, dropdowns) are transient — never jump targets.
-            if (w->GetConfig().type == WindowType::Popup) return false;
+            // Popup windows (menus, dropdowns) and the tooltip's window are
+            // transient — never jump targets.
+            if (w->GetConfig().type == WindowType::Popup || w->GetConfig().type == WindowType::Tooltip) return false;
             return w->IsWindowVisible() || state == WindowState::Minimized;
         };
 

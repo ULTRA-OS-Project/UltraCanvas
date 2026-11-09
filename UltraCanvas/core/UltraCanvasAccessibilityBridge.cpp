@@ -1,8 +1,9 @@
 // core/UltraCanvasAccessibilityBridge.cpp
 // The tree, ids, geometry and text helpers the platform accessibility bridges
 // share (see UltraCanvasAccessibilityBridge.h).
+// Version: 1.1.1 - the tooltip's own window is not one of the accessible windows
 // Version: 1.1.0
-// Last Modified: 2026-10-08
+// Last Modified: 2026-11-09
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasAccessibilityBridge.h"
@@ -23,7 +24,10 @@ std::vector<UltraCanvasWindowBase*> Windows() {
     auto* app = UltraCanvasApplication::GetInstance();
     if (!app) return out;
     for (const auto& window : app->GetWindows()) {
-        if (window && window->IsCreated()) out.push_back(window.get());
+        // The tooltip's own window is not an accessible window: what it
+        // shows is the element's tooltip, which the element reports itself
+        if (window && window->IsCreated() && window->GetConfig().type != WindowType::Tooltip)
+            out.push_back(window.get());
     }
     return out;
 }
