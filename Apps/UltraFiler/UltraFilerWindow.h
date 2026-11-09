@@ -767,6 +767,11 @@ private:
     // too, and the tree keeps "Computer" selected while it is up.
     void BuildComputerPage();
     void SetComputerPageVisible(bool visible);
+    // What the Computer page shows: everything (the tree's Computer row, the
+    // breadcrumb, Up), or one section - the tree's Cloud Storage, Remote
+    // Drives or RAM Discs row. Opens the page if it is not up.
+    enum class ComputerSection { All, Cloud, Remote, Ram };
+    void ShowComputerSection(ComputerSection section);
     // Re-lists the page's folders (Home, then the Cloud Storage folders the
     // tree found) and rebuilds the drive cards from what is mounted right
     // now; the sizes come in afterwards (QueueVolumeSpaceQuery).
@@ -1212,7 +1217,10 @@ private:
     };
     std::shared_ptr<UltraCanvasContainer>       computerPane;
     std::shared_ptr<UltraCanvasFilerWidget>     computerFolders;  // Home + cloud folders
+    std::shared_ptr<UltraCanvasLabel>           computerFoldersHeading;
+    std::shared_ptr<UltraCanvasLabel>           computerDrivesHeading;
     std::shared_ptr<UltraCanvasContainer>       computerDriveRow;
+    ComputerSection computerSection = ComputerSection::All;
     // The Remote Drives and RAM Discs sections under it: a heading and a row
     // of cards each, hidden while the section has no card.
     std::shared_ptr<UltraCanvasLabel>           computerRemoteHeading;

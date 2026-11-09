@@ -65,6 +65,8 @@
 // display and the switch itself are remembered in the settings.
 // A previewed file that changes on disk is reopened in the preview pane
 // (ReloadChangedPreview): throttled, and never restarting a playing video.
+// Version: 1.42.7 - the tree's Cloud Storage, Remote Drives and RAM Discs rows open the
+//                  Computer page with only that section (they did nothing)
 // Version: 1.42.6 - the Computer page has a Remote Drives and a RAM Discs section,
 //                  each with the same cards as Drives, shown while it has one
 // Version: 1.42.5 - a drive letter shows its volume's name, as Explorer does ("My Passport Ultra (D:)"), in the tree and on the Computer page
@@ -4260,7 +4262,22 @@ void UltraFilerWindow::BuildFolderTree() {
         // "Computer" is not a folder: it opens the page of the machine's
         // places - Home, the cloud folders, the drives with their sizes.
         if (node->data.nodeId == kComputerNodeId) {
-            SetComputerPageVisible(true);
+            ShowComputerSection(ComputerSection::All);
+            return;
+        }
+        // The section headers under it are not folders either: each opens
+        // the page with only its own part - the cloud folders, the remote
+        // drives' cards, the RAM discs' cards. They used to do nothing.
+        if (node->data.nodeId == kCloudNodeId) {
+            ShowComputerSection(ComputerSection::Cloud);
+            return;
+        }
+        if (node->data.nodeId == kRemoteNodeId) {
+            ShowComputerSection(ComputerSection::Remote);
+            return;
+        }
+        if (node->data.nodeId == kRamNodeId) {
+            ShowComputerSection(ComputerSection::Ram);
             return;
         }
         // "Network" looks again for the computers on the network.
@@ -6999,7 +7016,8 @@ void UltraFilerWindow::BuildComputerPage() {
         heading->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
         return heading;
     };
-    computerPane->AddChild(makeHeading("ufl-computer-folders-heading", Tr("Folders")));
+    computerFoldersHeading = makeHeading("ufl-computer-folders-heading", Tr("Folders"));
+    computerPane->AddChild(computerFoldersHeading);
 
     // Home and the cloud folders as folder tiles - the file display's own,
     // so they carry the folder icons, open on a double-click and offer the
@@ -7084,7 +7102,8 @@ void UltraFilerWindow::BuildComputerPage() {
                        .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
         return row;
     };
-    computerPane->AddChild(makeHeading("ufl-computer-drives-heading", Tr("Drives")));
+    computerDrivesHeading = makeHeading("ufl-computer-drives-heading", Tr("Drives"));
+    computerPane->AddChild(computerDrivesHeading);
     computerDriveRow = makeCardRow("ufl-computer-drives");
     computerPane->AddChild(computerDriveRow);
 
@@ -7132,6 +7151,8 @@ void UltraFilerWindow::SetComputerPageVisible(bool visible) {
             syncingTree = false;
         }
     } else {
+        // The next way in - the breadcrumb, the Up button - shows it all.
+        computerSection = ComputerSection::All;
         computerPane->SetVisible(false);
         tabContentHost->SetVisible(true);
         // Back to the active tab's folder: the strip, the tree and the
@@ -7150,6 +7171,22 @@ void UltraFilerWindow::SetComputerPageVisible(bool visible) {
     UpdatePreviewPane();
 }
 
+void UltraFilerWindow::ShowComputerSection(ComputerSection section) {
+    computerSection = section;
+    if (computerShown) RefreshComputerPage();
+    else SetComputerPageVisible(true);   // selects the tree's Computer row
+    // The tree keeps the row that was picked: a section header, not Computer.
+    const char* nodeId = section == ComputerSection::Cloud  ? kCloudNodeId
+                       : section == ComputerSection::Remote ? kRemoteNodeId
+                       : section == ComputerSection::Ram    ? kRamNodeId
+                                                            : kComputerNodeId;
+    if (TreeNode* node = folderTree ? folderTree->FindNode(nodeId) : nullptr) {
+        syncingTree = true;
+        folderTree->SelectNode(node);
+        syncingTree = false;
+    }
+}
+
 void UltraFilerWindow::RefreshComputerPage() {
     RefreshComputerFolders();
     // The volumes as last listed (the start-up fill, then every drive pass):
@@ -7166,7 +7203,10 @@ std::vector<std::string> UltraFilerWindow::ComputerPageFolderPaths() const {
     std::vector<std::string> paths;
     const std::string home = UserHomeDir();
     std::error_code ec;
-    if (!home.empty() && fs::is_directory(UltraCanvas::PathFromUtf8(home), ec) && !ec) paths.push_back(home);
+    // Home is a place on this computer, not cloud storage.
+    if (computerSection != ComputerSection::Cloud &&
+        !home.empty() && fs::is_directory(UltraCanvas::PathFromUtf8(home), ec) && !ec)
+        paths.push_back(home);
     // The cloud folders are the ones the tree's Cloud Storage section holds:
     // found once, off the UI thread, by QueueCloudStorageDiscovery.
     if (TreeNode* cloud = folderTree ? folderTree->FindNode(kCloudNodeId) : nullptr) {
@@ -7235,11 +7275,32 @@ void UltraFilerWindow::RebuildComputerDriveCards(const std::vector<MountedVolume
         }
     }
 
+    // Opened from a section of the tree, the page shows that section alone
+    // (ShowComputerSection): only its cards are made, so the status line
+    // counts what is shown.
+    const bool all = computerSection == ComputerSection::All;
+    UltraCanvasContainer* onlyRow =
+            computerSection == ComputerSection::Remote ? computerRemoteRow.get()
+          : computerSection == ComputerSection::Ram    ? computerRamRow.get()
+                                                       : nullptr;
+    if (!all)
+        sources.erase(std::remove_if(sources.begin(), sources.end(),
+                                     [onlyRow](const CardSource& c) { return c.row != onlyRow; }),
+                      sources.end());
+
     bool anyRemote = false, anyRam = false;
     for (const CardSource& source : sources) {
         if (source.row == computerRemoteRow.get()) anyRemote = true;
         if (source.row == computerRamRow.get()) anyRam = true;
     }
+    const bool foldersShown = all || computerSection == ComputerSection::Cloud;
+    if (computerFoldersHeading) {
+        computerFoldersHeading->SetText(all ? Tr("Folders") : Tr("Cloud Storage"));
+        computerFoldersHeading->SetVisible(foldersShown);
+    }
+    if (computerFolders) computerFolders->SetVisible(foldersShown);
+    if (computerDrivesHeading) computerDrivesHeading->SetVisible(all);
+    computerDriveRow->SetVisible(all);
     if (computerRemoteHeading) computerRemoteHeading->SetVisible(anyRemote);
     if (computerRemoteRow) computerRemoteRow->SetVisible(anyRemote);
     if (computerRamHeading) computerRamHeading->SetVisible(anyRam);
