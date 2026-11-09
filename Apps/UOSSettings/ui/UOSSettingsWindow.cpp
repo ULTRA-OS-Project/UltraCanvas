@@ -1,6 +1,7 @@
 // Apps/UOSSettings/ui/UOSSettingsWindow.cpp
 // The UOS-Settings window: page tree | page, Close at the foot - the layout
 // of UltraFiler's settings window. See UOSSettingsWindow.h.
+// Version: 0.11.0 - Desktop: the bars' theme (dark or light)
 // Version: 0.10.0 - on UltraCanvasSettingsPageKit (the window, the tree, the bottom bar,
 //                   the page switching, MakeLabel); the logo as the kit's sidebar header
 // Version: 0.9.0 - Desktop: the Sticker board's card display and hover preview size
@@ -386,6 +387,14 @@ void UOSSettingsWindow::BuildDesktopPage() {
     };
     addRow("uos-dt-edge-row", "Taskbar", edge_);
 
+    theme_ = std::make_shared<UltraCanvasDropdown>("uos-dt-theme", 0, 0, 200, 28);
+    theme_->AddItem(Tr("Dark"), "dark");
+    theme_->AddItem(Tr("Light"), "light");
+    theme_->onSelectionChanged = [this](int, const DropdownItem&) {
+        if (!refreshing_) SaveDesktopPage();
+    };
+    addRow("uos-dt-theme-row", "Theme", theme_);
+
     wallpaper_ = std::make_shared<UltraCanvasTextInput>("uos-dt-wallpaper", 0, 0, 260, 28);
     wallpaper_->SetPlaceholder(Tr("ULTRA OS A (the default picture)"));
     wireText(wallpaper_);
@@ -567,6 +576,7 @@ void UOSSettingsWindow::RefreshDesktopPage() {
                                 : settings.taskbarEdge == UltraDesktop::TaskbarEdge::Bottom ? 2 : 0,
                                 false);
     }
+    if (theme_) theme_->SetSelectedIndex(settings.theme == "light" ? 1 : 0, false);
     if (wallpaper_) wallpaper_->SetText(settings.wallpaper);
     if (ramDisc_) ramDisc_->SetText(settings.ramDiscPath);
     if (filer_) filer_->SetText(settings.filerProgram);
@@ -611,6 +621,7 @@ void UOSSettingsWindow::SaveDesktopPage() {
                              : index == 2 ? UltraDesktop::TaskbarEdge::Bottom
                                           : UltraDesktop::TaskbarEdge::Left;
     }
+    if (theme_) settings.theme = theme_->GetSelectedIndex() == 1 ? "light" : "dark";
     if (wallpaper_) settings.wallpaper = wallpaper_->GetText();
     if (ramDisc_) settings.ramDiscPath = ramDisc_->GetText();   // "" = no RAM disc button
     if (filer_ && !filer_->GetText().empty()) settings.filerProgram = filer_->GetText();

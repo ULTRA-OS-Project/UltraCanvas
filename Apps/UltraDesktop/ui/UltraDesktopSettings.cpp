@@ -2,6 +2,7 @@
 // The desktop's settings file, through the framework's JSON (UltraCanvasJSON).
 // Numbers in the file are dot-decimal by construction: the JSON writer and
 // reader never consult the locale.
+// Version: 0.6.0 - theme ("dark" | "light")
 // Version: 0.5.0 - categoryBoard.display and hoverPreview (the Sticker board's cards)
 // Version: 0.4.0 - appsView, appsSplitAbove, recentAppsShown, recentApps (NoteAppStarted), appMoves
 // Version: 0.4.0 - UltraClipboard, UltraNotifications and the Sticker board
@@ -113,6 +114,7 @@ std::string DesktopSettings::ToJson() const {
     root.Set("ramDiscPath", ramDiscPath);
     root.Set("filerProgram", filerProgram);
     root.Set("clockStyle", clockStyle);
+    root.Set("theme", theme);
     root.Set("virtualDesktops", virtualDesktops);
     root.Set("stickerboardVisible", stickerboardVisible);
     JSONValue notes = JSONValue::MakeArray();
@@ -180,6 +182,8 @@ bool DesktopSettings::FromJson(const std::string& json, std::string* error) {
     loaded.filerProgram = root.Get("filerProgram").GetString(loaded.filerProgram);
     const std::string clock = root.Get("clockStyle").GetString(loaded.clockStyle);
     if (IsClockStyle(clock)) loaded.clockStyle = clock;
+    const std::string theme = root.Get("theme").GetString(loaded.theme);
+    if (IsTheme(theme)) loaded.theme = theme;
     const int desktops = static_cast<int>(root.Get("virtualDesktops").GetInteger(loaded.virtualDesktops));
     loaded.virtualDesktops = std::clamp(desktops, 1, 9);
     loaded.stickerboardVisible = root.Get("stickerboardVisible").GetBoolean(false);
@@ -257,6 +261,10 @@ bool DesktopSettings::FromJson(const std::string& json, std::string* error) {
 bool DesktopSettings::IsClockStyle(const std::string& style) {
     return style == "analog-date" || style == "analog" || style == "digital-date" || style == "digital" ||
            style == "digital-seconds";
+}
+
+bool DesktopSettings::IsTheme(const std::string& theme) {
+    return theme == "dark" || theme == "light";
 }
 
 void DesktopSettings::NoteAppStarted(const std::string& key) {

@@ -427,6 +427,21 @@ void TestSettingsKeepTheDisplay() {
           "a value it does not know is the default");
 }
 
+void TestSettingsKeepTheTheme() {
+    std::cout << "\nThe bars' theme in the desktop settings\n";
+    UltraDesktop::DesktopSettings settings;
+    Check(settings.theme == "dark", "a new desktop has dark bars");
+    settings.theme = "light";
+    UltraDesktop::DesktopSettings read;
+    std::string error;
+    Check(read.FromJson(settings.ToJson(), &error), "a saved desktop reads back" + (error.empty() ? "" : ": " + error));
+    Check(read.theme == "light", "with the light theme");
+    settings.theme = "purple";
+    UltraDesktop::DesktopSettings odd;
+    odd.FromJson(settings.ToJson(), &error);
+    Check(odd.theme == "dark", "a theme it does not know is the dark one");
+}
+
 } // namespace
 
 int main() {
@@ -443,6 +458,7 @@ int main() {
     TestHoverAndPreview();
     TestCardDragStillMoves();
     TestSettingsKeepTheDisplay();
+    TestSettingsKeepTheTheme();
     std::cout << "\n" << (g_failures == 0 ? "All passed" : std::to_string(g_failures) + " failed") << "\n";
     return g_failures == 0 ? 0 : 1;
 }

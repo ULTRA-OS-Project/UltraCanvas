@@ -1042,6 +1042,9 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
     (Windows `ExitWindowsEx`; Linux logind over the system bus);
     `CanLockSession` / `LockSession` - the screen lock (`LockWorkStation`;
     logind's `Session.Lock`, else `org.freedesktop.ScreenSaver.Lock`).
+  - `CanOpenDisplaySettings` / `OpenDisplaySettings` - the system's own
+    display settings (`ms-settings:display`; System Settings > Displays;
+    the desktop's display tool on Linux).
   - `ReadAudioOutput` → `DesktopAudioOutput` (the default output's name,
     volume and mute), `SetAudioOutputVolume`, `SetAudioOutputMuted` - the
     loudspeaker through the sound server (libpulse loaded at run time:

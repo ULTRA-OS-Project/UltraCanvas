@@ -29,20 +29,19 @@ system.
 
 ```
 ┌────┬──────────────────────────────────────────────────────────────┬────┐
-│ ⚙  │                                                              │ 1  │  desktop
-│ ⋮⋮ │                                                              │ 2  │  organiser
-│╲   │                                                              │ 3  │
-│ ╲  │                                                              │    │
-│ ▣  │                     wallpaper                                │ 📌 │  Sticker board
-│ ▣  │            (application windows float above)                 │ 🗒 │  notes
-│ ▣  │                                                              │ 📋 │  clipboard
-│  ╲ │                                                              │ 📷 │  screenshot
-│   ╲│                                                              │╱   │
-│ ▤  │                                                              │ ✉14│  info panel
-│ 📁 │                                                              │ ⇧⇩ │  (devices and
-│ 🎨 │                                                              │ 🔊 │   services)
-│    │                                                              │ 🕒 │  clock
-│    │                                                              │30Oct│  and date
+│ ⚙  │                                                              │ 🕒 │  clock
+│ ⋮⋮ │                                                              │30Oct│  and date
+│╲   │                                                              │ 1  │  desktop
+│ ╲  │                                                              │ 2  │  organiser
+│ ▣  │                     wallpaper                                │ 3  │
+│ ▣  │            (application windows float above)                 │ 📌 │  Sticker board
+│ ▣  │                                                              │ 🗒 │  notes
+│  ╲ │                                                              │ 📋 │  clipboard
+│   ╲│                                                              │ 📷 │  screenshot
+│ ▤  │                                                              │╱   │
+│ 📁 │                                                              │ ✉14│  info panel
+│ 🎨 │                                                              │ ⇧⇩ │  (devices and
+│    │                                                              │ 🔊 │   services)
 └────┴──────────────────────────────────────────────────────────────┴────┘
  taskbar                                                               right bar
 ```
@@ -125,7 +124,8 @@ the right-hand monitor the primary.
 
 ### Right bar
 
-- **Clock**, at the foot of the bar, white on black: by default the
+- **Clock**, at the top of the bar, white on black (black on white in the
+  light theme): by default the
   framework's gauge element in its analog clock mode
   ([UltraCanvasGaugeDiagramElement](../UltraCanvas/UltraCanvasGaugeExamples.md)),
   which ticks on its own, over the date ("30 Oct"); the tooltip has the
@@ -241,6 +241,36 @@ the right-hand monitor the primary.
   a chevron over the edge marks where the icons continue, a click on it
   scrolls a page, and so does the wheel over the panel.
 
+### Theme and context menus
+
+The bars come in two themes, kept as `theme` in the settings: **dark**
+(light icons on dark grey, the running applications and the organiser
+carved in near black, the clock white on black - the default) and
+**light** (dark icons on light grey, the carved-in groups near white, the
+clock black on white, the ULTRA OS logo in its variant for a light ground).
+The panels and windows the bars open keep their own colours.
+
+- **The wallpaper** (right click): *Change wallpaper...* (an Open dialog
+  with every picture type this build reads, through FileLoader), *Default
+  wallpaper* (when another is set), *Theme* (*Dark*, *Light*), *Taskbar
+  position* (*on the left*, *at the top*, *at the bottom*), *Notes on the
+  wallpaper*, *Display settings...* and *Desktop settings...* (UOS-Settings).
+  *Display settings...* opens the system's own
+  (`UltraCanvasDesktopShell::OpenDisplaySettings`): Settings > Display on
+  Windows, System Settings > Displays on macOS, and on Linux the first
+  display tool installed - the session's own desktop's first
+  (`XDG_CURRENT_DESKTOP`): GNOME's, Plasma's, Xfce's, Cinnamon's, MATE's,
+  LXQt's or Budgie's settings, then wdisplays, nwg-displays, and on X11
+  arandr and lxrandr. Where there is none the entry is left out.
+- **The bars** (right click on a group, where the button under the pointer
+  has no menu of its own - between buttons, the Applications button, a
+  virtual desktop, a service icon): the taskbar's edge, the theme and
+  *Desktop settings...*. The ⚙ button's menu has *Taskbar position* and
+  *Theme* as submenus.
+
+A change is saved at once and the bars are rebuilt in place; one made in
+UOS-Settings is followed within a second.
+
 ### Windows the desktop opens
 
 - **Applications** (app starter): every installed application from its
@@ -301,7 +331,7 @@ the right-hand monitor the primary.
   after asking, for one that does not close. The desktop's own windows (the
   Task Manager itself, its dialogs, the Sticker board) are not listed - the machine — CPU load and temperature, memory, storage, the
   interfaces — on the framework's hardware panel on the second.
-- **Settings**: the desktop's settings - the taskbar's edge, the wallpaper,
+- **Settings**: the desktop's settings - the taskbar's edge, the theme, the wallpaper,
   the RAM disc path, the file manager program, the number of virtual
   desktops - are the *Desktop* page of UOS-Settings. They live in the
   desktop's settings file; the desktop checks it once a second and rebuilds
@@ -407,6 +437,8 @@ earlier versions kept under `~/.config` is moved on the first start):
   "ramDiscPath": "/dev/shm",
   "filerProgram": "UltraFiler",
   "virtualDesktops": 3,
+  "clockStyle": "analog-date",
+  "theme": "dark",
   "stickerboardVisible": false,
   "stickers": [ { "id": "note1", "text": "…", "x": 60, "y": 60, "width": 220, "height": 160, "color": "#FFF59D" } ],
   "categoryBoard": { "visible": false, "design": "stickynotes", "display": "thumbnail", "hoverPreview": "medium",
@@ -432,6 +464,9 @@ and `height` are kept for older versions and no longer used: the board fills
 the work area and starts hidden. `pinnedApps` are the pinned
 applications' keys in the order they were pinned: the program's path, or on
 Windows the shortcut's path or `store:<AppUserModelID>`.
+`theme` is `dark` (the default) or `light`; `clockStyle` one of
+`analog-date` (the default), `analog`, `digital-date`, `digital` and
+`digital-seconds`.
 `startWithDesktop` names the programs started with the desktop - `ChatCube`
 and `UltraMail` are the ones it offers; empty (the default), none.
 

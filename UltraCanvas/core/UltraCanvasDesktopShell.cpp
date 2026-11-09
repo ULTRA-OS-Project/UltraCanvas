@@ -6,6 +6,7 @@
 // UltraCanvasHardwareInfo), the monitor's thread - and the fallback backend
 // for platforms that have none. The window system itself is in
 // OS/<Platform>/UltraCanvas*DesktopShell.cpp.
+// Version: 1.12.0 - OpenDisplaySettings, CanOpenDisplaySettings
 // Version: 1.11.0 - CaptureWindowImage (scaled down here); MatchApplication
 //                  matches Windows' AppUserModelID first
 // Version: 1.10.0 - CaptureScreenArea, DefaultRecordingPath
@@ -799,6 +800,17 @@ bool UltraCanvasDesktopShell::LockSession(std::string* error) {
     return false;
 }
 
+// ===== THE DISPLAYS =====
+
+bool UltraCanvasDesktopShell::CanOpenDisplaySettings() { return DesktopShellBackend::CanOpenDisplaySettings(); }
+
+bool UltraCanvasDesktopShell::OpenDisplaySettings(std::string* error) {
+    std::string reason;
+    if (DesktopShellBackend::OpenDisplaySettings(reason)) return true;
+    if (error) *error = reason;
+    return false;
+}
+
 // ===== THE LOUDSPEAKER =====
 
 DesktopAudioOutput UltraCanvasDesktopShell::ReadAudioOutput() {
@@ -1140,6 +1152,26 @@ namespace DesktopShellBackend {
         error = "Locking the screen is not available on this platform yet.";
         return false;
     }
+
+    // macOS has no window-list backend, but its System Settings opens on the
+    // Displays pane through `open` and the pane's URL.
+#if defined(__APPLE__)
+    bool CanOpenDisplaySettings() { return !UltraCanvasDesktopShell::FindProgram("/usr/bin/open").empty(); }
+    bool OpenDisplaySettings(std::string& error) {
+        if (UltraCanvasDesktopShell::LaunchProgram(
+                    "/usr/bin/open", {"x-apple.systempreferences:com.apple.Displays-Settings.extension"}, &error)) {
+            return true;
+        }
+        if (error.empty()) error = "System Settings did not open.";
+        return false;
+    }
+#else
+    bool CanOpenDisplaySettings() { return false; }
+    bool OpenDisplaySettings(std::string& error) {
+        error = "Display settings are not available on this platform yet.";
+        return false;
+    }
+#endif
 
     DesktopAudioOutput ReadAudioOutput() {
         DesktopAudioOutput out;

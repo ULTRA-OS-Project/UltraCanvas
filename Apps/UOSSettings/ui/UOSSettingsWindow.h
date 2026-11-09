@@ -130,6 +130,7 @@ private:
 
     // ----- Desktop -----
     std::shared_ptr<UltraCanvas::UltraCanvasDropdown> edge_;
+    std::shared_ptr<UltraCanvas::UltraCanvasDropdown> theme_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> wallpaper_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> ramDisc_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> filer_;

@@ -249,6 +249,8 @@ The board, its look, how cards are shown and the preview size are kept.
 
 The clock at the top of the right bar shows the time on a small analog face
 and the date under it; rest the pointer on it for the whole date and time.
+Right-click it to show it as an analog or a digital clock, with or without
+the date.
 Click it for the clock panel: the time large, on a face and in figures,
 today written out, and this month's calendar with today marked. You can page
 through other months; nothing is chosen there. Escape, or a click anywhere
@@ -328,6 +330,28 @@ The Task Manager icon at the foot of the info panel opens it.
 - **Hardware** shows the machine: CPU load and temperature, memory, storage
   and the network interfaces.
 
+### 4.13 The desktop's menus
+
+Right-click the **wallpaper** for the desktop's menu:
+
+- **Change wallpaper...** picks a picture; **Default wallpaper** goes back
+  to ULTRA OS's own picture.
+- **Theme**: **Dark** (light icons on dark grey bars) or **Light** (dark
+  icons on light grey bars).
+- **Taskbar position**: on the left, at the top or at the bottom.
+- **Notes on the wallpaper** shows or hides the notes.
+- **Display settings...** opens the system's own display settings - the
+  resolution, how the monitors are arranged, which one is the main one.
+  On Linux it is your desktop's display tool (GNOME's or Plasma's settings,
+  xfce4-display-settings, wdisplays, arandr, ...); where none is installed,
+  the entry is left out.
+- **Desktop settings...** opens UOS-Settings.
+
+Right-click the **taskbar or the right bar** where a button has no menu of
+its own - between the buttons, on the Applications button, a virtual
+desktop or a service icon - to move the taskbar to another edge or change
+the theme. The ⚙ button's menu has **Taskbar position** and **Theme** too.
+
 ## 5. Settings
 
 UltraDesktop's settings are the **Desktop** page of **UOS-Settings**. Click
@@ -337,6 +361,7 @@ settings**.
 | Setting | What it does |
 |---|---|
 | **Taskbar** | **Left**, **Top** or **Bottom** edge. |
+| **Theme** | **Dark** or **Light** bars. |
 | **Wallpaper** | A picture file (**Browse...**). Empty: the framework's landscape picture. |
 | **RAM disc** | The folder the RAM disc button opens. Empty: no button. On Linux it is `/dev/shm` unless you change it; on Windows it is empty unless you set one. |
 | **File manager** | The program the folder buttons start (UltraFiler unless you change it). |
@@ -476,7 +501,9 @@ at sign-in.
 | Any window | Super key (Win key) alone | opens Applications (on Linux; on Windows only instead of Explorer) |
 | Any window, Linux | Super+L | locks the screen (on Windows Win+L is Windows' own) |
 | Any window | Super+Shift+S (Win+Shift+S) | UltraSnip snips an area (on Windows only instead of Explorer; Win+Shift+S is Windows' own beside it) |
-| Clock | click | the clock panel |
+| Clock | click / right-click | the clock panel / analog or digital, with or without the date |
+| Wallpaper | right-click | wallpaper, theme, taskbar position, notes, display settings, desktop settings |
+| The bars, between the buttons | right-click | taskbar position, theme |
 | Loudspeaker icon | click | the volume panel |
 | Pinned program | click / right-click | start it / open, unpin |
 | Applications tile | click / right-click | start it / pin or unpin |

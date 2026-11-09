@@ -5,6 +5,7 @@
 // Stickerboard and the Sticker board's categories. One JSON file, read at
 // start-up and written on every change. No UI in here, which is what lets
 // the test read and write it.
+// Version: 0.7.0 - the bars' theme (theme: "dark" or "light")
 // Version: 0.6.0 - the Sticker board's card display and hover preview size
 // Version: 0.5.0 - StartupProgram::arguments and ::builtIn: UltraClipboard
 //                  and UltraNotifications start in the background
@@ -87,6 +88,11 @@ struct DesktopSettings {
     // "digital-seconds"; chosen on the clock's right-click menu.
     std::string clockStyle = "analog-date";
     static bool IsClockStyle(const std::string& style);
+    // The bars' colours: "dark" (light icons on dark grey, the default) or
+    // "light" (dark icons on light grey); chosen on the desktop's
+    // right-click menu or in UOS-Settings.
+    std::string theme = "dark";
+    static bool IsTheme(const std::string& theme);
     int virtualDesktops = 3;            // 1..9, what the organiser offers
     bool stickerboardVisible = false;
     std::vector<Sticker> stickers;

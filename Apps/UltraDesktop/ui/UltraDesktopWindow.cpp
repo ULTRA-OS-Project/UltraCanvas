@@ -59,6 +59,7 @@
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasDebug.h"
+#include "UltraCanvasFileLoader.h"
 #include "UltraCanvasImageElement.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasMenu.h"
@@ -102,7 +103,6 @@ constexpr int   kBarIcon        = 24;
 constexpr int   kLogoButtonWide = 64;
 constexpr int   kLogoWidth      = 384;
 constexpr int   kLogoHeight     = 200;
-const char* const kLogoForDarkBar = "ultraos-logo-dark.png";   // UOS-Settings shows ultraos-logo-light.png
 constexpr int   kInfoButton     = 36;   // the info panel's items, fourteen of them
 constexpr int   kInfoIcon       = 20;
 // Below this height the info panel's items are smaller, and what still does
@@ -131,18 +131,11 @@ constexpr unsigned kStartupProgramsDelayMs = 3000;   // "start with the desktop"
 constexpr unsigned kAppListPreloadDelayMs = 5000;    // the Apps window's list, read ahead
 constexpr uint64_t kActivityBytesPerPoll = 4096;   // below this a link is idle
 
-const Color kBarColor      (74, 74, 74, 255);
-const Color kBarInsetColor (20, 20, 20, 255);    // the carved-in groups
-const Color kBarHover      (110, 110, 110, 255);
-const Color kBarActive     (150, 150, 150, 255); // the active app / current desktop
 const Color kMarkerOn      (220, 30, 30, 255);   // red: a device is on
 const Color kMarkerActive  (240, 200, 0, 255);   // yellow: activity
 const Color kMarkerCount   (90, 90, 90, 255);    // grey pill for counts
 const Color kMarkerSaved   (60, 170, 90, 255);   // green: the screenshot landed
 const Color kMarkerLinkUp  (60, 170, 90, 255);   // green: Wi-Fi joined
-const Color kClockBack     (0, 0, 0, 255);       // the clock: white on black
-const Color kClockInk      (255, 255, 255, 255);
-const Color kClockTicks    (255, 255, 255, 140);
 
 const char* const kRunningPrefix = "win:";
 // The pointer rests this long on an application's button before its
@@ -187,6 +180,42 @@ std::string Shorten(const std::string& text, size_t max) {
 }
 
 } // namespace
+
+// ===== THE THEME =====
+
+// The bars' colours. Dark: light icons on dark grey, the running
+// applications and the organiser carved in near black, the clock white on
+// black. Light: dark icons on light grey, the carved-in groups a shade
+// lighter still, the clock black on white.
+struct BarPalette {
+    Color bar;          // the bars' ground
+    Color inset;        // the carved-in groups (running applications, organiser)
+    Color hover;
+    Color active;       // the active application / the current desktop
+    Color ink;          // the icons (drawn as masks) and the text
+    Color separator;
+    Color clockBack;
+    Color clockInk;
+    Color clockTicks;
+    const char* logo;   // the ULTRA OS logo drawn for this ground
+};
+
+namespace {
+const BarPalette kDarkBars{
+    Color(74, 74, 74, 255),    Color(20, 20, 20, 255),    Color(110, 110, 110, 255),
+    Color(150, 150, 150, 255), Color(255, 255, 255, 255), Color(120, 120, 120, 255),
+    Color(0, 0, 0, 255),       Color(255, 255, 255, 255), Color(255, 255, 255, 140),
+    "ultraos-logo-dark.png"};
+const BarPalette kLightBars{
+    Color(218, 218, 222, 255), Color(244, 244, 246, 255), Color(196, 196, 202, 255),
+    Color(170, 176, 190, 255), Color(32, 32, 36, 255),    Color(160, 160, 166, 255),
+    Color(250, 250, 250, 255), Color(20, 20, 20, 255),    Color(20, 20, 20, 140),
+    "ultraos-logo-light.png"};
+} // namespace
+
+const BarPalette& UltraDesktopWindow::Bars() const {
+    return settings_.theme == "light" ? kLightBars : kDarkBars;
+}
 
 // ===== LIFETIME =====
 
@@ -351,7 +380,7 @@ void UltraDesktopWindow::BuildLayout() {
     }
 
     root_ = CreateContainer("Desktop", 0, 0, 0, 0);
-    root_->SetBackgroundColor(kBarInsetColor);
+    root_->SetBackgroundColor(Bars().inset);
 
     const TaskbarEdge edge = settings_.taskbarEdge;
     auto taskbar  = BuildTaskbar(edge == TaskbarEdge::Left);
@@ -424,11 +453,11 @@ std::shared_ptr<UltraCanvasToolbar> UltraDesktopWindow::MakeGroup(const std::str
     auto group = std::make_shared<UltraCanvasToolbar>(id, 0, 0, 0, 0);
     group->SetOrientation(vertical ? ToolbarOrientation::Vertical : ToolbarOrientation::Horizontal);
     ToolbarAppearance look = ToolbarAppearance::Flat();
-    look.backgroundColor = inset ? kBarInsetColor : kBarColor;
-    look.foregroundColor = Colors::White;
-    look.hoverBackgroundColor = kBarHover;
-    look.activeBackgroundColor = kBarActive;
-    look.separatorColor = Color(120, 120, 120, 255);
+    look.backgroundColor = inset ? Bars().inset : Bars().bar;
+    look.foregroundColor = Bars().ink;
+    look.hoverBackgroundColor = Bars().hover;
+    look.activeBackgroundColor = Bars().active;
+    look.separatorColor = Bars().separator;
     look.iconSize = ToolbarIconSize::Large;
     look.showIconLabels = false;
     look.centerIcons = true;
@@ -437,6 +466,7 @@ std::shared_ptr<UltraCanvasToolbar> UltraDesktopWindow::MakeGroup(const std::str
     group->SetPadding(6, 4);
     group->layoutItem.SetFlexShrink(0.0f);
     group->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    InstallBarMenu(group);
     return group;
 }
 
@@ -472,11 +502,11 @@ void UltraDesktopWindow::StyleBarButton(const std::shared_ptr<UltraCanvasButton>
     if (!button) return;
     ButtonStyle style = button->GetStyle();
     style.normalColor = Colors::Transparent;
-    style.hoverColor = kBarHover;
-    style.pressedColor = kBarActive;
-    style.normalTextColor = Colors::White;
-    style.hoverTextColor = Colors::White;
-    style.pressedTextColor = Colors::White;
+    style.hoverColor = Bars().hover;
+    style.pressedColor = Bars().active;
+    style.normalTextColor = Bars().ink;
+    style.hoverTextColor = Bars().ink;
+    style.pressedTextColor = Bars().ink;
     style.borderWidth = 0;
     style.cornerRadius = 8;
     style.fontSize = 15;
@@ -508,7 +538,7 @@ std::shared_ptr<UltraCanvasButton> UltraDesktopWindow::AddBarToggle(
 
 std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildTaskbar(bool vertical) {
     auto bar = CreateContainer("Taskbar", 0, 0, 0, 0);
-    bar->SetBackgroundColor(kBarColor);
+    bar->SetBackgroundColor(Bars().bar);
     if (vertical) {
         bar->SetElementSize(CSSLayout::Dimension::Px(kBarThickness), CSSLayout::Dimension::Auto());
         bar->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
@@ -521,9 +551,9 @@ std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildTaskbar(bool vert
     // 1. System: ULTRA OS settings and the app starter.
     auto system = MakeGroup("Taskbar.System", vertical, false);
     // The ULTRA OS logo in its own colours, wider than the other items: it
-    // is twice as wide as it is high. The variant drawn for a dark ground
-    // (the bar is dark grey).
-    auto settingsButton = AddBarButton(system, "settings", "ULTRA OS settings", IconPath(kLogoForDarkBar),
+    // is twice as wide as it is high. The variant drawn for the theme's
+    // ground.
+    auto settingsButton = AddBarButton(system, "settings", "ULTRA OS settings", IconPath(Bars().logo),
                                        [this]() { OpenSystemSettings(); });
     settingsButton->SetUseIconAsMask(false);
     const int logoBox = vertical ? kBarThickness - 4 : kLogoButtonWide;
@@ -538,7 +568,7 @@ std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildTaskbar(bool vert
     // The two waves mirror each other, so the running apps sit in a band
     // that narrows the same way at both ends; each wave starts 4 px past
     // the icon before it (TuckAgainstWave).
-    auto wave1 = CreateWaveSeparator("Taskbar.Wave1", vertical, kBarColor, kBarInsetColor, kWaveLength);
+    auto wave1 = CreateWaveSeparator("Taskbar.Wave1", vertical, Bars().bar, Bars().inset, kWaveLength);
     wave1->SetFlipped(true);
     TuckAgainstWave(system, wave1, vertical, true);
     bar->AddChild(wave1);
@@ -550,7 +580,7 @@ std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildTaskbar(bool vert
     running_->EnableItemReordering(true);
     bar->AddChild(running_);
 
-    auto wave2 = CreateWaveSeparator("Taskbar.Wave2", vertical, kBarInsetColor, kBarColor, kWaveLength);
+    auto wave2 = CreateWaveSeparator("Taskbar.Wave2", vertical, Bars().inset, Bars().bar, kWaveLength);
     bar->AddChild(wave2);
 
     // 3. Pinned: the RAM disc (when there is one - Windows has none of its
@@ -597,8 +627,9 @@ std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildTaskbar(bool vert
 // ===== THE CLOCK =====
 
 std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildClock() {
-    // White on black, at the foot of the right bar, in the display type the
-    // person chose on its right-click menu (DesktopSettings::clockStyle).
+    // White on black (black on white in the light theme), at the top of the
+    // right bar, in the display type the person chose on its right-click
+    // menu (DesktopSettings::clockStyle).
     const std::string& style = settings_.clockStyle;
     const bool analog = style == "analog" || style == "analog-date";
     const bool withDate = style == "analog-date" || style == "digital-date";
@@ -606,7 +637,7 @@ std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildClock() {
                               : (withDate ? kDigitalClockHeight + 14 : kDigitalClockHeight);
 
     auto clock = CreateContainer("Clock", 0, 0, 0, 0);
-    clock->SetBackgroundColor(kClockBack);
+    clock->SetBackgroundColor(Bars().clockBack);
     clock->SetElementSize(CSSLayout::Dimension::Px(kInfoPanelWidth), CSSLayout::Dimension::Px(height));
     clock->layoutItem.SetFlexShrink(0.0f);
     clock->SetTooltip(TodayInWords());
@@ -642,9 +673,9 @@ std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildClock() {
                                            static_cast<float>(kClockFaceBox));
         clock_->SetMode(GaugeMode::AnalogClock);
         clock_->SetShowLabels(false);
-        clock_->SetBackgroundColor(kClockBack);
-        clock_->SetClockHandColor(kClockInk);
-        clock_->SetClockTickColor(kClockTicks);
+        clock_->SetBackgroundColor(Bars().clockBack);
+        clock_->SetClockHandColor(Bars().clockInk);
+        clock_->SetClockTickColor(Bars().clockTicks);
         place(*clock_, 0, static_cast<float>(kClockFaceBox));
         clock_->SetEventCallback(onClick);
         clock->AddChild(clock_);
@@ -658,7 +689,7 @@ std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildClock() {
         clockTime_->SetFontSize(seconds ? 9.5f : 13.0f);
         clockTime_->SetFontWeight(FontWeight::Bold);
         clockTime_->SetPadding(0);
-        clockTime_->SetTextColor(kClockInk);
+        clockTime_->SetTextColor(Bars().clockInk);
         clockTime_->SetAlignment(TextAlignment::Center);
         place(*clockTime_, 0, static_cast<float>(kDigitalClockHeight));
         clockTime_->SetEventCallback(onClick);
@@ -670,7 +701,7 @@ std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildClock() {
         clockDate_ = CreateLabel("ClockDate", 0, 0, static_cast<float>(kInfoPanelWidth), 16, TodayShort());
         clockDate_->SetFontSize(9.0f);
         clockDate_->SetPadding(0);
-        clockDate_->SetTextColor(kClockInk);
+        clockDate_->SetTextColor(Bars().clockInk);
         clockDate_->SetAlignment(TextAlignment::Center);
         place(*clockDate_, dateTop, 16);
         clockDate_->SetEventCallback(onClick);
@@ -740,8 +771,7 @@ void UltraDesktopWindow::OpenClockPanel() {
         clockPanel_->Close();
         return;
     }
-    // Beside the right bar, level with the clock (held on the screen by the
-    // panel: the clock is at the bar's foot).
+    // Beside the right bar, level with the clock at its top.
     UltraCanvasUIElement* face = clock_ ? static_cast<UltraCanvasUIElement*>(clock_.get())
                                         : static_cast<UltraCanvasUIElement*>(clockTime_.get());
     const Rect2Df bounds = face ? face->GetBoundsInWindow() : Rect2Df(0, 0, 0, 0);
@@ -1178,11 +1208,13 @@ void UltraDesktopWindow::ShowPinnedMenu(const UCDesktopEntry& entry, int windowX
 
 std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildRightBar() {
     auto bar = CreateContainer("RightBar", 0, 0, 0, 0);
-    bar->SetBackgroundColor(kBarColor);
+    bar->SetBackgroundColor(Bars().bar);
     bar->SetElementSize(CSSLayout::Dimension::Px(kInfoPanelWidth), CSSLayout::Dimension::Auto());
     bar->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     bar->layoutItem.SetFlexShrink(0.0f);
 
+    // The clock at the top of the bar, above the organiser.
+    bar->AddChild(BuildClock());
 
     // The desktop organiser: virtual desktops, then the board, clipboard, screenshot.
     organiser_ = MakeGroup("Organiser", true, true);
@@ -1225,7 +1257,7 @@ std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildRightBar() {
     // As on the taskbar, the wave starts 4 px past the organiser's last
     // icon; the info panel below is anchored to the bar's foot, so the
     // space on that side is its own stretch.
-    auto wave = CreateWaveSeparator("RightBar.Wave", true, kBarInsetColor, kBarColor, kWaveLength);
+    auto wave = CreateWaveSeparator("RightBar.Wave", true, Bars().inset, Bars().bar, kWaveLength);
     TuckAgainstWave(organiser_, wave, true, true);
     bar->AddChild(wave);
 
@@ -1269,16 +1301,13 @@ std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildRightBar() {
         }
     }
     bar->AddChild(info_);
-
-    // The clock at the foot of the bar, under the info panel.
-    bar->AddChild(BuildClock());
     ApplySpeaker();
     return bar;
 }
 
 std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildWorkArea() {
     auto area = CreateContainer("WorkArea", 0, 0, 0, 0);
-    area->SetBackgroundColor(kBarInsetColor);
+    area->SetBackgroundColor(Bars().inset);
     area->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 
     // The wallpaper fills the area; application windows float above the
@@ -1286,6 +1315,21 @@ std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildWorkArea() {
     wallpaper_ = std::make_shared<UltraCanvasImageElement>("Wallpaper", 0, 0, 0, 0);
     wallpaper_->SetFitMode(ImageFitMode::Cover);
     LoadWallpaper(*wallpaper_);
+    // A right click on the wallpaper: the desktop's menu, on the release, so
+    // the menu does not take that release as a pick.
+    wallpaper_->SetEventCallback([this, pending = false](const UCEvent& event) mutable {
+        if (event.button != UCMouseButton::Right) return false;
+        if (event.type == UCEventType::MouseDown) {
+            pending = true;
+            return true;
+        }
+        if (event.type == UCEventType::MouseUp && pending) {
+            pending = false;
+            ShowDesktopMenu(event.pointerWindow.x, event.pointerWindow.y);
+            return true;
+        }
+        return false;
+    });
     wallpaper_->layoutItem.SetFlexGrow(1.0f).SetFlexShrink(1.0f).SetFlexBasis(CSSLayout::Dimension::Px(0));
     wallpaper_->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     area->AddChild(wallpaper_);
@@ -1314,6 +1358,142 @@ std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildWorkArea() {
         }
     }
     return area;
+}
+
+// ===== THE DESKTOP'S MENUS =====
+
+std::vector<MenuItemData> UltraDesktopWindow::TaskbarEdgeItems() {
+    struct Choice {
+        TaskbarEdge edge;
+        const char* label;
+    };
+    static const Choice kChoices[] = {
+        {TaskbarEdge::Left, "Taskbar on the left"},
+        {TaskbarEdge::Top, "Taskbar at the top"},
+        {TaskbarEdge::Bottom, "Taskbar at the bottom"},
+    };
+    std::vector<MenuItemData> items;
+    for (const Choice& choice : kChoices) {
+        const TaskbarEdge edge = choice.edge;
+        items.push_back(MenuItemData::Radio(Tr(choice.label), 2, settings_.taskbarEdge == edge,
+                                            [this, edge]() { SetTaskbarEdge(edge); }));
+    }
+    return items;
+}
+
+std::vector<MenuItemData> UltraDesktopWindow::ThemeItems() {
+    std::vector<MenuItemData> items;
+    items.push_back(MenuItemData::Radio(Tr("Dark"), 3, settings_.theme != "light",
+                                        [this]() { SetTheme("dark"); }));
+    items.push_back(MenuItemData::Radio(Tr("Light"), 3, settings_.theme == "light",
+                                        [this]() { SetTheme("light"); }));
+    return items;
+}
+
+void UltraDesktopWindow::ShowDesktopMenu(int windowX, int windowY) {
+    if (!window_) return;
+    popupMenu_ = std::make_shared<UltraCanvasMenu>("DesktopMenu", 0, 0, 260, 0);
+    popupMenu_->SetMenuType(MenuType::PopupMenu);
+    popupMenu_->AddItem(MenuItemData::Action(Tr("Change wallpaper..."), [this]() { ChooseWallpaper(); }));
+    if (!settings_.wallpaper.empty()) {
+        popupMenu_->AddItem(MenuItemData::Action(Tr("Default wallpaper"), [this]() { SetWallpaper(""); }));
+    }
+    popupMenu_->AddItem(MenuItemData::Submenu(Tr("Theme"), ThemeItems()));
+    popupMenu_->AddItem(MenuItemData::Submenu(Tr("Taskbar position"), TaskbarEdgeItems()));
+    popupMenu_->AddItem(MenuItemData::Separator());
+    popupMenu_->AddItem(MenuItemData::Checkbox(Tr("Notes on the wallpaper"), settings_.stickerboardVisible,
+                                               [this](bool on) {
+        ToggleStickerboard(on);
+        if (organiser_) {
+            if (auto toggle = std::dynamic_pointer_cast<UltraCanvasButton>(organiser_->GetWidget("stickerboard"))) {
+                toggle->SetPressed(on);
+            }
+        }
+    }));
+    popupMenu_->AddItem(MenuItemData::Separator());
+    if (UltraCanvasDesktopShell::CanOpenDisplaySettings()) {
+        popupMenu_->AddItem(MenuItemData::Action(Tr("Display settings..."), [this]() { OpenDisplaySettings(); }));
+    }
+    popupMenu_->AddItem(MenuItemData::Action(Tr("Desktop settings..."), [this]() { OpenSystemSettings(); }));
+    PopupElementSettings settings;
+    popupMenu_->OpenMenu(Point2Di(windowX, windowY), *window_, settings);
+}
+
+void UltraDesktopWindow::ShowBarMenu(int windowX, int windowY) {
+    if (!window_) return;
+    popupMenu_ = std::make_shared<UltraCanvasMenu>("BarMenu", 0, 0, 240, 0);
+    popupMenu_->SetMenuType(MenuType::PopupMenu);
+    popupMenu_->AddItem(MenuItemData::Header(Tr("Taskbar")));
+    for (MenuItemData& item : TaskbarEdgeItems()) popupMenu_->AddItem(item);
+    popupMenu_->AddItem(MenuItemData::Separator());
+    popupMenu_->AddItem(MenuItemData::Submenu(Tr("Theme"), ThemeItems()));
+    popupMenu_->AddItem(MenuItemData::Action(Tr("Desktop settings..."), [this]() { OpenSystemSettings(); }));
+    PopupElementSettings settings;
+    popupMenu_->OpenMenu(Point2Di(windowX, windowY), *window_, settings);
+}
+
+// A right click on a bar's group: the item's own menu when it has one (a
+// running or pinned application, the screenshot, the clipboard, a tray
+// icon), else the bar's.
+void UltraDesktopWindow::InstallBarMenu(const std::shared_ptr<UltraCanvasToolbar>& group) {
+    if (!group) return;
+    group->SetOnContextMenu([this, bar = group.get()](const Point2Di& at, const std::string& itemId) {
+        if (!itemId.empty()) {
+            auto button = std::dynamic_pointer_cast<UltraCanvasButton>(bar->GetWidget(itemId));
+            if (button && button->onContextMenu) {
+                // A copy: the menu may rebuild the bar, and the button with it.
+                auto handler = button->onContextMenu;
+                handler(at.x, at.y);
+                return;
+            }
+        }
+        ShowBarMenu(at.x, at.y);
+    });
+}
+
+void UltraDesktopWindow::SetTaskbarEdge(TaskbarEdge edge) {
+    if (settings_.taskbarEdge == edge) return;
+    settings_.taskbarEdge = edge;
+    ApplySettings();
+}
+
+void UltraDesktopWindow::SetTheme(const std::string& theme) {
+    if (!DesktopSettings::IsTheme(theme) || settings_.theme == theme) return;
+    settings_.theme = theme;
+    SaveSettings();
+    BuildLayout();
+    RefreshDesktops();
+}
+
+void UltraDesktopWindow::ChooseWallpaper() {
+    FileDialogOptions options;
+    options.title = Tr("Choose a wallpaper");
+    options.parentWindow = window_.get();
+    const std::string current = WallpaperPath();
+    if (!current.empty()) options.initialDirectory = PathToUtf8(PathFromUtf8(current).parent_path());
+    UltraCanvasFileLoader::AddLoadTypes(options, Tr("Pictures"), {MediaFormatCategory::Bitmap});
+    UltraCanvasFileLoader::OpenFileDialog(options, [this](DialogResult result, const std::string& path) {
+        if (result != DialogResult::OK || path.empty()) return;
+        SetWallpaper(path);
+    });
+}
+
+void UltraDesktopWindow::SetWallpaper(const std::string& path) {
+    settings_.wallpaper = path;
+    SaveSettings();
+    if (wallpaper_) LoadWallpaper(*wallpaper_);
+    for (const auto& wallpaper : screenWallpapers_) {
+        if (wallpaper) LoadWallpaper(*wallpaper);
+    }
+    if (window_) window_->RequestRedraw();
+}
+
+void UltraDesktopWindow::OpenDisplaySettings() {
+    std::string error;
+    if (UltraCanvasDesktopShell::OpenDisplaySettings(&error)) return;
+    debugOutput << "UltraDesktop: display settings: " << error << std::endl;
+    UltraCanvasAlert::Error(Tr("The display settings could not be opened: ") + error, "UltraDesktop", nullptr,
+                            window_.get());
 }
 
 // ===== WHAT THE BARS DO =====
@@ -1662,13 +1842,15 @@ void UltraDesktopWindow::CheckSettingsFile() {
                          written.wallpaper != settings_.wallpaper ||
                          written.ramDiscPath != settings_.ramDiscPath ||
                          written.filerProgram != settings_.filerProgram ||
-                         written.virtualDesktops != settings_.virtualDesktops;
+                         written.virtualDesktops != settings_.virtualDesktops ||
+                         written.theme != settings_.theme;
     if (!changed) return;
     settings_.taskbarEdge = written.taskbarEdge;
     settings_.wallpaper = written.wallpaper;
     settings_.ramDiscPath = written.ramDiscPath;
     settings_.filerProgram = written.filerProgram;
     settings_.virtualDesktops = written.virtualDesktops;
+    settings_.theme = written.theme;
     // Written back with the notes as they are now, should a note have
     // changed between UOS-Settings reading the file and writing it.
     ApplySettings();
@@ -2290,6 +2472,8 @@ void UltraDesktopWindow::ShowSettingsButtonMenu(int windowX, int windowY) {
     popupMenu_ = std::make_shared<UltraCanvasMenu>("SettingsButtonMenu", 0, 0, 300, 0);
     popupMenu_->SetMenuType(MenuType::PopupMenu);
     popupMenu_->AddItem(MenuItemData::Action("ULTRA OS settings", [this]() { OpenSystemSettings(); }));
+    popupMenu_->AddItem(MenuItemData::Submenu(Tr("Taskbar position"), TaskbarEdgeItems()));
+    popupMenu_->AddItem(MenuItemData::Submenu(Tr("Theme"), ThemeItems()));
     // The programs that start with the desktop, in the background.
     std::vector<MenuItemData> startup;
     for (const StartupProgram& program : DesktopSettings::StartupPrograms()) {
@@ -2390,7 +2574,7 @@ std::shared_ptr<UltraCanvasWindow> UltraDesktopWindow::CreateDesktopWindow(const
     config.type = WindowType::Desktop;
     config.width = 1280;    // replaced by the screen size for a desktop window
     config.height = 800;
-    config.backgroundColor = kBarInsetColor;
+    config.backgroundColor = Bars().inset;
     if (oneOfSeveral) config.desktopArea = Rect2Di(area.x, area.y, area.width, area.height);
     return CreateWindow(config);
 }
@@ -2478,7 +2662,7 @@ void UltraDesktopWindow::OpenScreenWindow(size_t index, bool report) {
     config.title = std::string("UltraDesktop ") + ULTRADESKTOP_VERSION;
     config.type = WindowType::Desktop;
     config.desktopArea = Rect2Di(screen.x, screen.y, screen.width, screen.height);
-    config.backgroundColor = kBarInsetColor;
+    config.backgroundColor = Bars().inset;
     auto window = CreateWindow(config);
     if (!window) {
         // Tried again at every check; said once.
