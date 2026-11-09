@@ -4,6 +4,8 @@
 // correctly: folder sync, envelope sync with needs-answer computation,
 // incremental fetch, raw-body caching (parseable by MimeCodec) and two-sided
 // flag changes.
+// Version: 0.4.0 - case twins get body directories of their own (CacheDirectoryOf);
+//                  MigrateBodyCache
 // Version: 0.3.0 - a folder's bodies go without its case twin's
 // Version: 0.2.0 - a server's inbox listed as "Inbox" is stored as INBOX
 // Version: 0.1.0
@@ -20,6 +22,7 @@
 #include <UltraNet/UltraNetMime.h>
 
 #include <algorithm>
+#include <cctype>
 #include <filesystem>
 #include <fstream>
 #include <map>
@@ -351,11 +354,102 @@ TEST(sync_folders_stores_listed_inbox_as_INBOX) {
     REQUIRE_EQ(st[0].unread, 2);   // messages 1 and 2; 3 is \Seen
 }
 
-// "Work" and "work" share one body directory where the file system ignores
-// case (Windows, macOS). The server dropping "Work" takes Work's own bodies,
-// never the directory with the rest: here (Linux, separate directories) a
-// file that is not Work's own stands for work's. A folder with no such twin
-// goes with its whole directory.
+// The server dropping "Work" takes Work's bodies and none of work's: the two
+// have directories of their own, also where the file system ignores case.
+namespace {
+bool SameDirectoryNoCase(const fs::path& a, const fs::path& b) {
+    std::string x = UltraCanvas::PathToUtf8(a), y = UltraCanvas::PathToUtf8(b);
+    for (auto* s : {&x, &y})
+        for (char& c : *s) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return x == y;
+}
+} // namespace
+
+// A folder's body directory: its name where that is in title case - which the
+// usual folders' names are, so their caches stay where they were - else the
+// name and a mask of the letters whose case differs. Names that differ only in
+// case never meet in one directory, also where the file system ignores case.
+TEST(cache_directory_of_a_folder) {
+    REQUIRE_EQ(CacheDirectoryOf("INBOX"), std::string("INBOX"));
+    REQUIRE_EQ(CacheDirectoryOf("Sent Items"), std::string("Sent Items"));
+    REQUIRE_EQ(CacheDirectoryOf("[Gmail]/All Mail"), std::string("[Gmail]_All Mail"));
+    REQUIRE_EQ(CacheDirectoryOf("INBOX.Drafts"), std::string("INBOX.Drafts"));
+    REQUIRE_EQ(CacheDirectoryOf("2024 Projects"), std::string("2024 Projects"));
+    REQUIRE_EQ(CacheDirectoryOf("Work"), std::string("Work"));
+    REQUIRE_EQ(CacheDirectoryOf("work"), std::string("work~1"));
+    REQUIRE_EQ(CacheDirectoryOf("WORK"), std::string("WORK~e"));
+    REQUIRE_EQ(CacheDirectoryOf("a~b"), std::string("a~~b~3"));
+    REQUIRE_EQ(CacheDirectoryOf("A~B"), std::string("A~~B"));
+    REQUIRE_EQ(FolderOfCacheDirectory("work~1"), std::string("work"));
+    REQUIRE_EQ(FolderOfCacheDirectory("a~~b~3"), std::string("a~b"));
+    REQUIRE_EQ(FolderOfCacheDirectory("Sent Items"), std::string("Sent Items"));
+
+    const std::vector<std::string> twins = { "work", "Work", "WORK", "wORK", "WoRk",
+                                             "work~1", "Work~1", "inbox", "Inbox", "INBOX" };
+    for (std::size_t i = 0; i < twins.size(); ++i)
+        for (std::size_t j = i + 1; j < twins.size(); ++j)
+            REQUIRE(!SameDirectoryNoCase(CacheDirectoryOf(twins[i]), CacheDirectoryOf(twins[j])));
+}
+
+// An earlier version cached every folder under its plain name. Once, at the
+// start, a folder whose directory is named otherwise now has its bodies moved
+// there; the others stay as they are.
+TEST(migrate_body_cache_moves_an_earlier_layout_once) {
+    Fixture fx("migrate");
+    for (const char* name : { "work", "Sent" }) {
+        Folder f; f.accountId = "erika"; f.name = name;
+        REQUIRE(fx.store.UpsertFolder(f).success);
+    }
+    MessageEnvelope m; m.accountId = "erika"; m.folder = "work"; m.uid = 3; m.fromAddr = "a@x.com";
+    REQUIRE(fx.store.UpsertMessage(m).success);
+    const fs::path account = UltraCanvas::PathFromUtf8(fx.emlDir) / "erika";
+    fs::create_directories(account / "work");
+    fs::create_directories(account / "Sent");
+    std::ofstream(account / "work" / "3.eml") << "raw";
+    std::ofstream(account / "Sent" / "4.eml") << "raw";
+
+    REQUIRE_EQ(MigrateBodyCache(fx.emlDir, fx.store), 1);
+    REQUIRE(fs::exists(UltraCanvas::PathFromUtf8(CachedBodyPath(fx.emlDir, "erika", "work", 3))));
+    REQUIRE(!fs::exists(account / "work"));
+    REQUIRE(fs::exists(account / "Sent" / "4.eml"));   // already where it belongs
+    REQUIRE(fs::exists(UltraCanvas::PathFromUtf8(CachedBodyPath(fx.emlDir, "erika", "Sent", 4))));
+
+    // Done once: a directory of the old name made later is left alone.
+    fs::create_directories(account / "work");
+    REQUIRE_EQ(MigrateBodyCache(fx.emlDir, fx.store), 0);
+    REQUIRE(fs::exists(account / "work"));
+}
+
+// Where the file system ignores case (Windows, macOS) "Work" and "work"
+// shared one directory - here a link makes it so. "work" moves out only what
+// is its own; what both had under one number is deleted, to be downloaded
+// again; "Work"'s bodies stay where they are.
+TEST(migrate_body_cache_splits_a_directory_case_twins_shared) {
+    Fixture fx("migrate-twins");
+    for (const char* name : { "Work", "work" }) {
+        Folder f; f.accountId = "erika"; f.name = name;
+        REQUIRE(fx.store.UpsertFolder(f).success);
+    }
+    auto message = [&](const char* folder, int64_t uid) {
+        MessageEnvelope m; m.accountId = "erika"; m.folder = folder; m.uid = uid; m.fromAddr = "a@x.com";
+        REQUIRE(fx.store.UpsertMessage(m).success);
+    };
+    message("work", 1); message("Work", 2); message("work", 5); message("Work", 5);
+    const fs::path account = UltraCanvas::PathFromUtf8(fx.emlDir) / "erika";
+    fs::create_directories(account / "work");
+    for (const char* file : { "1.eml", "2.eml", "5.eml" }) std::ofstream(account / "work" / file) << "raw";
+    std::error_code ec;
+    fs::create_directory_symlink("work", account / "Work", ec);
+    if (ec) return;   // no links here: nothing to simulate with
+
+    REQUIRE_EQ(MigrateBodyCache(fx.emlDir, fx.store), 1);
+    REQUIRE(fs::exists(UltraCanvas::PathFromUtf8(CachedBodyPath(fx.emlDir, "erika", "work", 1))));
+    REQUIRE(fs::exists(UltraCanvas::PathFromUtf8(CachedBodyPath(fx.emlDir, "erika", "Work", 2))));
+    REQUIRE(!fs::exists(account / "work" / "1.eml"));   // moved out
+    REQUIRE(!fs::exists(account / "work" / "5.eml"));   // whose? nobody's for sure
+    REQUIRE(!fs::exists(UltraCanvas::PathFromUtf8(CachedBodyPath(fx.emlDir, "erika", "work", 5))));
+}
+
 TEST(removed_folder_keeps_its_case_twins_bodies) {
     Fixture fx("case-twin");
     fx.fake.folders = { MakeFolder("INBOX", "inbox"), MakeFolder("Work", ""),
@@ -374,8 +468,8 @@ TEST(removed_folder_keeps_its_case_twins_bodies) {
         return p;
     };
     const fs::path work1 = store("Work", 1);
-    const fs::path twin = work1.parent_path() / "7.eml";   // not Work's: work's, on Windows
-    std::ofstream(twin) << "raw";
+    const fs::path twin = store("work", 1);
+    REQUIRE(!SameDirectoryNoCase(work1.parent_path(), twin.parent_path()));
     const fs::path old1 = store("Old", 1);
     const fs::path oldStray = old1.parent_path() / "7.eml";
     std::ofstream(oldStray) << "raw";
@@ -383,8 +477,8 @@ TEST(removed_folder_keeps_its_case_twins_bodies) {
     fx.fake.folders = { MakeFolder("INBOX", "inbox"), MakeFolder("work", "") };
     REQUIRE(engine.SyncFolders("erika", "imaps://x/", opts).ok);
 
-    REQUIRE(!fs::exists(work1));               // Work's own body went
-    REQUIRE(fs::exists(twin));                 // the rest of the directory stayed
+    REQUIRE(!fs::exists(work1));               // Work's body went
+    REQUIRE(fs::exists(twin));                 // work's stayed
     REQUIRE(!fs::exists(old1.parent_path()));  // no twin: the whole directory went
 }
 

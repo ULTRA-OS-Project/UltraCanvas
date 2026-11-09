@@ -1,9 +1,10 @@
 // Apps/UltraMail/engine/UltraMailSyncEngine.cpp
-// Version: 0.6.2 - a folder's cached bodies are deleted without touching another
-//                  folder's: two names that differ only in case ("Work",
-//                  "work") share one directory on Windows and macOS, and
-//                  deleting, or renumbering, one wiped the other's bodies
-//                  (RemoveFolderBodies)
+// Version: 0.7.0 - collision-free body directories: a folder whose name is not
+//                  in title case ("work", "WORK") is cached under its name and
+//                  a ~<case mask> suffix (CacheDirectoryOf), so case twins no
+//                  longer share - and overwrite - one directory on Windows and
+//                  macOS; MigrateBodyCache moves an earlier version's
+//                  directories once
 // Version: 0.6.1 - SyncFolders stores the server's inbox as INBOX whatever it is
 //                  listed as ("Inbox", a JMAP mailbox of role inbox): the mail is
 //                  synced under INBOX, and the account bar counts the folder
@@ -189,7 +190,172 @@ bool SameNameNoCase(const std::string& a, const std::string& b) {
     return true;
 }
 
+bool IsAsciiLetter(unsigned char c) { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'); }
+
+// The casing a name's directory is plain in: each word's first letter upper
+// case and the rest lower ("Sent Items", "[Gmail]_All Mail", "INBOX.Drafts"),
+// a leading "inbox" level as INBOX. A word starts after anything but a letter,
+// a digit or a byte of a multi-byte character. One fixed form per spelling:
+// of two names that differ only in case, at most one is in it.
+std::string TitleCase(const std::string& name) {
+    std::string out = name;
+    bool wordStart = true;
+    for (char& ch : out) {
+        const auto c = static_cast<unsigned char>(ch);
+        if (IsAsciiLetter(c)) {
+            ch = static_cast<char>(wordStart ? std::toupper(c) : std::tolower(c));
+            wordStart = false;
+        } else {
+            wordStart = !(std::isdigit(c) || c >= 0x80);
+        }
+    }
+    if (out.size() >= 5 && SameNameNoCase(out.substr(0, 5), "INBOX") &&
+        (out.size() == 5 || !(std::isalnum(static_cast<unsigned char>(out[5])) ||
+                              static_cast<unsigned char>(out[5]) >= 0x80)))
+        for (std::size_t i = 0; i < 5; ++i)
+            out[i] = static_cast<char>(std::toupper(static_cast<unsigned char>(out[i])));
+    return out;
+}
+
+// The directory an earlier version cached the folder's bodies in.
+std::string LegacyCacheDirectory(const std::string& folder) { return SanitizeFolder(folder); }
+
 } // namespace
+
+std::string CacheDirectoryOf(const std::string& folder) {
+    const std::string name = SanitizeFolder(folder);
+    const std::string title = TitleCase(name);
+    // Which letters differ from the title case, one bit each in letter order,
+    // four to a hex digit, lowest first.
+    std::string mask;
+    int nibble = 0, bit = 0;
+    bool any = false;
+    for (std::size_t i = 0; i < name.size(); ++i) {
+        if (!IsAsciiLetter(static_cast<unsigned char>(name[i]))) continue;
+        if (name[i] != title[i]) { nibble |= 1 << bit; any = true; }
+        if (++bit == 4) {
+            mask.push_back("0123456789abcdef"[nibble]);
+            nibble = 0; bit = 0;
+        }
+    }
+    if (bit > 0) mask.push_back("0123456789abcdef"[nibble]);
+    while (!mask.empty() && mask.back() == '0') mask.pop_back();
+    // A '~' of the name doubled, so the one before the mask stands alone.
+    std::string out;
+    for (char c : name) {
+        out.push_back(c);
+        if (c == '~') out.push_back('~');
+    }
+    if (any) out += "~" + mask;
+    return out;
+}
+
+std::string FolderOfCacheDirectory(const std::string& directory) {
+    std::string out;
+    for (std::size_t i = 0; i < directory.size(); ++i) {
+        if (directory[i] != '~') { out.push_back(directory[i]); continue; }
+        if (i + 1 < directory.size() && directory[i + 1] == '~') { out.push_back('~'); ++i; continue; }
+        break;   // the lone '~' before the case mask
+    }
+    return out;
+}
+
+namespace {
+
+// `uid` of a cached body's file name ("123.eml"), or -1.
+int64_t UidOfBodyFile(const fs::path& file) {
+    if (file.extension() != ".eml") return -1;
+    const std::string stem = PathToUtf8(file.stem());
+    if (stem.empty() || stem.size() > 18) return -1;
+    for (char c : stem) if (!std::isdigit(static_cast<unsigned char>(c))) return -1;
+    return std::stoll(stem);
+}
+
+// Moves `from` to `to`; a body already at `to` wins and `from` goes.
+bool MoveBodyFile(const fs::path& from, const fs::path& to) {
+    std::error_code ec;
+    if (fs::exists(to, ec)) return fs::remove(from, ec) || !fs::exists(from, ec);
+    fs::create_directories(to.parent_path(), ec);
+    fs::rename(from, to, ec);
+    return !ec;
+}
+
+} // namespace
+
+int MigrateBodyCache(const std::string& emlDir, const LocalStore& store) {
+    const fs::path root = PathFromUtf8(emlDir);
+    const fs::path marker = root / ".layout-2";
+    std::error_code ec;
+    if (fs::exists(marker, ec)) return 0;
+    int moved = 0;
+    bool complete = true;
+    std::vector<Account> accounts;
+    store.ListAccounts(accounts);
+    for (const auto& account : accounts) {
+        const fs::path accountDir = root / PathFromUtf8(account.accountId);
+        if (!fs::is_directory(accountDir, ec)) continue;
+        std::vector<Folder> folders;
+        store.ListFolders(account.accountId, folders);
+        for (const auto& folder : folders) {
+            const std::string legacyName = LegacyCacheDirectory(folder.name);
+            const std::string newName = CacheDirectoryOf(folder.name);
+            if (legacyName == newName) continue;
+            const fs::path legacy = accountDir / PathFromUtf8(legacyName);
+            const fs::path target = accountDir / PathFromUtf8(newName);
+            if (!fs::is_directory(legacy, ec)) continue;
+
+            // The folders whose old directory is this one: their names differ
+            // only in case, on a file system that ignores it (Windows, macOS).
+            std::set<int64_t> twinUids;
+            bool shared = false;
+            for (const auto& other : folders) {
+                if (other.name == folder.name) continue;
+                const fs::path otherLegacy = accountDir / PathFromUtf8(LegacyCacheDirectory(other.name));
+                std::error_code eq;
+                if (!fs::exists(otherLegacy, eq) || !fs::equivalent(legacy, otherLegacy, eq) || eq)
+                    continue;
+                shared = true;
+                std::vector<int64_t> uids;
+                store.ListUids(account.accountId, other.name, uids);
+                twinUids.insert(uids.begin(), uids.end());
+            }
+
+            if (!shared && !fs::exists(target, ec)) {
+                fs::rename(legacy, target, ec);
+                if (ec) complete = false; else ++moved;
+                continue;
+            }
+            // File by file: into a directory that is there already, or out of
+            // one a twin shares - then only this folder's own bodies, and one
+            // both numbered alike is nobody's for sure: it goes, and each
+            // folder downloads its own again when it is read.
+            std::set<int64_t> own;
+            if (shared) {
+                std::vector<int64_t> uids;
+                store.ListUids(account.accountId, folder.name, uids);
+                own.insert(uids.begin(), uids.end());
+            }
+            std::vector<fs::path> files;
+            for (const auto& entry : fs::directory_iterator(legacy, ec))
+                if (entry.is_regular_file(ec)) files.push_back(entry.path());
+            for (const auto& file : files) {
+                const int64_t uid = UidOfBodyFile(file);
+                if (shared) {
+                    if (uid < 0 || !own.count(uid)) continue;   // the twin's
+                    if (twinUids.count(uid)) { fs::remove(file, ec); continue; }
+                }
+                if (!MoveBodyFile(file, target / file.filename())) complete = false;
+            }
+            fs::remove(legacy, ec);   // only once it is empty
+            ++moved;
+        }
+    }
+    if (complete) {
+        fs::create_directories(root, ec);
+        std::ofstream(marker) << "2\n";
+    }
+    return moved;
+}
 
 std::string CachedBodyPath(const std::string& emlDir, const std::string& accountId,
                            const std::string& folder, int64_t uid) {
@@ -197,7 +363,7 @@ std::string CachedBodyPath(const std::string& emlDir, const std::string& account
     // path converts it in the ANSI code page on Windows, so a folder whose
     // name is outside that code page was cached under a mangled name.
     fs::path p = PathFromUtf8(emlDir) / PathFromUtf8(accountId)
-               / PathFromUtf8(SanitizeFolder(folder)) / (std::to_string(uid) + ".eml");
+               / PathFromUtf8(CacheDirectoryOf(folder)) / (std::to_string(uid) + ".eml");
     return PathToUtf8(p);
 }
 
@@ -206,32 +372,9 @@ std::string SyncEngine::BodyPath(const std::string& accountId,
     return CachedBodyPath(emlDir_, accountId, folder, uid);
 }
 
-bool SyncEngine::SharesBodyDirectory(const std::string& accountId,
-                                     const std::string& folder) const {
-    const std::string mine = SanitizeFolder(folder);
-    // The inbox is there whether or not it has a row yet.
-    if (folder != "INBOX" && SameNameNoCase(mine, "INBOX")) return true;
-    std::vector<Folder> folders;
-    store_.ListFolders(accountId, folders);
-    for (const auto& f : folders)
-        if (f.name != folder && SameNameNoCase(SanitizeFolder(f.name), mine)) return true;
-    return false;
-}
-
-void SyncEngine::RemoveFolderBodies(const std::string& accountId, const std::string& folder,
-                                    const std::vector<int64_t>& uids) {
-    const fs::path dir = PathFromUtf8(BodyPath(accountId, folder, 0)).parent_path();
+void SyncEngine::RemoveFolderBodies(const std::string& accountId, const std::string& folder) {
     std::error_code ec;
-    if (!SharesBodyDirectory(accountId, folder)) {
-        fs::remove_all(dir, ec);
-        return;
-    }
-    // The directory is also another folder's on a file system that ignores
-    // case: only this folder's own files go - one the other folder has under
-    // the same number is fetched again when it is read - and the directory
-    // only once it is empty.
-    for (int64_t uid : uids) fs::remove(PathFromUtf8(BodyPath(accountId, folder, uid)), ec);
-    fs::remove(dir, ec);   // fails, as meant, while files are left in it
+    fs::remove_all(PathFromUtf8(BodyPath(accountId, folder, 0)).parent_path(), ec);
 }
 
 SyncOutcome SyncEngine::SyncFolders(const std::string& accountId,
@@ -269,13 +412,8 @@ SyncOutcome SyncEngine::SyncFolders(const std::string& accountId,
     if (!listed.empty()) {
         for (const auto& s : stored) {
             if (listed.count(s.name) || s.name == "INBOX") continue;
-            std::vector<int64_t> uids;
-            store_.ListUids(accountId, s.name, uids);
             if (!store_.RemoveFolder(accountId, s.name)) continue;
-            // Not the directory of a folder that only differs in case: the
-            // row an older version kept for the inbox as listed ("Inbox")
-            // shares INBOX's on Windows and macOS.
-            RemoveFolderBodies(accountId, s.name, uids);
+            RemoveFolderBodies(accountId, s.name);
             out.stats.foldersRemoved++;
         }
     }
@@ -302,10 +440,8 @@ SyncOutcome SyncEngine::DeleteFolder(const std::string& accountId, const std::st
     UltraNetResult r = mailbox_.DeleteFolder(serverUrl, folder, options);
     if (!r) return SyncOutcome::Fail(r);
     SyncOutcome out;
-    std::vector<int64_t> uids;
-    store_.ListUids(accountId, folder, uids);
     if (store_.RemoveFolder(accountId, folder)) {
-        RemoveFolderBodies(accountId, folder, uids);
+        RemoveFolderBodies(accountId, folder);
         out.stats.foldersRemoved = 1;
     }
     SyncOutcome listed = SyncFolders(accountId, serverUrl, options);
@@ -384,12 +520,10 @@ SyncOutcome SyncEngine::SyncMessages(const std::string& accountId,
         const bool aheadOfServer = status.uidNext != 0 &&
                                    sinceUid >= static_cast<int64_t>(status.uidNext);
         if (renumbered || aheadOfServer) {
-            std::vector<int64_t> uids;
-            store_.ListUids(accountId, folder, uids);
             store_.ClearFolderMessages(accountId, folder);   // drop stale cached UIDs
             // ... and their bodies: every cached UID of the folder is stale, and
             // the new numbering would overwrite some files and orphan the rest.
-            RemoveFolderBodies(accountId, folder, uids);
+            RemoveFolderBodies(accountId, folder);
             sinceUid = 0;
             out.stats.cacheReset = true;
         }

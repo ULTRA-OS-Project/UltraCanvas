@@ -9,8 +9,9 @@
 // per-account worker and marshals results to the UI. Because it depends only on
 // the IMailboxProtocolPlugin interface, it is fully testable with a fake
 // mailbox — no live server required.
-// Version: 0.5.1 - RemoveFolderBodies: a folder's cached bodies go without
-//                  another's that shares the directory (names that differ in case)
+// Version: 0.6.0 - CacheDirectoryOf / FolderOfCacheDirectory / MigrateBodyCache:
+//                  folders whose names differ only in case no longer share a
+//                  body directory on Windows and macOS
 // Version: 0.5.0 - CreateFolder / DeleteFolder
 // Version: 0.4.0 - RescanStaleVerdicts (verdicts of older rules scanned again)
 // Version: 0.3.0 - SyncFolders: the server's separator kept, folders it no
@@ -246,16 +247,8 @@ public:
                              const std::string& serverUrl, const UltraNetMailOptions& options);
 
 private:
-    // Whether `folder`'s body directory is also another folder's of the
-    // account where the file system ignores case: a name that differs only in
-    // case ("Work" / "work", "Inbox" / INBOX) maps to the same directory on
-    // Windows and macOS. Asked of every system alike, to be safe on both.
-    bool SharesBodyDirectory(const std::string& accountId, const std::string& folder) const;
-    // Deletes the cached bodies of `folder`, whose stored UIDs were `uids`
-    // (read before its rows went): the whole directory, or, when it is shared
-    // (SharesBodyDirectory), only those files and then the directory if empty.
-    void RemoveFolderBodies(const std::string& accountId, const std::string& folder,
-                            const std::vector<int64_t>& uids);
+    // Deletes the cached bodies of `folder`: its whole directory.
+    void RemoveFolderBodies(const std::string& accountId, const std::string& folder);
 
     // An envelope from the server as the store keeps it (decoded headers,
     // parsed date, local flags).
@@ -268,8 +261,28 @@ private:
 };
 
 // Path where a message body is (or would be) cached under `emlDir`
-// (emlDir/<accountId>/<folder>/<uid>.eml), for callers without a SyncEngine.
+// (emlDir/<accountId>/<CacheDirectoryOf(folder)>/<uid>.eml), for callers
+// without a SyncEngine.
 std::string CachedBodyPath(const std::string& emlDir, const std::string& accountId,
                            const std::string& folder, int64_t uid);
+
+// The directory a folder's bodies are cached in: its name with '/', '\' and
+// ':' as '_' - unchanged for a name in title case ("Sent Items", "INBOX",
+// "[Gmail]_All Mail"); any other casing gets "~" and a hex mask of the letters
+// that differ from it ("work" -> "work~1"), and a '~' of the name is doubled.
+// Two folders whose names differ only in case never share a directory, also
+// where the file system ignores case (Windows, macOS).
+std::string CacheDirectoryOf(const std::string& folder);
+// The folder name a cache directory reads as, its case mask left out
+// ("work~1" -> "work", "a~~b" -> "a~b") - for reading a name back from the
+// directory alone, as EmailCleaner does.
+std::string FolderOfCacheDirectory(const std::string& directory);
+// Moves the body directories an earlier version made (the plain name, which
+// case twins shared) to CacheDirectoryOf's, for every folder `store` knows,
+// once per `emlDir` (a ".layout-2" file marks it done; a move that fails is
+// tried again at the next call). From a directory twins shared, each takes
+// only its own bodies, and one both had under the same number is deleted - to
+// be downloaded again. Returns how many folders were moved.
+int MigrateBodyCache(const std::string& emlDir, const LocalStore& store);
 
 } // namespace UltraMail
