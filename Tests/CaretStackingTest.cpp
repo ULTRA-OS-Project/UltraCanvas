@@ -10,8 +10,9 @@
 //
 // Runs headless under Xvfb. Skips - rather than fails - when there is no
 // display, so it stays usable on a bare CI machine.
+// Version: 1.0.1 - the menu composited onto the window: the order checked is the window's own
 // Version: 1.0.0
-// Last Modified: 2026-09-13
+// Last Modified: 2026-11-09
 // Author: UltraCanvas Framework
 
 #include "DisplayTestSupport.h"
@@ -94,6 +95,11 @@ int main() {
 
     UltraCanvasApplication app;
     if (!app.Initialize("CaretStackingTest")) SKIP_ALL("application would not initialise");
+    // The stacking order of the window's own composite: the menu composited
+    // onto the window, as on the platforms where a popup has no window of its
+    // own (macOS, the browser, Android). In a window of its own the menu is
+    // above the whole window, caret and all (PopupOwnWindowTest).
+    UltraCanvasWindowBase::SetPopupsInOwnWindows(false);
 
     WindowConfig cfg;
     cfg.title = "CaretStackingTest";

@@ -1,5 +1,7 @@
 // OS/MSWindows/UltraCanvasWindowsWindow.cpp
 // Complete Windows window implementation with Cairo rendering
+// Version: 1.9.0 - WindowType::Popup: a popup's own window - topmost, out of the taskbar, never
+//                  activated, shown without activation; SetNativeWindowShape (a window region)
 // Version: 1.8.0 - WindowType::Tooltip: topmost, out of the taskbar, never activated, and
 //                  layered and transparent to the mouse, which passes through it
 // Version: 1.7.0 - WindowType::SessionLock: a topmost borderless window (not enforced)
@@ -190,8 +192,11 @@ namespace UltraCanvas {
                 exStyle |= WS_EX_DLGMODALFRAME;
                 break;
             case WindowType::Popup:
-                style = WS_POPUP | WS_BORDER;
-                exStyle |= WS_EX_TOPMOST;
+                // A popup's own window: above everything, out of the taskbar
+                // and Alt+Tab, and never activated - the window the popup
+                // belongs to keeps the keys. The popup draws its own border.
+                style = WS_POPUP;
+                exStyle = WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE;
                 break;
             case WindowType::Tool:
                 style = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME;
@@ -665,6 +670,14 @@ namespace UltraCanvas {
                 return 0;
             }
 
+            case WM_MOUSEACTIVATE:
+                // A click in a popup's own window (an item of a menu) leaves
+                // the window the popup belongs to active, with the keys.
+                if (config_.type == WindowType::Popup || config_.type == WindowType::Tooltip) {
+                    return MA_NOACTIVATE;
+                }
+                break;
+
             case WM_SETCURSOR: {
                 // Handle cursor in client area - prevent Windows from resetting it
                 if (LOWORD(lParam) == HTCLIENT) {
@@ -698,10 +711,11 @@ namespace UltraCanvas {
         // its empty surface - black - until the event loop drew the frame,
         // for as long as anything kept the loop from getting there.
         RenderBeforeShow();
-        const bool noActivate = config_.type == WindowType::Notification || config_.type == WindowType::Tooltip;
+        const bool noActivate = config_.type == WindowType::Notification || config_.type == WindowType::Tooltip ||
+                                config_.type == WindowType::Popup;
         ShowWindow(hwnd, noActivate ? SW_SHOWNOACTIVATE : SW_SHOW);
-        // The tooltip above the topmost windows shown since it last was
-        if (config_.type == WindowType::Tooltip) {
+        // A tooltip or a popup above the topmost windows shown since it last was
+        if (config_.type == WindowType::Tooltip || config_.type == WindowType::Popup) {
             SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
         }
         UpdateWindow(hwnd);
@@ -720,6 +734,24 @@ namespace UltraCanvas {
         HandleWindowHidden();
 
         if (onWindowHide) onWindowHide();
+    }
+
+    void UltraCanvasWindowsWindow::SetNativeWindowShape(const std::vector<Rect2Di>& physicalRects) {
+        if (!hwnd) return;
+        if (physicalRects.empty()) {
+            SetWindowRgn(hwnd, nullptr, TRUE);   // the whole window again
+            return;
+        }
+        HRGN region = CreateRectRgn(0, 0, 0, 0);
+        if (!region) return;
+        for (const auto& r : physicalRects) {
+            HRGN part = CreateRectRgn(r.x, r.y, r.x + r.width, r.y + r.height);
+            if (!part) continue;
+            CombineRgn(region, region, part, RGN_OR);
+            DeleteObject(part);
+        }
+        // The window owns the region from here on
+        if (!SetWindowRgn(hwnd, region, TRUE)) DeleteObject(region);
     }
 
     void UltraCanvasWindowsWindow::RaiseAndFocus() {

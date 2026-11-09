@@ -19,8 +19,9 @@
 // display, so it stays usable on a bare CI machine. Under Xvfb there is no
 // window manager to activate the window, and a window that is never activated
 // draws no caret: the test activates it itself through DisplayTestSupport.h.
+// Version: 1.0.1 - the menu composited onto the window, which the checks read back
 // Version: 1.0.0
-// Last Modified: 2026-09-30
+// Last Modified: 2026-11-09
 // Author: UltraCanvas Framework
 
 #include "DisplayTestSupport.h"
@@ -200,6 +201,10 @@ int main() {
 
     UltraCanvasApplication app;
     if (!app.Initialize("TextMetricsScreenshotTest")) SKIP_ALL("application would not initialise");
+    // The menu is read back from the window's surface, so it is composited
+    // onto it rather than shown in a window of its own; it is drawn the same
+    // either way (PopupOwnWindowTest covers its own window).
+    UltraCanvasWindowBase::SetPopupsInOwnWindows(false);
 
     const int kWidth = 640, kHeight = 400;
     WindowConfig cfg;
