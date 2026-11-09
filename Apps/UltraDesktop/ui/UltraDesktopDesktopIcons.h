@@ -16,11 +16,16 @@
 //     manager, an editor or a mail program takes. A right click offers
 //     Open, Show in the file manager, Delete (into the trash, after one
 //     question), Select all and Arrange icons, for the whole selection.
+//   - The keyboard, once an icon or the wallpaper between them was clicked:
+//     Delete deletes the selection (after the question), Ctrl+A selects
+//     every icon, Enter opens the selection, Escape ends a drag or a rubber
+//     band where it started, else clears the selection.
 //   - Files dropped on the wallpaper or on an icon are moved into the
 //     Desktop folder (copied when they are on another drive) and appear
 //     where they were dropped (TakeFiles).
 //   - The folder is read again when it changes (Refresh, from the desktop's
 //     timer), so a file saved to the Desktop elsewhere appears too.
+// Version: 0.3.0 - the keyboard: Delete, Ctrl+A, Enter, Escape
 // Version: 0.2.0 - several icons selected (Ctrl+click, Shift+click, a rubber
 //                  band from the wallpaper), moved together, and dragged out
 //                  to another program as a native file drag
@@ -76,6 +81,7 @@ public:
     void BeginRubberBand(const UltraCanvas::Point2Df& at, bool add);
 
     bool OnEvent(const UltraCanvas::UCEvent& event) override;
+    bool AcceptsFocus() const override { return IsVisible(); }
     // The layer answers only where an icon is, or while a drag or a rubber
     // band is under way. Presses that still reach it between the icons are
     // the wallpaper's: a rubber band, the desktop's menu, a drop.
@@ -105,6 +111,9 @@ private:
     void UpdateRubberBand(const UltraCanvas::Point2Df& to);
     void EndRubberBand();
     void DragOut();
+    bool OnKey(const UltraCanvas::UCEvent& event);
+    // Escape during a drag: the icons back where they were.
+    void CancelDrag();
     void LoadPicture(const std::string& name);
     void SavePlace(const Icon& icon);
 

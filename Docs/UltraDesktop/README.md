@@ -297,7 +297,10 @@ colours.
   which that program takes; one that moved them makes their icons go. A
   right click offers, for the whole selection, *Open*, *Show in the file
   manager*, *Delete* (into the trash, after one question), *Select all* and
-  *Arrange icons*. The folder is looked at every two seconds,
+  *Arrange icons*. After a click on an icon or the wallpaper between them the
+  layer has the keyboard: Delete deletes the selection (after the question),
+  Ctrl+A selects every icon, Enter opens the selection, Escape ends a drag or
+  a rubber band where it started, else clears the selection. The folder is looked at every two seconds,
   so a file another program saves there appears too.
 
 A change is saved at once and the bars are rebuilt in place; one made in

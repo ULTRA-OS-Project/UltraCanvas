@@ -25,3 +25,6 @@
   Bluetooth, device and clipboard panels and the window pictures are near
   white with dark text in the light theme.
 - **The desktop's menu works on the wallpaper while desktop icons show.**
+- **The desktop icons answer the keyboard**, after a click on an icon or
+  the wallpaper: Delete (after the question), Ctrl+A, Enter, and Escape,
+  which clears the selection or puts a drag or a rubber band back.

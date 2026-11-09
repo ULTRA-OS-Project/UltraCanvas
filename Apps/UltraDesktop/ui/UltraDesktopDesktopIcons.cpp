@@ -1,5 +1,6 @@
 // Apps/UltraDesktop/ui/UltraDesktopDesktopIcons.cpp
 // The Desktop folder as icons on the wallpaper. See UltraDesktopDesktopIcons.h.
+// Version: 0.3.0 - Delete, Ctrl+A, Enter, Escape
 // Version: 0.2.0 - several icons selected (Ctrl+click, Shift+click, a rubber
 //                  band from the wallpaper), moved together, and dragged out
 //                  to another program as a native file drag
@@ -520,6 +521,59 @@ void UltraDesktopDesktopIcons::DragOut() {
     });
 }
 
+// ===== THE KEYBOARD =====
+
+void UltraDesktopDesktopIcons::CancelDrag() {
+    for (const auto& [name, start] : dragStart_) {
+        auto icon = icons_.find(name);
+        if (icon != icons_.end()) PlaceIcon(icon->second, start);
+    }
+    dragStart_.clear();
+    pressedName_.clear();
+    dragging_ = false;
+    if (auto* app = UltraCanvasApplication::GetInstance()) app->ReleaseMouse();
+    InvalidateLayout();
+    RequestRedraw();
+}
+
+bool UltraDesktopDesktopIcons::OnKey(const UCEvent& event) {
+    switch (event.virtualKey) {
+        case UCKeys::Delete:
+        case UCKeys::NumPadDelete:
+            if (selected_.empty() || dragging_ || banding_) return false;
+            DeleteSelected();
+            return true;
+        case UCKeys::Return:
+        case UCKeys::NumPadEnter:
+            if (selected_.empty() || dragging_ || banding_) return false;
+            OpenSelected();
+            return true;
+        case UCKeys::A: {
+            if (!event.ctrl || event.alt) return false;
+            std::set<std::string> all;
+            for (const auto& [name, icon] : icons_) all.insert(name);
+            SetSelection(all);
+            return true;
+        }
+        case UCKeys::Escape:
+            if (banding_) {
+                // The selection the band started from.
+                EndRubberBand();
+                SetSelection(bandBase_);
+                return true;
+            }
+            if (!pressedName_.empty()) {
+                CancelDrag();
+                return true;
+            }
+            if (selected_.empty()) return false;
+            ClearSelection();
+            return true;
+        default:
+            return false;
+    }
+}
+
 // ===== EVENTS =====
 
 UltraDesktopDesktopIcons::Icon* UltraDesktopDesktopIcons::IconAt(const Point2Df& point) {
@@ -543,7 +597,13 @@ bool UltraDesktopDesktopIcons::Contains(const Point2Df& point) {
 bool UltraDesktopDesktopIcons::OnEvent(const UCEvent& event) {
     auto* app = UltraCanvasApplication::GetInstance();
     switch (event.type) {
+        case UCEventType::KeyDown:
+            if (OnKey(event)) return true;
+            break;
         case UCEventType::MouseDown: {
+            // The keys go to the icons from the first click on them or on
+            // the wallpaper between them (the window itself is not raised).
+            if (!IsFocused()) SetFocus(true);
             Icon* icon = IconAt(event.pointer);
             if (!icon) {
                 // The wallpaper between the icons: the layer lies over it and

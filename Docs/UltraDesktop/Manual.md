@@ -355,7 +355,11 @@ Right-click the **wallpaper** for the desktop's menu:
     drag them onto another program's window - a file manager, a mail, an
     editor - to hand the files to it. Right-click for **Open**, **Show in
     the file manager**, **Delete**, **Select all** and **Arrange icons**,
-    for all the selected icons. A file saved to the Desktop
+    for all the selected icons. Once you have clicked an icon or the
+    wallpaper, the keyboard works on them too: **Delete** deletes the
+    selected icons (after asking), **Ctrl+A** selects them all, **Enter**
+    opens them, and **Escape** clears the selection (or, during a drag or
+    while drawing a box, puts things back as they were). A file saved to the Desktop
     folder by another program appears within two seconds.
 - **Arrange icons** (with **Drop on desktop**) puts the icons back on the
   grid, in name order.
@@ -526,6 +530,7 @@ at sign-in.
 | Wallpaper | right-click / drop files | wallpaper, theme, taskbar position, drop files, notes, display settings, desktop settings / onto the Sticker board's Unsorted category, or onto the desktop |
 | Desktop icon | click / Ctrl+click / Shift+click / double-click / drag / right-click | select / add or remove / add / open / move, or onto another program's window to give it the files / Open, Show in the file manager, Delete, Select all, Arrange icons |
 | Wallpaper, with desktop icons | drag / Ctrl+drag | select the icons in the box / add them |
+| Desktop icons (after a click on them or the wallpaper) | Delete / Ctrl+A / Enter / Escape | delete the selected (asked first) / select all / open the selected / clear the selection, or cancel a drag or a box |
 | The bars, between the buttons | right-click | taskbar position, theme |
 | Loudspeaker icon | click | the volume panel |
 | Pinned program | click / right-click | start it / open, unpin |
