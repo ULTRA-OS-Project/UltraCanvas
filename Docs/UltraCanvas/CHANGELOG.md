@@ -1,3 +1,25 @@
+#### 2026-11-09 *0.9.506*
+- **`UltraCanvasDialogTypes.h`: `UltraCanvasModalDialog.h` and
+  `UltraCanvasFilerWidget.h` no longer include each other.** The dialog
+  enums (`DialogType`, `DialogButton(s)`, `DialogButtonRole`, `DialogResult`,
+  `DialogAnimation`, `DialogPosition`, `InputType`, `FileDialogType`) and
+  `FileFilter` moved into the new header, which the dialog header includes, so
+  every user sees the same names. The Filer header includes only that one, so
+  it no longer pulls in the whole dialog system.
+- **Widgets can be runtime modules: `ULTRACANVAS_WIDGETS`, VideoTimeline
+  first.** The widget counterpart of `ULTRACANVAS_CHARTS`. A selectable widget
+  is compiled into the core when named in `ULTRACANVAS_WIDGETS` (`all`, the
+  default, so nothing changes for an existing build). One left out is built as
+  its own module, `ultracanvas-widget-<name>` in `<build>/Plugins/Elements`,
+  which registers through the element plugin loader. The video timeline is
+  registered as `"video-timeline"` (`MakeVideoTimelineDescriptor`,
+  `RegisterVideoTimelineElement`). `UltraCanvas_RegisterSelectedWidgets()`
+  registers the widgets compiled in. In a static core it also keeps the core
+  objects the modules need, so a host loading a widget module calls it at
+  startup. UltraVideo and DemoApp use the timeline's typed API, so configuring
+  them with the timeline left out stops with an error. `VideoTimelinePluginTest`
+  creates the timeline by name in both builds.
+
 #### 2026-11-09 *0.9.505*
 - **Tooltips are shown in a window of their own, above every other window.**
   `UltraCanvasTooltipManager` drew the tooltip into the window it belongs to
