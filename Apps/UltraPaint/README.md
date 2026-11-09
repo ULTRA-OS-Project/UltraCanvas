@@ -16,13 +16,31 @@ editor is [`Docs/UltraPaint/FeatureGapAnalysis.md`](../../Docs/UltraPaint/Featur
  menu bar:  File  Edit  Image  Layer  Select  Adjust  Filter  View  Help
  toolbar:   new open save | undo redo | zoom- zoom+ fit 100% | new layer export
  ┌────┬──────────────────────────────────────┬──────────────────┐
- │tool│                                      │ Colour           │
+ │    │ [photo.jpg ×] [Untitled 2 •×] [+]    │ Colour           │
+ │tool│                                      │                  │
  │pal-│         paint surface                │  picker, palettes│
  │ette│   (zoom, pan, grid, marching ants)   │ Tool Options     │
  │    │                                      │ Layers           │
  └────┴──────────────────────────────────────┴──────────────────┘
  status: pointer x,y | zoom | size, layers | hint
 ```
+
+### Images in tabs
+
+A window holds several images, one tab each, in the strip over the canvas
+(`UltraCanvasTabbedContainer` with its pages in the canvas area). Each tab
+has its own paint surface, so it keeps its zoom and scroll; the panels, the
+title and the tools follow the tab on show. *File ▸ New*, *Open*, *Paste as
+New Image*, the **+** at the end of the strip and *Open in new tab* on a
+dropped image each add a tab - nothing open is replaced, so none of them asks
+to discard changes. The one exception is the blank canvas a window starts
+with: while nobody has touched it, the first image opened takes its place.
+
+A dot on a tab marks unsaved changes. Its **×**, or *File ▸ Close Tab*
+(`Ctrl+W`), closes it, asking first when it has unsaved changes; the last
+tab closing leaves a blank canvas. `Ctrl+Tab` / `Ctrl+Shift+Tab` go to the
+next and previous tab, and a tab can be dragged to another place in the
+strip. Closing the window asks once about all its unsaved images.
 
 The colour picker has a list of designs in its corner - colour circle,
 slider and square, colour rectangle, or colour and brightness sliders - and
@@ -151,10 +169,10 @@ JPEG, ...) holds the text as the pixels it shows.
 
 ## Menus
 
-- **File:** New (presets, background), New Window, Open, Import Image
-  (merge into this image or open a new window), Save, Save As, Export with
-  Options (the framework's format dialog), Password Protection (see *Files*),
-  Quit.
+- **File:** New (presets, background; in a new tab), New Window, Open (in a
+  new tab), Import Image (merge into this image or open it in a new tab),
+  Save, Save As, Export with Options (the framework's format dialog), Password
+  Protection (see *Files*), Close Tab, Next / Previous Tab, Quit.
 - **Edit:** Undo / Redo, Cut, Copy, Copy Merged, Paste as New Layer, Paste
   as New Image, Paste Last Copied Image (Ctrl+Alt+V), Delete, Fill with
   Foreground / Background, Settings. When Paste finds no picture on the
@@ -272,13 +290,13 @@ the open image:
 | Answer | What happens |
 |---|---|
 | **Merge image** | it lands as a new layer, centred, with the Move tool selected. A bitmap bigger than the canvas offers *Scale to fit the canvas*, ticked by default — otherwise it would be cropped to the canvas without saying so |
-| **Open new window** | it gets an editor of its own; the current image is untouched |
+| **Open in new tab** | it gets a tab of its own; the current image is untouched |
 | **Cancel** | nothing happens |
 
 Several files dropped together ask once and all follow the same answer.
 *File ▸ Import Image…* asks the same question for a file picked from the
-file dialog, and *File ▸ New Window* (`Ctrl+Alt+N`) opens an empty one.
-The application exits when its last window closes.
+file dialog. *File ▸ New Window* (`Ctrl+Alt+N`) still opens a second, empty
+window; the application exits when its last window closes.
 
 ### Vector drawings
 
@@ -363,12 +381,13 @@ UltraPaint work.ucraster   # open a layered project
 UltraPaint work.ucd        # open an UltraCanvas layered image
 UltraPaint logo.svg        # asks for the raster size, then opens it
 UltraPaint part.stl        # asks for the view and the size, then opens it
-UltraPaint a.png b.png     # one window each - what a drop on the icon expands to
+UltraPaint a.png b.png     # a tab each - what a drop on the icon expands to
 ```
 
 One UltraPaint runs per user. Starting it again while it runs - from a
 shell, a file manager or a drop on the icon - hands the images to the running
-copy, which opens each in a new window of its own and brings it to the front;
+copy, which opens each in a new tab of the window used last and brings that
+window to the front;
 an image already open is never replaced. A start without images just brings
 UltraPaint forward (`UltraCanvasSingleInstance`). `--help` and `--version`
 answer on their own.

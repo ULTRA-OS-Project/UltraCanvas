@@ -1,11 +1,12 @@
 // Apps/UltraPaint/UltraPaintDialogs.cpp
 // New Image, Scale Image / Canvas Size, Layer Properties, Import, Colour to
 // Alpha and Password Protection windows.
+// Version: 1.5.0 - "Open in new tab" in place of "Open new window"
 // Version: 1.4.0 - Password Protection: the password a *.ucd is saved with
 // Version: 1.3.0 - the Text window is gone: text is typed on the canvas
 // Version: 1.2.1 - Colour to Alpha: the picker in the framework's light style, as the panel's
 // Version: 1.2.0
-// Last Modified: 2026-10-16
+// Last Modified: 2026-11-09
 // Author: UltraCanvas Framework
 
 #include "UltraPaintDialogs.h"
@@ -13,6 +14,7 @@
 #include "UltraPaintTools.h"   // PaintOptionWidgets
 #include "UltraCanvasRasterLayer.h"
 #include "UltraCanvasFormLayout.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <algorithm>
 #include <cmath>
@@ -466,7 +468,7 @@ UltraPaintImportDialog::UltraPaintImportDialog(const UltraPaintImportRequest& re
         auto b = std::make_shared<UltraCanvasButton>(id, 0, 0, width, 28, text);
         b->onClick = [this, action]() { Finish(action); };
         if (action == UltraPaintImportResult::Action::Open ||
-            action == UltraPaintImportResult::Action::NewWindow) {
+            action == UltraPaintImportResult::Action::NewTab) {
             b->SetStyle(ButtonStyles::PrimaryStyle());
         }
         SizeButtonToText(b);
@@ -476,7 +478,7 @@ UltraPaintImportDialog::UltraPaintImportDialog(const UltraPaintImportRequest& re
     addButton("upi-cancel", "Cancel", 88, UltraPaintImportResult::Action::Cancel);
     if (req.offerMerge) {
         addButton("upi-merge", "Merge image", 136, UltraPaintImportResult::Action::Merge);
-        addButton("upi-window", "Open new window", 176, UltraPaintImportResult::Action::NewWindow);
+        addButton("upi-tab", Tr("Open in new tab"), 176, UltraPaintImportResult::Action::NewTab);
     } else {
         addButton("upi-open", "Open", 96, UltraPaintImportResult::Action::Open);
     }

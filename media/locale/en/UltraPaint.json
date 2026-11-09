@@ -3,9 +3,16 @@
   "@bases": [
     "Image"
   ],
+  "@inherited": [
+    "Untitled"
+  ],
   "Click and type, or drag a box for the lines to wrap in; click a text to edit it. The bar above sets font, size, style, alignment and spacing; the colour is the foreground colour. Escape or a click outside finishes": "Click and type, or drag a box for the lines to wrap in; click a text to edit it. The bar above sets font, size, style, alignment and spacing; the colour is the foreground colour. Escape or a click outside finishes",
+  "Close Tab": "Close Tab",
   "Letter Spacing": "Letter Spacing",
   "Line Spacing": "Line Spacing",
+  "Next Tab": "Next Tab",
+  "Open in new tab": "Open in new tab",
+  "Previous Tab": "Previous Tab",
   "Text Alignment": "Text Alignment",
   "Text Bold": "Text Bold",
   "Text Colour": "Text Colour",
@@ -13,5 +20,11 @@
   "Text Italic": "Text Italic",
   "Text Size": "Text Size",
   "Text Strikethrough": "Text Strikethrough",
-  "Text Underline": "Text Underline"
+  "Text Underline": "Text Underline",
+  "Untitled {0}": "Untitled {0}",
+  "{0} has unsaved changes. Close it anyway?": "{0} has unsaved changes. Close it anyway?",
+  "{n} image in this window has unsaved changes. Close anyway?": {
+    "one": "{n} image in this window has unsaved changes. Close anyway?",
+    "other": "{n} images in this window have unsaved changes. Close anyway?"
+  }
 }
