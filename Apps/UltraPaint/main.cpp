@@ -4,12 +4,13 @@
 // (UCRasterDocument / UltraCanvasPaintSurface), adjustments and filters
 // through PixelFX (libvips).
 // One UltraPaint per user: a second start hands its images to the running
-// copy, which opens each in a window of its own (UltraCanvasSingleInstance.h);
+// copy, which opens each in a tab of the window used last (UltraCanvasSingleInstance.h);
 // --help and --version print and quit without asking it.
+// Version: 1.3.0 - a second start's images open as tabs of the window used last
 // Version: 1.2.0 - one UltraPaint per user: a second start's images open in
 //                  the running copy, a start without images brings it forward
 // Version: 1.1.1
-// Last Modified: 2026-10-14
+// Last Modified: 2026-11-09
 // Author: UltraCanvas Framework
 
 #include <cstdlib>
@@ -137,20 +138,19 @@ int main(int argc, char* argv[]) {
         RegisterModelFormatsPlugin();
 #endif
 
-        // The editor is multi-window: UltraPaintWindow keeps every open window
-        // alive itself (File > New Window, and "Open new window" on a dropped
-        // image add to that list), and the application exits with the last of
-        // them.
+        // The editor is multi-document and multi-window: a window holds its
+        // images in tabs, UltraPaintWindow keeps every open window alive
+        // itself (File > New Window adds to that list), and the application
+        // exits with the last of them.
         // Listening starts before the command line's files are opened: a
         // file that cannot be read shows a native error dialog that holds the
         // start-up, and a start made meanwhile is still answered.
         //
-        // A later start's images open here as that start would have opened
-        // them: each in a new window (OpenWindow gives every path one), never
-        // in place of an image open now, so nothing unsaved is touched. The
-        // first of them comes to the front.
+        // A later start's images open here, each in a new tab of the window
+        // used last (OpenInRunningWindow), never in place of an image open
+        // now, so nothing unsaved is touched. That window comes to the front.
         instance.ListenOpen([](const std::vector<std::string>& paths) {
-            const std::shared_ptr<UltraPaintWindow> opened = UltraPaintWindow::OpenWindow(paths);
+            const std::shared_ptr<UltraPaintWindow> opened = UltraPaintWindow::OpenInRunningWindow(paths);
             if (opened) opened->BringForward();
             else UltraCanvasSingleInstance::BringToFront();
         });
