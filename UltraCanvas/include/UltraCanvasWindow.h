@@ -1,5 +1,7 @@
 // include/UltraCanvasWindowBase.h
 // Enhanced abstract base window interface inheriting from UltraCanvasContainer
+// Version: 2.11.0 - WindowType::Tooltip: the tooltip manager's own window, above every other,
+//                  never focused, the pointer passing through it
 // Version: 2.10.0 - WindowType::SessionLock: the lock screen a program draws
 // Version: 2.9.0 - UltraCanvasWindow is the Wayland backend under ULTRACANVAS_DISPLAY_WAYLAND
 // Version: 2.8.0 - WindowConfig::alwaysOnTop honoured on X11 and macOS (it was Windows only)
@@ -12,7 +14,7 @@
 //                  beneath it, so one can fade in or out as a whole
 // Version: 2.3.0 - WindowType::Notification (a toast: above everything, never focused)
 // Version: 2.2.0 - window drag overlay (content drawn above all elements)
-// Last Modified: 2026-10-15
+// Last Modified: 2026-11-09
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -75,7 +77,19 @@ namespace UltraCanvas {
         // first such window and released with the last; a compositor that
         // refuses closes them). Elsewhere a fullscreen borderless window
         // kept above every other, which the platform does not enforce.
-        SessionLock
+        SessionLock,
+        // A tooltip (UltraCanvasTooltipManager's own window): undecorated,
+        // above every other window, never given the focus, and the pointer
+        // passes through it to whatever is beneath. Placed where config.x /
+        // config.y say, in screen coordinates (override-redirect with
+        // _NET_WM_WINDOW_TYPE_TOOLTIP on X11; WS_EX_TOPMOST | WS_EX_NOACTIVATE
+        // | WS_EX_TRANSPARENT on Windows; on Wayland a popup of
+        // config.parentWindow, or a top-layer surface beside a desktop on the
+        // layer shell). Not an application window: it never keeps the
+        // application running, is no jump target and is not an accessible
+        // window. Where the platform cannot place one, the tooltip manager
+        // draws the tooltip inside the window it belongs to instead.
+        Tooltip
     };
 
     enum class WindowState {

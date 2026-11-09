@@ -1,5 +1,7 @@
 // OS/Linux/UltraCanvasLinuxWindow.cpp
 // Complete Linux window implementation with all methods
+// Version: 1.8.0 - WindowType::Tooltip: override-redirect, _NET_WM_WINDOW_TYPE_TOOLTIP, an
+//                  empty input shape (the pointer passes through), raised as it is mapped
 // Version: 1.7.0 - RaiseAndFocus raises the window itself as well (XRaiseWindow): with
 //                  no window manager the _NET_ACTIVE_WINDOW request alone raised nothing
 // Version: 1.6.0 - WindowType::SessionLock: fullscreen, above, undecorated (not enforced)
@@ -8,7 +10,7 @@
 // Version: 1.3.0 - WindowType::Notification: EWMH notification type, above,
 //                  sticky, out of taskbars, input hint off
 // Version: 1.2.0 - per-monitor HiDPI: physical surface/window, hybrid DPI detect
-// Last Modified: 2026-11-04
+// Last Modified: 2026-11-09
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasApplication.h"
@@ -25,6 +27,7 @@
 #include <cmath>
 #include <X11/Xresource.h>
 #include <X11/extensions/Xrandr.h>
+#include <X11/extensions/shape.h>
 #include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
@@ -164,6 +167,18 @@ namespace UltraCanvas {
 //        unsigned long valueMask = CWBackPixel | CWBorderPixel | CWColormap | CWEventMask | CWBackingStore;
         unsigned long valueMask = CWColormap | CWEventMask | CWBackingStore;
 
+        // The tooltip's own window: override-redirect, so no window manager
+        // frames, places or focuses it - it is put exactly where asked, and
+        // mapped raised it is above every managed window, the desktop's
+        // windows included. It needs no keys, focus or pointer events: only
+        // exposure and its size.
+        if (config_.type == WindowType::Tooltip) {
+            attrs.override_redirect = True;
+            attrs.save_under = True;
+            attrs.event_mask = ExposureMask | StructureNotifyMask;
+            valueMask |= CWOverrideRedirect | CWSaveUnder;
+        }
+
         // Seed the device scale for the monitor this window opens on. X11 window
         // sizes/positions are in PHYSICAL px, so the client area must be created
         // at logical × deviceScale to appear the correct size on a HiDPI display.
@@ -280,6 +295,29 @@ namespace UltraCanvas {
             XChangeProperty(display, xWindow, stateAtom, XA_ATOM, 32,
                             PropModeReplace,
                             reinterpret_cast<unsigned char*>(states), 4);
+            XWMHints* wmHints = XAllocWMHints();
+            if (wmHints) {
+                wmHints->flags = InputHint;
+                wmHints->input = False;
+                XSetWMHints(display, xWindow, wmHints);
+                XFree(wmHints);
+            }
+        }
+
+        // The tooltip's own window: typed for a compositing manager (which
+        // may give it a shadow), and with an empty input shape, so the pointer
+        // goes through it to the window beneath - a tooltip that came under
+        // the pointer would otherwise take it from the element it describes.
+        if (config_.type == WindowType::Tooltip) {
+            Atom windowTypeAtom = XInternAtom(display, "_NET_WM_WINDOW_TYPE", False);
+            Atom tooltipTypeAtom = XInternAtom(display, "_NET_WM_WINDOW_TYPE_TOOLTIP", False);
+            XChangeProperty(display, xWindow, windowTypeAtom, XA_ATOM, 32,
+                            PropModeReplace,
+                            reinterpret_cast<unsigned char*>(&tooltipTypeAtom), 1);
+            int shapeEvent = 0, shapeError = 0;
+            if (XShapeQueryExtension(display, &shapeEvent, &shapeError)) {
+                XShapeCombineRectangles(display, xWindow, ShapeInput, 0, 0, nullptr, 0, ShapeSet, Unsorted);
+            }
             XWMHints* wmHints = XAllocWMHints();
             if (wmHints) {
                 wmHints->flags = InputHint;
@@ -946,7 +984,14 @@ namespace UltraCanvas {
         debugOutput << "UltraCanvas Linux: Showing window..." << std::endl;
         auto application = UltraCanvasApplication::GetInstance();
 
-        XMapWindow(application->GetDisplay(), xWindow);
+        // The tooltip's own window is unmanaged: mapped where it was in the
+        // stack it could come up under a window raised since; raised, it is
+        // above them all.
+        if (config_.type == WindowType::Tooltip) {
+            XMapRaised(application->GetDisplay(), xWindow);
+        } else {
+            XMapWindow(application->GetDisplay(), xWindow);
+        }
         XFlush(application->GetDisplay());
 
         if (config_.type == WindowType::Fullscreen || config_.type == WindowType::SessionLock) {

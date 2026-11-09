@@ -1,7 +1,7 @@
 # UltraCanvasTooltipManager Documentation
 
-**Version:** 2.5.0 - `TooltipStyle::FromTheme`; the manager's style is the one every tooltip shown without one takes  
-**Last Modified:** 2026-10-05  
+**Version:** 2.6.0 - the tooltip is shown in a window of its own, above every other window (`SetUseOwnWindow`, `GetTooltipWindow`)  
+**Last Modified:** 2026-11-09  
 **Author:** UltraCanvas Framework
 
 ## Contents
@@ -15,6 +15,7 @@
 - [TooltipStyle Reference](#tooltipstyle-reference)
   - [Presets](#presets)
   - [Soft shadow](#soft-shadow)
+- [Its own window](#its-own-window)
 - [Manager API Reference](#manager-api-reference)
 - [Rendering Integration Notes](#rendering-integration-notes)
 - [Dependencies](#dependencies)
@@ -23,8 +24,8 @@
 
 `UltraCanvasTooltipManager` is the framework-wide tooltip system. It shows a
 single shared tooltip for the element under the pointer, handles show/hide
-delays, positions the tooltip inside the window, and renders it during window
-composition. Any element with a tooltip — plain text via
+delays, positions the tooltip on the screen, and shows it in a window of its
+own above every other window (see [Its own window](#its-own-window)). Any element with a tooltip — plain text via
 `UltraCanvasUIElement::SetTooltip` or structured content via
 `SetTooltipContent` — gets a tooltip automatically; application code normally
 never calls the manager directly.
@@ -33,8 +34,12 @@ never calls the manager directly.
 body ends `offsetY` (20 px) above the pointer's tip and starts `offsetX`
 (12 px) to its right, so the line under the pointer — the text being read —
 and the pointer's arrow stay in view, and it follows the pointer as it moves.
-With no room above (near the top of the window) it goes below the pointer's
-arrow instead, and with no room on the right, to the left of the pointer.
+With no room above (near the top of the monitor) it goes below the pointer's
+arrow instead, and with no room on the right, to the left of the pointer. The
+room is the monitor's, not the window's: the tooltip of an element near the
+top of a window, or of a bar along the bottom of the screen, rises above it.
+Where the tooltip is drawn inside its window (see below) the room is the
+window's.
 The position passed to `UpdateAndShowTooltip` is the pointer's; an element
 showing a tooltip for a fixed spot passes that spot's top edge.
 
@@ -257,6 +262,47 @@ per-layer alpha is derived so the fully overlapped core reaches
 `shadowColor.a`. Set `shadowBlur = 0` to get the old single hard-edged
 shadow rectangle, or `hasShadow = false` to disable the shadow entirely.
 
+## Its own window
+
+The tooltip is shown in a window of its own, `WindowType::Tooltip`: above
+every other window, never focused, and the pointer passes through it to the
+element it describes. Drawn into the window it belongs to, as it was until
+2026-11, it was covered by any window above that one - every tooltip of
+UltraDesktop's bars, which live in a window kept below all others, went under
+the applications' windows - and it stopped at that window's edges.
+
+| Platform | The tooltip's window |
+|---|---|
+| X11 (Linux, the BSDs) | override-redirect, `_NET_WM_WINDOW_TYPE_TOOLTIP`, an empty input shape, mapped raised |
+| Windows | `WS_EX_TOPMOST \| WS_EX_TOOLWINDOW \| WS_EX_NOACTIVATE`, layered and `WS_EX_TRANSPARENT`, shown without activation |
+| Wayland | a popup of the window the tooltip belongs to with no input region; beside a desktop on the layer shell, a surface on the overlay layer that never takes the keys |
+| macOS, the browser, Android | none: the tooltip is drawn inside its window |
+
+The window is made the first time a tooltip of a window is shown, hidden with
+the tooltip and shown again for the next one; a tooltip of another window gets
+a new one. A closing window takes its tooltip and the tooltip's window with it
+(`ForgetWindow`, which `UltraCanvasApplication` calls as a window closes), and
+the tooltip's window is no application window: it never keeps `Run()` going,
+is not counted by `ClosingEndsApplication`, is no jump target and is not
+reported to assistive technology.
+
+The window is opaque, so in it the tooltip has square corners and no soft
+shadow of its own; a compositing window manager gives a tooltip window a
+shadow. Drawn inside its window the tooltip keeps the style's
+`cornerRadius` and shadow.
+
+```cpp
+// Draw tooltips inside their windows, as before (on by default where the
+// platform has the window)
+UltraCanvasTooltipManager::SetUseOwnWindow(false);
+
+// Where the tooltip on screen is: its own window, or nullptr while it is
+// drawn inside the window it belongs to (or none is shown)
+UltraCanvasWindowBase* shownIn = UltraCanvasTooltipManager::GetTooltipWindow();
+```
+
+The tooltip is drawn inside its window also whenever its own cannot be made.
+
 ## Manager API Reference
 
 ```cpp
@@ -291,16 +337,26 @@ static Point2Di GetTooltipPosition();   // top-left of the tooltip body
 static Size2Di GetTooltipSize();        // size of the tooltip body
 static void UpdateTooltipPosition(const Point2Di& cursorPosition);
 
-// Rendering (called by the window compositor)
+// Its own window (see "Its own window")
+static void SetUseOwnWindow(bool use);  // default true; false draws it in its window
+static bool GetUseOwnWindow();
+static UltraCanvasWindowBase* GetTooltipWindow();   // nullptr: drawn in its window, or none
+static void ForgetWindow(UltraCanvasWindowBase* win);        // a window is closing
+static void WindowScaleChanged(UltraCanvasWindowBase* win);  // a window changed monitor scale
+
+// Rendering (called by the window compositor of the window the tooltip is
+// shown in: its own, or the one it belongs to)
 static IRenderContext* Render(UltraCanvasWindowBase* win);
-static Point2Di GetCompositePosition(); // GetTooltipPosition() minus shadow margins
+static Point2Di GetCompositePosition(); // GetTooltipPosition() minus shadow margins; 0,0 in its own window
 ```
 
 ## Rendering Integration Notes
 
 - `Render()` draws into an off-screen surface sized to the tooltip body plus
-  the soft-shadow margins; the surface is cached until the text, style, or
-  target window changes.
+  the soft-shadow margins (none in its own window); the surface is cached
+  until the text, style, or target window changes. It answers only the window
+  the tooltip is shown in, so the window it belongs to composites nothing
+  while the tooltip has its own.
 - The window compositor must blend the surface with
   `CompositeToSurface(nativeSurface, GetCompositePosition())` — an OVER
   blend, not a raw flush — because the shadow margins are translucent.
@@ -315,6 +371,7 @@ static Point2Di GetCompositePosition(); // GetTooltipPosition() minus shadow mar
 
 ## Dependencies
 
-- `UltraCanvasWindow`: target window and composition
+- `UltraCanvasWindow`: target window, composition, and the tooltip's own
+  window (`WindowType::Tooltip`)
 - `UltraCanvasApplication`: hover tracking and show/hide timers
 - `IRenderContext`: rendering context interface

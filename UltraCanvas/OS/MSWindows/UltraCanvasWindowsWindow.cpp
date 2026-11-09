@@ -1,5 +1,7 @@
 // OS/MSWindows/UltraCanvasWindowsWindow.cpp
 // Complete Windows window implementation with Cairo rendering
+// Version: 1.8.0 - WindowType::Tooltip: topmost, out of the taskbar, never activated, and
+//                  layered and transparent to the mouse, which passes through it
 // Version: 1.7.0 - WindowType::SessionLock: a topmost borderless window (not enforced)
 // Version: 1.6.0 - WM_SETTINGCHANGE, WM_THEMECHANGED and the DWM colour change
 //                  schedule a read of the host appearance
@@ -13,7 +15,7 @@
 // Version: 1.2.0 - WindowType::Notification: topmost, out of the taskbar, never activated
 // Version: 1.1.1 - window icon pixels converted to straight alpha
 // Version: 1.1.0 - Per-Monitor HiDPI: physical surface/window, WM_DPICHANGED
-// Last Modified: 2026-10-15
+// Last Modified: 2026-11-09
 // Author: UltraCanvas Framework
 
 #include "../../include/UltraCanvasWindow.h"
@@ -213,6 +215,13 @@ namespace UltraCanvas {
                 style = WS_POPUP;
                 exStyle = WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE;
                 break;
+            case WindowType::Tooltip:
+                // The tooltip's own window: a toast's styles, and layered and
+                // transparent, so the mouse goes through it to the window
+                // beneath (made opaque with SetLayeredWindowAttributes below).
+                style = WS_POPUP;
+                exStyle = WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_LAYERED | WS_EX_TRANSPARENT;
+                break;
             case WindowType::Desktop:
                 // The desktop itself: undecorated; a tool window, which keeps
                 // it out of the taskbar and Alt+Tab and shows it on every
@@ -306,6 +315,12 @@ namespace UltraCanvas {
             DestroyWindow(hwnd);
             hwnd = nullptr;
             return false;
+        }
+
+        // A layered window is not drawn until it is given its alpha: the
+        // tooltip's is opaque; WS_EX_LAYERED is there for WS_EX_TRANSPARENT.
+        if (config_.type == WindowType::Tooltip) {
+            SetLayeredWindowAttributes(hwnd, 0, 255, LWA_ALPHA);
         }
 
         trackingMouseLeave = false;
@@ -683,7 +698,12 @@ namespace UltraCanvas {
         // its empty surface - black - until the event loop drew the frame,
         // for as long as anything kept the loop from getting there.
         RenderBeforeShow();
-        ShowWindow(hwnd, config_.type == WindowType::Notification ? SW_SHOWNOACTIVATE : SW_SHOW);
+        const bool noActivate = config_.type == WindowType::Notification || config_.type == WindowType::Tooltip;
+        ShowWindow(hwnd, noActivate ? SW_SHOWNOACTIVATE : SW_SHOW);
+        // The tooltip above the topmost windows shown since it last was
+        if (config_.type == WindowType::Tooltip) {
+            SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+        }
         UpdateWindow(hwnd);
 
         _windowVisible = true;
