@@ -254,6 +254,7 @@
   "Nothing is moved or deleted: an ignored file is only left out of the display. Display > Files > Show hidden files - and the \"Show hidden files\" button on the strip - bring it back, a search still finds it, and a path typed into the address bar still opens it.": "Nichts wird verschoben oder gelöscht: Eine ignorierte Datei wird nur in der Anzeige weggelassen. Anzeige > Dateien > Versteckte Dateien anzeigen – und die Schaltfläche „Versteckte Dateien anzeigen“ in der Leiste – holen sie zurück, eine Suche findet sie weiterhin, und ein in die Adressleiste eingegebener Pfad öffnet sie weiterhin.",
   "nothing yet": "noch nichts",
   "Off, nothing is asked: each shown file costs one open, which is worth avoiding on a slow network volume.": "Aus, es wird nichts gefragt: Jede angezeigte Datei kostet ein Öffnen, was sich auf einem langsamen Netzwerkdatenträger zu vermeiden lohnt.",
+  "on disk": "auf dem Datenträger",
   "On disk: unavailable - this system offers nowhere to write a cache.": "Auf dem Datenträger: nicht verfügbar – dieses System bietet keinen Ort, um einen Cache zu schreiben.",
   "On disk: {0}": "Auf dem Datenträger: {0}",
   "On disk: {0} (switched off - left to expire)": "Auf dem Datenträger: {0} (ausgeschaltet – läuft aus)",

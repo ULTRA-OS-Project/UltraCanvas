@@ -65,6 +65,8 @@
 // display and the switch itself are remembered in the settings.
 // A previewed file that changes on disk is reopened in the preview pane
 // (ReloadChangedPreview): throttled, and never restarting a playing video.
+// Version: 1.42.6 - the Computer page has a Remote Drives and a RAM Discs section,
+//                  each with the same cards as Drives, shown while it has one
 // Version: 1.42.5 - a drive letter shows its volume's name, as Explorer does ("My Passport Ultra (D:)"), in the tree and on the Computer page
 // Version: 1.42.4 - the folder tree follows what a display's folder watch saw
 //                  change on disk (onFolderChangedOnDisk), so a folder deleted
@@ -2939,6 +2941,17 @@ void UltraFilerWindow::RefreshRamDiskNodes() {
 }
 
 void UltraFilerWindow::ApplyRamDiskList(const std::vector<UltraFilerRamDisks::RamDisc>& discs) {
+    // The Computer page's RAM disc cards follow the same list.
+    const bool ramChanged = [&]() {
+        if (discs.size() != knownRamDiscs.size()) return true;
+        for (size_t i = 0; i < discs.size(); ++i)
+            if (discs[i].mountPath != knownRamDiscs[i].mountPath ||
+                discs[i].name != knownRamDiscs[i].name)
+                return true;
+        return false;
+    }();
+    knownRamDiscs = discs;
+    if (ramChanged && computerShown) RefreshComputerPage();
     if (!folderTree) return;
     TreeNode* section = folderTree->FindNode(kRamNodeId);
     if (!section) return;
@@ -3189,6 +3202,8 @@ void UltraFilerWindow::RefreshRemoteDriveNodes() {
     ScheduleTreeFit();
     // A display on a drive that has just gone loses its log button.
     UpdateConnectionLogButton();
+    // A drive added or removed has its card on the Computer page.
+    if (computerShown) RefreshComputerPage();
 }
 
 void UltraFilerWindow::WireRemoteDriveHooks(UltraCanvasFilerWidget* widget) {
@@ -6984,7 +6999,7 @@ void UltraFilerWindow::BuildComputerPage() {
         heading->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
         return heading;
     };
-    computerPane->AddChild(makeHeading("ufl-computer-folders-heading", "Folders"));
+    computerPane->AddChild(makeHeading("ufl-computer-folders-heading", Tr("Folders")));
 
     // Home and the cloud folders as folder tiles - the file display's own,
     // so they carry the folder icons, open on a double-click and offer the
@@ -7054,17 +7069,38 @@ void UltraFilerWindow::BuildComputerPage() {
     };
     computerPane->AddChild(computerFolders);
 
-    computerPane->AddChild(makeHeading("ufl-computer-drives-heading", "Drives"));
-
-    // The drive cards, wrapping into rows; RebuildComputerDriveCards fills
-    // it. It never scrolls by itself - the page does.
-    computerDriveRow = MakeLayoutBox("ufl-computer-drives");
-    computerDriveRow->layout.SetFlexRow().SetFlexWrap(CSSLayout::FlexWrap::Wrap)
-                            .SetFlexGap(12)
-                            .SetFlexAlignItems(CSSLayout::AlignItems::Start);
-    computerDriveRow->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
-                                .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    // The card rows, wrapping into as many lines as they need;
+    // RebuildComputerDriveCards fills them. None scrolls by itself - the
+    // page does. The drives (and the phones and cameras) first, then the
+    // remote drives and the RAM discs, each under a heading of its own that
+    // shows only while the section has a card - the names the tree gives
+    // the same sections.
+    auto makeCardRow = [](const std::string& id) {
+        auto row = MakeLayoutBox(id);
+        row->layout.SetFlexRow().SetFlexWrap(CSSLayout::FlexWrap::Wrap)
+                   .SetFlexGap(12)
+                   .SetFlexAlignItems(CSSLayout::AlignItems::Start);
+        row->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
+                       .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        return row;
+    };
+    computerPane->AddChild(makeHeading("ufl-computer-drives-heading", Tr("Drives")));
+    computerDriveRow = makeCardRow("ufl-computer-drives");
     computerPane->AddChild(computerDriveRow);
+
+    computerRemoteHeading = makeHeading("ufl-computer-remote-heading", Tr("Remote Drives"));
+    computerRemoteHeading->SetVisible(false);
+    computerPane->AddChild(computerRemoteHeading);
+    computerRemoteRow = makeCardRow("ufl-computer-remote");
+    computerRemoteRow->SetVisible(false);
+    computerPane->AddChild(computerRemoteRow);
+
+    computerRamHeading = makeHeading("ufl-computer-ram-heading", Tr("RAM Discs"));
+    computerRamHeading->SetVisible(false);
+    computerPane->AddChild(computerRamHeading);
+    computerRamRow = makeCardRow("ufl-computer-ram");
+    computerRamRow->SetVisible(false);
+    computerPane->AddChild(computerRamRow);
 
     computerPane->SetVisible(false);   // the tree's Computer entry turns it on
 }
@@ -7143,18 +7179,30 @@ std::vector<std::string> UltraFilerWindow::ComputerPageFolderPaths() const {
 void UltraFilerWindow::RebuildComputerDriveCards(const std::vector<MountedVolume>& volumes) {
     if (!computerDriveRow) return;
     computerDriveRow->ClearChildren();
+    if (computerRemoteRow) computerRemoteRow->ClearChildren();
+    if (computerRamRow) computerRamRow->ClearChildren();
     computerDriveCards.clear();
 
     // One card per volume, then one per connected phone or camera - the same
     // card, so a phone shows its used and free space like a drive does (the
-    // sizes come in from QueueVolumeSpaceQuery, which asks the device).
+    // sizes come in from QueueVolumeSpaceQuery, which asks the device). The
+    // configured remote drives and the RAM discs get the same card in a
+    // section of their own.
     struct CardSource {
         std::string path, label, icon;
         std::string under;   // the line at the foot of the card
+        UltraCanvasContainer* row = nullptr;
     };
     std::vector<CardSource> sources;
-    for (const MountedVolume& volume : volumes)
-        sources.push_back({volume.path, DriveNodeLabel(volume), "drive.png", volume.path});
+    // A RAM disc that is also a mounted volume (ImDisk's drive letter,
+    // macOS) is a RAM disc on this page, as in the tree - not a drive.
+    std::set<std::string> ramPaths;
+    for (const auto& disc : knownRamDiscs) ramPaths.insert(disc.mountPath);
+    for (const MountedVolume& volume : volumes) {
+        if (ramPaths.count(volume.path)) continue;
+        sources.push_back({volume.path, DriveNodeLabel(volume), "drive.png", volume.path,
+                           computerDriveRow.get()});
+    }
     if (remoteDrives) {
         for (const RemoteDrive& d : remoteDrives->Drives()) {
             if (!d.isDevice) continue;
@@ -7162,9 +7210,40 @@ void UltraFilerWindow::RebuildComputerDriveCards(const std::vector<MountedVolume
             // mounted: a phone has no path worth reading.
             std::string under = DeviceKindWord(d.deviceKind);
             if (!d.serverUrl.empty()) under += " - " + d.serverUrl;   // the manufacturer
-            sources.push_back({d.rootPath, d.displayName, DeviceIconFile(d.deviceKind), under});
+            sources.push_back({d.rootPath, d.displayName, DeviceIconFile(d.deviceKind), under,
+                               computerDriveRow.get()});
+        }
+        // The FTP servers and cloud accounts: the server under the name, or
+        // for an account signed into through the browser, the provider.
+        if (computerRemoteRow) {
+            for (const RemoteDrive& d : remoteDrives->Drives()) {
+                if (d.isDevice) continue;
+                sources.push_back({d.rootPath, d.displayName, "cloud.svg",
+                                   d.serverUrl.empty() ? d.providerId : d.serverUrl,
+                                   computerRemoteRow.get()});
+            }
         }
     }
+    if (computerRamRow) {
+        for (const auto& disc : knownRamDiscs) {
+            // The Windows fallback without ImDisk is a folder on the disk:
+            // said under the name, as the tree says it after it.
+            std::string under = disc.mountPath;
+            if (!disc.trueRam) under += " - " + Tr("on disk");
+            sources.push_back({disc.mountPath, disc.name, "drive.png", under,
+                               computerRamRow.get()});
+        }
+    }
+
+    bool anyRemote = false, anyRam = false;
+    for (const CardSource& source : sources) {
+        if (source.row == computerRemoteRow.get()) anyRemote = true;
+        if (source.row == computerRamRow.get()) anyRam = true;
+    }
+    if (computerRemoteHeading) computerRemoteHeading->SetVisible(anyRemote);
+    if (computerRemoteRow) computerRemoteRow->SetVisible(anyRemote);
+    if (computerRamHeading) computerRamHeading->SetVisible(anyRam);
+    if (computerRamRow) computerRamRow->SetVisible(anyRam);
 
     int index = 0;
     for (const CardSource& source : sources) {
@@ -7228,7 +7307,7 @@ void UltraFilerWindow::RebuildComputerDriveCards(const std::vector<MountedVolume
         mount->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
         card->AddChild(mount);
 
-        computerDriveRow->AddChild(card);
+        source.row->AddChild(card);
         computerDriveCards.push_back({path, pie, usage, space});
 
         // What is already known about the volume goes up at once; the fresh
@@ -7241,6 +7320,7 @@ void UltraFilerWindow::RebuildComputerDriveCards(const std::vector<MountedVolume
     }
 
     computerDriveRow->RequestRedraw();
+    if (computerPane) computerPane->InvalidateLayout();
 }
 
 void UltraFilerWindow::ApplyVolumeSpaceToCard(const VolumeSpace& space) {
@@ -7304,7 +7384,16 @@ void UltraFilerWindow::QueueVolumeSpaceQuery() {
         spaces.reserve(paths.size());
         for (const auto& [path, deviceId] : paths) {
             if (deviceId.empty()) {
-                spaces.push_back(QueryVolumeSpace(path));
+                if (IsRemoteFilerPath(path)) {
+                    // An FTP server or a cloud account: UltraCloud does not
+                    // say how full one is, and the address is no path the
+                    // filesystem can measure.
+                    VolumeSpace unknown;
+                    unknown.path = path;
+                    spaces.push_back(unknown);
+                } else {
+                    spaces.push_back(QueryVolumeSpace(path));
+                }
                 continue;
             }
             VolumeSpace space;

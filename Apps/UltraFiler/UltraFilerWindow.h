@@ -1213,6 +1213,12 @@ private:
     std::shared_ptr<UltraCanvasContainer>       computerPane;
     std::shared_ptr<UltraCanvasFilerWidget>     computerFolders;  // Home + cloud folders
     std::shared_ptr<UltraCanvasContainer>       computerDriveRow;
+    // The Remote Drives and RAM Discs sections under it: a heading and a row
+    // of cards each, hidden while the section has no card.
+    std::shared_ptr<UltraCanvasLabel>           computerRemoteHeading;
+    std::shared_ptr<UltraCanvasContainer>       computerRemoteRow;
+    std::shared_ptr<UltraCanvasLabel>           computerRamHeading;
+    std::shared_ptr<UltraCanvasContainer>       computerRamRow;
     std::vector<ComputerDriveCard>              computerDriveCards;
     std::shared_ptr<UltraCanvasMenu>            treeContextMenu; // folder tree right-click
     std::shared_ptr<UltraCanvasButton>          addDriveButton;  // "+ Drive" in the navigation row
@@ -1376,6 +1382,8 @@ private:
     std::vector<std::string> treeDeviceNodeIds;
     // Node ids (the mount paths) of the "RAM Discs" rows.
     std::vector<std::string> treeRamDiskNodeIds;
+    // The RAM discs as last listed (ApplyRamDiskList), for the Computer page.
+    std::vector<UltraFilerRamDisks::RamDisc> knownRamDiscs;
     // The start-up probe (StartRamDiskProbe) and what it answered. Both
     // flags are written on the UI thread only, by the callback it posts.
     std::thread ramDiskProbeWorker;
