@@ -65,6 +65,7 @@
 // display and the switch itself are remembered in the settings.
 // A previewed file that changes on disk is reopened in the preview pane
 // (ReloadChangedPreview): throttled, and never restarting a playing video.
+// Version: 1.42.5 - a drive letter shows its volume's name, as Explorer does ("My Passport Ultra (D:)"), in the tree and on the Computer page
 // Version: 1.42.4 - the folder tree follows what a display's folder watch saw
 //                  change on disk (onFolderChangedOnDisk), so a folder deleted
 //                  after a locked file in it was let go leaves the tree
@@ -110,7 +111,7 @@
 // Version: 1.30.1 - the New and Add-drive menus open anchored to their buttons
 //                  (OpenMenuAnchored): above them when there is no room below
 // Version: 1.30.0
-// Last Modified: 2026-11-03
+// Last Modified: 2026-11-09
 // Author: UltraCanvas Framework
 
 #include "UltraFilerWindow.h"
@@ -4113,6 +4114,10 @@ void UltraFilerWindow::BuildFolderTree() {
     knownVolumes = ListMountedVolumes();
     for (const MountedVolume& volume : knownVolumes)
         AddTreeDriveNode(volume.path, DriveNodeLabel(volume));
+    // The volumes' own names ("My Passport Ultra (D:)") come from a
+    // listing off the UI thread, since reading them touches each disk; the
+    // rows above show the letters until it answers.
+    RefreshDriveNodes();
 
     if (root) root->Expand();
     ApplyTreeColors();
@@ -4767,6 +4772,13 @@ void UltraFilerWindow::RefreshDriveNodes() {
             // shows it.
             if (UltraFilerRamDisks::Available()) discs = UltraFilerRamDisks::List();
             volumes = ListMountedVolumes();
+            // A drive letter with the volume's own name, as Explorer shows
+            // it: "My Passport Ultra (D:)". Read here because it touches the
+            // disk; empty on Linux and macOS, where the label is the name.
+            for (MountedVolume& volume : volumes) {
+                const std::string name = ReadVolumeName(volume.path);
+                if (!name.empty()) volume.label = name + " (" + volume.label + ")";
+            }
         } catch (const std::exception&) {
             // An exception leaving a std::thread ends the process; a listing
             // that failed is a listing with nothing new to show.
@@ -4818,13 +4830,26 @@ void UltraFilerWindow::ApplyDriveLists(const std::vector<UltraFilerRamDisks::Ram
     // drive row, which would collapse a subtree the user has open just
     // because a stick was plugged in somewhere else.
     bool added = false;
+    bool renamed = false;
     for (const MountedVolume& volume : volumes) {
-        if (folderTree->FindNode(volume.path)) continue;
+        if (TreeNode* node = folderTree->FindNode(volume.path)) {
+            // Already there: the first fill names a drive by its letter
+            // alone, and this pass brings the volume's name ("My Passport
+            // Ultra (D:)") - or a name the user changed since.
+            const std::string label = DriveNodeLabel(volume);
+            if (std::find(treeDriveNodeIds.begin(), treeDriveNodeIds.end(), volume.path) !=
+                    treeDriveNodeIds.end() &&
+                node->data.text != label) {
+                node->data.text = label;
+                renamed = true;
+            }
+            continue;
+        }
         AddTreeDriveNode(volume.path, DriveNodeLabel(volume));
         added = true;
     }
 
-    if (!added && gone.empty()) return;   // nothing moved: nothing to repaint
+    if (!added && !renamed && gone.empty()) return;   // nothing moved: nothing to repaint
 
     if (added) {
         // The new rows need the configured drive background, and a volume can
