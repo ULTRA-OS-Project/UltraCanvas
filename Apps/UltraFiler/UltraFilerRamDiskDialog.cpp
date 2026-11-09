@@ -2,6 +2,7 @@
 // Implementation of the new RAM disc dialog. Construction follows
 // UltraFilerFindTextDialog (flex-column content, custom Create / Cancel
 // buttons so Create can refuse a bad name without closing).
+// Version: 1.1.3 - the size notes and the name errors go through Tr
 // Version: 1.1.2 - the note under the size is as tall as its text, the window as tall
 //                  as its content, and the buttons sit at the bottom right
 // Version: 1.1.1 - the interface strings go through Tr (UltraLocalisation)
@@ -43,24 +44,27 @@ const uint64_t kPresetSizes[] = {
 
 // What the chosen size means here, and what happens to the files. Shown under
 // the size so nobody is surprised by either.
+// Whole sentences, each translated on its own and joined with a space, so a
+// translation never has to fit around a piece of another sentence.
 std::string PlatformNote(uint64_t largest) {
-    const std::string freeText =
-            largest > 0 ? UltraFilerRamDisks::FormatSize(largest) + " is free now. "
-                        : std::string();
     std::string note;
     if (!UltraFilerRamDisks::TrueRamAvailable()) {
+        // Keeps its trailing space: it is the key the catalogues know it by.
         note = Tr("No RAM disc driver (ImDisk) is installed, so this disc will be "
                "a folder on the system drive, wiped when it is ejected - it "
                "is not held in memory. ");
-    } else if (UltraFilerRamDisks::SizeIsEnforced()) {
-        note = "The memory is reserved when the disc is created. " + freeText;
     } else {
-        note = "All RAM discs share the system's memory area, and memory is "
-               "used only as files are written - the size is checked against "
-               "what is free, not reserved. " + freeText;
+        note = UltraFilerRamDisks::SizeIsEnforced()
+                ? Tr("The memory is reserved when the disc is created.")
+                : Tr("All RAM discs share the system's memory area, and memory is "
+                     "used only as files are written - the size is checked against "
+                     "what is free, not reserved.");
+        if (largest > 0)
+            note += " " + TrF("{0} is free now.", UltraFilerRamDisks::FormatSize(largest));
+        note += " ";
     }
-    return note + "Everything on the disc is lost when it is ejected or the "
-                  "computer restarts.";
+    return note + Tr("Everything on the disc is lost when it is ejected or the "
+                     "computer restarts.");
 }
 
 }  // namespace
@@ -184,10 +188,11 @@ void UltraFilerRamDiskDialog::Accept() {
         if (errorLabel_) {
             const std::size_t maxLength = UltraFilerRamDisks::MaxNameLength();
             errorLabel_->SetText(name.empty()
-                    ? std::string("Give the disc a name.")
+                    ? Tr("Give the disc a name.")
                     : name.size() > maxLength
-                    ? "At most " + std::to_string(maxLength) + " characters."
-                    : std::string("Use letters, digits, '.', '_' and '-' only."));
+                    ? TrN("At most {n} character.", "At most {n} characters.",
+                          static_cast<long long>(maxLength))
+                    : Tr("Use letters, digits, '.', '_' and '-' only."));
         }
         return;
     }
