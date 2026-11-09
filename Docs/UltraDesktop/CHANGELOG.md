@@ -1,3 +1,12 @@
+#### 2026-11-09 *0.4.13*
+- **The bars' tooltips are no longer covered by other windows.** The bars
+  live in the desktop window, which is kept below every other window, and a
+  tooltip was drawn inside it: one that rose above the taskbar, or out of the
+  right bar, went under whatever application was open there. Tooltips now
+  have a window of their own above everything (the framework's
+  `WindowType::Tooltip`, see its changelog), so every icon's tooltip is seen
+  in full wherever the windows are.
+
 #### 2026-11-06 *0.4.12*
 - **Sticker board: a context menu, three card displays and a hover
   preview.** A right click on a file's card offers *Open*, *Copy* (the file
