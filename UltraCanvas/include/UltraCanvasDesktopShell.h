@@ -58,6 +58,7 @@
 // Version: 1.9.0 - CloseWindow shows a minimized window before asking it to close
 // Version: 1.8.0 - FindProgram / LaunchProgram find a sibling application's
 //                  bundle on macOS
+// Version: 1.8.0 - OpenDisplaySettings, CanOpenDisplaySettings
 // Version: 1.7.0 - LockSession; the loudspeaker's volume (ReadAudioOutput,
 //                  SetAudioOutputVolume, SetAudioOutputMuted); a tray icon's
 //                  menu as data (DesktopTrayMenuItem, ActivateMenuItem);
@@ -460,6 +461,18 @@ namespace UltraCanvas {
         // CanLockSession() is false where this backend has no such call.
         static bool CanLockSession();
         static bool LockSession(std::string* error = nullptr);
+
+        // ===== THE DISPLAYS =====
+        // Open the system's own display settings - resolution, arrangement,
+        // which monitor is the primary - what a desktop's "Display
+        // settings" does: Windows' Settings > Display, macOS's System
+        // Settings > Displays, on Linux the desktop's display tool that is
+        // installed (GNOME's or Plasma's settings, xfce4-display-settings,
+        // wdisplays on Wayland, arandr on X11, ...). Does not wait for it.
+        // False with the reason in `error`; CanOpenDisplaySettings() is
+        // false where there is nothing to open.
+        static bool CanOpenDisplaySettings();
+        static bool OpenDisplaySettings(std::string* error = nullptr);
 
         // ===== THE LOUDSPEAKER =====
         // The default output's volume and mute, through the sound server

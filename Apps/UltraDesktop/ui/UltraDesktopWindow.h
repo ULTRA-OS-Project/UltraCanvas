@@ -33,6 +33,13 @@
 // settings button offers sign out, restart and shut down, which Explorer's
 // Start menu would otherwise, and a tap of the Win key opens the
 // Applications window.
+// Version: 0.9.0 - files dropped on the wallpaper go to the Sticker board's
+//                  "Unsorted" category or into the Desktop folder, shown as
+//                  icons (DropFiles, SetDropTarget, UltraDesktopDesktopIcons)
+// Version: 0.8.0 - context menus on the wallpaper (wallpaper, theme, the
+//                  taskbar's edge, display settings) and on the bars (the
+//                  taskbar's edge); a light theme (BarPalette, Bars); the
+//                  clock back at the top of the right bar
 // Version: 0.7.0 - an application's windows share one taskbar button with a
 //                  count; resting the pointer on it shows the windows'
 //                  pictures to choose from (UltraDesktopWindowPreviews)
@@ -89,6 +96,7 @@ namespace UltraCanvas {
     class UltraCanvasWaveSeparator;
     class UltraCanvasImageElement;
     class UltraCanvasMenu;
+    struct MenuItemData;
     class UltraCanvasButton;
     class UltraCanvasGaugeDiagramElement;
     class UltraCanvasLabel;
@@ -104,9 +112,11 @@ class UltraDesktopWifiPanel;
 class UltraDesktopBluetoothPanel;
 class UltraDesktopDevicePanel;
 class UltraDesktopStickerboard;
+class UltraDesktopDesktopIcons;
 class UltraDesktopCategoryBoard;
 class UltraDesktopTasksWindow;
 class UltraDesktopWindowPreviews;
+struct BarPalette;
 
 class UltraDesktopWindow {
 public:
@@ -196,6 +206,22 @@ public:
     void CheckSettingsFile();
 
     DesktopSettings& Settings() { return settings_; }
+    // The desktop's right-click menu, on the wallpaper and the notes'
+    // ground: the wallpaper, the theme, the taskbar's edge, the display
+    // settings and the desktop's settings. Window coordinates.
+    void ShowDesktopMenu(int windowX, int windowY);
+    // Files dropped on the wallpaper (or a desktop icon), at `at` in the
+    // work area: onto the Sticker board's "Unsorted" category, which
+    // shows, or into the Desktop folder (DesktopSettings::dropFilesOn).
+    void DropFiles(const std::vector<std::string>& files, const UltraCanvas::Point2Df& at);
+    // "board" or "desktop": where dropped files go; the desktop icons show
+    // with "desktop".
+    void SetDropTarget(const std::string& target);
+    // Dragging desktop icons: the other programs' windows on this desktop
+    // are read once when a drag starts, and the drag leaves the desktop as
+    // a native file drag when the pointer (window coordinates) is over one.
+    void NoteIconDragStart();
+    bool PointOverOtherWindow(const UltraCanvas::Point2Di& windowPoint) const;
     // How many desktops the organiser shows right now: the window manager's
     // count where there is one, the settings' where there is none.
     int DesktopCount() const { return desktopCount_; }
@@ -210,7 +236,23 @@ private:
     int  DesiredDesktopCount() const;
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildTaskbar(bool vertical);
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildRightBar();
-    // The clock at the foot of the right bar, white on black: the gauge
+    // The bars' colours in the settings' theme (dark or light).
+    const BarPalette& Bars() const;
+    // The menu entries that move the taskbar to another edge, and the
+    // theme's; shared by the desktop's menu and the bars'.
+    std::vector<UltraCanvas::MenuItemData> TaskbarEdgeItems();
+    std::vector<UltraCanvas::MenuItemData> ThemeItems();
+    // A right click on the bars' ground (not on a button): the taskbar's
+    // edge, the theme and the desktop's settings.
+    void ShowBarMenu(int windowX, int windowY);
+    void InstallBarMenu(const std::shared_ptr<UltraCanvas::UltraCanvasToolbar>& group);
+    void SetTaskbarEdge(TaskbarEdge edge);
+    void SetTheme(const std::string& theme);
+    // A picture for the wallpaper, through FileLoader's Open dialog.
+    void ChooseWallpaper();
+    void SetWallpaper(const std::string& path);   // "" = the default picture
+    void OpenDisplaySettings();
+    // The clock at the top of the right bar, white on black: the gauge
     // element's analog clock or the digital time, with or without the date
     // (right-click to choose), the whole date and time in the tooltip.
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildClock();
@@ -359,6 +401,9 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasToolbar> info_;
     std::shared_ptr<UltraCanvas::UltraCanvasMenu> popupMenu_;
     std::shared_ptr<UltraDesktopStickerboard> stickerboard_;
+    std::shared_ptr<UltraDesktopDesktopIcons> desktopIcons_;
+    int desktopIconTicks_ = 0;
+    std::vector<UltraCanvas::Rect2Di> otherWindowRects_;   // NoteIconDragStart
     std::shared_ptr<UltraDesktopCategoryBoard> categoryBoard_;
     std::shared_ptr<UltraCanvas::UltraCanvasWindow> boardWindow_;
     UltraCanvas::Rect2Di boardRect_;    // where PlaceCategoryBoard last put it

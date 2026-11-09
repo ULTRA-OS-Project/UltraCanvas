@@ -427,6 +427,75 @@ void TestSettingsKeepTheDisplay() {
           "a value it does not know is the default");
 }
 
+void TestDeleteKeyGoesToTheApplication() {
+    std::cout << "\nThe Delete key on a selected card\n";
+    auto press = [](Board& b) {
+        UCEvent key;
+        key.type = UCEventType::KeyDown;
+        key.virtualKey = UCKeys::Delete;
+        return b.element->OnEvent(key);
+    };
+    Board asked;
+    asked.element->SetEditable(true);
+    const int card = asked.data->AddCard(asked.work, "plan.pdf");
+    Draw(asked);
+    asked.element->SelectCard(card);
+    int askedFor = -2;
+    asked.element->onDeleteKey = [&](int cardId) {
+        askedFor = cardId;
+        return true;
+    };
+    Check(press(asked), "is taken");
+    Check(askedFor == card && asked.data->FindCard(card) != nullptr,
+          "the application is asked about the card, and the board removes nothing itself");
+
+    Board plain;
+    plain.element->SetEditable(true);
+    const int other = plain.data->AddCard(plain.work, "notes");
+    Draw(plain);
+    plain.element->SelectCard(other);
+    plain.element->onDeleteKey = [](int) { return false; };
+    press(plain);
+    Check(plain.data->FindCard(other) == nullptr, "answered false, the board removes the card as before");
+}
+
+void TestSettingsKeepTheTheme() {
+    std::cout << "\nThe bars' theme in the desktop settings\n";
+    UltraDesktop::DesktopSettings settings;
+    Check(settings.theme == "dark", "a new desktop has dark bars");
+    settings.theme = "light";
+    UltraDesktop::DesktopSettings read;
+    std::string error;
+    Check(read.FromJson(settings.ToJson(), &error), "a saved desktop reads back" + (error.empty() ? "" : ": " + error));
+    Check(read.theme == "light", "with the light theme");
+    settings.theme = "purple";
+    UltraDesktop::DesktopSettings odd;
+    odd.FromJson(settings.ToJson(), &error);
+    Check(odd.theme == "dark", "a theme it does not know is the dark one");
+}
+
+void TestSettingsKeepTheDropTarget() {
+    std::cout << "\nWhere files dropped on the wallpaper go\n";
+    UltraDesktop::DesktopSettings settings;
+    Check(settings.dropFilesOn == "board", "a new desktop drops them on the Sticker board");
+    settings.dropFilesOn = "desktop";
+    UltraDesktop::DesktopSettings::IconPlace place;
+    place.x = 120;
+    place.y = 216;
+    settings.desktopIcons["Report – März.pdf"] = place;
+    UltraDesktop::DesktopSettings read;
+    std::string error;
+    Check(read.FromJson(settings.ToJson(), &error), "a saved desktop reads back" + (error.empty() ? "" : ": " + error));
+    Check(read.dropFilesOn == "desktop", "dropping on the desktop");
+    auto found = read.desktopIcons.find("Report – März.pdf");
+    Check(found != read.desktopIcons.end() && found->second.x == 120 && found->second.y == 216,
+          "with an icon's place, under a name that is not ASCII");
+    settings.dropFilesOn = "floor";
+    UltraDesktop::DesktopSettings odd;
+    odd.FromJson(settings.ToJson(), &error);
+    Check(odd.dropFilesOn == "board", "a target it does not know is the Sticker board");
+}
+
 } // namespace
 
 int main() {
@@ -443,6 +512,9 @@ int main() {
     TestHoverAndPreview();
     TestCardDragStillMoves();
     TestSettingsKeepTheDisplay();
+    TestDeleteKeyGoesToTheApplication();
+    TestSettingsKeepTheTheme();
+    TestSettingsKeepTheDropTarget();
     std::cout << "\n" << (g_failures == 0 ? "All passed" : std::to_string(g_failures) + " failed") << "\n";
     return g_failures == 0 ? 0 : 1;
 }

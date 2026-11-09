@@ -148,10 +148,8 @@ std::string KindTag(const std::string& path) {
     return ext.empty() ? "file" : ext;
 }
 
-// A file as a picture `pixels` high (and up to twice as wide): what it holds
-// as UltraFiler's tiles show it - the picture, a PDF's first page, a book's
-// cover, a page of a document's first lines ... - else the icon of its type.
-// Blocking: call it on a worker thread.
+} // namespace
+
 std::shared_ptr<UCPixmap> MakeFilePicture(const std::string& path, int pixels, const std::string& icons) {
     std::error_code ec;
     if (!fs::exists(PathFromUtf8(path), ec)) return nullptr;   // a note, or a file gone
@@ -171,8 +169,6 @@ std::shared_ptr<UCPixmap> MakeFilePicture(const std::string& path, int pixels, c
     }
     return nullptr;
 }
-
-} // namespace
 
 const std::vector<std::string>& UltraDesktopCategoryBoard::DefaultCategories() {
     static const std::vector<std::string> categories = {"Docs", "Work", "Home"};
@@ -258,6 +254,14 @@ UltraDesktopCategoryBoard::UltraDesktopCategoryBoard(const std::string& identifi
     // A file's card opens the file; a note's card keeps the editor the
     // board opened for it.
     board_->onCardDoubleClick = [this](int cardId) { OpenCardFile(cardId); };
+    // The Delete key does what the card's menu's Delete does - as on the
+    // desktop icons, after a question: a file's card moves the file to the
+    // trash, a note is deleted. "Remove from the board" stays on the menu.
+    board_->onDeleteKey = [this](int cardId) {
+        if (!CardFile(cardId).empty()) DeleteCardFile(cardId);
+        else DeleteNote(cardId);
+        return true;
+    };
     board_->cardImageProvider = [this](const KanbanCard& card) { return Thumbnail(card); };
     board_->onContextMenu = [this](int cardId, int columnId, const Point2Di& at) {
         ShowContextMenu(cardId, columnId, at);
@@ -370,6 +374,19 @@ void UltraDesktopCategoryBoard::AddCategory() {
     SaveBoard();
 }
 
+void UltraDesktopCategoryBoard::AddFilesToCategory(const std::vector<std::string>& files,
+                                                   const std::string& category) {
+    int columnId = -1;
+    for (const KanbanColumn& column : data_->GetColumns()) {
+        if (column.title == category) {
+            columnId = column.id;
+            break;
+        }
+    }
+    if (columnId < 0) columnId = data_->AddColumn(category);
+    AddFiles(files, columnId);
+}
+
 void UltraDesktopCategoryBoard::AddFiles(const std::vector<std::string>& files, int columnId) {
     if (columnId < 0) {
         if (data_->GetColumns().empty()) return;
@@ -439,14 +456,16 @@ void UltraDesktopCategoryBoard::ShowContextMenu(int cardId, int columnId, const 
         if (!file.empty()) {
             menu_->AddItem(MenuItemData::Action(Tr("Open"), [this, cardId]() { OpenCardFile(cardId); }));
             menu_->AddItem(MenuItemData::Action(Tr("Copy"), [this, cardId]() { CopyCard(cardId); }));
-            menu_->AddItem(MenuItemData::Action(TrashAvailable() ? Tr("Delete (move to the trash)") : Tr("Delete"),
-                                                [this, cardId]() { DeleteCardFile(cardId); }));
+            menu_->AddItem(MenuItemData::ActionWithShortcut(
+                    TrashAvailable() ? Tr("Delete (move to the trash)") : Tr("Delete"), "Delete",
+                    [this, cardId]() { DeleteCardFile(cardId); }));
             menu_->AddItem(MenuItemData::Action(Tr("Remove from the board"), [this, cardId]() { RemoveCard(cardId); }));
         } else {
             // A note, or a file that has gone: its text, and the card.
             menu_->AddItem(MenuItemData::Action(Tr("Open"), [this, cardId]() { board_->OpenCardEditor(cardId); }));
             menu_->AddItem(MenuItemData::Action(Tr("Copy"), [this, cardId]() { CopyCard(cardId); }));
-            menu_->AddItem(MenuItemData::Action(Tr("Delete"), [this, cardId]() { RemoveCard(cardId); }));
+            menu_->AddItem(MenuItemData::ActionWithShortcut(Tr("Delete"), "Delete",
+                                                            [this, cardId]() { DeleteNote(cardId); }));
         }
         // The same as dragging it onto another category.
         std::vector<MenuItemData> targets;
@@ -523,6 +542,16 @@ void UltraDesktopCategoryBoard::DeleteCardFile(int cardId) {
             return;
         }
         RemoveCard(cardId);
+    }, GetWindow());
+}
+
+void UltraDesktopCategoryBoard::DeleteNote(int cardId) {
+    const KanbanCard* card = data_->FindCard(cardId);
+    if (!card) return;
+    const std::string question = card->title.empty() ? Tr("Delete this note?")
+                                                     : TrF("Delete the note \"{0}\"?", card->title);
+    UltraCanvasDialogManager::ShowConfirmation(question, Tr("Sticker board"), [this, cardId](bool yes) {
+        if (yes) RemoveCard(cardId);
     }, GetWindow());
 }
 

@@ -53,6 +53,7 @@
 //     (UltraCanvasWindowsTrayHost.cpp).
 //   - The end of the session: ExitWindowsEx; the lock: LockWorkStation.
 //   - The loudspeaker: the default render endpoint's IAudioEndpointVolume.
+// Version: 1.8.0 - OpenDisplaySettings: Settings > Display (ms-settings:display)
 // Version: 1.7.0 - CaptureWindowImage (PrintWindow with the full content);
 //                  DesktopWindowInfo::appUserModelId from the window or its
 //                  process, and the icon and name of a Store application or a
@@ -2039,6 +2040,22 @@ bool LockSession(std::string& error) {
     // WTS_SESSION_LOCK to UltraCanvasSessionLock's listeners.
     if (!LockWorkStation()) {
         error = "Windows did not lock the screen (error " + std::to_string(GetLastError()) + ").";
+        return false;
+    }
+    return true;
+}
+
+// ===== THE DISPLAYS =====
+
+bool CanOpenDisplaySettings() { return true; }
+
+bool OpenDisplaySettings(std::string& error) {
+    // Settings > System > Display, where the monitors are arranged and the
+    // main display is chosen.
+    const auto result = reinterpret_cast<INT_PTR>(
+            ::ShellExecuteW(nullptr, L"open", L"ms-settings:display", nullptr, nullptr, SW_SHOWNORMAL));
+    if (result <= 32) {
+        error = "Windows' display settings did not open.";
         return false;
     }
     return true;

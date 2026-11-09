@@ -1,5 +1,6 @@
 // include/UltraCanvasImageElement.h
 // Image display component with loading, caching, and transformation support
+// Version: 1.11.0 - LoadFromPixmap: a picture already made (a file's icon or thumbnail)
 // Version: 1.10.0 - onContextMenu: a right-click on the image (it no longer counts as a click)
 // Version: 1.9.0 - SetBoxAspectRatio: the shape the box keeps when its height
 //                  follows its width (an <img> with width and height)
@@ -52,6 +53,9 @@ class UltraCanvasImageElement : public UltraCanvasUIElement {
 private:
     // Image source
     std::shared_ptr<UCImage> loadedImage;
+    // A picture handed over already drawn (LoadFromPixmap): shown in place
+    // of loadedImage, scaled to the box like it.
+    std::shared_ptr<UCPixmap> pixmapSource;
     ImageLoadState loadState = ImageLoadState::NotLoaded;
     
     // Display properties
@@ -126,6 +130,11 @@ public:
     // clears the element, firing neither callback.
     bool LoadFromFile(const std::string& filePath, bool forceLoad = false);
     bool LoadFromImage(std::shared_ptr<UCImage> img);
+    // A picture already made - a file's icon or thumbnail
+    // (LoadHostFileIconPixmap, RenderFileThumbnail) - shown as it is,
+    // fitted to the box like a loaded image. Null clears the element.
+    // Fires onImageLoaded for a picture, neither callback for null.
+    bool LoadFromPixmap(std::shared_ptr<UCPixmap> pixmap);
 
     // Human-readable reason for the most recent failed load (e.g. the file was
     // locked, missing, or the format is unsupported). Empty on success.
