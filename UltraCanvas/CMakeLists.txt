@@ -905,7 +905,7 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAudioRecorderElement.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasWaveformElement.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasVideoTimelineModel.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasVideoTimeline.cpp
+        # UltraCanvasVideoTimeline.cpp: a selectable widget - see WIDGET SYSTEM below
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTheme.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTimecodeField.cpp
 
@@ -1308,6 +1308,100 @@ configure_file(${CMAKE_CURRENT_SOURCE_DIR}/cmake/UltraCanvasChartRegistration.cp
                @ONLY)
 list(APPEND ULTRACANVAS_CORE_SOURCES
      ${CMAKE_CURRENT_BINARY_DIR}/generated/UltraCanvasChartRegistration.generated.cpp)
+
+# ===== WIDGET SYSTEM (element plugin proposal §4, widgets) =====
+# The widget counterpart of the chart selection above. A selectable widget
+# compiles into the library when named in ULTRACANVAS_WIDGETS ("all" - the
+# default -, empty, or a ;-list of keys) and registers from the generated
+# UltraCanvas_RegisterSelectedWidgets(); one NOT named there is built as its
+# own runtime module (ultracanvas-widget-<name>, in <build>/Plugins/Elements)
+# that registers through the element plugin loader. Widgets stay bundled by
+# default (proposal goal 4, §10.4): only a lean build that leaves one out
+# turns it into a module. An application that uses a widget's typed API
+# (UltraVideo and DemoApp use UltraCanvasVideoTimeline) needs it compiled in;
+# the top-level CMakeLists refuses a configuration that leaves it out.
+set(ULTRACANVAS_WIDGETS "all" CACHE STRING
+    "Selectable widgets linked into the library: 'all', empty, or a ;-list of keys")
+option(ULTRACANVAS_WIDGET_RUNTIME_MODULES
+    "Build unselected widgets as runtime-loadable modules" ON)
+if((EMSCRIPTEN OR ANDROID) AND ULTRACANVAS_WIDGET_RUNTIME_MODULES)
+    message(STATUS "Widgets: no dynamic loading on this platform - runtime modules disabled")
+    set(ULTRACANVAS_WIDGET_RUNTIME_MODULES OFF)
+endif()
+
+# --- selectable widget table (key -> kebab name, sources, plugin glue, header,
+# register fn, anchor: an expression naming the core objects only this widget
+# uses, kept in a static host so the module resolves them at dlopen)
+set(UC_WIDGET_KEYS VideoTimeline)
+set(UC_WIDGET_VideoTimeline_KEBAB    "video-timeline")
+set(UC_WIDGET_VideoTimeline_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasVideoTimeline.cpp)
+set(UC_WIDGET_VideoTimeline_PLUGIN
+    ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Widgets/UltraCanvasVideoTimelinePlugin.cpp)
+set(UC_WIDGET_VideoTimeline_HEADER   "UltraCanvasVideoTimeline.h")
+set(UC_WIDGET_VideoTimeline_REGISTER "RegisterVideoTimelineElement")
+set(UC_WIDGET_VideoTimeline_ANCHOR_INCLUDE "UltraCanvasVideoTimelineModel.h")
+set(UC_WIDGET_VideoTimeline_ANCHOR   "reinterpret_cast<const void*>(&TimelineDeriveStarts)")
+
+set(UC_WIDGET_SELECTED_KEYS "")
+set(UC_WIDGET_MODULE_KEYS "")
+if(ULTRACANVAS_WIDGETS STREQUAL "all")
+    set(UC_WIDGET_SELECTED_KEYS ${UC_WIDGET_KEYS})
+elseif(NOT ULTRACANVAS_WIDGETS STREQUAL "")
+    foreach(key IN LISTS ULTRACANVAS_WIDGETS)
+        if(NOT key IN_LIST UC_WIDGET_KEYS)
+            message(FATAL_ERROR "ULTRACANVAS_WIDGETS names unknown widget '${key}' (known: ${UC_WIDGET_KEYS})")
+        endif()
+        list(APPEND UC_WIDGET_SELECTED_KEYS ${key})
+    endforeach()
+endif()
+foreach(key IN LISTS UC_WIDGET_KEYS)
+    if(NOT key IN_LIST UC_WIDGET_SELECTED_KEYS)
+        list(APPEND UC_WIDGET_MODULE_KEYS ${key})
+    endif()
+endforeach()
+if(NOT ULTRACANVAS_WIDGET_RUNTIME_MODULES AND UC_WIDGET_MODULE_KEYS)
+    message(WARNING "Widgets not selected and runtime modules off - unavailable: ${UC_WIDGET_MODULE_KEYS}")
+endif()
+foreach(key IN LISTS UC_WIDGET_SELECTED_KEYS)
+    list(APPEND ULTRACANVAS_CORE_SOURCES ${UC_WIDGET_${key}_SOURCES})
+endforeach()
+# The top-level CMakeLists and Tests/ check an application's widgets against these.
+set_property(GLOBAL PROPERTY ULTRACANVAS_WIDGETS_COMPILED_IN "${UC_WIDGET_SELECTED_KEYS}")
+set_property(GLOBAL PROPERTY ULTRACANVAS_WIDGET_MODULES "${UC_WIDGET_MODULE_KEYS}")
+message(STATUS "Widgets: compiled in [${UC_WIDGET_SELECTED_KEYS}], modules [${UC_WIDGET_MODULE_KEYS}]")
+
+# Generated registration TU: always present, so apps can call
+# UltraCanvas_RegisterSelectedWidgets() unconditionally.
+set(UC_WIDGET_REG_INCLUDES "")
+set(UC_WIDGET_REG_CALLS "")
+set(UC_WIDGET_REG_ANCHOR "")
+foreach(key IN LISTS UC_WIDGET_SELECTED_KEYS)
+    string(APPEND UC_WIDGET_REG_INCLUDES "#include \"${UC_WIDGET_${key}_HEADER}\"\n")
+    string(APPEND UC_WIDGET_REG_CALLS "    ${UC_WIDGET_${key}_REGISTER}();\n")
+endforeach()
+if(UC_WIDGET_MODULE_KEYS AND ULTRACANVAS_WIDGET_RUNTIME_MODULES)
+    set(uc_widget_anchors "")
+    foreach(key IN LISTS UC_WIDGET_MODULE_KEYS)
+        string(APPEND UC_WIDGET_REG_INCLUDES "#include \"${UC_WIDGET_${key}_ANCHOR_INCLUDE}\"\n")
+        string(APPEND uc_widget_anchors "        ${UC_WIDGET_${key}_ANCHOR},\n")
+    endforeach()
+    string(APPEND UC_WIDGET_REG_ANCHOR "
+// Anchors into static hosts the core objects only the widget modules use, so
+// those modules resolve them at dlopen. Referenced from the registration call.
+const void* const* UltraCanvas_WidgetModuleAnchors() {
+    static const void* const anchors[] = {
+${uc_widget_anchors}    };
+    return anchors;
+}
+")
+    string(APPEND UC_WIDGET_REG_CALLS "    (void)UltraCanvas_WidgetModuleAnchors();\n")
+endif()
+configure_file(${CMAKE_CURRENT_SOURCE_DIR}/cmake/UltraCanvasWidgetRegistration.cpp.in
+               ${CMAKE_CURRENT_BINARY_DIR}/generated/UltraCanvasWidgetRegistration.generated.cpp
+               @ONLY)
+list(APPEND ULTRACANVAS_CORE_SOURCES
+     ${CMAKE_CURRENT_BINARY_DIR}/generated/UltraCanvasWidgetRegistration.generated.cpp)
 
 # libvips-dependent sources
 if(ULTRACANVAS_HAS_VIPS)
@@ -2141,6 +2235,39 @@ if(ULTRACANVAS_ENABLE_CHARTS AND ULTRACANVAS_CHART_RUNTIME_MODULES)
             target_link_libraries(${uc_chart_target} PRIVATE ${ULTRACANVAS_LIB_NAME})
         endif()
         message(STATUS "  [✓] chart module ${uc_chart_target}")
+    endforeach()
+endif()
+
+# ===== WIDGET RUNTIME MODULES =====
+# One MODULE DSO per unselected selectable widget, the same way as the chart
+# modules above (ENABLE_EXPORTS + RTLD_GLOBAL on Unix, the shared core DLL on
+# Windows, so a Windows static build skips them).
+if(ULTRACANVAS_WIDGET_RUNTIME_MODULES)
+    foreach(key IN LISTS UC_WIDGET_MODULE_KEYS)
+        set(uc_widget_target "ultracanvas-widget-${UC_WIDGET_${key}_KEBAB}")
+        if(WIN32 AND NOT ULTRACANVAS_BUILD_SHARED)
+            message(STATUS "  [−] widget module ${uc_widget_target} - SKIPPED (needs shared core on Windows)")
+            continue()
+        endif()
+        add_library(${uc_widget_target} MODULE
+            ${UC_WIDGET_${key}_SOURCES}
+            ${UC_WIDGET_${key}_PLUGIN})
+        target_include_directories(${uc_widget_target} PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/include
+            ${CMAKE_CURRENT_BINARY_DIR}/generated/include
+            ${CAIRO_INCLUDE_DIRS} ${PANGO_INCLUDE_DIRS} ${GLIB_INCLUDE_DIRS}
+            ${HARFBUZZ_INCLUDE_DIRS} ${FREETYPE_INCLUDE_DIRS})
+        target_compile_features(${uc_widget_target} PRIVATE cxx_std_20)
+        set_target_properties(${uc_widget_target} PROPERTIES
+            PREFIX ""
+            POSITION_INDEPENDENT_CODE ON
+            LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/Plugins/Elements)
+        if(WIN32 OR ULTRACANVAS_BUILD_SHARED)
+            target_link_libraries(${uc_widget_target} PRIVATE ${ULTRACANVAS_LIB_NAME})
+        elseif(APPLE)
+            set_target_properties(${uc_widget_target} PROPERTIES LINK_FLAGS "-undefined dynamic_lookup")
+        endif()
+        message(STATUS "  [✓] widget module ${uc_widget_target}")
     endforeach()
 endif()
 
