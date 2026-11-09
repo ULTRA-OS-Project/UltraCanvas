@@ -1,12 +1,19 @@
 // OS/MacOS/UltraCanvasMacOSWindow.mm
 // Complete macOS window implementation with Cocoa and Cairo
+// Version: 2.8.0 - screen positions are top-left (y down from the top of the primary screen),
+//                  as on X11 and Windows: SetWindowPosition, GetWindowPosition,
+//                  GetContentScreenOrigin, GetScreenBounds, a window's create-time
+//                  position and its moves; a resize keeps the top-left corner.
+//                  WindowType::Popup and WindowType::Tooltip: borderless, never key, at
+//                  the pop-up menu level, transparent where they draw nothing, with
+//                  the system's shadow; a tooltip lets the pointer through
 // Version: 2.7.0 - WindowType::SessionLock: borderless at the floating level (not enforced)
 // Version: 2.6.0 - WindowConfig::alwaysOnTop (and a notification) at the floating window level
 // Version: 2.5.0 - the content view is an NSTextInputClient: an element that
 //   draws compositions gets the input method's pre-edit as TextComposition
 //   events, its candidate window at the caret
 // Version: 2.4.0 - the content view hands VoiceOver the window's elements (children, hit test, focus)
-// Last Modified: 2026-10-14
+// Last Modified: 2026-11-09
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasApplication.h"
@@ -21,6 +28,7 @@
 #include <iostream>
 #include <cstring>
 #include <algorithm>
+#include <cmath>
 #include "UltraCanvasDebug.h"
 
 // The plain string of what an input method hands NSTextInputClient: an
@@ -34,6 +42,23 @@ static NSString* UCPlainString(id string) {
 static std::string UCUtf8(NSString* string) {
     const char* utf8 = string ? [string UTF8String] : nullptr;
     return utf8 ? std::string(utf8) : std::string();
+}
+
+// The framework's screen coordinates are top-left: x right, y DOWN from the
+// top of the primary screen (the one whose bottom-left corner is Cocoa's
+// origin), in points - as X11's and Windows' are, in their pixels. Cocoa's
+// run up from that screen's bottom edge; converting one into the other is
+// a flip about its height.
+static CGFloat UCPrimaryScreenHeight() {
+    NSArray<NSScreen*>* screens = [NSScreen screens];
+    if ([screens count] > 0) return [[screens objectAtIndex:0] frame].size.height;
+    NSScreen* main = [NSScreen mainScreen];
+    return main ? [main frame].size.height : 0.0;
+}
+
+// The top edge of a Cocoa rectangle, as a top-left y
+static int UCTopLeftY(NSRect rect) {
+    return static_cast<int>(std::lround(UCPrimaryScreenHeight() - NSMaxY(rect)));
 }
 
 @interface UltraCanvasView : NSView <NSTextInputClient> {
@@ -107,6 +132,14 @@ static std::string UCUtf8(NSString* string) {
 
 - (BOOL)acceptsFirstResponder { return YES; }
 - (BOOL)isFlipped { return YES; }
+
+// A popup's own window is never the key window: the click that picks an item
+// of a menu in it is the click, not one that only brings the window forward.
+- (BOOL)acceptsFirstMouse:(NSEvent*)event {
+    (void)event;
+    if (ultraCanvasWindow && ultraCanvasWindow->GetConfig().type == UltraCanvas::WindowType::Popup) return YES;
+    return [super acceptsFirstMouse:event];
+}
 
 // ===== ACCESSIBILITY =====
 // VoiceOver reads the window's elements through this view: they are its
@@ -425,18 +458,24 @@ namespace UltraCanvas {
 
     bool UltraCanvasMacOSWindow::CreateNSWindow() {
         @autoreleasepool {
-            // Calculate window frame
+            // Calculate window frame. A position asked for is the frame's
+            // top-left corner (top-left screen coordinates), set once the
+            // window exists; without one the window opens where it always has.
+            const bool placed = config_.x >= 0 && config_.y >= 0;
             NSRect windowFrame = NSMakeRect(
-                config_.x >= 0 ? config_.x : 100,
-                config_.y >= 0 ? config_.y : 100,
+                100,
+                100,
                 config_.width > 0 ? config_.width : 800,
                 config_.height > 0 ? config_.height : 600
             );
 
+            // A popup's and the tooltip's own window: no frame, never key
+            const bool overlay = config_.type == WindowType::Popup || config_.type == WindowType::Tooltip;
+
             // Window style mask
             NSWindowStyleMask styleMask;
             if (config_.type == WindowType::Borderless || config_.type == WindowType::Notification ||
-                config_.type == WindowType::SessionLock) {
+                config_.type == WindowType::SessionLock || overlay) {
                 styleMask = NSWindowStyleMaskBorderless;
             } else {
                 styleMask = NSWindowStyleMaskTitled |
@@ -475,6 +514,27 @@ namespace UltraCanvas {
             if (config_.alwaysOnTop || config_.type == WindowType::Notification ||
                 config_.type == WindowType::SessionLock) {
                 [nsWindow setLevel:NSFloatingWindowLevel];
+            }
+
+            // A popup's and the tooltip's own window: above every other
+            // window, a pop-up menu's level; transparent where nothing is
+            // drawn, so a menu's rounded corners show what is beneath, with
+            // the shadow the system draws under such a window; out of the
+            // window cycle and Mission Control, and shown over a full-screen
+            // window. The pointer goes through a tooltip.
+            if (overlay) {
+                [nsWindow setLevel:NSPopUpMenuWindowLevel];
+                [nsWindow setOpaque:NO];
+                [nsWindow setBackgroundColor:[NSColor clearColor]];
+                [nsWindow setHasShadow:YES];
+                [nsWindow setCollectionBehavior:NSWindowCollectionBehaviorTransient |
+                                                NSWindowCollectionBehaviorIgnoresCycle |
+                                                NSWindowCollectionBehaviorFullScreenAuxiliary];
+                if (config_.type == WindowType::Tooltip) [nsWindow setIgnoresMouseEvents:YES];
+            }
+
+            if (placed) {
+                [nsWindow setFrameTopLeftPoint:NSMakePoint(config_.x, UCPrimaryScreenHeight() - config_.y)];
             }
 
             // Create custom view for Cairo rendering
@@ -613,7 +673,13 @@ namespace UltraCanvas {
 
         pendingShow = false;
         @autoreleasepool {
-            [nsWindow makeKeyAndOrderFront:nil];
+            if (config_.type == WindowType::Popup || config_.type == WindowType::Tooltip) {
+                // Above the others, but never the key window: the window the
+                // popup or tooltip belongs to keeps the keys
+                [nsWindow orderFrontRegardless];
+            } else {
+                [nsWindow makeKeyAndOrderFront:nil];
+            }
 
             // Ensure the window is not miniaturized
             if ([nsWindow isMiniaturized]) {
@@ -757,9 +823,36 @@ namespace UltraCanvas {
 
         if (_created) {
             @autoreleasepool {
-                NSPoint origin = NSMakePoint(x, y);
-                [nsWindow setFrameOrigin:origin];
+                // (x, y) is the frame's top-left corner, y down from the top
+                // of the primary screen
+                [nsWindow setFrameTopLeftPoint:NSMakePoint(x, UCPrimaryScreenHeight() - y)];
             }
+        }
+    }
+
+    void UltraCanvasMacOSWindow::GetWindowPosition(int& x, int& y) const {
+        if (!_created || !nsWindow) {
+            x = config_.x;
+            y = config_.y;
+            return;
+        }
+        @autoreleasepool {
+            const NSRect frame = [nsWindow frame];
+            x = static_cast<int>(std::lround(frame.origin.x));
+            y = UCTopLeftY(frame);
+        }
+    }
+
+    void UltraCanvasMacOSWindow::GetContentScreenOrigin(int& x, int& y) const {
+        if (!_created || !nsWindow) {
+            GetWindowPosition(x, y);
+            return;
+        }
+        @autoreleasepool {
+            // Below the title bar: where window coordinate (0, 0) is drawn
+            const NSRect content = [nsWindow contentRectForFrameRect:[nsWindow frame]];
+            x = static_cast<int>(std::lround(content.origin.x));
+            y = UCTopLeftY(content);
         }
     }
 
@@ -773,8 +866,12 @@ namespace UltraCanvas {
 
         if (_created) {
             @autoreleasepool {
+                // Cocoa keeps the bottom-left corner; the framework, as on
+                // every other platform, the top-left one
+                const NSRect before = [nsWindow frame];
                 NSSize size = NSMakeSize(width, height);
                 [nsWindow setContentSize:size];
+                [nsWindow setFrameTopLeftPoint:NSMakePoint(before.origin.x, NSMaxY(before))];
                 _needsResize = true;
             }
         } else {
@@ -816,6 +913,11 @@ namespace UltraCanvas {
             // Draw it now; UltraCanvasMacOSApplication::RunInEventLoop() flushes
             // the transaction once per loop iteration to put it on screen.
             [contentView displayIfNeeded];
+            // A window transparent where nothing is drawn (a popup's, the
+            // tooltip's): its shadow follows what is drawn now
+            if (config_.type == WindowType::Popup || config_.type == WindowType::Tooltip) {
+                [nsWindow invalidateShadow];
+            }
         }
     }
 
@@ -845,11 +947,10 @@ namespace UltraCanvas {
                 screen = [NSScreen mainScreen];
             }
             NSRect frame = [screen frame];
-            // NSScreen frames are already in the unified multi-monitor coordinate
-            // space used by NSWindow's setFrameOrigin (which SetWindowPosition calls
-            // directly), so no y-flip conversion is needed here.
-            x = static_cast<int>(frame.origin.x);
-            y = static_cast<int>(frame.origin.y);
+            // In top-left screen coordinates, as SetWindowPosition takes them:
+            // a screen above the primary one has a negative y
+            x = static_cast<int>(std::lround(frame.origin.x));
+            y = UCTopLeftY(frame);
             width = static_cast<int>(frame.size.width);
             height = static_cast<int>(frame.size.height);
         }
@@ -885,9 +986,12 @@ namespace UltraCanvas {
         if (!_created) return;
 
         @autoreleasepool {
-            NSPoint origin = [nsWindow frame].origin;
-            config_.x = static_cast<int>(origin.x);
-            config_.y = static_cast<int>(origin.y);
+            const NSRect frame = [nsWindow frame];
+            config_.x = static_cast<int>(std::lround(frame.origin.x));
+            config_.y = UCTopLeftY(frame);
+            // The windows of its popups follow it
+            _needsPopupHostSync = true;
+            RequestRedraw();
 
             if (onWindowMove) {
                 onWindowMove(config_.x, config_.y);

@@ -1,5 +1,6 @@
 // include/UltraCanvasTooltipManager.h
 // Updated tooltip system compatible with unified UltraCanvas architecture
+// Version: 2.5.1 - on macOS too
 // Version: 2.5.0 - the tooltip is shown in a window of its own (WindowType::Tooltip), above
 //                  every other window: SetUseOwnWindow / GetUseOwnWindow, GetTooltipWindow,
 //                  ForgetWindow, WindowScaleChanged
@@ -157,7 +158,7 @@ namespace UltraCanvas {
         // window above it - every tooltip of a desktop's bars, which live in
         // a window kept below all others - and stopped at its edges. On by
         // default where the platform can place such a window (X11, Wayland,
-        // Windows); elsewhere (macOS, the browser, Android), when it is
+        // Windows, macOS); elsewhere (the browser, Android), when it is
         // turned off, or when the window cannot be made, the tooltip is drawn
         // inside the window it belongs to, as before.
         static void SetUseOwnWindow(bool use);

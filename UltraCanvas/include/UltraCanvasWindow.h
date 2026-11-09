@@ -1,5 +1,7 @@
 // include/UltraCanvasWindowBase.h
 // Enhanced abstract base window interface inheriting from UltraCanvasContainer
+// Version: 2.12.1 - popups and the tooltip in windows of their own on macOS too; screen
+//                  coordinates are top-left there as everywhere
 // Version: 2.12.0 - every popup in a window of its own (WindowType::Popup) above every other
 //                  window: SetPopupsInOwnWindows, GetPopupWindow, IsPopupHost,
 //                  SetNativeWindowShape; FindElementAtPoint reaches a popup outside the window
@@ -66,7 +68,10 @@ namespace UltraCanvas {
         // (override-redirect with _NET_WM_WINDOW_TYPE_POPUP_MENU on X11;
         // WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE on Windows; on
         // Wayland a popup of config.parentWindow, or an overlay-layer surface
-        // beside a desktop on the layer shell). Not an application window.
+        // beside a desktop on the layer shell; on macOS a borderless window
+        // that never becomes key, at the pop-up menu level, transparent where
+        // nothing is drawn, with the system's shadow). Not an application
+        // window.
         Popup,
         Tool,
         Fullscreen, Borderless, Overlay,
@@ -100,7 +105,9 @@ namespace UltraCanvas {
         // _NET_WM_WINDOW_TYPE_TOOLTIP on X11; WS_EX_TOPMOST | WS_EX_NOACTIVATE
         // | WS_EX_TRANSPARENT on Windows; on Wayland a popup of
         // config.parentWindow, or a top-layer surface beside a desktop on the
-        // layer shell). Not an application window: it never keeps the
+        // layer shell; on macOS a borderless window that never becomes key,
+        // at the pop-up menu level, ignoring the pointer, with the system's
+        // shadow). Not an application window: it never keeps the
         // application running, is no jump target and is not an accessible
         // window. Where the platform cannot place one, the tooltip manager
         // draws the tooltip inside the window it belongs to instead.
@@ -531,12 +538,13 @@ namespace UltraCanvas {
         // and given the pointer here, with the pointer's position in this
         // window's coordinates - only its pixels are put on the screen in
         // its own window, cut to its outline. On by default where the
-        // platform can place such a window (X11, Wayland, Windows); off, and
-        // on macOS, in the browser and on Android, a popup is composited onto
-        // this window as before. A popup in its own window is opaque on
-        // screen and has no drop shadow of its own (SetPopupOpacity above 0
-        // shows it in full); it closes, if it closes on a click outside it,
-        // when focus leaves the application.
+        // platform can place such a window (X11, Wayland, Windows, macOS);
+        // off, and in the browser and on Android, a popup is composited onto
+        // this window as before. A popup in its own window has no drop shadow
+        // of its own (the system's, where it gives one: a compositing window
+        // manager, macOS) and does not fade (SetPopupOpacity above 0 shows it
+        // in full); it closes, if it closes on a click outside it, when focus
+        // leaves the application.
         static void SetPopupsInOwnWindows(bool inOwnWindows);
         static bool GetPopupsInOwnWindows();
         // The window `popup` is shown in: its own, or null while it is
