@@ -65,6 +65,12 @@
 // display and the switch itself are remembered in the settings.
 // A previewed file that changes on disk is reopened in the preview pane
 // (ReloadChangedPreview): throttled, and never restarting a playing video.
+// Version: 1.43.0 - a drive's row under Remote Drives takes Delete (the drive
+//                  is forgotten, its files are not touched) and Configure
+//                  drive; Refresh on every folder row of the tree and in the
+//                  folder display's menu, asking a drive's server again; a
+//                  file on a drive that is gone, or refused, is said in a
+//                  dialog
 // Version: 1.42.4 - the folder tree follows what a display's folder watch saw
 //                  change on disk (onFolderChangedOnDisk), so a folder deleted
 //                  after a locked file in it was let go leaves the tree
@@ -110,7 +116,7 @@
 // Version: 1.30.1 - the New and Add-drive menus open anchored to their buttons
 //                  (OpenMenuAnchored): above them when there is no room below
 // Version: 1.30.0
-// Last Modified: 2026-11-03
+// Last Modified: 2026-11-09
 // Author: UltraCanvas Framework
 
 #include "UltraFilerWindow.h"
@@ -2555,10 +2561,14 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildNavigationRow() {
         else if (filer) {
             // On a remote folder, Refresh has to mean "ask the server again":
             // re-reading a cache that is already answering would repaint the
-            // same listing and look like the button does nothing.
-            if (remoteDrives && IsRemoteFilerPath(filer->GetPath()))
-                remoteDrives->Invalidate(filer->GetPath());
-            filer->Refresh();
+            // same listing and look like the button does nothing. The same
+            // Refresh as the context menus' - the files stay on screen while
+            // the server is asked, and the tree's rows follow the answer.
+            if (remoteDrives && IsRemoteFilerPath(filer->GetPath()) &&
+                !filer->IsShowingFileList())
+                RefreshFolderEverywhere(filer->GetPath());
+            else
+                filer->Refresh();
         }
     });
     row->AddChild(backButton);
@@ -3188,6 +3198,224 @@ void UltraFilerWindow::RefreshRemoteDriveNodes() {
     ScheduleTreeFit();
     // A display on a drive that has just gone loses its log button.
     UpdateConnectionLogButton();
+}
+
+void UltraFilerWindow::ConfirmRemoveRemoteDrive(const std::string& rootPath) {
+    if (!window || !remoteDrives) return;
+    const std::string accountId = RemoteFilerAccountId(rootPath);
+    RemoteDrive drive;
+    if (accountId.empty() || !remoteDrives->Find(accountId, drive) || drive.isDevice) return;
+    const std::string name = drive.displayName;
+    // Transfers to or from it that have not finished: one waiting its turn is
+    // dropped with the drive, so the question says so rather than letting an
+    // upload vanish unannounced.
+    long long transfers = 0;
+    for (const RemoteTransfer& t : remoteDrives->PendingTransfers())
+        if (t.accountId == accountId) ++transfers;
+
+    DialogConfig cfg;
+    cfg.title = Tr("Delete drive");
+    cfg.dialogType = DialogType::Warning;
+    cfg.message = TrF("Delete the drive \"{0}\" from UltraFiler?", name);
+    std::string details = Tr("The files on the server are not touched. UltraFiler forgets the "
+                             "drive's settings and its saved password; add the drive again to "
+                             "reach the files.");
+    if (transfers > 0)
+        details += "\n" + TrN("{n} transfer to or from this drive has not finished; one still "
+                              "waiting to start is dropped.",
+                              "{n} transfers to or from this drive have not finished; those "
+                              "still waiting to start are dropped.", transfers);
+    cfg.details = details;
+    cfg.buttons = DialogButtons::NoButtons;   // the answers are added below
+    cfg.width = 520;
+    cfg.height = transfers > 0 ? 220 : 190;
+    auto dialog = UltraCanvasDialogManager::CreateDialog(cfg);
+    if (!dialog) return;   // no dialogs: nothing is deleted unasked
+    dialog->AddCustomButton(Tr("Delete"), DialogResult::Yes,
+                            DialogButtonRole::DestructiveDefault);
+    dialog->AddCustomButton(Tr("Cancel"), DialogResult::Cancel, DialogButtonRole::Cancel);
+    dialog->onResult = [this, accountId, name](DialogResult result) {
+        if (result != DialogResult::Yes || !remoteDrives) return;
+        // Displays leave the drive first: one still on it would go on asking
+        // for a drive that is no longer there.
+        const std::string home = UserHomeDir();
+        for (FilerTabState* state : FolderDisplayStates()) {
+            if (!state->filer || state->filer->IsShowingFileList()) continue;
+            if (RemoteFilerAccountId(state->filer->GetPath()) != accountId) continue;
+            if (!home.empty()) state->filer->SetPath(home);
+        }
+        // Uploads that waited for a listing of one of its folders: there is
+        // nowhere left for them to go.
+        uploadsAwaitingListing.erase(
+                std::remove_if(uploadsAwaitingListing.begin(), uploadsAwaitingListing.end(),
+                               [&accountId](const UploadsAwaitingListing& u) {
+                                   return RemoteFilerAccountId(u.folder) == accountId;
+                               }),
+                uploadsAwaitingListing.end());
+        std::string error;
+        const bool removed = remoteDrives->RemoveDrive(accountId, error);
+        // The rows as the list now stands, whichever way it went.
+        RefreshRemoteDriveNodes();
+        if (!removed) {
+            UltraCanvasAlert::Error(error, Tr("Delete drive"), nullptr, window.get());
+            return;
+        }
+        UpdateStatusBar();
+        if (statusLabel) statusLabel->SetText(TrF("Drive \"{0}\" deleted from UltraFiler", name));
+    };
+    UltraCanvasDialogManager::ShowDialog(dialog, nullptr, window.get());
+}
+
+void UltraFilerWindow::ConfigureRemoteDrive(const std::string& rootPath) {
+#ifndef ULTRAFILER_HAS_ULTRACLOUD
+    (void)rootPath;
+    UltraCanvasAlert::Info(Tr("This build of UltraFiler was made without "
+                           "UltraCloud, so it cannot carry FTP or cloud drives."),
+                           Tr("Configure drive"), nullptr, window.get());
+#else
+    if (!window || !remoteDrives) return;
+    const std::string accountId = RemoteFilerAccountId(rootPath);
+    if (accountId.empty()) return;
+    std::string error;
+    // Opens the account store if a failure at start-up left it shut, as the
+    // "+ Drive" menu does before its dialog.
+    if (!remoteDrives->Reload(error)) {
+        UltraCanvasAlert::Error(error, Tr("Configure drive"), nullptr, window.get());
+        return;
+    }
+    std::shared_ptr<UltraCloud::CloudService> service = remoteDrives->Service();
+    if (!service) {
+        UltraCanvasAlert::Error(Tr("The drive list is not available."),
+                                Tr("Configure drive"), nullptr, window.get());
+        return;
+    }
+    // A sign-in from this dialog is a session of the connection log like one
+    // from the add dialog, so a refused new password can be read step by step.
+    std::shared_ptr<RemoteSignInLog> signInLog = remoteDrives->MakeSignInLog(Tr("Configure drive"));
+    UltraCloud::AddAccountWatch watch;
+    watch.onBegin = [signInLog](const UltraCloud::Account& account) {
+        signInLog->Begin(account.providerId, account.displayName, account.serverUrl);
+    };
+    watch.onEnd = [signInLog](const UltraCloud::Account&, const UltraCloud::Result& result) {
+        signInLog->End(result);
+    };
+    watch.cancelled = [signInLog]() { return signInLog->Cancelled(); };
+    const bool shown = UltraCloud::ShowEditAccountDialog(
+            window.get(), service, accountId,
+            [this, accountId](const UltraCloud::Account& saved) {
+                if (!remoteDrives) return;
+                std::string reloadError;
+                if (!remoteDrives->Reload(reloadError)) {
+                    UltraCanvasAlert::Error(reloadError, Tr("Configure drive"),
+                                            nullptr, window.get());
+                    return;
+                }
+                // What the old server, user or password answered - a listing,
+                // a refused sign-in - is no answer for the new ones.
+                remoteDrives->InvalidateDrive(accountId);
+                RefreshRemoteDriveNodes();
+                // Every display on the drive reads it again, now with the
+                // settings that were just saved; its tab takes the new name.
+                for (FilerTabState* state : FolderDisplayStates()) {
+                    if (!state->filer || state->filer->IsShowingFileList()) continue;
+                    if (RemoteFilerAccountId(state->filer->GetPath()) != accountId) continue;
+                    state->filer->Refresh();
+                    const int index = TabIndexOf(state);
+                    if (index >= 0 && tabbedContainer)
+                        tabbedContainer->SetTabTitle(index, TabTitleFor(state->filer->GetPath()));
+                }
+                lastRemoteOperationError.clear();
+                UpdateStatusBar();
+                if (statusLabel)
+                    statusLabel->SetText(TrF("Drive \"{0}\" saved", saved.displayName));
+            },
+            Tr("Configure drive"), std::move(watch));
+    if (!shown) {
+        UltraCanvasAlert::Error(Tr("This drive's settings cannot be read - its account is "
+                                   "no longer in the drive list, or this build does not "
+                                   "know its kind of server."),
+                                Tr("Configure drive"), nullptr, window.get());
+    }
+#endif
+}
+
+void UltraFilerWindow::RefreshFolderEverywhere(const std::string& folder) {
+    if (folder.empty()) return;
+    if (IsRemoteFilerPath(folder)) {
+        if (!remoteDrives) return;
+        // Asked of the server again, ahead of what is queued. The displays
+        // and the tree keep what they show meanwhile, with the loading bar
+        // sliding along, and onListingArrived brings both in line with the
+        // answer - files added or deleted from another device among it.
+        remoteDrives->RefreshFolder(folder);
+        RefreshRemoteFolderDisplays(folder);
+        LoadRemoteTreeChildren(folder, /*listingReady=*/false);
+        UpdateStatusBar();
+        return;
+    }
+    // A computer of the Network section: its shares, listed again.
+    if (IsNetworkServerPath(folder)) {
+        QueueNetworkShares(folder);
+        return;
+    }
+    // A folder on this computer: its rows in the tree, and every display
+    // showing it (the same pass as for a drive's folder, which compares
+    // paths and nothing more).
+    RefreshTreeFolder(folder);
+    RefreshRemoteFolderDisplays(folder);
+}
+
+void UltraFilerWindow::ShowRemoteFileError(const std::string& path, const std::string& why,
+                                           RemoteFailure failure) {
+    if (!window || path.empty()) return;
+    if (failure != RemoteFailure::NotFound && failure != RemoteFailure::Lasting) return;
+    // Once for this selection: the pane is brought up to date again and
+    // again while the same file stays selected.
+    if (remoteFileAlertPath == path) return;
+    remoteFileAlertPath = path;
+    const std::string name = RemoteFilerName(path);
+    AlertOptions alert;
+    alert.severity = AlertSeverity::Error;
+    alert.parent = window.get();
+    if (failure == RemoteFailure::NotFound) {
+        alert.title = Tr("File not found");
+        alert.message = TrF("\"{0}\" is no longer on the drive.", name);
+        alert.details = Tr("It was deleted, moved or renamed since the folder was listed - "
+                           "from another device, perhaps. The folder is read again.");
+    } else {
+        alert.title = Tr("Cannot open the file");
+        alert.message = TrF("\"{0}\" could not be fetched from the drive.", name);
+        alert.details = why.empty() ? std::string() : why + "\n";
+        alert.details += Tr("Every step of the connection, with the error codes, is in "
+                            "the connection log - the round network button in the bottom-left "
+                            "corner of the folder display.");
+    }
+    if (failure == RemoteFailure::NotFound && !why.empty())
+        alert.details = why + "\n" + alert.details;
+    // A file that is gone: the listing that still shows it is out of date,
+    // and is read again so the file leaves the display rather than inviting
+    // another click. Revalidate, not RefreshFolder: the failure just recorded
+    // stays, so the selection still on the file does not fetch it again.
+    const std::string folder =
+            failure == RemoteFailure::NotFound ? RemoteFilerParent(path) : std::string();
+    auto show = [this, alert, folder]() {
+        if (!folder.empty() && remoteDrives) {
+            remoteDrives->Revalidate(folder);
+            RefreshRemoteFolderDisplays(folder);
+            LoadRemoteTreeChildren(folder, /*listingReady=*/false);
+        }
+        UltraCanvasAlert::Show(alert);
+    };
+    // After the event being handled - a click, a key - has run its course:
+    // this runs in the middle of a selection change, and neither a display
+    // read again nor a dialog taking the input belongs there.
+    UltraCanvasApplicationBase* app = UltraCanvasApplicationBase::GetCurrent();
+    if (!app) { show(); return; }
+    auto alive = probeAlive;
+    app->PostToUIThread([alive, show]() {
+        if (!alive->load()) return;   // the window closed meanwhile
+        show();
+    });
 }
 
 void UltraFilerWindow::WireRemoteDriveHooks(UltraCanvasFilerWidget* widget) {
@@ -5728,6 +5956,13 @@ void UltraFilerWindow::ShowTreeContextMenu(TreeNode* node, const UCEvent& event)
              node->parent->data.nodeId == kCloudNodeId ||
              node->parent->data.nodeId == kRemoteNodeId ||
              node->parent->data.nodeId == kRamNodeId);
+    // ... except a remote drive's own row, where Delete means the drive, not
+    // what is on it: UltraFiler forgets the drive's settings and password,
+    // and the server keeps every file. It is the one way to be rid of a
+    // drive that can no longer sign in, and Configure drive beside it the
+    // way to mend one.
+    const bool isRemoteDriveRow = isTopLevelRoot &&
+            node->parent->data.nodeId == kRemoteNodeId && IsRemoteFilerPath(target);
     // A RAM disc's own row - whichever section it sits in - is the one place
     // it can be ejected from. The list is asked as well as the section: the
     // disc's path can already have had a row elsewhere (a volume on macOS,
@@ -5752,10 +5987,11 @@ void UltraFilerWindow::ShowTreeContextMenu(TreeNode* node, const UCEvent& event)
     });
     copyItem.enabled = isFolder;
 
-    MenuItemData deleteItem = MenuItemData::Action(Tr("Delete"), [this, target]() {
-        ConfirmDeleteTreeFolder(target);
+    MenuItemData deleteItem = MenuItemData::Action(Tr("Delete"), [this, target, isRemoteDriveRow]() {
+        if (isRemoteDriveRow) ConfirmRemoveRemoteDrive(target);
+        else ConfirmDeleteTreeFolder(target);
     });
-    deleteItem.enabled = isFolder && !isTopLevelRoot;
+    deleteItem.enabled = isFolder && (!isTopLevelRoot || isRemoteDriveRow);
 
     // Paste needs a target folder under the cursor - and files to paste.
     MenuItemData pasteItem = MenuItemData::Action(Tr("Paste"), [this, target]() {
@@ -5807,6 +6043,18 @@ void UltraFilerWindow::ShowTreeContextMenu(TreeNode* node, const UCEvent& event)
     });
     unpinItem.enabled = isPinnedEntry;
 
+    // The folder read again, with its rows below it - on a drive, asked of
+    // the server again, which is the only way to see what another device
+    // changed there.
+    MenuItemData refreshItem = MenuItemData::Action(Tr("Refresh"), [this, target]() {
+        RefreshFolderEverywhere(target);
+    });
+    refreshItem.enabled = isFolder;
+
+    MenuItemData configureDrive = MenuItemData::Action(Tr("Configure drive"), [this, target]() {
+        ConfigureRemoteDrive(target);
+    });
+
     // The drive rows follow the machine on their own (RefreshDriveNodes, run
     // from the volume monitor); this is the manual way to the same pass, for a
     // mount the platform reports through a channel nothing listens on.
@@ -5820,7 +6068,7 @@ void UltraFilerWindow::ShowTreeContextMenu(TreeNode* node, const UCEvent& event)
 
     MenuStyle style = MenuStyle::Default();
     style.font.fontSize = kUiFontSize;
-    treeContextMenu = std::make_shared<UltraCanvasMenu>("ufl-tree-menu", 0, 0, 160, 0);
+    treeContextMenu = std::make_shared<UltraCanvasMenu>("ufl-tree-menu", 0, 0, 180, 0);
     treeContextMenu->SetMenuType(MenuType::PopupMenu);
     treeContextMenu->SetStyle(style);
     treeContextMenu->AddItem(copyItem);
@@ -5830,6 +6078,9 @@ void UltraFilerWindow::ShowTreeContextMenu(TreeNode* node, const UCEvent& event)
     treeContextMenu->AddItem(pinSubmenu);
     treeContextMenu->AddItem(unpinItem);
     treeContextMenu->AddItem(MenuItemData::Separator());
+    treeContextMenu->AddItem(refreshItem);
+    // Only on a remote drive's row, as Eject below is only on a RAM disc's.
+    if (isRemoteDriveRow) treeContextMenu->AddItem(configureDrive);
     // Only on a RAM disc's row: on any other row it could only be disabled,
     // and a disabled Eject on every folder suggests folders can be ejected.
     if (isRamDisc) treeContextMenu->AddItem(ejectRamDisk);
@@ -6277,6 +6528,14 @@ void UltraFilerWindow::WireFilerCallbacks(FilerTabState* tab) {
     // The context menu's Settings item opens the same settings window as the
     // navigation row's gear button.
     tab->filer->onSettings = [this]() { OpenSettingsDialog(); };
+    // The menu's Refresh does what the tree's does: the folder right-clicked,
+    // or the one shown, read again - asked of the server again on a drive -
+    // with its rows in the tree and every display showing it. Search results
+    // are listed again as they stand.
+    tab->filer->onRefreshRequested = [this, display = tab->filer.get()](const std::string& folder) {
+        if (display->IsShowingFileList()) { display->Refresh(); return; }
+        RefreshFolderEverywhere(folder);
+    };
     // The gear beside the hidden-items notice's "Show hidden files": the
     // settings that decided what this folder holds back - Display > Home
     // folder in the home folder (curation and hidden files), Display >
@@ -8415,16 +8674,22 @@ void UltraFilerWindow::UpdatePreviewPane() {
                 mediaPath = e->path;
         }
     }
+    // The file whose failure was put in a dialog stays the one asked about
+    // only while it stays selected: choosing it again asks again.
+    if (const FilerEntry* e = SingleSelectedEntry(); !e || e->path != remoteFileAlertPath)
+        remoteFileAlertPath.clear();
     if (!mediaPath.empty() && IsRemoteFilerPath(mediaPath)) {
         // The viewer reads files, and this one is on a server: ask for the
         // local copy. Ready shows it; anything else shows nothing yet, and
         // onPreviewCopyReady comes back here once the copy is in.
         const FilerEntry* e = SingleSelectedEntry();
         std::string copy, why;
+        RemoteFailure failure = RemoteFailure::NoFailure;
         const auto state = remoteDrives && e
-                ? remoteDrives->RequestPreviewCopy(*e, copy, why)
+                ? remoteDrives->RequestPreviewCopy(*e, copy, why, &failure)
                 : UltraFilerRemoteDrives::PreviewCopy::Failed;
         const std::string name = RemoteFilerName(mediaPath);
+        const std::string remoteFile = mediaPath;
         mediaPath.clear();
         switch (state) {
             case UltraFilerRemoteDrives::PreviewCopy::Ready:
@@ -8450,8 +8715,14 @@ void UltraFilerWindow::UpdatePreviewPane() {
                                   "copy it to this computer to open it", name);
                 break;
             case UltraFilerRemoteDrives::PreviewCopy::Failed:
-                previewNote = "No preview of " + name + (why.empty() ? std::string()
-                                                                     : ": " + why);
+                previewNote = why.empty() ? TrF("No preview of {0}", name)
+                                          : TrF("No preview of {0}: {1}", name, why);
+                // A file deleted on the drive since its folder was listed, a
+                // refused sign-in, a refusal: not something to leave on the
+                // status line, where a click that did nothing goes unread.
+                // The network or a busy service, which may answer the next
+                // time, stays there.
+                ShowRemoteFileError(remoteFile, why, failure);
                 break;
         }
     }
