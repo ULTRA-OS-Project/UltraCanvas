@@ -5,7 +5,7 @@
 ultraim abi 3
 ultraim fingerprint ef9f67a28d5d61e8eb7d3121da31e6f0bb320fef7ee124464ff1b1f7c6f646e9
 
-# element: no ABI change at table 1, uc 1: the plugin's new export UltraCanvas_PluginHeadersId, which the loader requires before it calls anything - a plugin without it is refused, so no number has to move
+# element: no ABI change at table 1, uc 1: adds the host-side free function UltraCanvas_RegisterSelectedWidgets; the host table and the descriptor types are unchanged
 element table 1
 element uc 1
-element fingerprint 79c822cbc2c3386333503b97eec0d568bbd26be164bddb4aac83f4dd6b149a5c
+element fingerprint 38b096bca6865022ef8229481f670a1993a4e668d596ed70b569c5dedb4829fd
