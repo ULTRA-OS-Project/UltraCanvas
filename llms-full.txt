@@ -30560,11 +30560,15 @@ the default, empty, or a `;`-list of keys) names the selectable widgets
 compiled into the core. Every one not named is built as its own module,
 `ultracanvas-widget-<kebab-name>`, in `<build>/Plugins/Elements`
 (`ULTRACANVAS_WIDGET_RUNTIME_MODULES`, on by default; off on WASM and Android;
-on Windows the module needs the shared core). Today the table holds one widget:
+on Windows the module needs the shared core). The table:
 
-| Key | Type name | Module |
-|---|---|---|
-| `VideoTimeline` | `video-timeline` | `ultracanvas-widget-video-timeline` |
+| Key | Type name | Module | Applications that need it compiled in |
+|---|---|---|---|
+| `VideoTimeline` | `video-timeline` | `ultracanvas-widget-video-timeline` | UltraVideo, DemoApp |
+| `Slideshow` | `slideshow` | `ultracanvas-widget-slideshow` | DemoApp |
+| `Album` | `album` | `ultracanvas-widget-album` | UltraVideo, DemoApp |
+| `ColorPaletteManager` | `color-palette-manager` | `ultracanvas-widget-color-palette-manager` | UltraPaint, ArtCreator, DemoApp |
+| `VectorCanvas` | `vector-canvas` | `ultracanvas-widget-vector-canvas` | ArtCreator, DemoApp |
 
 ```cpp
 // At startup - registers the widgets compiled in. In a static core it also
@@ -30573,21 +30577,28 @@ UltraCanvas_RegisterSelectedWidgets();
 
 UltraCanvas_AddPluginDirectory(GetExecutableDir() + "/Plugins/Elements");
 auto timeline = UltraCanvasElementRegistry::Create("video-timeline", "tl", 0, 0, 800, 200);
+auto album    = UltraCanvasElementRegistry::Create("album", "pics", 0, 220, 800, 400);
 ```
 
 The default build is unchanged: every widget is compiled in. A lean build
-leaves one out:
+leaves them out, with the applications that use them:
 
 ```
-cmake -S . -B build -DULTRACANVAS_WIDGETS= -DBUILD_ULTRAVIDEO=OFF -DBUILD_DEMO_APP=OFF
+cmake -S . -B build -DULTRACANVAS_WIDGETS= -DBUILD_ULTRAVIDEO=OFF -DBUILD_DEMO_APP=OFF \
+      -DBUILD_ULTRAPAINT_APP=OFF -DBUILD_ARTCREATOR_APP=OFF
 ```
 
-An application that uses a widget's typed API (`CreateVideoTimeline`,
-`VideoTimelineStyle`) needs that widget compiled in. UltraVideo and DemoApp
-use the timeline that way, and the top-level `CMakeLists.txt` stops with an
-error when they are built without it. A host that loads widget modules from
-a static core exports its symbols (`ENABLE_EXPORTS`), the same as the chart
+An application that uses a widget's typed API (its class, its `Create…`
+function, its style) needs that widget compiled in. The top-level
+`CMakeLists.txt` says which widgets each application uses
+(`ultracanvas_require_widgets`) and stops the configure, naming the widgets,
+when one it builds would not link. A host that loads widget modules from a
+static core exports its symbols (`ENABLE_EXPORTS`), the same as the chart
 modules' hosts.
+
+`ElementModulesTest` creates every selectable widget, and the chart of the
+chart module, by name in whichever form the build has them. Loading a module
+also checks that it carries the framework headers id the loader insists on.
 
 **Adding a widget to the table** (`UltraCanvas/CMakeLists.txt`, "WIDGET SYSTEM"):
 
@@ -30597,10 +30608,15 @@ modules' hosts.
    descriptor through `host->RegisterElement` (see
    `UltraCanvasVideoTimelinePlugin.cpp`).
 3. Take its sources out of `ULTRACANVAS_CORE_SOURCES` and add a row:
-   `_KEBAB`, `_SOURCES`, `_PLUGIN`, `_HEADER`, `_REGISTER`, and an `_ANCHOR`
-   (with `_ANCHOR_INCLUDE`) naming one symbol from each core object that only
-   this widget uses.
-4. Guard every test and application that uses its typed API by
+   `_KEBAB`, `_SOURCES`, `_PLUGIN`, `_HEADER`, `_REGISTER`, and `_ANCHORS`
+   (with the headers in `_ANCHOR_INCLUDES`): one expression for each core
+   object file the module needs that a host with a UI may not link anyway - a
+   function, a member function or `&typeid(Class)` defined there.
+4. Add the widget to `ElementModulesTest`'s list in `Tests/CMakeLists.txt`
+   and build with the widget left out. A missing anchor fails the test with
+   the undefined symbol; `nm` on the archive names its object file.
+5. Add it to `ultracanvas_require_widgets` for every application that uses
+   its typed API, and guard every test that does by
    `ULTRACANVAS_WIDGETS_COMPILED_IN` (a global CMake property).
 
 ## Best Practices
