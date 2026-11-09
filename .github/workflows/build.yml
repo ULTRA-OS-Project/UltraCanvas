@@ -601,6 +601,27 @@ jobs:
           scripts/macos-deps.sh
           echo "Sources in the asset cache: $(find .vcpkg/asset-cache -type f | wc -l) files, $(du -sh .vcpkg/asset-cache | cut -f1)"
 
+      # A fetch that ran out of its 30 minutes is cut off, but GitHub stops
+      # only the step's shell: vcpkg goes on running and keeps its lock, so
+      # the build below failed at once with "failed to take lock, another
+      # vcpkg may be running" - though it may need no download at all (every
+      # library it needs in the binary cache). On 2026-11-09 one source on
+      # codeberg.org (gumbo) sent nothing for half an hour, run after run,
+      # and turned both macOS rows red on main and on every pull request.
+      # Ending the stalled vcpkg here leaves the build to the binary cache.
+      - name: Stop a source download that ran out of time (macOS)
+        if: always() && runner.os == 'macOS' && steps.vcpkg-fetch.outcome == 'failure'
+        run: |
+          if pgrep -x vcpkg >/dev/null; then
+            echo "::warning::the source download did not finish; stopping the vcpkg still running so the build can take its lock"
+            pkill -TERM -x vcpkg || true
+            for _ in $(seq 1 30); do
+              pgrep -x vcpkg >/dev/null || break
+              sleep 1
+            done
+            pkill -KILL -x vcpkg || true
+          fi
+
       - name: Save vcpkg asset cache (macOS)
         if: runner.os == 'macOS' && steps.vcpkg-fetch.outcome == 'success'
         uses: actions/cache/save@v5
