@@ -363,3 +363,9 @@ timeline->SetStyle(style);
   the slot length steps by a factor of root 2, so zooming inside a step and
   scrolling reuse what was decoded. Only the slots in view are asked for,
   in chunks of eight.
+- The element is in the element registry as `"video-timeline"` (category
+  Widget, `MakeVideoTimelineDescriptor`). It is a selectable widget: compiled
+  into the core by default, or built as the `ultracanvas-widget-video-timeline`
+  runtime module when `ULTRACANVAS_WIDGETS` leaves it out. See *Widgets as
+  runtime modules* in
+  [`UltraCanvasElementPlugins.md`](UltraCanvasElementPlugins.md).

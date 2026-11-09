@@ -814,6 +814,15 @@ endif()
 # element: media bin, viewer with scrubbing, inspector, timeline, undo,
 # .ultravideo projects, export (Docs/Research/UltraVideoDesignProposal.md).
 option(BUILD_ULTRAVIDEO "Build the UltraVideo application" ON)
+# UltraVideo and DemoApp use UltraCanvasVideoTimeline's typed API, so the
+# timeline has to be compiled into the core, not left to its runtime module
+# (ULTRACANVAS_WIDGETS, UltraCanvas/CMakeLists.txt "WIDGET SYSTEM").
+get_property(_uc_widgets_in GLOBAL PROPERTY ULTRACANVAS_WIDGETS_COMPILED_IN)
+if((BUILD_ULTRAVIDEO OR BUILD_DEMO_APP) AND NOT "VideoTimeline" IN_LIST _uc_widgets_in)
+    message(FATAL_ERROR "UltraVideo and DemoApp need VideoTimeline compiled into the core: "
+        "add it to ULTRACANVAS_WIDGETS (or use 'all'), or configure with "
+        "-DBUILD_ULTRAVIDEO=OFF -DBUILD_DEMO_APP=OFF")
+endif()
 if(BUILD_ULTRAVIDEO)
     message(STATUS "")
     message(STATUS "── Building UltraVideo ──")

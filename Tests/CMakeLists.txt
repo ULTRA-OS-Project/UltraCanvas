@@ -1211,6 +1211,55 @@ else()
     message(STATUS "  CaretStackingTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== TOOLTIP OWN WINDOW TEST =====
+# The tooltip in a window of its own: above a window that covers the one it
+# belongs to (as an application's window covers the desktop's bars), outside
+# that window where there is room, the pointer passing through it, and closed
+# with that window. Reads the X server's stacking order and the screen's
+# pixels, so X11 only. Skips without DISPLAY.
+if(TARGET UltraCanvas AND UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN AND NOT ULTRACANVAS_WAYLAND)
+    message(STATUS "  Building TooltipOwnWindowTest...")
+    add_executable(TooltipOwnWindowTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/TooltipOwnWindowTest.cpp
+    )
+    target_include_directories(TooltipOwnWindowTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(TooltipOwnWindowTest PRIVATE cxx_std_20)
+    target_link_libraries(TooltipOwnWindowTest PRIVATE UltraCanvas)
+    set_target_properties(TooltipOwnWindowTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME TooltipOwnWindowTest COMMAND TooltipOwnWindowTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: TooltipOwnWindowTest")
+else()
+    message(STATUS "  TooltipOwnWindowTest skipped (UltraCanvas target not present, or not X11)")
+endif()
+
+# ===== POPUP OWN WINDOW TEST =====
+# Popups in windows of their own: a menu above a window that covers the one it
+# belongs to (as an application's window covers the desktop's bars), cut to its
+# rounded outline, clicks in its window reaching its items, closed by a click
+# outside it, by focus leaving the application and with its window; a popup
+# past the window's edge takes clicks there. Reads the X server's stacking
+# order, shapes and the screen's pixels, so X11 only. Skips without DISPLAY.
+if(TARGET UltraCanvas AND UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN AND NOT ULTRACANVAS_WAYLAND)
+    message(STATUS "  Building PopupOwnWindowTest...")
+    add_executable(PopupOwnWindowTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/PopupOwnWindowTest.cpp
+    )
+    target_include_directories(PopupOwnWindowTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(PopupOwnWindowTest PRIVATE cxx_std_20)
+    target_link_libraries(PopupOwnWindowTest PRIVATE UltraCanvas)
+    set_target_properties(PopupOwnWindowTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME PopupOwnWindowTest COMMAND PopupOwnWindowTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: PopupOwnWindowTest")
+else()
+    message(STATUS "  PopupOwnWindowTest skipped (UltraCanvas target not present, or not X11)")
+endif()
+
 # ===== TOOL GROUP BUTTON TEST =====
 # Several tools sharing one toolbar slot: the bar of the whole group folds out
 # while the pointer rests on the slot, a click in it picks a tool, and it folds
@@ -1642,6 +1691,12 @@ if(TARGET UltraCanvas)
     target_include_directories(UltraCanvasThemeTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
     target_link_libraries(UltraCanvasThemeTest PRIVATE ${ULTRACANVAS_LIBRARY})
     target_compile_features(UltraCanvasThemeTest PRIVATE cxx_std_20)
+    get_property(uc_widgets_in GLOBAL PROPERTY ULTRACANVAS_WIDGETS_COMPILED_IN)
+    if("VideoTimeline" IN_LIST uc_widgets_in)
+        target_compile_definitions(UltraCanvasThemeTest PRIVATE UC_TEST_HAS_VIDEO_TIMELINE=1)
+    else()
+        target_compile_definitions(UltraCanvasThemeTest PRIVATE UC_TEST_HAS_VIDEO_TIMELINE=0)
+    endif()
     set_target_properties(UltraCanvasThemeTest PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
     add_test(NAME UltraCanvasThemeTest COMMAND UltraCanvasThemeTest WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
     message(STATUS "    Test registered: UltraCanvasThemeTest")
@@ -1781,7 +1836,10 @@ endif()
 # ripple, reorder, free-track move, blade split, marker, delete, drop, the
 # ruler, the wheel). ULTRACANVAS_SCREENSHOT_DIR=<dir> makes it write the
 # window as a PPM. Needs the framework and a display; skips itself without one.
-if(TARGET UltraCanvas)
+# Uses the element's typed API, so only when VideoTimeline is compiled into the
+# core (ULTRACANVAS_WIDGETS); VideoTimelinePluginTest covers the module build.
+get_property(uc_widgets_in GLOBAL PROPERTY ULTRACANVAS_WIDGETS_COMPILED_IN)
+if(TARGET UltraCanvas AND "VideoTimeline" IN_LIST uc_widgets_in)
     message(STATUS "  Building VideoTimelineElementTest...")
     add_executable(VideoTimelineElementTest
         ${CMAKE_CURRENT_SOURCE_DIR}/VideoTimelineElementTest.cpp
@@ -1796,7 +1854,39 @@ if(TARGET UltraCanvas)
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
     message(STATUS "    Test registered: VideoTimelineElementTest")
 else()
-    message(STATUS "  VideoTimelineElementTest skipped (UltraCanvas target not present)")
+    message(STATUS "  VideoTimelineElementTest skipped (UltraCanvas target not present, or VideoTimeline not compiled in)")
+endif()
+
+# ===== VIDEO TIMELINE PLUGIN TEST =====
+# The timeline through the element registry, by its type name
+# "video-timeline": registered by UltraCanvas_RegisterSelectedWidgets() when
+# it is compiled into the core (the default), or loaded from the
+# ultracanvas-widget-video-timeline module in a lean build
+# (-DULTRACANVAS_WIDGETS= with BUILD_ULTRAVIDEO and BUILD_DEMO_APP off). No
+# display needed: it creates the element, it never shows it.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building VideoTimelinePluginTest...")
+    add_executable(VideoTimelinePluginTest ${CMAKE_CURRENT_SOURCE_DIR}/VideoTimelinePluginTest.cpp)
+    target_include_directories(VideoTimelinePluginTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(VideoTimelinePluginTest PRIVATE cxx_std_20)
+    target_link_libraries(VideoTimelinePluginTest PRIVATE UltraCanvas)
+    if("VideoTimeline" IN_LIST uc_widgets_in)
+        target_compile_definitions(VideoTimelinePluginTest PRIVATE UC_VIDEO_TIMELINE_BUNDLED=1)
+    elseif(TARGET ultracanvas-widget-video-timeline)
+        target_compile_definitions(VideoTimelinePluginTest PRIVATE UC_VIDEO_TIMELINE_BUNDLED=0
+            UC_WIDGET_MODULE_DIR="${CMAKE_BINARY_DIR}/Plugins/Elements")
+        add_dependencies(VideoTimelinePluginTest ultracanvas-widget-video-timeline)
+    else()
+        target_compile_definitions(VideoTimelinePluginTest PRIVATE UC_VIDEO_TIMELINE_BUNDLED=0)
+    endif()
+    # The module resolves the core's symbols against the executable that
+    # dlopens it (static core), as every other module host does.
+    set_target_properties(VideoTimelinePluginTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+        ENABLE_EXPORTS ON)
+    add_test(NAME VideoTimelinePluginTest COMMAND VideoTimelinePluginTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: VideoTimelinePluginTest")
 endif()
 
 # ===== TIMECODE FIELD ELEMENT TEST =====

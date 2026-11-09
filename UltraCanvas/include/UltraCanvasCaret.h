@@ -1,7 +1,8 @@
 // include/UltraCanvasCaret.h
 // Application-wide text caret: blinking and painting for the focused widget
+// Version: 1.1.0 - Composite with an offset: the caret of a popup shown in its own window
 // Version: 1.0.0
-// Last Modified: 2026-07-20
+// Last Modified: 2026-11-09
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -88,6 +89,9 @@ namespace UltraCanvas {
         // visible blink phase. Called by UltraCanvasWindowBase while
         // compositing the window, once the caret's own layer has been flushed.
         void Composite(UltraCanvasWindowBase* win, NativeSurfacePtr toSurface);
+        // The same, `offset` added to the caret's position in `win`: onto the
+        // surface of a popup's own window, whose corner is the popup's
+        void Composite(UltraCanvasWindowBase* win, NativeSurfacePtr toSurface, const Point2Di& offset);
 
         // Drop all references to a window being destroyed.
         void OnWindowClosed(UltraCanvasWindowBase* win);

@@ -1,7 +1,8 @@
 // OS/MSWindows/UltraCanvasWindowsWindow.h
 // Windows platform window implementation for UltraCanvas Framework
+// Version: 1.2.0 - SetNativeWindowShape
 // Version: 1.1.0 - Per-Monitor HiDPI (deviceScale) support
-// Last Modified: 2026-07-03
+// Last Modified: 2026-11-09
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -89,6 +90,7 @@ namespace UltraCanvas {
         NativeWindowHandle GetNativeHandle() const override;
         void GetWindowPosition(int& x, int& y) const override;
         void GetContentScreenOrigin(int& x, int& y) const override;
+        void SetNativeWindowShape(const std::vector<Rect2Di>& physicalRects) override;
 
         void GetScreenSize(int& width, int& height) const override;
         void GetScreenBounds(int& x, int& y, int& width, int& height) const override;

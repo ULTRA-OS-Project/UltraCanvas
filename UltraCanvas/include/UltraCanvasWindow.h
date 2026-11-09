@@ -1,5 +1,10 @@
 // include/UltraCanvasWindowBase.h
 // Enhanced abstract base window interface inheriting from UltraCanvasContainer
+// Version: 2.12.0 - every popup in a window of its own (WindowType::Popup) above every other
+//                  window: SetPopupsInOwnWindows, GetPopupWindow, IsPopupHost,
+//                  SetNativeWindowShape; FindElementAtPoint reaches a popup outside the window
+// Version: 2.11.0 - WindowType::Tooltip: the tooltip manager's own window, above every other,
+//                  never focused, the pointer passing through it
 // Version: 2.10.0 - WindowType::SessionLock: the lock screen a program draws
 // Version: 2.9.0 - UltraCanvasWindow is the Wayland backend under ULTRACANVAS_DISPLAY_WAYLAND
 // Version: 2.8.0 - WindowConfig::alwaysOnTop honoured on X11 and macOS (it was Windows only)
@@ -12,7 +17,7 @@
 //                  beneath it, so one can fade in or out as a whole
 // Version: 2.3.0 - WindowType::Notification (a toast: above everything, never focused)
 // Version: 2.2.0 - window drag overlay (content drawn above all elements)
-// Last Modified: 2026-10-15
+// Last Modified: 2026-11-09
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -51,7 +56,19 @@ namespace UltraCanvas {
 
 // ===== WINDOW CONFIGURATION =====
     enum class WindowType {
-        Standard, Dialog, Popup, Tool, 
+        Standard, Dialog,
+        // A popup's own window: the window a popup element (a menu, a
+        // dropdown's list - anything opened with OpenPopup) is shown in, so
+        // no other window covers it (see SetPopupsInOwnWindows). Undecorated,
+        // above every other window and never given the focus, but it takes
+        // the pointer, which the window the popup belongs to receives as its
+        // own. Placed where config.x / config.y say, in screen coordinates
+        // (override-redirect with _NET_WM_WINDOW_TYPE_POPUP_MENU on X11;
+        // WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE on Windows; on
+        // Wayland a popup of config.parentWindow, or an overlay-layer surface
+        // beside a desktop on the layer shell). Not an application window.
+        Popup,
+        Tool,
         Fullscreen, Borderless, Overlay,
         // The desktop itself: undecorated, the size of the screen, kept below
         // every other window, on every virtual desktop and out of taskbars
@@ -75,7 +92,19 @@ namespace UltraCanvas {
         // first such window and released with the last; a compositor that
         // refuses closes them). Elsewhere a fullscreen borderless window
         // kept above every other, which the platform does not enforce.
-        SessionLock
+        SessionLock,
+        // A tooltip (UltraCanvasTooltipManager's own window): undecorated,
+        // above every other window, never given the focus, and the pointer
+        // passes through it to whatever is beneath. Placed where config.x /
+        // config.y say, in screen coordinates (override-redirect with
+        // _NET_WM_WINDOW_TYPE_TOOLTIP on X11; WS_EX_TOPMOST | WS_EX_NOACTIVATE
+        // | WS_EX_TRANSPARENT on Windows; on Wayland a popup of
+        // config.parentWindow, or a top-layer surface beside a desktop on the
+        // layer shell). Not an application window: it never keeps the
+        // application running, is no jump target and is not an accessible
+        // window. Where the platform cannot place one, the tooltip manager
+        // draws the tooltip inside the window it belongs to instead.
+        Tooltip
     };
 
     enum class WindowState {
@@ -142,6 +171,14 @@ namespace UltraCanvas {
         std::shared_ptr<IRenderContext> shadowSurface;
         PopupShadow shadowDrawn;
         Size2Di shadowDrawnFor;
+        // The popup's own window (WindowType::Popup) when it is shown in one
+        // (see UltraCanvasWindowBase::SetPopupsInOwnWindows); null while it
+        // is composited onto the window it belongs to. `hostFailed`: none
+        // could be made, so it stays in the window. `hostShapeFor`: the
+        // size the window's outline was last cut to the popup's for.
+        std::shared_ptr<UltraCanvasWindowBase> host;
+        bool hostFailed = false;
+        Size2Di hostShapeFor;
     };
 
     struct FilterFunction {
@@ -485,6 +522,44 @@ namespace UltraCanvas {
         // The popup's opacity; 1 for an element that is not an open popup here.
         float GetPopupOpacity(const UltraCanvasUIElement& element) const;
 
+        // ===== POPUPS IN WINDOWS OF THEIR OWN =====
+        // Every popup is shown in a window of its own (WindowType::Popup),
+        // above every other window, so no other window covers it: a menu
+        // opened from the bars of a desktop, whose window is kept below all
+        // others, used to go under the applications' windows. The popup
+        // stays this window's in every other way - laid out, drawn, focused
+        // and given the pointer here, with the pointer's position in this
+        // window's coordinates - only its pixels are put on the screen in
+        // its own window, cut to its outline. On by default where the
+        // platform can place such a window (X11, Wayland, Windows); off, and
+        // on macOS, in the browser and on Android, a popup is composited onto
+        // this window as before. A popup in its own window is opaque on
+        // screen and has no drop shadow of its own (SetPopupOpacity above 0
+        // shows it in full); it closes, if it closes on a click outside it,
+        // when focus leaves the application.
+        static void SetPopupsInOwnWindows(bool inOwnWindows);
+        static bool GetPopupsInOwnWindows();
+        // The window `popup` is shown in: its own, or null while it is
+        // composited onto this window (or is not an open popup here)
+        UltraCanvasWindowBase* GetPopupWindow(const UltraCanvasUIElement& popup) const;
+        // This window is a popup's own window: the window the popup belongs
+        // to, and the popup it shows (null for any other window)
+        bool IsPopupHost() const { return hostedPopupOwner != nullptr; }
+        UltraCanvasWindowBase* GetPopupHostOwner() const { return hostedPopupOwner; }
+        UltraCanvasUIElement* GetHostedPopup() const { return hostedPopup; }
+        // The element at `pos` (window coordinates), as UltraCanvasContainer
+        // finds it - and a popup in its own window, and what is in it, also
+        // where it reaches past this window's edges
+        UltraCanvasUIElement* FindElementAtPoint(const Point2Df& pos, bool interactiveElementOnly = false);
+
+        // The window's outline on screen: only these rectangles (physical
+        // pixels, relative to the window's top-left corner) are shown and
+        // take the pointer; empty, the whole window. A popup's own window is
+        // cut to the popup's opaque pixels, so its rounded corners show what
+        // is beneath. The X11 shape extension; a window region on Windows; a
+        // backend whose surface has an alpha channel (Wayland) needs none.
+        virtual void SetNativeWindowShape(const std::vector<Rect2Di>& physicalRects) { (void)physicalRects; }
+
         // event filters
         void InstallEventFilter(const std::string& uniqueFilterId, const std::function<bool(const UCEvent&)>& filterFunc, const std::vector<UCEventType>& interestedEvents);
         void UnInstallWindowEventFilter(const std::string& uniqueFilterId);
@@ -613,6 +688,31 @@ namespace UltraCanvas {
         // Puts the drop shadow `pe`'s popup asks for (GetPopupShadow) on the
         // native surface under the popup at `popupPos`, at its opacity.
         void CompositePopupShadow(PopupElement& pe, const Point2Dd& popupPos);
+
+        // ===== A POPUP'S OWN WINDOW =====
+        // Set on a popup's own window: the window the popup belongs to and
+        // the popup it shows
+        UltraCanvasWindowBase* hostedPopupOwner = nullptr;
+        UltraCanvasUIElement* hostedPopup = nullptr;
+        // The window moved or changed size: its popups' windows follow
+        bool _needsPopupHostSync = false;
+        // Makes `pe`'s own window, where popups have one; false: it stays
+        // composited onto this window
+        bool CreatePopupHost(PopupElement& pe);
+        // Whether `pe` is shown in a window of its own; places, sizes, shows
+        // and hides that window to match the popup
+        bool SyncPopupHost(PopupElement& pe);
+        // Cuts the popup's window to the popup's opaque pixels
+        void UpdatePopupHostShape(PopupElement& pe);
+        // Lets go of `pe`'s window: hidden now, closed now or on the next
+        // turn of the loop (a popup closed from a click in its own window)
+        void ReleasePopupHost(PopupElement& pe, bool closeNow);
+        // A popup's own window closed by someone else: the popup goes back
+        // to being composited onto this window
+        void ForgetPopupHost(UltraCanvasWindowBase* host);
+        // Focus left the window: popups in their own windows that close on a
+        // click outside them close once focus has left the application
+        void ClosePopupsInOwnWindowsOnBlur();
 
         virtual void RenderWindowBackground(IRenderContext* ctx) {
             (void)ctx;
