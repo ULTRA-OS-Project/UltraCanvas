@@ -10,8 +10,7 @@
 
   The server's inbox is now always stored as `INBOX`, the row the sync makes
   for it keeps the inbox role, the stray `Inbox` folder goes at the next folder
-  list (its cached messages stay - on Windows and macOS they share `INBOX`'s
-  directory), and UltraMail repairs an affected mail store when it starts:
+  list, and UltraMail repairs an affected mail store when it starts:
   the counters are right at once, "waiting for reply" included.
 - **Two folders whose names differ only in case ("Work" and "work") no longer
   share - and overwrite - their downloaded messages.** On Windows and macOS
