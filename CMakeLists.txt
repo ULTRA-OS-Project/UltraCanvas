@@ -521,6 +521,32 @@ endif()
 
 add_subdirectory(UltraCanvas)
 
+# An application that uses a selectable widget's typed API (its class, its
+# Create function, its style) needs that widget compiled into the core: a
+# runtime module (ULTRACANVAS_WIDGETS, UltraCanvas/CMakeLists.txt "WIDGET
+# SYSTEM") is reached only by name. Stops the configure, naming the widgets
+# and the way out, when an application that is built would not link.
+function(ultracanvas_require_widgets build_flag app_name)
+    if(NOT ${build_flag})
+        return()
+    endif()
+    get_property(compiled_in GLOBAL PROPERTY ULTRACANVAS_WIDGETS_COMPILED_IN)
+    set(missing "")
+    foreach(widget IN LISTS ARGN)
+        if(NOT widget IN_LIST compiled_in)
+            list(APPEND missing ${widget})
+        endif()
+    endforeach()
+    if(missing)
+        message(FATAL_ERROR "${app_name} needs ${missing} compiled into the core: add "
+            "${missing} to ULTRACANVAS_WIDGETS (or use 'all'), or configure with -D${build_flag}=OFF")
+    endif()
+endfunction()
+ultracanvas_require_widgets(BUILD_DEMO_APP DemoApp
+    VideoTimeline Slideshow Album ColorPaletteManager VectorCanvas)
+ultracanvas_require_widgets(BUILD_ULTRAPAINT_APP UltraPaint ColorPaletteManager)
+ultracanvas_require_widgets(BUILD_ARTCREATOR_APP ArtCreator ColorPaletteManager VectorCanvas)
+
 # ===== WEBASSEMBLY DEMOS =====
 # The browser validation apps under UltraCanvas/OS/WASM/demo/ (wasm-demo and
 # the ultraos.eu front page) are ordinary UltraCanvas applications: built here
@@ -814,15 +840,8 @@ endif()
 # element: media bin, viewer with scrubbing, inspector, timeline, undo,
 # .ultravideo projects, export (Docs/Research/UltraVideoDesignProposal.md).
 option(BUILD_ULTRAVIDEO "Build the UltraVideo application" ON)
-# UltraVideo and DemoApp use UltraCanvasVideoTimeline's typed API, so the
-# timeline has to be compiled into the core, not left to its runtime module
-# (ULTRACANVAS_WIDGETS, UltraCanvas/CMakeLists.txt "WIDGET SYSTEM").
-get_property(_uc_widgets_in GLOBAL PROPERTY ULTRACANVAS_WIDGETS_COMPILED_IN)
-if((BUILD_ULTRAVIDEO OR BUILD_DEMO_APP) AND NOT "VideoTimeline" IN_LIST _uc_widgets_in)
-    message(FATAL_ERROR "UltraVideo and DemoApp need VideoTimeline compiled into the core: "
-        "add it to ULTRACANVAS_WIDGETS (or use 'all'), or configure with "
-        "-DBUILD_ULTRAVIDEO=OFF -DBUILD_DEMO_APP=OFF")
-endif()
+# UltraVideo uses the video timeline's and the album's typed API.
+ultracanvas_require_widgets(BUILD_ULTRAVIDEO UltraVideo VideoTimeline Album)
 if(BUILD_ULTRAVIDEO)
     message(STATUS "")
     message(STATUS "── Building UltraVideo ──")

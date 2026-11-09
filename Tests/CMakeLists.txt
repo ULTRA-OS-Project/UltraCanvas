@@ -1356,7 +1356,9 @@ endif()
 # line, "+" on the last row and "-" on every row once there are several, the
 # gallery adding a preset, and the foreground-only entry editor a right click
 # opens. The window part skips itself without a DISPLAY.
-if(TARGET UltraCanvas)
+# Uses the widget's typed API: only with it compiled into the core (ULTRACANVAS_WIDGETS).
+get_property(uc_widgets_in GLOBAL PROPERTY ULTRACANVAS_WIDGETS_COMPILED_IN)
+if(TARGET UltraCanvas AND "ColorPaletteManager" IN_LIST uc_widgets_in)
     message(STATUS "  Building ColorPaletteManagerTest...")
     add_executable(ColorPaletteManagerTest
         ${CMAKE_CURRENT_SOURCE_DIR}/ColorPaletteManagerTest.cpp
@@ -1371,7 +1373,7 @@ if(TARGET UltraCanvas)
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
     message(STATUS "    Test registered: ColorPaletteManagerTest")
 else()
-    message(STATUS "  ColorPaletteManagerTest skipped (UltraCanvas target not present)")
+    message(STATUS "  ColorPaletteManagerTest skipped (UltraCanvas target not present, or its widget not compiled in)")
 endif()
 
 # ===== COLOUR PICKER DESIGN SELECTOR TEST =====
@@ -1667,11 +1669,17 @@ if(TARGET UltraCanvas)
     target_link_libraries(UltraCanvasThemeTest PRIVATE ${ULTRACANVAS_LIBRARY})
     target_compile_features(UltraCanvasThemeTest PRIVATE cxx_std_20)
     get_property(uc_widgets_in GLOBAL PROPERTY ULTRACANVAS_WIDGETS_COMPILED_IN)
-    if("VideoTimeline" IN_LIST uc_widgets_in)
-        target_compile_definitions(UltraCanvasThemeTest PRIVATE UC_TEST_HAS_VIDEO_TIMELINE=1)
-    else()
-        target_compile_definitions(UltraCanvasThemeTest PRIVATE UC_TEST_HAS_VIDEO_TIMELINE=0)
-    endif()
+    # The timeline's and the album's FromTheme only with them compiled in.
+    foreach(uc_pair IN ITEMS VideoTimeline:VIDEO_TIMELINE Album:ALBUM)
+        string(REPLACE ":" ";" uc_pair "${uc_pair}")
+        list(GET uc_pair 0 uc_key)
+        list(GET uc_pair 1 uc_macro)
+        if(uc_key IN_LIST uc_widgets_in)
+            target_compile_definitions(UltraCanvasThemeTest PRIVATE UC_TEST_HAS_${uc_macro}=1)
+        else()
+            target_compile_definitions(UltraCanvasThemeTest PRIVATE UC_TEST_HAS_${uc_macro}=0)
+        endif()
+    endforeach()
     set_target_properties(UltraCanvasThemeTest PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
     add_test(NAME UltraCanvasThemeTest COMMAND UltraCanvasThemeTest WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
     message(STATUS "    Test registered: UltraCanvasThemeTest")
@@ -1812,7 +1820,7 @@ endif()
 # ruler, the wheel). ULTRACANVAS_SCREENSHOT_DIR=<dir> makes it write the
 # window as a PPM. Needs the framework and a display; skips itself without one.
 # Uses the element's typed API, so only when VideoTimeline is compiled into the
-# core (ULTRACANVAS_WIDGETS); VideoTimelinePluginTest covers the module build.
+# core (ULTRACANVAS_WIDGETS); ElementModulesTest covers the module build.
 get_property(uc_widgets_in GLOBAL PROPERTY ULTRACANVAS_WIDGETS_COMPILED_IN)
 if(TARGET UltraCanvas AND "VideoTimeline" IN_LIST uc_widgets_in)
     message(STATUS "  Building VideoTimelineElementTest...")
@@ -1832,36 +1840,66 @@ else()
     message(STATUS "  VideoTimelineElementTest skipped (UltraCanvas target not present, or VideoTimeline not compiled in)")
 endif()
 
-# ===== VIDEO TIMELINE PLUGIN TEST =====
-# The timeline through the element registry, by its type name
-# "video-timeline": registered by UltraCanvas_RegisterSelectedWidgets() when
-# it is compiled into the core (the default), or loaded from the
-# ultracanvas-widget-video-timeline module in a lean build
-# (-DULTRACANVAS_WIDGETS= with BUILD_ULTRAVIDEO and BUILD_DEMO_APP off). No
-# display needed: it creates the element, it never shows it.
+# ===== ELEMENT MODULES TEST =====
+# The selectable widgets (ULTRACANVAS_WIDGETS) and charts (ULTRACANVAS_CHARTS)
+# through the element registry, by type name: registered at startup when
+# compiled into the core, or loaded from their runtime modules
+# (ultracanvas-widget-<name>, ultracanvas-chart-<name>) in a lean build
+# (-DULTRACANVAS_WIDGETS= with the applications that use the widgets off;
+# ULTRACANVAS_CHARTS is empty by default without DemoApp). Loading a module also
+# proves it carries the framework headers id the loader insists on. No display
+# needed: it creates the elements, it never shows them.
 if(TARGET UltraCanvas)
-    message(STATUS "  Building VideoTimelinePluginTest...")
-    add_executable(VideoTimelinePluginTest ${CMAKE_CURRENT_SOURCE_DIR}/VideoTimelinePluginTest.cpp)
-    target_include_directories(VideoTimelinePluginTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
-    target_compile_features(VideoTimelinePluginTest PRIVATE cxx_std_20)
-    target_link_libraries(VideoTimelinePluginTest PRIVATE UltraCanvas)
-    if("VideoTimeline" IN_LIST uc_widgets_in)
-        target_compile_definitions(VideoTimelinePluginTest PRIVATE UC_VIDEO_TIMELINE_BUNDLED=1)
-    elseif(TARGET ultracanvas-widget-video-timeline)
-        target_compile_definitions(VideoTimelinePluginTest PRIVATE UC_VIDEO_TIMELINE_BUNDLED=0
-            UC_WIDGET_MODULE_DIR="${CMAKE_BINARY_DIR}/Plugins/Elements")
-        add_dependencies(VideoTimelinePluginTest ultracanvas-widget-video-timeline)
-    else()
-        target_compile_definitions(VideoTimelinePluginTest PRIVATE UC_VIDEO_TIMELINE_BUNDLED=0)
+    message(STATUS "  Building ElementModulesTest...")
+    add_executable(ElementModulesTest ${CMAKE_CURRENT_SOURCE_DIR}/ElementModulesTest.cpp)
+    target_include_directories(ElementModulesTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(ElementModulesTest PRIVATE cxx_std_20)
+    target_link_libraries(ElementModulesTest PRIVATE UltraCanvas)
+    # type:category:key:module-target - a type is expected when its key is
+    # compiled in or its module target is built (not on a Windows static core).
+    set(uc_elements
+        video-timeline:Widget:VideoTimeline:ultracanvas-widget-video-timeline
+        slideshow:Widget:Slideshow:ultracanvas-widget-slideshow
+        album:Widget:Album:ultracanvas-widget-album
+        color-palette-manager:Widget:ColorPaletteManager:ultracanvas-widget-color-palette-manager
+        vector-canvas:Widget:VectorCanvas:ultracanvas-widget-vector-canvas
+        parallel-coordinate-chart:Chart:ParallelCoordinate:ultracanvas-chart-parallel-coordinate)
+    get_property(uc_widgets_in GLOBAL PROPERTY ULTRACANVAS_WIDGETS_COMPILED_IN)
+    set(uc_compiled_in ${uc_widgets_in})
+    if(ULTRACANVAS_ENABLE_CHARTS AND ULTRACANVAS_CHARTS STREQUAL "all")
+        list(APPEND uc_compiled_in ParallelCoordinate)
+    elseif(ULTRACANVAS_ENABLE_CHARTS)
+        list(APPEND uc_compiled_in ${ULTRACANVAS_CHARTS})
     endif()
-    # The module resolves the core's symbols against the executable that
-    # dlopens it (static core), as every other module host does.
-    set_target_properties(VideoTimelinePluginTest PROPERTIES
+    set(uc_expected "")
+    set(uc_built_modules "")
+    foreach(uc_entry IN LISTS uc_elements)
+        string(REPLACE ":" ";" uc_entry "${uc_entry}")
+        list(GET uc_entry 0 uc_type)
+        list(GET uc_entry 1 uc_category)
+        list(GET uc_entry 2 uc_key)
+        list(GET uc_entry 3 uc_target)
+        if(TARGET ${uc_target})
+            list(APPEND uc_built_modules ${uc_target})
+            string(APPEND uc_expected "${uc_type}:${uc_category},")
+        elseif(uc_key IN_LIST uc_compiled_in)
+            string(APPEND uc_expected "${uc_type}:${uc_category},")
+        endif()
+    endforeach()
+    if(uc_built_modules)
+        target_compile_definitions(ElementModulesTest PRIVATE
+            UC_ELEMENT_MODULE_DIR="${CMAKE_BINARY_DIR}/Plugins/Elements")
+        add_dependencies(ElementModulesTest ${uc_built_modules})
+    endif()
+    target_compile_definitions(ElementModulesTest PRIVATE UC_EXPECTED_ELEMENTS="${uc_expected}")
+    # The modules resolve the core's symbols against the executable that
+    # dlopens them (static core), as every other module host does.
+    set_target_properties(ElementModulesTest PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
         ENABLE_EXPORTS ON)
-    add_test(NAME VideoTimelinePluginTest COMMAND VideoTimelinePluginTest
+    add_test(NAME ElementModulesTest COMMAND ElementModulesTest
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
-    message(STATUS "    Test registered: VideoTimelinePluginTest")
+    message(STATUS "    Test registered: ElementModulesTest")
 endif()
 
 # ===== TIMECODE FIELD ELEMENT TEST =====
@@ -4473,6 +4511,14 @@ add_executable(VectorEditTest
 target_include_directories(VectorEditTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
 target_compile_features(VectorEditTest PRIVATE cxx_std_20)
 target_link_libraries(VectorEditTest PRIVATE UltraCanvas)
+get_property(uc_widgets_in GLOBAL PROPERTY ULTRACANVAS_WIDGETS_COMPILED_IN)
+if("VectorCanvas" IN_LIST uc_widgets_in)
+    target_compile_definitions(VectorEditTest PRIVATE UC_TEST_HAS_VECTOR_CANVAS=1)
+else()
+    # A lean core builds the canvas as a module: the editing layer is tested,
+    # the canvas block is left out.
+    target_compile_definitions(VectorEditTest PRIVATE UC_TEST_HAS_VECTOR_CANVAS=0)
+endif()
 set_target_properties(VectorEditTest PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
@@ -5422,7 +5468,9 @@ endif()
 # An album and a slideshow repaint a picture saved over by themselves
 # (UltraCanvasImageFileWatch), read back from a real window. Skips without a
 # DISPLAY; run it under xvfb-run.
-if(TARGET UltraCanvas)
+# Uses the widget's typed API: only with it compiled into the core (ULTRACANVAS_WIDGETS).
+get_property(uc_widgets_in GLOBAL PROPERTY ULTRACANVAS_WIDGETS_COMPILED_IN)
+if(TARGET UltraCanvas AND "Slideshow" IN_LIST uc_widgets_in AND "Album" IN_LIST uc_widgets_in)
     message(STATUS "  Building ImageFileWatchDisplayTest...")
     add_executable(ImageFileWatchDisplayTest
         ${CMAKE_CURRENT_SOURCE_DIR}/ImageFileWatchDisplayTest.cpp
@@ -5437,7 +5485,7 @@ if(TARGET UltraCanvas)
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
     message(STATUS "    Test registered: ImageFileWatchDisplayTest")
 else()
-    message(STATUS "  ImageFileWatchDisplayTest skipped (UltraCanvas target not present)")
+    message(STATUS "  ImageFileWatchDisplayTest skipped (UltraCanvas target not present, or its widget not compiled in)")
 endif()
 
 message(STATUS "")
