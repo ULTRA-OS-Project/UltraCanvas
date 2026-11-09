@@ -30599,6 +30599,12 @@ modules' hosts.
 `ElementModulesTest` creates every selectable widget, and the chart of the
 chart module, by name in whichever form the build has them. Loading a module
 also checks that it carries the framework headers id the loader insists on.
+The *Element modules* workflow (`.github/workflows/element-modules.yml`)
+builds this lean configuration on every pull request that touches the
+framework, runs `ElementModulesTest`, `UltraCanvasThemeTest` and
+`VectorEditTest` against it, and checks that the configure refuses an
+application whose widgets are left out. `build.yml` compiles every widget
+in, so this is the only CI row that builds the modules.
 
 **Adding a widget to the table** (`UltraCanvas/CMakeLists.txt`, "WIDGET SYSTEM"):
 
