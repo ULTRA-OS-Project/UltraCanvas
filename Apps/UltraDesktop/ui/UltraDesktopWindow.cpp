@@ -37,6 +37,7 @@
 #include "UltraDesktopClipboardPanel.h"
 #include "UltraDesktopClockPanel.h"
 #include "UltraDesktopDesktopIcons.h"
+#include "UltraDesktopPanelTheme.h"
 #include "UltraDesktopStickerboard.h"
 #include "UltraDesktopTasksWindow.h"
 #include "UltraDesktopVolumePanel.h"
@@ -382,6 +383,12 @@ void UltraDesktopWindow::BuildLayout() {
             }
         }
     }
+
+    // The panels the bars open follow the bars' theme from their next opening.
+    SetPanelTheme(settings_.theme);
+    if (clockPanel_ && clockPanel_->IsOpen()) clockPanel_->Close();
+    if (volumePanel_ && volumePanel_->IsOpen()) volumePanel_->Close();
+    if (wifiPanel_ && wifiPanel_->IsOpen()) wifiPanel_->Close();
 
     root_ = CreateContainer("Desktop", 0, 0, 0, 0);
     root_->SetBackgroundColor(Bars().inset);
@@ -1330,6 +1337,13 @@ std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildWorkArea() {
             DropFiles(event.droppedFiles, event.pointer);
             return true;
         }
+        // A left press between the desktop icons: a rubber band selects them
+        // (with Ctrl, adds to the selection); a plain click clears it.
+        if (event.button == UCMouseButton::Left && event.type == UCEventType::MouseDown && desktopIcons_ &&
+            desktopIcons_->IsVisible()) {
+            desktopIcons_->BeginRubberBand(event.pointer, event.ctrl);
+            return true;
+        }
         if (event.button != UCMouseButton::Right) return false;
         if (event.type == UCEventType::MouseDown) {
             pending = true;
@@ -1500,6 +1514,28 @@ void UltraDesktopWindow::SetDropTarget(const std::string& target) {
         if (workArea_) workArea_->InvalidateLayout();
     }
     if (window_) window_->RequestRedraw();
+}
+
+void UltraDesktopWindow::NoteIconDragStart() {
+    otherWindowRects_.clear();
+    const int current = UltraCanvasDesktopShell::GetCurrentVirtualDesktop();
+    for (const DesktopWindowInfo& w : UltraCanvasDesktopShell::ListWindows()) {
+        if (!UltraDesktopTasksWindow::Listed(w) || w.minimized) continue;
+        if (w.virtualDesktop >= 0 && current >= 0 && w.virtualDesktop != current) continue;
+        int x = 0, y = 0, width = 0, height = 0;
+        if (!UltraCanvasDesktopShell::GetWindowBounds(w.id, x, y, width, height)) continue;
+        if (width > 0 && height > 0) otherWindowRects_.emplace_back(x, y, width, height);
+    }
+}
+
+bool UltraDesktopWindow::PointOverOtherWindow(const Point2Di& windowPoint) const {
+    if (otherWindowRects_.empty()) return false;
+    const int x = ScreenX(static_cast<float>(windowPoint.x));
+    const int y = ScreenY(static_cast<float>(windowPoint.y));
+    for (const Rect2Di& rect : otherWindowRects_) {
+        if (rect.Contains(x, y)) return true;
+    }
+    return false;
 }
 
 void UltraDesktopWindow::DropFiles(const std::vector<std::string>& files, const Point2Df& at) {

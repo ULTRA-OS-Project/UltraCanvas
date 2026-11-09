@@ -248,7 +248,11 @@ The bars come in two themes, kept as `theme` in the settings: **dark**
 carved in near black, the clock white on black - the default) and
 **light** (dark icons on light grey, the carved-in groups near white, the
 clock black on white, the ULTRA OS logo in its variant for a light ground).
-The panels and windows the bars open keep their own colours.
+The panels the bars open follow the theme - the clock, loudspeaker, Wi-Fi,
+Bluetooth, device and clipboard panels and the window pictures
+(`UltraDesktopPanelTheme`): dark grey with light text, or near white with
+dark text. A panel open when the theme changes closes, and opens in the new
+colours.
 
 - **The wallpaper** (right click): *Change wallpaper...* (an Open dialog
   with every picture type this build reads, through FileLoader), *Default
@@ -282,10 +286,18 @@ The panels and windows the bars open keep their own colours.
   document's thumbnail, else the system's icon for its type) over its name -
   in an `UltraDesktopDesktopIcons` layer under the notes. A dropped file lies
   where it was dropped; others fill a grid column by column from the top
-  left. A click selects, a double click opens with the default application,
-  a drag moves (kept in `desktopIcons` by the entry's name), a right click
-  offers *Open*, *Show in the file manager*, *Delete* (into the trash, after
-  a question) and *Arrange icons*. The folder is looked at every two seconds,
+  left. A click selects; Ctrl+click adds or removes an icon, Shift+click adds
+  one, and a rubber band drawn on the wallpaper selects the icons it touches
+  (Ctrl adds them; a plain click on the wallpaper clears the selection). A
+  double click opens the selection with the default applications. A drag
+  moves the selected icons together (kept in `desktopIcons` by the entries'
+  names) until the pointer is over another program's window (the windows
+  the Task Manager lists, read when the drag starts): the icons go back and
+  the files continue as a native file drag (XDND on X11, OLE on Windows),
+  which that program takes; one that moved them makes their icons go. A
+  right click offers, for the whole selection, *Open*, *Show in the file
+  manager*, *Delete* (into the trash, after one question), *Select all* and
+  *Arrange icons*. The folder is looked at every two seconds,
   so a file another program saves there appears too.
 
 A change is saved at once and the bars are rebuilt in place; one made in

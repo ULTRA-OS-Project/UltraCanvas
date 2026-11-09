@@ -8,7 +8,6 @@
     "Open",
     "Pictures"
   ],
-  "\"{0}\" could not be opened: {1}": "\"{0}\" could not be opened: {1}",
   "\"{0}\" was not deleted: {1}": "\"{0}\" was not deleted: {1}",
   "Add category": "Add category",
   "Arrange icons": "Arrange icons",
@@ -20,6 +19,7 @@
   "Default wallpaper": "Default wallpaper",
   "Delete \"{0}\" for good? It cannot be brought back.": "Delete \"{0}\" for good? It cannot be brought back.",
   "Delete (move to the trash)": "Delete (move to the trash)",
+  "Delete {0} for good? They cannot be brought back.": "Delete {0} for good? They cannot be brought back.",
   "Desktop settings...": "Desktop settings...",
   "Display settings...": "Display settings...",
   "Drop files": "Drop files",
@@ -32,7 +32,10 @@
   "Mouse hover preview": "Mouse hover preview",
   "Move \"{0}\" to the {1}?": "Move \"{0}\" to the {1}?",
   "Move to": "Move to",
+  "Move {0} to the {1}?": "Move {0} to the {1}?",
+  "Not deleted:": "Not deleted:",
   "Not every file could be put on the desktop: ": "Not every file could be put on the desktop: ",
+  "Not opened: {0}": "Not opened: {0}",
   "Note": "Note",
   "Notes on the wallpaper": "Notes on the wallpaper",
   "Notifications": "Notifications",
@@ -40,6 +43,7 @@
   "Pin to taskbar": "Pin to taskbar",
   "Remove from the board": "Remove from the board",
   "Rename category": "Rename category",
+  "Select all": "Select all",
   "Show in the file manager": "Show in the file manager",
   "Small": "Small",
   "Sticker board": "Sticker board",
@@ -49,9 +53,11 @@
   "The display settings could not be opened: ": "The display settings could not be opened: ",
   "Theme": "Theme",
   "There is no Desktop folder to put the files in.": "There is no Desktop folder to put the files in.",
+  "these {0} items": "these {0} items",
   "Thumbnail and text": "Thumbnail and text",
   "Thumbnail and text in a row": "Thumbnail and text in a row",
   "Unpin from taskbar": "Unpin from taskbar",
   "Window previews": "Window previews",
-  "{0} (minimized)": "{0} (minimized)"
+  "{0} (minimized)": "{0} (minimized)",
+  "{0} items": "{0} items"
 }

@@ -28,6 +28,7 @@ add_executable(UltraDesktop
     ui/UltraDesktopClipboardPanel.cpp
     ui/UltraDesktopClockPanel.cpp
     ui/UltraDesktopDevicePanel.cpp
+    ui/UltraDesktopPanelTheme.cpp
     ui/UltraDesktopPopupPanel.cpp
     ui/UltraDesktopSettings.cpp
     ui/UltraDesktopStickerboard.cpp

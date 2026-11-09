@@ -1,10 +1,14 @@
 // Apps/UltraDesktop/ui/UltraDesktopDesktopIcons.cpp
 // The Desktop folder as icons on the wallpaper. See UltraDesktopDesktopIcons.h.
+// Version: 0.2.0 - several icons selected (Ctrl+click, Shift+click, a rubber
+//                  band from the wallpaper), moved together, and dragged out
+//                  to another program as a native file drag
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraDesktopDesktopIcons.h"
 #include "UltraDesktopCategoryBoard.h"   // MakeFilePicture
+#include "UltraDesktopTasksWindow.h"   // Listed: the windows of other programs
 #include "UltraDesktopWindow.h"
 
 #include "UltraCanvasApplication.h"
@@ -72,7 +76,7 @@ UltraDesktopDesktopIcons::UltraDesktopDesktopIcons(const std::string& identifier
 
 UltraDesktopDesktopIcons::~UltraDesktopDesktopIcons() {
     if (auto* app = UltraCanvasApplication::GetInstance()) {
-        if (dragging_ || !pressedName_.empty()) app->ReleaseMouse();
+        if (banding_ || dragging_ || !pressedName_.empty()) app->ReleaseMouse();
     }
 }
 
@@ -126,7 +130,7 @@ void UltraDesktopDesktopIcons::Refresh(bool force) {
             continue;
         }
         RemoveChild(it->second.tile);
-        if (selected_ == it->first) selected_.clear();
+        selected_.erase(it->first);
         it = icons_.erase(it);
         changed = true;
     }
@@ -171,11 +175,15 @@ void UltraDesktopDesktopIcons::BuildIcon(const std::string& name, const std::str
     plain.autoShowScrollbars = false;
     icon.tile->SetContainerStyle(plain);
     icon.tile->SetTooltip(name);
+    // The pointer's presses are the layer's: it selects, drags and opens.
+    // A tile that took them (its picture would) would keep them from it.
+    icon.tile->SetInteractive(false);
 
     icon.picture = std::make_shared<UltraCanvasImageElement>(id + ".Picture", 0, 0, kPicture, kPicture);
     icon.picture->SetFitMode(ImageFitMode::Contain);
     icon.picture->SetElementSize(Size2Df(kPicture, kPicture));
     icon.picture->layoutItem.SetFlexShrink(0.0f);
+    icon.picture->SetInteractive(false);
     icon.tile->AddChild(icon.picture);
 
     icon.label = CreateLabel(id + ".Name", ShortName(name));
@@ -190,6 +198,7 @@ void UltraDesktopDesktopIcons::BuildIcon(const std::string& name, const std::str
     icon.label->SetStyle(style);
     icon.label->SetElementSize(CSSLayout::Dimension::Px(kTileWidth - 8), CSSLayout::Dimension::Auto());
     icon.label->SetPadding(0);
+    icon.label->SetInteractive(false);
     icon.tile->AddChild(icon.label);
 
     Point2Df at;
@@ -330,100 +339,203 @@ bool UltraDesktopDesktopIcons::TakeFiles(const std::vector<std::string>& files, 
         desktop_->SaveSettings();
     }
     Refresh(true);
-    if (!placed.empty()) Select(placed.back().first);
+    if (!placed.empty()) {
+        std::set<std::string> dropped;
+        for (const auto& [name, point] : placed) dropped.insert(name);
+        SetSelection(dropped);
+    }
     InvalidateLayout();
     RequestRedraw();
     return ok;
 }
 
-// ===== WHAT AN ICON DOES =====
+// ===== THE SELECTION =====
 
-void UltraDesktopDesktopIcons::Select(const std::string& name) {
-    if (selected_ == name) return;
-    auto old = icons_.find(selected_);
-    if (old != icons_.end()) {
-        old->second.tile->SetBackgroundColor(Colors::Transparent);
-        old->second.tile->SetBorders(1, Colors::Transparent, 6);
+void UltraDesktopDesktopIcons::SetSelection(const std::set<std::string>& names) {
+    std::set<std::string> wanted;
+    for (const std::string& name : names) {
+        if (icons_.count(name)) wanted.insert(name);
     }
-    selected_ = name;
-    auto now = icons_.find(selected_);
-    if (now != icons_.end()) {
-        now->second.tile->SetBackgroundColor(Color(255, 255, 255, 60));
-        now->second.tile->SetBorders(1, Color(255, 255, 255, 140), 6);
+    if (wanted == selected_) return;
+    selected_ = std::move(wanted);
+    for (auto& [name, icon] : icons_) {
+        const bool on = selected_.count(name) > 0;
+        icon.tile->SetBackgroundColor(on ? Color(255, 255, 255, 60) : Colors::Transparent);
+        icon.tile->SetBorders(1, on ? Color(255, 255, 255, 140) : Colors::Transparent, 6);
     }
     RequestRedraw();
 }
 
-void UltraDesktopDesktopIcons::Open(const std::string& name) {
-    auto found = icons_.find(name);
-    if (found == icons_.end()) return;
+void UltraDesktopDesktopIcons::ClearSelection() {
+    SetSelection({});
+}
+
+std::vector<std::string> UltraDesktopDesktopIcons::SelectedPaths() const {
+    std::vector<std::string> paths;
+    for (const std::string& name : selected_) {
+        auto found = icons_.find(name);
+        if (found != icons_.end()) paths.push_back(found->second.path);
+    }
+    return paths;
+}
+
+// ===== WHAT THE ICONS DO =====
+
+void UltraDesktopDesktopIcons::OpenSelected() {
+    const std::vector<std::string> paths = SelectedPaths();
+    if (paths.empty()) return;
     std::string error;
-    if (!FileAssociations::OpenWithDefaultApplication({found->second.path}, error)) {
-        UltraCanvasDialogManager::ShowWarning(TrF("\"{0}\" could not be opened: {1}", name, error), Tr("Desktop"),
-                                              nullptr, GetWindow());
+    if (!FileAssociations::OpenWithDefaultApplication(paths, error)) {
+        UltraCanvasDialogManager::ShowWarning(TrF("Not opened: {0}", error), Tr("Desktop"), nullptr, GetWindow());
     }
 }
 
-void UltraDesktopDesktopIcons::Delete(const std::string& name) {
-    auto found = icons_.find(name);
-    if (found == icons_.end()) return;
-    const std::string file = found->second.path;
+void UltraDesktopDesktopIcons::DeleteSelected() {
+    const std::vector<std::string> files = SelectedPaths();
+    if (files.empty()) return;
     const bool trash = TrashAvailable();
-    const std::string question = trash ? TrF("Move \"{0}\" to the {1}?", name, TrashDisplayName())
-                                       : TrF("Delete \"{0}\" for good? It cannot be brought back.", name);
-    UltraCanvasDialogManager::ShowConfirmation(question, Tr("Desktop"), [this, name, file, trash](bool yes) {
+    const std::string what = files.size() == 1 ? *selected_.begin()
+                                               : TrF("these {0} items", std::to_string(files.size()));
+    const std::string question =
+            trash ? (files.size() == 1 ? TrF("Move \"{0}\" to the {1}?", what, TrashDisplayName())
+                                       : TrF("Move {0} to the {1}?", what, TrashDisplayName()))
+                  : (files.size() == 1 ? TrF("Delete \"{0}\" for good? It cannot be brought back.", what)
+                                       : TrF("Delete {0} for good? They cannot be brought back.", what));
+    UltraCanvasDialogManager::ShowConfirmation(question, Tr("Desktop"), [this, files, trash](bool yes) {
         if (!yes) return;
-        std::string error;
-        bool gone = false;
-        if (trash) {
-            gone = MoveToTrash(file, error);
-        } else {
-            std::error_code ec;
-            fs::remove_all(PathFromUtf8(file), ec);
-            gone = !ec;
-            if (ec) error = ec.message();
-        }
-        if (!gone) {
-            UltraCanvasDialogManager::ShowWarning(TrF("\"{0}\" was not deleted: {1}", name, error), Tr("Desktop"),
-                                                  nullptr, GetWindow());
-            return;
+        std::string failures;
+        for (const std::string& file : files) {
+            std::string error;
+            bool gone = false;
+            if (trash) {
+                gone = MoveToTrash(file, error);
+            } else {
+                std::error_code ec;
+                fs::remove_all(PathFromUtf8(file), ec);
+                gone = !ec;
+                if (ec) error = ec.message();
+            }
+            if (!gone) failures += "\n" + PathToUtf8(PathFromUtf8(file).filename()) + ": " + error;
         }
         Refresh(true);
+        if (!failures.empty()) {
+            UltraCanvasDialogManager::ShowWarning(Tr("Not deleted:") + failures, Tr("Desktop"), nullptr, GetWindow());
+        }
     }, GetWindow());
 }
 
-void UltraDesktopDesktopIcons::ShowMenu(const std::string& name, int windowX, int windowY) {
+void UltraDesktopDesktopIcons::ShowMenu(int windowX, int windowY) {
     auto* window = GetWindow();
-    if (!window) return;
+    if (!window || selected_.empty()) return;
     menu_ = std::make_shared<UltraCanvasMenu>("DesktopIconMenu", 0, 0, 240, 0);
     menu_->SetMenuType(MenuType::PopupMenu);
-    menu_->AddItem(MenuItemData::Action(Tr("Open"), [this, name]() { Open(name); }));
+    if (selected_.size() > 1) {
+        menu_->AddItem(MenuItemData::Header(TrF("{0} items", std::to_string(selected_.size()))));
+    }
+    menu_->AddItem(MenuItemData::Action(Tr("Open"), [this]() { OpenSelected(); }));
     menu_->AddItem(MenuItemData::Action(Tr("Show in the file manager"), [this]() {
         if (desktop_) desktop_->OpenFiler(DesktopFolder());
     }));
     menu_->AddItem(MenuItemData::Separator());
     menu_->AddItem(MenuItemData::Action(TrashAvailable() ? Tr("Delete (move to the trash)") : Tr("Delete"),
-                                        [this, name]() { Delete(name); }));
+                                        [this]() { DeleteSelected(); }));
     menu_->AddItem(MenuItemData::Separator());
+    menu_->AddItem(MenuItemData::Action(Tr("Select all"), [this]() {
+        std::set<std::string> all;
+        for (const auto& [name, icon] : icons_) all.insert(name);
+        SetSelection(all);
+    }));
     menu_->AddItem(MenuItemData::Action(Tr("Arrange icons"), [this]() { ArrangeIcons(); }));
     PopupElementSettings settings;
     menu_->OpenMenu(Point2Di(windowX, windowY), *window, settings);
 }
 
+// ===== THE RUBBER BAND =====
+
+void UltraDesktopDesktopIcons::BeginRubberBand(const Point2Df& at, bool add) {
+    bandStart_ = at;
+    bandBase_ = add ? selected_ : std::set<std::string>();
+    if (!add) ClearSelection();
+    banding_ = true;
+    if (!band_) {
+        band_ = CreateContainer("DesktopIcons.Band", 0, 0, 1, 1);
+        band_->SetBackgroundColor(Color(120, 170, 240, 60));
+        band_->SetBorders(1, Color(150, 195, 255, 200), 2);
+        ContainerStyle plain;
+        plain.autoShowScrollbars = false;
+        band_->SetContainerStyle(plain);
+        band_->SetInteractive(false);
+    }
+    band_->SetVisible(false);
+    if (!HasChild(band_.get())) AddChild(band_);
+    if (auto* app = UltraCanvasApplication::GetInstance()) app->CaptureMouse(this);
+}
+
+void UltraDesktopDesktopIcons::UpdateRubberBand(const Point2Df& to) {
+    const Rect2Df rect(std::min(bandStart_.x, to.x), std::min(bandStart_.y, to.y),
+                       std::fabs(to.x - bandStart_.x), std::fabs(to.y - bandStart_.y));
+    if (rect.width < 2 && rect.height < 2) return;
+    band_->SetVisible(true);
+    PlaceChildAt(band_, Rect2Df(rect.x, rect.y, std::max(1.0f, rect.width), std::max(1.0f, rect.height)));
+    std::set<std::string> hit = bandBase_;
+    for (const auto& [name, icon] : icons_) {
+        if (Rect2Df(icon.place.x, icon.place.y, kTileWidth, kTileHeight).Intersects(rect)) hit.insert(name);
+    }
+    SetSelection(hit);
+    InvalidateLayout();
+    RequestRedraw();
+}
+
+void UltraDesktopDesktopIcons::EndRubberBand() {
+    banding_ = false;
+    if (band_) band_->SetVisible(false);
+    if (auto* app = UltraCanvasApplication::GetInstance()) app->ReleaseMouse();
+    RequestRedraw();
+}
+
+// ===== DRAGGING ICONS =====
+
+// Out of the desktop: the pointer reached another program's window. The
+// icons go back where they were, and the selected files continue as a
+// native drag, which that program (or any other) takes.
+void UltraDesktopDesktopIcons::DragOut() {
+    for (const auto& [name, start] : dragStart_) {
+        auto icon = icons_.find(name);
+        if (icon != icons_.end()) PlaceIcon(icon->second, start);
+    }
+    const std::vector<std::string> paths = SelectedPaths();
+    pressedName_.clear();
+    dragging_ = false;
+    dragStart_.clear();
+    if (auto* app = UltraCanvasApplication::GetInstance()) app->ReleaseMouse();
+    InvalidateLayout();
+    RequestRedraw();
+    auto* window = GetWindow();
+    if (!window || paths.empty()) return;
+    std::weak_ptr<UltraCanvasUIElement> weak = weak_from_this();
+    window->StartNativeFileDrag(paths, [weak](bool accepted, bool moved) {
+        if (!accepted || !moved) return;
+        // The other program moved them away: their icons go.
+        if (auto self = weak.lock()) static_cast<UltraDesktopDesktopIcons*>(self.get())->Refresh(true);
+    });
+}
+
 // ===== EVENTS =====
 
 UltraDesktopDesktopIcons::Icon* UltraDesktopDesktopIcons::IconAt(const Point2Df& point) {
+    // By the icons' own places, in the pointer's coordinates (the layer's).
     for (auto& [name, icon] : icons_) {
-        if (icon.tile && icon.tile->GetBounds().Contains(point)) return &icon;
+        if (Rect2Df(icon.place.x, icon.place.y, kTileWidth, kTileHeight).Contains(point)) return &icon;
     }
     return nullptr;
 }
 
 bool UltraDesktopDesktopIcons::Contains(const Point2Df& point) {
     if (!IsVisible()) return false;
-    if (dragging_ || !pressedName_.empty()) return true;   // the drag follows the pointer anywhere
+    // A drag or a rubber band follows the pointer anywhere.
+    if (banding_ || dragging_ || !pressedName_.empty()) return true;
     for (const auto& [name, icon] : icons_) {
-        if (icon.tile && icon.tile->GetBounds().Contains(point)) return true;
+        if (Rect2Df(icon.place.x, icon.place.y, kTileWidth, kTileHeight).Contains(point)) return true;
     }
     return false;
 }
@@ -433,51 +545,101 @@ bool UltraDesktopDesktopIcons::OnEvent(const UCEvent& event) {
     switch (event.type) {
         case UCEventType::MouseDown: {
             Icon* icon = IconAt(event.pointer);
-            if (!icon) break;
-            Select(icon->name);
+            if (!icon) {
+                // The wallpaper between the icons: the layer lies over it and
+                // takes its presses, so it answers for it - a rubber band, or
+                // the desktop's menu on the release.
+                if (event.button == UCMouseButton::Left) {
+                    BeginRubberBand(event.pointer, event.ctrl);
+                    return true;
+                }
+                if (event.button == UCMouseButton::Right) {
+                    rightOnGround_ = true;
+                    return true;
+                }
+                break;
+            }
+            const std::string name = icon->name;
+            const bool selected = selected_.count(name) > 0;
             if (event.button == UCMouseButton::Right) {
+                if (!selected) SetSelection({name});
                 rightPressPending_ = true;   // the menu opens on the release
                 return true;
             }
-            if (event.button == UCMouseButton::Left) {
-                pressedName_ = icon->name;
-                pressPoint_ = event.pointer;
-                dragOffset_ = Point2Df(event.pointer.x - icon->place.x, event.pointer.y - icon->place.y);
-                dragging_ = false;
-                if (app) app->CaptureMouse(this);
+            if (event.button != UCMouseButton::Left) break;
+            if (event.ctrl) {
+                // Ctrl+click: in or out of the selection, nothing else.
+                std::set<std::string> next = selected_;
+                if (selected) next.erase(name);
+                else next.insert(name);
+                SetSelection(next);
                 return true;
             }
-            break;
+            if (event.shift) {
+                std::set<std::string> next = selected_;
+                next.insert(name);
+                SetSelection(next);
+            } else if (!selected) {
+                SetSelection({name});
+            }
+            // A press on a selected icon may drag them all; a click without a
+            // drag selects that one alone on the release.
+            pressedName_ = name;
+            pressPoint_ = event.pointer;
+            dragging_ = false;
+            dragStart_.clear();
+            for (const std::string& each : selected_) {
+                auto found = icons_.find(each);
+                if (found != icons_.end()) dragStart_[each] = found->second.place;
+            }
+            if (desktop_) desktop_->NoteIconDragStart();
+            if (app) app->CaptureMouse(this);
+            return true;
         }
         case UCEventType::MouseDoubleClick: {
             if (Icon* icon = IconAt(event.pointer)) {
-                Open(icon->name);
+                if (!selected_.count(icon->name)) SetSelection({icon->name});
+                OpenSelected();
                 return true;
             }
             break;
         }
         case UCEventType::MouseMove:
+            if (banding_) {
+                UpdateRubberBand(event.pointer);
+                return true;
+            }
             if (!pressedName_.empty()) {
-                if (!dragging_ && std::hypot(event.pointer.x - pressPoint_.x, event.pointer.y - pressPoint_.y) >= kDragStart) {
-                    dragging_ = true;
+                const float dx = event.pointer.x - pressPoint_.x;
+                const float dy = event.pointer.y - pressPoint_.y;
+                if (!dragging_ && std::hypot(dx, dy) >= kDragStart) dragging_ = true;
+                if (!dragging_) return true;
+                if (desktop_ && desktop_->PointOverOtherWindow(event.pointerWindow)) {
+                    DragOut();
+                    return true;
                 }
-                if (dragging_) {
-                    auto found = icons_.find(pressedName_);
-                    if (found != icons_.end()) {
-                        PlaceIcon(found->second, Point2Df(event.pointer.x - dragOffset_.x, event.pointer.y - dragOffset_.y));
-                        InvalidateLayout();
-                        RequestRedraw();
-                    }
+                for (const auto& [name, start] : dragStart_) {
+                    auto found = icons_.find(name);
+                    if (found != icons_.end()) PlaceIcon(found->second, Point2Df(start.x + dx, start.y + dy));
                 }
+                InvalidateLayout();
+                RequestRedraw();
                 return true;
             }
             break;
         case UCEventType::MouseUp:
+            if (banding_) {
+                EndRubberBand();
+                return true;
+            }
+            if (event.button == UCMouseButton::Right && rightOnGround_) {
+                rightOnGround_ = false;
+                if (desktop_) desktop_->ShowDesktopMenu(event.pointerWindow.x, event.pointerWindow.y);
+                return true;
+            }
             if (event.button == UCMouseButton::Right && rightPressPending_) {
                 rightPressPending_ = false;
-                if (Icon* icon = IconAt(event.pointer)) {
-                    ShowMenu(icon->name, event.pointerWindow.x, event.pointerWindow.y);
-                }
+                if (IconAt(event.pointer)) ShowMenu(event.pointerWindow.x, event.pointerWindow.y);
                 return true;
             }
             if (!pressedName_.empty()) {
@@ -487,9 +649,14 @@ bool UltraDesktopDesktopIcons::OnEvent(const UCEvent& event) {
                 dragging_ = false;
                 if (app) app->ReleaseMouse();
                 if (moved) {
-                    auto found = icons_.find(name);
-                    if (found != icons_.end()) SavePlace(found->second);
+                    for (const auto& [each, start] : dragStart_) {
+                        auto found = icons_.find(each);
+                        if (found != icons_.end()) SavePlace(found->second);
+                    }
+                } else if (!event.shift && selected_.size() > 1) {
+                    SetSelection({name});
                 }
+                dragStart_.clear();
                 return true;
             }
             break;

@@ -217,6 +217,11 @@ public:
     // "board" or "desktop": where dropped files go; the desktop icons show
     // with "desktop".
     void SetDropTarget(const std::string& target);
+    // Dragging desktop icons: the other programs' windows on this desktop
+    // are read once when a drag starts, and the drag leaves the desktop as
+    // a native file drag when the pointer (window coordinates) is over one.
+    void NoteIconDragStart();
+    bool PointOverOtherWindow(const UltraCanvas::Point2Di& windowPoint) const;
     // How many desktops the organiser shows right now: the window manager's
     // count where there is one, the settings' where there is none.
     int DesktopCount() const { return desktopCount_; }
@@ -398,6 +403,7 @@ private:
     std::shared_ptr<UltraDesktopStickerboard> stickerboard_;
     std::shared_ptr<UltraDesktopDesktopIcons> desktopIcons_;
     int desktopIconTicks_ = 0;
+    std::vector<UltraCanvas::Rect2Di> otherWindowRects_;   // NoteIconDragStart
     std::shared_ptr<UltraDesktopCategoryBoard> categoryBoard_;
     std::shared_ptr<UltraCanvas::UltraCanvasWindow> boardWindow_;
     UltraCanvas::Rect2Di boardRect_;    // where PlaceCategoryBoard last put it

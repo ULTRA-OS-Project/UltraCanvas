@@ -14,3 +14,14 @@
 - **Notes on the wallpaper show again.** The notes and their "+" button were
   placed on the notes layer but never added to it, so none was drawn while
   the notes were switched on.
+- **Several desktop icons at once.** Ctrl+click adds or removes an icon,
+  Shift+click adds one, and a box drawn on the wallpaper selects the icons it
+  touches (with Ctrl, adds them). The selected icons open, move and are
+  deleted together, and *Select all* is on their menu.
+- **Desktop icons can be dragged out to other programs.** Dragged over
+  another program's window, the selected files continue as a native file
+  drag, which a file manager, a mail or an editor takes.
+- **The panels follow the light theme.** The clock, loudspeaker, Wi-Fi,
+  Bluetooth, device and clipboard panels and the window pictures are near
+  white with dark text in the light theme.
+- **The desktop's menu works on the wallpaper while desktop icons show.**

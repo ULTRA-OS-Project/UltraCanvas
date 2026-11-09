@@ -337,7 +337,9 @@ Right-click the **wallpaper** for the desktop's menu:
 - **Change wallpaper...** picks a picture; **Default wallpaper** goes back
   to ULTRA OS's own picture.
 - **Theme**: **Dark** (light icons on dark grey bars) or **Light** (dark
-  icons on light grey bars).
+  icons on light grey bars). The panels the bars open - the clock, the
+  loudspeaker, Wi-Fi, Bluetooth, the devices, the clipboard and the window
+  pictures - follow it.
 - **Taskbar position**: on the left, at the top or at the bottom.
 - **Drop files**: where files you drag onto the wallpaper go.
   - **Drop on sticker board** (the default): they join the Sticker board's
@@ -346,9 +348,14 @@ Right-click the **wallpaper** for the desktop's menu:
   - **Drop on desktop**: they are moved into your Desktop folder (copied,
     when they come from another drive) and appear where you dropped them as
     icons on the wallpaper. The wallpaper shows the Desktop folder's files as
-    icons while this is chosen: double-click one to open it, drag it to move
-    it (it stays there), right-click for **Open**, **Show in the file
-    manager**, **Delete** and **Arrange icons**. A file saved to the Desktop
+    icons while this is chosen: click one to select it, **Ctrl+click** to add
+    or remove one, **Shift+click** to add one, or draw a box on the
+    wallpaper around several (with Ctrl held, they are added). Double-click
+    to open, drag to move the selected icons together (they stay there), or
+    drag them onto another program's window - a file manager, a mail, an
+    editor - to hand the files to it. Right-click for **Open**, **Show in
+    the file manager**, **Delete**, **Select all** and **Arrange icons**,
+    for all the selected icons. A file saved to the Desktop
     folder by another program appears within two seconds.
 - **Arrange icons** (with **Drop on desktop**) puts the icons back on the
   grid, in name order.
@@ -517,7 +524,8 @@ at sign-in.
 | Any window | Super+Shift+S (Win+Shift+S) | UltraSnip snips an area (on Windows only instead of Explorer; Win+Shift+S is Windows' own beside it) |
 | Clock | click / right-click | the clock panel / analog or digital, with or without the date |
 | Wallpaper | right-click / drop files | wallpaper, theme, taskbar position, drop files, notes, display settings, desktop settings / onto the Sticker board's Unsorted category, or onto the desktop |
-| Desktop icon | click / double-click / drag / right-click | select / open / move / Open, Show in the file manager, Delete, Arrange icons |
+| Desktop icon | click / Ctrl+click / Shift+click / double-click / drag / right-click | select / add or remove / add / open / move, or onto another program's window to give it the files / Open, Show in the file manager, Delete, Select all, Arrange icons |
+| Wallpaper, with desktop icons | drag / Ctrl+drag | select the icons in the box / add them |
 | The bars, between the buttons | right-click | taskbar position, theme |
 | Loudspeaker icon | click | the volume panel |
 | Pinned program | click / right-click | start it / open, unpin |
