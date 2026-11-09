@@ -28,3 +28,8 @@
 - **The desktop icons answer the keyboard**, after a click on an icon or
   the wallpaper: Delete (after the question), Ctrl+A, Enter, and Escape,
   which clears the selection or puts a drag or a rubber band back.
+- **F2 renames a desktop icon** (also *Rename* on its menu): its name
+  becomes a text field with the part before the extension chosen; Enter or a
+  click elsewhere renames the file, which keeps its place, and Escape keeps
+  the old name. The icons are a little wider, so a name like
+  `groceries.txt` is no longer cut at both ends.

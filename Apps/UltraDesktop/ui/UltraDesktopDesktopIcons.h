@@ -19,12 +19,15 @@
 //   - The keyboard, once an icon or the wallpaper between them was clicked:
 //     Delete deletes the selection (after the question), Ctrl+A selects
 //     every icon, Enter opens the selection, Escape ends a drag or a rubber
-//     band where it started, else clears the selection.
+//     band where it started, else clears the selection, and F2 renames the
+//     selected icon (also *Rename* on its menu): its name becomes a text
+//     field, Enter or a click elsewhere renames the file, Escape keeps it.
 //   - Files dropped on the wallpaper or on an icon are moved into the
 //     Desktop folder (copied when they are on another drive) and appear
 //     where they were dropped (TakeFiles).
 //   - The folder is read again when it changes (Refresh, from the desktop's
 //     timer), so a file saved to the Desktop elsewhere appears too.
+// Version: 0.4.0 - F2 / Rename: an icon's name edited in place, the file renamed
 // Version: 0.3.0 - the keyboard: Delete, Ctrl+A, Enter, Escape
 // Version: 0.2.0 - several icons selected (Ctrl+click, Shift+click, a rubber
 //                  band from the wallpaper), moved together, and dragged out
@@ -47,6 +50,7 @@
 
 namespace UltraCanvas {
     class UltraCanvasImageElement;
+    class UltraCanvasTextInput;
     class UltraCanvasLabel;
     class UltraCanvasMenu;
 }
@@ -112,6 +116,10 @@ private:
     void EndRubberBand();
     void DragOut();
     bool OnKey(const UltraCanvas::UCEvent& event);
+    // The name of the icon `name` as a text field over its label; the file
+    // is renamed when it is committed (`keep` false: left as it was).
+    void BeginRename(const std::string& name);
+    void FinishRename(bool keep);
     // Escape during a drag: the icons back where they were.
     void CancelDrag();
     void LoadPicture(const std::string& name);
@@ -136,7 +144,10 @@ private:
     std::set<std::string> bandBase_;
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> band_;
     bool rightPressPending_ = false;
-    bool rightOnGround_ = false;   // a right press on the wallpaper between the icons
+    bool rightOnGround_ = false;
+    // The rename under way: the icon's name and the field over its label.
+    std::string renaming_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> renameField_;   // a right press on the wallpaper between the icons
 
     UltraDesktopPanelWork work_;
 };

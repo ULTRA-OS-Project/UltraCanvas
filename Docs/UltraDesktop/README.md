@@ -296,11 +296,15 @@ colours.
   the files continue as a native file drag (XDND on X11, OLE on Windows),
   which that program takes; one that moved them makes their icons go. A
   right click offers, for the whole selection, *Open*, *Show in the file
-  manager*, *Delete* (into the trash, after one question), *Select all* and
-  *Arrange icons*. After a click on an icon or the wallpaper between them the
+  manager*, *Rename* (one icon), *Delete* (into the trash, after one
+  question), *Select all* and *Arrange icons*. After a click on an icon or the wallpaper between them the
   layer has the keyboard: Delete deletes the selection (after the question),
-  Ctrl+A selects every icon, Enter opens the selection, Escape ends a drag or
-  a rubber band where it started, else clears the selection. The folder is looked at every two seconds,
+  Ctrl+A selects every icon, Enter opens the selection, F2 renames the
+  selected icon (also *Rename* on its menu: a text field over its name with
+  the name before the extension chosen; Enter or a click elsewhere renames
+  the file and the icon keeps its place, Escape keeps the name; a name
+  already on the desktop, or one with a slash, is refused), Escape ends a
+  drag or a rubber band where it started, else clears the selection. The folder is looked at every two seconds,
   so a file another program saves there appears too.
 
 A change is saved at once and the bars are rebuilt in place; one made in

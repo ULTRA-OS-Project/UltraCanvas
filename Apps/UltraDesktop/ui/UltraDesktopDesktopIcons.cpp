@@ -1,5 +1,6 @@
 // Apps/UltraDesktop/ui/UltraDesktopDesktopIcons.cpp
 // The Desktop folder as icons on the wallpaper. See UltraDesktopDesktopIcons.h.
+// Version: 0.4.0 - F2 / Rename
 // Version: 0.3.0 - Delete, Ctrl+A, Enter, Escape
 // Version: 0.2.0 - several icons selected (Ctrl+click, Shift+click, a rubber
 //                  band from the wallpaper), moved together, and dragged out
@@ -19,6 +20,7 @@
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasMenu.h"
 #include "UltraCanvasModalDialog.h"
+#include "UltraCanvasTextInput.h"
 #include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasTrash.h"
 #include "UltraCanvasUtils.h"
@@ -33,10 +35,10 @@ namespace fs = std::filesystem;
 namespace UltraDesktop {
 namespace {
 
-constexpr float kTileWidth = 88;
+constexpr float kTileWidth = 100;
 constexpr float kTileHeight = 92;
 constexpr float kPicture = 48;
-constexpr float kCellWidth = 96;     // the grid new icons are placed on
+constexpr float kCellWidth = 108;    // the grid new icons are placed on
 constexpr float kCellHeight = 100;
 constexpr float kMargin = 16;
 constexpr float kGridTop = 56;       // below the notes' "+" in the top-left corner
@@ -438,8 +440,12 @@ void UltraDesktopDesktopIcons::ShowMenu(int windowX, int windowY) {
         if (desktop_) desktop_->OpenFiler(DesktopFolder());
     }));
     menu_->AddItem(MenuItemData::Separator());
-    menu_->AddItem(MenuItemData::Action(TrashAvailable() ? Tr("Delete (move to the trash)") : Tr("Delete"),
-                                        [this]() { DeleteSelected(); }));
+    if (selected_.size() == 1) {
+        const std::string name = *selected_.begin();
+        menu_->AddItem(MenuItemData::ActionWithShortcut(Tr("Rename"), "F2", [this, name]() { BeginRename(name); }));
+    }
+    menu_->AddItem(MenuItemData::ActionWithShortcut(TrashAvailable() ? Tr("Delete (move to the trash)") : Tr("Delete"),
+                                                    "Delete", [this]() { DeleteSelected(); }));
     menu_->AddItem(MenuItemData::Separator());
     menu_->AddItem(MenuItemData::Action(Tr("Select all"), [this]() {
         std::set<std::string> all;
@@ -521,6 +527,99 @@ void UltraDesktopDesktopIcons::DragOut() {
     });
 }
 
+// ===== RENAMING =====
+
+void UltraDesktopDesktopIcons::BeginRename(const std::string& name) {
+    auto found = icons_.find(name);
+    if (found == icons_.end()) return;
+    if (!renaming_.empty()) FinishRename(true);
+    renaming_ = name;
+    const Icon& icon = found->second;
+    renameField_ = std::make_shared<UltraCanvasTextInput>("DesktopIcons.Rename", 0, 0, 0, 0);
+    renameField_->SetText(name);
+    // The name without its extension is chosen, as file managers do.
+    const std::string ext = PathToUtf8(PathFromUtf8(name).extension());
+    std::error_code ec;
+    const bool folder = fs::is_directory(PathFromUtf8(icon.path), ec);
+    renameField_->SetSelection(0, (!folder && !ext.empty() && ext.size() < name.size()) ? name.size() - ext.size()
+                                                                                          : name.size());
+    renameField_->onEnterPressed = [this](const std::string&) {
+        FinishRename(true);
+        return true;
+    };
+    renameField_->onEscapePressed = [this]() {
+        FinishRename(false);
+        return true;
+    };
+    renameField_->onFocusLost = [this]() { FinishRename(true); };
+    AddChild(renameField_);
+    // Wider than the tile, so a long name is seen while it is typed.
+    const float width = kTileWidth + 60;
+    PlaceChildAt(renameField_, Rect2Df(std::max(0.0f, icon.place.x - 30), icon.place.y + kPicture + 8, width, 26));
+    InvalidateLayout();
+    renameField_->SetFocus(true);
+    RequestRedraw();
+}
+
+void UltraDesktopDesktopIcons::FinishRename(bool keep) {
+    if (renaming_.empty() || !renameField_) return;
+    const std::string from = renaming_;
+    const std::string to = renameField_->GetText();
+    renaming_.clear();   // first: the field's focus loss below calls back here
+    auto field = renameField_;
+    renameField_.reset();
+    field->onFocusLost = nullptr;
+    field->onEnterPressed = nullptr;
+    field->onEscapePressed = nullptr;
+    // Out of the tree after the event that ended it has run its course.
+    if (auto* app = UltraCanvasApplication::GetInstance()) {
+        std::weak_ptr<UltraCanvasUIElement> weak = weak_from_this();
+        app->PostToUIThread([weak, field]() {
+            if (auto self = weak.lock()) {
+                auto* layer = static_cast<UltraDesktopDesktopIcons*>(self.get());
+                layer->RemoveChild(field);
+                layer->InvalidateLayout();
+                layer->RequestRedraw();
+            }
+        });
+    }
+    SetFocus(true);
+    if (!keep || to.empty() || to == from) return;
+    auto found = icons_.find(from);
+    if (found == icons_.end()) return;
+    if (to == "." || to == ".." || to.find('/') != std::string::npos || to.find('\\') != std::string::npos) {
+        UltraCanvasDialogManager::ShowWarning(TrF("\"{0}\" cannot be a file's name.", to), Tr("Desktop"), nullptr,
+                                              GetWindow());
+        return;
+    }
+    const fs::path source = PathFromUtf8(found->second.path);
+    const fs::path target = source.parent_path() / PathFromUtf8(to);
+    std::error_code ec;
+    if (fs::exists(target, ec)) {
+        UltraCanvasDialogManager::ShowWarning(TrF("There is already a \"{0}\" on the desktop.", to), Tr("Desktop"),
+                                              nullptr, GetWindow());
+        return;
+    }
+    fs::rename(source, target, ec);
+    if (ec) {
+        UltraCanvasDialogManager::ShowWarning(TrF("\"{0}\" was not renamed: {1}", from, ec.message()), Tr("Desktop"),
+                                              nullptr, GetWindow());
+        return;
+    }
+    // The icon keeps its place under its new name.
+    if (desktop_) {
+        DesktopSettings::IconPlace place;
+        place.x = found->second.place.x;
+        place.y = found->second.place.y;
+        auto& places = desktop_->Settings().desktopIcons;
+        places.erase(from);
+        places[to] = place;
+        desktop_->SaveSettings();
+    }
+    Refresh(true);
+    SetSelection({to});
+}
+
 // ===== THE KEYBOARD =====
 
 void UltraDesktopDesktopIcons::CancelDrag() {
@@ -547,6 +646,10 @@ bool UltraDesktopDesktopIcons::OnKey(const UCEvent& event) {
         case UCKeys::NumPadEnter:
             if (selected_.empty() || dragging_ || banding_) return false;
             OpenSelected();
+            return true;
+        case UCKeys::F2:
+            if (selected_.size() != 1 || dragging_ || banding_) return false;
+            BeginRename(*selected_.begin());
             return true;
         case UCKeys::A: {
             if (!event.ctrl || event.alt) return false;

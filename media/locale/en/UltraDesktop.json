@@ -6,9 +6,12 @@
     "Desktop",
     "Display",
     "Open",
-    "Pictures"
+    "Pictures",
+    "Rename"
   ],
+  "\"{0}\" cannot be a file's name.": "\"{0}\" cannot be a file's name.",
   "\"{0}\" was not deleted: {1}": "\"{0}\" was not deleted: {1}",
+  "\"{0}\" was not renamed: {1}": "\"{0}\" was not renamed: {1}",
   "Add category": "Add category",
   "Arrange icons": "Arrange icons",
   "Change wallpaper...": "Change wallpaper...",
@@ -52,6 +55,7 @@
   "Text only": "Text only",
   "The display settings could not be opened: ": "The display settings could not be opened: ",
   "Theme": "Theme",
+  "There is already a \"{0}\" on the desktop.": "There is already a \"{0}\" on the desktop.",
   "There is no Desktop folder to put the files in.": "There is no Desktop folder to put the files in.",
   "these {0} items": "these {0} items",
   "Thumbnail and text": "Thumbnail and text",
