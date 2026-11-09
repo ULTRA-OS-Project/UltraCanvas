@@ -3,19 +3,23 @@
 // response parsing, SSE chunk assembly, error mapping. The same wire format
 // is served by self-hosted OpenAI-compatible servers (Ollama, vLLM,
 // llama.cpp server), which the adapter supports via a custom baseUrl.
+// Version: 0.2.0 - the Batch API (ITextBatch)
 // Version: 0.1.0
-// Last Modified: 2026-08-21
+// Last Modified: 2026-11-09
 // Author: UltraAI Module
 
 #include "UltraAIOpenAI.h"
 
 #include "OpenAIInternal.h"
 #include "UltraAIBase64.h"
+#include "UltraAIMultipart.h"
 #include "UltraAIStreamHandleBase.h"
 #ifdef ULTRAAI_HAS_ULTRANET
 #include "UltraAIUltraNetTransport.h"
 #endif
 
+#include <algorithm>
+#include <ctime>
 #include <future>
 #include <map>
 #include <memory>
@@ -490,6 +494,264 @@ private:
     bool keyResolved_ = false;
 };
 
+// ---------------------------------------------------------------------
+// Batch API: the requests go up as a JSONL file (POST /v1/files, purpose
+// "batch"), a batch is made from it (POST /v1/batches), and the answers
+// come back as JSONL files (output_file_id, error_file_id). Each line's
+// body is the same body Chat sends; each answer is the same reply Chat
+// parses.
+// ---------------------------------------------------------------------
+
+std::string UnixToRfc3339(const json& j, const char* key) {
+    if (!j.contains(key) || !j[key].is_number()) return {};
+    const std::time_t t = static_cast<std::time_t>(j[key].get<int64_t>());
+    std::tm utc{};
+#if defined(_WIN32)
+    gmtime_s(&utc, &t);
+#else
+    gmtime_r(&t, &utc);
+#endif
+    char buffer[32];
+    std::strftime(buffer, sizeof buffer, "%Y-%m-%dT%H:%M:%SZ", &utc);
+    return buffer;
+}
+
+class OpenAITextBatch : public ITextBatch {
+public:
+    OpenAITextBatch(TextBatchConfig config, std::shared_ptr<ITransport> transport)
+        : config_(std::move(config)), transport_(std::move(transport)),
+          baseUrl_(NormalizeBaseUrl(config_.baseUrl)) {}
+
+    std::string ProviderId() const override { return "openai"; }
+    bool IsNative() const override { return true; }
+
+    BatchJob Submit(const std::vector<BatchRequestItem>& items) override {
+        BatchJob out;
+        if (!ValidateBatchItems(items, &out.error)) return out;
+
+        std::string jsonl;
+        for (const auto& item : items) {
+            json body = BuildRequestBody(item.request, config_, &out.error);
+            if (body.is_null()) {
+                out.error.message = "request '" + item.customId + "': " + out.error.message;
+                return out;
+            }
+            jsonl += json{{"custom_id", item.customId}, {"method", "POST"},
+                          {"url", "/v1/chat/completions"}, {"body", std::move(body)}}.dump();
+            jsonl += '\n';
+        }
+
+        // 1. The file.
+        MultipartBody upload = BuildMultipartBody({
+            MultipartPart{"purpose", "batch", "", ""},
+            MultipartPart{"file", jsonl, "ultraai-batch.jsonl", "application/jsonl"}});
+        TransportResponse fileResp;
+        if (!Send("POST", "/v1/files", upload.body, upload.contentType, fileResp, &out.error)) return out;
+        json file = ParseJsonLenient(fileResp.body);
+        const std::string fileId = file.is_object() ? file.value("id", "") : std::string{};
+        if (fileId.empty()) {
+            out.error.code = ErrorCode::ProviderError;
+            out.error.message = "the file upload returned no file id";
+            return out;
+        }
+
+        // 2. The batch.
+        json create = {{"input_file_id", fileId}, {"endpoint", "/v1/chat/completions"},
+                       {"completion_window", "24h"}};
+        return JobFrom("POST", "/v1/batches", create.dump());
+    }
+
+    BatchJob Get(const std::string& batchId) override {
+        return JobFrom("GET", "/v1/batches/" + batchId, "");
+    }
+
+    BatchJob Cancel(const std::string& batchId) override {
+        return JobFrom("POST", "/v1/batches/" + batchId + "/cancel", "");
+    }
+
+    std::vector<BatchItemResult> Results(const std::string& batchId, Error* outError) override {
+        Error tmp;
+        Error* err = outError ? outError : &tmp;
+        json raw;
+        BatchJob job = Fetch("GET", "/v1/batches/" + batchId, "", &raw);
+        if (!job.error.IsOk() && !IsFinished(job.state)) { *err = job.error; return {}; }
+        if (!IsFinished(job.state)) {
+            err->code = ErrorCode::InvalidRequest;
+            err->message = "the batch has not finished";
+            return {};
+        }
+        std::vector<BatchItemResult> results;
+        for (const char* key : {"output_file_id", "error_file_id"}) {
+            if (!raw.contains(key) || !raw[key].is_string()) continue;
+            const std::string fileId = raw[key];
+            if (fileId.empty()) continue;
+            TransportResponse resp;
+            if (!Send("GET", "/v1/files/" + fileId + "/content", "", "", resp, err)) return {};
+            auto part = ParseResults(resp.body);
+            results.insert(results.end(), std::make_move_iterator(part.begin()),
+                           std::make_move_iterator(part.end()));
+        }
+        return results;
+    }
+
+    static std::vector<BatchItemResult> ParseResults(const std::string& jsonl) {
+        std::vector<BatchItemResult> out;
+        size_t start = 0;
+        while (start < jsonl.size()) {
+            size_t end = jsonl.find('\n', start);
+            if (end == std::string::npos) end = jsonl.size();
+            json j = ParseJsonLenient(jsonl.substr(start, end - start));
+            start = end + 1;
+            if (!j.is_object()) continue;
+            BatchItemResult r;
+            r.customId = j.value("custom_id", "");
+            const json response = j.value("response", json::object());
+            const int status = response.is_object() ? response.value("status_code", 0) : 0;
+            const json body = response.is_object() ? response.value("body", json::object()) : json::object();
+            if (status >= 200 && status < 300) {
+                r.status = BatchItemStatus::Succeeded;
+                r.response = ParseChatResponse(body.dump());
+                if (!r.response.error.IsOk()) r.status = BatchItemStatus::Failed;
+            } else {
+                std::string code, message;
+                if (j.contains("error") && j["error"].is_object()) {
+                    code = j["error"].value("code", "");
+                    message = j["error"].value("message", "");
+                }
+                if (code == "batch_expired") {
+                    r.status = BatchItemStatus::Expired;
+                    r.response.error.code = ErrorCode::Timeout;
+                    r.response.error.message = "the batch expired before this request ran";
+                } else if (code == "batch_cancelled") {
+                    r.status = BatchItemStatus::Cancelled;
+                    r.response.error.code = ErrorCode::Cancelled;
+                    r.response.error.message = "the batch was cancelled before this request ran";
+                } else {
+                    r.status = BatchItemStatus::Failed;
+                    r.response.error = status > 0 ? MapOpenAIError(status, body.dump())
+                                                  : MapHttpStatus(500, message);
+                    // The provider's own message, without "HTTP 400: ".
+                    if (body.contains("error") && body["error"].is_object()) {
+                        const std::string bodyMessage = body["error"].value("message", "");
+                        if (!bodyMessage.empty()) message = bodyMessage;
+                    }
+                    r.response.error.message = message.empty() ? "the request failed" : message;
+                    if (!code.empty() && r.response.error.providerCode.empty()) {
+                        r.response.error.providerCode = code;
+                    }
+                }
+                r.response.finishReason = FinishReason::Error;
+            }
+            out.push_back(std::move(r));
+        }
+        return out;
+    }
+
+    static BatchJob ParseJob(const json& j) {
+        BatchJob job;
+        job.id = j.value("id", "");
+        job.createdAt = UnixToRfc3339(j, "created_at");
+        job.expiresAt = UnixToRfc3339(j, "expires_at");
+        for (const char* key : {"completed_at", "failed_at", "expired_at", "cancelled_at"}) {
+            std::string t = UnixToRfc3339(j, key);
+            if (!t.empty()) { job.endedAt = t; break; }
+        }
+        const json c = j.value("request_counts", json::object());
+        if (c.is_object()) {
+            job.counts.total     = c.value("total", 0);
+            job.counts.succeeded = c.value("completed", 0);
+            job.counts.failed    = c.value("failed", 0);
+        }
+        job.counts.processing = std::max(0, job.counts.total - job.counts.succeeded - job.counts.failed);
+        const std::string status = j.value("status", "");
+        if (status == "validating")       job.state = BatchState::Validating;
+        else if (status == "in_progress") job.state = BatchState::InProgress;
+        else if (status == "finalizing")  job.state = BatchState::Finalizing;
+        else if (status == "cancelling")  job.state = BatchState::Cancelling;
+        else if (status == "completed")   job.state = BatchState::Completed;
+        else if (status == "cancelled")   job.state = BatchState::Cancelled;
+        else if (status == "expired")     job.state = BatchState::Expired;
+        else {
+            job.state = BatchState::Failed;
+            job.error.code = status == "failed" ? ErrorCode::InvalidRequest : ErrorCode::ProviderError;
+            job.error.message = status == "failed" ? "the provider refused the batch"
+                                                   : "unknown batch status '" + status + "'";
+            // {"errors":{"data":[{"code","message","line"}]}}
+            if (j.contains("errors") && j["errors"].is_object()) {
+                const json data = j["errors"].value("data", json::array());
+                if (data.is_array() && !data.empty() && data[0].is_object()) {
+                    job.error.message = data[0].value("message", job.error.message);
+                    job.error.providerCode = data[0].value("code", "");
+                }
+            }
+        }
+        if (IsFinished(job.state) && job.state != BatchState::Failed) {
+            // Unanswered requests of a cancelled or expired batch.
+            if (job.state == BatchState::Cancelled) job.counts.cancelled = job.counts.processing;
+            if (job.state == BatchState::Expired)   job.counts.expired = job.counts.processing;
+            job.counts.processing = 0;
+        }
+        return job;
+    }
+
+private:
+    BatchJob JobFrom(const std::string& method, const std::string& path, const std::string& body) {
+        return Fetch(method, path, body, nullptr);
+    }
+
+    BatchJob Fetch(const std::string& method, const std::string& path, const std::string& body,
+                   json* outRaw) {
+        BatchJob out;
+        TransportResponse resp;
+        if (!Send(method, path, body, body.empty() ? "" : "application/json", resp, &out.error)) {
+            return out;
+        }
+        json j = ParseJsonLenient(resp.body);
+        if (!j.is_object()) {
+            out.error.code = ErrorCode::ProviderError;
+            out.error.message = "OpenAI batch response is not a JSON object";
+            return out;
+        }
+        if (outRaw) *outRaw = j;
+        return ParseJob(j);
+    }
+
+    bool Send(const std::string& method, const std::string& path, const std::string& body,
+              const std::string& contentType, TransportResponse& out, Error* outError) {
+        std::string key;
+        {
+            std::lock_guard<std::mutex> lock(keyMutex_);
+            if (!keyResolved_) {
+                if (!ResolveOptionalKey(config_, baseUrl_, resolvedKey_, outError)) return false;
+                keyResolved_ = true;
+            }
+            key = resolvedKey_;
+        }
+        TransportRequest net;
+        net.method = method;
+        net.url = baseUrl_ + path;
+        net.timeoutMs = config_.timeoutMs;
+        if (!contentType.empty()) net.headers.push_back({"content-type", contentType});
+        if (!key.empty()) net.headers.push_back({"authorization", "Bearer " + key});
+        net.body = body;
+        Error transportError;
+        out = transport_->Request(net, &transportError);
+        if (!transportError.IsOk()) { if (outError) *outError = transportError; return false; }
+        if (out.statusCode >= 400) {
+            if (outError) *outError = MapOpenAIError(out.statusCode, out.body);
+            return false;
+        }
+        return true;
+    }
+
+    TextBatchConfig config_;
+    std::shared_ptr<ITransport> transport_;
+    std::string baseUrl_;
+    std::mutex keyMutex_;
+    std::string resolvedKey_;
+    bool keyResolved_ = false;
+};
+
 } // namespace
 
 std::unique_ptr<ITextLLM> CreateOpenAITextLLM(
@@ -509,6 +771,35 @@ std::unique_ptr<ITextLLM> CreateOpenAITextLLM(
 #endif
     }
     return std::make_unique<OpenAITextLLM>(config, std::move(transport));
+}
+
+std::unique_ptr<ITextBatch> CreateOpenAITextBatch(
+    const TextBatchConfig& config,
+    Error* outError,
+    std::shared_ptr<ITransport> transport) {
+    // Only the hosted API has the Batch API; an OpenAI-compatible server
+    // (Ollama, vLLM, llama.cpp server) does not. CreateTextBatch then falls
+    // back to sending its requests one at a time.
+    if (NormalizeBaseUrl(config.baseUrl) != kDefaultBaseUrl) {
+        if (outError) {
+            outError->code    = ErrorCode::UnsupportedFormat;
+            outError->message = "the Batch API is only at api.openai.com, not at " + config.baseUrl;
+        }
+        return nullptr;
+    }
+    if (!transport) {
+#ifdef ULTRAAI_HAS_ULTRANET
+        transport = std::make_shared<UltraNetTransport>();
+#else
+        if (outError) {
+            outError->code    = ErrorCode::NetworkError;
+            outError->message = "OpenAI adapter needs a transport: build "
+                                "with ULTRAAI_USE_ULTRANET=ON or inject one";
+        }
+        return nullptr;
+#endif
+    }
+    return std::make_unique<OpenAITextBatch>(config, std::move(transport));
 }
 
 } // namespace UltraAI

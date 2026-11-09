@@ -1616,7 +1616,12 @@ through any text LLM (`UltraAITextLLMTranslator.h`: `CreateTextLLMTranslator`,
 `CreateAgent`, `AgentOptions` (`canUseTool`, `afterToolCall`, `maxTurns`,
 `stream`), `ToolArguments`, `ToolResult`, `ToolPermission`,
 `MakeSubagentTool`) run the model ↔ tool loop over any `ITextLLM`;
-`Docs/Modules/UltraAI/Agents.md`. The local runtime
+`Docs/Modules/UltraAI/Agents.md`. Batches (`UltraAIBatch.h`:
+`ITextBatch` with `Submit` / `Get` / `Cancel` / `Results`,
+`CreateTextBatch`, `CreateSequentialTextBatch`, `RunBatch`,
+`ValidateBatchItems`, `IsFinished`; `CreateAnthropicTextBatch`,
+`CreateOpenAITextBatch`) send many chat requests as one job at about half
+the price; `Docs/Modules/UltraAI/Batches.md`. The local runtime
 (`UltraAILocalRuntime.h`, `UltraAI/runtime/`: `LocalRuntime::Instance()`,
 `ListModels` / `ListEngines` / `Recommend` / `Fit`, `InstallModel` /
 `InstallEngine` / `Cancel` / `RemoveModel`, `AddModelFile` /

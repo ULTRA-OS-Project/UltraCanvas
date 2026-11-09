@@ -47,6 +47,12 @@ cancellation, conversations that carry over and subagents. It works over
 every `ITextLLM` provider. See
 [`../Docs/Modules/UltraAI/Agents.md`](Agents.md).
 
+And **batches** (`UltraAIBatch.h`, `ITextBatch`): many chat requests sent
+as one job and answered later, at about half the price, through
+Anthropic's Message Batches and OpenAI's Batch API. Every other provider
+gets the same interface over one request at a time. See
+[`../Docs/Modules/UltraAI/Batches.md`](Batches.md).
+
 ---
 
 ## Adapters
@@ -54,8 +60,8 @@ every `ITextLLM` provider. See
 | Adapter | Capabilities | Where the model runs | CMake option |
 |---|---|---|---|
 | `mock` | all ten | in-process | `ULTRAAI_ADAPTER_MOCK` (ON) |
-| `anthropic` | `ITextLLM` | cloud | `ULTRAAI_ADAPTER_ANTHROPIC` (ON) |
-| `openai` | `ITextLLM`, `IEmbeddings` | cloud, or any OpenAI-compatible server via `baseUrl` | `ULTRAAI_ADAPTER_OPENAI` (ON) |
+| `anthropic` | `ITextLLM`, `ITextBatch` | cloud | `ULTRAAI_ADAPTER_ANTHROPIC` (ON) |
+| `openai` | `ITextLLM`, `IEmbeddings`, `ITextBatch` (hosted API) | cloud, or any OpenAI-compatible server via `baseUrl` | `ULTRAAI_ADAPTER_OPENAI` (ON) |
 | `minimax` | `IVideoGen`, `IImageGen`, `ITextToSpeech` | cloud (MiniMax / Hailuo) | `ULTRAAI_ADAPTER_MINIMAX` (ON) |
 | `qwen` | `ITextLLM`, `IEmbeddings` | local — Ollama, vLLM, llama.cpp server, LM Studio | `ULTRAAI_ADAPTER_QWEN` (ON) |
 | `comfyui` | `IImageGen`, `IVideoGen` | local — a ComfyUI server the user runs | `ULTRAAI_ADAPTER_COMFYUI` (ON) |
@@ -115,7 +121,8 @@ UltraAI/
 │   ├── UltraAIVideoGen.h
 │   ├── UltraAIMusicGen.h
 │   ├── UltraAICodeAssist.h
-│   └── UltraAIAgent.h             # the agent loop over any ITextLLM (tools, hooks, events)
+│   ├── UltraAIAgent.h             # the agent loop over any ITextLLM (tools, hooks, events)
+│   └── UltraAIBatch.h             # batches: native (anthropic, openai) or one at a time
 ├── src/                           # Capability factories (registry)
 ├── runtime/                       # The local runtime: engine gallery, model catalogue, installs, supervision
 ├── ui/                            # UltraAI_UI: the "Get a local model" dialog every application shows (in-tree, on the UltraCanvas core)
@@ -210,7 +217,8 @@ cmake -S UltraAI -B build \
 | WebSocket on the transport seam (`ITransport::WebSocketStream`, UltraNet-backed, scriptable, recordable) | Complete |
 | Text-LLM translator (`ITranslator` over any `ITextLLM`: batched JSON exchange, auto-detect, formality, domain, glossary, markup preservation, language detection; registered for every text-LLM provider) | Complete (v0.1 — quality is the chosen model's; no vendor glossary ids) |
 | Agents (`UltraAIAgent.h`: the model ↔ tool loop over any `ITextLLM`; tools as C++ handlers with `ToolArguments`, permission and after-call hooks, progress events, streaming, turn limits, cancellation, `RunAsync`, conversations, subagents) | Complete (v0.1 — tools run one at a time; no built-in tools) |
-| Unit tests | Complete (14 executables, all passing) |
+| Batches (`UltraAIBatch.h`: `ITextBatch` submit / get / cancel / results, `RunBatch`; Anthropic Message Batches, OpenAI Batch API, one-at-a-time fallback for every other provider) | Complete (v0.1 — chat requests only) |
+| Unit tests | Complete (15 executables, all passing) |
 | UltraVault credential lookup | Live — `apiKeyVaultRef` resolves through the UltraVault module (memory + encrypted-file backends; on by default in-tree) |
 
 ---
@@ -224,6 +232,8 @@ cmake -S UltraAI -B build \
   credential-storage architecture comparison and recommendation.
 * [`../Docs/Modules/UltraAI/Agents.md`](Agents.md) —
   agents: the tool loop, options, hooks, events, cancellation, subagents.
+* [`../Docs/Modules/UltraAI/Batches.md`](Batches.md) —
+  batches: native and fallback providers, `RunBatch`, results.
 * [`../Docs/Modules/UltraAI/LocalRuntime.md`](LocalRuntime.md) —
   the local runtime as built: the gallery and catalogue formats, storage,
   settings, the engine's command line, the `local` provider, testing.

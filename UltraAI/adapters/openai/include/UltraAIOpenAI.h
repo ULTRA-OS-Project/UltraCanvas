@@ -7,11 +7,13 @@
 // keyless, which the adapter allows for any non-default baseUrl.
 // Network I/O goes through the UltraAI transport seam: production wiring
 // uses UltraNetTransport, unit tests inject a ScriptedTransport.
+// Version: 0.2.0 - CreateOpenAITextBatch
 // Version: 0.1.0
-// Last Modified: 2026-08-21
+// Last Modified: 2026-11-09
 // Author: UltraAI Module
 #pragma once
 
+#include "UltraAIBatch.h"
 #include "UltraAIEmbeddings.h"
 #include "UltraAITextLLM.h"
 #include "UltraAITransport.h"
@@ -54,6 +56,18 @@ std::unique_ptr<ITextLLM> CreateOpenAITextLLM(
 // "dimensions" field.
 std::unique_ptr<IEmbeddings> CreateOpenAIEmbeddings(
     const EmbeddingsConfig& config,
+    Error* outError = nullptr,
+    std::shared_ptr<ITransport> transport = nullptr);
+
+// Create an OpenAI Batch API job runner (ITextBatch, UltraAIBatch.h): the
+// requests go up as a JSONL file (POST {baseUrl}/v1/files) and run as one
+// batch (POST {baseUrl}/v1/batches) at about half the price, answered
+// within 24 hours. Same config fields as the text adapter. Only the hosted
+// API has batches: with a custom baseUrl this returns nullptr
+// (ErrorCode::UnsupportedFormat) and CreateTextBatch sends the requests
+// one at a time instead.
+std::unique_ptr<ITextBatch> CreateOpenAITextBatch(
+    const TextBatchConfig& config,
     Error* outError = nullptr,
     std::shared_ptr<ITransport> transport = nullptr);
 
