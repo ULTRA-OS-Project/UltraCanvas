@@ -1,4 +1,6 @@
 // Apps/UltraMail/ui/UltraMailMessagePreview.cpp
+// Version: 0.21.1 - the body's file through CachedBodyPath (its own copy of the
+//                  folder-directory rule went stale)
 // Version: 0.21.0 - signed and encrypted mail: opened off the UI thread, its
 //                  signatures and encryption as pills that say what was found
 // Version: 0.20.4 - the body opened with the mailbox's body key (sealed at rest)
@@ -69,6 +71,7 @@
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailMessagePreview.h"
 #include "UltraMailStorage.h"
+#include "UltraMailSyncEngine.h"   // CachedBodyPath
 #include "UltraMailHeaderText.h"
 #include "UltraMailTrace.h"
 #include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
@@ -290,12 +293,6 @@ std::string LinkAtWindowPoint(UltraCanvasContainer& box, const Point2Di& windowP
         if (link >= 0) return label->GetTextLinks()[static_cast<std::size_t>(link)].href;
     }
     return std::string();
-}
-
-std::string SanitizeFolder(const std::string& folder) {
-    std::string out;
-    for (char c : folder) out.push_back((c == '/' || c == '\\' || c == ':') ? '_' : c);
-    return out.empty() ? "INBOX" : out;
 }
 
 std::string JoinAddresses(const std::vector<std::string>& v) {
@@ -1312,9 +1309,8 @@ void MessagePreview::ShowBodyNote(const std::string& note) {
 void MessagePreview::BodyArrived(const MessageEnvelope& env) {
     if (!BodyMissing() || !Shows(env.accountId, env.folder, env.uid)) return;
     std::error_code ec;
-    const fs::path path = PathFromUtf8(mailDir_) / PathFromUtf8(env.accountId)
-                        / PathFromUtf8(SanitizeFolder(env.folder))
-                        / (std::to_string(env.uid) + ".eml");
+    const fs::path path =
+        PathFromUtf8(CachedBodyPath(mailDir_, env.accountId, env.folder, env.uid));
     if (!fs::exists(path, ec)) return;       // still not there: nothing new to show
     const MessageEnvelope shown = curEnv_;   // Show replaces curEnv_
     Show(shown);
@@ -1540,8 +1536,8 @@ void MessagePreview::Show(const MessageEnvelope& env) {
 
     // Load the cached body (.eml) and decode it.
     step.emplace("Load and decode the body (.eml)", 0);
-    fs::path path = PathFromUtf8(mailDir_) / PathFromUtf8(env.accountId)
-                  / PathFromUtf8(SanitizeFolder(env.folder)) / (std::to_string(env.uid) + ".eml");
+    // The SyncEngine's own path: the folder's directory is not just its name.
+    fs::path path = PathFromUtf8(CachedBodyPath(mailDir_, env.accountId, env.folder, env.uid));
     // Read through the framework's file loader: a cached body is never
     // compressed, but unlike a bare ifstream it reports why a read failed, so an
     // unreadable file says so instead of looking as if it were never downloaded.

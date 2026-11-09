@@ -3,6 +3,8 @@
 // UltraDatabase module (a SQLite connection). Message bodies live as .eml
 // files on disk; this class owns the fast, queryable metadata — including the
 // "needs answer" state and the per-account rollups behind the account bar.
+// Version: 0.15.1 - Open repairs an INBOX folder row without the inbox role
+//                   (RepairInboxRole)
 // Version: 0.15.0 - schema 13: the account's mail security defaults (SetAccountSecurity)
 // Version: 0.14.0 - Open takes the key mail.db is encrypted with
 // Version: 0.13.0 - schema 12: the protocol of the incoming server (IMAP or JMAP)
@@ -271,6 +273,11 @@ public:
     static int64_t StartOfToday();
 
 private:
+    // Gives the INBOX folder row of every account with inbox mail the inbox
+    // role, and works out again which of that mail can wait for a reply, where
+    // the row had lost the role (or was missing). Run by Open.
+    void RepairInboxRole();
+
     // The SQL condition the age rule adds for the messages row `m` (an alias
     // of messages), at wall-clock time `now`. The written-to rule is applied
     // in code (PassesWrittenTo), from the sets WrittenToSets returns.
