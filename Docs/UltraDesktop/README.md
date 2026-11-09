@@ -395,7 +395,10 @@ UOS-Settings is followed within a second.
   *Schematic* or *Dark*. A right click on a card offers *Open*, *Copy* (the
   file onto the clipboard, as the file manager copies it), *Delete* (into the
   trash, after a question), *Remove from the board* and *Move to* another
-  category; on a note, *Open*, *Copy* its text and *Delete* it. *Display*,
+  category; on a note, *Open*, *Copy* its text and *Delete* it (after a
+  question). The Delete key does what *Delete* does, after the same question,
+  as on the desktop icons; *Remove from the board* takes a card off without
+  touching its file. *Display*,
   in the same menu (anywhere on the board), shows the cards as *Text only*,
   *Thumbnail and text* (the picture with the name centred under it - the
   default) or *Thumbnail and text in a row*, and sets the size of the *Mouse

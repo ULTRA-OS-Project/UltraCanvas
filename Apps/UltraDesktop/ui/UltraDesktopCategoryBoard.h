@@ -22,6 +22,8 @@
 // and the size of the hover preview - the larger picture of a file that
 // opens beside its card after the pointer has rested on it for two seconds.
 // UOS-Settings offers the same two choices.
+// Version: 0.5.0 - the Delete key asks first and does what the menu's Delete
+//                  does (the file to the trash, a note deleted)
 // Version: 0.4.0 - AddFilesToCategory (a drop on the wallpaper: "Unsorted"); MakeFilePicture shared
 // Version: 0.3.0 - the context menu (Open, Copy, Delete, Move to, Display),
 //                  three card displays, the hover preview
@@ -108,6 +110,8 @@ private:
     void ShowContextMenu(int cardId, int columnId, const UltraCanvas::Point2Di& windowPos);
     void CopyCard(int cardId);
     void DeleteCardFile(int cardId);
+    // A note (or the card of a file that has gone) deleted, after a question.
+    void DeleteNote(int cardId);
     void RemoveCard(int cardId);
     void MoveCardTo(int cardId, int columnId);
     // The style's card metrics for display_ (after a design is applied).

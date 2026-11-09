@@ -33,3 +33,8 @@
   click elsewhere renames the file, which keeps its place, and Escape keeps
   the old name. The icons are a little wider, so a name like
   `groceries.txt` is no longer cut at both ends.
+- **Sticker board: the Delete key asks first, and does what the card's
+  menu's *Delete* does** - a file's card moves the file to the trash, a note
+  is deleted - as the Delete key does on the desktop icons. It took the card
+  off the board without a question. *Remove from the board* is still on the
+  menu; the note's *Delete* asks too.

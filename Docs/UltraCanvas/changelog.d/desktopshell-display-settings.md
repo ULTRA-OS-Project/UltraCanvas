@@ -13,3 +13,7 @@
   already drawn - a file's icon (`LoadHostFileIconPixmap`) or thumbnail
   (`RenderFileThumbnail`) - fitted to the box like a loaded image. UltraDesktop's
   desktop icons use it.
+- **`UltraCanvasKanbanBoardElement::onDeleteKey`**: the application decides
+  what the Delete key does to the selected card (returning true, the board
+  removes nothing itself). UltraDesktop's Sticker board asks first and
+  deletes the card's file or note.

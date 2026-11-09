@@ -544,7 +544,7 @@ at sign-in.
 | Screenshot button | click / right-click | UltraSnip snips an area / a window, the whole screen, a recording, the plain screenshot, open UltraSnip |
 | Clipboard panel | Up, Down, Enter, Delete, F2, Escape | choose, copy, delete, edit, close |
 | Sticker board | drop files / double-click a card / double-click a category title | add / open / rename |
-| Sticker board | right-click a card / rest the pointer on it for two seconds | Open, Copy, Delete, Move to, Display / a larger preview |
+| Sticker board | right-click a card / rest the pointer on it for two seconds / Delete | Open, Copy, Delete, Move to, Display / a larger preview / the selected card's file to the trash, or the note deleted (asked first) |
 | A notification | click / × | its default action / dismiss |
 
 ## 8. Troubleshooting

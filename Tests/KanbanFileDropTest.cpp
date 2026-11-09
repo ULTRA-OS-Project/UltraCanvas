@@ -427,6 +427,38 @@ void TestSettingsKeepTheDisplay() {
           "a value it does not know is the default");
 }
 
+void TestDeleteKeyGoesToTheApplication() {
+    std::cout << "\nThe Delete key on a selected card\n";
+    auto press = [](Board& b) {
+        UCEvent key;
+        key.type = UCEventType::KeyDown;
+        key.virtualKey = UCKeys::Delete;
+        return b.element->OnEvent(key);
+    };
+    Board asked;
+    asked.element->SetEditable(true);
+    const int card = asked.data->AddCard(asked.work, "plan.pdf");
+    Draw(asked);
+    asked.element->SelectCard(card);
+    int askedFor = -2;
+    asked.element->onDeleteKey = [&](int cardId) {
+        askedFor = cardId;
+        return true;
+    };
+    Check(press(asked), "is taken");
+    Check(askedFor == card && asked.data->FindCard(card) != nullptr,
+          "the application is asked about the card, and the board removes nothing itself");
+
+    Board plain;
+    plain.element->SetEditable(true);
+    const int other = plain.data->AddCard(plain.work, "notes");
+    Draw(plain);
+    plain.element->SelectCard(other);
+    plain.element->onDeleteKey = [](int) { return false; };
+    press(plain);
+    Check(plain.data->FindCard(other) == nullptr, "answered false, the board removes the card as before");
+}
+
 void TestSettingsKeepTheTheme() {
     std::cout << "\nThe bars' theme in the desktop settings\n";
     UltraDesktop::DesktopSettings settings;
@@ -480,6 +512,7 @@ int main() {
     TestHoverAndPreview();
     TestCardDragStillMoves();
     TestSettingsKeepTheDisplay();
+    TestDeleteKeyGoesToTheApplication();
     TestSettingsKeepTheTheme();
     TestSettingsKeepTheDropTarget();
     std::cout << "\n" << (g_failures == 0 ? "All passed" : std::to_string(g_failures) + " failed") << "\n";
