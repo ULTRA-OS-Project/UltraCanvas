@@ -13,8 +13,13 @@
   list (its cached messages stay - on Windows and macOS they share `INBOX`'s
   directory), and UltraMail repairs an affected mail store when it starts:
   the counters are right at once, "waiting for reply" included.
-- **Deleting a folder no longer deletes the downloaded messages of a folder
-  whose name differs only in case.** On Windows and macOS "Work" and "work"
-  keep their messages in one directory, and a folder deleted here, gone from
-  the server, or renumbered by it took that whole directory along. Now only
-  the folder's own message files go, and the directory once it is empty.
+- **Two folders whose names differ only in case ("Work" and "work") no longer
+  share - and overwrite - their downloaded messages.** On Windows and macOS
+  they were cached in one directory, so a message in each with the same
+  number overwrote the other's file, and deleting one folder deleted the
+  other's messages too. A folder named in the usual way ("Sent Items",
+  "Drafts") keeps its directory; any other casing gets one of its own, marked
+  with a `~` and a short code ("work~1"). The first start moves the cached
+  messages of an earlier version; where two folders shared a directory each
+  takes its own, and a message both had under the same number is downloaded
+  again when it is read.
