@@ -34,6 +34,15 @@ int main() {
     std::printf("VideoTimelinePluginTest (%s)\n",
                 UC_VIDEO_TIMELINE_BUNDLED ? "compiled into the core" : "runtime module");
 
+    // A host that loads widget modules has a UI of its own, so the element
+    // base (UltraCanvasUIElement and the CSS layout box under it) is in its
+    // executable for the module to resolve. This test has none - it only
+    // talks to the registry - so it makes one plain element; without it a
+    // static core leaves the base out and the module fails at dlopen with
+    // "undefined symbol: ...CSSLayout::Element...".
+    auto hostElement = std::make_shared<UltraCanvasUIElement>("host", 0, 0, 10, 10);
+    CHECK(hostElement != nullptr, "the host has a UI element of its own");
+
     // The documented startup call: registers what is compiled in, and in a
     // static core anchors what the widget modules need.
     UltraCanvas_RegisterSelectedWidgets();
