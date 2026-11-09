@@ -1,10 +1,12 @@
 // include/UltraCanvasSegmentedControl.h
 // Segmented control component for mutually exclusive selection between options
+// Version: 1.5.0 - SetSegmentTooltip: each segment its own tooltip, switched as the pointer
+//                 moves from segment to segment
 // Version: 1.4.0 - SegmentedControlStyle::iconAsMask: line icons in the segment's text colour;
 //                 an icon and a centred caption are centred together
 // Version: 1.3.0 - SetSegmentTextColor: one segment's own text colour
 // Version: 1.2.0
-// Last Modified: 2026-10-17
+// Last Modified: 2026-11-07
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -45,6 +47,8 @@ namespace UltraCanvas {
         // The segment's own text colour while it is not selected; alpha 0
         // (the default) uses the style's normal / hover text colour.
         Color textColor = Colors::Transparent;
+        // The segment's own tooltip; "" (the default) shows the control's.
+        std::string tooltip;
 
         SegmentData() = default;
         SegmentData(const std::string& txt, TextAlignment al) : text(txt), alignment(al) {}
@@ -201,6 +205,12 @@ namespace UltraCanvas {
         // option in red, say); selected, it takes selectedTextColor like the
         // rest. Colors::Transparent restores the style's colours.
         void SetSegmentTextColor(int index, const Color& color);
+        // A tooltip for one segment - an icon-only segment naming itself. It
+        // shows while the pointer is over that segment and changes as the
+        // pointer moves to the next; a segment without one shows the
+        // control's own (SetTooltip). "" removes it.
+        void SetSegmentTooltip(int index, const std::string& text);
+        std::string GetSegmentTooltip(int index) const;
         bool IsSegmentEnabled(int index) const;
         void SetSegmentWidth(int index, float width);
 
@@ -293,6 +303,12 @@ namespace UltraCanvas {
         bool HandleKeyDown(const UCEvent &event);
 
         int GetSegmentAtPosition(int x, int y) const;
+        // The tooltip for the segment under the pointer: the segment's own,
+        // else the control's; a tooltip already up or pending switches to it.
+        void UpdateSegmentTooltip(const UCEvent& event, int index);
+        std::string controlTooltip;   // the control's own, kept while a segment's shows
+        bool controlTooltipKept = false;
+        std::string lastSegmentTooltip;  // what UpdateSegmentTooltip last set
     };
 // ===== FACTORY FUNCTIONS =====
 

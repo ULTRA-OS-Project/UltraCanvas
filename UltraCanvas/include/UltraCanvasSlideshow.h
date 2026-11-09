@@ -1,7 +1,8 @@
 // include/UltraCanvasSlideshow.h
 // Timed image slideshow with optional info text panel and selectable indicator styles.
+// Version: 1.6.0 - Make/Register descriptor: "slideshow" in the element registry, bundled or as a runtime module
 // Version: 1.5.0
-// Last Modified: 2026-10-10
+// Last Modified: 2026-11-09
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -396,5 +397,14 @@ namespace UltraCanvas {
             const std::string& identifier, float x, float y, float w, float h) {
         return std::make_shared<UltraCanvasSlideshow>(identifier, x, y, w, h);
     }
+
+
+    // The element in the element registry (UltraCanvasElementPlugins.h) as
+    // "slideshow" (category Widget): compiled into the core by default, or the
+    // ultracanvas-widget-slideshow runtime module when ULTRACANVAS_WIDGETS leaves
+    // Slideshow out.
+    struct UCElementDescriptor;
+    UCElementDescriptor MakeSlideshowDescriptor();
+    void RegisterSlideshowElement();
 
 } // namespace UltraCanvas

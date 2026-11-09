@@ -1,3 +1,189 @@
+#### 2026-11-09 *0.9.509*
+- **macOS: screen positions are top-left, and popups and tooltips have windows
+  of their own there too.** The macOS backend gave and took window positions
+  in Cocoa's coordinates, which run up from the bottom of the primary screen,
+  while every helper that places a window - `CenterOnParent`, the clamp that
+  keeps a window grown to its content on its monitor, a toast's corner, a
+  viewer opened over its host - works in top-left coordinates as X11 and
+  Windows give them. Only what is symmetric top to bottom, centring, came out
+  right; a toast meant for the top right of the screen went to the bottom.
+  Popups and the tooltip, placed below and above the pointer, could not be
+  given windows of their own on macOS for the same reason.
+  - `SetWindowPosition`, `GetWindowPosition`, `GetScreenBounds`, the new
+    `GetContentScreenOrigin` override (below the title bar), a window's
+    create-time `config.x` / `config.y` and its moves (`onWindowMove`) are in
+    top-left screen coordinates: points, x right and y down from the top of
+    the primary screen, a screen above it at negative y. A window without a
+    position opens where it always did. `SetWindowSize` keeps the window's
+    top-left corner where it was, as on the other platforms (Cocoa keeps the
+    bottom-left one). An event's `pointerGlobal` is flipped about the primary
+    screen too, not the one with the key window.
+  - `WindowType::Popup` and `WindowType::Tooltip` on macOS: a borderless
+    window that never becomes key (ordered front with `orderFrontRegardless`,
+    so the window the popup or tooltip belongs to keeps the keys), at the
+    pop-up menu level, out of the window cycle and Mission Control and shown
+    over a full-screen window, transparent where nothing is drawn - a menu's
+    rounded corners show what is beneath, no outline needs cutting - and with
+    the system's shadow, which follows what is drawn. A popup's window takes
+    the first click (`acceptsFirstMouse:`); a tooltip's lets the pointer
+    through.
+  - `UltraCanvasWindowBase::SetPopupsInOwnWindows` and
+    `UltraCanvasTooltipManager::SetUseOwnWindow` are on by default on macOS
+    now; only the browser, Android and iOS draw popups and tooltips inside
+    their window.
+
+#### 2026-11-09 *0.9.508*
+- **Slideshow, Album, ColorPaletteManager and VectorCanvas can be runtime
+  modules too.** They join VideoTimeline in `ULTRACANVAS_WIDGETS`, registered
+  as `"slideshow"`, `"album"`, `"color-palette-manager"` and
+  `"vector-canvas"`. They are still compiled in by default. Left out, each is
+  built as `ultracanvas-widget-<name>`. A widget can now name several anchors
+  (`_ANCHORS`): functions, member functions or `&typeid(Class)` for the core
+  objects its module needs, which `UltraCanvas_RegisterSelectedWidgets()`
+  keeps in a static host. `ultracanvas_require_widgets` stops the configure
+  when DemoApp, UltraVideo, UltraPaint or ArtCreator would be built without a
+  widget it uses. `VideoTimelinePluginTest` is now `ElementModulesTest`,
+  covering every selectable widget and the chart module.
+- **Chart runtime modules could never be loaded.** They were compiled without
+  `generated/include`, so they reported their framework headers as `unknown`
+  and the loader refused them. They now carry the build's id, and
+  `ElementModulesTest` loads `ultracanvas-chart-parallel-coordinate`.
+
+#### 2026-11-09 *0.9.507*
+- **Every popup is shown in a window of its own, above every other window.**
+  A popup - a menu or submenu, a dropdown's list, an autocomplete list, a
+  date, time or colour picker, anything opened with `OpenPopup` - was
+  composited onto the window it was opened in, so any window above that one
+  covered it. On UltraDesktop every context menu of the bars went under
+  whatever application was open beside them, since the bars live in the
+  desktop window, which is kept below all others. Each popup now has a window
+  of its own, `WindowType::Popup`, placed where the popup is, above every
+  other window; the popup stays its window's in every other way.
+  - The popup is still laid out and drawn in the window it belongs to, which
+    keeps the focus and the keys. The pointer over its own window is handed
+    to that window, at the popup's place there, before anything else sees it
+    - global handlers, hover, capture, a click outside, a modal dialog - so
+    menus, dropdowns and the rest work unchanged.
+    `UltraCanvasWindowBase::FindElementAtPoint` also finds a popup that
+    reaches past the window's edge.
+  - `WindowType::Popup` (unused until now) is a popup's own window: on X11
+    override-redirect, typed `_NET_WM_WINDOW_TYPE_POPUP_MENU`, mapped raised;
+    on Windows `WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE`, shown
+    without activation and answering `WM_MOUSEACTIVATE` with
+    `MA_NOACTIVATE`; on Wayland a popup of the window it belongs to, or
+    beside a layer-shell desktop a surface on the overlay layer that never
+    takes the keys.
+  - The window is cut to the popup's opaque pixels
+    (`UltraCanvasWindowBase::SetNativeWindowShape`: the X11 shape extension,
+    a window region on Windows; Wayland's surfaces carry their alpha), so a
+    menu's rounded corners show what is beneath. It has no soft drop shadow of
+    its own and does not fade in (a menu with `enableAnimations` appears in
+    full); a compositing window manager gives popup windows a shadow.
+  - The window follows the popup: made as it opens (on the next turn of the
+    loop when it opens while the windows are being drawn), placed, sized and
+    shown as it is laid out and drawn, moved when the window it belongs to
+    moves, hidden as it closes and closed on the next turn of the loop. The
+    caret of a field in a popup is drawn in the popup's window, and the
+    window shows the pointer its owner shows.
+  - A popup that closes on a click outside it also closes when the focus
+    leaves the application, as it would otherwise float above other
+    programs' windows; focus moving to another window of the application (a
+    dialog the popup opened) leaves it open.
+  - A popup's window is no application window: closed with the window it
+    belongs to, skipped by `ClosingEndsApplication`, the accessibility tree,
+    the placement of a dialog without a parent and single-instance raising,
+    as `JumpToLastWindow` already skipped it.
+  - `UltraCanvasWindowBase::SetPopupsInOwnWindows(false)` composites popups
+    onto their window as before, and so does every platform that cannot place
+    such a window (macOS, the browser, Android) and any popup whose window
+    cannot be made. `GetPopupWindow(popup)` says where a popup is shown.
+  - `UltraCanvasCaret::Composite` takes an offset, for a caret drawn in a
+    popup's own window.
+  - `PopupOwnWindowTest` (X11, under Xvfb) covers a window with another,
+    opens a menu in the first and reads the screen back: the menu is on top,
+    cut to its rounded outline, a click in its window runs the item under it,
+    a click outside and focus leaving the application close it, a popup past
+    the window's edge takes clicks there, and its window closes with the
+    window it belongs to. `CaretStackingTest` and `TextMetricsScreenshotTest`,
+    which read a menu back from the window's own surface, composite it there.
+
+#### 2026-11-09 *0.9.506*
+- **`UltraCanvasDialogTypes.h`: `UltraCanvasModalDialog.h` and
+  `UltraCanvasFilerWidget.h` no longer include each other.** The dialog
+  enums (`DialogType`, `DialogButton(s)`, `DialogButtonRole`, `DialogResult`,
+  `DialogAnimation`, `DialogPosition`, `InputType`, `FileDialogType`) and
+  `FileFilter` moved into the new header, which the dialog header includes, so
+  every user sees the same names. The Filer header includes only that one, so
+  it no longer pulls in the whole dialog system.
+- **Widgets can be runtime modules: `ULTRACANVAS_WIDGETS`, VideoTimeline
+  first.** The widget counterpart of `ULTRACANVAS_CHARTS`. A selectable widget
+  is compiled into the core when named in `ULTRACANVAS_WIDGETS` (`all`, the
+  default, so nothing changes for an existing build). One left out is built as
+  its own module, `ultracanvas-widget-<name>` in `<build>/Plugins/Elements`,
+  which registers through the element plugin loader. The video timeline is
+  registered as `"video-timeline"` (`MakeVideoTimelineDescriptor`,
+  `RegisterVideoTimelineElement`). `UltraCanvas_RegisterSelectedWidgets()`
+  registers the widgets compiled in. In a static core it also keeps the core
+  objects the modules need, so a host loading a widget module calls it at
+  startup. UltraVideo and DemoApp use the timeline's typed API, so configuring
+  them with the timeline left out stops with an error. `VideoTimelinePluginTest`
+  creates the timeline by name in both builds.
+
+#### 2026-11-09 *0.9.505*
+- **Tooltips are shown in a window of their own, above every other window.**
+  `UltraCanvasTooltipManager` drew the tooltip into the window it belongs to
+  while that window composited its frame, so any window above that one
+  covered it, and it stopped at that window's edges. It showed worst on
+  UltraDesktop: the bars live in the desktop window, which is kept below all
+  others, so a tooltip of the taskbar or the right bar went under whatever
+  application was open there. The tooltip now has a window of its own - the
+  new `WindowType::Tooltip` - placed on the screen above and to the right of
+  the pointer with the monitor's room, not the window's, so it also reaches
+  past the edge of a small window or a bar.
+  - `WindowType::Tooltip`: above every other window, never focused, and the
+    pointer passes through it to the element it describes. On X11 an
+    override-redirect window typed `_NET_WM_WINDOW_TYPE_TOOLTIP` with an empty
+    input shape (the X11 build now links `xext`), mapped raised; on Windows
+    `WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE`, layered and
+    `WS_EX_TRANSPARENT`, shown without activation; on Wayland a popup of the
+    window the tooltip belongs to with no input region, or, beside a desktop
+    on the layer shell, a surface on the overlay layer that never takes the
+    keys.
+  - The window is opaque, so in it the tooltip has square corners and no soft
+    shadow of its own (a compositing window manager gives a tooltip window
+    one).
+  - It is no application window: a closing window takes its tooltip and the
+    tooltip's window with it (`UltraCanvasTooltipManager::ForgetWindow`, from
+    `CleanupWindowReferences`), and it is never counted by
+    `ClosingEndsApplication`, jumped to, reported to assistive technology,
+    used to place a parentless dialog or brought to the front for a second
+    instance.
+  - `UltraCanvasTooltipManager::SetUseOwnWindow(false)` draws the tooltip
+    inside its window as before; so does every platform that cannot place
+    such a window (macOS, the browser, Android) and any case where the window
+    cannot be made. `GetTooltipWindow()` says where the tooltip on screen is.
+  - A window moving to a monitor of another scale no longer hides the tooltip
+    when the window is the tooltip's own: it is drawn again at the new scale
+    (`WindowScaleChanged`). While the tooltip is in its own window, a caret
+    blink in the window below no longer composites that window in full.
+  - `TooltipOwnWindowTest` (X11, under Xvfb) covers a window with another,
+    shows a tooltip of the first and reads the screen: the tooltip is on top,
+    outside its window, lets the pointer through, follows the pointer, is
+    reused when shown again, and closes with its window.
+
+#### 2026-11-07 *0.9.504*
+- **`UltraCanvasSegmentedControl::SetSegmentTooltip`: each segment its own
+  tooltip.** The tooltip shows while the pointer is over that segment and
+  switches, where it is up or about to be, as the pointer moves to the next;
+  a segment without one shows the control's own (`SetTooltip`). Changing the
+  control's tooltip from `onSegmentHover` did not do this - the manager read
+  the text once, as the pointer came in, so every segment showed the first
+  one's.
+- **Linux: `RaiseAndFocus` raises the window itself as well (`XRaiseWindow`).**
+  It only asked the window manager (`_NET_ACTIVE_WINDOW`), so with none - a
+  kiosk, a test display - nothing was raised, and a window stayed under every
+  window created after it however often it was shown or raised.
+
 #### 2026-11-07 *0.9.503*
 - **`UltraCanvasSettingsPageKit` 1.1.0: a window of any shape, and its demo
   page.** `SettingsWindowOptions` gives `Create` the window's size, the

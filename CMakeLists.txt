@@ -268,6 +268,7 @@ if(ANDROID)
     # stop this configure, and the Android store is a later milestone.
     set(BUILD_ULTRASTORE OFF CACHE BOOL "Build the UltraStore application")
     set(BUILD_ULTRASTOREADMIN OFF CACHE BOOL "Build the UltraStoreAdmin application")
+    set(BUILD_ULTRAAISERVERADMIN OFF CACHE BOOL "Build the UltraAI ServerAdmin application")
     # AnchorPoint's GUI CMake takes Android for desktop Linux (UNIX, not
     # APPLE) and asks pkg-config for X11.
     set(BUILD_ANCHORPOINT OFF CACHE BOOL "Build the AnchorPoint application")
@@ -349,6 +350,7 @@ if(EMSCRIPTEN)
     set(BUILD_ULTRACANVASSTART OFF CACHE BOOL "Build the UltraCanvasStart application")
     set(BUILD_ULTRASTORE OFF CACHE BOOL "Build the UltraStore application")
     set(BUILD_ULTRASTOREADMIN OFF CACHE BOOL "Build the UltraStoreAdmin application")
+    set(BUILD_ULTRAAISERVERADMIN OFF CACHE BOOL "Build the UltraAI ServerAdmin application")
     set(BUILD_UOS_SETTINGS OFF CACHE BOOL "Build the UOS-Settings application")
     set(BUILD_ULTRACLAUDE OFF CACHE BOOL "Build the UltraClaude application")
     set(BUILD_ULTRANETMONITOR OFF CACHE BOOL "Build the UltraNetMonitor application")
@@ -518,6 +520,33 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/cmake/oauth.local.cmake")
 endif()
 
 add_subdirectory(UltraCanvas)
+
+# An application that uses a selectable widget's typed API (its class, its
+# Create function, its style) needs that widget compiled into the core: a
+# runtime module (ULTRACANVAS_WIDGETS, UltraCanvas/CMakeLists.txt "WIDGET
+# SYSTEM") is reached only by name. Stops the configure, naming the widgets
+# and the way out, when an application that is built would not link.
+function(ultracanvas_require_widgets build_flag app_name)
+    if(NOT ${build_flag})
+        return()
+    endif()
+    get_property(compiled_in GLOBAL PROPERTY ULTRACANVAS_WIDGETS_COMPILED_IN)
+    set(missing "")
+    foreach(widget IN LISTS ARGN)
+        if(NOT widget IN_LIST compiled_in)
+            list(APPEND missing ${widget})
+        endif()
+    endforeach()
+    if(missing)
+        string(REPLACE ";" ", " missing_text "${missing}")
+        message(FATAL_ERROR "${app_name} needs ${missing_text} compiled into the core: add "
+            "them to ULTRACANVAS_WIDGETS (or use 'all'), or configure with -D${build_flag}=OFF")
+    endif()
+endfunction()
+ultracanvas_require_widgets(BUILD_DEMO_APP DemoApp
+    VideoTimeline Slideshow Album ColorPaletteManager VectorCanvas)
+ultracanvas_require_widgets(BUILD_ULTRAPAINT_APP UltraPaint ColorPaletteManager)
+ultracanvas_require_widgets(BUILD_ARTCREATOR_APP ArtCreator ColorPaletteManager VectorCanvas)
 
 # ===== WEBASSEMBLY DEMOS =====
 # The browser validation apps under UltraCanvas/OS/WASM/demo/ (wasm-demo and
@@ -812,6 +841,8 @@ endif()
 # element: media bin, viewer with scrubbing, inspector, timeline, undo,
 # .ultravideo projects, export (Docs/Research/UltraVideoDesignProposal.md).
 option(BUILD_ULTRAVIDEO "Build the UltraVideo application" ON)
+# UltraVideo uses the video timeline's and the album's typed API.
+ultracanvas_require_widgets(BUILD_ULTRAVIDEO UltraVideo VideoTimeline Album)
 if(BUILD_ULTRAVIDEO)
     message(STATUS "")
     message(STATUS "── Building UltraVideo ──")
@@ -902,6 +933,18 @@ if(BUILD_ULTRASTOREADMIN AND TARGET UltraStoreCore)
     message(STATUS "")
     message(STATUS "── Building UltraStoreAdmin ──")
     add_subdirectory(Apps/UltraStoreAdmin)
+endif()
+
+# ===== ULTRAAI SERVERADMIN =====
+# The super administrator's tool for an UltraAI model server
+# (Server/UltraAIModelServer): which models UltraAI clients may install, their
+# files, the topics, the accounts (Docs/UltraAIServerAdmin/README.md). On the
+# shared core's UltraNet and UltraCrypt.
+option(BUILD_ULTRAAISERVERADMIN "Build the UltraAI ServerAdmin application" ON)
+if(BUILD_ULTRAAISERVERADMIN AND TARGET UltraNet AND TARGET UltraCrypt)
+    message(STATUS "")
+    message(STATUS "── Building UltraAI ServerAdmin ──")
+    add_subdirectory(Apps/UltraAIServerAdmin)
 endif()
 
 # ===== ANCHORPOINT =====
@@ -2241,6 +2284,7 @@ if(BUILD_ULTRAAI_APP AND TARGET UltraAI_Core)
         Apps/UltraAIApp/UltraAISettingsDialog.cpp
         Apps/UltraAIApp/UltraAIAppSettings.cpp
         Apps/UltraAIApp/UltraAISettingsWindow.cpp
+        Apps/UltraAIApp/UltraAITopicsPage.cpp
         Apps/UltraAIApp/UltraAISettingsWidgets.cpp
         Apps/UltraAIApp/UltraAILocalModelsPage.cpp
         Apps/UltraAIApp/UltraAIChatDialog.cpp

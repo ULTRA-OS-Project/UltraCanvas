@@ -435,7 +435,10 @@ if(ULTRACANVAS_PLATFORM STREQUAL "Linux")
     # xi: XInput2's raw key events, which the desktop shell's "Super" tap
     # watches without grabbing the key (GTK 3 depends on it, so it is
     # installed wherever the GTK dependency below is).
-    pkg_check_modules(X11 REQUIRED x11 xcursor xrandr xi)
+    # xext: the shape extension, which gives the tooltip's own window an
+    # empty input region so the pointer passes through it (libxi needs
+    # libxext, so it is installed wherever xi is).
+    pkg_check_modules(X11 REQUIRED x11 xcursor xrandr xi xext)
     if(ULTRACANVAS_WAYLAND)
         # The Wayland backend: libwayland-client, the cursor themes, and
         # xkbcommon for the seat's keymap. The X11 libraries stay linked:
@@ -636,7 +639,7 @@ set(ULTRACANVAS_CORE_SOURCES
         # The editing canvas: page, rulers, guides, grid, snapping, selection
         # handles and tool hooks over a VectorDocument (the vector twin of
         # UltraCanvasPaintSurface).
-        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasVectorCanvas.cpp
+        # UltraCanvasVectorCanvas.cpp: a selectable widget - see WIDGET SYSTEM below
         # The gradient ramp editor (stops on a strip).
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasGradientEditor.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTreeView.cpp
@@ -697,10 +700,10 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasBusyIndicator.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasColorPicker.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasColorSwatchBar.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasColorPaletteManager.cpp
+        # UltraCanvasColorPaletteManager.cpp: a selectable widget - see WIDGET SYSTEM below
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSplashScreen.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSlideshow.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAlbum.cpp
+        # UltraCanvasSlideshow.cpp: a selectable widget - see WIDGET SYSTEM below
+        # UltraCanvasAlbum.cpp: a selectable widget - see WIDGET SYSTEM below
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFilerWidget.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasNativeFileIcons.cpp
         # The icon the HOST desktop draws for a file type (Explorer / Finder /
@@ -905,7 +908,7 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAudioRecorderElement.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasWaveformElement.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasVideoTimelineModel.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasVideoTimeline.cpp
+        # UltraCanvasVideoTimeline.cpp: a selectable widget - see WIDGET SYSTEM below
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTheme.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTimecodeField.cpp
 
@@ -1308,6 +1311,170 @@ configure_file(${CMAKE_CURRENT_SOURCE_DIR}/cmake/UltraCanvasChartRegistration.cp
                @ONLY)
 list(APPEND ULTRACANVAS_CORE_SOURCES
      ${CMAKE_CURRENT_BINARY_DIR}/generated/UltraCanvasChartRegistration.generated.cpp)
+
+# ===== WIDGET SYSTEM (element plugin proposal §4, widgets) =====
+# The widget counterpart of the chart selection above. A selectable widget
+# compiles into the library when named in ULTRACANVAS_WIDGETS ("all" - the
+# default -, empty, or a ;-list of keys) and registers from the generated
+# UltraCanvas_RegisterSelectedWidgets(); one NOT named there is built as its
+# own runtime module (ultracanvas-widget-<name>, in <build>/Plugins/Elements)
+# that registers through the element plugin loader. Widgets stay bundled by
+# default (proposal goal 4, §10.4): only a lean build that leaves one out
+# turns it into a module. An application that uses a widget's typed API
+# needs it compiled in; the top-level CMakeLists refuses a configuration that
+# leaves one out (ultracanvas_require_widgets: DemoApp, UltraVideo, UltraPaint,
+# ArtCreator).
+set(ULTRACANVAS_WIDGETS "all" CACHE STRING
+    "Selectable widgets linked into the library: 'all', empty, or a ;-list of keys")
+option(ULTRACANVAS_WIDGET_RUNTIME_MODULES
+    "Build unselected widgets as runtime-loadable modules" ON)
+if((EMSCRIPTEN OR ANDROID) AND ULTRACANVAS_WIDGET_RUNTIME_MODULES)
+    message(STATUS "Widgets: no dynamic loading on this platform - runtime modules disabled")
+    set(ULTRACANVAS_WIDGET_RUNTIME_MODULES OFF)
+endif()
+
+# --- selectable widget table (key -> kebab name, sources, plugin glue, header,
+# register fn). _ANCHORS: one expression per core object file the module needs
+# that a host with a UI of its own may not otherwise link - a function, a
+# member function or &typeid(Class) defined in that file - with the headers
+# declaring them in _ANCHOR_INCLUDES. A static host keeps those objects when
+# it calls UltraCanvas_RegisterSelectedWidgets(), so the module resolves them
+# at dlopen. ElementModulesTest loads every module into a host with nothing but
+# one plain element, so a missing anchor fails it with the undefined symbol.
+set(UC_WIDGET_KEYS VideoTimeline Slideshow Album ColorPaletteManager VectorCanvas)
+set(UC_WIDGET_VideoTimeline_KEBAB    "video-timeline")
+set(UC_WIDGET_VideoTimeline_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasVideoTimeline.cpp)
+set(UC_WIDGET_VideoTimeline_PLUGIN
+    ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Widgets/UltraCanvasVideoTimelinePlugin.cpp)
+set(UC_WIDGET_VideoTimeline_HEADER   "UltraCanvasVideoTimeline.h")
+set(UC_WIDGET_VideoTimeline_REGISTER "RegisterVideoTimelineElement")
+set(UC_WIDGET_VideoTimeline_ANCHOR_INCLUDES "UltraCanvasVideoTimelineModel.h")
+set(UC_WIDGET_VideoTimeline_ANCHORS "&TimelineDeriveStarts")
+
+set(UC_WIDGET_Slideshow_KEBAB    "slideshow")
+set(UC_WIDGET_Slideshow_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSlideshow.cpp)
+set(UC_WIDGET_Slideshow_PLUGIN
+    ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Widgets/UltraCanvasSlideshowPlugin.cpp)
+set(UC_WIDGET_Slideshow_HEADER   "UltraCanvasSlideshow.h")
+set(UC_WIDGET_Slideshow_REGISTER "RegisterSlideshowElement")
+set(UC_WIDGET_Slideshow_ANCHOR_INCLUDES "UltraCanvasImageFileWatch.h")
+set(UC_WIDGET_Slideshow_ANCHORS
+    "&UltraCanvasImageFileWatch::SetDrawnImages")
+
+set(UC_WIDGET_Album_KEBAB    "album")
+set(UC_WIDGET_Album_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAlbum.cpp)
+set(UC_WIDGET_Album_PLUGIN
+    ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Widgets/UltraCanvasAlbumPlugin.cpp)
+set(UC_WIDGET_Album_HEADER   "UltraCanvasAlbum.h")
+set(UC_WIDGET_Album_REGISTER "RegisterAlbumElement")
+set(UC_WIDGET_Album_ANCHOR_INCLUDES "UltraCanvasImageFileWatch.h" "UltraCanvasImageAnimation.h" "UltraCanvasVideoHoverPreview.h" "UltraCanvasVideoThumbnail.h" "UltraCanvasMenu.h")
+set(UC_WIDGET_Album_ANCHORS
+    "&UltraCanvasImageFileWatch::SetDrawnImages"
+    "&UCImageAnimationController::GetCurrentFramePixmap"
+    "&UltraCanvasVideoHoverPreview::Begin"
+    "&CaptureVideoThumbnailPixmap"
+    "&GetDefaultMenuCheckboxShape")
+
+set(UC_WIDGET_ColorPaletteManager_KEBAB    "color-palette-manager")
+set(UC_WIDGET_ColorPaletteManager_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasColorPaletteManager.cpp)
+set(UC_WIDGET_ColorPaletteManager_PLUGIN
+    ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Widgets/UltraCanvasColorPaletteManagerPlugin.cpp)
+set(UC_WIDGET_ColorPaletteManager_HEADER   "UltraCanvasColorPaletteManager.h")
+set(UC_WIDGET_ColorPaletteManager_REGISTER "RegisterColorPaletteManagerElement")
+set(UC_WIDGET_ColorPaletteManager_ANCHOR_INCLUDES "UltraCanvasColorSwatchBar.h" "UltraCanvasColorPicker.h" "UltraCanvasLabel.h" "UltraCanvasButton.h" "UltraCanvasTextInput.h")
+set(UC_WIDGET_ColorPaletteManager_ANCHORS
+    "&typeid(UltraCanvasColorSwatchBar)"
+    "&ColorPickerStyle::Light"
+    "&typeid(UltraCanvasLabel)"
+    "&typeid(UltraCanvasButton)"
+    "&typeid(UltraCanvasTextInput)")
+
+set(UC_WIDGET_VectorCanvas_KEBAB    "vector-canvas")
+set(UC_WIDGET_VectorCanvas_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasVectorCanvas.cpp)
+set(UC_WIDGET_VectorCanvas_PLUGIN
+    ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Widgets/UltraCanvasVectorCanvasPlugin.cpp)
+set(UC_WIDGET_VectorCanvas_HEADER   "UltraCanvasVectorCanvas.h")
+set(UC_WIDGET_VectorCanvas_REGISTER "RegisterVectorCanvasElement")
+set(UC_WIDGET_VectorCanvas_ANCHOR_INCLUDES "DataFormats/UltraCanvasVectorEdit.h")
+set(UC_WIDGET_VectorCanvas_ANCHORS
+    "&VectorEdit::OwnPaintBounds")
+
+set(UC_WIDGET_SELECTED_KEYS "")
+set(UC_WIDGET_MODULE_KEYS "")
+if(ULTRACANVAS_WIDGETS STREQUAL "all")
+    set(UC_WIDGET_SELECTED_KEYS ${UC_WIDGET_KEYS})
+elseif(NOT ULTRACANVAS_WIDGETS STREQUAL "")
+    foreach(key IN LISTS ULTRACANVAS_WIDGETS)
+        if(NOT key IN_LIST UC_WIDGET_KEYS)
+            message(FATAL_ERROR "ULTRACANVAS_WIDGETS names unknown widget '${key}' (known: ${UC_WIDGET_KEYS})")
+        endif()
+        list(APPEND UC_WIDGET_SELECTED_KEYS ${key})
+    endforeach()
+endif()
+foreach(key IN LISTS UC_WIDGET_KEYS)
+    if(NOT key IN_LIST UC_WIDGET_SELECTED_KEYS)
+        list(APPEND UC_WIDGET_MODULE_KEYS ${key})
+    endif()
+endforeach()
+if(NOT ULTRACANVAS_WIDGET_RUNTIME_MODULES AND UC_WIDGET_MODULE_KEYS)
+    message(WARNING "Widgets not selected and runtime modules off - unavailable: ${UC_WIDGET_MODULE_KEYS}")
+endif()
+foreach(key IN LISTS UC_WIDGET_SELECTED_KEYS)
+    list(APPEND ULTRACANVAS_CORE_SOURCES ${UC_WIDGET_${key}_SOURCES})
+endforeach()
+# The top-level CMakeLists and Tests/ check an application's widgets against these.
+set_property(GLOBAL PROPERTY ULTRACANVAS_WIDGETS_COMPILED_IN "${UC_WIDGET_SELECTED_KEYS}")
+set_property(GLOBAL PROPERTY ULTRACANVAS_WIDGET_MODULES "${UC_WIDGET_MODULE_KEYS}")
+message(STATUS "Widgets: compiled in [${UC_WIDGET_SELECTED_KEYS}], modules [${UC_WIDGET_MODULE_KEYS}]")
+
+# Generated registration TU: always present, so apps can call
+# UltraCanvas_RegisterSelectedWidgets() unconditionally.
+set(UC_WIDGET_REG_INCLUDES "")
+set(UC_WIDGET_REG_CALLS "")
+set(UC_WIDGET_REG_ANCHOR "")
+foreach(key IN LISTS UC_WIDGET_SELECTED_KEYS)
+    string(APPEND UC_WIDGET_REG_INCLUDES "#include \"${UC_WIDGET_${key}_HEADER}\"\n")
+    string(APPEND UC_WIDGET_REG_CALLS "    ${UC_WIDGET_${key}_REGISTER}();\n")
+endforeach()
+set(uc_widget_anchors "")
+if(ULTRACANVAS_WIDGET_RUNTIME_MODULES)
+    foreach(key IN LISTS UC_WIDGET_MODULE_KEYS)
+        foreach(inc IN LISTS UC_WIDGET_${key}_ANCHOR_INCLUDES)
+            string(APPEND UC_WIDGET_REG_INCLUDES "#include \"${inc}\"\n")
+        endforeach()
+        foreach(anchor IN LISTS UC_WIDGET_${key}_ANCHORS)
+            string(APPEND uc_widget_anchors "    KeepForWidgetModules(${anchor});   // ${key}\n")
+        endforeach()
+    endforeach()
+endif()
+if(uc_widget_anchors)
+    string(APPEND UC_WIDGET_REG_INCLUDES "#include <typeinfo>\n")
+    string(APPEND UC_WIDGET_REG_ANCHOR "
+// Keeps in a static host the core objects the widget modules need: a volatile
+// store cannot be optimised away, so each anchor stays a reference the linker
+// resolves from the archive. Called from the registration below.
+namespace {
+template <typename T> void KeepForWidgetModules(T anchor) {
+    static T volatile sink;
+    sink = anchor;
+}
+} // namespace
+
+void UltraCanvas_WidgetModuleAnchors() {
+${uc_widget_anchors}}
+")
+    string(APPEND UC_WIDGET_REG_CALLS "    UltraCanvas_WidgetModuleAnchors();\n")
+endif()
+configure_file(${CMAKE_CURRENT_SOURCE_DIR}/cmake/UltraCanvasWidgetRegistration.cpp.in
+               ${CMAKE_CURRENT_BINARY_DIR}/generated/UltraCanvasWidgetRegistration.generated.cpp
+               @ONLY)
+list(APPEND ULTRACANVAS_CORE_SOURCES
+     ${CMAKE_CURRENT_BINARY_DIR}/generated/UltraCanvasWidgetRegistration.generated.cpp)
 
 # libvips-dependent sources
 if(ULTRACANVAS_HAS_VIPS)
@@ -2125,8 +2292,12 @@ if(ULTRACANVAS_ENABLE_CHARTS AND ULTRACANVAS_CHART_RUNTIME_MODULES)
             ${UC_CHART_${key}_PLUGIN})
         # Same include set the LaTeX MODULE uses - target-scoped, so modules
         # must name the platform dirs themselves.
+        # generated/include holds UltraCanvasFrameworkHeadersId.h: without it
+        # the module reports its framework headers as "unknown" and the
+        # loader refuses it (UltraCanvasElementPlugins.h).
         target_include_directories(${uc_chart_target} PRIVATE
             ${CMAKE_CURRENT_SOURCE_DIR}/include
+            ${CMAKE_CURRENT_BINARY_DIR}/generated/include
             ${CAIRO_INCLUDE_DIRS} ${PANGO_INCLUDE_DIRS} ${GLIB_INCLUDE_DIRS}
             ${HARFBUZZ_INCLUDE_DIRS} ${FREETYPE_INCLUDE_DIRS})
         target_compile_features(${uc_chart_target} PRIVATE cxx_std_20)
@@ -2141,6 +2312,39 @@ if(ULTRACANVAS_ENABLE_CHARTS AND ULTRACANVAS_CHART_RUNTIME_MODULES)
             target_link_libraries(${uc_chart_target} PRIVATE ${ULTRACANVAS_LIB_NAME})
         endif()
         message(STATUS "  [✓] chart module ${uc_chart_target}")
+    endforeach()
+endif()
+
+# ===== WIDGET RUNTIME MODULES =====
+# One MODULE DSO per unselected selectable widget, the same way as the chart
+# modules above (ENABLE_EXPORTS + RTLD_GLOBAL on Unix, the shared core DLL on
+# Windows, so a Windows static build skips them).
+if(ULTRACANVAS_WIDGET_RUNTIME_MODULES)
+    foreach(key IN LISTS UC_WIDGET_MODULE_KEYS)
+        set(uc_widget_target "ultracanvas-widget-${UC_WIDGET_${key}_KEBAB}")
+        if(WIN32 AND NOT ULTRACANVAS_BUILD_SHARED)
+            message(STATUS "  [−] widget module ${uc_widget_target} - SKIPPED (needs shared core on Windows)")
+            continue()
+        endif()
+        add_library(${uc_widget_target} MODULE
+            ${UC_WIDGET_${key}_SOURCES}
+            ${UC_WIDGET_${key}_PLUGIN})
+        target_include_directories(${uc_widget_target} PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/include
+            ${CMAKE_CURRENT_BINARY_DIR}/generated/include
+            ${CAIRO_INCLUDE_DIRS} ${PANGO_INCLUDE_DIRS} ${GLIB_INCLUDE_DIRS}
+            ${HARFBUZZ_INCLUDE_DIRS} ${FREETYPE_INCLUDE_DIRS})
+        target_compile_features(${uc_widget_target} PRIVATE cxx_std_20)
+        set_target_properties(${uc_widget_target} PROPERTIES
+            PREFIX ""
+            POSITION_INDEPENDENT_CODE ON
+            LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/Plugins/Elements)
+        if(WIN32 OR ULTRACANVAS_BUILD_SHARED)
+            target_link_libraries(${uc_widget_target} PRIVATE ${ULTRACANVAS_LIB_NAME})
+        elseif(APPLE)
+            set_target_properties(${uc_widget_target} PROPERTIES LINK_FLAGS "-undefined dynamic_lookup")
+        endif()
+        message(STATUS "  [✓] widget module ${uc_widget_target}")
     endforeach()
 endif()
 

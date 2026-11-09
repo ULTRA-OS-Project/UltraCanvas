@@ -1,9 +1,11 @@
 // core/UltraCanvasModalDialog.cpp
 // Implementation of cross-platform modal dialog system - Window-based
 // Supports switching between native OS dialogs and internal UltraCanvas dialogs
+// Version: 3.9.2 - nor by a popup's own window
+// Version: 3.9.1 - a dialog without a parent is not placed by the tooltip's window
 // Version: 3.9.0 - ModalDialogStyle::FromTheme, ApplyTheme
 // Version: 3.8.0
-// Last Modified: 2026-10-13
+// Last Modified: 2026-11-09
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasModalDialog.h"
@@ -557,7 +559,9 @@ namespace UltraCanvas {
             if (!reference) {
                 for (auto& win : app->GetWindows()) {
                     if (win && win.get() != this && win->IsWindowVisible() &&
-                        win->GetConfig().type != WindowType::Dialog) {
+                        win->GetConfig().type != WindowType::Dialog &&
+                        win->GetConfig().type != WindowType::Tooltip &&
+                        win->GetConfig().type != WindowType::Popup) {
                         reference = win.get();
                         break;
                     }

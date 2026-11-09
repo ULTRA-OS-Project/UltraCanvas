@@ -7,9 +7,10 @@
 // caption, the controls, and at the foot of the page, in its own tinted
 // block, the notes that explain the setting. A page's "Restore defaults"
 // button sits at the left end of the bottom bar, opposite Close.
+// Version: 0.3.0 - the Model topics page
 // Version: 0.2.0 - the Local models page; the local provider's models in the endpoint editor
 // Version: 0.1.0
-// Last Modified: 2026-10-21
+// Last Modified: 2026-11-06
 // Author: UltraAI Module
 
 #include "UltraAISettingsWindow.h"
@@ -18,6 +19,7 @@
 #include "UltraAILocalRuntime.h"
 #include "UltraAIAppSettings.h"
 #include "UltraAILocalModelsPage.h"
+#include "UltraAITopicsPage.h"
 #include "UltraAISettingsWidgets.h"
 
 #include "UltraCanvasApplication.h"   // UltraCanvasApplicationBase::GetCurrent
@@ -67,6 +69,7 @@ namespace {
     constexpr const char* kPageDefaultProviders = "services/default-providers";
     constexpr const char* kPageLocalAndCloud    = "services/local-and-cloud";
     constexpr const char* kPageLocalModels      = "services/local-models";
+    constexpr const char* kPageTopics           = "services/topics";
     constexpr const char* kPageAccounts         = "accounts";
     constexpr const char* kPageEndpointEditor   = "accounts/editor";
     constexpr const char* kPageStart            = "start";
@@ -104,6 +107,7 @@ namespace {
         std::vector<ServiceRow>               serviceRows;
         std::shared_ptr<UltraCanvasCheckbox>  cloudFallbackBox;
         std::shared_ptr<UltraAILocalModelsPage> localModels;
+        std::shared_ptr<UltraAITopicsPage>      topics;
 
         // Inline endpoint editor (the one reusable "accounts/editor" page).
         std::shared_ptr<UltraCanvasTextInput> epName;
@@ -542,6 +546,7 @@ namespace {
         // The Local models page reads the runtime afresh each time it is
         // shown: an engine may have stopped, a service may have installed.
         if (target == kPageLocalModels && d->localModels) d->localModels->Refresh();
+        if (target == kPageTopics && d->topics) d->topics->Refresh();
         UpdateRestoreButton(d);
     }
 
@@ -807,6 +812,7 @@ namespace {
         AddTreeNode(d, "settings", kPageServices, "Services");
         AddTreeNode(d, kPageServices, kPageDefaultProviders, "Default providers");
         AddTreeNode(d, kPageServices, kPageLocalModels, "Local models");
+        AddTreeNode(d, kPageServices, kPageTopics, "Model topics");
         AddTreeNode(d, kPageServices, kPageLocalAndCloud, "Local & cloud");
         AddTreeNode(d, "settings", kPageAccounts, "Accounts");
         // Accounts' children — "New endpoint" plus one node per endpoint — are
@@ -830,6 +836,11 @@ namespace {
         AddPage(d, kPageLocalModels, d->localModels->Build(d->window.get()));
         d->resets[kPageLocalModels] = {"Restore defaults", 150, [d]() {
             if (d->localModels) d->localModels->RestoreDefaults();
+        }};
+        d->topics = std::make_shared<UltraAITopicsPage>(d->alive);
+        AddPage(d, kPageTopics, d->topics->Build(d->window.get()));
+        d->resets[kPageTopics] = {"Restore defaults", 150, [d]() {
+            if (d->topics) d->topics->RestoreDefaults();
         }};
         AddPage(d, kPageLocalAndCloud, BuildLocalAndCloudPage(d));
         AddPage(d, kPageEndpointEditor, BuildEndpointEditorPage(d));
@@ -924,6 +935,7 @@ void UltraAISettingsWindow::Show(UltraCanvasWindowBase* parent, Page page) {
     switch (page) {
         case Page::DefaultProviders: pageId = kPageDefaultProviders; break;
         case Page::LocalModels:      pageId = kPageLocalModels; break;
+        case Page::Topics:           pageId = kPageTopics; break;
         case Page::LocalAndCloud:    pageId = kPageLocalAndCloud; break;
         case Page::Endpoints:        pageId = kNodeNewEndpoint; break;
         default: break;

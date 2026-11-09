@@ -33,6 +33,7 @@ add_library(UltraAI_Runtime STATIC
     src/LocalRuntimeCatalogue.cpp
     src/LocalRuntimeHardware.cpp
     src/LocalRuntimeStorage.cpp
+    src/LocalRuntimeTopics.cpp
 )
 add_library(UltraAI::Runtime ALIAS UltraAI_Runtime)
 

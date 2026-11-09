@@ -16,6 +16,7 @@
   "Copied to the clipboard.": "已複製到剪貼簿。",
   "Copy: the picture to the clipboard (Ctrl+C)": "複製：將圖片複製到剪貼簿（Ctrl+C）",
   "Drag an area  ·  Enter: the whole screen  ·  Esc: cancel": "拖曳出區域  ·  Enter：整個螢幕  ·  Esc：取消",
+  "Drag an area on the screen now, or choose a delay and click Start.": "現在在螢幕上拖出一個區域，或選擇延遲後按一下「開始」。",
   "Edit in UltraPaint: open the saved picture there": "在 UltraPaint 中編輯：在其中開啟已儲存的圖片",
   "Every change applies straight away and is saved; there is nothing to confirm.": "所有變更都會立即套用並儲存，無須確認。",
   "Every text UltraSnip shows, in one grid with the sets it comes from: its own set, the Image and Video base sets and the standard set. A change is saved into the settings folder and shows the next time UltraSnip starts.": "以一個表格列出 UltraSnip 顯示的所有文字及其所屬的文字集：本身的文字集、影像與影片基礎集，以及標準集。變更會儲存到設定資料夾，並在下次啟動 UltraSnip 時顯示。",
@@ -34,7 +35,7 @@
   "More frames a second make a smoother recording and a larger file; 20 is enough for a walk-through, 30 for motion. The recording is written as it goes, so one cut short by a crash still plays up to its last seconds.": "每秒影格數越多，錄製越流暢，檔案也越大；操作示範用 20 即可，動態畫面用 30。錄製時會邊錄邊寫入，因此即使因當機而中斷，錄影仍可播放到最後幾秒。",
   "MP4 video": "MP4 影片",
   "MP4 with H.264 (.mp4)  -  plays everywhere": "採用 H.264 的 MP4（.mp4）  -  隨處皆可播放",
-  "No delay": "無延遲",
+  "No delay: the screen is taken at once": "不延遲：立即擷取螢幕",
   "No other type in this build": "此版本沒有其他格式",
   "No recording on this build: {0}": "此版本無法錄製：{0}",
   "not copied": "未複製",
@@ -107,7 +108,7 @@
   "UltraSnip - Settings": "UltraSnip - 設定",
   "Video: a recording of the area": "影片：錄製該區域",
   "Videos - the recording's container, its frame rate and its folder.": "影片 - 錄影的容器格式、影格速率和資料夾。",
-  "Wait before the screen is taken, so a menu can be opened first": "擷取螢幕前先等待，以便先開啟選單",
+  "Wait {0} seconds before the screen is taken, so a menu can be opened first": "擷取螢幕前等待 {0} 秒，以便先開啟選單",
   "WebM video": "WebM 影片",
   "WebM with VP9 (.webm)  -  the web's own": "採用 VP9 的 WebM（.webm）  -  網頁原生格式",
   "What happens to a picture the moment it is taken:": "圖片擷取後立即執行的動作：",
@@ -119,6 +120,6 @@
   "Write every picture to the folder below": "將每張圖片寫入下方資料夾",
   "{0} fps": "{0} fps",
   "{0} recorded": "已錄製 {0}",
-  "{0} s delay": "延遲 {0} 秒",
+  "{0} s": "{0} 秒",
   "{0} × {1} px": "{0} × {1} px"
 }

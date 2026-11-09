@@ -1818,15 +1818,23 @@ through any text LLM (`UltraAITextLLMTranslator.h`: `CreateTextLLMTranslator`,
 `ListModels` / `ListEngines` / `Recommend` / `Fit`, `InstallModel` /
 `InstallEngine` / `Cancel` / `RemoveModel`, `AddModelFile` /
 `AddHuggingFaceModel`, `Ensure` / `Touch` / `StopIdle` / `StopAll`,
-`GetSettings` / `SetSettings`, `RefreshGallery`) downloads an inference
-engine and a model on demand and supervises the engine as a loopback
-process shared between applications; the `local` provider
+`GetSettings` / `SetSettings`, `RefreshGallery`; topics: `ListTopics` /
+`ModelForTopic` / `GetTopicPreferences` / `SetTopicPreferences` /
+`SetTopicModel` / `NewModels` / `MarkModelsSeen` / `ApplyTopicUpdates`)
+downloads an inference engine and a model on demand and supervises the
+engine as a loopback process shared between applications, and keeps which
+model the user wants for each topic (chat, code, translation, ...) from
+the model server's `topics.json`; the `local` provider
 (`UltraAILocal.h`: `CreateLocalTextLLM`, `CreateLocalEmbeddings`) serves
 chat and embeddings through it; the module's one library that draws,
 `UltraAI_UI` (`UltraAI/ui/`, `UltraAILocalModelDialog.h`:
 `UltraAILocalModelDialog::Show`, `NeedsInstall`), is the "Get a local model"
 dialog an application shows when a service needs a model that is not on
-this computer. `Docs/Modules/UltraAI/LocalRuntime.md`.
+this computer. `Docs/Modules/UltraAI/LocalRuntime.md`. The model server
+those catalogues and topics come from is `Server/UltraAIModelServer`
+(FastAPI on SQLite), managed with UltraAI ServerAdmin
+(`Apps/UltraAIServerAdmin`, `ModelServerClient.h`: the admin API's client;
+`Docs/UltraAIServerAdmin/README.md`).
 
 ### **3. FileLoader**
 
@@ -27068,7 +27076,12 @@ fallback when it is absent.
   virtual desktop and out of the taskbar and Alt+Tab); `WindowType::Notification`
   the toast above everything that never takes the focus, which
   [UltraCanvasNotificationToast](UltraCanvasNotificationToast.md) draws
-  notifications in.
+  notifications in; `WindowType::Tooltip` the window
+  [UltraCanvasTooltipManager](UltraCanvasTooltipManager.md#its-own-window)
+  shows every tooltip in, so the tooltips of the bars in the desktop window
+  are not covered by the windows above it; and `WindowType::Popup` the window
+  every popup - the bars' menus among them - is shown in, for the same reason
+  (`UltraCanvasWindowBase::SetPopupsInOwnWindows`).
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasDiagramRouting.md
@@ -28829,6 +28842,11 @@ The dropdown uses the window's popup system for proper z-order:
 - `CloseDropdown()` closes it with `UltraCanvasWindowBase::ClosePopup()`; the
   window also closes it on Escape or a click outside, and `onDropdownClosed`
   fires in every case
+- The list is shown in a window of its own, above every other window, like
+  every popup (`UltraCanvasWindowBase::SetPopupsInOwnWindows`): no other
+  window covers it. It still belongs to the dropdown's window - clicks in it
+  reach the list as there - and it closes, too, when the focus leaves the
+  application
 
 `OpenDropdown()` does nothing until the dropdown is in a window and has items.
 
@@ -30371,7 +30389,7 @@ helpers are still to come.
   a real end-to-end DSO load of two test plugins built as MODULE libraries
 
 **Version:** 1.0.0
-**Last Modified:** 2026-08-01
+**Last Modified:** 2026-11-09
 **Author:** UltraCanvas Framework
 **Namespace:** `UltraCanvas`
 
@@ -30534,6 +30552,72 @@ int loaded = UltraCanvas_RefreshElementPlugins();   // explicit; usually implici
   so without the anchor the linker strips the engine and a runtime chart module
   fails at `dlopen` with an undefined base-class symbol. Shared-core builds
   need no anchor - modules link the DLL/so directly.
+
+## Widgets as runtime modules
+
+Widgets follow the chart selection. `ULTRACANVAS_WIDGETS` (CMake cache: `all`,
+the default, empty, or a `;`-list of keys) names the selectable widgets
+compiled into the core. Every one not named is built as its own module,
+`ultracanvas-widget-<kebab-name>`, in `<build>/Plugins/Elements`
+(`ULTRACANVAS_WIDGET_RUNTIME_MODULES`, on by default; off on WASM and Android;
+on Windows the module needs the shared core). The table:
+
+| Key | Type name | Module | Applications that need it compiled in |
+|---|---|---|---|
+| `VideoTimeline` | `video-timeline` | `ultracanvas-widget-video-timeline` | UltraVideo, DemoApp |
+| `Slideshow` | `slideshow` | `ultracanvas-widget-slideshow` | DemoApp |
+| `Album` | `album` | `ultracanvas-widget-album` | UltraVideo, DemoApp |
+| `ColorPaletteManager` | `color-palette-manager` | `ultracanvas-widget-color-palette-manager` | UltraPaint, ArtCreator, DemoApp |
+| `VectorCanvas` | `vector-canvas` | `ultracanvas-widget-vector-canvas` | ArtCreator, DemoApp |
+
+```cpp
+// At startup - registers the widgets compiled in. In a static core it also
+// keeps in the executable the core objects the widget modules need.
+UltraCanvas_RegisterSelectedWidgets();
+
+UltraCanvas_AddPluginDirectory(GetExecutableDir() + "/Plugins/Elements");
+auto timeline = UltraCanvasElementRegistry::Create("video-timeline", "tl", 0, 0, 800, 200);
+auto album    = UltraCanvasElementRegistry::Create("album", "pics", 0, 220, 800, 400);
+```
+
+The default build is unchanged: every widget is compiled in. A lean build
+leaves them out, with the applications that use them:
+
+```
+cmake -S . -B build -DULTRACANVAS_WIDGETS= -DBUILD_ULTRAVIDEO=OFF -DBUILD_DEMO_APP=OFF \
+      -DBUILD_ULTRAPAINT_APP=OFF -DBUILD_ARTCREATOR_APP=OFF
+```
+
+An application that uses a widget's typed API (its class, its `Create…`
+function, its style) needs that widget compiled in. The top-level
+`CMakeLists.txt` says which widgets each application uses
+(`ultracanvas_require_widgets`) and stops the configure, naming the widgets,
+when one it builds would not link. A host that loads widget modules from a
+static core exports its symbols (`ENABLE_EXPORTS`), the same as the chart
+modules' hosts.
+
+`ElementModulesTest` creates every selectable widget, and the chart of the
+chart module, by name in whichever form the build has them. Loading a module
+also checks that it carries the framework headers id the loader insists on.
+
+**Adding a widget to the table** (`UltraCanvas/CMakeLists.txt`, "WIDGET SYSTEM"):
+
+1. Give it a `Make<Widget>Descriptor()` and `Register<Widget>Element()`
+   beside its typed factory.
+2. Write a module entry in `UltraCanvas/Plugins/Widgets/` that registers the
+   descriptor through `host->RegisterElement` (see
+   `UltraCanvasVideoTimelinePlugin.cpp`).
+3. Take its sources out of `ULTRACANVAS_CORE_SOURCES` and add a row:
+   `_KEBAB`, `_SOURCES`, `_PLUGIN`, `_HEADER`, `_REGISTER`, and `_ANCHORS`
+   (with the headers in `_ANCHOR_INCLUDES`): one expression for each core
+   object file the module needs that a host with a UI may not link anyway - a
+   function, a member function or `&typeid(Class)` defined there.
+4. Add the widget to `ElementModulesTest`'s list in `Tests/CMakeLists.txt`
+   and build with the widget left out. A missing anchor fails the test with
+   the undefined symbol; `nm` on the archive names its object file.
+5. Add it to `ultracanvas_require_widgets` for every application that uses
+   its typed API, and guard every test that does by
+   `ULTRACANVAS_WIDGETS_COMPILED_IN` (a global CMake property).
 
 ## Best Practices
 
@@ -51016,6 +51100,7 @@ FILE: Docs/UltraCanvas/UltraCanvasMenuExamples.md
 - [Menu Styling](#menu-styling)
   - [MenuStyle Structure](#menustyle-structure)
   - [The Panel](#the-panel)
+  - [Its Own Window](#its-own-window)
   - [Pre-built Themes](#pre-built-themes)
 - [Core Methods](#core-methods)
   - [Construction and Initialization](#construction-and-initialization)
@@ -51048,8 +51133,8 @@ FILE: Docs/UltraCanvas/UltraCanvasMenuExamples.md
 
 **UltraCanvasMenu** is a comprehensive menu component in the UltraCanvas framework that provides flexible menu functionality including menu bars, popup context menus, and hierarchical submenu support. It offers rich styling options, keyboard navigation, scrolling for long menus, and cross-platform compatibility.
 
-**Version:** 1.5.0 - `MenuStyle::FromTheme`  
-**Last Modified:** 2026-10-10  
+**Version:** 1.6.0 - a popup menu is shown in a window of its own, above every other window  
+**Last Modified:** 2026-11-09  
 **Author:** UltraCanvas Framework
 
 ## Features
@@ -51318,6 +51403,28 @@ shadow takes no clicks. The window blends every popup over its content with
 its alpha, which is what lets the panel's corners show the window behind
 them. A menubar has no panel: no padding, inset, radius or shadow - its
 items run edge to edge and only their highlight is rounded.
+
+### Its Own Window
+
+A popup menu or submenu is shown in a window of its own (`WindowType::Popup`),
+above every other window, like every popup - see
+`UltraCanvasWindowBase::SetPopupsInOwnWindows`. Composited onto the window it
+was opened in, a menu was covered by any window above that one: the menus of
+UltraDesktop's bars, whose window is kept below all others, opened under the
+applications' windows. The menu stays that window's in every other way - it is
+laid out and drawn there, keeps the keyboard there, and a click in its own
+window reaches it as a click in that window, at the same place - so nothing
+about building or handling a menu changes.
+
+The menu's window is cut to the panel's outline (transparent outside it on
+macOS and Wayland), so the rounded corners show whatever is beneath. It has no
+drop shadow of its own - macOS and a compositing window manager give a popup
+window one - and it does not fade in: `enableAnimations` shows it in full at
+once. It closes on a click outside it, as before, and also when the focus
+leaves the application, since it would otherwise float above other programs'
+windows. In the browser and on Android, and with
+`SetPopupsInOwnWindows(false)`, the menu is composited onto its window as
+described above.
 
 To get the earlier square look back, take the panel's decoration off:
 
@@ -51785,7 +51892,9 @@ menu->SetStyle(style);
 ```
 
 The whole panel fades - background, border, shadow and entries together -
-over the window content beneath it. The menu opens its popup at opacity 0 and
+over the window content beneath it. A menu shown in a window of its own (see
+*Its Own Window*) does not fade: it appears in full once its opacity is above
+0. The menu opens its popup at opacity 0 and
 steps it to 1 about every frame with `UltraCanvasWindowBase::SetPopupOpacity`
 (see Display Control), so a step only composites the window again and does
 not repaint the menu. The menu bar does not animate, and closing is
@@ -67597,6 +67706,7 @@ FILE: Docs/UltraCanvas/UltraCanvasSegmentedControlExamples.md
   - [FitContent Width Mode (Alignment Toolbar)](#fitcontent-width-mode-alignment-toolbar)
   - [Disabled Segments](#disabled-segments)
   - [A Segment in Its Own Colour](#a-segment-in-its-own-colour)
+  - [A Tooltip for Each Segment](#a-tooltip-for-each-segment)
   - [Variable-Length Segments with a Custom Theme](#variable-length-segments-with-a-custom-theme)
 - [Keyboard Navigation](#keyboard-navigation)
 - [See Also](#see-also)
@@ -67605,7 +67715,7 @@ FILE: Docs/UltraCanvas/UltraCanvasSegmentedControlExamples.md
 
 **UltraCanvasSegmentedControl** is a multi-segment selection control for choosing between mutually exclusive options (single mode) or toggling several options independently (multiple/toggle mode). It is well-suited for view-switchers, filter bars, formatting toolbars, and size pickers.
 
-**Version:** 1.0.1
+**Version:** 1.5.0 - `SetSegmentTooltip`: each segment its own tooltip
 **Header:** `include/UltraCanvasSegmentedControl.h`
 **Namespace:** `UltraCanvas`
 **Base Class:** `UltraCanvasUIElement`
@@ -67673,6 +67783,11 @@ void SetSegmentWidth(int index, float width);    // Used with SegmentWidthMode::
 // One segment's text colour while it is not selected; selected, it takes
 // selectedTextColor. Colors::Transparent restores the style's colours.
 void SetSegmentTextColor(int index, const Color& color);
+// One segment's own tooltip - an icon-only segment naming itself. It shows
+// while the pointer is over that segment and switches as the pointer moves
+// to the next; a segment without one shows the control's (SetTooltip).
+void        SetSegmentTooltip(int index, const std::string& text);
+std::string GetSegmentTooltip(int index) const;
 ```
 
 ### Selection — Single Mode
@@ -67964,6 +68079,24 @@ assistant->AddSegment("Claude Code");
 assistant->AddSegment("Codex");
 assistant->SetSegmentTextColor(0, Color(200, 30, 30));
 assistant->SetSelectedIndex(1);
+```
+
+### A Tooltip for Each Segment
+
+Icon-only segments say what they are in their own tooltips. A tooltip set
+with `SetTooltip` on the control is read once, when the pointer comes in, so
+changing it from `onSegmentHover` leaves the first segment's text up while
+the pointer moves on; `SetSegmentTooltip` swaps the shown tooltip as the
+pointer crosses from one segment to the next.
+
+```cpp
+auto shape = CreateSegmentedControl("shape", 50, 780, 102, 28);
+shape->AddSegment("", "media/icons/snip-rectangle.svg");
+shape->AddSegment("", "media/icons/snip-window.svg");
+shape->AddSegment("", "media/icons/snip-screen.svg");
+shape->SetSegmentTooltip(0, "Rectangle: an area you drag out");
+shape->SetSegmentTooltip(1, "Window: the window you click");
+shape->SetSegmentTooltip(2, "Full screen: the whole screen");
 ```
 
 ### Variable-Length Segments with a Custom Theme
@@ -80919,8 +81052,8 @@ FILE: Docs/UltraCanvas/UltraCanvasTooltipManager.md
 
 # UltraCanvasTooltipManager Documentation
 
-**Version:** 2.5.0 - `TooltipStyle::FromTheme`; the manager's style is the one every tooltip shown without one takes  
-**Last Modified:** 2026-10-05  
+**Version:** 2.6.0 - the tooltip is shown in a window of its own, above every other window (`SetUseOwnWindow`, `GetTooltipWindow`)  
+**Last Modified:** 2026-11-09  
 **Author:** UltraCanvas Framework
 
 ## Contents
@@ -80934,6 +81067,7 @@ FILE: Docs/UltraCanvas/UltraCanvasTooltipManager.md
 - [TooltipStyle Reference](#tooltipstyle-reference)
   - [Presets](#presets)
   - [Soft shadow](#soft-shadow)
+- [Its own window](#its-own-window)
 - [Manager API Reference](#manager-api-reference)
 - [Rendering Integration Notes](#rendering-integration-notes)
 - [Dependencies](#dependencies)
@@ -80942,8 +81076,8 @@ FILE: Docs/UltraCanvas/UltraCanvasTooltipManager.md
 
 `UltraCanvasTooltipManager` is the framework-wide tooltip system. It shows a
 single shared tooltip for the element under the pointer, handles show/hide
-delays, positions the tooltip inside the window, and renders it during window
-composition. Any element with a tooltip — plain text via
+delays, positions the tooltip on the screen, and shows it in a window of its
+own above every other window (see [Its own window](#its-own-window)). Any element with a tooltip — plain text via
 `UltraCanvasUIElement::SetTooltip` or structured content via
 `SetTooltipContent` — gets a tooltip automatically; application code normally
 never calls the manager directly.
@@ -80952,8 +81086,12 @@ never calls the manager directly.
 body ends `offsetY` (20 px) above the pointer's tip and starts `offsetX`
 (12 px) to its right, so the line under the pointer — the text being read —
 and the pointer's arrow stay in view, and it follows the pointer as it moves.
-With no room above (near the top of the window) it goes below the pointer's
-arrow instead, and with no room on the right, to the left of the pointer.
+With no room above (near the top of the monitor) it goes below the pointer's
+arrow instead, and with no room on the right, to the left of the pointer. The
+room is the monitor's, not the window's: the tooltip of an element near the
+top of a window, or of a bar along the bottom of the screen, rises above it.
+Where the tooltip is drawn inside its window (see below) the room is the
+window's.
 The position passed to `UpdateAndShowTooltip` is the pointer's; an element
 showing a tooltip for a fixed spot passes that spot's top edge.
 
@@ -81176,6 +81314,48 @@ per-layer alpha is derived so the fully overlapped core reaches
 `shadowColor.a`. Set `shadowBlur = 0` to get the old single hard-edged
 shadow rectangle, or `hasShadow = false` to disable the shadow entirely.
 
+## Its own window
+
+The tooltip is shown in a window of its own, `WindowType::Tooltip`: above
+every other window, never focused, and the pointer passes through it to the
+element it describes. Drawn into the window it belongs to, as it was until
+2026-11, it was covered by any window above that one - every tooltip of
+UltraDesktop's bars, which live in a window kept below all others, went under
+the applications' windows - and it stopped at that window's edges.
+
+| Platform | The tooltip's window |
+|---|---|
+| X11 (Linux, the BSDs) | override-redirect, `_NET_WM_WINDOW_TYPE_TOOLTIP`, an empty input shape, mapped raised |
+| Windows | `WS_EX_TOPMOST \| WS_EX_TOOLWINDOW \| WS_EX_NOACTIVATE`, layered and `WS_EX_TRANSPARENT`, shown without activation |
+| Wayland | a popup of the window the tooltip belongs to with no input region; beside a desktop on the layer shell, a surface on the overlay layer that never takes the keys |
+| macOS | a borderless window that never becomes key, at the pop-up menu level, ignoring the pointer, with the system's shadow |
+| the browser, Android | none: the tooltip is drawn inside its window |
+
+The window is made the first time a tooltip of a window is shown, hidden with
+the tooltip and shown again for the next one; a tooltip of another window gets
+a new one. A closing window takes its tooltip and the tooltip's window with it
+(`ForgetWindow`, which `UltraCanvasApplication` calls as a window closes), and
+the tooltip's window is no application window: it never keeps `Run()` going,
+is not counted by `ClosingEndsApplication`, is no jump target and is not
+reported to assistive technology.
+
+The window is opaque, so in it the tooltip has square corners and no soft
+shadow of its own; a compositing window manager gives a tooltip window a
+shadow. Drawn inside its window the tooltip keeps the style's
+`cornerRadius` and shadow.
+
+```cpp
+// Draw tooltips inside their windows, as before (on by default where the
+// platform has the window)
+UltraCanvasTooltipManager::SetUseOwnWindow(false);
+
+// Where the tooltip on screen is: its own window, or nullptr while it is
+// drawn inside the window it belongs to (or none is shown)
+UltraCanvasWindowBase* shownIn = UltraCanvasTooltipManager::GetTooltipWindow();
+```
+
+The tooltip is drawn inside its window also whenever its own cannot be made.
+
 ## Manager API Reference
 
 ```cpp
@@ -81210,16 +81390,26 @@ static Point2Di GetTooltipPosition();   // top-left of the tooltip body
 static Size2Di GetTooltipSize();        // size of the tooltip body
 static void UpdateTooltipPosition(const Point2Di& cursorPosition);
 
-// Rendering (called by the window compositor)
+// Its own window (see "Its own window")
+static void SetUseOwnWindow(bool use);  // default true; false draws it in its window
+static bool GetUseOwnWindow();
+static UltraCanvasWindowBase* GetTooltipWindow();   // nullptr: drawn in its window, or none
+static void ForgetWindow(UltraCanvasWindowBase* win);        // a window is closing
+static void WindowScaleChanged(UltraCanvasWindowBase* win);  // a window changed monitor scale
+
+// Rendering (called by the window compositor of the window the tooltip is
+// shown in: its own, or the one it belongs to)
 static IRenderContext* Render(UltraCanvasWindowBase* win);
-static Point2Di GetCompositePosition(); // GetTooltipPosition() minus shadow margins
+static Point2Di GetCompositePosition(); // GetTooltipPosition() minus shadow margins; 0,0 in its own window
 ```
 
 ## Rendering Integration Notes
 
 - `Render()` draws into an off-screen surface sized to the tooltip body plus
-  the soft-shadow margins; the surface is cached until the text, style, or
-  target window changes.
+  the soft-shadow margins (none in its own window); the surface is cached
+  until the text, style, or target window changes. It answers only the window
+  the tooltip is shown in, so the window it belongs to composites nothing
+  while the tooltip has its own.
 - The window compositor must blend the surface with
   `CompositeToSurface(nativeSurface, GetCompositePosition())` — an OVER
   blend, not a raw flush — because the shadow margins are translucent.
@@ -81234,7 +81424,8 @@ static Point2Di GetCompositePosition(); // GetTooltipPosition() minus shadow mar
 
 ## Dependencies
 
-- `UltraCanvasWindow`: target window and composition
+- `UltraCanvasWindow`: target window, composition, and the tooltip's own
+  window (`WindowType::Tooltip`)
 - `UltraCanvasApplication`: hover tracking and show/hide timers
 - `IRenderContext`: rendering context interface
 
@@ -85708,6 +85899,12 @@ timeline->SetStyle(style);
   the slot length steps by a factor of root 2, so zooming inside a step and
   scrolling reuse what was decoded. Only the slots in view are asked for,
   in chunks of eight.
+- The element is in the element registry as `"video-timeline"` (category
+  Widget, `MakeVideoTimelineDescriptor`). It is a selectable widget: compiled
+  into the core by default, or built as the `ultracanvas-widget-video-timeline`
+  runtime module when `ULTRACANVAS_WIDGETS` leaves it out. See *Widgets as
+  runtime modules* in
+  [`UltraCanvasElementPlugins.md`](UltraCanvasElementPlugins.md).
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasVolumeMonitor.md
@@ -94657,8 +94854,8 @@ FILE: Docs/Modules/UltraAI/LocalRuntime.md
 
 # UltraAI Local Runtime — models on this computer, nothing to install
 
-**Version:** 0.1.0
-**Last Modified:** 2026-10-20
+**Version:** 0.2.0
+**Last Modified:** 2026-11-06
 
 ## Overview
 
@@ -94728,11 +94925,12 @@ on Windows, `~/Library/Application Support` on macOS, `$XDG_DATA_HOME` or
 ├── engines/<engine>/<version>-<platform>-<accelerator>/   an unpacked bundle, with bundle.json
 ├── models/<model id>/                                      the files, with model.json
 ├── downloads/*.part                                        in flight; resumed next time
-├── gallery/index.json, catalogue.json                      the refreshed copies
+├── gallery/index.json, catalogue.json, topics.json         the refreshed copies
 ├── logs/<engine>-<model>.log                               the engine's output (rotated at 4 MB)
 ├── runtime.json                                            running engines: pid, port, model, started, last used
 ├── runtime.key                                             the loopback API key (owner-only on POSIX)
 ├── runtime-settings.json                                   the settings below
+├── topic-preferences.json                                  the user's model per topic, new models (Topics)
 └── user-models.json                                        models the user added
 ```
 
@@ -94850,6 +95048,71 @@ install time.
 
 ---
 
+## Topics
+
+A topic is what a model is used for: general chat, programming,
+translation, summaries, pictures and documents, search, or one the model
+server adds. The server ([`Server/UltraAIModelServer`](../../../Server/UltraAIModelServer/README.md),
+managed with [UltraAI ServerAdmin](../../UltraAIServerAdmin/README.md))
+publishes `topics.json` beside the index; `RefreshGallery()` fetches it
+with the catalogue, and the copy built into the framework stands in until
+then (and for a mirror that publishes none).
+
+```json
+{
+  "formatVersion": 1,
+  "published": "2026-11-06",
+  "topics": [
+    {"id": "translation", "name": "Translation", "description": "...", "capability": "textllm",
+     "models": [{"id": "qwen3-4b-q4", "default": true}, {"id": "qwen3-8b-q4"}, {"id": "qwen3-1.7b-q8"}]}
+  ]
+}
+```
+
+`models` is the server's order, best first; the one marked `default` is
+the server's choice (the first one when none is marked). The built-in
+topics are `chat`, `code`, `translation`, `summary`, `vision` and
+`search`.
+
+The user's side is `TopicPreferences`, kept in `topic-preferences.json`:
+
+| Field | Meaning |
+|---|---|
+| `choices[topic].modelId` | `""` (the default): follow the server's choice, and move with it; otherwise the model the user picked |
+| `choices[topic].autoInstall` | while following: `ApplyTopicUpdates` downloads the server's choice when it is not installed (default on) |
+| `newModels` | `Notify` (default): `NewModels()` lists catalogue models published since the user last looked; `Automatic`: also downloads one that becomes a followed topic's choice; `Ignore`: nothing is reported |
+| `seenModels` | the catalogue ids already reported; the whole catalogue the first time, so only later ones count as new |
+
+`ModelForTopic(topic)` decides which model a topic uses on this computer:
+the user's pick while it exists and fits; else the server's choice when it
+fits (installed, or installable because the user lets it download); else
+an installed model the topic offers; else the first offered model that
+fits; else `Recommend(capability)`. A model that is *too large* is never
+chosen.
+
+```cpp
+LocalRuntime& rt = LocalRuntime::Instance();
+for (const ModelTopic& t : rt.ListTopics()) {
+    // t.name, t.capability, t.ServerDefault(), rt.ModelForTopic(t.id)
+}
+rt.SetTopicModel("code", "qwen3-8b-q4");          // the user's pick; "" follows the server again
+TopicPreferences p = rt.GetTopicPreferences();
+p.newModels = NewModelPolicy::Automatic;
+rt.SetTopicPreferences(p);
+rt.RefreshGallery();                               // the server's index, catalogue and topics
+rt.ApplyTopicUpdates(onProgress);                  // download what the topic settings call for
+for (const LocalModelInfo& m : rt.NewModels()) { /* tell the user */ }
+rt.MarkModelsSeen({});                             // all of them seen
+```
+
+`ApplyTopicUpdates` does nothing under `DownloadPolicy::Never`. An
+application asks for a topic's model through the `local` provider with
+`providerOptions["topic"] = "translation"` (and no `defaultModel`). The
+dashboard's *Model topics* settings page (`Apps/UltraAIApp/UltraAITopicsPage`)
+is the user's view of all of this.
+
+---
+
 ## The `local` provider
 
 `CreateTextLLM` / `CreateEmbeddings` with `providerId = "local"`, or an
@@ -94858,7 +95121,8 @@ in `KnownLocalProviders` for `textllm`, `embeddings` and `translator`.
 
 | Config field | Meaning |
 |---|---|
-| `defaultModel` | a catalogue id, `file:<path>`, `hf:<repo>:<file>`, or empty for `Recommend(capability)` |
+| `defaultModel` | a catalogue id, `file:<path>`, `hf:<repo>:<file>`, or empty for the topic's model or `Recommend(capability)` |
+| `providerOptions["topic"]` | string: with no `defaultModel`, the model the user set for this topic (`ModelForTopic`) |
 | `providerOptions["allow_download"]` | bool: the first call may install under the *Ask* policy |
 | `timeoutMs`, other `providerOptions` | passed to the OpenAI-wire delegate |
 | `apiKey`, `apiKeyVaultRef`, `baseUrl` | ignored: the runtime's endpoint and key are used |

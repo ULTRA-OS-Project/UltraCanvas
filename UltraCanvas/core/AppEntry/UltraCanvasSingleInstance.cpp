@@ -256,6 +256,7 @@ namespace UltraCanvas {
         if (app) {
             for (const auto& window : app->GetWindows()) {
                 if (!window || !window->IsCreated() || window->GetParentWindow()) continue;
+                if (window->GetConfig().type == WindowType::Tooltip || window->GetConfig().type == WindowType::Popup) continue;
                 const WindowState state = window->GetState();
                 if (state == WindowState::Closing || state == WindowState::Closed) continue;
                 main = window.get();

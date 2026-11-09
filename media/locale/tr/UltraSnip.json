@@ -16,6 +16,7 @@
   "Copied to the clipboard.": "Panoya kopyalandı.",
   "Copy: the picture to the clipboard (Ctrl+C)": "Kopyala: resmi panoya (Ctrl+C)",
   "Drag an area  ·  Enter: the whole screen  ·  Esc: cancel": "Bir alan sürükleyin  ·  Enter: tüm ekran  ·  Esc: iptal",
+  "Drag an area on the screen now, or choose a delay and click Start.": "Şimdi ekranda bir alan sürükleyin ya da bir gecikme seçip Başlat'a tıklayın.",
   "Edit in UltraPaint: open the saved picture there": "UltraPaint'te düzenle: kaydedilen resmi orada aç",
   "Every change applies straight away and is saved; there is nothing to confirm.": "Her değişiklik hemen uygulanır ve kaydedilir; onaylanacak bir şey yoktur.",
   "Every text UltraSnip shows, in one grid with the sets it comes from: its own set, the Image and Video base sets and the standard set. A change is saved into the settings folder and shows the next time UltraSnip starts.": "UltraSnip'in gösterdiği tüm metinler, geldikleri kümelerle birlikte tek bir tabloda: kendi kümesi, Görüntü ve Video temel kümeleri ve standart küme. Bir değişiklik ayarlar klasörüne kaydedilir ve UltraSnip bir sonraki başlatıldığında görünür.",
@@ -34,7 +35,7 @@
   "More frames a second make a smoother recording and a larger file; 20 is enough for a walk-through, 30 for motion. The recording is written as it goes, so one cut short by a crash still plays up to its last seconds.": "Saniyedeki kare sayısı arttıkça kayıt daha akıcı, dosya daha büyük olur; adım adım anlatım için 20 yeterlidir, hareket için 30. Kayıt ilerledikçe yazılır, bu yüzden bir çökmeyle yarıda kalan kayıt bile son saniyelerine kadar oynatılabilir.",
   "MP4 video": "MP4 videosu",
   "MP4 with H.264 (.mp4)  -  plays everywhere": "H.264 ile MP4 (.mp4)  -  her yerde oynatılır",
-  "No delay": "Gecikme yok",
+  "No delay: the screen is taken at once": "Gecikme yok: ekran hemen alınır",
   "No other type in this build": "Bu derlemede başka tür yok",
   "No recording on this build: {0}": "Bu derlemede kayıt yok: {0}",
   "not copied": "kopyalanmadı",
@@ -107,7 +108,7 @@
   "UltraSnip - Settings": "UltraSnip - Ayarlar",
   "Video: a recording of the area": "Video: alanın kaydı",
   "Videos - the recording's container, its frame rate and its folder.": "Videolar - kaydın kapsayıcısı, kare hızı ve klasörü.",
-  "Wait before the screen is taken, so a menu can be opened first": "Ekran alınmadan önce bekle, böylece önce bir menü açılabilir",
+  "Wait {0} seconds before the screen is taken, so a menu can be opened first": "Ekran alınmadan önce {0} saniye bekle, böylece önce bir menü açılabilir",
   "WebM video": "WebM videosu",
   "WebM with VP9 (.webm)  -  the web's own": "VP9 ile WebM (.webm)  -  web'in kendi biçimi",
   "What happens to a picture the moment it is taken:": "Bir resim alındığı anda ona ne olacağı:",
@@ -119,6 +120,6 @@
   "Write every picture to the folder below": "Her resmi aşağıdaki klasöre yaz",
   "{0} fps": "{0} fps",
   "{0} recorded": "{0} kaydedildi",
-  "{0} s delay": "{0} sn gecikme",
+  "{0} s": "{0} sn",
   "{0} × {1} px": "{0} × {1} px"
 }

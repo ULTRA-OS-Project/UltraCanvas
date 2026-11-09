@@ -16,6 +16,7 @@
   "Copied to the clipboard.": "تم النسخ إلى الحافظة.",
   "Copy: the picture to the clipboard (Ctrl+C)": "نسخ: الصورة إلى الحافظة (Ctrl+C)",
   "Drag an area  ·  Enter: the whole screen  ·  Esc: cancel": "اسحب منطقة  ·  Enter: الشاشة كاملة  ·  Esc: إلغاء",
+  "Drag an area on the screen now, or choose a delay and click Start.": "اسحب منطقة على الشاشة الآن، أو اختر تأخيرًا وانقر على بدء.",
   "Edit in UltraPaint: open the saved picture there": "التحرير في UltraPaint: فتح الصورة المحفوظة هناك",
   "Every change applies straight away and is saved; there is nothing to confirm.": "يُطبَّق كل تغيير فورًا ويُحفظ؛ لا شيء يحتاج إلى تأكيد.",
   "Every text UltraSnip shows, in one grid with the sets it comes from: its own set, the Image and Video base sets and the standard set. A change is saved into the settings folder and shows the next time UltraSnip starts.": "كل نص يعرضه UltraSnip، في شبكة واحدة مع المجموعات التي يأتي منها: مجموعته الخاصة، ومجموعتا الصور والفيديو الأساسيتان، والمجموعة القياسية. يُحفظ التغيير في مجلد الإعدادات ويظهر عند تشغيل UltraSnip في المرة التالية.",
@@ -34,7 +35,7 @@
   "More frames a second make a smoother recording and a larger file; 20 is enough for a walk-through, 30 for motion. The recording is written as it goes, so one cut short by a crash still plays up to its last seconds.": "كلما زاد عدد الإطارات في الثانية كان التسجيل أكثر سلاسة والملف أكبر؛ 20 تكفي لشرح خطوة بخطوة، و30 للحركة. يُكتب التسجيل أثناء سيره، لذا فإن التسجيل الذي يقطعه عطل مفاجئ يُشغَّل حتى ثوانيه الأخيرة.",
   "MP4 video": "فيديو MP4",
   "MP4 with H.264 (.mp4)  -  plays everywhere": "MP4 مع H.264 (.mp4)  -  يعمل في كل مكان",
-  "No delay": "بلا تأخير",
+  "No delay: the screen is taken at once": "بلا تأخير: تُلتقط الشاشة فورًا",
   "No other type in this build": "لا يوجد نوع آخر في هذا الإصدار",
   "No recording on this build: {0}": "لا تسجيل في هذا الإصدار: {0}",
   "not copied": "لم يُنسخ",
@@ -107,7 +108,7 @@
   "UltraSnip - Settings": "UltraSnip - الإعدادات",
   "Video: a recording of the area": "فيديو: تسجيل للمنطقة",
   "Videos - the recording's container, its frame rate and its folder.": "مقاطع الفيديو - حاوية التسجيل ومعدل إطاراته ومجلده.",
-  "Wait before the screen is taken, so a menu can be opened first": "الانتظار قبل التقاط الشاشة، ليتسنى فتح قائمة أولًا",
+  "Wait {0} seconds before the screen is taken, so a menu can be opened first": "الانتظار {0} ثوانٍ قبل التقاط الشاشة، لفتح قائمة أولًا",
   "WebM video": "فيديو WebM",
   "WebM with VP9 (.webm)  -  the web's own": "WebM مع VP9 (.webm)  -  تنسيق الويب الأصلي",
   "What happens to a picture the moment it is taken:": "ما يحدث للصورة لحظة التقاطها:",
@@ -119,6 +120,6 @@
   "Write every picture to the folder below": "كتابة كل صورة في المجلد أدناه",
   "{0} fps": "{0} fps",
   "{0} recorded": "تم تسجيل {0}",
-  "{0} s delay": "تأخير {0} ث",
+  "{0} s": "{0} ث",
   "{0} × {1} px": "{0} × {1} px"
 }
