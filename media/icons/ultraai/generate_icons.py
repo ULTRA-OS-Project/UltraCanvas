@@ -115,6 +115,16 @@ ICONS = {
   'code-assist': (('#34476B', '#141B2E'), '#5EF2B3', '''
     <path d="M44 42 L22 64 L44 86 M84 42 L106 64 L84 86" {S} stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
     <path d="M73 34 L55 94" {As} stroke-width="9" stroke-linecap="round"/>'''),
+  'agents': (('#2FC2A8', '#136D8C'), '#0F6A86', '''
+    <path d="M64 22 V34" {S} stroke-width="6" stroke-linecap="round"/>
+    <circle cx="64" cy="20" r="7" {F}/>
+    <rect x="28" y="36" width="72" height="56" rx="18" {F}/>
+    <rect x="18" y="54" width="10" height="22" rx="5" {Fh}/>
+    <rect x="100" y="54" width="10" height="22" rx="5" {Fh}/>
+    <circle cx="50" cy="60" r="8" {A}/>
+    <circle cx="78" cy="60" r="8" {A}/>
+    <path d="M50 78 H78" {As} stroke-width="6" stroke-linecap="round"/>
+    <path d="M40 100 H88" {Sh} stroke-width="6" stroke-linecap="round"/>'''),
   'settings': (('#8C9BB2', '#47546A'), '#56637A', f'''
     <path d="{gear(64, 64, 8, 42, 32, 13)}" fill-rule="evenodd" {{F}}/>'''),
 }
