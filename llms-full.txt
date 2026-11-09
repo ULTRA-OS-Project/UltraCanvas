@@ -30382,7 +30382,7 @@ helpers are still to come.
   a real end-to-end DSO load of two test plugins built as MODULE libraries
 
 **Version:** 1.0.0
-**Last Modified:** 2026-08-01
+**Last Modified:** 2026-11-09
 **Author:** UltraCanvas Framework
 **Namespace:** `UltraCanvas`
 
@@ -30545,6 +30545,56 @@ int loaded = UltraCanvas_RefreshElementPlugins();   // explicit; usually implici
   so without the anchor the linker strips the engine and a runtime chart module
   fails at `dlopen` with an undefined base-class symbol. Shared-core builds
   need no anchor - modules link the DLL/so directly.
+
+## Widgets as runtime modules
+
+Widgets follow the chart selection. `ULTRACANVAS_WIDGETS` (CMake cache: `all`,
+the default, empty, or a `;`-list of keys) names the selectable widgets
+compiled into the core. Every one not named is built as its own module,
+`ultracanvas-widget-<kebab-name>`, in `<build>/Plugins/Elements`
+(`ULTRACANVAS_WIDGET_RUNTIME_MODULES`, on by default; off on WASM and Android;
+on Windows the module needs the shared core). Today the table holds one widget:
+
+| Key | Type name | Module |
+|---|---|---|
+| `VideoTimeline` | `video-timeline` | `ultracanvas-widget-video-timeline` |
+
+```cpp
+// At startup - registers the widgets compiled in. In a static core it also
+// keeps in the executable the core objects the widget modules need.
+UltraCanvas_RegisterSelectedWidgets();
+
+UltraCanvas_AddPluginDirectory(GetExecutableDir() + "/Plugins/Elements");
+auto timeline = UltraCanvasElementRegistry::Create("video-timeline", "tl", 0, 0, 800, 200);
+```
+
+The default build is unchanged: every widget is compiled in. A lean build
+leaves one out:
+
+```
+cmake -S . -B build -DULTRACANVAS_WIDGETS= -DBUILD_ULTRAVIDEO=OFF -DBUILD_DEMO_APP=OFF
+```
+
+An application that uses a widget's typed API (`CreateVideoTimeline`,
+`VideoTimelineStyle`) needs that widget compiled in. UltraVideo and DemoApp
+use the timeline that way, and the top-level `CMakeLists.txt` stops with an
+error when they are built without it. A host that loads widget modules from
+a static core exports its symbols (`ENABLE_EXPORTS`), the same as the chart
+modules' hosts.
+
+**Adding a widget to the table** (`UltraCanvas/CMakeLists.txt`, "WIDGET SYSTEM"):
+
+1. Give it a `Make<Widget>Descriptor()` and `Register<Widget>Element()`
+   beside its typed factory.
+2. Write a module entry in `UltraCanvas/Plugins/Widgets/` that registers the
+   descriptor through `host->RegisterElement` (see
+   `UltraCanvasVideoTimelinePlugin.cpp`).
+3. Take its sources out of `ULTRACANVAS_CORE_SOURCES` and add a row:
+   `_KEBAB`, `_SOURCES`, `_PLUGIN`, `_HEADER`, `_REGISTER`, and an `_ANCHOR`
+   (with `_ANCHOR_INCLUDE`) naming one symbol from each core object that only
+   this widget uses.
+4. Guard every test and application that uses its typed API by
+   `ULTRACANVAS_WIDGETS_COMPILED_IN` (a global CMake property).
 
 ## Best Practices
 
@@ -85800,6 +85850,12 @@ timeline->SetStyle(style);
   the slot length steps by a factor of root 2, so zooming inside a step and
   scrolling reuse what was decoded. Only the slots in view are asked for,
   in chunks of eight.
+- The element is in the element registry as `"video-timeline"` (category
+  Widget, `MakeVideoTimelineDescriptor`). It is a selectable widget: compiled
+  into the core by default, or built as the `ultracanvas-widget-video-timeline`
+  runtime module when `ULTRACANVAS_WIDGETS` leaves it out. See *Widgets as
+  runtime modules* in
+  [`UltraCanvasElementPlugins.md`](UltraCanvasElementPlugins.md).
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasVolumeMonitor.md
@@ -106446,18 +106502,6 @@ same.
 | Info panel | webcam from Windows' privacy indicator, microphone and speaker from the audio sessions, the volume from the default endpoint, battery, keyboard layout, network, USB and Bluetooth; instead of Explorer also the tray icons |
 | Lock screen | `LockWorkStation`, from the ⚙ menu; Win+L is Windows' own |
 | Notifications | beside Explorer other programs' notifications are drawn by Windows, as before; instead of Explorer the tray icons' balloons are drawn by UltraDesktop |
-
-==============================================================================
-FILE: Docs/UltraDesktop/changelog.d/tooltips-above-windows.md
-==============================================================================
-
-- **The bars' tooltips are no longer covered by other windows.** The bars
-  live in the desktop window, which is kept below every other window, and a
-  tooltip was drawn inside it: one that rose above the taskbar, or out of the
-  right bar, went under whatever application was open there. Tooltips now
-  have a window of their own above everything (the framework's
-  `WindowType::Tooltip`, see its changelog), so every icon's tooltip is seen
-  in full wherever the windows are.
 
 ==============================================================================
 FILE: Docs/UltraCanvasStart/README.md
