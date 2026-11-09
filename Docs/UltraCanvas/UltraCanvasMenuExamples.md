@@ -334,14 +334,15 @@ laid out and drawn there, keeps the keyboard there, and a click in its own
 window reaches it as a click in that window, at the same place - so nothing
 about building or handling a menu changes.
 
-The menu's window is cut to the panel's outline, so the rounded corners show
-whatever is beneath. It is opaque and has no drop shadow of its own (a
-compositing window manager gives a popup window one), and it does not fade in:
-`enableAnimations` shows it in full at once. It closes on a click outside it,
-as before, and also when the focus leaves the application, since it would
-otherwise float above other programs' windows. On macOS, in the browser and on
-Android, and with `SetPopupsInOwnWindows(false)`, the menu is composited onto
-its window as described above.
+The menu's window is cut to the panel's outline (transparent outside it on
+macOS and Wayland), so the rounded corners show whatever is beneath. It has no
+drop shadow of its own - macOS and a compositing window manager give a popup
+window one - and it does not fade in: `enableAnimations` shows it in full at
+once. It closes on a click outside it, as before, and also when the focus
+leaves the application, since it would otherwise float above other programs'
+windows. In the browser and on Android, and with
+`SetPopupsInOwnWindows(false)`, the menu is composited onto its window as
+described above.
 
 To get the earlier square look back, take the panel's decoration off:
 

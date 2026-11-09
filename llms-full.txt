@@ -51416,14 +51416,15 @@ laid out and drawn there, keeps the keyboard there, and a click in its own
 window reaches it as a click in that window, at the same place - so nothing
 about building or handling a menu changes.
 
-The menu's window is cut to the panel's outline, so the rounded corners show
-whatever is beneath. It is opaque and has no drop shadow of its own (a
-compositing window manager gives a popup window one), and it does not fade in:
-`enableAnimations` shows it in full at once. It closes on a click outside it,
-as before, and also when the focus leaves the application, since it would
-otherwise float above other programs' windows. On macOS, in the browser and on
-Android, and with `SetPopupsInOwnWindows(false)`, the menu is composited onto
-its window as described above.
+The menu's window is cut to the panel's outline (transparent outside it on
+macOS and Wayland), so the rounded corners show whatever is beneath. It has no
+drop shadow of its own - macOS and a compositing window manager give a popup
+window one - and it does not fade in: `enableAnimations` shows it in full at
+once. It closes on a click outside it, as before, and also when the focus
+leaves the application, since it would otherwise float above other programs'
+windows. In the browser and on Android, and with
+`SetPopupsInOwnWindows(false)`, the menu is composited onto its window as
+described above.
 
 To get the earlier square look back, take the panel's decoration off:
 
@@ -81327,7 +81328,8 @@ the applications' windows - and it stopped at that window's edges.
 | X11 (Linux, the BSDs) | override-redirect, `_NET_WM_WINDOW_TYPE_TOOLTIP`, an empty input shape, mapped raised |
 | Windows | `WS_EX_TOPMOST \| WS_EX_TOOLWINDOW \| WS_EX_NOACTIVATE`, layered and `WS_EX_TRANSPARENT`, shown without activation |
 | Wayland | a popup of the window the tooltip belongs to with no input region; beside a desktop on the layer shell, a surface on the overlay layer that never takes the keys |
-| macOS, the browser, Android | none: the tooltip is drawn inside its window |
+| macOS | a borderless window that never becomes key, at the pop-up menu level, ignoring the pointer, with the system's shadow |
+| the browser, Android | none: the tooltip is drawn inside its window |
 
 The window is made the first time a tooltip of a window is shown, hidden with
 the tooltip and shown again for the next one; a tooltip of another window gets

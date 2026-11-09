@@ -276,7 +276,8 @@ the applications' windows - and it stopped at that window's edges.
 | X11 (Linux, the BSDs) | override-redirect, `_NET_WM_WINDOW_TYPE_TOOLTIP`, an empty input shape, mapped raised |
 | Windows | `WS_EX_TOPMOST \| WS_EX_TOOLWINDOW \| WS_EX_NOACTIVATE`, layered and `WS_EX_TRANSPARENT`, shown without activation |
 | Wayland | a popup of the window the tooltip belongs to with no input region; beside a desktop on the layer shell, a surface on the overlay layer that never takes the keys |
-| macOS, the browser, Android | none: the tooltip is drawn inside its window |
+| macOS | a borderless window that never becomes key, at the pop-up menu level, ignoring the pointer, with the system's shadow |
+| the browser, Android | none: the tooltip is drawn inside its window |
 
 The window is made the first time a tooltip of a window is shown, hidden with
 the tooltip and shown again for the next one; a tooltip of another window gets

@@ -1,5 +1,6 @@
 // UltraCanvasTooltipManager.cpp
 // Implementation of tooltip system for UltraCanvas
+// Version: 2.5.1 - in a window of its own on macOS too
 // Version: 2.5.0 - shown in a window of its own (WindowType::Tooltip) above every other
 //                  window, placed on the screen rather than inside the window it
 //                  belongs to; drawn in that window only where the platform has none
@@ -51,11 +52,10 @@ namespace UltraCanvas {
     Point2Di UltraCanvasTooltipManager::screenPosition;
 
     // Where a tooltip can have a window of its own: a backend that places a
-    // WindowType::Tooltip window on the screen. macOS places windows in its
-    // own bottom-up coordinates and reports no window position the manager
-    // could start from; the browser and Android have one surface per
-    // application. There the tooltip is drawn inside its window, as before.
-#if defined(__ANDROID__) || defined(__EMSCRIPTEN__) || defined(__APPLE__)
+    // WindowType::Tooltip window on the screen. The browser and Android have
+    // one surface per application, and iOS no windows of this kind: there
+    // the tooltip is drawn inside its window, as before.
+#if defined(__ANDROID__) || defined(__EMSCRIPTEN__) || (defined(__APPLE__) && TARGET_OS_IPHONE)
     static constexpr bool kOwnWindowPlatform = false;
 #else
     static constexpr bool kOwnWindowPlatform = true;
