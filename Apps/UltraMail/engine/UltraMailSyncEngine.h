@@ -9,6 +9,8 @@
 // per-account worker and marshals results to the UI. Because it depends only on
 // the IMailboxProtocolPlugin interface, it is fully testable with a fake
 // mailbox — no live server required.
+// Version: 0.5.1 - RemoveFolderBodies: a folder's cached bodies go without
+//                  another's that shares the directory (names that differ in case)
 // Version: 0.5.0 - CreateFolder / DeleteFolder
 // Version: 0.4.0 - RescanStaleVerdicts (verdicts of older rules scanned again)
 // Version: 0.3.0 - SyncFolders: the server's separator kept, folders it no
@@ -244,6 +246,17 @@ public:
                              const std::string& serverUrl, const UltraNetMailOptions& options);
 
 private:
+    // Whether `folder`'s body directory is also another folder's of the
+    // account where the file system ignores case: a name that differs only in
+    // case ("Work" / "work", "Inbox" / INBOX) maps to the same directory on
+    // Windows and macOS. Asked of every system alike, to be safe on both.
+    bool SharesBodyDirectory(const std::string& accountId, const std::string& folder) const;
+    // Deletes the cached bodies of `folder`, whose stored UIDs were `uids`
+    // (read before its rows went): the whole directory, or, when it is shared
+    // (SharesBodyDirectory), only those files and then the directory if empty.
+    void RemoveFolderBodies(const std::string& accountId, const std::string& folder,
+                            const std::vector<int64_t>& uids);
+
     // An envelope from the server as the store keeps it (decoded headers,
     // parsed date, local flags).
     MessageEnvelope ToStored(const std::string& accountId, const std::string& folder,

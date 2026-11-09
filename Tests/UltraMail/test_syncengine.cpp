@@ -4,6 +4,7 @@
 // correctly: folder sync, envelope sync with needs-answer computation,
 // incremental fetch, raw-body caching (parseable by MimeCodec) and two-sided
 // flag changes.
+// Version: 0.3.0 - a folder's bodies go without its case twin's
 // Version: 0.2.0 - a server's inbox listed as "Inbox" is stored as INBOX
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -348,6 +349,43 @@ TEST(sync_folders_stores_listed_inbox_as_INBOX) {
     REQUIRE(fx.store.GetAccountStatus(st).success);
     REQUIRE_EQ(st.size(), (size_t)1);
     REQUIRE_EQ(st[0].unread, 2);   // messages 1 and 2; 3 is \Seen
+}
+
+// "Work" and "work" share one body directory where the file system ignores
+// case (Windows, macOS). The server dropping "Work" takes Work's own bodies,
+// never the directory with the rest: here (Linux, separate directories) a
+// file that is not Work's own stands for work's. A folder with no such twin
+// goes with its whole directory.
+TEST(removed_folder_keeps_its_case_twins_bodies) {
+    Fixture fx("case-twin");
+    fx.fake.folders = { MakeFolder("INBOX", "inbox"), MakeFolder("Work", ""),
+                        MakeFolder("work", ""), MakeFolder("Old", "") };
+    SyncEngine engine(fx.store, fx.fake, fx.emlDir);
+    UltraNetMailOptions opts;
+    REQUIRE(engine.SyncFolders("erika", "imaps://x/", opts).ok);
+
+    auto store = [&](const std::string& folder, int64_t uid) {
+        MessageEnvelope m; m.accountId = "erika"; m.folder = folder; m.uid = uid;
+        m.fromAddr = "a@x.com"; m.date = 1000 + uid;
+        REQUIRE(fx.store.UpsertMessage(m).success);
+        const fs::path p = UltraCanvas::PathFromUtf8(engine.BodyPath("erika", folder, uid));
+        fs::create_directories(p.parent_path());
+        std::ofstream(p) << "raw";
+        return p;
+    };
+    const fs::path work1 = store("Work", 1);
+    const fs::path twin = work1.parent_path() / "7.eml";   // not Work's: work's, on Windows
+    std::ofstream(twin) << "raw";
+    const fs::path old1 = store("Old", 1);
+    const fs::path oldStray = old1.parent_path() / "7.eml";
+    std::ofstream(oldStray) << "raw";
+
+    fx.fake.folders = { MakeFolder("INBOX", "inbox"), MakeFolder("work", "") };
+    REQUIRE(engine.SyncFolders("erika", "imaps://x/", opts).ok);
+
+    REQUIRE(!fs::exists(work1));               // Work's own body went
+    REQUIRE(fs::exists(twin));                 // the rest of the directory stayed
+    REQUIRE(!fs::exists(old1.parent_path()));  // no twin: the whole directory went
 }
 
 TEST(sync_messages_computes_needs_answer) {

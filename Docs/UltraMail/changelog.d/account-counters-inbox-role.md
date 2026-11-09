@@ -13,3 +13,8 @@
   list (its cached messages stay - on Windows and macOS they share `INBOX`'s
   directory), and UltraMail repairs an affected mail store when it starts:
   the counters are right at once, "waiting for reply" included.
+- **Deleting a folder no longer deletes the downloaded messages of a folder
+  whose name differs only in case.** On Windows and macOS "Work" and "work"
+  keep their messages in one directory, and a folder deleted here, gone from
+  the server, or renumbered by it took that whole directory along. Now only
+  the folder's own message files go, and the directory once it is empty.

@@ -1,4 +1,9 @@
 // Apps/UltraMail/engine/UltraMailSyncEngine.cpp
+// Version: 0.6.2 - a folder's cached bodies are deleted without touching another
+//                  folder's: two names that differ only in case ("Work",
+//                  "work") share one directory on Windows and macOS, and
+//                  deleting, or renumbering, one wiped the other's bodies
+//                  (RemoveFolderBodies)
 // Version: 0.6.1 - SyncFolders stores the server's inbox as INBOX whatever it is
 //                  listed as ("Inbox", a JMAP mailbox of role inbox): the mail is
 //                  synced under INBOX, and the account bar counts the folder
@@ -201,6 +206,34 @@ std::string SyncEngine::BodyPath(const std::string& accountId,
     return CachedBodyPath(emlDir_, accountId, folder, uid);
 }
 
+bool SyncEngine::SharesBodyDirectory(const std::string& accountId,
+                                     const std::string& folder) const {
+    const std::string mine = SanitizeFolder(folder);
+    // The inbox is there whether or not it has a row yet.
+    if (folder != "INBOX" && SameNameNoCase(mine, "INBOX")) return true;
+    std::vector<Folder> folders;
+    store_.ListFolders(accountId, folders);
+    for (const auto& f : folders)
+        if (f.name != folder && SameNameNoCase(SanitizeFolder(f.name), mine)) return true;
+    return false;
+}
+
+void SyncEngine::RemoveFolderBodies(const std::string& accountId, const std::string& folder,
+                                    const std::vector<int64_t>& uids) {
+    const fs::path dir = PathFromUtf8(BodyPath(accountId, folder, 0)).parent_path();
+    std::error_code ec;
+    if (!SharesBodyDirectory(accountId, folder)) {
+        fs::remove_all(dir, ec);
+        return;
+    }
+    // The directory is also another folder's on a file system that ignores
+    // case: only this folder's own files go - one the other folder has under
+    // the same number is fetched again when it is read - and the directory
+    // only once it is empty.
+    for (int64_t uid : uids) fs::remove(PathFromUtf8(BodyPath(accountId, folder, uid)), ec);
+    fs::remove(dir, ec);   // fails, as meant, while files are left in it
+}
+
 SyncOutcome SyncEngine::SyncFolders(const std::string& accountId,
                                     const std::string& serverUrl,
                                     const UltraNetMailOptions& options) {
@@ -236,14 +269,13 @@ SyncOutcome SyncEngine::SyncFolders(const std::string& accountId,
     if (!listed.empty()) {
         for (const auto& s : stored) {
             if (listed.count(s.name) || s.name == "INBOX") continue;
+            std::vector<int64_t> uids;
+            store_.ListUids(accountId, s.name, uids);
             if (!store_.RemoveFolder(accountId, s.name)) continue;
-            // The row an older version kept for the inbox as listed ("Inbox")
-            // goes, but not its directory: on a file system that ignores case
-            // (Windows, macOS) that is INBOX's, with the inbox's bodies.
-            if (!SameNameNoCase(s.name, "INBOX")) {
-                std::error_code ec;
-                fs::remove_all(PathFromUtf8(BodyPath(accountId, s.name, 0)).parent_path(), ec);
-            }
+            // Not the directory of a folder that only differs in case: the
+            // row an older version kept for the inbox as listed ("Inbox")
+            // shares INBOX's on Windows and macOS.
+            RemoveFolderBodies(accountId, s.name, uids);
             out.stats.foldersRemoved++;
         }
     }
@@ -270,9 +302,10 @@ SyncOutcome SyncEngine::DeleteFolder(const std::string& accountId, const std::st
     UltraNetResult r = mailbox_.DeleteFolder(serverUrl, folder, options);
     if (!r) return SyncOutcome::Fail(r);
     SyncOutcome out;
+    std::vector<int64_t> uids;
+    store_.ListUids(accountId, folder, uids);
     if (store_.RemoveFolder(accountId, folder)) {
-        std::error_code ec;
-        fs::remove_all(PathFromUtf8(BodyPath(accountId, folder, 0)).parent_path(), ec);
+        RemoveFolderBodies(accountId, folder, uids);
         out.stats.foldersRemoved = 1;
     }
     SyncOutcome listed = SyncFolders(accountId, serverUrl, options);
@@ -351,11 +384,12 @@ SyncOutcome SyncEngine::SyncMessages(const std::string& accountId,
         const bool aheadOfServer = status.uidNext != 0 &&
                                    sinceUid >= static_cast<int64_t>(status.uidNext);
         if (renumbered || aheadOfServer) {
+            std::vector<int64_t> uids;
+            store_.ListUids(accountId, folder, uids);
             store_.ClearFolderMessages(accountId, folder);   // drop stale cached UIDs
             // ... and their bodies: every cached UID of the folder is stale, and
             // the new numbering would overwrite some files and orphan the rest.
-            std::error_code ec;
-            fs::remove_all(PathFromUtf8(BodyPath(accountId, folder, 0)).parent_path(), ec);
+            RemoveFolderBodies(accountId, folder, uids);
             sinceUid = 0;
             out.stats.cacheReset = true;
         }
