@@ -1,5 +1,7 @@
 // OS/Linux/UltraCanvasLinuxWindow.cpp
 // Complete Linux window implementation with all methods
+// Version: 1.9.0 - WindowType::Popup: override-redirect, _NET_WM_WINDOW_TYPE_POPUP_MENU, takes
+//                  the pointer, mapped raised; SetNativeWindowShape (the shape extension)
 // Version: 1.8.0 - WindowType::Tooltip: override-redirect, _NET_WM_WINDOW_TYPE_TOOLTIP, an
 //                  empty input shape (the pointer passes through), raised as it is mapped
 // Version: 1.7.0 - RaiseAndFocus raises the window itself as well (XRaiseWindow): with
@@ -178,6 +180,16 @@ namespace UltraCanvas {
             attrs.event_mask = ExposureMask | StructureNotifyMask;
             valueMask |= CWOverrideRedirect | CWSaveUnder;
         }
+        // A popup's own window: the same, but it takes the pointer, which the
+        // application hands to the window the popup belongs to. The keys stay
+        // with that window, which keeps the focus.
+        if (config_.type == WindowType::Popup) {
+            attrs.override_redirect = True;
+            attrs.save_under = True;
+            attrs.event_mask = ExposureMask | StructureNotifyMask | ButtonPressMask | ButtonReleaseMask |
+                               PointerMotionMask | EnterWindowMask | LeaveWindowMask;
+            valueMask |= CWOverrideRedirect | CWSaveUnder;
+        }
 
         // Seed the device scale for the monitor this window opens on. X11 window
         // sizes/positions are in PHYSICAL px, so the client area must be created
@@ -318,6 +330,22 @@ namespace UltraCanvas {
             if (XShapeQueryExtension(display, &shapeEvent, &shapeError)) {
                 XShapeCombineRectangles(display, xWindow, ShapeInput, 0, 0, nullptr, 0, ShapeSet, Unsorted);
             }
+            XWMHints* wmHints = XAllocWMHints();
+            if (wmHints) {
+                wmHints->flags = InputHint;
+                wmHints->input = False;
+                XSetWMHints(display, xWindow, wmHints);
+                XFree(wmHints);
+            }
+        }
+
+        // A popup's own window: typed for a compositing manager.
+        if (config_.type == WindowType::Popup) {
+            Atom windowTypeAtom = XInternAtom(display, "_NET_WM_WINDOW_TYPE", False);
+            Atom popupTypeAtom = XInternAtom(display, "_NET_WM_WINDOW_TYPE_POPUP_MENU", False);
+            XChangeProperty(display, xWindow, windowTypeAtom, XA_ATOM, 32,
+                            PropModeReplace,
+                            reinterpret_cast<unsigned char*>(&popupTypeAtom), 1);
             XWMHints* wmHints = XAllocWMHints();
             if (wmHints) {
                 wmHints->flags = InputHint;
@@ -987,7 +1015,7 @@ namespace UltraCanvas {
         // The tooltip's own window is unmanaged: mapped where it was in the
         // stack it could come up under a window raised since; raised, it is
         // above them all.
-        if (config_.type == WindowType::Tooltip) {
+        if (config_.type == WindowType::Tooltip || config_.type == WindowType::Popup) {
             XMapRaised(application->GetDisplay(), xWindow);
         } else {
             XMapWindow(application->GetDisplay(), xWindow);
@@ -1330,6 +1358,32 @@ namespace UltraCanvas {
         width = mons[chosen].width;
         height = mons[chosen].height;
         XRRFreeMonitors(mons);
+    }
+
+    void UltraCanvasLinuxWindow::SetNativeWindowShape(const std::vector<Rect2Di>& physicalRects) {
+        auto* app = UltraCanvasApplication::GetInstance();
+        if (xWindow == 0 || !app || !app->GetDisplay()) return;
+        Display* display = app->GetDisplay();
+        int shapeEvent = 0, shapeError = 0;
+        if (!XShapeQueryExtension(display, &shapeEvent, &shapeError)) return;
+        if (physicalRects.empty()) {
+            // The whole window again
+            XShapeCombineMask(display, xWindow, ShapeBounding, 0, 0, None, ShapeSet);
+        } else {
+            std::vector<XRectangle> rects;
+            rects.reserve(physicalRects.size());
+            for (const auto& r : physicalRects) {
+                XRectangle xr;
+                xr.x = static_cast<short>(r.x);
+                xr.y = static_cast<short>(r.y);
+                xr.width = static_cast<unsigned short>(std::max(0, r.width));
+                xr.height = static_cast<unsigned short>(std::max(0, r.height));
+                rects.push_back(xr);
+            }
+            XShapeCombineRectangles(display, xWindow, ShapeBounding, 0, 0, rects.data(),
+                                    static_cast<int>(rects.size()), ShapeSet, Unsorted);
+        }
+        XFlush(display);
     }
 
     void UltraCanvasLinuxWindow::SetTransientParent(UltraCanvasWindowBase* parent) {

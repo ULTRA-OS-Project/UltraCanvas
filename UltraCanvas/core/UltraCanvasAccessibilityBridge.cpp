@@ -1,6 +1,7 @@
 // core/UltraCanvasAccessibilityBridge.cpp
 // The tree, ids, geometry and text helpers the platform accessibility bridges
 // share (see UltraCanvasAccessibilityBridge.h).
+// Version: 1.1.2 - nor is a popup's own window
 // Version: 1.1.1 - the tooltip's own window is not one of the accessible windows
 // Version: 1.1.0
 // Last Modified: 2026-11-09
@@ -24,9 +25,11 @@ std::vector<UltraCanvasWindowBase*> Windows() {
     auto* app = UltraCanvasApplication::GetInstance();
     if (!app) return out;
     for (const auto& window : app->GetWindows()) {
-        // The tooltip's own window is not an accessible window: what it
-        // shows is the element's tooltip, which the element reports itself
-        if (window && window->IsCreated() && window->GetConfig().type != WindowType::Tooltip)
+        // The tooltip's and a popup's own window are not accessible windows:
+        // what they show is the element's tooltip, or a popup that is in the
+        // tree of the window it belongs to
+        if (window && window->IsCreated() && window->GetConfig().type != WindowType::Tooltip &&
+            window->GetConfig().type != WindowType::Popup)
             out.push_back(window.get());
     }
     return out;

@@ -1235,6 +1235,31 @@ else()
     message(STATUS "  TooltipOwnWindowTest skipped (UltraCanvas target not present, or not X11)")
 endif()
 
+# ===== POPUP OWN WINDOW TEST =====
+# Popups in windows of their own: a menu above a window that covers the one it
+# belongs to (as an application's window covers the desktop's bars), cut to its
+# rounded outline, clicks in its window reaching its items, closed by a click
+# outside it, by focus leaving the application and with its window; a popup
+# past the window's edge takes clicks there. Reads the X server's stacking
+# order, shapes and the screen's pixels, so X11 only. Skips without DISPLAY.
+if(TARGET UltraCanvas AND UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN AND NOT ULTRACANVAS_WAYLAND)
+    message(STATUS "  Building PopupOwnWindowTest...")
+    add_executable(PopupOwnWindowTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/PopupOwnWindowTest.cpp
+    )
+    target_include_directories(PopupOwnWindowTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(PopupOwnWindowTest PRIVATE cxx_std_20)
+    target_link_libraries(PopupOwnWindowTest PRIVATE UltraCanvas)
+    set_target_properties(PopupOwnWindowTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME PopupOwnWindowTest COMMAND PopupOwnWindowTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: PopupOwnWindowTest")
+else()
+    message(STATUS "  PopupOwnWindowTest skipped (UltraCanvas target not present, or not X11)")
+endif()
+
 # ===== TOOL GROUP BUTTON TEST =====
 # Several tools sharing one toolbar slot: the bar of the whole group folds out
 # while the pointer rests on the slot, a click in it picks a tool, and it folds

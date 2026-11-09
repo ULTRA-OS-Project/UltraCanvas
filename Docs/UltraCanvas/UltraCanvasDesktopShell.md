@@ -420,4 +420,6 @@ fallback when it is absent.
   notifications in; `WindowType::Tooltip` the window
   [UltraCanvasTooltipManager](UltraCanvasTooltipManager.md#its-own-window)
   shows every tooltip in, so the tooltips of the bars in the desktop window
-  are not covered by the windows above it.
+  are not covered by the windows above it; and `WindowType::Popup` the window
+  every popup - the bars' menus among them - is shown in, for the same reason
+  (`UltraCanvasWindowBase::SetPopupsInOwnWindows`).

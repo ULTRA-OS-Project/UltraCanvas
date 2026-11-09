@@ -1,7 +1,8 @@
 // core/UltraCanvasCaret.cpp
 // Application-wide text caret: blinking and painting for the focused widget
+// Version: 1.1.0 - Composite with an offset: the caret of a popup shown in its own window
 // Version: 1.0.0
-// Last Modified: 2026-07-20
+// Last Modified: 2026-11-09
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasCaret.h"
@@ -149,6 +150,10 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasCaret::Composite(UltraCanvasWindowBase* win, NativeSurfacePtr toSurface) {
+        Composite(win, toSurface, Point2Di(0, 0));
+    }
+
+    void UltraCanvasCaret::Composite(UltraCanvasWindowBase* win, NativeSurfacePtr toSurface, const Point2Di& offset) {
         if (!IsOnWindow(win) || !phaseVisible || !toSurface) return;
         if (rect.width <= 0 || rect.height <= 0) return;
 
@@ -173,7 +178,7 @@ namespace UltraCanvas {
 
         // Alpha-blend so shaped/translucent carets don't punch holes into the
         // window content beneath them.
-        caretContext->CompositeToSurface(toSurface, {(double)rect.x, (double)rect.y});
+        caretContext->CompositeToSurface(toSurface, {(double)(rect.x + offset.x), (double)(rect.y + offset.y)});
     }
 
     void UltraCanvasCaret::OnWindowClosed(UltraCanvasWindowBase* win) {
