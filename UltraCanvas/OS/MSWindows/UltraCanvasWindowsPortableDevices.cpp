@@ -18,9 +18,11 @@
 // folders costs one listing per folder, as it would on a disk. A call that
 // fails on an id the cache handed it - the file was deleted on the phone -
 // forgets the device's ids and resolves the path afresh, once.
+// Version: 1.2.0 - mass-storage drives (a USB disk, a stick) are left out: they
+//                  are drives with a letter, and were listed twice
 // Version: 1.1.0 - Space: the storages' capacity and free space
 // Version: 1.0.0
-// Last Modified: 2026-11-01
+// Last Modified: 2026-11-09
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasPortableDevices.h"
@@ -297,6 +299,16 @@ namespace UltraCanvas {
                     CoTaskMemFree(ids[i]);
                     present.push_back(wid);
 
+                    // A USB stick or an external disk is a WPD device too
+                    // (the "WPD file system" driver), but it is mounted as
+                    // a drive with a letter, which the volume list already
+                    // shows and which reads far faster - listing it here
+                    // as well made it appear twice in a file manager.
+                    if (IsMassStorage(wid)) {
+                        open.erase(wid);
+                        continue;
+                    }
+
                     PortableDeviceInfo info;
                     info.id = WideToUtf8(wid);
                     info.name = ManagerString([&](WCHAR* b, DWORD* n) {
@@ -332,6 +344,50 @@ namespace UltraCanvas {
                     else
                         ++it;
                 }
+                for (auto it = massStorage.begin(); it != massStorage.end();) {
+                    if (std::find(present.begin(), present.end(), it->first) == present.end())
+                        it = massStorage.erase(it);
+                    else
+                        ++it;
+                }
+            }
+
+            // A mass-storage drive (USB Mass Storage Class) rather than an
+            // MTP / PTP device. The id says so for most of them - a volume
+            // the WPD bus enumerator made from USBSTOR or STORAGE#Volume -
+            // and the device's protocol ("MSC:...") says so for the rest.
+            // Asked once per connection and remembered.
+            bool IsMassStorage(const std::wstring& id) {
+                auto known = massStorage.find(id);
+                if (known != massStorage.end()) return known->second;
+                std::wstring lower = id;
+                for (wchar_t& c : lower) c = static_cast<wchar_t>(std::towlower(c));
+                bool msc = lower.find(L"usbstor") != std::wstring::npos ||
+                           lower.find(L"storage#volume") != std::wstring::npos;
+                if (!msc) {
+                    std::string ignored;
+                    if (Device* d = Open(id, ignored)) {
+                        Com<IPortableDeviceKeyCollection> keys;
+                        Com<IPortableDeviceValues> values;
+                        if (SUCCEEDED(CoCreateInstance(CLSID_PortableDeviceKeyCollection, nullptr,
+                                                       CLSCTX_INPROC_SERVER,
+                                                       IID_IPortableDeviceKeyCollection,
+                                                       keys.OutVoid())) &&
+                            SUCCEEDED(keys->Add(WPD_DEVICE_PROTOCOL)) &&
+                            SUCCEEDED(d->properties->GetValues(WPD_DEVICE_OBJECT_ID, keys.Get(),
+                                                               values.Out()))) {
+                            LPWSTR protocol = nullptr;
+                            if (SUCCEEDED(values->GetStringValue(WPD_DEVICE_PROTOCOL, &protocol)) &&
+                                protocol) {
+                                const std::wstring p(protocol);
+                                msc = SameName(p.substr(0, 3), L"MSC", true);
+                                CoTaskMemFree(protocol);
+                            }
+                        }
+                    }
+                }
+                massStorage[id] = msc;
+                return msc;
             }
 
             // What the device says it is. Asked once per connection - opening
@@ -910,6 +966,7 @@ namespace UltraCanvas {
             Com<IPortableDeviceManager> manager;     // COM thread only
             std::map<std::wstring, Device> open;     // COM thread only
             std::map<std::wstring, PortableDeviceKind> kinds;   // COM thread only
+            std::map<std::wstring, bool> massStorage;           // COM thread only
         };
 
     } // namespace
