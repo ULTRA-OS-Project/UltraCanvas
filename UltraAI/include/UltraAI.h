@@ -1,8 +1,9 @@
 // UltraAI/include/UltraAI.h
 // Umbrella header for the UltraAI module — a sibling of UltraCanvas.
 // Pulls in every capability interface so applications can `#include <UltraAI.h>`.
+// Version: 0.1.1 - includes UltraAIAgent.h
 // Version: 0.1.0
-// Last Modified: 2026-05-08
+// Last Modified: 2026-11-09
 // Author: UltraAI Module
 #pragma once
 
@@ -19,6 +20,7 @@
 #include "UltraAIVideoGen.h"
 #include "UltraAIMusicGen.h"
 #include "UltraAICodeAssist.h"
+#include "UltraAIAgent.h"
 
 #define ULTRA_AI_VERSION_MAJOR 0
 #define ULTRA_AI_VERSION_MINOR 1

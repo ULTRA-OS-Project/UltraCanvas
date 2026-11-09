@@ -38,6 +38,14 @@ between cloud and local models without rebuilding apps.
 Each interface ships with a programmable mock adapter so apps and
 tests run without any network or external model.
 
+On top of them, **agents** (`UltraAIAgent.h`, `UltraAI::Agent`): a model
+that uses the application's tools until the task is done. Register C++
+functions as tools, call `Run`, and the agent runs the model ↔ tool loop,
+with permission hooks, streaming progress events, turn limits,
+cancellation, conversations that carry over and subagents. It works over
+every `ITextLLM` provider. See
+[`../Docs/Modules/UltraAI/Agents.md`](../Docs/Modules/UltraAI/Agents.md).
+
 ---
 
 ## Adapters
@@ -105,7 +113,8 @@ UltraAI/
 │   ├── UltraAITextLLMTranslator.h # ITranslator served by any ITextLLM
 │   ├── UltraAIVideoGen.h
 │   ├── UltraAIMusicGen.h
-│   └── UltraAICodeAssist.h
+│   ├── UltraAICodeAssist.h
+│   └── UltraAIAgent.h             # the agent loop over any ITextLLM (tools, hooks, events)
 ├── src/                           # Capability factories (registry)
 ├── runtime/                       # The local runtime: engine gallery, model catalogue, installs, supervision
 ├── ui/                            # UltraAI_UI: the "Get a local model" dialog every application shows (in-tree, on the UltraCanvas core)
@@ -199,7 +208,8 @@ cmake -S UltraAI -B build \
 | ComfyUI adapter (`IImageGen`: txt2img / img2img / inpaint / upscale templates, uploads, WebSocket progress and previews, `/history` fallback, `/object_info` capabilities; `IVideoGen`: Stable Video Diffusion image-to-video) | Complete (v0.2 — text-to-video needs a caller-supplied workflow) |
 | WebSocket on the transport seam (`ITransport::WebSocketStream`, UltraNet-backed, scriptable, recordable) | Complete |
 | Text-LLM translator (`ITranslator` over any `ITextLLM`: batched JSON exchange, auto-detect, formality, domain, glossary, markup preservation, language detection; registered for every text-LLM provider) | Complete (v0.1 — quality is the chosen model's; no vendor glossary ids) |
-| Unit tests | Complete (13 executables, all passing) |
+| Agents (`UltraAIAgent.h`: the model ↔ tool loop over any `ITextLLM`; tools as C++ handlers with `ToolArguments`, permission and after-call hooks, progress events, streaming, turn limits, cancellation, `RunAsync`, conversations, subagents) | Complete (v0.1 — tools run one at a time; no built-in tools) |
+| Unit tests | Complete (14 executables, all passing) |
 | UltraVault credential lookup | Live — `apiKeyVaultRef` resolves through the UltraVault module (memory + encrypted-file backends; on by default in-tree) |
 
 ---
@@ -211,6 +221,8 @@ cmake -S UltraAI -B build \
   threading model, adapter checklist.
 * [`Docs/UltraVault.md`](Docs/UltraVault.md) —
   credential-storage architecture comparison and recommendation.
+* [`../Docs/Modules/UltraAI/Agents.md`](../Docs/Modules/UltraAI/Agents.md) —
+  agents: the tool loop, options, hooks, events, cancellation, subagents.
 * [`../Docs/Modules/UltraAI/LocalRuntime.md`](../Docs/Modules/UltraAI/LocalRuntime.md) —
   the local runtime as built: the gallery and catalogue formats, storage,
   settings, the engine's command line, the `local` provider, testing.

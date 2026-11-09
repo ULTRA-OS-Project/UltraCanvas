@@ -1610,7 +1610,13 @@ image / video / music generation, translation, code assist). See
 through any text LLM (`UltraAITextLLMTranslator.h`: `CreateTextLLMTranslator`,
 `BuildTranslationPrompt` / `ParseTranslationReply`, `BuildDetectionPrompt` /
 `ParseDetectionReply`), registered under each text-LLM provider's id;
-`Docs/Modules/UltraAI/Adapters.md` has the option keys. The local runtime
+`Docs/Modules/UltraAI/Adapters.md` has the option keys. Agents
+(`UltraAIAgent.h`: `Agent` with `AddTool` / `RemoveTool` / `Run` /
+`RunAsync` / `Cancel` / `History` / `SetHistory` / `ClearHistory`,
+`CreateAgent`, `AgentOptions` (`canUseTool`, `afterToolCall`, `maxTurns`,
+`stream`), `ToolArguments`, `ToolResult`, `ToolPermission`,
+`MakeSubagentTool`) run the model ↔ tool loop over any `ITextLLM`;
+`Docs/Modules/UltraAI/Agents.md`. The local runtime
 (`UltraAILocalRuntime.h`, `UltraAI/runtime/`: `LocalRuntime::Instance()`,
 `ListModels` / `ListEngines` / `Recommend` / `Fit`, `InstallModel` /
 `InstallEngine` / `Cancel` / `RemoveModel`, `AddModelFile` /
