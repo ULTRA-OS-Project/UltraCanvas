@@ -62,6 +62,9 @@
 #ifndef UC_TEST_HAS_VIDEO_TIMELINE
 #define UC_TEST_HAS_VIDEO_TIMELINE 1
 #endif
+#ifndef UC_TEST_HAS_COLOR_PALETTE_MANAGER
+#define UC_TEST_HAS_COLOR_PALETTE_MANAGER 1
+#endif
 #include "UltraCanvasToolbar.h"
 #include "UltraCanvasTooltipTypes.h"
 #include "UltraCanvasVideoTimeline.h"
@@ -414,6 +417,7 @@ int main() {
         const ColorSwatchBarStyle sw = ColorSwatchBarStyle::FromTheme(own);
         CHECK(sw.background.a == 0 && Same(sw.border, r.lineStrong) && Same(sw.hoverBorder, r.inkMuted) && Same(sw.selectedBorder, r.accent)
               && Same(sw.checkerDark, ColorSwatchBarStyle().checkerDark), "swatch bar: the control border, muted ink hovered, the accent selected, the checkerboard kept");
+#if UC_TEST_HAS_COLOR_PALETTE_MANAGER   // a selectable widget (ULTRACANVAS_WIDGETS), absent from a lean core
         ColorPaletteManagerStyle pmBase;
         pmBase.swatchSize = 20;
         const ColorPaletteManagerStyle pm = ColorPaletteManagerStyle::FromTheme(own, pmBase);
@@ -421,6 +425,7 @@ int main() {
               && Same(pm.accentColor, r.accent) && Same(pm.accentHoverColor, r.accentHover) && Same(pm.popupBackground, r.raised) && Same(pm.cardBackground, r.panel)
               && Same(pm.titleText, r.ink) && Same(pm.mutedText, r.inkMuted) && Near(pm.fontSize, own.FontSize(ThemeTextRole::Caption), 1e-6) && pm.swatchSize == 20
               && Same(pm.editorPickerStyle.fieldColor, r.well), "palette manager: hairlines and the accent, raised buttons and popups, the caption size, its editor's picker from the theme");
+#endif
         RichTextEditStyle rtBase;
         rtBase.baseFont.fontFamily = "Georgia";
         rtBase.baseFont.fontSize = 16;
