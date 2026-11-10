@@ -2,6 +2,8 @@
 // The desktop's settings file, through the framework's JSON (UltraCanvasJSON).
 // Numbers in the file are dot-decimal by construction: the JSON writer and
 // reader never consult the locale.
+// Version: 0.8.0 - startupDefaults: UltraNotifications added once to
+//                  startWithDesktop
 // Version: 0.7.0 - dropFilesOn, desktopIcons
 // Version: 0.6.0 - theme ("dark" | "light")
 // Version: 0.5.0 - categoryBoard.display and hoverPreview (the Sticker board's cards)
@@ -162,6 +164,7 @@ std::string DesktopSettings::ToJson() const {
     JSONValue startup = JSONValue::MakeArray();
     for (const std::string& program : startWithDesktop) startup.Append(JSONValue(program));
     root.Set("startWithDesktop", std::move(startup));
+    root.Set("startupDefaults", startupDefaults);
     root.Set("appsView", appsView);
     root.Set("appsSplitAbove", appsSplitAbove);
     root.Set("recentAppsShown", recentAppsShown);
@@ -244,8 +247,15 @@ bool DesktopSettings::FromJson(const std::string& json, std::string* error) {
     }
     const JSONValue& startup = root.Get("startWithDesktop");
     if (startup.IsArray()) {
+        // The file's list, not the defaults: an empty one means none.
+        loaded.startWithDesktop.clear();
         for (size_t i = 0; i < startup.GetSize(); ++i) loaded.SetStartsWithDesktop(startup.At(i).GetString(), true);
     }
+    // A file written before a default was introduced gets it once; the file
+    // then records that, and unticking it holds.
+    const int applied = static_cast<int>(root.Get("startupDefaults").GetInteger(0));
+    if (applied < 1) loaded.SetStartsWithDesktop("UltraNotifications", true);
+    loaded.startupDefaults = std::max(applied, kStartupDefaults);
     const JSONValue& pinned = root.Get("pinnedApps");
     if (pinned.IsArray()) {
         for (size_t i = 0; i < pinned.GetSize(); ++i) {
