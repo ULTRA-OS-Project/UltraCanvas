@@ -19,7 +19,7 @@
 namespace UltraCanvas {
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateColorPickerExamples() {
-        auto page = DemoKit::CreatePage("ColorPickerExamples", "Colour Picker Examples", "");
+        auto page = DemoKit::CreatePage("ColorPickerExamples", Tr("Colour Picker Examples"), "");
 
         // Every picker keeps its size; the cards and columns around them wrap
         // under each other when the window is narrow.
@@ -38,7 +38,7 @@ namespace UltraCanvas {
         auto row1 = DemoKit::AddRow(page, "ColorPickerRow1");
 
         // --- Full picker: wheel + swatches + hex + tabs + channel sliders ---
-        auto fullCard = DemoKit::AddCard(row1, "FullPickerCard", "Full picker • design selector (top right)");
+        auto fullCard = DemoKit::AddCard(row1, "FullPickerCard", Tr("Full picker • design selector (top right)"));
 
         // Foreground colour #85FFFBFF, background (previous) swatch red.
         auto picker = CreateColorPicker("FullColorPicker", Color(0x85, 0xFF, 0xFB, 0xFF),
@@ -59,7 +59,7 @@ namespace UltraCanvas {
         //     256 steps, so each pixel across is one step of saturation and
         //     each pixel down one step of value - none skipped, none repeated.
         //     Sized for the expanded sliders, so opening them keeps it exact. ---
-        auto collCard = DemoKit::AddCard(row1, "CollapsibleVariantCard", "256 x 256 square • collapsible sliders");
+        auto collCard = DemoKit::AddCard(row1, "CollapsibleVariantCard", Tr("256 x 256 square • collapsible sliders"));
 
         auto collapsible = CreateColorPicker("CollapsiblePicker", Color(0x85, 0xFF, 0xFB, 0xFF),
                                              0, 0, pickerW, pickerH);
@@ -74,7 +74,7 @@ namespace UltraCanvas {
 
         // --- The hue x lightness field with the channel sliders collapsed, so
         //     the field gets the height (like a narrow palette strip) ---
-        auto stripCard = DemoKit::AddCard(row1, "HLStripVariantCard", "Field, collapsible sliders • dropdown");
+        auto stripCard = DemoKit::AddCard(row1, "HLStripVariantCard", Tr("Field, collapsible sliders • dropdown"));
 
         auto strip = CreateColorPicker("HueLightnessStripPicker", Color(0x40, 0xFF, 0x40, 0xFF),
                                        0, 0, pickerW, pickerH);
@@ -85,11 +85,11 @@ namespace UltraCanvas {
 
         // ===== Row 2: slider / colour-display / selector variants =====
         auto variantsCard = DemoKit::AddCard(page, "VariantsCard",
-            "Variants: slider styles, colour display styles, mode selector styles");
+            Tr("Variants: slider styles, colour display styles, mode selector styles"));
         auto variantsRow = DemoKit::AddRow(variantsCard, "VariantsRow", 20);
 
         // --- 1: thin sliders, hue ring, tab-bar selector, value spinners ---
-        auto thinColumn = addColumn(variantsRow, "ThinVariant", "Thin sliders • ring • tab bar • < > steppers");
+        auto thinColumn = addColumn(variantsRow, "ThinVariant", Tr("Thin sliders • ring • tab bar • < > steppers"));
 
         auto thin = CreateColorPicker("ThinRingPicker", Color(0x85, 0xFF, 0xFB, 0xFF),
                                       0, 0, pickerW, pickerH);
@@ -100,7 +100,7 @@ namespace UltraCanvas {
         DemoKit::AddFixed(thinColumn, thin);
 
         // --- 2: thick sliders, SV rectangle + hue bar, dropdown selector ---
-        auto thickColumn = addColumn(variantsRow, "ThickVariant", "Thick sliders • hue bar • dropdown");
+        auto thickColumn = addColumn(variantsRow, "ThickVariant", Tr("Thick sliders • hue bar • dropdown"));
 
         auto thick = CreateColorPicker("ThickBarPicker", Color(0x85, 0xFF, 0xFB, 0xFF),
                                        0, 0, pickerW, pickerH);
@@ -112,11 +112,11 @@ namespace UltraCanvas {
         // ===== Row 3: colour + intensity styles (full saturation), and the
         //       full picker at 60% =====
         auto hlCard = DemoKit::AddCard(page, "HueLightnessCard",
-            "Colour + intensity: hue x lightness field and sliders; picker scaled to 60%");
+            Tr("Colour + intensity: hue x lightness field and sliders; picker scaled to 60%"));
         auto hlRow = DemoKit::AddRow(hlCard, "HueLightnessRow", 20);
 
         // --- 4: hue (top -> bottom) x lightness (black -> white) field ---
-        auto fieldColumn = addColumn(hlRow, "HLFieldVariant", "Hue x lightness field");
+        auto fieldColumn = addColumn(hlRow, "HLFieldVariant", Tr("Hue x lightness field"));
 
         auto field = CreateColorPicker("HueLightnessFieldPicker", Color(0x00, 0xA0, 0xFF, 0xFF),
                                        0, 0, pickerW, pickerH);
@@ -131,7 +131,7 @@ namespace UltraCanvas {
         //     palette under it, so the column takes only the room it uses.
         //     The toolbox is 560 tall: the largest design (the circle) with
         //     its channels open, and the palette. ---
-        auto slidersColumn = addColumn(hlRow, "HLSlidersVariant", "Sliders in a toolbox • channels fold away");
+        auto slidersColumn = addColumn(hlRow, "HLSlidersVariant", Tr("Sliders in a toolbox • channels fold away"));
 
         auto toolbox = CreateContainer("HLSlidersToolbox", 0, 0, pickerW, 560);
         toolbox->layout.SetFlexColumn().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Start);
@@ -155,7 +155,7 @@ namespace UltraCanvas {
         toolbox->AddChild(palette);
 
         // --- 6: the full picker scaled to 60% ---
-        auto scaledColumn = addColumn(hlRow, "ScaledPicker", "Scaled to 60%");
+        auto scaledColumn = addColumn(hlRow, "ScaledPicker", Tr("Scaled to 60%"));
 
         auto scaled = CreateColorPicker("ScaledColorPicker", Color(0x85, 0xFF, 0xFB, 0xFF),
                                         0, 0, 174, 282);

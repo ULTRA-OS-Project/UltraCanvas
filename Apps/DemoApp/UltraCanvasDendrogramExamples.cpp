@@ -66,13 +66,12 @@ static std::shared_ptr<DendrogramDataVector> BuildTree(
         n.groupId       = s.groupId;
         n.confidence    = s.confidence;
         n.branchValue   = s.branchValue;
-        n.tooltip = s.label;
         if (s.mergeDistance > 0.0)
-            n.tooltip += "\nMerge dist: " + std::to_string(s.mergeDistance).substr(0,5);
+            n.tooltip = TrF("{0}\nMerge dist: {1}", s.label, std::to_string(s.mergeDistance).substr(0,5));
         else if (s.parentId.empty())
-            n.tooltip += " (root)";
+            n.tooltip = TrF("{0} (root)", s.label);
         else
-            n.tooltip += " (leaf)";
+            n.tooltip = TrF("{0} (leaf)", s.label);
         auto it = childMap.find(s.id);
         if (it != childMap.end()) n.childIds = it->second;
         data->AddNode(n);
@@ -109,12 +108,12 @@ static std::shared_ptr<UltraCanvasContainer> MakeControlBar(
         DemoKit::Add(btnRow, btn);
     };
 
-    mkBtn("rst",  0,  "Reset View",  [d]{ d->ResetView(); });
+    mkBtn("rst",  0,  Tr("Reset View"),  [d]{ d->ResetView(); });
     mkBtn("zi",   36, "+",           [d]{ d->SetZoom(d->GetZoom()*1.3f); });
     mkBtn("zo",   36, "−",           [d]{ d->SetZoom(d->GetZoom()/1.3f); });
-    mkBtn("exp",  0,  "Expand All",  [d]{ d->ExpandAll(); });
-    mkBtn("col",  0,  "Collapse All",[d]{ d->CollapseAll(); });
-    mkBtn("rpos", 0,  "Reset Pos",    [d]{ d->ResetNodePositions(); });
+    mkBtn("exp",  0,  Tr("Expand All"),  [d]{ d->ExpandAll(); });
+    mkBtn("col",  0,  Tr("Collapse All"),[d]{ d->CollapseAll(); });
+    mkBtn("rpos", 0,  Tr("Reset Pos"),    [d]{ d->ResetNodePositions(); });
 
     // Line 2 — info label.
     auto lbl = DemoKit::AddCaption(bar, "inf_"+d->GetIdentifier(), info);
@@ -130,7 +129,7 @@ static std::shared_ptr<UltraCanvasContainer> MakeControlBar(
 static std::shared_ptr<UltraCanvasContainer> MakeDemo1(long& uid)
 {
     std::vector<NodeSpec> specs = {
-        {"root",  "All Species",    "",     "",       1.00},
+        {"root",  Tr("All Species"),    "",     "",       1.00},
         {"cA",    "Mammalia",       "root", "",       0.85},
         {"cA1",   "Primates",       "cA",   "grpA",  0.55},
         {"A1a",   "Homo sapiens",   "cA1",  "grpA",  0.0, 0.98f},
@@ -235,7 +234,7 @@ static std::shared_ptr<UltraCanvasContainer> MakeDemo1(long& uid)
     d->onInternalNodeClicked = [](const std::string& id){ };
 
     auto bar = MakeControlBar(uid, d,
-        "Top-Down | Proportional | 29 taxa | Colored clades | Double-click = collapse");
+        Tr("Top-Down | Proportional | 29 taxa | Colored clades | Double-click = collapse"));
     bar->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     outer->AddChild(bar);
 
@@ -303,7 +302,7 @@ static std::shared_ptr<UltraCanvasContainer> MakeDemo2(long& uid)
     d->SetStyle(s);
 
     auto bar = MakeControlBar(uid, d,
-        "Left-Right | Cladogram | Curved S-curves | DblClick=collapse | Ctrl+drag=move");
+        Tr("Left-Right | Cladogram | Curved S-curves | DblClick=collapse | Ctrl+drag=move"));
     bar->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     outer->AddChild(bar);
 
@@ -386,7 +385,7 @@ static std::shared_ptr<UltraCanvasContainer> MakeDemo3(long& uid)
     d->SetStyle(s);
 
     auto bar = MakeControlBar(uid, d,
-        "Radial | Tree of Life | Angular arcs | DblClick=collapse | Ctrl+drag=move");
+        Tr("Radial | Tree of Life | Angular arcs | DblClick=collapse | Ctrl+drag=move"));
     bar->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     outer->AddChild(bar);
 
@@ -495,7 +494,7 @@ static std::shared_ptr<UltraCanvasContainer> MakeDemo4(long& uid)
     d->SetStyle(s);
 
     auto bar = MakeControlBar(uid, d,
-        "Phylogenetic | Curved branches | Group coloring | Click branch to show clade name");
+        Tr("Phylogenetic | Curved branches | Group coloring | Click branch to show clade name"));
     bar->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     outer->AddChild(bar);
 
@@ -512,29 +511,29 @@ static std::shared_ptr<UltraCanvasContainer> MakeDemo4(long& uid)
 static std::shared_ptr<UltraCanvasContainer> MakeDemo5(long& uid)
 {
     std::vector<NodeSpec> specs = {
-        {"root",    "Root",              "",       "",         1.00},
-        {"Anc",     "Ancient",           "root",   "ancient",  0.93},
+        {"root",    Tr("Root"),              "",       "",         1.00},
+        {"Anc",     Tr("Ancient"),           "root",   "ancient",  0.93},
         {"Chow",    "Chow-chow",         "Anc",    "ancient",  0.0, 0.95f},
         {"Akita",   "Akita",             "Anc",    "ancient",  0.0, 0.92f},
         {"Basenji", "Basenji",           "Anc",    "ancient",  0.0, 0.88f},
-        {"Mod",     "Modern",            "root",   "modern",   0.85},
+        {"Mod",     Tr("Modern"),            "root",   "modern",   0.85},
         {"Labrad",  "Labrador",          "Mod",    "modern",   0.0, 0.95f},
         {"GoldRet", "Golden Retriever",  "Mod",    "modern",   0.0, 0.93f},
         {"Beagle",  "Beagle",            "Mod",    "modern",   0.0, 0.90f},
-        {"MastT",   "Mastiff-Terrier",   "root",   "mastiff",  0.80},
+        {"MastT",   Tr("Mastiff-Terrier"),   "root",   "mastiff",  0.80},
         {"Bulldog", "Bulldog",           "MastT",  "mastiff",  0.0, 0.88f},
         {"Boxer",   "Boxer",             "MastT",  "mastiff",  0.0, 0.85f},
     };
     std::vector<DendrogramGroup> groups = {
-        {"ancient", "Ancient",
+        {"ancient", Tr("Ancient"),
          {"Chow","Akita","Basenji"},
          Color(200,170,30,255),Color(180,150,10,255),Color(200,170,30,255),
          GroupLabelPlacement::ArcText,GroupFillMode::SectorFill,0.28f},
-        {"modern",  "Modern",
+        {"modern",  Tr("Modern"),
          {"Labrad","GoldRet","Beagle"},
          Color(200,60,60,255), Color(180,40,40,255), Color(200,60,60,255),
          GroupLabelPlacement::ArcText,GroupFillMode::SectorFill,0.28f},
-        {"mastiff", "Mastiff-Terrier",
+        {"mastiff", Tr("Mastiff-Terrier"),
          {"Bulldog","Boxer"},
          Color(30,100,200,255),Color(20,80,180,255), Color(30,100,200,255),
          GroupLabelPlacement::ArcText,GroupFillMode::SectorFill,0.28f},
@@ -569,7 +568,7 @@ static std::shared_ptr<UltraCanvasContainer> MakeDemo5(long& uid)
     d->SetStyle(s);
 
     auto bar = MakeControlBar(uid, d,
-        "Circular | Sectors | DblClick=collapse | Ctrl+drag=move");
+        Tr("Circular | Sectors | DblClick=collapse | Ctrl+drag=move"));
     bar->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     outer->AddChild(bar);
 
@@ -586,18 +585,18 @@ static std::shared_ptr<UltraCanvasContainer> MakeDemo5(long& uid)
 static std::shared_ptr<UltraCanvasContainer> MakeDemo6(long& uid)
 {
     std::vector<NodeSpec> specs = {
-        {"root", "Root",          "",     "", 1.0},
-        {"cA",   "Clade A",       "root", "", 0.86},
-        {"cA1",  "Clade A1",      "cA",   "", 0.62},
-        {"A1a",  "Sp. A1a",       "cA1",  "", 0.0, 1.0f, 0.22f},
-        {"A1b",  "Sp. A1b",       "cA1",  "", 0.0, 1.0f, 0.30f},
-        {"cB",   "Clade B",       "root", "", 0.80},
-        {"cB1",  "Clade B1",      "cB",   "", 0.58},
-        {"B1a",  "Sp. B1a",       "cB1",  "", 0.0, 1.0f, 0.78f},
-        {"B1b",  "Sp. B1b",       "cB1",  "", 0.0, 1.0f, 0.82f},
-        {"cC",   "Clade C",       "root", "", 0.72},
-        {"cC1",  "Clade C1",      "cC",   "", 0.50},
-        {"C1a",  "Sp. C1a",       "cC1",  "", 0.0, 1.0f, 0.85f},
+        {"root", Tr("Root"),          "",     "", 1.0},
+        {"cA",   TrF("Clade {0}", "A"),       "root", "", 0.86},
+        {"cA1",  TrF("Clade {0}", "A1"),      "cA",   "", 0.62},
+        {"A1a",  TrF("Sp. {0}", "A1a"),       "cA1",  "", 0.0, 1.0f, 0.22f},
+        {"A1b",  TrF("Sp. {0}", "A1b"),       "cA1",  "", 0.0, 1.0f, 0.30f},
+        {"cB",   TrF("Clade {0}", "B"),       "root", "", 0.80},
+        {"cB1",  TrF("Clade {0}", "B1"),      "cB",   "", 0.58},
+        {"B1a",  TrF("Sp. {0}", "B1a"),       "cB1",  "", 0.0, 1.0f, 0.78f},
+        {"B1b",  TrF("Sp. {0}", "B1b"),       "cB1",  "", 0.0, 1.0f, 0.82f},
+        {"cC",   TrF("Clade {0}", "C"),       "root", "", 0.72},
+        {"cC1",  TrF("Clade {0}", "C1"),      "cC",   "", 0.50},
+        {"C1a",  TrF("Sp. {0}", "C1a"),       "cC1",  "", 0.0, 1.0f, 0.85f},
     };
 
     auto data  = BuildTree(specs,{});
@@ -633,7 +632,7 @@ static std::shared_ptr<UltraCanvasContainer> MakeDemo6(long& uid)
     d->SetStyle(s);
 
     auto bar = MakeControlBar(uid, d,
-        "Rate Gradient | Blue to Red | DblClick=collapse | Ctrl+drag=move");
+        Tr("Rate Gradient | Blue to Red | DblClick=collapse | Ctrl+drag=move"));
     bar->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     outer->AddChild(bar);
 
@@ -649,8 +648,8 @@ static std::shared_ptr<UltraCanvasContainer> MakeDemo6(long& uid)
 
 namespace UltraCanvas {
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateDendrogramExamples() {
-        auto container = DemoKit::CreatePage("DendrogramExamples", "Dendrogram Analysis Suite",
-            "Interactive visualization of hierarchical data - Scroll to zoom, drag to pan, double-click to collapse");
+        auto container = DemoKit::CreatePage("DendrogramExamples", Tr("Dendrogram Analysis Suite"),
+            Tr("Interactive visualization of hierarchical data - Scroll to zoom, drag to pan, double-click to collapse"));
         // The dendrograms zoom and pan themselves and re-fit on resize: the
         // page is the area's height and the tabs take what the title leaves.
         container->SetFillsArea(true);
@@ -668,12 +667,12 @@ namespace UltraCanvas {
 
         long uid = 2000L;
 
-        tabs->AddTab("Top-Down (E)",           MakeDemo1(uid));
-        tabs->AddTab("Left-Right Curved (F)", MakeDemo2(uid));
-        tabs->AddTab("Radial Tree of Life (G)", MakeDemo3(uid));
-        tabs->AddTab("Phylogenetic (H)",      MakeDemo4(uid));
-        tabs->AddTab("Circular Sectors (L)",  MakeDemo5(uid));
-        tabs->AddTab("Rate Gradient",         MakeDemo6(uid));
+        tabs->AddTab(Tr("Top-Down (E)"),           MakeDemo1(uid));
+        tabs->AddTab(Tr("Left-Right Curved (F)"), MakeDemo2(uid));
+        tabs->AddTab(Tr("Radial Tree of Life (G)"), MakeDemo3(uid));
+        tabs->AddTab(Tr("Phylogenetic (H)"),      MakeDemo4(uid));
+        tabs->AddTab(Tr("Circular Sectors (L)"),  MakeDemo5(uid));
+        tabs->AddTab(Tr("Rate Gradient"),         MakeDemo6(uid));
 
         return container;
     }

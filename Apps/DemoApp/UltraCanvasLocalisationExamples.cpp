@@ -46,13 +46,13 @@ std::string ShippedLocaleFolder() {
 // loads no set: the text at the site is the answer.
 std::string OriginText(LocalisationOrigin origin, const std::string& language) {
     switch (origin) {
-        case LocalisationOrigin::Application: return "from the application's own set";
-        case LocalisationOrigin::Library:     return "from a library's set";
-        case LocalisationOrigin::Base:        return "from a base set";
-        case LocalisationOrigin::Standard:    return "from the standard set";
+        case LocalisationOrigin::Application: return Tr("from the application's own set");
+        case LocalisationOrigin::Library:     return Tr("from a library's set");
+        case LocalisationOrigin::Base:        return Tr("from a base set");
+        case LocalisationOrigin::Standard:    return Tr("from the standard set");
         case LocalisationOrigin::Source:
-            return language == "en" ? "the English written at the site: English needs no catalogue"
-                                    : "the English written at the site: no set of " + language + " has it";
+            return language == "en" ? Tr("the English written at the site: English needs no catalogue")
+                                    : TrF("the English written at the site: no set of {0} has it", language);
     }
     return "";
 }
@@ -69,12 +69,12 @@ struct LocalisationDemoState {
 }  // namespace
 
 std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateLocalisationExamples() {
-    auto page = DemoKit::CreatePage("LocalisationPage", "Localisation",
-        "The text of every application in the person's language: Tr(\"Save\") gives the "
+    auto page = DemoKit::CreatePage("LocalisationPage", Tr("Localisation"),
+        Tr("The text of every application in the person's language: Tr(\"Save\") gives the "
         "translation of the English written at the site from three layers of catalogue files - "
         "the application's own set, the base sets of its kind and the standard set - and the "
         "English itself when none has it. Pick a language: every example below is answered "
-        "again, with the layer that answered it.");
+        "again, with the layer that answered it."));
 
     auto state = std::make_shared<LocalisationDemoState>();
     auto* app = UltraCanvasApplication::GetInstance();
@@ -96,12 +96,12 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateLocalisa
     };
 
     // ===== THE LANGUAGE =====
-    auto languageCard = DemoKit::AddCard(page, "LocalisationLanguageCard", "The language",
-        "Every language a catalogue ships for (media/locale/<lang>/), named as it names itself. "
+    auto languageCard = DemoKit::AddCard(page, "LocalisationLanguageCard", Tr("The language"),
+        Tr("Every language a catalogue ships for (media/locale/<lang>/), named as it names itself. "
         "The pick calls UltraLocalisation::SetLanguage, which loads the sets for the demo and "
-        "stays until it is picked again - what UOS-Settings' Language page does for every application.");
+        "stays until it is picked again - what UOS-Settings' Language page does for every application."));
     auto languageRow = DemoKit::AddRow(languageCard, "LocalisationLanguageRow", 10.0f);
-    DemoKit::AddText(languageRow, "LocalisationLanguageCaption", "Language");
+    DemoKit::AddText(languageRow, "LocalisationLanguageCaption", Tr("Language"));
     auto languagePicker = std::make_shared<UltraCanvasDropdown>("LocalisationLanguagePicker", 0, 0, 260, 26);
     DemoKit::AddFixed(languageRow, languagePicker);
     auto loadedText = DemoKit::AddCaption(languageCard, "LocalisationLoaded", "");
@@ -109,8 +109,8 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateLocalisa
     // ===== THE CALLS =====
     auto callsRow = DemoKit::AddRow(page, "LocalisationCallsRow");
 
-    auto trCard = DemoKit::AddCard(callsRow, "LocalisationTrCard", "Tr - a text",
-        "The English written at the site is the key; the standard set has the words every application uses.");
+    auto trCard = DemoKit::AddCard(callsRow, "LocalisationTrCard", Tr("Tr - a text"),
+        Tr("The English written at the site is the key; the standard set has the words every application uses."));
     code(trCard, "LocalisationTrCode", "Tr(\"Save\")");
     auto trResult = result(trCard, "LocalisationTrResult");
     auto trOrigin = DemoKit::AddCaption(trCard, "LocalisationTrOrigin", "");
@@ -118,31 +118,31 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateLocalisa
     auto trResult2 = result(trCard, "LocalisationTrResult2");
     auto trOrigin2 = DemoKit::AddCaption(trCard, "LocalisationTrOrigin2", "");
 
-    auto trcCard = DemoKit::AddCard(callsRow, "LocalisationTrCCard", "TrC - a text in a context",
-        "The same English can need two translations: a short month name is not the word, a button's "
-        "\"Open\" is not the adjective. The context goes in front of the key: \"month-short|Apr\".");
+    auto trcCard = DemoKit::AddCard(callsRow, "LocalisationTrCCard", Tr("TrC - a text in a context"),
+        Tr("The same English can need two translations: a short month name is not the word, a button's "
+        "\"Open\" is not the adjective. The context goes in front of the key: \"month-short|Apr\"."));
     code(trcCard, "LocalisationTrCCode", "TrC(\"month-short\", \"Apr\")");
     auto trcResult = result(trcCard, "LocalisationTrCResult");
     auto trcOrigin = DemoKit::AddCaption(trcCard, "LocalisationTrCOrigin", "");
 
-    auto trnCard = DemoKit::AddCard(callsRow, "LocalisationTrNCard", "TrN - a count",
-        "The singular and the plural are written at the site; the language's CLDR rule picks the "
+    auto trnCard = DemoKit::AddCard(callsRow, "LocalisationTrNCard", Tr("TrN - a count"),
+        Tr("The singular and the plural are written at the site; the language's CLDR rule picks the "
         "form - one, few, many, other - from the catalogue's forms, {n} is the count. Try 1, 2, 5, 21 "
-        "in Russian, Polish or Arabic.");
+        "in Russian, Polish or Arabic."));
     code(trnCard, "LocalisationTrNCode", "TrN(\"{n} file\", \"{n} files\", n)");
     auto trnRow = DemoKit::AddRow(trnCard, "LocalisationTrNRow", 10.0f);
-    DemoKit::AddText(trnRow, "LocalisationTrNCaption", "n =");
+    DemoKit::AddText(trnRow, "LocalisationTrNCaption", Tr("n ="));
     auto countSpinner = CreateIntSpinner("LocalisationTrNCount", 0, 0, 110, 26, 0, 1000, static_cast<int>(state->count), 1);
     DemoKit::AddFixed(trnRow, countSpinner);
     auto trnResult = result(trnCard, "LocalisationTrNResult");
     auto trnOrigin = DemoKit::AddCaption(trnCard, "LocalisationTrNOrigin", "");
 
-    auto trfCard = DemoKit::AddCard(callsRow, "LocalisationTrFCard", "TrF - a text with values",
-        "{0}, {1}, ... are filled after the translation, so a language can put them in its own order "
-        "or leave one out. The argument is any text or number.");
+    auto trfCard = DemoKit::AddCard(callsRow, "LocalisationTrFCard", Tr("TrF - a text with values"),
+        Tr("{0}, {1}, ... are filled after the translation, so a language can put them in its own order "
+        "or leave one out. The argument is any text or number."));
     code(trfCard, "LocalisationTrFCode", "TrF(\"\\\"{0}\\\" is write-protected.\", name)");
     auto trfRow = DemoKit::AddRow(trfCard, "LocalisationTrFRow", 10.0f);
-    DemoKit::AddText(trfRow, "LocalisationTrFCaption", "name =");
+    DemoKit::AddText(trfRow, "LocalisationTrFCaption", Tr("name ="));
     auto argumentField = std::make_shared<UltraCanvasTextInput>("LocalisationTrFArgument", 0, 0, 180, 26);
     argumentField->SetText(state->argument);
     DemoKit::AddFixed(trfRow, argumentField);
@@ -150,14 +150,14 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateLocalisa
     auto trfOrigin = DemoKit::AddCaption(trfCard, "LocalisationTrFOrigin", "");
 
     // ===== THE FILES =====
-    auto filesCard = DemoKit::AddCard(page, "LocalisationFilesCard", "The files",
-        std::string("The three layers of ") + kExampleApplication + " in the language picked above, looked up in "
+    auto filesCard = DemoKit::AddCard(page, "LocalisationFilesCard", Tr("The files"),
+        TrF("The three layers of {0} in the language picked above, looked up in "
         "this order: its own set, the base set it takes (\"@bases\" in its English file), the standard "
         "set; a file that is not there is skipped. A file of the same name under the UltraCanvas "
         "settings folder's locale/ is read before the shipped one, which is what the localisation "
-        "editor and a translator's override write.");
+        "editor and a translator's override write.", kExampleApplication));
     auto fileRow = DemoKit::AddRow(filesCard, "LocalisationFileRow", 10.0f);
-    DemoKit::AddText(fileRow, "LocalisationFileCaption", "File");
+    DemoKit::AddText(fileRow, "LocalisationFileCaption", Tr("File"));
     auto filePicker = std::make_shared<UltraCanvasDropdown>("LocalisationFilePicker", 0, 0, 360, 26);
     DemoKit::AddFixed(fileRow, filePicker);
     auto fileInfo = DemoKit::AddCaption(filesCard, "LocalisationFileInfo", "");
@@ -167,16 +167,16 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateLocalisa
     fileText->SetHeight(320);
     DemoKit::AddStretched(filesCard, fileText);
 
-    DemoKit::AddNotes(page, "LocalisationNotes", "Around the module", {
-        "scripts/extract_ui_strings.py rewrites the English catalogues from the Tr sites in the sources; "
+    DemoKit::AddNotes(page, "LocalisationNotes", Tr("Around the module"), {
+        Tr("scripts/extract_ui_strings.py rewrites the English catalogues from the Tr sites in the sources; "
         "scripts/wrap_ui_strings.py wraps a file's interface strings in Tr for review; "
-        "scripts/check_locale_catalogues.py is the CI gate over every translation.",
-        "scripts/translate_catalogue.py drafts a language's sets through UltraAI (ultralocalisation-draft); "
-        "a draft is marked \"@translated-by\" until a person reviews it.",
-        "The localisation editor (Widgets > Localisation Editor, UOS-Settings > Language > Translations, "
-        "Help > Translate ... in an application) edits the sets of an application in one grid.",
-        "Docs/Modules/UltraLocalisation/README.md is the module's documentation, "
-        "Docs/UltraCanvas/UltraCanvasLocalisationProposal.md its design.",
+        "scripts/check_locale_catalogues.py is the CI gate over every translation."),
+        Tr("scripts/translate_catalogue.py drafts a language's sets through UltraAI (ultralocalisation-draft); "
+        "a draft is marked \"@translated-by\" until a person reviews it."),
+        Tr("The localisation editor (Widgets > Localisation Editor, UOS-Settings > Language > Translations, "
+        "Help > Translate ... in an application) edits the sets of an application in one grid."),
+        Tr("Docs/Modules/UltraLocalisation/README.md is the module's documentation, "
+        "Docs/UltraCanvas/UltraCanvasLocalisationProposal.md its design."),
     });
 
     // ----- the files of the picked language -----
@@ -187,11 +187,11 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateLocalisa
             state->filePaths.push_back(relative);
             filePicker->AddItem(relative + "   -   " + layer, relative);
         };
-        add(language + "/" + kExampleApplication + ".json", "the application's own set");
-        add(language + "/base/" + std::string(kExampleBase) + ".json", "the base set");
-        add(language + "/Standard.json", "the standard set");
+        add(language + "/" + kExampleApplication + ".json", Tr("the application's own set"));
+        add(language + "/base/" + std::string(kExampleBase) + ".json", Tr("the base set"));
+        add(language + "/Standard.json", Tr("the standard set"));
         if (language != "en") {
-            add(std::string("en/") + kExampleApplication + ".json", "the English set: the keys, @bases, @inherited");
+            add(std::string("en/") + kExampleApplication + ".json", Tr("the English set: the keys, @bases, @inherited"));
         }
         if (state->fileIndex >= static_cast<int>(state->filePaths.size())) state->fileIndex = 0;
         filePicker->SetSelectedIndex(state->fileIndex);
@@ -202,7 +202,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateLocalisa
         const std::string path = ShippedLocaleFolder() + "/" + relative;
         std::error_code ec;
         if (!std::filesystem::is_regular_file(PathFromUtf8(path), ec)) {
-            fileInfo->SetText("media/locale/" + relative + " is not there: the lookup goes on to the next layer.");
+            fileInfo->SetText(TrF("{0} is not there: the lookup goes on to the next layer.", "media/locale/" + relative));
             fileText->SetText("");
             return;
         }
@@ -210,13 +210,13 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateLocalisa
         std::string error;
         std::string info = "media/locale/" + relative;
         if (UltraLocalisation::ReadCatalogue(path, catalogue, error)) {
-            info += "   -   " + std::to_string(catalogue.entries.size()) + " entries, "
-                  + std::to_string(catalogue.plurals.size()) + " plurals";
+            info += "   -   " + TrN("{n} entry", "{n} entries", static_cast<long long>(catalogue.entries.size())) + ", "
+                  + TrN("{n} plural", "{n} plurals", static_cast<long long>(catalogue.plurals.size()));
             if (!catalogue.bases.empty()) {
                 info += ", @bases:";
                 for (const std::string& base : catalogue.bases) info += " " + base;
             }
-            if (!catalogue.inherited.empty()) info += ", " + std::to_string(catalogue.inherited.size()) + " inherited";
+            if (!catalogue.inherited.empty()) info += ", " + TrN("{n} inherited", "{n} inherited", static_cast<long long>(catalogue.inherited.size()));
             if (!catalogue.translatedBy.empty()) info += ", @translated-by: " + catalogue.translatedBy;
         } else if (!error.empty()) {
             info += "   -   " + error;
@@ -240,16 +240,18 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateLocalisa
         trcOrigin->SetText(origin("month-short|Apr"));
 
         trnResult->SetText(TrN("{n} file", "{n} files", state->count));
-        trnOrigin->SetText(origin("{n} file") + "   -   CLDR category for " + std::to_string(state->count)
-                           + " in " + language + ": " + UltraLocalisation::PluralCategory(language, state->count));
+        trnOrigin->SetText(origin("{n} file") + "   -   "
+                           + TrF("CLDR category for {0} in {1}: {2}", state->count, language,
+                                 UltraLocalisation::PluralCategory(language, state->count)));
 
         trfResult->SetText(TrF("\"{0}\" is write-protected.", state->argument));
         trfOrigin->SetText(origin("\"{0}\" is write-protected."));
 
-        std::string loaded = "Loaded for " + UltraLocalisation::CurrentApplication() + " in " + language + ": "
-            + std::to_string(UltraLocalisation::EntryCount(LocalisationOrigin::Application)) + " of its own, "
-            + std::to_string(UltraLocalisation::EntryCount(LocalisationOrigin::Base)) + " from its base sets, "
-            + std::to_string(UltraLocalisation::EntryCount(LocalisationOrigin::Standard)) + " standard entries.";
+        std::string loaded = TrF("Loaded for {0} in {1}: {2} of its own, {3} from its base sets, {4} standard entries.",
+            UltraLocalisation::CurrentApplication(), language,
+            UltraLocalisation::EntryCount(LocalisationOrigin::Application),
+            UltraLocalisation::EntryCount(LocalisationOrigin::Base),
+            UltraLocalisation::EntryCount(LocalisationOrigin::Standard));
         loadedText->SetText(loaded);
     };
 

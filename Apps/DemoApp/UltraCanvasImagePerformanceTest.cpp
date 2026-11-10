@@ -768,7 +768,7 @@ namespace UltraCanvas {
             // ---- Title (top row) ----
             ctx->SetFontSize(titleFontSize);
             ctx->SetTextPaint(titleColor);
-            const std::string title = "Codec comparison: file size / encode / decode";
+            const std::string title = Tr("Codec comparison: file size / encode / decode");
             auto dims = ctx->GetTextLineDimensions(title);
             int tw = dims.width, th = dims.height;
 
@@ -784,7 +784,7 @@ namespace UltraCanvas {
 
             int legendTextH = 0;
             {
-                auto dims = ctx->GetTextLineDimensions("Decode time");
+                auto dims = ctx->GetTextLineDimensions(Tr("Decode time"));
                 int probeW = dims.width, probeH = dims.height;
                 legendTextH = probeH;
             }
@@ -799,11 +799,11 @@ namespace UltraCanvas {
             const int swatchY = legendRowTop + (legendRowH - swatchSize)  / 2;
             const int textY   = legendRowTop + (legendRowH - legendTextH) / 2;
 
-            struct LegendItem { Color c; const char* label; };
+            struct LegendItem { Color c; std::string label; };
             const LegendItem items[3] = {
-                    { sizeBarColor,   "File size" },
-                    { encodeBarColor, "Encode time" },
-                    { decodeBarColor, "Decode time" }
+                    { sizeBarColor,   Tr("File size") },
+                    { encodeBarColor, Tr("Encode time") },
+                    { decodeBarColor, Tr("Decode time") }
             };
 
             // Per-item layout constants (must match draw loop below)
@@ -881,8 +881,8 @@ namespace UltraCanvas {
             // Axis captions
             ctx->SetFontSize(axisFontSize);
             ctx->SetTextPaint(textColor);
-            ctx->DrawText("Size", {plot.x - 28, plot.y - 8});
-            ctx->DrawText("Time", {plot.x + plot.width + 6, plot.y - 8});
+            ctx->DrawText(Tr("Size"), {plot.x - 28, plot.y - 8});
+            ctx->DrawText(Tr("Time"), {plot.x + plot.width + 6, plot.y - 8});
         }
 
         void RenderBars(IRenderContext* ctx, const Rect2Di& plot,
@@ -947,19 +947,19 @@ namespace UltraCanvas {
     if (hoveredIndex < static_cast<int>(results.size())) {
         const CodecResult& r = results[hoveredIndex];
         if (r.succeeded) {
-            lines.push_back({ "Size:    " + FormatBytes(r.encodedSizeBytes), tooltipTextColor, false });
-            lines.push_back({ "Encode:  " + FormatMs(r.encodeTimeMs), tooltipTextColor, false });
-            lines.push_back({ "Decode:  " + FormatMs(r.decodeTimeMs), tooltipTextColor, false });
+            lines.push_back({ TrF("Size:    {0}", FormatBytes(r.encodedSizeBytes)), tooltipTextColor, false });
+            lines.push_back({ TrF("Encode:  {0}", FormatMs(r.encodeTimeMs)), tooltipTextColor, false });
+            lines.push_back({ TrF("Decode:  {0}", FormatMs(r.decodeTimeMs)), tooltipTextColor, false });
 
             if (r.decodeTimeMs > 0.01) {
                 double mbPerSec = (static_cast<double>(r.encodedSizeBytes) / (1024.0 * 1024.0)) /
                                   (r.decodeTimeMs / 1000.0);
                 std::ostringstream oss;
-                oss << std::fixed << std::setprecision(1) << mbPerSec << " MB/s decode";
-                lines.push_back({ oss.str(), tooltipMutedColor, false });
+                oss << std::fixed << std::setprecision(1) << mbPerSec;
+                lines.push_back({ TrF("{0} MB/s decode", oss.str()), tooltipMutedColor, false });
             }
         } else {
-            lines.push_back({ "Failed", tooltipErrorColor, true });
+            lines.push_back({ Tr("Failed"), tooltipErrorColor, true });
             if (!r.errorMessage.empty()) {
                 const std::string& msg = r.errorMessage;
                 const size_t wrapAt = 48;
@@ -979,7 +979,7 @@ namespace UltraCanvas {
             }
         }
     } else {
-        lines.push_back({ "No result yet", tooltipMutedColor, false });
+        lines.push_back({ Tr("No result yet"), tooltipMutedColor, false });
     }
 
     // Constants for layout
@@ -1207,11 +1207,11 @@ namespace UltraCanvas {
         rebuildActiveCodecs();
 
         // ========== PAGE (title + description) ==========
-        auto root = DemoKit::CreatePage("ImagePerfTestMain", "Image Performance Test",
-                "Choose a bitmap image, then run the benchmark to compare how each codec "
+        auto root = DemoKit::CreatePage("ImagePerfTestMain", Tr("Image Performance Test"),
+                Tr("Choose a bitmap image, then run the benchmark to compare how each codec "
                 "handles it: file size, encode time, and decode time are shown as three "
                 "bars per format. Click any thumbnail below the chart to view the "
-                "re-encoded result at 1:1.");
+                "re-encoded result at 1:1."));
         // The chart takes the height the toolbar and status leave: the page is
         // the display area's height, not its content's.
         root->SetFillsArea(true);
@@ -1228,7 +1228,7 @@ namespace UltraCanvas {
         toolbar->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
 
         // As wide as its text, at least the 160 px it had.
-        state->chooseBtn = std::make_shared<UltraCanvasButton>("PerfChooseBtn", "Choose Image");
+        state->chooseBtn = std::make_shared<UltraCanvasButton>("PerfChooseBtn", Tr("Choose Image"));
         {
             CSSLayout::BoxConstraints limits;
             limits.minWidth = CSSLayout::Dimension::Px(160);
@@ -1236,7 +1236,7 @@ namespace UltraCanvas {
             state->chooseBtn->boxConstraints = limits;
         }
 
-        state->infoLabel = DemoKit::CreateText("PerfImageInfo", "No image loaded");
+        state->infoLabel = DemoKit::CreateText("PerfImageInfo", Tr("No image loaded"));
         state->infoLabel->SetFontSize(11);
         state->infoLabel->SetTextColor(Color(60, 60, 60, 255));
 
@@ -1258,7 +1258,7 @@ namespace UltraCanvas {
         }
         state->settingsBtn->SetIcon(NormalizePath(GetResourcesDir() + "media/icons/settings.svg"));
         state->settingsBtn->SetIconSize(18, 18);
-        state->settingsBtn->SetTooltip("Settings: the formats the benchmark encodes and decodes");
+        state->settingsBtn->SetTooltip(Tr("Settings: the formats the benchmark encodes and decodes"));
 
         DemoKit::Add(toolbar, state->chooseBtn);
         toolbar->AddSpacer(8);
@@ -1312,7 +1312,7 @@ namespace UltraCanvas {
 
         // ========== STATUS LINE ==========
         state->statusLabel = DemoKit::AddText(card, "PerfStatusLabel",
-                "Click Choose Image to pick a bitmap.");
+                Tr("Click Choose Image to pick a bitmap."));
         state->statusLabel->SetFontSize(11);
         state->statusLabel->SetTextColor(Color(60, 60, 60, 255));
 
@@ -1393,13 +1393,13 @@ namespace UltraCanvas {
         auto runBenchmark = [state, root, cleanupTempFiles, resetThumbnails]() {
             if (state->benchmarkRunning) return;   // re-entry guard
             if (!state->sourceImage || !state->sourceImage->IsValid()) {
-                state->statusLabel->SetText("Status: No image loaded.");
+                state->statusLabel->SetText(Tr("Status: No image loaded."));
                 return;
             }
 
             if (state->activeCodecIndices.empty()) {
                 state->statusLabel->SetText(
-                        "Status: No format is switched on - choose some in the settings (gear).");
+                        Tr("Status: No format is switched on - choose some in the settings (gear)."));
                 return;
             }
 
@@ -1427,7 +1427,7 @@ namespace UltraCanvas {
 
             state->chooseBtn->SetDisabled(true);
             state->settingsBtn->SetDisabled(true);
-            state->statusLabel->SetText("Status: Benchmark running...");
+            state->statusLabel->SetText(Tr("Status: Benchmark running..."));
 
             auto win = root->GetWindow();
             auto ctx = root->GetRenderContext();
@@ -1472,7 +1472,7 @@ namespace UltraCanvas {
                         r.errorMessage = ex.what();
                     } catch (...) {
                         r.succeeded = false;
-                        r.errorMessage = "unknown exception during encode";
+                        r.errorMessage = Tr("unknown exception during encode");
                     }
                 }
 
@@ -1512,7 +1512,7 @@ namespace UltraCanvas {
                         r.decodeTimeMs = d1 - d0;
                         r.succeeded = true;
                     } else {
-                        r.errorMessage = "decode failed";
+                        r.errorMessage = Tr("decode failed");
                         r.succeeded = false;
                     }
                 }
@@ -1538,14 +1538,16 @@ namespace UltraCanvas {
                 state->chartElem->SetResults(state->results);
 
                 // Live status update
-                std::ostringstream s;
-                s << "Status: " << r.name
-                  << (r.succeeded ? " OK" : " FAILED") << "  ("
-                  << (slot + 1) << "/" << activeCount << ")";
-                if (!r.succeeded && !r.errorMessage.empty()) {
-                    s << " - " << r.errorMessage;
+                std::string liveStatus;
+                if (r.succeeded) {
+                    liveStatus = TrF("Status: {0} OK  ({1}/{2})", r.name, slot + 1, activeCount);
+                } else if (r.errorMessage.empty()) {
+                    liveStatus = TrF("Status: {0} FAILED  ({1}/{2})", r.name, slot + 1, activeCount);
+                } else {
+                    liveStatus = TrF("Status: {0} FAILED  ({1}/{2}) - {3}", r.name, slot + 1, activeCount,
+                                     r.errorMessage);
                 }
-                state->statusLabel->SetText(s.str());
+                state->statusLabel->SetText(liveStatus);
 
                 // Force immediate repaint so the bar chart grows codec-by-codec
                 if (win && ctx) {
@@ -1556,10 +1558,8 @@ namespace UltraCanvas {
             // Final summary
             int okCount = 0;
             for (const auto& rr : state->results) if (rr.succeeded) ++okCount;
-            std::ostringstream finalMsg;
-            finalMsg << "Status: Benchmark complete (" << okCount << "/"
-                     << activeCount << " codecs succeeded)";
-            state->statusLabel->SetText(finalMsg.str());
+            state->statusLabel->SetText(TrF("Status: Benchmark complete ({0}/{1} codecs succeeded)",
+                                            okCount, activeCount));
 
             state->chooseBtn->SetDisabled(false);
             state->settingsBtn->SetDisabled(false);
@@ -1581,8 +1581,8 @@ namespace UltraCanvas {
                                 runBenchmark](const std::string& path) -> bool {
             auto img = UCImage::Load(path, false);
             if (!img || !img->IsValid()) {
-                state->statusLabel->SetText("Status: Failed to load " + path);
-                state->infoLabel->SetText("No image loaded");
+                state->statusLabel->SetText(TrF("Status: Failed to load {0}", path));
+                state->infoLabel->SetText(Tr("No image loaded"));
                 state->infoLabel->RequestRedraw();
                 return false;
             }
@@ -1601,10 +1601,8 @@ namespace UltraCanvas {
             // it, the new filename only appears the next time something else
             // triggers a repaint of the toolbar.
             std::string fileName = PathToUtf8(PathFromUtf8(path).filename());
-            std::ostringstream info;
-            info << fileName << "  -  "
-                 << state->sourceWidth << " x " << state->sourceHeight << " px";
-            state->infoLabel->SetText(info.str());
+            state->infoLabel->SetText(TrF("{0}  -  {1} x {2} px", fileName,
+                                          state->sourceWidth, state->sourceHeight));
             state->infoLabel->RequestRedraw();
 
             // Auto-run: kick the benchmark immediately after a successful load.
@@ -1616,11 +1614,11 @@ namespace UltraCanvas {
         // Every picture type this build reads - FileLoader's list.
         state->chooseBtn->SetOnClick([loadSourceImage, root]() {
             FileDialogOptions opts;
-            opts.SetTitle("Choose Image for Benchmark")
+            opts.SetTitle(Tr("Choose Image for Benchmark"))
                 .SetInitialDirectory(InitialImageDir())
                 .SetParentWindow(root->GetWindow());
-            UltraCanvasFileLoader::AddLoadTypes(opts, "Bitmap Images", {MediaFormatCategory::Bitmap});
-            opts.AddFilter("All Files", "*");
+            UltraCanvasFileLoader::AddLoadTypes(opts, Tr("Bitmap Images"), {MediaFormatCategory::Bitmap});
+            opts.AddFilter(Tr("All Files"), "*");
             UltraCanvasFileLoader::OpenFileDialog(opts,
                 [loadSourceImage](DialogResult result, const std::string& path) {
                     if (result != DialogResult::OK || path.empty()) return;   // user cancelled
@@ -1636,11 +1634,11 @@ namespace UltraCanvas {
             if (state->benchmarkRunning) return;
 
             DialogConfig config;
-            config.title = "Image Performance Test - Formats";
-            config.message = "Switch on the formats the benchmark encodes and decodes. "
-                             "The list holds every bitmap format this build both writes "
-                             "and reads (FileLoader's formats); each is written with its "
-                             "Save settings.";
+            config.title = Tr("Image Performance Test - Formats");
+            config.message = Tr("Switch on the formats the benchmark encodes and decodes. "
+                                "The list holds every bitmap format this build both writes "
+                                "and reads (FileLoader's formats); each is written with its "
+                                "Save settings.");
             config.dialogType = DialogType::Information;
             config.buttons = DialogButtons::NoButtons;
             config.width = 760;
@@ -1676,8 +1674,8 @@ namespace UltraCanvas {
             }
             dialog->AddDialogElement(grid);
 
-            dialog->AddCustomButton("Cancel", DialogResult::Cancel, DialogButtonRole::Cancel);
-            dialog->AddCustomButton("Apply", DialogResult::OK, DialogButtonRole::Default);
+            dialog->AddCustomButton(Tr("Cancel"), DialogResult::Cancel, DialogButtonRole::Cancel);
+            dialog->AddCustomButton(Tr("Apply"), DialogResult::OK, DialogButtonRole::Default);
 
             UltraCanvasDialogManager::ShowDialog(dialog,
                 [state, switches, rebuildActiveCodecs, runBenchmark, positionThumbnails](DialogResult result) {
@@ -1709,10 +1707,10 @@ namespace UltraCanvas {
                 UltraCanvasWindowBase* window = st->chooseBtn->GetWindow();
                 if (!window) return;   // the page was replaced before this ran
                 UltraCanvasDialogManager::ShowInformation(
-                        "Upload an image to start the test.\n\n"
+                        Tr("Upload an image to start the test.\n\n"
                         "Click Choose Image and pick a bitmap: every format switched on "
-                        "in the settings (gear) is then encoded and decoded.",
-                        "Image Performance Test", nullptr, window);
+                        "in the settings (gear) is then encoded and decoded."),
+                        Tr("Image Performance Test"), nullptr, window);
             });
         }
 

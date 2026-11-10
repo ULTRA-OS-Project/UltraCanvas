@@ -94,9 +94,9 @@ std::shared_ptr<UltraCanvasContainer> MakeComparisonTab(
                .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     row->layoutItem.SetFlex(1, 1, CSSLayout::Dimension::Px(0))
                    .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-    row->AddChild(MakeSide(idPrefix + "Legacy", "Legacy: " + legacyClass,
+    row->AddChild(MakeSide(idPrefix + "Legacy", TrF("Legacy: {0}", legacyClass),
                            Color(246, 238, 226, 255), legacy));
-    row->AddChild(MakeSide(idPrefix + "Engine", "Chart engine: " + engineClass,
+    row->AddChild(MakeSide(idPrefix + "Engine", TrF("Chart engine: {0}", engineClass),
                            Color(226, 238, 248, 255), engine));
     tab->AddChild(row);
 
@@ -144,9 +144,9 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateChartEng
     using namespace EngineComparison;
 
     auto container = DemoKit::CreatePage("EngineCompareContainer",
-        "Chart Engine Comparison - Legacy Charts and Their Engine Ports",
-        "Each tab shows a legacy chart (left) and its port onto UltraCanvasChartEngineElement (right) on the same data. The ports get the engine's axes, "
-        "grid, measured layout, legend, solved label plan, themes, hover tooltips and entrance animation for free - compare them here before the switch.");
+        Tr("Chart Engine Comparison - Legacy Charts and Their Engine Ports"),
+        Tr("Each tab shows a legacy chart (left) and its port onto UltraCanvasChartEngineElement (right) on the same data. The ports get the engine's axes, "
+        "grid, measured layout, legend, solved label plan, themes, hover tooltips and entrance animation for free - compare them here before the switch."));
     // The charts take the area's height: the page is the area's height and
     // the family tabs' card takes what the title and description leave.
     container->SetFillsArea(true);
@@ -158,10 +158,10 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateChartEng
     auto families = std::make_shared<UltraCanvasTabbedContainer>("EngineCompareFamilies", 0, 0, 0, 0);
     families->SetTabPosition(TabPosition::Top);
     families->SetTabStyle(TabStyle::Modern);
-    families->AddTab("Lines & Points", MakeFamilyTabs("EngineCompareLines", LineFamilyTabs()));
-    families->AddTab("Bars & Flows", MakeFamilyTabs("EngineCompareBars", BarFamilyTabs()));
-    families->AddTab("Finance & Mosaics", MakeFamilyTabs("EngineCompareFinance", FinanceAndGridTabs()));
-    families->AddTab("Polar", MakeFamilyTabs("EngineComparePolar", PolarFamilyTabs()));
+    families->AddTab(Tr("Lines & Points"), MakeFamilyTabs("EngineCompareLines", LineFamilyTabs()));
+    families->AddTab(Tr("Bars & Flows"), MakeFamilyTabs("EngineCompareBars", BarFamilyTabs()));
+    families->AddTab(Tr("Finance & Mosaics"), MakeFamilyTabs("EngineCompareFinance", FinanceAndGridTabs()));
+    families->AddTab(Tr("Polar"), MakeFamilyTabs("EngineComparePolar", PolarFamilyTabs()));
     // From a zero basis it takes exactly the card's height.
     DemoKit::Add(card, families, 1);
     families->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0)).SetFlexShrink(1);

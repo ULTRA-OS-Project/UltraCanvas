@@ -74,9 +74,9 @@ std::shared_ptr<UltraCanvasContainer> AddContentRow(const std::shared_ptr<UltraC
 
 std::shared_ptr<UltraCanvasUIElement> Build3DRibbonTab() {
     auto tab = MakeTab("PyramidRibbonTab");
-    AddTabHeading(tab, "Ribbon", "Product strategy pyramid",
-                  "Extruded tiers with a keyed list on the left and a colour ribbon per tier "
-                  "on the right");
+    AddTabHeading(tab, "Ribbon", Tr("Product strategy pyramid"),
+                  Tr("Extruded tiers with a keyed list on the left and a colour ribbon per tier "
+                  "on the right"));
 
     auto chart = std::make_shared<UltraCanvasPyramidChart>("RibbonPyramid", 0, 0, kChartW, 600);
     chart->SetShapeMode(PyramidShapeMode::Pyramid3D);
@@ -110,14 +110,14 @@ std::shared_ptr<UltraCanvasUIElement> Build3DRibbonTab() {
     chart->SetCalloutSpacing(7.0);
     chart->SetCalloutFontSizes(11.5, 9.5);
 
-    struct Tier { const char* label; const char* title; const char* body; };
+    struct Tier { std::string label; std::string title; std::string body; };
     const Tier tiers[] = {
-        {"Vision",     "Vision",     "Where the product is going in three years"},
-        {"Strategy",   "Strategy",   "The bets we are making to get there"},
-        {"Roadmap",    "Roadmap",    "Sequenced themes for the next four quarters"},
-        {"Epics",      "Epics",      "Bodies of work a squad can own end to end"},
-        {"Stories",    "Stories",    "Sliced work that ships inside one sprint"},
-        {"Tasks",      "Tasks",      "The day to day units the team pulls from"},
+        {Tr("Vision"), Tr("Vision"), Tr("Where the product is going in three years")},
+        {Tr("Strategy"), Tr("Strategy"), Tr("The bets we are making to get there")},
+        {Tr("Roadmap"), Tr("Roadmap"), Tr("Sequenced themes for the next four quarters")},
+        {Tr("Epics"), Tr("Epics"), Tr("Bodies of work a squad can own end to end")},
+        {Tr("Stories"), Tr("Stories"), Tr("Sliced work that ships inside one sprint")},
+        {Tr("Tasks"), Tr("Tasks"), Tr("The day to day units the team pulls from")},
     };
     for (const auto& tier : tiers) {
         PyramidLevel level(tier.label);
@@ -139,9 +139,9 @@ std::shared_ptr<UltraCanvasUIElement> Build3DRibbonTab() {
 
 std::shared_ptr<UltraCanvasUIElement> BuildSpectrumTab() {
     auto tab = MakeTab("PyramidSpectrumTab");
-    AddTabHeading(tab, "Spectrum", "Maslow's hierarchy of needs",
-                  "Wrapped copy inside each tier, numbered on the leading edge - the text is "
-                  "fitted to the narrow end of every trapezoid");
+    AddTabHeading(tab, "Spectrum", Tr("Maslow's hierarchy of needs"),
+                  Tr("Wrapped copy inside each tier, numbered on the leading edge - the text is "
+                  "fitted to the narrow end of every trapezoid"));
 
     auto chart = std::make_shared<UltraCanvasPyramidChart>("SpectrumPyramid", 0, 0, 900, 610);
     chart->SetShapeMode(PyramidShapeMode::Pyramid3D);
@@ -164,13 +164,13 @@ std::shared_ptr<UltraCanvasUIElement> BuildSpectrumTab() {
     chart->SetBadgeStyle(14.0, 11.0);
     chart->SetBadgeColors(Color(255, 255, 255, 235), Color(60, 62, 70, 255));
 
-    struct Need { const char* label; const char* body; };
+    struct Need { std::string label; std::string body; };
     const Need needs[] = {
-        {"Self-actualisation", "Becoming everything one is capable of becoming"},
-        {"Esteem",             "Respect, status, recognition, strength and freedom"},
-        {"Love and belonging", "Friendship, intimacy, family and a sense of connection"},
-        {"Safety",             "Personal security, employment, health and property"},
-        {"Physiological",      "Air, water, food, shelter, sleep, clothing and warmth"},
+        {Tr("Self-actualisation"), Tr("Becoming everything one is capable of becoming")},
+        {Tr("Esteem"), Tr("Respect, status, recognition, strength and freedom")},
+        {Tr("Love and belonging"), Tr("Friendship, intimacy, family and a sense of connection")},
+        {Tr("Safety"), Tr("Personal security, employment, health and property")},
+        {Tr("Physiological"), Tr("Air, water, food, shelter, sleep, clothing and warmth")},
     };
     for (const auto& need : needs) {
         PyramidLevel level(need.label);
@@ -190,9 +190,9 @@ std::shared_ptr<UltraCanvasUIElement> BuildSpectrumTab() {
 
 std::shared_ptr<UltraCanvasUIElement> BuildOutlineTab() {
     auto tab = MakeTab("PyramidOutlineTab");
-    AddTabHeading(tab, "Outline", "Pyramid diagram - 5 hierarchy levels",
-                  "Outline-only tiers with a detached capstone, described by icon cards joined "
-                  "on straight connectors");
+    AddTabHeading(tab, "Outline", Tr("Pyramid diagram - 5 hierarchy levels"),
+                  Tr("Outline-only tiers with a detached capstone, described by icon cards joined "
+                  "on straight connectors"));
 
     auto chart = std::make_shared<UltraCanvasPyramidChart>("OutlinePyramid", 0, 0, kChartW, 600);
     chart->SetShapeMode(PyramidShapeMode::SegmentedPyramid);
@@ -221,17 +221,17 @@ std::shared_ptr<UltraCanvasUIElement> BuildOutlineTab() {
     chart->SetCalloutCardStyle(Color(255, 255, 255, 255), Color(216, 222, 230, 255));
     chart->SetBadgeStyle(17.0, 11.0);
 
-    struct Row { const char* label; const char* title; const char* body; const char* icon; };
+    struct Row { std::string label; std::string title; std::string body; const char* icon; };
     const Row rows[] = {
-        {"Govern",  "Governance",   "Policy, ownership and the decisions only leadership makes",
+        {Tr("Govern"), Tr("Governance"), Tr("Policy, ownership and the decisions only leadership makes"),
          "media/icons/settings.png"},
-        {"Measure", "Measurement",  "The instrumentation that tells us whether any of this works",
+        {Tr("Measure"), Tr("Measurement"), Tr("The instrumentation that tells us whether any of this works"),
          "media/icons/chart-icon.png"},
-        {"Build",   "Delivery",     "Teams shipping the changes the strategy asked for",
+        {Tr("Build"), Tr("Delivery"), Tr("Teams shipping the changes the strategy asked for"),
          "media/icons/computer.png"},
-        {"Enable",  "Enablement",   "Tooling and training so delivery is not the bottleneck",
+        {Tr("Enable"), Tr("Enablement"), Tr("Tooling and training so delivery is not the bottleneck"),
          "media/icons/python.png"},
-        {"Operate", "Operations",   "Running what we have already shipped, reliably",
+        {Tr("Operate"), Tr("Operations"), Tr("Running what we have already shipped, reliably"),
          "media/icons/check.png"},
     };
     for (const auto& row : rows) {
@@ -254,9 +254,9 @@ std::shared_ptr<UltraCanvasUIElement> BuildOutlineTab() {
 
 std::shared_ptr<UltraCanvasUIElement> BuildFlatTab() {
     auto tab = MakeTab("PyramidFlatTab");
-    AddTabHeading(tab, "Flat", "Flat presentation layouts",
-                  "Left: detached tiers with a plain label column. Right: a solid gradient "
-                  "pyramid beside a numbered list");
+    AddTabHeading(tab, "Flat", Tr("Flat presentation layouts"),
+                  Tr("Left: detached tiers with a plain label column. Right: a solid gradient "
+                  "pyramid beside a numbered list"));
 
     auto row = AddContentRow(tab, "PyramidFlatRow");
 
@@ -276,11 +276,11 @@ std::shared_ptr<UltraCanvasUIElement> BuildFlatTab() {
     options->SetLevelLabelColumnWidth(110.0);
     options->SetLevelLabelFontSize(12.0);
 
-    options->AddLevel("Option 01");
-    options->AddLevel("Option 02");
-    options->AddLevel("Option 03");
-    options->AddLevel("Option 04");
-    options->AddLevel("Option 05");
+    options->AddLevel(Tr("Option 01"));
+    options->AddLevel(Tr("Option 02"));
+    options->AddLevel(Tr("Option 03"));
+    options->AddLevel(Tr("Option 04"));
+    options->AddLevel(Tr("Option 05"));
     DemoKit::AddFixed(row, options);
 
     // ----- Right: the business solutions layout -----
@@ -306,10 +306,10 @@ std::shared_ptr<UltraCanvasUIElement> BuildFlatTab() {
     solutions->SetBadgePlacement(PyramidBadgePlacement::BadgeOnLabelRow);
     solutions->SetBadgeStyle(11.0, 9.5);
 
-    solutions->AddLevel("Shared Ambition");
-    solutions->AddLevel("True Results");
-    solutions->AddLevel("Development");
-    solutions->AddLevel("Executive coaching services");
+    solutions->AddLevel(Tr("Shared Ambition"));
+    solutions->AddLevel(Tr("True Results"));
+    solutions->AddLevel(Tr("Development"));
+    solutions->AddLevel(Tr("Executive coaching services"));
     DemoKit::AddFixed(row, solutions);
 
     return tab;
@@ -323,9 +323,9 @@ std::shared_ptr<UltraCanvasUIElement> BuildFlatTab() {
 
 std::shared_ptr<UltraCanvasUIElement> BuildAlternatingTab() {
     auto tab = MakeTab("PyramidAlternatingTab");
-    AddTabHeading(tab, "Alternating", "Pyramid infographic",
-                  "Callout blocks alternating either side of the pyramid, numbered with a ghost "
-                  "numeral in the tier's colour");
+    AddTabHeading(tab, "Alternating", Tr("Pyramid infographic"),
+                  Tr("Callout blocks alternating either side of the pyramid, numbered with a ghost "
+                  "numeral in the tier's colour"));
 
     auto chart = std::make_shared<UltraCanvasPyramidChart>("AlternatingPyramid", 0, 0,
                                                            kChartW, 600);
@@ -349,15 +349,15 @@ std::shared_ptr<UltraCanvasUIElement> BuildAlternatingTab() {
     chart->SetGhostNumberStyle(30.0, 0.32);
     chart->SetCalloutFontSizes(12.0, 10.0);
 
-    struct Block { const char* label; const char* title; const char* body; };
+    struct Block { std::string label; std::string title; std::string body; };
     const Block blocks[] = {
-        {"Insight",  "Insight",  "It is now much easier and more effective to start with the "
-                                 "question the business is actually asking"},
-        {"Analysis", "Analysis", "Turning that question into something a dataset can answer, "
-                                 "then checking the answer holds"},
-        {"Delivery", "Delivery", "Shipping the finding where the decision is made, not into a "
-                                 "report nobody opens"},
-        {"Adoption", "Adoption", "Following through until the new behaviour is the default one"},
+        {Tr("Insight"), Tr("Insight"), Tr("It is now much easier and more effective to start with the "
+                                 "question the business is actually asking")},
+        {Tr("Analysis"), Tr("Analysis"), Tr("Turning that question into something a dataset can answer, "
+                                 "then checking the answer holds")},
+        {Tr("Delivery"), Tr("Delivery"), Tr("Shipping the finding where the decision is made, not into a "
+                                 "report nobody opens")},
+        {Tr("Adoption"), Tr("Adoption"), Tr("Following through until the new behaviour is the default one")},
     };
     for (const auto& block : blocks) {
         PyramidLevel level(block.label);
@@ -379,9 +379,9 @@ std::shared_ptr<UltraCanvasUIElement> BuildAlternatingTab() {
 
 std::shared_ptr<UltraCanvasUIElement> BuildDataTab() {
     auto tab = MakeTab("PyramidDataTab");
-    AddTabHeading(tab, "Data", "Automated test suite",
-                  "Area-proportional tiers, so each trapezoid's drawn area is its share of the "
-                  "suite. The dashed silhouette is the 70/20/10 ideal");
+    AddTabHeading(tab, "Data", Tr("Automated test suite"),
+                  Tr("Area-proportional tiers, so each trapezoid's drawn area is its share of the "
+                  "suite. The dashed silhouette is the 70/20/10 ideal"));
 
     auto chart = std::make_shared<UltraCanvasPyramidChart>("DataPyramid", 0, 0, 640, 600);
     chart->SetShapeMode(PyramidShapeMode::SolidPyramid);
@@ -406,9 +406,9 @@ std::shared_ptr<UltraCanvasUIElement> BuildDataTab() {
     chart->SetReferenceShape({0.10, 0.20, 0.70});
     chart->SetHighlightTopHeavy(true);
 
-    chart->AddLevel("End to end", 1180, "Full browser journeys");
-    chart->AddLevel("Integration", 1240, "Service boundaries and contracts");
-    chart->AddLevel("Unit", 4120, "Single units, no I/O");
+    chart->AddLevel(Tr("End to end"), 1180, Tr("Full browser journeys"));
+    chart->AddLevel(Tr("Integration"), 1240, Tr("Service boundaries and contracts"));
+    chart->AddLevel(Tr("Unit"), 4120, Tr("Single units, no I/O"));
 
     // The notes take the rest of the width (at least 300 px, or they wrap
     // under the chart).
@@ -416,7 +416,7 @@ std::shared_ptr<UltraCanvasUIElement> BuildDataTab() {
     DemoKit::AddFixed(row, chart);
 
     auto notes = DemoKit::CreateText("DataNotes",
-        "Reading the chart\n\n"
+        Tr("Reading the chart\n\n"
         "The tiers are area-proportional, which is the setting that makes a pyramid honest. "
         "A pyramid's sides taper, so a band's area grows faster than its height: sizing tiers "
         "by height alone quietly overstates every tier near the base.\n\n"
@@ -432,7 +432,7 @@ std::shared_ptr<UltraCanvasUIElement> BuildDataTab() {
         "Top-heavy warning\n\n"
         "SetHighlightTopHeavy outlines the first tier that outweighs the one holding it up - "
         "the ice-cream-cone suite. Every tier here is larger than the one above it, so nothing is "
-        "flagged - the suite is badly proportioned, not upside down.");
+        "flagged - the suite is badly proportioned, not upside down."));
     notes->SetFontSize(10.5f);
     notes->SetTextColor(Color(70, 70, 70, 255));
     notes->SetMargin(20, 0, 0, 0);
@@ -450,8 +450,8 @@ std::shared_ptr<UltraCanvasUIElement> BuildDataTab() {
 
 std::shared_ptr<UltraCanvasUIElement> BuildPlaygroundTab() {
     auto tab = MakeTab("PyramidPlaygroundTab");
-    AddTabHeading(tab, "Play", "Playground",
-                  "Customer base by tier, split by region. Every mode below is live");
+    AddTabHeading(tab, "Play", Tr("Playground"),
+                  Tr("Customer base by tier, split by region. Every mode below is live"));
 
     auto chart = std::make_shared<UltraCanvasPyramidChart>("PlayPyramid", 0, 0, 630, 600);
     chart->SetShapeMode(PyramidShapeMode::SegmentedPyramid);
@@ -472,16 +472,16 @@ std::shared_ptr<UltraCanvasUIElement> BuildPlaygroundTab() {
     // Sub-segments turn each tier into a stack: the pyramid still widens, but every
     // band also shows what it is made of.
     struct Tier {
-        const char* label;
+        std::string label;
         double emea;
         double amer;
         double apac;
     };
     const Tier tiers[] = {
-        {"Strategic",   40,   65,   25},
-        {"Enterprise", 210,  340,  150},
-        {"Mid-market", 880, 1120,  640},
-        {"SMB",       3400, 4100, 2300},
+        {Tr("Strategic"),   40,   65,   25},
+        {Tr("Enterprise"), 210,  340,  150},
+        {Tr("Mid-market"), 880, 1120,  640},
+        {Tr("SMB"),       3400, 4100, 2300},
     };
 
     const Color kEmea(64, 145, 160, 255);
@@ -490,11 +490,11 @@ std::shared_ptr<UltraCanvasUIElement> BuildPlaygroundTab() {
 
     for (const auto& row : tiers) {
         PyramidLevel level(row.label, row.emea + row.amer + row.apac);
-        level.segments.push_back(PyramidSubSegment("EMEA", row.emea, kEmea));
-        level.segments.push_back(PyramidSubSegment("Americas", row.amer, kAmer));
-        level.segments.push_back(PyramidSubSegment("APAC", row.apac, kApac));
+        level.segments.push_back(PyramidSubSegment(Tr("EMEA"), row.emea, kEmea));
+        level.segments.push_back(PyramidSubSegment(Tr("Americas"), row.amer, kAmer));
+        level.segments.push_back(PyramidSubSegment(Tr("APAC"), row.apac, kApac));
         level.targetValue = level.levelValue * 1.12;   // The plan for this tier
-        level.description = "Accounts in this tier, split by region";
+        level.description = Tr("Accounts in this tier, split by region");
         chart->AddLevel(level);
     }
 
@@ -516,19 +516,19 @@ std::shared_ptr<UltraCanvasUIElement> BuildPlaygroundTab() {
         label->SetMargin(4, 0, 0, 0);
     };
 
-    DemoKit::AddHeading(panel, "PlayControls", "Chart controls");
+    DemoKit::AddHeading(panel, "PlayControls", Tr("Chart controls"));
 
-    addControlLabel("PlayShapeLabel", "Shape mode");
+    addControlLabel("PlayShapeLabel", Tr("Shape mode"));
 
     auto shapeDrop = std::make_shared<UltraCanvasDropdown>("PlayShape", 0, 0, 340, 26);
-    shapeDrop->AddItem("Segmented tiers");
-    shapeDrop->AddItem("Solid pyramid");
-    shapeDrop->AddItem("Stepped ziggurat");
-    shapeDrop->AddItem("Extruded 3D");
-    shapeDrop->AddItem("Card rows");
-    shapeDrop->AddItem("Skewed infographic");
-    shapeDrop->AddItem("Exploded tiers");
-    shapeDrop->AddItem("Bar style (accessible)");
+    shapeDrop->AddItem(Tr("Segmented tiers"));
+    shapeDrop->AddItem(Tr("Solid pyramid"));
+    shapeDrop->AddItem(Tr("Stepped ziggurat"));
+    shapeDrop->AddItem(Tr("Extruded 3D"));
+    shapeDrop->AddItem(Tr("Card rows"));
+    shapeDrop->AddItem(Tr("Skewed infographic"));
+    shapeDrop->AddItem(Tr("Exploded tiers"));
+    shapeDrop->AddItem(Tr("Bar style (accessible)"));
     shapeDrop->SetSelectedIndex(0, false);
     shapeDrop->onSelectionChanged = [chart](int index, const DropdownItem&) {
         switch (index) {
@@ -544,14 +544,14 @@ std::shared_ptr<UltraCanvasUIElement> BuildPlaygroundTab() {
     };
     DemoKit::AddStretched(panel, shapeDrop);
 
-    addControlLabel("PlayScaleLabel", "Scale mode - what the geometry actually encodes");
+    addControlLabel("PlayScaleLabel", Tr("Scale mode - what the geometry actually encodes"));
 
     auto scaleDrop = std::make_shared<UltraCanvasDropdown>("PlayScale", 0, 0, 340, 26);
-    scaleDrop->AddItem("Equal levels (hierarchy)");
-    scaleDrop->AddItem("Height proportional");
-    scaleDrop->AddItem("Width proportional");
-    scaleDrop->AddItem("Area proportional (honest)");
-    scaleDrop->AddItem("Volume proportional (for 3D)");
+    scaleDrop->AddItem(Tr("Equal levels (hierarchy)"));
+    scaleDrop->AddItem(Tr("Height proportional"));
+    scaleDrop->AddItem(Tr("Width proportional"));
+    scaleDrop->AddItem(Tr("Area proportional (honest)"));
+    scaleDrop->AddItem(Tr("Volume proportional (for 3D)"));
     scaleDrop->SetSelectedIndex(0, false);
     scaleDrop->onSelectionChanged = [chart](int index, const DropdownItem&) {
         switch (index) {
@@ -564,13 +564,13 @@ std::shared_ptr<UltraCanvasUIElement> BuildPlaygroundTab() {
     };
     DemoKit::AddStretched(panel, scaleDrop);
 
-    addControlLabel("PlayDirLabel", "Direction");
+    addControlLabel("PlayDirLabel", Tr("Direction"));
 
     auto directionDrop = std::make_shared<UltraCanvasDropdown>("PlayDir", 0, 0, 340, 26);
-    directionDrop->AddItem("Apex up");
-    directionDrop->AddItem("Apex down (inverted)");
-    directionDrop->AddItem("Apex left");
-    directionDrop->AddItem("Apex right");
+    directionDrop->AddItem(Tr("Apex up"));
+    directionDrop->AddItem(Tr("Apex down (inverted)"));
+    directionDrop->AddItem(Tr("Apex left"));
+    directionDrop->AddItem(Tr("Apex right"));
     directionDrop->SetSelectedIndex(0, false);
     directionDrop->onSelectionChanged = [chart](int index, const DropdownItem&) {
         switch (index) {
@@ -582,13 +582,13 @@ std::shared_ptr<UltraCanvasUIElement> BuildPlaygroundTab() {
     };
     DemoKit::AddStretched(panel, directionDrop);
 
-    addControlLabel("PlayFillLabel", "Fill style (tiers here carry their own segment colours)");
+    addControlLabel("PlayFillLabel", Tr("Fill style (tiers here carry their own segment colours)"));
 
     auto fillDrop = std::make_shared<UltraCanvasDropdown>("PlayFill", 0, 0, 340, 26);
-    fillDrop->AddItem("Solid");
-    fillDrop->AddItem("Gradient");
-    fillDrop->AddItem("Outline only");
-    fillDrop->AddItem("Outline with tint");
+    fillDrop->AddItem(Tr("Solid"));
+    fillDrop->AddItem(Tr("Gradient"));
+    fillDrop->AddItem(Tr("Outline only"));
+    fillDrop->AddItem(Tr("Outline with tint"));
     fillDrop->SetSelectedIndex(0, false);
     fillDrop->onSelectionChanged = [chart](int index, const DropdownItem&) {
         switch (index) {
@@ -600,13 +600,13 @@ std::shared_ptr<UltraCanvasUIElement> BuildPlaygroundTab() {
     };
     DemoKit::AddStretched(panel, fillDrop);
 
-    addControlLabel("PlayApexLabel", "Apex");
+    addControlLabel("PlayApexLabel", Tr("Apex"));
 
     auto apexDrop = std::make_shared<UltraCanvasDropdown>("PlayApex", 0, 0, 340, 26);
-    apexDrop->AddItem("Closes to a point");
-    apexDrop->AddItem("Closes to a plateau");
-    apexDrop->AddItem("Top tier keeps a readable width");
-    apexDrop->AddItem("Detached capstone");
+    apexDrop->AddItem(Tr("Closes to a point"));
+    apexDrop->AddItem(Tr("Closes to a plateau"));
+    apexDrop->AddItem(Tr("Top tier keeps a readable width"));
+    apexDrop->AddItem(Tr("Detached capstone"));
     apexDrop->SetSelectedIndex(0, false);
     apexDrop->onSelectionChanged = [chart](int index, const DropdownItem&) {
         chart->SetApexCap(index == 3 ? PyramidApexCap::ApexSeparateCap
@@ -619,15 +619,15 @@ std::shared_ptr<UltraCanvasUIElement> BuildPlaygroundTab() {
     };
     DemoKit::AddStretched(panel, apexDrop);
 
-    addControlLabel("PlayCalloutLabel", "Callout style");
+    addControlLabel("PlayCalloutLabel", Tr("Callout style"));
 
     auto calloutDrop = std::make_shared<UltraCanvasDropdown>("PlayCallout", 0, 0, 340, 26);
-    calloutDrop->AddItem("None");
-    calloutDrop->AddItem("Plain text");
-    calloutDrop->AddItem("Colour ribbons");
-    calloutDrop->AddItem("Rounded cards");
-    calloutDrop->AddItem("Icon cards");
-    calloutDrop->AddItem("Numbered blocks");
+    calloutDrop->AddItem(Tr("None"));
+    calloutDrop->AddItem(Tr("Plain text"));
+    calloutDrop->AddItem(Tr("Colour ribbons"));
+    calloutDrop->AddItem(Tr("Rounded cards"));
+    calloutDrop->AddItem(Tr("Icon cards"));
+    calloutDrop->AddItem(Tr("Numbered blocks"));
     calloutDrop->SetSelectedIndex(0, false);
     calloutDrop->onSelectionChanged = [chart](int index, const DropdownItem&) {
         switch (index) {
@@ -641,7 +641,7 @@ std::shared_ptr<UltraCanvasUIElement> BuildPlaygroundTab() {
     };
     DemoKit::AddStretched(panel, calloutDrop);
 
-    addControlLabel("PlayGapLabel", "Gap between tiers");
+    addControlLabel("PlayGapLabel", Tr("Gap between tiers"));
 
     auto gapSlider = std::make_shared<UltraCanvasSlider>("PlayGap", 0, 0, 340, 24);
     gapSlider->SetRange(0.0f, 40.0f);
@@ -652,41 +652,41 @@ std::shared_ptr<UltraCanvasUIElement> BuildPlaygroundTab() {
     DemoKit::AddStretched(panel, gapSlider);
 
     // Checkboxes are as wide as their text.
-    auto halfCheck = std::make_shared<UltraCanvasCheckbox>("PlayHalf", "Half pyramid (one vertical face)");
+    auto halfCheck = std::make_shared<UltraCanvasCheckbox>("PlayHalf", Tr("Half pyramid (one vertical face)"));
     halfCheck->onStateChanged = [chart](CheckedState, CheckedState newState) {
         chart->SetHalfPyramid(newState == CheckedState::Checked);
     };
     DemoKit::Add(panel, halfCheck);
 
-    auto plinthCheck = std::make_shared<UltraCanvasCheckbox>("PlayPlinth", "Base plinth");
+    auto plinthCheck = std::make_shared<UltraCanvasCheckbox>("PlayPlinth", Tr("Base plinth"));
     plinthCheck->onStateChanged = [chart](CheckedState, CheckedState newState) {
         chart->SetShowBasePlinth(newState == CheckedState::Checked);
     };
     DemoKit::Add(panel, plinthCheck);
 
-    auto targetCheck = std::make_shared<UltraCanvasCheckbox>("PlayTarget", "Target overlay (plan + 12%)");
+    auto targetCheck = std::make_shared<UltraCanvasCheckbox>("PlayTarget", Tr("Target overlay (plan + 12%)"));
     targetCheck->onStateChanged = [chart](CheckedState, CheckedState newState) {
         chart->SetShowTargetOverlay(newState == CheckedState::Checked);
     };
     DemoKit::Add(panel, targetCheck);
 
-    auto topHeavyCheck = std::make_shared<UltraCanvasCheckbox>("PlayTopHeavy", "Flag a top-heavy tier");
+    auto topHeavyCheck = std::make_shared<UltraCanvasCheckbox>("PlayTopHeavy", Tr("Flag a top-heavy tier"));
     topHeavyCheck->onStateChanged = [chart](CheckedState, CheckedState newState) {
         chart->SetHighlightTopHeavy(newState == CheckedState::Checked);
     };
     DemoKit::Add(panel, topHeavyCheck);
 
-    auto dimCheck = std::make_shared<UltraCanvasCheckbox>("PlayDim", "Dim tiers you are not hovering");
+    auto dimCheck = std::make_shared<UltraCanvasCheckbox>("PlayDim", Tr("Dim tiers you are not hovering"));
     dimCheck->onStateChanged = [chart](CheckedState, CheckedState newState) {
         chart->SetDimUnhoveredLevels(newState == CheckedState::Checked);
     };
     DemoKit::Add(panel, dimCheck);
 
-    auto selectionTitle = DemoKit::AddText(panel, "PlaySelTitle", "Selected tier");
+    auto selectionTitle = DemoKit::AddText(panel, "PlaySelTitle", Tr("Selected tier"));
     selectionTitle->SetFontWeight(FontWeight::Bold);
     selectionTitle->SetMargin(8, 0, 0, 0);
 
-    auto selection = DemoKit::CreateText("PlaySelection", "Click a tier to read its figures here.");
+    auto selection = DemoKit::CreateText("PlaySelection", Tr("Click a tier to read its figures here."));
     selection->SetFontSize(11);
     selection->SetTextColor(Color(70, 70, 70, 255));
     DemoKit::Add(panel, selection);
@@ -699,16 +699,20 @@ std::shared_ptr<UltraCanvasUIElement> BuildPlaygroundTab() {
         PyramidLevelMetrics metrics = chart->GetLevelMetrics(levelIndex);
         chart->SetSelectedLevel(levelIndex);
 
-        char buffer[512];
-        std::snprintf(buffer, sizeof(buffer),
-                      "%s\n\nAccounts: %.0f\nOf total: %.1f%%\nOf base: %.1f%%\n"
-                      "Against the tier below: %.1f%%\n\nEMEA %.0f / Americas %.0f / APAC %.0f",
-                      level.levelLabel.c_str(), metrics.value,
-                      metrics.percentOfTotal, metrics.percentOfBase, metrics.ratioToLevelBelow,
-                      level.segments.size() > 0 ? level.segments[0].value : 0.0,
-                      level.segments.size() > 1 ? level.segments[1].value : 0.0,
-                      level.segments.size() > 2 ? level.segments[2].value : 0.0);
-        selection->SetText(buffer);
+        // The numbers keep their fixed decimals; the sentence goes through TrF.
+        auto fixed = [](double value, int decimals) {
+            char buffer[64];
+            std::snprintf(buffer, sizeof(buffer), "%.*f", decimals, value);
+            return std::string(buffer);
+        };
+        selection->SetText(TrF("{0}\n\nAccounts: {1}\nOf total: {2}%\nOf base: {3}%\n"
+                               "Against the tier below: {4}%\n\nEMEA {5} / Americas {6} / APAC {7}",
+                               level.levelLabel, fixed(metrics.value, 0),
+                               fixed(metrics.percentOfTotal, 1), fixed(metrics.percentOfBase, 1),
+                               fixed(metrics.ratioToLevelBelow, 1),
+                               fixed(level.segments.size() > 0 ? level.segments[0].value : 0.0, 0),
+                               fixed(level.segments.size() > 1 ? level.segments[1].value : 0.0, 0),
+                               fixed(level.segments.size() > 2 ? level.segments[2].value : 0.0, 0)));
     };
 
     return tab;
@@ -721,10 +725,10 @@ std::shared_ptr<UltraCanvasUIElement> BuildPlaygroundTab() {
 // =============================================================================
 
 std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreatePyramidChartExamples() {
-    auto page = DemoKit::CreatePage("PyramidChartExamples", "Pyramid Chart Examples",
-        "An extruded 3D pyramid with colour ribbon callouts, a spectrum solid with its text inside the "
+    auto page = DemoKit::CreatePage("PyramidChartExamples", Tr("Pyramid Chart Examples"),
+        Tr("An extruded 3D pyramid with colour ribbon callouts, a spectrum solid with its text inside the "
         "tiers, an outlined hierarchy with icon cards, flat presentation layouts, an alternating "
-        "infographic, an area-proportional data pyramid and a playground exposing every mode live.");
+        "infographic, an area-proportional data pyramid and a playground exposing every mode live."));
     // The tabs take the area's height; a tab taller than that scrolls.
     page->SetFillsArea(true);
 
@@ -736,13 +740,13 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreatePyramidC
     tabs->SetTabStyle(TabStyle::Rounded);
     tabs->SetTabHeight(32);
 
-    tabs->AddTab("3D Ribbon Pyramid", Build3DRibbonTab());
-    tabs->AddTab("Spectrum 3D", BuildSpectrumTab());
-    tabs->AddTab("Outline Hierarchy", BuildOutlineTab());
-    tabs->AddTab("Flat & Minimal", BuildFlatTab());
-    tabs->AddTab("Alternating Infographic", BuildAlternatingTab());
-    tabs->AddTab("Data Pyramid", BuildDataTab());
-    tabs->AddTab("Playground", BuildPlaygroundTab());
+    tabs->AddTab(Tr("3D Ribbon Pyramid"), Build3DRibbonTab());
+    tabs->AddTab(Tr("Spectrum 3D"), BuildSpectrumTab());
+    tabs->AddTab(Tr("Outline Hierarchy"), BuildOutlineTab());
+    tabs->AddTab(Tr("Flat & Minimal"), BuildFlatTab());
+    tabs->AddTab(Tr("Alternating Infographic"), BuildAlternatingTab());
+    tabs->AddTab(Tr("Data Pyramid"), BuildDataTab());
+    tabs->AddTab(Tr("Playground"), BuildPlaygroundTab());
     tabs->SetActiveTab(0);
 
     DemoKit::Add(card, tabs, 1);

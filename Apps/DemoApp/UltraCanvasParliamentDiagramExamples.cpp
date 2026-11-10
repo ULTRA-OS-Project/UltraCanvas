@@ -34,14 +34,14 @@ namespace UltraCanvas {
         std::string ChamberSummary(const UltraCanvasParliamentDiagram& diagram) {
             int total = diagram.GetTotalSeats();
             int gov = diagram.GetGovernmentSeats();
-            std::string text = "Total seats: " + std::to_string(total) +
-                               "\nMajority: " + std::to_string(diagram.GetMajorityThreshold()) +
-                               "\nParties: " + std::to_string(diagram.GetPartyCount());
+            std::string text = TrF("Total seats: {0}", total) +
+                               "\n" + TrF("Majority: {0}", diagram.GetMajorityThreshold()) +
+                               "\n" + TrF("Parties: {0}", diagram.GetPartyCount());
             if (gov > 0) {
-                text += "\n\nGovernment: " + std::to_string(gov) + " (" + PercentText(gov, total) + ")";
-                text += diagram.GovernmentHasMajority() ? "\nHas a majority" : "\nShort of a majority";
+                text += "\n\n" + TrF("Government: {0} ({1})", gov, PercentText(gov, total));
+                text += "\n" + (diagram.GovernmentHasMajority() ? Tr("Has a majority") : Tr("Short of a majority"));
             }
-            text += "\n\nHover a seat or legend entry for its party.";
+            text += "\n\n" + Tr("Hover a seat or legend entry for its party.");
             return text;
         }
 
@@ -51,10 +51,10 @@ namespace UltraCanvas {
             if (!party.abbreviation.empty() && party.abbreviation != party.name) {
                 text += "\n(" + party.abbreviation + ")";
             }
-            text += "\n\nSeats: " + std::to_string(party.seats) +
-                    "\nShare: " + PercentText(party.seats, total);
-            text += party.government ? "\nGovernment side" : "\nOpposition / other";
-            if (party.vacant) text += "\nVacant seats";
+            text += "\n\n" + TrF("Seats: {0}", party.seats) +
+                    "\n" + TrF("Share: {0}", PercentText(party.seats, total));
+            text += "\n" + (party.government ? Tr("Government side") : Tr("Opposition / other"));
+            if (party.vacant) text += "\n" + Tr("Vacant seats");
             return text;
         }
 
@@ -69,15 +69,19 @@ namespace UltraCanvas {
                 members += p.LegendName();
             }
             if (members.empty()) {
-                return "Coalition builder: click parties to add them to a coalition. " +
-                       std::to_string(needed) + " of " + std::to_string(total) + " seats are needed.";
+                return TrF("Coalition builder: click parties to add them to a coalition. "
+                           "{0} of {1} seats are needed.", needed, total);
             }
-            std::string text = "Coalition: " + members + " = " + std::to_string(gov) + " seats. ";
+            std::string text = LocalisationDetail::Substitute(
+                    TrN("Coalition: {0} = {n} seat.", "Coalition: {0} = {n} seats.", gov), {members}) + " ";
             if (gov >= needed) {
-                text += "Majority reached (" + std::to_string(gov - needed + 1) + " seats to spare).";
+                text += TrN("Majority reached ({n} seat to spare).", "Majority reached ({n} seats to spare).",
+                            gov - needed + 1);
             } else {
-                text += std::to_string(needed - gov) + " more seats needed for a majority of " +
-                        std::to_string(needed) + ".";
+                text += LocalisationDetail::Substitute(
+                        TrN("{n} more seat needed for a majority of {0}.",
+                            "{n} more seats needed for a majority of {0}.", needed - gov),
+                        {std::to_string(needed)});
             }
             return text;
         }
@@ -89,9 +93,9 @@ namespace UltraCanvas {
         // for the 170 px controls and the card's padding.
         const float SIDEBAR_CARD_W = SIDEBAR_W + 2 * DemoKit::kCardPadding + 2;
 
-        auto mainContainer = DemoKit::CreatePage("parlMainContainer", "Parliament Diagram",
-                "Seat charts of legislatures: hemicycle, horseshoe, circle, Westminster benches and grid "
-                "layouts with a majority marker, legend and coalition building");
+        auto mainContainer = DemoKit::CreatePage("parlMainContainer", Tr("Parliament Diagram"),
+                Tr("Seat charts of legislatures: hemicycle, horseshoe, circle, Westminster benches and grid "
+                "layouts with a majority marker, legend and coalition building"));
 
         // Controls | diagram tabs | chamber statistics. The sidebars keep
         // their width; on a narrow window the cards wrap under each other.
@@ -119,7 +123,7 @@ namespace UltraCanvas {
         auto leftSidebar = DemoKit::AddCard(contentContainer, "parlLeftSidebar", "", "", SIDEBAR_CARD_W);
         leftSidebar->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
 
-        DemoKit::Add(leftSidebar, makeSectionTitle("parlControlsTitle", "CONTROLS"));
+        DemoKit::Add(leftSidebar, makeSectionTitle("parlControlsTitle", Tr("CONTROLS")));
 
         // A bold caption over a dropdown that takes the sidebar's width
         auto addCaption = [&](const std::string& id, const std::string& text) {
@@ -143,67 +147,67 @@ namespace UltraCanvas {
             return button;
         };
 
-        addCaption("parlLayoutLabel", "Layout");
+        addCaption("parlLayoutLabel", Tr("Layout"));
         auto layoutSelector = addDropdown("parlLayoutSelector");
-        layoutSelector->AddItem("Hemicycle (180 deg)", "hemicycle");
-        layoutSelector->AddItem("Horseshoe (240 deg)", "horseshoe");
-        layoutSelector->AddItem("Circle", "circle");
-        layoutSelector->AddItem("Westminster", "westminster");
-        layoutSelector->AddItem("Grid", "grid");
+        layoutSelector->AddItem(Tr("Hemicycle (180 deg)"), "hemicycle");
+        layoutSelector->AddItem(Tr("Horseshoe (240 deg)"), "horseshoe");
+        layoutSelector->AddItem(Tr("Circle"), "circle");
+        layoutSelector->AddItem(Tr("Westminster"), "westminster");
+        layoutSelector->AddItem(Tr("Grid"), "grid");
         layoutSelector->SetSelectedIndex(0);
 
-        addCaption("parlShapeLabel", "Seat Shape");
+        addCaption("parlShapeLabel", Tr("Seat Shape"));
         auto shapeSelector = addDropdown("parlShapeSelector");
-        shapeSelector->AddItem("Circle", "circle");
-        shapeSelector->AddItem("Square", "square");
-        shapeSelector->AddItem("Rounded Square", "rounded");
+        shapeSelector->AddItem(Tr("Circle"), "circle");
+        shapeSelector->AddItem(Tr("Square"), "square");
+        shapeSelector->AddItem(Tr("Rounded Square"), "rounded");
         shapeSelector->SetSelectedIndex(0);
 
-        addCaption("parlRowsLabel", "Rows / Benches");
+        addCaption("parlRowsLabel", Tr("Rows / Benches"));
         auto rowsSelector = addDropdown("parlRowsSelector");
-        rowsSelector->AddItem("Automatic", "0");
+        rowsSelector->AddItem(Tr("Automatic"), "0");
         rowsSelector->AddItem("4", "4");
         rowsSelector->AddItem("6", "6");
         rowsSelector->AddItem("8", "8");
         rowsSelector->AddItem("12", "12");
         rowsSelector->SetSelectedIndex(0);
 
-        addCaption("parlLegendLabel", "Legend");
+        addCaption("parlLegendLabel", Tr("Legend"));
         auto legendSelector = addDropdown("parlLegendSelector");
-        legendSelector->AddItem("Bottom", "bottom");
-        legendSelector->AddItem("Right", "right");
-        legendSelector->AddItem("Hidden", "hidden");
+        legendSelector->AddItem(Tr("Bottom"), "bottom");
+        legendSelector->AddItem(Tr("Right"), "right");
+        legendSelector->AddItem(Tr("Hidden"), "hidden");
         legendSelector->SetSelectedIndex(0);
 
-        addCaption("parlMajorityLabel", "Majority Marker");
+        addCaption("parlMajorityLabel", Tr("Majority Marker"));
         auto majoritySelector = addDropdown("parlMajoritySelector");
-        majoritySelector->AddItem("Shown", "on");
-        majoritySelector->AddItem("Hidden", "off");
+        majoritySelector->AddItem(Tr("Shown"), "on");
+        majoritySelector->AddItem(Tr("Hidden"), "off");
         majoritySelector->SetSelectedIndex(0);
 
-        addCaption("parlGovLabel", "Government Highlight");
+        addCaption("parlGovLabel", Tr("Government Highlight"));
         auto govSelector = addDropdown("parlGovSelector");
-        govSelector->AddItem("Off", "off");
-        govSelector->AddItem("Fade opposition", "on");
+        govSelector->AddItem(Tr("Off"), "off");
+        govSelector->AddItem(Tr("Fade opposition"), "on");
         govSelector->SetSelectedIndex(0);
 
-        addCaption("parlThemeLabel", "Theme");
+        addCaption("parlThemeLabel", Tr("Theme"));
         auto themeSelector = addDropdown("parlThemeSelector");
-        themeSelector->AddItem("Light", "light");
-        themeSelector->AddItem("Dark", "dark");
+        themeSelector->AddItem(Tr("Light"), "light");
+        themeSelector->AddItem(Tr("Dark"), "dark");
         themeSelector->SetSelectedIndex(0);
 
-        auto btnReset = addButton("parlBtnReset", "Reset View");
+        auto btnReset = addButton("parlBtnReset", Tr("Reset View"));
         btnReset->SetBackgroundColor(Color(108, 117, 125, 255));
 
-        auto btnReload = addButton("parlBtnReload", "Reload Sample Data");
+        auto btnReload = addButton("parlBtnReload", Tr("Reload Sample Data"));
         btnReload->SetBackgroundColor(Color(13, 110, 253, 255));
 
         auto helpBox = makeInfoPanel("parlHelpBox", 9, Color(255, 243, 205, 255));
-        helpBox->SetText("INTERACTION TIPS\n\n"
+        helpBox->SetText(Tr("INTERACTION TIPS\n\n"
                          "- Hover a seat or legend entry for its party\n"
                          "- Click to select a party\n"
-                         "- Coalition tab: click parties to add them");
+                         "- Coalition tab: click parties to add them"));
         helpBox->SetPadding(10);
         DemoKit::Add(leftSidebar, helpBox);
 
@@ -217,7 +221,7 @@ namespace UltraCanvas {
         DemoKit::AddFixed(centerCard, tabbedContainer);
 
         auto statusBar = DemoKit::CreateText("parlStatusBar",
-                "Ready - hover the seats, or open the Coalition Builder tab and click parties");
+                Tr("Ready - hover the seats, or open the Coalition Builder tab and click parties"));
         statusBar->SetFontSize(11);
         statusBar->SetBackgroundColor(Color(233, 236, 239, 255));
         statusBar->SetPadding(15);
@@ -228,19 +232,19 @@ namespace UltraCanvas {
         auto rightSidebar = DemoKit::AddCard(contentContainer, "parlRightSidebar", "", "", SIDEBAR_CARD_W);
         rightSidebar->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
 
-        DemoKit::Add(rightSidebar, makeSectionTitle("parlStatsTitle", "CHAMBER"));
+        DemoKit::Add(rightSidebar, makeSectionTitle("parlStatsTitle", Tr("CHAMBER")));
 
         auto statsPanel = makeInfoPanel("parlStatsPanel", 10, Color(248, 249, 250, 255));
         DemoKit::Add(rightSidebar, statsPanel);
 
-        DemoKit::Add(rightSidebar, makeSectionTitle("parlAboutTitle", "ABOUT THE LAYOUTS"));
+        DemoKit::Add(rightSidebar, makeSectionTitle("parlAboutTitle", Tr("ABOUT THE LAYOUTS")));
 
         auto aboutPanel = makeInfoPanel("parlAboutPanel", 9, Color(248, 249, 250, 255));
-        aboutPanel->SetText("Hemicycle: parties left to right in concentric arcs, seats per arc in "
+        aboutPanel->SetText(Tr("Hemicycle: parties left to right in concentric arcs, seats per arc in "
                             "proportion to its length.\n\n"
                             "Westminster: governing parties on the left benches, the rest opposite, "
                             "Speaker at the head of the aisle.\n\n"
-                            "Grid: a plain waffle of seats in party order.");
+                            "Grid: a plain waffle of seats in party order."));
         DemoKit::Add(rightSidebar, aboutPanel);
 
         // Every tab: a title above the diagram. The tab has the tabbed
@@ -270,43 +274,43 @@ namespace UltraCanvas {
 
         // TAB 1: BUNDESTAG - classic hemicycle
         std::shared_ptr<UltraCanvasContainer> bundestagTab;
-        auto bundestag = makeTab("parlBundestag", "German Bundestag, 2021 election", bundestagTab);
+        auto bundestag = makeTab("parlBundestag", Tr("German Bundestag, 2021 election"), bundestagTab);
         bundestag->SetParties(ParliamentDiagramSamples::Bundestag2021());
-        bundestag->SetChartTitle("Traffic-light coalition: SPD, Greens and FDP");
+        bundestag->SetChartTitle(Tr("Traffic-light coalition: SPD, Greens and FDP"));
         bundestag->SetHighlightGovernment(false);
 
         // TAB 2: EUROPEAN PARLIAMENT - wide horseshoe, legend on the right
         std::shared_ptr<UltraCanvasContainer> europeTab;
-        auto europe = makeTab("parlEurope", "European Parliament, 2024 election", europeTab);
+        auto europe = makeTab("parlEurope", Tr("European Parliament, 2024 election"), europeTab);
         europe->SetParties(ParliamentDiagramSamples::EuropeanParliament2024());
-        europe->SetChartTitle("Political groups, 720 seats");
+        europe->SetChartTitle(Tr("Political groups, 720 seats"));
         europe->SetArcSpan(200.0);
         europe->SetLegendPosition(ParliamentLegendPosition::Right);
 
         // TAB 3: HOUSE OF COMMONS - Westminster benches
         std::shared_ptr<UltraCanvasContainer> commonsTab;
-        auto commons = makeTab("parlCommons", "UK House of Commons, 2024 general election", commonsTab);
+        auto commons = makeTab("parlCommons", Tr("UK House of Commons, 2024 general election"), commonsTab);
         commons->SetParties(ParliamentDiagramSamples::HouseOfCommons2024());
-        commons->SetChartTitle("Government benches left, opposition right");
+        commons->SetChartTitle(Tr("Government benches left, opposition right"));
         commons->SetLayout(ParliamentLayout::Westminster);
         commons->SetSeatShape(ParliamentSeatShape::RoundedSquare);
 
         // TAB 4: COALITION BUILDER - click parties to form a majority
         std::shared_ptr<UltraCanvasContainer> coalitionTab;
-        auto coalition = makeTab("parlCoalition", "Coalition Builder", coalitionTab);
+        auto coalition = makeTab("parlCoalition", Tr("Coalition Builder"), coalitionTab);
         {
             auto list = ParliamentDiagramSamples::Bundestag2021();
             for (auto& p : list) p.government = false;
             coalition->SetParties(list);
         }
-        coalition->SetChartTitle("Click parties to add them to a coalition");
+        coalition->SetChartTitle(Tr("Click parties to add them to a coalition"));
         coalition->SetHighlightGovernment(true);
         coalition->SetEnableSelection(false);
 
-        tabbedContainer->AddTab("Bundestag", bundestagTab);
-        tabbedContainer->AddTab("European Parliament", europeTab);
-        tabbedContainer->AddTab("House of Commons", commonsTab);
-        tabbedContainer->AddTab("Coalition Builder", coalitionTab);
+        tabbedContainer->AddTab(Tr("Bundestag"), bundestagTab);
+        tabbedContainer->AddTab(Tr("European Parliament"), europeTab);
+        tabbedContainer->AddTab(Tr("House of Commons"), commonsTab);
+        tabbedContainer->AddTab(Tr("Coalition Builder"), coalitionTab);
 
         std::vector<std::shared_ptr<UltraCanvasParliamentDiagram>> allDiagrams = {
             bundestag, europe, commons, coalition
@@ -395,7 +399,7 @@ namespace UltraCanvas {
             govSelector->SetSelectedIndex(0);
             themeSelector->SetSelectedIndex(0);
             applyDefaults();
-            statusBar->SetText("View reset to the defaults of each tab");
+            statusBar->SetText(Tr("View reset to the defaults of each tab"));
         };
 
         btnReload->onClick = [bundestag, europe, commons, coalition, statsPanel, statusBar]() {
@@ -406,7 +410,7 @@ namespace UltraCanvas {
             for (auto& p : list) p.government = false;
             coalition->SetParties(list);
             statsPanel->SetText(ChamberSummary(*bundestag));
-            statusBar->SetText("Sample data reloaded");
+            statusBar->SetText(Tr("Sample data reloaded"));
         };
 
         // Hover reports the party into the stats panel; clicks into the status bar
@@ -421,9 +425,9 @@ namespace UltraCanvas {
             std::weak_ptr<UltraCanvasParliamentDiagram> weak = d;
             d->onPartyClick = [weak, statusBar](size_t, const ParliamentParty& party) {
                 if (auto diagram = weak.lock()) {
-                    statusBar->SetText(party.name + ": " + std::to_string(party.seats) + " of " +
-                                       std::to_string(diagram->GetTotalSeats()) + " seats (" +
-                                       PercentText(party.seats, diagram->GetTotalSeats()) + ")");
+                    statusBar->SetText(TrF("{0}: {1} of {2} seats ({3})", party.name, party.seats,
+                                           diagram->GetTotalSeats(),
+                                           PercentText(party.seats, diagram->GetTotalSeats())));
                 }
             };
         }
