@@ -1272,7 +1272,7 @@ bool ReadAvi(FileBytes& file, VideoFileInfo& out) {
         const Bytes h = file.Read(pos, 12);
         if (h.size() < 12) break;
         const uint32_t size = U32LE(h.data() + 4);
-        if (std::memcmp(h.data(), "LIST", 4) == 0 &&
+        if (std::memcmp(h.data(), "LIST", 4) == 0 && size >= 4 &&
             (std::memcmp(h.data() + 8, "hdrl", 4) == 0 || std::memcmp(h.data() + 8, "INFO", 4) == 0)) {
             const Bytes list = file.Read(pos + 12, size_t(std::min<uint32_t>(size - 4, 8u << 20)));
             parseChunks(parseChunks, list.data(), list.size(), 0);

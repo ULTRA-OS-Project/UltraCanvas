@@ -4836,7 +4836,8 @@ void UltraCanvasMediaViewer::UpdateDetailedInfo() {
 
         vos << "\n## Video\n";
         if (!vi.hasVideo && vi.width <= 0) {
-            vos << "No picture track was found in the file's header.\n";
+            vos << (vi.container.empty() ? "Not known for this kind of file.\n"
+                                         : "No picture track was found in the file's header.\n");
         } else {
             if (!vi.videoCodec.empty()) vos << "Codec: " << vi.videoCodec << "\n";
             if (!vi.videoProfile.empty()) vos << "Profile: " << vi.videoProfile << "\n";
