@@ -1,7 +1,7 @@
 // core/UltraCanvasPagination.cpp
 // Platform-independent pagination control implementation.
 // Version: 1.0.0
-// Last Modified: 2026-07-07
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasPagination.h"
@@ -15,6 +15,7 @@ namespace UltraCanvas {
                                                  float x, float y, float w, float h)
             : UltraCanvasUIElement(identifier, x, y, w, h) {
         mouseCursor = UCMouseCursor::Default;
+        ApplyThemeIfFollowing();
     }
 
 // ===================================================================
@@ -411,4 +412,26 @@ namespace UltraCanvas {
         return false;
     }
 
+
+// ===== THE THEME =====
+    PaginationStyle PaginationStyle::FromTheme(const UltraCanvasTheme& theme, const PaginationStyle& base) {
+        PaginationStyle s = base;
+        const ThemeRoles& r = theme.roles;
+        const FontStyle body = theme.Font(ThemeTextRole::Body);
+        s.fontStyle.fontFamily = body.fontFamily;
+        s.fontStyle.fontSize = body.fontSize;
+        s.cellColor = r.raised;
+        s.cellHoverColor = r.hover;
+        s.cellPressedColor = r.pressed;
+        s.cellBorderColor = r.lineStrong;
+        s.cellTextColor = r.ink;
+        s.currentColor = r.accent;
+        s.currentTextColor = r.onAccent;
+        s.disabledCellColor = r.panel;
+        s.disabledTextColor = r.inkFaint;
+        s.navGlyphColor = r.inkMuted;
+        s.ellipsisColor = r.inkFaint;
+        s.infoTextColor = r.inkMuted;
+        return s;
+    }
 } // namespace UltraCanvas

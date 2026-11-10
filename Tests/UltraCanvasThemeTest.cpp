@@ -3,6 +3,8 @@
 // the current theme, and the styles the timeline and the timecode field
 // take from a theme - shared roles mapped, element roles honoured, the
 // palette's colour where a theme is silent.
+// Version: 1.11.0 - the containers and pickers: container, group box, breadcrumb, pagination, the colour picker, swatch bar
+//                   and palette manager, the rich text edit
 // Version: 1.10.0 - the list elements: the scrollbar, list view, tree view, columns tree view and filer widget
 // Version: 1.9.0 - the input elements: checkbox, radio, segmented control, spinner, stepper, rating, the date and time pickers
 // Version: 1.8.0 - following by default (SetFollowThemeByDefault), the SetStyle rule, fonts by role in the readers
@@ -19,7 +21,14 @@
 #include "UltraCanvasTheme.h"
 #include "UltraCanvasHostAppearance.h"
 #include "UltraCanvasAlbum.h"
+#include "UltraCanvasBreadcrumb.h"
 #include "UltraCanvasButton.h"
+#include "UltraCanvasColorPaletteManager.h"
+#include "UltraCanvasColorPicker.h"
+#include "UltraCanvasColorSwatchBar.h"
+#include "UltraCanvasGroupBox.h"
+#include "UltraCanvasPagination.h"
+#include "UltraCanvasRichTextEdit.h"
 #include "UltraCanvasCheckbox.h"
 #include "UltraCanvasColumnsTreeView.h"
 #include "UltraCanvasFilerWidget.h"
@@ -365,6 +374,67 @@ int main() {
               "filer: the overlays kept, the interface font at the body and caption sizes, the base's gap");
     }
 
+    std::printf("FromTheme for the containers and pickers\n");
+    {
+        const double bodySize = own.FontSize(ThemeTextRole::Body);
+        ContainerStyle csBase;
+        csBase.autoShowScrollbars = true;
+        const ContainerStyle cs = ContainerStyle::FromTheme(own, csBase);
+        CHECK(cs.autoShowScrollbars && Same(cs.scrollbarStyle.trackBorderColor, r.line) && Same(cs.scrollbarStyle.thumbBorderColor, r.lineStrong),
+              "container: the scrollbars from the theme, the base's flags kept");
+        const GroupBoxVisualStyle gb = GroupBoxVisualStyle::FromTheme(own);
+        CHECK(gb.backgroundColor.a == 0 && Same(gb.borderColor, r.line) && Same(gb.titleColor, r.ink) && Same(gb.disabledTitleColor, r.inkFaint)
+              && Same(gb.activatorOnColor, r.accent) && Same(gb.activatorOffColor, r.lineStrong) && Same(gb.activatorKnobColor, r.raised)
+              && Same(gb.infoIconColor, r.inkMuted) && Same(gb.closeIconHoverColor, r.ink) && Same(gb.closeHoverBackgroundColor, r.hover)
+              && Near(gb.titleFont.fontSize, bodySize, 1e-9), "group box: a transparent frame stays so, hairline, ink caption at the body size, the activator from the accent");
+        const GroupBoxVisualStyle card = GroupBoxVisualStyle::FromTheme(own, GroupBoxVisualStyle::SectionCard());
+        CHECK(Same(card.backgroundColor, r.raised) && card.cornerRadius == GroupBoxVisualStyle::SectionCard().cornerRadius
+              && card.titleFont.fontWeight == GroupBoxVisualStyle::SectionCard().titleFont.fontWeight,
+              "group box: a filled card takes the raised surface, its radius and bold caption kept");
+        const BreadcrumbStyle bc = BreadcrumbStyle::FromTheme(own);
+        CHECK(bc.backgroundColor.a == 0 && Same(bc.itemTextColor, r.inkMuted) && Same(bc.itemHoverTextColor, r.accent) && Same(bc.currentItemTextColor, r.ink)
+              && Same(bc.disabledItemTextColor, r.inkFaint) && Same(bc.itemHoverBackgroundColor, r.hover) && Same(bc.separatorColor, r.inkFaint)
+              && Same(bc.levelIndicatorColor, r.accent) && Same(bc.levelIndicatorTextColor, r.onAccent) && Near(bc.fontStyle.fontSize, bodySize, 1e-9),
+              "breadcrumb: muted items, the accent hovered, ink for the current one, the level badge in the accent, the body font");
+        const BreadcrumbStyle pills = BreadcrumbStyle::FromTheme(own, BreadcrumbStyle::Pills());
+        CHECK(pills.itemStyle == BreadcrumbStyle::Pills().itemStyle && (BreadcrumbStyle::Pills().currentItemBackgroundColor.a == 0 || Same(pills.currentItemBackgroundColor, r.accentSoft)),
+              "breadcrumb: the Pills shape kept, a filled current item on the soft accent");
+        const PaginationStyle pg = PaginationStyle::FromTheme(own);
+        CHECK(Same(pg.cellColor, r.raised) && Same(pg.cellHoverColor, r.hover) && Same(pg.cellPressedColor, r.pressed) && Same(pg.cellBorderColor, r.lineStrong)
+              && Same(pg.cellTextColor, r.ink) && Same(pg.currentColor, r.accent) && Same(pg.currentTextColor, r.onAccent) && Same(pg.disabledCellColor, r.panel)
+              && Same(pg.disabledTextColor, r.inkFaint) && Same(pg.navGlyphColor, r.inkMuted) && Near(pg.fontStyle.fontSize, bodySize, 1e-9),
+              "pagination: raised cells, the current page in the accent, the body font");
+        const ColorPickerStyle cp = ColorPickerStyle::FromTheme(own);
+        CHECK(Same(cp.backgroundColor, r.panel) && Same(cp.panelColor, r.raised) && Same(cp.borderColor, r.line) && Same(cp.textColor, r.ink)
+              && Same(cp.mutedTextColor, r.inkMuted) && Same(cp.fieldColor, r.well) && Same(cp.fieldBorderColor, r.lineStrong) && Same(cp.accentColor, r.accent)
+              && Same(cp.markerColor, ColorPickerStyle::Light().markerColor) && Near(cp.fontSize, bodySize, 1e-6) && cp.fontFamily == own.fonts.ui.fontFamily,
+              "colour picker: the panel surface, raised panels, fields from the well, the accent, the markers kept, the body font");
+        CHECK(ColorPickerStyle::FromTheme(dark).uiScale == ColorPickerStyle::Dark().uiScale && Same(ColorPickerStyle::FromTheme(dark).backgroundColor, dark.roles.panel),
+              "colour picker without a base: Dark() under a dark theme, the roles over it");
+        const ColorSwatchBarStyle sw = ColorSwatchBarStyle::FromTheme(own);
+        CHECK(sw.background.a == 0 && Same(sw.border, r.lineStrong) && Same(sw.hoverBorder, r.inkMuted) && Same(sw.selectedBorder, r.accent)
+              && Same(sw.checkerDark, ColorSwatchBarStyle().checkerDark), "swatch bar: the control border, muted ink hovered, the accent selected, the checkerboard kept");
+        ColorPaletteManagerStyle pmBase;
+        pmBase.swatchSize = 20;
+        const ColorPaletteManagerStyle pm = ColorPaletteManagerStyle::FromTheme(own, pmBase);
+        CHECK(Same(pm.swatchBorder, r.line) && Same(pm.swatchSelectedBorder, r.accent) && Same(pm.buttonColor, r.raised) && Same(pm.buttonText, r.ink)
+              && Same(pm.accentColor, r.accent) && Same(pm.accentHoverColor, r.accentHover) && Same(pm.popupBackground, r.raised) && Same(pm.cardBackground, r.panel)
+              && Same(pm.titleText, r.ink) && Same(pm.mutedText, r.inkMuted) && Near(pm.fontSize, own.FontSize(ThemeTextRole::Caption), 1e-6) && pm.swatchSize == 20
+              && Same(pm.editorPickerStyle.fieldColor, r.well), "palette manager: hairlines and the accent, raised buttons and popups, the caption size, its editor's picker from the theme");
+        RichTextEditStyle rtBase;
+        rtBase.baseFont.fontFamily = "Georgia";
+        rtBase.baseFont.fontSize = 16;
+        const RichTextEditStyle rt = RichTextEditStyle::FromTheme(own, rtBase);
+        CHECK(Same(rt.textColor, r.ink) && Same(rt.backgroundColor, r.well) && Same(rt.pageColor, r.well) && Same(rt.deskColor, r.panel) && Same(rt.selectionColor, r.accentSoft)
+              && Same(rt.cursorColor, r.ink) && Same(rt.linkColor, r.accent) && Same(rt.quoteTextColor, r.inkMuted) && Same(rt.codeBackgroundColor, r.panel)
+              && Same(rt.tableBorderColor, r.lineStrong) && Same(rt.borderColor, r.lineStrong), "rich text edit: ink on the well, the page the well, the desk the panel, the accent for the selection and links");
+        CHECK(rt.baseFont.fontFamily == "Georgia" && Near(rt.baseFont.fontSize, 16, 1e-9) && Same(rt.commentHighlightColor, RichTextEditStyle().commentHighlightColor)
+              && Same(rt.insertionColor, RichTextEditStyle().insertionColor), "rich text edit: the document's font and the comment and tracked-change colours stay");
+        UltraCanvasTheme paper = own;
+        paper.SetRole("rich-text.page", Colors::White);
+        CHECK(Same(RichTextEditStyle::FromTheme(paper).pageColor, Colors::White), "the element role rich-text.page is honoured");
+    }
+
     std::printf("Menu and tooltip from the roles\n");
     const MenuStyle menu = MenuStyle::FromTheme(own);
     CHECK(Same(menu.backgroundColor, r.raised) && Same(menu.borderColor, r.line) && Same(menu.hoverColor, r.hover) && Same(menu.textColor, r.ink) &&
@@ -495,6 +565,28 @@ int main() {
         UltraCanvasUIElement::SetFollowThemeByDefault(false);
         CHECK(UltraCanvasTreeView("plain").GetSelectionTextColor().a == 0, "a tree that does not follow keeps the row's own text colour on a selected row");
         UltraCanvasUIElement::SetFollowThemeByDefault(true);
+        auto freshPanel = std::make_shared<UltraCanvasContainer>("fresh-panel", 0, 0, 200, 100);
+        auto freshGroup = std::make_shared<UltraCanvasGroupBox>("fresh-group", 0, 0, 200, 100, "Group");
+        auto freshCrumbs = std::make_shared<UltraCanvasBreadcrumb>("fresh-crumbs", 0, 0, 300, 24);
+        auto freshPages = std::make_shared<UltraCanvasPagination>("fresh-pages", 0, 0, 300, 32);
+        auto freshPicker = std::make_shared<UltraCanvasColorPicker>("fresh-picker", 0, 0, 260, 300);
+        auto freshSwatches = std::make_shared<UltraCanvasColorSwatchBar>("fresh-swatches", 0, 0, 300, 28);
+        auto freshRich = std::make_shared<UltraCanvasRichTextEdit>("fresh-rich", 0, 0, 300, 200);
+        CHECK(freshPanel->GetFollowTheme() && Same(freshPanel->GetContainerStyle().scrollbarStyle.trackBorderColor, dark.roles.line)
+              && Same(freshGroup->GetVisualStyle().titleColor, dark.roles.ink) && Same(freshCrumbs->GetStyle().currentItemTextColor, dark.roles.ink)
+              && Same(freshPages->GetStyle().currentColor, dark.roles.accent) && Same(freshPicker->GetStyle().fieldColor, dark.roles.well)
+              && Same(freshSwatches->GetStyle().selectedBorder, dark.roles.accent) && Same(freshRich->GetStyle().textColor, dark.roles.ink),
+              "a new container, group box, breadcrumb, pagination, colour picker, swatch bar and rich text edit are styled from the theme");
+        ContainerStyle noScroll = freshPanel->GetContainerStyle();
+        noScroll.autoShowScrollbars = false;
+        freshPanel->SetContainerStyle(noScroll);
+        CHECK(freshPanel->GetFollowTheme(), "SetContainerStyle is behaviour, not a look: the container keeps following");
+        freshGroup->SetVisualStyle(GroupBoxVisualStyle::Card());
+        freshCrumbs->SetStyle(BreadcrumbStyle::Compact());
+        freshPicker->SetStyle(ColorPickerStyle::Light());
+        freshRich->SetStyle(RichTextEditStyle());
+        CHECK(!freshGroup->GetFollowTheme() && !freshCrumbs->GetFollowTheme() && !freshPicker->GetFollowTheme() && !freshRich->GetFollowTheme(),
+              "a hand-set style stops their following");
         CHECK(Same(freshCols->GetColumnStyle().headerBackground, dark.roles.panel) && Same(freshCols->GetTextColor(), dark.roles.ink),
               "a new columns tree view: its columns and its tree part");
         freshBar->SetStyle(ScrollbarStyle::Modern());

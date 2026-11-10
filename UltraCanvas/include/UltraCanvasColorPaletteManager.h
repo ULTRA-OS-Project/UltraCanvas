@@ -36,6 +36,8 @@
 // UltraCanvasTextInput, the pickers UltraCanvasColorPicker
 // (SetShowBackgroundColor(false)).
 //
+// Version: 1.3.0 - ColorPaletteManagerStyle::FromTheme, ApplyTheme: the manager follows the theme; a
+//                  SetManagerStyle by hand stops the following
 // Version: 1.2.0 - Make/Register descriptor: "color-palette-manager" in the element registry, bundled or as a runtime module
 // Version: 1.1.0 - the gallery is the "Palette manager" with a title bar to
 //                  drag it by; "Add palette" and the user's own palettes;
@@ -43,7 +45,7 @@
 //                  small presets have 16 colours, a full row; Game Boy,
 //                  PICO-8 and VGA 16 are gone
 // Version: 1.0.0
-// Last Modified: 2026-11-09
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -103,6 +105,16 @@ struct ColorPaletteManagerStyle {
     // The entry editor's picker; the host's own picker style fits best.
     ColorPickerStyle editorPickerStyle = ColorPickerStyle::Light();
     float editorPickerScale = 0.78f;
+
+    // The theme's roles over a base's own metrics: hairlines round the
+    // swatches, faint ink hovered, the accent selected; the raised surface
+    // with the hover fill and a hairline for the micro buttons, ink on
+    // them; the accent and its hover; the raised popups with a hairline,
+    // the panel for a card, ink and muted ink; the caption size; the
+    // editor's picker from ColorPickerStyle::FromTheme
+    static ColorPaletteManagerStyle FromTheme(const UltraCanvasTheme& theme, const ColorPaletteManagerStyle& base);
+    static ColorPaletteManagerStyle FromTheme(const UltraCanvasTheme& theme) { return FromTheme(theme, ColorPaletteManagerStyle()); }
+    static ColorPaletteManagerStyle FromTheme() { return FromTheme(UltraCanvasTheme::Current()); }
 };
 
 // ===== THE MANAGER =====
@@ -164,6 +176,7 @@ public:
 
     // ===== APPEARANCE =====
     void SetManagerStyle(const ColorPaletteManagerStyle& s);
+    void ApplyTheme(const UltraCanvasTheme& theme) override { SetManagerStyle(ColorPaletteManagerStyle::FromTheme(theme, style_)); }
     const ColorPaletteManagerStyle& GetManagerStyle() const { return style_; }
 
     // The height the rows take at `width`.

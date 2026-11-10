@@ -21,6 +21,7 @@
   - [BreadcrumbOverflowMode](#breadcrumboverflowmode)
   - [BreadcrumbItemStyle](#breadcrumbitemstyle)
 - [Style Presets](#style-presets)
+- [Following the theme](#following-the-theme)
 - [Events and Callbacks](#events-and-callbacks)
 - [Builder Pattern](#builder-pattern)
 - [Usage Examples](#usage-examples)
@@ -41,7 +42,7 @@
 
 **UltraCanvasBreadcrumb** is a hierarchical navigation control that renders a path of clickable segments separated by configurable separators. It supports per-item icons, per-item dropdown menus, several built-in style presets, and four different overflow strategies (clip, collapse, ellipsize, shrink-text) for narrow containers.
 
-**Version:** 1.0.1
+**Version:** 1.1.0 - `BreadcrumbStyle::FromTheme`, `ApplyTheme`: the breadcrumb follows the theme
 **Header:** `include/UltraCanvasBreadcrumb.h`
 **Namespace:** `UltraCanvas`
 **Base Class:** `UltraCanvasUIElement`
@@ -379,6 +380,25 @@ BreadcrumbStyle::WebDocs();
 BreadcrumbStyle::Arrow();          // interlocking arrow segments
 BreadcrumbStyle::Parallelogram();  // interlocking slanted segments
 BreadcrumbStyle::Steps();          // Arrow segments + round numbered indicators
+```
+
+## Following the theme
+
+`BreadcrumbStyle::FromTheme` puts the framework theme's roles
+(`UltraCanvasTheme.md`) over a base style's shape (the item and separator
+styles, paddings, sizes, flags): a filled strip takes the panel with a
+hairline, a transparent one stays so; the items in muted ink, the accent
+hovered, ink for the current one on the soft accent when it is filled, the
+hover and pressed fills, faint ink disabled and for the separator, the
+level badge in the accent with text on it, the interface font at the body
+size. Under the theme policy a new breadcrumb follows the theme by itself
+(`ApplyTheme`); a `SetStyle` by hand stops that, `SetFollowTheme(true)`
+after it keeps both.
+
+```cpp
+auto trail = std::make_shared<UltraCanvasBreadcrumb>("trail", 400, 28);
+trail->SetStyle(BreadcrumbStyle::FromTheme(UltraCanvasTheme::Current(), BreadcrumbStyle::Pills()));   // the roles over the Pills shape
+trail->SetFollowTheme(true);
 ```
 
 ## Events and Callbacks
