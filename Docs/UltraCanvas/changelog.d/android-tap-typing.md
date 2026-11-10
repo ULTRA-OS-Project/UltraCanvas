@@ -12,3 +12,11 @@
   whitespace, as its command line
   (`am start -e ultracanvas.args "--no-about" ...`); the smoke test starts
   the demo with `--no-about`, so its About window does not cover the field.
+- **Android: the system bars no longer cover the app.** NativeActivity's
+  surface spans the whole window, and the window the whole display, so the
+  status bar was drawn over the app's top rows and the navigation bar over
+  its bottom ones - a tap there went to the bar. The new tap step caught it:
+  the demo's tree filter sits 6 px from the top, under the 24 px status bar
+  at 160 dpi. `UltraCanvasActivity` now runs in sticky immersive mode (both
+  bars hidden, shown over the app for a moment on a swipe from the edge),
+  applied again whenever the window regains focus.

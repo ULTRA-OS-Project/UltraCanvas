@@ -68,6 +68,15 @@ failure this replaces. If the store still ends up empty and the caller asked
 for verification, `Wrap()` fails with a message naming that cause instead of
 letting the handshake fail obscurely; verification is never quietly disabled.
 
+## System bars
+
+`UltraCanvasActivity` runs in sticky immersive mode: the status bar and the
+navigation bar are hidden, and a swipe from the screen's edge shows them over
+the app for a moment. NativeActivity's surface spans the whole window, which
+spans the display, so without it the bars covered the app's top and bottom
+rows and took the taps there. A plain `NativeActivity` (no Java) still has
+that problem.
+
 ## Lifecycle (background / foreground / rotation)
 
 `Run()` survives the whole activity lifecycle; only `APP_CMD_DESTROY`
