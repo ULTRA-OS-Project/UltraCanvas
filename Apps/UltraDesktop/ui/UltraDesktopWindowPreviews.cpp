@@ -5,6 +5,7 @@
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraDesktopWindowPreviews.h"
+#include "UltraDesktopPanelTheme.h"
 
 #include "UltraDesktopPanelWork.h"
 
@@ -37,13 +38,6 @@ constexpr int kPanelPad = 8;
 constexpr int kButtonGap = 6;   // between the bar's button and the strip
 constexpr size_t kTitleChars = 30;
 
-const Color kPanel(31, 31, 31);
-const Color kTile(43, 43, 46);
-const Color kTileHover(66, 66, 72);
-const Color kPictureGround(22, 22, 24);
-const Color kActive(96, 156, 232);
-const Color kText(242, 242, 242);
-const Color kMuted(170, 170, 176);
 
 // `text` cut to `limit` characters (UTF-8 sequences kept whole), with an
 // ellipsis when anything was cut.
@@ -110,7 +104,7 @@ void UltraDesktopWindowPreviews::Show(const std::string& key, const std::vector<
     config.maximizable = false;
     config.minWidth = width;
     config.minHeight = height;
-    config.backgroundColor = kPanel;
+    config.backgroundColor = PanelColors().panel;
     config.alwaysOnTop = true;
     window_ = CreateWindow(config);
     if (!window_) {
@@ -138,8 +132,8 @@ void UltraDesktopWindowPreviews::Show(const std::string& key, const std::vector<
     if (areaW > 0) x = std::clamp(x, areaX, std::max(areaX, areaX + areaW - physW));
     if (areaH > 0) y = std::clamp(y, areaY, std::max(areaY, areaY + areaH - physH));
     window_->SetWindowPosition(x, y);
-    window_->SetBackgroundColor(kPanel);
-    window_->SetBorders(1.0f, Color(70, 70, 76));
+    window_->SetBackgroundColor(PanelColors().panel);
+    window_->SetBorders(1.0f, PanelColors().edge);
 
     UltraCanvasWindow& window = *window_;
     window.layout.SetFlexColumn().SetFlexGap(kGap).SetFlexAlignItems(CSSLayout::AlignItems::Start);
@@ -170,9 +164,9 @@ void UltraDesktopWindowPreviews::Show(const std::string& key, const std::vector<
             tile.box->SetElementSize(Size2Df(static_cast<float>(kTileW), static_cast<float>(kTileH)));
             tile.box->layout.SetFlexColumn().SetFlexGap(4).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
             tile.box->SetPadding(kTilePad, kTilePad, kTilePad, kTilePad);
-            tile.box->SetBackgroundColor(kTile);
+            tile.box->SetBackgroundColor(PanelColors().tile);
             // The window that has the focus is framed.
-            tile.box->SetBorders(item.active && !item.minimized ? 2.0f : 0.0f, kActive, 6.0f);
+            tile.box->SetBorders(item.active && !item.minimized ? 2.0f : 0.0f, PanelColors().active, 6.0f);
             tile.box->SetBorderRadius(6.0f);
             tile.box->layoutItem.SetFlexShrink(0.0f);
             tile.box->SetTooltip(item.title);
@@ -192,13 +186,13 @@ void UltraDesktopWindowPreviews::Show(const std::string& key, const std::vector<
             if (item.minimized) title = TrF("{0} (minimized)", title);
             auto label = CreateLabel(id + ".title", 0, 0, 150, kHeaderH, Shorten(title, kTitleChars));
             label->SetFontSize(9.5f);
-            label->SetTextColor(kText);
+            label->SetTextColor(PanelColors().text);
             label->SetWrap(TextWrap::WrapNone);
             label->layoutItem.SetFlexGrow(1.0f).SetFlexShrink(1.0f);
             header->AddChild(label);
             tile.close = CreateLabel(id + ".close", 0, 0, 18, 18, "\xC3\x97");   // ×
             tile.close->SetFontSize(12.0f);
-            tile.close->SetTextColor(kMuted);
+            tile.close->SetTextColor(PanelColors().muted);
             tile.close->SetAlignment(TextAlignment::Center);
             tile.close->SetTooltip(Tr("Close window"));
             tile.close->layoutItem.SetFlexShrink(0.0f);
@@ -207,7 +201,7 @@ void UltraDesktopWindowPreviews::Show(const std::string& key, const std::vector<
 
             auto frame = std::make_shared<UltraCanvasContainer>(id + ".frame");
             frame->SetElementSize(Size2Df(static_cast<float>(kPictureW), static_cast<float>(kPictureH)));
-            frame->SetBackgroundColor(kPictureGround);
+            frame->SetBackgroundColor(PanelColors().pictureGround);
             frame->layoutItem.SetFlexShrink(0.0f);
             // Until the picture comes (and for good when the window is
             // minimized): the application's icon, else its letter.
@@ -224,7 +218,7 @@ void UltraDesktopWindowPreviews::Show(const std::string& key, const std::vector<
                 letter->layoutItem.SetPositionType(CSSLayout::PositionType::Absolute).SetPositionInsets(fill);
                 letter->SetFontSize(36.0f);
                 letter->SetFontWeight(FontWeight::Bold);
-                letter->SetTextColor(kMuted);
+                letter->SetTextColor(PanelColors().muted);
                 letter->SetAlignment(TextAlignment::Center);
                 frame->AddChild(letter);
             }
@@ -325,13 +319,13 @@ bool UltraDesktopWindowPreviews::OnCloseMark(int index, float x, float y) const 
 void UltraDesktopWindowPreviews::Highlight(int index) {
     if (index == highlighted_) return;
     if (highlighted_ >= 0 && highlighted_ < static_cast<int>(tiles_.size())) {
-        tiles_[static_cast<size_t>(highlighted_)].box->SetBackgroundColor(kTile);
-        tiles_[static_cast<size_t>(highlighted_)].close->SetTextColor(kMuted);
+        tiles_[static_cast<size_t>(highlighted_)].box->SetBackgroundColor(PanelColors().tile);
+        tiles_[static_cast<size_t>(highlighted_)].close->SetTextColor(PanelColors().muted);
     }
     highlighted_ = index;
     if (highlighted_ >= 0 && highlighted_ < static_cast<int>(tiles_.size())) {
-        tiles_[static_cast<size_t>(highlighted_)].box->SetBackgroundColor(kTileHover);
-        tiles_[static_cast<size_t>(highlighted_)].close->SetTextColor(kText);
+        tiles_[static_cast<size_t>(highlighted_)].box->SetBackgroundColor(PanelColors().tileHover);
+        tiles_[static_cast<size_t>(highlighted_)].close->SetTextColor(PanelColors().text);
     }
     if (window_) window_->RequestRedraw();
 }

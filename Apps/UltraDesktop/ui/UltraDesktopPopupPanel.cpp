@@ -6,6 +6,7 @@
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraDesktopPopupPanel.h"
+#include "UltraDesktopPanelTheme.h"
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasDesktopShell.h"
@@ -18,7 +19,6 @@ using namespace UltraCanvas;
 namespace UltraDesktop {
 
 namespace {
-const Color kPanel(31, 31, 31);
 } // namespace
 
 UltraDesktopPopupPanel::UltraDesktopPopupPanel(std::string title, int width, int height)
@@ -51,7 +51,7 @@ void UltraDesktopPopupPanel::Open(int rightX, int topY) {
     config.maximizable = false;
     config.minWidth = width_;
     config.minHeight = height_;
-    config.backgroundColor = kPanel;
+    config.backgroundColor = PanelColors().panel;
     int areaX = areaX_, areaY = areaY_, areaW = areaW_, areaH = areaH_;
     if (areaW <= 0 || areaH <= 0) {
         areaX = areaY = 0;
@@ -67,7 +67,7 @@ void UltraDesktopPopupPanel::Open(int rightX, int topY) {
     if (areaH > 0) y = std::clamp(y, areaY, std::max(areaY, areaY + areaH - physH));
     window_->SetWindowPosition(x, y);
 
-    window_->SetBackgroundColor(kPanel);
+    window_->SetBackgroundColor(PanelColors().panel);
     Build(*window_);
     open_ = true;
     closing_ = false;

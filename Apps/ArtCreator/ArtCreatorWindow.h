@@ -4,9 +4,19 @@
 // layers panels on the right and a status bar at the bottom. Owns the
 // document, its selection and history, the tools and every command.
 //
-// The editor is multi-window: the class also holds the registry of open
-// windows, so File > New Window and a second file on the command line add
-// to it and the application exits with the last of them.
+// A window holds several drawings, one per tab of a tab strip over the
+// canvas (UltraCanvasTabbedContainer, its pages detached into the canvas
+// area): each drawing has its own canvas, selection and undo history, and
+// New, Open, a dropped file, more files on the command line and a second
+// start's files all add a tab rather than a window. The class also holds the
+// registry of open windows - File > New Window opens another - and the
+// application exits with the last of them.
+// Version: 1.16.0 - several drawings per window, in tabs: DrawingTab holds a drawing's
+//                   document, canvas, selection, history and file; document / canvas /
+//                   selection / history are the active tab's (SwitchToTab); New, Open, a
+//                   drop, the command line's further files and a second start's files open
+//                   tabs (OpenInRunningWindow); Close Tab (Ctrl+W), Ctrl+Tab / Ctrl+Shift+Tab;
+//                   closing the window or quitting asks once for every unsaved drawing
 // Version: 1.15.0 - text is typed on the page: an UltraCanvasRichTextEdit over the canvas at
 //                   its zoom, in the text's font and colour, edits a new or a clicked text in
 //                   place (BeginTextEdit / CommitTextEdit); the Text dialog is gone; the text
@@ -41,7 +51,7 @@
 // Version: 1.5.0 - SaveToPath takes the bitmap size: Export saves every type through FileLoader
 // Version: 1.4.0 - ToolIconPath / SharedIconPath; MenuIconPath is the app's 16 px menu set
 // Version: 1.3.0
-// Last Modified: 2026-11-03
+// Last Modified: 2026-11-09
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -50,6 +60,7 @@
 #include "UltraCanvasToolbar.h"
 #include "UltraCanvasToolGroupButton.h"
 #include "UltraCanvasContainer.h"
+#include "UltraCanvasTabbedContainer.h"
 #include "UltraCanvasGroupBox.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasButton.h"
@@ -92,9 +103,12 @@ public:
     void Show();
 
     // Creates, registers and shows a further editor window on `paths`
-    // (empty: a new drawing). One drawing per window; further paths each
-    // get a window of their own. The windows own themselves.
+    // (empty: a new drawing), each path in a tab of its own. The windows own
+    // themselves.
     static std::shared_ptr<ArtCreatorWindow> OpenWindow(const std::vector<std::string>& paths);
+    // Opens `paths` as tabs of the window used last (a second start's files),
+    // or a new window when there is none; the window they went to.
+    static std::shared_ptr<ArtCreatorWindow> OpenInRunningWindow(const std::vector<std::string>& paths);
     static int WindowCount();
     // Restores the window when minimised and raises it with the keyboard
     // focus: what a file a second start handed over opened in comes forward.
@@ -109,6 +123,55 @@ private:
     // ----- window registry -----
     static std::vector<std::shared_ptr<ArtCreatorWindow>>& OpenWindows();
     static void RetireWindow(ArtCreatorWindow* closed);
+    // The window that last had the focus (a second start's files go there).
+    static ArtCreatorWindow*& LastFocusedWindow();
+
+    // ----- tabs: one drawing each -----
+    // What belongs to one drawing. The active tab's are also in the window's
+    // document / canvas / selection / history members (and documentPath,
+    // modified, activeLayerIndex, lastPage and the icon mode's state, which
+    // SwitchToTab stores back here when the tab is left).
+    struct DrawingTab {
+        std::shared_ptr<VectorStorage::VectorDocument> document;
+        std::shared_ptr<VectorEdit::VectorSelection>   selection;
+        std::unique_ptr<VectorEdit::VectorHistory>     history;
+        std::shared_ptr<UltraCanvasVectorCanvas>       canvas;
+        std::string documentPath;
+        bool modified = false;
+        int activeLayerIndex = 0;
+        int untitledNumber = 0;                 // "Untitled 2"; 0 once it has a file
+        ArtCreatorPageResult page;
+        int iconSize = 0;
+        VectorGridSpec gridBeforeIcon;
+        VectorSnapOptions snapBeforeIcon;
+        std::shared_ptr<const ArtIconRaster> iconRaster;
+    };
+    void BuildTabs();
+    // A new tab with a canvas of its own (its view settings taken from the
+    // active canvas), made the active one; its drawing is set by the caller.
+    void AddDrawingTab();
+    // The canvas a new tab draws in, wired to the tools like every other.
+    std::shared_ptr<UltraCanvasVectorCanvas> CreateTabCanvas();
+    void WireCanvas(UltraCanvasVectorCanvas* c);
+    // Leaves the active tab (its state stored back) and makes `index` the
+    // active one: the window's members, the tool context and the panels
+    // follow it.
+    void SwitchToTab(int index);
+    // Stores the window's copies of the active drawing's state in its tab.
+    void StoreActiveTab();
+    // Closes tab `index`, asking first when it has unsaved changes; the last
+    // tab closed leaves a new drawing in its place.
+    void RequestCloseTab(int index);
+    void RemoveDrawingTab(int index);
+    // The active tab holds a new drawing nobody has touched: Open replaces
+    // it instead of adding a tab beside it.
+    bool ActiveTabIsPristine() const;
+    bool TabModified(int index) const;
+    int UnsavedDrawingCount() const;
+    std::string TabTitle(int index) const;
+    void UpdateTabTitle(int index);
+    void CmdCloseTab();
+    void CmdNextTab(int direction);
 
     // ----- construction -----
     void BuildMenuBar();
@@ -161,8 +224,11 @@ private:
     bool RunShortcut(const UCEvent& e);
 
     // ----- document -----
-    void NewDrawing(const ArtCreatorPageResult& page);
+    // In a new tab, or in the active one when `inNewTab` is false.
+    void NewDrawing(const ArtCreatorPageResult& page, bool inNewTab = true);
     void SetDocument(std::shared_ptr<VectorStorage::VectorDocument> doc, const std::string& path);
+    // In a new tab - or in the active one when it holds an untouched new
+    // drawing. False, after saying why, when the file cannot be read.
     bool OpenFile(const std::string& path);
     // Saves through UltraCanvasFileLoader::SaveVectorDocument: a vector type
     // through its writer, a bitmap one with the page drawn at `size`
@@ -376,7 +442,13 @@ private:
     std::shared_ptr<UltraCanvasToolbar>         toolbar;
     std::shared_ptr<UltraCanvasContainer>       body;
     std::shared_ptr<UltraCanvasToolbar>         palette;
-    std::shared_ptr<UltraCanvasVectorCanvas>    canvas;
+    std::shared_ptr<UltraCanvasTabbedContainer> tabStrip;     // the drawings' tabs, over the canvas
+    std::shared_ptr<UltraCanvasContainer>       pages;        // the tabs' canvases (one shows)
+    std::vector<std::unique_ptr<DrawingTab>>    drawings;     // in tab order
+    int activeDrawing = -1;
+    bool closingTab = false;                                  // RemoveTab asks onTabClose itself
+    bool toolIdle = false;                                    // deactivated on the tab left
+    std::shared_ptr<UltraCanvasVectorCanvas>    canvas;       // the active tab's
     std::shared_ptr<UltraCanvasContainer>       rightPanel;
     std::shared_ptr<UltraCanvasColorPicker>     colorPicker;
     ArtCreatorSettings                          settings;
@@ -408,8 +480,10 @@ private:
     std::shared_ptr<UltraCanvasLabel>           iconCaption;
 
     std::shared_ptr<VectorStorage::VectorDocument> document;
+    // The active tab's drawing, selection and history (DrawingTab).
     std::shared_ptr<VectorEdit::VectorSelection>   selection;
-    VectorEdit::VectorHistory                      history;
+    VectorEdit::VectorHistory*                     history = nullptr;
+    VectorEdit::VectorHistory                      noHistory;   // `history` before the first tab
     std::string documentPath;
     bool modified = false;
     int activeLayerIndex = 0;

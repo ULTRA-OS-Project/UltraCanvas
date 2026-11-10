@@ -12,6 +12,7 @@
 - [Image Loading Methods](#image-loading-methods)
   - [LoadFromFile](#loadfromfile)
   - [LoadFromImage](#loadfromimage)
+  - [LoadFromPixmap](#loadfrompixmap)
   - [GetLastError](#getlasterror)
 - [Display Properties](#display-properties)
   - [Fit, Position and Repeat](#fit-position-and-repeat)
@@ -157,6 +158,21 @@ draws, scales, saves and reports transparency like any other.
 <!-- doc-check: std::shared_ptr<UltraCanvasImageElement> image; std::vector<uint8_t> rgba; int width; int height; -->
 ```cpp
 image->LoadFromImage(UCImage::FromRgba(rgba.data(), width, height));
+```
+
+### LoadFromPixmap
+```cpp
+bool LoadFromPixmap(std::shared_ptr<UCPixmap> pixmap);
+```
+Shows a picture that is already drawn - a file's icon from
+`LoadHostFileIconPixmap`, a thumbnail from `RenderFileThumbnail` - fitted to
+the box like a loaded image, with no copy and no decoding. Returns true and
+fires `onImageLoaded` for a picture; null clears the element and fires
+neither. A later `LoadFromFile` or `LoadFromImage` replaces it.
+
+<!-- doc-check: std::shared_ptr<UltraCanvasImageElement> image; std::shared_ptr<UCPixmap> icon; -->
+```cpp
+image->LoadFromPixmap(icon);
 ```
 
 ### GetLastError

@@ -1,3 +1,44 @@
+#### 2026-11-09 *0.9.511*
+- **`UltraCanvasDesktopShell::OpenDisplaySettings` and
+  `CanOpenDisplaySettings`** open the system's own display settings, what a
+  desktop's "Display settings" does: `ms-settings:display` on Windows, System
+  Settings > Displays on macOS, and on Linux (X11 and Wayland alike) the
+  first display tool installed, the session's own desktop's first
+  (`XDG_CURRENT_DESKTOP`): `gnome-control-center display`, `systemsettings`
+  / `kcmshell6` / `kcmshell5 kcm_kscreen`, `xfce4-display-settings`,
+  `cinnamon-settings display`, `mate-display-properties`,
+  `lxqt-config-monitor`, `budgie-control-center display`, then `wdisplays`,
+  `nwg-displays`, and outside Wayland `arandr` and `lxrandr`. UltraDesktop's
+  desktop menu uses it.
+- **`UltraCanvasImageElement::LoadFromPixmap`** shows a picture that is
+  already drawn - a file's icon (`LoadHostFileIconPixmap`) or thumbnail
+  (`RenderFileThumbnail`) - fitted to the box like a loaded image. UltraDesktop's
+  desktop icons use it.
+- **`UltraCanvasKanbanBoardElement::onDeleteKey`**: the application decides
+  what the Delete key does to the selected card (returning true, the board
+  removes nothing itself). UltraDesktop's Sticker board asks first and
+  deletes the card's file or note.
+
+#### 2026-11-09 *0.9.510*
+- **CI builds the widget and chart modules.** A new workflow,
+  `.github/workflows/element-modules.yml`, configures the lean build (no
+  widget and no selectable chart compiled in) on ubuntu-24.04. It builds the
+  core and every `ultracanvas-widget-*` and `ultracanvas-chart-*` module, and
+  runs `ElementModulesTest`, `UltraCanvasThemeTest` and `VectorEditTest`
+  against them. It also checks that the configure refuses ArtCreator when its
+  widgets are left out. `build.yml` compiles every widget in, so before this
+  the modules were never built in CI. The chart modules' missing framework
+  headers id went unseen that way.
+- **macOS CI: a source download that runs out of time no longer fails the
+  build.** When the step that prefetches vcpkg's source archives hit its 30
+  minutes, GitHub stopped only the step's shell. vcpkg went on running and
+  kept its lock, so the next step, the libraries' build, failed at once with
+  "failed to take lock". That happened even when every library it needed was
+  in the binary cache. On 2026-11-09 `codeberg.org` sent nothing for
+  `gumbo`'s source, run after run, and both macOS rows went red on `main`
+  and on every pull request. A new step after the fetch stops the leftover
+  vcpkg, so the build runs from the binary cache.
+
 #### 2026-11-09 *0.9.509*
 - **macOS: screen positions are top-left, and popups and tooltips have windows
   of their own there too.** The macOS backend gave and took window positions
