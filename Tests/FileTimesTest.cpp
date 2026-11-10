@@ -93,6 +93,37 @@ int main() {
     Check(fs::last_write_time(folderCopy, ec) == fs::last_write_time(folder, ec),
           "the folder copy has the original's modification date");
 
+    // ----- dates given, not copied (a cloud drive's download) -----
+    std::printf("Set and get\n");
+    {
+        const fs::path target = root / "downloaded.bin";
+        { std::ofstream(target) << "bytes"; }
+        FileTimes given;
+        given.modified = FileTimes::FromSeconds(1262304000);   // 2010-01-01 00:00:00 UTC
+        given.created  = FileTimes::FromSeconds(1230768000);   // 2009-01-01 00:00:00 UTC
+        Check(SetFileTimes(PathToUtf8(target), given), "SetFileTimes succeeded");
+        FileTimes read;
+        Check(GetFileTimes(PathToUtf8(target), read), "GetFileTimes succeeded");
+        Check(read.modified == given.modified, "the modification date is the one given");
+        if (CanCopyCreationTime())
+            Check(read.created == given.created, "the creation date is the one given");
+        else
+            Check(read.created != given.created, "no creation date is set where none can be");
+
+        FileTimes nothing;
+        Check(SetFileTimes(PathToUtf8(target), nothing), "an empty FileTimes is not a failure");
+        FileTimes again;
+        GetFileTimes(PathToUtf8(target), again);
+        Check(again.modified == given.modified, "an empty FileTimes leaves the dates alone");
+
+        FileTimes onlyAccess;
+        onlyAccess.accessed = FileTimes::FromSeconds(1300000000);
+        SetFileTimes(PathToUtf8(target), onlyAccess);
+        GetFileTimes(PathToUtf8(target), again);
+        Check(again.modified == given.modified, "setting one date leaves the others");
+        Check(!GetFileTimes(PathToUtf8(root / "missing"), again), "a missing file has no dates");
+    }
+
     // ----- refusals -----
     std::printf("Refusals\n");
     Check(!CopyFileTimes(PathToUtf8(root / "missing"), PathToUtf8(copy)), "a missing source is refused");

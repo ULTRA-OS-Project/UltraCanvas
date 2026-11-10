@@ -4069,6 +4069,45 @@ if(LIBARCHIVE_TEST_FOUND)
         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
     )
     message(STATUS "    Test registered: VirtualFSExtractSafetyTest")
+
+    # A file taken out of an archive keeps its dates: ExtractFile and
+    # ExtractAll give it the entry's modification date (and follow
+    # preserveTimestamps), from a ZIP, a 7z and a tar; a packed file's date
+    # survives the round trip.
+    message(STATUS "  Building VirtualFSExtractDatesTest...")
+    add_executable(VirtualFSExtractDatesTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/VirtualFSExtractDatesTest.cpp
+        ${ULTRACANVAS_ROOT}/VirtualFS/core/VirtualFSManager.cpp
+        ${ULTRACANVAS_ROOT}/VirtualFS/core/VirtualFSCompression.cpp
+        ${ULTRACANVAS_ROOT}/VirtualFS/providers/VirtualFSLibArchiveProvider.cpp
+        ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/miniz/miniz.c
+    )
+    target_include_directories(VirtualFSExtractDatesTest PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${ULTRACANVAS_ROOT}/VirtualFS/include
+        ${ULTRACANVAS_ROOT}/VirtualFS/include/VirtualFS
+        ${ULTRACANVAS_ROOT}/VirtualFS/providers
+        ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/miniz
+        ${LIBARCHIVE_TEST_INCLUDE_DIRS}
+    )
+    target_compile_definitions(VirtualFSExtractDatesTest PRIVATE
+        VIRTUALFS_HAS_LIBARCHIVE
+        VIRTUALFS_HAS_MINIZ
+    )
+    target_link_libraries(VirtualFSExtractDatesTest PRIVATE
+        ${LIBARCHIVE_TEST_LIBRARIES}
+        pthread
+    )
+    target_compile_features(VirtualFSExtractDatesTest PRIVATE cxx_std_17)
+    set_target_properties(VirtualFSExtractDatesTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(
+        NAME VirtualFSExtractDatesTest
+        COMMAND VirtualFSExtractDatesTest ${CMAKE_BINARY_DIR}/vfs-extract-dates-test-out
+        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    message(STATUS "    Test registered: VirtualFSExtractDatesTest")
 else()
     message(STATUS "  libarchive not found - VirtualFSDeleteTest disabled")
 endif()

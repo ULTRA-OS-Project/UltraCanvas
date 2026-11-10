@@ -500,7 +500,12 @@ Notes:
   give a program no way to set a creation date, so there a copy is created
   when it was made, as with `cp -p`. A move within a drive is a rename and
   never touched the dates. A new file made from a template is new, and is
-  dated so.
+  dated so. Copies to and from a remote drive keep them too - each UltraCloud
+  provider sends the file's dates with an upload and dates a download with
+  the server's (see *A transfer keeps the file's dates* in
+  `Docs/Modules/UltraCloud/README.md`) - and so does *Extract*: a file
+  unpacked from an archive has the date the archive gives it, and from a ZIP
+  or 7z its creation date as well, on Windows and macOS.
 - Items whose hook callback is not set (Print, Share, Attributes, Access,
   Settings, empty Open with) are shown disabled. "Copy path" has a built-in
   default (system clipboard via `SetClipboardText`).
