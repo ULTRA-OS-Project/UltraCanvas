@@ -1726,6 +1726,17 @@ if(TARGET UltraCanvas)
     message(STATUS "    Test registered: HostAppearanceTest")
 endif()
 
+if(TARGET UltraCanvas)
+    message(STATUS "  Building SettingsWatcherTest...")
+    add_executable(SettingsWatcherTest ${CMAKE_CURRENT_SOURCE_DIR}/SettingsWatcherTest.cpp)
+    target_include_directories(SettingsWatcherTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_link_libraries(SettingsWatcherTest PRIVATE ${ULTRACANVAS_LIBRARY})
+    target_compile_features(SettingsWatcherTest PRIVATE cxx_std_20)
+    set_target_properties(SettingsWatcherTest PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    add_test(NAME SettingsWatcherTest COMMAND SettingsWatcherTest WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: SettingsWatcherTest")
+endif()
+
 # ===== ULTRALOCALISATION TEST =====
 # The localisation module over a temporary catalogue tree: the three
 # layers, the override folder, the fallback walk, plurals, Language.conf,

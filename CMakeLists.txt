@@ -1113,6 +1113,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasAIExamples.cpp
             Apps/DemoApp/UltraCanvasFileLoaderExamples.cpp
             Apps/DemoApp/UltraCanvasLocalisationExamples.cpp
+            Apps/DemoApp/UltraCanvasThemeExamples.cpp
             Apps/DemoApp/UltraCanvasSystemDialogsExamples.cpp
             Apps/DemoApp/UltraCanvasVideoExamples.cpp
             Apps/DemoApp/UltraCanvasSTLExamples.cpp

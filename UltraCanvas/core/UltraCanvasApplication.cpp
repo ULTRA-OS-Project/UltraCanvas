@@ -1,5 +1,6 @@
 // UltraCanvasApplication.cpp
 // Main UltraCanvas App
+// Version: 1.21.0 - Appearance.conf over the host on every read; the settings watcher re-reads it on a change
 // Version: 1.20.0 - under a policy the elements follow the theme by default (SetFollowThemeByDefault)
 // Version: 1.19.0 - the pointer over a popup's own window is the pointer over the window the
 //                  popup belongs to, at the popup's place in it; a popup's window is no
@@ -47,6 +48,9 @@
 // Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 
+#include "UltraCanvasAppearanceSettings.h"
+#include "UltraCanvasSettingsWatcher.h"
+#include "UltraCanvasSettingsFolder.h"
 #include <algorithm>
 #include <cctype>
 #include <cmath>
@@ -1150,6 +1154,9 @@ namespace UltraCanvas {
             HostAppearance host = (app.*detect)();
             if (host.uiFont.fontFamily.empty() || host.uiFont.fontSize <= 0) host.uiFont = DefaultHostAppearance().uiFont;
             if (host.monoFont.fontFamily.empty() || host.monoFont.fontSize <= 0) host.monoFont = DefaultHostAppearance().monoFont;
+            // The person's choices for every application (Appearance.conf),
+            // then the one run's override, which wins.
+            AppearanceSettings::Load().ApplyTo(host);
             ApplyHostAppearanceOverride(host, GetEnvUtf8("ULTRACANVAS_HOST_APPEARANCE"));
             return host;
         }
@@ -1176,6 +1183,33 @@ namespace UltraCanvas {
         for (const auto& [id, handler] : handlers) {
             if (handler) handler(hostAppearance_.value());
         }
+    }
+
+    void UltraCanvasApplicationBase::StartSettingsWatcher() {
+        StopSettingsWatcher();
+        const std::filesystem::path folder = UltraCanvasSettingsFolder();
+        if (folder.empty()) return;
+        settingsWatcher_ = std::make_shared<UltraCanvasSettingsWatcher>();
+        settingsWatcher_->Watch("Appearance.conf", [this]() { RefreshHostAppearance(); });
+        const bool native = settingsWatcher_->Start(folder, [this](std::function<void()> task) { PostToUIThread(std::move(task)); });
+        if (!native) {
+            // No native watch in this build: the stat of a file every five
+            // seconds, which is nothing, and a change still arrives.
+            std::weak_ptr<UltraCanvasSettingsWatcher> weak = settingsWatcher_;
+            settingsPollTimer_ = StartTimer(5000, true, [weak](TimerId) {
+                if (auto watcher = weak.lock()) watcher->Poll();
+            });
+        }
+        debugOutput << "UltraCanvas: settings folder " << PathToUtf8(folder) << (native ? " watched" : " polled") << std::endl;
+    }
+
+    void UltraCanvasApplicationBase::StopSettingsWatcher() {
+        if (settingsPollTimer_ != InvalidTimerId) {
+            StopTimer(settingsPollTimer_);
+            settingsPollTimer_ = InvalidTimerId;
+        }
+        if (settingsWatcher_) settingsWatcher_->Stop();
+        settingsWatcher_.reset();
     }
 
     void UltraCanvasApplicationBase::ScheduleHostAppearanceRefresh() {
@@ -1358,6 +1392,9 @@ namespace UltraCanvas {
                             : themePolicy_ == ThemePolicy::Light ? "light" : themePolicy_ == ThemePolicy::Dark ? "dark" : "the application's own")
                         << "), font " << UltraCanvasTheme::Current().fonts.ui.fontFamily << " "
                         << UltraCanvasTheme::Current().FontSize(ThemeTextRole::Body) << std::endl;
+            // Appearance.conf as a live setting: a change reaches this
+            // application as a change of the desktop does.
+            StartSettingsWatcher();
             endStep("bundled and system fonts");
 
             if (!InitializeClipboard()) {
@@ -1514,6 +1551,7 @@ namespace UltraCanvas {
         debugOutput << "UltraCanvas: main loop completed, shutting down.." << std::endl;
         
         ShutdownClipboard();
+        StopSettingsWatcher();
         ShutdownNative();
 
         UCImage::ShutdownImageSubsysterm();

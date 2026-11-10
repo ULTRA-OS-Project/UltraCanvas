@@ -1,6 +1,8 @@
 // Apps/UOSSettings/ui/UOSSettingsWindow.cpp
 // The UOS-Settings window: page tree | page, Close at the foot - the layout
 // of UltraFiler's settings window. See UOSSettingsWindow.h.
+// Version: 0.13.0 - Appearance > Look: Appearance.conf (the look, accent, font, size, scale, contrast)
+//                  with a preview strip styled from the theme the choices give
 // Version: 0.12.0 - Desktop: where files dropped on the wallpaper go
 // Version: 0.11.0 - Desktop: the bars' theme (dark or light)
 // Version: 0.10.0 - on UltraCanvasSettingsPageKit (the window, the tree, the bottom bar,
@@ -17,7 +19,7 @@
 // Version: 0.3.0 - Desktop: the Windows desktop, beside Explorer, or instead of it
 // Version: 0.2.0 - Desktop: UltraDesktop in place of the Windows desktop
 // Version: 0.1.0
-// Last Modified: 2026-11-01
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UOSSettingsWindow.h"
@@ -31,6 +33,9 @@
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasImageElement.h"
 #include "UltraCanvasEmojiSettings.h"
+#include "UltraCanvasAppearanceSettings.h"
+#include "UltraCanvasApplication.h"   // GetInstalledFontFamilies, the host appearance
+#include "UltraCanvasTheme.h"
 #include "UltraCanvasNotificationActivation.h"
 #include "UltraCanvasFileLoader.h"
 #include "UltraCanvasTextInput.h"
@@ -47,6 +52,9 @@
 #include "UltraCanvasWindow.h"
 
 #include <algorithm>
+#include <cmath>
+#include <cstdio>
+#include <iterator>
 #include <cstdlib>
 #include <set>
 #include <utility>
@@ -110,6 +118,7 @@ namespace {
     constexpr const char* kPageLastFolder     = "file-dialogs/last-folder";
     constexpr const char* kSectionAppearance  = "appearance";
     constexpr const char* kPageEmoji          = "appearance/emoji";
+    constexpr const char* kPageLook           = "appearance/look";
     constexpr const char* kPageLanguage       = "language";
     constexpr const char* kPageTranslations   = "translations";
     constexpr const char* kSectionNotifications = "notifications";
@@ -285,6 +294,7 @@ bool UOSSettingsWindow::Create() {
     AddTreeNode("settings", kSectionFileDialogs, Tr("File dialogs"));
     AddTreeNode(kSectionFileDialogs, kPageLastFolder, Tr("Last used folder"));
     AddTreeNode("settings", kSectionAppearance, Tr("Appearance"));
+    AddTreeNode(kSectionAppearance, kPageLook, Tr("Look"));
     AddTreeNode(kSectionAppearance, kPageEmoji, Tr("Emoji"));
     AddTreeNode("settings", kSectionNotifications, Tr("Notifications"));
     AddTreeNode(kSectionNotifications, kPageRegistrations, Tr("Registrations"));
@@ -295,6 +305,7 @@ bool UOSSettingsWindow::Create() {
     BuildLastFolderPage();
     BuildLanguagePage();
     BuildTranslationsPage();
+    BuildLookPage();
     BuildEmojiPage();
     BuildNotificationsPage();
     BuildCertificatesPage();
@@ -305,6 +316,7 @@ bool UOSSettingsWindow::Create() {
         if (pageId == kPageLastFolder) RefreshLastFolderPage();
         if (pageId == kPageDesktop) RefreshDesktopPage();
         if (pageId == kPageCertificates) RefreshCertificatesPage();
+        if (pageId == kPageLook) RefreshLookPage();
         if (pageId == kPageEmoji) RefreshEmojiPage();
         if (pageId == kPageLanguage) RefreshLanguagePage();
         if (pageId == kPageTranslations) RefreshTranslationsPage();
@@ -957,6 +969,240 @@ void UOSSettingsWindow::RefreshEmojiPage() {
                                 : style == EmojiStyle::System     ? kSegmentEmojiSystem
                                                                   : kSegmentEmojiColour);
     refreshing_ = false;
+}
+
+// ===== APPEARANCE > LOOK =====
+
+namespace {
+    // The accent choices beside "System": a name and its colour.
+    struct AccentChoice { const char* name; const char* hex; };
+    const AccentChoice kAccents[] = {
+        {"Blue", "#0078d4"}, {"Orange", "#e95420"}, {"Green", "#2e7d32"}, {"Red", "#c62828"},
+        {"Purple", "#6a1b9a"}, {"Teal", "#00796b"}, {"Pink", "#ad1457"}, {"Slate", "#546e7a"},
+    };
+    const double kFontSizes[] = {8, 9, 10, 11, 12, 13, 14, 16, 18, 20, 24};
+    const int kScales[] = {100, 110, 125, 150, 175, 200};
+    constexpr int kSegmentSystem = 0;
+}
+
+void UOSSettingsWindow::BuildLookPage() {
+    auto page = std::make_shared<UltraCanvasContainer>("uos-page-look");
+    page->layout.SetFlexColumn().SetFlexGap(0)
+                .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    page->SetPadding(kPagePadding, kPagePadding, kPagePadding, kPagePadding);
+    page->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
+                    .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+
+    auto title = MakeLabel("uos-look-title", Tr("Look"), kTitleFontSize);
+    title->SetFontWeight(FontWeight::Bold);
+    page->AddChild(title);
+    auto caption = MakeText("uos-look-caption",
+            Tr("The look every application takes: light or dark, the accent colour, the "
+               "font and its size, the text scale and high contrast. System follows the "
+               "computer's own setting; a choice here overrules it for every application "
+               "at once, and a running application follows within a moment."));
+    caption->SetMargin(6, 0, 0, 0);
+    page->AddChild(caption);
+
+    auto row = [&](const std::string& id, const std::string& label, int topMargin) {
+        auto r = std::make_shared<UltraCanvasContainer>(id);
+        r->layout.SetFlexRow().SetFlexGap(12).SetFlexAlignItems(CSSLayout::AlignItems::Center);
+        r->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        r->size.height = CSSLayout::Dimension::Px(32);
+        r->SetMargin(static_cast<float>(topMargin), 0, 0, 0);
+        auto l = MakeLabel(id + "-label", label);
+        l->SetWidth(90);
+        r->AddChild(l);
+        page->AddChild(r);
+        return r;
+    };
+    auto segmented = [&](const std::string& id, const std::vector<std::string>& segments, int width) {
+        auto control = std::make_shared<UltraCanvasSegmentedControl>(id, 0, 0, static_cast<float>(width), 28);
+        SegmentedControlStyle style = control->GetStyle();
+        style.fontSize = kTextFontSize;
+        style.paddingVertical = 2;
+        style.paddingHorizontal = 8;
+        control->SetStyle(style);
+        for (const std::string& segment : segments) control->AddSegment(segment);
+        control->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        control->onSegmentSelected = [this](int) { if (!refreshing_) SaveLook(); };
+        return control;
+    };
+    auto dropdown = [&](const std::string& id, int width) {
+        auto d = std::make_shared<UltraCanvasDropdown>(id, 0, 0, static_cast<float>(width), 28);
+        d->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        d->onSelectionChanged = [this](int, const DropdownItem&) { if (!refreshing_) SaveLook(); };
+        return d;
+    };
+
+    look_ = segmented("uos-look-look", {Tr("System"), Tr("Light"), Tr("Dark")}, 300);
+    row("uos-look-look-row", Tr("Look:"), 14)->AddChild(look_);
+
+    auto accentRow = row("uos-look-accent-row", Tr("Accent:"), 10);
+    accent_ = dropdown("uos-look-accent", 160);
+    accent_->AddItem(DropdownItem(Tr("System")));
+    for (const AccentChoice& choice : kAccents) accent_->AddItem(DropdownItem(Tr(choice.name)));
+    accent_->AddItem(DropdownItem(Tr("Other...")));
+    accentRow->AddChild(accent_);
+    accentHex_ = std::make_shared<UltraCanvasTextInput>("uos-look-accent-hex", 0, 0, 110, 28);
+    accentHex_->SetPlaceholder("#rrggbb");
+    accentHex_->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    accentHex_->onEnterPressed = [this](const std::string&) { if (!refreshing_) SaveLook(); return true; };
+    accentHex_->onFocusLost = [this]() { if (!refreshing_) SaveLook(); };
+    accentRow->AddChild(accentHex_);
+
+    auto fontRow = row("uos-look-font-row", Tr("Font:"), 10);
+    font_ = dropdown("uos-look-font", 260);
+    font_->AddItem(DropdownItem(Tr("System")));
+    fontFamilies_ = GetInstalledFontFamilies();
+    std::sort(fontFamilies_.begin(), fontFamilies_.end());
+    for (const std::string& family : fontFamilies_) {
+        DropdownItem item(family);
+        item.fontFamily = family;   // each family shown in itself
+        font_->AddItem(item);
+    }
+    fontRow->AddChild(font_);
+    fontSize_ = dropdown("uos-look-size", 110);
+    fontSize_->AddItem(DropdownItem(Tr("System")));
+    for (double size : kFontSizes) {
+        char text[16];
+        std::snprintf(text, sizeof(text), "%g pt", size);
+        fontSize_->AddItem(DropdownItem(text));
+    }
+    fontRow->AddChild(fontSize_);
+
+    auto scaleRow = row("uos-look-scale-row", Tr("Text scale:"), 10);
+    scale_ = dropdown("uos-look-scale", 110);
+    for (int percent : kScales) scale_->AddItem(DropdownItem(std::to_string(percent) + " %"));
+    scaleRow->AddChild(scale_);
+
+    contrast_ = segmented("uos-look-contrast", {Tr("System"), Tr("High"), Tr("Normal")}, 300);
+    row("uos-look-contrast-row", Tr("Contrast:"), 10)->AddChild(contrast_);
+
+    // The preview: a few elements styled from the theme the choices give,
+    // on that theme's panel - the page shows the result by being it.
+    lookPreview_ = std::make_shared<UltraCanvasContainer>("uos-look-preview");
+    lookPreview_->layout.SetFlexRow().SetFlexGap(12).SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    lookPreview_->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    lookPreview_->size.height = CSSLayout::Dimension::Px(56);
+    lookPreview_->SetPadding(12, 12, 12, 12);
+    lookPreview_->SetMargin(16, 0, 0, 0);
+    previewLabel_ = std::make_shared<UltraCanvasLabel>("uos-look-preview-label", 0, 0, 160, 28, Tr("A label in the look"));
+    previewButton_ = std::make_shared<UltraCanvasButton>("uos-look-preview-button", 0, 0, 90, 28, Tr("Button"));
+    previewInput_ = std::make_shared<UltraCanvasTextInput>("uos-look-preview-input", 0, 0, 160, 28);
+    previewInput_->SetText(Tr("A field"));
+    previewPick_ = std::make_shared<UltraCanvasDropdown>("uos-look-preview-pick", 0, 0, 120, 28);
+    previewPick_->AddItem(DropdownItem(Tr("A choice")));
+    previewPick_->SetSelectedIndex(0);
+    for (const std::shared_ptr<UltraCanvasUIElement>& e :
+         std::initializer_list<std::shared_ptr<UltraCanvasUIElement>>{previewLabel_, previewButton_, previewInput_, previewPick_}) {
+        e->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        lookPreview_->AddChild(e);
+    }
+    page->AddChild(lookPreview_);
+
+    lookStatus_ = MakeLabel("uos-look-status", "", kTextFontSize, kMutedTextColor);
+    lookStatus_->SetMargin(10, 0, 0, 0);
+    page->AddChild(lookStatus_);
+
+    auto spacer = std::make_shared<UltraCanvasContainer>("uos-look-spacer");
+    spacer->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+    page->AddChild(spacer);
+
+    auto notes = MakeNotes("uos-look-note", {
+            Tr("System follows the computer: Windows' and macOS' light or dark mode and accent, "
+               "the desktop's theme and fonts on Linux. A choice here is for every UltraCanvas "
+               "application and comes before the computer's."),
+            Tr("The text scale multiplies the computer's own: 125 % makes every text a quarter larger."),
+            Tr("Written to Appearance.conf in the UltraCanvas settings folder; a running "
+               "application follows it within a moment, as it follows a change of the desktop."),
+            Tr("ULTRACANVAS_HOST_APPEARANCE still overrules it for one run.")});
+    notes->SetMargin(14, 0, 0, 0);
+    page->AddChild(notes);
+
+    pages[kPageLook] = page;
+    pageArea->AddChild(page);
+}
+
+void UOSSettingsWindow::RefreshLookPage() {
+    if (!look_) return;
+    const AppearanceSettings s = AppearanceSettings::Load();
+    refreshing_ = true;
+    look_->SetSelectedIndex(s.look == "light" ? 1 : s.look == "dark" ? 2 : kSegmentSystem);
+    int accentIndex = 0;
+    if (s.accent != "system") {
+        accentIndex = 1 + static_cast<int>(std::size(kAccents));   // Other...
+        for (size_t i = 0; i < std::size(kAccents); ++i) {
+            if (s.accent == kAccents[i].hex) accentIndex = static_cast<int>(i) + 1;
+        }
+    }
+    accent_->SetSelectedIndex(accentIndex);
+    accentHex_->SetText(s.accent == "system" ? std::string() : s.accent);
+    int fontIndex = 0;
+    for (size_t i = 0; i < fontFamilies_.size(); ++i) {
+        if (fontFamilies_[i] == s.font) fontIndex = static_cast<int>(i) + 1;
+    }
+    font_->SetSelectedIndex(fontIndex);
+    int sizeIndex = 0;
+    for (size_t i = 0; i < std::size(kFontSizes); ++i) {
+        if (s.fontSize > 0.0 && std::fabs(kFontSizes[i] - s.fontSize) < 0.01) sizeIndex = static_cast<int>(i) + 1;
+    }
+    fontSize_->SetSelectedIndex(sizeIndex);
+    int scaleIndex = 0;
+    for (size_t i = 0; i < std::size(kScales); ++i) {
+        if (std::fabs(kScales[i] / 100.0 - s.scale) < 0.001) scaleIndex = static_cast<int>(i);
+    }
+    scale_->SetSelectedIndex(scaleIndex);
+    contrast_->SetSelectedIndex(s.contrast == "high" ? 1 : s.contrast == "normal" ? 2 : kSegmentSystem);
+    refreshing_ = false;
+    RefreshLookPreview();
+}
+
+void UOSSettingsWindow::SaveLook() {
+    if (!look_) return;
+    AppearanceSettings s;
+    const int look = look_->GetSelectedIndex();
+    s.look = look == 1 ? "light" : look == 2 ? "dark" : "system";
+    const int accent = accent_->GetSelectedIndex();
+    if (accent >= 1 && accent <= static_cast<int>(std::size(kAccents))) {
+        s.accent = kAccents[accent - 1].hex;
+    } else if (accent > static_cast<int>(std::size(kAccents))) {
+        Color color;
+        s.accent = ColorFromHex(accentHex_->GetText(), color) ? HexOfColor(color) : "system";
+    }
+    const int font = font_->GetSelectedIndex();
+    if (font >= 1 && font <= static_cast<int>(fontFamilies_.size())) s.font = fontFamilies_[static_cast<size_t>(font - 1)];
+    const int size = fontSize_->GetSelectedIndex();
+    if (size >= 1 && size <= static_cast<int>(std::size(kFontSizes))) s.fontSize = kFontSizes[size - 1];
+    const int scale = scale_->GetSelectedIndex();
+    if (scale >= 0 && scale < static_cast<int>(std::size(kScales))) s.scale = kScales[scale] / 100.0;
+    const int contrast = contrast_->GetSelectedIndex();
+    s.contrast = contrast == 1 ? "high" : contrast == 2 ? "normal" : "system";
+    if (lookStatus_) {
+        lookStatus_->SetText(s.Save()
+                ? Tr("Saved. Every application follows it now.")
+                : TrF("Could not write {0}.", PathToUtf8(AppearanceSettings::FilePath())));
+    }
+    refreshing_ = true;
+    accentHex_->SetText(s.accent == "system" ? std::string() : s.accent);
+    refreshing_ = false;
+    RefreshLookPreview();
+}
+
+void UOSSettingsWindow::RefreshLookPreview() {
+    if (!lookPreview_) return;
+    // The theme the choices give over what this computer says.
+    auto* app = UltraCanvasApplication::GetInstance();
+    HostAppearance host = app ? app->GetHostAppearance() : DefaultHostAppearance();
+    AppearanceSettings::Load().ApplyTo(host);
+    const UltraCanvasTheme theme = UltraCanvasTheme::FromHost(host);
+    lookPreview_->SetBackgroundColor(theme.roles.panel);
+    lookPreview_->SetBorders(1, theme.roles.line, 6);
+    previewLabel_->SetStyle(LabelStyle::FromTheme(theme, previewLabel_->GetStyle()));
+    previewButton_->SetStyle(ButtonStyle::FromTheme(theme, previewButton_->GetStyle(), ButtonVariant::Primary));
+    previewInput_->SetStyle(TextInputStyle::FromTheme(theme, previewInput_->GetStyle()));
+    previewPick_->SetStyle(DropdownStyle::FromTheme(theme, previewPick_->GetStyle()));
+    lookPreview_->RequestRedraw();
 }
 
 // ===== NOTIFICATIONS > REGISTRATIONS =====
