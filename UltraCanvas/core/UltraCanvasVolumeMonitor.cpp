@@ -11,10 +11,11 @@
 // /media, /mnt and /Volumes, and neither looked at /run/media, where udisks2
 // mounts on Fedora, RHEL, Arch and openSUSE. A stick was then missing from
 // one list, from both, or shown in one and not the other.
+// Version: 1.2.0 - ReadVolumeName: a drive letter's own volume name
 // Version: 1.1.0 - ListGvfsVolumes: the phones, cameras and shares GVFS
 //                  mounted below $XDG_RUNTIME_DIR/gvfs
 // Version: 1.0.0
-// Last Modified: 2026-11-01
+// Last Modified: 2026-11-09
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasVolumeMonitor.h"
@@ -344,6 +345,27 @@ namespace UltraCanvas {
         for (const MountedVolume& v : ListMountedVolumes())
             roots.push_back(v.path);
         return roots;
+    }
+
+    std::string ReadVolumeName(const std::string& path) {
+#ifdef _WIN32
+        if (path.size() < 2 || path[1] != ':') return {};
+        std::wstring root = Utf8ToWide(path.substr(0, 2)) + L"\\";
+        const UINT type = ::GetDriveTypeW(root.c_str());
+        if (type == DRIVE_REMOTE || type == DRIVE_NO_ROOT_DIR || type == DRIVE_UNKNOWN)
+            return {};
+        // No "insert a disk" box for an empty card reader or optical drive:
+        // a missing medium is an empty name.
+        const UINT oldMode = ::SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOOPENFILEERRORBOX);
+        wchar_t name[MAX_PATH + 1] = {};
+        const BOOL ok = ::GetVolumeInformationW(root.c_str(), name, MAX_PATH + 1,
+                                                nullptr, nullptr, nullptr, nullptr, 0);
+        ::SetErrorMode(oldMode);
+        return ok ? WideToUtf8(name) : std::string();
+#else
+        (void)path;
+        return {};
+#endif
     }
 
     // ===== THE MONITOR =====

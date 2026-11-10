@@ -60280,7 +60280,7 @@ not cost a new MTP session — and a device answers one request at a time anyway
 | Call | Meaning |
 |---|---|
 | `Available()` | Whether this build can reach portable devices at all. |
-| `List()` | The devices connected now: `PortableDeviceInfo { id, name, manufacturer, description, kind, readOnly }`. `readOnly` marks a device files can only be copied off (macOS's Image Capture): `Upload`, `MakeFolder`, `Delete` and `Rename` fail on it, so a file manager does not offer them. `id` is what every other call takes — stable while the device stays plugged in, and the same the next time it is plugged into the same port. `kind` is `Phone`, `Camera`, `MediaPlayer` or `Other`, from what the device says it is. |
+| `List()` | The devices connected now: `PortableDeviceInfo { id, name, manufacturer, description, kind, readOnly }`. `readOnly` marks a device files can only be copied off (macOS's Image Capture): `Upload`, `MakeFolder`, `Delete` and `Rename` fail on it, so a file manager does not offer them. `id` is what every other call takes — stable while the device stays plugged in, and the same the next time it is plugged into the same port. `kind` is `Phone`, `Camera`, `MediaPlayer` or `Other`, from what the device says it is. A USB disk or stick is never in the list, though Windows offers it through WPD too: it has a drive letter, which `ListMountedVolumes` reports. |
 | `ListFolder(id, path, out, error)` | The entries of a folder: `PortableDeviceEntry { name, isDirectory, size, modifiedTime }` (`modifiedTime` UTC seconds, 0 when unknown). `"/"` lists the storages — a phone's other services (contacts, messages) are not folders and are left out. A root with no storage at all is an error that says what to do: a locked phone, or one left on "charging only", shows none. |
 | `Download(id, path, localFile, error, progress)` | Copies a file off the device into `localFile` (UTF-8), replacing it; a copy that fails part way is removed. |
 | `Upload(id, localFile, path, error, progress)` | Copies a local file onto the device as `path`. A file of that name already there is **replaced** — MTP would otherwise keep both under one name, so the caller asks first. |
@@ -85986,6 +85986,7 @@ debounce for you, because how long to wait is the caller's decision.
 |---|---|
 | `ListMountedVolumes()` | Every volume mounted right now, system root first, the rest sorted by path. Each is a `MountedVolume { path, label, isSystemRoot }`. |
 | `ListVolumeRoots()` | The same list, mount points only — the shape a caller that just navigates wants. |
+| `ReadVolumeName(path)` | The name a drive letter's volume carries (`"My Passport Ultra"`), shown as Explorer does: `"My Passport Ultra (D:)"`. Empty when it has none, for a network drive, and on Linux and macOS (`label` already is the name there). Reads the medium, so call it off the UI thread — `ListMountedVolumes()` deliberately does not. |
 | `ListGvfsVolumes()` | The places a Linux desktop mounted through GVFS — a phone (MTP), a camera (gphoto2), an iPhone (AFC), a network share or server (SMB, SFTP, FTP, WebDAV, NFS, AFP) — each with a readable label. Part of `ListMountedVolumes()`; empty on Windows and macOS. See [GVFS places](#gvfs-places). |
 | `GvfsVolumeLabel(name)` | The label one GVFS mount name gets (`"mtp:host=Google_Pixel_8"` → `"Google Pixel 8"`); empty for a name that is not listed. For tests. |
 | `Start(onChanged)` | Report mounts and unmounts until `Stop()`. Uses the platform's notification where there is one and a polling thread where there is not, so it only fails on a missing callback. |
@@ -106717,78 +106718,6 @@ same.
 | Info panel | webcam from Windows' privacy indicator, microphone and speaker from the audio sessions, the volume from the default endpoint, battery, keyboard layout, network, USB and Bluetooth; instead of Explorer also the tray icons |
 | Lock screen | `LockWorkStation`, from the ⚙ menu; Win+L is Windows' own |
 | Notifications | beside Explorer other programs' notifications are drawn by Windows, as before; instead of Explorer the tray icons' balloons are drawn by UltraDesktop |
-
-==============================================================================
-FILE: Docs/UltraDesktop/changelog.d/desktop-menus-light-theme.md
-==============================================================================
-
-- **The desktop has a right-click menu.** A right click on the wallpaper
-  offers *Change wallpaper...* (any picture this build reads, through
-  FileLoader's Open dialog), *Default wallpaper*, *Theme*, *Taskbar
-  position*, *Notes on the wallpaper*, *Display settings...* - the system's
-  own: Settings > Display on Windows, System Settings > Displays on macOS,
-  the desktop's display tool on Linux (GNOME's or Plasma's settings,
-  xfce4-display-settings, wdisplays, arandr, ...) - and *Desktop
-  settings...* (UOS-Settings).
-- **The bars have one too.** A right click on the taskbar or the right bar
-  where the button under the pointer has no menu of its own - between the
-  buttons, the Applications button, a virtual desktop, a service icon -
-  moves the taskbar to the left, the top or the bottom, or changes the
-  theme. The ULTRA OS settings button's menu has *Taskbar position* and
-  *Theme* as submenus.
-- **A light theme.** `theme` in `desktop.json` is `dark` (the default) or
-  `light`: dark icons on light grey bars, the carved-in groups near white,
-  the clock black on white and the ULTRA OS logo in its variant for a light
-  ground. Chosen on the menus above or on UOS-Settings' Desktop page, and
-  followed within a second when UOS-Settings changes it.
-- **The clock is at the top of the right bar again**, above the virtual
-  desktops, as it was before 0.4.10; its display types and panel are as
-  they were.
-
-==============================================================================
-FILE: Docs/UltraDesktop/changelog.d/drop-files-on-wallpaper.md
-==============================================================================
-
-- **Files can be dropped on the wallpaper.** Where they go is chosen on the
-  desktop's right-click menu, *Drop files*, or on UOS-Settings' Desktop page
-  (`dropFilesOn` in `desktop.json`):
-  - *Drop on sticker board* (the default): into the Sticker board's
-    **Unsorted** category, added when the board has none, and the board
-    shows.
-  - *Drop on desktop*: moved into the Desktop folder (copied from another
-    drive; a taken name becomes `name (2).ext`), and the wallpaper shows the
-    Desktop folder as icons - the file's thumbnail or the system's icon over
-    its name. A dropped file lies where it was dropped; a double click opens
-    it, a drag moves it (kept in `desktopIcons`), a right click offers
-    *Open*, *Show in the file manager*, *Delete* and *Arrange icons*. A file
-    another program saves to the Desktop appears within two seconds.
-- **Notes on the wallpaper show again.** The notes and their "+" button were
-  placed on the notes layer but never added to it, so none was drawn while
-  the notes were switched on.
-- **Several desktop icons at once.** Ctrl+click adds or removes an icon,
-  Shift+click adds one, and a box drawn on the wallpaper selects the icons it
-  touches (with Ctrl, adds them). The selected icons open, move and are
-  deleted together, and *Select all* is on their menu.
-- **Desktop icons can be dragged out to other programs.** Dragged over
-  another program's window, the selected files continue as a native file
-  drag, which a file manager, a mail or an editor takes.
-- **The panels follow the light theme.** The clock, loudspeaker, Wi-Fi,
-  Bluetooth, device and clipboard panels and the window pictures are near
-  white with dark text in the light theme.
-- **The desktop's menu works on the wallpaper while desktop icons show.**
-- **The desktop icons answer the keyboard**, after a click on an icon or
-  the wallpaper: Delete (after the question), Ctrl+A, Enter, and Escape,
-  which clears the selection or puts a drag or a rubber band back.
-- **F2 renames a desktop icon** (also *Rename* on its menu): its name
-  becomes a text field with the part before the extension chosen; Enter or a
-  click elsewhere renames the file, which keeps its place, and Escape keeps
-  the old name. The icons are a little wider, so a name like
-  `groceries.txt` is no longer cut at both ends.
-- **Sticker board: the Delete key asks first, and does what the card's
-  menu's *Delete* does** - a file's card moves the file to the trash, a note
-  is deleted - as the Delete key does on the desktop icons. It took the card
-  off the board without a question. *Remove from the board* is still on the
-  menu; the note's *Delete* asks too.
 
 ==============================================================================
 FILE: Docs/UltraCanvasStart/README.md
