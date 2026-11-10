@@ -2,7 +2,7 @@
 // The 3 x 3 reference point picker.
 // Version: 1.1.0 - the free point
 // Version: 1.0.0
-// Last Modified: 2026-10-28
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasReferencePointPicker.h"
@@ -34,6 +34,7 @@ namespace UltraCanvas {
                                                                      float x, float y, float w, float h)
             : UltraCanvasUIElement(identifier, x, y, w, h) {
         mouseCursor = UCMouseCursor::Hand;
+        ApplyThemeIfFollowing();
     }
 
     void UltraCanvasReferencePointPicker::SetPoint(ReferencePoint p, bool runCallback) {
@@ -178,4 +179,18 @@ namespace UltraCanvas {
         return true;
     }
 
+
+// ===== THE THEME =====
+    ReferencePointPickerStyle ReferencePointPickerStyle::FromTheme(const UltraCanvasTheme& theme, const ReferencePointPickerStyle& base) {
+        ReferencePointPickerStyle s = base;
+        const ThemeRoles& r = theme.roles;
+        s.frameColor = r.lineStrong;
+        s.backgroundColor = r.well;
+        s.pointColor = r.inkFaint;
+        s.hoverColor = r.inkMuted;
+        s.selectedColor = r.accent;
+        s.focusColor = r.focus;
+        s.disabledColor = r.line;
+        return s;
+    }
 } // namespace UltraCanvas

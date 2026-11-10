@@ -3,6 +3,8 @@
 // the current theme, and the styles the timeline and the timecode field
 // take from a theme - shared roles mapped, element roles honoured, the
 // palette's colour where a theme is silent.
+// Version: 1.12.0 - the badge, card, chip and tag input, collapsible panel, sidebar, busy indicator, auto-complete,
+//                   new-document dialog and reference point picker; the spell-check style
 // Version: 1.11.0 - the containers and pickers: container, group box, breadcrumb, pagination, the colour picker, swatch bar
 //                   and palette manager, the rich text edit
 // Version: 1.10.0 - the list elements: the scrollbar, list view, tree view, columns tree view and filer widget
@@ -21,6 +23,16 @@
 #include "UltraCanvasTheme.h"
 #include "UltraCanvasHostAppearance.h"
 #include "UltraCanvasAlbum.h"
+#include "UltraCanvasAutoComplete.h"
+#include "UltraCanvasBadge.h"
+#include "UltraCanvasBusyIndicator.h"
+#include "UltraCanvasCard.h"
+#include "UltraCanvasChip.h"
+#include "UltraCanvasCollapsiblePanel.h"
+#include "UltraCanvasNewDocumentDialog.h"
+#include "UltraCanvasReferencePointPicker.h"
+#include "UltraCanvasSidebarNavigation.h"
+#include "UltraCanvasSpellChecker.h"
 #include "UltraCanvasBreadcrumb.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasColorPaletteManager.h"
@@ -440,6 +452,58 @@ int main() {
         CHECK(Same(RichTextEditStyle::FromTheme(paper).pageColor, Colors::White), "the element role rich-text.page is honoured");
     }
 
+    std::printf("FromTheme for the badge, card, chips, panels and the rest\n");
+    {
+        const double bodySize = own.FontSize(ThemeTextRole::Body), captionSize = own.FontSize(ThemeTextRole::Caption);
+        const BadgeStyle bd = BadgeStyle::FromTheme(own);
+        CHECK(Same(bd.primaryColor, r.accent) && Same(bd.overlayRingColor, r.panel) && Same(bd.textColor, Colors::White) && Near(bd.fontSize, captionSize, 1e-6)
+              && bd.fontFamily == own.fonts.ui.fontFamily, "badge: the Primary fill from the accent, the ring the panel, white text kept, the caption size");
+        const CardStyle cd = CardStyle::FromTheme(own);
+        CHECK(Same(cd.backgroundColor, r.raised) && Same(cd.hoverBackgroundColor, r.hover) && Same(cd.selectedBackgroundColor, r.accentSoft) && Same(cd.borderColor, r.line)
+              && Same(cd.highlightBorderColor, r.accent) && Same(cd.titleColor, r.ink) && Same(cd.subtitleColor, r.inkMuted)
+              && Near(cd.titleFont.fontSize, own.FontSize(ThemeTextRole::Heading), 1e-9) && cd.titleFont.fontWeight == CardStyle::Default().titleFont.fontWeight
+              && Near(cd.subtitleFont.fontSize, bodySize, 1e-9), "card: the raised surface, the accent to highlight, the title at the heading size in its weight");
+        const ChipStyle ch = ChipStyle::FromTheme(own);
+        CHECK(Same(ch.fillColor, r.panel) && Same(ch.textColor, r.ink) && Same(ch.borderColor, r.lineStrong) && Same(ch.hoverFillColor, r.hover)
+              && Same(ch.selectedFillColor, r.accent) && Same(ch.selectedTextColor, r.onAccent) && Same(ch.disabledTextColor, r.inkFaint)
+              && Same(ch.closeColor, r.inkMuted) && Same(ch.closeHoverColor, r.danger) && Near(ch.fontStyle.fontSize, bodySize, 1e-9),
+              "chip: the panel fill, the accent selected, the close mark in muted ink and danger, the body font");
+        const TagInputStyle tg = TagInputStyle::FromTheme(own);
+        CHECK(Same(tg.backgroundColor, r.well) && Same(tg.borderColor, r.lineStrong) && Same(tg.focusBorderColor, r.focus) && Same(tg.textColor, r.ink)
+              && Same(tg.placeholderColor, r.inkFaint) && Same(tg.caretColor, r.ink) && Same(tg.chipStyle.selectedFillColor, r.accent),
+              "tag input: the field from the well, its chips from the chip reader");
+        const CollapsiblePanelStyle cpn = CollapsiblePanelStyle::FromTheme(own);
+        CHECK(Same(cpn.backgroundColor, r.raised) && Same(cpn.headerBackgroundColor, r.panel) && Same(cpn.headerHoverColor, r.hover) && Same(cpn.borderColor, r.line)
+              && Same(cpn.chevronColor, r.inkMuted) && Same(cpn.titleColor, r.ink) && Same(cpn.detailColor, r.inkMuted) && Same(cpn.gripColor, r.accent)
+              && Near(cpn.titleFont.fontSize, bodySize, 1e-9) && Near(cpn.detailFont.fontSize, captionSize, 1e-9),
+              "collapsible panel: the raised body with the panel header, ink and muted ink, the title at the body and the detail at the caption size");
+        const SidebarStyle sb = SidebarStyle::FromTheme(own);
+        CHECK(Same(sb.backgroundColor, r.panel) && Same(sb.textColor, r.ink) && Same(sb.disabledTextColor, r.inkFaint) && Same(sb.sectionTextColor, r.inkMuted)
+              && Same(sb.hoverBackgroundColor, r.hover) && Same(sb.selectedBackgroundColor, r.accentSoft) && Same(sb.indicatorColor, r.accent)
+              && Same(sb.badgeBackgroundColor, r.accent) && Same(sb.badgeTextColor, r.onAccent) && Same(sb.focusColor, r.focus)
+              && Near(sb.itemFont.fontSize, bodySize, 1e-9) && Near(sb.sectionFont.fontSize, captionSize, 1e-9) && sb.expandedWidth == SidebarStyle::Default().expandedWidth,
+              "sidebar: the panel, the soft accent selected with the accent bar, a badge in the accent, the widths kept");
+        BusyIndicatorStyle biBase;
+        biBase.kind = BusyIndicatorKind::Dots;
+        const BusyIndicatorStyle bi = BusyIndicatorStyle::FromTheme(own, biBase);
+        CHECK(Same(bi.arcColor, r.accent) && bi.trackColor.r == r.ink.r && bi.trackColor.a == biBase.trackColor.a && Same(bi.secondArcColor, BusyIndicatorStyle().secondArcColor)
+              && bi.kind == BusyIndicatorKind::Dots, "busy indicator: the accent moving, ink at the track's alpha still, the second arc kept, the kind kept");
+        const AutoCompleteStyle ac = AutoCompleteStyle::FromTheme(own);
+        CHECK(Same(ac.listBackgroundColor, r.raised) && Same(ac.listBorderColor, r.line) && Same(ac.itemHoverColor, r.hover) && Same(ac.itemTextColor, r.ink)
+              && Near(ac.fontSize, bodySize, 1e-6) && Same(ac.scrollbarStyle.trackBorderColor, r.line), "auto-complete: the raised list, the body font, its scrollbar from the theme");
+        const NewDocumentDialogStyle nd = NewDocumentDialogStyle::FromTheme(own);
+        CHECK(Same(nd.backgroundColor, r.panel) && Same(nd.titleColor, r.ink) && Same(nd.listBackgroundColor, r.well) && Same(nd.itemSelectedColor, r.accentSoft)
+              && Same(nd.categoryTextColor, r.inkMuted) && Same(nd.inputFocusBorderColor, r.focus) && Same(nd.buttonColor, r.raised) && Same(nd.primaryButtonColor, r.accent)
+              && Same(nd.primaryButtonTextColor, r.onAccent) && nd.titleFontSize == static_cast<int>(std::lround(own.FontSize(ThemeTextRole::Heading))),
+              "new-document dialog: the panel, the well for the list, the primary button in the accent, the title at the heading size");
+        const ReferencePointPickerStyle rp = ReferencePointPickerStyle::FromTheme(own);
+        CHECK(Same(rp.frameColor, r.lineStrong) && Same(rp.backgroundColor, r.well) && Same(rp.pointColor, r.inkFaint) && Same(rp.hoverColor, r.inkMuted)
+              && Same(rp.selectedColor, r.accent) && Same(rp.focusColor, r.focus) && Same(rp.disabledColor, r.line), "reference point picker: the well, faint points, the accent picked");
+        const SpellCheckStyle sc = SpellCheckStyle::FromTheme(own);
+        CHECK(Same(sc.markColor, r.danger) && Same(sc.repeatedWordColor, r.accent) && sc.highlightColor.r == r.danger.r && sc.highlightColor.a == SpellCheckStyle().highlightColor.a
+              && sc.markStyle == SpellCheckStyle().markStyle, "spell check: danger for a misspelling, the accent for a repeated word, the mark style kept");
+    }
+
     std::printf("Menu and tooltip from the roles\n");
     const MenuStyle menu = MenuStyle::FromTheme(own);
     CHECK(Same(menu.backgroundColor, r.raised) && Same(menu.borderColor, r.line) && Same(menu.hoverColor, r.hover) && Same(menu.textColor, r.ink) &&
@@ -591,6 +655,27 @@ int main() {
         freshPicker->SetStyle(ColorPickerStyle::Light());
         freshRich->SetStyle(RichTextEditStyle());
         CHECK(!freshGroup->GetFollowTheme() && !freshCrumbs->GetFollowTheme() && !freshPicker->GetFollowTheme() && !freshRich->GetFollowTheme(),
+              "a hand-set style stops their following");
+        auto freshBadge = std::make_shared<UltraCanvasBadge>("fresh-badge", 0, 0, 24, 18);
+        auto freshCard = std::make_shared<UltraCanvasCard>("fresh-card", 0, 0, 200, 120, "Card", "Sub");
+        auto freshChip = std::make_shared<UltraCanvasChip>("fresh-chip", 0, 0, 80, 28);
+        auto freshTags = std::make_shared<UltraCanvasTagInput>("fresh-tags", 0, 0, 200, 32);
+        auto freshFold = std::make_shared<UltraCanvasCollapsiblePanel>("fresh-fold", 0, 0, 200, 120, "Fold");
+        auto freshSide = std::make_shared<UltraCanvasSidebarNavigation>("fresh-side", 0, 0, 220, 300);
+        auto freshBusy = std::make_shared<UltraCanvasBusyIndicator>("fresh-busy", 0, 0, 24, 24);
+        auto freshAuto = std::make_shared<UltraCanvasAutoComplete>("fresh-auto", 0, 0, 200, 24);
+        auto freshPoints = std::make_shared<UltraCanvasReferencePointPicker>("fresh-points", 0, 0, 48, 48);
+        CHECK(Same(freshBadge->GetStyle().primaryColor, dark.roles.accent) && Same(freshCard->GetStyle().backgroundColor, dark.roles.raised)
+              && Same(freshChip->GetStyle().textColor, dark.roles.ink) && Same(freshTags->GetStyle().backgroundColor, dark.roles.well)
+              && Same(freshFold->GetStyle().titleColor, dark.roles.ink) && Same(freshSide->GetStyle().backgroundColor, dark.roles.panel)
+              && Same(freshBusy->GetStyle().arcColor, dark.roles.accent) && Same(freshAuto->GetAutoCompleteStyle().listBackgroundColor, dark.roles.raised)
+              && Same(freshAuto->GetStyle().backgroundColor, dark.roles.well) && Same(freshPoints->GetStyle().selectedColor, dark.roles.accent),
+              "a new badge, card, chip, tag input, collapsible panel, sidebar, busy indicator, auto-complete (field and list) and reference point picker are styled from the theme");
+        freshBadge->SetStyle(BadgeStyle());
+        freshCard->SetStyle(CardStyle::Default());
+        freshSide->SetStyle(SidebarStyle::Default());
+        freshAuto->SetAutocompleteStyle(AutoCompleteStyle());
+        CHECK(!freshBadge->GetFollowTheme() && !freshCard->GetFollowTheme() && !freshSide->GetFollowTheme() && !freshAuto->GetFollowTheme(),
               "a hand-set style stops their following");
         CHECK(Same(freshCols->GetColumnStyle().headerBackground, dark.roles.panel) && Same(freshCols->GetTextColor(), dark.roles.ink),
               "a new columns tree view: its columns and its tree part");

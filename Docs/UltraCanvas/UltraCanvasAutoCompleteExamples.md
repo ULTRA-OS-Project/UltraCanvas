@@ -24,6 +24,7 @@
   - [Large List with Automatic Scrollbar](#large-list-with-automatic-scrollbar)
   - [Listening to Popup and Text Events](#listening-to-popup-and-text-events)
   - [Custom Popup Style](#custom-popup-style)
+- [Following the theme](#following-the-theme)
 - [Behavior Notes](#behavior-notes)
 - [See Also](#see-also)
 
@@ -31,7 +32,7 @@
 
 **UltraCanvasAutoComplete** is a text input control with a popup suggestion list. It inherits from `UltraCanvasTextInput` and uses an internal `UltraCanvasListView` to display filtered suggestions as the user types. Items can be supplied as a static list or generated on demand through a dynamic suggestion provider callback.
 
-**Version:** 4.0.1
+**Version:** 4.1.0 - `AutoCompleteStyle::FromTheme`, `ApplyTheme`: the list follows the theme with the field
 **Header:** `include/UltraCanvasAutoComplete.h`
 **Namespace:** `UltraCanvas`
 **Base Class:** `UltraCanvasTextInput`
@@ -379,6 +380,25 @@ style.maxPopupWidth       = 350;
 style.fontSize            = 12.0f;
 
 myAC->SetAutocompleteStyle(style);
+```
+
+## Following the theme
+
+`AutoCompleteStyle::FromTheme` puts the framework theme's roles
+(`UltraCanvasTheme.md`) over a base style's metrics: the raised surface for
+the list with a hairline, the hover fill, ink, the interface font at the
+body size, the scrollbar from `ScrollbarStyle::FromTheme`. The field is the
+text input's: under the theme policy a new auto-complete follows the theme
+by itself, field and list (`ApplyTheme`); a `SetStyle` or
+`SetAutocompleteStyle` by hand stops that, `SetFollowTheme(true)` after it
+keeps both.
+
+```cpp
+auto search = std::make_shared<UltraCanvasAutoComplete>("search", 240, 26);
+AutoCompleteStyle tall = search->GetAutoCompleteStyle();
+tall.itemHeight = 28;
+search->SetAutocompleteStyle(AutoCompleteStyle::FromTheme(UltraCanvasTheme::Current(), tall));
+search->SetFollowTheme(true);
 ```
 
 ## Behavior Notes

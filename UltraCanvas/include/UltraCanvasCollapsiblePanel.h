@@ -17,6 +17,8 @@
 // children are framework elements; this class adds the fold, the chevron,
 // the separator and the resize grip.
 //
+// Version: 1.1.0 - CollapsiblePanelStyle::FromTheme, ApplyTheme: the panel follows the theme; a SetStyle by hand
+//                  stops the following
 // Version: 1.0.0
 // Author: UltraCanvas Framework
 #pragma once
@@ -52,6 +54,14 @@ namespace UltraCanvas {
         FontStyle detailFont;                // 12 by default
 
         static CollapsiblePanelStyle Default();
+        // The theme's roles over a base's own shape (widths, heights,
+        // paddings, the fonts' weights): the raised surface for the body,
+        // the panel for the header with the hover fill, hairlines, the
+        // chevron in muted ink, the title in ink at the body size, the
+        // detail in muted ink at the caption size, the grip in the accent
+        static CollapsiblePanelStyle FromTheme(const UltraCanvasTheme& theme, const CollapsiblePanelStyle& base);
+        static CollapsiblePanelStyle FromTheme(const UltraCanvasTheme& theme) { return FromTheme(theme, Default()); }
+        static CollapsiblePanelStyle FromTheme() { return FromTheme(UltraCanvasTheme::Current()); }
     };
 
     class UltraCanvasCollapsiblePanel : public UltraCanvasContainer {
@@ -103,6 +113,7 @@ namespace UltraCanvas {
 
         // ----- look -----
         void SetStyle(const CollapsiblePanelStyle& newStyle);
+        void ApplyTheme(const UltraCanvasTheme& theme) override;
         const CollapsiblePanelStyle& GetStyle() const { return style; }
         CollapsiblePanelStyle& GetStyle() { return style; }
 

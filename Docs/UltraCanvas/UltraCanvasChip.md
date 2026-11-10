@@ -12,6 +12,7 @@
   - [Quick Start](#quick-start-1)
   - [Key API](#key-api-1)
   - [Keyboard](#keyboard)
+- [Following the theme](#following-the-theme)
 - [Notes](#notes)
 
 ## Overview
@@ -29,7 +30,7 @@ Both are self-rendered (no child widgets) and follow the standard element
 conventions.
 
 **File Location**: `include/UltraCanvasChip.h`
-**Version**: 1.0.0
+**Version**: 1.1.0 - `ChipStyle::FromTheme`, `TagInputStyle::FromTheme`, `ApplyTheme`: both follow the theme
 **Author**: UltraCanvas Framework
 
 ---
@@ -140,6 +141,28 @@ std::function<bool(const std::string&)> validator;   // return false to reject
 | `Enter` / `,` | Commit the typed text as a tag |
 | `Backspace` (text present) | Delete a character |
 | `Backspace` (empty field) | Remove the last tag |
+
+## Following the theme
+
+`ChipStyle::FromTheme` and `TagInputStyle::FromTheme` put the framework
+theme's roles (`UltraCanvasTheme.md`) over a base style's shape: the panel
+for a chip's fill with the control border, the hover and pressed fills, ink,
+the accent with text on it selected, the panel and faint ink disabled, the
+close mark in muted ink and danger when hovered; the well with the control
+border and the focus ring for the tag input's field, ink and the caret in
+ink, faint ink for the hint, its chips from the chip reader; the interface
+font at the body size. Under the theme policy a new chip or tag input
+follows the theme by itself (`ApplyTheme`); a `SetStyle` by hand stops
+that, `SetFollowTheme(true)` after it keeps both.
+
+```cpp
+auto tags = std::make_shared<UltraCanvasTagInput>("tags", 300, 32);
+TagInputStyle roomy = tags->GetStyle();
+roomy.chipSpacing = 8;
+tags->SetStyle(TagInputStyle::FromTheme(UltraCanvasTheme::Current(), roomy));
+tags->SetFollowTheme(true);
+ChipStyle chip = ChipStyle::FromTheme();                 // the current theme over the default shape
+```
 
 ## Notes
 

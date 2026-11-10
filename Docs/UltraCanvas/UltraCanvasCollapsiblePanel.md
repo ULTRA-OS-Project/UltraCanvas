@@ -6,6 +6,7 @@
 - [Quick Start](#quick-start)
 - [Folding and height](#folding-and-height)
 - [Key API](#key-api)
+- [Following the theme](#following-the-theme)
 - [Notes](#notes)
 
 ## Overview
@@ -22,7 +23,7 @@ children are framework elements; the panel adds the fold, the chevron, the
 separator and the resize grip.
 
 **File Location**: `include/UltraCanvasCollapsiblePanel.h`
-**Version**: 1.0.0
+**Version**: 1.1.0 - `CollapsiblePanelStyle::FromTheme`, `ApplyTheme`: the panel follows the theme
 **Author**: UltraCanvas Framework
 
 ---
@@ -85,6 +86,25 @@ std::function<void(float height)> onExpandedHeightChanged;
 colours, the header height, paddings, chevron size, grip size, the minimum
 expanded height and the title / detail fonts; `CollapsiblePanelStyle::Default()`
 is a light header strip over white with a 13 pt bold title.
+
+## Following the theme
+
+`CollapsiblePanelStyle::FromTheme` puts the framework theme's roles
+(`UltraCanvasTheme.md`) over a base style's shape (widths, heights,
+paddings, the fonts' weights): the raised surface for the body, the panel
+for the header with the hover fill, hairlines, the chevron in muted ink, the
+title in ink at the body size, the detail in muted ink at the caption size,
+the grip in the accent. Under the theme policy a new panel follows the theme
+by itself (`ApplyTheme`, its scrollbars with it); a `SetStyle` by hand stops
+that, `SetFollowTheme(true)` after it keeps both.
+
+```cpp
+auto fold = std::make_shared<UltraCanvasCollapsiblePanel>("fold", 260, 160, "Details");
+CollapsiblePanelStyle tall = fold->GetStyle();
+tall.headerHeight = 36;
+fold->SetStyle(CollapsiblePanelStyle::FromTheme(UltraCanvasTheme::Current(), tall));
+fold->SetFollowTheme(true);
+```
 
 ## Notes
 
