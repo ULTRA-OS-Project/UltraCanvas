@@ -1,5 +1,9 @@
 // Apps/UltraMail/engine/UltraMailLocalStore.cpp
 // LocalStore implementation on top of UltraDatabase.
+// Version: 0.7.1 - the INBOX folder row always has the inbox role: SetFolderUidState
+//                  no longer re-creates it without one (after ClearAccountMail),
+//                  and Open repairs a store where it lost it (the account bar
+//                  counted 0 unread, 0 today, 0 waiting for that account)
 // Version: 0.7.0 - schema 13 (security_method, security_sign, security_encrypt, pgp_key): SetAccountSecurity
 // Version: 0.6.0 - schema 12 (incoming_protocol: IMAP or JMAP)
 // Version: 0.5.0 - schema 11 (findings: the codes of a verdict's findings)
@@ -81,6 +85,19 @@ bool NeedsAnswerFor(bool eligible, uint32_t flags, int64_t answerMark) {
     if (answerMark > 0) return true;
     if (answerMark < 0) return false;
     return eligible && (flags & Flag_Answered) == 0;
+}
+
+// Whether a message can wait for a reply at all: sent to the account's own
+// address (`ownLower`, lower case), not by the account itself, not bulk mail,
+// and in the inbox.
+bool EligibleFor(const std::string& ownLower, bool inInbox,
+                 const std::vector<std::string>& to, const std::string& fromAddr,
+                 bool automated) {
+    if (ownLower.empty() || !inInbox || automated) return false;
+    if (Lower(fromAddr) == ownLower) return false;
+    for (const auto& addr : to)
+        if (Lower(addr) == ownLower) return true;
+    return false;
 }
 
 const char* kMsgColumns =
@@ -231,7 +248,53 @@ UltraDbResult LocalStore::Open(const std::string& connectionName,
           "ALTER TABLE accounts ADD COLUMN security_encrypt INTEGER DEFAULT 0;"
           "ALTER TABLE accounts ADD COLUMN pgp_key TEXT DEFAULT '';" },
     };
-    return UltraDb_Migrate(connection_, steps);
+    UltraDbResult migrated = UltraDb_Migrate(connection_, steps);
+    if (!migrated) return migrated;
+    RepairInboxRole();
+    return migrated;
+}
+
+void LocalStore::RepairInboxRole() {
+    // The accounts whose inbox mail has no INBOX folder row with the inbox
+    // role: a row re-created without one by SetFolderUidState after
+    // ClearAccountMail, or the role lost to a server that lists its inbox as
+    // "Inbox". Their account bar counted nothing and none of their inbox
+    // mail could wait for a reply.
+    UltraDbResultSet broken;
+    if (!UltraDb_Query(connection_,
+            "SELECT DISTINCT m.account_id AS a, COALESCE(acc.email, '') AS e "
+            "FROM messages m LEFT JOIN accounts acc ON acc.account_id = m.account_id "
+            "WHERE m.folder = 'INBOX' AND NOT EXISTS (SELECT 1 FROM folders f "
+            "  WHERE f.account_id = m.account_id AND f.name = 'INBOX' AND f.role = 'inbox')",
+            {}, broken) || broken.Empty())
+        return;
+    for (const auto& row : broken) {
+        const std::string account = row["a"].AsString();
+        const std::string ownLower = Lower(row["e"].AsString());
+        UltraDbResultSet rs;
+        if (!UltraDb_Query(connection_,
+                "SELECT uid, from_addr, to_addrs, flags, answer_mark FROM messages "
+                "WHERE account_id = ? AND folder = 'INBOX'", { account }, rs))
+            continue;
+        UltraDbHandle tx = UltraDb_Begin(connection_);
+        if (tx == UltraDbInvalidHandle) continue;
+        UltraDb_ExecInTx(tx,
+            "INSERT INTO folders(account_id, name, role) VALUES(?, 'INBOX', 'inbox') "
+            "ON CONFLICT(account_id, name) DO UPDATE SET role = 'inbox'", { account });
+        // Each message's eligibility as UpsertMessage works it out in the
+        // inbox; the user's own needs-answer mark stays as it was.
+        for (const auto& m : rs) {
+            const bool eligible = EligibleFor(ownLower, true, Split(m["to_addrs"].AsString(), '\n'),
+                                              m["from_addr"].AsString(), false);
+            const bool needs = NeedsAnswerFor(eligible, m["flags"].AsU32(),
+                                              m["answer_mark"].AsInt64());
+            UltraDb_ExecInTx(tx,
+                "UPDATE messages SET eligible = ?, needs_answer = ? "
+                "WHERE account_id = ? AND folder = 'INBOX' AND uid = ?",
+                { eligible ? 1 : 0, needs ? 1 : 0, account, m["uid"].AsInt64() });
+        }
+        UltraDb_Commit(tx);
+    }
 }
 
 // ---- Accounts --------------------------------------------------------------
@@ -414,12 +477,15 @@ UltraDbResult LocalStore::SetFolderUidState(const std::string& accountId,
                                             const std::string& folder,
                                             int64_t uidValidity, int64_t uidNext) {
     // Upsert so a folder that was never LIST-ed still records its UID state.
+    // A row made here for INBOX - after ClearAccountMail dropped the folders,
+    // before a folder list ran - carries the inbox role: the account bar's
+    // counts and the waiting-for-reply rule find the inbox by it.
     return UltraDb_Exec(connection_,
-        "INSERT INTO folders(account_id, name, uidvalidity, uidnext) "
-        "VALUES(?, ?, ?, ?) "
+        "INSERT INTO folders(account_id, name, role, uidvalidity, uidnext) "
+        "VALUES(?, ?, CASE WHEN ? = 'INBOX' THEN 'inbox' ELSE NULL END, ?, ?) "
         "ON CONFLICT(account_id, name) DO UPDATE SET "
         "uidvalidity=excluded.uidvalidity, uidnext=excluded.uidnext",
-        { accountId, folder, uidValidity, uidNext });
+        { accountId, folder, folder, uidValidity, uidNext });
 }
 
 // ---- Messages --------------------------------------------------------------
@@ -445,13 +511,8 @@ UltraDbResult LocalStore::UpsertMessage(const MessageEnvelope& m) {
         if (!rs.Empty()) role = FolderRoleFromString(rs.Row(0)["role"].AsString());
     }
 
-    const std::string ownLower = Lower(accountEmail);
-    bool toMe = false;
-    for (const auto& addr : m.to)
-        if (!ownLower.empty() && Lower(addr) == ownLower) { toMe = true; break; }
-    const bool fromSelf = !ownLower.empty() && Lower(m.fromAddr) == ownLower;
-
-    const bool eligible = toMe && !m.automated && role == FolderRole::Inbox && !fromSelf;
+    const bool eligible = EligibleFor(Lower(accountEmail), role == FolderRole::Inbox,
+                                      m.to, m.fromAddr, m.automated);
     const bool needsAnswer = eligible && (m.flags & Flag_Answered) == 0;
 
     return UltraDb_Exec(connection_,

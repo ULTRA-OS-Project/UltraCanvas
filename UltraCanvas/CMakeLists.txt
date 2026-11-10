@@ -639,7 +639,7 @@ set(ULTRACANVAS_CORE_SOURCES
         # The editing canvas: page, rulers, guides, grid, snapping, selection
         # handles and tool hooks over a VectorDocument (the vector twin of
         # UltraCanvasPaintSurface).
-        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasVectorCanvas.cpp
+        # UltraCanvasVectorCanvas.cpp: a selectable widget - see WIDGET SYSTEM below
         # The gradient ramp editor (stops on a strip).
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasGradientEditor.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTreeView.cpp
@@ -700,10 +700,10 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasBusyIndicator.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasColorPicker.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasColorSwatchBar.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasColorPaletteManager.cpp
+        # UltraCanvasColorPaletteManager.cpp: a selectable widget - see WIDGET SYSTEM below
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSplashScreen.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSlideshow.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAlbum.cpp
+        # UltraCanvasSlideshow.cpp: a selectable widget - see WIDGET SYSTEM below
+        # UltraCanvasAlbum.cpp: a selectable widget - see WIDGET SYSTEM below
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFilerWidget.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasNativeFileIcons.cpp
         # The icon the HOST desktop draws for a file type (Explorer / Finder /
@@ -1321,8 +1321,9 @@ list(APPEND ULTRACANVAS_CORE_SOURCES
 # that registers through the element plugin loader. Widgets stay bundled by
 # default (proposal goal 4, §10.4): only a lean build that leaves one out
 # turns it into a module. An application that uses a widget's typed API
-# (UltraVideo and DemoApp use UltraCanvasVideoTimeline) needs it compiled in;
-# the top-level CMakeLists refuses a configuration that leaves it out.
+# needs it compiled in; the top-level CMakeLists refuses a configuration that
+# leaves one out (ultracanvas_require_widgets: DemoApp, UltraVideo, UltraPaint,
+# ArtCreator).
 set(ULTRACANVAS_WIDGETS "all" CACHE STRING
     "Selectable widgets linked into the library: 'all', empty, or a ;-list of keys")
 option(ULTRACANVAS_WIDGET_RUNTIME_MODULES
@@ -1333,9 +1334,14 @@ if((EMSCRIPTEN OR ANDROID) AND ULTRACANVAS_WIDGET_RUNTIME_MODULES)
 endif()
 
 # --- selectable widget table (key -> kebab name, sources, plugin glue, header,
-# register fn, anchor: an expression naming the core objects only this widget
-# uses, kept in a static host so the module resolves them at dlopen)
-set(UC_WIDGET_KEYS VideoTimeline)
+# register fn). _ANCHORS: one expression per core object file the module needs
+# that a host with a UI of its own may not otherwise link - a function, a
+# member function or &typeid(Class) defined in that file - with the headers
+# declaring them in _ANCHOR_INCLUDES. A static host keeps those objects when
+# it calls UltraCanvas_RegisterSelectedWidgets(), so the module resolves them
+# at dlopen. ElementModulesTest loads every module into a host with nothing but
+# one plain element, so a missing anchor fails it with the undefined symbol.
+set(UC_WIDGET_KEYS VideoTimeline Slideshow Album ColorPaletteManager VectorCanvas)
 set(UC_WIDGET_VideoTimeline_KEBAB    "video-timeline")
 set(UC_WIDGET_VideoTimeline_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasVideoTimeline.cpp)
@@ -1343,8 +1349,60 @@ set(UC_WIDGET_VideoTimeline_PLUGIN
     ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Widgets/UltraCanvasVideoTimelinePlugin.cpp)
 set(UC_WIDGET_VideoTimeline_HEADER   "UltraCanvasVideoTimeline.h")
 set(UC_WIDGET_VideoTimeline_REGISTER "RegisterVideoTimelineElement")
-set(UC_WIDGET_VideoTimeline_ANCHOR_INCLUDE "UltraCanvasVideoTimelineModel.h")
-set(UC_WIDGET_VideoTimeline_ANCHOR   "reinterpret_cast<const void*>(&TimelineDeriveStarts)")
+set(UC_WIDGET_VideoTimeline_ANCHOR_INCLUDES "UltraCanvasVideoTimelineModel.h")
+set(UC_WIDGET_VideoTimeline_ANCHORS "&TimelineDeriveStarts")
+
+set(UC_WIDGET_Slideshow_KEBAB    "slideshow")
+set(UC_WIDGET_Slideshow_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSlideshow.cpp)
+set(UC_WIDGET_Slideshow_PLUGIN
+    ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Widgets/UltraCanvasSlideshowPlugin.cpp)
+set(UC_WIDGET_Slideshow_HEADER   "UltraCanvasSlideshow.h")
+set(UC_WIDGET_Slideshow_REGISTER "RegisterSlideshowElement")
+set(UC_WIDGET_Slideshow_ANCHOR_INCLUDES "UltraCanvasImageFileWatch.h")
+set(UC_WIDGET_Slideshow_ANCHORS
+    "&UltraCanvasImageFileWatch::SetDrawnImages")
+
+set(UC_WIDGET_Album_KEBAB    "album")
+set(UC_WIDGET_Album_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAlbum.cpp)
+set(UC_WIDGET_Album_PLUGIN
+    ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Widgets/UltraCanvasAlbumPlugin.cpp)
+set(UC_WIDGET_Album_HEADER   "UltraCanvasAlbum.h")
+set(UC_WIDGET_Album_REGISTER "RegisterAlbumElement")
+set(UC_WIDGET_Album_ANCHOR_INCLUDES "UltraCanvasImageFileWatch.h" "UltraCanvasImageAnimation.h" "UltraCanvasVideoHoverPreview.h" "UltraCanvasVideoThumbnail.h" "UltraCanvasMenu.h")
+set(UC_WIDGET_Album_ANCHORS
+    "&UltraCanvasImageFileWatch::SetDrawnImages"
+    "&UCImageAnimationController::GetCurrentFramePixmap"
+    "&UltraCanvasVideoHoverPreview::Begin"
+    "&CaptureVideoThumbnailPixmap"
+    "&GetDefaultMenuCheckboxShape")
+
+set(UC_WIDGET_ColorPaletteManager_KEBAB    "color-palette-manager")
+set(UC_WIDGET_ColorPaletteManager_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasColorPaletteManager.cpp)
+set(UC_WIDGET_ColorPaletteManager_PLUGIN
+    ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Widgets/UltraCanvasColorPaletteManagerPlugin.cpp)
+set(UC_WIDGET_ColorPaletteManager_HEADER   "UltraCanvasColorPaletteManager.h")
+set(UC_WIDGET_ColorPaletteManager_REGISTER "RegisterColorPaletteManagerElement")
+set(UC_WIDGET_ColorPaletteManager_ANCHOR_INCLUDES "UltraCanvasColorSwatchBar.h" "UltraCanvasColorPicker.h" "UltraCanvasLabel.h" "UltraCanvasButton.h" "UltraCanvasTextInput.h")
+set(UC_WIDGET_ColorPaletteManager_ANCHORS
+    "&typeid(UltraCanvasColorSwatchBar)"
+    "&ColorPickerStyle::Light"
+    "&typeid(UltraCanvasLabel)"
+    "&typeid(UltraCanvasButton)"
+    "&typeid(UltraCanvasTextInput)")
+
+set(UC_WIDGET_VectorCanvas_KEBAB    "vector-canvas")
+set(UC_WIDGET_VectorCanvas_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasVectorCanvas.cpp)
+set(UC_WIDGET_VectorCanvas_PLUGIN
+    ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Widgets/UltraCanvasVectorCanvasPlugin.cpp)
+set(UC_WIDGET_VectorCanvas_HEADER   "UltraCanvasVectorCanvas.h")
+set(UC_WIDGET_VectorCanvas_REGISTER "RegisterVectorCanvasElement")
+set(UC_WIDGET_VectorCanvas_ANCHOR_INCLUDES "DataFormats/UltraCanvasVectorEdit.h")
+set(UC_WIDGET_VectorCanvas_ANCHORS
+    "&VectorEdit::OwnPaintBounds")
 
 set(UC_WIDGET_SELECTED_KEYS "")
 set(UC_WIDGET_MODULE_KEYS "")
@@ -1383,22 +1441,34 @@ foreach(key IN LISTS UC_WIDGET_SELECTED_KEYS)
     string(APPEND UC_WIDGET_REG_INCLUDES "#include \"${UC_WIDGET_${key}_HEADER}\"\n")
     string(APPEND UC_WIDGET_REG_CALLS "    ${UC_WIDGET_${key}_REGISTER}();\n")
 endforeach()
-if(UC_WIDGET_MODULE_KEYS AND ULTRACANVAS_WIDGET_RUNTIME_MODULES)
-    set(uc_widget_anchors "")
+set(uc_widget_anchors "")
+if(ULTRACANVAS_WIDGET_RUNTIME_MODULES)
     foreach(key IN LISTS UC_WIDGET_MODULE_KEYS)
-        string(APPEND UC_WIDGET_REG_INCLUDES "#include \"${UC_WIDGET_${key}_ANCHOR_INCLUDE}\"\n")
-        string(APPEND uc_widget_anchors "        ${UC_WIDGET_${key}_ANCHOR},\n")
+        foreach(inc IN LISTS UC_WIDGET_${key}_ANCHOR_INCLUDES)
+            string(APPEND UC_WIDGET_REG_INCLUDES "#include \"${inc}\"\n")
+        endforeach()
+        foreach(anchor IN LISTS UC_WIDGET_${key}_ANCHORS)
+            string(APPEND uc_widget_anchors "    KeepForWidgetModules(${anchor});   // ${key}\n")
+        endforeach()
     endforeach()
+endif()
+if(uc_widget_anchors)
+    string(APPEND UC_WIDGET_REG_INCLUDES "#include <typeinfo>\n")
     string(APPEND UC_WIDGET_REG_ANCHOR "
-// Anchors into static hosts the core objects only the widget modules use, so
-// those modules resolve them at dlopen. Referenced from the registration call.
-const void* const* UltraCanvas_WidgetModuleAnchors() {
-    static const void* const anchors[] = {
-${uc_widget_anchors}    };
-    return anchors;
+// Keeps in a static host the core objects the widget modules need: a volatile
+// store cannot be optimised away, so each anchor stays a reference the linker
+// resolves from the archive. Called from the registration below.
+namespace {
+template <typename T> void KeepForWidgetModules(T anchor) {
+    static T volatile sink;
+    sink = anchor;
 }
+} // namespace
+
+void UltraCanvas_WidgetModuleAnchors() {
+${uc_widget_anchors}}
 ")
-    string(APPEND UC_WIDGET_REG_CALLS "    (void)UltraCanvas_WidgetModuleAnchors();\n")
+    string(APPEND UC_WIDGET_REG_CALLS "    UltraCanvas_WidgetModuleAnchors();\n")
 endif()
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/cmake/UltraCanvasWidgetRegistration.cpp.in
                ${CMAKE_CURRENT_BINARY_DIR}/generated/UltraCanvasWidgetRegistration.generated.cpp
@@ -2222,8 +2292,12 @@ if(ULTRACANVAS_ENABLE_CHARTS AND ULTRACANVAS_CHART_RUNTIME_MODULES)
             ${UC_CHART_${key}_PLUGIN})
         # Same include set the LaTeX MODULE uses - target-scoped, so modules
         # must name the platform dirs themselves.
+        # generated/include holds UltraCanvasFrameworkHeadersId.h: without it
+        # the module reports its framework headers as "unknown" and the
+        # loader refuses it (UltraCanvasElementPlugins.h).
         target_include_directories(${uc_chart_target} PRIVATE
             ${CMAKE_CURRENT_SOURCE_DIR}/include
+            ${CMAKE_CURRENT_BINARY_DIR}/generated/include
             ${CAIRO_INCLUDE_DIRS} ${PANGO_INCLUDE_DIRS} ${GLIB_INCLUDE_DIRS}
             ${HARFBUZZ_INCLUDE_DIRS} ${FREETYPE_INCLUDE_DIRS})
         target_compile_features(${uc_chart_target} PRIVATE cxx_std_20)

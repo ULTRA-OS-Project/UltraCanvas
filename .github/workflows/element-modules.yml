@@ -1,0 +1,149 @@
+# The selectable widgets and charts as runtime modules (element plugin
+# system: ULTRACANVAS_WIDGETS, ULTRACANVAS_CHARTS - "Widgets as runtime
+# modules" in Docs/UltraCanvas/UltraCanvasElementPlugins.md). build.yml's
+# rows compile every widget into the core, so the module form - each widget
+# as ultracanvas-widget-<name>, the parallel coordinate chart as
+# ultracanvas-chart-parallel-coordinate - was never built in CI. Two faults
+# went unseen that way: the chart modules carried no framework headers id and
+# the loader refused every one, and a widget module that needs a core object
+# its host does not link fails at dlopen.
+#
+# This row configures the lean build (no widget and no selectable chart
+# compiled in, so the applications that use them by their classes are off),
+# builds the core, the modules and the tests that change with the selection,
+# and runs them: ElementModulesTest loads every module into a static host
+# and creates its element by name. It also checks that the configure refuses
+# an application that needs a widget left out.
+name: Element modules
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'UltraCanvas/**'
+      - 'Tests/ElementModulesTest.cpp'
+      - 'Tests/UltraCanvasThemeTest.cpp'
+      - 'Tests/VectorEditTest.cpp'
+      - 'Tests/CMakeLists.txt'
+      - 'CMakeLists.txt'
+      - 'cmake/**'
+      - '.github/workflows/element-modules.yml'
+  pull_request:
+    paths:
+      - 'UltraCanvas/**'
+      - 'Tests/ElementModulesTest.cpp'
+      - 'Tests/UltraCanvasThemeTest.cpp'
+      - 'Tests/VectorEditTest.cpp'
+      - 'Tests/CMakeLists.txt'
+      - 'CMakeLists.txt'
+      - 'cmake/**'
+      - '.github/workflows/element-modules.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: element-modules-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  modules:
+    name: element modules (ubuntu-24.04, static core)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      # ccache as the other Linux rows keep it, small enough not to evict
+      # their caches.
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_MAXSIZE: 500M
+      CCACHE_COMPILERCHECK: content
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - name: Install dependencies
+        timeout-minutes: 45
+        run: |
+          scripts/ci-apt.sh update
+          scripts/ci-apt.sh install cmake ninja-build pkg-config build-essential ccache
+          # The framework's libraries, as wayland-build.yml installs them on
+          # this image (build.yml's 22.04 rows build some from source).
+          scripts/ci-apt.sh install libcairo2-dev libpango1.0-dev libharfbuzz-dev
+          scripts/ci-apt.sh install libvips-dev libglib2.0-dev libfreetype6-dev dbus dbus-daemon
+          scripts/ci-apt.sh install libheif-dev libheif-plugin-libde265 libheif-plugin-aomdec libjxl-dev
+          scripts/ci-apt.sh install libtinyxml2-dev libfmt-dev
+          scripts/ci-apt.sh install libx11-dev libxcursor-dev libxi-dev libgl1-mesa-dev libgtk-3-dev
+          scripts/ci-apt.sh install libcdr-dev librevenge-dev zlib1g-dev
+          scripts/ci-apt.sh install libboost-dev liblcms2-dev libicu-dev
+          scripts/ci-apt.sh install libzbar-dev libhunspell-dev hunspell-en-us
+          scripts/ci-apt.sh install libudev-dev libcups2-dev libsane-dev
+          scripts/ci-apt.sh install libpaho-mqtt-dev librabbitmq-dev libcoap3-dev libsnmp-dev libssh-dev
+          scripts/ci-apt.sh install libavahi-client-dev
+          scripts/ci-apt.sh install libmupdf-dev libjbig2dec0-dev libmujs-dev libgumbo-dev libopenjp2-7-dev libjpeg-dev
+          scripts/ci-apt.sh install freerdp3-dev
+          scripts/ci-apt.sh install libcurl4-openssl-dev libpsl-dev libssh2-1-dev libssl-dev
+          scripts/ci-apt.sh install libgpgme-dev gnupg libsodium-dev libunwind-dev libarchive-dev
+          scripts/ci-apt.sh install libsqlite3-dev libpq-dev libmariadb-dev
+          scripts/ci-apt.sh install libaom-dev libdav1d-dev libde265-dev libbrotli-dev
+          scripts/ci-apt.sh install libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good
+          scripts/ci-apt.sh install libflac-dev libogg-dev libopus-dev libopusfile-dev libvorbis-dev libmp3lame-dev
+          scripts/ci-apt.sh install libavcodec-dev libavformat-dev libavfilter-dev libavutil-dev libswscale-dev
+
+      - name: Restore ccache
+        id: ccache
+        uses: actions/cache/restore@v5
+        with:
+          path: ${{ github.workspace }}/.ccache
+          key: ccache-element-modules-ubuntu-24.04-${{ github.run_id }}
+          restore-keys: |
+            ccache-element-modules-ubuntu-24.04-
+
+      # A configure that keeps an application whose widgets are left out
+      # must stop and name them (ultracanvas_require_widgets).
+      - name: The configure refuses an application without its widgets
+        run: |
+          set -uo pipefail
+          if cmake -B build-refused -G Ninja \
+               -DULTRACANVAS_WIDGETS= -DBUILD_ARTCREATOR_APP=ON \
+               -DBUILD_ULTRAVIDEO=OFF -DBUILD_DEMO_APP=OFF -DBUILD_ULTRAPAINT_APP=OFF \
+               > refused.log 2>&1; then
+            echo "::error::the configure accepted ArtCreator with ColorPaletteManager and VectorCanvas left out"
+            exit 1
+          fi
+          grep -q "ArtCreator needs ColorPaletteManager, VectorCanvas compiled into the core" refused.log
+          rm -rf build-refused
+
+      - name: Configure CMake (every widget and chart as a module)
+        run: |
+          set -euo pipefail
+          cmake -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DBUILD_TESTS=ON \
+            -DULTRACANVAS_WIDGETS= \
+            -DULTRACANVAS_CHARTS= \
+            -DBUILD_ULTRAVIDEO=OFF \
+            -DBUILD_DEMO_APP=OFF \
+            -DBUILD_ULTRAPAINT_APP=OFF \
+            -DBUILD_ARTCREATOR_APP=OFF 2>&1 | tee configure.log
+          grep -q "Widgets: compiled in \[\], modules \[VideoTimeline;Slideshow;Album;ColorPaletteManager;VectorCanvas\]" configure.log
+          grep -q "Charts: compiled in \[\], modules \[ParallelCoordinate\]" configure.log
+
+      - name: Build the core, the modules and the tests
+        run: |
+          ccache -z
+          cmake --build build --target ElementModulesTest UltraCanvasThemeTest VectorEditTest -j"$(nproc)"
+          ccache -s
+          ls -la build/Plugins/Elements
+
+      - name: Save ccache (main)
+        if: always() && github.ref == 'refs/heads/main' && steps.ccache.outcome == 'success'
+        uses: actions/cache/save@v5
+        with:
+          path: ${{ github.workspace }}/.ccache
+          key: ${{ steps.ccache.outputs.cache-primary-key }}
+
+      - name: Run the tests
+        working-directory: build
+        run: ctest --output-on-failure --no-tests=error -R "^(ElementModulesTest|UltraCanvasThemeTest|VectorEditTest)$"

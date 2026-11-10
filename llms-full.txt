@@ -1245,6 +1245,9 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
     (Windows `ExitWindowsEx`; Linux logind over the system bus);
     `CanLockSession` / `LockSession` - the screen lock (`LockWorkStation`;
     logind's `Session.Lock`, else `org.freedesktop.ScreenSaver.Lock`).
+  - `CanOpenDisplaySettings` / `OpenDisplaySettings` - the system's own
+    display settings (`ms-settings:display`; System Settings > Displays;
+    the desktop's display tool on Linux).
   - `ReadAudioOutput` → `DesktopAudioOutput` (the default output's name,
     volume and mute), `SetAudioOutputVolume`, `SetAudioOutputMuted` - the
     loudspeaker through the sound server (libpulse loaded at run time:
@@ -14612,6 +14615,7 @@ FILE: Docs/UltraCanvas/UltraCanvasBitmapExamples.md
 - [Image Loading Methods](#image-loading-methods)
   - [LoadFromFile](#loadfromfile)
   - [LoadFromImage](#loadfromimage)
+  - [LoadFromPixmap](#loadfrompixmap)
   - [GetLastError](#getlasterror)
 - [Display Properties](#display-properties)
   - [Fit, Position and Repeat](#fit-position-and-repeat)
@@ -14757,6 +14761,21 @@ draws, scales, saves and reports transparency like any other.
 <!-- doc-check: std::shared_ptr<UltraCanvasImageElement> image; std::vector<uint8_t> rgba; int width; int height; -->
 ```cpp
 image->LoadFromImage(UCImage::FromRgba(rgba.data(), width, height));
+```
+
+### LoadFromPixmap
+```cpp
+bool LoadFromPixmap(std::shared_ptr<UCPixmap> pixmap);
+```
+Shows a picture that is already drawn - a file's icon from
+`LoadHostFileIconPixmap`, a thumbnail from `RenderFileThumbnail` - fitted to
+the box like a loaded image, with no copy and no decoding. Returns true and
+fires `onImageLoaded` for a picture; null clears the element and fires
+neither. A later `LoadFromFile` or `LoadFromImage` replaces it.
+
+<!-- doc-check: std::shared_ptr<UltraCanvasImageElement> image; std::shared_ptr<UCPixmap> icon; -->
+```cpp
+image->LoadFromPixmap(icon);
 ```
 
 ### GetLastError
@@ -26942,6 +26961,8 @@ releases the names at once.
 | `CanEndSession()` | Whether this backend can sign out, restart and shut down: true on Windows, and on Linux while logind answers on the system bus (decided once). |
 | `EndSession(how, &error)` | `SessionEnd::SignOut`, `Restart` or `ShutDown`: the system asks every program to close, and a program may still refuse. On Windows `ExitWindowsEx`, with the shutdown privilege every account that may shut down holds switched on first. On Linux logind: its manager's `Reboot` and `PowerOff` (with the "interactive" flag, so polkit is asked as the desktops' own menus ask it, and an active local session needs no password), and `Terminate` on this process's own session to sign out, after which the display manager shows the sign-in again. What a desktop's menu offers when it is the shell and no Start menu runs. |
 | `CanLockSession()` | Whether `LockSession` has anyone to ask: true on Windows; on Linux with logind or a session bus. |
+| `CanOpenDisplaySettings()` | Whether `OpenDisplaySettings` has something to open: true on Windows and macOS; on Linux when one of the display tools below is installed. |
+| `OpenDisplaySettings(&error)` | Open the system's own display settings - resolution, arrangement, the primary monitor - and not wait for them: `ms-settings:display` on Windows, System Settings > Displays on macOS, on Linux the first installed of `gnome-control-center display`, `systemsettings` / `kcmshell6` / `kcmshell5 kcm_kscreen`, `xfce4-display-settings`, `cinnamon-settings display`, `mate-display-properties`, `lxqt-config-monitor`, `budgie-control-center display`, `wdisplays`, `nwg-displays`, `arandr`, `lxrandr` (the session's own desktop's first, `XDG_CURRENT_DESKTOP`; the xrandr front ends not under Wayland). False with the reason. |
 | `LockSession(&error)` | Lock the screen - a desktop's *Lock screen* and Super+L. Windows `LockWorkStation`; on Linux `Lock` on this process's logind session, which sends the `Lock` signal the screen locker waits for ([UltraCanvasSessionLock](UltraCanvasSessionLock.md) reports it like any other lock), and without logind `org.freedesktop.ScreenSaver.Lock` on the session bus, which every screensaver implements. False with the reason. |
 
 ### The loudspeaker
@@ -30560,11 +30581,15 @@ the default, empty, or a `;`-list of keys) names the selectable widgets
 compiled into the core. Every one not named is built as its own module,
 `ultracanvas-widget-<kebab-name>`, in `<build>/Plugins/Elements`
 (`ULTRACANVAS_WIDGET_RUNTIME_MODULES`, on by default; off on WASM and Android;
-on Windows the module needs the shared core). Today the table holds one widget:
+on Windows the module needs the shared core). The table:
 
-| Key | Type name | Module |
-|---|---|---|
-| `VideoTimeline` | `video-timeline` | `ultracanvas-widget-video-timeline` |
+| Key | Type name | Module | Applications that need it compiled in |
+|---|---|---|---|
+| `VideoTimeline` | `video-timeline` | `ultracanvas-widget-video-timeline` | UltraVideo, DemoApp |
+| `Slideshow` | `slideshow` | `ultracanvas-widget-slideshow` | DemoApp |
+| `Album` | `album` | `ultracanvas-widget-album` | UltraVideo, DemoApp |
+| `ColorPaletteManager` | `color-palette-manager` | `ultracanvas-widget-color-palette-manager` | UltraPaint, ArtCreator, DemoApp |
+| `VectorCanvas` | `vector-canvas` | `ultracanvas-widget-vector-canvas` | ArtCreator, DemoApp |
 
 ```cpp
 // At startup - registers the widgets compiled in. In a static core it also
@@ -30573,21 +30598,34 @@ UltraCanvas_RegisterSelectedWidgets();
 
 UltraCanvas_AddPluginDirectory(GetExecutableDir() + "/Plugins/Elements");
 auto timeline = UltraCanvasElementRegistry::Create("video-timeline", "tl", 0, 0, 800, 200);
+auto album    = UltraCanvasElementRegistry::Create("album", "pics", 0, 220, 800, 400);
 ```
 
 The default build is unchanged: every widget is compiled in. A lean build
-leaves one out:
+leaves them out, with the applications that use them:
 
 ```
-cmake -S . -B build -DULTRACANVAS_WIDGETS= -DBUILD_ULTRAVIDEO=OFF -DBUILD_DEMO_APP=OFF
+cmake -S . -B build -DULTRACANVAS_WIDGETS= -DBUILD_ULTRAVIDEO=OFF -DBUILD_DEMO_APP=OFF \
+      -DBUILD_ULTRAPAINT_APP=OFF -DBUILD_ARTCREATOR_APP=OFF
 ```
 
-An application that uses a widget's typed API (`CreateVideoTimeline`,
-`VideoTimelineStyle`) needs that widget compiled in. UltraVideo and DemoApp
-use the timeline that way, and the top-level `CMakeLists.txt` stops with an
-error when they are built without it. A host that loads widget modules from
-a static core exports its symbols (`ENABLE_EXPORTS`), the same as the chart
+An application that uses a widget's typed API (its class, its `Create…`
+function, its style) needs that widget compiled in. The top-level
+`CMakeLists.txt` says which widgets each application uses
+(`ultracanvas_require_widgets`) and stops the configure, naming the widgets,
+when one it builds would not link. A host that loads widget modules from a
+static core exports its symbols (`ENABLE_EXPORTS`), the same as the chart
 modules' hosts.
+
+`ElementModulesTest` creates every selectable widget, and the chart of the
+chart module, by name in whichever form the build has them. Loading a module
+also checks that it carries the framework headers id the loader insists on.
+The *Element modules* workflow (`.github/workflows/element-modules.yml`)
+builds this lean configuration on every pull request that touches the
+framework, runs `ElementModulesTest`, `UltraCanvasThemeTest` and
+`VectorEditTest` against it, and checks that the configure refuses an
+application whose widgets are left out. `build.yml` compiles every widget
+in, so this is the only CI row that builds the modules.
 
 **Adding a widget to the table** (`UltraCanvas/CMakeLists.txt`, "WIDGET SYSTEM"):
 
@@ -30597,10 +30635,15 @@ modules' hosts.
    descriptor through `host->RegisterElement` (see
    `UltraCanvasVideoTimelinePlugin.cpp`).
 3. Take its sources out of `ULTRACANVAS_CORE_SOURCES` and add a row:
-   `_KEBAB`, `_SOURCES`, `_PLUGIN`, `_HEADER`, `_REGISTER`, and an `_ANCHOR`
-   (with `_ANCHOR_INCLUDE`) naming one symbol from each core object that only
-   this widget uses.
-4. Guard every test and application that uses its typed API by
+   `_KEBAB`, `_SOURCES`, `_PLUGIN`, `_HEADER`, `_REGISTER`, and `_ANCHORS`
+   (with the headers in `_ANCHOR_INCLUDES`): one expression for each core
+   object file the module needs that a host with a UI may not link anyway - a
+   function, a member function or `&typeid(Class)` defined there.
+4. Add the widget to `ElementModulesTest`'s list in `Tests/CMakeLists.txt`
+   and build with the widget left out. A missing anchor fails the test with
+   the undefined symbol; `nm` on the archive names its object file.
+5. Add it to `ultracanvas_require_widgets` for every application that uses
+   its typed API, and guard every test that does by
    `ULTRACANVAS_WIDGETS_COMPILED_IN` (a global CMake property).
 
 ## Best Practices
@@ -51400,14 +51443,15 @@ laid out and drawn there, keeps the keyboard there, and a click in its own
 window reaches it as a click in that window, at the same place - so nothing
 about building or handling a menu changes.
 
-The menu's window is cut to the panel's outline, so the rounded corners show
-whatever is beneath. It is opaque and has no drop shadow of its own (a
-compositing window manager gives a popup window one), and it does not fade in:
-`enableAnimations` shows it in full at once. It closes on a click outside it,
-as before, and also when the focus leaves the application, since it would
-otherwise float above other programs' windows. On macOS, in the browser and on
-Android, and with `SetPopupsInOwnWindows(false)`, the menu is composited onto
-its window as described above.
+The menu's window is cut to the panel's outline (transparent outside it on
+macOS and Wayland), so the rounded corners show whatever is beneath. It has no
+drop shadow of its own - macOS and a compositing window manager give a popup
+window one - and it does not fade in: `enableAnimations` shows it in full at
+once. It closes on a click outside it, as before, and also when the focus
+leaves the application, since it would otherwise float above other programs'
+windows. In the browser and on Android, and with
+`SetPopupsInOwnWindows(false)`, the menu is composited onto its window as
+described above.
 
 To get the earlier square look back, take the panel's decoration off:
 
@@ -81311,7 +81355,8 @@ the applications' windows - and it stopped at that window's edges.
 | X11 (Linux, the BSDs) | override-redirect, `_NET_WM_WINDOW_TYPE_TOOLTIP`, an empty input shape, mapped raised |
 | Windows | `WS_EX_TOPMOST \| WS_EX_TOOLWINDOW \| WS_EX_NOACTIVATE`, layered and `WS_EX_TRANSPARENT`, shown without activation |
 | Wayland | a popup of the window the tooltip belongs to with no input region; beside a desktop on the layer shell, a surface on the overlay layer that never takes the keys |
-| macOS, the browser, Android | none: the tooltip is drawn inside its window |
+| macOS | a borderless window that never becomes key, at the pop-up menu level, ignoring the pointer, with the system's shadow |
+| the browser, Android | none: the tooltip is drawn inside its window |
 
 The window is made the first time a tooltip of a window is shown, hidden with
 the tooltip and shown again for the next one; a tooltip of another window gets
@@ -105597,6 +105642,8 @@ The board, its look, how cards are shown and the preview size are kept.
 
 The clock at the top of the right bar shows the time on a small analog face
 and the date under it; rest the pointer on it for the whole date and time.
+Right-click it to show it as an analog or a digital clock, with or without
+the date.
 Click it for the clock panel: the time large, on a face and in figures,
 today written out, and this month's calendar with today marked. You can page
 through other months; nothing is chosen there. Escape, or a click anywhere
@@ -105676,6 +105723,55 @@ The Task Manager icon at the foot of the info panel opens it.
 - **Hardware** shows the machine: CPU load and temperature, memory, storage
   and the network interfaces.
 
+### 4.13 The desktop's menus
+
+Right-click the **wallpaper** for the desktop's menu:
+
+- **Change wallpaper...** picks a picture; **Default wallpaper** goes back
+  to ULTRA OS's own picture.
+- **Theme**: **Dark** (light icons on dark grey bars) or **Light** (dark
+  icons on light grey bars). The panels the bars open - the clock, the
+  loudspeaker, Wi-Fi, Bluetooth, the devices, the clipboard and the window
+  pictures - follow it.
+- **Taskbar position**: on the left, at the top or at the bottom.
+- **Drop files**: where files you drag onto the wallpaper go.
+  - **Drop on sticker board** (the default): they join the Sticker board's
+    **Unsorted** category, which is added when the board has none, and the
+    board opens to show them.
+  - **Drop on desktop**: they are moved into your Desktop folder (copied,
+    when they come from another drive) and appear where you dropped them as
+    icons on the wallpaper. The wallpaper shows the Desktop folder's files as
+    icons while this is chosen: click one to select it, **Ctrl+click** to add
+    or remove one, **Shift+click** to add one, or draw a box on the
+    wallpaper around several (with Ctrl held, they are added). Double-click
+    to open, drag to move the selected icons together (they stay there), or
+    drag them onto another program's window - a file manager, a mail, an
+    editor - to hand the files to it. Right-click for **Open**, **Show in
+    the file manager**, **Delete**, **Select all** and **Arrange icons**,
+    for all the selected icons. Once you have clicked an icon or the
+    wallpaper, the keyboard works on them too: **Delete** deletes the
+    selected icons (after asking), **Ctrl+A** selects them all, **Enter**
+    opens them, **F2** renames the selected icon (its name becomes a text
+    field with the name before the extension chosen; **Enter** or a click
+    elsewhere renames the file, **Escape** keeps the old name - also
+    **Rename** on its menu), and **Escape** clears the selection (or, during
+    a drag or while drawing a box, puts things back as they were). A file saved to the Desktop
+    folder by another program appears within two seconds.
+- **Arrange icons** (with **Drop on desktop**) puts the icons back on the
+  grid, in name order.
+- **Notes on the wallpaper** shows or hides the notes.
+- **Display settings...** opens the system's own display settings - the
+  resolution, how the monitors are arranged, which one is the main one.
+  On Linux it is your desktop's display tool (GNOME's or Plasma's settings,
+  xfce4-display-settings, wdisplays, arandr, ...); where none is installed,
+  the entry is left out.
+- **Desktop settings...** opens UOS-Settings.
+
+Right-click the **taskbar or the right bar** where a button has no menu of
+its own - between the buttons, on the Applications button, a virtual
+desktop or a service icon - to move the taskbar to another edge or change
+the theme. The ⚙ button's menu has **Taskbar position** and **Theme** too.
+
 ## 5. Settings
 
 UltraDesktop's settings are the **Desktop** page of **UOS-Settings**. Click
@@ -105685,6 +105781,8 @@ settings**.
 | Setting | What it does |
 |---|---|
 | **Taskbar** | **Left**, **Top** or **Bottom** edge. |
+| **Theme** | **Dark** or **Light** bars. |
+| **Dropped files** | **Sticker board (Unsorted)** or **Desktop (as icons)**: where files dragged onto the wallpaper go (section 4.13). |
 | **Wallpaper** | A picture file (**Browse...**). Empty: the framework's landscape picture. |
 | **RAM disc** | The folder the RAM disc button opens. Empty: no button. On Linux it is `/dev/shm` unless you change it; on Windows it is empty unless you set one. |
 | **File manager** | The program the folder buttons start (UltraFiler unless you change it). |
@@ -105824,7 +105922,12 @@ at sign-in.
 | Any window | Super key (Win key) alone | opens Applications (on Linux; on Windows only instead of Explorer) |
 | Any window, Linux | Super+L | locks the screen (on Windows Win+L is Windows' own) |
 | Any window | Super+Shift+S (Win+Shift+S) | UltraSnip snips an area (on Windows only instead of Explorer; Win+Shift+S is Windows' own beside it) |
-| Clock | click | the clock panel |
+| Clock | click / right-click | the clock panel / analog or digital, with or without the date |
+| Wallpaper | right-click / drop files | wallpaper, theme, taskbar position, drop files, notes, display settings, desktop settings / onto the Sticker board's Unsorted category, or onto the desktop |
+| Desktop icon | click / Ctrl+click / Shift+click / double-click / drag / right-click | select / add or remove / add / open / move, or onto another program's window to give it the files / Open, Show in the file manager, Delete, Select all, Arrange icons |
+| Wallpaper, with desktop icons | drag / Ctrl+drag | select the icons in the box / add them |
+| Desktop icons (after a click on them or the wallpaper) | Delete / Ctrl+A / Enter / F2 / Escape | delete the selected (asked first) / select all / open the selected / rename the selected icon / clear the selection, or cancel a drag or a box |
+| The bars, between the buttons | right-click | taskbar position, theme |
 | Loudspeaker icon | click | the volume panel |
 | Pinned program | click / right-click | start it / open, unpin |
 | Applications tile | click / right-click | start it / pin or unpin |
@@ -105834,7 +105937,7 @@ at sign-in.
 | Screenshot button | click / right-click | UltraSnip snips an area / a window, the whole screen, a recording, the plain screenshot, open UltraSnip |
 | Clipboard panel | Up, Down, Enter, Delete, F2, Escape | choose, copy, delete, edit, close |
 | Sticker board | drop files / double-click a card / double-click a category title | add / open / rename |
-| Sticker board | right-click a card / rest the pointer on it for two seconds | Open, Copy, Delete, Move to, Display / a larger preview |
+| Sticker board | right-click a card / rest the pointer on it for two seconds / Delete | Open, Copy, Delete, Move to, Display / a larger preview / the selected card's file to the trash, or the note deleted (asked first) |
 | A notification | click / × | its default action / dismiss |
 
 ## 8. Troubleshooting
@@ -105987,20 +106090,19 @@ system.
 
 ```
 ┌────┬──────────────────────────────────────────────────────────────┬────┐
-│ ⚙  │                                                              │ 1  │  desktop
-│ ⋮⋮ │                                                              │ 2  │  organiser
-│╲   │                                                              │ 3  │
-│ ╲  │                                                              │    │
-│ ▣  │                     wallpaper                                │ 📌 │  Sticker board
-│ ▣  │            (application windows float above)                 │ 🗒 │  notes
-│ ▣  │                                                              │ 📋 │  clipboard
-│  ╲ │                                                              │ 📷 │  screenshot
-│   ╲│                                                              │╱   │
-│ ▤  │                                                              │ ✉14│  info panel
-│ 📁 │                                                              │ ⇧⇩ │  (devices and
-│ 🎨 │                                                              │ 🔊 │   services)
-│    │                                                              │ 🕒 │  clock
-│    │                                                              │30Oct│  and date
+│ ⚙  │                                                              │ 🕒 │  clock
+│ ⋮⋮ │                                                              │30Oct│  and date
+│╲   │                                                              │ 1  │  desktop
+│ ╲  │                                                              │ 2  │  organiser
+│ ▣  │                     wallpaper                                │ 3  │
+│ ▣  │            (application windows float above)                 │ 📌 │  Sticker board
+│ ▣  │                                                              │ 🗒 │  notes
+│  ╲ │                                                              │ 📋 │  clipboard
+│   ╲│                                                              │ 📷 │  screenshot
+│ ▤  │                                                              │╱   │
+│ 📁 │                                                              │ ✉14│  info panel
+│ 🎨 │                                                              │ ⇧⇩ │  (devices and
+│    │                                                              │ 🔊 │   services)
 └────┴──────────────────────────────────────────────────────────────┴────┘
  taskbar                                                               right bar
 ```
@@ -106083,7 +106185,8 @@ the right-hand monitor the primary.
 
 ### Right bar
 
-- **Clock**, at the foot of the bar, white on black: by default the
+- **Clock**, at the top of the bar, white on black (black on white in the
+  light theme): by default the
   framework's gauge element in its analog clock mode
   ([UltraCanvasGaugeDiagramElement](../UltraCanvas/UltraCanvasGaugeExamples.md)),
   which ticks on its own, over the date ("30 Oct"); the tooltip has the
@@ -106199,6 +106302,75 @@ the right-hand monitor the primary.
   a chevron over the edge marks where the icons continue, a click on it
   scrolls a page, and so does the wheel over the panel.
 
+### Theme and context menus
+
+The bars come in two themes, kept as `theme` in the settings: **dark**
+(light icons on dark grey, the running applications and the organiser
+carved in near black, the clock white on black - the default) and
+**light** (dark icons on light grey, the carved-in groups near white, the
+clock black on white, the ULTRA OS logo in its variant for a light ground).
+The panels the bars open follow the theme - the clock, loudspeaker, Wi-Fi,
+Bluetooth, device and clipboard panels and the window pictures
+(`UltraDesktopPanelTheme`): dark grey with light text, or near white with
+dark text. A panel open when the theme changes closes, and opens in the new
+colours.
+
+- **The wallpaper** (right click): *Change wallpaper...* (an Open dialog
+  with every picture type this build reads, through FileLoader), *Default
+  wallpaper* (when another is set), *Theme* (*Dark*, *Light*), *Taskbar
+  position* (*on the left*, *at the top*, *at the bottom*), *Drop files*
+  (*Drop on sticker board*, *Drop on desktop*; below), *Arrange icons* (with
+  the desktop icons), *Notes on the wallpaper*, *Display settings...* and *Desktop settings...* (UOS-Settings).
+  *Display settings...* opens the system's own
+  (`UltraCanvasDesktopShell::OpenDisplaySettings`): Settings > Display on
+  Windows, System Settings > Displays on macOS, and on Linux the first
+  display tool installed - the session's own desktop's first
+  (`XDG_CURRENT_DESKTOP`): GNOME's, Plasma's, Xfce's, Cinnamon's, MATE's,
+  LXQt's or Budgie's settings, then wdisplays, nwg-displays, and on X11
+  arandr and lxrandr. Where there is none the entry is left out.
+- **The bars** (right click on a group, where the button under the pointer
+  has no menu of its own - between buttons, the Applications button, a
+  virtual desktop, a service icon): the taskbar's edge, the theme and
+  *Desktop settings...*. The ⚙ button's menu has *Taskbar position* and
+  *Theme* as submenus.
+
+**Files dropped on the wallpaper** go where `dropFilesOn` says:
+
+- `board` (the default): onto the Sticker board, into its **Unsorted**
+  category (added at the end when the board has none; a file already on the
+  board moves there), and the board shows.
+- `desktop`: into the Desktop folder (the platform's own - the known folder
+  on Windows, xdg-user-dirs on Linux - else `~/Desktop`, made when missing),
+  moved, or copied when it is on another drive; a name already taken becomes
+  `name (2).ext`. The wallpaper then shows the Desktop folder's entries
+  (hidden ones left out) as icons - the file's picture (a photo's or
+  document's thumbnail, else the system's icon for its type) over its name -
+  in an `UltraDesktopDesktopIcons` layer under the notes. A dropped file lies
+  where it was dropped; others fill a grid column by column from the top
+  left. A click selects; Ctrl+click adds or removes an icon, Shift+click adds
+  one, and a rubber band drawn on the wallpaper selects the icons it touches
+  (Ctrl adds them; a plain click on the wallpaper clears the selection). A
+  double click opens the selection with the default applications. A drag
+  moves the selected icons together (kept in `desktopIcons` by the entries'
+  names) until the pointer is over another program's window (the windows
+  the Task Manager lists, read when the drag starts): the icons go back and
+  the files continue as a native file drag (XDND on X11, OLE on Windows),
+  which that program takes; one that moved them makes their icons go. A
+  right click offers, for the whole selection, *Open*, *Show in the file
+  manager*, *Rename* (one icon), *Delete* (into the trash, after one
+  question), *Select all* and *Arrange icons*. After a click on an icon or the wallpaper between them the
+  layer has the keyboard: Delete deletes the selection (after the question),
+  Ctrl+A selects every icon, Enter opens the selection, F2 renames the
+  selected icon (also *Rename* on its menu: a text field over its name with
+  the name before the extension chosen; Enter or a click elsewhere renames
+  the file and the icon keeps its place, Escape keeps the name; a name
+  already on the desktop, or one with a slash, is refused), Escape ends a
+  drag or a rubber band where it started, else clears the selection. The folder is looked at every two seconds,
+  so a file another program saves there appears too.
+
+A change is saved at once and the bars are rebuilt in place; one made in
+UOS-Settings is followed within a second.
+
 ### Windows the desktop opens
 
 - **Applications** (app starter): every installed application from its
@@ -106259,7 +106431,7 @@ the right-hand monitor the primary.
   after asking, for one that does not close. The desktop's own windows (the
   Task Manager itself, its dialogs, the Sticker board) are not listed - the machine — CPU load and temperature, memory, storage, the
   interfaces — on the framework's hardware panel on the second.
-- **Settings**: the desktop's settings - the taskbar's edge, the wallpaper,
+- **Settings**: the desktop's settings - the taskbar's edge, the theme, the wallpaper,
   the RAM disc path, the file manager program, the number of virtual
   desktops - are the *Desktop* page of UOS-Settings. They live in the
   desktop's settings file; the desktop checks it once a second and rebuilds
@@ -106284,7 +106456,10 @@ the right-hand monitor the primary.
   *Schematic* or *Dark*. A right click on a card offers *Open*, *Copy* (the
   file onto the clipboard, as the file manager copies it), *Delete* (into the
   trash, after a question), *Remove from the board* and *Move to* another
-  category; on a note, *Open*, *Copy* its text and *Delete* it. *Display*,
+  category; on a note, *Open*, *Copy* its text and *Delete* it (after a
+  question). The Delete key does what *Delete* does, after the same question,
+  as on the desktop icons; *Remove from the board* takes a card off without
+  touching its file. *Display*,
   in the same menu (anywhere on the board), shows the cards as *Text only*,
   *Thumbnail and text* (the picture with the name centred under it - the
   default) or *Thumbnail and text in a row*, and sets the size of the *Mouse
@@ -106365,6 +106540,10 @@ earlier versions kept under `~/.config` is moved on the first start):
   "ramDiscPath": "/dev/shm",
   "filerProgram": "UltraFiler",
   "virtualDesktops": 3,
+  "clockStyle": "analog-date",
+  "theme": "dark",
+  "dropFilesOn": "board",
+  "desktopIcons": { "report.pdf": { "x": 16, "y": 56 } },
   "stickerboardVisible": false,
   "stickers": [ { "id": "note1", "text": "…", "x": 60, "y": 60, "width": 220, "height": 160, "color": "#FFF59D" } ],
   "categoryBoard": { "visible": false, "design": "stickynotes", "display": "thumbnail", "hoverPreview": "medium",
@@ -106390,6 +106569,11 @@ and `height` are kept for older versions and no longer used: the board fills
 the work area and starts hidden. `pinnedApps` are the pinned
 applications' keys in the order they were pinned: the program's path, or on
 Windows the shortcut's path or `store:<AppUserModelID>`.
+`dropFilesOn` is `board` (the default) or `desktop`; `desktopIcons` keeps the
+desktop icons' places in the work area by name, and forgets one whose entry
+has gone. `theme` is `dark` (the default) or `light`; `clockStyle` one of
+`analog-date` (the default), `analog`, `digital-date`, `digital` and
+`digital-seconds`.
 `startWithDesktop` names the programs started with the desktop - `ChatCube`
 and `UltraMail` are the ones it offers; empty (the default), none.
 
@@ -106533,6 +106717,78 @@ same.
 | Info panel | webcam from Windows' privacy indicator, microphone and speaker from the audio sessions, the volume from the default endpoint, battery, keyboard layout, network, USB and Bluetooth; instead of Explorer also the tray icons |
 | Lock screen | `LockWorkStation`, from the ⚙ menu; Win+L is Windows' own |
 | Notifications | beside Explorer other programs' notifications are drawn by Windows, as before; instead of Explorer the tray icons' balloons are drawn by UltraDesktop |
+
+==============================================================================
+FILE: Docs/UltraDesktop/changelog.d/desktop-menus-light-theme.md
+==============================================================================
+
+- **The desktop has a right-click menu.** A right click on the wallpaper
+  offers *Change wallpaper...* (any picture this build reads, through
+  FileLoader's Open dialog), *Default wallpaper*, *Theme*, *Taskbar
+  position*, *Notes on the wallpaper*, *Display settings...* - the system's
+  own: Settings > Display on Windows, System Settings > Displays on macOS,
+  the desktop's display tool on Linux (GNOME's or Plasma's settings,
+  xfce4-display-settings, wdisplays, arandr, ...) - and *Desktop
+  settings...* (UOS-Settings).
+- **The bars have one too.** A right click on the taskbar or the right bar
+  where the button under the pointer has no menu of its own - between the
+  buttons, the Applications button, a virtual desktop, a service icon -
+  moves the taskbar to the left, the top or the bottom, or changes the
+  theme. The ULTRA OS settings button's menu has *Taskbar position* and
+  *Theme* as submenus.
+- **A light theme.** `theme` in `desktop.json` is `dark` (the default) or
+  `light`: dark icons on light grey bars, the carved-in groups near white,
+  the clock black on white and the ULTRA OS logo in its variant for a light
+  ground. Chosen on the menus above or on UOS-Settings' Desktop page, and
+  followed within a second when UOS-Settings changes it.
+- **The clock is at the top of the right bar again**, above the virtual
+  desktops, as it was before 0.4.10; its display types and panel are as
+  they were.
+
+==============================================================================
+FILE: Docs/UltraDesktop/changelog.d/drop-files-on-wallpaper.md
+==============================================================================
+
+- **Files can be dropped on the wallpaper.** Where they go is chosen on the
+  desktop's right-click menu, *Drop files*, or on UOS-Settings' Desktop page
+  (`dropFilesOn` in `desktop.json`):
+  - *Drop on sticker board* (the default): into the Sticker board's
+    **Unsorted** category, added when the board has none, and the board
+    shows.
+  - *Drop on desktop*: moved into the Desktop folder (copied from another
+    drive; a taken name becomes `name (2).ext`), and the wallpaper shows the
+    Desktop folder as icons - the file's thumbnail or the system's icon over
+    its name. A dropped file lies where it was dropped; a double click opens
+    it, a drag moves it (kept in `desktopIcons`), a right click offers
+    *Open*, *Show in the file manager*, *Delete* and *Arrange icons*. A file
+    another program saves to the Desktop appears within two seconds.
+- **Notes on the wallpaper show again.** The notes and their "+" button were
+  placed on the notes layer but never added to it, so none was drawn while
+  the notes were switched on.
+- **Several desktop icons at once.** Ctrl+click adds or removes an icon,
+  Shift+click adds one, and a box drawn on the wallpaper selects the icons it
+  touches (with Ctrl, adds them). The selected icons open, move and are
+  deleted together, and *Select all* is on their menu.
+- **Desktop icons can be dragged out to other programs.** Dragged over
+  another program's window, the selected files continue as a native file
+  drag, which a file manager, a mail or an editor takes.
+- **The panels follow the light theme.** The clock, loudspeaker, Wi-Fi,
+  Bluetooth, device and clipboard panels and the window pictures are near
+  white with dark text in the light theme.
+- **The desktop's menu works on the wallpaper while desktop icons show.**
+- **The desktop icons answer the keyboard**, after a click on an icon or
+  the wallpaper: Delete (after the question), Ctrl+A, Enter, and Escape,
+  which clears the selection or puts a drag or a rubber band back.
+- **F2 renames a desktop icon** (also *Rename* on its menu): its name
+  becomes a text field with the part before the extension chosen; Enter or a
+  click elsewhere renames the file, which keeps its place, and Escape keeps
+  the old name. The icons are a little wider, so a name like
+  `groceries.txt` is no longer cut at both ends.
+- **Sticker board: the Delete key asks first, and does what the card's
+  menu's *Delete* does** - a file's card moves the file to the trash, a note
+  is deleted - as the Delete key does on the desktop icons. It took the card
+  off the board without a question. *Remove from the board* is still on the
+  menu; the note's *Delete* asks too.
 
 ==============================================================================
 FILE: Docs/UltraCanvasStart/README.md

@@ -30,6 +30,9 @@
 #include <algorithm>
 #include <cmath>
 #include "UltraCanvasTimecodeField.h"
+#ifndef UC_TEST_HAS_ALBUM
+#define UC_TEST_HAS_ALBUM 1
+#endif
 #ifndef UC_TEST_HAS_VIDEO_TIMELINE
 #define UC_TEST_HAS_VIDEO_TIMELINE 1
 #endif
@@ -211,12 +214,14 @@ int main() {
     const SplitPaneStyle pane = SplitPaneStyle::FromTheme(own, paneBase);
     CHECK(Same(pane.splitterColor, r.ground) && Same(pane.splitterHoverColor, r.lineStrong) && Same(pane.splitterActiveColor, r.accent) && pane.splitterThickness == 9,
           "split pane: ground, strong line, accent; the base's thickness");
+#if UC_TEST_HAS_ALBUM   // a selectable widget (ULTRACANVAS_WIDGETS), absent from a lean core
     AlbumConfig albumBase;
     albumBase.mode = AlbumMode::UserEdit;
     const AlbumConfig album = AlbumConfig::FromTheme(own, albumBase);
     CHECK(Same(album.backgroundColor, r.panel) && Same(album.itemBackgroundColor, r.raised) && Same(album.borderColor, r.line) &&
           Same(album.captionColor, r.ink) && Same(album.subtitleColor, r.inkMuted) && Same(album.linkColor, r.accent) &&
           Same(album.selectionColor, r.accent) && album.mode == AlbumMode::UserEdit, "album: panel, raised tiles, hairlines, captions, accent; the base's mode");
+#endif
 
     ModalDialogStyle dialogBase;
     dialogBase.messageFontSize = 19.f;

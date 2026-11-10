@@ -140,11 +140,31 @@ without one, and the active tool's slot is pressed.
   command a new version adds to a group still appears). A toolbar wider than
   the window puts what does not fit into a chevron's menu at its end.
 
+## Drawings in tabs
+
+A window holds several drawings, one per tab of the strip over the canvas.
+Each tab has its own page, view (zoom, guides, grid), selection, undo
+history, icon mode and file. *New*, *New Icon*, the tab strip's **+**,
+*Open*, a file dropped on the canvas and more files on the command line each
+open a tab rather than a window - *Open* puts the file in place of an
+untouched new drawing, and a drawing open already just comes forward. The
+tab's dot marks unsaved changes; its tooltip is the file's path.
+
+- **Close Tab** (Ctrl+W, or the tab's x) asks first when the drawing has
+  unsaved changes; closing the last tab leaves a new drawing in its place.
+- **Ctrl+Tab** / **Ctrl+Shift+Tab** go to the next / previous tab; a tab is
+  dragged along the strip to reorder.
+- Closing the window asks once for all of its unsaved drawings, and Quit
+  once for every window's.
+- *File > New Window* (Ctrl+Alt+N) still opens another window, with a new
+  drawing in it.
+
 ## Menus and shortcuts
 
 - **File**: New (Ctrl+N; page presets - opening on the one the page
   matches - width x height, mm / cm / in / pt / px, orientation),
-  New Window (Ctrl+Alt+N), New Icon (16 to 256 px, see *Icon mode*), Open (Ctrl+O), Save (Ctrl+S), Save As
+  New Window (Ctrl+Alt+N), New Icon (16 to 256 px, see *Icon mode*), Open (Ctrl+O),
+  Close Tab (Ctrl+W), Save (Ctrl+S), Save As
   (Ctrl+Shift+S), Export (Ctrl+E), Document Setup, Quit (Ctrl+Q).
 - **Edit**: Undo / Redo (Ctrl+Z / Ctrl+Y), Cut / Copy / Paste (in-app
   clipboard, pastes offset), Duplicate (Ctrl+D), Delete, Select All / None.
@@ -260,9 +280,9 @@ the Vector plugin (`-DULTRACANVAS_PLUGIN_VECTOR=ON`) the editor draws but
 has no file formats.
 
 One ArtCreator runs per user. `ArtCreator a.svg b.xar` opens one window
-each; starting it again while it runs hands the drawings to the running copy,
-which opens each in a new window of its own and brings it to the front (a
-drawing already open is never replaced), and a start without drawings just
+with a tab each; starting it again while it runs hands the drawings to the
+running copy, which opens each in a tab of the window used last and brings it
+to the front (a drawing already open is never replaced), and a start without drawings just
 brings ArtCreator forward (`UltraCanvasSingleInstance`). `--help` and
 `--version` answer on their own.
 
@@ -271,7 +291,7 @@ brings ArtCreator forward (`UltraCanvasSingleInstance`). `--help` and
 | File | Contents |
 |---|---|
 | `main.cpp` | Bootstrap, arguments, plugin registration, the first window |
-| `ArtCreatorWindow.{h,cpp}` | Window composition, the open-window registry, panels, status bar, file open / save, every command's work |
+| `ArtCreatorWindow.{h,cpp}` | Window composition, the open-window registry, the drawings' tabs, panels, status bar, file open / save, every command's work |
 | `ArtCreatorCommands.cpp` | Every command registered once (menus, toolbar, palette, keys, live state), the default menu, toolbar and palette layouts, the icon sizes, the user's layouts kept, the Customise editor |
 | `ArtCreatorTools.{h,cpp}` | The `ArtTool` base, the 15 tools, the line gallery's named choices, the option-widget helpers |
 | `ArtCreatorDialogs.{h,cpp}` | New Drawing / Document Setup |

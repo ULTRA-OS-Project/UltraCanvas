@@ -1,5 +1,6 @@
 // UltraCanvasWindowBase.cpp
 // Fixed implementation of cross-platform window management system
+// Version: 1.8.1 - on macOS too
 // Version: 1.8.0 - every popup in a window of its own (WindowType::Popup), above every other
 //                  window: made as it opens, placed, sized and cut to its outline as it is
 //                  drawn, closed with it; the popup stays this window's in every other way
@@ -85,10 +86,9 @@ namespace UltraCanvas {
         }
 
         // Popups in windows of their own (SetPopupsInOwnWindows): where the
-        // platform can place such a window - not macOS, which places windows
-        // in its own bottom-up coordinates and reports no window position to
-        // start from, nor the browser or Android, one surface per application.
-#if defined(__ANDROID__) || defined(__EMSCRIPTEN__) || defined(__APPLE__)
+        // platform can place such a window - not the browser or Android, one
+        // surface per application, nor iOS.
+#if defined(__ANDROID__) || defined(__EMSCRIPTEN__) || (defined(__APPLE__) && TARGET_OS_IPHONE)
         constexpr bool kPopupWindowsPlatform = false;
 #else
         constexpr bool kPopupWindowsPlatform = true;
@@ -1318,10 +1318,11 @@ namespace UltraCanvas {
         const Size2Di size = p->GetSize();
         if (size.width <= 0 || size.height <= 0) return;
         pe.hostShapeFor = size;
-#if !defined(ULTRACANVAS_DISPLAY_WAYLAND)
+#if !defined(ULTRACANVAS_DISPLAY_WAYLAND) && !defined(__APPLE__)
         // The popup's pixels at the window's physical size: its outline is
-        // where they are opaque. (A Wayland surface has an alpha channel:
-        // the transparent corners are transparent on screen already.)
+        // where they are opaque. (A Wayland surface and a macOS popup window
+        // have an alpha channel: the transparent corners are transparent on
+        // screen already.)
         UltraCanvasWindowBase* host = pe.host.get();
         int physicalWidth = 0, physicalHeight = 0;
         host->GetNativeWindowSize(physicalWidth, physicalHeight);

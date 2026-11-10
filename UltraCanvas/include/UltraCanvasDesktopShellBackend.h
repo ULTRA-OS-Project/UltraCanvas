@@ -3,6 +3,7 @@
 // backend. Applications include UltraCanvasDesktopShell.h instead; this
 // header exists so OS/<Platform>/UltraCanvas*DesktopShell.cpp and the shared
 // core agree on one set of entry points.
+// Version: 1.10.0 - CanOpenDisplaySettings, OpenDisplaySettings
 // Version: 1.9.0 - CaptureWindowImage
 // Version: 1.8.0 - macOS: ListNativeApplications and LaunchShortcut native
 //                  (ULTRACANVAS_DESKTOPSHELL_NATIVE_APPLICATIONS)
@@ -114,6 +115,10 @@ namespace DesktopShellBackend {
     bool EndSession(SessionEnd how, std::string& error);
     bool CanLockSession();
     bool LockSession(std::string& error);
+
+    // The system's own display settings, started and not waited for.
+    bool CanOpenDisplaySettings();
+    bool OpenDisplaySettings(std::string& error);
 
     // The default output's volume: `available` false with `error` set when
     // no sound server answers.
