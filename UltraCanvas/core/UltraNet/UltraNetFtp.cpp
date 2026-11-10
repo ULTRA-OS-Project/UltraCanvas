@@ -15,7 +15,6 @@
 // is not asked for it again (ListingFormats). Before both, every folder an
 // FTP drive showed cost a login - two on a server without MLSD, such as
 // vsftpd, which logged in once to be refused and again to ask with LIST.
-// Version: 0.9.1 - FTP and SFTP through the proxy setting (UltraNetCurlProxy.h)
 // Version: 0.9.0 - an FTP change uses the connection kept open: its commands go
 //                  after libcurl's change of folder (CURLOPT_POSTQUOTE) and
 //                  name the entry within it, not on a connection of its own;
