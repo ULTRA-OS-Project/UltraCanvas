@@ -3,6 +3,7 @@
 // the current theme, and the styles the timeline and the timecode field
 // take from a theme - shared roles mapped, element roles honoured, the
 // palette's colour where a theme is silent.
+// Version: 1.10.0 - the list elements: the scrollbar, list view, tree view, columns tree view and filer widget
 // Version: 1.9.0 - the input elements: checkbox, radio, segmented control, spinner, stepper, rating, the date and time pickers
 // Version: 1.8.0 - following by default (SetFollowThemeByDefault), the SetStyle rule, fonts by role in the readers
 // Version: 1.7.0 - fonts and text roles, the high-contrast presets, DeriveAccent and FromHost
@@ -20,6 +21,12 @@
 #include "UltraCanvasAlbum.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasCheckbox.h"
+#include "UltraCanvasColumnsTreeView.h"
+#include "UltraCanvasFilerWidget.h"
+#include "UltraCanvasListDelegate.h"
+#include "UltraCanvasListView.h"
+#include "UltraCanvasScrollbar.h"
+#include "UltraCanvasTreeView.h"
 #include "UltraCanvasDatePicker.h"
 #include "UltraCanvasRadio.h"
 #include "UltraCanvasRating.h"
@@ -314,6 +321,50 @@ int main() {
               && Near(tp.fontSize, bodySize, 1e-6), "time picker: the clock's header and selection in the accent, its face the pressed fill, the header size kept");
     }
 
+    std::printf("FromTheme for the list elements\n");
+    {
+        ScrollbarStyle sbBase = ScrollbarStyle::Minimal();
+        const ScrollbarStyle sb = ScrollbarStyle::FromTheme(own, sbBase);
+        CHECK(sb.trackColor.r == r.panel.r && sb.trackColor.a == sbBase.trackColor.a && sb.thumbColor.r == r.lineStrong.r && sb.thumbColor.a == sbBase.thumbColor.a
+              && Same(sb.trackBorderColor, r.line) && Same(sb.thumbBorderColor, r.lineStrong) && sb.thumbHoverColor.r == r.inkFaint.r && sb.thumbPressedColor.r == r.inkMuted.r,
+              "scrollbar: the panel for the track and the control border for the thumb at the base's alpha, faint and muted ink hovered and pressed");
+        CHECK(Same(sb.arrowColor, r.inkMuted) && Same(sb.arrowHoverColor, r.ink) && Same(sb.arrowBackgroundColor, r.panel) && Same(sb.arrowBackgroundHoverColor, r.hover)
+              && sb.trackSize == sbBase.trackSize && sb.thumbCornerRadius == sbBase.thumbCornerRadius, "scrollbar: the arrows in muted ink on the panel; the base's sizes stay");
+        UltraCanvasTheme barred = own;
+        barred.SetRole("scrollbar.thumb", Color(9, 9, 9));
+        CHECK(Same(ScrollbarStyle::FromTheme(barred).thumbColor, Color(9, 9, 9, 255)), "the element role scrollbar.thumb is honoured");
+        ListViewStyle lvBase;
+        lvBase.rowHeight = 30;
+        const ListViewStyle lv = ListViewStyle::FromTheme(own, lvBase);
+        CHECK(Same(lv.backgroundColor, r.well) && Same(lv.headerBackgroundColor, r.panel) && Same(lv.headerTextColor, r.ink) && Same(lv.gridLineColor, r.line)
+              && Same(lv.alternateRowColor, r.panel) && Same(lv.selectionBackgroundColor, r.accent) && Same(lv.hoverBackgroundColor, r.hover),
+              "list view: the well, the panel header with ink, hairlines, the accent selection");
+        CHECK(Near(lv.headerFontSize, own.FontSize(ThemeTextRole::Caption), 1e-6) && lv.rowHeight == 30 && Same(lv.scrollbarStyle.trackBorderColor, r.line),
+              "list view: the header at the caption size, the base's row height, its scrollbar from the theme");
+        TreeColumnStyle tcBase;
+        tcBase.columnGap = 14;
+        const TreeColumnStyle tc = TreeColumnStyle::FromTheme(own, tcBase);
+        CHECK(Same(tc.columnSeparatorColor, r.line) && Same(tc.headerBackground, r.panel) && Same(tc.headerTextColor, r.ink) && Same(tc.headerBorderColor, r.line)
+              && Same(tc.groupHeaderBackground, TreeColumnStyle().groupHeaderBackground) && tc.columnGap == 14,
+              "columns tree: hairline separators, the panel header, the section header's bar kept, the base's gap");
+        UltraCanvasTheme grouped = own;
+        grouped.SetRole("columns-tree.group-header", Color(3, 3, 3));
+        CHECK(Same(TreeColumnStyle::FromTheme(grouped).groupHeaderBackground, Color(3, 3, 3, 255)), "the element role columns-tree.group-header is honoured");
+        FilerStyle fsBase;
+        fsBase.tileGap = 16;
+        const FilerStyle fs = FilerStyle::FromTheme(own, fsBase);
+        CHECK(Same(fs.backgroundColor, r.well) && Same(fs.textColor, r.ink) && Same(fs.secondaryTextColor, r.inkMuted) && Same(fs.headerBackground, r.panel)
+              && Same(fs.gridLineColor, r.line) && Same(fs.hoverColor, r.hover) && Same(fs.selectionColor, r.accentSoft) && Same(fs.selectionBorderColor, r.accent),
+              "filer: the well, ink and muted ink, the panel header, hairlines, the soft accent selection with the accent round it");
+        CHECK(Same(fs.barColor, r.accent) && Same(fs.barBackground, r.panel) && Same(fs.loadingBarColor, r.accent) && Same(fs.renameFieldColor, r.well)
+              && Same(fs.renameBorderColor, r.accent) && Same(fs.renameTextColor, r.ink) && Same(fs.infoBarBackground, r.panel) && Same(fs.infoBarTextColor, r.ink),
+              "filer: the bars and the rename editor from the accent, the info bar on the panel");
+        CHECK(Same(fs.iconMenuBackground, FilerStyle().iconMenuBackground) && Same(fs.extensionTagBackground, FilerStyle().extensionTagBackground)
+              && fs.fontFamily == own.fonts.ui.fontFamily && Near(fs.fontSize, own.FontSize(ThemeTextRole::Body), 1e-6)
+              && Near(fs.smallFontSize, own.FontSize(ThemeTextRole::Caption), 1e-6) && fs.tileGap == 16,
+              "filer: the overlays kept, the interface font at the body and caption sizes, the base's gap");
+    }
+
     std::printf("Menu and tooltip from the roles\n");
     const MenuStyle menu = MenuStyle::FromTheme(own);
     CHECK(Same(menu.backgroundColor, r.raised) && Same(menu.borderColor, r.line) && Same(menu.hoverColor, r.hover) && Same(menu.textColor, r.ink) &&
@@ -433,6 +484,24 @@ int main() {
         freshDate->SetStyle(DatePickerStyle());
         CHECK(!freshBox->GetFollowTheme() && !freshSeg->GetFollowTheme() && !freshSpin->GetFollowTheme() && !freshDate->GetFollowTheme(),
               "a hand-set style stops their following too");
+        auto freshBar = std::make_shared<UltraCanvasScrollbar>("fresh-bar", 0, 0, 12, 100, ScrollbarOrientation::Vertical);
+        auto freshList = std::make_shared<UltraCanvasListView>("fresh-list", 0, 0, 200, 100);
+        auto freshTree = std::make_shared<UltraCanvasTreeView>("fresh-tree", 0, 0, 200, 100);
+        auto freshCols = std::make_shared<UltraCanvasColumnsTreeView>("fresh-cols", 0, 0, 200, 100);
+        CHECK(freshBar->GetFollowTheme() && Same(freshBar->GetStyle().trackBorderColor, dark.roles.line) && Same(freshList->GetStyle().backgroundColor, dark.roles.well)
+              && Same(freshTree->GetTextColor(), dark.roles.ink) && Same(freshTree->GetSelectionColor(), dark.roles.accent)
+              && Same(freshTree->GetVerticalScrollbarStyle().trackBorderColor, dark.roles.line),
+              "a new scrollbar, list view and tree view are styled from the theme, the tree's scrollbar with it");
+        CHECK(Same(freshCols->GetColumnStyle().headerBackground, dark.roles.panel) && Same(freshCols->GetTextColor(), dark.roles.ink),
+              "a new columns tree view: its columns and its tree part");
+        freshBar->SetStyle(ScrollbarStyle::Modern());
+        freshList->SetStyle(ListViewStyle());
+        freshCols->SetColumnStyle(TreeColumnStyle());
+        CHECK(!freshBar->GetFollowTheme() && !freshList->GetFollowTheme() && !freshCols->GetFollowTheme(), "a hand-set style stops their following");
+        freshTree->SetTextColor(Colors::Red);
+        freshTree->OnThemeChanged(light);
+        CHECK(freshTree->GetFollowTheme() && Same(freshTree->GetTextColor(), light.roles.ink),
+              "the tree has no style struct: a colour set by hand does not stop the following, the next change puts the theme's back");
         // a style set by hand stops the following; the look is kept
         ButtonStyle own;
         own.normalColor = ownRest;

@@ -235,6 +235,7 @@ namespace UltraCanvas {
 
         SetBackgroundColor(Colors::White);
         SetBorders(1, Colors::Gray);
+        ApplyThemeIfFollowing();
     }
 
     UltraCanvasTreeView::UltraCanvasTreeView(const std::string &identifier, float w, float h) :
@@ -276,6 +277,7 @@ namespace UltraCanvas {
 
         SetBackgroundColor(Colors::White);
         SetBorders(1, Colors::Gray);
+        ApplyThemeIfFollowing();
     }
 
     UltraCanvasTreeView::UltraCanvasTreeView(const std::string &identifier) :
@@ -317,6 +319,7 @@ namespace UltraCanvas {
 
         SetBackgroundColor(Colors::White);
         SetBorders(1, Colors::Gray);
+        ApplyThemeIfFollowing();
     }
 
     void UltraCanvasTreeView::SetRootVisible(bool visible) {
@@ -2200,6 +2203,35 @@ namespace UltraCanvas {
         // The track size feeds row width (rows shrink by sbWidth) and the
         // scrollbar's own bounds, both resolved in UpdateScrollbars().
         UpdateScrollbars();
+        RequestRedraw();
+    }
+
+// ===== THE THEME =====
+    void UltraCanvasTreeView::ApplyTheme(const UltraCanvasTheme& theme) {
+        const ThemeRoles& r = theme.roles;
+        SetBackgroundColor(r.well);
+        SetBordersColor(r.lineStrong);
+        fontSize = static_cast<float>(theme.FontSize(ThemeTextRole::Body));
+        selectionColor = r.accent;
+        hoverColor = r.hover;
+        lineColor = r.lineStrong;
+        textColor = r.ink;
+        expandButtonColor = r.raised;
+        expandButtonBorderColor = r.lineStrong;
+        expandButtonSymbolColor = r.ink;
+        expanderArrowColor = r.inkMuted;
+        checkboxBackgroundColor = r.well;
+        checkboxBorderColor = r.lineStrong;
+        checkboxCheckColor = theme.Role("checkbox.mark", r.accent);
+        dropTargetColor = r.accent.WithAlpha(0x66);
+        loadingBarColor = r.accent;
+        TreeScrollToTopStyle buttons = scrollToTopStyle;
+        buttons.background = r.inkMuted.WithAlpha(0xC0);
+        buttons.hoverBackground = r.ink.WithAlpha(0xF0);
+        buttons.borderColor = r.panel.WithAlpha(0x60);
+        buttons.arrowColor = r.panel;
+        scrollToTopStyle = buttons;
+        SetVerticalScrollbarStyle(ScrollbarStyle::FromTheme(theme, scrollbarStyle));
         RequestRedraw();
     }
 }

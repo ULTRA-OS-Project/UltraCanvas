@@ -3,7 +3,7 @@
 // of columns (SetColumns), an optional fixed header band, and draggable column
 // widths. One column is the "tree column" (hosts the indent/expander/icon and draws
 // node->data.text); every other column draws its cell from node->data.cells.
-// Last Modified: 2026-07-27
+// Last Modified: 2026-11-10
 #include "UltraCanvasColumnsTreeView.h"
 #include "UltraCanvasApplication.h"
 #include <algorithm>
@@ -340,4 +340,18 @@ namespace UltraCanvas {
         return UltraCanvasTreeView::OnEvent(event);
     }
 
+
+// ===== THE THEME =====
+    TreeColumnStyle TreeColumnStyle::FromTheme(const UltraCanvasTheme& theme, const TreeColumnStyle& base) {
+        TreeColumnStyle s = base;
+        const ThemeRoles& r = theme.roles;
+        s.columnSeparatorColor = r.line;
+        // the element's own roles: a section header keeps its bar unless a theme names another
+        s.groupHeaderBackground = theme.Role("columns-tree.group-header", base.groupHeaderBackground);
+        s.groupHeaderTextColor = theme.Role("columns-tree.on-group-header", base.groupHeaderTextColor);
+        s.headerBackground = r.panel;
+        s.headerTextColor = r.ink;
+        s.headerBorderColor = r.line;
+        return s;
+    }
 } // namespace UltraCanvas

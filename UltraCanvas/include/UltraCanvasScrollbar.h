@@ -1,7 +1,9 @@
 // include/UltraCanvasScrollbar.h
 // Standalone scrollbar UI control with full interaction support
+// Version: 2.3.0 - ScrollbarStyle::FromTheme, ApplyTheme: a standalone bar follows the theme (an owner's
+//                  bar takes the owner's FromTheme); a SetStyle by hand stops the following
 // Version: 2.2.0
-// Last Modified: 2026-07-20
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -81,6 +83,16 @@ namespace UltraCanvas {
         // style can still override either for a single bar.
         bool smoothScrolling = IsSmoothScrollingEnabled();
         int smoothScrollDuration = GetSmoothScrollDuration();  // milliseconds
+
+        // The theme's roles over a base's own shape (sizes, radii, images,
+        // behaviour) and the base's alpha on the track and the thumb: the
+        // panel for the track with the hover fill and a hairline, the control
+        // border for the thumb, faint and muted ink as it is hovered and
+        // pressed, muted ink for the arrows on the panel; "scrollbar.track"
+        // and "scrollbar.thumb" where a theme names them
+        static ScrollbarStyle FromTheme(const UltraCanvasTheme& theme, const ScrollbarStyle& base);
+        static ScrollbarStyle FromTheme(const UltraCanvasTheme& theme) { return FromTheme(theme, ScrollbarStyle()); }
+        static ScrollbarStyle FromTheme() { return FromTheme(UltraCanvasTheme::Current()); }
 
         // ===== PRESET STYLES =====
         static ScrollbarStyle Default() {
@@ -272,6 +284,7 @@ namespace UltraCanvas {
 
         // ===== STYLE =====
         void SetStyle(const ScrollbarStyle& newStyle);
+        void ApplyTheme(const UltraCanvasTheme& theme) override { SetStyle(ScrollbarStyle::FromTheme(theme, style)); }
 
         const ScrollbarStyle& GetStyle() const { return style; }
         ScrollbarStyle& GetStyleRef() { return style; }

@@ -126,7 +126,7 @@
 //                  (HTML::DecodeEntities): every named and numeric reference, where
 //                  a numeric one was a blank before
 // Version: 1.36.0 - an icon on every entry of the context menu and its Display submenu
-// Last Modified: 2026-11-09
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 
 #ifdef ULTRACANVAS_HAS_VIRTUALFS
@@ -2638,6 +2638,7 @@ namespace UltraCanvas {
         // the first folder is still scanning, so the context menu's
         // "Open with >" is a cache read by the time it can be opened.
         FileAssociations::PrewarmAsync();
+        ApplyThemeIfFollowing();
     }
 
     UltraCanvasFilerWidget::~UltraCanvasFilerWidget() {
@@ -4926,6 +4927,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasFilerWidget::SetStyle(const FilerStyle& s) {
+        StyleSetByHand();
         style = s;
         SetBackgroundColor(style.backgroundColor);
         InvalidateFilerLayout();
@@ -17326,4 +17328,38 @@ namespace UltraCanvas {
         return UltraCanvasContainer::OnEvent(event);
     }
 
+
+// ===== THE THEME =====
+    FilerStyle FilerStyle::FromTheme(const UltraCanvasTheme& theme, const FilerStyle& base) {
+        FilerStyle s = base;
+        const ThemeRoles& r = theme.roles;
+        s.fontFamily = theme.fonts.ui.fontFamily;
+        s.fontSize = static_cast<float>(theme.FontSize(ThemeTextRole::Body));
+        s.smallFontSize = static_cast<float>(theme.FontSize(ThemeTextRole::Caption));
+        s.backgroundColor = r.well;
+        s.textColor = r.ink;
+        s.secondaryTextColor = r.inkMuted;
+        s.headerBackground = r.panel;
+        s.headerTextColor = r.inkMuted;
+        s.gridLineColor = r.line;
+        s.hoverColor = r.hover;
+        s.selectionColor = r.accentSoft;
+        s.selectionBorderColor = r.accent;
+        s.barColor = r.accent;
+        s.barBackground = r.panel;
+        s.loadingBarColor = r.accent;
+        // the element's own roles: the overlays keep their dark look unless a theme names another
+        s.iconMenuBackground = theme.Role("filer.icon-menu", base.iconMenuBackground);
+        s.iconMenuGlyphColor = theme.Role("filer.on-icon-menu", base.iconMenuGlyphColor);
+        s.iconMenuDoneColor = theme.Role("filer.icon-menu-done", base.iconMenuDoneColor);
+        s.renameFieldColor = r.well;
+        s.renameBorderColor = r.accent;
+        s.renameTextColor = r.ink;
+        s.infoBarBackground = r.panel;
+        s.infoBarTextColor = r.ink;
+        s.extensionBarBackground = theme.Role("filer.extension-bar", base.extensionBarBackground);
+        s.extensionTagBackground = theme.Role("filer.extension-tag", base.extensionTagBackground);
+        s.extensionTagTextColor = theme.Role("filer.on-extension-tag", base.extensionTagTextColor);
+        return s;
+    }
 } // namespace UltraCanvas

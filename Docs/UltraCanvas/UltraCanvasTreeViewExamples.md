@@ -26,6 +26,7 @@
   - [Scroll-to-Top and Scroll-to-Selection Buttons](#scroll-to-top-and-scroll-to-selection-buttons)
   - [Measuring the Tree](#measuring-the-tree)
   - [Color Properties](#color-properties)
+  - [Following the theme](#following-the-theme)
   - [Event Callbacks](#event-callbacks)
 - [Usage Examples](#usage-examples)
   - [Basic Tree Creation](#basic-tree-creation)
@@ -55,8 +56,8 @@
 
 The `UltraCanvasTreeView` is a hierarchical tree view control component that provides a powerful and flexible way to display tree-structured data with support for icons, custom styling, selection modes, and interactive features. It is part of the UltraCanvas cross-platform UI framework.
 
-**Version:** 1.3.0  
-**Last Modified:** 2026-10-13  
+**Version:** 1.4.0 - `ApplyTheme` on both views, `TreeColumnStyle::FromTheme`: the trees follow the theme  
+**Last Modified:** 2026-11-10  
 **Files:** 
 - Header: `include/UltraCanvasTreeView.h` (columns variant: `include/UltraCanvasColumnsTreeView.h`)
 - Implementation: `core/UltraCanvasTreeView.cpp`, `core/UltraCanvasColumnsTreeView.cpp`
@@ -828,6 +829,34 @@ theme needs, where a black glyph on a light box stands out of the tree.
 colour of both the tick and the Mixed square.
 `SetLoadingBarColor` sets the bar a loading row slides along its foot (default
 the accent blue `Color(37, 99, 235)`; see [Rows still loading](#rows-still-loading)).
+
+### Following the theme
+
+Under the theme policy a new tree follows the framework theme
+(`UltraCanvasTheme.md`) by itself: `ApplyTheme` puts the roles onto the
+colours above - the well behind the rows with the control border round it,
+ink for the labels at the body size, the accent for the selection, the hover
+fill, the control border for the lines, the raised surface for the `+`/`-`
+box with ink in it, muted ink for a chevron, the well and the accent for the
+check flags, the accent for a drop target and the loading bar, the floating
+buttons in muted ink with the panel for their arrow, the scrollbar from
+`ScrollbarStyle::FromTheme`. The tree has no style struct, so a colour set
+by hand does not stop the following (the next theme change puts the theme's
+back): an application that colours the tree itself calls
+`SetFollowTheme(false)` first. `UltraCanvasColumnsTreeView` adds
+`TreeColumnStyle::FromTheme` - hairline separators, the panel for the header
+band with ink; a section header keeps its black bar unless the theme names
+`columns-tree.group-header` and `columns-tree.on-group-header` - and a
+`SetColumnStyle` by hand does stop its following.
+
+```cpp
+auto tree = std::make_shared<UltraCanvasTreeView>("tree", 0, 0, 240, 320);
+tree->SetFollowTheme(false);                                  // styled by the application
+tree->SetSelectionColor(Color(242, 165, 58));
+auto columns = std::make_shared<UltraCanvasColumnsTreeView>("columns", 0, 0, 400, 320);
+columns->SetColumnStyle(TreeColumnStyle::FromTheme(UltraCanvasTheme::Current(), columns->GetColumnStyle()));
+columns->SetFollowTheme(true);                                // the roles over the hand-set columns, on every change
+```
 
 ### Event Callbacks
 
