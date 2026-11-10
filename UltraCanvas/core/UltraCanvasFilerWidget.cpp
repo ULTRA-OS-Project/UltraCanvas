@@ -174,20 +174,14 @@
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasButton.h"
-#include "UltraCanvasVideoThumbnail.h"
+#include "UltraCanvasFilePreviews.h"   // thumbnails and preview text from the formats' providers
+#include "UltraCanvasRichDocument.h"   // a provider's preview document
 #include "UltraCanvasZipPackage.h"
 #include "Models/STL/UltraCanvasSTLLoader.h"
 #include "UltraCanvasModelPreview.h"
 #include "UltraCanvasVectorPreview.h"
 #include "UltraCanvasVectorRaster.h"
 #include "UltraCanvasModelRaster.h"
-#include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
-#include "UltraCanvasPresentationPptx.h"   // a deck's preview page
-#include "Documents/eBook/EPUBEngine.h"     // e-book covers for the thumbnails
-#include "Documents/eBook/MOBIEngine.h"
-#ifdef ULTRACANVAS_PLUGIN_PDF
-#include "Plugins/Documents/UltraCanvasPDF.h"
-#endif
 #include <algorithm>
 #include <optional>
 #include <cctype>
@@ -968,13 +962,10 @@ namespace UltraCanvas {
             return PreviewTypeForFile(ext, FilerCategoryForExtension(ext));
         }
 
-        // True when this build can render a PDF page into a preview.
+        // True when a preview provider renders a PDF page in this process
+        // (the PDF plugin, with an engine).
         bool PdfPreviewAvailable() {
-#ifdef ULTRACANVAS_PLUGIN_PDF
-            return !PDFEngineFactory::Available().empty();
-#else
-            return false;
-#endif
+            return CanRenderFileThumbnail("pdf");
         }
 
         // A PDF wearing another extension: every Illustrator file since CS2 is
@@ -1018,18 +1009,12 @@ namespace UltraCanvas {
 
         // ===== E-BOOK COVERS =====
         // A book shows its cover, the way Finder shows a folder of books: the
-        // picture the book declares, which the e-book engines read without
-        // unpacking a chapter. An EPUB costs three archive entries
-        // (container.xml, the package document, the cover), a Mobipocket /
-        // Kindle book its record list, record 0 and the cover record -
-        // whatever the size of the book, and whether or not its text is
-        // DRM-protected. FB2 keeps its page of text.
-        bool IsKindleExtension(const std::string& ext) {
-            return ext == "mobi" || ext == "prc" || ext == "azw" || ext == "azw3";
-        }
-
+        // picture the book declares, which a preview provider reads without
+        // unpacking a chapter (the e-book engines', for EPUB and Mobipocket /
+        // Kindle). FB2 keeps its page of text. True for a document whose
+        // format has a thumbnail provider - a book's cover today.
         bool EBookCoverReadable(const std::string& ext) {
-            return ext == "epub" || IsKindleExtension(ext);
+            return CanRenderFileThumbnail(ext);
         }
 
         // A cover is drawn as it is, but a white one would melt into the
@@ -1141,41 +1126,35 @@ namespace UltraCanvas {
         }
 
         // ===== PDF PREVIEW (first page) =====
-        // Rendered on the thumbnail workers, so a folder of PDFs pages in the
-        // same way a folder of photos does. Each call opens its own document
-        // (and with it its own engine context), which is what makes it safe to
-        // run several of them on different threads at once.
+        // Rendered by the PDF preview provider on the thumbnail workers, so a
+        // folder of PDFs pages in the same way a folder of photos does (each
+        // call opens its own document). Always the "pdf" provider, so a file
+        // whose name hides a PDF - an Illustrator .ai - is drawn as one.
         std::shared_ptr<UCPixmap> RenderPdfPreviewPixmap(const std::string& path,
                                                          int w, int h, float scale) {
-#ifdef ULTRACANVAS_PLUGIN_PDF
-            const int maxDim = std::max(16, static_cast<int>(std::lround(
-                    std::max(w, h) * std::max(1.0f, scale))));
-            std::unique_ptr<IPDFDocument> doc = OpenPDF(path);
-            if (!doc || doc->GetPageCount() < 1) return nullptr;
-            PDFRenderedPage page = doc->RenderThumbnail(1, maxDim);
-            if (!page.IsValid() || page.colorMode != PDFColorMode::RGBA) return nullptr;
-            auto pm = PixmapFromRGBA(page.pixels.data(), page.width, page.height,
-                                     page.stride);
+            FileThumbnailRequest request;
+            request.width = w;
+            request.height = h;
+            request.scale = scale;
+            auto pm = RenderFileThumbnailAs(path, "pdf", request);
             if (!pm) return nullptr;
             // A page is white on a white widget: outline it so the tile shows
             // a sheet of paper rather than floating text.
-            if (uint32_t* px = pm->GetPixelData()) {
+            pm->Flush();
+            const int pw = pm->GetRawWidth(), ph = pm->GetRawHeight();
+            if (uint32_t* px = pm->GetPixelData(); px && pw > 0 && ph > 0) {
                 constexpr uint32_t kEdge = 0xFFB4B4B8u;
-                for (int x = 0; x < page.width; ++x) {
+                for (int x = 0; x < pw; ++x) {
                     px[x] = kEdge;
-                    px[static_cast<size_t>(page.height - 1) * page.width + x] = kEdge;
+                    px[static_cast<size_t>(ph - 1) * pw + x] = kEdge;
                 }
-                for (int y = 0; y < page.height; ++y) {
-                    px[static_cast<size_t>(y) * page.width] = kEdge;
-                    px[static_cast<size_t>(y) * page.width + page.width - 1] = kEdge;
+                for (int y = 0; y < ph; ++y) {
+                    px[static_cast<size_t>(y) * pw] = kEdge;
+                    px[static_cast<size_t>(y) * pw + pw - 1] = kEdge;
                 }
                 pm->MarkDirty();
             }
             return pm;
-#else
-            (void)path; (void)w; (void)h; (void)scale;
-            return nullptr;
-#endif
         }
 
         // ===== EMBEDDED PREVIEW (vector documents) =====
@@ -1196,25 +1175,18 @@ namespace UltraCanvas {
         }
 
         // ===== E-BOOK COVER (EPUB, MOBI / KINDLE) =====
-        // The cover the book declares, decoded like any other picture. Runs
-        // on the thumbnail workers: each ReadCoverImageFromFile owns its file
-        // and parser, so any number of books can be read at once.
+        // The cover a provider reads (UltraCanvasFilePreviews.h), with the
+        // edge shaded so a white cover keeps its outline on a white tile.
         std::shared_ptr<UCPixmap> RenderEBookCoverPixmap(const std::string& path,
                                                          int w, int h,
                                                          ImageFitMode fit,
                                                          float scale) {
-            const std::string ext = LowerExtension(path);
-            if (!EBookCoverReadable(ext)) return nullptr;
-            std::vector<uint8_t> bytes = IsKindleExtension(ext)
-                    ? MOBIEngine::ReadCoverImageFromFile(path)
-                    : EPUBEngine::ReadCoverImageFromFile(path);
-            if (bytes.empty()) return nullptr;
-            auto img = UCImage::LoadFromMemory(bytes);
-            if (!img || img->GetWidth() <= 0 || img->GetHeight() <= 0) return nullptr;
-            // The pixmap is this image's alone - an image loaded from memory
-            // gets a cache key no other caller can ask for - so it is shaded
-            // in place.
-            auto pm = img->GetPixmap(w, h, fit, scale);
+            FileThumbnailRequest request;
+            request.width = w;
+            request.height = h;
+            request.fit = fit;
+            request.scale = scale;
+            auto pm = RenderFileThumbnailFromProvider(path, request);
             if (pm) ShadeCoverEdge(*pm);
             return pm;
         }
@@ -1618,35 +1590,6 @@ namespace UltraCanvas {
             }
         }
 
-        // Word-processing formats go through the shared rich-document reader,
-        // so ODT, DOCX, legacy DOC and LaTeX all preview from the same block
-        // model (a .tex shows its title and sections, not its markup). False
-        // when the document cannot be read - a password-protected .docx among
-        // them: its tile keeps the type glyph rather than an empty page.
-        bool RichDocumentToPreviewLines(const std::string& path,
-                                        std::vector<std::string>& lines) {
-            UCRichDocument doc;
-            std::string error;
-            if (!UCWordDocumentIO::Load(path, doc, error)) return false;
-            // The first page's header and footer belong to what the page shows.
-            if (!doc.FurnitureForPage(0).IsEmpty()) doc = doc.WithFirstPageFurnitureInline();
-            RichBlocksToPreviewLines(doc, lines);
-            return true;
-        }
-
-        // A PowerPoint deck previews its slides' text, the outline
-        // UltraCanvasPresentationPptx makes of it: each slide's number and
-        // title, then its bullets, tables and notes. A protected deck cannot
-        // be read without its password and keeps the type glyph.
-        bool PresentationToPreviewLines(const std::string& path,
-                                        std::vector<std::string>& lines) {
-            PptxPresentation deck;
-            std::string error;
-            if (!ReadPptxPresentation(path, deck, error)) return false;
-            RichBlocksToPreviewLines(PptxPresentationToRichDocument(deck), lines);
-            return true;
-        }
-
         // Fills `lines` (and `tabular`) with the start of the file's content.
         // False when this build cannot read the format — the entry then keeps
         // its type glyph instead of showing an empty page.
@@ -1736,11 +1679,16 @@ namespace UltraCanvas {
                 }
                 return true;
             }
-            if (ext == "odt" || ext == "docx" || ext == "doc" || ext == "tex") {
-                return RichDocumentToPreviewLines(path, lines);
-            }
-            if (IsPptxExtension(ext)) {
-                return PresentationToPreviewLines(path, lines);
+            // Word-processing documents and PowerPoint decks (and any other
+            // format a preview provider reads): its text as a rich document,
+            // laid out as lines here - a .tex shows its title and sections, a
+            // deck each slide's title and bullets. A document the provider
+            // cannot read (a password-protected .docx) keeps the type glyph.
+            if (CanReadPreviewDocument(ext)) {
+                UCRichDocument doc;
+                if (!ReadPreviewDocument(path, doc)) return false;
+                RichBlocksToPreviewLines(doc, lines);
+                return true;
             }
             if (ext == "html" || ext == "htm") {
                 // The page as a browser lays it out: a line per paragraph,
@@ -1818,15 +1766,15 @@ namespace UltraCanvas {
             std::shared_ptr<UCPixmap> pm;
             switch (PreviewTypeForPath(path)) {
                 case FilerPreviewType::Videos: {
-                    // Poster frame of a video (may block for a few seconds on
-                    // a cold file — that is exactly what these workers are
-                    // for).
-                    VideoThumbnailRequest vreq;
-                    vreq.maxWidth = std::max(
-                            1, static_cast<int>(std::lround(w * scale)));
-                    vreq.maxHeight = std::max(
-                            1, static_cast<int>(std::lround(h * scale)));
-                    pm = CaptureVideoThumbnailPixmap(path, vreq);
+                    // Poster frame of a video, from the video provider (may
+                    // block for a few seconds on a cold file — that is exactly
+                    // what these workers are for).
+                    FileThumbnailRequest request;
+                    request.width = w;
+                    request.height = h;
+                    request.fit = fit;
+                    request.scale = scale;
+                    pm = RenderFileThumbnailFromProvider(path, request);
                     break;
                 }
                 case FilerPreviewType::PDF:

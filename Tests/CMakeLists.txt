@@ -1866,6 +1866,26 @@ else()
     message(STATUS "  VideoTimelineElementTest skipped (UltraCanvas target not present, or VideoTimeline not compiled in)")
 endif()
 
+# ===== FILE PREVIEWS TEST =====
+# The preview provider registry (UltraCanvasFilePreviews.h): extensions in any
+# case or dot and paths by their last extension, replacement by name, the later
+# of two providers winning, unavailable and throwing providers, queries from
+# several threads while another registers; the built-in providers' extensions;
+# and a Word document's and a PowerPoint deck's text preview through the Filer,
+# which reaches them only through the registry. Headless.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building FilePreviewsTest...")
+    add_executable(FilePreviewsTest ${CMAKE_CURRENT_SOURCE_DIR}/FilePreviewsTest.cpp)
+    target_include_directories(FilePreviewsTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(FilePreviewsTest PRIVATE cxx_std_20)
+    target_compile_definitions(FilePreviewsTest PRIVATE
+        FILEPREVIEWS_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
+    target_link_libraries(FilePreviewsTest PRIVATE UltraCanvas)
+    set_target_properties(FilePreviewsTest PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    add_test(NAME FilePreviewsTest COMMAND FilePreviewsTest WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: FilePreviewsTest")
+endif()
+
 # ===== ELEMENT MODULES TEST =====
 # The selectable widgets (ULTRACANVAS_WIDGETS) and charts (ULTRACANVAS_CHARTS)
 # through the element registry, by type name: registered at startup when

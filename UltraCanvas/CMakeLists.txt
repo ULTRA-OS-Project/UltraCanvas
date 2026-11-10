@@ -706,6 +706,8 @@ set(ULTRACANVAS_CORE_SOURCES
         # UltraCanvasSlideshow.cpp: a selectable widget - see WIDGET SYSTEM below
         # UltraCanvasAlbum.cpp: a selectable widget - see WIDGET SYSTEM below
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFilerWidget.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFilePreviews.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFilePreviewsBuiltin.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasNativeFileIcons.cpp
         # The icon the HOST desktop draws for a file type (Explorer / Finder /
         # the icon theme), as opposed to the one a file carries itself. The
