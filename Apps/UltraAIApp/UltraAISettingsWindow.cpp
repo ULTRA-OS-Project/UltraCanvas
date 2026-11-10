@@ -31,6 +31,7 @@
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasTreeView.h"
 #include "UltraCanvasWindow.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #ifdef ULTRAAI_HAS_ULTRAVAULT
 #include <UltraVault/UltraVault.h>
@@ -62,7 +63,6 @@ namespace {
     constexpr int kProviderWidth     = 210;
     constexpr int kResolvedWidth     = 130;
 
-    constexpr const char* kAutomaticLabel = "Automatic — local first";
 
     // Page ids double as tree node ids.
     constexpr const char* kPageServices         = "services";
@@ -172,7 +172,7 @@ namespace {
             if (!row.resolved) continue;
             const std::string resolved = ResolvedDefaultProvider(row.cap);
             if (resolved.empty()) {
-                row.resolved->SetText("→ nothing available");
+                row.resolved->SetText(Tr("→ nothing available"));
                 row.resolved->SetTextColor(kNoteTextColor);
                 continue;
             }
@@ -187,9 +187,9 @@ namespace {
     // ===== PAGES =====
 
     std::shared_ptr<UltraCanvasContainer> BuildDefaultProvidersPage(DialogState* d) {
-        PageParts parts = MakePage("uai-set-page-defaults", "Default providers",
-                "Which provider each service uses when a dialog is left on "
-                "\"(default route)\":");
+        PageParts parts = MakePage("uai-set-page-defaults", Tr("Default providers"),
+                Tr("Which provider each service uses when a dialog is left on "
+                "\"(default route)\":"));
 
         auto& settings = UltraAIAppSettings::Instance();
         for (const auto& info : AllCapabilities()) {
@@ -214,7 +214,7 @@ namespace {
             row.dropdown->size.height = CSSLayout::Dimension::Px(26);
             row.dropdown->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
 
-            row.dropdown->AddItem(kAutomaticLabel);
+            row.dropdown->AddItem(Tr("Automatic — local first"));
             row.providerIds.push_back("");
             const std::string chosen = settings.DefaultProviderFor(info.cap);
             int selected = 0;
@@ -226,7 +226,7 @@ namespace {
             // A saved choice this build no longer has stays listed, so the
             // window shows what is stored instead of silently "Automatic".
             if (!chosen.empty() && selected == 0) {
-                row.dropdown->AddItem(chosen + "   (not in this build)");
+                row.dropdown->AddItem(TrF("{0}   (not in this build)", chosen));
                 row.providerIds.push_back(chosen);
                 selected = static_cast<int>(row.providerIds.size()) - 1;
             }
@@ -256,18 +256,18 @@ namespace {
         }
 
         AddNote(parts, "uai-set-def-note1",
-                "Automatic uses a provider that runs on this computer — the "
+                Tr("Automatic uses a provider that runs on this computer — the "
                 "local runtime's downloaded engine (\"local\", see Local "
                 "models), llama.cpp or an Ollama / vLLM server for chat, "
                 "ComfyUI for images, and so on — and the built-in test double "
                 "where nothing local is available. The column on the right "
-                "shows what Automatic resolves to right now.");
+                "shows what Automatic resolves to right now."));
         AddNote(parts, "uai-set-def-note2",
-                "Picking a cloud provider here is a deliberate choice: it is "
+                Tr("Picking a cloud provider here is a deliberate choice: it is "
                 "used even while cloud fallback is off (Services > Local & "
-                "cloud), and its usage may be charged.");
+                "cloud), and its usage may be charged."));
 
-        d->resets[kPageDefaultProviders] = {"Restore defaults", 150, [d]() {
+        d->resets[kPageDefaultProviders] = {Tr("Restore defaults"), 150, [d]() {
             UltraAIAppSettings::Instance().defaultProviders.clear();
             for (auto& row : d->serviceRows) {
                 if (row.dropdown) row.dropdown->SetSelectedIndex(0, false);
@@ -278,12 +278,12 @@ namespace {
     }
 
     std::shared_ptr<UltraCanvasContainer> BuildLocalAndCloudPage(DialogState* d) {
-        PageParts parts = MakePage("uai-set-page-cloud", "Local & cloud",
-                "What the default route may use when no local provider is "
-                "available:");
+        PageParts parts = MakePage("uai-set-page-cloud", Tr("Local & cloud"),
+                Tr("What the default route may use when no local provider is "
+                "available:"));
 
         d->cloudFallbackBox = MakeCheckbox("uai-set-cloud-fallback",
-                "Fall back to cloud services when nothing local is available",
+                Tr("Fall back to cloud services when nothing local is available"),
                 kTextWidth, UltraAIAppSettings::Instance().allowCloudFallback,
                 [d](bool on) {
                     UltraAIAppSettings::Instance().allowCloudFallback = on;
@@ -292,23 +292,23 @@ namespace {
         parts.body->AddChild(d->cloudFallbackBox);
 
         AddNote(parts, "uai-set-cloud-note1",
-                "Off (the default): a service runs on this computer when a "
+                Tr("Off (the default): a service runs on this computer when a "
                 "local provider can serve it — chat and embeddings through the "
                 "models on the Local models page, the rest through a program "
                 "you run — and the test double otherwise. A cloud service — "
                 "ElevenLabs, OpenAI, Anthropic, MiniMax, ... — is only used "
                 "when it is chosen: in a service dialog, on the Default "
-                "providers page, or through an endpoint.");
+                "providers page, or through an endpoint."));
         AddNote(parts, "uai-set-cloud-note2",
-                "On: a service with no local provider uses the first cloud "
+                Tr("On: a service with no local provider uses the first cloud "
                 "provider that is set up, instead of the test double. Cloud "
                 "services send your input over the internet and may charge "
-                "for it.");
+                "for it."));
         AddNote(parts, "uai-set-cloud-note3",
-                "Deployments can also turn this on with the environment "
-                "variable ULTRAAI_ALLOW_CLOUD_FALLBACK=1.");
+                Tr("Deployments can also turn this on with the environment "
+                "variable ULTRAAI_ALLOW_CLOUD_FALLBACK=1."));
 
-        d->resets[kPageLocalAndCloud] = {"Restore default", 150, [d]() {
+        d->resets[kPageLocalAndCloud] = {Tr("Restore default"), 150, [d]() {
             UltraAIAppSettings::Instance().allowCloudFallback = false;
             if (d->cloudFallbackBox) d->cloudFallbackBox->SetChecked(false);
             ApplyAndSave(d);
@@ -348,14 +348,14 @@ namespace {
 
         if (d->epStatus) {
             d->epStatus->SetText(
-                e ? "" : "Editing a new endpoint — fill in the form and Save.");
+                e ? std::string() : Tr("Editing a new endpoint — fill in the form and Save."));
         }
     }
 
     std::shared_ptr<UltraCanvasContainer> BuildEndpointEditorPage(DialogState* d) {
-        PageParts parts = MakePage("uai-set-page-endpoint-editor", "Endpoints",
-                "Providers set up once — base URL, default model, API key — "
-                "and the services each one may serve:");
+        PageParts parts = MakePage("uai-set-page-endpoint-editor", Tr("Endpoints"),
+                Tr("Providers set up once — base URL, default model, API key — "
+                "and the services each one may serve:"));
 
         // The form is a fixed-width column so its inputs line up like the
         // controls on the sibling pages.
@@ -365,7 +365,7 @@ namespace {
         form->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
         form->size.width = CSSLayout::Dimension::Px(kTextWidth);
 
-        form->AddChild(MakeField("uai-ep-name", "Name", "e.g. My OpenAI account",
+        form->AddChild(MakeField("uai-ep-name", Tr("Name"), Tr("e.g. My OpenAI account"),
                                  d->epName));
 
         // Provider.
@@ -374,7 +374,7 @@ namespace {
                        .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         provCol->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
         provCol->size.height = CSSLayout::Dimension::Px(50);
-        auto provLbl = MakeLabel("uai-ep-prov-lbl", "Provider");
+        auto provLbl = MakeLabel("uai-ep-prov-lbl", Tr("Provider"));
         provLbl->size.height = CSSLayout::Dimension::Px(18);
         provCol->AddChild(provLbl);
         d->epProvider = std::make_shared<UltraCanvasDropdown>("uai-ep-provider",
@@ -388,22 +388,22 @@ namespace {
         form->AddChild(provCol);
 
         form->AddChild(MakeText("uai-ep-localhint",
-            "A model on this computer? Pick \"local\" and Fetch models; no URL, "
+            Tr("A model on this computer? Pick \"local\" and Fetch models; no URL, "
             "no key. A server you run (Ollama, llama.cpp)? Pick \"openai\", set "
-            "Base URL http://127.0.0.1:8080, leave the key empty.",
+            "Base URL http://127.0.0.1:8080, leave the key empty."),
             kTextWidth, kNoteFontSize, kNoteTextColor));
 
         form->AddChild(MakeField("uai-ep-baseurl",
-            "Base URL (optional, for self-hosted)",
-            "https://... — leave empty for the provider default", d->epBaseUrl));
+            Tr("Base URL (optional, for self-hosted)"),
+            Tr("https://... — leave empty for the provider default"), d->epBaseUrl));
         // The key sits above the model/fetch row: fetching the server's model
         // list needs it, so it has to be filled in first.
         form->AddChild(MakeField("uai-ep-key",
-            "API key — cloud providers only; leave empty for local/self-hosted",
-            "leave empty to keep the stored key", d->epKey));
+            Tr("API key — cloud providers only; leave empty for local/self-hosted"),
+            Tr("leave empty to keep the stored key"), d->epKey));
         form->AddChild(MakeField("uai-ep-model",
-            "Default model (id, GGUF path or checkpoint)",
-            "provider default", d->epModel));
+            Tr("Default model (id, GGUF path or checkpoint)"),
+            Tr("provider default"), d->epModel));
 
         // Model discovery: fetch the server's model list, then pick one (which
         // fills the model field above). Needs the Base URL and, usually, a key.
@@ -413,7 +413,7 @@ namespace {
                            .SetFlexAlignItems(CSSLayout::AlignItems::Center);
             fetchRow->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
             fetchRow->size.height = CSSLayout::Dimension::Px(30);
-            fetchRow->AddChild(MakeButton("uai-ep-fetch", "Fetch models", 150,
+            fetchRow->AddChild(MakeButton("uai-ep-fetch", Tr("Fetch models"), 150,
                                           [d]() { OnFetchModels(d); }));
             d->epModelDropdown = std::make_shared<UltraCanvasDropdown>(
                 "uai-ep-model-dd", 0, 0, 0, 28);
@@ -430,7 +430,7 @@ namespace {
 
         // Mode checkboxes in a fixed two-column grid (as the former dialog).
         form->AddChild(MakeLabel("uai-ep-modes-lbl",
-                                 "Modes this endpoint can serve"));
+                                 Tr("Modes this endpoint can serve")));
         auto modesCol = std::make_shared<UltraCanvasContainer>("uai-ep-modes");
         const auto& caps = AllCapabilities();
         constexpr int kCols   = 2;
@@ -477,42 +477,42 @@ namespace {
                       .SetFlexAlignItems(CSSLayout::AlignItems::Center);
         footer->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
         footer->size.height = CSSLayout::Dimension::Px(34);
-        footer->AddChild(MakeButton("uai-ep-save", "Save endpoint", 150,
+        footer->AddChild(MakeButton("uai-ep-save", Tr("Save endpoint"), 150,
                                     [d]() { SaveEndpoint(d); }));
         d->epStatus = MakeLabel("uai-ep-status", "", kTextFontSize, kNoteTextColor);
         d->epStatus->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
         footer->AddChild(d->epStatus);
-        footer->AddChild(MakeButton("uai-ep-delete", "Delete", 110,
+        footer->AddChild(MakeButton("uai-ep-delete", Tr("Delete"), 110,
                                     [d]() { DeleteEndpoint(d); }));
         form->AddChild(footer);
 
         parts.body->AddChild(form);
 
         AddNote(parts, "uai-set-endpoints-note1",
-                "API keys are kept in UltraVault, never in the settings "
+                Tr("API keys are kept in UltraVault, never in the settings "
                 "files. Local servers (Ollama, vLLM, llama.cpp server) need "
-                "no key: pick \"openai\" and set the server's base URL.");
+                "no key: pick \"openai\" and set the server's base URL."));
         AddNote(parts, "uai-set-endpoints-note2",
-                "For the hosted ULTRA service, an endpoint points at the "
+                Tr("For the hosted ULTRA service, an endpoint points at the "
                 "relay's URL; the account's own keys are used when it points "
-                "at the provider directly.");
+                "at the provider directly."));
         return parts.page;
     }
 
     std::shared_ptr<UltraCanvasContainer> BuildStartPage(DialogState* /*d*/) {
-        PageParts parts = MakePage("uai-set-page-start", "Settings",
-                "Open a section on the left and choose the page to set:");
+        PageParts parts = MakePage("uai-set-page-start", Tr("Settings"),
+                Tr("Open a section on the left and choose the page to set:"));
         AddNote(parts, "uai-set-start-note1",
-                "Services - which provider each service uses by default, the "
+                Tr("Services - which provider each service uses by default, the "
                 "models that run on this computer (Local models), and whether "
                 "the default may fall back to a cloud service. Out of the box "
-                "everything runs locally.");
+                "everything runs locally."));
         AddNote(parts, "uai-set-start-note2",
-                "Accounts - the endpoints: providers with their base URL, "
-                "model and API key.");
+                Tr("Accounts - the endpoints: providers with their base URL, "
+                "model and API key."));
         AddNote(parts, "uai-set-start-note3",
-                "Every change applies straight away and is saved; there is "
-                "nothing to confirm.");
+                Tr("Every change applies straight away and is saved; there is "
+                "nothing to confirm."));
         return parts.page;
     }
 
@@ -591,7 +591,7 @@ namespace {
             childIds.push_back(child->data.nodeId);
         for (const auto& id : childIds) d->tree->RemoveNode(id);
 
-        AddTreeNode(d, kPageAccounts, kNodeNewEndpoint, "New endpoint");
+        AddTreeNode(d, kPageAccounts, kNodeNewEndpoint, Tr("New endpoint"));
         for (const auto& e : EndpointStore::Instance().All()) {
             TreeNodeData data;
             data.nodeId = std::string(kNodeEndpointPrefix) + e.id;
@@ -617,7 +617,7 @@ namespace {
                 provider = item->text;
         }
         if (provider.empty()) {
-            if (d->epStatus) d->epStatus->SetText("Pick a provider first.");
+            if (d->epStatus) d->epStatus->SetText(Tr("Pick a provider first."));
             return;
         }
 
@@ -647,7 +647,7 @@ namespace {
                 UltraVault::SecretValue::FromString(d->epKey->GetText()));
             if (!stored.IsOk()) {
                 if (d->epStatus)
-                    d->epStatus->SetText("Could not store the key: " + stored.message);
+                    d->epStatus->SetText(TrF("Could not store the key: {0}", stored.message));
                 return;
             }
 #endif
@@ -657,27 +657,27 @@ namespace {
         store.Upsert(e);
         if (!store.Save()) {
             if (d->epStatus)
-                d->epStatus->SetText("Saved in memory, but writing " +
-                                     EndpointStore::ConfigPath() + " failed.");
+                d->epStatus->SetText(TrF("Saved in memory, but writing {0} failed.",
+                                         EndpointStore::ConfigPath()));
             return;
         }
         d->epEditingId = e.id;
         // Reselecting the saved node reloads the editor and clears the status,
         // so the confirmation is set afterwards.
         RebuildEndpointNodes(d, std::string(kNodeEndpointPrefix) + e.id);
-        if (d->epStatus) d->epStatus->SetText("Saved \"" + e.name + "\".");
+        if (d->epStatus) d->epStatus->SetText(TrF("Saved \"{0}\".", e.name));
     }
 
     void DeleteEndpoint(DialogState* d) {
         if (d->epEditingId.empty()) {
-            if (d->epStatus) d->epStatus->SetText("Nothing to delete.");
+            if (d->epStatus) d->epStatus->SetText(Tr("Nothing to delete."));
             return;
         }
         EndpointStore::Instance().Remove(d->epEditingId);
         EndpointStore::Instance().Save();
         d->epEditingId.clear();
         RebuildEndpointNodes(d, kNodeNewEndpoint);
-        if (d->epStatus) d->epStatus->SetText("Endpoint deleted.");
+        if (d->epStatus) d->epStatus->SetText(Tr("Endpoint deleted."));
     }
 
     void PopulateModelDropdown(DialogState* d) {
@@ -712,22 +712,23 @@ namespace {
                 if (m.fit == ModelFit::TooLarge) continue;
                 Endpoint::DiscoveredModel dm;
                 dm.name = m.id;
+                // The task is stored with the endpoint and compared ("translation"):
+                // data, not text, so it stays English.
                 dm.task = (m.capability == "embeddings" ? "embeddings" : "chat") +
                           std::string(m.installed ? ", installed" : ", not installed");
                 d->epModels.push_back(std::move(dm));
             }
             PopulateModelDropdown(d);
             if (d->epStatus)
-                d->epStatus->SetText("Local models: " + std::to_string(d->epModels.size()) +
-                                     " — pick one; it is downloaded when first used "
-                                     "(Services > Local models).");
+                d->epStatus->SetText(TrF("Local models: {0} — pick one; it is downloaded when first used "
+                                         "(Services > Local models).", d->epModels.size()));
             return;
         }
 
         const std::string baseUrl = d->epBaseUrl ? d->epBaseUrl->GetText() : "";
         if (baseUrl.empty()) {
             if (d->epStatus)
-                d->epStatus->SetText("Set a Base URL first (e.g. https://ai.ultraos.eu).");
+                d->epStatus->SetText(Tr("Set a Base URL first (e.g. https://ai.ultraos.eu)."));
             return;
         }
 
@@ -745,7 +746,7 @@ namespace {
 #endif
 
         d->epFetching = true;
-        if (d->epStatus) d->epStatus->SetText("Fetching models from " + baseUrl + "...");
+        if (d->epStatus) d->epStatus->SetText(TrF("Fetching models from {0}…", baseUrl));
 
         std::thread worker([d, alive = d->alive, baseUrl, key]() {
             ModelInfoFetch res = FetchModelInfo(baseUrl, key);
@@ -754,14 +755,15 @@ namespace {
                 d->epFetching = false;
                 if (!res.ok) {
                     if (d->epStatus)
-                        d->epStatus->SetText(res.error.empty() ? "Fetch failed." : res.error);
+                        d->epStatus->SetText(res.error.empty() ? Tr("Fetch failed.") : res.error);
                     return;
                 }
                 d->epModels = res.models;
                 PopulateModelDropdown(d);
                 if (d->epStatus)
-                    d->epStatus->SetText("Found " + std::to_string(res.models.size()) +
-                                         " model(s) — pick one to set the model field.");
+                    d->epStatus->SetText(TrN("Found {n} model — pick it to set the model field.",
+                                             "Found {n} models — pick one to set the model field.",
+                                             static_cast<long long>(res.models.size())));
             };
             auto* app = UltraCanvasApplicationBase::GetCurrent();
             if (app) app->PostToUIThread(std::move(deliver));
@@ -772,7 +774,7 @@ namespace {
 
     void BuildWindow(DialogState* d, UltraCanvasWindowBase* parent) {
         WindowConfig wc;
-        wc.title = "UltraAI - Settings";
+        wc.title = Tr("UltraAI - Settings");
         wc.width = 720;
         wc.height = 800;
         wc.resizable = true;
@@ -806,15 +808,15 @@ namespace {
 
         TreeNodeData rootData;
         rootData.nodeId = "settings";
-        rootData.text = "Settings";
+        rootData.text = Tr("Settings");
         d->tree->SetRootNode(rootData);
 
-        AddTreeNode(d, "settings", kPageServices, "Services");
-        AddTreeNode(d, kPageServices, kPageDefaultProviders, "Default providers");
-        AddTreeNode(d, kPageServices, kPageLocalModels, "Local models");
-        AddTreeNode(d, kPageServices, kPageTopics, "Model topics");
-        AddTreeNode(d, kPageServices, kPageLocalAndCloud, "Local & cloud");
-        AddTreeNode(d, "settings", kPageAccounts, "Accounts");
+        AddTreeNode(d, "settings", kPageServices, Tr("Services"));
+        AddTreeNode(d, kPageServices, kPageDefaultProviders, Tr("Default providers"));
+        AddTreeNode(d, kPageServices, kPageLocalModels, Tr("Local models"));
+        AddTreeNode(d, kPageServices, kPageTopics, Tr("Model topics"));
+        AddTreeNode(d, kPageServices, kPageLocalAndCloud, Tr("Local & cloud"));
+        AddTreeNode(d, "settings", kPageAccounts, Tr("Accounts"));
         // Accounts' children — "New endpoint" plus one node per endpoint — are
         // built dynamically (and rebuilt after every Save/Delete). No selection
         // here: the window opens on the start page.
@@ -834,12 +836,12 @@ namespace {
         AddPage(d, kPageDefaultProviders, BuildDefaultProvidersPage(d));
         d->localModels = std::make_shared<UltraAILocalModelsPage>(d->alive);
         AddPage(d, kPageLocalModels, d->localModels->Build(d->window.get()));
-        d->resets[kPageLocalModels] = {"Restore defaults", 150, [d]() {
+        d->resets[kPageLocalModels] = {Tr("Restore defaults"), 150, [d]() {
             if (d->localModels) d->localModels->RestoreDefaults();
         }};
         d->topics = std::make_shared<UltraAITopicsPage>(d->alive);
         AddPage(d, kPageTopics, d->topics->Build(d->window.get()));
-        d->resets[kPageTopics] = {"Restore defaults", 150, [d]() {
+        d->resets[kPageTopics] = {Tr("Restore defaults"), 150, [d]() {
             if (d->topics) d->topics->RestoreDefaults();
         }};
         AddPage(d, kPageLocalAndCloud, BuildLocalAndCloudPage(d));
@@ -862,7 +864,7 @@ namespace {
                           .SetFlexAlignItems(CSSLayout::AlignItems::Center);
         bottomLeft->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                               .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-        d->restoreButton = MakeButton("uai-set-restore", "Restore defaults", 150,
+        d->restoreButton = MakeButton("uai-set-restore", Tr("Restore defaults"), 150,
                 [d]() {
             auto it = d->resets.find(d->shownPage);
             if (it != d->resets.end() && it->second.action) it->second.action();
@@ -871,7 +873,7 @@ namespace {
         bottomLeft->AddChild(d->restoreButton);
         bottom->AddChild(bottomLeft);
 
-        bottom->AddChild(MakeButton("uai-set-close", "Close", 90,
+        bottom->AddChild(MakeButton("uai-set-close", Tr("Close"), 90,
                 [d]() { if (d->window) d->window->Close(); }));
         d->window->AddChild(bottom);
 

@@ -11,6 +11,7 @@
 #include "UltraCanvasApplication.h"      // UltraCanvasApplicationBase::GetCurrent
 #include "UltraCanvasListDelegate.h"
 #include "UltraCanvasListSelection.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -46,11 +47,11 @@ std::string Bytes(uint64_t bytes) {
 }
 
 std::string CapabilityLabel(const std::string& capability) {
-    if (capability == "textllm")      return "Chat";
-    if (capability == "embeddings")   return "Embeddings";
-    if (capability == "speechtotext") return "Speech to text";
-    if (capability == "texttospeech") return "Speech";
-    if (capability == "imagegen")     return "Images";
+    if (capability == "textllm")      return Tr("Chat");
+    if (capability == "embeddings")   return Tr("Embeddings");
+    if (capability == "speechtotext") return Tr("Speech to text");
+    if (capability == "texttospeech") return Tr("Speech");
+    if (capability == "imagegen")     return Tr("Images");
     return capability;
 }
 
@@ -122,9 +123,9 @@ UltraAITopicsPage::~UltraAITopicsPage() = default;
 
 std::shared_ptr<UltraCanvasContainer> UltraAITopicsPage::Build(UltraCanvasWindowBase* parent) {
     parent_ = parent;
-    PageParts parts = MakePage("uai-set-page-topics", "Model topics",
-            "Which model each kind of work uses on this computer, and what happens "
-            "when the model server offers new ones.");
+    PageParts parts = MakePage("uai-set-page-topics", Tr("Model topics"),
+            Tr("Which model each kind of work uses on this computer, and what happens "
+            "when the model server offers new ones."));
 
     BuildServerRow(*parts.body);
     BuildTopicTable(*parts.body);
@@ -135,18 +136,18 @@ std::shared_ptr<UltraCanvasContainer> UltraAITopicsPage::Build(UltraCanvasWindow
     parts.body->AddChild(statusLabel_);
 
     AddNote(parts, "uai-tp-note1",
-            "Server's choice: the topic uses the model the model server recommends "
+            Tr("Server's choice: the topic uses the model the model server recommends "
             "for it, and moves to a new one when the server changes its "
-            "recommendation. Pick a model to keep that one whatever the server says.");
+            "recommendation. Pick a model to keep that one whatever the server says."));
     AddNote(parts, "uai-tp-note2",
-            "A model that does not fit this computer's memory is never used; the "
+            Tr("A model that does not fit this computer's memory is never used; the "
             "next model the topic offers takes its place. Downloads follow the "
             "policy on the Local models page: under Never, nothing is downloaded "
-            "from here either.");
+            "from here either."));
     AddNote(parts, "uai-tp-note3",
-            "Model server: the address an administrator gave you "
+            Tr("Model server: the address an administrator gave you "
             "(https://<server>/gallery/index.json). Empty uses the gallery built "
-            "into UltraAI.");
+            "into UltraAI."));
 
     Refresh();
     return parts.page;
@@ -156,16 +157,16 @@ std::shared_ptr<UltraCanvasContainer> UltraAITopicsPage::Build(UltraCanvasWindow
 
 void UltraAITopicsPage::BuildServerRow(UltraCanvasContainer& body) {
     auto row = MakeRow("uai-tp-server-row", 30);
-    row->AddChild(RowLabel("uai-tp-server-lbl", "Model server"));
+    row->AddChild(RowLabel("uai-tp-server-lbl", Tr("Model server")));
     serverInput_ = std::make_shared<UltraCanvasTextInput>("uai-tp-server", 0, 0, 250, 26);
-    serverInput_->SetPlaceholder("Built-in gallery");
+    serverInput_->SetPlaceholder(Tr("Built-in gallery"));
     serverInput_->size.width  = CSSLayout::Dimension::Px(250);
     serverInput_->size.height = CSSLayout::Dimension::Px(26);
     serverInput_->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     serverInput_->onEnterPressed = [this](const std::string&) { OnServerChanged(); return true; };
     serverInput_->onFocusLost = [this]() { OnServerChanged(); };
     row->AddChild(serverInput_);
-    refreshButton_ = MakeButton("uai-tp-refresh", "Refresh", 100, [this]() { OnRefreshFromServer(); });
+    refreshButton_ = MakeButton("uai-tp-refresh", Tr("Refresh"), 100, [this]() { OnRefreshFromServer(); });
     row->AddChild(refreshButton_);
     body.AddChild(row);
 
@@ -175,10 +176,10 @@ void UltraAITopicsPage::BuildServerRow(UltraCanvasContainer& body) {
 
 void UltraAITopicsPage::BuildTopicTable(UltraCanvasContainer& body) {
     topicTable_ = MakeTable("uai-tp-topics", kTopicRows, topicModel_);
-    topicModel_->AddColumn(ListColumnDef("Topic", 140, TextAlignment::Left, "What the model is used for"));
-    topicModel_->AddColumn(ListColumnDef("Service", 76, TextAlignment::Left, "The kind of model the topic needs"));
-    topicModel_->AddColumn(ListColumnDef("Model used", 170, TextAlignment::Left, "The model this computer uses for the topic"));
-    topicModel_->AddColumn(ListColumnDef("State", 90, TextAlignment::Left, "Installed, or downloaded when first used"));
+    topicModel_->AddColumn(ListColumnDef(Tr("Topic"), 140, TextAlignment::Left, Tr("What the model is used for")));
+    topicModel_->AddColumn(ListColumnDef(Tr("Service"), 76, TextAlignment::Left, Tr("The kind of model the topic needs")));
+    topicModel_->AddColumn(ListColumnDef(Tr("Model used"), 170, TextAlignment::Left, Tr("The model this computer uses for the topic")));
+    topicModel_->AddColumn(ListColumnDef(Tr("State"), 90, TextAlignment::Left, Tr("Installed, or downloaded when first used")));
     topicTable_->onSelectionChanged = [this](const std::vector<int>&) { RefreshTopicControls(); };
     body.AddChild(topicTable_);
 }
@@ -188,18 +189,18 @@ void UltraAITopicsPage::BuildTopicControls(UltraCanvasContainer& body) {
     body.AddChild(topicDescription_);
 
     auto row = MakeRow("uai-tp-model-row", 30);
-    row->AddChild(RowLabel("uai-tp-model-lbl", "Model"));
+    row->AddChild(RowLabel("uai-tp-model-lbl", Tr("Model")));
     modelDropdown_ = MakeDropdown("uai-tp-model", kDropdownWidth);
     modelDropdown_->onSelectionChanged = [this](int index, const DropdownItem&) { OnTopicModelChosen(index); };
     row->AddChild(modelDropdown_);
-    installButton_ = MakeButton("uai-tp-install", "Install now", 100, [this]() { OnInstallTopicModel(); });
+    installButton_ = MakeButton("uai-tp-install", Tr("Install now"), 100, [this]() { OnInstallTopicModel(); });
     row->AddChild(installButton_);
     body.AddChild(row);
 
     auto row2 = MakeRow("uai-tp-auto-row", 26);
     auto spacer = RowLabel("uai-tp-auto-sp", "");
     row2->AddChild(spacer);
-    autoInstallBox_ = MakeCheckbox("uai-tp-auto", "Download the server's choice when it changes", 340, true,
+    autoInstallBox_ = MakeCheckbox("uai-tp-auto", Tr("Download the server's choice when it changes"), 340, true,
                                    [this](bool checked) { OnAutoInstallChanged(checked); });
     row2->AddChild(autoInstallBox_);
     body.AddChild(row2);
@@ -210,10 +211,10 @@ void UltraAITopicsPage::BuildNewModels(UltraCanvasContainer& body) {
     body.AddChild(newLabel_);
 
     newTable_ = MakeTable("uai-tp-new", kNewRows, newModel_);
-    newModel_->AddColumn(ListColumnDef("New model", 200, TextAlignment::Left, "Published by the model server since you last looked"));
-    newModel_->AddColumn(ListColumnDef("Service", 90, TextAlignment::Left, "What it serves"));
-    newModel_->AddColumn(ListColumnDef("Size", 70, TextAlignment::Right, "To download"));
-    newModel_->AddColumn(ListColumnDef("Fits", 100, TextAlignment::Left, "Whether it fits this computer"));
+    newModel_->AddColumn(ListColumnDef(Tr("New model"), 200, TextAlignment::Left, Tr("Published by the model server since you last looked")));
+    newModel_->AddColumn(ListColumnDef(Tr("Service"), 90, TextAlignment::Left, Tr("What it serves")));
+    newModel_->AddColumn(ListColumnDef(Tr("Size"), 70, TextAlignment::Right, Tr("To download")));
+    newModel_->AddColumn(ListColumnDef(Tr("Fits"), 100, TextAlignment::Left, Tr("Whether it fits this computer")));
     newTable_->onSelectionChanged = [this](const std::vector<int>&) {
         const int row = SelectedRow(newTable_);
         if (installNewButton_) installNewButton_->SetDisabled(row < 0 || row >= static_cast<int>(newModels_.size()));
@@ -221,17 +222,17 @@ void UltraAITopicsPage::BuildNewModels(UltraCanvasContainer& body) {
     body.AddChild(newTable_);
 
     auto row = MakeRow("uai-tp-new-actions", 30);
-    installNewButton_ = MakeButton("uai-tp-new-install", "Install", 90, [this]() { OnInstallNewModel(); });
+    installNewButton_ = MakeButton("uai-tp-new-install", Tr("Install"), 90, [this]() { OnInstallNewModel(); });
     row->AddChild(installNewButton_);
-    row->AddChild(MakeButton("uai-tp-new-seen", "Mark all as seen", 130, [this]() { OnMarkAllSeen(); }));
+    row->AddChild(MakeButton("uai-tp-new-seen", Tr("Mark all as seen"), 130, [this]() { OnMarkAllSeen(); }));
     body.AddChild(row);
 
     auto row2 = MakeRow("uai-tp-policy-row", 30);
-    row2->AddChild(RowLabel("uai-tp-policy-lbl", "New models"));
+    row2->AddChild(RowLabel("uai-tp-policy-lbl", Tr("New models")));
     policyDropdown_ = MakeDropdown("uai-tp-policy", kDropdownWidth);
-    policyDropdown_->AddItem("Tell me about them", "notify");
-    policyDropdown_->AddItem("Download a topic's new choice", "automatic");
-    policyDropdown_->AddItem("Do not tell me", "ignore");
+    policyDropdown_->AddItem(Tr("Tell me about them"), "notify");
+    policyDropdown_->AddItem(Tr("Download a topic's new choice"), "automatic");
+    policyDropdown_->AddItem(Tr("Do not tell me"), "ignore");
     policyDropdown_->onSelectionChanged = [this](int, const DropdownItem& item) { OnNewModelPolicy(item.value); };
     row2->AddChild(policyDropdown_);
     body.AddChild(row2);
@@ -247,9 +248,15 @@ void UltraAITopicsPage::Refresh() {
     if (serverInput_ && !serverInput_->IsFocused()) serverInput_->SetText(s.galleryUrl);
     if (serverLabel_) {
         const std::string published = rt.GalleryPublished();
-        serverLabel_->SetText(std::to_string(rt.ListTopics().size()) + " topics" +
-                              (published.empty() ? std::string() : ", catalogue of " + published) +
-                              (s.policy == DownloadPolicy::Never ? "; downloads are off (Local models page)" : ""));
+        std::string info = TrN("{n} topic", "{n} topics", static_cast<long long>(rt.ListTopics().size()));
+        if (!published.empty()) info += TrF(", catalogue of {0}", published);
+        if (!s.trustedKeys.empty()) {
+            info += TrF("; signed, key {0}", s.trustedKeys.front().substr(0, 16) + "…");
+        } else if (!s.galleryUrl.empty()) {
+            info += Tr("; not signed");
+        }
+        if (s.policy == DownloadPolicy::Never) info += Tr("; downloads are off (Local models page)");
+        serverLabel_->SetText(info);
     }
     const TopicPreferences prefs = rt.GetTopicPreferences();
     if (policyDropdown_) {
@@ -282,11 +289,11 @@ void UltraAITopicsPage::RefreshTopicTable() {
         const std::string used = rt.ModelForTopic(t.id);
         LocalModelInfo m;
         const bool known = !used.empty() && rt.FindModel(used, m);
-        std::string state = !known ? "No model" : m.running ? "Running" : m.installed ? "Installed" : "Not installed";
+        std::string state = !known ? Tr("No model") : m.running ? Tr("Running") : m.installed ? Tr("Installed") : Tr("Not installed");
         auto it = prefs.choices.find(t.id);
         const bool follows = it == prefs.choices.end() || it->second.modelId.empty();
         std::string name = known ? m.displayName : used;
-        if (follows) name += " (server)";
+        if (follows) name = TrF("{0} (server)", name);
         MultiColumnListItem item({t.name, CapabilityLabel(t.capability), name, state});
         item.tooltip = t.description.empty() ? t.name : t.description;
         items.push_back(std::move(item));
@@ -332,7 +339,7 @@ void UltraAITopicsPage::RefreshTopicControls() {
     if (modelDropdown_) {
         modelDropdown_->SetDisabled(false);
         const std::string serverDefault = topic->ServerDefault();
-        modelDropdown_->AddItem("Server's choice (" + ModelName(serverDefault) + ")", "");
+        modelDropdown_->AddItem(TrF("Server's choice ({0})", ModelName(serverDefault)), "");
         modelIds_.push_back("");
         // The models the server offers for the topic, then every other one
         // of its capability on this computer.
@@ -340,8 +347,8 @@ void UltraAITopicsPage::RefreshTopicControls() {
         auto add = [&](const LocalModelInfo& m, bool offered) {
             if (std::find(modelIds_.begin(), modelIds_.end(), m.id) != modelIds_.end()) return;
             std::string label = m.displayName;
-            if (m.fit == ModelFit::TooLarge) label += " - too large";
-            else if (m.installed) label += " - installed";
+            if (m.fit == ModelFit::TooLarge) label = TrF("{0} - too large", label);
+            else if (m.installed) label = TrF("{0} - installed", label);
             else label += " - " + Bytes(m.sizeBytes);
             if (offered) label += " *";
             modelDropdown_->AddItem(label, m.id);
@@ -355,7 +362,7 @@ void UltraAITopicsPage::RefreshTopicControls() {
         for (const auto& m : models) add(m, false);
         if (!choice.modelId.empty() &&
             std::find(modelIds_.begin(), modelIds_.end(), choice.modelId) == modelIds_.end()) {
-            modelDropdown_->AddItem(choice.modelId + " - not available", choice.modelId);
+            modelDropdown_->AddItem(TrF("{0} - not available", choice.modelId), choice.modelId);
             modelIds_.push_back(choice.modelId);
         }
         int selected = 0;
@@ -386,7 +393,7 @@ void UltraAITopicsPage::RefreshNewModels() {
     for (const auto& m : newModels_) {
         std::string fit = m.fit == ModelFit::Recommended ? "GPU"
                         : m.fit == ModelFit::RunsOnCpu   ? "CPU"
-                        : m.fit == ModelFit::TooLarge    ? "Too large" : "—";
+                        : m.fit == ModelFit::TooLarge    ? Tr("Too large") : std::string("—");
         MultiColumnListItem item({m.displayName, CapabilityLabel(m.capability), Bytes(m.sizeBytes), fit});
         item.tooltip = m.description.empty() ? m.displayName : m.description;
         items.push_back(std::move(item));
@@ -395,10 +402,10 @@ void UltraAITopicsPage::RefreshNewModels() {
     if (newLabel_) {
         const TopicPreferences prefs = rt.GetTopicPreferences();
         newLabel_->SetText(prefs.newModels == NewModelPolicy::Ignore
-                               ? std::string("New models from the server are not reported.")
-                               : newModels_.empty() ? std::string("No new models since you last looked.")
-                                                    : std::to_string(newModels_.size()) + " new model" +
-                                                          (newModels_.size() == 1 ? "" : "s") + " from the server:");
+                               ? Tr("New models from the server are not reported.")
+                               : newModels_.empty() ? Tr("No new models since you last looked.")
+                                                    : TrN("{n} new model from the server:", "{n} new models from the server:",
+                                                          static_cast<long long>(newModels_.size())));
     }
     if (installNewButton_) installNewButton_->SetDisabled(true);
 }
@@ -419,32 +426,32 @@ void UltraAITopicsPage::OnServerChanged() {
     }
     if (url == s.galleryUrl) return;
     if (!url.empty() && url.rfind("https://", 0) != 0) {
-        SetStatus("The model server's address starts with https://.");
+        SetStatus(Tr("The model server's address starts with https://."));
         return;
     }
     s.galleryUrl = url;
     rt.SetSettings(s);
     serverInput_->SetText(url);
-    SetStatus(url.empty() ? "The built-in gallery is used. Refresh to load it." : "Saved. Refresh to load the server's models.");
+    SetStatus(url.empty() ? Tr("The built-in gallery is used. Refresh to load it.") : Tr("Saved. Refresh to load the server's models."));
 }
 
 void UltraAITopicsPage::OnRefreshFromServer() {
     OnServerChanged();
     if (refreshing_->exchange(true)) return;
     if (refreshButton_) refreshButton_->SetDisabled(true);
-    SetStatus("Fetching the models and topics from the server…");
+    SetStatus(Tr("Fetching the models and topics from the server…"));
     auto sink = ProgressSink();
     std::thread([this, alive = alive_, refreshing = refreshing_, sink]() {
         LocalRuntime& rt = LocalRuntime::Instance();
         const Error error = rt.RefreshGallery();
         std::string text;
         if (!error.IsOk()) {
-            text = "The server could not be read: " + error.message;
+            text = TrF("The server could not be read: {0}", error.message);
         } else {
             const std::vector<std::string> jobs = rt.ApplyTopicUpdates(sink);
-            text = "Up to date.";
-            if (!jobs.empty()) text += " Downloading " + std::to_string(jobs.size()) + " model" +
-                                       (jobs.size() == 1 ? "" : "s") + " for your topics.";
+            text = Tr("Up to date.");
+            if (!jobs.empty()) text += " " + TrN("Downloading {n} model for your topics.", "Downloading {n} models for your topics.",
+                                                 static_cast<long long>(jobs.size()));
         }
         OnUiThread([this, alive, refreshing, text]() {
             refreshing->store(false);
@@ -516,7 +523,7 @@ void UltraAITopicsPage::RestoreDefaults() {
     LocalRuntimeSettings s = rt.GetSettings();
     s.galleryUrl.clear();
     rt.SetSettings(s);
-    SetStatus("Every topic follows the server again.");
+    SetStatus(Tr("Every topic follows the server again."));
     Refresh();
 }
 
@@ -525,7 +532,7 @@ void UltraAITopicsPage::Install(const std::vector<std::string>& modelIds) {
     // the user's click is the go-ahead, as on the Local models page.
     LocalRuntime& rt = LocalRuntime::Instance();
     for (const std::string& id : modelIds) rt.InstallModel(id, ProgressSink());
-    SetStatus("Download queued; the Local models page shows its progress.");
+    SetStatus(Tr("Download queued; the Local models page shows its progress."));
 }
 
 InstallProgressCallback UltraAITopicsPage::ProgressSink() {
@@ -536,9 +543,9 @@ InstallProgressCallback UltraAITopicsPage::ProgressSink() {
         }
         OnUiThread([this, alive, p]() {
             if (!alive->load()) return;
-            if (p.state == InstallProgress::State::Done) SetStatus(p.what + ": installed.");
+            if (p.state == InstallProgress::State::Done) SetStatus(TrF("{0}: installed.", p.what));
             else if (p.state == InstallProgress::State::Failed) SetStatus(p.what + ": " + p.error);
-            else SetStatus(p.what + ": cancelled.");
+            else SetStatus(TrF("{0}: cancelled.", p.what));
             Refresh();
         });
     };
