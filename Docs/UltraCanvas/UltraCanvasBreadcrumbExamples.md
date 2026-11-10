@@ -162,6 +162,12 @@ struct FolderBreadcrumbOptions {
     // machine (UltraFiler's Computer page) opens that instead. The node's
     // dropdown lists the drives either way.
     std::function<void()> onComputerClick;
+    // What a drive or mounted volume is called on the strip - its own node and
+    // its entry in the "Computer" node's list - given its root. Unset, or an
+    // empty answer, keeps the drive letter ("D:") or the root path. Called on
+    // the UI thread, so answer from names already read (ReadVolumeName, off
+    // the UI thread), never by asking the disk.
+    std::function<std::string(const std::string& root)> driveLabel;
 };
 
 // Rebuilds `crumb` as the path of `folderPath`: an optional "Computer" node, the
@@ -194,6 +200,19 @@ filer->onPathChanged = [crumb, filer](const std::string& path) {
     BuildFolderBreadcrumb(crumb, path,
                           [filer](const std::string& folder) { filer->SetPath(folder); });
 };
+```
+
+A file manager that has the volumes' own names names its drives by them:
+
+```cpp
+std::map<std::string, std::string> volumeNames;   // "D:\\" -> "My Passport Ultra (D:)", filled off the UI thread
+
+FolderBreadcrumbOptions options;
+options.driveLabel = [&volumeNames](const std::string& root) {
+    auto it = volumeNames.find(root);
+    return it != volumeNames.end() ? it->second : std::string();
+};
+BuildFolderBreadcrumb(crumb, path, onNavigate, options);
 ```
 
 Pair it with `BreadcrumbOverflowMode::Collapse` (plus `keepFirstItemOnCollapse`
