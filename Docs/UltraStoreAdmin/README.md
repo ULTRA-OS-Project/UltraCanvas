@@ -58,7 +58,10 @@ table with *Add an app or a component*, an app's form, Sales, Finance and
 Publish.
 
 `ultrastoreadmin` alone, or `ultrastoreadmin --store <dir>` alone, opens
-the window on the store (the default store is
+the window on the store. It wears the store's look (the UltraStore shop
+design: a white ground, ink text, the UltraStore blue, Manrope over Inter,
+rounded surfaces and pill buttons - `AdminTheme.h`, the store's
+`StoreTheme.h` a notch denser) (the default store is
 `<data folder>/UltraStoreAdmin`, created on the first start). A sidebar
 (`UltraCanvasSidebarNavigation`) lists the store's pages and then every
 app and every runtime or library the database has, an item marked
@@ -117,7 +120,7 @@ app new <id> <name> [--kind app|runtime|library] [--publisher <id>]
 app set <id> <field> <value>                             name publisher license homepage support_url privacy_url
                                                          source_url icon source_language categories tags screenshots
                                                          visibility lifecycle successor age_rating requires_account
-                                                         open_source pricing.model price currency trial_days
+                                                         open_source featured pricing.model price currency trial_days
                                                          updates.period updates.until
 app text <id> summary|description <lang> <text or @file>
 app media <id> icon|screenshot <file>

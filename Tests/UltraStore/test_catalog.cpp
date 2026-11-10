@@ -49,6 +49,7 @@ TEST(catalog_round_trips_through_json) {
     REQUIRE(video->visibility == Visibility::Listed && video->lifecycle == Lifecycle::Active);
     REQUIRE_EQ(video->ageRating, std::string("3"));
     REQUIRE(video->openSource && !video->requiresAccount);
+    REQUIRE(video->featured);
     REQUIRE_EQ(video->tags.size(), size_t(2));
     REQUIRE_EQ(video->sourceLanguage, std::string("de"));
     REQUIRE(video->machineTranslated == std::vector<std::string>{"en"});

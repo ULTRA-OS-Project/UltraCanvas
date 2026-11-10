@@ -218,6 +218,7 @@ Result<Component> ReadComponent(const JSONValue& v, ComponentKind defaultKind, c
     c.ageRating = v.Get("age_rating").GetString();
     c.requiresAccount = v.Get("requires_account").GetBoolean(false);
     c.openSource = v.Get("open_source").GetBoolean(false);
+    c.featured = v.Get("featured").GetBoolean(false);
     c.sourceUrl = v.Get("source_url").GetString();
     c.supportUrl = v.Get("support_url").GetString();
     c.privacyUrl = v.Get("privacy_url").GetString();
@@ -304,6 +305,7 @@ JSONValue WriteComponent(const Component& c) {
     if (!c.ageRating.empty()) o.Set("age_rating", c.ageRating);
     if (c.requiresAccount) o.Set("requires_account", true);
     if (c.openSource) o.Set("open_source", true);
+    if (c.featured) o.Set("featured", true);
     if (!c.sourceUrl.empty()) o.Set("source_url", c.sourceUrl);
     if (!c.supportUrl.empty()) o.Set("support_url", c.supportUrl);
     if (!c.privacyUrl.empty()) o.Set("privacy_url", c.privacyUrl);

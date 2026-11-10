@@ -108,7 +108,7 @@ int UltraStoreAdmin::Cli::Usage(FILE* to) {
         "\n"
         "Fields for `app set`: name publisher license homepage support_url privacy_url source_url icon\n"
         "  source_language categories tags screenshots visibility lifecycle successor age_rating\n"
-        "  requires_account open_source pricing.model price currency trial_days updates.period updates.until\n",
+        "  requires_account open_source featured pricing.model price currency trial_days updates.period updates.until\n",
         ULTRASTOREADMIN_VERSION);
     return to == stdout ? 0 : 2;
 }
@@ -356,6 +356,7 @@ bool SetField(Component& c, const std::string& field, const std::string& value, 
     else if (field == "updates.until") c.updates.until = value;
     else if (field == "requires_account") return onOff(c.requiresAccount);
     else if (field == "open_source") return onOff(c.openSource);
+    else if (field == "featured") return onOff(c.featured);
     else if (field == "visibility") {
         if (value != "listed" && value != "unlisted" && value != "hidden") { error = "visibility is listed, unlisted or hidden"; return false; }
         c.visibility = UltraStore::ParseVisibility(value);

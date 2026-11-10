@@ -13,5 +13,9 @@
   what this machine downloads, the screenshots, *About*, *What's new* with
   the version history, *What it installs* with the sizes, the information
   column with the links, *More from* the publisher. Not taken from the
-  design: *Sign in* (no accounts), *Editor's picks* (no catalog field), the
-  share and wish-list buttons, the footer's links, the *Runs on* filter.
+  design: *Sign in* (no accounts), the share and wish-list buttons, the
+  footer's links, the *Runs on* filter.
+- **`featured`.** An app the admin marks as featured (the catalog's new
+  `featured` flag) is the Discover hero - the newest one this machine can
+  install - and the featured apps are the *Editor's picks* row; without a
+  pick the hero is the newest release.

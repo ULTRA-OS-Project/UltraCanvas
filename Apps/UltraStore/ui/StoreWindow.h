@@ -143,7 +143,10 @@ private:
     std::vector<AppListing> Listings(const ListingFilter& filter) const;
     // Sorted: 0 newest release first, 1 by name, 2 price low to high.
     static void SortListings(std::vector<AppListing>& apps, int mode);
-    // The app the Discover hero shows: the newest release in the catalog.
+    // The admin's picks (the catalog's `featured`), newest release first.
+    std::vector<AppListing> EditorsPicks() const;
+    // The app the Discover hero shows: the admin's newest pick this machine
+    // can install, else the newest release in the catalog.
     std::optional<AppListing> FeaturedApp() const;
     // What this machine would download for the app's release, with what it
     // already has; nothing when there is no package for it.

@@ -167,6 +167,7 @@ Per app, what the admin backend offers and the catalog carries:
 | Age rating | `age_rating` | PEGI-like `3`, `7`, `12`, `16`, `18`; empty for everyone |
 | Account | `requires_account` | the app is useless without its own user account (UltraMail with no mailbox is not that; a service client is) |
 | Source | `open_source`, `source_url` | shown as a badge with the link |
+| Featured | `featured` | the admin's pick: the store's Discover shows the newest featured app as its hero and the featured apps as *Editor's picks* |
 | Links | `homepage`, `support_url`, `privacy_url` | |
 | Search | `categories`, `tags` | categories from the fixed list the store's sidebar shows; tags free-form |
 | Texts | `summary`, `description`, `releases[].notes` | per language, `en` the fallback; `source_language` names what the creator wrote, `machine_translated` the languages the server's UltraAI added (see *Translations*) |
@@ -564,15 +565,14 @@ line never disagree; the pages are `StoreQuery::ListApps` with its filters.
 
 | Page | Shows | Does |
 |---|---|---|
-| Discover | the featured app as a hero (the newest release the machine can install: the catalog carries no editorial pick), the categories as pills, *New and updated* as a numbered list in two columns, *Free essentials* as cards, the four reasons for the store, the partner / discount code; text in the header's search pill turns the page into the results, as cards | Install / Try free / Buy, Open, Update, Remove on each card or row; a card, a row or the hero opens the app page; a category pill opens Categories on it |
+| Discover | the featured app as a hero (the admin's newest `featured` pick this machine can install, else the newest release), the categories as pills, *Editor's picks* as cards (the `featured` apps, when there are any), *New and updated* as a numbered list in two columns, *Free essentials* as cards, the four reasons for the store, the partner / discount code; text in the header's search pill turns the page into the results, as cards | Install / Try free / Buy, Open, Update, Remove on each card or row; a card, a row or the hero opens the app page; a category pill opens Categories on it |
 | Categories | the filters on the left - the catalog's categories as chips (`UltraCanvasChipGroup`), All / Free / Paid, open source only, hide installed - the heading with the count and the sort order (newest release, name, price), and the cards in a wrapping grid | the same actions; the design's *Runs on* filter is not there: a native store resolves every app for this machine |
 | Installed | the installed apps as cards, then the runtimes and libraries under them | Open, Remove, Reload, Clean up (the garbage collector) |
 | Updates | the installed apps a newer release has a package for; the count in the header pill | Update one, Update all |
 | App page | the shop's app page: the breadcrumb (the section it came from, the category, the name), the icon, the name, the summary, the publisher (a link when the catalog has their page), the facts as pills (the trial, open source and the licence, the systems, the age rating, the account, the update period, a purchase, a code in force), the actions, what this machine downloads (the plan: the layers already there, the ones added, the bytes); the screenshots side by side; *About this app*; *What's new* with the release notes and the version history; *What it installs* step by step with the sizes; the information column (publisher, licence, price, trial, updates, languages, age rating, the links); *More from* the publisher | the same actions; the breadcrumb is the way back |
 | Settings | channel, the texts' language, the servers, the keys trusted beside the compiled-in ones, fetch at start; this machine, the store folder, the settings file, the catalog's state, what is installed | Save, Revert, Refresh catalog now, Clean up, Reload installed |
 
-Not in the window, of the design: *Sign in* (no accounts), *Editor's
-picks* (the catalog has no field for an editorial choice), the share and
+Not in the window, of the design: *Sign in* (no accounts), the share and
 wish-list buttons of the app page, and the footer's links (for publishers,
 support, privacy, terms: the catalog carries no store-wide pages). The
 phone artboards are a web shop's; the admin and operator artboards belong
