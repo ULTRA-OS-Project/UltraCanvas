@@ -146,7 +146,7 @@ static std::vector<FriendCircle> FriendCircles() {
         {"college",   Tr("College"),       Color(79,  70, 229, 255)},
         {"climbing",  Tr("Climbing club"), Color(22, 163,  74, 255)},
         {"work",      Tr("Work"),          Color(217, 119,   6, 255)},
-        {"neighbours","Neighbours",    Color(13, 148, 136, 255)},
+        {"neighbours",Tr("Neighbours"),    Color(13, 148, 136, 255)},
         {"family",    Tr("Family"),        Color(219,  39, 119, 255)},
     };
 }
@@ -177,7 +177,7 @@ static std::vector<Friend> Friends() {
         {"omar",   "Omar Haddad",    Tr("Chess"),         "Berlin",     "menu/dataset.svg",     {"work"}},
         // Neighbours
         {"paula",  "Paula Brandt",   Tr("Gardening"),     "Berlin",     "smarthome/home.svg",   {"neighbours"}},
-        {"quentin","Quentin Roux",   "Games",   "Berlin",     "menu/monitor.svg",     {"neighbours"}},
+        {"quentin","Quentin Roux",   Tr("Games"),   "Berlin",     "menu/monitor.svg",     {"neighbours"}},
         {"rosa",   "Rosa Ortiz",     Tr("Night owl"),     "Berlin",     "menu/moon.svg",        {"neighbours"}},
         // Family
         {"sam",    "Sam Weber",      Tr("Brother"),       "Cologne",    "chatcube/profile.svg", {"family"}},

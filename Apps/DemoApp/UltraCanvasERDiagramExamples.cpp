@@ -131,7 +131,7 @@ static std::shared_ptr<UltraCanvasERDiagram> CreateDenseSchemaDiagram(
     er->SetTheme(ERDiagramTheme::Colorful);
     er->SetCardinalityLabelStyle(ERCardinalityLabels::Letters);
     er->SetConnectorStyle(ERConnectorStyle::Orthogonal);
-    er->SetTitle("University Schema", "Force-directed layout with attribute haloes");
+    er->SetTitle(Tr("University Schema"), Tr("Force-directed layout with attribute haloes"));
 
     // The key columns (StudentID, ISBN, ...) are identifiers and stay as
     // they are; the names a person reads follow the language.
