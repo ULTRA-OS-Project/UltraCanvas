@@ -382,7 +382,7 @@ struct Connection {
         if (received - acknowledged >= window) {
             std::vector<uint8_t> ack;
             PutBe(ack, static_cast<uint32_t>(received & 0xFFFFFFFFu), 4);
-            SendMessage(2, 3, 0, 0, ack);
+            WriteMessage(2, 3, 0, 0, ack);
             acknowledged = received;
         }
         return true;
@@ -402,7 +402,7 @@ struct Connection {
         return true;
     }
 
-    bool SendMessage(uint32_t csid, uint8_t type, uint32_t streamId, uint32_t timestamp,
+    bool WriteMessage(uint32_t csid, uint8_t type, uint32_t streamId, uint32_t timestamp,
                      const std::vector<uint8_t>& payload) {
         std::vector<uint8_t> out;
         const uint32_t ts = timestamp >= 0xFFFFFF ? 0xFFFFFF : timestamp;
@@ -546,7 +546,7 @@ struct Connection {
                         std::vector<uint8_t> pong;
                         PutBe(pong, 7, 2);
                         pong.insert(pong.end(), d.begin() + 2, d.begin() + 6);
-                        SendMessage(2, 4, 0, 0, pong);
+                        WriteMessage(2, 4, 0, 0, pong);
                     } else if (event == 1) {             // Stream EOF
                         ended = true;
                     }
@@ -558,7 +558,7 @@ struct Connection {
             case 6: { // Set Peer Bandwidth: say ours
                 std::vector<uint8_t> size;
                 PutBe(size, kOurWindow, 4);
-                SendMessage(2, 5, 0, 0, size);
+                WriteMessage(2, 5, 0, 0, size);
                 return true;
             }
             default:
@@ -752,7 +752,7 @@ std::unique_ptr<Connection> Play(const std::string& url, const UltraNetStreamOpt
     // Larger chunks out; then connect.
     std::vector<uint8_t> size;
     PutBe(size, kOutChunkSize, 4);
-    c->SendMessage(2, 1, 0, 0, size);
+    c->WriteMessage(2, 1, 0, 0, size);
 
     std::vector<uint8_t> connect;
     AmfString(connect, "connect");
@@ -767,7 +767,7 @@ std::unique_ptr<Connection> Play(const std::string& url, const UltraNetStreamOpt
     AmfRawString(connect, "videoCodecs");  AmfNumber(connect, 252);
     AmfRawString(connect, "videoFunction"); AmfNumber(connect, 1);
     AmfObjectEnd(connect);
-    if (!c->SendMessage(3, 20, 0, 0, connect)) { error = "connect could not be sent"; return nullptr; }
+    if (!c->WriteMessage(3, 20, 0, 0, connect)) { error = "connect could not be sent"; return nullptr; }
 
     // Waits for the answer to `transaction`, queueing media on the way.
     auto await = [&](double transaction, std::vector<AmfValue>& args, const char* what) -> bool {
@@ -800,7 +800,7 @@ std::unique_ptr<Connection> Play(const std::string& url, const UltraNetStreamOpt
     AmfString(create, "createStream");
     AmfNumber(create, 2);
     AmfNull(create);
-    if (!c->SendMessage(3, 20, 0, 0, create)) { error = "createStream could not be sent"; return nullptr; }
+    if (!c->WriteMessage(3, 20, 0, 0, create)) { error = "createStream could not be sent"; return nullptr; }
     if (!await(2, args, "createStream")) return nullptr;
     uint32_t streamId = 1;
     for (const AmfValue& a : args)
@@ -811,14 +811,14 @@ std::unique_ptr<Connection> Play(const std::string& url, const UltraNetStreamOpt
     PutBe(buffer, 3, 2);
     PutBe(buffer, streamId, 4);
     PutBe(buffer, 3000, 4);
-    c->SendMessage(2, 4, 0, 0, buffer);
+    c->WriteMessage(2, 4, 0, 0, buffer);
     std::vector<uint8_t> play;
     AmfString(play, "play");
     AmfNumber(play, 0);
     AmfNull(play);
     AmfString(play, where.playPath);
     AmfNumber(play, -2);
-    if (!c->SendMessage(8, 20, streamId, 0, play)) { error = "play could not be sent"; return nullptr; }
+    if (!c->WriteMessage(8, 20, streamId, 0, play)) { error = "play could not be sent"; return nullptr; }
 
     // NetStream.Play.Start, or why not.
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout);
