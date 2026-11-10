@@ -10,8 +10,9 @@
 // map an image through a lookup table — the media viewer's Curves button is
 // the first caller.
 //
+// Version: 1.1.0 - SetHistograms
 // Version: 1.0.0
-// Last Modified: 2026-08-25
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -41,6 +42,9 @@ public:
     // ===== HISTOGRAM BACKDROP =====
     // Bin counts per 8-bit level for one channel of the image being edited.
     void SetHistogram(ToneCurveChannel channel, const std::vector<uint32_t>& bins);
+    // All four channels from one count of the picture (ComputeImageHistogram);
+    // see UltraCanvasCurveEditor::SetHistograms. An empty one removes them.
+    void SetHistograms(const ImageHistogram& histogram);
 
     UltraCanvasCurveEditor* GetEditor() const { return editor.get(); }
 

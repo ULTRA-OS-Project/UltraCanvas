@@ -50,6 +50,7 @@
 # current for any branch, and the branch the session starts on has its copy
 # fetched here - both hooks then see the branch as it is on origin.
 #
+# Version: 1.6.0 - Tesseract, Leptonica and the English OCR data (the OCR plugin)
 # Version: 1.5.0 - the fetch refspec widened to every branch and the session's
 #                  branch copy fetched, for the Stop hooks on a shallow clone
 # Version: 1.4.0 - openssh-server, for the SSH tunnel tests
@@ -100,6 +101,8 @@ PACKAGES=(
     locales
     # spell checking (no native backend on Linux) and its default dictionary
     libhunspell-dev hunspell-en-us
+    # the OCR plugin (Tesseract, Leptonica) and the English data its test reads with
+    libtesseract-dev libleptonica-dev tesseract-ocr-eng
 )
 
 # The comma-decimal locale the locale tests run under.

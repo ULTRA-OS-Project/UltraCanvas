@@ -50,6 +50,9 @@
 // itself is never touched, so renaming and every file operation still work on
 // the real one. A name that is not UTF-8 — written in a legacy code page by an
 // old tool or an unconverting unzip — is drawn decoded rather than as U+FFFD.
+// Version: 1.44.0 - Refresh in the context menu (onRefreshRequested): the
+//                  folder on display, or the one folder right-clicked, read
+//                  again
 // Version: 1.43.7 - the last English messages are whole translated sentences:
 //                  the status line a copy or a move ends on (one sentence per
 //                  verb and kind, counts through TrN, names as {0}) and the
@@ -123,7 +126,7 @@
 //                  (HTML::DecodeEntities): every named and numeric reference, where
 //                  a numeric one was a blank before
 // Version: 1.36.0 - an icon on every entry of the context menu and its Display submenu
-// Last Modified: 2026-10-30
+// Last Modified: 2026-11-09
 // Author: UltraCanvas Framework
 
 #ifdef ULTRACANVAS_HAS_VIRTUALFS
@@ -16305,6 +16308,20 @@ namespace UltraCanvas {
                         t.label, [this, copy]() { CreateNewDocument(copy); }));
             }
             menu.AddItem(MenuItemData::Submenu(Tr("New"), MenuIconPath("new.svg"), newItems));
+        }
+        // Refresh: the folder read again - the one folder entry right-clicked,
+        // or the folder on display. What changed there behind the display's
+        // back (another program, another device on a remote drive) shows
+        // without leaving the folder and coming back. The host carries it out
+        // when it asked to (onRefreshRequested): a remote folder answered
+        // from a cache has to be asked of its server again first.
+        {
+            const bool onFolder = singleSel && targets.front().isDirectory;
+            const std::string folder = onFolder ? targets.front().path : currentPath;
+            addAction(Tr("Refresh"), "refresh.svg", true, [this, folder]() {
+                if (onRefreshRequested && !folder.empty()) onRefreshRequested(folder);
+                else Refresh();
+            });
         }
         menu.AddItem(MenuItemData::Separator());
 

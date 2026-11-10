@@ -1042,6 +1042,9 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
     (Windows `ExitWindowsEx`; Linux logind over the system bus);
     `CanLockSession` / `LockSession` - the screen lock (`LockWorkStation`;
     logind's `Session.Lock`, else `org.freedesktop.ScreenSaver.Lock`).
+  - `CanOpenDisplaySettings` / `OpenDisplaySettings` - the system's own
+    display settings (`ms-settings:display`; System Settings > Displays;
+    the desktop's display tool on Linux).
   - `ReadAudioOutput` → `DesktopAudioOutput` (the default output's name,
     volume and mute), `SetAudioOutputVolume`, `SetAudioOutputMuted` - the
     loudspeaker through the sound server (libpulse loaded at run time:
@@ -1134,7 +1137,9 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   - `ClipboardHistoryListModel` + `ClipboardHistoryRowDelegate`
     (`ClipboardRowStyle::Light()` / `Dark()`) - the history in an
     `UltraCanvasListView`: thumbnails by kind, meta line, painted Copy / Edit
-    / Delete hit-tested with `ActionAt`.
+    / Delete hit-tested with `ActionAt`; its text in the person's language
+    (`Tr`), with `ClipboardEntryKindLabel` / `ClipboardEntryDisplayTitle` for
+    what is stored in English.
   - `EditClipboardText` (trim, join lines, case), `ClipboardImageFile`,
     `FoldForClipboardSearch`, `DescribeClipboardEntry`,
     `PreferredClipboardKinds` (what a program takes when pasted into, from
@@ -1610,7 +1615,18 @@ image / video / music generation, translation, code assist). See
 through any text LLM (`UltraAITextLLMTranslator.h`: `CreateTextLLMTranslator`,
 `BuildTranslationPrompt` / `ParseTranslationReply`, `BuildDetectionPrompt` /
 `ParseDetectionReply`), registered under each text-LLM provider's id;
-`Docs/Modules/UltraAI/Adapters.md` has the option keys. The local runtime
+`Docs/Modules/UltraAI/Adapters.md` has the option keys. Agents
+(`UltraAIAgent.h`: `Agent` with `AddTool` / `RemoveTool` / `Run` /
+`RunAsync` / `Cancel` / `History` / `SetHistory` / `ClearHistory`,
+`CreateAgent`, `AgentOptions` (`canUseTool`, `afterToolCall`, `maxTurns`,
+`stream`), `ToolArguments`, `ToolResult`, `ToolPermission`,
+`MakeSubagentTool`) run the model ↔ tool loop over any `ITextLLM`;
+`Docs/Modules/UltraAI/Agents.md`. Batches (`UltraAIBatch.h`:
+`ITextBatch` with `Submit` / `Get` / `Cancel` / `Results`,
+`CreateTextBatch`, `CreateSequentialTextBatch`, `RunBatch`,
+`ValidateBatchItems`, `IsFinished`; `CreateAnthropicTextBatch`,
+`CreateOpenAITextBatch`) send many chat requests as one job at about half
+the price; `Docs/Modules/UltraAI/Batches.md`. The local runtime
 (`UltraAILocalRuntime.h`, `UltraAI/runtime/`: `LocalRuntime::Instance()`,
 `ListModels` / `ListEngines` / `Recommend` / `Fit`, `InstallModel` /
 `InstallEngine` / `Cancel` / `RemoveModel`, `AddModelFile` /
@@ -1679,6 +1695,17 @@ type the build reads), `AddSaveTypes(opts, category)` / `AddImageSaveTypes`
 `SaveTextDocument` (what `LoadTextDocument` reads, ODT and DOCX written). A
 codec an application brings joins them through `RegisterMediaCodec`, as
 UltraVideo's FFmpeg engine does (`VideoFX_GetFileFormats`).
+
+The words in a file, as plain text: `UltraCanvasFileLoader::ExtractText(path,
+password)` (`TextExtractionResult`: text, `TextExtractionMethod`, error) reads
+documents and decks (`LoadTextDocument`), PDFs (page text; a scan by text
+recognition), spreadsheets (every sheet, tab-separated), text files, pictures
+(text recognition) and recordings (speech to text);
+`GetTextExtractionMethod` / `CanExtractText` / `WhyNoTextExtraction` say how
+and whether. Text recognition and speech to text are hooks:
+`SetImageTextRecognizer` (the OCR plugin's `RegisterOCRTextRecognition()`
+installs Tesseract) and `SetSpeechTranscriber` (an application's engine, e.g.
+UltraAI's `ISpeechToText`). UltraClipboard's *Extract text* uses it.
 
 ### **4. Plug-ins for File Types**
 

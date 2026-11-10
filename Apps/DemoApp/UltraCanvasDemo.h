@@ -1,5 +1,6 @@
 // Apps/DemoApp/UltraCanvasDemo.h
 // Comprehensive demonstration program showing all UltraCanvas display elements
+// Version: 1.0.11 - CreateHistogramChartExamples
 // Version: 1.0.10 - AddControlChartCard (the Line Chart page's control chart)
 // Version: 1.0.9 - CreateTernaryChartExamples
 // Version: 1.0.8 - treeFilterInput: a filter field over the component tree,
@@ -385,6 +386,7 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasUIElement> CreateQuadrantChartExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateImportancePerformanceChartExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateTernaryChartExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateHistogramChartExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateGanttChartExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateKanbanBoardExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateRaincloudPlotExample();

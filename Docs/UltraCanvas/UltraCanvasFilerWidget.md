@@ -447,6 +447,8 @@ Open Path         (only when SetOpenPathMenuItemVisible(true) — search-result
 Copy / Cut / Paste / Delete / Delete Permanently / Duplicate / Rename
 ──────────
 New            >  Text, Doc, Spreadsheet, Bitmap, Vector, Audio, Video
+Refresh           the folder on display, or the one folder right-clicked,
+                  read again (onRefreshRequested)
 ──────────
 Compress / Extract
 ──────────
@@ -493,6 +495,21 @@ Notes:
 - Items whose hook callback is not set (Print, Share, Attributes, Access,
   Settings, empty Open with) are shown disabled. "Copy path" has a built-in
   default (system clipboard via `SetClipboardText`).
+- **Refresh** is for the one folder entry the menu was opened on, or else
+  the folder on display. Without a hook it re-reads the folder on display
+  (`Refresh()`). With `onRefreshRequested` set, the host is handed that
+  folder and carries the refresh out itself, this display's re-read
+  included: a host that answers remote folders from a cache
+  (`remoteListing`) asks the server again first, and one with a folder tree
+  brings its rows in line. UltraFiler does both, the same as its tree's
+  *Refresh*.
+
+  ```cpp
+  filer->onRefreshRequested = [display = filer.get()](const std::string& folder) {
+      // drop or re-ask what a cache holds for `folder`, then:
+      if (folder == display->GetPath()) display->Refresh();
+  };
+  ```
 - **Open with** is the first entry — opening a file is what the menu is
   opened for most often — and the entry itself is clickable: it opens the
   whole selection with the OS default application, the same thing a

@@ -3,9 +3,11 @@
 // password (app password), public URL (WebDAV), upload folder, default flag.
 // Verifies the sign-in through the provider before storing. One dialog for
 // every app that links UltraCloudUI.
+// Version: 0.5.0 - ShowEditAccountDialog: a stored account's settings in the
+//                  same form, its password kept unless a new one is typed
 // Version: 0.4.0 - a shared_ptr form, whose sign-in thread holds the service
 //                  until it ends
-// Last Modified: 2026-10-14
+// Last Modified: 2026-11-09
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -78,5 +80,40 @@ void ShowAddAccountDialog(UltraCanvas::UltraCanvasWindowBase* parent, CloudServi
                           std::function<bool(const std::string& providerId)> providerFilter = {},
                           const std::string& title = std::string(),
                           AddAccountWatch watch = {});
+
+// The stored account `accountId` in the same dialog, to be changed: every
+// field filled in from the store, the provider shown but fixed (another
+// provider is another account). The password field starts empty and an
+// empty one keeps the stored password - so a password changed on the server
+// is typed in once, and a name changed without touching it. An FTP server's
+// URL comes back as its protocol, server and port; an SFTP key file as its
+// path.
+//
+// Saving signs in with what the form holds and stores it only if the
+// provider accepts it, as adding does - except for an OAuth account, which
+// has no password to type: it is saved as it is (name, upload folder,
+// default) unless "Sign in again" is ticked, which runs the browser sign-in
+// and stores its new tokens. The account keeps its id whatever is changed,
+// so what a host keyed by it - an open folder, a pinned one - still finds
+// it. `onSaved` receives the stored account; nothing is called on cancel.
+// `title` and `watch` as for ShowAddAccountDialog (the watch hears only of
+// sign-ins, not of a save without one).
+//
+// False, with no dialog shown, when the account is not in the store or its
+// provider is not registered in this build.
+bool ShowEditAccountDialog(UltraCanvas::UltraCanvasWindowBase* parent,
+                           std::shared_ptr<CloudService> service,
+                           const std::string& accountId,
+                           std::function<void(const Account&)> onSaved,
+                           const std::string& title = std::string(),
+                           AddAccountWatch watch = {});
+
+// The same over a service the caller keeps, with the same promise as the
+// reference form of ShowAddAccountDialog.
+bool ShowEditAccountDialog(UltraCanvas::UltraCanvasWindowBase* parent, CloudService& service,
+                           const std::string& accountId,
+                           std::function<void(const Account&)> onSaved,
+                           const std::string& title = std::string(),
+                           AddAccountWatch watch = {});
 
 } // namespace UltraCloud

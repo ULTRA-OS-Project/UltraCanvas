@@ -21,7 +21,12 @@
 #include "DataFormats/UltraCanvasVectorEdit.h"
 #include "DataFormats/UltraCanvasVectorGeometry.h"
 #include "UltraCanvasImage.h"
+#ifndef UC_TEST_HAS_VECTOR_CANVAS
+#define UC_TEST_HAS_VECTOR_CANVAS 1
+#endif
+#if UC_TEST_HAS_VECTOR_CANVAS
 #include "UltraCanvasVectorCanvas.h"
+#endif
 #include "UltraCanvasGradientEditor.h"
 
 #include <chrono>
@@ -401,6 +406,7 @@ int main() {
         Check(Near(fb.y, -23, 1e-3) && Near(fb.height, 46, 1e-3), "a round-joined freehand line: its swing plus half its width");
     }
 
+#if UC_TEST_HAS_VECTOR_CANVAS   // a selectable widget (ULTRACANVAS_WIDGETS), absent from a lean core
     // ===== Canvas: view mapping, snapping, handles, guides (no window) =====
     {
         auto cdoc = std::make_shared<VectorDocument>();
@@ -506,6 +512,7 @@ int main() {
         canvas->GetSelection()->Clear();
         Check(canvas->HitTestHandle(Point2Di(static_cast<int>(mid.x), static_cast<int>(mid.y))) == VectorHandle::NoHandle, "no selection, no handles");
     }
+#endif
 
 
     // ===== Gradient editor (no window) =====

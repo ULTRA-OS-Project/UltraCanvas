@@ -35,10 +35,6 @@
   "an entry": "एक प्रविष्टि",
   "An upload is still running — quit anyway?": "एक अपलोड अभी भी चल रहा है — फिर भी बाहर निकलें?",
   "An upload is still waiting — quit anyway?": "एक अपलोड अभी भी प्रतीक्षा में है — फिर भी बाहर निकलें?",
-  "and {n} more": {
-    "one": "और {n} अन्य",
-    "other": "और {n} अन्य"
-  },
   "Any other file, when this system has a program registered for that kind of file:": "कोई अन्य फ़ाइल, जब इस सिस्टम में उस तरह की फ़ाइल के लिए कोई प्रोग्राम पंजीकृत हो:",
   "Applied to {n} item.": {
     "one": "{n} आइटम पर लागू किया गया।",
@@ -462,10 +458,6 @@
   "{n} icon": {
     "one": "{n} आइकन",
     "other": "{n} आइकन"
-  },
-  "{n} line": {
-    "one": "{n} पंक्ति",
-    "other": "{n} पंक्तियाँ"
   },
   "{n} result": {
     "one": "{n} परिणाम",

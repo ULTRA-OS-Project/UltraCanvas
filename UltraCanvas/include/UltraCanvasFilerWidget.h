@@ -104,6 +104,10 @@
 // thin blue bar sliding along the foot of the file area - its entries, or an
 // empty area, stay as they are - and the words go to the host's status line
 // (GetListingPendingStatus, onListingPendingChanged).
+// Version: 1.48.0 - the context menu's Refresh, and onRefreshRequested for a
+//                  host that answers for remote folders from a cache
+// Version: 1.47.1 - Includes UltraCanvasDialogTypes.h, not UltraCanvasModalDialog.h:
+//                  the two headers no longer include each other
 // Version: 1.47.0 - onFolderChangedOnDisk: the folder watch's re-listings, for a
 //                  host's folder tree
 // Version: 1.46.3 - Refresh() moves up to the nearest existing folder when the
@@ -154,7 +158,7 @@
 // Version: 1.40.0 - RequestBackgroundStop / BackgroundStopped: a host can let the workers
 //                  end before it destroys the widget
 // Version: 1.39.2
-// Last Modified: 2026-10-30
+// Last Modified: 2026-11-09
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -189,12 +193,13 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
-#include "UltraCanvasModalDialog.h"   // DialogType, DialogButtonRole (the operation dialogs)
+#include "UltraCanvasDialogTypes.h"   // DialogType, DialogButtonRole (the operation dialogs), FileFilter
 
 namespace UltraCanvas {
 
     class UltraCanvasProgressDialog;   // compress / extract progress window
     class UltraCanvasModalDialog;
+    struct ModalDialogStyle;
 
 
     class UltraCanvasMenu;
@@ -891,7 +896,7 @@ namespace UltraCanvas {
         // way it enters a folder). The filter survives SetPath(), rescans and
         // the name filter (both apply), so a dialog sets it once and
         // navigates. A dialog hands over the FileFilter its dropdown picked
-        // (UltraCanvasModalDialog.h) through the second overload.
+        // (UltraCanvasDialogTypes.h) through the second overload.
         void SetFileTypeFilter(const std::vector<std::string>& extensions,
                                FilerTypeFilterMode mode = FilerTypeFilterMode::Hide);
         void SetFileTypeFilter(const FileFilter& filter,
@@ -1982,6 +1987,15 @@ namespace UltraCanvas {
         std::function<void(const std::vector<FilerEntry>&)> onAttributes;
         std::function<void(const std::vector<FilerEntry>&)> onAccess;
         std::function<void()> onSettings;
+        // The context menu's Refresh, with the folder it is for: the one
+        // folder entry the menu was opened on, else the folder on display.
+        // Set, the host carries the refresh out - this display's own re-read
+        // (Refresh()) included, when the folder is the one it shows - so a
+        // host that answers for remote folders from a cache (remoteListing)
+        // can ask the server again first, and one with a folder tree can
+        // bring its rows in line. Unset, Refresh re-reads the folder on
+        // display.
+        std::function<void(const std::string& folder)> onRefreshRequested;
         // The gear right of the hidden-items notice's "Show hidden files"
         // button: set it and the gear appears there, and a click on it runs
         // this - a host opens the settings that decide what the display holds

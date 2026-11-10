@@ -3,6 +3,13 @@
   "@bases": [
     "Image"
   ],
+  "@inherited": [
+    "Untitled"
+  ],
+  "A drawing in this window has unsaved changes. Close anyway?": {
+    "one": "A drawing in this window has unsaved changes. Close anyway?",
+    "other": "{n} drawings in this window have unsaved changes. Close anyway?"
+  },
   "Added the text: click it with the Text tool, or double-click it, to edit it": "Added the text: click it with the Text tool, or double-click it, to edit it",
   "Changed the text": "Changed the text",
   "Click on the page and type, or click a text to edit it; the bar above sets its font, size, style, alignment and spacing. Escape, Ctrl+Enter or a click outside finishes": "Click on the page and type, or click a text to edit it; the bar above sets its font, size, style, alignment and spacing. Escape, Ctrl+Enter or a click outside finishes",
@@ -20,5 +27,8 @@
   "Text Strikethrough": "Text Strikethrough",
   "Text Underline": "Text Underline",
   "The text was emptied, so it was deleted": "The text was emptied, so it was deleted",
-  "Typing a new text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes": "Typing a new text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes"
+  "Typing a new text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes": "Typing a new text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes",
+  "Untitled {0}": "Untitled {0}",
+  "{0} has unsaved changes. Close it anyway?": "{0} has unsaved changes. Close it anyway?",
+  "{0} is open already": "{0} is open already"
 }

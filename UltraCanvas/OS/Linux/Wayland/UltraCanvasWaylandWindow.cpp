@@ -1,11 +1,14 @@
 // OS/Linux/Wayland/UltraCanvasWaylandWindow.cpp
 // A window on Wayland. See the header.
+// Version: 0.6.0 - WindowType::Popup beside a layer-shell desktop: the overlay layer, no keys
+// Version: 0.5.0 - WindowType::Tooltip: placed by its parent like a popup or a panel, with
+//                  no input region and never the keys
 // Version: 0.4.0 - panels of a layer-shell desktop as layer surfaces, popups of
 //                  a toplevel as xdg_popup; the session lock surface; file drags
 // Version: 0.3.0 - RaiseAndFocus through xdg-activation
 // Version: 0.2.0 - Desktop windows on the layer shell; the reserved edges
 // Version: 0.1.0
-// Last Modified: 2026-11-04
+// Last Modified: 2026-11-09
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasWaylandWindow.h"
@@ -150,6 +153,7 @@ namespace UltraCanvas {
             case WindowType::Popup:
             case WindowType::Fullscreen:
             case WindowType::SessionLock:
+            case WindowType::Tooltip:
                 return false;
             default:
                 return true;
@@ -166,6 +170,13 @@ namespace UltraCanvas {
         surface = wl_compositor_create_surface(app->GetCompositor());
         if (!surface) return false;
         wl_surface_add_listener(surface, &kSurfaceListener, this);
+        // The tooltip's own window takes no input: the pointer goes through
+        // it to the window beneath, the element the tooltip describes.
+        if (config_.type == WindowType::Tooltip) {
+            wl_region* none = wl_compositor_create_region(app->GetCompositor());
+            wl_surface_set_input_region(surface, none);
+            wl_region_destroy(none);
+        }
 
         UltraCanvasWaylandWindow* parent = PlacingParent();
         if (config_.type == WindowType::Desktop && app->GetLayerShell()) {
@@ -372,6 +383,7 @@ namespace UltraCanvas {
             case WindowType::Borderless:
             case WindowType::Tool:
             case WindowType::Notification:
+            case WindowType::Tooltip:
                 break;
             default:
                 return nullptr;
@@ -382,8 +394,15 @@ namespace UltraCanvas {
 
     bool UltraCanvasWaylandWindow::CreatePanelLayer(UltraCanvasWaylandApplication* app, UltraCanvasWaylandWindow* parent) {
         layerOutput = parent->GetLayerOutput();
+        // A tooltip or a popup's own window (a menu) goes on the overlay
+        // layer, above the panels of the top one
+        const bool tooltip = config_.type == WindowType::Tooltip;
+        const bool overlay = tooltip || config_.type == WindowType::Popup;
         layerSurface = zwlr_layer_shell_v1_get_layer_surface(app->GetLayerShell(), surface, layerOutput,
-                                                             ZWLR_LAYER_SHELL_V1_LAYER_TOP, "ultracanvas-panel");
+                                                             overlay ? ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY
+                                                                     : ZWLR_LAYER_SHELL_V1_LAYER_TOP,
+                                                             tooltip ? "ultracanvas-tooltip"
+                                                             : overlay ? "ultracanvas-popup" : "ultracanvas-panel");
         if (!layerSurface) return false;
         panelLayer = true;
         zwlr_layer_surface_v1_add_listener(layerSurface, &kLayerListener, this);
@@ -394,9 +413,12 @@ namespace UltraCanvas {
         // The keys when clicked, back to the desktop when that is clicked
         // (a blur, which closes a panel): on-demand focus from version 4;
         // before it a panel gets no keys, since exclusive would keep them.
+        // A tooltip never takes them, nor a popup: they stay with the
+        // desktop, which hands them to the popup.
         zwlr_layer_surface_v1_set_keyboard_interactivity(
-                layerSurface, app->GetLayerShellVersion() >= 4 ? ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_ON_DEMAND
-                                                               : ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE);
+                layerSurface, app->GetLayerShellVersion() >= 4 && !overlay
+                                  ? ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_ON_DEMAND
+                                  : ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE);
         ApplyPanelPosition();
         return true;
     }

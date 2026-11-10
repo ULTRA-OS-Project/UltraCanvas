@@ -3,6 +3,7 @@
 // with priorities/due dates/assignees/tags, drag & drop, a built-in card
 // editor, move history for flow metrics, text-definition (Mermaid kanban)
 // and JSON loading, and a preset-based design/palette system.
+// Version: 1.3.0 - onDeleteKey: the application decides what the Delete key does to a card
 // Version: 1.2.0 - pictures beside the text, centred titles, the context
 //                  menu and hover callbacks, the card preview
 // Version: 1.1.0 - card pictures (cardImageProvider)
@@ -3066,8 +3067,9 @@ bool UltraCanvasKanbanBoardElement::HandleKeyDown(const UCEvent& event) {
     }
     if (editable && event.virtualKey == UCKeys::Delete &&
         selectedCardId >= 0) {
-        auto ds = GetKanbanDataSource();
         int cardId = selectedCardId;
+        if (onDeleteKey && onDeleteKey(cardId)) return true;
+        auto ds = GetKanbanDataSource();
         if (ds && ds->RemoveCard(cardId)) {
             SelectCard(-1);
             if (onCardRemoved) onCardRemoved(cardId);

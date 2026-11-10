@@ -35,9 +35,6 @@
   "an entry": "条目",
   "An upload is still running — quit anyway?": "一个上传仍在进行。仍要退出吗？",
   "An upload is still waiting — quit anyway?": "一个上传仍在等待。仍要退出吗？",
-  "and {n} more": {
-    "other": "以及另外 {n} 个"
-  },
   "Any other file, when this system has a program registered for that kind of file:": "其他文件，当此系统为该类文件注册了程序时：",
   "Applied to {n} item.": {
     "other": "已应用于 {n} 个项目。"
@@ -447,9 +444,6 @@
   },
   "{n} icon": {
     "other": "{n} 个图标"
-  },
-  "{n} line": {
-    "other": "{n} 行"
   },
   "{n} result": {
     "other": "{n} 个结果"

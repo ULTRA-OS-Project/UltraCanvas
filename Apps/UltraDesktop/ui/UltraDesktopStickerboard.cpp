@@ -1,5 +1,7 @@
 // Apps/UltraDesktop/ui/UltraDesktopStickerboard.cpp
 // Sticky notes over the wallpaper. See the header.
+// Version: 0.1.1 - the notes and the "+" are added to the board (they were
+//                  placed, never added, so none showed)
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 
@@ -68,6 +70,7 @@ UltraDesktopStickerboard::UltraDesktopStickerboard(const std::string& identifier
     add->SetStyle(style);
     add->SetTooltip("New note");
     add->onClick = [this]() { AddNote(); };
+    AddChild(add);
     PlaceChildAt(add, Rect2Df(12, 12, kAddButton, kAddButton));
     addButton_ = add;
 }
@@ -160,6 +163,8 @@ void UltraDesktopStickerboard::BuildNote(const Sticker& sticker) {
     note.text->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     note.card->AddChild(note.text);
 
+    // In the tree before it is placed: PlaceChildAt only positions a child.
+    AddChild(note.card);
     notes_[id] = note;
     PlaceNote(id, sticker);
 }

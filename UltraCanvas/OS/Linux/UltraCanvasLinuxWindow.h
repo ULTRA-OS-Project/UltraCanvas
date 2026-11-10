@@ -1,7 +1,8 @@
 // OS/Linux/UltraCanvasX11Window.h
 // Linux platform implementation for UltraCanvas Framework
+// Version: 1.2.0 - SetNativeWindowShape
 // Version: 1.1.0 - per-monitor HiDPI (deviceScale) support
-// Last Modified: 2026-07-03
+// Last Modified: 2026-11-09
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -81,6 +82,7 @@ namespace UltraCanvas {
         virtual void InvalidateWindowNative() override;
         virtual NativeWindowHandle GetNativeHandle() const override;
         virtual void GetWindowPosition(int& x, int& y) const override;
+        void SetNativeWindowShape(const std::vector<Rect2Di>& physicalRects) override;
         void GetScreenSize(int& width, int& height) const override;
         // Bounds of the XRandR monitor this window is on (physical px, root
         // coords); primary monitor when the window isn't on any, whole X screen

@@ -29,20 +29,19 @@ system.
 
 ```
 ┌────┬──────────────────────────────────────────────────────────────┬────┐
-│ ⚙  │                                                              │ 1  │  desktop
-│ ⋮⋮ │                                                              │ 2  │  organiser
-│╲   │                                                              │ 3  │
-│ ╲  │                                                              │    │
-│ ▣  │                     wallpaper                                │ 📌 │  Sticker board
-│ ▣  │            (application windows float above)                 │ 🗒 │  notes
-│ ▣  │                                                              │ 📋 │  clipboard
-│  ╲ │                                                              │ 📷 │  screenshot
-│   ╲│                                                              │╱   │
-│ ▤  │                                                              │ ✉14│  info panel
-│ 📁 │                                                              │ ⇧⇩ │  (devices and
-│ 🎨 │                                                              │ 🔊 │   services)
-│    │                                                              │ 🕒 │  clock
-│    │                                                              │30Oct│  and date
+│ ⚙  │                                                              │ 🕒 │  clock
+│ ⋮⋮ │                                                              │30Oct│  and date
+│╲   │                                                              │ 1  │  desktop
+│ ╲  │                                                              │ 2  │  organiser
+│ ▣  │                     wallpaper                                │ 3  │
+│ ▣  │            (application windows float above)                 │ 📌 │  Sticker board
+│ ▣  │                                                              │ 🗒 │  notes
+│  ╲ │                                                              │ 📋 │  clipboard
+│   ╲│                                                              │ 📷 │  screenshot
+│ ▤  │                                                              │╱   │
+│ 📁 │                                                              │ ✉14│  info panel
+│ 🎨 │                                                              │ ⇧⇩ │  (devices and
+│    │                                                              │ 🔊 │   services)
 └────┴──────────────────────────────────────────────────────────────┴────┘
  taskbar                                                               right bar
 ```
@@ -125,7 +124,8 @@ the right-hand monitor the primary.
 
 ### Right bar
 
-- **Clock**, at the foot of the bar, white on black: by default the
+- **Clock**, at the top of the bar, white on black (black on white in the
+  light theme): by default the
   framework's gauge element in its analog clock mode
   ([UltraCanvasGaugeDiagramElement](../UltraCanvas/UltraCanvasGaugeExamples.md)),
   which ticks on its own, over the date ("30 Oct"); the tooltip has the
@@ -241,6 +241,75 @@ the right-hand monitor the primary.
   a chevron over the edge marks where the icons continue, a click on it
   scrolls a page, and so does the wheel over the panel.
 
+### Theme and context menus
+
+The bars come in two themes, kept as `theme` in the settings: **dark**
+(light icons on dark grey, the running applications and the organiser
+carved in near black, the clock white on black - the default) and
+**light** (dark icons on light grey, the carved-in groups near white, the
+clock black on white, the ULTRA OS logo in its variant for a light ground).
+The panels the bars open follow the theme - the clock, loudspeaker, Wi-Fi,
+Bluetooth, device and clipboard panels and the window pictures
+(`UltraDesktopPanelTheme`): dark grey with light text, or near white with
+dark text. A panel open when the theme changes closes, and opens in the new
+colours.
+
+- **The wallpaper** (right click): *Change wallpaper...* (an Open dialog
+  with every picture type this build reads, through FileLoader), *Default
+  wallpaper* (when another is set), *Theme* (*Dark*, *Light*), *Taskbar
+  position* (*on the left*, *at the top*, *at the bottom*), *Drop files*
+  (*Drop on sticker board*, *Drop on desktop*; below), *Arrange icons* (with
+  the desktop icons), *Notes on the wallpaper*, *Display settings...* and *Desktop settings...* (UOS-Settings).
+  *Display settings...* opens the system's own
+  (`UltraCanvasDesktopShell::OpenDisplaySettings`): Settings > Display on
+  Windows, System Settings > Displays on macOS, and on Linux the first
+  display tool installed - the session's own desktop's first
+  (`XDG_CURRENT_DESKTOP`): GNOME's, Plasma's, Xfce's, Cinnamon's, MATE's,
+  LXQt's or Budgie's settings, then wdisplays, nwg-displays, and on X11
+  arandr and lxrandr. Where there is none the entry is left out.
+- **The bars** (right click on a group, where the button under the pointer
+  has no menu of its own - between buttons, the Applications button, a
+  virtual desktop, a service icon): the taskbar's edge, the theme and
+  *Desktop settings...*. The ⚙ button's menu has *Taskbar position* and
+  *Theme* as submenus.
+
+**Files dropped on the wallpaper** go where `dropFilesOn` says:
+
+- `board` (the default): onto the Sticker board, into its **Unsorted**
+  category (added at the end when the board has none; a file already on the
+  board moves there), and the board shows.
+- `desktop`: into the Desktop folder (the platform's own - the known folder
+  on Windows, xdg-user-dirs on Linux - else `~/Desktop`, made when missing),
+  moved, or copied when it is on another drive; a name already taken becomes
+  `name (2).ext`. The wallpaper then shows the Desktop folder's entries
+  (hidden ones left out) as icons - the file's picture (a photo's or
+  document's thumbnail, else the system's icon for its type) over its name -
+  in an `UltraDesktopDesktopIcons` layer under the notes. A dropped file lies
+  where it was dropped; others fill a grid column by column from the top
+  left. A click selects; Ctrl+click adds or removes an icon, Shift+click adds
+  one, and a rubber band drawn on the wallpaper selects the icons it touches
+  (Ctrl adds them; a plain click on the wallpaper clears the selection). A
+  double click opens the selection with the default applications. A drag
+  moves the selected icons together (kept in `desktopIcons` by the entries'
+  names) until the pointer is over another program's window (the windows
+  the Task Manager lists, read when the drag starts): the icons go back and
+  the files continue as a native file drag (XDND on X11, OLE on Windows),
+  which that program takes; one that moved them makes their icons go. A
+  right click offers, for the whole selection, *Open*, *Show in the file
+  manager*, *Rename* (one icon), *Delete* (into the trash, after one
+  question), *Select all* and *Arrange icons*. After a click on an icon or the wallpaper between them the
+  layer has the keyboard: Delete deletes the selection (after the question),
+  Ctrl+A selects every icon, Enter opens the selection, F2 renames the
+  selected icon (also *Rename* on its menu: a text field over its name with
+  the name before the extension chosen; Enter or a click elsewhere renames
+  the file and the icon keeps its place, Escape keeps the name; a name
+  already on the desktop, or one with a slash, is refused), Escape ends a
+  drag or a rubber band where it started, else clears the selection. The folder is looked at every two seconds,
+  so a file another program saves there appears too.
+
+A change is saved at once and the bars are rebuilt in place; one made in
+UOS-Settings is followed within a second.
+
 ### Windows the desktop opens
 
 - **Applications** (app starter): every installed application from its
@@ -301,7 +370,7 @@ the right-hand monitor the primary.
   after asking, for one that does not close. The desktop's own windows (the
   Task Manager itself, its dialogs, the Sticker board) are not listed - the machine — CPU load and temperature, memory, storage, the
   interfaces — on the framework's hardware panel on the second.
-- **Settings**: the desktop's settings - the taskbar's edge, the wallpaper,
+- **Settings**: the desktop's settings - the taskbar's edge, the theme, the wallpaper,
   the RAM disc path, the file manager program, the number of virtual
   desktops - are the *Desktop* page of UOS-Settings. They live in the
   desktop's settings file; the desktop checks it once a second and rebuilds
@@ -326,7 +395,10 @@ the right-hand monitor the primary.
   *Schematic* or *Dark*. A right click on a card offers *Open*, *Copy* (the
   file onto the clipboard, as the file manager copies it), *Delete* (into the
   trash, after a question), *Remove from the board* and *Move to* another
-  category; on a note, *Open*, *Copy* its text and *Delete* it. *Display*,
+  category; on a note, *Open*, *Copy* its text and *Delete* it (after a
+  question). The Delete key does what *Delete* does, after the same question,
+  as on the desktop icons; *Remove from the board* takes a card off without
+  touching its file. *Display*,
   in the same menu (anywhere on the board), shows the cards as *Text only*,
   *Thumbnail and text* (the picture with the name centred under it - the
   default) or *Thumbnail and text in a row*, and sets the size of the *Mouse
@@ -407,6 +479,10 @@ earlier versions kept under `~/.config` is moved on the first start):
   "ramDiscPath": "/dev/shm",
   "filerProgram": "UltraFiler",
   "virtualDesktops": 3,
+  "clockStyle": "analog-date",
+  "theme": "dark",
+  "dropFilesOn": "board",
+  "desktopIcons": { "report.pdf": { "x": 16, "y": 56 } },
   "stickerboardVisible": false,
   "stickers": [ { "id": "note1", "text": "…", "x": 60, "y": 60, "width": 220, "height": 160, "color": "#FFF59D" } ],
   "categoryBoard": { "visible": false, "design": "stickynotes", "display": "thumbnail", "hoverPreview": "medium",
@@ -432,6 +508,11 @@ and `height` are kept for older versions and no longer used: the board fills
 the work area and starts hidden. `pinnedApps` are the pinned
 applications' keys in the order they were pinned: the program's path, or on
 Windows the shortcut's path or `store:<AppUserModelID>`.
+`dropFilesOn` is `board` (the default) or `desktop`; `desktopIcons` keeps the
+desktop icons' places in the work area by name, and forgets one whose entry
+has gone. `theme` is `dark` (the default) or `light`; `clockStyle` one of
+`analog-date` (the default), `analog`, `digital-date`, `digital` and
+`digital-seconds`.
 `startWithDesktop` names the programs started with the desktop - `ChatCube`
 and `UltraMail` are the ones it offers; empty (the default), none.
 

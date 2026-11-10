@@ -283,6 +283,8 @@ releases the names at once.
 | `CanEndSession()` | Whether this backend can sign out, restart and shut down: true on Windows, and on Linux while logind answers on the system bus (decided once). |
 | `EndSession(how, &error)` | `SessionEnd::SignOut`, `Restart` or `ShutDown`: the system asks every program to close, and a program may still refuse. On Windows `ExitWindowsEx`, with the shutdown privilege every account that may shut down holds switched on first. On Linux logind: its manager's `Reboot` and `PowerOff` (with the "interactive" flag, so polkit is asked as the desktops' own menus ask it, and an active local session needs no password), and `Terminate` on this process's own session to sign out, after which the display manager shows the sign-in again. What a desktop's menu offers when it is the shell and no Start menu runs. |
 | `CanLockSession()` | Whether `LockSession` has anyone to ask: true on Windows; on Linux with logind or a session bus. |
+| `CanOpenDisplaySettings()` | Whether `OpenDisplaySettings` has something to open: true on Windows and macOS; on Linux when one of the display tools below is installed. |
+| `OpenDisplaySettings(&error)` | Open the system's own display settings - resolution, arrangement, the primary monitor - and not wait for them: `ms-settings:display` on Windows, System Settings > Displays on macOS, on Linux the first installed of `gnome-control-center display`, `systemsettings` / `kcmshell6` / `kcmshell5 kcm_kscreen`, `xfce4-display-settings`, `cinnamon-settings display`, `mate-display-properties`, `lxqt-config-monitor`, `budgie-control-center display`, `wdisplays`, `nwg-displays`, `arandr`, `lxrandr` (the session's own desktop's first, `XDG_CURRENT_DESKTOP`; the xrandr front ends not under Wayland). False with the reason. |
 | `LockSession(&error)` | Lock the screen - a desktop's *Lock screen* and Super+L. Windows `LockWorkStation`; on Linux `Lock` on this process's logind session, which sends the `Lock` signal the screen locker waits for ([UltraCanvasSessionLock](UltraCanvasSessionLock.md) reports it like any other lock), and without logind `org.freedesktop.ScreenSaver.Lock` on the session bus, which every screensaver implements. False with the reason. |
 
 ### The loudspeaker
@@ -417,4 +419,9 @@ fallback when it is absent.
   virtual desktop and out of the taskbar and Alt+Tab); `WindowType::Notification`
   the toast above everything that never takes the focus, which
   [UltraCanvasNotificationToast](UltraCanvasNotificationToast.md) draws
-  notifications in.
+  notifications in; `WindowType::Tooltip` the window
+  [UltraCanvasTooltipManager](UltraCanvasTooltipManager.md#its-own-window)
+  shows every tooltip in, so the tooltips of the bars in the desktop window
+  are not covered by the windows above it; and `WindowType::Popup` the window
+  every popup - the bars' menus among them - is shown in, for the same reason
+  (`UltraCanvasWindowBase::SetPopupsInOwnWindows`).

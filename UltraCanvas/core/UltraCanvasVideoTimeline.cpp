@@ -4,15 +4,17 @@
 // drag feedback, readouts), hit testing and the interactions that turn into
 // reported changes. The model operations it previews with live in
 // UltraCanvasVideoTimelineModel.cpp.
+// Version: 1.5.0 - MakeVideoTimelineDescriptor / RegisterVideoTimelineElement ("video-timeline")
 // Version: 1.4.0 - filmstrips cover the whole clip at any zoom: time-aligned slots, asked for in chunks, only those in view
 // Version: 1.3.0 - the close-gap button in each gap of a free track
 // Version: 1.2.0 - the application's drop feedback, ring and marker in one (SetDropFeedback); DragLeave clears both
 // Version: 1.1.0 - the drop-target clip's ring
 // Version: 1.0.0
-// Last Modified: 2026-11-05
+// Last Modified: 2026-11-09
 // Author: UltraCanvas Framework
 #include "UltraCanvasVideoTimeline.h"
 #include "UltraCanvasEvent.h"
+#include "UltraCanvasElementPlugins.h"
 
 #include <algorithm>
 #include <cmath>
@@ -2152,6 +2154,24 @@ double UltraCanvasVideoTimeline::DropTime(const TimelineTrack& track, double sec
 
 std::shared_ptr<UltraCanvasVideoTimeline> CreateVideoTimeline(const std::string& id, int x, int y, int w, int h) {
     return std::make_shared<UltraCanvasVideoTimeline>(id, x, y, w, h);
+}
+
+UCElementDescriptor MakeVideoTimelineDescriptor() {
+    UCElementDescriptor descriptor;
+    descriptor.typeName = "video-timeline";
+    descriptor.category = UCPluginCategory::Widget;
+    descriptor.displayName = "Video Timeline";
+    descriptor.description = "Media timeline editor: clips on tracks under a time ruler, with a playhead";
+    descriptor.version = "1.6.0";
+    descriptor.docPath = "Docs/UltraCanvas/UltraCanvasVideoTimeline.md";
+    descriptor.create = [](const std::string& id, int x, int y, int w, int h) {
+        return std::static_pointer_cast<UltraCanvasUIElement>(CreateVideoTimeline(id, x, y, w, h));
+    };
+    return descriptor;
+}
+
+void RegisterVideoTimelineElement() {
+    UltraCanvasElementRegistry::Register(MakeVideoTimelineDescriptor());
 }
 
 } // namespace UltraCanvas

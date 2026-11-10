@@ -7,6 +7,7 @@
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraDesktopBluetoothPanel.h"
+#include "UltraDesktopPanelTheme.h"
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasButton.h"
@@ -32,11 +33,6 @@ constexpr int kPanelHeight = 470;
 constexpr int kInnerWidth = kPanelWidth - 28;
 constexpr unsigned kRefreshMs = 5000;
 constexpr unsigned kDiscoveringRefreshMs = 2000;
-const Color kText(242, 242, 242);
-const Color kMuted(160, 160, 160);
-const Color kError(255, 140, 120);
-const Color kRow(44, 44, 44);
-const Color kRowConnected(30, 64, 110);
 
 std::string Detail(const WirelessBluetoothDevice& device) {
     std::string text = device.kind.empty() ? "Device" : device.kind;
@@ -245,7 +241,7 @@ void UltraDesktopBluetoothPanel::Build(UltraCanvasWindow& window) {
     auto title = CreateLabel("bt.title", 0, 0, 200, 22, "Bluetooth");
     title->SetFontSize(11.5f);
     title->SetFontWeight(FontWeight::Bold);
-    title->SetTextColor(kText);
+    title->SetTextColor(PanelColors().text);
     title->layoutItem.SetFlexGrow(1.0f);
     header->AddChild(title);
     power_ = std::make_shared<UltraCanvasSwitch>("bt.power", 0, 0, 70, 26, "On");
@@ -267,7 +263,7 @@ void UltraDesktopBluetoothPanel::Build(UltraCanvasWindow& window) {
 
     state_ = CreateLabel("bt.state", 0, 0, kInnerWidth, 18, "Reading...");
     state_->SetFontSize(9.5f);
-    state_->SetTextColor(kMuted);
+    state_->SetTextColor(PanelColors().muted);
     state_->layoutItem.SetFlexShrink(0.0f);
     window.AddChild(state_);
 
@@ -279,16 +275,16 @@ void UltraDesktopBluetoothPanel::Build(UltraCanvasWindow& window) {
     promptRow_ = std::make_shared<UltraCanvasContainer>("bt.prompt");
     promptRow_->layout.SetFlexColumn().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     promptRow_->layoutItem.SetFlexShrink(0.0f);
-    promptRow_->SetBackgroundColor(kRow);
+    promptRow_->SetBackgroundColor(PanelColors().row);
     promptRow_->SetBorders(0, Colors::Transparent, 6);
     promptRow_->SetPadding(8, 10);
     promptText_ = CreateLabel("bt.promptText", 0, 0, kInnerWidth - 20, 32, "");
-    promptText_->SetTextColor(kText);
+    promptText_->SetTextColor(PanelColors().text);
     promptText_->SetFontSize(9.5f);
     promptText_->SetWrap(TextWrap::WrapWord);
     promptRow_->AddChild(promptText_);
     promptCode_ = CreateLabel("bt.promptCode", 0, 0, kInnerWidth - 20, 34, "");
-    promptCode_->SetTextColor(kText);
+    promptCode_->SetTextColor(PanelColors().text);
     promptCode_->SetFontSize(20.0f);
     promptCode_->SetFontWeight(FontWeight::Bold);
     promptCode_->SetAlignment(TextAlignment::Center);
@@ -315,7 +311,7 @@ void UltraDesktopBluetoothPanel::Build(UltraCanvasWindow& window) {
 
     message_ = CreateLabel("bt.message", 0, 0, kInnerWidth, 34, "");
     message_->SetFontSize(9.0f);
-    message_->SetTextColor(kMuted);
+    message_->SetTextColor(PanelColors().muted);
     message_->SetWrap(TextWrap::WrapWord);
     message_->layoutItem.SetFlexShrink(0.0f);
     window.AddChild(message_);
@@ -398,7 +394,7 @@ void UltraDesktopBluetoothPanel::Later(std::function<void()> task) {
 void UltraDesktopBluetoothPanel::SetMessage(const std::string& text, bool error) {
     if (!message_) return;
     message_->SetText(text);
-    message_->SetTextColor(error ? kError : kMuted);
+    message_->SetTextColor(error ? PanelColors().error : PanelColors().muted);
 }
 
 void UltraDesktopBluetoothPanel::Refresh() {
@@ -449,7 +445,7 @@ void UltraDesktopBluetoothPanel::Apply(const WirelessBluetoothStatus& status) {
 
 void UltraDesktopBluetoothPanel::AddSectionLabel(const std::string& id, const std::string& text) {
     auto label = CreateLabel(id, 0, 0, kInnerWidth - 20, 18, text);
-    label->SetTextColor(kMuted);
+    label->SetTextColor(PanelColors().muted);
     label->SetFontSize(9.0f);
     label->SetFontWeight(FontWeight::Bold);
     label->layoutItem.SetFlexShrink(0.0f);
@@ -462,7 +458,7 @@ void UltraDesktopBluetoothPanel::AddDeviceRow(const WirelessBluetoothDevice& dev
     row->layout.SetFlexRow().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Center);
     row->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Px(46));
     row->layoutItem.SetFlexShrink(0.0f);
-    row->SetBackgroundColor(device.connected ? kRowConnected : kRow);
+    row->SetBackgroundColor(device.connected ? PanelColors().rowHighlighted : PanelColors().row);
     row->SetBorders(0, Colors::Transparent, 6);
     row->SetPadding(4, 8);
 
@@ -470,13 +466,13 @@ void UltraDesktopBluetoothPanel::AddDeviceRow(const WirelessBluetoothDevice& dev
     texts->layout.SetFlexColumn().SetFlexGap(1).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     texts->layoutItem.SetFlexGrow(1.0f).SetFlexShrink(1.0f).SetFlexBasis(CSSLayout::Dimension::Px(0));
     auto name = CreateLabel(id + ".name", 0, 0, 150, 18, device.name);
-    name->SetTextColor(kText);
+    name->SetTextColor(PanelColors().text);
     name->SetFontSize(10.0f);
     if (device.connected) name->SetFontWeight(FontWeight::Bold);
     name->SetTooltip(device.address);
     texts->AddChild(name);
     auto detail = CreateLabel(id + ".detail", 0, 0, 150, 16, Detail(device));
-    detail->SetTextColor(kMuted);
+    detail->SetTextColor(PanelColors().muted);
     detail->SetFontSize(8.5f);
     texts->AddChild(detail);
     row->AddChild(texts);
@@ -557,7 +553,7 @@ void UltraDesktopBluetoothPanel::RebuildList() {
     if (!anyPaired && !anyFound && status_.adapterPresent) {
         auto none = CreateLabel("bt.none", 0, 0, kInnerWidth - 20, 40,
                                 !status_.powered ? "" : "No devices paired yet. Add device looks for new ones.");
-        none->SetTextColor(kMuted);
+        none->SetTextColor(PanelColors().muted);
         none->SetFontSize(9.5f);
         none->SetWrap(TextWrap::WrapWord);
         list_->AddChild(none);

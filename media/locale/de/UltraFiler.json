@@ -32,13 +32,10 @@
   "Add a drive: an FTP / SFTP server or a cloud account": "Laufwerk hinzufügen: ein FTP-/SFTP-Server oder ein Cloud-Konto",
   "Add a drive: an FTP / SFTP server, a cloud account or a RAM disc": "Laufwerk hinzufügen: ein FTP-/SFTP-Server, ein Cloud-Konto oder eine RAM-Disk",
   "Add an FTP / SFTP drive": "FTP-/SFTP-Laufwerk hinzufügen",
+  "All RAM discs share the system's memory area, and memory is used only as files are written - the size is checked against what is free, not reserved.": "Alle RAM-Disks teilen sich den Speicherbereich des Systems, und Speicher wird erst belegt, wenn Dateien geschrieben werden – die Größe wird mit dem freien Speicher verglichen, nicht reserviert.",
   "an entry": "ein Eintrag",
   "An upload is still running — quit anyway?": "Ein Upload läuft noch – trotzdem beenden?",
   "An upload is still waiting — quit anyway?": "Ein Upload wartet noch – trotzdem beenden?",
-  "and {n} more": {
-    "one": "und {n} weitere",
-    "other": "und {n} weitere"
-  },
   "Any other file, when this system has a program registered for that kind of file:": "Jede andere Datei, wenn dieses System für diese Art von Datei ein Programm registriert hat:",
   "Applied to {n} item.": {
     "one": "Auf {n} Element angewendet.",
@@ -55,6 +52,10 @@
   "Ask": "Fragen",
   "Ask before:": "Nachfragen vor:",
   "Ask each time": "Jedes Mal fragen",
+  "At most {n} character.": {
+    "one": "Höchstens {n} Zeichen.",
+    "other": "Höchstens {n} Zeichen."
+  },
   "at once": "sofort",
   "Auto - 10 px wider than the longest name shown": "Automatisch – 10 px breiter als der längste angezeigte Name",
   "Auto fits the tree to the drives and folders it shows, and fits it again whenever a branch is opened or closed or a drive comes or goes - up to 600 px, and never so wide that the file display falls below its own minimum. Dragging the divider still resizes the tree for the moment.": "„Automatisch“ passt den Baum an die angezeigten Laufwerke und Ordner an und passt ihn erneut an, wenn ein Zweig geöffnet oder geschlossen wird oder ein Laufwerk hinzukommt oder verschwindet – bis zu 600 px und nie so breit, dass die Dateiansicht unter ihr eigenes Minimum fällt. Durch Ziehen des Trenners lässt sich der Baum weiterhin vorübergehend in der Größe ändern.",
@@ -129,6 +130,7 @@
   "Everything off": "Alles aus",
   "Everything on": "Alles ein",
   "Everything on it is deleted and cannot be recovered.": "Alles darauf wird gelöscht und kann nicht wiederhergestellt werden.",
+  "Everything on the disc is lost when it is ejected or the computer restarts.": "Alles auf der Disk geht verloren, wenn sie ausgeworfen oder der Computer neu gestartet wird.",
   "Existing: a folder": "Vorhanden: ein Ordner",
   "Existing: {0}": "Vorhanden: {0}",
   "Extra large icons": "Extra große Symbole",
@@ -163,6 +165,7 @@
   "Forget passwords after:": "Passwörter vergessen nach:",
   "FTP / SFTP server...": "FTP-/SFTP-Server …",
   "Full name - as many lines as the name needs": "Vollständiger Name – so viele Zeilen, wie der Name braucht",
+  "Give the disc a name.": "Geben Sie der Disk einen Namen.",
   "Handling": "Verhalten",
   "Handling - what an action does: dropping dragged files onto a folder, opening a file, how long the passwords of protected files are kept, and what the \"+\" of the tab strip opens.": "Verhalten – was eine Aktion bewirkt: gezogene Dateien auf einem Ordner ablegen, eine Datei öffnen, wie lange die Passwörter geschützter Dateien behalten werden und was das „+“ der Reiterleiste öffnet.",
   "Header format:": "Header-Format:",
@@ -247,6 +250,7 @@
   "Nothing is moved or deleted: an ignored file is only left out of the display. Display > Files > Show hidden files - and the \"Show hidden files\" button on the strip - bring it back, a search still finds it, and a path typed into the address bar still opens it.": "Nichts wird verschoben oder gelöscht: Eine ignorierte Datei wird nur in der Anzeige weggelassen. Anzeige > Dateien > Versteckte Dateien anzeigen – und die Schaltfläche „Versteckte Dateien anzeigen“ in der Leiste – holen sie zurück, eine Suche findet sie weiterhin, und ein in die Adressleiste eingegebener Pfad öffnet sie weiterhin.",
   "nothing yet": "noch nichts",
   "Off, nothing is asked: each shown file costs one open, which is worth avoiding on a slow network volume.": "Aus, es wird nichts gefragt: Jede angezeigte Datei kostet ein Öffnen, was sich auf einem langsamen Netzwerkdatenträger zu vermeiden lohnt.",
+  "on disk": "auf dem Datenträger",
   "On disk: unavailable - this system offers nowhere to write a cache.": "Auf dem Datenträger: nicht verfügbar – dieses System bietet keinen Ort, um einen Cache zu schreiben.",
   "On disk: {0}": "Auf dem Datenträger: {0}",
   "On disk: {0} (switched off - left to expire)": "Auf dem Datenträger: {0} (ausgeschaltet – läuft aus)",
@@ -368,6 +372,7 @@
   "The limit counts per section: Files, Folders and Apps each keep that many entries, so a day of opening documents cannot push the remembered applications out. What is past the limit is the oldest, and lowering it forgets those entries for good. The lists survive restarts - they are kept next to the settings as history.txt.": "Die Grenze gilt pro Abschnitt: Dateien, Ordner und Apps behalten jeweils so viele Einträge, sodass ein Tag voller geöffneter Dokumente die gemerkten Anwendungen nicht verdrängen kann. Was über der Grenze liegt, ist das Älteste, und ein Senken der Grenze vergisst diese Einträge endgültig. Die Listen überstehen Neustarts – sie liegen neben den Einstellungen als history.txt.",
   "The location \"{0}\" was not found.": "Der Ort „{0}“ wurde nicht gefunden.",
   "The memory figures are the file display in front. Previews and application icons have separate ceilings so a folder of photos cannot push the programs' icons out, and application icons are never written to disk: the system produces those faster than they could be read back.": "Die Speicherwerte beziehen sich auf die vordere Dateiansicht. Vorschauen und Anwendungssymbole haben getrennte Obergrenzen, damit ein Ordner voller Fotos die Programmsymbole nicht verdrängen kann, und Anwendungssymbole werden nie auf den Datenträger geschrieben: Das System erzeugt sie schneller, als sie zurückgelesen werden könnten.",
+  "The memory is reserved when the disc is created.": "Der Speicher wird beim Erstellen der Disk reserviert.",
   "The questions a copy, move or delete asks, and the answers that stand for good:": "Die Fragen, die ein Kopieren, Verschieben oder Löschen stellt, und die Antworten, die dauerhaft gelten:",
   "The tag is drawn over the foot of the icon, so no tile grows for it, and a folder - or a name whose tail is a version rather than a type - never gets one.": "Die Marke wird über den Fuß des Symbols gezeichnet, sodass keine Kachel dafür wächst, und ein Ordner – oder ein Name, dessen Ende eine Version statt eines Typs ist – bekommt nie eine.",
   "This build of UltraFiler can add no drives: it was made without UltraCloud (FTP and cloud drives) and this system offers no RAM disc.": "Dieser Build von UltraFiler kann keine Laufwerke hinzufügen: Er wurde ohne UltraCloud (FTP- und Cloud-Laufwerke) erstellt, und dieses System bietet keine RAM-Disk.",
@@ -394,6 +399,7 @@
   "Uploading {0}": "{0} wird hochgeladen",
   "Uploading {0} to {1}...": "{0} wird nach {1} hochgeladen …",
   "Use colour": "Farbe verwenden",
+  "Use letters, digits, '.', '_' and '-' only.": "Verwenden Sie nur Buchstaben, Ziffern, „.“, „_“ und „-“.",
   "Use system default": "Systemstandard verwenden",
   "Video": "Video",
   "Waiting after it: ": "Danach wartend: ",
@@ -421,6 +427,7 @@
   "Zstandard long mode: matches across 128 MB (zstd --long=27)": "Zstandard-Langmodus: Übereinstimmungen über 128 MB (zstd --long=27)",
   "{0} (default)": "{0} (Standard)",
   "{0} - not supported by this build": "{0} – von diesem Build nicht unterstützt",
+  "{0} is free now.": "{0} sind derzeit frei.",
   "{0} min": "{0} Min.",
   "{0}, {1} (room for {2})": "{0}, {1} (Platz für {2})",
   "{n} download is still running or waiting — quit anyway?": {
@@ -462,10 +469,6 @@
   "{n} icon": {
     "one": "{n} Symbol",
     "other": "{n} Symbole"
-  },
-  "{n} line": {
-    "one": "{n} Zeile",
-    "other": "{n} Zeilen"
   },
   "{n} result": {
     "one": "{n} Ergebnis",

@@ -36,13 +36,14 @@
 // UltraCanvasTextInput, the pickers UltraCanvasColorPicker
 // (SetShowBackgroundColor(false)).
 //
+// Version: 1.2.0 - Make/Register descriptor: "color-palette-manager" in the element registry, bundled or as a runtime module
 // Version: 1.1.0 - the gallery is the "Palette manager" with a title bar to
 //                  drag it by; "Add palette" and the user's own palettes;
 //                  the hovered swatch floods the rows (onColorHovered); the
 //                  small presets have 16 colours, a full row; Game Boy,
 //                  PICO-8 and VGA 16 are gone
 // Version: 1.0.0
-// Last Modified: 2026-10-24
+// Last Modified: 2026-11-09
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -248,5 +249,14 @@ inline std::shared_ptr<UltraCanvasColorPaletteManager> CreateColorPaletteManager
         const std::string& identifier, float x, float y, float w) {
     return std::make_shared<UltraCanvasColorPaletteManager>(identifier, x, y, w, 24);
 }
+
+
+// The element in the element registry (UltraCanvasElementPlugins.h) as
+// "color-palette-manager" (category Widget): compiled into the core by default, or the
+// ultracanvas-widget-color-palette-manager runtime module when ULTRACANVAS_WIDGETS leaves
+// ColorPaletteManager out.
+struct UCElementDescriptor;
+UCElementDescriptor MakeColorPaletteManagerDescriptor();
+void RegisterColorPaletteManagerElement();
 
 } // namespace UltraCanvas
