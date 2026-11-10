@@ -1,3 +1,40 @@
+#### 2026-11-10 *1.107.7*
+- **The Computer page lists the remote drives and the RAM discs too.** Under
+  Drives, a "Remote Drives" section has a card for each FTP / SFTP server and
+  cloud account, and a "RAM Discs" section one for each RAM disc - the same
+  card a drive has, opening the drive when clicked. A section shows only
+  while it has a card. A RAM disc that is also a drive letter (ImDisk) is
+  under RAM Discs, not Drives. A remote drive's ring stays neutral: UltraCloud
+  does not say how full a server or an account is. The page's headings are
+  translated now as well.
+- **A drive shows its name, as Explorer does.** The folder tree and the
+  drive cards on the Computer page used to call a drive by its letter alone
+  ("D:"); they now show the volume's own name with it - "My Passport Ultra
+  (D:)", "Windows-SSD (C:)". The name is read off the UI thread, so the
+  letters show first and the names follow a moment later; a renamed volume
+  is picked up on the next drive refresh. Network drives keep their letter.
+- **An external USB drive no longer appears twice.** A drive such as a
+  "My Passport Ultra" showed both as its letter (D:) and as a portable
+  device under its own name, reached through an `ultracloud://device-…`
+  path that lists the folders but draws no thumbnails and copies every file
+  over WPD. Only the drive letter is listed now; phones, cameras and players
+  (MTP / PTP) still come in as before.
+- **The "New RAM disc" dialog shows its whole note.** The explanation under
+  the size ran to more lines than its fixed box held, so its last line was
+  cut off just above the buttons. The note is now measured and as tall as
+  its text, the window grows to fit it, and Create and Cancel sit at the
+  bottom right (`UltraFilerRamDiskDialog.cpp` 1.1.2).
+- **The rest of the "New RAM disc" dialog is translated.** The notes on how
+  the memory is used, how much is free, and that everything is lost on
+  eject, and the messages for a missing, too long or wrongly spelt name,
+  were English in every language; they now go through `Tr` (German
+  included, the other languages follow with the next catalogue draft).
+- **The tree's Cloud Storage, Remote Drives and RAM Discs rows do something.**
+  Selecting one changed nothing. Each now opens the Computer page with its
+  own section alone: the cloud folders, the remote drives' cards, or the RAM
+  discs' cards. The Computer row, the breadcrumb and the Up button still show
+  the whole page.
+
 #### 2026-11-06 *1.107.6*
 - **A failed cloud operation or listing says why in your language.** A
   download, upload, delete or rename that fails on a remote drive, and a

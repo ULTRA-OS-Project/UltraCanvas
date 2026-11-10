@@ -1,3 +1,31 @@
+#### 2026-11-10 *0.9.512*
+- `scripts/check_doc_examples.py` (1.10.0) compiles a doc's examples
+  against UltraAI's public headers (`UltraAI/include`) too, and knows
+  their names when checking prose, so `Docs/Modules/UltraAI/*.md` can be
+  checked on demand.
+- **macOS builds no longer download gumbo from codeberg.org.** MuPDF was its
+  only user, and vcpkg's gumbo port fetches its source from Codeberg, which
+  on 2026-11-09 sent nothing for half an hour, run after run: every macOS
+  build that had to fetch the sources timed out on it, on `main` and on every
+  pull request. The mupdf overlay port (`MacOS/deps/ports/mupdf`, port-version
+  2) now builds MuPDF's own gumbo submodule, fetched from GitHub at the
+  commit MuPDF 1.28.5 records, like its other four submodules
+  (`USE_SYSTEM_GUMBO=no`), and no longer depends on vcpkg's gumbo.
+- **`ReadVolumeName(path)`: a drive letter's own volume name.** The name a
+  Windows volume carries ("My Passport Ultra"), for showing a drive as
+  Explorer does. It reads the medium, so it is a call of its own for a
+  worker thread, not part of `ListMountedVolumes()`; empty for a network
+  drive, a drive with no medium, and on Linux and macOS, where
+  `MountedVolume::label` already is the name (`UltraCanvasVolumeMonitor.h`
+  1.2.0).
+- **An external USB disk or stick was listed as a portable device too.**
+  Windows exposes a mass-storage drive through Windows Portable Devices as
+  well as with its drive letter, so `UltraCanvasPortableDevices::List()`
+  returned it next to the phones and cameras. The WPD backend now leaves out
+  a device whose id is a USBSTOR / `STORAGE#Volume` one or whose protocol is
+  `MSC:` - it is a drive, and the volume list already has it
+  (`UltraCanvasWindowsPortableDevices.cpp` 1.2.0).
+
 #### 2026-11-09 *0.9.511*
 - **`UltraCanvasDesktopShell::OpenDisplaySettings` and
   `CanOpenDisplaySettings`** open the system's own display settings, what a
