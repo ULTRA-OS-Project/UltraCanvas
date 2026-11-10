@@ -23,6 +23,8 @@ endif()
 add_library(UltraAI_AdapterOpenAI STATIC
     src/OpenAITextLLM.cpp
     src/OpenAIEmbeddings.cpp
+    # Speech to text over the audio API (multipart upload).
+    src/OpenAISpeechToText.cpp
 )
 add_library(UltraAI::AdapterOpenAI ALIAS UltraAI_AdapterOpenAI)
 

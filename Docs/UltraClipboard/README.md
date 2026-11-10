@@ -71,8 +71,11 @@ status bar says which provider did. Copied files are read by their
 type: a word processor document (ODT, DOCX) or a deck (PPTX), a PDF (its
 text; a scanned PDF by text recognition), a spreadsheet (ODS, XLSX, XLS:
 every sheet, tab-separated), a text or code file. A recording or a video is
-read when a speech-to-text engine is installed; without one *Extract text*
-says that speech to text is not available. The reading runs in the background
+transcribed by an UltraAI speech-to-text provider - OpenAI's, chosen with
+`ULTRAAI_DEFAULT_SPEECHTOTEXT=openai` and its key in UltraVault under
+`ai.openai.api_key`, or a whisper server of your own; a video's sound is
+taken out first. Without one *Extract text* says that speech to text is not
+available. The reading runs in the background
 (*Reading the text…* in the status bar); the text arrives as a new text entry
 at the top, already on the clipboard. From several files you get one text,
 each file's under its name. Built on `UltraCanvasFileLoader::ExtractText`
