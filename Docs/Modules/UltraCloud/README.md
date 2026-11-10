@@ -427,10 +427,26 @@ UltraCloud::ShowAddAccountDialog(window, cloud, [](const Account& added) { ... }
 UltraCloud::ShowAddAccountDialog(window, cloud, onAdded,
         [](const std::string& id) { return id == "ftp"; },
         "Add an FTP / SFTP drive");
+// A stored account in the same form, to be changed: filled in, the provider
+// fixed, the password kept unless a new one is typed. False when there is no
+// such account (or its provider is not in this build).
+UltraCloud::ShowEditAccountDialog(window, cloud, accountId,
+        [](const Account& saved) { /* re-read the list */ }, "Configure drive");
 UltraCloud::ShowCloudLinkPicker(window, cloud, [](const CloudLinkPick& pick) {
     InsertIntoBody(pick.entry.name + ": " + pick.link.url);
 });
 ```
+
+For the FTP provider the dialog asks for the protocol (SFTP, FTP with TLS,
+FTP over TLS, plain FTP), the server's name or address and the port - empty
+for the protocol's own - each on its own rather than as one URL, and stores
+them as the one URL the command line takes (`FtpServerUrl`:
+`sftp://files.example.org:2222`, the protocol's own port left out so the
+account keeps its id); a URL typed into the server field is refused with the
+reason. The private key row, shown for SFTP, has a *Choose* button that opens
+the file dialog in `~/.ssh`. A server URL whose scheme the provider does not
+speak - `https://`, pasted from the browser - is refused by `Verify` before
+anything is sent, so the command line and UltraFiler's "+ Drive" say so too.
 
 The picker lists the accounts (default preselected), browses the chosen one,
 uploads a local file into the current folder, and returns a share link for the
@@ -454,7 +470,7 @@ the `CloudService&` forms leave keeping the service alive to the caller.
 | `UltraCloudHttp.h` | `HttpFn`, `HttpProviderBase` (auth from credentials, every request logged, a throttled request sent again, HTTP → Result with the service's reason; `DownloadToFile` writes a download to disk as it arrives, never holding the file in memory, with no whole-transfer time limit and a half-written file removed; uploads send their bytes from the file as they go - `UltraNetHttpRequest::bodyFilePath`, a range of it per upload-session chunk - except Google Drive's multipart body, at most 5 MB), `RateLimitPolicy`, `SetThreadRateLimitPolicy` |
 | `UltraCloudLog.h` | The session log: `LogKind`, `LogLine`, `LogCallback`, `SetThreadLog`, `ThreadLogActive`, `LogToThread`; `LoggableUrl`, `ServerErrorReason`, `RetryAfterSeconds` |
 | `UltraCloudOAuth.h` | `OAuthApp` (= `UltraNetOAuth2App`), `SetOAuthApp` / `GetOAuthApp` / `HasOAuthApp` / `UsesSignInService` / `CanSignIn` / `DefaultRedirectUri` / `EnsureOAuthAppsRegistered` (the profile of UltraNet's shared app registry and its sign-in service), `OAuthHooks`, `OAuthProviderBase` (`OAuthConfig`, `SignInServiceProviderId`, `OAuthServiceConfig`) |
-| `UltraCloudFtp.h` | `FtpProvider`, `FtpOps` (the injectable FTP seam), `FtpTransportFor`, `FtpHostAndBase`, `FtpUrl`, `FtpEntryToEntry`, `FromFtp` |
+| `UltraCloudFtp.h` | `FtpProvider`, `FtpOps` (the injectable FTP seam), `FtpTransportFor`, `FtpHostAndBase`, `FtpUrl`, `FtpEntryToEntry`, `FromFtp`; the server as a form asks for it: `FtpServer`, `FtpServerOf`, `FtpServerUrl`, `FtpDefaultPort`, `FtpSchemeKnown` |
 | `UltraCloudDropbox.h` | `DropboxProvider`, `DropboxPath` |
 | `UltraCloudOneDrive.h` | `OneDriveProvider`, `OneDriveItemUrl` |
 | `UltraCloudGoogleDrive.h` | `GoogleDriveProvider` (+ `ResolveId`), `GoogleDriveChildQuery` |
@@ -465,7 +481,7 @@ the `CloudService&` forms leave keeping the service alive to the caller.
 | `UltraCloudWebDav.h` | `WebDavProvider` (with `Delete` and `Rename`: DELETE and MOVE) and the helpers `EncodePath`, `JoinUrl`, `NormalizePath`, `ParseMultistatus`, `PublicFolderLink`, `WebDavErrorMessage` |
 | `UltraCloudNextcloud.h` | `NextcloudProvider`, `NextcloudDavUrl`, `BuildOcsShareForm`, `ParseOcsShareResponse` |
 | `UltraCloudMemory.h` | `MemoryProvider` (+ `Seed` / `Clear`) |
-| `ui/UltraCloudAccountDialog.h`, `ui/UltraCloudPickerDialog.h` | `ShowAddAccountDialog` (over a shared or a caller-kept service, with an optional provider filter, title and `AddAccountWatch`), `ShowCloudLinkPicker` (over a shared or a caller-kept service) (the `UltraCloudUI` library) |
+| `ui/UltraCloudAccountDialog.h`, `ui/UltraCloudPickerDialog.h` | `ShowAddAccountDialog` (over a shared or a caller-kept service, with an optional provider filter, title and `AddAccountWatch`), `ShowEditAccountDialog` (a stored account in the same form, its password kept unless a new one is typed; an OAuth account saved as it is or signed in again), `ShowCloudLinkPicker` (over a shared or a caller-kept service) (the `UltraCloudUI` library) |
 | `ui/UltraCloudUiStyle.h` | The dialogs' shared palette and control styles (`UiStyle::PrimaryButton`, `SecondaryButton`, `StyleInput`, `MakeCaption`, `ListHeader`) — the same look as the ULTRA OS apps that host them |
 
 ## Building and testing

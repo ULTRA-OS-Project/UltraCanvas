@@ -1,5 +1,7 @@
 // Apps/DemoApp/UltraCanvasDemo.h
 // Comprehensive demonstration program showing all UltraCanvas display elements
+// Version: 1.0.11 - CreateHistogramChartExamples
+// Version: 1.0.10 - AddControlChartCard (the Line Chart page's control chart)
 // Version: 1.0.9 - CreateTernaryChartExamples
 // Version: 1.0.8 - treeFilterInput: a filter field over the component tree,
 //                 with a "Reset" button inside it (OnTreeFilterChanged)
@@ -182,6 +184,10 @@ namespace UltraCanvas {
         void CreateSourceWindow(const std::string& content, const std::string& title);
         void CreateDocumentationWindow(const std::string& content, const std::string& title);
     };
+    // The control chart card the Line Chart page ends with
+    // (UltraCanvasControlChartExamples.cpp).
+    void AddControlChartCard(const std::shared_ptr<UltraCanvasContainer>& page);
+
 // ===== MAIN DEMO APPLICATION CLASS =====
     class DemoCategoryBuilder;
 
@@ -298,6 +304,7 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasUIElement> CreateListViewExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateMenuExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateMenuConfigExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateSettingsPageKitExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateLocalisationEditorExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateDialogExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateTextAreaExamples();
@@ -379,6 +386,7 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasUIElement> CreateQuadrantChartExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateImportancePerformanceChartExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateTernaryChartExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateHistogramChartExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateGanttChartExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateKanbanBoardExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateRaincloudPlotExample();

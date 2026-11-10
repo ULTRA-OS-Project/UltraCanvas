@@ -121,6 +121,7 @@ auto editor = CreateCurveEditor("Curves", 0, 0, 320, 320);
 editor->SetCurves(existing);                       // seed from a stored adjustment
 editor->SetActiveChannel(ToneCurveChannel::Red);   // which curve is edited/drawn
 editor->SetHistogram(ToneCurveChannel::Red, bins); // 256 bin counts, optional
+editor->SetHistograms(counts);                     // or all four from one ImageHistogram
 editor->onCurveChanged  = [](const ToneCurveSet& s) { /* live preview */ };
 editor->onEditFinished  = [](const ToneCurveSet& s) { /* commit / undo step */ };
 editor->onSelectionChanged = [](int index) { /* update a readout */ };
@@ -150,11 +151,33 @@ diagonal, curve, point, selection and histogram colours, plus `gridDivisions`,
 `pointSize`, `grabRadius` and `curveWidth`. The active channel's curve is drawn
 in its own colour (red / green / blue; the master curve in `curveColor`).
 
+### Filling the histogram
+
+A program that shows a picture's histogram behind the curves counts the
+picture with `ComputeImageHistogram` (`UltraCanvasHistogramModel.h`, in the
+core library) and hands the result to `SetHistograms`, on the editor or the
+dialog. Red, Green and Blue get their own channel's counts; RGB gets the three
+added level by level (`ImageHistogram::RgbTotal`), since the RGB curve maps
+every red, green and blue value. Fully transparent pixels are left out: they
+have no colour. An empty `ImageHistogram` removes every backdrop. The image
+viewer (`UltraCanvasMediaViewer`) and UltraPaint both fill their Curves
+dialog this way, so a picture shows the same histogram in either.
+
+```cpp
+const ImageHistogram counts = ComputeImageHistogram(layer.Data(), layer.GetWidth(), layer.GetHeight(),
+                                                    layer.GetWidth() * 4, HistogramPixelFormat::RGBA8);
+editor->SetHistograms(counts);
+const std::vector<uint32_t>& reds = editor->GetHistogram(ToneCurveChannel::Red);   // what is drawn
+```
+
+`SetHistogram(channel, bins)` still sets one channel from counts the program
+made itself (other sizes than 256 are resampled).
+
 ## The dialog
 
 ```cpp
 auto dlg = CreateCurvesDialog(currentCurves);
-dlg->SetHistogram(ToneCurveChannel::RGB, bins);        // one call per channel
+dlg->SetHistograms(ComputeImageHistogram(pixels, w, h, stride, HistogramPixelFormat::RGBA8));
 dlg->onCurvesChanged = [this](const ToneCurveSet& s) { Preview(s); };
 dlg->onAccept        = [this](const ToneCurveSet& s) { Commit(s); };
 dlg->onCancel        = [this]()                       { Restore(); };

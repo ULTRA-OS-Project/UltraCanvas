@@ -601,6 +601,27 @@ jobs:
           scripts/macos-deps.sh
           echo "Sources in the asset cache: $(find .vcpkg/asset-cache -type f | wc -l) files, $(du -sh .vcpkg/asset-cache | cut -f1)"
 
+      # A fetch that ran out of its 30 minutes is cut off, but GitHub stops
+      # only the step's shell: vcpkg goes on running and keeps its lock, so
+      # the build below failed at once with "failed to take lock, another
+      # vcpkg may be running" - though it may need no download at all (every
+      # library it needs in the binary cache). On 2026-11-09 one source on
+      # codeberg.org (gumbo) sent nothing for half an hour, run after run,
+      # and turned both macOS rows red on main and on every pull request.
+      # Ending the stalled vcpkg here leaves the build to the binary cache.
+      - name: Stop a source download that ran out of time (macOS)
+        if: always() && runner.os == 'macOS' && steps.vcpkg-fetch.outcome == 'failure'
+        run: |
+          if pgrep -x vcpkg >/dev/null; then
+            echo "::warning::the source download did not finish; stopping the vcpkg still running so the build can take its lock"
+            pkill -TERM -x vcpkg || true
+            for _ in $(seq 1 30); do
+              pgrep -x vcpkg >/dev/null || break
+              sleep 1
+            done
+            pkill -KILL -x vcpkg || true
+          fi
+
       - name: Save vcpkg asset cache (macOS)
         if: runner.os == 'macOS' && steps.vcpkg-fetch.outcome == 'success'
         uses: actions/cache/save@v5
@@ -720,6 +741,12 @@ jobs:
           # SpellCheckerTest exercises none of the Hunspell path. The en_US
           # dictionary is what the test and the text widgets load by default.
           scripts/ci-apt.sh install libhunspell-dev hunspell-en-us
+          # The OCR plugin is built only where configure finds Tesseract and
+          # Leptonica; without them Linux never compiled it, and
+          # FileLoaderExtractTextTest's real-OCR check (UltraClipboard's
+          # Extract text) ran on no row. tesseract-ocr-eng is the English
+          # data that check reads media/images/OCR-demo.png with.
+          scripts/ci-apt.sh install libtesseract-dev libleptonica-dev tesseract-ocr-eng
           # IODeviceManager's optional backends are compiled only when configure
           # finds their library; without these CI never builds them and a
           # compile error in one goes unseen. libudev: the hot-plug watcher
@@ -2870,18 +2897,36 @@ jobs:
     # The whole job, not only its apt step: without one only GitHub's 6-hour
     # default applied, and on 2026-10-07 a hung apt held PR #720's checks for
     # five hours before it was cancelled by hand. Normally 75 s (5.5 min on a
-    # slow-mirror day); the install step keeps its own 20 minutes inside this,
+    # slow-mirror day); the install step keeps its own 45 minutes inside this,
     # and the NDK syntax check, the slowest of the rest, takes under a minute.
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
         with:
           ref: ${{ inputs.sha }}
 
+      # The packages the ubuntu-22.04 build row of the last run on main kept
+      # (it saves them; this job only reads them): the same runner image, and
+      # the row installs this list too, libvips-dev and its dependencies the
+      # bulk of it. On 2026-11-06 the mirror trickled this step past its 20
+      # minutes on PR #1138 while it fetched those; with the .deb files
+      # restored, apt fetches only what changed since.
+      - name: Restore the apt package cache
+        uses: actions/cache/restore@v5
+        with:
+          path: ${{ runner.temp }}/apt-debs
+          key: apt-debs-ubuntu-22.04-
+          restore-keys: apt-debs-ubuntu-22.04-
+
+      - name: Put the cached packages in apt's cache
+        run: scripts/ci-apt.sh cache-in "${{ runner.temp }}/apt-debs"
+
       - name: Install host dependency headers
-        # Normally 20 s; 8 min on a slow mirror day (2026-10-07).
-        timeout-minutes: 20
+        # Normally 20 s; 8 min on a slow mirror day (2026-10-07), past 20 on
+        # 2026-11-06. A mirror that crawls still finishes, as the build rows
+        # and the browser end-to-end job allow (45).
+        timeout-minutes: 45
         run: |
           scripts/ci-apt.sh update
           # libvips-dev: the Android arm requires libvips like every other

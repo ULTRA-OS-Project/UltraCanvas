@@ -1,5 +1,6 @@
 // Apps/UltraClipboard/ui/ClipboardDialogs.cpp
 // The edit and settings dialogs. See ClipboardDialogs.h.
+// Version: 0.1.6 - every text through Tr (UltraLocalisation)
 // Version: 0.1.5
 // Author: UltraCanvas Framework / ULTRA OS
 
@@ -20,6 +21,7 @@
 #include "UltraCanvasModalDialog.h"
 #include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasTextArea.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <algorithm>
 #include <chrono>
@@ -59,7 +61,7 @@ void ShowEditDialog(UltraCanvasWindowBase* parent, UltraCanvasClipboardHistory& 
                     const ClipboardHistoryEntry& entry, std::function<void(int64_t, bool)> onSaved) {
     std::vector<ClipboardFormat> formats;
     if (!history.ReadFormats(entry.id, formats)) {
-        UltraCanvasAlert::Error("This entry can no longer be read from the clipboard history.", "Edit", nullptr,
+        UltraCanvasAlert::Error(Tr("This entry can no longer be read from the clipboard history."), Tr("Edit"), nullptr,
                                 parent);
         return;
     }
@@ -73,7 +75,7 @@ void ShowEditDialog(UltraCanvasWindowBase* parent, UltraCanvasClipboardHistory& 
     }
 
     DialogConfig config;
-    config.title = "Edit clipboard entry";
+    config.title = Tr("Edit clipboard entry");
     config.message = DescribeClipboardEntry(entry, NowMs(), false);
     config.dialogType = DialogType::Information;
     config.showIcon = false;
@@ -105,21 +107,21 @@ void ShowEditDialog(UltraCanvasWindowBase* parent, UltraCanvasClipboardHistory& 
     tools->layout.SetFlexRow().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Center);
     UltraCanvasTextArea* text = area.get();
     if (entry.kind == ClipboardEntryKind::RichText) {
-        auto plain = ToolButton("cbe.plain", "Plain text", 92);
-        plain->SetTooltip("Keep the text without its formatting");
+        auto plain = ToolButton("cbe.plain", Tr("Plain text"), 92);
+        plain->SetTooltip(Tr("Keep the text without its formatting"));
         plain->SetOnClick([state, plainButton = plain.get()]() {
             state->keepHtml = false;
             plainButton->SetDisabled(true);
         });
         tools->AddChild(plain);
     }
-    auto trim = ToolButton("cbe.trim", "Trim", 64);
-    trim->SetTooltip("Remove spaces at the ends of lines and empty lines at the ends");
+    auto trim = ToolButton("cbe.trim", Tr("Trim"), 64);
+    trim->SetTooltip(Tr("Remove spaces at the ends of lines and empty lines at the ends"));
     trim->SetOnClick([text]() { text->SetText(EditClipboardText(text->GetText(), ClipboardTextEdit::Trim)); });
     tools->AddChild(trim);
     // The chevron is an icon, not a "▾" glyph: the UI font (Ubuntu) has
     // none, and the fallback font left it as a missing-glyph box on Windows.
-    auto caseButton = ToolButton("cbe.case", "Aa  Case", 108);
+    auto caseButton = ToolButton("cbe.case", Tr("Aa  Case"), 108);
     caseButton->SetIcon(GetResourcesDir() + "media/icons/dropdown.svg");
     caseButton->SetIconSize(10, 7);
     caseButton->SetIconPosition(ButtonIconPosition::Right);
@@ -127,9 +129,9 @@ void ShowEditDialog(UltraCanvasWindowBase* parent, UltraCanvasClipboardHistory& 
     caseButton->SetOnClick([state, text, dialogWindow, button = caseButton.get()]() {
         state->caseMenu = std::make_shared<UltraCanvasMenu>("cbe.caseMenu", 0, 0, 180, 0);
         state->caseMenu->SetMenuType(MenuType::PopupMenu);
-        const std::pair<const char*, ClipboardTextEdit> choices[] = {
-            {"UPPER CASE", ClipboardTextEdit::Upper}, {"lower case", ClipboardTextEdit::Lower},
-            {"Title Case", ClipboardTextEdit::Title}, {"Sentence case", ClipboardTextEdit::Sentence}};
+        const std::pair<std::string, ClipboardTextEdit> choices[] = {
+            {Tr("UPPER CASE"), ClipboardTextEdit::Upper}, {Tr("lower case"), ClipboardTextEdit::Lower},
+            {Tr("Title Case"), ClipboardTextEdit::Title}, {Tr("Sentence case"), ClipboardTextEdit::Sentence}};
         for (const auto& [label, edit] : choices) {
             state->caseMenu->AddItem(MenuItemData::Action(label, [text, edit = edit]() {
                 text->SetText(EditClipboardText(text->GetText(), edit));
@@ -141,19 +143,19 @@ void ShowEditDialog(UltraCanvasWindowBase* parent, UltraCanvasClipboardHistory& 
                                   *dialogWindow, settings);
     });
     tools->AddChild(caseButton);
-    auto join = ToolButton("cbe.join", "Join lines", 86);
-    join->SetTooltip("Make the text one line");
+    auto join = ToolButton("cbe.join", Tr("Join lines"), 86);
+    join->SetTooltip(Tr("Make the text one line"));
     join->SetOnClick([text]() { text->SetText(EditClipboardText(text->GetText(), ClipboardTextEdit::JoinLines)); });
     tools->AddChild(join);
 
     auto keep = UltraCanvasCheckbox::CreateCheckbox("cbe.keep", 0, 0, kContentWidth, 26,
-                                                    "Keep the original entry as well", true);
+                                                    Tr("Keep the original entry as well"), true);
     dialog->AddDialogElement(tools);
     dialog->AddDialogElement(area);
     dialog->AddDialogElement(keep);
-    dialog->AddCustomButton("Cancel", DialogResult::Cancel, DialogButtonRole::Cancel);
-    dialog->AddCustomButton("Save", DialogResult::Yes, DialogButtonRole::Normal);
-    dialog->AddCustomButton("Save and copy", DialogResult::OK, DialogButtonRole::Default);
+    dialog->AddCustomButton(Tr("Cancel"), DialogResult::Cancel, DialogButtonRole::Cancel);
+    dialog->AddCustomButton(Tr("Save"), DialogResult::Yes, DialogButtonRole::Normal);
+    dialog->AddCustomButton(Tr("Save and copy"), DialogResult::OK, DialogButtonRole::Default);
 
     UltraCanvasClipboardHistory* store = &history;
     const int64_t id = entry.id;
@@ -170,7 +172,7 @@ void ShowEditDialog(UltraCanvasWindowBase* parent, UltraCanvasClipboardHistory& 
         }
         const int64_t newId = store->Replace(id, edited, keepBox->IsChecked());
         if (newId == 0) {
-            UltraCanvasAlert::Error("The edited entry could not be saved: " + store->GetLastError(), "Edit", nullptr,
+            UltraCanvasAlert::Error(TrF("The edited entry could not be saved: {0}", store->GetLastError()), Tr("Edit"), nullptr,
                                     parent);
             return;
         }
@@ -226,9 +228,9 @@ void ShowSettingsDialog(UltraCanvasWindowBase* parent, UltraCanvasClipboardHisto
     const ClipboardHistoryStats stats = history.GetStats();
 
     DialogConfig config;
-    config.title = "Clipboard history settings";
-    config.message = "What the clipboard history keeps, and for how long. Pinned entries are kept whatever "
-                      "the limits say.";
+    config.title = Tr("Clipboard history settings");
+    config.message = Tr("What the clipboard history keeps, and for how long. Pinned entries are kept whatever "
+                        "the limits say.");
     config.dialogType = DialogType::Information;
     config.showIcon = false;
     config.buttons = DialogButtons::NoButtons;
@@ -238,39 +240,45 @@ void ShowSettingsDialog(UltraCanvasWindowBase* parent, UltraCanvasClipboardHisto
     dialog->SetIconVisible(false);
 
     constexpr uint64_t MB = 1024ull * 1024;
-    const std::vector<Choice> entryChoices = {{"100 entries", 100}, {"200 entries", 200}, {"500 entries", 500},
-                                              {"1,000 entries", 1000}, {"2,000 entries", 2000}};
-    const std::vector<Choice> ageChoices = {{"1 day", 1}, {"7 days", 7}, {"30 days", 30}, {"90 days", 90},
-                                            {"1 year", 365}};
-    const std::vector<Choice> totalChoices = {{"128 MB", 128 * MB}, {"256 MB", 256 * MB}, {"512 MB", 512 * MB},
-                                              {"1 GB", 1024 * MB}, {"2 GB", 2048 * MB}};
-    const std::vector<Choice> entrySizeChoices = {{"16 MB", 16 * MB}, {"64 MB", 64 * MB}, {"256 MB", 256 * MB}};
-    auto entries = ChoiceRow(dialog, "cbs.entries", "Keep at most", entryChoices,
+    auto entriesText = [](int count) { return TrN("{n} entry", "{n} entries", count); };
+    auto daysText = [](int count) { return TrN("{n} day", "{n} days", count); };
+    auto megabytes = [](int count) { return TrF("{0} MB", count); };
+    const std::vector<Choice> entryChoices = {{entriesText(100), 100}, {entriesText(200), 200},
+                                              {entriesText(500), 500}, {entriesText(1000), 1000},
+                                              {entriesText(2000), 2000}};
+    const std::vector<Choice> ageChoices = {{daysText(1), 1}, {daysText(7), 7}, {daysText(30), 30},
+                                            {daysText(90), 90}, {Tr("1 year"), 365}};
+    const std::vector<Choice> totalChoices = {{megabytes(128), 128 * MB}, {megabytes(256), 256 * MB},
+                                              {megabytes(512), 512 * MB}, {TrF("{0} GB", 1), 1024 * MB},
+                                              {TrF("{0} GB", 2), 2048 * MB}};
+    const std::vector<Choice> entrySizeChoices = {{megabytes(16), 16 * MB}, {megabytes(64), 64 * MB},
+                                                  {megabytes(256), 256 * MB}};
+    auto entries = ChoiceRow(dialog, "cbs.entries", Tr("Keep at most"), entryChoices,
                              static_cast<uint64_t>(policy.maxEntries));
-    auto age = ChoiceRow(dialog, "cbs.age", "For", ageChoices, static_cast<uint64_t>(policy.maxAgeDays));
-    auto total = ChoiceRow(dialog, "cbs.total", "Up to", totalChoices, policy.maxTotalBytes);
-    auto largest = ChoiceRow(dialog, "cbs.largest", "Largest copy kept", entrySizeChoices, policy.maxEntryBytes);
+    auto age = ChoiceRow(dialog, "cbs.age", TrC("kept for a time", "For"), ageChoices, static_cast<uint64_t>(policy.maxAgeDays));
+    auto total = ChoiceRow(dialog, "cbs.total", Tr("Up to"), totalChoices, policy.maxTotalBytes);
+    auto largest = ChoiceRow(dialog, "cbs.largest", Tr("Largest copy kept"), entrySizeChoices, policy.maxEntryBytes);
 
     auto thumbnails = UltraCanvasCheckbox::CreateCheckbox("cbs.thumbnails", 0, 0, kContentWidth, 26,
-                                                          "Show thumbnails of images", policy.imageThumbnails);
+                                                          Tr("Show thumbnails of images"), policy.imageThumbnails);
     dialog->AddDialogElement(thumbnails);
     // How an image opens while the pointer rests on its thumbnail.
     const std::vector<Choice> previewChoices = {
-        {"Classic: the picture floating over the list", static_cast<uint64_t>(ClipboardPreviewStyle::Classic)},
-        {"Modern: a pane on the right, with its info line", static_cast<uint64_t>(ClipboardPreviewStyle::Modern)}};
-    auto preview = ChoiceRow(dialog, "cbs.preview", "Image preview", previewChoices,
+        {Tr("Classic: the picture floating over the list"), static_cast<uint64_t>(ClipboardPreviewStyle::Classic)},
+        {Tr("Modern: a pane on the right, with its info line"), static_cast<uint64_t>(ClipboardPreviewStyle::Modern)}};
+    auto preview = ChoiceRow(dialog, "cbs.preview", Tr("Image preview"), previewChoices,
                              static_cast<uint64_t>(policy.previewStyle));
     // Display: where each entry's icons (Copy, Edit, Save as, Delete) stand.
-    auto displayLabel = CreateLabel("cbs.display", 0, 0, kContentWidth, 22, "Display");
+    auto displayLabel = CreateLabel("cbs.display", 0, 0, kContentWidth, 22, Tr("Display"));
     displayLabel->SetFontWeight(FontWeight::Bold);
     dialog->AddDialogElement(displayLabel);
     const std::vector<Choice> iconChoices = {
-        {"Left of the item text", static_cast<uint64_t>(ClipboardIconSide::Left)},
-        {"Right of the item text", static_cast<uint64_t>(ClipboardIconSide::Right)}};
-    auto icons = ChoiceRow(dialog, "cbs.icons", "Icons", iconChoices, static_cast<uint64_t>(policy.iconSide));
+        {Tr("Left of the item text"), static_cast<uint64_t>(ClipboardIconSide::Left)},
+        {Tr("Right of the item text"), static_cast<uint64_t>(ClipboardIconSide::Right)}};
+    auto icons = ChoiceRow(dialog, "cbs.icons", Tr("Icons"), iconChoices, static_cast<uint64_t>(policy.iconSide));
 
     dialog->AddDialogElement(CreateLabel("cbs.excludedLabel", 0, 0, kContentWidth, 24,
-                                         "Never record copies from these programs (one per line):"));
+                                         Tr("Never record copies from these programs (one per line):")));
     auto excluded = std::make_shared<UltraCanvasTextArea>("cbs.excluded", 0, 0, kContentWidth, 104);
     excluded->SetBorders(1, Color(209, 213, 219), 6);
     std::string excludedText;
@@ -280,14 +288,15 @@ void ShowSettingsDialog(UltraCanvasWindowBase* parent, UltraCanvasClipboardHisto
 
     std::string security;
     if (stats.encrypted) {
-        security = "Titles, texts and copies are encrypted (XChaCha20-Poly1305) with a key kept at " +
-                   HomeRelative(UltraCanvasClipboardHistory::DefaultKeyPath()) + ", apart from the history in " +
-                   HomeRelative(history.GetDirectory()) + ". That protects a copy of the history folder and a backup of it. "
-                   "A program running as you can read the clipboard itself. Copies that password managers "
-                   "mark as secret are never recorded.";
+        security = TrF("Titles, texts and copies are encrypted (XChaCha20-Poly1305) with a key kept at {0}, "
+                       "apart from the history in {1}. That protects a copy of the history folder and a backup of "
+                       "it. A program running as you can read the clipboard itself. Copies that password managers "
+                       "mark as secret are never recorded.",
+                       HomeRelative(UltraCanvasClipboardHistory::DefaultKeyPath()),
+                       HomeRelative(history.GetDirectory()));
     } else {
-        security = "This build cannot encrypt (it has no libsodium): the history is stored as it was copied. "
-                   "Copies that password managers mark as secret are never recorded.";
+        security = Tr("This build cannot encrypt (it has no libsodium): the history is stored as it was copied. "
+                      "Copies that password managers mark as secret are never recorded.");
     }
     auto securityLabel = CreateLabel("cbs.security", 0, 0, kContentWidth, 96, security);
     securityLabel->SetWrap(TextWrap::WrapWord);
@@ -295,8 +304,8 @@ void ShowSettingsDialog(UltraCanvasWindowBase* parent, UltraCanvasClipboardHisto
     securityLabel->SetTextColor(Color(90, 96, 105));
     dialog->AddDialogElement(securityLabel);
 
-    dialog->AddCustomButton("Cancel", DialogResult::Cancel, DialogButtonRole::Cancel);
-    dialog->AddCustomButton("Save", DialogResult::OK, DialogButtonRole::Default);
+    dialog->AddCustomButton(Tr("Cancel"), DialogResult::Cancel, DialogButtonRole::Cancel);
+    dialog->AddCustomButton(Tr("Save"), DialogResult::OK, DialogButtonRole::Default);
 
     UltraCanvasClipboardHistory* store = &history;
     UltraCanvasDropdown* entriesBox = entries.get();

@@ -1211,6 +1211,55 @@ else()
     message(STATUS "  CaretStackingTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== TOOLTIP OWN WINDOW TEST =====
+# The tooltip in a window of its own: above a window that covers the one it
+# belongs to (as an application's window covers the desktop's bars), outside
+# that window where there is room, the pointer passing through it, and closed
+# with that window. Reads the X server's stacking order and the screen's
+# pixels, so X11 only. Skips without DISPLAY.
+if(TARGET UltraCanvas AND UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN AND NOT ULTRACANVAS_WAYLAND)
+    message(STATUS "  Building TooltipOwnWindowTest...")
+    add_executable(TooltipOwnWindowTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/TooltipOwnWindowTest.cpp
+    )
+    target_include_directories(TooltipOwnWindowTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(TooltipOwnWindowTest PRIVATE cxx_std_20)
+    target_link_libraries(TooltipOwnWindowTest PRIVATE UltraCanvas)
+    set_target_properties(TooltipOwnWindowTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME TooltipOwnWindowTest COMMAND TooltipOwnWindowTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: TooltipOwnWindowTest")
+else()
+    message(STATUS "  TooltipOwnWindowTest skipped (UltraCanvas target not present, or not X11)")
+endif()
+
+# ===== POPUP OWN WINDOW TEST =====
+# Popups in windows of their own: a menu above a window that covers the one it
+# belongs to (as an application's window covers the desktop's bars), cut to its
+# rounded outline, clicks in its window reaching its items, closed by a click
+# outside it, by focus leaving the application and with its window; a popup
+# past the window's edge takes clicks there. Reads the X server's stacking
+# order, shapes and the screen's pixels, so X11 only. Skips without DISPLAY.
+if(TARGET UltraCanvas AND UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN AND NOT ULTRACANVAS_WAYLAND)
+    message(STATUS "  Building PopupOwnWindowTest...")
+    add_executable(PopupOwnWindowTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/PopupOwnWindowTest.cpp
+    )
+    target_include_directories(PopupOwnWindowTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(PopupOwnWindowTest PRIVATE cxx_std_20)
+    target_link_libraries(PopupOwnWindowTest PRIVATE UltraCanvas)
+    set_target_properties(PopupOwnWindowTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME PopupOwnWindowTest COMMAND PopupOwnWindowTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: PopupOwnWindowTest")
+else()
+    message(STATUS "  PopupOwnWindowTest skipped (UltraCanvas target not present, or not X11)")
+endif()
+
 # ===== TOOL GROUP BUTTON TEST =====
 # Several tools sharing one toolbar slot: the bar of the whole group folds out
 # while the pointer rests on the slot, a click in it picks a tool, and it folds
@@ -1332,7 +1381,9 @@ endif()
 # line, "+" on the last row and "-" on every row once there are several, the
 # gallery adding a preset, and the foreground-only entry editor a right click
 # opens. The window part skips itself without a DISPLAY.
-if(TARGET UltraCanvas)
+# Uses the widget's typed API: only with it compiled into the core (ULTRACANVAS_WIDGETS).
+get_property(uc_widgets_in GLOBAL PROPERTY ULTRACANVAS_WIDGETS_COMPILED_IN)
+if(TARGET UltraCanvas AND "ColorPaletteManager" IN_LIST uc_widgets_in)
     message(STATUS "  Building ColorPaletteManagerTest...")
     add_executable(ColorPaletteManagerTest
         ${CMAKE_CURRENT_SOURCE_DIR}/ColorPaletteManagerTest.cpp
@@ -1347,7 +1398,7 @@ if(TARGET UltraCanvas)
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
     message(STATUS "    Test registered: ColorPaletteManagerTest")
 else()
-    message(STATUS "  ColorPaletteManagerTest skipped (UltraCanvas target not present)")
+    message(STATUS "  ColorPaletteManagerTest skipped (UltraCanvas target not present, or its widget not compiled in)")
 endif()
 
 # ===== COLOUR PICKER DESIGN SELECTOR TEST =====
@@ -1642,6 +1693,18 @@ if(TARGET UltraCanvas)
     target_include_directories(UltraCanvasThemeTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
     target_link_libraries(UltraCanvasThemeTest PRIVATE ${ULTRACANVAS_LIBRARY})
     target_compile_features(UltraCanvasThemeTest PRIVATE cxx_std_20)
+    get_property(uc_widgets_in GLOBAL PROPERTY ULTRACANVAS_WIDGETS_COMPILED_IN)
+    # The timeline's and the album's FromTheme only with them compiled in.
+    foreach(uc_pair IN ITEMS VideoTimeline:VIDEO_TIMELINE Album:ALBUM)
+        string(REPLACE ":" ";" uc_pair "${uc_pair}")
+        list(GET uc_pair 0 uc_key)
+        list(GET uc_pair 1 uc_macro)
+        if(uc_key IN_LIST uc_widgets_in)
+            target_compile_definitions(UltraCanvasThemeTest PRIVATE UC_TEST_HAS_${uc_macro}=1)
+        else()
+            target_compile_definitions(UltraCanvasThemeTest PRIVATE UC_TEST_HAS_${uc_macro}=0)
+        endif()
+    endforeach()
     set_target_properties(UltraCanvasThemeTest PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
     add_test(NAME UltraCanvasThemeTest COMMAND UltraCanvasThemeTest WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
     message(STATUS "    Test registered: UltraCanvasThemeTest")
@@ -1781,7 +1844,10 @@ endif()
 # ripple, reorder, free-track move, blade split, marker, delete, drop, the
 # ruler, the wheel). ULTRACANVAS_SCREENSHOT_DIR=<dir> makes it write the
 # window as a PPM. Needs the framework and a display; skips itself without one.
-if(TARGET UltraCanvas)
+# Uses the element's typed API, so only when VideoTimeline is compiled into the
+# core (ULTRACANVAS_WIDGETS); ElementModulesTest covers the module build.
+get_property(uc_widgets_in GLOBAL PROPERTY ULTRACANVAS_WIDGETS_COMPILED_IN)
+if(TARGET UltraCanvas AND "VideoTimeline" IN_LIST uc_widgets_in)
     message(STATUS "  Building VideoTimelineElementTest...")
     add_executable(VideoTimelineElementTest
         ${CMAKE_CURRENT_SOURCE_DIR}/VideoTimelineElementTest.cpp
@@ -1796,7 +1862,69 @@ if(TARGET UltraCanvas)
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
     message(STATUS "    Test registered: VideoTimelineElementTest")
 else()
-    message(STATUS "  VideoTimelineElementTest skipped (UltraCanvas target not present)")
+    message(STATUS "  VideoTimelineElementTest skipped (UltraCanvas target not present, or VideoTimeline not compiled in)")
+endif()
+
+# ===== ELEMENT MODULES TEST =====
+# The selectable widgets (ULTRACANVAS_WIDGETS) and charts (ULTRACANVAS_CHARTS)
+# through the element registry, by type name: registered at startup when
+# compiled into the core, or loaded from their runtime modules
+# (ultracanvas-widget-<name>, ultracanvas-chart-<name>) in a lean build
+# (-DULTRACANVAS_WIDGETS= with the applications that use the widgets off;
+# ULTRACANVAS_CHARTS is empty by default without DemoApp). Loading a module also
+# proves it carries the framework headers id the loader insists on. No display
+# needed: it creates the elements, it never shows them.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building ElementModulesTest...")
+    add_executable(ElementModulesTest ${CMAKE_CURRENT_SOURCE_DIR}/ElementModulesTest.cpp)
+    target_include_directories(ElementModulesTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(ElementModulesTest PRIVATE cxx_std_20)
+    target_link_libraries(ElementModulesTest PRIVATE UltraCanvas)
+    # type:category:key:module-target - a type is expected when its key is
+    # compiled in or its module target is built (not on a Windows static core).
+    set(uc_elements
+        video-timeline:Widget:VideoTimeline:ultracanvas-widget-video-timeline
+        slideshow:Widget:Slideshow:ultracanvas-widget-slideshow
+        album:Widget:Album:ultracanvas-widget-album
+        color-palette-manager:Widget:ColorPaletteManager:ultracanvas-widget-color-palette-manager
+        vector-canvas:Widget:VectorCanvas:ultracanvas-widget-vector-canvas
+        parallel-coordinate-chart:Chart:ParallelCoordinate:ultracanvas-chart-parallel-coordinate)
+    get_property(uc_widgets_in GLOBAL PROPERTY ULTRACANVAS_WIDGETS_COMPILED_IN)
+    set(uc_compiled_in ${uc_widgets_in})
+    if(ULTRACANVAS_ENABLE_CHARTS AND ULTRACANVAS_CHARTS STREQUAL "all")
+        list(APPEND uc_compiled_in ParallelCoordinate)
+    elseif(ULTRACANVAS_ENABLE_CHARTS)
+        list(APPEND uc_compiled_in ${ULTRACANVAS_CHARTS})
+    endif()
+    set(uc_expected "")
+    set(uc_built_modules "")
+    foreach(uc_entry IN LISTS uc_elements)
+        string(REPLACE ":" ";" uc_entry "${uc_entry}")
+        list(GET uc_entry 0 uc_type)
+        list(GET uc_entry 1 uc_category)
+        list(GET uc_entry 2 uc_key)
+        list(GET uc_entry 3 uc_target)
+        if(TARGET ${uc_target})
+            list(APPEND uc_built_modules ${uc_target})
+            string(APPEND uc_expected "${uc_type}:${uc_category},")
+        elseif(uc_key IN_LIST uc_compiled_in)
+            string(APPEND uc_expected "${uc_type}:${uc_category},")
+        endif()
+    endforeach()
+    if(uc_built_modules)
+        target_compile_definitions(ElementModulesTest PRIVATE
+            UC_ELEMENT_MODULE_DIR="${CMAKE_BINARY_DIR}/Plugins/Elements")
+        add_dependencies(ElementModulesTest ${uc_built_modules})
+    endif()
+    target_compile_definitions(ElementModulesTest PRIVATE UC_EXPECTED_ELEMENTS="${uc_expected}")
+    # The modules resolve the core's symbols against the executable that
+    # dlopens them (static core), as every other module host does.
+    set_target_properties(ElementModulesTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+        ENABLE_EXPORTS ON)
+    add_test(NAME ElementModulesTest COMMAND ElementModulesTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: ElementModulesTest")
 endif()
 
 # ===== TIMECODE FIELD ELEMENT TEST =====
@@ -4105,6 +4233,43 @@ add_test(NAME TernaryModelTest COMMAND TernaryModelTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: TernaryModelTest")
 
+# ===== CONTROL LIMITS TEST =====
+# Statistical process control, UI-free: the d2 / d3 / c4 constants and the
+# factors derived from them against the published tables, X-bar-R and I-MR
+# limits on hand-checked data, within-subgroup sigma against a shifted
+# process, and every Western Electric rule firing on its minimal pattern and
+# not on a near miss.
+message(STATUS "  Building ControlLimitsTest...")
+add_executable(ControlLimitsTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/ControlLimitsTest.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Charts/Engine/UltraCanvasControlLimits.cpp
+)
+target_include_directories(ControlLimitsTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(ControlLimitsTest PRIVATE cxx_std_20)
+set_target_properties(ControlLimitsTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME ControlLimitsTest COMMAND ControlLimitsTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: ControlLimitsTest")
+
+# ===== HISTOGRAM MODEL TEST =====
+# The image histogram model: every pixel layout, premultiplied and
+# transparent pixels, luminosity, statistics and percentiles. UI-free.
+message(STATUS "  Building HistogramModelTest...")
+add_executable(HistogramModelTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/HistogramModelTest.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/core/UltraCanvasHistogramModel.cpp
+)
+target_include_directories(HistogramModelTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(HistogramModelTest PRIVATE cxx_std_20)
+set_target_properties(HistogramModelTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME HistogramModelTest COMMAND HistogramModelTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: HistogramModelTest")
+
 # ===== ELEMENT PLUGIN TEST =====
 # The element plugin registry, create-by-name, keyword text dispatch, the named
 # property surface, the ABI handshake, and a real end-to-end DSO load: two test
@@ -4388,6 +4553,14 @@ add_executable(VectorEditTest
 target_include_directories(VectorEditTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
 target_compile_features(VectorEditTest PRIVATE cxx_std_20)
 target_link_libraries(VectorEditTest PRIVATE UltraCanvas)
+get_property(uc_widgets_in GLOBAL PROPERTY ULTRACANVAS_WIDGETS_COMPILED_IN)
+if("VectorCanvas" IN_LIST uc_widgets_in)
+    target_compile_definitions(VectorEditTest PRIVATE UC_TEST_HAS_VECTOR_CANVAS=1)
+else()
+    # A lean core builds the canvas as a module: the editing layer is tested,
+    # the canvas block is left out.
+    target_compile_definitions(VectorEditTest PRIVATE UC_TEST_HAS_VECTOR_CANVAS=0)
+endif()
 set_target_properties(VectorEditTest PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
@@ -5337,7 +5510,9 @@ endif()
 # An album and a slideshow repaint a picture saved over by themselves
 # (UltraCanvasImageFileWatch), read back from a real window. Skips without a
 # DISPLAY; run it under xvfb-run.
-if(TARGET UltraCanvas)
+# Uses the widget's typed API: only with it compiled into the core (ULTRACANVAS_WIDGETS).
+get_property(uc_widgets_in GLOBAL PROPERTY ULTRACANVAS_WIDGETS_COMPILED_IN)
+if(TARGET UltraCanvas AND "Slideshow" IN_LIST uc_widgets_in AND "Album" IN_LIST uc_widgets_in)
     message(STATUS "  Building ImageFileWatchDisplayTest...")
     add_executable(ImageFileWatchDisplayTest
         ${CMAKE_CURRENT_SOURCE_DIR}/ImageFileWatchDisplayTest.cpp
@@ -5352,7 +5527,7 @@ if(TARGET UltraCanvas)
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
     message(STATUS "    Test registered: ImageFileWatchDisplayTest")
 else()
-    message(STATUS "  ImageFileWatchDisplayTest skipped (UltraCanvas target not present)")
+    message(STATUS "  ImageFileWatchDisplayTest skipped (UltraCanvas target not present, or its widget not compiled in)")
 endif()
 
 message(STATUS "")
@@ -5867,6 +6042,75 @@ if(TARGET UltraCanvas AND ULTRACANVAS_ENABLE_CHARTS)
     message(STATUS "    Test registered: TernaryChartRenderTest")
 else()
     message(STATUS "  TernaryChartRenderTest skipped (UltraCanvas or charts not present)")
+endif()
+
+# ===== ENGINE LINE CHART TEST =====
+# UltraCanvasEngineLineChart drawn offscreen: per-series line shape, markers,
+# legend entries and interactivity; per-point styles and tooltip notes;
+# stacked panes with their own value axes, grids and limiters; and
+# ShowControlChart putting an X-bar-R and an I-MR result on a chart. With
+# ULTRACANVAS_SCREENSHOT_DIR set, each case is written there as a PNG.
+if(TARGET UltraCanvas AND ULTRACANVAS_ENABLE_CHARTS)
+    message(STATUS "  Building EngineLineChartTest...")
+    add_executable(EngineLineChartTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/EngineLineChartTest.cpp
+    )
+    target_include_directories(EngineLineChartTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(EngineLineChartTest PRIVATE cxx_std_20)
+    target_link_libraries(EngineLineChartTest PRIVATE UltraCanvas)
+    set_target_properties(EngineLineChartTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME EngineLineChartTest COMMAND EngineLineChartTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: EngineLineChartTest")
+else()
+    message(STATUS "  EngineLineChartTest skipped (UltraCanvas or charts not present)")
+endif()
+
+# ===== CURVE HISTOGRAM TEST =====
+# The Curves dialog's histogram backdrop filled from UltraCanvasHistogramModel
+# (UltraCanvasCurveEditor::SetHistograms) - what the image viewer and
+# UltraPaint both do. Needs the library, not the charts.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building CurveHistogramTest...")
+    add_executable(CurveHistogramTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/CurveHistogramTest.cpp
+    )
+    target_include_directories(CurveHistogramTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(CurveHistogramTest PRIVATE cxx_std_20)
+    target_link_libraries(CurveHistogramTest PRIVATE UltraCanvas)
+    set_target_properties(CurveHistogramTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME CurveHistogramTest COMMAND CurveHistogramTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: CurveHistogramTest")
+else()
+    message(STATUS "  CurveHistogramTest skipped (UltraCanvas not present)")
+endif()
+
+# ===== HISTOGRAM CHART RENDER TEST =====
+# UltraCanvasHistogramChart drawn offscreen: Combined and single channels,
+# the logarithmic scale, the hover read-out, the legend and SetImage on a
+# decoded picture. With ULTRACANVAS_SCREENSHOT_DIR set, each case is written
+# there as a PNG.
+if(TARGET UltraCanvas AND ULTRACANVAS_ENABLE_CHARTS)
+    message(STATUS "  Building HistogramChartRenderTest...")
+    add_executable(HistogramChartRenderTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/HistogramChartRenderTest.cpp
+    )
+    target_include_directories(HistogramChartRenderTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(HistogramChartRenderTest PRIVATE cxx_std_20)
+    target_link_libraries(HistogramChartRenderTest PRIVATE UltraCanvas)
+    set_target_properties(HistogramChartRenderTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME HistogramChartRenderTest COMMAND HistogramChartRenderTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: HistogramChartRenderTest")
+else()
+    message(STATUS "  HistogramChartRenderTest skipped (UltraCanvas or charts not present)")
 endif()
 
 # ===== BUSY INDICATOR RENDER TEST =====
@@ -6981,6 +7225,55 @@ if(TARGET UltraCanvas)
     message(STATUS "    Test registered: FileLoaderTypeListsTest")
 else()
     message(STATUS "  FileLoaderTypeListsTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== FILE LOADER: EXTRACT TEXT =====
+# UltraCanvasFileLoader::ExtractText: text files, a DOCX, an XLSX, a PDF, a
+# picture and a recording through the two recognition hooks - and Tesseract
+# itself where the OCR plugin is built. Headless.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building FileLoaderExtractTextTest...")
+    add_executable(FileLoaderExtractTextTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/FileLoaderExtractTextTest.cpp
+    )
+    target_include_directories(FileLoaderExtractTextTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(FileLoaderExtractTextTest PRIVATE cxx_std_20)
+    if(TARGET UltraCanvasOCRPlugin)
+        target_link_libraries(FileLoaderExtractTextTest PRIVATE UltraCanvasOCRPlugin)
+    endif()
+    target_link_libraries(FileLoaderExtractTextTest PRIVATE UltraCanvas)
+    target_compile_definitions(FileLoaderExtractTextTest PRIVATE
+        UC_MEDIA_DIR="${ULTRACANVAS_ROOT}/media")
+    set_target_properties(FileLoaderExtractTextTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME FileLoaderExtractTextTest COMMAND FileLoaderExtractTextTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: FileLoaderExtractTextTest")
+else()
+    message(STATUS "  FileLoaderExtractTextTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== ULTRAAI TEXT RECOGNITION =====
+# UltraAI in front of FileLoader's text recognizer (UltraAITextRecognition.h):
+# a vision provider that reads text is used, the built-in OCR otherwise - with
+# stand-in providers, so no model and no network. Headless.
+if(TARGET UltraAI_UI)
+    message(STATUS "  Building UltraAITextRecognitionTest...")
+    add_executable(UltraAITextRecognitionTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/UltraAITextRecognitionTest.cpp
+    )
+    target_include_directories(UltraAITextRecognitionTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(UltraAITextRecognitionTest PRIVATE cxx_std_20)
+    target_link_libraries(UltraAITextRecognitionTest PRIVATE UltraAI_UI UltraAI_Core UltraCanvas)
+    set_target_properties(UltraAITextRecognitionTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME UltraAITextRecognitionTest COMMAND UltraAITextRecognitionTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: UltraAITextRecognitionTest")
+else()
+    message(STATUS "  UltraAITextRecognitionTest skipped (UltraAI_UI not in the build)")
 endif()
 
 # ===== TAB PILL STYLE SCREENSHOT TEST =====

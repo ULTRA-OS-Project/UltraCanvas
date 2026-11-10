@@ -11,6 +11,8 @@
 // shell is bound here, because a Desktop window of this backend is a layer
 // surface (UltraCanvasWaylandWindow); the window list's foreign-toplevel
 // manager lives on the shell backend's own connection.
+// Version: 0.5.0 - the session lock (ext-session-lock-v1); xdg_wm_base at
+//                  version 3 for popups that move
 // Version: 0.4.0 - DetectHostAppearanceNative and the config folders' watch
 // Version: 0.3.0 - xdg-activation (RaiseAndFocus); the keyboard window
 // Version: 0.2.0 - the layer shell global; FindOutputAt
@@ -46,6 +48,8 @@ struct xdg_wm_base;
 struct zxdg_decoration_manager_v1;
 struct zwlr_layer_shell_v1;
 struct xdg_activation_v1;
+struct ext_session_lock_manager_v1;
+struct ext_session_lock_v1;
 struct wl_cursor_theme;
 
 namespace UltraCanvas {
@@ -84,6 +88,7 @@ namespace UltraCanvas {
         wl_shm* GetShm() const { return shm; }
         wl_seat* GetSeat() const { return seat; }
         xdg_wm_base* GetXdgWmBase() const { return xdgWmBase; }
+        uint32_t GetXdgWmBaseVersion() const { return xdgWmBaseVersion; }
         zxdg_decoration_manager_v1* GetDecorationManager() const { return decorationManager; }
         // The layer shell (wlr-layer-shell-unstable-v1), or nullptr on a
         // compositor without one (GNOME's); the version bound, 1 to 4.
@@ -94,6 +99,18 @@ namespace UltraCanvas {
         xdg_activation_v1* GetActivation() const { return activation; }
         // The window the seat's keyboard focus is in, or nullptr.
         UltraCanvasWaylandWindow* GetKeyboardWindow() const { return keyboardWindow; }
+
+        // ----- the session lock (ext-session-lock-v1) -----
+        // A WindowType::SessionLock window asks for the lock when it is the
+        // first and releases it when it is the last (unlock). The lock is
+        // one object for all of them; `locked` says the compositor granted
+        // it and shows nothing else, `finished` that it refused (or another
+        // locker holds it), whereupon the lock windows are asked to close.
+        ext_session_lock_manager_v1* GetSessionLockManager() const { return sessionLockManager; }
+        ext_session_lock_v1* AcquireSessionLock();     // nullptr without the manager
+        void ReleaseSessionLock();
+        bool IsSessionLocked() const { return sessionLocked; }
+        bool IsSessionLockRefused() const { return sessionLockFinished; }
         wl_data_device_manager* GetDataDeviceManager() const { return dataDeviceManager; }
         wl_data_device* GetDataDevice() const { return dataDevice; }
         // The serial of the last key or button the seat gave us: what
@@ -168,7 +185,15 @@ namespace UltraCanvas {
         wl_seat* seat = nullptr;
         uint32_t seatCapabilities = 0;
         xdg_wm_base* xdgWmBase = nullptr;
+        uint32_t xdgWmBaseVersion = 0;
         zxdg_decoration_manager_v1* decorationManager = nullptr;
+        ext_session_lock_manager_v1* sessionLockManager = nullptr;
+        ext_session_lock_v1* sessionLock = nullptr;
+        int sessionLockWindows = 0;
+        bool sessionLocked = false;
+        bool sessionLockFinished = false;
+        void HandleSessionLocked();
+        void HandleSessionLockFinished();
         zwlr_layer_shell_v1* layerShell = nullptr;
         uint32_t layerShellVersion = 0;
         xdg_activation_v1* activation = nullptr;

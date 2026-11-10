@@ -1,5 +1,6 @@
 // Apps/DemoApp/UltraCanvasBasicChartsExamples.cpp
 // Implementation of all chart component example creators with interactive controls
+// Version: 1.3.0 - the Line Chart page ends with a control chart card
 // Version: 1.2.0 - the shared page look (UltraCanvasDemoPageKit): each chart in a
 //                  card with its buttons and switches in a wrapping row below,
 //                  the descriptions sized to fit
@@ -189,6 +190,9 @@ static std::shared_ptr<UltraCanvasContainer> AddChartControlsRow(
             lineChart->SetShowValueLabels(chartControl.valueLabelsEnabled);
         };
         DemoKit::Add(controls, swValueLabels);
+
+        // The engine line chart as a control chart (UltraCanvasControlChartExamples.cpp).
+        AddControlChartCard(container);
 
         return container;
     }

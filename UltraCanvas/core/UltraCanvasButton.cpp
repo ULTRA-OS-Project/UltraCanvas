@@ -1291,6 +1291,12 @@ namespace UltraCanvas {
                 if (!IsPressed()) {
                     SetHovered(true);
                     if (onHoverEnter) onHoverEnter();
+                } else if (canToggled && onHoverEnter) {
+                    // A toggle that is on stays pressed between clicks: the
+                    // pointer coming over it is a hover like any other (a
+                    // taskbar's button of the active window shows its
+                    // previews). A push button held down is not.
+                    onHoverEnter();
                 }
                 return true;
 

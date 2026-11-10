@@ -10,11 +10,16 @@
 //   defaultModel  — a catalogue id ("qwen3-4b-q4"), a user-added model's
 //       id ("file:<path>", "hf:<repo>:<file>"), or empty for the runtime's
 //       recommendation for this computer (LocalRuntime::Recommend).
+//   providerOptions["topic"] — string: with no defaultModel, use the model
+//       the user set for this topic ("chat", "code", "translation",
+//       "summary", "vision", "search", or one the model server publishes;
+//       LocalRuntime::ModelForTopic). A topic of another capability, or an
+//       unknown one, falls back to the recommendation.
 //   providerOptions["allow_download"] — bool: let the first call download
 //       the model and its engine under the Ask policy (what the framework
 //       dialog sets after the user agreed). Automatic needs nothing.
 //   timeoutMs, providerOptions — passed through to the OpenAI delegate
-//       (the two keys the adapter reads itself are stripped).
+//       (the keys the adapter reads itself are stripped).
 //   apiKey, apiKeyVaultRef, baseUrl — ignored: the runtime's endpoint and
 //       key are used.
 //
@@ -25,8 +30,9 @@
 //
 // Registered as provider id "local" with runsLocally = true; first in
 // UltraAI's local-first routing (UltraAIRouting.h).
+// Version: 0.2.0 - providerOptions["topic"]
 // Version: 0.1.0
-// Last Modified: 2026-10-20
+// Last Modified: 2026-11-06
 // Author: UltraAI Module
 #pragma once
 

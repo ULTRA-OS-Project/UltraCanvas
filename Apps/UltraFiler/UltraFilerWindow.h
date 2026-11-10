@@ -81,6 +81,8 @@
 // that finds it changed reopens it, at most every couple of seconds - a video
 // or sound only once its file has settled and it is not playing
 // (ReloadChangedPreview).
+// Version: 1.34.0 - ConfirmRemoveRemoteDrive, ConfigureRemoteDrive,
+//                  RefreshFolderEverywhere, ShowRemoteFileError
 // Version: 1.33.0 - PreviewPanePath: the file shown or on its way
 // Version: 1.32.0 - RefreshWslNodes, the Network section (OpenNetworkServer and the
 //                  network jobs)
@@ -107,7 +109,7 @@
 // Version: 1.27.1 - the connection log button on every remote drive
 // Version: 1.27.0 - OpenFolders: a second start's folders open in tabs here
 // Version: 1.26.0
-// Last Modified: 2026-11-03
+// Last Modified: 2026-11-09
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -389,6 +391,33 @@ private:
     // and hides the section while there are none - like "Pinned" and
     // "Cloud Storage" above it.
     void RefreshRemoteDriveNodes();
+    // Delete on a drive's row under "Remote Drives": asks, then forgets the
+    // drive (UltraFilerRemoteDrives::RemoveDrive) - its settings and saved
+    // password, never a file on the server. A display on the drive goes to
+    // the home folder first. Works whether or not the drive still signs in,
+    // which is when it is needed: a drive whose password was changed
+    // elsewhere could not be got rid of.
+    void ConfirmRemoveRemoteDrive(const std::string& rootPath);
+    // "Configure drive" on such a row: the account dialog's edit form
+    // (UltraCloud::ShowEditAccountDialog) over the drive's settings. Once
+    // saved, the drive's row is renamed, what was cached of it is forgotten
+    // and every display on it reads it again with the new settings.
+    void ConfigureRemoteDrive(const std::string& rootPath);
+    // Refresh on a folder - a row of the tree, a folder of a display, the
+    // folder a display shows: it is read again, and so are its rows in the
+    // tree and every display showing it. On a drive that means asking the
+    // server again (UltraFilerRemoteDrives::RefreshFolder) while what was
+    // there stays on screen: the one way to see a change made on the drive
+    // from another device. A computer of the Network section has its shares
+    // listed again.
+    void RefreshFolderEverywhere(const std::string& folder);
+    // A file on a drive could not be fetched to be shown, for a reason that
+    // will not pass by itself (RemoteFailure::NotFound or Lasting): said in a
+    // dialog, not only on the status line. Asked once per selection
+    // (remoteFileAlertPath). A file that is no longer there has its folder
+    // read again, so it leaves the display.
+    void ShowRemoteFileError(const std::string& path, const std::string& why,
+                             RemoteFailure failure);
     // ===== PHONES AND CAMERAS (MTP / PTP) =====
     // Asks which portable devices are connected, on a worker thread (a device
     // seen for the first time is opened once to learn whether it is a phone
@@ -767,6 +796,11 @@ private:
     // too, and the tree keeps "Computer" selected while it is up.
     void BuildComputerPage();
     void SetComputerPageVisible(bool visible);
+    // What the Computer page shows: everything (the tree's Computer row, the
+    // breadcrumb, Up), or one section - the tree's Cloud Storage, Remote
+    // Drives or RAM Discs row. Opens the page if it is not up.
+    enum class ComputerSection { All, Cloud, Remote, Ram };
+    void ShowComputerSection(ComputerSection section);
     // Re-lists the page's folders (Home, then the Cloud Storage folders the
     // tree found) and rebuilds the drive cards from what is mounted right
     // now; the sizes come in afterwards (QueueVolumeSpaceQuery).
@@ -1212,7 +1246,16 @@ private:
     };
     std::shared_ptr<UltraCanvasContainer>       computerPane;
     std::shared_ptr<UltraCanvasFilerWidget>     computerFolders;  // Home + cloud folders
+    std::shared_ptr<UltraCanvasLabel>           computerFoldersHeading;
+    std::shared_ptr<UltraCanvasLabel>           computerDrivesHeading;
     std::shared_ptr<UltraCanvasContainer>       computerDriveRow;
+    ComputerSection computerSection = ComputerSection::All;
+    // The Remote Drives and RAM Discs sections under it: a heading and a row
+    // of cards each, hidden while the section has no card.
+    std::shared_ptr<UltraCanvasLabel>           computerRemoteHeading;
+    std::shared_ptr<UltraCanvasContainer>       computerRemoteRow;
+    std::shared_ptr<UltraCanvasLabel>           computerRamHeading;
+    std::shared_ptr<UltraCanvasContainer>       computerRamRow;
     std::vector<ComputerDriveCard>              computerDriveCards;
     std::shared_ptr<UltraCanvasMenu>            treeContextMenu; // folder tree right-click
     std::shared_ptr<UltraCanvasButton>          addDriveButton;  // "+ Drive" in the navigation row
@@ -1279,6 +1322,12 @@ private:
     // or the download failed). Shown on the status line after the drop note
     // and cleared as soon as the selection moves.
     std::string remotePreviewNote;
+    // The file on a drive whose failure was put in a dialog last
+    // (ShowRemoteFileError). The preview pane is brought up to date again
+    // for the same selection - a status change, a copy arriving - and asking
+    // again each time would make the dialog impossible to get rid of. Cleared
+    // once the selection moves off it, so choosing the file again asks again.
+    std::string remoteFileAlertPath;
     // What the last copy, move or delete did - "3 files copied to \"alt\"",
     // "\"report.pdf\" moved to the Trash" - said on
     // the status line for kTransferNoteMs after it ends, so a drop or a paste
@@ -1376,6 +1425,8 @@ private:
     std::vector<std::string> treeDeviceNodeIds;
     // Node ids (the mount paths) of the "RAM Discs" rows.
     std::vector<std::string> treeRamDiskNodeIds;
+    // The RAM discs as last listed (ApplyRamDiskList), for the Computer page.
+    std::vector<UltraFilerRamDisks::RamDisc> knownRamDiscs;
     // The start-up probe (StartRamDiskProbe) and what it answered. Both
     // flags are written on the UI thread only, by the callback it posts.
     std::thread ramDiskProbeWorker;

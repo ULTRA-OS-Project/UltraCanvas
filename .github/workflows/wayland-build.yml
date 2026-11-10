@@ -1,0 +1,247 @@
+# The Wayland build of the framework (ULTRACANVAS_WAYLAND=ON) and the
+# desktop shell backend's tests under a compositor: sway headless, a
+# wlroots compositor with the layer shell, foreign toplevels, the session
+# lock and xdg-activation (Docs/UltraCanvas/WaylandDesktopShellProposal.md,
+# section 5). The X11 rows in build.yml never compile OS/Linux/Wayland, so
+# without this a change there went unseen until someone built it by hand.
+#
+# ubuntu-24.04: sway 1.9 and wayland-protocols 1.33 (xdg-activation,
+# ext-session-lock; the backend vendors what it needs beyond that), and
+# the libraries the X11 rows build from source on 22.04 (libjxl, libheif
+# with its plug-ins, MuPDF 1.23) are packages here. The build is the
+# framework, DesktopShellTest and UltraDesktop, not the whole suite: this
+# row checks the backend, the X11 rows check everything else.
+name: Wayland build
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'UltraCanvas/**'
+      - 'Tests/DesktopShellTest.cpp'
+      - 'Tests/DesktopShellTests.cmake'
+      - 'Apps/UltraDesktop/**'
+      - 'CMakeLists.txt'
+      - 'cmake/**'
+      - '.github/workflows/wayland-build.yml'
+  pull_request:
+    paths:
+      - 'UltraCanvas/**'
+      - 'Tests/DesktopShellTest.cpp'
+      - 'Tests/DesktopShellTests.cmake'
+      - 'Apps/UltraDesktop/**'
+      - 'CMakeLists.txt'
+      - 'cmake/**'
+      - '.github/workflows/wayland-build.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: wayland-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  wayland:
+    name: wayland (ubuntu-24.04, Release)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      # ccache as build.yml keeps it: the compiled objects across runs,
+      # small enough not to evict the X11 rows' caches.
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_MAXSIZE: 500M
+      CCACHE_COMPILERCHECK: content
+      ULTRACANVAS_CLANG_VERSION: "19"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - name: Install dependencies
+        timeout-minutes: 45
+        run: |
+          scripts/ci-apt.sh update
+          scripts/ci-apt.sh install cmake pkg-config build-essential ccache
+          # The framework's libraries, as build.yml's Linux rows install
+          # them, with noble's packages where the 22.04 rows build from
+          # source.
+          scripts/ci-apt.sh install libcairo2-dev libpango1.0-dev libharfbuzz-dev
+          scripts/ci-apt.sh install libvips-dev libglib2.0-dev libfreetype6-dev dbus dbus-daemon
+          scripts/ci-apt.sh install libheif-dev libheif-plugin-libde265 libheif-plugin-aomdec libjxl-dev
+          scripts/ci-apt.sh install libtinyxml2-dev libfmt-dev
+          scripts/ci-apt.sh install libx11-dev libxcursor-dev libxi-dev libgl1-mesa-dev libgtk-3-dev
+          scripts/ci-apt.sh install libcdr-dev librevenge-dev zlib1g-dev
+          scripts/ci-apt.sh install libboost-dev liblcms2-dev libicu-dev
+          scripts/ci-apt.sh install libzbar-dev libhunspell-dev hunspell-en-us
+          scripts/ci-apt.sh install libudev-dev libcups2-dev libsane-dev
+          scripts/ci-apt.sh install libpaho-mqtt-dev librabbitmq-dev libcoap3-dev libsnmp-dev libssh-dev
+          scripts/ci-apt.sh install libavahi-client-dev
+          scripts/ci-apt.sh install libmupdf-dev libjbig2dec0-dev libmujs-dev libgumbo-dev libopenjp2-7-dev libjpeg-dev
+          scripts/ci-apt.sh install freerdp3-dev
+          # What the rest of the framework's configure asks for, as the X11
+          # rows install it: the bundled curl (libpsl, OpenSSL, libssh2),
+          # UltraCrypt and UltraMail (sodium, GPGME), the databases (SQLite,
+          # PostgreSQL, MariaDB), the archives, the stack unwinder, and the
+          # audio and video modules' codecs.
+          scripts/ci-apt.sh install libcurl4-openssl-dev libpsl-dev libssh2-1-dev libssl-dev
+          scripts/ci-apt.sh install libgpgme-dev gnupg libsodium-dev libunwind-dev libarchive-dev
+          scripts/ci-apt.sh install libsqlite3-dev libpq-dev libmariadb-dev
+          scripts/ci-apt.sh install libaom-dev libdav1d-dev libde265-dev libbrotli-dev
+          scripts/ci-apt.sh install libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good
+          scripts/ci-apt.sh install libflac-dev libogg-dev libopus-dev libopusfile-dev libvorbis-dev libmp3lame-dev
+          scripts/ci-apt.sh install libavcodec-dev libavformat-dev libavfilter-dev libavutil-dev libswscale-dev
+          # The Wayland backend: the client library and its cursor themes,
+          # the protocol XML and the scanner, xkbcommon; EGL for the GL
+          # surfaces, which run on the compositor's connection here.
+          scripts/ci-apt.sh install libwayland-dev wayland-protocols libxkbcommon-dev libegl-dev
+          # The compositor the tests run under, a virtual keyboard for the
+          # seat (wtype), a screenshot of the desktop (grim), and a session
+          # bus for the portal test (dbus-run-session).
+          scripts/ci-apt.sh install sway wtype grim
+
+      - name: Install Clang
+        timeout-minutes: 15
+        run: |
+          set -euo pipefail
+          V="${ULTRACANVAS_CLANG_VERSION}"
+          installed=false
+          for attempt in 1 2 3; do
+            rm -f /tmp/llvm.sh
+            if curl -fsSL --connect-timeout 20 --retry 5 --retry-all-errors --retry-delay 10 \
+                    -o /tmp/llvm.sh https://apt.llvm.org/llvm.sh &&
+               chmod +x /tmp/llvm.sh &&
+               sudo /tmp/llvm.sh "$V"; then
+              installed=true
+              break
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              echo "::warning::installing Clang $V from apt.llvm.org failed (attempt $attempt of 3); retrying in $((attempt * 30)) s"
+              sleep $((attempt * 30))
+            fi
+          done
+          if [ "$installed" != true ]; then
+            echo "::error::could not install Clang $V from apt.llvm.org in 3 attempts (the host may be down)."
+            exit 1
+          fi
+          command -v "clang++-$V"
+
+      - name: Restore ccache
+        id: ccache
+        uses: actions/cache/restore@v5
+        with:
+          path: ${{ github.workspace }}/.ccache
+          key: ccache-wayland-ubuntu-24.04-${{ github.run_id }}
+          restore-keys: |
+            ccache-wayland-ubuntu-24.04-
+
+      - name: Configure CMake
+        run: |
+          cmake -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER="clang-${ULTRACANVAS_CLANG_VERSION}" \
+            -DCMAKE_CXX_COMPILER="clang++-${ULTRACANVAS_CLANG_VERSION}" \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DULTRACANVAS_WAYLAND=ON \
+            -DULTRACANVAS_ENABLE_GL=ON \
+            -DULTRACANVAS_BUILD_SHARED=ON \
+            -DULTRACANVAS_BUILD_DESKTOPSHELL_TESTS=ON \
+            -DBUILD_DEMO_APP=OFF 2>&1 | tee configure.log
+          grep -q "Wayland backend: wayland-client" configure.log
+          grep -q "EGL backend: YES" configure.log
+
+      - name: Build the framework, DesktopShellTest and UltraDesktop
+        run: |
+          ccache -z
+          cmake --build build --target UltraCanvas DesktopShellTest UltraDesktop -j"$(nproc)"
+          ccache -s
+
+      - name: Save ccache (main)
+        if: always() && github.ref == 'refs/heads/main' && steps.ccache.outcome == 'success'
+        uses: actions/cache/save@v5
+        with:
+          path: ${{ github.workspace }}/.ccache
+          key: ${{ steps.ccache.outputs.cache-primary-key }}
+
+      # The portals, against the fake portal the test exports in a program
+      # of its own, under a session bus of its own: no compositor needed.
+      - name: Run DesktopShellPortalTest
+        working-directory: build/bin
+        run: dbus-run-session -- ./DesktopShellTest --portals
+
+      # The backend under sway headless: the window list, the reserved
+      # edges (read back from sway's workspace), activation with a keyboard
+      # on the seat (wtype's virtual one), the session lock, a popup, a
+      # panel, a drag and a GL surface. sway writes its socket as wayland-1
+      # under XDG_RUNTIME_DIR and hands SWAYSOCK to its children; the test is
+      # one of them so that swaymsg answers.
+      - name: Run DesktopShellTest under sway
+        env:
+          ULTRACANVAS_TEST_DISPLAY_REQUIRED: 1
+          DESKTOPSHELLTEST_WAYLAND_KEYBOARD: 1
+          WLR_BACKENDS: headless
+          WLR_LIBINPUT_NO_DEVICES: 1
+          WLR_RENDERER: pixman
+        run: |
+          set -euo pipefail
+          export XDG_RUNTIME_DIR="$RUNNER_TEMP/xdg"
+          mkdir -p -m 700 "$XDG_RUNTIME_DIR"
+          printf 'output HEADLESS-1 resolution 1280x800\nxwayland disable\nfocus_on_window_activation focus\n' > "$RUNNER_TEMP/sway.config"
+          cat > "$RUNNER_TEMP/under-sway.sh" <<'EOF'
+          #!/bin/bash
+          set -euo pipefail
+          # A keyboard on the seat for the activation check, kept for the
+          # test's whole run.
+          wtype -s 600000 "" &
+          WTYPE=$!
+          sleep 1
+          cd "$GITHUB_WORKSPACE/build/bin"
+          status=0
+          timeout 600 ./DesktopShellTest || status=$?
+          kill $WTYPE 2>/dev/null || true
+          # The script ends sway when the test is done. A second command
+          # on the config's exec line would not wait for it: ';' separates
+          # sway commands, so "exec A; exec swaymsg exit" ran both at once
+          # and sway quit before the test had connected.
+          swaymsg exit >/dev/null 2>&1 || true
+          exit $status
+          EOF
+          chmod +x "$RUNNER_TEMP/under-sway.sh"
+          echo "exec $RUNNER_TEMP/under-sway.sh" >> "$RUNNER_TEMP/sway.config"
+          timeout 900 sway -c "$RUNNER_TEMP/sway.config" 2>&1 | tee "$RUNNER_TEMP/sway.log"
+          # The test's own verdict is in its output; sway's exit says nothing.
+          grep -q "checks, 0 failures" "$RUNNER_TEMP/sway.log"
+
+      # UltraDesktop as a Wayland client, for the eye: the bars on the layer
+      # shell and the wallpaper, as a picture in the run's artifacts.
+      - name: Screenshot UltraDesktop under sway
+        env:
+          WLR_BACKENDS: headless
+          WLR_LIBINPUT_NO_DEVICES: 1
+          WLR_RENDERER: pixman
+        run: |
+          set -euo pipefail
+          export XDG_RUNTIME_DIR="$RUNNER_TEMP/xdg"
+          mkdir -p -m 700 "$XDG_RUNTIME_DIR"
+          cat > "$RUNNER_TEMP/shot.sh" <<'EOF'
+          #!/bin/bash
+          cd "$GITHUB_WORKSPACE/build"
+          ULTRACANVAS_CLOSE_AFTER_MS=20000 ./UltraDesktop &
+          sleep 12
+          grim "$RUNNER_TEMP/ultradesktop-wayland.png" || true
+          wait
+          # Ends sway (see the step above for why not on the exec line).
+          swaymsg exit >/dev/null 2>&1 || true
+          EOF
+          chmod +x "$RUNNER_TEMP/shot.sh"
+          printf 'output HEADLESS-1 resolution 1280x800\nxwayland disable\nexec %s\n' "$RUNNER_TEMP/shot.sh" > "$RUNNER_TEMP/shot.config"
+          timeout 120 sway -c "$RUNNER_TEMP/shot.config" > "$RUNNER_TEMP/sway-shot.log" 2>&1 || true
+          ls -la "$RUNNER_TEMP/ultradesktop-wayland.png"
+
+      - name: Upload the screenshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ultradesktop-wayland
+          path: ${{ runner.temp }}/ultradesktop-wayland.png
+          if-no-files-found: ignore

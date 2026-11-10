@@ -22,6 +22,11 @@ target_link_libraries(ultraai_test_textllm_translator PRIVATE UltraAI_Core)
 target_compile_features(ultraai_test_textllm_translator PRIVATE cxx_std_20)
 add_test(NAME ultraai.textllm_translator COMMAND ultraai_test_textllm_translator)
 
+add_executable(ultraai_test_agent test_agent.cpp)
+target_link_libraries(ultraai_test_agent PRIVATE UltraAI_Core)
+target_compile_features(ultraai_test_agent PRIVATE cxx_std_20)
+add_test(NAME ultraai.agent COMMAND ultraai_test_agent)
+
 add_executable(ultraai_test_routing test_routing.cpp)
 target_link_libraries(ultraai_test_routing PRIVATE UltraAI_Core)
 target_compile_features(ultraai_test_routing PRIVATE cxx_std_20)
@@ -61,6 +66,15 @@ if(TARGET UltraAI_AdapterAnthropic)
         "${CMAKE_CURRENT_SOURCE_DIR}/../../UltraCanvas/third_party")
     target_compile_features(ultraai_test_anthropic_adapter PRIVATE cxx_std_20)
     add_test(NAME ultraai.anthropic_adapter COMMAND ultraai_test_anthropic_adapter)
+
+    # The OCR vision adapter on top of it, offline the same way.
+    add_executable(ultraai_test_anthropic_vision test_anthropic_vision.cpp)
+    target_link_libraries(ultraai_test_anthropic_vision PRIVATE
+        UltraAI_Core UltraAI_AdapterAnthropic)
+    target_include_directories(ultraai_test_anthropic_vision PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../UltraCanvas/third_party")
+    target_compile_features(ultraai_test_anthropic_vision PRIVATE cxx_std_20)
+    add_test(NAME ultraai.anthropic_vision COMMAND ultraai_test_anthropic_vision)
 endif()
 
 if(TARGET UltraAI_AdapterOpenAI)
@@ -73,6 +87,18 @@ if(TARGET UltraAI_AdapterOpenAI)
         "${CMAKE_CURRENT_SOURCE_DIR}/../../UltraCanvas/third_party")
     target_compile_features(ultraai_test_openai_adapter PRIVATE cxx_std_20)
     add_test(NAME ultraai.openai_adapter COMMAND ultraai_test_openai_adapter)
+endif()
+
+# Batches: the fallback through the core, the native Anthropic and OpenAI
+# batch formats through ScriptedTransport.
+if(TARGET UltraAI_AdapterAnthropic AND TARGET UltraAI_AdapterOpenAI)
+    add_executable(ultraai_test_batch test_batch.cpp)
+    target_link_libraries(ultraai_test_batch PRIVATE
+        UltraAI_Core UltraAI_AdapterAnthropic UltraAI_AdapterOpenAI)
+    target_include_directories(ultraai_test_batch PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../UltraCanvas/third_party")
+    target_compile_features(ultraai_test_batch PRIVATE cxx_std_20)
+    add_test(NAME ultraai.batch COMMAND ultraai_test_batch)
 endif()
 
 if(TARGET UltraAI_AdapterMiniMax)

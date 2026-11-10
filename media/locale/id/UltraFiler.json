@@ -35,9 +35,6 @@
   "an entry": "sebuah entri",
   "An upload is still running — quit anyway?": "Sebuah unggahan masih berjalan — tetap keluar?",
   "An upload is still waiting — quit anyway?": "Sebuah unggahan masih menunggu — tetap keluar?",
-  "and {n} more": {
-    "other": "dan {n} lainnya"
-  },
   "Any other file, when this system has a program registered for that kind of file:": "File lainnya, jika sistem ini memiliki program yang terdaftar untuk jenis file tersebut:",
   "Applied to {n} item.": {
     "other": "Diterapkan ke {n} item."
@@ -447,9 +444,6 @@
   },
   "{n} icon": {
     "other": "{n} ikon"
-  },
-  "{n} line": {
-    "other": "{n} baris"
   },
   "{n} result": {
     "other": "{n} hasil"

@@ -31,6 +31,12 @@
 #include <algorithm>
 #include <cmath>
 #include "UltraCanvasTimecodeField.h"
+#ifndef UC_TEST_HAS_ALBUM
+#define UC_TEST_HAS_ALBUM 1
+#endif
+#ifndef UC_TEST_HAS_VIDEO_TIMELINE
+#define UC_TEST_HAS_VIDEO_TIMELINE 1
+#endif
 #include "UltraCanvasToolbar.h"
 #include "UltraCanvasTooltipTypes.h"
 #include "UltraCanvasVideoTimeline.h"
@@ -98,6 +104,9 @@ int main() {
     UltraCanvasTheme::SetCurrent(own);
     CHECK(UltraCanvasTheme::Current().name == "Own" && UltraCanvasTheme::Current().dark, "SetCurrent makes it the one in force");
 
+    // The timeline is a selectable widget (ULTRACANVAS_WIDGETS): a lean core
+    // that builds it as a runtime module has no VideoTimelineStyle to link.
+#if UC_TEST_HAS_VIDEO_TIMELINE
     std::printf("VideoTimelineStyle::FromTheme\n");
     const VideoTimelineStyle fromOwn = VideoTimelineStyle::FromTheme(own);
     CHECK(Same(fromOwn.background, own.roles.panel) && Same(fromOwn.lane, own.roles.well) && Same(fromOwn.header, own.roles.raised) &&
@@ -114,6 +123,8 @@ int main() {
           "a light theme: the light palette's clip colours, the panel role behind the lanes");
     CHECK(Same(VideoTimelineStyle::FromTheme().playhead, Color(1, 2, 3)), "FromTheme() reads the current theme");
     CHECK(fromOwn.rulerHeight == darkPalette.rulerHeight && fromOwn.fontFamily == darkPalette.fontFamily, "sizes and fonts stay the defaults");
+
+#endif
 
     std::printf("TimecodeFieldStyle::FromTheme\n");
     const TimecodeFieldStyle field = TimecodeFieldStyle::FromTheme(own);
@@ -204,12 +215,14 @@ int main() {
     const SplitPaneStyle pane = SplitPaneStyle::FromTheme(own, paneBase);
     CHECK(Same(pane.splitterColor, r.ground) && Same(pane.splitterHoverColor, r.lineStrong) && Same(pane.splitterActiveColor, r.accent) && pane.splitterThickness == 9,
           "split pane: ground, strong line, accent; the base's thickness");
+#if UC_TEST_HAS_ALBUM   // a selectable widget (ULTRACANVAS_WIDGETS), absent from a lean core
     AlbumConfig albumBase;
     albumBase.mode = AlbumMode::UserEdit;
     const AlbumConfig album = AlbumConfig::FromTheme(own, albumBase);
     CHECK(Same(album.backgroundColor, r.panel) && Same(album.itemBackgroundColor, r.raised) && Same(album.borderColor, r.line) &&
           Same(album.captionColor, r.ink) && Same(album.subtitleColor, r.inkMuted) && Same(album.linkColor, r.accent) &&
           Same(album.selectionColor, r.accent) && album.mode == AlbumMode::UserEdit, "album: panel, raised tiles, hairlines, captions, accent; the base's mode");
+#endif
 
     ModalDialogStyle dialogBase;
     dialogBase.buttonFontSize = 19.f;

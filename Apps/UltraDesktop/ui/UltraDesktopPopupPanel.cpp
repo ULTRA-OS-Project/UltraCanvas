@@ -1,10 +1,12 @@
 // Apps/UltraDesktop/ui/UltraDesktopPopupPanel.cpp
 // The bars' popup panels' shared window. See the header.
+// Version: 0.2.0 - SetParentWindow (the desktop window places the panel on Wayland)
 // Version: 0.1.1 - SetScreenArea
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraDesktopPopupPanel.h"
+#include "UltraDesktopPanelTheme.h"
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasDesktopShell.h"
@@ -17,7 +19,6 @@ using namespace UltraCanvas;
 namespace UltraDesktop {
 
 namespace {
-const Color kPanel(31, 31, 31);
 } // namespace
 
 UltraDesktopPopupPanel::UltraDesktopPopupPanel(std::string title, int width, int height)
@@ -39,6 +40,10 @@ void UltraDesktopPopupPanel::Open(int rightX, int topY) {
     WindowConfig config;
     config.title = title_;
     config.type = WindowType::Borderless;
+#if defined(ULTRACANVAS_DISPLAY_WAYLAND)
+    // A child of the desktop window: the one way to be placed on Wayland.
+    config.parentWindow = parent_;
+#endif
     config.width = width_;
     config.height = height_;
     config.resizable = false;
@@ -46,7 +51,7 @@ void UltraDesktopPopupPanel::Open(int rightX, int topY) {
     config.maximizable = false;
     config.minWidth = width_;
     config.minHeight = height_;
-    config.backgroundColor = kPanel;
+    config.backgroundColor = PanelColors().panel;
     int areaX = areaX_, areaY = areaY_, areaW = areaW_, areaH = areaH_;
     if (areaW <= 0 || areaH <= 0) {
         areaX = areaY = 0;
@@ -62,7 +67,7 @@ void UltraDesktopPopupPanel::Open(int rightX, int topY) {
     if (areaH > 0) y = std::clamp(y, areaY, std::max(areaY, areaY + areaH - physH));
     window_->SetWindowPosition(x, y);
 
-    window_->SetBackgroundColor(kPanel);
+    window_->SetBackgroundColor(PanelColors().panel);
     Build(*window_);
     open_ = true;
     closing_ = false;

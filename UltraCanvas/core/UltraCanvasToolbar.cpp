@@ -355,6 +355,11 @@ namespace UltraCanvas {
 
         auto badge = std::make_shared<UltraCanvasBadge>(id + ".badge");
         badge->SetOverlayRing(false);
+        // A mark on the item, not a control of its own: the pointer goes
+        // through it to the item, whose corner it covers - a click on a
+        // button's count is a click on the button. A host that gives the
+        // badge an onClick of its own makes it interactive again.
+        badge->SetInteractive(false);
         badgeMap[id] = badge;
         badgeSet.insert(badge.get());
         AddChild(badge);

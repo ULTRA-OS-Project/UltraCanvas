@@ -1,6 +1,7 @@
 // core/UltraCanvasAlbum.cpp
 // Photo / video / music album widget with selectable layout designs, per-item
 // crop / zoom / stretch fitting, action icons and visitor / edit / admin modes.
+// Version: 1.12.0 - Make/Register descriptor: "album" in the element registry, bundled or as a runtime module
 // Version: 1.11.0 - onItemPressed on a tile's press; ReleaseDrag forgets it for an owner carrying the tile; DragOut gone
 // Version: 1.10.0 - AlbumConfig::FromTheme
 // Version: 1.9.0
@@ -56,6 +57,7 @@
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasAlbum.h"
+#include "UltraCanvasElementPlugins.h"
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasImage.h"
 #include "UltraCanvasMenu.h"
@@ -1924,4 +1926,23 @@ namespace UltraCanvas {
         c.selectionColor = r.accent;
         return c;
     }
+
+    UCElementDescriptor MakeAlbumDescriptor() {
+        UCElementDescriptor descriptor;
+        descriptor.typeName = "album";
+        descriptor.category = UCPluginCategory::Widget;
+        descriptor.displayName = "Album";
+        descriptor.description = "Pictures and videos as tiles in a grid, list or strip";
+        descriptor.docPath = "Docs/UltraCanvas/UltraCanvasAlbumExamples.md";
+        descriptor.create = [](const std::string& id, int x, int y, int w, int h) {
+            return std::static_pointer_cast<UltraCanvasUIElement>(
+                std::make_shared<UltraCanvasAlbum>(id, x, y, w, h));
+        };
+        return descriptor;
+    }
+
+    void RegisterAlbumElement() {
+        UltraCanvasElementRegistry::Register(MakeAlbumDescriptor());
+    }
+
 } // namespace UltraCanvas

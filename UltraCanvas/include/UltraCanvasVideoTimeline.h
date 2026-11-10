@@ -20,7 +20,9 @@
 // left to the end of the clip before it (or to 0); Shift+click moves every
 // clip after the gap with it. Both are reported as one Move change.
 //
-// Version: 1.6.0 - FromTheme takes the theme's families; the SetStyle rule and the constructor tail
+// Version: 1.7.0 - FromTheme takes the theme's families; the SetStyle rule and the constructor tail
+// Version: 1.6.0 - MakeVideoTimelineDescriptor / RegisterVideoTimelineElement: the element in
+//                  the element registry as "video-timeline", bundled or as a runtime module
 // Version: 1.5.0 - filmstrips cover the whole clip at any zoom (time-aligned slots, only those in view)
 // Version: 1.4.0 - the close-gap button: a |<- in each gap of a free track moves the clip after it left to close it
 // Version: 1.3.0 - SetDropFeedback: the ring and the insertion marker of a drop the application carries, in one call; a DragLeave clears them
@@ -395,5 +397,15 @@ private:
 };
 
 std::shared_ptr<UltraCanvasVideoTimeline> CreateVideoTimeline(const std::string& id, int x, int y, int w, int h);
+
+// The element in the element registry (UltraCanvasElementPlugins.h), under the
+// type name "video-timeline" (category Widget). A core built with VideoTimeline
+// in ULTRACANVAS_WIDGETS (the default, "all") registers it from
+// UltraCanvas_RegisterSelectedWidgets(); otherwise the
+// ultracanvas-widget-video-timeline runtime module registers the same
+// descriptor through the plugin loader.
+struct UCElementDescriptor;
+UCElementDescriptor MakeVideoTimelineDescriptor();
+void RegisterVideoTimelineElement();
 
 } // namespace UltraCanvas

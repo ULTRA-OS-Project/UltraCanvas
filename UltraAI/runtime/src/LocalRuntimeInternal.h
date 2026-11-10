@@ -3,8 +3,9 @@
 // tested on their own: the gallery and catalogue formats, the hardware fit,
 // the storage layout, files, hashing, archives and processes. The facade in
 // LocalRuntime.cpp composes them.
+// Version: 0.2.0 - topics
 // Version: 0.1.0
-// Last Modified: 2026-10-20
+// Last Modified: 2026-11-06
 // Author: UltraAI Module
 #pragma once
 
@@ -35,16 +36,36 @@ struct Catalogue {
     const LocalModelInfo* Find(const std::string& modelId) const;
 };
 
+struct Topics {
+    int formatVersion = 0;
+    std::string published;
+    std::vector<ModelTopic> topics;
+    const ModelTopic* Find(const std::string& topicId) const;
+};
+
 // Parse the JSON formats of Docs/Modules/UltraAI/LocalRuntime.md. False
 // with a message naming the field when the document is not one.
 bool ParseGallery(const std::string& json, Gallery& out, std::string& outError);
 bool ParseCatalogue(const std::string& json, Catalogue& out, std::string& outError);
+bool ParseTopics(const std::string& json, Topics& out, std::string& outError);
+// The user's topic settings to and from JSON. `outHadSeenList` says whether
+// the document carried a seenModels list (absent the first time).
+std::string SerializeTopicPreferences(const TopicPreferences& preferences);
+bool ParseTopicPreferences(const std::string& json, TopicPreferences& out, bool& outHadSeenList);
+// The model a topic uses, from the user's choice (null or "" = follow the
+// server) and the models of the topic's capability as the inventory has
+// them (decorated with fit and installed). See LocalRuntime::ModelForTopic.
+// `fallback` is Recommend(capability)'s id, used when nothing else fits.
+std::string ResolveTopicModel(const ModelTopic& topic, const TopicChoice* choice,
+                              const std::vector<LocalModelInfo>& models,
+                              const std::string& fallback);
 // Serialize user-added models (file: and hf: entries) and read them back.
 std::string SerializeModels(const std::vector<LocalModelInfo>& models);
 bool ParseModels(const std::string& json, std::vector<LocalModelInfo>& out, std::string& outError);
 // The copies shipped with the framework.
 const char* BuiltinGalleryJson();
 const char* BuiltinCatalogueJson();
+const char* BuiltinTopicsJson();
 // The default gallery URL (its index.json).
 const char* DefaultGalleryUrl();
 // A Hugging Face "resolve" URL for a file.
@@ -105,6 +126,8 @@ struct Paths {
     std::filesystem::path galleryJson;
     std::filesystem::path catalogueJson;
     std::filesystem::path userModelsJson;
+    std::filesystem::path topicsJson;
+    std::filesystem::path topicPreferencesJson;
 
     static Paths For(const std::filesystem::path& root);
     // The default root: <LocalDataFolderRoot>/UltraAI.

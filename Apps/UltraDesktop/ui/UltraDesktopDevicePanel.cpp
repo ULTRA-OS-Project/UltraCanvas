@@ -6,6 +6,7 @@
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraDesktopDevicePanel.h"
+#include "UltraDesktopPanelTheme.h"
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasButton.h"
@@ -21,11 +22,6 @@ namespace {
 constexpr int kPanelWidth = 340;
 constexpr int kPanelHeight = 380;
 constexpr int kInnerWidth = kPanelWidth - 28;
-const Color kText(242, 242, 242);
-const Color kMuted(160, 160, 160);
-const Color kRow(44, 44, 44);
-const Color kRowHighlighted(30, 64, 110);
-const Color kError(255, 140, 120);
 } // namespace
 
 UltraDesktopDevicePanel::UltraDesktopDevicePanel(std::string title, std::function<DevicePanelContent()> read,
@@ -97,13 +93,13 @@ void UltraDesktopDevicePanel::Build(UltraCanvasWindow& window) {
     auto title = CreateLabel("dev.title", 0, 0, kInnerWidth, 22, title_);
     title->SetFontSize(11.5f);
     title->SetFontWeight(FontWeight::Bold);
-    title->SetTextColor(kText);
+    title->SetTextColor(PanelColors().text);
     title->layoutItem.SetFlexShrink(0.0f);
     window.AddChild(title);
 
     summary_ = CreateLabel("dev.summary", 0, 0, kInnerWidth, 34, "Reading...");
     summary_->SetFontSize(9.5f);
-    summary_->SetTextColor(kMuted);
+    summary_->SetTextColor(PanelColors().muted);
     summary_->SetWrap(TextWrap::WrapWord);
     summary_->layoutItem.SetFlexShrink(0.0f);
     window.AddChild(summary_);
@@ -115,7 +111,7 @@ void UltraDesktopDevicePanel::Build(UltraCanvasWindow& window) {
 
     message_ = CreateLabel("dev.message", 0, 0, kInnerWidth, 34, "");
     message_->SetFontSize(9.0f);
-    message_->SetTextColor(kMuted);
+    message_->SetTextColor(PanelColors().muted);
     message_->SetWrap(TextWrap::WrapWord);
     message_->layoutItem.SetFlexShrink(0.0f);
     window.AddChild(message_);
@@ -171,7 +167,7 @@ void UltraDesktopDevicePanel::Read() {
 void UltraDesktopDevicePanel::SetMessage(const std::string& text, bool error) {
     if (!message_) return;
     message_->SetText(text);
-    message_->SetTextColor(error ? kError : kMuted);
+    message_->SetTextColor(error ? PanelColors().error : PanelColors().muted);
 }
 
 void UltraDesktopDevicePanel::RunEntryAction(const DevicePanelEntry& entry) {
@@ -208,7 +204,7 @@ void UltraDesktopDevicePanel::Apply(const DevicePanelContent& content) {
         const std::string id = "dev.entry" + std::to_string(index++);
         if (entry.heading) {
             auto heading = CreateLabel(id, 0, 0, kInnerWidth - 20, 18, entry.title);
-            heading->SetTextColor(kMuted);
+            heading->SetTextColor(PanelColors().muted);
             heading->SetFontSize(9.0f);
             heading->SetFontWeight(FontWeight::Bold);
             heading->layoutItem.SetFlexShrink(0.0f);
@@ -221,19 +217,19 @@ void UltraDesktopDevicePanel::Apply(const DevicePanelContent& content) {
         row->layout.SetFlexRow().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Center);
         row->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Px(height));
         row->layoutItem.SetFlexShrink(0.0f);
-        row->SetBackgroundColor(entry.highlighted ? kRowHighlighted : kRow);
+        row->SetBackgroundColor(entry.highlighted ? PanelColors().rowHighlighted : PanelColors().row);
         row->SetBorders(0, Colors::Transparent, 6);
         row->SetPadding(4, 8);
         auto texts = std::make_shared<UltraCanvasContainer>(id + ".texts");
         texts->layout.SetFlexColumn().SetFlexGap(1).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         texts->layoutItem.SetFlexGrow(1.0f).SetFlexShrink(1.0f).SetFlexBasis(CSSLayout::Dimension::Px(0));
         auto name = CreateLabel(id + ".title", 0, 0, kInnerWidth - 36, 18, entry.title);
-        name->SetTextColor(kText);
+        name->SetTextColor(PanelColors().text);
         name->SetFontSize(10.0f);
         texts->AddChild(name);
         if (twoLines) {
             auto detail = CreateLabel(id + ".detail", 0, 0, kInnerWidth - 36, 16, entry.detail);
-            detail->SetTextColor(kMuted);
+            detail->SetTextColor(PanelColors().muted);
             detail->SetFontSize(8.5f);
             texts->AddChild(detail);
         }
@@ -256,7 +252,7 @@ void UltraDesktopDevicePanel::Apply(const DevicePanelContent& content) {
     }
     if (content.entries.empty() && !content.empty.empty()) {
         auto none = CreateLabel("dev.none", 0, 0, kInnerWidth - 20, 40, content.empty);
-        none->SetTextColor(kMuted);
+        none->SetTextColor(PanelColors().muted);
         none->SetFontSize(9.5f);
         none->SetWrap(TextWrap::WrapWord);
         list_->AddChild(none);

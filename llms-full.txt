@@ -183,8 +183,9 @@ The following features are planned for future releases:
 -   **Wayland desktop shell** - the windowing backend and the desktop shell's
     protocols are in (`-DULTRACANVAS_WAYLAND=ON`): the layer shell, foreign
     toplevels, ext-workspace, the portals for screenshots and shortcuts,
-    xdg-activation; popups with a positioner, drags, the session lock and GL
-    surfaces come next (see `Docs/UltraCanvas/WaylandDesktopShellProposal.md`)
+    xdg-activation, panels and popups placed by their parent, drag and drop,
+    the session lock, GL surfaces, a CI row under sway; an icon for a drag and
+    a menu grab remain (see `Docs/UltraCanvas/WaylandDesktopShellProposal.md`)
 
 ----------
 
@@ -770,7 +771,9 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   the window's one type scale (`MakeChoice`, `MakeCheckbox`, `MakeIntSlider`
   / `MakeSliderRow`, `MakeButton` / `MakeButtonRow`, `MakeChoiceRow`,
   `MakeLabelledRow`, `MakeColorBox`, `MakeLabel` / `MakeText`). UltraFiler's
-  settings window set the style; it and UltraSnip's are built on the kit.
+  settings window set the style; it, UltraSnip's and UOS-Settings (a main
+  window with the logo above its tree, through `SettingsWindowOptions`) are
+  built on the kit; the demo's *Widgets > Settings Window* page shows it.
   Core in `core/UltraCanvasSettingsPageKit.cpp`. See
   `Docs/UltraCanvas/UltraCanvasSettingsPageKit.md`.
 
@@ -785,7 +788,7 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   (`cmake/UltraCanvasSingleInstance.cmake`) compiles
   `core/AppEntry/UltraCanvasSingleInstance.cpp` into the application and links
   UltraMessage where present. Used by the single-window applications (UltraMail,
-  UltraClipboard, UltraSnip, DeviceExplorer, UOS-Settings, UltraNetMonitor, UltraDBAdmin, UltraPassword,
+  UltraClipboard, UltraNotifications, UltraSnip, DeviceExplorer, UOS-Settings, UltraNetMonitor, UltraDBAdmin, UltraPassword,
   UltraAuthenticator, UltraCleaner, EmailCleaner, UltraClaude, UltraAI,
   UltraSocial, UltraFIBU, UltraWin Manager) and, with their files handed over,
   the document applications (Texter, UltraFiler, UltraViewer, UltraPaint,
@@ -1084,8 +1087,16 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   `AddHostAppearanceHandler` hears a difference; the system fonts are the
   value's. `HostAppearanceTest` covers the pure half,
   `LinuxHostAppearanceTest` the Linux detector against a made-up config
-  home. Phases T1 and T2 of `Docs/UltraCanvas/UltraCanvasHostThemeProposal.md`;
-  see `Docs/UltraCanvas/UltraCanvasHostAppearance.md`.
+  home. `UltraCanvasTheme::FromHost` builds the theme the desktop asks for
+  from it - Light or Dark, the high-contrast presets, the accent derived
+  into the five accent roles (`DeriveAccent`), the fonts and text roles
+  (`ThemeFonts`, `ThemeTextRole`) - and the application's theme policy
+  (`SetThemePolicy`: FollowHost by default, Light, Dark, Own with
+  `SetThemeProvider`) applies it in `Initialize` and on every host change,
+  a window built with the default background taking the theme's ground.
+  Phases T1 to T3 of `Docs/UltraCanvas/UltraCanvasHostThemeProposal.md`;
+  see `Docs/UltraCanvas/UltraCanvasHostAppearance.md` and
+  `Docs/UltraCanvas/UltraCanvasTheme.md`.
 
   Emoji come from a bundled font the emoji setting picks
   (`UltraCanvasEmojiSettings.h`: `EmojiStyle` Colour / Monochrome / System,
@@ -1234,6 +1245,9 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
     (Windows `ExitWindowsEx`; Linux logind over the system bus);
     `CanLockSession` / `LockSession` - the screen lock (`LockWorkStation`;
     logind's `Session.Lock`, else `org.freedesktop.ScreenSaver.Lock`).
+  - `CanOpenDisplaySettings` / `OpenDisplaySettings` - the system's own
+    display settings (`ms-settings:display`; System Settings > Displays;
+    the desktop's display tool on Linux).
   - `ReadAudioOutput` → `DesktopAudioOutput` (the default output's name,
     volume and mute), `SetAudioOutputVolume`, `SetAudioOutputMuted` - the
     loudspeaker through the sound server (libpulse loaded at run time:
@@ -1326,7 +1340,9 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   - `ClipboardHistoryListModel` + `ClipboardHistoryRowDelegate`
     (`ClipboardRowStyle::Light()` / `Dark()`) - the history in an
     `UltraCanvasListView`: thumbnails by kind, meta line, painted Copy / Edit
-    / Delete hit-tested with `ActionAt`.
+    / Delete hit-tested with `ActionAt`; its text in the person's language
+    (`Tr`), with `ClipboardEntryKindLabel` / `ClipboardEntryDisplayTitle` for
+    what is stored in English.
   - `EditClipboardText` (trim, join lines, case), `ClipboardImageFile`,
     `FoldForClipboardSearch`, `DescribeClipboardEntry`,
     `PreferredClipboardKinds` (what a program takes when pasted into, from
@@ -1802,20 +1818,39 @@ image / video / music generation, translation, code assist). See
 through any text LLM (`UltraAITextLLMTranslator.h`: `CreateTextLLMTranslator`,
 `BuildTranslationPrompt` / `ParseTranslationReply`, `BuildDetectionPrompt` /
 `ParseDetectionReply`), registered under each text-LLM provider's id;
-`Docs/Modules/UltraAI/Adapters.md` has the option keys. The local runtime
+`Docs/Modules/UltraAI/Adapters.md` has the option keys. Agents
+(`UltraAIAgent.h`: `Agent` with `AddTool` / `RemoveTool` / `Run` /
+`RunAsync` / `Cancel` / `History` / `SetHistory` / `ClearHistory`,
+`CreateAgent`, `AgentOptions` (`canUseTool`, `afterToolCall`, `maxTurns`,
+`stream`), `ToolArguments`, `ToolResult`, `ToolPermission`,
+`MakeSubagentTool`) run the model ↔ tool loop over any `ITextLLM`;
+`Docs/Modules/UltraAI/Agents.md`. Batches (`UltraAIBatch.h`:
+`ITextBatch` with `Submit` / `Get` / `Cancel` / `Results`,
+`CreateTextBatch`, `CreateSequentialTextBatch`, `RunBatch`,
+`ValidateBatchItems`, `IsFinished`; `CreateAnthropicTextBatch`,
+`CreateOpenAITextBatch`) send many chat requests as one job at about half
+the price; `Docs/Modules/UltraAI/Batches.md`. The local runtime
 (`UltraAILocalRuntime.h`, `UltraAI/runtime/`: `LocalRuntime::Instance()`,
 `ListModels` / `ListEngines` / `Recommend` / `Fit`, `InstallModel` /
 `InstallEngine` / `Cancel` / `RemoveModel`, `AddModelFile` /
 `AddHuggingFaceModel`, `Ensure` / `Touch` / `StopIdle` / `StopAll`,
-`GetSettings` / `SetSettings`, `RefreshGallery`) downloads an inference
-engine and a model on demand and supervises the engine as a loopback
-process shared between applications; the `local` provider
+`GetSettings` / `SetSettings`, `RefreshGallery`; topics: `ListTopics` /
+`ModelForTopic` / `GetTopicPreferences` / `SetTopicPreferences` /
+`SetTopicModel` / `NewModels` / `MarkModelsSeen` / `ApplyTopicUpdates`)
+downloads an inference engine and a model on demand and supervises the
+engine as a loopback process shared between applications, and keeps which
+model the user wants for each topic (chat, code, translation, ...) from
+the model server's `topics.json`; the `local` provider
 (`UltraAILocal.h`: `CreateLocalTextLLM`, `CreateLocalEmbeddings`) serves
 chat and embeddings through it; the module's one library that draws,
 `UltraAI_UI` (`UltraAI/ui/`, `UltraAILocalModelDialog.h`:
 `UltraAILocalModelDialog::Show`, `NeedsInstall`), is the "Get a local model"
 dialog an application shows when a service needs a model that is not on
-this computer. `Docs/Modules/UltraAI/LocalRuntime.md`.
+this computer. `Docs/Modules/UltraAI/LocalRuntime.md`. The model server
+those catalogues and topics come from is `Server/UltraAIModelServer`
+(FastAPI on SQLite), managed with UltraAI ServerAdmin
+(`Apps/UltraAIServerAdmin`, `ModelServerClient.h`: the admin API's client;
+`Docs/UltraAIServerAdmin/README.md`).
 
 ### **3. FileLoader**
 
@@ -1863,6 +1898,17 @@ type the build reads), `AddSaveTypes(opts, category)` / `AddImageSaveTypes`
 `SaveTextDocument` (what `LoadTextDocument` reads, ODT and DOCX written). A
 codec an application brings joins them through `RegisterMediaCodec`, as
 UltraVideo's FFmpeg engine does (`VideoFX_GetFileFormats`).
+
+The words in a file, as plain text: `UltraCanvasFileLoader::ExtractText(path,
+password)` (`TextExtractionResult`: text, `TextExtractionMethod`, error) reads
+documents and decks (`LoadTextDocument`), PDFs (page text; a scan by text
+recognition), spreadsheets (every sheet, tab-separated), text files, pictures
+(text recognition) and recordings (speech to text);
+`GetTextExtractionMethod` / `CanExtractText` / `WhyNoTextExtraction` say how
+and whether. Text recognition and speech to text are hooks:
+`SetImageTextRecognizer` (the OCR plugin's `RegisterOCRTextRecognition()`
+installs Tesseract) and `SetSpeechTranscriber` (an application's engine, e.g.
+UltraAI's `ISpeechToText`). UltraClipboard's *Extract text* uses it.
 
 ### **4. Plug-ins for File Types**
 
@@ -6548,6 +6594,23 @@ pin anything you copied.
 
 **Built on:** ClipboardHistory.
 **Version:** 0.1.5 (2026-10-14).
+
+### UltraNotifications
+
+**Purpose:** the notifications after their pop-up has gone: every
+notification, chat message and mail on the UltraMessage feed, to read again,
+search, open and dismiss.
+
+**Capabilities:**
+- All / Chats / Mail / System, the sources with their unread counts, search
+  and filters; the selected one in full with its own buttons.
+- *Open* takes a mail to UltraMail, a ChatCube chat to ChatCube, and does a
+  notification's first action; *Dismiss* also closes its pop-up.
+- Runs without a window (`--background`, UltraDesktop's *Start with the
+  desktop*) and counts the unread for the desktop's bell.
+
+**Built on:** UltraMessage, UltraCanvasMessageCenter.
+**Version:** 0.1.0 (2026-11-06).
 
 ### UltraCleaner
 
@@ -14576,6 +14639,7 @@ FILE: Docs/UltraCanvas/UltraCanvasBitmapExamples.md
 - [Image Loading Methods](#image-loading-methods)
   - [LoadFromFile](#loadfromfile)
   - [LoadFromImage](#loadfromimage)
+  - [LoadFromPixmap](#loadfrompixmap)
   - [GetLastError](#getlasterror)
 - [Display Properties](#display-properties)
   - [Fit, Position and Repeat](#fit-position-and-repeat)
@@ -14721,6 +14785,21 @@ draws, scales, saves and reports transparency like any other.
 <!-- doc-check: std::shared_ptr<UltraCanvasImageElement> image; std::vector<uint8_t> rgba; int width; int height; -->
 ```cpp
 image->LoadFromImage(UCImage::FromRgba(rgba.data(), width, height));
+```
+
+### LoadFromPixmap
+```cpp
+bool LoadFromPixmap(std::shared_ptr<UCPixmap> pixmap);
+```
+Shows a picture that is already drawn - a file's icon from
+`LoadHostFileIconPixmap`, a thumbnail from `RenderFileThumbnail` - fitted to
+the box like a loaded image, with no copy and no decoding. Returns true and
+fires `onImageLoaded` for a picture; null clears the element and fires
+neither. A later `LoadFromFile` or `LoadFromImage` replaces it.
+
+<!-- doc-check: std::shared_ptr<UltraCanvasImageElement> image; std::shared_ptr<UCPixmap> icon; -->
+```cpp
+image->LoadFromPixmap(icon);
 ```
 
 ### GetLastError
@@ -16724,7 +16803,7 @@ std::function<void(bool isPressed)> onToggle;  // Fired on a toggle button's sta
 std::function<void()> onDoubleClick;     // Left double-click, instead of a second press
 std::function<void()> onSecondaryClick;  // Fired when a split button's secondary section is clicked
 std::function<void(int windowX, int windowY)> onContextMenu;  // Right mouse button, window coordinates
-std::function<void()> onHoverEnter;      // Fired when mouse enters button
+std::function<void()> onHoverEnter;      // Fired when mouse enters button (a toggle that is on too; a push button held down not)
 std::function<void()> onHoverLeave;      // Fired when mouse leaves button
 ```
 
@@ -18208,12 +18287,26 @@ target.label = "Target window";
   web); a domain axis rules across the value range (spokes under Polar).
   `SetDomainGridAxis(index)` adds the second direction, so a scatter plot
   rules both x and y and a radar draws rings and spokes.
+  `SetExtraGridAxes({index, ...})` rules further axes the same way: the other
+  panes of a chart whose value axes share the plot in sub-bands
+  (`ChartAxis::bandStart` / `bandEnd`), so every pane has its own grid.
 - **Limiters**: `AddLimiter({kind, axisIndex, value, color, width, dashed,
   caption})` draws reference lines (average, target, threshold...); captions
   are solved into the label plan so they never overprint value labels. A
   limiter on a domain axis runs across the value range (a pyramid's average
   age), and `extentStart` / `extentEnd` trim it to part of the plot (one side
-  of a diverging chart).
+  of a diverging chart). A limiter whose value falls outside its axis's band
+  (the whole plot, or the axis's pane) is neither drawn nor captioned, rather
+  than drawn across a neighbouring pane. `captionPlacement` decides where the
+  caption goes: `Solved` (the default) lets the label solver place it beside
+  the line near its far end, anchored half its own width in from the end so it
+  fits there instead of running past the plot edge; `AboveEnd` pins it just
+  above the line there (beside a line that runs up the screen, such as a
+  stage divider, so it stays inside the plot); `BeyondEnd` puts it just past
+  the line's end, outside the plot, in room the engine reserves - the column
+  of limit values a control chart has, clear of the data. Where two captions
+  in that column would overprint, they are spread apart just enough, in order. `GetLimiters()` and `GetHighlights()` return
+  what was added.
 - **Span annotations**: `AddSpanAnnotation({xAxisIndex, yAxisIndex, from, to,
   label, ...})` draws a dimension line between two value-space points, with
   arrowheads and a boxed caption the label plan steers around - the lead time,
@@ -18479,7 +18572,10 @@ sectors, wedges). The engine then owns hover: MouseMove hit-tests the regions
 without re-running layout or the label solver, `HoveredRegionId()` tells the
 content what to emphasise, `OnHitRegionHoverChanged` notifies subclasses, and
 a region's tooltip is shown through the standard tooltip manager whenever
-tooltips are enabled (`SetEnableTooltips`).
+tooltips are enabled (`SetEnableTooltips`). `HitRegionAt(point, &tooltip)`
+answers what a hover at `point` would find - the region's id (-1 for none)
+and its tooltip, as of the last render - for tests and for a host that shows
+its own read-out.
 
 ## Animation
 
@@ -24573,6 +24669,239 @@ states what the mouse does there (zoom / pan / rotate) and which renderer
 draws the tab.
 
 ==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasControlLimits.md
+==============================================================================
+
+# UltraCanvasControlLimits
+
+Statistical process control without a window: the centre line, control
+limits and run-rule signals of a Shewhart control chart, computed from the
+data. `ShowControlChart` draws a result on the engine line chart
+([UltraCanvasEngineCharts.md](UltraCanvasEngineCharts.md#control-charts)).
+
+```cpp
+#include "Plugins/Charts/Engine/UltraCanvasControlLimits.h"
+```
+
+## Overview
+
+A control chart plots a measurement of a process in time order against a
+centre line and two control limits three standard deviations either side. It
+answers one question: is the variation in this process the usual kind, or has
+something changed? A point beyond the limits, or a pattern of points inside
+them, is a signal worth investigating; everything else is noise to leave
+alone.
+
+Control limits are not specification limits: they describe what the process
+does, not what the customer accepts.
+
+| Kind | Plots (pane 0 / pane 1) | Data (`ControlSubgroup`) |
+|---|---|---|
+| `XbarR` | subgroup means / ranges | `values`: 2..25 measurements per subgroup |
+| `XbarS` | subgroup means / standard deviations | `values`: 2 or more, sizes may vary |
+| `IndividualsMR` | individual values / moving ranges of two | `values`: one value per point |
+| `P` | proportion defective (one pane) | `count` defectives in a lot of `size` (sizes may vary) |
+| `NP` | number defective | `count` in a lot of constant `size` |
+| `C` | defects per inspection unit | `count` |
+| `U` | defects per unit | `count` defects over `size` units (may vary) |
+
+## Quick start
+
+```cpp
+std::vector<ControlSubgroup> hours = {
+    {"08:00", {25.004, 24.993, 25.011, 25.002, 24.998}},
+    {"09:00", {25.007, 25.001, 24.996, 25.009, 25.000}},
+    {"10:00", {24.995, 25.003, 25.006, 24.999, 25.012}},
+};
+ControlResult result = ComputeControlChart(hours);
+
+double centre = result.location.centre[0];
+double ucl = result.location.upper[0];
+for (const ControlViolation& v : result.violations) {
+    std::string what = ControlRuleDescription(v.rule);   // "Rule 1: a point beyond the control limits"
+    std::string when = result.labels[v.point];
+}
+for (const std::string& warning : result.warnings) {
+    // "Only 3 points: limits from fewer than 20 are preliminary."
+}
+```
+
+For individuals, one value per point; for counts, a count and the size it
+was counted over:
+
+```cpp
+ControlOptions options;
+options.kind = ControlChartKind::IndividualsMR;
+std::vector<ControlSubgroup> days = {{"Mon", {4.1}}, {"Tue", {3.8}}, {"Wed", {4.4}}, {"Thu", {4.0}}};
+ControlResult daily = ComputeControlChart(days, options);
+
+ControlSubgroup lot;
+lot.label = "Lot 1142";
+lot.count = 7;            // failed inspection
+lot.size = 180;           // items inspected
+ControlOptions attributes;
+attributes.kind = ControlChartKind::P;
+ControlResult lots = ComputeControlChart({lot}, attributes);
+```
+
+## Where the limits come from
+
+Sigma is estimated within subgroups, never from the standard deviation of
+all the values: a shift in the process inflates that standard deviation,
+which widens the limits and hides the very shift the chart is meant to show.
+
+| Pane | Centre | Limits | Point sigma |
+|---|---|---|---|
+| X-bar (with R) | the mean of the subgroup means | centre +- A2 R-bar | R-bar / (d2 sqrt n) |
+| R | R-bar | D3 R-bar and D4 R-bar | d3 R-bar / d2 |
+| X-bar (with S) | the means weighted by n | centre +- 3 sigma / sqrt n_i | sigma / sqrt n_i |
+| S | c4(n_i) sigma | centre +- 3 sigma sqrt(1 - c4^2) | sigma sqrt(1 - c4^2) |
+| I | the mean | centre +- 2.66 MR-bar | MR-bar / d2(2) |
+| MR | MR-bar | 0 and 3.267 MR-bar | d3(2) MR-bar / d2(2) |
+| p | p-bar = all defectives / all items | p-bar +- 3 sqrt(p-bar (1 - p-bar) / n_i) | per lot |
+| np | n p-bar | n p-bar +- 3 sqrt(n p-bar (1 - p-bar)) | |
+| c | c-bar | c-bar +- 3 sqrt(c-bar) | |
+| u | u-bar = all defects / all units | u-bar +- 3 sqrt(u-bar / n_i) | per lot |
+
+For X-bar-S, sigma is S-bar / c4(n) when the subgroups are the same size
+(so the limits are the textbook A3 S-bar, B3 S-bar and B4 S-bar), and the
+pooled standard deviation unbiased by c4 of its degrees of freedom plus one
+when they are not. Where the size varies - X-bar-S, p, u - each point has
+limits for its own size (`constantLimits` is false). `result.sigmaWithin` is
+the estimate of an individual value's sigma (NaN for the counts).
+
+```cpp
+double d2 = ControlD2(5);                 // 2.326 (tabulated, n = 2..25)
+double d3 = ControlD3(5);                 // 0.864
+double c4 = ControlC4(5);                 // 0.9400 (closed form, any n >= 2)
+double a2 = ControlA2(5);                 // 0.577 = 3 / (d2 sqrt n)
+double d3f = ControlRangeLowerFactor(5);  // D3 = 0 up to n = 6
+double d4f = ControlRangeUpperFactor(5);  // D4 = 2.114
+double a3 = ControlA3(5);                 // 1.427
+double b3 = ControlSigmaLowerFactor(5);   // B3 = 0 up to n = 5
+double b4 = ControlSigmaUpperFactor(5);   // B4 = 2.089
+```
+
+d2 and d3 are kept to four decimals, so the derived factors match their own
+published three-decimal tables.
+
+A lower limit below zero for a statistic that cannot go below zero (ranges,
+deviations, counts, proportions: `nonNegative`) is raised to 0, and that
+point has no lower limit (`HasLowerLimit`); a pane where no point has one is
+`lowerClamped`. A proportion's upper limit stops at 1, an np chart's at n.
+
+Subgroups of unequal size on X-bar-R use the most common size for the
+constants, with a warning that X-bar-S handles them; a subgroup with fewer
+than two values is left out. I-MR takes the first value of each point. An
+np chart wants one lot size (`defaultSize` stands in where a lot gives none);
+a lot without a size or a valid count is left out, with a warning.
+
+## Run rules
+
+Rules are evaluated on each point's z-score, (value - centre) / sigma, with
+that point's own sigma. A pattern flags **the point that completes it**;
+`firstPoint` keeps where it started, and a long run flags every point from
+the one that completes it on.
+
+| Rule | Western Electric (default) | Nelson (`ControlRuleSet::Nelson`) |
+|---|---|---|
+| 1 | a point beyond 3 sigma | a point beyond 3 sigma |
+| 2 | two of three beyond 2 sigma, one side | nine in a row on one side |
+| 3 | four of five beyond 1 sigma, one side | six in a row steadily increasing or decreasing |
+| 4 | eight in a row on one side | fourteen in a row alternating up and down |
+| 5 | | two of three beyond 2 sigma, one side |
+| 6 | | four of five beyond 1 sigma, one side |
+| 7 | | fifteen in a row within 1 sigma |
+| 8 | | eight in a row beyond 1 sigma, either side |
+
+The dispersion pane is checked against rule 1 only, unless
+`rulesOnDispersion`: the pattern rules assume roughly normal, independent
+values, which ranges are not. A point on the centre line, or a gap, ends a
+run; a point with no value or a sigma of zero is never flagged.
+
+```cpp
+ControlOptions options;
+options.ruleSet = ControlRuleSet::Nelson;
+options.rulesEnabled = {true, true, false, true, true, true, true, true};   // all but rule 3
+options.sameSideRun = 8;                            // 0 = the set's own: 8, Nelson 9
+ControlResult checked = ComputeControlChart(hours, options);
+std::vector<int> rules = checked.RulesAt(2);        // the rules point 2 completes, pane 0
+std::string text = ControlRuleDescription(checked.ruleSet, rules.empty() ? 1 : rules.front(),
+                                          checked.sameSideRun);
+```
+
+## Stages, excluded points, baselines
+
+A process change - new tooling, a new supplier - starts a **stage**: each
+stage has its own limits, and no rule (nor a moving range) looks across a
+stage boundary. An **excluded** point (an assignable cause found and fixed)
+is still plotted and checked, but left out of the limits. A **baseline**
+takes each stage's limits from its first N points only and judges the rest
+against them.
+
+```cpp
+std::vector<ControlSubgroup> data = hours;
+data[1].excluded = true;
+data[1].note = "Gauge dropped";                   // shown with the point
+
+ControlOptions staged;
+staged.stages = {{2, "New tooling"}};             // a new stage from point 2 on
+staged.baselineCount = 20;                        // limits from each stage's first 20 points
+ControlResult phases = ComputeControlChart(data, staged);
+size_t stage = phases.StageOf(2);                 // 1
+```
+
+`result.stages` lists the stages as applied (sorted, the first at 0),
+`result.excluded` and `result.notes` the points' flags and notes. A stage
+with fewer than 20 points behind its limits gets a "preliminary" warning.
+
+`FindRuleViolations` runs the rules on one pane's series against whatever
+limits it carries - limits frozen from a baseline, say:
+
+```cpp
+ControlSeries frozen = result.location;   // centre, limits and sigma from the baseline
+frozen.value = {25.001, 25.031, 24.998};  // today's means against them
+std::vector<ControlViolation> today = FindRuleViolations(frozen, ControlOptions(), 0);
+```
+
+## Capability
+
+Specification limits on a measurement chart give the capability of the last
+stage, from its values (excluded points left out):
+
+```cpp
+ControlOptions specified;
+specified.lowerSpec = 24.97;
+specified.upperSpec = 25.03;
+specified.target = 25.0;
+const ControlCapability cap = ComputeControlChart(hours, specified).capability;
+// cap.cp  = (USL - LSL) / 6 sigma within      (both limits needed)
+// cap.cpk = (nearest limit - mean) / 3 sigma within
+// cap.pp, cap.ppk: the same with the overall standard deviation
+```
+
+Cp and Pp need both limits; with one, only Cpk and Ppk are given. On an
+attribute chart specification limits are refused, with a warning.
+
+## Drawing it
+
+`ShowControlChart(chart, result, style)` replaces a line chart's categories,
+series, bands, panes, limiters and highlights with the result
+([UltraCanvasEngineCharts.md](UltraCanvasEngineCharts.md#control-charts)).
+`ControlChartStyle` chooses the range pane and its height
+(`showDispersion`, `dispersionWeight`), A / B / C zones (`showZones`), dotted
+1 and 2 sigma lines (`showSigmaLines`), the "UCL = ..." captions
+(`showLimitCaptions`), the specification lines (`showSpecLimits`,
+`specColor`), the stage names (`showStageNames`) and the colours; a colour
+left at alpha 0 comes from the chart's theme. Each pane's axis always reaches
+its limits.
+
+## Not yet
+
+EWMA and CUSUM, and live appending against frozen limits, are Phase 3 of
+[UltraCanvasControlChartProposal.md](UltraCanvasControlChartProposal.md).
+
+==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasCoordinateSystemGuide.md
 ==============================================================================
 
@@ -25154,6 +25483,7 @@ auto editor = CreateCurveEditor("Curves", 0, 0, 320, 320);
 editor->SetCurves(existing);                       // seed from a stored adjustment
 editor->SetActiveChannel(ToneCurveChannel::Red);   // which curve is edited/drawn
 editor->SetHistogram(ToneCurveChannel::Red, bins); // 256 bin counts, optional
+editor->SetHistograms(counts);                     // or all four from one ImageHistogram
 editor->onCurveChanged  = [](const ToneCurveSet& s) { /* live preview */ };
 editor->onEditFinished  = [](const ToneCurveSet& s) { /* commit / undo step */ };
 editor->onSelectionChanged = [](int index) { /* update a readout */ };
@@ -25183,11 +25513,33 @@ diagonal, curve, point, selection and histogram colours, plus `gridDivisions`,
 `pointSize`, `grabRadius` and `curveWidth`. The active channel's curve is drawn
 in its own colour (red / green / blue; the master curve in `curveColor`).
 
+### Filling the histogram
+
+A program that shows a picture's histogram behind the curves counts the
+picture with `ComputeImageHistogram` (`UltraCanvasHistogramModel.h`, in the
+core library) and hands the result to `SetHistograms`, on the editor or the
+dialog. Red, Green and Blue get their own channel's counts; RGB gets the three
+added level by level (`ImageHistogram::RgbTotal`), since the RGB curve maps
+every red, green and blue value. Fully transparent pixels are left out: they
+have no colour. An empty `ImageHistogram` removes every backdrop. The image
+viewer (`UltraCanvasMediaViewer`) and UltraPaint both fill their Curves
+dialog this way, so a picture shows the same histogram in either.
+
+```cpp
+const ImageHistogram counts = ComputeImageHistogram(layer.Data(), layer.GetWidth(), layer.GetHeight(),
+                                                    layer.GetWidth() * 4, HistogramPixelFormat::RGBA8);
+editor->SetHistograms(counts);
+const std::vector<uint32_t>& reds = editor->GetHistogram(ToneCurveChannel::Red);   // what is drawn
+```
+
+`SetHistogram(channel, bins)` still sets one channel from counts the program
+made itself (other sizes than 256 are resampled).
+
 ## The dialog
 
 ```cpp
 auto dlg = CreateCurvesDialog(currentCurves);
-dlg->SetHistogram(ToneCurveChannel::RGB, bins);        // one call per channel
+dlg->SetHistograms(ComputeImageHistogram(pixels, w, h, stride, HistogramPixelFormat::RGBA8));
 dlg->onCurvesChanged = [this](const ToneCurveSet& s) { Preview(s); };
 dlg->onAccept        = [this](const ToneCurveSet& s) { Commit(s); };
 dlg->onCancel        = [this]()                       { Restore(); };
@@ -26430,7 +26782,7 @@ panel never disagree about an interface.
 
 | Call | Meaning |
 |---|---|
-| `ListWindows()` | Every managed window in stacking order, bottom first, as `DesktopWindowInfo { id, title, appClass, appName, iconFile, virtualDesktop, processId, active, minimized, maximized, skipTaskbar }`. Docks, panels, the desktop and tooltips are included with `skipTaskbar` true so a caller can tell them apart; a taskbar lists the rest. `iconFile` is the application's own icon, resolved from `appClass` through the icon themes ([UltraCanvasDesktopEntry](UltraCanvasDesktopEntry.md)) — for the applications this repository ships, `StartupWMClass` and `Icon=` carry the same name. On Windows `id` is the `HWND`, `appClass` the program's name (`firefox`, `UltraFiler` — for a Microsoft Store application the program inside its frame), `appName` the same in lower case, and `iconFile` the executable's icon as a PNG. |
+| `ListWindows()` | Every managed window in stacking order, bottom first, as `DesktopWindowInfo { id, title, appClass, appName, iconFile, appUserModelId, virtualDesktop, processId, active, minimized, maximized, skipTaskbar }`. Docks, panels, the desktop and tooltips are included with `skipTaskbar` true so a caller can tell them apart; a taskbar lists the rest. `iconFile` is the application's own icon, resolved from `appClass` through the icon themes ([UltraCanvasDesktopEntry](UltraCanvasDesktopEntry.md)) — for the applications this repository ships, `StartupWMClass` and `Icon=` carry the same name. On Windows `id` is the `HWND`, `appClass` the program's name (`firefox`, `UltraFiler` — for a Microsoft Store application the program inside its frame), `appName` the same in lower case, and `iconFile` the executable's icon as a PNG. `appUserModelId` is Windows' identity of the application the window belongs to - the window's own `AppUserModelID` (`Microsoft.Windows.Explorer` for every Explorer window), else its process's (`Microsoft.WindowsCalculator_8wekyb3d8bbwe!App` for a Store application) - and empty elsewhere: a taskbar groups an application's windows by it. A Store application's window and a frame whose program is not yet known (Settings, Calculator, WhatsApp: their executables carry no icon of their own) take the icon and the name the shell's *Applications* folder gives that identity, so they show their tile icon rather than a letter. |
 | `GetActiveWindow()` | The focused window's id, 0 if none. |
 | `ActivateWindow(id)` | Raise, un-minimize and focus; switches to the window's desktop first. |
 | `MinimizeWindow(id)` | Iconify. |
@@ -26464,6 +26816,7 @@ never to "every desktop".
 | `ReserveScreenEdges(windowId, left, right, top, bottom)` | Reserve strips along the screen's edges for a window — a desktop's bars, a dock — so maximised and tiled windows stop short of them (`_NET_WM_STRUT_PARTIAL` and `_NET_WM_STRUT` on X11; the work area shrinks accordingly). Physical pixels, 0 for an edge that reserves nothing, each strip the full length of its edge; call again to change, four zeros to release. `windowId` is the window's native handle. On X11 a strut is measured from the root window's edge whatever monitor the window is on, so a window that covers one monitor of several reserves an edge only where its monitor lies on that edge of the root (a strip from the root's edge across another monitor would push that monitor's windows aside) and its strips run the window's own extent, not the root's: a desktop on the right monitor reserves its right bar along its own height and nothing on the left. On Windows each edge is an appbar of its own while Explorer's taskbar runs (placed beside Explorer's bars, and released when the window closes), and the work area itself (`SPI_SETWORKAREA`) when nothing else keeps it — UltraDesktop as the shell; call it from the window's own thread. Asking again for the same strips changes nothing. |
 | `CaptureScreen(pngPath, &error)` | The whole screen as PNG. The directory is created; false with the reason. |
 | `CaptureScreenImage(image, &error)` | The whole screen as pixels in memory, in a `DesktopScreenImage`: `width`, `height`, `stride` and `pixels`, four bytes a pixel in memory order B, G, R, unused — cairo's RGB24, the QR scanner's `BGRA32` — so a row goes to either without a copy. Nothing is written anywhere; for a caller that must not leave a file behind (UltraAuthenticator reads an enrolment QR code off the screen this way, and a PNG of it would be the seed in the clear). False with the reason, and `image` empty. |
+| `CaptureWindowImage(id, maxWidth, maxHeight, image, &error)` | A small picture of one window of `ListWindows`, for a taskbar's previews: no larger than `maxWidth` x `maxHeight` (the window's proportions kept, never enlarged, shrunk by averaging so text thins out rather than breaking up), in the same `DesktopScreenImage` layout. On Windows the window draws itself into the picture (`PrintWindow` with `PW_RENDERFULLCONTENT`), so a window that others cover shows its own content; on Wayland the compositor copies the window (`ext-image-copy-capture-v1` of the window's `ext-foreign-toplevel-image-capture-source`, the window found on `ext-foreign-toplevel-list-v1` by its app id and title; wlroots 0.19 and later - sway 1.11, labwc, river - niri and others offer it, and elsewhere the answer is false with the reason), with the same result; on X11 it is the window's rectangle of the screen, which shows whatever lies on top of it; macOS has none yet. A minimized window has no picture. False with the reason, and `image` empty. Any thread: UltraDesktop takes its previews on a worker. |
 | `CaptureScreenArea(x, y, width, height, image, &error)` | One rectangle of the screen - `x`, `y`, `width`, `height` in the pixels of `ListScreens` - as pixels in memory, in the same `DesktopScreenImage` layout; the rectangle is clipped to the screen, and `image.x` / `image.y` say where the pixels came from (`CaptureScreenImage` sets them too: 0,0 on X11, the virtual screen's origin on Windows, which is negative when a monitor lies left of or above the primary). Cheaper than the whole screen and a crop - `XGetImage` of that much, a `BitBlt` of that much - which is what a screen recorder taking twenty frames a second of one window needs. False with the reason (a rectangle wholly off the screen among them), and `image` empty. |
 | `DefaultScreenshotPath()` | `<Pictures>/Screenshots/Screenshot 2026-09-29 14.05.31.png` — the user's Pictures folder from `GetWellKnownUserFolders`, the home directory when there is none. Dots in the time, since a colon is not a file-name character on Windows. |
 | `DefaultRecordingPath()` | `<Videos>/Screen Recordings/Screen recording 2026-09-29 14.05.31.mp4` — the user's Videos folder, the home directory when there is none. Only names the file; the recorder (UltraSnip) creates the directory. |
@@ -26511,7 +26864,7 @@ second or two is fine.
 | `ListApplications(iconSize)` | Every menu-visible desktop entry in the standard `applications` directories (`XDG_DATA_HOME`, then `XDG_DATA_DIRS`), one per desktop-file id — a user's entry shadows the system's, and a hidden user entry hides it — sorted by name, `iconFile` resolved at `iconSize`. Entries whose `TryExec` is not installed are left out. On Windows the Start menu's shortcuts instead (`%APPDATA%` and `%ProgramData%` `\Microsoft\Windows\Start Menu\Programs`), the user's shadowing the machine's of the same name: named as the folder's `desktop.ini` names them, programs only (no uninstallers, help files or web links), `program` the shortcut's target, `startupWMClass` its name (so `MatchApplication` finds its windows), `shortcutPath` the `.lnk`, `iconFile` a PNG of its icon. Then the Microsoft Store (packaged) applications, which have no shortcut there: the shell's *Applications* folder (`FOLDERID_AppsFolder`, what the Start menu's list is made of), each entry with its `appUserModelId` (`Microsoft.WindowsCalculator_8wekyb3d8bbwe!App`), its display name and a PNG of the tile icon the shell gives it, `program` empty. On macOS the application bundles in `~/Applications`, `/Applications`, `/Applications/Utilities`, `/System/Applications` and `/System/Applications/Utilities`, and one level of subfolders below them (`/Applications/Adobe Photoshop 2025/…`); agents and background-only bundles (`LSUIElement`, `LSBackgroundOnly`) left out, a bundle identifier listed once (the user's copy first): named as Finder names it (localized), `genericName` the bundle's `CFBundleName`, `program`, `exec` and `shortcutPath` the bundle, `startupWMClass` its bundle identifier, `categories` its `LSApplicationCategoryType` (`public.app-category.productivity`) when it declares one, `iconFile` a PNG of the icon Finder shows, at twice `iconSize`. |
 | `LaunchApplication(entry, files, &error)` | Start it detached through `DesktopEntryCommand`; a `Terminal=true` entry is wrapped in the terminal the machine has. An entry with a `shortcutPath` is opened the way Explorer opens the shortcut — files, if any, go to its `program`. While no Explorer taskbar runs (the desktop is the shell), a shortcut to a bare `explorer.exe` — the Start menu's *File Explorer* — opens *This PC*: started with nothing to open, Explorer would take over as the session's desktop. An entry with an `appUserModelId` is started through `IApplicationActivationManager`, as the Start menu starts it (`shell:AppsFolder\<id>` when that is not there); it takes no files and refuses them with a reason. On macOS an application bundle is started through `NSWorkspace openApplicationAtURL` and brought to the front, as Finder starts it; a failure macOS reports later is logged. |
 | `LaunchProgram(name, args, &error)` / `FindProgram(name)` | A program by name — `"UltraFiler"` — looked for next to this executable first (a build tree, a bundle), then on `PATH`. On macOS, where each application is a bundle of its own, `<name>.app` beside this application's bundle and in `~/Applications` and `/Applications` comes before `PATH`. |
-| `MatchApplication(window, applications)` | The desktop entry a window (`DesktopWindowInfo`) belongs to, among `ListApplications()`: the entry whose `StartupWMClass` is the window's `WM_CLASS`, else whose program, icon name or name the class or instance spells, case aside (`Gimp-2.10` is `gimp-2.10`'s). `nullptr` when none matches. UltraDesktop's clipboard panel uses it to know what the window being pasted into takes. |
+| `MatchApplication(window, applications)` | The desktop entry a window (`DesktopWindowInfo`) belongs to, among `ListApplications()`: on Windows first the entry whose `appUserModelId` is the window's (a Store application: Calculator's window is Calculator's entry), then the entry whose `StartupWMClass` is the window's `WM_CLASS`, else whose program, icon name or name the class or instance spells, case aside (`Gimp-2.10` is `gimp-2.10`'s). `nullptr` when none matches. UltraDesktop's clipboard panel uses it to know what the window being pasted into takes. |
 
 ### In place of the system's desktop
 
@@ -26655,6 +27008,8 @@ releases the names at once.
 | `CanEndSession()` | Whether this backend can sign out, restart and shut down: true on Windows, and on Linux while logind answers on the system bus (decided once). |
 | `EndSession(how, &error)` | `SessionEnd::SignOut`, `Restart` or `ShutDown`: the system asks every program to close, and a program may still refuse. On Windows `ExitWindowsEx`, with the shutdown privilege every account that may shut down holds switched on first. On Linux logind: its manager's `Reboot` and `PowerOff` (with the "interactive" flag, so polkit is asked as the desktops' own menus ask it, and an active local session needs no password), and `Terminate` on this process's own session to sign out, after which the display manager shows the sign-in again. What a desktop's menu offers when it is the shell and no Start menu runs. |
 | `CanLockSession()` | Whether `LockSession` has anyone to ask: true on Windows; on Linux with logind or a session bus. |
+| `CanOpenDisplaySettings()` | Whether `OpenDisplaySettings` has something to open: true on Windows and macOS; on Linux when one of the display tools below is installed. |
+| `OpenDisplaySettings(&error)` | Open the system's own display settings - resolution, arrangement, the primary monitor - and not wait for them: `ms-settings:display` on Windows, System Settings > Displays on macOS, on Linux the first installed of `gnome-control-center display`, `systemsettings` / `kcmshell6` / `kcmshell5 kcm_kscreen`, `xfce4-display-settings`, `cinnamon-settings display`, `mate-display-properties`, `lxqt-config-monitor`, `budgie-control-center display`, `wdisplays`, `nwg-displays`, `arandr`, `lxrandr` (the session's own desktop's first, `XDG_CURRENT_DESKTOP`; the xrandr front ends not under Wayland). False with the reason. |
 | `LockSession(&error)` | Lock the screen - a desktop's *Lock screen* and Super+L. Windows `LockWorkStation`; on Linux `Lock` on this process's logind session, which sends the `Lock` signal the screen locker waits for ([UltraCanvasSessionLock](UltraCanvasSessionLock.md) reports it like any other lock), and without logind `org.freedesktop.ScreenSaver.Lock` on the session bus, which every screensaver implements. False with the reason. |
 
 ### The loudspeaker
@@ -26766,7 +27121,7 @@ the shell they are free.
 | Platform | Backend |
 |---|---|
 | Linux, BSD | `x11`: the EWMH root-window properties every window manager on ULTRA OS and the Linux desktops maintains (`_NET_CLIENT_LIST_STACKING`, `_NET_ACTIVE_WINDOW`, `_NET_WM_DESKTOP`, `_NET_CURRENT_DESKTOP`, …); actions as the client messages the specification prescribes, so the manager decides how a window is raised or closed; the screenshot through `XGetImage` on the root window into a BGRx buffer, which `CaptureScreenImage` hands over as is and `CaptureScreen` writes with cairo's PNG writer; the monitors from RandR (`XRRGetMonitors`); the monitor on its own connection with `PropertyChangeMask` on the root, sleeping in `poll()` on it and a wake pipe; a global shortcut as a passive `XGrabKey` on the root window (with the Caps Lock and Num Lock variants), on a connection and thread of its own the same way, and `BadAccess` reported as "another program holds it"; the Super tap through XInput2's raw key events on that connection. The queries open a connection of their own, so they run from any thread and without an UltraCanvas window (the headless `UltraDesktop --windows`). The end of the session and the lock through logind on the system bus (`OS/Linux/UltraCanvasLinuxDesktopShellSession.cpp`), the loudspeaker through libpulse loaded at run time (`UltraCanvasLinuxDesktopShellAudio.cpp`), the notification area (`UltraCanvasLinuxTrayHost.cpp`) as a StatusNotifierWatcher and host on the D-Bus session bus through GDBus, on a private connection and a `GMainContext` of its own: items' properties over `org.freedesktop.DBus.Properties`, pixmaps written through cairo as PNG files in the disk cache's `desktop-icons` folder (`$XDG_CACHE_HOME/UltraCanvas`, named after their pixels and swept by its rule), theme names through the item's `IconThemePath` and `FindDesktopIconFile`, dbusmenu menus (`com.canonical.dbusmenu`) as data, clicks as `Activate` / `SecondaryActivate` / `ContextMenu` at the pointer read from the query connection; refused while another watcher owns the name. No switch at sign-in: the session owns that. |
-| Linux on Wayland (`-DULTRACANVAS_WAYLAND=ON`) | `wayland` (`OS/Linux/Wayland/UltraCanvasWaylandDesktopShell.cpp`), phase 1 of `WaylandDesktopShellProposal.md`: the monitors from the compositor's `wl_output`s (position, mode and scale; the first announced is the primary, Wayland naming none), the devices from the same procfs and sysfs probes as X11, the keyboard layout from the seat's xkb keymap; the session's end and lock, the loudspeaker and the notification area are the shared Linux files above, a tray click reported at the last pointer position in the shell's own window (a Wayland client knows no screen position). The window list, the virtual desktops, `ReserveScreenEdges`, the screenshot, the monitor and the global shortcuts answer false with "not available on Wayland yet" until the layer-shell and foreign-toplevel protocols and the Screenshot and GlobalShortcuts portals are in. |
+| Linux on Wayland (`-DULTRACANVAS_WAYLAND=ON`) | `wayland` (`OS/Linux/Wayland/UltraCanvasWaylandDesktopShell.cpp`), phase 1 of `WaylandDesktopShellProposal.md`: the monitors from the compositor's `wl_output`s (position, mode and scale; the first announced is the primary, Wayland naming none), the devices from the same procfs and sysfs probes as X11, the keyboard layout from the seat's xkb keymap; the session's end and lock, the loudspeaker and the notification area are the shared Linux files above, a tray click reported at the last pointer position in the shell's own window (a Wayland client knows no screen position). The window list, the virtual desktops, `ReserveScreenEdges`, the screenshot, the monitor and the global shortcuts answer false with "not available on Wayland yet" until the layer-shell and foreign-toplevel protocols and the Screenshot and GlobalShortcuts portals are in. `CaptureWindowImage` is the compositor's copy of the window through `ext-image-copy-capture-v1` (with `ext-image-capture-source-v1` and `ext-foreign-toplevel-list-v1`, the three XML files carried under `OS/Linux/Wayland/protocols/`), into a `wl_shm` buffer, each step given a second and a half. |
 | Windows | `win32` (`OS/MSWindows/UltraCanvasWindowsDesktopShell.cpp` and `UltraCanvasWindowsTrayHost.cpp`), with Explorer running beside UltraDesktop or with UltraDesktop as the shell: the window list from `EnumWindows`, filtered as Explorer's taskbar filters (visible; `WS_EX_APPWINDOW`, or unowned and no tool window), cloaked windows on the current desktop left out, the shell's own windows listed with `skipTaskbar`; titles through `InternalGetWindowText`, which sends nothing, so a hung program cannot block the list; actions asynchronous (`ShowWindowAsync`, a posted `SC_CLOSE`), and activation through `SetForegroundWindow`; virtual desktops as described above; the screenshot through `BitBlt` of the whole virtual screen into a 32-bit DIB, already the BGRx layout; the edges as appbars or the work area; the devices from the consent store, Core Audio, the power status and the keyboard layout; the monitor through WinEvent hooks and a registry notification, pumping its own thread's messages in `MsgWaitForMultipleObjectsEx`; a global shortcut through `RegisterHotKey`, the Win key's tap through a `WH_KEYBOARD_LL` hook; the monitors from `EnumDisplayMonitors`; the application list from the Start menu and the shell's *Applications* folder, Store applications started through `IApplicationActivationManager`; the switch at sign-in through the `Run` key or the account's shell setting and UltraCanvasShellGuard; the notification area as a `Shell_TrayWnd` of its own, reading the `WM_COPYDATA` `Shell_NotifyIcon` sends — `NOTIFYICONDATAW` in its 32-bit layout behind a two-word header, the layout every replacement shell reads; the end of the session through `ExitWindowsEx`. Executable, shortcut and tray icons are extracted into PNG files in the disk cache's `desktop-icons` folder (`%LOCALAPPDATA%\UltraCanvas`) and swept by its rule. |
 | macOS, Android, WebAssembly | `null`: `IsAvailable()` false, every window and desktop query empty, `CaptureScreen`, `CaptureScreenImage`, `UltraCanvasGlobalShortcut::Start`, `UltraCanvasTrayHost::Start`, `EndSession`, `LockSession` and the loudspeaker calls fail with a reason (`ReadAudioOutput` answers `available` false); the application list, launcher and notices still work. |
 | macOS: the applications | `OS/MacOS/UltraCanvasMacOSApplications.mm` (`ULTRACANVAS_DESKTOPSHELL_NATIVE_APPLICATIONS`): the application list from the bundles and their `Info.plist`, icons drawn from `NSWorkspace iconForFile:` into PNG files in the disk cache's `desktop-icons` folder (`~/Library/Caches/UltraCanvas`, swept by its rule), launch through `NSWorkspace`; on any thread. The rest of the backend is the `null` one above. |
@@ -26789,7 +27144,12 @@ fallback when it is absent.
   virtual desktop and out of the taskbar and Alt+Tab); `WindowType::Notification`
   the toast above everything that never takes the focus, which
   [UltraCanvasNotificationToast](UltraCanvasNotificationToast.md) draws
-  notifications in.
+  notifications in; `WindowType::Tooltip` the window
+  [UltraCanvasTooltipManager](UltraCanvasTooltipManager.md#its-own-window)
+  shows every tooltip in, so the tooltips of the bars in the desktop window
+  are not covered by the windows above it; and `WindowType::Popup` the window
+  every popup - the bars' menus among them - is shown in, for the same reason
+  (`UltraCanvasWindowBase::SetPopupsInOwnWindows`).
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasDiagramRouting.md
@@ -28550,6 +28910,11 @@ The dropdown uses the window's popup system for proper z-order:
 - `CloseDropdown()` closes it with `UltraCanvasWindowBase::ClosePopup()`; the
   window also closes it on Escape or a click outside, and `onDropdownClosed`
   fires in every case
+- The list is shown in a window of its own, above every other window, like
+  every popup (`UltraCanvasWindowBase::SetPopupsInOwnWindows`): no other
+  window covers it. It still belongs to the dropdown's window - clicks in it
+  reach the list as there - and it closes, too, when the focus leaves the
+  application
 
 `OpenDropdown()` does nothing until the dropdown is in a window and has items.
 
@@ -30092,7 +30457,7 @@ helpers are still to come.
   a real end-to-end DSO load of two test plugins built as MODULE libraries
 
 **Version:** 1.0.0
-**Last Modified:** 2026-08-01
+**Last Modified:** 2026-11-09
 **Author:** UltraCanvas Framework
 **Namespace:** `UltraCanvas`
 
@@ -30255,6 +30620,78 @@ int loaded = UltraCanvas_RefreshElementPlugins();   // explicit; usually implici
   so without the anchor the linker strips the engine and a runtime chart module
   fails at `dlopen` with an undefined base-class symbol. Shared-core builds
   need no anchor - modules link the DLL/so directly.
+
+## Widgets as runtime modules
+
+Widgets follow the chart selection. `ULTRACANVAS_WIDGETS` (CMake cache: `all`,
+the default, empty, or a `;`-list of keys) names the selectable widgets
+compiled into the core. Every one not named is built as its own module,
+`ultracanvas-widget-<kebab-name>`, in `<build>/Plugins/Elements`
+(`ULTRACANVAS_WIDGET_RUNTIME_MODULES`, on by default; off on WASM and Android;
+on Windows the module needs the shared core). The table:
+
+| Key | Type name | Module | Applications that need it compiled in |
+|---|---|---|---|
+| `VideoTimeline` | `video-timeline` | `ultracanvas-widget-video-timeline` | UltraVideo, DemoApp |
+| `Slideshow` | `slideshow` | `ultracanvas-widget-slideshow` | DemoApp |
+| `Album` | `album` | `ultracanvas-widget-album` | UltraVideo, DemoApp |
+| `ColorPaletteManager` | `color-palette-manager` | `ultracanvas-widget-color-palette-manager` | UltraPaint, ArtCreator, DemoApp |
+| `VectorCanvas` | `vector-canvas` | `ultracanvas-widget-vector-canvas` | ArtCreator, DemoApp |
+
+```cpp
+// At startup - registers the widgets compiled in. In a static core it also
+// keeps in the executable the core objects the widget modules need.
+UltraCanvas_RegisterSelectedWidgets();
+
+UltraCanvas_AddPluginDirectory(GetExecutableDir() + "/Plugins/Elements");
+auto timeline = UltraCanvasElementRegistry::Create("video-timeline", "tl", 0, 0, 800, 200);
+auto album    = UltraCanvasElementRegistry::Create("album", "pics", 0, 220, 800, 400);
+```
+
+The default build is unchanged: every widget is compiled in. A lean build
+leaves them out, with the applications that use them:
+
+```
+cmake -S . -B build -DULTRACANVAS_WIDGETS= -DBUILD_ULTRAVIDEO=OFF -DBUILD_DEMO_APP=OFF \
+      -DBUILD_ULTRAPAINT_APP=OFF -DBUILD_ARTCREATOR_APP=OFF
+```
+
+An application that uses a widget's typed API (its class, its `Create…`
+function, its style) needs that widget compiled in. The top-level
+`CMakeLists.txt` says which widgets each application uses
+(`ultracanvas_require_widgets`) and stops the configure, naming the widgets,
+when one it builds would not link. A host that loads widget modules from a
+static core exports its symbols (`ENABLE_EXPORTS`), the same as the chart
+modules' hosts.
+
+`ElementModulesTest` creates every selectable widget, and the chart of the
+chart module, by name in whichever form the build has them. Loading a module
+also checks that it carries the framework headers id the loader insists on.
+The *Element modules* workflow (`.github/workflows/element-modules.yml`)
+builds this lean configuration on every pull request that touches the
+framework, runs `ElementModulesTest`, `UltraCanvasThemeTest` and
+`VectorEditTest` against it, and checks that the configure refuses an
+application whose widgets are left out. `build.yml` compiles every widget
+in, so this is the only CI row that builds the modules.
+
+**Adding a widget to the table** (`UltraCanvas/CMakeLists.txt`, "WIDGET SYSTEM"):
+
+1. Give it a `Make<Widget>Descriptor()` and `Register<Widget>Element()`
+   beside its typed factory.
+2. Write a module entry in `UltraCanvas/Plugins/Widgets/` that registers the
+   descriptor through `host->RegisterElement` (see
+   `UltraCanvasVideoTimelinePlugin.cpp`).
+3. Take its sources out of `ULTRACANVAS_CORE_SOURCES` and add a row:
+   `_KEBAB`, `_SOURCES`, `_PLUGIN`, `_HEADER`, `_REGISTER`, and `_ANCHORS`
+   (with the headers in `_ANCHOR_INCLUDES`): one expression for each core
+   object file the module needs that a host with a UI may not link anyway - a
+   function, a member function or `&typeid(Class)` defined there.
+4. Add the widget to `ElementModulesTest`'s list in `Tests/CMakeLists.txt`
+   and build with the widget left out. A missing anchor fails the test with
+   the undefined symbol; `nm` on the archive names its object file.
+5. Add it to `ultracanvas_require_widgets` for every application that uses
+   its typed API, and guard every test that does by
+   `ULTRACANVAS_WIDGETS_COMPILED_IN` (a global CMake property).
 
 ## Best Practices
 
@@ -30529,6 +30966,10 @@ FILE: Docs/UltraCanvas/UltraCanvasEngineCharts.md
 - [Overview](#overview)
 - [Which charts were ported](#which-charts-were-ported)
 - [Line, area and cumulative flow](#line-area-and-cumulative-flow)
+  - [Per-series and per-point options](#per-series-and-per-point-options)
+  - [Bands and point clicks](#bands-and-point-clicks)
+  - [Stacked panes](#stacked-panes)
+  - [Control charts](#control-charts)
 - [Scatter and bubble](#scatter-and-bubble)
 - [Waterfall](#waterfall)
 - [Diverging and population pyramid](#diverging-and-population-pyramid)
@@ -30640,6 +31081,139 @@ A cumulative flow diagram is the `StackedArea` mode with the first series on
 top (`SetReverseStackOrder(true)`); `AddCumulativeFlowAnnotations()` adds the
 lead time, cycle time and WIP spans as engine span annotations, which the
 value labels steer around.
+
+### Per-series and per-point options
+
+Each `EngineLineSeries` can override the chart for itself alone, and each of
+its points can carry its own look and a tooltip note:
+
+```cpp
+EngineLineSeries target;
+target.name = "Target";
+target.values = {50000, 50000, 60000, 60000, 60000, 70000};
+target.shape = ChartLineShape::StepMiddle;   // unset = the chart's SetLineShape
+target.showMarkers = false;                  // unset = the chart's SetShowMarkers
+target.inLegend = false;                     // a reference line, not data
+target.interactive = false;                  // no hit regions, tooltips or value labels
+target.dashed = true;
+chart->AddSeries(target);
+
+EngineLineSeries actual;
+actual.name = "Actual";
+actual.values = {45000, 52000, 48000, 61000, 55000, 67000};
+actual.pointStyles.resize(actual.values.size());
+actual.pointStyles[2].color = Color(200, 40, 40, 255);       // alpha 0 = the series' colour
+actual.pointStyles[2].marker = ChartMarkerShape::Diamond;    // unset = the series' marker
+actual.pointStyles[2].radiusScale = 1.4f;
+actual.pointStyles[2].alwaysShown = true;                    // even with markers off
+actual.pointNotes = {"", "", "Missed the target: a supplier was late"};
+chart->AddSeries(actual);
+```
+
+`hollow = true` draws a point's outline only. A point's note is a further
+line in its tooltip. The legend lists only the series with `inLegend`, and a
+click on an entry hides that series. `drawLine = false` strokes no line - a
+series that is only the edge of a band.
+
+### Bands and point clicks
+
+`AddSeriesBand` fills between two series, point by point - a confidence
+interval, a min / max envelope, zones under limits that change - under the
+lines, through the pane of the lower series; a gap in either edge is a gap in
+the band. `onPointClick` reports a click on a point of an interactive series:
+
+```cpp
+EngineLineBand envelope;
+envelope.lowerSeries = 2;           // indices into the chart's series
+envelope.upperSeries = 3;
+envelope.color = Color(30, 90, 200, 255);   // alpha 0 = the upper series' colour
+envelope.opacity = 0.2f;
+chart->AddSeriesBand(envelope);
+
+chart->onPointClick = [](size_t seriesIndex, size_t valueIndex) {
+    // drill down, exclude the point from a calculation, ...
+};
+```
+
+### Stacked panes
+
+`SetPanes` stacks panes from the top down, each with its own value axis,
+grid and title in a sub-band of the plot, all sharing the domain axis; each
+series names its pane. Pane heights follow their weights, with
+`SetPaneGap(fraction)` between them (0.06 by default).
+
+```cpp
+chart->SetPanes({{1.0, "Price", false}, {0.4, "Volume", true}});   // weight, title, includeZero
+EngineLineSeries volume;
+volume.name = "Volume";
+volume.values = {120, 180, 90, 210, 160, 140};
+volume.pane = 1;
+chart->AddSeries(volume);
+
+ChartLimiter cap;
+cap.axisIndex = UltraCanvasEngineLineChart::ValueAxisOfPane(1);   // axis 0, then 2, 3, ...
+cap.value = 200;
+cap.caption = "Capacity";
+chart->AddLimiter(cap);
+```
+
+A pane's `rangeIncludes` lists values its axis always reaches, data or not -
+limits, a target - since a limiter outside its axis's range is not drawn.
+Axis 0 is pane 0's value axis and axis 1 the domain, so a single-pane chart
+is unchanged; `ValueAxisOfPane(p)` gives the index that limiters
+(`ChartLimiter::axisIndex`) and highlights (`ChartHighlight::axisIndex`)
+take to land in pane p. The stacked area modes and Polar draw every series in
+pane 0 (`PaneOfSeries` reports where a series is drawn). Under `Horizontal`
+the panes sit side by side from the left.
+
+### Control charts
+
+A Shewhart control chart is a line chart with computed limits.
+`ComputeControlChart` (`UltraCanvasControlLimits.h`) computes the centre
+line, the control limits and the run-rule signals of an X-bar-R or I-MR
+chart; `ShowControlChart` puts the result on a line chart with the parts
+above - the statistic in pane 0 and its range in pane 1, the limits as
+limiters with their values in a column past the plot's right edge
+(`ChartLimiterCaptionPlacement::BeyondEnd`), a lower limit clamped at zero
+left out, and the points that break a rule as red diamonds with the rule in
+their tooltip. It also pads the domain by half a slot, so the first and last
+points clear the plot edges:
+
+```cpp
+std::vector<ControlSubgroup> hours = {
+    {"08:00", {25.004, 24.993, 25.011, 25.002, 24.998}},
+    {"09:00", {25.007, 25.001, 24.996, 25.009, 25.000}},
+    {"10:00", {24.995, 25.003, 25.006, 24.999, 25.012}},
+};
+const ControlResult result = ComputeControlChart(hours);   // X-bar-R by default
+
+auto spc = CreateEngineLineChart("Spc", 0, 0, 720, 460);
+ControlChartStyle look;
+look.showZones = true;          // A / B / C shading
+look.showSigmaLines = true;     // dotted 1 and 2 sigma lines
+ShowControlChart(*spc, result, look);
+```
+
+Limits that change from point to point - p and u charts, X-bar-S with
+unequal subgroups, stages - are drawn as stepped lines, centred on each
+point, with the last point's values in the caption column; zones under them
+are bands. Each later stage gets a divider with its name beside it, an
+excluded point is drawn hollow and says so in its tooltip, a point's note
+joins its tooltip, and specification limits (`showSpecLimits`) are solid
+lines in `specColor`. The demo excludes a point when it is clicked:
+
+```cpp
+std::vector<ControlSubgroup> samples = hours;
+spc->onPointClick = [&](size_t, size_t index) {
+    samples[index].excluded = !samples[index].excluded;
+    ShowControlChart(*spc, ComputeControlChart(samples), look);
+};
+```
+
+Recompute and call `ShowControlChart` again whenever the data changes. The
+statistics and the rules are described in
+[UltraCanvasControlLimits.md](UltraCanvasControlLimits.md); the demo's
+**Charts > Line Chart** page ends with an interactive one.
 
 ## Scatter and bubble
 
@@ -32317,6 +32891,8 @@ Open Path         (only when SetOpenPathMenuItemVisible(true) — search-result
 Copy / Cut / Paste / Delete / Delete Permanently / Duplicate / Rename
 ──────────
 New            >  Text, Doc, Spreadsheet, Bitmap, Vector, Audio, Video
+Refresh           the folder on display, or the one folder right-clicked,
+                  read again (onRefreshRequested)
 ──────────
 Compress / Extract
 ──────────
@@ -32363,6 +32939,21 @@ Notes:
 - Items whose hook callback is not set (Print, Share, Attributes, Access,
   Settings, empty Open with) are shown disabled. "Copy path" has a built-in
   default (system clipboard via `SetClipboardText`).
+- **Refresh** is for the one folder entry the menu was opened on, or else
+  the folder on display. Without a hook it re-reads the folder on display
+  (`Refresh()`). With `onRefreshRequested` set, the host is handed that
+  folder and carries the refresh out itself, this display's re-read
+  included: a host that answers remote folders from a cache
+  (`remoteListing`) asks the server again first, and one with a folder tree
+  brings its rows in line. UltraFiler does both, the same as its tree's
+  *Refresh*.
+
+  ```cpp
+  filer->onRefreshRequested = [display = filer.get()](const std::string& folder) {
+      // drop or re-ask what a cache holds for `folder`, then:
+      if (folder == display->GetPath()) display->Refresh();
+  };
+  ```
 - **Open with** is the first entry — opening a file is what the menu is
   opened for most often — and the entry itself is clickable: it opens the
   whole selection with the OS default application, the same thing a
@@ -38293,6 +38884,8 @@ void SetArcAngles(double startDeg, double endDeg);  // custom sweep for analog d
 void SetGaugeColor(const Color& c);       // fill / needle / indicator colour
 void SetBackgroundColor(const Color& c);  // panel background
 void SetTextColor(const Color& c);        // value / title text colour
+void SetClockHandColor(const Color& c);   // AnalogClock: hour and minute hands, the hub
+void SetClockTickColor(const Color& c);   // AnalogClock: ticks, rim, hour numbers
 ```
 
 ### Round-Gauge (CircularRing) Styling
@@ -38446,6 +39039,19 @@ its own internal timer — no value updates required.
 auto clock = CreateGaugeDiagramElement("clock", 0, 0, 272, 374);
 clock->SetMode(GaugeMode::AnalogClock);
 clock->SetTitle("Clock");
+```
+
+The hands and ticks are dark for the light face it starts with. On a dark
+face give them light colours - a desktop's clock, white on black; the
+second hand stays red:
+
+```cpp
+auto night = CreateGaugeDiagramElement("night", 0, 0, 48, 52);
+night->SetMode(GaugeMode::AnalogClock);
+night->SetShowLabels(false);
+night->SetBackgroundColor(Colors::Black);
+night->SetClockHandColor(Colors::White);
+night->SetClockTickColor(Color(255, 255, 255, 140));
 ```
 
 ### 5. Stopwatch with Start/Stop/Reset
@@ -41843,6 +42449,138 @@ default. Hovering a hexagon shows its cell index and value.
 - Cells whose value is `NaN` (transparent NaN colour) are skipped.
 
 ==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasHistogramChart.md
+==============================================================================
+
+# UltraCanvasHistogramChart
+
+A picture's histogram: how many pixels have each of the 256 levels, for red,
+green and blue together or for one channel at a time - the panel a photo
+editor shows beside an image.
+
+```cpp
+#include "Plugins/Charts/Engine/Charts/UltraCanvasHistogramChart.h"
+```
+
+## Contents
+
+- [Overview](#overview)
+- [Quick start](#quick-start)
+- [Counting pixels yourself](#counting-pixels-yourself)
+- [Appearance and interaction](#appearance-and-interaction)
+- [Demo](#demo)
+- [Tests](#tests)
+
+## Overview
+
+| Display (`HistogramDisplay`) | Shows |
+|---|---|
+| `Combined` | red, green and blue overlaid, each in its own colour; where they overlap the colours mix |
+| `Red`, `Green`, `Blue` | one channel alone |
+| `Luminosity` | each pixel's brightness, Rec. 601 luma (0.299 R + 0.587 G + 0.114 B) |
+
+The chart is built on the chart engine: levels 0 to 255 run along the bottom,
+pixel counts up the side, linear or logarithmic. Each channel is a stepped,
+filled outline, one flat top per level. Hovering shows the level's counts for
+every channel shown, with their share of the pixels, and draws a thin rule
+through the level. In `Combined`, the legend switches a channel off and on.
+
+The counting lives in a UI-free model, `UltraCanvasHistogramModel.h`, which a
+program can use without drawing anything. It is part of the core library, not
+of the charts, so it is there in a build without them: the Curves dialog
+counts its histogram backdrop with it too (see
+[UltraCanvasCurveEditor.md](UltraCanvasCurveEditor.md#filling-the-histogram)).
+
+## Quick start
+
+```cpp
+auto histogram = CreateHistogramChart("Histogram", 0, 0, 640, 340);
+histogram->SetImage(UCImage::Get("photo.jpg"));          // counts the picture's pixels
+histogram->SetDisplay(HistogramDisplay::Combined);       // or Red, Green, Blue, Luminosity
+histogram->SetScale(HistogramScale::Logarithmic);        // tall spikes stop flattening the rest
+```
+
+A picture the person chooses comes through the file loader, as every user
+file does:
+
+```cpp
+FileDialogOptions options;
+options.title = "Open a picture";
+UltraCanvasFileLoader::OpenImage(options, [histogram](const FileLoadResult& result, std::shared_ptr<UCImage> image) {
+    if (result.IsSuccess() && image) histogram->SetImage(image);
+});
+```
+
+`SetImage` counts the picture at its own size, every pixel once, and leaves
+fully transparent pixels out: they have no colour. It returns false, and the
+chart is empty, for an image without pixels.
+
+## Counting pixels yourself
+
+`ComputeImageHistogram` counts any pixel buffer - Cairo's premultiplied
+ARGB32 (un-premultiplied first, so a half-transparent red counts as red), its
+opaque XRGB32, or plain RGBA8 and RGB8 bytes:
+
+```cpp
+#include "UltraCanvasHistogramModel.h"
+
+std::vector<uint8_t> rgba(640 * 480 * 4);                // from a camera, a decoder, ...
+ImageHistogram counts = ComputeImageHistogram(rgba.data(), 640, 480, 640 * 4,
+                                              HistogramPixelFormat::RGBA8);
+uint64_t reds = counts.CountAt(HistogramChannel::Red, 200);   // pixels with red = 200
+HistogramStatistics luma = counts.Statistics(HistogramChannel::Luminosity);
+// luma.mean, luma.median, luma.standardDeviation, luma.minimum, luma.maximum,
+// luma.shadowsClipped and luma.highlightsClipped (shares of the pixels at 0 and 255)
+int fifth = counts.Percentile(HistogramChannel::Luminosity, 0.05);
+histogram->SetHistogram(counts);
+```
+
+A large picture can be counted a strip of rows at a time, the strips added
+with `Add`; `RgbTotal()` gives red, green and blue added level by level, the
+values a curve applied to all three channels maps:
+
+```cpp
+ImageHistogram whole;
+for (int top = 0; top < 480; top += 120)
+    whole.Add(ComputeImageHistogram(rgba.data() + top * 640 * 4, 640, 120, 640 * 4,
+                                    HistogramPixelFormat::RGBA8));
+std::array<uint64_t, 256> allChannels = whole.RgbTotal();
+```
+
+## Appearance and interaction
+
+```cpp
+histogram->SetChannelColor(HistogramChannel::Red, Color(255, 80, 80, 255));   // alpha 0 = the default
+histogram->SetFillOpacity(0.5f);                       // the outline stays solid
+histogram->SetAxisTitles("Level", "Pixels");
+histogram->onLevelHover = [histogram](int level) {     // -1 when the pointer leaves
+    std::string text = histogram->DescribeLevel(level);    // "Level 128\nRed: 1,234 pixels (0.52%)..."
+};
+std::vector<HistogramChannel> drawn = histogram->ShownChannels();
+```
+
+The chart's title, theme, legend position and tooltips are the engine's
+(`SetChartTitle`, `SetTheme`, `SetLegendPosition`, `SetEnableTooltips`).
+
+## Demo
+
+**Charts > Histogram Chart** shows a picture on the left - `artist.jpg` from
+`media/images` to start with - and its histogram on the right. Underneath are
+the choice of picture (or **Open a picture**, through the file loader), of
+channels and of the logarithmic scale, each shown channel's statistics and the
+level under the pointer.
+
+## Tests
+
+`Tests/HistogramModelTest.cpp` counts every pixel layout, premultiplied and
+transparent pixels, luminosity, statistics and percentiles, adding strips and
+the red-green-blue total. `Tests/CurveHistogramTest.cpp` fills the Curves
+backdrop from it.
+`Tests/HistogramChartRenderTest.cpp` draws Combined and each channel, the
+logarithmic scale, the hover read-out and the legend, and counts a decoded
+picture through `SetImage`.
+
+==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasHostAppearance.md
 ==============================================================================
 
@@ -41858,10 +42596,10 @@ the platform once, keeps it, and reads it again when the host says it
 changed, so an application that asks hears about a switch to dark while it
 runs. It is phase T1 of
 [`UltraCanvasHostThemeProposal.md`](UltraCanvasHostThemeProposal.md): the
-reading, with T2 the Linux, BSD and WebAssembly backends. The theme built
-from it (`FromHost`, the policy) is T3, and until then the value is there
-for an application's own handler and for the system fonts, which now come
-from it.
+reading, with T2 the Linux, BSD and WebAssembly backends; T3 builds the
+theme from it (`UltraCanvasTheme::FromHost`, the application's theme
+policy - [`UltraCanvasTheme.md`](UltraCanvasTheme.md)). The system fonts
+come from it too.
 
 - Header: `UltraCanvas/include/UltraCanvasHostAppearance.h` (header-only, pure)
 - Application: `GetHostAppearance`, `RefreshHostAppearance`, `ScheduleHostAppearanceRefresh`, `AddHostAppearanceHandler` / `RemoveHostAppearanceHandler` (`UltraCanvasApplication.h`)
@@ -41930,10 +42668,11 @@ app->RemoveHostAppearanceHandler(handler);
 ```
 
 A handler runs on the UI thread after the value changed, with the new
-value. Until T3 nothing in the framework acts on the change by itself: the
-theme stays what the application set. An application that wants to follow
-today installs a handler and calls `UltraCanvasTheme::SetCurrent` with
-`Dark()` or `Light()`, as UltraVideo's `ThemeFor` does.
+value - after the theme policy has applied the change
+([`UltraCanvasTheme.md`](UltraCanvasTheme.md), *The policy*): under the
+default `FollowHost` the theme is `FromHost(host)` again, so an element
+that follows the theme has re-styled by the time the handler runs, and a
+hand-painted panel reads the new roles from `UltraCanvasTheme::Current()`.
 
 ## What each platform reads
 
@@ -44303,9 +45042,17 @@ at once; a caller that makes thumbnails on a worker thread returns nullptr
 until one is done, then calls `InvalidateLayout()` so the card grows to show
 it. Pill and Grid cards have no room for a picture.
 
+`style.cardImagePlacement` puts the picture in a band above the title
+(`KanbanCardImagePlacement::Top`, the default) or in a square
+`cardImageHeight` wide at the card's left with the text beside it
+(`KanbanCardImagePlacement::Left`; at most half the card, which is at least
+as tall as the picture). `style.centerCardTitle` centres the title's lines.
+
 <!-- doc-check: std::shared_ptr<UltraCanvasKanbanBoardElement> board; std::map<std::string, std::shared_ptr<UCPixmap>> thumbnails; -->
 ```cpp
 board->EditStyle().cardImageHeight = 56.0f;
+board->EditStyle().centerCardTitle = true;   // the name centred under the picture
+board->StyleChanged();
 board->cardImageProvider = [&thumbnails](const KanbanCard& card) -> std::shared_ptr<UCPixmap> {
     auto found = thumbnails.find(card.description);   // the card's file
     return found == thumbnails.end() ? nullptr : found->second;
@@ -44434,6 +45181,19 @@ lists Overdue plus every priority actually used on the board.
   column under a point in the element's coordinates (-1 = none);
   `BeginColumnRename(columnId, startEmpty)` opens a column title's inline
   rename, for an "add column" button of the host's own.
+- **Context menu**: `onContextMenu(cardId, columnId, windowPos)` runs on a
+  right click - the card under the pointer (selected first; -1 = none), the
+  column (-1 = none) and the point in window coordinates where the host opens
+  its `UltraCanvasMenu`. Unset, the right click passes on.
+- **Hover and preview**: `onCardHoverChanged(cardId)` names the card the
+  pointer moves onto (-1 when it leaves one, the board, or a drag starts).
+  `ShowCardPreview(cardId, picture, size)` draws a larger picture of a card -
+  `size` pixels square at most, with its title under it - beside the card
+  over the board; it goes with `HideCardPreview()`, and by itself when the
+  pointer leaves the card, a button is pressed, the board scrolls or a drag
+  starts. The host decides when it opens (the Sticker board waits two seconds
+  with an `UltraCanvasApplication` timer) and makes the picture.
+  `GetCardBounds(cardId)` is a card's rectangle as last laid out.
 
 Callbacks:
 
@@ -44450,6 +45210,8 @@ board->canDropCard = [](int cardId, int toColumnId) { return true; };
 board->onFilesDropped = [data](const std::vector<std::string>& files, int columnId, int laneId) {
     for (const std::string& path : files) data->AddCard(columnId, path, laneId);
 };
+board->onContextMenu = [](int cardId, int columnId, const Point2Di& windowPos) { /* open a menu */ };
+board->onCardHoverChanged = [](int cardId) { /* -1 = none */ };
 ```
 
 ## Factories
@@ -46328,6 +47090,13 @@ FILE: Docs/UltraCanvas/UltraCanvasLineChartElement.md
 **Version:** 1.1.1  
 **Last Modified:** 2026-10-07  
 **Author:** UltraCanvas Framework
+
+Its engine port, `UltraCanvasEngineLineChart`
+([UltraCanvasEngineCharts.md](UltraCanvasEngineCharts.md#line-area-and-cumulative-flow)),
+adds per-series line shapes and markers, per-point styles and tooltip notes,
+stacked panes and control charts (`ShowControlChart`,
+[UltraCanvasControlLimits.md](UltraCanvasControlLimits.md)); the demo's Line
+Chart page ends with a control chart built that way.
 
 ## Class Hierarchy
 
@@ -50282,7 +51051,10 @@ compare against the original); *Cancel*, or closing the window, restores the
 curves the viewer had. The button is there only for bitmap images (see
 [Tools per kind of file](#tools-per-kind-of-file)); browsing on to a file the
 curves do not apply to leaves an open dialog without a histogram rather than
-with the previous picture's.
+with the previous picture's. The histogram is the picture's own, in sRGB at
+8 bits a channel (the levels the curves map), counted by
+`UltraCanvasHistogramModel` as UltraPaint counts its Curves histogram;
+transparent pixels are left out.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasMediaViewerWindow.md
@@ -50554,6 +51326,7 @@ FILE: Docs/UltraCanvas/UltraCanvasMenuExamples.md
 - [Menu Styling](#menu-styling)
   - [MenuStyle Structure](#menustyle-structure)
   - [The Panel](#the-panel)
+  - [Its Own Window](#its-own-window)
   - [Pre-built Themes](#pre-built-themes)
 - [Core Methods](#core-methods)
   - [Construction and Initialization](#construction-and-initialization)
@@ -50586,8 +51359,8 @@ FILE: Docs/UltraCanvas/UltraCanvasMenuExamples.md
 
 **UltraCanvasMenu** is a comprehensive menu component in the UltraCanvas framework that provides flexible menu functionality including menu bars, popup context menus, and hierarchical submenu support. It offers rich styling options, keyboard navigation, scrolling for long menus, and cross-platform compatibility.
 
-**Version:** 1.5.0 - `MenuStyle::FromTheme`  
-**Last Modified:** 2026-10-10  
+**Version:** 1.6.0 - a popup menu is shown in a window of its own, above every other window  
+**Last Modified:** 2026-11-09  
 **Author:** UltraCanvas Framework
 
 ## Features
@@ -50856,6 +51629,28 @@ shadow takes no clicks. The window blends every popup over its content with
 its alpha, which is what lets the panel's corners show the window behind
 them. A menubar has no panel: no padding, inset, radius or shadow - its
 items run edge to edge and only their highlight is rounded.
+
+### Its Own Window
+
+A popup menu or submenu is shown in a window of its own (`WindowType::Popup`),
+above every other window, like every popup - see
+`UltraCanvasWindowBase::SetPopupsInOwnWindows`. Composited onto the window it
+was opened in, a menu was covered by any window above that one: the menus of
+UltraDesktop's bars, whose window is kept below all others, opened under the
+applications' windows. The menu stays that window's in every other way - it is
+laid out and drawn there, keeps the keyboard there, and a click in its own
+window reaches it as a click in that window, at the same place - so nothing
+about building or handling a menu changes.
+
+The menu's window is cut to the panel's outline (transparent outside it on
+macOS and Wayland), so the rounded corners show whatever is beneath. It has no
+drop shadow of its own - macOS and a compositing window manager give a popup
+window one - and it does not fade in: `enableAnimations` shows it in full at
+once. It closes on a click outside it, as before, and also when the focus
+leaves the application, since it would otherwise float above other programs'
+windows. In the browser and on Android, and with
+`SetPopupsInOwnWindows(false)`, the menu is composited onto its window as
+described above.
 
 To get the earlier square look back, take the panel's decoration off:
 
@@ -51323,7 +52118,9 @@ menu->SetStyle(style);
 ```
 
 The whole panel fades - background, border, shadow and entries together -
-over the window content beneath it. The menu opens its popup at opacity 0 and
+over the window content beneath it. A menu shown in a window of its own (see
+*Its Own Window*) does not fade: it appears in full once its opacity is above
+0. The menu opens its popup at opacity 0 and
 steps it to 1 about every frame with `UltraCanvasWindowBase::SetPopupOpacity`
 (see Display Control), so a step only composites the window again and does
 not repaint the menu. The menu bar does not animate, and closing is
@@ -51397,7 +52194,8 @@ FILE: Docs/UltraCanvas/UltraCanvasMessageCenter.md
 `UltraCanvasMessageCenter` is the desktop message centre as one composite
 element: every chat message, mail and system notification on the UltraMessage
 feed (`Masterfile_modules.md` §13, `Docs/Modules/UltraMessage/README.md`) in
-one structured view, for any application to embed — the ULTRA OS desktop,
+one structured view, for any application to embed — UltraNotifications
+(which is this element in a window of its own), the ULTRA OS desktop,
 UltraMail's toolbox, the DemoApp page. It is built from catalogue elements
 only and it is a client of the bus and nothing else: it never talks to a
 messenger or a mail server.
@@ -59681,7 +60479,7 @@ not cost a new MTP session — and a device answers one request at a time anyway
 | Call | Meaning |
 |---|---|
 | `Available()` | Whether this build can reach portable devices at all. |
-| `List()` | The devices connected now: `PortableDeviceInfo { id, name, manufacturer, description, kind, readOnly }`. `readOnly` marks a device files can only be copied off (macOS's Image Capture): `Upload`, `MakeFolder`, `Delete` and `Rename` fail on it, so a file manager does not offer them. `id` is what every other call takes — stable while the device stays plugged in, and the same the next time it is plugged into the same port. `kind` is `Phone`, `Camera`, `MediaPlayer` or `Other`, from what the device says it is. |
+| `List()` | The devices connected now: `PortableDeviceInfo { id, name, manufacturer, description, kind, readOnly }`. `readOnly` marks a device files can only be copied off (macOS's Image Capture): `Upload`, `MakeFolder`, `Delete` and `Rename` fail on it, so a file manager does not offer them. `id` is what every other call takes — stable while the device stays plugged in, and the same the next time it is plugged into the same port. `kind` is `Phone`, `Camera`, `MediaPlayer` or `Other`, from what the device says it is. A USB disk or stick is never in the list, though Windows offers it through WPD too: it has a drive letter, which `ListMountedVolumes` reports. |
 | `ListFolder(id, path, out, error)` | The entries of a folder: `PortableDeviceEntry { name, isDirectory, size, modifiedTime }` (`modifiedTime` UTC seconds, 0 when unknown). `"/"` lists the storages — a phone's other services (contacts, messages) are not folders and are left out. A root with no storage at all is an error that says what to do: a locked phone, or one left on "charging only", shows none. |
 | `Download(id, path, localFile, error, progress)` | Copies a file off the device into `localFile` (UTF-8), replacing it; a copy that fails part way is removed. |
 | `Upload(id, localFile, path, error, progress)` | Copies a local file onto the device as `path`. A file of that name already there is **replaced** — MTP would otherwise keep both under one name, so the caller asks first. |
@@ -67134,6 +67932,7 @@ FILE: Docs/UltraCanvas/UltraCanvasSegmentedControlExamples.md
   - [FitContent Width Mode (Alignment Toolbar)](#fitcontent-width-mode-alignment-toolbar)
   - [Disabled Segments](#disabled-segments)
   - [A Segment in Its Own Colour](#a-segment-in-its-own-colour)
+  - [A Tooltip for Each Segment](#a-tooltip-for-each-segment)
   - [Variable-Length Segments with a Custom Theme](#variable-length-segments-with-a-custom-theme)
 - [Keyboard Navigation](#keyboard-navigation)
 - [See Also](#see-also)
@@ -67142,7 +67941,7 @@ FILE: Docs/UltraCanvas/UltraCanvasSegmentedControlExamples.md
 
 **UltraCanvasSegmentedControl** is a multi-segment selection control for choosing between mutually exclusive options (single mode) or toggling several options independently (multiple/toggle mode). It is well-suited for view-switchers, filter bars, formatting toolbars, and size pickers.
 
-**Version:** 1.0.1
+**Version:** 1.5.0 - `SetSegmentTooltip`: each segment its own tooltip
 **Header:** `include/UltraCanvasSegmentedControl.h`
 **Namespace:** `UltraCanvas`
 **Base Class:** `UltraCanvasUIElement`
@@ -67210,6 +68009,11 @@ void SetSegmentWidth(int index, float width);    // Used with SegmentWidthMode::
 // One segment's text colour while it is not selected; selected, it takes
 // selectedTextColor. Colors::Transparent restores the style's colours.
 void SetSegmentTextColor(int index, const Color& color);
+// One segment's own tooltip - an icon-only segment naming itself. It shows
+// while the pointer is over that segment and switches as the pointer moves
+// to the next; a segment without one shows the control's (SetTooltip).
+void        SetSegmentTooltip(int index, const std::string& text);
+std::string GetSegmentTooltip(int index) const;
 ```
 
 ### Selection — Single Mode
@@ -67501,6 +68305,24 @@ assistant->AddSegment("Claude Code");
 assistant->AddSegment("Codex");
 assistant->SetSegmentTextColor(0, Color(200, 30, 30));
 assistant->SetSelectedIndex(1);
+```
+
+### A Tooltip for Each Segment
+
+Icon-only segments say what they are in their own tooltips. A tooltip set
+with `SetTooltip` on the control is read once, when the pointer comes in, so
+changing it from `onSegmentHover` leaves the first segment's text up while
+the pointer moves on; `SetSegmentTooltip` swaps the shown tooltip as the
+pointer crosses from one segment to the next.
+
+```cpp
+auto shape = CreateSegmentedControl("shape", 50, 780, 102, 28);
+shape->AddSegment("", "media/icons/snip-rectangle.svg");
+shape->AddSegment("", "media/icons/snip-window.svg");
+shape->AddSegment("", "media/icons/snip-screen.svg");
+shape->SetSegmentTooltip(0, "Rectangle: an area you drag out");
+shape->SetSegmentTooltip(1, "Window: the window you click");
+shape->SetSegmentTooltip(2, "Full screen: the whole screen");
 ```
 
 ### Variable-Length Segments with a Custom Theme
@@ -67922,6 +68744,15 @@ FILE: Docs/UltraCanvas/UltraCanvasSettingsPageKit.md
 
 # UltraCanvas Settings Page Kit
 
+## Contents
+
+- [Overview](#overview)
+- [The window](#the-window)
+- [A page](#a-page)
+- [The controls](#the-controls)
+- [Usage](#usage)
+- [Related](#related)
+
 ## Overview
 
 **UltraCanvasSettingsPageKit** is the look of an application's settings
@@ -67934,7 +68765,7 @@ the next application's, so every settings window reads as one family and a
 change to the look lands everywhere.
 
 **File Location**: `include/UltraCanvasSettingsPageKit.h`
-**Version**: 1.0.0
+**Version**: 1.1.0
 **Author**: UltraCanvas Framework
 
 Everything is in `namespace UltraCanvas::SettingsPageKit`.
@@ -67947,12 +68778,12 @@ and calls `Finish`:
 
 | Call | Meaning |
 |---|---|
-| `Create(parent, title, width = 700, height = 560)` | The dialog window (not shown yet), the empty tree with a hidden root, the page area and the bottom bar; Escape closes it. False when the window could not be made. |
+| `Create(parent, title, options)` | The window (not shown yet), the empty tree with a hidden root, the page area and the bottom bar; Escape closes it. False when the window could not be made. `SettingsWindowOptions`: `width` and `height` (700 x 560), `treeWidth` (180; wider for a long page list), `sidebarHeader` (an element above the tree: UOS-Settings' logo), `dialog` (true: a dialog of `parent`; false: an application's own main window, as UOS-Settings is) and `closeLabel` ("Close", for a translated window). |
 | `AddSection(id, text)` | A top-level section of the tree (Display, Handling, ...). A section has no page of its own: selecting it moves on to its first page. |
 | `AddTreeNode(parentId, id, text)` | A node under any node; its id is the page id. |
 | `AddPage(pageId, page)` | A page under its node id. |
 | `resets[pageId] = PageReset{label, width, action}` | The page's *Restore defaults* button in the bottom bar: labelled and wired for it while the page is up, hidden for a page without one. |
-| `Finish(startPage)` | After the nodes and pages: hides the root (which promotes the sections to the top level), wires the selection, shows `startPage` and the window. The sections start closed. |
+| `Finish(startPage, show = true)` | After the nodes and pages: hides the root (which promotes the sections to the top level), wires the selection, shows `startPage` and, unless `show` is false, the window. The sections start closed. |
 | `ShowPage(nodeId)`, `SelectPage(pageId)` | Show a page; select its tree row (its section opened) and show it. |
 | `onPageShown`, `onClosed` | Called after a page is shown (a page of live figures re-reads them) and when the window has closed (`closed` is set first). |
 | `window`, `tree`, `pageArea`, `pages`, `restoreButton`, `shownPage`, `closed`, `IsOpen()` | The parts, for what the calls above do not cover. |
@@ -68026,7 +68857,20 @@ The dialog state is kept alive by its owner (a `static std::shared_ptr`)
 while the window is up; `closed` says when it has gone. UltraFiler
 (`Apps/UltraFiler/UltraFilerSettingsDialog.cpp`) and UltraSnip
 (`Apps/UltraSnip/ui/UltraSnipSettingsDialog.cpp`) are the two windows
-built on it.
+built on it, and so is UOS-Settings (`Apps/UOSSettings/ui/UOSSettingsWindow.cpp`),
+as a main window with the ULTRA OS logo above its tree:
+
+<!-- doc-check: std::shared_ptr<UltraCanvasImageElement> logo; -->
+```cpp
+using namespace UltraCanvas::SettingsPageKit;
+UltraCanvasSettingsWindow shell;
+SettingsWindowOptions options;
+options.width = 860;
+options.height = 580;
+options.sidebarHeader = logo;
+options.dialog = false;
+shell.Create(nullptr, "UOS-Settings 1.0", options);
+```
 
 ## Related
 
@@ -74359,13 +75203,25 @@ int region = soil.RegionOf(27.3, 22.4, 50.1);            // the class a sample f
 ```
 
 `RegionOf` classifies by the geometry the chart draws, in share space. A point
-exactly on an edge two regions share belongs to the region listed first, so
-the order of `regions` is the tie-break.
+exactly on an edge two regions share belongs to the region on the side
+`edgeLean` leans into - a change in the A, B and C shares that adds up to 0 -
+or, with no lean (the default) or on the triangle's rim where the lean would
+leave it, to the region listed first:
 
-The USDA preset's outlines are derived from the class rules of the USDA Soil
-Survey Manual (loam: clay 7-27 %, silt 28-50 %, sand at most 52 %, and so
-on), not drawn by hand. `TernaryModelTest` checks every class against those
-rules on a grid of 19,900 compositions.
+```cpp
+soil.edgeLean = {2.0, -3.0, 1.0};   // edges go to the side with more A and C, less B
+```
+
+The USDA preset's outlines are derived from the class definitions of the
+USDA Soil Survey Manual (Handbook 18, 2017, chapter 3: loam is "7 to less
+than 27 percent clay, 28 to less than 50 percent silt, and 52 percent or less
+sand", and so on), not drawn by hand. The manual gives every class boundary
+to the finer side - more clay, more silt, less sand - and the preset's lean
+does the same, so a sample of exactly 7 % clay is loam, as the manual says,
+not sandy loam. `TernaryModelTest` checks the classes against the manual's
+wording on a grid of 19,900 compositions off the boundaries and at all 5,151
+whole-percent compositions, boundaries and corners included. The lean is
+saved in the JSON (`"edgeLean"`).
 
 Hovering a region shows its name and note, a click calls
 `onRegionClick(regionIndex)`, and a point's tooltip names the region it is
@@ -77210,7 +78066,7 @@ those elements, the tabbed container and the text area
 (`include/UltraCanvasUIElement.h`)
 **Tests:** `Tests/UltraCanvasThemeTest.cpp` (without a display)
 **Design:** `Docs/Research/UltraVideoDesignProposal.md` §5.8
-**Version:** 1.6.0 - the readability the presets keep, measured by the test
+**Version:** 1.7.0 - fonts and text roles, the high-contrast presets, the theme from the host and the policy (T3 of the host theme proposal)
 **Last Modified:** 2026-10-12
 **Author:** UltraCanvas Framework
 
@@ -77379,11 +78235,89 @@ UltraCanvasTheme::RemoveChangeHandler(handler);
 A handler added during a change is not called for that change; one
 removed during a change is not called again.
 
+## Fonts and text roles
+
+The font half of a look lives in the theme too: `fonts.ui`, the interface
+font at its base size in points; `fonts.mono`, the monospace font; and
+`fonts.scale`, the host's text scale over both (the window's DPI is
+applied after). A preset carries the bundled Ubuntu 12 and Ubuntu Mono 12;
+`FromHost` puts the desktop's in. An element's text plays a role, and the
+role has a size: `Body` 1.0 of the base, `Caption` 0.92 (the 11 pt of a
+12 pt base), `Small` 0.85, `Heading` 1.25, `Title` 1.5, `Mono` the
+monospace font at the body size, each to the quarter point.
+
+```cpp
+UltraCanvasTheme theme = UltraCanvasTheme::Current();
+double caption = theme.FontSize(ThemeTextRole::Caption);         // 11 for a 12 pt base at scale 1
+FontStyle heading = theme.Font(ThemeTextRole::Heading);          // the interface font at 1.25 of the base
+FontStyle code = theme.Font(ThemeTextRole::Mono);                // the monospace font
+theme.fonts.ui.fontFamily = "Segoe UI";
+theme.fonts.ui.fontSize = 9;
+theme.fonts.scale = 1.25;                                        // Body is then 11.25
+```
+
+A `FromTheme` reader sets its style's family and size from `Font(role)`
+as it gains fonts by role (T4 of the proposal); until then the sizes are
+there for an application's own text.
+
+## The theme from the host
+
+`FromHost` builds the theme a desktop asks for from what
+[`UltraCanvasHostAppearance.md`](UltraCanvasHostAppearance.md) read:
+`Light()` or `Dark()` by the host's dark flag, `LightHighContrast()` or
+`DarkHighContrast()` when it asks for high contrast (black on white or
+white on black, every ink at 7:1), the five accent roles derived from the
+host's one accent, its fonts and text scale; the name says so (`Host
+Dark`, `Host Light High Contrast`).
+
+```cpp
+UltraCanvasTheme host = UltraCanvasTheme::FromHost(app->GetHostAppearance());
+ThemeRoles derived = UltraCanvasTheme::DeriveAccent(UltraCanvasTheme::Dark().roles, Color(0xe9, 0x54, 0x20), true);
+double ratio = UltraCanvasTheme::Contrast(derived.onAccent, derived.accent);   // at least 4.5
+```
+
+`DeriveAccent` keeps the readability the test enforces: text on the
+accent is white or the dark ink, whichever reads better, and the accent is
+moved toward black or white a step at a time until that text reaches
+4.5:1 (7:1 for high contrast) - a yellow or a mid-grey accent is nudged, a
+blue stays itself; `accentHover` is the accent moved 8 % toward the ink;
+`accentSoft` the accent at 18 % over the panel when dark, 14 % when light;
+`focus` the accent unless it fails 3:1 on the ground, then `lineStrong`.
+
+## The policy
+
+The application decides what the theme follows
+(`UltraCanvasApplication::SetThemePolicy`): `FollowHost`, the default,
+builds `FromHost(GetHostAppearance())` in `Initialize` before the first
+window and again on every host change, so switching the desktop to dark
+re-styles every element that follows and every window built with the
+default background takes the theme's ground; `Light` and `Dark` take the
+framework's preset with the host's fonts; `Own` leaves the theme to the
+application, with a provider - a function from the host to the
+application's theme, UltraVideo's `ThemeFor` is one - called at start and
+on every change when it gave one. An application that calls `SetCurrent`
+itself under another policy has taken over: the policy does not put its
+theme back over it.
+
+```cpp
+app->SetThemePolicy(ThemePolicy::Own);
+app->SetThemeProvider([](const HostAppearance& host) {
+    UltraCanvasTheme theme = host.dark ? UltraCanvasTheme::Dark() : UltraCanvasTheme::Light();
+    theme.name = "My app";
+    theme.fonts.ui = host.uiFont;
+    return theme;
+});
+ThemePolicy policy = app->GetThemePolicy();
+bool fromPolicy = app->ThemeIsFromPolicy();                      // the current theme is the policy's
+```
+
 ## Related
 
 - `Docs/UltraCanvas/UltraCanvasVideoTimeline.md`, `UltraCanvasTimecodeField.md` — the two readers with element roles of their own
 - `Docs/UltraCanvas/UltraCanvasTooltipManager.md` — `TooltipStyle::FromTheme`, the manager's style
 - `Apps/UltraVideo/UltraVideoTheme.h` — a design's tokens mapped onto the theme (`ThemeFor`)
+- [`UltraCanvasHostAppearance.md`](UltraCanvasHostAppearance.md) — what `FromHost` reads: the desktop's dark flag, contrast, accent, fonts and text scale
+- [`UltraCanvasHostThemeProposal.md`](UltraCanvasHostThemeProposal.md) — the whole: every element following by default (T4), the setting and UOS-Settings (T5)
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasTickerBoard.md
@@ -79478,7 +80412,7 @@ FILE: Docs/UltraCanvas/UltraCanvasToolbarExamples.md
 - **Overflow Handling**: Wrap, overflow menu, scroll, or hide
 - **Builder API**: Fluent `UltraCanvasToolbarBuilder`
 - **Preset Factories**: One-call construction of common toolbar shapes
-- **Item Badges and Tooltips**: a count, a short text or a status dot in the corner of any item (`SetItemBadge` / `SetItemBadgeCount` / `SetItemBadgeDot`), hover tooltips on the items themselves
+- **Item Badges and Tooltips**: a count, a short text or a status dot in the corner of any item (`SetItemBadge` / `SetItemBadgeCount` / `SetItemBadgeDot`), hover tooltips on the items themselves; the badge lets the pointer through, so a click on an item's count is a click on the item
 - **Auto-Hide and Drag Modes**: optional auto-hide, drag-to-move the toolbar (`ToolbarDragMode::Movable`) and drag-to-reorder its items (`EnableItemReordering`)
 - **Scrolling**: `ToolbarOverflowMode::Scroll` keeps the items at their size and scrolls a full toolbar with the mouse wheel; a chevron over the edge the items continue past says so, and a click on it scrolls a page (`SetScrollHints`)
 
@@ -80344,8 +81278,8 @@ FILE: Docs/UltraCanvas/UltraCanvasTooltipManager.md
 
 # UltraCanvasTooltipManager Documentation
 
-**Version:** 2.5.0 - `TooltipStyle::FromTheme`; the manager's style is the one every tooltip shown without one takes  
-**Last Modified:** 2026-10-05  
+**Version:** 2.6.0 - the tooltip is shown in a window of its own, above every other window (`SetUseOwnWindow`, `GetTooltipWindow`)  
+**Last Modified:** 2026-11-09  
 **Author:** UltraCanvas Framework
 
 ## Contents
@@ -80359,6 +81293,7 @@ FILE: Docs/UltraCanvas/UltraCanvasTooltipManager.md
 - [TooltipStyle Reference](#tooltipstyle-reference)
   - [Presets](#presets)
   - [Soft shadow](#soft-shadow)
+- [Its own window](#its-own-window)
 - [Manager API Reference](#manager-api-reference)
 - [Rendering Integration Notes](#rendering-integration-notes)
 - [Dependencies](#dependencies)
@@ -80367,8 +81302,8 @@ FILE: Docs/UltraCanvas/UltraCanvasTooltipManager.md
 
 `UltraCanvasTooltipManager` is the framework-wide tooltip system. It shows a
 single shared tooltip for the element under the pointer, handles show/hide
-delays, positions the tooltip inside the window, and renders it during window
-composition. Any element with a tooltip — plain text via
+delays, positions the tooltip on the screen, and shows it in a window of its
+own above every other window (see [Its own window](#its-own-window)). Any element with a tooltip — plain text via
 `UltraCanvasUIElement::SetTooltip` or structured content via
 `SetTooltipContent` — gets a tooltip automatically; application code normally
 never calls the manager directly.
@@ -80377,8 +81312,12 @@ never calls the manager directly.
 body ends `offsetY` (20 px) above the pointer's tip and starts `offsetX`
 (12 px) to its right, so the line under the pointer — the text being read —
 and the pointer's arrow stay in view, and it follows the pointer as it moves.
-With no room above (near the top of the window) it goes below the pointer's
-arrow instead, and with no room on the right, to the left of the pointer.
+With no room above (near the top of the monitor) it goes below the pointer's
+arrow instead, and with no room on the right, to the left of the pointer. The
+room is the monitor's, not the window's: the tooltip of an element near the
+top of a window, or of a bar along the bottom of the screen, rises above it.
+Where the tooltip is drawn inside its window (see below) the room is the
+window's.
 The position passed to `UpdateAndShowTooltip` is the pointer's; an element
 showing a tooltip for a fixed spot passes that spot's top edge.
 
@@ -80601,6 +81540,48 @@ per-layer alpha is derived so the fully overlapped core reaches
 `shadowColor.a`. Set `shadowBlur = 0` to get the old single hard-edged
 shadow rectangle, or `hasShadow = false` to disable the shadow entirely.
 
+## Its own window
+
+The tooltip is shown in a window of its own, `WindowType::Tooltip`: above
+every other window, never focused, and the pointer passes through it to the
+element it describes. Drawn into the window it belongs to, as it was until
+2026-11, it was covered by any window above that one - every tooltip of
+UltraDesktop's bars, which live in a window kept below all others, went under
+the applications' windows - and it stopped at that window's edges.
+
+| Platform | The tooltip's window |
+|---|---|
+| X11 (Linux, the BSDs) | override-redirect, `_NET_WM_WINDOW_TYPE_TOOLTIP`, an empty input shape, mapped raised |
+| Windows | `WS_EX_TOPMOST \| WS_EX_TOOLWINDOW \| WS_EX_NOACTIVATE`, layered and `WS_EX_TRANSPARENT`, shown without activation |
+| Wayland | a popup of the window the tooltip belongs to with no input region; beside a desktop on the layer shell, a surface on the overlay layer that never takes the keys |
+| macOS | a borderless window that never becomes key, at the pop-up menu level, ignoring the pointer, with the system's shadow |
+| the browser, Android | none: the tooltip is drawn inside its window |
+
+The window is made the first time a tooltip of a window is shown, hidden with
+the tooltip and shown again for the next one; a tooltip of another window gets
+a new one. A closing window takes its tooltip and the tooltip's window with it
+(`ForgetWindow`, which `UltraCanvasApplication` calls as a window closes), and
+the tooltip's window is no application window: it never keeps `Run()` going,
+is not counted by `ClosingEndsApplication`, is no jump target and is not
+reported to assistive technology.
+
+The window is opaque, so in it the tooltip has square corners and no soft
+shadow of its own; a compositing window manager gives a tooltip window a
+shadow. Drawn inside its window the tooltip keeps the style's
+`cornerRadius` and shadow.
+
+```cpp
+// Draw tooltips inside their windows, as before (on by default where the
+// platform has the window)
+UltraCanvasTooltipManager::SetUseOwnWindow(false);
+
+// Where the tooltip on screen is: its own window, or nullptr while it is
+// drawn inside the window it belongs to (or none is shown)
+UltraCanvasWindowBase* shownIn = UltraCanvasTooltipManager::GetTooltipWindow();
+```
+
+The tooltip is drawn inside its window also whenever its own cannot be made.
+
 ## Manager API Reference
 
 ```cpp
@@ -80635,16 +81616,26 @@ static Point2Di GetTooltipPosition();   // top-left of the tooltip body
 static Size2Di GetTooltipSize();        // size of the tooltip body
 static void UpdateTooltipPosition(const Point2Di& cursorPosition);
 
-// Rendering (called by the window compositor)
+// Its own window (see "Its own window")
+static void SetUseOwnWindow(bool use);  // default true; false draws it in its window
+static bool GetUseOwnWindow();
+static UltraCanvasWindowBase* GetTooltipWindow();   // nullptr: drawn in its window, or none
+static void ForgetWindow(UltraCanvasWindowBase* win);        // a window is closing
+static void WindowScaleChanged(UltraCanvasWindowBase* win);  // a window changed monitor scale
+
+// Rendering (called by the window compositor of the window the tooltip is
+// shown in: its own, or the one it belongs to)
 static IRenderContext* Render(UltraCanvasWindowBase* win);
-static Point2Di GetCompositePosition(); // GetTooltipPosition() minus shadow margins
+static Point2Di GetCompositePosition(); // GetTooltipPosition() minus shadow margins; 0,0 in its own window
 ```
 
 ## Rendering Integration Notes
 
 - `Render()` draws into an off-screen surface sized to the tooltip body plus
-  the soft-shadow margins; the surface is cached until the text, style, or
-  target window changes.
+  the soft-shadow margins (none in its own window); the surface is cached
+  until the text, style, or target window changes. It answers only the window
+  the tooltip is shown in, so the window it belongs to composites nothing
+  while the tooltip has its own.
 - The window compositor must blend the surface with
   `CompositeToSurface(nativeSurface, GetCompositePosition())` — an OVER
   blend, not a raw flush — because the shadow margins are translucent.
@@ -80659,7 +81650,8 @@ static Point2Di GetCompositePosition(); // GetTooltipPosition() minus shadow mar
 
 ## Dependencies
 
-- `UltraCanvasWindow`: target window and composition
+- `UltraCanvasWindow`: target window, composition, and the tooltip's own
+  window (`WindowType::Tooltip`)
 - `UltraCanvasApplication`: hover tracking and show/hide timers
 - `IRenderContext`: rendering context interface
 
@@ -82657,6 +83649,7 @@ Each takes its data through setters and renders itself; most have a
 | Values either side of a centre: likert scales, demographics | `UltraCanvasDivergingBarChart`, `UltraCanvasPopulationChart` | `Plugins/Charts/UltraCanvasDivergingBarChart.h`, `Plugins/Charts/UltraCanvasPopulationChart.h` |
 | 100% stacked columns of *different widths* (Marimekko / mosaic) | `UltraCanvasMekkoChartElement` | `Plugins/Charts/UltraCanvasMekkoChart.h` |
 | Mixes of three parts that add up to 100 % - vote shares, soil texture, alloys - as points in a triangle (ternary plot) | `UltraCanvasTernaryChart` | `Plugins/Charts/Engine/Charts/UltraCanvasTernaryChart.h` |
+| A picture's histogram: how many pixels have each level of red, green and blue (overlaid or one channel) or luminosity, beside a photo | `UltraCanvasHistogramChart` | `Plugins/Charts/Engine/Charts/UltraCanvasHistogramChart.h` |
 | Many measures per item: radar, or parallel coordinates | `UltraCanvasRadarChartElement`, `UltraCanvasParallelCoordinateChartElement` | `Plugins/Charts/UltraCanvasRadarChartElement.h`, `Plugins/Charts/UltraCanvasParallelCoordinateChart.h` |
 | Angle / radius space: polar series, radial bars, activity rings, ringed infographic | `UltraCanvasPolarChart`, `UltraCanvasRadialBarChart`, `UltraCanvasCircularProgressChart`, `UltraCanvasCircularInfoGraphic` | matching `Plugins/Charts/*.h` |
 | A matrix of values as colour: heatmap, hexbin, contribution calendar | `UltraCanvasHeatmapChartElement`, `UltraCanvasHexbinChartElement`, `UltraCanvasCalendarHeatmapElement` | `Plugins/Charts/UltraCanvasHeatmapChart.h`, `Plugins/Charts/UltraCanvasHexbinChart.h`, `Plugins/Charts/UltraCanvasCalendarHeatmap.h` |
@@ -85133,6 +86126,12 @@ timeline->SetStyle(style);
   the slot length steps by a factor of root 2, so zooming inside a step and
   scrolling reuse what was decoded. Only the slots in view are asked for,
   in chunks of eight.
+- The element is in the element registry as `"video-timeline"` (category
+  Widget, `MakeVideoTimelineDescriptor`). It is a selectable widget: compiled
+  into the core by default, or built as the `ultracanvas-widget-video-timeline`
+  runtime module when `ULTRACANVAS_WIDGETS` leaves it out. See *Widgets as
+  runtime modules* in
+  [`UltraCanvasElementPlugins.md`](UltraCanvasElementPlugins.md).
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasVolumeMonitor.md
@@ -85187,6 +86186,7 @@ debounce for you, because how long to wait is the caller's decision.
 |---|---|
 | `ListMountedVolumes()` | Every volume mounted right now, system root first, the rest sorted by path. Each is a `MountedVolume { path, label, isSystemRoot }`. |
 | `ListVolumeRoots()` | The same list, mount points only — the shape a caller that just navigates wants. |
+| `ReadVolumeName(path)` | The name a drive letter's volume carries (`"My Passport Ultra"`), shown as Explorer does: `"My Passport Ultra (D:)"`. Empty when it has none, for a network drive, and on Linux and macOS (`label` already is the name there). Reads the medium, so call it off the UI thread — `ListMountedVolumes()` deliberately does not. |
 | `ListGvfsVolumes()` | The places a Linux desktop mounted through GVFS — a phone (MTP), a camera (gphoto2), an iPhone (AFC), a network share or server (SMB, SFTP, FTP, WebDAV, NFS, AFP) — each with a readable label. Part of `ListMountedVolumes()`; empty on Windows and macOS. See [GVFS places](#gvfs-places). |
 | `GvfsVolumeLabel(name)` | The label one GVFS mount name gets (`"mtp:host=Google_Pixel_8"` → `"Google Pixel 8"`); empty for a name that is not listed. For tests. |
 | `Start(onChanged)` | Report mounts and unmounts until `Stop()`. Uses the platform's notification where there is one and a polling thread where there is not, so it only fails on a missing callback. |
@@ -89639,6 +90639,7 @@ FILE: Docs/Modules/FileLoader/README.md
 - [Key Functionality](#key-functionality)
   - [Generic File Loading](#generic-file-loading)
   - [Typed Object Loaders](#typed-object-loaders)
+  - [Text From Any File](#text-from-any-file)
   - [Editable Vector Documents](#editable-vector-documents)
   - [Save Settings](#save-settings)
   - [A Drawing Saved as a Bitmap](#a-drawing-saved-as-a-bitmap)
@@ -89752,6 +90753,59 @@ loader: `LoadTextDocument(path, error, password)`, or a spreadsheet's
 and `SaveTextDocument(document, path, error, password)` or a spreadsheet's
 `SaveToFile(path, password)` writes the file encrypted. See
 [UltraCanvasOfficeEncryption](../../UltraCanvas/UltraCanvasOfficeEncryption.md).
+
+### Text From Any File
+
+`ExtractText(path)` gives the words in a file as plain text a person can
+paste - the "extract text" of a clipboard manager, a file manager or a search
+indexer:
+
+| File | How it is read (`TextExtractionMethod`) |
+|---|---|
+| ODT, DOCX, LaTeX, a PowerPoint deck | `Document`: `LoadTextDocument`, then its plain text |
+| PDF | `PDF`: the text of every page; a scanned PDF without any is rendered at 300 DPI and read by text recognition |
+| ODS, XLSX, XLS | `Spreadsheet`: every sheet, tab-separated, each under its name when there are several |
+| TXT, Markdown, CSV, code, any UTF-8 file | `PlainText`: as it is |
+| PNG, JPEG, WebP, ... (what the image pipeline decodes) | `Recognition`: text recognition (OCR), on white where the picture is transparent |
+| Sound and video | `Transcription`: speech to text |
+
+Text recognition and speech to text are hooks, not part of the core. The OCR
+plugin installs Tesseract with `RegisterOCRTextRecognition()`
+(`UltraCanvasOCRPlugin.h`; every installed language, or the ones it is
+given). UltraAI's `RegisterUltraAITextRecognition`
+(`UltraAITextRecognition.h`, in `UltraAI_UI`), installed after it, puts an
+UltraAI vision provider that reads text in front - local first, a cloud one
+only when chosen - with Tesseract as the fallback
+(`GetImageTextRecognizer` hands it the recognizer before). An application with a speech-to-text engine - UltraAI's
+`ISpeechToText`, a local one - installs it with `SetSpeechTranscriber`.
+`CanExtractText(path)` says whether this build can read a file, and
+`WhyNoTextExtraction(path)` says why not in a sentence for the user ("Speech
+to text is not available ..."). Recognition and transcription take seconds, so
+call `ExtractText` off the UI thread; the hooks are called on that thread.
+
+<!-- doc-check: std::string path; void ShowText(const std::string& text); void ShowError(const std::string& message); -->
+```cpp
+// Speech to text from the application's own engine (here: none yet).
+UltraCanvasFileLoader::SetSpeechTranscriber(
+        [](const std::string& file, std::string& text, std::string& error) {
+    (void)file;
+    (void)text;
+    error = "No speech engine";
+    return false;
+});
+
+if (!UltraCanvasFileLoader::CanExtractText(path)) {
+    ShowError(UltraCanvasFileLoader::WhyNoTextExtraction(path));
+} else {
+    auto reading = std::async(std::launch::async, [path]() { return UltraCanvasFileLoader::ExtractText(path); });
+    // ... later, on the UI thread:
+    const UltraCanvasFileLoader::TextExtractionResult result = reading.get();
+    if (!result.Ok()) ShowError(result.error);
+    else ShowText(result.text);   // empty: the file holds no words
+}
+```
+
+UltraClipboard's *Extract text* (an image, or copied files) is built on it.
 
 ### Editable Vector Documents
 
@@ -94077,13 +95131,530 @@ under a text-LLM provider's id replaces the LLM-backed one for that id.
 * `UltraAI/Docs/UltraVault.md` — credential storage for `apiKeyVaultRef`.
 
 ==============================================================================
+FILE: Docs/Modules/UltraAI/Agents.md
+==============================================================================
+
+# UltraAI Agents — a model that uses tools until the task is done
+
+**Version:** 0.1.0
+**Last Modified:** 2026-11-09
+
+## Overview
+
+`ITextLLM` answers one request. When the model asks for a tool, someone
+has to run the tool, send the result back and ask again, and repeat until
+the model has its answer. That is the agent loop. `UltraAI::Agent` is that
+loop, written once for every application: register the tools as C++
+functions, call `Run` with a task, and the agent takes it from there.
+
+The agent works over any `ITextLLM`: `anthropic`, `openai`, `qwen`,
+`local`, `llama-cpp` or `mock`. So the same agent runs against a cloud model
+or one on this computer. It is part of `UltraAI_Core`, needs nothing beyond
+the capability interfaces, and builds with the module's default options.
+
+Header: `UltraAIAgent.h` (included by `UltraAI.h`). Tests:
+`UltraAI/tests/test_agent.cpp`.
+
+```cpp
+#include <UltraAI.h>
+#include <iostream>
+using namespace UltraAI;
+
+void Example() {
+    TextLLMConfig cfg;                  // empty providerId -> the default route
+    AgentOptions opts;
+    opts.systemPrompt = "You help with the user's files. Be brief.";
+
+    Error err;
+    std::unique_ptr<Agent> agent = CreateAgent(cfg, opts, &err);
+    if (!agent) { std::cerr << err.message << '\n'; return; }
+
+    agent->AddTool("word_count", "Count the words in a text.",
+        R"({"type":"object","properties":{"text":{"type":"string"}},"required":["text"]})",
+        [](const ToolCall& call) {
+            ToolArguments args(call.argumentsJson);
+            std::string text = args.String("text").value_or("");
+            int words = 0;
+            bool inWord = false;
+            for (char c : text) {
+                bool space = (c == ' ' || c == '\n' || c == '\t');
+                if (!space && !inWord) ++words;
+                inWord = !space;
+            }
+            return ToolResult::Ok(std::to_string(words));
+        });
+
+    AgentResult r = agent->Run("How many words are in 'the quick brown fox'?");
+    if (r.Succeeded()) std::cout << r.text << '\n';
+}
+```
+
+## Contents
+
+- [Overview](#overview)
+- [How a run goes](#how-a-run-goes)
+- [Tools](#tools)
+  - [Reading the arguments](#reading-the-arguments)
+  - [Results and errors](#results-and-errors)
+- [Options](#options)
+- [Permission and after-call hooks](#permission-and-after-call-hooks)
+- [Progress events](#progress-events)
+- [Streaming](#streaming)
+- [Running off the UI thread, and cancelling](#running-off-the-ui-thread-and-cancelling)
+- [Conversations](#conversations)
+- [How a run ends](#how-a-run-ends)
+- [Subagents](#subagents)
+- [Limits of this version](#limits-of-this-version)
+
+## How a run goes
+
+1. The prompt becomes the next user message in the agent's history.
+2. The agent sends the system prompt, the history and the tool definitions
+   to the model. This is one *turn*.
+3. The model's reply (its text and any tool calls) is added to the history.
+4. If the reply asks for no tool, the run is over. Otherwise each tool call
+   runs in the order the model gave, through `canUseTool` and
+   `afterToolCall`, and its result is added to the history as a `Role::Tool`
+   message with the call's id. Then the next turn starts at step 2.
+
+Every tool call the model makes gets a result in the history: one that
+ran, one that was denied, one for a tool that does not exist, and the
+remaining calls of a run that was stopped or cancelled. Providers refuse a
+conversation in which a tool call has no result, so the history stays one
+the model can carry on from.
+
+## Tools
+
+A tool is a `ToolDefinition` (name, description, JSON Schema of its
+arguments) and a `ToolHandler`. `AddTool` refuses an empty or duplicate
+name and a missing handler. An empty schema becomes
+`{"type":"object","properties":{}}`, a tool that takes no arguments.
+
+```cpp
+#include <UltraAI.h>
+using namespace UltraAI;
+
+void AddTools(Agent& agent) {
+    AgentTool tool;
+    tool.definition.name = "get_time";
+    tool.definition.description = "The current local time, as HH:MM.";
+    tool.handler = [](const ToolCall&) { return ToolResult::Ok("14:05"); };
+    agent.AddTool(tool);
+
+    agent.RemoveTool("get_time");
+    std::vector<ToolDefinition> offered = agent.Tools();
+    (void)offered;
+}
+```
+
+Handlers run on the thread that called `Run`, one at a time.
+
+### Reading the arguments
+
+The model writes a tool's arguments as a JSON object
+(`ToolCall::argumentsJson`). `ToolArguments` reads it, so a handler needs no
+JSON library:
+
+| Getter | Returns |
+|---|---|
+| `IsValid()` | the text is one JSON object (blank text counts as `{}`) |
+| `Has(key)`, `Keys()` | whether a key is there; all keys in order |
+| `String(key)` | a string value |
+| `Number(key)` | any number |
+| `Integer(key)` | a whole number (`2.5` gives nullopt) |
+| `Boolean(key)` | `true` / `false` |
+| `StringArray(key)` | an array whose every element is a string |
+| `Json(key)` | any value, written back as compact JSON (for nested objects) |
+
+Each getter returns `std::nullopt` when the key is missing or its value has
+another type. Models do sometimes send the wrong type, so check what you get.
+`JsonQuote(text)` gives a quoted JSON string, for a tool that answers in
+JSON.
+
+### Results and errors
+
+A handler returns `ToolResult::Ok(text)` or `ToolResult::Fail(text)`. The
+model reads a failed result as `Error: <text>` and can react: try other
+arguments, ask the user, or give up. An exception thrown by a handler
+becomes a failed result (`Error: The tool failed: <what()>`), and a call to
+a tool the agent does not have gets `Error: There is no tool named "x".`.
+Neither one ends the run.
+
+## Options
+
+`AgentOptions`, given to the constructor or `CreateAgent` and changed with
+`SetOptions` between runs:
+
+| Field | Default | Meaning |
+|---|---|---|
+| `model` | empty | model id; empty uses the provider's default |
+| `systemPrompt` | empty | sent first on every request; not kept in `History()` |
+| `sampling` | unset | temperature, max output tokens, ... (`SamplingParams`) |
+| `options` | empty | provider extras on every request (`ChatRequest::options`), e.g. `thinking` for `anthropic` |
+| `maxTurns` | 20 | model calls one run may make; 0 means no limit |
+| `stream` | false | ask through `ChatStream` and report the text as it arrives |
+| `canUseTool` | unset | sees each call before it runs (see below) |
+| `afterToolCall` | unset | sees and may change each result before the model does |
+
+## Permission and after-call hooks
+
+`canUseTool` decides about every call before it runs:
+
+- `ToolPermission::Allow()` runs the tool.
+- `ToolPermission::Deny(why)` does not run it. The model reads `why`
+  (default: *The user denied this tool call.*) and can carry on without it.
+- `ToolPermission::Stop()` does not run it and ends the run with
+  `AgentStopReason::Stopped`.
+
+`afterToolCall` sees every result of a tool that ran and may change it:
+trim a long output, remove a secret, or write it to a log.
+
+```cpp
+#include <UltraAI.h>
+using namespace UltraAI;
+
+AgentOptions SafeOptions() {
+    AgentOptions opts;
+    opts.canUseTool = [](const ToolCall& call) {
+        if (call.name == "delete_file") return ToolPermission::Deny("Deleting is not allowed.");
+        if (call.name == "format_disk") return ToolPermission::Stop();
+        return ToolPermission::Allow();
+    };
+    opts.afterToolCall = [](const ToolCall&, ToolResult& result) {
+        if (result.content.size() > 20000) result.content.resize(20000);
+    };
+    return opts;
+}
+```
+
+A program that asks the user before a tool runs does it inside
+`canUseTool`. The run waits for the answer, because the hook runs on the
+run's own thread.
+
+## Progress events
+
+`Run` takes an optional `AgentEventCallback`. Every event comes on the
+thread that called `Run`, streamed text included, never on the adapter's
+thread:
+
+| `AgentEventKind` | Fields set | When |
+|---|---|---|
+| `TurnStarted` | `turn` | the model is about to be called |
+| `TextDelta` | `turn`, `textDelta` | streaming only: text as it arrives |
+| `AssistantMessage` | `turn`, `message`, `usage` | the model's whole reply for the turn |
+| `ToolCallStarted` | `turn`, `toolCall` | a tool is about to run |
+| `ToolCallDenied` | `turn`, `toolCall`, `toolResult` | `canUseTool` denied or stopped it |
+| `ToolCallFinished` | `turn`, `toolCall`, `toolResult` | a tool has run |
+| `Finished` | `turn`, `usage`, `result` | the run is over; `result` is valid during the call |
+
+## Streaming
+
+With `AgentOptions::stream` set, each turn goes through `ChatStream`. The
+text arrives as `TextDelta` events, the tool calls are taken from the
+stream's `ToolCallEnd` events, and the usage comes from `Done` (or from the
+last `UsageUpdate` when `Done` has none). The result is the same as without
+streaming.
+
+## Running off the UI thread, and cancelling
+
+`RunAsync(prompt, onEvent)` runs on a thread of its own and returns a
+`std::future<AgentResult>`. The agent must outlive the future. Events then
+arrive on that thread, so a window posts them to its own thread before it
+touches a widget.
+
+`Cancel()` may be called from any thread. A streaming reply stops at once;
+otherwise the run ends after the model call or tool that is running. The
+remaining tool calls of that turn are given a *cancelled* result. A second
+`Run` while one is going fails at once with `ErrorCode::InvalidRequest`.
+
+```cpp
+#include <UltraAI.h>
+using namespace UltraAI;
+
+void Background(Agent& agent) {
+    std::future<AgentResult> pending = agent.RunAsync("Summarise the log.");
+    // ... later, when the user presses Stop:
+    agent.Cancel();
+    AgentResult r = pending.get();       // r.stopReason == AgentStopReason::Cancelled
+    (void)r;
+}
+```
+
+## Conversations
+
+An agent keeps its conversation between runs, so it is a session: the
+second `Run` sees the first one's messages. `History()` returns the
+messages so far, without the system prompt. `SetHistory` restores a saved
+conversation and `ClearHistory` starts over. A run that fails or is
+cancelled before the model has answered leaves the history as it was, so
+the same prompt can be sent again. `AgentResult::messages` holds what the
+run added.
+
+## How a run ends
+
+| `AgentStopReason` | Why |
+|---|---|
+| `Completed` | the model answered without asking for a tool (`Succeeded()` is true) |
+| `MaxTurns` | `maxTurns` model calls were made |
+| `MaxOutputTokens` | the reply was cut off at the model's token limit |
+| `ContentFiltered` | the provider refused the reply |
+| `Stopped` | `canUseTool` returned `Stop` |
+| `Cancelled` | `Cancel()` was called (`error.code == ErrorCode::Cancelled`) |
+| `Error` | the model call failed; `error` says how (rate limit, no key, ...) |
+
+`AgentResult` also has the last reply `text`, the number of `turns` and
+`toolCalls`, and `usage` summed over the run.
+
+## Subagents
+
+`MakeSubagentTool(subagent, name, description)` turns an agent into a tool
+of another one. The tool takes `{"task": "..."}`, runs the subagent on that
+task with an empty conversation, and returns its answer. A subagent that
+did not finish returns an error result. Use it to give one job its own
+system prompt, tools, model or token budget: a cheap local model for
+lookups under a cloud model that plans.
+
+```cpp
+#include <UltraAI.h>
+using namespace UltraAI;
+
+void Team(Agent& lead, std::shared_ptr<ITextLLM> localModel) {
+    AgentOptions researcherOptions;
+    researcherOptions.systemPrompt = "You find facts in the user's notes and quote them.";
+    researcherOptions.maxTurns = 6;
+    auto researcher = std::make_shared<Agent>(localModel, researcherOptions);
+
+    lead.AddTool(MakeSubagentTool(researcher, "researcher",
+        "Finds facts in the user's notes. Give it one question at a time."));
+}
+```
+
+The parent's `Cancel()` does not reach the subagent, so give the subagent a
+small `maxTurns`.
+
+## Limits of this version
+
+- Tools run one after another, never in parallel.
+- No built-in tools (files, shell, web): an application decides what its
+  agent may touch and writes those tools itself.
+- Providers' server-side tools (Anthropic web search, code execution) are
+  not offered; the `anthropic` adapter skips their blocks.
+- `llama-cpp` has no tool calls yet, so an agent over it can only answer
+  in text.
+- The model's thinking text is not reported.
+
+==============================================================================
+FILE: Docs/Modules/UltraAI/Batches.md
+==============================================================================
+
+# UltraAI Batches — many requests as one job, about half the price
+
+**Version:** 0.1.0
+**Last Modified:** 2026-11-09
+
+## Overview
+
+Anthropic's Message Batches and OpenAI's Batch API take a list of chat
+requests and answer them within 24 hours (usually much sooner). They charge
+about half of what the same requests cost one at a time. That suits work
+nobody is waiting on: translating a whole catalogue, summarising an archive,
+classifying a mailbox.
+
+`ITextBatch` is that job, written once for both. It also works for every
+other text-LLM provider: where a provider has no batch endpoint (`local`,
+`qwen`, `llama-cpp`, `mock`, an OpenAI-compatible server), the same
+interface sends the requests one after another on a thread of its own. An
+application uses one API and gets the discount where there is one.
+
+Header: `UltraAIBatch.h` (included by `UltraAI.h`), part of `UltraAI_Core`.
+Tests: `UltraAI/tests/test_batch.cpp`.
+
+```cpp
+#include <UltraAI.h>
+#include <iostream>
+using namespace UltraAI;
+
+void TranslateAll(const std::vector<std::string>& texts) {
+    TextBatchConfig cfg;
+    cfg.providerId = "anthropic";
+    cfg.apiKeyVaultRef = "ai.anthropic.api_key";
+
+    Error err;
+    std::unique_ptr<ITextBatch> batch = CreateTextBatch(cfg, &err);
+    if (!batch) { std::cerr << err.message << '\n'; return; }
+
+    std::vector<BatchRequestItem> items;
+    for (size_t i = 0; i < texts.size(); ++i) {
+        BatchRequestItem item;
+        item.customId = "text-" + std::to_string(i);
+        Message m;
+        m.role = Role::User;
+        m.text = "Translate into German, reply with the translation only:\n" + texts[i];
+        item.request.messages.push_back(m);
+        items.push_back(item);
+    }
+
+    BatchRunResult run = RunBatch(*batch, items);     // submit, poll, collect; blocks
+    if (!run.error.IsOk()) { std::cerr << run.error.message << '\n'; return; }
+    for (const BatchItemResult& r : run.results) {
+        if (r.status == BatchItemStatus::Succeeded) std::cout << r.customId << ": " << r.response.text << '\n';
+        else std::cout << r.customId << " failed: " << r.response.error.message << '\n';
+    }
+}
+```
+
+## Contents
+
+- [Overview](#overview)
+- [Which providers](#which-providers)
+- [Items](#items)
+- [The job](#the-job)
+- [RunBatch: submit, wait, collect](#runbatch-submit-wait-collect)
+- [Step by step](#step-by-step)
+- [Results](#results)
+- [Limits of this version](#limits-of-this-version)
+
+## Which providers
+
+`CreateTextBatch(config)` gives the provider's own batch when it has one,
+and the one-at-a-time fallback otherwise. `IsNative()` says which one you
+got.
+
+| Provider | `IsNative()` | How |
+|---|---|---|
+| `anthropic` | yes | `POST /v1/messages/batches`; results as JSONL from `.../results` |
+| `openai` (hosted API) | yes | the requests uploaded as a JSONL file (`/v1/files`), a batch made from it (`/v1/batches`), results read from its output and error files |
+| `openai` with a custom `baseUrl` | no | Ollama, vLLM and llama.cpp server have no batch endpoint |
+| `local`, `qwen`, `llama-cpp`, `mock` | no | one request at a time through the text LLM |
+| empty `providerId` | depends | the text-LLM route chooses; native if it lands on one of the above |
+
+The fallback lives in the object that ran it: its batch ids mean nothing to
+another object or after a restart. A native batch id stays valid at the
+provider (results are kept for 29 days at Anthropic and 30 days at OpenAI),
+so a program can store it and come back for the answers later.
+`CreateSequentialTextBatch(llm, concurrency)` builds the fallback over an LLM
+you already hold, with several requests in flight at once if the server
+allows it. `ListTextBatchProviders()` lists the native ones and
+`RegisterTextBatchProvider` adds one.
+
+## Items
+
+A `BatchRequestItem` is a `customId` and an ordinary `ChatRequest`: model,
+system and user messages, sampling, tools and structured output, all as for
+`ITextLLM::Chat`. Results come back in any order, so the `customId` is what
+matches an answer to its request. It must be unique within the batch and
+1–64 characters of letters, digits, `-` and `_`. `ValidateBatchItems` checks
+the list (and `Submit` runs the same check first).
+
+## The job
+
+`BatchJob` is the batch as the provider last described it:
+
+| Field | Meaning |
+|---|---|
+| `id` | the provider's batch id |
+| `state` | `Validating`, `InProgress`, `Finalizing`, `Cancelling`, then `Completed`, `Cancelled`, `Expired` or `Failed` |
+| `counts` | `total`, `processing`, `succeeded`, `failed`, `cancelled`, `expired` |
+| `createdAt`, `endedAt`, `expiresAt` | RFC 3339 UTC times, when the provider gives them |
+| `error` | the call failed, or the batch was refused (`state == Failed`) |
+
+`IsFinished(state)` is true for the last four states: nothing will change
+any more, and the results can be read. `Completed` does not mean every
+request succeeded; look at each result.
+
+## RunBatch: submit, wait, collect
+
+`RunBatch(batch, items, options)` submits the items, polls until the job is
+finished and fetches the results. It blocks, so run it off the UI thread.
+`BatchRunOptions`:
+
+| Field | Default | Meaning |
+|---|---|---|
+| `pollInterval` | 10 s | the first wait between polls (at least 200 ms) |
+| `maxPollInterval` | 2 min | the longest wait between polls |
+| `backoff` | 1.5 | each wait is this much longer than the last |
+| `timeout` | 0 (none) | stop waiting after this long; the batch keeps running at the provider (`ErrorCode::Timeout`) |
+| `onProgress` | unset | sees the job after every poll |
+| `cancel` | null | a flag; when it turns true the batch is cancelled at the provider and what was answered is returned (`ErrorCode::Cancelled`) |
+
+The fallback is polled every 200 ms whatever the options say. A poll that
+fails (network, rate limit) is tried again, and five failures in a row end
+the wait.
+
+```cpp
+#include <UltraAI.h>
+#include <atomic>
+using namespace UltraAI;
+
+BatchRunResult Watched(ITextBatch& batch, const std::vector<BatchRequestItem>& items,
+                       std::atomic<bool>& stopFlag) {
+    BatchRunOptions options;
+    options.pollInterval = std::chrono::seconds(30);
+    options.onProgress = [](const BatchJob& job) {
+        // e.g. post "412 of 1000 done" to the UI thread
+        (void)job.counts.succeeded;
+    };
+    options.cancel = &stopFlag;
+    return RunBatch(batch, items, options);
+}
+```
+
+## Step by step
+
+For a batch that outlives the program, use the four calls directly:
+
+```cpp
+#include <UltraAI.h>
+using namespace UltraAI;
+
+std::string Start(ITextBatch& batch, const std::vector<BatchRequestItem>& items) {
+    BatchJob job = batch.Submit(items);
+    return job.error.IsOk() ? job.id : std::string{};     // store the id
+}
+
+void Later(ITextBatch& batch, const std::string& id) {
+    BatchJob job = batch.Get(id);
+    if (!IsFinished(job.state)) return;                   // ask again later
+    Error err;
+    std::vector<BatchItemResult> results = batch.Results(id, &err);
+    (void)results;
+}
+
+void GiveUp(ITextBatch& batch, const std::string& id) {
+    batch.Cancel(id);     // Cancelling, then Cancelled; running requests still finish
+}
+```
+
+## Results
+
+`Results(id)` gives one `BatchItemResult` per request of a finished job:
+its `customId`, a `status` and the `response`, which is the same
+`ChatResponse` that `Chat` returns (text, tool calls, usage, finish reason):
+
+| `BatchItemStatus` | `response` |
+|---|---|
+| `Succeeded` | the answer |
+| `Failed` | `error` with the provider's code and message (bad parameters, unknown model, ...) |
+| `Cancelled` | the batch was cancelled before this request ran |
+| `Expired` | the 24-hour window ran out before this request ran |
+
+## Limits of this version
+
+- Text chat requests only (the providers' batch endpoints also take
+  embeddings and other calls; `ITextBatch` does not yet).
+- The input is sent in one upload. OpenAI accepts up to 50 000 requests or
+  200 MB per batch, Anthropic 100 000 requests or 256 MB; split larger work
+  into several batches.
+- The dashboard has no batch page yet.
+
+==============================================================================
 FILE: Docs/Modules/UltraAI/LocalRuntime.md
 ==============================================================================
 
 # UltraAI Local Runtime — models on this computer, nothing to install
 
-**Version:** 0.1.0
-**Last Modified:** 2026-10-20
+**Version:** 0.2.0
+**Last Modified:** 2026-11-06
 
 ## Overview
 
@@ -94153,11 +95724,12 @@ on Windows, `~/Library/Application Support` on macOS, `$XDG_DATA_HOME` or
 ├── engines/<engine>/<version>-<platform>-<accelerator>/   an unpacked bundle, with bundle.json
 ├── models/<model id>/                                      the files, with model.json
 ├── downloads/*.part                                        in flight; resumed next time
-├── gallery/index.json, catalogue.json                      the refreshed copies
+├── gallery/index.json, catalogue.json, topics.json         the refreshed copies
 ├── logs/<engine>-<model>.log                               the engine's output (rotated at 4 MB)
 ├── runtime.json                                            running engines: pid, port, model, started, last used
 ├── runtime.key                                             the loopback API key (owner-only on POSIX)
 ├── runtime-settings.json                                   the settings below
+├── topic-preferences.json                                  the user's model per topic, new models (Topics)
 └── user-models.json                                        models the user added
 ```
 
@@ -94275,6 +95847,71 @@ install time.
 
 ---
 
+## Topics
+
+A topic is what a model is used for: general chat, programming,
+translation, summaries, pictures and documents, search, or one the model
+server adds. The server ([`Server/UltraAIModelServer`](../../../Server/UltraAIModelServer/README.md),
+managed with [UltraAI ServerAdmin](../../UltraAIServerAdmin/README.md))
+publishes `topics.json` beside the index; `RefreshGallery()` fetches it
+with the catalogue, and the copy built into the framework stands in until
+then (and for a mirror that publishes none).
+
+```json
+{
+  "formatVersion": 1,
+  "published": "2026-11-06",
+  "topics": [
+    {"id": "translation", "name": "Translation", "description": "...", "capability": "textllm",
+     "models": [{"id": "qwen3-4b-q4", "default": true}, {"id": "qwen3-8b-q4"}, {"id": "qwen3-1.7b-q8"}]}
+  ]
+}
+```
+
+`models` is the server's order, best first; the one marked `default` is
+the server's choice (the first one when none is marked). The built-in
+topics are `chat`, `code`, `translation`, `summary`, `vision` and
+`search`.
+
+The user's side is `TopicPreferences`, kept in `topic-preferences.json`:
+
+| Field | Meaning |
+|---|---|
+| `choices[topic].modelId` | `""` (the default): follow the server's choice, and move with it; otherwise the model the user picked |
+| `choices[topic].autoInstall` | while following: `ApplyTopicUpdates` downloads the server's choice when it is not installed (default on) |
+| `newModels` | `Notify` (default): `NewModels()` lists catalogue models published since the user last looked; `Automatic`: also downloads one that becomes a followed topic's choice; `Ignore`: nothing is reported |
+| `seenModels` | the catalogue ids already reported; the whole catalogue the first time, so only later ones count as new |
+
+`ModelForTopic(topic)` decides which model a topic uses on this computer:
+the user's pick while it exists and fits; else the server's choice when it
+fits (installed, or installable because the user lets it download); else
+an installed model the topic offers; else the first offered model that
+fits; else `Recommend(capability)`. A model that is *too large* is never
+chosen.
+
+```cpp
+LocalRuntime& rt = LocalRuntime::Instance();
+for (const ModelTopic& t : rt.ListTopics()) {
+    // t.name, t.capability, t.ServerDefault(), rt.ModelForTopic(t.id)
+}
+rt.SetTopicModel("code", "qwen3-8b-q4");          // the user's pick; "" follows the server again
+TopicPreferences p = rt.GetTopicPreferences();
+p.newModels = NewModelPolicy::Automatic;
+rt.SetTopicPreferences(p);
+rt.RefreshGallery();                               // the server's index, catalogue and topics
+rt.ApplyTopicUpdates(onProgress);                  // download what the topic settings call for
+for (const LocalModelInfo& m : rt.NewModels()) { /* tell the user */ }
+rt.MarkModelsSeen({});                             // all of them seen
+```
+
+`ApplyTopicUpdates` does nothing under `DownloadPolicy::Never`. An
+application asks for a topic's model through the `local` provider with
+`providerOptions["topic"] = "translation"` (and no `defaultModel`). The
+dashboard's *Model topics* settings page (`Apps/UltraAIApp/UltraAITopicsPage`)
+is the user's view of all of this.
+
+---
+
 ## The `local` provider
 
 `CreateTextLLM` / `CreateEmbeddings` with `providerId = "local"`, or an
@@ -94283,7 +95920,8 @@ in `KnownLocalProviders` for `textllm`, `embeddings` and `translator`.
 
 | Config field | Meaning |
 |---|---|
-| `defaultModel` | a catalogue id, `file:<path>`, `hf:<repo>:<file>`, or empty for `Recommend(capability)` |
+| `defaultModel` | a catalogue id, `file:<path>`, `hf:<repo>:<file>`, or empty for the topic's model or `Recommend(capability)` |
+| `providerOptions["topic"]` | string: with no `defaultModel`, the model the user set for this topic (`ModelForTopic`) |
 | `providerOptions["allow_download"]` | bool: the first call may install under the *Ask* policy |
 | `timeoutMs`, other `providerOptions` | passed to the OpenAI-wire delegate |
 | `apiKey`, `apiKeyVaultRef`, `baseUrl` | ignored: the runtime's endpoint and key are used |
@@ -94428,6 +96066,43 @@ between cloud and local models without rebuilding apps.
 Each interface ships with a programmable mock adapter so apps and
 tests run without any network or external model.
 
+On top of them, **agents** (`UltraAIAgent.h`, `UltraAI::Agent`): a model
+that uses the application's tools until the task is done. Register C++
+functions as tools, call `Run`, and the agent runs the model ↔ tool loop,
+with permission hooks, streaming progress events, turn limits,
+cancellation, conversations that carry over and subagents. It works over
+every `ITextLLM` provider. See
+[`../Docs/Modules/UltraAI/Agents.md`](Agents.md).
+
+And **batches** (`UltraAIBatch.h`, `ITextBatch`): many chat requests sent
+as one job and answered later, at about half the price, through
+Anthropic's Message Batches and OpenAI's Batch API. Every other provider
+gets the same interface over one request at a time. See
+[`../Docs/Modules/UltraAI/Batches.md`](Batches.md).
+
+### Text recognition for UltraCanvas applications
+
+`UltraAI::RegisterUltraAITextRecognition()` (`ui/include/UltraAITextRecognition.h`,
+in `UltraAI_UI`) puts UltraAI in front of UltraCanvas's text recognizer: when a
+vision provider on the default route - the one chosen for `"visionanalyzer"`,
+then the providers on this computer, a cloud one only when chosen or allowed,
+never `mock` - declares `VisionTask::Ocr` on one of its models, it reads the
+words in pictures and scanned PDF pages (`UltraCanvasFileLoader::ExtractText`)
+instead of the OCR plugin's Tesseract. With no such provider, or when it
+fails, the recognizer installed before it reads the picture, so register the
+framework's first. `FindOcrProvider` says which provider would read now, and
+`LastTextRecognitionProvider` which one read the last picture. UltraClipboard's
+*Extract text* uses it.
+
+The one vision provider that reads text today is `anthropic`
+(`CreateAnthropicVisionAnalyzer`, `adapters/anthropic`): OCR through Claude
+(`claude-opus-5-5` by default, low effort, the transcription as structured
+output, server-side refusal fallbacks on). It is a cloud provider, so the
+default route uses it only once chosen - `ULTRAAI_DEFAULT_VISIONANALYZER=anthropic`,
+`SetDefaultProvider("visionanalyzer", "anthropic")` or the dashboard's
+settings - with its key in UltraVault under `ai.anthropic.api_key` (or in the
+config). Pictures over 3.75 MB of PNG are halved until they fit.
+
 ---
 
 ## Adapters
@@ -94435,8 +96110,8 @@ tests run without any network or external model.
 | Adapter | Capabilities | Where the model runs | CMake option |
 |---|---|---|---|
 | `mock` | all ten | in-process | `ULTRAAI_ADAPTER_MOCK` (ON) |
-| `anthropic` | `ITextLLM` | cloud | `ULTRAAI_ADAPTER_ANTHROPIC` (ON) |
-| `openai` | `ITextLLM`, `IEmbeddings` | cloud, or any OpenAI-compatible server via `baseUrl` | `ULTRAAI_ADAPTER_OPENAI` (ON) |
+| `anthropic` | `ITextLLM`, `ITextBatch`, `IVisionAnalyzer` (OCR) | cloud | `ULTRAAI_ADAPTER_ANTHROPIC` (ON) |
+| `openai` | `ITextLLM`, `IEmbeddings`, `ITextBatch` (hosted API) | cloud, or any OpenAI-compatible server via `baseUrl` | `ULTRAAI_ADAPTER_OPENAI` (ON) |
 | `minimax` | `IVideoGen`, `IImageGen`, `ITextToSpeech` | cloud (MiniMax / Hailuo) | `ULTRAAI_ADAPTER_MINIMAX` (ON) |
 | `qwen` | `ITextLLM`, `IEmbeddings` | local — Ollama, vLLM, llama.cpp server, LM Studio | `ULTRAAI_ADAPTER_QWEN` (ON) |
 | `comfyui` | `IImageGen`, `IVideoGen` | local — a ComfyUI server the user runs | `ULTRAAI_ADAPTER_COMFYUI` (ON) |
@@ -94495,10 +96170,12 @@ UltraAI/
 │   ├── UltraAITextLLMTranslator.h # ITranslator served by any ITextLLM
 │   ├── UltraAIVideoGen.h
 │   ├── UltraAIMusicGen.h
-│   └── UltraAICodeAssist.h
+│   ├── UltraAICodeAssist.h
+│   ├── UltraAIAgent.h             # the agent loop over any ITextLLM (tools, hooks, events)
+│   └── UltraAIBatch.h             # batches: native (anthropic, openai) or one at a time
 ├── src/                           # Capability factories (registry)
 ├── runtime/                       # The local runtime: engine gallery, model catalogue, installs, supervision
-├── ui/                            # UltraAI_UI: the "Get a local model" dialog every application shows (in-tree, on the UltraCanvas core)
+├── ui/                            # UltraAI_UI: the "Get a local model" dialog every application shows, and UltraAI as FileLoader's text recognizer (in-tree, on the UltraCanvas core)
 ├── adapters/
 │   ├── _shared/                   # Credentials, error mapping, retry, transport seam (HTTP/SSE/byte stream/WebSocket), base64, multipart, job polling, cassettes
 │   ├── mock/                      # In-process mocks for every capability
@@ -94589,7 +96266,9 @@ cmake -S UltraAI -B build \
 | ComfyUI adapter (`IImageGen`: txt2img / img2img / inpaint / upscale templates, uploads, WebSocket progress and previews, `/history` fallback, `/object_info` capabilities; `IVideoGen`: Stable Video Diffusion image-to-video) | Complete (v0.2 — text-to-video needs a caller-supplied workflow) |
 | WebSocket on the transport seam (`ITransport::WebSocketStream`, UltraNet-backed, scriptable, recordable) | Complete |
 | Text-LLM translator (`ITranslator` over any `ITextLLM`: batched JSON exchange, auto-detect, formality, domain, glossary, markup preservation, language detection; registered for every text-LLM provider) | Complete (v0.1 — quality is the chosen model's; no vendor glossary ids) |
-| Unit tests | Complete (13 executables, all passing) |
+| Agents (`UltraAIAgent.h`: the model ↔ tool loop over any `ITextLLM`; tools as C++ handlers with `ToolArguments`, permission and after-call hooks, progress events, streaming, turn limits, cancellation, `RunAsync`, conversations, subagents) | Complete (v0.1 — tools run one at a time; no built-in tools) |
+| Batches (`UltraAIBatch.h`: `ITextBatch` submit / get / cancel / results, `RunBatch`; Anthropic Message Batches, OpenAI Batch API, one-at-a-time fallback for every other provider) | Complete (v0.1 — chat requests only) |
+| Unit tests | Complete (15 executables, all passing) |
 | UltraVault credential lookup | Live — `apiKeyVaultRef` resolves through the UltraVault module (memory + encrypted-file backends; on by default in-tree) |
 
 ---
@@ -94601,6 +96280,10 @@ cmake -S UltraAI -B build \
   threading model, adapter checklist.
 * [`Docs/UltraVault.md`](../../../UltraAI/Docs/UltraVault.md) —
   credential-storage architecture comparison and recommendation.
+* [`../Docs/Modules/UltraAI/Agents.md`](Agents.md) —
+  agents: the tool loop, options, hooks, events, cancellation, subagents.
+* [`../Docs/Modules/UltraAI/Batches.md`](Batches.md) —
+  batches: native and fallback providers, `RunBatch`, results.
 * [`../Docs/Modules/UltraAI/LocalRuntime.md`](LocalRuntime.md) —
   the local runtime as built: the gallery and catalogue formats, storage,
   settings, the engine's command line, the `local` provider, testing.
@@ -95053,10 +96736,26 @@ UltraCloud::ShowAddAccountDialog(window, cloud, [](const Account& added) { ... }
 UltraCloud::ShowAddAccountDialog(window, cloud, onAdded,
         [](const std::string& id) { return id == "ftp"; },
         "Add an FTP / SFTP drive");
+// A stored account in the same form, to be changed: filled in, the provider
+// fixed, the password kept unless a new one is typed. False when there is no
+// such account (or its provider is not in this build).
+UltraCloud::ShowEditAccountDialog(window, cloud, accountId,
+        [](const Account& saved) { /* re-read the list */ }, "Configure drive");
 UltraCloud::ShowCloudLinkPicker(window, cloud, [](const CloudLinkPick& pick) {
     InsertIntoBody(pick.entry.name + ": " + pick.link.url);
 });
 ```
+
+For the FTP provider the dialog asks for the protocol (SFTP, FTP with TLS,
+FTP over TLS, plain FTP), the server's name or address and the port - empty
+for the protocol's own - each on its own rather than as one URL, and stores
+them as the one URL the command line takes (`FtpServerUrl`:
+`sftp://files.example.org:2222`, the protocol's own port left out so the
+account keeps its id); a URL typed into the server field is refused with the
+reason. The private key row, shown for SFTP, has a *Choose* button that opens
+the file dialog in `~/.ssh`. A server URL whose scheme the provider does not
+speak - `https://`, pasted from the browser - is refused by `Verify` before
+anything is sent, so the command line and UltraFiler's "+ Drive" say so too.
 
 The picker lists the accounts (default preselected), browses the chosen one,
 uploads a local file into the current folder, and returns a share link for the
@@ -95080,7 +96779,7 @@ the `CloudService&` forms leave keeping the service alive to the caller.
 | `UltraCloudHttp.h` | `HttpFn`, `HttpProviderBase` (auth from credentials, every request logged, a throttled request sent again, HTTP → Result with the service's reason; `DownloadToFile` writes a download to disk as it arrives, never holding the file in memory, with no whole-transfer time limit and a half-written file removed; uploads send their bytes from the file as they go - `UltraNetHttpRequest::bodyFilePath`, a range of it per upload-session chunk - except Google Drive's multipart body, at most 5 MB), `RateLimitPolicy`, `SetThreadRateLimitPolicy` |
 | `UltraCloudLog.h` | The session log: `LogKind`, `LogLine`, `LogCallback`, `SetThreadLog`, `ThreadLogActive`, `LogToThread`; `LoggableUrl`, `ServerErrorReason`, `RetryAfterSeconds` |
 | `UltraCloudOAuth.h` | `OAuthApp` (= `UltraNetOAuth2App`), `SetOAuthApp` / `GetOAuthApp` / `HasOAuthApp` / `UsesSignInService` / `CanSignIn` / `DefaultRedirectUri` / `EnsureOAuthAppsRegistered` (the profile of UltraNet's shared app registry and its sign-in service), `OAuthHooks`, `OAuthProviderBase` (`OAuthConfig`, `SignInServiceProviderId`, `OAuthServiceConfig`) |
-| `UltraCloudFtp.h` | `FtpProvider`, `FtpOps` (the injectable FTP seam), `FtpTransportFor`, `FtpHostAndBase`, `FtpUrl`, `FtpEntryToEntry`, `FromFtp` |
+| `UltraCloudFtp.h` | `FtpProvider`, `FtpOps` (the injectable FTP seam), `FtpTransportFor`, `FtpHostAndBase`, `FtpUrl`, `FtpEntryToEntry`, `FromFtp`; the server as a form asks for it: `FtpServer`, `FtpServerOf`, `FtpServerUrl`, `FtpDefaultPort`, `FtpSchemeKnown` |
 | `UltraCloudDropbox.h` | `DropboxProvider`, `DropboxPath` |
 | `UltraCloudOneDrive.h` | `OneDriveProvider`, `OneDriveItemUrl` |
 | `UltraCloudGoogleDrive.h` | `GoogleDriveProvider` (+ `ResolveId`), `GoogleDriveChildQuery` |
@@ -95091,7 +96790,7 @@ the `CloudService&` forms leave keeping the service alive to the caller.
 | `UltraCloudWebDav.h` | `WebDavProvider` (with `Delete` and `Rename`: DELETE and MOVE) and the helpers `EncodePath`, `JoinUrl`, `NormalizePath`, `ParseMultistatus`, `PublicFolderLink`, `WebDavErrorMessage` |
 | `UltraCloudNextcloud.h` | `NextcloudProvider`, `NextcloudDavUrl`, `BuildOcsShareForm`, `ParseOcsShareResponse` |
 | `UltraCloudMemory.h` | `MemoryProvider` (+ `Seed` / `Clear`) |
-| `ui/UltraCloudAccountDialog.h`, `ui/UltraCloudPickerDialog.h` | `ShowAddAccountDialog` (over a shared or a caller-kept service, with an optional provider filter, title and `AddAccountWatch`), `ShowCloudLinkPicker` (over a shared or a caller-kept service) (the `UltraCloudUI` library) |
+| `ui/UltraCloudAccountDialog.h`, `ui/UltraCloudPickerDialog.h` | `ShowAddAccountDialog` (over a shared or a caller-kept service, with an optional provider filter, title and `AddAccountWatch`), `ShowEditAccountDialog` (a stored account in the same form, its password kept unless a new one is typed; an OAuth account saved as it is or signed in again), `ShowCloudLinkPicker` (over a shared or a caller-kept service) (the `UltraCloudUI` library) |
 | `ui/UltraCloudUiStyle.h` | The dialogs' shared palette and control styles (`UiStyle::PrimaryButton`, `SecondaryButton`, `StyleInput`, `MakeCaption`, `ListHeader`) — the same look as the ULTRA OS apps that host them |
 
 ## Building and testing
@@ -103889,7 +105588,8 @@ The buttons stand right of the entry's text, or left of it between the
 thumbnail and the text: Settings, *Display → Icons*. The desktop's quick
 panel follows the same setting.
 
-Right-click a row for the same and *Pin* / *Unpin* (Ctrl+P).
+Right-click a row for the same, *Pin* / *Unpin* (Ctrl+P) and, on an image
+or copied files with words in them, *Extract text* (Ctrl+T).
 
 **Saving as a file.** *Save as* writes the entry where you choose, through
 the framework's Save dialog: a text, code, link or colour as a text file;
@@ -103903,6 +105603,25 @@ you say so. Once saved, UltraClipboard asks *Delete the item from the
 clipboard?* - Yes deletes it, with *Undo* as for any deletion; No keeps it.
 The next *Save as* starts in the folder the last one saved to. Up and Down move
 through the list, skipping the section headers.
+
+**Extracting the text.** *Extract text* turns what an entry shows into text
+you can paste. An image - a screenshot, a photographed page - is read by text
+recognition: by an UltraAI vision provider that reads text, when one is set
+up (a model on this computer, or a cloud service you chose in UltraAI - Claude,
+for one: `ULTRAAI_DEFAULT_VISIONANALYZER=anthropic` with the key in UltraVault
+under `ai.anthropic.api_key`), and
+otherwise by OCR (Tesseract, in every language installed; more come with the
+system's `tesseract-ocr-<language>` packages). When UltraAI read it, the
+status bar says which provider did. Copied files are read by their
+type: a word processor document (ODT, DOCX) or a deck (PPTX), a PDF (its
+text; a scanned PDF by text recognition), a spreadsheet (ODS, XLSX, XLS:
+every sheet, tab-separated), a text or code file. A recording or a video is
+read when a speech-to-text engine is installed; without one *Extract text*
+says that speech to text is not available. The reading runs in the background
+(*Reading the text…* in the status bar); the text arrives as a new text entry
+at the top, already on the clipboard. From several files you get one text,
+each file's under its name. Built on `UltraCanvasFileLoader::ExtractText`
+([FileLoader](../Modules/FileLoader/README.md), *Text From Any File*).
 
 **Finding.** Type in the search field (Ctrl+F) to search titles and texts,
 whatever their case and accents. *All*, *Text*, *Images*, *Files*, *Links* and
@@ -103957,8 +105676,15 @@ UltraClipboard is already running instead of opening a window of its own.
 
 ```
 UltraClipboard [--search TEXT] [--edit ID]
+UltraClipboard --background
 UltraClipboard --version
 ```
+
+`--background` starts it with the history open and no window - UltraDesktop
+does so when *Start with the desktop* names it - and the next start shows the
+window at once. While it runs this way, closing the window only hides it;
+*Quit* in the More menu (Ctrl+Q) ends the program. A background start while
+it runs changes nothing.
 
 ## Privacy
 
@@ -103972,6 +105698,80 @@ without the key. Image thumbnails are not
 encrypted. A program running as you can read the clipboard itself, so the
 encryption does not protect against that; leaving such programs' copies out,
 or pausing the recording, does.
+
+==============================================================================
+FILE: Docs/UltraNotifications/README.md
+==============================================================================
+
+# UltraNotifications
+
+The notifications of ULTRA OS after their pop-up has gone. UltraDesktop
+draws each notification as it arrives - a toast in the top-right corner -
+and the toast goes after a few seconds; UltraNotifications is where it stays:
+every notification, chat message and mail that reached the UltraMessage
+feed, to read again, search, open and dismiss.
+
+The window is the framework's
+[UltraCanvasMessageCenter](../UltraCanvas/UltraCanvasMessageCenter.md)
+filling it: the program adds the window, the background start, the unread
+count for the desktop and what *Open* does.
+
+## Contents
+
+- [Using it](#using-it)
+- [In the background](#in-the-background)
+- [The bell on the desktop](#the-bell-on-the-desktop)
+- [Command line](#command-line)
+- [Building](#building)
+
+## Using it
+
+| Part | What it does |
+|---|---|
+| *All / Chats / Mail / System* | the feed's three kinds, or all of them |
+| Sources (left) | each chat, mail account and application, with its unread count |
+| Search, *Unread*, the service chips | narrow the list |
+| The list | newest first; unread ones marked, urgent ones in red |
+| The detail (right) | the whole text; *Open*, *Mark read / unread*, *Dismiss*, and the notification's own buttons |
+
+Selecting a row marks it read. *Open* (or a double-click) opens a mail in
+UltraMail, a ChatCube chat in ChatCube, and does a notification's first
+action. *Dismiss* removes the row and, for a notification, closes its
+pop-up too.
+
+## In the background
+
+`UltraNotifications --background` starts it with no window: it connects to
+the UltraMessage bus, keeps the list and counts the unread. The next start -
+the bell, the Applications window, `UltraNotifications` - shows the window at
+once. While it runs this way, closing the window only hides it; *Quit* at the
+foot of the window, or Ctrl+Q, ends the program.
+
+UltraDesktop starts it so when *Start with the desktop* names it - the
+settings button's right-click menu, or UOS-Settings > Desktop. One copy runs
+per user (UltraCanvasSingleInstance): a second start brings the running one
+forward, and a second background start changes nothing.
+
+## The bell on the desktop
+
+While it runs, UltraNotifications publishes its unread count as a desktop
+notice (`UltraCanvasDesktopShell::PublishNotice("UltraNotifications", …)`);
+UltraDesktop shows it on the bell on its right bar and opens
+UltraNotifications from there. When the program ends the notice goes, and
+the bell shows no count.
+
+## Command line
+
+```
+UltraNotifications [--background]
+UltraNotifications --version | --help
+```
+
+## Building
+
+`BUILD_ULTRANOTIFICATIONS` (on by default) builds it wherever the
+`UltraMessageCenter` library is built. It is packaged with the other
+applications on Linux, Windows and macOS.
 
 ==============================================================================
 FILE: Docs/UltraSnip/README.md
@@ -104123,7 +105923,7 @@ Adjust and Filter menus is one PixelFX call chain:
 | Alpha | `Colour::Premultiply / Unpremultiply / AddAlpha / Flatten / HasAlpha` |
 | Text rasterisation | `Generate::Text` (Pango) — the text tool stamps its mask |
 | Region growing | `Draw::FloodFillTolerance`, `Draw::MagicWandMask` (kept as reference; the editor has its own so it works without libvips and on merged samples) |
-| Histogram / curves | `Colour::HistFind`, `MapLut` with `UltraCanvasToneCurve` LUTs |
+| Histogram / curves | `ComputeImageHistogram` (`UltraCanvasHistogramModel.h`) for the Curves backdrop, `MapLut` with `UltraCanvasToneCurve` LUTs |
 
 ## What the UI framework already covered
 
@@ -104664,15 +106464,28 @@ into categories, on a board over the wallpaper. It starts with **Docs**,
   category later, double-click its title.
 - **Change the look:** the picker in the board's bar offers **Sticky notes**,
   **Poster**, **Schematic** and **Dark**.
+- **Open, copy or delete a file:** right-click its card. **Copy** puts the
+  file on the clipboard, to paste in the file manager; **Delete** moves it to
+  the trash after asking; **Remove from the board** only takes the card
+  away. **Move to** sends it to another category, as dragging does.
+- **Choose how cards look:** right-click anywhere on the board, then
+  **Display**: **Text only**, **Thumbnail and text** (the picture with the
+  name under it, the usual one) or **Thumbnail and text in a row**.
+- **See a file larger:** rest the pointer on its card for two seconds and a
+  bigger preview opens beside it. Its size is **Display ▸ Mouse hover
+  preview**: **Small**, **Medium** or **Large**. Both choices are also on
+  the **Desktop** page of the settings.
 - **Move or resize the board:** drag it by its title; resize it by the grip
   (◢) in its bottom-right corner.
 
-The board, its look, its place and its size are kept.
+The board, its look, how cards are shown and the preview size are kept.
 
 ### 4.8 The clock
 
 The clock at the top of the right bar shows the time on a small analog face
 and the date under it; rest the pointer on it for the whole date and time.
+Right-click it to show it as an analog or a digital clock, with or without
+the date.
 Click it for the clock panel: the time large, on a face and in figures,
 today written out, and this month's calendar with today marked. You can page
 through other months; nothing is chosen there. Escape, or a click anywhere
@@ -104752,6 +106565,55 @@ The Task Manager icon at the foot of the info panel opens it.
 - **Hardware** shows the machine: CPU load and temperature, memory, storage
   and the network interfaces.
 
+### 4.13 The desktop's menus
+
+Right-click the **wallpaper** for the desktop's menu:
+
+- **Change wallpaper...** picks a picture; **Default wallpaper** goes back
+  to ULTRA OS's own picture.
+- **Theme**: **Dark** (light icons on dark grey bars) or **Light** (dark
+  icons on light grey bars). The panels the bars open - the clock, the
+  loudspeaker, Wi-Fi, Bluetooth, the devices, the clipboard and the window
+  pictures - follow it.
+- **Taskbar position**: on the left, at the top or at the bottom.
+- **Drop files**: where files you drag onto the wallpaper go.
+  - **Drop on sticker board** (the default): they join the Sticker board's
+    **Unsorted** category, which is added when the board has none, and the
+    board opens to show them.
+  - **Drop on desktop**: they are moved into your Desktop folder (copied,
+    when they come from another drive) and appear where you dropped them as
+    icons on the wallpaper. The wallpaper shows the Desktop folder's files as
+    icons while this is chosen: click one to select it, **Ctrl+click** to add
+    or remove one, **Shift+click** to add one, or draw a box on the
+    wallpaper around several (with Ctrl held, they are added). Double-click
+    to open, drag to move the selected icons together (they stay there), or
+    drag them onto another program's window - a file manager, a mail, an
+    editor - to hand the files to it. Right-click for **Open**, **Show in
+    the file manager**, **Delete**, **Select all** and **Arrange icons**,
+    for all the selected icons. Once you have clicked an icon or the
+    wallpaper, the keyboard works on them too: **Delete** deletes the
+    selected icons (after asking), **Ctrl+A** selects them all, **Enter**
+    opens them, **F2** renames the selected icon (its name becomes a text
+    field with the name before the extension chosen; **Enter** or a click
+    elsewhere renames the file, **Escape** keeps the old name - also
+    **Rename** on its menu), and **Escape** clears the selection (or, during
+    a drag or while drawing a box, puts things back as they were). A file saved to the Desktop
+    folder by another program appears within two seconds.
+- **Arrange icons** (with **Drop on desktop**) puts the icons back on the
+  grid, in name order.
+- **Notes on the wallpaper** shows or hides the notes.
+- **Display settings...** opens the system's own display settings - the
+  resolution, how the monitors are arranged, which one is the main one.
+  On Linux it is your desktop's display tool (GNOME's or Plasma's settings,
+  xfce4-display-settings, wdisplays, arandr, ...); where none is installed,
+  the entry is left out.
+- **Desktop settings...** opens UOS-Settings.
+
+Right-click the **taskbar or the right bar** where a button has no menu of
+its own - between the buttons, on the Applications button, a virtual
+desktop or a service icon - to move the taskbar to another edge or change
+the theme. The ⚙ button's menu has **Taskbar position** and **Theme** too.
+
 ## 5. Settings
 
 UltraDesktop's settings are the **Desktop** page of **UOS-Settings**. Click
@@ -104761,6 +106623,8 @@ settings**.
 | Setting | What it does |
 |---|---|
 | **Taskbar** | **Left**, **Top** or **Bottom** edge. |
+| **Theme** | **Dark** or **Light** bars. |
+| **Dropped files** | **Sticker board (Unsorted)** or **Desktop (as icons)**: where files dragged onto the wallpaper go (section 4.13). |
 | **Wallpaper** | A picture file (**Browse...**). Empty: the framework's landscape picture. |
 | **RAM disc** | The folder the RAM disc button opens. Empty: no button. On Linux it is `/dev/shm` unless you change it; on Windows it is empty unless you set one. |
 | **File manager** | The program the folder buttons start (UltraFiler unless you change it). |
@@ -104900,7 +106764,12 @@ at sign-in.
 | Any window | Super key (Win key) alone | opens Applications (on Linux; on Windows only instead of Explorer) |
 | Any window, Linux | Super+L | locks the screen (on Windows Win+L is Windows' own) |
 | Any window | Super+Shift+S (Win+Shift+S) | UltraSnip snips an area (on Windows only instead of Explorer; Win+Shift+S is Windows' own beside it) |
-| Clock | click | the clock panel |
+| Clock | click / right-click | the clock panel / analog or digital, with or without the date |
+| Wallpaper | right-click / drop files | wallpaper, theme, taskbar position, drop files, notes, display settings, desktop settings / onto the Sticker board's Unsorted category, or onto the desktop |
+| Desktop icon | click / Ctrl+click / Shift+click / double-click / drag / right-click | select / add or remove / add / open / move, or onto another program's window to give it the files / Open, Show in the file manager, Delete, Select all, Arrange icons |
+| Wallpaper, with desktop icons | drag / Ctrl+drag | select the icons in the box / add them |
+| Desktop icons (after a click on them or the wallpaper) | Delete / Ctrl+A / Enter / F2 / Escape | delete the selected (asked first) / select all / open the selected / rename the selected icon / clear the selection, or cancel a drag or a box |
+| The bars, between the buttons | right-click | taskbar position, theme |
 | Loudspeaker icon | click | the volume panel |
 | Pinned program | click / right-click | start it / open, unpin |
 | Applications tile | click / right-click | start it / pin or unpin |
@@ -104910,6 +106779,7 @@ at sign-in.
 | Screenshot button | click / right-click | UltraSnip snips an area / a window, the whole screen, a recording, the plain screenshot, open UltraSnip |
 | Clipboard panel | Up, Down, Enter, Delete, F2, Escape | choose, copy, delete, edit, close |
 | Sticker board | drop files / double-click a card / double-click a category title | add / open / rename |
+| Sticker board | right-click a card / rest the pointer on it for two seconds / Delete | Open, Copy, Delete, Move to, Display / a larger preview / the selected card's file to the trash, or the note deleted (asked first) |
 | A notification | click / × | its default action / dismiss |
 
 ## 8. Troubleshooting
@@ -105066,15 +106936,15 @@ system.
 │ ⋮⋮ │                                                              │30Oct│  and date
 │╲   │                                                              │ 1  │  desktop
 │ ╲  │                                                              │ 2  │  organiser
-│ ▣  │                                                              │ 3  │
-│ ▣  │                     wallpaper                                │ 📌 │  Sticker board
-│ ▣  │            (application windows float above)                 │ 🗒 │  notes
-│ ▣  │                                                              │ 📋 │  clipboard
-│  ╲ │                                                              │ 📷 │  screenshot
-│   ╲│                                                              │╱   │
-│ ▤  │                                                              │ ✉14│  info panel
-│ 📁 │                                                              │ ⇧⇩ │  (devices and
-│ 🎨 │                                                              │ 🔊 │   services)
+│ ▣  │                     wallpaper                                │ 3  │
+│ ▣  │            (application windows float above)                 │ 📌 │  Sticker board
+│ ▣  │                                                              │ 🗒 │  notes
+│  ╲ │                                                              │ 📋 │  clipboard
+│   ╲│                                                              │ 📷 │  screenshot
+│ ▤  │                                                              │╱   │
+│ 📁 │                                                              │ ✉14│  info panel
+│ 🎨 │                                                              │ ⇧⇩ │  (devices and
+│    │                                                              │ 🔊 │   services)
 └────┴──────────────────────────────────────────────────────────────┴────┘
  taskbar                                                               right bar
 ```
@@ -105091,15 +106961,36 @@ organiser.
 1. **System** — *ULTRA OS settings*, shown as the ULTRA OS logo, and the
    *app starter*. *ULTRA OS settings* starts **UOS-Settings**, the system's settings application
    (`Docs/UOSSettings/README.md`), which opens on its *Desktop* page.
-2. **Running applications** — one button per open window on the current
-   desktop, with the application's own icon (resolved from its desktop
-   entry; the first letter of its class when it has none). The active
-   window's button is highlighted. A click activates the window or minimizes
-   it if it already is active; a right-click offers *Activate*, *Minimize*,
-   *Move to desktop …* and *Close window*. Drag a button to reorder; when
-   the group is full it scrolls with the mouse wheel. New windows join next
-   to their application's other windows. *Pin to taskbar* on the menu pins
-   the window's application.
+2. **Running applications** — one button per application with open
+   windows on the current desktop, with the application's own icon
+   (resolved from its desktop entry, on Windows a Store application's tile
+   icon from the shell; the first letter of its class when it has none).
+   An application's windows share its button - by their class on X11, on
+   Windows by the application identity the shell gives them
+   (`appUserModelId`: every Explorer window is Explorer's), else by their
+   program - and a count on the button says how many there are. The button
+   is highlighted while one of its windows is active.
+   - **One window:** a click activates it, or minimizes it if it already is
+     active; a right-click offers *Activate*, *Minimize*, *Move to desktop
+     …*, *Pin to taskbar* and *Close window*.
+   - **Several windows:** rest the pointer on the button and their pictures
+     open beside it (above it with the taskbar at the bottom, below it at
+     the top) - one tile per window with its icon, title and a picture of
+     the window, the active one framed, a minimized one showing its icon.
+     A click on a tile brings that window forward, its **×** asks it to
+     close. The pictures follow the pointer along the bar to the next
+     application and close shortly after it leaves both. A click on the
+     button opens or closes them at once. A right-click lists the windows,
+     with *Minimize all*, *Pin to taskbar* and *Close all windows*. On
+     Windows each window draws its own picture and on Wayland the
+     compositor copies it, so a covered window shows its own content; on
+     X11 the picture is the window's place on the screen, which shows
+     whatever lies on top of it there. A Wayland compositor without window
+     capture (`ext-image-copy-capture-v1`) gives no picture: the tile shows
+     the application's icon.
+
+   Drag a button to reorder; when the group is full it scrolls with the
+   mouse wheel. New applications join at the end.
 3. **Pinned** — the *RAM disc* (opens the path from the settings, `/dev/shm`
    by default, in the file manager), *UltraFiler*, and the applications the
    user pinned - from a running window's menu or a tile's in the
@@ -105136,12 +107027,18 @@ the right-hand monitor the primary.
 
 ### Right bar
 
-- **Clock**: the framework's gauge element in its analog clock mode
+- **Clock**, at the top of the bar, white on black (black on white in the
+  light theme): by default the
+  framework's gauge element in its analog clock mode
   ([UltraCanvasGaugeDiagramElement](../UltraCanvas/UltraCanvasGaugeExamples.md)),
   which ticks on its own, over the date ("30 Oct"); the tooltip has the
-  whole date and time. A click opens the clock panel beside the bar: the
-  time large as an analog face and in figures (the gauge's digital clock),
-  today in words, and the month on the calendar view with today marked.
+  whole date and time. A right click chooses how it shows: *Analog clock
+  with the date*, *Analog clock*, *Digital clock with the date*, *Digital
+  clock* (21:50) or *Digital clock with seconds* (21:50:52), kept as
+  `clockStyle` in the settings. A click opens the clock panel beside the
+  bar: the time large as an analog face and in figures (the gauge's digital
+  clock), today in words, and the month on the calendar view with today
+  marked.
 - **Desktop organiser**: the virtual desktops as numbered toggles — as many
   as the window manager has (read at start-up and followed when it changes),
   the settings' count only where there is no window manager to ask; choosing
@@ -105174,23 +107071,25 @@ the right-hand monitor the primary.
   the clipboard, so it can still be pasted. Without a history (a build
   without SQLite) the button shows a menu of this session's last fifteen
   copies, as before.
-- **Info panel**, anchored to the bottom: Email, Upload, Download,
+- **Info panel**, anchored to the bottom: Email, Notifications, Upload, Download,
   Internet/LAN, VPN, Bluetooth, Wi-Fi, USB, Keyboard, Webcam, Microphone,
   Loudspeaker, Battery and Task Manager. On a screen less than 960 pixels
   high the icons are smaller, and those that still do not fit fold into a
   chevron menu at the bar's foot, least used first - keyboard, VPN, USB,
-  upload, Task Manager, download, LAN, email - so the webcam's and
+  upload, Task Manager, download, LAN, email, notifications - so the webcam's and
   microphone's in-use dots stay in sight. The markers:
 
   | Marker | Meaning | On |
   |---|---|---|
   | red dot | a device is on, or a link is down | webcam in use, microphone recording, Bluetooth powered; Internet/LAN with no link, Wi-Fi present but not joined |
+  | green dot | a link is up | Wi-Fi joined |
   | yellow dot | activity | download or upload traffic (more than 4 KB in two seconds), loudspeaker playing, VPN up |
-  | grey pill | a count or a value | Email unread (from UltraMail), USB devices attached, battery percentage (green while charging, red at 15 % and below), keyboard layout |
+  | grey pill | a count or a value | Email unread (from UltraMail), notifications unread (from UltraNotifications, while it runs), USB devices attached, battery percentage (green while charging, red at 15 % and below), keyboard layout |
 
   The tooltip of every icon says it in words ("Wi-Fi: HomeNet", "Download:
   1.2 MB/s", "Battery: 84%, charging", "Loudspeaker: 63%, playing"). Clicking
-  opens what the icon is about: Email starts UltraMail, the traffic, LAN and
+  opens what the icon is about: Email starts UltraMail, the bell
+  UltraNotifications (every notification after its pop-up has gone), the traffic, LAN and
   VPN icons UltraNetMonitor, Wi-Fi and Bluetooth their panels (below), USB,
   keyboard, webcam, microphone and battery a panel saying what is attached
   or in use with a button on to Device Explorer or the Task Manager, the
@@ -105244,6 +107143,75 @@ the right-hand monitor the primary.
   on a 900 px screen — the panel scrolls rather than losing its last items:
   a chevron over the edge marks where the icons continue, a click on it
   scrolls a page, and so does the wheel over the panel.
+
+### Theme and context menus
+
+The bars come in two themes, kept as `theme` in the settings: **dark**
+(light icons on dark grey, the running applications and the organiser
+carved in near black, the clock white on black - the default) and
+**light** (dark icons on light grey, the carved-in groups near white, the
+clock black on white, the ULTRA OS logo in its variant for a light ground).
+The panels the bars open follow the theme - the clock, loudspeaker, Wi-Fi,
+Bluetooth, device and clipboard panels and the window pictures
+(`UltraDesktopPanelTheme`): dark grey with light text, or near white with
+dark text. A panel open when the theme changes closes, and opens in the new
+colours.
+
+- **The wallpaper** (right click): *Change wallpaper...* (an Open dialog
+  with every picture type this build reads, through FileLoader), *Default
+  wallpaper* (when another is set), *Theme* (*Dark*, *Light*), *Taskbar
+  position* (*on the left*, *at the top*, *at the bottom*), *Drop files*
+  (*Drop on sticker board*, *Drop on desktop*; below), *Arrange icons* (with
+  the desktop icons), *Notes on the wallpaper*, *Display settings...* and *Desktop settings...* (UOS-Settings).
+  *Display settings...* opens the system's own
+  (`UltraCanvasDesktopShell::OpenDisplaySettings`): Settings > Display on
+  Windows, System Settings > Displays on macOS, and on Linux the first
+  display tool installed - the session's own desktop's first
+  (`XDG_CURRENT_DESKTOP`): GNOME's, Plasma's, Xfce's, Cinnamon's, MATE's,
+  LXQt's or Budgie's settings, then wdisplays, nwg-displays, and on X11
+  arandr and lxrandr. Where there is none the entry is left out.
+- **The bars** (right click on a group, where the button under the pointer
+  has no menu of its own - between buttons, the Applications button, a
+  virtual desktop, a service icon): the taskbar's edge, the theme and
+  *Desktop settings...*. The ⚙ button's menu has *Taskbar position* and
+  *Theme* as submenus.
+
+**Files dropped on the wallpaper** go where `dropFilesOn` says:
+
+- `board` (the default): onto the Sticker board, into its **Unsorted**
+  category (added at the end when the board has none; a file already on the
+  board moves there), and the board shows.
+- `desktop`: into the Desktop folder (the platform's own - the known folder
+  on Windows, xdg-user-dirs on Linux - else `~/Desktop`, made when missing),
+  moved, or copied when it is on another drive; a name already taken becomes
+  `name (2).ext`. The wallpaper then shows the Desktop folder's entries
+  (hidden ones left out) as icons - the file's picture (a photo's or
+  document's thumbnail, else the system's icon for its type) over its name -
+  in an `UltraDesktopDesktopIcons` layer under the notes. A dropped file lies
+  where it was dropped; others fill a grid column by column from the top
+  left. A click selects; Ctrl+click adds or removes an icon, Shift+click adds
+  one, and a rubber band drawn on the wallpaper selects the icons it touches
+  (Ctrl adds them; a plain click on the wallpaper clears the selection). A
+  double click opens the selection with the default applications. A drag
+  moves the selected icons together (kept in `desktopIcons` by the entries'
+  names) until the pointer is over another program's window (the windows
+  the Task Manager lists, read when the drag starts): the icons go back and
+  the files continue as a native file drag (XDND on X11, OLE on Windows),
+  which that program takes; one that moved them makes their icons go. A
+  right click offers, for the whole selection, *Open*, *Show in the file
+  manager*, *Rename* (one icon), *Delete* (into the trash, after one
+  question), *Select all* and *Arrange icons*. After a click on an icon or the wallpaper between them the
+  layer has the keyboard: Delete deletes the selection (after the question),
+  Ctrl+A selects every icon, Enter opens the selection, F2 renames the
+  selected icon (also *Rename* on its menu: a text field over its name with
+  the name before the extension chosen; Enter or a click elsewhere renames
+  the file and the icon keeps its place, Escape keeps the name; a name
+  already on the desktop, or one with a slash, is refused), Escape ends a
+  drag or a rubber band where it started, else clears the selection. The folder is looked at every two seconds,
+  so a file another program saves there appears too.
+
+A change is saved at once and the bars are rebuilt in place; one made in
+UOS-Settings is followed within a second.
 
 ### Windows the desktop opens
 
@@ -105305,7 +107273,7 @@ the right-hand monitor the primary.
   after asking, for one that does not close. The desktop's own windows (the
   Task Manager itself, its dialogs, the Sticker board) are not listed - the machine — CPU load and temperature, memory, storage, the
   interfaces — on the framework's hardware panel on the second.
-- **Settings**: the desktop's settings - the taskbar's edge, the wallpaper,
+- **Settings**: the desktop's settings - the taskbar's edge, the theme, the wallpaper,
   the RAM disc path, the file manager program, the number of virtual
   desktops - are the *Desktop* page of UOS-Settings. They live in the
   desktop's settings file; the desktop checks it once a second and rebuilds
@@ -105327,7 +107295,20 @@ the right-hand monitor the primary.
   scrolls to it when the board is too wide to show them all, and lets you
   type its name (double-click a category's title to rename it later). The
   picker in the bar switches the display style: *Sticky notes*, *Poster*,
-  *Schematic* or *Dark*. The board and its style are kept.
+  *Schematic* or *Dark*. A right click on a card offers *Open*, *Copy* (the
+  file onto the clipboard, as the file manager copies it), *Delete* (into the
+  trash, after a question), *Remove from the board* and *Move to* another
+  category; on a note, *Open*, *Copy* its text and *Delete* it (after a
+  question). The Delete key does what *Delete* does, after the same question,
+  as on the desktop icons; *Remove from the board* takes a card off without
+  touching its file. *Display*,
+  in the same menu (anywhere on the board), shows the cards as *Text only*,
+  *Thumbnail and text* (the picture with the name centred under it - the
+  default) or *Thumbnail and text in a row*, and sets the size of the *Mouse
+  hover preview* (*Small*, *Medium*, *Large*): resting the pointer on a
+  file's card for two seconds opens a larger picture of it beside the card.
+  The *Desktop* page of UOS-Settings has the same two choices. The board,
+  its style and its display are kept.
 - **Notes** (the note button below it): free sticky notes over the
   wallpaper. *+* in the corner adds one; each note is edited in place,
   dragged by its top bar, cycled through six paper colours and closed with
@@ -105401,9 +107382,14 @@ earlier versions kept under `~/.config` is moved on the first start):
   "ramDiscPath": "/dev/shm",
   "filerProgram": "UltraFiler",
   "virtualDesktops": 3,
+  "clockStyle": "analog-date",
+  "theme": "dark",
+  "dropFilesOn": "board",
+  "desktopIcons": { "report.pdf": { "x": 16, "y": 56 } },
   "stickerboardVisible": false,
   "stickers": [ { "id": "note1", "text": "…", "x": 60, "y": 60, "width": 220, "height": 160, "color": "#FFF59D" } ],
-  "categoryBoard": { "visible": false, "design": "stickynotes", "x": 320, "y": 60, "width": 780, "height": 460,
+  "categoryBoard": { "visible": false, "design": "stickynotes", "display": "thumbnail", "hoverPreview": "medium",
+                     "x": 320, "y": 60, "width": 780, "height": 460,
                      "board": { "type": "kanban-board", "version": 1, "columns": [ … ], "cards": [ … ] } },
   "pinnedApps": [ "/usr/bin/gimp", "/usr/bin/kate" ],
   "startWithDesktop": [ "ChatCube", "UltraMail" ]
@@ -105418,25 +107404,41 @@ RAM disc of its own, that is the default.
 `categoryBoard.board` is the Kanban element's own JSON document
 ([UltraCanvasKanbanBoard](../UltraCanvas/UltraCanvasKanbanBoard.md)); without
 it the Sticker board starts with Docs, Work and Home. `design` is one of
-`stickynotes`, `poster`, `schematic`, `dark`. `visible`, `x`, `y`, `width`
+`stickynotes`, `poster`, `schematic`, `dark`; `display` one of `text`,
+`thumbnail` (the default) and `row`; `hoverPreview` one of `small`, `medium`
+(the default) and `large`. `visible`, `x`, `y`, `width`
 and `height` are kept for older versions and no longer used: the board fills
 the work area and starts hidden. `pinnedApps` are the pinned
 applications' keys in the order they were pinned: the program's path, or on
 Windows the shortcut's path or `store:<AppUserModelID>`.
+`dropFilesOn` is `board` (the default) or `desktop`; `desktopIcons` keeps the
+desktop icons' places in the work area by name, and forgets one whose entry
+has gone. `theme` is `dark` (the default) or `light`; `clockStyle` one of
+`analog-date` (the default), `analog`, `digital-date`, `digital` and
+`digital-seconds`.
 `startWithDesktop` names the programs started with the desktop - `ChatCube`
 and `UltraMail` are the ones it offers; empty (the default), none.
 
 ## Programs that start with the desktop
 
-ChatCube and UltraMail can start with the desktop, so messages arrive and
-mail is counted on the mail icon without opening them first. Tick them in
-UOS-Settings > Desktop > *Start with the desktop*, or on the settings
-button's right-click menu (*Start with the desktop*). Three seconds after the
-desktop starts - so it shows first - each ticked program that is not
-running yet is started with `--minimized`: its window goes to the taskbar
-and it works in the background. One that is running already is left alone,
-since a second start of these single-copy programs would only bring their
-window forward. Ticking one in the menu starts it at once as well.
+Some programs can start with the desktop, unseen, so they are at work or
+ready before they are asked for. Tick them in UOS-Settings > Desktop >
+*Start with the desktop*, or on the settings button's right-click menu
+(*Start with the desktop*). Three seconds after the desktop starts - so it
+shows first - each ticked one that is not running yet is started:
+
+| Program | Started with | What it does in the background |
+|---|---|---|
+| ChatCube | `--minimized` | messages arrive; its window is on the taskbar |
+| UltraMail | `--minimized` | new mail is fetched and counted on the mail icon |
+| UltraClipboard | `--background` | no window; opens at once from the clipboard panel |
+| UltraNotifications | `--background` | no window; counts the unread on the bell, opens at once |
+| Sticker board | - | the desktop's own board: its window and file thumbnails are made, not shown, so the first click shows it at once |
+
+A minimized program that is running already is left alone, since a second
+start of these single-copy programs would only bring their window forward; a
+second `--background` start reaches the running copy, which takes it as
+nothing to do. Ticking one in the menu starts it at once as well.
 
 ## How the mail count gets there
 
@@ -107879,8 +109881,13 @@ the site's name follows file by file. **Host…** opens UltraCloud's
 add-account dialog, limited to the web hosts - FTP / FTPS / SFTP, WebDAV,
 Nextcloud - and the host added becomes the site's (`hosting` in
 `site.json`, with the dialog's upload folder as the site's root on the
-host). Without a host of its own the site publishes to the default host;
-without any, Publish opens the dialog.
+host). An FTP / SFTP host is asked for its protocol, its name or address
+and its port (empty: the protocol's own), and its private key is chosen
+with a file dialog. The sign-in is reported on the console as it happens -
+where, as whom, the session's steps, how it ended and the transport's
+diagnostics - the way `ultrapress hosts add` reports one, so a host that
+refused can be read step by step. Without a host of its own the site
+publishes to the default host; without any, Publish opens the dialog.
 
 The left column lists the pages and the current page's blocks: select one,
 move it with the arrows, remove it, or add one after the selection from
@@ -107934,6 +109941,7 @@ ultrapress publish mysite out --renderer ultrapress-0.1.0.js      # with the ren
 ultrapress import export.xml mysite --media                       # a WordPress export as a site, attachments fetched
 ultrapress hosts                                                  # the hosts a site can be published to
 ultrapress hosts add ftp --server sftp://my.example --user me --folder /public_html   # a host; the password from --password or ULTRAPRESS_HOST_PASSWORD
+ultrapress hosts add ftp --server sftp://my.example --port 2222 --user me       # on a port that is not the protocol's own
 ultrapress hosts use mysite me-at-my.example --path /public_html  # remember it in site.json
 ultrapress publish mysite out --to site                           # write, then upload what changed onto the site's host
 ultrapress publish mysite out --to "me at sftp://my.example" --path /www --force   # onto a named host, everything
@@ -108088,9 +110096,14 @@ MKCOL, outermost first). A site names its host and the folder on it in
 "hosting": { "account": "ftp-me-my-example", "path": "/public_html" }
 ```
 
-`ultrapress hosts use` writes it; the window's Host… button does the same.
-An `sftp://` host signs in with a password or a private key (`--key`, or
-the dialog's *Private key* row; the password is then the key's passphrase).
+`ultrapress hosts use` writes it; the window's Host… button does the same,
+from the protocol, server and port it asks for (`FtpServerUrl`); on the
+command line the port is `--port`, or part of the URL (`sftp://my.example:2222`),
+the two storing the same host. A server URL that is not FTP - `https://`,
+from the browser's bar - is refused before anything is sent, by `hosts add`
+and by the provider. An `sftp://` host signs in with a
+password or a private key (`--key`, or the dialog's *Private key* row and
+its *Choose* button; the password is then the key's passphrase).
 The window's Publish prunes; the command line prunes with `--prune`.
 
 **Text in place.** Click a piece of text on the page - a title, a

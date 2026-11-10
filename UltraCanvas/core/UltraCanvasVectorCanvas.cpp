@@ -2,14 +2,16 @@
 // Editable vector drawing view: pasteboard, page, grid, rulers, guides,
 // snapping, the selection's handles, and pointer events forwarded to the
 // active tool in document coordinates. See the header.
+// Version: 1.2.0 - Make/Register descriptor: "vector-canvas" in the element registry, bundled or as a runtime module
 // Version: 1.1.1 - the frame, the outlines of several objects and object snapping measure
 //                  the lines' width (VectorEdit::PaintBounds)
 // Version: 1.1.0 - the turned frame and the rotation handle of rotate mode
 // Version: 1.0.0
-// Last Modified: 2026-10-28
+// Last Modified: 2026-11-09
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasVectorCanvas.h"
+#include "UltraCanvasElementPlugins.h"
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasRenderContext.h"
 
@@ -1096,6 +1098,25 @@ bool UltraCanvasVectorCanvas::OnEvent(const UCEvent& event) {
             break;
     }
     return UltraCanvasUIElement::OnEvent(event);
+}
+
+
+UCElementDescriptor MakeVectorCanvasDescriptor() {
+    UCElementDescriptor descriptor;
+    descriptor.typeName = "vector-canvas";
+    descriptor.category = UCPluginCategory::Widget;
+    descriptor.displayName = "Vector Canvas";
+    descriptor.description = "Vector drawing editor: a document with rulers, selection, handles, guides and snapping";
+    descriptor.docPath = "Docs/UltraCanvas/UltraCanvasVectorCanvas.md";
+    descriptor.create = [](const std::string& id, int x, int y, int w, int h) {
+        return std::static_pointer_cast<UltraCanvasUIElement>(
+            CreateVectorCanvas(id, x, y, w, h));
+    };
+    return descriptor;
+}
+
+void RegisterVectorCanvasElement() {
+    UltraCanvasElementRegistry::Register(MakeVectorCanvasDescriptor());
 }
 
 } // namespace UltraCanvas

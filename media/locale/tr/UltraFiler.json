@@ -35,10 +35,6 @@
   "an entry": "bir girdi",
   "An upload is still running — quit anyway?": "Bir yükleme işlemi hâlâ sürüyor — yine de çıkılsın mı?",
   "An upload is still waiting — quit anyway?": "Bir yükleme işlemi hâlâ bekliyor — yine de çıkılsın mı?",
-  "and {n} more": {
-    "one": "ve {n} tane daha",
-    "other": "ve {n} tane daha"
-  },
   "Any other file, when this system has a program registered for that kind of file:": "Bu sistemde o tür dosya için kayıtlı bir program bulunduğunda diğer tüm dosyalar:",
   "Applied to {n} item.": {
     "one": "{n} öğeye uygulandı.",
@@ -462,10 +458,6 @@
   "{n} icon": {
     "one": "{n} simge",
     "other": "{n} simge"
-  },
-  "{n} line": {
-    "one": "{n} satır",
-    "other": "{n} satır"
   },
   "{n} result": {
     "one": "{n} sonuç",

@@ -1,5 +1,7 @@
 // Apps/DemoApp/UltraCanvasDemo.cpp
 // Comprehensive demonstration program implementation
+// Version: 1.0.23 - Charts > Histogram Chart (UltraCanvasHistogramChart)
+// Version: 1.0.22 - Charts > Line Chart: the Control Chart variant
 // Version: 1.0.21 - Charts > Ternary Chart: the Density variant (density bins, contours, zoom)
 // Version: 1.0.20 - Charts > Ternary Chart: Vote Swings, USDA Soil Texture and De Finetti variants
 // Version: 1.0.19 - Charts > Ternary Chart (UltraCanvasTernaryChart)
@@ -1151,7 +1153,8 @@ namespace UltraCanvas {
                              ImplementationStatus::FullyImplemented,
                              [this]() { return CreateLineChartsExamples(); },
                              "DemoApp/UltraCanvasBasicChartsExamples.cpp",
-                             "Docs/UltraCanvas/UltraCanvasLineChartElement.md");
+                             "Docs/UltraCanvas/UltraCanvasLineChartElement.md")
+                .AddVariant("linecharts", Tr("Control Chart (X-bar-R, I-MR)"));
 
         chartBuilder.AddItem("barcharts", Tr("Bar Chart"), Tr("Bar chart data visualization"),
                              ImplementationStatus::FullyImplemented,
@@ -1474,6 +1477,17 @@ namespace UltraCanvas {
                 .AddVariant("ternarychart", Tr("USDA Soil Texture (regions)"))
                 .AddVariant("ternarychart", Tr("De Finetti (bubbles, Hardy-Weinberg curve)"))
                 .AddVariant("ternarychart", Tr("Density (2,400 points, contours, zoom)"));
+
+        chartBuilder.AddItem("histogramchart", Tr("Histogram Chart"),
+                             Tr("A picture's histogram: how many pixels have each level of red, green and "
+                                "blue - combined or one channel at a time, linear or logarithmic"),
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateHistogramChartExamples(); },
+                             "DemoApp/UltraCanvasHistogramChartExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasHistogramChart.md")
+                .AddVariant("histogramchart", Tr("Combined (red, green, blue)"))
+                .AddVariant("histogramchart", Tr("Red, green or blue channel"))
+                .AddVariant("histogramchart", Tr("Luminosity"));
 
         // ===== DIAGRAMS =====
         auto diagramBuilder = DemoCategoryBuilder(this, DemoCategory::Diagrams);
@@ -2356,6 +2370,16 @@ namespace UltraCanvas {
                                [this]() { return CreateMenuConfigExamples(); },
                                "DemoApp/UltraCanvasMenuConfigExamples.cpp",
                                "Docs/UltraCanvas/UltraCanvasCommandConfigWidget.md");
+
+        // The look of an application's settings window, once; UltraFiler,
+        // UltraSnip and UOS-Settings are built on it.
+        widgetsBuilder.AddItem("settingspagekit", Tr("Settings Window"),
+                               Tr("A settings window from the framework's kit: the tree of pages, the page skeleton "
+                                  "and the controls in one type scale, with Restore defaults per page"),
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreateSettingsPageKitExamples(); },
+                               "DemoApp/UltraCanvasSettingsPageKitExamples.cpp",
+                               "Docs/UltraCanvas/UltraCanvasSettingsPageKit.md");
 
         widgetsBuilder.AddItem("localisationeditor", Tr("Localisation Editor"),
                                Tr("Every set an application's texts come from in one grid: edit, take a base set, promote, demote, save"),

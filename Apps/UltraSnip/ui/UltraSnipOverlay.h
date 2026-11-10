@@ -41,6 +41,9 @@ public:
     void SetWindows(std::vector<OverlayWindow> windows) { windows_ = std::move(windows); }
     // Logical to physical pixels, for the size label
     void SetScale(float scale) { scale_ = scale; }
+    // Where the hint line starts from the top (logical); lower while the
+    // bar sits over the top of the screen
+    void SetHintTop(float top) { hintTop_ = top; RequestRedraw(); }
 
     // A selection: the rectangle in the element's (logical) coordinates
     std::function<void(const UltraCanvas::Rect2Df&)> onSelected;
@@ -61,6 +64,7 @@ private:
     SnipMode mode_ = SnipMode::Rectangle;
     std::vector<OverlayWindow> windows_;
     float scale_ = 1.0f;
+    float hintTop_ = 16.0f;
     bool dragging_ = false;
     bool pointerKnown_ = false;
     UltraCanvas::Point2Di anchor_;
@@ -80,11 +84,17 @@ public:
     bool Open(const UltraCanvas::DesktopScreenImage& shot, SnipMode mode,
               const std::vector<SnipWindowBounds>& windows, std::string* error = nullptr);
     void Close();
+    // The shape the marquee takes while it is open (the bar's choice changed)
+    void SetMode(SnipMode mode);
+    void SetHintTop(float top);
     bool IsOpen() const { return window_ != nullptr && open_; }
 
     // The chosen rectangle in screen pixels (as ListScreens counts them)
     std::function<void(const UltraCanvas::Rect2Di&)> onSelected;
     std::function<void()> onCancelled;
+    // A button went up over the overlay and it is still open: a window kept
+    // above it (the bar) raises itself again, as the click raised the overlay
+    std::function<void()> onReleased;
 
 private:
     void Finish(bool selected, const UltraCanvas::Rect2Di& area);

@@ -1,5 +1,6 @@
 // Apps/UltraPress/ui/UltraPressWindow.cpp
 // The editor window: lists, preview and the property pane from the registry.
+// Version: 0.8.7 - the host dialog's sign-in reported on the console, step by step
 // Version: 0.8.6 - SetDark writes no file
 // Version: 0.8.4 - the look remembered through UltraPressSettings
 // Version: 0.8.3 - the address checked as typed, said under the field
@@ -43,6 +44,10 @@
 #endif
 #if ULTRAPRESS_HAS_ULTRACLOUD_UI
 #include "UltraCloudAccountDialog.h"
+#include <UltraCloud/UltraCloudLog.h>
+#if ULTRAPRESS_HAS_ULTRANET
+#include "UltraNet/UltraNetFtp.h"
+#endif
 #endif
 
 #include <algorithm>
@@ -441,6 +446,45 @@ void EditorWindow::ChooseHost() {
     }
     std::shared_ptr<UltraCanvasWindow> window = windowRef.lock();
     if (!window) return;
+    // The sign-in the dialog runs is reported on the console as it happens -
+    // the steps, an FTP session's commands and replies, and how it ended with
+    // the transport's diagnostics - the way `ultrapress hosts add` reports
+    // one. The dialog shows the refusal in a line; a server that answers
+    // nothing is only explained by the session that led there. Both callbacks
+    // run on the sign-in thread, so the sinks set in onBegin are that
+    // thread's own and put back in onEnd.
+    struct SignInSinks {
+        UltraCloud::LogCallback cloud;
+#if ULTRAPRESS_HAS_ULTRANET
+        UltraNetFtpLogCallback ftp;
+#endif
+    };
+    auto sinks = std::make_shared<SignInSinks>();
+    UltraCloud::AddAccountWatch watch;
+    watch.onBegin = [sinks](const UltraCloud::Account& account) {
+        std::fprintf(stderr, "ultrapress: signing in at %s as %s\n",
+                     account.serverUrl.c_str(), account.username.c_str());
+        sinks->cloud = UltraCloud::SetThreadLog([](const UltraCloud::LogLine& line) {
+            std::fprintf(stderr, "ultrapress:   %s\n", line.text.c_str());
+        });
+#if ULTRAPRESS_HAS_ULTRANET
+        sinks->ftp = UltraNet_SetThreadFtpLog([](const UltraNetFtpLogLine& line) {
+            std::fprintf(stderr, "ultrapress:   %s\n", line.text.c_str());
+        });
+#endif
+    };
+    watch.onEnd = [sinks](const UltraCloud::Account& account, const UltraCloud::Result& result) {
+        UltraCloud::SetThreadLog(std::move(sinks->cloud));
+#if ULTRAPRESS_HAS_ULTRANET
+        UltraNet_SetThreadFtpLog(std::move(sinks->ftp));
+#endif
+        if (result) {
+            std::fprintf(stderr, "ultrapress: host %s added\n", account.accountId.c_str());
+            return;
+        }
+        std::fprintf(stderr, "ultrapress: host not added: %s\n", result.message.c_str());
+        if (!result.diagnostics.empty()) std::fprintf(stderr, "%s\n", result.diagnostics.c_str());
+    };
     UltraCloud::ShowAddAccountDialog(
         window.get(), hosts->Service(),
         [this](const UltraCloud::Account& added) {
@@ -452,7 +496,7 @@ void EditorWindow::ChooseHost() {
             SetStatus("Publishes to " + site.hosting.account + JoinRemote(site.hosting.path, ""));
         },
         [](const std::string& providerId) { return Hosts::IsHostProvider(providerId); },
-        "Add a web host");
+        "Add a web host", std::move(watch));
 #else
     SetStatus("This build has no host dialog: `ultrapress hosts add` and `ultrapress hosts use`");
 #endif

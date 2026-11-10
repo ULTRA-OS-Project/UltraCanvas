@@ -33,6 +33,16 @@
 // settings button offers sign out, restart and shut down, which Explorer's
 // Start menu would otherwise, and a tap of the Win key opens the
 // Applications window.
+// Version: 0.9.0 - files dropped on the wallpaper go to the Sticker board's
+//                  "Unsorted" category or into the Desktop folder, shown as
+//                  icons (DropFiles, SetDropTarget, UltraDesktopDesktopIcons)
+// Version: 0.8.0 - context menus on the wallpaper (wallpaper, theme, the
+//                  taskbar's edge, display settings) and on the bars (the
+//                  taskbar's edge); a light theme (BarPalette, Bars); the
+//                  clock back at the top of the right bar
+// Version: 0.7.0 - an application's windows share one taskbar button with a
+//                  count; resting the pointer on it shows the windows'
+//                  pictures to choose from (UltraDesktopWindowPreviews)
 // Version: 0.5.2 - the screenshot button opens UltraSnip (OpenSnip, its menu of
 //                  shapes and the recording, Super+Shift+S), the plain capture as the fallback
 // Version: 0.6.0 - the Wi-Fi and Bluetooth panels (join, pair, connect),
@@ -86,6 +96,7 @@ namespace UltraCanvas {
     class UltraCanvasWaveSeparator;
     class UltraCanvasImageElement;
     class UltraCanvasMenu;
+    struct MenuItemData;
     class UltraCanvasButton;
     class UltraCanvasGaugeDiagramElement;
     class UltraCanvasLabel;
@@ -101,8 +112,11 @@ class UltraDesktopWifiPanel;
 class UltraDesktopBluetoothPanel;
 class UltraDesktopDevicePanel;
 class UltraDesktopStickerboard;
+class UltraDesktopDesktopIcons;
 class UltraDesktopCategoryBoard;
 class UltraDesktopTasksWindow;
+class UltraDesktopWindowPreviews;
+struct BarPalette;
 
 class UltraDesktopWindow {
 public:
@@ -153,7 +167,10 @@ public:
     // The Sticker board's window: over the work area, below the application
     // that was in front.
     void ShowCategoryBoard();
-    // settings_.startWithDesktop: started minimized unless running already.
+    // Its window and cards made, not shown ("Start with the desktop").
+    void PrepareCategoryBoard();
+    // settings_.startWithDesktop: each started unseen (minimized, or with no
+    // window) unless running already; the Sticker board made ready.
     void StartStartupPrograms();
     void PlaceCategoryBoard();
     void SwitchToDesktop(int index);
@@ -189,6 +206,22 @@ public:
     void CheckSettingsFile();
 
     DesktopSettings& Settings() { return settings_; }
+    // The desktop's right-click menu, on the wallpaper and the notes'
+    // ground: the wallpaper, the theme, the taskbar's edge, the display
+    // settings and the desktop's settings. Window coordinates.
+    void ShowDesktopMenu(int windowX, int windowY);
+    // Files dropped on the wallpaper (or a desktop icon), at `at` in the
+    // work area: onto the Sticker board's "Unsorted" category, which
+    // shows, or into the Desktop folder (DesktopSettings::dropFilesOn).
+    void DropFiles(const std::vector<std::string>& files, const UltraCanvas::Point2Df& at);
+    // "board" or "desktop": where dropped files go; the desktop icons show
+    // with "desktop".
+    void SetDropTarget(const std::string& target);
+    // Dragging desktop icons: the other programs' windows on this desktop
+    // are read once when a drag starts, and the drag leaves the desktop as
+    // a native file drag when the pointer (window coordinates) is over one.
+    void NoteIconDragStart();
+    bool PointOverOtherWindow(const UltraCanvas::Point2Di& windowPoint) const;
     // How many desktops the organiser shows right now: the window manager's
     // count where there is one, the settings' where there is none.
     int DesktopCount() const { return desktopCount_; }
@@ -203,9 +236,28 @@ private:
     int  DesiredDesktopCount() const;
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildTaskbar(bool vertical);
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildRightBar();
-    // The clock at the top of the right bar: the gauge element's analog
-    // clock over the date, the whole date and time in the tooltip.
+    // The bars' colours in the settings' theme (dark or light).
+    const BarPalette& Bars() const;
+    // The menu entries that move the taskbar to another edge, and the
+    // theme's; shared by the desktop's menu and the bars'.
+    std::vector<UltraCanvas::MenuItemData> TaskbarEdgeItems();
+    std::vector<UltraCanvas::MenuItemData> ThemeItems();
+    // A right click on the bars' ground (not on a button): the taskbar's
+    // edge, the theme and the desktop's settings.
+    void ShowBarMenu(int windowX, int windowY);
+    void InstallBarMenu(const std::shared_ptr<UltraCanvas::UltraCanvasToolbar>& group);
+    void SetTaskbarEdge(TaskbarEdge edge);
+    void SetTheme(const std::string& theme);
+    // A picture for the wallpaper, through FileLoader's Open dialog.
+    void ChooseWallpaper();
+    void SetWallpaper(const std::string& path);   // "" = the default picture
+    void OpenDisplaySettings();
+    // The clock at the top of the right bar, white on black: the gauge
+    // element's analog clock or the digital time, with or without the date
+    // (right-click to choose), the whole date and time in the tooltip.
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildClock();
+    // The clock's right-click menu: its display types.
+    void ShowClockMenu(int windowX, int windowY);
     void UpdateClock();
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildWorkArea();
     // The installed applications, read once and again every five minutes:
@@ -250,7 +302,20 @@ private:
     void StopDevicePoll();
 
     // ===== RUNNING APPS =====
+    // One button per application (RunningGroupKey): a click on the button of
+    // a single window raises or minimizes it; with several the previews
+    // open, and the person picks the window there.
+    void OnRunningToggled(const std::string& key, bool on);
+    void HoverRunning(const std::string& key);
+    void UnhoverRunning(const std::string& key);
+    void ShowPreviews(const std::string& key);
+    void HidePreviews();
+    void SchedulePreviewsClose();
+    void StopPreviewTimers();
     void ShowWindowMenu(uint64_t windowId, int windowX, int windowY);
+    // An application's button with several windows: its windows, minimize
+    // all, close all, pin.
+    void ShowGroupMenu(const std::string& key, int windowX, int windowY);
     void ShowPinnedMenu(const UltraCanvas::UCDesktopEntry& entry, int windowX, int windowY);
     void ShowClipboardMenu(int windowX, int windowY);
     void ShowSettingsButtonMenu(int windowX, int windowY);
@@ -312,7 +377,6 @@ private:
     void SetClipboardRecording(bool on);
     void UpdateClipboardButton();
     void CheckClipboardHistory();
-    std::string RunningItemId(uint64_t windowId) const;
 
     // ===== STATE =====
     std::string settingsPath_;
@@ -337,6 +401,9 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasToolbar> info_;
     std::shared_ptr<UltraCanvas::UltraCanvasMenu> popupMenu_;
     std::shared_ptr<UltraDesktopStickerboard> stickerboard_;
+    std::shared_ptr<UltraDesktopDesktopIcons> desktopIcons_;
+    int desktopIconTicks_ = 0;
+    std::vector<UltraCanvas::Rect2Di> otherWindowRects_;   // NoteIconDragStart
     std::shared_ptr<UltraDesktopCategoryBoard> categoryBoard_;
     std::shared_ptr<UltraCanvas::UltraCanvasWindow> boardWindow_;
     UltraCanvas::Rect2Di boardRect_;    // where PlaceCategoryBoard last put it
@@ -344,10 +411,13 @@ private:
     std::shared_ptr<UltraDesktopTasksWindow> tasks_;
     std::unique_ptr<UltraCanvas::UltraCanvasNotificationToastHost> toasts_;
 
-    // The clock: its face and the date under it, refreshed once a minute.
+    // The clock: the analog face or the digital time, and the date under it
+    // (as DesktopSettings::clockStyle says), refreshed when the time shown
+    // changes.
     std::shared_ptr<UltraCanvas::UltraCanvasGaugeDiagramElement> clock_;
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel> clockTime_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel> clockDate_;
-    int clockMinute_ = -1;
+    std::string clockStamp_;
     std::shared_ptr<UltraDesktopClockPanel> clockPanel_;
     std::shared_ptr<UltraDesktopVolumePanel> volumePanel_;
     // The services FitInfoPanel last moved to the end of the info panel.
@@ -385,9 +455,30 @@ private:
     std::vector<UltraCanvas::UCDesktopEntry> applications_;
     std::chrono::steady_clock::time_point applicationsRead_{};
 
-    // window id -> the toolbar item for it, in the order the user keeps
-    std::map<uint64_t, std::string> runningItems_;
+    // An application's windows on the bar: the group key (RunningGroupKey)
+    // -> its toolbar item and its windows in ListWindows' order.
+    struct RunningWindow {
+        uint64_t id = 0;
+        std::string title;
+        std::string iconFile;
+        bool active = false;
+        bool minimized = false;
+    };
+    struct RunningGroup {
+        std::string itemId;
+        std::string name;        // the application, for the tooltip
+        std::string letter;      // the button's text when there is no icon
+        std::vector<RunningWindow> windows;
+        int badge = 0;           // the count the button shows, 0 for none
+        bool active = false;     // one of them has the focus
+    };
+    std::map<std::string, RunningGroup> runningGroups_;
     std::map<uint64_t, std::string> runningTitles_;
+    uint64_t nextRunningItem_ = 0;
+    std::shared_ptr<UltraDesktopWindowPreviews> previews_;
+    std::string hoveredGroup_;
+    UltraCanvas::TimerId previewOpenTimer_ = 0;
+    UltraCanvas::TimerId previewCloseTimer_ = 0;
     int currentDesktop_ = -1;
     int desktopCount_ = 0;
     int requestedDesktops_ = 0;   // the settings' choice, for the rebuild that applies it

@@ -27,10 +27,11 @@
 // notifications). Where none exists the monitor polls the volume list on a
 // background thread instead, so Start() succeeds on every platform and the
 // caller never needs a fallback of its own.
+// Version: 1.2.0 - ReadVolumeName: a drive letter's own volume name
 // Version: 1.1.0 - ListGvfsVolumes: phones, cameras and shares a Linux desktop
 //                  mounted through GVFS are volumes too
 // Version: 1.0.0
-// Last Modified: 2026-11-01
+// Last Modified: 2026-11-09
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -73,6 +74,16 @@ namespace UltraCanvas {
     // Just the mount points of the above, in the same order. The shape a
     // caller that only navigates - a path strip's drive dropdown - wants.
     std::vector<std::string> ListVolumeRoots();
+
+    // The name the volume itself carries ("My Passport Ultra", "Windows-SSD"),
+    // for a drive letter on Windows; empty when it has none, for a network
+    // drive (asking a share that stopped answering waits out its timeout),
+    // and on every other platform, where MountedVolume::label already is the
+    // volume's name. It reads the medium - a sleeping disk spins up, an
+    // empty card reader is asked - so call it off the UI thread, never in
+    // the pass that lists the mounts. Show it as Explorer does:
+    // "My Passport Ultra (D:)".
+    std::string ReadVolumeName(const std::string& path);
 
     // The places a Linux desktop mounted through GVFS - GNOME's Files and
     // every GIO application share them - below $XDG_RUNTIME_DIR/gvfs: a phone

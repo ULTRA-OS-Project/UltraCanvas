@@ -16,9 +16,18 @@
 // number). Where no desktop records - another desktop, Windows, macOS - the
 // window records itself while it is open.
 //
+// Extract text (the row menu, Ctrl+T) reads the words in an image (text
+// recognition) or in copied files - a word processor document, a PDF, a
+// spreadsheet, a text file, a picture, and a recording or a video when a
+// speech-to-text engine is installed (UltraCanvasFileLoader::ExtractText) -
+// on a worker thread - a picture by an UltraAI vision provider when one reads
+// text, else by the OCR plugin. The text arrives as a new text entry, on the
+// clipboard.
+//
 // Keys: typing in the search field filters; Up / Down choose; Enter copies;
-// F2 or Ctrl+E edits; Ctrl+S saves as; Delete deletes; Ctrl+P pins; Ctrl+F finds; Escape
-// closes the preview, then clears the search.
+// F2 or Ctrl+E edits; Ctrl+S saves as; Ctrl+T extracts the text; Delete
+// deletes; Ctrl+P pins; Ctrl+F finds; Escape closes the preview, then clears
+// the search.
 //
 // The preview: resting the pointer on an image's thumbnail (or on the
 // thumbnail of copied files whose first file the media viewer shows - a
@@ -32,6 +41,11 @@
 // stays while the pointer is on that row or on the preview itself, where
 // the wheel zooms; it follows the wheel scrolling the list; Escape or
 // moving elsewhere closes it.
+// Version: 0.2.2 - Extract text says which UltraAI provider read a picture
+// Version: 0.2.1 - Extract text
+// Version: 0.2.0 - in the background (SetKeepRunning): closing the window
+//                  hides it, a later start shows it again, Quit in the
+//                  More menu ends the program
 // Version: 0.1.5
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -43,6 +57,7 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <future>
 #include <map>
 #include <memory>
 #include <string>
@@ -79,8 +94,13 @@ public:
     bool Create(const std::string& search, int64_t editId);
     void Show();
     // Another start of UltraClipboard handed this over (UltraCanvasSingleInstance): the
-    // window comes forward with that search, or that entry's edit dialog.
+    // window comes forward - shown first when it was hidden - with that
+    // search, or that entry's edit dialog.
     void Present(const std::string& search, int64_t editId);
+    // Started in the background (--background, UltraDesktop's "start with
+    // the desktop"): closing the window hides it and the program stays, so
+    // the next start shows it at once; Quit in the More menu ends it.
+    void SetKeepRunning(bool keep) { keepRunning_ = keep; }
 
 private:
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildToolbar();
@@ -105,6 +125,12 @@ private:
     void SaveTextAs(const UltraCanvas::ClipboardHistoryEntry& entry, const UltraCanvas::ClipboardSnapshot& content);
     void SaveImageAs(const UltraCanvas::ClipboardHistoryEntry& entry, const UltraCanvas::ClipboardSnapshot& content);
     void SaveFilesTo(const UltraCanvas::ClipboardHistoryEntry& entry, const UltraCanvas::ClipboardSnapshot& content);
+    // Extract text (see the top of this file): whether the entry has words to
+    // read (an image, or files of a type that has); starting it; and taking
+    // the result in, from Tick, once the worker is done.
+    bool CanExtractText(const UltraCanvas::ClipboardHistoryEntry& entry) const;
+    void ExtractText(int64_t id);
+    void FinishExtractText();
     // After a save: "Delete the item from the clipboard?"
     void OfferToDelete(int64_t id, const std::string& saved);
     void ShowRowMenu(int row, const UltraCanvas::UCEvent& event);
@@ -132,6 +158,8 @@ private:
     std::unique_ptr<UltraCanvas::UltraCanvasClipboardHistory> history_;
     std::unique_ptr<UltraCanvas::UltraCanvasClipboardRecorder> recorder_;
     std::shared_ptr<UltraCanvas::UltraCanvasWindow> window_;
+    bool keepRunning_ = false;
+    bool shown_ = false;
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> search_;
     std::shared_ptr<UltraCanvas::UltraCanvasSegmentedControl> kinds_;
     std::shared_ptr<UltraCanvas::UltraCanvasSwitch> recording_;
@@ -156,6 +184,14 @@ private:
     bool copiedShowing_ = false;
     bool updatingRecording_ = false;
     int64_t pendingEdit_ = 0;
+    struct ExtractedText {
+        std::string text;
+        std::string error;
+        size_t sources = 0;              // the files (or the image) the text came from
+        std::string reader;              // the UltraAI provider that read a picture; "" for the built-in OCR
+    };
+    std::future<ExtractedText> extracting_;   // valid while a worker reads
+    int64_t extractingId_ = 0;
     std::string saveFolder_;             // where the last Save as went: the next one starts there
 
     int64_t previewId_ = 0;              // the entry on show; 0 while hidden

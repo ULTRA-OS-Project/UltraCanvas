@@ -29,6 +29,7 @@
   - [FitContent Width Mode (Alignment Toolbar)](#fitcontent-width-mode-alignment-toolbar)
   - [Disabled Segments](#disabled-segments)
   - [A Segment in Its Own Colour](#a-segment-in-its-own-colour)
+  - [A Tooltip for Each Segment](#a-tooltip-for-each-segment)
   - [Variable-Length Segments with a Custom Theme](#variable-length-segments-with-a-custom-theme)
 - [Keyboard Navigation](#keyboard-navigation)
 - [See Also](#see-also)
@@ -37,7 +38,7 @@
 
 **UltraCanvasSegmentedControl** is a multi-segment selection control for choosing between mutually exclusive options (single mode) or toggling several options independently (multiple/toggle mode). It is well-suited for view-switchers, filter bars, formatting toolbars, and size pickers.
 
-**Version:** 1.0.1
+**Version:** 1.5.0 - `SetSegmentTooltip`: each segment its own tooltip
 **Header:** `include/UltraCanvasSegmentedControl.h`
 **Namespace:** `UltraCanvas`
 **Base Class:** `UltraCanvasUIElement`
@@ -105,6 +106,11 @@ void SetSegmentWidth(int index, float width);    // Used with SegmentWidthMode::
 // One segment's text colour while it is not selected; selected, it takes
 // selectedTextColor. Colors::Transparent restores the style's colours.
 void SetSegmentTextColor(int index, const Color& color);
+// One segment's own tooltip - an icon-only segment naming itself. It shows
+// while the pointer is over that segment and switches as the pointer moves
+// to the next; a segment without one shows the control's (SetTooltip).
+void        SetSegmentTooltip(int index, const std::string& text);
+std::string GetSegmentTooltip(int index) const;
 ```
 
 ### Selection — Single Mode
@@ -396,6 +402,24 @@ assistant->AddSegment("Claude Code");
 assistant->AddSegment("Codex");
 assistant->SetSegmentTextColor(0, Color(200, 30, 30));
 assistant->SetSelectedIndex(1);
+```
+
+### A Tooltip for Each Segment
+
+Icon-only segments say what they are in their own tooltips. A tooltip set
+with `SetTooltip` on the control is read once, when the pointer comes in, so
+changing it from `onSegmentHover` leaves the first segment's text up while
+the pointer moves on; `SetSegmentTooltip` swaps the shown tooltip as the
+pointer crosses from one segment to the next.
+
+```cpp
+auto shape = CreateSegmentedControl("shape", 50, 780, 102, 28);
+shape->AddSegment("", "media/icons/snip-rectangle.svg");
+shape->AddSegment("", "media/icons/snip-window.svg");
+shape->AddSegment("", "media/icons/snip-screen.svg");
+shape->SetSegmentTooltip(0, "Rectangle: an area you drag out");
+shape->SetSegmentTooltip(1, "Window: the window you click");
+shape->SetSegmentTooltip(2, "Full screen: the whole screen");
 ```
 
 ### Variable-Length Segments with a Custom Theme
