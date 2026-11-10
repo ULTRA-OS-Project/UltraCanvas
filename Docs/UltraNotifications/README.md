@@ -43,7 +43,8 @@ once. While it runs this way, closing the window only hides it; *Quit* at the
 foot of the window, or Ctrl+Q, ends the program.
 
 UltraDesktop starts it so when *Start with the desktop* names it - the
-settings button's right-click menu, or UOS-Settings > Desktop. One copy runs
+settings button's right-click menu, or UOS-Settings > Desktop - which it
+does by default. One copy runs
 per user (UltraCanvasSingleInstance): a second start brings the running one
 forward, and a second background start changes nothing.
 

@@ -30,6 +30,7 @@
 
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasLabel.h"
+#include "UltraLocalisation/UltraLocalisation.h"   // Tr for the pages' texts
 
 #include <memory>
 #include <string>

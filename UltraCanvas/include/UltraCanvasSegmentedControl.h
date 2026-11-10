@@ -1,12 +1,14 @@
 // include/UltraCanvasSegmentedControl.h
 // Segmented control component for mutually exclusive selection between options
+// Version: 1.6.0 - SegmentedControlStyle::FromTheme, ApplyTheme: the control follows the theme;
+//                  a SetStyle by hand stops the following
 // Version: 1.5.0 - SetSegmentTooltip: each segment its own tooltip, switched as the pointer
 //                 moves from segment to segment
 // Version: 1.4.0 - SegmentedControlStyle::iconAsMask: line icons in the segment's text colour;
 //                 an icon and a centred caption are centred together
 // Version: 1.3.0 - SetSegmentTextColor: one segment's own text colour
 // Version: 1.2.0
-// Last Modified: 2026-11-07
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -91,6 +93,15 @@ namespace UltraCanvas {
         float fontSize = 12.0f;
         FontWeight fontWeight = FontWeight::Normal;
 
+        // The theme's roles: the raised surface for a segment at rest, the
+        // accent with text on it for the selected one, the hover fill, the
+        // panel disabled, the control border and hairline separators; the
+        // interface font at the body size - over a base's own shape
+        // (padding, radius, icons, weight), or a default one
+        static SegmentedControlStyle FromTheme(const UltraCanvasTheme& theme, const SegmentedControlStyle& base);
+        static SegmentedControlStyle FromTheme(const UltraCanvasTheme& theme) { return FromTheme(theme, SegmentedControlStyle()); }
+        static SegmentedControlStyle FromTheme() { return FromTheme(UltraCanvasTheme::Current()); }
+
         // Animation
         bool enableAnimation = false;
         double animationDuration = 0.15f;
@@ -172,6 +183,7 @@ namespace UltraCanvas {
                 : UltraCanvasUIElement(identifier, x, y, w, h) {
 
             mouseCursor = UCMouseCursor::Hand;
+            ApplyThemeIfFollowing();
         }
 
         UltraCanvasSegmentedControl(const std::string &identifier, float w, float h)
@@ -244,6 +256,7 @@ namespace UltraCanvas {
         // ===== STYLING =====
         void SetStyle(SegmentedControlStyle newStyle);
         SegmentedControlStyle GetStyle() const { return style; }
+        void ApplyTheme(const UltraCanvasTheme& theme) override { SetStyle(SegmentedControlStyle::FromTheme(theme, style)); }
 
         void SetWidthMode(SegmentWidthMode mode);
         SegmentWidthMode GetWidthMode() const { return widthMode; }

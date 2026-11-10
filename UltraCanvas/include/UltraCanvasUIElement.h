@@ -5,6 +5,8 @@
 // border *visual* properties, render context, window, tooltip) stay on
 // this class; geometry, box model, identifier, parent link, z-index live
 // on the engine base.
+// Version: 4.7.0 - SetFollowThemeByDefault: whether a new element follows the theme (the policy sets it);
+//                  ApplyThemeIfFollowing for a constructor's tail; StyleSetByHand: a style set by hand stops the following
 // Version: 4.6.0 - SetFollowTheme / ApplyTheme / OnThemeChanged: an element that follows the current UltraCanvasTheme
 // Version: 4.5.0 - the size-only constructor is border-box too, like the full-rect one
 // Version: 4.4.0 - GetPopupShadow: a soft drop shadow the window paints under a popup
@@ -12,7 +14,7 @@
 // Version: 4.3.0 - accessible name/description overrides, toggle state, range value, value text and default action
 // Version: 4.2.0 - ArrangeOwnBox: take a box without laying the children out
 // Version: 4.1.0 - SetBorderRadius: rounded corners without a border
-// Last Modified: 2026-10-12
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -677,26 +679,62 @@ namespace UltraCanvas {
 
     public:
         // ===== THEME =====
-        // An element that follows the theme takes its colours from the
-        // current UltraCanvasTheme now and again whenever the theme changes
-        // (the application forwards UltraCanvasTheme::SetCurrent to every
-        // element of its windows). Off by default: an element styled by
-        // hand keeps its look. An element with a style built by FromTheme
-        // overrides ApplyTheme to set that style.
+        // An element that follows the theme takes its colours and fonts
+        // from the current UltraCanvasTheme now and again whenever the theme
+        // changes (the application forwards UltraCanvasTheme::SetCurrent to
+        // every element of its windows). Whether a new element follows is
+        // the application-wide default: on while the theme policy follows
+        // the host or names a light or a dark look (ApplyThemePolicy sets
+        // it), off until then and for an application with a theme of its
+        // own, which sets it itself. An element with a style built by
+        // FromTheme overrides ApplyTheme to set that style, and its
+        // constructor ends with ApplyThemeIfFollowing(). A style set by hand
+        // (SetStyle) stops the following, so the element keeps its look;
+        // SetStyle then SetFollowTheme(true) keeps both, the theme's roles
+        // over the given style.
+        static void SetFollowThemeByDefault(bool follow) { FollowThemeDefault() = follow; }
+        static bool FollowThemeByDefault() { return FollowThemeDefault(); }
         void SetFollowTheme(bool follow) {
             followTheme = follow;
-            if (follow) ApplyTheme(UltraCanvasTheme::Current());
+            if (follow) ApplyCurrentTheme(UltraCanvasTheme::Current());
         }
         bool GetFollowTheme() const { return followTheme; }
         virtual void ApplyTheme(const UltraCanvasTheme& theme) { (void)theme; }
         // The theme changed: a following element re-styles; a container
         // passes it on to its children
         virtual void OnThemeChanged(const UltraCanvasTheme& theme) {
-            if (followTheme) ApplyTheme(theme);
+            if (followTheme) ApplyCurrentTheme(theme);
+        }
+        // Whether ApplyTheme is running on this element: a SetStyle reached
+        // from it is the theme's, not the application's
+        bool IsApplyingTheme() const { return applyingTheme; }
+
+    protected:
+        // The tail of a constructor whose class overrides ApplyTheme (and of
+        // a setter that changes what the theme maps, such as a variant): a
+        // following element takes the current theme
+        void ApplyThemeIfFollowing() {
+            if (followTheme) ApplyCurrentTheme(UltraCanvasTheme::Current());
+        }
+        // Every SetStyle of an element that can follow calls this: a style
+        // set by hand stops the following, one the theme sets does not
+        void StyleSetByHand() {
+            if (!applyingTheme) followTheme = false;
         }
 
     private:
-        bool followTheme = false;
+        static bool& FollowThemeDefault() {
+            static bool follow = false;
+            return follow;
+        }
+        void ApplyCurrentTheme(const UltraCanvasTheme& theme) {
+            const bool was = applyingTheme;
+            applyingTheme = true;
+            ApplyTheme(theme);
+            applyingTheme = was;
+        }
+        bool followTheme = FollowThemeByDefault();
+        bool applyingTheme = false;
     };
 
 // ===== FACTORY SYSTEM =====

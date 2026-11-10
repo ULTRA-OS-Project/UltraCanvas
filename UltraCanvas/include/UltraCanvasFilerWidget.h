@@ -104,6 +104,8 @@
 // thin blue bar sliding along the foot of the file area - its entries, or an
 // empty area, stay as they are - and the words go to the host's status line
 // (GetListingPendingStatus, onListingPendingChanged).
+// Version: 1.49.0 - FilerStyle::FromTheme, ApplyTheme: the widget follows the theme; a SetStyle by hand
+//                   stops the following
 // Version: 1.48.0 - the context menu's Refresh, and onRefreshRequested for a
 //                  host that answers for remote folders from a cache
 // Version: 1.47.1 - Includes UltraCanvasDialogTypes.h, not UltraCanvasModalDialog.h:
@@ -158,7 +160,7 @@
 // Version: 1.40.0 - RequestBackgroundStop / BackgroundStopped: a host can let the workers
 //                  end before it destroys the widget
 // Version: 1.39.2
-// Last Modified: 2026-11-09
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -722,6 +724,22 @@ namespace UltraCanvas {
         // tile. SetCaptionMaxLines() changes it without a whole SetStyle().
         int captionMaxLines   = 2;
         int captionLineHeight = 0;       // 0 = derived from smallFontSize
+
+        // The theme's roles over a base's own shape (heights, gaps, the
+        // caption rule): the well for the file area, ink and muted ink for
+        // the names and their details, the panel for the header, the info
+        // bar and a bar's background with ink on it, hairlines for the
+        // grid, the hover fill, the soft accent for the selection with the
+        // accent round it, the accent for the bars, the well with the accent
+        // for the rename editor; the interface font at the body size, the
+        // small text at the caption size. The hover icon menu and the
+        // extension tag keep their own dark overlays unless a theme names
+        // "filer.icon-menu", "filer.on-icon-menu", "filer.icon-menu-done",
+        // "filer.extension-bar", "filer.extension-tag" and
+        // "filer.on-extension-tag"
+        static FilerStyle FromTheme(const UltraCanvasTheme& theme, const FilerStyle& base);
+        static FilerStyle FromTheme(const UltraCanvasTheme& theme) { return FromTheme(theme, FilerStyle()); }
+        static FilerStyle FromTheme() { return FromTheme(UltraCanvasTheme::Current()); }
 
         // Words are kept whole. A name is broken *inside* a word only when it
         // has to be, and never where that would leave captionBreakTolerance
@@ -1549,6 +1567,7 @@ namespace UltraCanvas {
 
         void SetStyle(const FilerStyle& s);
         const FilerStyle& GetStyle() const { return style; }
+        void ApplyTheme(const UltraCanvasTheme& theme) override { SetStyle(FilerStyle::FromTheme(theme, style)); }
 
         // ===== RESIZABLE COLUMNS =====
         // The column views carry draggable splitters (UltraCanvasSplitPane

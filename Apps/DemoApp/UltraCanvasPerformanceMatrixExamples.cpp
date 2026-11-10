@@ -40,7 +40,7 @@ namespace UltraCanvas {
         mainContainer->AddChild(headerContainer);
 
         auto mainTitle = std::make_shared<UltraCanvasLabel>("pmMainTitle", 30, 15, 640, 35);
-        mainTitle->SetText("Performance Matrix");
+        mainTitle->SetText(Tr("Performance Matrix"));
         mainTitle->SetFontSize(22);
         mainTitle->SetFontWeight(FontWeight::Bold);
         mainTitle->SetAlignment(TextAlignment::Left);
@@ -48,7 +48,7 @@ namespace UltraCanvas {
         headerContainer->AddChild(mainTitle);
 
         auto subtitle = std::make_shared<UltraCanvasLabel>("pmSubtitle", 30, 52, 640, 30);
-        subtitle->SetText("Named boxes where two rated axes cross");
+        subtitle->SetText(Tr("Named boxes where two rated axes cross"));
         subtitle->SetFontSize(13);
         subtitle->SetWrap(TextWrap::WrapWord);
         subtitle->SetAlignment(TextAlignment::Left);
@@ -64,14 +64,14 @@ namespace UltraCanvas {
             headerContainer->AddChild(button);
             return button;
         };
-        auto openJsonButton = makeFileButton("pmOpenJson", "Open JSON\xE2\x80\xA6",
-                                             "Open a whole matrix into the Calibration tab", 720, 15);
-        auto saveJsonButton = makeFileButton("pmSaveJson", "Save JSON\xE2\x80\xA6",
-                                             "Save the matrix shown, people included", 925, 15);
-        auto importCsvButton = makeFileButton("pmImportCsv", "Import CSV\xE2\x80\xA6",
-                                              "Replace the people of the matrix shown", 720, 52);
-        auto exportCsvButton = makeFileButton("pmExportCsv", "Export CSV\xE2\x80\xA6",
-                                              "Save the people of the matrix shown", 925, 52);
+        auto openJsonButton = makeFileButton("pmOpenJson", Tr("Open JSON\xE2\x80\xA6"),
+                                             Tr("Open a whole matrix into the Calibration tab"), 720, 15);
+        auto saveJsonButton = makeFileButton("pmSaveJson", Tr("Save JSON\xE2\x80\xA6"),
+                                             Tr("Save the matrix shown, people included"), 925, 15);
+        auto importCsvButton = makeFileButton("pmImportCsv", Tr("Import CSV\xE2\x80\xA6"),
+                                              Tr("Replace the people of the matrix shown"), 720, 52);
+        auto exportCsvButton = makeFileButton("pmExportCsv", Tr("Export CSV\xE2\x80\xA6"),
+                                              Tr("Save the people of the matrix shown"), 925, 52);
 
         auto contentContainer = std::make_shared<UltraCanvasContainer>("pmContent", 0, 90, 1140, 710);
         mainContainer->AddChild(contentContainer);
@@ -98,24 +98,24 @@ namespace UltraCanvas {
         }
         // The calibration: the 9-box with an invented team placed in it.
         PerformanceMatrixModel calibration = PerformanceMatrixSamples::NineBox();
-        calibration.title = "Calibration: 36 people (invented)";
+        calibration.title = Tr("Calibration: 36 people (invented)");
         calibration.items = PerformanceMatrixSamples::SampleTeam();
         calibration.targetDistribution = PerformanceMatrixSamples::SampleTargetDistribution();
         std::vector<Example> examples = {
-            {"Calibration", calibration, PerformanceMatrixDesign::Grid, PerformanceCellColoring::DiagonalBands,
+            {Tr("Calibration"), calibration, PerformanceMatrixDesign::Grid, PerformanceCellColoring::DiagonalBands,
              PerformanceMatrixPalette::TrafficLight(), false},
-            {"9-box", PerformanceMatrixSamples::NineBox(), PerformanceMatrixDesign::Grid,
+            {Tr("9-box"), PerformanceMatrixSamples::NineBox(), PerformanceMatrixDesign::Grid,
              PerformanceCellColoring::DiagonalBands, PerformanceMatrixPalette::TrafficLight(), false},
-            {"Performance vs potential", PerformanceMatrixSamples::PerformanceVsPotential(),
+            {Tr("Performance vs potential"), PerformanceMatrixSamples::PerformanceVsPotential(),
              PerformanceMatrixDesign::Tiles, PerformanceCellColoring::DiagonalBands,
              PerformanceMatrixPalette::TrafficLight(), false},
-            {"Management", management, PerformanceMatrixDesign::HeaderTabs, PerformanceCellColoring::Plain,
+            {Tr("Management"), management, PerformanceMatrixDesign::HeaderTabs, PerformanceCellColoring::Plain,
              PerformanceMatrixPalette::Vivid(), false},
-            {"One hue", management, PerformanceMatrixDesign::HeaderTabs, PerformanceCellColoring::Plain,
+            {Tr("One hue"), management, PerformanceMatrixDesign::HeaderTabs, PerformanceCellColoring::Plain,
              PerformanceMatrixPalette::Monochrome(Color(36, 104, 178, 255)), true},
-            {"Talent review", PerformanceMatrixSamples::TalentReview(), PerformanceMatrixDesign::Cards,
+            {Tr("Talent review"), PerformanceMatrixSamples::TalentReview(), PerformanceMatrixDesign::Cards,
              PerformanceCellColoring::ByRow, PerformanceMatrixPalette::Pastel(), false},
-            {"Skill / will", PerformanceMatrixSamples::SkillWill(), PerformanceMatrixDesign::Grid,
+            {Tr("Skill / will"), PerformanceMatrixSamples::SkillWill(), PerformanceMatrixDesign::Grid,
              PerformanceCellColoring::DiagonalBands, PerformanceMatrixPalette::TrafficLight(), false},
         };
 
@@ -153,58 +153,58 @@ namespace UltraCanvas {
             sidebar->AddChild(caption);
         };
 
-        addCaption("pmDesignCaption", "Design", PAD);
+        addCaption("pmDesignCaption", Tr("Design"), PAD);
         auto designSelector = std::make_shared<UltraCanvasDropdown>("pmDesignSelector", PAD, PAD + 23, SIDEBAR_W, 28);
-        designSelector->AddItem("Grid", "grid");
-        designSelector->AddItem("Tiles", "tiles");
-        designSelector->AddItem("Header tabs", "tabs");
-        designSelector->AddItem("Cards", "cards");
+        designSelector->AddItem(Tr("Grid"), "grid");
+        designSelector->AddItem(Tr("Tiles"), "tiles");
+        designSelector->AddItem(Tr("Header tabs"), "tabs");
+        designSelector->AddItem(Tr("Cards"), "cards");
         designSelector->SetSelectedIndex(0);
         sidebar->AddChild(designSelector);
 
-        addCaption("pmColoringCaption", "Cell colours", PAD + 63);
+        addCaption("pmColoringCaption", Tr("Cell colours"), PAD + 63);
         auto coloringSelector = std::make_shared<UltraCanvasDropdown>("pmColoringSelector", PAD, PAD + 86, SIDEBAR_W, 28);
-        coloringSelector->AddItem("By rank from the best corner", "rank");
-        coloringSelector->AddItem("By row", "row");
-        coloringSelector->AddItem("By column", "column");
-        coloringSelector->AddItem("By how many people", "count");
-        coloringSelector->AddItem("Plain", "plain");
+        coloringSelector->AddItem(Tr("By rank from the best corner"), "rank");
+        coloringSelector->AddItem(Tr("By row"), "row");
+        coloringSelector->AddItem(Tr("By column"), "column");
+        coloringSelector->AddItem(Tr("By how many people"), "count");
+        coloringSelector->AddItem(Tr("Plain"), "plain");
         coloringSelector->SetSelectedIndex(0);
         sidebar->AddChild(coloringSelector);
 
-        addCaption("pmPaletteCaption", "Palette", PAD + 126);
+        addCaption("pmPaletteCaption", Tr("Palette"), PAD + 126);
         auto paletteSelector = std::make_shared<UltraCanvasDropdown>("pmPaletteSelector", PAD, PAD + 149, SIDEBAR_W, 28);
-        paletteSelector->AddItem("Traffic light", "traffic");
-        paletteSelector->AddItem("Vivid", "vivid");
-        paletteSelector->AddItem("One hue (blue)", "mono");
-        paletteSelector->AddItem("Pastel", "pastel");
+        paletteSelector->AddItem(Tr("Traffic light"), "traffic");
+        paletteSelector->AddItem(Tr("Vivid"), "vivid");
+        paletteSelector->AddItem(Tr("One hue (blue)"), "mono");
+        paletteSelector->AddItem(Tr("Pastel"), "pastel");
         paletteSelector->SetSelectedIndex(0);
         sidebar->AddChild(paletteSelector);
 
-        addCaption("pmPeopleCaption", "People", PAD + 189);
+        addCaption("pmPeopleCaption", Tr("People"), PAD + 189);
         auto peopleSelector = std::make_shared<UltraCanvasDropdown>("pmPeopleSelector", PAD, PAD + 212, SIDEBAR_W, 28);
-        peopleSelector->AddItem("Count per box", "count");
-        peopleSelector->AddItem("Share and target", "percent");
-        peopleSelector->AddItem("Dots", "dots");
-        peopleSelector->AddItem("Names", "names");
-        peopleSelector->AddItem("Names, anonymised", "anonymised");
-        peopleSelector->AddItem("Hidden", "hidden");
+        peopleSelector->AddItem(Tr("Count per box"), "count");
+        peopleSelector->AddItem(Tr("Share and target"), "percent");
+        peopleSelector->AddItem(Tr("Dots"), "dots");
+        peopleSelector->AddItem(Tr("Names"), "names");
+        peopleSelector->AddItem(Tr("Names, anonymised"), "anonymised");
+        peopleSelector->AddItem(Tr("Hidden"), "hidden");
         peopleSelector->SetSelectedIndex(0);
         sidebar->AddChild(peopleSelector);
 
-        addCaption("pmSelectionCaption", "SELECTED", PAD + 259);
+        addCaption("pmSelectionCaption", Tr("SELECTED"), PAD + 259);
         auto selection = std::make_shared<UltraCanvasLabel>("pmSelection", PAD, PAD + 283, SIDEBAR_W, 150);
         selection->SetFontSize(10);
         selection->SetWrap(TextWrap::WrapWord);   // tooltips and the hint are sentences, not lines
         selection->SetAlignment(TextAlignment::Left);
         selection->SetBackgroundColor(Color(248, 249, 250, 255));
         selection->SetPadding(10);
-        selection->SetText("Click a box or a person. On Calibration, tick Allow moves to drag "
-                           "people, or move one with Ctrl+arrows.");
+        selection->SetText(Tr("Click a box or a person. On Calibration, tick Allow moves to drag "
+                           "people, or move one with Ctrl+arrows."));
         sidebar->AddChild(selection);
 
         // Everyone in the box last clicked, or behind its "+N more".
-        addCaption("pmBoxCaption", "IN THE BOX", PAD + 443);
+        addCaption("pmBoxCaption", Tr("IN THE BOX"), PAD + 443);
         auto boxModel = std::make_shared<UltraCanvasSimpleListModel>();
         auto boxList = std::make_shared<UltraCanvasListView>("pmBoxList", PAD, PAD + 466, SIDEBAR_W, 120);
         boxList->SetModel(boxModel);
@@ -214,7 +214,7 @@ namespace UltraCanvas {
         auto allowMoves = UltraCanvasCheckbox::CreateCheckbox("pmAllowMoves", static_cast<float>(PAD),
                                                               static_cast<float>(PAD + 596),
                                                               static_cast<float>(SIDEBAR_W), 24.0f,
-                                                              "Allow moves", false);
+                                                              Tr("Allow moves"), false);
         allowMoves->SetFontSize(11.0f);
         sidebar->AddChild(allowMoves);
 
@@ -265,14 +265,15 @@ namespace UltraCanvas {
             matrices[i]->onCellClick = [matrixPtrs, i, selectionPtr, showBox](const PerformanceCellRef& ref) {
                 UltraCanvasPerformanceMatrix* clicked = matrixPtrs[i];
                 selectionPtr->SetText(clicked->GetSelectedCell().IsValid() ? clicked->BuildCellTooltip(ref)
-                                                                           : std::string("(nothing selected)"));
+                                                                           : Tr("(nothing selected)"));
                 if (!clicked->GetModel().items.empty()) showBox(clicked, ref);
             };
             matrices[i]->onOverflowClick = [matrixPtrs, i, selectionPtr, showBox](const PerformanceCellRef& ref,
                                                                                  const std::vector<size_t>& items) {
                 showBox(matrixPtrs[i], ref);
-                selectionPtr->SetText(std::to_string(items.size()) + " people in this box: all of them are "
-                                      "in the list below.");
+                selectionPtr->SetText(TrN("{n} person in this box: they are in the list below.",
+                                          "{n} people in this box: all of them are in the list below.",
+                                          static_cast<long long>(items.size())));
             };
             // The veto: a calibration holds the top box to its target share,
             // as a forced distribution would.
@@ -289,9 +290,8 @@ namespace UltraCanvas {
                     for (int n : counts) total += n;
                     const int cap = static_cast<int>(std::lround(model.targetDistribution.back() * total));
                     if (counts.back() >= cap) {
-                        selectionPtr->SetText("Refused: the top box already holds " + std::to_string(counts.back()) +
-                                              ", its target is " + std::to_string(cap) + ". " + item.label +
-                                              " stays where they are.");
+                        selectionPtr->SetText(TrF("Refused: the top box already holds {0}, its target is {1}. "
+                                                  "{2} stays where they are.", counts.back(), cap, item.label));
                         return false;
                     }
                 }
@@ -301,8 +301,8 @@ namespace UltraCanvas {
                                                         : model.yAxis.levels[static_cast<size_t>(ref.row)].label + " / " +
                                                           model.xAxis.levels[static_cast<size_t>(ref.col)].label;
                 };
-                selectionPtr->SetText("Moved " + item.label + " from " + name(from) + " to " + name(to) +
-                                      ". The scores stay in the data beside the new box.");
+                selectionPtr->SetText(TrF("Moved {0} from {1} to {2}. The scores stay in the data beside the new box.",
+                                          item.label, name(from), name(to)));
                 return true;
             };
             matrices[i]->onItemClick = [matrixPtrs, i, selectionPtr](const PerformanceMatrixItem& item) {
@@ -362,19 +362,20 @@ namespace UltraCanvas {
         auto readText = [selectionPtr, fileName](const std::string& path, std::string& text) {
             const FileBytesResult loaded = UltraCanvasFileLoader::LoadFile(path);
             if (!loaded.success) {
-                selectionPtr->SetText("Could not open " + fileName(path) + ": " + loaded.error);
+                selectionPtr->SetText(TrF("Could not open {0}: {1}", fileName(path), loaded.error));
                 return false;
             }
             text.assign(loaded.bytes.begin(), loaded.bytes.end());
             return true;
         };
+        // `saved` is the whole sentence shown on success, "{0}" the file's name.
         auto writeText = [selectionPtr, fileName](const std::string& path, const std::string& text,
-                                                  const std::string& what) {
+                                                  const std::string& saved) {
             std::string error;
             if (UltraCanvasFileLoader::SaveFile(path, std::vector<uint8_t>(text.begin(), text.end()), error)) {
-                selectionPtr->SetText("Saved " + what + " to " + fileName(path) + ".");
+                selectionPtr->SetText(LocalisationDetail::Substitute(saved, {fileName(path)}));
             } else {
-                selectionPtr->SetText("Could not write " + fileName(path) + ": " + error);
+                selectionPtr->SetText(TrF("Could not write {0}: {1}", fileName(path), error));
             }
         };
 
@@ -382,9 +383,9 @@ namespace UltraCanvas {
         // people; the tab is brought forward.
         openJsonButton->onClick = [matrixPtrs, tabsPtr, selectionPtr, readText, fileName]() {
             FileDialogOptions opts;
-            opts.SetTitle("Open a performance matrix")
-                .AddFilter("Performance matrix (*.json)", "json")
-                .AddFilter("All files", "*");
+            opts.SetTitle(Tr("Open a performance matrix"))
+                .AddFilter(Tr("Performance matrix (*.json)"), "json")
+                .AddFilter(Tr("All files"), "*");
             UltraCanvasFileLoader::OpenFileDialog(opts,
                     [matrixPtrs, tabsPtr, selectionPtr, readText, fileName](DialogResult result, const std::string& path) {
                 if (result != DialogResult::OK || path.empty()) return;
@@ -392,14 +393,15 @@ namespace UltraCanvas {
                 if (!readText(path, text)) return;
                 PerformanceMatrixModel model;
                 if (!ImportPerformanceMatrixJson(text, model, &error)) {
-                    selectionPtr->SetText("Could not read " + fileName(path) + ": " + error);
+                    selectionPtr->SetText(TrF("Could not read {0}: {1}", fileName(path), error));
                     return;
                 }
                 matrixPtrs.front()->SetModel(model);
                 tabsPtr->SetActiveTab(0);
-                selectionPtr->SetText("Opened " + fileName(path) + ": " + std::to_string(model.items.size()) +
-                                      " people in a " + std::to_string(model.Rows()) + "x" +
-                                      std::to_string(model.Columns()) + " grid.");
+                selectionPtr->SetText(LocalisationDetail::Substitute(
+                        TrN("Opened {0}: {n} person in a {1}x{2} grid.", "Opened {0}: {n} people in a {1}x{2} grid.",
+                            static_cast<long long>(model.items.size())),
+                        {fileName(path), std::to_string(model.Rows()), std::to_string(model.Columns())}));
             });
         };
 
@@ -407,8 +409,8 @@ namespace UltraCanvas {
             UltraCanvasPerformanceMatrix* matrix = active();
             if (!matrix) return;
             FileDialogOptions opts;
-            opts.SetTitle("Save the performance matrix")
-                .AddFilter("Performance matrix (*.json)", "json")
+            opts.SetTitle(Tr("Save the performance matrix"))
+                .AddFilter(Tr("Performance matrix (*.json)"), "json")
                 .SetDefaultExtension("json")
                 .SetDefaultFileName("performance-matrix.json");
             // The model is copied now: a move made while the dialog is open
@@ -416,7 +418,7 @@ namespace UltraCanvas {
             const std::string text = ExportPerformanceMatrixJson(matrix->GetModel());
             UltraCanvasFileLoader::SaveFileDialog(opts, [text, writeText](DialogResult result, const std::string& path) {
                 if (result != DialogResult::OK || path.empty()) return;
-                writeText(path, text, "the matrix");
+                writeText(path, text, Tr("Saved the matrix to {0}."));
             });
         };
 
@@ -425,9 +427,9 @@ namespace UltraCanvas {
             UltraCanvasPerformanceMatrix* matrix = active();
             if (!matrix) return;
             FileDialogOptions opts;
-            opts.SetTitle("Import people")
-                .AddFilter("Comma-separated values (*.csv)", "csv")
-                .AddFilter("All files", "*");
+            opts.SetTitle(Tr("Import people"))
+                .AddFilter(Tr("Comma-separated values (*.csv)"), "csv")
+                .AddFilter(Tr("All files"), "*");
             UltraCanvasFileLoader::OpenFileDialog(opts,
                     [matrix, selectionPtr, readText, fileName](DialogResult result, const std::string& path) {
                 if (result != DialogResult::OK || path.empty()) return;
@@ -435,13 +437,15 @@ namespace UltraCanvas {
                 if (!readText(path, text)) return;
                 PerformanceMatrixModel model = matrix->GetModel();
                 if (!ImportPerformanceItemsCsv(text, model, &error)) {
-                    selectionPtr->SetText("Could not import " + fileName(path) + ": " + error);
+                    selectionPtr->SetText(TrF("Could not import {0}: {1}", fileName(path), error));
                     return;
                 }
                 matrix->SetModel(model);
                 matrix->SetShowTotals(true);
-                selectionPtr->SetText("Imported " + std::to_string(model.items.size()) + " people from " +
-                                      fileName(path) + ".");
+                selectionPtr->SetText(LocalisationDetail::Substitute(
+                        TrN("Imported {n} person from {0}.", "Imported {n} people from {0}.",
+                            static_cast<long long>(model.items.size())),
+                        {fileName(path)}));
             });
         };
 
@@ -449,18 +453,18 @@ namespace UltraCanvas {
             UltraCanvasPerformanceMatrix* matrix = active();
             if (!matrix) return;
             if (matrix->GetModel().items.empty()) {
-                selectionPtr->SetText("This tab has no people to export. Calibration has.");
+                selectionPtr->SetText(Tr("This tab has no people to export. Calibration has."));
                 return;
             }
             FileDialogOptions opts;
-            opts.SetTitle("Export the people")
-                .AddFilter("Comma-separated values (*.csv)", "csv")
+            opts.SetTitle(Tr("Export the people"))
+                .AddFilter(Tr("Comma-separated values (*.csv)"), "csv")
                 .SetDefaultExtension("csv")
                 .SetDefaultFileName("people.csv");
             const std::string text = ExportPerformanceItemsCsv(matrix->GetModel());
             UltraCanvasFileLoader::SaveFileDialog(opts, [text, writeText](DialogResult result, const std::string& path) {
                 if (result != DialogResult::OK || path.empty()) return;
-                writeText(path, text, "the people");
+                writeText(path, text, Tr("Saved the people to {0}."));
             });
         };
 

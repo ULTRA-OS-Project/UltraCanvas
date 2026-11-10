@@ -98,9 +98,9 @@ namespace UltraCanvas {
         // A deliberately crowded scene: shapes are close enough that the naive
         // placement collides, so the difference the solver makes is visible.
         void BuildScene() {
-            const char* names[] = {
-                    "Reception", "Archive", "Studio", "Server Room",
-                    "Kitchenette", "Lift", "Print / Copy", "Terrace"
+            const std::string names[] = {
+                    Tr("Reception"), Tr("Archive"), Tr("Studio"), Tr("Server Room"),
+                    Tr("Kitchenette"), Tr("Lift"), Tr("Print / Copy"), Tr("Terrace")
             };
             struct Def { bool circle; double x, y, a, b; };
             const Def defs[] = {
@@ -298,13 +298,13 @@ namespace UltraCanvas {
         tabStyle.autoShowScrollbars = true;
         tab->SetContainerStyle(tabStyle);
 
-        auto card = DemoKit::AddCard(tab, "LPCard", "Label Placement Solver");
+        auto card = DemoKit::AddCard(tab, "LPCard", Tr("Label Placement Solver"));
         DemoKit::AddText(card, "LPDesc",
-                      "PlaceShapeLabels() is part of the layout engine (core/UltraCanvasLabelPlacement.cpp), "
+                      Tr("PlaceShapeLabels() is part of the layout engine (core/UltraCanvasLabelPlacement.cpp), "
                       "so every chart and diagram shares one implementation. Each label names a shape "
                       "(rectangle or circle), asks for a preferred position, and the solver moves it only when "
                       "that position would collide with another label, another shape, a keep-out obstacle such "
-                      "as a connector line, or the bounds. Overlapping labels are drawn in red.");
+                      "as a connector line, or the bounds. Overlapping labels are drawn in red."));
 
         // The scene beside its controls; the controls move under the scene
         // when the tab is too narrow for both.
@@ -323,16 +323,15 @@ namespace UltraCanvas {
         status->SetTextColor(Color(60, 60, 60, 255));
 
         auto refreshStatus = [canvas, status]() {
-            std::string s = "Solver: ";
-            s += canvas->GetSolverEnabled() ? "on" : "off (naive placement)";
-            s += "\nStyle: ";
+            std::string style;
             switch (canvas->GetStyle()) {
-                case LabelPlacementCanvas::Style::Outside: s += "outside the shape"; break;
-                case LabelPlacementCanvas::Style::Inside:  s += "centred on the shape (overflow allowed)"; break;
-                case LabelPlacementCanvas::Style::Border:  s += "straddling the outline at 2 o'clock"; break;
+                case LabelPlacementCanvas::Style::Outside: style = Tr("outside the shape"); break;
+                case LabelPlacementCanvas::Style::Inside:  style = Tr("centred on the shape (overflow allowed)"); break;
+                case LabelPlacementCanvas::Style::Border:  style = Tr("straddling the outline at 2 o'clock"); break;
             }
-            s += "\nLines as obstacles: ";
-            s += canvas->GetLinesAreObstacles() ? "yes" : "no";
+            std::string s = TrF("Solver: {0}", canvas->GetSolverEnabled() ? Tr("on") : Tr("off (naive placement)"));
+            s += "\n" + TrF("Style: {0}", style);
+            s += "\n" + TrF("Lines as obstacles: {0}", canvas->GetLinesAreObstacles() ? Tr("yes") : Tr("no"));
             status->SetText(s);
         };
 
@@ -365,34 +364,34 @@ namespace UltraCanvas {
             s->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Start);
         };
 
-        sectionLabel("LPSecSolver", "Solver");
-        addSwitch("LPToggleSolver", "Solver", canvas->GetSolverEnabled(),
+        sectionLabel("LPSecSolver", Tr("Solver"));
+        addSwitch("LPToggleSolver", Tr("Solver"), canvas->GetSolverEnabled(),
                   [canvas](bool on) { canvas->SetSolverEnabled(on); });
-        addSwitch("LPToggleLines", "Lines as obstacles", canvas->GetLinesAreObstacles(),
+        addSwitch("LPToggleLines", Tr("Lines as obstacles"), canvas->GetLinesAreObstacles(),
                   [canvas](bool on) { canvas->SetLinesAreObstacles(on); });
 
-        sectionLabel("LPSecStyle", "Preferred position");
-        addButton("LPStyleOutside", "Outside the shape",
+        sectionLabel("LPSecStyle", Tr("Preferred position"));
+        addButton("LPStyleOutside", Tr("Outside the shape"),
                   [canvas]() { canvas->SetStyle(LabelPlacementCanvas::Style::Outside); });
-        addButton("LPStyleInside", "Centred on the shape",
+        addButton("LPStyleInside", Tr("Centred on the shape"),
                   [canvas]() { canvas->SetStyle(LabelPlacementCanvas::Style::Inside); });
-        addButton("LPStyleBorder", "On the outline (2 o'clock)",
+        addButton("LPStyleBorder", Tr("On the outline (2 o'clock)"),
                   [canvas]() { canvas->SetStyle(LabelPlacementCanvas::Style::Border); });
 
         DemoKit::Add(controls, status);
         refreshStatus();
 
-        auto note = DemoKit::AddNotes(tab, "LPNote", "What each control shows", {
-                "Solver off — every label goes to its preferred spot regardless of what is already there; "
-                "the red labels are the collisions this produces.",
-                "Lines as obstacles — connector lines become keep-out rectangles, so labels step aside "
-                "instead of sitting on a line. Charts use the same mechanism for legends and axis titles.",
-                "Outside / Centred / On the outline — the three conventions. Centred tolerates text spilling "
+        auto note = DemoKit::AddNotes(tab, "LPNote", Tr("What each control shows"), {
+                Tr("Solver off — every label goes to its preferred spot regardless of what is already there; "
+                "the red labels are the collisions this produces."),
+                Tr("Lines as obstacles — connector lines become keep-out rectangles, so labels step aside "
+                "instead of sitting on a line. Charts use the same mechanism for legends and axis titles."),
+                Tr("Outside / Centred / On the outline — the three conventions. Centred tolerates text spilling "
                 "over the outline (node diagrams, drawn with a halo) but still refuses to stack two labels; "
-                "on-the-outline places the text on the border at a clock-face angle."});
+                "on-the-outline places the text on the border at a clock-face angle.")});
         auto order = DemoKit::AddText(note, "LPNoteOrder",
-                "Placement is greedy in input order, so submission order is the priority: this scene submits the "
-                "smallest shapes first, because their labels have the least room to move.");
+                Tr("Placement is greedy in input order, so submission order is the priority: this scene submits the "
+                "smallest shapes first, because their labels have the least room to move."));
         order->SetFontSize(11);
 
         return tab;

@@ -49,13 +49,13 @@ namespace UltraCanvas {
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateMenuExamples() {
         debugOutput << "Creating Menu Examples..." << std::endl;
 
-        auto container = DemoKit::CreatePage("MenuContainer", "Menus", "Various menu types and styles");
+        auto container = DemoKit::CreatePage("MenuContainer", Tr("Menus"), Tr("Various menu types and styles"));
 
         // Context Menus
-        auto contextCard = DemoKit::AddCard(container, "ContextLabel", "Context Menu Examples:");
+        auto contextCard = DemoKit::AddCard(container, "ContextLabel", Tr("Context Menu Examples:"));
 
         // Button to trigger context menu
-        auto contextMenuBtn = MakeMenuDemoButton("ContextMenuBtn", "Right-Click for Context Menu", 280);
+        auto contextMenuBtn = MakeMenuDemoButton("ContextMenuBtn", Tr("Right-Click for Context Menu"), 280);
 //        contextMenuBtn->SetTooltipText("Right-click anywhere on this button to show context menu");
         DemoKit::AddFixed(contextCard, contextMenuBtn);
 
@@ -64,34 +64,34 @@ namespace UltraCanvas {
         contextMenu->SetMenuType(MenuType::PopupMenu);
 
         // Add context menu items
-        contextMenu->AddItem(MenuItemData::ActionWithShortcut("Copy", "Ctrl+C", MenuIcon("copy"), []() {
+        contextMenu->AddItem(MenuItemData::ActionWithShortcut(Tr("Copy"), "Ctrl+C", MenuIcon("copy"), []() {
             debugOutput << "Copy action triggered" << std::endl;
         }));
 
-        contextMenu->AddItem(MenuItemData::ActionWithShortcut("Cut", "Ctrl+X", MenuIcon("cut"), []() {
+        contextMenu->AddItem(MenuItemData::ActionWithShortcut(Tr("Cut"), "Ctrl+X", MenuIcon("cut"), []() {
             debugOutput << "Cut action triggered" << std::endl;
         }));
 
-        contextMenu->AddItem(MenuItemData::ActionWithShortcut("Paste", "Ctrl+V", MenuIcon("paste"), []() {
+        contextMenu->AddItem(MenuItemData::ActionWithShortcut(Tr("Paste"), "Ctrl+V", MenuIcon("paste"), []() {
             debugOutput << "Paste action triggered" << std::endl;
         }));
 
         contextMenu->AddItem(MenuItemData::Separator());
 
         // Submenu example
-        MenuItemData formatItem("Format");
+        MenuItemData formatItem(Tr("Format"));
         formatItem.type = MenuItemType::Submenu;
         formatItem.iconPath = MenuIcon("format");
         formatItem.subItems = {
-                MenuItemData::ActionWithShortcut("Bold", "Ctrl+B", []() { debugOutput << "Bold" << std::endl; }),
-                MenuItemData::ActionWithShortcut("Italic", "Ctrl+I", []() { debugOutput << "Italic" << std::endl; }),
-                MenuItemData::ActionWithShortcut("Underline", "Ctrl+U", []() { debugOutput << "Underline" << std::endl; })
+                MenuItemData::ActionWithShortcut(Tr("Bold"), "Ctrl+B", []() { debugOutput << "Bold" << std::endl; }),
+                MenuItemData::ActionWithShortcut(Tr("Italic"), "Ctrl+I", []() { debugOutput << "Italic" << std::endl; }),
+                MenuItemData::ActionWithShortcut(Tr("Underline"), "Ctrl+U", []() { debugOutput << "Underline" << std::endl; })
         };
         contextMenu->AddItem(formatItem);
 
         contextMenu->AddItem(MenuItemData::Separator());
 
-        contextMenu->AddItem(MenuItemData::ActionWithShortcut("Delete", "Del", MenuIcon("delete"), []() {
+        contextMenu->AddItem(MenuItemData::ActionWithShortcut(Tr("Delete"), "Del", MenuIcon("delete"), []() {
             debugOutput << "Delete action triggered" << std::endl;
         }));
 
@@ -112,7 +112,7 @@ namespace UltraCanvas {
                 "ContextWrongClickText", 62, 10, 268, 44);
         contextWrongClickText->SetTextIsMarkup(true);
         contextWrongClickText->SetWrap(TextWrap::WrapWord);
-        contextWrongClickText->SetText("Can't you read?\nI said <b>Right click</b> not <b>Left click</b>!");
+        contextWrongClickText->SetText(Tr("Can't you read?\nI said <b>Right click</b> not <b>Left click</b>!"));
         contextWrongClickPopup->AddChild(contextWrongClickText);
 
         // UltraCanvasButton never routes a right-click to onClick: it hands it to
@@ -130,19 +130,19 @@ namespace UltraCanvas {
         };
 
         // Main Menu Bar
-        auto mainMenuCard = DemoKit::AddCard(container, "MainMenuLabel", "Main Menu Bar Example:");
+        auto mainMenuCard = DemoKit::AddCard(container, "MainMenuLabel", Tr("Main Menu Bar Example:"));
 
 // Create main menu bar using MenuType::Menubar and MenuBuilder
         auto mainMenuBar = MenuBuilder("MainMenuBar", 0, 0, 960, 32)
                 .SetType(MenuType::Menubar)
-                .AddSubmenu("File", {
-                        MenuItemData::ActionWithShortcut("New", "Ctrl+N", MenuIcon("new"), []() {
+                .AddSubmenu(Tr("File"), {
+                        MenuItemData::ActionWithShortcut(Tr("New"), "Ctrl+N", MenuIcon("new"), []() {
                                 debugOutput << "New file" << std::endl;
                             }),
-                        MenuItemData::ActionWithShortcut("Open...", "Ctrl+O", MenuIcon("folder"), []() {
+                        MenuItemData::ActionWithShortcut(Tr("Open..."), "Ctrl+O", MenuIcon("folder"), []() {
                                 debugOutput << "Open file" << std::endl;
                             }),
-                        MenuItemData::Submenu("Recent Files", MenuIcon("recent"), {
+                        MenuItemData::Submenu(Tr("Recent Files"), MenuIcon("recent"), {
                                 MenuItemData::Action("Document1.txt", []() {
                                             debugOutput << "Open Document1.txt" << std::endl;
                                         }),
@@ -154,72 +154,72 @@ namespace UltraCanvas {
                                         })
                             }),
                         MenuItemData::Separator(),
-                        MenuItemData::ActionWithShortcut("Save", "Ctrl+S", MenuIcon("save"), []() {
+                        MenuItemData::ActionWithShortcut(Tr("Save"), "Ctrl+S", MenuIcon("save"), []() {
                                 debugOutput << "Save file" << std::endl;
                             }),
-                        MenuItemData::ActionWithShortcut("Save As...", "Ctrl+Shift+S", MenuIcon("save"), []() {
+                        MenuItemData::ActionWithShortcut(Tr("Save As..."), "Ctrl+Shift+S", MenuIcon("save"), []() {
                                 debugOutput << "Save as" << std::endl;
                             }),
                         MenuItemData::Separator(),
-                        MenuItemData::ActionWithShortcut("Exit", "Alt+F4", MenuIcon("exit"), []() {
+                        MenuItemData::ActionWithShortcut(Tr("Exit"), "Alt+F4", MenuIcon("exit"), []() {
                                 debugOutput << "Exit application" << std::endl;
                             })
                     })
-                .AddSubmenu("Edit", {
-                            MenuItemData::ActionWithShortcut("Undo", "Ctrl+Z", MenuIcon("undo"), []() {
+                .AddSubmenu(Tr("Edit"), {
+                            MenuItemData::ActionWithShortcut(Tr("Undo"), "Ctrl+Z", MenuIcon("undo"), []() {
                                 debugOutput << "Undo" << std::endl;
                             }),
-                            MenuItemData::ActionWithShortcut("Redo", "Ctrl+Y", MenuIcon("redo"), []() {
+                            MenuItemData::ActionWithShortcut(Tr("Redo"), "Ctrl+Y", MenuIcon("redo"), []() {
                                 debugOutput << "Redo" << std::endl;
                             }),
                             MenuItemData::Separator(),
-                            MenuItemData::ActionWithShortcut("Cut", "Ctrl+X", MenuIcon("cut"), []() {
+                            MenuItemData::ActionWithShortcut(Tr("Cut"), "Ctrl+X", MenuIcon("cut"), []() {
                                 debugOutput << "Cut" << std::endl;
                             }),
-                            MenuItemData::ActionWithShortcut("Copy", "Ctrl+C", MenuIcon("copy"), []() {
+                            MenuItemData::ActionWithShortcut(Tr("Copy"), "Ctrl+C", MenuIcon("copy"), []() {
                                 debugOutput << "Copy" << std::endl;
                             }),
-                            MenuItemData::ActionWithShortcut("Paste", "Ctrl+V", MenuIcon("paste"), []() {
+                            MenuItemData::ActionWithShortcut(Tr("Paste"), "Ctrl+V", MenuIcon("paste"), []() {
                                 debugOutput << "Paste" << std::endl;
                             }),
                             MenuItemData::Separator(),
-                            MenuItemData::ActionWithShortcut("Find...", "Ctrl+F", MenuIcon("search"), []() {
+                            MenuItemData::ActionWithShortcut(Tr("Find..."), "Ctrl+F", MenuIcon("search"), []() {
                                 debugOutput << "Find" << std::endl;
                             }),
-                            MenuItemData::ActionWithShortcut("Replace...", "Ctrl+H", MenuIcon("replace"), []() {
+                            MenuItemData::ActionWithShortcut(Tr("Replace..."), "Ctrl+H", MenuIcon("replace"), []() {
                                 debugOutput << "Replace" << std::endl;
                             })
                 })
-                .AddSubmenu("View", {
-                        WithIcon(MenuItemData::Checkbox("Toolbar", true, [](bool checked) {
+                .AddSubmenu(Tr("View"), {
+                        WithIcon(MenuItemData::Checkbox(Tr("Toolbar"), true, [](bool checked) {
                                 debugOutput << "Toolbar " << (checked ? "shown" : "hidden") << std::endl;
                             }), "toolbar"),
-                            WithIcon(MenuItemData::Checkbox("Status Bar", true, [](bool checked) {
+                            WithIcon(MenuItemData::Checkbox(Tr("Status Bar"), true, [](bool checked) {
                                 debugOutput << "Status bar " << (checked ? "shown" : "hidden") << std::endl;
                             }), "status-bar"),
-                            WithIcon(MenuItemData::Checkbox("Sidebar", false, [](bool checked) {
+                            WithIcon(MenuItemData::Checkbox(Tr("Sidebar"), false, [](bool checked) {
                                 debugOutput << "Sidebar " << (checked ? "shown" : "hidden") << std::endl;
                             }), "sidebar"),
                             MenuItemData::Separator(),
-                            MenuItemData::Radio("Zoom 50%", 1, false, []() {
+                            MenuItemData::Radio(Tr("Zoom 50%"), 1, false, []() {
                                 debugOutput << "Zoom 50%" << std::endl;
                             }),
-                            MenuItemData::Radio("Zoom 100%", 1, true, []() {
+                            MenuItemData::Radio(Tr("Zoom 100%"), 1, true, []() {
                                 debugOutput << "Zoom 100%" << std::endl;
                             }),
-                            MenuItemData::Radio("Zoom 150%", 1, false, []() {
+                            MenuItemData::Radio(Tr("Zoom 150%"), 1, false, []() {
                                 debugOutput << "Zoom 150%" << std::endl;
                             })
                 })
-                .AddSubmenu("Help", {
-                            MenuItemData::ActionWithShortcut("Documentation", "F1", MenuIcon("book"), []() {
+                .AddSubmenu(Tr("Help"), {
+                            MenuItemData::ActionWithShortcut(Tr("Documentation"), "F1", MenuIcon("book"), []() {
                                 debugOutput << "Show documentation" << std::endl;
                             }),
-                            MenuItemData::Action("Tutorials", MenuIcon("tutorial"), []() {
+                            MenuItemData::Action(Tr("Tutorials"), MenuIcon("tutorial"), []() {
                                 debugOutput << "Show tutorials" << std::endl;
                             }),
                             MenuItemData::Separator(),
-                            MenuItemData::Action("About UltraCanvas", MenuIcon("info-bar"), []() {
+                            MenuItemData::Action(Tr("About UltraCanvas"), MenuIcon("info-bar"), []() {
                                 debugOutput << "About UltraCanvas Framework" << std::endl;
                             })
                 })
@@ -232,24 +232,24 @@ namespace UltraCanvas {
         styledRow->SetPadding(12, 0, 0, 0);
 
         // Dark theme menu
-        auto darkMenuBtn = MakeMenuDemoButton("DarkMenuBtn", "Dark Theme Menu", 170);
+        auto darkMenuBtn = MakeMenuDemoButton("DarkMenuBtn", Tr("Dark Theme Menu"), 170);
         DemoKit::Add(styledRow, darkMenuBtn);
 
         auto darkMenu = std::make_shared<UltraCanvasMenu>("DarkMenu", 0, 0, 200, 0);
         darkMenu->SetMenuType(MenuType::PopupMenu);
         darkMenu->SetStyle(MenuStyle::Dark());
 
-        darkMenu->AddItem(MenuItemData::Action("Dark Mode", MenuIcon("moon"), []() {
+        darkMenu->AddItem(MenuItemData::Action(Tr("Dark Mode"), MenuIcon("moon"), []() {
             debugOutput << "Dark mode activated" << std::endl;
         }));
 
-        darkMenu->AddItem(MenuItemData::Action("Light Mode", MenuIcon("sun"), []() {
+        darkMenu->AddItem(MenuItemData::Action(Tr("Light Mode"), MenuIcon("sun"), []() {
             debugOutput << "Light mode activated" << std::endl;
         }));
 
         darkMenu->AddItem(MenuItemData::Separator());
 
-        darkMenu->AddItem(MenuItemData::Action("Custom Theme", MenuIcon("palette"), []() {
+        darkMenu->AddItem(MenuItemData::Action(Tr("Custom Theme"), MenuIcon("palette"), []() {
             debugOutput << "Custom theme" << std::endl;
         }));
 
@@ -259,24 +259,24 @@ namespace UltraCanvas {
         };
 
         // Flat style menu
-        auto flatMenuBtn = MakeMenuDemoButton("FlatMenuBtn", "Flat Style Menu", 170);
+        auto flatMenuBtn = MakeMenuDemoButton("FlatMenuBtn", Tr("Flat Style Menu"), 170);
         DemoKit::Add(styledRow, flatMenuBtn);
 
         auto flatMenu = std::make_shared<UltraCanvasMenu>("FlatMenu", 0, 0, 200, 0);
         flatMenu->SetMenuType(MenuType::PopupMenu);
         flatMenu->SetStyle(MenuStyle::Flat());
 
-        flatMenu->AddItem(MenuItemData::Action("Mobile View", MenuIcon("phone"), []() {
+        flatMenu->AddItem(MenuItemData::Action(Tr("Mobile View"), MenuIcon("phone"), []() {
             debugOutput << "Mobile view" << std::endl;
         }));
 
-        flatMenu->AddItem(MenuItemData::Action("Desktop View", MenuIcon("monitor"), []() {
+        flatMenu->AddItem(MenuItemData::Action(Tr("Desktop View"), MenuIcon("monitor"), []() {
             debugOutput << "Desktop view" << std::endl;
         }));
 
         flatMenu->AddItem(MenuItemData::Separator());
 
-        flatMenu->AddItem(MenuItemData::Action("Tablet View", MenuIcon("tablet"), []() {
+        flatMenu->AddItem(MenuItemData::Action(Tr("Tablet View"), MenuIcon("tablet"), []() {
             debugOutput << "Tablet view" << std::endl;
         }));
 
@@ -287,7 +287,7 @@ namespace UltraCanvas {
 
         // Info label about menu features
         // Popup menu example
-        auto popupCard = DemoKit::AddCard(container, "PopupLabel", "Popup Menu Example:");
+        auto popupCard = DemoKit::AddCard(container, "PopupLabel", Tr("Popup Menu Example:"));
 
         // Create a sample list for popup menu: a column as wide as its
         // longest item (at least the 300 px it had), each item as tall as
@@ -306,7 +306,7 @@ namespace UltraCanvas {
         // Add sample items to list
         for (int i = 0; i < 5; i++) {
             auto itemLabel = DemoKit::CreateText("ListItem" + std::to_string(i),
-                    "Item " + std::to_string(i + 1) + " - Right-click for options");
+                    TrF("Item {0} - Right-click for options", i + 1));
             itemLabel->SetBackgroundColor(Color(250, 250, 250, 255));
 
             // Create item-specific popup menu
@@ -317,15 +317,15 @@ namespace UltraCanvas {
             );
             itemMenu->SetMenuType(MenuType::PopupMenu);
 
-            itemMenu->AddItem(MenuItemData::Action("Edit", MenuIcon("rename"), [i]() {
+            itemMenu->AddItem(MenuItemData::Action(Tr("Edit"), MenuIcon("rename"), [i]() {
                 debugOutput << "Edit item " << (i + 1) << std::endl;
             }));
 
-            itemMenu->AddItem(MenuItemData::Action("Duplicate", MenuIcon("duplicate"), [i]() {
+            itemMenu->AddItem(MenuItemData::Action(Tr("Duplicate"), MenuIcon("duplicate"), [i]() {
                 debugOutput << "Duplicate item " << (i + 1) << std::endl;
             }));
 
-            itemMenu->AddItem(MenuItemData::Action("Delete", MenuIcon("delete"), [i]() {
+            itemMenu->AddItem(MenuItemData::Action(Tr("Delete"), MenuIcon("delete"), [i]() {
                 debugOutput << "Delete item " << (i + 1) << std::endl;
             }));
 
@@ -346,7 +346,7 @@ namespace UltraCanvas {
                     "WrongClickText" + std::to_string(i), 62, 10, 268, 44);
             wrongClickText->SetTextIsMarkup(true);
             wrongClickText->SetWrap(TextWrap::WrapWord);
-            wrongClickText->SetText("Can't you read? I said <b>Right click</b> not <b>Left click</b>!");
+            wrongClickText->SetText(Tr("Can't you read? I said <b>Right click</b> not <b>Left click</b>!"));
             wrongClickPopup->AddChild(wrongClickText);
 
             // Set click handler: right-click opens the menu, left-click scolds.
@@ -364,13 +364,13 @@ namespace UltraCanvas {
         }
 
         // Info about menu features
-        DemoKit::AddNotes(container, "InfoLabel", "Menu Features:", {
-                "Context menus with right-click",
-                "Main menu bar with dropdowns",
-                "Submenus and nested navigation",
-                "Checkbox and radio button items",
-                "Keyboard shortcuts and flat icons, in the label's colour on the dark menu",
-                "Multiple visual styles (Default, Dark, Flat)"});
+        DemoKit::AddNotes(container, "InfoLabel", Tr("Menu Features:"), {
+                Tr("Context menus with right-click"),
+                Tr("Main menu bar with dropdowns"),
+                Tr("Submenus and nested navigation"),
+                Tr("Checkbox and radio button items"),
+                Tr("Keyboard shortcuts and flat icons, in the label's colour on the dark menu"),
+                Tr("Multiple visual styles (Default, Dark, Flat)")});
 
         debugOutput << "✓ Menu examples created" << std::endl;
         return container;

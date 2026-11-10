@@ -12,8 +12,8 @@
 // the app sandbox, and the APK's assets have been unpacked to $HOME/share
 // (where SetResourcesDir's Android arm looks), so path-based
 // resource/config/font code works unchanged.
-// Version: 1.2.0
-// Last Modified: 2026-09-07
+// Version: 1.3.0
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasApplication.h"
@@ -27,8 +27,10 @@
 #include <android_native_app_glue.h>
 
 #include <cstdlib>
+#include <sstream>
 #include <string>
 #include <sys/stat.h>
+#include <vector>
 
 // Provided by the application (its main() under a different name).
 extern "C" int ultracanvas_app_main(int argc, char** argv);
@@ -66,6 +68,41 @@ namespace {
         return app->window != nullptr;
     }
 
+    // The launching intent's "ultracanvas.args" string extra, split on
+    // whitespace: the command line an app's main() would have had. Lets a
+    // test start the app the way a desktop run would be started
+    // (`am start -e ultracanvas.args "--no-about" ...`). Empty when the
+    // activity was started without it - the launcher never sets it.
+    std::vector<std::string> ReadIntentArguments() {
+        std::vector<std::string> args;
+        JNIEnv* env = UltraCanvas::AndroidJni::GetEnv();
+        jobject activity = UltraCanvas::AndroidJni::GetActivity();
+        if (!env || !activity) return args;
+
+        jclass activityClass = env->GetObjectClass(activity);
+        jmethodID getIntent = env->GetMethodID(activityClass, "getIntent",
+                                               "()Landroid/content/Intent;");
+        jobject intent = getIntent ? env->CallObjectMethod(activity, getIntent) : nullptr;
+        if (UltraCanvas::AndroidJni::ClearException(env, "Activity.getIntent")) intent = nullptr;
+        if (intent) {
+            jclass intentClass = env->GetObjectClass(intent);
+            jmethodID getStringExtra = env->GetMethodID(intentClass, "getStringExtra",
+                                           "(Ljava/lang/String;)Ljava/lang/String;");
+            jstring key = UltraCanvas::AndroidJni::ToJString(env, "ultracanvas.args");
+            auto value = static_cast<jstring>(getStringExtra && key
+                ? env->CallObjectMethod(intent, getStringExtra, key) : nullptr);
+            if (UltraCanvas::AndroidJni::ClearException(env, "Intent.getStringExtra")) value = nullptr;
+            std::istringstream words(UltraCanvas::AndroidJni::ToStdString(env, value));
+            for (std::string word; words >> word;) args.push_back(word);
+            if (value) env->DeleteLocalRef(value);
+            if (key) env->DeleteLocalRef(key);
+            env->DeleteLocalRef(intentClass);
+            env->DeleteLocalRef(intent);
+        }
+        env->DeleteLocalRef(activityClass);
+        return args;
+    }
+
 } // namespace
 
 void android_main(android_app* app) {
@@ -93,8 +130,11 @@ void android_main(android_app* app) {
     }
 
     static char argv0[] = "ultracanvas-app";
-    char* argv[] = { argv0, nullptr };
-    ultracanvas_app_main(1, argv);
+    std::vector<std::string> arguments = ReadIntentArguments();
+    std::vector<char*> argv = { argv0 };
+    for (std::string& argument : arguments) argv.push_back(argument.data());
+    argv.push_back(nullptr);
+    ultracanvas_app_main(static_cast<int>(argv.size() - 1), argv.data());
 
     // The app's main loop is done; ask the activity to finish, then keep
     // draining commands until the system confirms destruction so the glue

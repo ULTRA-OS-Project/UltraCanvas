@@ -19,11 +19,11 @@ namespace UltraCanvas {
     // Create TextArea Examples for Extended Functionality category
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateTextAreaExamples() {
         auto container = DemoKit::CreatePage("TextAreaContainer",
-                "UltraCanvas TextArea - Syntax Highlighting Demo",
-                "Advanced text editing with syntax highlighting, line numbers, and theme support");
+                Tr("UltraCanvas TextArea - Syntax Highlighting Demo"),
+                Tr("Advanced text editing with syntax highlighting, line numbers, and theme support"));
 
         // ===== TEXTAREA 1: C++ Code with Dark Theme =====
-        auto cppCard = DemoKit::AddCard(container, "CppLabel", "C++ Syntax (Dark Theme)");
+        auto cppCard = DemoKit::AddCard(container, "CppLabel", Tr("C++ Syntax (Dark Theme)"));
 
         // C++ TextArea
         auto cppTextArea = std::make_shared<UltraCanvasTextArea>("CppTextArea", 0, 0, 950, 200);
@@ -81,7 +81,7 @@ int main() {
         DemoKit::AddStretched(cppCard, cppTextArea);
 
         // ===== TEXTAREA 2: Python Code with Light Theme =====
-        auto pythonCard = DemoKit::AddCard(container, "PythonLabel", "Python Syntax (Light Theme)");
+        auto pythonCard = DemoKit::AddCard(container, "PythonLabel", Tr("Python Syntax (Light Theme)"));
 
         // Python TextArea
         auto pythonTextArea = std::make_shared<UltraCanvasTextArea>("PythonTextArea", 0, 0, 950, 200);
@@ -146,7 +146,7 @@ if __name__ == "__main__":
         DemoKit::AddStretched(pythonCard, pythonTextArea);
 
         // ===== TEXTAREA 3: Pascal Code with Custom Settings =====
-        auto pascalCard = DemoKit::AddCard(container, "PascalLabel", "Pascal Syntax (Custom Theme)");
+        auto pascalCard = DemoKit::AddCard(container, "PascalLabel", Tr("Pascal Syntax (Custom Theme)"));
 
         // Pascal TextArea with custom settings
         auto pascalTextArea = std::make_shared<UltraCanvasTextArea>("PascalTextArea", 0, 0, 950, 200);
@@ -331,7 +331,7 @@ end.)";
 //        container->AddChild(themeDropdown);
 
         // Font size label
-        DemoKit::AddText(controlsRow, "FontSizeLabel", "Font Size:");
+        DemoKit::AddText(controlsRow, "FontSizeLabel", Tr("Font Size:"));
 
         // Decrease font button
         auto decreaseFontBtn = addButton("DecreaseFontBtn", "-", 30);
@@ -356,7 +356,7 @@ end.)";
         };
 
         // Clear all button
-        auto clearAllBtn = addButton("ClearAllBtn", "Clear All", 90);
+        auto clearAllBtn = addButton("ClearAllBtn", Tr("Clear All"), 90);
 //        clearAllBtn->SetButtonStyle(ButtonStyle::Danger);
         clearAllBtn->onClick = [cppTextArea, pythonTextArea, pascalTextArea]() {
             cppTextArea->Clear();
@@ -365,7 +365,7 @@ end.)";
         };
 
         // Line numbers toggle button
-        auto lineNumBtn = addButton("LineNumBtn", "Toggle Lines", 120);
+        auto lineNumBtn = addButton("LineNumBtn", Tr("Toggle Lines"), 120);
 //        lineNumBtn->SetButtonStyle(ButtonStyle::Secondary);
         lineNumBtn->onClick = [cppTextArea, pythonTextArea, pascalTextArea]() {
             bool showLines = !cppTextArea->GetShowLineNumbers();
@@ -374,7 +374,7 @@ end.)";
             pascalTextArea->SetShowLineNumbers(showLines);
         };
 
-        auto syntaxToggleBtn = addButton("syntaxToggleBtn", "Toggle syntax", 140);
+        auto syntaxToggleBtn = addButton("syntaxToggleBtn", Tr("Toggle syntax"), 140);
 //        lineNumBtn->SetButtonStyle(ButtonStyle::Secondary);
         syntaxToggleBtn->onClick = [cppTextArea, pythonTextArea, pascalTextArea]() {
             bool showSyntax = !cppTextArea->GetHighlightSyntax();
@@ -385,7 +385,7 @@ end.)";
 
         // Info labels at bottom
         auto infoLabel = DemoKit::AddCaption(controlsCard, "InfoLabel",
-                "Try typing in any text area - supports full editing, selection, copy/paste, and undo/redo");
+                Tr("Try typing in any text area - supports full editing, selection, copy/paste, and undo/redo"));
         infoLabel->SetAlignment(TextAlignment::Center, VerticalAlignment::Top);
 
         return container;

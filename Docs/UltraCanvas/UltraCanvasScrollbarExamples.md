@@ -13,6 +13,7 @@
   - [Style Presets](#style-presets)
   - [Orientation](#orientation)
   - [Style](#style)
+  - [Following the theme](#following-the-theme)
   - [Scroll Parameters](#scroll-parameters)
   - [Scroll Position](#scroll-position)
   - [Scroll Operations](#scroll-operations)
@@ -34,7 +35,7 @@
 
 **UltraCanvasScrollbar** is a standalone scrollbar control with full interaction support: thumb dragging, track paging, mouse-wheel scrolling, and optional arrow buttons. It works in either vertical or horizontal orientation and is configured through a single `ScrollbarStyle` struct that controls dimensions, colours (with separate normal / hover / pressed states), corner radius / end shape, an optional custom image (PNG or SVG) thumb handle, and scrolling behaviour. Several built-in style presets are provided, and a `std::function<void(int)> onScrollChange` callback reports live position changes.
 
-**Version:** 1.0.1
+**Version:** 1.1.0 - `ScrollbarStyle::FromTheme`, `ApplyTheme`: a standalone bar follows the theme
 **Header:** `include/UltraCanvasScrollbar.h`
 **Namespace:** `UltraCanvas`
 **Base Class:** `UltraCanvasUIElement`
@@ -192,6 +193,24 @@ bool IsHorizontal() const;
 void SetStyle(const ScrollbarStyle& newStyle);
 const ScrollbarStyle& GetStyle() const;
 ScrollbarStyle& GetStyleRef();
+```
+
+### Following the theme
+
+`ScrollbarStyle::FromTheme` puts the framework theme's roles
+(`UltraCanvasTheme.md`) over a base style's shape, keeping the base's alpha
+on the track and the thumb: the panel for the track with the hover fill and
+a hairline, the control border for the thumb, faint and muted ink as it is
+hovered and pressed, muted ink for the arrows on the panel; `scrollbar.track`
+and `scrollbar.thumb` where a theme names them. Under the theme policy a new
+standalone bar follows the theme by itself (`ApplyTheme`); a `SetStyle` by
+hand stops that. The bars an element owns (a list's, a tree's, a
+container's) take their owner's style, so they follow through the owner.
+
+```cpp
+auto bar = std::make_shared<UltraCanvasScrollbar>("bar", 0, 0, 12, 200, ScrollbarOrientation::Vertical);
+bar->SetStyle(ScrollbarStyle::FromTheme(UltraCanvasTheme::Current(), ScrollbarStyle::Minimal()));   // the roles over the Minimal shape
+bar->SetFollowTheme(true);
 ```
 
 ### Scroll Parameters

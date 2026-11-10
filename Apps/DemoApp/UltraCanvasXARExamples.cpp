@@ -23,13 +23,13 @@ namespace UltraCanvas {
 // ===== XAR VECTOR EXAMPLES IMPLEMENTATION =====
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateXARVectorExamples() {
         auto container = DemoKit::CreatePage("XARExamples",
-                "Xara (.xar) Graphics Demo - Click to Open in the Media Viewer",
-                "Click a drawing to open it in the media viewer; zoom there to inspect details and use "
-                "the arrow keys to step through the folder. Press ESC to close the viewer.");
+                Tr("Xara (.xar) Graphics Demo - Click to Open in the Media Viewer"),
+                Tr("Click a drawing to open it in the media viewer; zoom there to inspect details and use "
+                "the arrow keys to step through the folder. Press ESC to close the viewer."));
 
         // Status label for feedback; the tiles report into it as they load,
         // and it sits under the panels.
-        auto statusLabel = DemoKit::CreateText("XARStatus", "Ready. Click on a XAR file to view.");
+        auto statusLabel = DemoKit::CreateText("XARStatus", Tr("Ready. Click on a XAR file to view."));
         statusLabel->SetFontSize(11);
         statusLabel->SetTextColor(Color(60, 60, 60, 255));
         statusLabel->SetBackgroundColor(Color(230, 230, 230, 255));
@@ -48,9 +48,9 @@ namespace UltraCanvas {
             auto element = std::make_shared<UltraCanvasXARElement>(id + "El", 0, 0, 280, 220);
             std::string path = NormalizePath(GetResourcesDir() + "media/vector/XAR/" + fileName);
             if (element->LoadFromFile(path)) {
-                statusLabel->SetText("Loaded: " + path);
+                statusLabel->SetText(TrF("Loaded: {0}", path));
             } else {
-                statusLabel->SetText("Failed to load " + path + ": " + element->GetLastError());
+                statusLabel->SetText(TrF("Failed to load {0}: {1}", path, element->GetLastError()));
             }
 
             element->SetMouseCursor(UCMouseCursor::Hand);
@@ -58,7 +58,7 @@ namespace UltraCanvas {
                 switch (event.type) {
                     case UCEventType::MouseUp:
                         ShowInMediaViewer(path);
-                        statusLabel->SetText("Opened in the media viewer: " + path);
+                        statusLabel->SetText(TrF("Opened in the media viewer: {0}", path));
                         return true;
                     case UCEventType::MouseEnter:
                         tile->SetBordersColor(Color(0, 122, 204, 255));
@@ -86,22 +86,22 @@ namespace UltraCanvas {
         auto panelRow = DemoKit::AddRow(container, "XARPanels");
 
         // ===== INFO PANEL =====
-        auto infoContainer = DemoKit::AddCard(panelRow, "InfoPanel", "XAR Plugin Features");
+        auto infoContainer = DemoKit::AddCard(panelRow, "InfoPanel", Tr("XAR Plugin Features"));
         auto infoText = DemoKit::CreateBullets("InfoText", {
-                "Xara .xar drawings (compressed too)",
-                "Paths, QuickShapes, groups, layers",
-                "Flat, gradient and bitmap fills",
-                "Contone fills and soft shadows",
-                "Text: fonts, justification, lists",
-                "Embedded bitmaps with transparency",
-                "Multi-page documents (spreads)",
-                "Opens in the media viewer"});
+                Tr("Xara .xar drawings (compressed too)"),
+                Tr("Paths, QuickShapes, groups, layers"),
+                Tr("Flat, gradient and bitmap fills"),
+                Tr("Contone fills and soft shadows"),
+                Tr("Text: fonts, justification, lists"),
+                Tr("Embedded bitmaps with transparency"),
+                Tr("Multi-page documents (spreads)"),
+                Tr("Opens in the media viewer")});
         DemoKit::Add(infoContainer, infoText);
 
         // ===== HOW IT WORKS =====
-        auto howContainer = DemoKit::AddCard(panelRow, "HowPanel", "The bundled drawings");
+        auto howContainer = DemoKit::AddCard(panelRow, "HowPanel", Tr("The bundled drawings"));
         auto howText = DemoKit::AddText(howContainer, "HowText",
-                "Midget.xar - 842 x 595 px, 5,380 records, 577 nodes: "
+                Tr("Midget.xar - 842 x 595 px, 5,380 records, 577 nodes: "
                 "524 paths over multi-stage linear and elliptical fills, "
                 "7 text stories, 5 groups.\n\n"
                 "Apple5.xar - 612 x 846 px, 7,175 records, 699 nodes: "
@@ -113,18 +113,18 @@ namespace UltraCanvas {
                 "Every .xar in media/vector/XAR is read by UltraCanvasXARPlugin "
                 "directly - no external tools and no conversion step. "
                 "Tests/XARProbeTest prints these counts, the unhandled record "
-                "tags and the parse warnings for each of them.");
+                "tags and the parse warnings for each of them."));
         howText->SetFontSize(11);
 
         // ===== WHERE THE FORMAT COMES FROM =====
-        auto historyContainer = DemoKit::AddCard(container, "HistoryPanel", "Where the format comes from");
+        auto historyContainer = DemoKit::AddCard(container, "HistoryPanel", Tr("Where the format comes from"));
         auto historyText = DemoKit::AddText(historyContainer, "HistoryText",
-                "The Xara file format is the successor of the ArtWorks vector graphics file format. "
+                Tr("The Xara file format is the successor of the ArtWorks vector graphics file format. "
                 "ArtWorks is a powerful vector graphics editor for RISC OS, the operating system of "
                 "the 32-bit ARM machines - RISC OS was the first OS that ran on ARM CPUs.\n\n"
                 "Two things set ArtWorks apart: its ultra-fast CPU-based vector graphics rendering, "
                 "and its user-friendly user interface. It was later ported to Windows, where it got "
-                "the name Xara.");
+                "the name Xara."));
         historyText->SetFontSize(11);
 
         // Reference links - a click hands them to the system browser. Each is

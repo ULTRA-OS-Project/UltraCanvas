@@ -1908,7 +1908,9 @@ recognition), spreadsheets (every sheet, tab-separated), text files, pictures
 and whether. Text recognition and speech to text are hooks:
 `SetImageTextRecognizer` (the OCR plugin's `RegisterOCRTextRecognition()`
 installs Tesseract) and `SetSpeechTranscriber` (an application's engine, e.g.
-UltraAI's `ISpeechToText`). UltraClipboard's *Extract text* uses it.
+UltraAI's `ISpeechToText`: `RegisterUltraAISpeechTranscription()` in
+`UltraAI_UI`, a video's sound taken out with VideoFX; `GetSpeechTranscriber`
+for the one before). UltraClipboard's *Extract text* uses it.
 
 ### **4. Plug-ins for File Types**
 
@@ -15745,6 +15747,12 @@ struct FolderBreadcrumbOptions {
     // machine (UltraFiler's Computer page) opens that instead. The node's
     // dropdown lists the drives either way.
     std::function<void()> onComputerClick;
+    // What a drive or mounted volume is called on the strip - its own node and
+    // its entry in the "Computer" node's list - given its root. Unset, or an
+    // empty answer, keeps the drive letter ("D:") or the root path. Called on
+    // the UI thread, so answer from names already read (ReadVolumeName, off
+    // the UI thread), never by asking the disk.
+    std::function<std::string(const std::string& root)> driveLabel;
 };
 
 // Rebuilds `crumb` as the path of `folderPath`: an optional "Computer" node, the
@@ -15777,6 +15785,19 @@ filer->onPathChanged = [crumb, filer](const std::string& path) {
     BuildFolderBreadcrumb(crumb, path,
                           [filer](const std::string& folder) { filer->SetPath(folder); });
 };
+```
+
+A file manager that has the volumes' own names names its drives by them:
+
+```cpp
+std::map<std::string, std::string> volumeNames;   // "D:\\" -> "My Passport Ultra (D:)", filled off the UI thread
+
+FolderBreadcrumbOptions options;
+options.driveLabel = [&volumeNames](const std::string& root) {
+    auto it = volumeNames.find(root);
+    return it != volumeNames.end() ? it->second : std::string();
+};
+BuildFolderBreadcrumb(crumb, path, onNavigate, options);
 ```
 
 Pair it with `BreadcrumbOverflowMode::Collapse` (plus `keepFirstItemOnCollapse`
@@ -18645,6 +18666,7 @@ FILE: Docs/UltraCanvas/UltraCanvasCheckbox.md
   - [State and label](#state-and-label)
   - [Callbacks](#callbacks)
   - [Shared visual fields](#shared-visual-fields)
+  - [Following the theme](#following-the-theme)
   - [Sizing and placement](#sizing-and-placement)
 - [UltraCanvasCheckbox](#ultracanvascheckbox)
   - [Constructors and factory](#constructors-and-factory)
@@ -18693,8 +18715,8 @@ content sizing. The on/off **switch** is a third class on the same base,
 The checkbox no longer has a switch or radio style: those are the separate
 classes.
 
-**Version:** 2.1.0
-**Last Modified:** 2026-10-07
+**Version:** 2.2.0 - `FromTheme` on both visual styles, `ApplyTheme`: the controls follow the theme
+**Last Modified:** 2026-11-10
 **Author:** UltraCanvas Framework
 **Headers:** `include/UltraCanvasCheckbox.h`, `include/UltraCanvasRadio.h`, `include/UltraCanvasLabeledToggleBase.h`
 **Implementation:** `core/UltraCanvasCheckbox.cpp`, `core/UltraCanvasRadio.cpp`, `core/UltraCanvasLabeledToggleBase.cpp`
@@ -18835,6 +18857,28 @@ struct LabeledToggleVisualStyle {
 
 The label is drawn in `textHoverColor` while the pointer is over the control,
 so a custom `textColor` usually wants the same `textHoverColor`.
+
+### Following the theme
+
+Both controls read the framework theme (`UltraCanvasTheme.md`):
+`CheckboxVisualStyle::FromTheme` and `RadioVisualStyle::FromTheme` put the
+roles over a base style's own shape - the well with the control border for
+the box or the ring, the hover and pressed fills, the panel disabled, the
+mark or the dot in the accent (the element roles `checkbox.mark` and
+`radio.dot` where a theme names them), the label in ink with the interface
+font at the body size and the focus ring from `LabeledToggleVisualStyle::FromTheme`.
+Under the theme policy a new control follows the theme by itself; a
+`SetVisualStyle` by hand stops that, `SetFollowTheme(true)` after it keeps
+both.
+
+```cpp
+auto agree = std::make_shared<UltraCanvasCheckbox>("agree", "I agree");
+CheckboxVisualStyle big = agree->GetVisualStyle();
+big.boxSize = 20;
+agree->SetVisualStyle(CheckboxVisualStyle::FromTheme(UltraCanvasTheme::Current(), big));
+agree->SetFollowTheme(true);                                   // the roles over the bigger box, on every change
+RadioVisualStyle themed = RadioVisualStyle::FromTheme();       // the current theme over the default shape
+```
 
 ### Sizing and placement
 
@@ -25587,7 +25631,7 @@ common date-selection philosophies, explains the trade-offs, and then documents
 the API that was chosen.
 
 **File Location**: `include/UltraCanvasDatePicker.h`
-**Version**: 1.4.0 - the version history is in the header's head
+**Version**: 1.5.0 - `FromTheme` on both styles, `ApplyTheme`: the pickers and the calendar follow the theme
 **Author**: UltraCanvas Framework
 
 ## Contents
@@ -25708,6 +25752,28 @@ Useful methods:
 Interaction: click the field to type, click the button (or press ↑/↓) to open
 the calendar; selecting a single date commits and closes; completing a range
 commits and closes; `Esc` cancels.
+
+**Following the theme.** `DatePickerStyle::FromTheme` and
+`CalendarStyle::FromTheme` put the framework theme's roles
+(`UltraCanvasTheme.md`) over a base style's metrics: the well with the
+control border and the focus ring for the field, ink and the caret in ink,
+faint ink for the hint, muted ink for the glyph; the raised panel for the
+calendar with ink for the cells, the accent with text on it for the
+selected day, today's ring and the footer, the soft accent for a range,
+danger for a blocked day's strike; the weekends keep their red unless the
+theme names `calendar.weekend`; the interface font at the body size. Under
+the theme policy a new picker, range picker or calendar view follows the
+theme by itself (`ApplyTheme`); a `SetStyle` by hand stops that,
+`SetFollowTheme(true)` after it keeps both.
+
+```cpp
+auto when = std::make_shared<UltraCanvasDatePicker>("when");
+DatePickerStyle compact = when->GetStyle();
+compact.calendarStyle = CalendarStyles::Compact();
+when->SetStyle(DatePickerStyle::FromTheme(UltraCanvasTheme::Current(), compact));   // the roles over the compact calendar
+when->SetFollowTheme(true);
+calendar->SetStyle(CalendarStyle::FromTheme());                                     // an inline calendar, the current theme
+```
 
 ## 5. `UltraCanvasCalendarView` (inline)
 
@@ -32481,6 +32547,7 @@ auto filer = CreateFilerWidget("my-filer", "/home/user/Documents", 0, 0, 900, 60
 - [Long names](#long-names)
 - [File extensions](#file-extensions)
 - [File icons](#file-icons)
+- [Following the theme](#following-the-theme)
 - [Name tooltips](#name-tooltips)
 - [Context menu](#context-menu)
 - [Programs inside archives](#programs-inside-archives)
@@ -32852,6 +32919,29 @@ in the listing's colours (the Save dialog's big type logo).
 <!-- doc-check: UltraCanvasFilerWidget* filer; IRenderContext* ctx; -->
 ```cpp
 filer->DrawTypeIcon(ctx, "holiday.jpg", false, Rect2Di(4, 4, 24, 24));
+```
+
+## Following the theme
+
+`FilerStyle::FromTheme` puts the framework theme's roles
+(`UltraCanvasTheme.md`) over a base style's shape: the well for the file
+area, ink and muted ink for the names and their details, the panel for the
+header, the info bar and a bar's background with ink on it, hairlines for
+the grid, the hover fill, the soft accent for the selection with the accent
+round it, the accent for the bars and the loading bar, the well with the
+accent for the rename editor; the interface font at the body size, the
+small text at the caption size. The hover icon menu and the extension tag
+keep their dark overlays unless the theme names `filer.icon-menu`,
+`filer.on-icon-menu`, `filer.icon-menu-done`, `filer.extension-bar`,
+`filer.extension-tag` and `filer.on-extension-tag`. Under the theme policy
+a new widget follows the theme by itself (`ApplyTheme`); a `SetStyle` by
+hand stops that, `SetFollowTheme(true)` after it keeps both.
+
+```cpp
+FilerStyle roomy = filer->GetStyle();
+roomy.tileGap = 16;
+filer->SetStyle(FilerStyle::FromTheme(UltraCanvasTheme::Current(), roomy));
+filer->SetFollowTheme(true);
 ```
 
 ## Name tooltips
@@ -47678,7 +47768,7 @@ FILE: Docs/UltraCanvas/UltraCanvasListViewExamples.md
 
 Every call goes through the view: none of the three pieces holds a reference to another, so swapping one leaves the other two untouched. The delegate sees the selection only as `ListItemStyleOption::isSelected`, and reads cell data through the model pointer `RenderItem` passes in.
 
-**Version:** 1.1.0 - `onCellDoubleClicked`, `GetCellRect`: an editor over a cell
+**Version:** 1.2.0 - `ListViewStyle::FromTheme`, `ApplyTheme`: the list follows the theme, its default delegate with it
 **Headers:**
 - `include/UltraCanvasListView.h`
 - `include/UltraCanvasListModel.h`
@@ -47834,7 +47924,30 @@ struct ListViewStyle {
     Color hoverBackgroundColor = Colors::SelectionHover;
 
     ScrollbarStyle scrollbarStyle = ScrollbarStyle::Modern();
+
+    // The framework theme's roles over a base's shape (UltraCanvasTheme.md)
+    static ListViewStyle FromTheme(const UltraCanvasTheme& theme, const ListViewStyle& base);
+    static ListViewStyle FromTheme(const UltraCanvasTheme& theme);
+    static ListViewStyle FromTheme();
 };
+```
+
+`FromTheme` puts the theme's roles over a base style's shape: the well for
+the rows, the panel for the header with ink and hairline grid lines, the
+panel for alternate rows, the accent for the selection, the hover fill, the
+header at the caption size, the scrollbars from `ScrollbarStyle::FromTheme`.
+Under the theme policy a new list follows the theme by itself
+(`ApplyTheme`), and when its delegate is the `UltraCanvasDefaultListDelegate`
+that delegate takes ink, text on the accent for a selected row and the body
+font with it; a `SetStyle` by hand stops the following, `SetFollowTheme(true)`
+after it keeps both.
+
+```cpp
+auto list = std::make_shared<UltraCanvasListView>("list", 300, 200);
+ListViewStyle striped = list->GetStyle();
+striped.alternateRowColors = true;
+list->SetStyle(ListViewStyle::FromTheme(UltraCanvasTheme::Current(), striped));
+list->SetFollowTheme(true);
 ```
 
 ### Column widths
@@ -62732,6 +62845,7 @@ FILE: Docs/UltraCanvas/UltraCanvasRating.md
 - [Factory Functions](#factory-functions)
 - [Key API](#key-api)
 - [Keyboard](#keyboard)
+- [Following the theme](#following-the-theme)
 - [Notes](#notes)
 
 ## Overview
@@ -62743,7 +62857,7 @@ files** for the three per-symbol states: **on** (filled), **off** (empty) and
 **half**.
 
 **File Location**: `include/UltraCanvasRating.h`
-**Version**: 1.0.0
+**Version**: 1.1.0 - `RatingStyle::FromTheme`, `ApplyTheme`: the rating follows the theme
 **Author**: UltraCanvas Framework
 
 ## Features
@@ -62853,6 +62967,24 @@ std::function<void(float)> onHoverChanged;    // live hover value (-1 when the c
 | `Left` / `Down`  | Decrease by one step |
 | `Home`           | Clear (0) |
 | `End`            | Maximum |
+
+## Following the theme
+
+`RatingStyle::FromTheme` puts the framework theme's roles
+(`UltraCanvasTheme.md`) over a base style's shape: the control border for
+an empty symbol and the interface font at the body size for a text symbol.
+A filled symbol, its hover and its outline keep the struct's amber on a
+light or a dark window unless the theme names the element roles
+`rating.on`, `rating.hover` and `rating.border`. Under the theme policy a
+new rating follows the theme by itself (`ApplyTheme`); a `SetStyle` by
+hand stops that, `SetFollowTheme(true)` after it keeps both.
+
+```cpp
+auto stars = std::make_shared<UltraCanvasRating>("stars", 160, 32);
+UltraCanvasTheme brand = UltraCanvasTheme::Current();
+brand.SetRole("rating.on", Color(242, 165, 58));
+stars->SetStyle(RatingStyle::FromTheme(brand, stars->GetStyle()));
+```
 
 ## Notes
 
@@ -67433,6 +67565,7 @@ FILE: Docs/UltraCanvas/UltraCanvasScrollbarExamples.md
   - [Style Presets](#style-presets)
   - [Orientation](#orientation)
   - [Style](#style)
+  - [Following the theme](#following-the-theme)
   - [Scroll Parameters](#scroll-parameters)
   - [Scroll Position](#scroll-position)
   - [Scroll Operations](#scroll-operations)
@@ -67454,7 +67587,7 @@ FILE: Docs/UltraCanvas/UltraCanvasScrollbarExamples.md
 
 **UltraCanvasScrollbar** is a standalone scrollbar control with full interaction support: thumb dragging, track paging, mouse-wheel scrolling, and optional arrow buttons. It works in either vertical or horizontal orientation and is configured through a single `ScrollbarStyle` struct that controls dimensions, colours (with separate normal / hover / pressed states), corner radius / end shape, an optional custom image (PNG or SVG) thumb handle, and scrolling behaviour. Several built-in style presets are provided, and a `std::function<void(int)> onScrollChange` callback reports live position changes.
 
-**Version:** 1.0.1
+**Version:** 1.1.0 - `ScrollbarStyle::FromTheme`, `ApplyTheme`: a standalone bar follows the theme
 **Header:** `include/UltraCanvasScrollbar.h`
 **Namespace:** `UltraCanvas`
 **Base Class:** `UltraCanvasUIElement`
@@ -67612,6 +67745,24 @@ bool IsHorizontal() const;
 void SetStyle(const ScrollbarStyle& newStyle);
 const ScrollbarStyle& GetStyle() const;
 ScrollbarStyle& GetStyleRef();
+```
+
+### Following the theme
+
+`ScrollbarStyle::FromTheme` puts the framework theme's roles
+(`UltraCanvasTheme.md`) over a base style's shape, keeping the base's alpha
+on the track and the thumb: the panel for the track with the hover fill and
+a hairline, the control border for the thumb, faint and muted ink as it is
+hovered and pressed, muted ink for the arrows on the panel; `scrollbar.track`
+and `scrollbar.thumb` where a theme names them. Under the theme policy a new
+standalone bar follows the theme by itself (`ApplyTheme`); a `SetStyle` by
+hand stops that. The bars an element owns (a list's, a tree's, a
+container's) take their owner's style, so they follow through the owner.
+
+```cpp
+auto bar = std::make_shared<UltraCanvasScrollbar>("bar", 0, 0, 12, 200, ScrollbarOrientation::Vertical);
+bar->SetStyle(ScrollbarStyle::FromTheme(UltraCanvasTheme::Current(), ScrollbarStyle::Minimal()));   // the roles over the Minimal shape
+bar->SetFollowTheme(true);
 ```
 
 ### Scroll Parameters
@@ -67941,7 +68092,7 @@ FILE: Docs/UltraCanvas/UltraCanvasSegmentedControlExamples.md
 
 **UltraCanvasSegmentedControl** is a multi-segment selection control for choosing between mutually exclusive options (single mode) or toggling several options independently (multiple/toggle mode). It is well-suited for view-switchers, filter bars, formatting toolbars, and size pickers.
 
-**Version:** 1.5.0 - `SetSegmentTooltip`: each segment its own tooltip
+**Version:** 1.6.0 - `SegmentedControlStyle::FromTheme`, `ApplyTheme`: the control follows the theme
 **Header:** `include/UltraCanvasSegmentedControl.h`
 **Namespace:** `UltraCanvas`
 **Base Class:** `UltraCanvasUIElement`
@@ -68133,7 +68284,26 @@ struct SegmentedControlStyle {
     static SegmentedControlStyle Modern();   // iOS-like blue
     static SegmentedControlStyle Flat();     // Spaced individual segments
     static SegmentedControlStyle Bar();      // No separators, solid bar
+
+    // The framework theme's roles over a base's shape (UltraCanvasTheme.md)
+    static SegmentedControlStyle FromTheme(const UltraCanvasTheme& theme, const SegmentedControlStyle& base);
+    static SegmentedControlStyle FromTheme(const UltraCanvasTheme& theme);
+    static SegmentedControlStyle FromTheme();
 };
+```
+
+`FromTheme` puts the theme's roles over a base style's shape: the raised
+surface for a segment at rest, the accent with text on it for the selected
+one, the hover fill, the panel disabled, the control border and hairline
+separators, the interface font at the body size. Under the theme policy a
+new control follows the theme by itself (`ApplyTheme`); a `SetStyle` by
+hand stops that, `SetFollowTheme(true)` after it keeps both.
+
+```cpp
+auto view = std::make_shared<UltraCanvasSegmentedControl>("view", 240, 28);
+SegmentedControlStyle flat = SegmentedControlStyle::Flat();
+view->SetStyle(SegmentedControlStyle::FromTheme(UltraCanvasTheme::Current(), flat));   // the roles over the Flat shape
+view->SetFollowTheme(true);
 ```
 
 ## Events and Callbacks
@@ -71274,6 +71444,7 @@ FILE: Docs/UltraCanvas/UltraCanvasSpinner.md
 - [Factory Functions](#factory-functions)
 - [Key API](#key-api)
 - [Keyboard Reference](#keyboard-reference)
+- [Following the theme](#following-the-theme)
 - [Notes](#notes)
 
 ## Overview
@@ -71291,7 +71462,7 @@ A value can be changed four ways:
 - **Typing** a value directly into the editable field (numeric modes)
 
 **File Location**: `include/UltraCanvasSpinner.h`
-**Version**: 1.0.0
+**Version**: 1.1.0 - `SpinnerVisualStyle::FromTheme`, `ApplyTheme`: the spinner follows the theme
 **Author**: UltraCanvas Framework
 
 ## Features
@@ -71438,6 +71609,25 @@ bool IsStepping() const;                         // a run of steps is open
 | digits / `.` / `-` | Begin typing a value (editable numeric modes) |
 | `Enter` | Commit the typed value |
 | `Esc` | Cancel the edit and revert |
+
+## Following the theme
+
+`SpinnerVisualStyle::FromTheme` puts the framework theme's roles
+(`UltraCanvasTheme.md`) over a base style's metrics: the well with the
+control border and the focus ring for the field, ink for the value and the
+caret, the raised surface with the hover and pressed fills for the step
+buttons and muted ink for their glyphs, the panel disabled, the interface
+font at the body size. Under the theme policy a new spinner follows the
+theme by itself (`ApplyTheme`); a `SetStyle` by hand stops that,
+`SetFollowTheme(true)` after it keeps both.
+
+```cpp
+auto count = std::make_shared<UltraCanvasSpinner>("count", 90, 26);
+SpinnerVisualStyle wide = count->GetStyle();
+wide.buttonThickness = 24;
+count->SetStyle(SpinnerVisualStyle::FromTheme(UltraCanvasTheme::Current(), wide));
+count->SetFollowTheme(true);
+```
 
 ## Notes
 
@@ -73357,6 +73547,7 @@ FILE: Docs/UltraCanvas/UltraCanvasStepper.md
 - [Custom (SVG) markers](#custom-svg-markers)
 - [Key API](#key-api)
 - [Keyboard](#keyboard)
+- [Following the theme](#following-the-theme)
 - [Notes](#notes)
 
 ## Overview
@@ -73371,7 +73562,7 @@ Design's Steps). It is **distinct from the value −/+ stepper**, which ships as
 `CreateStepper()` on `UltraCanvasSpinner`.
 
 **File Location**: `include/UltraCanvasStepper.h`
-**Version**: 1.0.0
+**Version**: 1.1.0 - `StepperStyle::FromTheme`, `ApplyTheme`: the stepper follows the theme
 **Author**: UltraCanvas Framework
 
 ## Design choices (all configurable)
@@ -73481,6 +73672,27 @@ std::function<void(int)> onStepClicked;   // a marker/label was clicked
 | `End`           | Last step |
 
 (Keys are ignored in `Display` navigation mode.)
+
+## Following the theme
+
+`StepperStyle::FromTheme` puts the framework theme's roles
+(`UltraCanvasTheme.md`) over a base style's metrics: the accent for a
+completed or active marker and its connector, with text on it; the control
+border for an upcoming marker over the raised surface, muted ink in it;
+danger for an error (its glyph stays white unless a theme names
+`stepper.on-error`); ink for a title, the accent for the active one, muted
+ink for a description; the interface font, the titles at the body size and
+the descriptions at the caption size. Under the theme policy a new stepper
+follows the theme by itself (`ApplyTheme`); a `SetStyle` by hand stops
+that, `SetFollowTheme(true)` after it keeps both.
+
+```cpp
+auto wizard = std::make_shared<UltraCanvasStepper>("wizard", 400, 64);
+StepperStyle small = wizard->GetStyle();
+small.markerSize = 24;
+wizard->SetStyle(StepperStyle::FromTheme(UltraCanvasTheme::Current(), small));
+wizard->SetFollowTheme(true);
+```
 
 ## Notes
 
@@ -78066,22 +78278,30 @@ those elements, the tabbed container and the text area
 (`include/UltraCanvasUIElement.h`)
 **Tests:** `Tests/UltraCanvasThemeTest.cpp` (without a display)
 **Design:** `Docs/Research/UltraVideoDesignProposal.md` §5.8
-**Version:** 1.7.0 - fonts and text roles, the high-contrast presets, the theme from the host and the policy (T3 of the host theme proposal)
-**Last Modified:** 2026-10-12
+**Version:** 1.10.0 - the list elements read the theme: the scrollbar, list view, tree view, columns tree view and filer widget (T4, third part)
+**Last Modified:** 2026-11-10
 **Author:** UltraCanvas Framework
 
 ## Status
 
 The theme, its two presets, the current theme and its change handlers are
 in place. Every panel element reads it: the button, label, dropdown,
-slider, switch, text input, toolbar, split pane and album through a
-`FromTheme` on their style struct and an `ApplyTheme` on the element; the
-tabbed container and the text area through `ApplyTheme` alone; the menu
+slider, switch, text input, toolbar, split pane and album, and the input
+elements - checkbox, radio, segmented control, spinner, stepper, rating,
+the calendar view and the date, date range and time pickers with the
+clock view - and the lists - the scrollbar, list view, columns tree view
+and filer widget - through a `FromTheme` on their style struct and an
+`ApplyTheme` on the element; the tabbed container, the text area and the
+tree view through `ApplyTheme` alone; the menu
 and the tooltip through `MenuStyle::FromTheme` and `TooltipStyle::FromTheme`,
 which put the roles over their own `Dark()` and `Light()` presets, so a
-dark menu or tooltip agrees with the rest of a dark window. An element
-follows the theme only when asked (`SetFollowTheme`); styled by hand it
-keeps its look, as before.
+dark menu or tooltip agrees with the rest of a dark window. Under the
+policy (`FollowHost`, the default, `Light` or `Dark`) every new element
+follows the theme: it is styled from the current theme as it is built and
+again on every change. Styled by hand (`SetStyle`) it keeps its look, as
+before. The readers set their fonts by role as well as their colours; the
+containers and pickers, the viewers and the media elements are the rest
+of T4.
 
 ## The roles
 
@@ -78204,17 +78424,39 @@ menu->SetStyle(MenuStyle::FromTheme());                     // Dark() or Light()
 UltraCanvasTooltipManager::SetStyle(TooltipStyle::FromTheme());
 ```
 
-An element asked to **follow the theme** styles itself from the current
+An element that **follows the theme** styles itself from the current
 theme at once and again whenever it changes: `ApplyTheme` puts the theme's
-colours over the element's own style (`FromTheme(theme, GetStyle())`), so
-a radius, a font or a toolbar's icon size set before survive a switch. A
-container passes a change on to its children, a window to its whole tree.
+colours and fonts over the element's own style
+(`FromTheme(theme, GetStyle())`), so a radius or a toolbar's icon size set
+before survive a switch. A container passes a change on to its children, a
+window to its whole tree.
+
+Whether a new element follows is the application-wide default,
+`UltraCanvasUIElement::SetFollowThemeByDefault`: the policy turns it on
+(`FollowHost`, `Light`, `Dark`) in `Initialize`, so every element built
+after it takes the theme at the end of its constructor; an `Own`
+application turns it on itself when its theme is in place. A style **set by
+hand** (`SetStyle`, a dialog's too; `SetConfig` on an album, `SetAppearance`
+on a toolbar, `SetVisualStyle` on a switch) stops the following for that
+element, so it keeps its look through every change, as before; an element
+that should keep both calls `SetStyle` and then `SetFollowTheme(true)`,
+which puts the roles over the given style and follows on from there. A
+setter that changes one thing (`SetTextColor`, `SetFont`) does not stop
+the following: the next theme change puts the theme's value back, so a
+colour an application means to keep goes through `SetStyle`, or is set
+again from its own change handler.
 
 ```cpp
+UltraCanvasUIElement::SetFollowThemeByDefault(true);        // what the policy does; an Own application's own call
 input->SetFollowTheme(true);                                // styled now, and on every change
 panel->SetFollowTheme(true);
 button->SetFollowTheme(false);                              // keeps the look it has
 bool follows = input->GetFollowTheme();
+bool byDefault = UltraCanvasUIElement::FollowThemeByDefault();
+ButtonStyle own = button->GetStyle();
+own.cornerRadius = 10;
+button->SetStyle(own);                                      // styled by hand: follows no more
+button->SetFollowTheme(true);                               // the roles over the hand-set style, following again
 ```
 
 `SetCurrent` calls every **change handler** after the switch. The
@@ -78234,6 +78476,28 @@ UltraCanvasTheme::RemoveChangeHandler(handler);
 
 A handler added during a change is not called for that change; one
 removed during a change is not called again.
+
+An element with a colour of its own that no shared role fits names an
+**element role** with a derived fallback, as the timeline does: the
+checkbox's mark and the radio's dot (`checkbox.mark`, `radio.dot`, the
+accent), a filled rating symbol with its hover and outline (`rating.on`,
+`rating.hover`, `rating.border`, the amber the struct defaults to on any
+window), a stepper's error glyph (`stepper.on-error`, white), the
+calendar's weekends (`calendar.weekend`, its red), the clock's dial
+(`time-picker.clock-face`, the pressed fill), a scrollbar's track and
+thumb (`scrollbar.track`, `scrollbar.thumb`, the panel and the control
+border), a columns tree's section header (`columns-tree.group-header`,
+`columns-tree.on-group-header`, its black bar) and the filer's overlays
+(`filer.icon-menu`, `filer.on-icon-menu`, `filer.icon-menu-done`,
+`filer.extension-bar`, `filer.extension-tag`, `filer.on-extension-tag`).
+
+```cpp
+UltraCanvasTheme brand = UltraCanvasTheme::Light();
+brand.SetRole("rating.on", Color(242, 165, 58));                 // the brand's star
+brand.SetRole("calendar.weekend", brand.roles.inkMuted);         // weekends quiet, not red
+CheckboxVisualStyle box = CheckboxVisualStyle::FromTheme(brand); // the accent for the mark: not named
+RatingStyle stars = RatingStyle::FromTheme(brand, RatingStyle());
+```
 
 ## Fonts and text roles
 
@@ -78256,9 +78520,18 @@ theme.fonts.ui.fontSize = 9;
 theme.fonts.scale = 1.25;                                        // Body is then 11.25
 ```
 
-A `FromTheme` reader sets its style's family and size from `Font(role)`
-as it gains fonts by role (T4 of the proposal); until then the sizes are
-there for an application's own text.
+Every `FromTheme` reader sets its style's family and size from `Font(role)`
+by the role its text plays: the button, label, dropdown, text input, menu,
+switch, checkbox, radio, segmented control, spinner, rating, calendar,
+the date and time pickers, the list's rows, the tree and the filer at
+`Body`, a stepper's titles too; a heading label at `Heading`; the
+tooltip, a slider's value, a dialog's details, a stepper's descriptions,
+a list's header and the filer's small text at `Caption`, the dialog's
+message at `Body`, the tab titles at `Caption`; the album, the timecode field and
+the timeline take the families only (their sizes are pixels of a design).
+The style struct's own literal stays the default of an element styled by
+hand, as the colour defaults do. The text area keeps its font: it is the
+document's, not the window's.
 
 ## The theme from the host
 
@@ -78621,6 +78894,7 @@ FILE: Docs/UltraCanvas/UltraCanvasTimePicker.md
 - [Key API](#key-api)
 - [The clock-face dial (`TimePickerPopupStyle::Clock`)](#the-clock-face-dial-timepickerpopupstyleclock)
 - [Keyboard & Mouse](#keyboard--mouse)
+- [Following the theme](#following-the-theme)
 - [Notes](#notes)
 
 ## Overview
@@ -78634,7 +78908,7 @@ fields are built from `UltraCanvasSpinner`, so hour/minute selection reuses the
 same arrow-driven control.
 
 **File Location**: `include/UltraCanvasTimePicker.h`
-**Version**: 1.1.0
+**Version**: 1.2.0 - `TimePickerStyle::FromTheme`, `ApplyTheme`: the picker and the clock view follow the theme
 **Author**: UltraCanvas Framework
 
 ## Features
@@ -78799,6 +79073,29 @@ replaces the spinner panel with `UltraCanvasTimeClockView`, a round dial:
 | `Enter` | Commit typed text |
 | `Esc` | Close popup / cancel edit |
 | Mouse wheel over field | Nudge the time by the minute step |
+
+## Following the theme
+
+`TimePickerStyle::FromTheme` puts the framework theme's roles
+(`UltraCanvasTheme.md`) over a base style's metrics: the well with the
+control border and the focus ring for the field, ink and the caret in ink,
+faint ink for the hint, muted ink for the glyph and the separators; the
+raised popup with a hairline and the accent for its footer; the clock's
+header and selection in the accent with text on it, its numbers in ink,
+its dial in the pressed fill unless the theme names
+`time-picker.clock-face`; the interface font at the body size (the clock
+header's size stays the style's). Under the theme policy a new picker or
+clock view follows the theme by itself (`ApplyTheme`); a `SetStyle` by
+hand stops that, `SetFollowTheme(true)` after it keeps both. `SetStyle`
+reaches the field's editor and an open clock view.
+
+```cpp
+auto at = std::make_shared<UltraCanvasTimePicker>("at");
+TimePickerStyle big = at->GetStyle();
+big.clockHeaderFontSize = 32;
+at->SetStyle(TimePickerStyle::FromTheme(UltraCanvasTheme::Current(), big));
+at->SetFollowTheme(true);
+```
 
 ## Notes
 
@@ -82060,6 +82357,7 @@ FILE: Docs/UltraCanvas/UltraCanvasTreeViewExamples.md
   - [Scroll-to-Top and Scroll-to-Selection Buttons](#scroll-to-top-and-scroll-to-selection-buttons)
   - [Measuring the Tree](#measuring-the-tree)
   - [Color Properties](#color-properties)
+  - [Following the theme](#following-the-theme)
   - [Event Callbacks](#event-callbacks)
 - [Usage Examples](#usage-examples)
   - [Basic Tree Creation](#basic-tree-creation)
@@ -82089,8 +82387,8 @@ FILE: Docs/UltraCanvas/UltraCanvasTreeViewExamples.md
 
 The `UltraCanvasTreeView` is a hierarchical tree view control component that provides a powerful and flexible way to display tree-structured data with support for icons, custom styling, selection modes, and interactive features. It is part of the UltraCanvas cross-platform UI framework.
 
-**Version:** 1.3.0  
-**Last Modified:** 2026-10-13  
+**Version:** 1.4.0 - `ApplyTheme` on both views, `TreeColumnStyle::FromTheme`: the trees follow the theme  
+**Last Modified:** 2026-11-10  
 **Files:** 
 - Header: `include/UltraCanvasTreeView.h` (columns variant: `include/UltraCanvasColumnsTreeView.h`)
 - Implementation: `core/UltraCanvasTreeView.cpp`, `core/UltraCanvasColumnsTreeView.cpp`
@@ -82839,6 +83137,7 @@ if (int need = tree->GetRequiredWidth(); need > 0)
 ```cpp
 void SetBackgroundColor(const Color& color);
 void SetSelectionColor(const Color& color);
+void SetSelectionTextColor(const Color& color);
 void SetHoverColor(const Color& color);
 void SetFocusRingColor(const Color& color);
 void SetLoadingBarColor(const Color& color);
@@ -82852,6 +83151,12 @@ void SetCheckboxColors(const Color& background, const Color& border, const Color
 Sets various color properties for the tree view. `SetBackgroundColor` is
 inherited from `UltraCanvasUIElement`.
 
+`SetSelectionTextColor` is the text of a selected row (every cell of it in
+Columns mode); `Colors::Transparent`, the default, keeps the row's own text
+colour, and a node or cell coloured by hand keeps its colour either way. The
+theme sets the colour that reads on the accent (`onAccent`), so a light
+accent on a dark window does not get white text.
+
 `SetExpandButtonColor` controls the background fill of the `+`/`-` node icon
 (default `#E0E0E0`). `SetExpandButtonColors` sets the fill, the 1 px border
 (default gray) and the `+`/`-` glyph (default black) together - what a dark
@@ -82862,6 +83167,34 @@ theme needs, where a black glyph on a light box stands out of the tree.
 colour of both the tick and the Mixed square.
 `SetLoadingBarColor` sets the bar a loading row slides along its foot (default
 the accent blue `Color(37, 99, 235)`; see [Rows still loading](#rows-still-loading)).
+
+### Following the theme
+
+Under the theme policy a new tree follows the framework theme
+(`UltraCanvasTheme.md`) by itself: `ApplyTheme` puts the roles onto the
+colours above - the well behind the rows with the control border round it,
+ink for the labels at the body size, the accent for the selection, the hover
+fill, the control border for the lines, the raised surface for the `+`/`-`
+box with ink in it, muted ink for a chevron, the well and the accent for the
+check flags, the accent for a drop target and the loading bar, the floating
+buttons in muted ink with the panel for their arrow, the scrollbar from
+`ScrollbarStyle::FromTheme`. The tree has no style struct, so a colour set
+by hand does not stop the following (the next theme change puts the theme's
+back): an application that colours the tree itself calls
+`SetFollowTheme(false)` first. `UltraCanvasColumnsTreeView` adds
+`TreeColumnStyle::FromTheme` - hairline separators, the panel for the header
+band with ink; a section header keeps its black bar unless the theme names
+`columns-tree.group-header` and `columns-tree.on-group-header` - and a
+`SetColumnStyle` by hand does stop its following.
+
+```cpp
+auto tree = std::make_shared<UltraCanvasTreeView>("tree", 0, 0, 240, 320);
+tree->SetFollowTheme(false);                                  // styled by the application
+tree->SetSelectionColor(Color(242, 165, 58));
+auto columns = std::make_shared<UltraCanvasColumnsTreeView>("columns", 0, 0, 400, 320);
+columns->SetColumnStyle(TreeColumnStyle::FromTheme(UltraCanvasTheme::Current(), columns->GetColumnStyle()));
+columns->SetFollowTheme(true);                                // the roles over the hand-set columns, on every change
+```
 
 ### Event Callbacks
 
@@ -90776,8 +91109,13 @@ given). UltraAI's `RegisterUltraAITextRecognition`
 (`UltraAITextRecognition.h`, in `UltraAI_UI`), installed after it, puts an
 UltraAI vision provider that reads text in front - local first, a cloud one
 only when chosen - with Tesseract as the fallback
-(`GetImageTextRecognizer` hands it the recognizer before). An application with a speech-to-text engine - UltraAI's
-`ISpeechToText`, a local one - installs it with `SetSpeechTranscriber`.
+(`GetImageTextRecognizer` hands it the recognizer before). Speech to text
+is UltraAI's `RegisterUltraAISpeechTranscription` (`UltraAISpeechTranscription.h`,
+in `UltraAI_UI`): a speech-to-text provider on UltraAI's default route
+transcribes sound files and videos, a video's sound track taken out with
+VideoFX first. An application with an engine of its own installs it with
+`SetSpeechTranscriber` (`GetSpeechTranscriber` hands it to the next one
+installed, as its fallback).
 `CanExtractText(path)` says whether this build can read a file, and
 `WhyNoTextExtraction(path)` says why not in a sentence for the user ("Speech
 to text is not available ..."). Recognition and transcription take seconds, so
@@ -96103,6 +96441,32 @@ default route uses it only once chosen - `ULTRAAI_DEFAULT_VISIONANALYZER=anthrop
 settings - with its key in UltraVault under `ai.anthropic.api_key` (or in the
 config). Pictures over 3.75 MB of PNG are halved until they fit.
 
+### Speech to text for UltraCanvas applications
+
+`UltraAI::RegisterUltraAISpeechTranscription()`
+(`ui/include/UltraAISpeechTranscription.h`, in `UltraAI_UI`) makes UltraAI
+`UltraCanvasFileLoader`'s speech transcriber: the words spoken in a sound file
+or a video come from the first speech-to-text provider on the default route
+(the one chosen for `"speechtotext"`, then the ones on this computer, a cloud
+one only when chosen or allowed, never `mock`). A sound file of a type the
+provider takes, within its size limit, goes as it is; anything else - every
+video, another type, a file over the limit - has its sound track taken out
+first with VideoFX as a mono 16 kHz MP3 at 64 kbit/s (about 50 minutes in
+25 MB). Without a provider the transcriber installed before it, if any,
+transcribes. `FindSpeechProvider` and `LastSpeechTranscriptionProvider` say
+which. UltraClipboard's *Extract text* uses it for copied recordings and
+videos.
+
+The provider that transcribes today is `openai` (`CreateOpenAISpeechToText`,
+`adapters/openai`): the audio API (`/v1/audio/transcriptions`, multipart),
+`gpt-4o-transcribe` by default, `whisper-1` for timestamps and translation,
+25 MB per file. It is a cloud provider, used once chosen -
+`ULTRAAI_DEFAULT_SPEECHTOTEXT=openai` or `SetDefaultProvider("speechtotext",
+"openai")` - with its key in UltraVault under `ai.openai.api_key`. A custom
+`baseUrl` points it at a self-hosted OpenAI-compatible whisper server
+(speaches, faster-whisper-server, LocalAI) instead: keyless, `whisper-1` by
+default, nothing leaves the network.
+
 ---
 
 ## Adapters
@@ -96111,7 +96475,7 @@ config). Pictures over 3.75 MB of PNG are halved until they fit.
 |---|---|---|---|
 | `mock` | all ten | in-process | `ULTRAAI_ADAPTER_MOCK` (ON) |
 | `anthropic` | `ITextLLM`, `ITextBatch`, `IVisionAnalyzer` (OCR) | cloud | `ULTRAAI_ADAPTER_ANTHROPIC` (ON) |
-| `openai` | `ITextLLM`, `IEmbeddings`, `ITextBatch` (hosted API) | cloud, or any OpenAI-compatible server via `baseUrl` | `ULTRAAI_ADAPTER_OPENAI` (ON) |
+| `openai` | `ITextLLM`, `IEmbeddings`, `ITextBatch` (hosted API), `ISpeechToText` (audio API) | cloud, or any OpenAI-compatible server via `baseUrl` | `ULTRAAI_ADAPTER_OPENAI` (ON) |
 | `minimax` | `IVideoGen`, `IImageGen`, `ITextToSpeech` | cloud (MiniMax / Hailuo) | `ULTRAAI_ADAPTER_MINIMAX` (ON) |
 | `qwen` | `ITextLLM`, `IEmbeddings` | local — Ollama, vLLM, llama.cpp server, LM Studio | `ULTRAAI_ADAPTER_QWEN` (ON) |
 | `comfyui` | `IImageGen`, `IVideoGen` | local — a ComfyUI server the user runs | `ULTRAAI_ADAPTER_COMFYUI` (ON) |
@@ -96175,7 +96539,7 @@ UltraAI/
 │   └── UltraAIBatch.h             # batches: native (anthropic, openai) or one at a time
 ├── src/                           # Capability factories (registry)
 ├── runtime/                       # The local runtime: engine gallery, model catalogue, installs, supervision
-├── ui/                            # UltraAI_UI: the "Get a local model" dialog every application shows, and UltraAI as FileLoader's text recognizer (in-tree, on the UltraCanvas core)
+├── ui/                            # UltraAI_UI: the "Get a local model" dialog every application shows, and UltraAI as FileLoader's text recognizer and speech transcriber (in-tree, on the UltraCanvas core)
 ├── adapters/
 │   ├── _shared/                   # Credentials, error mapping, retry, transport seam (HTTP/SSE/byte stream/WebSocket), base64, multipart, job polling, cassettes
 │   ├── mock/                      # In-process mocks for every capability
@@ -105616,8 +105980,11 @@ status bar says which provider did. Copied files are read by their
 type: a word processor document (ODT, DOCX) or a deck (PPTX), a PDF (its
 text; a scanned PDF by text recognition), a spreadsheet (ODS, XLSX, XLS:
 every sheet, tab-separated), a text or code file. A recording or a video is
-read when a speech-to-text engine is installed; without one *Extract text*
-says that speech to text is not available. The reading runs in the background
+transcribed by an UltraAI speech-to-text provider - OpenAI's, chosen with
+`ULTRAAI_DEFAULT_SPEECHTOTEXT=openai` and its key in UltraVault under
+`ai.openai.api_key`, or a whisper server of your own; a video's sound is
+taken out first. Without one *Extract text* says that speech to text is not
+available. The reading runs in the background
 (*Reading the text…* in the status bar); the text arrives as a new text entry
 at the top, already on the clipboard. From several files you get one text,
 each file's under its name. Built on `UltraCanvasFileLoader::ExtractText`
@@ -105748,7 +106115,8 @@ once. While it runs this way, closing the window only hides it; *Quit* at the
 foot of the window, or Ctrl+Q, ends the program.
 
 UltraDesktop starts it so when *Start with the desktop* names it - the
-settings button's right-click menu, or UOS-Settings > Desktop. One copy runs
+settings button's right-click menu, or UOS-Settings > Desktop - which it
+does by default. One copy runs
 per user (UltraCanvasSingleInstance): a second start brings the running one
 forward, and a second background start changes nothing.
 
@@ -107432,13 +107800,18 @@ shows first - each ticked one that is not running yet is started:
 | ChatCube | `--minimized` | messages arrive; its window is on the taskbar |
 | UltraMail | `--minimized` | new mail is fetched and counted on the mail icon |
 | UltraClipboard | `--background` | no window; opens at once from the clipboard panel |
-| UltraNotifications | `--background` | no window; counts the unread on the bell, opens at once |
+| UltraNotifications (ticked by default) | `--background` | no window; counts the unread on the bell, opens at once |
 | Sticker board | - | the desktop's own board: its window and file thumbnails are made, not shown, so the first click shows it at once |
 
 A minimized program that is running already is left alone, since a second
 start of these single-copy programs would only bring their window forward; a
 second `--background` start reaches the running copy, which takes it as
 nothing to do. Ticking one in the menu starts it at once as well.
+
+UltraNotifications is ticked from the start, so the bell counts from the
+first sign-in; the others are off until ticked. A settings file from before
+that default gets UltraNotifications added once (`startupDefaults` in the
+file records it), and unticking it afterwards holds.
 
 ## How the mail count gets there
 

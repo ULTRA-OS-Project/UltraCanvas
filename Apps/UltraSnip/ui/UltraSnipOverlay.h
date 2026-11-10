@@ -37,7 +37,9 @@ class UltraSnipSelectionElement : public UltraCanvas::UltraCanvasUIElement {
 public:
     explicit UltraSnipSelectionElement(const std::string& identifier);
 
-    void SetMode(SnipMode mode) { mode_ = mode; RequestRedraw(); }
+    // Changed while open (the bar's shape choice): switched to Window, the
+    // window under the pointer is lit at once
+    void SetMode(SnipMode mode);
     void SetWindows(std::vector<OverlayWindow> windows) { windows_ = std::move(windows); }
     // Logical to physical pixels, for the size label
     void SetScale(float scale) { scale_ = scale; }
@@ -51,6 +53,10 @@ public:
 
     // Enter: the window under the pointer (Window mode) or the whole screen
     void SelectCurrent();
+    // Where the pointer is, in the element's coordinates, before it has
+    // moved: the overlay opens under a resting pointer, and the window under
+    // it is lit at once rather than at the first movement
+    void SetPointer(const UltraCanvas::Point2Di& point);
 
     void Render(UltraCanvas::IRenderContext* ctx, const UltraCanvas::Rect2Df& dirtyRect) override;
     bool OnEvent(const UltraCanvas::UCEvent& event) override;

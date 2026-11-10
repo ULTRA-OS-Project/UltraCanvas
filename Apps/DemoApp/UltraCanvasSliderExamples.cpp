@@ -16,7 +16,7 @@
 
 namespace UltraCanvas {
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateSliderExamples() {
-        auto container = DemoKit::CreatePage("SliderExamples", "Simple Slider Examples", "");
+        auto container = DemoKit::CreatePage("SliderExamples", Tr("Simple Slider Examples"), "");
 
         // A live readout on a coloured background, as wide as its text.
         auto addReadout = [](const std::shared_ptr<UltraCanvasContainer>& row, const std::string& id,
@@ -32,7 +32,7 @@ namespace UltraCanvas {
         auto basicCards = DemoKit::AddRow(container, "SliderBasicCards");
 
         // Horizontal Slider
-        auto hCard = DemoKit::AddCard(basicCards, "HSliderLabel", "Horizontal Slider (0-100)");
+        auto hCard = DemoKit::AddCard(basicCards, "HSliderLabel", Tr("Horizontal Slider (0-100)"));
         auto hRow = DemoKit::AddRow(hCard, "HSliderRow", 20);
         auto hSlider = CreateSlider("HorizontalSlider", 0, 0, 300, 20);
         hSlider->SetOrientation(SliderOrientation::Horizontal);
@@ -55,7 +55,7 @@ namespace UltraCanvas {
         };
 
         // Vertical Slider
-        auto vCard = DemoKit::AddCard(basicCards, "VSliderLabel", "Vertical Slider");
+        auto vCard = DemoKit::AddCard(basicCards, "VSliderLabel", Tr("Vertical Slider"));
         auto vSlider = CreateSlider("VerticalSlider", 0, 0, 20, 200);
         vSlider->SetOrientation(SliderOrientation::Vertical);
         vSlider->SetRange(0.0f, 10.0f);
@@ -64,7 +64,7 @@ namespace UltraCanvas {
         DemoKit::AddFixed(vCard, vSlider);
 
         // Vertical dual-handle (range) slider, beside the simple vertical slider.
-        auto volumeCard = DemoKit::AddCard(basicCards, "VolumeLabel", "Vertical Volume Range (0-100)");
+        auto volumeCard = DemoKit::AddCard(basicCards, "VolumeLabel", Tr("Vertical Volume Range (0-100)"));
         auto volumeRow = DemoKit::AddRow(volumeCard, "VolumeRow", 12);
         volumeRow->layout.SetFlexAlignItems(CSSLayout::AlignItems::Start);
         auto volumeRange = CreateRangeSlider("volumeRange", 0, 0, 40, 200,
@@ -81,20 +81,18 @@ namespace UltraCanvas {
         volumeStyle.handleSize = 20.0f;
 
         DemoKit::AddFixed(volumeRow, volumeRange);
-        auto volumeDisplay = addReadout(volumeRow, "VolumeDisplay", "Volume Range: 30 - 80",
+        auto volumeDisplay = addReadout(volumeRow, "VolumeDisplay", TrF("Volume Range: {0} - {1}", 30, 80),
                                         Color(220, 255, 220));
 
         volumeRange->onRangeChanged = [volumeDisplay](float lower, float upper) {
-            std::ostringstream oss;
-            oss << "Volume Range: " << static_cast<int>(lower) << " - " << static_cast<int>(upper);
-            volumeDisplay->SetText(oss.str());
+            volumeDisplay->SetText(TrF("Volume Range: {0} - {1}", static_cast<int>(lower), static_cast<int>(upper)));
         };
 
         // ===== HORIZONTAL COLOUR PALETTE SLIDER =====
         // A hue palette painted inside the bar (colour-picker style) with a small
         // handle that fits within the bar. The field on the right previews the
         // selected colour and shows its RGB value.
-        auto paletteCard = DemoKit::AddCard(basicCards, "PaletteLabel", "Colour Palette Slider (Hue)");
+        auto paletteCard = DemoKit::AddCard(basicCards, "PaletteLabel", Tr("Colour Palette Slider (Hue)"));
         auto paletteRow = DemoKit::AddRow(paletteCard, "PaletteRow", 20);
         auto paletteSlider = CreateSlider("PaletteSlider", 0, 0, 300, 22);
         paletteSlider->SetOrientation(SliderOrientation::Horizontal);
@@ -130,10 +128,8 @@ namespace UltraCanvas {
             // Choose readable text colour based on perceived luminance.
             float luma = 0.299f * c.r + 0.587f * c.g + 0.114f * c.b;
             paletteSwatch->SetTextColor(luma > 140.0f ? Colors::Black : Colors::White);
-            std::ostringstream oss;
-            oss << "RGB " << static_cast<int>(c.r) << ", "
-                << static_cast<int>(c.g) << ", " << static_cast<int>(c.b);
-            paletteSwatch->SetText(oss.str());
+            paletteSwatch->SetText(TrF("RGB {0}, {1}, {2}", static_cast<int>(c.r),
+                                       static_cast<int>(c.g), static_cast<int>(c.b)));
         };
         updateSwatch(0.0f);
         paletteSlider->onValueChanged = [updateSwatch](float value) {
@@ -148,7 +144,7 @@ namespace UltraCanvas {
         const float rangeCardWidth = sliderWidth + 2 * DemoKit::kCardPadding + 2;
 
         // ===== TITLE =====
-        auto rangeTitle = DemoKit::AddHeading(rangeSlidersContainer, "Title", "Range Slider Demonstrations");
+        auto rangeTitle = DemoKit::AddHeading(rangeSlidersContainer, "Title", Tr("Range Slider Demonstrations"));
         rangeTitle->SetFontSize(18);
 
         auto rangeCards = DemoKit::AddRow(rangeSlidersContainer, "RangeSliderCards");
@@ -161,7 +157,7 @@ namespace UltraCanvas {
         };
 
         // ===== EXAMPLE 1: PRICE RANGE SLIDER =====
-        auto priceRow = addRangeCard("PriceLabel", "Price Range Selector ($0 - $1000)");
+        auto priceRow = addRangeCard("PriceLabel", Tr("Price Range Selector ($0 - $1000)"));
 
         auto priceRange = CreateRangeSlider("priceRange", 0, 0, sliderWidth, 40,
                                             0.0f, 1000.0f, 200.0f, 800.0f);
@@ -171,24 +167,20 @@ namespace UltraCanvas {
 
         DemoKit::AddFixed(priceRow, priceRange);
         // Price range display labels
-        auto priceLowerLabel = addReadout(priceRow, "PriceLower", "Min: $200", Color(220, 240, 255));
+        auto priceLowerLabel = addReadout(priceRow, "PriceLower", TrF("Min: ${0}", 200), Color(220, 240, 255));
 
-        auto priceUpperLabel = addReadout(priceRow, "PriceUpper", "Max: $800", Color(220, 240, 255));
+        auto priceUpperLabel = addReadout(priceRow, "PriceUpper", TrF("Max: ${0}", 800), Color(220, 240, 255));
 
         priceRange->onLowerValueChanged = [priceLowerLabel](float value) {
-            std::ostringstream oss;
-            oss << "Min: $" << static_cast<int>(value);
-            priceLowerLabel->SetText(oss.str());
+            priceLowerLabel->SetText(TrF("Min: ${0}", static_cast<int>(value)));
         };
 
         priceRange->onUpperValueChanged = [priceUpperLabel](float value) {
-            std::ostringstream oss;
-            oss << "Max: $" << static_cast<int>(value);
-            priceUpperLabel->SetText(oss.str());
+            priceUpperLabel->SetText(TrF("Max: ${0}", static_cast<int>(value)));
         };
 
         // ===== EXAMPLE 2: AGE RANGE SELECTOR =====
-        auto ageRow = addRangeCard("AgeLabel", "Age Range Filter (18 - 100 years)");
+        auto ageRow = addRangeCard("AgeLabel", Tr("Age Range Filter (18 - 100 years)"));
 
         auto ageRange = CreateRangeSlider("ageRange", 0, 0, sliderWidth, 40,
                                           18.0f, 100.0f, 25.0f, 65.0f);
@@ -198,16 +190,14 @@ namespace UltraCanvas {
         ageRange->SetHandleCollisionMargin(1.0f);
 
         DemoKit::AddFixed(ageRow, ageRange);
-        auto ageDisplay = addReadout(ageRow, "AgeDisplay", "Age Range: 25 - 65 years", Color(255, 240, 220));
+        auto ageDisplay = addReadout(ageRow, "AgeDisplay", TrF("Age Range: {0} - {1} years", 25, 65), Color(255, 240, 220));
 
         ageRange->onRangeChanged = [ageDisplay](float lower, float upper) {
-            std::ostringstream oss;
-            oss << "Age Range: " << static_cast<int>(lower) << " - " << static_cast<int>(upper) << " years";
-            ageDisplay->SetText(oss.str());
+            ageDisplay->SetText(TrF("Age Range: {0} - {1} years", static_cast<int>(lower), static_cast<int>(upper)));
         };
 
         // ===== EXAMPLE 3: PERCENTAGE RANGE (0-100%) =====
-        auto percentRow = addRangeCard("PercentLabel", "Percentage Range (0% - 100%)");
+        auto percentRow = addRangeCard("PercentLabel", Tr("Percentage Range (0% - 100%)"));
 
         auto percentRange = CreateRangeSlider("percentRange", 0, 0, sliderWidth, 40,
                                               0.0f, 100.0f, 30.0f, 70.0f);
@@ -216,16 +206,14 @@ namespace UltraCanvas {
         percentRange->SetHandleShape(SliderHandleShape::Square);
 
         DemoKit::AddFixed(percentRow, percentRange);
-        auto percentDisplay = addReadout(percentRow, "PercentDisplay", "Range: 30% - 70%", Color(240, 255, 220));
+        auto percentDisplay = addReadout(percentRow, "PercentDisplay", TrF("Range: {0}% - {1}%", 30, 70), Color(240, 255, 220));
 
         percentRange->onRangeChanged = [percentDisplay](float lower, float upper) {
-            std::ostringstream oss;
-            oss << "Range: " << static_cast<int>(lower) << "% - " << static_cast<int>(upper) << "%";
-            percentDisplay->SetText(oss.str());
+            percentDisplay->SetText(TrF("Range: {0}% - {1}%", static_cast<int>(lower), static_cast<int>(upper)));
         };
 
         // ===== EXAMPLE 4: TEMPERATURE RANGE (-50°C to +50°C) =====
-        auto tempRow = addRangeCard("TempLabel", "Temperature Range (-50°C to +50°C)");
+        auto tempRow = addRangeCard("TempLabel", Tr("Temperature Range (-50°C to +50°C)"));
 
         auto tempRange = CreateRangeSlider("tempRange", 0, 0, sliderWidth, 40,
                                            -50.0f, 50.0f, 10.0f, 30.0f);
@@ -239,16 +227,17 @@ namespace UltraCanvas {
         tempStyle.activeTrackColor = Color(255, 100, 50);
 
         DemoKit::AddFixed(tempRow, tempRange);
-        auto tempDisplay = addReadout(tempRow, "TempDisplay", "Temp: 10.0°C - 30.0°C", Color(255, 220, 220));
+        auto tempDisplay = addReadout(tempRow, "TempDisplay", TrF("Temp: {0}°C - {1}°C", "10.0", "30.0"), Color(255, 220, 220));
 
         tempRange->onRangeChanged = [tempDisplay](float lower, float upper) {
-            std::ostringstream oss;
-            oss << "Temp: " << std::fixed << std::setprecision(1) << lower << "°C - " << upper << "°C";
-            tempDisplay->SetText(oss.str());
+            std::ostringstream lowerText, upperText;
+            lowerText << std::fixed << std::setprecision(1) << lower;
+            upperText << std::fixed << std::setprecision(1) << upper;
+            tempDisplay->SetText(TrF("Temp: {0}°C - {1}°C", lowerText.str(), upperText.str()));
         };
 
         // ===== EXAMPLE 5: TIME RANGE (24-hour format) =====
-        auto timeRow = addRangeCard("TimeLabel", "Time Range Selector (0:00 - 24:00)");
+        auto timeRow = addRangeCard("TimeLabel", Tr("Time Range Selector (0:00 - 24:00)"));
 
         auto timeRange = CreateRangeSlider("timeRange", 0, 0, sliderWidth, 20,
                                            0.0f, 24.0f, 9.0f, 17.0f);
@@ -257,7 +246,7 @@ namespace UltraCanvas {
         timeRange->SetHandleShape(SliderHandleShape::Triangle);
 
         DemoKit::AddFixed(timeRow, timeRange);
-        auto timeDisplay = addReadout(timeRow, "TimeDisplay", "Work Hours: 09:00 - 17:00", Color(220, 220, 255));
+        auto timeDisplay = addReadout(timeRow, "TimeDisplay", TrF("Work Hours: {0} - {1}", "09:00", "17:00"), Color(220, 220, 255));
 
         timeRange->onRangeChanged = [timeDisplay](float lower, float upper) {
             auto formatTime = [](float hours) -> std::string {
@@ -268,13 +257,11 @@ namespace UltraCanvas {
                 return oss.str();
             };
 
-            std::ostringstream oss;
-            oss << "Work Hours: " << formatTime(lower) << " - " << formatTime(upper);
-            timeDisplay->SetText(oss.str());
+            timeDisplay->SetText(TrF("Work Hours: {0} - {1}", formatTime(lower), formatTime(upper)));
         };
 
         // ===== EXAMPLE 6: DATE RANGE (Days 1-31) =====
-        auto dateRow = addRangeCard("DateLabel", "Date Range Selector (Days 1-31)");
+        auto dateRow = addRangeCard("DateLabel", Tr("Date Range Selector (Days 1-31)"));
 
         auto dateRange = CreateRangeSlider("dateRange", 0, 0, sliderWidth, 40,
                                            1.0f, 31.0f, 5.0f, 25.0f);
@@ -283,16 +270,14 @@ namespace UltraCanvas {
         dateRange->SetStep(1.0f);
 
         DemoKit::AddFixed(dateRow, dateRange);
-        auto dateDisplay = addReadout(dateRow, "DateDisplay", "Selected: Day 5 - Day 25", Color(255, 240, 255));
+        auto dateDisplay = addReadout(dateRow, "DateDisplay", TrF("Selected: Day {0} - Day {1}", 5, 25), Color(255, 240, 255));
 
         dateRange->onRangeChanged = [dateDisplay](float lower, float upper) {
-            std::ostringstream oss;
-            oss << "Selected: Day " << static_cast<int>(lower) << " - Day " << static_cast<int>(upper);
-            dateDisplay->SetText(oss.str());
+            dateDisplay->SetText(TrF("Selected: Day {0} - Day {1}", static_cast<int>(lower), static_cast<int>(upper)));
         };
 
         // ===== EXAMPLE 7: ROUNDED STYLE RANGE SLIDER =====
-        auto roundedRow = addRangeCard("RoundedLabel", "Diamond Style handle");
+        auto roundedRow = addRangeCard("RoundedLabel", Tr("Diamond Style handle"));
 
         auto roundedRange = CreateRangeSlider("roundedRange", 0, 0, sliderWidth, 40,
                                               0.0f, 100.0f, 25.0f, 75.0f);
@@ -312,20 +297,18 @@ namespace UltraCanvas {
         roundedRange->SetStyle(roundedStyle);
 
         DemoKit::AddFixed(roundedRow, roundedRange);
-        auto roundedDisplay = addReadout(roundedRow, "RoundedDisplay", "Range: 25 - 75", Color(240, 240, 255));
+        auto roundedDisplay = addReadout(roundedRow, "RoundedDisplay", TrF("Range: {0} - {1}", 25, 75), Color(240, 240, 255));
 
         roundedRange->onRangeChanged = [roundedDisplay](float lower, float upper) {
-            std::ostringstream oss;
-            oss << "Range: " << static_cast<int>(lower) << " - " << static_cast<int>(upper);
-            roundedDisplay->SetText(oss.str());
+            roundedDisplay->SetText(TrF("Range: {0} - {1}", static_cast<int>(lower), static_cast<int>(upper)));
         };
 
         // ===== INSTRUCTIONS =====
-        DemoKit::AddNotes(container, "Instructions", "Instructions", {
-                "Drag handles to adjust range",
-                "Click Tab to switch between handles (when focused)",
-                "Use arrow keys to adjust active handle",
-                "Handles cannot overlap (enforced by collision margin)"});
+        DemoKit::AddNotes(container, "Instructions", Tr("Instructions"), {
+                Tr("Drag handles to adjust range"),
+                Tr("Click Tab to switch between handles (when focused)"),
+                Tr("Use arrow keys to adjust active handle"),
+                Tr("Handles cannot overlap (enforced by collision margin)")});
 
         return container;
     }

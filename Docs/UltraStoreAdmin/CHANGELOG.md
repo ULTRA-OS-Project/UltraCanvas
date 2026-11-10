@@ -1,3 +1,9 @@
+#### 2026-11-10 *0.1.6*
+- **The partner landing pages** (`go/<CODE>/`) have the look of the
+  payment service's pages: the same stylesheet, the ULTRA OS mark at the
+  top, a dark look where the browser asks for one. Publish copies the mark
+  from the framework's media folder into the publish folder's `media/`.
+
 #### 2026-11-01 *0.1.5*
 - **A code's QR link opened nothing.** The QR code and `code link` give
   `<catalog base>/go/<CODE>`, but `publish` wrote the landing page as

@@ -4,7 +4,7 @@
 //                  TextFormatAtCaret); HasKeyboardFocus; the Font list made again when the
 //                  fonts change (GetFontSetGeneration)
 // Version: 1.0.0
-// Last Modified: 2026-11-04
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasTextFormatBar.h"
@@ -79,6 +79,7 @@ bool UltraCanvasTextFormatBar::HasKeyboardFocus() const {
 UltraCanvasTextFormatBar::UltraCanvasTextFormatBar(const std::string& identifier, float height)
     : UltraCanvasContainer(identifier, 0, 0, 0, height) {
     Build(height);
+    ApplyThemeIfFollowing();
 }
 
 UltraCanvasTextFormatBar::~UltraCanvasTextFormatBar() {

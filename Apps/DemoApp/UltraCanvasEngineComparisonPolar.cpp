@@ -93,7 +93,7 @@ std::shared_ptr<UltraCanvasButton> MakeButton(const std::string& id, const std::
 // `apply` receives the theme name and whether the palette should win.
 std::shared_ptr<UltraCanvasDropdown> MakeThemeDropdown(
         const std::string& id, std::function<void(const std::string&, bool)> apply) {
-    std::vector<std::string> items = {"Legacy colours"};
+    std::vector<std::string> items = {Tr("Legacy colours")};
     for (const std::string& name : ChartThemes::Names()) items.push_back(name);
     auto dropdown = MakeDropdown(id, 130, items);
     dropdown->onSelectionChanged = [apply, items](int index, const DropdownItem&) {
@@ -130,30 +130,30 @@ struct RadarSpec {
 
 std::vector<RadarSpec> RadarExamples() {
     std::vector<RadarSpec> specs;
-    specs.push_back({"Performance Metrics: Current vs Target",
-                     {{"Speed", 0, 100}, {"Quality", 0, 100}, {"Efficiency", 0, 100},
-                      {"Innovation", 0, 100}, {"Collaboration", 0, 100}, {"Leadership", 0, 100}},
-                     {{"Current", {85, 92, 78, 65, 88, 72}, Color(70, 130, 180, 100), Color(70, 130, 180, 255), 2.5f},
-                      {"Target", {95, 95, 90, 85, 90, 85}, Color(255, 140, 0, 80), Color(255, 140, 0, 255), 2.0f}},
+    specs.push_back({Tr("Performance Metrics: Current vs Target"),
+                     {{Tr("Speed"), 0, 100}, {Tr("Quality"), 0, 100}, {Tr("Efficiency"), 0, 100},
+                      {Tr("Innovation"), 0, 100}, {Tr("Collaboration"), 0, 100}, {Tr("Leadership"), 0, 100}},
+                     {{Tr("Current"), {85, 92, 78, 65, 88, 72}, Color(70, 130, 180, 100), Color(70, 130, 180, 255), 2.5f},
+                      {Tr("Target"), {95, 95, 90, 85, 90, 85}, Color(255, 140, 0, 80), Color(255, 140, 0, 255), 2.0f}},
                      false});
-    specs.push_back({"Skills Assessment (0-10 scale)",
-                     {{"Programming", 0, 10}, {"Design", 0, 10}, {"Testing", 0, 10},
-                      {"Documentation", 0, 10}, {"Communication", 0, 10}},
-                     {{"Current Skills", {8.5, 6.5, 7.8, 5.5, 8.2}, Color(50, 205, 50, 120), Color(34, 139, 34, 255), 3.0f}},
+    specs.push_back({Tr("Skills Assessment (0-10 scale)"),
+                     {{Tr("Programming"), 0, 10}, {Tr("Design"), 0, 10}, {Tr("Testing"), 0, 10},
+                      {Tr("Documentation"), 0, 10}, {Tr("Communication"), 0, 10}},
+                     {{Tr("Current Skills"), {8.5, 6.5, 7.8, 5.5, 8.2}, Color(50, 205, 50, 120), Color(34, 139, 34, 255), 3.0f}},
                      false});
-    specs.push_back({"Product Comparison (8 axes, 3 series)",
-                     {{"Performance", 0, 100}, {"Features", 0, 100}, {"Usability", 0, 100},
-                      {"Price", 0, 100}, {"Support", 0, 100}, {"Reliability", 0, 100},
-                      {"Security", 0, 100}, {"Scalability", 0, 100}},
-                     {{"Product A", {85, 90, 78, 60, 85, 92, 88, 82}, Color(220, 20, 60, 80), Color(220, 20, 60, 255), 2.5f},
-                      {"Product B", {75, 85, 92, 80, 70, 88, 85, 90}, Color(30, 144, 255, 80), Color(30, 144, 255, 255), 2.5f},
-                      {"Product C", {90, 75, 85, 70, 95, 80, 90, 85}, Color(50, 205, 50, 80), Color(50, 205, 50, 255), 2.5f}},
+    specs.push_back({Tr("Product Comparison (8 axes, 3 series)"),
+                     {{Tr("Performance"), 0, 100}, {Tr("Features"), 0, 100}, {Tr("Usability"), 0, 100},
+                      {Tr("Price"), 0, 100}, {Tr("Support"), 0, 100}, {Tr("Reliability"), 0, 100},
+                      {Tr("Security"), 0, 100}, {Tr("Scalability"), 0, 100}},
+                     {{Tr("Product A"), {85, 90, 78, 60, 85, 92, 88, 82}, Color(220, 20, 60, 80), Color(220, 20, 60, 255), 2.5f},
+                      {Tr("Product B"), {75, 85, 92, 80, 70, 88, 85, 90}, Color(30, 144, 255, 80), Color(30, 144, 255, 255), 2.5f},
+                      {Tr("Product C"), {90, 75, 85, 70, 95, 80, 90, 85}, Color(50, 205, 50, 80), Color(50, 205, 50, 255), 2.5f}},
                      false});
-    specs.push_back({"Team Comparison (value labels enabled)",
-                     {{"Planning", 0, 100}, {"Execution", 0, 100}, {"Communication", 0, 100},
-                      {"Quality", 0, 100}, {"Velocity", 0, 100}},
-                     {{"Team Alpha", {78, 88, 70, 92, 65}, Color(138, 43, 226, 90), Color(138, 43, 226, 255), 2.5f},
-                      {"Team Beta", {85, 72, 90, 80, 88}, Color(255, 99, 71, 80), Color(255, 99, 71, 255), 2.5f}},
+    specs.push_back({Tr("Team Comparison (value labels enabled)"),
+                     {{Tr("Planning"), 0, 100}, {Tr("Execution"), 0, 100}, {Tr("Communication"), 0, 100},
+                      {Tr("Quality"), 0, 100}, {Tr("Velocity"), 0, 100}},
+                     {{Tr("Team Alpha"), {78, 88, 70, 92, 65}, Color(138, 43, 226, 90), Color(138, 43, 226, 255), 2.5f},
+                      {Tr("Team Beta"), {85, 72, 90, 80, 88}, Color(255, 99, 71, 80), Color(255, 99, 71, 255), 2.5f}},
                      true});
     return specs;
 }
@@ -222,7 +222,7 @@ std::shared_ptr<UltraCanvasUIElement> MakeRadarTab() {
     show(2);
 
     auto strip = MakeControlStrip("CmpRadar");
-    AddStripLabel(*strip, "CmpRadarExampleLabel", "Example:", 56);
+    AddStripLabel(*strip, "CmpRadarExampleLabel", Tr("Example:"), 56);
     std::vector<std::string> names;
     for (const RadarSpec& spec : examples) names.push_back(spec.title);
     auto example = MakeDropdown("CmpRadarExample", 250, names, 2);
@@ -231,7 +231,7 @@ std::shared_ptr<UltraCanvasUIElement> MakeRadarTab() {
     };
     AddToStrip(*strip, example);
 
-    auto grid = MakeCheckbox("CmpRadarGrid", "Grid", true, 64);
+    auto grid = MakeCheckbox("CmpRadarGrid", Tr("Grid"), true, 64);
     grid->onStateChanged = [state](CheckedState, CheckedState now) {
         state->grid = Checked(now);
         state->legacy->SetGridDisplay(state->grid, Color(220, 220, 220, 255), 1.0f);
@@ -239,15 +239,15 @@ std::shared_ptr<UltraCanvasUIElement> MakeRadarTab() {
     };
     AddToStrip(*strip, grid);
 
-    AddStripLabel(*strip, "CmpRadarWebLabel", "Engine web:", 76);
-    auto web = MakeDropdown("CmpRadarWeb", 100, {"Polygon", "Circles"});
+    AddStripLabel(*strip, "CmpRadarWebLabel", Tr("Engine web:"), 76);
+    auto web = MakeDropdown("CmpRadarWeb", 100, {Tr("Polygon"), Tr("Circles")});
     web->onSelectionChanged = [state](int index, const DropdownItem&) {
         state->web = index == 1 ? ChartPolarGridShape::Circle : ChartPolarGridShape::Polygon;
         state->engine->SetPolarGridShape(state->web);
     };
     AddToStrip(*strip, web);
 
-    auto values = MakeCheckbox("CmpRadarValues", "Value labels", false, 110);
+    auto values = MakeCheckbox("CmpRadarValues", Tr("Value labels"), false, 110);
     values->onStateChanged = [state](CheckedState, CheckedState now) {
         state->valueLabels = Checked(now) ? 1 : 0;
         state->legacy->SetValueLabels(Checked(now));
@@ -255,7 +255,7 @@ std::shared_ptr<UltraCanvasUIElement> MakeRadarTab() {
     };
     AddToStrip(*strip, values);
 
-    AddStripLabel(*strip, "CmpRadarThemeLabel", "Theme:", 48);
+    AddStripLabel(*strip, "CmpRadarThemeLabel", Tr("Theme:"), 48);
     AddToStrip(*strip, MakeThemeDropdown("CmpRadarTheme",
         [state](const std::string& theme, bool palette) {
             state->theme = theme;
@@ -264,7 +264,7 @@ std::shared_ptr<UltraCanvasUIElement> MakeRadarTab() {
             state->engine->SetUseThemePalette(palette);
         }));
 
-    auto replay = MakeButton("CmpRadarReplay", "Replay animation", 130);
+    auto replay = MakeButton("CmpRadarReplay", Tr("Replay animation"), 130);
     replay->onClick = [state]() {
         state->legacy->StartAnimation();
         state->engine->StartEngineAnimation(0.9f);
@@ -273,8 +273,8 @@ std::shared_ptr<UltraCanvasUIElement> MakeRadarTab() {
 
     return MakeComparisonTab(
         "CmpRadar",
-        "Radar: the engine port is a cyclic category axis (the spokes) and a value axis under the Polar projection - the rim labels,\n"
-        "radial rule, polygon web and spokes are engine furniture; the chart draws only the series polygons. Hover a vertex for its value.",
+        Tr("Radar: the engine port is a cyclic category axis (the spokes) and a value axis under the Polar projection - the rim labels,\n"
+        "radial rule, polygon web and spokes are engine furniture; the chart draws only the series polygons. Hover a vertex for its value."),
         "UltraCanvasRadarChartElement", legacyHolder, "UltraCanvasEngineRadarChart", engineHolder, strip);
 }
 
@@ -313,16 +313,16 @@ std::vector<RadialSpec> RadialExamples() {
 
     // Six sensors with 24 hourly readings each, from a fixed seed.
     RadialSpec sensors;
-    sensors.title = "Multi-Sensor Readings (6 Sensors x 24 Hours)";
+    sensors.title = Tr("Multi-Sensor Readings (6 Sensors x 24 Hours)");
     std::mt19937 gen(42);
-    struct SensorSpec { const char* name; double mean, stddev; Color color; };
+    struct SensorSpec { std::string name; double mean, stddev; Color color; };
     const SensorSpec sensorSpecs[] = {
-        {"Sensor 01", 467.0, 100.0, Color(139, 0, 0, 255)},
-        {"Sensor 02", 258.0, 80.0, Color(178, 34, 34, 255)},
-        {"Sensor 03", 993.0, 200.0, Color(220, 20, 60, 255)},
-        {"Sensor 04", 50.0, 20.0, Color(255, 105, 180, 255)},
-        {"Sensor 05", 650.0, 150.0, Color(255, 182, 193, 255)},
-        {"Sensor 06", 985.0, 100.0, Color(255, 160, 122, 255)}};
+        {TrF("Sensor {0}", "01"), 467.0, 100.0, Color(139, 0, 0, 255)},
+        {TrF("Sensor {0}", "02"), 258.0, 80.0, Color(178, 34, 34, 255)},
+        {TrF("Sensor {0}", "03"), 993.0, 200.0, Color(220, 20, 60, 255)},
+        {TrF("Sensor {0}", "04"), 50.0, 20.0, Color(255, 105, 180, 255)},
+        {TrF("Sensor {0}", "05"), 650.0, 150.0, Color(255, 182, 193, 255)},
+        {TrF("Sensor {0}", "06"), 985.0, 100.0, Color(255, 160, 122, 255)}};
     for (const SensorSpec& s : sensorSpecs) {
         std::normal_distribution<> dist(s.mean, s.stddev);
         RadialSeriesData series{s.name, s.color, {}};
@@ -331,49 +331,49 @@ std::vector<RadialSpec> RadialExamples() {
         }
         sensors.series.push_back(series);
     }
-    sensors.center = "Sensors";
+    sensors.center = Tr("Sensors");
     sensors.peaks = true;
     specs.push_back(sensors);
 
     RadialSpec ages;
-    ages.title = "Median Age by Country (Radial Lines per Continent)";
+    ages.title = Tr("Median Age by Country (Radial Lines per Continent)");
     ages.series = {
-        {"North America", Color(33, 150, 243, 255),
-         {{"United States", 38.5}, {"Canada", 41.8}, {"Mexico", 29.2}, {"Guatemala", 22.1},
-          {"Costa Rica", 32.6}, {"Cuba", 42.1}, {"Jamaica", 31.4}, {"Panama", 29.8}}},
-        {"South America", Color(255, 193, 7, 255),
-         {{"Brazil", 33.2}, {"Argentina", 31.9}, {"Chile", 35.4}, {"Peru", 28.0},
-          {"Colombia", 31.0}, {"Ecuador", 27.2}, {"Uruguay", 35.0}, {"Bolivia", 25.4}}},
-        {"Europe", Color(3, 169, 244, 255),
-         {{"Germany", 47.8}, {"France", 41.7}, {"United Kingdom", 40.6}, {"Italy", 46.5},
-          {"Spain", 44.9}, {"Poland", 41.9}, {"Netherlands", 42.8}, {"Greece", 45.3},
-          {"Sweden", 41.1}, {"Ireland", 37.8}}},
-        {"Africa", Color(76, 175, 80, 255),
-         {{"Nigeria", 18.1}, {"Ethiopia", 19.5}, {"Egypt", 24.6}, {"South Africa", 27.3},
-          {"Kenya", 20.1}, {"Ghana", 21.4}, {"Morocco", 29.3}, {"Tunisia", 32.7},
-          {"Senegal", 19.4}, {"Uganda", 16.7}}},
-        {"Asia", Color(233, 30, 99, 255),
-         {{"China", 38.4}, {"India", 28.2}, {"Japan", 48.6}, {"Indonesia", 30.2},
-          {"Vietnam", 32.5}, {"Thailand", 39.0}, {"South Korea", 43.7}, {"Turkey", 32.2},
-          {"Israel", 30.4}, {"Singapore", 42.2}}},
-        {"Oceania", Color(156, 39, 176, 255),
-         {{"Australia", 38.7}, {"New Zealand", 38.4}, {"Fiji", 28.9}, {"Samoa", 21.4},
-          {"Palau", 34.5}}}};
+        {Tr("North America"), Color(33, 150, 243, 255),
+         {{Tr("United States"), 38.5}, {Tr("Canada"), 41.8}, {Tr("Mexico"), 29.2}, {Tr("Guatemala"), 22.1},
+          {Tr("Costa Rica"), 32.6}, {Tr("Cuba"), 42.1}, {Tr("Jamaica"), 31.4}, {Tr("Panama"), 29.8}}},
+        {Tr("South America"), Color(255, 193, 7, 255),
+         {{Tr("Brazil"), 33.2}, {Tr("Argentina"), 31.9}, {Tr("Chile"), 35.4}, {Tr("Peru"), 28.0},
+          {Tr("Colombia"), 31.0}, {Tr("Ecuador"), 27.2}, {Tr("Uruguay"), 35.0}, {Tr("Bolivia"), 25.4}}},
+        {Tr("Europe"), Color(3, 169, 244, 255),
+         {{Tr("Germany"), 47.8}, {Tr("France"), 41.7}, {Tr("United Kingdom"), 40.6}, {Tr("Italy"), 46.5},
+          {Tr("Spain"), 44.9}, {Tr("Poland"), 41.9}, {Tr("Netherlands"), 42.8}, {Tr("Greece"), 45.3},
+          {Tr("Sweden"), 41.1}, {Tr("Ireland"), 37.8}}},
+        {Tr("Africa"), Color(76, 175, 80, 255),
+         {{Tr("Nigeria"), 18.1}, {Tr("Ethiopia"), 19.5}, {Tr("Egypt"), 24.6}, {Tr("South Africa"), 27.3},
+          {Tr("Kenya"), 20.1}, {Tr("Ghana"), 21.4}, {Tr("Morocco"), 29.3}, {Tr("Tunisia"), 32.7},
+          {Tr("Senegal"), 19.4}, {Tr("Uganda"), 16.7}}},
+        {Tr("Asia"), Color(233, 30, 99, 255),
+         {{Tr("China"), 38.4}, {Tr("India"), 28.2}, {Tr("Japan"), 48.6}, {Tr("Indonesia"), 30.2},
+          {Tr("Vietnam"), 32.5}, {Tr("Thailand"), 39.0}, {Tr("South Korea"), 43.7}, {Tr("Turkey"), 32.2},
+          {Tr("Israel"), 30.4}, {Tr("Singapore"), 42.2}}},
+        {Tr("Oceania"), Color(156, 39, 176, 255),
+         {{Tr("Australia"), 38.7}, {Tr("New Zealand"), 38.4}, {Tr("Fiji"), 28.9}, {Tr("Samoa"), 21.4},
+          {Tr("Palau"), 34.5}}}};
     ages.lines = true;
     ages.gradient = false;
     ages.inner = 0.18f;
     ages.gap = 6.0f;
-    ages.center = "Median Age";
+    ages.center = Tr("Median Age");
     ages.decimals = 1;
-    ages.unit = " yrs";
+    ages.unit = Tr(" yrs");
     specs.push_back(ages);
 
     RadialSpec rain;
-    rain.title = "Monthly Rainfall (270 Degree Fan, Ring Guides, Square Caps)";
-    rain.series = {{"Rainfall (mm)", Color(0, 122, 204, 255),
-                    {{"Jan", 78}, {"Feb", 64}, {"Mar", 82}, {"Apr", 110}, {"May", 145},
-                     {"Jun", 180}, {"Jul", 210}, {"Aug", 196}, {"Sep", 152}, {"Oct", 118},
-                     {"Nov", 96}, {"Dec", 84}}}};
+    rain.title = Tr("Monthly Rainfall (270 Degree Fan, Ring Guides, Square Caps)");
+    rain.series = {{Tr("Rainfall (mm)"), Color(0, 122, 204, 255),
+                    {{Tr("Jan"), 78}, {Tr("Feb"), 64}, {Tr("Mar"), 82}, {Tr("Apr"), 110}, {Tr("May"), 145},
+                     {Tr("Jun"), 180}, {Tr("Jul"), 210}, {Tr("Aug"), 196}, {Tr("Sep"), 152}, {Tr("Oct"), 118},
+                     {Tr("Nov"), 96}, {Tr("Dec"), 84}}}};
     rain.sweep = 270.0f;
     rain.start = -225.0f;
     rain.cap = RadialBarCapStyle::Square;
@@ -388,10 +388,10 @@ std::vector<RadialSpec> RadialExamples() {
     specs.push_back(rain);
 
     RadialSpec kpi;
-    kpi.title = "KPI Attainment (Arrow Caps, Manual 0-150% Range)";
-    kpi.series = {{"Sales", Color(15, 157, 88, 255), {{"Q1", 92}, {"Q2", 108}, {"Q3", 117}, {"Q4", 131}}},
-                  {"Support", Color(66, 133, 244, 255), {{"Q1", 74}, {"Q2", 88}, {"Q3", 95}, {"Q4", 103}}},
-                  {"Engineering", Color(244, 180, 0, 255), {{"Q1", 99}, {"Q2", 112}, {"Q3", 104}, {"Q4", 121}}}};
+    kpi.title = Tr("KPI Attainment (Arrow Caps, Manual 0-150% Range)");
+    kpi.series = {{Tr("Sales"), Color(15, 157, 88, 255), {{Tr("Q1"), 92}, {Tr("Q2"), 108}, {Tr("Q3"), 117}, {Tr("Q4"), 131}}},
+                  {Tr("Support"), Color(66, 133, 244, 255), {{Tr("Q1"), 74}, {Tr("Q2"), 88}, {Tr("Q3"), 95}, {Tr("Q4"), 103}}},
+                  {Tr("Engineering"), Color(244, 180, 0, 255), {{Tr("Q1"), 99}, {Tr("Q2"), 112}, {Tr("Q3"), 104}, {Tr("Q4"), 121}}}};
     kpi.manual = true;
     kpi.lo = 0.0;
     kpi.hi = 150.0;
@@ -402,7 +402,7 @@ std::vector<RadialSpec> RadialExamples() {
     kpi.inner = 0.28f;
     kpi.ringGuides = true;
     kpi.ringCount = 3;
-    kpi.center = "KPI %";
+    kpi.center = Tr("KPI %");
     kpi.decimals = 0;
     kpi.unit = "%";
     specs.push_back(kpi);
@@ -513,7 +513,7 @@ std::shared_ptr<UltraCanvasUIElement> MakeRadialBarTab() {
     show(0);
 
     auto strip = MakeControlStrip("CmpRadial");
-    AddStripLabel(*strip, "CmpRadialExampleLabel", "Example:", 56);
+    AddStripLabel(*strip, "CmpRadialExampleLabel", Tr("Example:"), 56);
     std::vector<std::string> names;
     for (const RadialSpec& spec : examples) names.push_back(spec.title);
     auto example = MakeDropdown("CmpRadialExample", 280, names);
@@ -522,35 +522,35 @@ std::shared_ptr<UltraCanvasUIElement> MakeRadialBarTab() {
     };
     AddToStrip(*strip, example);
 
-    auto cap = MakeDropdown("CmpRadialCap", 110, {"Round cap", "Butt cap", "Square cap", "Arrow cap"});
+    auto cap = MakeDropdown("CmpRadialCap", 110, {Tr("Round cap"), Tr("Butt cap"), Tr("Square cap"), Tr("Arrow cap")});
     cap->onSelectionChanged = [state, applyCap](int index, const DropdownItem&) {
         state->cap = std::clamp(index, 0, 3);
         applyCap();
     };
     AddToStrip(*strip, cap);
 
-    auto gradient = MakeCheckbox("CmpRadialGradient", "Gradient fade", true, 120);
+    auto gradient = MakeCheckbox("CmpRadialGradient", Tr("Gradient fade"), true, 120);
     gradient->onStateChanged = [state, applyRest](CheckedState, CheckedState now) {
         state->gradient = Checked(now) ? 1 : 0;
         applyRest();
     };
     AddToStrip(*strip, gradient);
 
-    auto scaling = MakeDropdown("CmpRadialScale", 140, {"Global scale", "Per-series scale"});
+    auto scaling = MakeDropdown("CmpRadialScale", 140, {Tr("Global scale"), Tr("Per-series scale")});
     scaling->onSelectionChanged = [state, applyRest](int index, const DropdownItem&) {
         state->normalization = index == 1 ? 1 : 0;
         applyRest();
     };
     AddToStrip(*strip, scaling);
 
-    auto guides = MakeCheckbox("CmpRadialGuides", "Ring guides", false, 110);
+    auto guides = MakeCheckbox("CmpRadialGuides", Tr("Ring guides"), false, 110);
     guides->onStateChanged = [state, applyRest](CheckedState, CheckedState now) {
         state->guides = Checked(now) ? 1 : 0;
         applyRest();
     };
     AddToStrip(*strip, guides);
 
-    AddStripLabel(*strip, "CmpRadialThemeLabel", "Theme:", 48);
+    AddStripLabel(*strip, "CmpRadialThemeLabel", Tr("Theme:"), 48);
     AddToStrip(*strip, MakeThemeDropdown("CmpRadialTheme",
         [state](const std::string& theme, bool palette) {
             state->theme = theme;
@@ -559,14 +559,14 @@ std::shared_ptr<UltraCanvasUIElement> MakeRadialBarTab() {
             state->engine->SetUseThemePalette(palette);
         }));
 
-    auto replay = MakeButton("CmpRadialReplay", "Replay grow-out", 120);
+    auto replay = MakeButton("CmpRadialReplay", Tr("Replay grow-out"), 120);
     replay->onClick = [state]() { state->engine->StartEngineAnimation(0.8f); };
     AddToStrip(*strip, replay);
 
     return MakeComparisonTab(
         "CmpRadial",
-        "Radial bars (rays): under the engine's Polar projection the fan's angle is the domain and the ray length the value - SetPolarAngles\n"
-        "gives the sweep, SetPolarInnerRadius the base ring, the series names are the rim labels and the ring guides the value grid.",
+        Tr("Radial bars (rays): under the engine's Polar projection the fan's angle is the domain and the ray length the value - SetPolarAngles\n"
+        "gives the sweep, SetPolarInnerRadius the base ring, the series names are the rim labels and the ring guides the value grid."),
         "UltraCanvasRadialBarChart", legacyHolder, "UltraCanvasEngineRadialBarChart", engineHolder, strip);
 }
 
@@ -586,21 +586,21 @@ struct PieSpec {
 
 std::vector<PieSpec> PieExamples() {
     const std::vector<std::pair<std::string, double>> market = {
-        {"Product A", 350}, {"Product B", 280}, {"Product C", 210}, {"Product D", 160}, {"Others", 120}};
+        {Tr("Product A"), 350}, {Tr("Product B"), 280}, {Tr("Product C"), 210}, {Tr("Product D"), 160}, {Tr("Others"), 120}};
     const std::vector<std::pair<std::string, double>> budget = {
-        {"Salaries", 4500}, {"Marketing", 2300}, {"R&D", 1800}, {"Operations", 1200},
-        {"Infrastructure", 800}, {"Other", 400}};
+        {Tr("Salaries"), 4500}, {Tr("Marketing"), 2300}, {Tr("R&D"), 1800}, {Tr("Operations"), 1200},
+        {Tr("Infrastructure"), 800}, {Tr("Other"), 400}};
     const std::vector<Color> budgetColors = {Color(255, 159, 64, 255), Color(54, 162, 235, 255),
                                              Color(255, 99, 132, 255), Color(75, 192, 192, 255),
                                              Color(153, 102, 255, 255), Color(199, 199, 199, 255)};
     return {
-        {"Market Share Distribution", market,
+        {Tr("Market Share Distribution"), market,
          {Color(54, 162, 235, 255), Color(255, 99, 132, 255), Color(255, 205, 86, 255),
           Color(75, 192, 192, 255), Color(153, 102, 255, 255)},
          LabelContent::NamePercentage, LabelPosition::Auto, false, 2.0f},
-        {"Annual Budget Allocation", budget, budgetColors,
+        {Tr("Annual Budget Allocation"), budget, budgetColors,
          LabelContent::NameValue, LabelPosition::Outside, false, 2.0f},
-        {"Stylized Pie Chart (radial gradients)", budget, budgetColors,
+        {Tr("Stylized Pie Chart (radial gradients)"), budget, budgetColors,
          LabelContent::NameValue, LabelPosition::Auto, true, 3.0f}};
 }
 
@@ -686,7 +686,7 @@ std::shared_ptr<UltraCanvasUIElement> MakePieTab() {
     auto apply = [state]() {
         state->legacy->SetDonutMode(state->donut);
         state->engine->SetDonutMode(state->donut);
-        state->engine->SetCenterText(state->donut ? "Total" : "");
+        state->engine->SetCenterText(state->donut ? Tr("Total") : std::string());
         if (state->explode) {
             state->legacy->SetSliceExplosion(0, 0.15f);
             state->engine->SetSliceExplosion(0, 0.15f);
@@ -711,7 +711,7 @@ std::shared_ptr<UltraCanvasUIElement> MakePieTab() {
     show(0);
 
     auto strip = MakeControlStrip("CmpPie");
-    AddStripLabel(*strip, "CmpPieExampleLabel", "Example:", 56);
+    AddStripLabel(*strip, "CmpPieExampleLabel", Tr("Example:"), 56);
     std::vector<std::string> names;
     for (const PieSpec& spec : examples) names.push_back(spec.title);
     auto example = MakeDropdown("CmpPieExample", 240, names);
@@ -720,29 +720,29 @@ std::shared_ptr<UltraCanvasUIElement> MakePieTab() {
     };
     AddToStrip(*strip, example);
 
-    auto donut = MakeCheckbox("CmpPieDonut", "Donut", false, 70);
+    auto donut = MakeCheckbox("CmpPieDonut", Tr("Donut"), false, 70);
     donut->onStateChanged = [state, apply](CheckedState, CheckedState now) {
         state->donut = Checked(now);
         apply();
     };
     AddToStrip(*strip, donut);
 
-    auto explode = MakeCheckbox("CmpPieExplode", "Explode first slice", false, 150);
+    auto explode = MakeCheckbox("CmpPieExplode", Tr("Explode first slice"), false, 150);
     explode->onStateChanged = [state, apply](CheckedState, CheckedState now) {
         state->explode = Checked(now);
         apply();
     };
     AddToStrip(*strip, explode);
 
-    AddStripLabel(*strip, "CmpPieLabelsLabel", "Labels:", 50);
-    auto labels = MakeDropdown("CmpPieLabels", 100, {"Auto", "Inside", "Outside", "Hidden"});
+    AddStripLabel(*strip, "CmpPieLabelsLabel", Tr("Labels:"), 50);
+    auto labels = MakeDropdown("CmpPieLabels", 100, {Tr("Auto"), Tr("Inside"), Tr("Outside"), Tr("Hidden")});
     labels->onSelectionChanged = [state, apply](int index, const DropdownItem&) {
         state->position = std::clamp(index, 0, 3);
         apply();
     };
     AddToStrip(*strip, labels);
 
-    AddStripLabel(*strip, "CmpPieThemeLabel", "Theme:", 48);
+    AddStripLabel(*strip, "CmpPieThemeLabel", Tr("Theme:"), 48);
     AddToStrip(*strip, MakeThemeDropdown("CmpPieTheme",
         [state](const std::string& theme, bool palette) {
             state->theme = theme;
@@ -751,14 +751,14 @@ std::shared_ptr<UltraCanvasUIElement> MakePieTab() {
             state->engine->SetUseThemePalette(palette);
         }));
 
-    auto replay = MakeButton("CmpPieReplay", "Replay sweep", 110);
+    auto replay = MakeButton("CmpPieReplay", Tr("Replay sweep"), 110);
     replay->onClick = [state]() { state->engine->StartEngineAnimation(0.8f); };
     AddToStrip(*strip, replay);
 
     return MakeComparisonTab(
         "CmpPie",
-        "Pie and donut: on the engine a pie is the Polar projection of one 100% stacked bar - slices are ring sectors from BuildBarOutline,\n"
-        "outside labels ride the solved label plan (the centre text is an obstacle), and clicking a legend entry drops the slice from the shares.",
+        Tr("Pie and donut: on the engine a pie is the Polar projection of one 100% stacked bar - slices are ring sectors from BuildBarOutline,\n"
+        "outside labels ride the solved label plan (the centre text is an obstacle), and clicking a legend entry drops the slice from the shares."),
         "UltraCanvasPieChartElement", legacyHolder, "UltraCanvasEnginePieChart", engineHolder, strip);
 }
 
@@ -817,15 +817,15 @@ std::vector<PolarSpec> PolarExamples() {
 
     // Three signal clusters scattered over the full circle, fixed seed.
     PolarSpec signals;
-    signals.title = "Signal Scatter (numeric angles)";
+    signals.title = Tr("Signal Scatter (numeric angles)");
     {
         std::mt19937 gen(1234);
         std::uniform_real_distribution<double> angleDist(0.0, 360.0);
-        struct SignalSpec { const char* name; double mean, spread; Color color; PolarMarkerShape marker; };
+        struct SignalSpec { std::string name; double mean, spread; Color color; PolarMarkerShape marker; };
         const SignalSpec signalSpecs[] = {
-            {"Signal A", 4.5, 2.0, Color(102, 178, 235, 255), PolarMarkerShape::Circle},
-            {"Signal B", 6.5, 3.0, Color(25, 118, 210, 255), PolarMarkerShape::Diamond},
-            {"Signal C", 7.5, 2.5, Color(245, 130, 32, 255), PolarMarkerShape::Square}};
+            {Tr("Signal A"), 4.5, 2.0, Color(102, 178, 235, 255), PolarMarkerShape::Circle},
+            {Tr("Signal B"), 6.5, 3.0, Color(25, 118, 210, 255), PolarMarkerShape::Diamond},
+            {Tr("Signal C"), 7.5, 2.5, Color(245, 130, 32, 255), PolarMarkerShape::Square}};
         for (const SignalSpec& s : signalSpecs) {
             std::normal_distribution<double> radiusDist(s.mean, s.spread);
             PolarSeries series(s.name, PolarSeriesType::Scatter, s.color);
@@ -848,12 +848,12 @@ std::vector<PolarSpec> PolarExamples() {
 
     // Two rose curves r = a cos(k theta), with a negative radial minimum.
     PolarSpec rose;
-    rose.title = "Rose Curves (counter-clockwise, 0 degrees east)";
+    rose.title = Tr("Rose Curves (counter-clockwise, 0 degrees east)");
     {
-        PolarSeries first("Series 1", PolarSeriesType::Line, Color(240, 120, 100, 255));
+        PolarSeries first(TrF("Series {0}", 1), PolarSeriesType::Line, Color(240, 120, 100, 255));
         first.marker = PolarMarkerShape::NoMarker;
         first.lineWidth = 1.6f;
-        PolarSeries second("Series 2", PolarSeriesType::Line, Color(150, 150, 150, 255));
+        PolarSeries second(TrF("Series {0}", 2), PolarSeriesType::Line, Color(150, 150, 150, 255));
         second.marker = PolarMarkerShape::NoMarker;
         second.lineWidth = 1.6f;
         for (int deg = 0; deg <= 360; ++deg) {
@@ -875,13 +875,13 @@ std::vector<PolarSpec> PolarExamples() {
 
     // Four translucent petals - the polar area look.
     PolarSpec petals;
-    petals.title = "Petal Areas (spline areas)";
+    petals.title = Tr("Petal Areas (spline areas)");
     {
-        struct PetalSpec { const char* name; double centerDeg; Color color; };
-        const PetalSpec petalSpecs[] = {{"North", 0.0, Color(66, 165, 245, 190)},
-                                        {"East", 90.0, Color(236, 64, 122, 170)},
-                                        {"South", 180.0, Color(251, 192, 45, 190)},
-                                        {"West", 270.0, Color(77, 208, 174, 190)}};
+        struct PetalSpec { std::string name; double centerDeg; Color color; };
+        const PetalSpec petalSpecs[] = {{Tr("North"), 0.0, Color(66, 165, 245, 190)},
+                                        {Tr("East"), 90.0, Color(236, 64, 122, 170)},
+                                        {Tr("South"), 180.0, Color(251, 192, 45, 190)},
+                                        {Tr("West"), 270.0, Color(77, 208, 174, 190)}};
         for (const PetalSpec& p : petalSpecs) {
             PolarSeries series(p.name, PolarSeriesType::SplineArea, p.color);
             series.fillOpacity = 0.55f;
@@ -905,12 +905,12 @@ std::vector<PolarSpec> PolarExamples() {
 
     // Sales by category - categorical spokes with a filled outline.
     PolarSpec sales;
-    sales.title = "Category Sales (categorical spokes)";
+    sales.title = Tr("Category Sales (categorical spokes)");
     sales.categorical = true;
-    sales.categories = {"Furniture", "Binders", "Phones", "Storage", "Chairs",
-                        "Tables", "Machines", "Copiers", "Paper", "Art"};
+    sales.categories = {Tr("Furniture"), Tr("Binders"), Tr("Phones"), Tr("Storage"), Tr("Chairs"),
+                        Tr("Tables"), Tr("Machines"), Tr("Copiers"), Tr("Paper"), Tr("Art")};
     {
-        PolarSeries series("2018 Sales", PolarSeriesType::SplineArea, Color(102, 187, 176, 255));
+        PolarSeries series(Tr("2018 Sales"), PolarSeriesType::SplineArea, Color(102, 187, 176, 255));
         series.fillOpacity = 0.45f;
         series.lineWidth = 2.0f;
         series.marker = PolarMarkerShape::NoMarker;
@@ -925,12 +925,12 @@ std::vector<PolarSpec> PolarExamples() {
 
     // Monthly concentration against tolerance bands.
     PolarSpec concentration;
-    concentration.title = "Concentration with Radial Bands (ppm)";
+    concentration.title = Tr("Concentration with Radial Bands (ppm)");
     concentration.categorical = true;
-    concentration.categories = {"Jan", "Feb", "Mar", "Apr", "May", "Jun",
-                                "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
+    concentration.categories = {Tr("Jan"), Tr("Feb"), Tr("Mar"), Tr("Apr"), Tr("May"), Tr("Jun"),
+                                Tr("Jul"), Tr("Aug"), Tr("Sep"), Tr("Oct"), Tr("Nov"), Tr("Dec")};
     {
-        PolarSeries series("Concentration", PolarSeriesType::Line, Color(20, 40, 160, 255));
+        PolarSeries series(Tr("Concentration"), PolarSeriesType::Line, Color(20, 40, 160, 255));
         series.lineWidth = 3.0f;
         series.marker = PolarMarkerShape::Circle;
         series.markerSize = 8.0f;
@@ -945,18 +945,18 @@ std::vector<PolarSpec> PolarExamples() {
     concentration.hi = 100.0;
     concentration.tickInterval = 20.0;
     concentration.unit = " ppm";
-    concentration.bands = {PolarRadialBand(0.0, 20.0, Color(150, 160, 235, 150), "Under-Absorp"),
-                           PolarRadialBand(20.0, 60.0, Color(150, 230, 160, 150), "Normal"),
-                           PolarRadialBand(60.0, 100.0, Color(240, 150, 150, 150), "Over-Absorp")};
+    concentration.bands = {PolarRadialBand(0.0, 20.0, Color(150, 160, 235, 150), Tr("Under-Absorp")),
+                           PolarRadialBand(20.0, 60.0, Color(150, 230, 160, 150), Tr("Normal")),
+                           PolarRadialBand(60.0, 100.0, Color(240, 150, 150, 150), Tr("Over-Absorp"))};
     specs.push_back(concentration);
 
     // Regional profit by product and year - stacked polar columns.
     PolarSpec profit;
-    profit.title = "Profit Rose (stacked polar columns)";
+    profit.title = Tr("Profit Rose (stacked polar columns)");
     profit.categorical = true;
     profit.betweenSpokes = true;
-    profit.categories = {"Powder", "Nail polish", "Eyebrow pencil", "Rouge", "Lipstick",
-                         "Eyeshadows", "Eyeliner", "Foundation", "Lip gloss", "Mascara"};
+    profit.categories = {Tr("Powder"), Tr("Nail polish"), Tr("Eyebrow pencil"), Tr("Rouge"), Tr("Lipstick"),
+                         Tr("Eyeshadows"), Tr("Eyeliner"), Tr("Foundation"), Tr("Lip gloss"), Tr("Mascara")};
     const std::vector<std::pair<std::string, std::vector<double>>> years = {
         {"2023", {21, 11, 9, 6, 13, 18, 24, 26, 29, 20}},
         {"2024", {26, 14, 11, 8, 16, 22, 29, 33, 36, 25}},
@@ -1097,7 +1097,7 @@ std::shared_ptr<UltraCanvasUIElement> MakePolarTab() {
     show(4);
 
     auto strip = MakeControlStrip("CmpPolar");
-    AddStripLabel(*strip, "CmpPolarExampleLabel", "Example:", 56);
+    AddStripLabel(*strip, "CmpPolarExampleLabel", Tr("Example:"), 56);
     std::vector<std::string> names;
     for (const PolarSpec& spec : examples) names.push_back(spec.title);
     auto example = MakeDropdown("CmpPolarExample", 260, names, 4);
@@ -1106,35 +1106,35 @@ std::shared_ptr<UltraCanvasUIElement> MakePolarTab() {
     };
     AddToStrip(*strip, example);
 
-    auto grid = MakeDropdown("CmpPolarGrid", 100, {"Circles", "Polygons"});
+    auto grid = MakeDropdown("CmpPolarGrid", 100, {Tr("Circles"), Tr("Polygons")});
     grid->onSelectionChanged = [state, apply](int index, const DropdownItem&) {
         state->grid = index == 1 ? 1 : 0;
         apply();
     };
     AddToStrip(*strip, grid);
 
-    auto scale = MakeDropdown("CmpPolarScale", 110, {"Linear", "Square root", "Logarithmic"});
+    auto scale = MakeDropdown("CmpPolarScale", 110, {Tr("Linear"), Tr("Square root"), Tr("Logarithmic")});
     scale->onSelectionChanged = [state, apply](int index, const DropdownItem&) {
         state->scale = std::clamp(index, 0, 2);
         apply();
     };
     AddToStrip(*strip, scale);
 
-    auto sweep = MakeDropdown("CmpPolarSweep", 90, {"360 deg", "270 deg", "180 deg"});
+    auto sweep = MakeDropdown("CmpPolarSweep", 90, {Tr("360 deg"), Tr("270 deg"), Tr("180 deg")});
     sweep->onSelectionChanged = [state, apply](int index, const DropdownItem&) {
         state->sweep = std::clamp(index, 0, 2);
         apply();
     };
     AddToStrip(*strip, sweep);
 
-    auto bands = MakeCheckbox("CmpPolarBands", "Alternating bands", false, 140);
+    auto bands = MakeCheckbox("CmpPolarBands", Tr("Alternating bands"), false, 140);
     bands->onStateChanged = [state, apply](CheckedState, CheckedState now) {
         state->bands = Checked(now) ? 1 : 0;
         apply();
     };
     AddToStrip(*strip, bands);
 
-    AddStripLabel(*strip, "CmpPolarThemeLabel", "Theme:", 48);
+    AddStripLabel(*strip, "CmpPolarThemeLabel", Tr("Theme:"), 48);
     AddToStrip(*strip, MakeThemeDropdown("CmpPolarTheme",
         [state](const std::string& theme, bool palette) {
             state->theme = theme;
@@ -1143,14 +1143,14 @@ std::shared_ptr<UltraCanvasUIElement> MakePolarTab() {
             state->engine->SetUseThemePalette(palette);
         }));
 
-    auto replay = MakeButton("CmpPolarReplay", "Replay", 70);
+    auto replay = MakeButton("CmpPolarReplay", Tr("Replay"), 70);
     replay->onClick = [state]() { state->engine->StartEngineAnimation(0.8f); };
     AddToStrip(*strip, replay);
 
     return MakeComparisonTab(
         "CmpPolar",
-        "Polar: scatter, line, spline, area and column series on numeric or categorical angles. The engine port draws lines and areas with\n"
-        "BuildLineRuns / BuildAreaOutlines and columns with BuildBarOutline; radial bands are ValueBand highlights, which are rings under Polar.",
+        Tr("Polar: scatter, line, spline, area and column series on numeric or categorical angles. The engine port draws lines and areas with\n"
+        "BuildLineRuns / BuildAreaOutlines and columns with BuildBarOutline; radial bands are ValueBand highlights, which are rings under Polar."),
         "UltraCanvasPolarChart", legacyHolder, "UltraCanvasEnginePolarChart", engineHolder, strip);
 }
 
@@ -1158,10 +1158,10 @@ std::shared_ptr<UltraCanvasUIElement> MakePolarTab() {
 
 std::vector<ComparisonTab> PolarFamilyTabs() {
     return {
-        {"Radar", MakeRadarTab},
-        {"Radial Bar", MakeRadialBarTab},
-        {"Pie & Donut", MakePieTab},
-        {"Polar", MakePolarTab},
+        {Tr("Radar"), MakeRadarTab},
+        {Tr("Radial Bar"), MakeRadialBarTab},
+        {Tr("Pie & Donut"), MakePieTab},
+        {Tr("Polar"), MakePolarTab},
     };
 }
 

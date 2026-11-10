@@ -4,7 +4,7 @@
 // Version: 1.2.0 - the group's onChecked handler no longer owns its radio, and the group
 //                 takes it back when it is destroyed or the radio is removed
 // Version: 1.1.1
-// Last Modified: 2026-10-07
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasRadio.h"
@@ -15,7 +15,9 @@ namespace UltraCanvas {
     UltraCanvasRadio::UltraCanvasRadio(const std::string& identifier,
                                        float x, float y, float w, float h,
                                        const std::string& labelText)
-            : UltraCanvasLabeledToggleBase(identifier, x, y, w, h, labelText) {}
+            : UltraCanvasLabeledToggleBase(identifier, x, y, w, h, labelText) {
+        ApplyThemeIfFollowing();
+    }
 
     void UltraCanvasRadio::SetCheckState(CheckedState state) {
         if (state == CheckedState::Indeterminate) state = CheckedState::Unchecked;
@@ -190,6 +192,23 @@ namespace UltraCanvas {
         for (auto& btn : radioButtons) btn->SetChecked(false);
         selectedButton = nullptr;
         if (onSelectionChanged) onSelectionChanged(nullptr);
+    }
+
+// ===== THE THEME =====
+    RadioVisualStyle RadioVisualStyle::FromTheme(const UltraCanvasTheme& theme, const RadioVisualStyle& base) {
+        RadioVisualStyle s = base;
+        const ThemeRoles& r = theme.roles;
+        s.base = LabeledToggleVisualStyle::FromTheme(theme, base.base);
+        s.outerColor = r.well;
+        s.outerBorderColor = r.lineStrong;
+        s.outerHoverColor = r.hover;
+        s.outerPressedColor = r.pressed;
+        s.outerDisabledColor = r.panel;
+        s.outerBorderDisabledColor = r.line;
+        // the element's own role, for a design whose dot is not the accent
+        s.innerDotColor = theme.Role("radio.dot", r.accent);
+        s.innerDotDisabledColor = r.inkFaint;
+        return s;
     }
 
 } // namespace UltraCanvas

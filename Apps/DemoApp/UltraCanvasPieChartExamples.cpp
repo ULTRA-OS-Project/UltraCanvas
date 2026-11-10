@@ -45,11 +45,11 @@ namespace UltraCanvas {
     std::shared_ptr<ChartDataVector> GenerateMarketShareData() {
         auto data = std::make_shared<ChartDataVector>();
         std::vector<ChartDataPoint> marketShare = {
-                ChartDataPoint(1, 350, 0, "Product A", 350),
-                ChartDataPoint(2, 280, 0, "Product B", 280),
-                ChartDataPoint(3, 210, 0, "Product C", 210),
-                ChartDataPoint(4, 160, 0, "Product D", 160),
-                ChartDataPoint(5, 120, 0, "Others", 120)
+                ChartDataPoint(1, 350, 0, Tr("Product A"), 350),
+                ChartDataPoint(2, 280, 0, Tr("Product B"), 280),
+                ChartDataPoint(3, 210, 0, Tr("Product C"), 210),
+                ChartDataPoint(4, 160, 0, Tr("Product D"), 160),
+                ChartDataPoint(5, 120, 0, Tr("Others"), 120)
         };
         data->LoadFromArray(marketShare);
         return data;
@@ -58,12 +58,12 @@ namespace UltraCanvas {
     std::shared_ptr<ChartDataVector> GenerateBudgetData() {
         auto data = std::make_shared<ChartDataVector>();
         std::vector<ChartDataPoint> budget = {
-                ChartDataPoint(1, 4500, 0, "Salaries", 4500),
-                ChartDataPoint(2, 2300, 0, "Marketing", 2300),
-                ChartDataPoint(3, 1800, 0, "R&D", 1800),
-                ChartDataPoint(4, 1200, 0, "Operations", 1200),
-                ChartDataPoint(5, 800, 0, "Infrastructure", 800),
-                ChartDataPoint(6, 400, 0, "Other", 400)
+                ChartDataPoint(1, 4500, 0, Tr("Salaries"), 4500),
+                ChartDataPoint(2, 2300, 0, Tr("Marketing"), 2300),
+                ChartDataPoint(3, 1800, 0, Tr("R&D"), 1800),
+                ChartDataPoint(4, 1200, 0, Tr("Operations"), 1200),
+                ChartDataPoint(5, 800, 0, Tr("Infrastructure"), 800),
+                ChartDataPoint(6, 400, 0, Tr("Other"), 400)
         };
         data->LoadFromArray(budget);
         return data;
@@ -84,9 +84,9 @@ namespace UltraCanvas {
         };
 
         // === CHART TYPE CONTROLS ===
-        addGroupLabel("TypeLabel", "Chart Type:");
+        addGroupLabel("TypeLabel", Tr("Chart Type:"));
 
-        auto donutCheckbox = std::make_shared<UltraCanvasCheckbox>("DonutMode", 0, 0, 0, controlHeight, "Donut Mode");
+        auto donutCheckbox = std::make_shared<UltraCanvasCheckbox>("DonutMode", 0, 0, 0, controlHeight, Tr("Donut Mode"));
         donutCheckbox->SetChecked(pieChartControls.donutMode);
         donutCheckbox->onStateChanged = [pieChart1, pieChart2](CheckedState oldState, CheckedState newState) {
             pieChartControls.donutMode = newState == CheckedState::Checked;
@@ -96,9 +96,9 @@ namespace UltraCanvas {
         DemoKit::Add(container, donutCheckbox);
 
         // === 3D EFFECTS ===
-        addGroupLabel("EffectsLabel", "Visual Effects:");
+        addGroupLabel("EffectsLabel", Tr("Visual Effects:"));
 
-        auto enable3DCheckbox = std::make_shared<UltraCanvasCheckbox>("3DEffects", 0, 0, 0, controlHeight, "3D Effects");
+        auto enable3DCheckbox = std::make_shared<UltraCanvasCheckbox>("3DEffects", 0, 0, 0, controlHeight, Tr("3D Effects"));
         enable3DCheckbox->SetChecked(pieChartControls.enable3DEffects);
         enable3DCheckbox->onStateChanged = [pieChart1, pieChart2](CheckedState oldState, CheckedState newState) {
             pieChartControls.enable3DEffects = newState == CheckedState::Checked;
@@ -112,7 +112,7 @@ namespace UltraCanvas {
         };
         DemoKit::Add(container, enable3DCheckbox);
 
-        auto gradientCheckbox = std::make_shared<UltraCanvasCheckbox>("GradientFills", 0, 0, 0, controlHeight, "Radial Gradients");
+        auto gradientCheckbox = std::make_shared<UltraCanvasCheckbox>("GradientFills", 0, 0, 0, controlHeight, Tr("Radial Gradients"));
         gradientCheckbox->SetChecked(pieChartControls.gradientFills);
         gradientCheckbox->onStateChanged = [pieChart1, pieChart2](CheckedState oldState, CheckedState newState) {
             pieChartControls.gradientFills = newState == CheckedState::Checked;
@@ -127,7 +127,7 @@ namespace UltraCanvas {
         DemoKit::Add(container, gradientCheckbox);
 
         // === EXPLOSION CONTROLS ===
-        addGroupLabel("ExplosionLabel", "Slice Explosion:");
+        addGroupLabel("ExplosionLabel", Tr("Slice Explosion:"));
 
         auto explosionSlider = std::make_shared<UltraCanvasSlider>("ExplosionSlider", 0, 0, 180, controlHeight);
         explosionSlider->SetRange(0.0, 0.5);
@@ -141,7 +141,7 @@ namespace UltraCanvas {
         DemoKit::AddFixed(container, explosionSlider);
 
         // === PERSPECTIVE ANGLE (3D) ===
-        addGroupLabel("PerspectiveLabel", "Perspective Angle (3D):");
+        addGroupLabel("PerspectiveLabel", Tr("Perspective Angle (3D):"));
 
         auto perspectiveSlider = std::make_shared<UltraCanvasSlider>("PerspectiveSlider", 0, 0, 180, controlHeight);
         perspectiveSlider->SetRange(5.0, 70.0);
@@ -154,14 +154,14 @@ namespace UltraCanvas {
         DemoKit::AddFixed(container, perspectiveSlider);
 
         // === LABEL CONTROLS ===
-        addGroupLabel("LabelLabel", "Labels:");
+        addGroupLabel("LabelLabel", Tr("Labels:"));
 
         auto labelPosDropdown = std::make_shared<UltraCanvasDropdown>("LabelPosition", 0, 0, 180, controlHeight);
-        labelPosDropdown->AddItem("Auto");
-        labelPosDropdown->AddItem("Inside");
-        labelPosDropdown->AddItem("Outside");
-        labelPosDropdown->AddItem("Edge");
-        labelPosDropdown->AddItem("None");
+        labelPosDropdown->AddItem(Tr("Auto"));
+        labelPosDropdown->AddItem(Tr("Inside"));
+        labelPosDropdown->AddItem(Tr("Outside"));
+        labelPosDropdown->AddItem(Tr("Edge"));
+        labelPosDropdown->AddItem(Tr("None"));
         labelPosDropdown->SetSelectedIndex(0);
         labelPosDropdown->onSelectionChanged = [pieChart1, pieChart2](int index, const DropdownItem& item) {
             LabelPosition pos;
@@ -179,7 +179,7 @@ namespace UltraCanvas {
         };
         DemoKit::AddFixed(container, labelPosDropdown);
 
-        auto leaderLinesCheckbox = std::make_shared<UltraCanvasCheckbox>("LeaderLines", 0, 0, 0, controlHeight, "Leader Lines");
+        auto leaderLinesCheckbox = std::make_shared<UltraCanvasCheckbox>("LeaderLines", 0, 0, 0, controlHeight, Tr("Leader Lines"));
         leaderLinesCheckbox->SetChecked(pieChartControls.leaderLines);
         leaderLinesCheckbox->onStateChanged = [pieChart1, pieChart2](CheckedState oldState, CheckedState newState) {
             pieChartControls.leaderLines = newState == CheckedState::Checked;
@@ -192,10 +192,10 @@ namespace UltraCanvas {
 // ===== MAIN PIE CHART EXAMPLES CREATOR =====
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreatePieChartExamples() {
         auto container = DemoKit::CreatePage("PieChartContainer",
-                "Pie Chart Examples - Enhanced with 3D & Gradients",
-                "Comprehensive pie chart visualization with donut mode, exploded slices, radial gradients, "
+                Tr("Pie Chart Examples - Enhanced with 3D & Gradients"),
+                Tr("Comprehensive pie chart visualization with donut mode, exploded slices, radial gradients, "
                 "3D visual effects, and advanced labeling. Features intelligent label positioning and "
-                "interactive tooltips.");
+                "interactive tooltips."));
 
         // The controls beside the charts; the charts two by two while they
         // fit, one under the other when not.
@@ -212,7 +212,7 @@ namespace UltraCanvas {
 
         // ===== EXAMPLE 1: MARKET SHARE ANALYSIS =====
         auto marketCard = DemoKit::AddCard(chartGrid, "PieMarketCard", "", "", chartCardW);
-        DemoKit::AddHeading(marketCard, "MarketLabel", "Market Share Distribution");
+        DemoKit::AddHeading(marketCard, "MarketLabel", Tr("Market Share Distribution"));
 
         auto marketChart = CreatePieChartElement("MarketPieChart", 0, 0, 460, 290);
         marketChart->SetDataSource(GenerateMarketShareData());
@@ -232,7 +232,7 @@ namespace UltraCanvas {
 
         // ===== EXAMPLE 2: BUDGET ALLOCATION =====
         auto budgetCard = DemoKit::AddCard(chartGrid, "PieBudgetCard", "", "", chartCardW);
-        DemoKit::AddHeading(budgetCard, "BudgetLabel", "Annual Budget Allocation");
+        DemoKit::AddHeading(budgetCard, "BudgetLabel", Tr("Annual Budget Allocation"));
 
         auto budgetChart = CreatePieChartElement("BudgetPieChart", 0, 0, 460, 290);
         budgetChart->SetDataSource(GenerateBudgetData());
@@ -254,7 +254,7 @@ namespace UltraCanvas {
 
         // ===== EXAMPLE 3: 3D DONUT WITH GRADIENTS =====
         auto donutCard = DemoKit::AddCard(chartGrid, "PieDonutCard", "", "", chartCardW);
-        DemoKit::AddHeading(donutCard, "DonutLabel", "3D Pie with Highlighted Slice");
+        DemoKit::AddHeading(donutCard, "DonutLabel", Tr("3D Pie with Highlighted Slice"));
 
         auto donutChart = CreatePieChartElement("DonutChart", 0, 0, 460, 290);
         donutChart->SetDataSource(GenerateMarketShareData());
@@ -299,7 +299,7 @@ namespace UltraCanvas {
 
         // ===== EXAMPLE 4: STYLIZED SHOWCASE =====
         auto styledCard = DemoKit::AddCard(chartGrid, "PieStyledCard", "", "", chartCardW);
-        DemoKit::AddHeading(styledCard, "StyledLabel", "Stylized Pie Chart");
+        DemoKit::AddHeading(styledCard, "StyledLabel", Tr("Stylized Pie Chart"));
 
         auto styledChart = CreatePieChartElement("StyledChart", 0, 0, 460, 290);
         styledChart->SetDataSource(GenerateBudgetData());

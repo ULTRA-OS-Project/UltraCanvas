@@ -4,7 +4,7 @@
 // Version: 1.5.0 - slider.handle, slider.handle-border
 // Version: 1.4.0 - SliderVisualStyle::FromTheme
 // Version: 1.3.0
-// Last Modified: 2026-10-15
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSlider.h"
@@ -29,6 +29,7 @@ namespace UltraCanvas {
         upperValue = maxValue;
 
         UpdateSliderState();
+        ApplyThemeIfFollowing();
     }
 
     void UltraCanvasSlider::SetRange(float min, float max) {
@@ -983,6 +984,10 @@ namespace UltraCanvas {
     SliderVisualStyle SliderVisualStyle::FromTheme(const UltraCanvasTheme& theme, const SliderVisualStyle& base) {
         SliderVisualStyle s = base;
         const ThemeRoles& r = theme.roles;
+        // the value's text at the caption size
+        const FontStyle caption = theme.Font(ThemeTextRole::Caption);
+        s.fontStyle.fontFamily = caption.fontFamily;
+        s.fontStyle.fontSize = caption.fontSize;
         s.trackColor = r.pressed;
         s.activeTrackColor = r.accent;
         s.disabledTrackColor = r.line;

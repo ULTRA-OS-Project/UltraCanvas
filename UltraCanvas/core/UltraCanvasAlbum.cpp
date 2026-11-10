@@ -5,7 +5,7 @@
 // Version: 1.11.0 - onItemPressed on a tile's press; ReleaseDrag forgets it for an owner carrying the tile; DragOut gone
 // Version: 1.10.0 - AlbumConfig::FromTheme
 // Version: 1.9.0
-// Last Modified: 2026-11-09
+// Last Modified: 2026-11-10
 // V1.8.0: A picture saved over shows its new content. The paths a paint drew
 //   go to an UltraCanvasImageFileWatch, whose worker checks the files and
 //   drops a changed one from the image cache; the album then relayouts and
@@ -92,6 +92,7 @@ namespace UltraCanvas {
         cs.forceShowHorizontalScrollbar = false;
         SetContainerStyle(cs);
         BindScrollAnimators();
+        ApplyThemeIfFollowing();
     }
 
     UltraCanvasAlbum::~UltraCanvasAlbum() {
@@ -108,6 +109,7 @@ namespace UltraCanvas {
 
     // ===== CONFIGURATION =====
     void UltraCanvasAlbum::SetConfig(const AlbumConfig& cfg) {
+        StyleSetByHand();
         config = cfg;
         SetBackgroundColor(config.backgroundColor);
         if (!config.videoHoverPreview) StopVideoHoverPreview();
@@ -1913,6 +1915,8 @@ namespace UltraCanvas {
     AlbumConfig AlbumConfig::FromTheme(const UltraCanvasTheme& theme, const AlbumConfig& base) {
         AlbumConfig c = base;
         const ThemeRoles& r = theme.roles;
+        // the interface font; the caption sizes are the config's own
+        c.fontFamily = theme.fonts.ui.fontFamily;
         c.backgroundColor = r.panel;
         c.itemBackgroundColor = r.raised;
         c.borderColor = r.line;

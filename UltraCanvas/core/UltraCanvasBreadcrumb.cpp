@@ -1,9 +1,11 @@
 // core/UltraCanvasBreadcrumb.cpp
 // Hierarchical breadcrumb navigation control implementation
+// Version: 1.8.0 - FolderBreadcrumbOptions::driveLabel names the drive node and the
+//                  entries of the Computer node's list
 // Version: 1.7.0 - drop-downs open anchored to their crumb: above it when there is no
 //                  room below, never over it
 // Version: 1.6.1
-// Last Modified: 2026-10-10
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasBreadcrumb.h"
@@ -1786,10 +1788,13 @@ namespace UltraCanvas {
             computer.hasDropdown = true;
             computer.sortDropdownItems = true;
             computer.dropdownAvailableProvider = []() { return !ListDriveRoots().empty(); };
-            computer.dropdownItemsProvider = [onNavigate]() {
+            auto driveLabelOf = options.driveLabel;
+            computer.dropdownItemsProvider = [onNavigate, driveLabelOf]() {
                 std::vector<MenuItemData> out;
                 for (const std::string& d : ListDriveRoots()) {
-                    out.emplace_back(d, [onNavigate, d]() {
+                    std::string label = driveLabelOf ? driveLabelOf(d) : std::string();
+                    if (label.empty()) label = d;
+                    out.emplace_back(label, [onNavigate, d]() {
                         if (onNavigate) onNavigate(d);
                     });
                 }
@@ -1804,8 +1809,12 @@ namespace UltraCanvas {
         std::string driveLabel = PathToUtf8(p.root_name());
         if (driveLabel.empty() && !options.showComputerItem) driveLabel = PathToUtf8(base);
         if (!driveLabel.empty()) {
-            BreadcrumbItem drive(driveLabel);
             std::string target = PathToUtf8(base);
+            if (options.driveLabel) {
+                const std::string named = options.driveLabel(target);
+                if (!named.empty()) driveLabel = named;
+            }
+            BreadcrumbItem drive(driveLabel);
             drive.onClick = [onNavigate, target]() { if (onNavigate) onNavigate(target); };
             if (options.subFolderDropdowns) {
                 drive.hasDropdown = true;

@@ -38,7 +38,7 @@
 
 **UltraCanvasSegmentedControl** is a multi-segment selection control for choosing between mutually exclusive options (single mode) or toggling several options independently (multiple/toggle mode). It is well-suited for view-switchers, filter bars, formatting toolbars, and size pickers.
 
-**Version:** 1.5.0 - `SetSegmentTooltip`: each segment its own tooltip
+**Version:** 1.6.0 - `SegmentedControlStyle::FromTheme`, `ApplyTheme`: the control follows the theme
 **Header:** `include/UltraCanvasSegmentedControl.h`
 **Namespace:** `UltraCanvas`
 **Base Class:** `UltraCanvasUIElement`
@@ -230,7 +230,26 @@ struct SegmentedControlStyle {
     static SegmentedControlStyle Modern();   // iOS-like blue
     static SegmentedControlStyle Flat();     // Spaced individual segments
     static SegmentedControlStyle Bar();      // No separators, solid bar
+
+    // The framework theme's roles over a base's shape (UltraCanvasTheme.md)
+    static SegmentedControlStyle FromTheme(const UltraCanvasTheme& theme, const SegmentedControlStyle& base);
+    static SegmentedControlStyle FromTheme(const UltraCanvasTheme& theme);
+    static SegmentedControlStyle FromTheme();
 };
+```
+
+`FromTheme` puts the theme's roles over a base style's shape: the raised
+surface for a segment at rest, the accent with text on it for the selected
+one, the hover fill, the panel disabled, the control border and hairline
+separators, the interface font at the body size. Under the theme policy a
+new control follows the theme by itself (`ApplyTheme`); a `SetStyle` by
+hand stops that, `SetFollowTheme(true)` after it keeps both.
+
+```cpp
+auto view = std::make_shared<UltraCanvasSegmentedControl>("view", 240, 28);
+SegmentedControlStyle flat = SegmentedControlStyle::Flat();
+view->SetStyle(SegmentedControlStyle::FromTheme(UltraCanvasTheme::Current(), flat));   // the roles over the Flat shape
+view->SetFollowTheme(true);
 ```
 
 ## Events and Callbacks

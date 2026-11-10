@@ -1,3 +1,118 @@
+#### 2026-11-10 *0.9.521*
+- **The list elements follow the theme (T4 of the host theme proposal,
+  third part).** `FromTheme` on `ScrollbarStyle`, `ListViewStyle`,
+  `TreeColumnStyle` and `FilerStyle`, and `ApplyTheme` on the scrollbar, the
+  list view (its `UltraCanvasDefaultListDelegate` taking ink, text on the
+  accent and the body font with it), the tree view (the roles onto its
+  colours, its floating buttons and its scrollbar; it has no style struct, so
+  a colour set by hand does not stop the following), the columns tree view
+  (constructors of its own, so a view that follows by default is themed
+  whole) and the filer widget: the roles mapped onto their colours and the
+  interface font at the body size (a list's header and the filer's small
+  text at the caption size) over the struct's own shape. Element roles with
+  their fallbacks: `scrollbar.track` and `scrollbar.thumb` (the panel and the
+  control border), `columns-tree.group-header` / `columns-tree.on-group-header`
+  (the black bar), `filer.icon-menu`, `filer.on-icon-menu`,
+  `filer.icon-menu-done`, `filer.extension-bar`, `filer.extension-tag` and
+  `filer.on-extension-tag` (the dark overlays). The bars an element owns take
+  their owner's style, so they follow through the owner. The tree view gains
+  `SetSelectionTextColor`: the text of a selected row, which the theme sets
+  to the colour that reads on the accent (it was the row's own text colour,
+  black on the blue, before); a node or cell coloured by hand keeps it.
+  `UltraCanvasThemeTest` covers every mapping and the following by default.
+
+#### 2026-11-10 *0.9.520*
+- **The input elements follow the theme (T4 of the host theme proposal,
+  second part).** `FromTheme` on `CheckboxVisualStyle`, `RadioVisualStyle`
+  (through a shared `LabeledToggleVisualStyle::FromTheme` for the label and
+  the focus ring), `SegmentedControlStyle`, `SpinnerVisualStyle`,
+  `StepperStyle`, `RatingStyle`, `CalendarStyle`, `DatePickerStyle` and
+  `TimePickerStyle`, and `ApplyTheme` on the checkbox, radio, segmented
+  control, spinner, stepper, rating, calendar view, date picker, date range
+  picker, time picker and clock view: the roles mapped onto their colours
+  and the interface font at the body size (a stepper's descriptions at the
+  caption size) over the struct's own shape, so under the policy every one
+  of them comes up light or dark with the desktop and keeps following. A
+  colour no shared role fits is an element role with its fallback:
+  `checkbox.mark` and `radio.dot` (the accent), `rating.on` / `rating.hover` /
+  `rating.border` (the amber), `stepper.on-error` (white), `calendar.weekend`
+  (red), `time-picker.clock-face` (the pressed fill). A style set by hand
+  stops the following, as for the other readers. The time picker's
+  `SetStyle` now reaches its field's editor and an open clock view.
+  `UltraCanvasThemeTest` covers every mapping and the following by default.
+
+#### 2026-11-10 *0.9.519*
+- **CI taps and types in the Android demo.** The emulator smoke test now
+  taps the demo's tree filter field and types a word into it, after the
+  first-frame checks and before the rotation. The backend logs the first tap
+  with the element it landed on (`first tap: X,Y px -> x,y, element '...'`),
+  and the demo logs where the field is and every change to its text, so a
+  touch that lands in the wrong place, or a key that never reaches the
+  focused field, fails the job. The rotation check now looks only at frames
+  logged after the turn, as the on-screen keyboard can resize the window
+  first.
+- **Android: launch arguments.** An app's `ultracanvas_app_main` now gets
+  the launching intent's `ultracanvas.args` string extra, split on
+  whitespace, as its command line
+  (`am start -e ultracanvas.args "--no-about" ...`); the smoke test starts
+  the demo with `--no-about`, so its About window does not cover the field.
+- **Android: the system bars no longer cover the app.** NativeActivity's
+  surface spans the whole window, and the window the whole display, so the
+  status bar was drawn over the app's top rows and the navigation bar over
+  its bottom ones - a tap there went to the bar. The new tap step caught it:
+  the demo's tree filter sits 6 px from the top, under the 24 px status bar
+  at 160 dpi. `UltraCanvasActivity` now runs in sticky immersive mode (both
+  bars hidden, shown over the app for a moment on a swipe from the edge),
+  applied again whenever the window regains focus.
+
+#### 2026-11-10 *0.9.518*
+- **`FolderBreadcrumbOptions::driveLabel`: a folder strip can name its drives.**
+  `BuildFolderBreadcrumb` called a drive by its letter ("D:") or root path,
+  on its own node and in the "Computer" node's list. A host that has read
+  the volumes' names (`ReadVolumeName`, off the UI thread) now passes a
+  callback that answers with "My Passport Ultra (D:)"; unset, or an empty
+  answer, keeps the letter (`UltraCanvasBreadcrumb.h` 1.8.0).
+- **`UltraCanvasFileLoader::GetSpeechTranscriber`**: the speech transcriber
+  installed now, so one installed after it keeps it as its fallback - UltraAI's
+  (`RegisterUltraAISpeechTranscription`, UltraAI changelog) hands a recording
+  to an application's own engine when no UltraAI provider transcribes.
+  FileLoader 1.13.0.
+
+#### 2026-11-10 *0.9.517*
+- **Every element follows the theme by default (T4 of the host theme
+  proposal, first part).** Under the theme policy (`FollowHost`, the
+  default, `Light` or `Dark`) `Initialize` turns on
+  `UltraCanvasUIElement::SetFollowThemeByDefault`, and every element with an
+  `ApplyTheme` - the button, label, dropdown, slider, switch, text input,
+  text area, toolbar, split pane, tabbed container, text format bar, menu,
+  album, modal and file dialog, timecode field, video timeline - takes the
+  current theme at the end of its constructor and again on every change,
+  so a window built after start-up is light or dark with the desktop
+  without the application opting in element by element. A style set by
+  hand (`SetStyle`, `SetConfig`, `SetAppearance`, `SetVisualStyle`) stops the
+  following for that element, so it keeps its look as before; `SetStyle`
+  then `SetFollowTheme(true)` keeps both. The `FromTheme` readers set their
+  fonts by role as well as their colours: the body size for the button,
+  label, dropdown, text input, menu and switch, the heading size for a
+  heading label, the caption size for the tooltip, a slider's value, a
+  dialog's details and the tab titles, the theme's families alone for the
+  album, the timecode field and the timeline. `UltraCanvasThemeTest`
+  covers the default, the rule and the fonts.
+
+#### 2026-11-10 *0.9.516*
+- **DemoApp's pages go through `Tr`.** Every text a person reads on the
+  ~160 element pages - page titles and descriptions, card texts and notes,
+  buttons, labels, dropdown and menu items, tabs, tooltips, chart titles,
+  axis and series names, generic sample labels, status lines and read-outs -
+  now goes through `Tr` / `TrF` / `TrN` / `TrC`, and sentences once glued from
+  English pieces with `+`, `ostringstream` or `snprintf` are one translatable
+  sentence each. `media/locale/en/UltraCanvasDemo.json` grows to 7,357 texts.
+  Left as they are on purpose: element ids, code samples and parser input
+  (Mermaid, PlantUML, ReqIF, JSON), proper names in sample data, format
+  strings, units, and every string the code compares or looks up (where a
+  label doubled as a key, the key is now separate). Static text tables are
+  built at runtime so `Tr` sees the language in use. The translations follow.
+
 #### 2026-11-10 *0.9.515*
 - **The clipboard history's rows in the person's language.** Everything
   `UltraCanvasClipboardHistoryView` paints goes through `Tr`: the section

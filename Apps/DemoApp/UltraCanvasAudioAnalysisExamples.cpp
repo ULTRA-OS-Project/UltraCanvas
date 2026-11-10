@@ -222,11 +222,11 @@ namespace UltraCanvas {
     std::shared_ptr<UltraCanvasUIElement>
     UltraCanvasDemoApplication::CreateAudioAnalysisExamples() {
         auto page = DemoKit::CreatePage("AnaRoot",
-                "Audio Analysis Charts - Spectrum, Envelope & Correlogram",
-                "Three classic audio-derived plots built entirely with the generic "
+                Tr("Audio Analysis Charts - Spectrum, Envelope & Correlogram"),
+                Tr("Three classic audio-derived plots built entirely with the generic "
                 "chart elements: an averaged FFT magnitude spectrum (area chart), an "
                 "RMS amplitude envelope over time (area chart), and a normalized "
-                "autocorrelation correlogram (bar chart). Pick a signal per tab.");
+                "autocorrelation correlogram (bar chart). Pick a signal per tab."));
         auto card = DemoKit::AddCard(page, "AnaCard");
 
         // ----- Decode the bundled sample track once (shared by all tabs) -----
@@ -244,9 +244,9 @@ namespace UltraCanvas {
             }
         }
         const std::string trackItem = trackMono->empty()
-                ? "Sample track (unavailable)" : "Sample track (first 8 s)";
+                ? Tr("Sample track (unavailable)") : Tr("Sample track (first 8 s)");
         const std::vector<std::string> signalItems = {
-                trackItem, "Chirp + steady tones", "220 Hz tone + harmonics", "White noise"};
+                trackItem, Tr("Chirp + steady tones"), Tr("220 Hz tone + harmonics"), Tr("White noise")};
         const int defaultSignal = trackMono->empty() ? 1 : 0;
 
         // ----- Tabs -----
@@ -276,7 +276,7 @@ namespace UltraCanvas {
             // Signal picker row.
             auto pickRow = DemoKit::CreateRow(id + "Pick", 8);
             pickRow->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
-            auto pickLbl = DemoKit::CreateText(id + "PickLbl", "Signal:");
+            auto pickLbl = DemoKit::CreateText(id + "PickLbl", Tr("Signal:"));
             pickLbl->SetFontSize(11);
             pickLbl->SetMargin(0, 0, 0, 12);
             DemoKit::Add(pickRow, pickLbl);
@@ -304,7 +304,7 @@ namespace UltraCanvas {
 
         // ---- Tab 1: Spectrum plot ----
         auto spectrum = CreateAreaChartElement("AnaSpectrum", 0, 0, INNER_W, INNER_H - 80);
-        spectrum->SetChartTitle("Averaged magnitude spectrum (dB, 0 = peak bin)");
+        spectrum->SetChartTitle(Tr("Averaged magnitude spectrum (dB, 0 = peak bin)"));
         spectrum->SetLineColor(Color(79, 70, 229, 255));
         spectrum->SetLineWidth(1.5);
         spectrum->SetFillGradientEnabled(true);
@@ -318,9 +318,9 @@ namespace UltraCanvas {
             spectrum->SetDataSource(BuildSpectrumData(sig, rate, 2048));
         }
         auto tab1 = makeTab("AnaTabSpec",
-                "Frequency content of the whole signal: Hann-windowed STFT frames averaged "
+                Tr("Frequency content of the whole signal: Hann-windowed STFT frames averaged "
                 "per bin, normalized to the loudest bin and shown in dB. Steady tones appear "
-                "as sharp peaks, the chirp as a raised plateau, noise as a flat floor.",
+                "as sharp peaks, the chirp as a raised plateau, noise as a flat floor."),
                 spectrum,
                 [spectrum, signalFor](int index) {
                     std::vector<float> sig; double rate = kAnaRate;
@@ -330,7 +330,7 @@ namespace UltraCanvas {
 
         // ---- Tab 2: Amplitude envelope ----
         auto envelope = CreateAreaChartElement("AnaEnvelope", 0, 0, INNER_W, INNER_H - 80);
-        envelope->SetChartTitle("RMS amplitude envelope");
+        envelope->SetChartTitle(Tr("RMS amplitude envelope"));
         envelope->SetLineColor(Color(13, 148, 136, 255));
         envelope->SetLineWidth(2.0);
         envelope->SetSmoothingEnabled(true);
@@ -345,9 +345,9 @@ namespace UltraCanvas {
             envelope->SetDataSource(BuildEnvelopeData(sig, rate));
         }
         auto tab2 = makeTab("AnaTabEnv",
-                "Loudness over time: the signal is sliced into equal blocks and each block's "
+                Tr("Loudness over time: the signal is sliced into equal blocks and each block's "
                 "RMS level becomes one point — the same reduction the waveform element uses "
-                "for its RMS band, here as a standalone smoothed area chart.",
+                "for its RMS band, here as a standalone smoothed area chart."),
                 envelope,
                 [envelope, signalFor](int index) {
                     std::vector<float> sig; double rate = kAnaRate;
@@ -357,7 +357,7 @@ namespace UltraCanvas {
 
         // ---- Tab 3: Correlogram ----
         auto correlogram = CreateBarChartElement("AnaCorr", 0, 0, INNER_W, INNER_H - 80);
-        correlogram->SetChartTitle("Normalized autocorrelation vs lag (ms)");
+        correlogram->SetChartTitle(Tr("Normalized autocorrelation vs lag (ms)"));
         correlogram->SetBarColor(Color(217, 119, 6, 220));
         correlogram->SetBarBorderColor(Color(180, 83, 9, 255));
         correlogram->SetBarBorderWidth(0.5);
@@ -371,9 +371,9 @@ namespace UltraCanvas {
             correlogram->SetDataSource(BuildCorrelogramData(sig, rate));
         }
         auto tab3 = makeTab("AnaTabCorr",
-                "Self-similarity of the signal at increasing lags, normalized so lag 0 = 1. "
+                Tr("Self-similarity of the signal at increasing lags, normalized so lag 0 = 1. "
                 "A pitched signal shows repeating peaks at multiples of its period (the 220 Hz "
-                "preset peaks every ~4.5 ms); white noise collapses to zero immediately.",
+                "preset peaks every ~4.5 ms); white noise collapses to zero immediately."),
                 correlogram,
                 [correlogram, signalFor](int index) {
                     std::vector<float> sig; double rate = kAnaRate;
@@ -381,9 +381,9 @@ namespace UltraCanvas {
                     correlogram->SetDataSource(BuildCorrelogramData(sig, rate));
                 });
 
-        tabs->AddTab("Spectrum Plot", tab1);
-        tabs->AddTab("Amplitude Envelope", tab2);
-        tabs->AddTab("Correlogram", tab3);
+        tabs->AddTab(Tr("Spectrum Plot"), tab1);
+        tabs->AddTab(Tr("Amplitude Envelope"), tab2);
+        tabs->AddTab(Tr("Correlogram"), tab3);
         tabs->SetActiveTab(0);
         DemoKit::AddStretched(card, tabs);
 

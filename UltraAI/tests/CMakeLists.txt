@@ -87,6 +87,15 @@ if(TARGET UltraAI_AdapterOpenAI)
         "${CMAKE_CURRENT_SOURCE_DIR}/../../UltraCanvas/third_party")
     target_compile_features(ultraai_test_openai_adapter PRIVATE cxx_std_20)
     add_test(NAME ultraai.openai_adapter COMMAND ultraai_test_openai_adapter)
+
+    # Speech to text over the audio API, offline the same way.
+    add_executable(ultraai_test_openai_speech test_openai_speech.cpp)
+    target_link_libraries(ultraai_test_openai_speech PRIVATE
+        UltraAI_Core UltraAI_AdapterOpenAI)
+    target_include_directories(ultraai_test_openai_speech PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../UltraCanvas/third_party")
+    target_compile_features(ultraai_test_openai_speech PRIVATE cxx_std_20)
+    add_test(NAME ultraai.openai_speech COMMAND ultraai_test_openai_speech)
 endif()
 
 # Batches: the fallback through the core, the native Anthropic and OpenAI

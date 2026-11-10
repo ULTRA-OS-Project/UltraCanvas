@@ -37,6 +37,7 @@ auto filer = CreateFilerWidget("my-filer", "/home/user/Documents", 0, 0, 900, 60
 - [Long names](#long-names)
 - [File extensions](#file-extensions)
 - [File icons](#file-icons)
+- [Following the theme](#following-the-theme)
 - [Name tooltips](#name-tooltips)
 - [Context menu](#context-menu)
 - [Programs inside archives](#programs-inside-archives)
@@ -408,6 +409,29 @@ in the listing's colours (the Save dialog's big type logo).
 <!-- doc-check: UltraCanvasFilerWidget* filer; IRenderContext* ctx; -->
 ```cpp
 filer->DrawTypeIcon(ctx, "holiday.jpg", false, Rect2Di(4, 4, 24, 24));
+```
+
+## Following the theme
+
+`FilerStyle::FromTheme` puts the framework theme's roles
+(`UltraCanvasTheme.md`) over a base style's shape: the well for the file
+area, ink and muted ink for the names and their details, the panel for the
+header, the info bar and a bar's background with ink on it, hairlines for
+the grid, the hover fill, the soft accent for the selection with the accent
+round it, the accent for the bars and the loading bar, the well with the
+accent for the rename editor; the interface font at the body size, the
+small text at the caption size. The hover icon menu and the extension tag
+keep their dark overlays unless the theme names `filer.icon-menu`,
+`filer.on-icon-menu`, `filer.icon-menu-done`, `filer.extension-bar`,
+`filer.extension-tag` and `filer.on-extension-tag`. Under the theme policy
+a new widget follows the theme by itself (`ApplyTheme`); a `SetStyle` by
+hand stops that, `SetFollowTheme(true)` after it keeps both.
+
+```cpp
+FilerStyle roomy = filer->GetStyle();
+roomy.tileGap = 16;
+filer->SetStyle(FilerStyle::FromTheme(UltraCanvasTheme::Current(), roomy));
+filer->SetFollowTheme(true);
 ```
 
 ## Name tooltips

@@ -1723,7 +1723,9 @@ recognition), spreadsheets (every sheet, tab-separated), text files, pictures
 and whether. Text recognition and speech to text are hooks:
 `SetImageTextRecognizer` (the OCR plugin's `RegisterOCRTextRecognition()`
 installs Tesseract) and `SetSpeechTranscriber` (an application's engine, e.g.
-UltraAI's `ISpeechToText`). UltraClipboard's *Extract text* uses it.
+UltraAI's `ISpeechToText`: `RegisterUltraAISpeechTranscription()` in
+`UltraAI_UI`, a video's sound taken out with VideoFX; `GetSpeechTranscriber`
+for the one before). UltraClipboard's *Extract text* uses it.
 
 ### **4. Plug-ins for File Types**
 

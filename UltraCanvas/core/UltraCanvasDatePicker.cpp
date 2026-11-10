@@ -202,6 +202,7 @@ namespace UltraCanvas {
         UCDate today = UCDate::Today();
         visibleYear = today.year;
         visibleMonth = today.month;
+        ApplyThemeIfFollowing();
     }
 
     Size2Df UltraCanvasCalendarView::GetPreferredSize() const {
@@ -1468,6 +1469,7 @@ namespace UltraCanvas {
         };
 
         SyncTextFromValue();
+        ApplyThemeIfFollowing();
     }
 
     void UltraCanvasDatePicker::SetPlaceholder(const std::string& text) {
@@ -1566,6 +1568,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasDatePicker::SetStyle(const DatePickerStyle& s) {
+        StyleSetByHand();
         style = s;
         calendar->SetStyle(style.calendarStyle);
         if (textInput) {
@@ -1906,6 +1909,7 @@ namespace UltraCanvas {
                                                            float x, float y, float w, float h)
             : UltraCanvasContainer(identifier, x, y, w, h) {
         Rebuild();
+        ApplyThemeIfFollowing();
     }
 
     std::vector<UCDate> UltraCanvasDateRangePicker::BlockedList() const {
@@ -2250,6 +2254,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasDateRangePicker::SetStyle(const DatePickerStyle& s) {
+        StyleSetByHand();
         style = s;
         if (startPicker) startPicker->SetStyle(s);
         if (endPicker) endPicker->SetStyle(s);
@@ -2260,6 +2265,63 @@ namespace UltraCanvas {
     void UltraCanvasDateRangePicker::SetBounds(const Rect2Df& b) {
         UltraCanvasContainer::SetBounds(b);
         LayoutFields();
+    }
+
+// ===== THE THEME =====
+    CalendarStyle CalendarStyle::FromTheme(const UltraCanvasTheme& theme, const CalendarStyle& base) {
+        CalendarStyle s = base;
+        const ThemeRoles& r = theme.roles;
+        const FontStyle body = theme.Font(ThemeTextRole::Body);
+        s.fontFamily = body.fontFamily;
+        s.fontSize = static_cast<float>(body.fontSize);
+        s.headerFontSize = s.fontSize;
+        s.backgroundColor = r.raised;
+        s.borderColor = r.line;
+        s.headerBackgroundColor = r.raised;
+        s.headerTextColor = r.ink;
+        s.headerHoverColor = r.hover;
+        s.navArrowColor = r.inkMuted;
+        s.navArrowHoverColor = r.accent;
+        s.weekdayTextColor = r.inkMuted;
+        // the element's own role, for a design whose weekends are not red
+        const Color weekend = theme.Role("calendar.weekend", base.weekendTextColor);
+        s.weekendWeekdayColor = weekend;
+        s.weekendTextColor = weekend;
+        s.cellTextColor = r.ink;
+        s.adjacentMonthColor = r.inkFaint;
+        s.disabledTextColor = r.inkFaint;
+        s.hoverColor = r.hover;
+        s.selectedColor = r.accent;
+        s.selectedTextColor = r.onAccent;
+        s.todayBorderColor = r.accent;
+        s.focusBorderColor = r.focus;
+        s.rangeFillColor = r.accentSoft;
+        s.weekNumberColor = r.inkFaint;
+        s.blockedStrikeColor = r.danger.WithAlpha(200);
+        s.footerTextColor = r.accent;
+        s.footerHoverColor = r.hover;
+        s.footerSeparatorColor = r.line;
+        return s;
+    }
+
+    DatePickerStyle DatePickerStyle::FromTheme(const UltraCanvasTheme& theme, const DatePickerStyle& base) {
+        DatePickerStyle s = base;
+        const ThemeRoles& r = theme.roles;
+        const FontStyle body = theme.Font(ThemeTextRole::Body);
+        s.fontFamily = body.fontFamily;
+        s.fontSize = static_cast<float>(body.fontSize);
+        s.backgroundColor = r.well;
+        s.hoverColor = r.hover;
+        s.disabledColor = r.panel;
+        s.borderColor = r.lineStrong;
+        s.focusBorderColor = r.focus;
+        s.textColor = r.ink;
+        s.placeholderColor = r.inkFaint;
+        s.disabledTextColor = r.inkFaint;
+        s.iconColor = r.inkMuted;
+        s.caretColor = r.ink;
+        s.calendarStyle = CalendarStyle::FromTheme(theme, base.calendarStyle);
+        return s;
     }
 
 } // namespace UltraCanvas
