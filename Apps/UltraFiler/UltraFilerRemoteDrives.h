@@ -65,6 +65,10 @@
 // from a fresh listing (Revalidate) that goes ahead of the queue, and is
 // fetched beside an upload or download in progress on a thread of its own
 // rather than after it.
+// Version: 1.15.0 - a listing fetched more than kRemoteListingFreshFor ago is
+//                   shown and fetched again when its folder is listed;
+//                   OpenCopyDirectory, onOperationFinished says what kind
+//                   of failure it was
 // Version: 1.14.0 - RemoveDrive forgets a configured drive (and what is kept of
 //                   it) even when its sign-in fails; InvalidateDrive after its
 //                   settings changed; RefreshFolder for a Refresh command; a
@@ -87,7 +91,7 @@
 //                  after it), when the selection moves on, and when the
 //                  window closes
 // Version: 1.9.0
-// Last Modified: 2026-11-09
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -445,6 +449,16 @@ public:
     // cache root (DiskCache::Directory). Empty when there is nowhere
     // writable, which switches previews of remote files off.
     static std::string PreviewCacheDirectory();
+    // Where a file opened from a drive in another program is fetched to
+    // (UltraFilerWindow::OpenRemoteFile): "remote-opened" beside the preview
+    // copies, one folder per file and version (RemotePreviewCacheKey), so a
+    // file opened again unchanged is not fetched again. Empty when there is
+    // nowhere writable.
+    static std::string OpenCopyDirectory();
+    // Deletes the open copies nobody has used within the disk cache's usual
+    // age - a copy edited since counts as used. Call once per run, before the
+    // first copy is fetched.
+    static void SweepOpenCopies();
 
     bool Submit(RemoteOperation operation, const std::string& path,
                 const std::string& argument, bool isDirectory,
@@ -460,13 +474,14 @@ public:
     std::function<void(const RemoteActivity&)> onActivityChanged;
 
     // Fires on the UI THREAD when a queued change has finished. `message` is
-    // empty on success and carries the provider's reason on failure;
+    // empty on success and carries the provider's reason on failure, and
+    // `failure` what kind of failure it was (NoFailure on success);
     // `folderPath` is the folder whose listing changed, already invalidated,
     // so the window can refresh it either way. For a download that folder is
     // the LOCAL one the file landed in - nothing on the drive changed - so a
     // handler that refreshes has to ask which kind of path it was given.
-    std::function<void(const std::string& folderPath,
-                       const std::string& message)> onOperationFinished;
+    std::function<void(const std::string& folderPath, const std::string& message,
+                       RemoteFailure failure)> onOperationFinished;
 
     // ---- The connection log ------------------------------------------------
     // Every job the worker has run in this session, with its steps and its
@@ -561,6 +576,10 @@ private:
         // When this listing was last asked for or fetched, from useCounter_:
         // what decides which listings the disk cache keeps when it is full.
         uint64_t lastUsed = 0;
+        // When the server answered with it; unset for one read from the disk
+        // cache. A Ready listing older than kRemoteListingFreshFor is shown
+        // and asked for again when its folder is listed (List).
+        std::chrono::steady_clock::time_point fetchedAt{};
     };
 
     // One thing for the worker to do. A listing and a change queue together

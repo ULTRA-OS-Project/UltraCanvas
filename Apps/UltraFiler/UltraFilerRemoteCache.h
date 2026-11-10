@@ -20,10 +20,12 @@
 // to start a record of its own. Anything that does not parse drops the
 // listing it belongs to, not the file: a cache is an optimisation, and a bad
 // line in it is a reason to ask the server again, never a reason to fail.
+// Version: 1.4.0 - kRemoteListingFreshFor, RemoteListingOutdated: a listing
+//                  older than two minutes is asked for again when opened
 // Version: 1.3.0 - StaleRemotePreviewPartials: a partial preview copy is kept a day,
 //                  256 MB of them at most
 // Version: 1.2.0 - kRemoteRateLimitMaxWaitSeconds
-// Last Modified: 2026-10-20
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -79,6 +81,23 @@ inline constexpr std::chrono::seconds kRemoteConnectionIdleClose{15};
 // worker, so a wait holds every job queued behind it; the status line says
 // what it is waiting for. A longer wait is reported as the failure instead.
 inline constexpr long long kRemoteRateLimitMaxWaitSeconds = 60;
+
+// How long a folder's listing on a drive is taken as the folder. Opened again
+// after that, the folder shows what it held and is asked of the server behind
+// it, as a listing kept from the last run is: a file another device added or
+// deleted meanwhile shows without a Refresh, while a folder opened, left and
+// opened again within the time - and a subfolder fetched ahead - costs no
+// request.
+inline constexpr std::chrono::seconds kRemoteListingFreshFor{120};
+
+// Whether a listing fetched at `fetchedAt` is to be asked for again when its
+// folder is opened at `now`. A listing with no fetch time (read from the disk
+// cache, which is asked again anyway) is not outdated by this rule.
+inline bool RemoteListingOutdated(std::chrono::steady_clock::time_point fetchedAt,
+                                  std::chrono::steady_clock::time_point now) {
+    return fetchedAt != std::chrono::steady_clock::time_point{} &&
+           now - fetchedAt >= kRemoteListingFreshFor;
+}
 
 // How many listings are kept on disk. Enough for the folders of a working
 // session on a few servers; a cache that grows without bound slows every

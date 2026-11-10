@@ -81,6 +81,7 @@
 // that finds it changed reopens it, at most every couple of seconds - a video
 // or sound only once its file has settled and it is not playing
 // (ReloadChangedPreview).
+// Version: 1.35.0 - OpenRemoteFile, OpenRemoteCopy
 // Version: 1.34.0 - ConfirmRemoveRemoteDrive, ConfigureRemoteDrive,
 //                  RefreshFolderEverywhere, ShowRemoteFileError
 // Version: 1.33.0 - PreviewPanePath: the file shown or on its way
@@ -418,6 +419,17 @@ private:
     // read again, so it leaves the display.
     void ShowRemoteFileError(const std::string& path, const std::string& why,
                              RemoteFailure failure);
+    // A file on a drive the preview does not show - a document, a
+    // spreadsheet, an archive - double-clicked or Entered: fetched into
+    // UltraFilerRemoteDrives::OpenCopyDirectory and opened with the program
+    // this system opens its type with, as a file on the disk is; the status
+    // line says that changes to the copy do not reach the drive. A copy
+    // fetched before, of the same version of the file, is opened again
+    // without a request. A program or a launcher is not started from a
+    // drive: the user is told to copy it to this computer first.
+    void OpenRemoteFile(const FilerEntry& entry);
+    // The copy fetched for OpenRemoteFile, opened with the system's program.
+    void OpenRemoteCopy(const std::string& localFile, const std::string& name);
     // ===== PHONES AND CAMERAS (MTP / PTP) =====
     // Asks which portable devices are connected, on a worker thread (a device
     // seen for the first time is opened once to learn whether it is a phone
@@ -1328,6 +1340,15 @@ private:
     // again each time would make the dialog impossible to get rid of. Cleared
     // once the selection moves off it, so choosing the file again asks again.
     std::string remoteFileAlertPath;
+    // Files being fetched to be opened (OpenRemoteFile), by the local folder
+    // each lands in - the folder onOperationFinished names when it is in.
+    struct RemoteOpenWaiting {
+        std::string remoteFile;
+        std::string localFile;
+    };
+    std::map<std::string, RemoteOpenWaiting> remoteOpensWaiting;
+    // Old copies are swept once per run, before the first is fetched.
+    bool remoteOpenCopiesSwept = false;
     // What the last copy, move or delete did - "3 files copied to \"alt\"",
     // "\"report.pdf\" moved to the Trash" - said on
     // the status line for kTransferNoteMs after it ends, so a drop or a paste
