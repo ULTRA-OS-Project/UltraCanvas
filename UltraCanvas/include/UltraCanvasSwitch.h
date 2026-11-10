@@ -2,10 +2,11 @@
 // Toggle switch: pill-shaped track with a circular thumb that snaps between sides.
 // Supports horizontal/vertical orientation, optional thumb icons, and optional ON/OFF state labels
 // (inside the track, outside it, or one label on each side of the track).
+// Version: 1.7.0 - FromTheme sets the label's font at the body size; the SetVisualStyle rule and the constructor tail
 // Version: 1.6.0 - the thumb as element roles (switch.thumb, switch.thumb-border)
 // Version: 1.5.0 - SwitchVisualStyle::FromTheme, ApplyTheme
 // Version: 1.4.0
-// Last Modified: 2026-10-08
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -187,7 +188,7 @@ namespace UltraCanvas {
         void ApplyTheme(const UltraCanvasTheme& theme) override { SetVisualStyle(SwitchVisualStyle::FromTheme(theme, GetVisualStyle())); }
 
         // ===== APPEARANCE =====
-        void SetVisualStyle(const SwitchVisualStyle& s) { visualStyle = s; layoutDirty = true; InvalidateLayout(); RequestRedraw(); }
+        void SetVisualStyle(const SwitchVisualStyle& s) { StyleSetByHand(); visualStyle = s; layoutDirty = true; InvalidateLayout(); RequestRedraw(); }
         SwitchVisualStyle& GetVisualStyle() { return visualStyle; }
         const SwitchVisualStyle& GetVisualStyle() const { return visualStyle; }
 

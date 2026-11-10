@@ -25,7 +25,7 @@
 //                 says "Remote image:" / "Missing image:" instead of "🌐" / "⚠"
 // Version: 3.7.3 - style.scrollbarWidth / scrollbarCornerRadius / scrollbarThumbInset
 //                 replace the fixed 15px square scrollbar
-// Last Modified: 2026-11-03
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasTextArea.h"
@@ -94,6 +94,7 @@ namespace UltraCanvas {
         if (style.highlightSyntax) {
             syntaxTokenizer = std::make_unique<SyntaxTokenizer>();
         }
+        ApplyThemeIfFollowing();
     }
 
 // Destructor

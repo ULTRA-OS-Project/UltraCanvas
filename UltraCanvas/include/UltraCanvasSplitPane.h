@@ -1,8 +1,9 @@
 // include/UltraCanvasSplitPane.h
 // Split pane container that divides content into N draggable panes along one axis
+// Version: 1.5.0 - the SetSplitPaneStyle rule and the constructor tail of a pane that follows by default
 // Version: 1.4.0 - SplitPaneStyle::FromTheme, ApplyTheme
 // Version: 1.3.0
-// Last Modified: 2026-08-28
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 
 #pragma once
