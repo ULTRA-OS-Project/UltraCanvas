@@ -135,7 +135,19 @@ The first ChatCube draft, which this replaces, is kept under
    you turns the camera off the other sees "camera off" instead of a frozen
    picture.
 
-7. **Settings** - the gear beside the copy button at the top of the sidebar
+7. **A right-click on a chat** in the list opens its menu, and leaves the
+   open chat as it is. Every chat: *Open*, *Mark as read* / *Mark as
+   unread* (a dot until you open it) and *Pin to top* / *Unpin* (pinned
+   chats stay first, with a pin). A person: *Voice call*, *Video call*,
+   *Copy ChatCube ID* (*Copy address* on Matrix and Telegram), *Add to
+   group* and *Delete chat* - the chat and its messages go from this
+   computer; they keep theirs. A group: *Members*, each with *Send a
+   message*, *Copy ID* and, for the group's owner, *Remove from group*;
+   *Add members*, *Rename group* and *Leave group*. What the chat's network
+   cannot do is not offered (Telegram groups have none of the group items
+   yet). Pins and unread marks are kept in the settings file.
+
+8. **Settings** - the gear beside the copy button at the top of the sidebar
    - opens a window laid out as UltraFiler's: the sections on the left, the
    chosen page on the right, *Restore defaults* and *Close* at the foot.
    *Appearance*: the light or the dark look (from the next start) and how
