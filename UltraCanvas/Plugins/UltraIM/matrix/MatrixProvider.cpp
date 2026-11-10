@@ -1,6 +1,7 @@
 // Plugins/UltraIM/matrix/MatrixProvider.cpp
 // Matrix as an UltraIM provider
-// Version: 0.2.3 - a room renamed, members invited and kicked, a room left (ManageGroups, LeaveConversation)
+// Version: 0.2.3 - a room renamed, members invited and kicked, a room left (ManageGroups, LeaveConversation);
+//                  a room renamed by someone else updates its conversation as the sync brings it
 // Version: 0.2.2 - a picture or a video sent goes with its preview picture (UltraIM_MakePreview)
 // Version: 0.2.1 - attachments: downloaded (plain and encrypted), SendImage / SendVideo / SendFile
 // Version: 0.2.0
@@ -873,6 +874,9 @@ bool MatrixProvider::ApplyEvent(Room& room, const JSONValue& event, bool live, s
         const std::string membership = content["membership"].GetString();
         const std::string before = event["unsigned"]["prev_content"]["membership"].GetString();
         ApplyState(room, event);
+        // A new name or alias changes what the list shows: the conversation
+        // is updated (no line in the timeline).
+        if (type == "m.room.name" || type == "m.room.canonical_alias") return live;
         if (type != "m.room.member" || membership == before || user == userId_) return false;
         UltraIMMessage line;
         line.messageId = event["event_id"].GetString();

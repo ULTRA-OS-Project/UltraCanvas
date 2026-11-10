@@ -1857,6 +1857,7 @@ void DirectProvider::HandleBody(const Envelope& envelope, const JSONValue& body)
     updated.providerId = providerId_;
     updated.conversationId = conversation.conversationId;
     store_.GetConversation(conversation.conversationId, updated.conversation);
+    FillOwner(updated.conversation);   // a group's owner, which the store does not keep
     Emit(updated);
 
     if (!group) SendReceipt(envelope.from, {envelope.id}, "delivered");
@@ -2083,6 +2084,7 @@ UltraIMResult DirectProvider::SendMedia(const std::string& conversationId, const
     updated.providerId = providerId_;
     updated.conversationId = conversationId;
     store_.GetConversation(conversationId, updated.conversation);
+    FillOwner(updated.conversation);   // a group's owner, which the store does not keep
     Emit(updated);
     return UltraIMResult::Ok();
 }
@@ -2150,6 +2152,7 @@ void DirectProvider::HandleFileBody(const Envelope& envelope, const JSONValue& b
     updated.providerId = providerId_;
     updated.conversationId = conversation.conversationId;
     store_.GetConversation(conversation.conversationId, updated.conversation);
+    FillOwner(updated.conversation);   // a group's owner, which the store does not keep
     Emit(updated);
     if (!group) SendReceipt(envelope.from, {envelope.id}, "delivered");
     TryAssemble(fileId);        // the parts may have come first
@@ -2283,6 +2286,7 @@ UltraIMResult DirectProvider::SendText(const std::string& conversationId, const 
     updated.providerId = providerId_;
     updated.conversationId = conversationId;
     store_.GetConversation(conversationId, updated.conversation);
+    FillOwner(updated.conversation);   // a group's owner, which the store does not keep
     Emit(updated);
     return UltraIMResult::Ok();
 }
@@ -2300,6 +2304,7 @@ UltraIMResult DirectProvider::MarkRead(const std::string& conversationId, const 
     updated.providerId = providerId_;
     updated.conversationId = conversationId;
     store_.GetConversation(conversationId, updated.conversation);
+    FillOwner(updated.conversation);   // a group's owner, which the store does not keep
     Emit(updated);
     return UltraIMResult::Ok();
 }

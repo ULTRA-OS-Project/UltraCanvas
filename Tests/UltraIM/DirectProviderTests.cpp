@@ -523,6 +523,12 @@ void TestGroupManagement(DirectProvider& alice, Events& aliceEvents, DirectProvi
     CHECK(aliceEvents.WaitFor([&](const UltraIMEvent& e) { return isUpdate(e) && e.conversation.title == "Crew"; },
                               &seen, 30));
     CHECK(seen.conversation.ownerId == aliceId);
+    // Every update of the group names its owner - also the ones made from
+    // the store (read, sent, received), which does not keep it.
+    aliceEvents.Clear();
+    CHECK(alice.MarkRead(groupId, ""));
+    CHECK(aliceEvents.WaitFor(isUpdate, &seen, 30));
+    CHECK(seen.conversation.ownerId == aliceId);
 
     // Only the owner takes someone else out.
     UltraIMResult refused;
