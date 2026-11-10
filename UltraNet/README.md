@@ -383,9 +383,10 @@ one failed (`AuthenticationRequired` for a proxy that asks for a sign-in).
 The SSH plug-in follows the setting that way: libssh cannot talk to a proxy,
 so the connection is made by UltraNet and handed over
 (`UltraNet_SocketDetach`, libssh's `SSH_OPTIONS_FD`); known_hosts is still
-looked up by the server's name. RTMP goes through libcurl's librtmp support,
-which the libcurl built here does not have; the UDP protocols (CoAP, SNMP,
-SIP, RTP, mDNS) never go through a proxy.
+looked up by the server's name. The RTMP plug-in plays `rtmp://` with a
+client of its own over such a connection (libcurl, which dropped librtmp,
+serves only `rtmps` / `rtmpt` where the libcurl loaded still has it); the UDP
+protocols (CoAP, SNMP, SIP, RTP, mDNS) never go through a proxy.
 
 The setting is `UltraNetConfig::proxy` (`UltraNet_SetGlobalProxy`), or a
 request's own `UltraNetHttpOptions::proxy`:

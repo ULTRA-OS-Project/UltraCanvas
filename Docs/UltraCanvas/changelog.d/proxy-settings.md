@@ -59,3 +59,26 @@
   well. Tests: seven loopback handshakes in `UltraNetTests`
   (`test_proxy.cpp`), and the SSH tunnel tests passed against an sshd
   reached through a SOCKS 5 proxy.
+- **The RTMP plug-in plays `rtmp://` again, with a client of its own.** It
+  relied on libcurl's librtmp support, which the libcurl UltraNet is built
+  with does not have (libcurl dropped librtmp), so `OpenStream` never
+  connected. It now speaks RTMP itself over a connection UltraNet makes
+  through the proxy setting: the handshake, the chunk stream (any chunk size
+  the server sets, every header form, extended timestamps, Window
+  Acknowledgement Size with Acknowledgements, a ping answered), AMF0
+  `connect` / `createStream` / `play` with the server's refusal reported,
+  and `ReadFrame` gives the stream back as FLV as librtmp did - the header,
+  then one tag per audio, video or data message, an aggregate split into
+  its tags, the publisher's `@setDataFrame` taken off the metadata.
+  `rtmps` / `rtmpe` / `rtmpt` are offered, through libcurl, only where the
+  libcurl loaded has RTMP. Tested against a server of the test's own in
+  `UltraNetTests`, and against FFmpeg serving RTMP - directly and through a
+  SOCKS 5 proxy - with FFmpeg reading back the FLV it gave, audio and video,
+  without an error.
+- **`test_extra_plugins.cpp` builds a plug-in it cannot find as CMake does.**
+  The fallback compile left out the host shim and the shared plug-in
+  headers, so it could never succeed - the mDNS test printed a compiler
+  error on every machine without the CMake-built plug-in, then skipped. It
+  now compiles the shim in with the entry point the only symbol exported,
+  and keeps the compiler's output in a log it names; a backend library that
+  is missing (Avahi) is a one-line skip.
