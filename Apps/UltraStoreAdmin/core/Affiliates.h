@@ -17,6 +17,7 @@
 // the payout - is the payment service's; the admin records sales by hand
 // until it exists (RecordSale), so the report and the payouts work from
 // day one.
+// Version: 0.2.2 - JoinPage and RetiredCodePage in the page frame (PageFrame.h), like CodeLandingPage
 // Version: 0.2.1 - JoinPage (the page behind the join link, with the store's contact; closed for a partner switched off), RetiredCodePage
 // Version: 0.2.0 - RecordSale with a reference; SyncSales from the payment service
 // Version: 0.1.0

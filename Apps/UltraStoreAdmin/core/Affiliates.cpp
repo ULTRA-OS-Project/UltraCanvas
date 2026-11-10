@@ -1,5 +1,6 @@
 // Apps/UltraStoreAdmin/core/Affiliates.cpp
 // The affiliate scheme (Affiliates.h).
+// Version: 0.3.1 - the join and retired pages in the shared frame too
 // Version: 0.3.0 - the landing page in the shared frame with the mark
 // Version: 0.2.0 - RecordSale with a reference; SyncSales
 // Version: 0.1.0
@@ -270,15 +271,10 @@ std::string CodeLandingPage(const UltraStore::PromoCode& code, const std::vector
 
 namespace {
 
-std::string PageHead(const std::string& title) {
-    return "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n"
-           "<title>" + Escape(title) + "</title>\n"
-           "<style>body{font-family:sans-serif;max-width:36em;margin:3em auto;padding:0 1em;color:#1f2937}code{font-size:1.2em;background:#f3f4f6;padding:.2em .5em;border-radius:.3em}</style>\n"
-           "</head>\n<body>\n<h1>" + Escape(title) + "</h1>\n";
-}
-
-std::string PageFoot(const std::string& catalogBase) {
-    return "<p><small>" + Escape(TrimSlash(catalogBase)) + "</small></p>\n</body>\n</html>\n";
+// The join and retired pages sit in join/<affiliate>/ and go/<CODE>/,
+// two levels under the publish folder, like the landing page.
+std::string FramedPage(const std::string& title, const std::string& body, const std::string& catalogBase) {
+    return FramePage(title, title, body, "../../media/", "UltraStore, the ULTRA OS app store. " + Escape(TrimSlash(catalogBase)));
 }
 
 } // namespace
@@ -288,26 +284,27 @@ std::string JoinPage(const Affiliate& recruiter, const std::string& storeContact
         ? "<p>Signing up is done by the store's team; they create your partner code and tell you your share.</p>\n"
         : "<p>To sign up, write to the store's team at <strong>" + Escape(storeContact) + "</strong>; they create your partner code and tell you your share.</p>\n";
     if (!recruiter.enabled) {
-        return PageHead("This invitation is closed") +
-               "<p>The partner who shared this link is no longer part of the UltraStore partner programme, so this invitation is no longer active.</p>\n" +
-               signUp + PageFoot(catalogBase);
+        return FramedPage("This invitation is closed",
+                             "<p>The partner who shared this link is no longer part of the UltraStore partner programme, so this invitation is no longer active.</p>\n" + signUp,
+                             catalogBase);
     }
-    std::string page = PageHead("Become an UltraStore partner") +
+    std::string body =
         "<p><strong>" + Escape(recruiter.name) + "</strong> invites you to join the UltraStore partner programme.</p>\n"
         "<p>A partner has a code. Buyers enter it in the store or scan the partner's QR code, and every sale made with it "
         "credits the partner a share of the price. A partner who was brought in by another partner earns that one a "
         "recruit share of their sales - once, one level up and no further.</p>\n"
         "<p>When you sign up, name the partner who invited you so they are credited for bringing you in:</p>\n"
         "<p>Partner id <code>" + Escape(recruiter.id) + "</code> (" + Escape(recruiter.name) + ")</p>\n";
-    if (!recruiter.contact.empty()) page += "<p>Questions about the programme go to " + Escape(recruiter.name) + ": " + Escape(recruiter.contact) + "</p>\n";
-    page += signUp + PageFoot(catalogBase);
-    return page;
+    if (!recruiter.contact.empty()) body += "<p class=\"muted\">Questions about the programme go to " + Escape(recruiter.name) + ": " + Escape(recruiter.contact) + "</p>\n";
+    body += signUp;
+    return FramedPage("Become an UltraStore partner", body, catalogBase);
 }
 
 std::string RetiredCodePage(const std::string& code, const std::string& catalogBase) {
-    return PageHead("This code is no longer valid") +
-           "<p><code>" + Escape(UltraStore::NormalizeCode(code)) + "</code> is no longer an UltraStore code: it was withdrawn, "
-           "or the partner it belonged to left the programme. The store does not accept it.</p>\n" + PageFoot(catalogBase);
+    return FramedPage("This code is no longer valid",
+                         "<p><code>" + Escape(UltraStore::NormalizeCode(code)) + "</code> is no longer an UltraStore code: it was withdrawn, "
+                         "or the partner it belonged to left the programme. The store does not accept it.</p>\n",
+                         catalogBase);
 }
 
 } // namespace UltraStoreAdmin
