@@ -17,13 +17,13 @@
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include <UltraNet/UltraNetCore.h>
-#include <UltraNet/UltraNetCurlProxy.h>
 #include <UltraNet/UltraNetPlugins.h>
 #include "UltraNetPluginGuard.h"
 #include "UltraNetPluginHostShim.h"
 #include <UltraCanvasUtils.h>
 
 #include <curl/curl.h>
+#include <UltraNet/UltraNetCurlProxy.h>   // after UltraNetPlugins.h: it brings <windows.h>
 
 #include <algorithm>
 #include <cctype>

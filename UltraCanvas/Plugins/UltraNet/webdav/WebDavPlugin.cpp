@@ -14,7 +14,6 @@
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include <UltraNet/UltraNetCore.h>
-#include <UltraNet/UltraNetCurlProxy.h>
 #include <UltraNet/UltraNetFtp.h>
 #include <UltraNet/UltraNetPlugins.h>
 #include "UltraNetPluginGuard.h"
@@ -33,6 +32,10 @@
 #ifdef CreateDirectory
 #  undef CreateDirectory
 #endif
+
+// After UltraNetPlugins.h and the #undef above: it includes <curl/curl.h>,
+// and with it <windows.h>, which must not rename the interface's methods.
+#include <UltraNet/UltraNetCurlProxy.h>
 
 #include <algorithm>
 #include <cctype>
