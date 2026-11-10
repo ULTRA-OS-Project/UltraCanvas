@@ -225,6 +225,7 @@ namespace UltraCanvas {
             : UltraCanvasUIElement(identifier, x, y, w, h) {
         style = BreadcrumbStyle::Default();
         SetMouseCursor(style.itemCursor);
+        ApplyThemeIfFollowing();
     }
 
     UltraCanvasBreadcrumb::~UltraCanvasBreadcrumb() {
@@ -389,6 +390,7 @@ namespace UltraCanvas {
 
 // ===== STYLE =====
     void UltraCanvasBreadcrumb::SetStyle(const BreadcrumbStyle& newStyle) {
+        StyleSetByHand();
         style = newStyle;
         layoutDirty = true;
         ApplyHoverCursor(hoveredSlotIdx, hoveredOnDropdown, hoveredSlotIdx >= 0);
@@ -1849,4 +1851,30 @@ namespace UltraCanvas {
         }
     }
 
+
+// ===== THE THEME =====
+    BreadcrumbStyle BreadcrumbStyle::FromTheme(const UltraCanvasTheme& theme, const BreadcrumbStyle& base) {
+        BreadcrumbStyle s = base;
+        const ThemeRoles& r = theme.roles;
+        const FontStyle body = theme.Font(ThemeTextRole::Body);
+        s.fontStyle.fontFamily = body.fontFamily;
+        s.fontStyle.fontSize = body.fontSize;
+        // a filled strip keeps being filled, a transparent one transparent
+        if (base.backgroundColor.a > 0) s.backgroundColor = r.panel;
+        if (base.borderColor.a > 0) s.borderColor = r.line;
+        s.itemTextColor = r.inkMuted;
+        s.itemHoverTextColor = r.accent;
+        s.itemPressedTextColor = r.accentHover;
+        s.disabledItemTextColor = r.inkFaint;
+        s.currentItemTextColor = r.ink;
+        if (base.itemBackgroundColor.a > 0) s.itemBackgroundColor = r.raised;
+        s.itemHoverBackgroundColor = r.hover;
+        s.itemPressedBackgroundColor = r.pressed;
+        if (base.currentItemBackgroundColor.a > 0) s.currentItemBackgroundColor = r.accentSoft;
+        s.separatorColor = r.inkFaint;
+        s.levelIndicatorColor = r.accent;
+        s.levelIndicatorTextColor = r.onAccent;
+        s.levelIndicatorBorderColor = r.panel;
+        return s;
+    }
 } // namespace UltraCanvas

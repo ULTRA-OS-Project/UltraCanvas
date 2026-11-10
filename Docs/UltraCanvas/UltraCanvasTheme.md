@@ -20,7 +20,7 @@ those elements, the tabbed container and the text area
 (`include/UltraCanvasUIElement.h`)
 **Tests:** `Tests/UltraCanvasThemeTest.cpp` (without a display)
 **Design:** `Docs/Research/UltraVideoDesignProposal.md` §5.8
-**Version:** 1.10.0 - the list elements read the theme: the scrollbar, list view, tree view, columns tree view and filer widget (T4, third part)
+**Version:** 1.11.0 - the containers and pickers read the theme: container, group box, breadcrumb, pagination, the colour picker, swatch bar and palette manager, the rich text edit (T4, fourth part)
 **Last Modified:** 2026-11-10
 **Author:** UltraCanvas Framework
 
@@ -31,10 +31,13 @@ in place. Every panel element reads it: the button, label, dropdown,
 slider, switch, text input, toolbar, split pane and album, and the input
 elements - checkbox, radio, segmented control, spinner, stepper, rating,
 the calendar view and the date, date range and time pickers with the
-clock view - and the lists - the scrollbar, list view, columns tree view
-and filer widget - through a `FromTheme` on their style struct and an
-`ApplyTheme` on the element; the tabbed container, the text area and the
-tree view through `ApplyTheme` alone; the menu
+clock view - the lists - the scrollbar, list view, columns tree view and
+filer widget - and the containers and pickers - the container's
+scrollbars, group box, breadcrumb, pagination, the colour picker, swatch
+bar and palette manager, the rich text edit - through a `FromTheme` on
+their style struct and an `ApplyTheme` on the element; the tabbed
+container, the text area and the tree view through `ApplyTheme` alone;
+the menu
 and the tooltip through `MenuStyle::FromTheme` and `TooltipStyle::FromTheme`,
 which put the roles over their own `Dark()` and `Light()` presets, so a
 dark menu or tooltip agrees with the rest of a dark window. Under the
@@ -42,8 +45,7 @@ policy (`FollowHost`, the default, `Light` or `Dark`) every new element
 follows the theme: it is styled from the current theme as it is built and
 again on every change. Styled by hand (`SetStyle`) it keeps its look, as
 before. The readers set their fonts by role as well as their colours; the
-containers and pickers, the viewers and the media elements are the rest
-of T4.
+viewers and the media elements are the rest of T4.
 
 ## The roles
 
@@ -229,9 +231,12 @@ calendar's weekends (`calendar.weekend`, its red), the clock's dial
 (`time-picker.clock-face`, the pressed fill), a scrollbar's track and
 thumb (`scrollbar.track`, `scrollbar.thumb`, the panel and the control
 border), a columns tree's section header (`columns-tree.group-header`,
-`columns-tree.on-group-header`, its black bar) and the filer's overlays
+`columns-tree.on-group-header`, its black bar), the filer's overlays
 (`filer.icon-menu`, `filer.on-icon-menu`, `filer.icon-menu-done`,
-`filer.extension-bar`, `filer.extension-tag`, `filer.on-extension-tag`).
+`filer.extension-bar`, `filer.extension-tag`, `filer.on-extension-tag`),
+the colour picker's markers (`color-picker.marker`,
+`color-picker.marker-outline`, white and black) and the rich text edit's
+paper (`rich-text.page`, the well).
 
 ```cpp
 UltraCanvasTheme brand = UltraCanvasTheme::Light();
@@ -265,11 +270,13 @@ theme.fonts.scale = 1.25;                                        // Body is then
 Every `FromTheme` reader sets its style's family and size from `Font(role)`
 by the role its text plays: the button, label, dropdown, text input, menu,
 switch, checkbox, radio, segmented control, spinner, rating, calendar,
-the date and time pickers, the list's rows, the tree and the filer at
+the date and time pickers, the list's rows, the tree, the filer, a group
+box's caption, the breadcrumb, the pagination and the colour picker at
 `Body`, a stepper's titles too; a heading label at `Heading`; the
 tooltip, a slider's value, a dialog's details, a stepper's descriptions,
-a list's header and the filer's small text at `Caption`, the dialog's
-message at `Body`, the tab titles at `Caption`; the album, the timecode field and
+a list's header, the filer's small text and the palette manager at
+`Caption`, the dialog's message at `Body`, the tab titles at `Caption`;
+the rich text edit keeps the document's fonts; the album, the timecode field and
 the timeline take the families only (their sizes are pixels of a design).
 The style struct's own literal stays the default of an element styled by
 hand, as the colour defaults do. The text area keeps its font: it is the

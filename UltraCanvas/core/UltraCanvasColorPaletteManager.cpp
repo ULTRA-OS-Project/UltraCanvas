@@ -6,7 +6,7 @@
 //                  creator and the user's own palettes; the hovered swatch
 //                  floods the rows; fuller presets
 // Version: 1.0.0
-// Last Modified: 2026-11-09
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasColorPaletteManager.h"
@@ -780,6 +780,7 @@ UltraCanvasColorPaletteManager::UltraCanvasColorPaletteManager(const std::string
           .SetFlexAlignItems(CSSLayout::AlignItems::Start);
     palettes_.push_back(DefaultPalette());
     Rebuild();
+    ApplyThemeIfFollowing();
 }
 
 UltraCanvasColorPaletteManager::~UltraCanvasColorPaletteManager() {
@@ -958,6 +959,7 @@ void UltraCanvasColorPaletteManager::ClearSelection() {
 // ===================================================================
 
 void UltraCanvasColorPaletteManager::SetManagerStyle(const ColorPaletteManagerStyle& s) {
+    StyleSetByHand();
     style_ = s;
     layout.SetFlexGap(style_.rowGap);
     Rebuild();
@@ -1387,4 +1389,28 @@ void RegisterColorPaletteManagerElement() {
     UltraCanvasElementRegistry::Register(MakeColorPaletteManagerDescriptor());
 }
 
+
+// ===== THE THEME =====
+ColorPaletteManagerStyle ColorPaletteManagerStyle::FromTheme(const UltraCanvasTheme& theme, const ColorPaletteManagerStyle& base) {
+    ColorPaletteManagerStyle s = base;
+    const ThemeRoles& r = theme.roles;
+    s.fontSize = static_cast<float>(theme.FontSize(ThemeTextRole::Caption));
+    s.swatchBorder = r.line;
+    s.swatchHoverBorder = r.inkFaint;
+    s.swatchSelectedBorder = r.accent;
+    s.buttonColor = r.raised;
+    s.buttonHoverColor = r.hover;
+    s.buttonBorder = r.line;
+    s.buttonText = r.ink;
+    s.accentColor = r.accent;
+    s.accentHoverColor = r.accentHover;
+    s.popupBackground = r.raised;
+    s.popupBorder = r.line;
+    s.cardBackground = r.panel;
+    s.cardBorder = r.line;
+    s.titleText = r.ink;
+    s.mutedText = r.inkMuted;
+    s.editorPickerStyle = ColorPickerStyle::FromTheme(theme, base.editorPickerStyle);
+    return s;
+}
 } // namespace UltraCanvas
