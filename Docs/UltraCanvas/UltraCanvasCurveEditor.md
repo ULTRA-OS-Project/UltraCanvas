@@ -14,8 +14,8 @@ three layers, each usable on its own:
 | `UltraCanvasCurveEditor` | The element the user drags points in (grid, histogram backdrop, selection) | `include/UltraCanvasCurveEditor.h`, `core/UltraCanvasCurveEditor.cpp` |
 | `UltraCanvasCurvesDialog` | The window: channel selector, editor, preview toggle, OK / Cancel / Reset | `dialogs/UltraCanvasCurvesDialog.h`, `dialogs/UltraCanvasCurvesDialog.cpp` |
 
-**Version**: 1.0.0
-**Last Modified**: 2026-08-25
+**Version**: 1.1.0 - `CurveEditorStyle::FromTheme`, `ApplyTheme`: the editor follows the theme
+**Last Modified**: 2026-11-10
 **Author**: UltraCanvas Framework
 
 None of the three touches pixels. They produce lookup tables;
@@ -198,6 +198,26 @@ thumbnail of its own, so the user judges the edit at full size.
 A host that keeps a pointer to the dialog must clear its callbacks (or close
 it) when the host itself goes away: the window lives in the application's window
 list, not in the host.
+
+## Following the theme
+
+`CurveEditorStyle::FromTheme` puts the framework theme's roles
+(`UltraCanvasTheme.md`) over a base style's metrics: the well with the
+control border and a hairline grid, the curve in ink with raised points
+outlined in ink, the accent for the selected point and the focus ring,
+faint ink at the base's alpha for the histogram; the identity line keeps
+its red unless the theme names `curve-editor.diagonal`. Without a base it
+starts from `Dark()` or `Default()` by the theme's flag. Under the theme
+policy a new editor follows the theme by itself (`ApplyTheme`); a
+`SetStyle` by hand stops that, `SetFollowTheme(true)` after it keeps both.
+
+```cpp
+auto curves = std::make_shared<UltraCanvasCurveEditor>("curves", 260, 260);
+CurveEditorStyle fine = curves->GetStyle();
+fine.gridDivisions = 8;
+curves->SetStyle(CurveEditorStyle::FromTheme(UltraCanvasTheme::Current(), fine));
+curves->SetFollowTheme(true);
+```
 
 ## Notes
 

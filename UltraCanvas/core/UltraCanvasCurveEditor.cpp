@@ -48,6 +48,7 @@ UltraCanvasCurveEditor::UltraCanvasCurveEditor(const std::string& identifier,
                                                float x, float y, float w, float h)
     : UltraCanvasUIElement(identifier, x, y, w, h) {
     SetMouseCursor(UCMouseCursor::Cross);
+    ApplyThemeIfFollowing();
 }
 
 void UltraCanvasCurveEditor::SetCurves(const ToneCurveSet& set) {
@@ -405,4 +406,22 @@ bool UltraCanvasCurveEditor::OnEvent(const UCEvent& event) {
     return false;
 }
 
+
+// ===== THE THEME =====
+CurveEditorStyle CurveEditorStyle::FromTheme(const UltraCanvasTheme& theme, const CurveEditorStyle& base) {
+    CurveEditorStyle s = base;
+    const ThemeRoles& r = theme.roles;
+    s.backgroundColor = r.well;
+    s.borderColor = r.lineStrong;
+    s.gridColor = r.line;
+    // the element's own role: the identity line keeps its red unless a theme names another
+    s.diagonalColor = theme.Role("curve-editor.diagonal", base.diagonalColor);
+    s.curveColor = r.ink;
+    s.pointColor = r.raised;
+    s.pointBorderColor = r.ink;
+    s.selectedPointColor = r.accent;
+    s.histogramColor = r.inkFaint.WithAlpha(base.histogramColor.a);
+    s.focusColor = r.focus;
+    return s;
+}
 } // namespace UltraCanvas

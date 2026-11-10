@@ -38,6 +38,7 @@
   - [Overlay Layout with a Scrim](#overlay-layout-with-a-scrim)
   - [Image Fitting and Gap Fill](#image-fitting-and-gap-fill)
   - [Static Text Mode](#static-text-mode)
+- [Following the theme](#following-the-theme)
 - [Best Practices](#best-practices)
 - [See Also](#see-also)
 
@@ -45,7 +46,7 @@
 
 **UltraCanvasSlideshow** is a timed image slideshow element. It cross-fades through a list of slides, each pairing an image with an optional info-panel title and body, and renders everything itself (image layers, info panel, and indicators are painted directly in `Render()` — no child UI elements are created). It offers six transition styles, fourteen info-panel layouts (split and overlay), five image-fit policies, and eight selectable indicator styles, plus autoplay, hover-pause, looping, and arrow-key navigation.
 
-**Version:** 1.0.0
+**Version:** 1.1.0 - `SlideshowConfig::FromTheme`, `SlideshowIndicatorStyle::FromTheme`, `ApplyTheme`: the slideshow follows the theme
 **Header:** `include/UltraCanvasSlideshow.h`
 **Namespace:** `UltraCanvas`
 **Base Class:** `UltraCanvasContainer`
@@ -554,6 +555,27 @@ SlideshowConfig cfg = show->GetConfig();
 cfg.textMode = SlideshowTextMode::Static;
 show->SetConfig(cfg);
 show->SetStaticText("Our Gallery", "A curated selection of recent work.");
+```
+
+## Following the theme
+
+`SlideshowConfig::FromTheme` and `SlideshowIndicatorStyle::FromTheme` put
+the framework theme's roles (`UltraCanvasTheme.md`) over a base's own
+timing, layout and sizes: the panel for the info panel with ink for the
+title and muted ink for the body in the interface font (the display sizes
+stay), the control border for an inactive indicator, the accent active,
+muted ink hovered, ink for the counter; the stage keeps its black unless the
+theme names `slideshow.stage`. Under the theme policy a new slideshow
+follows the theme by itself (`ApplyTheme`); a `SetConfig` or
+`SetIndicatorStyle` by hand stops that, `SetFollowTheme(true)` after it
+keeps both.
+
+```cpp
+auto show = std::make_shared<UltraCanvasSlideshow>("show", 640, 360);
+SlideshowConfig quick = show->GetConfig();
+quick.slideDuration = std::chrono::milliseconds(3000);
+show->SetConfig(SlideshowConfig::FromTheme(UltraCanvasTheme::Current(), quick));
+show->SetFollowTheme(true);
 ```
 
 ## Best Practices
