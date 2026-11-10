@@ -78,7 +78,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateLocalisa
           .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     const std::filesystem::path root = PrepareDemoLocale();
     if (root.empty()) {
-        status->SetText("The temp folder is not writable: the editor shows the shipped catalogues read-only.");
+        status->SetText(Tr("The temp folder is not writable: the editor shows the shipped catalogues read-only."));
         editor->SetFolders(NormalizePath(GetResourcesDir() + "media/locale"), "");
     } else {
         editor->SetFolders(PathToUtf8(root / "shipped"), PathToUtf8(root / "settings"));

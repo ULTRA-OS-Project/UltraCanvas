@@ -53,9 +53,9 @@ namespace UltraCanvas {
             for (int c = 0; c < 5; ++c) sheet->SetColumnWidth(c, widths[c]);
             sheet->SetRowHeight(0, 28);
 
-            const char* headers[] = { "Month", "Refunds", "Sales", "Chargebacks", "CBK %" };
+            const std::string headers[] = { Tr("Month"), Tr("Refunds"), Tr("Sales"), Tr("Chargebacks"), Tr("CBK %") };
             for (int c = 0; c < 5; ++c) {
-                sheet->SetCellValue(0, c, std::string(headers[c]));
+                sheet->SetCellValue(0, c, headers[c]);
                 sheet->GetCell(0, c)->SetBold(true);
             }
 
@@ -86,7 +86,7 @@ namespace UltraCanvas {
             // Totals row: SUM formulas. Selecting one of these cells highlights
             // the range of cells it covers (e.g. C2:C8 for Sales).
             const int totalRow = r + 1;  // leave a blank spacer row
-            sheet->SetCellValue(totalRow, 0, std::string("07 to 12/2016"));
+            sheet->SetCellValue(totalRow, 0, Tr("07 to 12/2016"));
             sheet->GetCell(totalRow, 0)->SetBold(true);
 
             sheet->SetCellFormula(totalRow, 1, "=SUM(B2:B8)");
@@ -107,7 +107,7 @@ namespace UltraCanvas {
         // its columns fitted to the content instead of a uniform default.
         std::string DescribeColumnWidths(const UltraCanvasSpreadsheet* grid) {
             const SpreadsheetSheet* active = grid ? grid->GetActiveSheet() : nullptr;
-            if (!active) return "no sheet";
+            if (!active) return Tr("no sheet");
 
             const CellRange used = active->GetUsedRange();
             int fromFile = 0, fitted = 0;
@@ -115,11 +115,13 @@ namespace UltraCanvas {
                 if (active->HasExplicitColumnWidth(col)) ++fromFile; else ++fitted;
             }
             if (fromFile > 0 && fitted > 0) {
-                return std::to_string(fromFile) + " column widths from the file, "
-                     + std::to_string(fitted) + " auto-fitted";
+                return LocalisationDetail::Substitute(
+                        TrN("{n} column width from the file, {0} auto-fitted",
+                            "{n} column widths from the file, {0} auto-fitted", fromFile),
+                        {std::to_string(fitted)});
             }
-            if (fromFile > 0) return std::to_string(fromFile) + " column widths from the file";
-            return std::to_string(fitted) + " columns auto-fitted to their content";
+            if (fromFile > 0) return TrN("{n} column width from the file", "{n} column widths from the file", fromFile);
+            return TrN("{n} column auto-fitted to its content", "{n} columns auto-fitted to their content", fitted);
         }
 
         // A toolbar button as wide as its text, at least `minWidth` (the
@@ -149,16 +151,16 @@ namespace UltraCanvas {
         auto toolbar = DemoKit::AddRow(card, "ssToolbar", 8);
         toolbar->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
 
-        auto openBtn = MakeToolbarButton("ssOpenBtn", "Open Spreadsheet File", 190);
+        auto openBtn = MakeToolbarButton("ssOpenBtn", Tr("Open Spreadsheet File"), 190);
         DemoKit::Add(toolbar, openBtn);
 
-        auto importBtn = MakeToolbarButton("ssImportBtn", "Import CSV", 150);
+        auto importBtn = MakeToolbarButton("ssImportBtn", Tr("Import CSV"), 150);
         DemoKit::Add(toolbar, importBtn);
 
-        auto saveBtn = MakeToolbarButton("ssSaveBtn", "Save", 110);
+        auto saveBtn = MakeToolbarButton("ssSaveBtn", Tr("Save"), 110);
         DemoKit::Add(toolbar, saveBtn);
 
-        auto formatBtn = MakeToolbarButton("ssFormatBtn", "Format Cells", 130);
+        auto formatBtn = MakeToolbarButton("ssFormatBtn", Tr("Format Cells"), 130);
         SetFlatButtonIcon(*formatBtn, "dropdown.svg", ButtonIconPosition::Right, 10);
         DemoKit::Add(toolbar, formatBtn);
 
@@ -176,9 +178,8 @@ namespace UltraCanvas {
 
         // Both load paths report the same two facts, so they are built once.
         auto describeGrid = [](const UltraCanvasSpreadsheet* grid) {
-            return DescribeColumnWidths(grid) +
-                   "  ·  select rows and click a header's sort button  ·  right-click "
-                   "(or Format Cells) for formats and colours";
+            return TrF("{0}  ·  select rows and click a header's sort button  ·  right-click "
+                       "(or Format Cells) for formats and colours", DescribeColumnWidths(grid));
         };
 
         // ===== SPREADSHEET ELEMENT =====
@@ -191,16 +192,16 @@ namespace UltraCanvas {
         const std::string samplePath =
             NormalizePath(GetResourcesDir() + "media/docs/spreadsheet.ods");
         if (sheet->LoadFromFile(samplePath)) {
-            status->SetText("Loaded: " + samplePath);
+            status->SetText(TrF("Loaded: {0}", samplePath));
             hint->SetText(describeGrid(sheet.get()));
         } else {
             // The seeded fallback sets its own widths in code, so the
             // file-versus-auto-fit split would be misleading here.
             SeedSampleData(sheet.get());
-            status->SetText("Loaded: (sample data)");
-            hint->SetText("Select some rows and click a column header's sort button to "
-                          "sort just that block  ·  right-click (or Format Cells) for "
-                          "alignment, number formats and colours");
+            status->SetText(Tr("Loaded: (sample data)"));
+            hint->SetText(Tr("Select some rows and click a column header's sort button to "
+                             "sort just that block  ·  right-click (or Format Cells) for "
+                             "alignment, number formats and colours"));
         }
         DemoKit::AddStretched(card, sheet);
         sheet->size.height = CSSLayout::Dimension::Auto();
@@ -217,10 +218,11 @@ namespace UltraCanvas {
         // references.
         UltraCanvasLabel* statusRaw = status.get();
         sheet->onSelectionSorted = [statusRaw](const CellRange& range, int column, SortOrder order) {
-            statusRaw->SetText("Sorted " + range.ToString() + " by column " +
-                               CellAddress::ColumnToLetter(column) +
-                               (order == SortOrder::Ascending ? " (ascending)" : " (descending)") +
-                               " - click again to reverse");
+            statusRaw->SetText(order == SortOrder::Ascending
+                    ? TrF("Sorted {0} by column {1} (ascending) - click again to reverse",
+                          range.ToString(), CellAddress::ColumnToLetter(column))
+                    : TrF("Sorted {0} by column {1} (descending) - click again to reverse",
+                          range.ToString(), CellAddress::ColumnToLetter(column)));
             statusRaw->RequestRedraw();
         };
 
@@ -235,14 +237,14 @@ namespace UltraCanvas {
         // (the button does not own the container).
         openBtn->onClick = [sheet, status, hint, describeGrid, filePassword]() {
             FileDialogOptions opts;
-            opts.SetTitle("Open Spreadsheet File");
-            UltraCanvasFileLoader::AddLoadTypes(opts, "Spreadsheet files", {MediaFormatCategory::Spreadsheet});
-            opts.AddFilter("All files", "*");
+            opts.SetTitle(Tr("Open Spreadsheet File"));
+            UltraCanvasFileLoader::AddLoadTypes(opts, Tr("Spreadsheet files"), {MediaFormatCategory::Spreadsheet});
+            opts.AddFilter(Tr("All files"), "*");
 
             UltraCanvasFileLoader::OpenFileDialog(opts,
                 [sheet, status, hint, describeGrid, filePassword](DialogResult result, const std::string& path) {
                     if (result != DialogResult::OK || path.empty()) {
-                        status->SetText("Open cancelled.");
+                        status->SetText(Tr("Open cancelled."));
                         status->RequestRedraw();
                         return;
                     }
@@ -252,15 +254,15 @@ namespace UltraCanvas {
                         [sheet, status, hint, describeGrid, filePassword, path](bool proceed,
                                                                                const std::string& password) {
                             if (!proceed) {
-                                status->SetText("Open cancelled.");
+                                status->SetText(Tr("Open cancelled."));
                             } else if (sheet->LoadFromFile(path, password)) {
                                 *filePassword = password;
-                                status->SetText(password.empty() ? "Loaded: " + path
-                                                                 : "Loaded (password-protected): " + path);
+                                status->SetText(password.empty() ? TrF("Loaded: {0}", path)
+                                                                 : TrF("Loaded (password-protected): {0}", path));
                                 hint->SetText(describeGrid(sheet.get()));
                                 hint->RequestRedraw();
                             } else {
-                                status->SetText("Could not open file: " + sheet->GetLastError());
+                                status->SetText(TrF("Could not open file: {0}", sheet->GetLastError()));
                             }
                             sheet->RequestRedraw();
                             status->RequestRedraw();
@@ -274,14 +276,14 @@ namespace UltraCanvas {
         // is loaded with exactly the chosen settings.
         importBtn->onClick = [sheet, status, hint, describeGrid, filePassword]() {
             FileDialogOptions opts;
-            opts.SetTitle("Select CSV / TSV File")
+            opts.SetTitle(Tr("Select CSV / TSV File"))
                 .AddFilter("CSV / TSV", std::vector<std::string>{ "csv", "tsv", "txt" })
-                .AddFilter("All files", "*");
+                .AddFilter(Tr("All files"), "*");
 
             UltraCanvasFileLoader::OpenFileDialog(opts,
                 [sheet, status, hint, describeGrid, filePassword](DialogResult result, const std::string& path) {
                     if (result != DialogResult::OK || path.empty()) {
-                        status->SetText("Import cancelled.");
+                        status->SetText(Tr("Import cancelled."));
                         status->RequestRedraw();
                         return;
                     }
@@ -289,7 +291,7 @@ namespace UltraCanvas {
                     // instead of opening the dialog onto an empty preview.
                     std::string openError = CSVDescribeOpenError(path);
                     if (!openError.empty()) {
-                        status->SetText("Could not open file: " + openError);
+                        status->SetText(TrF("Could not open file: {0}", openError));
                         status->RequestRedraw();
                         return;
                     }
@@ -297,11 +299,11 @@ namespace UltraCanvas {
                         [sheet, status, hint, describeGrid, filePassword, path](const CSVImportOptions& options) {
                             if (sheet->LoadCSVWithOptions(path, options)) {
                                 filePassword->clear();   // a new workbook, not protected
-                                status->SetText("Imported: " + path);
+                                status->SetText(TrF("Imported: {0}", path));
                                 hint->SetText(describeGrid(sheet.get()));
                                 hint->RequestRedraw();
                             } else {
-                                status->SetText("Could not import file: " + sheet->GetLastError());
+                                status->SetText(TrF("Could not import file: {0}", sheet->GetLastError()));
                             }
                             sheet->RequestRedraw();
                             status->RequestRedraw();
@@ -316,14 +318,14 @@ namespace UltraCanvas {
         // text file is written exactly as the user wants; .ods saves directly.
         saveBtn->onClick = [sheet, status, filePassword]() {
             FileDialogOptions opts;
-            opts.SetTitle("Save Spreadsheet As").SetDefaultFileName("spreadsheet.ods");
+            opts.SetTitle(Tr("Save Spreadsheet As")).SetDefaultFileName("spreadsheet.ods");
             UltraCanvasFileLoader::AddSaveTypes(opts, MediaFormatCategory::Spreadsheet);
-            opts.AddFilter("All files", "*");
+            opts.AddFilter(Tr("All files"), "*");
 
             UltraCanvasFileLoader::SaveFileDialog(opts,
                 [sheet, status, filePassword](DialogResult result, const std::string& path) {
                     if (result != DialogResult::OK || path.empty()) {
-                        status->SetText("Save cancelled.");
+                        status->SetText(Tr("Save cancelled."));
                         status->RequestRedraw();
                         return;
                     }
@@ -345,9 +347,9 @@ namespace UltraCanvas {
                         ShowCSVExportDialog(sheet.get(), initial,
                             [sheet, status, path](const CSVExportOptions& options) {
                                 if (sheet->SaveCSVWithOptions(path, options)) {
-                                    status->SetText("Saved: " + path);
+                                    status->SetText(TrF("Saved: {0}", path));
                                 } else {
-                                    status->SetText("Could not save file: " + sheet->GetLastError());
+                                    status->SetText(TrF("Could not save file: {0}", sheet->GetLastError()));
                                 }
                                 status->RequestRedraw();
                             });
@@ -358,10 +360,10 @@ namespace UltraCanvas {
                                                               const std::string& password) {
                         if (sheet->SaveToFile(savePath, password)) {
                             *filePassword = password;
-                            status->SetText(password.empty() ? "Saved: " + savePath
-                                                             : "Saved (password-protected): " + savePath);
+                            status->SetText(password.empty() ? TrF("Saved: {0}", savePath)
+                                                             : TrF("Saved (password-protected): {0}", savePath));
                         } else {
-                            status->SetText("Could not save file: " + sheet->GetLastError());
+                            status->SetText(TrF("Could not save file: {0}", sheet->GetLastError()));
                         }
                         status->RequestRedraw();
                     };
@@ -374,7 +376,7 @@ namespace UltraCanvas {
                             return;
                         }
                         UltraCanvasDialogManager::ShowConfirmation(
-                            "Protect the workbook with a password?", "Save as Excel Workbook",
+                            Tr("Protect the workbook with a password?"), Tr("Save as Excel Workbook"),
                             [save, path](bool protect) {
                                 if (!protect) {
                                     save(path, "");
@@ -394,7 +396,7 @@ namespace UltraCanvas {
                     const bool wasProtected = !filePassword->empty();
                     save(savePath, "");
                     if (wasProtected && sheet->GetLastError().empty()) {
-                        status->SetText("Saved without the password (only .xlsx keeps it): " + savePath);
+                        status->SetText(TrF("Saved without the password (only .xlsx keeps it): {0}", savePath));
                         status->RequestRedraw();
                     }
                 });

@@ -50,8 +50,8 @@ namespace UltraCanvas {
         auto r1 = CreateRating("Rt1", 0, 0, 200, 36, 5, 3);
         r1->SetSymbolSize(32);
         DemoKit::AddFixed(row1, r1);
-        auto v1 = readout(row1, "RtV1", "Rating: 3");
-        r1->onRatingChanged = [v1](float v) { v1->SetText("Rating: " + std::to_string((int)v)); };
+        auto v1 = readout(row1, "RtV1", TrF("Rating: {0}", 3));
+        r1->onRatingChanged = [v1](float v) { v1->SetText(TrF("Rating: {0}", (int)v)); };
 
         // ===== 2. STARS (half) =====
         auto card2 = DemoKit::AddCard(cards, "RtL2", Tr("Stars (half steps):"));
@@ -59,8 +59,8 @@ namespace UltraCanvas {
         auto r2 = CreateHalfRating("Rt2", 0, 0, 200, 36, 5, 3.5f);
         r2->SetSymbolSize(32);
         DemoKit::AddFixed(row2, r2);
-        auto v2 = readout(row2, "RtV2", "Rating: 3.5");
-        r2->onRatingChanged = [v2](float v) { v2->SetText("Rating: " + FormatScore(v)); };
+        auto v2 = readout(row2, "RtV2", TrF("Rating: {0}", FormatScore(3.5f)));
+        r2->onRatingChanged = [v2](float v) { v2->SetText(TrF("Rating: {0}", FormatScore(v))); };
 
         // ===== 3. ALTERNATE SYMBOLS =====
         auto card3 = DemoKit::AddCard(cards, "RtL3", Tr("Circle and Square symbols:"));
@@ -95,8 +95,8 @@ namespace UltraCanvas {
                              iconDir + "rating-heart-half.svg");
         r5->SetAllowHalf(true);
         DemoKit::AddFixed(row5, r5);
-        auto v5 = readout(row5, "RtV5", "Rating: 2.5");
-        r5->onRatingChanged = [v5](float v) { v5->SetText("Rating: " + FormatScore(v)); };
+        auto v5 = readout(row5, "RtV5", TrF("Rating: {0}", FormatScore(2.5f)));
+        r5->onRatingChanged = [v5](float v) { v5->SetText(TrF("Rating: {0}", FormatScore(v))); };
 
         // ===== INSTRUCTIONS =====
         DemoKit::AddNotes(page, "RatingInstructions", Tr("API"), {

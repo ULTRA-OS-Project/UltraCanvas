@@ -49,14 +49,14 @@ namespace UltraCanvas {
 
         // ===== 1. STATUS PILLS (variants) =====
         auto card1 = DemoKit::AddCard(topRow, "BgL1", Tr("Status pills (colour variants):"));
-        struct V { const char* label; BadgeVariant variant; };
+        struct V { std::string label; BadgeVariant variant; };
         V variants[] = {
-            {"Draft",   BadgeVariant::Neutral},
-            {"New",     BadgeVariant::Primary},
-            {"Active",  BadgeVariant::Successful},
-            {"Pending", BadgeVariant::Warning},
-            {"Error",   BadgeVariant::Danger},
-            {"Beta",    BadgeVariant::Info},
+            {Tr("Draft"),   BadgeVariant::Neutral},
+            {Tr("New"),     BadgeVariant::Primary},
+            {Tr("Active"),  BadgeVariant::Successful},
+            {Tr("Pending"), BadgeVariant::Warning},
+            {Tr("Error"),   BadgeVariant::Danger},
+            {Tr("Beta"),    BadgeVariant::Info},
         };
         auto pillRow = badgeRow(card1, "BgPillRow", 10);
         for (int i = 0; i < 6; ++i) {
@@ -81,12 +81,12 @@ namespace UltraCanvas {
 
         // ===== 3. STATUS DOTS =====
         auto card3 = DemoKit::AddCard(topRow, "BgL3", Tr("Status dots:"));
-        struct D { const char* label; BadgeVariant variant; };
+        struct D { std::string label; BadgeVariant variant; };
         D dots[] = {
-            {"Online",  BadgeVariant::Successful},
-            {"Away",    BadgeVariant::Warning},
-            {"Busy",    BadgeVariant::Danger},
-            {"Offline", BadgeVariant::Neutral},
+            {Tr("Online"),  BadgeVariant::Successful},
+            {Tr("Away"),    BadgeVariant::Warning},
+            {Tr("Busy"),    BadgeVariant::Danger},
+            {Tr("Offline"), BadgeVariant::Neutral},
         };
         auto dotsRow = DemoKit::AddRow(card3, "BgDotsRow", 24);
         for (int i = 0; i < 4; ++i) {
@@ -141,11 +141,11 @@ namespace UltraCanvas {
         bellRow->AddChild(bellBadge);
 
         auto counter = std::make_shared<int>(3);
-        auto addBtn = std::make_shared<UltraCanvasButton>("BgAdd", 0, 0, 70.0f, 30.0f, "Add");
+        auto addBtn = std::make_shared<UltraCanvasButton>("BgAdd", 0, 0, 70.0f, 30.0f, Tr("Add"));
         addBtn->onClick = [bellBadge, counter]() { bellBadge->SetCount(++(*counter)); };
         DemoKit::Add(bellRow, addBtn);
 
-        auto clearBtn = std::make_shared<UltraCanvasButton>("BgClear", 0, 0, 70.0f, 30.0f, "Clear");
+        auto clearBtn = std::make_shared<UltraCanvasButton>("BgClear", 0, 0, 70.0f, 30.0f, Tr("Clear"));
         clearBtn->onClick = [bellBadge, counter]() { *counter = 0; bellBadge->SetCount(0); };
         DemoKit::Add(bellRow, clearBtn);
 

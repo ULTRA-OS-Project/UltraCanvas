@@ -47,28 +47,28 @@ namespace UltraCanvas {
 
         // Fruit autocomplete
         auto fruitAC = CreateAutoComplete("FruitAC", 0, 0, 250);
-        fruitAC->SetPlaceholder("Type a fruit name...");
-        fruitAC->AddItem("Apple", "apple");
-        fruitAC->AddItem("Apricot", "apricot");
-        fruitAC->AddItem("Banana", "banana");
-        fruitAC->AddItem("Blueberry", "blueberry");
-        fruitAC->AddItem("Cherry", "cherry");
-        fruitAC->AddItem("Grape", "grape");
-        fruitAC->AddItem("Lemon", "lemon");
-        fruitAC->AddItem("Mango", "mango");
-        fruitAC->AddItem("Orange", "orange");
-        fruitAC->AddItem("Peach", "peach");
-        fruitAC->AddItem("Pear", "pear");
-        fruitAC->AddItem("Pineapple", "pineapple");
-        fruitAC->AddItem("Strawberry", "strawberry");
-        fruitAC->AddItem("Watermelon", "watermelon");
+        fruitAC->SetPlaceholder(Tr("Type a fruit name..."));
+        fruitAC->AddItem(Tr("Apple"), "apple");
+        fruitAC->AddItem(Tr("Apricot"), "apricot");
+        fruitAC->AddItem(Tr("Banana"), "banana");
+        fruitAC->AddItem(Tr("Blueberry"), "blueberry");
+        fruitAC->AddItem(Tr("Cherry"), "cherry");
+        fruitAC->AddItem(Tr("Grape"), "grape");
+        fruitAC->AddItem(Tr("Lemon"), "lemon");
+        fruitAC->AddItem(Tr("Mango"), "mango");
+        fruitAC->AddItem(Tr("Orange"), "orange");
+        fruitAC->AddItem(Tr("Peach"), "peach");
+        fruitAC->AddItem(Tr("Pear"), "pear");
+        fruitAC->AddItem(Tr("Pineapple"), "pineapple");
+        fruitAC->AddItem(Tr("Strawberry"), "strawberry");
+        fruitAC->AddItem(Tr("Watermelon"), "watermelon");
         fruitAC->SetMinCharsToTrigger(0);
 
         auto fruitInfo = fieldRow(card1, "FruitAC", fruitAC);
-        auto fruitStatusLabel = addStatus(fruitInfo, "FruitACStatus", "Type to search fruits...");
+        auto fruitStatusLabel = addStatus(fruitInfo, "FruitACStatus", Tr("Type to search fruits..."));
 
         fruitAC->onItemSelected = [fruitStatusLabel](int index, const AutoCompleteItem& item) {
-            fruitStatusLabel->SetText("Selected: " + item.text + " (value: " + item.value + ")");
+            fruitStatusLabel->SetText(TrF("Selected: {0} (value: {1})", item.text, item.value));
             debugOutput << "Fruit selected: " << item.text << " (" << item.value << ")" << std::endl;
         };
 
@@ -78,38 +78,38 @@ namespace UltraCanvas {
         auto card2 = DemoKit::AddCard(topRow, "ACCardCountry", Tr("Country Selection"));
 
         auto countryAC = CreateAutoComplete("CountryAC", 0, 0, 280);
-        countryAC->SetPlaceholder("Search countries...");
-        countryAC->AddItem("Argentina", "AR");
-        countryAC->AddItem("Australia", "AU");
-        countryAC->AddItem("Austria", "AT");
-        countryAC->AddItem("Belgium", "BE");
-        countryAC->AddItem("Brazil", "BR");
-        countryAC->AddItem("Canada", "CA");
-        countryAC->AddItem("China", "CN");
-        countryAC->AddItem("Denmark", "DK");
-        countryAC->AddItem("Finland", "FI");
-        countryAC->AddItem("France", "FR");
-        countryAC->AddItem("Germany", "DE");
-        countryAC->AddItem("India", "IN");
-        countryAC->AddItem("Italy", "IT");
-        countryAC->AddItem("Japan", "JP");
-        countryAC->AddItem("Mexico", "MX");
-        countryAC->AddItem("Netherlands", "NL");
-        countryAC->AddItem("Norway", "NO");
-        countryAC->AddItem("Poland", "PL");
-        countryAC->AddItem("Russia", "RU");
-        countryAC->AddItem("South Korea", "KR");
-        countryAC->AddItem("Spain", "ES");
-        countryAC->AddItem("Sweden", "SE");
-        countryAC->AddItem("Switzerland", "CH");
-        countryAC->AddItem("United Kingdom", "GB");
-        countryAC->AddItem("United States", "US");
+        countryAC->SetPlaceholder(Tr("Search countries..."));
+        countryAC->AddItem(Tr("Argentina"), "AR");
+        countryAC->AddItem(Tr("Australia"), "AU");
+        countryAC->AddItem(Tr("Austria"), "AT");
+        countryAC->AddItem(Tr("Belgium"), "BE");
+        countryAC->AddItem(Tr("Brazil"), "BR");
+        countryAC->AddItem(Tr("Canada"), "CA");
+        countryAC->AddItem(Tr("China"), "CN");
+        countryAC->AddItem(Tr("Denmark"), "DK");
+        countryAC->AddItem(Tr("Finland"), "FI");
+        countryAC->AddItem(Tr("France"), "FR");
+        countryAC->AddItem(Tr("Germany"), "DE");
+        countryAC->AddItem(Tr("India"), "IN");
+        countryAC->AddItem(Tr("Italy"), "IT");
+        countryAC->AddItem(Tr("Japan"), "JP");
+        countryAC->AddItem(Tr("Mexico"), "MX");
+        countryAC->AddItem(Tr("Netherlands"), "NL");
+        countryAC->AddItem(Tr("Norway"), "NO");
+        countryAC->AddItem(Tr("Poland"), "PL");
+        countryAC->AddItem(Tr("Russia"), "RU");
+        countryAC->AddItem(Tr("South Korea"), "KR");
+        countryAC->AddItem(Tr("Spain"), "ES");
+        countryAC->AddItem(Tr("Sweden"), "SE");
+        countryAC->AddItem(Tr("Switzerland"), "CH");
+        countryAC->AddItem(Tr("United Kingdom"), "GB");
+        countryAC->AddItem(Tr("United States"), "US");
 
         auto countryInfo = fieldRow(card2, "CountryAC", countryAC);
-        auto countryStatusLabel = addStatus(countryInfo, "CountryACStatus", "Type to search countries...");
+        auto countryStatusLabel = addStatus(countryInfo, "CountryACStatus", Tr("Type to search countries..."));
 
         countryAC->onItemSelected = [countryStatusLabel](int index, const AutoCompleteItem& item) {
-            countryStatusLabel->SetText("Selected: " + item.text + " (code: " + item.value + ")");
+            countryStatusLabel->SetText(TrF("Selected: {0} (code: {1})", item.text, item.value));
             debugOutput << "Country selected: " << item.text << " (" << item.value << ")" << std::endl;
         };
 
@@ -119,11 +119,11 @@ namespace UltraCanvas {
         auto card3 = DemoKit::AddCard(middleRow, "ACCardDynamic", Tr("Dynamic Suggestion Provider"));
 
         auto dynamicAC = CreateAutoComplete("DynamicAC", 0, 0, 280);
-        dynamicAC->SetPlaceholder("Search programming topics...");
+        dynamicAC->SetPlaceholder(Tr("Search programming topics..."));
 
         auto dynamicInfo = fieldRow(card3, "DynamicAC", dynamicAC);
         auto dynamicStatusLabel = addStatus(dynamicInfo, "DynamicACStatus",
-                "Uses onRequestSuggestions callback to generate results dynamically");
+                Tr("Uses onRequestSuggestions callback to generate results dynamically"));
 
         // Dynamic provider: returns suggestions based on query
         dynamicAC->onRequestSuggestions = [](const std::string& query) -> std::vector<AutoCompleteItem> {
@@ -169,7 +169,7 @@ namespace UltraCanvas {
         };
 
         dynamicAC->onItemSelected = [dynamicStatusLabel](int index, const AutoCompleteItem& item) {
-            dynamicStatusLabel->SetText("Selected: " + item.text + " (key: " + item.value + ")");
+            dynamicStatusLabel->SetText(TrF("Selected: {0} (key: {1})", item.text, item.value));
             debugOutput << "Dynamic item selected: " << item.text << std::endl;
         };
 
@@ -177,7 +177,7 @@ namespace UltraCanvas {
         auto card4 = DemoKit::AddCard(middleRow, "ACCardStates", Tr("Large List (US States - 50 items)"));
 
         auto statesAC = CreateAutoComplete("StatesAC", 0, 0, 280);
-        statesAC->SetPlaceholder("Search US states...");
+        statesAC->SetPlaceholder(Tr("Search US states..."));
 
         // All 50 US states
         statesAC->AddItem("Alabama", "AL");
@@ -232,10 +232,10 @@ namespace UltraCanvas {
         statesAC->AddItem("Wyoming", "WY");
 
         auto statesInfo = fieldRow(card4, "StatesAC", statesAC);
-        auto statesStatusLabel = addStatus(statesInfo, "StatesACStatus", "50 items - scrollbar appears automatically");
+        auto statesStatusLabel = addStatus(statesInfo, "StatesACStatus", Tr("50 items - scrollbar appears automatically"));
 
         statesAC->onItemSelected = [statesStatusLabel](int index, const AutoCompleteItem& item) {
-            statesStatusLabel->SetText("Selected: " + item.text + " (" + item.value + ")");
+            statesStatusLabel->SetText(TrF("Selected: {0} ({1})", item.text, item.value));
             debugOutput << "State selected: " << item.text << " (" << item.value << ")" << std::endl;
         };
 
@@ -243,7 +243,7 @@ namespace UltraCanvas {
         auto card5 = DemoKit::AddCard(page, "ACCardInteractive", Tr("Interactive Event Demo"));
 
         auto interactiveAC = CreateAutoComplete("InteractiveAC", 0, 0, 250);
-        interactiveAC->SetPlaceholder("Type anything...");
+        interactiveAC->SetPlaceholder(Tr("Type anything..."));
         interactiveAC->AddItem("Alpha", "a");
         interactiveAC->AddItem("Beta", "b");
         interactiveAC->AddItem("Gamma", "g");
@@ -266,7 +266,7 @@ namespace UltraCanvas {
         };
 
         interactiveAC->onItemSelected = [eventLog](int index, const AutoCompleteItem& item) {
-            std::string log = "onItemSelected: " + item.text + " (value: " + item.value + ", index: " + std::to_string(index) + ")";
+            std::string log = TrF("onItemSelected: {0} (value: {1}, index: {2})", item.text, item.value, index);
             eventLog->SetText(log);
             debugOutput << log << std::endl;
         };

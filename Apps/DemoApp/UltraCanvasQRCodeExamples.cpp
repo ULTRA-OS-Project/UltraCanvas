@@ -32,73 +32,73 @@ namespace UltraCanvas {
 
     namespace {
 
-        struct PointStyleChoice { const char* label; QRPointStyle style; };
+        struct PointStyleChoice { std::string (*label)(); QRPointStyle style; };
         const PointStyleChoice kPointStyles[] = {
-            { "Square",          QRPointStyle::Square },
-            { "Rounded Square",  QRPointStyle::RoundedSquare },
-            { "Circle",          QRPointStyle::Circle },
-            { "Diamond",         QRPointStyle::Diamond },
-            { "Hexagon",         QRPointStyle::Hexagon },
-            { "Vertical Bars",   QRPointStyle::VerticalBars },
-            { "Horizontal Bars", QRPointStyle::HorizontalBars },
-            { "Dots",            QRPointStyle::Dots },
+            { []() { return Tr("Square"); },          QRPointStyle::Square },
+            { []() { return Tr("Rounded Square"); },  QRPointStyle::RoundedSquare },
+            { []() { return Tr("Circle"); },          QRPointStyle::Circle },
+            { []() { return Tr("Diamond"); },         QRPointStyle::Diamond },
+            { []() { return Tr("Hexagon"); },         QRPointStyle::Hexagon },
+            { []() { return Tr("Vertical Bars"); },   QRPointStyle::VerticalBars },
+            { []() { return Tr("Horizontal Bars"); }, QRPointStyle::HorizontalBars },
+            { []() { return Tr("Dots"); },            QRPointStyle::Dots },
         };
 
-        struct FinderStyleChoice { const char* label; QRFinderStyle style; };
+        struct FinderStyleChoice { std::string (*label)(); QRFinderStyle style; };
         const FinderStyleChoice kFinderStyles[] = {
-            { "Standard",       QRFinderStyle::Standard },
-            { "Rounded",        QRFinderStyle::Rounded },
-            { "Circle",         QRFinderStyle::Circle },
-            { "Rounded Circle", QRFinderStyle::RoundedCircle },
-            { "Diamond",        QRFinderStyle::Diamond },
+            { []() { return Tr("Standard"); },       QRFinderStyle::Standard },
+            { []() { return Tr("Rounded"); },        QRFinderStyle::Rounded },
+            { []() { return Tr("Circle"); },         QRFinderStyle::Circle },
+            { []() { return Tr("Rounded Circle"); }, QRFinderStyle::RoundedCircle },
+            { []() { return Tr("Diamond"); },        QRFinderStyle::Diamond },
         };
 
-        struct ECLChoice { const char* label; QRErrorCorrection ecl; };
+        struct ECLChoice { std::string (*label)(); QRErrorCorrection ecl; };
         const ECLChoice kECLs[] = {
-            { "Low (7%)",      QRErrorCorrection::Low },
-            { "Medium (15%)",  QRErrorCorrection::Medium },
-            { "Quartile (25%)",QRErrorCorrection::Quartile },
-            { "High (30%)",    QRErrorCorrection::High },
+            { []() { return Tr("Low (7%)"); },      QRErrorCorrection::Low },
+            { []() { return Tr("Medium (15%)"); },  QRErrorCorrection::Medium },
+            { []() { return Tr("Quartile (25%)"); },QRErrorCorrection::Quartile },
+            { []() { return Tr("High (30%)"); },    QRErrorCorrection::High },
         };
 
         struct GradientChoice {
-            const char* label; QRGradientType type; Color start; Color end;
+            std::string (*label)(); QRGradientType type; Color start; Color end;
         };
         const GradientChoice kGradients[] = {
-            { "None",     QRGradientType::NoGradient,     Colors::Black,    Colors::Black },
-            { "Linear",   QRGradientType::Linear,   Color(0,102,204), Color(102,204,255) },
-            { "Radial",   QRGradientType::Radial,   Color(139,0,139), Color(255,0,128) },
-            { "Diagonal", QRGradientType::Diagonal, Color(204,0,0),   Color(255,140,0) },
+            { []() { return Tr("None"); },     QRGradientType::NoGradient,     Colors::Black,    Colors::Black },
+            { []() { return Tr("Linear"); },   QRGradientType::Linear,   Color(0,102,204), Color(102,204,255) },
+            { []() { return Tr("Radial"); },   QRGradientType::Radial,   Color(139,0,139), Color(255,0,128) },
+            { []() { return Tr("Diagonal"); }, QRGradientType::Diagonal, Color(204,0,0),   Color(255,140,0) },
         };
 
         // Shared colour palette used by the inline point / finder colour
         // selectors that sit next to the Point style and Finder style dropdowns.
-        struct SwatchChoice { const char* name; Color color; };
+        struct SwatchChoice { const char* name; Color color; std::string (*label)(); };
         const SwatchChoice kSwatches[] = {
-            { "Black",   Colors::Black },
-            { "Indigo",  Color(0, 0, 139) },
-            { "Teal",    Color(0, 128, 128) },
-            { "Crimson", Color(139, 0, 0) },
-            { "Purple",  Color(139, 0, 139) },
-            { "Amber",   Color(255, 140, 0) },
+            { "Black",   Colors::Black, []() { return Tr("Black"); } },
+            { "Indigo",  Color(0, 0, 139), []() { return Tr("Indigo"); } },
+            { "Teal",    Color(0, 128, 128), []() { return Tr("Teal"); } },
+            { "Crimson", Color(139, 0, 0), []() { return Tr("Crimson"); } },
+            { "Purple",  Color(139, 0, 139), []() { return Tr("Purple"); } },
+            { "Amber",   Color(255, 140, 0), []() { return Tr("Amber"); } },
         };
 
-        struct PresetChoice { const char* label; std::string (*build)(); };
+        struct PresetChoice { const char* label; std::string (*build)(); std::string (*text)(); };
         const PresetChoice kPresets[] = {
-            { "URL",   []() { return QRCodeUtils::CreateURLContent("https://ultraos.eu"); } },
-            { "Email", []() { return QRCodeUtils::CreateEmailContent("info@ultraos.org", "Hello", "Sent from UltraCanvas demo"); } },
-            { "SMS",   []() { return QRCodeUtils::CreateSMSContent("+15551234567", "Hi from UltraCanvas"); } },
-            { "WiFi",  []() { return QRCodeUtils::CreateWiFiContent("UltraOS-Net", "supersecret", "WPA"); } },
-            { "vCard", []() { return QRCodeUtils::CreateVCardContent("Jane Doe", "+15551234567", "jane@example.com"); } },
-            { "Geo",   []() { return QRCodeUtils::CreateGeoContent(37.7749, -122.4194); } },
+            { "URL",   []() { return QRCodeUtils::CreateURLContent("https://ultraos.eu"); }, []() { return std::string("URL"); } },
+            { "Email", []() { return QRCodeUtils::CreateEmailContent("info@ultraos.org", "Hello", "Sent from UltraCanvas demo"); }, []() { return Tr("Email"); } },
+            { "SMS",   []() { return QRCodeUtils::CreateSMSContent("+15551234567", "Hi from UltraCanvas"); }, []() { return std::string("SMS"); } },
+            { "WiFi",  []() { return QRCodeUtils::CreateWiFiContent("UltraOS-Net", "supersecret", "WPA"); }, []() { return Tr("WiFi"); } },
+            { "vCard", []() { return QRCodeUtils::CreateVCardContent("Jane Doe", "+15551234567", "jane@example.com"); }, []() { return std::string("vCard"); } },
+            { "Geo",   []() { return QRCodeUtils::CreateGeoContent(37.7749, -122.4194); }, []() { return Tr("Geo"); } },
         };
 
         // Every picture type this build reads - FileLoader's list
         FileDialogOptions ImageOpenFilters(const std::string& title) {
             FileDialogOptions opts;
             opts.SetTitle(title);
-            UltraCanvasFileLoader::AddLoadTypes(opts, "Images", {MediaFormatCategory::Bitmap});
-            opts.AddFilter("All files", "*");
+            UltraCanvasFileLoader::AddLoadTypes(opts, Tr("Images"), {MediaFormatCategory::Bitmap});
+            opts.AddFilter(Tr("All files"), "*");
             return opts;
         }
 
@@ -143,7 +143,7 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasUIElement> BuildEncodePage() {
             auto page = MakeTabPage("QREncodePage");
 
-            AddTabTitle(page, "QREncodeTitle", "Encode — generate a QR code with custom style, logo, and color");
+            AddTabTitle(page, "QREncodeTitle", Tr("Encode — generate a QR code with custom style, logo, and color"));
 
             auto baseName = [](const std::string& p) -> std::string {
                 auto pos = p.find_last_of("/\\");
@@ -199,17 +199,14 @@ namespace UltraCanvas {
             auto gradResetToNone = std::make_shared<std::function<void()>>();
 
             auto refresh = [qrPtr, statusPtr]() {
-                std::ostringstream ss;
                 if (qrPtr->IsValid()) {
-                    ss << "Version " << qrPtr->GetVersion()
-                       << "  •  " << qrPtr->GetModuleCount() << "x"
-                       << qrPtr->GetModuleCount() << " modules";
+                    statusPtr->SetText(TrF("Version {0}  •  {1}x{1} modules",
+                                           qrPtr->GetVersion(), qrPtr->GetModuleCount()));
                 } else if (!qrPtr->GetErrorMessage().empty()) {
-                    ss << "Error: " << qrPtr->GetErrorMessage();
+                    statusPtr->SetText(TrF("Error: {0}", qrPtr->GetErrorMessage()));
                 } else {
-                    ss << "—";
+                    statusPtr->SetText("—");
                 }
-                statusPtr->SetText(ss.str());
             };
 
             contentInput->onTextChanged = [qrPtr, refresh, setActivePreset, activeSlug](const std::string& s) {
@@ -226,8 +223,9 @@ namespace UltraCanvas {
             DemoKit::Add(columns, controls, 1);
             controls->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(400));
 
-            auto header = [&](const std::string& text) {
-                auto lbl = DemoKit::AddText(controls, "h_" + text, text);
+            // `key` names the element ("h_" + key), `text` is what it shows.
+            auto header = [&](const std::string& key, const std::string& text) {
+                auto lbl = DemoKit::AddText(controls, "h_" + key, text);
                 lbl->SetFontWeight(FontWeight::Bold);
                 lbl->SetMargin(4, 0, 0, 0);
             };
@@ -249,7 +247,7 @@ namespace UltraCanvas {
                         idPrefix + s.name, 0, 0, 28, 26, "");
                     b->SetColors(s.color, s.color, s.color, s.color);
                     b->SetBorder(1.0f, Color(120, 120, 120, 255));
-                    b->SetTooltip(s.name);
+                    b->SetTooltip(s.label());
                     buttons->push_back(b.get());
 
                     Color col = s.color;
@@ -270,7 +268,7 @@ namespace UltraCanvas {
                 };
             };
 
-            header("Content presets");
+            header("Content presets", Tr("Content presets"));
             {
                 // Highlight colours for the active preset vs. the idle ones.
                 const Color kPresetIdle (225, 225, 225, 255);
@@ -284,7 +282,7 @@ namespace UltraCanvas {
                 for (const auto& p : kPresets) {
                     // At least the old 88 x 28, wider when the label needs it.
                     auto b = std::make_shared<UltraCanvasButton>(
-                        std::string("preset_") + p.label, p.label);
+                        std::string("preset_") + p.label, p.text());
                     SetMinSize(*b, 88, 28);
                     b->SetFontSize(11);
                     b->SetColors(kPresetIdle, kPresetIdleH);
@@ -330,10 +328,10 @@ namespace UltraCanvas {
                 (*setActivePreset)(0);
             }
 
-            header("Error correction");
+            header("Error correction", Tr("Error correction"));
             {
                 auto dd = std::make_shared<UltraCanvasDropdown>("ecl_dd", 0, 0, 220, 28);
-                for (const auto& c : kECLs) dd->AddItem(c.label);
+                for (const auto& c : kECLs) dd->AddItem(c.label());
                 dd->SetSelectedIndex(1, false);
                 dd->onSelectionChanged = [qrPtr, refresh](int idx, const DropdownItem&) {
                     if (idx >= 0 && idx < static_cast<int>(std::size(kECLs))) {
@@ -346,11 +344,11 @@ namespace UltraCanvas {
 
             // Point style + the colour used for the data modules. The dropdown
             // is narrowed so the point-colour swatches fit on the same row.
-            header("Point style");
+            header("Point style", Tr("Point style"));
             {
                 auto row = AddControlRow(controls, "QRPointRow");
                 auto dd = std::make_shared<UltraCanvasDropdown>("pt_dd", 0, 0, 150, 28);
-                for (const auto& c : kPointStyles) dd->AddItem(c.label);
+                for (const auto& c : kPointStyles) dd->AddItem(c.label());
                 dd->SetSelectedIndex(0, false);
                 dd->onSelectionChanged = [qrPtr](int idx, const DropdownItem&) {
                     if (idx >= 0 && idx < static_cast<int>(std::size(kPointStyles))) {
@@ -371,11 +369,11 @@ namespace UltraCanvas {
             }
 
             // Finder style + a dedicated colour for the three finder patterns.
-            header("Finder style");
+            header("Finder style", Tr("Finder style"));
             {
                 auto row = AddControlRow(controls, "QRFinderRow");
                 auto dd = std::make_shared<UltraCanvasDropdown>("fnd_dd", 0, 0, 150, 28);
-                for (const auto& c : kFinderStyles) dd->AddItem(c.label);
+                for (const auto& c : kFinderStyles) dd->AddItem(c.label());
                 dd->SetSelectedIndex(0, false);
                 dd->onSelectionChanged = [qrPtr](int idx, const DropdownItem&) {
                     if (idx >= 0 && idx < static_cast<int>(std::size(kFinderStyles))) {
@@ -389,10 +387,10 @@ namespace UltraCanvas {
                     setActiveFinder);
             }
 
-            header("Foreground gradient");
+            header("Foreground gradient", Tr("Foreground gradient"));
             {
                 auto dd = std::make_shared<UltraCanvasDropdown>("grad_dd", 0, 0, 220, 28);
-                for (const auto& g : kGradients) dd->AddItem(g.label);
+                for (const auto& g : kGradients) dd->AddItem(g.label());
                 auto* gradDd = dd.get();
                 *gradResetToNone = [gradDd]() { gradDd->SetSelectedIndex(0, false); };
                 // The QR code is created with a Diagonal gradient above, so the
@@ -419,25 +417,25 @@ namespace UltraCanvas {
                 DemoKit::AddFixed(controls, dd);
             }
 
-            header("Logo");
+            header("Logo", Tr("Logo"));
             {
                 // --- Row 1: upload / remove / placement style --------------
                 auto row1 = AddControlRow(controls, "QRLogoRow1");
 
-                auto uploadBtn = std::make_shared<UltraCanvasButton>("logo_upload", "Upload logo");
+                auto uploadBtn = std::make_shared<UltraCanvasButton>("logo_upload", Tr("Upload logo"));
                 SetMinSize(*uploadBtn, 140, 30);
                 uploadBtn->SetFontSize(11);
 
-                auto clearBtn = std::make_shared<UltraCanvasButton>("logo_clear", "Remove logo");
+                auto clearBtn = std::make_shared<UltraCanvasButton>("logo_clear", Tr("Remove logo"));
                 SetMinSize(*clearBtn, 100, 30);
                 clearBtn->SetFontSize(11);
 
                 auto styleDD = std::make_shared<UltraCanvasDropdown>(
                     "logo_style", 0, 0, 170, 30);
-                styleDD->AddItem("Center");
-                styleDD->AddItem("Center + Border");
-                styleDD->AddItem("Center Rounded");
-                styleDD->AddItem("Center Circle");
+                styleDD->AddItem(Tr("Center"));
+                styleDD->AddItem(Tr("Center + Border"));
+                styleDD->AddItem(Tr("Center Rounded"));
+                styleDD->AddItem(Tr("Center Circle"));
                 // The logo is created with the Center Rounded style above.
                 styleDD->SetSelectedIndex(2, false);
 
@@ -526,26 +524,26 @@ namespace UltraCanvas {
                     auto cfg = qrPtr->GetStyleConfig();
                     cfg.logoScale = v / 100.0f;
                     qrPtr->SetStyleConfig(cfg);
-                    zoomLblPtr->SetText("Zoom " + std::to_string(static_cast<int>(v)) + "%");
+                    zoomLblPtr->SetText(TrF("Zoom {0}%", static_cast<int>(v)));
                 };
 
                 marginSlider->onValueChanged = [qrPtr, marginLblPtr](float v) {
                     auto cfg = qrPtr->GetStyleConfig();
                     cfg.logoBorderWidth = v;
                     qrPtr->SetStyleConfig(cfg);
-                    marginLblPtr->SetText("Margin " + std::to_string(static_cast<int>(v)) + "px");
+                    marginLblPtr->SetText(TrF("Margin {0}px", static_cast<int>(v)));
                 };
 
                 uploadBtn->SetOnClick([qrPtr, statusPtr, thumbPtr, nameLblPtr,
                                        zoomPtr, marginPtr, stylePtr,
                                        styleFromIndex, baseName]() {
-                    UltraCanvasFileLoader::OpenFileDialog(ImageOpenFilters("Choose a logo"),
+                    UltraCanvasFileLoader::OpenFileDialog(ImageOpenFilters(Tr("Choose a logo")),
                         [qrPtr, statusPtr, thumbPtr, nameLblPtr, zoomPtr, marginPtr, stylePtr,
                          styleFromIndex, baseName](DialogResult result, const std::string& path) {
                         if (result != DialogResult::OK || path.empty()) return;
                         auto img = UCImage::Get(path);
                         if (!img || !img->IsValid()) {
-                            statusPtr->SetText("Failed to load logo: " + path);
+                            statusPtr->SetText(TrF("Failed to load logo: {0}", path));
                             return;
                         }
                         auto cfg = qrPtr->GetStyleConfig();
@@ -556,32 +554,32 @@ namespace UltraCanvas {
                         qrPtr->SetStyleConfig(cfg);
                         thumbPtr->LoadFromImage(img);
                         nameLblPtr->SetText(baseName(path));
-                        statusPtr->SetText("Logo loaded: " + path);
+                        statusPtr->SetText(TrF("Logo loaded: {0}", path));
                     });
                 });
 
                 clearBtn->SetOnClick([qrPtr, statusPtr, thumbPtr, nameLblPtr]() {
                     qrPtr->ClearLogo();
                     thumbPtr->LoadFromImage(std::make_shared<UCImage>());
-                    nameLblPtr->SetText("(no logo)");
-                    statusPtr->SetText("Logo removed");
+                    nameLblPtr->SetText(Tr("(no logo)"));
+                    statusPtr->SetText(Tr("Logo removed"));
                 });
             }
 
-            header("Save as image");
+            header("Save as image", Tr("Save as image"));
             {
                 // Every picture type this build writes (FileLoader's list), and
                 // SVG through the code's own vector writer
                 auto saveRow = DemoKit::AddRow(controls, "QRSaveRow");
-                auto saveBtn = std::make_shared<UltraCanvasButton>("save_btn", "Save");
+                auto saveBtn = std::make_shared<UltraCanvasButton>("save_btn", Tr("Save"));
                 SetMinSize(*saveBtn, 110, 30);
                 saveBtn->SetFontSize(11);
                 saveBtn->SetOnClick([qrPtr, statusPtr, activeSlug]() {
                     FileDialogOptions opts;
-                    opts.SetTitle("Save QR code")
+                    opts.SetTitle(Tr("Save QR code"))
                         .SetDefaultFileName(std::string("ultracanvas_") + *activeSlug + ".png");
                     UltraCanvasFileLoader::AddImageSaveTypes(opts);
-                    opts.AddFilter("SVG image", "svg");
+                    opts.AddFilter(Tr("SVG image"), "svg");
                     UltraCanvasFileLoader::SaveFileDialog(opts,
                         [qrPtr, statusPtr](DialogResult result, const std::string& path) {
                         if (result != DialogResult::OK || path.empty()) return;
@@ -591,8 +589,8 @@ namespace UltraCanvas {
                         std::string err;
                         const bool ok = ext == ".svg" ? qrPtr->ExportToSVG(path, 10)
                                                       : qrPtr->ExportToImage(path, 12, &err);
-                        statusPtr->SetText(ok ? ("Saved: " + path)
-                                              : ("Save failed: " + (err.empty() ? std::string("SVG export failed") : err)));
+                        statusPtr->SetText(ok ? TrF("Saved: {0}", path)
+                                              : TrF("Save failed: {0}", err.empty() ? Tr("SVG export failed") : err));
                     });
                 });
                 DemoKit::Add(saveRow, saveBtn);
@@ -605,13 +603,13 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasUIElement> BuildDecodePage() {
             auto page = MakeTabPage("QRDecodePage");
 
-            AddTabTitle(page, "DecTitle", "Decode — open an image and scan it for QR codes");
+            AddTabTitle(page, "DecTitle", Tr("Decode — open an image and scan it for QR codes"));
 
             auto hint = DemoKit::CreateText("DecHint", "");
             if (QRCodeUtils::IsDecoderAvailable()) {
-                hint->SetText("Click \"Open image\" to choose a photo or screenshot containing one or more QR codes.");
+                hint->SetText(Tr("Click \"Open image\" to choose a photo or screenshot containing one or more QR codes."));
             } else {
-                hint->SetText("Decoder support is not built in — install libzbar-dev and rebuild to enable scanning.");
+                hint->SetText(Tr("Decoder support is not built in — install libzbar-dev and rebuild to enable scanning."));
             }
             hint->SetFontSize(11);
             hint->SetTextColor(Color(110, 110, 110, 255));
@@ -621,7 +619,7 @@ namespace UltraCanvas {
             // rest of the width and wraps a long path).
             auto openRow = AddControlRow(page, "DecOpenRow", 16);
 
-            auto openBtn = std::make_shared<UltraCanvasButton>("DecOpen", "Open image");
+            auto openBtn = std::make_shared<UltraCanvasButton>("DecOpen", Tr("Open image"));
             SetMinSize(*openBtn, 160, 32);
             openBtn->SetFontSize(12);
             // Use SetColors (not SetBackgroundColor) so the button's normal/
@@ -666,15 +664,15 @@ namespace UltraCanvas {
             auto* resultsPtr = resultsBody.get();
 
             openBtn->SetOnClick([previewPtr, resultsPtr, statusPtr]() {
-                UltraCanvasFileLoader::OpenFileDialog(ImageOpenFilters("Open image to scan"),
+                UltraCanvasFileLoader::OpenFileDialog(ImageOpenFilters(Tr("Open image to scan")),
                     [previewPtr, resultsPtr, statusPtr](DialogResult result, const std::string& path) {
                     if (result != DialogResult::OK || path.empty()) return;
 
                     previewPtr->LoadFromFile(path);
 
                     if (!QRCodeUtils::IsDecoderAvailable()) {
-                        resultsPtr->SetText("Decoder not built in.\nInstall libzbar and rebuild.");
-                        statusPtr->SetText("Loaded image: " + path);
+                        resultsPtr->SetText(Tr("Decoder not built in.\nInstall libzbar and rebuild."));
+                        statusPtr->SetText(TrF("Loaded image: {0}", path));
                         return;
                     }
 
@@ -682,14 +680,13 @@ namespace UltraCanvas {
                     auto results = QRCodeUtils::ScanQRCodeFile(path, &err);
                     if (results.empty()) {
                         if (err.empty()) {
-                            resultsPtr->SetText("No QR codes detected in this image.");
+                            resultsPtr->SetText(Tr("No QR codes detected in this image."));
                         } else {
-                            resultsPtr->SetText("Scan error:\n" + err);
+                            resultsPtr->SetText(TrF("Scan error:\n{0}", err));
                         }
                     } else {
                         std::ostringstream ss;
-                        ss << "Detected " << results.size()
-                           << (results.size() == 1 ? " code:" : " codes:") << "\n\n";
+                        ss << TrN("Detected {n} code:", "Detected {n} codes:", static_cast<long long>(results.size())) << "\n\n";
                         int i = 1;
                         for (const auto& r : results) {
                             ss << "#" << i++ << "  [" << r.type << "]\n";
@@ -697,7 +694,7 @@ namespace UltraCanvas {
                         }
                         resultsPtr->SetText(ss.str());
                     }
-                    statusPtr->SetText("Scanned: " + path);
+                    statusPtr->SetText(TrF("Scanned: {0}", path));
                 });
             });
 
@@ -719,8 +716,8 @@ namespace UltraCanvas {
 
         auto tabs = std::make_shared<UltraCanvasTabbedContainer>(
             "QRCodeTabs", 0, 0, 0, 0);
-        tabs->AddTab("Encode", BuildEncodePage());
-        tabs->AddTab("Decode", BuildDecodePage());
+        tabs->AddTab(Tr("Encode"), BuildEncodePage());
+        tabs->AddTab(Tr("Decode"), BuildDecodePage());
         tabs->SetActiveTab(0);
         DemoKit::Add(card, tabs, 1);
         tabs->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));

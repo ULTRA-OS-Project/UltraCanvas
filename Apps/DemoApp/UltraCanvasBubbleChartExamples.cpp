@@ -80,34 +80,38 @@ std::shared_ptr<UltraCanvasLabel> AddInfo(const std::shared_ptr<UltraCanvasConta
 // split by age group and gender, with Yes/No bubble columns.
 
 std::shared_ptr<UltraCanvasUIElement> BuildMatrixTab() {
-    auto page = MakeTabPage("BubbleMatrixTab", "MrsTitle", "MRS. PRESIDENT", 18);
+    auto page = MakeTabPage("BubbleMatrixTab", "MrsTitle", Tr("MRS. PRESIDENT"), 18);
     DemoKit::AddCaption(page.tab, "MrsSubtitle",
                         Tr("Percentage of respondents who say it is likely that "
                         "a woman will be president in their lifetime."))->SetFontSize(11);
     DemoKit::Add(page.tab, page.content);
 
-    std::vector<std::string> rows = {"Under 45", "45-64", "65+", "Men", "Women"};
-    std::vector<std::string> cols = {"Yes", "No"};
+    // The row and column names are also the keys of the bubbles and the
+    // colour map, so each is translated once and used everywhere.
+    const std::string under45 = Tr("Under 45"), men = Tr("Men"), women = Tr("Women");
+    const std::string yes = Tr("Yes"), no = Tr("No");
+    std::vector<std::string> rows = {under45, "45-64", "65+", men, women};
+    std::vector<std::string> cols = {yes, no};
     auto matrix = CreateBubbleMatrixChart("mrsPresident", 0, 0, 440, 560, rows, cols);
 
-    matrix->AddMatrixBubble("Under 45", "Yes", 79);
-    matrix->AddMatrixBubble("Under 45", "No", 16);
-    matrix->AddMatrixBubble("45-64", "Yes", 69);
-    matrix->AddMatrixBubble("45-64", "No", 22);
-    matrix->AddMatrixBubble("65+", "Yes", 44);
-    matrix->AddMatrixBubble("65+", "No", 39);
-    matrix->AddMatrixBubble("Men", "Yes", 65);
-    matrix->AddMatrixBubble("Men", "No", 25);
-    matrix->AddMatrixBubble("Women", "Yes", 72);
-    matrix->AddMatrixBubble("Women", "No", 20);
+    matrix->AddMatrixBubble(under45, yes, 79);
+    matrix->AddMatrixBubble(under45, no, 16);
+    matrix->AddMatrixBubble("45-64", yes, 69);
+    matrix->AddMatrixBubble("45-64", no, 22);
+    matrix->AddMatrixBubble("65+", yes, 44);
+    matrix->AddMatrixBubble("65+", no, 39);
+    matrix->AddMatrixBubble(men, yes, 65);
+    matrix->AddMatrixBubble(men, no, 25);
+    matrix->AddMatrixBubble(women, yes, 72);
+    matrix->AddMatrixBubble(women, no, 20);
 
     // Age rows near-black, Men purple, Women orange-red — as in the original.
     matrix->SetRowColorMap({
-        {"Under 45", Color(28, 26, 27, 255)},
+        {under45, Color(28, 26, 27, 255)},
         {"45-64",    Color(28, 26, 27, 255)},
         {"65+",      Color(28, 26, 27, 255)},
-        {"Men",      Color(150, 42, 141, 255)},
-        {"Women",    Color(240, 94, 66, 255)}
+        {men,      Color(150, 42, 141, 255)},
+        {women,    Color(240, 94, 66, 255)}
     });
 
     matrix->SetValueLabelMode(BubbleValueLabelMode::Inside);
@@ -116,12 +120,12 @@ std::shared_ptr<UltraCanvasUIElement> BuildMatrixTab() {
     matrix->SetMinRadiusForInsideLabels(9.0f);
     matrix->SetMatrixHeaderStyle(13.0f, Color(40, 40, 40, 255), true);
     matrix->SetMatrixRowLabelStyle(13.0f, Color(50, 50, 50, 255));
-    matrix->SetFootnote("Source: CBS News, June 2008");
+    matrix->SetFootnote(Tr("Source: CBS News, June 2008"));
     matrix->SetEnableTooltips(true);
     DemoKit::AddFixed(page.content, matrix);
 
     AddInfo(page.content, "MrsInfo",
-        "Bubble Matrix (BubbleChartMode::BubbleMatrix)\n\n"
+        Tr("Bubble Matrix (BubbleChartMode::BubbleMatrix)\n\n"
         "A categorical rows x columns grid where each cell holds a bubble whose "
         "AREA is proportional to its value — the classic infographic/survey "
         "presentation of a small table of percentages.\n\n"
@@ -134,7 +138,7 @@ std::shared_ptr<UltraCanvasUIElement> BuildMatrixTab() {
         "  • SetFootnote() — small source caption\n\n"
         "The size scale is zero-anchored and area-true in this mode, so the "
         "\"79\" bubble really covers ~5x the area of the \"16\" bubble. "
-        "Hover any bubble for a tooltip.");
+        "Hover any bubble for a tooltip."));
 
     return page.tab;
 }
@@ -146,7 +150,7 @@ std::shared_ptr<UltraCanvasUIElement> BuildMatrixTab() {
 // Y = safety concern, bubble size = health concern, darkness = food concern.
 
 std::shared_ptr<UltraCanvasUIElement> BuildScatterTab() {
-    auto page = MakeTabPage("BubbleScatterTab", "TravelTitle", "Concerns when traveling", 17);
+    auto page = MakeTabPage("BubbleScatterTab", "TravelTitle", Tr("Concerns when traveling"), 17);
     DemoKit::Add(page.tab, page.content);
 
     auto chart = CreateBubbleChartElement("travelConcerns", 0, 0, 680, 560);
@@ -173,10 +177,10 @@ std::shared_ptr<UltraCanvasUIElement> BuildScatterTab() {
     chart->SetValueLabelMode(BubbleValueLabelMode::Hidden);
 
     chart->SetShowSizeLegend(true);
-    chart->SetSizeLegendTitle("Health");
+    chart->SetSizeLegendTitle(Tr("Health"));
     chart->SetSizeLegendValues({46.1, 20.5, 5.1});
     chart->SetValueDecimals(1);
-    chart->SetFootnote("Darkness relates to Food concerns");
+    chart->SetFootnote(Tr("Darkness relates to Food concerns"));
 
     chart->SetGridColor(Color(225, 225, 225, 255));
     chart->SetPlotAreaColor(Color(255, 255, 255, 255));
@@ -200,7 +204,7 @@ std::shared_ptr<UltraCanvasUIElement> BuildScatterTab() {
     xAxis->SetAlignment(TextAlignment::Center, VerticalAlignment::Top);
 
     AddInfo(page.content, "TravelInfo",
-        "Scatter Bubbles (BubbleChartMode::ScatterBubbles)\n\n"
+        Tr("Scatter Bubbles (BubbleChartMode::ScatterBubbles)\n\n"
         "A scatter plot whose marks encode four dimensions:\n"
         "  • X position — cost concern\n"
         "  • Y position — safety concern\n"
@@ -217,7 +221,7 @@ std::shared_ptr<UltraCanvasUIElement> BuildScatterTab() {
         "bubbles (Mexico) and under small ones (France)\n"
         "  • SetFootnote() — the colour-meaning caption\n\n"
         "Any continuous HeatmapColormap (Viridis, Blues, "
-        "Turbo, ...) can replace the custom gray ramp.");
+        "Turbo, ...) can replace the custom gray ramp."));
 
     return page.tab;
 }
@@ -228,7 +232,7 @@ std::shared_ptr<UltraCanvasUIElement> BuildScatterTab() {
 
 std::shared_ptr<UltraCanvasUIElement> BuildPackedTab() {
     auto page = MakeTabPage("BubblePackedTab", "PackedTitle",
-                            "Music Streaming Subscribers (millions) — Packed Bubble Chart", 16);
+                            Tr("Music Streaming Subscribers (millions) — Packed Bubble Chart"), 16);
     DemoKit::Add(page.tab, page.content);
 
     auto packed = CreatePackedBubbleChart("streamingShare", 0, 0, 640, 600);
@@ -270,9 +274,9 @@ std::shared_ptr<UltraCanvasUIElement> BuildPackedTab() {
     };
 
     auto styleDrop = std::make_shared<UltraCanvasDropdown>("PackedStyleDD", 0, 0, 150, 30);
-    styleDrop->AddItem("Shaded");
-    styleDrop->AddItem("Flat");
-    styleDrop->AddItem("Glossy");
+    styleDrop->AddItem(Tr("Shaded"));
+    styleDrop->AddItem(Tr("Flat"));
+    styleDrop->AddItem(Tr("Glossy"));
     styleDrop->SetSelectedIndex(0);
     styleDrop->onSelectionChanged = [packed](int index, const DropdownItem&) {
         BubbleRenderStyle s = BubbleRenderStyle::Shaded;
@@ -280,12 +284,12 @@ std::shared_ptr<UltraCanvasUIElement> BuildPackedTab() {
         else if (index == 2) s = BubbleRenderStyle::Glossy;
         packed->SetBubbleStyle(s);
     };
-    addControlRow("PackedStyleLbl", "Bubble style:", styleDrop);
+    addControlRow("PackedStyleLbl", Tr("Bubble style:"), styleDrop);
 
     auto sortDrop = std::make_shared<UltraCanvasDropdown>("PackedSortDD", 0, 0, 150, 30);
-    sortDrop->AddItem("Biggest first");
-    sortDrop->AddItem("Smallest first");
-    sortDrop->AddItem("Data order");
+    sortDrop->AddItem(Tr("Biggest first"));
+    sortDrop->AddItem(Tr("Smallest first"));
+    sortDrop->AddItem(Tr("Data order"));
     sortDrop->SetSelectedIndex(0);
     sortDrop->onSelectionChanged = [packed](int index, const DropdownItem&) {
         PackedSortOrder o = PackedSortOrder::SizeDescending;
@@ -293,12 +297,12 @@ std::shared_ptr<UltraCanvasUIElement> BuildPackedTab() {
         else if (index == 2) o = PackedSortOrder::DataOrder;
         packed->SetPackedSortOrder(o);
     };
-    addControlRow("PackedSortLbl", "Placement:", sortDrop);
+    addControlRow("PackedSortLbl", Tr("Placement:"), sortDrop);
 
     auto colorDrop = std::make_shared<UltraCanvasDropdown>("PackedColorDD", 0, 0, 150, 30);
-    colorDrop->AddItem("Palette");
-    colorDrop->AddItem("Value (Viridis)");
-    colorDrop->AddItem("Value (Blues)");
+    colorDrop->AddItem(Tr("Palette"));
+    colorDrop->AddItem(Tr("Value (Viridis)"));
+    colorDrop->AddItem(Tr("Value (Blues)"));
     colorDrop->SetSelectedIndex(0);
     colorDrop->onSelectionChanged = [packed](int index, const DropdownItem&) {
         if (index == 0) {
@@ -310,16 +314,16 @@ std::shared_ptr<UltraCanvasUIElement> BuildPackedTab() {
                                 index == 2 /* light-to-dark for Blues */);
         }
     };
-    addControlRow("PackedColorLbl", "Colour by:", colorDrop);
+    addControlRow("PackedColorLbl", Tr("Colour by:"), colorDrop);
 
     // As wide as its text, which changes when it is clicked.
     auto encBtn = std::make_shared<UltraCanvasButton>("PackedEncBtn", 0, 0, 0, 30);
-    encBtn->SetText("Show Enclosure Circle");
+    encBtn->SetText(Tr("Show Enclosure Circle"));
     encBtn->onClick = [encBtn = encBtn.get(), packed]() {
         static bool enclosed = false;
         enclosed = !enclosed;
         packed->SetPackedEnclosure(enclosed, Color(45, 55, 85, 255), 1.5f);
-        encBtn->SetText(enclosed ? "Hide Enclosure Circle" : "Show Enclosure Circle");
+        encBtn->SetText(enclosed ? Tr("Hide Enclosure Circle") : Tr("Show Enclosure Circle"));
     };
     DemoKit::Add(controls, encBtn);
     encBtn->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Start);
@@ -355,7 +359,7 @@ std::shared_ptr<UltraCanvasUIElement> BuildPackedTab() {
 
 std::shared_ptr<UltraCanvasUIElement> BuildHierarchicalTab() {
     auto page = MakeTabPage("BubbleHierTab", "HierTitle",
-                            "Orbital Launches by Rocket Family — Hierarchical Packed Bubbles", 16);
+                            Tr("Orbital Launches by Rocket Family — Hierarchical Packed Bubbles"), 16);
     DemoKit::Add(page.tab, page.content);
 
     auto hier = CreateHierarchicalBubbleChart("launchFamilies", 0, 0, 720, 620);
@@ -411,7 +415,7 @@ std::shared_ptr<UltraCanvasUIElement> BuildHierarchicalTab() {
     DemoKit::AddFixed(page.content, hier);
 
     AddInfo(page.content, "HierInfo",
-        "Hierarchical Packing\n"
+        Tr("Hierarchical Packing\n"
         "(BubbleChartMode::HierarchicalPacked)\n\n"
         "Two-level circle packing: bubbles sharing a "
         "category are packed inside a parent circle, and "
@@ -430,7 +434,7 @@ std::shared_ptr<UltraCanvasUIElement> BuildHierarchicalTab() {
         "  • SetCategoryColorMap() — colour per group\n"
         "  • SetGroupTint() / SetGroupPadding() / "
         "SetGroupLabelStyle()\n\n"
-        "Hover any child bubble for name, group and value.");
+        "Hover any child bubble for name, group and value."));
 
     return page.tab;
 }
@@ -443,7 +447,7 @@ std::shared_ptr<UltraCanvasUIElement> BuildHierarchicalTab() {
 
 std::shared_ptr<UltraCanvasUIElement> BuildTimelineTab() {
     auto page = MakeTabPage("BubbleTimelineTab", "TlTitle",
-                            "Which months had the highest number of orders?", 16);
+                            Tr("Which months had the highest number of orders?"), 16);
     DemoKit::AddCaption(page.tab, "TlSubtitle", Tr("Bubble size represents number of orders"))
             ->SetFontSize(11);
     DemoKit::Add(page.tab, page.content);
@@ -456,14 +460,14 @@ std::shared_ptr<UltraCanvasUIElement> BuildTimelineTab() {
 
     // Month index 0 = November 2011 ... 48 = November 2015.
     auto monthLabel = [](double v) {
-        static const char* names[12] = {
-            "January", "February", "March", "April", "May", "June", "July",
-            "August", "September", "October", "November", "December"
+        const std::string names[12] = {
+            Tr("January"), Tr("February"), Tr("March"), Tr("April"), Tr("May"), Tr("June"), Tr("July"),
+            Tr("August"), Tr("September"), Tr("October"), Tr("November"), Tr("December")
         };
         int idx = static_cast<int>(std::lround(v));
         int m = (10 + idx) % 12;
         int year = 2011 + (10 + idx) / 12;
-        return std::string(names[m]) + " " + std::to_string(year);
+        return LocalisationDetail::Substitute(TrC("month and year", "{0} {1}"), {names[m], std::to_string(year)});
     };
 
     // Synthetic order counts: per-region base volume, a gentle growth trend
@@ -498,13 +502,14 @@ std::shared_ptr<UltraCanvasUIElement> BuildTimelineTab() {
         [timelinePtr, monthLabel](const ChartDataPoint&, size_t index) {
             const auto& b = timelinePtr->GetBubble(index);
             return b.category + "\n" +
-                   std::to_string(static_cast<long>(b.size)) +
-                   " order(s) in " + monthLabel(b.x);
+                   LocalisationDetail::Substitute(
+                       TrN("{n} order in {0}", "{n} orders in {0}", static_cast<long long>(b.size)),
+                       {monthLabel(b.x)});
         });
     DemoKit::AddFixed(page.content, timeline);
 
     AddInfo(page.content, "TlInfo",
-        "Timeline Bubbles (BubbleChartMode::TimelineBubbles)\n\n"
+        Tr("Timeline Bubbles (BubbleChartMode::TimelineBubbles)\n\n"
         "Named categorical rows on the Y axis, a continuous "
         "(time) value on X, bubble AREA = the measure. Zero-anchored "
         "area scale, so a month with twice the orders "
@@ -516,7 +521,7 @@ std::shared_ptr<UltraCanvasUIElement> BuildTimelineTab() {
         "\"June 2014\" labels\n"
         " • SetCustomTooltipGenerator — Tableau-style order tooltips\n\n"
         "392 bubbles (8 regions x 49 months). Hover any "
-        "bubble for its exact count.");
+        "bubble for its exact count."));
 
     return page.tab;
 }
@@ -663,13 +668,13 @@ private:
 
 std::shared_ptr<UltraCanvasUIElement> Build3DTab() {
     auto page = MakeTabPage("Bubble3DTab", "B3DTitle",
-                            "3D Bubble Chart — R&D portfolio: risk / reward / time-to-market, size = investment", 15);
+                            Tr("3D Bubble Chart — R&D portfolio: risk / reward / time-to-market, size = investment"), 15);
     DemoKit::Add(page.tab, page.content);
 
     auto state = std::make_shared<Bubble3DState>();
     // x = risk, y = reward, z = time-to-market (normalized to [-1, 1]),
     // radius from investment volume; colour by business unit.
-    auto add = [&](float x, float y, float z, float invest, Color c, const char* name) {
+    auto add = [&](float x, float y, float z, float invest, Color c, const std::string& name) {
         // Sphere VOLUME proportional to investment: r = cbrt(v), scaled.
         float r = 0.16f * std::cbrt(invest);
         state->bubbles.push_back({x, y, z, r, c, name});
@@ -678,16 +683,16 @@ std::shared_ptr<UltraCanvasUIElement> Build3DTab() {
           red(225, 87, 89, 210), teal(118, 183, 178, 210),
           green(89, 161, 79, 210), purple(176, 122, 161, 210);
 
-    add(-0.70f,  0.15f, -0.55f, 1.9f, blue,   "Core platform");
-    add(-0.35f, -0.40f,  0.10f, 1.1f, blue,   "Maintenance");
-    add( 0.10f,  0.35f, -0.20f, 2.6f, orange, "New market entry");
-    add( 0.45f,  0.75f,  0.55f, 3.2f, red,    "Moonshot AI");
-    add( 0.75f,  0.55f,  0.80f, 1.4f, red,    "Quantum pilot");
-    add(-0.10f,  0.65f, -0.70f, 2.2f, teal,   "Premium tier");
-    add( 0.30f, -0.15f,  0.35f, 0.9f, green,  "Cost automation");
-    add(-0.55f,  0.80f,  0.25f, 1.6f, purple, "Brand refresh");
-    add( 0.60f,  0.05f, -0.35f, 0.7f, green,  "Tooling");
-    add(-0.20f, -0.70f,  0.65f, 0.5f, purple, "Legacy sunset");
+    add(-0.70f,  0.15f, -0.55f, 1.9f, blue,   Tr("Core platform"));
+    add(-0.35f, -0.40f,  0.10f, 1.1f, blue,   Tr("Maintenance"));
+    add( 0.10f,  0.35f, -0.20f, 2.6f, orange, Tr("New market entry"));
+    add( 0.45f,  0.75f,  0.55f, 3.2f, red,    Tr("Moonshot AI"));
+    add( 0.75f,  0.55f,  0.80f, 1.4f, red,    Tr("Quantum pilot"));
+    add(-0.10f,  0.65f, -0.70f, 2.2f, teal,   Tr("Premium tier"));
+    add( 0.30f, -0.15f,  0.35f, 0.9f, green,  Tr("Cost automation"));
+    add(-0.55f,  0.80f,  0.25f, 1.6f, purple, Tr("Brand refresh"));
+    add( 0.60f,  0.05f, -0.35f, 0.7f, green,  Tr("Tooling"));
+    add(-0.20f, -0.70f,  0.65f, 0.5f, purple, Tr("Legacy sunset"));
 
     auto glRes = std::make_shared<Bubble3DGL>();
 
@@ -856,10 +861,10 @@ std::shared_ptr<UltraCanvasUIElement> Build3DTab() {
     side->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(300));
 
     auto spinBtn = std::make_shared<UltraCanvasButton>("B3DSpinBtn", 0, 0, 0, 32);
-    spinBtn->SetText("Pause Spin");
+    spinBtn->SetText(Tr("Pause Spin"));
     spinBtn->onClick = [spinBtn = spinBtn.get(), state]() {
         state->autoRotate = !state->autoRotate;
-        spinBtn->SetText(state->autoRotate ? "Pause Spin" : "Resume Spin");
+        spinBtn->SetText(state->autoRotate ? Tr("Pause Spin") : Tr("Resume Spin"));
     };
     DemoKit::Add(side, spinBtn);
     spinBtn->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Start);
@@ -930,12 +935,12 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateBubbleCh
     tabs->SetTabStyle(TabStyle::Rounded);
     tabs->SetTabHeight(32);
 
-    tabs->AddTab("Bubble Matrix (Mrs. President)", BuildMatrixTab());
-    tabs->AddTab("Scatter Bubbles (Travel Concerns)", BuildScatterTab());
-    tabs->AddTab("Packed Bubbles", BuildPackedTab());
-    tabs->AddTab("Hierarchical Packing", BuildHierarchicalTab());
-    tabs->AddTab("Bubble Timeline", BuildTimelineTab());
-    tabs->AddTab("3D Bubbles (OpenGL)", Build3DTab());
+    tabs->AddTab(Tr("Bubble Matrix (Mrs. President)"), BuildMatrixTab());
+    tabs->AddTab(Tr("Scatter Bubbles (Travel Concerns)"), BuildScatterTab());
+    tabs->AddTab(Tr("Packed Bubbles"), BuildPackedTab());
+    tabs->AddTab(Tr("Hierarchical Packing"), BuildHierarchicalTab());
+    tabs->AddTab(Tr("Bubble Timeline"), BuildTimelineTab());
+    tabs->AddTab(Tr("3D Bubbles (OpenGL)"), Build3DTab());
     tabs->SetActiveTab(0);
 
     DemoKit::Add(card, tabs, 1);

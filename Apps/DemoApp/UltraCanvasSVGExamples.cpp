@@ -52,7 +52,7 @@ namespace UltraCanvas {
             auto element = std::make_shared<UltraCanvasImageElement>(id + "El", 0, 0, 200, 175);
             std::string path = NormalizePath(GetResourcesDir() + "media/vector/SVG/" + fileName);
             if (!element->LoadFromFile(path)) {
-                statusLabel->SetText("Failed to load " + path);
+                statusLabel->SetText(TrF("Failed to load {0}", path));
             }
             DemoKit::AddFixed(tile, element);
             element->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Center);
@@ -66,7 +66,7 @@ namespace UltraCanvas {
                 switch (event.type) {
                     case UCEventType::MouseUp:
                         ShowInMediaViewer(path);
-                        statusLabel->SetText("Opened in the media viewer: " + path);
+                        statusLabel->SetText(TrF("Opened in the media viewer: {0}", path));
                         return true;
                     case UCEventType::MouseEnter:
                         tile->SetBordersColor(Color(100, 149, 237, 255));

@@ -76,15 +76,16 @@ namespace {
     // formats the framework merely aspires to (OGG audio, RTF, glTF/FBX/PLY,
     // SVG save, ...) that older hardcoded lists used to show by mistake.
     std::vector<FileGroup> ResolveFileGroups() {
-        struct Def { const char* name; MediaFormatCategory category; DisplayKind display; };
-        static const std::vector<Def> defs = {
-            { "Bitmap graphics", MediaFormatCategory::Bitmap,      DisplayKind::Image },
-            { "Vector graphics", MediaFormatCategory::Vector,      DisplayKind::Image },
-            { "3D models",       MediaFormatCategory::Model3D,     DisplayKind::Text },
-            { "Documents",       MediaFormatCategory::Document,    DisplayKind::Text },
-            { "Spreadsheets",    MediaFormatCategory::Spreadsheet, DisplayKind::Spreadsheet },
-            { "Audio",           MediaFormatCategory::Audio,       DisplayKind::Audio },
-            { "Video",           MediaFormatCategory::Video,       DisplayKind::Video },
+        // Built per call (not static) so the names are in the person's language.
+        struct Def { std::string name; MediaFormatCategory category; DisplayKind display; };
+        const std::vector<Def> defs = {
+            { Tr("Bitmap graphics"), MediaFormatCategory::Bitmap,      DisplayKind::Image },
+            { Tr("Vector graphics"), MediaFormatCategory::Vector,      DisplayKind::Image },
+            { Tr("3D models"),       MediaFormatCategory::Model3D,     DisplayKind::Text },
+            { Tr("Documents"),       MediaFormatCategory::Document,    DisplayKind::Text },
+            { Tr("Spreadsheets"),    MediaFormatCategory::Spreadsheet, DisplayKind::Spreadsheet },
+            { Tr("Audio"),           MediaFormatCategory::Audio,       DisplayKind::Audio },
+            { Tr("Video"),           MediaFormatCategory::Video,       DisplayKind::Video },
         };
         std::vector<FileGroup> groups;
         groups.reserve(defs.size());
@@ -106,7 +107,7 @@ namespace {
             if (i) out += ", ";
             out += "." + exts[i];
         }
-        return out.empty() ? "(none)" : out;
+        return out.empty() ? Tr("(none)") : out;
     }
 
     // Extension of a path, lower-cased, without the dot ("" when none).
@@ -159,8 +160,8 @@ namespace {
             // above the display area, so the hint only invites an action —
             // repeating the list inside the display area duplicated it.
             return CenteredHint("FileLoaderHint",
-                                "Click “Open file” or drag & drop a file here to load a " + group.name +
-                                " file.");
+                                TrF("Click “Open file” or drag & drop a file here to load a {0} file.",
+                                    group.name));
         }
 
         switch (group.display) {
@@ -171,7 +172,7 @@ namespace {
                                  .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
                 if (!image->LoadFromFile(path)) {
                     return CenteredHint("FileLoaderImageErr",
-                                        "Could not display image:\n" + image->GetLastError());
+                                        TrF("Could not display image:\n{0}", image->GetLastError()));
                 }
                 return image;
             }
@@ -181,7 +182,7 @@ namespace {
                                  .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
                 if (!sheet->LoadFromFile(path)) {
                     return CenteredHint("FileLoaderSheetErr",
-                                        "Could not open spreadsheet:\n" + sheet->GetLastError());
+                                        TrF("Could not open spreadsheet:\n{0}", sheet->GetLastError()));
                 }
                 return sheet;
             }
@@ -217,17 +218,18 @@ namespace {
                     // Report what the supported-format API knows about this
                     // file — the library/plugin that provides it and its
                     // load/save capability — instead of a generic blurb.
-                    std::string info = "Loaded " + group.name + " file:\n  " + path + "\n";
+                    std::string info = TrF("Loaded {0} file:", group.name) + "\n  " + path + "\n";
                     if (auto fmt = UltraCanvasSupportedFormats::FindByExtension(ext)) {
-                        info += "\nFormat:    " + fmt->description +
-                                "\nProvider:  " + fmt->provider +
-                                "\nCan load:  " + std::string(fmt->canLoad ? "yes" : "no") +
-                                "     Can save: " + std::string(fmt->canSave ? "yes" : "no");
-                        if (!fmt->notes.empty()) info += "\nNote:      " + fmt->notes;
+                        info += "\n" + TrF("Format:    {0}", fmt->description) +
+                                "\n" + TrF("Provider:  {0}", fmt->provider) +
+                                "\n" + TrF("Can load:  {0}     Can save: {1}",
+                                            fmt->canLoad ? Tr("yes") : Tr("no"),
+                                            fmt->canSave ? Tr("yes") : Tr("no"));
+                        if (!fmt->notes.empty()) info += "\n" + TrF("Note:      {0}", fmt->notes);
                     }
-                    info += "\n\nThis file was decoded by the provider above. In a full "
+                    info += "\n\n" + Tr("This file was decoded by the provider above. In a full "
                             "application it renders through the dedicated viewer "
-                            "(e.g. UltraCanvasPDFView for PDF, the GL model viewer for 3D).";
+                            "(e.g. UltraCanvasPDFView for PDF, the GL model viewer for 3D).");
                     text->SetText(info);
                 }
                 text->SetCursorPosition(LineColumnIndex::INVALID);
@@ -314,10 +316,10 @@ namespace {
         dropdown->SetSelectedIndex(0);
         DemoKit::AddFixed(toolbar, dropdown);
 
-        auto openBtn = std::make_shared<UltraCanvasButton>("FileLoaderOpen", 0, 0, 120, 30, "Open file");
+        auto openBtn = std::make_shared<UltraCanvasButton>("FileLoaderOpen", 0, 0, 120, 30, Tr("Open file"));
         DemoKit::Add(toolbar, openBtn);
 
-        auto saveBtn = std::make_shared<UltraCanvasButton>("FileLoaderSave", 0, 0, 90, 30, "Save");
+        auto saveBtn = std::make_shared<UltraCanvasButton>("FileLoaderSave", 0, 0, 90, 30, Tr("Save"));
         DemoKit::Add(toolbar, saveBtn);
 
         // Advertises the currently available file types for the chosen family and
@@ -348,8 +350,8 @@ namespace {
             if (groupIndex < 0 || groupIndex >= static_cast<int>(groups.size())) groupIndex = 0;
             const FileGroup& g = groups[groupIndex];
 
-            status->SetText("Open types: " + JoinExts(g.openExts) +
-                            "     |     Save types: " + JoinExts(g.saveExts));
+            status->SetText(TrF("Open types: {0}     |     Save types: {1}",
+                                JoinExts(g.openExts), JoinExts(g.saveExts)));
             status->RequestRedraw();
 
             displayArea->ClearChildren();
@@ -390,8 +392,8 @@ namespace {
                         const std::string& path = event.droppedFiles.front();
                         int idx = FindGroupForFile(groups, path, dropdown->GetSelectedIndex());
                         if (idx < 0) {
-                            status->SetText("Cannot open dropped file: unsupported type \"." +
-                                            LowerExtension(path) + "\" (" + path + ")");
+                            status->SetText(TrF("Cannot open dropped file: unsupported type \".{0}\" ({1})",
+                                                LowerExtension(path), path));
                             status->RequestRedraw();
                             return true;
                         }
@@ -401,7 +403,7 @@ namespace {
                             dropdown->SetSelectedIndex(idx, false);
                         }
                         (*refreshPtr)(idx, path);
-                        status->SetText("Loaded (dropped): " + path);
+                        status->SetText(TrF("Loaded (dropped): {0}", path));
                         status->RequestRedraw();
                         return true;
                     }
@@ -418,22 +420,22 @@ namespace {
             const FileGroup& g = groups[idx];
 
             FileDialogOptions opts;
-            opts.SetTitle("Open " + g.name + " file")
+            opts.SetTitle(TrF("Open {0} file", g.name))
                 // Parenting makes the dialog modal to the demo window, so the
                 // window manager keeps it in front of the application.
                 .SetParentWindow(dropdown->GetWindow())
                 .AddFilter(g.name, g.openExts)
-                .AddFilter("All files", "*");
+                .AddFilter(Tr("All files"), "*");
 
             UltraCanvasFileLoader::OpenFileDialog(opts,
                 [status, refresh, idx](DialogResult result, const std::string& path) {
                     if (result != DialogResult::OK || path.empty()) {
-                        status->SetText("Open cancelled.");
+                        status->SetText(Tr("Open cancelled."));
                         status->RequestRedraw();
                         return;
                     }
                     (*refresh)(idx, path);
-                    status->SetText("Loaded: " + path);
+                    status->SetText(TrF("Loaded: {0}", path));
                     status->RequestRedraw();
                 });
         };
@@ -445,7 +447,7 @@ namespace {
             const FileGroup& g = groups[idx];
 
             if (g.saveExts.empty()) {
-                status->SetText("No writable formats available for " + g.name + ".");
+                status->SetText(TrF("No writable formats available for {0}.", g.name));
                 status->RequestRedraw();
                 return;
             }
@@ -470,7 +472,7 @@ namespace {
             }
 
             FileDialogOptions opts;
-            opts.SetTitle("Save " + g.name + " file")
+            opts.SetTitle(TrF("Save {0} file", g.name))
                 // Parenting makes the dialog modal to the demo window, so the
                 // window manager keeps it in front of the application.
                 .SetParentWindow(dropdown->GetWindow())
@@ -478,18 +480,18 @@ namespace {
             // The filter matching the default name's extension goes first —
             // the dialog preselects the first filter, and this keeps it
             // consistent with the proposed file name.
-            opts.AddFilter("." + saveExt + " file", saveExt);
+            opts.AddFilter(TrF(".{0} file", saveExt), saveExt);
             for (const auto& ext : g.saveExts) {
-                if (ext != saveExt) opts.AddFilter("." + ext + " file", ext);
+                if (ext != saveExt) opts.AddFilter(TrF(".{0} file", ext), ext);
             }
-            opts.AddFilter("All files", "*");
+            opts.AddFilter(Tr("All files"), "*");
 
             UltraCanvasFileLoader::SaveFileDialog(opts,
                 [status](DialogResult result, const std::string& path) {
                     if (result != DialogResult::OK || path.empty()) {
-                        status->SetText("Save cancelled.");
+                        status->SetText(Tr("Save cancelled."));
                     } else {
-                        status->SetText("Save target: " + path);
+                        status->SetText(TrF("Save target: {0}", path));
                     }
                     status->RequestRedraw();
                 });
@@ -523,9 +525,9 @@ namespace {
         tabs->SetCloseMode(TabCloseMode::NoClose);
         tabs->SetTabHeight(30);
 
-        tabs->AddTab("Overview", BuildOverviewTab());
-        tabs->AddTab("Details",  BuildDetailsTab());
-        tabs->AddTab("Examples", BuildExamplesTab());
+        tabs->AddTab(Tr("Overview"), BuildOverviewTab());
+        tabs->AddTab(Tr("Details"),  BuildDetailsTab());
+        tabs->AddTab(Tr("Examples"), BuildExamplesTab());
         tabs->SetActiveTab(0);
 
         DemoKit::Add(card, tabs, 1);

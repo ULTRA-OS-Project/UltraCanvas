@@ -33,11 +33,11 @@ namespace UltraCanvas {
         auto card1 = DemoKit::AddCard(page, "PgL1", Tr("Numbered (20 pages, ellipsis windowing):"));
         auto row1 = DemoKit::AddRow(card1, "PgRow1");
         row1->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
-        auto readout1 = makeReadout("PgReadout1", "On page 1 of 20");
+        auto readout1 = makeReadout("PgReadout1", TrF("On page {0} of {1}", 1, 20));
 
         auto pg1 = CreatePagination("Pg1", 0, 0, 600, 34, 20, 1);
         pg1->onPageChanged = [readout1](int page) {
-            readout1->SetText("On page " + std::to_string(page) + " of 20");
+            readout1->SetText(TrF("On page {0} of {1}", page, 20));
         };
         DemoKit::AddFixed(row1, pg1);
         DemoKit::Add(row1, readout1);
@@ -46,7 +46,7 @@ namespace UltraCanvas {
         auto card2 = DemoKit::AddCard(page, "PgL2", Tr("From item count (95 items, 10 per page, with info):"));
         auto row2 = DemoKit::AddRow(card2, "PgRow2");
         row2->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
-        auto readout2 = makeReadout("PgReadout2", "Showing items 1-10");
+        auto readout2 = makeReadout("PgReadout2", TrF("Showing items {0}-{1}", 1, 10));
 
         auto pg2 = CreatePaginationForItems("Pg2", 0, 0, 640, 34, 95, 10, 1);
         // Round page entries in a light orange pastel palette.
@@ -66,8 +66,8 @@ namespace UltraCanvas {
         // Read the item window (start-end) straight from the control on change.
         auto pg2ptr = pg2.get();
         pg2->onPageChanged = [readout2, pg2ptr](int) {
-            readout2->SetText("Showing items " + std::to_string(pg2ptr->GetPageStartItem()) +
-                              "-" + std::to_string(pg2ptr->GetPageEndItem()));
+            readout2->SetText(TrF("Showing items {0}-{1}", pg2ptr->GetPageStartItem(),
+                                  pg2ptr->GetPageEndItem()));
         };
         DemoKit::AddFixed(row2, pg2);
         DemoKit::Add(row2, readout2);

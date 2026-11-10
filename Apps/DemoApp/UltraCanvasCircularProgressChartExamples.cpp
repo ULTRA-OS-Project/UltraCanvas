@@ -29,10 +29,10 @@ namespace UltraCanvas {
         const std::string& id, int x, int y, int w, int h)
     {
         auto chart = CreateCircularProgressChart(id, x, y, w, h);
-        chart->AddRing("Research",  48.0, Color(255,  62, 133, 255));   // magenta
-        chart->AddRing("Marketing", 54.0, Color(255, 200,  40, 255));   // yellow
-        chart->AddRing("Sales",     64.0, Color(150, 200,  60, 255));   // green
-        chart->AddRing("Support",   83.0, Color(120,  90, 200, 255));   // purple
+        chart->AddRing(Tr("Research"),  48.0, Color(255,  62, 133, 255));   // magenta
+        chart->AddRing(Tr("Marketing"), 54.0, Color(255, 200,  40, 255));   // yellow
+        chart->AddRing(Tr("Sales"),     64.0, Color(150, 200,  60, 255));   // green
+        chart->AddRing(Tr("Support"),   83.0, Color(120,  90, 200, 255));   // purple
 
         chart->SetCapStyle(RingCapStyle::Round);
         chart->SetTrackMode(RingTrackMode::AutoTint);
@@ -52,10 +52,10 @@ namespace UltraCanvas {
         const std::string& id, int x, int y, int w, int h)
     {
         auto chart = CreateConcentricRingChart(id, x, y, w, h, {
-            {"Legend", 22.0},
-            {"Legend", 27.0},
-            {"Legend", 38.0},
-            {"Legend", 39.0}
+            {Tr("Legend"), 22.0},
+            {Tr("Legend"), 27.0},
+            {Tr("Legend"), 38.0},
+            {Tr("Legend"), 39.0}
         });
         chart->SetColorPalette({
             Color(243, 156,  18, 255),   // orange
@@ -78,12 +78,12 @@ namespace UltraCanvas {
     {
         auto chart = CreateCircularProgressChart(id, x, y, w, h);
         chart->SetSubStyle(CircularProgressStyle::SingleRing);
-        chart->AddRing("Completed", 72.0, Color(120, 90, 220, 255));
+        chart->AddRing(Tr("Completed"), 72.0, Color(120, 90, 220, 255));
         chart->SetInnerRadiusFraction(0.68f);
         chart->SetTrackMode(RingTrackMode::Explicit);
         chart->SetTrackColor(Color(240, 240, 243, 255));
         chart->SetTipLabelContent(RingTipLabel::NoLabel);
-        chart->SetCenterText("72%", "Completed");
+        chart->SetCenterText("72%", Tr("Completed"));
         chart->SetCenterFont("Arial", 22.0f, FontWeight::Bold);
         chart->SetTooltipsEnabled(true);
         return chart;
@@ -105,11 +105,11 @@ namespace UltraCanvas {
             header->SetFontWeight(FontWeight::Bold);
         };
 
-        addHeader("CpCapHeader", "Arc Caps:");
+        addHeader("CpCapHeader", Tr("Arc Caps:"));
 
         auto capDropdown = std::make_shared<UltraCanvasDropdown>("CpCap", 0, 0, controlWidth, controlHeight);
-        capDropdown->AddItem("Round Cap");
-        capDropdown->AddItem("Butt Cap");
+        capDropdown->AddItem(Tr("Round Cap"));
+        capDropdown->AddItem(Tr("Butt Cap"));
         capDropdown->SetSelectedIndex(0);
         capDropdown->onSelectionChanged = [charts](int index, const DropdownItem&) {
             for (auto& c : charts) {
@@ -119,9 +119,9 @@ namespace UltraCanvas {
         DemoKit::AddFixed(panel, capDropdown);
 
         auto trackDropdown = std::make_shared<UltraCanvasDropdown>("CpTrack", 0, 0, controlWidth, controlHeight);
-        trackDropdown->AddItem("Auto-Tint Tracks");
-        trackDropdown->AddItem("Grey Tracks");
-        trackDropdown->AddItem("No Tracks");
+        trackDropdown->AddItem(Tr("Auto-Tint Tracks"));
+        trackDropdown->AddItem(Tr("Grey Tracks"));
+        trackDropdown->AddItem(Tr("No Tracks"));
         trackDropdown->SetSelectedIndex(0);
         trackDropdown->onSelectionChanged = [charts](int index, const DropdownItem&) {
             RingTrackMode mode;
@@ -135,9 +135,9 @@ namespace UltraCanvas {
         DemoKit::AddFixed(panel, trackDropdown);
 
         auto tipDropdown = std::make_shared<UltraCanvasDropdown>("CpTip", 0, 0, controlWidth, controlHeight);
-        tipDropdown->AddItem("Tip: Percentage");
-        tipDropdown->AddItem("Tip: Value");
-        tipDropdown->AddItem("Tip: None");
+        tipDropdown->AddItem(Tr("Tip: Percentage"));
+        tipDropdown->AddItem(Tr("Tip: Value"));
+        tipDropdown->AddItem(Tr("Tip: None"));
         tipDropdown->SetSelectedIndex(0);
         tipDropdown->onSelectionChanged = [charts](int index, const DropdownItem&) {
             RingTipLabel content;
@@ -150,7 +150,7 @@ namespace UltraCanvas {
         };
         DemoKit::AddFixed(panel, tipDropdown);
 
-        addHeader("CpInnerHeader", "Centre Hole Size:");
+        addHeader("CpInnerHeader", Tr("Centre Hole Size:"));
 
         auto innerSlider = std::make_shared<UltraCanvasSlider>("CpInner", 0, 0, controlWidth, controlHeight);
         innerSlider->SetRange(0.1, 0.6);
@@ -161,7 +161,7 @@ namespace UltraCanvas {
         };
         DemoKit::AddFixed(panel, innerSlider);
 
-        addHeader("CpSpacingHeader", "Ring Spacing (px):");
+        addHeader("CpSpacingHeader", Tr("Ring Spacing (px):"));
 
         auto spacingSlider = std::make_shared<UltraCanvasSlider>("CpSpacing", 0, 0, controlWidth, controlHeight);
         spacingSlider->SetRange(0.0, 16.0);
@@ -173,7 +173,7 @@ namespace UltraCanvas {
         DemoKit::AddFixed(panel, spacingSlider);
 
         auto clockwiseCheckbox = std::make_shared<UltraCanvasCheckbox>("CpClockwise", 0, 0, controlWidth, controlHeight);
-        clockwiseCheckbox->SetText("Clockwise");
+        clockwiseCheckbox->SetText(Tr("Clockwise"));
         clockwiseCheckbox->SetChecked(true);
         clockwiseCheckbox->onStateChanged = [charts](CheckedState, CheckedState newState) {
             for (auto& c : charts) c->SetClockwise(newState == CheckedState::Checked);
@@ -181,7 +181,7 @@ namespace UltraCanvas {
         DemoKit::AddFixed(panel, clockwiseCheckbox);
 
         auto hoverCheckbox = std::make_shared<UltraCanvasCheckbox>("CpHover", 0, 0, controlWidth, controlHeight);
-        hoverCheckbox->SetText("Hover Highlight");
+        hoverCheckbox->SetText(Tr("Hover Highlight"));
         hoverCheckbox->SetChecked(true);
         hoverCheckbox->onStateChanged = [charts](CheckedState, CheckedState newState) {
             for (auto& c : charts) c->SetHoverHighlightEnabled(newState == CheckedState::Checked);
@@ -237,7 +237,7 @@ namespace UltraCanvas {
         DemoKit::AddFixed(singlePair, completionRing);
 
         auto progressPie = CreateProgressPieChart("ProgressPie", 0, 0, 230, 280,
-                                                  "Storage used", 65.0,
+                                                  Tr("Storage used"), 65.0,
                                                   Color(40, 140, 230, 255));
         progressPie->SetTrackColor(Color(236, 240, 244, 255));
         progressPie->SetTrackMode(RingTrackMode::Explicit);
@@ -250,10 +250,10 @@ namespace UltraCanvas {
 
         auto revenueData = std::make_shared<ChartDataVector>();
         std::vector<ChartDataPoint> revenue = {
-            ChartDataPoint(1, 520, 0, "Subscriptions", 520),
-            ChartDataPoint(2, 310, 0, "Services", 310),
-            ChartDataPoint(3, 205, 0, "Licenses", 205),
-            ChartDataPoint(4, 165, 0, "Other", 165)
+            ChartDataPoint(1, 520, 0, Tr("Subscriptions"), 520),
+            ChartDataPoint(2, 310, 0, Tr("Services"), 310),
+            ChartDataPoint(3, 205, 0, Tr("Licenses"), 205),
+            ChartDataPoint(4, 165, 0, Tr("Other"), 165)
         };
         revenueData->LoadFromArray(revenue);
         auto donut = CreatePieChartElement("KpiDonut", 0, 0, 460, 280);
@@ -261,7 +261,7 @@ namespace UltraCanvas {
         donut->SetDonutMode(true);
         donut->SetInnerRadius(0.62f);
         donut->SetStartAngle(-90.0f);
-        donut->SetCenterKPI("$1.2M", "Total revenue");
+        donut->SetCenterKPI("$1.2M", Tr("Total revenue"));
         donut->SetLabelPosition(LabelPosition::Outside);
         donut->SetLabelContent(LabelContent::NamePercentage);
         donut->onSliceClick = [donut = donut.get()](size_t index) {

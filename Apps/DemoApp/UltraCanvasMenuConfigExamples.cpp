@@ -53,25 +53,25 @@ namespace {
         };
 
         // ----- Clipboard -----
-        reg.RegisterAction("filer.cut",       "Clipboard", "Cut",       "", "Ctrl+X", log("Cut"));
-        reg.RegisterAction("filer.copy",      "Clipboard", "Copy",      "", "Ctrl+C", log("Copy"));
-        reg.RegisterAction("filer.paste",     "Clipboard", "Paste",     "", "Ctrl+V", log("Paste"));
-        reg.RegisterAction("filer.duplicate", "Clipboard", "Duplicate", "", "Ctrl+D", log("Duplicate"));
+        reg.RegisterAction("filer.cut",       Tr("Clipboard"), Tr("Cut"),       "", "Ctrl+X", log("Cut"));
+        reg.RegisterAction("filer.copy",      Tr("Clipboard"), Tr("Copy"),      "", "Ctrl+C", log("Copy"));
+        reg.RegisterAction("filer.paste",     Tr("Clipboard"), Tr("Paste"),     "", "Ctrl+V", log("Paste"));
+        reg.RegisterAction("filer.duplicate", Tr("Clipboard"), Tr("Duplicate"), "", "Ctrl+D", log("Duplicate"));
 
         // ----- File operations -----
-        reg.RegisterAction("filer.rename",   "File", "Rename",    "", "F2",  log("Rename"));
-        reg.RegisterAction("filer.delete",   "File", "Delete",    "", "Del", log("Delete"));
-        reg.RegisterAction("filer.openpath", "File", "Open Path", "", "",    log("Open Path"));
+        reg.RegisterAction("filer.rename",   Tr("File"), Tr("Rename"),    "", "F2",  log("Rename"));
+        reg.RegisterAction("filer.delete",   Tr("File"), Tr("Delete"),    "", "Del", log("Delete"));
+        reg.RegisterAction("filer.openpath", Tr("File"), Tr("Open Path"), "", "",    log("Open Path"));
 
         // Open With is a provider-backed, app-populated submenu — model it as an
         // opaque dynamic leaf via the prototype escape hatch.
         {
-            MenuCommand openWith("filer.openwith", "File", "Open With");
+            MenuCommand openWith("filer.openwith", Tr("File"), Tr("Open With"));
             openWith.prototype = []() {
-                return MenuItemData::Submenu("Open With",
+                return MenuItemData::Submenu(Tr("Open With"),
                     []() -> std::vector<MenuItemData> {
                         return {
-                            MenuItemData::Action("(app-provided list)", []() {}),
+                            MenuItemData::Action(Tr("(app-provided list)"), []() {}),
                         };
                     });
             };
@@ -79,57 +79,57 @@ namespace {
         }
 
         // ----- New document kinds ("New >") -----
-        reg.RegisterAction("filer.new.text",        "New Document", "Text",        log("New Text"));
-        reg.RegisterAction("filer.new.document",    "New Document", "Document",    log("New Document"));
-        reg.RegisterAction("filer.new.spreadsheet", "New Document", "Spreadsheet", log("New Spreadsheet"));
-        reg.RegisterAction("filer.new.bitmap",      "New Document", "Bitmap",      log("New Bitmap"));
-        reg.RegisterAction("filer.new.vector",      "New Document", "Vector",      log("New Vector"));
-        reg.RegisterAction("filer.new.audio",       "New Document", "Audio",       log("New Audio"));
-        reg.RegisterAction("filer.new.video",       "New Document", "Video",       log("New Video"));
+        reg.RegisterAction("filer.new.text",        Tr("New Document"), Tr("Text"),        log("New Text"));
+        reg.RegisterAction("filer.new.document",    Tr("New Document"), Tr("Document"),    log("New Document"));
+        reg.RegisterAction("filer.new.spreadsheet", Tr("New Document"), Tr("Spreadsheet"), log("New Spreadsheet"));
+        reg.RegisterAction("filer.new.bitmap",      Tr("New Document"), Tr("Bitmap"),      log("New Bitmap"));
+        reg.RegisterAction("filer.new.vector",      Tr("New Document"), Tr("Vector"),      log("New Vector"));
+        reg.RegisterAction("filer.new.audio",       Tr("New Document"), Tr("Audio"),       log("New Audio"));
+        reg.RegisterAction("filer.new.video",       Tr("New Document"), Tr("Video"),       log("New Video"));
 
         // ----- Archive -----
-        reg.RegisterAction("filer.compress", "Archive", "Compress", log("Compress"));
-        reg.RegisterAction("filer.extract",  "Archive", "Extract",  log("Extract"));
+        reg.RegisterAction("filer.compress", Tr("Archive"), Tr("Compress"), log("Compress"));
+        reg.RegisterAction("filer.extract",  Tr("Archive"), Tr("Extract"),  log("Extract"));
 
         // ----- Display: view type (radio group 1) -----
         auto radioView = [&](const std::string& id, const std::string& label, bool checked) {
-            MenuCommand c(id, "Display", label);
+            MenuCommand c(id, Tr("Display"), label);
             c.type = MenuItemType::Radio;
             c.radioGroup = 1;
             c.defaultChecked = checked;
             c.onToggle = toggle(label + " view");
             reg.Register(c);
         };
-        radioView("filer.view.details", "Details",     true);
-        radioView("filer.view.list",    "List",        false);
-        radioView("filer.view.thumbs",  "Thumbnails",  false);
-        radioView("filer.view.barsize", "Bar Size",    false);
-        radioView("filer.view.treemap", "Tree Map",    false);
+        radioView("filer.view.details", Tr("Details"),     true);
+        radioView("filer.view.list",    Tr("List"),        false);
+        radioView("filer.view.thumbs",  Tr("Thumbnails"),  false);
+        radioView("filer.view.barsize", Tr("Bar Size"),    false);
+        radioView("filer.view.treemap", Tr("Tree Map"),    false);
 
         // ----- Display: sort field (radio group 2) -----
         auto radioSort = [&](const std::string& id, const std::string& label, bool checked) {
-            MenuCommand c(id, "Sort", label);
+            MenuCommand c(id, Tr("Sort"), label);
             c.type = MenuItemType::Radio;
             c.radioGroup = 2;
             c.defaultChecked = checked;
             c.onToggle = toggle("Sort by " + label);
             reg.Register(c);
         };
-        radioSort("filer.sort.name",     "Name",     true);
-        radioSort("filer.sort.size",     "Size",     false);
-        radioSort("filer.sort.type",     "Type",     false);
-        radioSort("filer.sort.modified", "Modified", false);
-        radioSort("filer.sort.created",  "Created",  false);
+        radioSort("filer.sort.name",     Tr("Name"),     true);
+        radioSort("filer.sort.size",     Tr("Size"),     false);
+        radioSort("filer.sort.type",     Tr("Type"),     false);
+        radioSort("filer.sort.modified", Tr("Modified"), false);
+        radioSort("filer.sort.created",  Tr("Created"),  false);
 
         // ----- Display: toggles -----
         {
-            MenuCommand hidden("filer.showhidden", "Display", "Show Hidden Files");
+            MenuCommand hidden("filer.showhidden", Tr("Display"), Tr("Show Hidden Files"));
             hidden.type = MenuItemType::Checkbox;
             hidden.defaultChecked = false;
             hidden.onToggle = toggle("Show hidden files");
             reg.Register(hidden);
 
-            MenuCommand iconMenu("filer.iconmenu", "Display", "Hover Icon Menu");
+            MenuCommand iconMenu("filer.iconmenu", Tr("Display"), Tr("Hover Icon Menu"));
             iconMenu.type = MenuItemType::Checkbox;
             iconMenu.defaultChecked = true;
             iconMenu.onToggle = toggle("Hover icon menu");
@@ -137,11 +137,11 @@ namespace {
         }
 
         // ----- Extras -----
-        reg.RegisterAction("filer.print",      "Extras", "Print",      log("Print"));
-        reg.RegisterAction("filer.share",      "Extras", "Share",      log("Share"));
-        reg.RegisterAction("filer.attributes", "Extras", "Attributes", log("Attributes"));
-        reg.RegisterAction("filer.access",     "Extras", "Access",     log("Access"));
-        reg.RegisterAction("filer.settings",   "Extras", "Settings",   log("Settings"));
+        reg.RegisterAction("filer.print",      Tr("Extras"), Tr("Print"),      log("Print"));
+        reg.RegisterAction("filer.share",      Tr("Extras"), Tr("Share"),      log("Share"));
+        reg.RegisterAction("filer.attributes", Tr("Extras"), Tr("Attributes"), log("Attributes"));
+        reg.RegisterAction("filer.access",     Tr("Extras"), Tr("Access"),     log("Access"));
+        reg.RegisterAction("filer.settings",   Tr("Extras"), Tr("Settings"),   log("Settings"));
 
         // The icons, by name: the shared line set has one size, so the
         // resolver gives the same file to the menu and the toolbar.
@@ -170,18 +170,18 @@ namespace {
     ToolbarLayout BuildFilerToolbarDefaults() {
         ToolbarLayout bar;
         bar.name = "filer-toolbar";
-        ToolbarLayoutGroup view = ToolbarLayoutGroup::Make("view", "View",
+        ToolbarLayoutGroup view = ToolbarLayoutGroup::Make("view", Tr("View"),
                 { "filer.view.details", "filer.view.list", "filer.view.thumbs" });
         view.folded = true;
-        ToolbarLayoutGroup extras = ToolbarLayoutGroup::Make("extras", "Extras", { "filer.print", "filer.settings" });
+        ToolbarLayoutGroup extras = ToolbarLayoutGroup::Make("extras", Tr("Extras"), { "filer.print", "filer.settings" });
         extras.visible = false;   // offered, off until the user turns it on
         bar.groups = {
-            ToolbarLayoutGroup::Make("clipboard", "Clipboard",
+            ToolbarLayoutGroup::Make("clipboard", Tr("Clipboard"),
                                      { "filer.cut", "filer.copy", "filer.paste", "filer.duplicate" }),
-            ToolbarLayoutGroup::Make("file", "File", { "filer.rename", "filer.delete" }),
-            ToolbarLayoutGroup::Make("archive", "Archive", { "filer.compress", "filer.extract" }),
+            ToolbarLayoutGroup::Make("file", Tr("File"), { "filer.rename", "filer.delete" }),
+            ToolbarLayoutGroup::Make("archive", Tr("Archive"), { "filer.compress", "filer.extract" }),
             view,
-            ToolbarLayoutGroup::Make("display", "Display", { "filer.showhidden" }),
+            ToolbarLayoutGroup::Make("display", Tr("Display"), { "filer.showhidden" }),
             extras,
         };
         return bar;
@@ -190,9 +190,9 @@ namespace {
     // The default arrangement — a faithful model of the Filer's right-click menu.
     MenuLayoutSet BuildFilerContextLayout() {
         MenuLayoutSet set;
-        MenuLayout& menu = set.FindOrAdd("Filer Context Menu");
+        MenuLayout& menu = set.FindOrAdd(Tr("Filer Context Menu"));
 
-        MenuLayoutNode newDoc = MenuLayoutNode::Group("New");
+        MenuLayoutNode newDoc = MenuLayoutNode::Group(Tr("New"));
         newDoc.children = {
             MenuLayoutNode::Command("filer.new.text"),
             MenuLayoutNode::Command("filer.new.document"),
@@ -203,7 +203,7 @@ namespace {
             MenuLayoutNode::Command("filer.new.video"),
         };
 
-        MenuLayoutNode sort = MenuLayoutNode::Group("Sort By");
+        MenuLayoutNode sort = MenuLayoutNode::Group(Tr("Sort By"));
         sort.children = {
             MenuLayoutNode::Command("filer.sort.name"),
             MenuLayoutNode::Command("filer.sort.size"),
@@ -212,7 +212,7 @@ namespace {
             MenuLayoutNode::Command("filer.sort.created"),
         };
 
-        MenuLayoutNode display = MenuLayoutNode::Group("Display");
+        MenuLayoutNode display = MenuLayoutNode::Group(Tr("Display"));
         display.children = {
             MenuLayoutNode::Command("filer.view.details"),
             MenuLayoutNode::Command("filer.view.list"),
@@ -264,9 +264,11 @@ namespace {
         for (const auto& t : set.toolbars) {
             for (const auto& g : t.groups) if (g.visible) ++groups;
         }
-        return std::to_string(set.menus.menus.size()) + " menu(s), " + std::to_string(items) +
-               " entries; " + std::to_string(set.toolbars.size()) + " toolbar(s), " +
-               std::to_string(groups) + " group(s) shown";
+        return TrF("{0}, {1}; {2}, {3}",
+                   TrN("{n} menu", "{n} menus", static_cast<long long>(set.menus.menus.size())),
+                   TrN("{n} entry", "{n} entries", static_cast<long long>(items)),
+                   TrN("{n} toolbar", "{n} toolbars", static_cast<long long>(set.toolbars.size())),
+                   TrN("{n} group shown", "{n} groups shown", static_cast<long long>(groups)));
     }
 } // namespace
 
@@ -313,7 +315,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateMenuConf
         if (!set.menus.empty()) {
             MenuItemData rootItem;
             rootItem.type = MenuItemType::Submenu;
-            rootItem.label = "Filer menu";
+            rootItem.label = Tr("Filer menu");
             rootItem.subItems = MaterializeLayout(set.menus.front(), filerRegistry);
             previewMenu->AddItem(rootItem);
         }
@@ -323,24 +325,24 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateMenuConf
     auto widget = std::make_shared<UltraCanvasCommandConfigWidget>("MenuConfigWidget");
     widget->SetRegistry(&filerRegistry);
     widget->SetLayoutSet(menuDefaults);
-    widget->AddToolbar(*toolbarLayout, toolbarDefaults, "Filer toolbar");
+    widget->AddToolbar(*toolbarLayout, toolbarDefaults, Tr("Filer toolbar"));
     UltraCanvasCommandConfigWidget* editor = widget.get();
 
     // The toolbar, rebuilt from its layout; its right-click menu edits that
     // layout, and the editor then shows the change.
     auto refreshEditor = [editor, toolbarLayout, toolbarDefaults]() {
         editor->ClearToolbars();
-        editor->AddToolbar(*toolbarLayout, toolbarDefaults, "Filer toolbar");
+        editor->AddToolbar(*toolbarLayout, toolbarDefaults, Tr("Filer toolbar"));
     };
     MaterializeToolbar(*toolbar, *toolbarLayout, filerRegistry);
     InstallToolbarContextMenu(*toolbar, toolbarLayout, filerRegistry,
         [refreshEditor, status]() {
             refreshEditor();
-            status->SetText("Toolbar changed from its right-click menu.");
+            status->SetText(Tr("Toolbar changed from its right-click menu."));
         },
         [editor, status]() {
             editor->SelectLayoutNode("t0");
-            status->SetText("The Filer toolbar is selected in the editor below.");
+            status->SetText(Tr("The Filer toolbar is selected in the editor below."));
         });
 
     auto applyAll = [applyMenu, toolbar, toolbarLayout, status](const CommandLayoutSet& set) {
@@ -349,7 +351,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateMenuConf
             *toolbarLayout = *bar;
             MaterializeToolbar(*toolbar, *toolbarLayout, filerRegistry);
         }
-        status->SetText("Applied (menu and toolbar updated): " + DescribeLayout(set));
+        status->SetText(TrF("Applied (menu and toolbar updated): {0}", DescribeLayout(set)));
     };
     widget->onApply = applyAll;
     widget->onSave = [applyAll, status, toolbarDefaults](const CommandLayoutSet& set) {
@@ -362,13 +364,13 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateMenuConf
         if (const ToolbarLayout* bar = set.FindToolbar("filer-toolbar")) {
             ok = SaveToolbarLayout(settings, *bar, toolbarDefaults) && ok;
         }
-        status->SetText(ok ? ("Saved to " + menuPath + " and " + settings.File()) : "Save failed.");
+        status->SetText(ok ? TrF("Saved to {0} and {1}", menuPath, settings.File()) : Tr("Save failed."));
     };
     widget->onReset = [status]() {
-        status->SetText("Reset to the default Filer menu and toolbar.");
+        status->SetText(Tr("Reset to the default Filer menu and toolbar."));
     };
     widget->onCancel = [status]() {
-        status->SetText("Cancelled (no changes applied).");
+        status->SetText(Tr("Cancelled (no changes applied)."));
     };
 
     DemoKit::Add(card, widget, 1);

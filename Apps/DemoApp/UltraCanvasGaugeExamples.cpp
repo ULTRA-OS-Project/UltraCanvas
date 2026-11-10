@@ -207,7 +207,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildAnalogTab() {
     SetVBox(tab, 10);
 
     AddFlex(tab, MakeTabTitle("AnaTitle",
-            "Analog Gauges - Speedometer, Semicircular, Compass, Clock, Stopwatch"), 0);
+            Tr("Analog Gauges - Speedometer, Semicircular, Compass, Clock, Stopwatch")), 0);
 
     auto gridContainer = std::make_shared<UltraCanvasContainer>("AnaGrid");
     SetGrid2x3(gridContainer, 12);
@@ -215,7 +215,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildAnalogTab() {
     // --- Speedometer with RPM sub-dial ---
     auto speedo = CreateGaugeDiagramElement("speedo", 0, 0, 0, 0);
     speedo->SetMode(GaugeMode::Speedometer);
-    speedo->SetTitle("Speed");
+    speedo->SetTitle(Tr("Speed"));
     speedo->SetUnit("km/h");
     speedo->SetMaxValue(240.0);
     speedo->SetMajorTickCount(6);
@@ -228,7 +228,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildAnalogTab() {
     // --- Semicircular Sales Assessment ---
     auto semi = CreateGaugeDiagramElement("semi", 0, 0, 0, 0);
     semi->SetMode(GaugeMode::Semicircular);
-    semi->SetTitle("Sales Assessment");
+    semi->SetTitle(Tr("Sales Assessment"));
     semi->SetUnit("k$");
     semi->SetMinValue(0.0);
     semi->SetMaxValue(100.0);
@@ -241,14 +241,14 @@ static std::shared_ptr<UltraCanvasContainer> BuildAnalogTab() {
 
     auto compass = CreateGaugeDiagramElement("compass", 0, 0, 0, 0);
     compass->SetMode(GaugeMode::Compass);
-    compass->SetTitle("Wind Direction");
+    compass->SetTitle(Tr("Wind Direction"));
     compass->SetMaxValue(360.0);
     compass->SetNeedleStyle(GaugeNeedleStyle::Thin);
 
     GaugeSubDial wind;
     wind.enabled = true;
     wind.mode = GaugeMode::Semicircular;
-    wind.title = "Wind";
+    wind.title = Tr("Wind");
     wind.minValue = 0.0;
     wind.maxValue = 25.0;
     wind.currentValue = 12.0;
@@ -261,7 +261,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildAnalogTab() {
     // --- Analog Clock ---
     auto clock = CreateGaugeDiagramElement("clock", 0, 0, 0, 0);
     clock->SetMode(GaugeMode::AnalogClock);
-    clock->SetTitle("Clock");
+    clock->SetTitle(Tr("Clock"));
 
     auto clockCard = std::make_shared<UltraCanvasContainer>("clock_c", 0, 0, 0, 0);
     clockCard->SetBackgroundColor(Color(255, 255, 255, 255));
@@ -269,14 +269,14 @@ static std::shared_ptr<UltraCanvasContainer> BuildAnalogTab() {
     clockCard->SetPadding(kCardPadding);
     SetVBox(clockCard, 6);
     AddFlex(clockCard, clock, 1);
-    auto clockInfo = MakeValueLabel("clockI", "Live system time");
+    auto clockInfo = MakeValueLabel("clockI", Tr("Live system time"));
     AddFlex(clockCard, clockInfo, 0);
     AddGrid(gridContainer, clockCard, 1, 0);
 
     // --- Stopwatch ---
     auto stopwatch = CreateGaugeDiagramElement("sw", 0, 0, 0, 0);
     stopwatch->SetMode(GaugeMode::Stopwatch);
-    stopwatch->SetTitle("Stopwatch");
+    stopwatch->SetTitle(Tr("Stopwatch"));
     stopwatch->SetMaxValue(60.0);
     stopwatch->SetMajorTickCount(12);
 
@@ -313,9 +313,9 @@ static std::shared_ptr<UltraCanvasContainer> BuildAnalogTab() {
             button->boxConstraints = limits;
             return button;
         };
-        auto swStart = makeSwButton("sw_Start", "Start");
-        auto swStop = makeSwButton("sw_Stop", "Stop");
-        auto swReset = makeSwButton("sw_Reset", "Reset");
+        auto swStart = makeSwButton("sw_Start", Tr("Start"));
+        auto swStop = makeSwButton("sw_Stop", Tr("Stop"));
+        auto swReset = makeSwButton("sw_Reset", Tr("Reset"));
         AddFlex(swBtnContainer, swStart, 1);
         AddFlex(swBtnContainer, swStop, 1);
         AddFlex(swBtnContainer, swReset, 1);
@@ -344,7 +344,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildAnalogTab() {
     // --- Quadrant Power ---
     auto quad = CreateGaugeDiagramElement("quad", 0, 0, 0, 0);
     quad->SetMode(GaugeMode::Quadrant);
-    quad->SetTitle("Power");
+    quad->SetTitle(Tr("Power"));
     quad->SetUnit("kW");
     quad->SetMaxValue(50.0);
     quad->SetMajorTickCount(5);
@@ -368,7 +368,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildProgressTab() {
     SetVBox(tab, 10);
 
     AddFlex(tab, MakeTabTitle("ProgTitle",
-            "Progress & Linear Gauges - Bar, LED, Segmented, Multi-Pointer, With Arrow"), 0);
+            Tr("Progress & Linear Gauges - Bar, LED, Segmented, Multi-Pointer, With Arrow")), 0);
 
     auto gridContainer = std::make_shared<UltraCanvasContainer>("ProgGrid");
     SetGrid2x3(gridContainer, 12);
@@ -376,7 +376,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildProgressTab() {
     // --- Linear Bar download progress ---
     auto bar = CreateGaugeDiagramElement("bar", 0, 0, 0, 0);
     bar->SetMode(GaugeMode::LinearBar);
-    bar->SetTitle("Download Progress");
+    bar->SetTitle(Tr("Download Progress"));
     bar->SetUnit("%");
     bar->SetGaugeColor(Color(0, 140, 255, 255));
     bar->SetShowZeroValueWarning(true);  // 0%: red circle instead of no fill
@@ -389,7 +389,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildProgressTab() {
     auto led = CreateGaugeDiagramElement("led", 0, 0, 0, 0);
     led->SetMode(GaugeMode::LinearLED);
     led->SetOrientation(GaugeOrientation::Vertical);
-    led->SetTitle("VU Meter");
+    led->SetTitle(Tr("VU Meter"));
     led->SetSegmentCount(20);
     led->SetUnit("%");
     led->SetSegmentCount(16);
@@ -402,7 +402,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildProgressTab() {
     // --- Segmented Brick Revenue ---
     auto brick = CreateGaugeDiagramElement("brick", 0, 0, 0, 0);
     brick->SetMode(GaugeMode::LinearSegmented);
-    brick->SetTitle("Revenue");
+    brick->SetTitle(Tr("Revenue"));
     brick->SetUnit("M$");
     brick->SetMaxValue(20.0);
     brick->SetSegmentCount(20);
@@ -416,13 +416,13 @@ static std::shared_ptr<UltraCanvasContainer> BuildProgressTab() {
     auto multi = CreateGaugeDiagramElement("multi", 0, 0, 0, 0);
     multi->SetMode(GaugeMode::LinearMultiPointer);
     multi->SetOrientation(GaugeOrientation::Vertical);
-    multi->SetTitle("Recipe Layers");
+    multi->SetTitle(Tr("Recipe Layers"));
     multi->SetUnit("ml");
     multi->SetMaxValue(2000.0);
     multi->SetGaugeColor(Color(0, 160, 255, 255));
-    multi->AddExternalPointer(GaugeExternalPointer(1500.0, Color(0, 160, 255, 255), "Base"));
-    multi->AddExternalPointer(GaugeExternalPointer(1660.0, Color(255, 180, 60, 255), "Fill"));
-    multi->AddExternalPointer(GaugeExternalPointer(2000.0, Color(180, 180, 190, 255), "Max"));
+    multi->AddExternalPointer(GaugeExternalPointer(1500.0, Color(0, 160, 255, 255), Tr("Base")));
+    multi->AddExternalPointer(GaugeExternalPointer(1660.0, Color(255, 180, 60, 255), Tr("Fill")));
+    multi->AddExternalPointer(GaugeExternalPointer(2000.0, Color(180, 180, 190, 255), Tr("Max")));
     auto multiCard = CreateGaugeCard("multi_c", multi, 0.0f, 2000.0f, 1500.0f, "ml");
     AddGrid(gridContainer, multiCard, 1, 0);
 
@@ -430,20 +430,20 @@ static std::shared_ptr<UltraCanvasContainer> BuildProgressTab() {
     auto arrow = CreateGaugeDiagramElement("arrow", 0, 0, 0, 0);
     arrow->SetMode(GaugeMode::LinearWithArrow);
     arrow->SetOrientation(GaugeOrientation::Vertical);
-    arrow->SetTitle("Glucose Level");
+    arrow->SetTitle(Tr("Glucose Level"));
     arrow->SetUnit("mmol/l");
     arrow->SetMaxValue(15.0);
     arrow->SetDecimalPlaces(1);
-    arrow->AddRange(GaugeRangeSegment(0.0, 5.6, Color(80, 200, 120, 255), "Normal"));
-    arrow->AddRange(GaugeRangeSegment(5.6, 7.0, Color(255, 190, 60, 255), "Borderline"));
-    arrow->AddRange(GaugeRangeSegment(7.0, 15.0, Color(255, 100, 80, 255), "Elevated"));
+    arrow->AddRange(GaugeRangeSegment(0.0, 5.6, Color(80, 200, 120, 255), Tr("Normal")));
+    arrow->AddRange(GaugeRangeSegment(5.6, 7.0, Color(255, 190, 60, 255), Tr("Borderline")));
+    arrow->AddRange(GaugeRangeSegment(7.0, 15.0, Color(255, 100, 80, 255), Tr("Elevated")));
     auto arrowCard = CreateGaugeCard("arrow_c", arrow, 0.0f, 15.0f, 5.7f, "mmol/l", 1);
     AddGrid(gridContainer, arrowCard, 1, 1);
 
     // --- Linear Scale Radio Tuner ---
     auto scale = CreateGaugeDiagramElement("scale", 0, 0, 0, 0);
     scale->SetMode(GaugeMode::LinearScale);
-    scale->SetTitle("Radio Tuner");
+    scale->SetTitle(Tr("Radio Tuner"));
     scale->SetUnit("MHz");
     scale->SetMinValue(180.0);
     scale->SetMaxValue(970.0);
@@ -468,7 +468,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildSpecializedTab() {
     SetVBox(tab, 10);
 
     AddFlex(tab, MakeTabTitle("SpecTitle",
-            "Specialized Gauges - Battery, Thermometer, Cylinder, Digital Clock, Digital"), 0);
+            Tr("Specialized Gauges - Battery, Thermometer, Cylinder, Digital Clock, Digital")), 0);
 
     auto gridContainer = std::make_shared<UltraCanvasContainer>("SpecGrid");
     SetGrid2x3(gridContainer, 12);
@@ -476,7 +476,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildSpecializedTab() {
     // --- Battery Bar pointer ---
     auto bat1 = CreateGaugeDiagramElement("bat1", 0, 0, 0, 0);
     bat1->SetMode(GaugeMode::Battery);
-    bat1->SetTitle("Battery (Bar)");
+    bat1->SetTitle(Tr("Battery (Bar)"));
     bat1->SetBatteryStyle(GaugeBatteryStyle::BarPointer);
     bat1->SetShowBolt(true);
     auto bat1Card = CreateGaugeCard("bat1_c", bat1, 0.0f, 100.0f, 75.0f, "%");
@@ -485,7 +485,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildSpecializedTab() {
     // --- Battery LED ---
     auto bat2 = CreateGaugeDiagramElement("bat2", 0, 0, 0, 0);
     bat2->SetMode(GaugeMode::Battery);
-    bat2->SetTitle("Battery (LED)");
+    bat2->SetTitle(Tr("Battery (LED)"));
     bat2->SetBatteryStyle(GaugeBatteryStyle::LedPointer);
     bat2->SetSegmentCount(10);
     auto bat2Card = CreateGaugeCard("bat2_c", bat2, 0.0f, 100.0f, 100.0f, "%");
@@ -494,7 +494,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildSpecializedTab() {
     // --- Thermometer ---
     auto thermo = CreateGaugeDiagramElement("thermo", 0, 0, 0, 0);
     thermo->SetMode(GaugeMode::Thermometer);
-    thermo->SetTitle("Temperature");
+    thermo->SetTitle(Tr("Temperature"));
     thermo->SetUnit("C");
     thermo->SetMinValue(-25.0);
     thermo->SetMaxValue(25.0);
@@ -506,7 +506,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildSpecializedTab() {
     // --- Cylinder Water ---
     auto cyl = CreateGaugeDiagramElement("cyl", 0, 0, 0, 0);
     cyl->SetMode(GaugeMode::Cylinder);
-    cyl->SetTitle("Water");
+    cyl->SetTitle(Tr("Water"));
     cyl->SetUnit("ml");
     cyl->SetMaxValue(1000.0);
     cyl->SetGaugeColor(Color(0, 200, 200, 255));
@@ -516,7 +516,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildSpecializedTab() {
     // --- Digital Clock (LED-style live clock) ---
     auto dclock = CreateGaugeDiagramElement("dclock", 0, 0, 0, 0);
     dclock->SetMode(GaugeMode::Digital);
-    dclock->SetTitle("Clock");
+    dclock->SetTitle(Tr("Clock"));
     dclock->SetDigitalClock(true);
     // Prefer an LED-style font if installed; fall back to Monospace otherwise.
     dclock->SetDigitalFontFamily("DSEG7 Classic,DSEG7 Modern,Digital-7,Monospace");
@@ -531,7 +531,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildSpecializedTab() {
         SetVBox(dclockWrap, 0);
         AddFlex(dclockWrap, dclock, 1);
         AddFlex(dclockCard, dclockWrap, 1);
-        auto dclockInfo = MakeValueLabel("dclock_V", "Live HH:MM:SS");
+        auto dclockInfo = MakeValueLabel("dclock_V", Tr("Live HH:MM:SS"));
         AddFlex(dclockCard, dclockInfo, 0);
     }
     AddGrid(gridContainer, dclockCard, 1, 1);
@@ -539,7 +539,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildSpecializedTab() {
     // --- Digital LED ---
     auto digital = CreateGaugeDiagramElement("digital", 0, 0, 0, 0);
     digital->SetMode(GaugeMode::Digital);
-    digital->SetTitle("LED Display");
+    digital->SetTitle(Tr("LED Display"));
     digital->SetUnit("Hz");
     digital->SetMaxValue(9999.0);
     digital->SetDecimalPlaces(1);
@@ -704,7 +704,7 @@ namespace {
     void ShowGaugeCodePopup(const std::string& code) {
         static std::shared_ptr<UltraCanvasWindow> codeWindow;
         WindowConfig wc;
-        wc.title = "Generated C++ - Round Gauge";
+        wc.title = Tr("Generated C++ - Round Gauge");
         wc.width = 760;
         wc.height = 560;
         wc.resizable = true;
@@ -754,7 +754,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildRoundGaugesTab() {
     SetVBox(tab, 10);
 
     AddFlex(tab, MakeTabTitle("RoundTitle",
-            "Round Gauges - ring width, indicator/segment style, surface fill, centre content & faded colours"), 0);
+            Tr("Round Gauges - ring width, indicator/segment style, surface fill, centre content & faded colours")), 0);
 
     // Body: interactive playground (left) + style showcase grid (right).
     auto body = std::make_shared<UltraCanvasContainer>("RoundBody");
@@ -804,7 +804,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildRoundGaugesTab() {
     // gauge display (over the choices below). It generates the C++ for the current
     // choices and shows it in a popup window with an editable text area.
     // As wide as its text, at least the old 50 px.
-    auto codeBtn = std::make_shared<UltraCanvasButton>("round_codebtn", 0, 0, 0, 20, "Code");
+    auto codeBtn = std::make_shared<UltraCanvasButton>("round_codebtn", 0, 0, 0, 20, Tr("Code"));
     {
         CSSLayout::BoxConstraints limits;
         limits.minWidth = CSSLayout::Dimension::Px(50);
@@ -828,12 +828,11 @@ static std::shared_ptr<UltraCanvasContainer> BuildRoundGaugesTab() {
     valSlider->SetOrientation(SliderOrientation::Horizontal);
     valSlider->SetRange(0.0f, 100.0f);
     valSlider->SetValue(74.0f);
-    auto valCap = MakeCaption("round_val_cap", "Value: 74 %");
+    auto valCap = MakeCaption("round_val_cap", TrF("Value: {0} %", 74));
     auto valCapPtr = valCap.get();
     valSlider->onValueChanged = [gPtr, valCapPtr](float v) {
         gPtr->SetValue(static_cast<double>(v));
-        std::ostringstream oss; oss << "Value: " << std::fixed << std::setprecision(0) << v << " %";
-        valCapPtr->SetText(oss.str());
+        valCapPtr->SetText(TrF("Value: {0} %", std::lround(v)));
     };
     AddFlex(panel, valCap, 0);
     AddFlex(panel, valSlider, 0);
@@ -843,26 +842,25 @@ static std::shared_ptr<UltraCanvasContainer> BuildRoundGaugesTab() {
     widthSlider->SetOrientation(SliderOrientation::Horizontal);
     widthSlider->SetRange(2.0f, 24.0f);
     widthSlider->SetValue(10.0f);
-    auto widthCap = MakeCaption("round_width_cap", "Indicator width: 10 px");
+    auto widthCap = MakeCaption("round_width_cap", TrF("Indicator width: {0} px", 10));
     auto widthCapPtr = widthCap.get();
     widthSlider->onValueChanged = [gPtr, widthCapPtr](float v) {
         gPtr->SetRingThickness(v);
-        std::ostringstream oss; oss << "Indicator width: " << std::fixed << std::setprecision(0) << v << " px";
-        widthCapPtr->SetText(oss.str());
+        widthCapPtr->SetText(TrF("Indicator width: {0} px", std::lround(v)));
     };
     AddFlex(panel, widthCap, 0);
     AddFlex(panel, widthSlider, 0);
 
     // --- Indicator style dropdown ---
     // (Determines whether the segment-options group below is active.)
-    auto styleCap = MakeCaption("round_style_cap", "Indicator style");
+    auto styleCap = MakeCaption("round_style_cap", Tr("Indicator style"));
     AddFlex(panel, styleCap, 0);
     auto styleDrop = std::make_shared<UltraCanvasDropdown>("round_style", 0, 0, 0, 26);
-    styleDrop->AddItem("Solid line arc");
-    styleDrop->AddItem("Segmented");
-    styleDrop->AddItem("Dashed / ticks");
-    styleDrop->AddItem("Segmented ring (chunky)");
-    styleDrop->AddItem("Spectrum (100 colours)");
+    styleDrop->AddItem(Tr("Solid line arc"));
+    styleDrop->AddItem(Tr("Segmented"));
+    styleDrop->AddItem(Tr("Dashed / ticks"));
+    styleDrop->AddItem(Tr("Segmented ring (chunky)"));
+    styleDrop->AddItem(Tr("Spectrum (100 colours)"));
     styleDrop->SetSelectedIndex(0);
     AddFlex(panel, styleDrop, 0);   // onSelectionChanged wired up once the group exists
 
@@ -871,7 +869,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildRoundGaugesTab() {
     // Dashed and Segmented ring). They are grouped here under one header and
     // disabled together whenever a non-segmented style (Solid arc / Spectrum)
     // is selected.
-    auto segGroupHeader = MakeCaption("round_seg_group", "Segment options");
+    auto segGroupHeader = MakeCaption("round_seg_group", Tr("Segment options"));
     segGroupHeader->SetFontWeight(FontWeight::Bold);
     AddFlex(panel, segGroupHeader, 0);
 
@@ -881,23 +879,22 @@ static std::shared_ptr<UltraCanvasContainer> BuildRoundGaugesTab() {
     countSlider->SetRange(4.0f, 72.0f);
     countSlider->SetValue(36.0f);
     countSlider->SetStep(1.0f);
-    auto countCap = MakeCaption("round_count_cap", "Segment count: 36");
+    auto countCap = MakeCaption("round_count_cap", TrF("Segment count: {0}", 36));
     auto countCapPtr = countCap.get();
     countSlider->onValueChanged = [gPtr, countCapPtr](float v) {
         gPtr->SetRingSegmentCount(static_cast<int>(v));
-        std::ostringstream oss; oss << "Segment count: " << static_cast<int>(v);
-        countCapPtr->SetText(oss.str());
+        countCapPtr->SetText(TrF("Segment count: {0}", static_cast<int>(v)));
     };
     AddFlex(panel, countCap, 0);
     AddFlex(panel, countSlider, 0);
 
     // --- Segment style dropdown (Segmented / Dashed) ---
-    auto segCap = MakeCaption("round_seg_cap", "Segment style (Segmented / Dashed)");
+    auto segCap = MakeCaption("round_seg_cap", Tr("Segment style (Segmented / Dashed)"));
     AddFlex(panel, segCap, 0);
     auto segDrop = std::make_shared<UltraCanvasDropdown>("round_seg", 0, 0, 0, 26);
-    segDrop->AddItem("Blocks (rounded chunks)");
-    segDrop->AddItem("Bars (radial ticks)");
-    segDrop->AddItem("Dots");
+    segDrop->AddItem(Tr("Blocks (rounded chunks)"));
+    segDrop->AddItem(Tr("Bars (radial ticks)"));
+    segDrop->AddItem(Tr("Dots"));
     segDrop->SetSelectedIndex(0);
     segDrop->onSelectionChanged = [gPtr](int idx, const DropdownItem&) {
         switch (idx) {
@@ -909,11 +906,11 @@ static std::shared_ptr<UltraCanvasContainer> BuildRoundGaugesTab() {
     AddFlex(panel, segDrop, 0);
 
     // --- Segment ends dropdown (Segmented ring) ---
-    auto endsCap = MakeCaption("round_ends_cap", "Segment ends (Segmented ring)");
+    auto endsCap = MakeCaption("round_ends_cap", Tr("Segment ends (Segmented ring)"));
     AddFlex(panel, endsCap, 0);
     auto endsDrop = std::make_shared<UltraCanvasDropdown>("round_ends", 0, 0, 0, 26);
-    endsDrop->AddItem("Rounded");
-    endsDrop->AddItem("Sharp");
+    endsDrop->AddItem(Tr("Rounded"));
+    endsDrop->AddItem(Tr("Sharp"));
     endsDrop->SetSelectedIndex(0);
     endsDrop->onSelectionChanged = [gPtr](int idx, const DropdownItem&) {
         gPtr->SetRingSegmentRounded(idx == 0);
@@ -921,11 +918,11 @@ static std::shared_ptr<UltraCanvasContainer> BuildRoundGaugesTab() {
     AddFlex(panel, endsDrop, 0);
 
     // --- Border dropdown (Segmented ring) ---
-    auto borderCap = MakeCaption("round_border_cap", "Segment border (Segmented ring)");
+    auto borderCap = MakeCaption("round_border_cap", Tr("Segment border (Segmented ring)"));
     AddFlex(panel, borderCap, 0);
     auto borderDrop = std::make_shared<UltraCanvasDropdown>("round_border", 0, 0, 0, 26);
-    borderDrop->AddItem("Off");
-    borderDrop->AddItem("On");
+    borderDrop->AddItem(Tr("Off"));
+    borderDrop->AddItem(Tr("On"));
     borderDrop->SetSelectedIndex(0);
     borderDrop->onSelectionChanged = [gPtr](int idx, const DropdownItem&) {
         gPtr->SetRingBorder(idx == 1);
@@ -957,12 +954,12 @@ static std::shared_ptr<UltraCanvasContainer> BuildRoundGaugesTab() {
     setSegGroupEnabled(false);
 
     // --- Surface fill dropdown ---
-    auto fillCap = MakeCaption("round_fill_cap", "Surface fill");
+    auto fillCap = MakeCaption("round_fill_cap", Tr("Surface fill"));
     AddFlex(panel, fillCap, 0);
     auto fillDrop = std::make_shared<UltraCanvasDropdown>("round_fill", 0, 0, 0, 26);
-    fillDrop->AddItem("None (open centre)");
-    fillDrop->AddItem("Straight liquid line");
-    fillDrop->AddItem("Waved liquid line");
+    fillDrop->AddItem(Tr("None (open centre)"));
+    fillDrop->AddItem(Tr("Straight liquid line"));
+    fillDrop->AddItem(Tr("Waved liquid line"));
     fillDrop->SetSelectedIndex(0);
     fillDrop->onSelectionChanged = [gPtr](int idx, const DropdownItem&) {
         switch (idx) {
@@ -974,18 +971,18 @@ static std::shared_ptr<UltraCanvasContainer> BuildRoundGaugesTab() {
     AddFlex(panel, fillDrop, 0);
 
     // --- Centre content dropdown ---
-    auto centerCap = MakeCaption("round_center_cap", "Centre content");
+    auto centerCap = MakeCaption("round_center_cap", Tr("Centre content"));
     AddFlex(panel, centerCap, 0);
     auto centerDrop = std::make_shared<UltraCanvasDropdown>("round_center", 0, 0, 0, 26);
-    centerDrop->AddItem("Value only");
-    centerDrop->AddItem("Text label");
-    centerDrop->AddItem("Battery icon");
-    centerDrop->AddItem("Bolt icon");
+    centerDrop->AddItem(Tr("Value only"));
+    centerDrop->AddItem(Tr("Text label"));
+    centerDrop->AddItem(Tr("Battery icon"));
+    centerDrop->AddItem(Tr("Bolt icon"));
     centerDrop->SetSelectedIndex(0);
     centerDrop->onSelectionChanged = [gPtr](int idx, const DropdownItem&) {
         switch (idx) {
             case 1:
-                gPtr->SetRingCenterLabel("Battery");
+                gPtr->SetRingCenterLabel(Tr("Battery"));
                 gPtr->SetRingCenterContent(GaugeRingCenterContent::TextLabel);
                 break;
             case 2:
@@ -1004,13 +1001,13 @@ static std::shared_ptr<UltraCanvasContainer> BuildRoundGaugesTab() {
     AddFlex(panel, centerDrop, 0);
 
     // --- Faded colours dropdown ---
-    auto fadeCap = MakeCaption("round_fade_cap", "Faded colours");
+    auto fadeCap = MakeCaption("round_fade_cap", Tr("Faded colours"));
     AddFlex(panel, fadeCap, 0);
     auto fadeDrop = std::make_shared<UltraCanvasDropdown>("round_fade", 0, 0, 0, 26);
-    fadeDrop->AddItem("Off");
-    fadeDrop->AddItem("Ring");
-    fadeDrop->AddItem("Fill");
-    fadeDrop->AddItem("Ring + Fill");
+    fadeDrop->AddItem(Tr("Off"));
+    fadeDrop->AddItem(Tr("Ring"));
+    fadeDrop->AddItem(Tr("Fill"));
+    fadeDrop->AddItem(Tr("Ring + Fill"));
     fadeDrop->SetSelectedIndex(0);
     fadeDrop->onSelectionChanged = [gPtr](int idx, const DropdownItem&) {
         gPtr->SetRingFaded(idx == 1 || idx == 3);
@@ -1030,7 +1027,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildRoundGaugesTab() {
     auto g1 = CreateGaugeDiagramElement("rp1", 0, 0, 0, 0);
     ApplyRoundPreset(g1, GaugeRingStyle::SolidArc, GaugeRingSegmentStyle::Blocks,
                      GaugeFillStyle::NoFill, 16.0f, 36, Color(160, 230, 40, 255));
-    g1->SetTitle("Solid Arc");
+    g1->SetTitle(Tr("Solid Arc"));
     g1->SetUnit("%");
     g1->SetTrackColor(Color(50, 60, 30, 255));
     AddGrid(grid, CreateGaugeCard("rp1_c", g1, 0.0f, 100.0f, 74.0f, "%", 0, -1.0f, false), 0, 0);
@@ -1040,7 +1037,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildRoundGaugesTab() {
     ApplyRoundPreset(g2, GaugeRingStyle::Spectrum, GaugeRingSegmentStyle::Blocks,
                      GaugeFillStyle::NoFill, 16.0f, 12, Color(160, 230, 40, 255));
     g2->SetRingGradientColors(MakeSpectrumColors(100));  // up to 100 colour stops
-    g2->SetTitle("Spectrum (100 colours)");
+    g2->SetTitle(Tr("Spectrum (100 colours)"));
     g2->SetUnit("%");
     AddGrid(grid, CreateGaugeCard("rp2_c", g2, 0.0f, 100.0f, 72.0f, "%", 0, -1.0f, false), 0, 1);
 
@@ -1048,7 +1045,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildRoundGaugesTab() {
     auto g3 = CreateGaugeDiagramElement("rp3", 0, 0, 0, 0);
     ApplyRoundPreset(g3, GaugeRingStyle::Dashed, GaugeRingSegmentStyle::Bars,
                      GaugeFillStyle::NoFill, 14.0f, 60, Color(40, 130, 245, 255));
-    g3->SetTitle("Dashed Bars");
+    g3->SetTitle(Tr("Dashed Bars"));
     g3->SetUnit("%");
     g3->SetTrackColor(Color(40, 46, 60, 255));
     AddGrid(grid, CreateGaugeCard("rp3_c", g3, 0.0f, 100.0f, 62.0f, "%", 0, -1.0f, false), 0, 2);
@@ -1061,7 +1058,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildRoundGaugesTab() {
                      GaugeFillStyle::NoFill, 12.0f, 12, Color(120, 90, 240, 255));
     g4->SetRingStartAngleDeg(90.0f);     // value 0 sits at the bottom (6 o'clock)
     g4->SetRingValueColorBands(true);    // green -> yellow -> orange -> red by value
-    g4->SetTitle("Dots");
+    g4->SetTitle(Tr("Dots"));
     g4->SetUnit("%");
     AddGrid(grid, CreateGaugeCard("rp4_c", g4, 0.0f, 100.0f, 55.0f, "%", 0, -1.0f, false), 1, 0);
 
@@ -1070,7 +1067,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildRoundGaugesTab() {
     ApplyRoundPreset(g5, GaugeRingStyle::SolidArc, GaugeRingSegmentStyle::Blocks,
                      GaugeFillStyle::StraightLevel, 8.0f, 36, Color(0, 150, 230, 255));
     g5->SetFillFaded(true);
-    g5->SetTitle("Straight Fill (faded)");
+    g5->SetTitle(Tr("Straight Fill (faded)"));
     g5->SetUnit("%");
     AddGrid(grid, CreateGaugeCard("rp5_c", g5, 0.0f, 100.0f, 60.0f, "%", 0, -1.0f, false), 1, 1);
 
@@ -1079,7 +1076,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildRoundGaugesTab() {
     ApplyRoundPreset(g6, GaugeRingStyle::SolidArc, GaugeRingSegmentStyle::Blocks,
                      GaugeFillStyle::WavedLevel, 8.0f, 36, Color(255, 90, 30, 255));
     g6->SetFillFaded(true);
-    g6->SetTitle("Waved Fill (faded)");
+    g6->SetTitle(Tr("Waved Fill (faded)"));
     g6->SetUnit("%");
     AddGrid(grid, CreateGaugeCard("rp6_c", g6, 0.0f, 100.0f, 18.0f, "%", 0, -1.0f, false), 1, 2);
 
@@ -1090,7 +1087,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildRoundGaugesTab() {
     g7->SetRingSegmentRounded(true);
     g7->SetRingCenterIcon(GaugeRingIcon::Battery);
     g7->SetRingCenterContent(GaugeRingCenterContent::Icon);
-    g7->SetTitle("Segmented Ring + Icon");
+    g7->SetTitle(Tr("Segmented Ring + Icon"));
     AddGrid(grid, CreateGaugeCard("rp7_c", g7, 0.0f, 100.0f, 75.0f, "", 0, -1.0f, false), 2, 0);
 
     // 8) Segmented ring, sharp ends + text label centre (reference image 2)
@@ -1098,9 +1095,9 @@ static std::shared_ptr<UltraCanvasContainer> BuildRoundGaugesTab() {
     ApplyRoundPreset(g8, GaugeRingStyle::SegmentedRing, GaugeRingSegmentStyle::Blocks,
                      GaugeFillStyle::NoFill, 18.0f, 8, Color(0, 220, 0, 255));
     g8->SetRingSegmentRounded(false);
-    g8->SetRingCenterLabel("Battery");
+    g8->SetRingCenterLabel(Tr("Battery"));
     g8->SetRingCenterContent(GaugeRingCenterContent::TextLabel);
-    g8->SetTitle("Segmented Ring + Label");
+    g8->SetTitle(Tr("Segmented Ring + Label"));
     AddGrid(grid, CreateGaugeCard("rp8_c", g8, 0.0f, 100.0f, 75.0f, "", 0, -1.0f, false), 2, 1);
 
     // 9) Faded ring colour (soft two-tone gradient sweep)
@@ -1109,7 +1106,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildRoundGaugesTab() {
                      GaugeFillStyle::NoFill, 14.0f, 36, Color(120, 200, 40, 255));
     g9->SetRingFaded(true);
     g9->SetTrackColor(Color(60, 70, 35, 255));
-    g9->SetTitle("Faded Ring");
+    g9->SetTitle(Tr("Faded Ring"));
     g9->SetUnit("%");
     AddGrid(grid, CreateGaugeCard("rp9_c", g9, 0.0f, 100.0f, 47.0f, "%", 0, -1.0f, false), 2, 2);
 
@@ -1141,10 +1138,10 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGaugeExa
     limits.minWidth = CSSLayout::Dimension::Px(920);
     tabs->boxConstraints = limits;
 
-    tabs->AddTab("Round Gauges", BuildRoundGaugesTab());
-    tabs->AddTab("Progress & Linear", BuildProgressTab());
-    tabs->AddTab("Specialized", BuildSpecializedTab());
-    tabs->AddTab("Analog", BuildAnalogTab());
+    tabs->AddTab(Tr("Round Gauges"), BuildRoundGaugesTab());
+    tabs->AddTab(Tr("Progress & Linear"), BuildProgressTab());
+    tabs->AddTab(Tr("Specialized"), BuildSpecializedTab());
+    tabs->AddTab(Tr("Analog"), BuildAnalogTab());
     tabs->SetActiveTab(0);
 
     return page;

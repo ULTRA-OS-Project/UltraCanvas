@@ -118,7 +118,7 @@ namespace UltraCanvas {
         DemoKit::Add(card, pathRow);
         // Width 0 lets the button auto-size to its icon + label (intrinsic
         // sizing) so the up-arrow and text always fit.
-        auto upButton = std::make_shared<UltraCanvasButton>("FilerUp", 0, 0, 0, 24, "Up");
+        auto upButton = std::make_shared<UltraCanvasButton>("FilerUp", 0, 0, 0, 24, TrC("parent folder", "Up"));
         upButton->SetFontSize(11);
         upButton->SetCornerRadius(4.0f);
         upButton->SetIcon(NormalizePath(GetResourcesDir() + "media/icons/arrow-up.svg"));
@@ -151,20 +151,20 @@ namespace UltraCanvas {
         // ===== View-type row =====
         {
             auto row = AddFilerRow(card, "FilerViewRow");
-            AddFilerRowLabel(row, "FilerViewLbl", "View");
+            AddFilerRowLabel(row, "FilerViewLbl", Tr("View"));
 
-            struct ViewSeed { const char* label; FilerViewType type; };
+            struct ViewSeed { const char* key; std::string label; FilerViewType type; };   // key: the button id
             const ViewSeed views[] = {
-                {"Details",   FilerViewType::Details},
-                {"List",      FilerViewType::List},
-                {"Thumbs S",  FilerViewType::ThumbnailsSmall},
-                {"Thumbs M",  FilerViewType::ThumbnailsMedium},
-                {"Thumbs B",  FilerViewType::ThumbnailsBig},
-                {"Thumbs XL", FilerViewType::ThumbnailsMaximized},
-                {"Bar size",  FilerViewType::BarSize},
-                {"Treemap",   FilerViewType::TreeMap},
-                {"Gource",    FilerViewType::GourceTree},
-                {"3D",        FilerViewType::View3D},
+                {"Details",   Tr("Details"), FilerViewType::Details},
+                {"List",      Tr("List"), FilerViewType::List},
+                {"Thumbs S",  Tr("Thumbs S"), FilerViewType::ThumbnailsSmall},
+                {"Thumbs M",  Tr("Thumbs M"), FilerViewType::ThumbnailsMedium},
+                {"Thumbs B",  Tr("Thumbs B"), FilerViewType::ThumbnailsBig},
+                {"Thumbs XL", Tr("Thumbs XL"), FilerViewType::ThumbnailsMaximized},
+                {"Bar size",  Tr("Bar size"), FilerViewType::BarSize},
+                {"Treemap",   Tr("Treemap"), FilerViewType::TreeMap},
+                {"Gource",    Tr("Gource"), FilerViewType::GourceTree},
+                {"3D",        Tr("3D"), FilerViewType::View3D},
             };
             auto group = std::make_shared<std::vector<UltraCanvasButton*>>();
             auto filerPtr = filer.get();
@@ -172,7 +172,7 @@ namespace UltraCanvas {
                 // Width 0 => the button auto-sizes to its label, as the
                 // sort buttons do, so a longer label is never clipped.
                 auto b = std::make_shared<UltraCanvasButton>(
-                        std::string("FilerView_") + v.label, 0, 0, 0, 24, v.label);
+                        std::string("FilerView_") + v.key, 0, 0, 0, 24, v.label);
                 b->SetFontSize(11);
                 b->SetCornerRadius(4.0f);
                 StyleFilerOptionButton(b.get(), v.type == FilerViewType::Details);
@@ -196,7 +196,7 @@ namespace UltraCanvas {
             // Puts the column widths of all three column views back to their
             // defaults after they have been dragged around.
             auto reset = std::make_shared<UltraCanvasButton>(
-                    "FilerResetColumns", 0, 0, 0, 24, "Reset columns");
+                    "FilerResetColumns", 0, 0, 0, 24, Tr("Reset columns"));
             reset->SetFontSize(11);
             reset->SetCornerRadius(4.0f);
             StyleFilerOptionButton(reset.get(), false);
@@ -212,15 +212,15 @@ namespace UltraCanvas {
         // ===== Sort row =====
         {
             auto row = AddFilerRow(card, "FilerSortRow");
-            AddFilerRowLabel(row, "FilerSortLbl", "Sort");
+            AddFilerRowLabel(row, "FilerSortLbl", Tr("Sort"));
 
-            struct SortSeed { const char* label; FilerSortField field; };
+            struct SortSeed { const char* key; std::string label; FilerSortField field; };   // key: the button id
             const SortSeed sorts[] = {
-                {"Name",     FilerSortField::Name},
-                {"Size",     FilerSortField::Size},
-                {"Type",     FilerSortField::Type},
-                {"Modified", FilerSortField::ModifiedDate},
-                {"Created",  FilerSortField::CreatedDate},
+                {"Name",     Tr("Name"), FilerSortField::Name},
+                {"Size",     Tr("Size"), FilerSortField::Size},
+                {"Type",     Tr("Type"), FilerSortField::Type},
+                {"Modified", Tr("Modified"), FilerSortField::ModifiedDate},
+                {"Created",  Tr("Created"), FilerSortField::CreatedDate},
             };
             auto fieldGroup = std::make_shared<std::vector<UltraCanvasButton*>>();
             auto filerPtr = filer.get();
@@ -228,7 +228,7 @@ namespace UltraCanvas {
                 // Width 0 => the button auto-sizes to its label (intrinsic
                 // sizing), so "Modified" / "Created" are never clipped.
                 auto b = std::make_shared<UltraCanvasButton>(
-                        std::string("FilerSort_") + s.label, 0, 0, 0, 24, s.label);
+                        std::string("FilerSort_") + s.key, 0, 0, 0, 24, s.label);
                 b->SetFontSize(11);
                 b->SetCornerRadius(4.0f);
                 StyleFilerOptionButton(b.get(), s.field == FilerSortField::Name);
@@ -243,10 +243,11 @@ namespace UltraCanvas {
             }
 
             auto orderGroup = std::make_shared<std::vector<UltraCanvasButton*>>();
-            const char* orderLabels[] = {"Up", "Down"};
+            const char* orderKeys[] = {"Up", "Down"};   // the button ids
+            const std::string orderLabels[] = {TrC("sort order", "Up"), TrC("sort order", "Down")};
             for (int i = 0; i < 2; ++i) {
                 auto b = std::make_shared<UltraCanvasButton>(
-                        std::string("FilerOrder_") + orderLabels[i], 0, 0, 0, 24,
+                        std::string("FilerOrder_") + orderKeys[i], 0, 0, 0, 24,
                         orderLabels[i]);
                 b->SetFontSize(11);
                 b->SetCornerRadius(4.0f);
@@ -276,7 +277,7 @@ namespace UltraCanvas {
             // A/B switch for the in-memory QOI thumbnail compression.
             auto compressCb = std::make_shared<UltraCanvasCheckbox>(
                     "FilerCompressedThumbs", 0, 0, 190, 24,
-                    "Compressed thumbnails");
+                    Tr("Compressed thumbnails"));
             compressCb->SetChecked(filerPtr->GetCompressedThumbnails());
             compressCb->onChecked = [filerPtr]() {
                 filerPtr->SetCompressedThumbnails(true);
@@ -291,9 +292,9 @@ namespace UltraCanvas {
         // files it was not asked for =====
         {
             auto row = AddFilerRow(card, "FilerTypeFilterRow");
-            AddFilerRowLabel(row, "FilerTypeFilterLbl", "Types");
+            AddFilerRowLabel(row, "FilerTypeFilterLbl", Tr("Types"));
 
-            struct TypeSeed { const char* label; std::vector<std::string> extensions; };
+            struct TypeSeed { const char* key; std::string label; std::vector<std::string> extensions; };   // key: the button id
             // FileLoader's lists - the types this build reads, as a file
             // dialog's filters hold them (UltraCanvasFileLoader::AddLoadTypes)
             auto reads = [](std::initializer_list<MediaFormatCategory> categories) {
@@ -304,17 +305,17 @@ namespace UltraCanvas {
                 return out;
             };
             const std::vector<TypeSeed> types = {
-                {"All files", {"*"}},
-                {"Images",    reads({MediaFormatCategory::Bitmap, MediaFormatCategory::Vector})},
-                {"Audio",     reads({MediaFormatCategory::Audio})},
-                {"Video",     reads({MediaFormatCategory::Video})},
+                {"All files", Tr("All files"), {"*"}},
+                {"Images",    Tr("Images"), reads({MediaFormatCategory::Bitmap, MediaFormatCategory::Vector})},
+                {"Audio",     Tr("Audio"), reads({MediaFormatCategory::Audio})},
+                {"Video",     Tr("Video"), reads({MediaFormatCategory::Video})},
             };
             auto group = std::make_shared<std::vector<UltraCanvasButton*>>();
             auto filerPtr = filer.get();
             for (const TypeSeed& t : types) {
                 if (t.extensions.empty()) continue;      // a kind this build reads none of
                 auto b = std::make_shared<UltraCanvasButton>(
-                        std::string("FilerTypes_") + t.label, 0, 0, 0, 24, t.label);
+                        std::string("FilerTypes_") + t.key, 0, 0, 0, 24, t.label);
                 b->SetFontSize(11);
                 b->SetCornerRadius(4.0f);
                 StyleFilerOptionButton(b.get(), t.extensions.front() == "*");
@@ -336,7 +337,7 @@ namespace UltraCanvas {
             // and a double-click on one does nothing.
             auto dimCb = std::make_shared<UltraCanvasCheckbox>(
                     "FilerDimOtherTypes", 0, 0, 220, 24,
-                    "Show other types greyed out");
+                    Tr("Show other types greyed out"));
             dimCb->SetChecked(false);
             dimCb->onChecked = [filerPtr]() {
                 filerPtr->SetFileTypeFilterMode(FilerTypeFilterMode::ShowDimmed);
@@ -365,38 +366,39 @@ namespace UltraCanvas {
 
             filer->onPathChanged = [crumbPtr, statusPtr, filerPtr](const std::string& path) {
                 RebuildFilerBreadcrumb(crumbPtr, filerPtr, path);
-                statusPtr->SetText(std::to_string(filerPtr->GetEntries().size())
-                                   + " entries");
+                statusPtr->SetText(TrN("{n} entry", "{n} entries",
+                                       static_cast<long long>(filerPtr->GetEntries().size())));
             };
             // Selection details (type, size, media info, ...) are shown by the
             // widget's built-in info bar; the demo status line only counts.
             filer->onSelectionChanged =
                     [statusPtr, filerPtr](const std::vector<FilerEntry>& sel) {
                 if (sel.empty()) {
-                    statusPtr->SetText(std::to_string(filerPtr->GetEntries().size())
-                                       + " entries");
+                    statusPtr->SetText(TrN("{n} entry", "{n} entries",
+                                           static_cast<long long>(filerPtr->GetEntries().size())));
                 } else {
-                    statusPtr->SetText(std::to_string(sel.size()) + " of "
-                                       + std::to_string(filerPtr->GetEntries().size())
-                                       + " entries selected");
+                    statusPtr->SetText(LocalisationDetail::Substitute(
+                            TrN("{0} of {n} entry selected", "{0} of {n} entries selected",
+                                static_cast<long long>(filerPtr->GetEntries().size())),
+                            {std::to_string(sel.size())}));
                 }
             };
             filer->onFileActivated = [statusPtr](const FilerEntry& e) {
-                statusPtr->SetText("Activated: " + e.path);
+                statusPtr->SetText(TrF("Activated: {0}", e.path));
             };
             filer->onError = [statusPtr](const std::string& message) {
-                statusPtr->SetText("Error: " + message);
+                statusPtr->SetText(TrF("Error: {0}", message));
             };
             filer->onPrint = [statusPtr](const std::vector<FilerEntry>& targets) {
-                statusPtr->SetText("Print requested for "
-                                   + std::to_string(targets.size()) + " item(s)");
+                statusPtr->SetText(TrN("Print requested for {n} item", "Print requested for {n} items",
+                                       static_cast<long long>(targets.size())));
             };
             filer->onShare = [statusPtr](const std::vector<FilerEntry>& targets) {
-                statusPtr->SetText("Share requested for "
-                                   + std::to_string(targets.size()) + " item(s)");
+                statusPtr->SetText(TrN("Share requested for {n} item", "Share requested for {n} items",
+                                       static_cast<long long>(targets.size())));
             };
             filer->onAttributes = [statusPtr](const std::vector<FilerEntry>& targets) {
-                std::string text = "Attributes:";
+                std::string text = Tr("Attributes:");
                 for (const FilerEntry& e : targets) {
                     text += " " + e.name + " [" + (e.attributes.empty() ? "-" : e.attributes)
                             + "]";
@@ -405,16 +407,16 @@ namespace UltraCanvas {
                 statusPtr->SetText(text);
             };
             filer->onAccess = [statusPtr](const std::vector<FilerEntry>& targets) {
-                statusPtr->SetText("Access requested for "
-                                   + std::to_string(targets.size()) + " item(s)");
+                statusPtr->SetText(TrN("Access requested for {n} item", "Access requested for {n} items",
+                                       static_cast<long long>(targets.size())));
             };
             filer->onSettings = [statusPtr]() {
-                statusPtr->SetText("Settings requested");
+                statusPtr->SetText(Tr("Settings requested"));
             };
-            filer->AddOpenWithApp({"Status line (demo)", "",
+            filer->AddOpenWithApp({Tr("Status line (demo)"), "",
                     [statusPtr](const std::vector<FilerEntry>& targets) {
-                statusPtr->SetText("Open with requested for "
-                                   + std::to_string(targets.size()) + " item(s)");
+                statusPtr->SetText(TrN("Open with requested for {n} item", "Open with requested for {n} items",
+                                       static_cast<long long>(targets.size())));
             }});
         }
 

@@ -39,7 +39,7 @@ namespace UltraCanvas {
 
         // Single Line Input
         auto singleLineInput = std::make_shared<UltraCanvasTextInput>("SingleLineInput", 0, 0, 300, 30);
-        singleLineInput->SetPlaceholder("Enter single line text...");
+        singleLineInput->SetPlaceholder(Tr("Enter single line text..."));
         singleLineInput->SetMaxLength(100);
         DemoKit::AddStretched(basicCard, singleLineInput);
 
@@ -52,7 +52,7 @@ namespace UltraCanvas {
         auto multiLineInput = std::make_shared<UltraCanvasTextArea>("MultiLineInput", 0, 0, 300, 100);
         multiLineInput->SetBorders(1.0f, Color(200, 200, 200, 255), 4.0f);
         multiLineInput->SetWordWrap(true);
-        multiLineInput->SetPlaceholder("Enter multi-line text...\nSupports line breaks.");
+        multiLineInput->SetPlaceholder(Tr("Enter multi-line text...\nSupports line breaks."));
         DemoKit::AddStretched(basicCard, multiLineInput);
 
 
@@ -61,7 +61,7 @@ namespace UltraCanvas {
         // Password Field (Basic) - the in-field eye button shows the typed text
         auto passwordInput = std::make_shared<UltraCanvasTextInput>("PasswordInput", 0, 0, 300, 30);
         passwordInput->SetInputType(TextInputType::Password);
-        passwordInput->SetPlaceholder("Enter password...");
+        passwordInput->SetPlaceholder(Tr("Enter password..."));
         passwordInput->SetShowPasswordToggle(true);
         DemoKit::AddStretched(basicCard, passwordInput);
 
@@ -80,7 +80,7 @@ namespace UltraCanvas {
         // Text Area Component
         auto textAreaInput = std::make_shared<UltraCanvasTextArea>("TextArea", 0, 0, 300, 100);
         textAreaInput->SetBorders(1.0f, Color(200, 200, 200, 255), 4.0f);
-        textAreaInput->SetPlaceholder("A plain text area: type, paste, undo...");
+        textAreaInput->SetPlaceholder(Tr("A plain text area: type, paste, undo..."));
         DemoKit::AddStretched(basicCard, textAreaInput);
 
         // ===== IN-FIELD BUTTONS: CLEAR AND "RESET" =====
@@ -94,16 +94,16 @@ namespace UltraCanvas {
                 Tr("Buttons inside the field: clear and \"Reset\""));
 
         auto clearInput = std::make_shared<UltraCanvasTextInput>("ClearButtonInput", 0, 0, 300, 30);
-        clearInput->SetPlaceholder("Type, then click the cross...");
+        clearInput->SetPlaceholder(Tr("Type, then click the cross..."));
         clearInput->SetShowClearButton(true);
-        clearInput->SetText("Click the cross to clear me");
+        clearInput->SetText(Tr("Click the cross to clear me"));
         DemoKit::AddStretched(clearCard, clearInput);
 
         auto resetInput = std::make_shared<UltraCanvasTextInput>("ResetButtonInput", 0, 0, 300, 30);
-        resetInput->SetPlaceholder("Filter components");
+        resetInput->SetPlaceholder(Tr("Filter components"));
         resetInput->SetShowClearButton(true);
-        resetInput->SetClearButtonText("Reset");
-        resetInput->SetText("chart");
+        resetInput->SetClearButtonText(Tr("Reset"));
+        resetInput->SetText(Tr("chart"));
         DemoKit::AddStretched(clearCard, resetInput);
 
         auto clearStatus = DemoKit::AddCaption(clearCard, "ClearButtonStatus",
@@ -111,10 +111,10 @@ namespace UltraCanvas {
                 "SetClearButtonText(\"Reset\") gives it a word"));
 
         clearInput->onCleared = [clearStatus]() {
-            clearStatus->SetText("The cross emptied the field\n(onTextChanged, then onCleared)");
+            clearStatus->SetText(Tr("The cross emptied the field\n(onTextChanged, then onCleared)"));
         };
         resetInput->onCleared = [clearStatus]() {
-            clearStatus->SetText("\"Reset\" emptied the field\n(onTextChanged, then onCleared)");
+            clearStatus->SetText(Tr("\"Reset\" emptied the field\n(onTextChanged, then onCleared)"));
         };
 
 
@@ -124,7 +124,7 @@ namespace UltraCanvas {
         // Reveal ("eye") button on the right of the field: click it to read back the
         // password in clear text, click again to mask it.
         auto passwordInput1 = CreateRevealablePasswordInput("Password1", 0, 0, 350, 30);
-        passwordInput1->SetPlaceholder("Enter password...");
+        passwordInput1->SetPlaceholder(Tr("Enter password..."));
 
         // Add validation rules
         passwordInput1->AddValidationRule(ValidationRule::MinLength(8));
@@ -155,7 +155,7 @@ namespace UltraCanvas {
 //        container->AddChild(passwordTitle2);
 //
 //        auto passwordInput2 = CreatePasswordInput("Password2", 350, 230, 350, 30);
-//        passwordInput2->SetPlaceholder("Try a strong password...");
+//        passwordInput2->SetPlaceholder(Tr("Try a strong password..."));
 //        container->AddChild(passwordInput2);
 //
 //        // Segmented Strength Meter
@@ -181,12 +181,12 @@ namespace UltraCanvas {
         auto checklistCard = DemoKit::AddCard(examples, "PasswordTitle3", Tr("Password with Requirements Checklist"));
 
         auto passwordInput3 = CreatePasswordInput("Password3", 0, 0, 350, 30);
-        passwordInput3->SetPlaceholder("Meet all requirements...");
+        passwordInput3->SetPlaceholder(Tr("Meet all requirements..."));
         DemoKit::AddStretched(checklistCard, passwordInput3);
 
         // Explicit "Show password" flag instead of the in-field eye icon: an
         // external control driving the same SetPasswordRevealed() state.
-        auto showPassword3 = std::make_shared<UltraCanvasCheckbox>("ShowPassword3", "Show password");
+        auto showPassword3 = std::make_shared<UltraCanvasCheckbox>("ShowPassword3", Tr("Show password"));
         showPassword3->SetChecked(false);
         auto* password3 = passwordInput3.get();
         showPassword3->onStateChanged = [password3](CheckedState, CheckedState newState) {
@@ -235,10 +235,10 @@ namespace UltraCanvas {
         // Both reveal controls on one field: the in-field eye icon and the explicit
         // "Show password" flag below stay in sync.
         auto passwordInput4 = CreateRevealablePasswordInput("Password4", 0, 0, 350, 30);
-        passwordInput4->SetPlaceholder("Create strong password...");
+        passwordInput4->SetPlaceholder(Tr("Create strong password..."));
         DemoKit::AddStretched(completeFields, passwordInput4);
 
-        auto showPassword4 = std::make_shared<UltraCanvasCheckbox>("ShowPassword4", "Show password");
+        auto showPassword4 = std::make_shared<UltraCanvasCheckbox>("ShowPassword4", Tr("Show password"));
         showPassword4->SetChecked(false);
         auto* password4 = passwordInput4.get();
         auto* showPassword4Ptr = showPassword4.get();
@@ -310,7 +310,7 @@ namespace UltraCanvas {
 //        container->AddChild(compactTitle);
 //
 //        auto passwordInput5 = CreatePasswordInput("Password5", 730, 550, 350, 30);
-//        passwordInput5->SetPlaceholder("Space-efficient display...");
+//        passwordInput5->SetPlaceholder(Tr("Space-efficient display..."));
 //        container->AddChild(passwordInput5);
 //
 //        // Compact Legend

@@ -34,18 +34,18 @@ namespace UltraCanvas {
         // =============================================================================
 
         auto revenueData = std::make_shared<WaterfallChartDataVector>();
-        revenueData->AddWaterfallPoint("Start", 500.0);
-        revenueData->AddWaterfallPoint("Q1", 150.0);
-        revenueData->AddWaterfallPoint("Q2", 120.0);
-        revenueData->AddWaterfallPoint("Q3", 180.0);
-        revenueData->AddWaterfallPoint("Q4", 90.0);
-        revenueData->AddWaterfallPoint("Return", -25.0);
-        revenueData->AddWaterfallPoint("Discount", -40.0);
-        revenueData->AddWaterfallPoint("Total", 0.0, true, false);
+        revenueData->AddWaterfallPoint(Tr("Start"), 500.0);
+        revenueData->AddWaterfallPoint(Tr("Q1"), 150.0);
+        revenueData->AddWaterfallPoint(Tr("Q2"), 120.0);
+        revenueData->AddWaterfallPoint(Tr("Q3"), 180.0);
+        revenueData->AddWaterfallPoint(Tr("Q4"), 90.0);
+        revenueData->AddWaterfallPoint(Tr("Return"), -25.0);
+        revenueData->AddWaterfallPoint(Tr("Discount"), -40.0);
+        revenueData->AddWaterfallPoint(Tr("Total"), 0.0, true, false);
 
         auto revenueChart = CreateWaterfallChartWithData(
                 "revenue_chart", 0, 0, 500, 300,
-                revenueData, "Revenue Flow ($K)"
+                revenueData, Tr("Revenue Flow ($K)")
         );
 
         // Style revenue chart
@@ -67,19 +67,19 @@ namespace UltraCanvas {
         // =============================================================================
 
         auto cashFlowData = std::make_shared<WaterfallChartDataVector>();
-        cashFlowData->AddWaterfallPoint("Start", 100.0);
-        cashFlowData->AddWaterfallPoint("Revenue", 1200.0);
-        cashFlowData->AddWaterfallPoint("Costs", -800.0);
-        cashFlowData->AddWaterfallPoint("Q1", 0.0, true, false);  // Subtotal
-        cashFlowData->AddWaterfallPoint("Marketing", -150.0);
-        cashFlowData->AddWaterfallPoint("R&D", -120.0);
-        cashFlowData->AddWaterfallPoint("Q2", 0.0, true, false);  // Subtotal
-        cashFlowData->AddWaterfallPoint("Equipment", -80.0);
-        cashFlowData->AddWaterfallPoint("Final", 0.0, false, true);
+        cashFlowData->AddWaterfallPoint(Tr("Start"), 100.0);
+        cashFlowData->AddWaterfallPoint(Tr("Revenue"), 1200.0);
+        cashFlowData->AddWaterfallPoint(Tr("Costs"), -800.0);
+        cashFlowData->AddWaterfallPoint(Tr("Q1"), 0.0, true, false);  // Subtotal
+        cashFlowData->AddWaterfallPoint(Tr("Marketing"), -150.0);
+        cashFlowData->AddWaterfallPoint(Tr("R&D"), -120.0);
+        cashFlowData->AddWaterfallPoint(Tr("Q2"), 0.0, true, false);  // Subtotal
+        cashFlowData->AddWaterfallPoint(Tr("Equipment"), -80.0);
+        cashFlowData->AddWaterfallPoint(Tr("Final"), 0.0, false, true);
 
         auto cashFlowChart = CreateWaterfallChartWithData(
                 "cashflow_chart", 0, 0, 540, 300,
-                cashFlowData, "Cash Flow ($K)"
+                cashFlowData, Tr("Cash Flow ($K)")
         );
 
         // Style cash flow chart
@@ -102,17 +102,17 @@ namespace UltraCanvas {
         // =============================================================================
 
         auto performanceData = std::make_shared<WaterfallChartDataVector>();
-        performanceData->AddWaterfallPoint("Start", 100.0);
-        performanceData->AddWaterfallPoint("Training", 25.0);
-        performanceData->AddWaterfallPoint("Tools", 15.0);
-        performanceData->AddWaterfallPoint("Process", 12.0);
-        performanceData->AddWaterfallPoint("Turnover", -18.0);
-        performanceData->AddWaterfallPoint("Downtime", -8.0);
-        performanceData->AddWaterfallPoint("Final", 0.0, false, true);
+        performanceData->AddWaterfallPoint(Tr("Start"), 100.0);
+        performanceData->AddWaterfallPoint(Tr("Training"), 25.0);
+        performanceData->AddWaterfallPoint(Tr("Tools"), 15.0);
+        performanceData->AddWaterfallPoint(Tr("Process"), 12.0);
+        performanceData->AddWaterfallPoint(Tr("Turnover"), -18.0);
+        performanceData->AddWaterfallPoint(Tr("Downtime"), -8.0);
+        performanceData->AddWaterfallPoint(Tr("Final"), 0.0, false, true);
 
         auto performanceChart = CreateWaterfallChartWithData(
                 "performance_chart", 0, 0, 520, 300,
-                performanceData, "Performance Impact"
+                performanceData, Tr("Performance Impact")
         );
 
         // Style performance chart with gradient
@@ -142,7 +142,7 @@ namespace UltraCanvas {
 
         // Style toggle button
         auto btnToggleStyle = std::make_shared<UltraCanvasButton>(
-                "btnToggleStyle", 0, 0, 0, 40, "Cycle Bar Style"
+                "btnToggleStyle", 0, 0, 0, 40, Tr("Cycle Bar Style")
         );
         btnToggleStyle->boxConstraints = buttonLimits;
 
@@ -166,7 +166,7 @@ namespace UltraCanvas {
 
         // Random data button
         auto btnRandomData = std::make_shared<UltraCanvasButton>(
-                "btnRandomData", 0, 0, 0, 40, "Generate Random Data"
+                "btnRandomData", 0, 0, 0, 40, Tr("Generate Random Data")
         );
         btnRandomData->boxConstraints = buttonLimits;
 
@@ -177,14 +177,14 @@ namespace UltraCanvas {
 
             // Update revenue data
             revenueData->ClearData();
-            revenueData->AddWaterfallPoint("Start", 400.0 + dist(gen));
-            revenueData->AddWaterfallPoint("Q1", dist(gen));
-            revenueData->AddWaterfallPoint("Q2", dist(gen));
-            revenueData->AddWaterfallPoint("Q3", dist(gen));
-            revenueData->AddWaterfallPoint("Q4", dist(gen));
-            revenueData->AddWaterfallPoint("Returns", -dist(gen) * 0.3);
-            revenueData->AddWaterfallPoint("Discounts", -dist(gen) * 0.4);
-            revenueData->AddWaterfallPoint("Total", 0.0, false, true);
+            revenueData->AddWaterfallPoint(Tr("Start"), 400.0 + dist(gen));
+            revenueData->AddWaterfallPoint(Tr("Q1"), dist(gen));
+            revenueData->AddWaterfallPoint(Tr("Q2"), dist(gen));
+            revenueData->AddWaterfallPoint(Tr("Q3"), dist(gen));
+            revenueData->AddWaterfallPoint(Tr("Q4"), dist(gen));
+            revenueData->AddWaterfallPoint(Tr("Returns"), -dist(gen) * 0.3);
+            revenueData->AddWaterfallPoint(Tr("Discounts"), -dist(gen) * 0.4);
+            revenueData->AddWaterfallPoint(Tr("Total"), 0.0, false, true);
         };
 
         DemoKit::Add(buttonRow, btnRandomData);

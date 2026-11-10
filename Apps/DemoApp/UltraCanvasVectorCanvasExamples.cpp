@@ -47,7 +47,7 @@ namespace {
         auto doc = std::make_shared<VectorDocument>();
         doc->Size = Size2Dd{595, 420};
         doc->ViewBox = Rect2Dd{0, 0, 595, 420};
-        auto layer = doc->AddLayer("Layer 1");
+        auto layer = doc->AddLayer(Tr("Layer 1"));
 
         auto back = std::make_shared<VectorRect>();
         back->Bounds = Rect2Dd{40, 40, 260, 160};
@@ -190,7 +190,7 @@ namespace {
                     e->Style.Fill = GradientData{lg};
                 }
             };
-            if (commit) history.Record("Gradient", apply, true);
+            if (commit) history.Record(Tr("Gradient"), apply, true);
             else apply();
             canvas->Refresh();
         }
@@ -207,7 +207,7 @@ namespace {
                         activeHandle = h;
                         startBounds = canvas->SelectionBounds();
                         history.BeginEdit(canvas->GetHandleMode() == VectorHandleMode::Rotate
-                                          ? (h == VectorHandle::Center ? "Move Centre" : "Rotate") : "Scale");
+                                          ? (h == VectorHandle::Center ? Tr("Move Centre") : Tr("Rotate")) : Tr("Scale"));
                         return;
                     }
                     auto hit = canvas->HitTest(ev.doc, 4.0);
@@ -217,7 +217,7 @@ namespace {
                         else if (!selection->Contains(target)) selection->Set(target);
                         else if (h == VectorHandle::Body && !ev.shift) toggleModePending = true;   // second click: rotate mode
                         moving = !selection->Empty();
-                        if (moving) history.BeginEdit("Move");
+                        if (moving) history.BeginEdit(Tr("Move"));
                     } else {
                         if (!ev.shift) selection->Clear();
                         canvas->SetHandleMode(VectorHandleMode::Scale);
@@ -296,7 +296,7 @@ namespace {
                     const Rect2Dd r = NormalizedRect(pressDoc, ev.snapped);
                     if (r.width < 2 || r.height < 2) { canvas->Refresh(); break; }
                     ElementPtr made;
-                    history.Record(tool == Tool::Rectangle ? "Rectangle" : "Ellipse", [&]() {
+                    history.Record(tool == Tool::Rectangle ? Tr("Rectangle") : Tr("Ellipse"), [&]() {
                         if (tool == Tool::Rectangle) {
                             auto rect = std::make_shared<VectorRect>();
                             rect->Bounds = r;
@@ -322,7 +322,7 @@ namespace {
                     if (strokePoints.size() < 2) break;
                     auto bezier = UltraCanvasBezierPath::FromPolyline(strokePoints, false, canvas->PixelsToDoc(2.0));
                     std::string id;
-                    history.Record("Freehand", [&]() {
+                    history.Record(Tr("Freehand"), [&]() {
                         auto path = std::make_shared<VectorPath>();
                         path->Path = bezier.ToPathData();
                         path->Id = id = GenerateId();
@@ -370,7 +370,7 @@ namespace {
             if (k.virtualKey == UCKeys::Left) dx = -step; else if (k.virtualKey == UCKeys::Right) dx = step;
             else if (k.virtualKey == UCKeys::Up) dy = -step; else if (k.virtualKey == UCKeys::Down) dy = step;
             if ((dx != 0 || dy != 0) && !selection->Empty()) {
-                history.Record("Nudge", [&]() { TranslateElements(selection->Elements(), dx, dy); }, true);
+                history.Record(Tr("Nudge"), [&]() { TranslateElements(selection->Elements(), dx, dy); }, true);
                 return true;
             }
             return false;
@@ -405,19 +405,19 @@ namespace {
         // ----- commands -----
         void DeleteSelection() {
             if (selection->Empty()) return;
-            history.Record("Delete", [&]() { DeleteElements(selection->Elements()); });
+            history.Record(Tr("Delete"), [&]() { DeleteElements(selection->Elements()); });
             selection->Clear();
         }
         void Group() {
             if (selection->Count() < 2) return;
             std::string id;
-            history.Record("Group", [&]() { if (auto g = GroupElements(selection->Elements())) id = g->Id; });
+            history.Record(Tr("Group"), [&]() { if (auto g = GroupElements(selection->Elements())) id = g->Id; });
             if (auto g = doc->FindElementById(id)) selection->Set(g);
         }
         void Ungroup() {
             if (selection->Empty()) return;
             std::vector<std::string> ids;
-            history.Record("Ungroup", [&]() { for (auto& e : UngroupElements(selection->Elements())) ids.push_back(e->Id); });
+            history.Record(Tr("Ungroup"), [&]() { for (auto& e : UngroupElements(selection->Elements())) ids.push_back(e->Id); });
             std::vector<ElementPtr> fresh;
             for (auto& id : ids) if (auto e = doc->FindElementById(id)) fresh.push_back(e);
             selection->Set(fresh);
@@ -425,25 +425,24 @@ namespace {
         void Duplicate() {
             if (selection->Empty()) return;
             std::vector<std::string> ids;
-            history.Record("Duplicate", [&]() { for (auto& e : DuplicateElements(selection->Elements(), 12, 12)) ids.push_back(e->Id); });
+            history.Record(Tr("Duplicate"), [&]() { for (auto& e : DuplicateElements(selection->Elements(), 12, 12)) ids.push_back(e->Id); });
             std::vector<ElementPtr> fresh;
             for (auto& id : ids) if (auto e = doc->FindElementById(id)) fresh.push_back(e);
             selection->Set(fresh);
         }
         void Reorder(ZOrderMove m) {
             if (selection->Empty()) return;
-            history.Record(m == ZOrderMove::ToFront ? "To Front" : "To Back", [&]() { ReorderElements(selection->Elements(), m); });
+            history.Record(m == ZOrderMove::ToFront ? Tr("To Front") : Tr("To Back"), [&]() { ReorderElements(selection->Elements(), m); });
         }
 
         void UpdateStatus() {
             if (!status) return;
-            char buf[200];
-            const char* toolName = tool == Tool::Select ? "Select" : tool == Tool::Rectangle ? "Rectangle"
-                                 : tool == Tool::Ellipse ? "Ellipse" : "Freehand";
-            std::snprintf(buf, sizeof buf, "%s   zoom %.0f%%   pointer %.0f, %.0f pt   selected %zu   undo: %s",
-                          toolName, canvas->GetZoom() * 100.0, hoverDoc.x, hoverDoc.y, selection->Count(),
-                          history.CanUndo() ? history.UndoLabel().c_str() : "-");
-            status->SetText(buf);
+            const std::string toolName = tool == Tool::Select ? Tr("Select") : tool == Tool::Rectangle ? Tr("Rectangle")
+                                       : tool == Tool::Ellipse ? Tr("Ellipse") : Tr("Freehand");
+            auto whole = [](double v) { return static_cast<long long>(std::llround(v)); };
+            status->SetText(TrF("{0}   zoom {1}%   pointer {2}, {3} pt   selected {4}   undo: {5}",
+                                toolName, whole(canvas->GetZoom() * 100.0), whole(hoverDoc.x), whole(hoverDoc.y),
+                                selection->Count(), history.CanUndo() ? history.UndoLabel() : std::string("-")));
         }
 
     private:
@@ -527,32 +526,32 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateVectorCa
         b->SetTooltip(tip);
         editor->toolButtons.push_back(b);
     };
-    addTool("vcSelect", "selector.svg", "Select - click, shift-click, marquee; drag to move", DemoVectorEditor::Tool::Select);
-    addTool("vcRect", "rectangle.svg", "Rectangle - drag to draw", DemoVectorEditor::Tool::Rectangle);
-    addTool("vcEllipse", "ellipse.svg", "Ellipse - drag to draw", DemoVectorEditor::Tool::Ellipse);
-    addTool("vcFreehand", "freehand.svg", "Freehand - drag to draw a curve", DemoVectorEditor::Tool::Freehand);
+    addTool("vcSelect", "selector.svg", Tr("Select - click, shift-click, marquee; drag to move"), DemoVectorEditor::Tool::Select);
+    addTool("vcRect", "rectangle.svg", Tr("Rectangle - drag to draw"), DemoVectorEditor::Tool::Rectangle);
+    addTool("vcEllipse", "ellipse.svg", Tr("Ellipse - drag to draw"), DemoVectorEditor::Tool::Ellipse);
+    addTool("vcFreehand", "freehand.svg", Tr("Freehand - drag to draw a curve"), DemoVectorEditor::Tool::Freehand);
     toolbar->AddSeparator();
-    toolbar->AddButton("vcUndo", "", lineIcons + "undo.svg", [editor]() { editor->history.Undo(); })->SetTooltip("Undo (Ctrl+Z)");
-    toolbar->AddButton("vcRedo", "", lineIcons + "redo.svg", [editor]() { editor->history.Redo(); })->SetTooltip("Redo (Ctrl+Y)");
+    toolbar->AddButton("vcUndo", "", lineIcons + "undo.svg", [editor]() { editor->history.Undo(); })->SetTooltip(Tr("Undo (Ctrl+Z)"));
+    toolbar->AddButton("vcRedo", "", lineIcons + "redo.svg", [editor]() { editor->history.Redo(); })->SetTooltip(Tr("Redo (Ctrl+Y)"));
     toolbar->AddSeparator();
-    toolbar->AddButton("vcDelete", "", artIcons + "delete.svg", [editor]() { editor->DeleteSelection(); })->SetTooltip("Delete (Del)");
-    toolbar->AddButton("vcDuplicate", "", artIcons + "duplicate.svg", [editor]() { editor->Duplicate(); })->SetTooltip("Duplicate (Ctrl+D)");
-    toolbar->AddButton("vcGroup", "", artIcons + "group.svg", [editor]() { editor->Group(); })->SetTooltip("Group (Ctrl+G)");
-    toolbar->AddButton("vcUngroup", "", artIcons + "ungroup.svg", [editor]() { editor->Ungroup(); })->SetTooltip("Ungroup (Ctrl+Shift+G)");
-    toolbar->AddButton("vcFront", "", artIcons + "to-front.svg", [editor]() { editor->Reorder(ZOrderMove::ToFront); })->SetTooltip("Bring to front");
-    toolbar->AddButton("vcBack", "", artIcons + "to-back.svg", [editor]() { editor->Reorder(ZOrderMove::ToBack); })->SetTooltip("Send to back");
+    toolbar->AddButton("vcDelete", "", artIcons + "delete.svg", [editor]() { editor->DeleteSelection(); })->SetTooltip(Tr("Delete (Del)"));
+    toolbar->AddButton("vcDuplicate", "", artIcons + "duplicate.svg", [editor]() { editor->Duplicate(); })->SetTooltip(Tr("Duplicate (Ctrl+D)"));
+    toolbar->AddButton("vcGroup", "", artIcons + "group.svg", [editor]() { editor->Group(); })->SetTooltip(Tr("Group (Ctrl+G)"));
+    toolbar->AddButton("vcUngroup", "", artIcons + "ungroup.svg", [editor]() { editor->Ungroup(); })->SetTooltip(Tr("Ungroup (Ctrl+Shift+G)"));
+    toolbar->AddButton("vcFront", "", artIcons + "to-front.svg", [editor]() { editor->Reorder(ZOrderMove::ToFront); })->SetTooltip(Tr("Bring to front"));
+    toolbar->AddButton("vcBack", "", artIcons + "to-back.svg", [editor]() { editor->Reorder(ZOrderMove::ToBack); })->SetTooltip(Tr("Send to back"));
     toolbar->AddSeparator();
-    toolbar->AddButton("vcZoomPage", "", artIcons + "zoom-page.svg", [editor]() { editor->canvas->ZoomToPage(); })->SetTooltip("Fit page");
+    toolbar->AddButton("vcZoomPage", "", artIcons + "zoom-page.svg", [editor]() { editor->canvas->ZoomToPage(); })->SetTooltip(Tr("Fit page"));
     toolbar->AddToggleButton("vcGrid", "", artIcons + "grid.svg", [editor](bool on) {
         VectorGridSpec g = editor->canvas->GetGrid();
         g.visible = on;
         editor->canvas->SetGrid(g);
-    })->SetTooltip("Show the grid");
+    })->SetTooltip(Tr("Show the grid"));
     toolbar->AddToggleButton("vcSnap", "", artIcons + "snap.svg", [editor](bool on) {
         VectorSnapOptions s = editor->canvas->GetSnapOptions();
         s.toGrid = on; s.toObjects = on; s.toPage = on;
         editor->canvas->SetSnapOptions(s);
-    })->SetTooltip("Snap to the grid, other objects and the page");
+    })->SetTooltip(Tr("Snap to the grid, other objects and the page"));
     DemoKit::AddStretched(card, toolbar);
 
     // The canvas and the side panel share the rest of the card's height.

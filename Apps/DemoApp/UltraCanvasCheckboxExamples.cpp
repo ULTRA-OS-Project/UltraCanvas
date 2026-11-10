@@ -60,7 +60,7 @@ namespace UltraCanvas {
         auto basicRow = DemoKit::AddRow(basicCard, "BasicCheckboxesRow", 20);
 
         // Standard checkbox - unchecked
-        auto basicCheckbox1 = std::make_shared<UltraCanvasCheckbox>("BasicCheckbox1", "Standard Checkbox");
+        auto basicCheckbox1 = std::make_shared<UltraCanvasCheckbox>("BasicCheckbox1", Tr("Standard Checkbox"));
         basicCheckbox1->SetChecked(false);
         basicCheckbox1->onChecked = []() {
             debugOutput << "Basic checkbox checked!" << std::endl;
@@ -71,18 +71,18 @@ namespace UltraCanvas {
         DemoKit::Add(basicRow, basicCheckbox1);
 
         // Standard checkbox - checked
-        auto basicCheckbox2 = std::make_shared<UltraCanvasCheckbox>("BasicCheckbox2", "Pre-checked Box");
+        auto basicCheckbox2 = std::make_shared<UltraCanvasCheckbox>("BasicCheckbox2", Tr("Pre-checked Box"));
         basicCheckbox2->SetChecked(true);
         DemoKit::Add(basicRow, basicCheckbox2);
 
         // Disabled checkbox - unchecked
-        auto disabledCheckbox1 = std::make_shared<UltraCanvasCheckbox>("DisabledCheckbox1", "Disabled Unchecked");
+        auto disabledCheckbox1 = std::make_shared<UltraCanvasCheckbox>("DisabledCheckbox1", Tr("Disabled Unchecked"));
         disabledCheckbox1->SetChecked(false);
         disabledCheckbox1->SetDisabled(true);
         DemoKit::Add(basicRow, disabledCheckbox1);
 
         // Disabled checkbox - checked
-        auto disabledCheckbox2 = std::make_shared<UltraCanvasCheckbox>("DisabledCheckbox2", "Disabled Checked");
+        auto disabledCheckbox2 = std::make_shared<UltraCanvasCheckbox>("DisabledCheckbox2", Tr("Disabled Checked"));
         disabledCheckbox2->SetChecked(true);
         disabledCheckbox2->SetDisabled(true);
         DemoKit::Add(basicRow, disabledCheckbox2);
@@ -94,14 +94,14 @@ namespace UltraCanvas {
         DemoKit::Add(triRow, triColumn);
 
         // Tri-state checkbox
-        auto triStateCheckbox = std::make_shared<UltraCanvasCheckbox>("TriStateCheckbox", "Select All Items");
+        auto triStateCheckbox = std::make_shared<UltraCanvasCheckbox>("TriStateCheckbox", Tr("Select All Items"));
         triStateCheckbox->SetAllowIndeterminate(true);
         triStateCheckbox->SetCheckState(CheckedState::Indeterminate);
 
         // Sub-items for tri-state demonstration
-        auto subItem1 = std::make_shared<UltraCanvasCheckbox>("SubItem1", "Item 1");
-        auto subItem2 = std::make_shared<UltraCanvasCheckbox>("SubItem2", "Item 2");
-        auto subItem3 = std::make_shared<UltraCanvasCheckbox>("SubItem3", "Item 3");
+        auto subItem1 = std::make_shared<UltraCanvasCheckbox>("SubItem1", Tr("Item 1"));
+        auto subItem2 = std::make_shared<UltraCanvasCheckbox>("SubItem2", Tr("Item 2"));
+        auto subItem3 = std::make_shared<UltraCanvasCheckbox>("SubItem3", Tr("Item 3"));
 
         subItem1->SetChecked(true);
         subItem2->SetChecked(false);
@@ -155,13 +155,13 @@ namespace UltraCanvas {
         auto updateStatusLabel = [status = triStateStatus.get(), parentBox]() {
             switch(parentBox->GetCheckState()) {
                 case CheckedState::Unchecked:
-                    status->SetText("State: Unchecked (0 selected)");
+                    status->SetText(Tr("State: Unchecked (0 selected)"));
                     break;
                 case CheckedState::Checked:
-                    status->SetText("State: Checked (all selected)");
+                    status->SetText(Tr("State: Checked (all selected)"));
                     break;
                 case CheckedState::Indeterminate:
-                    status->SetText("State: Indeterminate (partially selected)");
+                    status->SetText(Tr("State: Indeterminate (partially selected)"));
                     break;
             }
         };
@@ -195,9 +195,9 @@ namespace UltraCanvas {
         };
 
         // Create switches
-        auto switch1 = UltraCanvasSwitch::Create("Switch1", 0, 0, "Enable Notifications", true);
-        auto switch2 = UltraCanvasSwitch::Create("Switch2", 0, 0, "Dark Mode", false);
-        auto switch3 = UltraCanvasSwitch::Create("Switch3", 0, 0, "Auto-Save", true);
+        auto switch1 = UltraCanvasSwitch::Create("Switch1", 0, 0, Tr("Enable Notifications"), true);
+        auto switch2 = UltraCanvasSwitch::Create("Switch2", 0, 0, Tr("Dark Mode"), false);
+        auto switch3 = UltraCanvasSwitch::Create("Switch3", 0, 0, Tr("Auto-Save"), true);
 
         // Switch status labels
         auto switchStatus1 = DemoKit::CreateText("SwitchStatus1", Tr("ON"));
@@ -212,11 +212,11 @@ namespace UltraCanvas {
         // Switch callbacks
         switch1->onStateChanged = [switchStatus1](CheckedState oldState, CheckedState newState) {
             if (newState == CheckedState::Checked) {
-                switchStatus1->SetText("ON");
+                switchStatus1->SetText(Tr("ON"));
                 switchStatus1->SetTextColor(Color(0, 150, 0, 255));
                 debugOutput << "Notifications enabled" << std::endl;
             } else {
-                switchStatus1->SetText("OFF");
+                switchStatus1->SetText(Tr("OFF"));
                 switchStatus1->SetTextColor(Color(150, 0, 0, 255));
                 debugOutput << "Notifications disabled" << std::endl;
             }
@@ -224,11 +224,11 @@ namespace UltraCanvas {
 
         switch2->onStateChanged = [switchStatus2](CheckedState oldState, CheckedState newState) {
             if (newState == CheckedState::Checked) {
-                switchStatus2->SetText("ON");
+                switchStatus2->SetText(Tr("ON"));
                 switchStatus2->SetTextColor(Color(0, 150, 0, 255));
                 debugOutput << "Dark mode enabled" << std::endl;
             } else {
-                switchStatus2->SetText("OFF");
+                switchStatus2->SetText(Tr("OFF"));
                 switchStatus2->SetTextColor(Color(150, 0, 0, 255));
                 debugOutput << "Dark mode disabled" << std::endl;
             }
@@ -236,11 +236,11 @@ namespace UltraCanvas {
 
         switch3->onStateChanged = [switchStatus3](CheckedState oldState, CheckedState newState) {
             if (newState == CheckedState::Checked) {
-                switchStatus3->SetText("ON");
+                switchStatus3->SetText(Tr("ON"));
                 switchStatus3->SetTextColor(Color(0, 150, 0, 255));
                 debugOutput << "Auto-save enabled" << std::endl;
             } else {
-                switchStatus3->SetText("OFF");
+                switchStatus3->SetText(Tr("OFF"));
                 switchStatus3->SetTextColor(Color(150, 0, 0, 255));
                 debugOutput << "Auto-save disabled" << std::endl;
             }
@@ -258,79 +258,79 @@ namespace UltraCanvas {
         };
 
         // ----- Switch with built-in check icon (Check style) -----
-        auto switchCheck = UltraCanvasSwitch::Create("SwitchCheck", 0, 0, "Wi-Fi", true);
+        auto switchCheck = UltraCanvasSwitch::Create("SwitchCheck", 0, 0, Tr("Wi-Fi"), true);
         switchCheck->GetVisualStyle().thumbIconStyle = SwitchThumbIconStyle::Check;
         switchCheck->GetVisualStyle().thumbIconOnColor = Color(76, 175, 80, 255);
         switchCheck->onStateChanged = [](CheckedState, CheckedState newState) {
             debugOutput << "Wi-Fi " << (newState == CheckedState::Checked ? "on" : "off") << std::endl;
         };
         addSwitchLine("SwitchCheckRow", {switchCheck},
-                      makeHint("SwitchCheckHint", "Built-in checkmark icon (drawn via path API)"));
+                      makeHint("SwitchCheckHint", Tr("Built-in checkmark icon (drawn via path API)")));
 
         // ----- Switch with custom image icons (check.png + x.png) -----
         UCImagePtr iconCheckOn = UCImage::Load(NormalizePath(GetResourcesDir() + "media/icons/check.png"), false);
         UCImagePtr iconCheckOff = UCImage::Load(NormalizePath(GetResourcesDir() + "media/icons/x.png"), false);
 
-        auto switchImg = UltraCanvasSwitch::Create("SwitchImg", 0, 0, "Bluetooth", true);
+        auto switchImg = UltraCanvasSwitch::Create("SwitchImg", 0, 0, Tr("Bluetooth"), true);
         switchImg->SetTrackSize(48.0f, 26.0f);
         switchImg->SetThumbIcons(iconCheckOn, iconCheckOff);
         switchImg->onStateChanged = [](CheckedState, CheckedState newState) {
             debugOutput << "Bluetooth " << (newState == CheckedState::Checked ? "on" : "off") << std::endl;
         };
         addSwitchLine("SwitchImgRow", {switchImg},
-                      makeHint("SwitchImgHint", "Custom image icons (check.png / x.png) inside thumb"));
+                      makeHint("SwitchImgHint", Tr("Custom image icons (check.png / x.png) inside thumb")));
 
         // ----- Switch with custom ON icon only (demonstrates plain-circle fallback for OFF) -----
-        auto switchImgFallback = UltraCanvasSwitch::Create("SwitchImgFallback", 0, 0, "Sync", false);
+        auto switchImgFallback = UltraCanvasSwitch::Create("SwitchImgFallback", 0, 0, Tr("Sync"), false);
         switchImgFallback->SetTrackSize(48.0f, 26.0f);
         switchImgFallback->SetThumbIcons(iconCheckOn, nullptr);  // OFF icon missing → plain circle
         switchImgFallback->onStateChanged = [](CheckedState, CheckedState newState) {
             debugOutput << "Sync " << (newState == CheckedState::Checked ? "on" : "off") << std::endl;
         };
         addSwitchLine("SwitchImgFallbackRow", {switchImgFallback},
-                      makeHint("SwitchImgFallbackHint", "Only ON icon supplied — OFF state falls back to plain circle"));
+                      makeHint("SwitchImgFallbackHint", Tr("Only ON icon supplied — OFF state falls back to plain circle")));
 
         // ----- Switch with ON/OFF labels INSIDE the track -----
-        auto switchInside = UltraCanvasSwitch::Create("SwitchInside", 0, 0, "Power", true);
+        auto switchInside = UltraCanvasSwitch::Create("SwitchInside", 0, 0, Tr("Power"), true);
         switchInside->SetTrackSize(60.0f, 24.0f);
-        switchInside->SetStateLabels("ON", "OFF", SwitchStateLabelPosition::InsideTrack);
+        switchInside->SetStateLabels(Tr("ON"), Tr("OFF"), SwitchStateLabelPosition::InsideTrack);
         switchInside->onStateChanged = [](CheckedState, CheckedState newState) {
             debugOutput << "Power " << (newState == CheckedState::Checked ? "on" : "off") << std::endl;
         };
         addSwitchLine("SwitchInsideRow", {switchInside},
-                      makeHint("SwitchInsideHint", "ON/OFF text inside track, opposite the thumb"));
+                      makeHint("SwitchInsideHint", Tr("ON/OFF text inside track, opposite the thumb")));
 
         // ----- Switch with ON/OFF labels OUTSIDE the track -----
-        auto switchOutside = UltraCanvasSwitch::Create("SwitchOutside", 0, 0, "Sound", false);
-        switchOutside->SetStateLabels("On", "Off", SwitchStateLabelPosition::OutsideTrack);
+        auto switchOutside = UltraCanvasSwitch::Create("SwitchOutside", 0, 0, Tr("Sound"), false);
+        switchOutside->SetStateLabels(Tr("On"), Tr("Off"), SwitchStateLabelPosition::OutsideTrack);
         switchOutside->GetVisualStyle().onTextColor = Color(0, 130, 0, 255);
         switchOutside->GetVisualStyle().offTextColor = Color(150, 0, 0, 255);
         switchOutside->onStateChanged = [](CheckedState, CheckedState newState) {
             debugOutput << "Sound " << (newState == CheckedState::Checked ? "on" : "off") << std::endl;
         };
         addSwitchLine("SwitchOutsideRow", {switchOutside},
-                      makeHint("SwitchOutsideHint", "State text drawn outside the track (between track and main label)"));
+                      makeHint("SwitchOutsideHint", Tr("State text drawn outside the track (between track and main label)")));
 
         // ----- Switch flanked by two texts (BothSides): "Backup [switch] Auto-Save" -----
         auto switchSides = UltraCanvasSwitch::CreateWithSideLabels(
-                "SwitchSides", 0, 0, "Backup", "Auto-Save", true);
+                "SwitchSides", 0, 0, Tr("Backup"), Tr("Auto-Save"), true);
         switchSides->SetTrackSize(44.0f, 22.0f);
         switchSides->onStateChanged = [](CheckedState, CheckedState newState) {
             debugOutput << "Mode: " << (newState == CheckedState::Checked ? "Auto-Save" : "Backup")
                         << std::endl;
         };
         addSwitchLine("SwitchSidesRow", {switchSides},
-                      makeHint("SwitchSidesHint", "Two texts with the switch between them — click a text to pick that side"));
+                      makeHint("SwitchSidesHint", Tr("Two texts with the switch between them — click a text to pick that side")));
 
         // ----- Vertical orientation (plain + with check icon, side by side) -----
-        auto switchVertical = UltraCanvasSwitch::Create("SwitchVertical", 0, 0, "Volume", true);
+        auto switchVertical = UltraCanvasSwitch::Create("SwitchVertical", 0, 0, Tr("Volume"), true);
         switchVertical->SetOrientation(SwitchOrientation::Vertical);
         switchVertical->SetTrackSize(40.0f, 18.0f);  // long axis = 40, short axis = 18
         switchVertical->onStateChanged = [](CheckedState, CheckedState newState) {
             debugOutput << "Volume " << (newState == CheckedState::Checked ? "on" : "off") << std::endl;
         };
 
-        auto switchVerticalCheck = UltraCanvasSwitch::Create("SwitchVerticalCheck", 0, 0, "Mic", true);
+        auto switchVerticalCheck = UltraCanvasSwitch::Create("SwitchVerticalCheck", 0, 0, Tr("Mic"), true);
         switchVerticalCheck->SetOrientation(SwitchOrientation::Vertical);
         switchVerticalCheck->SetTrackSize(40.0f, 22.0f);
         switchVerticalCheck->GetVisualStyle().thumbIconStyle = SwitchThumbIconStyle::Check;
@@ -339,7 +339,7 @@ namespace UltraCanvas {
         };
 
         addSwitchLine("SwitchVerticalRow", {switchVertical, switchVerticalCheck},
-                      makeHint("SwitchVerticalHint", "Vertical orientation (ON = top). Plain on left, with check icon on right."));
+                      makeHint("SwitchVerticalHint", Tr("Vertical orientation (ON = top). Plain on left, with check icon on right.")));
 
         // ===== SECTION 4: Radio Buttons =====
         auto radioCard = DemoKit::AddCard(page, "RadioCard", Tr("Radio Button Groups"));
@@ -349,9 +349,9 @@ namespace UltraCanvas {
         // Create radio button group for themes (owned by the row so it survives function exit)
         radioRow->themeRadioGroup = std::make_shared<UltraCanvasRadioGroup>();
 
-        auto radioTheme1 = UltraCanvasRadio::Create("RadioTheme1", 0, 0, "Light Theme", true);
-        auto radioTheme2 = UltraCanvasRadio::Create("RadioTheme2", 0, 0, "Dark Theme", false);
-        auto radioTheme3 = UltraCanvasRadio::Create("RadioTheme3", 0, 0, "Auto Theme", false);
+        auto radioTheme1 = UltraCanvasRadio::Create("RadioTheme1", 0, 0, Tr("Light Theme"), true);
+        auto radioTheme2 = UltraCanvasRadio::Create("RadioTheme2", 0, 0, Tr("Dark Theme"), false);
+        auto radioTheme3 = UltraCanvasRadio::Create("RadioTheme3", 0, 0, Tr("Auto Theme"), false);
 
         radioRow->themeRadioGroup->AddRadioButton(radioTheme1);
         radioRow->themeRadioGroup->AddRadioButton(radioTheme2);
@@ -360,34 +360,39 @@ namespace UltraCanvas {
         // Create radio button group for quality (owned by the row so it survives function exit)
         radioRow->qualityRadioGroup = std::make_shared<UltraCanvasRadioGroup>();
 
-        auto radioQuality1 = UltraCanvasRadio::Create("RadioQuality1", 0, 0, "Low Quality", false);
-        auto radioQuality2 = UltraCanvasRadio::Create("RadioQuality2", 0, 0, "Medium Quality", true);
-        auto radioQuality3 = UltraCanvasRadio::Create("RadioQuality3", 0, 0, "High Quality", false);
+        auto radioQuality1 = UltraCanvasRadio::Create("RadioQuality1", 0, 0, Tr("Low Quality"), false);
+        auto radioQuality2 = UltraCanvasRadio::Create("RadioQuality2", 0, 0, Tr("Medium Quality"), true);
+        auto radioQuality3 = UltraCanvasRadio::Create("RadioQuality3", 0, 0, Tr("High Quality"), false);
 
         radioRow->qualityRadioGroup->AddRadioButton(radioQuality1);
         radioRow->qualityRadioGroup->AddRadioButton(radioQuality2);
         radioRow->qualityRadioGroup->AddRadioButton(radioQuality3);
 
         // Selected option display
-        auto selectedTheme = DemoKit::CreateText("SelectedTheme", Tr("Selected Theme: Light"));
+        auto selectedTheme = DemoKit::CreateText("SelectedTheme", TrF("Selected Theme: {0}", Tr("Light")));
         selectedTheme->SetTextColor(Color(0, 100, 200, 255));
 
-        auto selectedQuality = DemoKit::CreateText("SelectedQuality", Tr("Selected Quality: Medium"));
+        auto selectedQuality = DemoKit::CreateText("SelectedQuality", TrF("Selected Quality: {0}", Tr("Medium")));
         selectedQuality->SetTextColor(Color(0, 100, 200, 255));
 
         // Radio group callbacks
         radioRow->themeRadioGroup->onSelectionChanged = [selectedTheme](std::shared_ptr<UltraCanvasRadio> selected) {
             if (selected) {
-                std::string themeName = selected->GetText();
-                selectedTheme->SetText("Selected Theme: " + themeName.substr(0, themeName.find(" ")));
+                // The short name by the radio's id, not cut from its (translated) label
+                const std::string& id = selected->GetIdentifier();
+                std::string themeName = id == "RadioTheme1" ? Tr("Light")
+                                      : id == "RadioTheme2" ? Tr("Dark") : Tr("Auto");
+                selectedTheme->SetText(TrF("Selected Theme: {0}", themeName));
                 debugOutput << "Theme changed to: " << selected->GetText() << std::endl;
             }
         };
 
         radioRow->qualityRadioGroup->onSelectionChanged = [selectedQuality](std::shared_ptr<UltraCanvasRadio> selected) {
             if (selected) {
-                std::string qualityName = selected->GetText();
-                selectedQuality->SetText("Selected Quality: " + qualityName.substr(0, qualityName.find(" ")));
+                const std::string& id = selected->GetIdentifier();
+                std::string qualityName = id == "RadioQuality1" ? Tr("Low")
+                                        : id == "RadioQuality2" ? Tr("Medium") : Tr("High");
+                selectedQuality->SetText(TrF("Selected Quality: {0}", qualityName));
                 debugOutput << "Quality changed to: " << selected->GetText() << std::endl;
             }
         };
@@ -416,20 +421,20 @@ namespace UltraCanvas {
         styledRow->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
 
         // Material style checkbox
-        auto materialCheckbox = std::make_shared<UltraCanvasCheckbox>("MaterialCheckbox", "Material Design");
+        auto materialCheckbox = std::make_shared<UltraCanvasCheckbox>("MaterialCheckbox", Tr("Material Design"));
         materialCheckbox->SetStyle(CheckboxStyle::Material);
         materialCheckbox->GetVisualStyle().boxColor = Color(33, 150, 243, 255);  // Material Blue
         materialCheckbox->GetVisualStyle().checkmarkColor = Color(255, 255, 255, 255);
         materialCheckbox->GetVisualStyle().boxSize = 20.0f;
 
         // Rounded style checkbox
-        auto roundedCheckbox = std::make_shared<UltraCanvasCheckbox>("RoundedCheckbox", "Rounded Corners");
+        auto roundedCheckbox = std::make_shared<UltraCanvasCheckbox>("RoundedCheckbox", Tr("Rounded Corners"));
         roundedCheckbox->SetStyle(CheckboxStyle::Rounded);
         roundedCheckbox->GetVisualStyle().cornerRadius = 5.0f;
         roundedCheckbox->GetVisualStyle().boxColor = Color(100, 200, 100, 255);
 
         // Custom colored checkbox
-        auto customColorCheckbox = std::make_shared<UltraCanvasCheckbox>("CustomColorCheckbox", "Custom Colors");
+        auto customColorCheckbox = std::make_shared<UltraCanvasCheckbox>("CustomColorCheckbox", Tr("Custom Colors"));
         customColorCheckbox->SetColors(
                 Color(255, 100, 100, 255),  // Red box
                 Color(255, 255, 0, 255),     // Yellow checkmark
@@ -437,7 +442,7 @@ namespace UltraCanvas {
         );
 
         // Large checkbox
-        auto largeCheckbox = std::make_shared<UltraCanvasCheckbox>("LargeCheckbox", "Large Size");
+        auto largeCheckbox = std::make_shared<UltraCanvasCheckbox>("LargeCheckbox", Tr("Large Size"));
         largeCheckbox->SetBoxSize(28.0f);
         largeCheckbox->SetFont("Arial", 16.0f, FontWeight::Bold);
 
@@ -460,15 +465,15 @@ namespace UltraCanvas {
         auto featureTitle = DemoKit::AddText(featureContainer, "FeatureTitle", Tr("Enable Features:"));
         featureTitle->SetFontWeight(FontWeight::Bold);
 
-        auto feature1 = std::make_shared<UltraCanvasCheckbox>("Feature1", "Spell Check");
-        auto feature2 = std::make_shared<UltraCanvasCheckbox>("Feature2", "Auto-Complete");
-        auto feature3 = std::make_shared<UltraCanvasCheckbox>("Feature3", "Syntax Highlighting");
-        auto feature4 = std::make_shared<UltraCanvasCheckbox>("Feature4", "Line Numbers");
+        auto feature1 = std::make_shared<UltraCanvasCheckbox>("Feature1", Tr("Spell Check"));
+        auto feature2 = std::make_shared<UltraCanvasCheckbox>("Feature2", Tr("Auto-Complete"));
+        auto feature3 = std::make_shared<UltraCanvasCheckbox>("Feature3", Tr("Syntax Highlighting"));
+        auto feature4 = std::make_shared<UltraCanvasCheckbox>("Feature4", Tr("Line Numbers"));
 
-        auto feature5 = std::make_shared<UltraCanvasCheckbox>("Feature5", "Word Wrap");
-        auto feature6 = std::make_shared<UltraCanvasCheckbox>("Feature6", "Auto-Indent");
-        auto feature7 = std::make_shared<UltraCanvasCheckbox>("Feature7", "Show Whitespace");
-        auto feature8 = std::make_shared<UltraCanvasCheckbox>("Feature8", "Code Folding");
+        auto feature5 = std::make_shared<UltraCanvasCheckbox>("Feature5", Tr("Word Wrap"));
+        auto feature6 = std::make_shared<UltraCanvasCheckbox>("Feature6", Tr("Auto-Indent"));
+        auto feature7 = std::make_shared<UltraCanvasCheckbox>("Feature7", Tr("Show Whitespace"));
+        auto feature8 = std::make_shared<UltraCanvasCheckbox>("Feature8", Tr("Code Folding"));
 
         // Two columns of four, indented under the title
         auto featureColumns = DemoKit::CreateRow("FeatureColumns", 20);
@@ -493,7 +498,7 @@ namespace UltraCanvas {
         auto buttonsRow = DemoKit::AddRow(controlsColumn, "FeatureButtons", 10);
 
         auto selectAllBtn = std::make_shared<UltraCanvasButton>("SelectAllBtn", 0, 0, 120, 30);
-        selectAllBtn->SetText("Select All");
+        selectAllBtn->SetText(Tr("Select All"));
         selectAllBtn->SetOnClick([feature1, feature2, feature3, feature4, feature5, feature6, feature7, feature8]() {
             feature1->SetChecked(true);
             feature2->SetChecked(true);
@@ -507,7 +512,7 @@ namespace UltraCanvas {
         });
 
         auto clearAllBtn = std::make_shared<UltraCanvasButton>("ClearAllBtn", 0, 0, 120, 30);
-        clearAllBtn->SetText("Clear All");
+        clearAllBtn->SetText(Tr("Clear All"));
         clearAllBtn->SetOnClick([feature1, feature2, feature3, feature4, feature5, feature6, feature7, feature8]() {
             feature1->SetChecked(false);
             feature2->SetChecked(false);
@@ -521,7 +526,7 @@ namespace UltraCanvas {
         });
 
         auto toggleAllBtn = std::make_shared<UltraCanvasButton>("ToggleAllBtn", 0, 0, 120, 30);
-        toggleAllBtn->SetText("Toggle All");
+        toggleAllBtn->SetText(Tr("Toggle All"));
         toggleAllBtn->SetOnClick([feature1, feature2, feature3, feature4, feature5, feature6, feature7, feature8]() {
             feature1->Toggle();
             feature2->Toggle();
@@ -543,24 +548,24 @@ namespace UltraCanvas {
         // Update feature status
         auto updateFeatureStatus = [featureStatus, feature1, feature2, feature3, feature4, feature5, feature6, feature7, feature8]() {
             std::vector<std::string> selectedFeatures;
-            if (feature1->IsChecked()) selectedFeatures.push_back("Spell Check");
-            if (feature2->IsChecked()) selectedFeatures.push_back("Auto-Complete");
-            if (feature3->IsChecked()) selectedFeatures.push_back("Syntax Highlighting");
-            if (feature4->IsChecked()) selectedFeatures.push_back("Line Numbers");
-            if (feature5->IsChecked()) selectedFeatures.push_back("Word Wrap");
-            if (feature6->IsChecked()) selectedFeatures.push_back("Auto-Indent");
-            if (feature7->IsChecked()) selectedFeatures.push_back("Show Whitespace");
-            if (feature8->IsChecked()) selectedFeatures.push_back("Code Folding");
+            if (feature1->IsChecked()) selectedFeatures.push_back(Tr("Spell Check"));
+            if (feature2->IsChecked()) selectedFeatures.push_back(Tr("Auto-Complete"));
+            if (feature3->IsChecked()) selectedFeatures.push_back(Tr("Syntax Highlighting"));
+            if (feature4->IsChecked()) selectedFeatures.push_back(Tr("Line Numbers"));
+            if (feature5->IsChecked()) selectedFeatures.push_back(Tr("Word Wrap"));
+            if (feature6->IsChecked()) selectedFeatures.push_back(Tr("Auto-Indent"));
+            if (feature7->IsChecked()) selectedFeatures.push_back(Tr("Show Whitespace"));
+            if (feature8->IsChecked()) selectedFeatures.push_back(Tr("Code Folding"));
 
             if (selectedFeatures.empty()) {
-                featureStatus->SetText("Selected Features:\nNone");
+                featureStatus->SetText(Tr("Selected Features:\nNone"));
             } else {
-                std::string statusText = "Selected Features:\n";
+                std::string list;
                 for (size_t i = 0; i < selectedFeatures.size(); ++i) {
-                    statusText += selectedFeatures[i];
-                    if (i < selectedFeatures.size() - 1) statusText += ", ";
+                    list += selectedFeatures[i];
+                    if (i < selectedFeatures.size() - 1) list += ", ";
                 }
-                featureStatus->SetText(statusText);
+                featureStatus->SetText(TrF("Selected Features:\n{0}", list));
             }
         };
 

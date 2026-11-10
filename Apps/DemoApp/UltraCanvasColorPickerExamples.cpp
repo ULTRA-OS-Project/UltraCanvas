@@ -89,7 +89,7 @@ namespace UltraCanvas {
         auto variantsRow = DemoKit::AddRow(variantsCard, "VariantsRow", 20);
 
         // --- 1: thin sliders, hue ring, tab-bar selector, value spinners ---
-        auto thinColumn = addColumn(variantsRow, "ThinVariant", "Thin sliders • ring • tab bar • < > steppers");
+        auto thinColumn = addColumn(variantsRow, "ThinVariant", Tr("Thin sliders • ring • tab bar • < > steppers"));
 
         auto thin = CreateColorPicker("ThinRingPicker", Color(0x85, 0xFF, 0xFB, 0xFF),
                                       0, 0, pickerW, pickerH);
@@ -100,7 +100,7 @@ namespace UltraCanvas {
         DemoKit::AddFixed(thinColumn, thin);
 
         // --- 2: thick sliders, SV rectangle + hue bar, dropdown selector ---
-        auto thickColumn = addColumn(variantsRow, "ThickVariant", "Thick sliders • hue bar • dropdown");
+        auto thickColumn = addColumn(variantsRow, "ThickVariant", Tr("Thick sliders • hue bar • dropdown"));
 
         auto thick = CreateColorPicker("ThickBarPicker", Color(0x85, 0xFF, 0xFB, 0xFF),
                                        0, 0, pickerW, pickerH);
@@ -116,7 +116,7 @@ namespace UltraCanvas {
         auto hlRow = DemoKit::AddRow(hlCard, "HueLightnessRow", 20);
 
         // --- 4: hue (top -> bottom) x lightness (black -> white) field ---
-        auto fieldColumn = addColumn(hlRow, "HLFieldVariant", "Hue x lightness field");
+        auto fieldColumn = addColumn(hlRow, "HLFieldVariant", Tr("Hue x lightness field"));
 
         auto field = CreateColorPicker("HueLightnessFieldPicker", Color(0x00, 0xA0, 0xFF, 0xFF),
                                        0, 0, pickerW, pickerH);
@@ -131,7 +131,7 @@ namespace UltraCanvas {
         //     palette under it, so the column takes only the room it uses.
         //     The toolbox is 560 tall: the largest design (the circle) with
         //     its channels open, and the palette. ---
-        auto slidersColumn = addColumn(hlRow, "HLSlidersVariant", "Sliders in a toolbox • channels fold away");
+        auto slidersColumn = addColumn(hlRow, "HLSlidersVariant", Tr("Sliders in a toolbox • channels fold away"));
 
         auto toolbox = CreateContainer("HLSlidersToolbox", 0, 0, pickerW, 560);
         toolbox->layout.SetFlexColumn().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Start);
@@ -155,7 +155,7 @@ namespace UltraCanvas {
         toolbox->AddChild(palette);
 
         // --- 6: the full picker scaled to 60% ---
-        auto scaledColumn = addColumn(hlRow, "ScaledPicker", "Scaled to 60%");
+        auto scaledColumn = addColumn(hlRow, "ScaledPicker", Tr("Scaled to 60%"));
 
         auto scaled = CreateColorPicker("ScaledColorPicker", Color(0x85, 0xFF, 0xFB, 0xFF),
                                         0, 0, 174, 282);

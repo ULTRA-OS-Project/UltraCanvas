@@ -96,48 +96,48 @@ namespace UltraCanvas {
 
         // ===== LEFT SIDEBAR (controls) =====
         auto leftSidebar = DemoKit::AddCard(contentContainer, "leftSidebar", "", "", 200);
-        AddVennSidebarHeading(leftSidebar, "controlsTitle", "CONTROLS");
+        AddVennSidebarHeading(leftSidebar, "controlsTitle", Tr("CONTROLS"));
 
-        AddVennControlLabel(leftSidebar, "layoutLabel", "Diagram Layout");
+        AddVennControlLabel(leftSidebar, "layoutLabel", Tr("Diagram Layout"));
         auto layoutSelector = std::make_shared<UltraCanvasDropdown>("layoutSelector", 0, 0, 170, 28);
-        layoutSelector->AddItem("Two Circles", "2");
-        layoutSelector->AddItem("Three Circles", "3");
-        layoutSelector->AddItem("Four Circles", "4");
-        layoutSelector->AddItem("Nested (Boxes)", "nested");
+        layoutSelector->AddItem(Tr("Two Circles"), "2");
+        layoutSelector->AddItem(Tr("Three Circles"), "3");
+        layoutSelector->AddItem(Tr("Four Circles"), "4");
+        layoutSelector->AddItem(Tr("Nested (Boxes)"), "nested");
         layoutSelector->SetSelectedIndex(1);
         DemoKit::AddStretched(leftSidebar, layoutSelector);
 
-        AddVennControlLabel(leftSidebar, "styleLabel", "Visual Style");
+        AddVennControlLabel(leftSidebar, "styleLabel", Tr("Visual Style"));
         auto styleSelector = std::make_shared<UltraCanvasDropdown>("styleSelector", 0, 0, 170, 28);
-        styleSelector->AddItem("Classic", "classic");
-        styleSelector->AddItem("Modern", "modern");
-        styleSelector->AddItem("Minimal", "minimal");
-        styleSelector->AddItem("Filled", "filled");
+        styleSelector->AddItem(Tr("Classic"), "classic");
+        styleSelector->AddItem(Tr("Modern"), "modern");
+        styleSelector->AddItem(Tr("Minimal"), "minimal");
+        styleSelector->AddItem(Tr("Filled"), "filled");
         styleSelector->SetSelectedIndex(0);
         DemoKit::AddStretched(leftSidebar, styleSelector);
 
-        AddVennControlLabel(leftSidebar, "shapeLabel", "Set Shape");
+        AddVennControlLabel(leftSidebar, "shapeLabel", Tr("Set Shape"));
         auto shapeSelector = std::make_shared<UltraCanvasDropdown>("shapeSelector", 0, 0, 170, 28);
-        shapeSelector->AddItem("Circles", "circle");
-        shapeSelector->AddItem("Rounded Boxes", "rect");
+        shapeSelector->AddItem(Tr("Circles"), "circle");
+        shapeSelector->AddItem(Tr("Rounded Boxes"), "rect");
         shapeSelector->SetSelectedIndex(0);
         DemoKit::AddStretched(leftSidebar, shapeSelector);
 
-        auto btnReset = MakeVennButton("btnReset", "Reset View");
+        auto btnReset = MakeVennButton("btnReset", Tr("Reset View"));
         btnReset->SetBackgroundColor(Color(108, 117, 125, 255));
         btnReset->SetMargin(12, 0, 0, 0);
         DemoKit::Add(leftSidebar, btnReset);
 
-        auto btnExport = MakeVennButton("btnExport", "Export Data");
+        auto btnExport = MakeVennButton("btnExport", Tr("Export Data"));
         btnExport->SetBackgroundColor(Color(25, 135, 84, 255));
         DemoKit::Add(leftSidebar, btnExport);
 
         auto helpBox = AddVennPanelText(leftSidebar, "helpBox",
-                "INTERACTION TIPS\n\n"
+                Tr("INTERACTION TIPS\n\n"
                 "- Drag shapes to move\n"
                 "- Hover for details\n"
                 "- Switch tabs to explore\n"
-                "- Try the Boxes shape",
+                "- Try the Boxes shape"),
                 9, Color(255, 243, 205, 255), 10);
         helpBox->SetMargin(12, 0, 0, 0);
 
@@ -154,15 +154,15 @@ namespace UltraCanvas {
         }
 
         auto statusBar = AddVennPanelText(tabsCard, "statusBar",
-                "Ready - Select a tab to explore different Venn diagram examples",
+                Tr("Ready - Select a tab to explore different Venn diagram examples"),
                 11, Color(233, 236, 239, 255), 15);
         statusBar->SetTextColor(Color(73, 80, 87, 255));
 
         // ===== RIGHT SIDEBAR (stats/legend) =====
         auto rightSidebar = DemoKit::AddCard(contentContainer, "rightSidebar", "", "", 200);
-        AddVennSidebarHeading(rightSidebar, "statsTitle", "SUMMARY STATISTICS");
+        AddVennSidebarHeading(rightSidebar, "statsTitle", Tr("SUMMARY STATISTICS"));
         AddVennPanelText(rightSidebar, "statsPanel",
-                "Total Sets: 3\nTotal Items: 16\nUnique Regions: 7\n\nIntersections:\n- 2-way: 3\n- 3-way: 1",
+                Tr("Total Sets: 3\nTotal Items: 16\nUnique Regions: 7\n\nIntersections:\n- 2-way: 3\n- 3-way: 1"),
                 10, Color(248, 249, 250, 255), 12);
 
         auto legendTitle = DemoKit::CreateText("legendTitle", Tr("INTERACTIVE LEGEND"));
@@ -172,29 +172,29 @@ namespace UltraCanvas {
         legendTitle->SetMargin(12, 0, 0, 0);
         DemoKit::Add(rightSidebar, legendTitle);
         AddVennPanelText(rightSidebar, "legendPanel",
-                "Set A: Frontend\nSet B: Backend\nSet C: DevOps\n\nOverlaps show shared "
-                "skills. Hover a shape for its item count.",
+                Tr("Set A: Frontend\nSet B: Backend\nSet C: DevOps\n\nOverlaps show shared "
+                "skills. Hover a shape for its item count."),
                 9, Color(248, 249, 250, 255), 12);
 
         // Every overlapping diagram is built at the same size.
         const int VENN_W = 500, VENN_H = 380;
 
         // TAB 1: TWO CIRCLES
-        auto twoCirclesTab = MakeVennTabPage("twoCirclesTab", "twoCirclesTitle", "Cats vs Dogs: Pet Preferences");
+        auto twoCirclesTab = MakeVennTabPage("twoCirclesTab", "twoCirclesTitle", Tr("Cats vs Dogs: Pet Preferences"));
 
         auto twoCirclesVenn = std::make_shared<UltraCanvasVennDiagramElement>("twoCirclesVenn", 0, 0, VENN_W, VENN_H);
         twoCirclesVenn->ClearCircles();
-        twoCirclesVenn->AddCircle("Cats", Color(255, 99, 132, 180));
-        twoCirclesVenn->AddCircle("Dogs", Color(54, 162, 235, 180));
-        twoCirclesVenn->AddItemToCircle(0, "Independent");
-        twoCirclesVenn->AddItemToCircle(0, "Low maintenance");
-        twoCirclesVenn->AddItemToCircle(0, "Litter trained");
-        twoCirclesVenn->AddItemToCircle(1, "Loyal companion");
-        twoCirclesVenn->AddItemToCircle(1, "Needs walks");
-        twoCirclesVenn->AddItemToCircle(1, "Protective");
-        twoCirclesVenn->AddItemToIntersection({0, 1}, "Furry");
-        twoCirclesVenn->AddItemToIntersection({0, 1}, "Companionship");
-        twoCirclesVenn->AddItemToIntersection({0, 1}, "Playful");
+        twoCirclesVenn->AddCircle(Tr("Cats"), Color(255, 99, 132, 180));
+        twoCirclesVenn->AddCircle(Tr("Dogs"), Color(54, 162, 235, 180));
+        twoCirclesVenn->AddItemToCircle(0, Tr("Independent"));
+        twoCirclesVenn->AddItemToCircle(0, Tr("Low maintenance"));
+        twoCirclesVenn->AddItemToCircle(0, Tr("Litter trained"));
+        twoCirclesVenn->AddItemToCircle(1, Tr("Loyal companion"));
+        twoCirclesVenn->AddItemToCircle(1, Tr("Needs walks"));
+        twoCirclesVenn->AddItemToCircle(1, Tr("Protective"));
+        twoCirclesVenn->AddItemToIntersection({0, 1}, Tr("Furry"));
+        twoCirclesVenn->AddItemToIntersection({0, 1}, Tr("Companionship"));
+        twoCirclesVenn->AddItemToIntersection({0, 1}, Tr("Playful"));
         twoCirclesVenn->SetLayout(VennLayout::TwoCircles);
         twoCirclesVenn->SetStyle(VennStyle::Classic);
         twoCirclesVenn->SetShowLabels(true);
@@ -202,13 +202,13 @@ namespace UltraCanvas {
         AddVennDiagram(twoCirclesTab, twoCirclesVenn);
 
         // TAB 2: THREE CIRCLES
-        auto threeCirclesTab = MakeVennTabPage("threeCirclesTab", "threeCirclesTitle", "Developer Skill Overlap Analysis");
+        auto threeCirclesTab = MakeVennTabPage("threeCirclesTab", "threeCirclesTitle", Tr("Developer Skill Overlap Analysis"));
 
         auto threeCirclesVenn = std::make_shared<UltraCanvasVennDiagramElement>("threeCirclesVenn", 0, 0, VENN_W, VENN_H);
         threeCirclesVenn->ClearCircles();
-        threeCirclesVenn->AddCircle("Frontend", Color(54, 162, 235, 180));
-        threeCirclesVenn->AddCircle("Backend", Color(255, 99, 132, 180));
-        threeCirclesVenn->AddCircle("DevOps", Color(255, 205, 86, 180));
+        threeCirclesVenn->AddCircle(Tr("Frontend"), Color(54, 162, 235, 180));
+        threeCirclesVenn->AddCircle(Tr("Backend"), Color(255, 99, 132, 180));
+        threeCirclesVenn->AddCircle(Tr("DevOps"), Color(255, 205, 86, 180));
 
         threeCirclesVenn->AddItemToCircle(0, "React");
         threeCirclesVenn->AddItemToCircle(0, "Vue.js");
@@ -225,13 +225,13 @@ namespace UltraCanvas {
         threeCirclesVenn->AddItemToIntersection({0, 1}, "TypeScript");
         threeCirclesVenn->AddItemToIntersection({0, 1}, "GraphQL");
 
-        threeCirclesVenn->AddItemToIntersection({1, 2}, "Monitoring");
-        threeCirclesVenn->AddItemToIntersection({1, 2}, "Logging");
+        threeCirclesVenn->AddItemToIntersection({1, 2}, Tr("Monitoring"));
+        threeCirclesVenn->AddItemToIntersection({1, 2}, Tr("Logging"));
 
-        threeCirclesVenn->AddItemToIntersection({0, 2}, "Performance");
+        threeCirclesVenn->AddItemToIntersection({0, 2}, Tr("Performance"));
 
         threeCirclesVenn->AddItemToIntersection({0, 1, 2}, "Git");
-        threeCirclesVenn->AddItemToIntersection({0, 1, 2}, "Testing");
+        threeCirclesVenn->AddItemToIntersection({0, 1, 2}, Tr("Testing"));
 
         threeCirclesVenn->SetLayout(VennLayout::ThreeCircles);
         threeCirclesVenn->SetStyle(VennStyle::Classic);
@@ -240,27 +240,27 @@ namespace UltraCanvas {
         AddVennDiagram(threeCirclesTab, threeCirclesVenn);
 
         // TAB 3: FOUR CIRCLES
-        auto fourCirclesTab = MakeVennTabPage("fourCirclesTab", "fourCirclesTitle", "Software Development Lifecycle");
+        auto fourCirclesTab = MakeVennTabPage("fourCirclesTab", "fourCirclesTitle", Tr("Software Development Lifecycle"));
 
         auto fourCirclesVenn = std::make_shared<UltraCanvasVennDiagramElement>("fourCirclesVenn", 0, 0, VENN_W, VENN_H);
         fourCirclesVenn->ClearCircles();
-        fourCirclesVenn->AddCircle("Planning", Color(75, 192, 192, 180));
-        fourCirclesVenn->AddCircle("Development", Color(255, 159, 64, 180));
-        fourCirclesVenn->AddCircle("Testing", Color(153, 102, 255, 180));
-        fourCirclesVenn->AddCircle("Deployment", Color(255, 99, 132, 180));
+        fourCirclesVenn->AddCircle(Tr("Planning"), Color(75, 192, 192, 180));
+        fourCirclesVenn->AddCircle(Tr("Development"), Color(255, 159, 64, 180));
+        fourCirclesVenn->AddCircle(Tr("Testing"), Color(153, 102, 255, 180));
+        fourCirclesVenn->AddCircle(Tr("Deployment"), Color(255, 99, 132, 180));
 
-        fourCirclesVenn->AddItemToCircle(0, "Requirements");
-        fourCirclesVenn->AddItemToCircle(0, "User Stories");
-        fourCirclesVenn->AddItemToCircle(1, "Coding");
-        fourCirclesVenn->AddItemToCircle(1, "Code Review");
-        fourCirclesVenn->AddItemToCircle(2, "Unit Tests");
-        fourCirclesVenn->AddItemToCircle(2, "Integration Tests");
-        fourCirclesVenn->AddItemToCircle(3, "Release Notes");
-        fourCirclesVenn->AddItemToCircle(3, "Production");
+        fourCirclesVenn->AddItemToCircle(0, Tr("Requirements"));
+        fourCirclesVenn->AddItemToCircle(0, Tr("User Stories"));
+        fourCirclesVenn->AddItemToCircle(1, Tr("Coding"));
+        fourCirclesVenn->AddItemToCircle(1, Tr("Code Review"));
+        fourCirclesVenn->AddItemToCircle(2, Tr("Unit Tests"));
+        fourCirclesVenn->AddItemToCircle(2, Tr("Integration Tests"));
+        fourCirclesVenn->AddItemToCircle(3, Tr("Release Notes"));
+        fourCirclesVenn->AddItemToCircle(3, Tr("Production"));
 
-        fourCirclesVenn->AddItemToIntersection({0, 1}, "Design Docs");
+        fourCirclesVenn->AddItemToIntersection({0, 1}, Tr("Design Docs"));
         fourCirclesVenn->AddItemToIntersection({1, 2}, "TDD");
-        fourCirclesVenn->AddItemToIntersection({2, 3}, "Staging");
+        fourCirclesVenn->AddItemToIntersection({2, 3}, Tr("Staging"));
 
         fourCirclesVenn->SetLayout(VennLayout::FourCircles);
         fourCirclesVenn->SetStyle(VennStyle::Classic);
@@ -269,7 +269,7 @@ namespace UltraCanvas {
         AddVennDiagram(fourCirclesTab, fourCirclesVenn);
 
         // TAB 4: SET HIERARCHY (rectangular / LaTeX style)
-        auto hierarchyTab = MakeVennTabPage("hierarchyTab", "hierarchyTitle", "Algebraic Structures (Set Hierarchy)");
+        auto hierarchyTab = MakeVennTabPage("hierarchyTab", "hierarchyTitle", Tr("Algebraic Structures (Set Hierarchy)"));
 
         auto hierarchyHint = DemoKit::AddText(hierarchyTab, "hierarchyHint",
                 Tr("Nested rectangular sets: Group superset Abelian Group superset Ring superset Field"));
@@ -279,10 +279,10 @@ namespace UltraCanvas {
 
         auto hierarchyVenn = std::make_shared<UltraCanvasVennDiagramElement>("hierarchyVenn", 0, 0, 540, 420);
         hierarchyVenn->ClearCircles();
-        hierarchyVenn->AddCircle("Group", Color(210, 244, 180, 200));
-        hierarchyVenn->AddCircle("Abelian Group", Color(248, 200, 210, 210));
-        hierarchyVenn->AddCircle("Ring", Color(190, 200, 255, 210));
-        hierarchyVenn->AddCircle("Field", Color(255, 205, 205, 220));
+        hierarchyVenn->AddCircle(Tr("Group"), Color(210, 244, 180, 200));
+        hierarchyVenn->AddCircle(Tr("Abelian Group"), Color(248, 200, 210, 210));
+        hierarchyVenn->AddCircle(Tr("Ring"), Color(190, 200, 255, 210));
+        hierarchyVenn->AddCircle(Tr("Field"), Color(255, 205, 205, 220));
 
         hierarchyVenn->AddItemToCircle(0, "GL(n)");
         hierarchyVenn->AddItemToCircle(0, "O(n)");
@@ -300,7 +300,7 @@ namespace UltraCanvas {
         AddVennDiagram(hierarchyTab, hierarchyVenn);
 
         // TAB 5: CLOUD PLATFORMS
-        auto cloudTab = MakeVennTabPage("cloudTab", "cloudTitle", "Cloud Platform Service Comparison");
+        auto cloudTab = MakeVennTabPage("cloudTab", "cloudTitle", Tr("Cloud Platform Service Comparison"));
 
         auto cloudVenn = std::make_shared<UltraCanvasVennDiagramElement>("cloudVenn", 0, 0, VENN_W, VENN_H);
         cloudVenn->ClearCircles();
@@ -320,11 +320,11 @@ namespace UltraCanvas {
         cloudVenn->AddItemToCircle(2, "Cloud Storage");
         cloudVenn->AddItemToCircle(2, "Cloud Functions");
 
-        cloudVenn->AddItemToIntersection({0, 1}, "Container Registry");
+        cloudVenn->AddItemToIntersection({0, 1}, Tr("Container Registry"));
         cloudVenn->AddItemToIntersection({1, 2}, "Kubernetes");
-        cloudVenn->AddItemToIntersection({0, 2}, "Data Lake");
-        cloudVenn->AddItemToIntersection({0, 1, 2}, "Compute");
-        cloudVenn->AddItemToIntersection({0, 1, 2}, "Storage");
+        cloudVenn->AddItemToIntersection({0, 2}, Tr("Data Lake"));
+        cloudVenn->AddItemToIntersection({0, 1, 2}, Tr("Compute"));
+        cloudVenn->AddItemToIntersection({0, 1, 2}, Tr("Storage"));
 
         cloudVenn->SetLayout(VennLayout::ThreeCircles);
         cloudVenn->SetStyle(VennStyle::Classic);
@@ -333,25 +333,25 @@ namespace UltraCanvas {
         AddVennDiagram(cloudTab, cloudVenn);
 
         // TAB 6: CUSTOM PRESET
-        auto customTab = MakeVennTabPage("customTab", "customTitle", "Cross-Functional Team Overlap");
+        auto customTab = MakeVennTabPage("customTab", "customTitle", Tr("Cross-Functional Team Overlap"));
 
         auto customVenn = std::make_shared<UltraCanvasVennDiagramElement>("customVenn", 0, 0, VENN_W, VENN_H);
         customVenn->ClearCircles();
-        customVenn->AddCircle("Design", Color(255, 99, 132, 180));
-        customVenn->AddCircle("Engineering", Color(54, 162, 235, 180));
-        customVenn->AddCircle("Product", Color(255, 205, 86, 180));
+        customVenn->AddCircle(Tr("Design"), Color(255, 99, 132, 180));
+        customVenn->AddCircle(Tr("Engineering"), Color(54, 162, 235, 180));
+        customVenn->AddCircle(Tr("Product"), Color(255, 205, 86, 180));
 
-        customVenn->AddItemToCircle(0, "UX Research");
-        customVenn->AddItemToCircle(0, "Wireframes");
-        customVenn->AddItemToCircle(1, "Architecture");
-        customVenn->AddItemToCircle(1, "Implementation");
-        customVenn->AddItemToCircle(2, "Roadmap");
-        customVenn->AddItemToCircle(2, "Metrics");
+        customVenn->AddItemToCircle(0, Tr("UX Research"));
+        customVenn->AddItemToCircle(0, Tr("Wireframes"));
+        customVenn->AddItemToCircle(1, Tr("Architecture"));
+        customVenn->AddItemToCircle(1, Tr("Implementation"));
+        customVenn->AddItemToCircle(2, Tr("Roadmap"));
+        customVenn->AddItemToCircle(2, Tr("Metrics"));
 
-        customVenn->AddItemToIntersection({0, 1}, "Prototypes");
-        customVenn->AddItemToIntersection({1, 2}, "Technical Specs");
-        customVenn->AddItemToIntersection({0, 2}, "User Stories");
-        customVenn->AddItemToIntersection({0, 1, 2}, "Sprint Planning");
+        customVenn->AddItemToIntersection({0, 1}, Tr("Prototypes"));
+        customVenn->AddItemToIntersection({1, 2}, Tr("Technical Specs"));
+        customVenn->AddItemToIntersection({0, 2}, Tr("User Stories"));
+        customVenn->AddItemToIntersection({0, 1, 2}, Tr("Sprint Planning"));
 
         customVenn->SetLayout(VennLayout::ThreeCircles);
         customVenn->SetStyle(VennStyle::Modern);
@@ -360,12 +360,12 @@ namespace UltraCanvas {
         AddVennDiagram(customTab, customVenn);
 
         // Add all tabs
-        tabbedContainer->AddTab("Two Circles", twoCirclesTab);
-        tabbedContainer->AddTab("Three Circles", threeCirclesTab);
-        tabbedContainer->AddTab("Four Circles", fourCirclesTab);
-        tabbedContainer->AddTab("Set Hierarchy", hierarchyTab);
-        tabbedContainer->AddTab("Cloud Platforms", cloudTab);
-        tabbedContainer->AddTab("Custom", customTab);
+        tabbedContainer->AddTab(Tr("Two Circles"), twoCirclesTab);
+        tabbedContainer->AddTab(Tr("Three Circles"), threeCirclesTab);
+        tabbedContainer->AddTab(Tr("Four Circles"), fourCirclesTab);
+        tabbedContainer->AddTab(Tr("Set Hierarchy"), hierarchyTab);
+        tabbedContainer->AddTab(Tr("Cloud Platforms"), cloudTab);
+        tabbedContainer->AddTab(Tr("Custom"), customTab);
 
         // The overlapping-Venn diagrams that respond to the layout dropdown.
         std::vector<std::shared_ptr<UltraCanvasVennDiagramElement>> allVenns = {
@@ -435,13 +435,15 @@ namespace UltraCanvas {
             };
 
         btnExport->onClick = [statusBar]() {
-            statusBar->SetText("Export functionality coming soon!");
+            statusBar->SetText(Tr("Export functionality coming soon!"));
         };
 
         // Hover callbacks - report the hovered set into the status bar.
         auto hoverCb = [statusBar](size_t, const VennCircle& circle) {
-            statusBar->SetText("Hovering: " + circle.label +
-                               " (" + std::to_string(circle.items.size()) + " items)");
+            statusBar->SetText(LocalisationDetail::Substitute(
+                TrN("Hovering: {0} ({n} item)", "Hovering: {0} ({n} items)",
+                    static_cast<long long>(circle.items.size())),
+                {circle.label}));
         };
         for (auto& v : allVenns) v->SetOnCircleHover(hoverCb);
 

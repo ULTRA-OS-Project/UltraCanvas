@@ -235,10 +235,9 @@ namespace UltraCanvas {
         };
 
         // ---- render mode ----
-        addLabel("CtModeLbl", "Render mode:");
+        addLabel("CtModeLbl", Tr("Render mode:"));
         auto modeDd = std::make_shared<UltraCanvasDropdown>("CtMode", 0, 0, 268, ctrlH);
-        for (const char* n : {"Filled + lines", "Filled", "Lines only",
-                              "Smooth + lines", "Heatmap + lines"}) {
+        for (const std::string& n : {Tr("Filled + lines"), Tr("Filled"), Tr("Lines only"), Tr("Smooth + lines"), Tr("Heatmap + lines")}) {
             modeDd->AddItem(n);
         }
         modeDd->SetSelectedIndex(0);
@@ -256,7 +255,7 @@ namespace UltraCanvas {
         DemoKit::AddStretched(panel, modeDd);
 
         // ---- colour map ----
-        addLabel("CtCmapLbl", "Colour map:");
+        addLabel("CtCmapLbl", Tr("Colour map:"));
         auto cmapDd = std::make_shared<UltraCanvasDropdown>("CtCmap", 0, 0, 268, ctrlH);
         for (const auto& m : ContourColormapMenu()) cmapDd->AddItem(m.first);
         cmapDd->SetSelectedIndex(0);   // Jet
@@ -269,9 +268,9 @@ namespace UltraCanvas {
         DemoKit::AddStretched(panel, cmapDd);
 
         // ---- legend ----
-        addLabel("CtLegendLbl", "Legend:");
+        addLabel("CtLegendLbl", Tr("Legend:"));
         auto legendDd = std::make_shared<UltraCanvasDropdown>("CtLegend", 0, 0, 268, ctrlH);
-        for (const char* n : {"Colour bar", "Bands (vertical)", "Bands (horizontal)", "None"}) {
+        for (const std::string& n : {Tr("Colour bar"), Tr("Bands (vertical)"), Tr("Bands (horizontal)"), Tr("None")}) {
             legendDd->AddItem(n);
         }
         legendDd->SetSelectedIndex(0);
@@ -288,7 +287,7 @@ namespace UltraCanvas {
         DemoKit::AddStretched(panel, legendDd);
 
         // ---- level count ----
-        addLabel("CtLevelsLbl", "Contour levels:");
+        addLabel("CtLevelsLbl", Tr("Contour levels:"));
         auto levelSlider = std::make_shared<UltraCanvasSlider>("CtLevels", 0, 0, 268, ctrlH);
         levelSlider->SetRange(2.0, 24.0);
         levelSlider->SetStep(1.0);
@@ -297,7 +296,7 @@ namespace UltraCanvas {
         DemoKit::AddStretched(panel, levelSlider);
 
         // ---- field smoothing ----
-        addLabel("CtSmoothLbl", "Field smoothing (sigma):");
+        addLabel("CtSmoothLbl", Tr("Field smoothing (sigma):"));
         auto smoothSlider = std::make_shared<UltraCanvasSlider>("CtSmooth", 0, 0, 268, ctrlH);
         smoothSlider->SetRange(0.0, 4.0);
         smoothSlider->SetStep(0.25);
@@ -306,7 +305,7 @@ namespace UltraCanvas {
         DemoKit::AddStretched(panel, smoothSlider);
 
         // ---- fill alpha ----
-        addLabel("CtAlphaLbl", "Fill opacity:");
+        addLabel("CtAlphaLbl", Tr("Fill opacity:"));
         auto alphaSlider = std::make_shared<UltraCanvasSlider>("CtAlpha", 0, 0, 268, ctrlH);
         alphaSlider->SetRange(0.15, 1.0);
         alphaSlider->SetStep(0.05);
@@ -315,36 +314,36 @@ namespace UltraCanvas {
         DemoKit::AddStretched(panel, alphaSlider);
 
         // ---- toggles ----
-        addCheck("CtLabels", "Inline contour labels", true,
+        addCheck("CtLabels", Tr("Inline contour labels"), true,
                  [ct](bool on) { ct->SetShowLineLabels(on); });
-        addCheck("CtBreak", "Break line under label", true,
+        addCheck("CtBreak", Tr("Break line under label"), true,
                  [ct](bool on) { ct->SetLabelBreaksLine(on); });
-        addCheck("CtHalo", "Label halo plate", false,
+        addCheck("CtHalo", Tr("Label halo plate"), false,
                  [ct](bool on) { ct->SetLabelHalo(on); });
-        addCheck("CtDashed", "Dash negative levels", true,
+        addCheck("CtDashed", Tr("Dash negative levels"), true,
                  [ct](bool on) { ct->SetNegativeLevelsDashed(on); });
-        addCheck("CtLevelColor", "Colour lines by level", false,
+        addCheck("CtLevelColor", Tr("Colour lines by level"), false,
                  [ct](bool on) {
                      ct->SetLineColorMode(on ? ContourLineColorMode::FromLevel
                                              : ContourLineColorMode::Fixed);
                  });
-        addCheck("CtMajor", "Emphasise every 3rd contour", false,
+        addCheck("CtMajor", Tr("Emphasise every 3rd contour"), false,
                  [ct](bool on) { ct->SetMajorLineEvery(on ? 3 : 0, 2.2f); });
-        addCheck("CtZero", "Highlight the zero level", false,
+        addCheck("CtZero", Tr("Highlight the zero level"), false,
                  [ct](bool on) { ct->SetHighlightZeroLevel(on, Color(0, 0, 0, 255), 2.4f); });
-        addCheck("CtNice", "Snap levels to nice numbers", true,
+        addCheck("CtNice", Tr("Snap levels to nice numbers"), true,
                  [ct](bool on) { ct->SetNiceLevels(on); });
-        addCheck("CtLineSmooth", "Smooth contour polylines", false,
+        addCheck("CtLineSmooth", Tr("Smooth contour polylines"), false,
                  [ct](bool on) { ct->SetLineSmoothing(on ? 2 : 0); });
-        addCheck("CtTicks", "Axis ticks", true,
+        addCheck("CtTicks", Tr("Axis ticks"), true,
                  [ct](bool on) { ct->SetShowAxisTicks(on); });
-        addCheck("CtZoomPan", "Wheel zoom + drag pan", true,
+        addCheck("CtZoomPan", Tr("Wheel zoom + drag pan"), true,
                  [ct](bool on) {
                      ct->SetEnableZoom(on);
                      ct->SetEnablePan(on);
                      if (!on) ct->ResetView();
                  });
-        addCheck("CtCrosshair", "Crosshair read-out", false,
+        addCheck("CtCrosshair", Tr("Crosshair read-out"), false,
                  [ct](bool on) { ct->SetShowCrosshair(on); });
     }
 
@@ -412,7 +411,7 @@ namespace UltraCanvas {
             ctInteractive->SetShowLineLabels(true);
             ctInteractive->SetLabelDecimals(1);
             ctInteractive->SetNegativeLevelsDashed(true);
-            ctInteractive->SetChartTitle("Interactive contour field");
+            ctInteractive->SetChartTitle(Tr("Interactive contour field"));
             ctInteractive->SetAxisTitles("x", "y");
             ctInteractive->SetEnableZoom(true);
             ctInteractive->SetEnablePan(true);
@@ -420,11 +419,12 @@ namespace UltraCanvas {
             auto ctWeak = std::weak_ptr<UltraCanvasContourChartElement>(ctInteractive);
             ctInteractive->SetOnContourClick([ctWeak](const ContourClickInfo& info) {
                 if (auto ct = ctWeak.lock()) {
-                    char buf[96];
-                    std::snprintf(buf, sizeof(buf),
-                                  "Clicked (%.2f, %.2f) = %.3f  [band %zu]",
-                                  info.x, info.y, info.value, info.bandIndex);
-                    ct->SetChartTitle(buf);
+                    char xs[32], ys[32], vs[32];
+                    std::snprintf(xs, sizeof(xs), "%.2f", info.x);
+                    std::snprintf(ys, sizeof(ys), "%.2f", info.y);
+                    std::snprintf(vs, sizeof(vs), "%.3f", info.value);
+                    ct->SetChartTitle(TrF("Clicked ({0}, {1}) = {2}  [band {3}]",
+                                          xs, ys, vs, info.bandIndex));
                 }
             });
         }
@@ -436,8 +436,8 @@ namespace UltraCanvas {
         tab1Right->layout.SetFlexColumn().SetFlexGap(2)
                 .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         AddContourFlexChild(tab1Right, MakeContourInteractionLine("CtInteractiveInfo",
-                "Mouse: wheel zooms at the cursor, drag pans the zoomed view, double-click resets, "
-                "a plain click reports x/y/value in the title. 2D renderer (software)."), 0);
+                Tr("Mouse: wheel zooms at the cursor, drag pans the zoomed view, double-click resets, "
+                "a plain click reports x/y/value in the title. 2D renderer (software).")), 0);
         AddContourChart(tab1Right, ctInteractive);
 
         AddContourFlexChild(tab1, panel, 0);
@@ -450,12 +450,12 @@ namespace UltraCanvas {
         tab2->SetBackgroundColor(Color(255, 255, 255, 255));
         tab2->layout.SetFlexColumn().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         AddContourFlexChild(tab2, MakeContourTabDescription("CtFilledDesc",
-                "Filled contour bands with black isolines stroked on top and the level value set "
+                Tr("Filled contour bands with black isolines stroked on top and the level value set "
                 "inline along each curve - the line is broken underneath the text. The colour bar "
-                "is centred on zero via the diverging normalisation."), 0);
+                "is centred on zero via the diverging normalisation.")), 0);
         AddContourFlexChild(tab2, MakeContourInteractionLine("CtFilledInfo",
-                "Mouse: wheel zooms at the cursor, drag pans, double-click resets the view. "
-                "2D renderer (software)."), 0);
+                Tr("Mouse: wheel zooms at the cursor, drag pans, double-click resets the view. "
+                "2D renderer (software).")), 0);
 
         auto ctFilled = CreateContourChartElement("CtFilled", 0, 0, INNER_W, INNER_H - 60);
         {
@@ -489,12 +489,12 @@ namespace UltraCanvas {
         tab3->SetBackgroundColor(Color(255, 255, 255, 255));
         tab3->layout.SetFlexColumn().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         AddContourFlexChild(tab3, MakeContourTabDescription("CtDensityDesc",
-                "The points themselves are not drawn: 4000 samples from two overlapping clusters are "
+                Tr("The points themselves are not drawn: 4000 samples from two overlapping clusters are "
                 "turned into a kernel density estimate, contoured at a fixed step, and keyed by a "
-                "discrete legend that names each band's interval."), 0);
+                "discrete legend that names each band's interval.")), 0);
         AddContourFlexChild(tab3, MakeContourInteractionLine("CtDensityInfo",
-                "Mouse: wheel zooms at the cursor, drag pans, double-click resets, hover shows the "
-                "density and its band. 2D renderer (software)."), 0);
+                Tr("Mouse: wheel zooms at the cursor, drag pans, double-click resets, hover shows the "
+                "density and its band. 2D renderer (software).")), 0);
 
         auto ctDensity = CreateContourChartElement("CtDensity", 0, 0, INNER_W, INNER_H - 60);
         {
@@ -506,7 +506,7 @@ namespace UltraCanvas {
             ctDensity->SetRenderMode(ContourRenderMode::Filled);
             ctDensity->SetLevelStep(0.02, 0.0);
             ctDensity->SetLegendMode(ContourLegendMode::DiscreteBands);
-            ctDensity->SetLegendTitle("level");
+            ctDensity->SetLegendTitle(Tr("level"));
             ctDensity->SetIntervalFormat(ContourIntervalFormat::Brackets);
             ctDensity->SetLegendDecimals(2);
             ctDensity->SetAxisTitles("x", "y");
@@ -523,12 +523,12 @@ namespace UltraCanvas {
         tab4->SetBackgroundColor(Color(255, 255, 255, 255));
         tab4->layout.SetFlexColumn().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         AddContourFlexChild(tab4, MakeContourTabDescription("CtLinesDesc",
-                "No fill at all: every isoline takes its own colour from the diverging ramp and is "
+                Tr("No fill at all: every isoline takes its own colour from the diverging ramp and is "
                 "labelled with its value. Negative levels are dashed, which is the usual convention "
-                "for reading a peak from a basin at a glance."), 0);
+                "for reading a peak from a basin at a glance.")), 0);
         AddContourFlexChild(tab4, MakeContourInteractionLine("CtLinesInfo",
-                "Mouse: wheel zooms at the cursor, drag pans, double-click resets the view. "
-                "2D renderer (software)."), 0);
+                Tr("Mouse: wheel zooms at the cursor, drag pans, double-click resets the view. "
+                "2D renderer (software).")), 0);
 
         auto ctLines = CreateContourChartElement("CtLines", 0, 0, INNER_W, INNER_H - 60);
         {
@@ -548,7 +548,7 @@ namespace UltraCanvas {
             ctLines->SetMinLabelLength(70.0);
             ctLines->SetLegendMode(ContourLegendMode::ColorBar);
             ctLines->SetLegendDecimals(1);
-            ctLines->SetChartTitle("My Plot");
+            ctLines->SetChartTitle(Tr("My Plot"));
             ctLines->SetAxisTitles("X1", "X2");
             ctLines->SetTickCounts(6, 5);
             ctLines->SetEnableZoom(true);
@@ -563,12 +563,12 @@ namespace UltraCanvas {
         tab5->SetBackgroundColor(Color(255, 255, 255, 255));
         tab5->layout.SetFlexColumn().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         AddContourFlexChild(tab5, MakeContourTabDescription("CtDarkDesc",
-                "The same density pipeline on a dark theme, with the source points faintly overlaid "
+                Tr("The same density pipeline on a dark theme, with the source points faintly overlaid "
                 "and axis tick formatters turning raw numbers into $27.50K / 10.00M. Heavier "
-                "smoothing gives the soft, glowing bands."), 0);
+                "smoothing gives the soft, glowing bands.")), 0);
         AddContourFlexChild(tab5, MakeContourInteractionLine("CtDarkInfo",
-                "Mouse: wheel zooms at the cursor, drag pans, double-click resets; the crosshair "
-                "reads the formatted x/y off the axes. 2D renderer (software)."), 0);
+                Tr("Mouse: wheel zooms at the cursor, drag pans, double-click resets; the crosshair "
+                "reads the formatted x/y off the axes. 2D renderer (software).")), 0);
 
         auto ctDark = CreateContourChartElement("CtDark", 0, 0, INNER_W, INNER_H - 60);
         {
@@ -600,7 +600,7 @@ namespace UltraCanvas {
                 std::snprintf(buf, sizeof(buf), "$%.2fK", v / 1.0e3);
                 return std::string(buf);
             });
-            ctDark->SetAxisTitles("Population", "Median Income");
+            ctDark->SetAxisTitles(Tr("Population"), Tr("Median Income"));
             ctDark->SetTickCounts(5, 6);
             ctDark->SetEnableZoom(true);
             ctDark->SetEnablePan(true);
@@ -616,11 +616,11 @@ namespace UltraCanvas {
         tab6->SetBackgroundColor(Color(255, 255, 255, 255));
         tab6->layout.SetFlexColumn().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         AddContourFlexChild(tab6, MakeContourTabDescription("Ct3DBandsDesc",
-                "The spreadsheet-style 3D contour: a coarse grid over two categorical axes, the "
-                "surface flat-shaded by z-band with the bands named in the legend below."), 0);
+                Tr("The spreadsheet-style 3D contour: a coarse grid over two categorical axes, the "
+                "surface flat-shaded by z-band with the bands named in the legend below.")), 0);
         AddContourFlexChild(tab6, MakeContourInteractionLine("Ct3DBandsInfo",
-                "Mouse: drag rotates (orbits) the surface, wheel zooms the camera. Software 3D "
-                "renderer (painter's algorithm) - works without OpenGL."), 0);
+                Tr("Mouse: drag rotates (orbits) the surface, wheel zooms the camera. Software 3D "
+                "renderer (painter's algorithm) - works without OpenGL.")), 0);
 
         auto surfBands = CreateContourSurface3DElement("CtSurfBands", 0, 0, INNER_W, INNER_H - 60);
         {
@@ -639,11 +639,11 @@ namespace UltraCanvas {
             surfBands->SetColormap(HeatmapColormap::Turbo);
             surfBands->SetShowWireframe(true, Color(40, 40, 50, 150), 1.0f);
             surfBands->SetCategoryLabelsX({"A", "B", "C", "D", "E"});
-            surfBands->SetCategoryLabelsY({"East", "North", "South", "West"});
-            surfBands->SetAxisTitles("Product", "Region", "Units");
+            surfBands->SetCategoryLabelsY({Tr("East"), Tr("North"), Tr("South"), Tr("West")});
+            surfBands->SetAxisTitles(Tr("Product"), Tr("Region"), Tr("Units"));
             surfBands->SetLegendMode(SurfaceLegendMode::Horizontal);
             surfBands->SetLegendDecimals(0);
-            surfBands->SetChartTitle("Contour Chart");
+            surfBands->SetChartTitle(Tr("Contour Chart"));
             surfBands->SetCamera(-0.75, 0.40, 4.6);
             surfBands->SetZExaggeration(1.0);
         }
@@ -656,12 +656,12 @@ namespace UltraCanvas {
         tab7->SetBackgroundColor(Color(255, 255, 255, 255));
         tab7->layout.SetFlexColumn().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         AddContourFlexChild(tab7, MakeContourTabDescription("Ct3DTerrainDesc",
-                "A smooth-shaded elevation surface with contour lines traced onto it. Each cell's "
+                Tr("A smooth-shaded elevation surface with contour lines traced onto it. Each cell's "
                 "isoline segments are drawn straight after that cell's quad, so the painter's-"
-                "algorithm ordering occludes them exactly like the terrain itself."), 0);
+                "algorithm ordering occludes them exactly like the terrain itself.")), 0);
         AddContourFlexChild(tab7, MakeContourInteractionLine("Ct3DTerrainInfo",
-                "Mouse: drag rotates (orbits) the surface, wheel zooms the camera. Software 3D "
-                "renderer (painter's algorithm) - works without OpenGL."), 0);
+                Tr("Mouse: drag rotates (orbits) the surface, wheel zooms the camera. Software 3D "
+                "renderer (painter's algorithm) - works without OpenGL.")), 0);
 
         auto surfTerrain = CreateContourSurface3DElement("CtSurfTerrain", 0, 0, INNER_W, INNER_H - 60);
         {
@@ -697,7 +697,7 @@ namespace UltraCanvas {
             surfTerrain->SetBackgroundColor(Color(14, 14, 16, 255));
             surfTerrain->SetTitleColor(Color(235, 235, 240, 255));
             surfTerrain->SetAxisColors(Color(150, 210, 150, 220), Color(170, 220, 170, 230));
-            surfTerrain->SetAxisTitles("Longitude", "Latitude", "Elevation / m");
+            surfTerrain->SetAxisTitles(Tr("Longitude"), Tr("Latitude"), Tr("Elevation / m"));
             surfTerrain->SetTickCounts(3, 8, 4);
             surfTerrain->SetXTickFormatter([](double v) {
                 char buf[32];
@@ -725,19 +725,19 @@ namespace UltraCanvas {
         tab8->SetBackgroundColor(Color(255, 255, 255, 255));
         tab8->layout.SetFlexColumn().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         AddContourFlexChild(tab8, MakeContourTabDescription("Ct3DGLDesc",
-                "The same contour-surface pipeline rendered by UltraCanvasContourSurfaceGLElement "
+                Tr("The same contour-surface pipeline rendered by UltraCanvasContourSurfaceGLElement "
                 "on a finer 128 x 128 grid: the mesh, wireframe and on-surface isolines are drawn "
                 "by OpenGL with a real depth buffer; the title, 3D axes and legend are overlaid by "
-                "the 2D renderer using a matching CPU projection."), 0);
+                "the 2D renderer using a matching CPU projection.")), 0);
 #ifdef ULTRACANVAS_ENABLE_GL
         AddContourFlexChild(tab8, MakeContourInteractionLine("Ct3DGLInfo",
-                "Mouse: drag rotates (orbits) the surface, wheel zooms the camera. This is the tab "
-                "that uses the UC OpenGL element (UltraCanvasGLSurface, EGL/OpenGL 3.3 core)."), 0);
+                Tr("Mouse: drag rotates (orbits) the surface, wheel zooms the camera. This is the tab "
+                "that uses the UC OpenGL element (UltraCanvasGLSurface, EGL/OpenGL 3.3 core).")), 0);
 #else
         AddContourFlexChild(tab8, MakeContourInteractionLine("Ct3DGLInfo",
-                "Mouse: drag rotates (orbits) the surface, wheel zooms the camera. This build has "
+                Tr("Mouse: drag rotates (orbits) the surface, wheel zooms the camera. This build has "
                 "no OpenGL (-DULTRACANVAS_ENABLE_GL=OFF), so the element falls back to the "
-                "software renderer."), 0);
+                "software renderer.")), 0);
 #endif
 
         auto surfGL = CreateContourSurfaceGLElement("CtSurfGL", 0, 0, INNER_W, INNER_H - 60);
@@ -761,25 +761,25 @@ namespace UltraCanvas {
             surfGL->SetShowWireframe(false);
             surfGL->SetLighting(true, 0.45);
             surfGL->SetZExaggeration(1.1);
-            surfGL->SetChartTitle("Contour Surface (OpenGL)");
+            surfGL->SetChartTitle(Tr("Contour Surface (OpenGL)"));
             surfGL->SetBackgroundColor(Color(16, 17, 22, 255));
             surfGL->SetTitleColor(Color(235, 235, 240, 255));
             surfGL->SetAxisColors(Color(140, 200, 230, 220), Color(170, 215, 240, 235));
-            surfGL->SetAxisTitles("Longitude", "Latitude", "Elevation / m");
+            surfGL->SetAxisTitles(Tr("Longitude"), Tr("Latitude"), Tr("Elevation / m"));
             surfGL->SetTickCounts(4, 4, 5);
             surfGL->SetLegendMode(SurfaceLegendMode::NoLegend);
             surfGL->SetCamera(-0.65, 0.35, 4.6);
         }
         AddContourChart(tab8, surfGL);
 
-        tabs->AddTab("Interactive Contour", tab1);
-        tabs->AddTab("Filled + Labels", tab2);
-        tabs->AddTab("Density (KDE)", tab3);
-        tabs->AddTab("Line Contour", tab4);
-        tabs->AddTab("Dark Density", tab5);
-        tabs->AddTab("3D Bands (software)", tab6);
-        tabs->AddTab("3D Terrain (software)", tab7);
-        tabs->AddTab("3D Surface (UC OpenGL)", tab8);
+        tabs->AddTab(Tr("Interactive Contour"), tab1);
+        tabs->AddTab(Tr("Filled + Labels"), tab2);
+        tabs->AddTab(Tr("Density (KDE)"), tab3);
+        tabs->AddTab(Tr("Line Contour"), tab4);
+        tabs->AddTab(Tr("Dark Density"), tab5);
+        tabs->AddTab(Tr("3D Bands (software)"), tab6);
+        tabs->AddTab(Tr("3D Terrain (software)"), tab7);
+        tabs->AddTab(Tr("3D Surface (UC OpenGL)"), tab8);
 
         DemoKit::Add(card, tabs, 1);
         return page;

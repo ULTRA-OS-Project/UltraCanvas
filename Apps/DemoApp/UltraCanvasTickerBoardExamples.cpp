@@ -55,7 +55,7 @@ namespace UltraCanvas {
 
         TickerItem SampleQuoteItem(const SampleQuote& q, double price, double change) {
             TickerItem item = MakeTickerQuote(q.symbol, price, change);
-            item.tooltip = std::string(q.name) + "\nLast " + item.value + "  " + item.change;
+            item.tooltip = TrF("{0}\nLast {1}  {2}", q.name, item.value, item.change);
             return item;
         }
 
@@ -91,8 +91,8 @@ namespace UltraCanvas {
         auto statusLabel = DemoKit::CreateText("TbStatusLabel",
             Tr("Click an item on any board to see it here. Hover a quote for its company name."));
         statusLabel->SetTextColor(Color(70, 70, 90, 255));
-        auto reportClick = [status = statusLabel.get()](const char* boardName, const TickerItem& item) {
-            std::string text = std::string(boardName) + ": " + item.label;
+        auto reportClick = [status = statusLabel.get()](const std::string& boardName, const TickerItem& item) {
+            std::string text = boardName + ": " + item.label;
             if (!item.value.empty())  text += " " + item.value;
             if (!item.change.empty()) text += " " + item.change;
             status->SetText(text);
@@ -105,7 +105,7 @@ namespace UltraCanvas {
         auto quotesBoard = CreateTickerBoard("TbQuotesBoard", 0, 0, 1160, 44, TickerBoardFace::Text);
         FillQuotes(quotesBoard.get());
         quotesBoard->onItemClick = [board = quotesBoard.get(), reportClick](size_t index) {
-            reportClick("Quotes", board->GetItems()[index]);
+            reportClick(Tr("Quotes"), board->GetItems()[index]);
         };
         DemoKit::AddStretched(quotesCard, quotesBoard);
 
@@ -125,13 +125,13 @@ namespace UltraCanvas {
             signBoard->SetStyle(s);
         }
         signBoard->SetItems({
-            TickerItem("WELCOME TO THE ULTRACANVAS DEMO"),
-            TickerItem("Next departure: Platform 4 at 12:45"),
-            TickerItem("Zürich 18°C - clear skies"),
-            TickerItem("Tickets from €9.90 / £8.50"),
+            TickerItem(Tr("WELCOME TO THE ULTRACANVAS DEMO")),
+            TickerItem(Tr("Next departure: Platform 4 at 12:45")),
+            TickerItem(Tr("Zürich 18°C - clear skies")),
+            TickerItem(Tr("Tickets from €9.90 / £8.50")),
         });
         signBoard->onItemClick = [board = signBoard.get(), reportClick](size_t index) {
-            reportClick("LED sign", board->GetItems()[index]);
+            reportClick(Tr("LED sign"), board->GetItems()[index]);
         };
         DemoKit::AddStretched(signCard, signBoard);
 
@@ -151,7 +151,7 @@ namespace UltraCanvas {
         }
         FillQuotes(liveBoard.get());
         liveBoard->onItemClick = [board = liveBoard.get(), reportClick](size_t index) {
-            reportClick("Live quotes", board->GetItems()[index]);
+            reportClick(Tr("Live quotes"), board->GetItems()[index]);
         };
         DemoKit::AddStretched(liveCard, liveBoard);
 
@@ -201,13 +201,13 @@ namespace UltraCanvas {
             newsBoard->SetStyle(s);
         }
         newsBoard->SetItems({
-            TickerItem("BREAKING", "Shared core library ships on every platform"),
-            TickerItem("DEMO", "Diagrams section gains a ticker board"),
-            TickerItem("WEATHER", "Clear skies over the build farm, light CI winds"),
-            TickerItem("SPORT", "UltraFiler wins the 1 000 000-file sprint"),
+            TickerItem(Tr("BREAKING"), Tr("Shared core library ships on every platform")),
+            TickerItem(Tr("DEMO"), Tr("Diagrams section gains a ticker board")),
+            TickerItem(Tr("WEATHER"), Tr("Clear skies over the build farm, light CI winds")),
+            TickerItem(Tr("SPORT"), Tr("UltraFiler wins the 1 000 000-file sprint")),
         });
         newsBoard->onItemClick = [board = newsBoard.get(), reportClick](size_t index) {
-            reportClick("Headlines", board->GetItems()[index]);
+            reportClick(Tr("Headlines"), board->GetItems()[index]);
         };
         DemoKit::AddStretched(newsCard, newsBoard);
 
@@ -217,50 +217,50 @@ namespace UltraCanvas {
 
         auto controlsRow = DemoKit::AddRow(controlsCard, "TbControlsRow", 10);
 
-        auto pauseButton = ControlButton("TbPauseButton", 130, "Pause");
+        auto pauseButton = ControlButton("TbPauseButton", 130, Tr("Pause"));
         pauseButton->SetOnClick([board = quotesBoard.get(), button = pauseButton.get()]() {
-            if (board->IsRunning()) { board->Stop();  button->SetText("Resume"); }
-            else                    { board->Start(); button->SetText("Pause"); }
+            if (board->IsRunning()) { board->Stop();  button->SetText(Tr("Resume")); }
+            else                    { board->Start(); button->SetText(Tr("Pause")); }
         });
         DemoKit::Add(controlsRow, pauseButton);
 
-        auto slowerButton = ControlButton("TbSlowerButton", 110, "Slower");
+        auto slowerButton = ControlButton("TbSlowerButton", 110, Tr("Slower"));
         slowerButton->SetOnClick([board = quotesBoard.get()]() {
             board->SetSpeed(std::max(10.0f, board->GetStyle().pixelsPerSecond - 20.0f));
         });
         DemoKit::Add(controlsRow, slowerButton);
 
-        auto fasterButton = ControlButton("TbFasterButton", 110, "Faster");
+        auto fasterButton = ControlButton("TbFasterButton", 110, Tr("Faster"));
         fasterButton->SetOnClick([board = quotesBoard.get()]() {
             board->SetSpeed(std::min(400.0f, board->GetStyle().pixelsPerSecond + 20.0f));
         });
         DemoKit::Add(controlsRow, fasterButton);
 
-        auto directionButton = ControlButton("TbDirectionButton", 150, "Reverse direction");
+        auto directionButton = ControlButton("TbDirectionButton", 150, Tr("Reverse direction"));
         directionButton->SetOnClick([board = quotesBoard.get()]() {
             board->SetDirection(board->GetStyle().direction == TickerDirection::Leftward
                                 ? TickerDirection::Rightward : TickerDirection::Leftward);
         });
         DemoKit::Add(controlsRow, directionButton);
 
-        auto faceButton = ControlButton("TbFaceButton", 170, "Switch to DotMatrix");
+        auto faceButton = ControlButton("TbFaceButton", 170, Tr("Switch to DotMatrix"));
         faceButton->SetOnClick([board = quotesBoard.get(), button = faceButton.get()]() {
             const bool toDots = board->GetStyle().face == TickerBoardFace::Text;
             board->SetFace(toDots ? TickerBoardFace::DotMatrix : TickerBoardFace::Text);
-            button->SetText(toDots ? "Switch to Text" : "Switch to DotMatrix");
+            button->SetText(toDots ? Tr("Switch to Text") : Tr("Switch to DotMatrix"));
         });
         DemoKit::Add(controlsRow, faceButton);
 
-        auto arrowsButton = ControlButton("TbArrowsButton", 130, "Hide arrows");
+        auto arrowsButton = ControlButton("TbArrowsButton", 130, Tr("Hide arrows"));
         arrowsButton->SetOnClick([board = quotesBoard.get(), button = arrowsButton.get()]() {
             TickerBoardStyle s = board->GetStyle();
             s.showArrows = !s.showArrows;
             board->SetStyle(s);
-            button->SetText(s.showArrows ? "Hide arrows" : "Show arrows");
+            button->SetText(s.showArrows ? Tr("Hide arrows") : Tr("Show arrows"));
         });
         DemoKit::Add(controlsRow, arrowsButton);
 
-        auto resetButton = ControlButton("TbResetButton", 150, "Reset live prices");
+        auto resetButton = ControlButton("TbResetButton", 150, Tr("Reset live prices"));
         resetButton->SetOnClick([live, board = liveBoard.get()]() {
             for (size_t i = 0; i < live->price.size(); ++i) {
                 live->price[i] = kSampleQuotes[i].price;

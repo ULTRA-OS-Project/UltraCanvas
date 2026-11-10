@@ -18,13 +18,12 @@ namespace UltraCanvas {
         std::string Describe(const UltraCanvasChipGroup& group) {
             std::ostringstream oss;
             const std::vector<int> sel = group.GetSelectedIndices();
-            if (sel.empty()) return "Selected: (none)";
-            oss << "Selected: ";
+            if (sel.empty()) return Tr("Selected: (none)");
             for (size_t i = 0; i < sel.size(); ++i) {
                 if (i) oss << ", ";
                 oss << group.GetChip(sel[i])->GetLabel();
             }
-            return oss.str();
+            return TrF("Selected: {0}", oss.str());
         }
     }
 
@@ -37,7 +36,7 @@ namespace UltraCanvas {
         auto singleCard = DemoKit::AddCard(page, "CgL1", Tr("Single selection: a category bar"),
                                            Tr("One chip at a time; clicking the selected one keeps it."));
         auto single = CreateChipGroup("CgSingle");
-        for (const char* name : {"All", "Video", "Audio", "Graphics", "Office", "Games", "Developer"}) single->AddChip(name);
+        for (const std::string& name : {Tr("All"), Tr("Video"), Tr("Audio"), Tr("Graphics"), Tr("Office"), Tr("Games"), Tr("Developer")}) single->AddChip(name);
         single->SetSelectedIndex(0);
         DemoKit::Add(singleCard, single);
         auto singleOut = DemoKit::AddText(singleCard, "CgSingleOut", Describe(*single));
@@ -51,7 +50,7 @@ namespace UltraCanvas {
         auto none = CreateChipGroup("CgNone");
         none->SetAllowNoSelection(true);
         none->SetChipVariant(ChipVariant::Outlined);
-        for (const char* name : {"Free", "Paid", "Installed", "Has updates"}) none->AddChip(name);
+        for (const std::string& name : {Tr("Free"), Tr("Paid"), Tr("Installed"), Tr("Has updates")}) none->AddChip(name);
         DemoKit::Add(noneCard, none);
         auto noneOut = DemoKit::AddText(noneCard, "CgNoneOut", Describe(*none));
         noneOut->SetBackgroundColor(Color(240, 240, 240));

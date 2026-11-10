@@ -76,12 +76,12 @@ namespace UltraCanvas {
         // sits in the same card.
         palettes->onColorSelected = [picker = picker.get(), status = status.get()](const Color& c) {
             picker->SetForegroundColor(c, false);
-            status->SetText("Picked " + Hex(c) + ".");
+            status->SetText(TrF("Picked {0}.", Hex(c)));
         };
         palettes->onPalettesChanged = [m = palettes.get(), status = status.get()]() {
             const int n = m->GetPaletteCount();
-            status->SetText(std::to_string(n) + (n == 1 ? " palette." : " palettes.") +
-                            " The application saves them with SerializePalettes().");
+            status->SetText(TrN("{n} palette. The application saves them with SerializePalettes().",
+                                "{n} palettes. The application saves them with SerializePalettes().", n));
         };
 
         // ===== Column 2: several palettes =====

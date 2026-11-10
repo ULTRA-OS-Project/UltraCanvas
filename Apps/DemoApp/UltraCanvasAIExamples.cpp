@@ -42,6 +42,7 @@
 #include "Plugins/Documents/UltraCanvasPDFView.h"
 #endif
 
+#include <cmath>
 #include <cstdio>
 #include <memory>
 #include <string>
@@ -59,12 +60,12 @@ namespace {
     // Every .ai file shipped under media/vector/AI. Both are CorelDRAW
     // exports: a valid PDF container whose page is empty, with the line art
     // in the Illustrator private data.
-    const std::vector<AISample>& AISamples() {
-        static const std::vector<AISample> samples = {
-                {"turtle.ai", "turtle.ai - decorative line art"},
-                {"mandalorian-star-wars.ai", "mandalorian-star-wars.ai - flat-colour line art"},
+    // Built on each call so the captions are in the current language.
+    std::vector<AISample> AISamples() {
+        return {
+                {"turtle.ai", TrF("{0} - decorative line art", "turtle.ai")},
+                {"mandalorian-star-wars.ai", TrF("{0} - flat-colour line art", "mandalorian-star-wars.ai")},
         };
-        return samples;
     }
 
     // The page's two viewers. They are held together so the toolbar's
@@ -123,13 +124,10 @@ namespace {
     std::string DescribeDocument(const VectorStorage::VectorDocument& doc) {
         size_t drawables = 0;
         for (const auto& layer : doc.Layers) if (layer) drawables += CountDrawables(*layer);
-        char buffer[160];
-        std::snprintf(buffer, sizeof(buffer),
-                      "%zu object%s on %zu layer%s, page %.0f x %.0f pt",
-                      drawables, drawables == 1 ? "" : "s",
-                      doc.Layers.size(), doc.Layers.size() == 1 ? "" : "s",
-                      doc.Size.width, doc.Size.height);
-        return buffer;
+        return TrF("{0} on {1}, page {2} x {3} pt",
+                   TrN("{n} object", "{n} objects", static_cast<long long>(drawables)),
+                   TrN("{n} layer", "{n} layers", static_cast<long long>(doc.Layers.size())),
+                   std::llround(doc.Size.width), std::llround(doc.Size.height));
     }
 
 }   // namespace
@@ -197,10 +195,10 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateAIVector
             vector->SetDocument(loaded.document);
             viewers->ShowVector();
             vector->ZoomToFit();
-            routeLabel->SetText("Vector plugin - AIConverter");
+            routeLabel->SetText(Tr("Vector plugin - AIConverter"));
             statusLabel->SetTextColor(Color(110, 110, 110, 255));
-            statusLabel->SetText(sample.caption + " - " + DescribeDocument(*loaded.document) +
-                                 "  -  drag to pan, wheel to zoom.");
+            statusLabel->SetText(TrF("{0} - {1}  -  drag to pan, wheel to zoom.",
+                                     sample.caption, DescribeDocument(*loaded.document)));
             return;
         }
 
@@ -211,19 +209,18 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateAIVector
             viewers->ShowPdf();
             if (pdf->LoadFromPath(path)) {
                 pdf->ZoomToFit();
-                routeLabel->SetText("PDF engine - MuPDF");
+                routeLabel->SetText(Tr("PDF engine - MuPDF"));
                 statusLabel->SetTextColor(Color(110, 110, 110, 255));
-                statusLabel->SetText(sample.caption +
-                                     " - the artwork is in the PDF page  -  "
-                                     "mouse-wheel scrolls, Ctrl+wheel zooms.");
+                statusLabel->SetText(TrF("{0} - the artwork is in the PDF page  -  "
+                                         "mouse-wheel scrolls, Ctrl+wheel zooms.", sample.caption));
                 return;
             }
         }
 #endif
 
-        routeLabel->SetText("not loaded");
+        routeLabel->SetText(Tr("not loaded"));
         statusLabel->SetTextColor(Color(180, 60, 60, 255));
-        std::string message = "Failed to load " + path;
+        std::string message = TrF("Failed to load {0}", path);
         for (const std::string& warning : loaded.warnings) message += "  -  " + warning;
         statusLabel->SetText(message);
     };
@@ -283,10 +280,10 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateAIVector
         DemoKit::Add(toolbar, button);
     };
 
-    addToolbarButton("AIZoomOut", "Zoom -", 70, [zoomBy]() { zoomBy(1.0f / 1.25f); });
-    addToolbarButton("AIZoomIn", "Zoom +", 70, [zoomBy]() { zoomBy(1.25f); });
-    addToolbarButton("AIFitPage", "Fit Page", 80, fitPage);
-    addToolbarButton("AIActualSize", "100%", 60, actualSize);
+    addToolbarButton("AIZoomOut", Tr("Zoom -"), 70, [zoomBy]() { zoomBy(1.0f / 1.25f); });
+    addToolbarButton("AIZoomIn", Tr("Zoom +"), 70, [zoomBy]() { zoomBy(1.25f); });
+    addToolbarButton("AIFitPage", Tr("Fit Page"), 80, fitPage);
+    addToolbarButton("AIActualSize", Tr("100%"), 60, actualSize);
     // The route takes the rest of the line, right-aligned.
     routeLabel->SetAlignment(TextAlignment::Right, VerticalAlignment::Middle);
     DemoKit::Add(toolbar, routeLabel, 1);

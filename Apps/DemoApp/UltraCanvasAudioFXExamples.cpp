@@ -503,88 +503,90 @@ namespace {
 
     // The effects offered by the playground, grouped the same way as the
     // AudioFX operation families (Dynamics, Filters, Delay, Modulation, …).
+    // Built once, on the first call (the playground keeps pointers into it),
+    // so the names are in the language of that moment.
     const std::vector<EffectCategory>& EffectCategories() {
         static const std::vector<EffectCategory> categories = {
-            { "dynamics", "Volume & dynamics", {
-                { "gain", "Gain", "Amplifies or attenuates the signal by the chosen amount (AudioFX_Gain).",
-                  { { "Gain dB", -24.0f, 24.0f, 6.0f, 0.5f } },
+            { "dynamics", Tr("Volume & dynamics"), {
+                { "gain", Tr("Gain"), Tr("Amplifies or attenuates the signal by the chosen amount (AudioFX_Gain)."),
+                  { { Tr("Gain dB"), -24.0f, 24.0f, 6.0f, 0.5f } },
                   [](const FloatAudio& src, const std::vector<float>& p) { return FxGain(src, p[0]); } },
-                { "normalize", "Normalize", "Scales the track so its peak hits the target level (AudioFX_Normalize).",
-                  { { "Peak dBFS", -12.0f, 0.0f, -3.0f, 0.5f } },
+                { "normalize", Tr("Normalize"), Tr("Scales the track so its peak hits the target level (AudioFX_Normalize)."),
+                  { { Tr("Peak dBFS"), -12.0f, 0.0f, -3.0f, 0.5f } },
                   [](const FloatAudio& src, const std::vector<float>& p) { return FxNormalize(src, p[0]); } },
-                { "compress", "Compressor", "Reduces dynamic range above the threshold with auto makeup gain (AudioFX_Compress).",
-                  { { "Threshold dB", -60.0f, 0.0f, -24.0f, 1.0f },
-                    { "Ratio", 1.0f, 20.0f, 4.0f, 0.5f } },
+                { "compress", Tr("Compressor"), Tr("Reduces dynamic range above the threshold with auto makeup gain (AudioFX_Compress)."),
+                  { { Tr("Threshold dB"), -60.0f, 0.0f, -24.0f, 1.0f },
+                    { Tr("Ratio"), 1.0f, 20.0f, 4.0f, 0.5f } },
                   [](const FloatAudio& src, const std::vector<float>& p) { return FxCompress(src, p[0], p[1]); } },
-                { "fadein", "Fade in", "Ramps the volume up from silence at the start (AudioFX_FadeIn).",
-                  { { "Seconds", 0.5f, 15.0f, 4.0f, 0.5f } },
+                { "fadein", Tr("Fade in"), Tr("Ramps the volume up from silence at the start (AudioFX_FadeIn)."),
+                  { { Tr("Seconds"), 0.5f, 15.0f, 4.0f, 0.5f } },
                   [](const FloatAudio& src, const std::vector<float>& p) { return FxFade(src, p[0], true); } },
-                { "fadeout", "Fade out", "Ramps the volume down to silence at the end (AudioFX_FadeOut).",
-                  { { "Seconds", 0.5f, 15.0f, 4.0f, 0.5f } },
+                { "fadeout", Tr("Fade out"), Tr("Ramps the volume down to silence at the end (AudioFX_FadeOut)."),
+                  { { Tr("Seconds"), 0.5f, 15.0f, 4.0f, 0.5f } },
                   [](const FloatAudio& src, const std::vector<float>& p) { return FxFade(src, p[0], false); } },
             } },
-            { "filters", "Filters & EQ", {
-                { "lowpass", "Low-pass", "Keeps frequencies below the cutoff — muffles the highs (AudioFX_LowPass).",
-                  { { "Cutoff Hz", 200.0f, 15000.0f, 1200.0f, 50.0f } },
+            { "filters", Tr("Filters & EQ"), {
+                { "lowpass", Tr("Low-pass"), Tr("Keeps frequencies below the cutoff — muffles the highs (AudioFX_LowPass)."),
+                  { { Tr("Cutoff Hz"), 200.0f, 15000.0f, 1200.0f, 50.0f } },
                   [](const FloatAudio& src, const std::vector<float>& p) {
                       int sr = src.sampleRate; float freq = p[0];
                       return ApplyBiquad(src, [sr, freq]() { return Biquad::LowPass(sr, freq, 0.7071); }); } },
-                { "highpass", "High-pass", "Keeps frequencies above the cutoff — thins out the lows (AudioFX_HighPass).",
-                  { { "Cutoff Hz", 40.0f, 8000.0f, 800.0f, 20.0f } },
+                { "highpass", Tr("High-pass"), Tr("Keeps frequencies above the cutoff — thins out the lows (AudioFX_HighPass)."),
+                  { { Tr("Cutoff Hz"), 40.0f, 8000.0f, 800.0f, 20.0f } },
                   [](const FloatAudio& src, const std::vector<float>& p) {
                       int sr = src.sampleRate; float freq = p[0];
                       return ApplyBiquad(src, [sr, freq]() { return Biquad::HighPass(sr, freq, 0.7071); }); } },
-                { "bandpass", "Band-pass", "Isolates a frequency band — classic telephone / radio voicing (AudioFX_BandPass).",
-                  { { "Centre Hz", 100.0f, 8000.0f, 1000.0f, 50.0f },
+                { "bandpass", Tr("Band-pass"), Tr("Isolates a frequency band — classic telephone / radio voicing (AudioFX_BandPass)."),
+                  { { Tr("Centre Hz"), 100.0f, 8000.0f, 1000.0f, 50.0f },
                     { "Q", 0.5f, 8.0f, 2.0f, 0.1f } },
                   [](const FloatAudio& src, const std::vector<float>& p) {
                       int sr = src.sampleRate; float freq = p[0], q = p[1];
                       return ApplyBiquad(src, [sr, freq, q]() { return Biquad::BandPass(sr, freq, q); }); } },
-                { "bassboost", "Bass boost", "Low-shelf filter at 200 Hz that lifts the low end (AudioFX_ShelvingEQ).",
-                  { { "Boost dB", 0.0f, 18.0f, 9.0f, 0.5f } },
+                { "bassboost", Tr("Bass boost"), Tr("Low-shelf filter at 200 Hz that lifts the low end (AudioFX_ShelvingEQ)."),
+                  { { Tr("Boost dB"), 0.0f, 18.0f, 9.0f, 0.5f } },
                   [](const FloatAudio& src, const std::vector<float>& p) {
                       int sr = src.sampleRate; float gain = p[0];
                       return ApplyBiquad(src, [sr, gain]() { return Biquad::LowShelf(sr, 200.0, gain); }); } },
             } },
-            { "delay", "Delay & reverb", {
-                { "echo", "Echo", "Repeats the signal after a delay with adjustable feedback (AudioFX_Delay).",
-                  { { "Delay ms", 50.0f, 1000.0f, 350.0f, 10.0f },
-                    { "Feedback", 0.0f, 0.9f, 0.45f, 0.05f },
-                    { "Mix", 0.0f, 1.0f, 0.5f, 0.05f } },
+            { "delay", Tr("Delay & reverb"), {
+                { "echo", Tr("Echo"), Tr("Repeats the signal after a delay with adjustable feedback (AudioFX_Delay)."),
+                  { { Tr("Delay ms"), 50.0f, 1000.0f, 350.0f, 10.0f },
+                    { Tr("Feedback"), 0.0f, 0.9f, 0.45f, 0.05f },
+                    { Tr("Mix"), 0.0f, 1.0f, 0.5f, 0.05f } },
                   [](const FloatAudio& src, const std::vector<float>& p) { return FxEcho(src, p[0], p[1], p[2]); } },
-                { "reverb", "Reverb", "Schroeder comb/all-pass network that adds room ambience (AudioFX_Reverb).",
-                  { { "Room size", 0.0f, 1.0f, 0.6f, 0.05f },
-                    { "Mix", 0.0f, 1.0f, 0.35f, 0.05f } },
+                { "reverb", Tr("Reverb"), Tr("Schroeder comb/all-pass network that adds room ambience (AudioFX_Reverb)."),
+                  { { Tr("Room size"), 0.0f, 1.0f, 0.6f, 0.05f },
+                    { Tr("Mix"), 0.0f, 1.0f, 0.35f, 0.05f } },
                   [](const FloatAudio& src, const std::vector<float>& p) { return FxReverb(src, p[0], p[1]); } },
             } },
-            { "modulation", "Modulation", {
-                { "tremolo", "Tremolo", "Modulates the volume with a low-frequency oscillator (AudioFX_Tremolo).",
-                  { { "Rate Hz", 0.5f, 20.0f, 5.0f, 0.5f },
-                    { "Depth", 0.0f, 1.0f, 0.8f, 0.05f } },
+            { "modulation", Tr("Modulation"), {
+                { "tremolo", Tr("Tremolo"), Tr("Modulates the volume with a low-frequency oscillator (AudioFX_Tremolo)."),
+                  { { Tr("Rate Hz"), 0.5f, 20.0f, 5.0f, 0.5f },
+                    { Tr("Depth"), 0.0f, 1.0f, 0.8f, 0.05f } },
                   [](const FloatAudio& src, const std::vector<float>& p) { return FxTremolo(src, p[0], p[1]); } },
-                { "flanger", "Flanger", "Mixes in a copy through a slowly sweeping short delay (AudioFX_Flanger).",
-                  { { "Rate Hz", 0.1f, 5.0f, 0.5f, 0.1f },
-                    { "Depth ms", 0.5f, 5.0f, 2.0f, 0.25f } },
+                { "flanger", Tr("Flanger"), Tr("Mixes in a copy through a slowly sweeping short delay (AudioFX_Flanger)."),
+                  { { Tr("Rate Hz"), 0.1f, 5.0f, 0.5f, 0.1f },
+                    { Tr("Depth ms"), 0.5f, 5.0f, 2.0f, 0.25f } },
                   [](const FloatAudio& src, const std::vector<float>& p) { return FxFlanger(src, p[0], p[1]); } },
-                { "vibrato", "Vibrato", "Periodically bends the pitch via a modulated delay line (AudioFX_Vibrato).",
-                  { { "Rate Hz", 0.5f, 10.0f, 5.0f, 0.5f },
-                    { "Depth ms", 0.5f, 8.0f, 3.0f, 0.25f } },
+                { "vibrato", Tr("Vibrato"), Tr("Periodically bends the pitch via a modulated delay line (AudioFX_Vibrato)."),
+                  { { Tr("Rate Hz"), 0.5f, 10.0f, 5.0f, 0.5f },
+                    { Tr("Depth ms"), 0.5f, 8.0f, 3.0f, 0.25f } },
                   [](const FloatAudio& src, const std::vector<float>& p) { return FxVibrato(src, p[0], p[1]); } },
             } },
-            { "distortion", "Distortion & lo-fi", {
-                { "overdrive", "Overdrive", "Soft-clips the waveform with a tanh curve for warm saturation (AudioFX_Saturation).",
-                  { { "Drive", 1.0f, 20.0f, 6.0f, 0.5f } },
+            { "distortion", Tr("Distortion & lo-fi"), {
+                { "overdrive", Tr("Overdrive"), Tr("Soft-clips the waveform with a tanh curve for warm saturation (AudioFX_Saturation)."),
+                  { { Tr("Drive"), 1.0f, 20.0f, 6.0f, 0.5f } },
                   [](const FloatAudio& src, const std::vector<float>& p) { return FxOverdrive(src, p[0]); } },
-                { "bitcrush", "Bit crush", "Reduces bit depth and sample rate for retro digital grit (AudioFX_BitCrush).",
-                  { { "Bits", 2.0f, 16.0f, 6.0f, 1.0f },
-                    { "Downsample", 1.0f, 16.0f, 4.0f, 1.0f } },
+                { "bitcrush", Tr("Bit crush"), Tr("Reduces bit depth and sample rate for retro digital grit (AudioFX_BitCrush)."),
+                  { { Tr("Bits"), 2.0f, 16.0f, 6.0f, 1.0f },
+                    { Tr("Downsample"), 1.0f, 16.0f, 4.0f, 1.0f } },
                   [](const FloatAudio& src, const std::vector<float>& p) { return FxBitCrush(src, p[0], p[1]); } },
             } },
-            { "timepitch", "Time & pitch", {
-                { "speed", "Speed", "Tape-style resampling — tempo and pitch shift together (AudioFX_TimeStretch).",
-                  { { "Factor", 0.25f, 3.0f, 1.5f, 0.05f } },
+            { "timepitch", Tr("Time & pitch"), {
+                { "speed", Tr("Speed"), Tr("Tape-style resampling — tempo and pitch shift together (AudioFX_TimeStretch)."),
+                  { { Tr("Factor"), 0.25f, 3.0f, 1.5f, 0.05f } },
                   [](const FloatAudio& src, const std::vector<float>& p) { return FxSpeed(src, p[0]); } },
-                { "reverse", "Reverse", "Plays the track backwards (AudioFX_Reverse).", {},
+                { "reverse", Tr("Reverse"), Tr("Plays the track backwards (AudioFX_Reverse)."), {},
                   [](const FloatAudio& src, const std::vector<float>&) { return FxReverse(src); } },
             } },
         };
@@ -665,8 +667,8 @@ namespace {
             combined += "![AudioFX architecture](" + svgName + ")\n\n";
         }
 
-        combined += "## Playground effects\n\n"
-                    "| Category | Effects |\n|---|---|\n";
+        combined += "## " + Tr("Playground effects") + "\n\n"
+                    "| " + Tr("Category") + " | " + Tr("Effects") + " |\n|---|---|\n";
         for (const auto& cat : EffectCategories()) {
             combined += "| **" + cat.name + "** | ";
             for (size_t i = 0; i < cat.effects.size(); ++i) {
@@ -675,7 +677,7 @@ namespace {
             }
             combined += " |\n";
         }
-        combined += "\nSwitch to the *Examples* tab to hear them on a sample or uploaded track.\n";
+        combined += "\n" + Tr("Switch to the *Examples* tab to hear them on a sample or uploaded track.") + "\n";
 
         auto text = std::make_shared<UltraCanvasTextArea>("AudioFXOverview");
         text->size.width  = CSSLayout::Dimension::Pct(100);
@@ -750,7 +752,7 @@ namespace {
         auto sampleDropdown = std::make_shared<UltraCanvasDropdown>("AudioFXSample", 0, 0, 260, 30);
         DemoKit::AddFixed(sourceRow, sampleDropdown);
 
-        auto uploadBtn = std::make_shared<UltraCanvasButton>("AudioFXUpload", 0, 0, 130, 30, "Upload audio");
+        auto uploadBtn = std::make_shared<UltraCanvasButton>("AudioFXUpload", 0, 0, 130, 30, Tr("Upload audio"));
         DemoKit::AddFixed(sourceRow, uploadBtn);
 
         auto waveFrame = std::make_shared<UltraCanvasContainer>("AudioFXWaveFrame", 0, 0, 0, 0);
@@ -793,7 +795,7 @@ namespace {
         tree->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                         .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
-        TreeNodeData rootData("audiofx_root", "AudioFX effects");
+        TreeNodeData rootData("audiofx_root", Tr("AudioFX effects"));
         rootData.leftIcon = TreeNodeIcon(iconsDir + "audio.png", 16, 16);
         tree->SetRootNode(rootData);
         for (const auto& cat : EffectCategories()) {
@@ -839,7 +841,7 @@ namespace {
         // transport state so slider drags don't restart playback.
         auto showAudio = [state, player, waveform, setStatus](const FloatAudio& audio) -> bool {
             if (!audio.IsValid()) {
-                setStatus("Processing produced an empty buffer.");
+                setStatus(Tr("Processing produced an empty buffer."));
                 return false;
             }
             auto raw = player->GetPlayer();
@@ -860,7 +862,7 @@ namespace {
             if (!state->original.IsValid()) return;
             if (!state->effect) {
                 if (showAudio(state->original)) {
-                    setStatus("Original track — pick an effect from the tree to process it.");
+                    setStatus(Tr("Original track — pick an effect from the tree to process it."));
                 }
                 return;
             }
@@ -885,11 +887,11 @@ namespace {
             auto audio = UCAudio::LoadFromFile(path);
             if (!audio || !audio->IsValid()) {
                 state->original = FloatAudio();
-                setStatus("Could not load " + path +
+                setStatus(TrF("Could not load {0}", path) +
                           (UltraCanvasAudioDevices::IsAvailable()
-                               ? ""
-                               : "\nAudio backend not compiled in — rebuild with "
-                                 "-DULTRACANVAS_ENABLE_AUDIO=ON."));
+                               ? std::string()
+                               : "\n" + Tr("Audio backend not compiled in — rebuild with "
+                                            "-DULTRACANVAS_ENABLE_AUDIO=ON.")));
                 return;
             }
             FloatAudio buffer = ToFloatAudio(audio);
@@ -897,8 +899,8 @@ namespace {
             if (buffer.Duration() > kMaxProcessingSeconds) {
                 buffer.samples.resize(static_cast<size_t>(kMaxProcessingSeconds * buffer.sampleRate)
                                       * buffer.channels);
-                note = " (truncated to " + FormatDuration(kMaxProcessingSeconds) +
-                       " to keep the sliders interactive)";
+                note = " " + TrF("(truncated to {0} to keep the sliders interactive)",
+                                 FormatDuration(kMaxProcessingSeconds));
             }
             state->original = std::move(buffer);
             state->audioPath = path;
@@ -908,10 +910,9 @@ namespace {
             player->Stop();
             applyCurrent();
             if (!state->effect) {
-                setStatus(name + " — " + FormatDuration(state->original.Duration()) + ", " +
-                          std::to_string(state->original.sampleRate) + " Hz, " +
-                          std::to_string(state->original.channels) + " ch" + note +
-                          ". Pick an effect from the tree.");
+                setStatus(TrF("{0} — {1}, {2} Hz, {3} ch{4}. Pick an effect from the tree.",
+                              name, FormatDuration(state->original.Duration()),
+                              state->original.sampleRate, state->original.channels, note));
             }
         };
 
@@ -938,7 +939,7 @@ namespace {
                     const EffectParam& param = fx.params[i];
 
                     auto valueLabel = DemoKit::AddText(optionsBox, "AudioFXOptLabel" + std::to_string(i),
-                        param.label + ": " + FormatParamValue(state->params[i]));
+                        TrF("{0}: {1}", param.label, FormatParamValue(state->params[i])));
 
                     auto slider = CreateHorizontalSlider(
                         "AudioFXOptSlider" + std::to_string(i), 0, 0, 0, 24,
@@ -950,7 +951,7 @@ namespace {
                     slider->onValueChanged = [state, applyCurrent, valueLabel, param, i](float value) {
                         if (i >= state->params.size()) return;
                         state->params[i] = value;
-                        valueLabel->SetText(param.label + ": " + FormatParamValue(value));
+                        valueLabel->SetText(TrF("{0}: {1}", param.label, FormatParamValue(value)));
                         valueLabel->RequestRedraw();
                         applyCurrent();
                     };
@@ -965,13 +966,13 @@ namespace {
                 }
 
                 auto originalBtn = std::make_shared<UltraCanvasButton>(
-                    "AudioFXPlayOriginal", 0, 0, 130, 28, "Play original");
+                    "AudioFXPlayOriginal", 0, 0, 130, 28, Tr("Play original"));
                 originalBtn->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
                 originalBtn->onClick = [state, showAudio, setStatus]() {
                     if (!state->original.IsValid()) return;
                     if (showAudio(state->original)) {
-                        setStatus("Original track (effect still selected — move a "
-                                  "slider or re-select it to process again).");
+                        setStatus(Tr("Original track (effect still selected — move a "
+                                     "slider or re-select it to process again)."));
                     }
                 };
                 optionsBox->AddChild(originalBtn);
@@ -1020,22 +1021,22 @@ namespace {
         // ----- Upload a custom track through the native file dialog -----
         uploadBtn->onClick = [state, sampleDropdown, loadSource, setStatus]() {
             FileDialogOptions opts;
-            opts.SetTitle("Open audio for AudioFX");
+            opts.SetTitle(Tr("Open audio for AudioFX"));
 
             UltraCanvasFileLoader::OpenAudio(opts,
                 [state, sampleDropdown, loadSource, setStatus](
                         const FileLoadResult& res, std::shared_ptr<UCAudio> audio) {
                     if (res.dialogResult != DialogResult::OK) {
-                        setStatus("Upload cancelled.");
+                        setStatus(Tr("Upload cancelled."));
                         return;
                     }
                     if (!res.IsSuccess() || !audio || !audio->IsValid()) {
-                        setStatus("Load failed: " + res.loadError);
+                        setStatus(TrF("Load failed: {0}", res.loadError));
                         return;
                     }
                     const std::string path = audio->GetSourcePath();
                     std::string name = PathToUtf8(PathFromUtf8(path).filename());
-                    sampleDropdown->AddItem(DropdownItem("Custom: " + name, path));
+                    sampleDropdown->AddItem(DropdownItem(TrF("Custom: {0}", name), path));
                     sampleDropdown->SetSelectedIndex(sampleDropdown->GetItemCount() - 1, false);
                     loadSource(path);
                 });
@@ -1048,7 +1049,7 @@ namespace {
             sampleDropdown->SetSelectedIndex(defaultIndex, false);
             loadSource(audiosDir + samples[defaultIndex]);
         } else {
-            setStatus("No sample tracks found in " + audiosDir);
+            setStatus(TrF("No sample tracks found in {0}", audiosDir));
         }
 
         return root;
@@ -1075,9 +1076,9 @@ namespace {
         tabs->SetCloseMode(TabCloseMode::NoClose);
         tabs->SetTabHeight(30);
 
-        tabs->AddTab("Overview", BuildOverviewTab());
-        tabs->AddTab("Details",  BuildDetailsTab());
-        tabs->AddTab("Examples", BuildExamplesTab());
+        tabs->AddTab(Tr("Overview"), BuildOverviewTab());
+        tabs->AddTab(Tr("Details"),  BuildDetailsTab());
+        tabs->AddTab(Tr("Examples"), BuildExamplesTab());
         tabs->SetActiveTab(0);
 
         DemoKit::Add(card, tabs, 1);

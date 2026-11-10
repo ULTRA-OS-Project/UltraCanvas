@@ -356,7 +356,7 @@ end.)";
         };
 
         // Clear all button
-        auto clearAllBtn = addButton("ClearAllBtn", "Clear All", 90);
+        auto clearAllBtn = addButton("ClearAllBtn", Tr("Clear All"), 90);
 //        clearAllBtn->SetButtonStyle(ButtonStyle::Danger);
         clearAllBtn->onClick = [cppTextArea, pythonTextArea, pascalTextArea]() {
             cppTextArea->Clear();
@@ -365,7 +365,7 @@ end.)";
         };
 
         // Line numbers toggle button
-        auto lineNumBtn = addButton("LineNumBtn", "Toggle Lines", 120);
+        auto lineNumBtn = addButton("LineNumBtn", Tr("Toggle Lines"), 120);
 //        lineNumBtn->SetButtonStyle(ButtonStyle::Secondary);
         lineNumBtn->onClick = [cppTextArea, pythonTextArea, pascalTextArea]() {
             bool showLines = !cppTextArea->GetShowLineNumbers();
@@ -374,7 +374,7 @@ end.)";
             pascalTextArea->SetShowLineNumbers(showLines);
         };
 
-        auto syntaxToggleBtn = addButton("syntaxToggleBtn", "Toggle syntax", 140);
+        auto syntaxToggleBtn = addButton("syntaxToggleBtn", Tr("Toggle syntax"), 140);
 //        lineNumBtn->SetButtonStyle(ButtonStyle::Secondary);
         syntaxToggleBtn->onClick = [cppTextArea, pythonTextArea, pascalTextArea]() {
             bool showSyntax = !cppTextArea->GetHighlightSyntax();

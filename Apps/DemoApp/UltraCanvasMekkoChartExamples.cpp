@@ -50,24 +50,24 @@ namespace {
         // =============================================================================
 
         auto marketData = std::make_shared<MekkoChartDataVector>();
-        marketData->AddSeries("USA", Color(25, 60, 130, 255));
-        marketData->AddSeries("China", Color(235, 75, 105, 255));
-        marketData->AddSeries("Europe", Color(65, 145, 225, 255));
-        marketData->AddSeries("Japan", Color(250, 190, 40, 255));
+        marketData->AddSeries(Tr("USA"), Color(25, 60, 130, 255));
+        marketData->AddSeries(Tr("China"), Color(235, 75, 105, 255));
+        marketData->AddSeries(Tr("Europe"), Color(65, 145, 225, 255));
+        marketData->AddSeries(Tr("Japan"), Color(250, 190, 40, 255));
 
-        marketData->AddColumn("Technology",     {88, 44, 30, 21});
-        marketData->AddColumn("Transportation", {52, 38, 34, 15});
-        marketData->AddColumn("Energy",         {35, 42, 18, 10});
-        marketData->AddColumn("Education",      {40, 30, 26, 16});
-        marketData->AddColumn("Finance",        {95, 55, 48, 22});
-        marketData->AddColumn("Tourism",        {41, 25, 51, 18});
+        marketData->AddColumn(Tr("Technology"),     {88, 44, 30, 21});
+        marketData->AddColumn(Tr("Transportation"), {52, 38, 34, 15});
+        marketData->AddColumn(Tr("Energy"),         {35, 42, 18, 10});
+        marketData->AddColumn(Tr("Education"),      {40, 30, 26, 16});
+        marketData->AddColumn(Tr("Finance"),        {95, 55, 48, 22});
+        marketData->AddColumn(Tr("Tourism"),        {41, 25, 51, 18});
 
         auto marketCard = DemoKit::AddCard(topRow, "MekkoMarketCard", Tr("Classic Marimekko"),
                 Tr("Column width is the sector's total, each column stacked to 100%"),
                 520 + kChartCardChrome);
         auto marketChart = CreateMekkoChartWithData(
                 "mekko_market_chart", 0, 0, 520, 320,
-                marketData, "Market Share by Sector ($B)"
+                marketData, Tr("Market Share by Sector ($B)")
         );
         marketChart->SetMekkoMode(UltraCanvasMekkoChartElement::MekkoMode::Marimekko);
         marketChart->SetColumnHeaderMode(UltraCanvasMekkoChartElement::ColumnHeaderMode::WidthPercent);
@@ -83,24 +83,24 @@ namespace {
 
         auto salesData = std::make_shared<MekkoChartDataVector>();
         // No explicit colors: the chart assigns its default palette automatically
-        salesData->AddSeries("USA");
-        salesData->AddSeries("China");
-        salesData->AddSeries("UK");
-        salesData->AddSeries("Germany");
-        salesData->AddSeries("France");
-        salesData->AddSeries("India");
+        salesData->AddSeries(Tr("USA"));
+        salesData->AddSeries(Tr("China"));
+        salesData->AddSeries(Tr("UK"));
+        salesData->AddSeries(Tr("Germany"));
+        salesData->AddSeries(Tr("France"));
+        salesData->AddSeries(Tr("India"));
 
-        salesData->AddColumn("Product A", {97, 14, 63, 97, 26, 49});
-        salesData->AddColumn("Product B", {97, 87, 67, 66, 29, 84});
-        salesData->AddColumn("Product C", {45, 54, 18, 24, 84, 36});
-        salesData->AddColumn("Product D", {61, 32, 66, 47, 23, 50});
+        salesData->AddColumn(Tr("Product A"), {97, 14, 63, 97, 26, 49});
+        salesData->AddColumn(Tr("Product B"), {97, 87, 67, 66, 29, 84});
+        salesData->AddColumn(Tr("Product C"), {45, 54, 18, 24, 84, 36});
+        salesData->AddColumn(Tr("Product D"), {61, 32, 66, 47, 23, 50});
 
         auto salesCard = DemoKit::AddCard(topRow, "MekkoSalesCard", Tr("Percent labels, sorted columns"),
                 Tr("Default palette, columns sorted by total, cumulative % axis"),
                 490 + kChartCardChrome);
         auto salesChart = CreateMekkoChartWithData(
                 "mekko_sales_chart", 0, 0, 490, 320,
-                salesData, "Sales Mix: Product vs Region"
+                salesData, Tr("Sales Mix: Product vs Region")
         );
         salesChart->SetMekkoMode(UltraCanvasMekkoChartElement::MekkoMode::Marimekko);
         salesChart->SetColumnHeaderMode(UltraCanvasMekkoChartElement::ColumnHeaderMode::TotalAndPercent);
@@ -116,23 +116,23 @@ namespace {
         // =============================================================================
 
         auto cloudData = std::make_shared<MekkoChartDataVector>();
-        cloudData->AddSeries("Compute", Color(45, 165, 130, 255));
-        cloudData->AddSeries("Storage", Color(65, 145, 225, 255));
-        cloudData->AddSeries("AI Services", Color(155, 100, 220, 255));
-        cloudData->AddSeries("Other", Color(90, 110, 130, 255));
+        cloudData->AddSeries(Tr("Compute"), Color(45, 165, 130, 255));
+        cloudData->AddSeries(Tr("Storage"), Color(65, 145, 225, 255));
+        cloudData->AddSeries(Tr("AI Services"), Color(155, 100, 220, 255));
+        cloudData->AddSeries(Tr("Other"), Color(90, 110, 130, 255));
 
-        cloudData->AddColumn("Provider 1", {36, 22, 18, 14});
-        cloudData->AddColumn("Provider 2", {28, 17, 21, 9});
-        cloudData->AddColumn("Provider 3", {19, 12, 15, 6});
-        cloudData->AddColumn("Provider 4", {9, 6, 4, 3});
-        cloudData->AddColumn("Provider 5", {5, 4, 3, 2});
+        cloudData->AddColumn(Tr("Provider 1"), {36, 22, 18, 14});
+        cloudData->AddColumn(Tr("Provider 2"), {28, 17, 21, 9});
+        cloudData->AddColumn(Tr("Provider 3"), {19, 12, 15, 6});
+        cloudData->AddColumn(Tr("Provider 4"), {9, 6, 4, 3});
+        cloudData->AddColumn(Tr("Provider 5"), {5, 4, 3, 2});
 
         auto cloudCard = DemoKit::AddCard(bottomRow, "MekkoCloudCard", Tr("Bar-Mekko"),
                 Tr("Absolute column heights, the legend below the chart"),
                 520 + kChartCardChrome);
         auto cloudChart = CreateMekkoChartWithData(
                 "mekko_cloud_chart", 0, 0, 520, 320,
-                cloudData, "Cloud Revenue by Provider ($B)"
+                cloudData, Tr("Cloud Revenue by Provider ($B)")
         );
         cloudChart->SetMekkoMode(UltraCanvasMekkoChartElement::MekkoMode::BarMekko);
         cloudChart->SetColumnHeaderMode(UltraCanvasMekkoChartElement::ColumnHeaderMode::Total);
@@ -150,7 +150,7 @@ namespace {
 
         // Mode switch for the two Marimekko charts (the cloud chart stays Bar-Mekko)
         auto swMode = UltraCanvasSwitch::CreateWithSideLabels(
-                "swMekkoMode", 0, 0, "Marimekko", "Bar-Mekko", false
+                "swMekkoMode", 0, 0, Tr("Marimekko"), Tr("Bar-Mekko"), false
         );
         swMode->onStateChanged = [marketChart, salesChart](CheckedState, CheckedState newState) {
             auto newMode = (newState == CheckedState::Checked)
@@ -161,7 +161,7 @@ namespace {
         };
         DemoKit::AddFixed(controlsCard, swMode);
 
-        auto btnToggleLabels = MakeMekkoButton("btnMekkoToggleLabels", "Cycle Segment Labels");
+        auto btnToggleLabels = MakeMekkoButton("btnMekkoToggleLabels", Tr("Cycle Segment Labels"));
         btnToggleLabels->onClick = [marketChart, salesChart, cloudChart]() {
             static int labelIndex = 0;
             labelIndex = (labelIndex + 1) % 4;
@@ -178,7 +178,7 @@ namespace {
         };
         DemoKit::AddFixed(controlsCard, btnToggleLabels);
 
-        auto btnToggleSort = MakeMekkoButton("btnMekkoToggleSort", "Cycle Column Sorting");
+        auto btnToggleSort = MakeMekkoButton("btnMekkoToggleSort", Tr("Cycle Column Sorting"));
         btnToggleSort->onClick = [marketChart]() {
             static int sortIndex = 0;
             sortIndex = (sortIndex + 1) % 4;
@@ -193,20 +193,20 @@ namespace {
         };
         DemoKit::AddFixed(controlsCard, btnToggleSort);
 
-        auto btnRandomData = MakeMekkoButton("btnMekkoRandomData", "Generate Random Data");
+        auto btnRandomData = MakeMekkoButton("btnMekkoRandomData", Tr("Generate Random Data"));
         btnRandomData->onClick = [marketData, marketChart]() {
             std::random_device rd;
             std::mt19937 gen(rd());
             std::uniform_real_distribution<> dist(10.0, 100.0);
 
             marketData->ClearData();
-            marketData->AddSeries("USA", Color(25, 60, 130, 255));
-            marketData->AddSeries("China", Color(235, 75, 105, 255));
-            marketData->AddSeries("Europe", Color(65, 145, 225, 255));
-            marketData->AddSeries("Japan", Color(250, 190, 40, 255));
-            const char* sectors[] = {"Technology", "Transportation", "Energy",
-                                     "Education", "Finance", "Tourism"};
-            for (const char* sector : sectors) {
+            marketData->AddSeries(Tr("USA"), Color(25, 60, 130, 255));
+            marketData->AddSeries(Tr("China"), Color(235, 75, 105, 255));
+            marketData->AddSeries(Tr("Europe"), Color(65, 145, 225, 255));
+            marketData->AddSeries(Tr("Japan"), Color(250, 190, 40, 255));
+            const std::string sectors[] = {Tr("Technology"), Tr("Transportation"), Tr("Energy"),
+                                           Tr("Education"), Tr("Finance"), Tr("Tourism")};
+            for (const std::string& sector : sectors) {
                 marketData->AddColumn(sector, {dist(gen), dist(gen), dist(gen), dist(gen)});
             }
             // Data changed behind the element's back: force a layout rebuild
@@ -223,9 +223,8 @@ namespace {
             return [clickLabel, data](size_t columnIndex, size_t seriesIndex) {
                 const auto& column = data->GetColumn(columnIndex);
                 double value = data->GetValue(columnIndex, seriesIndex);
-                clickLabel->SetText("Selected: " + column.label + " / " +
-                                    data->GetSeries(seriesIndex).name + " = " +
-                                    std::to_string(static_cast<int>(value)));
+                clickLabel->SetText(TrF("Selected: {0} / {1} = {2}", column.label,
+                                        data->GetSeries(seriesIndex).name, static_cast<int>(value)));
             };
         };
         marketChart->SetOnSegmentClick(onSegmentClick(marketData));

@@ -98,9 +98,9 @@ namespace UltraCanvas {
         // A deliberately crowded scene: shapes are close enough that the naive
         // placement collides, so the difference the solver makes is visible.
         void BuildScene() {
-            const char* names[] = {
-                    "Reception", "Archive", "Studio", "Server Room",
-                    "Kitchenette", "Lift", "Print / Copy", "Terrace"
+            const std::string names[] = {
+                    Tr("Reception"), Tr("Archive"), Tr("Studio"), Tr("Server Room"),
+                    Tr("Kitchenette"), Tr("Lift"), Tr("Print / Copy"), Tr("Terrace")
             };
             struct Def { bool circle; double x, y, a, b; };
             const Def defs[] = {
@@ -323,16 +323,15 @@ namespace UltraCanvas {
         status->SetTextColor(Color(60, 60, 60, 255));
 
         auto refreshStatus = [canvas, status]() {
-            std::string s = "Solver: ";
-            s += canvas->GetSolverEnabled() ? "on" : "off (naive placement)";
-            s += "\nStyle: ";
+            std::string style;
             switch (canvas->GetStyle()) {
-                case LabelPlacementCanvas::Style::Outside: s += "outside the shape"; break;
-                case LabelPlacementCanvas::Style::Inside:  s += "centred on the shape (overflow allowed)"; break;
-                case LabelPlacementCanvas::Style::Border:  s += "straddling the outline at 2 o'clock"; break;
+                case LabelPlacementCanvas::Style::Outside: style = Tr("outside the shape"); break;
+                case LabelPlacementCanvas::Style::Inside:  style = Tr("centred on the shape (overflow allowed)"); break;
+                case LabelPlacementCanvas::Style::Border:  style = Tr("straddling the outline at 2 o'clock"); break;
             }
-            s += "\nLines as obstacles: ";
-            s += canvas->GetLinesAreObstacles() ? "yes" : "no";
+            std::string s = TrF("Solver: {0}", canvas->GetSolverEnabled() ? Tr("on") : Tr("off (naive placement)"));
+            s += "\n" + TrF("Style: {0}", style);
+            s += "\n" + TrF("Lines as obstacles: {0}", canvas->GetLinesAreObstacles() ? Tr("yes") : Tr("no"));
             status->SetText(s);
         };
 
@@ -365,18 +364,18 @@ namespace UltraCanvas {
             s->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Start);
         };
 
-        sectionLabel("LPSecSolver", "Solver");
-        addSwitch("LPToggleSolver", "Solver", canvas->GetSolverEnabled(),
+        sectionLabel("LPSecSolver", Tr("Solver"));
+        addSwitch("LPToggleSolver", Tr("Solver"), canvas->GetSolverEnabled(),
                   [canvas](bool on) { canvas->SetSolverEnabled(on); });
-        addSwitch("LPToggleLines", "Lines as obstacles", canvas->GetLinesAreObstacles(),
+        addSwitch("LPToggleLines", Tr("Lines as obstacles"), canvas->GetLinesAreObstacles(),
                   [canvas](bool on) { canvas->SetLinesAreObstacles(on); });
 
-        sectionLabel("LPSecStyle", "Preferred position");
-        addButton("LPStyleOutside", "Outside the shape",
+        sectionLabel("LPSecStyle", Tr("Preferred position"));
+        addButton("LPStyleOutside", Tr("Outside the shape"),
                   [canvas]() { canvas->SetStyle(LabelPlacementCanvas::Style::Outside); });
-        addButton("LPStyleInside", "Centred on the shape",
+        addButton("LPStyleInside", Tr("Centred on the shape"),
                   [canvas]() { canvas->SetStyle(LabelPlacementCanvas::Style::Inside); });
-        addButton("LPStyleBorder", "On the outline (2 o'clock)",
+        addButton("LPStyleBorder", Tr("On the outline (2 o'clock)"),
                   [canvas]() { canvas->SetStyle(LabelPlacementCanvas::Style::Border); });
 
         DemoKit::Add(controls, status);

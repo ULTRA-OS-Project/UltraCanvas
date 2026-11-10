@@ -24,16 +24,16 @@ namespace UltraCanvas {
 
     // Short phrases used by the "Add Random Item" button
     static TimelineItem RandomTimelineItem(int ordinal) {
-        static const char* titles[] = {
-                "New office", "Award won", "Team doubled", "Patent filed",
-                "Partner signed", "Record quarter"};
-        static const char* bodies[] = {
-                "A second engineering site opens and hiring starts immediately.",
-                "The product wins its category at the annual industry awards.",
-                "Headcount doubles after the funding round closes.",
-                "The core compression method is filed for a patent.",
-                "A distribution partner is signed for three new regions.",
-                "Revenue passes the previous best quarter by a wide margin."};
+        const std::string titles[] = {
+                Tr("New office"), Tr("Award won"), Tr("Team doubled"), Tr("Patent filed"),
+                Tr("Partner signed"), Tr("Record quarter")};
+        const std::string bodies[] = {
+                Tr("A second engineering site opens and hiring starts immediately."),
+                Tr("The product wins its category at the annual industry awards."),
+                Tr("Headcount doubles after the funding round closes."),
+                Tr("The core compression method is filed for a patent."),
+                Tr("A distribution partner is signed for three new regions."),
+                Tr("Revenue passes the previous best quarter by a wide margin.")};
 
         const int pick = rand() % 6;
         TimelineItem item(std::to_string(2021 + ordinal), titles[pick], bodies[pick]);
@@ -86,46 +86,46 @@ namespace UltraCanvas {
         auto contentContainer = DemoKit::AddRow(mainContainer, "tlContent");
 
         // ===== LEFT SIDEBAR (controls) =====
-        auto leftSidebar = AddTimelineDiagramSideCard(contentContainer, "tlLeftSidebar", "tlControlsTitle", "CONTROLS");
+        auto leftSidebar = AddTimelineDiagramSideCard(contentContainer, "tlLeftSidebar", "tlControlsTitle", Tr("CONTROLS"));
 
-        auto themeSelector = AddTimelineDiagramSelector(leftSidebar, "tlThemeSelector", "tlThemeLabel", "Theme");
-        themeSelector->AddItem("Light", "light");
-        themeSelector->AddItem("Dark", "dark");
+        auto themeSelector = AddTimelineDiagramSelector(leftSidebar, "tlThemeSelector", "tlThemeLabel", Tr("Theme"));
+        themeSelector->AddItem(Tr("Light"), "light");
+        themeSelector->AddItem(Tr("Dark"), "dark");
         themeSelector->SetSelectedIndex(0);
 
-        auto paletteSelector = AddTimelineDiagramSelector(leftSidebar, "tlPaletteSelector", "tlPaletteLabel", "Palette");
-        paletteSelector->AddItem("Vibrant", "vibrant");
-        paletteSelector->AddItem("Corporate Blue", "corporate");
-        paletteSelector->AddItem("Pastel", "pastel");
-        paletteSelector->AddItem("Ocean", "ocean");
-        paletteSelector->AddItem("Sunset", "sunset");
-        paletteSelector->AddItem("Forest", "forest");
-        paletteSelector->AddItem("Slate", "slate");
-        paletteSelector->AddItem("Mono", "mono");
+        auto paletteSelector = AddTimelineDiagramSelector(leftSidebar, "tlPaletteSelector", "tlPaletteLabel", Tr("Palette"));
+        paletteSelector->AddItem(Tr("Vibrant"), "vibrant");
+        paletteSelector->AddItem(Tr("Corporate Blue"), "corporate");
+        paletteSelector->AddItem(Tr("Pastel"), "pastel");
+        paletteSelector->AddItem(Tr("Ocean"), "ocean");
+        paletteSelector->AddItem(Tr("Sunset"), "sunset");
+        paletteSelector->AddItem(Tr("Forest"), "forest");
+        paletteSelector->AddItem(Tr("Slate"), "slate");
+        paletteSelector->AddItem(Tr("Mono"), "mono");
         paletteSelector->SetSelectedIndex(0);
 
-        auto sideSelector = AddTimelineDiagramSelector(leftSidebar, "tlSideSelector", "tlSideLabel", "Side Policy");
-        sideSelector->AddItem("Alternate", "alternate");
-        sideSelector->AddItem("All Above / Left", "above");
-        sideSelector->AddItem("All Below / Right", "below");
+        auto sideSelector = AddTimelineDiagramSelector(leftSidebar, "tlSideSelector", "tlSideLabel", Tr("Side Policy"));
+        sideSelector->AddItem(Tr("Alternate"), "alternate");
+        sideSelector->AddItem(Tr("All Above / Left"), "above");
+        sideSelector->AddItem(Tr("All Below / Right"), "below");
         sideSelector->SetSelectedIndex(0);
 
-        auto placementSelector = AddTimelineDiagramSelector(leftSidebar, "tlPlacementSelector", "tlPlacementLabel", "Placement");
-        placementSelector->AddItem("Even (infographic)", "even");
-        placementSelector->AddItem("Proportional (dates)", "proportional");
+        auto placementSelector = AddTimelineDiagramSelector(leftSidebar, "tlPlacementSelector", "tlPlacementLabel", Tr("Placement"));
+        placementSelector->AddItem(Tr("Even (infographic)"), "even");
+        placementSelector->AddItem(Tr("Proportional (dates)"), "proportional");
         placementSelector->SetSelectedIndex(0);
 
-        auto colorSelector = AddTimelineDiagramSelector(leftSidebar, "tlColorSelector", "tlColorLabel", "Color Mode");
-        colorSelector->AddItem("Per Item", "peritem");
-        colorSelector->AddItem("Single", "single");
-        colorSelector->AddItem("Gradient Along Path", "gradient");
+        auto colorSelector = AddTimelineDiagramSelector(leftSidebar, "tlColorSelector", "tlColorLabel", Tr("Color Mode"));
+        colorSelector->AddItem(Tr("Per Item"), "peritem");
+        colorSelector->AddItem(Tr("Single"), "single");
+        colorSelector->AddItem(Tr("Gradient Along Path"), "gradient");
         colorSelector->SetSelectedIndex(0);
 
-        auto btnAddItem = AddTimelineDiagramButton(leftSidebar, "tlBtnAddItem", "Add Random Item", Color(13, 110, 253, 255));
-        auto btnRemove = AddTimelineDiagramButton(leftSidebar, "tlBtnRemove", "Remove Selected", Color(220, 53, 69, 255));
-        auto btnReverse = AddTimelineDiagramButton(leftSidebar, "tlBtnReverse", "Reverse Direction", Color(111, 66, 193, 255));
-        auto btnReload = AddTimelineDiagramButton(leftSidebar, "tlBtnReload", "Reload Sample Data", Color(25, 135, 84, 255));
-        auto btnReset = AddTimelineDiagramButton(leftSidebar, "tlBtnReset", "Reset View", Color(108, 117, 125, 255));
+        auto btnAddItem = AddTimelineDiagramButton(leftSidebar, "tlBtnAddItem", Tr("Add Random Item"), Color(13, 110, 253, 255));
+        auto btnRemove = AddTimelineDiagramButton(leftSidebar, "tlBtnRemove", Tr("Remove Selected"), Color(220, 53, 69, 255));
+        auto btnReverse = AddTimelineDiagramButton(leftSidebar, "tlBtnReverse", Tr("Reverse Direction"), Color(111, 66, 193, 255));
+        auto btnReload = AddTimelineDiagramButton(leftSidebar, "tlBtnReload", Tr("Reload Sample Data"), Color(25, 135, 84, 255));
+        auto btnReset = AddTimelineDiagramButton(leftSidebar, "tlBtnReset", Tr("Reset View"), Color(108, 117, 125, 255));
 
         auto helpBox = DemoKit::AddCaption(leftSidebar, "tlHelpBox",
                 Tr("INTERACTION TIPS\n\n"
@@ -151,7 +151,7 @@ namespace UltraCanvas {
         statusBar->SetTextColor(Color(73, 80, 87, 255));
 
         // ===== RIGHT SIDEBAR (stats + about) =====
-        auto rightSidebar = AddTimelineDiagramSideCard(contentContainer, "tlRightSidebar", "tlStatsTitle", "STATISTICS");
+        auto rightSidebar = AddTimelineDiagramSideCard(contentContainer, "tlRightSidebar", "tlStatsTitle", Tr("STATISTICS"));
 
         auto statsPanel = DemoKit::AddText(rightSidebar, "tlStatsPanel", "");
         statsPanel->SetFontSize(10);
@@ -175,34 +175,34 @@ namespace UltraCanvas {
             std::string about;
         };
         const std::vector<TabSpec> tabSpecs = {
-                {"Bar", TimelineDesign::Bar, true,
-                 "Bar\n\nA thick spine split into one colored segment per item, with circular nodes alternating on the top and bottom edges and the period caption on the opposite side."},
-                {"Line", TimelineDesign::Line, true,
-                 "Line\n\nA thin axis with small nodes on it and a short stem to each text block. The most restrained of the horizontal designs."},
-                {"Alternating", TimelineDesign::Alternating, true,
-                 "Alternating\n\nThe classic zigzag: cards above and below a central spine, connected by stems. Good when each item has a paragraph of text."},
-                {"Cards", TimelineDesign::Cards, true,
-                 "Cards\n\nA row of separate cards with a numbered badge on the top edge. No spine - reads as independent tiles rather than a continuous path."},
-                {"Vertical", TimelineDesign::Vertical, true,
-                 "Vertical\n\nTop-down spine with cards left and right. The right choice for long lists and portrait layouts."},
-                {"Serpentine", TimelineDesign::Serpentine, false,
-                 "Serpentine\n\nA snaking ribbon that wraps over several runs, with numbered nodes on the path. Fits twelve or more items into a wide frame."},
-                {"Hanging", TimelineDesign::Hanging, false,
-                 "Hanging\n\nA month axis with stems dropping to bubbles of varying size. Bubble text is wrapped to the circle, and bubbles are staggered over two tiers so they never collide."},
-                {"Chevron", TimelineDesign::Chevron, true,
-                 "Chevron\n\nArrow blocks pointing forward - the process / phase presentation where the direction of travel matters more than the dates."},
-                {"Steps", TimelineDesign::Steps, true,
-                 "Steps\n\nAscending staircase blocks. Suits growth narratives where each stage builds on the previous one."}};
+                {Tr("Bar"), TimelineDesign::Bar, true,
+                 Tr("Bar\n\nA thick spine split into one colored segment per item, with circular nodes alternating on the top and bottom edges and the period caption on the opposite side.")},
+                {Tr("Line"), TimelineDesign::Line, true,
+                 Tr("Line\n\nA thin axis with small nodes on it and a short stem to each text block. The most restrained of the horizontal designs.")},
+                {Tr("Alternating"), TimelineDesign::Alternating, true,
+                 Tr("Alternating\n\nThe classic zigzag: cards above and below a central spine, connected by stems. Good when each item has a paragraph of text.")},
+                {Tr("Cards"), TimelineDesign::Cards, true,
+                 Tr("Cards\n\nA row of separate cards with a numbered badge on the top edge. No spine - reads as independent tiles rather than a continuous path.")},
+                {Tr("Vertical"), TimelineDesign::Vertical, true,
+                 Tr("Vertical\n\nTop-down spine with cards left and right. The right choice for long lists and portrait layouts.")},
+                {Tr("Serpentine"), TimelineDesign::Serpentine, false,
+                 Tr("Serpentine\n\nA snaking ribbon that wraps over several runs, with numbered nodes on the path. Fits twelve or more items into a wide frame.")},
+                {Tr("Hanging"), TimelineDesign::Hanging, false,
+                 Tr("Hanging\n\nA month axis with stems dropping to bubbles of varying size. Bubble text is wrapped to the circle, and bubbles are staggered over two tiers so they never collide.")},
+                {Tr("Chevron"), TimelineDesign::Chevron, true,
+                 Tr("Chevron\n\nArrow blocks pointing forward - the process / phase presentation where the direction of travel matters more than the dates.")},
+                {Tr("Steps"), TimelineDesign::Steps, true,
+                 Tr("Steps\n\nAscending staircase blocks. Suits growth narratives where each stage builds on the previous one.")}};
 
         std::vector<std::shared_ptr<UltraCanvasTimelineDiagram>> allDiagrams;
         for (const auto& spec : tabSpecs) {
             auto diagram = CreateTimelineDiagramElement(
                     "tlDiagram" + std::to_string(allDiagrams.size()),
                     DIAG_X, DIAG_Y, DIAG_W, DIAG_H, spec.design);
-            diagram->SetTitle(spec.useYearData ? "Company History" : "Project Year 2026");
+            diagram->SetTitle(spec.useYearData ? Tr("Company History") : Tr("Project Year 2026"));
             diagram->SetSubtitle(spec.useYearData
-                                 ? "Six milestones from founding to one million users"
-                                 : "Twelve monthly milestones");
+                                 ? Tr("Six milestones from founding to one million users")
+                                 : Tr("Twelve monthly milestones"));
             diagram->SetItems(spec.useYearData
                               ? TimelineDiagramSamples::CompanyHistory()
                               : TimelineDiagramSamples::ProjectYear(2026));
@@ -211,8 +211,12 @@ namespace UltraCanvas {
             if (spec.design == TimelineDesign::Hanging) {
                 // The independent scale row is what makes the month axis read
                 // as a calendar rather than a list of items
-                diagram->SetScaleLabels({"Jan", "Feb", "Mar", "Apr", "May", "Jun",
-                                         "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"});
+                diagram->SetScaleLabels({TrC("month-short", "Jan"), TrC("month-short", "Feb"),
+                                         TrC("month-short", "Mar"), TrC("month-short", "Apr"),
+                                         TrC("month-short", "May"), TrC("month-short", "Jun"),
+                                         TrC("month-short", "Jul"), TrC("month-short", "Aug"),
+                                         TrC("month-short", "Sep"), TrC("month-short", "Oct"),
+                                         TrC("month-short", "Nov"), TrC("month-short", "Dec")});
                 diagram->EditStyle().showScaleRow = true;
                 // The scale row already labels every month, so the per-item
                 // caption would just repeat it
@@ -242,23 +246,20 @@ namespace UltraCanvas {
             auto diagram = activeDiagram();
             if (!diagram) return;
 
-            std::ostringstream oss;
-            oss << "Items: " << diagram->CountItems() << "\n";
-            oss << "Direction: " << (diagram->GetReverseOrder() ? "reversed" : "forward") << "\n";
-            oss << "Placement: "
-                << (diagram->GetPlacement() == TimelinePlacement::Proportional ? "by date" : "even")
-                << "\n\n";
+            std::string text = TrF("Items: {0}", diagram->CountItems()) + "\n";
+            text += (diagram->GetReverseOrder() ? Tr("Direction: reversed") : Tr("Direction: forward")) + "\n";
+            text += (diagram->GetPlacement() == TimelinePlacement::Proportional
+                     ? Tr("Placement: by date") : Tr("Placement: even")) + "\n\n";
 
             int selected = diagram->GetSelectedIndex();
-            oss << "Selected: ";
             if (selected >= 0) {
                 const TimelineItem& item = diagram->GetItem(static_cast<size_t>(selected));
-                oss << "#" << (selected + 1) << "\n" << item.caption;
-                if (!item.title.empty()) oss << "\n" << item.title;
+                text += TrF("Selected: #{0}\n{1}", selected + 1, item.caption);
+                if (!item.title.empty()) text += "\n" + item.title;
             } else {
-                oss << "none";
+                text += Tr("Selected: none");
             }
-            statsPanel->SetText(oss.str());
+            statsPanel->SetText(text);
         };
 
         std::vector<std::string> aboutTexts;
@@ -273,16 +274,14 @@ namespace UltraCanvas {
         // ===== DIAGRAM CALLBACKS =====
         for (auto& diagram : allDiagrams) {
             diagram->onItemSelect = [statusBar, updateStats](size_t index, const TimelineItem& item) {
-                statusBar->SetText("Selected #" + std::to_string(index + 1) + " [" +
-                                   item.caption + "] " + item.title);
+                statusBar->SetText(TrF("Selected #{0} [{1}] {2}", index + 1, item.caption, item.title));
                 updateStats();
             };
             diagram->onItemHover = [statusBar](size_t index, const TimelineItem& item) {
-                statusBar->SetText("Hovering #" + std::to_string(index + 1) + " [" +
-                                   item.caption + "] " + item.title);
+                statusBar->SetText(TrF("Hovering #{0} [{1}] {2}", index + 1, item.caption, item.title));
             };
             diagram->onItemDoubleClick = [statusBar](size_t index, const TimelineItem& item) {
-                statusBar->SetText("Double-clicked #" + std::to_string(index + 1) + " " + item.body);
+                statusBar->SetText(TrF("Double-clicked #{0} {1}", index + 1, item.body));
             };
             diagram->onSelectionChange = updateStats;
         }
@@ -339,7 +338,7 @@ namespace UltraCanvas {
 
             TimelineItem item = RandomTimelineItem(static_cast<int>(diagram->CountItems()) - 5);
             diagram->AddItem(item);
-            statusBar->SetText("Added [" + item.caption + "] " + item.title);
+            statusBar->SetText(TrF("Added [{0}] {1}", item.caption, item.title));
             updateStats();
         };
 
@@ -349,11 +348,11 @@ namespace UltraCanvas {
 
             int selected = diagram->GetSelectedIndex();
             if (selected < 0) {
-                statusBar->SetText("Nothing selected - click an item first");
+                statusBar->SetText(Tr("Nothing selected - click an item first"));
                 return;
             }
             diagram->RemoveItem(static_cast<size_t>(selected));
-            statusBar->SetText("Removed the selected item");
+            statusBar->SetText(Tr("Removed the selected item"));
             updateStats();
         };
 
@@ -362,8 +361,8 @@ namespace UltraCanvas {
             if (!diagram) return;
             diagram->SetReverseOrder(!diagram->GetReverseOrder());
             statusBar->SetText(diagram->GetReverseOrder()
-                               ? "Sequence reversed - the timeline now runs backwards"
-                               : "Sequence restored to forward order");
+                               ? Tr("Sequence reversed - the timeline now runs backwards")
+                               : Tr("Sequence restored to forward order"));
             updateStats();
         };
 
@@ -371,7 +370,7 @@ namespace UltraCanvas {
             auto diagram = activeDiagram();
             if (!diagram) return;
             diagram->LoadSampleData();
-            statusBar->SetText("Sample data reloaded for the active diagram");
+            statusBar->SetText(Tr("Sample data reloaded for the active diagram"));
             updateStats();
         };
 
@@ -400,7 +399,7 @@ namespace UltraCanvas {
                                   : TimelineDiagramSamples::ProjectYear(2026));
             }
 
-            statusBar->SetText("View reset - all diagrams restored to their defaults");
+            statusBar->SetText(Tr("View reset - all diagrams restored to their defaults"));
             updateStats();
         };
 

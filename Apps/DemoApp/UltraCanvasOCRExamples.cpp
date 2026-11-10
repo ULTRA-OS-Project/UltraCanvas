@@ -39,13 +39,10 @@ constexpr const char* kDefaultOCRImage = "media/images/OCR-demo.png";
 
 std::string BuildResultHeader(const OCRResult& r, const std::string& source) {
     std::string header;
-    header += "Source: " + source + "\n";
-    header += "Engine: ";
-    header += UltraCanvasOCR::EngineKindName(r.engineUsed);
-    header += "\n";
-    header += "Words:  " + std::to_string(r.words.size())
-            + "   Lines: " + std::to_string(r.lines.size())
-            + "   Time: " + std::to_string(static_cast<long>(r.elapsedMs)) + " ms\n";
+    header += TrF("Source: {0}", source) + "\n";
+    header += TrF("Engine: {0}", UltraCanvasOCR::EngineKindName(r.engineUsed)) + "\n";
+    header += TrF("Words:  {0}   Lines: {1}   Time: {2} ms", r.words.size(), r.lines.size(),
+                  static_cast<long>(r.elapsedMs)) + "\n";
     header += std::string(60, '-') + "\n\n";
     return header;
 }
@@ -103,8 +100,9 @@ UltraCanvasDemoApplication::CreateOCRExamples() {
         for (const OCRLanguageInfo& lang : UltraCanvasOCR::SupportedLanguages()) {
             if (lang.isScript) continue; // hide osd/equ helper models
             const bool have = installed.count(lang.code) > 0;
-            std::string label = lang.englishName + " (" + lang.code + ")";
-            if (!have) label += "  (download)"; // not installed: picking it downloads the model
+            // Not installed: picking it downloads the model.
+            std::string label = have ? lang.englishName + " (" + lang.code + ")"
+                                     : TrF("{0} ({1})  (download)", lang.englishName, lang.code);
             langDropdown->AddItem(label, lang.code);
             if (lang.code == "eng") selectIndex = idx;
             ++idx;
@@ -127,7 +125,7 @@ UltraCanvasDemoApplication::CreateOCRExamples() {
     // As wide as the card; the text scrolls inside its 586 px.
     auto resultArea = std::make_shared<UltraCanvasTextArea>(
         "OCRResultArea", 0, 0, 478, 586);
-    resultArea->SetText("(no result yet — press \"Run OCR\")");
+    resultArea->SetText(Tr("(no result yet — press \"Run OCR\")"));
     resultArea->SetReadOnly(true);
     DemoKit::AddStretched(resultCard, resultArea);
 
@@ -138,8 +136,8 @@ UltraCanvasDemoApplication::CreateOCRExamples() {
         const std::string lang = selectedLang->empty() ? "eng" : *selectedLang;
         const bool needsFetch = !UltraCanvasOCR::IsLanguageInstalled(lang);
         resultArea->SetText(needsFetch
-            ? "Fetching language pack '" + lang + "' and recognising…"
-            : "Recognising… please wait.");
+            ? TrF("Fetching language pack '{0}' and recognising…", lang)
+            : Tr("Recognising… please wait."));
 
         OCRConfig cfg;
         cfg.engine = OCREngineKind::Auto;
@@ -149,19 +147,18 @@ UltraCanvasDemoApplication::CreateOCRExamples() {
         // time it is used), then run recognition.
         std::string err;
         if (!ocr.EnsureLanguages({lang}, err)) {
-            resultArea->SetText("Could not prepare language '" + lang +
-                                "':\n" + err);
+            resultArea->SetText(TrF("Could not prepare language '{0}':\n{1}", lang, err));
             return;
         }
 
         OCRResult r = ocr.RecognizeFile(*currentPath);
         if (!r.Ok()) {
-            resultArea->SetText("OCR failed: " + r.error);
+            resultArea->SetText(TrF("OCR failed: {0}", r.error));
             return;
         }
         const std::string text = BuildResultHeader(r, *currentPath)
                                + (r.plainText.empty()
-                                      ? std::string("(no text detected)")
+                                      ? Tr("(no text detected)")
                                       : r.plainText);
         resultArea->SetText(text);
     };
@@ -173,7 +170,7 @@ UltraCanvasDemoApplication::CreateOCRExamples() {
     buttonLimits.minWidth = CSSLayout::Dimension::Px(160);
     buttonLimits.minHeight = CSSLayout::Dimension::Px(36);
 
-    auto openBtn = std::make_shared<UltraCanvasButton>("OCROpenBtn", "Open image");
+    auto openBtn = std::make_shared<UltraCanvasButton>("OCROpenBtn", Tr("Open image"));
     openBtn->boxConstraints = buttonLimits;
     SetFlatButtonIcon(*openBtn, "menu/folder.svg");
     openBtn->SetFontSize(12);
@@ -183,9 +180,9 @@ UltraCanvasDemoApplication::CreateOCRExamples() {
     UltraCanvasWindowBase* parentWin = container->GetWindow();
     openBtn->onClick = [parentWin, image, pathLabel, currentPath]() {
         FileDialogOptions opts;
-        opts.title = "Choose an image to OCR";
+        opts.title = Tr("Choose an image to OCR");
         opts.parentWindow = parentWin;
-        UltraCanvasFileLoader::AddLoadTypes(opts, "Images", {MediaFormatCategory::Bitmap});
+        UltraCanvasFileLoader::AddLoadTypes(opts, Tr("Images"), {MediaFormatCategory::Bitmap});
         UltraCanvasFileLoader::OpenFileDialog(opts,
             [image, pathLabel, currentPath]
             (DialogResult r, const std::string& path) {
@@ -198,7 +195,7 @@ UltraCanvasDemoApplication::CreateOCRExamples() {
     };
     DemoKit::Add(buttonRow, openBtn);
 
-    auto runBtn = std::make_shared<UltraCanvasButton>("OCRRunBtn", "Run OCR");
+    auto runBtn = std::make_shared<UltraCanvasButton>("OCRRunBtn", Tr("Run OCR"));
     runBtn->boxConstraints = buttonLimits;
     SetFlatButtonIcon(*runBtn, "menu/search.svg");
     runBtn->SetFontSize(12);

@@ -90,28 +90,32 @@ const ColorPreset kColorPresets[] = {
 constexpr size_t kNumPresets = sizeof(kColorPresets) / sizeof(kColorPresets[0]);
 
 // Shape dropdown options (mirrors the palette's shape categories).
-struct ShapeOption { const char* label; FlowChartShape shape; };
-const ShapeOption kShapeOptions[] = {
-    {"Rectangle",        FlowChartShape::Rectangle},
-    {"Rounded Rect",     FlowChartShape::RoundedRectangle},
-    {"Diamond",          FlowChartShape::Diamond},
-    {"Oval",             FlowChartShape::Oval},
-    {"Circle",           FlowChartShape::Circle},
-    {"Parallelogram",    FlowChartShape::Parallelogram},
-    {"Hexagon",          FlowChartShape::Hexagon},
-    {"Triangle",         FlowChartShape::Triangle},
-    {"Process",          FlowChartShape::Process},
-    {"Decision",         FlowChartShape::Decision},
-    {"Document",         FlowChartShape::Document},
-    {"Database",         FlowChartShape::Database},
-    {"Manual Input",     FlowChartShape::ManualInput},
-    {"Sticky Note",      FlowChartShape::StickyNote}
-};
-constexpr size_t kNumShapeOptions = sizeof(kShapeOptions) / sizeof(kShapeOptions[0]);
+// The labels go through Tr when the dropdown is filled, so the table is
+// built on call rather than before the application starts.
+struct ShapeOption { std::string label; FlowChartShape shape; };
+std::vector<ShapeOption> ShapeOptions() {
+    return {
+        {Tr("Rectangle"),        FlowChartShape::Rectangle},
+        {Tr("Rounded Rect"),     FlowChartShape::RoundedRectangle},
+        {Tr("Diamond"),          FlowChartShape::Diamond},
+        {Tr("Oval"),             FlowChartShape::Oval},
+        {Tr("Circle"),           FlowChartShape::Circle},
+        {Tr("Parallelogram"),    FlowChartShape::Parallelogram},
+        {Tr("Hexagon"),          FlowChartShape::Hexagon},
+        {Tr("Triangle"),         FlowChartShape::Triangle},
+        {Tr("Process"),          FlowChartShape::Process},
+        {Tr("Decision"),         FlowChartShape::Decision},
+        {Tr("Document"),         FlowChartShape::Document},
+        {Tr("Database"),         FlowChartShape::Database},
+        {Tr("Manual Input"),     FlowChartShape::ManualInput},
+        {Tr("Sticky Note"),      FlowChartShape::StickyNote}
+    };
+}
 
 int IndexForShape(FlowChartShape s) {
-    for (size_t i = 0; i < kNumShapeOptions; ++i) {
-        if (kShapeOptions[i].shape == s) return static_cast<int>(i);
+    const auto options = ShapeOptions();
+    for (size_t i = 0; i < options.size(); ++i) {
+        if (options[i].shape == s) return static_cast<int>(i);
     }
     return 0;
 }
@@ -173,31 +177,31 @@ static std::shared_ptr<UltraCanvasContainer> BuildOrderExampleChart() {
     chart->SetGridColor(Color(235, 235, 235, 255));
     chart->SetSnapToGrid(true);
     
-    chart->AddNode("start", FlowChartShape::RoundedRectangle, "Start", 60, 80, 140, 60);
+    chart->AddNode("start", FlowChartShape::RoundedRectangle, Tr("Start"), 60, 80, 140, 60);
     chart->SetNodeColor("start", Color(200, 255, 200, 255), Color(50, 180, 50, 255));
     chart->SetNodeTextColor("start", Color(0, 60, 0, 255));
     
-    chart->AddNode("process1", FlowChartShape::Rectangle, "Process Order", 280, 80, 160, 60);
+    chart->AddNode("process1", FlowChartShape::Rectangle, Tr("Process Order"), 280, 80, 160, 60);
     chart->SetNodeColor("process1", Color(200, 220, 255, 255), Color(60, 100, 220, 255));
     chart->SetNodeTextColor("process1", Color(0, 0, 80, 255));
     
-    chart->AddNode("decision", FlowChartShape::Diamond, "In Stock?", 520, 60, 140, 100);
+    chart->AddNode("decision", FlowChartShape::Diamond, Tr("In Stock?"), 520, 60, 140, 100);
     chart->SetNodeColor("decision", Color(255, 240, 200, 255), Color(220, 170, 60, 255));
     chart->SetNodeTextColor("decision", Color(80, 50, 0, 255));
     
-    chart->AddNode("process3", FlowChartShape::Rectangle, "Backorder", 740, 80, 140, 60);
+    chart->AddNode("process3", FlowChartShape::Rectangle, Tr("Backorder"), 740, 80, 140, 60);
     chart->SetNodeColor("process3", Color(255, 220, 200, 255), Color(220, 120, 80, 255));
     chart->SetNodeTextColor("process3", Color(100, 30, 0, 255));
     
-    chart->AddNode("process2", FlowChartShape::Rectangle, "Ship Item", 520, 240, 140, 60);
+    chart->AddNode("process2", FlowChartShape::Rectangle, Tr("Ship Item"), 520, 240, 140, 60);
     chart->SetNodeColor("process2", Color(220, 200, 255, 255), Color(140, 80, 220, 255));
     chart->SetNodeTextColor("process2", Color(60, 0, 100, 255));
     
-    chart->AddNode("end1", FlowChartShape::RoundedRectangle, "Complete", 520, 380, 140, 60);
+    chart->AddNode("end1", FlowChartShape::RoundedRectangle, Tr("Complete"), 520, 380, 140, 60);
     chart->SetNodeColor("end1", Color(200, 255, 200, 255), Color(50, 180, 50, 255));
     chart->SetNodeTextColor("end1", Color(0, 60, 0, 255));
     
-    chart->AddNode("note1", FlowChartShape::StickyNote, "Check\ninventory\nfirst!", 760, 240, 100, 80);
+    chart->AddNode("note1", FlowChartShape::StickyNote, Tr("Check\ninventory\nfirst!"), 760, 240, 100, 80);
     chart->SetNodeColor("note1", Color(255, 255, 200, 255), Color(220, 220, 120, 255));
     chart->SetNodeTextColor("note1", Color(80, 80, 0, 255));
     chart->SetNodeFontSize("note1", 10.0f);
@@ -211,7 +215,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildOrderExampleChart() {
     chart->SetConnectionWidth("c2", 2.5f);
     
     chart->AddConnection("c3", "decision", "process2", FlowChartConnectionStyle::Orthogonal, FlowChartArrowStyle::Arrow);
-    chart->SetConnectionLabel("c3", "Yes");
+    chart->SetConnectionLabel("c3", Tr("Yes"));
     chart->SetConnectionColor("c3", Color(50, 180, 50, 255));
     chart->SetConnectionWidth("c3", 2.5f);
     
@@ -220,7 +224,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildOrderExampleChart() {
     chart->SetConnectionWidth("c4", 2.5f);
     
     chart->AddConnection("c5", "decision", "process3", FlowChartConnectionStyle::Orthogonal, FlowChartArrowStyle::Arrow);
-    chart->SetConnectionLabel("c5", "No");
+    chart->SetConnectionLabel("c5", Tr("No"));
     chart->SetConnectionColor("c5", Color(220, 120, 80, 255));
     chart->SetConnectionWidth("c5", 2.5f);
     
@@ -243,13 +247,13 @@ static std::shared_ptr<UltraCanvasContainer> BuildOrderExampleChart() {
     instrTitle->SetFontSize(14.0f);
     instrTitle->SetTextColor(Color(40, 40, 40, 255));
 
-    const char* instructions[][2] = {
-        {"instr1", "1. Click 'Select' then drag nodes to reposition."},
-        {"instr2", "2. Click 'Connect' then click two nodes to connect them."},
-        {"instr3", "3. Press Delete to remove the selected node."},
-        {"instr4", "4. Switch to 'Build Your Own' tab to create from scratch."}};
+    const std::pair<const char*, std::string> instructions[] = {
+        {"instr1", Tr("1. Click 'Select' then drag nodes to reposition.")},
+        {"instr2", Tr("2. Click 'Connect' then click two nodes to connect them.")},
+        {"instr3", Tr("3. Press Delete to remove the selected node.")},
+        {"instr4", Tr("4. Switch to 'Build Your Own' tab to create from scratch.")}};
     for (const auto& entry : instructions) {
-        auto instr = DemoKit::AddText(instrPanel, entry[0], entry[1]);
+        auto instr = DemoKit::AddText(instrPanel, entry.first, entry.second);
         instr->SetFontSize(11.0f);
         instr->SetTextColor(Color(80, 80, 80, 255));
     }
@@ -259,18 +263,18 @@ static std::shared_ptr<UltraCanvasContainer> BuildOrderExampleChart() {
     auto buttonRow = DemoKit::AddRow(container, "OrderButtons", 15);
 
     auto btnSelect = std::make_shared<UltraCanvasButton>("btnSelect", 0, 0, 110, btnH);
-    btnSelect->SetText("Select");
+    btnSelect->SetText(Tr("Select"));
     btnSelect->SetColors(Color(220, 235, 255, 255), Color(200, 225, 255, 255));
     btnSelect->SetOnClick([chart]() { chart->SetEditMode(UltraCanvasFlowChart::EditMode::Select); });
     DemoKit::Add(buttonRow, btnSelect);
 
     auto btnConnect = std::make_shared<UltraCanvasButton>("btnConnect", 0, 0, 110, btnH);
-    btnConnect->SetText("Connect");
+    btnConnect->SetText(Tr("Connect"));
     btnConnect->SetOnClick([chart]() { chart->SetEditMode(UltraCanvasFlowChart::EditMode::CreateConnection); });
     DemoKit::Add(buttonRow, btnConnect);
 
     auto btnZoomIn = std::make_shared<UltraCanvasButton>("btnZoomIn", 0, 0, 90, btnH);
-    btnZoomIn->SetText("Zoom +");
+    btnZoomIn->SetText(Tr("Zoom +"));
     btnZoomIn->SetOnClick([chart]() {
         float z = chart->GetZoomLevel() * 1.2f;
         if (z <= 3.0f) chart->SetZoomLevel(z);
@@ -279,7 +283,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildOrderExampleChart() {
     DemoKit::Add(buttonRow, btnZoomIn);
 
     auto btnZoomOut = std::make_shared<UltraCanvasButton>("btnZoomOut", 0, 0, 90, btnH);
-    btnZoomOut->SetText("Zoom -");
+    btnZoomOut->SetText(Tr("Zoom -"));
     btnZoomOut->SetOnClick([chart]() {
         float z = chart->GetZoomLevel() * 0.8f;
         if (z >= 0.3f) chart->SetZoomLevel(z);
@@ -287,14 +291,14 @@ static std::shared_ptr<UltraCanvasContainer> BuildOrderExampleChart() {
     DemoKit::Add(buttonRow, btnZoomOut);
 
     auto btnReset = std::make_shared<UltraCanvasButton>("btnReset", 0, 0, 120, btnH);
-    btnReset->SetText("Reset View");
+    btnReset->SetText(Tr("Reset View"));
     btnReset->SetOnClick([chart]() { chart->SetZoomLevel(1.0f); chart->SetPanOffset(0, 0); });
     DemoKit::Add(buttonRow, btnReset);
 
     auto checkRow = DemoKit::AddRow(container, "OrderChecks", 15);
 
     auto chkGrid = std::make_shared<UltraCanvasCheckbox>("chkGrid", 0, 0, 0, 24);
-    chkGrid->SetText("Show Grid");
+    chkGrid->SetText(Tr("Show Grid"));
     chkGrid->SetChecked(true);
     chkGrid->onStateChanged = [chart](CheckedState, CheckedState newState) {
         chart->SetGridVisible(newState == CheckedState::Checked, 20.0f);
@@ -302,7 +306,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildOrderExampleChart() {
     DemoKit::Add(checkRow, chkGrid);
 
     auto chkSnap = std::make_shared<UltraCanvasCheckbox>("chkSnap", 0, 0, 0, 24);
-    chkSnap->SetText("Snap to Grid");
+    chkSnap->SetText(Tr("Snap to Grid"));
     chkSnap->SetChecked(true);
     chkSnap->onStateChanged = [chart](CheckedState, CheckedState newState) {
         chart->SetSnapToGrid(newState == CheckedState::Checked);
@@ -383,11 +387,11 @@ static std::shared_ptr<UltraCanvasContainer> BuildBuilderChart() {
         DemoKit::Add(section, row);
         auto colW = DemoKit::CreateColumn(rowId + "W", 2);
         DemoKit::Add(row, colW, 1);
-        AddFieldLabel(colW, lblWId, "Width");
+        AddFieldLabel(colW, lblWId, Tr("Width"));
         DemoKit::AddStretched(colW, inWidth);
         auto colH = DemoKit::CreateColumn(rowId + "H", 2);
         DemoKit::Add(row, colH, 1);
-        AddFieldLabel(colH, lblHId, "Height");
+        AddFieldLabel(colH, lblHId, Tr("Height"));
         DemoKit::AddStretched(colH, inHeight);
     };
 
@@ -419,14 +423,14 @@ static std::shared_ptr<UltraCanvasContainer> BuildBuilderChart() {
     DemoKit::Add(propsPanel, nodeSection);
     nodeSection->SetVisible(false);
 
-    AddFieldLabel(nodeSection, "lblShape", "Shape");
+    AddFieldLabel(nodeSection, "lblShape", Tr("Shape"));
     auto ddShape = std::make_shared<UltraCanvasDropdown>("ddShape", 0, 0, 266, 26);
-    for (size_t i = 0; i < kNumShapeOptions; ++i) ddShape->AddItem(kShapeOptions[i].label);
+    for (const auto& option : ShapeOptions()) ddShape->AddItem(option.label);
     DemoKit::AddStretched(nodeSection, ddShape);
 
-    AddFieldLabel(nodeSection, "lblLabel", "Label");
+    AddFieldLabel(nodeSection, "lblLabel", Tr("Label"));
     auto inLabel = std::make_shared<UltraCanvasTextInput>("inLabel", 0, 0, 266, 26);
-    inLabel->SetPlaceholder("Node label");
+    inLabel->SetPlaceholder(Tr("Node label"));
     inLabel->SetShowValidationState(false);
     DemoKit::AddStretched(nodeSection, inLabel);
 
@@ -440,14 +444,14 @@ static std::shared_ptr<UltraCanvasContainer> BuildBuilderChart() {
     addSizePair(nodeSection, "nodeSizeRow", "lblW", "lblH", inW, inH);
 
     // Fill / border / text colour preset rows; the buttons are wired up below.
-    AddFieldLabel(nodeSection, "lbl_Fill", "Fill");
+    AddFieldLabel(nodeSection, "lbl_Fill", Tr("Fill"));
     auto fillBtns = addSwatchRow(nodeSection, "fillRow", "preset_7320_");
-    AddFieldLabel(nodeSection, "lbl_Border", "Border");
+    AddFieldLabel(nodeSection, "lbl_Border", Tr("Border"));
     auto borderBtns = addSwatchRow(nodeSection, "borderRow", "preset_7330_");
-    AddFieldLabel(nodeSection, "lbl_Text", "Text");
+    AddFieldLabel(nodeSection, "lbl_Text", Tr("Text"));
     auto textBtns = addSwatchRow(nodeSection, "textRow", "preset_7340_");
 
-    AddFieldLabel(nodeSection, "lblFont", "Font size");
+    AddFieldLabel(nodeSection, "lblFont", Tr("Font size"));
     auto inFont = std::make_shared<UltraCanvasTextInput>("inFont", 0, 0, 126, 26);
     inFont->SetInputType(TextInputType::Integer);
     inFont->SetShowValidationState(false);
@@ -462,43 +466,43 @@ static std::shared_ptr<UltraCanvasContainer> BuildBuilderChart() {
     DemoKit::Add(propsPanel, connSection);
     connSection->SetVisible(false);
 
-    AddFieldLabel(connSection, "lblCLabel", "Label");
+    AddFieldLabel(connSection, "lblCLabel", Tr("Label"));
     auto inCLabel = std::make_shared<UltraCanvasTextInput>("inCLabel", 0, 0, 266, 26);
-    inCLabel->SetPlaceholder("(no label)");
+    inCLabel->SetPlaceholder(Tr("(no label)"));
     inCLabel->SetShowValidationState(false);
     DemoKit::AddStretched(connSection, inCLabel);
 
-    AddFieldLabel(connSection, "lblStyle", "Line style");
+    AddFieldLabel(connSection, "lblStyle", Tr("Line style"));
     auto ddStyle = std::make_shared<UltraCanvasDropdown>("ddStyle", 0, 0, 266, 26);
-    ddStyle->AddItem("Straight");
-    ddStyle->AddItem("Orthogonal");
-    ddStyle->AddItem("Curved");
+    ddStyle->AddItem(Tr("Straight"));
+    ddStyle->AddItem(Tr("Orthogonal"));
+    ddStyle->AddItem(Tr("Curved"));
     DemoKit::AddStretched(connSection, ddStyle);
 
-    AddFieldLabel(connSection, "lblArrow", "Arrow");
+    AddFieldLabel(connSection, "lblArrow", Tr("Arrow"));
     auto ddArrow = std::make_shared<UltraCanvasDropdown>("ddArrow", 0, 0, 266, 26);
-    ddArrow->AddItem("None");
-    ddArrow->AddItem("Arrow");
-    ddArrow->AddItem("Arrow Filled");
-    ddArrow->AddItem("Diamond");
+    ddArrow->AddItem(Tr("None"));
+    ddArrow->AddItem(Tr("Arrow"));
+    ddArrow->AddItem(Tr("Arrow Filled"));
+    ddArrow->AddItem(Tr("Diamond"));
     DemoKit::AddStretched(connSection, ddArrow);
 
-    AddFieldLabel(connSection, "lblCWidth", "Width (1-6)");
+    AddFieldLabel(connSection, "lblCWidth", Tr("Width (1-6)"));
     auto inCWidth = std::make_shared<UltraCanvasTextInput>("inCWidth", 0, 0, 126, 26);
     inCWidth->SetInputType(TextInputType::Integer);
     inCWidth->SetShowValidationState(false);
     DemoKit::AddFixed(connSection, inCWidth);
 
-    AddFieldLabel(connSection, "lblCColor", "Color");
+    AddFieldLabel(connSection, "lblCColor", Tr("Color"));
     auto connColorBtns = addSwatchRow(connSection, "connColorRow", "ccolor_");
 
     // Branch row: visible only when source of selected connection is Decision
-    auto lblBranch = AddFieldLabel(connSection, "lblBranch", "Decision branch");
+    auto lblBranch = AddFieldLabel(connSection, "lblBranch", Tr("Decision branch"));
     lblBranch->SetVisible(false);
     auto branchRow = DemoKit::AddRow(connSection, "branchRow", 6);
 
     auto btnYes = std::make_shared<UltraCanvasButton>("btnYes", 0, 0, 80, 26);
-    btnYes->SetText("Yes");
+    btnYes->SetText(Tr("Yes"));
     btnYes->SetColors(kColorPresets[0].fill, kColorPresets[0].fill);  // green
     btnYes->SetBorder(1.0f, kColorPresets[0].border);
     btnYes->SetCornerRadius(3.0f);
@@ -506,7 +510,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildBuilderChart() {
     btnYes->SetVisible(false);
 
     auto btnNo = std::make_shared<UltraCanvasButton>("btnNo", 0, 0, 80, 26);
-    btnNo->SetText("No");
+    btnNo->SetText(Tr("No"));
     btnNo->SetColors(kColorPresets[3].fill, kColorPresets[3].fill);  // orange/red
     btnNo->SetBorder(1.0f, kColorPresets[3].border);
     btnNo->SetCornerRadius(3.0f);
@@ -514,7 +518,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildBuilderChart() {
     btnNo->SetVisible(false);
 
     auto btnCustom = std::make_shared<UltraCanvasButton>("btnCustom", 0, 0, 92, 26);
-    btnCustom->SetText("Custom");
+    btnCustom->SetText(Tr("Custom"));
     btnCustom->SetColors(Color(240, 240, 240, 255), Color(220, 220, 220, 255));
     btnCustom->SetBorder(1.0f, Color(180, 180, 180, 255));
     btnCustom->SetCornerRadius(3.0f);
@@ -530,12 +534,12 @@ static std::shared_ptr<UltraCanvasContainer> BuildBuilderChart() {
     DemoKit::Add(propsPanel, noteSection);
     noteSection->SetVisible(false);
 
-    AddFieldLabel(noteSection, "lblNText", "Note text");
+    AddFieldLabel(noteSection, "lblNText", Tr("Note text"));
     // Sticky note text uses the same single-line input — multi-line authoring
     // works by typing literal "\n" in the text or by future multi-line widget.
     // For now: the user's text replaces the whole label.
     auto inNText = std::make_shared<UltraCanvasTextInput>("inNText", 0, 0, 266, 26);
-    inNText->SetPlaceholder("Note text");
+    inNText->SetPlaceholder(Tr("Note text"));
     inNText->SetShowValidationState(false);
     DemoKit::AddStretched(noteSection, inNText);
 
@@ -547,7 +551,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildBuilderChart() {
     inNH->SetShowValidationState(false);
     addSizePair(noteSection, "noteSizeRow", "lblNW", "lblNH", inNW, inNH);
 
-    AddFieldLabel(noteSection, "lblNFill", "Fill color");
+    AddFieldLabel(noteSection, "lblNFill", Tr("Fill color"));
     auto noteFillBtns = addSwatchRow(noteSection, "noteFillRow", "nfill_");
 
     // =========================================================================
@@ -567,7 +571,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildBuilderChart() {
                             selectedNodeId, selectedConnId]() {
         selectedNodeId->clear();
         selectedConnId->clear();
-        propsHint->SetText("Select a node or connection.");
+        propsHint->SetText(Tr("Select a node or connection."));
         propsHint->SetTextColor(Color(140, 140, 140, 255));
         nodeSection->SetVisible(false);
         connSection->SetVisible(false);
@@ -583,7 +587,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildBuilderChart() {
         *suppressEvents = true;
         bool isNote = (node->shape == FlowChartShape::StickyNote);
         if (isNote) {
-            propsHint->SetText("Editing note: " + id);
+            propsHint->SetText(TrF("Editing note: {0}", id));
             propsHint->SetTextColor(Color(180, 140, 0, 255));
             inNText->SetText(node->label);
             inNW->SetText(std::to_string(static_cast<int>(node->width)));
@@ -592,7 +596,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildBuilderChart() {
             connSection->SetVisible(false);
             noteSection->SetVisible(true);
         } else {
-            propsHint->SetText("Editing node: " + id);
+            propsHint->SetText(TrF("Editing node: {0}", id));
             propsHint->SetTextColor(Color(60, 100, 200, 255));
             ddShape->SetSelectedIndex(IndexForShape(node->shape));
             inLabel->SetText(node->label);
@@ -631,7 +635,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildBuilderChart() {
         FlowChartConnection* conn = chart->GetConnection(id);
         if (!conn) return;
         *suppressEvents = true;
-        propsHint->SetText("Editing connection: " + id);
+        propsHint->SetText(TrF("Editing connection: {0}", id));
         propsHint->SetTextColor(Color(60, 140, 80, 255));
         inCLabel->SetText(conn->label);
         ddStyle->SetSelectedIndex(static_cast<int>(conn->style));
@@ -664,8 +668,8 @@ static std::shared_ptr<UltraCanvasContainer> BuildBuilderChart() {
     // -------------------------------------------------------------------------
     ddShape->onSelectionChanged = [chart, selectedNodeId, suppressEvents](int idx, const DropdownItem&) {
         if (*suppressEvents || selectedNodeId->empty()) return;
-        if (idx < 0 || idx >= static_cast<int>(kNumShapeOptions)) return;
-        chart->SetNodeShape(*selectedNodeId, kShapeOptions[idx].shape);
+        if (idx < 0 || idx >= static_cast<int>(ShapeOptions().size())) return;
+        chart->SetNodeShape(*selectedNodeId, ShapeOptions()[static_cast<size_t>(idx)].shape);
     };
     
     inLabel->onTextChanged = [chart, selectedNodeId, suppressEvents](const std::string& s) {
@@ -791,18 +795,18 @@ static std::shared_ptr<UltraCanvasContainer> BuildBuilderChart() {
     
     btnYes->SetOnClick([chart, selectedConnId, inCLabel, suppressEvents]() {
         if (selectedConnId->empty()) return;
-        chart->SetConnectionLabel(*selectedConnId, "Yes");
+        chart->SetConnectionLabel(*selectedConnId, Tr("Yes"));
         chart->SetConnectionColor(*selectedConnId, kColorPresets[0].border);  // green
         *suppressEvents = true;
-        inCLabel->SetText("Yes");
+        inCLabel->SetText(Tr("Yes"));
         *suppressEvents = false;
     });
     btnNo->SetOnClick([chart, selectedConnId, inCLabel, suppressEvents]() {
         if (selectedConnId->empty()) return;
-        chart->SetConnectionLabel(*selectedConnId, "No");
+        chart->SetConnectionLabel(*selectedConnId, Tr("No"));
         chart->SetConnectionColor(*selectedConnId, kColorPresets[3].border);  // orange
         *suppressEvents = true;
-        inCLabel->SetText("No");
+        inCLabel->SetText(Tr("No"));
         *suppressEvents = false;
     });
     btnCustom->SetOnClick([chart, selectedConnId, inCLabel, suppressEvents]() {
@@ -858,7 +862,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildBuilderChart() {
     auto toolbar = DemoKit::AddRow(container, "BuilderToolbar", 10);
     
     auto btnSelect = std::make_shared<UltraCanvasButton>("bSelect", 0, 0, btnW, btnH);
-    btnSelect->SetText("Select");
+    btnSelect->SetText(Tr("Select"));
     btnSelect->SetColors(Color(220, 235, 255, 255), Color(200, 225, 255, 255));
     btnSelect->SetOnClick([chart]() {
         chart->SetCreateNodeMode(false);
@@ -867,7 +871,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildBuilderChart() {
     DemoKit::Add(toolbar, btnSelect);
     
     auto btnConnect = std::make_shared<UltraCanvasButton>("bConnect", 0, 0, btnW, btnH);
-    btnConnect->SetText("Connect");
+    btnConnect->SetText(Tr("Connect"));
     btnConnect->SetOnClick([chart]() {
         chart->SetCreateNodeMode(false);
         chart->SetEditMode(UltraCanvasFlowChart::EditMode::CreateConnection);
@@ -875,13 +879,13 @@ static std::shared_ptr<UltraCanvasContainer> BuildBuilderChart() {
     DemoKit::Add(toolbar, btnConnect);
     
     auto btnAddNote = std::make_shared<UltraCanvasButton>("bAddNote", 0, 0, btnW + 10, btnH);
-    btnAddNote->SetText("Add Note");
+    btnAddNote->SetText(Tr("Add Note"));
     btnAddNote->SetColors(Color(255, 255, 200, 255), Color(255, 245, 180, 255));
     btnAddNote->SetBorder(1.0f, Color(220, 220, 120, 255));
     btnAddNote->SetOnClick([chart]() {
         // Drop a sticky note in the visible center of the canvas.
         std::string id = "note_" + std::to_string(std::rand() % 100000);
-        chart->AddNode(id, FlowChartShape::StickyNote, "Note", 380, 280, 120, 80);
+        chart->AddNode(id, FlowChartShape::StickyNote, Tr("Note"), 380, 280, 120, 80);
         chart->SetNodeColor(id, Color(255, 255, 200, 255), Color(220, 220, 120, 255));
         chart->SetNodeTextColor(id, Color(80, 80, 0, 255));
         chart->SetNodeFontSize(id, 11.0f);
@@ -890,7 +894,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildBuilderChart() {
     DemoKit::Add(toolbar, btnAddNote);
     
     auto btnDone = std::make_shared<UltraCanvasButton>("bDone", 0, 0, btnW, btnH);
-    btnDone->SetText("Done");
+    btnDone->SetText(Tr("Done"));
     btnDone->SetOnClick([chart]() {
         chart->SetCreateNodeMode(false);
         chart->SetEditMode(UltraCanvasFlowChart::EditMode::Select);
@@ -898,7 +902,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildBuilderChart() {
     DemoKit::Add(toolbar, btnDone);
     
     auto btnDelete = std::make_shared<UltraCanvasButton>("bDelete", 0, 0, btnW, btnH);
-    btnDelete->SetText("Delete");
+    btnDelete->SetText(Tr("Delete"));
     btnDelete->SetColors(Color(255, 220, 220, 255), Color(255, 200, 200, 255));
     btnDelete->SetOnClick([chart, showNoSelection]() {
         chart->DeleteSelected();
@@ -908,7 +912,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildBuilderChart() {
     DemoKit::Add(toolbar, btnDelete);
     
     auto btnClear = std::make_shared<UltraCanvasButton>("bClear", 0, 0, btnW, btnH);
-    btnClear->SetText("Clear All");
+    btnClear->SetText(Tr("Clear All"));
     btnClear->SetColors(Color(255, 220, 220, 255), Color(255, 200, 200, 255));
     btnClear->SetOnClick([chart, showNoSelection]() {
         chart->Clear();
@@ -920,7 +924,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildBuilderChart() {
     auto checkRow = DemoKit::AddRow(container, "BuilderChecks", 15);
 
     auto chkGrid = std::make_shared<UltraCanvasCheckbox>("bChkGrid", 0, 0, 0, 24);
-    chkGrid->SetText("Show Grid");
+    chkGrid->SetText(Tr("Show Grid"));
     chkGrid->SetChecked(true);
     chkGrid->onStateChanged = [chart](CheckedState, CheckedState newState) {
         chart->SetGridVisible(newState == CheckedState::Checked, 20.0f);
@@ -928,7 +932,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildBuilderChart() {
     DemoKit::Add(checkRow, chkGrid);
     
     auto chkSnap = std::make_shared<UltraCanvasCheckbox>("bChkSnap", 0, 0, 0, 24);
-    chkSnap->SetText("Snap to Grid");
+    chkSnap->SetText(Tr("Snap to Grid"));
     chkSnap->SetChecked(true);
     chkSnap->onStateChanged = [chart](CheckedState, CheckedState newState) {
         chart->SetSnapToGrid(newState == CheckedState::Checked);
@@ -956,8 +960,8 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateFlowChar
     tabs->SetTabHeight(32);
     tabs->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
     
-    tabs->AddTab("Order Example",  BuildOrderExampleChart());
-    tabs->AddTab("Build Your Own", BuildBuilderChart());
+    tabs->AddTab(Tr("Order Example"),  BuildOrderExampleChart());
+    tabs->AddTab(Tr("Build Your Own"), BuildBuilderChart());
     tabs->SetActiveTab(0);
     
     DemoKit::Add(card, tabs, 1);

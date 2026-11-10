@@ -37,9 +37,9 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGLSurfac
     auto tabs = std::make_shared<UltraCanvasTabbedContainer>("GLShowcaseTabs", 0, 0, 1004, 726);
     tabs->SetTabHeight(34);
     tabs->SetTabMinWidth(150);
-    tabs->AddTab("3D Models", CreateGLModelsTab());
-    tabs->AddTab("Shaders", CreateGLShaderTab());
-    tabs->AddTab("Zarch", CreateGLZarchTab());
+    tabs->AddTab(Tr("3D Models"), CreateGLModelsTab());
+    tabs->AddTab(Tr("Shaders"), CreateGLShaderTab());
+    tabs->AddTab(Tr("Zarch"), CreateGLZarchTab());
     tabs->SetActiveTab(0);
     DemoKit::AddFixed(card, tabs);
 

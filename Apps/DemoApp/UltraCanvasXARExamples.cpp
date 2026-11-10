@@ -48,9 +48,9 @@ namespace UltraCanvas {
             auto element = std::make_shared<UltraCanvasXARElement>(id + "El", 0, 0, 280, 220);
             std::string path = NormalizePath(GetResourcesDir() + "media/vector/XAR/" + fileName);
             if (element->LoadFromFile(path)) {
-                statusLabel->SetText("Loaded: " + path);
+                statusLabel->SetText(TrF("Loaded: {0}", path));
             } else {
-                statusLabel->SetText("Failed to load " + path + ": " + element->GetLastError());
+                statusLabel->SetText(TrF("Failed to load {0}: {1}", path, element->GetLastError()));
             }
 
             element->SetMouseCursor(UCMouseCursor::Hand);
@@ -58,7 +58,7 @@ namespace UltraCanvas {
                 switch (event.type) {
                     case UCEventType::MouseUp:
                         ShowInMediaViewer(path);
-                        statusLabel->SetText("Opened in the media viewer: " + path);
+                        statusLabel->SetText(TrF("Opened in the media viewer: {0}", path));
                         return true;
                     case UCEventType::MouseEnter:
                         tile->SetBordersColor(Color(0, 122, 204, 255));

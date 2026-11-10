@@ -46,7 +46,7 @@ namespace UltraCanvas {
         sb->SetScrollPosition(120);
         if (status) {
             sb->onScrollChange = [status, caption](int pos) {
-                status->SetText(caption + ": position " + std::to_string(pos));
+                status->SetText(TrF("{0}: position {1}", caption, pos));
             };
         }
         DemoKit::AddFixed(cell, sb);
@@ -74,7 +74,7 @@ namespace UltraCanvas {
         sb->SetScrollPosition(80);
         if (status) {
             sb->onScrollChange = [status, caption](int pos) {
-                status->SetText(caption + ": position " + std::to_string(pos));
+                status->SetText(TrF("{0}: position {1}", caption, pos));
             };
         }
         DemoKit::AddFixed(cell, sb);
@@ -115,11 +115,11 @@ namespace UltraCanvas {
             auto card = DemoKit::AddCard(root, "hdrPresets",
                     Tr("1. Preset styles  —  ScrollbarStyle::Default / Modern / Minimal / Classic"));
             auto row = DemoKit::AddRow(card, "rowPresets", 10);
-            AddVScrollbar(row, "sbDefault", ScrollbarStyle::Default(), "Default", status);
-            AddVScrollbar(row, "sbModern", ScrollbarStyle::Modern(), "Modern", status);
-            AddVScrollbar(row, "sbMinimal", ScrollbarStyle::Minimal(), "Minimal", status);
-            AddVScrollbar(row, "sbClassic", ScrollbarStyle::Classic(), "Classic (arrows)", status);
-            AddVScrollbar(row, "sbDropdown", ScrollbarStyle::DropDown(), "DropDown", status);
+            AddVScrollbar(row, "sbDefault", ScrollbarStyle::Default(), Tr("Default"), status);
+            AddVScrollbar(row, "sbModern", ScrollbarStyle::Modern(), Tr("Modern"), status);
+            AddVScrollbar(row, "sbMinimal", ScrollbarStyle::Minimal(), Tr("Minimal"), status);
+            AddVScrollbar(row, "sbClassic", ScrollbarStyle::Classic(), Tr("Classic (arrows)"), status);
+            AddVScrollbar(row, "sbDropdown", ScrollbarStyle::DropDown(), Tr("DropDown"), status);
         }
 
         // ===== 2. COLOUR OPTIONS =====
@@ -130,23 +130,23 @@ namespace UltraCanvas {
             AddVScrollbar(row, "sbBlue",
                           ColorStyle(Color(225, 232, 245, 255), Color(90, 140, 220, 255),
                                      Color(70, 120, 200, 255), Color(50, 100, 180, 255)),
-                          "Blue", status);
+                          Tr("Blue"), status);
             AddVScrollbar(row, "sbGreen",
                           ColorStyle(Color(228, 244, 232, 255), Color(80, 180, 120, 255),
                                      Color(60, 160, 100, 255), Color(40, 140, 80, 255)),
-                          "Green", status);
+                          Tr("Green"), status);
             AddVScrollbar(row, "sbAmber",
                           ColorStyle(Color(248, 240, 224, 255), Color(235, 170, 60, 255),
                                      Color(215, 150, 40, 255), Color(195, 130, 20, 255)),
-                          "Amber", status);
+                          Tr("Amber"), status);
             AddVScrollbar(row, "sbRose",
                           ColorStyle(Color(248, 228, 235, 255), Color(220, 90, 130, 255),
                                      Color(200, 70, 110, 255), Color(180, 50, 90, 255)),
-                          "Rose", status);
+                          Tr("Rose"), status);
             AddVScrollbar(row, "sbDark",
                           ColorStyle(Color(60, 60, 70, 255), Color(150, 150, 170, 255),
                                      Color(180, 180, 200, 255), Color(210, 210, 225, 255)),
-                          "Dark", status);
+                          Tr("Dark"), status);
         }
 
         // ===== 3. CORNER RADIUS / END SHAPE =====
@@ -163,14 +163,14 @@ namespace UltraCanvas {
                 return s;
             };
             AddVScrollbar(row, "sbSquare", mk(0, 0),
-                          "Square (r=0)", status);
+                          Tr("Square (r=0)"), status);
             AddVScrollbar(row, "sbSoft", mk(3, 3),
-                          "Soft (r=3)", status);
+                          Tr("Soft (r=3)"), status);
             AddVScrollbar(row, "sbPill", mk(8, 8),
-                          "Round/Pill (r=8)", status);
+                          Tr("Round/Pill (r=8)"), status);
             // Pill thumb riding a flat (square) track.
             AddVScrollbar(row, "sbPillFlat", mk(8, 0),
-                          "Pill on flat track", status);
+                          Tr("Pill on flat track"), status);
         }
 
         // ===== 4. CUSTOM HANDLE (SVG IMAGE) =====
@@ -190,14 +190,14 @@ namespace UltraCanvas {
             handleV.trackCornerRadius = 7;
             handleV.thumbImagePath = vHandle;     // <-- SVG handle
             AddVScrollbar(row, "sbHandleV", handleV,
-                          "SVG handle", status);
+                          Tr("SVG handle"), status);
 
             // Same handle on a wider bar to show it scales.
             ScrollbarStyle handleVWide = handleV;
             handleVWide.trackSize = 20;
             handleVWide.thumbMinSize = 52;
             AddVScrollbar(row, "sbHandleVWide", handleVWide,
-                          "SVG handle (wide)", status);
+                          Tr("SVG handle (wide)"), status);
 
             // Horizontal handle.
             ScrollbarStyle handleH;
@@ -207,7 +207,7 @@ namespace UltraCanvas {
             handleH.trackCornerRadius = 7;
             handleH.thumbImagePath = hHandle;
             AddHScrollbar(row, "sbHandleH", 240.0f,
-                          handleH, "Horizontal SVG handle", status);
+                          handleH, Tr("Horizontal SVG handle"), status);
         }
 
         // ===== 5. HORIZONTAL SCROLLBARS =====
@@ -215,13 +215,13 @@ namespace UltraCanvas {
             auto card = DemoKit::AddCard(root, "hdrHoriz",
                     Tr("5. Horizontal orientation  —  default and round-ended"));
             ScrollbarStyle flat = ScrollbarStyle::Default();
-            AddHScrollbar(card, "sbHDefault", 300.0f, flat, "Default", status);
+            AddHScrollbar(card, "sbHDefault", 300.0f, flat, Tr("Default"), status);
 
             ScrollbarStyle round = ScrollbarStyle::Default();
             round.thumbColor = Color(90, 140, 220, 255);
             round.thumbCornerRadius = RoundEndRadius(round.trackSize);
             round.trackCornerRadius = RoundEndRadius(round.trackSize);
-            AddHScrollbar(card, "sbHRound", 300.0f, round, "Round ends", status);
+            AddHScrollbar(card, "sbHRound", 300.0f, round, Tr("Round ends"), status);
         }
 
         return root;

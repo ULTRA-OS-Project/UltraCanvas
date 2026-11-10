@@ -24,6 +24,7 @@
 #include "UltraCanvasCADConverters.h"
 
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <memory>
 #include <string>
@@ -45,7 +46,7 @@ namespace {
         CadLoadResult result;
         auto converter = UltraCanvasVectorFormatsPlugin::CreateConverterForExtension(path);
         if (!converter || !converter->CanImport()) {
-            result.warnings.push_back("no reader for " + path);
+            result.warnings.push_back(TrF("no reader for {0}", path));
             return result;
         }
         VectorConverter::ConversionOptions options;
@@ -69,10 +70,9 @@ namespace {
     std::string DescribeDocument(const VectorStorage::VectorDocument& doc, double ms) {
         size_t drawables = 0;
         for (const auto& layer : doc.Layers) if (layer) drawables += CountDrawables(*layer);
-        char buf[160];
-        std::snprintf(buf, sizeof(buf), "%zu layers, %zu drawables, page %.0f x %.0f pt, decoded in %.0f ms",
-                      doc.Layers.size(), drawables, doc.Size.width, doc.Size.height, ms);
-        return buf;
+        return TrF("{0} layers, {1} drawables, page {2} x {3} pt, decoded in {4} ms",
+                   doc.Layers.size(), drawables, std::llround(doc.Size.width), std::llround(doc.Size.height),
+                   std::llround(ms));
     }
 
 }   // namespace
@@ -121,7 +121,7 @@ namespace {
                 element->SetDocument(loaded.document);
                 summary = fileName + ": " + DescribeDocument(*loaded.document, loaded.milliseconds);
             } else {
-                summary = "Failed to load " + path;
+                summary = TrF("Failed to load {0}", path);
             }
             for (const auto& w : loaded.warnings) summary += "\n" + w;
 
@@ -155,15 +155,15 @@ namespace {
         };
 
         makeTile("DWGContainer1", "media/vector/", "DWG", "Audi-Q5-DWGFree.com_.dwg",
-                 "DWG: Audi Q5 (R2013, 2D block)");
+                 Tr("DWG: Audi Q5 (R2013, 2D block)"));
         makeTile("DWGContainer2", "media/vector/", "DWG", "womans hostel.dwg",
-                 "DWG: hostel plans (R2007, blocks, hatches)");
+                 Tr("DWG: hostel plans (R2007, blocks, hatches)"));
         makeTile("DWGContainer3", "media/3D/", "DWG", "bagno_3d_1.dwg",
-                 "DWG: bathroom (R2013, 3D polyface meshes, projected)");
+                 Tr("DWG: bathroom (R2013, 3D polyface meshes, projected)"));
         makeTile("DXFContainer1", "media/vector/", "DXF", "millennium-falcon.dxf",
-                 "DXF: Millennium Falcon (1015 LWPOLYLINEs, 507 LINEs)");
+                 Tr("DXF: Millennium Falcon (1015 LWPOLYLINEs, 507 LINEs)"));
         makeTile("DXFContainer2", "media/vector/", "DXF", "women-body.dxf",
-                 "DXF: figure study (74 NURBS SPLINEs)");
+                 Tr("DXF: figure study (74 NURBS SPLINEs)"));
 
         DemoKit::Add(samplesCard, statusLabel);
 

@@ -90,7 +90,7 @@ namespace UltraCanvas {
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateBitmapNotImplementedExamples(const std::string& format) {
         auto page = DemoKit::CreatePage("BitmapExamples", Tr("Bitmap Graphics Examples"),
-                format + " Graphics - Partially Implemented yet");
+                TrF("{0} Graphics - Partially Implemented yet", format));
         auto row = DemoKit::AddRow(page, "BitmapPlaceholder");
         DemoKit::AddNotes(row, "BitmapFormats", Tr("Supported Formats"), {
                 Tr("PNG - Full support with transparency"),
@@ -189,8 +189,7 @@ namespace UltraCanvas {
 
         // As tall as its wrapped lines: a long file name or translation wraps.
         auto header = DemoKit::CreateHeading("TextSampleHeader_" + language,
-                language + " — " + fileName +
-                " (highlighted live by UltraCanvasTextArea's syntax renderer)");
+                TrF("{0} — {1} (highlighted live by UltraCanvasTextArea's syntax renderer)", language, fileName));
         header->SetFontSize(12);
         header->SetTextColor(Color(40, 110, 40, 255));
         DemoKit::Add(page, header);
@@ -230,11 +229,11 @@ namespace UltraCanvas {
         }
 
         auto root = DemoKit::CreatePage("TextDocumentExamples", Tr("Text Documents"),
-                "UltraCanvasTextArea's built-in syntax renderer highlights " +
-                std::to_string(languages.size()) +
-                " plain-text and source-code file types. The tabs below open live "
-                "sample files from " + samplesDir + " — file types with a bundled "
-                "sample are listed first, the remaining supported types follow.");
+                TrF("UltraCanvasTextArea's built-in syntax renderer highlights {0} "
+                "plain-text and source-code file types. The tabs below open live "
+                "sample files from {1} — file types with a bundled "
+                "sample are listed first, the remaining supported types follow.",
+                languages.size(), samplesDir));
         // The tab column and the documents scroll themselves: the page is the
         // area's height.
         root->SetFillsArea(true);
@@ -273,8 +272,8 @@ namespace UltraCanvas {
             page->SetBackgroundColor(Colors::White);
 
             auto note = DemoKit::CreateText("TextTypeNote_" + lang,
-                    lang + "\n\nUltraCanvasTextArea highlights this file type — no bundled\n"
-                           "sample ships for it yet. Open any matching file to see it rendered.");
+                    TrF("{0}\n\nUltraCanvasTextArea highlights this file type — no bundled\n"
+                        "sample ships for it yet. Open any matching file to see it rendered.", lang));
             note->SetFontSize(13);
             note->SetTextColor(Color(120, 120, 120, 255));
             note->SetAlignment(TextAlignment::Center, VerticalAlignment::Middle);
@@ -360,7 +359,7 @@ namespace UltraCanvas {
             docTitle = PathToUtf8(filePath.parent_path().filename());
         }
         auto page = DemoKit::CreatePage("MarkdownDocPage", docTitle,
-                PathToUtf8(filePath.filename()) + ", shown by UltraCanvasTextArea in Markdown mode");
+                TrF("{0}, shown by UltraCanvasTextArea in Markdown mode", PathToUtf8(filePath.filename())));
         // The document scrolls itself: the page is the area's height.
         page->SetFillsArea(true);
         auto card = DemoKit::CreateCard("MarkdownDocCard");
@@ -417,7 +416,7 @@ namespace UltraCanvas {
         combined += LoadFile(readmePath);
 
         auto page = DemoKit::CreatePage("ModuleDocPage", moduleName,
-                "The " + moduleName + " module: overview and documentation");
+                TrF("The {0} module: overview and documentation", moduleName));
         // The document scrolls itself: the page is the area's height.
         page->SetFillsArea(true);
         auto card = DemoKit::CreateCard("ModuleDocCard");
@@ -491,18 +490,18 @@ namespace UltraCanvas {
     } // anonymous namespace
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGPIOExamples() {
-        return CreateMarkdownPage("GPIOExamples", "GPIO", "General-purpose input/output support",
+        return CreateMarkdownPage("GPIOExamples", "GPIO", Tr("General-purpose input/output support"),
                                   "GPIOExamplesText", "**GPIO**");
     }
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreatePartiallyImplementedExamples(const std::string& descr) {
-        return CreateMarkdownPage("PartiallyImplementedExamples", "Partially Implemented",
-                                  "This example is still being built",
+        return CreateMarkdownPage("PartiallyImplementedExamples", Tr("Partially Implemented"),
+                                  Tr("This example is still being built"),
                                   "PartiallyImplementedExamplesText", descr);
     }
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateScannerSupportExamples() {
-        return CreateMarkdownPage("ScannerExamples", "Scanner Support", "Image acquisition from scanners",
+        return CreateMarkdownPage("ScannerExamples", Tr("Scanner Support"), Tr("Image acquisition from scanners"),
                                   "ScannerExamplesText", "**Scanner support**");
     }
 

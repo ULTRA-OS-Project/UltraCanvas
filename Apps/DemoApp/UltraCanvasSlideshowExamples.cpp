@@ -140,10 +140,8 @@ namespace UltraCanvas {
         auto* showPtr = show.get();
         auto* statusPtr = statusLabel.get();
         show->onSlideChanged = [showPtr, statusPtr](size_t idx) {
-            std::ostringstream oss;
-            oss << "Slide " << (idx + 1) << " / " << showPtr->GetSlideCount()
-                << " — " << showPtr->GetSlides()[idx].infoTitle;
-            statusPtr->SetText(oss.str());
+            statusPtr->SetText(TrF("Slide {0} / {1} — {2}", idx + 1, showPtr->GetSlideCount(),
+                                   showPtr->GetSlides()[idx].infoTitle));
         };
 
         // ---- Options card: everything in it is programmer-facing. ----
@@ -216,9 +214,9 @@ namespace UltraCanvas {
         // One radio button registered in `group`; clicking selects it and
         // restyles every sibling, then runs the supplied action.
         auto addRadio = [&](BtnGroup group, const std::shared_ptr<UltraCanvasContainer>& parent,
-                            const std::string& label, const BtnVisual& v, bool selected,
+                            const std::string& key, const std::string& label, const BtnVisual& v, bool selected,
                             std::function<void()> cb) {
-            auto btn = makeButton("opt_" + label + "_" + std::to_string(++idCounter), label);
+            auto btn = makeButton("opt_" + key + "_" + std::to_string(++idCounter), label);
             applyVisual(btn.get(), v, selected);
             auto* raw = btn.get();
             group->push_back({raw, v});
@@ -232,7 +230,8 @@ namespace UltraCanvas {
         // One option in a flowed (wrapping) radio row. A `brk` entry forces the
         // next item onto a new line.
         struct RadioSpec {
-            std::string label;
+            std::string key;     // English, for the button's id
+            std::string label;   // the text shown
             BtnVisual vis;
             bool selected = false;
             bool brk = false;
@@ -248,19 +247,19 @@ namespace UltraCanvas {
                     DemoKit::Add(content, line);
                     continue;
                 }
-                addRadio(group, line, s.label, s.vis, s.selected, s.cb);
+                addRadio(group, line, s.key, s.label, s.vis, s.selected, s.cb);
             }
         };
 
         // A labelled line of the grid: the caption (at least `labelW` wide, as
         // wide as its text when longer), then a column taking the rest of the
         // width, which is returned for the line's buttons or sub-lines.
-        auto addGridRow = [&](const std::shared_ptr<UltraCanvasContainer>& parent, const std::string& text,
-                              float labelW, float fs, Color col) {
+        auto addGridRow = [&](const std::shared_ptr<UltraCanvasContainer>& parent, const std::string& key,
+                              const std::string& text, float labelW, float fs, Color col) {
             int n = ++idCounter;
             auto line = DemoKit::CreateRow("grid_" + std::to_string(n), 10, false);
             DemoKit::Add(parent, line);
-            auto lbl = DemoKit::CreateText("lbl_" + text + "_" + std::to_string(n), text);
+            auto lbl = DemoKit::CreateText("lbl_" + key + "_" + std::to_string(n), text);
             lbl->SetFontSize(fs);
             lbl->SetTextColor(col);
             lbl->SetPadding(4, 0, 0, 0);
@@ -281,40 +280,46 @@ namespace UltraCanvas {
         };
 
         // ----- Controls -----
-        auto controlsContent = addGridRow(optionsGrid, "Controls", kLabelW, 12.0f, kLabelColor);
+        auto controlsContent = addGridRow(optionsGrid, "Controls", Tr("Controls"), kLabelW, 12.0f, kLabelColor);
         {
             auto ctrlLine = DemoKit::CreateRow("slide_controls", kBtnGap);
             DemoKit::Add(controlsContent, ctrlLine);
-            addCtrl(ctrlLine, "slide_prev", "‹ Previous",
+            addCtrl(ctrlLine, "slide_prev", Tr("‹ Previous"),
                     [showPtr]() { showPtr->Previous(); });
-            auto pauseBtn = addCtrl(ctrlLine, "slide_playpause", "Pause", nullptr);
-            addCtrl(ctrlLine, "slide_next", "Next ›",
+            auto pauseBtn = addCtrl(ctrlLine, "slide_playpause", Tr("Pause"), nullptr);
+            addCtrl(ctrlLine, "slide_next", Tr("Next ›"),
                     [showPtr]() { showPtr->Next(); });
             auto* pauseBtnPtr = pauseBtn.get();
             pauseBtn->SetOnClick([showPtr, pauseBtnPtr]() {
                 if (showPtr->IsPlaying()) {
                     showPtr->Pause();
-                    pauseBtnPtr->SetText("Play");
+                    pauseBtnPtr->SetText(Tr("Play"));
                 } else {
                     showPtr->Play();
-                    pauseBtnPtr->SetText("Pause");
+                    pauseBtnPtr->SetText(Tr("Pause"));
                 }
             });
         }
         addDivider();
 
         // ----- Indicator style -----
-        auto indicatorContent = addGridRow(optionsGrid, "Indicator", kLabelW, 12.0f, kLabelColor);
+        auto indicatorContent = addGridRow(optionsGrid, "Indicator", Tr("Indicator"), kLabelW, 12.0f, kLabelColor);
         {
             auto indGroup = std::make_shared<std::vector<std::pair<UltraCanvasButton*, BtnVisual>>>();
             std::vector<RadioSpec> specs;
             const size_t styleCount = sizeof(kStyles) / sizeof(kStyles[0]);
+            // The shown names, in kStyles' order.
+            const std::string styleTexts[] = {
+                Tr("Bars"), Tr("Dots"), Tr("Progress Bar"), Tr("Story Bars"),
+                Tr("Counter"), Tr("Thumbnails"), Tr("Labels"), Tr("Hidden"),
+            };
             for (size_t i = 0; i < styleCount; ++i) {
                 const auto& choice = kStyles[i];
                 bool isOff = (choice.shape == SlideshowIndicatorShape::Hidden);
-                std::string disp = isOff ? "OFF" : (i == 0 ? "Bars" : choice.label);
+                std::string key = isOff ? "OFF" : (i == 0 ? "Bars" : choice.label);
+                std::string disp = isOff ? Tr("OFF") : styleTexts[i];
                 auto styleCopy = choice;
-                specs.push_back({ disp, isOff ? offV : indV,
+                specs.push_back({ key, disp, isOff ? offV : indV,
                     choice.shape == SlideshowIndicatorShape::Bars, false,
                     [showPtr, styleCopy]() {
                         SlideshowIndicatorStyle is = showPtr->GetIndicatorStyle();
@@ -330,20 +335,20 @@ namespace UltraCanvas {
         }
 
         // ----- Indicator edge -----
-        auto edgeContent = addGridRow(optionsGrid, "Indicator edge", kLabelW, 12.0f, kLabelColor);
+        auto edgeContent = addGridRow(optionsGrid, "Indicator edge", Tr("Indicator edge"), kLabelW, 12.0f, kLabelColor);
         {
-            struct EdgeChoice { const char* label; SlideshowIndicatorEdge edge; };
+            struct EdgeChoice { const char* label; std::string text; SlideshowIndicatorEdge edge; };
             const EdgeChoice edges[] = {
-                { "Bottom", SlideshowIndicatorEdge::Bottom },
-                { "Top",    SlideshowIndicatorEdge::Top },
-                { "Left",   SlideshowIndicatorEdge::Left },
-                { "Right",  SlideshowIndicatorEdge::Right },
+                { "Bottom", Tr("Bottom"), SlideshowIndicatorEdge::Bottom },
+                { "Top", Tr("Top"),    SlideshowIndicatorEdge::Top },
+                { "Left", Tr("Left"),   SlideshowIndicatorEdge::Left },
+                { "Right", Tr("Right"),  SlideshowIndicatorEdge::Right },
             };
             auto edgeGroup = std::make_shared<std::vector<std::pair<UltraCanvasButton*, BtnVisual>>>();
             std::vector<RadioSpec> specs;
             for (const auto& ec : edges) {
                 auto edgeVal = ec.edge;
-                specs.push_back({ ec.label, indV,
+                specs.push_back({ ec.label, ec.text, indV,
                     ec.edge == SlideshowIndicatorEdge::Bottom, false,
                     [showPtr, edgeVal]() {
                         SlideshowIndicatorStyle is = showPtr->GetIndicatorStyle();
@@ -356,22 +361,22 @@ namespace UltraCanvas {
         addDivider();
 
         // ----- Fade style -----
-        auto fadeContent = addGridRow(optionsGrid, "Fade style", kLabelW, 12.0f, kLabelColor);
+        auto fadeContent = addGridRow(optionsGrid, "Fade style", Tr("Fade style"), kLabelW, 12.0f, kLabelColor);
         {
-            struct FadeChoice { const char* label; SlideshowFadeStyle style; };
+            struct FadeChoice { const char* label; std::string text; SlideshowFadeStyle style; };
             const FadeChoice fades[] = {
-                { "CrossFade",  SlideshowFadeStyle::CrossFade },
-                { "FadeOut/In", SlideshowFadeStyle::FadeOutIn },
-                { "Slide H",    SlideshowFadeStyle::SlideHorizontal },
-                { "Slide V",    SlideshowFadeStyle::SlideVertical },
-                { "Zoom",       SlideshowFadeStyle::ZoomFade },
-                { "Instant",    SlideshowFadeStyle::NoFade },
+                { "CrossFade", Tr("CrossFade"),  SlideshowFadeStyle::CrossFade },
+                { "FadeOut/In", Tr("FadeOut/In"), SlideshowFadeStyle::FadeOutIn },
+                { "Slide H", Tr("Slide H"),    SlideshowFadeStyle::SlideHorizontal },
+                { "Slide V", Tr("Slide V"),    SlideshowFadeStyle::SlideVertical },
+                { "Zoom", Tr("Zoom"),       SlideshowFadeStyle::ZoomFade },
+                { "Instant", Tr("Instant"),    SlideshowFadeStyle::NoFade },
             };
             auto fadeGroup = std::make_shared<std::vector<std::pair<UltraCanvasButton*, BtnVisual>>>();
             std::vector<RadioSpec> specs;
             for (const auto& f : fades) {
                 auto styleVal = f.style;
-                specs.push_back({ f.label, fadeV,
+                specs.push_back({ f.label, f.text, fadeV,
                     f.style == SlideshowFadeStyle::CrossFade, false,
                     [showPtr, styleVal]() {
                         SlideshowConfig c = showPtr->GetConfig();
@@ -387,7 +392,7 @@ namespace UltraCanvas {
         // ----- Panel layout (Split / Overlay positions, plus OFF) -----
         // A single radio group spread across three sub-rows. Split layouts give
         // the panel its own region; overlay layouts float it over the image.
-        auto panelContent = addGridRow(optionsGrid, "Panel layout", kLabelW, 12.0f, kLabelColor);
+        auto panelContent = addGridRow(optionsGrid, "Panel layout", Tr("Panel layout"), kLabelW, 12.0f, kLabelColor);
         {
             auto panelCb = [showPtr](SlideshowInfoLayout layoutVal) {
                 return [showPtr, layoutVal]() {
@@ -409,43 +414,43 @@ namespace UltraCanvas {
             auto panelGroup = std::make_shared<std::vector<std::pair<UltraCanvasButton*, BtnVisual>>>();
 
             // Split sub-row (SplitRight is the config default).
-            auto splitLine = addGridRow(panelContent, "Split", kSubLabelW, 11.0f, kSubLabelColor);
+            auto splitLine = addGridRow(panelContent, "Split", Tr("Split"), kSubLabelW, 11.0f, kSubLabelColor);
             std::vector<RadioSpec> splitSpecs = {
-                { "Left",   indV, false, false, panelCb(SlideshowInfoLayout::SplitLeft) },
-                { "Right",  indV, true,  false, panelCb(SlideshowInfoLayout::SplitRight) },
-                { "Top",    indV, false, false, panelCb(SlideshowInfoLayout::SplitTop) },
-                { "Bottom", indV, false, false, panelCb(SlideshowInfoLayout::SplitBottom) },
+                { "Left", Tr("Left"),   indV, false, false, panelCb(SlideshowInfoLayout::SplitLeft) },
+                { "Right", Tr("Right"),  indV, true,  false, panelCb(SlideshowInfoLayout::SplitRight) },
+                { "Top", Tr("Top"),    indV, false, false, panelCb(SlideshowInfoLayout::SplitTop) },
+                { "Bottom", Tr("Bottom"), indV, false, false, panelCb(SlideshowInfoLayout::SplitBottom) },
             };
             flowRadio(panelGroup, splitLine, splitSpecs);
 
             // Overlay sub-row (edges, then corners / center / full).
-            auto overlayLine = addGridRow(panelContent, "Overlay", kSubLabelW, 11.0f, kSubLabelColor);
+            auto overlayLine = addGridRow(panelContent, "Overlay", Tr("Overlay"), kSubLabelW, 11.0f, kSubLabelColor);
             std::vector<RadioSpec> overlaySpecs = {
-                { "Left",         indV, false, false, panelCb(SlideshowInfoLayout::OverlayLeft) },
-                { "Right",        indV, false, false, panelCb(SlideshowInfoLayout::OverlayRight) },
-                { "Top",          indV, false, false, panelCb(SlideshowInfoLayout::OverlayTop) },
-                { "Bottom",       indV, false, false, panelCb(SlideshowInfoLayout::OverlayBottom) },
-                { "",             indV, false, true,  nullptr },
-                { "Top left",     indV, false, false, panelCb(SlideshowInfoLayout::OverlayTopLeft) },
-                { "Top right",    indV, false, false, panelCb(SlideshowInfoLayout::OverlayTopRight) },
-                { "Bottom left",  indV, false, false, panelCb(SlideshowInfoLayout::OverlayBottomLeft) },
-                { "Bottom right", indV, false, false, panelCb(SlideshowInfoLayout::OverlayBottomRight) },
-                { "Center",       indV, false, false, panelCb(SlideshowInfoLayout::OverlayCenter) },
-                { "Full",         indV, false, false, panelCb(SlideshowInfoLayout::OverlayFull) },
+                { "Left", Tr("Left"),         indV, false, false, panelCb(SlideshowInfoLayout::OverlayLeft) },
+                { "Right", Tr("Right"),        indV, false, false, panelCb(SlideshowInfoLayout::OverlayRight) },
+                { "Top", Tr("Top"),          indV, false, false, panelCb(SlideshowInfoLayout::OverlayTop) },
+                { "Bottom", Tr("Bottom"),       indV, false, false, panelCb(SlideshowInfoLayout::OverlayBottom) },
+                { "", "",             indV, false, true,  nullptr },
+                { "Top left", Tr("Top left"),     indV, false, false, panelCb(SlideshowInfoLayout::OverlayTopLeft) },
+                { "Top right", Tr("Top right"),    indV, false, false, panelCb(SlideshowInfoLayout::OverlayTopRight) },
+                { "Bottom left", Tr("Bottom left"),  indV, false, false, panelCb(SlideshowInfoLayout::OverlayBottomLeft) },
+                { "Bottom right", Tr("Bottom right"), indV, false, false, panelCb(SlideshowInfoLayout::OverlayBottomRight) },
+                { "Center", Tr("Center"),       indV, false, false, panelCb(SlideshowInfoLayout::OverlayCenter) },
+                { "Full", Tr("Full"),         indV, false, false, panelCb(SlideshowInfoLayout::OverlayFull) },
             };
             flowRadio(panelGroup, overlayLine, overlaySpecs);
 
             // OFF sub-row (no panel).
-            auto offLine = addGridRow(panelContent, " ", kSubLabelW, 11.0f, kSubLabelColor);
+            auto offLine = addGridRow(panelContent, " ", " ", kSubLabelW, 11.0f, kSubLabelColor);
             std::vector<RadioSpec> offSpecs = {
-                { "OFF", offV, false, false, panelCb(SlideshowInfoLayout::Hidden) },
+                { "OFF", Tr("OFF"), offV, false, false, panelCb(SlideshowInfoLayout::Hidden) },
             };
             flowRadio(panelGroup, offLine, offSpecs);
         }
         addDivider();
 
         // ----- Image (Fit + Crop focus) -----
-        auto imageContent = addGridRow(optionsGrid, "Image", kLabelW, 12.0f, kLabelColor);
+        auto imageContent = addGridRow(optionsGrid, "Image", Tr("Image"), kLabelW, 12.0f, kLabelColor);
         {
             auto fitGroup   = std::make_shared<std::vector<std::pair<UltraCanvasButton*, BtnVisual>>>();
             auto focusGroup = std::make_shared<std::vector<std::pair<UltraCanvasButton*, BtnVisual>>>();
@@ -456,18 +461,18 @@ namespace UltraCanvas {
             };
 
             // Fit sub-row (Cover is the config default).
-            auto fitLine = addGridRow(imageContent, "Fit", kSubLabelW, 11.0f, kSubLabelColor);
-            struct FitChoice { const char* label; ImageFitMode fit; };
+            auto fitLine = addGridRow(imageContent, "Fit", Tr("Fit"), kSubLabelW, 11.0f, kSubLabelColor);
+            struct FitChoice { const char* label; std::string text; ImageFitMode fit; };
             const FitChoice fits[] = {
-                { "Cover (crop)",   ImageFitMode::Cover },
-                { "Contain",        ImageFitMode::Contain },
-                { "Fill (stretch)", ImageFitMode::Fill },
-                { "Scale Down",     ImageFitMode::ScaleDown },
+                { "Cover (crop)", Tr("Cover (crop)"),   ImageFitMode::Cover },
+                { "Contain", Tr("Contain"),        ImageFitMode::Contain },
+                { "Fill (stretch)", Tr("Fill (stretch)"), ImageFitMode::Fill },
+                { "Scale Down", Tr("Scale Down"),     ImageFitMode::ScaleDown },
             };
             std::vector<RadioSpec> fitSpecs;
             for (const auto& fc : fits) {
                 auto fitVal = fc.fit;
-                fitSpecs.push_back({ fc.label, indV,
+                fitSpecs.push_back({ fc.label, fc.text, indV,
                     fc.fit == ImageFitMode::Cover, false,
                     [showPtr, setFocusEnabled, fitVal]() {
                         SlideshowConfig c = showPtr->GetConfig();
@@ -480,17 +485,17 @@ namespace UltraCanvas {
             flowRadio(fitGroup, fitLine, fitSpecs);
 
             // Crop focus sub-row (center is the config default).
-            auto focusLine = addGridRow(imageContent, "Crop focus", kSubLabelW, 11.0f, kSubLabelColor);
-            struct FocusChoice { const char* label; float x; float y; };
+            auto focusLine = addGridRow(imageContent, "Crop focus", Tr("Crop focus"), kSubLabelW, 11.0f, kSubLabelColor);
+            struct FocusChoice { const char* label; std::string text; float x; float y; };
             const FocusChoice focuses[] = {
-                { "Focus TL",     0.0f, 0.0f },
-                { "Focus Center", 0.5f, 0.5f },
-                { "Focus BR",     1.0f, 1.0f },
+                { "Focus TL", Tr("Focus TL"),     0.0f, 0.0f },
+                { "Focus Center", Tr("Focus Center"), 0.5f, 0.5f },
+                { "Focus BR", Tr("Focus BR"),     1.0f, 1.0f },
             };
             std::vector<RadioSpec> focSpecs;
             for (const auto& foc : focuses) {
                 float vx = foc.x, vy = foc.y;
-                focSpecs.push_back({ foc.label, indV,
+                focSpecs.push_back({ foc.label, foc.text, indV,
                     (foc.x == 0.5f && foc.y == 0.5f), false,
                     [showPtr, vx, vy]() {
                         SlideshowConfig c = showPtr->GetConfig();
@@ -504,19 +509,19 @@ namespace UltraCanvas {
         addDivider();
 
         // ----- Letterbox fill -----
-        auto letterboxContent = addGridRow(optionsGrid, "Letterbox fill", kLabelW, 12.0f, kLabelColor);
+        auto letterboxContent = addGridRow(optionsGrid, "Letterbox fill", Tr("Letterbox fill"), kLabelW, 12.0f, kLabelColor);
         {
-            struct GapChoice { const char* label; SlideshowGapFill gap; };
+            struct GapChoice { const char* label; std::string text; SlideshowGapFill gap; };
             const GapChoice gaps[] = {
-                { "Gap: Bg",    SlideshowGapFill::BackgroundColor },
-                { "Gap: Black", SlideshowGapFill::LetterboxColor },
-                { "Gap: Image", SlideshowGapFill::BlurredImage },
+                { "Gap: Bg", Tr("Gap: Bg"),    SlideshowGapFill::BackgroundColor },
+                { "Gap: Black", Tr("Gap: Black"), SlideshowGapFill::LetterboxColor },
+                { "Gap: Image", Tr("Gap: Image"), SlideshowGapFill::BlurredImage },
             };
             auto gapGroup = std::make_shared<std::vector<std::pair<UltraCanvasButton*, BtnVisual>>>();
             std::vector<RadioSpec> specs;
             for (const auto& gc : gaps) {
                 auto gapVal = gc.gap;
-                specs.push_back({ gc.label, indV,
+                specs.push_back({ gc.label, gc.text, indV,
                     gc.gap == SlideshowGapFill::BackgroundColor, false,
                     [showPtr, gapVal]() {
                         SlideshowConfig c = showPtr->GetConfig();

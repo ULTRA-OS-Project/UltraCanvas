@@ -157,8 +157,8 @@ namespace UltraCanvas {
         const std::string trackName = baseName(audioPath);
 
         if (!UltraCanvasAudioDevices::IsAvailable()) {
-            status->SetText("Audio backend not compiled in — rebuild with "
-                            "-DULTRACANVAS_ENABLE_AUDIO=ON. Showing static waveform only.");
+            status->SetText(Tr("Audio backend not compiled in — rebuild with "
+                               "-DULTRACANVAS_ENABLE_AUDIO=ON. Showing static waveform only."));
             status->SetTextColor(Color(180, 60, 60));
         }
 
@@ -169,19 +169,18 @@ namespace UltraCanvas {
                 waveform->SetData(BuildWaveformFromAudio(audio));
                 player->LoadFromAudio(audio);
                 player->SetTrackTitle(trackName);
-                fileLabel->SetText("File: " + trackName);
+                fileLabel->SetText(TrF("File: {0}", trackName));
                 if (UltraCanvasAudioDevices::IsAvailable()) {
-                    status->SetText("Loaded: " + trackName + "  (" +
-                                    std::to_string(audio->GetSampleRate()) + " Hz, " +
-                                    std::to_string(audio->GetChannels()) + " ch)");
+                    status->SetText(TrF("Loaded: {0}  ({1} Hz, {2} ch)", trackName,
+                                        audio->GetSampleRate(), audio->GetChannels()));
                     status->SetTextColor(Color(40, 120, 40));
                 }
             } else {
-                status->SetText("Could not decode sample track: " + trackName);
+                status->SetText(TrF("Could not decode sample track: {0}", trackName));
                 status->SetTextColor(Color(180, 60, 60));
             }
         } else {
-            status->SetText("Sample track not found: " + audioPath);
+            status->SetText(TrF("Sample track not found: {0}", audioPath));
             status->SetTextColor(Color(180, 60, 60));
         }
 
@@ -206,9 +205,9 @@ namespace UltraCanvas {
 
         // ----- Render-style picker -----
         auto styleDrop = CreateDropdown("WaveformStyleDrop", 0, 0, 150, 30);
-        styleDrop->AddItem("Filled");
-        styleDrop->AddItem("Outline");
-        styleDrop->AddItem("Bars");
+        styleDrop->AddItem(Tr("Filled"));
+        styleDrop->AddItem(Tr("Outline"));
+        styleDrop->AddItem(Tr("Bars"));
         styleDrop->SetSelectedIndex(0);
         styleDrop->onSelectionChanged = [waveformWeak](int index, const DropdownItem&) {
             auto w = waveformWeak.lock();
@@ -219,14 +218,14 @@ namespace UltraCanvas {
                 default: w->SetRenderStyle(WaveformRenderStyle::Filled);  break;
             }
         };
-        addPicker("WaveformStylePicker", "WaveformStyleLabel", "Render style:", styleDrop);
+        addPicker("WaveformStylePicker", "WaveformStyleLabel", Tr("Render style:"), styleDrop);
 
         // ----- Overlay picker -----
         auto overlayDrop = CreateDropdown("WaveformOverlayDrop", 0, 0, 150, 30);
-        overlayDrop->AddItem("None");
-        overlayDrop->AddItem("RMS");
-        overlayDrop->AddItem("Zero axis");
-        overlayDrop->AddItem("RMS + Zero axis");
+        overlayDrop->AddItem(Tr("None"));
+        overlayDrop->AddItem(Tr("RMS"));
+        overlayDrop->AddItem(Tr("Zero axis"));
+        overlayDrop->AddItem(Tr("RMS + Zero axis"));
         overlayDrop->SetSelectedIndex(3);
         overlayDrop->onSelectionChanged = [waveformWeak](int index, const DropdownItem&) {
             auto w = waveformWeak.lock();
@@ -238,15 +237,15 @@ namespace UltraCanvas {
                 default: w->SetOverlay(WaveformOverlay::NoOverlay);           break;
             }
         };
-        addPicker("WaveformOverlayPicker", "WaveformOverlayLabel", "Overlay:", overlayDrop);
+        addPicker("WaveformOverlayPicker", "WaveformOverlayLabel", Tr("Overlay:"), overlayDrop);
 
         // ----- Display-range picker -----
         // Limits the visible portion of the track to a trailing window that
         // scrolls with the playhead, or shows the whole track ("All audio").
         auto rangeDrop = CreateDropdown("WaveformRangeDrop", 0, 0, 150, 30);
-        rangeDrop->AddItem("Last 10 seconds");
-        rangeDrop->AddItem("Last 60 seconds");
-        rangeDrop->AddItem("All audio");
+        rangeDrop->AddItem(Tr("Last 10 seconds"));
+        rangeDrop->AddItem(Tr("Last 60 seconds"));
+        rangeDrop->AddItem(Tr("All audio"));
         rangeDrop->SetSelectedIndex(2);   // default: whole track
         rangeDrop->onSelectionChanged = [waveformWeak](int index, const DropdownItem&) {
             auto w = waveformWeak.lock();
@@ -257,7 +256,7 @@ namespace UltraCanvas {
                 default: w->SetVisibleWindowSeconds(0.0);  break;   // all
             }
         };
-        addPicker("WaveformRangePicker", "WaveformRangeLabel", "Display range:", rangeDrop);
+        addPicker("WaveformRangePicker", "WaveformRangeLabel", Tr("Display range:"), rangeDrop);
 
         DemoKit::Add(card, fileLabel);
 

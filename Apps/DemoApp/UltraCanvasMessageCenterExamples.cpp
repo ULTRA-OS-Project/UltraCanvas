@@ -53,7 +53,7 @@ struct DemoSource {
         if (endpoint != UltraMsgInvalidHandle) return true;
         UltraMsgConnectOptions options;
         options.appId = "org.ultraos.demo.messagesource";
-        options.displayName = "Demo source";
+        options.displayName = Tr("Demo source");
         options.busPath = DemoBusPath();
         options.journalPath = ":memory:";
         options.deliverOnUIThread = false;
@@ -108,26 +108,26 @@ struct DemoSource {
     }
 
     void Seed() {
-        Chat("telegram", "Ada Lovelace", "Ada Lovelace", "Are we still on for the engine review at 9?");
-        Chat("telegram", "Analytical Engine", "Charles Babbage", "The mill is finished; the store needs another week.", true);
-        Chat("signal", "Grace Hopper", "Grace Hopper", "Found the moth. Literally.");
-        Mail("erika@example.org", "Konrad Zuse", "konrad@example.org", "Z3 relay order",
-             "The relays arrive Thursday; can we start assembly on Friday?");
-        Mail("erika@example.org", "RISC OS Open", "news@riscosopen.org", "Newsletter: September",
-             "This month: the new Filer, UltraCanvas on the Pi 5, and a bundle of bug fixes.");
-        Notification("Downloads", "org.ultraos.filer", "Download finished", "ultracanvas-src.tar.gz (48 MB)", "low",
-                     {{"open", "Open"}, {"folder", "Show in Filer"}});
-        Notification("Battery", "org.ultraos.power", "Battery low", "12 % remaining — plug in soon", "critical");
+        Chat("telegram", "Ada Lovelace", "Ada Lovelace", Tr("Are we still on for the engine review at 9?"));
+        Chat("telegram", "Analytical Engine", "Charles Babbage", Tr("The mill is finished; the store needs another week."), true);
+        Chat("signal", "Grace Hopper", "Grace Hopper", Tr("Found the moth. Literally."));
+        Mail("erika@example.org", "Konrad Zuse", "konrad@example.org", Tr("Z3 relay order"),
+             Tr("The relays arrive Thursday; can we start assembly on Friday?"));
+        Mail("erika@example.org", "RISC OS Open", "news@riscosopen.org", Tr("Newsletter: September"),
+             Tr("This month: the new Filer, UltraCanvas on the Pi 5, and a bundle of bug fixes."));
+        Notification(Tr("Downloads"), "org.ultraos.filer", Tr("Download finished"), "ultracanvas-src.tar.gz (48 MB)", "low",
+                     {{"open", Tr("Open")}, {"folder", Tr("Show in Filer")}});
+        Notification(Tr("Battery"), "org.ultraos.power", Tr("Battery low"), Tr("12 % remaining — plug in soon"), "critical");
     }
 
     void PostAnother() {
         ++counter;
         switch (counter % 3) {
-            case 0: Chat("telegram", "Ada Lovelace", "Ada Lovelace", "Message " + std::to_string(counter) + " from the demo"); break;
-            case 1: Mail("erika@example.org", "Demo", "demo@example.org", "Sample mail " + std::to_string(counter),
-                         "Posted from the DemoApp page."); break;
-            default: Notification("Demo", "org.ultraos.demo", "Sample notification " + std::to_string(counter),
-                                  "Posted from the DemoApp page.", "normal", {{"ok", "OK"}}); break;
+            case 0: Chat("telegram", "Ada Lovelace", "Ada Lovelace", TrF("Message {0} from the demo", counter)); break;
+            case 1: Mail("erika@example.org", Tr("Demo"), "demo@example.org", TrF("Sample mail {0}", counter),
+                         Tr("Posted from the DemoApp page.")); break;
+            default: Notification(Tr("Demo"), "org.ultraos.demo", TrF("Sample notification {0}", counter),
+                                  Tr("Posted from the DemoApp page."), "normal", {{"ok", Tr("OK")}}); break;
         }
     }
 };
@@ -153,7 +153,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateMessageC
     auto bar = DemoKit::AddRow(card, "MCBar", 10);
     bar->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
     // As wide as its text, at least the 130 px it had.
-    auto post = std::make_shared<UltraCanvasButton>("MCPost", 0, 0, 0, 28, "Post another");
+    auto post = std::make_shared<UltraCanvasButton>("MCPost", 0, 0, 0, 28, Tr("Post another"));
     {
         CSSLayout::BoxConstraints limits;
         limits.minWidth = CSSLayout::Dimension::Px(130);
@@ -165,10 +165,10 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateMessageC
 
     auto center = CreateMessageCenter("MCCenter", 0, 0, 0, 0);
     center->onUnreadCountChanged = [readout = readout.get()](int unread) {
-        readout->SetText("Unread: " + std::to_string(unread));
+        readout->SetText(TrF("Unread: {0}", unread));
     };
     center->onOpen = [readout = readout.get()](const MessageCenterEntry& entry) {
-        readout->SetText("Open: " + entry.title + " — " + entry.snippet);
+        readout->SetText(TrF("Open: {0} — {1}", entry.title, entry.snippet));
     };
     DemoKit::Add(card, center, 1);
     center->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0)).SetFlexShrink(1);
@@ -188,7 +188,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateMessageC
     }
     post->onClick = [source, center = center.get()]() {
         if (source->Connect()) source->PostAnother();
-        else center->GetStatusLabel()->SetText("The demo source could not connect to the bus.");
+        else center->GetStatusLabel()->SetText(Tr("The demo source could not connect to the bus."));
     };
     // The source lives as long as the page: captured by the button above.
 #else

@@ -44,7 +44,7 @@ namespace UltraCanvas {
             std::shared_ptr<UCRichDocument> document =
                 UltraCanvasFileLoader::LoadTextDocument(path, error);
             if (!document) {
-                status->SetText("Could not open document: " + error);
+                status->SetText(TrF("Could not open document: {0}", error));
                 status->RequestRedraw();
                 return false;
             }
@@ -54,14 +54,15 @@ namespace UltraCanvas {
             view->RequestRedraw();
 
             std::string name = PathToUtf8(PathFromUtf8(path).filename());
-            std::string details = std::to_string(document->blocks.size()) + " blocks";
+            std::string details = TrN("{n} block", "{n} blocks", static_cast<long long>(document->blocks.size()));
             if (!document->media.empty()) {
-                details += ", " + std::to_string(document->media.size()) + " images";
+                details = TrF("{0}, {1}", details,
+                              TrN("{n} image", "{n} images", static_cast<long long>(document->media.size())));
             }
             if (!document->metadata.title.empty()) {
-                details += ", title: " + document->metadata.title;
+                details = TrF("{0}, title: {1}", details, document->metadata.title);
             }
-            status->SetText("Loaded: " + name + " (" + details + ")");
+            status->SetText(TrF("Loaded: {0} ({1})", name, details));
             status->RequestRedraw();
             return true;
         }
@@ -86,7 +87,7 @@ namespace UltraCanvas {
         toolbar->SetPadding(6);
 
         // As wide as its text, at least the width it had.
-        auto openBtn = std::make_shared<UltraCanvasButton>("odtOpenBtn", "Open Document");
+        auto openBtn = std::make_shared<UltraCanvasButton>("odtOpenBtn", Tr("Open Document"));
         CSSLayout::BoxConstraints openLimits;
         openLimits.minWidth = CSSLayout::Dimension::Px(180);
         openLimits.minHeight = CSSLayout::Dimension::Px(30);
@@ -119,8 +120,8 @@ namespace UltraCanvas {
         const std::string samplePath =
             NormalizePath(GetResourcesDir() + "media/docs/document.odt");
         if (!ShowDocumentInView(samplePath, view, status)) {
-            view->SetMarkdown("No sample document found.\n\nExpected: " + samplePath
-                              + "\n\nUse **Open Document** to load an .odt, .docx or .doc file.");
+            view->SetMarkdown(TrF("No sample document found.\n\nExpected: {0}"
+                                  "\n\nUse **Open Document** to load an .odt, .docx or .doc file.", samplePath));
         }
 
         // ===== OPEN -> FileLoader::OpenTextDocument-style flow =====
@@ -128,14 +129,14 @@ namespace UltraCanvas {
         // callback; both are also owned by the container (no ownership cycle).
         openBtn->onClick = [view, status]() {
             FileDialogOptions opts;
-            opts.SetTitle("Open Document");
+            opts.SetTitle(Tr("Open Document"));
             UltraCanvasFileLoader::AddTextDocumentLoadTypes(opts);
-            opts.AddFilter("All files", "*");
+            opts.AddFilter(Tr("All files"), "*");
 
             UltraCanvasFileLoader::OpenFileDialog(opts,
                 [view, status](DialogResult result, const std::string& path) {
                     if (result != DialogResult::OK || path.empty()) {
-                        status->SetText("Open cancelled.");
+                        status->SetText(Tr("Open cancelled."));
                         status->RequestRedraw();
                         return;
                     }

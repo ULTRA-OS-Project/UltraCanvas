@@ -133,14 +133,14 @@ namespace {
         std::vector<LaTeXDocumentDiagnostic> diagnostics;
         if (!UltraCanvasLaTeXDocumentReader::Load(PathToUtf8(texPath), document, error, &diagnostics)) {
             auto failed = std::make_shared<UltraCanvasLabel>("LaTeXDocError_" + stem, 0, 0, 0, 0);
-            failed->SetText("The document could not be imported:\n" + error);
+            failed->SetText(TrF("The document could not be imported:\n{0}", error));
             failed->SetWrap(TextWrap::WrapWord);
             failed->SetFontSize(12);
             failed->SetTextColor(Color(150, 60, 60, 255));
             failed->SetAlignment(TextAlignment::Center, VerticalAlignment::Middle);
             failed->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                               .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-            outStatus = "Imported document (failed)";
+            outStatus = Tr("Imported document (failed)");
             return failed;
         }
 
@@ -160,13 +160,19 @@ namespace {
         view->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                         .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
-        outStatus = "Imported document (" + std::to_string(document.blocks.size()) + " blocks";
-        if (!document.media.empty()) outStatus += ", " + std::to_string(document.media.size()) + " images";
-        if (!diagnostics.empty()) {
-            outStatus += ", " + std::to_string(diagnostics.size()) + " diagnostic" +
-                         (diagnostics.size() == 1 ? "" : "s") + ": " + diagnostics.front().message;
+        std::string details = TrN("{n} block", "{n} blocks",
+                                  static_cast<long long>(document.blocks.size()));
+        if (!document.media.empty()) {
+            details = TrF("{0}, {1}", details,
+                          TrN("{n} image", "{n} images", static_cast<long long>(document.media.size())));
         }
-        outStatus += "):";
+        if (!diagnostics.empty()) {
+            details = TrF("{0}, {1}", details, LocalisationDetail::Substitute(
+                    TrN("{n} diagnostic: {0}", "{n} diagnostics: {0}",
+                        static_cast<long long>(diagnostics.size())),
+                    {diagnostics.front().message}));
+        }
+        outStatus = TrF("Imported document ({0}):", details);
         return view;
     }
 
@@ -200,7 +206,7 @@ namespace {
         Color headerColor(40, 110, 40, 255);
         std::shared_ptr<UltraCanvasUIElement> body;
         if (live) {
-            headerText = "Rendered output (typeset live by the UltraCanvas LaTeX engine):";
+            headerText = Tr("Rendered output (typeset live by the UltraCanvas LaTeX engine):");
             liveView->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
                                 .SetAlignSelf(CSSLayout::AlignSelf::Center);
             body = liveView;
@@ -209,11 +215,11 @@ namespace {
             // on-demand module could not be loaded. Say so - a silent blank
             // pane hides a deployment problem: the module or its math font
             // not being found next to the executable.
-            headerText = "Rendered output (LaTeX engine unavailable):";
+            headerText = Tr("Rendered output (LaTeX engine unavailable):");
             headerColor = Color(150, 60, 60, 255);
             auto failed = std::make_shared<UltraCanvasLabel>("LaTeXModuleError_" + stem, 0, 0, 0, 0);
-            failed->SetText("The LaTeX engine module could not be loaded, so this document "
-                            "cannot be typeset:\n" + GetLaTeXModuleError());
+            failed->SetText(TrF("The LaTeX engine module could not be loaded, so this document "
+                                "cannot be typeset:\n{0}", GetLaTeXModuleError()));
             failed->SetWrap(TextWrap::WrapWord);
             failed->SetFontSize(12);
             failed->SetTextColor(Color(150, 60, 60, 255));
@@ -251,7 +257,7 @@ namespace {
 
         // ----- LaTeX source -----
         auto sourceLabel = std::make_shared<UltraCanvasLabel>("LaTeXSourceLabel_" + stem,
-                "LaTeX source (" + PathToUtf8(texPath.filename()) + "):");
+                TrF("LaTeX source ({0}):", PathToUtf8(texPath.filename())));
         sourceLabel->SetWrap(TextWrap::WrapWord);
         sourceLabel->SetFontSize(12);
         sourceLabel->SetFontWeight(FontWeight::Bold);
@@ -281,9 +287,9 @@ namespace {
         // Root: the page fills the display area; the tabs take the height
         // left under the texts and each document scrolls inside its view.
         auto root = DemoKit::CreatePage("LaTeXExamples", Tr("LaTeX Documents"),
-                "Example .tex documents scanned from " + latexDir +
-                ".\nEach document is rendered live from its source: formulas by the "
-                "UltraCanvas math engine, articles by the LaTeX document reader.");
+                TrF("Example .tex documents scanned from {0}.\nEach document is rendered live from its "
+                "source: formulas by the UltraCanvas math engine, articles by the LaTeX document reader.",
+                latexDir));
         root->SetFillsArea(true);
 
         DemoKit::AddCaption(root, "LaTeXScopeNote",
@@ -317,7 +323,7 @@ namespace {
                   });
 
         if (texFiles.empty()) {
-            auto empty = DemoKit::CreateText("LaTeXEmpty", "No .tex files found in " + latexDir);
+            auto empty = DemoKit::CreateText("LaTeXEmpty", TrF("No .tex files found in {0}", latexDir));
             empty->SetFontSize(13);
             empty->SetTextColor(Color(150, 60, 60, 255));
             empty->SetAlignment(TextAlignment::Center, VerticalAlignment::Middle);

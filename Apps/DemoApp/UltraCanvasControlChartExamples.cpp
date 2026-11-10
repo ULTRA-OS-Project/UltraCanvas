@@ -69,25 +69,25 @@ private:
 enum class Process { Shaft, Calls, Inspection, Paint };
 
 struct ProcessInfo {
-    const char* title;
-    const char* domain;
+    std::string title;
+    std::string domain;
     ControlChartKind kind;
     size_t changeAt;           // where the process changes, when it does
-    const char* changeName;    // the stage that change starts
+    std::string changeName;    // the stage that change starts
 };
 
 ProcessInfo Info(Process process) {
     switch (process) {
         case Process::Shaft:
-            return {"Shaft diameter (mm), X-bar and R, n = 5", "Hour", ControlChartKind::XbarR, 17, "Worn tool"};
+            return {Tr("Shaft diameter (mm), X-bar and R, n = 5"), Tr("Hour"), ControlChartKind::XbarR, 17, Tr("Worn tool")};
         case Process::Calls:
-            return {"Call waiting time (minutes), individuals and moving range", "Day",
-                    ControlChartKind::IndividualsMR, 20, "New rota"};
+            return {Tr("Call waiting time (minutes), individuals and moving range"), Tr("Day"),
+                    ControlChartKind::IndividualsMR, 20, Tr("New rota")};
         case Process::Inspection:
-            return {"Failed inspections per day, p chart (lot sizes vary)", "Day", ControlChartKind::P, 18,
-                    "New supplier"};
+            return {Tr("Failed inspections per day, p chart (lot sizes vary)"), Tr("Day"), ControlChartKind::P, 18,
+                    Tr("New supplier")};
         default:
-            return {"Paint defects per car body, c chart", "Body", ControlChartKind::C, 18, "New paint line"};
+            return {Tr("Paint defects per car body, c chart"), Tr("Body"), ControlChartKind::C, 18, Tr("New paint line")};
     }
 }
 
@@ -115,7 +115,7 @@ std::vector<ControlSubgroup> Data(Process process, bool change) {
             Random random(4021u);
             for (int day = 0; day < 30; ++day) {
                 ControlSubgroup g;
-                g.label = "Day " + std::to_string(day + 1);
+                g.label = TrF("Day {0}", day + 1);
                 const double drift = (change && day >= 20) ? 0.18 * (day - 19) : 0.0;
                 g.values.push_back(4.0 + drift + 0.35 * random.Normal());
                 data.push_back(g);
@@ -128,7 +128,7 @@ std::vector<ControlSubgroup> Data(Process process, bool change) {
             Random random(777u);
             for (int day = 0; day < 25; ++day) {
                 ControlSubgroup g;
-                g.label = "Day " + std::to_string(day + 1);
+                g.label = TrF("Day {0}", day + 1);
                 const int lot = 80 + static_cast<int>(random.Uniform() * 180.0);
                 const double rate = (change && day >= 18) ? 0.07 : 0.04;
                 g.size = lot;
@@ -176,19 +176,23 @@ std::string Summary(const ControlResult& result, const ControlDemoState& state) 
     size_t onValues = 0, onRanges = 0;
     for (const ControlViolation& v : result.violations) (v.pane == 0 ? onValues : onRanges)++;
     if (result.violations.empty()) {
-        text = "No signal: the variation is the usual kind. Leave the process alone.";
+        text = Tr("No signal: the variation is the usual kind. Leave the process alone.");
     } else {
-        text = std::to_string(onValues) + " signal(s) on the values" +
-               (result.dispersion ? ", " + std::to_string(onRanges) + " on the ranges" : std::string()) +
-               ". Hover a red diamond for the rule it breaks.";
+        const std::string onValuesText =
+                TrN("{n} signal on the values", "{n} signals on the values", static_cast<long long>(onValues));
+        text = result.dispersion
+                ? TrF("{0}, {1}. Hover a red diamond for the rule it breaks.", onValuesText,
+                      TrN("{n} on the ranges", "{n} on the ranges", static_cast<long long>(onRanges)))
+                : TrF("{0}. Hover a red diamond for the rule it breaks.", onValuesText);
     }
     if (result.capability.available) {
         const ControlCapability& c = result.capability;
-        text += "\nCapability: Cp " + Number(c.cp, 2) + ", Cpk " + Number(c.cpk, 2) + "  (Pp " +
-                Number(c.pp, 2) + ", Ppk " + Number(c.ppk, 2) + ")";
+        text += "\n" + TrF("Capability: Cp {0}, Cpk {1}  (Pp {2}, Ppk {3})", Number(c.cp, 2),
+                           Number(c.cpk, 2), Number(c.pp, 2), Number(c.ppk, 2));
     }
     if (!state.excluded.empty()) {
-        text += "\n" + std::to_string(state.excluded.size()) + " point(s) excluded from the limits.";
+        text += "\n" + TrN("{n} point excluded from the limits.", "{n} points excluded from the limits.",
+                           static_cast<long long>(state.excluded.size()));
     }
     for (const std::string& warning : result.warnings) text += "\n" + warning;
     return text;
@@ -241,32 +245,32 @@ void AddControlChartCard(const std::shared_ptr<UltraCanvasContainer>& page) {
         DemoKit::AddCaption(sidebar, id, text)->SetFontWeight(FontWeight::Bold);
     };
 
-    addCaption("controlChartDataCaption", "Process");
+    addCaption("controlChartDataCaption", Tr("Process"));
     auto data = std::make_shared<UltraCanvasDropdown>("controlChartData", 0, 0, 200, 28);
-    data->AddItem("Shaft diameters (X-bar and R)", "shaft");
-    data->AddItem("Call waiting time (I-MR)", "calls");
-    data->AddItem("Failed inspections (p chart)", "inspection");
-    data->AddItem("Paint defects (c chart)", "paint");
+    data->AddItem(Tr("Shaft diameters (X-bar and R)"), "shaft");
+    data->AddItem(Tr("Call waiting time (I-MR)"), "calls");
+    data->AddItem(Tr("Failed inspections (p chart)"), "inspection");
+    data->AddItem(Tr("Paint defects (c chart)"), "paint");
     data->SetSelectedIndex(0);
     DemoKit::AddStretched(sidebar, data);
 
-    addCaption("controlChartRulesCaption", "Rules");
+    addCaption("controlChartRulesCaption", Tr("Rules"));
     auto rules = std::make_shared<UltraCanvasDropdown>("controlChartRuleSet", 0, 0, 200, 28);
     rules->AddItem("Western Electric (1-4)", "we");
     rules->AddItem("Nelson (1-8)", "nelson");
     rules->SetSelectedIndex(0);
     DemoKit::AddStretched(sidebar, rules);
 
-    auto change = UltraCanvasSwitch::Create("controlChartShift", 0, 0, "Process changes late on", true);
-    auto stage = UltraCanvasSwitch::Create("controlChartStage", 0, 0, "The change is a new stage", false);
-    auto specs = UltraCanvasSwitch::Create("controlChartSpecs", 0, 0, "Specification limits", false);
-    auto zones = UltraCanvasSwitch::Create("controlChartZones", 0, 0, "Zones A, B, C", false);
-    auto sigma = UltraCanvasSwitch::Create("controlChartSigma", 0, 0, "1 and 2 sigma lines", false);
-    auto ranges = UltraCanvasSwitch::Create("controlChartRanges", 0, 0, "Range pane", true);
-    addCaption("controlChartShowCaption", "Show");
+    auto change = UltraCanvasSwitch::Create("controlChartShift", 0, 0, Tr("Process changes late on"), true);
+    auto stage = UltraCanvasSwitch::Create("controlChartStage", 0, 0, Tr("The change is a new stage"), false);
+    auto specs = UltraCanvasSwitch::Create("controlChartSpecs", 0, 0, Tr("Specification limits"), false);
+    auto zones = UltraCanvasSwitch::Create("controlChartZones", 0, 0, Tr("Zones A, B, C"), false);
+    auto sigma = UltraCanvasSwitch::Create("controlChartSigma", 0, 0, Tr("1 and 2 sigma lines"), false);
+    auto ranges = UltraCanvasSwitch::Create("controlChartRanges", 0, 0, Tr("Range pane"), true);
+    addCaption("controlChartShowCaption", Tr("Show"));
     for (const auto& s : {change, stage, specs, zones, sigma, ranges}) DemoKit::Add(sidebar, s);
 
-    addCaption("controlChartSignalsCaption", "Signals");
+    addCaption("controlChartSignalsCaption", Tr("Signals"));
     state->summary = DemoKit::AddCaption(sidebar, "controlChartSummary", "");
     state->summary->SetTextColor(DemoKit::BodyText());
 

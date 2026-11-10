@@ -49,7 +49,7 @@ void BuildBankingSystem(UltraCanvasClassDiagram& diagram) {
     diagram.Clear();
     diagram.SetTheme(ClassDiagramTheme::Blueprint);
     diagram.SetDetailLevel(ClassDiagramDetail::Full);
-    diagram.SetTitle("Class Diagram for a Banking System");
+    diagram.SetTitle(Tr("Class Diagram for a Banking System"));
 
     diagram.AddClass("Bank",
         {"+BankId: int", "+Name: string", "+Location: string"},
@@ -104,7 +104,7 @@ void BuildInterfaceDiagram(UltraCanvasClassDiagram& diagram) {
     diagram.Clear();
     diagram.SetTheme(ClassDiagramTheme::Professional);
     diagram.SetDetailLevel(ClassDiagramDetail::Full);
-    diagram.SetTitle("Rendering Subsystem - Interfaces");
+    diagram.SetTitle(Tr("Rendering Subsystem - Interfaces"));
 
     diagram.AddInterface("IRenderable",
         {"+Render(ctx: RenderContext): void", "+GetBounds(): Rect"});
@@ -157,7 +157,7 @@ void BuildServiceMetadata(UltraCanvasClassDiagram& diagram) {
     diagram.Clear();
     diagram.SetTheme(ClassDiagramTheme::DataType);
     diagram.SetDetailLevel(ClassDiagramDetail::Full);
-    diagram.SetTitle("Service Metadata");
+    diagram.SetTitle(Tr("Service Metadata"));
 
     auto addDataType = [&](const std::string& name,
                            const std::vector<std::string>& attributes) {
@@ -221,7 +221,7 @@ void BuildDomainModel(UltraCanvasClassDiagram& diagram) {
     diagram.Clear();
     diagram.SetTheme(ClassDiagramTheme::Colorful);
     diagram.SetDetailLevel(ClassDiagramDetail::Full);
-    diagram.SetTitle("Order Management Domain Model");
+    diagram.SetTitle(Tr("Order Management Domain Model"));
 
     diagram.AddClass("Customer",
         {"+customerId: int", "+name: string", "+email: string", "+phone: string"},
@@ -253,19 +253,19 @@ void BuildDomainModel(UltraCanvasClassDiagram& diagram) {
 
     diagram.AddComposition("Order", "OrderLine")
            .SetMultiplicity("1", "1..*")
-           .SetName("contains", UMLReadingDirection::SourceToTarget);
+           .SetName(Tr("contains"), UMLReadingDirection::SourceToTarget);
     diagram.AddDirectedAssociation("Customer", "Order")
            .SetMultiplicity("1", "0..*")
-           .SetName("places", UMLReadingDirection::SourceToTarget);
+           .SetName(Tr("places"), UMLReadingDirection::SourceToTarget);
     diagram.AddDirectedAssociation("OrderLine", "Product")
            .SetMultiplicity("0..*", "1")
            .SetRoles("", "+product");
     diagram.AddAggregation("Warehouse", "Product")
            .SetMultiplicity("1", "0..*")
-           .SetName("stocks", UMLReadingDirection::SourceToTarget);
+           .SetName(Tr("stocks"), UMLReadingDirection::SourceToTarget);
     diagram.AddDirectedAssociation("Order", "Shipment")
            .SetMultiplicity("1", "0..1")
-           .SetName("fulfilled by", UMLReadingDirection::SourceToTarget);
+           .SetName(Tr("fulfilled by"), UMLReadingDirection::SourceToTarget);
     diagram.AddDirectedAssociation("Shipment", "Warehouse")
            .SetMultiplicity("0..*", "1")
            .SetRoles("", "+origin");
@@ -373,7 +373,9 @@ bool TryParseRealHeaders(UltraCanvasCppReverseEngineer& engineer,
         CppReverseEngineerResult result = engineer.ParseFiles(paths, model);
         if (result.classifiersAdded == 0) continue;
 
-        outSource = std::string(root) + " (" + std::to_string(paths.size()) + " headers)";
+        outSource = LocalisationDetail::Substitute(TrN("{0} ({n} header)", "{0} ({n} headers)",
+                                                         static_cast<long long>(paths.size())),
+                                                     {std::string(root)});
         return true;
     }
     return false;
@@ -398,11 +400,11 @@ void BuildReverseEngineered(UltraCanvasClassDiagram& diagram,
     bool fromDisk = TryParseRealHeaders(engineer, model, source);
     if (!fromDisk) {
         engineer.ParseSource(kEmbeddedSource, model, "embedded sample");
-        source = "embedded sample (headers not found on disk)";
+        source = Tr("embedded sample (headers not found on disk)");
     }
     size_t dropped = engineer.ResolveInferredRelationships(model);
 
-    model.SetTitle("Reverse engineered from C++ headers");
+    model.SetTitle(Tr("Reverse engineered from C++ headers"));
     diagram.SetModel(model);
     diagram.ApplyPaletteByPackage();
     // Grid, not Layered: a reverse-engineered header set is mostly independent
@@ -418,11 +420,10 @@ void BuildReverseEngineered(UltraCanvasClassDiagram& diagram,
         for (const auto& diagnostic : diagram.Model().Validate()) {
             if (diagnostic.severity == UMLDiagnosticSeverity::Error) ++errors;
         }
-        status->SetText("Source: " + source +
-                        "  |  classifiers: " + std::to_string(diagram.Model().ClassifierCount()) +
-                        "  |  relationships: " + std::to_string(diagram.Model().RelationshipCount()) +
-                        "  |  edges dropped (external types): " + std::to_string(dropped) +
-                        "  |  validation errors: " + std::to_string(errors));
+        status->SetText(TrF("Source: {0}  |  classifiers: {1}  |  relationships: {2}  |  "
+                            "edges dropped (external types): {3}  |  validation errors: {4}",
+                            source, diagram.Model().ClassifierCount(), diagram.Model().RelationshipCount(),
+                            dropped, errors));
     }
 }
 
@@ -464,24 +465,26 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateClassDia
         const std::vector<UMLMember>& members = (kind == UMLMemberKind::Operation)
             ? classifier->operations : classifier->attributes;
         if (index >= members.size()) return;
-        status->SetText("Member: " + classifier->name + "::" + members[index].name +
-                        "   (" + (kind == UMLMemberKind::Operation ? "operation" : "attribute") + ")");
+        status->SetText(TrF("Member: {0}::{1}   ({2})", classifier->name, members[index].name,
+                            kind == UMLMemberKind::Operation ? Tr("operation") : Tr("attribute")));
     };
     diagram->onClassClick = [diagram = diagram.get(), status](const std::string& classifierId) {
         const UMLClassifier* classifier = diagram->Model().GetClassifier(classifierId);
         if (!classifier || !status) return;
-        status->SetText(std::string("Class: ") + classifier->name + "   (" +
-                        UMLClassifierKindName(classifier->kind) + ", " +
-                        std::to_string(classifier->attributes.size()) + " attributes, " +
-                        std::to_string(classifier->operations.size()) + " operations)");
+        status->SetText(TrF("Class: {0}   ({1}, {2}, {3})", classifier->name,
+                            UMLClassifierKindName(classifier->kind),
+                            TrN("{n} attribute", "{n} attributes",
+                                static_cast<long long>(classifier->attributes.size())),
+                            TrN("{n} operation", "{n} operations",
+                                static_cast<long long>(classifier->operations.size()))));
     };
     diagram->onRelationshipClick = [diagram = diagram.get(), status](const std::string& relationshipId) {
         const UMLRelationship* relationship = diagram->Model().GetRelationship(relationshipId);
         if (!relationship || !status) return;
         const UMLClassifier* source = diagram->Model().GetClassifier(relationship->source.classifierId);
         const UMLClassifier* target = diagram->Model().GetClassifier(relationship->target.classifierId);
-        status->SetText(std::string("Relationship: ") + UMLRelationshipKindName(relationship->kind) +
-                        "  " + (source ? source->name : "?") + " -> " + (target ? target->name : "?"));
+        status->SetText(TrF("Relationship: {0}  {1} -> {2}", UMLRelationshipKindName(relationship->kind),
+                            source ? source->name : std::string("?"), target ? target->name : std::string("?")));
     };
 
     // ---- scenario buttons ------------------------------------------------
@@ -493,27 +496,27 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateClassDia
         DemoKit::Add(scenarioRow, button);
     };
 
-    addScenarioButton("cdBank", "Banking System", 130, [diagram, status]() {
+    addScenarioButton("cdBank", Tr("Banking System"), 130, [diagram, status]() {
         BuildBankingSystem(*diagram);
-        if (status) status->SetText("Banking System - generalization, aggregation, composition, "
-                                    "per-end multiplicities (reference images 1 and 2).");
+        if (status) status->SetText(Tr("Banking System - generalization, aggregation, composition, "
+                                    "per-end multiplicities (reference images 1 and 2)."));
     });
-    addScenarioButton("cdInterfaces", "Interfaces", 110, [diagram, status]() {
+    addScenarioButton("cdInterfaces", Tr("Interfaces"), 110, [diagram, status]() {
         BuildInterfaceDiagram(*diagram);
-        if (status) status->SetText("Interfaces - «interface» stereotypes, dashed realization and "
-                                    "dependency, a collapsed name-only badge (reference image 3).");
+        if (status) status->SetText(Tr("Interfaces - «interface» stereotypes, dashed realization and "
+                                    "dependency, a collapsed name-only badge (reference image 3)."));
     });
-    addScenarioButton("cdDataType", "Service Metadata", 145, [diagram, status]() {
+    addScenarioButton("cdDataType", Tr("Service Metadata"), 145, [diagram, status]() {
         BuildServiceMetadata(*diagram);
-        if (status) status->SetText("Service Metadata - «DataType» boxes, member-level multiplicity, "
-                                    "association name plus roles plus multiplicities (reference image 5).");
+        if (status) status->SetText(Tr("Service Metadata - «DataType» boxes, member-level multiplicity, "
+                                    "association name plus roles plus multiplicities (reference image 5)."));
     });
-    addScenarioButton("cdDomain", "Domain Model", 125, [diagram, status]() {
+    addScenarioButton("cdDomain", Tr("Domain Model"), 125, [diagram, status]() {
         BuildDomainModel(*diagram);
-        if (status) status->SetText("Domain Model - a colour per class, named associations, "
-                                    "left-to-right layout (reference image 4).");
+        if (status) status->SetText(Tr("Domain Model - a colour per class, named associations, "
+                                    "left-to-right layout (reference image 4)."));
     });
-    addScenarioButton("cdReverse", "Reverse Engineered", 160, [diagram, status]() {
+    addScenarioButton("cdReverse", Tr("Reverse Engineered"), 160, [diagram, status]() {
         BuildReverseEngineered(*diagram, status);
     });
 
@@ -526,23 +529,23 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateClassDia
         DemoKit::Add(controlRow, button);
     };
 
-    addControlButton("cdLayered", "Layered", 80, [diagram]() {
+    addControlButton("cdLayered", Tr("Layered"), 80, [diagram]() {
         diagram->SetLayout(ClassLayoutKind::Layered, ClassLayoutDirection::TopToBottom);
         diagram->RunLayout();
     });
-    addControlButton("cdTree", "Tree", 70, [diagram]() {
+    addControlButton("cdTree", Tr("Tree"), 70, [diagram]() {
         diagram->SetLayout(ClassLayoutKind::Tree, ClassLayoutDirection::TopToBottom);
         diagram->RunLayout();
     });
-    addControlButton("cdLeftRight", "Left to Right", 110, [diagram]() {
+    addControlButton("cdLeftRight", Tr("Left to Right"), 110, [diagram]() {
         diagram->SetLayout(ClassLayoutKind::Layered, ClassLayoutDirection::LeftToRight);
         diagram->RunLayout();
     });
-    addControlButton("cdGrid", "Grid", 70, [diagram]() {
+    addControlButton("cdGrid", Tr("Grid"), 70, [diagram]() {
         diagram->SetLayout(ClassLayoutKind::Grid, ClassLayoutDirection::TopToBottom);
         diagram->RunLayout();
     });
-    addControlButton("cdDetail", "Detail: cycle", 110, [diagram, status]() {
+    addControlButton("cdDetail", Tr("Detail: cycle"), 110, [diagram, status]() {
         // Full -> Signatures -> NameOnly -> Full (proposal M11).
         ClassDiagramDetail next = ClassDiagramDetail::Full;
         switch (diagram->GetDetailLevel()) {
@@ -553,20 +556,20 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateClassDia
         diagram->SetDetailLevel(next);
         diagram->RunLayout();
         if (status) {
-            status->SetText(std::string("Detail level: ") +
-                            (next == ClassDiagramDetail::Full ? "Full"
-                             : next == ClassDiagramDetail::Signatures ? "Signatures"
-                             : "Name only"));
+            status->SetText(TrF("Detail level: {0}",
+                            next == ClassDiagramDetail::Full ? Tr("Full")
+                            : next == ClassDiagramDetail::Signatures ? Tr("Signatures")
+                            : Tr("Name only")));
         }
     });
-    addControlButton("cdFit", "Fit", 60, [diagram]() { diagram->FitView(); });
-    addControlButton("cdReset", "Reset", 70, [diagram]() {
+    addControlButton("cdFit", Tr("Fit"), 60, [diagram]() { diagram->FitView(); });
+    addControlButton("cdReset", Tr("Reset"), 70, [diagram]() {
         diagram->ResetView();
         diagram->RunLayout();
     });
 
     auto gridToggle = std::make_shared<UltraCanvasCheckbox>("cdGridToggle", 0, 0, 110, 22);
-    gridToggle->SetText("Show Grid");
+    gridToggle->SetText(Tr("Show Grid"));
     gridToggle->SetChecked(true);
     gridToggle->onStateChanged = [diagram](CheckedState, CheckedState newState) {
         diagram->SetGridVisible(newState == CheckedState::Checked, 20.0);

@@ -45,11 +45,11 @@ namespace UltraCanvas {
     std::shared_ptr<ChartDataVector> GenerateMarketShareData() {
         auto data = std::make_shared<ChartDataVector>();
         std::vector<ChartDataPoint> marketShare = {
-                ChartDataPoint(1, 350, 0, "Product A", 350),
-                ChartDataPoint(2, 280, 0, "Product B", 280),
-                ChartDataPoint(3, 210, 0, "Product C", 210),
-                ChartDataPoint(4, 160, 0, "Product D", 160),
-                ChartDataPoint(5, 120, 0, "Others", 120)
+                ChartDataPoint(1, 350, 0, Tr("Product A"), 350),
+                ChartDataPoint(2, 280, 0, Tr("Product B"), 280),
+                ChartDataPoint(3, 210, 0, Tr("Product C"), 210),
+                ChartDataPoint(4, 160, 0, Tr("Product D"), 160),
+                ChartDataPoint(5, 120, 0, Tr("Others"), 120)
         };
         data->LoadFromArray(marketShare);
         return data;
@@ -58,12 +58,12 @@ namespace UltraCanvas {
     std::shared_ptr<ChartDataVector> GenerateBudgetData() {
         auto data = std::make_shared<ChartDataVector>();
         std::vector<ChartDataPoint> budget = {
-                ChartDataPoint(1, 4500, 0, "Salaries", 4500),
-                ChartDataPoint(2, 2300, 0, "Marketing", 2300),
-                ChartDataPoint(3, 1800, 0, "R&D", 1800),
-                ChartDataPoint(4, 1200, 0, "Operations", 1200),
-                ChartDataPoint(5, 800, 0, "Infrastructure", 800),
-                ChartDataPoint(6, 400, 0, "Other", 400)
+                ChartDataPoint(1, 4500, 0, Tr("Salaries"), 4500),
+                ChartDataPoint(2, 2300, 0, Tr("Marketing"), 2300),
+                ChartDataPoint(3, 1800, 0, Tr("R&D"), 1800),
+                ChartDataPoint(4, 1200, 0, Tr("Operations"), 1200),
+                ChartDataPoint(5, 800, 0, Tr("Infrastructure"), 800),
+                ChartDataPoint(6, 400, 0, Tr("Other"), 400)
         };
         data->LoadFromArray(budget);
         return data;
@@ -84,9 +84,9 @@ namespace UltraCanvas {
         };
 
         // === CHART TYPE CONTROLS ===
-        addGroupLabel("TypeLabel", "Chart Type:");
+        addGroupLabel("TypeLabel", Tr("Chart Type:"));
 
-        auto donutCheckbox = std::make_shared<UltraCanvasCheckbox>("DonutMode", 0, 0, 0, controlHeight, "Donut Mode");
+        auto donutCheckbox = std::make_shared<UltraCanvasCheckbox>("DonutMode", 0, 0, 0, controlHeight, Tr("Donut Mode"));
         donutCheckbox->SetChecked(pieChartControls.donutMode);
         donutCheckbox->onStateChanged = [pieChart1, pieChart2](CheckedState oldState, CheckedState newState) {
             pieChartControls.donutMode = newState == CheckedState::Checked;
@@ -96,9 +96,9 @@ namespace UltraCanvas {
         DemoKit::Add(container, donutCheckbox);
 
         // === 3D EFFECTS ===
-        addGroupLabel("EffectsLabel", "Visual Effects:");
+        addGroupLabel("EffectsLabel", Tr("Visual Effects:"));
 
-        auto enable3DCheckbox = std::make_shared<UltraCanvasCheckbox>("3DEffects", 0, 0, 0, controlHeight, "3D Effects");
+        auto enable3DCheckbox = std::make_shared<UltraCanvasCheckbox>("3DEffects", 0, 0, 0, controlHeight, Tr("3D Effects"));
         enable3DCheckbox->SetChecked(pieChartControls.enable3DEffects);
         enable3DCheckbox->onStateChanged = [pieChart1, pieChart2](CheckedState oldState, CheckedState newState) {
             pieChartControls.enable3DEffects = newState == CheckedState::Checked;
@@ -112,7 +112,7 @@ namespace UltraCanvas {
         };
         DemoKit::Add(container, enable3DCheckbox);
 
-        auto gradientCheckbox = std::make_shared<UltraCanvasCheckbox>("GradientFills", 0, 0, 0, controlHeight, "Radial Gradients");
+        auto gradientCheckbox = std::make_shared<UltraCanvasCheckbox>("GradientFills", 0, 0, 0, controlHeight, Tr("Radial Gradients"));
         gradientCheckbox->SetChecked(pieChartControls.gradientFills);
         gradientCheckbox->onStateChanged = [pieChart1, pieChart2](CheckedState oldState, CheckedState newState) {
             pieChartControls.gradientFills = newState == CheckedState::Checked;
@@ -127,7 +127,7 @@ namespace UltraCanvas {
         DemoKit::Add(container, gradientCheckbox);
 
         // === EXPLOSION CONTROLS ===
-        addGroupLabel("ExplosionLabel", "Slice Explosion:");
+        addGroupLabel("ExplosionLabel", Tr("Slice Explosion:"));
 
         auto explosionSlider = std::make_shared<UltraCanvasSlider>("ExplosionSlider", 0, 0, 180, controlHeight);
         explosionSlider->SetRange(0.0, 0.5);
@@ -141,7 +141,7 @@ namespace UltraCanvas {
         DemoKit::AddFixed(container, explosionSlider);
 
         // === PERSPECTIVE ANGLE (3D) ===
-        addGroupLabel("PerspectiveLabel", "Perspective Angle (3D):");
+        addGroupLabel("PerspectiveLabel", Tr("Perspective Angle (3D):"));
 
         auto perspectiveSlider = std::make_shared<UltraCanvasSlider>("PerspectiveSlider", 0, 0, 180, controlHeight);
         perspectiveSlider->SetRange(5.0, 70.0);
@@ -154,14 +154,14 @@ namespace UltraCanvas {
         DemoKit::AddFixed(container, perspectiveSlider);
 
         // === LABEL CONTROLS ===
-        addGroupLabel("LabelLabel", "Labels:");
+        addGroupLabel("LabelLabel", Tr("Labels:"));
 
         auto labelPosDropdown = std::make_shared<UltraCanvasDropdown>("LabelPosition", 0, 0, 180, controlHeight);
-        labelPosDropdown->AddItem("Auto");
-        labelPosDropdown->AddItem("Inside");
-        labelPosDropdown->AddItem("Outside");
-        labelPosDropdown->AddItem("Edge");
-        labelPosDropdown->AddItem("None");
+        labelPosDropdown->AddItem(Tr("Auto"));
+        labelPosDropdown->AddItem(Tr("Inside"));
+        labelPosDropdown->AddItem(Tr("Outside"));
+        labelPosDropdown->AddItem(Tr("Edge"));
+        labelPosDropdown->AddItem(Tr("None"));
         labelPosDropdown->SetSelectedIndex(0);
         labelPosDropdown->onSelectionChanged = [pieChart1, pieChart2](int index, const DropdownItem& item) {
             LabelPosition pos;
@@ -179,7 +179,7 @@ namespace UltraCanvas {
         };
         DemoKit::AddFixed(container, labelPosDropdown);
 
-        auto leaderLinesCheckbox = std::make_shared<UltraCanvasCheckbox>("LeaderLines", 0, 0, 0, controlHeight, "Leader Lines");
+        auto leaderLinesCheckbox = std::make_shared<UltraCanvasCheckbox>("LeaderLines", 0, 0, 0, controlHeight, Tr("Leader Lines"));
         leaderLinesCheckbox->SetChecked(pieChartControls.leaderLines);
         leaderLinesCheckbox->onStateChanged = [pieChart1, pieChart2](CheckedState oldState, CheckedState newState) {
             pieChartControls.leaderLines = newState == CheckedState::Checked;

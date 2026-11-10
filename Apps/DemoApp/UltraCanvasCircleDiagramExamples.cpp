@@ -23,15 +23,15 @@ namespace UltraCanvas {
     static void BuildSaaSWheel(std::shared_ptr<UltraCanvasCircleDiagram> diagram) {
         diagram->SetDesign(CircleDiagramDesign::SatelliteWheel);
         diagram->SetPalette(CircleDiagramPaletteKind::Vibrant);
-        diagram->SetHubText("Components of a\nSaaS Business");
+        diagram->SetHubText(Tr("Components of a\nSaaS Business"));
 
         const std::vector<std::pair<std::string, std::vector<std::string>>> data = {
-            {"Marketing\nAutomation", {"Leads targeting", "Social Media Ads", "Auto Emails"}},
-            {"Billing",               {"Invoicing", "Receipts", "Subscription"}},
-            {"Customer\nAnalytics",   {"Customer Reports", "Assessing Customer types"}},
-            {"Customer\nSupport",     {"Live Chat", "Complaint Center", "Feedback Forms"}},
-            {"Customer\nRelationship\nManagement",
-                                      {"Customer Database", "Sales Records"}}
+            {Tr("Marketing\nAutomation"), {Tr("Leads targeting"), Tr("Social Media Ads"), Tr("Auto Emails")}},
+            {Tr("Billing"),               {Tr("Invoicing"), Tr("Receipts"), Tr("Subscription")}},
+            {Tr("Customer\nAnalytics"),   {Tr("Customer Reports"), Tr("Assessing Customer types")}},
+            {Tr("Customer\nSupport"),     {Tr("Live Chat"), Tr("Complaint Center"), Tr("Feedback Forms")}},
+            {Tr("Customer\nRelationship\nManagement"),
+                                      {Tr("Customer Database"), Tr("Sales Records")}}
         };
         for (const auto& entry : data) {
             size_t node = diagram->AddNode(entry.first);
@@ -46,14 +46,14 @@ namespace UltraCanvas {
     static void BuildPolicyRing(std::shared_ptr<UltraCanvasCircleDiagram> diagram) {
         diagram->SetDesign(CircleDiagramDesign::BandedWheel);
         diagram->SetPalette(CircleDiagramPaletteKind::Mint);
-        diagram->SetHubText("E-Governance\nEcosystem");
+        diagram->SetHubText(Tr("E-Governance\nEcosystem"));
 
         const std::vector<std::pair<std::string, std::string>> data = {
-            {"Policy\nEnvironment",   "Vision and Goals"},
-            {"Human\nResource",       "Civil Society Participation"},
-            {"Training\nModules",     "Knowledge Skill Transfer"},
-            {"Database\nManagement",  "Open Data Digital Coordination"},
-            {"Feedback\nLoop",        "Public-Private Collaboration"}
+            {Tr("Policy\nEnvironment"),   Tr("Vision and Goals")},
+            {Tr("Human\nResource"),       Tr("Civil Society Participation")},
+            {Tr("Training\nModules"),     Tr("Knowledge Skill Transfer")},
+            {Tr("Database\nManagement"),  Tr("Open Data Digital Coordination")},
+            {Tr("Feedback\nLoop"),        Tr("Public-Private Collaboration")}
         };
         for (const auto& entry : data) {
             size_t node = diagram->AddNode(entry.first);
@@ -67,12 +67,12 @@ namespace UltraCanvas {
                                 size_t nodeCount) {
         diagram->SetDesign(CircleDiagramDesign::SatelliteWheel);
         diagram->SetPalette(CircleDiagramPaletteKind::Ocean);
-        diagram->SetHubText("Phase\nModel");
+        diagram->SetHubText(Tr("Phase\nModel"));
 
         for (size_t i = 0; i < nodeCount; ++i) {
-            size_t node = diagram->AddNode("Stage " + std::to_string(i + 1));
-            diagram->AddSatellite(node, "Input");
-            diagram->AddSatellite(node, "Output");
+            size_t node = diagram->AddNode(TrF("Stage {0}", i + 1));
+            diagram->AddSatellite(node, Tr("Input"));
+            diagram->AddSatellite(node, Tr("Output"));
         }
     }
 
@@ -83,10 +83,10 @@ namespace UltraCanvas {
         diagram->SetPalette(CircleDiagramPaletteKind::Pastel);
         diagram->SetBackboneStyle(CircleBackboneStyle::NoRing);
         diagram->SetNodeLabelPlacement(CircleNodeLabelPlacement::Outside);
-        diagram->SetHubText("Team\nCharter");
+        diagram->SetHubText(Tr("Team\nCharter"));
 
         const std::vector<std::string> labels = {
-            "Discover", "Define", "Design", "Deliver", "Debrief", "Decide", "Deploy"
+            Tr("Discover"), Tr("Define"), Tr("Design"), Tr("Deliver"), Tr("Debrief"), Tr("Decide"), Tr("Deploy")
         };
         for (const auto& label : labels) diagram->AddNode(label);
     }

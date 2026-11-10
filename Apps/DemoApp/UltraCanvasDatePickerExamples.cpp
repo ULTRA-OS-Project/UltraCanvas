@@ -34,9 +34,9 @@ namespace UltraCanvas {
         DemoKit::AddFixed(singleRow, picker);
 
         auto pickerResult = DemoKit::CreateText("DP_SingleResult",
-                                                "Selected: " + UCDate::Today().Format("yyyy-MM-dd"));
+                                                TrF("Selected: {0}", UCDate::Today().Format("yyyy-MM-dd")));
         picker->onDateChanged = [pickerResult](const UCDate& d) {
-            pickerResult->SetText(d.IsEmpty() ? "Selected: (none)" : "Selected: " + d.Format("yyyy-MM-dd"));
+            pickerResult->SetText(d.IsEmpty() ? Tr("Selected: (none)") : TrF("Selected: {0}", d.Format("yyyy-MM-dd")));
         };
         DemoKit::Add(singleRow, pickerResult, 1);
 
@@ -46,7 +46,7 @@ namespace UltraCanvas {
         auto pickerEU = CreateDatePicker("DP_EU", 0, 0, 200, 28);
         pickerEU->SetDateFormat("dd/MM/yyyy");
         pickerEU->SetFirstDayOfWeek(1); // Monday
-        pickerEU->SetPlaceholder("dd/mm/yyyy");
+        pickerEU->SetPlaceholder(Tr("dd/mm/yyyy"));
         DemoKit::AddFixed(euRow, pickerEU);
         DemoKit::Add(euRow, DemoKit::CreateCaption("DP_EUHint",
             Tr("European format (dd/MM/yyyy), week starts Monday. Type a date and press Enter, "
@@ -68,9 +68,9 @@ namespace UltraCanvas {
             Tr("An always-on-screen calendar. Click the month/year title to drill up to "
             "month and decade views for fast navigation. Mouse wheel changes month."));
         auto inlineResult = DemoKit::AddText(inlineInfo, "Cal_InlineResult",
-                                             "Selected: " + UCDate::Today().Format("yyyy-MM-dd"));
+                                             TrF("Selected: {0}", UCDate::Today().Format("yyyy-MM-dd")));
         inlineCal->onDateSelected = [inlineResult](const UCDate& d) {
-            inlineResult->SetText(d.IsEmpty() ? "Selected: (none)" : "Selected: " + d.Format("yyyy-MM-dd"));
+            inlineResult->SetText(d.IsEmpty() ? Tr("Selected: (none)") : TrF("Selected: {0}", d.Format("yyyy-MM-dd")));
         };
         DemoKit::Add(inlineRow, inlineInfo, 1);
 
@@ -91,8 +91,9 @@ namespace UltraCanvas {
         rangeCal->SetElementSize(rangeCal->GetPreferredSize());
         rangeCal->onRangeSelected = [rangeResult](const UCDate& s, const UCDate& e) {
             long days = e.ToOrdinal() - s.ToOrdinal() + 1;
-            rangeResult->SetText("Range: " + s.Format("yyyy-MM-dd") + " to " + e.Format("yyyy-MM-dd") +
-                                 "  (" + std::to_string(days) + " days)");
+            rangeResult->SetText(LocalisationDetail::Substitute(
+                TrN("Range: {0} to {1}  ({n} day)", "Range: {0} to {1}  ({n} days)", days),
+                {s.Format("yyyy-MM-dd"), e.Format("yyyy-MM-dd")}));
         };
         DemoKit::AddFixed(rangeColumn, rangeCal);
         DemoKit::Add(rangeRow, rangeColumn);
@@ -103,7 +104,7 @@ namespace UltraCanvas {
         weekCal->SetSelectionMode(DateSelectionMode::Week);
         weekCal->SetFirstDayOfWeek(1);
         weekCal->onRangeSelected = [weekResult](const UCDate& s, const UCDate& e) {
-            weekResult->SetText("Week of " + s.Format("yyyy-MM-dd") + " - " + e.Format("yyyy-MM-dd"));
+            weekResult->SetText(TrF("Week of {0} - {1}", s.Format("yyyy-MM-dd"), e.Format("yyyy-MM-dd")));
         };
         DemoKit::AddFixed(weekColumn, weekCal);
         DemoKit::Add(rangeRow, weekColumn);
@@ -125,7 +126,7 @@ namespace UltraCanvas {
         auto multiCal = CreateCalendarView("Cal_Multiple", 0, 0);
         multiCal->SetSelectionMode(DateSelectionMode::Multiple);
         multiCal->onMultipleChanged = [multiResult](const std::vector<UCDate>& dates) {
-            multiResult->SetText(std::to_string(dates.size()) + " date(s) selected");
+            multiResult->SetText(TrN("{n} date selected", "{n} dates selected", static_cast<long long>(dates.size())));
         };
         DemoKit::AddFixed(multiColumn, multiCal);
         DemoKit::Add(multiRow, multiColumn);
@@ -143,7 +144,7 @@ namespace UltraCanvas {
             return dow != 0 && dow != 6; // weekdays only
         });
         darkCal->onDateSelected = [darkResult](const UCDate& d) {
-            if (!d.IsEmpty()) darkResult->SetText("Booked: " + d.Format("yyyy-MM-dd"));
+            if (!d.IsEmpty()) darkResult->SetText(TrF("Booked: {0}", d.Format("yyyy-MM-dd")));
         };
         DemoKit::AddFixed(darkColumn, darkCal);
         DemoKit::Add(multiRow, darkColumn);
@@ -174,8 +175,9 @@ namespace UltraCanvas {
         auto twoResult = DemoKit::CreateText("RangeTwoResult", Tr("Mode A: pick check-in, then check-out"));
         twoField->onRangeChanged = [twoResult](const UCDate& s, const UCDate& e) {
             long nights = e.ToOrdinal() - s.ToOrdinal();
-            twoResult->SetText("Stay: " + s.Format("yyyy-MM-dd") + " -> " + e.Format("yyyy-MM-dd") +
-                               "  (" + std::to_string(nights) + " night(s))");
+            twoResult->SetText(LocalisationDetail::Substitute(
+                TrN("Stay: {0} -> {1}  ({n} night)", "Stay: {0} -> {1}  ({n} nights)", nights),
+                {s.Format("yyyy-MM-dd"), e.Format("yyyy-MM-dd")}));
         };
         DemoKit::Add(twoRow, twoResult, 1);
 
@@ -192,8 +194,9 @@ namespace UltraCanvas {
         auto oneResult = DemoKit::CreateText("RangeOneResult", Tr("Mode B: click start then end in one calendar"));
         oneField->onRangeChanged = [oneResult](const UCDate& s, const UCDate& e) {
             long nights = e.ToOrdinal() - s.ToOrdinal();
-            oneResult->SetText("Stay: " + s.Format("yyyy-MM-dd") + " -> " + e.Format("yyyy-MM-dd") +
-                               "  (" + std::to_string(nights) + " night(s))");
+            oneResult->SetText(LocalisationDetail::Substitute(
+                TrN("Stay: {0} -> {1}  ({n} night)", "Stay: {0} -> {1}  ({n} nights)", nights),
+                {s.Format("yyyy-MM-dd"), e.Format("yyyy-MM-dd")}));
         };
         DemoKit::Add(oneRow, oneResult, 1);
 

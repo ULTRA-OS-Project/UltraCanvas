@@ -40,10 +40,10 @@ namespace UltraCanvas {
 
         // Simple Dropdown
         auto simpleDropdown = std::make_shared<UltraCanvasDropdown>("SimpleDropdown", 0, 0, 220, 30);
-        simpleDropdown->AddItem("Option 1");
-        simpleDropdown->AddItem("Option 2");
-        simpleDropdown->AddItem("Option 3");
-        simpleDropdown->AddItem("Very Long Option Text That Extends");
+        simpleDropdown->AddItem(Tr("Option 1"));
+        simpleDropdown->AddItem(Tr("Option 2"));
+        simpleDropdown->AddItem(Tr("Option 3"));
+        simpleDropdown->AddItem(Tr("Very Long Option Text That Extends"));
         simpleDropdown->SetSelectedIndex(0);
 
         auto simpleLine = AddDropdownLine(card1, "SimpleLine");
@@ -52,13 +52,13 @@ namespace UltraCanvas {
 
         // Dropdown with separators
         auto separatorDropdown = std::make_shared<UltraCanvasDropdown>("SeparatorDropdown", 0, 0, 220, 30);
-        separatorDropdown->AddItem("File Operations");
-        separatorDropdown->AddItem("Open", "open");
-        separatorDropdown->AddItem("Save", "save");
+        separatorDropdown->AddItem(Tr("File Operations"));
+        separatorDropdown->AddItem(Tr("Open"), "open");
+        separatorDropdown->AddItem(Tr("Save"), "save");
         separatorDropdown->AddSeparator();
-        separatorDropdown->AddItem("Edit Operations");
-        separatorDropdown->AddItem("Copy", "copy");
-        separatorDropdown->AddItem("Paste", "paste");
+        separatorDropdown->AddItem(Tr("Edit Operations"));
+        separatorDropdown->AddItem(Tr("Copy"), "copy");
+        separatorDropdown->AddItem(Tr("Paste"), "paste");
         separatorDropdown->SetSelectedIndex(1);
 
         auto separatorLine = AddDropdownLine(card1, "SeparatorLine");
@@ -70,10 +70,10 @@ namespace UltraCanvas {
 
         // File types dropdown with icons
         auto fileTypesDropdown = std::make_shared<UltraCanvasDropdown>("FileTypesDropdown", 0, 0, 220, 30);
-        fileTypesDropdown->AddItem("Text Document", "txt", NormalizePath(GetResourcesDir() + "media/icons/document.png"));
-        fileTypesDropdown->AddItem("PDF Document", "pdf", NormalizePath(GetResourcesDir() + "media/icons/pdf.png"));
-        fileTypesDropdown->AddItem("Image File", "img", NormalizePath(GetResourcesDir() + "media/icons/image.png"));
-        fileTypesDropdown->AddItem("Video File", "vid", NormalizePath(GetResourcesDir() + "media/icons/video.png"));
+        fileTypesDropdown->AddItem(Tr("Text Document"), "txt", NormalizePath(GetResourcesDir() + "media/icons/document.png"));
+        fileTypesDropdown->AddItem(Tr("PDF Document"), "pdf", NormalizePath(GetResourcesDir() + "media/icons/pdf.png"));
+        fileTypesDropdown->AddItem(Tr("Image File"), "img", NormalizePath(GetResourcesDir() + "media/icons/image.png"));
+        fileTypesDropdown->AddItem(Tr("Video File"), "vid", NormalizePath(GetResourcesDir() + "media/icons/video.png"));
         fileTypesDropdown->SetSelectedIndex(0);
 
         auto fileTypesLine = AddDropdownLine(card2, "FileTypesLine");
@@ -82,11 +82,11 @@ namespace UltraCanvas {
 
         // Actions dropdown with icons
         auto actionsDropdown = std::make_shared<UltraCanvasDropdown>("ActionsDropdown", 0, 0, 220, 30);
-        actionsDropdown->AddItem("New File", "new", NormalizePath(GetResourcesDir() + "media/icons/new.png"));
-        actionsDropdown->AddItem("Open File", "open", NormalizePath(GetResourcesDir() + "media/icons/folder.png"));
-        actionsDropdown->AddItem("Save File", "save", NormalizePath(GetResourcesDir() + "media/icons/save.png"));
-        actionsDropdown->AddItem("Print", "print", NormalizePath(GetResourcesDir() + "media/icons/print.png"));
-        actionsDropdown->AddItem("Settings", "settings", NormalizePath(GetResourcesDir() + "media/icons/settings.png"));
+        actionsDropdown->AddItem(Tr("New File"), "new", NormalizePath(GetResourcesDir() + "media/icons/new.png"));
+        actionsDropdown->AddItem(Tr("Open File"), "open", NormalizePath(GetResourcesDir() + "media/icons/folder.png"));
+        actionsDropdown->AddItem(Tr("Save File"), "save", NormalizePath(GetResourcesDir() + "media/icons/save.png"));
+        actionsDropdown->AddItem(Tr("Print"), "print", NormalizePath(GetResourcesDir() + "media/icons/print.png"));
+        actionsDropdown->AddItem(Tr("Settings"), "settings", NormalizePath(GetResourcesDir() + "media/icons/settings.png"));
         actionsDropdown->SetSelectedIndex(0);
 
         auto actionsLine = AddDropdownLine(card2, "ActionsLine");
@@ -101,37 +101,37 @@ namespace UltraCanvas {
         auto countriesDropdown = std::make_shared<UltraCanvasDropdown>("CountriesDropdown", 0, 0, 280, 30);
 
         // Add countries with their flag icons (ISO 3166-1 alpha-2 codes)
-        countriesDropdown->AddItem("United States", "US", NormalizePath(GetResourcesDir() + "media/flags/US.png"));
-        countriesDropdown->AddItem("United Kingdom", "GB", NormalizePath(GetResourcesDir() + "media/flags/GB.png"));
-        countriesDropdown->AddItem("Germany", "DE", NormalizePath(GetResourcesDir() + "media/flags/DE.png"));
-        countriesDropdown->AddItem("France", "FR", NormalizePath(GetResourcesDir() + "media/flags/FR.png"));
-        countriesDropdown->AddItem("Italy", "IT", NormalizePath(GetResourcesDir() + "media/flags/IT.png"));
-        countriesDropdown->AddItem("Spain", "ES", NormalizePath(GetResourcesDir() + "media/flags/ES.png"));
-        countriesDropdown->AddItem("Japan", "JP", NormalizePath(GetResourcesDir() + "media/flags/JP.png"));
-        countriesDropdown->AddItem("China", "CN", NormalizePath(GetResourcesDir() + "media/flags/CN.png"));
-        countriesDropdown->AddItem("India", "IN", NormalizePath(GetResourcesDir() + "media/flags/IN.png"));
-        countriesDropdown->AddItem("Brazil", "BR", NormalizePath(GetResourcesDir() + "media/flags/BR.png"));
-        countriesDropdown->AddItem("Canada", "CA", NormalizePath(GetResourcesDir() + "media/flags/CA.png"));
-        countriesDropdown->AddItem("Australia", "AU", NormalizePath(GetResourcesDir() + "media/flags/AU.png"));
-        countriesDropdown->AddItem("Mexico", "MX", NormalizePath(GetResourcesDir() + "media/flags/MX.png"));
-        countriesDropdown->AddItem("Russia", "RU", NormalizePath(GetResourcesDir() + "media/flags/RU.png"));
-        countriesDropdown->AddItem("South Korea", "KR", NormalizePath(GetResourcesDir() + "media/flags/KR.png"));
-        countriesDropdown->AddItem("Netherlands", "NL", NormalizePath(GetResourcesDir() + "media/flags/NL.png"));
-        countriesDropdown->AddItem("Sweden", "SE", NormalizePath(GetResourcesDir() + "media/flags/SE.png"));
-        countriesDropdown->AddItem("Switzerland", "CH", NormalizePath(GetResourcesDir() + "media/flags/CH.png"));
-        countriesDropdown->AddItem("Poland", "PL", NormalizePath(GetResourcesDir() + "media/flags/PL.png"));
-        countriesDropdown->AddItem("Belgium", "BE", NormalizePath(GetResourcesDir() + "media/flags/BE.png"));
+        countriesDropdown->AddItem(Tr("United States"), "US", NormalizePath(GetResourcesDir() + "media/flags/US.png"));
+        countriesDropdown->AddItem(Tr("United Kingdom"), "GB", NormalizePath(GetResourcesDir() + "media/flags/GB.png"));
+        countriesDropdown->AddItem(Tr("Germany"), "DE", NormalizePath(GetResourcesDir() + "media/flags/DE.png"));
+        countriesDropdown->AddItem(Tr("France"), "FR", NormalizePath(GetResourcesDir() + "media/flags/FR.png"));
+        countriesDropdown->AddItem(Tr("Italy"), "IT", NormalizePath(GetResourcesDir() + "media/flags/IT.png"));
+        countriesDropdown->AddItem(Tr("Spain"), "ES", NormalizePath(GetResourcesDir() + "media/flags/ES.png"));
+        countriesDropdown->AddItem(Tr("Japan"), "JP", NormalizePath(GetResourcesDir() + "media/flags/JP.png"));
+        countriesDropdown->AddItem(Tr("China"), "CN", NormalizePath(GetResourcesDir() + "media/flags/CN.png"));
+        countriesDropdown->AddItem(Tr("India"), "IN", NormalizePath(GetResourcesDir() + "media/flags/IN.png"));
+        countriesDropdown->AddItem(Tr("Brazil"), "BR", NormalizePath(GetResourcesDir() + "media/flags/BR.png"));
+        countriesDropdown->AddItem(Tr("Canada"), "CA", NormalizePath(GetResourcesDir() + "media/flags/CA.png"));
+        countriesDropdown->AddItem(Tr("Australia"), "AU", NormalizePath(GetResourcesDir() + "media/flags/AU.png"));
+        countriesDropdown->AddItem(Tr("Mexico"), "MX", NormalizePath(GetResourcesDir() + "media/flags/MX.png"));
+        countriesDropdown->AddItem(Tr("Russia"), "RU", NormalizePath(GetResourcesDir() + "media/flags/RU.png"));
+        countriesDropdown->AddItem(Tr("South Korea"), "KR", NormalizePath(GetResourcesDir() + "media/flags/KR.png"));
+        countriesDropdown->AddItem(Tr("Netherlands"), "NL", NormalizePath(GetResourcesDir() + "media/flags/NL.png"));
+        countriesDropdown->AddItem(Tr("Sweden"), "SE", NormalizePath(GetResourcesDir() + "media/flags/SE.png"));
+        countriesDropdown->AddItem(Tr("Switzerland"), "CH", NormalizePath(GetResourcesDir() + "media/flags/CH.png"));
+        countriesDropdown->AddItem(Tr("Poland"), "PL", NormalizePath(GetResourcesDir() + "media/flags/PL.png"));
+        countriesDropdown->AddItem(Tr("Belgium"), "BE", NormalizePath(GetResourcesDir() + "media/flags/BE.png"));
 
         countriesDropdown->SetSelectedIndex(0);
 
         // Country selection status label
-        auto countryStatusLabel = DemoKit::CreateText("CountryStatus", Tr("Selected: United States (US)"));
+        auto countryStatusLabel = DemoKit::CreateText("CountryStatus", TrF("Selected: {0} ({1})", Tr("United States"), "US"));
         countryStatusLabel->SetTextColor(Color(0, 100, 0, 255));
 
         // Callback for country selection
         countriesDropdown->onSelectionChanged = [countryStatusLabel](int index, const DropdownItem& item) {
             debugOutput << "Country selected: " << item.text << " (" << item.value << ")" << std::endl;
-            countryStatusLabel->SetText("Selected: " + item.text + " (" + item.value + ")");
+            countryStatusLabel->SetText(TrF("Selected: {0} ({1})", item.text, item.value));
         };
 
         auto countryLine = AddDropdownLine(card3, "CountryLine");
@@ -160,14 +160,16 @@ namespace UltraCanvas {
 
         // Callback for multi-selection
         languagesDropdown->onSelectedItemsChanged = [languagesStatus](const std::vector<DropdownItem>& items) {
-            std::string selectedText = "Selected: ";
+            std::string selectedText;
             if (items.empty()) {
-                selectedText += "None";
+                selectedText = TrF("Selected: {0}", Tr("None"));
             } else {
+                std::string names;
                 for (size_t i = 0; i < items.size(); ++i) {
-                    selectedText += items[i].text;
-                    if (i < items.size() - 1) selectedText += ", ";
+                    names += items[i].text;
+                    if (i < items.size() - 1) names += ", ";
                 }
+                selectedText = TrF("Selected: {0}", names);
             }
             languagesStatus->SetText(selectedText);
             debugOutput << "Programming languages selection changed: " << selectedText << std::endl;
@@ -180,14 +182,14 @@ namespace UltraCanvas {
         // Fruit multi-select (no icons)
         auto fruitsDropdown = std::make_shared<UltraCanvasDropdown>("FruitsDropdown", 0, 0, 250, 30);
         fruitsDropdown->SetMultiSelectEnabled(true);
-        fruitsDropdown->AddItem("Apple", "apple");
-        fruitsDropdown->AddItem("Banana", "banana");
-        fruitsDropdown->AddItem("Orange", "orange");
-        fruitsDropdown->AddItem("Grape", "grape");
-        fruitsDropdown->AddItem("Strawberry", "strawberry");
-        fruitsDropdown->AddItem("Mango", "mango");
-        fruitsDropdown->AddItem("Pineapple", "pineapple");
-        fruitsDropdown->AddItem("Watermelon", "watermelon");
+        fruitsDropdown->AddItem(Tr("Apple"), "apple");
+        fruitsDropdown->AddItem(Tr("Banana"), "banana");
+        fruitsDropdown->AddItem(Tr("Orange"), "orange");
+        fruitsDropdown->AddItem(Tr("Grape"), "grape");
+        fruitsDropdown->AddItem(Tr("Strawberry"), "strawberry");
+        fruitsDropdown->AddItem(Tr("Mango"), "mango");
+        fruitsDropdown->AddItem(Tr("Pineapple"), "pineapple");
+        fruitsDropdown->AddItem(Tr("Watermelon"), "watermelon");
 
         auto fruitsLine = AddDropdownLine(card4, "FruitsLine");
         DemoKit::AddFixed(fruitsLine, fruitsDropdown);
@@ -195,21 +197,21 @@ namespace UltraCanvas {
 
         // Control buttons for fruits dropdown (width 0: as wide as the text)
         auto selectAllBtn = std::make_shared<UltraCanvasButton>("SelectAllFruits", 0, 0, 0, 30);
-        selectAllBtn->SetText("Select All");
+        selectAllBtn->SetText(Tr("Select All"));
         selectAllBtn->SetOnClick([fruitsDropdown]() {
             fruitsDropdown->SelectAll();
             debugOutput << "Selected all fruits" << std::endl;
         });
 
         auto deselectAllBtn = std::make_shared<UltraCanvasButton>("DeselectAllFruits", 0, 0, 0, 30);
-        deselectAllBtn->SetText("Clear All");
+        deselectAllBtn->SetText(Tr("Clear All"));
         deselectAllBtn->SetOnClick([fruitsDropdown]() {
             fruitsDropdown->DeselectAll();
             debugOutput << "Cleared all fruit selections" << std::endl;
         });
 
         auto getSelectedBtn = std::make_shared<UltraCanvasButton>("GetSelectedFruits", 0, 0, 0, 30);
-        getSelectedBtn->SetText("Get Selected");
+        getSelectedBtn->SetText(Tr("Get Selected"));
         getSelectedBtn->SetOnClick([fruitsDropdown]() {
             auto selected = fruitsDropdown->GetSelectedItems();
             debugOutput << "Currently selected fruits (" << selected.size() << "): ";
@@ -231,16 +233,16 @@ namespace UltraCanvas {
         // Travel destinations multi-select with flags
         auto travelDropdown = std::make_shared<UltraCanvasDropdown>("TravelDropdown", 0, 0, 280, 30);
         travelDropdown->SetMultiSelectEnabled(true);
-        travelDropdown->AddItem("France", "FR", NormalizePath(GetResourcesDir() + "media/flags/FR.png"));
-        travelDropdown->AddItem("Italy", "IT", NormalizePath(GetResourcesDir() + "media/flags/IT.png"));
-        travelDropdown->AddItem("Spain", "ES", NormalizePath(GetResourcesDir() + "media/flags/ES.png"));
-        travelDropdown->AddItem("Japan", "JP", NormalizePath(GetResourcesDir() + "media/flags/JP.png"));
-        travelDropdown->AddItem("Thailand", "TH", NormalizePath(GetResourcesDir() + "media/flags/TH.png"));
-        travelDropdown->AddItem("United States", "US", NormalizePath(GetResourcesDir() + "media/flags/US.png"));
-        travelDropdown->AddItem("United Kingdom", "GB", NormalizePath(GetResourcesDir() + "media/flags/GB.png"));
-        travelDropdown->AddItem("Australia", "AU", NormalizePath(GetResourcesDir() + "media/flags/AU.png"));
-        travelDropdown->AddItem("Greece", "GR", NormalizePath(GetResourcesDir() + "media/flags/GR.png"));
-        travelDropdown->AddItem("Switzerland", "CH", NormalizePath(GetResourcesDir() + "media/flags/CH.png"));
+        travelDropdown->AddItem(Tr("France"), "FR", NormalizePath(GetResourcesDir() + "media/flags/FR.png"));
+        travelDropdown->AddItem(Tr("Italy"), "IT", NormalizePath(GetResourcesDir() + "media/flags/IT.png"));
+        travelDropdown->AddItem(Tr("Spain"), "ES", NormalizePath(GetResourcesDir() + "media/flags/ES.png"));
+        travelDropdown->AddItem(Tr("Japan"), "JP", NormalizePath(GetResourcesDir() + "media/flags/JP.png"));
+        travelDropdown->AddItem(Tr("Thailand"), "TH", NormalizePath(GetResourcesDir() + "media/flags/TH.png"));
+        travelDropdown->AddItem(Tr("United States"), "US", NormalizePath(GetResourcesDir() + "media/flags/US.png"));
+        travelDropdown->AddItem(Tr("United Kingdom"), "GB", NormalizePath(GetResourcesDir() + "media/flags/GB.png"));
+        travelDropdown->AddItem(Tr("Australia"), "AU", NormalizePath(GetResourcesDir() + "media/flags/AU.png"));
+        travelDropdown->AddItem(Tr("Greece"), "GR", NormalizePath(GetResourcesDir() + "media/flags/GR.png"));
+        travelDropdown->AddItem(Tr("Switzerland"), "CH", NormalizePath(GetResourcesDir() + "media/flags/CH.png"));
 
         auto travelStatus = DemoKit::CreateText("TravelStatus", Tr("Select your travel destinations"));
         travelStatus->SetBackgroundColor(Color(250, 250, 250, 255));
@@ -251,10 +253,10 @@ namespace UltraCanvas {
         travelDropdown->onMultiSelectionChanged = [travelStatus](const std::vector<int>& indices) {
             std::string statusText;
             if (indices.empty()) {
-                statusText = "No destinations selected yet";
+                statusText = Tr("No destinations selected yet");
             } else {
-                statusText = "Selected " + std::to_string(indices.size()) + " destination";
-                if (indices.size() > 1) statusText += "s";
+                statusText = TrN("Selected {n} destination", "Selected {n} destinations",
+                                 static_cast<long long>(indices.size()));
             }
             travelStatus->SetText(statusText);
         };
@@ -276,11 +278,11 @@ namespace UltraCanvas {
 
         // Create interactive demo with event logging
         auto interactiveDropdown = std::make_shared<UltraCanvasDropdown>("InteractiveDropdown", 0, 0, 250, 30);
-        interactiveDropdown->AddItem("Monitor Events", "monitor");
-        interactiveDropdown->AddItem("Selection Changed", "selection");
-        interactiveDropdown->AddItem("Item Hovered", "hover");
-        interactiveDropdown->AddItem("Dropdown Opened", "opened");
-        interactiveDropdown->AddItem("Dropdown Closed", "closed");
+        interactiveDropdown->AddItem(Tr("Monitor Events"), "monitor");
+        interactiveDropdown->AddItem(Tr("Selection Changed"), "selection");
+        interactiveDropdown->AddItem(Tr("Item Hovered"), "hover");
+        interactiveDropdown->AddItem(Tr("Dropdown Opened"), "opened");
+        interactiveDropdown->AddItem(Tr("Dropdown Closed"), "closed");
         interactiveDropdown->SetSelectedIndex(0);
 
         auto eventLog = DemoKit::CreateText("EventLog", Tr("Event log: No events yet"));
@@ -292,24 +294,24 @@ namespace UltraCanvas {
 
         // Set up all callbacks
         interactiveDropdown->onSelectionChanged = [eventLog](int index, const DropdownItem& item) {
-            std::string log = "Selection Changed: " + item.text + " (index: " + std::to_string(index) + ")";
+            std::string log = TrF("Selection Changed: {0} (index: {1})", item.text, index);
             eventLog->SetText(log);
             debugOutput << log << std::endl;
         };
 
         interactiveDropdown->onItemHovered = [eventLog](int index, const DropdownItem& item) {
-            std::string log = "Item Hovered: " + item.text + " (index: " + std::to_string(index) + ")";
+            std::string log = TrF("Item Hovered: {0} (index: {1})", item.text, index);
             eventLog->SetText(log);
         };
 
         interactiveDropdown->onDropdownOpened = [eventLog]() {
-            std::string log = "Event: Dropdown Opened";
+            std::string log = Tr("Event: Dropdown Opened");
             eventLog->SetText(log);
             debugOutput << log << std::endl;
         };
 
         interactiveDropdown->onDropdownClosed = [eventLog]() {
-            std::string log = "Event: Dropdown Closed";
+            std::string log = Tr("Event: Dropdown Closed");
             eventLog->SetText(log);
             debugOutput << log << std::endl;
         };

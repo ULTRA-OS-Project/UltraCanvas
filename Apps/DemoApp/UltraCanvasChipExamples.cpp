@@ -27,18 +27,18 @@ namespace UltraCanvas {
         // Chips size their own width to the label, so a row just lines them up.
         auto basicRow = DemoKit::AddRow(basicCard, "ChBasicRow", 10);
 
-        auto c1 = CreateChip("Chip1", 0, 0, "Filled");
+        auto c1 = CreateChip("Chip1", 0, 0, Tr("Filled"));
         DemoKit::Add(basicRow, c1);
 
-        auto c2 = CreateChip("Chip2", 0, 0, "Outlined");
+        auto c2 = CreateChip("Chip2", 0, 0, Tr("Outlined"));
         c2->SetVariant(ChipVariant::Outlined);
         DemoKit::Add(basicRow, c2);
 
-        auto c3 = CreateChip("Chip3", 0, 0, "Removable", true);
+        auto c3 = CreateChip("Chip3", 0, 0, Tr("Removable"), true);
         c3->onClose = [c3 = c3.get()]() { c3->SetVisible(false); };
         DemoKit::Add(basicRow, c3);
 
-        auto c4 = CreateChip("Chip4", 0, 0, "Outlined ×", true);
+        auto c4 = CreateChip("Chip4", 0, 0, Tr("Outlined ×"), true);
         c4->SetVariant(ChipVariant::Outlined);
         c4->onClose = [c4 = c4.get()]() { c4->SetVisible(false); };
         DemoKit::Add(basicRow, c4);
@@ -51,7 +51,7 @@ namespace UltraCanvas {
         filterReadout->SetBackgroundColor(Color(240, 240, 240));
         filterReadout->SetPadding(3);
 
-        std::vector<std::string> filters = {"Design", "Engineering", "Sales", "Support", "Research"};
+        std::vector<std::string> filters = {Tr("Design"), Tr("Engineering"), Tr("Sales"), Tr("Support"), Tr("Research")};
         auto selectedSet = std::make_shared<std::vector<std::string>>();
         for (size_t i = 0; i < filters.size(); ++i) {
             auto fc = CreateFilterChip("ChFilter" + std::to_string(i), 0, 0, filters[i]);
@@ -62,13 +62,12 @@ namespace UltraCanvas {
                 else selectedSet->erase(std::remove(selectedSet->begin(), selectedSet->end(), name),
                                         selectedSet->end());
                 std::ostringstream oss;
-                oss << "Selected: ";
-                if (selectedSet->empty()) oss << "(none)";
                 for (size_t k = 0; k < selectedSet->size(); ++k) {
                     if (k) oss << ", ";
                     oss << (*selectedSet)[k];
                 }
-                filterReadout->SetText(oss.str());
+                filterReadout->SetText(selectedSet->empty() ? Tr("Selected: (none)")
+                                                            : TrF("Selected: {0}", oss.str()));
             };
             DemoKit::Add(filterRow, fc);
         }
@@ -80,7 +79,7 @@ namespace UltraCanvas {
         // it has the room to show that.
         auto tagInput = CreateTagInput("ChTags", 0, 0, 620, 40);
         tagInput->SetTags({"c++", "ultracanvas", "ui"});
-        tagInput->SetPlaceholder("Add a tag…");
+        tagInput->SetPlaceholder(Tr("Add a tag…"));
         DemoKit::AddStretched(tagCard, tagInput);
 
         auto tagReadout = DemoKit::AddText(tagCard, "ChTagOut", Tr("3 tags"));
@@ -88,9 +87,9 @@ namespace UltraCanvas {
         tagReadout->SetPadding(3);
         tagInput->onTagsChanged = [tagReadout](const std::vector<std::string>& tags) {
             std::ostringstream oss;
-            oss << tags.size() << (tags.size() == 1 ? " tag: " : " tags: ");
             for (size_t k = 0; k < tags.size(); ++k) { if (k) oss << ", "; oss << tags[k]; }
-            tagReadout->SetText(oss.str());
+            tagReadout->SetText(LocalisationDetail::Substitute(
+                    TrN("{n} tag: {0}", "{n} tags: {0}", static_cast<long long>(tags.size())), {oss.str()}));
         };
 
         // ===== 4. TAG INPUT WITH LIMIT / NO DUPLICATES =====
@@ -98,7 +97,7 @@ namespace UltraCanvas {
         auto tagInput2 = CreateTagInput("ChTags2", 0, 0, 620, 40);
         tagInput2->SetMaxTags(5);
         tagInput2->SetAllowDuplicates(false);
-        tagInput2->SetPlaceholder("Up to 5 unique tags…");
+        tagInput2->SetPlaceholder(Tr("Up to 5 unique tags…"));
         DemoKit::AddStretched(limitCard, tagInput2);
 
         // ===== INSTRUCTIONS =====

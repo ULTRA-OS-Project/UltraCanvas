@@ -89,23 +89,27 @@ namespace {
         return sample;
     }
 
-    std::string HumanSize(std::uintmax_t bytes) {
+    // A number with a fixed count of decimals, for the texts below.
+    std::string Fixed(double v, int decimals) {
         char buf[48];
-        if (bytes >= 1024ull * 1024ull) {
-            std::snprintf(buf, sizeof(buf), "%.1f MB", static_cast<double>(bytes) / (1024.0 * 1024.0));
-        } else if (bytes >= 1024ull) {
-            std::snprintf(buf, sizeof(buf), "%.1f kB", static_cast<double>(bytes) / 1024.0);
-        } else {
-            std::snprintf(buf, sizeof(buf), "%llu bytes", static_cast<unsigned long long>(bytes));
-        }
+        std::snprintf(buf, sizeof(buf), "%.*f", decimals, v);
         return buf;
+    }
+
+    std::string HumanSize(std::uintmax_t bytes) {
+        if (bytes >= 1024ull * 1024ull) {
+            return TrF("{0} MB", Fixed(static_cast<double>(bytes) / (1024.0 * 1024.0), 1));
+        } else if (bytes >= 1024ull) {
+            return TrF("{0} kB", Fixed(static_cast<double>(bytes) / 1024.0, 1));
+        }
+        return TrN("{n} byte", "{n} bytes", static_cast<long long>(bytes));
     }
 
     // Multi-line mesh report for the stats panel.
     std::string DescribeSample(const StlSample& sample) {
         if (!sample.loaded) {
-            return "Failed to load " + sample.fileName + "\n" +
-                   (sample.error.empty() ? std::string("(unknown parse error)") : sample.error);
+            return TrF("Failed to load {0}", sample.fileName) + "\n" +
+                   (sample.error.empty() ? Tr("(unknown parse error)") : sample.error);
         }
 
         const Mesh3D& mesh = sample.mesh;
@@ -115,47 +119,44 @@ namespace {
                        mesh.bounds.max.z - mesh.bounds.min.z)
                 : Vec3();
 
-        char buf[512];
-        std::snprintf(buf, sizeof(buf),
-                      "File      %s (%s)\n"
-                      "Encoding  %s STL\n"
-                      "Solid     %s\n"
-                      "Triangles %zu\n"
-                      "Vertices  %zu\n"
-                      "Extent    %.2f x %.2f x %.2f units\n"
-                      "Centre    %.2f, %.2f, %.2f\n"
-                      "Parsed in %.0f ms",
-                      sample.fileName.c_str(), HumanSize(sample.bytes).c_str(),
-                      sample.binary ? "binary" : "ASCII",
-                      mesh.name.empty() ? "(unnamed)" : mesh.name.c_str(),
-                      mesh.TriangleCount(), mesh.VertexCount(),
-                      size.x, size.y, size.z,
-                      mesh.bounds.Center().x, mesh.bounds.Center().y, mesh.bounds.Center().z,
-                      sample.milliseconds);
-        return buf;
+        return TrF("File      {0} ({1})\n"
+                   "Encoding  {2} STL\n"
+                   "Solid     {3}\n"
+                   "Triangles {4}\n"
+                   "Vertices  {5}\n"
+                   "Extent    {6} x {7} x {8} units\n"
+                   "Centre    {9}, {10}, {11}\n"
+                   "Parsed in {12} ms",
+                   sample.fileName, HumanSize(sample.bytes),
+                   sample.binary ? Tr("binary") : std::string("ASCII"),
+                   mesh.name.empty() ? Tr("(unnamed)") : mesh.name,
+                   mesh.TriangleCount(), mesh.VertexCount(),
+                   Fixed(size.x, 2), Fixed(size.y, 2), Fixed(size.z, 2),
+                   Fixed(mesh.bounds.Center().x, 2), Fixed(mesh.bounds.Center().y, 2), Fixed(mesh.bounds.Center().z, 2),
+                   Fixed(sample.milliseconds, 0));
     }
 
     // One-line summary for the status bar.
     std::string SummariseSample(const StlSample& sample) {
-        if (!sample.loaded) return "Failed to load " + sample.fileName + ": " + sample.error;
-        char buf[256];
-        std::snprintf(buf, sizeof(buf), "%s - %zu triangles, %s STL, %s, parsed in %.0f ms",
-                      sample.fileName.c_str(), sample.mesh.TriangleCount(),
-                      sample.binary ? "binary" : "ASCII",
-                      HumanSize(sample.bytes).c_str(), sample.milliseconds);
-        return buf;
+        if (!sample.loaded) return TrF("Failed to load {0}: {1}", sample.fileName, sample.error);
+        return LocalisationDetail::Substitute(
+                TrN("{0} - {n} triangle, {1} STL, {2}, parsed in {3} ms",
+                    "{0} - {n} triangles, {1} STL, {2}, parsed in {3} ms",
+                    static_cast<long long>(sample.mesh.TriangleCount())),
+                {sample.fileName, sample.binary ? Tr("binary") : std::string("ASCII"),
+                 HumanSize(sample.bytes), Fixed(sample.milliseconds, 0)});
     }
 
     // The colours the "Material" button cycles through.
-    const std::vector<std::pair<std::string, Vec3>>& ModelColors() {
-        static const std::vector<std::pair<std::string, Vec3>> colors = {
-                {"Steel",  Vec3(0.78f, 0.80f, 0.85f)},
-                {"Brass",  Vec3(0.85f, 0.68f, 0.32f)},
-                {"Copper", Vec3(0.80f, 0.45f, 0.30f)},
-                {"Jade",   Vec3(0.40f, 0.75f, 0.60f)},
-                {"Resin",  Vec3(0.90f, 0.90f, 0.94f)},
+    // Built on each call so the names follow the language in use.
+    std::vector<std::pair<std::string, Vec3>> ModelColors() {
+        return {
+                {Tr("Steel"),  Vec3(0.78f, 0.80f, 0.85f)},
+                {Tr("Brass"),  Vec3(0.85f, 0.68f, 0.32f)},
+                {Tr("Copper"), Vec3(0.80f, 0.45f, 0.30f)},
+                {Tr("Jade"),   Vec3(0.40f, 0.75f, 0.60f)},
+                {Tr("Resin"),  Vec3(0.90f, 0.90f, 0.94f)},
         };
-        return colors;
     }
 
     // As wide as its text, at least minWidth (the width it used to have).
@@ -242,10 +243,10 @@ namespace {
         statusLabel->SetPadding(4.0f);
 
         if (files.empty()) {
-            const std::string message = "No .stl files found in " + sampleDir;
+            const std::string message = TrF("No .stl files found in {0}", sampleDir);
             statusLabel->SetText(message);
             statsText->SetText(message);
-            nameLabel->SetText("(no samples)");
+            nameLabel->SetText(Tr("(no samples)"));
             return container;
         }
 
@@ -265,9 +266,7 @@ namespace {
             *currentIndex = index;
             if (sample.loaded) viewer->SetMesh(sample.mesh);
 
-            char counter[64];
-            std::snprintf(counter, sizeof(counter), "  (%zu of %zu)", index + 1, files.size());
-            nameLabel->SetText(sample.fileName + counter);
+            nameLabel->SetText(sample.fileName + "  " + TrF("({0} of {1})", index + 1, files.size()));
             statsText->SetText(DescribeSample(sample));
             statusLabel->SetText(SummariseSample(sample));
         };
@@ -277,26 +276,26 @@ namespace {
         viewer->SetAutoRotate(*autoRotate);
 
         // ===== VIEWER CONTROLS =====
-        auto rotateBtn = MakeToolButton("STLRotate", 130, "Auto-rotate: on", nullptr);
+        auto rotateBtn = MakeToolButton("STLRotate", 130, Tr("Auto-rotate: on"), nullptr);
         rotateBtn->onClick = [viewer, rotateBtn = rotateBtn.get(), autoRotate]() {
             *autoRotate = !*autoRotate;
             viewer->SetAutoRotate(*autoRotate);
-            rotateBtn->SetText(*autoRotate ? "Auto-rotate: on" : "Auto-rotate: off");
+            rotateBtn->SetText(*autoRotate ? Tr("Auto-rotate: on") : Tr("Auto-rotate: off"));
         };
         DemoKit::Add(toolRow, rotateBtn);
 
         auto materialBtn = MakeToolButton("STLMaterial", 130,
-                                          "Material: " + ModelColors()[0].first, nullptr);
+                                          TrF("Material: {0}", ModelColors()[0].first), nullptr);
         materialBtn->onClick = [viewer, materialBtn = materialBtn.get(), colorIndex]() {
             *colorIndex = (*colorIndex + 1) % ModelColors().size();
             viewer->SetModelColor(ModelColors()[*colorIndex].second);
-            materialBtn->SetText("Material: " + ModelColors()[*colorIndex].first);
+            materialBtn->SetText(TrF("Material: {0}", ModelColors()[*colorIndex].first));
         };
         DemoKit::Add(toolRow, materialBtn);
 
         // The media viewer opens the file itself and walks the rest of
         // media/3D/STL with the arrow keys.
-        auto fullscreenBtn = MakeToolButton("STLFullscreen", 150, "Open in Viewer",
+        auto fullscreenBtn = MakeToolButton("STLFullscreen", 150, Tr("Open in Viewer"),
                                             [files, currentIndex]() {
                                                 if (*currentIndex < files.size())
                                                     ShowInMediaViewer(files[*currentIndex]);
@@ -304,14 +303,14 @@ namespace {
         DemoKit::Add(toolRow, fullscreenBtn);
 
         if (files.size() > 1) {
-            auto prevBtn = MakeToolButton("STLPrev", 70, "Prev",
+            auto prevBtn = MakeToolButton("STLPrev", 70, Tr("Prev"),
                                           [showSample, currentIndex, files]() {
                                               showSample((*currentIndex + files.size() - 1) % files.size());
                                           });
             SetFlatButtonIcon(*prevBtn, "menu/chevron-left.svg");
             DemoKit::Add(toolRow, prevBtn);
 
-            auto nextBtn = MakeToolButton("STLNext", 70, "Next",
+            auto nextBtn = MakeToolButton("STLNext", 70, Tr("Next"),
                                           [showSample, currentIndex, files]() {
                                               showSample((*currentIndex + 1) % files.size());
                                           });

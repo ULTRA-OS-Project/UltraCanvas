@@ -32,9 +32,7 @@ namespace UltraCanvas {
         statusLabel->SetPadding(8.0f);
 
         auto reportClick = [statusLabel](const std::string& section, int index, const BreadcrumbItem& item) {
-            std::ostringstream oss;
-            oss << section << ": clicked '" << item.text << "' (index " << index << ")";
-            statusLabel->SetText(oss.str());
+            statusLabel->SetText(TrF("{0}: clicked '{1}' (index {2})", section, item.text, index));
         };
 
         // ========================================
@@ -44,9 +42,9 @@ namespace UltraCanvas {
                 Tr("Chevron separators and bold current item"));
 
         auto bcDefault = CreateBreadcrumb("bc_default", 0, 0, 0, 30);
-        bcDefault->AddItem("Home");
-        bcDefault->AddItem("Documents");
-        bcDefault->AddItem("Projects");
+        bcDefault->AddItem(Tr("Home"));
+        bcDefault->AddItem(Tr("Documents"));
+        bcDefault->AddItem(Tr("Projects"));
         bcDefault->AddItem("UltraCanvas");
         bcDefault->onItemClicked = [reportClick](int idx, const BreadcrumbItem& item) {
             reportClick("Default", idx, item);
@@ -61,9 +59,9 @@ namespace UltraCanvas {
 
         auto bcCompact = CreateBreadcrumb("bc_compact", 0, 0, 0, 24);
         bcCompact->SetStyle(BreadcrumbStyle::Compact());
-        bcCompact->AddItem("Home");
-        bcCompact->AddItem("Documents");
-        bcCompact->AddItem("Projects");
+        bcCompact->AddItem(Tr("Home"));
+        bcCompact->AddItem(Tr("Documents"));
+        bcCompact->AddItem(Tr("Projects"));
         bcCompact->AddItem("UltraCanvas");
         bcCompact->onItemClicked = [reportClick](int idx, const BreadcrumbItem& item) {
             reportClick("Compact", idx, item);
@@ -78,10 +76,10 @@ namespace UltraCanvas {
 
         auto bcPills = CreateBreadcrumb("bc_pills", 0, 0, 0, 32);
         bcPills->SetStyle(BreadcrumbStyle::Pills());
-        bcPills->AddItem("Dashboard");
-        bcPills->AddItem("Reports");
-        bcPills->AddItem("Q4 2025");
-        bcPills->AddItem("Summary");
+        bcPills->AddItem(Tr("Dashboard"));
+        bcPills->AddItem(Tr("Reports"));
+        bcPills->AddItem(Tr("Q4 2025"));
+        bcPills->AddItem(Tr("Summary"));
         bcPills->onItemClicked = [reportClick](int idx, const BreadcrumbItem& item) {
             reportClick("Pills", idx, item);
         };
@@ -95,10 +93,10 @@ namespace UltraCanvas {
 
         auto bcSteps = CreateBreadcrumb("bc_steps", 0, 0, 0, 34);
         bcSteps->SetStyle(BreadcrumbStyle::Steps());
-        bcSteps->AddItem("Bio");
-        bcSteps->AddItem("Links");
-        bcSteps->AddItem("Music");
-        bcSteps->AddItem("Contact");
+        bcSteps->AddItem(Tr("Bio"));
+        bcSteps->AddItem(Tr("Links"));
+        bcSteps->AddItem(Tr("Music"));
+        bcSteps->AddItem(Tr("Contact"));
         bcSteps->SetCurrentIndex(0);   // highlight the active step
         bcSteps->onItemClicked = [reportClick](int idx, const BreadcrumbItem& item) {
             reportClick("Steps", idx, item);
@@ -113,9 +111,9 @@ namespace UltraCanvas {
 
         auto bcPara = CreateBreadcrumb("bc_para", 0, 0, 360, 32);
         bcPara->SetStyle(BreadcrumbStyle::Parallelogram());
-        bcPara->AddItem("Level 1");
-        bcPara->AddItem("Level 2");
-        bcPara->AddItem("Level 3");
+        bcPara->AddItem(Tr("Level 1"));
+        bcPara->AddItem(Tr("Level 2"));
+        bcPara->AddItem(Tr("Level 3"));
         bcPara->onItemClicked = [reportClick](int idx, const BreadcrumbItem& item) {
             reportClick("Parallelogram", idx, item);
         };
@@ -131,12 +129,13 @@ namespace UltraCanvas {
             BreadcrumbLevelIndicatorBackground background;
             bool border;
             const char* label;
+            std::string caption;
         };
         const IndEntry indEntries[] = {
-            {BreadcrumbLevelIndicatorBackground::Round,        false, "Round"},
-            {BreadcrumbLevelIndicatorBackground::Rectangle,    false, "Rectangle"},
-            {BreadcrumbLevelIndicatorBackground::NoBackground, false, "None"},
-            {BreadcrumbLevelIndicatorBackground::Round,        true,  "Bordered"},
+            {BreadcrumbLevelIndicatorBackground::Round,        false, "Round",     Tr("Round")},
+            {BreadcrumbLevelIndicatorBackground::Rectangle,    false, "Rectangle", Tr("Rectangle")},
+            {BreadcrumbLevelIndicatorBackground::NoBackground, false, "None",      Tr("None")},
+            {BreadcrumbLevelIndicatorBackground::Round,        true,  "Bordered",  Tr("Bordered")},
         };
 
         // One tile per background - its name over its breadcrumb - in a row
@@ -145,7 +144,7 @@ namespace UltraCanvas {
         for (const auto& entry : indEntries) {
             auto tile = DemoKit::CreateColumn(std::string("BC_IndTile_") + entry.label, 4);
             DemoKit::Add(indGallery, tile);
-            DemoKit::AddCaption(tile, std::string("BC_IndLbl_") + entry.label, entry.label);
+            DemoKit::AddCaption(tile, std::string("BC_IndLbl_") + entry.label, entry.caption);
 
             BreadcrumbStyle st = BreadcrumbStyle::Default();
             st.showLevelIndicator = true;
@@ -161,9 +160,9 @@ namespace UltraCanvas {
 
             auto bc = CreateBreadcrumb(std::string("bc_ind_") + entry.label, 0, 0, 0, 26);
             bc->SetStyle(st);
-            bc->AddItem("Home");
-            bc->AddItem("Library");
-            bc->AddItem("Album");
+            bc->AddItem(Tr("Home"));
+            bc->AddItem(Tr("Library"));
+            bc->AddItem(Tr("Album"));
             bc->onItemClicked = [reportClick, name = std::string(entry.label)](int idx, const BreadcrumbItem& item) {
                 reportClick(std::string("Indicator/") + name, idx, item);
             };
@@ -192,10 +191,10 @@ namespace UltraCanvas {
 
         auto bcWeb = CreateBreadcrumb("bc_web", 0, 0, 0, 26);
         bcWeb->SetStyle(BreadcrumbStyle::WebDocs());
-        bcWeb->AddItem("Docs");
-        bcWeb->AddItem("Guides");
-        bcWeb->AddItem("UI Components");
-        bcWeb->AddItem("Breadcrumb");
+        bcWeb->AddItem(Tr("Docs"));
+        bcWeb->AddItem(Tr("Guides"));
+        bcWeb->AddItem(Tr("UI Components"));
+        bcWeb->AddItem(Tr("Breadcrumb"));
         bcWeb->onItemClicked = [reportClick](int idx, const BreadcrumbItem& item) {
             reportClick("WebDocs", idx, item);
         };
@@ -209,32 +208,30 @@ namespace UltraCanvas {
                 Tr("Click the small chevron next to 'Projects' to open the menu"));
 
         auto bcDropdown = CreateBreadcrumb("bc_dropdown", 0, 0, 0, 30);
-        bcDropdown->AddItem("Workspace");
+        bcDropdown->AddItem(Tr("Workspace"));
         std::vector<MenuItemData> projectsMenu = {
-            MenuItemData::Action("Open UltraCanvas", [statusLabel]() {
-                statusLabel->SetText("Dropdown: opened 'UltraCanvas'");
+            MenuItemData::Action(TrF("Open {0}", "UltraCanvas"), [statusLabel]() {
+                statusLabel->SetText(TrF("Dropdown: opened '{0}'", "UltraCanvas"));
             }),
-            MenuItemData::Action("Open DemoApp", [statusLabel]() {
-                statusLabel->SetText("Dropdown: opened 'DemoApp'");
+            MenuItemData::Action(TrF("Open {0}", "DemoApp"), [statusLabel]() {
+                statusLabel->SetText(TrF("Dropdown: opened '{0}'", "DemoApp"));
             }),
-            MenuItemData::Action("Open Texter", [statusLabel]() {
-                statusLabel->SetText("Dropdown: opened 'Texter'");
+            MenuItemData::Action(TrF("Open {0}", "Texter"), [statusLabel]() {
+                statusLabel->SetText(TrF("Dropdown: opened '{0}'", "Texter"));
             }),
             MenuItemData::Separator(),
-            MenuItemData::Action("New project...", [statusLabel]() {
-                statusLabel->SetText("Dropdown: new project requested");
+            MenuItemData::Action(Tr("New project..."), [statusLabel]() {
+                statusLabel->SetText(Tr("Dropdown: new project requested"));
             }),
         };
-        bcDropdown->AddItem(BreadcrumbItem::WithDropdown("Projects", projectsMenu));
+        bcDropdown->AddItem(BreadcrumbItem::WithDropdown(Tr("Projects"), projectsMenu));
         bcDropdown->AddItem("UltraCanvas");
-        bcDropdown->AddItem("Source");
+        bcDropdown->AddItem(Tr("Source"));
         bcDropdown->onItemClicked = [reportClick](int idx, const BreadcrumbItem& item) {
             reportClick("Dropdown", idx, item);
         };
         bcDropdown->onItemDropdown = [statusLabel](int idx, const BreadcrumbItem& item) {
-            std::ostringstream oss;
-            oss << "Dropdown chevron clicked on '" << item.text << "' (index " << idx << ")";
-            statusLabel->SetText(oss.str());
+            statusLabel->SetText(TrF("Dropdown chevron clicked on '{0}' (index {1})", item.text, idx));
         };
         DemoKit::Add(card9, bcDropdown);
 
@@ -246,9 +243,9 @@ namespace UltraCanvas {
 
         const std::string iconsRoot = NormalizePath(GetResourcesDir() + "media/icons/");
         auto bcIcons = CreateBreadcrumb("bc_icons", 0, 0, 0, 30);
-        bcIcons->AddItem(BreadcrumbItem::IconOnly(iconsRoot + "home-user.svg", "Home"));
-        bcIcons->AddItem(BreadcrumbItem::WithIcon("Documents", iconsRoot + "folder.png"));
-        bcIcons->AddItem(BreadcrumbItem::WithIcon("Projects", iconsRoot + "folder.png"));
+        bcIcons->AddItem(BreadcrumbItem::IconOnly(iconsRoot + "home-user.svg", Tr("Home")));
+        bcIcons->AddItem(BreadcrumbItem::WithIcon(Tr("Documents"), iconsRoot + "folder.png"));
+        bcIcons->AddItem(BreadcrumbItem::WithIcon(Tr("Projects"), iconsRoot + "folder.png"));
         bcIcons->AddItem(BreadcrumbItem::WithIcon("Report.txt", iconsRoot + "document.png"));
         bcIcons->onItemClicked = [reportClick](int idx, const BreadcrumbItem& item) {
             reportClick("Icons", idx, item);
@@ -266,15 +263,15 @@ namespace UltraCanvas {
         bcNav->SetPath(initialNavPath, '/');
 
         auto resetBtn = std::make_shared<UltraCanvasButton>("BC_NavReset", 0, 0, 0, 28);
-        resetBtn->SetText("Reset");
-        resetBtn->SetTooltip("Restore the original path");
+        resetBtn->SetText(Tr("Reset"));
+        resetBtn->SetTooltip(Tr("Restore the original path"));
 
         // The breadcrumb takes the row's width beside the button; the path
         // it shows goes under them.
         auto navRow = DemoKit::AddRow(card11, "BC_NavRow", 10);
         DemoKit::Add(navRow, bcNav, 1);
         DemoKit::Add(navRow, resetBtn);
-        auto navHint = DemoKit::AddCaption(card11, "BC_NavHint", "Path: " + initialNavPath);
+        auto navHint = DemoKit::AddCaption(card11, "BC_NavHint", TrF("Path: {0}", initialNavPath));
 
         // Capture by weak_ptr to avoid creating reference cycles.
         std::weak_ptr<UltraCanvasBreadcrumb> bcNavWeak = bcNav;
@@ -283,7 +280,7 @@ namespace UltraCanvas {
             auto bc = bcNavWeak.lock();
             auto hint = navHintWeak.lock();
             if (!bc || !hint) return;
-            hint->SetText("Path: " + bc->GetPath('/'));
+            hint->SetText(TrF("Path: {0}", bc->GetPath('/')));
         };
 
         bcNav->onItemClicked = [bcNavWeak, refreshHint, statusLabel](int idx, const BreadcrumbItem& item) {
@@ -291,9 +288,7 @@ namespace UltraCanvas {
             if (!bc) return;
             bc->RemoveItemsAfter(idx);
             refreshHint();
-            std::ostringstream oss;
-            oss << "Navigation: jumped to '" << item.text << "' (path truncated)";
-            statusLabel->SetText(oss.str());
+            statusLabel->SetText(TrF("Navigation: jumped to '{0}' (path truncated)", item.text));
         };
 
         resetBtn->onClick = [bcNavWeak, refreshHint, statusLabel, initialNavPath]() {
@@ -301,7 +296,7 @@ namespace UltraCanvas {
             if (!bc) return;
             bc->SetPath(initialNavPath, '/');
             refreshHint();
-            statusLabel->SetText("Navigation: path reset to original");
+            statusLabel->SetText(Tr("Navigation: path reset to original"));
         };
 
 
@@ -313,20 +308,20 @@ namespace UltraCanvas {
 
         auto bcCollapse = CreateBreadcrumb("bc_collapse", 0, 0, 360, 30);
         bcCollapse->SetOverflowMode(BreadcrumbOverflowMode::Collapse);
-        bcCollapse->AddItem("Root");
-        bcCollapse->AddItem("Engineering");
-        bcCollapse->AddItem("Frameworks");
-        bcCollapse->AddItem("Graphics");
+        bcCollapse->AddItem(Tr("Root"));
+        bcCollapse->AddItem(Tr("Engineering"));
+        bcCollapse->AddItem(Tr("Frameworks"));
+        bcCollapse->AddItem(Tr("Graphics"));
         bcCollapse->AddItem("2D");
         bcCollapse->AddItem("Cairo");
-        bcCollapse->AddItem("Renderers");
+        bcCollapse->AddItem(Tr("Renderers"));
         bcCollapse->AddItem("Linux");
         bcCollapse->AddItem("X11");
         bcCollapse->onItemClicked = [reportClick](int idx, const BreadcrumbItem& item) {
             reportClick("Collapse", idx, item);
         };
         bcCollapse->onOverflowOpened = [statusLabel]() {
-            statusLabel->SetText("Overflow menu opened — pick any hidden segment");
+            statusLabel->SetText(Tr("Overflow menu opened — pick any hidden segment"));
         };
         DemoKit::AddFixed(card12, bcCollapse);
 
@@ -339,10 +334,10 @@ namespace UltraCanvas {
         auto bcEllipsize = CreateBreadcrumb("bc_ellipsize", 0, 0, 0, 30);
         bcEllipsize->SetOverflowMode(BreadcrumbOverflowMode::Ellipsize);
         bcEllipsize->SetMaxItemTextWidth(60);
-        bcEllipsize->AddItem("A Very Long Workspace Name");
-        bcEllipsize->AddItem("Quarterly Financial Reports");
-        bcEllipsize->AddItem("Department of Cross-Platform Engineering");
-        bcEllipsize->AddItem("Final Approved Version 2025-Q4");
+        bcEllipsize->AddItem(Tr("A Very Long Workspace Name"));
+        bcEllipsize->AddItem(Tr("Quarterly Financial Reports"));
+        bcEllipsize->AddItem(Tr("Department of Cross-Platform Engineering"));
+        bcEllipsize->AddItem(Tr("Final Approved Version 2025-Q4"));
         bcEllipsize->onItemClicked = [reportClick](int idx, const BreadcrumbItem& item) {
             reportClick("Ellipsize", idx, item);
         };
@@ -356,11 +351,11 @@ namespace UltraCanvas {
 
         auto bcShrink = CreateBreadcrumb("bc_shrink", 0, 0, 420, 30);
         bcShrink->SetOverflowMode(BreadcrumbOverflowMode::ShrinkText);
-        bcShrink->AddItem("Customers");
+        bcShrink->AddItem(Tr("Customers"));
         bcShrink->AddItem("Acme Corporation");
-        bcShrink->AddItem("North America Division");
-        bcShrink->AddItem("Quarterly Reports");
-        bcShrink->AddItem("2026 Q2 Final");
+        bcShrink->AddItem(Tr("North America Division"));
+        bcShrink->AddItem(Tr("Quarterly Reports"));
+        bcShrink->AddItem(Tr("2026 Q2 Final"));
         bcShrink->onItemClicked = [reportClick](int idx, const BreadcrumbItem& item) {
             reportClick("ShrinkText", idx, item);
         };
@@ -386,8 +381,8 @@ namespace UltraCanvas {
         stripStyle.separatorSpacing      = 8;
         bcStrip->SetStyle(stripStyle);
         bcStrip->AddItem("PlantUML");
-        bcStrip->AddItem("Language specification");
-        bcStrip->AddItem("Yaml Diagram");
+        bcStrip->AddItem(Tr("Language specification"));
+        bcStrip->AddItem(Tr("Yaml Diagram"));
         bcStrip->onItemClicked = [reportClick](int idx, const BreadcrumbItem& item) {
             reportClick("RoundedStrip", idx, item);
         };
@@ -424,10 +419,10 @@ namespace UltraCanvas {
 
             auto bc = CreateBreadcrumb(std::string("bc_sep_") + entry.label, 0, 0, 0, 26);
             bc->SetSeparatorStyle(entry.style);
-            bc->AddItem("Alpha");
-            bc->AddItem("Beta");
-            bc->AddItem("Gamma");
-            bc->AddItem("Delta");
+            bc->AddItem(Tr("Alpha"));
+            bc->AddItem(Tr("Beta"));
+            bc->AddItem(Tr("Gamma"));
+            bc->AddItem(Tr("Delta"));
             bc->onItemClicked = [reportClick, name = std::string(entry.label)](int idx, const BreadcrumbItem& item) {
                 reportClick(std::string("Separator/") + name, idx, item);
             };
@@ -443,8 +438,8 @@ namespace UltraCanvas {
         auto bcArrow = CreateBreadcrumb("bc_arrow", 0, 0, 0, 30);
         bcArrow->SetStyle(BreadcrumbStyle::Arrow());
         bcArrow->AddItem("PlantUML");
-        bcArrow->AddItem("Language specification");
-        bcArrow->AddItem("Yaml Diagram");
+        bcArrow->AddItem(Tr("Language specification"));
+        bcArrow->AddItem(Tr("Yaml Diagram"));
         bcArrow->onItemClicked = [reportClick](int idx, const BreadcrumbItem& item) {
             reportClick("Arrow", idx, item);
         };

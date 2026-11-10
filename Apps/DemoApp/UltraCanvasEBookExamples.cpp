@@ -30,32 +30,27 @@ namespace UltraCanvas {
 namespace {
 
 // A small multi-chapter sample so the demo shows a working reader without
-// needing a file on disk. Form feeds split TXT chapters.
-const char* kSampleBook =
-    "UltraCanvas eBook Reader\n"
-    "\n"
-    "This sample book is generated in memory by the demo. Use the toolbar to "
-    "change chapters, cycle the reading theme (Normal, Sepia, Night), adjust "
-    "the font size, or show the table of contents.\n"
-    "\n"
-    "Open a real book with the \"Open...\" button above — EPUB 2 and EPUB 3 "
-    "files are fully supported: metadata, spine, nested table of contents, "
-    "stylesheets and images.\n"
-    "\f"
-    "How it works\n"
-    "\n"
-    "Chapters come from a format engine (IEBookEngine). The chapter XHTML is "
-    "parsed by the HTMLReader module, styled by a CSS cascade, and converted "
-    "into native UltraCanvas elements - every paragraph you are reading is an "
-    "UltraCanvasLabel laid out by the CSSLayout engine.\n"
-    "\n"
-    "There is no page-image rendering: text stays crisp at any font size, and "
-    "themes recolor instantly.\n"
-    "\f"
-    "Keyboard shortcuts\n"
-    "\n"
-    "Left / PageUp: previous chapter. Right / PageDown: next chapter. Home / "
-    "End: first / last chapter.\n";
+// needing a file on disk. Form feeds split TXT chapters. Built at run
+// time so each paragraph is in the person's language.
+std::string SampleBook() {
+    return Tr("UltraCanvas eBook Reader") + "\n"
+        "\n" + Tr("This sample book is generated in memory by the demo. Use the toolbar to "
+        "change chapters, cycle the reading theme (Normal, Sepia, Night), adjust "
+        "the font size, or show the table of contents.") + "\n"
+        "\n" + Tr("Open a real book with the \"Open...\" button above — EPUB 2 and EPUB 3 "
+        "files are fully supported: metadata, spine, nested table of contents, "
+        "stylesheets and images.") + "\n"
+        "\f" + Tr("How it works") + "\n"
+        "\n" + Tr("Chapters come from a format engine (IEBookEngine). The chapter XHTML is "
+        "parsed by the HTMLReader module, styled by a CSS cascade, and converted "
+        "into native UltraCanvas elements - every paragraph you are reading is an "
+        "UltraCanvasLabel laid out by the CSSLayout engine.") + "\n"
+        "\n" + Tr("There is no page-image rendering: text stays crisp at any font size, and "
+        "themes recolor instantly.") + "\n"
+        "\f" + Tr("Keyboard shortcuts") + "\n"
+        "\n" + Tr("Left / PageUp: previous chapter. Right / PageDown: next chapter. Home / "
+        "End: first / last chapter.") + "\n";
+}
 
 } // namespace
 
@@ -83,7 +78,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateEBookExa
     header->SetPadding(4, 8);
     header->SetBackgroundColor(Color(235, 235, 235, 255));
 
-    auto openBtn = std::make_shared<UltraCanvasButton>("EBookDemoOpen", "Open");
+    auto openBtn = std::make_shared<UltraCanvasButton>("EBookDemoOpen", Tr("Open"));
     openBtn->size.width = CSSLayout::Dimension::Px(90);
     openBtn->size.height = CSSLayout::Dimension::Px(30);
     DemoKit::Add(header, openBtn);
@@ -94,7 +89,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateEBookExa
     DemoKit::Add(header, statusLabel, 1);
 
     // ---- zoom controls (pushed to the right by the growing status label) ----
-    auto makeZoomButton = [&](const char* name, const char* text, float width) {
+    auto makeZoomButton = [&](const char* name, const std::string& text, float width) {
         auto button = std::make_shared<UltraCanvasButton>(name, text);
         button->size.width = CSSLayout::Dimension::Px(width);
         button->size.height = CSSLayout::Dimension::Px(30);
@@ -108,24 +103,24 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateEBookExa
     zoomLabel->SetTextColor(Color(90, 90, 90, 255));
     DemoKit::Add(header, zoomLabel);
     auto zoomInBtn = makeZoomButton("EBookDemoZoomIn", "+", 34.f);
-    auto fitWidthBtn = makeZoomButton("EBookDemoFitWidth", "Fit Width", 78.f);
-    auto fitHeightBtn = makeZoomButton("EBookDemoFitHeight", "Fit Height", 82.f);
+    auto fitWidthBtn = makeZoomButton("EBookDemoFitWidth", Tr("Fit Width"), 78.f);
+    auto fitHeightBtn = makeZoomButton("EBookDemoFitHeight", Tr("Fit Height"), 82.f);
 
     // ---- the reader ----
     auto reader = CreateEBookViewer("EBookDemoReader");
 
     reader->onDocumentLoaded = [statusLabel, readerPtr = reader.get()](
                                    const EBookMetadata& meta) {
-        std::string text = meta.title.empty() ? "(untitled)" : meta.title;
+        std::string text = meta.title.empty() ? Tr("(untitled)") : meta.title;
         if (!meta.authors.empty()) text += " — " + meta.GetAuthorsString();
         text += "  [" + readerPtr->GetEngine()->GetFormatName() + "]";
         statusLabel->SetText(text);
     };
     reader->onError = [statusLabel](const std::string& error) {
-        statusLabel->SetText("Error: " + error);
+        statusLabel->SetText(TrF("Error: {0}", error));
     };
     reader->onZoomChanged = [zoomLabel](float percent) {
-        zoomLabel->SetText(std::to_string(static_cast<int>(percent + 0.5f)) + "%");
+        zoomLabel->SetText(TrF("{0}%", static_cast<int>(percent + 0.5f)));
     };
 
     // ---- zoom wiring ----
@@ -152,7 +147,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateEBookExa
     if (std::filesystem::exists(UltraCanvas::PathFromUtf8(defaultBook), ec)) {
         reader->LoadDocument(defaultBook);
     } else {
-        std::string sample = kSampleBook;
+        std::string sample = SampleBook();
         reader->LoadDocumentFromMemory(
             std::vector<uint8_t>(sample.begin(), sample.end()), "sample.txt");
     }
@@ -170,9 +165,9 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateEBookExa
         if (!viewer) return;
 
         FileDialogOptions opts;
-        opts.title = "Open eBook";
+        opts.title = Tr("Open eBook");
         opts.parentWindow = viewer->GetWindow();
-        opts.AddFilter("eBooks", GetRegisteredEBookExtensions());
+        opts.AddFilter(Tr("eBooks"), GetRegisteredEBookExtensions());
         UltraCanvasFileLoader::OpenFileDialog(opts,
             [readerWeak](DialogResult result, const std::string& path) {
                 if (result != DialogResult::OK || path.empty()) return;

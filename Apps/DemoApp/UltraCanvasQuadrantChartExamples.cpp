@@ -24,11 +24,11 @@ namespace UltraCanvas {
     // matrix with user-defined quadrant labels and colors.
     static std::vector<QuadrantDataPoint> BuildInnovationMatrixData() {
         return {
-            QuadrantDataPoint("R&D Projects", 0.3f, 0.8f, Color(212, 167, 44, 255)),
-            QuadrantDataPoint("Core Products", 0.8f, 0.8f, Color(46, 160, 67, 255)),
-            QuadrantDataPoint("Proof of Concepts", 0.2f, 0.3f, Color(9, 105, 218, 255)),
-            QuadrantDataPoint("Maintenance", 0.7f, 0.2f, Color(219, 112, 147, 255)),
-            QuadrantDataPoint("New Features", 0.6f, 0.7f, Color(46, 160, 67, 255))
+            QuadrantDataPoint(Tr("R&D Projects"), 0.3f, 0.8f, Color(212, 167, 44, 255)),
+            QuadrantDataPoint(Tr("Core Products"), 0.8f, 0.8f, Color(46, 160, 67, 255)),
+            QuadrantDataPoint(Tr("Proof of Concepts"), 0.2f, 0.3f, Color(9, 105, 218, 255)),
+            QuadrantDataPoint(Tr("Maintenance"), 0.7f, 0.2f, Color(219, 112, 147, 255)),
+            QuadrantDataPoint(Tr("New Features"), 0.6f, 0.7f, Color(46, 160, 67, 255))
         };
     }
 
@@ -55,26 +55,26 @@ namespace UltraCanvas {
         // ===== LEFT SIDEBAR (controls) =====
         auto leftSidebar = DemoKit::AddCard(contentContainer, "quadrantLeftSidebar", Tr("CONTROLS"), "", sideCardWidth);
 
-        addFieldLabel(leftSidebar, "quadrantStyleLabel", "Visual Style");
+        addFieldLabel(leftSidebar, "quadrantStyleLabel", Tr("Visual Style"));
         auto styleSelector = std::make_shared<UltraCanvasDropdown>("quadrantStyleSelector", 0, 0, 170, 28);
-        styleSelector->AddItem("Business", "business");
-        styleSelector->AddItem("Clean", "clean");
-        styleSelector->AddItem("Scientific", "scientific");
-        styleSelector->AddItem("Modern", "modern");
+        styleSelector->AddItem(Tr("Business"), "business");
+        styleSelector->AddItem(Tr("Clean"), "clean");
+        styleSelector->AddItem(Tr("Scientific"), "scientific");
+        styleSelector->AddItem(Tr("Modern"), "modern");
         styleSelector->SetSelectedIndex(0);
         DemoKit::AddStretched(leftSidebar, styleSelector);
 
-        addFieldLabel(leftSidebar, "quadrantColorsLabel", "Quadrant Colors");
+        addFieldLabel(leftSidebar, "quadrantColorsLabel", Tr("Quadrant Colors"));
         auto colorsSelector = std::make_shared<UltraCanvasDropdown>("quadrantColorsSelector", 0, 0, 170, 28);
-        colorsSelector->AddItem("Shown", "on");
-        colorsSelector->AddItem("Hidden", "off");
+        colorsSelector->AddItem(Tr("Shown"), "on");
+        colorsSelector->AddItem(Tr("Hidden"), "off");
         colorsSelector->SetSelectedIndex(0);
         DemoKit::AddStretched(leftSidebar, colorsSelector);
 
-        addFieldLabel(leftSidebar, "quadrantPointLabelsLabel", "Point Labels");
+        addFieldLabel(leftSidebar, "quadrantPointLabelsLabel", Tr("Point Labels"));
         auto pointLabelsSelector = std::make_shared<UltraCanvasDropdown>("quadrantPointLabelsSelector", 0, 0, 170, 28);
-        pointLabelsSelector->AddItem("Shown", "on");
-        pointLabelsSelector->AddItem("Hidden", "off");
+        pointLabelsSelector->AddItem(Tr("Shown"), "on");
+        pointLabelsSelector->AddItem(Tr("Hidden"), "off");
         pointLabelsSelector->SetSelectedIndex(0);
         DemoKit::AddStretched(leftSidebar, pointLabelsSelector);
 
@@ -83,19 +83,19 @@ namespace UltraCanvas {
         buttons->SetMargin(10, 0, 0, 0);
         DemoKit::Add(leftSidebar, buttons);
 
-        auto btnAddPoint = std::make_shared<UltraCanvasButton>("quadrantBtnAddPoint", "Add Random Point");
+        auto btnAddPoint = std::make_shared<UltraCanvasButton>("quadrantBtnAddPoint", Tr("Add Random Point"));
         btnAddPoint->SetBackgroundColor(Color(13, 110, 253, 255));
         DemoKit::Add(buttons, btnAddPoint);
 
-        auto btnClear = std::make_shared<UltraCanvasButton>("quadrantBtnClear", "Clear Points");
+        auto btnClear = std::make_shared<UltraCanvasButton>("quadrantBtnClear", Tr("Clear Points"));
         btnClear->SetBackgroundColor(Color(220, 53, 69, 255));
         DemoKit::Add(buttons, btnClear);
 
-        auto btnReload = std::make_shared<UltraCanvasButton>("quadrantBtnReload", "Reload Sample Data");
+        auto btnReload = std::make_shared<UltraCanvasButton>("quadrantBtnReload", Tr("Reload Sample Data"));
         btnReload->SetBackgroundColor(Color(25, 135, 84, 255));
         DemoKit::Add(buttons, btnReload);
 
-        auto btnReset = std::make_shared<UltraCanvasButton>("quadrantBtnReset", "Reset View");
+        auto btnReset = std::make_shared<UltraCanvasButton>("quadrantBtnReset", Tr("Reset View"));
         btnReset->SetBackgroundColor(Color(108, 117, 125, 255));
         DemoKit::Add(buttons, btnReset);
 
@@ -159,9 +159,9 @@ namespace UltraCanvas {
             auto chart = CreateSWOTAnalysisChart("swotChart", CHART_X, CHART_Y, CHART_W, CHART_H);
             chart->LoadSampleData();
             chart->SetShowDataPointLabels(true);
-            tabs.push_back({"SWOT", chart,
-                            "SWOT Analysis\n\nInternal vs external factors against positive vs negative impact.\n\n"
-                            "Strengths, Weaknesses, Opportunities, Threats."});
+            tabs.push_back({Tr("SWOT"), chart,
+                            Tr("SWOT Analysis\n\nInternal vs external factors against positive vs negative impact.\n\n"
+                            "Strengths, Weaknesses, Opportunities, Threats.")});
         }
 
         // TAB 2: BCG MATRIX
@@ -169,9 +169,9 @@ namespace UltraCanvas {
             auto chart = CreateBCGMatrixChart("bcgChart", CHART_X, CHART_Y, CHART_W, CHART_H);
             chart->LoadSampleData();
             chart->SetShowDataPointLabels(true);
-            tabs.push_back({"BCG Matrix", chart,
-                            "BCG Matrix\n\nMarket share vs market growth. Bubble size encodes revenue.\n\n"
-                            "Stars, Cash Cows, Question Marks, Dogs."});
+            tabs.push_back({Tr("BCG Matrix"), chart,
+                            Tr("BCG Matrix\n\nMarket share vs market growth. Bubble size encodes revenue.\n\n"
+                            "Stars, Cash Cows, Question Marks, Dogs.")});
         }
 
         // TAB 3: EISENHOWER MATRIX
@@ -179,9 +179,9 @@ namespace UltraCanvas {
             auto chart = CreateEisenhowerMatrixChart("eisenhowerChart", CHART_X, CHART_Y, CHART_W, CHART_H);
             chart->LoadSampleData();
             chart->SetShowDataPointLabels(true);
-            tabs.push_back({"Eisenhower", chart,
-                            "Eisenhower Matrix\n\nUrgency vs importance for task prioritization.\n\n"
-                            "Do First, Schedule, Delegate, Eliminate."});
+            tabs.push_back({Tr("Eisenhower"), chart,
+                            Tr("Eisenhower Matrix\n\nUrgency vs importance for task prioritization.\n\n"
+                            "Do First, Schedule, Delegate, Eliminate.")});
         }
 
         // TAB 4: RISK MATRIX
@@ -189,9 +189,9 @@ namespace UltraCanvas {
             auto chart = CreateRiskMatrixChart("riskChart", CHART_X, CHART_Y, CHART_W, CHART_H);
             chart->LoadSampleData();
             chart->SetShowDataPointLabels(true);
-            tabs.push_back({"Risk Matrix", chart,
-                            "Risk Matrix\n\nProbability of occurrence vs impact severity.\n\n"
-                            "Top-right quadrant = critical risks needing mitigation first."});
+            tabs.push_back({Tr("Risk Matrix"), chart,
+                            Tr("Risk Matrix\n\nProbability of occurrence vs impact severity.\n\n"
+                            "Top-right quadrant = critical risks needing mitigation first.")});
         }
 
         // TAB 5: PRIORITY MATRIX
@@ -199,40 +199,40 @@ namespace UltraCanvas {
             auto chart = CreatePriorityMatrixChart("priorityChart", CHART_X, CHART_Y, CHART_W, CHART_H);
             chart->LoadSampleData();
             chart->SetShowDataPointLabels(true);
-            tabs.push_back({"Priority", chart,
-                            "Priority Matrix\n\nImpact/value vs effort required.\n\n"
-                            "Quick Wins, Major Projects, Fill-ins, Thankless Tasks."});
+            tabs.push_back({Tr("Priority"), chart,
+                            Tr("Priority Matrix\n\nImpact/value vs effort required.\n\n"
+                            "Quick Wins, Major Projects, Fill-ins, Thankless Tasks.")});
         }
 
         // TAB 6: CUSTOM QUADRANTS
         {
             QuadrantDefinition customDef;
-            customDef.topLeftLabel = "Innovation\nZone";
-            customDef.topRightLabel = "Success\nZone";
-            customDef.bottomLeftLabel = "Learning\nZone";
-            customDef.bottomRightLabel = "Comfort\nZone";
+            customDef.topLeftLabel = Tr("Innovation\nZone");
+            customDef.topRightLabel = Tr("Success\nZone");
+            customDef.bottomLeftLabel = Tr("Learning\nZone");
+            customDef.bottomRightLabel = Tr("Comfort\nZone");
             customDef.topLeftColor = Color(255, 215, 0, 100);
             customDef.topRightColor = Color(144, 238, 144, 100);
             customDef.bottomLeftColor = Color(173, 216, 230, 100);
             customDef.bottomRightColor = Color(255, 182, 193, 100);
 
             auto chart = CreateCustomQuadrantChart("customQuadrantChart", CHART_X, CHART_Y, CHART_W, CHART_H,
-                                                   "Innovation vs Execution Matrix", customDef);
+                                                   Tr("Innovation vs Execution Matrix"), customDef);
 
             QuadrantAxisConfiguration customAxis;
-            customAxis.xAxisLabel = "Execution Capability";
-            customAxis.yAxisLabel = "Innovation Level";
-            customAxis.xAxisLeftLabel = "Low Execution";
-            customAxis.xAxisRightLabel = "High Execution";
-            customAxis.yAxisBottomLabel = "Low Innovation";
-            customAxis.yAxisTopLabel = "High Innovation";
+            customAxis.xAxisLabel = Tr("Execution Capability");
+            customAxis.yAxisLabel = Tr("Innovation Level");
+            customAxis.xAxisLeftLabel = Tr("Low Execution");
+            customAxis.xAxisRightLabel = Tr("High Execution");
+            customAxis.yAxisBottomLabel = Tr("Low Innovation");
+            customAxis.yAxisTopLabel = Tr("High Innovation");
             chart->SetAxisConfiguration(customAxis);
 
             chart->SetDataPoints(BuildInnovationMatrixData());
             chart->SetShowDataPointLabels(true);
-            tabs.push_back({"Custom", chart,
-                            "Custom Quadrants\n\nUser-defined quadrant labels, colors and axis captions via "
-                            "QuadrantDefinition and QuadrantAxisConfiguration."});
+            tabs.push_back({Tr("Custom"), chart,
+                            Tr("Custom Quadrants\n\nUser-defined quadrant labels, colors and axis captions via "
+                            "QuadrantDefinition and QuadrantAxisConfiguration.")});
         }
 
         std::vector<std::shared_ptr<UltraCanvasQuadrantChart>> allCharts;
@@ -258,13 +258,13 @@ namespace UltraCanvas {
             if (!chart) return;
 
             std::ostringstream oss;
-            oss << "Total Points: " << chart->GetDataPoints().size() << "\n";
-            oss << "Selected: " << chart->GetSelectedPoints().size() << "\n\n";
-            oss << "Per quadrant:\n";
-            oss << "Top Left: " << chart->CountPointsInQuadrant(QuadrantPosition::TopLeft) << "\n";
-            oss << "Top Right: " << chart->CountPointsInQuadrant(QuadrantPosition::TopRight) << "\n";
-            oss << "Bottom Left: " << chart->CountPointsInQuadrant(QuadrantPosition::BottomLeft) << "\n";
-            oss << "Bottom Right: " << chart->CountPointsInQuadrant(QuadrantPosition::BottomRight);
+            oss << TrF("Total Points: {0}", chart->GetDataPoints().size()) << "\n";
+            oss << TrF("Selected: {0}", chart->GetSelectedPoints().size()) << "\n\n";
+            oss << Tr("Per quadrant:") << "\n";
+            oss << TrF("Top Left: {0}", chart->CountPointsInQuadrant(QuadrantPosition::TopLeft)) << "\n";
+            oss << TrF("Top Right: {0}", chart->CountPointsInQuadrant(QuadrantPosition::TopRight)) << "\n";
+            oss << TrF("Bottom Left: {0}", chart->CountPointsInQuadrant(QuadrantPosition::BottomLeft)) << "\n";
+            oss << TrF("Bottom Right: {0}", chart->CountPointsInQuadrant(QuadrantPosition::BottomRight));
             statsPanel->SetText(oss.str());
         };
 
@@ -281,21 +281,18 @@ namespace UltraCanvas {
         // ===== CHART CALLBACKS =====
         for (auto& chart : allCharts) {
             chart->onPointSelect = [statusBar, updateStats](size_t, const QuadrantDataPoint& point) {
-                std::ostringstream oss;
-                oss << "Selected: " << point.label
-                    << " (" << point.xValue << ", " << point.yValue << ")";
-                statusBar->SetText(oss.str());
+                statusBar->SetText(TrF("Selected: {0} ({1}, {2})", point.label, point.xValue, point.yValue));
                 updateStats();
             };
             chart->onPointDeselect = [statusBar, updateStats](size_t, const QuadrantDataPoint& point) {
-                statusBar->SetText("Deselected: " + point.label);
+                statusBar->SetText(TrF("Deselected: {0}", point.label));
                 updateStats();
             };
             chart->onPointHover = [statusBar](size_t, const QuadrantDataPoint& point) {
-                statusBar->SetText("Hovering: " + point.label);
+                statusBar->SetText(TrF("Hovering: {0}", point.label));
             };
             chart->onPointDoubleClick = [statusBar](size_t, const QuadrantDataPoint& point) {
-                statusBar->SetText("Double-clicked: " + point.label);
+                statusBar->SetText(TrF("Double-clicked: {0}", point.label));
             };
             chart->onSelectionChange = updateStats;
         }
@@ -330,11 +327,11 @@ namespace UltraCanvas {
 
             float x = static_cast<float>(rand()) / RAND_MAX;
             float y = static_cast<float>(rand()) / RAND_MAX;
-            std::string label = "Point " + std::to_string(rand() % 1000);
+            std::string label = TrF("Point {0}", rand() % 1000);
             Color color(rand() % 156 + 100, rand() % 156 + 100, rand() % 156 + 100, 220);
 
             chart->AddDataPoint(label, x, y, color);
-            statusBar->SetText("Added " + label);
+            statusBar->SetText(TrF("Added {0}", label));
             updateStats();
         };
 
@@ -342,7 +339,7 @@ namespace UltraCanvas {
             auto chart = activeChart();
             if (!chart) return;
             chart->ClearDataPoints();
-            statusBar->SetText("Cleared all data points of the active chart");
+            statusBar->SetText(Tr("Cleared all data points of the active chart"));
             updateStats();
         };
 
@@ -358,7 +355,7 @@ namespace UltraCanvas {
 
         btnReload->onClick = [reloadActiveChart, statusBar, updateStats]() {
             reloadActiveChart();
-            statusBar->SetText("Sample data reloaded for the active chart");
+            statusBar->SetText(Tr("Sample data reloaded for the active chart"));
             updateStats();
         };
 
@@ -380,7 +377,7 @@ namespace UltraCanvas {
                 }
             }
 
-            statusBar->SetText("View reset - all charts restored to their defaults");
+            statusBar->SetText(Tr("View reset - all charts restored to their defaults"));
             updateStats();
         };
 

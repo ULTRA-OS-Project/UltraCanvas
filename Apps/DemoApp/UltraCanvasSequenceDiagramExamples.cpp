@@ -63,28 +63,28 @@ namespace UltraCanvas {
             return button;
         };
 
-        addCaption("seqThemeLabel", "Theme");
+        addCaption("seqThemeLabel", Tr("Theme"));
         auto themeSelector = addDropdown("seqThemeSelector");
-        themeSelector->AddItem("Default", "default");
-        themeSelector->AddItem("Classic", "classic");
-        themeSelector->AddItem("Professional", "professional");
-        themeSelector->AddItem("Colorful", "colorful");
-        themeSelector->AddItem("Minimal", "minimal");
-        themeSelector->AddItem("Dark", "dark");
+        themeSelector->AddItem(Tr("Default"), "default");
+        themeSelector->AddItem(Tr("Classic"), "classic");
+        themeSelector->AddItem(Tr("Professional"), "professional");
+        themeSelector->AddItem(Tr("Colorful"), "colorful");
+        themeSelector->AddItem(Tr("Minimal"), "minimal");
+        themeSelector->AddItem(Tr("Dark"), "dark");
         themeSelector->SetSelectedIndex(0);
 
-        addCaption("seqNumberingLabel", "Message Numbering");
+        addCaption("seqNumberingLabel", Tr("Message Numbering"));
         auto numberingSelector = addDropdown("seqNumberingSelector");
-        numberingSelector->AddItem("Hidden", "hidden");
-        numberingSelector->AddItem("Sequential (1, 2, 3)", "sequential");
-        numberingSelector->AddItem("Hierarchical (1.1.2)", "hierarchical");
+        numberingSelector->AddItem(Tr("Hidden"), "hidden");
+        numberingSelector->AddItem(Tr("Sequential (1, 2, 3)"), "sequential");
+        numberingSelector->AddItem(Tr("Hierarchical (1.1.2)"), "hierarchical");
         numberingSelector->SetSelectedIndex(0);
 
-        auto btnFrame = addButton("seqBtnFrame", "Toggle sd Frame", Color(13, 110, 253, 255));
-        auto btnFeet = addButton("seqBtnFeet", "Toggle Foot Boxes", Color(13, 110, 253, 255));
-        auto btnFit = addButton("seqBtnFit", "Fit View", Color(25, 135, 84, 255));
-        auto btnReset = addButton("seqBtnReset", "Reset View", Color(108, 117, 125, 255));
-        auto btnExport = addButton("seqBtnExport", "Print PlantUML", Color(111, 66, 193, 255));
+        auto btnFrame = addButton("seqBtnFrame", Tr("Toggle sd Frame"), Color(13, 110, 253, 255));
+        auto btnFeet = addButton("seqBtnFeet", Tr("Toggle Foot Boxes"), Color(13, 110, 253, 255));
+        auto btnFit = addButton("seqBtnFit", Tr("Fit View"), Color(25, 135, 84, 255));
+        auto btnReset = addButton("seqBtnReset", Tr("Reset View"), Color(108, 117, 125, 255));
+        auto btnExport = addButton("seqBtnExport", Tr("Print PlantUML"), Color(111, 66, 193, 255));
 
         auto helpBox = DemoKit::AddCaption(leftSidebar, "seqHelpBox",
                          Tr("INTERACTION TIPS\n\n"
@@ -104,16 +104,16 @@ namespace UltraCanvas {
 
         struct SampleTab {
             const char* tabId;
-            const char* title;
+            std::string title;
             UltraCanvasSequenceModel model;
         };
         std::vector<SampleTab> samples;
-        samples.push_back({"seqCardGame", "Card Game", SequenceDiagramSamples::CardGame()});
-        samples.push_back({"seqLogin", "User Login", SequenceDiagramSamples::UserLogin()});
-        samples.push_back({"seqAuth", "Authentication", SequenceDiagramSamples::Authentication()});
-        samples.push_back({"seqShop", "Online Shop", SequenceDiagramSamples::OnlineShop()});
-        samples.push_back({"seqLifecycle", "Lifecycle", SequenceDiagramSamples::ObjectLifecycle()});
-        samples.push_back({"seqEventFlow", "Event Flow", SequenceDiagramSamples::UltraCanvasEventFlow()});
+        samples.push_back({"seqCardGame", Tr("Card Game"), SequenceDiagramSamples::CardGame()});
+        samples.push_back({"seqLogin", Tr("User Login"), SequenceDiagramSamples::UserLogin()});
+        samples.push_back({"seqAuth", Tr("Authentication"), SequenceDiagramSamples::Authentication()});
+        samples.push_back({"seqShop", Tr("Online Shop"), SequenceDiagramSamples::OnlineShop()});
+        samples.push_back({"seqLifecycle", Tr("Lifecycle"), SequenceDiagramSamples::ObjectLifecycle()});
+        samples.push_back({"seqEventFlow", Tr("Event Flow"), SequenceDiagramSamples::UltraCanvasEventFlow()});
 
         auto statusBar = DemoKit::CreateText("seqStatus", Tr("Click a message or lifeline to inspect it"));
         statusBar->SetFontSize(11);
@@ -132,17 +132,16 @@ namespace UltraCanvas {
             allDiagrams.push_back(diagram);
 
             diagram->onMessageClick = [statusBar](size_t index, const SequenceMessage& message) {
-                statusBar->SetText("Message " + std::to_string(index) + ": \"" +
-                                   message.label + "\"");
+                statusBar->SetText(TrF("Message {0}: \"{1}\"", index, message.label));
             };
             diagram->onLifelineClick = [statusBar, diagram = diagram.get()](const std::string& id) {
                 const SequenceLifeline* lifeline = diagram->Model().GetLifeline(id);
-                if (lifeline) statusBar->SetText("Lifeline: " + lifeline->name);
+                if (lifeline) statusBar->SetText(TrF("Lifeline: {0}", lifeline->name));
             };
             diagram->onFragmentClick = [statusBar, diagram = diagram.get()](const std::string& id) {
                 const SequenceFragment* fragment = diagram->Model().GetFragment(id);
                 if (fragment) {
-                    statusBar->SetText(std::string("Fragment: ") + fragment->Keyword());
+                    statusBar->SetText(TrF("Fragment: {0}", fragment->Keyword()));
                 }
             };
 
@@ -196,7 +195,7 @@ namespace UltraCanvas {
             for (auto& diagram : allDiagrams) {
                 std::printf("%s\n", SequenceTextExport::ToPlantUML(diagram->Model()).c_str());
             }
-            statusBar->SetText("PlantUML for all tabs printed to the console");
+            statusBar->SetText(Tr("PlantUML for all tabs printed to the console"));
         };
 
         return mainContainer;

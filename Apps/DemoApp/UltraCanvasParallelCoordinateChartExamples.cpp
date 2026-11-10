@@ -57,10 +57,10 @@ void FillIrisLike(std::shared_ptr<UltraCanvasParallelCoordinateChartElement>& ch
             species.push_back(c.name);
         }
     }
-    chart->AddDimension("Petal Length", petalLength);
-    chart->AddDimension("Petal Width", petalWidth);
-    chart->AddDimension("Sepal Length", sepalLength);
-    chart->AddDimension("Sepal Width", sepalWidth);
+    chart->AddDimension(Tr("Petal Length"), petalLength);
+    chart->AddDimension(Tr("Petal Width"), petalWidth);
+    chart->AddDimension(Tr("Sepal Length"), sepalLength);
+    chart->AddDimension(Tr("Sepal Width"), sepalWidth);
     chart->SetRecordGroups(species);
 }
 
@@ -91,7 +91,7 @@ UltraCanvasDemoApplication::CreateParallelCoordinateChartExamples() {
     iris->SetStandardize(PCPStandardize::ZScore);
     iris->SetShowVertexMarkers(true, 2.5f);
     iris->SetLineAlpha(0.75f);
-    iris->SetChartTitle("Iris (standardised)");
+    iris->SetChartTitle(Tr("Iris (standardised)"));
     iris->SetGroupColors({{"setosa", Color(68, 1, 84, 255)},
                           {"versicolor", Color(33, 145, 140, 255)},
                           {"virginica", Color(253, 231, 37, 255)}});
@@ -132,7 +132,7 @@ UltraCanvasDemoApplication::CreateParallelCoordinateChartExamples() {
     sweep->SetColormap(HeatmapColormap::Turbo);
     sweep->SetContextStyle(Color(185, 185, 192, 45));
     sweep->AddBrush("accuracy", 0.80, 1.00);        // the interesting runs
-    sweep->SetChartTitle("260 training runs");
+    sweep->SetChartTitle(Tr("260 training runs"));
     DemoKit::AddFixed(sweepCard, sweep);
 
     // ===== EXAMPLE 3: Curved group bundles (bottom, wide) =====
@@ -154,14 +154,14 @@ UltraCanvasDemoApplication::CreateParallelCoordinateChartExamples() {
             const double yield = stable ? rng.Range(93.0, 98.5) : rng.Range(82.0, 92.0);
             r.values = {temperature, pressure, flow, vibration, yield};
             r.group = stable ? "stable" : "aggressive";
-            r.label = (stable ? "Batch S" : "Batch A") + std::to_string(i / 2 + 1);
+            r.label = stable ? TrF("Batch S{0}", i / 2 + 1) : TrF("Batch A{0}", i / 2 + 1);
             records.push_back(r);
         }
-        curved->AddDimension("temperature", {});
-        curved->AddDimension("pressure", {});
-        curved->AddDimension("flow", {});
-        curved->AddDimension("vibration", {});
-        curved->AddDimension("yield", {});
+        curved->AddDimension(Tr("temperature"), {});
+        curved->AddDimension(Tr("pressure"), {});
+        curved->AddDimension(Tr("flow"), {});
+        curved->AddDimension(Tr("vibration"), {});
+        curved->AddDimension(Tr("yield"), {});
         curved->SetRecords(records);
     }
     curved->SetLineMode(PCPLineMode::Curved);
@@ -170,7 +170,7 @@ UltraCanvasDemoApplication::CreateParallelCoordinateChartExamples() {
     curved->SetLineAlpha(0.55f);
     curved->SetGroupColors({{"stable", Color(34, 136, 51, 255)},
                             {"aggressive", Color(238, 119, 51, 255)}});
-    curved->SetChartTitle("Process batches");
+    curved->SetChartTitle(Tr("Process batches"));
     // Built 1160 wide only to fill the old page: it takes the card's width.
     DemoKit::AddStretched(curveCard, curved);
 

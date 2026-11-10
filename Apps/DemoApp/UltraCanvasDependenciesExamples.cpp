@@ -543,21 +543,18 @@ namespace UltraCanvas {
 
     static std::string BuildLinkTooltip(const DepCellSegment& seg) {
         if (seg.kind == DepCellSegment::License && seg.license) {
-            return std::string(seg.license->fullName) + "\nClick to open " + seg.license->url;
+            return std::string(seg.license->fullName) + "\n" + TrF("Click to open {0}", seg.license->url);
         }
         const DepLibrary* lib = seg.lib;
         if (!lib) return "";
         std::string tip = lib->name;
-        tip += "\nWebsite:  ";
-        tip += lib->website;
+        tip += "\n" + TrF("Website:  {0}", lib->website);
         if (lib->repo && *lib->repo && std::strcmp(lib->repo, lib->website) != 0) {
-            tip += "\nSource:  ";
-            tip += lib->repo;
+            tip += "\n" + TrF("Source:  {0}", lib->repo);
         }
         if (lib->license && *lib->license) {
             if (const DepLicense* lic = FindDepLicense(lib->license)) {
-                tip += "\nLicense:  ";
-                tip += lic->fullName;
+                tip += "\n" + TrF("License:  {0}", lic->fullName);
             }
         }
         return tip;
@@ -578,7 +575,7 @@ namespace UltraCanvas {
         // the library's license label in kDepLibraries to become a link.
         // ============================================================
         auto model = std::make_shared<UltraCanvasMultiColumnListModel>();
-        model->AddColumn(ListColumnDef("Module / Purpose", 215, TextAlignment::Left));
+        model->AddColumn(ListColumnDef(Tr("Module / Purpose"), 215, TextAlignment::Left));
         model->AddColumn(ListColumnDef("Linux", 230, TextAlignment::Left));
         model->AddColumn(ListColumnDef("macOS", 225, TextAlignment::Left));
         model->AddColumn(ListColumnDef("Windows", 225, TextAlignment::Left));
@@ -591,121 +588,121 @@ namespace UltraCanvas {
         };
 
         // ===== UltraCanvas (core) =====
-        header("UltraCanvas (core)");
-        dep("2D graphics rendering", "Cairo (LGPL 2.1)", "Cairo (LGPL 2.1)", "Cairo (LGPL 2.1)");
-        dep("Text layout & shaping", "Pango (LGPL 2.1)\nHarfBuzz (MIT)\nFreeType (FTL)", "Pango (LGPL 2.1)\nHarfBuzz (MIT)\nFreeType (FTL)", "Pango (LGPL 2.1)\nHarfBuzz (MIT)\nFreeType (FTL)");
-        dep("Font discovery", "FontConfig (MIT)", "CoreText", "FontConfig (MIT)");
-        dep("Native windowing & cursors", "X11 (MIT)\nXcursor (MIT)", "Cocoa\nQuartzCore", "Win32 (gdi32)\nWin32 (user32)");
-        dep("Native dialogs & printing", "GTK 3 (LGPL 2.1)", "Cocoa (AppKit)", "Win32 (comdlg32)");
-        dep("Core utilities", "GLib (LGPL 2.1)", "GLib (LGPL 2.1)", "GLib (LGPL 2.1)");
-        dep("XML parsing (SVG/config/ODS)", "TinyXML2 (zlib)", "TinyXML2 (zlib)", "TinyXML2 (zlib)");
-        dep("String formatting", "fmt (MIT)", "fmt (MIT)", "fmt (MIT)");
-        dep("Image processing & resize", "libvips (LGPL 2.1)", "libvips (LGPL 2.1)", "libvips (LGPL 2.1)");
-        dep("Bitmap codecs (via libvips)", "libpng (libpng 2)\nlibjpeg-turbo (BSD 3)\nlibtiff (libtiff)\nlibwebp (BSD 3)", "libpng (libpng 2)\nlibjpeg-turbo (BSD 3)\nlibtiff (libtiff)\nlibwebp (BSD 3)", "libpng (libpng 2)\nlibjpeg-turbo (BSD 3)\nlibtiff (libtiff)\nlibwebp (BSD 3)");
-        dep("GIF / HEIF / AVIF (via libvips)", "giflib (MIT)\nlibheif (LGPL 3)", "giflib (MIT)\nlibheif (LGPL 3)", "giflib (MIT)\nlibheif (LGPL 3)");
-        dep("BMP / PCX coders (via libvips)", "ImageMagick (ImageMagick)", "ImageMagick (ImageMagick)", "ImageMagick (ImageMagick)");
-        dep("Audio playback & capture", "miniaudio (MIT-0) (bundled)\nvia ALSA (LGPL 2.1)\nvia PulseAudio (LGPL 2.1)", "miniaudio (MIT-0) (bundled)\nvia CoreAudio", "miniaudio (MIT-0) (bundled)\nvia WASAPI");
-        dep("Video playback & capture", "GStreamer (LGPL 2.1) (optional)", "AVFoundation (optional)", "Media Foundation (optional)");
-        dep("OpenGL 3D surface", "OpenGL\nEGL / GLX (optional)", "OpenGL\nCGL (optional)", "OpenGL\nGLEW (BSD 3) / WGL (optional)");
-        dep("QR / barcode decoding", "zbar (LGPL 2.1) (optional)", "zbar (LGPL 2.1) (optional)", "zbar (LGPL 2.1) (optional)");
-        dep("QR code generation", "qrcodegen (MIT) (bundled)", "qrcodegen (MIT) (bundled)", "qrcodegen (MIT) (bundled)");
-        dep("ZIP for ODS / XLSX I/O", "miniz (MIT) (bundled)", "miniz (MIT) (bundled)", "miniz (MIT) (bundled)");
-        dep("FFT / spectrogram", "KissFFT (BSD 3) (bundled)", "KissFFT (BSD 3) (bundled)", "KissFFT (BSD 3) (bundled)");
-        dep("JSON parsing (UltraCanvasJSON)", "yyjson (MIT) (bundled)", "yyjson (MIT) (bundled)", "yyjson (MIT) (bundled)");
+        header(Tr("UltraCanvas (core)"));
+        dep(Tr("2D graphics rendering"), "Cairo (LGPL 2.1)", "Cairo (LGPL 2.1)", "Cairo (LGPL 2.1)");
+        dep(Tr("Text layout & shaping"), "Pango (LGPL 2.1)\nHarfBuzz (MIT)\nFreeType (FTL)", "Pango (LGPL 2.1)\nHarfBuzz (MIT)\nFreeType (FTL)", "Pango (LGPL 2.1)\nHarfBuzz (MIT)\nFreeType (FTL)");
+        dep(Tr("Font discovery"), "FontConfig (MIT)", "CoreText", "FontConfig (MIT)");
+        dep(Tr("Native windowing & cursors"), "X11 (MIT)\nXcursor (MIT)", "Cocoa\nQuartzCore", "Win32 (gdi32)\nWin32 (user32)");
+        dep(Tr("Native dialogs & printing"), "GTK 3 (LGPL 2.1)", "Cocoa (AppKit)", "Win32 (comdlg32)");
+        dep(Tr("Core utilities"), "GLib (LGPL 2.1)", "GLib (LGPL 2.1)", "GLib (LGPL 2.1)");
+        dep(Tr("XML parsing (SVG/config/ODS)"), "TinyXML2 (zlib)", "TinyXML2 (zlib)", "TinyXML2 (zlib)");
+        dep(Tr("String formatting"), "fmt (MIT)", "fmt (MIT)", "fmt (MIT)");
+        dep(Tr("Image processing & resize"), "libvips (LGPL 2.1)", "libvips (LGPL 2.1)", "libvips (LGPL 2.1)");
+        dep(Tr("Bitmap codecs (via libvips)"), "libpng (libpng 2)\nlibjpeg-turbo (BSD 3)\nlibtiff (libtiff)\nlibwebp (BSD 3)", "libpng (libpng 2)\nlibjpeg-turbo (BSD 3)\nlibtiff (libtiff)\nlibwebp (BSD 3)", "libpng (libpng 2)\nlibjpeg-turbo (BSD 3)\nlibtiff (libtiff)\nlibwebp (BSD 3)");
+        dep(Tr("GIF / HEIF / AVIF (via libvips)"), "giflib (MIT)\nlibheif (LGPL 3)", "giflib (MIT)\nlibheif (LGPL 3)", "giflib (MIT)\nlibheif (LGPL 3)");
+        dep(Tr("BMP / PCX coders (via libvips)"), "ImageMagick (ImageMagick)", "ImageMagick (ImageMagick)", "ImageMagick (ImageMagick)");
+        dep(Tr("Audio playback & capture"), "miniaudio (MIT-0) (bundled)\nvia ALSA (LGPL 2.1)\nvia PulseAudio (LGPL 2.1)", "miniaudio (MIT-0) (bundled)\nvia CoreAudio", "miniaudio (MIT-0) (bundled)\nvia WASAPI");
+        dep(Tr("Video playback & capture"), "GStreamer (LGPL 2.1) (optional)", "AVFoundation (optional)", "Media Foundation (optional)");
+        dep(Tr("OpenGL 3D surface"), "OpenGL\nEGL / GLX (optional)", "OpenGL\nCGL (optional)", "OpenGL\nGLEW (BSD 3) / WGL (optional)");
+        dep(Tr("QR / barcode decoding"), "zbar (LGPL 2.1) (optional)", "zbar (LGPL 2.1) (optional)", "zbar (LGPL 2.1) (optional)");
+        dep(Tr("QR code generation"), "qrcodegen (MIT) (bundled)", "qrcodegen (MIT) (bundled)", "qrcodegen (MIT) (bundled)");
+        dep(Tr("ZIP for ODS / XLSX I/O"), "miniz (MIT) (bundled)", "miniz (MIT) (bundled)", "miniz (MIT) (bundled)");
+        dep(Tr("FFT / spectrogram"), "KissFFT (BSD 3) (bundled)", "KissFFT (BSD 3) (bundled)", "KissFFT (BSD 3) (bundled)");
+        dep(Tr("JSON parsing (UltraCanvasJSON)"), "yyjson (MIT) (bundled)", "yyjson (MIT) (bundled)", "yyjson (MIT) (bundled)");
 
         // ===== Optional plugins =====
-        header("PDF plugin (optional)");
-        dep("PDF rendering", "MuPDF (AGPL 3)\nmujs (ISC)\ngumbo (Apache 2)\njbig2dec (AGPL 3) / openjp2 (BSD 2)", "MuPDF (AGPL 3)\nmujs (ISC)\ngumbo (Apache 2)", "MuPDF (AGPL 3)\nmujs (ISC)\ngumbo (Apache 2)");
+        header(Tr("PDF plugin (optional)"));
+        dep(Tr("PDF rendering"), "MuPDF (AGPL 3)\nmujs (ISC)\ngumbo (Apache 2)\njbig2dec (AGPL 3) / openjp2 (BSD 2)", "MuPDF (AGPL 3)\nmujs (ISC)\ngumbo (Apache 2)", "MuPDF (AGPL 3)\nmujs (ISC)\ngumbo (Apache 2)");
 
-        header("CDR plugin (optional)");
-        dep("CorelDRAW import", "libcdr (MPL 2.0)\nlibrevenge (MPL 2.0)\nlibrevenge-stream (MPL 2.0)", "libcdr (MPL 2.0)\nlibrevenge (MPL 2.0)\nlibrevenge-stream (MPL 2.0)", "– (not available)");
-        dep("Color mgmt / Unicode (optional)", "LCMS2 (MIT)\nICU (Unicode)", "LCMS2 (MIT)\nICU (Unicode)", "– (not available)");
+        header(Tr("CDR plugin (optional)"));
+        dep(Tr("CorelDRAW import"), "libcdr (MPL 2.0)\nlibrevenge (MPL 2.0)\nlibrevenge-stream (MPL 2.0)", "libcdr (MPL 2.0)\nlibrevenge (MPL 2.0)\nlibrevenge-stream (MPL 2.0)", "– (not available)");
+        dep(Tr("Color mgmt / Unicode (optional)"), "LCMS2 (MIT)\nICU (Unicode)", "LCMS2 (MIT)\nICU (Unicode)", "– (not available)");
 
-        header("Vector formats plugin (optional)");
-        dep("Vector converters: SVG, XAR, EPS,\nCDR, PDF, EMF, WMF, AI, DXF\n(read & write), DWG (read, R13-R2018)", "(implemented in UltraCanvas)\nTinyXML2 (zlib)\nzlib (zlib)", "(implemented in UltraCanvas)\nTinyXML2 (zlib)\nzlib (zlib)", "(implemented in UltraCanvas)\nTinyXML2 (zlib)\nzlib (zlib)");
-        dep("DWG write (via DXF)", "LibreDWG (GPL 3) (optional)\ndxf2dwg CLI tool\n(external process, not linked)", "LibreDWG (GPL 3) (optional)\ndxf2dwg CLI tool\n(external process, not linked)", "LibreDWG (GPL 3) (optional)\ndxf2dwg CLI tool\n(external process, not linked)");
+        header(Tr("Vector formats plugin (optional)"));
+        dep(Tr("Vector converters: SVG, XAR, EPS,\nCDR, PDF, EMF, WMF, AI, DXF\n(read & write), DWG (read, R13-R2018)"), "(implemented in UltraCanvas)\nTinyXML2 (zlib)\nzlib (zlib)", "(implemented in UltraCanvas)\nTinyXML2 (zlib)\nzlib (zlib)", "(implemented in UltraCanvas)\nTinyXML2 (zlib)\nzlib (zlib)");
+        dep(Tr("DWG write (via DXF)"), "LibreDWG (GPL 3) (optional)\ndxf2dwg CLI tool\n(external process, not linked)", "LibreDWG (GPL 3) (optional)\ndxf2dwg CLI tool\n(external process, not linked)", "LibreDWG (GPL 3) (optional)\ndxf2dwg CLI tool\n(external process, not linked)");
 
-        header("OCR plugin (optional)");
-        dep("Optical character recognition", "Tesseract (Apache 2)\nLeptonica (BSD 2)", "Tesseract (Apache 2)\nLeptonica (BSD 2)", "Tesseract (Apache 2)\nLeptonica (BSD 2)");
-        dep("Language data (tessdata)", "eng.traineddata (bundled)\n+ user downloads", "eng.traineddata (bundled)\n+ user downloads", "eng.traineddata (bundled)\n+ user downloads");
+        header(Tr("OCR plugin (optional)"));
+        dep(Tr("Optical character recognition"), "Tesseract (Apache 2)\nLeptonica (BSD 2)", "Tesseract (Apache 2)\nLeptonica (BSD 2)", "Tesseract (Apache 2)\nLeptonica (BSD 2)");
+        dep(Tr("Language data (tessdata)"), "eng.traineddata (bundled)\n+ user downloads", "eng.traineddata (bundled)\n+ user downloads", "eng.traineddata (bundled)\n+ user downloads");
 
-        header("Vectorizer plugin (optional)");
-        dep("Raster to SVG tracing", "VTracer (MIT)\nvisioncortex (MIT)\n(Rust, via corrosion)", "VTracer (MIT)\nvisioncortex (MIT)\n(Rust, via corrosion)", "VTracer (MIT)\nvisioncortex (MIT)\n(Rust, via corrosion)");
-        dep("Build toolchain", "cargo + rustc\ncorrosion-rs (MIT) (FetchContent)", "cargo + rustc\ncorrosion-rs (MIT) (FetchContent)", "cargo + rustc\ncorrosion-rs (MIT) (FetchContent)");
+        header(Tr("Vectorizer plugin (optional)"));
+        dep(Tr("Raster to SVG tracing"), "VTracer (MIT)\nvisioncortex (MIT)\n(Rust, via corrosion)", "VTracer (MIT)\nvisioncortex (MIT)\n(Rust, via corrosion)", "VTracer (MIT)\nvisioncortex (MIT)\n(Rust, via corrosion)");
+        dep(Tr("Build toolchain"), "cargo + rustc\ncorrosion-rs (MIT) (FetchContent)", "cargo + rustc\ncorrosion-rs (MIT) (FetchContent)", "cargo + rustc\ncorrosion-rs (MIT) (FetchContent)");
 
-        header("LaTeX plugin (optional, on-demand module)");
-        dep("LaTeX math rendering", "MicroTeX (MIT) (bundled)\nLatin Modern Math (LPPL) (bundled)\nvia Cairo / Pango (core)", "MicroTeX (MIT) (bundled)\nLatin Modern Math (LPPL) (bundled)\nvia Cairo / Pango (core)", "MicroTeX (MIT) (bundled)\nLatin Modern Math (LPPL) (bundled)\nvia Cairo / Pango (core)");
+        header(Tr("LaTeX plugin (optional, on-demand module)"));
+        dep(Tr("LaTeX math rendering"), "MicroTeX (MIT) (bundled)\nLatin Modern Math (LPPL) (bundled)\nvia Cairo / Pango (core)", "MicroTeX (MIT) (bundled)\nLatin Modern Math (LPPL) (bundled)\nvia Cairo / Pango (core)", "MicroTeX (MIT) (bundled)\nLatin Modern Math (LPPL) (bundled)\nvia Cairo / Pango (core)");
 
         // ===== Demo application =====
-        header("Demo application");
-        dep("App icon to .exe (build tool)", "– (Windows only)", "– (Windows only)", "ImageMagick (ImageMagick)\n(magick CLI)");
+        header(Tr("Demo application"));
+        dep(Tr("App icon to .exe (build tool)"), "– (Windows only)", "– (Windows only)", "ImageMagick (ImageMagick)\n(magick CLI)");
 
         // ===== Additional ULTRA OS modules =====
-        header("AudioFX module");
-        dep("Audio effects / decode", "FFmpeg (LGPL 2.1)\nlibsndfile (LGPL 2.1)\nFFTW3 (GPL 2)", "FFmpeg (LGPL 2.1)\nlibsndfile (LGPL 2.1)\nFFTW3 (GPL 2)", "FFmpeg (LGPL 2.1)\nlibsndfile (LGPL 2.1)\nFFTW3 (GPL 2)");
+        header(Tr("AudioFX module"));
+        dep(Tr("Audio effects / decode"), "FFmpeg (LGPL 2.1)\nlibsndfile (LGPL 2.1)\nFFTW3 (GPL 2)", "FFmpeg (LGPL 2.1)\nlibsndfile (LGPL 2.1)\nFFTW3 (GPL 2)", "FFmpeg (LGPL 2.1)\nlibsndfile (LGPL 2.1)\nFFTW3 (GPL 2)");
 
-        header("FileLoader module");
-        dep("No additional third party", "(core only)", "(core only)", "(core only)");
+        header(Tr("FileLoader module"));
+        dep(Tr("No additional third party"), "(core only)", "(core only)", "(core only)");
 
-        header("IODeviceManager module");
-        dep("Printers", "CUPS (Apache 2) (optional)\nIPP (network, via UltraNet)", "CUPS (Apache 2) (optional)\nIPP (network, via UltraNet)", "Win32 (winspool, gdi32)\n(print spooler)\nIPP (network, via UltraNet)");
-        dep("Scanners", "SANE (GPL 2) (optional)\neSCL (network, via UltraNet)", "eSCL (network, via UltraNet)\nICA (planned)", "eSCL (network, via UltraNet)\nWIA, TWAIN (planned)");
-        dep("Cameras", "V4L2", "– (AVFoundation planned)", "– (Media Foundation planned)");
-        dep("Hot-plug watching", "libudev (LGPL 2.1) (optional)", "– (no watcher yet)", "– (no watcher yet)");
+        header(Tr("IODeviceManager module"));
+        dep(Tr("Printers"), "CUPS (Apache 2) (optional)\nIPP (network, via UltraNet)", "CUPS (Apache 2) (optional)\nIPP (network, via UltraNet)", "Win32 (winspool, gdi32)\n(print spooler)\nIPP (network, via UltraNet)");
+        dep(Tr("Scanners"), "SANE (GPL 2) (optional)\neSCL (network, via UltraNet)", "eSCL (network, via UltraNet)\nICA (planned)", "eSCL (network, via UltraNet)\nWIA, TWAIN (planned)");
+        dep(Tr("Cameras"), "V4L2", "– (AVFoundation planned)", "– (Media Foundation planned)");
+        dep(Tr("Hot-plug watching"), "libudev (LGPL 2.1) (optional)", "– (no watcher yet)", "– (no watcher yet)");
 
-        header("PixelFX module");
-        dep("Image effects", "libvips (LGPL 2.1)", "libvips (LGPL 2.1)", "libvips (LGPL 2.1)");
+        header(Tr("PixelFX module"));
+        dep(Tr("Image effects"), "libvips (LGPL 2.1)", "libvips (LGPL 2.1)", "libvips (LGPL 2.1)");
 
-        header("Smart Home module");
-        dep("Engine, public API,\ndashboard widgets", "(core only)", "(core only)", "(core only)");
-        dep("Matter backend\n(default OFF)", "connectedhomeip (Apache 2)\nmbedTLS (Apache 2)", "connectedhomeip (Apache 2)\nmbedTLS (Apache 2)", "connectedhomeip (Apache 2)\nmbedTLS (Apache 2)");
-        dep("Thread backend\n(default OFF)", "OpenThread (BSD 3-Clause)\nmbedTLS (Apache 2)", "OpenThread (BSD 3-Clause)\nmbedTLS (Apache 2)", "OpenThread (BSD 3-Clause)\nmbedTLS (Apache 2)");
-        dep("Zigbee backend\n(default OFF)", "(core only)\nASH/EZSP in-tree", "Silicon Labs EZSP (libezsp)", "Silicon Labs EZSP (libezsp)");
-        dep("Z-Wave backend\n(default OFF)", "OpenZWave 1.6 (LGPL 2.1)\ndynamically linked", "OpenZWave (LGPL 2.1)", "OpenZWave (LGPL 2.1)");
-        dep("KNX backend\n(default OFF)", "(core only)\nKNXnet/IP over sockets", "(core only)\nKNXnet/IP over sockets", "(core only)\nKNXnet/IP over sockets");
+        header(Tr("Smart Home module"));
+        dep(Tr("Engine, public API,\ndashboard widgets"), "(core only)", "(core only)", "(core only)");
+        dep(Tr("Matter backend\n(default OFF)"), "connectedhomeip (Apache 2)\nmbedTLS (Apache 2)", "connectedhomeip (Apache 2)\nmbedTLS (Apache 2)", "connectedhomeip (Apache 2)\nmbedTLS (Apache 2)");
+        dep(Tr("Thread backend\n(default OFF)"), "OpenThread (BSD 3-Clause)\nmbedTLS (Apache 2)", "OpenThread (BSD 3-Clause)\nmbedTLS (Apache 2)", "OpenThread (BSD 3-Clause)\nmbedTLS (Apache 2)");
+        dep(Tr("Zigbee backend\n(default OFF)"), "(core only)\nASH/EZSP in-tree", "Silicon Labs EZSP (libezsp)", "Silicon Labs EZSP (libezsp)");
+        dep(Tr("Z-Wave backend\n(default OFF)"), "OpenZWave 1.6 (LGPL 2.1)\ndynamically linked", "OpenZWave (LGPL 2.1)", "OpenZWave (LGPL 2.1)");
+        dep(Tr("KNX backend\n(default OFF)"), "(core only)\nKNXnet/IP over sockets", "(core only)\nKNXnet/IP over sockets", "(core only)\nKNXnet/IP over sockets");
 
-        header("Ultra AI module");
-        dep("No additional third party", "(core only)", "(core only)", "(core only)");
+        header(Tr("Ultra AI module"));
+        dep(Tr("No additional third party"), "(core only)", "(core only)", "(core only)");
 
-        header("UltraCloud module");
-        dep("Cloud accounts, uploads and\nshare links (OAuth2 + PKCE)", "(core only)\nvia the UltraNet, UltraDatabase\nand UltraVault siblings", "(core only)\nvia the UltraNet, UltraDatabase\nand UltraVault siblings", "(core only)\nvia the UltraNet, UltraDatabase\nand UltraVault siblings");
-        dep("Provider API JSON\n(via UltraCanvasJSON)", "yyjson (MIT) (bundled)", "yyjson (MIT) (bundled)", "yyjson (MIT) (bundled)");
+        header(Tr("UltraCloud module"));
+        dep(Tr("Cloud accounts, uploads and\nshare links (OAuth2 + PKCE)"), "(core only)\nvia the UltraNet, UltraDatabase\nand UltraVault siblings", "(core only)\nvia the UltraNet, UltraDatabase\nand UltraVault siblings", "(core only)\nvia the UltraNet, UltraDatabase\nand UltraVault siblings");
+        dep(Tr("Provider API JSON\n(via UltraCanvasJSON)"), "yyjson (MIT) (bundled)", "yyjson (MIT) (bundled)", "yyjson (MIT) (bundled)");
 
-        header("UltraCrypt module");
-        dep("Hashing, HMAC, AEAD, key\nderivation, secure random", "libsodium (ISC) (optional —\nUltraCrypt refuses every\noperation without it)", "libsodium (ISC) (optional —\nUltraCrypt refuses every\noperation without it)", "libsodium (ISC) (optional —\nUltraCrypt refuses every\noperation without it)");
+        header(Tr("UltraCrypt module"));
+        dep(Tr("Hashing, HMAC, AEAD, key\nderivation, secure random"), "libsodium (ISC) (optional —\nUltraCrypt refuses every\noperation without it)", "libsodium (ISC) (optional —\nUltraCrypt refuses every\noperation without it)", "libsodium (ISC) (optional —\nUltraCrypt refuses every\noperation without it)");
 
-        header("UltraDatabase module");
-        dep("Embedded SQL engine (Stage 1)", "SQLite (public domain)", "SQLite (public domain)", "SQLite (public domain)");
-        dep("Networked drivers (Stage 2)", "PostgreSQL\nMySQL / MariaDB\n(planned, not yet wired)", "PostgreSQL\nMySQL / MariaDB\n(planned, not yet wired)", "PostgreSQL\nMySQL / MariaDB\n(planned, not yet wired)");
+        header(Tr("UltraDatabase module"));
+        dep(Tr("Embedded SQL engine (Stage 1)"), "SQLite (public domain)", "SQLite (public domain)", "SQLite (public domain)");
+        dep(Tr("Networked drivers (Stage 2)"), "PostgreSQL\nMySQL / MariaDB\n(planned, not yet wired)", "PostgreSQL\nMySQL / MariaDB\n(planned, not yet wired)", "PostgreSQL\nMySQL / MariaDB\n(planned, not yet wired)");
 
-        header("Ultra Net module");
-        dep("Core protocols (HTTP/WS/FTP/TLS/DNS)", "libcurl (curl)\nOpenSSL (Apache 2)", "libcurl (curl)\nOpenSSL (Apache 2)", "libcurl (curl)\nOpenSSL (Apache 2)");
-        dep("Native sockets / platform glue", "POSIX sockets (glibc)", "BSD sockets\nNetwork.framework", "Winsock2 (ws2_32)");
-        dep("Extra protocols (SMTP/MQTT/SSH/gRPC/…)", "plugin-supplied\n(libs tracked separately)", "plugin-supplied\n(libs tracked separately)", "plugin-supplied\n(libs tracked separately)");
-        dep("JMAP mail plug-in (RFC 8620/8621)", "nlohmann/json (MIT) (bundled)", "nlohmann/json (MIT) (bundled)", "nlohmann/json (MIT) (bundled)");
+        header(Tr("Ultra Net module"));
+        dep(Tr("Core protocols (HTTP/WS/FTP/TLS/DNS)"), "libcurl (curl)\nOpenSSL (Apache 2)", "libcurl (curl)\nOpenSSL (Apache 2)", "libcurl (curl)\nOpenSSL (Apache 2)");
+        dep(Tr("Native sockets / platform glue"), "POSIX sockets (glibc)", "BSD sockets\nNetwork.framework", "Winsock2 (ws2_32)");
+        dep(Tr("Extra protocols (SMTP/MQTT/SSH/gRPC/…)"), "plugin-supplied\n(libs tracked separately)", "plugin-supplied\n(libs tracked separately)", "plugin-supplied\n(libs tracked separately)");
+        dep(Tr("JMAP mail plug-in (RFC 8620/8621)"), "nlohmann/json (MIT) (bundled)", "nlohmann/json (MIT) (bundled)", "nlohmann/json (MIT) (bundled)");
 
-        header("UltraVault module");
-        dep("Memory + encrypted-file backends\n(crypto via the UltraCrypt sibling)", "(core only)", "(core only)", "(core only)");
-        dep("Planned native backends", "libsecret (LGPL 2.1)\n(planned)", "Keychain\n(planned)", "Credential Manager\n(planned)");
+        header(Tr("UltraVault module"));
+        dep(Tr("Memory + encrypted-file backends\n(crypto via the UltraCrypt sibling)"), "(core only)", "(core only)", "(core only)");
+        dep(Tr("Planned native backends"), "libsecret (LGPL 2.1)\n(planned)", "Keychain\n(planned)", "Credential Manager\n(planned)");
 
-        header("UltraWin module (Linux / ULTRA OS only)");
-        dep("Windows-app compatibility\n(Wine tier)", "Wine (LGPL 2.1) (optional,\nruntime only — spawned as a\nchild process, never linked)", "– (module not built)", "– (module not built)");
-        dep("Component installer (VC++\nruntimes, fonts, .NET, DXVK)", "winetricks (LGPL 2.1)\n(optional, runtime only)", "– (module not built)", "– (module not built)");
-        dep("VM tier: Windows guest (Stage 2)", "QEMU (GPL 2) (optional,\nruntime only; KVM through\nthe host kernel)", "– (module not built)", "– (module not built)");
-        dep("VM tier: QMP control JSON", "yyjson (MIT) (bundled)", "– (module not built)", "– (module not built)");
-        dep("VM tier: RemoteApp client", "FreeRDP (Apache 2)\n(optional, linked)", "– (module not built)", "– (module not built)");
+        header(Tr("UltraWin module (Linux / ULTRA OS only)"));
+        dep(Tr("Windows-app compatibility\n(Wine tier)"), "Wine (LGPL 2.1) (optional,\nruntime only — spawned as a\nchild process, never linked)", "– (module not built)", "– (module not built)");
+        dep(Tr("Component installer (VC++\nruntimes, fonts, .NET, DXVK)"), "winetricks (LGPL 2.1)\n(optional, runtime only)", "– (module not built)", "– (module not built)");
+        dep(Tr("VM tier: Windows guest (Stage 2)"), "QEMU (GPL 2) (optional,\nruntime only; KVM through\nthe host kernel)", "– (module not built)", "– (module not built)");
+        dep(Tr("VM tier: QMP control JSON"), "yyjson (MIT) (bundled)", "– (module not built)", "– (module not built)");
+        dep(Tr("VM tier: RemoteApp client"), "FreeRDP (Apache 2)\n(optional, linked)", "– (module not built)", "– (module not built)");
 
-        header("VideoFX module");
-        dep("Probe, effects, encode, mux", "FFmpeg (LGPL 2.1) (optional)\n(GPL when built --enable-gpl)",
+        header(Tr("VideoFX module"));
+        dep(Tr("Probe, effects, encode, mux"), "FFmpeg (LGPL 2.1) (optional)\n(GPL when built --enable-gpl)",
             "FFmpeg (LGPL 2.1) (optional)", "FFmpeg (LGPL 2.1) (optional)");
 
-        header("VirtualFS module");
-        dep("Archive formats", "libarchive (BSD 2)", "libarchive (BSD 2)", "libarchive (BSD 2)");
-        dep("Compression", "zlib (zlib)\nlibzstd (BSD 3) (optional)\nliblz4 (BSD 2) (optional)\n(VIRTUALFS_USE_*, default OFF)", "zlib (zlib)\nlibzstd (BSD 3) (optional)\nliblz4 (BSD 2) (optional)\n(VIRTUALFS_USE_*, default OFF)", "zlib (zlib)\nlibzstd (BSD 3) (optional)\nliblz4 (BSD 2) (optional)\n(VIRTUALFS_USE_*, default OFF)");
-        dep("Planned providers (CHM/LIT, WIM, Brotli)", "libmspack (LGPL 2.1)\nwimlib (LGPL 3)\nlibbrotli (MIT)\n(not yet wired)", "libmspack (LGPL 2.1)\nwimlib (LGPL 3)\nlibbrotli (MIT)\n(not yet wired)", "libmspack (LGPL 2.1)\nwimlib (LGPL 3)\nlibbrotli (MIT)\n(not yet wired)");
+        header(Tr("VirtualFS module"));
+        dep(Tr("Archive formats"), "libarchive (BSD 2)", "libarchive (BSD 2)", "libarchive (BSD 2)");
+        dep(Tr("Compression"), "zlib (zlib)\nlibzstd (BSD 3) (optional)\nliblz4 (BSD 2) (optional)\n(VIRTUALFS_USE_*, default OFF)", "zlib (zlib)\nlibzstd (BSD 3) (optional)\nliblz4 (BSD 2) (optional)\n(VIRTUALFS_USE_*, default OFF)", "zlib (zlib)\nlibzstd (BSD 3) (optional)\nliblz4 (BSD 2) (optional)\n(VIRTUALFS_USE_*, default OFF)");
+        dep(Tr("Planned providers (CHM/LIT, WIM, Brotli)"), "libmspack (LGPL 2.1)\nwimlib (LGPL 3)\nlibbrotli (MIT)\n(not yet wired)", "libmspack (LGPL 2.1)\nwimlib (LGPL 3)\nlibbrotli (MIT)\n(not yet wired)", "libmspack (LGPL 2.1)\nwimlib (LGPL 3)\nlibbrotli (MIT)\n(not yet wired)");
 
-        header("WasmHost module");
-        dep("WebAssembly engine", "wasmtime (Apache 2)\n(prebuilt C API, downloaded)",
+        header(Tr("WasmHost module"));
+        dep(Tr("WebAssembly engine"), "wasmtime (Apache 2)\n(prebuilt C API, downloaded)",
             "wasmtime (Apache 2)\n(opt-in)", "wasmtime (Apache 2)\n(opt-in; none for CLANG64)");
 
         // ============================================================
@@ -790,17 +787,17 @@ namespace UltraCanvas {
             linkMenu->Clear();
             linkMenu->AddItem(MenuItemData::Header(lib->name));
             linkMenu->AddItem(MenuItemData::Action(
-                "Website — " + ShortenUrlForDisplay(website), DemoIconPath("menu/globe.svg"),
+                TrF("Website — {0}", ShortenUrlForDisplay(website)), DemoIconPath("menu/globe.svg"),
                 [website]() { OpenURL(website); }));
             linkMenu->AddItem(MenuItemData::Action(
-                "Source code — " + ShortenUrlForDisplay(repo), DemoIconPath("menu/code.svg"),
+                TrF("Source code — {0}", ShortenUrlForDisplay(repo)), DemoIconPath("menu/code.svg"),
                 [repo]() { OpenURL(repo); }));
             if (lib->license && *lib->license) {
                 if (const DepLicense* lic = FindDepLicense(lib->license)) {
                     std::string licUrl = lic->url;
                     linkMenu->AddItem(MenuItemData::Separator());
                     linkMenu->AddItem(MenuItemData::Action(
-                        std::string("License — ") + lic->fullName, DemoIconPath("menu/file-icons.svg"),
+                        TrF("License — {0}", lic->fullName), DemoIconPath("menu/file-icons.svg"),
                         [licUrl]() { OpenURL(licUrl); }));
                 }
             }

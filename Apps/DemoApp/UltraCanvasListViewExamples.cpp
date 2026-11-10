@@ -122,13 +122,13 @@ namespace UltraCanvas {
                 switch (column) {
                     // 925 px in all: the 960 px list less its borders and
                     // the scrollbar that "Add 1,000 domains" brings in.
-                    case ColDomain:   return {"Domain", 265, TextAlignment::Left, "Click a domain to open it in the browser"};
-                    case ColStatus:   return {"Status", 95, TextAlignment::Left};
-                    case ColInsights: return {"Security insights", 135, TextAlignment::Left};
-                    case ColTrend:    return {"Unique visitors", 210, TextAlignment::Left, "The last 20 days; sorted by growth"};
-                    case ColVisitors: return {"Visitors", 95, TextAlignment::Right};
-                    case ColPlan:     return {"Plan", 75, TextAlignment::Left};
-                    case ColMenu:     return {"", 50, TextAlignment::Center, "More actions"};
+                    case ColDomain:   return {Tr("Domain"), 265, TextAlignment::Left, Tr("Click a domain to open it in the browser")};
+                    case ColStatus:   return {Tr("Status"), 95, TextAlignment::Left};
+                    case ColInsights: return {Tr("Security insights"), 135, TextAlignment::Left};
+                    case ColTrend:    return {Tr("Unique visitors"), 210, TextAlignment::Left, Tr("The last 20 days; sorted by growth")};
+                    case ColVisitors: return {Tr("Visitors"), 95, TextAlignment::Right};
+                    case ColPlan:     return {Tr("Plan"), 75, TextAlignment::Left};
+                    case ColMenu:     return {"", 50, TextAlignment::Center, Tr("More actions")};
                     default:          return {"", 100};
                 }
             }
@@ -142,25 +142,25 @@ namespace UltraCanvas {
                         // The tick and the cross before these, and the menu's three
                         // dots, are drawn by DomainRowDelegate: "✓", "✕" and "⋮"
                         // are not in the bundled UI font.
-                        case ColStatus:   return std::string(r.active ? "Active" : "Inactive");
-                        case ColInsights: return std::string(r.insightsEnabled ? "Enabled" : "Enable");
+                        case ColStatus:   return r.active ? Tr("Active") : Tr("Inactive");
+                        case ColInsights: return r.insightsEnabled ? Tr("Enabled") : Tr("Enable");
                         case ColVisitors: return FormatVisitors(r.visitors);
-                        case ColPlan:     return r.plan;
-                        case ColMenu:     return std::string("More actions");
+                        case ColPlan:     return r.plan == "Pro" ? Tr("Pro") : Tr("Free");   // r.plan is the key
+                        case ColMenu:     return Tr("More actions");
                         default:          return {};
                     }
                 }
                 if (role == ListDataRole::ToolTipRole) {
                     switch (index.column) {
-                        case ColDomain:   return "Open https://" + r.domain;
-                        case ColInsights: return r.insightsEnabled ? std::string("Security insights are on")
-                                                                   : "Turn on security insights for " + r.domain;
+                        case ColDomain:   return TrF("Open {0}", "https://" + r.domain);
+                        case ColInsights: return r.insightsEnabled ? Tr("Security insights are on")
+                                                                   : TrF("Turn on security insights for {0}", r.domain);
                         case ColTrend: {
                             const auto [lo, hi] = std::minmax_element(r.history.begin(), r.history.end());
-                            return "Last 20 days: low " + FormatVisitors(static_cast<int>(*lo)) +
-                                   ", high " + FormatVisitors(static_cast<int>(*hi));
+                            return TrF("Last 20 days: low {0}, high {1}", FormatVisitors(static_cast<int>(*lo)),
+                                      FormatVisitors(static_cast<int>(*hi)));
                         }
-                        case ColMenu:     return std::string("More actions for ") + r.domain;
+                        case ColMenu:     return TrF("More actions for {0}", r.domain);
                         default:          return {};
                     }
                 }
@@ -294,7 +294,7 @@ namespace UltraCanvas {
                 const DomainRecord& r = model.rows[static_cast<size_t>(row)];
                 if (column == ColMenu) return true;
                 if (column != ColDomain && !(column == ColInsights && !r.insightsEnabled)) return false;
-                const std::string text = column == ColDomain ? r.domain : std::string("Enable");
+                const std::string text = column == ColDomain ? r.domain : Tr("Enable");   // as GetData shows it
                 const auto it = textWidth.find(text);
                 const int width = it != textWidth.end() ? it->second : 0;
                 return inCell.x >= kCellPadding - 2 && inCell.x <= kCellPadding + width + 2 &&
@@ -403,33 +403,34 @@ namespace UltraCanvas {
                 };
                 menu = std::make_shared<UltraCanvasMenu>("DomainRowMenu", 0, 0, 220, 0);
                 menu->SetMenuType(MenuType::PopupMenu);
-                menu->AddItem(MenuItemData::Action("Open website", [this, domain]() {
+                menu->AddItem(MenuItemData::Action(Tr("Open website"), [this, domain]() {
                     OpenURL("https://" + domain);
-                    Say("Opened https://" + domain);
+                    Say(TrF("Opened {0}", "https://" + domain));
                 }));
                 menu->AddItem(MenuItemData::Separator());
-                menu->AddItem(MenuItemData::Action(r.active ? "Deactivate" : "Activate", [edit]() {
+                menu->AddItem(MenuItemData::Action(r.active ? Tr("Deactivate") : Tr("Activate"), [edit]() {
                     edit([](DomainRecord& d) {
                         d.active = !d.active;
-                        return d.domain + (d.active ? " is active again" : " is deactivated");
+                        return d.active ? TrF("{0} is active again", d.domain) : TrF("{0} is deactivated", d.domain);
                     });
                 }));
-                menu->AddItem(MenuItemData::Action(r.plan == "Pro" ? "Change to the Free plan" : "Upgrade to the Pro plan",
+                menu->AddItem(MenuItemData::Action(r.plan == "Pro" ? Tr("Change to the Free plan") : Tr("Upgrade to the Pro plan"),
                                                    [edit]() {
                     edit([](DomainRecord& d) {
                         d.plan = d.plan == "Pro" ? "Free" : "Pro";
-                        return d.domain + " is on the " + d.plan + " plan";
+                        return d.plan == "Pro" ? TrF("{0} is on the Pro plan", d.domain) : TrF("{0} is on the Free plan", d.domain);
                     });
                 }));
                 menu->AddItem(MenuItemData::Separator());
-                menu->AddItem(MenuItemData::Action("Remove", [this, domain]() {
+                menu->AddItem(MenuItemData::Action(Tr("Remove"), [this, domain]() {
                     const int at = model->FindRow(domain);
                     if (at < 0) return;
                     const std::string selected = SelectedDomain();
                     model->rows.erase(model->rows.begin() + at);
                     model->Changed();
                     Reselect(selected == domain ? std::string() : selected);
-                    Say("Removed " + domain + " - " + std::to_string(model->GetRowCount()) + " domains");
+                    Say(LocalisationDetail::Substitute(TrN("Removed {0} - {n} domain", "Removed {0} - {n} domains",
+                                                           model->GetRowCount()), {domain}));
                 }));
                 PopupElementSettings settings;
                 menu->OpenMenu(at, *list->GetWindow(), settings);
@@ -487,7 +488,7 @@ namespace UltraCanvas {
             // long message; the button is as wide as its text.
             auto statusRow = DemoKit::AddRow(section, "DashboardStatusRow", 10);
             auto status = DemoKit::CreateText("DashboardStatus",
-                    std::to_string(state->model->GetRowCount()) + " domains");
+                    TrN("{n} domain", "{n} domains", state->model->GetRowCount()));
             status->SetFontSize(11);
             status->SetBackgroundColor(Colors::White);
             status->SetBorders(1.0f);
@@ -500,7 +501,7 @@ namespace UltraCanvas {
             DemoKit::Add(statusRow, status, 1);
             status->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
 
-            auto addMany = CreateButton("DashboardAddMany", 0, 0, 0, 30, "Add 1,000 domains");
+            auto addMany = CreateButton("DashboardAddMany", 0, 0, 0, 30, Tr("Add 1,000 domains"));
             CSSLayout::BoxConstraints addManyLimits;
             addManyLimits.minWidth = CSSLayout::Dimension::Px(190);
             addMany->boxConstraints = addManyLimits;
@@ -517,8 +518,9 @@ namespace UltraCanvas {
                 if (state->sortColumn >= 0) state->model->SortBy(state->sortColumn, state->sortAscending);
                 else state->model->Changed();
                 state->Reselect(selected);
-                state->Say(std::to_string(state->model->GetRowCount()) +
-                           " domains - only the rows on screen are painted, so scrolling stays smooth");
+                state->Say(TrN("{n} domain - only the rows on screen are painted, so scrolling stays smooth",
+                               "{n} domains - only the rows on screen are painted, so scrolling stays smooth",
+                               state->model->GetRowCount()));
             });
             DemoKit::Add(statusRow, addMany);
 
@@ -540,11 +542,11 @@ namespace UltraCanvas {
                 DomainRecord& r = state->model->rows[static_cast<size_t>(row)];
                 if (column == ColDomain) {
                     OpenURL("https://" + r.domain);
-                    state->Say("Opened https://" + r.domain);
+                    state->Say(TrF("Opened {0}", "https://" + r.domain));
                 } else if (column == ColInsights) {
                     r.insightsEnabled = true;
                     state->model->RowChanged(row);
-                    state->Say("Security insights are on for " + r.domain);
+                    state->Say(TrF("Security insights are on for {0}", r.domain));
                 } else if (column == ColMenu) {
                     state->OpenRowMenu(r.domain, UltraCanvasApplication::GetInstance()->GetCurrentEvent().pointerWindow);
                 }
@@ -596,16 +598,16 @@ namespace UltraCanvas {
         auto section1 = DemoKit::AddCard(topRow, "LVSection1", Tr("1. Simple List (Single Selection)"));
 
         auto simpleModel = std::make_shared<UltraCanvasSimpleListModel>();
-        simpleModel->AddItem(ListItem("Apple", "", "A common red fruit"));
-        simpleModel->AddItem(ListItem("Banana", "", "A yellow tropical fruit"));
-        simpleModel->AddItem(ListItem("Cherry", "", "Small red stone fruit"));
-        simpleModel->AddItem(ListItem("Date", "", "Sweet desert fruit"));
-        simpleModel->AddItem(ListItem("Elderberry", "", "Small dark purple berry"));
-        simpleModel->AddItem(ListItem("Fig", "", "Soft pear-shaped fruit"));
-        simpleModel->AddItem(ListItem("Grape", "", "Small round berry"));
-        simpleModel->AddItem(ListItem("Honeydew", "", "Green melon variety"));
-        simpleModel->AddItem(ListItem("Kiwi", "", "Brown fuzzy fruit"));
-        simpleModel->AddItem(ListItem("Lemon", "", "Yellow citrus fruit"));
+        simpleModel->AddItem(ListItem(Tr("Apple"), "", Tr("A common red fruit")));
+        simpleModel->AddItem(ListItem(Tr("Banana"), "", Tr("A yellow tropical fruit")));
+        simpleModel->AddItem(ListItem(Tr("Cherry"), "", Tr("Small red stone fruit")));
+        simpleModel->AddItem(ListItem(Tr("Date"), "", Tr("Sweet desert fruit")));
+        simpleModel->AddItem(ListItem(Tr("Elderberry"), "", Tr("Small dark purple berry")));
+        simpleModel->AddItem(ListItem(Tr("Fig"), "", Tr("Soft pear-shaped fruit")));
+        simpleModel->AddItem(ListItem(Tr("Grape"), "", Tr("Small round berry")));
+        simpleModel->AddItem(ListItem(Tr("Honeydew"), "", Tr("Green melon variety")));
+        simpleModel->AddItem(ListItem(Tr("Kiwi"), "", Tr("Brown fuzzy fruit")));
+        simpleModel->AddItem(ListItem(Tr("Lemon"), "", Tr("Yellow citrus fruit")));
 
         auto simpleList = std::make_shared<UltraCanvasListView>("SimpleListView", 0, 0, 460, 225);
         simpleList->SetModel(simpleModel);
@@ -613,12 +615,11 @@ namespace UltraCanvas {
 
         simpleList->onItemClicked = [statusLabel, simpleModel](int row) {
             const auto& item = simpleModel->GetItem(row);
-            statusLabel->SetText("Simple List: Clicked row " + std::to_string(row) +
-                                 "\nItem: " + item.label +
-                                 "\nTooltip: " + item.tooltip);
+            statusLabel->SetText(TrF("Simple List: Clicked row {0}\nItem: {1}\nTooltip: {2}",
+                                     row, item.label, item.tooltip));
         };
         simpleList->onItemDoubleClicked = [statusLabel, simpleModel](int row) {
-            statusLabel->SetText("Simple List: Double-clicked '" + simpleModel->GetItem(row).label + "'");
+            statusLabel->SetText(TrF("Simple List: Double-clicked '{0}'", simpleModel->GetItem(row).label));
         };
 
         DemoKit::AddStretched(section1, simpleList);
@@ -634,14 +635,14 @@ namespace UltraCanvas {
         auto multiModel = std::make_shared<UltraCanvasMultiColumnListModel>();
         // The 4th ListColumnDef argument is the header tooltip, shown when the
         // pointer rests on that column's header cell.
-        multiModel->AddColumn(ListColumnDef("File Name", 170, TextAlignment::Left,
-                                            "Name of the file on disk — click to sort"));
-        multiModel->AddColumn(ListColumnDef("Type", 90, TextAlignment::Left,
-                                            "File type, derived from the extension — click to sort"));
-        multiModel->AddColumn(ListColumnDef("Size", 70, TextAlignment::Right,
-                                            "Size on disk, rounded to one decimal — click to sort"));
-        multiModel->AddColumn(ListColumnDef("Modified", 110, TextAlignment::Left,
-                                            "Date of the last write, YYYY-MM-DD — click to sort"));
+        multiModel->AddColumn(ListColumnDef(Tr("File Name"), 170, TextAlignment::Left,
+                                            Tr("Name of the file on disk — click to sort")));
+        multiModel->AddColumn(ListColumnDef(Tr("Type"), 90, TextAlignment::Left,
+                                            Tr("File type, derived from the extension — click to sort")));
+        multiModel->AddColumn(ListColumnDef(Tr("Size"), 70, TextAlignment::Right,
+                                            Tr("Size on disk, rounded to one decimal — click to sort")));
+        multiModel->AddColumn(ListColumnDef(Tr("Modified"), 110, TextAlignment::Left,
+                                            Tr("Date of the last write, YYYY-MM-DD — click to sort")));
 
         // Rows carry both a row-wide tooltip and per-column tooltips: hovering
         // a cell shows that column's text, and any column left without one
@@ -654,22 +655,22 @@ namespace UltraCanvas {
             std::string modifiedTip;
         };
         const std::vector<FileRow> fileRows = {
-            {{"main.cpp", "C++ Source", "2.4 KB", "2025-03-15"}, "src/main.cpp",
-             "C++ translation unit, compiled by the build", "2,458 bytes", "15 Mar 2025, 09:14"},
-            {{"utils.h", "C++ Header", "1.1 KB", "2025-03-14"}, "src/utils.h",
-             "C++ header, included by other units", "1,132 bytes", "14 Mar 2025, 17:02"},
+            {{"main.cpp", Tr("C++ Source"), "2.4 KB", "2025-03-15"}, "src/main.cpp",
+             Tr("C++ translation unit, compiled by the build"), Tr("2,458 bytes"), Tr("15 Mar 2025, 09:14")},
+            {{"utils.h", Tr("C++ Header"), "1.1 KB", "2025-03-14"}, "src/utils.h",
+             Tr("C++ header, included by other units"), Tr("1,132 bytes"), Tr("14 Mar 2025, 17:02")},
             {{"README.md", "Markdown", "3.8 KB", "2025-03-10"}, "README.md",
-             "Markdown document", "3,890 bytes", "10 Mar 2025, 11:47"},
-            {{"Makefile", "Build Script", "0.9 KB", "2025-02-28"}, "Makefile",
-             "Build script, run by make", "921 bytes", "28 Feb 2025, 08:30"},
+             Tr("Markdown document"), Tr("3,890 bytes"), Tr("10 Mar 2025, 11:47")},
+            {{"Makefile", Tr("Build Script"), "0.9 KB", "2025-02-28"}, "Makefile",
+             Tr("Build script, run by make"), Tr("921 bytes"), Tr("28 Feb 2025, 08:30")},
             {{"config.json", "JSON", "0.5 KB", "2025-03-01"}, "etc/config.json",
-             "JSON configuration data", "512 bytes", "1 Mar 2025, 22:05"},
-            {{"test_main.cpp", "C++ Source", "4.2 KB", "2025-03-12"}, "tests/test_main.cpp",
-             "C++ translation unit, compiled by the build", "4,301 bytes", "12 Mar 2025, 13:20"},
-            {{"logo.png", "PNG Image", "45.6 KB", "2025-01-20"}, "media/logo.png",
-             "PNG bitmap image", "46,694 bytes", "20 Jan 2025, 16:58"},
+             Tr("JSON configuration data"), Tr("512 bytes"), Tr("1 Mar 2025, 22:05")},
+            {{"test_main.cpp", Tr("C++ Source"), "4.2 KB", "2025-03-12"}, "tests/test_main.cpp",
+             Tr("C++ translation unit, compiled by the build"), Tr("4,301 bytes"), Tr("12 Mar 2025, 13:20")},
+            {{"logo.png", Tr("PNG Image"), "45.6 KB", "2025-01-20"}, "media/logo.png",
+             Tr("PNG bitmap image"), Tr("46,694 bytes"), Tr("20 Jan 2025, 16:58")},
             {{"CHANGELOG.md", "Markdown", "12.3 KB", "2025-03-15"}, "Docs/UltraCanvas/CHANGELOG.md",
-             "Markdown document", "12,595 bytes", "15 Mar 2025, 09:41"},
+             Tr("Markdown document"), Tr("12,595 bytes"), Tr("15 Mar 2025, 09:41")},
         };
         for (const auto& row : fileRows) {
             MultiColumnListItem item(row.cells);
@@ -722,12 +723,10 @@ namespace UltraCanvas {
             const int sourceRow = multiProxy->MapToSource(row);
             if (sourceRow < 0) return;
             const auto& item = multiModel->GetItem(sourceRow);
-            statusLabel->SetText("Multi-Column: Clicked row " + std::to_string(row) +
-                                 " (model row " + std::to_string(sourceRow) + ")" +
-                                 ", column " + std::to_string(column) +
-                                 " (" + multiModel->GetColumnDef(column).title + ")" +
-                                 "\nFile: " + item.labels[0] +
-                                 "\nCell tooltip: " + item.GetCellTooltip(column));
+            statusLabel->SetText(TrF("Multi-Column: Clicked row {0} (model row {1}), column {2} ({3})"
+                                     "\nFile: {4}\nCell tooltip: {5}",
+                                     row, sourceRow, column, multiModel->GetColumnDef(column).title,
+                                     item.labels[0], item.GetCellTooltip(column)));
         };
         multiList->onSelectionChanged = [statusLabel, multiModel, multiProxy](const std::vector<int>& rows) {
             std::string names;
@@ -737,8 +736,10 @@ namespace UltraCanvas {
                 if (!names.empty()) names += ", ";
                 names += multiModel->GetItem(sourceRow).labels[0];
             }
-            statusLabel->SetText("Multi-Column: " + std::to_string(rows.size()) +
-                                 " items selected\nFiles: " + names);
+            statusLabel->SetText(LocalisationDetail::Substitute(
+                TrN("Multi-Column: {n} item selected\nFiles: {0}",
+                    "Multi-Column: {n} items selected\nFiles: {0}", static_cast<long long>(rows.size())),
+                {names}));
         };
 
         // Sorting can be switched on and off. While it is on, clicking a header
@@ -747,7 +748,7 @@ namespace UltraCanvas {
         // SetSortIndicator. Switching it off restores the model's own order.
         // As wide as its text, above the list.
         auto sortCheckbox = std::make_shared<UltraCanvasCheckbox>("MultiColSortable", 0, 0, 0, 24,
-                                                                  "Sortable columns");
+                                                                  Tr("Sortable columns"));
         sortCheckbox->SetChecked(true);
         DemoKit::AddFixed(section2, sortCheckbox);
 
@@ -762,21 +763,23 @@ namespace UltraCanvas {
             multiProxy->SortByColumn(column, ascending ? ListSortOrder::Ascending
                                                        : ListSortOrder::Descending);
             view->SetSortIndicator(column, ascending);
-            statusLabel->SetText("Multi-Column: sorted by " + multiModel->GetColumnDef(column).title +
-                                 (ascending ? " (ascending)" : " (descending)") +
-                                 "\nClick the header again to reverse the order.");
+            statusLabel->SetText(ascending
+                ? TrF("Multi-Column: sorted by {0} (ascending)\nClick the header again to reverse the order.",
+                      multiModel->GetColumnDef(column).title)
+                : TrF("Multi-Column: sorted by {0} (descending)\nClick the header again to reverse the order.",
+                      multiModel->GetColumnDef(column).title));
         };
         sortCheckbox->onStateChanged = [multiListWeak, multiProxy, statusLabel](CheckedState, CheckedState newState) {
             auto view = multiListWeak.lock();
             if (!view) return;
             if (newState == CheckedState::Checked) {
-                statusLabel->SetText("Multi-Column: sorting on\nClick a column header to sort by it.");
+                statusLabel->SetText(Tr("Multi-Column: sorting on\nClick a column header to sort by it."));
                 return;
             }
             view->ResetSelection();
             multiProxy->ClearSort();
             view->ClearSortIndicator();
-            statusLabel->SetText("Multi-Column: sorting off\nRows are back in model order.");
+            statusLabel->SetText(Tr("Multi-Column: sorting off\nRows are back in model order."));
         };
 
         DemoKit::AddStretched(section2, multiList);
@@ -792,18 +795,18 @@ namespace UltraCanvas {
 
         // ListItem's third argument is the tooltip (ToolTipRole), shown on hover
         auto styledModel = std::make_shared<UltraCanvasSimpleListModel>();
-        styledModel->AddItem(ListItem("Crimson Red", "", "#DC143C — rgb(220, 20, 60)"));
-        styledModel->AddItem(ListItem("Sunset Orange", "", "#FD5E53 — rgb(253, 94, 83)"));
-        styledModel->AddItem(ListItem("Golden Yellow", "", "#FFDF00 — rgb(255, 223, 0)"));
-        styledModel->AddItem(ListItem("Lime Green", "", "#32CD32 — rgb(50, 205, 50)"));
-        styledModel->AddItem(ListItem("Forest Green", "", "#228B22 — rgb(34, 139, 34)"));
-        styledModel->AddItem(ListItem("Sky Blue", "", "#87CEEB — rgb(135, 206, 235)"));
-        styledModel->AddItem(ListItem("Royal Purple", "", "#7851A9 — rgb(120, 81, 169)"));
-        styledModel->AddItem(ListItem("Hot Pink", "", "#FF69B4 — rgb(255, 105, 180)"));
-        styledModel->AddItem(ListItem("Chocolate Brown", "", "#7B3F00 — rgb(123, 63, 0)"));
-        styledModel->AddItem(ListItem("Silver Gray", "", "#C0C0C0 — rgb(192, 192, 192)"));
-        styledModel->AddItem(ListItem("Midnight Black", "", "#000000 — rgb(0, 0, 0)"));
-        styledModel->AddItem(ListItem("Pearl White", "", "#EAE0C8 — rgb(234, 224, 200)"));
+        styledModel->AddItem(ListItem(Tr("Crimson Red"), "", "#DC143C — rgb(220, 20, 60)"));
+        styledModel->AddItem(ListItem(Tr("Sunset Orange"), "", "#FD5E53 — rgb(253, 94, 83)"));
+        styledModel->AddItem(ListItem(Tr("Golden Yellow"), "", "#FFDF00 — rgb(255, 223, 0)"));
+        styledModel->AddItem(ListItem(Tr("Lime Green"), "", "#32CD32 — rgb(50, 205, 50)"));
+        styledModel->AddItem(ListItem(Tr("Forest Green"), "", "#228B22 — rgb(34, 139, 34)"));
+        styledModel->AddItem(ListItem(Tr("Sky Blue"), "", "#87CEEB — rgb(135, 206, 235)"));
+        styledModel->AddItem(ListItem(Tr("Royal Purple"), "", "#7851A9 — rgb(120, 81, 169)"));
+        styledModel->AddItem(ListItem(Tr("Hot Pink"), "", "#FF69B4 — rgb(255, 105, 180)"));
+        styledModel->AddItem(ListItem(Tr("Chocolate Brown"), "", "#7B3F00 — rgb(123, 63, 0)"));
+        styledModel->AddItem(ListItem(Tr("Silver Gray"), "", "#C0C0C0 — rgb(192, 192, 192)"));
+        styledModel->AddItem(ListItem(Tr("Midnight Black"), "", "#000000 — rgb(0, 0, 0)"));
+        styledModel->AddItem(ListItem(Tr("Pearl White"), "", "#EAE0C8 — rgb(234, 224, 200)"));
 
         auto styledList = std::make_shared<UltraCanvasListView>("StyledListView", 0, 0, 460, 160);
         styledList->SetModel(styledModel);
@@ -832,8 +835,10 @@ namespace UltraCanvas {
                 if (i > 0) names += ", ";
                 names += styledModel->GetItem(rows[i]).label;
             }
-            statusLabel->SetText("Styled List: " + std::to_string(rows.size()) +
-                                 " items selected\nSelected: " + names);
+            statusLabel->SetText(LocalisationDetail::Substitute(
+                TrN("Styled List: {n} item selected\nSelected: {0}",
+                    "Styled List: {n} items selected\nSelected: {0}", static_cast<long long>(rows.size())),
+                {names}));
         };
 
         DemoKit::AddStretched(section3, styledList);
@@ -849,14 +854,14 @@ namespace UltraCanvas {
         std::string iconsDir = NormalizePath(GetResourcesDir() + "media/icons/");
 
         auto iconModel = std::make_shared<UltraCanvasSimpleListModel>();
-        iconModel->AddItem(ListItem("C++", iconsDir + "cpp.png", "Systems programming language"));
-        iconModel->AddItem(ListItem("Python", iconsDir + "python.png", "General-purpose scripting language"));
-        iconModel->AddItem(ListItem("Java", iconsDir + "java.png", "Enterprise application language"));
-        iconModel->AddItem(ListItem("JavaScript", iconsDir + "javascript.png", "Web scripting language"));
-        iconModel->AddItem(ListItem("TypeScript", iconsDir + "typescript.png", "Typed JavaScript superset"));
-        iconModel->AddItem(ListItem("Rust", iconsDir + "rust.png", "Memory-safe systems language"));
-        iconModel->AddItem(ListItem("C#", iconsDir + "csharp.png", "Microsoft .NET language"));
-        iconModel->AddItem(ListItem("Go", iconsDir + "go.png", "Google systems language"));
+        iconModel->AddItem(ListItem("C++", iconsDir + "cpp.png", Tr("Systems programming language")));
+        iconModel->AddItem(ListItem("Python", iconsDir + "python.png", Tr("General-purpose scripting language")));
+        iconModel->AddItem(ListItem("Java", iconsDir + "java.png", Tr("Enterprise application language")));
+        iconModel->AddItem(ListItem("JavaScript", iconsDir + "javascript.png", Tr("Web scripting language")));
+        iconModel->AddItem(ListItem("TypeScript", iconsDir + "typescript.png", Tr("Typed JavaScript superset")));
+        iconModel->AddItem(ListItem("Rust", iconsDir + "rust.png", Tr("Memory-safe systems language")));
+        iconModel->AddItem(ListItem("C#", iconsDir + "csharp.png", Tr("Microsoft .NET language")));
+        iconModel->AddItem(ListItem("Go", iconsDir + "go.png", Tr("Google systems language")));
 
         auto iconList = std::make_shared<UltraCanvasListView>("IconListView", 0, 0, 480, 160);
         iconList->SetModel(iconModel);
@@ -872,12 +877,11 @@ namespace UltraCanvas {
 
         iconList->onItemClicked = [statusLabel, iconModel](int row) {
             const auto& item = iconModel->GetItem(row);
-            statusLabel->SetText("Icon List: Selected '" + item.label + "'" +
-                                 "\nTooltip: " + item.tooltip);
+            statusLabel->SetText(TrF("Icon List: Selected '{0}'\nTooltip: {1}", item.label, item.tooltip));
         };
         iconList->onItemDoubleClicked = [statusLabel, iconModel](int row) {
-            statusLabel->SetText("Icon List: Activated '" + iconModel->GetItem(row).label + "'" +
-                                 "\n(Double-click action would open details)");
+            statusLabel->SetText(TrF("Icon List: Activated '{0}'\n(Double-click action would open details)",
+                                     iconModel->GetItem(row).label));
         };
 
         DemoKit::AddStretched(section4, iconList);

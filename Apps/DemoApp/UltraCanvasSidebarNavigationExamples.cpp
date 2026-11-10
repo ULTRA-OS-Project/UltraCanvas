@@ -28,23 +28,23 @@ namespace UltraCanvas {
         frame->SetBorders(1.0f, Color(224, 227, 235, 255), 6.0f);
 
         auto nav = CreateSidebarNavigation("SnNav");
-        nav->AddItem("discover", "Discover", "media/icons/face-awesome.svg");
-        nav->AddItem("categories", "Categories", "media/icons/chart.svg");
-        const int library = nav->AddSection("Library");
-        nav->AddItem(library, "installed", "Installed", "media/icons/clipboard-list.svg");
-        nav->AddItem(library, "updates", "Updates", "media/icons/bell-icon.svg");
-        nav->AddItem(library, "downloads", "Downloads", "media/icons/folder-download.svg");
-        const int more = nav->AddSection("More");
-        nav->AddItem(more, "mail", "Mail", "media/icons/envelope.svg");
-        nav->AddItem(more, "settings", "Settings", "media/icons/copy.svg");
-        nav->AddItem(more, "beta", "Beta programme", "media/icons/add-document.svg");
+        nav->AddItem("discover", Tr("Discover"), "media/icons/face-awesome.svg");
+        nav->AddItem("categories", Tr("Categories"), "media/icons/chart.svg");
+        const int library = nav->AddSection(Tr("Library"));
+        nav->AddItem(library, "installed", Tr("Installed"), "media/icons/clipboard-list.svg");
+        nav->AddItem(library, "updates", Tr("Updates"), "media/icons/bell-icon.svg");
+        nav->AddItem(library, "downloads", Tr("Downloads"), "media/icons/folder-download.svg");
+        const int more = nav->AddSection(Tr("More"));
+        nav->AddItem(more, "mail", Tr("Mail"), "media/icons/envelope.svg");
+        nav->AddItem(more, "settings", Tr("Settings"), "media/icons/copy.svg");
+        nav->AddItem(more, "beta", Tr("Beta programme"), "media/icons/add-document.svg");
         nav->SetItemEnabled("beta", false);
         nav->SetBadge("updates", 3);
         nav->SetBadgeText("downloads", "2");
         nav->layoutItem.SetFlexShrink(0);
         frame->AddChild(nav);
 
-        auto pageArea = CreateLabel("SnPage", 0, 0, 0, 0, "Discover");
+        auto pageArea = CreateLabel("SnPage", 0, 0, 0, 0, Tr("Discover"));
         pageArea->SetAlignment(TextAlignment::Center, VerticalAlignment::Middle);
         pageArea->SetFont("", 20.0f, FontWeight::Bold);
         pageArea->layoutItem.SetFlexGrow(1);
@@ -53,12 +53,12 @@ namespace UltraCanvas {
         nav->Select("discover", false);
         nav->onSelectionChanged = [pageArea, n = nav.get()](const std::string& id) {
             const SidebarItem* item = n->FindItem(id);
-            pageArea->SetText(item ? item->label : std::string("(nothing selected)"));
+            pageArea->SetText(item ? item->label : Tr("(nothing selected)"));
         };
         auto activatedOut = DemoKit::CreateText("SnActivated", Tr("Double-click or press Return on an item to activate it"));
         activatedOut->SetBackgroundColor(Color(240, 240, 240));
         activatedOut->SetPadding(3);
-        nav->onItemActivated = [activatedOut](const std::string& id) { activatedOut->SetText("Activated: " + id); };
+        nav->onItemActivated = [activatedOut](const std::string& id) { activatedOut->SetText(TrF("Activated: {0}", id)); };
         DemoKit::AddStretched(storeCard, frame);
         DemoKit::Add(storeCard, activatedOut);
 
@@ -66,15 +66,15 @@ namespace UltraCanvas {
         auto compactCard = DemoKit::AddCard(page, "SnL2", Tr("Compact mode"),
                                             Tr("Icons alone, the label as a tooltip, a badge as a dot; the column is compactWidth wide."));
         auto compactRow = DemoKit::AddRow(compactCard, "SnCompactRow", 12);
-        auto toggle = CreateButton("SnToggle", 0, 0, 160, 28, "Toggle compact");
+        auto toggle = CreateButton("SnToggle", 0, 0, 160, 28, Tr("Toggle compact"));
         toggle->onClick = [n = nav.get()]() { n->SetCompact(!n->IsCompact()); };
         DemoKit::AddFixed(compactRow, toggle);
         auto compactOut = DemoKit::CreateText("SnCompactOut", Tr("Expanded (220 px)"));
         compactOut->SetBackgroundColor(Color(240, 240, 240));
         compactOut->SetPadding(3);
         nav->onCompactChanged = [compactOut, n = nav.get()](bool compact) {
-            compactOut->SetText(std::string(compact ? "Compact" : "Expanded") + " (" +
-                                std::to_string(static_cast<int>(n->PreferredWidth())) + " px)");
+            const int width = static_cast<int>(n->PreferredWidth());
+            compactOut->SetText(compact ? TrF("Compact ({0} px)", width) : TrF("Expanded ({0} px)", width));
         };
         DemoKit::Add(compactRow, compactOut);
 
@@ -86,16 +86,16 @@ namespace UltraCanvas {
         longFrame->SetBorders(1.0f, Color(224, 227, 235, 255), 6.0f);
         auto longNav = CreateSidebarNavigation("SnLongNav");
         for (int s = 0; s < 4; ++s) {
-            const int section = longNav->AddSection("Section " + std::to_string(s + 1));
+            const int section = longNav->AddSection(TrF("Section {0}", s + 1));
             for (int i = 0; i < 5; ++i) {
                 const std::string id = "s" + std::to_string(s) + "i" + std::to_string(i);
-                longNav->AddItem(section, id, "Item " + std::to_string(s * 5 + i + 1), "media/icons/copy.svg");
+                longNav->AddItem(section, id, TrF("Item {0}", s * 5 + i + 1), "media/icons/copy.svg");
             }
         }
         longNav->Select("s0i0", false);
         longNav->layoutItem.SetFlexShrink(0);
         longFrame->AddChild(longNav);
-        auto longOut = CreateLabel("SnLongOut", 0, 0, 0, 0, "Item 1");
+        auto longOut = CreateLabel("SnLongOut", 0, 0, 0, 0, TrF("Item {0}", 1));
         longOut->SetAlignment(TextAlignment::Center, VerticalAlignment::Middle);
         longOut->layoutItem.SetFlexGrow(1);
         longOut->SetBackgroundColor(Color(250, 250, 252, 255));

@@ -23,55 +23,55 @@ namespace UltraCanvas {
     // Three-level retail hierarchy: Region -> Category -> Sub-category.
     // Modeled after the classic "Total Sales" sunburst dashboards.
     static std::shared_ptr<SunburstNode> BuildSalesHierarchy() {
-        auto root = std::make_shared<SunburstNode>("Total Sales");
+        auto root = std::make_shared<SunburstNode>(Tr("Total Sales"));
 
-        auto central = root->AddChild("Central");
-        auto cFurniture = central->AddChild("Furniture");
-        cFurniture->AddChild("Chairs", 85);
-        cFurniture->AddChild("Tables", 48);
-        cFurniture->AddChild("Bookcases", 34);
-        auto cOffice = central->AddChild("Office Supplies");
-        cOffice->AddChild("Binders", 56);
-        cOffice->AddChild("Storage", 44);
-        cOffice->AddChild("Paper", 31);
-        auto cTech = central->AddChild("Technology");
-        cTech->AddChild("Phones", 98);
-        cTech->AddChild("Machines", 62);
+        auto central = root->AddChild(Tr("Central"));
+        auto cFurniture = central->AddChild(Tr("Furniture"));
+        cFurniture->AddChild(Tr("Chairs"), 85);
+        cFurniture->AddChild(Tr("Tables"), 48);
+        cFurniture->AddChild(Tr("Bookcases"), 34);
+        auto cOffice = central->AddChild(Tr("Office Supplies"));
+        cOffice->AddChild(Tr("Binders"), 56);
+        cOffice->AddChild(Tr("Storage"), 44);
+        cOffice->AddChild(Tr("Paper"), 31);
+        auto cTech = central->AddChild(Tr("Technology"));
+        cTech->AddChild(Tr("Phones"), 98);
+        cTech->AddChild(Tr("Machines"), 62);
 
-        auto east = root->AddChild("East");
-        auto eFurniture = east->AddChild("Furniture");
-        eFurniture->AddChild("Chairs", 96);
-        eFurniture->AddChild("Tables", 39);
-        auto eOffice = east->AddChild("Office Supplies");
-        eOffice->AddChild("Binders", 53);
-        eOffice->AddChild("Appliances", 47);
-        auto eTech = east->AddChild("Technology");
-        eTech->AddChild("Phones", 114);
-        eTech->AddChild("Copiers", 74);
-        eTech->AddChild("Accessories", 45);
+        auto east = root->AddChild(Tr("East"));
+        auto eFurniture = east->AddChild(Tr("Furniture"));
+        eFurniture->AddChild(Tr("Chairs"), 96);
+        eFurniture->AddChild(Tr("Tables"), 39);
+        auto eOffice = east->AddChild(Tr("Office Supplies"));
+        eOffice->AddChild(Tr("Binders"), 53);
+        eOffice->AddChild(Tr("Appliances"), 47);
+        auto eTech = east->AddChild(Tr("Technology"));
+        eTech->AddChild(Tr("Phones"), 114);
+        eTech->AddChild(Tr("Copiers"), 74);
+        eTech->AddChild(Tr("Accessories"), 45);
 
-        auto south = root->AddChild("South");
-        auto sFurniture = south->AddChild("Furniture");
-        sFurniture->AddChild("Chairs", 45);
-        sFurniture->AddChild("Tables", 22);
-        auto sOffice = south->AddChild("Office Supplies");
-        sOffice->AddChild("Binders", 37);
-        sOffice->AddChild("Storage", 27);
-        auto sTech = south->AddChild("Technology");
-        sTech->AddChild("Phones", 58);
-        sTech->AddChild("Machines", 40);
+        auto south = root->AddChild(Tr("South"));
+        auto sFurniture = south->AddChild(Tr("Furniture"));
+        sFurniture->AddChild(Tr("Chairs"), 45);
+        sFurniture->AddChild(Tr("Tables"), 22);
+        auto sOffice = south->AddChild(Tr("Office Supplies"));
+        sOffice->AddChild(Tr("Binders"), 37);
+        sOffice->AddChild(Tr("Storage"), 27);
+        auto sTech = south->AddChild(Tr("Technology"));
+        sTech->AddChild(Tr("Phones"), 58);
+        sTech->AddChild(Tr("Machines"), 40);
 
-        auto west = root->AddChild("West");
-        auto wFurniture = west->AddChild("Furniture");
-        wFurniture->AddChild("Chairs", 101);
-        wFurniture->AddChild("Bookcases", 43);
-        auto wOffice = west->AddChild("Office Supplies");
-        wOffice->AddChild("Binders", 68);
-        wOffice->AddChild("Storage", 51);
-        wOffice->AddChild("Art", 24);
-        auto wTech = west->AddChild("Technology");
-        wTech->AddChild("Phones", 126);
-        wTech->AddChild("Copiers", 83);
+        auto west = root->AddChild(Tr("West"));
+        auto wFurniture = west->AddChild(Tr("Furniture"));
+        wFurniture->AddChild(Tr("Chairs"), 101);
+        wFurniture->AddChild(Tr("Bookcases"), 43);
+        auto wOffice = west->AddChild(Tr("Office Supplies"));
+        wOffice->AddChild(Tr("Binders"), 68);
+        wOffice->AddChild(Tr("Storage"), 51);
+        wOffice->AddChild(Tr("Art"), 24);
+        auto wTech = west->AddChild(Tr("Technology"));
+        wTech->AddChild(Tr("Phones"), 126);
+        wTech->AddChild(Tr("Copiers"), 83);
 
         return root;
     }
@@ -82,41 +82,41 @@ namespace UltraCanvas {
     {
         std::vector<std::pair<std::string,
             std::vector<std::pair<std::string, double>>>> geoData = {
-            {"North America", {{"United States", 38.5}, {"Canada", 41.8},
-                               {"Mexico", 29.2}, {"Cuba", 42.1}}},
-            {"South America", {{"Brazil", 33.2}, {"Argentina", 31.9},
-                               {"Chile", 35.4}, {"Colombia", 31.0}}},
-            {"Europe",        {{"Germany", 47.8}, {"France", 41.7},
-                               {"United Kingdom", 40.6}, {"Italy", 46.5},
-                               {"Spain", 44.9}}},
-            {"Africa",        {{"Nigeria", 18.1}, {"Ethiopia", 19.5},
-                               {"Egypt", 24.6}, {"South Africa", 27.3}}},
-            {"Asia",          {{"China", 38.4}, {"India", 28.2},
-                               {"Japan", 48.6}, {"Indonesia", 30.2},
-                               {"Vietnam", 32.5}}},
-            {"Oceania",       {{"Australia", 38.7}, {"New Zealand", 38.4},
-                               {"Fiji", 28.9}}}
+            {Tr("North America"), {{Tr("United States"), 38.5}, {Tr("Canada"), 41.8},
+                               {Tr("Mexico"), 29.2}, {Tr("Cuba"), 42.1}}},
+            {Tr("South America"), {{Tr("Brazil"), 33.2}, {Tr("Argentina"), 31.9},
+                               {Tr("Chile"), 35.4}, {Tr("Colombia"), 31.0}}},
+            {Tr("Europe"),        {{Tr("Germany"), 47.8}, {Tr("France"), 41.7},
+                               {Tr("United Kingdom"), 40.6}, {Tr("Italy"), 46.5},
+                               {Tr("Spain"), 44.9}}},
+            {Tr("Africa"),        {{Tr("Nigeria"), 18.1}, {Tr("Ethiopia"), 19.5},
+                               {Tr("Egypt"), 24.6}, {Tr("South Africa"), 27.3}}},
+            {Tr("Asia"),          {{Tr("China"), 38.4}, {Tr("India"), 28.2},
+                               {Tr("Japan"), 48.6}, {Tr("Indonesia"), 30.2},
+                               {Tr("Vietnam"), 32.5}}},
+            {Tr("Oceania"),       {{Tr("Australia"), 38.7}, {Tr("New Zealand"), 38.4},
+                               {Tr("Fiji"), 28.9}}}
         };
         return CreateSunburstChartFromGroups(id, x, y, w, h, geoData);
     }
 
     // Hierarchical approval workflow, rendered as a partial (fan) sunburst.
     static std::shared_ptr<SunburstNode> BuildApprovalHierarchy() {
-        auto root = std::make_shared<SunburstNode>("Requests");
+        auto root = std::make_shared<SunburstNode>(Tr("Requests"));
 
-        auto approved = root->AddChild("Approved", 0, Color(76, 175, 80, 255));
-        approved->AddChild("Automatic", 380);
-        approved->AddChild("Manual", 175);
-        approved->AddChild("Escalated", 85);
+        auto approved = root->AddChild(Tr("Approved"), 0, Color(76, 175, 80, 255));
+        approved->AddChild(Tr("Automatic"), 380);
+        approved->AddChild(Tr("Manual"), 175);
+        approved->AddChild(Tr("Escalated"), 85);
 
-        auto pending = root->AddChild("Pending", 0, Color(255, 152, 0, 255));
-        pending->AddChild("In Review", 140);
-        pending->AddChild("Waiting Info", 90);
+        auto pending = root->AddChild(Tr("Pending"), 0, Color(255, 152, 0, 255));
+        pending->AddChild(Tr("In Review"), 140);
+        pending->AddChild(Tr("Waiting Info"), 90);
 
-        auto rejected = root->AddChild("Rejected", 0, Color(211, 47, 47, 255));
-        rejected->AddChild("Policy", 120);
-        rejected->AddChild("Fraud Check", 45);
-        rejected->AddChild("Incomplete", 65);
+        auto rejected = root->AddChild(Tr("Rejected"), 0, Color(211, 47, 47, 255));
+        rejected->AddChild(Tr("Policy"), 120);
+        rejected->AddChild(Tr("Fraud Check"), 45);
+        rejected->AddChild(Tr("Incomplete"), 65);
 
         return root;
     }
@@ -142,15 +142,15 @@ namespace UltraCanvas {
             return group;
         };
 
-        auto labelsGroup = addGroup("SbLabelsGroup", "SbLabelsHeader", "Labels:");
+        auto labelsGroup = addGroup("SbLabelsGroup", "SbLabelsHeader", Tr("Labels:"));
 
         auto contentDropdown = std::make_shared<UltraCanvasDropdown>("SbLabelContent", 0, 0, controlWidth, controlHeight);
-        contentDropdown->AddItem("Name");
-        contentDropdown->AddItem("Name + Value");
-        contentDropdown->AddItem("Name + Percentage");
-        contentDropdown->AddItem("Value");
-        contentDropdown->AddItem("Percentage");
-        contentDropdown->AddItem("None");
+        contentDropdown->AddItem(Tr("Name"));
+        contentDropdown->AddItem(Tr("Name + Value"));
+        contentDropdown->AddItem(Tr("Name + Percentage"));
+        contentDropdown->AddItem(Tr("Value"));
+        contentDropdown->AddItem(Tr("Percentage"));
+        contentDropdown->AddItem(Tr("None"));
         contentDropdown->SetSelectedIndex(0);
         contentDropdown->onSelectionChanged = [charts](int index, const DropdownItem&) {
             SunburstLabelContent content;
@@ -167,9 +167,9 @@ namespace UltraCanvas {
         DemoKit::AddFixed(labelsGroup, contentDropdown);
 
         auto orientationDropdown = std::make_shared<UltraCanvasDropdown>("SbLabelOrientation", 0, 0, controlWidth, controlHeight);
-        orientationDropdown->AddItem("Auto");
-        orientationDropdown->AddItem("Horizontal");
-        orientationDropdown->AddItem("Radial");
+        orientationDropdown->AddItem(Tr("Auto"));
+        orientationDropdown->AddItem(Tr("Horizontal"));
+        orientationDropdown->AddItem(Tr("Radial"));
         orientationDropdown->SetSelectedIndex(0);
         orientationDropdown->onSelectionChanged = [charts](int index, const DropdownItem&) {
             SunburstLabelOrientation orientation;
@@ -182,12 +182,12 @@ namespace UltraCanvas {
         };
         DemoKit::AddFixed(labelsGroup, orientationDropdown);
 
-        auto shadeGroup = addGroup("SbShadeGroup", "SbShadeHeader", "Depth Shading:");
+        auto shadeGroup = addGroup("SbShadeGroup", "SbShadeHeader", Tr("Depth Shading:"));
 
         auto shadeDropdown = std::make_shared<UltraCanvasDropdown>("SbShadeMode", 0, 0, controlWidth, controlHeight);
-        shadeDropdown->AddItem("Lighten By Depth");
-        shadeDropdown->AddItem("Darken By Depth");
-        shadeDropdown->AddItem("None");
+        shadeDropdown->AddItem(Tr("Lighten By Depth"));
+        shadeDropdown->AddItem(Tr("Darken By Depth"));
+        shadeDropdown->AddItem(Tr("None"));
         shadeDropdown->SetSelectedIndex(0);
         shadeDropdown->onSelectionChanged = [charts](int index, const DropdownItem&) {
             SunburstShadeMode mode;
@@ -200,7 +200,7 @@ namespace UltraCanvas {
         };
         DemoKit::AddFixed(shadeGroup, shadeDropdown);
 
-        auto geometryGroup = addGroup("SbGeometryGroup", "SbGeometryHeader", "Center Hole Size:");
+        auto geometryGroup = addGroup("SbGeometryGroup", "SbGeometryHeader", Tr("Center Hole Size:"));
 
         auto innerSlider = std::make_shared<UltraCanvasSlider>("SbInnerRadius", 0, 0, controlWidth, controlHeight);
         innerSlider->SetRange(0.05, 0.6);
@@ -235,16 +235,16 @@ namespace UltraCanvas {
         };
         DemoKit::AddFixed(geometryGroup, borderSlider);
 
-        auto interactionGroup = addGroup("SbInteractionGroup", "SbInteractionHeader", "Interaction:");
+        auto interactionGroup = addGroup("SbInteractionGroup", "SbInteractionHeader", Tr("Interaction:"));
 
-        auto hoverCheckbox = std::make_shared<UltraCanvasCheckbox>("SbHover", "Hover Highlight");
+        auto hoverCheckbox = std::make_shared<UltraCanvasCheckbox>("SbHover", Tr("Hover Highlight"));
         hoverCheckbox->SetChecked(true);
         hoverCheckbox->onStateChanged = [charts](CheckedState, CheckedState newState) {
             for (auto& c : charts) c->SetHoverHighlightEnabled(newState == CheckedState::Checked);
         };
         DemoKit::Add(interactionGroup, hoverCheckbox);
 
-        auto drillCheckbox = std::make_shared<UltraCanvasCheckbox>("SbDrill", "Drill-Down On Click");
+        auto drillCheckbox = std::make_shared<UltraCanvasCheckbox>("SbDrill", Tr("Drill-Down On Click"));
         drillCheckbox->SetChecked(true);
         drillCheckbox->onStateChanged = [charts](CheckedState, CheckedState newState) {
             for (auto& c : charts) c->SetDrillDownEnabled(newState == CheckedState::Checked);
@@ -275,7 +275,7 @@ namespace UltraCanvas {
 
         auto salesChart = CreateSunburstChart("SalesSunburst", 0, 0, 460, 320);
         salesChart->SetRootNode(BuildSalesHierarchy());
-        salesChart->SetCenterText("Total Sales");
+        salesChart->SetCenterText(Tr("Total Sales"));
         salesChart->SetValueFormatter([](double v) {
             char buf[32];
             std::snprintf(buf, sizeof(buf), "$%.0fK", v);
@@ -302,15 +302,15 @@ namespace UltraCanvas {
             Color(156,  39, 176, 255)    // Purple - Oceania
         });
         geoChart->SetShowCenterTotal(false);
-        geoChart->SetCenterText("Median Age");
+        geoChart->SetCenterText(Tr("Median Age"));
         geoChart->SetInnerRadiusFraction(0.22f);
         geoChart->SetDrillDownEnabled(true);
         geoChart->SetTooltipsEnabled(true);
         geoChart->SetLabelContent(SunburstLabelContent::Name);
         geoChart->SetValueFormatter([](double v) {
             char buf[32];
-            std::snprintf(buf, sizeof(buf), "%.1f yrs", v);
-            return std::string(buf);
+            std::snprintf(buf, sizeof(buf), "%.1f", v);
+            return TrF("{0} yrs", std::string(buf));
         });
         DemoKit::AddFixed(geoCard, geoChart);
 
@@ -323,7 +323,7 @@ namespace UltraCanvas {
         fanChart->SetStartAngle(-210.0f);
         fanChart->SetInnerRadiusFraction(0.3f);
         fanChart->SetSegmentSpacingAngle(1.0f);
-        fanChart->SetCenterText("Requests");
+        fanChart->SetCenterText(Tr("Requests"));
         fanChart->SetTooltipsEnabled(true);
         fanChart->SetLabelContent(SunburstLabelContent::NamePercentage);
         DemoKit::AddFixed(fanCard, fanChart);
@@ -338,7 +338,7 @@ namespace UltraCanvas {
         overviewChart->SetInnerRadiusFraction(0.35f);
         overviewChart->SetRingSpacing(3.0f);
         overviewChart->SetBorderWidth(2.0f);
-        overviewChart->SetCenterText("Sales");
+        overviewChart->SetCenterText(Tr("Sales"));
         overviewChart->SetTooltipsEnabled(true);
         overviewChart->SetLabelContent(SunburstLabelContent::NamePercentage);
         overviewChart->SetValueFormatter([](double v) {

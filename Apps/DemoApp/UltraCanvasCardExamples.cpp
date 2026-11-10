@@ -30,16 +30,16 @@ namespace UltraCanvas {
         video->AddContent(DemoKit::CreateText("CdVideoText", Tr("Cut, trim and export in one window. Needs the UltraCanvas runtime 0.9.410.")));
         auto status = DemoKit::CreateCaption("CdVideoStatus", "");
         video->AddContent(status);
-        video->AddActionButton("CdVideoInstall", "Install", [status]() { status->SetText("Install pressed"); });
-        video->AddActionButton("CdVideoDetails", "Details", [status]() { status->SetText("Details pressed"); });
+        video->AddActionButton("CdVideoInstall", Tr("Install"), [status]() { status->SetText(Tr("Install pressed")); });
+        video->AddActionButton("CdVideoDetails", Tr("Details"), [status]() { status->SetText(Tr("Details pressed")); });
         video->SetElementSize(Size2Df(300, 0));
         video->size.height = CSSLayout::Dimension::Auto();
         DemoKit::Add(row, video);
 
         auto mail = CreateCard("CdMail", Tr("UltraMail"), Tr("Email client"));
-        mail->SetTrailing(CreateBadge("CdMailFree", 0, 0, "Free"));
+        mail->SetTrailing(CreateBadge("CdMailFree", 0, 0, Tr("Free")));
         mail->AddContent(DemoKit::CreateText("CdMailText", Tr("IMAP, JMAP and POP3; contacts and calendars; end-to-end encryption.")));
-        mail->AddActionButton("CdMailInstall", "Install", []() {});
+        mail->AddActionButton("CdMailInstall", Tr("Install"), []() {});
         mail->SetElementSize(Size2Df(300, 0));
         mail->size.height = CSSLayout::Dimension::Auto();
         DemoKit::Add(row, mail);
@@ -53,10 +53,10 @@ namespace UltraCanvas {
         clickOut->SetPadding(3);
         for (int i = 0; i < 3; ++i) {
             const std::string name = i == 0 ? "UltraPaint" : (i == 1 ? "UltraFiler" : "Texter");
-            auto tile = CreateCard("CdTile" + std::to_string(i), name, i == 0 ? "Bitmap editor" : (i == 1 ? "File manager" : "Word processor"));
+            auto tile = CreateCard("CdTile" + std::to_string(i), name, i == 0 ? Tr("Bitmap editor") : (i == 1 ? Tr("File manager") : Tr("Word processor")));
             tile->AddContent(DemoKit::CreateText("CdTileText" + std::to_string(i), Tr("Click the surface to open")));
-            tile->AddActionButton("CdTileOpen" + std::to_string(i), "Open", [clickOut, name]() { clickOut->SetText("Button on " + name); });
-            tile->onClick = [clickOut, name]() { clickOut->SetText("Surface of " + name + " clicked"); };
+            tile->AddActionButton("CdTileOpen" + std::to_string(i), Tr("Open"), [clickOut, name]() { clickOut->SetText(TrF("Button on {0}", name)); });
+            tile->onClick = [clickOut, name]() { clickOut->SetText(TrF("Surface of {0} clicked", name)); };
             tile->SetElementSize(Size2Df(220, 0));
             tile->size.height = CSSLayout::Dimension::Auto();
             DemoKit::Add(clickRow, tile);

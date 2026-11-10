@@ -44,7 +44,7 @@ namespace UltraCanvas {
                 text += "  - " + model.factors[k].label + "\n";
                 any = true;
             }
-            if (!any) text += "  (none)\n";
+            if (!any) text += "  " + Tr("(none)") + "\n";
             text += "\n";
         }
         return text;
@@ -69,8 +69,8 @@ namespace UltraCanvas {
         for (bool smooth : {true, false}) {
             ImportancePerformanceModel model = ImportancePerformanceSamples::SlackZones(smooth);
             model.factors = ImportancePerformanceSamples::SampleFactors();
-            model.title = smooth ? "Parcel service: importance and performance"
-                                 : "Parcel service: the textbook staircase";
+            model.title = smooth ? Tr("Parcel service: importance and performance")
+                                 : Tr("Parcel service: the textbook staircase");
             if (smooth) {
                 // The slide form carries an icon per zone (reference image of the proposal).
                 for (ImportancePerformanceZone& zone : model.zones) {
@@ -88,7 +88,7 @@ namespace UltraCanvas {
                     chart->GetIdentifier() + "Tab", 0, 0, 860, 632);
             tabContent->SetBackgroundColor(Color(255, 255, 255, 255));
             tabContent->AddChild(chart);
-            tabbedContainer->AddTab(smooth ? "Slack zones (smooth)" : "Slack zones (stepped)", tabContent);
+            tabbedContainer->AddTab(smooth ? Tr("Slack zones (smooth)") : Tr("Slack zones (stepped)"), tabContent);
             charts.push_back(chart);
         }
 
@@ -99,28 +99,28 @@ namespace UltraCanvas {
             DemoKit::AddCaption(sidebar, id, text)->SetFontWeight(FontWeight::Bold);
         };
 
-        addCaption("ipcLabelsCaption", "Factor names");
+        addCaption("ipcLabelsCaption", Tr("Factor names"));
         auto labelsSelector = std::make_shared<UltraCanvasDropdown>("ipcLabelsSelector", 0, 0, 190, 28);
-        labelsSelector->AddItem("Beside the marks", "outside");
-        labelsSelector->AddItem("Hidden (hover for them)", "hidden");
+        labelsSelector->AddItem(Tr("Beside the marks"), "outside");
+        labelsSelector->AddItem(Tr("Hidden (hover for them)"), "hidden");
         labelsSelector->SetSelectedIndex(0);
         DemoKit::AddStretched(sidebar, labelsSelector);
 
-        addCaption("ipcAxesCaption", "Axis ticks");
+        addCaption("ipcAxesCaption", Tr("Axis ticks"));
         auto axesSelector = std::make_shared<UltraCanvasDropdown>("ipcAxesSelector", 0, 0, 190, 28);
-        axesSelector->AddItem("Named level ranges", "levels");
-        axesSelector->AddItem("Numbers (1 = best)", "numbers");
+        axesSelector->AddItem(Tr("Named level ranges"), "levels");
+        axesSelector->AddItem(Tr("Numbers (1 = best)"), "numbers");
         axesSelector->SetSelectedIndex(0);
         DemoKit::AddStretched(sidebar, axesSelector);
 
-        addCaption("ipcGridCaption", "Grid");
+        addCaption("ipcGridCaption", Tr("Grid"));
         auto gridSelector = std::make_shared<UltraCanvasDropdown>("ipcGridSelector", 0, 0, 190, 28);
-        gridSelector->AddItem("Off", "off");
-        gridSelector->AddItem("On", "on");
+        gridSelector->AddItem(Tr("Off"), "off");
+        gridSelector->AddItem(Tr("On"), "on");
         gridSelector->SetSelectedIndex(0);
         DemoKit::AddStretched(sidebar, gridSelector);
 
-        addCaption("ipcListCaption", "FACTORS BY ZONE");
+        addCaption("ipcListCaption", Tr("FACTORS BY ZONE"));
         // As tall as the zones and factors it lists: the card grows with it.
         auto listing = DemoKit::AddCaption(sidebar, "ipcListing", ZoneListing(*charts.front()));
         listing->SetTextColor(DemoKit::BodyText());

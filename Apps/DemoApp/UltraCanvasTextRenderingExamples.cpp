@@ -51,40 +51,41 @@ namespace UltraCanvas {
 
         // --- Antialias Dropdown ---
         auto aaDropdown = std::make_shared<UltraCanvasDropdown>("AADropdown", 0, 0, 200, 30);
-        aaDropdown->AddItem("Default", "0");
-        aaDropdown->AddItem("None", "1");
-        aaDropdown->AddItem("Gray", "2");
-        aaDropdown->AddItem("Subpixel", "3");
-        aaDropdown->AddItem("Fast", "4");
-        aaDropdown->AddItem("Good", "5");
-        aaDropdown->AddItem("Best", "6");
+        aaDropdown->AddItem(Tr("Default"), "0");
+        aaDropdown->AddItem(Tr("None"), "1");
+        aaDropdown->AddItem(Tr("Gray"), "2");
+        aaDropdown->AddItem(Tr("Subpixel"), "3");
+        aaDropdown->AddItem(Tr("Fast"), "4");
+        aaDropdown->AddItem(Tr("Good"), "5");
+        aaDropdown->AddItem(Tr("Best"), "6");
         aaDropdown->SetSelectedIndex(static_cast<int>(RenderContextCairo::GetTextAntialias()));
-        addOption("AARow", "AALabel", "Antialias:", aaDropdown,
-                  "AADesc", "Controls antialiasing method for text rendering");
+        addOption("AARow", "AALabel", Tr("Antialias:"), aaDropdown,
+                  "AADesc", Tr("Controls antialiasing method for text rendering"));
 
         // --- Hint Style Dropdown ---
         auto hsDropdown = std::make_shared<UltraCanvasDropdown>("HSDropdown", 0, 0, 200, 30);
-        hsDropdown->AddItem("Default", "0");
-        hsDropdown->AddItem("None", "1");
-        hsDropdown->AddItem("Slight", "2");
-        hsDropdown->AddItem("Medium", "3");
-        hsDropdown->AddItem("Full", "4");
+        hsDropdown->AddItem(Tr("Default"), "0");
+        hsDropdown->AddItem(Tr("None"), "1");
+        hsDropdown->AddItem(Tr("Slight"), "2");
+        hsDropdown->AddItem(Tr("Medium"), "3");
+        hsDropdown->AddItem(Tr("Full"), "4");
         hsDropdown->SetSelectedIndex(static_cast<int>(RenderContextCairo::GetTextHintStyle()));
-        addOption("HSRow", "HSLabel", "Hint Style:", hsDropdown,
-                  "HSDesc", "Controls amount of font hinting (grid-fitting)");
+        addOption("HSRow", "HSLabel", Tr("Hint Style:"), hsDropdown,
+                  "HSDesc", Tr("Controls amount of font hinting (grid-fitting)"));
 
         // --- Hint Metrics Dropdown ---
         auto hmDropdown = std::make_shared<UltraCanvasDropdown>("HMDropdown", 0, 0, 200, 30);
-        hmDropdown->AddItem("Default", "0");
-        hmDropdown->AddItem("Off", "1");
-        hmDropdown->AddItem("On", "2");
+        hmDropdown->AddItem(Tr("Default"), "0");
+        hmDropdown->AddItem(Tr("Off"), "1");
+        hmDropdown->AddItem(Tr("On"), "2");
         hmDropdown->SetSelectedIndex(static_cast<int>(RenderContextCairo::GetTextHintMetrics()));
-        addOption("HMRow", "HMLabel", "Hint Metrics:", hmDropdown,
-                  "HMDesc", "Controls whether font metrics are quantized to integer values");
+        addOption("HMRow", "HMLabel", Tr("Hint Metrics:"), hmDropdown,
+                  "HMDesc", Tr("Controls whether font metrics are quantized to integer values"));
 
         // Sample text at various sizes
         struct SampleDef {
             float fontSize;
+            std::string id;        // the element ids' suffix
             std::string label;
             std::string text;
         };
@@ -117,16 +118,16 @@ namespace UltraCanvas {
         sampleCard->layout.SetFlexGap(10);
 
         std::vector<SampleDef> samples = {
-            {10, "10pt", "The quick brown fox jumps over the lazy dog. AaBbCcDdEeFfGgHhIiJjKkLlMmNnOoPp 0123456789"},
-            {12, "12pt", "The quick brown fox jumps over the lazy dog. AaBbCcDdEeFfGgHhIiJjKkLlMmNnOoPp 0123456789"},
-            {14, "14pt", "The quick brown fox jumps over the lazy dog. AaBbCcDdEeFfGgHhIiJjKkLlMm"},
-            {18, "18pt", "The quick brown fox jumps over the lazy dog. AaBbCcDdEeFf 0123456789"},
-            {24, "24pt", "The quick brown fox jumps over the lazy dog."},
-            {36, "36pt", "The quick brown fox jumps over the lazy dog."},
+            {10, "10pt", Tr("10pt"), Tr("The quick brown fox jumps over the lazy dog. AaBbCcDdEeFfGgHhIiJjKkLlMmNnOoPp 0123456789")},
+            {12, "12pt", Tr("12pt"), Tr("The quick brown fox jumps over the lazy dog. AaBbCcDdEeFfGgHhIiJjKkLlMmNnOoPp 0123456789")},
+            {14, "14pt", Tr("14pt"), Tr("The quick brown fox jumps over the lazy dog. AaBbCcDdEeFfGgHhIiJjKkLlMm")},
+            {18, "18pt", Tr("18pt"), Tr("The quick brown fox jumps over the lazy dog. AaBbCcDdEeFf 0123456789")},
+            {24, "24pt", Tr("24pt"), Tr("The quick brown fox jumps over the lazy dog.")},
+            {36, "36pt", Tr("36pt"), Tr("The quick brown fox jumps over the lazy dog.")},
         };
 
         for (const auto& sample : samples) {
-            addSample(sampleCard, "SizeLabel" + sample.label, "SampleText" + sample.label, sample, 40, false);
+            addSample(sampleCard, "SizeLabel" + sample.id, "SampleText" + sample.id, sample, 40, false);
         }
 
         // Bold samples
@@ -134,13 +135,13 @@ namespace UltraCanvas {
         boldCard->layout.SetFlexGap(10);
 
         std::vector<SampleDef> boldSamples = {
-            {12, "12pt Bold", "The quick brown fox jumps over the lazy dog. AaBbCcDdEeFfGgHhIiJjKkLlMmNnOoPp 0123456789"},
-            {18, "18pt Bold", "The quick brown fox jumps over the lazy dog. AaBbCcDdEeFf 0123456789"},
-            {24, "24pt Bold", "Pack my box with five dozen liquor jugs."},
+            {12, "12pt Bold", Tr("12pt Bold"), Tr("The quick brown fox jumps over the lazy dog. AaBbCcDdEeFfGgHhIiJjKkLlMmNnOoPp 0123456789")},
+            {18, "18pt Bold", Tr("18pt Bold"), Tr("The quick brown fox jumps over the lazy dog. AaBbCcDdEeFf 0123456789")},
+            {24, "24pt Bold", Tr("24pt Bold"), Tr("Pack my box with five dozen liquor jugs.")},
         };
 
         for (const auto& sample : boldSamples) {
-            addSample(boldCard, "BoldSizeLabel" + sample.label, "BoldSample" + sample.label, sample, 70, true);
+            addSample(boldCard, "BoldSizeLabel" + sample.id, "BoldSample" + sample.id, sample, 70, true);
         }
 
         // ===== EVENT HANDLERS =====
