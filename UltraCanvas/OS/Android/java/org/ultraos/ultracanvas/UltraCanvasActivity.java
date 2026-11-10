@@ -18,6 +18,7 @@
 // methods and every dialog falls back to its "cancelled" stub, so an app that
 // never opens a native dialog needs no Java at all.
 //
+// Version: 1.2.0 - immersive: the system bars no longer cover the app's top and bottom
 // Version: 1.1.0
 // Author: UltraCanvas Framework
 
@@ -650,6 +651,7 @@ public class UltraCanvasActivity extends NativeActivity {
     protected void onCreate(Bundle savedInstanceState) {
         loadLibraryForJni();
         super.onCreate(savedInstanceState);   // starts android_main
+        hideSystemBars();
         reportDisplayRotation();
         DisplayManager displays = (DisplayManager) getSystemService(Context.DISPLAY_SERVICE);
         if (displays == null) return;
@@ -666,6 +668,35 @@ public class UltraCanvasActivity extends NativeActivity {
             }
         };
         displays.registerDisplayListener(displayListener, null);   // on this (UI) thread
+    }
+
+    // ===== SYSTEM BARS =====
+
+    // NativeActivity hands the native side a surface the size of the whole
+    // window, and the window spans the display: the status bar and the
+    // navigation bar were drawn over the app's top and bottom rows, and a
+    // tap there went to the bar (the emulator test's tap on the demo's
+    // filter field, 24 px from the top, never arrived). Sticky immersive
+    // mode hides both bars, so the window is the app's alone; a swipe from
+    // the edge shows them over it for a moment. Kept the deprecated flags
+    // rather than WindowInsetsController: they work on every level from
+    // the APK's minimum (28) up. Applied again on each focus gain - a
+    // dialog or the keyboard can bring the bars back.
+    @SuppressWarnings("deprecation")
+    private void hideSystemBars() {
+        getWindow().getDecorView().setSystemUiVisibility(
+                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                | View.SYSTEM_UI_FLAG_FULLSCREEN);
+    }
+
+    @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        if (hasFocus) hideSystemBars();
     }
 
     // ===== JNI: MAKING THE native METHODS RESOLVABLE =====
