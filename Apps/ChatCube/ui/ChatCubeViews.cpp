@@ -1,5 +1,6 @@
 // Apps/ChatCube/ui/ChatCubeViews.cpp
 // The conversation list and the message list of the ChatCube window
+// Version: 0.2.5 - pinned conversations first, with a pin; one marked unread with a dot
 // Version: 0.2.4 - times on a 12-hour clock and dates in three orders, from the Settings window
 // Version: 0.2.3 - the ticks drawn as strokes (no font needed); a file that is a picture - an SVG
 //                  drawing above all - shows it in the bubble as a photo does
@@ -625,8 +626,29 @@ void MessageBubbleDelegate::RenderItem(IRenderContext* ctx, const IListModel* mo
 // CONVERSATION LIST
 // ============================================================================
 
+std::string ConversationListModel::MarkKey(const UltraIMConversation& conversation) {
+    return conversation.providerId + "/" + conversation.conversationId;
+}
+
+void ConversationListModel::SetMarks(std::set<std::string> pinned, std::set<std::string> markedUnread) {
+    pinned_ = std::move(pinned);
+    markedUnread_ = std::move(markedUnread);
+    Sort();
+    NotifyDataChanged();
+}
+
+bool ConversationListModel::IsPinned(const UltraIMConversation& conversation) const {
+    return pinned_.count(MarkKey(conversation)) > 0;
+}
+
+bool ConversationListModel::IsMarkedUnread(const UltraIMConversation& conversation) const {
+    return markedUnread_.count(MarkKey(conversation)) > 0;
+}
+
 void ConversationListModel::Sort() {
-    std::stable_sort(list_.begin(), list_.end(), [](const UltraIMConversation& a, const UltraIMConversation& b) {
+    std::stable_sort(list_.begin(), list_.end(), [this](const UltraIMConversation& a, const UltraIMConversation& b) {
+        const bool pa = IsPinned(a), pb = IsPinned(b);
+        if (pa != pb) return pa;
         if (a.lastMessageTimeMs != b.lastMessageTimeMs) return a.lastMessageTimeMs > b.lastMessageTimeMs;
         return a.title < b.title;
     });
@@ -724,6 +746,9 @@ void ConversationDelegate::RenderItem(IRenderContext* ctx, const IListModel* mod
     const double textX = avatar.x + kAvatarRadius + 12;
     const double rightEdge = inset.x + inset.width - 10;
     const double topY = cell.y + 13;
+    // Marked unread with nothing new in it: a dot where the count would be.
+    const bool markedUnread = c.unreadCount <= 0 && list->IsMarkedUnread(c);
+    const bool unread = c.unreadCount > 0 || markedUnread;
 
     // The time, top right; the unread count under it.
     ctx->SetFontSize(kSnippetFont);
@@ -734,11 +759,14 @@ void ConversationDelegate::RenderItem(IRenderContext* ctx, const IListModel* mod
     if (!time.empty()) {
         ctx->SetTextAlignment(TextAlignment::Right);
         ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
-        ctx->SetTextPaint(c.unreadCount > 0 ? look.accent : look.inkFaint);
+        ctx->SetTextPaint(unread ? look.accent : look.inkFaint);
         ctx->DrawTextInRect(time, Rect2Dd(rightEdge - timeWidth - 2, topY, timeWidth + 2, 18));
     }
     int badgeWidth = 0;
-    if (c.unreadCount > 0) {
+    if (markedUnread) {
+        badgeWidth = 12;
+        ctx->DrawFilledCircle(Point2Dd(rightEdge - 6, topY + 31), 6.0f, look.accent);
+    } else if (c.unreadCount > 0) {
         const std::string count = c.unreadCount > 99 ? "99+" : std::to_string(c.unreadCount);
         ctx->SetFontWeight(FontWeight::Bold);
         badgeWidth = std::max(20, ctx->GetTextLineWidth(count) + 12);
@@ -749,9 +777,16 @@ void ConversationDelegate::RenderItem(IRenderContext* ctx, const IListModel* mod
         ctx->SetTextPaint(look.onAccent);
         ctx->DrawTextInRect(count, pill);
     }
+    // Pinned: the pin left of the count (or where the count would be).
+    if (list->IsPinned(c)) {
+        const double pinSide = 14;
+        const double pinX = rightEdge - badgeWidth - (badgeWidth > 0 ? 6 : 0) - pinSide;
+        PaintPin(ctx, Rect2Dd(pinX, topY + 24, pinSide, pinSide), look.inkFaint);
+        badgeWidth += static_cast<int>(pinSide) + (badgeWidth > 0 ? 6 : 0);
+    }
 
     ctx->SetFontSize(kTitleFont);
-    ctx->SetFontWeight(c.unreadCount > 0 ? FontWeight::Bold : FontWeight::Normal);
+    ctx->SetFontWeight(unread ? FontWeight::Bold : FontWeight::Normal);
     ctx->SetTextAlignment(TextAlignment::Left);
     ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
     ctx->SetTextPaint(look.ink);
@@ -759,7 +794,7 @@ void ConversationDelegate::RenderItem(IRenderContext* ctx, const IListModel* mod
 
     ctx->SetFontSize(kSnippetFont);
     ctx->SetFontWeight(FontWeight::Normal);
-    ctx->SetTextPaint(c.unreadCount > 0 ? look.ink : look.inkMuted);
+    ctx->SetTextPaint(unread ? look.ink : look.inkMuted);
     std::string snippet = c.lastMessageSnippet.empty() ? std::string("No messages yet") : c.lastMessageSnippet;
     if (c.isEncrypted && c.lastMessageSnippet.empty()) snippet = "End-to-end encrypted";
     ctx->DrawTextInRect(snippet, Rect2Dd(textX, topY + 22, rightEdge - textX - badgeWidth - 8, 18));

@@ -695,6 +695,22 @@ private:
 Keep the menu in a member: `OpenMenu` shows it, and a menu that goes out of
 scope at the end of the handler closes before it is seen.
 
+Where selecting a row does something of its own - a messenger's chat list
+opens the chat that is selected - a right-click must not select. Turn the
+selection step off and let the menu act on the `row` it is handed; the
+selection stays where it was:
+
+```cpp
+void WireChatList(std::shared_ptr<UltraCanvasListView> chats) {
+    chats->SetSelectsOnContextMenu(false);
+    chats->onContextMenu = [](int row, const UCEvent& event) {
+        if (row < 0) return;
+        // build and open the menu for `row` at event.pointerWindow
+        (void)event;
+    };
+}
+```
+
 ```cpp
 // The view shows a sorting proxy over the source model
 auto proxy = std::make_shared<UltraCanvasListSortFilterProxy>(model);

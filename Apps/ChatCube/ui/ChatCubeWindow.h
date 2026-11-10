@@ -59,6 +59,9 @@
 // MessageDelivered events move its ticks (✓ in the relay's queue, ✓✓ on the
 // other device, green ✓✓ read).
 //
+// Version: 0.2.9 - a right-click on a conversation in the list opens its menu: open it, mark it read or
+//                  unread, pin it to the top, call, copy the ID, delete the chat; for a group its
+//                  members (each with their own menu), add members, rename and leave it
 // Version: 0.2.8 - recovery by the link e-mailed to the ID's address: ChatCube waits for it to be opened
 //                  and signs in by itself
 // Version: 0.2.7 - "Recover my ChatCube ID" on the sign-in page: the codes sent to the e-mail and phone
@@ -78,7 +81,7 @@
 // Version: 0.1.2 - the status line shows every network's state, one entry each, beside the last action
 // Version: 0.1.1 - the Telegram application's keys from the relay; TDLib's connection on the status line
 // Version: 0.1.0
-// Last Modified: 2026-11-01
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -105,6 +108,7 @@ class UltraCanvasDropdown;
 class UltraCanvasImageElement;
 class UltraCanvasLabel;
 class UltraCanvasListView;
+class UltraCanvasMenu;
 class UltraCanvasQRCode;
 class UltraCanvasTextArea;
 class UltraCanvasTextInput;
@@ -219,6 +223,43 @@ private:
     void RefreshConversations();
     void ScrollToEnd();
 
+    // ---- the chat list's menu --------------------------------------------------
+    // A right-click on a conversation (it does not open it): what can be done
+    // with it - for a person and for a group - as far as its network allows
+    // (UltraIM's ManageGroups and LeaveConversation capabilities).
+    //
+    //   Open                      Members (3)  >  Bob     >  Send a message
+    //   Mark as unread                             Carol      Copy ID
+    //   Pin to top                                 You        Remove from group
+    //   ----------------          Add members
+    //   Voice call / Video call   Rename group
+    //   Copy ChatCube ID          ----------------
+    //   Add to group  >           Leave group
+    //   ----------------
+    //   Delete chat
+    void ShowConversationMenu(int row, int windowX, int windowY);
+    bool ProviderCan(const std::string& providerId, UltraIMCapabilityFlags capability) const;
+    // Pinned and marked unread: kept in the settings file, shown in the list.
+    void SetPinned(const std::string& conversationId, bool pinned);
+    void SetMarkedUnread(const std::string& conversationId, bool unread);
+    void MarkConversationRead(const std::string& conversationId);
+    void ApplyMarks();
+    // A conversation's new state into the list, the open one kept selected.
+    void UpsertConversation(const UltraIMConversation& conversation);
+    void CallFromMenu(const std::string& conversationId, bool video);
+    void CopyAddress(const std::string& address);
+    // A group's members: a name for each, a chat with one, one taken out.
+    std::string MemberName(const UltraIMConversation& group, const std::string& memberId) const;
+    void MessageMember(const std::string& providerId, const std::string& memberId);
+    void RemoveMember(const std::string& conversationId, const std::string& memberId);
+    // Asked in a dialog, then done through UltraIM.
+    void AskToRenameGroup(const std::string& conversationId);
+    void AskToAddMembers(const std::string& conversationId);
+    void AddToGroup(const std::string& groupId, const std::string& memberId);
+    void AskToLeave(const std::string& conversationId);
+    // The open conversation gone (left, deleted, its network signed out of).
+    void CloseConversationView();
+
     // ---- settings ------------------------------------------------------------
     // The gear: the Settings window, opened or raised.
     void OpenSettings();
@@ -312,6 +353,8 @@ private:
     std::string activeProvider_;    // the open conversation's provider
     std::shared_ptr<UltraCanvas::UltraCanvasListView>  conversationList_;
     std::shared_ptr<ConversationListModel>             conversations_;
+    ChatMarks                                          marks_;             // pinned, marked unread
+    std::shared_ptr<UltraCanvas::UltraCanvasMenu>      conversationMenu_;  // keeps the open menu alive
 
     std::shared_ptr<UltraCanvas::UltraCanvasLabel>     headerAvatar_;   // initials on the person's colour
     std::shared_ptr<UltraCanvas::UltraCanvasImageElement> headerPhoto_; // or their picture, when there is one

@@ -2,6 +2,8 @@
 // ChatCube Direct: the envelope, the store, and two providers end to end
 // through a local relay (P2P, read receipts, offline queue, groups, calls),
 // and two on the local network with no relay at all
+// Version: 0.1.9 - a group renamed, a member taken out by the owner (and not by anyone else), added back, and
+//                  leaving it; a 1:1 conversation deleted on one side (TestGroupManagement)
 // Version: 0.1.8 - the authenticator's setup code waits for a 30-second step with room left: computed a
 //                  step back and checked after the password work, it was refused when a step boundary
 //                  passed in between, and the wrong codes it then counted paused the rest
@@ -16,7 +18,7 @@
 // Version: 0.1.3 - the relay's port probed free, three tries
 // Version: 0.1.2 - the plaintext check on the sealed bytes
 // Version: 0.1.1 - TestRelayRedirect: the relay behind a redirector
-// Last Modified: 2026-10-22
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 
 #include "DirectCrypto.h"
@@ -206,6 +208,11 @@ struct Events {
             if (match(e)) return true;
         }
         return false;
+    }
+    // Forgets what arrived so far: the next WaitFor sees only what follows.
+    void Clear() {
+        std::lock_guard<std::mutex> lock(mutex);
+        list.clear();
     }
     bool WaitFor(const std::function<bool(const UltraIMEvent&)>& match, int seconds = 30) {
         return WaitFor(match, nullptr, seconds);
@@ -496,6 +503,59 @@ bool IsCallState(const UltraIMEvent& e, const std::string& callId, UltraIMCallSt
 
 // 1:1 voice calls between two signed-in providers: declined, then answered
 // with audio both ways, then hung up.
+// A group after it is made (Alice made it, with Bob): renamed by Bob, which
+// Alice hears of; Bob may not take Alice out, the owner may take Bob out and
+// add him back; Bob leaves. Every change reaches the other side.
+void TestGroupManagement(DirectProvider& alice, Events& aliceEvents, DirectProvider& bob, Events& bobEvents,
+                         const std::string& groupId, const std::string& aliceId, const std::string& bobId) {
+    const auto isUpdate = [&](const UltraIMEvent& e) {
+        return e.type == UltraIMEventType::ConversationUpdate && e.conversationId == groupId;
+    };
+    const auto isRemove = [&](const UltraIMEvent& e) {
+        return e.type == UltraIMEventType::ConversationRemove && e.conversationId == groupId;
+    };
+
+    aliceEvents.Clear();
+    UltraIMConversation renamed;
+    CHECK(WaitConversation([&](UltraIMConversationCallback cb) { bob.RenameGroup(groupId, "Crew", cb); }, renamed));
+    CHECK(renamed.title == "Crew" && renamed.ownerId == aliceId);
+    UltraIMEvent seen;
+    CHECK(aliceEvents.WaitFor([&](const UltraIMEvent& e) { return isUpdate(e) && e.conversation.title == "Crew"; },
+                              &seen, 30));
+    CHECK(seen.conversation.ownerId == aliceId);
+
+    // Only the owner takes someone else out.
+    UltraIMResult refused;
+    CHECK(WaitResult([&](UltraIMResultCallback cb) { bob.RemoveGroupMember(groupId, aliceId, cb); }, refused));
+    CHECK(!refused && refused.code == UltraIMResultCode::PermissionDenied);
+    UltraIMConversation none;
+    CHECK(!WaitConversation([&](UltraIMConversationCallback cb) { alice.AddGroupMembers(groupId, {"not an id"}, cb); },
+                            none));
+
+    bobEvents.Clear();
+    UltraIMResult removed;
+    CHECK(WaitResult([&](UltraIMResultCallback cb) { alice.RemoveGroupMember(groupId, bobId, cb); }, removed));
+    CHECK(removed.success);
+    CHECK(bobEvents.WaitFor(isRemove));
+
+    bobEvents.Clear();
+    UltraIMConversation back;
+    CHECK(WaitConversation([&](UltraIMConversationCallback cb) { alice.AddGroupMembers(groupId, {bobId}, cb); }, back));
+    CHECK(back.memberIds.size() == 2);
+    CHECK(bobEvents.WaitFor([&](const UltraIMEvent& e) { return isUpdate(e) && e.conversation.memberIds.size() == 2; }));
+
+    aliceEvents.Clear();
+    bobEvents.Clear();
+    UltraIMResult left;
+    CHECK(WaitResult([&](UltraIMResultCallback cb) { bob.LeaveConversation(groupId, cb); }, left));
+    CHECK(left.success);
+    CHECK(bobEvents.Any(isRemove));
+    CHECK(aliceEvents.WaitFor([&](const UltraIMEvent& e) { return isUpdate(e) && e.conversation.memberIds.size() == 1; }));
+    std::vector<UltraIMConversation> list;
+    bob.FetchConversations([&](const UltraIMResult&, const std::vector<UltraIMConversation>& l) { list = l; });
+    for (const auto& c : list) CHECK(c.conversationId != groupId);
+}
+
 void TestCalls(DirectProvider& alice, Events& aliceEvents, DirectProvider& bob, Events& bobEvents,
                const std::string& aliceId, const std::string& bobId) {
     alice.SetCallUseDevices(false);
@@ -1249,6 +1309,7 @@ void TestEndToEnd() {
     CHECK(!bob->CanCall(group.conversationId, false));
     // A picture to the group goes through the relay, a copy per member.
     CHECK(PictureArrives(*alice, *bob, bobEvents, group.conversationId, picture, pictureBytes, "for the team"));
+    TestGroupManagement(*alice, aliceEvents, *bob, bobEvents, group.conversationId, aliceId, bobId);
 
     if (UltraRtc_GetCapabilities().audio && UltraRtc_GetCapabilities().video) {
         TestVideoCall(*alice, aliceEvents, *bob, bobEvents, bobId);
@@ -1271,6 +1332,25 @@ void TestEndToEnd() {
         CHECK(history[1].type == UltraIMMessageType::Image && history[1].attachment.isDownloaded);
         CHECK(history[3].type == UltraIMMessageType::File && history[3].attachment.fileName == "notes.pdf");
     }
+
+    // Bob deletes his chat with Alice: gone from his list and his store, the
+    // contact kept; Alice's side is untouched.
+    bobEvents.Clear();
+    UltraIMResult deleted;
+    CHECK(WaitResult([&](UltraIMResultCallback cb) { bob->LeaveConversation(aliceId, cb); }, deleted));
+    CHECK(deleted.success);
+    CHECK(bobEvents.Any([&](const UltraIMEvent& e) {
+        return e.type == UltraIMEventType::ConversationRemove && e.conversationId == aliceId;
+    }));
+    bob->FetchMessages(aliceId, "", 50, [&](const UltraIMResult&, const std::vector<UltraIMMessage>& m) { history = m; });
+    CHECK(history.empty());
+    std::vector<UltraIMContact> bobContacts;
+    bob->FetchContacts([&](const UltraIMResult&, const std::vector<UltraIMContact>& c) { bobContacts = c; });
+    bool stillContact = false;
+    for (const auto& c : bobContacts) stillContact = stillContact || c.contactId == aliceId;
+    CHECK(stillContact);
+    alice->FetchMessages(bobId, "", 50, [&](const UltraIMResult&, const std::vector<UltraIMMessage>& m) { history = m; });
+    CHECK(!history.empty());
 
     alice->Shutdown();
     bob->Shutdown();

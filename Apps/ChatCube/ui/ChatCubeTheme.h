@@ -76,6 +76,9 @@ void PaintPlayMark(UltraCanvas::IRenderContext* ctx, const UltraCanvas::Point2Dd
 void PaintTicks(UltraCanvas::IRenderContext* ctx, const UltraCanvas::Rect2Dd& area, int count,
                 const UltraCanvas::Color& color);
 int  TicksWidth(int count, double height);
+// A pin - the mark of a conversation pinned to the top of the list - as
+// strokes centred in `area` (the shape of media/icons/clipboard/pin.svg).
+void PaintPin(UltraCanvas::IRenderContext* ctx, const UltraCanvas::Rect2Dd& area, const UltraCanvas::Color& color);
 // A presence dot at the avatar's lower right, ringed in the surface it sits on.
 void PaintPresence(UltraCanvas::IRenderContext* ctx, const UltraCanvas::Point2Dd& avatarCentre, double avatarRadius,
                    const UltraCanvas::Color& presence, const UltraCanvas::Color& ring);

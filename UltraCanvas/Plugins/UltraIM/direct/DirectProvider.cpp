@@ -162,7 +162,7 @@ UltraIMCapabilityFlags DirectProvider::GetCapabilities() const {
     return F::TextMessages | F::GroupChats | F::ReadReceipts | F::TypingIndicator | F::E2EEncryption |
            F::OfflineMessages | F::PeerToPeer | F::ReplyToMessage | F::AnonymousLogin | F::AddContact |
            F::CreateGroup | F::VoiceCalls | F::VideoCalls | F::ImageMessages | F::FileTransfer |
-           F::AccountProfile | F::SignInProtection | F::AccountRecovery;
+           F::AccountProfile | F::SignInProtection | F::AccountRecovery | F::ManageGroups | F::LeaveConversation;
 }
 
 UltraIMResult DirectProvider::Initialize(const UltraIMConfig& config, UltraIMEventSink sink) {
@@ -1341,12 +1341,16 @@ void DirectProvider::UpsertGroup(const JSONValue& group) {
     if (!IsGroupId(id)) return;
     if (group["removed"].GetBoolean(false)) {
         store_.RemoveConversation(id);
-        UltraIMEvent event;
-        event.type = UltraIMEventType::ConversationRemove;
-        event.providerId = providerId_;
-        event.conversationId = id;
-        Emit(event);
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            groupOwners_.erase(id);
+        }
+        EmitRemoved(id);
         return;
+    }
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        groupOwners_[id] = group["owner"].GetString();
     }
     UltraIMConversation conversation;
     store_.GetConversation(id, conversation);
@@ -1358,6 +1362,7 @@ void DirectProvider::UpsertGroup(const JSONValue& group) {
     for (const auto& m : group["members"].GetElements()) conversation.memberIds.push_back(m.GetString());
     store_.UpsertConversation(conversation);
     store_.GetConversation(id, conversation);
+    FillOwner(conversation);
     for (const auto& member : conversation.memberIds) {
         if (member != identity_.userId) FetchUser(member, [](bool) {});
     }
@@ -1383,6 +1388,7 @@ void DirectProvider::FetchConversations(UltraIMConversationsCallback onResult) {
     std::vector<UltraIMConversation> list = store_.ListConversations();
     for (auto& c : list) {
         if (!c.isGroup && !c.directContactId.empty()) c.presence = EffectivePresence(c.directContactId);
+        if (c.isGroup) FillOwner(c);
     }
     onResult(UltraIMResult::Ok(), list);
 }
@@ -1518,7 +1524,134 @@ void DirectProvider::CreateGroup(const std::string& title, const std::vector<std
         UpsertGroup(r.body);
         UltraIMConversation conversation;
         store_.GetConversation(r.body["conversation"].GetString(), conversation);
+        FillOwner(conversation);
         onResult(UltraIMResult::Ok(), conversation);
+    });
+}
+
+void DirectProvider::FillOwner(UltraIMConversation& conversation) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    const auto found = groupOwners_.find(conversation.conversationId);
+    if (found != groupOwners_.end()) conversation.ownerId = found->second;
+}
+
+void DirectProvider::EmitRemoved(const std::string& conversationId) {
+    UltraIMEvent event;
+    event.type = UltraIMEventType::ConversationRemove;
+    event.providerId = providerId_;
+    event.conversationId = conversationId;
+    Emit(event);
+}
+
+UltraIMResult DirectProvider::GroupRequestTarget(const std::string& conversationId,
+                                                 std::shared_ptr<RelayClient>& relay, std::string& groupId) const {
+    if (!IsGroupId(conversationId))
+        return UltraIMResult::Error(UltraIMResultCode::InvalidArgument, "Not a group");
+    if (state_ != UltraIMConnectionState::Connected)
+        return UltraIMResult::Error(UltraIMResultCode::NotConnected, "Not signed in");
+    relay = Relay();
+    if (!relay)
+        return UltraIMResult::Error(UltraIMResultCode::CapabilityMissing,
+                                    "Groups need a relay server - this ChatCube uses the local network only");
+    groupId = conversationId.substr(std::string(kGroupPrefix).size());
+    return UltraIMResult::Ok();
+}
+
+void DirectProvider::RenameGroup(const std::string& conversationId, const std::string& title,
+                                 UltraIMConversationCallback onResult) {
+    std::shared_ptr<RelayClient> relay;
+    std::string groupId;
+    const UltraIMResult target = GroupRequestTarget(conversationId, relay, groupId);
+    if (!target) return onResult(target, {});
+    JSONValue body = JSONValue::MakeObject();
+    body.Set("title", JSONValue(title));
+    relay->Request("PATCH", "/v1/groups/" + groupId, &body, [this, conversationId, onResult](const RelayResponse& r) {
+        if (!r.Ok()) return onResult(RelayError(r, UltraIMResultCode::Unknown), {});
+        UpsertGroup(r.body);
+        UltraIMConversation conversation;
+        store_.GetConversation(conversationId, conversation);
+        FillOwner(conversation);
+        onResult(UltraIMResult::Ok(), conversation);
+    });
+}
+
+void DirectProvider::AddGroupMembers(const std::string& conversationId, const std::vector<std::string>& memberIds,
+                                     UltraIMConversationCallback onResult) {
+    std::shared_ptr<RelayClient> relay;
+    std::string groupId;
+    const UltraIMResult target = GroupRequestTarget(conversationId, relay, groupId);
+    if (!target) return onResult(target, {});
+    std::vector<std::string> ids;
+    for (const std::string& address : memberIds) {
+        const std::string id = NormalizeUserId(address);
+        if (id.empty())
+            return onResult(UltraIMResult::Error(UltraIMResultCode::InvalidArgument,
+                                                 address + " is not a ChatCube ID (32 hexadecimal characters)"), {});
+        ids.push_back(id);
+    }
+    AddMembersFrom(relay, groupId, conversationId, ids, 0, onResult);
+}
+
+void DirectProvider::AddMembersFrom(std::shared_ptr<RelayClient> relay, std::string groupId,
+                                    std::string conversationId, std::vector<std::string> ids, size_t index,
+                                    UltraIMConversationCallback onResult) {
+    if (index >= ids.size()) {
+        UltraIMConversation conversation;
+        store_.GetConversation(conversationId, conversation);
+        FillOwner(conversation);
+        onResult(UltraIMResult::Ok(), conversation);
+        return;
+    }
+    JSONValue body = JSONValue::MakeObject();
+    body.Set("user_id", JSONValue(ids[index]));
+    relay->Request("POST", "/v1/groups/" + groupId + "/members", &body,
+                   [this, relay, groupId, conversationId, ids, index, onResult](const RelayResponse& r) {
+        if (!r.Ok()) return onResult(RelayError(r, UltraIMResultCode::Unknown), {});
+        UpsertGroup(r.body);
+        AddMembersFrom(relay, groupId, conversationId, ids, index + 1, onResult);
+    });
+}
+
+void DirectProvider::RemoveGroupMember(const std::string& conversationId, const std::string& memberId,
+                                       UltraIMResultCallback onResult) {
+    std::shared_ptr<RelayClient> relay;
+    std::string groupId;
+    const UltraIMResult target = GroupRequestTarget(conversationId, relay, groupId);
+    if (!target) return onResult(target);
+    const std::string id = NormalizeUserId(memberId);
+    if (id.empty())
+        return onResult(UltraIMResult::Error(UltraIMResultCode::InvalidArgument, "Not a ChatCube ID"));
+    if (id == identity_.userId) return LeaveConversation(conversationId, onResult);
+    // The relay tells every member, this device too (group.update).
+    relay->Request("DELETE", "/v1/groups/" + groupId + "/members/" + id, nullptr, [onResult](const RelayResponse& r) {
+        onResult(r.Ok() ? UltraIMResult::Ok() : RelayError(r, UltraIMResultCode::Unknown));
+    });
+}
+
+void DirectProvider::LeaveConversation(const std::string& conversationId, UltraIMResultCallback onResult) {
+    if (!IsGroupId(conversationId)) {
+        // A 1:1 conversation is this device's alone: deleted here, the
+        // contact kept (a new message from them starts it again).
+        if (!store_.RemoveConversation(conversationId))
+            return onResult(UltraIMResult::Error(UltraIMResultCode::NotFound, "No such conversation"));
+        EmitRemoved(conversationId);
+        return onResult(UltraIMResult::Ok());
+    }
+    std::shared_ptr<RelayClient> relay;
+    std::string groupId;
+    const UltraIMResult target = GroupRequestTarget(conversationId, relay, groupId);
+    if (!target) return onResult(target);
+    relay->Request("DELETE", "/v1/groups/" + groupId + "/members/" + identity_.userId, nullptr,
+                   [this, conversationId, onResult](const RelayResponse& r) {
+        // Gone already (the last member left, or we were taken out) is gone.
+        if (!r.Ok() && r.status != 404) return onResult(RelayError(r, UltraIMResultCode::Unknown));
+        store_.RemoveConversation(conversationId);
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            groupOwners_.erase(conversationId);
+        }
+        EmitRemoved(conversationId);
+        onResult(UltraIMResult::Ok());
     });
 }
 

@@ -375,6 +375,10 @@ class Store:
                 "SELECT group_id FROM group_members WHERE user_id=?", (user_id,))]
         return [g for g in (self.get_group(i) for i in ids) if g]
 
+    def rename_group(self, group_id: str, title: str) -> None:
+        with self._lock:
+            self._db.execute("UPDATE groups SET title=? WHERE group_id=?", (title, group_id))
+
     def add_member(self, group_id: str, user_id: str) -> None:
         with self._lock:
             self._db.execute("INSERT OR IGNORE INTO group_members(group_id, user_id) VALUES (?,?)",

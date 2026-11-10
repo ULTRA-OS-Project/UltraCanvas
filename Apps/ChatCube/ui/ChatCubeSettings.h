@@ -6,11 +6,13 @@
 // Everything but the look applies at once; the look is read when ChatCube
 // starts, since every element of the window takes its colours as it is built.
 //
+// Version: 0.1.1 - ChatMarks: the conversations pinned to the top and marked unread, kept with the settings
 // Version: 0.1.0
-// Last Modified: 2026-11-01
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
+#include <set>
 #include <string>
 
 namespace ChatCube {
@@ -36,6 +38,19 @@ struct Settings {
     bool Save() const;
     // Where it is kept (UTF-8; empty without a settings folder).
     static std::string File();
+};
+
+// What the chat list's menu sets on a conversation and ChatCube keeps
+// between starts, in the same file under "chats.*": pinned to the top of the
+// list, marked unread. Keys are ConversationListModel::MarkKey's
+// ("<provider>/<conversation id>"). Kept apart from Settings, whose Save is
+// the Settings window's: the two write their own keys and leave the other's.
+struct ChatMarks {
+    std::set<std::string> pinned;
+    std::set<std::string> unread;
+
+    void Load();
+    bool Save() const;
 };
 
 // The words for a date style, as the Settings window offers it: "31.10.2026

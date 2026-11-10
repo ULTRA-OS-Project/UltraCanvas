@@ -17,6 +17,8 @@
 // step Password, then Code. The e-mail address and phone number the owner
 // gives (to recover the account) are kept in the vault and on the relay,
 // for the owner alone.
+// Version: 0.1.6 - a group renamed (PATCH /v1/groups/{id}), members added and removed, a group left
+//                  and a 1:1 conversation deleted on this device; the group's owner on its conversation
 // Version: 0.1.5 - the e-mail address confirmed by the link the relay e-mails; recovery by an e-mailed link
 //                  (POST /v1/recovery/poll with the token only this computer holds)
 // Version: 0.1.4 - confirming the e-mail and phone with the relay's codes; account recovery (the relay
@@ -128,6 +130,16 @@ public:
     void AddContact(const std::string& address, UltraIMConversationCallback onResult) override;
     void CreateGroup(const std::string& title, const std::vector<std::string>& memberIds,
                      UltraIMConversationCallback onResult) override;
+    // Through the relay, which tells every member (group.update). Only the
+    // group's owner takes someone else out; anyone leaves. Leaving a 1:1
+    // conversation deletes it and its messages here, and keeps the contact.
+    void RenameGroup(const std::string& conversationId, const std::string& title,
+                     UltraIMConversationCallback onResult) override;
+    void AddGroupMembers(const std::string& conversationId, const std::vector<std::string>& memberIds,
+                         UltraIMConversationCallback onResult) override;
+    void RemoveGroupMember(const std::string& conversationId, const std::string& memberId,
+                           UltraIMResultCallback onResult) override;
+    void LeaveConversation(const std::string& conversationId, UltraIMResultCallback onResult) override;
     // "telegram": the Telegram application's API ID and hash the relay keeps
     // (GET /v1/telegram-credentials; NotFound when it keeps none).
     void FetchSharedCredentials(const std::string& forProviderId, UltraIMSharedCredentialsCallback onResult) override;
@@ -228,6 +240,15 @@ private:
     UltraIMConversation EnsureDirectConversation(const std::string& userId);
     void RefreshGroups();
     void UpsertGroup(const UltraCanvas::JSONValue& group);
+    // The group's owner, as the relay last said, onto its conversation.
+    void FillOwner(UltraIMConversation& conversation);
+    // The relay's group of a group conversation, or an error for the callback.
+    UltraIMResult GroupRequestTarget(const std::string& conversationId, std::shared_ptr<RelayClient>& relay,
+                                     std::string& groupId) const;
+    // Adds ids[index..] one by one, then answers the group.
+    void AddMembersFrom(std::shared_ptr<RelayClient> relay, std::string groupId, std::string conversationId,
+                        std::vector<std::string> ids, size_t index, UltraIMConversationCallback onResult);
+    void EmitRemoved(const std::string& conversationId);
     void FetchQueue();
     // Online if the relay says so or a local connection to them is up.
     UltraIMPresence EffectivePresence(const std::string& userId);
@@ -305,6 +326,7 @@ private:
     mutable std::mutex mutex_;
     std::map<std::string, Attempt> attempts_;           // clientId|recipient
     std::map<std::string, UltraIMPresence> presence_;   // user id -> presence
+    std::map<std::string, std::string> groupOwners_;    // group conversation -> its owner's user id
     std::set<std::string> fetchingUsers_;
     // Proven by a local connection's handshake: user id -> (key, name).
     std::map<std::string, std::pair<std::vector<uint8_t>, std::string>> lanKeys_;

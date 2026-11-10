@@ -66,6 +66,28 @@ UltraIMResult r = UltraIM_SendText("direct", conversationId, text, options);
 if (!r) { /* mark the row Failed */ }
 ```
 
+A group after it is made (the `ManageGroups` capability):
+`UltraIM_RenameGroup(provider, conversation, title, cb)`,
+`UltraIM_AddGroupMembers(provider, conversation, {ids}, cb)` - both answer
+the group as it is now - and `UltraIM_RemoveGroupMember(provider,
+conversation, id, cb)`, which the network may allow to the group's owner
+alone (`PermissionDenied`; `UltraIMConversation::ownerId` names the owner
+where the network has one, `""` where it does not say). Every member hears
+of the change as a `ConversationUpdate`. `UltraIM_LeaveConversation(provider,
+conversation, cb)` (`LeaveConversation`) takes the local user out of a group,
+or deletes a 1:1 conversation with its history on this device - the other
+side keeps theirs - and a `ConversationRemove` follows. ChatCube offers all
+of it from the chat list's right-click menu, as far as each network lists
+the capability.
+
+```cpp
+UltraIM_AddGroupMembers("direct", groupId, {"3f2a9c01..."},
+                        [](const UltraIMResult& r, const UltraIMConversation& group) {
+    if (!r) { /* r.message says why */ }
+});
+UltraIM_LeaveConversation("direct", groupId, [](const UltraIMResult&) {});
+```
+
 Calls: ask `UltraIM_CanCall(provider, conversation, video)` before offering
 the buttons — ChatCube Direct offers 1:1 voice and video calls while its
 relay socket or a local connection to the contact is up, not group calls yet. `UltraIM_StartCall` gives the call id;
@@ -280,6 +302,12 @@ server: [`Server/ChatCubeRelay`](../../../Server/ChatCubeRelay/README.md).
 - **Delivery ticks:** `Sending` → `Sent` (in the relay's queue) →
   `Delivered` (the peer's device has it: data-channel ack or receipt) →
   `Read` (`UltraIM_MarkRead` on the other side). Groups stop at `Sent`.
+- **Groups** are kept by the relay (`/v1/groups`), which tells every member
+  of a change (`group.update`). `RenameGroup` (relay 1.3.0 and later) and
+  `AddGroupMembers` are for any member, `RemoveGroupMember` for the group's
+  owner (`ownerId`); `LeaveConversation` leaves a group, and deletes a 1:1
+  conversation and its messages on this device while keeping the contact,
+  so a new message from them starts it again.
 - **Local record:** contacts and their keys, conversations, history and the
   outbox in `<dataDirectory>/direct/direct.sqlite3` (UltraDatabase).
   `FetchMessages` answers from it; nothing waits for the network.
@@ -392,6 +420,10 @@ other over mDNS alone, which skips without a responder unless
   invitation is a conversation whose snippet says so; sending into it
   accepts it. `AddContact("@name:server")` opens a direct chat (or returns
   the one there is); `CreateGroup` makes a private room and invites.
+  `RenameGroup` sets `m.room.name`, `AddGroupMembers` invites,
+  `RemoveGroupMember` kicks (the homeserver's power levels decide whether
+  we may: `PermissionDenied` when not), and `LeaveConversation` leaves the
+  room and forgets it - a direct chat as much as a group.
 - **Messages:** text with replies (`replyTo`, the quoted fallback taken off),
   emotes, pictures, videos, audio and files with their attachments (the
   `filename` and the body as the caption, MSC2530), edits (`m.replace` -

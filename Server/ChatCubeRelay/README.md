@@ -74,6 +74,7 @@ too, in its upgrade request).
 | `PUT` / `DELETE /v1/contacts/{id}` | add / remove |
 | `POST /v1/groups` | `{title, members}` → `{group_id, conversation: "group:<id>", title, owner, members}` |
 | `GET /v1/groups`, `GET /v1/groups/{id}` | the caller's groups |
+| `PATCH /v1/groups/{id}` | `{title}` — any member renames (1.3.0) |
 | `POST /v1/groups/{id}/members` | `{user_id}` — any member adds |
 | `DELETE /v1/groups/{id}/members/{user}` | the owner removes anyone; anyone leaves |
 | `POST /v1/messages` | `{messages: [{to, message_id, conversation, envelope}]}` — offline 1:1 copies, or one copy per group member (sender and recipient must both be members of a `group:` conversation). A `message_id` already queued for that recipient is not queued twice. Envelopes up to 64 KiB |

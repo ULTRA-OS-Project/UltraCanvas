@@ -1,5 +1,7 @@
 // include/UltraIM/UltraIMPlugins.h
 // UltraIM - the provider plug-in interface and the module (DSO) host contract
+// Version: 0.1.8 - ABI 4: a group managed after it is made (RenameGroup, AddGroupMembers, RemoveGroupMember)
+//                  and a conversation left (LeaveConversation); UltraIMConversation::ownerId
 // Version: 0.1.7 - ABI 3: confirming the e-mail (by a link) and the phone (by a code), and account recovery
 //                  by a link e-mailed to the owner (FinishRecovery asks whether it was approved)
 // Version: 0.1.6 - ABI 2: the version covers the provider interface and its types, a module says
@@ -10,7 +12,7 @@
 // Version: 0.1.2 - GetAuthResendHint / ResendAuthCode: a sign-in code sent another way
 // Version: 0.1.1 - FetchSharedCredentials: what a provider's service keeps for another provider
 // Version: 0.1.0
-// Last Modified: 2026-10-29
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -317,6 +319,35 @@ public:
         if (onResult) onResult(Unsupported("account recovery"));
     }
 
+    // ---- A group after it is made; leaving a conversation -----------------------
+    // (ManageGroups and LeaveConversation capabilities.) Each finishes through
+    // the callback; the changed conversation also arrives for everyone
+    // listening as a ConversationUpdate, a left one as a ConversationRemove.
+    // RenameGroup and AddGroupMembers answer the group as it is now.
+    // RemoveGroupMember takes someone else out (the network may allow that to
+    // the group's owner alone: PermissionDenied); LeaveConversation takes the local
+    // user out of a group, or deletes a 1:1 conversation with its history on
+    // this device (the other side keeps theirs).
+    virtual void RenameGroup(const std::string& conversationId, const std::string& title,
+                             UltraIMConversationCallback onResult) {
+        (void)conversationId; (void)title;
+        if (onResult) onResult(Unsupported("renaming groups"), {});
+    }
+    virtual void AddGroupMembers(const std::string& conversationId, const std::vector<std::string>& memberIds,
+                                 UltraIMConversationCallback onResult) {
+        (void)conversationId; (void)memberIds;
+        if (onResult) onResult(Unsupported("adding group members"), {});
+    }
+    virtual void RemoveGroupMember(const std::string& conversationId, const std::string& memberId,
+                                   UltraIMResultCallback onResult) {
+        (void)conversationId; (void)memberId;
+        if (onResult) onResult(Unsupported("removing group members"));
+    }
+    virtual void LeaveConversation(const std::string& conversationId, UltraIMResultCallback onResult) {
+        (void)conversationId;
+        if (onResult) onResult(Unsupported("leaving conversations"));
+    }
+
 protected:
     static UltraIMResult Unsupported(const std::string& what) {
         return UltraIMResult::Error(UltraIMResultCode::CapabilityMissing,
@@ -352,9 +383,11 @@ protected:
 // sign-in protection, UltraIMCredentials::email - and the version check.
 // Version 3 (2026-11): the profile's verified flags and recovery state,
 // confirming the e-mail and phone, account recovery by an e-mailed link.
+// Version 4 (2026-11): a group renamed, members added and removed, a
+// conversation left; UltraIMConversation::ownerId.
 // ============================================================================
 
-constexpr int ULTRAIM_PLUGIN_HOST_ABI_VERSION = 3;
+constexpr int ULTRAIM_PLUGIN_HOST_ABI_VERSION = 4;
 
 struct UltraIMPluginHost {
     int abiVersion;

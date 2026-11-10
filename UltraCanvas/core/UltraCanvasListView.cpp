@@ -1,12 +1,13 @@
 // core/UltraCanvasListView.cpp
 // Model-View-Delegate ListView widget implementation
+// Version: 1.7.0 - SetSelectsOnContextMenu(false): a right press leaves the selection as it is
 // Version: 1.6.0 - SetColumnFitting
 // Version: 1.5.0 - a horizontal scrollbar when the columns are wider than the view
 // Version: 1.4.0 - onCellDoubleClicked, GetCellRect
 // Version: 1.3.0 - the hover follows the rows when they scroll under a still pointer
 // Version: 1.2.0 - model callbacks inert once the view is destroyed; OnModelChanged
 // Version: 1.1.0 - MeasureHeaderWidth / MeasureColumnTextWidth
-// Last Modified: 2026-10-23
+// Last Modified: 2026-11-10
 #include "UltraCanvasListView.h"
 #include "UltraCanvasListSortFilterProxy.h"
 #include "UltraCanvasApplication.h"
@@ -1078,7 +1079,7 @@ namespace UltraCanvas {
             event.button == UCMouseButton::Right && Contains(event.pointer)) {
             SetFocus(true);
             const int row = GetRowAtY(event.pointer.y);
-            if (row >= 0) {
+            if (row >= 0 && selectsOnContextMenu) {
                 focusedRow = row;
                 if (selection && !selection->IsSelected(row)) selection->Select(row, false);
                 RequestRedraw();

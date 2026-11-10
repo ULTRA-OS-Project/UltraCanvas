@@ -1,5 +1,6 @@
 // include/UltraCanvasListView.h
 // Model-View-Delegate ListView widget
+// Version: 1.9.0 - SetSelectsOnContextMenu: a right-click menu that leaves the selection alone
 // Version: 1.8.0 - SetColumnFitting: every column as wide as its widest text
 //                  and its header, measured at the next paint after the rows
 //                  change, until the user drags a border
@@ -21,7 +22,7 @@
 //                  subclasses, instead of wrapping those callbacks
 // Version: 1.1.0 - MeasureHeaderWidth / MeasureColumnTextWidth: what fitting a
 //                  column to its title and its rows' text takes
-// Last Modified: 2026-10-23
+// Last Modified: 2026-11-10
 #pragma once
 
 #include "UltraCanvasCommonTypes.h"
@@ -109,7 +110,8 @@ namespace UltraCanvas {
         // A right-button press in the rows area. `row` is the row under the
         // pointer, -1 for the empty space below the rows; a row under the
         // pointer is selected first (alone), as every desktop does, so the
-        // handler's menu acts on what the user pointed at. The usual handler
+        // handler's menu acts on what the user pointed at (unless
+        // SetSelectsOnContextMenu(false) says otherwise). The usual handler
         // builds an UltraCanvasMenu of type PopupMenu and calls OpenMenu with
         // event.pointerWindow. When set, the press is consumed here; when not,
         // a right press is handled like a left one.
@@ -330,6 +332,12 @@ namespace UltraCanvas {
         // click on a row does not leave it on a list that then closes.
         bool AcceptsFocus() const override { return acceptsFocus; }
         void SetAcceptsFocus(bool accept) { acceptsFocus = accept; }
+        // Whether a right press selects the row under it before onContextMenu
+        // (the default, as every desktop does). A list where selecting a row
+        // does something - a messenger's chat list opens the chat - turns it
+        // off: the menu acts on the `row` it is handed and the selection stays.
+        void SetSelectsOnContextMenu(bool select) { selectsOnContextMenu = select; }
+        bool SelectsOnContextMenu() const { return selectsOnContextMenu; }
 
     protected:
         // After the view has taken in a change its model signalled - the rows
@@ -348,6 +356,7 @@ namespace UltraCanvas {
         // View state
         ListViewStyle viewStyle;
         bool acceptsFocus = true;
+        bool selectsOnContextMenu = true;
 
         // Scrollbars. The vertical one takes the right edge of the rows area,
         // the horizontal one its bottom edge; each is shown only while there

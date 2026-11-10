@@ -1,7 +1,8 @@
 // Apps/ChatCube/ui/ChatCubeSettings.cpp
 // ChatCube's preferences in <settings folder>/ChatCube/settings.json.
+// Version: 0.1.1 - ChatMarks under "chats.pinned" and "chats.unread"
 // Version: 0.1.0
-// Last Modified: 2026-11-01
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "ChatCubeSettings.h"
@@ -55,6 +56,23 @@ bool Settings::Save() const {
     file.Set("messages.send-typing", sendTyping);
     file.Set("messages.show-typing", showTyping);
     file.Set("networks.show-nearby", showNearby);
+    return file.Save();
+}
+
+void ChatMarks::Load() {
+    UltraCanvas::UltraCanvasAppSettings file(kApp);
+    file.Load();
+    const std::vector<std::string> p = file.GetList("chats.pinned");
+    const std::vector<std::string> u = file.GetList("chats.unread");
+    pinned = std::set<std::string>(p.begin(), p.end());
+    unread = std::set<std::string>(u.begin(), u.end());
+}
+
+bool ChatMarks::Save() const {
+    UltraCanvas::UltraCanvasAppSettings file(kApp);
+    file.Load();                // keeps the Settings window's keys
+    file.Set("chats.pinned", std::vector<std::string>(pinned.begin(), pinned.end()));
+    file.Set("chats.unread", std::vector<std::string>(unread.begin(), unread.end()));
     return file.Save();
 }
 

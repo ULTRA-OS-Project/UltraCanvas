@@ -1,5 +1,7 @@
 // include/UltraIM/UltraIMTypes.h
 // UltraIM - data types shared by the instant-messaging API and its providers
+// Version: 0.1.7 - groups managed after they are made: UltraIMCapabilityFlags ManageGroups and
+//                  LeaveConversation; UltraIMConversation::ownerId
 // Version: 0.1.6 - account recovery by a link e-mailed to the confirmed address (UltraIMRecoveryAnswer
 //                  without codes); the e-mail address confirmed by a link, the phone by a code
 // Version: 0.1.5 - UltraIMPreviewMaker: the application's way of making a preview picture of a file to send
@@ -11,7 +13,7 @@
 // Version: 0.1.2 - UltraIMAccountProfile (name, e-mail, phone), UltraIMSignInProtection, credentials.email
 // Version: 0.1.1 - UltraIMSharedCredentialsCallback: credentials one provider's service keeps for another
 // Version: 0.1.0
-// Last Modified: 2026-11-04
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -120,6 +122,9 @@ struct UltraIMConversation {
     bool            isGroup = false;
     std::string     directContactId;    // The other person of a 1:1 conversation
     std::vector<std::string> memberIds; // Everyone in it, including the local user
+    // A group's creator, who alone may remove other members ("" when the
+    // network does not say, or any member may).
+    std::string     ownerId;
     UltraIMPresence presence = UltraIMPresence::Unknown; // Of directContactId
     std::string     lastMessageSnippet;
     int64_t         lastMessageTimeMs = 0;
@@ -162,7 +167,9 @@ enum class UltraIMCapabilityFlags : uint32_t {
     CreateGroup     = 1u << 25,  // UltraIM_CreateGroup
     AccountProfile  = 1u << 26,  // UltraIM_FetchAccountProfile / UltraIM_UpdateAccountProfile
     SignInProtection = 1u << 27, // UltraIM_SetSignInProtection: a password, an authenticator code
-    AccountRecovery = 1u << 28   // UltraIM_StartRecovery / FinishRecovery: back by a link e-mailed to the owner
+    AccountRecovery = 1u << 28,  // UltraIM_StartRecovery / FinishRecovery: back by a link e-mailed to the owner
+    ManageGroups    = 1u << 29,  // UltraIM_RenameGroup, UltraIM_AddGroupMembers, UltraIM_RemoveGroupMember
+    LeaveConversation = 1u << 30 // UltraIM_LeaveConversation: leave a group, delete a 1:1 conversation
 };
 
 inline UltraIMCapabilityFlags operator|(UltraIMCapabilityFlags a, UltraIMCapabilityFlags b) {
