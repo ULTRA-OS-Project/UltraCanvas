@@ -552,16 +552,28 @@ jobs:
       # pins the vcpkg commit) and saved under a fresh key by every run that
       # built something, so a change rebuilds only the packages it touches;
       # `restore-keys` falls back to the newest cache for this leg.
+      #
+      # The leg is named by its runner AND its architecture, so that no leg's
+      # prefix is the start of another leg's key. Keyed by the runner alone,
+      # the arm64 leg's fallback `vcpkg-macos-15-` was also the start of every
+      # `vcpkg-macos-15-intel-...` key: on 2026-11-10, with no arm64 cache for
+      # a changed MacOS/deps, it restored the Intel leg's x86_64 libraries,
+      # used none of them and built all of them from source (45 minutes, then
+      # the build itself without ccache) - a macOS runner held for two hours
+      # by a job of thirty minutes. The third line reads the caches saved
+      # under that earlier key for the same MacOS/deps; it cannot meet the
+      # other leg, since the content hash follows the runner directly.
       - name: Restore vcpkg binary cache (macOS)
         if: runner.os == 'macOS'
         id: vcpkg-cache
         uses: actions/cache/restore@v5
         with:
           path: ${{ github.workspace }}/.vcpkg/binary-cache
-          key: vcpkg-${{ matrix.os }}-${{ hashFiles('MacOS/deps/**', 'scripts/macos-deps.sh') }}-${{ github.run_id }}
+          key: vcpkg-${{ matrix.os }}-${{ matrix.arch_label }}-${{ hashFiles('MacOS/deps/**', 'scripts/macos-deps.sh') }}-${{ github.run_id }}
           restore-keys: |
+            vcpkg-${{ matrix.os }}-${{ matrix.arch_label }}-${{ hashFiles('MacOS/deps/**', 'scripts/macos-deps.sh') }}-
             vcpkg-${{ matrix.os }}-${{ hashFiles('MacOS/deps/**', 'scripts/macos-deps.sh') }}-
-            vcpkg-${{ matrix.os }}-
+            vcpkg-${{ matrix.os }}-${{ matrix.arch_label }}-
 
       # vcpkg's asset cache: the source archives and tools its ports download,
       # each kept under its SHA-512 and looked for there before the library's

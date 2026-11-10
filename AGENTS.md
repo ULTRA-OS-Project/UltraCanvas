@@ -388,6 +388,15 @@ dead, which apt itself waits out for as long as the job lasts. The build's
 Linux legs also restore the packages the last run on `main` downloaded
 (`ci-apt.sh cache-in` / `cache-out`, saved on `main` only), so a slow mirror
 serves only what changed.
+The repository has 10 GB of Actions cache, and GitHub evicts past that.
+`cache-prune.yml` (`scripts/prune_actions_caches.py`) deletes every
+run-numbered entry (a key ending in `${{ github.run_id }}`) but the newest of
+its kind, and closed pull requests' caches, after each build. Two rules for a
+new cache: a key that grows with every run ends in the run id, so the prune
+recognises it; and no leg's `restore-keys` prefix may be the start of another
+leg's key. `vcpkg-macos-15-` once matched `vcpkg-macos-15-intel-...`, and the
+arm64 leg restored x86_64 libraries and rebuilt them all; name a leg by its
+runner and its architecture (`vcpkg-${{ matrix.os }}-${{ matrix.arch_label }}-`).
 A pull request builds five rows - Linux x86_64 and arm64, Windows x86_64 and
 ARM, macOS on Apple silicon - and the macOS Intel row on main only, since
 its runner is five to ten times slower and the two macOS rows share one code
