@@ -1235,6 +1235,26 @@ else()
     message(STATUS "  TooltipOwnWindowTest skipped (UltraCanvas target not present, or not X11)")
 endif()
 
+# A tooltip asked for by an element with no window yet (offscreen, in a test),
+# in a program with no application: nothing shown, nothing crashes. Headless.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building TooltipNoWindowTest...")
+    add_executable(TooltipNoWindowTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/TooltipNoWindowTest.cpp
+    )
+    target_include_directories(TooltipNoWindowTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(TooltipNoWindowTest PRIVATE cxx_std_20)
+    target_link_libraries(TooltipNoWindowTest PRIVATE UltraCanvas)
+    set_target_properties(TooltipNoWindowTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME TooltipNoWindowTest COMMAND TooltipNoWindowTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: TooltipNoWindowTest")
+else()
+    message(STATUS "  TooltipNoWindowTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== POPUP OWN WINDOW TEST =====
 # Popups in windows of their own: a menu above a window that covers the one it
 # belongs to (as an application's window covers the desktop's bars), cut to its

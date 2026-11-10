@@ -1,5 +1,7 @@
 // UltraCanvasTooltipManager.cpp
 // Implementation of tooltip system for UltraCanvas
+// Version: 2.5.2 - an element with no window (and a program with no application) asks for
+//                  a tooltip without crashing: nothing is shown
 // Version: 2.5.1 - in a window of its own on macOS too
 // Version: 2.5.0 - shown in a window of its own (WindowType::Tooltip) above every other
 //                  window, placed on the screen rather than inside the window it
@@ -298,14 +300,14 @@ namespace UltraCanvas {
 
     void UltraCanvasTooltipManager::CancelShowTimer() {
         if (showTimerId != InvalidTimerId) {
-            UltraCanvasApplication::GetInstance()->StopTimer(showTimerId);
+            if (auto* app = UltraCanvasApplication::GetInstance()) app->StopTimer(showTimerId);
             showTimerId = InvalidTimerId;
         }
     }
 
     void UltraCanvasTooltipManager::CancelHideTimer() {
         if (hideTimerId != InvalidTimerId) {
-            UltraCanvasApplication::GetInstance()->StopTimer(hideTimerId);
+            if (auto* app = UltraCanvasApplication::GetInstance()) app->StopTimer(hideTimerId);
             hideTimerId = InvalidTimerId;
         }
     }
@@ -313,6 +315,13 @@ namespace UltraCanvas {
     void UltraCanvasTooltipManager::UpdateAndShowTooltip(UltraCanvasWindowBase* win, const TooltipContent& content,
                                                          const Point2Di& position, const TooltipStyle& newStyle) {
         if (!enabled) return;
+        // An element not in a window yet (built but not added, drawn
+        // offscreen, in a test) has nowhere to show a tooltip: one shown
+        // for another window goes, and nothing else happens.
+        if (!win) {
+            if (visible || pendingShow) HideTooltipImmediately();
+            return;
+        }
 
         // If already showing for this element, just update content
         if (visible) {
@@ -343,8 +352,10 @@ namespace UltraCanvas {
 
         if (!visible) {
             CancelShowTimer();
+            auto* app = UltraCanvasApplication::GetInstance();
+            if (!app) return;   // no application: no timer to wait on, nothing to show it in
             pendingShow = true;
-            showTimerId = UltraCanvasApplication::GetInstance()->StartTimer(style.showDelay, false,
+            showTimerId = app->StartTimer(style.showDelay, false,
                 [](TimerId) {
                     showTimerId = InvalidTimerId;
                     if (!pendingShow) return;
@@ -378,10 +389,15 @@ namespace UltraCanvas {
         CancelShowTimer();
         pendingShow = false;
 
+        auto* app = UltraCanvasApplication::GetInstance();
+        if (visible && !app) {
+            HideTooltipImmediately();   // no timer to wait on
+            return;
+        }
         if (visible) {
             CancelHideTimer();
             pendingHide = true;
-            hideTimerId = UltraCanvasApplication::GetInstance()->StartTimer(style.hideDelay, false,
+            hideTimerId = app->StartTimer(style.hideDelay, false,
                 [](TimerId) {
                     hideTimerId = InvalidTimerId;
                     if (!pendingHide) return;
@@ -405,7 +421,7 @@ namespace UltraCanvas {
     void UltraCanvasTooltipManager::UpdateAndShowTooltipImmediately(UltraCanvasWindowBase* win, const TooltipContent& content,
                                                                     const Point2Di& position, const TooltipStyle& newStyle) {
         UpdateAndShowTooltip(win, content, position, newStyle);
-        if (!enabled || content.Empty()) return;
+        if (!enabled || content.Empty() || !win) return;
         CancelShowTimer();
         CancelHideTimer();
         pendingShow = false;
