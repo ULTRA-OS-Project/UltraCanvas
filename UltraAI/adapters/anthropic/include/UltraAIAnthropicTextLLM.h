@@ -3,13 +3,15 @@
 // (POST {baseUrl}/v1/messages, anthropic-version 2026-10-21).
 // Network I/O goes through the UltraAI transport seam: production wiring
 // uses UltraNetTransport, unit tests inject a ScriptedTransport.
-// Version: 0.2.0 - API version 2026-10-21, claude-opus-5-5 by default, refusal
+// Version: 0.3.0 - API version 2026-10-21, claude-opus-5-5 by default, refusal
 //                  fallbacks by default; sampling fields are not sent
+// Version: 0.2.0 - CreateAnthropicTextBatch
 // Version: 0.1.0
-// Last Modified: 2026-11-06
+// Last Modified: 2026-11-10
 // Author: UltraAI Module
 #pragma once
 
+#include "UltraAIBatch.h"
 #include "UltraAITextLLM.h"
 #include "UltraAITransport.h"
 
@@ -49,6 +51,16 @@ namespace UltraAI {
 // otherwise construction fails with ErrorCode::NetworkError).
 std::unique_ptr<ITextLLM> CreateAnthropicTextLLM(
     const TextLLMConfig& config,
+    Error* outError = nullptr,
+    std::shared_ptr<ITransport> transport = nullptr);
+
+// Anthropic's Message Batches (ITextBatch, UltraAIBatch.h): the requests go
+// to POST {baseUrl}/v1/messages/batches with the same body Chat sends, at
+// about half the price, answered within 24 hours. Same config fields and
+// transport rules as CreateAnthropicTextLLM; an "anthropic-beta" request
+// option becomes the batch's beta header.
+std::unique_ptr<ITextBatch> CreateAnthropicTextBatch(
+    const TextBatchConfig& config,
     Error* outError = nullptr,
     std::shared_ptr<ITransport> transport = nullptr);
 
