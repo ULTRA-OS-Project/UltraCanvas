@@ -23,6 +23,7 @@ else (SMTP, IMAP, MQTT, SSH, LDAP, RTSP, gRPC, …).
 - [Architecture](#architecture)
 - [Quick examples](#quick-examples)
 - [Module layout](#module-layout)
+- [Proxies](#proxies)
 - [SSH tunnels](#ssh-tunnels)
 - [Debugging a mail connection](#debugging-a-mail-connection)
 - [The FTP session log](#the-ftp-session-log)
@@ -80,7 +81,7 @@ planned (see the status table below).
 | Auth | OAuth 2.0 authorization-code + PKCE, loopback redirect, token refresh | `UltraNet/UltraNetOAuth2.h` |
 | Auth | The process-wide OAuth2 *app registry*: the client id / secret / redirect URI per provider, from code, the environment, an INI file or a baked-in default, with aliases — and the sign-in service's address through the same tiers, built in as `ULTRANET_OAUTH_SERVICE_URL`; shared by UltraMail and UltraCloud | `UltraNet/UltraNetOAuth2Apps.h` |
 | Auth | The client of an OAuth2 *sign-in service* (Server/OAuthCallback): a web service that holds the client registrations and receives the providers' redirects, so the application ships no secret and a provider that refuses loopback redirects (Yahoo) redirects like any other; PKCE end to end | `UltraNet/UltraNetOAuth2Service.h` |
-| Proxy | HTTP / HTTPS / SOCKS4 / SOCKS5 / system | `UltraNet/UltraNetProxy.h` |
+| Proxy | The operating system's proxy by default (the environment, GNOME / KDE, Windows' WPAD and PAC, macOS' PAC), or HTTP / HTTPS / SOCKS4 / SOCKS5 with exceptions and a sign-in; decided per URL and applied to every libcurl transfer - HTTP, WebSocket, FTP / SFTP and the mail plug-ins (see [Proxies](#proxies)) | `UltraNet/UltraNetCore.h`, `UltraNet/UltraNetCurlProxy.h` |
 | URL | Parse, build, encode, query strings | `UltraNet/UltraNetUrl.h` |
 | MIME | base64 / quoted-printable, RFC 2047 headers, multipart parse + build; text in any charset iconv knows (ISO-2022-JP - also raw in headers -, Shift_JIS, GB18030, KOI8-R, windows-125x, ...) converted to UTF-8, UTF-8 and Latin-1 without iconv; unlabelled 8-bit header text read in the body's charset or the best-scoring guess | `UltraNet/UltraNetMime.h` |
 
@@ -343,7 +344,7 @@ UltraCanvas/                      (or wherever the build places it)
 │   ├── UltraNetOAuth2.h
 │   ├── UltraNetOAuth2Apps.h
 │   ├── UltraNetOAuth2Service.h
-│   ├── UltraNetProxy.h
+│   ├── UltraNetCurlProxy.h       (header-only, the proxy on a libcurl handle)
 │   ├── UltraNetUrl.h
 │   ├── UltraNetSsh.h             (SSH tunnels, through the ssh plug-in)
 │   ├── UltraNetMailAddr.h        (header-only, shared by the mail plug-ins)
@@ -359,6 +360,76 @@ UltraCanvas/                      (or wherever the build places it)
 ```
 
 CMake target: `UltraNet`. Header include style: `<UltraNet/UltraNet*.h>`.
+
+---
+
+## Proxies
+
+Every connection UltraNet makes through libcurl - the HTTP verbs (sync,
+async, SSE), WebSocket, FTP / FTPS / SFTP, and the IMAP, SMTP, POP3,
+WebDAV, LDAP, Telnet and gRPC plug-ins - asks `UltraNet_ResolveProxy(url,
+requested)` which proxy to use and hands the answer to libcurl
+(`UltraNet/UltraNetCurlProxy.h`; a plug-in reaches the resolver through its
+host table, ABI 4). Raw sockets (`UltraNetSocket.h`), the SSH plug-in
+(libssh) and the UDP protocols do not go through a proxy.
+
+The setting is `UltraNetConfig::proxy` (`UltraNet_SetGlobalProxy`), or a
+request's own `UltraNetHttpOptions::proxy`:
+
+| `UltraNetProxyType` | Meaning |
+|---|---|
+| `System` (the default) | The operating system's proxy for that address - see below; direct when it names none |
+| `NoProxy` | Module-wide: every connection direct, the `*_proxy` environment ignored as well. On a request: the module-wide setting applies |
+| `Direct` | On a request: direct, whatever the module-wide setting says |
+| `Http`, `Https`, `Socks4`, `Socks5` | That proxy (`Https` = TLS to the proxy itself). SOCKS lets the proxy look the name up (`remoteDns`, socks5h / socks4a) unless told otherwise |
+
+The machine itself (`localhost`, `127.0.0.0/8`, `::1`) is always reached
+directly - a local model server or a test server never goes through a
+proxy - and so is every host `noProxyHosts` names: a name and its
+subdomains (`example.com`), a pattern (`*.example.com`, `192.168.*`), a
+leading-dot suffix, an IPv4 range (`10.0.0.0/8`), `*`, or `<local>` (a
+name without a dot). `UltraNet_HostMatchesNoProxy` and
+`UltraNet_ParseNoProxyList` are the same rules for a caller.
+
+**The operating system's proxy** (`UltraNet_DetectSystemProxyFor`, asked at
+most once a minute per scheme and host; `UltraNet_ForgetSystemProxy` asks
+again):
+
+| Platform | Read from |
+|---|---|
+| Linux | `http_proxy` / `https_proxy` / `ftp_proxy` / `all_proxy` / `no_proxy` when any is set (as libcurl and the command line read them); else GNOME's settings (GSettings, through GIO opened at run time; "automatic" asks GIO's resolver, which runs a PAC script where glib-networking can) or KDE's (`kioslaverc`, manual) |
+| Windows | The user's Internet settings through WinHTTP: automatic detection (WPAD) and a setup script (PAC) evaluated per address, else the manual proxy and its bypass list; a company proxy that asks who connects is answered as the signed-in user (Negotiate / NTLM) |
+| macOS | System Settings > Network > Proxies through CFNetwork, the exceptions applied by it; a PAC script fetched (directly) and run per address |
+
+The web's proxy (HTTP, HTTPS - and WebSocket, as the page address it
+upgrades) is used only for those; mail and other protocols use the system's
+SOCKS proxy (or `all_proxy`) - a proxy that lets CONNECT through to port 443
+only would otherwise cut off a mail server that was reached directly. A
+proxy set explicitly (`Http`, `Socks5`, ...) carries everything, the HTTP
+kind as a CONNECT tunnel.
+
+`UltraNetProxyConfig::autoConfigUrl` names a PAC script to run instead of
+the system's settings, where this build can (`UltraNet_CanEvaluateProxyScript`:
+Windows and macOS).
+
+```cpp
+UltraNetProxyConfig socks;
+socks.type = UltraNetProxyType::Socks5;
+socks.host = "localhost";
+socks.port = 10808;
+socks.noProxyHosts = UltraNet_ParseNoProxyList("*.example.com, 192.168.*");
+UltraNet_SetGlobalProxy(socks);              // every connection from now on
+
+UltraNetProxyConfig used = UltraNet_ResolveProxy("imaps://mail.example.org/INBOX");
+// used.type == Socks5; UltraNet_DescribeProxy(used) == "socks5h://localhost:10808"
+```
+
+An application built on UltraCanvas does not set this itself: the
+framework's shared proxy settings (`UltraCanvasProxySettings.h`, the dialog
+in `UltraCanvasProxySettingsDialog.h`) keep the choice in `Proxy.conf` and
+hand it to UltraNet through `UltraNet_SetGlobalProxySource`, so every
+application follows one setting, and a change saved in one is used by the
+others from their next connection.
 
 ---
 

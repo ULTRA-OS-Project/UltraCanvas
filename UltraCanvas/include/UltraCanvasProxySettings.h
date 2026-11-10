@@ -105,9 +105,10 @@ namespace UltraCanvas {
         // settings folder.
         static std::filesystem::path FilePath();
         // The file, and the remembered password (or the one this program was
-        // told). A missing or unreadable file is the defaults: the system's
-        // proxy.
-        static ProxySettings Load();
+        // told) - unless `withPassword` is false, which leaves the vault
+        // closed (a page that only says which proxy is in use). A missing or
+        // unreadable file is the defaults: the system's proxy.
+        static ProxySettings Load(bool withPassword = true);
         // Writes the file (beside it, then renamed over it) with savedAt set
         // to now; keeps the password in the vault when it is to be
         // remembered, removes it from there when not, and keeps it in memory

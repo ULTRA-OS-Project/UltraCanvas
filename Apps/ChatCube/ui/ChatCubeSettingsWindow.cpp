@@ -13,7 +13,7 @@
 // sidebar), Extras > Data folder (where ChatCube keeps its identity, its
 // history and its settings, to open or copy) and Extras > About.
 //
-// Version: 0.2.0 - Networks > Proxy: the proxy Matrix, Telegram and the relay are
+// Version: 0.2.0 - Networks > Proxy: the proxy Matrix and the relay are
 //                  reached through, shared by every ULTRA OS application
 // Version: 0.1.0
 // Last Modified: 2026-11-10

@@ -217,9 +217,9 @@ namespace UltraCanvas {
         return folder / "Proxy.conf";
     }
 
-    ProxySettings ProxySettings::Load() {
+    ProxySettings ProxySettings::Load(bool withPassword) {
         ProxySettings s = Parse(ReadFileText(FilePath()));
-        if (s.authenticate) {
+        if (s.authenticate && withPassword) {
             std::string password;
             if (SessionPassword(password)) s.password = password;
 #ifdef ULTRACANVAS_HAS_NET

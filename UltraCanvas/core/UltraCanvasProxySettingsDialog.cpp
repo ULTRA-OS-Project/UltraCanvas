@@ -150,11 +150,24 @@ namespace UltraCanvas {
             return label;
         }
 
+        // `element` moved in by `indent`: in a row of its own, padded on the
+        // left (a grid places its items by their tracks and gives no item a
+        // margin of its own). `grow`: the element takes the rest of the row.
+        std::shared_ptr<UltraCanvasUIElement> Indented(const std::shared_ptr<UltraCanvasUIElement>& element,
+                                                       float indent, bool grow = false) {
+            if (indent <= 0) return element;
+            auto row = CreateFormCellRow(element->GetIdentifier() + "-indent", 8.0f, kRowHeight);
+            row->SetPadding(0, 0, 0, indent);
+            if (grow) element->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+            else element->layoutItem.SetFlexShrink(0);
+            row->AddChild(element);
+            return row;
+        }
+
         // A control on its own row across both columns, moved in by `indent`.
         void AddWide(const std::shared_ptr<UltraCanvasContainer>& grid,
                      const std::shared_ptr<UltraCanvasUIElement>& element, float indent) {
-            if (indent > 0) element->SetMargin(0, 0, 0, indent);
-            AddFormWideRow(grid, element);
+            AddFormWideRow(grid, Indented(element, indent));
         }
 
         // "caption [control]", the caption moved in by `indent`.
@@ -162,8 +175,8 @@ namespace UltraCanvas {
                                  const std::string& caption, const std::shared_ptr<UltraCanvasUIElement>& control,
                                  float indent) {
             auto label = CreateFormCaption(id + "-caption", caption);
-            label->SetMargin(0, 0, 0, indent);
-            AddFormRow(grid, label, control);
+            grid->AddChild(Indented(label, indent));
+            grid->AddChild(control);
             return label.get();
         }
 
@@ -223,7 +236,10 @@ namespace UltraCanvas {
         auto system = MakeRadio("ProxySystem", Tr("Use system proxy settings"), saved.mode == ProxyMode::System);
         AddWide(grid, system, 0); ++rows;
 
-        auto systemNote = MakeNote("ProxySystemNote", SystemProxyNote());
+        // Filled in once the system has been asked (below): WPAD can take
+        // seconds, which the dialog does not wait for.
+        auto systemNote = MakeNote("ProxySystemNote", std::string());
+        systemNote->size.width = CSSLayout::Dimension::Auto();
         AddWide(grid, systemNote, kIndent); ++rows;
 
         auto pacLine = CreateFormCellRow("ProxyPacLine", 8.0f, kRowHeight);
@@ -238,7 +254,8 @@ namespace UltraCanvas {
         pacUrl->SetText(saved.autoConfigUrl);
         pacUrl->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
         pacLine->AddChild(pacUrl);
-        AddWide(grid, pacLine, kIndent); ++rows;
+        pacLine->SetPadding(0, 0, 0, kIndent);
+        AddFormWideRow(grid, pacLine); ++rows;
 
         auto pacExample = MakeNote("ProxyPacExample", TrF("Example: {0}", "https://example.com/wpad.pac"));
         AddWide(grid, pacExample, 2 * kIndent); ++rows;
@@ -252,7 +269,8 @@ namespace UltraCanvas {
         auto socks = MakeRadio("ProxySocks", "SOCKS", saved.kind == ProxyKind::Socks);
         kindLine->AddChild(http);
         kindLine->AddChild(socks);
-        AddWide(grid, kindLine, kIndent); ++rows;
+        kindLine->SetPadding(0, 0, 0, kIndent);
+        AddFormWideRow(grid, kindLine); ++rows;
 
         auto host = CreateTextInput("ProxyHost", 0, 0, 0, kRowHeight);
         host->SetText(saved.host);
@@ -287,8 +305,8 @@ namespace UltraCanvas {
         auto rememberLine = CreateFormCellRow("ProxyRememberLine", 16.0f, kRowHeight);
         auto remember = UltraCanvasCheckbox::CreateCheckbox("ProxyRemember", 0, 0, 0, kRowHeight,
                                                             Tr("Remember"), saved.rememberPassword);
-        remember->SetTooltip(Tr("Keep the password, encrypted, for the next start. Otherwise it is "
-                                "asked for again in each application."));
+        remember->SetTooltip(Tr("Keep the password, encrypted, for the next start and for the other "
+                                "applications. Otherwise only this application uses it, until it ends."));
         remember->layoutItem.SetFlexShrink(0);
         rememberLine->AddChild(remember);
         auto clearPasswords = CreateButton("ProxyClearPasswords", 0, 0, 0, kRowHeight, Tr("Clear passwords"));
@@ -420,6 +438,20 @@ namespace UltraCanvas {
         };
         dialog->AddFooterElement(check);
 
+        // What the system names, asked off the UI thread.
+        {
+            std::weak_ptr<UltraCanvasModalDialog> alive = dialog;
+            std::thread([form, alive]() {
+                const std::string note = SystemProxyNote();
+                auto show = [form, alive, note]() {
+                    if (alive.expired()) return;
+                    form->systemNote->SetText(note);
+                };
+                if (auto* app = UltraCanvasApplicationBase::GetCurrent()) app->PostToUIThread(show);
+                else show();
+            }).detach();
+        }
+
         // OK: refuse a setting that cannot work, else save it.
         dialog->onClosing = [f](DialogResult result) {
             if (result != DialogResult::OK) return true;
@@ -449,7 +481,7 @@ namespace UltraCanvas {
         using namespace SettingsPageKit;
         PageParts parts = MakePage(id + "-page", Tr("Proxy"),
                                    Tr("How the applications connect to servers on the internet:"));
-        auto now = MakeText(id + "-now", DescribeProxySettings(ProxySettings::Load()));
+        auto now = MakeText(id + "-now", DescribeProxySettings(ProxySettings::Load(/*withPassword=*/false)));
         parts.body->AddChild(now);
         auto row = MakeButtonRow(id + "-buttons");
         // The line is a child of the page the button is on: reached raw.

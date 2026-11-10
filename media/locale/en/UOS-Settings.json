@@ -8,7 +8,9 @@
     "Desktop",
     "Devices",
     "Language",
+    "Network",
     "Notifications",
+    "Proxy",
     "System"
   ],
   "An application uses a change the next time it starts. The command line (--lang) and the ULTRACANVAS_LANG variable override this setting for one start.": "An application uses a change the next time it starts. The command line (--lang) and the ULTRACANVAS_LANG variable override this setting for one start.",
