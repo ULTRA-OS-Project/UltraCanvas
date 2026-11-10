@@ -1,3 +1,16 @@
+#### 2026-11-10 *0.9.518*
+- **`FolderBreadcrumbOptions::driveLabel`: a folder strip can name its drives.**
+  `BuildFolderBreadcrumb` called a drive by its letter ("D:") or root path,
+  on its own node and in the "Computer" node's list. A host that has read
+  the volumes' names (`ReadVolumeName`, off the UI thread) now passes a
+  callback that answers with "My Passport Ultra (D:)"; unset, or an empty
+  answer, keeps the letter (`UltraCanvasBreadcrumb.h` 1.8.0).
+- **`UltraCanvasFileLoader::GetSpeechTranscriber`**: the speech transcriber
+  installed now, so one installed after it keeps it as its fallback - UltraAI's
+  (`RegisterUltraAISpeechTranscription`, UltraAI changelog) hands a recording
+  to an application's own engine when no UltraAI provider transcribes.
+  FileLoader 1.13.0.
+
 #### 2026-11-10 *0.9.517*
 - **Every element follows the theme by default (T4 of the host theme
   proposal, first part).** Under the theme policy (`FollowHost`, the
