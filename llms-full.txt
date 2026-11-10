@@ -18666,6 +18666,7 @@ FILE: Docs/UltraCanvas/UltraCanvasCheckbox.md
   - [State and label](#state-and-label)
   - [Callbacks](#callbacks)
   - [Shared visual fields](#shared-visual-fields)
+  - [Following the theme](#following-the-theme)
   - [Sizing and placement](#sizing-and-placement)
 - [UltraCanvasCheckbox](#ultracanvascheckbox)
   - [Constructors and factory](#constructors-and-factory)
@@ -18714,8 +18715,8 @@ content sizing. The on/off **switch** is a third class on the same base,
 The checkbox no longer has a switch or radio style: those are the separate
 classes.
 
-**Version:** 2.1.0
-**Last Modified:** 2026-10-07
+**Version:** 2.2.0 - `FromTheme` on both visual styles, `ApplyTheme`: the controls follow the theme
+**Last Modified:** 2026-11-10
 **Author:** UltraCanvas Framework
 **Headers:** `include/UltraCanvasCheckbox.h`, `include/UltraCanvasRadio.h`, `include/UltraCanvasLabeledToggleBase.h`
 **Implementation:** `core/UltraCanvasCheckbox.cpp`, `core/UltraCanvasRadio.cpp`, `core/UltraCanvasLabeledToggleBase.cpp`
@@ -18856,6 +18857,28 @@ struct LabeledToggleVisualStyle {
 
 The label is drawn in `textHoverColor` while the pointer is over the control,
 so a custom `textColor` usually wants the same `textHoverColor`.
+
+### Following the theme
+
+Both controls read the framework theme (`UltraCanvasTheme.md`):
+`CheckboxVisualStyle::FromTheme` and `RadioVisualStyle::FromTheme` put the
+roles over a base style's own shape - the well with the control border for
+the box or the ring, the hover and pressed fills, the panel disabled, the
+mark or the dot in the accent (the element roles `checkbox.mark` and
+`radio.dot` where a theme names them), the label in ink with the interface
+font at the body size and the focus ring from `LabeledToggleVisualStyle::FromTheme`.
+Under the theme policy a new control follows the theme by itself; a
+`SetVisualStyle` by hand stops that, `SetFollowTheme(true)` after it keeps
+both.
+
+```cpp
+auto agree = std::make_shared<UltraCanvasCheckbox>("agree", "I agree");
+CheckboxVisualStyle big = agree->GetVisualStyle();
+big.boxSize = 20;
+agree->SetVisualStyle(CheckboxVisualStyle::FromTheme(UltraCanvasTheme::Current(), big));
+agree->SetFollowTheme(true);                                   // the roles over the bigger box, on every change
+RadioVisualStyle themed = RadioVisualStyle::FromTheme();       // the current theme over the default shape
+```
 
 ### Sizing and placement
 
@@ -25608,7 +25631,7 @@ common date-selection philosophies, explains the trade-offs, and then documents
 the API that was chosen.
 
 **File Location**: `include/UltraCanvasDatePicker.h`
-**Version**: 1.4.0 - the version history is in the header's head
+**Version**: 1.5.0 - `FromTheme` on both styles, `ApplyTheme`: the pickers and the calendar follow the theme
 **Author**: UltraCanvas Framework
 
 ## Contents
@@ -25729,6 +25752,28 @@ Useful methods:
 Interaction: click the field to type, click the button (or press ↑/↓) to open
 the calendar; selecting a single date commits and closes; completing a range
 commits and closes; `Esc` cancels.
+
+**Following the theme.** `DatePickerStyle::FromTheme` and
+`CalendarStyle::FromTheme` put the framework theme's roles
+(`UltraCanvasTheme.md`) over a base style's metrics: the well with the
+control border and the focus ring for the field, ink and the caret in ink,
+faint ink for the hint, muted ink for the glyph; the raised panel for the
+calendar with ink for the cells, the accent with text on it for the
+selected day, today's ring and the footer, the soft accent for a range,
+danger for a blocked day's strike; the weekends keep their red unless the
+theme names `calendar.weekend`; the interface font at the body size. Under
+the theme policy a new picker, range picker or calendar view follows the
+theme by itself (`ApplyTheme`); a `SetStyle` by hand stops that,
+`SetFollowTheme(true)` after it keeps both.
+
+```cpp
+auto when = std::make_shared<UltraCanvasDatePicker>("when");
+DatePickerStyle compact = when->GetStyle();
+compact.calendarStyle = CalendarStyles::Compact();
+when->SetStyle(DatePickerStyle::FromTheme(UltraCanvasTheme::Current(), compact));   // the roles over the compact calendar
+when->SetFollowTheme(true);
+calendar->SetStyle(CalendarStyle::FromTheme());                                     // an inline calendar, the current theme
+```
 
 ## 5. `UltraCanvasCalendarView` (inline)
 
@@ -62753,6 +62798,7 @@ FILE: Docs/UltraCanvas/UltraCanvasRating.md
 - [Factory Functions](#factory-functions)
 - [Key API](#key-api)
 - [Keyboard](#keyboard)
+- [Following the theme](#following-the-theme)
 - [Notes](#notes)
 
 ## Overview
@@ -62764,7 +62810,7 @@ files** for the three per-symbol states: **on** (filled), **off** (empty) and
 **half**.
 
 **File Location**: `include/UltraCanvasRating.h`
-**Version**: 1.0.0
+**Version**: 1.1.0 - `RatingStyle::FromTheme`, `ApplyTheme`: the rating follows the theme
 **Author**: UltraCanvas Framework
 
 ## Features
@@ -62874,6 +62920,24 @@ std::function<void(float)> onHoverChanged;    // live hover value (-1 when the c
 | `Left` / `Down`  | Decrease by one step |
 | `Home`           | Clear (0) |
 | `End`            | Maximum |
+
+## Following the theme
+
+`RatingStyle::FromTheme` puts the framework theme's roles
+(`UltraCanvasTheme.md`) over a base style's shape: the control border for
+an empty symbol and the interface font at the body size for a text symbol.
+A filled symbol, its hover and its outline keep the struct's amber on a
+light or a dark window unless the theme names the element roles
+`rating.on`, `rating.hover` and `rating.border`. Under the theme policy a
+new rating follows the theme by itself (`ApplyTheme`); a `SetStyle` by
+hand stops that, `SetFollowTheme(true)` after it keeps both.
+
+```cpp
+auto stars = std::make_shared<UltraCanvasRating>("stars", 160, 32);
+UltraCanvasTheme brand = UltraCanvasTheme::Current();
+brand.SetRole("rating.on", Color(242, 165, 58));
+stars->SetStyle(RatingStyle::FromTheme(brand, stars->GetStyle()));
+```
 
 ## Notes
 
@@ -67962,7 +68026,7 @@ FILE: Docs/UltraCanvas/UltraCanvasSegmentedControlExamples.md
 
 **UltraCanvasSegmentedControl** is a multi-segment selection control for choosing between mutually exclusive options (single mode) or toggling several options independently (multiple/toggle mode). It is well-suited for view-switchers, filter bars, formatting toolbars, and size pickers.
 
-**Version:** 1.5.0 - `SetSegmentTooltip`: each segment its own tooltip
+**Version:** 1.6.0 - `SegmentedControlStyle::FromTheme`, `ApplyTheme`: the control follows the theme
 **Header:** `include/UltraCanvasSegmentedControl.h`
 **Namespace:** `UltraCanvas`
 **Base Class:** `UltraCanvasUIElement`
@@ -68154,7 +68218,26 @@ struct SegmentedControlStyle {
     static SegmentedControlStyle Modern();   // iOS-like blue
     static SegmentedControlStyle Flat();     // Spaced individual segments
     static SegmentedControlStyle Bar();      // No separators, solid bar
+
+    // The framework theme's roles over a base's shape (UltraCanvasTheme.md)
+    static SegmentedControlStyle FromTheme(const UltraCanvasTheme& theme, const SegmentedControlStyle& base);
+    static SegmentedControlStyle FromTheme(const UltraCanvasTheme& theme);
+    static SegmentedControlStyle FromTheme();
 };
+```
+
+`FromTheme` puts the theme's roles over a base style's shape: the raised
+surface for a segment at rest, the accent with text on it for the selected
+one, the hover fill, the panel disabled, the control border and hairline
+separators, the interface font at the body size. Under the theme policy a
+new control follows the theme by itself (`ApplyTheme`); a `SetStyle` by
+hand stops that, `SetFollowTheme(true)` after it keeps both.
+
+```cpp
+auto view = std::make_shared<UltraCanvasSegmentedControl>("view", 240, 28);
+SegmentedControlStyle flat = SegmentedControlStyle::Flat();
+view->SetStyle(SegmentedControlStyle::FromTheme(UltraCanvasTheme::Current(), flat));   // the roles over the Flat shape
+view->SetFollowTheme(true);
 ```
 
 ## Events and Callbacks
@@ -71295,6 +71378,7 @@ FILE: Docs/UltraCanvas/UltraCanvasSpinner.md
 - [Factory Functions](#factory-functions)
 - [Key API](#key-api)
 - [Keyboard Reference](#keyboard-reference)
+- [Following the theme](#following-the-theme)
 - [Notes](#notes)
 
 ## Overview
@@ -71312,7 +71396,7 @@ A value can be changed four ways:
 - **Typing** a value directly into the editable field (numeric modes)
 
 **File Location**: `include/UltraCanvasSpinner.h`
-**Version**: 1.0.0
+**Version**: 1.1.0 - `SpinnerVisualStyle::FromTheme`, `ApplyTheme`: the spinner follows the theme
 **Author**: UltraCanvas Framework
 
 ## Features
@@ -71459,6 +71543,25 @@ bool IsStepping() const;                         // a run of steps is open
 | digits / `.` / `-` | Begin typing a value (editable numeric modes) |
 | `Enter` | Commit the typed value |
 | `Esc` | Cancel the edit and revert |
+
+## Following the theme
+
+`SpinnerVisualStyle::FromTheme` puts the framework theme's roles
+(`UltraCanvasTheme.md`) over a base style's metrics: the well with the
+control border and the focus ring for the field, ink for the value and the
+caret, the raised surface with the hover and pressed fills for the step
+buttons and muted ink for their glyphs, the panel disabled, the interface
+font at the body size. Under the theme policy a new spinner follows the
+theme by itself (`ApplyTheme`); a `SetStyle` by hand stops that,
+`SetFollowTheme(true)` after it keeps both.
+
+```cpp
+auto count = std::make_shared<UltraCanvasSpinner>("count", 90, 26);
+SpinnerVisualStyle wide = count->GetStyle();
+wide.buttonThickness = 24;
+count->SetStyle(SpinnerVisualStyle::FromTheme(UltraCanvasTheme::Current(), wide));
+count->SetFollowTheme(true);
+```
 
 ## Notes
 
@@ -73378,6 +73481,7 @@ FILE: Docs/UltraCanvas/UltraCanvasStepper.md
 - [Custom (SVG) markers](#custom-svg-markers)
 - [Key API](#key-api)
 - [Keyboard](#keyboard)
+- [Following the theme](#following-the-theme)
 - [Notes](#notes)
 
 ## Overview
@@ -73392,7 +73496,7 @@ Design's Steps). It is **distinct from the value −/+ stepper**, which ships as
 `CreateStepper()` on `UltraCanvasSpinner`.
 
 **File Location**: `include/UltraCanvasStepper.h`
-**Version**: 1.0.0
+**Version**: 1.1.0 - `StepperStyle::FromTheme`, `ApplyTheme`: the stepper follows the theme
 **Author**: UltraCanvas Framework
 
 ## Design choices (all configurable)
@@ -73502,6 +73606,27 @@ std::function<void(int)> onStepClicked;   // a marker/label was clicked
 | `End`           | Last step |
 
 (Keys are ignored in `Display` navigation mode.)
+
+## Following the theme
+
+`StepperStyle::FromTheme` puts the framework theme's roles
+(`UltraCanvasTheme.md`) over a base style's metrics: the accent for a
+completed or active marker and its connector, with text on it; the control
+border for an upcoming marker over the raised surface, muted ink in it;
+danger for an error (its glyph stays white unless a theme names
+`stepper.on-error`); ink for a title, the accent for the active one, muted
+ink for a description; the interface font, the titles at the body size and
+the descriptions at the caption size. Under the theme policy a new stepper
+follows the theme by itself (`ApplyTheme`); a `SetStyle` by hand stops
+that, `SetFollowTheme(true)` after it keeps both.
+
+```cpp
+auto wizard = std::make_shared<UltraCanvasStepper>("wizard", 400, 64);
+StepperStyle small = wizard->GetStyle();
+small.markerSize = 24;
+wizard->SetStyle(StepperStyle::FromTheme(UltraCanvasTheme::Current(), small));
+wizard->SetFollowTheme(true);
+```
 
 ## Notes
 
@@ -78087,7 +78212,7 @@ those elements, the tabbed container and the text area
 (`include/UltraCanvasUIElement.h`)
 **Tests:** `Tests/UltraCanvasThemeTest.cpp` (without a display)
 **Design:** `Docs/Research/UltraVideoDesignProposal.md` §5.8
-**Version:** 1.8.0 - following by default under a policy, the `SetStyle` rule, fonts by role in the readers (T4 of the host theme proposal, first part)
+**Version:** 1.9.0 - the input elements read the theme: checkbox, radio, segmented control, spinner, stepper, rating, the calendar and the date and time pickers (T4, second part)
 **Last Modified:** 2026-11-10
 **Author:** UltraCanvas Framework
 
@@ -78095,9 +78220,12 @@ those elements, the tabbed container and the text area
 
 The theme, its two presets, the current theme and its change handlers are
 in place. Every panel element reads it: the button, label, dropdown,
-slider, switch, text input, toolbar, split pane and album through a
-`FromTheme` on their style struct and an `ApplyTheme` on the element; the
-tabbed container and the text area through `ApplyTheme` alone; the menu
+slider, switch, text input, toolbar, split pane and album, and the input
+elements - checkbox, radio, segmented control, spinner, stepper, rating,
+the calendar view and the date, date range and time pickers with the
+clock view - through a `FromTheme` on their style struct and an
+`ApplyTheme` on the element; the tabbed container and the text area
+through `ApplyTheme` alone; the menu
 and the tooltip through `MenuStyle::FromTheme` and `TooltipStyle::FromTheme`,
 which put the roles over their own `Dark()` and `Light()` presets, so a
 dark menu or tooltip agrees with the rest of a dark window. Under the
@@ -78105,7 +78233,8 @@ policy (`FollowHost`, the default, `Light` or `Dark`) every new element
 follows the theme: it is styled from the current theme as it is built and
 again on every change. Styled by hand (`SetStyle`) it keeps its look, as
 before. The readers set their fonts by role as well as their colours; the
-42 style structs without a `FromTheme` are the rest of T4.
+lists, the containers and pickers, the viewers and the media elements
+are the rest of T4.
 
 ## The roles
 
@@ -78281,6 +78410,23 @@ UltraCanvasTheme::RemoveChangeHandler(handler);
 A handler added during a change is not called for that change; one
 removed during a change is not called again.
 
+An element with a colour of its own that no shared role fits names an
+**element role** with a derived fallback, as the timeline does: the
+checkbox's mark and the radio's dot (`checkbox.mark`, `radio.dot`, the
+accent), a filled rating symbol with its hover and outline (`rating.on`,
+`rating.hover`, `rating.border`, the amber the struct defaults to on any
+window), a stepper's error glyph (`stepper.on-error`, white), the
+calendar's weekends (`calendar.weekend`, its red) and the clock's dial
+(`time-picker.clock-face`, the pressed fill).
+
+```cpp
+UltraCanvasTheme brand = UltraCanvasTheme::Light();
+brand.SetRole("rating.on", Color(242, 165, 58));                 // the brand's star
+brand.SetRole("calendar.weekend", brand.roles.inkMuted);         // weekends quiet, not red
+CheckboxVisualStyle box = CheckboxVisualStyle::FromTheme(brand); // the accent for the mark: not named
+RatingStyle stars = RatingStyle::FromTheme(brand, RatingStyle());
+```
+
 ## Fonts and text roles
 
 The font half of a look lives in the theme too: `fonts.ui`, the interface
@@ -78303,9 +78449,11 @@ theme.fonts.scale = 1.25;                                        // Body is then
 ```
 
 Every `FromTheme` reader sets its style's family and size from `Font(role)`
-by the role its text plays: the button, label, dropdown, text input, menu
-and switch at `Body`; a heading label at `Heading`; the tooltip, a
-slider's value and a dialog's details at `Caption`, the dialog's message
+by the role its text plays: the button, label, dropdown, text input, menu,
+switch, checkbox, radio, segmented control, spinner, rating, calendar
+and the date and time pickers at `Body`, a stepper's titles too; a
+heading label at `Heading`; the tooltip, a slider's value, a dialog's
+details and a stepper's descriptions at `Caption`, the dialog's message
 at `Body`, the tab titles at `Caption`; the album, the timecode field and
 the timeline take the families only (their sizes are pixels of a design).
 The style struct's own literal stays the default of an element styled by
@@ -78673,6 +78821,7 @@ FILE: Docs/UltraCanvas/UltraCanvasTimePicker.md
 - [Key API](#key-api)
 - [The clock-face dial (`TimePickerPopupStyle::Clock`)](#the-clock-face-dial-timepickerpopupstyleclock)
 - [Keyboard & Mouse](#keyboard--mouse)
+- [Following the theme](#following-the-theme)
 - [Notes](#notes)
 
 ## Overview
@@ -78686,7 +78835,7 @@ fields are built from `UltraCanvasSpinner`, so hour/minute selection reuses the
 same arrow-driven control.
 
 **File Location**: `include/UltraCanvasTimePicker.h`
-**Version**: 1.1.0
+**Version**: 1.2.0 - `TimePickerStyle::FromTheme`, `ApplyTheme`: the picker and the clock view follow the theme
 **Author**: UltraCanvas Framework
 
 ## Features
@@ -78851,6 +79000,29 @@ replaces the spinner panel with `UltraCanvasTimeClockView`, a round dial:
 | `Enter` | Commit typed text |
 | `Esc` | Close popup / cancel edit |
 | Mouse wheel over field | Nudge the time by the minute step |
+
+## Following the theme
+
+`TimePickerStyle::FromTheme` puts the framework theme's roles
+(`UltraCanvasTheme.md`) over a base style's metrics: the well with the
+control border and the focus ring for the field, ink and the caret in ink,
+faint ink for the hint, muted ink for the glyph and the separators; the
+raised popup with a hairline and the accent for its footer; the clock's
+header and selection in the accent with text on it, its numbers in ink,
+its dial in the pressed fill unless the theme names
+`time-picker.clock-face`; the interface font at the body size (the clock
+header's size stays the style's). Under the theme policy a new picker or
+clock view follows the theme by itself (`ApplyTheme`); a `SetStyle` by
+hand stops that, `SetFollowTheme(true)` after it keeps both. `SetStyle`
+reaches the field's editor and an open clock view.
+
+```cpp
+auto at = std::make_shared<UltraCanvasTimePicker>("at");
+TimePickerStyle big = at->GetStyle();
+big.clockHeaderFontSize = 32;
+at->SetStyle(TimePickerStyle::FromTheme(UltraCanvasTheme::Current(), big));
+at->SetFollowTheme(true);
+```
 
 ## Notes
 
