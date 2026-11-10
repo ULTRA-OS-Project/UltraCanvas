@@ -275,7 +275,7 @@ namespace UltraCanvas {
         auto host = CreateTextInput("ProxyHost", 0, 0, 0, kRowHeight);
         host->SetText(saved.host);
         host->SetPlaceholder("proxy.example.com");
-        UltraCanvasLabel* hostCaption = AddRow(grid, "ProxyHost", Tr("Host"), host, kIndent); ++rows;
+        UltraCanvasLabel* hostCaption = AddRow(grid, "ProxyHost", Tr("Host name"), host, kIndent); ++rows;
 
         const int initialPort = saved.port > 0 ? saved.port : (saved.kind == ProxyKind::Socks ? 1080 : 8080);
         auto port = CreateIntSpinner("ProxyPort", 0, 0, 120, kRowHeight, 1, 65535, initialPort, 1);

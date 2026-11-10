@@ -176,7 +176,7 @@ ProxyCheckResult r = CheckProxyConnection(trial, "https://www.example.com/");
           Example: https://example.com/wpad.pac
 ( ) Manual proxy configuration
       (o) HTTP  ( ) SOCKS
-      Host           [ localhost              ]
+      Host name      [ localhost              ]
       Port           [ 10808 ^v ]
       No proxy for   [                        ]
                      Example: *.example.com, 192.168.*

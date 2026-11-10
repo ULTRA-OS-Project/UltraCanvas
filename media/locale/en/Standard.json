@@ -312,7 +312,7 @@
   "Hide": "Hide",
   "History": "History",
   "Home": "Home",
-  "Host": "Host",
+  "Host name": "Host name",
   "Hosts reached directly, separated by commas. * stands for any text.": "Hosts reached directly, separated by commas. * stands for any text.",
   "How the applications connect to servers on the internet:": "How the applications connect to servers on the internet:",
   "HTTP proxy {0}": "HTTP proxy {0}",

@@ -7,7 +7,7 @@
 //         [ ] Automatic proxy configuration URL  [ https://... ]
 //   ( ) Manual proxy configuration
 //         (o) HTTP  ( ) SOCKS
-//         Host           [ localhost        ]
+//         Host name      [ localhost        ]
 //         Port           [ 10808 ^v ]
 //         No proxy for   [ *.example.com, 192.168.* ]
 //         [ ] Proxy authentication
