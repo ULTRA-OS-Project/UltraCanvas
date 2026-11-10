@@ -50,10 +50,10 @@ namespace UltraCanvas {
                            std::string(RequirementVerifyMethodToString(node->verifyMethod));
             }
             const std::string parent = req->GetParentId(id);
-            if (!parent.empty()) message += "\ncontained by: " + parent;
+            if (!parent.empty()) message += "\n" + TrF("contained by: {0}", parent);
             const std::vector<std::string> children = req->GetChildIds(id);
             if (!children.empty()) {
-                message += "\nsub-requirements: " + std::to_string(children.size());
+                message += "\n" + TrF("sub-requirements: {0}", children.size());
             }
             status->SetText(message);
         };
@@ -116,8 +116,8 @@ namespace UltraCanvas {
     static std::shared_ptr<UltraCanvasContainer> MakeHybridSuvTab(
             std::shared_ptr<UltraCanvasLabel> statusLabel) {
         auto tab = MakeReqTab("ReqHybridTab", "ReqHybridDesc",
-                "Containment tree with crosshair circles, «stereotype» headers and "
-                "id/source/text/verifyMethod/risk compartments. Colour comes from the category.");
+                Tr("Containment tree with crosshair circles, «stereotype» headers and "
+                "id/source/text/verifyMethod/risk compartments. Colour comes from the category."));
 
         auto diagram = CreateRequirementDiagram("ReqHybrid", 0, 0, 990, 654);
         diagram->SetPalette(RequirementPaletteKind::Pastel);
@@ -125,10 +125,10 @@ namespace UltraCanvas {
         diagram->SetNodeTemplate(RequirementNodeTemplate::Extended());
         diagram->SetNodeWidthRange(130.0, 210.0);
 
-        diagram->AddCategory("Capacity",    Color(252, 244, 200, 255), Color(190, 170, 90, 255));
-        diagram->AddCategory("Environment", Color(212, 240, 226, 255), Color(110, 165, 135, 255));
-        diagram->AddCategory("Performance", Color(206, 236, 240, 255), Color(100, 155, 165, 255));
-        diagram->AddCategory("Ergonomics",  Color(232, 224, 246, 255), Color(140, 120, 180, 255));
+        diagram->AddCategory(Tr("Capacity"),    Color(252, 244, 200, 255), Color(190, 170, 90, 255));
+        diagram->AddCategory(Tr("Environment"), Color(212, 240, 226, 255), Color(110, 165, 135, 255));
+        diagram->AddCategory(Tr("Performance"), Color(206, 236, 240, 255), Color(100, 155, 165, 255));
+        diagram->AddCategory(Tr("Ergonomics"),  Color(232, 224, 246, 255), Color(140, 120, 180, 255));
 
         // Root — collapsed, as in the reference.
         RequirementNode root("UR1", "HybridSUV");
@@ -136,51 +136,51 @@ namespace UltraCanvas {
         diagram->AddNode(root);
 
         // ---- Load / Capacity branch (yellow in the reference) ----
-        RequirementNode load("UR1.1", "Load");
+        RequirementNode load("UR1.1", Tr("Load"));
         load.stereotype = "functionalRequirement";
-        load.source = "Marketing";
-        load.text = "The vehicle shall carry passengers and cargo.";
+        load.source = Tr("Marketing");
+        load.text = Tr("The vehicle shall carry passengers and cargo.");
         load.verifyMethod = RequirementVerifyMethod::Test;
         load.risk = RequirementRisk::Low;
-        load.category = "Capacity";
+        load.category = Tr("Capacity");
         diagram->AddNode(load);
 
         // ---- Eco-Friendliness branch (green) ----
-        RequirementNode eco("UR1.2", "Eco-Friendliness");
-        eco.source = "Marketing";
-        eco.text = "The vehicle shall be eco-friendly.";
+        RequirementNode eco("UR1.2", Tr("Eco-Friendliness"));
+        eco.source = Tr("Marketing");
+        eco.text = Tr("The vehicle shall be eco-friendly.");
         eco.verifyMethod = RequirementVerifyMethod::Analysis;
         eco.risk = RequirementRisk::High;
-        eco.category = "Environment";
+        eco.category = Tr("Environment");
         diagram->AddNode(eco);
 
         // ---- Performance branch (green) ----
-        RequirementNode performance("UR1.3", "Performance");
+        RequirementNode performance("UR1.3", Tr("Performance"));
         performance.stereotype = "performanceRequirement";
-        performance.source = "Marketing";
-        performance.text = "The vehicle shall have adequate performance.";
+        performance.source = Tr("Marketing");
+        performance.text = Tr("The vehicle shall have adequate performance.");
         performance.verifyMethod = RequirementVerifyMethod::Analysis;
         performance.risk = RequirementRisk::High;
-        performance.category = "Performance";
+        performance.category = Tr("Performance");
         diagram->AddNode(performance);
 
-        RequirementNode ergonomics("UR1.4", "Ergonomics");
+        RequirementNode ergonomics("UR1.4", Tr("Ergonomics"));
         ergonomics.stereotype = "performanceRequirement";
         ergonomics.detail = RequirementDetailLevel::Collapsed;
-        ergonomics.category = "Ergonomics";
+        ergonomics.category = Tr("Ergonomics");
         diagram->AddNode(ergonomics);
 
         // ---- Leaves: stereotype + name only (no compartment) ----
-        struct Leaf { const char* id; const char* name; const char* parent;
-                      const char* stereotype; const char* category; };
+        struct Leaf { const char* id; std::string name; const char* parent;
+                      const char* stereotype; std::string category; };
         const Leaf leaves[] = {
-            {"UR1.1.1", "Passengers",   "UR1.1", "requirement", "Capacity"},
-            {"UR1.1.2", "Cargo",        "UR1.1", "requirement", "Capacity"},
-            {"UR1.1.3", "FuelCapacity", "UR1.1", "requirement", "Capacity"},
-            {"UR1.3.1", "Acceleration", "UR1.3", "requirement", "Performance"},
-            {"UR1.3.2", "Braking",      "UR1.3", "requirement", "Performance"},
-            {"UR1.3.3", "Power",        "UR1.3", "requirement", "Performance"},
-            {"UR1.3.4", "Range",        "UR1.3", "requirement", "Performance"}
+            {"UR1.1.1", Tr("Passengers"),   "UR1.1", "requirement", Tr("Capacity")},
+            {"UR1.1.2", Tr("Cargo"),        "UR1.1", "requirement", Tr("Capacity")},
+            {"UR1.1.3", "FuelCapacity", "UR1.1", "requirement", Tr("Capacity")},
+            {"UR1.3.1", Tr("Acceleration"), "UR1.3", "requirement", Tr("Performance")},
+            {"UR1.3.2", Tr("Braking"),      "UR1.3", "requirement", Tr("Performance")},
+            {"UR1.3.3", Tr("Power"),        "UR1.3", "requirement", Tr("Performance")},
+            {"UR1.3.4", Tr("Range"),        "UR1.3", "requirement", Tr("Performance")}
         };
         for (const auto& leaf : leaves) {
             RequirementNode node(leaf.id, leaf.name);
@@ -193,23 +193,23 @@ namespace UltraCanvas {
 
         // Two sub-requirements under Eco-Friendliness keep their compartments,
         // matching the reference's Emissions / FuelEconomy boxes.
-        RequirementNode emissions("UR1.2.1", "Emissions");
+        RequirementNode emissions("UR1.2.1", Tr("Emissions"));
         emissions.stereotype = "performanceRequirement";
-        emissions.source = "Regulation";
-        emissions.text = "The vehicle shall meet Ultra-Low Emissions Vehicle standards.";
+        emissions.source = Tr("Regulation");
+        emissions.text = Tr("The vehicle shall meet Ultra-Low Emissions Vehicle standards.");
         emissions.verifyMethod = RequirementVerifyMethod::Test;
         emissions.risk = RequirementRisk::High;
-        emissions.category = "Environment";
+        emissions.category = Tr("Environment");
         diagram->AddNode(emissions);
 
         RequirementNode fuelEconomy("UR1.2.2", "FuelEconomy");
         fuelEconomy.stereotype = "performanceRequirement";
-        fuelEconomy.source = "Marketing";
-        fuelEconomy.text = "The vehicle shall obtain fuel economy better than "
-                           "95% of cars built in 2004.";
+        fuelEconomy.source = Tr("Marketing");
+        fuelEconomy.text = Tr("The vehicle shall obtain fuel economy better than "
+                           "95% of cars built in 2004.");
         fuelEconomy.verifyMethod = RequirementVerifyMethod::Test;
         fuelEconomy.risk = RequirementRisk::Medium;
-        fuelEconomy.category = "Environment";
+        fuelEconomy.category = Tr("Environment");
         diagram->AddNode(fuelEconomy);
 
         diagram->AddContainment("UR1", "UR1.1");
@@ -240,8 +240,8 @@ namespace UltraCanvas {
     static std::shared_ptr<UltraCanvasContainer> MakeSpecificationTab(
             std::shared_ptr<UltraCanvasLabel> statusLabel) {
         auto tab = MakeReqTab("ReqSpecTab", "ReqSpecDesc",
-                "Structural overview: a «block» root owns collapsed requirement boxes. "
-                "Detail lives in a draggable callout anchored to Emissions.");
+                Tr("Structural overview: a «block» root owns collapsed requirement boxes. "
+                "Detail lives in a draggable callout anchored to Emissions."));
 
         auto diagram = CreateRequirementDiagram("ReqSpec", 0, 0, 990, 654);
         diagram->SetPalette(RequirementPaletteKind::Pastel);
@@ -250,13 +250,13 @@ namespace UltraCanvas {
 
         diagram->AddNode(RequirementNodeKind::Block, "HSVSpec", "HSVSpecification");
 
-        struct Branch { const char* id; const char* name; };
+        struct Branch { const char* id; std::string name; };
         const Branch branches[] = {
-            {"ECO",  "Eco-Friendliness"},
-            {"PERF", "Performance"},
-            {"ERGO", "Ergonomics"},
-            {"QUAL", "Qualification"},
-            {"CAP",  "Capacity"}
+            {"ECO",  Tr("Eco-Friendliness")},
+            {"PERF", Tr("Performance")},
+            {"ERGO", Tr("Ergonomics")},
+            {"QUAL", Tr("Qualification")},
+            {"CAP",  Tr("Capacity")}
         };
         for (const auto& branch : branches) {
             RequirementNode node(branch.id, branch.name);
@@ -265,12 +265,12 @@ namespace UltraCanvas {
             diagram->AddContainment("HSVSpec", branch.id);
         }
 
-        struct Leaf { const char* id; const char* name; const char* parent; };
+        struct Leaf { const char* id; std::string name; const char* parent; };
         const Leaf leaves[] = {
-            {"BRAKE",  "Braking",             "PERF"},
+            {"BRAKE",  Tr("Braking"),             "PERF"},
             {"FUELEC", "FuelEconomy",         "PERF"},
             {"OFFRD",  "OffRoadCapability",   "PERF"},
-            {"ACCEL",  "Acceleration",        "PERF"},
+            {"ACCEL",  Tr("Acceleration"),        "PERF"},
             {"SAFETY", "SafetyTest",          "QUAL"},
             {"CARGO",  "CargoCapacity",       "CAP"},
             {"PASSNG", "PassengerCapacity",   "CAP"},
@@ -284,8 +284,8 @@ namespace UltraCanvas {
         }
 
         // The one requirement whose detail is shown, via a callout.
-        RequirementNode emissions("R1.2.1", "Emissions");
-        emissions.text = "The vehicle shall meet Ultra-Low Emissions Vehicle standards.";
+        RequirementNode emissions("R1.2.1", Tr("Emissions"));
+        emissions.text = Tr("The vehicle shall meet Ultra-Low Emissions Vehicle standards.");
         emissions.detail = RequirementDetailLevel::Collapsed;
         diagram->AddNode(emissions);
         diagram->AddContainment("ECO", "R1.2.1");
@@ -313,8 +313,8 @@ namespace UltraCanvas {
     static std::shared_ptr<UltraCanvasContainer> MakeTaxonomyTab(
             std::shared_ptr<UltraCanvasLabel> statusLabel) {
         auto tab = MakeReqTab("ReqTaxonomyTab", "ReqTaxonomyDesc",
-                "The SysML diagram taxonomy: generalisation (solid line, hollow triangle) "
-                "over a category-coloured tree, with an auto-generated legend.");
+                Tr("The SysML diagram taxonomy: generalisation (solid line, hollow triangle) "
+                "over a category-coloured tree, with an auto-generated legend."));
 
         auto diagram = CreateRequirementDiagram("ReqTaxonomy", 0, 0, 990, 654);
         diagram->SetPalette(RequirementPaletteKind::Classic);
@@ -322,25 +322,25 @@ namespace UltraCanvas {
         diagram->SetDefaultDetailLevel(RequirementDetailLevel::Collapsed);
         diagram->SetNodeWidthRange(120.0, 190.0);
 
-        diagram->AddCategory("Behavior Diagram",   Color(255, 238, 156, 255), Color(180, 155, 40, 255));
-        diagram->AddCategory("Structure Diagram",  Color(186, 222, 246, 255), Color(50, 120, 175, 255));
-        diagram->AddCategory("Requirement Diagram", Color(196, 236, 210, 255), Color(50, 140, 90, 255));
-        diagram->AddCategory("Abstract",           Color(248, 248, 250, 255), Color(90, 90, 100, 255));
+        diagram->AddCategory(Tr("Behavior Diagram"),   Color(255, 238, 156, 255), Color(180, 155, 40, 255));
+        diagram->AddCategory(Tr("Structure Diagram"),  Color(186, 222, 246, 255), Color(50, 120, 175, 255));
+        diagram->AddCategory(Tr("Requirement Diagram"), Color(196, 236, 210, 255), Color(50, 140, 90, 255));
+        diagram->AddCategory(Tr("Abstract"),           Color(248, 248, 250, 255), Color(90, 90, 100, 255));
 
-        struct Entry { const char* id; const char* name; const char* parent; const char* category; };
+        struct Entry { const char* id; std::string name; const char* parent; std::string category; };
         const Entry entries[] = {
-            {"SYSML",  "SysML Diagram",        "",       "Abstract"},
-            {"BEHAV",  "Behavior Diagram",     "SYSML",  "Abstract"},
-            {"REQD",   "Requirement Diagram",  "SYSML",  "Requirement Diagram"},
-            {"STRUCT", "Structure Diagram",    "SYSML",  "Abstract"},
-            {"ACT",    "Activity Diagram",     "BEHAV",  "Behavior Diagram"},
-            {"SEQ",    "Sequence Diagram",     "BEHAV",  "Behavior Diagram"},
-            {"STATE",  "State Machine Diagram","BEHAV",  "Behavior Diagram"},
-            {"USECASE","Use Case Diagram",     "BEHAV",  "Behavior Diagram"},
-            {"BDD",    "Block Definition Diagram", "STRUCT", "Structure Diagram"},
-            {"IBD",    "Internal Block Diagram",   "STRUCT", "Structure Diagram"},
-            {"PKG",    "Package Diagram",      "STRUCT", "Structure Diagram"},
-            {"PAR",    "Parametric Diagram",   "IBD",    "Structure Diagram"}
+            {"SYSML",  Tr("SysML Diagram"),        "",       Tr("Abstract")},
+            {"BEHAV",  Tr("Behavior Diagram"),     "SYSML",  Tr("Abstract")},
+            {"REQD",   Tr("Requirement Diagram"),  "SYSML",  Tr("Requirement Diagram")},
+            {"STRUCT", Tr("Structure Diagram"),    "SYSML",  Tr("Abstract")},
+            {"ACT",    Tr("Activity Diagram"),     "BEHAV",  Tr("Behavior Diagram")},
+            {"SEQ",    Tr("Sequence Diagram"),     "BEHAV",  Tr("Behavior Diagram")},
+            {"STATE",  Tr("State Machine Diagram"),"BEHAV",  Tr("Behavior Diagram")},
+            {"USECASE",Tr("Use Case Diagram"),     "BEHAV",  Tr("Behavior Diagram")},
+            {"BDD",    Tr("Block Definition Diagram"), "STRUCT", Tr("Structure Diagram")},
+            {"IBD",    Tr("Internal Block Diagram"),   "STRUCT", Tr("Structure Diagram")},
+            {"PKG",    Tr("Package Diagram"),      "STRUCT", Tr("Structure Diagram")},
+            {"PAR",    Tr("Parametric Diagram"),   "IBD",    Tr("Structure Diagram")}
         };
 
         for (const auto& entry : entries) {
@@ -381,38 +381,38 @@ namespace UltraCanvas {
     static std::shared_ptr<UltraCanvasContainer> MakeSmartHomeTab(
             std::shared_ptr<UltraCanvasLabel> statusLabel) {
         auto tab = MakeReqTab("ReqSmartHomeTab", "ReqSmartHomeDesc",
-                "Traceability web: «testCase» verifies, «block» satisfies, requirements "
-                "derive from each other. Drag boxes; the dashed routes follow.");
+                Tr("Traceability web: «testCase» verifies, «block» satisfies, requirements "
+                "derive from each other. Drag boxes; the dashed routes follow."));
 
         auto diagram = CreateRequirementDiagram("ReqSmartHome", 0, 0, 990, 654);
         diagram->SetPalette(RequirementPaletteKind::Vibrant);
         diagram->SetColorSource(RequirementColorSource::ByKind);
         diagram->SetNodeTemplate(RequirementNodeTemplate::Standard());
         diagram->SetNodeWidthRange(140.0, 200.0);
-        diagram->SetTitle("Smart Home Automation — System Requirement Diagram");
+        diagram->SetTitle(Tr("Smart Home Automation — System Requirement Diagram"));
         diagram->SetDefaultRouting(RequirementRouting::Orthogonal);
 
         // ---- Requirements ---------------------------------------------------
-        struct Req { const char* id; const char* name; const char* text;
+        struct Req { const char* id; std::string name; std::string text;
                      RequirementRisk risk; RequirementVerifyMethod method; };
         const Req requirements[] = {
-            {"R1", "Device Compatibility",
-             "The system shall support at least 50 third-party smart devices.",
+            {"R1", Tr("Device Compatibility"),
+             Tr("The system shall support at least 50 third-party smart devices."),
              RequirementRisk::Medium, RequirementVerifyMethod::Test},
-            {"R2", "Energy Efficiency",
-             "The system shall reduce household energy consumption by 15%.",
+            {"R2", Tr("Energy Efficiency"),
+             Tr("The system shall reduce household energy consumption by 15%."),
              RequirementRisk::High, RequirementVerifyMethod::Analysis},
-            {"R3", "Emergency Shutdown",
-             "The system shall cut power to all controlled circuits within 2 seconds.",
+            {"R3", Tr("Emergency Shutdown"),
+             Tr("The system shall cut power to all controlled circuits within 2 seconds."),
              RequirementRisk::High, RequirementVerifyMethod::Demonstration},
-            {"R4", "Privacy Protection",
-             "The system shall store all personal data encrypted at rest.",
+            {"R4", Tr("Privacy Protection"),
+             Tr("The system shall store all personal data encrypted at rest."),
              RequirementRisk::High, RequirementVerifyMethod::Inspection},
-            {"R5", "Remote Access",
-             "The system shall be controllable from outside the home network.",
+            {"R5", Tr("Remote Access"),
+             Tr("The system shall be controllable from outside the home network."),
              RequirementRisk::Medium, RequirementVerifyMethod::Test},
-            {"R6", "Voice Command Accuracy",
-             "The system shall recognise voice commands with 95% accuracy.",
+            {"R6", Tr("Voice Command Accuracy"),
+             Tr("The system shall recognise voice commands with 95% accuracy."),
              RequirementRisk::Medium, RequirementVerifyMethod::Test}
         };
         for (const auto& req : requirements) {
@@ -425,13 +425,13 @@ namespace UltraCanvas {
         }
 
         // ---- Design elements, test cases and use cases -----------------------
-        diagram->AddNode(RequirementNodeKind::Block,    "SYSHUB",  "System Hub");
-        diagram->AddNode(RequirementNodeKind::Block,    "AUTHSVC", "Authentication Service");
-        diagram->AddNode(RequirementNodeKind::TestCase, "TC1", "Remote Access Test");
-        diagram->AddNode(RequirementNodeKind::TestCase, "TC2", "Privacy Audit");
-        diagram->AddNode(RequirementNodeKind::TestCase, "TC3", "Voice Accuracy Test");
-        diagram->AddNode(RequirementNodeKind::UseCase,  "UC1", "User Logs In");
-        diagram->AddNode(RequirementNodeKind::Actor,    "A1",  "Homeowner");
+        diagram->AddNode(RequirementNodeKind::Block,    "SYSHUB",  Tr("System Hub"));
+        diagram->AddNode(RequirementNodeKind::Block,    "AUTHSVC", Tr("Authentication Service"));
+        diagram->AddNode(RequirementNodeKind::TestCase, "TC1", Tr("Remote Access Test"));
+        diagram->AddNode(RequirementNodeKind::TestCase, "TC2", Tr("Privacy Audit"));
+        diagram->AddNode(RequirementNodeKind::TestCase, "TC3", Tr("Voice Accuracy Test"));
+        diagram->AddNode(RequirementNodeKind::UseCase,  "UC1", Tr("User Logs In"));
+        diagram->AddNode(RequirementNodeKind::Actor,    "A1",  Tr("Homeowner"));
 
         // ---- Manual placement: the reference is a web, not a tree ------------
         struct Placement { const char* id; double x; double y; };
@@ -479,12 +479,12 @@ namespace UltraCanvas {
     static std::shared_ptr<UltraCanvasContainer> MakeCoverageTab(
             std::shared_ptr<UltraCanvasLabel> statusLabel) {
         auto tab = MakeReqTab("ReqCoverageTab", "ReqCoverageDesc",
-                "Compartment notation + coverage badges. Click a requirement to trace it; "
-                "Escape clears. Red = nothing satisfies it, amber = no test case.");
+                Tr("Compartment notation + coverage badges. Click a requirement to trace it; "
+                "Escape clears. Red = nothing satisfies it, amber = no test case."));
 
         auto diagram = CreateRequirementDiagram("ReqCoverage", 0, 0, 990, 654);
         diagram->SetPalette(RequirementPaletteKind::Professional);
-        diagram->SetFrame("Package", "VehicleControl", "Requirements Diagram");
+        diagram->SetFrame("Package", "VehicleControl", Tr("Requirements Diagram"));
         diagram->SetNodeWidthRange(150.0, 215.0);
 
         // The satisfiedBy / verifiedBy lists replace the drawn trace lines -
@@ -494,13 +494,13 @@ namespace UltraCanvas {
         tpl.AddDerivedCompartment(RequirementDerivedList::VerifiedBy);
         diagram->SetNodeTemplate(tpl);
 
-        struct Req { const char* id; const char* name; const char* text; };
+        struct Req { const char* id; std::string name; std::string text; };
         const Req requirements[] = {
-            {"VC1", "Vehicle Control",  "The vehicle shall be controllable at all speeds."},
-            {"VC1.1", "Steering",       "Steering shall respond within 100 ms."},
-            {"VC1.2", "Braking",        "The vehicle shall stop from 100 km/h in under 40 m."},
-            {"VC1.3", "Stability",      "The vehicle shall remain stable in a 30 deg turn."},
-            {"VC1.4", "Diagnostics",    "Faults shall be reported to the driver within 1 s."}
+            {"VC1", Tr("Vehicle Control"),  Tr("The vehicle shall be controllable at all speeds.")},
+            {"VC1.1", Tr("Steering"),       Tr("Steering shall respond within 100 ms.")},
+            {"VC1.2", Tr("Braking"),        Tr("The vehicle shall stop from 100 km/h in under 40 m.")},
+            {"VC1.3", Tr("Stability"),      Tr("The vehicle shall remain stable in a 30 deg turn.")},
+            {"VC1.4", Tr("Diagnostics"),    Tr("Faults shall be reported to the driver within 1 s.")}
         };
         for (const auto& r : requirements) {
             RequirementNode node(r.id, r.name);
@@ -513,10 +513,10 @@ namespace UltraCanvas {
         diagram->AddContainment("VC1", "VC1.3");
         diagram->AddContainment("VC1", "VC1.4");
 
-        diagram->AddNode(RequirementNodeKind::Block,    "SBW",  "Steer-by-Wire");
-        diagram->AddNode(RequirementNodeKind::Block,    "ABS",  "ABS Module");
-        diagram->AddNode(RequirementNodeKind::TestCase, "TS1",  "Steering Latency Test");
-        diagram->AddNode(RequirementNodeKind::TestCase, "TS2",  "Brake Distance Test");
+        diagram->AddNode(RequirementNodeKind::Block,    "SBW",  Tr("Steer-by-Wire"));
+        diagram->AddNode(RequirementNodeKind::Block,    "ABS",  Tr("ABS Module"));
+        diagram->AddNode(RequirementNodeKind::TestCase, "TS1",  Tr("Steering Latency Test"));
+        diagram->AddNode(RequirementNodeKind::TestCase, "TS2",  Tr("Brake Distance Test"));
 
         // VC1.3 is satisfied but unverified; VC1.4 has nothing at all.
         diagram->AddRelation(RequirementRelationKind::Satisfy, "SBW", "VC1.1");
@@ -548,16 +548,18 @@ namespace UltraCanvas {
 
             const RequirementCoverage coverage = req->GetCoverage();
             std::ostringstream out;
-            out << id << "\n\nCoverage over " << coverage.requirementCount << " requirements:\n"
-                << "  satisfied " << coverage.satisfiedCount << " ("
-                << static_cast<int>(coverage.satisfiedPercent) << "%)\n"
-                << "  verified  " << coverage.verifiedCount << " ("
-                << static_cast<int>(coverage.verifiedPercent) << "%)\n"
-                << "  orphans   " << coverage.orphanCount;
+            out << id << "\n\n"
+                << TrN("Coverage over {n} requirement:", "Coverage over {n} requirements:",
+                       static_cast<long long>(coverage.requirementCount)) << "\n"
+                << "  " << TrF("satisfied {0} ({1}%)", coverage.satisfiedCount,
+                               static_cast<int>(coverage.satisfiedPercent)) << "\n"
+                << "  " << TrF("verified  {0} ({1}%)", coverage.verifiedCount,
+                               static_cast<int>(coverage.verifiedPercent)) << "\n"
+                << "  " << TrF("orphans   {0}", coverage.orphanCount);
 
             const std::vector<std::string> unverified = req->GetUnverifiedRequirements();
             if (!unverified.empty()) {
-                out << "\n\nNot verified:";
+                out << "\n\n" << Tr("Not verified:");
                 for (const auto& u : unverified) out << "\n  " << u;
             }
             status->SetText(out.str());
@@ -575,8 +577,8 @@ namespace UltraCanvas {
     static std::shared_ptr<UltraCanvasContainer> MakeMermaidTab(
             std::shared_ptr<UltraCanvasLabel> statusLabel) {
         auto tab = MakeReqTab("ReqMermaidTab", "ReqMermaidDesc",
-                "Parsed from Mermaid requirementDiagram text. Use the minus toggles to collapse "
-                "a sub-tree; the buttons switch edit mode. F2 renames, Delete removes.");
+                Tr("Parsed from Mermaid requirementDiagram text. Use the minus toggles to collapse "
+                "a sub-tree; the buttons switch edit mode. F2 renames, Delete removes."));
 
         auto diagram = CreateRequirementDiagram("ReqMermaid", 0, 0, 990, 654);
         diagram->SetPalette(RequirementPaletteKind::Pastel);
@@ -644,7 +646,7 @@ refunds - derives -> card_payments
 
         std::string error;
         if (!diagram->FromMermaid(kMermaidSource, &error)) {
-            diagram->SetTitle("Mermaid import failed", error);
+            diagram->SetTitle(Tr("Mermaid import failed"), error);
         }
         diagram->SetLegendVisible(true, RequirementPanelPosition::BottomRight);
         diagram->SetLegendSource(RequirementLegendSource::NodeKinds);
@@ -658,23 +660,23 @@ refunds - derives -> card_payments
         auto weakDiagram = std::weak_ptr<UltraCanvasRequirementDiagram>(diagram);
         diagram->onValidationWarning = [weakStatus](const RequirementWarning& warning) {
             if (auto status = weakStatus.lock()) {
-                status->SetText("Model warning:\n" + warning.message);
+                status->SetText(TrF("Model warning:\n{0}", warning.message));
             }
         };
         diagram->onRelationCreated = [weakStatus](const RequirementRelation& relation) {
             if (auto status = weakStatus.lock()) {
-                status->SetText(std::string("Created «") +
-                                RequirementRelationKindToString(relation.kind) + "»\n" +
-                                relation.sourceId + "  ->  " + relation.targetId);
+                status->SetText(TrF("Created «{0}»\n{1}  ->  {2}",
+                                    std::string(RequirementRelationKindToString(relation.kind)),
+                                    relation.sourceId, relation.targetId));
             }
         };
 
         // ---- edit-mode buttons ------------------------------------------
-        struct ModeButton { const char* id; const char* label; RequirementEditMode mode; };
+        struct ModeButton { const char* id; std::string label; RequirementEditMode mode; };
         const ModeButton buttons[] = {
-            {"ReqModeSelect",  "Select",       RequirementEditMode::Select},
-            {"ReqModeNode",    "+ Requirement", RequirementEditMode::CreateNode},
-            {"ReqModeConnect", "Connect (satisfy)", RequirementEditMode::CreateRelation}
+            {"ReqModeSelect",  Tr("Select"),       RequirementEditMode::Select},
+            {"ReqModeNode",    Tr("+ Requirement"), RequirementEditMode::CreateNode},
+            {"ReqModeConnect", Tr("Connect (satisfy)"), RequirementEditMode::CreateRelation}
         };
         auto buttonRow = DemoKit::AddRow(tab, "ReqMermaidButtons", 8);
         for (const auto& button : buttons) {
@@ -686,16 +688,16 @@ refunds - derives -> card_payments
                 req->SetEditMode(mode);
                 if (auto status = weakStatus.lock()) {
                     status->SetText(mode == RequirementEditMode::CreateNode
-                        ? "Create mode: click empty canvas to add a requirement."
+                        ? Tr("Create mode: click empty canvas to add a requirement.")
                         : mode == RequirementEditMode::CreateRelation
-                            ? "Connect mode: drag from a block onto a requirement."
-                            : "Select mode: drag boxes, rubber-band select, F2 to rename.");
+                            ? Tr("Connect mode: drag from a block onto a requirement.")
+                            : Tr("Select mode: drag boxes, rubber-band select, F2 to rename."));
                 }
             });
             DemoKit::Add(buttonRow, widget);
         }
 
-        auto exportButton = MakeReqButton("ReqExportMermaid", "Export Mermaid");
+        auto exportButton = MakeReqButton("ReqExportMermaid", Tr("Export Mermaid"));
         exportButton->SetOnClick([weakDiagram, weakStatus]() {
             auto req = weakDiagram.lock();
             auto status = weakStatus.lock();
@@ -704,8 +706,10 @@ refunds - derives -> card_payments
             // Show the head of the export; the full text is what ToMermaid returns.
             std::string preview = text.substr(0, 520);
             if (text.size() > preview.size()) preview += "\n...";
-            status->SetText("ToMermaid() — " + std::to_string(text.size()) +
-                            " chars:\n\n" + preview);
+            status->SetText(LocalisationDetail::Substitute(
+                    TrN("ToMermaid() — {n} char:\n\n{0}", "ToMermaid() — {n} chars:\n\n{0}",
+                        static_cast<long long>(text.size())),
+                    {preview}));
         });
         DemoKit::Add(buttonRow, exportButton);
 
@@ -723,8 +727,8 @@ refunds - derives -> card_payments
     static std::shared_ptr<UltraCanvasContainer> MakeReqIfTab(
             std::shared_ptr<UltraCanvasLabel> statusLabel) {
         auto tab = MakeReqTab("ReqIfTab", "ReqIfDesc",
-                "Imported from ReqIF XML, then annotated: package region, «copy» with a "
-                "suspect badge, relationship rationale, status chips, block ports.");
+                Tr("Imported from ReqIF XML, then annotated: package region, «copy» with a "
+                "suspect badge, relationship rationale, status chips, block ports."));
 
         auto diagram = CreateRequirementDiagram("ReqIfDiagram", 0, 0, 990, 654);
         diagram->SetPalette(RequirementPaletteKind::Professional);
@@ -820,8 +824,8 @@ refunds - derives -> card_payments
             diagram->AddContainment("PKG", "SO-SYS");
 
             // A design element and a test case, with ports on the block.
-            diagram->AddNode(RequirementNodeKind::Block, "GEARCTL", "Gear Controller");
-            diagram->AddNode(RequirementNodeKind::TestCase, "TC-EXT", "Extension Timing Test");
+            diagram->AddNode(RequirementNodeKind::Block, "GEARCTL", Tr("Gear Controller"));
+            diagram->AddNode(RequirementNodeKind::TestCase, "TC-EXT", Tr("Extension Timing Test"));
             diagram->SetNodePortCount("GEARCTL", 3);
 
             const std::string satisfyId =
@@ -831,12 +835,12 @@ refunds - derives -> card_payments
             diagram->AddRelation(RequirementRelationKind::Trace, "GEARCTL", "SO-EXT");
 
             diagram->SetRelationRationale(satisfyId,
-                "Hydraulic actuation chosen over electric after the weight trade study TR-114.");
+                Tr("Hydraulic actuation chosen over electric after the weight trade study TR-114."));
             diagram->SetRationaleNotesVisible(true);
 
             // A copy of the extension requirement, then an edit to its master
             // so the suspect badge has something to report.
-            RequirementNode copy("SYS-1.1-COPY", "Extension Time (copy)");
+            RequirementNode copy("SYS-1.1-COPY", Tr("Extension Time (copy)"));
             diagram->AddNode(copy);
             diagram->AddRelation(RequirementRelationKind::Copy, "SYS-1.1-COPY", "SO-EXT");
             diagram->SyncCopies();
@@ -852,7 +856,7 @@ refunds - derives -> card_payments
             diagram->SetSiblingGap(26.0);
             diagram->RunLayout();
         } else {
-            diagram->SetTitle("ReqIF import failed", error);
+            diagram->SetTitle(Tr("ReqIF import failed"), error);
         }
 
         diagram->SetMinimapVisible(true);
@@ -862,12 +866,12 @@ refunds - derives -> card_payments
         auto weakStatus = std::weak_ptr<UltraCanvasLabel>(statusLabel);
         auto weakDiagram = std::weak_ptr<UltraCanvasRequirementDiagram>(diagram);
 
-        struct ActionButton { const char* id; const char* label; int action; };
+        struct ActionButton { const char* id; std::string label; int action; };
         const ActionButton buttons[] = {
-            {"ReqIfSearch", "Find \"cockpit\"", 0},
-            {"ReqIfSync",   "Sync copies",      1},
-            {"ReqIfMatrix", "Trace matrix CSV", 2},
-            {"ReqIfForce",  "Force layout",     3}
+            {"ReqIfSearch", Tr("Find \"cockpit\""), 0},
+            {"ReqIfSync",   Tr("Sync copies"),      1},
+            {"ReqIfMatrix", Tr("Trace matrix CSV"), 2},
+            {"ReqIfForce",  Tr("Force layout"),     3}
         };
         auto buttonRow = DemoKit::AddRow(tab, "ReqIfButtons", 8);
         for (const auto& button : buttons) {
@@ -880,23 +884,25 @@ refunds - derives -> card_payments
 
                 if (action == 0) {
                     const std::string found = req->FindAndFocus("cockpit");
-                    status->SetText(found.empty() ? "No match for \"cockpit\"."
-                                                  : "Focused " + found);
+                    status->SetText(found.empty() ? Tr("No match for \"cockpit\".")
+                                                  : TrF("Focused {0}", found));
                 } else if (action == 1) {
                     const int synced = req->SyncCopies();
-                    status->SetText("Re-synced " + std::to_string(synced) +
-                                    " copy/copies.\nSuspect badges cleared.");
+                    status->SetText(TrN("Re-synced {n} copy.\nSuspect badges cleared.",
+                                        "Re-synced {n} copies.\nSuspect badges cleared.", synced));
                 } else if (action == 2) {
                     const std::string csv = req->ToTraceMatrixCsv();
                     std::string preview = csv.substr(0, 480);
                     if (csv.size() > preview.size()) preview += "\n...";
-                    status->SetText("ToTraceMatrixCsv() — " + std::to_string(csv.size()) +
-                                    " chars:\n\n" + preview);
+                    status->SetText(LocalisationDetail::Substitute(
+                            TrN("ToTraceMatrixCsv() — {n} char:\n\n{0}", "ToTraceMatrixCsv() — {n} chars:\n\n{0}",
+                                static_cast<long long>(csv.size())),
+                            {preview}));
                 } else {
                     req->SetLayoutMode(RequirementLayoutMode::ForceDirected);
                     req->RunLayout();
-                    status->SetText("Force-directed layout applied.\n"
-                                    "Every visible relation acts as a spring.");
+                    status->SetText(Tr("Force-directed layout applied.\n"
+                                       "Every visible relation acts as a spring."));
                 }
             });
             DemoKit::Add(buttonRow, widget);
@@ -947,13 +953,13 @@ refunds - derives -> card_payments
         tabs->SetTabStyle(TabStyle::Modern);
         tabs->SetTabMaxWidth(300);
 
-        tabs->AddTab("HybridSUV (compartments)",   MakeHybridSuvTab(statusLabel));
-        tabs->AddTab("Specification + callout",    MakeSpecificationTab(statusLabel));
-        tabs->AddTab("SysML taxonomy + legend",    MakeTaxonomyTab(statusLabel));
-        tabs->AddTab("Smart Home traceability",    MakeSmartHomeTab(statusLabel));
-        tabs->AddTab("Coverage + compartments",    MakeCoverageTab(statusLabel));
-        tabs->AddTab("Mermaid import + editing",   MakeMermaidTab(statusLabel));
-        tabs->AddTab("ReqIF + overlays",           MakeReqIfTab(statusLabel));
+        tabs->AddTab(Tr("HybridSUV (compartments)"),   MakeHybridSuvTab(statusLabel));
+        tabs->AddTab(Tr("Specification + callout"),    MakeSpecificationTab(statusLabel));
+        tabs->AddTab(Tr("SysML taxonomy + legend"),    MakeTaxonomyTab(statusLabel));
+        tabs->AddTab(Tr("Smart Home traceability"),    MakeSmartHomeTab(statusLabel));
+        tabs->AddTab(Tr("Coverage + compartments"),    MakeCoverageTab(statusLabel));
+        tabs->AddTab(Tr("Mermaid import + editing"),   MakeMermaidTab(statusLabel));
+        tabs->AddTab(Tr("ReqIF + overlays"),           MakeReqIfTab(statusLabel));
 
         DemoKit::Add(tabsCard, tabs, 1);
         tabs->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));

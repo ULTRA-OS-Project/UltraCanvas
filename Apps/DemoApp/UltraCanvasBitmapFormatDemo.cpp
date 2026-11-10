@@ -92,13 +92,13 @@ namespace UltraCanvas {
         info.accentColor = Color(220, 53, 69, 255);  // Red
 
         // About
-        info.aboutTitle = "About JPEG";
+        info.aboutTitle = TrF("About {0}", "JPEG");
         info.aboutDescription =
-                "JPEG (Joint Photographic Experts Group) is a lossy compression format optimized for "
+                Tr("JPEG (Joint Photographic Experts Group) is a lossy compression format optimized for "
                 "photographs and complex images with smooth color gradients. It achieves high compression "
                 "ratios by selectively discarding image data less noticeable to human vision. JPEG is the "
                 "most widely used image format on the web and in digital photography, supported by virtually "
-                "all devices and software since its introduction in 1992.";
+                "all devices and software since its introduction in 1992.");
 
         // Technical Specifications - Container
         info.containerSpecs = {
@@ -126,14 +126,14 @@ namespace UltraCanvas {
 
         // Format Specification
         info.specification = {
-                /* compression    */ "Lossy",
-                /* colorSpace     */ "YCbCr, Grayscale, CMYK",
+                /* compression    */ Tr("Lossy"),
+                /* colorSpace     */ Tr("YCbCr, Grayscale, CMYK"),
                 /* channels       */ "1-4",
                 /* bitsPerChannel */ "8-bit",
-                /* hdrSupport     */ "No",
-                /* transparency   */ "No",
-                /* animation      */ "No",
-                /* interlacing    */ "Yes (Progressive)",
+                /* hdrSupport     */ Tr("No"),
+                /* transparency   */ Tr("No"),
+                /* animation      */ Tr("No"),
+                /* interlacing    */ Tr("Yes (Progressive)"),
                 /* metadata       */ "EXIF, IPTC, XMP"
         };
 
@@ -150,13 +150,13 @@ namespace UltraCanvas {
         info.accentColor = Color(13, 110, 253, 255);  // Blue
 
         // About
-        info.aboutTitle = "About PNG";
+        info.aboutTitle = TrF("About {0}", "PNG");
         info.aboutDescription =
-                "PNG (Portable Network Graphics) is a lossless image format that supports transparency "
+                Tr("PNG (Portable Network Graphics) is a lossless image format that supports transparency "
                 "through an alpha channel. Developed as a patent-free replacement for GIF, PNG excels at "
                 "storing images with sharp edges, text, and graphics. It uses DEFLATE compression to reduce "
                 "file size without any quality loss, making it ideal for screenshots, logos, icons, and "
-                "any image requiring exact color reproduction or transparency.";
+                "any image requiring exact color reproduction or transparency.");
 
         // Technical Specifications - Container
         info.containerSpecs = {
@@ -184,14 +184,14 @@ namespace UltraCanvas {
 
         // Format Specification
         info.specification = {
-                /* compression    */ "Lossless (DEFLATE)",
-                /* colorSpace     */ "RGB, RGBA, Grayscale, Indexed",
+                /* compression    */ Tr("Lossless (DEFLATE)"),
+                /* colorSpace     */ Tr("RGB, RGBA, Grayscale, Indexed"),
                 /* channels       */ "1-4",
                 /* bitsPerChannel */ "1/2/4/8/16-bit",
-                /* hdrSupport     */ "No",
-                /* transparency   */ "Yes (8/16-bit)",
-                /* animation      */ "Yes (APNG)",
-                /* interlacing    */ "Yes (Adam7)",
+                /* hdrSupport     */ Tr("No"),
+                /* transparency   */ Tr("Yes (8/16-bit)"),
+                /* animation      */ Tr("Yes (APNG)"),
+                /* interlacing    */ Tr("Yes (Adam7)"),
                 /* metadata       */ "tEXt, iTXt, zTXt"
         };
 
@@ -208,13 +208,13 @@ namespace UltraCanvas {
         info.accentColor = Color(111, 66, 193, 255);  // Purple
 
         // About
-        info.aboutTitle = "About GIF";
+        info.aboutTitle = TrF("About {0}", "GIF");
         info.aboutDescription =
-                "GIF (Graphics Interchange Format) is one of the oldest image formats, introduced by "
+                Tr("GIF (Graphics Interchange Format) is one of the oldest image formats, introduced by "
                 "CompuServe in 1987. It uses LZW compression and supports up to 256 colors from a 24-bit "
                 "palette. GIF's key feature is animation support, allowing multiple frames in a single file. "
                 "While limited in color depth, GIF remains popular for short animations, reaction images, "
-                "and simple graphics due to universal browser and platform support.";
+                "and simple graphics due to universal browser and platform support.");
 
         // Technical Specifications - Container
         info.containerSpecs = {
@@ -242,15 +242,15 @@ namespace UltraCanvas {
 
         // Format Specification
         info.specification = {
-                /* compression    */ "Lossless (LZW)",
-                /* colorSpace     */ "Indexed (palette)",
-                /* channels       */ "1 (palette index)",
-                /* bitsPerChannel */ "1-8 bit (256 colors)",
-                /* hdrSupport     */ "No",
-                /* transparency   */ "Yes (1-bit)",
-                /* animation      */ "Yes (multi-frame)",
-                /* interlacing    */ "Yes",
-                /* metadata       */ "Comment blocks"
+                /* compression    */ Tr("Lossless (LZW)"),
+                /* colorSpace     */ Tr("Indexed (palette)"),
+                /* channels       */ Tr("1 (palette index)"),
+                /* bitsPerChannel */ Tr("1-8 bit (256 colors)"),
+                /* hdrSupport     */ Tr("No"),
+                /* transparency   */ Tr("Yes (1-bit)"),
+                /* animation      */ Tr("Yes (multi-frame)"),
+                /* interlacing    */ Tr("Yes"),
+                /* metadata       */ Tr("Comment blocks")
         };
 
         return info;
@@ -266,14 +266,14 @@ namespace UltraCanvas {
         info.accentColor = Color(0, 128, 128, 255);  // Teal
 
         // About
-        info.aboutTitle = "About BMP";
+        info.aboutTitle = TrF("About {0}", "BMP");
         info.aboutDescription =
-                "BMP (Bitmap) is Microsoft's native uncompressed image format for Windows, introduced "
+                Tr("BMP (Bitmap) is Microsoft's native uncompressed image format for Windows, introduced "
                 "with Windows 1.0 in 1985. It stores pixel data in a straightforward manner, typically "
                 "without compression, resulting in large file sizes but extremely fast read/write speeds. "
                 "BMP supports various color depths and optional RLE compression. While rarely used for "
                 "distribution due to size, BMP remains useful as an intermediate format and for Windows "
-                "system graphics.";
+                "system graphics.");
 
         // Technical Specifications - Container
         info.containerSpecs = {
@@ -301,15 +301,15 @@ namespace UltraCanvas {
 
         // Format Specification
         info.specification = {
-                /* compression    */ "None or RLE",
-                /* colorSpace     */ "RGB, RGBA, Indexed",
+                /* compression    */ Tr("None or RLE"),
+                /* colorSpace     */ Tr("RGB, RGBA, Indexed"),
                 /* channels       */ "1-4",
                 /* bitsPerChannel */ "1/4/8/16/24/32-bit",
-                /* hdrSupport     */ "No",
-                /* transparency   */ "Yes (8-bit RGBA)",
-                /* animation      */ "No",
-                /* interlacing    */ "No",
-                /* metadata       */ "Limited"
+                /* hdrSupport     */ Tr("No"),
+                /* transparency   */ Tr("Yes (8-bit RGBA)"),
+                /* animation      */ Tr("No"),
+                /* interlacing    */ Tr("No"),
+                /* metadata       */ Tr("Limited")
         };
 
         return info;
@@ -325,13 +325,13 @@ namespace UltraCanvas {
         info.accentColor = Color(52, 168, 83, 255);  // Google Green
 
         // About
-        info.aboutTitle = "About WebP";
+        info.aboutTitle = TrF("About {0}", "WebP");
         info.aboutDescription =
-                "WebP is a modern image format developed by Google, designed specifically for the web. "
+                Tr("WebP is a modern image format developed by Google, designed specifically for the web. "
                 "It provides superior compression compared to JPEG and PNG, offering both lossy and lossless "
                 "modes. WebP supports transparency (alpha channel) and animation, combining the best features "
                 "of JPEG, PNG, and GIF in a single format. Files are typically 25-35% smaller than equivalent "
-                "JPEG/PNG images, making it ideal for web optimization and faster page loading.";
+                "JPEG/PNG images, making it ideal for web optimization and faster page loading.");
 
         // Technical Specifications - Container
         info.containerSpecs = {
@@ -359,14 +359,14 @@ namespace UltraCanvas {
 
         // Format Specification
         info.specification = {
-                /* compression    */ "Lossless or Lossy (VP8 / VP8L)",
+                /* compression    */ Tr("Lossless or Lossy (VP8 / VP8L)"),
                 /* colorSpace     */ "RGB, RGBA, YUV420",
                 /* channels       */ "1-4",
                 /* bitsPerChannel */ "8-bit",
-                /* hdrSupport     */ "No",
-                /* transparency   */ "Yes (8-bit)",
-                /* animation      */ "Yes (multi-frame)",
-                /* interlacing    */ "No",
+                /* hdrSupport     */ Tr("No"),
+                /* transparency   */ Tr("Yes (8-bit)"),
+                /* animation      */ Tr("Yes (multi-frame)"),
+                /* interlacing    */ Tr("No"),
                 /* metadata       */ "EXIF, XMP, ICC"
         };
 
@@ -383,13 +383,13 @@ namespace UltraCanvas {
         info.accentColor = Color(102, 16, 242, 255);  // Indigo
 
         // About
-        info.aboutTitle = "About AVIF";
+        info.aboutTitle = TrF("About {0}", "AVIF");
         info.aboutDescription =
-                "AVIF (AV1 Image File Format) is a next-generation image format based on the AV1 video "
+                Tr("AVIF (AV1 Image File Format) is a next-generation image format based on the AV1 video "
                 "codec developed by the Alliance for Open Media. It provides significantly better compression "
                 "than JPEG, PNG, and WebP while maintaining excellent image quality. AVIF supports HDR, "
                 "wide color gamuts (WCG), and transparency. Files are typically 50% smaller than JPEG at "
-                "equivalent quality, making it ideal for bandwidth-conscious web applications.";
+                "equivalent quality, making it ideal for bandwidth-conscious web applications.");
 
         // Technical Specifications - Container
         info.containerSpecs = {
@@ -417,14 +417,14 @@ namespace UltraCanvas {
 
         // Format Specification
         info.specification = {
-                /* compression    */ "Lossless or Lossy (AV1)",
-                /* colorSpace     */ "RGB, YUV, Monochrome",
+                /* compression    */ Tr("Lossless or Lossy (AV1)"),
+                /* colorSpace     */ Tr("RGB, YUV, Monochrome"),
                 /* channels       */ "1-4",
                 /* bitsPerChannel */ "8/10/12-bit",
-                /* hdrSupport     */ "Yes (10/12-bit)",
-                /* transparency   */ "Yes (8-bit+)",
-                /* animation      */ "Yes (image sequences)",
-                /* interlacing    */ "No",
+                /* hdrSupport     */ Tr("Yes (10/12-bit)"),
+                /* transparency   */ Tr("Yes (8-bit+)"),
+                /* animation      */ Tr("Yes (image sequences)"),
+                /* interlacing    */ Tr("No"),
                 /* metadata       */ "EXIF, XMP, ICC"
         };
 
@@ -441,14 +441,14 @@ namespace UltraCanvas {
         info.accentColor = Color(184, 134, 11, 255);  // Dark Goldenrod
 
         // About
-        info.aboutTitle = "About TIFF";
+        info.aboutTitle = TrF("About {0}", "TIFF");
         info.aboutDescription =
-                "TIFF (Tagged Image File Format) is a flexible, adaptable format widely used in professional "
+                Tr("TIFF (Tagged Image File Format) is a flexible, adaptable format widely used in professional "
                 "photography, publishing, and archival applications. Developed by Aldus (now Adobe), TIFF "
                 "supports multiple compression schemes including none, LZW, ZIP, and JPEG. It can store "
                 "multiple images (pages) in a single file and preserves extensive metadata. While file sizes "
                 "are typically large, TIFF maintains maximum image quality and is the preferred format for "
-                "print production and long-term archival.";
+                "print production and long-term archival.");
 
         // Technical Specifications - Container
         info.containerSpecs = {
@@ -476,14 +476,14 @@ namespace UltraCanvas {
 
         // Format Specification
         info.specification = {
-                /* compression    */ "None, LZW, ZIP, JPEG, Deflate",
-                /* colorSpace     */ "RGB, CMYK, LAB, YCbCr, Grayscale",
-                /* channels       */ "1-N (extensible)",
-                /* bitsPerChannel */ "1/8/16/32-bit, float",
-                /* hdrSupport     */ "Yes (16-bit / float)",
-                /* transparency   */ "Yes (multi-channel)",
-                /* animation      */ "No (multi-page)",
-                /* interlacing    */ "No",
+                /* compression    */ Tr("None, LZW, ZIP, JPEG, Deflate"),
+                /* colorSpace     */ Tr("RGB, CMYK, LAB, YCbCr, Grayscale"),
+                /* channels       */ Tr("1-N (extensible)"),
+                /* bitsPerChannel */ Tr("1/8/16/32-bit, float"),
+                /* hdrSupport     */ Tr("Yes (16-bit / float)"),
+                /* transparency   */ Tr("Yes (multi-channel)"),
+                /* animation      */ Tr("No (multi-page)"),
+                /* interlacing    */ Tr("No"),
                 /* metadata       */ "EXIF, IPTC, XMP"
         };
 
@@ -500,13 +500,13 @@ namespace UltraCanvas {
         info.accentColor = Color(255, 107, 107, 255);  // Coral
 
         // About
-        info.aboutTitle = "About QOI";
+        info.aboutTitle = TrF("About {0}", "QOI");
         info.aboutDescription =
-                "QOI (Quite OK Image Format) is a fast, lossless image format designed for simplicity and "
+                Tr("QOI (Quite OK Image Format) is a fast, lossless image format designed for simplicity and "
                 "speed. Created by Dominic Szablewski in 2021, QOI achieves compression comparable to PNG "
                 "but with 20-50x faster encoding and 3-4x faster decoding. The entire specification fits "
                 "on a single page, making it extremely easy to implement. QOI is ideal for game development, "
-                "real-time applications, and scenarios where encoding/decoding speed is critical.";
+                "real-time applications, and scenarios where encoding/decoding speed is critical.");
 
         // Technical Specifications - Container
         info.containerSpecs = {
@@ -534,15 +534,15 @@ namespace UltraCanvas {
 
         // Format Specification
         info.specification = {
-                /* compression    */ "Lossless (RLE + indexing)",
+                /* compression    */ Tr("Lossless (RLE + indexing)"),
                 /* colorSpace     */ "RGB, RGBA",
                 /* channels       */ "3-4",
                 /* bitsPerChannel */ "8-bit",
-                /* hdrSupport     */ "No",
-                /* transparency   */ "Yes (8-bit)",
-                /* animation      */ "No",
-                /* interlacing    */ "No",
-                /* metadata       */ "No"
+                /* hdrSupport     */ Tr("No"),
+                /* transparency   */ Tr("Yes (8-bit)"),
+                /* animation      */ Tr("No"),
+                /* interlacing    */ Tr("No"),
+                /* metadata       */ Tr("No")
         };
 
         return info;
@@ -558,14 +558,14 @@ namespace UltraCanvas {
         info.accentColor = Color(64, 64, 64, 255);  // Dark Gray
 
         // About
-        info.aboutTitle = "About RAW";
+        info.aboutTitle = TrF("About {0}", "RAW");
         info.aboutDescription =
-                "RAW files contain minimally processed data directly from a camera's image sensor. Unlike "
+                Tr("RAW files contain minimally processed data directly from a camera's image sensor. Unlike "
                 "JPEG, RAW preserves all captured information, giving photographers maximum flexibility in "
                 "post-processing. Each camera manufacturer has proprietary RAW formats (CR2/CR3 for Canon, "
                 "NEF for Nikon, ARW for Sony, etc.). Adobe's DNG provides a standardized RAW format. RAW "
                 "files are larger but offer superior dynamic range, white balance adjustment, and non-destructive "
-                "editing capabilities essential for professional photography.";
+                "editing capabilities essential for professional photography.");
 
         // Technical Specifications - Container
         info.containerSpecs = {
@@ -593,14 +593,14 @@ namespace UltraCanvas {
 
         // Format Specification
         info.specification = {
-                /* compression    */ "Minimal or Lossless",
+                /* compression    */ Tr("Minimal or Lossless"),
                 /* colorSpace     */ "Bayer CFA, X-Trans, Foveon",
-                /* channels       */ "1 (CFA pattern)",
+                /* channels       */ Tr("1 (CFA pattern)"),
                 /* bitsPerChannel */ "12/14/16-bit",
-                /* hdrSupport     */ "Yes (sensor native)",
-                /* transparency   */ "No",
-                /* animation      */ "No",
-                /* interlacing    */ "No",
+                /* hdrSupport     */ Tr("Yes (sensor native)"),
+                /* transparency   */ Tr("No"),
+                /* animation      */ Tr("No"),
+                /* interlacing    */ Tr("No"),
                 /* metadata       */ "EXIF + MakerNote"
         };
 
@@ -617,14 +617,14 @@ namespace UltraCanvas {
         info.accentColor = Color(0, 102, 204, 255);  // Corel Blue
 
         // About
-        info.aboutTitle = "About PSP";
+        info.aboutTitle = TrF("About {0}", "PSP");
         info.aboutDescription =
-                "PSP (Paint Shop Pro Image) is the native format for Corel Paint Shop Pro, a popular image "
+                Tr("PSP (Paint Shop Pro Image) is the native format for Corel Paint Shop Pro, a popular image "
                 "editing application. The format preserves all editing information including layers, masks, "
                 "adjustment layers, vector objects, and selection data. PSP files support non-destructive "
                 "editing workflows, allowing users to return and modify individual elements. While primarily "
                 "used within Paint Shop Pro, the format demonstrates advanced features similar to PSD for "
-                "Photoshop users.";
+                "Photoshop users.");
 
         // Technical Specifications - Container
         info.containerSpecs = {
@@ -652,15 +652,15 @@ namespace UltraCanvas {
 
         // Format Specification
         info.specification = {
-                /* compression    */ "Lossless (RLE / LZ77)",
-                /* colorSpace     */ "RGB, CMYK, Grayscale, Indexed",
-                /* channels       */ "Multi (layers + masks)",
+                /* compression    */ Tr("Lossless (RLE / LZ77)"),
+                /* colorSpace     */ Tr("RGB, CMYK, Grayscale, Indexed"),
+                /* channels       */ Tr("Multi (layers + masks)"),
                 /* bitsPerChannel */ "1/8/16-bit",
-                /* hdrSupport     */ "No",
-                /* transparency   */ "Yes (multi-channel masks)",
-                /* animation      */ "No",
-                /* interlacing    */ "No",
-                /* metadata       */ "Layers, vector objects"
+                /* hdrSupport     */ Tr("No"),
+                /* transparency   */ Tr("Yes (multi-channel masks)"),
+                /* animation      */ Tr("No"),
+                /* interlacing    */ Tr("No"),
+                /* metadata       */ Tr("Layers, vector objects")
         };
 
         return info;
@@ -676,13 +676,13 @@ namespace UltraCanvas {
         info.accentColor = Color(249, 115, 22, 255);  // Orange
 
         // About
-        info.aboutTitle = "About HEIF/HEIC";
+        info.aboutTitle = TrF("About {0}", "HEIF/HEIC");
         info.aboutDescription =
-                "HEIF/HEIC (High Efficiency Image Format) is an image container format based on HEVC (H.265) "
+                Tr("HEIF/HEIC (High Efficiency Image Format) is an image container format based on HEVC (H.265) "
                 "video compression. It provides superior compression efficiency compared to JPEG while "
                 "maintaining high image quality. HEIF supports features like image sequences, transparency, "
                 "depth maps, and HDR. This format is used by default on Apple devices since iOS 11 and "
-                "macOS High Sierra.";
+                "macOS High Sierra.");
 
         // Technical Specifications - Container
         info.containerSpecs = {
@@ -710,14 +710,14 @@ namespace UltraCanvas {
 
         // Format Specification
         info.specification = {
-                /* compression    */ "Lossy (HEVC) or Lossless",
+                /* compression    */ Tr("Lossy (HEVC) or Lossless"),
                 /* colorSpace     */ "RGB, YCbCr",
                 /* channels       */ "1-4",
                 /* bitsPerChannel */ "8/10-bit",
-                /* hdrSupport     */ "Yes (10-bit)",
-                /* transparency   */ "Yes (8-bit)",
-                /* animation      */ "Yes (image sequences)",
-                /* interlacing    */ "No",
+                /* hdrSupport     */ Tr("Yes (10-bit)"),
+                /* transparency   */ Tr("Yes (8-bit)"),
+                /* animation      */ Tr("Yes (image sequences)"),
+                /* interlacing    */ Tr("No"),
                 /* metadata       */ "EXIF, XMP"
         };
 
@@ -734,15 +734,15 @@ namespace UltraCanvas {
         info.accentColor = Color(13, 148, 136, 255);  // Teal
 
         // About
-        info.aboutTitle = "About JPEG XL";
+        info.aboutTitle = TrF("About {0}", "JPEG XL");
         info.aboutDescription =
-                "JPEG XL (ISO/IEC 18181) is the JPEG committee's successor to JPEG. It has a lossy mode "
+                Tr("JPEG XL (ISO/IEC 18181) is the JPEG committee's successor to JPEG. It has a lossy mode "
                 "(VarDCT) and a lossless one (Modular), both progressive, and it can recompress an existing "
                 "JPEG losslessly about 20% smaller and give back the original file bit for bit. It covers "
                 "HDR and wide gamut up to 32-bit float per channel, alpha, animation and any number of "
                 "extra channels. The sample is JXL art: its Modular predictor tree draws the whole "
                 "2160 x 3840 picture from an 82-byte file. Reading and writing it needs a libvips built "
-                "with libjxl.";
+                "with libjxl.");
 
         // Technical Specifications - Container
         info.containerSpecs = {
@@ -770,14 +770,14 @@ namespace UltraCanvas {
 
         // Format Specification
         info.specification = {
-                /* compression    */ "Lossless or Lossy (VarDCT)",
-                /* colorSpace     */ "RGB, Grayscale, CMYK",
-                /* channels       */ "1-4 + extra channels",
-                /* bitsPerChannel */ "8/16-bit, 32-bit float",
-                /* hdrSupport     */ "Yes (PQ, HLG, float)",
-                /* transparency   */ "Yes (any depth)",
-                /* animation      */ "Yes",
-                /* interlacing    */ "Yes (progressive)",
+                /* compression    */ Tr("Lossless or Lossy (VarDCT)"),
+                /* colorSpace     */ Tr("RGB, Grayscale, CMYK"),
+                /* channels       */ Tr("1-4 + extra channels"),
+                /* bitsPerChannel */ Tr("8/16-bit, 32-bit float"),
+                /* hdrSupport     */ Tr("Yes (PQ, HLG, float)"),
+                /* transparency   */ Tr("Yes (any depth)"),
+                /* animation      */ Tr("Yes"),
+                /* interlacing    */ Tr("Yes (progressive)"),
                 /* metadata       */ "EXIF, XMP, ICC"
         };
 
@@ -839,7 +839,7 @@ namespace UltraCanvas {
         // beside the image's properties (they wrap under each other when the
         // window is narrow). The cards are made here in that order and filled
         // in below.
-        auto page = DemoKit::CreatePage(info.formatName + "DemoPage", info.formatName + " Images",
+        auto page = DemoKit::CreatePage(info.formatName + "DemoPage", TrF("{0} Images", info.formatName),
                                         info.fullName + " (" + info.extensions + ")");
         auto aboutCard = DemoKit::AddCard(page, "AboutCard");
         auto specCard = DemoKit::AddCard(page, "SpecCard", Tr("Format Specification"));
@@ -849,7 +849,7 @@ namespace UltraCanvas {
 
         // ===== IMAGE PREVIEW CARD (bottom row, left) =====
         // As wide as the image frame needs; the properties take the rest.
-        auto imageCard = DemoKit::AddCard(bottomRow, "ImageCard", "Demo " + info.formatName + " Image", "", 270);
+        auto imageCard = DemoKit::AddCard(bottomRow, "ImageCard", TrF("Demo {0} Image", info.formatName), "", 270);
         imageCard->layoutItem.SetFlexGrow(0);
 
         auto imageFrame = std::make_shared<UltraCanvasContainer>("ImageFrame", 0, 0, 230, 170);
@@ -874,7 +874,7 @@ namespace UltraCanvas {
         for (char& c : unreadableReason) if (c == '\n' || c == '\r') c = ' ';
         while (!unreadableReason.empty() && unreadableReason.back() == ' ') unreadableReason.pop_back();
         const std::string unreadableNotice =
-            "This build cannot read " + info.formatName + " files.";
+            TrF("This build cannot read {0} files.", info.formatName);
         image->SetFitMode(ImageFitMode::Contain);
         // Hand, not LookingGlass: a click opens the image in the viewer, and a
         // magnifier reads as "zoom" rather than "click to open".
@@ -907,7 +907,7 @@ namespace UltraCanvas {
         // The buttons are as wide as their icon and text.
         auto buttonRow = DemoKit::AddRow(imageCard, "ImageButtons", 10);
         auto viewBtn = std::make_shared<UltraCanvasButton>("ViewBtn", 0, 0, 0, 32);
-        viewBtn->SetText("Full Size");
+        viewBtn->SetText(Tr("Full Size"));
         SetFlatButtonIcon(*viewBtn, "menu/zoom-in.svg");
         viewBtn->SetFontSize(10);
         viewBtn->SetColors(info.accentColor, info.accentColor);
@@ -921,7 +921,7 @@ namespace UltraCanvas {
         DemoKit::Add(buttonRow, viewBtn);
 
         auto exportBtn = std::make_shared<UltraCanvasButton>("ExportBtn", 0, 0, 0, 32);
-        exportBtn->SetText("Export");
+        exportBtn->SetText(Tr("Export"));
         SetFlatButtonIcon(*exportBtn, "menu/extract.svg");
         exportBtn->SetFontSize(10);
         exportBtn->SetColors(Color(241, 245, 249, 255), Color(226, 232, 240, 255));
@@ -962,8 +962,8 @@ namespace UltraCanvas {
         }
         if (!haveInfo) {
             auto noProps = DemoKit::AddText(propertiesCard, "NoProps",
-                    unreadableNotice + (unreadableReason.empty() ? std::string()
-                                                                  : " The reader said: " + unreadableReason));
+                    unreadableReason.empty() ? unreadableNotice
+                                             : TrF("{0} The reader said: {1}", unreadableNotice, unreadableReason));
             noProps->SetFontSize(11);
             noProps->SetTextColor(Color(71, 85, 105, 255));
         }
@@ -971,14 +971,14 @@ namespace UltraCanvas {
         // Property placeholders (would be populated from actual image metadata)
         std::vector<std::pair<std::string, std::string>> defaultProps = haveInfo ?
             std::vector<std::pair<std::string, std::string>>{
-                {"FILE SIZE", FormatFileSize(imgInfo.fileSize)},
-                {"RESOLUTION", fmt::format("{}x{}", imgInfo.width, imgInfo.height)},
-                {"CHANNELS", fmt::format("{}", imgInfo.channels)},
-                {"COLOR SPACE", imgInfo.colorSpace},
-                {"LOADER", imgInfo.loader},
-                {"BITS PER CHANNEL", fmt::format("{}", imgInfo.bitsPerChannel)},
-                {"ALPHA CHANNEL", imgInfo.hasAlpha ? "Yes" : "No"},
-                {"DPI", fmt::format("{}", round(imgInfo.dpiX))}
+                {Tr("FILE SIZE"), FormatFileSize(imgInfo.fileSize)},
+                {Tr("RESOLUTION"), fmt::format("{}x{}", imgInfo.width, imgInfo.height)},
+                {Tr("CHANNELS"), fmt::format("{}", imgInfo.channels)},
+                {Tr("COLOR SPACE"), imgInfo.colorSpace},
+                {Tr("LOADER"), imgInfo.loader},
+                {Tr("BITS PER CHANNEL"), fmt::format("{}", imgInfo.bitsPerChannel)},
+                {Tr("ALPHA CHANNEL"), imgInfo.hasAlpha ? Tr("Yes") : Tr("No")},
+                {Tr("DPI"), fmt::format("{}", round(imgInfo.dpiX))}
             } : std::vector<std::pair<std::string, std::string>>{};
 
         // Two tiles a line while they fit; a tile is as tall as its wrapped
@@ -1041,24 +1041,26 @@ namespace UltraCanvas {
         // features; the rest use a neutral slate background.
         struct SpecCell { std::string label; std::string value; };
         const std::vector<SpecCell> cells = {
-                {"COMPRESSION",      info.specification.compression},
-                {"COLOR SPACE",      info.specification.colorSpace},
-                {"CHANNELS",         info.specification.channels},
-                {"BITS PER CHANNEL", info.specification.bitsPerChannel},
-                {"HDR SUPPORT",      info.specification.hdrSupport},
-                {"TRANSPARENCY",     info.specification.transparency},
-                {"ANIMATION",        info.specification.animation},
-                {"INTERLACING",      info.specification.interlacing},
-                {"METADATA",         info.specification.metadata},
+                {Tr("COMPRESSION"),      info.specification.compression},
+                {Tr("COLOR SPACE"),      info.specification.colorSpace},
+                {Tr("CHANNELS"),         info.specification.channels},
+                {Tr("BITS PER CHANNEL"), info.specification.bitsPerChannel},
+                {Tr("HDR SUPPORT"),      info.specification.hdrSupport},
+                {Tr("TRANSPARENCY"),     info.specification.transparency},
+                {Tr("ANIMATION"),        info.specification.animation},
+                {Tr("INTERLACING"),      info.specification.interlacing},
+                {Tr("METADATA"),         info.specification.metadata},
         };
 
         auto specGrid = DemoKit::AddRow(specCard, "SpecGrid", 8);
 
-        auto isUnsupportedValue = [](const std::string& v) {
+        // The values are in the page's language: "No" is matched as Tr gives it.
+        const std::string no = Tr("No");
+        auto isUnsupportedValue = [no](const std::string& v) {
             if (v.empty()) return true;
-            // Match "No" or "No (..." at the start, case-insensitive
-            return (v.size() >= 2 && (v[0] == 'N' || v[0] == 'n') && (v[1] == 'O' || v[1] == 'o'))
-                   && (v.size() == 2 || v[2] == ' ' || v[2] == '(');
+            // Match "No" or "No (..." at the start
+            return v.compare(0, no.size(), no) == 0
+                   && (v.size() == no.size() || v[no.size()] == ' ' || v[no.size()] == '(');
         };
 
         for (size_t i = 0; i < cells.size(); ++i) {

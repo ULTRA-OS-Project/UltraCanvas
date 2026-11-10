@@ -38,6 +38,15 @@
 
 namespace UltraCanvas {
 
+// An attribute whose shown name follows the language while its id stays the
+// English word that annotations ("student.Name") refer to.
+static void AddNamedAttribute(UltraCanvasERDiagram& er, const std::string& entityId,
+                              const std::string& id, const std::string& name) {
+    ERDiagramAttribute attribute(name, ERKeyRole::NoKey, ERAttributeKind::Simple);
+    attribute.id = id;
+    er.AddAttribute(entityId, attribute);
+}
+
 // =============================================================================
 // 1. INTERNET SALES MODEL  (reference image 1)
 // =============================================================================
@@ -56,43 +65,43 @@ static std::shared_ptr<UltraCanvasERDiagram> CreateInternetSalesDiagram(
     er->SetCardinalityLabelStyle(ERCardinalityLabels::NoLabels);
     er->SetTheme(ERDiagramTheme::Default);
     er->SetConnectorStyle(ERConnectorStyle::Orthogonal);
-    er->SetTitle("Entity Relationship Diagram - Internet Sales Model");
+    er->SetTitle(Tr("Entity Relationship Diagram - Internet Sales Model"));
 
-    er->AddEntity("customer", "Customer", 470, 300);
-    er->AddAttribute("customer", "Name", ERKeyRole::Primary);
-    er->AddAttribute("customer", "E-mail");
-    er->AddAttribute("customer", "Address", ERKeyRole::NoKey,
+    er->AddEntity("customer", Tr("Customer"), 470, 300);
+    er->AddAttribute("customer", Tr("Name"), ERKeyRole::Primary);
+    er->AddAttribute("customer", Tr("E-mail"));
+    er->AddAttribute("customer", Tr("Address"), ERKeyRole::NoKey,
                      ERAttributeKind::Composite);
 
-    er->AddEntity("item", "Item", 900, 300);
-    er->AddAttribute("item", "Name", ERKeyRole::Primary);
-    er->AddAttribute("item", "Price");
+    er->AddEntity("item", Tr("Item"), 900, 300);
+    er->AddAttribute("item", Tr("Name"), ERKeyRole::Primary);
+    er->AddAttribute("item", Tr("Price"));
 
-    er->AddEntity("order", "Order", 690, 620);
-    er->AddAttribute("order", "Order Number", ERKeyRole::Primary);
+    er->AddEntity("order", Tr("Order"), 690, 620);
+    er->AddAttribute("order", Tr("Order Number"), ERKeyRole::Primary);
 
-    er->AddEntity("shipping", "Shipping", 130, 300);
-    er->AddEntity("company", "Company", 900, 60);
-    er->AddAttribute("company", "Name");
-    er->AddEntity("creditcard", "Credit Card", 130, 470);
-    er->AddEntity("ecommerce", "E-Commerce", 130, 640);
-    er->AddEntity("cart", "Shopping Cart", 940, 620);
+    er->AddEntity("shipping", Tr("Shipping"), 130, 300);
+    er->AddEntity("company", Tr("Company"), 900, 60);
+    er->AddAttribute("company", Tr("Name"));
+    er->AddEntity("creditcard", Tr("Credit Card"), 130, 470);
+    er->AddEntity("ecommerce", Tr("E-Commerce"), 130, 640);
+    er->AddEntity("cart", Tr("Shopping Cart"), 940, 620);
 
-    er->AddRelationship("places", "Orders", "customer", "order",
+    er->AddRelationship("places", Tr("Orders"), "customer", "order",
                         ERCardinality::ExactlyOne, ERCardinality::ZeroOrMany);
-    er->AddRelationship("ships", "Ships Item", "shipping", "customer",
+    er->AddRelationship("ships", Tr("Ships Item"), "shipping", "customer",
                         ERCardinality::ExactlyOne, ERCardinality::ZeroOrMany);
-    er->AddRelationship("contains", "Contains", "order", "item",
+    er->AddRelationship("contains", Tr("Contains"), "order", "item",
                         ERCardinality::ExactlyOne, ERCardinality::OneOrMany);
-    er->AddRelationship("produces", "Produces", "company", "item",
+    er->AddRelationship("produces", Tr("Produces"), "company", "item",
                         ERCardinality::ExactlyOne, ERCardinality::ZeroOrMany);
-    er->AddRelationship("forwards", "Forwards Order", "shipping", "creditcard",
+    er->AddRelationship("forwards", Tr("Forwards Order"), "shipping", "creditcard",
                         ERCardinality::ExactlyOne, ERCardinality::ZeroOrOne);
-    er->AddRelationship("verifies", "Verifies", "creditcard", "ecommerce",
+    er->AddRelationship("verifies", Tr("Verifies"), "creditcard", "ecommerce",
                         ERCardinality::ExactlyOne, ERCardinality::ExactlyOne);
-    er->AddRelationship("processes", "Processes", "ecommerce", "order",
+    er->AddRelationship("processes", Tr("Processes"), "ecommerce", "order",
                         ERCardinality::ExactlyOne, ERCardinality::ZeroOrMany);
-    er->AddRelationship("carries", "Carries", "cart", "item",
+    er->AddRelationship("carries", Tr("Carries"), "cart", "item",
                         ERCardinality::ZeroOrOne, ERCardinality::ZeroOrMany);
 
     // The legend is generated from the active notation, so it can never drift
@@ -124,53 +133,55 @@ static std::shared_ptr<UltraCanvasERDiagram> CreateDenseSchemaDiagram(
     er->SetConnectorStyle(ERConnectorStyle::Orthogonal);
     er->SetTitle("University Schema", "Force-directed layout with attribute haloes");
 
+    // The key columns (StudentID, ISBN, ...) are identifiers and stay as
+    // they are; the names a person reads follow the language.
     struct EntitySpec {
         const char* id;
-        const char* name;
-        std::vector<const char*> attributes;
+        std::string name;
+        std::vector<std::string> attributes;
     };
     const std::vector<EntitySpec> specs = {
-        { "student",   "Student",    { "StudentID", "First Name", "Last Name", "DOB",
-                                       "Email", "Phone", "Address" } },
-        { "course",    "Course",     { "CourseID", "Title", "Credits", "Level",
-                                       "Syllabus", "Capacity" } },
-        { "professor", "Professor",  { "StaffID", "Name", "Rank", "Office",
-                                       "Email", "Salary" } },
-        { "dept",      "Department", { "DeptID", "Name", "Building", "Budget",
-                                       "Phone" } },
-        { "section",   "Section",    { "SectionNo", "Semester", "Year", "Room",
-                                       "Schedule" } },
-        { "enrolment", "Enrolment",  { "EnrolID", "Date", "Grade", "Status" } },
-        { "textbook",  "Textbook",   { "ISBN", "Title", "Publisher", "Edition",
-                                       "Price" } },
-        { "library",   "Library",    { "LibID", "Name", "Location", "Hours" } }
+        { "student",   Tr("Student"),    { "StudentID", Tr("First Name"), Tr("Last Name"), Tr("DOB"),
+                                           Tr("Email"), Tr("Phone"), Tr("Address") } },
+        { "course",    Tr("Course"),     { "CourseID", Tr("Title"), Tr("Credits"), Tr("Level"),
+                                           Tr("Syllabus"), Tr("Capacity") } },
+        { "professor", Tr("Professor"),  { "StaffID", Tr("Name"), Tr("Rank"), Tr("Office"),
+                                           Tr("Email"), Tr("Salary") } },
+        { "dept",      Tr("Department"), { "DeptID", Tr("Name"), Tr("Building"), Tr("Budget"),
+                                           Tr("Phone") } },
+        { "section",   Tr("Section"),    { "SectionNo", Tr("Semester"), Tr("Year"), Tr("Room"),
+                                           Tr("Schedule") } },
+        { "enrolment", Tr("Enrolment"),  { "EnrolID", Tr("Date"), Tr("Grade"), Tr("Status") } },
+        { "textbook",  Tr("Textbook"),   { "ISBN", Tr("Title"), Tr("Publisher"), Tr("Edition"),
+                                           Tr("Price") } },
+        { "library",   Tr("Library"),    { "LibID", Tr("Name"), Tr("Location"), Tr("Hours") } }
     };
 
     for (const auto& spec : specs) {
         er->AddEntity(spec.id, spec.name);
         bool first = true;
-        for (const auto* attributeName : spec.attributes) {
+        for (const std::string& attributeName : spec.attributes) {
             er->AddAttribute(spec.id, attributeName,
                              first ? ERKeyRole::Primary : ERKeyRole::NoKey);
             first = false;
         }
     }
 
-    er->AddRelationship("belongs", "Belongs To", "course", "dept",
+    er->AddRelationship("belongs", Tr("Belongs To"), "course", "dept",
                         ERCardinality::OneOrMany, ERCardinality::ExactlyOne);
-    er->AddRelationship("works", "Works For", "professor", "dept",
+    er->AddRelationship("works", Tr("Works For"), "professor", "dept",
                         ERCardinality::OneOrMany, ERCardinality::ExactlyOne);
-    er->AddRelationship("teaches", "Teaches", "professor", "section",
+    er->AddRelationship("teaches", Tr("Teaches"), "professor", "section",
                         ERCardinality::ExactlyOne, ERCardinality::ZeroOrMany);
-    er->AddRelationship("offers", "Offers", "course", "section",
+    er->AddRelationship("offers", Tr("Offers"), "course", "section",
                         ERCardinality::ExactlyOne, ERCardinality::OneOrMany);
-    er->AddRelationship("enrols", "Enrols", "student", "enrolment",
+    er->AddRelationship("enrols", Tr("Enrols"), "student", "enrolment",
                         ERCardinality::ExactlyOne, ERCardinality::ZeroOrMany);
-    er->AddRelationship("forsection", "For Section", "enrolment", "section",
+    er->AddRelationship("forsection", Tr("For Section"), "enrolment", "section",
                         ERCardinality::OneOrMany, ERCardinality::ExactlyOne);
-    er->AddRelationship("requires", "Requires", "course", "textbook",
+    er->AddRelationship("requires", Tr("Requires"), "course", "textbook",
                         ERCardinality::ZeroOrMany, ERCardinality::ZeroOrMany);
-    er->AddRelationship("stocks", "Stocks", "library", "textbook",
+    er->AddRelationship("stocks", Tr("Stocks"), "library", "textbook",
                         ERCardinality::ExactlyOne, ERCardinality::ZeroOrMany);
 
     er->SetControlsVisible(true);
@@ -198,28 +209,28 @@ static std::shared_ptr<UltraCanvasERDiagram> CreateStudentCourseDiagram(
     er->SetTheme(ERDiagramTheme::Professional);
     er->SetCardinalityLabelStyle(ERCardinalityLabels::Letters);
     er->SetConnectorStyle(ERConnectorStyle::Straight);
-    er->SetTitle("Entity Relationship Diagram (ERD)");
+    er->SetTitle(Tr("Entity Relationship Diagram (ERD)"));
 
-    er->AddEntity("student", "Student");
+    er->AddEntity("student", Tr("Student"));
     er->AddAttribute("student", "SSN", ERKeyRole::Primary);   // Underlined
-    er->AddAttribute("student", "Name");
-    er->AddAttribute("student", "Email");
+    AddNamedAttribute(*er, "student", "Name", Tr("Name"));   // "student.Name" below
+    er->AddAttribute("student", Tr("Email"));
 
-    er->AddEntity("course", "Course");
+    er->AddEntity("course", Tr("Course"));
     er->AddAttribute("course", "CID", ERKeyRole::Primary);    // Underlined
-    er->AddAttribute("course", "Title");
-    er->AddAttribute("course", "Duration");
+    er->AddAttribute("course", Tr("Title"));
+    er->AddAttribute("course", Tr("Duration"));
 
-    er->AddRelationship("joins", "Joins", "student", "course",
+    er->AddRelationship("joins", Tr("Joins"), "student", "course",
                         ERCardinality::OneOrMany, ERCardinality::OneOrMany);
 
     // Callouts anchored to model elements, with leader lines.
-    er->AddAnnotation("a1", "Student Entity", "student", ERAnnotationSide::Bottom);
-    er->AddAnnotation("a2", "Course Entity", "course", ERAnnotationSide::Bottom);
-    er->AddAnnotation("a3", "Relationship", "joins", ERAnnotationSide::Bottom);
-    er->AddAnnotation("a4", "Prime Attribute", "student.SSN", ERAnnotationSide::Left);
-    er->AddAnnotation("a5", "Prime Attribute", "course.CID", ERAnnotationSide::Right);
-    er->AddAnnotation("a6", "Attribute", "student.Name", ERAnnotationSide::Top);
+    er->AddAnnotation("a1", Tr("Student Entity"), "student", ERAnnotationSide::Bottom);
+    er->AddAnnotation("a2", Tr("Course Entity"), "course", ERAnnotationSide::Bottom);
+    er->AddAnnotation("a3", Tr("Relationship"), "joins", ERAnnotationSide::Bottom);
+    er->AddAnnotation("a4", Tr("Prime Attribute"), "student.SSN", ERAnnotationSide::Left);
+    er->AddAnnotation("a5", Tr("Prime Attribute"), "course.CID", ERAnnotationSide::Right);
+    er->AddAnnotation("a6", Tr("Attribute"), "student.Name", ERAnnotationSide::Top);
 
     er->AutoSizeAll();
     er->SetLayout(ERDiagramLayout::Symmetric);
@@ -242,25 +253,25 @@ static std::shared_ptr<UltraCanvasERDiagram> CreateHospitalDiagram(
     er->SetTheme(ERDiagramTheme::Pastel);
     er->SetCardinalityLabelStyle(ERCardinalityLabels::Letters);
     er->SetConnectorStyle(ERConnectorStyle::Straight);
-    er->SetTitle("ER diagram of Hospital");
+    er->SetTitle(Tr("ER diagram of Hospital"));
 
-    er->AddEntity("test", "Test");
+    er->AddEntity("test", Tr("Test"));
     er->AddAttribute("test", "Test_ID", ERKeyRole::Primary);
     er->AddAttribute("test", "Test_Name");
     er->AddAttribute("test", "Test_Date");
 
-    er->AddEntity("patient", "Patient");
+    er->AddEntity("patient", Tr("Patient"));
     er->AddAttribute("patient", "Patient_ID", ERKeyRole::Primary);
-    er->AddAttribute("patient", "Name");
+    er->AddAttribute("patient", Tr("Name"));
     er->AddAttribute("patient", "Date_Admitted");
     er->AddAttribute("patient", "Date_Checked_Out");
-    er->AddAttribute("patient", "Age", ERKeyRole::NoKey, ERAttributeKind::Derived);
+    er->AddAttribute("patient", Tr("Age"), ERKeyRole::NoKey, ERAttributeKind::Derived);
 
-    er->AddEntity("doctor", "Doctors");
+    er->AddEntity("doctor", Tr("Doctors"));
     er->AddAttribute("doctor", "Doctor_ID", ERKeyRole::Primary);
-    er->AddAttribute("doctor", "Name");
-    er->AddAttribute("doctor", "Specialisation");
-    er->AddAttribute("doctor", "Phone", ERKeyRole::NoKey, ERAttributeKind::MultiValued);
+    er->AddAttribute("doctor", Tr("Name"));
+    er->AddAttribute("doctor", Tr("Specialisation"));
+    er->AddAttribute("doctor", Tr("Phone"), ERKeyRole::NoKey, ERAttributeKind::MultiValued);
 
     er->AddRelationship("testfor", "Test_for", "test", "patient",
                         ERCardinality::ZeroOrMany, ERCardinality::ExactlyOne);
@@ -291,26 +302,26 @@ static std::shared_ptr<UltraCanvasERDiagram> CreateAcademicDiagram(
     er->SetCardinalityLabelStyle(ERCardinalityLabels::MinMax);
     er->SetTheme(ERDiagramTheme::Professional);
     er->SetConnectorStyle(ERConnectorStyle::Orthogonal);
-    er->SetTitle("Academic Model", "(min,max) cardinality, ternary and recursive relationships");
+    er->SetTitle(Tr("Academic Model"), Tr("(min,max) cardinality, ternary and recursive relationships"));
 
-    er->AddEntity("school", "School", 120, 90);
+    er->AddEntity("school", Tr("School"), 120, 90);
     er->AddAttribute("school", "SchoolID", ERKeyRole::Primary);
-    er->AddEntity("professor", "Professor", 120, 330);
+    er->AddEntity("professor", Tr("Professor"), 120, 330);
     er->AddAttribute("professor", "StaffNo", ERKeyRole::Primary);
-    er->AddAttribute("professor", "Name");
-    er->AddEntity("subject", "Subject", 560, 90);
-    er->AddAttribute("subject", "Code", ERKeyRole::Primary);
-    er->AddEntity("course", "Course", 560, 330);
+    er->AddAttribute("professor", Tr("Name"));
+    er->AddEntity("subject", Tr("Subject"), 560, 90);
+    er->AddAttribute("subject", Tr("Code"), ERKeyRole::Primary);
+    er->AddEntity("course", Tr("Course"), 560, 330);
     er->AddAttribute("course", "CourseNo", ERKeyRole::Primary);
-    er->AddEntity("student", "Student", 980, 330);
+    er->AddEntity("student", Tr("Student"), 980, 330);
     er->AddAttribute("student", "StudentNo", ERKeyRole::Primary);
-    er->AddAttribute("student", "Name");
-    er->AddEntity("evaluation", "Evaluation", 980, 90);
+    er->AddAttribute("student", Tr("Name"));
+    er->AddEntity("evaluation", Tr("Evaluation"), 980, 90);
     er->AddAttribute("evaluation", "EvalID", ERKeyRole::Primary);
-    er->AddAttribute("evaluation", "Mark");
+    er->AddAttribute("evaluation", Tr("Mark"));
 
     // Binary relationships with explicit (min,max) pairs.
-    ERDiagramRelationship belongs("belongs", "Belongs");
+    ERDiagramRelationship belongs("belongs", Tr("Belongs"));
     belongs.legs = {
         ERDiagramLeg("professor", "", 1, 1, ERParticipation::Total),
         ERDiagramLeg("school", "", 1, ERCardinalityN, ERParticipation::Total)
@@ -318,20 +329,20 @@ static std::shared_ptr<UltraCanvasERDiagram> CreateAcademicDiagram(
     er->AddRelationship(belongs);
 
     // Ternary: one diamond, three legs (Professor / Subject / Course).
-    er->AddNaryRelationship("assigns", "Assigns", {
-        ERDiagramLeg("professor", "teacher", 1, ERCardinalityN, ERParticipation::Partial),
-        ERDiagramLeg("subject",   "topic",   1, ERCardinalityN, ERParticipation::Partial),
-        ERDiagramLeg("course",    "in",      0, ERCardinalityN, ERParticipation::Partial)
+    er->AddNaryRelationship("assigns", Tr("Assigns"), {
+        ERDiagramLeg("professor", Tr("teacher"), 1, ERCardinalityN, ERParticipation::Partial),
+        ERDiagramLeg("subject",   Tr("topic"),   1, ERCardinalityN, ERParticipation::Partial),
+        ERDiagramLeg("course",    Tr("in"),      0, ERCardinalityN, ERParticipation::Partial)
     });
 
-    ERDiagramRelationship attends("attends", "Attends");
+    ERDiagramRelationship attends("attends", Tr("Attends"));
     attends.legs = {
         ERDiagramLeg("student", "", 1, ERCardinalityN, ERParticipation::Total),
         ERDiagramLeg("course",  "", 1, ERCardinalityN, ERParticipation::Partial)
     };
     er->AddRelationship(attends);
 
-    ERDiagramRelationship graded("graded", "Graded");
+    ERDiagramRelationship graded("graded", Tr("Graded"));
     graded.legs = {
         ERDiagramLeg("student",    "", 1, ERCardinalityN, ERParticipation::Partial),
         ERDiagramLeg("evaluation", "", 1, 1, ERParticipation::Total)
@@ -340,7 +351,7 @@ static std::shared_ptr<UltraCanvasERDiagram> CreateAcademicDiagram(
 
     // Recursive: both legs on Student, told apart by their role names.
     er->AddRecursiveRelationship("tutoring", "Tutor_Tutored", "student",
-                                 "tutor", "tutored",
+                                 Tr("tutor"), Tr("tutored"),
                                  ERCardinality::ZeroOrOne, ERCardinality::ZeroOrMany);
 
     er->SetShowRoleNames(true);
@@ -367,7 +378,7 @@ static std::shared_ptr<UltraCanvasERDiagram> CreateCrowsFootDiagram(
     er->SetTheme(ERDiagramTheme::Professional);
     er->SetConnectorStyle(ERConnectorStyle::Orthogonal);
     er->SetShowDataTypes(true);
-    er->SetTitle("Order Schema", "Crow's foot / physical level");
+    er->SetTitle(Tr("Order Schema"), Tr("Crow's foot / physical level"));
 
     er->AddEntity("customer", "CUSTOMER", 90, 120);
     er->AddTypedAttribute("customer", "customer_id", "INTEGER", ERKeyRole::Primary, false);
@@ -392,11 +403,11 @@ static std::shared_ptr<UltraCanvasERDiagram> CreateCrowsFootDiagram(
     er->AddTypedAttribute("item", "sku", "VARCHAR(32)", ERKeyRole::Unique, false);
     er->AddTypedAttribute("item", "price", "DECIMAL(10,2)", ERKeyRole::NoKey, false);
 
-    er->AddRelationship("places", "places", "customer", "order",
+    er->AddRelationship("places", Tr("places"), "customer", "order",
                         ERCardinality::ExactlyOne, ERCardinality::ZeroOrMany);
     // Identifying: ORDER_LINE has no identity without its ORDER.
-    er->AddIdentifyingRelationship("contains", "contains", "order", "line");
-    er->AddRelationship("refers", "refers to", "item", "line",
+    er->AddIdentifyingRelationship("contains", Tr("contains"), "order", "line");
+    er->AddRelationship("refers", Tr("refers to"), "item", "line",
                         ERCardinality::ExactlyOne, ERCardinality::ZeroOrMany);
 
     er->AutoSizeAll();
@@ -424,7 +435,7 @@ static std::shared_ptr<UltraCanvasERDiagram> CreateRelationalDiagram(
     er->SetTheme(ERDiagramTheme::Colorful);
     er->SetConnectorStyle(ERConnectorStyle::Orthogonal);
     er->SetShowDataTypes(false);                                 // Column names only
-    er->SetTitle("Forum Schema", "Relational tables with (min,max) cardinality");
+    er->SetTitle(Tr("Forum Schema"), Tr("Relational tables with (min,max) cardinality"));
 
     // Badge column on the right, striped rows - the other house style.
     er->SetRowMarkerSide(ERRowMarkerSide::Right);
@@ -533,7 +544,7 @@ static std::shared_ptr<UltraCanvasERDiagram> CreateIdef1xDiagram(
     er->SetTheme(ERDiagramTheme::Minimal);
     er->SetConnectorStyle(ERConnectorStyle::Orthogonal);
     er->SetShowDataTypes(false);
-    er->SetTitle("Equipment Hire", "IDEF1X - key compartment, numbered foreign keys");
+    er->SetTitle(Tr("Equipment Hire"), Tr("IDEF1X - key compartment, numbered foreign keys"));
 
     er->SetKeyCompartment(true);
     er->SetUnderlineKeyRows(true);
@@ -634,42 +645,43 @@ UltraCanvasDemoApplication::CreateERDiagramExamples() {
                         "and an auto-generated legend."));
 
     struct TabSpec {
-        const char* title;
+        const char* key;
+        std::string title;
         std::shared_ptr<UltraCanvasERDiagram> diagram;
-        const char* status;
+        std::string status;
     };
 
     std::vector<TabSpec> specs = {
-        { "Internet Sales", CreateInternetSalesDiagram(4, 4, INNER_W, INNER_H),
-          "Internet Sales - Chen shapes with crow's-foot line ends and an "
-          "auto-generated legend." },
-        { "Dense Schema", CreateDenseSchemaDiagram(4, 4, INNER_W, INNER_H),
-          "Dense Schema - 8 entities, ~45 attribute ovals placed by the "
-          "attribute-satellite layout. Hover an entity to isolate it." },
-        { "Student / Course", CreateStudentCourseDiagram(4, 4, INNER_W, INNER_H),
-          "Student / Course - symmetric layout, underlined prime attributes, "
-          "annotation callouts with leader lines." },
-        { "Hospital", CreateHospitalDiagram(4, 4, INNER_W, INNER_H),
-          "Hospital - pastel theme, spine layout. Age is a derived attribute "
-          "(dashed oval); Phone is multivalued (double oval)." },
-        { "Academic", CreateAcademicDiagram(4, 4, INNER_W, INNER_H),
-          "Academic - (min,max) ISO cardinality, a ternary relationship and a "
-          "recursive Tutor_Tutored with role names." },
-        { "Crow's Foot", CreateCrowsFootDiagram(4, 4, INNER_W, INNER_H),
-          "Crow's Foot - typed attribute rows with PK/FK/UK markers. "
-          "Identifying relationships are solid, non-identifying dashed." },
-        { "Relational", CreateRelationalDiagram(4, 4, INNER_W, INNER_H),
-          "Relational - table boxes with (min,max) labels and plain arrowheads, "
-          "badge column on the right, striped rows." },
-        { "IDEF1X", CreateIdef1xDiagram(4, 4, INNER_W, INNER_H),
-          "IDEF1X - key columns in their own compartment above the rule and "
-          "underlined; foreign keys numbered FK1/FK2." }
+        { "Internet Sales", Tr("Internet Sales"), CreateInternetSalesDiagram(4, 4, INNER_W, INNER_H),
+          Tr("Internet Sales - Chen shapes with crow's-foot line ends and an "
+          "auto-generated legend.") },
+        { "Dense Schema", Tr("Dense Schema"), CreateDenseSchemaDiagram(4, 4, INNER_W, INNER_H),
+          Tr("Dense Schema - 8 entities, ~45 attribute ovals placed by the "
+          "attribute-satellite layout. Hover an entity to isolate it.") },
+        { "Student / Course", Tr("Student / Course"), CreateStudentCourseDiagram(4, 4, INNER_W, INNER_H),
+          Tr("Student / Course - symmetric layout, underlined prime attributes, "
+          "annotation callouts with leader lines.") },
+        { "Hospital", Tr("Hospital"), CreateHospitalDiagram(4, 4, INNER_W, INNER_H),
+          Tr("Hospital - pastel theme, spine layout. Age is a derived attribute "
+          "(dashed oval); Phone is multivalued (double oval).") },
+        { "Academic", Tr("Academic"), CreateAcademicDiagram(4, 4, INNER_W, INNER_H),
+          Tr("Academic - (min,max) ISO cardinality, a ternary relationship and a "
+          "recursive Tutor_Tutored with role names.") },
+        { "Crow's Foot", Tr("Crow's Foot"), CreateCrowsFootDiagram(4, 4, INNER_W, INNER_H),
+          Tr("Crow's Foot - typed attribute rows with PK/FK/UK markers. "
+          "Identifying relationships are solid, non-identifying dashed.") },
+        { "Relational", Tr("Relational"), CreateRelationalDiagram(4, 4, INNER_W, INNER_H),
+          Tr("Relational - table boxes with (min,max) labels and plain arrowheads, "
+          "badge column on the right, striped rows.") },
+        { "IDEF1X", Tr("IDEF1X"), CreateIdef1xDiagram(4, 4, INNER_W, INNER_H),
+          Tr("IDEF1X - key columns in their own compartment above the rule and "
+          "underlined; foreign keys numbered FK1/FK2.") }
     };
 
     std::vector<std::shared_ptr<UltraCanvasERDiagram>> diagrams;
     for (const auto& spec : specs) {
         auto tab = std::make_shared<UltraCanvasContainer>(
-                std::string("erTab_") + spec.title, 0, 0, INNER_W, INNER_H);
+                std::string("erTab_") + spec.key, 0, 0, INNER_W, INNER_H);
         tab->SetBackgroundColor(Color(255, 255, 255, 255));
         tab->AddChild(spec.diagram);
         tabs->AddTab(spec.title, tab);
@@ -683,7 +695,7 @@ UltraCanvasDemoApplication::CreateERDiagramExamples() {
             std::make_shared<std::shared_ptr<UltraCanvasERDiagram>>(diagrams.front());
 
     std::vector<std::string> statusTexts;
-    for (const auto& spec : specs) statusTexts.emplace_back(spec.status);
+    for (const auto& spec : specs) statusTexts.push_back(spec.status);
 
     tabs->onTabChange = [activeDiagram, diagrams, statusTexts, statusLabel]
                         (int /*oldIndex*/, int newIndex) {
@@ -707,14 +719,14 @@ UltraCanvasDemoApplication::CreateERDiagramExamples() {
     };
 
     auto notationIndex = std::make_shared<int>(0);
-    addButton("erBtnNotation", "Notation",
+    addButton("erBtnNotation", Tr("Notation"),
               [activeDiagram, notationIndex, statusLabel]() {
         auto diagram = *activeDiagram;
         if (!diagram) return;
         static const ERNotation order[] = {
             ERNotation::Chen, ERNotation::ChenMinMax, ERNotation::CrowsFoot
         };
-        static const char* names[] = { "Chen", "Chen (min,max)", "Crow's Foot" };
+        const std::string names[] = { Tr("Chen"), Tr("Chen (min,max)"), Tr("Crow's Foot") };
         static const ERCardinalityLabels labels[] = {
             ERCardinalityLabels::Letters, ERCardinalityLabels::MinMax,
             ERCardinalityLabels::NoLabels
@@ -725,13 +737,13 @@ UltraCanvasDemoApplication::CreateERDiagramExamples() {
         diagram->AutoSizeAll();
         diagram->RunLayout();
         if (statusLabel) {
-            statusLabel->SetText(std::string("Notation: ") + names[*notationIndex] +
-                                 " - same model, different projection.");
+            statusLabel->SetText(TrF("Notation: {0} - same model, different projection.",
+                                     names[*notationIndex]));
         }
     });
 
     auto themeIndex = std::make_shared<int>(0);
-    addButton("erBtnTheme", "Theme", [activeDiagram, themeIndex, statusLabel]() {
+    addButton("erBtnTheme", Tr("Theme"), [activeDiagram, themeIndex, statusLabel]() {
         auto diagram = *activeDiagram;
         if (!diagram) return;
         static const ERDiagramTheme order[] = {
@@ -740,62 +752,63 @@ UltraCanvasDemoApplication::CreateERDiagramExamples() {
             ERDiagramTheme::Dark, ERDiagramTheme::Blueprint,
             ERDiagramTheme::Minimal, ERDiagramTheme::Print
         };
-        static const char* names[] = { "Default", "Professional", "Colorful", "Pastel",
-                                       "Dark", "Blueprint", "Minimal", "Print" };
+        const std::string names[] = { Tr("Default"), Tr("Professional"), Tr("Colorful"), Tr("Pastel"),
+                                      Tr("Dark"), Tr("Blueprint"), Tr("Minimal"), Tr("Print") };
         *themeIndex = (*themeIndex + 1) % 8;
         diagram->SetTheme(order[*themeIndex]);
-        if (statusLabel) statusLabel->SetText(std::string("Theme: ") + names[*themeIndex]);
+        if (statusLabel) statusLabel->SetText(TrF("Theme: {0}", names[*themeIndex]));
     });
 
     auto layoutIndex = std::make_shared<int>(0);
-    addButton("erBtnLayout", "Layout", [activeDiagram, layoutIndex, statusLabel]() {
+    addButton("erBtnLayout", Tr("Layout"), [activeDiagram, layoutIndex, statusLabel]() {
         auto diagram = *activeDiagram;
         if (!diagram) return;
         static const ERDiagramLayout order[] = {
             ERDiagramLayout::AttributeSatellite, ERDiagramLayout::ForceDirected,
             ERDiagramLayout::Spine, ERDiagramLayout::Symmetric
         };
-        static const char* names[] = { "Attribute satellite", "Force directed",
-                                       "Spine", "Symmetric" };
+        const std::string names[] = { Tr("Attribute satellite"), Tr("Force directed"),
+                                      Tr("Spine"), Tr("Symmetric") };
         *layoutIndex = (*layoutIndex + 1) % 4;
         diagram->SetLayout(order[*layoutIndex]);
         diagram->RunLayout();
-        if (statusLabel) statusLabel->SetText(std::string("Layout: ") + names[*layoutIndex]);
+        if (statusLabel) statusLabel->SetText(TrF("Layout: {0}", names[*layoutIndex]));
     });
 
-    addButton("erBtnConnector", "Connectors", [activeDiagram, statusLabel]() {
+    addButton("erBtnConnector", Tr("Connectors"), [activeDiagram, statusLabel]() {
         auto diagram = *activeDiagram;
         if (!diagram) return;
         ERConnectorStyle next;
-        const char* name = "";
+        std::string name;
         switch (diagram->GetConnectorStyle()) {
             case ERConnectorStyle::Straight:
-                next = ERConnectorStyle::Orthogonal; name = "Orthogonal"; break;
+                next = ERConnectorStyle::Orthogonal; name = Tr("Orthogonal"); break;
             case ERConnectorStyle::Orthogonal:
-                next = ERConnectorStyle::Bezier; name = "Bezier"; break;
+                next = ERConnectorStyle::Bezier; name = Tr("Bezier"); break;
             default:
-                next = ERConnectorStyle::Straight; name = "Straight"; break;
+                next = ERConnectorStyle::Straight; name = Tr("Straight"); break;
         }
         diagram->SetConnectorStyle(next);
-        if (statusLabel) statusLabel->SetText(std::string("Connectors: ") + name);
+        if (statusLabel) statusLabel->SetText(TrF("Connectors: {0}", name));
     });
 
-    addButton("erBtnFit", "Fit View", [activeDiagram, statusLabel]() {
+    addButton("erBtnFit", Tr("Fit View"), [activeDiagram, statusLabel]() {
         auto diagram = *activeDiagram;
         if (!diagram) return;
         diagram->FitView();
-        if (statusLabel) statusLabel->SetText("View fitted to content.");
+        if (statusLabel) statusLabel->SetText(Tr("View fitted to content."));
     });
 
-    addButton("erBtnJson", "Export JSON", [activeDiagram, statusLabel]() {
+    addButton("erBtnJson", Tr("Export JSON"), [activeDiagram, statusLabel]() {
         auto diagram = *activeDiagram;
         if (!diagram || !statusLabel) return;
         std::string json = diagram->ToJson();
-        statusLabel->SetText("Serialized model: " + std::to_string(json.size()) +
-                             " bytes of JSON (" +
-                             std::to_string(diagram->GetEntityCount()) + " entities, " +
-                             std::to_string(diagram->GetRelationshipCount()) +
-                             " relationships).");
+        statusLabel->SetText(TrF("Serialized model: {0} of JSON ({1}, {2}).",
+                                 TrN("{n} byte", "{n} bytes", static_cast<long long>(json.size())),
+                                 TrN("{n} entity", "{n} entities",
+                                     static_cast<long long>(diagram->GetEntityCount())),
+                                 TrN("{n} relationship", "{n} relationships",
+                                     static_cast<long long>(diagram->GetRelationshipCount()))));
     });
 
     DemoKit::Add(card, statusLabel);

@@ -66,32 +66,32 @@ std::vector<EngineDataset> MakeDatasets() {
     std::vector<EngineDataset> sets;
 
     EngineDataset revenue;
-    revenue.name = "Revenue";
-    revenue.caption = "ordinary positive data - the linear-scale case";
-    revenue.categories = {"Q1", "Q2", "Q3", "Q4", "Q5e"};
-    revenue.seriesNames = {"Product", "Services", "Licences"};
+    revenue.name = Tr("Revenue");
+    revenue.caption = Tr("ordinary positive data - the linear-scale case");
+    revenue.categories = {Tr("Q1"), Tr("Q2"), Tr("Q3"), Tr("Q4"), Tr("Q5e")};
+    revenue.seriesNames = {Tr("Product"), Tr("Services"), Tr("Licences")};
     revenue.values = {{380000, 545000, 470000, 690000, 615000},
                       {120000, 160000, 205000, 240000, 275000},
                       { 60000,  75000,  90000, 130000, 150000}};
     sets.push_back(revenue);
 
     EngineDataset decades;
-    decades.name = "Wide range";
-    decades.caption = "six decades of traffic - unreadable on a linear axis, "
-                      "one tick per decade on Log";
-    decades.categories = {"Idle", "Web", "API", "Batch", "Peak"};
-    decades.seriesNames = {"Requests", "Retries", "Errors"};
+    decades.name = Tr("Wide range");
+    decades.caption = Tr("six decades of traffic - unreadable on a linear axis, "
+                         "one tick per decade on Log");
+    decades.categories = {Tr("Idle"), Tr("Web"), Tr("API"), Tr("Batch"), Tr("Peak")};
+    decades.seriesNames = {Tr("Requests"), Tr("Retries"), Tr("Errors")};
     decades.values = {{12, 340, 5600, 74000, 1250000},
                       { 5, 120, 1900, 21000,  380000},
                       { 2,  17,  260,  3100,   41000}};
     sets.push_back(decades);
 
     EngineDataset signed_;
-    signed_.name = "Signed";
-    signed_.caption = "positive and negative values - SymLog keeps the sign, "
-                      "stacks diverge around zero";
-    signed_.categories = {"Q1", "Q2", "Q3", "Q4", "Q5e"};
-    signed_.seriesNames = {"Cashflow", "Adjustments", "Hedging"};
+    signed_.name = Tr("Signed");
+    signed_.caption = Tr("positive and negative values - SymLog keeps the sign, "
+                         "stacks diverge around zero");
+    signed_.categories = {Tr("Q1"), Tr("Q2"), Tr("Q3"), Tr("Q4"), Tr("Q5e")};
+    signed_.seriesNames = {Tr("Cashflow"), Tr("Adjustments"), Tr("Hedging")};
     signed_.values = {{ 120000, -80000, 260000, -45000, 310000},
                       { -40000,  55000, -95000, 130000, -60000},
                       {  25000,  30000, -15000,  40000,  35000}};
@@ -231,7 +231,7 @@ public:
     }
 
     // The legend's own heading, measured into its box like everything else.
-    void SetLegendTitleShown(bool on) { SetLegendTitle(on ? "Series" : ""); }
+    void SetLegendTitleShown(bool on) { SetLegendTitle(on ? Tr("Series") : std::string()); }
 
     // Per-entry secondary text: the legend right-aligns it in its own column,
     // so the entry list doubles as a small value table.
@@ -545,7 +545,7 @@ private:
             case TitleMode::ViaProperty:
                 // The named-property surface a registry, template or module
                 // host configures the chart through, across module boundaries.
-                SetProperty("title", datasetName + " (set via SetProperty)");
+                SetProperty("title", TrF("{0} (set via SetProperty)", datasetName));
                 break;
             case TitleMode::NoTitle:
                 SetChartTitle("");
@@ -811,20 +811,20 @@ private:
             case LimiterMode::NoLimiter:
                 break;
             case LimiterMode::Average:
-                add(average, ChartLimiterKind::Average, Color(90, 90, 90, 255), "average");
+                add(average, ChartLimiterKind::Average, Color(90, 90, 90, 255), Tr("average"));
                 break;
             case LimiterMode::AverageAndTarget:
-                add(average, ChartLimiterKind::Average, Color(90, 90, 90, 255), "average");
+                add(average, ChartLimiterKind::Average, Color(90, 90, 90, 255), Tr("average"));
                 add(maximum * 0.9, ChartLimiterKind::Target,
-                    Color(200, 60, 60, 255), "target");
+                    Color(200, 60, 60, 255), Tr("target"));
                 break;
             case LimiterMode::Thresholds:
                 add(maximum * 0.25, ChartLimiterKind::Threshold,
-                    Color(120, 160, 90, 255), "low");
+                    Color(120, 160, 90, 255), Tr("low"));
                 add(maximum * 0.50, ChartLimiterKind::Threshold,
-                    Color(210, 160, 60, 255), "watch");
+                    Color(210, 160, 60, 255), Tr("watch"));
                 add(maximum * 0.75, ChartLimiterKind::Threshold,
-                    Color(200, 60, 60, 255), "critical");
+                    Color(200, 60, 60, 255), Tr("critical"));
                 break;
         }
     }
@@ -856,7 +856,7 @@ private:
                     ctx->SetTextPaint(Color(120, 120, 120, 255));
                     ctx->DrawText("95%", Point2Dd(r.x + 2.0, r.y + 1.0));
                     ctx->DrawText("50%", Point2Dd(c.x - 10.0, c.y - 26.0));
-                    ctx->DrawText("mean", Point2Dd(c.x + 40.0, c.y - 5.0));
+                    ctx->DrawText(Tr("mean"), Point2Dd(c.x + 40.0, c.y - 5.0));
                 });
         } else if (customKeyRequested) {
             Legend().SetCustomArea(
@@ -864,9 +864,9 @@ private:
                 [](IRenderContext* ctx, const Rect2Dd& r) {
                     const struct {
                         Color color;
-                        const char* label;
-                    } rows[] = {{Color(90, 90, 90, 255), "average"},
-                                {Color(200, 60, 60, 255), "target"}};
+                        std::string label;
+                    } rows[] = {{Color(90, 90, 90, 255), Tr("average")},
+                                {Color(200, 60, 60, 255), Tr("target")}};
                     ctx->SetFontSize(9.0f);
                     double y = r.y + 8.0;
                     for (const auto& row : rows) {
@@ -905,7 +905,7 @@ private:
             band.fill = Color(120, 140, 170, 28);
             band.stroke = Color(120, 140, 170, 120);
             band.dashed = true;
-            band.label = "expected range";
+            band.label = Tr("expected range");
             band.zSlot = 200;                         // wash under the grid
             AddHighlight(band);
         } else if (highlightMode == HighlightMode::Ellipse ||
@@ -1061,8 +1061,8 @@ inline void SizeToText(const std::shared_ptr<UltraCanvasUIElement>& element,
 // (-1 = none).
 template <typename Fn>
 OptionButtons AppendLabeledButtons(const std::shared_ptr<UltraCanvasContainer>& row,
-                                   const std::string& idPrefix, const char* labelText,
-                                   const std::vector<const char*>& labels, Fn onPick,
+                                   const std::string& idPrefix, const std::string& labelText,
+                                   const std::vector<std::string>& labels, Fn onPick,
                                    int selectedIndex = -1) {
     auto groupBox = DemoKit::CreateRow(idPrefix + "group", 6);
     groupBox->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
@@ -1102,7 +1102,7 @@ OptionButtons AppendLabeledButtons(const std::shared_ptr<UltraCanvasContainer>& 
 template <typename Fn>
 std::shared_ptr<UltraCanvasButton> AppendActionButton(
                           const std::shared_ptr<UltraCanvasContainer>& row,
-                          const std::string& id, const char* text, Fn onClick) {
+                          const std::string& id, const std::string& text, Fn onClick) {
     auto b = std::make_shared<UltraCanvasButton>(id, 0, 0, 0, kBtnH, text);
     b->SetFontSize(11);
     b->SetCornerRadius(4.0f);
@@ -1185,43 +1185,43 @@ UltraCanvasDemoApplication::CreateChartEngineExamples() {
         ChartProjectionKind::Vertical, ChartProjectionKind::Horizontal,
         ChartProjectionKind::Polar
     };
-    AppendLabeledButtons(rowProjection, "engine_proj_", "Projection",
-                  {"Vertical", "Horizontal", "Polar"},
+    AppendLabeledButtons(rowProjection, "engine_proj_", Tr("Projection"),
+                  {Tr("Vertical"), Tr("Horizontal"), Tr("Polar")},
                   [chartPtr, say, projections](int i) {
                       chartPtr->SetProjectionKind(projections[i]);
-                      const char* what[] = {
-                          "Vertical projection — domain right, value up",
-                          "Horizontal projection — the same content transposed by the engine",
-                          "Polar projection — the same bars as ring sectors, no chart-side change"};
+                      const std::string what[] = {
+                          Tr("Vertical projection — domain right, value up"),
+                          Tr("Horizontal projection — the same content transposed by the engine"),
+                          Tr("Polar projection — the same bars as ring sectors, no chart-side change")};
                       say(what[i]);
                   }, 0);
     const ChartBarArrangement arrangements[] = {
         ChartBarArrangement::Grouped, ChartBarArrangement::Stacked,
         ChartBarArrangement::PercentStacked
     };
-    AppendLabeledButtons(rowProjection, "engine_arr_", "Bars",
-                  {"Grouped", "Stacked", "100%"},
+    AppendLabeledButtons(rowProjection, "engine_arr_", Tr("Bars"),
+                  {Tr("Grouped"), Tr("Stacked"), Tr("100%")},
                   [chartPtr, say, arrangements](int i) {
                       chartPtr->SetArrangement(arrangements[i]);
-                      const char* what[] = {
-                          "Grouped bars — ChartBarArrangement::Grouped (negatives grow downward)",
-                          "Stacked bars — positives accumulate up, negatives down: a diverging stack",
-                          "100% stacked — every category shares out its absolute total"};
+                      const std::string what[] = {
+                          Tr("Grouped bars — ChartBarArrangement::Grouped (negatives grow downward)"),
+                          Tr("Stacked bars — positives accumulate up, negatives down: a diverging stack"),
+                          Tr("100% stacked — every category shares out its absolute total")};
                       say(what[i]);
                   }, 0);
-    AppendLabeledButtons(rowProjection, "engine_corner_", "Corners",
-                  {"Square", "Rounded"},
+    AppendLabeledButtons(rowProjection, "engine_corner_", Tr("Corners"),
+                  {Tr("Square"), Tr("Rounded")},
                   [chartPtr, say](int i) {
                       chartPtr->SetBarCornerRadius(i == 0 ? 0.0 : 6.0);
-                      say(i == 0 ? "Square bar outlines"
-                                 : "Rounded bar outlines — BuildBarOutline rounds in screen "
-                                   "space, so ring sectors round too");
+                      say(i == 0 ? Tr("Square bar outlines")
+                                 : Tr("Rounded bar outlines — BuildBarOutline rounds in screen "
+                                   "space, so ring sectors round too"));
                   }, 0);
     plotPage->AddChild(rowProjection);
 
     auto rowPaint = MakeRow("engine_row_paint");
-    AppendLabeledButtons(rowPaint, "engine_paint_", "Bar paint",
-                  {"Solid", "Gradient", "Outline", "Hatched"},
+    AppendLabeledButtons(rowPaint, "engine_paint_", Tr("Bar paint"),
+                  {Tr("Solid"), Tr("Gradient"), Tr("Outline"), Tr("Hatched")},
                   [chartPtr, say](int i) {
                       const EngineFeatureChart::SeriesPaint paints[] = {
                           EngineFeatureChart::SeriesPaint::Solid,
@@ -1229,31 +1229,29 @@ UltraCanvasDemoApplication::CreateChartEngineExamples() {
                           EngineFeatureChart::SeriesPaint::Outline,
                           EngineFeatureChart::SeriesPaint::Hatched};
                       chartPtr->SetSeriesPaint(paints[i]);
-                      say("Series paint changed — the legend swatch follows it "
+                      say(Tr("Series paint changed — the legend swatch follows it "
                           "(LegendSwatch), so a non-solid series is never represented by a "
-                          "colour square that matches nothing");
+                          "colour square that matches nothing"));
                   }, 0);
-    AppendLabeledButtons(rowPaint, "engine_fill_", "Slot fill",
-                  {"Narrow", "Default", "Wide"},
+    AppendLabeledButtons(rowPaint, "engine_fill_", Tr("Slot fill"),
+                  {Tr("Narrow"), Tr("Default"), Tr("Wide")},
                   [chartPtr, say](int i) {
                       const double fills[] = {0.4, 0.7, 0.95};
                       chartPtr->SetSlotFill(fills[i]);
-                      std::ostringstream o;
-                      o << "ChartBarLayoutOptions::slotFill = " << fills[i]
-                        << " — the fraction of a category slot the bars occupy";
-                      say(o.str());
+                      say(TrF("ChartBarLayoutOptions::slotFill = {0} — the fraction of a category slot the bars occupy",
+                              fills[i]));
                   }, 1);
-    AppendLabeledButtons(rowPaint, "engine_pad_", "Slot pad",
+    AppendLabeledButtons(rowPaint, "engine_pad_", Tr("Slot pad"),
                   {"0", "0.5"},
                   [chartPtr, say](int i) {
                       chartPtr->SetCategoryPadding(i == 0 ? 0.0 : 0.5);
-                      say(i == 0 ? "categoryPadding 0 — the range spans exactly 0..n-1, so the "
-                                   "outer bars are clipped in half"
-                                 : "categoryPadding 0.5 — every slot gets the same width and the "
-                                   "outer bars keep their full footprint");
+                      say(i == 0 ? Tr("categoryPadding 0 — the range spans exactly 0..n-1, so the "
+                                   "outer bars are clipped in half")
+                                 : Tr("categoryPadding 0.5 — every slot gets the same width and the "
+                                   "outer bars keep their full footprint"));
                   }, 1);
     plotPage->AddChild(rowPaint);
-    optionTabs->AddTab("Plot", plotPage);
+    optionTabs->AddTab(Tr("Plot"), plotPage);
 
     // -------------------------------------------------------------------------
     // TAB: Axes — the axis scales, the grid derived from them, the tick numbers
@@ -1264,64 +1262,62 @@ UltraCanvasDemoApplication::CreateChartEngineExamples() {
     const ChartScale scales[] = {
         ChartScale::Linear, ChartScale::Log, ChartScale::SymLog, ChartScale::Percentile
     };
-    AppendLabeledButtons(rowScale, "engine_scale_", "Value axis",
-                  {"Linear", "Log", "SymLog", "Percentile"},
+    AppendLabeledButtons(rowScale, "engine_scale_", Tr("Value axis"),
+                  {Tr("Linear"), Tr("Log"), Tr("SymLog"), Tr("Percentile")},
                   [chartPtr, say, scales](int i) {
                       chartPtr->SetValueScale(scales[i]);
-                      const char* what[] = {
-                          "Linear scale — the auto range is rounded outward to nice numbers",
-                          "Logarithmic scale — one tick per decade; the range is pinned to whole "
-                          "decades and the bars grow from the axis floor (try the Wide range data)",
-                          "Symmetric log — linear near zero, logarithmic beyond, so negative values "
-                          "survive (try the Signed data)",
-                          "Percentile scale — position by rank, which uniformises a skewed column; "
-                          "ChartAxis also carries Z-score and robust z-score"};
+                      const std::string what[] = {
+                          Tr("Linear scale — the auto range is rounded outward to nice numbers"),
+                          Tr("Logarithmic scale — one tick per decade; the range is pinned to whole "
+                          "decades and the bars grow from the axis floor (try the Wide range data)"),
+                          Tr("Symmetric log — linear near zero, logarithmic beyond, so negative values "
+                          "survive (try the Signed data)"),
+                          Tr("Percentile scale — position by rank, which uniformises a skewed column; "
+                          "ChartAxis also carries Z-score and robust z-score")};
                       say(what[i]);
                   }, 0);
-    AppendLabeledButtons(rowScale, "engine_invert_", "Direction",
-                  {"Normal", "Inverted"},
+    AppendLabeledButtons(rowScale, "engine_invert_", Tr("Direction"),
+                  {Tr("Normal"), Tr("Inverted")},
                   [chartPtr, say](int i) {
                       chartPtr->SetInvertValueAxis(i == 1);
-                      say(i == 1 ? "Value axis inverted — ChartAxis::inverted flips which end is high"
-                                 : "Value axis in its natural direction");
+                      say(i == 1 ? Tr("Value axis inverted — ChartAxis::inverted flips which end is high")
+                                 : Tr("Value axis in its natural direction"));
                   }, 0);
-    AppendLabeledButtons(rowScale, "engine_side_", "Axis side",
-                  {"Near", "Far"},
+    AppendLabeledButtons(rowScale, "engine_side_", Tr("Axis side"),
+                  {Tr("Near"), Tr("Far")},
                   [chartPtr, say](int i) {
                       chartPtr->SetAxesAtFarSide(i == 1);
-                      say(i == 1 ? "Axes moved to the far edges (Right / Top) — the measured layout "
-                                   "moves the margins with them"
-                                 : "Axes on the near edges (Left / Bottom)");
+                      say(i == 1 ? Tr("Axes moved to the far edges (Right / Top) — the measured layout "
+                                   "moves the margins with them")
+                                 : Tr("Axes on the near edges (Left / Bottom)"));
                   }, 0);
     axesPage->AddChild(rowScale);
 
     auto rowGrid = MakeRow("engine_row_grid");
-    AppendLabeledButtons(rowGrid, "engine_grid_", "Grid",
-                  {"Value ticks", "Category", "Off"},
+    AppendLabeledButtons(rowGrid, "engine_grid_", Tr("Grid"),
+                  {Tr("Value ticks"), Tr("Category"), Tr("Off")},
                   [chartPtr, say](int i) {
                       const EngineFeatureChart::GridSource sources[] = {
                           EngineFeatureChart::GridSource::ValueAxis,
                           EngineFeatureChart::GridSource::CategoryAxis,
                           EngineFeatureChart::GridSource::NoGrid};
                       chartPtr->SetGridSource(sources[i]);
-                      const char* what[] = {
-                          "Gridlines derived from the value axis ticks — grid and labels can never disagree",
-                          "Gridlines derived from the category slots",
-                          "No gridlines — SetGridAxis(SIZE_MAX)"};
+                      const std::string what[] = {
+                          Tr("Gridlines derived from the value axis ticks — grid and labels can never disagree"),
+                          Tr("Gridlines derived from the category slots"),
+                          Tr("No gridlines — SetGridAxis(SIZE_MAX)")};
                       say(what[i]);
                   }, 0);
-    AppendLabeledButtons(rowGrid, "engine_ticks_", "Ticks",
+    AppendLabeledButtons(rowGrid, "engine_ticks_", Tr("Ticks"),
                   {"4", "6", "10"},
                   [chartPtr, say](int i) {
                       const int counts[] = {4, 6, 10};
                       chartPtr->SetTargetTickCount(counts[i]);
-                      std::ostringstream o;
-                      o << "Target tick count " << counts[i]
-                        << " — the 1-D declutter keeps the ends and zero longest";
-                      say(o.str());
+                      say(TrF("Target tick count {0} — the 1-D declutter keeps the ends and zero longest",
+                              counts[i]));
                   }, 1);
-    AppendLabeledButtons(rowGrid, "engine_fmt_", "Numbers",
-                  {"Compact $", "Plain", "2 decimals", "Suffix %", "Custom fn"},
+    AppendLabeledButtons(rowGrid, "engine_fmt_", Tr("Numbers"),
+                  {Tr("Compact $"), Tr("Plain"), Tr("2 decimals"), Tr("Suffix %"), Tr("Custom fn")},
                   [chartPtr, say](int i) {
                       const EngineFeatureChart::NumberFormat formats[] = {
                           EngineFeatureChart::NumberFormat::CompactDollars,
@@ -1330,16 +1326,16 @@ UltraCanvasDemoApplication::CreateChartEngineExamples() {
                           EngineFeatureChart::NumberFormat::PercentSuffix,
                           EngineFeatureChart::NumberFormat::CustomFormatter};
                       chartPtr->SetNumberFormat(formats[i]);
-                      const char* what[] = {
-                          "unitPrefix \"$\" + compactNumbers — 1'250'000 reads \"$1.3M\"",
-                          "decimals = 0 — plain integers",
-                          "decimals = 2",
-                          "unitSuffix \"%\" — pairs with the 100% stacked arrangement",
-                          "A custom ValueFormatter, which wins over every built-in rule"};
+                      const std::string what[] = {
+                          Tr("unitPrefix \"$\" + compactNumbers — 1'250'000 reads \"$1.3M\""),
+                          Tr("decimals = 0 — plain integers"),
+                          Tr("decimals = 2"),
+                          Tr("unitSuffix \"%\" — pairs with the 100% stacked arrangement"),
+                          Tr("A custom ValueFormatter, which wins over every built-in rule")};
                       say(what[i]);
                   }, 0);
     axesPage->AddChild(rowGrid);
-    optionTabs->AddTab("Axes", axesPage);
+    optionTabs->AddTab(Tr("Axes"), axesPage);
 
     // -------------------------------------------------------------------------
     // TAB: Data — the dataset, the dirty model and the animation driver it feeds
@@ -1347,44 +1343,44 @@ UltraCanvasDemoApplication::CreateChartEngineExamples() {
     auto dataPage = MakeTabPage("engine_tab_data");
 
     auto rowData = MakeRow("engine_row_data");
-    AppendLabeledButtons(rowData, "engine_data_", "Data",
-                  {"Revenue", "Wide range", "Signed"},
+    AppendLabeledButtons(rowData, "engine_data_", Tr("Data"),
+                  {Tr("Revenue"), Tr("Wide range"), Tr("Signed")},
                   [chartPtr, say, datasets](int i) {
                       chartPtr->SetDataset(datasets[i]);
-                      say("Data: " + datasets[i].name + " — " + datasets[i].caption);
+                      say(TrF("Data: {0} — {1}", datasets[i].name, datasets[i].caption));
                   }, 0);
-    AppendActionButton(rowData, "engine_shuffle", "Shuffle",
+    AppendActionButton(rowData, "engine_shuffle", Tr("Shuffle"),
                   [chartPtr, say]() {
                       chartPtr->ShuffleValues();
-                      say("Values re-jittered — ChartDirty::Data rebuilt the axes, the layout and "
-                          "the label plan, and restarted the entrance animation");
+                      say(Tr("Values re-jittered — ChartDirty::Data rebuilt the axes, the layout and "
+                          "the label plan, and restarted the entrance animation"));
                   });
     dataPage->AddChild(rowData);
 
     auto rowAnimation = MakeRow("engine_row_animation");
-    AppendLabeledButtons(rowAnimation, "engine_anim_", "Animation",
-                  {"On data", "Off"},
+    AppendLabeledButtons(rowAnimation, "engine_anim_", Tr("Animation"),
+                  {Tr("On data"), Tr("Off")},
                   [chartPtr, say](int i) {
                       chartPtr->SetAnimateOnDataChange(i == 0, 0.8f);
-                      say(i == 0 ? "The engine animation driver restarts on every ChartDirty::Data"
-                                 : "Animation off — data changes land finished");
+                      say(i == 0 ? Tr("The engine animation driver restarts on every ChartDirty::Data")
+                                 : Tr("Animation off — data changes land finished"));
                   }, 0);
-    AppendActionButton(rowAnimation, "engine_replay", "Replay",
+    AppendActionButton(rowAnimation, "engine_replay", Tr("Replay"),
                   [chartPtr, say]() {
                       chartPtr->StartEngineAnimation(0.8f);
-                      say("StartEngineAnimation — frame.animationProgress runs 0..1 (ease-out cubic) "
-                          "off a 60fps engine timer, with no chart-side timer of its own");
+                      say(Tr("StartEngineAnimation — frame.animationProgress runs 0..1 (ease-out cubic) "
+                          "off a 60fps engine timer, with no chart-side timer of its own"));
                   });
-    AppendLabeledButtons(rowAnimation, "engine_tips_", "Tooltips",
-                  {"On", "Off"},
+    AppendLabeledButtons(rowAnimation, "engine_tips_", Tr("Tooltips"),
+                  {Tr("On"), Tr("Off")},
                   [chartPtr, say](int i) {
                       chartPtr->SetEnableTooltips(i == 0);
-                      say(i == 0 ? "Hit-region tooltips on — the engine hit-tests the polygons the "
-                                   "content registered and shows them through the tooltip manager"
-                                 : "Tooltips off — hovering still repaints via ChartDirty::Hover only");
+                      say(i == 0 ? Tr("Hit-region tooltips on — the engine hit-tests the polygons the "
+                                   "content registered and shows them through the tooltip manager")
+                                 : Tr("Tooltips off — hovering still repaints via ChartDirty::Hover only"));
                   }, 0);
     dataPage->AddChild(rowAnimation);
-    optionTabs->AddTab("Data", dataPage);
+    optionTabs->AddTab(Tr("Data"), dataPage);
 
     // -------------------------------------------------------------------------
     // TAB: Annotations — everything the engine writes or draws over the plot
@@ -1392,51 +1388,51 @@ UltraCanvasDemoApplication::CreateChartEngineExamples() {
     auto annotationPage = MakeTabPage("engine_tab_annotations");
 
     auto rowLabels = MakeRow("engine_row_labels");
-    AppendLabeledButtons(rowLabels, "engine_vlabels_", "Labels",
-                  {"All", "Declutter", "Off"},
+    AppendLabeledButtons(rowLabels, "engine_vlabels_", Tr("Labels"),
+                  {Tr("All"), Tr("Declutter"), Tr("Off")},
                   [chartPtr, say](int i) {
                       const EngineFeatureChart::ValueLabelMode modes[] = {
                           EngineFeatureChart::ValueLabelMode::All,
                           EngineFeatureChart::ValueLabelMode::Declutter,
                           EngineFeatureChart::ValueLabelMode::Off};
                       chartPtr->SetValueLabelMode(modes[i]);
-                      const char* what[] = {
-                          "Every value label placed (LabelDeclutterPolicy::PlaceAll) — a crowded "
-                          "chart overprints",
-                          "allowSuppress + SuppressColliding — crowded labels are dropped instead, "
-                          "and the largest bar's label has priority",
-                          "No value labels collected"};
+                      const std::string what[] = {
+                          Tr("Every value label placed (LabelDeclutterPolicy::PlaceAll) — a crowded "
+                          "chart overprints"),
+                          Tr("allowSuppress + SuppressColliding — crowded labels are dropped instead, "
+                          "and the largest bar's label has priority"),
+                          Tr("No value labels collected")};
                       say(what[i]);
                   }, 1);
-    AppendLabeledButtons(rowLabels, "engine_title_", "Title",
-                  {"SetChartTitle", "SetProperty", "None"},
+    AppendLabeledButtons(rowLabels, "engine_title_", Tr("Title"),
+                  {"SetChartTitle", "SetProperty", Tr("None")},
                   [chartPtr, say](int i) {
                       const EngineFeatureChart::TitleMode modes[] = {
                           EngineFeatureChart::TitleMode::Direct,
                           EngineFeatureChart::TitleMode::ViaProperty,
                           EngineFeatureChart::TitleMode::NoTitle};
                       chartPtr->SetTitleMode(modes[i]);
-                      const char* what[] = {
-                          "Title set directly — it owns an exclusive band above every other top "
-                          "reservation, so axis labels can never overprint it",
-                          "The same title set with SetProperty(\"title\", ...) — the "
+                      const std::string what[] = {
+                          Tr("Title set directly — it owns an exclusive band above every other top "
+                          "reservation, so axis labels can never overprint it"),
+                          Tr("The same title set with SetProperty(\"title\", ...) — the "
                           "IConfigurableElement surface a registry, template or module host uses "
-                          "across a module boundary",
-                          "No title — the reserved band returns to the plot area"};
+                          "across a module boundary"),
+                          Tr("No title — the reserved band returns to the plot area")};
                       say(what[i]);
                   }, 0);
-    AppendLabeledButtons(rowLabels, "engine_bg_", "Chart bg",
-                  {"On", "Off"},
+    AppendLabeledButtons(rowLabels, "engine_bg_", Tr("Chart bg"),
+                  {Tr("On"), Tr("Off")},
                   [chartPtr, say](int i) {
                       chartPtr->SetShowChartBackground(i == 0);
-                      say(i == 0 ? "Engine background layer on — element fill plus the plot-area fill"
-                                 : "Background layer off (slot 100 skipped)");
+                      say(i == 0 ? Tr("Engine background layer on — element fill plus the plot-area fill")
+                                 : Tr("Background layer off (slot 100 skipped)"));
                   }, 0);
     annotationPage->AddChild(rowLabels);
 
     auto rowOverlays = MakeRow("engine_row_overlays");
-    AppendLabeledButtons(rowOverlays, "engine_lim_", "Limiters",
-                  {"None", "Average", "Avg+target", "Thresholds"},
+    AppendLabeledButtons(rowOverlays, "engine_lim_", Tr("Limiters"),
+                  {Tr("None"), Tr("Average"), Tr("Avg+target"), Tr("Thresholds")},
                   [chartPtr, say](int i) {
                       const EngineFeatureChart::LimiterMode modes[] = {
                           EngineFeatureChart::LimiterMode::NoLimiter,
@@ -1444,16 +1440,16 @@ UltraCanvasDemoApplication::CreateChartEngineExamples() {
                           EngineFeatureChart::LimiterMode::AverageAndTarget,
                           EngineFeatureChart::LimiterMode::Thresholds};
                       chartPtr->SetLimiterMode(modes[i]);
-                      const char* what[] = {
-                          "No limiter lines",
-                          "An average line computed from the plotted values (phase 1, slot 400)",
-                          "Average + target — both captions are solved into the label plan, so they "
-                          "cannot overprint the value labels",
-                          "Three threshold lines — low / watch / critical"};
+                      const std::string what[] = {
+                          Tr("No limiter lines"),
+                          Tr("An average line computed from the plotted values (phase 1, slot 400)"),
+                          Tr("Average + target — both captions are solved into the label plan, so they "
+                          "cannot overprint the value labels"),
+                          Tr("Three threshold lines — low / watch / critical")};
                       say(what[i]);
                   }, 2);
-    AppendLabeledButtons(rowOverlays, "engine_hl_", "Highlight",
-                  {"Off", "Band", "Ellipse", "Blob"},
+    AppendLabeledButtons(rowOverlays, "engine_hl_", Tr("Highlight"),
+                  {Tr("Off"), Tr("Band"), Tr("Ellipse"), Tr("Blob")},
                   [chartPtr, say](int i) {
                       const EngineFeatureChart::HighlightMode modes[] = {
                           EngineFeatureChart::HighlightMode::NoHighlight,
@@ -1461,22 +1457,22 @@ UltraCanvasDemoApplication::CreateChartEngineExamples() {
                           EngineFeatureChart::HighlightMode::Ellipse,
                           EngineFeatureChart::HighlightMode::Blob};
                       chartPtr->SetHighlightMode(modes[i]);
-                      const char* what[] = {
-                          "Highlights off (AddHighlight/ClearHighlights)",
-                          "ValueBand at zSlot 200 — a dashed expected-range wash "
+                      const std::string what[] = {
+                          Tr("Highlights off (AddHighlight/ClearHighlights)"),
+                          Tr("ValueBand at zSlot 200 — a dashed expected-range wash "
                           "under the grid, its caption riding the label plan as a "
-                          "HighlightLabel",
-                          "ConfidenceEllipse per series at zSlot 700 — covariance "
+                          "HighlightLabel"),
+                          Tr("ConfidenceEllipse per series at zSlot 700 — covariance "
                           "ellipses (95%) with mean markers over each series' bar "
                           "tips, in the series colours; the legend gains the "
                           "50%/95% ellipse key, because a key describes marks the "
-                          "chart actually draws",
-                          "Blob per series at zSlot 200 — Chaikin-smoothed padded "
-                          "hulls hugging each series' points, washed under the grid"};
+                          "chart actually draws"),
+                          Tr("Blob per series at zSlot 200 — Chaikin-smoothed padded "
+                          "hulls hugging each series' points, washed under the grid")};
                       say(what[i]);
                   }, 0);
     annotationPage->AddChild(rowOverlays);
-    optionTabs->AddTab("Annotations", annotationPage);
+    optionTabs->AddTab(Tr("Annotations"), annotationPage);
 
     // -------------------------------------------------------------------------
     // TAB: Legend — the shared ChartLegend component's whole surface. Placement
@@ -1491,13 +1487,13 @@ UltraCanvasDemoApplication::CreateChartEngineExamples() {
     auto insetButtons = std::make_shared<OptionButtons>();
 
     auto rowLegendPlace = MakeRow("engine_row_legend_place");
-    *sideButtons = AppendLabeledButtons(rowLegendPlace, "engine_legend_side_", "Legend",
-                  {"Off", "Top", "Bottom", "Left", "Right"},
+    *sideButtons = AppendLabeledButtons(rowLegendPlace, "engine_legend_side_", Tr("Legend"),
+                  {Tr("Off"), Tr("Top"), Tr("Bottom"), Tr("Left"), Tr("Right")},
                   [chartPtr, say, insetButtons](int i) {
                       SelectOnly(*insetButtons, 0);      // an edge leaves the inset
                       if (i == 0) {
                           chartPtr->SetShowLegendPanel(false);
-                          say("Legend off — its reserved margin returns to the plot area");
+                          say(Tr("Legend off — its reserved margin returns to the plot area"));
                           return;
                       }
                       const EngineFeatureChart::LegendSide sides[] = {
@@ -1507,18 +1503,18 @@ UltraCanvasDemoApplication::CreateChartEngineExamples() {
                           EngineFeatureChart::LegendSide::Right};
                       chartPtr->SetShowLegendPanel(true);
                       chartPtr->SetLegendSide(sides[i - 1]);
-                      const char* what[] = {
-                          "Legend on the top edge — an outside placement reserves its edge in the "
-                          "layout negotiation, so the plot area shrinks to make room",
-                          "Legend on the bottom edge — Auto orientation flows top/bottom placements "
-                          "horizontally and wraps the rows to the width",
-                          "Legend on the left edge — Auto orientation makes side placements a "
-                          "vertical list, wrapped into further columns when it runs out of height",
-                          "Legend on the right edge — the engine's default placement"};
+                      const std::string what[] = {
+                          Tr("Legend on the top edge — an outside placement reserves its edge in the "
+                          "layout negotiation, so the plot area shrinks to make room"),
+                          Tr("Legend on the bottom edge — Auto orientation flows top/bottom placements "
+                          "horizontally and wraps the rows to the width"),
+                          Tr("Legend on the left edge — Auto orientation makes side placements a "
+                          "vertical list, wrapped into further columns when it runs out of height"),
+                          Tr("Legend on the right edge — the engine's default placement")};
                       say(what[i - 1]);
                   }, 4);                                  // Right - the default
-    AppendLabeledButtons(rowLegendPlace, "engine_legend_align_", "Align",
-                  {"Start", "Center", "End"},
+    AppendLabeledButtons(rowLegendPlace, "engine_legend_align_", Tr("Align"),
+                  {Tr("Start"), Tr("Center"), Tr("End")},
                   [chartPtr, say, sideButtons, insetButtons](int i) {
                       SelectOnly(*insetButtons, 0);
                       // Alignment applies to whichever edge is in force, so show
@@ -1532,119 +1528,119 @@ UltraCanvasDemoApplication::CreateChartEngineExamples() {
                           EngineFeatureChart::LegendAlign::End};
                       chartPtr->SetShowLegendPanel(true);
                       chartPtr->SetLegendAlign(aligns[i]);
-                      const char* what[] = {
-                          "Alignment Start — the legend hugs the beginning of its edge "
-                          "(TopStart / LeftStart / …)",
-                          "Alignment Center — centred along its edge",
-                          "Alignment End — pushed to the end of its edge"};
+                      const std::string what[] = {
+                          Tr("Alignment Start — the legend hugs the beginning of its edge "
+                          "(TopStart / LeftStart / …)"),
+                          Tr("Alignment Center — centred along its edge"),
+                          Tr("Alignment End — pushed to the end of its edge")};
                       say(what[i]);
                   }, 0);
     legendPage->AddChild(rowLegendPlace);
 
     auto rowLegendInset = MakeRow("engine_row_legend_inset");
-    *insetButtons = AppendLabeledButtons(rowLegendInset, "engine_legend_inset_", "Inset",
-                  {"Off", "Top left", "Top right", "Bottom left", "Bottom right"},
+    *insetButtons = AppendLabeledButtons(rowLegendInset, "engine_legend_inset_", Tr("Inset"),
+                  {Tr("Off"), Tr("Top left"), Tr("Top right"), Tr("Bottom left"), Tr("Bottom right")},
                   [chartPtr, say, sideButtons](int i) {
                       chartPtr->SetShowLegendPanel(true);
                       if (i == 0) {
                           chartPtr->SetLegendInsetCorner(-1);
                           SelectOnly(*sideButtons,
                                      1 + static_cast<int>(chartPtr->GetLegendSide()));
-                          say("Back to an outside placement — the legend reserves its edge again");
+                          say(Tr("Back to an outside placement — the legend reserves its edge again"));
                           return;
                       }
                       SelectOnly(*sideButtons, -1);      // the edge row no longer applies
                       chartPtr->SetLegendInsetCorner(i - 1);
-                      say("Inset placement — the legend floats over the plot and reserves "
+                      say(Tr("Inset placement — the legend floats over the plot and reserves "
                           "nothing, so the plot keeps the full area; it still rides the label "
-                          "plan as an obstacle the solved value labels steer around");
+                          "plan as an obstacle the solved value labels steer around"));
                   }, 0);
-    AppendLabeledButtons(rowLegendInset, "engine_legend_orient_", "Flow",
-                  {"Auto", "Rows", "Column"},
+    AppendLabeledButtons(rowLegendInset, "engine_legend_orient_", Tr("Flow"),
+                  {Tr("Auto"), Tr("Rows"), Tr("Column")},
                   [chartPtr, say](int i) {
                       const LegendOrientation orientations[] = {
                           LegendOrientation::Auto, LegendOrientation::Horizontal,
                           LegendOrientation::Vertical};
                       chartPtr->SetLegendOrientation(orientations[i]);
-                      const char* what[] = {
-                          "LegendOrientation::Auto — horizontal on the top/bottom edges, "
-                          "vertical on the sides",
-                          "Forced Horizontal — entries flow in rows and wrap to the width, "
-                          "wherever the legend sits",
-                          "Forced Vertical — one entry per line, wrapped into further columns "
-                          "instead of being clipped"};
+                      const std::string what[] = {
+                          Tr("LegendOrientation::Auto — horizontal on the top/bottom edges, "
+                          "vertical on the sides"),
+                          Tr("Forced Horizontal — entries flow in rows and wrap to the width, "
+                          "wherever the legend sits"),
+                          Tr("Forced Vertical — one entry per line, wrapped into further columns "
+                          "instead of being clipped")};
                       say(what[i]);
                   }, 0);
     legendPage->AddChild(rowLegendInset);
 
     auto rowLegendContent = MakeRow("engine_row_legend_content");
-    AppendLabeledButtons(rowLegendContent, "engine_legend_key_", "Key",
-                  {"Items", "Colour bar", "Sizes"},
+    AppendLabeledButtons(rowLegendContent, "engine_legend_key_", Tr("Key"),
+                  {Tr("Items"), Tr("Colour bar"), Tr("Sizes")},
                   [chartPtr, say](int i) {
                       const ChartLegendMode modes[] = {ChartLegendMode::Discrete,
                                                        ChartLegendMode::ColorBar,
                                                        ChartLegendMode::SizeLegend};
                       chartPtr->ShowLegendKey(modes[i]);
-                      const char* what[] = {
-                          "SetLegendMode(Discrete) — the classic swatch + label list",
-                          "SetLegendMode(ColorBar) — a continuous Viridis ramp over the "
+                      const std::string what[] = {
+                          Tr("SetLegendMode(Discrete) — the classic swatch + label list"),
+                          Tr("SetLegendMode(ColorBar) — a continuous Viridis ramp over the "
                           "value range with tick labels, the key a heatmap or contour "
-                          "surface uses (Legend().SetColorBar)",
-                          "SetLegendMode(SizeLegend) — sample circles keying a bubble-"
-                          "size scale, largest first (Legend().SetSizeScale)"};
+                          "surface uses (Legend().SetColorBar)"),
+                          Tr("SetLegendMode(SizeLegend) — sample circles keying a bubble-"
+                          "size scale, largest first (Legend().SetSizeScale)")};
                       say(what[i]);
                   }, 0);
-    AppendLabeledButtons(rowLegendContent, "engine_legend_title_", "Heading",
-                  {"Off", "On"},
+    AppendLabeledButtons(rowLegendContent, "engine_legend_title_", Tr("Heading"),
+                  {Tr("Off"), Tr("On")},
                   [chartPtr, say](int i) {
                       chartPtr->SetLegendTitleShown(i == 1);
-                      say(i == 1 ? "SetLegendTitle(\"Series\") — a heading above the entries, "
-                                   "measured into the legend box like everything else"
-                                 : "No legend heading");
+                      say(i == 1 ? Tr("SetLegendTitle(\"Series\") — a heading above the entries, "
+                                   "measured into the legend box like everything else")
+                                 : Tr("No legend heading"));
                   }, 0);
-    AppendLabeledButtons(rowLegendContent, "engine_legend_values_", "Values",
-                  {"Off", "On"},
+    AppendLabeledButtons(rowLegendContent, "engine_legend_values_", Tr("Values"),
+                  {Tr("Off"), Tr("On")},
                   [chartPtr, say](int i) {
                       chartPtr->SetLegendValuesShown(i == 1);
-                      say(i == 1 ? "ChartLegendEntry::valueText — a right-aligned second column "
+                      say(i == 1 ? Tr("ChartLegendEntry::valueText — a right-aligned second column "
                                    "(here each series' total, through the chart's own number "
-                                   "format), turning the key into a small value table"
-                                 : "Entries show their label only");
+                                   "format), turning the key into a small value table")
+                                 : Tr("Entries show their label only"));
                   }, 0);
     legendPage->AddChild(rowLegendContent);
 
     auto rowLegendStyle = MakeRow("engine_row_legend_style");
-    AppendLabeledButtons(rowLegendStyle, "engine_legend_box_", "Box",
-                  {"Framed", "Plain"},
+    AppendLabeledButtons(rowLegendStyle, "engine_legend_box_", Tr("Box"),
+                  {Tr("Framed"), Tr("Plain")},
                   [chartPtr, say](int i) {
                       chartPtr->SetLegendFramed(i == 0);
-                      say(i == 0 ? "ChartLegendStyle drawBackground + drawBorder — the engine's "
+                      say(i == 0 ? Tr("ChartLegendStyle drawBackground + drawBorder — the engine's "
                                    "framed default, which keeps an inset legend readable over "
-                                   "the plot"
-                                 : "An unboxed list — the component's plainer default, for a "
-                                   "legend that sits outside the plot anyway");
+                                   "the plot")
+                                 : Tr("An unboxed list — the component's plainer default, for a "
+                                   "legend that sits outside the plot anyway"));
                   }, 0);
-    AppendLabeledButtons(rowLegendStyle, "engine_legend_max_", "Max rows",
-                  {"All", "2"},
+    AppendLabeledButtons(rowLegendStyle, "engine_legend_max_", Tr("Max rows"),
+                  {Tr("All"), "2"},
                   [chartPtr, say](int i) {
                       chartPtr->SetLegendMaxEntries(i == 0 ? 0u : 2u);
-                      say(i == 0 ? "SetMaxEntries(0) — every entry is listed"
-                                 : "SetMaxEntries(2) — the remaining entries collapse into a "
-                                   "final \"...and N more\" row instead of growing the box");
+                      say(i == 0 ? Tr("SetMaxEntries(0) — every entry is listed")
+                                 : Tr("SetMaxEntries(2) — the remaining entries collapse into a "
+                                   "final \"...and N more\" row instead of growing the box"));
                   }, 0);
-    AppendLabeledButtons(rowLegendStyle, "engine_legend_custom_", "Custom key",
-                  {"Off", "Limiters"},
+    AppendLabeledButtons(rowLegendStyle, "engine_legend_custom_", Tr("Custom key"),
+                  {Tr("Off"), Tr("Limiters")},
                   [chartPtr, say](int i) {
                       chartPtr->SetLegendCustomKey(i == 1);
-                      say(i == 1 ? "Legend().SetCustomArea — a host-drawn panel below the entries, "
+                      say(i == 1 ? Tr("Legend().SetCustomArea — a host-drawn panel below the entries, "
                                    "richer than any swatch: here the average / target limiter "
                                    "lines. A key must describe marks the chart actually draws, so "
                                    "the ellipse highlight's own 50%/95% key takes precedence "
-                                   "while that highlight is on"
-                                 : "No custom key panel (Legend().ClearCustomArea)");
+                                   "while that highlight is on")
+                                 : Tr("No custom key panel (Legend().ClearCustomArea)"));
                   }, 0);
     legendPage->AddChild(rowLegendStyle);
-    optionTabs->AddTab("Legend", legendPage);
+    optionTabs->AddTab(Tr("Legend"), legendPage);
 
     // -------------------------------------------------------------------------
     // TAB: Theme — colours only; repaint, no layout and no label re-solve
@@ -1652,40 +1648,40 @@ UltraCanvasDemoApplication::CreateChartEngineExamples() {
     auto themePage = MakeTabPage("engine_tab_theme");
 
     auto rowTheme = MakeRow("engine_row_theme");
-    AppendLabeledButtons(rowTheme, "engine_theme_", "Theme",
-                  {"Light", "Dark", "Vibrant", "Pastel", "Colorblind", "Ocean"},
+    AppendLabeledButtons(rowTheme, "engine_theme_", Tr("Theme"),
+                  {Tr("Light"), Tr("Dark"), Tr("Vibrant"), Tr("Pastel"), Tr("Colorblind"), Tr("Ocean")},
                   [chartPtr, say](int i) {
                       const char* names[] = {"Light", "Dark", "Vibrant",
                                              "Pastel", "Colorblind", "Ocean"};
                       chartPtr->SetTheme(names[i]);
-                      say(std::string("SetTheme(\"") + names[i] + "\") — one of the "
+                      say(TrF("SetTheme(\"{0}\") — one of the "
                           "14 built-in ChartThemes; furniture and palette change "
                           "together, and it is repaint-only: no layout, no label "
-                          "re-solve. Also reachable as SetProperty(\"theme\", name)");
+                          "re-solve. Also reachable as SetProperty(\"theme\", name)", names[i]));
                   }, 3);          // Pastel - the showcase's default look
     themePage->AddChild(rowTheme);
 
     auto rowPalette = MakeRow("engine_row_palette");
-    AppendLabeledButtons(rowPalette, "engine_palette_", "Palette",
-                  {"Theme's", "Viridis N"},
+    AppendLabeledButtons(rowPalette, "engine_palette_", Tr("Palette"),
+                  {Tr("Theme's"), "Viridis N"},
                   [chartPtr, say](int i) {
                       if (i == 0) {
                           chartPtr->SetPalette(
                               chartPtr->GetTheme().name.empty()
                                   ? ChartThemes::Light().palette
                                   : ChartThemes::Get(chartPtr->GetTheme().name).palette);
-                          say("Palette restored from the active theme");
+                          say(Tr("Palette restored from the active theme"));
                       } else {
                           chartPtr->SetPalette(ChartPalette::FromColormap(
                               HeatmapColormap::Viridis, 12));
-                          say("SetPalette(ChartPalette::FromColormap(Viridis, 12)) — a "
+                          say(Tr("SetPalette(ChartPalette::FromColormap(Viridis, 12)) — a "
                               "categorical palette of any requested size sampled from a "
                               "continuous colormap; ColorAt(i, count) spreads the three "
-                              "series across the whole ramp");
+                              "series across the whole ramp"));
                       }
                   }, 0);
     themePage->AddChild(rowPalette);
-    optionTabs->AddTab("Theme", themePage);
+    optionTabs->AddTab(Tr("Theme"), themePage);
 
     optionTabs->SetActiveTab(0);
     return page;
