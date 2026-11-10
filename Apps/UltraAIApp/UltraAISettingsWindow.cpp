@@ -818,12 +818,14 @@ namespace {
         AddTreeNode(d, kPageServices, kPageLocalModels, "Local models");
         AddTreeNode(d, kPageServices, kPageTopics, "Model topics");
         AddTreeNode(d, kPageServices, kPageLocalAndCloud, "Local & cloud");
-        AddTreeNode(d, kPageServices, kPageProxy, "Proxy");
         AddTreeNode(d, "settings", kPageAccounts, "Accounts");
         // Accounts' children — "New endpoint" plus one node per endpoint — are
         // built dynamically (and rebuilt after every Save/Delete). No selection
         // here: the window opens on the start page.
         RebuildEndpointNodes(d, "");
+        // Services > Proxy, last under Services: the proxy the providers are
+        // reached through.
+        AddTreeNode(d, kPageServices, kPageProxy, "Proxy");
 
         d->tree->SetRootVisible(false);
         content->AddChild(d->tree);
