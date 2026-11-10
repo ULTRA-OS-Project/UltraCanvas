@@ -9,12 +9,14 @@
 // The element is framework-wide, not viewer-specific: the media viewer's Curves
 // dialog is one caller, a paint tool or a colour ramp editor is the next.
 //
+// Version: 1.1.0 - SetHistograms takes an ImageHistogram (UltraCanvasHistogramModel)
 // Version: 1.0.0
-// Last Modified: 2026-08-25
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 #pragma once
 
 #include "UltraCanvasToneCurve.h"
+#include "UltraCanvasHistogramModel.h"
 #include "UltraCanvasUIElement.h"
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasCommonTypes.h"
@@ -88,6 +90,16 @@ public:
     // `bins` is one count per 8-bit level (256 entries; other sizes are
     // resampled). Pass an empty vector to remove the histogram of that channel.
     void SetHistogram(ToneCurveChannel channel, const std::vector<uint32_t>& bins);
+    // All four backdrops from one count of the picture: Red, Green and Blue
+    // from their channels, RGB from the three added level by level
+    // (ImageHistogram::RgbTotal - the values the RGB curve maps). An empty
+    // histogram removes them. Programs fill the dialog this way, so every
+    // Curves dialog shows the same picture the same way.
+    void SetHistograms(const ImageHistogram& histogram);
+    // The 256 counts drawn behind a channel's curve; empty when it has none.
+    const std::vector<uint32_t>& GetHistogram(ToneCurveChannel channel) const {
+        return histograms[static_cast<int>(channel)];
+    }
     void ClearHistograms();
     void SetShowHistogram(bool show) { showHistogram = show; RequestRedraw(); }
     bool GetShowHistogram() const { return showHistogram; }
