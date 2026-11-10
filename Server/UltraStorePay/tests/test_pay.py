@@ -80,6 +80,14 @@ def test_checkout_status_licence_receipt_and_sales(service):
     assert order["checkout_url"] == f"https://pay.example/pay/{order['order_id']}"
     page = client.get(f"/pay/{order['order_id']}")
     assert page.status_code == 200
+    # The shared frame: the stylesheet and the mark served by the service, the button for a browser without scripts.
+    assert '<link rel="stylesheet" href="/pay/static/style.css">' in page.text and "/pay/static/logo-light.png" in page.text
+    assert "Continue to Skrill" in page.text and "<h1>UltraVideo</h1>" in page.text
+    css = client.get("/pay/static/style.css")
+    assert css.status_code == 200 and css.headers["content-type"].startswith("text/css") and "--accent" in css.text
+    logo = client.get("/pay/static/logo-dark.png")
+    assert logo.status_code == 200 and logo.headers["content-type"] == "image/png" and logo.content[:4] == b"\x89PNG"
+    assert client.get("/pay/static/other.png").status_code == 404
     assert 'name="pay_to_email" value="shop@example.org"' in page.text
     assert 'name="amount" value="23.92"' in page.text
     assert 'name="status_url" value="https://pay.example/v1/skrill/status"' in page.text
@@ -114,6 +122,12 @@ def test_checkout_status_licence_receipt_and_sales(service):
     assert client.get(f"/v1/orders/{order['order_id']}", params={"secret": order["secret"]}).json()["receipt_no"] == 1
     receipt = client.get(f"/v1/orders/{order['order_id']}/receipt", params={"secret": order["secret"]})
     assert receipt.status_code == 200 and "receipt no. 1" in receipt.text and "Code ANNA-20 applied" in receipt.text and "23.92 EUR" in receipt.text
+    assert receipt.headers["content-type"].startswith("text/plain")
+    # A browser asks for text/html first and gets the receipt as a page.
+    shown = client.get(f"/v1/orders/{order['order_id']}/receipt", params={"secret": order["secret"]},
+                       headers={"Accept": "text/html,application/xhtml+xml,*/*;q=0.8"})
+    assert shown.headers["content-type"].startswith("text/html") and "<h1>Receipt no. 1</h1>" in shown.text
+    assert "ANNA-20 applied" in shown.text and "23.92 EUR" in shown.text and 'class="receipt"' in shown.text
     # The return page says so; the pay page no longer sends to Skrill.
     assert "is yours" in client.get(f"/pay/{order['order_id']}/return").text
     assert "Already paid" in client.get(f"/pay/{order['order_id']}").text

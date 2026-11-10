@@ -206,6 +206,15 @@ Registry<ISpeechToText, SpeechToTextConfig>& SttReg() {
                 };
             }
 #endif
+#ifdef ULTRAAI_HAS_OPENAI_ADAPTER
+            // The audio API (a cloud provider: used when chosen; a custom
+            // baseUrl points it at a self-hosted whisper server).
+            if (!r.providers.count("openai")) {
+                r.providers["openai"] = [](const SpeechToTextConfig& cfg, Error* err) {
+                    return CreateOpenAISpeechToText(cfg, err);
+                };
+            }
+#endif
         };
     });
     return r;

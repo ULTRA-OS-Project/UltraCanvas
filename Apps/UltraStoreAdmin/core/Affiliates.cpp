@@ -1,9 +1,12 @@
 // Apps/UltraStoreAdmin/core/Affiliates.cpp
 // The affiliate scheme (Affiliates.h).
+// Version: 0.3.0 - the landing page in the shared frame with the mark
 // Version: 0.2.0 - RecordSale with a reference; SyncSales
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "Affiliates.h"
+
+#include "PageFrame.h"
 
 #include "DataFormats/UltraCanvasJSON.h"
 #include "Plugins/QRCode/UltraCanvasQRCode.h"
@@ -252,21 +255,17 @@ std::string CodeLandingPage(const UltraStore::PromoCode& code, const std::vector
         names += "<li>" + Escape(app.name) + "</li>";
     }
     const std::string store = StoreLink(code.code);
-    std::string page =
-        "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n"
-        "<title>UltraStore code " + Escape(code.code) + "</title>\n"
-        "<style>body{font-family:sans-serif;max-width:36em;margin:3em auto;padding:0 1em;color:#1f2937}code{font-size:1.4em;background:#f3f4f6;padding:.2em .5em;border-radius:.3em}"
-        "a.button{display:inline-block;background:#2563eb;color:#fff;padding:.6em 1.2em;border-radius:.4em;text-decoration:none}</style>\n</head>\n<body>\n"
-        "<h1>Your UltraStore code</h1>\n<p><code>" + Escape(code.code) + "</code></p>\n";
-    if (!what.empty()) page += "<p>" + Escape(what) + (names.empty() ? " on every app." : " on:</p>\n<ul>" + names + "</ul>\n<p>");
-    else if (!names.empty()) page += "<p>A partner code for:</p>\n<ul>" + names + "</ul>\n<p>";
-    else page += "<p>A partner code.";
-    if (!code.validUntil.empty()) page += " Valid until " + Escape(code.validUntil) + ".";
-    page += "</p>\n<p><a class=\"button\" href=\"" + Escape(store) + "\">Open in UltraStore</a></p>\n"
-            "<p>On a computer with UltraStore, the button opens the store with the code. Otherwise enter the code on the store's Discover page: "
-            "the prices show what it takes off for 30 days, and the partner is credited when you buy.</p>\n"
-            "<p><small>" + Escape(TrimSlash(catalogBase)) + "</small></p>\n</body>\n</html>\n";
-    return page;
+    std::string body = "<p><code>" + Escape(code.code) + "</code></p>\n";
+    if (!what.empty()) body += "<p>" + Escape(what) + (names.empty() ? " on every app." : " on:</p>\n<ul>" + names + "</ul>\n<p>");
+    else if (!names.empty()) body += "<p>A partner code for:</p>\n<ul>" + names + "</ul>\n<p>";
+    else body += "<p>A partner code.";
+    if (!code.validUntil.empty()) body += " Valid until " + Escape(code.validUntil) + ".";
+    body += "</p>\n<p><a class=\"button\" href=\"" + Escape(store) + "\">Open in UltraStore</a></p>\n"
+            "<p class=\"muted\">On a computer with UltraStore, the button opens the store with the code. Otherwise enter the code on the store's Discover page: "
+            "the prices show what it takes off for 30 days, and the partner is credited when you buy.</p>\n";
+    // The page sits in go/<CODE>/; publish puts the mark in media/ beside go/.
+    return FramePage("Code " + code.code, "Your UltraStore code", body, "../../media/",
+                     "UltraStore, the ULTRA OS app store. " + Escape(TrimSlash(catalogBase)));
 }
 
 namespace {

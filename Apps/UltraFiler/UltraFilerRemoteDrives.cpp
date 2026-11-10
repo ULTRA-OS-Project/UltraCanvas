@@ -496,8 +496,18 @@ bool UltraFilerRemoteDrives::List(const std::string& path,
         it->second.lastUsed = ++useCounter_;
         switch (it->second.state) {
             case CacheState::Ready:
-                out = it->second.entries;
-                return true;
+                // Fetched recently: the folder as it is. Fetched a while ago,
+                // it may not be - another device can have added or deleted a
+                // file since - so it is shown and asked for again behind it,
+                // as a listing kept from the last run is.
+                if (!RemoteListingOutdated(it->second.fetchedAt,
+                                           std::chrono::steady_clock::now())) {
+                    out = it->second.entries;
+                    return true;
+                }
+                it->second.state = CacheState::Stale;
+                it->second.revalidating = false;
+                [[fallthrough]];
             case CacheState::Stale: {
                 // What the folder held last time, shown now; the server is
                 // asked again behind it and the answer replaces it through
@@ -1089,6 +1099,10 @@ std::string UltraFilerRemoteDrives::PreviewCacheDirectory() {
     return DiskCache::Directory("remote-previews");
 }
 
+std::string UltraFilerRemoteDrives::OpenCopyDirectory() {
+    return DiskCache::Directory("remote-opened");
+}
+
 namespace {
 
 // Deletes the preview copies nobody has looked at within the disk cache's
@@ -1163,6 +1177,12 @@ void SweepPreviewCache(const std::string& directory) {
 }
 
 } // namespace
+
+void UltraFilerRemoteDrives::SweepOpenCopies() {
+    // The same rule as the preview copies': a folder per copy, kept while
+    // anything in it was written within the cache's age.
+    SweepPreviewCache(OpenCopyDirectory());
+}
 
 UltraFilerRemoteDrives::PreviewCopy UltraFilerRemoteDrives::RequestPreviewCopy(
         const FilerEntry& entry, std::string& localPath, std::string& error,
@@ -1990,6 +2010,10 @@ void UltraFilerRemoteDrives::WorkerMain() {
         // A change reports its failure through operationError so the UI hears
         // the same thing whether the provider refused or threw.
         std::string operationError;
+        // What kind of failure operationError is, for the window
+        // (onOperationFinished): an exception out of a provider says nothing
+        // of the file, and counts as one that will not pass by itself.
+        RemoteFailure operationFailure = RemoteFailure::NoFailure;
         bool notifyListing = true;
         JobOutcome outcome;
         try {
@@ -2174,9 +2198,14 @@ void UltraFilerRemoteDrives::WorkerMain() {
             // A listing of it being fetched beside this job may have been
             // read before the change: it is not to stand as the fresh one.
             if (sideListingPaths_.count(changedFolder)) sideListingsOverrun_.insert(changedFolder);
-            if (operationError.empty() && !lastOperationError_.empty())
+            if (!operationError.empty()) {
+                operationFailure = RemoteFailure::Lasting;
+            } else if (!lastOperationError_.empty()) {
                 operationError = lastOperationError_;
+                operationFailure = lastOperationFailure_;
+            }
             lastOperationError_.clear();
+            lastOperationFailure_ = RemoteFailure::NoFailure;
         }
 
         if (watchesBytes) UltraNet_SetTransferCallbacks(previousCallbacks);
@@ -2206,12 +2235,12 @@ void UltraFilerRemoteDrives::WorkerMain() {
             const bool listing = job.isListing;
             const std::string path = job.path;
             app->PostToUIThread([this, alive, listing, path, changedFolder,
-                                 operationError]() {
+                                 operationError, operationFailure]() {
                 if (!alive->load()) return;   // owner destroyed meanwhile
                 if (listing) {
                     if (onListingArrived) onListingArrived(path);
                 } else if (onOperationFinished) {
-                    onOperationFinished(changedFolder, operationError);
+                    onOperationFinished(changedFolder, operationError, operationFailure);
                 }
             });
         }
@@ -2475,6 +2504,7 @@ bool UltraFilerRemoteDrives::FetchListing(const std::string& path, bool isPrefet
 
     CacheEntry result;
     result.state = CacheState::Ready;
+    result.fetchedAt = std::chrono::steady_clock::now();
     result.entries.reserve(entries.size());
     for (const UltraCloud::Entry& e : entries) {
         FilerEntry f;

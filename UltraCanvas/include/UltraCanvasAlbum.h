@@ -2,11 +2,12 @@
 // Photo / video / music album widget: a self-rendered media grid with selectable
 // layout designs, per-item crop / zoom / stretch fitting, action icons and
 // visitor / user-edit / admin modes. A companion to UltraCanvasSlideshow.
+// Version: 1.13.0 - FromTheme sets the interface font's family; the SetConfig rule and the constructor tail
 // Version: 1.12.0 - Make/Register descriptor: "album" in the element registry, bundled or as a runtime module
 // Version: 1.11.0 - onItemPressed and ReleaseDrag: an owner carrying a tile's drag itself; onItemDraggedOut (1.9.0) gone
 // Version: 1.10.0 - AlbumConfig::FromTheme, ApplyTheme
 // Version: 1.9.0
-// Last Modified: 2026-11-09
+// Last Modified: 2026-11-10
 // V1.7.0: Automatic video poster frames (AlbumConfig::videoPosterFrames, on by
 //   default) — a Video item with no thumbnailPath now has its cover extracted
 //   from the clip itself on a background thread and cached in memory, so video

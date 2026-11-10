@@ -428,8 +428,9 @@ UltraCloud::ShowAddAccountDialog(window, cloud, onAdded,
         [](const std::string& id) { return id == "ftp"; },
         "Add an FTP / SFTP drive");
 // A stored account in the same form, to be changed: filled in, the provider
-// fixed, the password kept unless a new one is typed. False when there is no
-// such account (or its provider is not in this build).
+// fixed, the password kept unless a new one is typed. After a sign-in that
+// failed it offers "Save without signing in", for a server out of reach.
+// False when there is no such account (or its provider is not in this build).
 UltraCloud::ShowEditAccountDialog(window, cloud, accountId,
         [](const Account& saved) { /* re-read the list */ }, "Configure drive");
 UltraCloud::ShowCloudLinkPicker(window, cloud, [](const CloudLinkPick& pick) {

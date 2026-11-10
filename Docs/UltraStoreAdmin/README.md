@@ -218,6 +218,11 @@ Hello.
 - The catalog is schema 2 and announces every active key (`trusted_keys`):
   to rotate, `key new`, publish once with the old key, then with the new
   one; `key retire` the old one afterwards.
+- The pages under `go/` have the look of the payment service's pages
+  (`PageFrame.h`: the same stylesheet, the ULTRA OS mark at the top, a dark
+  look where the browser asks for one); the mark comes from the
+  framework's `media/icons/desktop/` and is copied to the publish folder's
+  `media/` when publish finds it there.
 - The sequence is recorded only after the files are in place, so a failed
   publish leaves the next one at the same number.
 

@@ -2,8 +2,10 @@
 // Interactive checkbox component with multiple states and customizable appearance.
 // Visual variants only (Standard/Rounded/Material). Radio and Switch are now
 // separate classes — see UltraCanvasRadio.h and UltraCanvasSwitch.h.
+// Version: 2.3.0 - CheckboxVisualStyle::FromTheme, ApplyTheme: the checkbox follows the theme;
+//                  a SetVisualStyle by hand stops the following
 // Version: 2.2.0
-// Last Modified: 2026-09-16
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -43,6 +45,15 @@ namespace UltraCanvas {
         float borderWidth = 1.0f;
         float cornerRadius = 2.0f;
         float checkmarkThickness = 2.0f;
+
+        // The theme's roles: the well for the box with the control border,
+        // the hover and pressed fills, the panel disabled; the mark in the
+        // accent (the element role "checkbox.mark" where a theme names it);
+        // the label from LabeledToggleVisualStyle::FromTheme - over a base's
+        // own shape (sizes, radius, thickness), or a default one
+        static CheckboxVisualStyle FromTheme(const UltraCanvasTheme& theme, const CheckboxVisualStyle& base);
+        static CheckboxVisualStyle FromTheme(const UltraCanvasTheme& theme) { return FromTheme(theme, CheckboxVisualStyle()); }
+        static CheckboxVisualStyle FromTheme() { return FromTheme(UltraCanvasTheme::Current()); }
     };
 
 // ===== CHECKBOX =====
@@ -99,9 +110,10 @@ namespace UltraCanvas {
         void SetStyle(CheckboxStyle newStyle) { style = newStyle; layoutDirty = true; InvalidateLayout(); RequestRedraw(); }
         CheckboxStyle GetStyle() const { return style; }
 
-        void SetVisualStyle(const CheckboxVisualStyle& s) { visualStyle = s; layoutDirty = true; InvalidateLayout(); RequestRedraw(); }
+        void SetVisualStyle(const CheckboxVisualStyle& s) { StyleSetByHand(); visualStyle = s; layoutDirty = true; InvalidateLayout(); RequestRedraw(); }
         CheckboxVisualStyle& GetVisualStyle() { return visualStyle; }
         const CheckboxVisualStyle& GetVisualStyle() const { return visualStyle; }
+        void ApplyTheme(const UltraCanvasTheme& theme) override { SetVisualStyle(CheckboxVisualStyle::FromTheme(theme, visualStyle)); }
 
         void SetBoxSize(float size) { visualStyle.boxSize = size; layoutDirty = true; InvalidateLayout(); RequestRedraw(); }
         float GetBoxSize() const { return visualStyle.boxSize; }

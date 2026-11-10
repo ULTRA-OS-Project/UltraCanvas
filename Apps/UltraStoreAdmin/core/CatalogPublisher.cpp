@@ -1,4 +1,5 @@
 // Apps/UltraStoreAdmin/core/CatalogPublisher.cpp
+// Version: 0.6.0 - the mark for the pages under go/
 // Version: 0.5.0 - a restricted package on an app with a trial
 // Version: 0.4.0 - payment_url and licence_key from the settings
 // Version: 0.3.0 - the codes, their landing pages
@@ -8,6 +9,7 @@
 #include "CatalogPublisher.h"
 
 #include "Affiliates.h"
+#include "PageFrame.h"
 
 #include "KeyVault.h"
 #include "Verifier.h"
@@ -227,6 +229,8 @@ Result<PublishReport> Publish(AdminDatabase& db, int64_t keyId, const std::strin
             return true;
         };
         if (!copyPackages(catalog.apps) || !copyPackages(catalog.components)) return R::Failure(ErrorCode::IoError, error);
+        // The mark the pages under go/ show (PageFrame.h), beside them in media/.
+        if (const auto marks = CopyPageMarks(options.outDirUtf8); !marks) return R::Failure(marks.error.code, marks.error.message, marks.error.detail);
         if (!options.mediaRootUtf8.empty()) {
             const fs::path media = UltraCanvas::PathFromUtf8(options.mediaRootUtf8);
             auto copyMedia = [&](const Component& c, const std::string& relative) -> bool {

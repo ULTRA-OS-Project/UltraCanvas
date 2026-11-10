@@ -294,19 +294,34 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
     new port) is mended there; a cloud drive is saved without signing in
     unless *Sign in again* is ticked. The drive keeps its place - open
     folders and pins on it still work - and is read again with the new
-    settings. *Delete* on the same row, after a question, removes the drive
+    settings. When the server cannot be reached, *Save without signing in*
+    appears after the failed sign-in and stores the settings as they are,
+    to be tried the next time the drive is opened. *Delete* on the same row,
+    after a question, removes the drive
     from UltraFiler: its settings and saved password go, the files on the
     server are not touched, a display on it moves to Home, and an upload or
     download still waiting for it is dropped (the question counts them).
     Both work on a drive that can no longer sign in, which is when they are
     needed.
   - **Refresh asks the server again.** A drive's folders are shown from a
-    cache, so leaving a folder and coming back shows what it held when it
-    was fetched. *Refresh* - the toolbar button, a folder row's context menu
+    cache. A folder fetched more than two minutes ago is shown as it was and
+    asked for again behind it when it is opened, so leaving a folder and
+    coming back shows what another device changed; within the two minutes
+    it costs no request. *Refresh* - the toolbar button, a folder row's context menu
     in the tree, or the folder display's context menu (the folder shown, or
     the folder right-clicked) - fetches it again, ahead of anything queued,
     while the files it showed stay on screen: a file added or deleted from
     another device appears or goes.
+  - **A file with no preview opens in its program.** Double-clicking (or
+    Enter on) a document, a spreadsheet, an archive or any other file on a
+    drive that the preview pane does not show fetches it - with its progress
+    on the status line, like any download - into UltraCanvas's cache folder
+    (`remote-opened`) and opens the copy with the program this computer
+    opens its type with. The status line says that changes to the copy are
+    not saved to the drive. Opened again while the file on the server is
+    unchanged, the same copy opens without a request. A program, a script,
+    an installer or a launcher is not started from a drive: a dialog says
+    to copy it to this computer first.
   - **A file that is gone says so.** Selecting a picture, drawing, PDF or
     model on a drive fetches it for the preview; when the server answers that
     the file is no longer there - deleted from another device since the

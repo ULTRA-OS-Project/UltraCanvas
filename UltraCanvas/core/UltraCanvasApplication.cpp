@@ -1,5 +1,6 @@
 // UltraCanvasApplication.cpp
 // Main UltraCanvas App
+// Version: 1.20.0 - under a policy the elements follow the theme by default (SetFollowThemeByDefault)
 // Version: 1.19.0 - the pointer over a popup's own window is the pointer over the window the
 //                  popup belongs to, at the popup's place in it; a popup's window is no
 //                  application window either
@@ -43,7 +44,7 @@
 //                  the bundled fonts when the scan takes long (AdoptSystemFontsWithin);
 //                  Initialize() times each of its steps (GetStartupTimings)
 // Version: 1.5.2 - modal fixes: close transient children with parent, ignore unmapped modals, raise modal on outside click
-// Last Modified: 2026-11-09
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 
 #include <algorithm>
@@ -1233,6 +1234,9 @@ namespace UltraCanvas {
         }
         themePolicyApplied_ = true;
         policyThemeName_ = theme.name;
+        // Under a policy the elements follow the theme by default, so the
+        // whole window takes the look; an Own application decides itself
+        if (themePolicy_ != ThemePolicy::Own) UltraCanvasUIElement::SetFollowThemeByDefault(true);
         UltraCanvasTheme::SetCurrent(theme);
     }
 

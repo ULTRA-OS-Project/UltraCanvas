@@ -1,4 +1,7 @@
 // UltraCloud/ui/UltraCloudAccountDialog.cpp
+// Version: 0.10.0 - the status line is as tall as what it says, so a long
+//                   refusal is read whole; the edit form offers "Save without
+//                   signing in" once a sign-in has failed
 // Version: 0.9.0 - ShowEditAccountDialog: the same form over a stored account,
 //                  filled in, the provider fixed; an empty password keeps the
 //                  stored one, and an OAuth account is saved as it is or
@@ -18,7 +21,7 @@
 // Version: 0.7.1 - a private key row for SFTP
 // Version: 0.7.0 - the shared_ptr form: the sign-in thread holds the service
 //                  until it ends
-// Last Modified: 2026-11-09
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraCloudAccountDialog.h"
 #include "UltraCloudUiStyle.h"
@@ -205,6 +208,9 @@ struct Form {
     // for any other.
     bool editing = false;
     UltraCanvasCheckbox*  signInAgain = nullptr;
+    // The edit form's way past a server that cannot be reached: shown once a
+    // sign-in has failed, it stores the settings without one.
+    UltraCanvasButton*    saveAnyway  = nullptr;
 
     std::shared_ptr<ICloudProvider> ChosenProvider() const {
         const int idx = provider ? provider->GetSelectedIndex() : -1;
@@ -292,11 +298,14 @@ void ShowAccountForm(UltraCanvasWindowBase* parent, std::shared_ptr<CloudService
     // Tall enough for the provider that needs every row: an SFTP server's
     // eight captioned rows (8x32: provider, name, protocol, server and port,
     // user, password, key, folder) plus the checkbox (26), the hint (36) and
-    // the two-line status (36), eleven 8 px row gaps, the 20 px padding on
-    // each side, and the button row (36) with its own gaps. The rows are not
-    // allowed to shrink into each other, so the dialog has to be tall enough
-    // to hold them rather than the layout absorbing the difference.
-    config.height     = 550;
+    // the status, eleven 8 px row gaps, the 20 px padding on each side, and
+    // the button row (36) with its own gaps. The status is as tall as what
+    // it says; the height leaves it four lines - a server's refusal with the
+    // host, the port and its own words - before the spacer is used up. The
+    // rows are not allowed to shrink into each other, so the dialog has to be
+    // tall enough to hold them rather than the layout absorbing the
+    // difference.
+    config.height     = 590;
     config.dialogType = DialogType::Custom;
     config.buttons    = DialogButtons::NoButtons;
 
@@ -491,17 +500,23 @@ void ShowAccountForm(UltraCanvasWindowBase* parent, std::shared_ptr<CloudService
     AddFormWideRow(grid, hint);
     form->hint = hint.get();
 
-    // Two lines, wrapped: a server's refusal names the host, the port and
-    // what it said, which is more than one line holds, and a line that ends
-    // at "sign in: Failed to connect to" explains nothing.
-    auto status = CreateLabel("cloudAccStatus", 0, 0, 0, 36, "");
-    status->SetWrap(TextWrap::WrapWord);
+    // As tall as what it says, wrapped: a server's refusal names the host,
+    // the port and what it said, which is more than one line holds - and more
+    // than the two lines this row once had, which cut it off mid-sentence. A
+    // line that ends at "check the address and the" explains nothing. Under
+    // the grid rather than in it: in the dialog's column it is as wide as the
+    // dialog and as tall as its text at that width, whatever the text grows
+    // to after the dialog was laid out.
+    auto status = std::make_shared<UltraCanvasLabel>("cloudAccStatus", "");
+    status->SetWrap(TextWrap::WrapWordChar);
+    status->SetAlignment(TextAlignment::Left, VerticalAlignment::Top);
     status->SetFontSize(UiStyle::kFontSize);
     status->SetTextColor(UiStyle::kDanger);
-    AddFormWideRow(grid, status);
+    status->layoutItem.SetFlexShrink(0);
     form->status = status.get();
 
     dialog->AddChild(grid);
+    dialog->AddChild(status);
     // The form keeps its rows at their own height (CreateFormGrid sets
     // flex-shrink: 0) and the spacer takes the slack, so the buttons sit at
     // the bottom whether the provider needs three rows or eight.
@@ -522,6 +537,21 @@ void ShowAccountForm(UltraCanvasWindowBase* parent, std::shared_ptr<CloudService
                    .SetFlexGap(8)
                    .SetFlexAlignItems(CSSLayout::AlignItems::Center);
     buttons->AddStretchSpacer(1);
+    // The edit form only, and only once a sign-in has failed: an account
+    // whose server cannot be reached today can still be renamed, or given the
+    // password that will work once it can. As wide as its text, which
+    // differs from one language to the next.
+    if (existing) {
+        auto saveAnyway = std::make_shared<UltraCanvasButton>("cloudAccSaveAnyway",
+                                                              Tr("Save without signing in"));
+        UiStyle::StyleSecondary(saveAnyway);
+        saveAnyway->SetTooltip(Tr("Stores these settings without trying them; they are tried "
+                                  "the next time the account is used."));
+        saveAnyway->layoutItem.SetFlexShrink(0);
+        saveAnyway->SetVisible(false);
+        buttons->AddChild(saveAnyway);
+        form->saveAnyway = saveAnyway.get();
+    }
     auto cancelBtn = CreateButton("cloudAccCancel", 0, 0, 90, UiStyle::kControlHeight, Tr("Cancel"));
     UiStyle::StyleSecondary(cancelBtn);
     buttons->AddChild(cancelBtn);
@@ -540,9 +570,15 @@ void ShowAccountForm(UltraCanvasWindowBase* parent, std::shared_ptr<CloudService
     // changed - the folders opened on it, and pinned, keep their paths.
     const std::string accountId = existing ? existing->accountId : std::string();
 
-    addBtn->onClick = [form, weak, dlg, service, watch, added, gaveUp, accountId]() {
+    // Save (or Add), and the edit form's Save without signing in (`verify`
+    // false): the form read into an account, checked, then signed in and
+    // stored - or only stored - on a thread of its own. Held by both buttons'
+    // callbacks; it holds the form, never a widget.
+    auto submit = std::make_shared<std::function<void(bool)>>();
+    *submit = [form, weak, dlg, service, watch, added, gaveUp, accountId](bool verify) {
         const std::shared_ptr<ICloudProvider> chosenProvider = form->ChosenProvider();
         if (!chosenProvider) return;
+        if (form->saveAnyway) form->saveAnyway->SetVisible(false);
         UltraCanvasLabel* status = form->status;
         // What is wrong with the form is said in the refusal colour; the grey
         // of a "Signing in…" left by the attempt before would read as a note.
@@ -607,9 +643,12 @@ void ShowAccountForm(UltraCanvasWindowBase* parent, std::shared_ptr<CloudService
         const bool keepPassword = form->editing && !oauth && c.password.empty();
         // Signed in afresh, the account takes the user the service names.
         if (form->editing && oauth && !keepSignIn) a.username.clear();
+        // Stored as it is: an OAuth account keeping its sign-in, or what the
+        // user saved without one.
+        const bool storeOnly = keepSignIn || (!verify && form->editing);
 
         status->SetTextColor(Color(60, 60, 60, 255));
-        status->SetText(keepSignIn       ? Tr("Saving…")
+        status->SetText(storeOnly        ? Tr("Saving…")
                         : caps.needsOAuth ? Tr("Waiting for the browser sign-in…")
                                           : TrF("Signing in at {0}…", a.serverUrl));
         form->addBtn->SetDisabled(true);
@@ -622,8 +661,8 @@ void ShowAccountForm(UltraCanvasWindowBase* parent, std::shared_ptr<CloudService
         // opened it - can be gone long before. It reaches the widgets through
         // `form`, whose pointers are good for as long as the dialog is, which
         // `weak` says on the UI thread before any of them is touched.
-        std::thread([weak, dlg, form, added, a, c, oauth, keepSignIn, keepPassword, service,
-                     watch, gaveUp]() mutable {
+        std::thread([weak, dlg, form, added, a, c, oauth, keepSignIn, keepPassword, storeOnly,
+                     service, watch, gaveUp]() mutable {
             std::function<bool()> previousCancel = SetThreadSignInCancel(
                     [gaveUp, hostCancelled = watch.cancelled]() {
                         return gaveUp->load() || (hostCancelled && hostCancelled());
@@ -639,9 +678,10 @@ void ShowAccountForm(UltraCanvasWindowBase* parent, std::shared_ptr<CloudService
                 }
             }
             Result r = Result::Ok();
-            if (keepSignIn) {
-                // Nothing to sign in with: the tokens it has are stored again
-                // beside the changed name, folder or default.
+            if (storeOnly) {
+                // Nothing signed in with: the tokens or the password it has,
+                // or the one just typed, are stored beside the changed name,
+                // server, folder or default.
                 r = service->AddAccount(a, c, /*verify=*/false);
             } else {
                 if (watch.onBegin) watch.onBegin(a);
@@ -652,7 +692,7 @@ void ShowAccountForm(UltraCanvasWindowBase* parent, std::shared_ptr<CloudService
             }
             SetThreadSignInCancel(std::move(previousCancel));
             auto* app = UltraCanvasApplicationBase::GetCurrent();
-            auto finish = [weak, dlg, form, added, a, r]() {
+            auto finish = [weak, dlg, form, added, a, r, oauth, storeOnly]() {
                 const std::shared_ptr<UltraCanvasModalDialog> alive = weak.lock();
                 if (!alive) return;   // dialog already closed
                 if (r.code == ResultCode::Cancelled) return;   // closed meanwhile
@@ -663,10 +703,17 @@ void ShowAccountForm(UltraCanvasWindowBase* parent, std::shared_ptr<CloudService
                 form->status->SetText(DescribeResult(r));
                 form->status->SetTooltip(ResultDetail(r));
                 form->addBtn->SetDisabled(false);
+                // A sign-in that failed - the server out of reach, say - need
+                // not keep the settings from being saved. Not for an OAuth
+                // account, whose sign-in is the browser's, nor after a store
+                // that failed by itself.
+                if (form->saveAnyway && !oauth && !storeOnly) form->saveAnyway->SetVisible(true);
             };
             if (app) app->PostToUIThread(finish); else finish();
         }).detach();
     };
+    addBtn->onClick = [submit]() { (*submit)(true); };
+    if (form->saveAnyway) form->saveAnyway->onClick = [submit]() { (*submit)(false); };
     cancelBtn->onClick = [dlg, gaveUp]() {
         gaveUp->store(true);
         dlg->CloseDialog(DialogResult::Cancel);

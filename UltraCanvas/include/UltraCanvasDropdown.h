@@ -1,5 +1,6 @@
 // include/UltraCanvasDropdown.h
 // Interactive dropdown/combobox component with icon support and multi-selection
+// Version: 1.4.0 - 2026-11-10 - FromTheme sets the body font; the SetStyle rule and the constructor tail
 // Version: 1.3.0 - 2026-11-03 - DropdownItem::fontFamily: a row's text drawn in its own font
 //                  (a font list showing each font in itself), prepared in idle slices
 //                  once the dropdown is on screen, the rows the list opens on first
@@ -18,7 +19,7 @@
 //                  the list in a popup (the numbers from 1.0.1 on were given afterwards,
 //                  from the framework changelog)
 // Uses ListView popup for rendering dropdown items
-// Last Modified: 2026-10-12 - DropdownStyle::FromTheme, ApplyTheme
+// Last Modified: 2026-11-10 - DropdownStyle::FromTheme, ApplyTheme
 #pragma once
 
 #include "UltraCanvasUIElement.h"

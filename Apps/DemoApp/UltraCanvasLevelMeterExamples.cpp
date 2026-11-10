@@ -70,7 +70,6 @@ namespace UltraCanvas {
 // Attribution for the bundled sample track (Pixabay Content License):
 // Music by Dmitrii Kolesnikov from Pixabay — the artist page opens in the
 // system browser when the credit under the player is clicked.
-    const char* kSampleTrackCreditText = "Music by Dmitrii Kolesnikov — Pixabay.com";
     const char* kSampleTrackCreditUrl =
             "https://pixabay.com/users/the_mountain-3616498/"
             "?utm_source=link-attribution&utm_medium=referral"
@@ -153,12 +152,12 @@ namespace UltraCanvas {
 // =============================================================================
     std::shared_ptr<UltraCanvasUIElement>
     UltraCanvasDemoApplication::CreateLevelMeterExamples() {
-        auto root = DemoKit::CreatePage("LvlRoot", "Level Meter & VU Strip",
-                "UltraCanvasLevelMeter in both render modes: the three-zone VU bar "
+        auto root = DemoKit::CreatePage("LvlRoot", Tr("Level Meter & VU Strip"),
+                Tr("UltraCanvasLevelMeter in both render modes: the three-zone VU bar "
                 "(green / yellow / red peak fill with an RMS tick) and the scrolling "
                 "waveform strip. Colours are fully themeable via SetColors(). Drive the "
                 "meters from real playback levels of the sample track, a synthetic "
-                "generator, or the manual sliders.");
+                "generator, or the manual sliders."));
 
         auto st = std::make_shared<LevelMeterDemoState>();
 
@@ -167,21 +166,21 @@ namespace UltraCanvas {
         auto cardsRow = DemoKit::AddRow(root, "LvlCards");
 
         // ----- Card A: three-zone VU meters in four themes -----
-        auto vuCard = DemoKit::AddCard(cardsRow, "LvlVuCard", "Three-zone VU meter");
+        auto vuCard = DemoKit::AddCard(cardsRow, "LvlVuCard", Tr("Three-zone VU meter"));
         {
             struct VuTheme {
-                const char* name;
+                std::string name;
                 float height;
                 bool custom;
                 Color bg, low, mid, high;
             };
             const VuTheme themes[] = {
-                {"Classic (default colours)", 18, false, {}, {}, {}, {}},
-                {"Modern accent", 18, true, Color(235, 238, 243), Color(34, 197, 94),
+                {Tr("Classic (default colours)"), 18, false, {}, {}, {}, {}},
+                {Tr("Modern accent"), 18, true, Color(235, 238, 243), Color(34, 197, 94),
                         Color(250, 204, 21), Color(239, 68, 68)},
-                {"Ocean on dark", 18, true, Color(15, 30, 48), Color(56, 189, 248),
+                {Tr("Ocean on dark"), 18, true, Color(15, 30, 48), Color(56, 189, 248),
                         Color(99, 102, 241), Color(244, 63, 94)},
-                {"Large broadcast bar", 30, true, Color(24, 24, 32), Color(74, 222, 128),
+                {Tr("Large broadcast bar"), 30, true, Color(24, 24, 32), Color(74, 222, 128),
                         Color(253, 224, 71), Color(248, 113, 113)},
             };
             int idx = 0;
@@ -199,20 +198,20 @@ namespace UltraCanvas {
             }
 
             DemoKit::AddCaption(vuCard, "LvlVuNote",
-                    "Fill = peak level across the green / yellow / red zones "
-                    "(60% / 85% thresholds); the dark tick marks the RMS level.");
+                    Tr("Fill = peak level across the green / yellow / red zones "
+                    "(60% / 85% thresholds); the dark tick marks the RMS level."));
         }
 
         // ----- Card B: scrolling waveform strips in two themes -----
-        auto stripCard = DemoKit::AddCard(cardsRow, "LvlStripCard", "Scrolling waveform strip");
+        auto stripCard = DemoKit::AddCard(cardsRow, "LvlStripCard", Tr("Scrolling waveform strip"));
         {
-            DemoKit::AddCaption(stripCard, "LvlStripCap0", "Classic (default colours)");
+            DemoKit::AddCaption(stripCard, "LvlStripCap0", Tr("Classic (default colours)"));
             auto strip1 = std::make_shared<UltraCanvasLevelMeter>("LvlStrip0", 500, 66);
             strip1->SetWaveformMode(true);
             DemoKit::AddStretched(stripCard, strip1);
             st->strips.push_back(strip1);
 
-            DemoKit::AddCaption(stripCard, "LvlStripCap1", "Violet on dark");
+            DemoKit::AddCaption(stripCard, "LvlStripCap1", Tr("Violet on dark"));
             auto strip2 = std::make_shared<UltraCanvasLevelMeter>("LvlStrip1", 500, 66);
             strip2->SetWaveformMode(true);
             strip2->SetColors(Color(24, 24, 32), Color(167, 139, 250),
@@ -221,12 +220,12 @@ namespace UltraCanvas {
             st->strips.push_back(strip2);
 
             DemoKit::AddCaption(stripCard, "LvlStripNote",
-                    "Each tick pushes the current peak into a 200-sample history "
-                    "(PushWaveformSample), drawn as mirrored bars around the centre line.");
+                    Tr("Each tick pushes the current peak into a 200-sample history "
+                    "(PushWaveformSample), drawn as mirrored bars around the centre line."));
         }
 
         // ----- Source / control card -----
-        auto srcCard = DemoKit::AddCard(root, "LvlSrcCard", "Signal source");
+        auto srcCard = DemoKit::AddCard(root, "LvlSrcCard", Tr("Signal source"));
         {
             // One row: source dropdown | manual sliders | reset. It wraps when
             // the captions grow.
@@ -243,10 +242,10 @@ namespace UltraCanvas {
             };
 
             auto srcDd = std::make_shared<UltraCanvasDropdown>("LvlSource", 0, 0, 230, 26);
-            srcDd->AddItem("Sample track playback");
-            srcDd->AddItem("Synthetic beat");
-            srcDd->AddItem("Breathing sine swell");
-            srcDd->AddItem("Manual sliders");
+            srcDd->AddItem(Tr("Sample track playback"));
+            srcDd->AddItem(Tr("Synthetic beat"));
+            srcDd->AddItem(Tr("Breathing sine swell"));
+            srcDd->AddItem(Tr("Manual sliders"));
             srcDd->SetSelectedIndex(st->source);
             srcDd->onSelectionChanged = [st](int index, const DropdownItem&) {
                 st->source = index;
@@ -256,24 +255,24 @@ namespace UltraCanvas {
                     if (auto p = st->player.lock()) p->Play();
                 }
             };
-            DemoKit::Add(ctrlRow, makeStack("LvlSrcStack", "Source:", srcDd));
+            DemoKit::Add(ctrlRow, makeStack("LvlSrcStack", Tr("Source:"), srcDd));
 
             auto peakSlider = std::make_shared<UltraCanvasSlider>("LvlManPeak", 0, 0, 200, 26);
             peakSlider->SetRange(0.0f, 1.0f);
             peakSlider->SetStep(0.01f);
             peakSlider->SetValue(st->manualPeak);
             peakSlider->onValueChanged = [st](float v) { st->manualPeak = v; };
-            DemoKit::Add(ctrlRow, makeStack("LvlPeakStack", "Manual peak:", peakSlider));
+            DemoKit::Add(ctrlRow, makeStack("LvlPeakStack", Tr("Manual peak:"), peakSlider));
 
             auto rmsSlider = std::make_shared<UltraCanvasSlider>("LvlManRms", 0, 0, 200, 26);
             rmsSlider->SetRange(0.0f, 1.0f);
             rmsSlider->SetStep(0.01f);
             rmsSlider->SetValue(st->manualRms);
             rmsSlider->onValueChanged = [st](float v) { st->manualRms = v; };
-            DemoKit::Add(ctrlRow, makeStack("LvlRmsStack", "Manual RMS:", rmsSlider));
+            DemoKit::Add(ctrlRow, makeStack("LvlRmsStack", Tr("Manual RMS:"), rmsSlider));
 
             // As wide as its text, at least the old 110 px.
-            auto resetBtn = std::make_shared<UltraCanvasButton>("LvlReset", 0, 0, 0, 26, "Reset meters");
+            auto resetBtn = std::make_shared<UltraCanvasButton>("LvlReset", 0, 0, 0, 26, Tr("Reset meters"));
             CSSLayout::BoxConstraints resetLimits;
             resetLimits.minWidth = CSSLayout::Dimension::Px(110);
             resetBtn->boxConstraints = resetLimits;
@@ -282,19 +281,19 @@ namespace UltraCanvas {
                 for (auto& w : st->strips) if (auto m = w.lock()) m->Reset();
                 st->lastPeak = st->lastRms = 0.0f;
             });
-            DemoKit::Add(ctrlRow, makeStack("LvlResetStack", "Reset() clears levels & history:",
+            DemoKit::Add(ctrlRow, makeStack("LvlResetStack", Tr("Reset() clears levels & history:"),
                                             resetBtn));
 
             // dBFS readout, updated every tick.
-            auto readout = DemoKit::AddText(srcCard, "LvlReadout", "Peak  -inf dBFS      RMS  -inf dBFS");
+            auto readout = DemoKit::AddText(srcCard, "LvlReadout", TrF("Peak  {0} dBFS      RMS  {1} dBFS", "-inf", "-inf"));
             readout->SetFontWeight(FontWeight::Bold);
             readout->SetTextColor(DemoKit::TitleText());
             st->readout = readout;
 
             // Embedded audio player with the bundled sample track pre-loaded.
             DemoKit::AddCaption(srcCard, "LvlPlayerLbl",
-                    "Sample track for the pre-selected playback source — press Play to drive "
-                    "the meters (levels are computed from the decoded PCM at the playhead):");
+                    Tr("Sample track for the pre-selected playback source — press Play to drive "
+                    "the meters (levels are computed from the decoded PCM at the playhead):"));
 
             auto player = CreateAudioPlayer("LvlPlayer", 0, 0, 640, 56);
             DemoKit::AddFixed(srcCard, player);
@@ -304,7 +303,8 @@ namespace UltraCanvas {
             // The row keeps the clickable area hugging the link text instead of
             // stretching it across the whole card.
             auto creditRow = DemoKit::AddRow(srcCard, "LvlCreditRow", 0);
-            auto credit = DemoKit::CreateCaption("LvlCredit", kSampleTrackCreditText);
+            auto credit = DemoKit::CreateCaption("LvlCredit",
+                    TrF("Music by {0} — Pixabay.com", "Dmitrii Kolesnikov"));
             credit->SetTextColor(DemoKit::LinkText());
             // Hand cursor comes with onClick; OpenURL hands the artist page to
             // the system browser.
@@ -326,11 +326,11 @@ namespace UltraCanvas {
                 }
             }
             if (st->mono.empty()) {
-                status->SetText("Sample track unavailable — the playback source will stay silent.");
+                status->SetText(Tr("Sample track unavailable — the playback source will stay silent."));
                 status->SetTextColor(Color(180, 60, 60, 255));
             } else if (!UltraCanvasAudioDevices::IsAvailable()) {
-                status->SetText("Audio backend not compiled in — playback is silent, but the "
-                                "synthetic and manual sources still drive the meters.");
+                status->SetText(Tr("Audio backend not compiled in — playback is silent, but the "
+                                "synthetic and manual sources still drive the meters."));
                 status->SetTextColor(Color(180, 60, 60, 255));
             }
         }
@@ -349,7 +349,7 @@ namespace UltraCanvas {
                 for (auto& w : st->meters) if (auto m = w.lock()) m->SetLevel(peak, rms);
                 for (auto& w : st->strips) if (auto m = w.lock()) m->PushWaveformSample(peak);
                 if (auto r = st->readout.lock())
-                    r->SetText("Peak  " + ToDb(peak) + " dBFS      RMS  " + ToDb(rms) + " dBFS");
+                    r->SetText(TrF("Peak  {0} dBFS      RMS  {1} dBFS", ToDb(peak), ToDb(rms)));
             });
         }
 

@@ -1,9 +1,10 @@
 // OS/Android/UltraCanvasAndroidApplication.cpp
 // Android platform implementation for UltraCanvas Framework.
+// Version: 1.2.0 - the first tap is logged with the element it landed on
 // Version: 1.1.0 - RegisterPlatformBundledFonts: the bundled fonts' registration, shared with a tool
 // Version: 1.0.1 - InitializeNative marks the application initialized, so Run() runs
 // Version: 1.0.0
-// Last Modified: 2026-11-03
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 
 // The public headers first: they define the base classes and then pull in the
@@ -20,6 +21,7 @@
 #include "UltraCanvasDebug.h"
 
 #include <android/configuration.h>
+#include <android/log.h>
 #include <android/input.h>
 #include <android/keycodes.h>
 #include <android/looper.h>
@@ -583,6 +585,20 @@ namespace UltraCanvas {
                     lastTapTimeNs = timeNs;
                     lastTapX = physX;
                     lastTapY = physY;
+                }
+                if (!firstTapLogged) {
+                    // Straight to logcat, like the window's first-frame line:
+                    // the emulator test taps a field and checks it was hit.
+                    firstTapLogged = true;
+                    UltraCanvasUIElement* hit = win->FindElementAtPoint(
+                        Point2Df(static_cast<float>(event.pointerWindow.x),
+                                 static_cast<float>(event.pointerWindow.y)), true);
+                    const std::string line = "first tap: " + std::to_string(physX) + "," +
+                        std::to_string(physY) + " px -> " +
+                        std::to_string(static_cast<int>(event.pointerWindow.x)) + "," +
+                        std::to_string(static_cast<int>(event.pointerWindow.y)) +
+                        ", element '" + (hit ? hit->GetIdentifier() : std::string()) + "'";
+                    __android_log_write(ANDROID_LOG_INFO, "UltraCanvas", line.c_str());
                 }
                 break;
             }
