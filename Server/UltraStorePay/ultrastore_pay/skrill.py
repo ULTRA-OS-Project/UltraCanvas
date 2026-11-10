@@ -14,6 +14,8 @@ from __future__ import annotations
 import hashlib
 import html
 
+from .pages import page
+
 STATUS_PROCESSED = "2"
 STATUS_PENDING = "0"
 STATUS_CANCELLED = "-1"
@@ -51,15 +53,14 @@ def checkout_page(pay_url: str, fields: dict[str, str], app_name: str, amount: s
     """A page that sends the buyer on to Skrill at once, with a button for
     a browser that does not run scripts."""
     inputs = "\n".join(f'<input type="hidden" name="{html.escape(k)}" value="{html.escape(v)}">' for k, v in fields.items())
-    return (
-        "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n"
-        f"<title>UltraStore - paying for {html.escape(app_name)}</title>\n"
-        "<style>body{font-family:sans-serif;max-width:36em;margin:3em auto;padding:0 1em;color:#1f2937}"
-        "button{background:#2563eb;color:#fff;border:0;padding:.6em 1.2em;border-radius:.4em;font-size:1em}</style>\n</head>\n<body>\n"
-        f"<h1>{html.escape(app_name)}</h1>\n<p>{html.escape(amount)} {html.escape(currency)} - you are being taken to Skrill to pay.</p>\n"
+    body = (
+        f"<p class=\"amount\">{html.escape(amount)} {html.escape(currency)}</p>\n"
+        "<p>You are being taken to Skrill to pay. Skrill takes cards and the local payment methods of your country; "
+        "the store never sees your card.</p>\n"
         f'<form id="pay" method="post" action="{html.escape(pay_url)}">\n{inputs}\n<button type="submit">Continue to Skrill</button>\n</form>\n'
-        "<script>document.getElementById('pay').submit();</script>\n</body>\n</html>\n"
+        "<script>document.getElementById('pay').submit();</script>"
     )
+    return page(f"Paying for {app_name}", body, heading=app_name)
 
 
 def status_signature(merchant_id: str, transaction_id: str, secret_word: str, mb_amount: str, mb_currency: str, status: str) -> str:
