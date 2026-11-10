@@ -251,7 +251,9 @@ next start (within two days) and, if it is paid meanwhile, keeps the
 licence; if it is still open, the browser opens on the checkout again and
 the wait resumes. A bought app shows a *Bought* badge, *Install*
 instead of *Buy*, and on its details page the receipt number, the day and
-a *Receipt* button that opens the receipt in the browser.
+a *Receipt* button that opens the receipt in the browser, as a page in
+the look of the service's other pages (the service's README, *The
+pages*).
 `ultrastore buy <catalog.json> <app-id> [--code <CODE>]` does the same from
 the command line, and `ultrastore licences` lists what was bought.
 
