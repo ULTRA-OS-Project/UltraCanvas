@@ -457,9 +457,9 @@ namespace UltraCanvas {
     std::shared_ptr<UltraCanvasUIElement>
     UltraCanvasDemoApplication::CreateAdjacencyDiagramExamples()
     {
-        auto page = DemoKit::CreatePage("AdjDiagExamples", "Architectural Adjacency Diagram",
-                "Rooms as area-proportional circles, colored by function. Solid = direct adjacency, "
-                "dashed = secondary, dotted = service");
+        auto page = DemoKit::CreatePage("AdjDiagExamples", Tr("Architectural Adjacency Diagram"),
+                Tr("Rooms as area-proportional circles, colored by function. Solid = direct adjacency, "
+                "dashed = secondary, dotted = service"));
         // The tabs fill the area, as the diagrams did before.
         page->SetFillsArea(true);
 
@@ -468,7 +468,7 @@ namespace UltraCanvas {
         card->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
 
         auto statusLabel = DemoKit::CreateCaption("AdjDiagStatus",
-                "Click a room to inspect.\nDrag rooms to reposition — pan with empty-space drag.");
+                Tr("Click a room to inspect.\nDrag rooms to reposition — pan with empty-space drag."));
         statusLabel->SetBackgroundColor(Color(245, 245, 245));
         statusLabel->SetBorders(1.0f);
         statusLabel->SetPadding(6.0f);

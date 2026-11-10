@@ -88,13 +88,13 @@ static std::shared_ptr<UltraCanvasContainer> AddChartControlsRow(
         }
         randomData->LoadFromArray(randomPoints);
 
-        auto container = DemoKit::CreatePage("LineChartExamples", "Line Chart Example",
-                "Visualizes trends over time with smooth lines and data points.");
+        auto container = DemoKit::CreatePage("LineChartExamples", Tr("Line Chart Example"),
+                Tr("Visualizes trends over time with smooth lines and data points."));
         auto card = DemoKit::AddCard(container, "LineChartCard");
 
         DemoKit::AddText(card, "LineChartDescription",
-                "Perfect for showing continuous data changes like sales, temperature, or stock prices.\n"
-                "Features: Interactive zooming, panning, tooltips, and customizable appearance.");
+                Tr("Perfect for showing continuous data changes like sales, temperature, or stock prices.\n"
+                "Features: Interactive zooming, panning, tooltips, and customizable appearance."));
 
         // Create line chart
         std::shared_ptr<UltraCanvasLineChartElement> lineChart =
@@ -220,12 +220,12 @@ static std::shared_ptr<UltraCanvasContainer> AddChartControlsRow(
         }
         correlationData->LoadFromArray(correlation);
 
-        auto container = DemoKit::CreatePage("ScatterPlotExamples", "Scatter Plot Example",
-                "Shows relationships between two continuous variables.");
+        auto container = DemoKit::CreatePage("ScatterPlotExamples", Tr("Scatter Plot Example"),
+                Tr("Shows relationships between two continuous variables."));
         DemoKit::AddText(container, "ScatterPlotDescription",
-                "The 2D plot fits a least-squares correlation line with r / r-squared readout; "
+                Tr("The 2D plot fits a least-squares correlation line with r / r-squared readout; "
                 "the 3D plot shows an (x, y, z) cloud with its principal-axis correlation line.\n"
-                "Features: Point shapes, per-point colors, tooltips - drag the 3D plot to orbit, wheel to zoom.");
+                "Features: Point shapes, per-point colors, tooltips - drag the 3D plot to orbit, wheel to zoom."));
 
         // The two plots side by side; each card is at least as wide as its
         // 540 px plot, so they move under each other in a narrow window.
@@ -368,13 +368,13 @@ static std::shared_ptr<UltraCanvasContainer> AddChartControlsRow(
         };
         salesData->LoadFromArray(sales);
 
-        auto container = DemoKit::CreatePage("AreaChartExamples", "Area Chart Example",
-                "Emphasizes magnitude of change over time with filled areas.");
+        auto container = DemoKit::CreatePage("AreaChartExamples", Tr("Area Chart Example"),
+                Tr("Emphasizes magnitude of change over time with filled areas."));
         auto card = DemoKit::AddCard(container, "AreaChartCard");
 
         DemoKit::AddText(card, "AreaChartDescription",
-                "Perfect for showing cumulative values, trends, and volume data like revenue or resource usage.\n"
-                "Features: Gradient fills, transparency, smooth curves, data points, zoom, and pan capabilities.");
+                Tr("Perfect for showing cumulative values, trends, and volume data like revenue or resource usage.\n"
+                "Features: Gradient fills, transparency, smooth curves, data points, zoom, and pan capabilities."));
 
         // Create area chart
         std::shared_ptr<UltraCanvasAreaChartElement> areaChart =

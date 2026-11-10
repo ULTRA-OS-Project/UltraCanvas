@@ -49,14 +49,14 @@ namespace UltraCanvas {
     };
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateCheckboxExamples() {
-        auto page = DemoKit::CreatePage("CheckboxMainContainer", "UltraCanvas Checkbox Component Examples",
-                "Demonstrates various checkbox styles, states, and configurations");
+        auto page = DemoKit::CreatePage("CheckboxMainContainer", Tr("UltraCanvas Checkbox Component Examples"),
+                Tr("Demonstrates various checkbox styles, states, and configurations"));
 
         // The toggles size themselves to their box and label, so a longer
         // label makes them wider instead of cutting it.
 
         // ===== SECTION 1: Basic Checkboxes =====
-        auto basicCard = DemoKit::AddCard(page, "BasicCheckboxesCard", "Basic Checkboxes");
+        auto basicCard = DemoKit::AddCard(page, "BasicCheckboxesCard", Tr("Basic Checkboxes"));
         auto basicRow = DemoKit::AddRow(basicCard, "BasicCheckboxesRow", 20);
 
         // Standard checkbox - unchecked
@@ -88,7 +88,7 @@ namespace UltraCanvas {
         DemoKit::Add(basicRow, disabledCheckbox2);
 
         // ===== SECTION 2: Tri-State Checkboxes =====
-        auto triCard = DemoKit::AddCard(page, "TriStateCard", "Tri-State Checkboxes (Indeterminate)");
+        auto triCard = DemoKit::AddCard(page, "TriStateCard", Tr("Tri-State Checkboxes (Indeterminate)"));
         auto triRow = DemoKit::AddRow(triCard, "TriStateRow", 40);
         auto triColumn = DemoKit::CreateColumn("TriStateColumn", 4);
         DemoKit::Add(triRow, triColumn);
@@ -147,7 +147,7 @@ namespace UltraCanvas {
         DemoKit::AddFixed(subItems, subItem3);
 
         // Status display for tri-state
-        auto triStateStatus = DemoKit::CreateText("TriStateStatus", "State: Indeterminate (2 of 3 selected)");
+        auto triStateStatus = DemoKit::CreateText("TriStateStatus", Tr("State: Indeterminate (2 of 3 selected)"));
         triStateStatus->SetTextColor(Color(100, 100, 100, 255));
         DemoKit::Add(triRow, triStateStatus, 1);
 
@@ -181,7 +181,7 @@ namespace UltraCanvas {
         };
 
         // ===== SECTION 3: Switch Style Checkboxes =====
-        auto switchCard = DemoKit::AddCard(page, "SwitchCard", "Switch Style Toggles");
+        auto switchCard = DemoKit::AddCard(page, "SwitchCard", Tr("Switch Style Toggles"));
 
         // One line per switch: the switch, then a text beside it that wraps
         // under it when the line is too narrow.
@@ -200,13 +200,13 @@ namespace UltraCanvas {
         auto switch3 = UltraCanvasSwitch::Create("Switch3", 0, 0, "Auto-Save", true);
 
         // Switch status labels
-        auto switchStatus1 = DemoKit::CreateText("SwitchStatus1", "ON");
+        auto switchStatus1 = DemoKit::CreateText("SwitchStatus1", Tr("ON"));
         switchStatus1->SetTextColor(Color(0, 150, 0, 255));
 
-        auto switchStatus2 = DemoKit::CreateText("SwitchStatus2", "OFF");
+        auto switchStatus2 = DemoKit::CreateText("SwitchStatus2", Tr("OFF"));
         switchStatus2->SetTextColor(Color(150, 0, 0, 255));
 
-        auto switchStatus3 = DemoKit::CreateText("SwitchStatus3", "ON");
+        auto switchStatus3 = DemoKit::CreateText("SwitchStatus3", Tr("ON"));
         switchStatus3->SetTextColor(Color(0, 150, 0, 255));
 
         // Switch callbacks
@@ -342,7 +342,7 @@ namespace UltraCanvas {
                       makeHint("SwitchVerticalHint", "Vertical orientation (ON = top). Plain on left, with check icon on right."));
 
         // ===== SECTION 4: Radio Buttons =====
-        auto radioCard = DemoKit::AddCard(page, "RadioCard", "Radio Button Groups");
+        auto radioCard = DemoKit::AddCard(page, "RadioCard", Tr("Radio Button Groups"));
         auto radioRow = std::make_shared<CheckboxExamplesContainer>("RadioGroupsRow");
         DemoKit::Add(radioCard, radioRow);
 
@@ -369,10 +369,10 @@ namespace UltraCanvas {
         radioRow->qualityRadioGroup->AddRadioButton(radioQuality3);
 
         // Selected option display
-        auto selectedTheme = DemoKit::CreateText("SelectedTheme", "Selected Theme: Light");
+        auto selectedTheme = DemoKit::CreateText("SelectedTheme", Tr("Selected Theme: Light"));
         selectedTheme->SetTextColor(Color(0, 100, 200, 255));
 
-        auto selectedQuality = DemoKit::CreateText("SelectedQuality", "Selected Quality: Medium");
+        auto selectedQuality = DemoKit::CreateText("SelectedQuality", Tr("Selected Quality: Medium"));
         selectedQuality->SetTextColor(Color(0, 100, 200, 255));
 
         // Radio group callbacks
@@ -411,7 +411,7 @@ namespace UltraCanvas {
         DemoKit::Add(selectedColumn, selectedQuality);
 
         // ===== SECTION 5: Styled Checkboxes =====
-        auto styledCard = DemoKit::AddCard(page, "StyledCheckboxesCard", "Custom Styled Checkboxes");
+        auto styledCard = DemoKit::AddCard(page, "StyledCheckboxesCard", Tr("Custom Styled Checkboxes"));
         auto styledRow = DemoKit::AddRow(styledCard, "StyledCheckboxesRow", 20);
         styledRow->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
 
@@ -447,7 +447,7 @@ namespace UltraCanvas {
         DemoKit::Add(styledRow, largeCheckbox);
 
         // ===== SECTION 6: Interactive Demo =====
-        auto interactiveCard = DemoKit::AddCard(page, "InteractiveCard", "Interactive Feature Demo");
+        auto interactiveCard = DemoKit::AddCard(page, "InteractiveCard", Tr("Interactive Feature Demo"));
         auto interactiveRow = DemoKit::AddRow(interactiveCard, "InteractiveRow", 20);
 
         // Feature checkboxes
@@ -457,7 +457,7 @@ namespace UltraCanvas {
         featureContainer->SetPadding(10);
         DemoKit::Add(interactiveRow, featureContainer);
 
-        auto featureTitle = DemoKit::AddText(featureContainer, "FeatureTitle", "Enable Features:");
+        auto featureTitle = DemoKit::AddText(featureContainer, "FeatureTitle", Tr("Enable Features:"));
         featureTitle->SetFontWeight(FontWeight::Bold);
 
         auto feature1 = std::make_shared<UltraCanvasCheckbox>("Feature1", "Spell Check");
@@ -535,7 +535,7 @@ namespace UltraCanvas {
         });
 
         // Feature status display
-        auto featureStatus = DemoKit::CreateText("FeatureStatus", "Selected Features:\nNone");
+        auto featureStatus = DemoKit::CreateText("FeatureStatus", Tr("Selected Features:\nNone"));
         featureStatus->SetBackgroundColor(Color(255, 255, 255, 255));
         featureStatus->SetBorders(1.0f, Color(200, 200, 200, 255));
         featureStatus->SetPadding(5.0f);
@@ -583,8 +583,8 @@ namespace UltraCanvas {
         auto infoPanel = DemoKit::AddCard(page, "InfoPanel");
         infoPanel->SetBackgroundColor(Color(240, 248, 255, 255));
         DemoKit::AddText(infoPanel, "InfoText",
-                "ℹ️ This demo showcases the UltraCanvasCheckbox component with various styles and configurations. "
-                "Click checkboxes to see console output. Try the interactive controls to manipulate checkbox states programmatically.");
+                Tr("ℹ️ This demo showcases the UltraCanvasCheckbox component with various styles and configurations. "
+                "Click checkboxes to see console output. Try the interactive controls to manipulate checkbox states programmatically."));
 
         return page;
     }

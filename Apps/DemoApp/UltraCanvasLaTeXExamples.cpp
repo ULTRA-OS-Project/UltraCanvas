@@ -280,15 +280,15 @@ namespace {
 
         // Root: the page fills the display area; the tabs take the height
         // left under the texts and each document scrolls inside its view.
-        auto root = DemoKit::CreatePage("LaTeXExamples", "LaTeX Documents",
+        auto root = DemoKit::CreatePage("LaTeXExamples", Tr("LaTeX Documents"),
                 "Example .tex documents scanned from " + latexDir +
                 ".\nEach document is rendered live from its source: formulas by the "
                 "UltraCanvas math engine, articles by the LaTeX document reader.");
         root->SetFillsArea(true);
 
         DemoKit::AddCaption(root, "LaTeXScopeNote",
-                "Scope: math (amsmath) and the article document subset. Everything shown "
-                "is typeset by the framework; what it cannot render is reported as a diagnostic.");
+                Tr("Scope: math (amsmath) and the article document subset. Everything shown "
+                "is typeset by the framework; what it cannot render is reported as a diagnostic."));
 
         // Scan the LaTeX folder for .tex files (case-insensitive extension match)
         // so newly added examples show up without any code change.

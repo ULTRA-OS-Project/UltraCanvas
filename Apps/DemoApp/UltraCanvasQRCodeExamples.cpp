@@ -169,7 +169,7 @@ namespace UltraCanvas {
             DemoKit::AddFixed(codeColumn, qr);
             auto* qrPtr = qr.get();
 
-            auto contentLbl = DemoKit::AddText(codeColumn, "ContentLbl", "Content:");
+            auto contentLbl = DemoKit::AddText(codeColumn, "ContentLbl", Tr("Content:"));
             contentLbl->SetFontWeight(FontWeight::Bold);
             contentLbl->SetMargin(12, 0, 0, 0);
 
@@ -486,7 +486,7 @@ namespace UltraCanvas {
 
                 // The readouts keep their old width as a minimum so the slider
                 // beside them does not shift as the number changes.
-                auto zoomLbl = DemoKit::CreateText("logo_zoom_lbl", "Zoom 25%");
+                auto zoomLbl = DemoKit::CreateText("logo_zoom_lbl", Tr("Zoom 25%"));
                 zoomLbl->SetFontSize(11);
                 zoomLbl->boxConstraints = CSSLayout::BoxConstraints{};
                 zoomLbl->boxConstraints->minWidth = CSSLayout::Dimension::Px(80);
@@ -499,7 +499,7 @@ namespace UltraCanvas {
                 zoomSlider->SetValue(25);      // matches the initial logoScale 0.25
                 DemoKit::AddFixed(sliders, zoomSlider);
 
-                auto marginLbl = DemoKit::CreateText("logo_margin_lbl", "Margin 4px");
+                auto marginLbl = DemoKit::CreateText("logo_margin_lbl", Tr("Margin 4px"));
                 marginLbl->SetFontSize(11);
                 marginLbl->boxConstraints = CSSLayout::BoxConstraints{};
                 marginLbl->boxConstraints->minWidth = CSSLayout::Dimension::Px(80);
@@ -656,9 +656,9 @@ namespace UltraCanvas {
             DemoKit::Add(columns, results, 1);
             results->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(300));
 
-            DemoKit::AddHeading(results, "DecResultsTitle", "Scan result");
+            DemoKit::AddHeading(results, "DecResultsTitle", Tr("Scan result"));
 
-            auto resultsBody = DemoKit::CreateText("DecResultsBody", "(no image scanned yet)");
+            auto resultsBody = DemoKit::CreateText("DecResultsBody", Tr("(no image scanned yet)"));
             resultsBody->SetFontSize(11);
             resultsBody->SetTextColor(Color(70, 70, 70, 255));
             resultsBody->SetWrap(TextWrap::WrapWordChar);
@@ -707,9 +707,9 @@ namespace UltraCanvas {
     }
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateQRCodeExamples() {
-        auto page = DemoKit::CreatePage("QRCodeExamples", "QR Code",
-                "Encode a QR code with custom style, logo and colours, and save it as an image; "
-                "decode the QR codes in a photo or screenshot.");
+        auto page = DemoKit::CreatePage("QRCodeExamples", Tr("QR Code"),
+                Tr("Encode a QR code with custom style, logo and colours, and save it as an image; "
+                "decode the QR codes in a photo or screenshot."));
         // The tabs take the area's height; a tab taller than that scrolls.
         page->SetFillsArea(true);
 

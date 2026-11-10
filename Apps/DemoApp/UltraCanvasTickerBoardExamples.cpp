@@ -80,16 +80,16 @@ namespace UltraCanvas {
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateTickerBoardExamples() {
         auto container = DemoKit::CreatePage("TickerBoardContainer",
-            "Ticker Board Examples - Crawling Quotes, LED Signs and Headline Crawls",
-            "A strip of items - label, value, change - crawling across a band without end. The Text face sets it in a "
+            Tr("Ticker Board Examples - Crawling Quotes, LED Signs and Headline Crawls"),
+            Tr("A strip of items - label, value, change - crawling across a band without end. The Text face sets it in a "
             "font; the DotMatrix face lights it on a grid of 5x7 LED dots that the text steps across one column at a time. "
-            "Every board pauses while the pointer rests on it, shows an item's tooltip, and reports a click on an item."
+            "Every board pauses while the pointer rests on it, shows an item's tooltip, and reports a click on an item.")
         );
 
         // === STATUS LINE (what was clicked) ===
         // Added under the controls below.
         auto statusLabel = DemoKit::CreateText("TbStatusLabel",
-            "Click an item on any board to see it here. Hover a quote for its company name.");
+            Tr("Click an item on any board to see it here. Hover a quote for its company name."));
         statusLabel->SetTextColor(Color(70, 70, 90, 255));
         auto reportClick = [status = statusLabel.get()](const char* boardName, const TickerItem& item) {
             std::string text = std::string(boardName) + ": " + item.label;
@@ -100,7 +100,7 @@ namespace UltraCanvas {
 
         // ===== EXAMPLE 1: TEXT FACE - MARKET TICKER =====
         auto quotesCard = DemoKit::AddCard(container, "TbQuotesCaption",
-            "Text face - market quotes with trend colours and arrows (hover pauses, click reports)");
+            Tr("Text face - market quotes with trend colours and arrows (hover pauses, click reports)"));
 
         auto quotesBoard = CreateTickerBoard("TbQuotesBoard", 0, 0, 1160, 44, TickerBoardFace::Text);
         FillQuotes(quotesBoard.get());
@@ -111,7 +111,7 @@ namespace UltraCanvas {
 
         // ===== EXAMPLE 2: DOT MATRIX FACE - AMBER LED SIGN =====
         auto signCard = DemoKit::AddCard(container, "TbSignCaption",
-            "DotMatrix face - an amber LED sign: the message steps across a fixed grid of dots");
+            Tr("DotMatrix face - an amber LED sign: the message steps across a fixed grid of dots"));
 
         auto signBoard = CreateTickerBoard("TbSignBoard", 0, 0, 1160, 64, TickerBoardFace::DotMatrix);
         {
@@ -137,7 +137,7 @@ namespace UltraCanvas {
 
         // ===== EXAMPLE 3: DOT MATRIX QUOTES, UPDATED LIVE =====
         auto liveCard = DemoKit::AddCard(container, "TbLiveCaption",
-            "DotMatrix face - quotes on a green/red dot grid, re-priced every 1.5 s in place (UpdateItem keeps the position)");
+            Tr("DotMatrix face - quotes on a green/red dot grid, re-priced every 1.5 s in place (UpdateItem keeps the position)"));
 
         auto liveBoard = CreateTickerBoard("TbLiveBoard", 0, 0, 1160, 56, TickerBoardFace::DotMatrix);
         {
@@ -183,7 +183,7 @@ namespace UltraCanvas {
 
         // ===== EXAMPLE 4: TEXT FACE - HEADLINE CRAWL, RIGHTWARD, LIGHT =====
         auto newsCard = DemoKit::AddCard(container, "TbNewsCaption",
-            "Text face - a headline crawl: light band, larger font, rightward, no pause on hover");
+            Tr("Text face - a headline crawl: light band, larger font, rightward, no pause on hover"));
 
         auto newsBoard = CreateTickerBoard("TbNewsBoard", 0, 0, 1160, 40, TickerBoardFace::Text);
         {
@@ -213,7 +213,7 @@ namespace UltraCanvas {
 
         // ===== CONTROLS =====
         auto controlsCard = DemoKit::AddCard(container, "TbControlsCaption",
-            "Controls - act on the market ticker at the top");
+            Tr("Controls - act on the market ticker at the top"));
 
         auto controlsRow = DemoKit::AddRow(controlsCard, "TbControlsRow", 10);
 
@@ -275,7 +275,7 @@ namespace UltraCanvas {
         // === HOW IT IS USED ===
         auto usageCard = DemoKit::AddCard(container, "TbUsageCard");
         auto usageLabel = DemoKit::AddText(usageCard, "TbUsageLabel",
-            "auto board = CreateTickerBoard(\"Prices\", 0, 0, 800, 44, TickerBoardFace::Text);\n"
+            Tr("auto board = CreateTickerBoard(\"Prices\", 0, 0, 800, 44, TickerBoardFace::Text);\n"
             "board->AddItem(MakeTickerQuote(\"UCNV\", 189.30, 1.25));   // value \"189.30\", change \"+1.25 (+0.66%)\", trend Up\n"
             "board->AddItem(TickerItem(\"Platform 4\", \"12:45\"));      // a label and a value, no change\n"
             "board->SetText(\"WELCOME\");                              // or one crawling message\n"
@@ -283,7 +283,7 @@ namespace UltraCanvas {
             "board->UpdateItem(0, MakeTickerQuote(\"UCNV\", 190.05, 2.00)); // re-price in place while it rolls\n"
             "\n"
             "Style: face (Text / DotMatrix), direction, pixelsPerSecond, pauseOnHover, the band and trend colours,\n"
-            "fontFamily / fontSize / weights and gaps for Text, dotPitch / dotFill / offDotColor and column gaps for DotMatrix."
+            "fontFamily / fontSize / weights and gaps for Text, dotPitch / dotFill / offDotColor and column gaps for DotMatrix.")
         );
         usageLabel->SetFont("Monospace", 11);
         usageLabel->SetTextColor(Color(50, 50, 70, 255));

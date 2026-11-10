@@ -42,9 +42,9 @@ namespace {
 // =============================================================================
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateNestedAreaChartExamples() {
-        auto container = DemoKit::CreatePage("NestedAreaChartDemo", "Nested Proportional Area Chart Examples", "");
+        auto container = DemoKit::CreatePage("NestedAreaChartDemo", Tr("Nested Proportional Area Chart Examples"), "");
 
-        auto controlsCard = DemoKit::AddCard(container, "NestedControlsCard", "Interactive controls");
+        auto controlsCard = DemoKit::AddCard(container, "NestedControlsCard", Tr("Interactive controls"));
         auto controlsRow = DemoKit::AddRow(controlsCard, "NestedControlsRow", 20);
         controlsRow->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
 
@@ -90,8 +90,8 @@ namespace {
         // EXAMPLE 1: RECTANGLE MODE - COUNTRY LAND AREAS
         // =============================================================================
 
-        auto rectangleCard = DemoKit::AddCard(topRow, "nestedRectCard", "Rectangle mode",
-                "Country land areas, aligned bottom-left", kNestedChartCardWidth);
+        auto rectangleCard = DemoKit::AddCard(topRow, "nestedRectCard", Tr("Rectangle mode"),
+                Tr("Country land areas, aligned bottom-left"), kNestedChartCardWidth);
         auto rectangleChart = CreateNestedAreaChartElement(
                 "nestedRectChart", 0, 0, 480, 320);
         rectangleChart->SetChartTitle("Country Land Area (M km²)");
@@ -110,8 +110,8 @@ namespace {
         // EXAMPLE 2: CIRCLE MODE - MARKET CAPITALIZATION
         // =============================================================================
 
-        auto circleCard = DemoKit::AddCard(topRow, "nestedCircleCard", "Circle mode",
-                "Market capitalization as concentric circles", kNestedChartCardWidth);
+        auto circleCard = DemoKit::AddCard(topRow, "nestedCircleCard", Tr("Circle mode"),
+                Tr("Market capitalization as concentric circles"), kNestedChartCardWidth);
         auto circleChart = CreateNestedAreaChartElement(
                 "nestedCircleChart", 0, 0, 480, 320);
         circleChart->SetChartTitle("Market Capitalization (T$)");
@@ -130,8 +130,8 @@ namespace {
         // EXAMPLE 3: THEME SHOWCASE - ROUNDED RECTANGLES, POPULATION DATA
         // =============================================================================
 
-        auto themeCard = DemoKit::AddCard(bottomRow, "nestedThemeCard", "Theme showcase",
-                "Rounded rectangles over population data", kNestedChartCardWidth);
+        auto themeCard = DemoKit::AddCard(bottomRow, "nestedThemeCard", Tr("Theme showcase"),
+                Tr("Rounded rectangles over population data"), kNestedChartCardWidth);
         auto themeChart = CreateNestedAreaChartElement(
                 "nestedThemeChart", 0, 0, 480, 330);
         themeChart->SetChartTitle("World Population (B)");
@@ -188,11 +188,11 @@ namespace {
         AddLabelledControl(controlsRow, "nestedAlignLabel", "Align:", alignmentDropdown);
 
         DemoKit::AddCaption(controlsCard, "nestedHintLabel",
-                "Theme/Shape apply to the population chart. Hover & click shapes!");
+                Tr("Theme/Shape apply to the population chart. Hover & click shapes!"));
 
         // Status label - shows hover/click feedback from the charts
         auto statusLabel = DemoKit::AddText(controlsCard, "nestedStatusLabel",
-                "Click a shape to select it, hover for tooltips.");
+                Tr("Click a shape to select it, hover for tooltips."));
         statusLabel->SetFontSize(11);
         statusLabel->SetTextColor(Color(60, 60, 60, 255));
 
@@ -268,21 +268,21 @@ namespace {
         // INFO PANEL
         // =============================================================================
 
-        auto infoCard = DemoKit::AddNotes(bottomRow, "NestedAreaInfo", "Nested Area Chart Features:", {
-                "Shape area is PROPORTIONAL to value "
-                "(side/radius = sqrt(value/max) - mathematically correct)",
-                "Shape modes: Rectangle, Circle, RoundedRect",
-                "7 alignment modes (corners, centers, concentric)",
-                "14 predefined color themes + custom colors",
-                "Inside/outside labels with automatic contrast",
-                "Legend with values, optional reference grid",
-                "Hover highlighting and tooltips",
-                "Click selection with callbacks: "
-                "onShapeHover, onShapeClick, onShapeSelect",
-                "Fluent NestedAreaChartBuilder for quick setup"});
+        auto infoCard = DemoKit::AddNotes(bottomRow, "NestedAreaInfo", Tr("Nested Area Chart Features:"), {
+                Tr("Shape area is PROPORTIONAL to value "
+                "(side/radius = sqrt(value/max) - mathematically correct)"),
+                Tr("Shape modes: Rectangle, Circle, RoundedRect"),
+                Tr("7 alignment modes (corners, centers, concentric)"),
+                Tr("14 predefined color themes + custom colors"),
+                Tr("Inside/outside labels with automatic contrast"),
+                Tr("Legend with values, optional reference grid"),
+                Tr("Hover highlighting and tooltips"),
+                Tr("Click selection with callbacks: "
+                "onShapeHover, onShapeClick, onShapeSelect"),
+                Tr("Fluent NestedAreaChartBuilder for quick setup")});
         DemoKit::AddCaption(infoCard, "NestedAreaInfoSee",
-                "See the Programmer's Guide (doc icon above) and the "
-                "example source (C++ icon above) for API details.");
+                Tr("See the Programmer's Guide (doc icon above) and the "
+                "example source (C++ icon above) for API details."));
 
         return container;
     }

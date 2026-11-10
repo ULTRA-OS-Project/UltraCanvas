@@ -627,7 +627,7 @@ std::shared_ptr<UltraCanvasContainer> MakeControlStrip(
     auto strip = DemoKit::CreateRow(idPrefix + "Controls", 10);
     strip->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
 
-    auto label = DemoKit::CreateText(idPrefix + "OrientLabel", "Projection:");
+    auto label = DemoKit::CreateText(idPrefix + "OrientLabel", Tr("Projection:"));
     label->SetFontSize(11);
     DemoKit::Add(strip, label);
 
@@ -670,7 +670,7 @@ std::shared_ptr<UltraCanvasContainer> MakeControlStrip(
 // each bar.
 void AddBarConnectionControls(const std::shared_ptr<UltraCanvasContainer>& strip, const std::string& idPrefix,
                               const std::shared_ptr<EngineBarChart>& chart, int initialIndex) {
-    auto label = DemoKit::CreateText(idPrefix + "ConnLabel", "Bar connection:");
+    auto label = DemoKit::CreateText(idPrefix + "ConnLabel", Tr("Bar connection:"));
     label->SetFontSize(11);
     DemoKit::Add(strip, label);
 
@@ -837,9 +837,9 @@ std::shared_ptr<UltraCanvasContainer> MakeGraphicFillTab() {
 
 std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateBarChartsExamples() {
     auto container = DemoKit::CreatePage("BarChartContainer",
-        "Bar Charts - Every Arrangement and Fill on the Chart Engine",
-        "One bar-chart content class on UltraCanvasChartEngineElement: axes, grid, layout, legend, value labels, bar geometry, "
-        "hover tooltips and the grow-in animation are engine services. Tabs cover vertical/horizontal/polar, clustered, stacked, styles and graphic fills.");
+        Tr("Bar Charts - Every Arrangement and Fill on the Chart Engine"),
+        Tr("One bar-chart content class on UltraCanvasChartEngineElement: axes, grid, layout, legend, value labels, bar geometry, "
+        "hover tooltips and the grow-in animation are engine services. Tabs cover vertical/horizontal/polar, clustered, stacked, styles and graphic fills."));
     // The charts take whatever height the tabs get: the page is the area's
     // height, not its content's.
     container->SetFillsArea(true);

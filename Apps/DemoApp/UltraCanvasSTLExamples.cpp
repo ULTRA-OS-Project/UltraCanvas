@@ -177,9 +177,9 @@ namespace {
 // ===== STL DEMO PAGE =====
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateSTLModelExamples() {
         auto container = DemoKit::CreatePage("STLExamples",
-                "STL 3D Models - Drag to Orbit, Wheel to Zoom",
-                "Self-contained stereolithography reader and writer - ASCII and binary, auto-detected, "
-                "no external dependencies. Samples come from media/3D/STL.");
+                Tr("STL 3D Models - Drag to Orbit, Wheel to Zoom"),
+                Tr("Self-contained stereolithography reader and writer - ASCII and binary, auto-detected, "
+                "no external dependencies. Samples come from media/3D/STL."));
 
         const std::string sampleDir = NormalizePath(GetResourcesDir() + "media/3D/STL");
         const std::vector<std::string> files = CollectSTLFiles(sampleDir);
@@ -196,21 +196,21 @@ namespace {
         // ===== STATS PANEL =====
         // The panel grows with the report: a header comment, a long path and
         // a solid name all land in it.
-        auto statsContainer = DemoKit::AddCard(infoColumn, "STLStatsPanel", "What the parser found");
+        auto statsContainer = DemoKit::AddCard(infoColumn, "STLStatsPanel", Tr("What the parser found"));
         auto statsText = DemoKit::AddText(statsContainer, "STLStatsText", "");
         statsText->SetFontSize(11);
         statsText->SetTextColor(Color(50, 50, 50, 255));
 
         // ===== INFO PANEL =====
-        auto infoContainer = DemoKit::AddCard(infoColumn, "STLInfoPanel", "STL support");
+        auto infoContainer = DemoKit::AddCard(infoColumn, "STLInfoPanel", Tr("STL support"));
         DemoKit::Add(infoContainer, DemoKit::CreateBullets("STLInfoText", {
-                "Read ASCII STL and binary STL (auto-detected)",
-                "Write ASCII STL and binary STL",
-                "Per-vertex normals, recomputed when a file ships degenerate facet normals",
-                "Bounding box, triangle and vertex counts",
-                "Shaded 3D view with mouse orbit and dolly zoom on GL builds (ULTRACANVAS_ENABLE_GL)",
-                "Mesh info placeholder without GL",
-                "Registered with FileLoader: LoadGraphicsFile opens .stl like any other graphics file"}));
+                Tr("Read ASCII STL and binary STL (auto-detected)"),
+                Tr("Write ASCII STL and binary STL"),
+                Tr("Per-vertex normals, recomputed when a file ships degenerate facet normals"),
+                Tr("Bounding box, triangle and vertex counts"),
+                Tr("Shaded 3D view with mouse orbit and dolly zoom on GL builds (ULTRACANVAS_ENABLE_GL)"),
+                Tr("Mesh info placeholder without GL"),
+                Tr("Registered with FileLoader: LoadGraphicsFile opens .stl like any other graphics file")}));
 
         // ===== VIEWER PANEL =====
         auto viewer = std::make_shared<UltraCanvasSTLElement>("STLViewer", 0, 0, 600, 430);
@@ -226,12 +226,12 @@ namespace {
         // ===== HOW IT WORKS =====
         auto howContainer = DemoKit::AddCard(container, "STLHowPanel");
         auto howText = DemoKit::AddText(howContainer, "STLHowText",
-                "UltraCanvasSTLLoader::Load parses the file into a Mesh3D (positions, normals, indices, bounds); "
+                Tr("UltraCanvasSTLLoader::Load parses the file into a Mesh3D (positions, normals, indices, bounds); "
                 "UltraCanvasSTLElement uploads that mesh to an UltraCanvasGLSurface and shades it, or draws the "
                 "mesh summary when the build has no GL. UltraCanvasSTLPlugin registers both with FileLoader.\n"
                 "\n"
                 "Mesh3D mesh; UltraCanvasSTLLoader::Load(\"model.stl\", mesh);\n"
-                "UltraCanvasSTLLoader::Save(\"copy.stl\", mesh, STLFormat::Binary);");
+                "UltraCanvasSTLLoader::Save(\"copy.stl\", mesh, STLFormat::Binary);"));
         howText->SetFontSize(11);
         howText->SetTextColor(Color(50, 50, 50, 255));
 

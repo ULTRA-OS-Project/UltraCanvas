@@ -211,7 +211,7 @@ namespace UltraCanvas {
         };
         DemoKit::AddFixed(geometryGroup, innerSlider);
 
-        auto gapHeader = DemoKit::AddText(geometryGroup, "SbGapHeader", "Segment Gap (degrees):");
+        auto gapHeader = DemoKit::AddText(geometryGroup, "SbGapHeader", Tr("Segment Gap (degrees):"));
         gapHeader->SetFontWeight(FontWeight::Bold);
 
         auto gapSlider = std::make_shared<UltraCanvasSlider>("SbSegmentGap", 0, 0, controlWidth, controlHeight);
@@ -223,7 +223,7 @@ namespace UltraCanvas {
         };
         DemoKit::AddFixed(geometryGroup, gapSlider);
 
-        auto borderHeader = DemoKit::AddText(geometryGroup, "SbBorderHeader", "Border Width:");
+        auto borderHeader = DemoKit::AddText(geometryGroup, "SbBorderHeader", Tr("Border Width:"));
         borderHeader->SetFontWeight(FontWeight::Bold);
 
         auto borderSlider = std::make_shared<UltraCanvasSlider>("SbBorderWidth", 0, 0, controlWidth, controlHeight);
@@ -252,17 +252,17 @@ namespace UltraCanvas {
         DemoKit::Add(interactionGroup, drillCheckbox);
 
         DemoKit::AddCaption(interactionGroup, "SbHint",
-            "Click a branch segment to zoom into it; click the center to go back up one level.");
+            Tr("Click a branch segment to zoom into it; click the center to go back up one level."));
     }
 
 // ===== MAIN SUNBURST CHART EXAMPLES CREATOR =====
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateSunburstChartExamples() {
         auto page = DemoKit::CreatePage("SunburstChartContainer",
-            "Sunburst Chart Examples - Hierarchical Insights in a Single View",
-            "Multi-level radial partition charts: angular spans are proportional to aggregated values, rings represent "
+            Tr("Sunburst Chart Examples - Hierarchical Insights in a Single View"),
+            Tr("Multi-level radial partition charts: angular spans are proportional to aggregated values, rings represent "
             "hierarchy depth. Features drill-down zoom, depth shading, per-node colors, tooltips with breadcrumb paths, "
-            "auto-fitting radial/horizontal labels, partial sweeps and configurable geometry."
+            "auto-fitting radial/horizontal labels, partial sweeps and configurable geometry.")
         );
 
         auto controlsCard = DemoKit::AddCard(page, "SbControls");
@@ -271,7 +271,7 @@ namespace UltraCanvas {
         auto charts = DemoKit::AddRow(page, "SbCharts");
 
         // ===== EXAMPLE 1: THREE-LEVEL SALES HIERARCHY WITH DRILL-DOWN =====
-        auto salesCard = DemoKit::AddCard(charts, "SbSalesLabel", "Regional Sales (Region › Category › Sub-Category)", "", chartCardWidth);
+        auto salesCard = DemoKit::AddCard(charts, "SbSalesLabel", Tr("Regional Sales (Region › Category › Sub-Category)"), "", chartCardWidth);
 
         auto salesChart = CreateSunburstChart("SalesSunburst", 0, 0, 460, 320);
         salesChart->SetRootNode(BuildSalesHierarchy());
@@ -290,7 +290,7 @@ namespace UltraCanvas {
         DemoKit::AddFixed(salesCard, salesChart);
 
         // ===== EXAMPLE 2: DEMOGRAPHIC TWO-LEVEL SUNBURST =====
-        auto geoCard = DemoKit::AddCard(charts, "SbGeoLabel", "Median Age of Population (Continent › Country)", "", chartCardWidth);
+        auto geoCard = DemoKit::AddCard(charts, "SbGeoLabel", Tr("Median Age of Population (Continent › Country)"), "", chartCardWidth);
 
         auto geoChart = BuildMedianAgeChart("GeoSunburst", 0, 0, 460, 320);
         geoChart->SetColorPalette({
@@ -315,7 +315,7 @@ namespace UltraCanvas {
         DemoKit::AddFixed(geoCard, geoChart);
 
         // ===== EXAMPLE 3: PARTIAL-SWEEP (FAN) SUNBURST =====
-        auto fanCard = DemoKit::AddCard(charts, "SbFanLabel", "Approval Workflow (240° Fan, Explicit Branch Colors)", "", chartCardWidth);
+        auto fanCard = DemoKit::AddCard(charts, "SbFanLabel", Tr("Approval Workflow (240° Fan, Explicit Branch Colors)"), "", chartCardWidth);
 
         auto fanChart = CreateSunburstChart("FanSunburst", 0, 0, 460, 280);
         fanChart->SetRootNode(BuildApprovalHierarchy());
@@ -329,7 +329,7 @@ namespace UltraCanvas {
         DemoKit::AddFixed(fanCard, fanChart);
 
         // ===== EXAMPLE 4: DEPTH-LIMITED OVERVIEW =====
-        auto overviewCard = DemoKit::AddCard(charts, "SbOverviewLabel", "Overview Mode (Depth Limited To 2, Darken Shading)", "", chartCardWidth);
+        auto overviewCard = DemoKit::AddCard(charts, "SbOverviewLabel", Tr("Overview Mode (Depth Limited To 2, Darken Shading)"), "", chartCardWidth);
 
         auto overviewChart = CreateSunburstChart("OverviewSunburst", 0, 0, 460, 280);
         overviewChart->SetRootNode(BuildSalesHierarchy());

@@ -492,9 +492,9 @@ namespace {
 
 // ===== VECTOR CANVAS EXAMPLES =====
 std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateVectorCanvasExamples() {
-    auto container = DemoKit::CreatePage("VectorCanvasExamples", "Vector Editing - UltraCanvasVectorCanvas",
-            "Select: click, shift-click, marquee; drag to move, drag a handle to scale (shift keeps the aspect), click a selected shape again for rotate / skew handles.\n"
-            "Rectangle, Ellipse and Freehand draw; Delete, Ctrl+Z / Ctrl+Y, Ctrl+G / Ctrl+Shift+G, Ctrl+D, arrows nudge. Wheel zooms, space pans, drag a guide out of a ruler.");
+    auto container = DemoKit::CreatePage("VectorCanvasExamples", Tr("Vector Editing - UltraCanvasVectorCanvas"),
+            Tr("Select: click, shift-click, marquee; drag to move, drag a handle to scale (shift keeps the aspect), click a selected shape again for rotate / skew handles.\n"
+            "Rectangle, Ellipse and Freehand draw; Delete, Ctrl+Z / Ctrl+Y, Ctrl+G / Ctrl+Shift+G, Ctrl+D, arrows nudge. Wheel zooms, space pans, drag a guide out of a ruler."));
     // The canvas zooms and pans itself: the page is the area's height and
     // the editor card takes what the texts leave.
     container->SetFillsArea(true);
@@ -598,7 +598,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateVectorCa
     }
     DemoKit::Add(workArea, panel);
 
-    auto fillTitle = DemoKit::AddHeading(panel, "VCFillTitle", "Fill of the selected shape");
+    auto fillTitle = DemoKit::AddHeading(panel, "VCFillTitle", Tr("Fill of the selected shape"));
     fillTitle->SetFontSize(12);
 
     auto ramp = CreateGradientEditor("VCRamp", 0, 0, 230, 46);
@@ -606,13 +606,13 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateVectorCa
     editor->ramp = ramp;
 
     DemoKit::AddCaption(panel, "VCRampHint",
-            "Drag a stop to move it, double-click the strip to add one, drag a stop away to remove it. A flat fill becomes a linear gradient.");
+            Tr("Drag a stop to move it, double-click the strip to add one, drag a stop away to remove it. A flat fill becomes a linear gradient."));
 
-    auto layersTitle = DemoKit::AddHeading(panel, "VCLayersTitle", "What the framework provides");
+    auto layersTitle = DemoKit::AddHeading(panel, "VCLayersTitle", Tr("What the framework provides"));
     layersTitle->SetFontSize(12);
 
     auto info = DemoKit::AddText(panel, "VCInfo",
-            "UltraCanvasVectorCanvas\n"
+            Tr("UltraCanvasVectorCanvas\n"
             "page, rulers, guides, grid, snapping, selection handles, tool hooks\n\n"
             "VectorEdit\n"
             "VectorSelection, VectorHistory, VectorHitTester, transform / z-order / "
@@ -621,7 +621,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateVectorCa
             "nodes and handles, FromPolyline\n\n"
             "UltraCanvasGradientEditor\n"
             "the stops of a fill\n\n"
-            "This page's tools are ~250 lines of application code over that.");
+            "This page's tools are ~250 lines of application code over that."));
     info->SetFontSize(10);
     info->SetTextColor(Color(60, 60, 60, 255));
 

@@ -22,14 +22,14 @@ namespace UltraCanvas {
 // ===== VECTOR/SVG EXAMPLES IMPLEMENTATION =====
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateSVGVectorExamples() {
         auto container = DemoKit::CreatePage("VectorExamples",
-                "SVG Graphics Demo - Click to Open in the Media Viewer",
-                "Every .svg sample shipped under media/vector/SVG. Click a drawing to open it in the media viewer. "
-                "The arrow keys step through the folder there; ESC closes it.");
+                Tr("SVG Graphics Demo - Click to Open in the Media Viewer"),
+                Tr("Every .svg sample shipped under media/vector/SVG. Click a drawing to open it in the media viewer. "
+                "The arrow keys step through the folder there; ESC closes it."));
 
         // Status label for feedback - made first because a tile reports a
         // failed load in it; it goes under the features.
         auto statusLabel = DemoKit::CreateText("SVGStatus",
-                "Ready. Click on an SVG file to open it in the media viewer.");
+                Tr("Ready. Click on an SVG file to open it in the media viewer."));
         statusLabel->SetFontSize(11);
         statusLabel->SetTextColor(Color(60, 60, 60, 255));
         statusLabel->SetBackgroundColor(Color(230, 230, 230, 255));
@@ -93,15 +93,15 @@ namespace UltraCanvas {
         makeTile("SVGTile8", "Logo_Texter.svg");
 
         // Information panel
-        DemoKit::AddNotes(container, "InfoPanel", "SVG Features", {
-                "Load from file or string",
-                "ViewBox transformation",
-                "Auto-resize",
-                "Basic shapes, paths and curves",
-                "Text rendering",
-                "Group hierarchies",
-                "Style attributes",
-                "Click any drawing to open it in the media viewer, ESC to close"});
+        DemoKit::AddNotes(container, "InfoPanel", Tr("SVG Features"), {
+                Tr("Load from file or string"),
+                Tr("ViewBox transformation"),
+                Tr("Auto-resize"),
+                Tr("Basic shapes, paths and curves"),
+                Tr("Text rendering"),
+                Tr("Group hierarchies"),
+                Tr("Style attributes"),
+                Tr("Click any drawing to open it in the media viewer, ESC to close")});
 
         DemoKit::Add(container, statusLabel);
 

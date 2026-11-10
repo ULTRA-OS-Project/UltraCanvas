@@ -25,17 +25,17 @@ namespace UltraCanvas {
 // ===== BASIC UI ELEMENTS =====
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateTextInputExamples() {
-        auto container = DemoKit::CreatePage("TextInputExamples", "Text Input Examples",
-                "Single- and multi-line inputs, password fields with strength meters and rule "
-                "legends, and buttons inside the field");
+        auto container = DemoKit::CreatePage("TextInputExamples", Tr("Text Input Examples"),
+                Tr("Single- and multi-line inputs, password fields with strength meters and rule "
+                "legends, and buttons inside the field"));
 
         // The examples share the width and wrap under each other when narrow.
         auto examples = DemoKit::AddRow(container, "TextInputCards");
 
         // ===== COLUMN 1: BASIC INPUTS =====
-        auto basicCard = DemoKit::AddCard(examples, "TextInputBasicCard", "Basic Inputs");
+        auto basicCard = DemoKit::AddCard(examples, "TextInputBasicCard", Tr("Basic Inputs"));
 
-        DemoKit::AddText(basicCard, "SingleLineLabel", "Single Line Input");
+        DemoKit::AddText(basicCard, "SingleLineLabel", Tr("Single Line Input"));
 
         // Single Line Input
         auto singleLineInput = std::make_shared<UltraCanvasTextInput>("SingleLineInput", 0, 0, 300, 30);
@@ -45,7 +45,7 @@ namespace UltraCanvas {
 
 
         // Multi-line Text Area
-        DemoKit::AddText(basicCard, "MultiLineLabel", "Multi-line Text Input");
+        DemoKit::AddText(basicCard, "MultiLineLabel", Tr("Multi-line Text Input"));
 
         // A text area has no frame of its own - it is also the editor that
         // fills a window - so these two get the text inputs' border.
@@ -56,7 +56,7 @@ namespace UltraCanvas {
         DemoKit::AddStretched(basicCard, multiLineInput);
 
 
-        DemoKit::AddText(basicCard, "PasswordLabel", "Basic Password Field (eye reveals text)");
+        DemoKit::AddText(basicCard, "PasswordLabel", Tr("Basic Password Field (eye reveals text)"));
 
         // Password Field (Basic) - the in-field eye button shows the typed text
         auto passwordInput = std::make_shared<UltraCanvasTextInput>("PasswordInput", 0, 0, 300, 30);
@@ -66,7 +66,7 @@ namespace UltraCanvas {
         DemoKit::AddStretched(basicCard, passwordInput);
 
 
-        DemoKit::AddText(basicCard, "NumericLabel", "Numeric Input (0-1000)");
+        DemoKit::AddText(basicCard, "NumericLabel", Tr("Numeric Input (0-1000)"));
 
         // Numeric Input
         auto numericInput = std::make_shared<UltraCanvasTextInput>("NumericInput", 0, 0, 300, 30);
@@ -75,7 +75,7 @@ namespace UltraCanvas {
         DemoKit::AddStretched(basicCard, numericInput);
 
 
-        DemoKit::AddText(basicCard, "TextAreaLabel", "Text Area Component");
+        DemoKit::AddText(basicCard, "TextAreaLabel", Tr("Text Area Component"));
 
         // Text Area Component
         auto textAreaInput = std::make_shared<UltraCanvasTextArea>("TextArea", 0, 0, 300, 100);
@@ -91,7 +91,7 @@ namespace UltraCanvas {
         // calls onTextChanged, then onCleared. Both start filled, so the
         // buttons are on show.
         auto clearCard = DemoKit::AddCard(examples, "ClearButtonLabel",
-                "Buttons inside the field: clear and \"Reset\"");
+                Tr("Buttons inside the field: clear and \"Reset\""));
 
         auto clearInput = std::make_shared<UltraCanvasTextInput>("ClearButtonInput", 0, 0, 300, 30);
         clearInput->SetPlaceholder("Type, then click the cross...");
@@ -107,8 +107,8 @@ namespace UltraCanvas {
         DemoKit::AddStretched(clearCard, resetInput);
 
         auto clearStatus = DemoKit::AddCaption(clearCard, "ClearButtonStatus",
-                "SetShowClearButton(true) shows the button,\n"
-                "SetClearButtonText(\"Reset\") gives it a word");
+                Tr("SetShowClearButton(true) shows the button,\n"
+                "SetClearButtonText(\"Reset\") gives it a word"));
 
         clearInput->onCleared = [clearStatus]() {
             clearStatus->SetText("The cross emptied the field\n(onTextChanged, then onCleared)");
@@ -119,7 +119,7 @@ namespace UltraCanvas {
 
 
         // ===== PASSWORD WITH BAR STRENGTH METER =====
-        auto barCard = DemoKit::AddCard(examples, "PasswordTitle1", "Password with Bar Strength Meter");
+        auto barCard = DemoKit::AddCard(examples, "PasswordTitle1", Tr("Password with Bar Strength Meter"));
 
         // Reveal ("eye") button on the right of the field: click it to read back the
         // password in clear text, click again to mask it.
@@ -144,8 +144,8 @@ namespace UltraCanvas {
 
         // Description
         DemoKit::AddCaption(barCard, "BarDesc",
-                "Real-time strength indicator with animated color transitions (red, then "
-                "yellow, then green). Click the eye icon in the field to show the password.");
+                Tr("Real-time strength indicator with animated color transitions (red, then "
+                "yellow, then green). Click the eye icon in the field to show the password."));
 
         // ===== PASSWORD WITH SEGMENTED METER =====
 
@@ -178,7 +178,7 @@ namespace UltraCanvas {
 //        container->AddChild(segmentDescription);
 
         // ===== PASSWORD WITH CHECKLIST =====
-        auto checklistCard = DemoKit::AddCard(examples, "PasswordTitle3", "Password with Requirements Checklist");
+        auto checklistCard = DemoKit::AddCard(examples, "PasswordTitle3", Tr("Password with Requirements Checklist"));
 
         auto passwordInput3 = CreatePasswordInput("Password3", 0, 0, 350, 30);
         passwordInput3->SetPlaceholder("Meet all requirements...");
@@ -218,12 +218,12 @@ namespace UltraCanvas {
 
         // Description
         DemoKit::AddCaption(checklistCard, "ChecklistDesc",
-                "Interactive checklist with met / unmet indicators showing real-time "
-                "validation status. \"Show password\" flag unmasks the field.");
+                Tr("Interactive checklist with met / unmet indicators showing real-time "
+                "validation status. \"Show password\" flag unmasks the field."));
 
         // ===== COMPLETE PASSWORD SETUP =====
         // Wide enough for the 435 px legend before it wraps.
-        auto completeCard = DemoKit::AddCard(examples, "PasswordTitle4", "Complete Setup: Meter + Detailed Legend",
+        auto completeCard = DemoKit::AddCard(examples, "PasswordTitle4", Tr("Complete Setup: Meter + Detailed Legend"),
                                              "", 435 + 2 * DemoKit::kCardPadding + 2);
 
         // The field and its flag beside the circular meter.
@@ -295,11 +295,11 @@ namespace UltraCanvas {
 
         // Description
         DemoKit::AddCaption(completeCard, "CompleteDesc",
-                "Professional registration form setup with:\n"
+                Tr("Professional registration form setup with:\n"
                 "• Eye icon and \"Show password\" flag (kept in sync)\n"
                 "• Circular strength meter with percentage\n"
                 "• Detailed rule legend with backgrounds\n"
-                "• Strict validation (12+ chars, no patterns)");
+                "• Strict validation (12+ chars, no patterns)"));
 
 //        // ===== COMPACT LEGEND EXAMPLE =====
 //

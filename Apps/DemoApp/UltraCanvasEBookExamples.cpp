@@ -62,9 +62,9 @@ const char* kSampleBook =
 std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateEBookExamples() {
     RegisterBuiltinEBookEngines();
 
-    auto page = DemoKit::CreatePage("EBookDemo", "eBook Reader",
-            "EPUB/FB2/MOBI/TXT reading with chapters, TOC, themes and font scaling "
-            "rendered natively through the CSSLayout engine");
+    auto page = DemoKit::CreatePage("EBookDemo", Tr("eBook Reader"),
+            Tr("EPUB/FB2/MOBI/TXT reading with chapters, TOC, themes and font scaling "
+            "rendered natively through the CSSLayout engine"));
     // The reader scrolls itself: the page is the area's height and the
     // reader's card takes what the title leaves.
     page->SetFillsArea(true);
@@ -88,7 +88,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateEBookExa
     openBtn->size.height = CSSLayout::Dimension::Px(30);
     DemoKit::Add(header, openBtn);
 
-    auto statusLabel = DemoKit::CreateText("EBookDemoStatus", "Opening sample book\xE2\x80\xA6");
+    auto statusLabel = DemoKit::CreateText("EBookDemoStatus", Tr("Opening sample book\xE2\x80\xA6"));
     statusLabel->SetAlignment(TextAlignment::Left, VerticalAlignment::Middle);
     statusLabel->SetTextColor(Color(90, 90, 90, 255));
     DemoKit::Add(header, statusLabel, 1);
@@ -103,7 +103,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateEBookExa
     };
 
     auto zoomOutBtn = makeZoomButton("EBookDemoZoomOut", "\xE2\x88\x92", 34.f);   // −
-    auto zoomLabel = DemoKit::CreateText("EBookDemoZoomLevel", "100%");
+    auto zoomLabel = DemoKit::CreateText("EBookDemoZoomLevel", Tr("100%"));
     zoomLabel->SetAlignment(TextAlignment::Center, VerticalAlignment::Middle);
     zoomLabel->SetTextColor(Color(90, 90, 90, 255));
     DemoKit::Add(header, zoomLabel);

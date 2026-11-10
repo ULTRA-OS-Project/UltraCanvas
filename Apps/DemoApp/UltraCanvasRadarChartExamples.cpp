@@ -39,7 +39,7 @@ namespace UltraCanvas {
         // === DISPLAY OPTIONS ===
         auto displayGroup = DemoKit::CreateColumn("RadarDisplayGroup", 8);
         DemoKit::Add(groups, displayGroup);
-        auto displayLabel = DemoKit::AddText(displayGroup, "RadarDisplayLabel", "Display Options:");
+        auto displayLabel = DemoKit::AddText(displayGroup, "RadarDisplayLabel", Tr("Display Options:"));
         displayLabel->SetFontWeight(FontWeight::Bold);
 
         auto gridCheckbox = std::make_shared<UltraCanvasCheckbox>("RadarGrid", "Show Grid");
@@ -69,7 +69,7 @@ namespace UltraCanvas {
         // === ANIMATION ===
         auto animGroup = DemoKit::CreateColumn("RadarAnimGroup", 8);
         DemoKit::Add(groups, animGroup);
-        auto animLabel = DemoKit::AddText(animGroup, "RadarAnimLabel", "Animation:");
+        auto animLabel = DemoKit::AddText(animGroup, "RadarAnimLabel", Tr("Animation:"));
         animLabel->SetFontWeight(FontWeight::Bold);
 
         auto animCheckbox = std::make_shared<UltraCanvasCheckbox>("RadarAnim", "Animate Growth");
@@ -92,11 +92,11 @@ namespace UltraCanvas {
 // ===== MAIN RADAR CHART EXAMPLES CREATOR =====
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateRadarChartExamples() {
         auto page = DemoKit::CreatePage("RadarChartContainer",
-                "Radar Chart Examples - Multi-Axis, Multi-Series Visualization",
-                "Radar (spider) charts plot several quantitative axes on a shared circular grid, drawing each "
+                Tr("Radar Chart Examples - Multi-Axis, Multi-Series Visualization"),
+                Tr("Radar (spider) charts plot several quantitative axes on a shared circular grid, drawing each "
                 "data series as a filled polygon. They excel at comparing multiple entities across the same set "
                 "of metrics. Use the controls above the charts to toggle the grid, legend, value labels and the "
-                "grow-out animation. Hover any vertex to see its exact value.");
+                "grow-out animation. Hover any vertex to see its exact value."));
 
         auto controlsCard = DemoKit::AddCard(page, "RadarControls");
         // A card holds a 460 px chart without squeezing it.
@@ -104,7 +104,7 @@ namespace UltraCanvas {
         auto charts = DemoKit::AddRow(page, "RadarCharts");
 
         // ===== EXAMPLE 1: PERFORMANCE METRICS (top left) =====
-        auto perfCard = DemoKit::AddCard(charts, "RadarPerfLabel", "Performance Metrics: Current vs Target", "", chartCardWidth);
+        auto perfCard = DemoKit::AddCard(charts, "RadarPerfLabel", Tr("Performance Metrics: Current vs Target"), "", chartCardWidth);
 
         auto performanceRadar = CreateRadarChartElement("performanceRadar", 0, 0, 460, 290);
         performanceRadar->SetGridDisplay(true, Color(220, 220, 220, 255), 1.0f);
@@ -128,7 +128,7 @@ namespace UltraCanvas {
         DemoKit::AddFixed(perfCard, performanceRadar);
 
         // ===== EXAMPLE 2: SKILLS ASSESSMENT (top right) =====
-        auto skillsCard = DemoKit::AddCard(charts, "RadarSkillsLabel", "Skills Assessment (0-10 scale)", "", chartCardWidth);
+        auto skillsCard = DemoKit::AddCard(charts, "RadarSkillsLabel", Tr("Skills Assessment (0-10 scale)"), "", chartCardWidth);
 
         auto skillsRadar = CreateRadarChartElement("skillsRadar", 0, 0, 460, 290);
         skillsRadar->SetGridDisplay(true, Color(200, 240, 200, 255), 1.5f);
@@ -153,7 +153,7 @@ namespace UltraCanvas {
         DemoKit::AddFixed(skillsCard, skillsRadar);
 
         // ===== EXAMPLE 3: MULTI-SERIES PRODUCT COMPARISON (bottom left) =====
-        auto productCard = DemoKit::AddCard(charts, "RadarProductLabel", "Product Comparison (8 axes, 3 series)", "", chartCardWidth);
+        auto productCard = DemoKit::AddCard(charts, "RadarProductLabel", Tr("Product Comparison (8 axes, 3 series)"), "", chartCardWidth);
 
         auto multiSeriesRadar = CreateRadarChartElement("multiSeriesRadar", 0, 0, 460, 290);
         multiSeriesRadar->SetGridDisplay(true, Color(240, 240, 240, 255), 1.0f);
@@ -182,7 +182,7 @@ namespace UltraCanvas {
         DemoKit::AddFixed(productCard, multiSeriesRadar);
 
         // ===== EXAMPLE 4: TEAM COMPARISON WITH VALUE LABELS (bottom right) =====
-        auto teamCard = DemoKit::AddCard(charts, "RadarTeamLabel", "Team Comparison (value labels enabled)", "", chartCardWidth);
+        auto teamCard = DemoKit::AddCard(charts, "RadarTeamLabel", Tr("Team Comparison (value labels enabled)"), "", chartCardWidth);
 
         auto teamRadar = CreateRadarChartElement("teamRadar", 0, 0, 460, 290);
         teamRadar->SetGridDisplay(true, Color(225, 225, 235, 255), 1.0f);

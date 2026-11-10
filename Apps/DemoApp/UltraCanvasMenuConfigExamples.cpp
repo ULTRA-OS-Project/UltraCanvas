@@ -272,12 +272,12 @@ namespace {
 
 std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateMenuConfigExamples() {
     auto container = DemoKit::CreatePage("MenuConfigExamples",
-        "Menus and Toolbars - one editor for the Filer's menu and toolbar",
-        "Left: the Filer's right-click menu and its toolbar, the toolbar's groups and commands "
+        Tr("Menus and Toolbars - one editor for the Filer's menu and toolbar"),
+        Tr("Left: the Filer's right-click menu and its toolbar, the toolbar's groups and commands "
         "with a box each - shown or not. Middle: add, remove, reorder, a new group, fold a "
         "group into one button. Right: every Filer command by category. Apply rebuilds the menu "
         "and the toolbar below now; Save also keeps them. Right-click the toolbar for its "
-        "groups.");
+        "groups."));
     // The editor's lists scroll themselves: the page is the area's height and
     // the editor takes what the texts leave.
     container->SetFillsArea(true);
@@ -297,7 +297,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateMenuConf
     toolbar->SetOverflowMode(ToolbarOverflowMode::Menu);
     DemoKit::Add(card, toolbar);
 
-    auto status = DemoKit::AddText(card, "MenuConfigStatus", "Ready.");
+    auto status = DemoKit::AddText(card, "MenuConfigStatus", Tr("Ready."));
     status->SetTextColor(Color(90, 90, 90, 255));
 
     // ----- registry + defaults (demo-local so the sample commands don't

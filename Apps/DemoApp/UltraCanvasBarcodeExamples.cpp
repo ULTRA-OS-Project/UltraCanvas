@@ -95,18 +95,18 @@ namespace UltraCanvas {
     } // namespace
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateBarcodeExamples() {
-        auto root = DemoKit::CreatePage("BarcodeExamples", "UltraCanvas Barcode Widget — 1D Symbologies",
-                "From-scratch pure-C++20 1D encoders, rendered via Cairo.");
+        auto root = DemoKit::CreatePage("BarcodeExamples", Tr("UltraCanvas Barcode Widget — 1D Symbologies"),
+                Tr("From-scratch pure-C++20 1D encoders, rendered via Cairo."));
 
         // ===== INTERACTIVE PLAYGROUND =====
         auto playground = DemoKit::AddCard(root, "Playground",
-                "Live editor — try any symbology with your own data");
+                Tr("Live editor — try any symbology with your own data"));
 
         // --- Controls row (symbology + data + HRI/rotate toggles); wraps when narrow ---
         auto controls = DemoKit::AddRow(playground, "PlayControls", 8);
         controls->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
 
-        auto symLabel = DemoKit::CreateText("SymLabel", "Symbology:");
+        auto symLabel = DemoKit::CreateText("SymLabel", Tr("Symbology:"));
         symLabel->SetFontSize(11);
         DemoKit::Add(controls, symLabel);
 
@@ -118,7 +118,7 @@ namespace UltraCanvas {
         symDropdown->size.width = CSSLayout::Dimension::Px(170);
         DemoKit::AddFixed(controls, symDropdown);
 
-        auto dataLabel = DemoKit::CreateText("DataLabel", "Data:");
+        auto dataLabel = DemoKit::CreateText("DataLabel", Tr("Data:"));
         dataLabel->SetFontSize(11);
         DemoKit::Add(controls, dataLabel);
 
@@ -209,7 +209,7 @@ namespace UltraCanvas {
         };
 
         // ===== GALLERY (one card per symbology) =====
-        DemoKit::AddHeading(root, "GalleryTitle", "All symbologies — same widget, different encoders");
+        DemoKit::AddHeading(root, "GalleryTitle", Tr("All symbologies — same widget, different encoders"));
 
         // Single column: each barcode card is full-width, stacked one under another.
         auto gallery = DemoKit::CreateColumn("Gallery", DemoKit::kPageGap);

@@ -18,11 +18,11 @@
 namespace UltraCanvas {
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateDivergingChartExamples() {
-        auto container = DemoKit::CreatePage("DivergingChartExamples", "Diverging Bar Chart Examples",
-                "Likert scale, population pyramid and tornado charts, with a grid switch and random data");
+        auto container = DemoKit::CreatePage("DivergingChartExamples", Tr("Diverging Bar Chart Examples"),
+                Tr("Likert scale, population pyramid and tornado charts, with a grid switch and random data"));
         auto mainRow = DemoKit::AddRow(container, "DivergingChartRow");
-        auto chartCard = DemoKit::AddCard(mainRow, "DivergingChartCard", "Chart types",
-                "One tab per chart style; the controls under the tabs act on all three");
+        auto chartCard = DemoKit::AddCard(mainRow, "DivergingChartCard", Tr("Chart types"),
+                Tr("One tab per chart style; the controls under the tabs act on all three"));
 
         // Create tabbed container for the three chart types
         auto tabbedContainer = std::make_shared<UltraCanvasTabbedContainer>("divergingChartTabs", 0, 0, 700, 500);
@@ -182,19 +182,19 @@ namespace UltraCanvas {
         DemoKit::Add(controls, btnGenerateData);
 
         // Info
-        auto infoCard = DemoKit::AddNotes(mainRow, "DivergingChartInfo", "Diverging Bar Chart Features", {
-                "Likert scale visualization",
-                "Population pyramid style",
-                "Tornado chart format",
-                "Interactive controls",
-                "Multiple data categories",
-                "Customizable colors",
-                "Grid and center line options",
-                "Dynamic data updates"});
-        DemoKit::AddHeading(infoCard, "DivergingChartUseTitle", "Use the controls below the chart to:");
+        auto infoCard = DemoKit::AddNotes(mainRow, "DivergingChartInfo", Tr("Diverging Bar Chart Features"), {
+                Tr("Likert scale visualization"),
+                Tr("Population pyramid style"),
+                Tr("Tornado chart format"),
+                Tr("Interactive controls"),
+                Tr("Multiple data categories"),
+                Tr("Customizable colors"),
+                Tr("Grid and center line options"),
+                Tr("Dynamic data updates")});
+        DemoKit::AddHeading(infoCard, "DivergingChartUseTitle", Tr("Use the controls below the chart to:"));
         DemoKit::Add(infoCard, DemoKit::CreateBullets("DivergingChartUse", {
-                "Switch the grid on or off",
-                "Generate random data"}));
+                Tr("Switch the grid on or off"),
+                Tr("Generate random data")}));
 
         return container;
     }

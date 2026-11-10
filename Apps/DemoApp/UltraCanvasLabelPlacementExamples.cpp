@@ -298,13 +298,13 @@ namespace UltraCanvas {
         tabStyle.autoShowScrollbars = true;
         tab->SetContainerStyle(tabStyle);
 
-        auto card = DemoKit::AddCard(tab, "LPCard", "Label Placement Solver");
+        auto card = DemoKit::AddCard(tab, "LPCard", Tr("Label Placement Solver"));
         DemoKit::AddText(card, "LPDesc",
-                      "PlaceShapeLabels() is part of the layout engine (core/UltraCanvasLabelPlacement.cpp), "
+                      Tr("PlaceShapeLabels() is part of the layout engine (core/UltraCanvasLabelPlacement.cpp), "
                       "so every chart and diagram shares one implementation. Each label names a shape "
                       "(rectangle or circle), asks for a preferred position, and the solver moves it only when "
                       "that position would collide with another label, another shape, a keep-out obstacle such "
-                      "as a connector line, or the bounds. Overlapping labels are drawn in red.");
+                      "as a connector line, or the bounds. Overlapping labels are drawn in red."));
 
         // The scene beside its controls; the controls move under the scene
         // when the tab is too narrow for both.
@@ -382,17 +382,17 @@ namespace UltraCanvas {
         DemoKit::Add(controls, status);
         refreshStatus();
 
-        auto note = DemoKit::AddNotes(tab, "LPNote", "What each control shows", {
-                "Solver off — every label goes to its preferred spot regardless of what is already there; "
-                "the red labels are the collisions this produces.",
-                "Lines as obstacles — connector lines become keep-out rectangles, so labels step aside "
-                "instead of sitting on a line. Charts use the same mechanism for legends and axis titles.",
-                "Outside / Centred / On the outline — the three conventions. Centred tolerates text spilling "
+        auto note = DemoKit::AddNotes(tab, "LPNote", Tr("What each control shows"), {
+                Tr("Solver off — every label goes to its preferred spot regardless of what is already there; "
+                "the red labels are the collisions this produces."),
+                Tr("Lines as obstacles — connector lines become keep-out rectangles, so labels step aside "
+                "instead of sitting on a line. Charts use the same mechanism for legends and axis titles."),
+                Tr("Outside / Centred / On the outline — the three conventions. Centred tolerates text spilling "
                 "over the outline (node diagrams, drawn with a halo) but still refuses to stack two labels; "
-                "on-the-outline places the text on the border at a clock-face angle."});
+                "on-the-outline places the text on the border at a clock-face angle.")});
         auto order = DemoKit::AddText(note, "LPNoteOrder",
-                "Placement is greedy in input order, so submission order is the priority: this scene submits the "
-                "smallest shapes first, because their labels have the least room to move.");
+                Tr("Placement is greedy in input order, so submission order is the priority: this scene submits the "
+                "smallest shapes first, because their labels have the least room to move."));
         order->SetFontSize(11);
 
         return tab;

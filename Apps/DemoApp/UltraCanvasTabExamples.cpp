@@ -45,8 +45,8 @@ namespace UltraCanvas {
 // ===== MAIN COMPREHENSIVE TAB DEMO =====
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateTabExamples() {
         auto mainContainer = DemoKit::CreatePage("ComprehensiveTabDemo",
-                "UltraCanvas Tabbed Container - Comprehensive Demo",
-                "Showcasing all tab styles, features, and configurations");
+                Tr("UltraCanvas Tabbed Container - Comprehensive Demo"),
+                Tr("Showcasing all tab styles, features, and configurations"));
 
         // One example: its bold caption over the tabbed container, which
         // keeps its height and takes the card's width.
@@ -63,7 +63,7 @@ namespace UltraCanvas {
         // ========================================
         // SECTION 1: TAB STYLES (Classic, Modern, Flat, Rounded)
         // ========================================
-        auto card1 = DemoKit::AddCard(mainContainer, "Section1", "1. TAB VISUAL STYLES");
+        auto card1 = DemoKit::AddCard(mainContainer, "Section1", Tr("1. TAB VISUAL STYLES"));
         card1->layout.SetFlexGap(14);
 
         // --- Classic Style ---
@@ -308,7 +308,7 @@ namespace UltraCanvas {
         // ========================================
         // SECTION 2: TAB FEATURES (Icons, Badges, Close Buttons)
         // ========================================
-        auto card2 = DemoKit::AddCard(mainContainer, "Section2", "2. TAB FEATURES (Icons, Badges, Close Buttons)");
+        auto card2 = DemoKit::AddCard(mainContainer, "Section2", Tr("2. TAB FEATURES (Icons, Badges, Close Buttons)"));
         card2->layout.SetFlexGap(14);
 
         // --- Tabs with Icons and Badges ---
@@ -351,7 +351,7 @@ namespace UltraCanvas {
         // ========================================
         // SECTION 3: TAB OVERFLOW & SCROLLING
         // ========================================
-        auto card3 = DemoKit::AddCard(mainContainer, "Section3", "3. TAB OVERFLOW HANDLING (Dropdown & Search)");
+        auto card3 = DemoKit::AddCard(mainContainer, "Section3", Tr("3. TAB OVERFLOW HANDLING (Dropdown & Search)"));
         card3->layout.SetFlexGap(14);
 
         // --- Many Tabs with Overflow Dropdown ---
@@ -392,7 +392,7 @@ namespace UltraCanvas {
         // ========================================
         // SECTION 4: NEW TAB BUTTON - STYLE A (Fixed Tab)
         // ========================================
-        auto card4 = DemoKit::AddCard(mainContainer, "Section4", "4. NEW TAB BUTTON - STYLE A (Browser-Style Fixed Tab)");
+        auto card4 = DemoKit::AddCard(mainContainer, "Section4", Tr("4. NEW TAB BUTTON - STYLE A (Browser-Style Fixed Tab)"));
         card4->layout.SetFlexGap(14);
 
         auto newTabAGroup = addExample(card4, "NewTabALabel", "Click the '+' tab to create new tabs (Browser behavior)");
@@ -457,7 +457,7 @@ namespace UltraCanvas {
         // ========================================
         // SECTION 5: NEW TAB BUTTON - STYLE B (Icon Button)
         // ========================================
-        auto card5 = DemoKit::AddCard(mainContainer, "Section5", "5. NEW TAB BUTTON - STYLE B (VS Code-Style Icon Button)");
+        auto card5 = DemoKit::AddCard(mainContainer, "Section5", Tr("5. NEW TAB BUTTON - STYLE B (VS Code-Style Icon Button)"));
         card5->layout.SetFlexGap(14);
 
         auto newTabBGroup = addExample(card5, "NewTabBLabel", "Click the '+' icon button to create new tabs (Code editor behavior)");
@@ -529,7 +529,7 @@ namespace UltraCanvas {
         // ========================================
         // SECTION 6: TAB POSITIONS (Top, Bottom, Left, Right)
         // ========================================
-        auto card6 = DemoKit::AddCard(mainContainer, "Section6", "6. TAB POSITIONS (Top, Bottom, Left, Right)");
+        auto card6 = DemoKit::AddCard(mainContainer, "Section6", Tr("6. TAB POSITIONS (Top, Bottom, Left, Right)"));
         card6->layout.SetFlexGap(14);
 
         // Bottom and left side by side (under each other when narrow), right below
@@ -575,7 +575,7 @@ namespace UltraCanvas {
         // SECTION 7: ADVANCED FEATURES
         // ========================================
         /*
-        auto card7 = DemoKit::AddCard(mainContainer, "Section7", "7. ADVANCED FEATURES (Drag & Drop, Callbacks, Custom Colors)");
+        auto card7 = DemoKit::AddCard(mainContainer, "Section7", Tr("7. ADVANCED FEATURES (Drag & Drop, Callbacks, Custom Colors)"));
         card7->layout.SetFlexGap(14);
 
         auto advancedGroup = addExample(card7, "AdvancedLabel", "Custom styled tabs with per-tab colors and event callbacks");
@@ -624,8 +624,8 @@ namespace UltraCanvas {
         // FOOTER
         // ========================================
         auto footer = DemoKit::AddCaption(mainContainer, "Footer",
-                "UltraCanvas Tabbed Container Demo\n"
-                "All features demonstrated above are production-ready and fully functional.");
+                Tr("UltraCanvas Tabbed Container Demo\n"
+                "All features demonstrated above are production-ready and fully functional."));
         footer->SetAlignment(TextAlignment::Center, VerticalAlignment::Top);
 
         return mainContainer;

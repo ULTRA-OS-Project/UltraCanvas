@@ -19,12 +19,12 @@
 namespace UltraCanvas {
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateSegmentedControlExamples() {
-        auto page = DemoKit::CreatePage("SegmentedControlExamples", "UltraCanvas Segmented Control Showcase",
-                "Demonstrating all segmented control styles, modes, and interaction patterns");
+        auto page = DemoKit::CreatePage("SegmentedControlExamples", Tr("UltraCanvas Segmented Control Showcase"),
+                Tr("Demonstrating all segmented control styles, modes, and interaction patterns"));
 
         // Status label for feedback
-        auto statusCard = DemoKit::AddCard(page, "StatusCard", "Selection feedback");
-        auto statusLabel = DemoKit::AddText(statusCard, "StatusLabel", "Click any segment to see selection feedback");
+        auto statusCard = DemoKit::AddCard(page, "StatusCard", Tr("Selection feedback"));
+        auto statusLabel = DemoKit::AddText(statusCard, "StatusLabel", Tr("Click any segment to see selection feedback"));
         statusLabel->SetFontSize(11);
         statusLabel->SetBackgroundColor(Color(245, 245, 245, 255));
         statusLabel->SetBorders(1.0f);
@@ -284,12 +284,12 @@ namespace UltraCanvas {
         // ========================================
         // KEYBOARD NAVIGATION INFO
         // ========================================
-        DemoKit::AddNotes(page, "KeyboardNav", "Keyboard Navigation", {
-                "Left/Right Arrow Keys: Navigate between segments",
-                "Up/Down Arrow Keys: Also navigate (alternative)",
-                "Home Key: Jump to first enabled segment",
-                "End Key: Jump to last enabled segment",
-                "Focus any control and use keyboard to select"});
+        DemoKit::AddNotes(page, "KeyboardNav", Tr("Keyboard Navigation"), {
+                Tr("Left/Right Arrow Keys: Navigate between segments"),
+                Tr("Up/Down Arrow Keys: Also navigate (alternative)"),
+                Tr("Home Key: Jump to first enabled segment"),
+                Tr("End Key: Jump to last enabled segment"),
+                Tr("Focus any control and use keyboard to select")});
 
         return page;
     }

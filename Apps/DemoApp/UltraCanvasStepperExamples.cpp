@@ -41,12 +41,12 @@ namespace UltraCanvas {
     } // namespace
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateStepperExamples() {
-        auto page = DemoKit::CreatePage("StepperExamples", "Stepper / Wizard Examples",
-                "A progress stepper for multi-step flows: completed / active / upcoming / error "
-                "states, connectors, four marker styles, horizontal & vertical, linear & non-linear.");
+        auto page = DemoKit::CreatePage("StepperExamples", Tr("Stepper / Wizard Examples"),
+                Tr("A progress stepper for multi-step flows: completed / active / upcoming / error "
+                "states, connectors, four marker styles, horizontal & vertical, linear & non-linear."));
 
         // ===== 1. HORIZONTAL WIZARD (linear) with Next/Prev =====
-        auto card1 = DemoKit::AddCard(page, "StL1", "Horizontal wizard (linear, numbered):");
+        auto card1 = DemoKit::AddCard(page, "StL1", Tr("Horizontal wizard (linear, numbered):"));
         auto wiz = CreateStepperWizard("StWiz", 0, 0, 620, 70,
                                        {"Account", "Profile", "Payment", "Review", "Done"});
         DemoKit::AddStretched(card1, wiz);
@@ -72,7 +72,7 @@ namespace UltraCanvas {
         wiz->onStepChanged = [updateStatus](int) { updateStatus(); };
 
         // ===== 2. HORIZONTAL WITH DESCRIPTIONS + ERROR STEP =====
-        auto card2 = DemoKit::AddCard(page, "StL2", "With descriptions and an error step:");
+        auto card2 = DemoKit::AddCard(page, "StL2", Tr("With descriptions and an error step:"));
         auto desc = std::make_shared<UltraCanvasStepper>("StDesc", 0, 0, 900, 80);
         desc->SetSteps({
             StepItem("Cart", "3 items"),
@@ -87,7 +87,7 @@ namespace UltraCanvas {
         auto cards = DemoKit::AddRow(page, "StepperCards");
 
         // ===== 3. VERTICAL STEPPER =====
-        auto card3 = DemoKit::AddCard(cards, "StL3", "Vertical:");
+        auto card3 = DemoKit::AddCard(cards, "StL3", Tr("Vertical:"));
         auto vert = CreateVerticalStepper("StVert", 0, 0, 320, 300);
         vert->SetSteps({
             StepItem("Select campaign", "Choose your target"),
@@ -104,7 +104,7 @@ namespace UltraCanvas {
         cards->AddChild(rightColumn);
 
         // ===== 4. DOT STYLE (compact, non-linear) =====
-        auto card4 = DemoKit::AddCard(rightColumn, "StL4", "Dot markers (compact, non-linear, no labels):");
+        auto card4 = DemoKit::AddCard(rightColumn, "StL4", Tr("Dot markers (compact, non-linear, no labels):"));
         auto dots = std::make_shared<UltraCanvasStepper>("StDots", 0, 0, 320, 40);
         dots->SetSteps({StepItem(""), StepItem(""), StepItem(""), StepItem(""), StepItem("")});
         dots->SetMarkerStyle(StepMarkerStyle::Dot);
@@ -114,7 +114,7 @@ namespace UltraCanvas {
         DemoKit::AddFixed(card4, dots);
 
         // ===== 5. NON-LINEAR CLICKABLE =====
-        auto card5 = DemoKit::AddCard(rightColumn, "StL5", "Non-linear (click any step to jump):");
+        auto card5 = DemoKit::AddCard(rightColumn, "StL5", Tr("Non-linear (click any step to jump):"));
         auto nl = CreateStepperWizard("StNL", 0, 0, 520, 70,
                                       {"One", "Two", "Three", "Four"});
         nl->SetNavigation(StepperNavigation::NonLinear);
@@ -129,10 +129,10 @@ namespace UltraCanvas {
         };
 
         // ===== INSTRUCTIONS =====
-        DemoKit::AddNotes(page, "StepperInstructions", "API", {
-                "AddStep(title, desc) / SetSteps({...}); SetCurrentStep / NextStep / PrevStep",
-                "SetOrientation(Horizontal|Vertical); SetMarkerStyle(NumberedCircle|IconCheck|Dot|Custom)",
-                "SetNavigation(Linear|NonLinear|Display); SetStepError / SetStepDisabled / SetStepIcon; onStepChanged"});
+        DemoKit::AddNotes(page, "StepperInstructions", Tr("API"), {
+                Tr("AddStep(title, desc) / SetSteps({...}); SetCurrentStep / NextStep / PrevStep"),
+                Tr("SetOrientation(Horizontal|Vertical); SetMarkerStyle(NumberedCircle|IconCheck|Dot|Custom)"),
+                Tr("SetNavigation(Linear|NonLinear|Display); SetStepError / SetStepDisabled / SetStepIcon; onStepChanged")});
 
         return page;
     }

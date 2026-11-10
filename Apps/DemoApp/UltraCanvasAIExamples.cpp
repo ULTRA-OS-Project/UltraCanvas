@@ -136,10 +136,10 @@ namespace {
 
 // ===== AI VECTOR EXAMPLES IMPLEMENTATION =====
 std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateAIVectorExamples() {
-    auto page = DemoKit::CreatePage("AIExamples", "Adobe Illustrator (.ai) Artwork",
-            "An .ai file is a PDF that also carries Illustrator's own artwork data. Saved without PDF "
+    auto page = DemoKit::CreatePage("AIExamples", Tr("Adobe Illustrator (.ai) Artwork"),
+            Tr("An .ai file is a PDF that also carries Illustrator's own artwork data. Saved without PDF "
             "compatibility, the PDF page draws nothing and that private data is the only copy of the "
-            "drawing - which is what AIConverter reads.");
+            "drawing - which is what AIConverter reads."));
     // The viewers pan and zoom themselves: the page is the area's height.
     page->SetFillsArea(true);
 
@@ -235,7 +235,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateAIVector
     auto toolbar = DemoKit::AddRow(viewerCard, "AIToolbar", 6);
     toolbar->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
 
-    DemoKit::AddText(toolbar, "AISampleLabel", "Artwork:");
+    DemoKit::AddText(toolbar, "AISampleLabel", Tr("Artwork:"));
 
     auto sampleDropdown = CreateDropdown("AISample", 0, 0, 220, 30);
     for (const auto& sample : AISamples()) sampleDropdown->AddItem(sample.fileName);
@@ -296,14 +296,14 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateAIVector
     DemoKit::Add(viewerCard, statusLabel);
 
     // ----- Format notes -----
-    auto notes = DemoKit::AddCard(page, "AINotes", "How UltraCanvas handles .ai");
+    auto notes = DemoKit::AddCard(page, "AINotes", Tr("How UltraCanvas handles .ai"));
     DemoKit::AddText(notes, "AINotesText",
-            "Reading: AIConverter takes the artwork from the file's /AIPrivateData streams and interprets "
+            Tr("Reading: AIConverter takes the artwork from the file's /AIPrivateData streams and interprets "
             "Illustrator's art language - paths, compound paths, clips, layers, groups, the grey / CMYK / RGB / "
             "spot colour operators and the AI9 transparency operator. Legacy (v8 and earlier) EPS-based .ai files "
             "carry the same language in the open and read through the same parser. A .ai saved WITH \"Create PDF "
             "compatible file\" also draws through its PDF page, so it falls back to the MuPDF engine. Writing: "
-            "AIConverter is export-only and emits PDF under the .ai extension.");
+            "AIConverter is export-only and emits PDF under the .ai extension."));
 
     return page;
 }

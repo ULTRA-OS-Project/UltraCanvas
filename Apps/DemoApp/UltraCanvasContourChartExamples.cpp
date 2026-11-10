@@ -215,7 +215,7 @@ namespace UltraCanvas {
         // every label and checkbox as tall as its text.
         const int ctrlH = 26;
 
-        DemoKit::AddHeading(panel, "CtCtrlHeading", "Options");
+        DemoKit::AddHeading(panel, "CtCtrlHeading", Tr("Options"));
 
         auto addLabel = [&](const std::string& id, const std::string& text) {
             auto l = DemoKit::CreateText(id, text);
@@ -354,10 +354,10 @@ namespace UltraCanvas {
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateContourChartExamples() {
         auto page = DemoKit::CreatePage("ContourRoot",
-                "Contour Charts - Isolines, Filled Bands, Density & 3D Surfaces",
-                "A contour chart draws curves of equal value through a scalar field. "
+                Tr("Contour Charts - Isolines, Filled Bands, Density & 3D Surfaces"),
+                Tr("A contour chart draws curves of equal value through a scalar field. "
                 "Feed it a grid, or a raw point cloud it turns into a density field. "
-                "Each tab's second line says what the mouse does there.");
+                "Each tab's second line says what the mouse does there."));
         // The page is the display area's height and the tabs take what the
         // title and description leave; each chart follows its tab's size.
         page->SetFillsArea(true);

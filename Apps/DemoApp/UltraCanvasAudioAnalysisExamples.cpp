@@ -222,11 +222,11 @@ namespace UltraCanvas {
     std::shared_ptr<UltraCanvasUIElement>
     UltraCanvasDemoApplication::CreateAudioAnalysisExamples() {
         auto page = DemoKit::CreatePage("AnaRoot",
-                "Audio Analysis Charts - Spectrum, Envelope & Correlogram",
-                "Three classic audio-derived plots built entirely with the generic "
+                Tr("Audio Analysis Charts - Spectrum, Envelope & Correlogram"),
+                Tr("Three classic audio-derived plots built entirely with the generic "
                 "chart elements: an averaged FFT magnitude spectrum (area chart), an "
                 "RMS amplitude envelope over time (area chart), and a normalized "
-                "autocorrelation correlogram (bar chart). Pick a signal per tab.");
+                "autocorrelation correlogram (bar chart). Pick a signal per tab."));
         auto card = DemoKit::AddCard(page, "AnaCard");
 
         // ----- Decode the bundled sample track once (shared by all tabs) -----
@@ -276,7 +276,7 @@ namespace UltraCanvas {
             // Signal picker row.
             auto pickRow = DemoKit::CreateRow(id + "Pick", 8);
             pickRow->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
-            auto pickLbl = DemoKit::CreateText(id + "PickLbl", "Signal:");
+            auto pickLbl = DemoKit::CreateText(id + "PickLbl", Tr("Signal:"));
             pickLbl->SetFontSize(11);
             pickLbl->SetMargin(0, 0, 0, 12);
             DemoKit::Add(pickRow, pickLbl);

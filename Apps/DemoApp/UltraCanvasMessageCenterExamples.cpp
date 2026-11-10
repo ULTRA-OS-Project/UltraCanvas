@@ -137,11 +137,11 @@ struct DemoSource {
 
 std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateMessageCenterExamples() {
 #ifdef ULTRACANVAS_HAS_MESSAGECENTER
-    auto container = DemoKit::CreatePage("MessageCenterExamples", "Message Centre",
-            "One element on the UltraMessage feed: chats, mail and notifications, grouped by source, "
+    auto container = DemoKit::CreatePage("MessageCenterExamples", Tr("Message Centre"),
+            Tr("One element on the UltraMessage feed: chats, mail and notifications, grouped by source, "
             "filtered by section and service, searchable, with the notification's own actions. "
             "This page hosts a private broker with an in-memory journal and seeds it; "
-            "\"Post another\" adds a message live.");
+            "\"Post another\" adds a message live."));
     // The feed scrolls itself: the page is the area's height and the feed
     // takes what the texts and the bar leave.
     container->SetFillsArea(true);
@@ -160,7 +160,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateMessageC
         post->boxConstraints = limits;
     }
     DemoKit::Add(bar, post);
-    auto readout = DemoKit::CreateText("MCReadout", "Unread: 0");
+    auto readout = DemoKit::CreateText("MCReadout", Tr("Unread: 0"));
     DemoKit::Add(bar, readout, 1);
 
     auto center = CreateMessageCenter("MCCenter", 0, 0, 0, 0);
@@ -192,9 +192,9 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateMessageC
     };
     // The source lives as long as the page: captured by the button above.
 #else
-    auto container = DemoKit::CreatePage("MessageCenterExamples", "Message Centre",
-            "This build has no UltraMessage module (ULTRACANVAS_ENABLE_ULTRAMESSAGE needs UltraDatabase), "
-            "so the message centre element is not available.");
+    auto container = DemoKit::CreatePage("MessageCenterExamples", Tr("Message Centre"),
+            Tr("This build has no UltraMessage module (ULTRACANVAS_ENABLE_ULTRAMESSAGE needs UltraDatabase), "
+            "so the message centre element is not available."));
 #endif
     return container;
 }

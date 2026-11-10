@@ -139,7 +139,7 @@ namespace {
         // ----- Dialog style + options -----
         auto styleRow = ButtonRow("SysDlgStyleRow");
         DemoKit::Add(root, styleRow);
-        DemoKit::AddText(styleRow, "SysDlgStyleLabel", "Dialog style:");
+        DemoKit::AddText(styleRow, "SysDlgStyleLabel", Tr("Dialog style:"));
 
         auto styleSelector = CreateSegmentedControl("SysDlgStyle", 0, 0, 220, 30);
         styleSelector->AddSegment("ULTRA OS");
@@ -156,7 +156,7 @@ namespace {
         DemoKit::Add(styleRow, togglesCheck);
 
         // ----- Files -----
-        DemoKit::AddHeading(root, "SysDlgFilesLabel", "Files");
+        DemoKit::AddHeading(root, "SysDlgFilesLabel", Tr("Files"));
         auto fileRow = ButtonRow("SysDlgFileRow");
         DemoKit::Add(root, fileRow);
         auto openBtn     = AddButton(fileRow, "SysDlgOpen",     "Open file",        120);
@@ -165,14 +165,14 @@ namespace {
         auto folderBtn   = AddButton(fileRow, "SysDlgFolder",   "Select folder",    140);
 
         // ----- Printing -----
-        DemoKit::AddHeading(root, "SysDlgPrintLabel", "Printing");
+        DemoKit::AddHeading(root, "SysDlgPrintLabel", Tr("Printing"));
         auto printRow = ButtonRow("SysDlgPrintRow");
         DemoKit::Add(root, printRow);
         auto printSettingsBtn = AddButton(printRow, "SysDlgPrintSettings", "Print settings",   150);
         auto printTestBtn     = AddButton(printRow, "SysDlgPrintTest",     "Print test page",  150);
 
         // ----- Messages and input -----
-        DemoKit::AddHeading(root, "SysDlgMsgLabel", "Messages and input");
+        DemoKit::AddHeading(root, "SysDlgMsgLabel", Tr("Messages and input"));
         auto msgRow = ButtonRow("SysDlgMsgRow");
         DemoKit::Add(root, msgRow);
         auto infoBtn     = AddButton(msgRow, "SysDlgInfo",     "Information", 110);
@@ -185,7 +185,7 @@ namespace {
         // ----- Result log -----
         auto logHeader = ButtonRow("SysDlgLogHeader");
         DemoKit::Add(root, logHeader);
-        DemoKit::Add(logHeader, DemoKit::CreateHeading("SysDlgLogLabel", "What the dialogs answered"));
+        DemoKit::Add(logHeader, DemoKit::CreateHeading("SysDlgLogLabel", Tr("What the dialogs answered")));
         auto clearBtn = AddButton(logHeader, "SysDlgClear", "Clear", 70);
 
         auto log = std::make_shared<UltraCanvasTextArea>("SysDlgLog");
@@ -400,10 +400,10 @@ namespace {
 
 // ===== ULTRA OS SYSTEM DIALOGS DEMO =====
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateSystemDialogsExamples() {
-        auto page = DemoKit::CreatePage("SystemDialogsExamples", "ULTRA OS system dialogs",
-                "The dialogs an application asks the system for. \"ULTRA OS\" shows the "
+        auto page = DemoKit::CreatePage("SystemDialogsExamples", Tr("ULTRA OS system dialogs"),
+                Tr("The dialogs an application asks the system for. \"ULTRA OS\" shows the "
                 "framework's own dialogs, the same on every platform; \"Native\" shows the "
-                "host platform's. The print dialog is always the platform's.");
+                "host platform's. The print dialog is always the platform's."));
         // The log and the documentation scroll themselves: the page is the
         // area's height and the tabs take what the title and description leave.
         page->SetFillsArea(true);

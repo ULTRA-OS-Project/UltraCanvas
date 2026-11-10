@@ -18,9 +18,9 @@
 namespace UltraCanvas {
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateTimePickerExamples() {
-        auto container = DemoKit::CreatePage("TimePickerExamples", "Time Picker Examples",
-                "Click the clock button (or press Up/Down) to open the popup. "
-                "You can also type a time directly, or scroll the wheel over a field.");
+        auto container = DemoKit::CreatePage("TimePickerExamples", Tr("Time Picker Examples"),
+                Tr("Click the clock button (or press Up/Down) to open the popup. "
+                "You can also type a time directly, or scroll the wheel over a field."));
 
         const int fieldW = 190;      // all picker fields share the same width
 
@@ -114,13 +114,13 @@ namespace UltraCanvas {
         };
 
         // ===== INSTRUCTIONS =====
-        DemoKit::AddNotes(container, "TimePickerInstructions", "Interaction", {
-                "Click the clock button (or press Up/Down) to open the popup \xE2\x80\x94 spinners or the round clock dial",
-                "Clock dial: pick the hour on the dial (outer ring 00/13\xE2\x80\x93""23, inner 12/01\xE2\x80\x93""11), then the minutes; "
-                "click the header to switch between hour / minute / AM/PM",
-                "Type a time directly into the field (e.g. \"9:30\", \"2:15 pm\") and press Enter \xE2\x80\x94 "
-                "click inside the text to place the cursor, use Left/Right/Home/End/Del to edit",
-                "Scroll the mouse wheel over a field to nudge the time by the minute step"});
+        DemoKit::AddNotes(container, "TimePickerInstructions", Tr("Interaction"), {
+                Tr("Click the clock button (or press Up/Down) to open the popup \xE2\x80\x94 spinners or the round clock dial"),
+                Tr("Clock dial: pick the hour on the dial (outer ring 00/13\xE2\x80\x93""23, inner 12/01\xE2\x80\x93""11), then the minutes; "
+                "click the header to switch between hour / minute / AM/PM"),
+                Tr("Type a time directly into the field (e.g. \"9:30\", \"2:15 pm\") and press Enter \xE2\x80\x94 "
+                "click inside the text to place the cursor, use Left/Right/Home/End/Del to edit"),
+                Tr("Scroll the mouse wheel over a field to nudge the time by the minute step")});
 
         return container;
     }

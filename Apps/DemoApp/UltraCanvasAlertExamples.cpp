@@ -20,18 +20,18 @@
 namespace UltraCanvas {
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateAlertExamples() {
-        auto page = DemoKit::CreatePage("AlertExamples", "Alert Dialog Examples",
-                "An Alert is a modal, always-on-top message box the user cannot miss - it blocks "
-                "the app until dismissed. Each severity has its own colour and icon.");
+        auto page = DemoKit::CreatePage("AlertExamples", Tr("Alert Dialog Examples"),
+                Tr("An Alert is a modal, always-on-top message box the user cannot miss - it blocks "
+                "the app until dismissed. Each severity has its own colour and icon."));
 
         auto row = DemoKit::AddRow(page, "AlertRow");
-        auto buttonsCard = DemoKit::AddCard(row, "AlertButtonsCard", "Raise an alert",
-                "Each button opens an alert; its result is shown below.");
+        auto buttonsCard = DemoKit::AddCard(row, "AlertButtonsCard", Tr("Raise an alert"),
+                Tr("Each button opens an alert; its result is shown below."));
         auto buttons = DemoKit::CreateColumn("AlertButtons", 12);
         DemoKit::Add(buttonsCard, buttons);
 
         // Status readout, updated from the alert callbacks.
-        auto status = DemoKit::CreateText("AlertStatus", "Result: (press a button)");
+        auto status = DemoKit::CreateText("AlertStatus", Tr("Result: (press a button)"));
         status->SetBackgroundColor(Color(240, 240, 240));
         status->SetPadding(4);
         DemoKit::Add(buttonsCard, status);
@@ -163,9 +163,9 @@ namespace UltraCanvas {
 
         // ===== INSTRUCTIONS =====
         auto usageCard = DemoKit::AddCard(row, "AlertInstructions",
-                "UltraCanvasAlert (include/UltraCanvasAlert.h)");
+                Tr("UltraCanvasAlert (include/UltraCanvasAlert.h)"));
         DemoKit::AddText(usageCard, "AlertInstructionsText",
-                "One-liners (non-blocking, result via callback):\n"
+                Tr("One-liners (non-blocking, result via callback):\n"
                 "  UltraCanvasAlert::Info(msg);\n"
                 "  UltraCanvasAlert::Successful(msg);\n"
                 "  UltraCanvasAlert::Warning(msg);\n"
@@ -186,7 +186,7 @@ namespace UltraCanvas {
                 "the content spans the full width - use it when the alert body "
                 "carries its own graphic that has to sit in the middle.\n\n"
                 "For a message that must not interrupt: a toast - see the "
-                "Notification Toast page (UltraCanvasNotificationToast).")->SetFontSize(11);
+                "Notification Toast page (UltraCanvasNotificationToast)."))->SetFontSize(11);
 
         return page;
     }

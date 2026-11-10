@@ -58,19 +58,19 @@ std::filesystem::path PrepareDemoLocale() {
 }  // namespace
 
 std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateLocalisationEditorExamples() {
-    auto container = DemoKit::CreatePage("LocalisationEditorPage", "Localisation Editor",
-        "Every set an application's texts come from in one grid - its own set, the base sets it "
+    auto container = DemoKit::CreatePage("LocalisationEditorPage", Tr("Localisation Editor"),
+        Tr("Every set an application's texts come from in one grid - its own set, the base sets it "
         "takes, the standard set - with where each text comes from in the row. Pick a language, "
         "type in the edit row, take a base set from Sets..., promote or demote a row from its "
         "right-click menu, Undo, Save. This page works on a copy of the shipped catalogues under "
-        "the temp folder with a sample application, so nothing here changes the resources tree.");
+        "the temp folder with a sample application, so nothing here changes the resources tree."));
     container->SetFillsArea(true);
 
     auto card = DemoKit::CreateCard("LocalisationEditorCard");
     DemoKit::Add(container, card, 1);
     card->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0)).SetFlexShrink(1);
 
-    auto status = DemoKit::AddText(card, "LocalisationEditorStatus", "Ready.");
+    auto status = DemoKit::AddText(card, "LocalisationEditorStatus", Tr("Ready."));
     status->SetTextColor(Color(90, 90, 90, 255));
 
     auto editor = std::make_shared<UltraCanvasLocalisationEditor>("LocalisationEditorDemo");

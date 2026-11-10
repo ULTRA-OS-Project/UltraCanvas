@@ -49,10 +49,10 @@ namespace UltraCanvas {
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateMenuExamples() {
         debugOutput << "Creating Menu Examples..." << std::endl;
 
-        auto container = DemoKit::CreatePage("MenuContainer", "Menus", "Various menu types and styles");
+        auto container = DemoKit::CreatePage("MenuContainer", Tr("Menus"), Tr("Various menu types and styles"));
 
         // Context Menus
-        auto contextCard = DemoKit::AddCard(container, "ContextLabel", "Context Menu Examples:");
+        auto contextCard = DemoKit::AddCard(container, "ContextLabel", Tr("Context Menu Examples:"));
 
         // Button to trigger context menu
         auto contextMenuBtn = MakeMenuDemoButton("ContextMenuBtn", "Right-Click for Context Menu", 280);
@@ -130,7 +130,7 @@ namespace UltraCanvas {
         };
 
         // Main Menu Bar
-        auto mainMenuCard = DemoKit::AddCard(container, "MainMenuLabel", "Main Menu Bar Example:");
+        auto mainMenuCard = DemoKit::AddCard(container, "MainMenuLabel", Tr("Main Menu Bar Example:"));
 
 // Create main menu bar using MenuType::Menubar and MenuBuilder
         auto mainMenuBar = MenuBuilder("MainMenuBar", 0, 0, 960, 32)
@@ -287,7 +287,7 @@ namespace UltraCanvas {
 
         // Info label about menu features
         // Popup menu example
-        auto popupCard = DemoKit::AddCard(container, "PopupLabel", "Popup Menu Example:");
+        auto popupCard = DemoKit::AddCard(container, "PopupLabel", Tr("Popup Menu Example:"));
 
         // Create a sample list for popup menu: a column as wide as its
         // longest item (at least the 300 px it had), each item as tall as
@@ -364,13 +364,13 @@ namespace UltraCanvas {
         }
 
         // Info about menu features
-        DemoKit::AddNotes(container, "InfoLabel", "Menu Features:", {
-                "Context menus with right-click",
-                "Main menu bar with dropdowns",
-                "Submenus and nested navigation",
-                "Checkbox and radio button items",
-                "Keyboard shortcuts and flat icons, in the label's colour on the dark menu",
-                "Multiple visual styles (Default, Dark, Flat)"});
+        DemoKit::AddNotes(container, "InfoLabel", Tr("Menu Features:"), {
+                Tr("Context menus with right-click"),
+                Tr("Main menu bar with dropdowns"),
+                Tr("Submenus and nested navigation"),
+                Tr("Checkbox and radio button items"),
+                Tr("Keyboard shortcuts and flat icons, in the label's colour on the dark menu"),
+                Tr("Multiple visual styles (Default, Dark, Flat)")});
 
         debugOutput << "✓ Menu examples created" << std::endl;
         return container;

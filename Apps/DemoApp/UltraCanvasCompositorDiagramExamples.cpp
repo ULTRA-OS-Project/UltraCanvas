@@ -1463,10 +1463,10 @@ std::shared_ptr<UltraCanvasUIElement>
 UltraCanvasDemoApplication::CreateCompositorDiagramExamples() {
     const int BTNBAR_H = 36;
 
-    auto page = DemoKit::CreatePage("compDemoRoot", "Compositor Diagram",
-        "Comprehensive showcase: typed sockets, embedded widgets, groups, "
+    auto page = DemoKit::CreatePage("compDemoRoot", Tr("Compositor Diagram"),
+        Tr("Comprehensive showcase: typed sockets, embedded widgets, groups, "
         "history, edge labels. Use the toolbar to toggle features, undo/redo, "
-        "copy/paste. Tab key opens the node palette (host-rendered).");
+        "copy/paste. Tab key opens the node palette (host-rendered)."));
     // The diagrams pan and zoom themselves: the page is the area's height and
     // the card takes what the title leaves - tabs (grow) / button bar / status.
     page->SetFillsArea(true);
@@ -1501,8 +1501,8 @@ UltraCanvasDemoApplication::CreateCompositorDiagramExamples() {
     const int INNER_H = 560;
 
     auto statusLabel = DemoKit::CreateCaption("compStatus",
-        "Ready - Wheel zoom, drag to pan, shift+drag for selection box. "
-        "Tab in canvas opens palette.");
+        Tr("Ready - Wheel zoom, drag to pan, shift+drag for selection box. "
+        "Tab in canvas opens palette."));
     statusLabel->SetTextColor(Color(90, 90, 100, 255));
 
     // ---- Tab 1: Recreate Images ----

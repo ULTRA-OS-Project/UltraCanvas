@@ -28,9 +28,9 @@
 namespace UltraCanvas {
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateTernaryChartExamples() {
-        auto page = DemoKit::CreatePage("ternaryMainContainer", "Ternary Chart",
-                "Things made of three parts - votes, soil, alloys - as points in a triangle: each "
-                "corner is all of one part, and the three shares of every point add up to 100%");
+        auto page = DemoKit::CreatePage("ternaryMainContainer", Tr("Ternary Chart"),
+                Tr("Things made of three parts - votes, soil, alloys - as points in a triangle: each "
+                "corner is all of one part, and the three shares of every point add up to 100%"));
 
         // The chart beside its controls; a narrow window puts the controls under it.
         auto row = DemoKit::AddRow(page, "ternaryContent");
@@ -136,9 +136,9 @@ namespace UltraCanvas {
 
         addCaption("ternarySelectionCaption", "SELECTED");
         auto selection = DemoKit::AddCaption(sidebar, "ternarySelection",
-                "Click a point for its three shares, or a soil class to count the samples in "
+                Tr("Click a point for its three shares, or a soil class to count the samples in "
                 "it. Drag across the triangle to zoom in; double-click to zoom out. Click a "
-                "legend entry to hide a series.");
+                "legend entry to hide a series."));
         selection->SetTextColor(DemoKit::BodyText());
         selection->SetBackgroundColor(Color(248, 249, 250, 255));
         selection->SetPadding(10);

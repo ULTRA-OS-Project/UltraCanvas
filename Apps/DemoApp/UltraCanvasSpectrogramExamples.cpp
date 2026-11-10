@@ -186,11 +186,11 @@ namespace UltraCanvas {
     UltraCanvasDemoApplication::CreateSpectrogramExamples() {
         const int PANEL_W = 300;
 
-        auto root = DemoKit::CreatePage("SpecRoot", "Spectrogram - Time x Frequency Analysis",
-                "Short-Time Fourier Transform of an audio signal rendered through the "
+        auto root = DemoKit::CreatePage("SpecRoot", Tr("Spectrogram - Time x Frequency Analysis"),
+                Tr("Short-Time Fourier Transform of an audio signal rendered through the "
                 "heatmap engine. Every STFT parameter and display option is live: pick a "
                 "signal, then experiment with FFT size, overlap, window, magnitude mode, "
-                "dynamic range, frequency cap and colour maps.");
+                "dynamic range, frequency cap and colour maps."));
 
         // ----- State + spectrogram element -----
         auto st = std::make_shared<SpectrogramDemoState>();

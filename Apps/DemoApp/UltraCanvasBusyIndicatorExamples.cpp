@@ -23,10 +23,10 @@
 namespace UltraCanvas {
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateBusyIndicatorExamples() {
-        auto page = DemoKit::CreatePage("BusyIndicatorExamples", "Busy Indicator Examples",
-                "\"Working on it\" when there is no percentage to show. Six kinds "
+        auto page = DemoKit::CreatePage("BusyIndicatorExamples", Tr("Busy Indicator Examples"),
+                Tr("\"Working on it\" when there is no percentage to show. Six kinds "
                 "(BusyIndicatorKind), all driven by Start() / Stop(); the timer runs "
-                "only while an indicator is turning.");
+                "only while an indicator is turning."));
 
         // Every indicator on the page, for Start all / Stop all. Raw pointers:
         // the page owns the elements and the buttons live in it too.
@@ -58,8 +58,8 @@ namespace UltraCanvas {
         const float smallColumn = 130, largeColumn = 190, rowHeight = 56;
 
         // ===== THE SIX KINDS =====
-        auto kindsCard = DemoKit::AddCard(page, "BusyKindsCard", "The six kinds",
-                "Each at a small and a large size and in a second colour");
+        auto kindsCard = DemoKit::AddCard(page, "BusyKindsCard", Tr("The six kinds"),
+                Tr("Each at a small and a large size and in a second colour"));
 
         auto headerRow = DemoKit::AddRow(kindsCard, "BusyHeaderRow");
         auto columnHeader = [&](const std::shared_ptr<UltraCanvasContainer>& parent,
@@ -144,7 +144,7 @@ namespace UltraCanvas {
         }
 
         // ===== DOTRING: THE THREE FADES =====
-        auto fadeCard = DemoKit::AddCard(page, "BusyFadeCard", "DotRing, three ways (dotRingFade):");
+        auto fadeCard = DemoKit::AddCard(page, "BusyFadeCard", Tr("DotRing, three ways (dotRingFade):"));
         auto fadeRow = DemoKit::AddRow(fadeCard, "BusyFadeRow", 24);
 
         struct FadeDemo {
@@ -176,7 +176,7 @@ namespace UltraCanvas {
 
         // ===== A STATUS LINE, AS AN APP USES ONE =====
         auto statusCard = DemoKit::AddCard(page, "BusyStatusCard",
-                                           "In a status line (indicator, then the text):");
+                                           Tr("In a status line (indicator, then the text):"));
         auto statusRow = DemoKit::AddRow(statusCard, "BusyStatusRow", 24);
         statusRow->layout.SetFlexGap(10, 32);
 
@@ -201,7 +201,7 @@ namespace UltraCanvas {
         }
 
         // ===== START / STOP =====
-        auto controlCard = DemoKit::AddCard(page, "BusyControlCard", "Start / Stop");
+        auto controlCard = DemoKit::AddCard(page, "BusyControlCard", Tr("Start / Stop"));
         auto buttonRow = DemoKit::AddRow(controlCard, "BusyButtonRow", 10);
 
         // Buttons as wide as their text.
@@ -225,9 +225,9 @@ namespace UltraCanvas {
         DemoKit::Add(buttonRow, idleBtn);
 
         DemoKit::AddCaption(controlCard, "BusyInstructions",
-            "Stop all halts every timer; a stopped indicator draws nothing unless "
+            Tr("Stop all halts every timer; a stopped indicator draws nothing unless "
             "hideWhenStopped is false (\"Show when stopped\" toggles it), and then rests "
-            "where it stopped. Start all resumes from there.");
+            "where it stopped. Start all resumes from there."));
 
         return page;
     }

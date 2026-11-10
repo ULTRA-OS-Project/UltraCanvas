@@ -128,12 +128,12 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateNotifica
         "This build has no UltraMessage module (ULTRACANVAS_ENABLE_ULTRAMESSAGE needs UltraDatabase), "
         "so the notification toast is not available.";
 #endif
-    auto container = DemoKit::CreatePage("ToastExamples", "Notification Toast", subtitleText);
+    auto container = DemoKit::CreatePage("ToastExamples", Tr("Notification Toast"), subtitleText);
 
 #ifdef ULTRACANVAS_HAS_MESSAGECENTER
     // ----- the element, on the page -----
     auto elementCard = DemoKit::AddCard(container, "ToastElementCaption",
-                                        "The element: UltraCanvasNotificationToast");
+                                        Tr("The element: UltraCanvasNotificationToast"));
     // Both cards report here; it sits under the buttons.
     auto status = DemoKit::CreateText("ToastStatus", "");
 
@@ -160,7 +160,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateNotifica
 
     // ----- real toasts at the corner of the screen -----
     auto screenCard = DemoKit::AddCard(container, "ToastScreenCaption",
-                                       "On the screen: UltraCanvasNotificationToastHost");
+                                       Tr("On the screen: UltraCanvasNotificationToastHost"));
     auto state = std::make_shared<ToastDemoState>();
     state->host.onAction = [status = status.get()](const NotificationToastContent& c, const std::string& action) {
         status->SetText("\"" + action + "\" on \"" + c.summary + "\" (" + c.appName +
@@ -216,9 +216,9 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateNotifica
     DemoKit::Add(screenCard, status);
 
     // ----- toast or alert -----
-    auto notesCard = DemoKit::AddCard(container, "ToastNotes", "Toast or Alert?");
+    auto notesCard = DemoKit::AddCard(container, "ToastNotes", Tr("Toast or Alert?"));
     DemoKit::AddText(notesCard, "ToastNotesText",
-        "An Alert (the Alert / Message Box page) is for what must be answered before the user goes on: it is "
+        Tr("An Alert (the Alert / Message Box page) is for what must be answered before the user goes on: it is "
         "modal, centred on its window and keeps the keyboard focus until a button is pressed. A toast is for "
         "what the user should see but need not answer now: it sits in a corner, never takes the focus, and "
         "goes by itself - low 5 s, normal 8 s, critical stays; the pointer resting on it holds it.\n\n"
@@ -232,7 +232,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateNotifica
         "the bus is gone (UltraCanvasNotificationActivation.h):\n"
         "  UltraCanvas::RegisterNotificationActivator(\"org.example.myapp\", [](const auto& click) { Open(click.launch); });\n\n"
         "A desktop shell runs the host itself: UltraCanvasNotificationToastHost toasts; "
-        "toasts.SetScreenMargins(0, 0, barWidth, 0); toasts.Connect();");
+        "toasts.SetScreenMargins(0, 0, barWidth, 0); toasts.Connect();"));
 #endif
     return container;
 }

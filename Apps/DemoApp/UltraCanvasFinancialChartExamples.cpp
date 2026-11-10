@@ -53,8 +53,8 @@ namespace UltraCanvas {
 // ===== FINANCIAL CHART EXAMPLES =====
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateFinancialChartExamples() {
         auto container = DemoKit::CreatePage("FinancialChartContainer",
-                "Candlestick Chart Components - Stock Market Data Visualization",
-                "Stock market OHLC and candlestick charts");
+                Tr("Candlestick Chart Components - Stock Market Data Visualization"),
+                Tr("Stock market OHLC and candlestick charts"));
 
         // ===== CREATE SAMPLE STOCK DATA =====
         auto stockData = GenerateSampleStockData("ULTR", 90);  // 90 days of stock data
@@ -102,17 +102,17 @@ namespace UltraCanvas {
         auto panels = DemoKit::AddRow(container, "FinancialChartPanels");
         CreateFinancialChartControlPanel(panels, stockChart);
 
-        DemoKit::AddNotes(panels, "InfoPanel", "Financial Chart Features", {
-                "Candlestick, OHLC & Heikin-Ashi styles",
-                "Volume panel with bars",
-                "Moving averages (configurable period)",
-                "Interactive tooltips with OHLC data",
-                "Zoom and pan navigation",
-                "Real-time data updates support",
-                "Custom color schemes",
-                "Multiple timeframes",
-                "Technical indicators (planned)",
-                "Export to PNG/PDF (planned)"});
+        DemoKit::AddNotes(panels, "InfoPanel", Tr("Financial Chart Features"), {
+                Tr("Candlestick, OHLC & Heikin-Ashi styles"),
+                Tr("Volume panel with bars"),
+                Tr("Moving averages (configurable period)"),
+                Tr("Interactive tooltips with OHLC data"),
+                Tr("Zoom and pan navigation"),
+                Tr("Real-time data updates support"),
+                Tr("Custom color schemes"),
+                Tr("Multiple timeframes"),
+                Tr("Technical indicators (planned)"),
+                Tr("Export to PNG/PDF (planned)")});
 
         return container;
     }
@@ -124,7 +124,7 @@ namespace UltraCanvas {
 
         // The control panel: a card in the given row, one row of controls
         // per line of the old panel; each row wraps when the card is narrow.
-        auto controlPanel = DemoKit::AddCard(container, "ControlPanel", "Chart Controls", "", 560);
+        auto controlPanel = DemoKit::AddCard(container, "ControlPanel", Tr("Chart Controls"), "", 560);
         auto addControlRow = [&controlPanel](const std::string& id) {
             auto row = DemoKit::AddRow(controlPanel, id, 10);
             row->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);

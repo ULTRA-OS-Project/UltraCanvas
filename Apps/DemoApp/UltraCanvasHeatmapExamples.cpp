@@ -245,7 +245,7 @@ namespace UltraCanvas {
         const int pw = 272;
         const int ctrlH = 26;
 
-        DemoKit::AddHeading(panel, "HmCtrlHeading", "Options");
+        DemoKit::AddHeading(panel, "HmCtrlHeading", Tr("Options"));
 
         auto addLabel = [&](const std::string& id, const std::string& text) {
             auto l = DemoKit::CreateText(id, text);
@@ -370,10 +370,10 @@ namespace UltraCanvas {
 // ===== MAIN CREATOR =====
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateHeatmapExamples() {
         auto page = DemoKit::CreatePage("HeatmapRoot",
-                "Heatmap Charts - Interactive Options & Variants",
-                "Each variant has its own tab so it can use the full area. "
+                Tr("Heatmap Charts - Interactive Options & Variants"),
+                Tr("Each variant has its own tab so it can use the full area. "
                 "Tip: on the Interactive tab pick the Correlation preset, then enable "
-                "Diverging + an RdBu colour map + a triangular mask.");
+                "Diverging + an RdBu colour map + a triangular mask."));
         // The page is the display area's height and the tabs take what the
         // title and description leave; each chart follows its tab's size.
         page->SetFillsArea(true);

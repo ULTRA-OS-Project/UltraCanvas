@@ -365,7 +365,7 @@ std::shared_ptr<UltraCanvasUIElement> BuildHorizontalTab() {
     DemoKit::AddFixed(page.content, chart);
 
     auto notes = DemoKit::CreateText("HorNotes",
-        "Orientation\n\n"
+        Tr("Orientation\n\n"
         "SetOrientation(FunnelOrientation::HorizontalFunnel) swaps the flow axis and the cross axis. "
         "Everything else - the shape modes, the label columns, the connector necks, the hit testing - "
         "works exactly as it does vertically, so a funnel can be rotated without touching any other setting.\n\n"
@@ -374,7 +374,7 @@ std::shared_ptr<UltraCanvasUIElement> BuildHorizontalTab() {
         "The chart measures the text against the slab before drawing it and simply omits any line that will "
         "not fit, which is why the narrow Sales band drops to fewer lines than Inquiries. "
         "SetAutoContrastInsideLabels(true) picks white or near-black text per stage from the fill's brightness, "
-        "so the grey, blue, amber and green bands all stay readable.");
+        "so the grey, blue, amber and green bands all stay readable."));
     notes->SetFontSize(10.5f);
     notes->SetTextColor(Color(70, 70, 70, 255));
     DemoKit::Add(page.tab, notes);
@@ -443,9 +443,9 @@ std::shared_ptr<UltraCanvasUIElement> BuildPlaygroundTab() {
     panel->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(330));
     panel->SetPadding(8, 0, 0, 0);
 
-    DemoKit::AddHeading(panel, "PlayControls", "Chart controls");
+    DemoKit::AddHeading(panel, "PlayControls", Tr("Chart controls"));
 
-    DemoKit::AddText(panel, "PlayShapeLabel", "Shape mode")->SetFontSize(11);
+    DemoKit::AddText(panel, "PlayShapeLabel", Tr("Shape mode"))->SetFontSize(11);
 
     auto shapeDrop = std::make_shared<UltraCanvasDropdown>("PlayShape", 0, 0, 330, 26);
     shapeDrop->AddItem("Segmented bars + necks");
@@ -465,7 +465,7 @@ std::shared_ptr<UltraCanvasUIElement> BuildPlaygroundTab() {
     };
     DemoKit::AddStretched(panel, shapeDrop);
 
-    DemoKit::AddText(panel, "PlayScaleLabel", "Scale mode")->SetFontSize(11);
+    DemoKit::AddText(panel, "PlayScaleLabel", Tr("Scale mode"))->SetFontSize(11);
 
     auto scaleDrop = std::make_shared<UltraCanvasDropdown>("PlayScale", 0, 0, 330, 26);
     scaleDrop->AddItem("Width proportional");
@@ -483,7 +483,7 @@ std::shared_ptr<UltraCanvasUIElement> BuildPlaygroundTab() {
     };
     DemoKit::AddStretched(panel, scaleDrop);
 
-    DemoKit::AddText(panel, "PlayColorLabel", "Colour mode (stages here carry their own segment colours)")->SetFontSize(11);
+    DemoKit::AddText(panel, "PlayColorLabel", Tr("Colour mode (stages here carry their own segment colours)"))->SetFontSize(11);
 
     auto colorDrop = std::make_shared<UltraCanvasDropdown>("PlayColor", 0, 0, 330, 26);
     colorDrop->AddItem("Sequential ramp");
@@ -501,7 +501,7 @@ std::shared_ptr<UltraCanvasUIElement> BuildPlaygroundTab() {
     };
     DemoKit::AddStretched(panel, colorDrop);
 
-    DemoKit::AddText(panel, "PlayTipLabel", "Tip mode")->SetFontSize(11);
+    DemoKit::AddText(panel, "PlayTipLabel", Tr("Tip mode"))->SetFontSize(11);
 
     auto tipDrop = std::make_shared<UltraCanvasDropdown>("PlayTip", 0, 0, 330, 26);
     tipDrop->AddItem("Last stage keeps its width");
@@ -517,7 +517,7 @@ std::shared_ptr<UltraCanvasUIElement> BuildPlaygroundTab() {
     };
     DemoKit::AddStretched(panel, tipDrop);
 
-    DemoKit::AddText(panel, "PlayGapLabel", "Gap between stages")->SetFontSize(11);
+    DemoKit::AddText(panel, "PlayGapLabel", Tr("Gap between stages"))->SetFontSize(11);
 
     auto gapSlider = std::make_shared<UltraCanvasSlider>("PlayGap", 0, 0, 330, 24);
     gapSlider->SetRange(0.0f, 60.0f);
@@ -571,14 +571,14 @@ std::shared_ptr<UltraCanvasUIElement> BuildPlaygroundTab() {
     };
     DemoKit::AddStretched(panel, dropOffCheck);
 
-    auto selectionTitle = DemoKit::AddHeading(panel, "PlaySelTitle", "Selected stage");
+    auto selectionTitle = DemoKit::AddHeading(panel, "PlaySelTitle", Tr("Selected stage"));
     selectionTitle->SetFontSize(12);
     selectionTitle->SetMargin(6, 0, 0, 0);
 
     // Rewritten by the click callbacks below; it grows with the report.
     auto selection = DemoKit::AddText(panel, "PlaySelection",
-                                      "Click a stage to read its figures here.\nClick a neck to report the "
-                                      "conversion through it.");
+                                      Tr("Click a stage to read its figures here.\nClick a neck to report the "
+                                      "conversion through it."));
     selection->SetFontSize(11);
     selection->SetTextColor(Color(70, 70, 70, 255));
 
@@ -625,11 +625,11 @@ std::shared_ptr<UltraCanvasUIElement> BuildPlaygroundTab() {
 // =============================================================================
 
 std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateFunnelChartExamples() {
-    auto page = DemoKit::CreatePage("FunnelChartExamples", "Funnel Chart Examples",
-        "The segmented e-commerce funnel with conversion necks, a solid marketing cone with "
+    auto page = DemoKit::CreatePage("FunnelChartExamples", Tr("Funnel Chart Examples"),
+        Tr("The segmented e-commerce funnel with conversion necks, a solid marketing cone with "
         "leader-line callouts, the rounded card layout, a dark presentation funnel with badges "
         "and annotations, a horizontal sales funnel with a terminal callout, and a playground "
-        "exposing every shape, scale and colour mode live");
+        "exposing every shape, scale and colour mode live"));
     // The page is the display area's height and the tabs take what the title
     // and description leave; each tab page scrolls inside.
     page->SetFillsArea(true);

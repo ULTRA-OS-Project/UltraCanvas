@@ -118,8 +118,8 @@ namespace {
 }
 
 std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateWordCloudExamples() {
-    auto mainContainer = DemoKit::CreatePage("wordCloudMainContainer", "Word Cloud / Word Map Suite",
-            "Frequency-sized word layouts with shapes, rotation schemes, raw-text analysis and a center image");
+    auto mainContainer = DemoKit::CreatePage("wordCloudMainContainer", Tr("Word Cloud / Word Map Suite"),
+            Tr("Frequency-sized word layouts with shapes, rotation schemes, raw-text analysis and a center image"));
 
     // Controls, the tabs and the statistics side by side; a narrow window
     // puts the sidebars under the tabs.

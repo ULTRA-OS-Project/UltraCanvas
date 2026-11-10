@@ -57,8 +57,8 @@ namespace UltraCanvas {
     } // namespace
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateTimelineChartExamples() {
-        auto mainContainer = DemoKit::CreatePage("tcMainContainer", "Timeline Chart",
-                "Milestones and spans placed to scale on a real date axis - zoom with the wheel, drag to pan, double-click to reset");
+        auto mainContainer = DemoKit::CreatePage("tcMainContainer", Tr("Timeline Chart"),
+                Tr("Milestones and spans placed to scale on a real date axis - zoom with the wheel, drag to pan, double-click to reset"));
 
         // Controls | tabs with the status line | view and about. The side cards
         // wrap under the chart in a narrow window.
@@ -116,10 +116,10 @@ namespace UltraCanvas {
         auto btnAddMilestone = AddTimelineButton(leftSidebar, "tcBtnAdd", "Add Milestone", Color(108, 117, 125, 255));
 
         auto helpBox = DemoKit::AddCaption(leftSidebar, "tcHelpBox",
-                "INTERACTION TIPS\n\n"
+                Tr("INTERACTION TIPS\n\n"
                 "- Wheel zooms about the cursor date\n"
                 "- Drag to pan the range\n"
-                "- Click an entry to select");
+                "- Click an entry to select"));
         helpBox->SetTextColor(DemoKit::BodyText());
         helpBox->SetBackgroundColor(Color(255, 243, 205, 255));
         helpBox->SetPadding(10);
@@ -131,7 +131,7 @@ namespace UltraCanvas {
         DemoKit::AddFixed(chartCard, tabbedContainer);
 
         auto statusBar = DemoKit::AddText(chartCard, "tcStatusBar",
-                "Ready - wheel to zoom, drag to pan, click an entry to select it");
+                Tr("Ready - wheel to zoom, drag to pan, click an entry to select it"));
         statusBar->SetFontSize(11);
         statusBar->SetBackgroundColor(Color(233, 236, 239, 255));
         statusBar->SetPadding(15);
@@ -145,7 +145,7 @@ namespace UltraCanvas {
         statsPanel->SetBackgroundColor(Color(248, 249, 250, 255));
         statsPanel->SetPadding(12);
 
-        DemoKit::AddHeading(rightSidebar, "tcAboutTitle", "ABOUT THIS TAB");
+        DemoKit::AddHeading(rightSidebar, "tcAboutTitle", Tr("ABOUT THIS TAB"));
 
         auto aboutPanel = DemoKit::AddText(rightSidebar, "tcAboutPanel", "");
         aboutPanel->SetFontSize(9);

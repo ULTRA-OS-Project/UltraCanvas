@@ -564,10 +564,10 @@ namespace UltraCanvas {
     }
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateDependenciesExamples() {
-        auto container = DemoKit::CreatePage("DependenciesExamples", "Dependencies & Third-Party Libraries",
-                "Grouped per module; (bundled) = vendored, (optional) = feature-gated.  "
+        auto container = DemoKit::CreatePage("DependenciesExamples", Tr("Dependencies & Third-Party Libraries"),
+                Tr("Grouped per module; (bundled) = vendored, (optional) = feature-gated.  "
                 "Click a library name for its website & source-code links, "
-                "click a license tag — e.g. (MIT) — for the license description.");
+                "click a license tag — e.g. (MIT) — for the license description."));
         // The table scrolls itself: the page is the area's height.
         container->SetFillsArea(true);
 

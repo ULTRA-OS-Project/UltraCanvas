@@ -37,8 +37,8 @@
 namespace UltraCanvas {
  
 std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateBlockDiagramExamples() {
-    auto page = DemoKit::CreatePage("DiagramEditor", "HVAC System Block Diagram",
-            "Automotive climate control: refrigerant cycle (top), airflow path (bottom), control modules (left).");
+    auto page = DemoKit::CreatePage("DiagramEditor", Tr("HVAC System Block Diagram"),
+            Tr("Automotive climate control: refrigerant cycle (top), airflow path (bottom), control modules (left)."));
     auto card = DemoKit::AddCard(page, "DiagramCard");
  
     // -------------------------------------------------------------------------

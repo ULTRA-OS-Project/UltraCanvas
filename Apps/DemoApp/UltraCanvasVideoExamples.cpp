@@ -44,7 +44,7 @@ namespace UltraCanvas {
     }
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateVideoExamples() {
-        auto page = DemoKit::CreatePage("VideoExamples", "Video Player & Recorder", "");
+        auto page = DemoKit::CreatePage("VideoExamples", Tr("Video Player & Recorder"), "");
 
         auto status = DemoKit::AddText(page, "VideoStatus", "");
         if (UltraCanvasVideoDevices::IsAvailable()) {
@@ -67,7 +67,7 @@ namespace UltraCanvas {
         auto cardRow = DemoKit::AddRow(page, "VideoCards");
 
         // ----- Playback -----
-        auto playCard = DemoKit::AddCard(cardRow, "VPlayLabel", "Playback");
+        auto playCard = DemoKit::AddCard(cardRow, "VPlayLabel", Tr("Playback"));
 
         auto player = CreateVideoPlayer("DemoVideoPlayer", 0, 0, 460, 300);
         auto playerWeak = std::weak_ptr<UltraCanvasVideoPlayerElement>(player);
@@ -91,7 +91,7 @@ namespace UltraCanvas {
         DemoKit::Add(playButtons, openBtn);
 
         // ----- Recording -----
-        auto recCard = DemoKit::AddCard(cardRow, "VRecLabel", "Recording");
+        auto recCard = DemoKit::AddCard(cardRow, "VRecLabel", Tr("Recording"));
 
         auto recorder = CreateVideoRecorder("DemoVideoRecorder", 0, 0, 460, 300);
         DemoKit::AddFixed(recCard, recorder);
@@ -184,7 +184,7 @@ namespace UltraCanvas {
         // reports, and switches the recorder's input device on change.
         auto camRow = DemoKit::AddRow(recCard, "VCamSelRow", 8);
         camRow->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
-        DemoKit::AddText(camRow, "VCamSelLabel", "Camera:");
+        DemoKit::AddText(camRow, "VCamSelLabel", Tr("Camera:"));
 
         // Takes the rest of the line; a long label moves it onto its own.
         auto camDrop = CreateDropdown("CameraSelect", 0, 0, 300, 28);

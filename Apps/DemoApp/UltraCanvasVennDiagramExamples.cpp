@@ -87,8 +87,8 @@ namespace UltraCanvas {
     }
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateVennDiagramExamples() {
-        auto page = DemoKit::CreatePage("vennMainContainer", "Venn Diagram Analysis Suite",
-                "Interactive visualization of set relationships - circular and rectangular styles");
+        auto page = DemoKit::CreatePage("vennMainContainer", Tr("Venn Diagram Analysis Suite"),
+                Tr("Interactive visualization of set relationships - circular and rectangular styles"));
 
         // Controls, the tabs and the statistics side by side; a narrow window
         // puts the sidebars under the tabs.
@@ -165,7 +165,7 @@ namespace UltraCanvas {
                 "Total Sets: 3\nTotal Items: 16\nUnique Regions: 7\n\nIntersections:\n- 2-way: 3\n- 3-way: 1",
                 10, Color(248, 249, 250, 255), 12);
 
-        auto legendTitle = DemoKit::CreateText("legendTitle", "INTERACTIVE LEGEND");
+        auto legendTitle = DemoKit::CreateText("legendTitle", Tr("INTERACTIVE LEGEND"));
         legendTitle->SetFontSize(11);
         legendTitle->SetFontWeight(FontWeight::Bold);
         legendTitle->SetTextColor(Color(73, 80, 87, 255));
@@ -272,7 +272,7 @@ namespace UltraCanvas {
         auto hierarchyTab = MakeVennTabPage("hierarchyTab", "hierarchyTitle", "Algebraic Structures (Set Hierarchy)");
 
         auto hierarchyHint = DemoKit::AddText(hierarchyTab, "hierarchyHint",
-                "Nested rectangular sets: Group superset Abelian Group superset Ring superset Field");
+                Tr("Nested rectangular sets: Group superset Abelian Group superset Ring superset Field"));
         hierarchyHint->SetFontSize(11);
         hierarchyHint->SetAlignment(TextAlignment::Center, VerticalAlignment::Top);
         hierarchyHint->SetTextColor(Color(108, 117, 125, 255));

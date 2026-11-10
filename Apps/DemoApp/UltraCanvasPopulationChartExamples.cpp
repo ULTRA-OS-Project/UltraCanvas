@@ -17,8 +17,8 @@ namespace UltraCanvas {
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreatePopulationChartExamples() {
         auto container = DemoKit::CreatePage("PopulationChartContainer",
-                "Population Pyramid Charts - Germany vs Russia Comparison",
-                "Demographic comparison showing age and gender distribution (Data: 2024-2025)");
+                Tr("Population Pyramid Charts - Germany vs Russia Comparison"),
+                Tr("Demographic comparison showing age and gender distribution (Data: 2024-2025)"));
 
         // The two pyramids side by side; a card is never narrower than its
         // chart, so on a narrow page the second one moves under the first.
@@ -142,14 +142,14 @@ namespace UltraCanvas {
         // ===== STATISTICS PANEL =====
         auto statsCard = DemoKit::AddCard(container, "PopulationStatsCard");
         auto statsLabel = DemoKit::AddText(statsCard, "StatsLabel",
-                "Key Statistics: Germany (83.6M, 49.1% M / 50.9% F, Median Age 45.5) | "
-                "Russia (144M, 46.4% M / 53.6% F, Median Age 40.3)");
+                Tr("Key Statistics: Germany (83.6M, 49.1% M / 50.9% F, Median Age 45.5) | "
+                "Russia (144M, 46.4% M / 53.6% F, Median Age 40.3)"));
         statsLabel->SetFontSize(11);
         statsLabel->SetTextColor(Color(60, 60, 60));
 
         DemoKit::AddCaption(statsCard, "InsightsLabel",
-                "Notable: Russia has 72% more population but Germany has older age structure. "
-                "Russia shows significant female surplus in 30+ age groups.");
+                Tr("Notable: Russia has 72% more population but Germany has older age structure. "
+                "Russia shows significant female surplus in 30+ age groups."));
 
         return container;
     }

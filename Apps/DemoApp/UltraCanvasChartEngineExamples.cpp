@@ -1124,11 +1124,11 @@ UltraCanvasDemoApplication::CreateChartEngineExamples() {
     const std::vector<EngineDataset> datasets = MakeDatasets();
 
     auto page = DemoKit::CreatePage("ChartEngineExamples",
-            "Chart Engine — one chart definition, every engine service, switchable live",
-            "The chart below is ONE bar-chart class implementing only the engine's content contract: "
+            Tr("Chart Engine — one chart definition, every engine service, switchable live"),
+            Tr("The chart below is ONE bar-chart class implementing only the engine's content contract: "
             "DescribeAxes, RenderChartContent and a label collector. "
             "Every option switches an engine service, not a chart-type feature; the tabs group them "
-            "by service. Hover a bar for the engine's hit-region tooltip.");
+            "by service. Hover a bar for the engine's hit-region tooltip."));
     // The chart takes whatever height the options leave: the page is the
     // area's height, not its content's.
     page->SetFillsArea(true);
@@ -1145,8 +1145,8 @@ UltraCanvasDemoApplication::CreateChartEngineExamples() {
     DemoKit::Add(chartCard, chart, 1);
 
     auto status = DemoKit::AddCaption(chartCard, "EngineStatus",
-            "Vertical projection · linear axis · grouped bars · grid from the "
-            "value ticks · average + target limiters");
+            Tr("Vertical projection · linear axis · grouped bars · grid from the "
+            "value ticks · average + target limiters"));
     status->SetFontSize(11);
     auto* statusPtr = status.get();
 

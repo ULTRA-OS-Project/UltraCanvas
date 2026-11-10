@@ -193,10 +193,10 @@ namespace UltraCanvas {
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateCircularProgressChartExamples() {
         auto page = DemoKit::CreatePage("CircularProgressContainer",
-            "Circular Progress Chart Examples - Angle-Encoded Progress Rings",
-            "One value per ring, encoded as arc sweep. Sub-styles: concentric rings, single progress ring and "
+            Tr("Circular Progress Chart Examples - Angle-Encoded Progress Rings"),
+            Tr("One value per ring, encoded as arc sweep. Sub-styles: concentric rings, single progress ring and "
             "progress pie. Features tracks (auto-tint / explicit / hidden), round caps, arc-tip callouts, stacked "
-            "start labels, centre disc with text, numbered legend chips, tooltips, hover and click callbacks.");
+            "start labels, centre disc with text, numbered legend chips, tooltips, hover and click callbacks."));
 
         // A card is at least as wide as its chart (plus padding and border).
         const float cardChrome = 2 * DemoKit::kCardPadding + 2;
@@ -214,14 +214,14 @@ namespace UltraCanvas {
         // ===== EXAMPLE 1: INFOGRAPHIC RINGS (the reference image) =====
         auto topRow = DemoKit::AddRow(examples, "CpTopRow");
         auto infoCard = DemoKit::AddCard(topRow, "CpInfoCard",
-            "Circular Infographic (Numbered Legend, Centre Disc, Tip Callouts)", "", 460 + cardChrome);
+            Tr("Circular Infographic (Numbered Legend, Centre Disc, Tip Callouts)"), "", 460 + cardChrome);
 
         auto infoChart = BuildInfographicRings("InfographicRings", 0, 0, 460, 320);
         DemoKit::AddFixed(infoCard, infoChart);
 
         // ===== EXAMPLE 2: STACKED START LABELS =====
         auto stackedCard = DemoKit::AddCard(topRow, "CpStackedCard",
-            "Radial Bar Card (Stacked Start Labels, No Tracks)", "", 460 + cardChrome);
+            Tr("Radial Bar Card (Stacked Start Labels, No Tracks)"), "", 460 + cardChrome);
 
         auto stackedChart = BuildStackedLabelRings("StackedLabelRings", 0, 0, 460, 320);
         DemoKit::AddFixed(stackedCard, stackedChart);
@@ -229,7 +229,7 @@ namespace UltraCanvas {
         // ===== EXAMPLE 3: SINGLE COMPLETION RING + PROGRESS PIE =====
         auto bottomRow = DemoKit::AddRow(examples, "CpBottomRow");
         auto singleCard = DemoKit::AddCard(bottomRow, "CpSingleCard",
-            "Single Completion Ring and Progress Pie", "", 460 + cardChrome);
+            Tr("Single Completion Ring and Progress Pie"), "", 460 + cardChrome);
         auto singlePair = DemoKit::CreateRow("CpSinglePair", 0, false);
         DemoKit::Add(singleCard, singlePair);
 
@@ -246,7 +246,7 @@ namespace UltraCanvas {
 
         // ===== EXAMPLE 4: DONUT KPI PIE (new pie element features) =====
         auto donutCard = DemoKit::AddCard(bottomRow, "CpDonutCard",
-            "Donut KPI (Pie Element: Start Angle, Centre KPI, Click Callback)", "", 460 + cardChrome);
+            Tr("Donut KPI (Pie Element: Start Angle, Centre KPI, Click Callback)"), "", 460 + cardChrome);
 
         auto revenueData = std::make_shared<ChartDataVector>();
         std::vector<ChartDataPoint> revenue = {

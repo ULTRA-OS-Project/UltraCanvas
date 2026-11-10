@@ -430,9 +430,9 @@ namespace UltraCanvas {
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateWYSIWYGExamples() {
         // ===== HEADER =====
-        auto root = DemoKit::CreatePage("WYSIWYGExamples", "WYSIWYG Editor — UltraCanvasRichTextEdit",
-                "The caret sits in rendered text and bold is a state of the selection. "
-                "Edits a UCRichDocument, so .odt / .docx round-trip with their formatting intact.");
+        auto root = DemoKit::CreatePage("WYSIWYGExamples", Tr("WYSIWYG Editor — UltraCanvasRichTextEdit"),
+                Tr("The caret sits in rendered text and bold is a state of the selection. "
+                "Edits a UCRichDocument, so .odt / .docx round-trip with their formatting intact."));
         // The editor scrolls itself: the page is the area's height and the
         // editor takes what the toolbars, status and notes leave.
         root->SetFillsArea(true);
@@ -729,10 +729,10 @@ namespace UltraCanvas {
         page->status = status.get();
 
         auto notes = DemoKit::AddCaption(root, "wysiwygNotes",
-                "Known limits: columns in a multi-column section are not balanced, a right-to-left "
+                Tr("Known limits: columns in a multi-column section are not balanced, a right-to-left "
                 "paragraph keeps left-to-right indents, the input method's candidate window is not "
                 "placed at the caret, and screen readers are tested on Linux only so far (the Windows "
-                "and macOS bridges are untested). See UltraCanvasRichTextEdit.md.");
+                "and macOS bridges are untested). See UltraCanvasRichTextEdit.md."));
         notes->SetFontSize(11);
 
         // ===== KEEPING THE TOOLBARS IN STEP =====
@@ -917,9 +917,9 @@ namespace UltraCanvas {
     } // namespace
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateWYSIWYGInternationalExamples() {
-        auto root = DemoKit::CreatePage("WYSIWYGIntlExamples", "WYSIWYG Editor — Chinese, Arabic & Myanmar",
-                "Chinese lines break between any two characters; Arabic paragraphs start at the right; "
-                "Myanmar syllables are shaped from stacked letters. Click in and type, or use the arrow keys.");
+        auto root = DemoKit::CreatePage("WYSIWYGIntlExamples", Tr("WYSIWYG Editor — Chinese, Arabic & Myanmar"),
+                Tr("Chinese lines break between any two characters; Arabic paragraphs start at the right; "
+                "Myanmar syllables are shaped from stacked letters. Click in and type, or use the arrow keys."));
         // The editor scrolls itself and takes the height the rest leaves.
         root->SetFillsArea(true);
         auto card = DemoKit::CreateCard("wysiwygIntlCard");
@@ -991,10 +991,10 @@ namespace UltraCanvas {
         DemoKit::Add(card, status);
 
         auto notes = DemoKit::AddCaption(root, "wysiwygIntlNotes",
-                "Text is shaped and ordered by the Unicode bidirectional rules, so an English word or a "
+                Tr("Text is shaped and ordered by the Unicode bidirectional rules, so an English word or a "
                 "number inside Arabic keeps its own direction. A paragraph whose first letter is Arabic "
                 "starts at the right by itself; Right-to-left makes any paragraph start there. Myanmar is set in Noto Sans "
-                "Myanmar, which the demo ships and registers; the text uses the Unicode encoding, not Zawgyi.");
+                "Myanmar, which the demo ships and registers; the text uses the Unicode encoding, not Zawgyi."));
         notes->SetFontSize(11);
 
         edit->onSelectionChanged = describe;

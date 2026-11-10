@@ -459,7 +459,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateModelFor
     // ===== STATS PANEL =====
     // The panel grows with the report: a COLLADA scene says a great deal
     // more than a STEP solid.
-    auto statsContainer = DemoKit::AddCard(infoColumn, "MFStatsPanel", "What the reader found");
+    auto statsContainer = DemoKit::AddCard(infoColumn, "MFStatsPanel", Tr("What the reader found"));
     auto statsText = DemoKit::AddText(statsContainer, "MFStatsText", "");
     statsText->SetFontSize(11);
     statsText->SetTextColor(Color(50, 50, 50, 255));
@@ -467,7 +467,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateModelFor
     // ===== CAPABILITY PANEL =====
     // The capability grid is a fixed twelve lines, but the per-sample note
     // under it is not - and it is a paragraph when the build has no converter.
-    auto capsContainer = DemoKit::AddCard(infoColumn, "MFCapsPanel", "What the format can carry");
+    auto capsContainer = DemoKit::AddCard(infoColumn, "MFCapsPanel", Tr("What the format can carry"));
     auto capsText = DemoKit::AddText(capsContainer, "MFCapsText", "");
     capsText->SetFontSize(11);
     capsText->SetTextColor(Color(50, 50, 50, 255));

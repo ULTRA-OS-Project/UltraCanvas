@@ -69,9 +69,9 @@ namespace UltraCanvas {
     } // namespace
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateODTExamples() {
-        auto page = DemoKit::CreatePage("ODTExamples", "OpenDocument Text (.odt) / Word (.docx) Documents",
-                "Documents parsed by UltraCanvasFileLoader::LoadTextDocument and shown read-only "
-                "in the WYSIWYG view, in the document's own page size, margins, headers and footers");
+        auto page = DemoKit::CreatePage("ODTExamples", Tr("OpenDocument Text (.odt) / Word (.docx) Documents"),
+                Tr("Documents parsed by UltraCanvasFileLoader::LoadTextDocument and shown read-only "
+                "in the WYSIWYG view, in the document's own page size, margins, headers and footers"));
         // The document view scrolls its pages itself: the page is the area's
         // height and the view takes what the title and the toolbar leave.
         page->SetFillsArea(true);
@@ -93,7 +93,7 @@ namespace UltraCanvas {
         openBtn->boxConstraints = openLimits;
         DemoKit::Add(toolbar, openBtn);
 
-        auto status = DemoKit::CreateText("odtStatus", "Supported formats: .odt, .docx, .doc, .tex, .md");
+        auto status = DemoKit::CreateText("odtStatus", Tr("Supported formats: .odt, .docx, .doc, .tex, .md"));
         status->SetTextColor(Color(90, 90, 90, 255));
         DemoKit::Add(toolbar, status, 1);
 

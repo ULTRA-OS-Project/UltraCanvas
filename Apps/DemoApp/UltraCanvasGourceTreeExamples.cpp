@@ -324,8 +324,8 @@ void GenerateStorageDeviceData(UltraCanvasGourceTree* tree) {
 
 // ===== MAIN DEMO IMPLEMENTATION =====
 std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGourceTreeExamples() {
-    auto page = DemoKit::CreatePage("GourceTreeExamples", "Gource Tree Visualization",
-        "Radial tree visualization for file systems and storage devices - inspired by Gource");
+    auto page = DemoKit::CreatePage("GourceTreeExamples", Tr("Gource Tree Visualization"),
+        Tr("Radial tree visualization for file systems and storage devices - inspired by Gource"));
     // The trees pan and zoom themselves: the tabs fill the area.
     page->SetFillsArea(true);
 
@@ -339,7 +339,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGourceTr
 
     // Status label for interaction feedback
     auto statusLabel = DemoKit::AddText(card, "GourceStatus",
-        "Ready - Click on nodes to select, double-click to expand/collapse directories");
+        Tr("Ready - Click on nodes to select, double-click to expand/collapse directories"));
     statusLabel->SetFontSize(11);
     statusLabel->SetTextColor(Color(60, 60, 60));
     statusLabel->SetBackgroundColor(Color(240, 240, 245));

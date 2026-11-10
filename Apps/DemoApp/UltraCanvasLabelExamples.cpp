@@ -30,10 +30,10 @@ namespace UltraCanvas {
     } // namespace
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateLabelExamples() {
-        auto container = DemoKit::CreatePage("LabelExamples", "Label Examples", "");
+        auto container = DemoKit::CreatePage("LabelExamples", Tr("Label Examples"), "");
 
         // ===== BASIC AND HEADER LABELS =====
-        auto basicCard = DemoKit::AddCard(container, "LabelBasicCard", "Basic labels");
+        auto basicCard = DemoKit::AddCard(container, "LabelBasicCard", Tr("Basic labels"));
 
         // Basic Label
         auto basicLabel = std::make_shared<UltraCanvasLabel>("BasicLabel",
@@ -50,7 +50,7 @@ namespace UltraCanvas {
         DemoKit::Add(basicCard, headerLabel);
 
         // ===== STATUS LABELS (square corners) =====
-        auto statusCard = DemoKit::AddCard(container, "LabelStatusCard", "Status labels");
+        auto statusCard = DemoKit::AddCard(container, "LabelStatusCard", Tr("Status labels"));
         auto statusRow = DemoKit::AddRow(statusCard, "LabelStatusRow", 10);
 
         auto successLabel = std::make_shared<UltraCanvasLabel>("SuccessLabel", "Success");
@@ -75,7 +75,7 @@ namespace UltraCanvas {
         DemoKit::Add(statusRow, errorLabel);
 
         // ===== MULTI-LINE LABEL =====
-        auto multiCard = DemoKit::AddCard(container, "LabelMultiCard", "Multi-line label");
+        auto multiCard = DemoKit::AddCard(container, "LabelMultiCard", Tr("Multi-line label"));
         auto multiLabel = std::make_shared<UltraCanvasLabel>("MultiLabel",
                 "This is a multi-line label that demonstrates\nhow text wrapping works with longer content.\nIt supports multiple lines and proper alignment.");
         multiLabel->SetWrap(TextWrap::WrapWord);
@@ -91,11 +91,11 @@ namespace UltraCanvas {
         // The radius is honoured for the background fill even when the border
         // colour is transparent, which lets us draw rounded labels both WITH a
         // visible border and WITHOUT one.
-        auto roundedSection = DemoKit::AddCard(container, "RoundedSection", "Rounded Corner Labels");
+        auto roundedSection = DemoKit::AddCard(container, "RoundedSection", Tr("Rounded Corner Labels"));
 
         // ----- Rounded WITH border -----
         DemoKit::AddCaption(roundedSection, "RoundedWithBorderCaption",
-                "With border — SetBorders(width, color, radius):");
+                Tr("With border — SetBorders(width, color, radius):"));
         auto withBorderRow = DemoKit::AddRow(roundedSection, "RoundedWithBorderRow", 20);
 
         // Filled, rounded, with a coloured border.
@@ -117,7 +117,7 @@ namespace UltraCanvas {
 
         // ----- Rounded WITHOUT border -----
         DemoKit::AddCaption(roundedSection, "RoundedNoBorderCaption",
-                "Without border — transparent border colour keeps the rounded fill:");
+                Tr("Without border — transparent border colour keeps the rounded fill:"));
         auto pillRow = DemoKit::AddRow(roundedSection, "RoundedPillRow", 10);
 
         // Filled status pills with no visible border (border colour transparent).

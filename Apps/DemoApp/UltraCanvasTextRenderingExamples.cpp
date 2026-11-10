@@ -18,8 +18,8 @@
 namespace UltraCanvas {
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateTextRenderingSettingsExamples() {
-        auto mainContainer = DemoKit::CreatePage("TextRenderingExamples", "Cairo Text Rendering Settings",
-                "Configure Cairo text antialiasing, font hinting style, and hint metrics. Changes apply globally and take effect immediately.");
+        auto mainContainer = DemoKit::CreatePage("TextRenderingExamples", Tr("Cairo Text Rendering Settings"),
+                Tr("Configure Cairo text antialiasing, font hinting style, and hint metrics. Changes apply globally and take effect immediately."));
 
         // A floor for the first column's width, so the rows line up while a
         // longer text still widens it.
@@ -30,7 +30,7 @@ namespace UltraCanvas {
         };
 
         // ===== CONTROLS SECTION =====
-        auto controlsCard = DemoKit::AddCard(mainContainer, "ControlsTitle", "Rendering Options");
+        auto controlsCard = DemoKit::AddCard(mainContainer, "ControlsTitle", Tr("Rendering Options"));
 
         // One option: its name, the dropdown, and what it does.
         auto addOption = [&controlsCard, &setMinWidth](const std::string& rowId, const std::string& labelId,
@@ -113,7 +113,7 @@ namespace UltraCanvas {
         };
 
         // ===== SAMPLE TEXT SECTION =====
-        auto sampleCard = DemoKit::AddCard(mainContainer, "SampleTitle", "Sample Text Preview");
+        auto sampleCard = DemoKit::AddCard(mainContainer, "SampleTitle", Tr("Sample Text Preview"));
         sampleCard->layout.SetFlexGap(10);
 
         std::vector<SampleDef> samples = {
@@ -130,7 +130,7 @@ namespace UltraCanvas {
         }
 
         // Bold samples
-        auto boldCard = DemoKit::AddCard(mainContainer, "BoldSampleTitle", "Bold Text Samples");
+        auto boldCard = DemoKit::AddCard(mainContainer, "BoldSampleTitle", Tr("Bold Text Samples"));
         boldCard->layout.SetFlexGap(10);
 
         std::vector<SampleDef> boldSamples = {

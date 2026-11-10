@@ -39,9 +39,9 @@ namespace UltraCanvas {
         // for the 170 px controls and the card's padding.
         const float SIDEBAR_CARD_W = SIDEBAR_W + 2 * DemoKit::kCardPadding + 2;
 
-        auto mainContainer = DemoKit::CreatePage("fishboneMain", "Fishbone (Ishikawa) Diagram",
-                "Cause-and-effect root cause analysis with eight design presets, "
-                "category checklists (6M / 8P / 4S) and Mermaid ishikawa-beta export");
+        auto mainContainer = DemoKit::CreatePage("fishboneMain", Tr("Fishbone (Ishikawa) Diagram"),
+                Tr("Cause-and-effect root cause analysis with eight design presets, "
+                "category checklists (6M / 8P / 4S) and Mermaid ishikawa-beta export"));
 
         // Controls | diagram tabs | statistics. The sidebars keep their width;
         // the middle card takes the rest, and on a narrow window the cards
@@ -175,7 +175,7 @@ namespace UltraCanvas {
         DemoKit::AddFixed(centerCard, tabbedContainer);
 
         auto statusBar = DemoKit::CreateText("fishboneStatus",
-                "Ready - click a cause to select it, hover for tooltips");
+                Tr("Ready - click a cause to select it, hover for tooltips"));
         statusBar->SetFontSize(11);
         statusBar->SetBackgroundColor(Color(233, 236, 239, 255));
         statusBar->SetPadding(15);

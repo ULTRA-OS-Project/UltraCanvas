@@ -411,9 +411,9 @@ std::shared_ptr<UltraCanvasContainer> MakeToolbar(
 } // namespace
 
 std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGitGraphExamples() {
-    auto page = DemoKit::CreatePage("GitGraphExamples", "Git Graph",
-        "Commit-graph visualization: git-flow swimlanes, branch operations with "
-        "changed-file boxes, and the repository lane view");
+    auto page = DemoKit::CreatePage("GitGraphExamples", Tr("Git Graph"),
+        Tr("Commit-graph visualization: git-flow swimlanes, branch operations with "
+        "changed-file boxes, and the repository lane view"));
     // The graphs pan and zoom themselves: the tabs fill the area.
     page->SetFillsArea(true);
 
@@ -425,8 +425,8 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGitGraph
     DemoKit::Add(card, tabs, 1);
 
     auto statusLabel = DemoKit::AddText(card, "GitGraphStatus",
-                                        "Ready - click a commit to select it, drag to pan, "
-                                        "wheel to zoom");
+                                        Tr("Ready - click a commit to select it, drag to pan, "
+                                        "wheel to zoom"));
     statusLabel->SetFontSize(11);
     statusLabel->SetTextColor(Color(60, 60, 60));
     statusLabel->SetBackgroundColor(Color(240, 240, 245));

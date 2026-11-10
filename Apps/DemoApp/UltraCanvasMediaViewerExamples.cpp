@@ -41,20 +41,20 @@ namespace UltraCanvas {
     }
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateMediaViewerExamples() {
-        auto page = DemoKit::CreatePage("MediaViewerExamples", "UltraCanvas Media Viewer widget",
-                "The framed area below is the live widget, opened on the media/images "
+        auto page = DemoKit::CreatePage("MediaViewerExamples", Tr("UltraCanvas Media Viewer widget"),
+                Tr("The framed area below is the live widget, opened on the media/images "
                 "folder. The arrow keys browse the folder right away — no click "
                 "needed (Left = previous, Right = next); clicking the picture does "
                 "the same (left click = next, right click = previous) and works "
                 "while zoomed. Try the slideshow, zoom, rotate, mirror, the Adjust "
-                "panel, Save as and Info.");
+                "panel, Save as and Info."));
         // The viewer scales and scrolls its picture itself: the page is the
         // area's height and the viewer takes what the texts leave.
         page->SetFillsArea(true);
 
         // The card is the frame and caption that separate the live widget
         // from the programmer-facing note below it.
-        auto card = DemoKit::CreateCard("MediaViewerWidgetFrame", "Media Viewer widget");
+        auto card = DemoKit::CreateCard("MediaViewerWidgetFrame", Tr("Media Viewer widget"));
         DemoKit::Add(page, card, 1);
         card->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0)).SetFlexShrink(1);
 
@@ -73,11 +73,11 @@ namespace UltraCanvas {
 
         // Programmer-facing note.
         DemoKit::AddCaption(page, "MediaViewerNote",
-                "Images load/save through UCImage and UltraCanvasFileLoader, with rotation, "
+                Tr("Images load/save through UCImage and UltraCanvasFileLoader, with rotation, "
                 "mirror, gamma, brightness, RGB correction, auto-optimisation and sharpening "
                 "via PixelFX. PDFs render through UltraCanvasPDFView and audio/video through "
                 "the player elements. Drag a folder onto the widget to browse it, or drag "
-                "files (images, PDFs, audio or video) to view them.");
+                "files (images, PDFs, audio or video) to view them."));
 
         return page;
     }

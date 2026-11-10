@@ -156,9 +156,9 @@ std::shared_ptr<UltraCanvasLabel> AddFieldLabel(const std::shared_ptr<UltraCanva
 static std::shared_ptr<UltraCanvasContainer> BuildOrderExampleChart() {
     auto container = MakeTabPage("OrderExample");
 
-    DemoKit::AddHeading(container, "Title", "Order Processing Flow Chart")->SetFontSize(22.0f);
+    DemoKit::AddHeading(container, "Title", Tr("Order Processing Flow Chart"))->SetFontSize(22.0f);
     auto desc = DemoKit::AddText(container, "Desc",
-            "Pre-built example. Click Select to move/connect, drag nodes to reposition.");
+            Tr("Pre-built example. Click Select to move/connect, drag nodes to reposition."));
     desc->SetFontSize(13);
     desc->SetTextColor(Color(100, 100, 100, 255));
 
@@ -239,7 +239,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildOrderExampleChart() {
     DemoKit::Add(workRow, instrPanel, 1);
     instrPanel->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(220));
 
-    auto instrTitle = DemoKit::AddHeading(instrPanel, "instrTitle", "How to Use");
+    auto instrTitle = DemoKit::AddHeading(instrPanel, "instrTitle", Tr("How to Use"));
     instrTitle->SetFontSize(14.0f);
     instrTitle->SetTextColor(Color(40, 40, 40, 255));
 
@@ -333,9 +333,9 @@ static std::shared_ptr<UltraCanvasContainer> BuildBuilderChart() {
     auto container = MakeTabPage("Builder");
 
     // --- Title bar ---
-    DemoKit::AddHeading(container, "BuilderTitle", "Build Your Own Diagram")->SetFontSize(20.0f);
+    DemoKit::AddHeading(container, "BuilderTitle", Tr("Build Your Own Diagram"))->SetFontSize(20.0f);
     auto desc = DemoKit::AddText(container, "BuilderDesc",
-            "Pick a shape, click on the canvas to place it. Click any node or connection to edit its properties.");
+            Tr("Pick a shape, click on the canvas to place it. Click any node or connection to edit its properties."));
     desc->SetTextColor(Color(100, 100, 100, 255));
 
     auto workRow = DemoKit::AddRow(container, "BuilderWorkRow", 10);
@@ -366,11 +366,11 @@ static std::shared_ptr<UltraCanvasContainer> BuildBuilderChart() {
     DemoKit::Add(workRow, propsPanel);
 
     // Static header
-    auto propsTitle = DemoKit::AddHeading(propsPanel, "propsTitle", "Properties");
+    auto propsTitle = DemoKit::AddHeading(propsPanel, "propsTitle", Tr("Properties"));
     propsTitle->SetFontSize(14.0f);
     propsTitle->SetTextColor(Color(40, 40, 40, 255));
 
-    auto propsHint = DemoKit::AddText(propsPanel, "propsHint", "Select a node or connection.");
+    auto propsHint = DemoKit::AddText(propsPanel, "propsHint", Tr("Select a node or connection."));
     propsHint->SetFontSize(11.0f);
     propsHint->SetTextColor(Color(140, 140, 140, 255));
 
@@ -942,7 +942,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildBuilderChart() {
 // MAIN ENTRY POINT - Two-tab demo
 // =============================================================================
 std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateFlowChartExamples() {
-    auto page = DemoKit::CreatePage("FlowChartDemo", "Interactive Flow Chart Diagram Editor", "");
+    auto page = DemoKit::CreatePage("FlowChartDemo", Tr("Interactive Flow Chart Diagram Editor"), "");
     // The page is the display area's height and the tabs take what the title
     // leaves; each tab page scrolls inside.
     page->SetFillsArea(true);

@@ -32,9 +32,9 @@ namespace UltraCanvas {
     }
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateBadgeExamples() {
-        auto page = DemoKit::CreatePage("BadgeExamples", "Badge Examples",
-                "Small count / status indicators: coloured status pills, count badges with a "
-                "\"99+\" cap, status dots, and overlay badges anchored to a corner of an icon.");
+        auto page = DemoKit::CreatePage("BadgeExamples", Tr("Badge Examples"),
+                Tr("Small count / status indicators: coloured status pills, count badges with a "
+                "\"99+\" cap, status dots, and overlay badges anchored to a corner of an icon."));
 
         // Badges are as tall as their text; centring keeps the row from
         // stretching them to the tallest item.
@@ -48,7 +48,7 @@ namespace UltraCanvas {
         auto topRow = DemoKit::AddRow(page, "BgTopRow");
 
         // ===== 1. STATUS PILLS (variants) =====
-        auto card1 = DemoKit::AddCard(topRow, "BgL1", "Status pills (colour variants):");
+        auto card1 = DemoKit::AddCard(topRow, "BgL1", Tr("Status pills (colour variants):"));
         struct V { const char* label; BadgeVariant variant; };
         V variants[] = {
             {"Draft",   BadgeVariant::Neutral},
@@ -65,7 +65,7 @@ namespace UltraCanvas {
         }
 
         // ===== 2. COUNT BADGES =====
-        auto card2 = DemoKit::AddCard(topRow, "BgL2", "Count badges (danger, with 99+ cap):");
+        auto card2 = DemoKit::AddCard(topRow, "BgL2", Tr("Count badges (danger, with 99+ cap):"));
         auto countRow = badgeRow(card2, "BgCountRow", 20);
         int counts[] = {1, 8, 42, 150};
         for (int i = 0; i < 4; ++i) {
@@ -80,7 +80,7 @@ namespace UltraCanvas {
         DemoKit::Add(countRow, zeroShown);
 
         // ===== 3. STATUS DOTS =====
-        auto card3 = DemoKit::AddCard(topRow, "BgL3", "Status dots:");
+        auto card3 = DemoKit::AddCard(topRow, "BgL3", Tr("Status dots:"));
         struct D { const char* label; BadgeVariant variant; };
         D dots[] = {
             {"Online",  BadgeVariant::Successful},
@@ -110,7 +110,7 @@ namespace UltraCanvas {
         auto bottomRow = DemoKit::AddRow(page, "BgBottomRow");
 
         // ===== 4. OVERLAY BADGES (anchored to icon tiles) =====
-        auto card4 = DemoKit::AddCard(bottomRow, "BgL4", "Overlay badges anchored to a corner:");
+        auto card4 = DemoKit::AddCard(bottomRow, "BgL4", Tr("Overlay badges anchored to a corner:"));
         auto tiles = tileRow(card4, "BgTileRow");
 
         auto inbox = MakeTile("BgTileInbox", 0, 0, "In", Color(0, 120, 215));
@@ -132,7 +132,7 @@ namespace UltraCanvas {
         tiles->AddChild(chatDot);
 
         // ===== 5. INTERACTIVE COUNTER =====
-        auto card5 = DemoKit::AddCard(bottomRow, "BgL5", "Interactive (Add / Clear the overlay count):");
+        auto card5 = DemoKit::AddCard(bottomRow, "BgL5", Tr("Interactive (Add / Clear the overlay count):"));
         auto bellRow = tileRow(card5, "BgBellRow");
         auto bell = MakeTile("BgTileBell", 0, 0, "Bl", Color(103, 58, 183));
         DemoKit::AddFixed(bellRow, bell);
@@ -149,12 +149,12 @@ namespace UltraCanvas {
         clearBtn->onClick = [bellBadge, counter]() { *counter = 0; bellBadge->SetCount(0); };
         DemoKit::Add(bellRow, clearBtn);
 
-        DemoKit::AddCaption(card5, "BgHint", "Count 0 disappears; over 99 shows \"99+\".");
+        DemoKit::AddCaption(card5, "BgHint", Tr("Count 0 disappears; over 99 shows \"99+\"."));
 
         // ===== INSTRUCTIONS =====
-        DemoKit::AddNotes(page, "BadgeInstructions", "API:", {
-                "CreateBadge(text, variant) / CreateCountBadge(count) / CreateDotBadge(variant)",
-                "SetCount / SetMaxCount / SetShowZero / SetVariant / SetColor; AnchorTo(element, corner, dx, dy)"});
+        DemoKit::AddNotes(page, "BadgeInstructions", Tr("API:"), {
+                Tr("CreateBadge(text, variant) / CreateCountBadge(count) / CreateDotBadge(variant)"),
+                Tr("SetCount / SetMaxCount / SetShowZero / SetVariant / SetColor; AnchorTo(element, corner, dx, dy)")});
 
         return page;
     }

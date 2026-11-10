@@ -20,12 +20,12 @@
 namespace UltraCanvas {
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateBreadcrumbExamples() {
-        auto page = DemoKit::CreatePage("BreadcrumbExamples", "UltraCanvas Breadcrumb",
-                "Style presets, separators, dropdowns, icons, navigation, and overflow modes");
+        auto page = DemoKit::CreatePage("BreadcrumbExamples", Tr("UltraCanvas Breadcrumb"),
+                Tr("Style presets, separators, dropdowns, icons, navigation, and overflow modes"));
 
         // Status label - under the description, a boxed line the callbacks write to.
         auto statusLabel = DemoKit::AddText(page, "BreadcrumbStatus",
-                                            "Click on the elements to see callback results");
+                                            Tr("Click on the elements to see callback results"));
         statusLabel->SetFontSize(11);
         statusLabel->SetBackgroundColor(Color(245, 245, 245, 255));
         statusLabel->SetBorders(1.0f);
@@ -40,8 +40,8 @@ namespace UltraCanvas {
         // ========================================
         // SECTION 1: DEFAULT STYLE
         // ========================================
-        auto card1 = DemoKit::AddCard(page, "BC_Section1", "1. Default style",
-                "Chevron separators and bold current item");
+        auto card1 = DemoKit::AddCard(page, "BC_Section1", Tr("1. Default style"),
+                Tr("Chevron separators and bold current item"));
 
         auto bcDefault = CreateBreadcrumb("bc_default", 0, 0, 0, 30);
         bcDefault->AddItem("Home");
@@ -56,8 +56,8 @@ namespace UltraCanvas {
         // ========================================
         // SECTION 2: COMPACT STYLE
         // ========================================
-        auto card2 = DemoKit::AddCard(page, "BC_Section2", "2. Compact style",
-                "Smaller font and tighter padding");
+        auto card2 = DemoKit::AddCard(page, "BC_Section2", Tr("2. Compact style"),
+                Tr("Smaller font and tighter padding"));
 
         auto bcCompact = CreateBreadcrumb("bc_compact", 0, 0, 0, 24);
         bcCompact->SetStyle(BreadcrumbStyle::Compact());
@@ -73,8 +73,8 @@ namespace UltraCanvas {
         // ========================================
         // SECTION 3: PILLS STYLE
         // ========================================
-        auto card3 = DemoKit::AddCard(page, "BC_Section3", "3. Pills style",
-                "Rounded backgrounds, no separators, highlighted current");
+        auto card3 = DemoKit::AddCard(page, "BC_Section3", Tr("3. Pills style"),
+                Tr("Rounded backgrounds, no separators, highlighted current"));
 
         auto bcPills = CreateBreadcrumb("bc_pills", 0, 0, 0, 32);
         bcPills->SetStyle(BreadcrumbStyle::Pills());
@@ -90,8 +90,8 @@ namespace UltraCanvas {
         // ========================================
         // SECTION 4: NUMBERED STEPS (dark wizard)
         // ========================================
-        auto card4 = DemoKit::AddCard(page, "BC_Section15", "4. Numbered steps",
-                "Steps() preset: arrow segments + round numbered indicators");
+        auto card4 = DemoKit::AddCard(page, "BC_Section15", Tr("4. Numbered steps"),
+                Tr("Steps() preset: arrow segments + round numbered indicators"));
 
         auto bcSteps = CreateBreadcrumb("bc_steps", 0, 0, 0, 34);
         bcSteps->SetStyle(BreadcrumbStyle::Steps());
@@ -108,8 +108,8 @@ namespace UltraCanvas {
         // ========================================
         // SECTION 5: PARALLELOGRAM STYLE
         // ========================================
-        auto card5 = DemoKit::AddCard(page, "BC_Section16", "5. Parallelogram",
-                "Parallelogram() preset: slanted interlocking segments");
+        auto card5 = DemoKit::AddCard(page, "BC_Section16", Tr("5. Parallelogram"),
+                Tr("Parallelogram() preset: slanted interlocking segments"));
 
         auto bcPara = CreateBreadcrumb("bc_para", 0, 0, 360, 32);
         bcPara->SetStyle(BreadcrumbStyle::Parallelogram());
@@ -124,8 +124,8 @@ namespace UltraCanvas {
         // ========================================
         // SECTION 6: LEVEL INDICATOR BACKGROUNDS
         // ========================================
-        auto card6 = DemoKit::AddCard(page, "BC_Section17", "6. Level indicators",
-                "Indicator background: round / rectangle / none / bordered");
+        auto card6 = DemoKit::AddCard(page, "BC_Section17", Tr("6. Level indicators"),
+                Tr("Indicator background: round / rectangle / none / bordered"));
 
         struct IndEntry {
             BreadcrumbLevelIndicatorBackground background;
@@ -173,8 +173,8 @@ namespace UltraCanvas {
         // ========================================
         // SECTION 4: FILE EXPLORER STYLE
         // ========================================
-        auto card7 = DemoKit::AddCard(page, "BC_Section4", "7. File explorer style",
-                "Built from a path string via SetPath");
+        auto card7 = DemoKit::AddCard(page, "BC_Section4", Tr("7. File explorer style"),
+                Tr("Built from a path string via SetPath"));
 
         auto bcExplorer = CreateBreadcrumb("bc_explorer", 0, 0, 0, 28);
         bcExplorer->SetStyle(BreadcrumbStyle::FileExplorer());
@@ -187,8 +187,8 @@ namespace UltraCanvas {
         // ========================================
         // SECTION 5: WEB DOCS STYLE
         // ========================================
-        auto card8 = DemoKit::AddCard(page, "BC_Section5", "8. Web docs style",
-                "Slash separators, underline-on-hover, link colors");
+        auto card8 = DemoKit::AddCard(page, "BC_Section5", Tr("8. Web docs style"),
+                Tr("Slash separators, underline-on-hover, link colors"));
 
         auto bcWeb = CreateBreadcrumb("bc_web", 0, 0, 0, 26);
         bcWeb->SetStyle(BreadcrumbStyle::WebDocs());
@@ -205,8 +205,8 @@ namespace UltraCanvas {
         // ========================================
         // SECTION 7: ITEM WITH DROPDOWN
         // ========================================
-        auto card9 = DemoKit::AddCard(page, "BC_Section6", "9. Item with dropdown",
-                "Click the small chevron next to 'Projects' to open the menu");
+        auto card9 = DemoKit::AddCard(page, "BC_Section6", Tr("9. Item with dropdown"),
+                Tr("Click the small chevron next to 'Projects' to open the menu"));
 
         auto bcDropdown = CreateBreadcrumb("bc_dropdown", 0, 0, 0, 30);
         bcDropdown->AddItem("Workspace");
@@ -241,8 +241,8 @@ namespace UltraCanvas {
         // ========================================
         // SECTION 8: ICONS
         // ========================================
-        auto card10 = DemoKit::AddCard(page, "BC_Section7", "10. Icons",
-                "Per-item leading icons via WithIcon / IconOnly");
+        auto card10 = DemoKit::AddCard(page, "BC_Section7", Tr("10. Icons"),
+                Tr("Per-item leading icons via WithIcon / IconOnly"));
 
         const std::string iconsRoot = NormalizePath(GetResourcesDir() + "media/icons/");
         auto bcIcons = CreateBreadcrumb("bc_icons", 0, 0, 0, 30);
@@ -258,8 +258,8 @@ namespace UltraCanvas {
         // ========================================
         // SECTION 9: LIVE NAVIGATION
         // ========================================
-        auto card11 = DemoKit::AddCard(page, "BC_Section8", "11. Live navigation",
-                "Clicking a segment truncates the path — try it!");
+        auto card11 = DemoKit::AddCard(page, "BC_Section8", Tr("11. Live navigation"),
+                Tr("Clicking a segment truncates the path — try it!"));
 
         const std::string initialNavPath = "/home/user/projects/ultracanvas/Apps/DemoApp";
         auto bcNav = CreateBreadcrumb("bc_nav", 0, 0, 0, 30);
@@ -308,8 +308,8 @@ namespace UltraCanvas {
         // ========================================
         // SECTION 10: COLLAPSE OVERFLOW
         // ========================================
-        auto card12 = DemoKit::AddCard(page, "BC_Section9", "12. Collapse overflow",
-                "Middle items hidden behind a '...' menu (narrow width)");
+        auto card12 = DemoKit::AddCard(page, "BC_Section9", Tr("12. Collapse overflow"),
+                Tr("Middle items hidden behind a '...' menu (narrow width)"));
 
         auto bcCollapse = CreateBreadcrumb("bc_collapse", 0, 0, 360, 30);
         bcCollapse->SetOverflowMode(BreadcrumbOverflowMode::Collapse);
@@ -333,8 +333,8 @@ namespace UltraCanvas {
         // ========================================
         // SECTION 11: ELLIPSIZE OVERFLOW
         // ========================================
-        auto card13 = DemoKit::AddCard(page, "BC_Section10", "13. Ellipsize overflow",
-                "Per-item text trimmed via maxItemTextWidth=60");
+        auto card13 = DemoKit::AddCard(page, "BC_Section10", Tr("13. Ellipsize overflow"),
+                Tr("Per-item text trimmed via maxItemTextWidth=60"));
 
         auto bcEllipsize = CreateBreadcrumb("bc_ellipsize", 0, 0, 0, 30);
         bcEllipsize->SetOverflowMode(BreadcrumbOverflowMode::Ellipsize);
@@ -351,8 +351,8 @@ namespace UltraCanvas {
         // ========================================
         // SECTION 12: SHRINK-TEXT OVERFLOW
         // ========================================
-        auto card14 = DemoKit::AddCard(page, "BC_Section11", "14. ShrinkText overflow",
-                "Per-item width auto-reduces until everything fits");
+        auto card14 = DemoKit::AddCard(page, "BC_Section11", Tr("14. ShrinkText overflow"),
+                Tr("Per-item width auto-reduces until everything fits"));
 
         auto bcShrink = CreateBreadcrumb("bc_shrink", 0, 0, 420, 30);
         bcShrink->SetOverflowMode(BreadcrumbOverflowMode::ShrinkText);
@@ -369,8 +369,8 @@ namespace UltraCanvas {
         // ========================================
         // SECTION 13: ROUNDED STRIP
         // ========================================
-        auto card15 = DemoKit::AddCard(page, "BC_Section12", "15. Rounded strip",
-                "Light gray rounded background, uniform clickable segments");
+        auto card15 = DemoKit::AddCard(page, "BC_Section12", Tr("15. Rounded strip"),
+                Tr("Light gray rounded background, uniform clickable segments"));
 
         auto bcStrip = CreateBreadcrumb("bc_strip", 0, 0, 420, 32);
         BreadcrumbStyle stripStyle = BreadcrumbStyle::Default();
@@ -396,8 +396,8 @@ namespace UltraCanvas {
         // ========================================
         // SECTION 6: SEPARATOR GALLERY
         // ========================================
-        auto card16 = DemoKit::AddCard(page, "BC_Section13", "16. Separator gallery",
-                "One example per BreadcrumbSeparatorStyle");
+        auto card16 = DemoKit::AddCard(page, "BC_Section13", Tr("16. Separator gallery"),
+                Tr("One example per BreadcrumbSeparatorStyle"));
 
         struct SepEntry {
         BreadcrumbSeparatorStyle style;
@@ -437,8 +437,8 @@ namespace UltraCanvas {
         // ========================================
         // SECTION 14: ARROW / STEPPER STYLE
         // ========================================
-        auto card17 = DemoKit::AddCard(page, "BC_Section14", "17. Arrow steps",
-                "Interlocking arrow segments; current step highlighted");
+        auto card17 = DemoKit::AddCard(page, "BC_Section14", Tr("17. Arrow steps"),
+                Tr("Interlocking arrow segments; current step highlighted"));
 
         auto bcArrow = CreateBreadcrumb("bc_arrow", 0, 0, 0, 30);
         bcArrow->SetStyle(BreadcrumbStyle::Arrow());

@@ -91,14 +91,14 @@ namespace UltraCanvas {
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateFilerExamples() {
         auto root = DemoKit::CreatePage("FilerExamples",
-                "UltraCanvas Filer — folder content with selectable view types",
-                "Double-click a folder to enter it. Right-click for the file menu "
+                Tr("UltraCanvas Filer — folder content with selectable view types"),
+                Tr("Double-click a folder to enter it. Right-click for the file menu "
                 "(Copy / Cut / Delete / Duplicate / Rename / New / Display / Compress / "
                 "Extras). Hovering an item shows its quick icon menu; the info bar at "
                 "the bottom describes the selection (size, dates, image dimensions, "
                 "media duration and codec, folder contents). In the Details, List and "
                 "Bar size views the columns are resizable — drag the splitters between "
-                "them — and a name too long for its column shows in full as a tooltip.");
+                "them — and a name too long for its column shows in full as a tooltip."));
         // The filer is the single scroll region of the page: the page is the
         // area's height and the filer takes what the rows above it leave.
         root->SetFillsArea(true);

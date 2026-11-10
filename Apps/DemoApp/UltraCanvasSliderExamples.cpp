@@ -16,7 +16,7 @@
 
 namespace UltraCanvas {
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateSliderExamples() {
-        auto container = DemoKit::CreatePage("SliderExamples", "Simple Slider Examples", "");
+        auto container = DemoKit::CreatePage("SliderExamples", Tr("Simple Slider Examples"), "");
 
         // A live readout on a coloured background, as wide as its text.
         auto addReadout = [](const std::shared_ptr<UltraCanvasContainer>& row, const std::string& id,
@@ -32,7 +32,7 @@ namespace UltraCanvas {
         auto basicCards = DemoKit::AddRow(container, "SliderBasicCards");
 
         // Horizontal Slider
-        auto hCard = DemoKit::AddCard(basicCards, "HSliderLabel", "Horizontal Slider (0-100)");
+        auto hCard = DemoKit::AddCard(basicCards, "HSliderLabel", Tr("Horizontal Slider (0-100)"));
         auto hRow = DemoKit::AddRow(hCard, "HSliderRow", 20);
         auto hSlider = CreateSlider("HorizontalSlider", 0, 0, 300, 20);
         hSlider->SetOrientation(SliderOrientation::Horizontal);
@@ -55,7 +55,7 @@ namespace UltraCanvas {
         };
 
         // Vertical Slider
-        auto vCard = DemoKit::AddCard(basicCards, "VSliderLabel", "Vertical Slider");
+        auto vCard = DemoKit::AddCard(basicCards, "VSliderLabel", Tr("Vertical Slider"));
         auto vSlider = CreateSlider("VerticalSlider", 0, 0, 20, 200);
         vSlider->SetOrientation(SliderOrientation::Vertical);
         vSlider->SetRange(0.0f, 10.0f);
@@ -64,7 +64,7 @@ namespace UltraCanvas {
         DemoKit::AddFixed(vCard, vSlider);
 
         // Vertical dual-handle (range) slider, beside the simple vertical slider.
-        auto volumeCard = DemoKit::AddCard(basicCards, "VolumeLabel", "Vertical Volume Range (0-100)");
+        auto volumeCard = DemoKit::AddCard(basicCards, "VolumeLabel", Tr("Vertical Volume Range (0-100)"));
         auto volumeRow = DemoKit::AddRow(volumeCard, "VolumeRow", 12);
         volumeRow->layout.SetFlexAlignItems(CSSLayout::AlignItems::Start);
         auto volumeRange = CreateRangeSlider("volumeRange", 0, 0, 40, 200,
@@ -94,7 +94,7 @@ namespace UltraCanvas {
         // A hue palette painted inside the bar (colour-picker style) with a small
         // handle that fits within the bar. The field on the right previews the
         // selected colour and shows its RGB value.
-        auto paletteCard = DemoKit::AddCard(basicCards, "PaletteLabel", "Colour Palette Slider (Hue)");
+        auto paletteCard = DemoKit::AddCard(basicCards, "PaletteLabel", Tr("Colour Palette Slider (Hue)"));
         auto paletteRow = DemoKit::AddRow(paletteCard, "PaletteRow", 20);
         auto paletteSlider = CreateSlider("PaletteSlider", 0, 0, 300, 22);
         paletteSlider->SetOrientation(SliderOrientation::Horizontal);
@@ -148,7 +148,7 @@ namespace UltraCanvas {
         const float rangeCardWidth = sliderWidth + 2 * DemoKit::kCardPadding + 2;
 
         // ===== TITLE =====
-        auto rangeTitle = DemoKit::AddHeading(rangeSlidersContainer, "Title", "Range Slider Demonstrations");
+        auto rangeTitle = DemoKit::AddHeading(rangeSlidersContainer, "Title", Tr("Range Slider Demonstrations"));
         rangeTitle->SetFontSize(18);
 
         auto rangeCards = DemoKit::AddRow(rangeSlidersContainer, "RangeSliderCards");
@@ -321,11 +321,11 @@ namespace UltraCanvas {
         };
 
         // ===== INSTRUCTIONS =====
-        DemoKit::AddNotes(container, "Instructions", "Instructions", {
-                "Drag handles to adjust range",
-                "Click Tab to switch between handles (when focused)",
-                "Use arrow keys to adjust active handle",
-                "Handles cannot overlap (enforced by collision margin)"});
+        DemoKit::AddNotes(container, "Instructions", Tr("Instructions"), {
+                Tr("Drag handles to adjust range"),
+                Tr("Click Tab to switch between handles (when focused)"),
+                Tr("Use arrow keys to adjust active handle"),
+                Tr("Handles cannot overlap (enforced by collision margin)")});
 
         return container;
     }

@@ -144,9 +144,9 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateChartEng
     using namespace EngineComparison;
 
     auto container = DemoKit::CreatePage("EngineCompareContainer",
-        "Chart Engine Comparison - Legacy Charts and Their Engine Ports",
-        "Each tab shows a legacy chart (left) and its port onto UltraCanvasChartEngineElement (right) on the same data. The ports get the engine's axes, "
-        "grid, measured layout, legend, solved label plan, themes, hover tooltips and entrance animation for free - compare them here before the switch.");
+        Tr("Chart Engine Comparison - Legacy Charts and Their Engine Ports"),
+        Tr("Each tab shows a legacy chart (left) and its port onto UltraCanvasChartEngineElement (right) on the same data. The ports get the engine's axes, "
+        "grid, measured layout, legend, solved label plan, themes, hover tooltips and entrance animation for free - compare them here before the switch."));
     // The charts take the area's height: the page is the area's height and
     // the family tabs' card takes what the title and description leave.
     container->SetFillsArea(true);

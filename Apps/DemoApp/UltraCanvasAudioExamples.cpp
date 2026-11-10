@@ -52,9 +52,9 @@ namespace UltraCanvas {
     } // namespace
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateAudioExamples() {
-        auto page = DemoKit::CreatePage("AudioExamples", "Audio Player & Recorder",
-                "Playback, recording, saving in a format this build can encode, and a live "
-                "level strip fed by the recorder input or the playback output.");
+        auto page = DemoKit::CreatePage("AudioExamples", Tr("Audio Player & Recorder"),
+                Tr("Playback, recording, saving in a format this build can encode, and a live "
+                "level strip fed by the recorder input or the playback output."));
 
         auto st = std::make_shared<AudioDemoState>();
 
@@ -75,7 +75,7 @@ namespace UltraCanvas {
         auto sections = DemoKit::AddRow(page, "AudioSections");
 
         // ----- Playback section -----
-        auto playbackCard = DemoKit::AddCard(sections, "PlaybackLabel", "Playback");
+        auto playbackCard = DemoKit::AddCard(sections, "PlaybackLabel", Tr("Playback"));
 
         auto player = CreateAudioPlayer("DemoPlayer", 0, 0, 600, 56);
         DemoKit::AddStretched(playbackCard, player);
@@ -84,7 +84,7 @@ namespace UltraCanvas {
         playbackRow->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
 
         // Shows the name of the file currently loaded into the player.
-        auto fileLabel = DemoKit::CreateCaption("PlaybackFile", "No file loaded.");
+        auto fileLabel = DemoKit::CreateCaption("PlaybackFile", Tr("No file loaded."));
         fileLabel->SetFontSize(11);
 
         // Strip any directory part so we display just the file name.
@@ -136,7 +136,7 @@ namespace UltraCanvas {
         DemoKit::Add(playbackRow, fileLabel, 1);
 
         // ----- Recording section -----
-        auto recCard = DemoKit::AddCard(sections, "RecLabel", "Recording");
+        auto recCard = DemoKit::AddCard(sections, "RecLabel", Tr("Recording"));
 
         auto recorder = CreateAudioRecorder("DemoRecorder", 0, 0, 600, 72);
         recorder->onRecordStarted = [status]() { status->SetText("Recording..."); };
@@ -150,7 +150,7 @@ namespace UltraCanvas {
         // up here automatically.
         auto saveRow = DemoKit::AddRow(recCard, "SaveRow", 8);
         saveRow->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
-        DemoKit::AddCaption(saveRow, "SaveFmtLabel", "Save format:")->SetFontSize(11);
+        DemoKit::AddCaption(saveRow, "SaveFmtLabel", Tr("Save format:"))->SetFontSize(11);
 
         auto formatDd = std::make_shared<UltraCanvasDropdown>("SaveFormat", 0, 0, 150, 26);
         {
@@ -261,14 +261,14 @@ namespace UltraCanvas {
         DemoKit::Add(saveRow, playRecBtn);
 
         // ----- Horizontal VU strip (bottom) -----
-        auto vuCard = DemoKit::AddCard(page, "VuLabel", "Level (VU)");
+        auto vuCard = DemoKit::AddCard(page, "VuLabel", Tr("Level (VU)"));
 
         auto vuStrip = std::make_shared<UltraCanvasLevelMeter>("AudioVuStrip", 980, 24);
         DemoKit::AddStretched(vuCard, vuStrip);
 
         DemoKit::AddCaption(vuCard, "VuCaption",
-                "Live level: microphone input while recording, playback output "
-                "while playing. Fill = peak, dark tick = RMS.");
+                Tr("Live level: microphone input while recording, playback output "
+                "while playing. Fill = peak, dark tick = RMS."));
 
         // Drive the strip at ~30 fps: recorder levels win while capturing;
         // otherwise compute peak/RMS of the audible 40 ms window from the

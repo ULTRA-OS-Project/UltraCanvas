@@ -153,12 +153,12 @@ namespace UltraCanvas {
 // =============================================================================
     std::shared_ptr<UltraCanvasUIElement>
     UltraCanvasDemoApplication::CreateLevelMeterExamples() {
-        auto root = DemoKit::CreatePage("LvlRoot", "Level Meter & VU Strip",
-                "UltraCanvasLevelMeter in both render modes: the three-zone VU bar "
+        auto root = DemoKit::CreatePage("LvlRoot", Tr("Level Meter & VU Strip"),
+                Tr("UltraCanvasLevelMeter in both render modes: the three-zone VU bar "
                 "(green / yellow / red peak fill with an RMS tick) and the scrolling "
                 "waveform strip. Colours are fully themeable via SetColors(). Drive the "
                 "meters from real playback levels of the sample track, a synthetic "
-                "generator, or the manual sliders.");
+                "generator, or the manual sliders."));
 
         auto st = std::make_shared<LevelMeterDemoState>();
 
@@ -167,7 +167,7 @@ namespace UltraCanvas {
         auto cardsRow = DemoKit::AddRow(root, "LvlCards");
 
         // ----- Card A: three-zone VU meters in four themes -----
-        auto vuCard = DemoKit::AddCard(cardsRow, "LvlVuCard", "Three-zone VU meter");
+        auto vuCard = DemoKit::AddCard(cardsRow, "LvlVuCard", Tr("Three-zone VU meter"));
         {
             struct VuTheme {
                 const char* name;
@@ -199,20 +199,20 @@ namespace UltraCanvas {
             }
 
             DemoKit::AddCaption(vuCard, "LvlVuNote",
-                    "Fill = peak level across the green / yellow / red zones "
-                    "(60% / 85% thresholds); the dark tick marks the RMS level.");
+                    Tr("Fill = peak level across the green / yellow / red zones "
+                    "(60% / 85% thresholds); the dark tick marks the RMS level."));
         }
 
         // ----- Card B: scrolling waveform strips in two themes -----
-        auto stripCard = DemoKit::AddCard(cardsRow, "LvlStripCard", "Scrolling waveform strip");
+        auto stripCard = DemoKit::AddCard(cardsRow, "LvlStripCard", Tr("Scrolling waveform strip"));
         {
-            DemoKit::AddCaption(stripCard, "LvlStripCap0", "Classic (default colours)");
+            DemoKit::AddCaption(stripCard, "LvlStripCap0", Tr("Classic (default colours)"));
             auto strip1 = std::make_shared<UltraCanvasLevelMeter>("LvlStrip0", 500, 66);
             strip1->SetWaveformMode(true);
             DemoKit::AddStretched(stripCard, strip1);
             st->strips.push_back(strip1);
 
-            DemoKit::AddCaption(stripCard, "LvlStripCap1", "Violet on dark");
+            DemoKit::AddCaption(stripCard, "LvlStripCap1", Tr("Violet on dark"));
             auto strip2 = std::make_shared<UltraCanvasLevelMeter>("LvlStrip1", 500, 66);
             strip2->SetWaveformMode(true);
             strip2->SetColors(Color(24, 24, 32), Color(167, 139, 250),
@@ -221,12 +221,12 @@ namespace UltraCanvas {
             st->strips.push_back(strip2);
 
             DemoKit::AddCaption(stripCard, "LvlStripNote",
-                    "Each tick pushes the current peak into a 200-sample history "
-                    "(PushWaveformSample), drawn as mirrored bars around the centre line.");
+                    Tr("Each tick pushes the current peak into a 200-sample history "
+                    "(PushWaveformSample), drawn as mirrored bars around the centre line."));
         }
 
         // ----- Source / control card -----
-        auto srcCard = DemoKit::AddCard(root, "LvlSrcCard", "Signal source");
+        auto srcCard = DemoKit::AddCard(root, "LvlSrcCard", Tr("Signal source"));
         {
             // One row: source dropdown | manual sliders | reset. It wraps when
             // the captions grow.
@@ -286,15 +286,15 @@ namespace UltraCanvas {
                                             resetBtn));
 
             // dBFS readout, updated every tick.
-            auto readout = DemoKit::AddText(srcCard, "LvlReadout", "Peak  -inf dBFS      RMS  -inf dBFS");
+            auto readout = DemoKit::AddText(srcCard, "LvlReadout", Tr("Peak  -inf dBFS      RMS  -inf dBFS"));
             readout->SetFontWeight(FontWeight::Bold);
             readout->SetTextColor(DemoKit::TitleText());
             st->readout = readout;
 
             // Embedded audio player with the bundled sample track pre-loaded.
             DemoKit::AddCaption(srcCard, "LvlPlayerLbl",
-                    "Sample track for the pre-selected playback source — press Play to drive "
-                    "the meters (levels are computed from the decoded PCM at the playhead):");
+                    Tr("Sample track for the pre-selected playback source — press Play to drive "
+                    "the meters (levels are computed from the decoded PCM at the playhead):"));
 
             auto player = CreateAudioPlayer("LvlPlayer", 0, 0, 640, 56);
             DemoKit::AddFixed(srcCard, player);

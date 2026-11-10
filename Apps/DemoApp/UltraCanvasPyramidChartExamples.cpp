@@ -416,7 +416,7 @@ std::shared_ptr<UltraCanvasUIElement> BuildDataTab() {
     DemoKit::AddFixed(row, chart);
 
     auto notes = DemoKit::CreateText("DataNotes",
-        "Reading the chart\n\n"
+        Tr("Reading the chart\n\n"
         "The tiers are area-proportional, which is the setting that makes a pyramid honest. "
         "A pyramid's sides taper, so a band's area grows faster than its height: sizing tiers "
         "by height alone quietly overstates every tier near the base.\n\n"
@@ -432,7 +432,7 @@ std::shared_ptr<UltraCanvasUIElement> BuildDataTab() {
         "Top-heavy warning\n\n"
         "SetHighlightTopHeavy outlines the first tier that outweighs the one holding it up - "
         "the ice-cream-cone suite. Every tier here is larger than the one above it, so nothing is "
-        "flagged - the suite is badly proportioned, not upside down.");
+        "flagged - the suite is badly proportioned, not upside down."));
     notes->SetFontSize(10.5f);
     notes->SetTextColor(Color(70, 70, 70, 255));
     notes->SetMargin(20, 0, 0, 0);
@@ -516,7 +516,7 @@ std::shared_ptr<UltraCanvasUIElement> BuildPlaygroundTab() {
         label->SetMargin(4, 0, 0, 0);
     };
 
-    DemoKit::AddHeading(panel, "PlayControls", "Chart controls");
+    DemoKit::AddHeading(panel, "PlayControls", Tr("Chart controls"));
 
     addControlLabel("PlayShapeLabel", "Shape mode");
 
@@ -682,11 +682,11 @@ std::shared_ptr<UltraCanvasUIElement> BuildPlaygroundTab() {
     };
     DemoKit::Add(panel, dimCheck);
 
-    auto selectionTitle = DemoKit::AddText(panel, "PlaySelTitle", "Selected tier");
+    auto selectionTitle = DemoKit::AddText(panel, "PlaySelTitle", Tr("Selected tier"));
     selectionTitle->SetFontWeight(FontWeight::Bold);
     selectionTitle->SetMargin(8, 0, 0, 0);
 
-    auto selection = DemoKit::CreateText("PlaySelection", "Click a tier to read its figures here.");
+    auto selection = DemoKit::CreateText("PlaySelection", Tr("Click a tier to read its figures here."));
     selection->SetFontSize(11);
     selection->SetTextColor(Color(70, 70, 70, 255));
     DemoKit::Add(panel, selection);
@@ -721,10 +721,10 @@ std::shared_ptr<UltraCanvasUIElement> BuildPlaygroundTab() {
 // =============================================================================
 
 std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreatePyramidChartExamples() {
-    auto page = DemoKit::CreatePage("PyramidChartExamples", "Pyramid Chart Examples",
-        "An extruded 3D pyramid with colour ribbon callouts, a spectrum solid with its text inside the "
+    auto page = DemoKit::CreatePage("PyramidChartExamples", Tr("Pyramid Chart Examples"),
+        Tr("An extruded 3D pyramid with colour ribbon callouts, a spectrum solid with its text inside the "
         "tiers, an outlined hierarchy with icon cards, flat presentation layouts, an alternating "
-        "infographic, an area-proportional data pyramid and a playground exposing every mode live.");
+        "infographic, an area-proportional data pyramid and a playground exposing every mode live."));
     // The tabs take the area's height; a tab taller than that scrolls.
     page->SetFillsArea(true);
 

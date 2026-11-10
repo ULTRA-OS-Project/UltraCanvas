@@ -69,11 +69,11 @@ void FillIrisLike(std::shared_ptr<UltraCanvasParallelCoordinateChartElement>& ch
 std::shared_ptr<UltraCanvasUIElement>
 UltraCanvasDemoApplication::CreateParallelCoordinateChartExamples() {
     auto page = DemoKit::CreatePage("PCPContainer",
-        "Parallel Coordinate Chart - Multi-Dimensional Records as Polylines",
-        "Each dimension gets its own vertical axis; one record becomes one line. Only neighbouring axes "
+        Tr("Parallel Coordinate Chart - Multi-Dimensional Records as Polylines"),
+        Tr("Each dimension gets its own vertical axis; one record becomes one line. Only neighbouring axes "
         "compare directly, so the axis order is interactive: drag an axis header (just above its top) to "
         "reorder, double-click an axis to invert it, drag along an axis to brush a range (click the axis "
-        "to clear), hover a line for its values, click a line to pin it.");
+        "to clear), hover a line for its values, click a line to pin it."));
 
     // The two small charts share a row; a card is never narrower than its
     // chart, so on a narrow page the second one moves under the first.
@@ -83,7 +83,7 @@ UltraCanvasDemoApplication::CreateParallelCoordinateChartExamples() {
     auto irisCard = DemoKit::AddCard(topRow, "PCPIrisCard", "", "",
                                      560 + 2 * DemoKit::kCardPadding + 2);
     DemoKit::AddHeading(irisCard, "PCPIrisLabel",
-        "Common scale + z-score per column, coloured by species (Iris look)");
+        Tr("Common scale + z-score per column, coloured by species (Iris look)"));
 
     auto iris = CreateParallelCoordinateChartElement("pcpIris", 0, 0, 560, 320);
     FillIrisLike(iris);
@@ -101,7 +101,7 @@ UltraCanvasDemoApplication::CreateParallelCoordinateChartExamples() {
     auto sweepCard = DemoKit::AddCard(topRow, "PCPSweepCard", "", "",
                                       580 + 2 * DemoKit::kCardPadding + 2);
     DemoKit::AddHeading(sweepCard, "PCPSweepLabel",
-        "Dense sweep: per-axis ranges, coloured by accuracy, brushed (dimmed context)");
+        Tr("Dense sweep: per-axis ranges, coloured by accuracy, brushed (dimmed context)"));
 
     auto sweep = CreateParallelCoordinateChartElement("pcpSweep", 0, 0, 580, 320);
     {
@@ -138,7 +138,7 @@ UltraCanvasDemoApplication::CreateParallelCoordinateChartExamples() {
     // ===== EXAMPLE 3: Curved group bundles (bottom, wide) =====
     auto curveCard = DemoKit::AddCard(page, "PCPCurveCard");
     DemoKit::AddHeading(curveCard, "PCPCurveLabel",
-        "Curved lines (Catmull-Rom), two process regimes, per-axis normalisation");
+        Tr("Curved lines (Catmull-Rom), two process regimes, per-axis normalisation"));
 
     auto curved = CreateParallelCoordinateChartElement("pcpCurved", 0, 0, 1160, 300);
     {

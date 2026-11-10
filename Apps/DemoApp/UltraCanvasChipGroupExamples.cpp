@@ -29,13 +29,13 @@ namespace UltraCanvas {
     }
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateChipGroupExamples() {
-        auto page = DemoKit::CreatePage("ChipGroupExamples", "Chip Group Examples",
-                "Real chips in a wrapping row; the group decides what a click means for the others "
-                "and reports the selection.");
+        auto page = DemoKit::CreatePage("ChipGroupExamples", Tr("Chip Group Examples"),
+                Tr("Real chips in a wrapping row; the group decides what a click means for the others "
+                "and reports the selection."));
 
         // ===== 1. SINGLE SELECTION =====
-        auto singleCard = DemoKit::AddCard(page, "CgL1", "Single selection: a category bar",
-                                           "One chip at a time; clicking the selected one keeps it.");
+        auto singleCard = DemoKit::AddCard(page, "CgL1", Tr("Single selection: a category bar"),
+                                           Tr("One chip at a time; clicking the selected one keeps it."));
         auto single = CreateChipGroup("CgSingle");
         for (const char* name : {"All", "Video", "Audio", "Graphics", "Office", "Games", "Developer"}) single->AddChip(name);
         single->SetSelectedIndex(0);
@@ -46,8 +46,8 @@ namespace UltraCanvas {
         single->onSelectionChanged = [singleOut, g = single.get()](int) { singleOut->SetText(Describe(*g)); };
 
         // ===== 2. SINGLE, NOTHING ALLOWED =====
-        auto noneCard = DemoKit::AddCard(page, "CgL2", "Single selection, none allowed: a filter",
-                                         "Clicking the selected chip switches the filter off.");
+        auto noneCard = DemoKit::AddCard(page, "CgL2", Tr("Single selection, none allowed: a filter"),
+                                         Tr("Clicking the selected chip switches the filter off."));
         auto none = CreateChipGroup("CgNone");
         none->SetAllowNoSelection(true);
         none->SetChipVariant(ChipVariant::Outlined);
@@ -59,8 +59,8 @@ namespace UltraCanvas {
         none->onSelectionChanged = [noneOut, g = none.get()](int) { noneOut->SetText(Describe(*g)); };
 
         // ===== 3. MULTIPLE =====
-        auto multiCard = DemoKit::AddCard(page, "CgL3", "Multiple selection: tags",
-                                          "Any number; the readout lists them in order.");
+        auto multiCard = DemoKit::AddCard(page, "CgL3", Tr("Multiple selection: tags"),
+                                          Tr("Any number; the readout lists them in order."));
         auto multi = CreateChipGroup("CgMulti");
         multi->SetSelectionMode(ChipGroupSelectionMode::Multiple);
         for (const char* name : {"c++", "ui", "cross-platform", "vector", "video", "audio", "database", "network"}) multi->AddChip(name);
@@ -71,11 +71,11 @@ namespace UltraCanvas {
         multiOut->SetPadding(3);
         multi->onSelectedIndicesChanged = [multiOut, g = multi.get()](const std::vector<int>&) { multiOut->SetText(Describe(*g)); };
 
-        DemoKit::AddNotes(page, "CgNotes", "Implementation notes", {
-            "UltraCanvasChipGroup is a container of real UltraCanvasChip children: each keeps its own hover, focus and Space / Return.",
-            "Single mode deselects the other chip; SetAllowNoSelection(true) lets a second click clear the selection.",
-            "Multiple mode toggles each chip; onSelectedIndicesChanged reports every selected index.",
-            "SetChipStyle / SetChipVariant apply to every chip, now and later; the row wraps when the chips do not fit.",
+        DemoKit::AddNotes(page, "CgNotes", Tr("Implementation notes"), {
+            Tr("UltraCanvasChipGroup is a container of real UltraCanvasChip children: each keeps its own hover, focus and Space / Return."),
+            Tr("Single mode deselects the other chip; SetAllowNoSelection(true) lets a second click clear the selection."),
+            Tr("Multiple mode toggles each chip; onSelectedIndicesChanged reports every selected index."),
+            Tr("SetChipStyle / SetChipVariant apply to every chip, now and later; the row wraps when the chips do not fit."),
         });
         return page;
     }

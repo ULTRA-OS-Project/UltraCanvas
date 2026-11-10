@@ -39,8 +39,8 @@ namespace UltraCanvas {
     }
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateTreeViewExamples() {
-        auto container = DemoKit::CreatePage("TreeViewExamples", "TreeView Examples",
-                "File explorer, multi-selection, debugger columns, connecting lines and check flags");
+        auto container = DemoKit::CreatePage("TreeViewExamples", Tr("TreeView Examples"),
+                Tr("File explorer, multi-selection, debugger columns, connecting lines and check flags"));
         auto treeRow = DemoKit::AddRow(container, "TreeViewRow");
 
         // File Explorer Style Tree

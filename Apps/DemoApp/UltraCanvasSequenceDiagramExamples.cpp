@@ -23,9 +23,9 @@
 namespace UltraCanvas {
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateSequenceDiagramExamples() {
-        auto mainContainer = DemoKit::CreatePage("seqMainContainer", "UML Sequence Diagram",
-                "Lifelines, execution bars, combined fragments and notes - "
-                "drag to pan, wheel to zoom, click to inspect");
+        auto mainContainer = DemoKit::CreatePage("seqMainContainer", Tr("UML Sequence Diagram"),
+                Tr("Lifelines, execution bars, combined fragments and notes - "
+                "drag to pan, wheel to zoom, click to inspect"));
 
         // The controls beside the tabs; under them when the window is narrow.
         auto contentContainer = DemoKit::AddRow(mainContainer, "seqContent");
@@ -36,7 +36,7 @@ namespace UltraCanvas {
                                             SIDEBAR_W + 2 * DemoKit::kCardPadding + 2);
         leftSidebar->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
 
-        auto controlsTitle = DemoKit::AddText(leftSidebar, "seqControlsTitle", "CONTROLS");
+        auto controlsTitle = DemoKit::AddText(leftSidebar, "seqControlsTitle", Tr("CONTROLS"));
         controlsTitle->SetFontSize(11);
         controlsTitle->SetFontWeight(FontWeight::Bold);
         controlsTitle->SetTextColor(Color(73, 80, 87, 255));
@@ -87,11 +87,11 @@ namespace UltraCanvas {
         auto btnExport = addButton("seqBtnExport", "Print PlantUML", Color(111, 66, 193, 255));
 
         auto helpBox = DemoKit::AddCaption(leftSidebar, "seqHelpBox",
-                         "INTERACTION TIPS\n\n"
+                         Tr("INTERACTION TIPS\n\n"
                          "- Wheel zooms at cursor\n"
                          "- Drag empty canvas to pan\n"
                          "- Click arrows or heads\n"
-                         "- Event Flow tab shows the framework's own pipeline");
+                         "- Event Flow tab shows the framework's own pipeline"));
         helpBox->SetFontSize(9);
         helpBox->SetTextColor(Color(108, 117, 125, 255));
 
@@ -115,7 +115,7 @@ namespace UltraCanvas {
         samples.push_back({"seqLifecycle", "Lifecycle", SequenceDiagramSamples::ObjectLifecycle()});
         samples.push_back({"seqEventFlow", "Event Flow", SequenceDiagramSamples::UltraCanvasEventFlow()});
 
-        auto statusBar = DemoKit::CreateText("seqStatus", "Click a message or lifeline to inspect it");
+        auto statusBar = DemoKit::CreateText("seqStatus", Tr("Click a message or lifeline to inspect it"));
         statusBar->SetFontSize(11);
         statusBar->SetTextColor(Color(90, 98, 106, 255));
 

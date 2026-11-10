@@ -16,9 +16,9 @@
 namespace UltraCanvas {
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreatePaginationExamples() {
-        auto page = DemoKit::CreatePage("PaginationExamples", "Pagination Examples",
-                "Navigate pages with First/Prev, the numbered strip (with ellipsis for large "
-                "counts), Next/Last - or with the Left/Right/Home/End keys when focused.");
+        auto page = DemoKit::CreatePage("PaginationExamples", Tr("Pagination Examples"),
+                Tr("Navigate pages with First/Prev, the numbered strip (with ellipsis for large "
+                "counts), Next/Last - or with the Left/Right/Home/End keys when focused."));
 
         // A live readout beside a pagination strip: as wide as its text, the
         // grey box keeps it apart from the strip.
@@ -30,7 +30,7 @@ namespace UltraCanvas {
         };
 
         // ===== 1. NUMBERED (large count -> ellipsis) =====
-        auto card1 = DemoKit::AddCard(page, "PgL1", "Numbered (20 pages, ellipsis windowing):");
+        auto card1 = DemoKit::AddCard(page, "PgL1", Tr("Numbered (20 pages, ellipsis windowing):"));
         auto row1 = DemoKit::AddRow(card1, "PgRow1");
         row1->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
         auto readout1 = makeReadout("PgReadout1", "On page 1 of 20");
@@ -43,7 +43,7 @@ namespace UltraCanvas {
         DemoKit::Add(row1, readout1);
 
         // ===== 2. ITEM-COUNT DRIVEN + PAGE INFO =====
-        auto card2 = DemoKit::AddCard(page, "PgL2", "From item count (95 items, 10 per page, with info):");
+        auto card2 = DemoKit::AddCard(page, "PgL2", Tr("From item count (95 items, 10 per page, with info):"));
         auto row2 = DemoKit::AddRow(card2, "PgRow2");
         row2->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
         auto readout2 = makeReadout("PgReadout2", "Showing items 1-10");
@@ -74,30 +74,30 @@ namespace UltraCanvas {
 
         // ===== 3. COMPACT MODE / 4. SIMPLE MODE =====
         auto modesRow = DemoKit::AddRow(page, "PgModesRow");
-        auto card3 = DemoKit::AddCard(modesRow, "PgL3", "Compact (prev / info / next):");
+        auto card3 = DemoKit::AddCard(modesRow, "PgL3", Tr("Compact (prev / info / next):"));
         auto pg3 = CreatePagination("Pg3", 0, 0, 260, 34, 12, 3);
         pg3->SetMode(PaginationMode::Compact);
         DemoKit::AddFixed(card3, pg3);
 
-        auto card4 = DemoKit::AddCard(modesRow, "PgL4", "Simple (prev / next only, with info):");
+        auto card4 = DemoKit::AddCard(modesRow, "PgL4", Tr("Simple (prev / next only, with info):"));
         auto pg4 = CreatePagination("Pg4", 0, 0, 320, 34, 8, 1);
         pg4->SetMode(PaginationMode::Simple);
         pg4->SetShowPageInfo(true);
         DemoKit::AddFixed(card4, pg4);
 
         // ===== 5. WIDE WINDOW (siblingCount = 2, no first/last) =====
-        auto card5 = DemoKit::AddCard(page, "PgL5", "Numbered, siblingCount=2, no First/Last buttons:");
+        auto card5 = DemoKit::AddCard(page, "PgL5", Tr("Numbered, siblingCount=2, no First/Last buttons:"));
         auto pg5 = CreatePagination("Pg5", 0, 0, 600, 34, 30, 15);
         pg5->SetSiblingCount(2);
         pg5->SetShowFirstLast(false);
         DemoKit::AddFixed(card5, pg5);
 
         // ===== INSTRUCTIONS =====
-        DemoKit::AddNotes(page, "PaginationInstructions", "API", {
-                "CreatePagination(id, x, y, w, h, pageCount, currentPage)",
-                "CreatePaginationForItems(id, x, y, w, h, totalItems, pageSize, currentPage)",
-                "SetMode(Numbered | Compact | Simple); SetSiblingCount / SetBoundaryCount",
-                "onPageChanged(page); GetPageStartItem() / GetPageEndItem() for the item window"});
+        DemoKit::AddNotes(page, "PaginationInstructions", Tr("API"), {
+                Tr("CreatePagination(id, x, y, w, h, pageCount, currentPage)"),
+                Tr("CreatePaginationForItems(id, x, y, w, h, totalItems, pageSize, currentPage)"),
+                Tr("SetMode(Numbered | Compact | Simple); SetSiblingCount / SetBoundaryCount"),
+                Tr("onPageChanged(page); GetPageStartItem() / GetPageEndItem() for the item window")});
 
         return page;
     }

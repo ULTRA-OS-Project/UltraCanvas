@@ -41,7 +41,7 @@ namespace {
 // =============================================================================
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateMekkoChartExamples() {
-        auto container = DemoKit::CreatePage("MekkoChartDemo", "Mekko (Marimekko) Chart Examples", "");
+        auto container = DemoKit::CreatePage("MekkoChartDemo", Tr("Mekko (Marimekko) Chart Examples"), "");
         auto topRow = DemoKit::AddRow(container, "MekkoTopRow");
         auto bottomRow = DemoKit::AddRow(container, "MekkoBottomRow");
 
@@ -62,8 +62,8 @@ namespace {
         marketData->AddColumn("Finance",        {95, 55, 48, 22});
         marketData->AddColumn("Tourism",        {41, 25, 51, 18});
 
-        auto marketCard = DemoKit::AddCard(topRow, "MekkoMarketCard", "Classic Marimekko",
-                "Column width is the sector's total, each column stacked to 100%",
+        auto marketCard = DemoKit::AddCard(topRow, "MekkoMarketCard", Tr("Classic Marimekko"),
+                Tr("Column width is the sector's total, each column stacked to 100%"),
                 520 + kChartCardChrome);
         auto marketChart = CreateMekkoChartWithData(
                 "mekko_market_chart", 0, 0, 520, 320,
@@ -95,8 +95,8 @@ namespace {
         salesData->AddColumn("Product C", {45, 54, 18, 24, 84, 36});
         salesData->AddColumn("Product D", {61, 32, 66, 47, 23, 50});
 
-        auto salesCard = DemoKit::AddCard(topRow, "MekkoSalesCard", "Percent labels, sorted columns",
-                "Default palette, columns sorted by total, cumulative % axis",
+        auto salesCard = DemoKit::AddCard(topRow, "MekkoSalesCard", Tr("Percent labels, sorted columns"),
+                Tr("Default palette, columns sorted by total, cumulative % axis"),
                 490 + kChartCardChrome);
         auto salesChart = CreateMekkoChartWithData(
                 "mekko_sales_chart", 0, 0, 490, 320,
@@ -127,8 +127,8 @@ namespace {
         cloudData->AddColumn("Provider 4", {9, 6, 4, 3});
         cloudData->AddColumn("Provider 5", {5, 4, 3, 2});
 
-        auto cloudCard = DemoKit::AddCard(bottomRow, "MekkoCloudCard", "Bar-Mekko",
-                "Absolute column heights, the legend below the chart",
+        auto cloudCard = DemoKit::AddCard(bottomRow, "MekkoCloudCard", Tr("Bar-Mekko"),
+                Tr("Absolute column heights, the legend below the chart"),
                 520 + kChartCardChrome);
         auto cloudChart = CreateMekkoChartWithData(
                 "mekko_cloud_chart", 0, 0, 520, 320,
@@ -146,7 +146,7 @@ namespace {
         // INTERACTIVE CONTROLS
         // =============================================================================
 
-        auto controlsCard = DemoKit::AddCard(bottomRow, "MekkoControlsCard", "Interactive controls");
+        auto controlsCard = DemoKit::AddCard(bottomRow, "MekkoControlsCard", Tr("Interactive controls"));
 
         // Mode switch for the two Marimekko charts (the cloud chart stays Bar-Mekko)
         auto swMode = UltraCanvasSwitch::CreateWithSideLabels(
@@ -215,7 +215,7 @@ namespace {
         DemoKit::AddFixed(controlsCard, btnRandomData);
 
         // Segment click feedback
-        auto clickLabel = DemoKit::AddText(controlsCard, "MekkoClickLabel", "Click a segment to inspect it...");
+        auto clickLabel = DemoKit::AddText(controlsCard, "MekkoClickLabel", Tr("Click a segment to inspect it..."));
         clickLabel->SetFontSize(11);
         clickLabel->SetTextColor(Color(90, 90, 90, 255));
 
@@ -233,14 +233,14 @@ namespace {
         cloudChart->SetOnSegmentClick(onSegmentClick(cloudData));
 
         // Info
-        DemoKit::AddHeading(controlsCard, "MekkoInfoTitle", "Mekko Chart Features:");
+        DemoKit::AddHeading(controlsCard, "MekkoInfoTitle", Tr("Mekko Chart Features:"));
         DemoKit::Add(controlsCard, DemoKit::CreateBullets("MekkoInfo", {
-                "Column width proportional to column total, 100% stacked height",
-                "Marimekko (percent) and Bar-Mekko (absolute) modes",
-                "Column sorting, headers, cumulative % axis, legends",
-                "Value/percent segment labels with auto-contrast text",
-                "Interactive tooltips, hover highlight and click callbacks"}));
-        DemoKit::AddCaption(controlsCard, "MekkoInfoHint", "Hover over segments and legend entries!");
+                Tr("Column width proportional to column total, 100% stacked height"),
+                Tr("Marimekko (percent) and Bar-Mekko (absolute) modes"),
+                Tr("Column sorting, headers, cumulative % axis, legends"),
+                Tr("Value/percent segment labels with auto-contrast text"),
+                Tr("Interactive tooltips, hover highlight and click callbacks")}));
+        DemoKit::AddCaption(controlsCard, "MekkoInfoHint", Tr("Hover over segments and legend entries!"));
 
         return container;
     }

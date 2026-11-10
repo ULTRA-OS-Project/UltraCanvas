@@ -99,12 +99,12 @@ namespace UltraCanvas {
     }
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateScrollbarExamples() {
-        auto root = DemoKit::CreatePage("ScrollbarExamples", "UltraCanvas Scrollbar Showcase",
-                "Preset styles, colour options, corner-radius / end-shape control and a "
-                "custom SVG handle. Drag a thumb or use the mouse wheel over a bar.");
+        auto root = DemoKit::CreatePage("ScrollbarExamples", Tr("UltraCanvas Scrollbar Showcase"),
+                Tr("Preset styles, colour options, corner-radius / end-shape control and a "
+                "custom SVG handle. Drag a thumb or use the mouse wheel over a bar."));
 
         auto status = DemoKit::AddText(root, "ScrollbarStatus",
-                "Interact with any scrollbar below to see its live position here.");
+                Tr("Interact with any scrollbar below to see its live position here."));
         status->SetFontSize(11);
         status->SetBackgroundColor(Color(245, 245, 245, 255));
         status->SetBorders(1.0f, Color(220, 220, 220, 255));
@@ -113,7 +113,7 @@ namespace UltraCanvas {
         // ===== 1. PRESET STYLES =====
         {
             auto card = DemoKit::AddCard(root, "hdrPresets",
-                    "1. Preset styles  —  ScrollbarStyle::Default / Modern / Minimal / Classic");
+                    Tr("1. Preset styles  —  ScrollbarStyle::Default / Modern / Minimal / Classic"));
             auto row = DemoKit::AddRow(card, "rowPresets", 10);
             AddVScrollbar(row, "sbDefault", ScrollbarStyle::Default(), "Default", status);
             AddVScrollbar(row, "sbModern", ScrollbarStyle::Modern(), "Modern", status);
@@ -125,7 +125,7 @@ namespace UltraCanvas {
         // ===== 2. COLOUR OPTIONS =====
         {
             auto card = DemoKit::AddCard(root, "hdrColors",
-                    "2. Colour options  —  track + thumb (normal / hover / pressed)");
+                    Tr("2. Colour options  —  track + thumb (normal / hover / pressed)"));
             auto row = DemoKit::AddRow(card, "rowColors", 10);
             AddVScrollbar(row, "sbBlue",
                           ColorStyle(Color(225, 232, 245, 255), Color(90, 140, 220, 255),
@@ -152,7 +152,7 @@ namespace UltraCanvas {
         // ===== 3. CORNER RADIUS / END SHAPE =====
         {
             auto card = DemoKit::AddCard(root, "hdrShape",
-                    "3. Corner radius / end shape  —  square, soft and round (pill) ends");
+                    Tr("3. Corner radius / end shape  —  square, soft and round (pill) ends"));
             auto row = DemoKit::AddRow(card, "rowShape", 10);
             auto mk = [](int thumbR, int trackR) {
                 ScrollbarStyle s;               // trackSize 16
@@ -176,7 +176,7 @@ namespace UltraCanvas {
         // ===== 4. CUSTOM HANDLE (SVG IMAGE) =====
         {
             auto card = DemoKit::AddCard(root, "hdrHandle",
-                    "4. Custom handle  —  thumb drawn from an SVG image (riffled grip)");
+                    Tr("4. Custom handle  —  thumb drawn from an SVG image (riffled grip)"));
             auto row = DemoKit::AddRow(card, "rowHandle", 10);
             const std::string vHandle =
                     NormalizePath(GetResourcesDir() + "media/icons/scrollbar-handle-v.svg");
@@ -213,7 +213,7 @@ namespace UltraCanvas {
         // ===== 5. HORIZONTAL SCROLLBARS =====
         {
             auto card = DemoKit::AddCard(root, "hdrHoriz",
-                    "5. Horizontal orientation  —  default and round-ended");
+                    Tr("5. Horizontal orientation  —  default and round-ended"));
             ScrollbarStyle flat = ScrollbarStyle::Default();
             AddHScrollbar(card, "sbHDefault", 300.0f, flat, "Default", status);
 

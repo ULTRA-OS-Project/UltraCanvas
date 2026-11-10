@@ -46,19 +46,19 @@ namespace UltraCanvas {
     }
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGroupBoxExamples() {
-        auto page = DemoKit::CreatePage("GroupBoxExamples", "UltraCanvas Group Box Showcase",
-                "Titled containers that frame child elements: framed, header and flat "
-                "styles, title alignment, checkable and collapsible behaviour");
+        auto page = DemoKit::CreatePage("GroupBoxExamples", Tr("UltraCanvas Group Box Showcase"),
+                Tr("Titled containers that frame child elements: framed, header and flat "
+                "styles, title alignment, checkable and collapsible behaviour"));
 
         // Status label for interaction feedback.
         auto statusLabel = DemoKit::AddText(page, "GroupBoxStatus",
-                "Toggle the checkable group's checkbox, or click the collapsible group's title.");
+                Tr("Toggle the checkable group's checkbox, or click the collapsible group's title."));
         statusLabel->SetFontSize(11);
         statusLabel->SetBackgroundColor(Color(245, 245, 245, 255));
         statusLabel->SetBorders(1.0f, Color(220, 220, 220, 255));
         statusLabel->SetPadding(6.0f);
 
-        auto stylesCard = DemoKit::AddCard(page, "GroupBoxStylesCard", "Frame styles and title alignment");
+        auto stylesCard = DemoKit::AddCard(page, "GroupBoxStylesCard", Tr("Frame styles and title alignment"));
         auto stylesRow = DemoKit::AddRow(stylesCard, "GroupBoxStylesRow", 20);
 
         // ===== 1. FRAMED — TITLE LEFT (default) =====
@@ -129,7 +129,7 @@ namespace UltraCanvas {
         }
 
         auto behaviourCard = DemoKit::AddCard(page, "GroupBoxBehaviourCard",
-                "Checkable, switch and collapsible groups");
+                Tr("Checkable, switch and collapsible groups"));
         auto behaviourRow = DemoKit::AddRow(behaviourCard, "GroupBoxBehaviourRow", 20);
 
         // ===== 7. CHECKABLE — CHECKBOX ACTIVATOR (left) =====

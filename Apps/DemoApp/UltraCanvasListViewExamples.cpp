@@ -439,11 +439,11 @@ namespace UltraCanvas {
         // Section 5 of the page: a card with the dashboard, its own status
         // line and the "Add 1,000 domains" button.
         void AddDomainDashboardSection(const std::shared_ptr<UltraCanvasContainer>& page) {
-            auto section = DemoKit::AddCard(page, "LVSection5", "5. Custom Delegate: Domain Dashboard");
+            auto section = DemoKit::AddCard(page, "LVSection5", Tr("5. Custom Delegate: Domain Dashboard"));
 
             auto intro = DemoKit::AddText(section, "DashboardIntro",
-                           "Click a domain to open it, \"Enable\" to turn on security insights, the three dots (or right-click a row) "
-                           "for its menu, and a column header to sort. Every row is painted by one IItemDelegate.");
+                           Tr("Click a domain to open it, \"Enable\" to turn on security insights, the three dots (or right-click a row) "
+                           "for its menu, and a column header to sort. Every row is painted by one IItemDelegate."));
             intro->SetFontSize(11);
             intro->SetWrap(TextWrap::WrapWordChar);
             intro->SetTextColor(DemoKit::CaptionText());
@@ -570,17 +570,17 @@ namespace UltraCanvas {
     } // namespace
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateListViewExamples() {
-        auto container = DemoKit::CreatePage("ListViewExamples", "ListView Component Showcase",
-                "Simple, multi-column, styled and icon lists, and a dashboard below them — "
-                "hover a row or a column header for its tooltip");
+        auto container = DemoKit::CreatePage("ListViewExamples", Tr("ListView Component Showcase"),
+                Tr("Simple, multi-column, styled and icon lists, and a dashboard below them — "
+                "hover a row or a column header for its tooltip"));
 
         // Status feedback label
         // At least three lines of 11px text plus padding (the cell-click
         // feedback is the tallest thing it shows), so a click does not move
         // the lists below; a longer text makes it taller.
         auto statusLabel = DemoKit::AddText(container, "LVStatusLabel",
-                "Click any list item to see feedback here.\n"
-                "Hover a row (or a column header) to see its tooltip.");
+                Tr("Click any list item to see feedback here.\n"
+                "Hover a row (or a column header) to see its tooltip."));
         statusLabel->SetFontSize(11);
         statusLabel->SetBackgroundColor(Color(245, 245, 245, 255));
         statusLabel->SetBorders(1.0f);
@@ -593,7 +593,7 @@ namespace UltraCanvas {
         // Section 1: Simple List (Single Selection) — top-left
         // ============================================================
         auto topRow = DemoKit::AddRow(container, "LVTopRow");
-        auto section1 = DemoKit::AddCard(topRow, "LVSection1", "1. Simple List (Single Selection)");
+        auto section1 = DemoKit::AddCard(topRow, "LVSection1", Tr("1. Simple List (Single Selection)"));
 
         auto simpleModel = std::make_shared<UltraCanvasSimpleListModel>();
         simpleModel->AddItem(ListItem("Apple", "", "A common red fruit"));
@@ -624,12 +624,12 @@ namespace UltraCanvas {
         DemoKit::AddStretched(section1, simpleList);
 
         DemoKit::AddCaption(section1, "SimpleListDesc",
-                "Single-selection list with 10 fruit items — hover a row for its description");
+                Tr("Single-selection list with 10 fruit items — hover a row for its description"));
 
         // ============================================================
         // Section 2: Multi-Column List with Header — top-right
         // ============================================================
-        auto section2 = DemoKit::AddCard(topRow, "LVSection2", "2. Multi-Column List with Header");
+        auto section2 = DemoKit::AddCard(topRow, "LVSection2", Tr("2. Multi-Column List with Header"));
 
         auto multiModel = std::make_shared<UltraCanvasMultiColumnListModel>();
         // The 4th ListColumnDef argument is the header tooltip, shown when the
@@ -782,13 +782,13 @@ namespace UltraCanvas {
         DemoKit::AddStretched(section2, multiList);
 
         DemoKit::AddCaption(section2, "MultiColDesc",
-                "Click a header to sort (again to reverse), multi-select (Ctrl+Click), per-cell tooltips");
+                Tr("Click a header to sort (again to reverse), multi-select (Ctrl+Click), per-cell tooltips"));
 
         // ============================================================
         // Section 3: Styled List (Alternating Rows + Multi-Select) — bottom-left
         // ============================================================
         auto bottomRow = DemoKit::AddRow(container, "LVBottomRow");
-        auto section3 = DemoKit::AddCard(bottomRow, "LVSection3", "3. Styled List (Alternating Rows + Multi-Select)");
+        auto section3 = DemoKit::AddCard(bottomRow, "LVSection3", Tr("3. Styled List (Alternating Rows + Multi-Select)"));
 
         // ListItem's third argument is the tooltip (ToolTipRole), shown on hover
         auto styledModel = std::make_shared<UltraCanvasSimpleListModel>();
@@ -839,12 +839,12 @@ namespace UltraCanvas {
         DemoKit::AddStretched(section3, styledList);
 
         DemoKit::AddCaption(section3, "StyledListDesc",
-                "Alternating rows, purple theme, multi-select (Ctrl/Shift+Click), hover for hex value");
+                Tr("Alternating rows, purple theme, multi-select (Ctrl/Shift+Click), hover for hex value"));
 
         // ============================================================
         // Section 4: Custom Delegate with Icons — bottom-right
         // ============================================================
-        auto section4 = DemoKit::AddCard(bottomRow, "LVSection4", "4. Custom Delegate with Icons");
+        auto section4 = DemoKit::AddCard(bottomRow, "LVSection4", Tr("4. Custom Delegate with Icons"));
 
         std::string iconsDir = NormalizePath(GetResourcesDir() + "media/icons/");
 
@@ -883,7 +883,7 @@ namespace UltraCanvas {
         DemoKit::AddStretched(section4, iconList);
 
         DemoKit::AddCaption(section4, "IconListDesc",
-                "Single-column with 20px icons, 28px rows — hover a row for its description");
+                Tr("Single-column with 20px icons, 28px rows — hover a row for its description"));
 
         // ============================================================
         // Section 5: Custom Delegate - the domain dashboard, full width below

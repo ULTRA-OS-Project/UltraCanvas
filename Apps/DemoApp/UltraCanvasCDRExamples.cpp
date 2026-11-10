@@ -151,16 +151,16 @@ namespace UltraCanvas {
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateCDRVectorExamples() {
         auto page = DemoKit::CreatePage("CDRExamples",
-                "CorelDRAW CDR Graphics Demo",
-                "One drawing at a time: pick a file on the left. A drawing is read the first time "
+                Tr("CorelDRAW CDR Graphics Demo"),
+                Tr("One drawing at a time: pick a file on the left. A drawing is read the first time "
                 "its tab is shown, on a worker thread, so the window stays responsive meanwhile. "
                 "A click on the drawing opens it in the media viewer; \"Save as\" exports the shown "
-                "page to SVG, or the first page to XAR. Supports CDR, CMX, CCX, CDT.");
+                "page to SVG, or the first page to XAR. Supports CDR, CMX, CCX, CDT."));
         // The tabs take the height left under the texts.
         page->SetFillsArea(true);
 
         // Status line for feedback; it goes in at the bottom of the page.
-        auto statusLabel = DemoKit::CreateText("CDRStatus", "Ready.");
+        auto statusLabel = DemoKit::CreateText("CDRStatus", Tr("Ready."));
         statusLabel->SetFontSize(11);
         statusLabel->SetBackgroundColor(Color(230, 230, 230, 255));
         statusLabel->SetPadding(6);
@@ -202,7 +202,7 @@ namespace UltraCanvas {
             };
 
             // Page navigation. The label doubles as the page indicator.
-            auto pageLabel = DemoKit::CreateCaption(id + "PageNo", "-/-");
+            auto pageLabel = DemoKit::CreateCaption(id + "PageNo", Tr("-/-"));
             pageLabel->SetAlignment(TextAlignment::Center, VerticalAlignment::Middle);
             pageLabel->SetTextColor(DemoKit::BodyText());
             // The page arrows are icons, not "◀" / "▶" glyphs, which the
@@ -323,22 +323,22 @@ namespace UltraCanvas {
             auto about = DemoKit::CreateColumn("CDRAboutPage", 10);
             about->SetPadding(10, 12, 10, 12);
             about->SetBackgroundColor(Colors::White);
-            DemoKit::AddHeading(about, "CDRAboutHeading", "CDR Plugin Features");
+            DemoKit::AddHeading(about, "CDRAboutHeading", Tr("CDR Plugin Features"));
             DemoKit::Add(about, DemoKit::CreateBullets("CDRAboutText", {
-                    "CorelDRAW CDR format",
-                    "Corel Presentation Exchange CMX",
-                    "Multi-page document support",
-                    "Vector paths and shapes",
-                    "Text with styling",
-                    "Transformations (rotate, scale)",
-                    "Groups and layers",
-                    "Stroke and fill styles, gradients, embedded bitmaps",
-                    "Zoom and pan controls",
-                    "Fit modes (page, width, height)",
-                    "Save as SVG, and as XAR through the Vector plugin",
-                    "LoadFromFileAsync: a drawing read on a worker thread"}));
+                    Tr("CorelDRAW CDR format"),
+                    Tr("Corel Presentation Exchange CMX"),
+                    Tr("Multi-page document support"),
+                    Tr("Vector paths and shapes"),
+                    Tr("Text with styling"),
+                    Tr("Transformations (rotate, scale)"),
+                    Tr("Groups and layers"),
+                    Tr("Stroke and fill styles, gradients, embedded bitmaps"),
+                    Tr("Zoom and pan controls"),
+                    Tr("Fit modes (page, width, height)"),
+                    Tr("Save as SVG, and as XAR through the Vector plugin"),
+                    Tr("LoadFromFileAsync: a drawing read on a worker thread")}));
             DemoKit::AddCaption(about, "CDRAboutLib",
-                    "Uses libcdr for parsing (UltraCanvas/third_party/libcdr, patched).");
+                    Tr("Uses libcdr for parsing (UltraCanvas/third_party/libcdr, patched)."));
             starters->push_back([]() {});
             tabs->AddTab("About the plugin", about);
         }

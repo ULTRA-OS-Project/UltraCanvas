@@ -14,13 +14,13 @@
 namespace UltraCanvas {
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateCollapsiblePanelExamples() {
-        auto page = DemoKit::CreatePage("CollapsiblePanelExamples", "Collapsible Panel Examples",
-                "A header strip with a chevron, a title, a detail text and real buttons over a body; "
-                "collapsed, only the header shows.");
+        auto page = DemoKit::CreatePage("CollapsiblePanelExamples", Tr("Collapsible Panel Examples"),
+                Tr("A header strip with a chevron, a title, a detail text and real buttons over a body; "
+                "collapsed, only the header shows."));
 
         // ===== 1. FOLD / UNFOLD =====
-        auto foldCard = DemoKit::AddCard(page, "CpL1", "Fold and unfold",
-                                         "Click the header strip. The body is as tall as its content when no expanded height is set.");
+        auto foldCard = DemoKit::AddCard(page, "CpL1", Tr("Fold and unfold"),
+                                         Tr("Click the header strip. The body is as tall as its content when no expanded height is set."));
         auto fold = CreateCollapsiblePanel("CpFold", "Problems");
         fold->SetDetail("3 warnings");
         for (int i = 0; i < 3; ++i) {
@@ -31,7 +31,7 @@ namespace UltraCanvas {
             fold->GetBody()->AddChild(line);
         }
         fold->GetBody()->SetPadding(6);
-        auto foldOut = DemoKit::CreateText("CpFoldOut", "Expanded");
+        auto foldOut = DemoKit::CreateText("CpFoldOut", Tr("Expanded"));
         foldOut->SetBackgroundColor(Color(240, 240, 240));
         foldOut->SetPadding(3);
         fold->onExpandedChanged = [foldOut](bool e) { foldOut->SetText(e ? "Expanded" : "Collapsed"); };
@@ -39,8 +39,8 @@ namespace UltraCanvas {
         DemoKit::Add(foldCard, foldOut);
 
         // ===== 2. HEADER BUTTONS =====
-        auto buttonsCard = DemoKit::AddCard(page, "CpL2", "Header buttons",
-                                            "Real buttons at the header's right: a press on them is theirs, not a fold.");
+        auto buttonsCard = DemoKit::AddCard(page, "CpL2", Tr("Header buttons"),
+                                            Tr("Real buttons at the header's right: a press on them is theirs, not a fold."));
         auto queue = CreateCollapsiblePanel("CpQueue", "Downloads");
         queue->SetDetail("2 running, 1 finished");
         auto queueBody = queue->GetBody();
@@ -63,8 +63,8 @@ namespace UltraCanvas {
         DemoKit::Add(buttonsCard, queueOut);
 
         // ===== 3. BOTTOM DOCK, RESIZABLE =====
-        auto dockCard = DemoKit::AddCard(page, "CpL3", "Docked at the bottom, resizable",
-                                         "A column with a page above and the panel below at its expanded height; drag the panel's top edge.");
+        auto dockCard = DemoKit::AddCard(page, "CpL3", Tr("Docked at the bottom, resizable"),
+                                         Tr("A column with a page above and the panel below at its expanded height; drag the panel's top edge."));
         auto dock = CreateContainer("CpDock", 0, 0, 0, 320);
         dock->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         dock->SetBorders(1.0f, Color(224, 227, 235, 255), 6.0f);
@@ -85,7 +85,7 @@ namespace UltraCanvas {
             bottom->GetBody()->AddChild(CreateLabel("CpLog" + std::to_string(i), 0, 0, 0, 20,
                                                     "14:5" + std::to_string(i) + "  catalog fetched, sequence 42"));
         }
-        auto dockOut = DemoKit::CreateText("CpDockOut", "Expanded height: 140");
+        auto dockOut = DemoKit::CreateText("CpDockOut", Tr("Expanded height: 140"));
         dockOut->SetBackgroundColor(Color(240, 240, 240));
         dockOut->SetPadding(3);
         bottom->onExpandedHeightChanged = [dockOut](float h) { dockOut->SetText("Expanded height: " + std::to_string(static_cast<int>(h))); };
@@ -93,12 +93,12 @@ namespace UltraCanvas {
         DemoKit::AddStretched(dockCard, dock);
         DemoKit::Add(dockCard, dockOut);
 
-        DemoKit::AddNotes(page, "CpNotes", "Implementation notes", {
-            "UltraCanvasCollapsiblePanel is a container: a header row (label, detail label, an actions row) over a body container.",
-            "Collapsed, the panel is headerHeight tall; expanded, the expanded height or as tall as the body.",
-            "SetCollapsible(false) makes the header a plain strip; SetResizable controls the grip along the top edge.",
-            "onExpandedChanged and onExpandedHeightChanged let a window remember the state.",
-            "UltraCanvasGroupBox::SetCollapsible folds a framed section under its caption; this is a dock with buttons and a resizable height.",
+        DemoKit::AddNotes(page, "CpNotes", Tr("Implementation notes"), {
+            Tr("UltraCanvasCollapsiblePanel is a container: a header row (label, detail label, an actions row) over a body container."),
+            Tr("Collapsed, the panel is headerHeight tall; expanded, the expanded height or as tall as the body."),
+            Tr("SetCollapsible(false) makes the header a plain strip; SetResizable controls the grip along the top edge."),
+            Tr("onExpandedChanged and onExpandedHeightChanged let a window remember the state."),
+            Tr("UltraCanvasGroupBox::SetCollapsible folds a framed section under its caption; this is a dock with buttons and a resizable height."),
         });
         return page;
     }

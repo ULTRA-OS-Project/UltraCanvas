@@ -103,12 +103,12 @@ namespace {
         container->SetPadding(10, 12, 10, 12);
 
         // ===== TITLE =====
-        auto title = DemoKit::AddHeading(container, "NetTitle", "UltraNet — Remote Resource Loader");
+        auto title = DemoKit::AddHeading(container, "NetTitle", Tr("UltraNet — Remote Resource Loader"));
         title->SetFontSize(16);
 
         DemoKit::AddText(container, "NetSubtitle",
-                         "Loads a remote image through UltraCanvasFileLoader::LoadFile, "
-                         "which dispatches to UltraNet_HttpGet for http:// and https:// URLs.");
+                         Tr("Loads a remote image through UltraCanvasFileLoader::LoadFile, "
+                         "which dispatches to UltraNet_HttpGet for http:// and https:// URLs."));
 
         // ===== INFO LINE — what's the UltraNet backend doing? =====
         auto backendLabel = DemoKit::AddCaption(container, "NetBackend", "");
@@ -123,7 +123,7 @@ namespace {
         // ===== URL INPUT + LOAD BUTTON ROW =====
         auto urlRow = DemoKit::AddRow(container, "NetUrlRow", 10);
         urlRow->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
-        DemoKit::Add(urlRow, DemoKit::CreateText("UrlLabel", "URL:"));
+        DemoKit::Add(urlRow, DemoKit::CreateText("UrlLabel", Tr("URL:")));
 
         // The input takes the row's spare width, at least 300 px before the
         // button wraps under it.
@@ -145,7 +145,7 @@ namespace {
         DemoKit::Add(urlRow, loadButton);
 
         // ===== STATUS LINE =====
-        auto status = DemoKit::AddText(container, "NetStatus", "Ready.");
+        auto status = DemoKit::AddText(container, "NetStatus", Tr("Ready."));
 
         // ===== IMAGE PREVIEW =====
         // Fills the rest of the tab from a zero basis; never squeezed below
@@ -248,9 +248,9 @@ namespace {
 // ===== ULTRANET MODULE DEMO =====
 std::shared_ptr<UltraCanvasUIElement>
 UltraCanvasDemoApplication::CreateNetworkingExamples() {
-    auto root = DemoKit::CreatePage("UltraNetExamples", "Ultra Net",
-            "The Ultra Net module: an overview, its documentation and a live remote-resource "
-            "loader (UltraCanvasFileLoader::LoadFile + UltraNet_HttpGet + UCImageRaster::LoadFromMemory).");
+    auto root = DemoKit::CreatePage("UltraNetExamples", Tr("Ultra Net"),
+            Tr("The Ultra Net module: an overview, its documentation and a live remote-resource "
+            "loader (UltraCanvasFileLoader::LoadFile + UltraNet_HttpGet + UCImageRaster::LoadFromMemory)."));
     // The tabs' text areas and the loader size and scroll themselves: the
     // page is the area's height and the tabs' card takes what the title leaves.
     root->SetFillsArea(true);

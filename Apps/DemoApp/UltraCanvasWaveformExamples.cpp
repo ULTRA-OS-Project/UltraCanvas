@@ -109,9 +109,9 @@ namespace UltraCanvas {
 // =============================================================================
     std::shared_ptr<UltraCanvasUIElement>
     UltraCanvasDemoApplication::CreateWaveformExamples() {
-        auto container = DemoKit::CreatePage("WaveformExamples", "Waveform Chart",
-                "Amplitude min/max envelope with optional RMS band and a click/drag "
-                "playhead, synced to the audio player below.");
+        auto container = DemoKit::CreatePage("WaveformExamples", Tr("Waveform Chart"),
+                Tr("Amplitude min/max envelope with optional RMS band and a click/drag "
+                "playhead, synced to the audio player below."));
 
         // Status line (audio backend availability + load result).
         auto status = DemoKit::AddText(container, "WaveformStatus", "");

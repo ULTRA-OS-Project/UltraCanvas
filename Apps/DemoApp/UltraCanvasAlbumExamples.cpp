@@ -455,9 +455,9 @@ namespace UltraCanvas {
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateAlbumExamples() {
         auto page = DemoKit::CreatePage("AlbumExamples",
-                "UltraCanvas Album — photo / video / music gallery with selectable designs",
-                "Switch the design with the buttons below. Click a photo to view it "
-                "full size, or a video / track to play it (or use the View / Play icon).");
+                Tr("UltraCanvas Album — photo / video / music gallery with selectable designs"),
+                Tr("Switch the design with the buttons below. Click a photo to view it "
+                "full size, or a video / track to play it (or use the View / Play icon)."));
         // The album scrolls its own tiles: the page is the area's height, the
         // album card takes what the options leave.
         page->SetFillsArea(true);
@@ -593,7 +593,7 @@ namespace UltraCanvas {
 
         // ===== Status (pinned) =====
         auto status = DemoKit::AddCaption(albumCard, "AlbumStatus",
-                "Mode: Display · Layout: Masonry · click a tile to open, hover for actions");
+                Tr("Mode: Display · Layout: Masonry · click a tile to open, hover for actions"));
         auto* statusPtr = status.get();
 
         // ===== Actions (gated per mode) =====

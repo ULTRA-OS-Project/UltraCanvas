@@ -180,7 +180,7 @@ std::shared_ptr<UltraCanvasUIElement> BuildSocialMediaTab() {
             "are on and moves them outside the dots.");
 
     auto source = DemoKit::AddCaption(tab, "SocialSource",
-            "Source: Onward / JL Partners  -  rendered with UltraCanvasDumbbellChart");
+            Tr("Source: Onward / JL Partners  -  rendered with UltraCanvasDumbbellChart"));
     source->SetFontSize(9.5f);
 
     return tab;
@@ -222,7 +222,7 @@ std::shared_ptr<UltraCanvasUIElement> BuildBeforeAfterTab() {
     // ===== CONTROL PANEL =====
     auto panel = AddChartRow(tab, "BARow", chart, "BAControls", "Chart controls");
 
-    DemoKit::AddCaption(panel, "BADotLabel", "Dot radius");
+    DemoKit::AddCaption(panel, "BADotLabel", Tr("Dot radius"));
 
     auto dotSlider = std::make_shared<UltraCanvasSlider>("BADotSlider", 0, 0, 280, 24);
     dotSlider->SetRange(3.0f, 20.0f);
@@ -232,7 +232,7 @@ std::shared_ptr<UltraCanvasUIElement> BuildBeforeAfterTab() {
     dotSlider->onValueChanged = [chart](float value) { chart->SetDotRadius(value); };
     DemoKit::AddStretched(panel, dotSlider);
 
-    DemoKit::AddCaption(panel, "BALineLabel", "Connector width");
+    DemoKit::AddCaption(panel, "BALineLabel", Tr("Connector width"));
 
     auto lineSlider = std::make_shared<UltraCanvasSlider>("BALineSlider", 0, 0, 280, 24);
     lineSlider->SetRange(1.0f, 10.0f);
@@ -242,7 +242,7 @@ std::shared_ptr<UltraCanvasUIElement> BuildBeforeAfterTab() {
     lineSlider->onValueChanged = [chart](float value) { chart->SetLineWidth(value); };
     DemoKit::AddStretched(panel, lineSlider);
 
-    DemoKit::AddCaption(panel, "BALabelWidth", "Category label column width");
+    DemoKit::AddCaption(panel, "BALabelWidth", Tr("Category label column width"));
 
     auto labelWidthSlider = std::make_shared<UltraCanvasSlider>("BALabelWidthSlider", 0, 0, 280, 24);
     labelWidthSlider->SetRange(60.0f, 260.0f);
@@ -281,7 +281,7 @@ std::shared_ptr<UltraCanvasUIElement> BuildBeforeAfterTab() {
     };
     DemoKit::AddStretched(panel, categoryCheck);
 
-    DemoKit::AddCaption(panel, "BAPlacementLabel", "Value label placement");
+    DemoKit::AddCaption(panel, "BAPlacementLabel", Tr("Value label placement"));
 
     auto placementDrop = std::make_shared<UltraCanvasDropdown>("BAPlacement", 0, 0, 280, 26);
     placementDrop->AddItem("Auto (inside when they fit)");
@@ -431,7 +431,7 @@ std::shared_ptr<UltraCanvasUIElement> BuildGapAnalysisTab() {
 
     auto panel = AddChartRow(tab, "GapRow", chart, "GapPanel");
 
-    DemoKit::AddCaption(panel, "GapSortLabel", "Row order");
+    DemoKit::AddCaption(panel, "GapSortLabel", Tr("Row order"));
 
     auto sortDrop = std::make_shared<UltraCanvasDropdown>("GapSort", 0, 0, 300, 26);
     sortDrop->AddItem("Widest gap first");
@@ -453,7 +453,7 @@ std::shared_ptr<UltraCanvasUIElement> BuildGapAnalysisTab() {
     };
     DemoKit::AddStretched(panel, sortDrop);
 
-    auto selectionTitle = DemoKit::AddHeading(panel, "GapSelTitle", "Selected row");
+    auto selectionTitle = DemoKit::AddHeading(panel, "GapSelTitle", Tr("Selected row"));
     selectionTitle->SetFontSize(12);
 
     auto selection = AddNote(panel, "GapSelection",
@@ -498,9 +498,9 @@ std::shared_ptr<UltraCanvasUIElement> BuildGapAnalysisTab() {
 // =============================================================================
 
 std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateDumbbellChartExamples() {
-    auto container = DemoKit::CreatePage("DumbbellChartExamples", "Dumbbell Chart Examples",
-        "Connected dot charts: a gender comparison, a before/after study with live styling controls, "
-        "a min/max range with per-row colours and a gap analysis with sorting and click callbacks");
+    auto container = DemoKit::CreatePage("DumbbellChartExamples", Tr("Dumbbell Chart Examples"),
+        Tr("Connected dot charts: a gender comparison, a before/after study with live styling controls, "
+        "a min/max range with per-row colours and a gap analysis with sorting and click callbacks"));
 
     auto card = DemoKit::AddCard(container, "DumbbellChartCard");
     card->SetPadding(4);

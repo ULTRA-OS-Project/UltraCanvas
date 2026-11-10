@@ -312,11 +312,11 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateKanbanBo
     const int INNER_H = 640;
 
     auto root = DemoKit::CreatePage("KanbanRoot",
-            "Kanban Board - Editor, Designs & Text Definitions",
-            "Drag cards between columns, watch the WIP badges, and on the "
+            Tr("Kanban Board - Editor, Designs & Text Definitions"),
+            Tr("Drag cards between columns, watch the WIP badges, and on the "
             "editable tabs double-click a card to edit it, use the dashed "
             "'+ Add card' buttons, and double-click a column header to "
-            "rename it.");
+            "rename it."));
 
     // The tabs in a card, as wide as the page and as tall as the boards
     // need; each tab arranges its own content.

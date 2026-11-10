@@ -26,10 +26,10 @@ namespace UltraCanvas {
     } // namespace
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateTreeMapExamples() {
-        auto container = DemoKit::CreatePage("treeMapContainer", "TreeMap - Hierarchical Data Example",
-                "Sales by category and product, drawn as nested rectangles sized by value");
-        auto card = DemoKit::AddCard(container, "treeMapCard", "Sales tree map",
-                "Cycle the layout algorithm, the visual style and the colour scheme; toggle values and labels");
+        auto container = DemoKit::CreatePage("treeMapContainer", Tr("TreeMap - Hierarchical Data Example"),
+                Tr("Sales by category and product, drawn as nested rectangles sized by value"));
+        auto card = DemoKit::AddCard(container, "treeMapCard", Tr("Sales tree map"),
+                Tr("Cycle the layout algorithm, the visual style and the colour scheme; toggle values and labels"));
         
         auto treeMap = std::make_shared<UltraCanvasTreeMapElement>("treeMap", 0, 0, 600, 400);
         

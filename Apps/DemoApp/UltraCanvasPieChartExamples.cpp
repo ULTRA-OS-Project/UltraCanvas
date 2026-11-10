@@ -192,10 +192,10 @@ namespace UltraCanvas {
 // ===== MAIN PIE CHART EXAMPLES CREATOR =====
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreatePieChartExamples() {
         auto container = DemoKit::CreatePage("PieChartContainer",
-                "Pie Chart Examples - Enhanced with 3D & Gradients",
-                "Comprehensive pie chart visualization with donut mode, exploded slices, radial gradients, "
+                Tr("Pie Chart Examples - Enhanced with 3D & Gradients"),
+                Tr("Comprehensive pie chart visualization with donut mode, exploded slices, radial gradients, "
                 "3D visual effects, and advanced labeling. Features intelligent label positioning and "
-                "interactive tooltips.");
+                "interactive tooltips."));
 
         // The controls beside the charts; the charts two by two while they
         // fit, one under the other when not.
@@ -212,7 +212,7 @@ namespace UltraCanvas {
 
         // ===== EXAMPLE 1: MARKET SHARE ANALYSIS =====
         auto marketCard = DemoKit::AddCard(chartGrid, "PieMarketCard", "", "", chartCardW);
-        DemoKit::AddHeading(marketCard, "MarketLabel", "Market Share Distribution");
+        DemoKit::AddHeading(marketCard, "MarketLabel", Tr("Market Share Distribution"));
 
         auto marketChart = CreatePieChartElement("MarketPieChart", 0, 0, 460, 290);
         marketChart->SetDataSource(GenerateMarketShareData());
@@ -232,7 +232,7 @@ namespace UltraCanvas {
 
         // ===== EXAMPLE 2: BUDGET ALLOCATION =====
         auto budgetCard = DemoKit::AddCard(chartGrid, "PieBudgetCard", "", "", chartCardW);
-        DemoKit::AddHeading(budgetCard, "BudgetLabel", "Annual Budget Allocation");
+        DemoKit::AddHeading(budgetCard, "BudgetLabel", Tr("Annual Budget Allocation"));
 
         auto budgetChart = CreatePieChartElement("BudgetPieChart", 0, 0, 460, 290);
         budgetChart->SetDataSource(GenerateBudgetData());
@@ -254,7 +254,7 @@ namespace UltraCanvas {
 
         // ===== EXAMPLE 3: 3D DONUT WITH GRADIENTS =====
         auto donutCard = DemoKit::AddCard(chartGrid, "PieDonutCard", "", "", chartCardW);
-        DemoKit::AddHeading(donutCard, "DonutLabel", "3D Pie with Highlighted Slice");
+        DemoKit::AddHeading(donutCard, "DonutLabel", Tr("3D Pie with Highlighted Slice"));
 
         auto donutChart = CreatePieChartElement("DonutChart", 0, 0, 460, 290);
         donutChart->SetDataSource(GenerateMarketShareData());
@@ -299,7 +299,7 @@ namespace UltraCanvas {
 
         // ===== EXAMPLE 4: STYLIZED SHOWCASE =====
         auto styledCard = DemoKit::AddCard(chartGrid, "PieStyledCard", "", "", chartCardW);
-        DemoKit::AddHeading(styledCard, "StyledLabel", "Stylized Pie Chart");
+        DemoKit::AddHeading(styledCard, "StyledLabel", Tr("Stylized Pie Chart"));
 
         auto styledChart = CreatePieChartElement("StyledChart", 0, 0, 460, 290);
         styledChart->SetDataSource(GenerateBudgetData());

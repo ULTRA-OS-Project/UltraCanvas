@@ -55,9 +55,9 @@ std::string BuildResultHeader(const OCRResult& r, const std::string& source) {
 std::shared_ptr<UltraCanvasUIElement>
 UltraCanvasDemoApplication::CreateOCRExamples() {
     auto container = DemoKit::CreatePage("OCRDemoPage",
-        "Optical Character Recognition (Tesseract backend)",
-        "Load an image, pick a language (any Tesseract language — "
-        "packs download on first use), then press \"Run OCR\".");
+        Tr("Optical Character Recognition (Tesseract backend)"),
+        Tr("Load an image, pick a language (any Tesseract language — "
+        "packs download on first use), then press \"Run OCR\"."));
 
     // The image and its controls beside the result; the result card moves
     // under the image card when the window is narrow.
@@ -66,7 +66,7 @@ UltraCanvasDemoApplication::CreateOCRExamples() {
     // ===== LEFT COLUMN: image preview + actions =====
     // The frame keeps its size: the image inside fits itself to it.
     const int frameW = 348, frameH = 420;
-    auto imageCard = DemoKit::AddCard(cardsRow, "OCRImageCard", "Input image", "",
+    auto imageCard = DemoKit::AddCard(cardsRow, "OCRImageCard", Tr("Input image"), "",
                                       frameW + 2 * DemoKit::kCardPadding);
 
     auto imageFrame = std::make_shared<UltraCanvasContainer>(
@@ -88,7 +88,7 @@ UltraCanvasDemoApplication::CreateOCRExamples() {
     // not installed yet are marked and fetched on demand when OCR is run.
     auto langRow = DemoKit::AddRow(imageCard, "OCRLangRow", 8);
     langRow->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
-    auto langLabel = DemoKit::AddText(langRow, "OCRLangLabel", "Language:");
+    auto langLabel = DemoKit::AddText(langRow, "OCRLangLabel", Tr("Language:"));
     langLabel->SetFontWeight(FontWeight::Bold);
     langLabel->SetTextColor(DemoKit::TitleText());
 
@@ -122,7 +122,7 @@ UltraCanvasDemoApplication::CreateOCRExamples() {
     auto pathLabel = DemoKit::AddCaption(imageCard, "OCRImagePath", defaultPath);
 
     // ===== RIGHT COLUMN: result text area =====
-    auto resultCard = DemoKit::AddCard(cardsRow, "OCRResultCard", "Recognised text");
+    auto resultCard = DemoKit::AddCard(cardsRow, "OCRResultCard", Tr("Recognised text"));
 
     // As wide as the card; the text scrolls inside its 586 px.
     auto resultArea = std::make_shared<UltraCanvasTextArea>(

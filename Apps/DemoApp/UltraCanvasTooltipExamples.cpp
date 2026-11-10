@@ -36,11 +36,11 @@ namespace UltraCanvas {
     }
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateTooltipExamples() {
-        auto mainContainer = DemoKit::CreatePage("TooltipExamples", "UltraCanvas Tooltip Showcase",
-                "Hover each button. Tooltips support plain text, inline Pango markup and "
+        auto mainContainer = DemoKit::CreatePage("TooltipExamples", Tr("UltraCanvas Tooltip Showcase"),
+                Tr("Hover each button. Tooltips support plain text, inline Pango markup and "
                 "structured content: title, two- and three-column table rows with "
                 "definable per-column alignment, color swatches, bullet lists and "
-                "separators.");
+                "separators."));
         // The hover targets share the width, three or four to a line, and
         // wrap under each other in a narrow window.
         auto grid = DemoKit::AddRow(mainContainer, "TooltipGrid");
@@ -217,10 +217,10 @@ namespace UltraCanvas {
 
         // ===== NOTES =====
         DemoKit::AddCaption(mainContainer, "TooltipNotes",
-                "API: element->SetTooltip(text) for plain/markup strings; "
+                Tr("API: element->SetTooltip(text) for plain/markup strings; "
                 "element->SetTooltipContent(TooltipContent) for structured tooltips. "
                 "Charts and custom widgets can call UltraCanvasTooltipManager::UpdateAndShowTooltip() "
-                "directly with either form. See Docs/UltraCanvas/UltraCanvasTooltipManager.md.");
+                "directly with either form. See Docs/UltraCanvas/UltraCanvasTooltipManager.md."));
 
         return mainContainer;
     }

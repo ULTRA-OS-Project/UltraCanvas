@@ -15,14 +15,14 @@
 namespace UltraCanvas {
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateSidebarNavigationExamples() {
-        auto page = DemoKit::CreatePage("SidebarNavigationExamples", "Sidebar Navigation Examples",
-                "The navigation column of a window: sections of items with icon, label and badge, one selected; "
-                "Up / Down / Home / End / Return; wheel scrolling; a compact icons-only mode.");
+        auto page = DemoKit::CreatePage("SidebarNavigationExamples", Tr("Sidebar Navigation Examples"),
+                Tr("The navigation column of a window: sections of items with icon, label and badge, one selected; "
+                "Up / Down / Home / End / Return; wheel scrolling; a compact icons-only mode."));
 
         // ===== 1. SECTIONS AND BADGES, BESIDE A PAGE =====
-        auto storeCard = DemoKit::AddCard(page, "SnL1", "Sections and badges",
-                                          "A store's column beside its page; the page follows the selection. "
-                                          "Click an item, or focus the column and use the arrow keys.");
+        auto storeCard = DemoKit::AddCard(page, "SnL1", Tr("Sections and badges"),
+                                          Tr("A store's column beside its page; the page follows the selection. "
+                                          "Click an item, or focus the column and use the arrow keys."));
         auto frame = CreateContainer("SnFrame", 0, 0, 0, 300);
         frame->layout.SetFlexRow().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         frame->SetBorders(1.0f, Color(224, 227, 235, 255), 6.0f);
@@ -55,7 +55,7 @@ namespace UltraCanvas {
             const SidebarItem* item = n->FindItem(id);
             pageArea->SetText(item ? item->label : std::string("(nothing selected)"));
         };
-        auto activatedOut = DemoKit::CreateText("SnActivated", "Double-click or press Return on an item to activate it");
+        auto activatedOut = DemoKit::CreateText("SnActivated", Tr("Double-click or press Return on an item to activate it"));
         activatedOut->SetBackgroundColor(Color(240, 240, 240));
         activatedOut->SetPadding(3);
         nav->onItemActivated = [activatedOut](const std::string& id) { activatedOut->SetText("Activated: " + id); };
@@ -63,13 +63,13 @@ namespace UltraCanvas {
         DemoKit::Add(storeCard, activatedOut);
 
         // ===== 2. COMPACT MODE =====
-        auto compactCard = DemoKit::AddCard(page, "SnL2", "Compact mode",
-                                            "Icons alone, the label as a tooltip, a badge as a dot; the column is compactWidth wide.");
+        auto compactCard = DemoKit::AddCard(page, "SnL2", Tr("Compact mode"),
+                                            Tr("Icons alone, the label as a tooltip, a badge as a dot; the column is compactWidth wide."));
         auto compactRow = DemoKit::AddRow(compactCard, "SnCompactRow", 12);
         auto toggle = CreateButton("SnToggle", 0, 0, 160, 28, "Toggle compact");
         toggle->onClick = [n = nav.get()]() { n->SetCompact(!n->IsCompact()); };
         DemoKit::AddFixed(compactRow, toggle);
-        auto compactOut = DemoKit::CreateText("SnCompactOut", "Expanded (220 px)");
+        auto compactOut = DemoKit::CreateText("SnCompactOut", Tr("Expanded (220 px)"));
         compactOut->SetBackgroundColor(Color(240, 240, 240));
         compactOut->SetPadding(3);
         nav->onCompactChanged = [compactOut, n = nav.get()](bool compact) {
@@ -79,8 +79,8 @@ namespace UltraCanvas {
         DemoKit::Add(compactRow, compactOut);
 
         // ===== 3. KEYBOARD AND A LONG LIST =====
-        auto longCard = DemoKit::AddCard(page, "SnL3", "Keyboard and scrolling",
-                                         "More items than fit: the wheel scrolls, Up / Down keep the selection in view, Home / End jump.");
+        auto longCard = DemoKit::AddCard(page, "SnL3", Tr("Keyboard and scrolling"),
+                                         Tr("More items than fit: the wheel scrolls, Up / Down keep the selection in view, Home / End jump."));
         auto longFrame = CreateContainer("SnLongFrame", 0, 0, 0, 220);
         longFrame->layout.SetFlexRow().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         longFrame->SetBorders(1.0f, Color(224, 227, 235, 255), 6.0f);
@@ -106,13 +106,13 @@ namespace UltraCanvas {
         };
         DemoKit::AddStretched(longCard, longFrame);
 
-        DemoKit::AddNotes(page, "SnNotes", "Implementation notes", {
-            "UltraCanvasSidebarNavigation is self-rendered: sections, items, badges and the selection bar are drawn by the element.",
-            "Items added without a section go into an untitled first section; AddSection returns the index for the rest.",
-            "SetBadge(id, count) shows a count pill (0 clears); in compact mode a badge is a dot at the icon's corner.",
-            "onSelectionChanged fires once per change, for a click, the keyboard and Select; Select(id, false) is silent.",
-            "SetCompact switches to icons with tooltips and compactWidth; onCompactChanged lets the window remember it.",
-            "UltraCanvasToolbar (vertical) is a strip of actions; UltraCanvasTreeView is for places that nest.",
+        DemoKit::AddNotes(page, "SnNotes", Tr("Implementation notes"), {
+            Tr("UltraCanvasSidebarNavigation is self-rendered: sections, items, badges and the selection bar are drawn by the element."),
+            Tr("Items added without a section go into an untitled first section; AddSection returns the index for the rest."),
+            Tr("SetBadge(id, count) shows a count pill (0 clears); in compact mode a badge is a dot at the icon's corner."),
+            Tr("onSelectionChanged fires once per change, for a click, the keyboard and Select; Select(id, false) is silent."),
+            Tr("SetCompact switches to icons with tooltips and compactWidth; onCompactChanged lets the window remember it."),
+            Tr("UltraCanvasToolbar (vertical) is a strip of actions; UltraCanvasTreeView is for places that nest."),
         });
         return page;
     }

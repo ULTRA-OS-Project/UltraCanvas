@@ -135,7 +135,7 @@ namespace UltraCanvas {
     } // namespace
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateSpreadsheetExamples() {
-        auto root = DemoKit::CreatePage("SpreadsheetExamples", "UltraCanvas Spreadsheet", "");
+        auto root = DemoKit::CreatePage("SpreadsheetExamples", Tr("UltraCanvas Spreadsheet"), "");
         // The grid scrolls itself: the page is the area's height and the grid
         // takes what the toolbar and the hint leave.
         root->SetFillsArea(true);

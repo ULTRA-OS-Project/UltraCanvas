@@ -23,7 +23,7 @@ namespace UltraCanvas {
 // =============================================================================
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateWaterfallChartExamples() {
-        auto container = DemoKit::CreatePage("WaterfallChartDemo", "Waterfall Chart Examples", "");
+        auto container = DemoKit::CreatePage("WaterfallChartDemo", Tr("Waterfall Chart Examples"), "");
 
         // The charts side by side while they fit, each card as wide as its
         // chart at least.
@@ -190,17 +190,17 @@ namespace UltraCanvas {
         DemoKit::Add(buttonRow, btnRandomData);
 
         // Info
-        DemoKit::AddHeading(controlsCard, "WaterfallInfoTitle", "Waterfall Chart Features:");
+        DemoKit::AddHeading(controlsCard, "WaterfallInfoTitle", Tr("Waterfall Chart Features:"));
         DemoKit::Add(controlsCard, DemoKit::CreateBullets("WaterfallInfo", {
-                "Revenue flow visualization",
-                "Cash flow with subtotals",
-                "Performance impact tracking",
-                "Positive/negative coloring",
-                "Multiple bar styles",
-                "Connection lines",
-                "Interactive tooltips",
-                "Value labels"}));
-        DemoKit::AddCaption(controlsCard, "WaterfallInfoHint", "Hover over bars for details!");
+                Tr("Revenue flow visualization"),
+                Tr("Cash flow with subtotals"),
+                Tr("Performance impact tracking"),
+                Tr("Positive/negative coloring"),
+                Tr("Multiple bar styles"),
+                Tr("Connection lines"),
+                Tr("Interactive tooltips"),
+                Tr("Value labels")}));
+        DemoKit::AddCaption(controlsCard, "WaterfallInfoHint", Tr("Hover over bars for details!"));
 
         return container;
     }

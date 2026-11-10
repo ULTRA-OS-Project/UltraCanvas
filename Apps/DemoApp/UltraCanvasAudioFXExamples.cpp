@@ -720,7 +720,7 @@ namespace {
         root->SetPadding(10, 12, 10, 12);
         root->SetBackgroundColor(Colors::White);
 
-        DemoKit::Add(root, DemoKit::CreateHeading("AudioFXDemoTitle", "AudioFX playground"));
+        DemoKit::Add(root, DemoKit::CreateHeading("AudioFXDemoTitle", Tr("AudioFX playground")));
 
         // ===== Three columns: waveform + player | effect tree | options =====
         auto columns = std::make_shared<UltraCanvasContainer>("AudioFXColumns", 0, 0, 0, 0);
@@ -745,7 +745,7 @@ namespace {
         sourceRow->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
         DemoKit::Add(leftCol, sourceRow);
 
-        DemoKit::AddText(sourceRow, "AudioFXSourceLabel", "Sample track");
+        DemoKit::AddText(sourceRow, "AudioFXSourceLabel", Tr("Sample track"));
 
         auto sampleDropdown = std::make_shared<UltraCanvasDropdown>("AudioFXSample", 0, 0, 260, 30);
         DemoKit::AddFixed(sourceRow, sampleDropdown);
@@ -787,7 +787,7 @@ namespace {
                            .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
         columns->AddChild(treeCol);
 
-        DemoKit::AddHeading(treeCol, "AudioFXTreeTitle", "AudioFX effects");
+        DemoKit::AddHeading(treeCol, "AudioFXTreeTitle", Tr("AudioFX effects"));
 
         auto tree = std::make_shared<UltraCanvasTreeView>("AudioFXTree", 0, 0, 250, 0);
         tree->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
@@ -817,7 +817,7 @@ namespace {
                               .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
         columns->AddChild(optionsCol);
 
-        DemoKit::AddHeading(optionsCol, "AudioFXOptionsTitle", "Options");
+        DemoKit::AddHeading(optionsCol, "AudioFXOptionsTitle", Tr("Options"));
 
         auto optionsBox = std::make_shared<UltraCanvasContainer>("AudioFXOptionsBox", 0, 0, 0, 0);
         optionsBox->layout.SetFlexColumn().SetFlexGap(8)
@@ -923,7 +923,7 @@ namespace {
 
             if (!state->effect) {
                 auto hint = DemoKit::AddText(optionsBox, "AudioFXOptHint",
-                                             "Select an effect in the tree to see its options.");
+                                             Tr("Select an effect in the tree to see its options."));
                 hint->SetTextColor(Color(120, 120, 120, 255));
             } else {
                 const Effect& fx = *state->effect;
@@ -959,7 +959,7 @@ namespace {
 
                 if (fx.params.empty()) {
                     auto none = DemoKit::AddText(optionsBox, "AudioFXOptNone",
-                                                 "This effect has no adjustable options.");
+                                                 Tr("This effect has no adjustable options."));
                     none->SetFontSize(11);
                     none->SetTextColor(Color(120, 120, 120, 255));
                 }
@@ -1058,9 +1058,9 @@ namespace {
 
 // ===== AUDIOFX MODULE DEMO =====
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateAudioFXExamples() {
-        auto root = DemoKit::CreatePage("AudioFXExamples", "Audio FX",
-                "The AudioFX module: an overview, the full documentation and a live playground - "
-                "pick a track, choose an effect, tune its options and hear the result.");
+        auto root = DemoKit::CreatePage("AudioFXExamples", Tr("Audio FX"),
+                Tr("The AudioFX module: an overview, the full documentation and a live playground - "
+                "pick a track, choose an effect, tune its options and hear the result."));
         // The documents and the playground scroll and size themselves: the
         // page is the area's height, not its content's.
         root->SetFillsArea(true);

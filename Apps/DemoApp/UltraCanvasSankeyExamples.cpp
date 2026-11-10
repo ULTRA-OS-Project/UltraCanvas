@@ -375,14 +375,14 @@ namespace UltraCanvas {
 
 // ===== SANKEY DEMO IMPLEMENTATION =====
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateSankeyExamples() {
-        auto mainContainer = DemoKit::CreatePage("SankeyExamples", "Sankey Diagram Visualization",
-                "Interactive flow diagrams showing relationships and value distributions between entities");
+        auto mainContainer = DemoKit::CreatePage("SankeyExamples", Tr("Sankey Diagram Visualization"),
+                Tr("Interactive flow diagrams showing relationships and value distributions between entities"));
 
         // ===== STATUS LABEL =====
         // Room for two lines at least, so the tabs under it do not move when
         // a hover read-out is shorter than the one before.
         auto statusLabel = DemoKit::AddText(mainContainer, "SankeyStatus",
-                "Hover over nodes and links to see details\nDrag nodes to adjust layout");
+                Tr("Hover over nodes and links to see details\nDrag nodes to adjust layout"));
         statusLabel->SetFontSize(10);
         statusLabel->SetBackgroundColor(Color(245, 245, 245));
         statusLabel->SetBorders(1.0f);
@@ -604,7 +604,7 @@ namespace UltraCanvas {
         DemoKit::Add(linkRow, clearBtn);
 
         // Preset examples
-        auto presetLabel = DemoKit::CreateText("PresetLabel", "Presets:");
+        auto presetLabel = DemoKit::CreateText("PresetLabel", Tr("Presets:"));
         presetLabel->SetFontSize(11);
         DemoKit::Add(presetRow, presetLabel);
 
@@ -751,7 +751,7 @@ namespace UltraCanvas {
         DemoKit::Add(perfControls, generateBtn);
 
         // The result takes the rest of the strip, right-aligned.
-        auto perfStats = DemoKit::CreateText("PerfStats", "Ready to generate");
+        auto perfStats = DemoKit::CreateText("PerfStats", Tr("Ready to generate"));
         perfStats->SetFontSize(11);
         perfStats->SetAlignment(TextAlignment::Right, VerticalAlignment::Top);
         DemoKit::Add(perfControls, perfStats, 1);

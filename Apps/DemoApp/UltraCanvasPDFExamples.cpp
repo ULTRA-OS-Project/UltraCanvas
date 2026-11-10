@@ -31,15 +31,15 @@ namespace UltraCanvas {
 std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreatePDFExamples() {
     // The viewer scrolls its pages itself: the page is the display area's
     // height and the viewer takes what the title, toolbar and status leave.
-    auto root = DemoKit::CreatePage("PDFExamples", "PDF Document Viewer", "");
+    auto root = DemoKit::CreatePage("PDFExamples", Tr("PDF Document Viewer"), "");
     root->SetFillsArea(true);
 
     // ----- Attribution / info line (with a clickable MuPDF link) -----
     auto infoRow = DemoKit::AddRow(root, "PDFInfoRow", 4);
 
     auto info = DemoKit::CreateText("PDFInfo",
-                                    "UltraCanvas support for PDF files is based on the MuPDF "
-                                    "library \xE2\x80\x94");
+                                    Tr("UltraCanvas support for PDF files is based on the MuPDF "
+                                    "library \xE2\x80\x94"));
     info->SetFontSize(11);
     info->SetTextColor(DemoKit::SubtitleText());
     DemoKit::Add(infoRow, info);
@@ -64,18 +64,18 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreatePDFExamp
     std::weak_ptr<UltraCanvasPDFView> viewWeak = view;
 
     // Page indicator (lives in the toolbar) and a status line (below the view).
-    auto pageLabel = DemoKit::CreateText("PDFPageLabel", "Page - / -");
+    auto pageLabel = DemoKit::CreateText("PDFPageLabel", Tr("Page - / -"));
 
     auto statusLabel = DemoKit::CreateText("PDFStatusLabel",
-                         "Mouse-wheel scrolls, Ctrl+wheel zooms (+ / - / 0 / 1 "
+                         Tr("Mouse-wheel scrolls, Ctrl+wheel zooms (+ / - / 0 / 1 "
                          "on the keyboard), F3 finds next, \"Select\" then drag "
                          "to select text, right-click to copy/export or extract "
-                         "an image.");
+                         "an image."));
     statusLabel->SetFontSize(11);
     statusLabel->SetTextColor(Color(110, 110, 110, 255));
 
     // Zoom level read-out, shown below the view at the right edge.
-    auto zoomLabel = DemoKit::CreateText("PDFZoomLabel", "100%");
+    auto zoomLabel = DemoKit::CreateText("PDFZoomLabel", Tr("100%"));
     zoomLabel->SetFontSize(11);
     zoomLabel->SetTextColor(Color(110, 110, 110, 255));
     zoomLabel->SetAlignment(TextAlignment::Right, VerticalAlignment::Middle);

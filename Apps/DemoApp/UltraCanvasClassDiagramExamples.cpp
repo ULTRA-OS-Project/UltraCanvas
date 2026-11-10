@@ -433,9 +433,9 @@ void BuildReverseEngineered(UltraCanvasClassDiagram& diagram,
 // =============================================================================
 
 std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateClassDiagramExamples() {
-    auto page = DemoKit::CreatePage("ClassDiagramPage", "UML Class Diagram",
-        "Compartment boxes sized from their members; seven UML relationship "
-        "kinds with correct line styles and end decorations.");
+    auto page = DemoKit::CreatePage("ClassDiagramPage", Tr("UML Class Diagram"),
+        Tr("Compartment boxes sized from their members; seven UML relationship "
+        "kinds with correct line styles and end decorations."));
 
     // One card, top to bottom: the scenario buttons, the diagram, the status
     // line and the view controls. The rows wrap; a button widens to its text.
@@ -449,8 +449,8 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateClassDia
 
     // ---- status line -----------------------------------------------------
     auto status = DemoKit::AddText(card, "cdStatus",
-        "Click a class to select it; click a member row to report it. "
-        "Wheel zooms, drag pans, drag a box to move it, double-click collapses it.");
+        Tr("Click a class to select it; click a member row to report it. "
+        "Wheel zooms, drag pans, drag a box to move it, double-click collapses it."));
     status->SetTextColor(DemoKit::SubtitleText());
 
     auto controlRow = DemoKit::AddRow(card, "cdControls", 6);

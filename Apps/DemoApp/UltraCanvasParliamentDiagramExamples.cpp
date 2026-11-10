@@ -89,9 +89,9 @@ namespace UltraCanvas {
         // for the 170 px controls and the card's padding.
         const float SIDEBAR_CARD_W = SIDEBAR_W + 2 * DemoKit::kCardPadding + 2;
 
-        auto mainContainer = DemoKit::CreatePage("parlMainContainer", "Parliament Diagram",
-                "Seat charts of legislatures: hemicycle, horseshoe, circle, Westminster benches and grid "
-                "layouts with a majority marker, legend and coalition building");
+        auto mainContainer = DemoKit::CreatePage("parlMainContainer", Tr("Parliament Diagram"),
+                Tr("Seat charts of legislatures: hemicycle, horseshoe, circle, Westminster benches and grid "
+                "layouts with a majority marker, legend and coalition building"));
 
         // Controls | diagram tabs | chamber statistics. The sidebars keep
         // their width; on a narrow window the cards wrap under each other.
@@ -217,7 +217,7 @@ namespace UltraCanvas {
         DemoKit::AddFixed(centerCard, tabbedContainer);
 
         auto statusBar = DemoKit::CreateText("parlStatusBar",
-                "Ready - hover the seats, or open the Coalition Builder tab and click parties");
+                Tr("Ready - hover the seats, or open the Coalition Builder tab and click parties"));
         statusBar->SetFontSize(11);
         statusBar->SetBackgroundColor(Color(233, 236, 239, 255));
         statusBar->SetPadding(15);

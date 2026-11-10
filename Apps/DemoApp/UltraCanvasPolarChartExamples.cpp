@@ -360,10 +360,10 @@ namespace UltraCanvas {
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreatePolarChartExamples() {
         auto container = DemoKit::CreatePage("PolarChartContainer",
-            "Polar Chart Examples - Angle / Radius Coordinate Plots",
-            "Every series plots an angular position against a radial value. Scatter, line, spline, area and column "
+            Tr("Polar Chart Examples - Angle / Radius Coordinate Plots"),
+            Tr("Every series plots an angular position against a radial value. Scatter, line, spline, area and column "
             "types share one coordinate system with configurable direction, zero angle, sweep, categorical or numeric "
-            "angle axes, linear / sqrt / log radial scales, tolerance bands, stacking, legend toggling and tooltips.");
+            "angle axes, linear / sqrt / log radial scales, tolerance bands, stacking, legend toggling and tooltips."));
 
         // The controls beside the charts; the charts two by two while they
         // fit, one under the other when not.
@@ -380,7 +380,7 @@ namespace UltraCanvas {
 
         // ===== EXAMPLE 1: POLAR SCATTER =====
         auto scatterCard = DemoKit::AddCard(chartGrid, "PoScatterCard", "", "", chartCardW);
-        DemoKit::AddHeading(scatterCard, "PoScatterLabel", "Polar Scatter (3 Signals, Numeric Angle Axis)");
+        DemoKit::AddHeading(scatterCard, "PoScatterLabel", Tr("Polar Scatter (3 Signals, Numeric Angle Axis)"));
 
         auto scatterChart = BuildSignalScatter("PolarScatter", 0, 0, 460, 380);
         scatterChart->SetLegendPosition(PolarLegendPosition::Top);
@@ -389,7 +389,7 @@ namespace UltraCanvas {
 
         // ===== EXAMPLE 2: DUAL ANGLE AXIS ROSE CURVES =====
         auto curveCard = DemoKit::AddCard(chartGrid, "PoCurveCard", "", "", chartCardW);
-        DemoKit::AddHeading(curveCard, "PoCurveLabel", "Analytic Curves (Dual Angle Axis, Negative Minimum)");
+        DemoKit::AddHeading(curveCard, "PoCurveLabel", Tr("Analytic Curves (Dual Angle Axis, Negative Minimum)"));
 
         auto curveChart = BuildRoseCurves("PolarCurves", 0, 0, 460, 380);
         curveChart->SetChartTitle("Polar Angle Axis Position");
@@ -399,7 +399,7 @@ namespace UltraCanvas {
 
         // ===== EXAMPLE 3: OVERLAPPING POLAR AREAS =====
         auto petalCard = DemoKit::AddCard(chartGrid, "PoPetalCard", "", "", chartCardW);
-        DemoKit::AddHeading(petalCard, "PoPetalLabel", "Polar Area (Overlapping Translucent Lobes)");
+        DemoKit::AddHeading(petalCard, "PoPetalLabel", Tr("Polar Area (Overlapping Translucent Lobes)"));
 
         auto petalChart = BuildPetalAreas("PolarPetals", 0, 0, 460, 340);
         petalChart->SetLegendPosition(PolarLegendPosition::Bottom);
@@ -409,7 +409,7 @@ namespace UltraCanvas {
 
         // ===== EXAMPLE 4: CATEGORICAL AREA =====
         auto salesCard = DemoKit::AddCard(chartGrid, "PoSalesCard", "", "", chartCardW);
-        DemoKit::AddHeading(salesCard, "PoSalesLabel", "Categorical Spline Area (Sales by Sub-Category)");
+        DemoKit::AddHeading(salesCard, "PoSalesLabel", Tr("Categorical Spline Area (Sales by Sub-Category)"));
 
         auto salesChart = BuildCategorySales("PolarSales", 0, 0, 460, 340);
         salesChart->SetLegendPosition(PolarLegendPosition::NoLegend);
@@ -419,7 +419,7 @@ namespace UltraCanvas {
 
         // ===== EXAMPLE 5: TOLERANCE BANDS =====
         auto chemCard = DemoKit::AddCard(chartGrid, "PoChemCard", "", "", chartCardW);
-        DemoKit::AddHeading(chemCard, "PoChemLabel", "Chemical Concentration (Radial Tolerance Bands)");
+        DemoKit::AddHeading(chemCard, "PoChemLabel", Tr("Chemical Concentration (Radial Tolerance Bands)"));
 
         auto chemChart = BuildConcentrationChart("PolarChem", 0, 0, 460, 210);
         chemChart->SetLegendPosition(PolarLegendPosition::NoLegend);
@@ -428,7 +428,7 @@ namespace UltraCanvas {
 
         // ===== EXAMPLE 6: STACKED POLAR COLUMNS (ROSE) =====
         auto roseCard = DemoKit::AddCard(chartGrid, "PoRoseCard", "", "", chartCardW);
-        DemoKit::AddHeading(roseCard, "PoRoseLabel", "Stacked Polar Columns (Profit by Product and Year)");
+        DemoKit::AddHeading(roseCard, "PoRoseLabel", Tr("Stacked Polar Columns (Profit by Product and Year)"));
 
         auto roseChart = BuildProfitRose("PolarRose", 0, 0, 460, 210);
         roseChart->SetLegendPosition(PolarLegendPosition::NoLegend);

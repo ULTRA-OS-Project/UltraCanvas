@@ -615,10 +615,10 @@ UltraCanvasDemoApplication::CreateERDiagramExamples() {
     const int TABS_W = 920;
     const int TABS_H = 560;   // Diagrams need canvas height; the panel gets it
 
-    auto root = DemoKit::CreatePage("erDemoRoot", "ER Diagram",
-            "Entity-relationship modelling in Chen, Chen (min,max) and Crow's Foot "
+    auto root = DemoKit::CreatePage("erDemoRoot", Tr("ER Diagram"),
+            Tr("Entity-relationship modelling in Chen, Chen (min,max) and Crow's Foot "
             "notation over one shared model. Use the buttons to switch notation, "
-            "theme and layout on the active tab - wheel zooms, drag pans.");
+            "theme and layout on the active tab - wheel zooms, drag pans."));
 
     auto card = DemoKit::AddCard(root, "erDemoCard");
 
@@ -630,8 +630,8 @@ UltraCanvasDemoApplication::CreateERDiagramExamples() {
     const int INNER_H = TABS_H - 40;
 
     auto statusLabel = DemoKit::CreateCaption(
-            "erStatus", "Internet Sales - Chen shapes with crow's-foot line ends "
-                        "and an auto-generated legend.");
+            "erStatus", Tr("Internet Sales - Chen shapes with crow's-foot line ends "
+                        "and an auto-generated legend."));
 
     struct TabSpec {
         const char* title;

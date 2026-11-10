@@ -559,7 +559,7 @@ namespace {
         root->SetPadding(10, 12, 10, 12);
         root->SetBackgroundColor(Colors::White);
 
-        DemoKit::AddHeading(root, "PixelFXDemoTitle", "PixelFX playground")->SetFontSize(16);
+        DemoKit::AddHeading(root, "PixelFXDemoTitle", Tr("PixelFX playground"))->SetFontSize(16);
 
         // ===== Three columns: image | function tree | options =====
         auto columns = std::make_shared<UltraCanvasContainer>("PixelFXColumns", 0, 0, 0, 0);
@@ -582,7 +582,7 @@ namespace {
         auto sourceRow = DemoKit::AddRow(leftCol, "PixelFXSourceRow", 8);
         sourceRow->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
 
-        DemoKit::Add(sourceRow, DemoKit::CreateText("PixelFXSourceLabel", "Sample image"));
+        DemoKit::Add(sourceRow, DemoKit::CreateText("PixelFXSourceLabel", Tr("Sample image")));
 
         auto sampleDropdown = std::make_shared<UltraCanvasDropdown>("PixelFXSample", 0, 0, 210, 30);
         DemoKit::AddFixed(sourceRow, sampleDropdown);
@@ -619,7 +619,7 @@ namespace {
                            .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
         columns->AddChild(treeCol);
 
-        DemoKit::AddHeading(treeCol, "PixelFXTreeTitle", "PixelFX functions");
+        DemoKit::AddHeading(treeCol, "PixelFXTreeTitle", Tr("PixelFX functions"));
 
         auto tree = std::make_shared<UltraCanvasTreeView>("PixelFXTree", 0, 0, 250, 0);
         tree->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
@@ -654,7 +654,7 @@ namespace {
                               .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
         columns->AddChild(optionsCol);
 
-        DemoKit::AddHeading(optionsCol, "PixelFXOptionsTitle", "Options");
+        DemoKit::AddHeading(optionsCol, "PixelFXOptionsTitle", Tr("Options"));
 
         auto optionsBox = std::make_shared<UltraCanvasContainer>("PixelFXOptionsBox", 0, 0, 0, 0);
         optionsBox->layout.SetFlexColumn().SetFlexGap(8)
@@ -861,7 +861,7 @@ namespace {
                 optionsBox->AddChild(info);
             } else if (!state->effect) {
                 auto hint = DemoKit::AddText(optionsBox, "PixelFXOptHint",
-                    "Select a processing function in the tree to see its options.");
+                    Tr("Select a processing function in the tree to see its options."));
                 hint->SetTextColor(Color(120, 120, 120, 255));
             } else {
                 const Effect& fx = *state->effect;
@@ -913,7 +913,7 @@ namespace {
 
                 // Flood-fill extras: ink colour picker + click-to-set position
                 if (fx.usesFillColor) {
-                    DemoKit::AddText(optionsBox, "PixelFXOptColorLabel", "Fill colour");
+                    DemoKit::AddText(optionsBox, "PixelFXOptColorLabel", Tr("Fill colour"));
 
                     auto picker = CreateColorPicker("PixelFXFillColor", state->ctx.fillColor, 0, 0, 286, 400);
                     picker->SetShowAlpha(false);
@@ -935,7 +935,7 @@ namespace {
 
                 if (fx.params.empty() && fx.choices.empty() && !fx.usesFillColor) {
                     auto none = DemoKit::AddText(optionsBox, "PixelFXOptNone",
-                        "This function has no adjustable options.");
+                        Tr("This function has no adjustable options."));
                     none->SetFontSize(11);
                     none->SetTextColor(Color(120, 120, 120, 255));
                 }
@@ -1034,10 +1034,10 @@ namespace {
 
 // ===== PIXELFX MODULE DEMO =====
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreatePixelFXExamples() {
-        auto root = DemoKit::CreatePage("PixelFXExamples", "PixelFX",
-                "Image processing on libvips: the module's overview and processing categories, "
+        auto root = DemoKit::CreatePage("PixelFXExamples", Tr("PixelFX"),
+                Tr("Image processing on libvips: the module's overview and processing categories, "
                 "its documentation, and a playground that applies each function to a sample "
-                "or uploaded image.");
+                "or uploaded image."));
         // The tabs' text areas and the playground scroll and size themselves:
         // the page is the area's height and the tabs' card takes what the
         // title leaves.

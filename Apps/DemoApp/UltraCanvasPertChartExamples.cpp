@@ -146,9 +146,9 @@ std::shared_ptr<UltraCanvasButton> MakeButton(const std::string& id, const std::
 // =============================================================================
 std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreatePertChartExamples() {
     auto container = DemoKit::CreatePage("PertChartDemo",
-        "PERT Chart - Project Network with Critical Path Analysis",
-        "Drag activities, scroll to zoom, drag empty space to pan. "
-        "Switch node design and color palette live; the critical path is computed automatically.");
+        Tr("PERT Chart - Project Network with Critical Path Analysis"),
+        Tr("Drag activities, scroll to zoom, drag empty space to pan. "
+        "Switch node design and color palette live; the critical path is computed automatically."));
     // The chart pans and zooms itself: the page is the area's height and the
     // chart takes what the controls and the status line leave.
     container->SetFillsArea(true);
@@ -183,7 +183,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreatePertChar
     chart->ComputeSchedule();
 
     // ---------------- Control bar ----------------
-    DemoKit::Add(controls, DemoKit::CreateText("LblDesign", "Design:"));
+    DemoKit::Add(controls, DemoKit::CreateText("LblDesign", Tr("Design:")));
 
     auto designDrop = std::make_shared<UltraCanvasDropdown>("DropDesign", 0, 0, 130, 28);
     designDrop->AddItem("Card");
@@ -202,7 +202,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreatePertChar
     };
     DemoKit::AddFixed(controls, designDrop);
 
-    DemoKit::Add(controls, DemoKit::CreateText("LblPalette", "Palette:"));
+    DemoKit::Add(controls, DemoKit::CreateText("LblPalette", Tr("Palette:")));
 
     auto paletteDrop = std::make_shared<UltraCanvasDropdown>("DropPalette", 0, 0, 130, 28);
     paletteDrop->AddItem("Classic");
@@ -225,7 +225,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreatePertChar
     };
     DemoKit::AddFixed(controls, paletteDrop);
 
-    DemoKit::Add(controls, DemoKit::CreateText("LblConn", "Connectors:"));
+    DemoKit::Add(controls, DemoKit::CreateText("LblConn", Tr("Connectors:")));
 
     auto connDrop = std::make_shared<UltraCanvasDropdown>("DropConn", 0, 0, 115, 28);
     connDrop->AddItem("Orthogonal");

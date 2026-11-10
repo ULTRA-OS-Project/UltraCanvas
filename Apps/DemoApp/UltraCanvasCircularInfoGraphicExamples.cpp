@@ -423,8 +423,8 @@ namespace UltraCanvas {
         DemoKit::AddFixed(panel, hoverCheckbox);
 
         DemoKit::AddCaption(panel, idPrefix + "Hint",
-            "Hover a cell for its value and group. Sweep below 360 leaves a "
-            "gap: clicks in that gap are ignored, not misrouted.");
+            Tr("Hover a cell for its value and group. Sweep below 360 leaves a "
+            "gap: clicks in that gap are ignored, not misrouted."));
 
         return panel;
     }
@@ -539,10 +539,10 @@ namespace UltraCanvas {
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateCircularInfoGraphicExamples() {
         auto page = DemoKit::CreatePage("CircularInfoContainer",
-            "Circular Info Graphic Examples - Multi-Ring Cell Layouts",
-            "Concentric rings of individually styled cells. Each ring picks its own text style (horizontal, glyph-by-glyph "
+            Tr("Circular Info Graphic Examples - Multi-Ring Cell Layouts"),
+            Tr("Concentric rings of individually styled cells. Each ring picks its own text style (horizontal, glyph-by-glyph "
             "circular, radial, or star-style with leader lines) and its own value track (radial bars, progress arcs, or a "
-            "closed line series). Connections link cells across rings, through the centre, directly, or around the outside.");
+            "closed line series). Connections link cells across rings, through the centre, directly, or around the outside."));
         // The page is the display area's height and the tabs take what the
         // title and description leave, so a window resize propagates down
         // through Measure/Arrange to each chart.

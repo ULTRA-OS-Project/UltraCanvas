@@ -1123,9 +1123,9 @@ static std::shared_ptr<UltraCanvasContainer> BuildRoundGaugesTab() {
 // =============================================================================
 
 std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGaugeExamples() {
-    auto page = DemoKit::CreatePage("GaugeExamples", "Gauges",
-            "Mode-driven gauges: analog dials, progress/LED bars, "
-            "circular rings, batteries, thermometers, clocks and digital panels");
+    auto page = DemoKit::CreatePage("GaugeExamples", Tr("Gauges"),
+            Tr("Mode-driven gauges: analog dials, progress/LED bars, "
+            "circular rings, batteries, thermometers, clocks and digital panels"));
 
     auto card = DemoKit::AddCard(page, "GaugeCard");
 

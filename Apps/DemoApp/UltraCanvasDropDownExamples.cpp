@@ -31,12 +31,12 @@ namespace UltraCanvas {
     } // anonymous namespace
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateDropdownExamples() {
-        auto mainContainer = DemoKit::CreatePage("DropdownExamples", "UltraCanvas Dropdown Component Examples",
-                "Comprehensive dropdown examples showcasing icons, multi-selection, and various configurations");
+        auto mainContainer = DemoKit::CreatePage("DropdownExamples", Tr("UltraCanvas Dropdown Component Examples"),
+                Tr("Comprehensive dropdown examples showcasing icons, multi-selection, and various configurations"));
 
         // ===== SECTION 1: BASIC DROPDOWNS =====
         auto row1 = DemoKit::AddRow(mainContainer, "DropdownRow1");
-        auto card1 = DemoKit::AddCard(row1, "DropdownBasicCard", "Basic Dropdowns");
+        auto card1 = DemoKit::AddCard(row1, "DropdownBasicCard", Tr("Basic Dropdowns"));
 
         // Simple Dropdown
         auto simpleDropdown = std::make_shared<UltraCanvasDropdown>("SimpleDropdown", 0, 0, 220, 30);
@@ -48,7 +48,7 @@ namespace UltraCanvas {
 
         auto simpleLine = AddDropdownLine(card1, "SimpleLine");
         DemoKit::AddFixed(simpleLine, simpleDropdown);
-        DemoKit::Add(simpleLine, DemoKit::CreateText("SimpleLabel", "Simple dropdown with text items"), 1);
+        DemoKit::Add(simpleLine, DemoKit::CreateText("SimpleLabel", Tr("Simple dropdown with text items")), 1);
 
         // Dropdown with separators
         auto separatorDropdown = std::make_shared<UltraCanvasDropdown>("SeparatorDropdown", 0, 0, 220, 30);
@@ -63,10 +63,10 @@ namespace UltraCanvas {
 
         auto separatorLine = AddDropdownLine(card1, "SeparatorLine");
         DemoKit::AddFixed(separatorLine, separatorDropdown);
-        DemoKit::Add(separatorLine, DemoKit::CreateText("SeparatorLabel", "Dropdown with separators"), 1);
+        DemoKit::Add(separatorLine, DemoKit::CreateText("SeparatorLabel", Tr("Dropdown with separators")), 1);
 
         // ===== SECTION 2: DROPDOWNS WITH ICONS =====
-        auto card2 = DemoKit::AddCard(row1, "DropdownIconsCard", "Dropdowns with Icons");
+        auto card2 = DemoKit::AddCard(row1, "DropdownIconsCard", Tr("Dropdowns with Icons"));
 
         // File types dropdown with icons
         auto fileTypesDropdown = std::make_shared<UltraCanvasDropdown>("FileTypesDropdown", 0, 0, 220, 30);
@@ -78,7 +78,7 @@ namespace UltraCanvas {
 
         auto fileTypesLine = AddDropdownLine(card2, "FileTypesLine");
         DemoKit::AddFixed(fileTypesLine, fileTypesDropdown);
-        DemoKit::Add(fileTypesLine, DemoKit::CreateText("FileTypesLabel", "File types with document icons"), 1);
+        DemoKit::Add(fileTypesLine, DemoKit::CreateText("FileTypesLabel", Tr("File types with document icons")), 1);
 
         // Actions dropdown with icons
         auto actionsDropdown = std::make_shared<UltraCanvasDropdown>("ActionsDropdown", 0, 0, 220, 30);
@@ -91,11 +91,11 @@ namespace UltraCanvas {
 
         auto actionsLine = AddDropdownLine(card2, "ActionsLine");
         DemoKit::AddFixed(actionsLine, actionsDropdown);
-        DemoKit::Add(actionsLine, DemoKit::CreateText("ActionsLabel", "Actions with icon indicators"), 1);
+        DemoKit::Add(actionsLine, DemoKit::CreateText("ActionsLabel", Tr("Actions with icon indicators")), 1);
 
         // ===== SECTION 3: COUNTRY FLAGS DROPDOWN =====
         auto row2 = DemoKit::AddRow(mainContainer, "DropdownRow2");
-        auto card3 = DemoKit::AddCard(row2, "DropdownCountryCard", "Country Selection with Flags");
+        auto card3 = DemoKit::AddCard(row2, "DropdownCountryCard", Tr("Country Selection with Flags"));
 
         // Countries dropdown with flags
         auto countriesDropdown = std::make_shared<UltraCanvasDropdown>("CountriesDropdown", 0, 0, 280, 30);
@@ -125,7 +125,7 @@ namespace UltraCanvas {
         countriesDropdown->SetSelectedIndex(0);
 
         // Country selection status label
-        auto countryStatusLabel = DemoKit::CreateText("CountryStatus", "Selected: United States (US)");
+        auto countryStatusLabel = DemoKit::CreateText("CountryStatus", Tr("Selected: United States (US)"));
         countryStatusLabel->SetTextColor(Color(0, 100, 0, 255));
 
         // Callback for country selection
@@ -139,7 +139,7 @@ namespace UltraCanvas {
         DemoKit::Add(countryLine, countryStatusLabel, 1);
 
         // ===== SECTION 4: MULTI-SELECTION DROPDOWNS =====
-        auto card4 = DemoKit::AddCard(row2, "DropdownMultiCard", "Multi-Selection Dropdowns");
+        auto card4 = DemoKit::AddCard(row2, "DropdownMultiCard", Tr("Multi-Selection Dropdowns"));
 
         // Programming languages multi-select
         auto languagesDropdown = std::make_shared<UltraCanvasDropdown>("LanguagesDropdown", 0, 0, 250, 30);
@@ -155,7 +155,7 @@ namespace UltraCanvas {
         languagesDropdown->SetItemSelected(0, true); // C++
         languagesDropdown->SetItemSelected(1, true); // Python
 
-        auto languagesStatus = DemoKit::CreateText("LanguagesStatus", "Selected: C++, Python");
+        auto languagesStatus = DemoKit::CreateText("LanguagesStatus", Tr("Selected: C++, Python"));
         languagesStatus->SetTextColor(Color(0, 100, 0, 255));
 
         // Callback for multi-selection
@@ -191,7 +191,7 @@ namespace UltraCanvas {
 
         auto fruitsLine = AddDropdownLine(card4, "FruitsLine");
         DemoKit::AddFixed(fruitsLine, fruitsDropdown);
-        DemoKit::Add(fruitsLine, DemoKit::CreateText("FruitsLabel", "Multi-select fruits (with checkboxes)"), 1);
+        DemoKit::Add(fruitsLine, DemoKit::CreateText("FruitsLabel", Tr("Multi-select fruits (with checkboxes)")), 1);
 
         // Control buttons for fruits dropdown (width 0: as wide as the text)
         auto selectAllBtn = std::make_shared<UltraCanvasButton>("SelectAllFruits", 0, 0, 0, 30);
@@ -226,7 +226,7 @@ namespace UltraCanvas {
 
         // ===== SECTION 5: MULTI-SELECT COUNTRIES WITH FLAGS =====
         auto row3 = DemoKit::AddRow(mainContainer, "DropdownRow3");
-        auto card5 = DemoKit::AddCard(row3, "DropdownTravelCard", "Multi-Select Countries (Travel Destinations)");
+        auto card5 = DemoKit::AddCard(row3, "DropdownTravelCard", Tr("Multi-Select Countries (Travel Destinations)"));
 
         // Travel destinations multi-select with flags
         auto travelDropdown = std::make_shared<UltraCanvasDropdown>("TravelDropdown", 0, 0, 280, 30);
@@ -242,7 +242,7 @@ namespace UltraCanvas {
         travelDropdown->AddItem("Greece", "GR", NormalizePath(GetResourcesDir() + "media/flags/GR.png"));
         travelDropdown->AddItem("Switzerland", "CH", NormalizePath(GetResourcesDir() + "media/flags/CH.png"));
 
-        auto travelStatus = DemoKit::CreateText("TravelStatus", "Select your travel destinations");
+        auto travelStatus = DemoKit::CreateText("TravelStatus", Tr("Select your travel destinations"));
         travelStatus->SetBackgroundColor(Color(250, 250, 250, 255));
         travelStatus->SetBorders(1, Color(200, 200, 200, 255));
         travelStatus->SetPadding(5);
@@ -272,7 +272,7 @@ namespace UltraCanvas {
         DemoKit::Add(travelLine, travelStatus, 1);
 
         // ===== SECTION 6: INTERACTIVE DEMO =====
-        auto card6 = DemoKit::AddCard(row3, "DropdownInteractiveCard", "Interactive Demo");
+        auto card6 = DemoKit::AddCard(row3, "DropdownInteractiveCard", Tr("Interactive Demo"));
 
         // Create interactive demo with event logging
         auto interactiveDropdown = std::make_shared<UltraCanvasDropdown>("InteractiveDropdown", 0, 0, 250, 30);
@@ -283,7 +283,7 @@ namespace UltraCanvas {
         interactiveDropdown->AddItem("Dropdown Closed", "closed");
         interactiveDropdown->SetSelectedIndex(0);
 
-        auto eventLog = DemoKit::CreateText("EventLog", "Event log: No events yet");
+        auto eventLog = DemoKit::CreateText("EventLog", Tr("Event log: No events yet"));
         eventLog->SetFontSize(11);
         eventLog->SetBackgroundColor(Color(245, 245, 245, 255));
         eventLog->SetBorders(1.0f);

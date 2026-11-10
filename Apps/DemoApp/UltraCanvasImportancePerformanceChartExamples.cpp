@@ -51,9 +51,9 @@ namespace UltraCanvas {
     }
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateImportancePerformanceChartExamples() {
-        auto page = DemoKit::CreatePage("ipcMainContainer", "Importance-Performance Chart",
-                "Slack's matrix: each factor of a service, by how much customers care about it and "
-                "how it compares with competitors - the zone it lands in names the action");
+        auto page = DemoKit::CreatePage("ipcMainContainer", Tr("Importance-Performance Chart"),
+                Tr("Slack's matrix: each factor of a service, by how much customers care about it and "
+                "how it compares with competitors - the zone it lands in names the action"));
 
         // The chart beside its controls; a narrow window puts the controls under it.
         auto row = DemoKit::AddRow(page, "ipcContent");

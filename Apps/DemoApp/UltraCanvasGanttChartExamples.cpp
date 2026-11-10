@@ -778,10 +778,10 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGanttCha
     const int INNER_W = 1000;
     const int INNER_H = 640;
 
-    auto page = DemoKit::CreatePage("GanttRoot", "Gantt Charts - Design Studio, Presets & Palettes",
-            "Every example has its own tab. In all charts the wheel scrolls, "
+    auto page = DemoKit::CreatePage("GanttRoot", Tr("Gantt Charts - Design Studio, Presets & Palettes"),
+            Tr("Every example has its own tab. In all charts the wheel scrolls, "
             "Ctrl+wheel zooms the timeline, clicking selects a task and the "
-            "triangles collapse phases.");
+            "triangles collapse phases."));
     // The page is the display area's height and the tabs take what the title
     // and description leave; the charts scroll themselves.
     page->SetFillsArea(true);

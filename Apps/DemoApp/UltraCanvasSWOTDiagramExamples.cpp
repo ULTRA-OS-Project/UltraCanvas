@@ -51,8 +51,8 @@ namespace UltraCanvas {
         // 170 px controls and the card's padding.
         const float SIDEBAR_CARD_W = SIDEBAR_W + 2 * DemoKit::kCardPadding + 2;
 
-        auto mainContainer = DemoKit::CreatePage("swotMainContainer", "SWOT Diagram Infographic",
-                "Classic four-panel SWOT analysis with six design presets, light/dark themes and interactive items");
+        auto mainContainer = DemoKit::CreatePage("swotMainContainer", Tr("SWOT Diagram Infographic"),
+                Tr("Classic four-panel SWOT analysis with six design presets, light/dark themes and interactive items"));
 
         // Controls | diagram tabs and status | statistics. The sidebars keep
         // their width; on a narrow window the cards wrap under each other.
@@ -127,12 +127,12 @@ namespace UltraCanvas {
         // Short lines, so the tips do not widen the sidebar; they wrap if a
         // translation is longer.
         auto helpBox = DemoKit::CreateText("swotHelpBox",
-                "INTERACTION TIPS\n\n"
+                Tr("INTERACTION TIPS\n\n"
                 "- Click an item to select\n"
                 "- Click empty space to\n"
                 "  clear the selection\n"
                 "- Hover for full text\n"
-                "- Double-click an item");
+                "- Double-click an item"));
         helpBox->SetFontSize(9);
         helpBox->SetBackgroundColor(Color(255, 243, 205, 255));
         helpBox->SetPadding(10);
@@ -148,7 +148,7 @@ namespace UltraCanvas {
         DemoKit::AddFixed(centerCard, tabbedContainer);
 
         auto statusBar = DemoKit::CreateText("swotStatusBar",
-                "Ready - click items to select them, hover for tooltips");
+                Tr("Ready - click items to select them, hover for tooltips"));
         statusBar->SetFontSize(11);
         statusBar->SetBackgroundColor(Color(233, 236, 239, 255));
         statusBar->SetPadding(15);

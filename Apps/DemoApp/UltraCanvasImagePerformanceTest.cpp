@@ -1207,11 +1207,11 @@ namespace UltraCanvas {
         rebuildActiveCodecs();
 
         // ========== PAGE (title + description) ==========
-        auto root = DemoKit::CreatePage("ImagePerfTestMain", "Image Performance Test",
-                "Choose a bitmap image, then run the benchmark to compare how each codec "
+        auto root = DemoKit::CreatePage("ImagePerfTestMain", Tr("Image Performance Test"),
+                Tr("Choose a bitmap image, then run the benchmark to compare how each codec "
                 "handles it: file size, encode time, and decode time are shown as three "
                 "bars per format. Click any thumbnail below the chart to view the "
-                "re-encoded result at 1:1.");
+                "re-encoded result at 1:1."));
         // The chart takes the height the toolbar and status leave: the page is
         // the display area's height, not its content's.
         root->SetFillsArea(true);
@@ -1236,7 +1236,7 @@ namespace UltraCanvas {
             state->chooseBtn->boxConstraints = limits;
         }
 
-        state->infoLabel = DemoKit::CreateText("PerfImageInfo", "No image loaded");
+        state->infoLabel = DemoKit::CreateText("PerfImageInfo", Tr("No image loaded"));
         state->infoLabel->SetFontSize(11);
         state->infoLabel->SetTextColor(Color(60, 60, 60, 255));
 
@@ -1312,7 +1312,7 @@ namespace UltraCanvas {
 
         // ========== STATUS LINE ==========
         state->statusLabel = DemoKit::AddText(card, "PerfStatusLabel",
-                "Click Choose Image to pick a bitmap.");
+                Tr("Click Choose Image to pick a bitmap."));
         state->statusLabel->SetFontSize(11);
         state->statusLabel->SetTextColor(Color(60, 60, 60, 255));
 

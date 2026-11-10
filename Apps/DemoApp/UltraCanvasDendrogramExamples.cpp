@@ -649,8 +649,8 @@ static std::shared_ptr<UltraCanvasContainer> MakeDemo6(long& uid)
 
 namespace UltraCanvas {
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateDendrogramExamples() {
-        auto container = DemoKit::CreatePage("DendrogramExamples", "Dendrogram Analysis Suite",
-            "Interactive visualization of hierarchical data - Scroll to zoom, drag to pan, double-click to collapse");
+        auto container = DemoKit::CreatePage("DendrogramExamples", Tr("Dendrogram Analysis Suite"),
+            Tr("Interactive visualization of hierarchical data - Scroll to zoom, drag to pan, double-click to collapse"));
         // The dendrograms zoom and pan themselves and re-fit on resize: the
         // page is the area's height and the tabs take what the title leaves.
         container->SetFillsArea(true);

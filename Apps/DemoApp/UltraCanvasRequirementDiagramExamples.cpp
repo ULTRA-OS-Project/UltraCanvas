@@ -910,10 +910,10 @@ refunds - derives -> card_payments
 // SCENE
 // ─────────────────────────────────────────────────────────────────────────────
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateRequirementDiagramExamples() {
-        auto main = DemoKit::CreatePage("ReqDiagramMain", "Requirement Diagram",
-                "SysML requirement diagram: compartmented requirement boxes, "
+        auto main = DemoKit::CreatePage("ReqDiagramMain", Tr("Requirement Diagram"),
+                Tr("SysML requirement diagram: compartmented requirement boxes, "
                 "containment with crosshair circles, and dashed deriveReqt / satisfy / "
-                "verify / refine / trace relationships.");
+                "verify / refine / trace relationships."));
         // The diagrams pan and zoom themselves: the page is the area's height
         // and the tabs take what the title and description leave.
         main->SetFillsArea(true);
@@ -939,7 +939,7 @@ refunds - derives -> card_payments
         statusCard->SetContainerStyle(statusStyle);
 
         auto statusLabel = DemoKit::AddText(statusCard, "ReqStatus",
-                "Click a requirement or a relationship to inspect it.");
+                Tr("Click a requirement or a relationship to inspect it."));
         statusLabel->SetFontSize(10);
 
         auto tabs = std::make_shared<UltraCanvasTabbedContainer>("ReqTabs");

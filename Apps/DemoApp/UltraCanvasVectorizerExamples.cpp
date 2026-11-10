@@ -273,7 +273,7 @@ std::shared_ptr<UltraCanvasButton> MakeVectorizerButton(const std::string& id, c
 std::shared_ptr<UltraCanvasUIElement>
 UltraCanvasDemoApplication::CreateVectorizerExamples() {
     auto container = DemoKit::CreatePage("VectorizerDemoPage",
-        "Raster to SVG Vectorizer (VTracer backend)",
+        Tr("Raster to SVG Vectorizer (VTracer backend)"),
         std::string("Load a bitmap, tune the tracing quality, press "
                     "\"Vectorize\", then save the SVG.  Backend: ")
         + UltraCanvasVectorizer::BackendVersion());
@@ -288,7 +288,7 @@ UltraCanvasDemoApplication::CreateVectorizerExamples() {
     const int inputFrameW = 272, outputFrameW = 276, frameH = 494;
     const float cardChrome = 2 * DemoKit::kCardPadding + 2;
     auto inputCard = DemoKit::AddCard(columns, "VecInputCard", "", "", inputFrameW + cardChrome);
-    DemoKit::AddHeading(inputCard, "VecInputTitle", "Input bitmap");
+    DemoKit::AddHeading(inputCard, "VecInputTitle", Tr("Input bitmap"));
 
     // The preview frame keeps its size; the image sits inside it.
     auto inputFrame = std::make_shared<UltraCanvasContainer>(
@@ -330,7 +330,7 @@ UltraCanvasDemoApplication::CreateVectorizerExamples() {
 
     // ===== MIDDLE: tracing parameters =====
     auto paramCard = DemoKit::AddCard(columns, "VecParamCard", "", "", 360);
-    DemoKit::AddHeading(paramCard, "VecParamTitle", "Tracing parameters");
+    DemoKit::AddHeading(paramCard, "VecParamTitle", Tr("Tracing parameters"));
 
     // Shared configuration edited by every control on this card.
     auto cfg     = std::make_shared<VectorizerConfig>(Presets().front().cfg);
@@ -462,12 +462,12 @@ UltraCanvasDemoApplication::CreateVectorizerExamples() {
     DemoKit::Add(paramCard, resetBtn);
 
     auto paramNote = DemoKit::AddCaption(paramCard, "VecParamNote",
-        "Greyed-out controls have no effect in the selected colour / path mode.");
+        Tr("Greyed-out controls have no effect in the selected colour / path mode."));
     paramNote->SetTextColor(kTextFaded);
 
     // ===== RIGHT: SVG output + status =====
     auto outputCard = DemoKit::AddCard(columns, "VecOutputCard", "", "", outputFrameW + cardChrome);
-    DemoKit::AddHeading(outputCard, "VecOutputTitle", "SVG output");
+    DemoKit::AddHeading(outputCard, "VecOutputTitle", Tr("SVG output"));
 
     auto outputFrame = std::make_shared<UltraCanvasContainer>(
         "VecOutputFrame", 0, 0, outputFrameW, frameH);
@@ -481,7 +481,7 @@ UltraCanvasDemoApplication::CreateVectorizerExamples() {
     outputFrame->AddChild(outputImage);
 
     auto statusLabel = DemoKit::AddCaption(outputCard, "VecStatus",
-                                           "(press \"Vectorize\" to trace the input)");
+                                           Tr("(press \"Vectorize\" to trace the input)"));
     statusLabel->SetTextColor(kTextMuted);
 
     auto detailLabel = DemoKit::AddCaption(outputCard, "VecDetail", "");

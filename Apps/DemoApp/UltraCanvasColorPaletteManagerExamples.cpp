@@ -36,11 +36,11 @@ namespace UltraCanvas {
     }
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateColorPaletteManagerExamples() {
-        auto page = DemoKit::CreatePage("ColorPaletteExamples", "Colour Palettes",
-            "Rows of palettes under a colour picker. The + at the end of the last row opens a "
+        auto page = DemoKit::CreatePage("ColorPaletteExamples", Tr("Colour Palettes"),
+            Tr("Rows of palettes under a colour picker. The + at the end of the last row opens a "
             "gallery of colour schemes - up to a whole 256-colour GIF palette - and each scheme's "
             "own + adds it as a row. With several rows, - takes a row away. Left click a swatch to "
-            "pick its colour; right click it to change that entry in a small foreground-only picker.");
+            "pick its colour; right click it to change that entry in a small foreground-only picker."));
 
         // The picker and the palette rows keep the width of UltraPaint's
         // Colour card; the cards share the page width around them.
@@ -49,7 +49,7 @@ namespace UltraCanvas {
 
         // ===== Column 1: under a colour picker, as in UltraPaint =====
         auto card = DemoKit::AddCard(row, "PaletteUnderPickerCard",
-                                     "Under a colour picker (as in UltraPaint)");
+                                     Tr("Under a colour picker (as in UltraPaint)"));
         auto picker = CreateColorPicker("PalettePicker", Color(0x1E, 0x9C, 0xD6, 0xFF), 0, 0, innerW, 300);
         picker->SetStyle(ColorPickerStyle::Light());
         picker->SetUIScale(0.78f);
@@ -69,7 +69,7 @@ namespace UltraCanvas {
         DemoKit::AddFixed(card, palettes);
 
         auto status = DemoKit::AddText(card, "PaletteUnderPickerStatus",
-                                       "1 palette. Click + to add one.");
+                                       Tr("1 palette. Click + to add one."));
 
         // The picker follows a left click; the status line reports what
         // happened. Raw pointers: the callbacks live on the manager, which
@@ -86,23 +86,23 @@ namespace UltraCanvas {
 
         // ===== Column 2: several palettes =====
         auto severalCard = DemoKit::AddCard(row, "SeveralPalettesCard",
-                                            "Several rows: - on each, + on the last");
+                                            Tr("Several rows: - on each, + on the last"));
         auto several = CreateColorPaletteManager("SeveralPalettes", 0, 0, innerW);
         several->SetPalettes({UltraCanvasColorPaletteManager::DefaultPalette(), Preset("PICO-8"),
                               Preset("Game Boy"), Preset("Sunset"), Preset("Pastel")});
         DemoKit::AddFixed(severalCard, several);
         DemoKit::AddCaption(severalCard, "SeveralPalettesNote",
-            "Retro and mood schemes from the gallery. Right click a swatch to change it; "
-            "Revert puts it back.");
+            Tr("Retro and mood schemes from the gallery. Right click a swatch to change it; "
+            "Revert puts it back."));
 
         // ===== Column 3: indexed palettes =====
-        auto gifCard = DemoKit::AddCard(row, "GifPaletteCard", "Indexed palettes: up to 256 colours");
+        auto gifCard = DemoKit::AddCard(row, "GifPaletteCard", Tr("Indexed palettes: up to 256 colours"));
         auto gif = CreateColorPaletteManager("GifPalette", 0, 0, innerW);
         gif->SetPalettes({Preset("Web-safe 216"), Preset("GIF 256 (RGB 3-3-2)")});
         DemoKit::AddFixed(gifCard, gif);
         DemoKit::AddCaption(gifCard, "GifPaletteNote",
-            "A large palette wraps into a block of small swatches instead of "
-            "shrinking to hairlines.");
+            Tr("A large palette wraps into a block of small swatches instead of "
+            "shrinking to hairlines."));
 
         return page;
     }

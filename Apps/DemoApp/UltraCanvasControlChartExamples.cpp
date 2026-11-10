@@ -221,12 +221,12 @@ void Refresh(ControlDemoState& state) {
 } // namespace
 
 void AddControlChartCard(const std::shared_ptr<UltraCanvasContainer>& page) {
-    auto card = DemoKit::AddCard(page, "controlChartCard", "Control chart (statistical process control)",
-                                 "A line chart with computed limits: the centre line, and control limits "
+    auto card = DemoKit::AddCard(page, "controlChartCard", Tr("Control chart (statistical process control)"),
+                                 Tr("A line chart with computed limits: the centre line, and control limits "
                                  "three sigma either side, estimated within subgroups. A point beyond the "
                                  "limits, or a run of points inside them, is a signal worth investigating; "
                                  "everything else is noise to leave alone. Click a point to exclude it "
-                                 "from the limits (a cause found and fixed), and again to bring it back.");
+                                 "from the limits (a cause found and fixed), and again to bring it back."));
     auto row = DemoKit::AddRow(card, "controlChartRow");
 
     auto state = std::make_shared<ControlDemoState>();

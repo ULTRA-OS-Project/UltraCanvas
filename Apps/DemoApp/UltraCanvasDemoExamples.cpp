@@ -55,71 +55,71 @@ namespace UltraCanvas {
 //    }
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateTableViewExamples() {
-        auto page = DemoKit::CreatePage("TableViewExamples", "Spreadsheet View Examples",
-                "Table View Component - Not Implemented");
-        DemoKit::AddNotes(page, "TableViewPlaceholder", "Planned Features", {
-                "Data grid with rows and columns",
-                "Sortable column headers",
-                "Cell editing capabilities",
-                "Row selection (single/multiple)",
-                "Virtual scrolling for large datasets",
-                "Custom cell renderers",
-                "Column resizing and reordering",
-                "Filtering and search",
-                "Export to CSV/Excel"});
+        auto page = DemoKit::CreatePage("TableViewExamples", Tr("Spreadsheet View Examples"),
+                Tr("Table View Component - Not Implemented"));
+        DemoKit::AddNotes(page, "TableViewPlaceholder", Tr("Planned Features"), {
+                Tr("Data grid with rows and columns"),
+                Tr("Sortable column headers"),
+                Tr("Cell editing capabilities"),
+                Tr("Row selection (single/multiple)"),
+                Tr("Virtual scrolling for large datasets"),
+                Tr("Custom cell renderers"),
+                Tr("Column resizing and reordering"),
+                Tr("Filtering and search"),
+                Tr("Export to CSV/Excel")});
         return page;
     }
 
     // CreateListViewExamples() moved to UltraCanvasListViewExamples.cpp
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateDialogExamples() {
-        auto page = DemoKit::CreatePage("DialogExamples", "Dialog Examples",
-                "Dialog Component - Not Implemented");
-        DemoKit::AddNotes(page, "DialogPlaceholder", "Planned Features", {
-                "Modal and modeless dialogs",
-                "Message boxes (Info, Warning, Error)",
-                "File open/save dialogs",
-                "Color picker dialogs",
-                "Font selection dialogs",
-                "Custom dialog layouts",
-                "Dialog result handling",
-                "Animation effects",
-                "Keyboard shortcuts (ESC, Enter)"});
+        auto page = DemoKit::CreatePage("DialogExamples", Tr("Dialog Examples"),
+                Tr("Dialog Component - Not Implemented"));
+        DemoKit::AddNotes(page, "DialogPlaceholder", Tr("Planned Features"), {
+                Tr("Modal and modeless dialogs"),
+                Tr("Message boxes (Info, Warning, Error)"),
+                Tr("File open/save dialogs"),
+                Tr("Color picker dialogs"),
+                Tr("Font selection dialogs"),
+                Tr("Custom dialog layouts"),
+                Tr("Dialog result handling"),
+                Tr("Animation effects"),
+                Tr("Keyboard shortcuts (ESC, Enter)")});
         return page;
     }
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateBitmapNotImplementedExamples(const std::string& format) {
-        auto page = DemoKit::CreatePage("BitmapExamples", "Bitmap Graphics Examples",
+        auto page = DemoKit::CreatePage("BitmapExamples", Tr("Bitmap Graphics Examples"),
                 format + " Graphics - Partially Implemented yet");
         auto row = DemoKit::AddRow(page, "BitmapPlaceholder");
-        DemoKit::AddNotes(row, "BitmapFormats", "Supported Formats", {
-                "PNG - Full support with transparency",
-                "JPEG - Standard image display"});
-        DemoKit::AddNotes(row, "BitmapFeatures", "Features", {
-                "Image scaling and cropping",
-                "Rotation and transformation",
-                "Filter effects",
-                "Multi-frame animation",
-                "Memory-efficient loading"});
+        DemoKit::AddNotes(row, "BitmapFormats", Tr("Supported Formats"), {
+                Tr("PNG - Full support with transparency"),
+                Tr("JPEG - Standard image display")});
+        DemoKit::AddNotes(row, "BitmapFeatures", Tr("Features"), {
+                Tr("Image scaling and cropping"),
+                Tr("Rotation and transformation"),
+                Tr("Filter effects"),
+                Tr("Multi-frame animation"),
+                Tr("Memory-efficient loading")});
         return page;
     }
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::Create3DExamples() {
-        auto page = DemoKit::CreatePage("Graphics3DExamples", "3D Graphics Examples",
-                "3D Graphics - Partially Implemented");
+        auto page = DemoKit::CreatePage("Graphics3DExamples", Tr("3D Graphics Examples"),
+                Tr("3D Graphics - Partially Implemented"));
         auto row = DemoKit::AddRow(page, "Graphics3DPlaceholder");
-        DemoKit::AddNotes(row, "Graphics3DFeatures", "Supported Features", {
-                "3DS model loading and display",
-                "3DM model support",
-                "Basic scene graph",
-                "Camera controls (orbit, pan, zoom)",
-                "Basic lighting and shading",
-                "Texture mapping"});
-        DemoKit::AddNotes(row, "Graphics3DBackend", "OpenGL/Vulkan Backend", {
-                "Hardware accelerated rendering",
-                "Vertex and fragment shaders",
-                "Multiple render targets",
-                "Anti-aliasing support"});
+        DemoKit::AddNotes(row, "Graphics3DFeatures", Tr("Supported Features"), {
+                Tr("3DS model loading and display"),
+                Tr("3DM model support"),
+                Tr("Basic scene graph"),
+                Tr("Camera controls (orbit, pan, zoom)"),
+                Tr("Basic lighting and shading"),
+                Tr("Texture mapping")});
+        DemoKit::AddNotes(row, "Graphics3DBackend", Tr("OpenGL/Vulkan Backend"), {
+                Tr("Hardware accelerated rendering"),
+                Tr("Vertex and fragment shaders"),
+                Tr("Multiple render targets"),
+                Tr("Anti-aliasing support")});
         return page;
     }
 
@@ -229,7 +229,7 @@ namespace UltraCanvas {
             }
         }
 
-        auto root = DemoKit::CreatePage("TextDocumentExamples", "Text Documents",
+        auto root = DemoKit::CreatePage("TextDocumentExamples", Tr("Text Documents"),
                 "UltraCanvasTextArea's built-in syntax renderer highlights " +
                 std::to_string(languages.size()) +
                 " plain-text and source-code file types. The tabs below open live "
@@ -306,48 +306,48 @@ namespace UltraCanvas {
 //    }
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateDiagramExamples() {
-        auto page = DemoKit::CreatePage("DiagramExamples", "Diagram Examples",
-                "Diagram Support - Partially Implemented");
+        auto page = DemoKit::CreatePage("DiagramExamples", Tr("Diagram Examples"),
+                Tr("Diagram Support - Partially Implemented"));
         auto row = DemoKit::AddRow(page, "DiagramPlaceholder");
-        DemoKit::AddNotes(row, "DiagramPlantUML", "PlantUML Integration", {
-                "Class diagrams",
-                "Sequence diagrams",
-                "Activity diagrams",
-                "Use case diagrams",
-                "Component diagrams",
-                "State diagrams"});
-        DemoKit::AddNotes(row, "DiagramNative", "Native Diagram Engine", {
-                "Flowcharts",
-                "Organizational charts",
-                "Network diagrams",
-                "Mind maps",
-                "Interactive diagram editing",
-                "Export to SVG/PNG",
-                "Automatic layout algorithms"});
+        DemoKit::AddNotes(row, "DiagramPlantUML", Tr("PlantUML Integration"), {
+                Tr("Class diagrams"),
+                Tr("Sequence diagrams"),
+                Tr("Activity diagrams"),
+                Tr("Use case diagrams"),
+                Tr("Component diagrams"),
+                Tr("State diagrams")});
+        DemoKit::AddNotes(row, "DiagramNative", Tr("Native Diagram Engine"), {
+                Tr("Flowcharts"),
+                Tr("Organizational charts"),
+                Tr("Network diagrams"),
+                Tr("Mind maps"),
+                Tr("Interactive diagram editing"),
+                Tr("Export to SVG/PNG"),
+                Tr("Automatic layout algorithms")});
         return page;
     }
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateInfoGraphicsExamples() {
-        auto page = DemoKit::CreatePage("InfoGraphicsExamples", "Info Graphics Examples",
-                "Info Graphics Component - Not Implemented");
+        auto page = DemoKit::CreatePage("InfoGraphicsExamples", Tr("Info Graphics Examples"),
+                Tr("Info Graphics Component - Not Implemented"));
         auto row = DemoKit::AddRow(page, "InfoGraphicsPlaceholder");
-        DemoKit::AddNotes(row, "InfoGraphicsWidgets", "Planned Widget Types", {
-                "Dashboard tiles and KPI widgets",
-                "Gauge and meter displays",
-                "Progress indicators and health meters",
-                "Statistical summary panels",
-                "Interactive data cards",
-                "Geographic data maps",
-                "Timeline visualizations",
-                "Comparison matrices"});
-        DemoKit::AddNotes(row, "InfoGraphicsAdvanced", "Advanced Features", {
-                "Real-time data updates",
-                "Responsive layout adaptation",
-                "Custom color schemes and branding",
-                "Animation and transition effects",
-                "Touch and gesture support",
-                "Export and sharing capabilities",
-                "Template library"});
+        DemoKit::AddNotes(row, "InfoGraphicsWidgets", Tr("Planned Widget Types"), {
+                Tr("Dashboard tiles and KPI widgets"),
+                Tr("Gauge and meter displays"),
+                Tr("Progress indicators and health meters"),
+                Tr("Statistical summary panels"),
+                Tr("Interactive data cards"),
+                Tr("Geographic data maps"),
+                Tr("Timeline visualizations"),
+                Tr("Comparison matrices")});
+        DemoKit::AddNotes(row, "InfoGraphicsAdvanced", Tr("Advanced Features"), {
+                Tr("Real-time data updates"),
+                Tr("Responsive layout adaptation"),
+                Tr("Custom color schemes and branding"),
+                Tr("Animation and transition effects"),
+                Tr("Touch and gesture support"),
+                Tr("Export and sharing capabilities"),
+                Tr("Template library")});
         return page;
     }
 
@@ -445,8 +445,8 @@ namespace UltraCanvas {
         // markdown base directory set below, so the shared asset is not duplicated.
         const std::string readmePath = NormalizePath(GetResourcesDir() + "Docs/Modules/ULTRA-OS/README.md");
 
-        auto root = DemoKit::CreatePage("UltraOSInfoScreen", "ULTRA OS",
-                "The ULTRA OS modules: an overview and how they fit together");
+        auto root = DemoKit::CreatePage("UltraOSInfoScreen", Tr("ULTRA OS"),
+                Tr("The ULTRA OS modules: an overview and how they fit together"));
         // The document scrolls itself: the page is the area's height.
         root->SetFillsArea(true);
         auto card = DemoKit::CreateCard("UltraOSDocsCard");

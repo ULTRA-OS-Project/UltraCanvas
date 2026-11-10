@@ -72,18 +72,18 @@ namespace UltraCanvas {
     } // namespace
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateSplitPaneExamples() {
-        auto root = DemoKit::CreatePage("SplitPaneExamples", "UltraCanvas Split Pane Examples",
-            "Drag the splitter bars to resize panes. Weights are proportional, so resizing the SplitPane "
-            "preserves relative sizes; per-pane min/max sizes clamp the drag.");
+        auto root = DemoKit::CreatePage("SplitPaneExamples", Tr("UltraCanvas Split Pane Examples"),
+            Tr("Drag the splitter bars to resize panes. Weights are proportional, so resizing the SplitPane "
+            "preserves relative sizes; per-pane min/max sizes clamp the drag."));
 
         // ============================================================
         // Section A: Horizontal Split (3 panes, weighted)
         // ============================================================
-        auto cardA = DemoKit::AddCard(root, "SplitCardA", "1. Horizontal Split (3 panes, weights 1 : 2 : 1)",
-            "Three panes side-by-side. Dragging splitter 0 affects only Sidebar+Editor; dragging splitter 1 "
-            "affects only Editor+Inspector. Each pane has a minimum width of 80 px.");
+        auto cardA = DemoKit::AddCard(root, "SplitCardA", Tr("1. Horizontal Split (3 panes, weights 1 : 2 : 1)"),
+            Tr("Three panes side-by-side. Dragging splitter 0 affects only Sidebar+Editor; dragging splitter 1 "
+            "affects only Editor+Inspector. Each pane has a minimum width of 80 px."));
 
-        auto statusA = DemoKit::CreateText("SplitAStatus", "Weights: 1.00 : 2.00 : 1.00");
+        auto statusA = DemoKit::CreateText("SplitAStatus", Tr("Weights: 1.00 : 2.00 : 1.00"));
         statusA->SetFontSize(11);
         statusA->SetTextColor(Color(0, 100, 200, 255));
 
@@ -146,9 +146,9 @@ namespace UltraCanvas {
         // ============================================================
         // Section B: Vertical Split (2 panes)
         // ============================================================
-        auto cardB = DemoKit::AddCard(root, "SplitCardB", "2. Vertical Split (2 panes, weights 3 : 1)",
-            "An editor area on top and a 'terminal' panel below. Drag the horizontal splitter; "
-            "neither pane can shrink below its minimum (100 px / 60 px).");
+        auto cardB = DemoKit::AddCard(root, "SplitCardB", Tr("2. Vertical Split (2 panes, weights 3 : 1)"),
+            Tr("An editor area on top and a 'terminal' panel below. Drag the horizontal splitter; "
+            "neither pane can shrink below its minimum (100 px / 60 px)."));
 
         auto splitV = CreateVerticalSplitPane("SplitPaneB", 0, 0, 960, 280);
         splitV->SetBorders(1, Color(180, 180, 180, 255));
@@ -184,9 +184,9 @@ namespace UltraCanvas {
         // ============================================================
         // Section C: Nested Splits (VSCode-like)
         // ============================================================
-        auto cardC = DemoKit::AddCard(root, "SplitCardC", "3. Nested Splits (horizontal containing a vertical split)",
-            "Outer horizontal split: left sidebar pane + right pane. The right pane contains a vertical "
-            "split (editor on top, output below). Drag outer/inner splitters independently.");
+        auto cardC = DemoKit::AddCard(root, "SplitCardC", Tr("3. Nested Splits (horizontal containing a vertical split)"),
+            Tr("Outer horizontal split: left sidebar pane + right pane. The right pane contains a vertical "
+            "split (editor on top, output below). Drag outer/inner splitters independently."));
 
         auto outer = CreateHorizontalSplitPane("SplitPaneC", 0, 0, 960, 320);
         outer->SetBorders(1, Color(180, 180, 180, 255));
@@ -231,12 +231,12 @@ namespace UltraCanvas {
         // ============================================================
         // Section D: Splitter handles
         // ============================================================
-        auto cardD = DemoKit::AddCard(root, "SplitCardD", "4. Splitter handle (shape and size)",
-            "An optional grab handle sits on the split line. Pick a shape - square, square with rounded "
+        auto cardD = DemoKit::AddCard(root, "SplitCardD", Tr("4. Splitter handle (shape and size)"),
+            Tr("An optional grab handle sits on the split line. Pick a shape - square, square with rounded "
             "edges, round (a circle when square, a capsule when elongated), or an SVG/raster image - and a "
             "size across the line. The splitter strip widens to fit the handle; the split line itself stays "
             "as thin as configured. An image handle with no explicit length takes its proportions from the "
-            "asset. Use the buttons to switch shape and size live.");
+            "asset. Use the buttons to switch shape and size live."));
 
         auto splitHandles = CreateHorizontalSplitPane("SplitPaneD", 0, 0, 960, 200);
         splitHandles->SetBorders(1, Color(180, 180, 180, 255));
@@ -321,13 +321,13 @@ namespace UltraCanvas {
         // ============================================================
         // Section E: Action icons on the split line
         // ============================================================
-        auto cardE = DemoKit::AddCard(root, "SplitCardE", "5. Action icons on the split line",
-            "Any number of icons can sit on a split line, centred across it and grouped at the middle "
+        auto cardE = DemoKit::AddCard(root, "SplitCardE", Tr("5. Action icons on the split line"),
+            Tr("Any number of icons can sit on a split line, centred across it and grouped at the middle "
             "along it. Each icon has its own tooltip, enabled state and click handler, and clicking one "
             "never starts a drag. Here splitter 0 collapses/restores the sidebar and splitter 1 carries "
-            "three actions. The handle wraps the icon group.");
+            "three actions. The handle wraps the icon group."));
 
-        auto statusE = DemoKit::CreateText("SplitEStatus", "Click an icon on a split line.");
+        auto statusE = DemoKit::CreateText("SplitEStatus", Tr("Click an icon on a split line."));
         statusE->SetFontSize(11);
         statusE->SetTextColor(Color(0, 100, 200, 255));
 
@@ -440,9 +440,9 @@ namespace UltraCanvas {
         // ============================================================
         // Section F: Vertical split with icons, no handle
         // ============================================================
-        auto cardF = DemoKit::AddCard(root, "SplitCardF", "6. Vertical split: icons without a handle",
-            "The same icons on a horizontal split line, with no handle behind them and the group parked "
-            "at 15% along the line (SplitterIconStyle::position).");
+        auto cardF = DemoKit::AddCard(root, "SplitCardF", Tr("6. Vertical split: icons without a handle"),
+            Tr("The same icons on a horizontal split line, with no handle behind them and the group parked "
+            "at 15% along the line (SplitterIconStyle::position)."));
 
         auto splitVIcons = CreateVerticalSplitPane("SplitPaneF", 0, 0, 960, 200);
         splitVIcons->SetBorders(1, Color(180, 180, 180, 255));

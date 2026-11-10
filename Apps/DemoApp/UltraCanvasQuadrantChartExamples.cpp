@@ -33,8 +33,8 @@ namespace UltraCanvas {
     }
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateQuadrantChartExamples() {
-        auto page = DemoKit::CreatePage("quadrantMainContainer", "Quadrant Chart Analysis Suite",
-                "Strategic 2x2 matrices: SWOT, BCG, Eisenhower, risk, priority and custom quadrants");
+        auto page = DemoKit::CreatePage("quadrantMainContainer", Tr("Quadrant Chart Analysis Suite"),
+                Tr("Strategic 2x2 matrices: SWOT, BCG, Eisenhower, risk, priority and custom quadrants"));
 
         // Controls, the tabbed charts and the statistics side by side; the
         // side cards wrap under the charts when the window is narrow.
@@ -53,7 +53,7 @@ namespace UltraCanvas {
         };
 
         // ===== LEFT SIDEBAR (controls) =====
-        auto leftSidebar = DemoKit::AddCard(contentContainer, "quadrantLeftSidebar", "CONTROLS", "", sideCardWidth);
+        auto leftSidebar = DemoKit::AddCard(contentContainer, "quadrantLeftSidebar", Tr("CONTROLS"), "", sideCardWidth);
 
         addFieldLabel(leftSidebar, "quadrantStyleLabel", "Visual Style");
         auto styleSelector = std::make_shared<UltraCanvasDropdown>("quadrantStyleSelector", 0, 0, 170, 28);
@@ -100,11 +100,11 @@ namespace UltraCanvas {
         DemoKit::Add(buttons, btnReset);
 
         auto helpBox = DemoKit::CreateText("quadrantHelpBox",
-                "INTERACTION TIPS\n\n"
+                Tr("INTERACTION TIPS\n\n"
                 "- Click a point to select\n"
                 "- Click empty space to clear the selection\n"
                 "- Hover for details\n"
-                "- Double-click a point");
+                "- Double-click a point"));
         helpBox->SetFontSize(9);
         helpBox->SetBackgroundColor(Color(255, 243, 205, 255));
         helpBox->SetPadding(10);
@@ -118,7 +118,7 @@ namespace UltraCanvas {
         DemoKit::AddFixed(tabsCard, tabbedContainer);
 
         auto statusBar = DemoKit::CreateText("quadrantStatusBar",
-                "Ready - click data points to select them, hover for tooltips");
+                Tr("Ready - click data points to select them, hover for tooltips"));
         statusBar->SetFontSize(11);
         statusBar->SetBackgroundColor(Color(233, 236, 239, 255));
         statusBar->SetPadding(15);
@@ -126,7 +126,7 @@ namespace UltraCanvas {
         DemoKit::Add(tabsCard, statusBar);
 
         // ===== RIGHT SIDEBAR (stats) =====
-        auto rightSidebar = DemoKit::AddCard(contentContainer, "quadrantRightSidebar", "STATISTICS", "", sideCardWidth);
+        auto rightSidebar = DemoKit::AddCard(contentContainer, "quadrantRightSidebar", Tr("STATISTICS"), "", sideCardWidth);
 
         // Filled by updateStats / updateAbout below.
         auto statsPanel = DemoKit::CreateText("quadrantStatsPanel", "");
@@ -135,7 +135,7 @@ namespace UltraCanvas {
         statsPanel->SetPadding(12);
         DemoKit::Add(rightSidebar, statsPanel);
 
-        auto legendTitle = DemoKit::AddHeading(rightSidebar, "quadrantLegendTitle", "ABOUT THIS CHART");
+        auto legendTitle = DemoKit::AddHeading(rightSidebar, "quadrantLegendTitle", Tr("ABOUT THIS CHART"));
         legendTitle->SetMargin(10, 0, 0, 0);
 
         auto legendPanel = DemoKit::CreateText("quadrantLegendPanel", "");

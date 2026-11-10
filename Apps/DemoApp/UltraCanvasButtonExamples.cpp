@@ -20,12 +20,12 @@
 namespace UltraCanvas {
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateButtonExamples() {
-            auto page = DemoKit::CreatePage("ButtonExamples", "UltraCanvas Button Component Showcase",
-                    "Demonstrating all button styles, states, and the new split button feature");
+            auto page = DemoKit::CreatePage("ButtonExamples", Tr("UltraCanvas Button Component Showcase"),
+                    Tr("Demonstrating all button styles, states, and the new split button feature"));
 
             // Status label for button feedback. At least two lines tall, as
             // most messages are, so a click does not move the buttons below.
-            auto statusLabel = DemoKit::AddText(page, "StatusLabel", "Click any button to see feedback here");
+            auto statusLabel = DemoKit::AddText(page, "StatusLabel", Tr("Click any button to see feedback here"));
             statusLabel->SetFontSize(11);
             statusLabel->SetBackgroundColor(Color(245, 245, 245, 255));
             statusLabel->SetBorders(1.0f);
@@ -38,7 +38,7 @@ namespace UltraCanvas {
             // ========================================
             // SECTION 1: BASIC BUTTON STYLES
             // ========================================
-            auto section1 = DemoKit::AddCard(page, "Section1", "Basic Button Styles");
+            auto section1 = DemoKit::AddCard(page, "Section1", Tr("Basic Button Styles"));
             auto row1 = DemoKit::AddRow(section1, "Section1Row", 10);
 
             // Standard Button
@@ -83,7 +83,7 @@ namespace UltraCanvas {
             // ========================================
             // SECTION 2: BUTTON STATES
             // ========================================
-            auto section2 = DemoKit::AddCard(page, "Section2", "Button States");
+            auto section2 = DemoKit::AddCard(page, "Section2", Tr("Button States"));
             auto row2 = DemoKit::AddRow(section2, "Section2Row", 10);
 
             // Normal State
@@ -109,7 +109,7 @@ namespace UltraCanvas {
             // ========================================
             // SECTION 3: ICONS & TEXT
             // ========================================
-            auto section3 = DemoKit::AddCard(page, "Section3", "Icons & Text");
+            auto section3 = DemoKit::AddCard(page, "Section3", Tr("Icons & Text"));
             auto row3 = DemoKit::AddRow(section3, "Section3Row", 10);
 
             // Text Only
@@ -179,7 +179,7 @@ namespace UltraCanvas {
             // ========================================
             // SECTION 4: SPLIT BUTTONS (NEW FEATURE)
             // ========================================
-            auto section4 = DemoKit::AddCard(page, "Section4", "Split Buttons - New Feature!");
+            auto section4 = DemoKit::AddCard(page, "Section4", Tr("Split Buttons - New Feature!"));
             auto row4 = DemoKit::AddRow(section4, "Section4Row", 10);
 
             // Basic Split Button
@@ -327,7 +327,7 @@ namespace UltraCanvas {
             // ========================================
             // SECTION 5: CUSTOM STYLING
             // ========================================
-            auto section5 = DemoKit::AddCard(page, "Section5", "Custom Styling");
+            auto section5 = DemoKit::AddCard(page, "Section5", Tr("Custom Styling"));
             auto row5 = DemoKit::AddRow(section5, "Section5Row", 10);
 
             // Flat Button
@@ -385,7 +385,7 @@ namespace UltraCanvas {
             // ========================================
             // SECTION 6: INTERACTIVE EXAMPLES
             // ========================================
-            auto section6 = DemoKit::AddCard(page, "Section6", "Interactive Examples");
+            auto section6 = DemoKit::AddCard(page, "Section6", Tr("Interactive Examples"));
             auto row6 = DemoKit::AddRow(section6, "Section6Row", 10);
 
             // Toggle Example
@@ -447,7 +447,7 @@ namespace UltraCanvas {
             // ========================================
             // SECTION 7: BUTTON BUILDER EXAMPLE
             // ========================================
-            auto section7 = DemoKit::AddCard(page, "Section7", "Button Builder Pattern");
+            auto section7 = DemoKit::AddCard(page, "Section7", Tr("Button Builder Pattern"));
             auto row7 = DemoKit::AddRow(section7, "Section7Row", 10);
 
             // Create button using builder pattern

@@ -275,16 +275,16 @@ std::shared_ptr<UltraCanvasButton> MakeTimelineButton(const std::string& id, con
 } // namespace
 
 std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateVideoTimelineExamples() {
-    auto page = DemoKit::CreatePage("VideoTimelineExamples", "Video Timeline",
-                                    "Drag clips to reorder the magnetic main track, drag their edges to trim, drag the overlay clip to any "
+    auto page = DemoKit::CreatePage("VideoTimelineExamples", Tr("Video Timeline"),
+                                    Tr("Drag clips to reorder the magnetic main track, drag their edges to trim, drag the overlay clip to any "
                                     "time, drag a transition's edge for its length. B is the blade, S splits at the playhead, Del deletes, "
-                                    "M adds a marker, I and O set the work area, the wheel zooms and Shift+wheel scrolls.");
+                                    "M adds a marker, I and O set the work area, the wheel zooms and Shift+wheel scrolls."));
     auto card = DemoKit::AddCard(page, "VideoTimelineCard");
 
     auto state = std::make_shared<TimelineDemoState>();
     state->model = BuildDemoModel();
 
-    auto status = DemoKit::AddText(card, "VideoTimelineStatus", "No change reported yet.");
+    auto status = DemoKit::AddText(card, "VideoTimelineStatus", Tr("No change reported yet."));
 
     auto timeline = CreateVideoTimeline("VideoTimeline", 0, 0, 960, 300);
     timeline->SetModel(state->model);
@@ -341,7 +341,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateVideoTim
 
     // controls under the timeline
     auto toolRow = AddControlRow(card, "VideoTimelineToolRow");
-    DemoKit::AddText(toolRow, "VideoTimelineToolLabel", "Tool");
+    DemoKit::AddText(toolRow, "VideoTimelineToolLabel", Tr("Tool"));
     auto toolDrop = CreateDropdown("VideoTimelineTool", 0, 0, 140, 30);
     toolDrop->AddItem("Select  V");
     toolDrop->AddItem("Blade  B");
@@ -384,7 +384,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateVideoTim
 
     // the playhead as a timecode field (type a time, Enter) and as the transport's readout
     auto playheadRow = AddControlRow(card, "VideoTimelinePlayheadRow");
-    DemoKit::AddText(playheadRow, "VideoTimelinePlayheadLabel", "Playhead");
+    DemoKit::AddText(playheadRow, "VideoTimelinePlayheadLabel", Tr("Playhead"));
     auto playheadField = CreateTimecodeField("VideoTimelinePlayhead", 0, 0, 120, 28);
     playheadField->SetFrameRate(25.0);
     playheadField->SetMaximumFrames(static_cast<long long>(state->model.Length() * 25.0));
@@ -395,16 +395,16 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateVideoTim
     readout->SetReadout(true);
     DemoKit::AddFixed(playheadRow, readout);
     DemoKit::AddCaption(card, "VideoTimelinePlayheadHint",
-                        "Click a segment and press the arrow keys, or type digits and Enter; +12 is twelve frames later.");
+                        Tr("Click a segment and press the arrow keys, or type digits and Enter; +12 is twelve frames later."));
     timeline->onPlayheadChanged = [playheadField = playheadField.get(), readout = readout.get()](double seconds) {
         playheadField->SetSeconds(seconds);
         readout->SetSeconds(seconds);
     };
 
     DemoKit::AddCaption(card, "VideoTimelineNotes",
-                        "The element never applies an edit: it reports it with the clips before and after, and this demo, "
+                        Tr("The element never applies an edit: it reports it with the clips before and after, and this demo, "
                         "standing in for the application, applies it to its model and calls SetModel. Thumbnails and the "
-                        "waveform are painted by the demo's providers; a real app decodes them with VideoFX.");
+                        "waveform are painted by the demo's providers; a real app decodes them with VideoFX."));
     return page;
 }
 

@@ -302,7 +302,7 @@ namespace {
         root->SetPadding(10, 12, 10, 12);
         root->SetBackgroundColor(Colors::White);
 
-        DemoKit::AddHeading(root, "FileLoaderDemoTitle", "FileLoader playground");
+        DemoKit::AddHeading(root, "FileLoaderDemoTitle", Tr("FileLoader playground"));
 
         // ----- Toolbar row: family dropdown + Open + Save -----
         // Wraps onto a second line when the tab is narrower than the controls.
@@ -505,10 +505,10 @@ namespace {
 
 // ===== FILELOADER MODULE DEMO =====
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateFileLoaderExamples() {
-        auto root = DemoKit::CreatePage("FileLoaderExamples", "File Loader",
-                "Every file a program loads or saves goes through UltraCanvasFileLoader: the "
+        auto root = DemoKit::CreatePage("FileLoaderExamples", Tr("File Loader"),
+                Tr("Every file a program loads or saves goes through UltraCanvasFileLoader: the "
                 "supported formats per family, the module's documentation, and a playground "
-                "that opens and saves files of each family.");
+                "that opens and saves files of each family."));
         // The tabs' text areas and the playground scroll themselves: the page
         // is the area's height and the tabs' card takes what the title leaves.
         root->SetFillsArea(true);

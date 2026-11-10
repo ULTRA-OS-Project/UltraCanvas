@@ -19,9 +19,9 @@
 namespace UltraCanvas {
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateSpinnerExamples() {
-        auto container = DemoKit::CreatePage("SpinnerExamples", "Spinner / SpinBox Examples",
-                "Select a value with the up/down (or left/right) arrow buttons, the "
-                "keyboard arrow keys, the mouse wheel, or by typing into the field.");
+        auto container = DemoKit::CreatePage("SpinnerExamples", Tr("Spinner / SpinBox Examples"),
+                Tr("Select a value with the up/down (or left/right) arrow buttons, the "
+                "keyboard arrow keys, the mouse wheel, or by typing into the field."));
 
         // All spinners share one width so they line up; each value label is
         // as tall as the spinner beside it and vertically centred.
@@ -137,14 +137,14 @@ namespace UltraCanvas {
         };
 
         // ===== INSTRUCTIONS =====
-        DemoKit::AddNotes(container, "SpinnerInstructions", "Interaction", {
-                "Click the arrow buttons, or press Up/Down (Left/Right) to step",
-                "PageUp / PageDown step by the page amount; Home / End jump to min / max",
-                "Scroll the mouse wheel over a spinner to change its value",
-                "Type directly into an editable field (the current value is selected, so "
-                "typing replaces it), then press Enter to commit (Esc to cancel)",
-                "The Size and Month spinners have a value dropdown \xE2\x80\x93 click the "
-                "field to pick from the full list"});
+        DemoKit::AddNotes(container, "SpinnerInstructions", Tr("Interaction"), {
+                Tr("Click the arrow buttons, or press Up/Down (Left/Right) to step"),
+                Tr("PageUp / PageDown step by the page amount; Home / End jump to min / max"),
+                Tr("Scroll the mouse wheel over a spinner to change its value"),
+                Tr("Type directly into an editable field (the current value is selected, so "
+                "typing replaces it), then press Enter to commit (Esc to cancel)"),
+                Tr("The Size and Month spinners have a value dropdown \xE2\x80\x93 click the "
+                "field to pick from the full list")});
 
         return container;
     }

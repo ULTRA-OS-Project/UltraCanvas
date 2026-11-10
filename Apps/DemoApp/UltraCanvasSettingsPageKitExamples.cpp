@@ -238,40 +238,40 @@ namespace {
 } // namespace
 
 std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateSettingsPageKitExamples() {
-    auto page = DemoKit::CreatePage("SettingsPageKitExamples", "Settings window",
-            "The look of an application's settings window, once: UltraCanvasSettingsPageKit builds the window "
+    auto page = DemoKit::CreatePage("SettingsPageKitExamples", Tr("Settings window"),
+            Tr("The look of an application's settings window, once: UltraCanvasSettingsPageKit builds the window "
             "with its tree of pages, the page skeleton and the controls in one type scale. UltraFiler, UltraSnip "
-            "and UOS-Settings are built on it.");
+            "and UOS-Settings are built on it."));
 
     auto row = DemoKit::AddRow(page, "SettingsPageKitRow");
 
-    auto open = DemoKit::AddCard(row, "SettingsPageKitOpenCard", "A sample settings window",
-            "Three pages of a made-up application, built with the kit: the theme (radios, a checkbox, a colour "
+    auto open = DemoKit::AddCard(row, "SettingsPageKitOpenCard", Tr("A sample settings window"),
+            Tr("Three pages of a made-up application, built with the kit: the theme (radios, a checkbox, a colour "
             "box), the text size (a slider with its value and a button row) and the file formats (a scrolling "
-            "list of checkboxes). Every change applies at once; each page has its Restore button.");
+            "list of checkboxes). Every change applies at once; each page has its Restore button."));
     auto button = CreateButton("SettingsPageKitOpen", 0, 0, 200, 34, "Open settings window");
-    auto status = DemoKit::AddText(open, "SettingsPageKitStatus", "Last change: none yet");
+    auto status = DemoKit::AddText(open, "SettingsPageKitStatus", Tr("Last change: none yet"));
     button->SetOnClick([this, status]() { OpenSampleWindow(mainWindow.get(), status); });
     // The button first, its status line under it
     open->RemoveChild(status);
     DemoKit::AddFixed(open, button);
     DemoKit::Add(open, status);
 
-    auto what = DemoKit::AddCard(row, "SettingsPageKitWhatCard", "What the kit gives");
+    auto what = DemoKit::AddCard(row, "SettingsPageKitWhatCard", Tr("What the kit gives"));
     DemoKit::Add(what, DemoKit::CreateBullets("SettingsPageKitWhat", {
-        "UltraCanvasSettingsWindow: the window, the tree of pages, the page area, Restore defaults and Close; "
-        "Create, AddSection, AddTreeNode, AddPage, resets, Finish, ShowPage, SelectPage",
-        "A page's skeleton: MakePage (title, caption, body, notes), AddNote, AddBodyCaption",
-        "The controls in one type scale: MakeChoice, MakeCheckbox, MakeIntSlider with MakeSliderRow, "
-        "MakeButton and MakeButtonRow, MakeChoiceRow, MakeLabelledRow, MakeColorBox",
-        "SettingsWindowOptions: the size, the tree's width, a logo above the tree, a dialog or a main window",
+        Tr("UltraCanvasSettingsWindow: the window, the tree of pages, the page area, Restore defaults and Close; "
+        "Create, AddSection, AddTreeNode, AddPage, resets, Finish, ShowPage, SelectPage"),
+        Tr("A page's skeleton: MakePage (title, caption, body, notes), AddNote, AddBodyCaption"),
+        Tr("The controls in one type scale: MakeChoice, MakeCheckbox, MakeIntSlider with MakeSliderRow, "
+        "MakeButton and MakeButtonRow, MakeChoiceRow, MakeLabelledRow, MakeColorBox"),
+        Tr("SettingsWindowOptions: the size, the tree's width, a logo above the tree, a dialog or a main window"),
     }));
 
-    auto where = DemoKit::AddCard(row, "SettingsPageKitWhereCard", "Where it is used");
+    auto where = DemoKit::AddCard(row, "SettingsPageKitWhereCard", Tr("Where it is used"));
     DemoKit::Add(where, DemoKit::CreateBullets("SettingsPageKitWhere", {
-        "UltraFiler - Settings: 22 pages, where the look was first drawn",
-        "UltraSnip - Settings: the picture type, the recording, what happens after a snip",
-        "UOS-Settings: the ULTRA OS settings, a main window with the logo above its tree",
+        Tr("UltraFiler - Settings: 22 pages, where the look was first drawn"),
+        Tr("UltraSnip - Settings: the picture type, the recording, what happens after a snip"),
+        Tr("UOS-Settings: the ULTRA OS settings, a main window with the logo above its tree"),
     }));
     return page;
 }

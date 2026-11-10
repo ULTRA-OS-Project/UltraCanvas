@@ -204,7 +204,7 @@ namespace UltraCanvas {
         };
         DemoKit::AddFixed(holeGroup, innerSlider);
 
-        auto gapHeader = DemoKit::AddText(holeGroup, "RbGapHeader", "Series Gap (degrees):");
+        auto gapHeader = DemoKit::AddText(holeGroup, "RbGapHeader", Tr("Series Gap (degrees):"));
         gapHeader->SetFontWeight(FontWeight::Bold);
 
         auto gapSlider = std::make_shared<UltraCanvasSlider>("RbGap", 0, 0, controlWidth, controlHeight);
@@ -251,10 +251,10 @@ namespace UltraCanvas {
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateRadialBarChartExamples() {
         auto page = DemoKit::CreatePage("RadialBarChartContainer",
-            "Radial Bar Chart Examples - Value-Driven Rays Around a Circle",
-            "Rays radiate from a base ring; ray length is proportional to value. Series occupy contiguous angular "
+            Tr("Radial Bar Chart Examples - Value-Driven Rays Around a Circle"),
+            Tr("Rays radiate from a base ring; ray length is proportional to value. Series occupy contiguous angular "
             "sectors with configurable gaps. Features bar and line styles, cap shapes including arrows, gradient fade, "
-            "global/per-series/manual scaling, ring guides, peak annotations, tooltips and hover highlighting."
+            "global/per-series/manual scaling, ring guides, peak annotations, tooltips and hover highlighting.")
         );
 
         auto controlsCard = DemoKit::AddCard(page, "RbControls");
@@ -263,7 +263,7 @@ namespace UltraCanvas {
         auto charts = DemoKit::AddRow(page, "RbCharts");
 
         // ===== EXAMPLE 1: MULTI-SENSOR RADIAL BARS =====
-        auto sensorCard = DemoKit::AddCard(charts, "RbSensorLabel", "Multi-Sensor Readings (6 Sensors × 24 Hours)", "", chartCardWidth);
+        auto sensorCard = DemoKit::AddCard(charts, "RbSensorLabel", Tr("Multi-Sensor Readings (6 Sensors × 24 Hours)"), "", chartCardWidth);
 
         auto sensorChart = BuildSensorChart("SensorRadialBars", 0, 0, 460, 320);
         sensorChart->SetCenterText("Sensors");
@@ -275,7 +275,7 @@ namespace UltraCanvas {
         DemoKit::AddFixed(sensorCard, sensorChart);
 
         // ===== EXAMPLE 2: GEOGRAPHIC RADIAL LINES =====
-        auto geoCard = DemoKit::AddCard(charts, "RbGeoLabel", "Median Age by Country (Radial Lines per Continent)", "", chartCardWidth);
+        auto geoCard = DemoKit::AddCard(charts, "RbGeoLabel", Tr("Median Age by Country (Radial Lines per Continent)"), "", chartCardWidth);
 
         auto geoChart = BuildMedianAgeRays("GeoRadialLines", 0, 0, 460, 320);
         geoChart->SetBarStyle(RadialBarStyle::Lines);
@@ -293,7 +293,7 @@ namespace UltraCanvas {
         DemoKit::AddFixed(geoCard, geoChart);
 
         // ===== EXAMPLE 3: PARTIAL-SWEEP RAINFALL FAN =====
-        auto rainCard = DemoKit::AddCard(charts, "RbRainLabel", "Monthly Rainfall (270° Fan, Ring Guides, Square Caps)", "", chartCardWidth);
+        auto rainCard = DemoKit::AddCard(charts, "RbRainLabel", Tr("Monthly Rainfall (270° Fan, Ring Guides, Square Caps)"), "", chartCardWidth);
 
         auto rainChart = BuildRainfallChart("RainfallFan", 0, 0, 460, 280);
         rainChart->SetSweepAngle(270.0f);
@@ -314,7 +314,7 @@ namespace UltraCanvas {
         DemoKit::AddFixed(rainCard, rainChart);
 
         // ===== EXAMPLE 4: ARROW RAYS / MANUAL RANGE =====
-        auto kpiCard = DemoKit::AddCard(charts, "RbKpiLabel", "KPI Attainment (Arrow Caps, Manual 0–150% Range)", "", chartCardWidth);
+        auto kpiCard = DemoKit::AddCard(charts, "RbKpiLabel", Tr("KPI Attainment (Arrow Caps, Manual 0–150% Range)"), "", chartCardWidth);
 
         auto kpiChart = CreateRadialBarChart("KpiRadialBars", 0, 0, 460, 280);
         kpiChart->AddSeries("Sales", {

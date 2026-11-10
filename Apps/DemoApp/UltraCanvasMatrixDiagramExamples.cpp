@@ -40,9 +40,9 @@ namespace UltraCanvas {
         // for the 170 px controls and the card's padding.
         const float SIDEBAR_CARD_W = SIDEBAR_W + 2 * DemoKit::kCardPadding + 2;
 
-        auto mainContainer = DemoKit::CreatePage("matrixMain", "Matrix Diagram",
-                "Relationships between two to four ordered lists, marked from a named "
-                "scale and rolled up into weighted row and column totals");
+        auto mainContainer = DemoKit::CreatePage("matrixMain", Tr("Matrix Diagram"),
+                Tr("Relationships between two to four ordered lists, marked from a named "
+                "scale and rolled up into weighted row and column totals"));
 
         // Controls | diagram tabs and read-out. The sidebar keeps its width;
         // on a narrow window the cards wrap under each other.
@@ -192,8 +192,8 @@ namespace UltraCanvas {
         DemoKit::Add(readoutHeader, readoutTitle, 1);
 
         auto readoutText = DemoKit::CreateText("matrixReadoutText",
-                "Click a cell to read its relationship, a row or column header for its total, "
-                "or a legend entry to filter the marks.");
+                Tr("Click a cell to read its relationship, a row or column header for its total, "
+                "or a legend entry to filter the marks."));
         readoutText->SetTextColor(Color(73, 80, 87, 255));
         DemoKit::Add(readoutPanel, readoutText);
 
@@ -575,8 +575,8 @@ namespace UltraCanvas {
         DemoKit::Add(leftSidebar, makeSectionTitle("matrixAboutTitle", "ABOUT"));
 
         auto aboutText = DemoKit::CreateCaption("matrixAbout",
-                "Click a cell, then use the arrow keys and Tab. With Editable on, "
-                "Space or a click steps a cell's level; Delete clears it.");
+                Tr("Click a cell, then use the arrow keys and Tab. With Editable on, "
+                "Space or a click steps a cell's level; Delete clears it."));
         aboutText->SetWrap(TextWrap::WrapWordChar);
         aboutText->SetTextColor(Color(108, 117, 125, 255));
         DemoKit::Add(leftSidebar, aboutText);

@@ -1161,7 +1161,7 @@ std::shared_ptr<UltraCanvasContainer> CreateCustomEditor(
     st->popup = popup;
     
     // Popup title
-    auto popupTitle = DemoKit::CreateHeading("popupTitle", "Edit Node");
+    auto popupTitle = DemoKit::CreateHeading("popupTitle", Tr("Edit Node"));
     popupTitle->SetFontSize(14);
     popupTitle->SetTextColor(Color(40, 50, 110, 255));
     DemoKit::Add(popup, popupTitle);
@@ -1171,7 +1171,7 @@ std::shared_ptr<UltraCanvasContainer> CreateCustomEditor(
     labelRow->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
     DemoKit::Add(popup, labelRow);
 
-    auto lblCap = DemoKit::CreateText("popupLblCap", "Label:");
+    auto lblCap = DemoKit::CreateText("popupLblCap", Tr("Label:"));
     lblCap->SetFontSize(11);
     DemoKit::Add(labelRow, lblCap);
     
@@ -1186,7 +1186,7 @@ std::shared_ptr<UltraCanvasContainer> CreateCustomEditor(
     colorRow->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
     DemoKit::Add(popup, colorRow);
 
-    auto colCap = DemoKit::CreateText("popupColCap", "Color:");
+    auto colCap = DemoKit::CreateText("popupColCap", Tr("Color:"));
     colCap->SetFontSize(11);
     colCap->SetMargin(0, 2, 0, 0);
     DemoKit::Add(colorRow, colCap);
@@ -1800,11 +1800,11 @@ void RegisterNodeDiagramExamples(/* DemoRegistry& registry */) {
 std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateNodeDiagramExamples() {
     // ---- Page: the tabs fill the display area, each diagram scrolls and
     // zooms inside its tab ----
-    auto root = DemoKit::CreatePage("ndDemoRoot", "Node Diagram",
-        "Friends: a personal network of card nodes in five circles. Organization: cluster containers, "
+    auto root = DemoKit::CreatePage("ndDemoRoot", Tr("Node Diagram"),
+        Tr("Friends: a personal network of card nodes in five circles. Organization: cluster containers, "
         "degree-based node sizing and a color legend, with controls for every "
         "option. Custom: click 'Add Node' or right-click the canvas to create "
-        "nodes, double-click a node to edit its label and color.");
+        "nodes, double-click a node to edit its label and color."));
     root->SetFillsArea(true);
 
     auto card = DemoKit::CreateCard("ndCard");
@@ -1823,8 +1823,8 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateNodeDiag
     
     // The status line under the button bar; every tab reports to it.
     auto statusLabel = DemoKit::CreateCaption(
-        "ndStatus", "Ready - Click 'Add Node' or right-click on the canvas "
-                    "(Custom tab) to start building. Wheel to zoom, drag to pan.");
+        "ndStatus", Tr("Ready - Click 'Add Node' or right-click on the canvas "
+                    "(Custom tab) to start building. Wheel to zoom, drag to pan."));
     statusLabel->SetTextColor(Color(90, 90, 100, 255));
     
     // ---- Friends tab (read-only example graph) ----

@@ -95,11 +95,11 @@ namespace UltraCanvas {
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateCircleDiagramExamples() {
         auto page = DemoKit::CreatePage("CircleDiagramContainer",
-            "Circle Diagram Examples - Hub, Backbone Ring and Satellite Fans",
-            "Equally sized node discs threaded onto a backbone ring around a central hub, each carrying a fan of "
+            Tr("Circle Diagram Examples - Hub, Backbone Ring and Satellite Fans"),
+            Tr("Equally sized node discs threaded onto a backbone ring around a central hub, each carrying a fan of "
             "satellites on leader lines. Structure and colour are independent presets, and both work at any node "
             "count: palettes are hue ramps sampled at N points, and every layout quantity derives from the per-node "
-            "arc of 360/N. Node radius is one constant per diagram - values never scale a disc.");
+            "arc of 360/N. Node radius is one constant per diagram - values never scale a disc."));
 
         // A card is at least as wide as its diagram (plus padding and border),
         // so a narrow window wraps the cards under each other instead of
@@ -109,7 +109,7 @@ namespace UltraCanvas {
         // ===== EXAMPLE 1: SATELLITE WHEEL, 5 NODES x 3 SATELLITES =====
         auto topRow = DemoKit::AddRow(page, "CdTopRow");
         auto saasCard = DemoKit::AddCard(topRow, "CdSaaSCard",
-            "SatelliteWheel design, Vibrant palette (5 nodes, 3 satellites each)", "", 580 + cardChrome);
+            Tr("SatelliteWheel design, Vibrant palette (5 nodes, 3 satellites each)"), "", 580 + cardChrome);
 
         auto saasDiagram = CreateCircleDiagram("SaaSCircleDiagram", 0, 0, 580, 320);
         BuildSaaSWheel(saasDiagram);
@@ -118,7 +118,7 @@ namespace UltraCanvas {
 
         // ===== EXAMPLE 2: BANDED WHEEL, DOTTED LEADERS =====
         auto policyCard = DemoKit::AddCard(topRow, "CdPolicyCard",
-            "BandedWheel design, Mint palette (thick band, dotted leaders)", "", 570 + cardChrome);
+            Tr("BandedWheel design, Mint palette (thick band, dotted leaders)"), "", 570 + cardChrome);
 
         auto policyDiagram = CreateCircleDiagram("PolicyCircleDiagram", 0, 0, 570, 320);
         BuildPolicyRing(policyDiagram);
@@ -128,7 +128,7 @@ namespace UltraCanvas {
         // ===== EXAMPLE 3: NODE COUNT SWEEP =====
         auto bottomRow = DemoKit::AddRow(page, "CdBottomRow");
         auto sweepCard = DemoKit::AddCard(bottomRow, "CdSweepCard",
-            "Same preset at 8 nodes - layout derives from the per-node arc", "", 580 + cardChrome);
+            Tr("Same preset at 8 nodes - layout derives from the per-node arc"), "", 580 + cardChrome);
 
         auto sweepDiagram = CreateCircleDiagram("SweepCircleDiagram", 0, 0, 580, 285);
         BuildCountSweep(sweepDiagram, 8);
@@ -137,7 +137,7 @@ namespace UltraCanvas {
 
         // ===== EXAMPLE 4: OUTSIDE LABELS, NO BACKBONE =====
         auto pastelCard = DemoKit::AddCard(bottomRow, "CdPastelCard",
-            "Pastel palette, no backbone ring, labels parked outside the discs", "", 570 + cardChrome);
+            Tr("Pastel palette, no backbone ring, labels parked outside the discs"), "", 570 + cardChrome);
 
         auto pastelDiagram = CreateCircleDiagram("PastelCircleDiagram", 0, 0, 570, 285);
         BuildPastelOutside(pastelDiagram);

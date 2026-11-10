@@ -78,10 +78,10 @@ namespace UltraCanvas {
     } // namespace
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateSlideshowExamples() {
-        auto root = DemoKit::CreatePage("SlideshowExamples", "UltraCanvas Slideshow widget",
-                "The card below holds the live widget; the controls beneath it are "
+        auto root = DemoKit::CreatePage("SlideshowExamples", Tr("UltraCanvas Slideshow widget"),
+                Tr("The card below holds the live widget; the controls beneath it are "
                 "demo-only options. Click the widget, then use the arrow keys to change "
-                "slides (Left/Down = previous, Right/Up = next).");
+                "slides (Left/Down = previous, Right/Up = next)."));
 
         // Slideshow itself
         auto show = CreateSlideshow("ultracanvas-slideshow", 0, 0, 920, 480);
@@ -129,11 +129,11 @@ namespace UltraCanvas {
         // ---- The live widget in its own card, so the page makes clear which
         //      part is the actual widget and which are the programmer-facing
         //      options below. It is as wide as the card. ----
-        auto widgetCard = DemoKit::AddCard(root, "SlideshowWidgetFrame", "Slideshow widget");
+        auto widgetCard = DemoKit::AddCard(root, "SlideshowWidgetFrame", Tr("Slideshow widget"));
         DemoKit::AddStretched(widgetCard, show);
 
         // Status label — updated when a slide changes
-        auto statusLabel = DemoKit::AddText(widgetCard, "SlideStatus", "Slide 1 / 5");
+        auto statusLabel = DemoKit::AddText(widgetCard, "SlideStatus", Tr("Slide 1 / 5"));
         statusLabel->SetFontSize(11);
         statusLabel->SetTextColor(Color(120, 120, 120, 255));
 
@@ -147,7 +147,7 @@ namespace UltraCanvas {
         };
 
         // ---- Options card: everything in it is programmer-facing. ----
-        auto optionsCard = DemoKit::AddCard(root, "SlideshowOptionsHeading", "Slideshow widget options");
+        auto optionsCard = DemoKit::AddCard(root, "SlideshowOptionsHeading", Tr("Slideshow widget options"));
         auto optionsGrid = DemoKit::CreateColumn("SlideshowOptionsGrid", 12);
         DemoKit::Add(optionsCard, optionsGrid);
 

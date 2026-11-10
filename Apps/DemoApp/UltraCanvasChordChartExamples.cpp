@@ -259,8 +259,8 @@ namespace UltraCanvas {
         DemoKit::AddFixed(panel, hoverCheckbox);
 
         DemoKit::AddCaption(panel, idPrefix + "Hint",
-            "Hover a category arc to isolate its ribbons, or a single ribbon "
-            "for the exact flow and its return leg.");
+            Tr("Hover a category arc to isolate its ribbons, or a single ribbon "
+            "for the exact flow and its return leg."));
 
         return panel;
     }
@@ -380,10 +380,10 @@ namespace UltraCanvas {
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateChordChartExamples() {
         auto page = DemoKit::CreatePage("ChordChartContainer",
-            "Chord Chart Examples - Directed Flows Between Categories",
-            "Categories occupy arcs sized by total throughput; ribbons join them with a width proportional to the flow. "
+            Tr("Chord Chart Examples - Directed Flows Between Categories"),
+            Tr("Categories occupy arcs sized by total throughput; ribbons join them with a width proportional to the flow. "
             "Each direction gets its own sub-arc, so an asymmetric relationship reads as a ribbon that is wide at one end "
-            "and narrow at the other. Hover isolates a category or a ribbon; tooltips report the flow and its return leg.");
+            "and narrow at the other. Hover isolates a category or a ribbon; tooltips report the flow and its return leg."));
         // The page is the display area's height and the tabs take what the
         // title and description leave, so a window resize propagates down
         // through Measure/Arrange to each chart.

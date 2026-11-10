@@ -437,9 +437,9 @@ namespace UltraCanvas {
     std::shared_ptr<UltraCanvasUIElement>
     UltraCanvasDemoApplication::CreateArcDiagramExamples()
     {
-        auto page = DemoKit::CreatePage("ArcDiagramExamples", "Arc Diagram",
-                "Nodes on a baseline, edges as cubic Bezier arcs. Above = forward, below = back or "
-                "novel. Width + opacity encode weight.");
+        auto page = DemoKit::CreatePage("ArcDiagramExamples", Tr("Arc Diagram"),
+                Tr("Nodes on a baseline, edges as cubic Bezier arcs. Above = forward, below = back or "
+                "novel. Width + opacity encode weight."));
         // The tabs fill the area, as the diagrams did before.
         page->SetFillsArea(true);
 
@@ -447,7 +447,7 @@ namespace UltraCanvas {
         DemoKit::Add(page, card, 1);
         card->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
 
-        auto statusLabel = DemoKit::CreateCaption("ArcStatus", "Click a node or arc to inspect.");
+        auto statusLabel = DemoKit::CreateCaption("ArcStatus", Tr("Click a node or arc to inspect."));
         statusLabel->SetBackgroundColor(Color(245, 245, 245));
         statusLabel->SetBorders(1.0f);
         statusLabel->SetPadding(6.0f);

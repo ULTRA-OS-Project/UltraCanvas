@@ -19,8 +19,8 @@
 namespace UltraCanvas {
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateAutoCompleteExamples() {
-        auto page = DemoKit::CreatePage("AutoCompleteExamples", "UltraCanvas AutoComplete Component Examples",
-                "AutoComplete examples showcasing static items, dynamic providers, scrollable lists, and event handling");
+        auto page = DemoKit::CreatePage("AutoCompleteExamples", Tr("UltraCanvas AutoComplete Component Examples"),
+                Tr("AutoComplete examples showcasing static items, dynamic providers, scrollable lists, and event handling"));
 
         // A field keeps its width; its status texts sit in a column beside
         // it and move under it when the card is too narrow for both.
@@ -43,7 +43,7 @@ namespace UltraCanvas {
         auto topRow = DemoKit::AddRow(page, "ACTopRow");
 
         // ===== SECTION 1: BASIC AUTOCOMPLETE =====
-        auto card1 = DemoKit::AddCard(topRow, "ACCardBasic", "Basic AutoComplete");
+        auto card1 = DemoKit::AddCard(topRow, "ACCardBasic", Tr("Basic AutoComplete"));
 
         // Fruit autocomplete
         auto fruitAC = CreateAutoComplete("FruitAC", 0, 0, 250);
@@ -72,10 +72,10 @@ namespace UltraCanvas {
             debugOutput << "Fruit selected: " << item.text << " (" << item.value << ")" << std::endl;
         };
 
-        DemoKit::AddCaption(fruitInfo, "FruitACLabel", "Static list of 14 fruits with substring matching");
+        DemoKit::AddCaption(fruitInfo, "FruitACLabel", Tr("Static list of 14 fruits with substring matching"));
 
         // ===== SECTION 2: COUNTRY AUTOCOMPLETE =====
-        auto card2 = DemoKit::AddCard(topRow, "ACCardCountry", "Country Selection");
+        auto card2 = DemoKit::AddCard(topRow, "ACCardCountry", Tr("Country Selection"));
 
         auto countryAC = CreateAutoComplete("CountryAC", 0, 0, 280);
         countryAC->SetPlaceholder("Search countries...");
@@ -116,7 +116,7 @@ namespace UltraCanvas {
         auto middleRow = DemoKit::AddRow(page, "ACMiddleRow");
 
         // ===== SECTION 3: DYNAMIC PROVIDER =====
-        auto card3 = DemoKit::AddCard(middleRow, "ACCardDynamic", "Dynamic Suggestion Provider");
+        auto card3 = DemoKit::AddCard(middleRow, "ACCardDynamic", Tr("Dynamic Suggestion Provider"));
 
         auto dynamicAC = CreateAutoComplete("DynamicAC", 0, 0, 280);
         dynamicAC->SetPlaceholder("Search programming topics...");
@@ -174,7 +174,7 @@ namespace UltraCanvas {
         };
 
         // ===== SECTION 4: LARGE LIST WITH SCROLLBAR =====
-        auto card4 = DemoKit::AddCard(middleRow, "ACCardStates", "Large List (US States - 50 items)");
+        auto card4 = DemoKit::AddCard(middleRow, "ACCardStates", Tr("Large List (US States - 50 items)"));
 
         auto statesAC = CreateAutoComplete("StatesAC", 0, 0, 280);
         statesAC->SetPlaceholder("Search US states...");
@@ -240,7 +240,7 @@ namespace UltraCanvas {
         };
 
         // ===== SECTION 5: INTERACTIVE DEMO =====
-        auto card5 = DemoKit::AddCard(page, "ACCardInteractive", "Interactive Event Demo");
+        auto card5 = DemoKit::AddCard(page, "ACCardInteractive", Tr("Interactive Event Demo"));
 
         auto interactiveAC = CreateAutoComplete("InteractiveAC", 0, 0, 250);
         interactiveAC->SetPlaceholder("Type anything...");
@@ -254,7 +254,7 @@ namespace UltraCanvas {
         interactiveAC->AddItem("Theta", "t");
 
         auto eventInfo = fieldRow(card5, "InteractiveAC", interactiveAC);
-        auto eventLog = DemoKit::AddText(eventInfo, "ACEventLog", "Event log: No events yet");
+        auto eventLog = DemoKit::AddText(eventInfo, "ACEventLog", Tr("Event log: No events yet"));
         eventLog->SetFontSize(11);
         eventLog->SetBackgroundColor(Color(245, 245, 245, 255));
         eventLog->SetBorders(1.0f);

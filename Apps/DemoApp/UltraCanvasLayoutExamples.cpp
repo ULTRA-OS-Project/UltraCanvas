@@ -66,8 +66,8 @@ namespace {
                              .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 
         // ===== SECTION 1: VERTICAL BOX LAYOUT =====
-        auto vboxCard = DemoKit::AddCard(mainContainer, "LayoutVBoxCard", "1. Vertical Box Layout",
-                "Vertical arrangement with spacing, padding, and stretch. Buttons respond to clicks.");
+        auto vboxCard = DemoKit::AddCard(mainContainer, "LayoutVBoxCard", Tr("1. Vertical Box Layout"),
+                Tr("Vertical arrangement with spacing, padding, and stretch. Buttons respond to clicks."));
         auto vboxRow = DemoKit::AddRow(vboxCard, "LayoutVBoxRow", 20);
 
         // Create demo container for vertical layout
@@ -108,8 +108,8 @@ namespace {
                 "Code: container->layout.SetFlexColumn().SetFlexGap(10);\ncontainer->AddChild(button1); container->AddStretchSpacer(1);");
 
         // ===== SECTION 2: HORIZONTAL BOX LAYOUT =====
-        auto hboxCard = DemoKit::AddCard(mainContainer, "LayoutHBoxCard", "2. Horizontal Box Layout (Toolbar Style)",
-                "Horizontal toolbar with left-aligned actions and right-aligned utilities using AddStretch.");
+        auto hboxCard = DemoKit::AddCard(mainContainer, "LayoutHBoxCard", Tr("2. Horizontal Box Layout (Toolbar Style)"),
+                Tr("Horizontal toolbar with left-aligned actions and right-aligned utilities using AddStretch."));
 
         // Create demo container for horizontal layout
         auto hboxDemo = std::make_shared<UltraCanvasContainer>("HBoxDemo", 0, 0, 960, 50);
@@ -141,11 +141,11 @@ namespace {
         DemoKit::AddStretched(hboxCard, hboxDemo);
 
         DemoKit::AddText(hboxCard, "LayoutHBoxCode",
-                "Code: container->layout.SetFlexRow().SetFlexGap(5);\ncontainer->AddChild(leftBtn);\ncontainer->AddSpacer(15);\ncontainer->AddStretchSpacer(1);\ncontainer->AddChild(rightBtn);");
+                Tr("Code: container->layout.SetFlexRow().SetFlexGap(5);\ncontainer->AddChild(leftBtn);\ncontainer->AddSpacer(15);\ncontainer->AddStretchSpacer(1);\ncontainer->AddChild(rightBtn);"));
 
         // ===== SECTION 3: GRID LAYOUT (FORM) =====
-        auto gridCard = DemoKit::AddCard(mainContainer, "LayoutGridCard", "3. Grid Layout (Form Design)",
-                "Grid-based form with auto-sized labels and star-sized inputs. Submit button spans both columns.");
+        auto gridCard = DemoKit::AddCard(mainContainer, "LayoutGridCard", Tr("3. Grid Layout (Form Design)"),
+                Tr("Grid-based form with auto-sized labels and star-sized inputs. Submit button spans both columns."));
         auto gridRow = DemoKit::AddRow(gridCard, "LayoutGridRow", 20);
 
         // Create demo container for grid layout
@@ -210,8 +210,8 @@ namespace {
                 "Code: container->layout.SetGrid();\ncontainer->layout.SetGridColumns({autoTrack, frTrack});\ncontainer->layout.SetGridRows(std::vector<GridTrackSize>(rows));\ncontainer->AddChild(label); label->layoutItem.SetGridRowColSimplified(row, column);\ncontainer->AddChild(input); input->layoutItem.SetGridRowColSimplified(row, column);");
 
         // ===== SECTION 4: FLEX LAYOUT (CARDS) =====
-        auto flexCard = DemoKit::AddCard(mainContainer, "LayoutFlexCard", "4. Flex Layout (Responsive Cards)",
-                "Flexible card layout with wrapping. Cards automatically adjust to available space.");
+        auto flexCard = DemoKit::AddCard(mainContainer, "LayoutFlexCard", Tr("4. Flex Layout (Responsive Cards)"),
+                Tr("Flexible card layout with wrapping. Cards automatically adjust to available space."));
 
         // Create demo container for flex layout. As wide as the card and as
         // tall as its wrapped lines of cards.
@@ -276,22 +276,22 @@ namespace {
         DemoKit::Add(flexCard, flexDemo);
 
         DemoKit::AddText(flexCard, "LayoutFlexCode",
-                "Code: float flexGrow=0, flexShrink=1, flexBasis=220\ncontainer->layout.SetFlexDirection(FlexDirection::Row);\ncontainer->layout.SetFlexWrap(FlexWrap::Wrap).SetFlexGap(15, 15);\ncontainer->AddChild(card); card->layoutItem.SetFlexGrow(0).SetFlexShrink(1).SetFlexBasis(Dimension::Px(220));");
+                Tr("Code: float flexGrow=0, flexShrink=1, flexBasis=220\ncontainer->layout.SetFlexDirection(FlexDirection::Row);\ncontainer->layout.SetFlexWrap(FlexWrap::Wrap).SetFlexGap(15, 15);\ncontainer->AddChild(card); card->layoutItem.SetFlexGrow(0).SetFlexShrink(1).SetFlexBasis(Dimension::Px(220));"));
 
         // ===== SUMMARY =====
-        DemoKit::AddNotes(mainContainer, "LayoutSummary", "Summary", {
-                "VBox/HBox: Best for simple linear arrangements (buttons, toolbars, lists)",
-                "Grid: Perfect for forms, tables, and structured layouts",
-                "Flex: Ideal for responsive designs, card grids, and adaptive layouts",
-                "All layouts support: spacing, padding, margins, alignment, and size constraints"});
+        DemoKit::AddNotes(mainContainer, "LayoutSummary", Tr("Summary"), {
+                Tr("VBox/HBox: Best for simple linear arrangements (buttons, toolbars, lists)"),
+                Tr("Grid: Perfect for forms, tables, and structured layouts"),
+                Tr("Flex: Ideal for responsive designs, card grids, and adaptive layouts"),
+                Tr("All layouts support: spacing, padding, margins, alignment, and size constraints")});
 
         return mainContainer;
     }
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateLayoutExamples() {
         // The page fills the area; each tab scrolls its own content.
-        auto page = DemoKit::CreatePage("LayoutExamplesPage", "UltraCanvas Layout System Examples",
-                "Comprehensive examples of Box, Grid, and Flex layouts with various configurations and use cases.");
+        auto page = DemoKit::CreatePage("LayoutExamplesPage", Tr("UltraCanvas Layout System Examples"),
+                Tr("Comprehensive examples of Box, Grid, and Flex layouts with various configurations and use cases."));
         page->SetFillsArea(true);
 
         auto card = DemoKit::CreateCard("LayoutTabsCard");

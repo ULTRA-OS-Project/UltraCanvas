@@ -842,7 +842,7 @@ namespace UltraCanvas {
         auto page = DemoKit::CreatePage(info.formatName + "DemoPage", info.formatName + " Images",
                                         info.fullName + " (" + info.extensions + ")");
         auto aboutCard = DemoKit::AddCard(page, "AboutCard");
-        auto specCard = DemoKit::AddCard(page, "SpecCard", "Format Specification");
+        auto specCard = DemoKit::AddCard(page, "SpecCard", Tr("Format Specification"));
         auto bottomRow = DemoKit::AddRow(page, "ImageRow");
 
         int id = baseId + 1;
@@ -945,7 +945,7 @@ namespace UltraCanvas {
         DemoKit::Add(buttonRow, exportBtn);
 
         // ===== IMAGE PROPERTIES (bottom row, right; populated from actual image) =====
-        auto propertiesCard = DemoKit::AddCard(bottomRow, "PropertiesCard", "Image Properties");
+        auto propertiesCard = DemoKit::AddCard(bottomRow, "PropertiesCard", Tr("Image Properties"));
 
         // ExtractImageInfo throws when libvips cannot open the file; before
         // the try below, that throw left the page without a single card.

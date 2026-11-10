@@ -57,11 +57,11 @@ namespace UltraCanvas {
     std::shared_ptr<UltraCanvasUIElement>
     UltraCanvasDemoApplication::CreatePacketDiagramExamples() {
         auto root = DemoKit::CreatePage("PacketRoot",
-                "Packet Diagrams - Protocol Header & Frame Structure",
-                "A packet diagram is a bit-accurate map of a protocol data unit: every "
+                Tr("Packet Diagrams - Protocol Header & Frame Structure"),
+                Tr("A packet diagram is a bit-accurate map of a protocol data unit: every "
                 "field is a box whose width is proportional to its size in bits, at its "
                 "exact offset. Fields wider than a row wrap and still read as one field. "
-                "Hover any cell for its offset and length; click to select it.");
+                "Hover any cell for its offset and length; click to select it."));
         // The page is the display area's height and the tabs take what the
         // title and description leave; each tab page lays out inside.
         root->SetFillsArea(true);

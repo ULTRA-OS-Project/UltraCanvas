@@ -82,8 +82,8 @@ std::shared_ptr<UltraCanvasLabel> AddInfo(const std::shared_ptr<UltraCanvasConta
 std::shared_ptr<UltraCanvasUIElement> BuildMatrixTab() {
     auto page = MakeTabPage("BubbleMatrixTab", "MrsTitle", "MRS. PRESIDENT", 18);
     DemoKit::AddCaption(page.tab, "MrsSubtitle",
-                        "Percentage of respondents who say it is likely that "
-                        "a woman will be president in their lifetime.")->SetFontSize(11);
+                        Tr("Percentage of respondents who say it is likely that "
+                        "a woman will be president in their lifetime."))->SetFontSize(11);
     DemoKit::Add(page.tab, page.content);
 
     std::vector<std::string> rows = {"Under 45", "45-64", "65+", "Men", "Women"};
@@ -190,12 +190,12 @@ std::shared_ptr<UltraCanvasUIElement> BuildScatterTab() {
     chartRow->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
     DemoKit::Add(chartBlock, chartRow);
 
-    auto yAxis = DemoKit::CreateText("TravelYAxis", "Safety");
+    auto yAxis = DemoKit::CreateText("TravelYAxis", Tr("Safety"));
     yAxis->SetTextColor(Color(80, 80, 80, 255));
     DemoKit::Add(chartRow, yAxis);
     DemoKit::AddFixed(chartRow, chart);
 
-    auto xAxis = DemoKit::AddText(chartBlock, "TravelXAxis", "Cost");
+    auto xAxis = DemoKit::AddText(chartBlock, "TravelXAxis", Tr("Cost"));
     xAxis->SetTextColor(Color(80, 80, 80, 255));
     xAxis->SetAlignment(TextAlignment::Center, VerticalAlignment::Top);
 
@@ -325,7 +325,7 @@ std::shared_ptr<UltraCanvasUIElement> BuildPackedTab() {
     encBtn->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Start);
 
     DemoKit::AddText(controls, "PackedInfo",
-        "Packed Bubbles (BubbleChartMode::PackedBubbles)\n\n"
+        Tr("Packed Bubbles (BubbleChartMode::PackedBubbles)\n\n"
         "The Tableau-style \"bubble cloud\" / circle packing: "
         "position carries no meaning — relative size (and "
         "optionally colour) carries the whole message. Best for "
@@ -342,7 +342,7 @@ std::shared_ptr<UltraCanvasUIElement> BuildPackedTab() {
         "  • SetColorMode(Palette or ColormapBySize)\n"
         "  • SetPackedEnclosure() — outlined boundary circle, "
         "packing scaled to fill it (toggle above)\n"
-        "  • Auto labels: names + values inside when they fit");
+        "  • Auto labels: names + values inside when they fit"));
 
     return page.tab;
 }
@@ -444,7 +444,7 @@ std::shared_ptr<UltraCanvasUIElement> BuildHierarchicalTab() {
 std::shared_ptr<UltraCanvasUIElement> BuildTimelineTab() {
     auto page = MakeTabPage("BubbleTimelineTab", "TlTitle",
                             "Which months had the highest number of orders?", 16);
-    DemoKit::AddCaption(page.tab, "TlSubtitle", "Bubble size represents number of orders")
+    DemoKit::AddCaption(page.tab, "TlSubtitle", Tr("Bubble size represents number of orders"))
             ->SetFontSize(11);
     DemoKit::Add(page.tab, page.content);
 
@@ -865,7 +865,7 @@ std::shared_ptr<UltraCanvasUIElement> Build3DTab() {
     spinBtn->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Start);
 
     DemoKit::AddText(side, "B3DInfo",
-        "3D Bubble Chart on UltraCanvasGLSurface\n\n"
+        Tr("3D Bubble Chart on UltraCanvasGLSurface\n\n"
         "Each bubble is a real sphere in a 3-axis data "
         "space, rendered with OpenGL 3.3 through the "
         "framework's GL surface element:\n"
@@ -884,7 +884,7 @@ std::shared_ptr<UltraCanvasUIElement> Build3DTab() {
         "Interaction:\n"
         "  • Drag to orbit the camera\n"
         "  • Mouse wheel to zoom\n"
-        "  • Auto-rotation toggle above");
+        "  • Auto-rotation toggle above"));
 
     return page.tab;
 }
@@ -896,10 +896,10 @@ std::shared_ptr<UltraCanvasUIElement> Build3DTab() {
     tab->SetPadding(10, 14, 10, 14);
     tab->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     auto placeholder = DemoKit::AddText(tab, "B3DPlaceholder",
-        "3D Bubble Chart - NOT AVAILABLE\n\n"
+        Tr("3D Bubble Chart - NOT AVAILABLE\n\n"
         "This build was compiled without OpenGL support. "
         "Rebuild with -DULTRACANVAS_ENABLE_GL=ON to see the OpenGL "
-        "3D bubble chart (spheres with risk/reward/time axes).");
+        "3D bubble chart (spheres with risk/reward/time axes)."));
     placeholder->SetTextColor(Color(120, 60, 60, 255));
     return tab;
 }
@@ -913,10 +913,10 @@ std::shared_ptr<UltraCanvasUIElement> Build3DTab() {
 // =============================================================================
 
 std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateBubbleChartExamples() {
-    auto page = DemoKit::CreatePage("BubbleChartExamples", "Bubble Chart Examples",
-        "Bubble matrix, scatter bubbles with a 4th colour dimension, packed and "
+    auto page = DemoKit::CreatePage("BubbleChartExamples", Tr("Bubble Chart Examples"),
+        Tr("Bubble matrix, scatter bubbles with a 4th colour dimension, packed and "
         "hierarchical packed bubbles, a bubble timeline, and an OpenGL-rendered 3D "
-        "bubble chart. Hover any bubble for its tooltip.");
+        "bubble chart. Hover any bubble for its tooltip."));
     // The page is the display area's height and the tabs take what the title
     // and description leave; a tab whose chart does not fit scrolls.
     page->SetFillsArea(true);

@@ -78,8 +78,8 @@ namespace UltraCanvas {
     } // namespace
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateTimelineDiagramExamples() {
-        auto mainContainer = DemoKit::CreatePage("tlMainContainer", "Timeline Diagram Infographic",
-                "Narrative timeline with nine design presets, palettes, even/proportional placement and interactive items");
+        auto mainContainer = DemoKit::CreatePage("tlMainContainer", Tr("Timeline Diagram Infographic"),
+                Tr("Narrative timeline with nine design presets, palettes, even/proportional placement and interactive items"));
 
         // Controls | tabs with the status line | statistics and about. The
         // side cards wrap under the diagram in a narrow window.
@@ -128,11 +128,11 @@ namespace UltraCanvas {
         auto btnReset = AddTimelineDiagramButton(leftSidebar, "tlBtnReset", "Reset View", Color(108, 117, 125, 255));
 
         auto helpBox = DemoKit::AddCaption(leftSidebar, "tlHelpBox",
-                "INTERACTION TIPS\n\n"
+                Tr("INTERACTION TIPS\n\n"
                 "- Click an item to select\n"
                 "- Click empty space to clear the selection\n"
                 "- Hover for the full text\n"
-                "- Double-click an item");
+                "- Double-click an item"));
         helpBox->SetTextColor(DemoKit::BodyText());
         helpBox->SetBackgroundColor(Color(255, 243, 205, 255));
         helpBox->SetPadding(10);
@@ -144,7 +144,7 @@ namespace UltraCanvas {
         DemoKit::AddFixed(diagramCard, tabbedContainer);
 
         auto statusBar = DemoKit::AddText(diagramCard, "tlStatusBar",
-                "Ready - click items to select them, hover for tooltips");
+                Tr("Ready - click items to select them, hover for tooltips"));
         statusBar->SetFontSize(11);
         statusBar->SetBackgroundColor(Color(233, 236, 239, 255));
         statusBar->SetPadding(15);
@@ -158,7 +158,7 @@ namespace UltraCanvas {
         statsPanel->SetBackgroundColor(Color(248, 249, 250, 255));
         statsPanel->SetPadding(12);
 
-        DemoKit::AddHeading(rightSidebar, "tlAboutTitle", "ABOUT THIS DESIGN");
+        DemoKit::AddHeading(rightSidebar, "tlAboutTitle", Tr("ABOUT THIS DESIGN"));
 
         auto aboutPanel = DemoKit::AddText(rightSidebar, "tlAboutPanel", "");
         aboutPanel->SetFontSize(9);
