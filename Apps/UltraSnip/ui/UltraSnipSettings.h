@@ -6,6 +6,7 @@
 // themselves; for videos the file type, the folder and the frame rate; what
 // happens after a snip; and the folder Save as used last. The settings
 // window (UltraSnipSettingsDialog) edits them, the main window reads them.
+// Version: 0.3.0 - takePrintKey: the Print Screen key starts a snip
 // Version: 0.2.0 - the picture and video file types and folders, the window
 //                  after a snip; the paths of a new snip; the defaults per page
 // Version: 0.1.0
@@ -38,6 +39,9 @@ struct UltraSnipSettings {
 
     // ---- after a snip ----
     bool showWindowAfterSnip = true;    // false: a snip started from the desktop ends without the window
+    // The Print Screen key starts a snip while UltraSnip runs - taken from
+    // the system, so it is not Windows' Snipping Tool that opens
+    bool takePrintKey = true;
 
     std::string saveFolder;             // where Save as starts; "" = the default folder
 
