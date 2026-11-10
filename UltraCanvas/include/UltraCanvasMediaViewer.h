@@ -87,6 +87,10 @@
 // size, and writes with the type's save settings at the size chosen; a drawing
 // is drawn again at that size, sharp, rather than stretched.
 //
+// Version: 1.26.0 - a video's Details panel and info bar carry its technical facts, read
+//                   from the file's headers by ReadVideoFileInfo (ShownVideoInfo): size,
+//                   frame rate, codec and profile, bit rates, the sound's codec, rate and
+//                   channels, rotation, track counts and the file's own tags
 // Version: 1.25.0 - text shown in the text view or the Details panel can be copied: a press
 //                   there gives the widget the keyboard, and Ctrl+C / Ctrl+Insert copy the
 //                   selection, Ctrl+A selects all; a right-click opens Copy / Select All

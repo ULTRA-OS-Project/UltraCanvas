@@ -1,6 +1,9 @@
 // core/UltraCanvasMediaViewer.cpp
 // Implementation of the comprehensive media / photo / document viewer widget.
 // See UltraCanvasMediaViewer.h for the feature overview.
+// Version: 1.24.0 - video: ShownVideoInfo reads the clip's headers once per file
+//                   (ReadVideoFileInfo) and fills the gaps from the backend's stream
+//                   info; the info bar and the Details panel are built from it
 // Version: 1.23.1 - the Curves dialog's histogram is counted by UltraCanvasHistogramModel, as
 //                   UltraPaint's is; transparent pixels are left out
 // Version: 1.23.0 - copying text: a press in the text view or the Details panel focuses
