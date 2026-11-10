@@ -620,8 +620,8 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasImageAnimation.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasImageElement.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasImageViewer.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasMediaViewer.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasMediaViewerWindow.cpp
+        # UltraCanvasMediaViewer.cpp: part of the selectable MediaViewer widget - see WIDGET SYSTEM below
+        # UltraCanvasMediaViewerWindow.cpp: part of the selectable MediaViewer widget - see WIDGET SYSTEM below
         # Raster editing: layer / selection / document model, brush engine and
         # the editable paint surface (UltraPaint)
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasRasterLayer.cpp
@@ -1348,7 +1348,7 @@ endif()
 # it calls UltraCanvas_RegisterSelectedWidgets(), so the module resolves them
 # at dlopen. ElementModulesTest loads every module into a host with nothing but
 # one plain element, so a missing anchor fails it with the undefined symbol.
-set(UC_WIDGET_KEYS VideoTimeline Slideshow Album ColorPaletteManager VectorCanvas)
+set(UC_WIDGET_KEYS VideoTimeline Slideshow Album ColorPaletteManager VectorCanvas MediaViewer)
 set(UC_WIDGET_VideoTimeline_KEBAB    "video-timeline")
 set(UC_WIDGET_VideoTimeline_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasVideoTimeline.cpp)
@@ -1410,6 +1410,22 @@ set(UC_WIDGET_VectorCanvas_REGISTER "RegisterVectorCanvasElement")
 set(UC_WIDGET_VectorCanvas_ANCHOR_INCLUDES "DataFormats/UltraCanvasVectorEdit.h")
 set(UC_WIDGET_VectorCanvas_ANCHORS
     "&VectorEdit::OwnPaintBounds")
+
+set(UC_WIDGET_MediaViewer_KEBAB    "media-viewer")
+set(UC_WIDGET_MediaViewer_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasMediaViewer.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasMediaViewerWindow.cpp)
+set(UC_WIDGET_MediaViewer_PLUGIN
+    ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Widgets/UltraCanvasMediaViewerPlugin.cpp)
+set(UC_WIDGET_MediaViewer_HEADER   "UltraCanvasMediaViewer.h")
+set(UC_WIDGET_MediaViewer_REGISTER "RegisterMediaViewerElement")
+# The viewer reaches some 45 core objects (every view it shows a file in) and
+# the modules folded into a shared core (UltraNet's MIME reader, UltraCrypt).
+# Anchoring all of that into a static host would keep the viewer's whole
+# weight in every lean application, which is what leaving it out was for; so
+# its module is built against the shared core only - the shipping
+# configuration on every desktop platform - and needs no anchors there.
+set(UC_WIDGET_MediaViewer_SHARED_CORE_ONLY ON)
 
 set(UC_WIDGET_SELECTED_KEYS "")
 set(UC_WIDGET_MODULE_KEYS "")
@@ -2333,14 +2349,25 @@ if(ULTRACANVAS_WIDGET_RUNTIME_MODULES)
             message(STATUS "  [−] widget module ${uc_widget_target} - SKIPPED (needs shared core on Windows)")
             continue()
         endif()
+        if(UC_WIDGET_${key}_SHARED_CORE_ONLY AND NOT ULTRACANVAS_BUILD_SHARED)
+            message(WARNING "${key} is neither compiled in nor built as a module: its module "
+                "needs ULTRACANVAS_BUILD_SHARED=ON. Add ${key} to ULTRACANVAS_WIDGETS, or build a shared core.")
+            continue()
+        endif()
         add_library(${uc_widget_target} MODULE
             ${UC_WIDGET_${key}_SOURCES}
             ${UC_WIDGET_${key}_PLUGIN})
+        # Compiled as the core's own sources are: its include paths and its
+        # compile definitions (ULTRACANVAS_PLUGIN_PDF, the feature switches), so
+        # a header whose classes change with a switch means the same thing on
+        # both sides of the module boundary. generated/include carries
+        # UltraCanvasFrameworkHeadersId.h, without which the loader refuses it.
         target_include_directories(${uc_widget_target} PRIVATE
             ${CMAKE_CURRENT_SOURCE_DIR}/include
             ${CMAKE_CURRENT_BINARY_DIR}/generated/include
-            ${CAIRO_INCLUDE_DIRS} ${PANGO_INCLUDE_DIRS} ${GLIB_INCLUDE_DIRS}
-            ${HARFBUZZ_INCLUDE_DIRS} ${FREETYPE_INCLUDE_DIRS})
+            $<TARGET_PROPERTY:${ULTRACANVAS_LIB_NAME},INCLUDE_DIRECTORIES>)
+        target_compile_definitions(${uc_widget_target} PRIVATE
+            $<TARGET_PROPERTY:${ULTRACANVAS_LIB_NAME},COMPILE_DEFINITIONS>)
         target_compile_features(${uc_widget_target} PRIVATE cxx_std_20)
         set_target_properties(${uc_widget_target} PROPERTIES
             PREFIX ""

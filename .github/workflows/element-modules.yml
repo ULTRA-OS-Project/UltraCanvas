@@ -46,7 +46,15 @@ concurrency:
 
 jobs:
   modules:
-    name: element modules (ubuntu-24.04, static core)
+    # Both cores: the shipping one (shared - every module links
+    # libUltraCanvas, and the MediaViewer module exists only here) and a
+    # static one (the modules resolve the core from the host, through the
+    # anchors UltraCanvas_RegisterSelectedWidgets keeps).
+    strategy:
+      fail-fast: false
+      matrix:
+        core: [static, shared]
+    name: element modules (ubuntu-24.04, ${{ matrix.core }} core)
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     env:
@@ -94,9 +102,9 @@ jobs:
         uses: actions/cache/restore@v5
         with:
           path: ${{ github.workspace }}/.ccache
-          key: ccache-element-modules-ubuntu-24.04-${{ github.run_id }}
+          key: ccache-element-modules-${{ matrix.core }}-ubuntu-24.04-${{ github.run_id }}
           restore-keys: |
-            ccache-element-modules-ubuntu-24.04-
+            ccache-element-modules-${{ matrix.core }}-ubuntu-24.04-
 
       # A configure that keeps an application whose widgets are left out
       # must stop and name them (ultracanvas_require_widgets).
@@ -121,13 +129,21 @@ jobs:
             -DCMAKE_C_COMPILER_LAUNCHER=ccache \
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -DBUILD_TESTS=ON \
+            -DULTRACANVAS_BUILD_SHARED=${{ matrix.core == 'shared' && 'ON' || 'OFF' }} \
             -DULTRACANVAS_WIDGETS= \
             -DULTRACANVAS_CHARTS= \
             -DBUILD_ULTRAVIDEO=OFF \
             -DBUILD_DEMO_APP=OFF \
             -DBUILD_ULTRAPAINT_APP=OFF \
-            -DBUILD_ARTCREATOR_APP=OFF 2>&1 | tee configure.log
-          grep -q "Widgets: compiled in \[\], modules \[VideoTimeline;Slideshow;Album;ColorPaletteManager;VectorCanvas\]" configure.log
+            -DBUILD_ARTCREATOR_APP=OFF \
+            -DBUILD_ULTRAFILER_APP=OFF \
+            -DBUILD_ULTRAVIEWER_APP=OFF \
+            -DBUILD_ULTRAMAIL=OFF \
+            -DBUILD_EMAILCLEANER=OFF \
+            -DBUILD_CHATCUBE=OFF \
+            -DBUILD_ULTRACLIPBOARD=OFF \
+            -DBUILD_ULTRASNIP=OFF 2>&1 | tee configure.log
+          grep -q "Widgets: compiled in \[\], modules \[VideoTimeline;Slideshow;Album;ColorPaletteManager;VectorCanvas;MediaViewer\]" configure.log
           grep -q "Charts: compiled in \[\], modules \[ParallelCoordinate\]" configure.log
 
       - name: Build the core, the modules and the tests
@@ -136,6 +152,12 @@ jobs:
           cmake --build build --target ElementModulesTest UltraCanvasThemeTest VectorEditTest -j"$(nproc)"
           ccache -s
           ls -la build/Plugins/Elements
+          # The viewer's module is built against a shared core only.
+          if [ "${{ matrix.core }}" = shared ]; then
+            test -f build/Plugins/Elements/ultracanvas-widget-media-viewer.so
+          else
+            test ! -e build/Plugins/Elements/ultracanvas-widget-media-viewer.so
+          fi
 
       - name: Save ccache (main)
         if: always() && github.ref == 'refs/heads/main' && steps.ccache.outcome == 'success'

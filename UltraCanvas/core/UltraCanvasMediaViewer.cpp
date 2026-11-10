@@ -1,6 +1,8 @@
 // core/UltraCanvasMediaViewer.cpp
 // Implementation of the comprehensive media / photo / document viewer widget.
 // See UltraCanvasMediaViewer.h for the feature overview.
+// Version: 1.24.0 - MakeMediaViewerDescriptor / RegisterMediaViewerElement: "media-viewer" in the element
+//                  registry, compiled in or as the ultracanvas-widget-media-viewer runtime module
 // Version: 1.23.1 - the Curves dialog's histogram is counted by UltraCanvasHistogramModel, as
 //                   UltraPaint's is; transparent pixels are left out
 // Version: 1.23.0 - copying text: a press in the text view or the Details panel focuses
@@ -82,6 +84,7 @@
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasMediaViewer.h"
+#include "UltraCanvasElementPlugins.h"
 #include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 #include "UltraCanvasFontViewer.h"
 #include "UltraCanvasToolbar.h"
@@ -5444,6 +5447,24 @@ bool UltraCanvasMediaViewer::OnEvent(const UCEvent& event) {
     if (UltraCanvasContainer::OnEvent(event)) return true;
 
     return HandleViewerKey(event);
+}
+
+UCElementDescriptor MakeMediaViewerDescriptor() {
+    UCElementDescriptor descriptor;
+    descriptor.typeName = "media-viewer";
+    descriptor.category = UCPluginCategory::Widget;
+    descriptor.displayName = "Media Viewer";
+    descriptor.description = "Pictures, video, audio, PDF, e-books, spreadsheets, 3D models, text, "
+                             "web pages, mail and fonts, browsed in one view";
+    descriptor.docPath = "Docs/UltraCanvas/UltraCanvasMediaViewer.md";
+    descriptor.create = [](const std::string& id, int x, int y, int w, int h) {
+        return std::static_pointer_cast<UltraCanvasUIElement>(CreateMediaViewer(id, x, y, w, h));
+    };
+    return descriptor;
+}
+
+void RegisterMediaViewerElement() {
+    UltraCanvasElementRegistry::Register(MakeMediaViewerDescriptor());
 }
 
 } // namespace UltraCanvas

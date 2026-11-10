@@ -87,6 +87,8 @@
 // size, and writes with the type's save settings at the size chosen; a drawing
 // is drawn again at that size, sharp, rather than stretched.
 //
+// Version: 1.26.0 - MakeMediaViewerDescriptor / RegisterMediaViewerElement: "media-viewer" in the element
+//                  registry, compiled in or as the ultracanvas-widget-media-viewer runtime module
 // Version: 1.25.0 - text shown in the text view or the Details panel can be copied: a press
 //                   there gives the widget the keyboard, and Ctrl+C / Ctrl+Insert copy the
 //                   selection, Ctrl+A selects all; a right-click opens Copy / Select All
@@ -120,7 +122,7 @@
 // Version: 1.13.0 - one compact toolbar row (flat, 16 px icons, scrolls when
 //                   narrow); Details only in the info bar
 // Version: 1.12.0
-// Last Modified: 2026-11-03
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -1070,5 +1072,13 @@ inline std::shared_ptr<UltraCanvasMediaViewer> CreateMediaViewer(
         const std::string& identifier, float x, float y, float w, float h) {
     return std::make_shared<UltraCanvasMediaViewer>(identifier, x, y, w, h);
 }
+
+// The viewer in the element registry (UltraCanvasElementPlugins.h) as
+// "media-viewer" (category Widget): compiled into the core by default, or the
+// ultracanvas-widget-media-viewer runtime module when ULTRACANVAS_WIDGETS
+// leaves MediaViewer out.
+struct UCElementDescriptor;
+UCElementDescriptor MakeMediaViewerDescriptor();
+void RegisterMediaViewerElement();
 
 } // namespace UltraCanvas

@@ -629,6 +629,19 @@ it is now, not as the cache remembered it. The viewer does not watch the file
 it shows; a host that wants it followed reopens it when the file changes, as
 UltraFiler's preview pane does after a rescan finds the selected file changed.
 
+## As a runtime module
+
+The viewer is in the element registry as `"media-viewer"` (category Widget,
+`MakeMediaViewerDescriptor`). It is a selectable widget: compiled into the
+core by default, or built as the `ultracanvas-widget-media-viewer` runtime
+module when `ULTRACANVAS_WIDGETS` leaves `MediaViewer` out - with a shared
+core (`ULTRACANVAS_BUILD_SHARED`) only, since the viewer reaches some 45 core
+objects that a static host would otherwise have to keep for it. The applications
+that use its classes - UltraViewer, UltraFiler, UltraMail, EmailCleaner,
+ChatCube, UltraClipboard, UltraSnip and DemoApp - need it compiled in. See
+*Widgets as runtime modules* in
+[`UltraCanvasElementPlugins.md`](UltraCanvasElementPlugins.md).
+
 ## Embedding as a preview pane
 
 ```cpp
